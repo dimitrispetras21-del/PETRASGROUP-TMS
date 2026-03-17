@@ -87,7 +87,7 @@ function _renderIntlLayout(c) {
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-ghost" style="display:flex;align-items:center;gap:6px" onclick="openIntlScan()">
-          <span>📄</span> Scan CMR
+          <span>📄</span> Scan Order
         </button>
         ${canEdit ? `<button class="btn btn-success" onclick="openIntlCreate()">
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2">
@@ -695,7 +695,7 @@ function openIntlScan() {
     </button>`;
 
   document.getElementById('modal').style.maxWidth = '560px';
-  openModal('New Order from CMR', body, footer);
+  openModal('New Order from Scan', body, footer);
 }
 
 function _scanHandleDrop(e) {
