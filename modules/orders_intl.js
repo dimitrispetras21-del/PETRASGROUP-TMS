@@ -372,28 +372,35 @@ function _buildIntlModal(recId, f) {
     return Array.isArray(arr) ? arr[0] : '';
   };
 
-  // Build location rows 1-5
-  const loadRows = [1,2,3,4,5].map(i => `
-    <div class="form-field">
-      <label class="form-label">Loading Location ${i}${i===1?' *':''}</label>
-      ${_makeLinkedSelect('io_loc_l'+i, locIds(i), _locationsArr, 'Search location...')}
-    </div>
-    <div class="form-field">
-      <label class="form-label">Loading Pallets ${i}${i===1?' *':''}</label>
-      <input class="form-input" type="number" id="io_lpal_${i}"
-        value="${f[`Loading Pallets ${i}`]||''}" placeholder="0">
-    </div>`).join('');
+  // Build initial stop rows — only show rows that have data, always min 1
+  const buildStopRows = (prefix, locFn, palFn, idPrefix) => {
+    // Find how many stops have data
+    let filled = 0;
+    for(let i=1;i<=5;i++) { if(locFn(i)||palFn(i)) filled=i; }
+    const show = Math.max(1, filled); // always show at least 1
+    let rows = '';
+    for(let i=1;i<=show;i++){
+      rows += `<div class="form-grid" id="${idPrefix}_row_${i}" style="margin-bottom:0">
+        <div class="form-field">
+          <label class="form-label">${prefix} Location ${i}${i===1?' *':''}</label>
+          ${_makeLinkedSelect(idPrefix+'_l'+i, locFn(i), _locationsArr, 'Search location...')}
+        </div>
+        <div class="form-field">
+          <label class="form-label">${prefix} Pallets ${i}${i===1?' *':''}</label>
+          <input class="form-input" type="number" id="${idPrefix}_pal_${i}"
+            value="${palFn(i)||''}" placeholder="0">
+        </div>
+      </div>`;
+    }
+    return rows;
+  };
 
-  const delRows = [1,2,3,4,5].map(i => `
-    <div class="form-field">
-      <label class="form-label">Unloading Location ${i}${i===1?' *':''}</label>
-      ${_makeLinkedSelect('io_loc_u'+i, ulocIds(i), _locationsArr, 'Search location...')}
-    </div>
-    <div class="form-field">
-      <label class="form-label">Unloading Pallets ${i}${i===1?' *':''}</label>
-      <input class="form-input" type="number" id="io_upal_${i}"
-        value="${f[`Unloading Pallets ${i}`]||''}" placeholder="0">
-    </div>`).join('');
+  // Track how many stops are visible
+  window._intlLoadStops = Math.max(1, (() => { let n=0; for(let i=1;i<=5;i++) if(locIds(i)||f[`Loading Pallets ${i}`]) n=i; return n; })());
+  window._intlDelStops  = Math.max(1, (() => { let n=0; for(let i=1;i<=5;i++) if(ulocIds(i)||f[`Unloading Pallets ${i}`]) n=i; return n; })());
+
+  const loadRows = buildStopRows('Loading',   locIds,  (i)=>f[`Loading Pallets ${i}`],   'io_loc_l');
+  const delRows  = buildStopRows('Unloading', ulocIds, (i)=>f[`Unloading Pallets ${i}`], 'io_loc_u');
 
   const body = `
     <div class="form-grid">
@@ -492,14 +499,18 @@ function _buildIntlModal(recId, f) {
     <!-- ── Loading Section ── -->
     <div style="margin:20px 0 10px;padding-top:16px;border-top:1px solid var(--border)">
       <div class="detail-section-title" style="margin-bottom:12px">Loading</div>
-      <div class="form-grid">
+      <div class="form-grid" style="margin-bottom:12px">
         <div class="form-field span-2">
           <label class="form-label">Loading Date *</label>
           <input class="form-input" type="date" id="io_Loading_DateTime"
             value="${f['Loading DateTime']?f['Loading DateTime'].split('T')[0]:''}">
         </div>
-        ${loadRows}
       </div>
+      <div id="intl_load_stops">${loadRows}</div>
+      <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:5px 12px"
+        onclick="_addIntlStop('load')" id="intl_add_load">
+        + Add Loading Stop
+      </button>
     </div>
 
     <!-- ── Veroia Switch ── -->
@@ -514,14 +525,18 @@ function _buildIntlModal(recId, f) {
     <!-- ── Delivery Section ── -->
     <div style="margin:0 0 10px;padding-top:16px;border-top:1px solid var(--border)">
       <div class="detail-section-title" style="margin-bottom:12px">Delivery</div>
-      <div class="form-grid">
+      <div class="form-grid" style="margin-bottom:12px">
         <div class="form-field span-2">
           <label class="form-label">Delivery Date *</label>
           <input class="form-input" type="date" id="io_Delivery_DateTime"
             value="${f['Delivery DateTime']?f['Delivery DateTime'].split('T')[0]:''}">
         </div>
-        ${delRows}
       </div>
+      <div id="intl_del_stops">${delRows}</div>
+      <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:5px 12px"
+        onclick="_addIntlStop('del')" id="intl_add_del">
+        + Add Delivery Stop
+      </button>
     </div>`;
 
   const footer = `
@@ -550,6 +565,11 @@ async function saveIntlOrder(recId) {
   }
 
   // Dates
+  // Auto-calculate Week Number — matches WEEKNUM({Delivery DateTime}, "Sunday")
+  const deliveryEl = document.getElementById('io_Delivery_DateTime');
+  if (deliveryEl?.value) {
+    fields['Week Number'] = _airtableWeekNum(deliveryEl.value);
+  }
   const dateF = {io_Loading_DateTime:'Loading DateTime', io_Delivery_DateTime:'Delivery DateTime'};
   for(const[id,f] of Object.entries(dateF)){
     const el=document.getElementById(id); if(el?.value) fields[f]=el.value;
@@ -612,4 +632,52 @@ async function saveIntlOrder(recId) {
     btn.textContent='Save'; btn.disabled=false;
     alert('Error: '+e.message);
   }
+}
+
+// ── Dynamic stop add ──────────────────────────────
+function _addIntlStop(type) {
+  const isLoad = type === 'load';
+  const countKey = isLoad ? '_intlLoadStops' : '_intlDelStops';
+  const containerId = isLoad ? 'intl_load_stops' : 'intl_del_stops';
+  const btnId = isLoad ? 'intl_add_load' : 'intl_add_del';
+  const idPrefix = isLoad ? 'io_loc_l' : 'io_loc_u';
+  const palPrefix = isLoad ? 'io_lpal_' : 'io_upal_';
+  const label = isLoad ? 'Loading' : 'Unloading';
+
+  const current = window[countKey] || 1;
+  if (current >= 5) {
+    document.getElementById(btnId).style.display = 'none';
+    return;
+  }
+
+  const next = current + 1;
+  window[countKey] = next;
+
+  const container = document.getElementById(containerId);
+  const div = document.createElement('div');
+  div.className = 'form-grid';
+  div.id = `${idPrefix}_row_${next}`;
+  div.style.marginBottom = '0';
+  div.innerHTML = `
+    <div class="form-field">
+      <label class="form-label">${label} Location ${next}</label>
+      ${_makeLinkedSelect(idPrefix+next, '', _locationsArr, 'Search location...')}
+    </div>
+    <div class="form-field">
+      <label class="form-label">${label} Pallets ${next}</label>
+      <input class="form-input" type="number" id="${palPrefix}${next}" placeholder="0">
+    </div>`;
+  container.appendChild(div);
+
+  // Hide button if at max
+  if (next >= 5) document.getElementById(btnId).style.display = 'none';
+}
+
+function _airtableWeekNum(dateStr) {
+  // Exact match for WEEKNUM({date}, "Sunday") used in Airtable
+  const d = new Date(dateStr + 'T12:00:00');
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const weekStart = new Date(jan1);
+  weekStart.setDate(jan1.getDate() - jan1.getDay()); // back to Sunday
+  return Math.floor((d - weekStart) / 604800000) + 1;
 }
