@@ -984,13 +984,13 @@ tbody tr:hover { background: var(--bg-hover); }
         <span id="userName">—</span>
         <span class="role-badge" id="roleBadge">—</span>
       </div>
-      <button class="btn-logout" onclick="logout()">Έξοδος</button>
+      <button class="btn-logout" onclick="logout()">Sign out</button>
     </div>
   </div>
 
   <!-- Content -->
   <div class="content" id="content">
-    <div class="loading"><div class="spinner"></div> Φόρτωση...</div>
+    <div class="loading"><div class="spinner"></div> Loading...</div>
   </div>
 
 </div>
@@ -1184,7 +1184,7 @@ function renderComingSoon(label) {
     <div class="coming-soon">
       <div class="cs-icon">🛠️</div>
       <h3>${label}</h3>
-      <p>Αυτό το module είναι σε ανάπτυξη</p>
+      <p>This module is under development</p>
     </div>`;
 }
 
@@ -1240,7 +1240,7 @@ function fv(v) {
 // ═══════════════════════════════════════════════
 async function renderDashboard() {
   const c = document.getElementById('content');
-  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση dashboard...</div>`;
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Loading dashboard...</div>`;
   try {
     const [trips, orders] = await Promise.all([
       atGet(TABLES.TRIPS),
@@ -1259,40 +1259,40 @@ async function renderDashboard() {
       <div class="page-header">
         <div>
           <div class="page-title">Dashboard</div>
-          <div class="page-sub">Καλημέρα, ${user.name} — ${new Date().toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'})}</div>
+          <div class="page-sub">Good morning, ${user.name} — ${new Date().toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'})}</div>
         </div>
       </div>
 
       <div class="kpi-grid">
         <div class="kpi-card">
-          <div class="kpi-label">Ενεργά Trips</div>
+          <div class="kpi-label">Active Trips</div>
           <div class="kpi-value">${activeTrips.length}</div>
-          <div class="kpi-delta">Σε εξέλιξη αυτή τη στιγμή</div>
+          <div class="kpi-delta">Currently in progress</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Trips Εβδομάδας</div>
+          <div class="kpi-label">This Week</div>
           <div class="kpi-value">${thisWeek.length}</div>
-          <div class="kpi-delta">Τρέχουσα εβδομάδα</div>
+          <div class="kpi-delta">Current week</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Εκκρεμείς Παραγγελίες</div>
+          <div class="kpi-label">Pending Orders</div>
           <div class="kpi-value">${pendingOrders.length}</div>
-          <div class="kpi-delta">Χωρίς trip ανάθεση</div>
+          <div class="kpi-delta">Without trip assignment</div>
         </div>
         <div class="kpi-card">
-          <div class="kpi-label">Σύνολο Trips</div>
+          <div class="kpi-label">Total Trips</div>
           <div class="kpi-value">${trips.length}</div>
-          <div class="kpi-delta">Όλων των εποχών</div>
+          <div class="kpi-delta">All time</div>
         </div>
       </div>
 
       <div class="table-wrap">
         <div class="table-toolbar">
-          <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--text)">Ενεργά Trips</span>
+          <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--text)">Active Trips</span>
         </div>
         <table>
           <thead><tr>
-            <th>Trip No</th><th>Εβδομάδα</th><th>Φορτηγό</th><th>Οδηγός</th><th>Κατεύθυνση</th><th>Status</th>
+            <th>Trip No</th><th>Week</th><th>Truck</th><th>Driver</th><th>Direction</th><th>Status</th>
           </tr></thead>
           <tbody>
             ${activeTrips.slice(0,20).map(r => `<tr onclick="navigate('weekly_intl')">
@@ -1302,12 +1302,12 @@ async function renderDashboard() {
               <td>${fv(r.fields['Driver Name']) || '—'}</td>
               <td>${r.fields['Is Partner Trip'] ? '<span class="badge badge-blue">Partner</span>' : '<span class="badge badge-green">Owned</span>'}</td>
               <td><span class="badge badge-yellow">Active</span></td>
-            </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--silver-dim);padding:24px">Δεν υπάρχουν ενεργά trips</td></tr>`}
+            </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--silver-dim);padding:24px">No active trips</td></tr>`}
           </tbody>
         </table>
       </div>`;
   } catch(e) {
-    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Σφάλμα φόρτωσης</h3><p>${e.message}</p></div>`;
+    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Load error</h3><p>${e.message}</p></div>`;
   }
 }
 
@@ -1316,12 +1316,12 @@ async function renderDashboard() {
 // ═══════════════════════════════════════════════
 async function renderOrdersIntl() {
   const c = document.getElementById('content');
-  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση παραγγελιών...</div>`;
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Loading orders...</div>`;
   try {
     const orders = await atGet(TABLES.ORDERS);
     renderOrdersTable(orders, c);
   } catch(e) {
-    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Σφάλμα</h3><p>${e.message}</p></div>`;
+    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Error</h3><p>${e.message}</p></div>`;
   }
 }
 
@@ -1331,17 +1331,17 @@ function renderOrdersTable(orders, c) {
     <div class="page-header">
       <div>
         <div class="page-title">International Orders</div>
-        <div class="page-sub">${orders.length} παραγγελίες συνολικά</div>
+        <div class="page-sub">${orders.length} orders total</div>
       </div>
-      ${canEdit ? `<button class="btn btn-success" onclick="alert('Φόρμα δημιουργίας — σύντομα')">+ Νέα Παραγγελία</button>` : ''}
+      ${canEdit ? `<button class="btn btn-success" onclick="alert('Create form — coming soon')">+ New Order</button>` : ''}
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
-        <input class="search-input" placeholder="🔍  Αναζήτηση παραγγελίας..." oninput="filterOrders(this.value)" id="orderSearch">
+        <input class="search-input" placeholder="🔍  Search order..." oninput="filterOrders(this.value)" id="orderSearch">
       </div>
       <table id="ordersTable">
         <thead><tr>
-          <th>Order No</th><th>Πελάτης</th><th>Φόρτωση</th><th>Παράδοση</th><th>Παλέτες</th><th>Trip</th><th>Status</th>
+          <th>Order No</th><th>Client</th><th>Loading</th><th>Delivery</th><th>Pallets</th><th>Trip</th><th>Status</th>
         </tr></thead>
         <tbody id="ordersTbody">
           ${renderOrderRows(orders)}
@@ -1352,7 +1352,7 @@ function renderOrdersTable(orders, c) {
 }
 
 function renderOrderRows(orders) {
-  if (!orders.length) return `<tr><td colspan="7" style="text-align:center;color:var(--silver-dim);padding:32px">Δεν βρέθηκαν παραγγελίες</td></tr>`;
+  if (!orders.length) return `<tr><td colspan="7" style="text-align:center;color:var(--silver-dim);padding:32px">No orders found</td></tr>`;
   return orders.slice(0, 100).map(r => {
     const f = r.fields;
     const hasTrip = f['Trip'] && f['Trip'].length > 0;
@@ -1362,7 +1362,7 @@ function renderOrderRows(orders) {
       <td>${fv(f['Loading Location 1']) || '—'}</td>
       <td>${fv(f['Unloading Location 1']) || '—'}</td>
       <td>${fv(f['Total Pallets']) || '—'}</td>
-      <td>${hasTrip ? `<span class="badge badge-green">Ανατέθηκε</span>` : `<span class="badge badge-yellow">Εκκρεμεί</span>`}</td>
+      <td>${hasTrip ? `<span class="badge badge-green">Assigned</span>` : `<span class="badge badge-yellow">Pending</span>`}</td>
       <td>${fv(f['Status']) || '—'}</td>
     </tr>`;
   }).join('');
@@ -1385,20 +1385,20 @@ function filterOrders(q) {
 // ═══════════════════════════════════════════════
 async function renderTrucks() {
   const c = document.getElementById('content');
-  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση φορτηγών...</div>`;
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Loading trucks...</div>`;
   const trucks = await atGet(TABLES.TRUCKS);
   const canEdit = can('maintenance') === 'full';
   c.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">Trucks</div><div class="page-sub">${trucks.length} φορτηγά</div></div>
-      ${canEdit ? `<button class="btn btn-success">+ Νέο Φορτηγό</button>` : ''}
+      <div><div class="page-title">Trucks</div><div class="page-sub">${trucks.length} trucks</div></div>
+      ${canEdit ? `<button class="btn btn-success">+ New Truck</button>` : ''}
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
-        <input class="search-input" placeholder="🔍  Αναζήτηση..." oninput="filterTable(this.value,'trucksTbody',window._trucksData,renderTruckRows)">
+        <input class="search-input" placeholder="🔍  Search..." oninput="filterTable(this.value,'trucksTbody',window._trucksData,renderTruckRows)">
       </div>
       <table><thead><tr>
-        <th>Πινακίδα</th><th>Μάρκα</th><th>Μοντέλο</th><th>Έτος</th><th>Status</th>
+        <th>Plate</th><th>Brand</th><th>Model</th><th>Year</th><th>Status</th>
       </tr></thead>
       <tbody id="trucksTbody">${renderTruckRows(trucks)}</tbody></table>
     </div>`;
@@ -1413,9 +1413,9 @@ function renderTruckRows(trucks) {
       <td>${fv(f['Brand']) || fv(f['Make']) || '—'}</td>
       <td>${fv(f['Model']) || '—'}</td>
       <td>${fv(f['Year']) || '—'}</td>
-      <td><span class="badge badge-green">Ενεργό</span></td>
+      <td><span class="badge badge-green">Active</span></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--silver-dim);padding:32px">Δεν βρέθηκαν φορτηγά</td></tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--silver-dim);padding:32px">No trucks found</td></tr>`;
 }
 
 // ═══════════════════════════════════════════════
@@ -1427,15 +1427,15 @@ async function renderTrailers() {
   const trailers = await atGet(TABLES.TRAILERS);
   c.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">Trailers</div><div class="page-sub">${trailers.length} ρυμουλκούμενα</div></div>
+      <div><div class="page-title">Trailers</div><div class="page-sub">${trailers.length} trailers</div></div>
     </div>
     <div class="table-wrap">
-      <table><thead><tr><th>Πινακίδα</th><th>Τύπος</th><th>Έτος</th><th>Status</th></tr></thead>
+      <table><thead><tr><th>Plate</th><th>Type</th><th>Year</th><th>Status</th></tr></thead>
       <tbody>${trailers.map(r => `<tr>
         <td><strong>${fv(r.fields['Plate'])||fv(r.fields['License Plate'])||'—'}</strong></td>
         <td>${fv(r.fields['Type'])||'—'}</td>
         <td>${fv(r.fields['Year'])||'—'}</td>
-        <td><span class="badge badge-green">Ενεργό</span></td>
+        <td><span class="badge badge-green">Active</span></td>
       </tr>`).join('')}</tbody></table>
     </div>`;
 }
@@ -1449,20 +1449,20 @@ async function renderDrivers() {
   const drivers = await atGet(TABLES.DRIVERS);
   c.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">Drivers</div><div class="page-sub">${drivers.length} οδηγοί</div></div>
+      <div><div class="page-title">Drivers</div><div class="page-sub">${drivers.length} drivers</div></div>
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
-        <input class="search-input" placeholder="🔍  Αναζήτηση οδηγού...">
+        <input class="search-input" placeholder="🔍  Search driver...">
       </div>
-      <table><thead><tr><th>Ονοματεπώνυμο</th><th>Τηλέφωνο</th><th>Εθνικότητα</th><th>Status</th></tr></thead>
+      <table><thead><tr><th>Full Name</th><th>Phone</th><th>Nationality</th><th>Status</th></tr></thead>
       <tbody>${drivers.map(r => {
         const f = r.fields;
         return `<tr>
           <td><strong>${fv(f['Full Name'])||fv(f['Name'])||'—'}</strong></td>
           <td>${fv(f['Phone'])||'—'}</td>
           <td>${fv(f['Nationality'])||'—'}</td>
-          <td><span class="badge badge-green">Ενεργός</span></td>
+          <td><span class="badge badge-green">Active</span></td>
         </tr>`;
       }).join('')}</tbody></table>
     </div>`;
@@ -1473,17 +1473,17 @@ async function renderDrivers() {
 // ═══════════════════════════════════════════════
 async function renderClients() {
   const c = document.getElementById('content');
-  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση πελατών...</div>`;
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Loading clients...</div>`;
   const clients = await atGet(TABLES.CLIENTS);
   c.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">Clients</div><div class="page-sub">${clients.length} πελάτες</div></div>
+      <div><div class="page-title">Clients</div><div class="page-sub">${clients.length} clients</div></div>
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
-        <input class="search-input" placeholder="🔍  Αναζήτηση πελάτη..." oninput="filterClients(this.value)">
+        <input class="search-input" placeholder="🔍  Search client..." oninput="filterClients(this.value)">
       </div>
-      <table><thead><tr><th>Επωνυμία</th><th>Χώρα</th><th>Πόλη</th><th>Τηλέφωνο</th></tr></thead>
+      <table><thead><tr><th>Company</th><th>Country</th><th>City</th><th>Phone</th></tr></thead>
       <tbody id="clientsTbody">${renderClientRows(clients)}</tbody></table>
     </div>`;
   window._clientsData = clients;
@@ -1519,13 +1519,13 @@ async function renderPartners() {
   const partners = await atGet(TABLES.PARTNERS);
   c.innerHTML = `
     <div class="page-header">
-      <div><div class="page-title">Partners</div><div class="page-sub">${partners.length} συνεργάτες</div></div>
+      <div><div class="page-title">Partners</div><div class="page-sub">${partners.length} partners</div></div>
     </div>
     <div class="table-wrap">
       <div class="table-toolbar">
-        <input class="search-input" placeholder="🔍  Αναζήτηση συνεργάτη...">
+        <input class="search-input" placeholder="🔍  Search partner...">
       </div>
-      <table><thead><tr><th>Επωνυμία</th><th>Χώρα</th><th>Τηλέφωνο</th><th>Email</th></tr></thead>
+      <table><thead><tr><th>Company</th><th>Country</th><th>Phone</th><th>Email</th></tr></thead>
       <tbody>${partners.slice(0,100).map(r => {
         const f = r.fields;
         return `<tr>
@@ -1578,40 +1578,40 @@ const ENTITY_CONFIG = {
     labelSingle: 'Client',
     searchFields: ['Company Name','City','Contact Person','VAT Number'],
     filters: [
-      { field: 'Country', label: 'Χώρα' },
+      { field: 'Country', label: 'Country' },
       { field: 'Active',  label: 'Status', type: 'bool', options: [
-        { val: '', label: 'Όλοι' },
-        { val: 'true', label: 'Ενεργοί' },
-        { val: 'false', label: 'Ανενεργοί' }
+        { val: '', label: 'All' },
+        { val: 'true', label: 'Active' },
+        { val: 'false', label: 'Inactive' }
       ]},
     ],
     columns: [
-      { field: 'Company Name', label: 'Επωνυμία', primary: true },
-      { field: 'Country',      label: 'Χώρα' },
-      { field: 'City',         label: 'Πόλη' },
-      { field: 'Contact Person',label: 'Επαφή' },
-      { field: 'Phone',        label: 'Τηλέφωνο' },
+      { field: 'Company Name', label: 'Company', primary: true },
+      { field: 'Country',      label: 'Country' },
+      { field: 'City',         label: 'City' },
+      { field: 'Contact Person',label: 'Contact' },
+      { field: 'Phone',        label: 'Phone' },
       { field: 'Active',       label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Στοιχεία', fields: [
-        { f: 'Company Name', label: 'Επωνυμία', req: true },
-        { f: 'VAT Number',   label: 'ΑΦΜ' },
-        { f: 'Country',      label: 'Χώρα' },
-        { f: 'City',         label: 'Πόλη' },
-        { f: 'Adress',       label: 'Διεύθυνση' },
+      { section: 'Details', fields: [
+        { f: 'Company Name', label: 'Company Name', req: true },
+        { f: 'VAT Number',   label: 'VAT No.' },
+        { f: 'Country',      label: 'Country' },
+        { f: 'City',         label: 'City' },
+        { f: 'Adress',       label: 'Address' },
       ]},
-      { section: 'Επικοινωνία', fields: [
-        { f: 'Contact Person', label: 'Υπεύθυνος' },
-        { f: 'Phone',          label: 'Τηλέφωνο' },
+      { section: 'Contact', fields: [
+        { f: 'Contact Person', label: 'Contact Person' },
+        { f: 'Phone',          label: 'Phone' },
         { f: 'Email',          label: 'Email', type: 'email' },
-        { f: 'Payment Terms Days', label: 'Πληρωμή (ημέρες)', type: 'number' },
+        { f: 'Payment Terms Days', label: 'Payment Terms (days)', type: 'number' },
       ]},
     ],
     detailSections: [
-      { title: 'Στοιχεία Εταιρείας', fields: ['Company Name','VAT Number','Country','City','Adress'] },
-      { title: 'Επικοινωνία',        fields: ['Contact Person','Phone','Email'] },
-      { title: 'Εμπορικά',           fields: ['Payment Terms Days','Pallet Balance'] },
+      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','City','Adress'] },
+      { title: 'Contact',        fields: ['Contact Person','Phone','Email'] },
+      { title: 'Commercial',           fields: ['Payment Terms Days','Pallet Balance'] },
     ],
   },
 
@@ -1621,38 +1621,38 @@ const ENTITY_CONFIG = {
     labelSingle: 'Partner',
     searchFields: ['Company Name','Contact Person','VAT Number'],
     filters: [
-      { field: 'Country', label: 'Χώρα' },
+      { field: 'Country', label: 'Country' },
       { field: 'Active',  label: 'Status', type: 'bool', options: [
-        { val: '', label: 'Όλοι' },
-        { val: 'true', label: 'Ενεργοί' },
-        { val: 'false', label: 'Ανενεργοί' }
+        { val: '', label: 'All' },
+        { val: 'true', label: 'Active' },
+        { val: 'false', label: 'Inactive' }
       ]},
     ],
     columns: [
-      { field: 'Company Name',  label: 'Επωνυμία', primary: true },
-      { field: 'Country',       label: 'Χώρα' },
-      { field: 'Contact Person',label: 'Επαφή' },
-      { field: 'Phone',         label: 'Τηλέφωνο' },
+      { field: 'Company Name',  label: 'Company', primary: true },
+      { field: 'Country',       label: 'Country' },
+      { field: 'Contact Person',label: 'Contact' },
+      { field: 'Phone',         label: 'Phone' },
       { field: 'Email',         label: 'Email' },
       { field: 'Active',        label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Στοιχεία', fields: [
-        { f: 'Company Name', label: 'Επωνυμία', req: true },
-        { f: 'VAT Number',   label: 'ΑΦΜ' },
-        { f: 'Country',      label: 'Χώρα' },
-        { f: 'Adress',       label: 'Διεύθυνση' },
+      { section: 'Details', fields: [
+        { f: 'Company Name', label: 'Company Name', req: true },
+        { f: 'VAT Number',   label: 'VAT No.' },
+        { f: 'Country',      label: 'Country' },
+        { f: 'Adress',       label: 'Address' },
       ]},
-      { section: 'Επικοινωνία', fields: [
-        { f: 'Contact Person', label: 'Υπεύθυνος' },
-        { f: 'Phone',          label: 'Τηλέφωνο' },
+      { section: 'Contact', fields: [
+        { f: 'Contact Person', label: 'Contact Person' },
+        { f: 'Phone',          label: 'Phone' },
         { f: 'Email',          label: 'Email', type: 'email' },
       ]},
     ],
     detailSections: [
-      { title: 'Στοιχεία Εταιρείας', fields: ['Company Name','VAT Number','Country','Adress'] },
-      { title: 'Επικοινωνία',        fields: ['Contact Person','Phone','Email'] },
-      { title: 'Στατιστικά',         fields: ['Pallet Balance'] },
+      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','Adress'] },
+      { title: 'Contact',        fields: ['Contact Person','Phone','Email'] },
+      { title: 'Statistics',         fields: ['Pallet Balance'] },
     ],
   },
 
@@ -1662,39 +1662,39 @@ const ENTITY_CONFIG = {
     labelSingle: 'Driver',
     searchFields: ['Full Name','License Number'],
     filters: [
-      { field: 'Type',   label: 'Τύπος', type: 'select', options: [
-        { val: '', label: 'Όλοι' },
+      { field: 'Type',   label: 'Type', type: 'select', options: [
+        { val: '', label: 'All' },
         { val: 'Internal', label: 'Internal' },
         { val: 'External', label: 'External' },
       ]},
       { field: 'Active', label: 'Status', type: 'bool', options: [
-        { val: '', label: 'Όλοι' },
-        { val: 'true', label: 'Ενεργοί' },
-        { val: 'false', label: 'Ανενεργοί' }
+        { val: '', label: 'All' },
+        { val: 'true', label: 'Active' },
+        { val: 'false', label: 'Inactive' }
       ]},
     ],
     columns: [
-      { field: 'Full Name',      label: 'Ονοματεπώνυμο', primary: true },
-      { field: 'Phone',          label: 'Τηλέφωνο' },
-      { field: 'Type',           label: 'Τύπος' },
-      { field: 'License Expiry', label: 'Λήξη Άδειας', type: 'expiry' },
+      { field: 'Full Name',      label: 'Full Name', primary: true },
+      { field: 'Phone',          label: 'Phone' },
+      { field: 'Type',           label: 'Type' },
+      { field: 'License Expiry', label: 'Licence Expiry', type: 'expiry' },
       { field: 'Active',         label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Στοιχεία', fields: [
-        { f: 'Full Name',     label: 'Ονοματεπώνυμο', req: true },
-        { f: 'Phone',         label: 'Τηλέφωνο' },
-        { f: 'Type',          label: 'Τύπος', type: 'select', options: ['Internal','External'] },
-        { f: 'Salary Base',   label: 'Βασικός Μισθός', type: 'number' },
+      { section: 'Details', fields: [
+        { f: 'Full Name',     label: 'Full Name', req: true },
+        { f: 'Phone',         label: 'Phone' },
+        { f: 'Type',          label: 'Type', type: 'select', options: ['Internal','External'] },
+        { f: 'Salary Base',   label: 'Base Salary', type: 'number' },
       ]},
-      { section: 'Άδεια Οδήγησης', fields: [
-        { f: 'License Number', label: 'Αριθμός Άδειας' },
-        { f: 'License Expiry', label: 'Λήξη Άδειας', type: 'date' },
+      { section: 'Driving Licence', fields: [
+        { f: 'License Number', label: 'License No.' },
+        { f: 'License Expiry', label: 'Licence Expiry', type: 'date' },
       ]},
     ],
     detailSections: [
-      { title: 'Στοιχεία',          fields: ['Full Name','Phone','Type','Salary Base'] },
-      { title: 'Άδεια Οδήγησης',    fields: ['License Number','License Expiry'] },
+      { title: 'Details',          fields: ['Full Name','Phone','Type','Salary Base'] },
+      { title: 'Driving Licence',    fields: ['License Number','License Expiry'] },
     ],
   },
 
@@ -1704,50 +1704,50 @@ const ENTITY_CONFIG = {
     labelSingle: 'Truck',
     searchFields: ['License Plate','Brand','Model','Insurance Partner'],
     filters: [
-      { field: 'Brand',  label: 'Μάρκα', type: 'dynamic' },
+      { field: 'Brand',  label: 'Brand', type: 'dynamic' },
       { field: 'Active', label: 'Status', type: 'bool', options: [
-        { val: '', label: 'Όλα' },
-        { val: 'true', label: 'Ενεργά' },
-        { val: 'false', label: 'Ανενεργά' }
+        { val: '', label: 'All' },
+        { val: 'true', label: 'Active' },
+        { val: 'false', label: 'Inactive' }
       ]},
     ],
     columns: [
-      { field: 'License Plate',    label: 'Πινακίδα', primary: true },
-      { field: 'Brand',            label: 'Μάρκα' },
-      { field: 'Model',            label: 'Μοντέλο' },
-      { field: 'Year',             label: 'Έτος' },
-      { field: 'Next Maintenance Date', label: 'Επόμενο Service', type: 'expiry' },
+      { field: 'License Plate',    label: 'Plate', primary: true },
+      { field: 'Brand',            label: 'Brand' },
+      { field: 'Model',            label: 'Model' },
+      { field: 'Year',             label: 'Year' },
+      { field: 'Next Maintenance Date', label: 'Next Service', type: 'expiry' },
       { field: 'Active',           label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Ταυτότητα', fields: [
-        { f: 'License Plate', label: 'Πινακίδα', req: true },
-        { f: 'Brand',  label: 'Μάρκα' },
-        { f: 'Model',  label: 'Μοντέλο' },
-        { f: 'Year',   label: 'Έτος', type: 'number' },
-        { f: 'Fuel Type',     label: 'Καύσιμο', type: 'select', options: ['Diesel','LNG','CNG','HVO'] },
+      { section: 'Identity', fields: [
+        { f: 'License Plate', label: 'License Plate', req: true },
+        { f: 'Brand',  label: 'Brand' },
+        { f: 'Model',  label: 'Model' },
+        { f: 'Year',   label: 'Year', type: 'number' },
+        { f: 'Fuel Type',     label: 'Fuel Type', type: 'select', options: ['Diesel','LNG','CNG','HVO'] },
         { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
       ]},
-      { section: 'Τεχνικά', fields: [
-        { f: 'Fuel Tank Truck Lt',     label: 'Δεξαμενή (lt)', type: 'number' },
-        { f: 'Horsepower HP',          label: 'Ίπποι (HP)', type: 'number' },
-        { f: 'Gross Vehicle Weight kg',label: 'ΜΒΟ (kg)', type: 'number' },
+      { section: 'Technical', fields: [
+        { f: 'Fuel Tank Truck Lt',     label: 'Tank Capacity (lt)', type: 'number' },
+        { f: 'Horsepower HP',          label: 'Horsepower (HP)', type: 'number' },
+        { f: 'Gross Vehicle Weight kg',label: 'GVW (kg)', type: 'number' },
       ]},
-      { section: 'Πιστοποιητικά & Service', fields: [
-        { f: 'KTEO Expiry',            label: 'ΚΤΕΟ Λήξη', type: 'date' },
-        { f: 'Insurance Expiry',       label: 'Ασφάλεια Λήξη', type: 'date' },
-        { f: 'Insurance Partner',      label: 'Ασφαλιστής' },
-        { f: 'Tachograph Expiry',      label: 'Ταχογράφος Λήξη', type: 'date' },
-        { f: 'ADR Expiry',             label: 'ADR Λήξη', type: 'date' },
-        { f: 'KEK Expiry',             label: 'ΚΕΚ Λήξη', type: 'date' },
-        { f: 'Next Maintenance Date',  label: 'Επόμενο Service', type: 'date' },
-        { f: 'Notes',                  label: 'Σημειώσεις', type: 'textarea' },
+      { section: 'Certificates & Service', fields: [
+        { f: 'KTEO Expiry',            label: 'KTEO Expiry', type: 'date' },
+        { f: 'Insurance Expiry',       label: 'Insurance Expiry', type: 'date' },
+        { f: 'Insurance Partner',      label: 'Insurer' },
+        { f: 'Tachograph Expiry',      label: 'Tachograph Expiry', type: 'date' },
+        { f: 'ADR Expiry',             label: 'ADR Expiry', type: 'date' },
+        { f: 'KEK Expiry',             label: 'KEK Expiry', type: 'date' },
+        { f: 'Next Maintenance Date',  label: 'Next Service', type: 'date' },
+        { f: 'Notes',                  label: 'Notes', type: 'textarea' },
       ]},
     ],
     detailSections: [
-      { title: 'Ταυτότητα',    fields: ['License Plate','Brand','Model','Year','Fuel Type','Euro Standard'] },
-      { title: 'Τεχνικά',      fields: ['Fuel Tank Truck Lt','Horsepower HP','Gross Vehicle Weight kg','Payload Capacity kg'] },
-      { title: 'Πιστοποιητικά',fields: ['KTEO Expiry','Insurance Expiry','Insurance Partner','Tachograph Expiry','ADR Expiry','KEK Expiry'] },
+      { title: 'Identity',    fields: ['License Plate','Brand','Model','Year','Fuel Type','Euro Standard'] },
+      { title: 'Technical',      fields: ['Fuel Tank Truck Lt','Horsepower HP','Gross Vehicle Weight kg','Payload Capacity kg'] },
+      { title: 'Certificates',fields: ['KTEO Expiry','Insurance Expiry','Insurance Partner','Tachograph Expiry','ADR Expiry','KEK Expiry'] },
       { title: 'Maintenance',  fields: ['Next Maintenance Date','Notes'] },
     ],
   },
@@ -1758,50 +1758,50 @@ const ENTITY_CONFIG = {
     labelSingle: 'Trailer',
     searchFields: ['License Plate','Brand','Model','Refrigeration Brand'],
     filters: [
-      { field: 'Trailer Type', label: 'Τύπος', type: 'dynamic' },
+      { field: 'Trailer Type', label: 'Type', type: 'dynamic' },
       { field: 'Active',       label: 'Status', type: 'bool', options: [
-        { val: '', label: 'Όλα' },
-        { val: 'true', label: 'Ενεργά' },
-        { val: 'false', label: 'Ανενεργά' }
+        { val: '', label: 'All' },
+        { val: 'true', label: 'Active' },
+        { val: 'false', label: 'Inactive' }
       ]},
     ],
     columns: [
-      { field: 'License Plate',  label: 'Πινακίδα', primary: true },
-      { field: 'Brand',          label: 'Μάρκα' },
-      { field: 'Trailer Type',   label: 'Τύπος' },
-      { field: 'Pallet Capacity',label: 'Παλέτες' },
-      { field: 'ATP Expiry',     label: 'ATP Λήξη', type: 'expiry' },
+      { field: 'License Plate',  label: 'Plate', primary: true },
+      { field: 'Brand',          label: 'Brand' },
+      { field: 'Trailer Type',   label: 'Type' },
+      { field: 'Pallet Capacity',label: 'Pallets' },
+      { field: 'ATP Expiry',     label: 'ATP Expiry', type: 'expiry' },
       { field: 'Active',         label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Ταυτότητα', fields: [
-        { f: 'License Plate', label: 'Πινακίδα', req: true },
-        { f: 'Brand',         label: 'Μάρκα' },
-        { f: 'Model',         label: 'Μοντέλο' },
-        { f: 'Year',          label: 'Έτος', type: 'number' },
-        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker'] },
-        { f: 'Pallet Capacity',label: 'Χωρητικότητα Παλετών', type: 'number' },
+      { section: 'Identity', fields: [
+        { f: 'License Plate', label: 'License Plate', req: true },
+        { f: 'Brand',         label: 'Brand' },
+        { f: 'Model',         label: 'Model' },
+        { f: 'Year',          label: 'Year', type: 'number' },
+        { f: 'Trailer Type',  label: 'Type', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker'] },
+        { f: 'Pallet Capacity',label: 'Pallet Capacity', type: 'number' },
       ]},
-      { section: 'Ψυγείο', fields: [
-        { f: 'Refrigeration Brand',  label: 'Μάρκα Ψυγείου' },
-        { f: 'Refrigeration Model',  label: 'Μοντέλο Ψυγείου' },
-        { f: 'Temp Range Min °C',    label: 'Min Θερμ. (°C)', type: 'number' },
-        { f: 'Temp Range Max °C',    label: 'Max Θερμ. (°C)', type: 'number' },
-        { f: 'Fuel Tank Refrigeration Lt', label: 'Δεξαμενή Ψυγείου (lt)', type: 'number' },
+      { section: 'Refrigeration', fields: [
+        { f: 'Refrigeration Brand',  label: 'Reefer Brand' },
+        { f: 'Refrigeration Model',  label: 'Reefer Model' },
+        { f: 'Temp Range Min °C',    label: 'Min Temp (°C)', type: 'number' },
+        { f: 'Temp Range Max °C',    label: 'Max Temp (°C)', type: 'number' },
+        { f: 'Fuel Tank Refrigeration Lt', label: 'Reefer Tank (lt)', type: 'number' },
       ]},
-      { section: 'Πιστοποιητικά', fields: [
-        { f: 'ATP Expiry',          label: 'ATP Λήξη', type: 'date' },
-        { f: 'KTEO Expiry',         label: 'ΚΤΕΟ Λήξη', type: 'date' },
-        { f: 'Insurance Expiry',    label: 'Ασφάλεια Λήξη', type: 'date' },
-        { f: 'FRC Expiry',          label: 'FRC Λήξη', type: 'date' },
-        { f: 'Next Maintenance Date',label: 'Επόμενο Service', type: 'date' },
-        { f: 'Notes',               label: 'Σημειώσεις', type: 'textarea' },
+      { section: 'Certificates', fields: [
+        { f: 'ATP Expiry',          label: 'ATP Expiry', type: 'date' },
+        { f: 'KTEO Expiry',         label: 'KTEO Expiry', type: 'date' },
+        { f: 'Insurance Expiry',    label: 'Insurance Expiry', type: 'date' },
+        { f: 'FRC Expiry',          label: 'FRC Expiry', type: 'date' },
+        { f: 'Next Maintenance Date',label: 'Next Service', type: 'date' },
+        { f: 'Notes',               label: 'Notes', type: 'textarea' },
       ]},
     ],
     detailSections: [
-      { title: 'Ταυτότητα',    fields: ['License Plate','Brand','Model','Year','Trailer Type','Pallet Capacity'] },
-      { title: 'Ψυγείο',       fields: ['Refrigeration Brand','Refrigeration Model','Temp Range Min °C','Temp Range Max °C','Fuel Tank Refrigeration Lt'] },
-      { title: 'Πιστοποιητικά',fields: ['ATP Expiry','KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] },
+      { title: 'Identity',    fields: ['License Plate','Brand','Model','Year','Trailer Type','Pallet Capacity'] },
+      { title: 'Refrigeration',       fields: ['Refrigeration Brand','Refrigeration Model','Temp Range Min °C','Temp Range Max °C','Fuel Tank Refrigeration Lt'] },
+      { title: 'Certificates',fields: ['ATP Expiry','KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] },
     ],
   },
 };
@@ -1814,7 +1814,7 @@ async function renderEntity(entityKey) {
   if (!cfg) return renderComingSoon(entityKey);
 
   const c = document.getElementById('content');
-  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση ${cfg.label}...</div>`;
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Loading ${cfg.label}...</div>`;
 
   const records = await atGet(cfg.tableId);
 
@@ -1839,18 +1839,18 @@ async function renderEntity(entityKey) {
     <div class="page-header" style="margin-bottom:16px">
       <div>
         <div class="page-title">${cfg.label}</div>
-        <div class="page-sub" id="${entityKey}_sub">${records.length} εγγραφές</div>
+        <div class="page-sub" id="${entityKey}_sub">${records.length} records</div>
       </div>
       <button class="btn btn-success" onclick="openEntityCreate('${entityKey}')">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/></svg>
-        Νέο ${cfg.labelSingle}
+        New ${cfg.labelSingle}
       </button>
     </div>
 
     <div class="entity-layout">
       <div class="entity-list-panel">
         <div class="entity-toolbar">
-          <input class="search-input" style="max-width:240px" placeholder="🔍  Αναζήτηση..."
+          <input class="search-input" style="max-width:240px" placeholder="🔍  Search..."
             oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
           ${cfg.filters.map((fi,i) => {
             if (fi.type === 'bool' || fi.type === 'select') {
@@ -1860,13 +1860,13 @@ async function renderEntity(entityKey) {
             } else if (fi.type === 'dynamic') {
               const opts = dynamicOpts[fi.field] || [];
               return `<select class="filter-select" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-                <option value="">${fi.label}: Όλα</option>
+                <option value="">${fi.label}: All</option>
                 ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
               </select>`;
             }
             return '';
           }).join('')}
-          <span class="entity-count" id="${entityKey}_count">${records.length} εγγραφές</span>
+          <span class="entity-count" id="${entityKey}_count">${records.length} records</span>
         </div>
         <div class="entity-table-wrap" id="${entityKey}_table">
           ${buildEntityTable(entityKey, records)}
@@ -1883,7 +1883,7 @@ function buildEntityTable(entityKey, records) {
     <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
     <tbody>
       ${records.length === 0
-        ? `<tr><td colspan="${cols.length+1}" style="text-align:center;padding:40px;color:var(--text-dim)">Δεν βρέθηκαν εγγραφές</td></tr>`
+        ? `<tr><td colspan="${cols.length+1}" style="text-align:center;padding:40px;color:var(--text-dim)">No records found</td></tr>`
         : records.slice(0,200).map(r => buildEntityRow(entityKey, r, cols)).join('')
       }
     </tbody>
@@ -1895,7 +1895,7 @@ function buildEntityRow(entityKey, r, cols) {
   const cells = cols.map(col => {
     let val = f[col.field];
     if (col.type === 'active') {
-      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? 'Ενεργό' : 'Ανενεργό'}</span></td>`;
+      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? 'Active' : 'Inactive'}</span></td>`;
     }
     if (col.type === 'expiry' && val) {
       const days = Math.ceil((new Date(val) - new Date()) / 86400000);
@@ -1954,7 +1954,7 @@ function applyEntityFilters(entityKey) {
 
   st.filtered = recs;
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
-  document.getElementById(entityKey + '_count').textContent = recs.length + ' εγγραφές';
+  document.getElementById(entityKey + '_count').textContent = recs.length + ' records';
 }
 
 function selectEntity(entityKey, recId) {
@@ -1980,11 +1980,11 @@ function selectEntity(entityKey, recId) {
     <div class="detail-header">
       <div class="detail-title">${title}</div>
       <div class="detail-actions">
-        <div class="btn-icon" title="Επεξεργασία" onclick="openEntityEdit('${entityKey}','${recId}')">
+        <div class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
         </div>
         <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">
-          ${f['Active'] ? '● Ενεργό' : '○ Ανενεργό'}
+          ${f['Active'] ? '● Active' : '○ Inactive'}
         </button>
         <div class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</div>
       </div>
@@ -1997,11 +1997,11 @@ function selectEntity(entityKey, recId) {
             let val = f[field];
             if (val == null || val === '') return '';
             let displayVal = val;
-            if (typeof val === 'boolean') displayVal = val ? 'Ναι' : 'Όχι';
+            if (typeof val === 'boolean') displayVal = val ? 'Yes' : 'No';
             if (field.includes('Expiry') || field.includes('Date')) {
               const days = Math.ceil((new Date(val) - new Date()) / 86400000);
               const cls = days < 0 ? 'expiry-alert' : days < 30 ? 'expiry-warn' : 'expiry-ok';
-              displayVal = `<span class="${cls}">${formatDate(val)} ${days < 0 ? '(ληγμένο)' : days < 30 ? '('+days+' ημέρες)' : ''}</span>`;
+              displayVal = `<span class="${cls}">${formatDate(val)} ${days < 0 ? '(expired)' : days < 30 ? '('+days+' days)' : ''}</span>`;
             }
             return `<div class="detail-field">
               <span class="detail-field-label">${field}</span>
@@ -2072,12 +2072,12 @@ function buildEntityModal(entityKey, recId, fields) {
   bodyHTML += '</div>';
 
   const footerHTML = `
-    <button class="btn btn-primary" onclick="closeModal()" style="background:var(--bg);color:var(--text-mid);border:1px solid var(--border-mid)">Άκυρο</button>
+    <button class="btn btn-primary" onclick="closeModal()" style="background:var(--bg);color:var(--text-mid);border:1px solid var(--border-mid)">Cancel</button>
     <button class="btn btn-success" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
-      ${isEdit ? 'Αποθήκευση' : 'Δημιουργία'}
+      ${isEdit ? 'Save' : 'Create'}
     </button>`;
 
-  openModal(`${isEdit ? 'Επεξεργασία' : 'Νέο'} ${cfg.labelSingle}`, bodyHTML, footerHTML);
+  openModal(`${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`, bodyHTML, footerHTML);
 }
 
 async function saveEntityRecord(entityKey, recId) {
@@ -2100,12 +2100,12 @@ async function saveEntityRecord(entityKey, recId) {
   // Validate required
   const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
   if (reqField && !fields[reqField.f]) {
-    alert(`Το πεδίο "${reqField.label}" είναι υποχρεωτικό`);
+    alert(`Field "${reqField.label}" is required`);
     return;
   }
 
   const btn = event.target;
-  btn.textContent = 'Αποθήκευση...';
+  btn.textContent = 'Saving...';
   btn.disabled = true;
 
   try {
@@ -2119,16 +2119,16 @@ async function saveEntityRecord(entityKey, recId) {
     closeModal();
     await renderEntity(entityKey);
   } catch(e) {
-    btn.textContent = 'Αποθήκευση';
+    btn.textContent = 'Save';
     btn.disabled = false;
-    alert('Σφάλμα: ' + e.message);
+    alert('Error: ' + e.message);
   }
 }
 
 // ── Helpers ─────────────────────────────────────
 function formatDate(d) {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('el-GR', {day:'2-digit',month:'2-digit',year:'numeric'});
+  return new Date(d).toLocaleDateString('en-GB', {day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
 // ═══════════════════════════════════════════════
