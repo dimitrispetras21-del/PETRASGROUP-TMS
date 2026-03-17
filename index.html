@@ -4,13 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@300;400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
     --navy:      #091828;
-    --navy-mid:  #0D2140;
     --navy-card: #0F2545;
     --silver:    #B8C4D0;
     --silver-dim:#6A7D90;
@@ -27,13 +26,12 @@
     overflow: hidden;
   }
 
-  /* Subtle grid */
   body::before {
     content: '';
     position: fixed; inset: 0;
     background-image:
-      linear-gradient(rgba(184,196,208,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(184,196,208,0.03) 1px, transparent 1px);
+      linear-gradient(rgba(184,196,208,0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(184,196,208,0.025) 1px, transparent 1px);
     background-size: 52px 52px;
     pointer-events: none;
     z-index: 0;
@@ -51,71 +49,61 @@
     overflow: hidden;
   }
 
-  /* Truck photo as contained graphic — bottom right of left panel */
+  /* Truck photo — small, top-left area, below logo */
   .truck-graphic {
     position: absolute;
-    bottom: 0;
-    right: -40px;
-    width: 72%;
-    aspect-ratio: 16/9;
-    border-radius: 16px 0 0 0;
+    top: 110px;
+    left: 52px;
+    width: 340px;
+    border-radius: 12px;
     overflow: hidden;
-    opacity: 0.55;
-    mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 60%, transparent 100%),
-                linear-gradient(to right, transparent 0%, rgba(0,0,0,1) 30%);
-    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 60%, transparent 100%);
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    opacity: 0.7;
   }
 
   .truck-graphic img {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center center;
+    height: auto;
+    display: block;
+  }
+
+  /* Fade bottom edge of photo into background */
+  .truck-graphic::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 50%;
+    background: linear-gradient(to top, var(--navy), transparent);
   }
 
   .brand-logo {
     position: relative;
-    z-index: 2;
+    z-index: 3;
   }
 
   .brand-logo img {
-    height: 40px;
+    height: 38px;
     filter: brightness(0) invert(1);
-    opacity: 0.92;
+    opacity: 0.9;
   }
 
   .brand-tagline {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     max-width: 480px;
   }
 
   .brand-tagline h1 {
     font-family: 'Syne', sans-serif;
-    font-size: 50px;
-    font-weight: 800;
-    line-height: 1.1;
-    color: var(--white);
-    letter-spacing: -1px;
-  }
-
-  .brand-tagline h1 .line2 {
-    font-weight: 300;
+    font-size: 48px;
+    font-weight: 400;
+    line-height: 1.15;
     color: var(--silver);
-    display: block;
-  }
-
-  .brand-tagline h1 .line3 {
-    font-weight: 300;
-    color: var(--silver);
-    display: block;
-    letter-spacing: 6px;
-    font-size: 32px;
-    margin-top: 4px;
+    letter-spacing: 1px;
   }
 
   .brand-tagline p {
-    margin-top: 20px;
+    margin-top: 18px;
     font-size: 14px;
     color: var(--silver-dim);
     font-weight: 300;
@@ -124,9 +112,9 @@
 
   .brand-footer {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     font-size: 10px;
-    color: rgba(106,125,144,0.5);
+    color: rgba(106,125,144,0.4);
     letter-spacing: 2px;
     text-transform: uppercase;
   }
@@ -150,7 +138,7 @@
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(184,196,208,0.35), transparent);
+    background: linear-gradient(90deg, transparent, rgba(184,196,208,0.3), transparent);
   }
 
   .form-wrap {
@@ -169,9 +157,9 @@
   }
 
   .form-logo img {
-    height: 34px;
+    height: 32px;
     filter: brightness(0) invert(1);
-    opacity: 0.8;
+    opacity: 0.75;
   }
 
   .form-title {
@@ -238,7 +226,6 @@
     color: #D6DDE5;
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   }
 
   .btn-login:hover {
@@ -279,32 +266,26 @@
 </head>
 <body>
 
-<!-- LEFT BRANDING -->
 <div class="left-panel">
   <div class="brand-logo">
     <img src="logo.jpg" alt="Petras Group">
   </div>
 
+  <!-- Truck photo: small, top-left, below logo -->
+  <div class="truck-graphic">
+    <img src="truck2.jpg" alt="Petras Group Volvo">
+  </div>
+
   <div class="brand-tagline">
-    <h1>
-      Transport
-      <span class="line2">Management</span>
-      <span class="line3">SYSTEM</span>
-    </h1>
+    <h1>Transport<br>Management<br>System</h1>
     <p>Πλήρης διαχείριση διεθνών δρομολογίων,<br>στόλου και κόστους για την Petras Group.</p>
   </div>
 
   <div class="brand-footer">
     Petras Group · International Road Transport Services
   </div>
-
-  <!-- Truck photo as graphic -->
-  <div class="truck-graphic">
-    <img src="truck.jpg" alt="">
-  </div>
 </div>
 
-<!-- RIGHT LOGIN -->
 <div class="right-panel">
   <div class="form-wrap">
     <div class="form-logo">
