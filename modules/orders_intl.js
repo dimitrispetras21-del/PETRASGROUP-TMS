@@ -665,7 +665,7 @@ function openIntlScan() {
   const body = `
     <div style="text-align:center;padding:8px 0 20px">
       <div style="font-size:28px;margin-bottom:8px">📄</div>
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Scan CMR / Order Document</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Scan Order Document</div>
       <div style="font-size:12px;color:var(--text-dim)">Upload image or PDF — AI θα εξάγει τα στοιχεία και θα προσυμπληρώσει τη φόρμα</div>
     </div>
 
@@ -764,7 +764,7 @@ async function _scanExtract() {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-sonnet-4-20250514',
         max_tokens: 1000,
         system: `You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
 Extract order data from CMR waybills, delivery orders, or transport documents.
