@@ -1,0 +1,1298 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Petras Group TMS</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════
+   RESET & VARIABLES
+═══════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy:        #091828;
+  --navy-mid:    #0D2140;
+  --navy-light:  #132E52;
+  --navy-hover:  #1A3A62;
+  --silver:      #B8C4D0;
+  --silver-dim:  #6A7D90;
+  --silver-light:#D6DDE5;
+  --white:       #EEF2F7;
+  --border:      rgba(184,196,208,0.12);
+  --border-mid:  rgba(184,196,208,0.22);
+  --gold:        #F0A500;
+  --success:     #2EC4A0;
+  --danger:      #E05252;
+  --warning:     #E8A020;
+  --sidebar-w:   240px;
+  --sidebar-col: 64px;
+  --header-h:    56px;
+}
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--navy);
+  color: var(--white);
+  min-height: 100vh;
+  display: flex;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════
+   SIDEBAR
+═══════════════════════════════════════════════ */
+.sidebar {
+  width: var(--sidebar-w);
+  min-height: 100vh;
+  background: var(--navy-mid);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+  overflow: hidden;
+  position: relative;
+  z-index: 100;
+}
+
+.sidebar.collapsed { width: var(--sidebar-col); }
+
+/* Logo area */
+.sidebar-logo {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 10px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.sidebar-logo img {
+  height: 22px;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
+  flex-shrink: 0;
+  min-width: 32px;
+}
+
+.sidebar-logo-text {
+  font-family: 'Syne', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--silver);
+  letter-spacing: 0.5px;
+  opacity: 1;
+  transition: opacity 0.15s;
+}
+
+.sidebar.collapsed .sidebar-logo-text { opacity: 0; }
+
+/* Nav scroll area */
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--navy-hover) transparent;
+}
+
+/* Section headers */
+.nav-section {
+  padding: 16px 16px 4px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--silver-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+.sidebar.collapsed .nav-section { opacity: 0; }
+
+/* Nav items */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  cursor: pointer;
+  border-radius: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--silver-dim);
+  font-size: 13px;
+  font-weight: 400;
+  transition: background 0.15s, color 0.15s;
+  position: relative;
+  text-decoration: none;
+}
+
+.nav-item:hover {
+  background: var(--navy-hover);
+  color: var(--silver-light);
+}
+
+.nav-item.active {
+  background: var(--navy-light);
+  color: var(--white);
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--silver);
+  border-radius: 0 2px 2px 0;
+}
+
+.nav-icon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.nav-label {
+  flex: 1;
+  transition: opacity 0.15s;
+}
+
+.sidebar.collapsed .nav-label { opacity: 0; }
+
+/* Tooltip on collapsed */
+.sidebar.collapsed .nav-item:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: calc(var(--sidebar-col) + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--navy-light);
+  color: var(--white);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: nowrap;
+  border: 1px solid var(--border-mid);
+  pointer-events: none;
+  z-index: 999;
+}
+
+/* Collapse toggle */
+.sidebar-toggle {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  cursor: pointer;
+  color: var(--silver-dim);
+  transition: color 0.15s;
+}
+
+.sidebar.collapsed .sidebar-toggle { justify-content: center; }
+.sidebar-toggle:hover { color: var(--silver-light); }
+
+/* ═══════════════════════════════════════════════
+   MAIN AREA
+═══════════════════════════════════════════════ */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* Top header */
+.topbar {
+  height: var(--header-h);
+  background: var(--navy-mid);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 24px;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.topbar-title {
+  flex: 1;
+  font-family: 'Syne', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--white);
+}
+
+.topbar-breadcrumb {
+  font-size: 12px;
+  color: var(--silver-dim);
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--navy-light);
+  border-radius: 20px;
+  border: 1px solid var(--border-mid);
+  font-size: 12px;
+  color: var(--silver);
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  background: var(--navy-hover);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--silver-light);
+}
+
+.role-badge {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(184,196,208,0.12);
+  color: var(--silver-dim);
+}
+
+.role-badge.owner     { background: rgba(240,165,0,0.15);  color: #F0A500; }
+.role-badge.dispatcher{ background: rgba(46,196,160,0.15); color: #2EC4A0; }
+.role-badge.management{ background: rgba(100,150,220,0.15);color: #7AAEE8; }
+.role-badge.accountant{ background: rgba(184,196,208,0.12);color: var(--silver); }
+
+.btn-logout {
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid var(--border-mid);
+  border-radius: 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: var(--silver-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-logout:hover {
+  background: rgba(224,82,82,0.1);
+  border-color: rgba(224,82,82,0.3);
+  color: #E88;
+}
+
+/* Content area */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--navy-hover) transparent;
+}
+
+/* ═══════════════════════════════════════════════
+   SHARED COMPONENTS
+═══════════════════════════════════════════════ */
+
+/* Page header */
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--white);
+}
+
+.page-sub {
+  font-size: 13px;
+  color: var(--silver-dim);
+  margin-top: 3px;
+}
+
+/* KPI Cards */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.kpi-card {
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  transition: border-color 0.2s;
+}
+
+.kpi-card:hover { border-color: var(--border-mid); }
+
+.kpi-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--silver-dim);
+  margin-bottom: 8px;
+}
+
+.kpi-value {
+  font-family: 'Syne', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--white);
+  line-height: 1;
+}
+
+.kpi-delta {
+  font-size: 12px;
+  color: var(--silver-dim);
+  margin-top: 6px;
+}
+
+.kpi-delta.up   { color: var(--success); }
+.kpi-delta.down { color: var(--danger); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 7px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--navy-light);
+  border: 1px solid var(--border-mid);
+  color: var(--silver-light);
+}
+
+.btn-primary:hover {
+  background: var(--navy-hover);
+  color: var(--white);
+  border-color: rgba(184,196,208,0.35);
+}
+
+.btn-success {
+  background: rgba(46,196,160,0.15);
+  border: 1px solid rgba(46,196,160,0.3);
+  color: var(--success);
+}
+
+.btn-success:hover { background: rgba(46,196,160,0.25); }
+
+.btn-danger {
+  background: rgba(224,82,82,0.12);
+  border: 1px solid rgba(224,82,82,0.25);
+  color: var(--danger);
+}
+
+.btn-danger:hover { background: rgba(224,82,82,0.2); }
+
+/* Table */
+.table-wrap {
+  background: var(--navy-mid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.search-input {
+  flex: 1;
+  max-width: 300px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 12px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--white);
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus { border-color: var(--border-mid); }
+.search-input::placeholder { color: var(--silver-dim); }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+thead th {
+  padding: 10px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--silver-dim);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: var(--silver-light);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+tbody tr:last-child td { border-bottom: none; }
+
+tbody tr {
+  transition: background 0.1s;
+  cursor: pointer;
+}
+
+tbody tr:hover { background: rgba(255,255,255,0.025); }
+
+/* Status badges */
+.badge {
+  display: inline-block;
+  padding: 3px 9px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.badge-green  { background: rgba(46,196,160,0.15);  color: #2EC4A0; }
+.badge-blue   { background: rgba(100,160,240,0.15); color: #7AB0F0; }
+.badge-yellow { background: rgba(240,165,0,0.15);   color: #F0A500; }
+.badge-red    { background: rgba(224,82,82,0.15);   color: #E05252; }
+.badge-grey   { background: rgba(184,196,208,0.1);  color: var(--silver-dim); }
+
+/* Loading */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px;
+  color: var(--silver-dim);
+  font-size: 14px;
+  gap: 12px;
+}
+
+.spinner {
+  width: 18px; height: 18px;
+  border: 2px solid var(--border-mid);
+  border-top-color: var(--silver);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty state */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--silver-dim);
+}
+
+.empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+.empty-state h3 { font-size: 16px; color: var(--silver); margin-bottom: 6px; }
+.empty-state p  { font-size: 13px; }
+
+/* Access denied */
+.access-denied {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--silver-dim);
+  gap: 12px;
+}
+
+.access-denied .icon { font-size: 48px; }
+.access-denied h2 { font-family: 'Syne', sans-serif; font-size: 20px; color: var(--silver); }
+.access-denied p { font-size: 14px; }
+
+/* ═══════════════════════════════════════════════
+   MODAL
+═══════════════════════════════════════════════ */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(5,14,26,0.75);
+  backdrop-filter: blur(4px);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.open { display: flex; }
+
+.modal {
+  background: var(--navy-mid);
+  border: 1px solid var(--border-mid);
+  border-radius: 14px;
+  width: 560px;
+  max-width: 95vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 40px 80px rgba(0,0,0,0.6);
+  animation: modalIn 0.25s cubic-bezier(0.22,1,0.36,1);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--white);
+}
+
+.modal-close {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--silver-dim);
+  font-size: 18px;
+  transition: all 0.15s;
+}
+
+.modal-close:hover { background: var(--navy-hover); color: var(--white); }
+
+.modal-body { padding: 24px; }
+
+.modal-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* Form fields */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-grid.cols-1 { grid-template-columns: 1fr; }
+
+.form-field { display: flex; flex-direction: column; gap: 6px; }
+.form-field.span-2 { grid-column: span 2; }
+
+.form-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--silver-dim);
+}
+
+.form-input, .form-select, .form-textarea {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 10px 13px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  color: var(--white);
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+.form-input:focus, .form-select:focus, .form-textarea:focus {
+  border-color: var(--border-mid);
+  background: rgba(184,196,208,0.06);
+}
+
+.form-input::placeholder { color: rgba(106,125,144,0.5); }
+.form-select { cursor: pointer; }
+.form-select option { background: var(--navy-mid); }
+.form-textarea { resize: vertical; min-height: 80px; }
+
+/* ═══════════════════════════════════════════════
+   COMING SOON PLACEHOLDER
+═══════════════════════════════════════════════ */
+.coming-soon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 50vh;
+  gap: 12px;
+  color: var(--silver-dim);
+}
+
+.coming-soon .cs-icon { font-size: 48px; }
+.coming-soon h3 { font-family: 'Syne', sans-serif; font-size: 18px; color: var(--silver); }
+.coming-soon p { font-size: 13px; }
+
+</style>
+</head>
+<body>
+
+<!-- ═══ SIDEBAR ═══════════════════════════════ -->
+<nav class="sidebar" id="sidebar">
+
+  <div class="sidebar-logo">
+    <img src="logo.jpg" alt="PG">
+    <span class="sidebar-logo-text">PETRAS GROUP</span>
+  </div>
+
+  <div class="sidebar-nav" id="sidebarNav">
+    <!-- Rendered by JS based on role -->
+  </div>
+
+  <div class="sidebar-toggle" onclick="toggleSidebar()" title="Collapse">
+    <span id="toggleIcon">◀</span>
+  </div>
+
+</nav>
+
+<!-- ═══ MAIN ══════════════════════════════════ -->
+<div class="main">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="topbar-title" id="topbarTitle">Dashboard</div>
+    <div class="topbar-breadcrumb" id="topbarBreadcrumb"></div>
+    <div class="topbar-right">
+      <div class="user-chip">
+        <div class="user-avatar" id="userAvatar">—</div>
+        <span id="userName">—</span>
+        <span class="role-badge" id="roleBadge">—</span>
+      </div>
+      <button class="btn-logout" onclick="logout()">Έξοδος</button>
+    </div>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="content">
+    <div class="loading"><div class="spinner"></div> Φόρτωση...</div>
+  </div>
+
+</div>
+
+<!-- ═══ MODAL ═════════════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modalTitle">—</div>
+      <div class="modal-close" onclick="closeModal()">✕</div>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer" id="modalFooter"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════
+// CONFIG
+// ═══════════════════════════════════════════════
+const AT_BASE  = 'appElT5CQV6JQvym8';
+const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+
+const TABLES = {
+  TRIPS:        'tblgoyV26PBc6L9uE',
+  ORDERS:       'tblgHlNmLBH3JTdIM',
+  TRIP_COSTS:   'tblWUus6uSpqE1LMW',
+  TRUCKS:       'tblEAPExIAjiA3asD',
+  TRAILERS:     'tblDcrqRJXzPrtYLm',
+  DRIVERS:      'tbl7UGmYhc2Y82pPs',
+  DRIVER_LEDGER:'tblZVr4BCr9sGFf8n',
+  FUEL:         'tblxRFsMeVhlLrBjF',
+  NAT_TRIPS:    'tbloI9yAxxyOJpMyr',
+  NAT_ORDERS:   'tblGHCCsTMqAy4KR2',
+  CLIENTS:      'tblFWKAQVUzAM8mCE',
+  PARTNERS:     'tbl6LTpiXxQv72R1m',
+  LOCATIONS:    'tblxu8DRfTQOFRCzS',
+  RAMP:         'tblT8W5WcuToBQNiY',
+};
+
+// ═══════════════════════════════════════════════
+// AUTH
+// ═══════════════════════════════════════════════
+const user = JSON.parse(sessionStorage.getItem('tms_user') || 'null');
+if (!user) { window.location.href = 'index.html'; }
+
+const ROLE = user?.role || 'dispatcher';
+const PERMS = {
+  owner:      { planning:'full', orders:'full', clients:'full', maintenance:'full', drivers:'full', costs:'full', settings:'full' },
+  dispatcher: { planning:'full', orders:'full', clients:'full', maintenance:'view', drivers:'view', costs:'none', settings:'none' },
+  management: { planning:'view', orders:'view', clients:'full', maintenance:'full', drivers:'full', costs:'view', settings:'full' },
+  accountant: { planning:'view', orders:'view', clients:'full', maintenance:'view', drivers:'full', costs:'full', settings:'none' },
+};
+
+function can(section) {
+  return PERMS[ROLE]?.[section] || 'none';
+}
+
+// ═══════════════════════════════════════════════
+// NAV STRUCTURE
+// ═══════════════════════════════════════════════
+const NAV = [
+  { section: 'Planning', perm: 'planning', items: [
+    { id: 'dashboard',     label: 'Dashboard',             icon: '⊞' },
+    { id: 'weekly_intl',   label: 'Weekly International',  icon: '🌍' },
+    { id: 'weekly_natl',   label: 'Weekly National',       icon: '🏠' },
+    { id: 'weekly_pickups',label: 'National Pick Ups',     icon: '📦' },
+    { id: 'daily_ops',     label: 'Daily Ops Plan',        icon: '📋' },
+    { id: 'daily_ramp',    label: 'Daily Ramp Board',      icon: '🚚' },
+  ]},
+  { section: 'Orders', perm: 'orders', items: [
+    { id: 'orders_intl',   label: 'International Orders',  icon: '📄' },
+    { id: 'orders_natl',   label: 'National Orders',       icon: '📝' },
+    { id: 'locations',     label: 'Locations',             icon: '📍' },
+  ]},
+  { section: 'Clients & Partners', perm: 'clients', items: [
+    { id: 'clients',       label: 'Clients',               icon: '🏢' },
+    { id: 'partners',      label: 'Partners',              icon: '🤝' },
+  ]},
+  { section: 'Maintenance', perm: 'maintenance', items: [
+    { id: 'maint_dash',    label: 'Dashboard',             icon: '⊞' },
+    { id: 'maint_overview',label: 'Overview',              icon: '🔧' },
+    { id: 'maint_trucks',  label: 'Trucks History',        icon: '🚛' },
+    { id: 'maint_trailers',label: 'Trailers History',      icon: '🚚' },
+    { id: 'maint_expiry',  label: 'Expiry Alerts',         icon: '⚠️' },
+    { id: 'trucks',        label: 'Trucks',                icon: '🚛' },
+    { id: 'trailers',      label: 'Trailers',              icon: '🚚' },
+  ]},
+  { section: 'Drivers', perm: 'drivers', items: [
+    { id: 'drivers',       label: 'Drivers',               icon: '👤' },
+    { id: 'payroll',       label: 'Driver Payroll',        icon: '💰' },
+  ]},
+  { section: 'Costs', perm: 'costs', items: [
+    { id: 'costs_dash',    label: 'Dashboard',             icon: '⊞' },
+    { id: 'fuel',          label: 'Fuels',                 icon: '⛽' },
+    { id: 'costs',         label: 'Costs',                 icon: '📊' },
+    { id: 'pl',            label: 'P&Ls',                  icon: '💹' },
+  ]},
+  { section: 'Settings', perm: 'settings', items: [
+    { id: 'settings',      label: 'Settings',              icon: '⚙️' },
+  ]},
+];
+
+// ═══════════════════════════════════════════════
+// SIDEBAR RENDER
+// ═══════════════════════════════════════════════
+function renderNav() {
+  const nav = document.getElementById('sidebarNav');
+  let html = '';
+  for (const group of NAV) {
+    if (can(group.perm) === 'none') continue;
+    html += `<div class="nav-section">${group.section}</div>`;
+    for (const item of group.items) {
+      html += `<div class="nav-item" data-tooltip="${item.label}" onclick="navigate('${item.id}')" id="nav_${item.id}">
+        <div class="nav-icon">${item.icon}</div>
+        <span class="nav-label">${item.label}</span>
+      </div>`;
+    }
+  }
+  nav.innerHTML = html;
+}
+
+function toggleSidebar() {
+  const sb = document.getElementById('sidebar');
+  const icon = document.getElementById('toggleIcon');
+  sb.classList.toggle('collapsed');
+  icon.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
+}
+
+// ═══════════════════════════════════════════════
+// ROUTER
+// ═══════════════════════════════════════════════
+let currentPage = '';
+
+function navigate(page) {
+  currentPage = page;
+  // Update active state
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById('nav_' + page);
+  if (el) el.classList.add('active');
+
+  // Find label
+  let label = page;
+  for (const g of NAV) {
+    const item = g.items.find(i => i.id === page);
+    if (item) { label = item.label; break; }
+  }
+  document.getElementById('topbarTitle').textContent = label;
+
+  // Render page
+  const content = document.getElementById('content');
+  switch(page) {
+    case 'dashboard':      renderDashboard(); break;
+    case 'orders_intl':    renderOrdersIntl(); break;
+    case 'trucks':         renderTrucks(); break;
+    case 'trailers':       renderTrailers(); break;
+    case 'drivers':        renderDrivers(); break;
+    case 'clients':        renderClients(); break;
+    case 'partners':       renderPartners(); break;
+    default: renderComingSoon(label); break;
+  }
+}
+
+function renderComingSoon(label) {
+  document.getElementById('content').innerHTML = `
+    <div class="coming-soon">
+      <div class="cs-icon">🛠️</div>
+      <h3>${label}</h3>
+      <p>Αυτό το module είναι σε ανάπτυξη</p>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// AIRTABLE API
+// ═══════════════════════════════════════════════
+const _cache = {};
+
+async function atGet(tableId, filter = '', useCache = true) {
+  const key = tableId + filter;
+  if (useCache && _cache[key] && (Date.now() - _cache[key].ts < 60000)) {
+    return _cache[key].data;
+  }
+  let records = [], offset = '';
+  do {
+    let url = `https://api.airtable.com/v0/${AT_BASE}/${tableId}?pageSize=100`;
+    if (filter) url += `&filterByFormula=${encodeURIComponent(filter)}`;
+    if (offset) url += `&offset=${offset}`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } });
+    const data = await res.json();
+    records = records.concat(data.records || []);
+    offset = data.offset || '';
+  } while (offset);
+  _cache[key] = { data: records, ts: Date.now() };
+  return records;
+}
+
+async function atPatch(tableId, recId, fields) {
+  const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
+    method: 'PATCH',
+    headers: { 'Authorization': 'Bearer ' + AT_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields })
+  });
+  return res.json();
+}
+
+async function atCreate(tableId, fields) {
+  const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}`, {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + AT_TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields })
+  });
+  return res.json();
+}
+
+function fv(v) {
+  if (Array.isArray(v)) return v[0] || '';
+  return v ?? '';
+}
+
+// ═══════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════
+async function renderDashboard() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση dashboard...</div>`;
+  try {
+    const [trips, orders] = await Promise.all([
+      atGet(TABLES.TRIPS),
+      atGet(TABLES.ORDERS)
+    ]);
+    const activeTrips   = trips.filter(r => !r.fields['Actual Delivery Date']);
+    const pendingOrders = orders.filter(r => !r.fields['Trip']);
+    const thisWeek      = trips.filter(r => {
+      const w = r.fields['Week Number'];
+      const now = new Date();
+      const wn  = Math.ceil((((now - new Date(now.getFullYear(),0,1))/86400000)+1)/7);
+      return w == wn;
+    });
+
+    c.innerHTML = `
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dashboard</div>
+          <div class="page-sub">Καλημέρα, ${user.name} — ${new Date().toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'})}</div>
+        </div>
+      </div>
+
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Ενεργά Trips</div>
+          <div class="kpi-value">${activeTrips.length}</div>
+          <div class="kpi-delta">Σε εξέλιξη αυτή τη στιγμή</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Trips Εβδομάδας</div>
+          <div class="kpi-value">${thisWeek.length}</div>
+          <div class="kpi-delta">Τρέχουσα εβδομάδα</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Εκκρεμείς Παραγγελίες</div>
+          <div class="kpi-value">${pendingOrders.length}</div>
+          <div class="kpi-delta">Χωρίς trip ανάθεση</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Σύνολο Trips</div>
+          <div class="kpi-value">${trips.length}</div>
+          <div class="kpi-delta">Όλων των εποχών</div>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <div class="table-toolbar">
+          <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--silver)">Ενεργά Trips</span>
+        </div>
+        <table>
+          <thead><tr>
+            <th>Trip No</th><th>Εβδομάδα</th><th>Φορτηγό</th><th>Οδηγός</th><th>Κατεύθυνση</th><th>Status</th>
+          </tr></thead>
+          <tbody>
+            ${activeTrips.slice(0,20).map(r => `<tr onclick="navigate('weekly_intl')">
+              <td><strong>${fv(r.fields['TripID']) || r.id.slice(-6)}</strong></td>
+              <td>W${fv(r.fields['Week Number']) || '—'}</td>
+              <td>${fv(r.fields['Truck Plate']) || '—'}</td>
+              <td>${fv(r.fields['Driver Name']) || '—'}</td>
+              <td>${r.fields['Is Partner Trip'] ? '<span class="badge badge-blue">Partner</span>' : '<span class="badge badge-green">Owned</span>'}</td>
+              <td><span class="badge badge-yellow">Active</span></td>
+            </tr>`).join('') || `<tr><td colspan="6" style="text-align:center;color:var(--silver-dim);padding:24px">Δεν υπάρχουν ενεργά trips</td></tr>`}
+          </tbody>
+        </table>
+      </div>`;
+  } catch(e) {
+    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Σφάλμα φόρτωσης</h3><p>${e.message}</p></div>`;
+  }
+}
+
+// ═══════════════════════════════════════════════
+// ORDERS — INTERNATIONAL
+// ═══════════════════════════════════════════════
+async function renderOrdersIntl() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση παραγγελιών...</div>`;
+  try {
+    const orders = await atGet(TABLES.ORDERS);
+    renderOrdersTable(orders, c);
+  } catch(e) {
+    c.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h3>Σφάλμα</h3><p>${e.message}</p></div>`;
+  }
+}
+
+function renderOrdersTable(orders, c) {
+  const canEdit = can('orders') === 'full';
+  c.innerHTML = `
+    <div class="page-header">
+      <div>
+        <div class="page-title">International Orders</div>
+        <div class="page-sub">${orders.length} παραγγελίες συνολικά</div>
+      </div>
+      ${canEdit ? `<button class="btn btn-success" onclick="alert('Φόρμα δημιουργίας — σύντομα')">+ Νέα Παραγγελία</button>` : ''}
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <input class="search-input" placeholder="🔍  Αναζήτηση παραγγελίας..." oninput="filterOrders(this.value)" id="orderSearch">
+      </div>
+      <table id="ordersTable">
+        <thead><tr>
+          <th>Order No</th><th>Πελάτης</th><th>Φόρτωση</th><th>Παράδοση</th><th>Παλέτες</th><th>Trip</th><th>Status</th>
+        </tr></thead>
+        <tbody id="ordersTbody">
+          ${renderOrderRows(orders)}
+        </tbody>
+      </table>
+    </div>`;
+  window._ordersData = orders;
+}
+
+function renderOrderRows(orders) {
+  if (!orders.length) return `<tr><td colspan="7" style="text-align:center;color:var(--silver-dim);padding:32px">Δεν βρέθηκαν παραγγελίες</td></tr>`;
+  return orders.slice(0, 100).map(r => {
+    const f = r.fields;
+    const hasTrip = f['Trip'] && f['Trip'].length > 0;
+    return `<tr>
+      <td><strong>${fv(f['Order No']) || r.id.slice(-6)}</strong></td>
+      <td>${fv(f['Client Name']) || fv(f['Client']) || '—'}</td>
+      <td>${fv(f['Loading Location 1']) || '—'}</td>
+      <td>${fv(f['Unloading Location 1']) || '—'}</td>
+      <td>${fv(f['Total Pallets']) || '—'}</td>
+      <td>${hasTrip ? `<span class="badge badge-green">Ανατέθηκε</span>` : `<span class="badge badge-yellow">Εκκρεμεί</span>`}</td>
+      <td>${fv(f['Status']) || '—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterOrders(q) {
+  const orders = (window._ordersData || []).filter(r => {
+    const f = r.fields;
+    const s = q.toLowerCase();
+    return (fv(f['Order No'])||'').toLowerCase().includes(s)
+      || (fv(f['Client Name'])||'').toLowerCase().includes(s)
+      || (fv(f['Loading Location 1'])||'').toLowerCase().includes(s)
+      || (fv(f['Unloading Location 1'])||'').toLowerCase().includes(s);
+  });
+  document.getElementById('ordersTbody').innerHTML = renderOrderRows(orders);
+}
+
+// ═══════════════════════════════════════════════
+// TRUCKS
+// ═══════════════════════════════════════════════
+async function renderTrucks() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση φορτηγών...</div>`;
+  const trucks = await atGet(TABLES.TRUCKS);
+  const canEdit = can('maintenance') === 'full';
+  c.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Trucks</div><div class="page-sub">${trucks.length} φορτηγά</div></div>
+      ${canEdit ? `<button class="btn btn-success">+ Νέο Φορτηγό</button>` : ''}
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <input class="search-input" placeholder="🔍  Αναζήτηση..." oninput="filterTable(this.value,'trucksTbody',window._trucksData,renderTruckRows)">
+      </div>
+      <table><thead><tr>
+        <th>Πινακίδα</th><th>Μάρκα</th><th>Μοντέλο</th><th>Έτος</th><th>Status</th>
+      </tr></thead>
+      <tbody id="trucksTbody">${renderTruckRows(trucks)}</tbody></table>
+    </div>`;
+  window._trucksData = trucks;
+}
+
+function renderTruckRows(trucks) {
+  return trucks.map(r => {
+    const f = r.fields;
+    return `<tr>
+      <td><strong>${fv(f['Plate']) || fv(f['License Plate']) || '—'}</strong></td>
+      <td>${fv(f['Brand']) || fv(f['Make']) || '—'}</td>
+      <td>${fv(f['Model']) || '—'}</td>
+      <td>${fv(f['Year']) || '—'}</td>
+      <td><span class="badge badge-green">Ενεργό</span></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" style="text-align:center;color:var(--silver-dim);padding:32px">Δεν βρέθηκαν φορτηγά</td></tr>`;
+}
+
+// ═══════════════════════════════════════════════
+// TRAILERS
+// ═══════════════════════════════════════════════
+async function renderTrailers() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  const trailers = await atGet(TABLES.TRAILERS);
+  c.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Trailers</div><div class="page-sub">${trailers.length} ρυμουλκούμενα</div></div>
+    </div>
+    <div class="table-wrap">
+      <table><thead><tr><th>Πινακίδα</th><th>Τύπος</th><th>Έτος</th><th>Status</th></tr></thead>
+      <tbody>${trailers.map(r => `<tr>
+        <td><strong>${fv(r.fields['Plate'])||fv(r.fields['License Plate'])||'—'}</strong></td>
+        <td>${fv(r.fields['Type'])||'—'}</td>
+        <td>${fv(r.fields['Year'])||'—'}</td>
+        <td><span class="badge badge-green">Ενεργό</span></td>
+      </tr>`).join('')}</tbody></table>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// DRIVERS
+// ═══════════════════════════════════════════════
+async function renderDrivers() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  const drivers = await atGet(TABLES.DRIVERS);
+  c.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Drivers</div><div class="page-sub">${drivers.length} οδηγοί</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <input class="search-input" placeholder="🔍  Αναζήτηση οδηγού...">
+      </div>
+      <table><thead><tr><th>Ονοματεπώνυμο</th><th>Τηλέφωνο</th><th>Εθνικότητα</th><th>Status</th></tr></thead>
+      <tbody>${drivers.map(r => {
+        const f = r.fields;
+        return `<tr>
+          <td><strong>${fv(f['Full Name'])||fv(f['Name'])||'—'}</strong></td>
+          <td>${fv(f['Phone'])||'—'}</td>
+          <td>${fv(f['Nationality'])||'—'}</td>
+          <td><span class="badge badge-green">Ενεργός</span></td>
+        </tr>`;
+      }).join('')}</tbody></table>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// CLIENTS
+// ═══════════════════════════════════════════════
+async function renderClients() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση πελατών...</div>`;
+  const clients = await atGet(TABLES.CLIENTS);
+  c.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Clients</div><div class="page-sub">${clients.length} πελάτες</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <input class="search-input" placeholder="🔍  Αναζήτηση πελάτη..." oninput="filterClients(this.value)">
+      </div>
+      <table><thead><tr><th>Επωνυμία</th><th>Χώρα</th><th>Πόλη</th><th>Τηλέφωνο</th></tr></thead>
+      <tbody id="clientsTbody">${renderClientRows(clients)}</tbody></table>
+    </div>`;
+  window._clientsData = clients;
+}
+
+function renderClientRows(clients) {
+  return clients.slice(0,100).map(r => {
+    const f = r.fields;
+    return `<tr>
+      <td><strong>${fv(f['Company Name'])||fv(f['Name'])||'—'}</strong></td>
+      <td>${fv(f['Country'])||'—'}</td>
+      <td>${fv(f['City'])||'—'}</td>
+      <td>${fv(f['Phone'])||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function filterClients(q) {
+  const filtered = (window._clientsData||[]).filter(r => {
+    const f = r.fields;
+    return (fv(f['Company Name'])||fv(f['Name'])||'').toLowerCase().includes(q.toLowerCase())
+      || (fv(f['Country'])||'').toLowerCase().includes(q.toLowerCase());
+  });
+  document.getElementById('clientsTbody').innerHTML = renderClientRows(filtered);
+}
+
+// ═══════════════════════════════════════════════
+// PARTNERS
+// ═══════════════════════════════════════════════
+async function renderPartners() {
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  const partners = await atGet(TABLES.PARTNERS);
+  c.innerHTML = `
+    <div class="page-header">
+      <div><div class="page-title">Partners</div><div class="page-sub">${partners.length} συνεργάτες</div></div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-toolbar">
+        <input class="search-input" placeholder="🔍  Αναζήτηση συνεργάτη...">
+      </div>
+      <table><thead><tr><th>Επωνυμία</th><th>Χώρα</th><th>Τηλέφωνο</th><th>Email</th></tr></thead>
+      <tbody>${partners.slice(0,100).map(r => {
+        const f = r.fields;
+        return `<tr>
+          <td><strong>${fv(f['Company Name'])||'—'}</strong></td>
+          <td>${fv(f['Country'])||'—'}</td>
+          <td>${fv(f['Phone'])||'—'}</td>
+          <td>${fv(f['Email'])||'—'}</td>
+        </tr>`;
+      }).join('')}</tbody></table>
+    </div>`;
+}
+
+// ═══════════════════════════════════════════════
+// MODAL
+// ═══════════════════════════════════════════════
+function openModal(title, bodyHTML, footerHTML='') {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalBody').innerHTML = bodyHTML;
+  document.getElementById('modalFooter').innerHTML = footerHTML;
+  document.getElementById('modalOverlay').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+}
+
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+// ═══════════════════════════════════════════════
+// LOGOUT
+// ═══════════════════════════════════════════════
+function logout() {
+  sessionStorage.removeItem('tms_user');
+  window.location.href = 'index.html';
+}
+
+// ═══════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════
+function init() {
+  // User chip
+  document.getElementById('userName').textContent = user.name;
+  document.getElementById('userAvatar').textContent = user.name.charAt(0).toUpperCase();
+  const rb = document.getElementById('roleBadge');
+  rb.textContent = user.role;
+  rb.className = 'role-badge ' + user.role;
+
+  renderNav();
+  navigate('dashboard');
+}
+
+init();
+</script>
+</body>
+</html>
