@@ -704,6 +704,215 @@ tbody tr:hover { background: rgba(13,33,64,0.025); }
 .coming-soon h3 { font-family: 'Syne', sans-serif; font-size: 18px; color: var(--text-mid); }
 .coming-soon p { font-size: 13px; }
 
+
+/* ═══════════════════════════════════════════════
+   MASTER DATA — ENTITY PAGES
+═══════════════════════════════════════════════ */
+
+.entity-layout {
+  display: flex;
+  gap: 0;
+  height: calc(100vh - var(--header-h) - 56px);
+  overflow: hidden;
+}
+
+.entity-list-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.entity-detail-panel {
+  width: 380px;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+}
+
+.entity-detail-panel.hidden { width: 0; border-left: none; }
+
+.entity-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  background: var(--bg);
+  border: 1px solid var(--border-mid);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  color: var(--text-mid);
+  outline: none;
+  cursor: pointer;
+  min-width: 120px;
+}
+
+.filter-select:focus { border-color: rgba(13,33,64,0.3); }
+
+.entity-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.entity-table-wrap {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #CBD5E0 transparent;
+}
+
+.entity-table-wrap table { width: 100%; border-collapse: collapse; }
+
+.entity-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 2;
+  padding: 10px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.entity-table-wrap tbody td {
+  padding: 11px 16px;
+  font-size: 13px;
+  color: var(--text-mid);
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+.entity-table-wrap tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.entity-table-wrap tbody tr:hover { background: rgba(13,33,64,0.03); }
+.entity-table-wrap tbody tr.selected { background: rgba(13,33,64,0.06); }
+
+/* Detail panel */
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.detail-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.detail-actions { display: flex; gap: 8px; }
+
+.detail-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  scrollbar-width: thin;
+}
+
+.detail-section {
+  margin-bottom: 20px;
+}
+
+.detail-section-title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-field {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 6px 0;
+  gap: 12px;
+}
+
+.detail-field-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 110px;
+}
+
+.detail-field-value {
+  font-size: 13px;
+  color: var(--text);
+  font-weight: 500;
+  text-align: right;
+  word-break: break-word;
+}
+
+/* Expiry date coloring */
+.expiry-ok    { color: var(--success); }
+.expiry-warn  { color: var(--warning); }
+.expiry-alert { color: var(--danger);  font-weight: 600; }
+
+/* Active toggle */
+.active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+}
+.active-toggle.on  { background: rgba(30,168,130,0.12); color: var(--success); }
+.active-toggle.off { background: rgba(217,64,64,0.1);   color: var(--danger);  }
+
+.btn-icon {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--border-mid);
+  color: var(--text-dim);
+  transition: all 0.15s;
+}
+.btn-icon:hover { background: var(--bg); color: var(--text); }
+
 </style>
 </head>
 <body>
@@ -780,7 +989,7 @@ const TABLES = {
   NAT_TRIPS:    'tbloI9yAxxyOJpMyr',
   NAT_ORDERS:   'tblGHCCsTMqAy4KR2',
   CLIENTS:      'tblFWKAQVUzAM8mCE',
-  PARTNERS:     'tbl6LTpiXxQv72R1m',
+  PARTNERS:     'tblLHl5m8bqONfhWv',
   LOCATIONS:    'tblxu8DRfTQOFRCzS',
   RAMP:         'tblT8W5WcuToBQNiY',
 };
@@ -924,11 +1133,11 @@ function navigate(page) {
   switch(page) {
     case 'dashboard':      renderDashboard(); break;
     case 'orders_intl':    renderOrdersIntl(); break;
-    case 'trucks':         renderTrucks(); break;
-    case 'trailers':       renderTrailers(); break;
-    case 'drivers':        renderDrivers(); break;
-    case 'clients':        renderClients(); break;
-    case 'partners':       renderPartners(); break;
+    case 'trucks':         renderEntity('trucks'); break;
+    case 'trailers':       renderEntity('trailers'); break;
+    case 'drivers':        renderEntity('drivers'); break;
+    case 'clients':        renderEntity('clients'); break;
+    case 'partners':       renderEntity('partners'); break;
     default: renderComingSoon(label); break;
   }
 }
@@ -1316,6 +1525,573 @@ document.getElementById('modalOverlay').addEventListener('click', e => {
 function logout() {
   sessionStorage.removeItem('tms_user');
   window.location.href = 'index.html';
+}
+
+
+// ═══════════════════════════════════════════════
+// MASTER DATA ENGINE
+// ═══════════════════════════════════════════════
+
+// ── Entity Configs ──────────────────────────────
+const ENTITY_CONFIG = {
+
+  clients: {
+    tableId: TABLES.CLIENTS,
+    label: 'Clients',
+    labelSingle: 'Client',
+    searchFields: ['Company Name','City','Contact Person','VAT Number'],
+    filters: [
+      { field: 'Country', label: 'Χώρα' },
+      { field: 'Active',  label: 'Status', type: 'bool', options: [
+        { val: '', label: 'Όλοι' },
+        { val: 'true', label: 'Ενεργοί' },
+        { val: 'false', label: 'Ανενεργοί' }
+      ]},
+    ],
+    columns: [
+      { field: 'Company Name', label: 'Επωνυμία', primary: true },
+      { field: 'Country',      label: 'Χώρα' },
+      { field: 'City',         label: 'Πόλη' },
+      { field: 'Contact Person',label: 'Επαφή' },
+      { field: 'Phone',        label: 'Τηλέφωνο' },
+      { field: 'Active',       label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Στοιχεία', fields: [
+        { f: 'Company Name', label: 'Επωνυμία', req: true },
+        { f: 'VAT Number',   label: 'ΑΦΜ' },
+        { f: 'Country',      label: 'Χώρα' },
+        { f: 'City',         label: 'Πόλη' },
+        { f: 'Adress',       label: 'Διεύθυνση' },
+      ]},
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+        { f: 'Payment Terms Days', label: 'Πληρωμή (ημέρες)', type: 'number' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Στοιχεία Εταιρείας', fields: ['Company Name','VAT Number','Country','City','Adress'] },
+      { title: 'Επικοινωνία',        fields: ['Contact Person','Phone','Email'] },
+      { title: 'Εμπορικά',           fields: ['Payment Terms Days','Pallet Balance'] },
+    ],
+  },
+
+  partners: {
+    tableId: TABLES.PARTNERS,
+    label: 'Partners',
+    labelSingle: 'Partner',
+    searchFields: ['Company Name','Contact Person','VAT Number'],
+    filters: [
+      { field: 'Country', label: 'Χώρα' },
+      { field: 'Active',  label: 'Status', type: 'bool', options: [
+        { val: '', label: 'Όλοι' },
+        { val: 'true', label: 'Ενεργοί' },
+        { val: 'false', label: 'Ανενεργοί' }
+      ]},
+    ],
+    columns: [
+      { field: 'Company Name',  label: 'Επωνυμία', primary: true },
+      { field: 'Country',       label: 'Χώρα' },
+      { field: 'Contact Person',label: 'Επαφή' },
+      { field: 'Phone',         label: 'Τηλέφωνο' },
+      { field: 'Email',         label: 'Email' },
+      { field: 'Active',        label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Στοιχεία', fields: [
+        { f: 'Company Name', label: 'Επωνυμία', req: true },
+        { f: 'VAT Number',   label: 'ΑΦΜ' },
+        { f: 'Country',      label: 'Χώρα' },
+        { f: 'Adress',       label: 'Διεύθυνση' },
+      ]},
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Στοιχεία Εταιρείας', fields: ['Company Name','VAT Number','Country','Adress'] },
+      { title: 'Επικοινωνία',        fields: ['Contact Person','Phone','Email'] },
+      { title: 'Στατιστικά',         fields: ['Pallet Balance'] },
+    ],
+  },
+
+  drivers: {
+    tableId: TABLES.DRIVERS,
+    label: 'Drivers',
+    labelSingle: 'Driver',
+    searchFields: ['Full Name','License Number'],
+    filters: [
+      { field: 'Type',   label: 'Τύπος', type: 'select', options: [
+        { val: '', label: 'Όλοι' },
+        { val: 'Internal', label: 'Internal' },
+        { val: 'External', label: 'External' },
+      ]},
+      { field: 'Active', label: 'Status', type: 'bool', options: [
+        { val: '', label: 'Όλοι' },
+        { val: 'true', label: 'Ενεργοί' },
+        { val: 'false', label: 'Ανενεργοί' }
+      ]},
+    ],
+    columns: [
+      { field: 'Full Name',      label: 'Ονοματεπώνυμο', primary: true },
+      { field: 'Phone',          label: 'Τηλέφωνο' },
+      { field: 'Type',           label: 'Τύπος' },
+      { field: 'License Expiry', label: 'Λήξη Άδειας', type: 'expiry' },
+      { field: 'Active',         label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Στοιχεία', fields: [
+        { f: 'Full Name',     label: 'Ονοματεπώνυμο', req: true },
+        { f: 'Phone',         label: 'Τηλέφωνο' },
+        { f: 'Type',          label: 'Τύπος', type: 'select', options: ['Internal','External'] },
+        { f: 'Salary Base',   label: 'Βασικός Μισθός', type: 'number' },
+      ]},
+      { section: 'Άδεια Οδήγησης', fields: [
+        { f: 'License Number', label: 'Αριθμός Άδειας' },
+        { f: 'License Expiry', label: 'Λήξη Άδειας', type: 'date' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Στοιχεία',          fields: ['Full Name','Phone','Type','Salary Base'] },
+      { title: 'Άδεια Οδήγησης',    fields: ['License Number','License Expiry'] },
+    ],
+  },
+
+  trucks: {
+    tableId: TABLES.TRUCKS,
+    label: 'Trucks',
+    labelSingle: 'Truck',
+    searchFields: ['License Plate','Brand','Model','Insurance Partner'],
+    filters: [
+      { field: 'Brand',  label: 'Μάρκα', type: 'dynamic' },
+      { field: 'Active', label: 'Status', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true', label: 'Ενεργά' },
+        { val: 'false', label: 'Ανενεργά' }
+      ]},
+    ],
+    columns: [
+      { field: 'License Plate',    label: 'Πινακίδα', primary: true },
+      { field: 'Brand',            label: 'Μάρκα' },
+      { field: 'Model',            label: 'Μοντέλο' },
+      { field: 'Year',             label: 'Έτος' },
+      { field: 'Next Maintenance Date', label: 'Επόμενο Service', type: 'expiry' },
+      { field: 'Active',           label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Ταυτότητα', fields: [
+        { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'Brand',  label: 'Μάρκα' },
+        { f: 'Model',  label: 'Μοντέλο' },
+        { f: 'Year',   label: 'Έτος', type: 'number' },
+        { f: 'Fuel Type',     label: 'Καύσιμο', type: 'select', options: ['Diesel','LNG','CNG','HVO'] },
+        { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
+      ]},
+      { section: 'Τεχνικά', fields: [
+        { f: 'Fuel Tank Truck Lt',     label: 'Δεξαμενή (lt)', type: 'number' },
+        { f: 'Horsepower HP',          label: 'Ίπποι (HP)', type: 'number' },
+        { f: 'Gross Vehicle Weight kg',label: 'ΜΒΟ (kg)', type: 'number' },
+      ]},
+      { section: 'Πιστοποιητικά & Service', fields: [
+        { f: 'KTEO Expiry',            label: 'ΚΤΕΟ Λήξη', type: 'date' },
+        { f: 'Insurance Expiry',       label: 'Ασφάλεια Λήξη', type: 'date' },
+        { f: 'Insurance Partner',      label: 'Ασφαλιστής' },
+        { f: 'Tachograph Expiry',      label: 'Ταχογράφος Λήξη', type: 'date' },
+        { f: 'ADR Expiry',             label: 'ADR Λήξη', type: 'date' },
+        { f: 'KEK Expiry',             label: 'ΚΕΚ Λήξη', type: 'date' },
+        { f: 'Next Maintenance Date',  label: 'Επόμενο Service', type: 'date' },
+        { f: 'Notes',                  label: 'Σημειώσεις', type: 'textarea' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Ταυτότητα',    fields: ['License Plate','Brand','Model','Year','Fuel Type','Euro Standard'] },
+      { title: 'Τεχνικά',      fields: ['Fuel Tank Truck Lt','Horsepower HP','Gross Vehicle Weight kg','Payload Capacity kg'] },
+      { title: 'Πιστοποιητικά',fields: ['KTEO Expiry','Insurance Expiry','Insurance Partner','Tachograph Expiry','ADR Expiry','KEK Expiry'] },
+      { title: 'Maintenance',  fields: ['Next Maintenance Date','Notes'] },
+    ],
+  },
+
+  trailers: {
+    tableId: TABLES.TRAILERS,
+    label: 'Trailers',
+    labelSingle: 'Trailer',
+    searchFields: ['License Plate','Brand','Model','Refrigeration Brand'],
+    filters: [
+      { field: 'Trailer Type', label: 'Τύπος', type: 'dynamic' },
+      { field: 'Active',       label: 'Status', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true', label: 'Ενεργά' },
+        { val: 'false', label: 'Ανενεργά' }
+      ]},
+    ],
+    columns: [
+      { field: 'License Plate',  label: 'Πινακίδα', primary: true },
+      { field: 'Brand',          label: 'Μάρκα' },
+      { field: 'Trailer Type',   label: 'Τύπος' },
+      { field: 'Pallet Capacity',label: 'Παλέτες' },
+      { field: 'ATP Expiry',     label: 'ATP Λήξη', type: 'expiry' },
+      { field: 'Active',         label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Ταυτότητα', fields: [
+        { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'Brand',         label: 'Μάρκα' },
+        { f: 'Model',         label: 'Μοντέλο' },
+        { f: 'Year',          label: 'Έτος', type: 'number' },
+        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker'] },
+        { f: 'Pallet Capacity',label: 'Χωρητικότητα Παλετών', type: 'number' },
+      ]},
+      { section: 'Ψυγείο', fields: [
+        { f: 'Refrigeration Brand',  label: 'Μάρκα Ψυγείου' },
+        { f: 'Refrigeration Model',  label: 'Μοντέλο Ψυγείου' },
+        { f: 'Temp Range Min °C',    label: 'Min Θερμ. (°C)', type: 'number' },
+        { f: 'Temp Range Max °C',    label: 'Max Θερμ. (°C)', type: 'number' },
+        { f: 'Fuel Tank Refrigeration Lt', label: 'Δεξαμενή Ψυγείου (lt)', type: 'number' },
+      ]},
+      { section: 'Πιστοποιητικά', fields: [
+        { f: 'ATP Expiry',          label: 'ATP Λήξη', type: 'date' },
+        { f: 'KTEO Expiry',         label: 'ΚΤΕΟ Λήξη', type: 'date' },
+        { f: 'Insurance Expiry',    label: 'Ασφάλεια Λήξη', type: 'date' },
+        { f: 'FRC Expiry',          label: 'FRC Λήξη', type: 'date' },
+        { f: 'Next Maintenance Date',label: 'Επόμενο Service', type: 'date' },
+        { f: 'Notes',               label: 'Σημειώσεις', type: 'textarea' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Ταυτότητα',    fields: ['License Plate','Brand','Model','Year','Trailer Type','Pallet Capacity'] },
+      { title: 'Ψυγείο',       fields: ['Refrigeration Brand','Refrigeration Model','Temp Range Min °C','Temp Range Max °C','Fuel Tank Refrigeration Lt'] },
+      { title: 'Πιστοποιητικά',fields: ['ATP Expiry','KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] },
+    ],
+  },
+};
+
+// ── Generic Entity Renderer ─────────────────────
+let _entityState = {};
+
+async function renderEntity(entityKey) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  if (!cfg) return renderComingSoon(entityKey);
+
+  const c = document.getElementById('content');
+  c.innerHTML = `<div class="loading"><div class="spinner"></div> Φόρτωση ${cfg.label}...</div>`;
+
+  const records = await atGet(cfg.tableId);
+
+  _entityState[entityKey] = {
+    records,
+    filtered: records,
+    selected: null,
+    q: '',
+    filters: {}
+  };
+
+  // Build filter options for dynamic filters
+  const dynamicOpts = {};
+  for (const fi of cfg.filters) {
+    if (fi.type === 'dynamic') {
+      const vals = [...new Set(records.map(r => r.fields[fi.field]).filter(Boolean))].sort();
+      dynamicOpts[fi.field] = vals;
+    }
+  }
+
+  c.innerHTML = `
+    <div class="page-header" style="margin-bottom:16px">
+      <div>
+        <div class="page-title">${cfg.label}</div>
+        <div class="page-sub" id="${entityKey}_sub">${records.length} εγγραφές</div>
+      </div>
+      <button class="btn btn-success" onclick="openEntityCreate('${entityKey}')">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2"><line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/></svg>
+        Νέο ${cfg.labelSingle}
+      </button>
+    </div>
+
+    <div class="entity-layout">
+      <div class="entity-list-panel">
+        <div class="entity-toolbar">
+          <input class="search-input" style="max-width:240px" placeholder="🔍  Αναζήτηση..."
+            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
+          ${cfg.filters.map((fi,i) => {
+            if (fi.type === 'bool' || fi.type === 'select') {
+              return `<select class="filter-select" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')" >
+                ${fi.options.map(o => `<option value="${o.val}">${fi.label}: ${o.label}</option>`).join('')}
+              </select>`;
+            } else if (fi.type === 'dynamic') {
+              const opts = dynamicOpts[fi.field] || [];
+              return `<select class="filter-select" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
+                <option value="">${fi.label}: Όλα</option>
+                ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
+              </select>`;
+            }
+            return '';
+          }).join('')}
+          <span class="entity-count" id="${entityKey}_count">${records.length} εγγραφές</span>
+        </div>
+        <div class="entity-table-wrap" id="${entityKey}_table">
+          ${buildEntityTable(entityKey, records)}
+        </div>
+      </div>
+      <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
+    </div>`;
+}
+
+function buildEntityTable(entityKey, records) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const cols = cfg.columns;
+  return `<table>
+    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
+    <tbody>
+      ${records.length === 0
+        ? `<tr><td colspan="${cols.length+1}" style="text-align:center;padding:40px;color:var(--text-dim)">Δεν βρέθηκαν εγγραφές</td></tr>`
+        : records.slice(0,200).map(r => buildEntityRow(entityKey, r, cols)).join('')
+      }
+    </tbody>
+  </table>`;
+}
+
+function buildEntityRow(entityKey, r, cols) {
+  const f = r.fields;
+  const cells = cols.map(col => {
+    let val = f[col.field];
+    if (col.type === 'active') {
+      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? 'Ενεργό' : 'Ανενεργό'}</span></td>`;
+    }
+    if (col.type === 'expiry' && val) {
+      const days = Math.ceil((new Date(val) - new Date()) / 86400000);
+      const cls = days < 0 ? 'expiry-alert' : days < 30 ? 'expiry-warn' : 'expiry-ok';
+      return `<td><span class="${cls}">${formatDate(val)}</span></td>`;
+    }
+    if (col.primary) return `<td><strong style="color:var(--text)">${val||'—'}</strong></td>`;
+    return `<td>${val != null && val !== '' ? val : '—'}</td>`;
+  }).join('');
+  return `<tr onclick="selectEntity('${entityKey}','${r.id}')" id="row_${r.id}">${cells}
+    <td style="width:32px">
+      <div class="btn-icon" onclick="event.stopPropagation();openEntityEdit('${entityKey}','${r.id}')">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M11 2l3 3-9 9H2v-3l9-9z"/>
+        </svg>
+      </div>
+    </td>
+  </tr>`;
+}
+
+function entitySearch(entityKey, q) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const st = _entityState[entityKey];
+  st.q = q.toLowerCase();
+  applyEntityFilters(entityKey);
+}
+
+function entityFilter(entityKey, field, val, type) {
+  const st = _entityState[entityKey];
+  if (!val) { delete st.filters[field]; }
+  else { st.filters[field] = { val, type }; }
+  applyEntityFilters(entityKey);
+}
+
+function applyEntityFilters(entityKey) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const st = _entityState[entityKey];
+  let recs = st.records;
+
+  // Text search
+  if (st.q) {
+    recs = recs.filter(r => cfg.searchFields.some(sf =>
+      String(r.fields[sf]||'').toLowerCase().includes(st.q)
+    ));
+  }
+
+  // Field filters
+  for (const [field, {val, type}] of Object.entries(st.filters)) {
+    if (type === 'bool') {
+      const boolVal = val === 'true';
+      recs = recs.filter(r => !!r.fields[field] === boolVal);
+    } else {
+      recs = recs.filter(r => String(r.fields[field]||'') === val);
+    }
+  }
+
+  st.filtered = recs;
+  document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
+  document.getElementById(entityKey + '_count').textContent = recs.length + ' εγγραφές';
+}
+
+function selectEntity(entityKey, recId) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const st = _entityState[entityKey];
+  const rec = st.records.find(r => r.id === recId);
+  if (!rec) return;
+
+  // Highlight row
+  document.querySelectorAll(`#${entityKey}_table tbody tr`).forEach(tr => tr.classList.remove('selected'));
+  const row = document.getElementById('row_' + recId);
+  if (row) row.classList.add('selected');
+
+  // Open detail panel
+  const panel = document.getElementById(entityKey + '_detail');
+  panel.classList.remove('hidden');
+
+  const f = rec.fields;
+  const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
+  const title = f[primaryField] || recId.slice(-6);
+
+  panel.innerHTML = `
+    <div class="detail-header">
+      <div class="detail-title">${title}</div>
+      <div class="detail-actions">
+        <div class="btn-icon" title="Επεξεργασία" onclick="openEntityEdit('${entityKey}','${recId}')">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
+        </div>
+        <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">
+          ${f['Active'] ? '● Ενεργό' : '○ Ανενεργό'}
+        </button>
+        <div class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</div>
+      </div>
+    </div>
+    <div class="detail-body">
+      ${cfg.detailSections.map(sec => `
+        <div class="detail-section">
+          <div class="detail-section-title">${sec.title}</div>
+          ${sec.fields.map(field => {
+            let val = f[field];
+            if (val == null || val === '') return '';
+            let displayVal = val;
+            if (typeof val === 'boolean') displayVal = val ? 'Ναι' : 'Όχι';
+            if (field.includes('Expiry') || field.includes('Date')) {
+              const days = Math.ceil((new Date(val) - new Date()) / 86400000);
+              const cls = days < 0 ? 'expiry-alert' : days < 30 ? 'expiry-warn' : 'expiry-ok';
+              displayVal = `<span class="${cls}">${formatDate(val)} ${days < 0 ? '(ληγμένο)' : days < 30 ? '('+days+' ημέρες)' : ''}</span>`;
+            }
+            return `<div class="detail-field">
+              <span class="detail-field-label">${field}</span>
+              <span class="detail-field-value">${displayVal}</span>
+            </div>`;
+          }).join('')}
+        </div>
+      `).join('')}
+    </div>`;
+}
+
+async function toggleActive(entityKey, recId, newVal) {
+  await atPatch(ENTITY_CONFIG[entityKey].tableId, recId, { 'Active': newVal });
+  // Invalidate cache and re-render
+  const tableId = ENTITY_CONFIG[entityKey].tableId;
+  Object.keys(_cache).forEach(k => { if (k.startsWith(tableId)) delete _cache[k]; });
+  await renderEntity(entityKey);
+}
+
+// ── Create / Edit Modal ─────────────────────────
+function openEntityCreate(entityKey) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  buildEntityModal(entityKey, null, {});
+}
+
+function openEntityEdit(entityKey, recId) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const st = _entityState[entityKey];
+  const rec = st.records.find(r => r.id === recId);
+  if (!rec) return;
+  buildEntityModal(entityKey, recId, rec.fields);
+}
+
+function buildEntityModal(entityKey, recId, fields) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const isEdit = !!recId;
+
+  let bodyHTML = '<div class="form-grid cols-1" style="gap:0">';
+  for (const sec of cfg.formFields) {
+    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.title}</div></div>`;
+    bodyHTML += '<div class="form-grid">';
+    for (const field of sec.fields) {
+      const val = fields[field.f] ?? '';
+      let input = '';
+      if (field.type === 'textarea') {
+        input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${val}</textarea>`;
+      } else if (field.type === 'select') {
+        input = `<select class="form-select" id="ef_${field.f.replace(/\s/g,'_')}">
+          <option value="">— Επιλογή —</option>
+          ${field.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
+        </select>`;
+      } else if (field.type === 'date') {
+        input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${val?val.split('T')[0]:''}">`;
+      } else if (field.type === 'number') {
+        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="0">`;
+      } else if (field.type === 'email') {
+        input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
+      } else {
+        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
+      }
+      bodyHTML += `<div class="form-field ${['textarea','notes'].includes(field.type)?'span-2':''}">
+        <label class="form-label">${field.label}${field.req?' *':''}</label>
+        ${input}
+      </div>`;
+    }
+    bodyHTML += '</div>';
+  }
+  bodyHTML += '</div>';
+
+  const footerHTML = `
+    <button class="btn btn-primary" onclick="closeModal()" style="background:var(--bg);color:var(--text-mid);border:1px solid var(--border-mid)">Άκυρο</button>
+    <button class="btn btn-success" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
+      ${isEdit ? 'Αποθήκευση' : 'Δημιουργία'}
+    </button>`;
+
+  openModal(`${isEdit ? 'Επεξεργασία' : 'Νέο'} ${cfg.labelSingle}`, bodyHTML, footerHTML);
+}
+
+async function saveEntityRecord(entityKey, recId) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const fields = {};
+
+  for (const sec of cfg.formFields) {
+    for (const field of sec.fields) {
+      const id = 'ef_' + field.f.replace(/\s/g, '_');
+      const el = document.getElementById(id);
+      if (!el) continue;
+      let val = el.value.trim();
+      if (!val) continue;
+      if (field.type === 'number') val = parseFloat(val);
+      if (field.type === 'date') val = val || null;
+      fields[field.f] = val;
+    }
+  }
+
+  // Validate required
+  const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
+  if (reqField && !fields[reqField.f]) {
+    alert(`Το πεδίο "${reqField.label}" είναι υποχρεωτικό`);
+    return;
+  }
+
+  const btn = event.target;
+  btn.textContent = 'Αποθήκευση...';
+  btn.disabled = true;
+
+  try {
+    if (recId) {
+      await atPatch(cfg.tableId, recId, fields);
+    } else {
+      await atCreate(cfg.tableId, fields);
+    }
+    // Invalidate cache
+    Object.keys(_cache).forEach(k => { if (k.startsWith(cfg.tableId)) delete _cache[k]; });
+    closeModal();
+    await renderEntity(entityKey);
+  } catch(e) {
+    btn.textContent = 'Αποθήκευση';
+    btn.disabled = false;
+    alert('Σφάλμα: ' + e.message);
+  }
+}
+
+// ── Helpers ─────────────────────────────────────
+function formatDate(d) {
+  if (!d) return '—';
+  return new Date(d).toLocaleDateString('el-GR', {day:'2-digit',month:'2-digit',year:'numeric'});
 }
 
 // ═══════════════════════════════════════════════
