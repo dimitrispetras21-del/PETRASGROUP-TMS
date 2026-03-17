@@ -1,17 +1,17 @@
 // ═══════════════════════════════════════════════
-// MODULE — INTERNATIONAL ORDERS
+// MODULE — INTERNATIONAL ORDERS  v4
 // ═══════════════════════════════════════════════
 
 const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _intlFilters = {};
-let _clientsMap   = {};
-let _locationsMap = {};
-let _locationsArr = [];
+let _locationsMap = {};   // recId → label
+let _locationsArr = [];   // [{id,label}]
+const _clientsMap  = {};  // recId → name (populated on search)
+const _clientCache = {};  // query → [{id,label}]
 
-// ── Reference data ────────────────────────────────
-async function _loadRefData() {
-  if (_locationsArr.length) return; // already loaded
-  // Locations: manageable size, load all upfront
+// ─── Ref data ──────────────────────────────────
+async function _loadLocations() {
+  if (_locationsArr.length) return;
   const locs = await atGet(TABLES.LOCATIONS);
   _locationsArr = locs
     .map(r => ({ id: r.id, label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ') }))
@@ -19,37 +19,30 @@ async function _loadRefData() {
   _locationsArr.forEach(l => { _locationsMap[l.id] = l.label; });
 }
 
-// Clients: 4700+ records — search via API on-demand, cache results
-const _clientSearchCache = {};
 async function _searchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
-  if (_clientSearchCache[key]) return _clientSearchCache[key];
+  if (_clientCache[key]) return _clientCache[key];
   const formula = `SEARCH(LOWER("${q.replace(/"/g,'')}"), LOWER({Company Name}))`;
-  const records = await atGet(TABLES.CLIENTS, formula, false);
-  const results = records
-    .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
-    .sort((a,b) => a.label.localeCompare(b.label))
-    .slice(0, 30);
-  _clientSearchCache[key] = results;
-  // Also populate clientsMap for display
-  results.forEach(c => { _clientsMap[c.id] = c.label; });
-  return results;
+  const recs = await atGet(TABLES.CLIENTS, formula, false);
+  const res = recs.map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .sort((a,b) => a.label.localeCompare(b.label)).slice(0, 30);
+  _clientCache[key] = res;
+  res.forEach(c => { _clientsMap[c.id] = c.label; });
+  return res;
 }
 
-// Load a single client by ID (for edit mode display)
-async function _resolveClient(recId) {
+async function _resolveClientName(recId) {
+  if (!recId) return '';
   if (_clientsMap[recId]) return _clientsMap[recId];
   try {
-    const res = await fetch(
-      `https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${recId}`,
-      { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-    );
+    const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${recId}`,
+      { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } });
     const d = await res.json();
-    const name = d.fields?.['Company Name'] || recId.slice(-6);
+    const name = d.fields?.['Company Name'] || '';
     _clientsMap[recId] = name;
     return name;
-  } catch(e) { return recId.slice(-6); }
+  } catch(e) { return ''; }
 }
 
 function _clientName(f) {
@@ -60,20 +53,19 @@ function _cleanSummary(s) {
   if (!s) return '—';
   return s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—';
 }
-function _airtableWeekNum(dateStr) {
+function _weekNum(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   const jan1 = new Date(d.getFullYear(), 0, 1);
-  const weekStart = new Date(jan1);
-  weekStart.setDate(jan1.getDate() - jan1.getDay());
-  return Math.floor((d - weekStart) / 604800000) + 1;
+  const ws = new Date(jan1); ws.setDate(jan1.getDate() - jan1.getDay());
+  return Math.floor((d - ws) / 604800000) + 1;
 }
 
-// ── Main render ───────────────────────────────────
+// ─── Main ───────────────────────────────────────
 async function renderOrdersIntl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading orders...');
   try {
-    await _loadRefData();
+    await _loadLocations();
     const records = await atGet(TABLES.ORDERS, '', false);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     INTL_ORDERS.data = records;
@@ -141,13 +133,13 @@ function _renderIntlLayout(c) {
 function _buildWeekOpts() {
   const wn = currentWeekNumber(); let s = '';
   for (let w = wn-3; w <= wn+8; w++) {
-    if (w<1) continue;
+    if (w < 1) continue;
     s += `<option value="${w}" ${w===wn?'selected':''}>${w===wn?'→ ':''} W${w}</option>`;
   }
   return s;
 }
 
-// ── Table ─────────────────────────────────────────
+// ─── Table ──────────────────────────────────────
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
@@ -159,17 +151,17 @@ function _renderIntlTable(records) {
                : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
                : `<span class="badge badge-grey">${dir||'—'}</span>`;
     const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
-    const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
-    const grp = f['National Groupage'] ? '<span class="badge badge-blue" title="Groupage" style="margin-right:4px">GRP</span>' : '';
+    const hr  = f['High Risk Flag'] ? '<span title="⚠" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
+    const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
     const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
     return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}">
       <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${f['Order Number']||r.id.slice(-6)}</strong></td>
       <td>W${f['Week Number']||'—'}</td>
       <td>${dirB}</td>
       <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
-      <td>${f['Loading DateTime'] ? formatDateShort(f['Loading DateTime']) : '—'}</td>
+      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
+      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
+      <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
       <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
       <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
       <td>${tripB}</td>
@@ -177,13 +169,13 @@ function _renderIntlTable(records) {
     </tr>`;
   }).join('');
   wrap.innerHTML = `<table><thead><tr>
-    <th>Order No</th><th>Week</th><th>Direction</th><th>Client</th>
+    <th>Order No</th><th>Week</th><th>Dir</th><th>Client</th>
     <th>Loading</th><th>Delivery</th><th>Load Date</th><th>Del Date</th>
     <th>PAL</th><th>Trip</th><th></th>
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Filters ───────────────────────────────────────
+// ─── Filters ────────────────────────────────────
 function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _applyIntlFilters(); }
 function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _applyIntlFilters(); }
 
@@ -213,14 +205,12 @@ function _applyIntlFilters() {
   document.getElementById('intlSub').textContent   = n;
 }
 
-// ── Detail Panel ──────────────────────────────────
+// ─── Detail Panel ───────────────────────────────
 function selectIntlOrder(recId) {
   INTL_ORDERS.selectedId = recId;
   document.querySelectorAll('#intlTable tbody tr').forEach(tr => tr.classList.remove('selected'));
-  const row = document.getElementById('irow_'+recId);
-  if (row) row.classList.add('selected');
-  const rec = INTL_ORDERS.data.find(r => r.id === recId);
-  if (!rec) return;
+  const row = document.getElementById('irow_'+recId); if (row) row.classList.add('selected');
+  const rec = INTL_ORDERS.data.find(r => r.id === recId); if (!rec) return;
   const panel = document.getElementById('intlDetail');
   panel.classList.remove('hidden');
   const f = rec.fields;
@@ -228,20 +218,19 @@ function selectIntlOrder(recId) {
   const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
   const stMap = {Pending:'badge-yellow',Assigned:'badge-blue',Active:'badge-green',Delivered:'badge-grey',Cancelled:'badge-red'};
 
-  const buildStopLines = (locPrefix, palPrefix, dtPrefix, dtField1) => {
+  const buildStops = (locPfx, palPfx, dtPfx, dt1field) => {
     let html = '';
     for (let i=1;i<=10;i++) {
-      const locKey = i===1 ? `${locPrefix} Location 1` : `${locPrefix} Location ${i}`;
-      const locArr = f[locKey];
+      const locArr = f[`${locPfx} Location ${i}`];
       const locId  = Array.isArray(locArr) ? locArr[0] : null;
       if (!locId) break;
-      const name   = _locationsMap[locId] || locId.slice(-6);
-      const pal    = f[`${palPrefix} Pallets ${i}`] || '';
-      const dt     = i===1 ? f[dtField1] : f[`${dtPrefix} DateTime ${i}`];
-      const dtStr  = dt ? formatDateShort(dt) : '';
+      const name  = _locationsMap[locId] || locId.slice(-6);
+      const pal   = f[`${palPfx} Pallets ${i}`];
+      const dtRaw = i===1 ? f[dt1field] : f[`${dtPfx} DateTime ${i}`];
+      const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
       html += _dF(`Stop ${i}`, `${name}${pal?' — '+pal+' pal':''}${dtStr?' · '+dtStr:''}`);
     }
-    return html || _dF('Location', _cleanSummary(f['Loading Summary']||f['Delivery Summary']));
+    return html || _dF('Location', '—');
   };
 
   panel.innerHTML = `
@@ -275,27 +264,27 @@ function selectIntlOrder(recId) {
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
         ${_dF('Goods',        f['Goods']||'—')}
-        ${_dF('Temperature',  f['Temperature °C']!=null ? f['Temperature °C']+' °C' : '—')}
+        ${_dF('Temperature',  f['Temperature °C']!=null?f['Temperature °C']+' °C':'—')}
         ${_dF('Reefer Mode',  f['Refrigerator Mode']||'—')}
         ${_dF('Pallet Type',  f['Pallet Type']||'—')}
         ${_dF('Total Pallets',f['Total Pallets']||'—')}
-        ${_dF('Gross Weight', f['Gross Weight kg'] ? f['Gross Weight kg']+' kg' : '—')}
+        ${_dF('Gross Weight', f['Gross Weight kg']?f['Gross Weight kg']+' kg':'—')}
         ${_dF('Pallet Exch.', f['Pallet Exchange']?'✓ Yes':'No')}
         ${_dF('Carrier',      f['Carrier Type']||'—')}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Loading</div>
-        ${buildStopLines('Loading','Loading','Loading','Loading DateTime')}
+        ${buildStops('Loading','Loading','Loading','Loading DateTime')}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Delivery</div>
-        ${buildStopLines('Unloading','Unloading','Unloading','Delivery DateTime')}
+        ${buildStops('Unloading','Unloading','Unloading','Delivery DateTime')}
       </div>
       ${can('costs')!=='none'?`
       <div class="detail-section">
         <div class="detail-section-title">Financial</div>
-        ${_dF('Price',         f['Price']     ? '€ '+Number(f['Price']).toLocaleString('el-GR')     : '—')}
-        ${_dF('Net Price',     f['Net Price'] ? '€ '+Number(f['Net Price']).toLocaleString('el-GR') : '—')}
+        ${_dF('Price',     f['Price']    ?'€ '+Number(f['Price']).toLocaleString('el-GR')    :'—')}
+        ${_dF('Net Price', f['Net Price']?'€ '+Number(f['Net Price']).toLocaleString('el-GR') :'—')}
         ${_dF('Invoice Status',f['Invoice Status']||'—')}
       </div>`:''}
       <div class="detail-section">
@@ -316,241 +305,224 @@ function selectIntlOrder(recId) {
     </div>`;
 }
 
-function _dF(l,v){return `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`;}
-function _chk(l,v){return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`;}
+function _dF(l,v) { return `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`; }
+function _chk(l,v) { return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`; }
 
-// ── Linked select widget ──────────────────────────
-function _makeLinkedSelect(id, currentId, placeholder) {
-  const current = currentId ? (_locationsMap[currentId]||currentId.slice(-6)) : '';
+// ─── Linked select widgets ───────────────────────
+function _locSelect(id, currentId) {
+  const label = currentId ? (_locationsMap[currentId]||'') : '';
   return `<div style="position:relative">
-    <input class="form-input" id="${id}_s" autocomplete="off"
-      value="${current}" placeholder="${placeholder}"
-      oninput="_filterLinkedOpts('${id}',this.value,'loc')"
-      onfocus="_filterLinkedOpts('${id}',this.value,'loc')"
-      onblur="_hideDropdown('${id}')">
-    <input type="hidden" id="${id}_v" value="${currentId||''}">
-    <div id="${id}_d" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
-      background:var(--bg);border:1px solid var(--border-dark);border-radius:6px;
-      max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.15)"></div>
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${label}"
+      placeholder="Search location..."
+      oninput="_locDrop('${id}',this.value)"
+      onfocus="_locDrop('${id}',this.value)"
+      onblur="_hideDrop('ls_${id}_d')">
+    <input type="hidden" id="lv_${id}" value="${currentId||''}">
+    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
   </div>`;
 }
 
-function _makeClientSelect(id, currentId, currentLabel) {
-  const display = currentLabel || (currentId ? (_clientsMap[currentId]||'') : '');
+function _clientSelect(id, currentId, currentLabel) {
   return `<div style="position:relative">
-    <input class="form-input" id="${id}_s" autocomplete="off"
-      value="${display}" placeholder="Type to search clients..."
-      oninput="_clientSearchDebounced('${id}',this.value)"
-      onblur="_hideDropdown('${id}')">
-    <input type="hidden" id="${id}_v" value="${currentId||''}">
-    <div id="${id}_d" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
-      background:var(--bg);border:1px solid var(--border-dark);border-radius:6px;
-      max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.15)"></div>
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${currentLabel||''}"
+      placeholder="Type 2+ chars to search..."
+      oninput="_clientDrop('${id}',this.value)"
+      onblur="_hideDrop('ls_${id}_d')">
+    <input type="hidden" id="lv_${id}" value="${currentId||''}">
+    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
   </div>`;
 }
 
-let _clientSearchTimer = null;
-function _clientSearchDebounced(id, q) {
-  clearTimeout(_clientSearchTimer);
-  const drop = document.getElementById(id+'_d');
-  if (q.length < 2) { if(drop) drop.style.display='none'; return; }
-  if (drop) { drop.style.display='block'; drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">Searching...</div>'; }
-  _clientSearchTimer = setTimeout(async () => {
+function _hideDrop(dropId) {
+  setTimeout(() => { const d=document.getElementById(dropId); if(d) d.style.display='none'; }, 200);
+}
+
+function _locDrop(id, q) {
+  const pool = q.trim()
+    ? _locationsArr.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
+    : _locationsArr.slice(0,25);
+  _showDrop('ls_'+id+'_d', id, pool);
+}
+
+let _clientTimer = null;
+function _clientDrop(id, q) {
+  clearTimeout(_clientTimer);
+  const d = document.getElementById('ls_'+id+'_d');
+  if (q.length < 2) { if(d) d.style.display='none'; return; }
+  if (d) { d.style.display='block'; d.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">Searching...</div>'; }
+  _clientTimer = setTimeout(async () => {
     const results = await _searchClients(q);
-    if (!drop) return;
-    if (!results.length) { drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">No results</div>'; return; }
-    drop.style.display = 'block';
-    drop.innerHTML = results.map(o =>
-      `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\'")}',this)"
-        style="padding:8px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-        onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">${o.label}</div>`
-    ).join('');
+    _showDrop('ls_'+id+'_d', id, results);
   }, 300);
 }
 
-function _hideDropdown(id) {
-  setTimeout(() => { const d=document.getElementById(id+'_d'); if(d) d.style.display='none'; }, 200);
-}
-
-function _filterLinkedOpts(id, q, type) {
-  const pool = _locationsArr; // locations only
-  const filtered = q.trim()
-    ? pool.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
-    : pool.slice(0,25);
-  const drop = document.getElementById(id+'_d');
-  if (!drop) return;
-  if (!filtered.length) { drop.style.display='none'; return; }
-  drop.style.display='block';
-  drop.innerHTML = filtered.map(o =>
-    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'")}',this)"
-      style="padding:8px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
-      onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">${o.label}</div>`
+function _showDrop(dropId, id, items) {
+  const d = document.getElementById(dropId); if(!d) return;
+  if (!items.length) { d.style.display='none'; return; }
+  d.style.display = 'block';
+  d.innerHTML = items.map(o =>
+    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'")}')"
+      class="linked-drop-item">${o.label}</div>`
   ).join('');
 }
 
 function _pickLinked(id, recId, label) {
-  const s=document.getElementById(id+'_s'); if(s) s.value=label;
-  const v=document.getElementById(id+'_v'); if(v) v.value=recId;
-  const d=document.getElementById(id+'_d'); if(d) d.style.display='none';
+  const s = document.getElementById('ls_'+id); if(s) s.value = label;
+  const v = document.getElementById('lv_'+id); if(v) v.value = recId;
+  const d = document.getElementById('ls_'+id+'_d'); if(d) d.style.display='none';
 }
 
-// ── Build one stop row ────────────────────────────
-function _stopRowHTML(type, i, locId, palVal, dtVal) {
-  // type: 'l' (loading) or 'u' (unloading)
+// ─── Stop row HTML ───────────────────────────────
+// type: 'l'=loading, 'u'=unloading
+// stop 1 datetime field: 'Loading DateTime' / 'Delivery DateTime' (main fields)
+// stop 2-10: 'Loading DateTime 2-10' / 'Unloading DateTime 1-10'
+function _stopRow(type, i, locId, palVal, dtVal) {
   const label = type==='l' ? 'Loading' : 'Unloading';
   const req   = i===1 ? ' *' : '';
-  // For stop 1: DateTime field = Loading DateTime / Delivery DateTime (existing)
-  // For stop 2-10: Loading DateTime 2-10 / Unloading DateTime 1-10
-  return `<div class="intl-stop-row" id="stop_${type}_${i}" style="display:grid;grid-template-columns:1fr 160px 120px;gap:8px;align-items:end;margin-bottom:10px">
+  return `<div id="stoprow_${type}_${i}" style="display:grid;grid-template-columns:1fr 100px 130px;gap:8px;margin-bottom:10px;align-items:end">
     <div>
       <label class="form-label" style="font-size:11px">${label} Location ${i}${req}</label>
-      ${_makeLinkedSelect(`io_${type}loc_${i}`, locId, 'Search location...')}
+      ${_locSelect(type+'_'+i, locId)}
     </div>
     <div>
       <label class="form-label" style="font-size:11px">Pallets${req}</label>
-      <input class="form-input" type="number" id="io_${type}pal_${i}"
-        value="${palVal||''}" placeholder="0" min="0">
+      <input class="form-input" type="number" id="pal_${type}_${i}" value="${palVal||''}" placeholder="0" min="0">
     </div>
     <div>
       <label class="form-label" style="font-size:11px">Date${req}</label>
-      <input class="form-input" type="date" id="io_${type}dt_${i}"
-        value="${dtVal||''}">
+      <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal||''}">
     </div>
   </div>`;
 }
 
-// ── Modal ─────────────────────────────────────────
-function openIntlCreate() { _buildIntlModal(null,{}); }
+// ─── Modal ──────────────────────────────────────
+function openIntlCreate() { _openModal(null, {}); }
 function openIntlEdit(recId) {
   const rec = INTL_ORDERS.data.find(r=>r.id===recId);
-  if(rec) _buildIntlModal(recId, rec.fields);
+  if (rec) _openModal(recId, rec.fields);
 }
 
-function _buildIntlModal(recId, f) {
+async function _openModal(recId, f) {
   const isEdit = !!recId;
-  const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
-
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-  // Pre-resolve client name for edit mode
-  if (clientId && !_clientsMap[clientId]) { _resolveClient(clientId); }
-  const clientLabel = clientId ? (_clientsMap[clientId] || '') : '';
+  const clientLabel = clientId ? (await _resolveClientName(clientId)) : '';
 
-  // Count existing loading stops
-  let initL=1, initU=1;
-  for(let i=2;i<=10;i++) { if(Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) initL=i; }
-  for(let i=2;i<=10;i++) { if(Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) initU=i; }
-  window._stopCntL = initL;
-  window._stopCntU = initU;
+  // Count filled loading stops
+  let cntL = 1, cntU = 1;
+  for (let i=2;i<=10;i++) {
+    if (Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) cntL=i;
+    if (Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) cntU=i;
+  }
+  window._sCntL = cntL;
+  window._sCntU = cntU;
 
-  // Build initial stop rows
-  const buildStops = (type) => {
-    const isL = type==='l';
-    const cnt  = isL ? initL : initU;
+  const getLocId = (prefix, i) => {
+    const arr = f[`${prefix} Location ${i}`];
+    return Array.isArray(arr) ? arr[0] : '';
+  };
+  const getDt = (prefix, mainField, i) => {
+    const raw = i===1 ? f[mainField] : f[`${prefix} DateTime ${i}`];
+    return raw ? raw.split('T')[0] : '';
+  };
+
+  const buildStopRows = (type) => {
+    const isL  = type==='l';
+    const pfx  = isL ? 'Loading' : 'Unloading';
+    const main = isL ? 'Loading DateTime' : 'Delivery DateTime';
+    const cnt  = isL ? cntL : cntU;
     let html = '';
-    for(let i=1;i<=cnt;i++){
-      const locKey = `${isL?'Loading':'Unloading'} Location ${i}`;
-      const palKey = `${isL?'Loading':'Unloading'} Pallets ${i}`;
-      // DateTime: stop 1 → Loading DateTime / Delivery DateTime; stop 2+ → Loading DateTime i / Unloading DateTime i
-      const dtKey  = i===1
-        ? (isL ? 'Loading DateTime' : 'Delivery DateTime')
-        : `${isL?'Loading':'Unloading'} DateTime ${i}`;
-      const locId  = Array.isArray(f[locKey]) ? f[locKey][0] : '';
-      html += _stopRowHTML(type, i, locId, f[palKey], f[dtKey]?.split('T')[0]);
+    for (let i=1;i<=cnt;i++) {
+      html += _stopRow(type, i, getLocId(pfx, i), f[`${pfx} Pallets ${i}`], getDt(pfx, main, i));
     }
     return html;
   };
+
+  const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
 
   const body = `
     <div class="form-grid">
       <div class="form-field span-2">
         <label class="form-label">Brand</label>
-        <select class="form-select" id="io_Brand"><option value="">— Select —</option>
+        <select class="form-select" id="f_Brand"><option value="">— Select —</option>
           ${opt(['Petras Group','DPS'],'Brand')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Type *</label>
-        <select class="form-select" id="io_Type"><option value="">— Select —</option>
+        <select class="form-select" id="f_Type"><option value="">— Select —</option>
           ${opt(['International','National'],'Type')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Direction *</label>
-        <select class="form-select" id="io_Direction"><option value="">— Select —</option>
+        <select class="form-select" id="f_Direction"><option value="">— Select —</option>
           ${opt(['Export','Import'],'Direction')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Client *</label>
-        ${_makeClientSelect('io_client', clientId, clientLabel)}
+        ${_clientSelect('client', clientId, clientLabel)}
       </div>
       <div class="form-field">
-        <label class="form-label">Price *</label>
-        <input class="form-input" type="number" id="io_Price" value="${f['Price']||''}" placeholder="0.00">
+        <label class="form-label">Price (€) *</label>
+        <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
       </div>
       <div class="form-field">
         <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="io_Goods" value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
+        <input class="form-input" type="text" id="f_Goods" value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
       </div>
       <div class="form-field">
-        <label class="form-label">Gross Weight kg</label>
-        <input class="form-input" type="number" id="io_Gross_Weight_kg" value="${f['Gross Weight kg']||''}">
+        <label class="form-label">Gross Weight (kg)</label>
+        <input class="form-input" type="number" id="f_GrossWeight" value="${f['Gross Weight kg']||''}">
       </div>
       <div class="form-field">
         <label class="form-label">Temperature °C *</label>
-        <input class="form-input" type="number" id="io_Temperature" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
+        <input class="form-input" type="number" id="f_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
       <div class="form-field">
         <label class="form-label">Refrigerator Mode *</label>
-        <select class="form-select" id="io_Refrigerator_Mode"><option value="">— Select —</option>
+        <select class="form-select" id="f_ReeferMode"><option value="">— Select —</option>
           ${opt(['Continuous','Start-Stop','No temp'],'Refrigerator Mode')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Pallet Type *</label>
-        <select class="form-select" id="io_Pallet_Type"><option value="">— Select —</option>
+        <select class="form-select" id="f_PalletType"><option value="">— Select —</option>
           ${opt(['EUR','CHEP','Industrial','Euro'],'Pallet Type')}</select>
       </div>
-      <div class="form-field" style="padding-top:22px">
+      <div class="form-field" style="padding-top:24px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="io_Pallet_Exchange" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
+          <input type="checkbox" id="f_PalletExch" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
           Pallet Exchange</label>
       </div>
     </div>
-
-    <div style="display:flex;gap:24px;margin:14px 0 20px;flex-wrap:wrap">
+    <div style="display:flex;gap:24px;margin:16px 0;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="io_High_Risk_Flag" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
-        High Risk Flag</label>
+        <input type="checkbox" id="f_HighRisk" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
+        ⚠ High Risk</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="io_Veroia_Switch" ${f['Veroia Switch ']?'checked':''} style="width:15px;height:15px">
+        <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch ']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="io_National_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
+        <input type="checkbox" id="f_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
         National Groupage</label>
     </div>
 
-    <!-- LOADING -->
-    <div style="padding-top:16px;border-top:1px solid var(--border);margin-bottom:4px">
-      <div class="detail-section-title" style="margin-bottom:12px">Loading</div>
-      <div id="intl_stops_l">${buildStops('l')}</div>
-      <button type="button" class="btn btn-ghost" id="btn_add_l"
-        style="font-size:12px;padding:5px 14px;margin-top:4px"
-        onclick="_addStop('l')" ${initL>=10?'style="display:none"':''}>
-        + Add Loading Stop
-      </button>
+    <div style="padding-top:16px;border-top:1px solid var(--border)">
+      <div class="detail-section-title" style="margin-bottom:12px">Loading Stops</div>
+      <div id="stops_l">${buildStopRows('l')}</div>
+      <button type="button" class="btn btn-ghost" id="btn_addL"
+        style="font-size:12px;padding:5px 14px" onclick="_addStop('l')"
+        ${cntL>=10?'style="display:none"':''}>+ Add Loading Stop</button>
     </div>
 
-    <!-- DELIVERY -->
-    <div style="padding-top:16px;border-top:1px solid var(--border);margin:16px 0 4px">
-      <div class="detail-section-title" style="margin-bottom:12px">Delivery</div>
-      <div id="intl_stops_u">${buildStops('u')}</div>
-      <button type="button" class="btn btn-ghost" id="btn_add_u"
-        style="font-size:12px;padding:5px 14px;margin-top:4px"
-        onclick="_addStop('u')" ${initU>=10?'style="display:none"':''}>
-        + Add Delivery Stop
-      </button>
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
+      <div class="detail-section-title" style="margin-bottom:12px">Delivery Stops</div>
+      <div id="stops_u">${buildStopRows('u')}</div>
+      <button type="button" class="btn btn-ghost" id="btn_addU"
+        style="font-size:12px;padding:5px 14px" onclick="_addStop('u')"
+        ${cntU>=10?'style="display:none"':''}>+ Add Delivery Stop</button>
     </div>`;
 
   const footer = `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-success" onclick="saveIntlOrder('${recId||''}')">
+    <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">
       ${isEdit?'Save Changes':'Submit'}
     </button>`;
 
@@ -559,91 +531,103 @@ function _buildIntlModal(recId, f) {
 }
 
 function _addStop(type) {
-  const cntKey = type==='l' ? '_stopCntL' : '_stopCntU';
-  const current = window[cntKey] || 1;
-  if (current >= 10) return;
-  const next = current + 1;
+  const cntKey = type==='l' ? '_sCntL' : '_sCntU';
+  const curr   = window[cntKey]||1;
+  if (curr >= 10) return;
+  const next = curr + 1;
   window[cntKey] = next;
-  const container = document.getElementById(`intl_stops_${type}`);
-  const div = document.createElement('div');
-  div.innerHTML = _stopRowHTML(type, next, '', '', '');
-  container.appendChild(div.firstElementChild);
-  if (next >= 10) document.getElementById(`btn_add_${type}`).style.display = 'none';
+  const wrap = document.getElementById('stops_'+type);
+  const div  = document.createElement('div');
+  div.innerHTML = _stopRow(type, next, '', '', '');
+  wrap.appendChild(div.firstElementChild);
+  if (next >= 10) document.getElementById('btn_add'+(type==='l'?'L':'U')).style.display='none';
 }
 
-// ── Save ──────────────────────────────────────────
-async function saveIntlOrder(recId) {
-  const fields = {};
+// ─── Submit ─────────────────────────────────────
+async function submitIntlOrder(recId) {
+  const btn = document.getElementById('btnSubmit');
+  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
 
-  const strF = {io_Brand:'Brand',io_Type:'Type',io_Direction:'Direction',
-    io_Goods:'Goods',io_Pallet_Type:'Pallet Type',io_Refrigerator_Mode:'Refrigerator Mode'};
-  for(const[id,f] of Object.entries(strF)){
-    const el=document.getElementById(id); if(el?.value?.trim()) fields[f]=el.value.trim();
-  }
-  const numF = {io_Price:'Price',io_Temperature:'Temperature °C',io_Gross_Weight_kg:'Gross Weight kg'};
-  for(const[id,f] of Object.entries(numF)){
-    const el=document.getElementById(id);
-    if(el?.value!==''&&el?.value!==undefined) fields[f]=parseFloat(el.value);
-  }
-  const chkF = {io_Pallet_Exchange:'Pallet Exchange',io_High_Risk_Flag:'High Risk Flag',
-    io_Veroia_Switch:'Veroia Switch ',io_National_Groupage:'National Groupage'};
-  for(const[id,f] of Object.entries(chkF)){
-    const el=document.getElementById(id); if(el) fields[f]=el.checked;
-  }
-
-  // Client
-  const clientVal = document.getElementById('io_client_v')?.value;
-  if (clientVal) fields['Client'] = [clientVal];
-
-  // Loading stops 1-10
-  for(let i=1;i<=10;i++){
-    const locEl = document.getElementById(`io_lloc_${i}_v`);
-    const palEl = document.getElementById(`io_lpal_${i}`);
-    const dtEl  = document.getElementById(`io_ldt_${i}`);
-    if (!locEl && !palEl) break;
-    if (locEl?.value) fields[`Loading Location ${i}`] = [locEl.value];
-    if (palEl?.value!=='') fields[`Loading Pallets ${i}`] = parseFloat(palEl.value)||0;
-    // DateTime: stop 1 → Loading DateTime; stop 2+ → Loading DateTime i
-    const dtField = i===1 ? 'Loading DateTime' : `Loading DateTime ${i}`;
-    if (dtEl?.value) fields[dtField] = dtEl.value;
-  }
-
-  // Delivery DateTime for Week Number (use stop 1 delivery date)
-  const del1dt = document.getElementById('io_udt_1')?.value;
-  if (del1dt) {
-    fields['Delivery DateTime'] = del1dt;
-    fields['Week Number'] = _airtableWeekNum(del1dt);
-  }
-
-  // Unloading stops 1-10
-  for(let i=1;i<=10;i++){
-    const locEl = document.getElementById(`io_uloc_${i}_v`);
-    const palEl = document.getElementById(`io_upal_${i}`);
-    const dtEl  = document.getElementById(`io_udt_${i}`);
-    if (!locEl && !palEl) break;
-    if (locEl?.value) fields[`Unloading Location ${i}`] = [locEl.value];
-    if (palEl?.value!=='') fields[`Unloading Pallets ${i}`] = parseFloat(palEl.value)||0;
-    // DateTime: stop 1 → handled above as Delivery DateTime; stop 2+ → Unloading DateTime i
-    if (i > 1 && dtEl?.value) fields[`Unloading DateTime ${i}`] = dtEl.value;
-    if (i === 1 && dtEl?.value) fields[`Unloading DateTime 1`] = dtEl.value;
-  }
-
-  // Validation
-  if (!fields['Direction'])            { alert('Direction is required'); return; }
-  if (!fields['Client'])               { alert('Client is required'); return; }
-  if (!fields['Loading Location 1'])   { alert('Loading Location 1 is required'); return; }
-  if (!fields['Unloading Location 1']) { alert('Delivery Location 1 is required'); return; }
-  if (!fields['Loading DateTime'])     { alert('Loading Date (Stop 1) is required'); return; }
-  if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); return; }
-
-  const btn = event.target; btn.textContent='Saving...'; btn.disabled=true;
   try {
-    if(recId) await atPatch(TABLES.ORDERS, recId, fields);
-    else      await atCreate(TABLES.ORDERS, fields);
+    const fields = {};
+
+    // Strings
+    const sv = id => document.getElementById(id)?.value?.trim()||'';
+    if (sv('f_Brand'))     fields['Brand']             = sv('f_Brand');
+    if (sv('f_Type'))      fields['Type']              = sv('f_Type');
+    if (sv('f_Direction')) fields['Direction']         = sv('f_Direction');
+    if (sv('f_Goods'))     fields['Goods']             = sv('f_Goods');
+    if (sv('f_PalletType'))fields['Pallet Type']       = sv('f_PalletType');
+    if (sv('f_ReeferMode'))fields['Refrigerator Mode'] = sv('f_ReeferMode');
+
+    // Numbers
+    const nv = id => { const v=document.getElementById(id)?.value; return v!==''&&v!=null?parseFloat(v):null; };
+    const price = nv('f_Price');     if (price!=null)  fields['Price']          = price;
+    const temp  = nv('f_Temp');      if (temp!=null)   fields['Temperature °C'] = temp;
+    const gw    = nv('f_GrossWeight');if (gw!=null)    fields['Gross Weight kg']= gw;
+
+    // Checkboxes
+    const ck = id => !!document.getElementById(id)?.checked;
+    fields['Pallet Exchange'] = ck('f_PalletExch');
+    fields['High Risk Flag']  = ck('f_HighRisk');
+    fields['Veroia Switch ']  = ck('f_VeroiaSwitch');
+    fields['National Groupage'] = ck('f_Groupage');
+
+    // Client
+    const clientId = document.getElementById('lv_client')?.value;
+    if (clientId) fields['Client'] = [clientId];
+
+    // Loading stops 1-10
+    for (let i=1;i<=10;i++) {
+      const locId = document.getElementById('lv_l_'+i)?.value;
+      const pal   = document.getElementById('pal_l_'+i)?.value;
+      const dt    = document.getElementById('dt_l_'+i)?.value;
+      if (!locId && !pal && !dt) { if(i>1) break; else continue; }
+      if (locId) fields[`Loading Location ${i}`] = [locId];
+      if (pal)   fields[`Loading Pallets ${i}`]  = parseFloat(pal)||0;
+      if (dt) {
+        if (i===1) fields['Loading DateTime'] = dt;
+        else       fields[`Loading DateTime ${i}`] = dt;
+      }
+    }
+
+    // Delivery stops 1-10
+    let del1dt = null;
+    for (let i=1;i<=10;i++) {
+      const locId = document.getElementById('lv_u_'+i)?.value;
+      const pal   = document.getElementById('pal_u_'+i)?.value;
+      const dt    = document.getElementById('dt_u_'+i)?.value;
+      if (!locId && !pal && !dt) { if(i>1) break; else continue; }
+      if (locId) fields[`Unloading Location ${i}`] = [locId];
+      if (pal)   fields[`Unloading Pallets ${i}`]  = parseFloat(pal)||0;
+      if (dt) {
+        fields[`Unloading DateTime ${i}`] = dt;
+        if (i===1) { fields['Delivery DateTime'] = dt; del1dt = dt; }
+      }
+    }
+
+    // Week number from first delivery date
+    if (del1dt) fields['Week Number'] = _weekNum(del1dt);
+
+    // Validate required
+    if (!fields['Direction'])            { alert('Direction is required'); throw new Error('validation'); }
+    if (!clientId)                       { alert('Client is required'); throw new Error('validation'); }
+    if (!fields['Loading Location 1'])   { alert('Loading Location 1 is required'); throw new Error('validation'); }
+    if (!fields['Unloading Location 1']) { alert('Delivery Location 1 is required'); throw new Error('validation'); }
+    if (!fields['Loading DateTime'])     { alert('Loading Date (Stop 1) is required'); throw new Error('validation'); }
+    if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); throw new Error('validation'); }
+
+    if (recId) await atPatch(TABLES.ORDERS, recId, fields);
+    else       await atCreate(TABLES.ORDERS, fields);
+
     invalidateCache(TABLES.ORDERS);
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
-    toast(recId?'Order updated':'Order created');
+    toast(recId ? 'Order updated ✓' : 'Order created ✓');
     await renderOrdersIntl();
-  } catch(e){ btn.textContent='Save'; btn.disabled=false; alert('Error: '+e.message); }
+
+  } catch(e) {
+    if (e.message !== 'validation') alert('Error saving: ' + e.message);
+    if (btn) { btn.textContent = recId ? 'Save Changes' : 'Submit'; btn.disabled = false; }
+  }
 }
