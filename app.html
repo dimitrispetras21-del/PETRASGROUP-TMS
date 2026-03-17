@@ -78,7 +78,7 @@ body {
 
 /* Logo area */
 .sidebar-logo {
-  height: 58px;
+  height: 72px;
   display: flex;
   align-items: center;
   padding: 0 18px;
@@ -979,7 +979,7 @@ tbody tr:hover { background: var(--bg-hover); }
 <nav class="sidebar" id="sidebar">
 
   <div class="sidebar-logo">
-    <img src="logo.png" alt="Petras Group" style="height:34px;filter:brightness(0)invert(1);opacity:0.92;max-width:180px;object-fit:contain;">
+    <img src="logo.png" alt="Petras Group" style="height:52px;filter:brightness(0)invert(1);opacity:0.92;max-width:190px;object-fit:contain;">
   </div>
 
   <div class="sidebar-nav" id="sidebarNav">
@@ -1146,17 +1146,30 @@ const ICONS = {
 function renderNav() {
   const nav = document.getElementById('sidebarNav');
   let html = '';
-  for (const group of NAV) {
-    if (can(group.perm) === 'none') continue;
-    html += `<div class="nav-section">${group.section}</div>`;
+  NAV.forEach((group, gi) => {
+    if (can(group.perm) === 'none') return;
+    const isOpen = gi === 0;
+    const sectionId = 'navgrp_' + gi;
+    html += '<div class="nav-section ' + (isOpen ? '' : 'collapsed-section') + '" onclick="toggleNavSection(this,\'' + sectionId + '\')">'
+          + '<span>' + group.section + '</span>'
+          + '<span class="chevron">&#9662;</span>'
+          + '</div>';
+    html += '<div class="nav-group-items ' + (isOpen ? '' : 'collapsed-items') + '" id="' + sectionId + '">';
     for (const item of group.items) {
-      html += `<div class="nav-item" data-tooltip="${item.label}" onclick="navigate('${item.id}')" id="nav_${item.id}">
-        <div class="nav-icon">${ICONS[item.icon]||item.icon}</div>
-        <span class="nav-label">${item.label}</span>
-      </div>`;
+      html += '<div class="nav-item" data-tooltip="' + item.label + '" onclick="navigate(\'' + item.id + '\')" id="nav_' + item.id + '">'
+            + '<div class="nav-icon">' + (ICONS[item.icon]||item.icon) + '</div>'
+            + '<span class="nav-label">' + item.label + '</span>'
+            + '</div>';
     }
-  }
+    html += '</div>';
+  });
   nav.innerHTML = html;
+}
+
+function toggleNavSection(el, groupId) {
+  const items = document.getElementById(groupId);
+  const isCollapsed = el.classList.toggle('collapsed-section');
+  items.classList.toggle('collapsed-items', isCollapsed);
 }
 
 function toggleSidebar() {
