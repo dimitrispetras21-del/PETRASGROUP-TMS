@@ -764,7 +764,7 @@ async function _scanExtract() {
         'anthropic-dangerous-direct-browser-access': 'true'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-opus-4-6',
         max_tokens: 1000,
         system: `You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
 Extract order data from CMR waybills, delivery orders, or transport documents.
