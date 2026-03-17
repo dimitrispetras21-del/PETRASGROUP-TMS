@@ -10,13 +10,46 @@ let _locationsArr = [];
 
 // ── Reference data ────────────────────────────────
 async function _loadRefData() {
-  if (Object.keys(_clientsMap).length && _locationsArr.length) return;
-  const [clients, locs] = await Promise.all([atGet(TABLES.CLIENTS), atGet(TABLES.LOCATIONS)]);
-  clients.forEach(r => { _clientsMap[r.id] = r.fields['Company Name'] || r.id.slice(-6); });
+  if (_locationsArr.length) return; // already loaded
+  // Locations: manageable size, load all upfront
+  const locs = await atGet(TABLES.LOCATIONS);
   _locationsArr = locs
     .map(r => ({ id: r.id, label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ') }))
     .sort((a,b) => a.label.localeCompare(b.label));
   _locationsArr.forEach(l => { _locationsMap[l.id] = l.label; });
+}
+
+// Clients: 4700+ records — search via API on-demand, cache results
+const _clientSearchCache = {};
+async function _searchClients(q) {
+  if (!q || q.length < 2) return [];
+  const key = q.toLowerCase();
+  if (_clientSearchCache[key]) return _clientSearchCache[key];
+  const formula = `SEARCH(LOWER("${q.replace(/"/g,'')}"), LOWER({Company Name}))`;
+  const records = await atGet(TABLES.CLIENTS, formula, false);
+  const results = records
+    .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .sort((a,b) => a.label.localeCompare(b.label))
+    .slice(0, 30);
+  _clientSearchCache[key] = results;
+  // Also populate clientsMap for display
+  results.forEach(c => { _clientsMap[c.id] = c.label; });
+  return results;
+}
+
+// Load a single client by ID (for edit mode display)
+async function _resolveClient(recId) {
+  if (_clientsMap[recId]) return _clientsMap[recId];
+  try {
+    const res = await fetch(
+      `https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${recId}`,
+      { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+    );
+    const d = await res.json();
+    const name = d.fields?.['Company Name'] || recId.slice(-6);
+    _clientsMap[recId] = name;
+    return name;
+  } catch(e) { return recId.slice(-6); }
 }
 
 function _clientName(f) {
@@ -302,13 +335,12 @@ function _makeLinkedSelect(id, currentId, placeholder) {
   </div>`;
 }
 
-function _makeClientSelect(id, currentId) {
-  const current = currentId ? (_clientsMap[currentId]||currentId.slice(-6)) : '';
+function _makeClientSelect(id, currentId, currentLabel) {
+  const display = currentLabel || (currentId ? (_clientsMap[currentId]||'') : '');
   return `<div style="position:relative">
     <input class="form-input" id="${id}_s" autocomplete="off"
-      value="${current}" placeholder="Search client..."
-      oninput="_filterLinkedOpts('${id}',this.value,'client')"
-      onfocus="_filterLinkedOpts('${id}',this.value,'client')"
+      value="${display}" placeholder="Type to search clients..."
+      oninput="_clientSearchDebounced('${id}',this.value)"
       onblur="_hideDropdown('${id}')">
     <input type="hidden" id="${id}_v" value="${currentId||''}">
     <div id="${id}_d" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
@@ -317,14 +349,31 @@ function _makeClientSelect(id, currentId) {
   </div>`;
 }
 
+let _clientSearchTimer = null;
+function _clientSearchDebounced(id, q) {
+  clearTimeout(_clientSearchTimer);
+  const drop = document.getElementById(id+'_d');
+  if (q.length < 2) { if(drop) drop.style.display='none'; return; }
+  if (drop) { drop.style.display='block'; drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">Searching...</div>'; }
+  _clientSearchTimer = setTimeout(async () => {
+    const results = await _searchClients(q);
+    if (!drop) return;
+    if (!results.length) { drop.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">No results</div>'; return; }
+    drop.style.display = 'block';
+    drop.innerHTML = results.map(o =>
+      `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\'")}',this)"
+        style="padding:8px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+        onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">${o.label}</div>`
+    ).join('');
+  }, 300);
+}
+
 function _hideDropdown(id) {
   setTimeout(() => { const d=document.getElementById(id+'_d'); if(d) d.style.display='none'; }, 200);
 }
 
 function _filterLinkedOpts(id, q, type) {
-  const pool = type==='client'
-    ? Object.entries(_clientsMap).map(([i,l])=>({id:i,label:l})).sort((a,b)=>a.label.localeCompare(b.label))
-    : _locationsArr;
+  const pool = _locationsArr; // locations only
   const filtered = q.trim()
     ? pool.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
     : pool.slice(0,25);
@@ -382,6 +431,9 @@ function _buildIntlModal(recId, f) {
   const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
 
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
+  // Pre-resolve client name for edit mode
+  if (clientId && !_clientsMap[clientId]) { _resolveClient(clientId); }
+  const clientLabel = clientId ? (_clientsMap[clientId] || '') : '';
 
   // Count existing loading stops
   let initL=1, initU=1;
@@ -427,7 +479,7 @@ function _buildIntlModal(recId, f) {
       </div>
       <div class="form-field">
         <label class="form-label">Client *</label>
-        ${_makeClientSelect('io_client', clientId)}
+        ${_makeClientSelect('io_client', clientId, clientLabel)}
       </div>
       <div class="form-field">
         <label class="form-label">Price *</label>
