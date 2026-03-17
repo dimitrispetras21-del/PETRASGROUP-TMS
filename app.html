@@ -2050,7 +2050,7 @@ function buildEntityModal(entityKey, recId, fields) {
         input = `<textarea class="form-textarea" id="ef_${field.f.replace(/\s/g,'_')}" rows="3">${val}</textarea>`;
       } else if (field.type === 'select') {
         input = `<select class="form-select" id="ef_${field.f.replace(/\s/g,'_')}">
-          <option value="">— Επιλογή —</option>
+          <option value="">— Select —</option>
           ${field.options.map(o => `<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
         </select>`;
       } else if (field.type === 'date') {
