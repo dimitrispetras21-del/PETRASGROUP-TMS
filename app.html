@@ -12,20 +12,29 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* Sidebar + header stay dark navy */
   --navy:        #091828;
   --navy-mid:    #0D2140;
   --navy-light:  #132E52;
   --navy-hover:  #1A3A62;
   --silver:      #B8C4D0;
-  --silver-dim:  #6A7D90;
+  --silver-dim:  #8A9BB0;
   --silver-light:#D6DDE5;
-  --white:       #EEF2F7;
-  --border:      rgba(184,196,208,0.12);
-  --border-mid:  rgba(184,196,208,0.22);
+  --white:       #FFFFFF;
+
+  /* Main content area — light */
+  --bg:          #F4F6F9;
+  --bg-card:     #FFFFFF;
+  --text:        #0D1E32;
+  --text-mid:    #4A5A6A;
+  --text-dim:    #8A9BB0;
+  --border:      rgba(0,0,0,0.07);
+  --border-mid:  rgba(0,0,0,0.12);
+
   --gold:        #F0A500;
-  --success:     #2EC4A0;
-  --danger:      #E05252;
-  --warning:     #E8A020;
+  --success:     #1EA882;
+  --danger:      #D94040;
+  --warning:     #D08020;
   --sidebar-w:   240px;
   --sidebar-col: 64px;
   --header-h:    56px;
@@ -33,8 +42,8 @@
 
 body {
   font-family: 'DM Sans', sans-serif;
-  background: var(--navy);
-  color: var(--white);
+  background: var(--bg);
+  color: var(--text);
   min-height: 100vh;
   display: flex;
   overflow: hidden;
@@ -226,7 +235,7 @@ body {
 /* Top header */
 .topbar {
   height: var(--header-h);
-  background: var(--navy-mid);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
@@ -240,12 +249,12 @@ body {
   font-family: 'Syne', sans-serif;
   font-size: 15px;
   font-weight: 600;
-  color: var(--white);
+  color: var(--text);
 }
 
 .topbar-breadcrumb {
   font-size: 12px;
-  color: var(--silver-dim);
+  color: var(--text-dim);
 }
 
 .topbar-right {
@@ -259,17 +268,17 @@ body {
   align-items: center;
   gap: 8px;
   padding: 6px 12px;
-  background: var(--navy-light);
+  background: var(--bg);
   border-radius: 20px;
   border: 1px solid var(--border-mid);
   font-size: 12px;
-  color: var(--silver);
+  color: var(--text-mid);
 }
 
 .user-avatar {
   width: 24px;
   height: 24px;
-  background: var(--navy-hover);
+  background: var(--navy-mid);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -302,15 +311,15 @@ body {
   border-radius: 6px;
   font-family: 'DM Sans', sans-serif;
   font-size: 12px;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   cursor: pointer;
   transition: all 0.15s;
 }
 
 .btn-logout:hover {
-  background: rgba(224,82,82,0.1);
-  border-color: rgba(224,82,82,0.3);
-  color: #E88;
+  background: rgba(217,64,64,0.07);
+  border-color: rgba(217,64,64,0.25);
+  color: var(--danger);
 }
 
 /* Content area */
@@ -318,8 +327,9 @@ body {
   flex: 1;
   overflow-y: auto;
   padding: 28px 32px;
+  background: var(--bg);
   scrollbar-width: thin;
-  scrollbar-color: var(--navy-hover) transparent;
+  scrollbar-color: #CBD5E0 transparent;
 }
 
 /* ═══════════════════════════════════════════════
@@ -338,12 +348,12 @@ body {
   font-family: 'Syne', sans-serif;
   font-size: 22px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--text);
 }
 
 .page-sub {
   font-size: 13px;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   margin-top: 3px;
 }
 
@@ -356,21 +366,21 @@ body {
 }
 
 .kpi-card {
-  background: var(--navy-mid);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px 22px;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.kpi-card:hover { border-color: var(--border-mid); }
+.kpi-card:hover { border-color: var(--border-mid); box-shadow: 0 4px 16px rgba(0,0,0,0.06); }
 
 .kpi-label {
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   margin-bottom: 8px;
 }
 
@@ -378,13 +388,13 @@ body {
   font-family: 'Syne', sans-serif;
   font-size: 28px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--text);
   line-height: 1;
 }
 
 .kpi-delta {
   font-size: 12px;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   margin-top: 6px;
 }
 
@@ -408,15 +418,14 @@ body {
 }
 
 .btn-primary {
-  background: var(--navy-light);
-  border: 1px solid var(--border-mid);
-  color: var(--silver-light);
+  background: var(--navy-mid);
+  border: 1px solid var(--navy-mid);
+  color: #fff;
 }
 
 .btn-primary:hover {
-  background: var(--navy-hover);
-  color: var(--white);
-  border-color: rgba(184,196,208,0.35);
+  background: var(--navy-light);
+  color: #fff;
 }
 
 .btn-success {
@@ -437,10 +446,11 @@ body {
 
 /* Table */
 .table-wrap {
-  background: var(--navy-mid);
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
+  box-shadow: 0 1px 8px rgba(0,0,0,0.05);
 }
 
 .table-toolbar {
@@ -449,24 +459,25 @@ body {
   gap: 12px;
   padding: 14px 18px;
   border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
 }
 
 .search-input {
   flex: 1;
   max-width: 300px;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
+  background: var(--bg);
+  border: 1px solid var(--border-mid);
   border-radius: 7px;
   padding: 7px 12px;
   font-family: 'DM Sans', sans-serif;
   font-size: 13px;
-  color: var(--white);
+  color: var(--text);
   outline: none;
   transition: border-color 0.2s;
 }
 
-.search-input:focus { border-color: var(--border-mid); }
-.search-input::placeholder { color: var(--silver-dim); }
+.search-input:focus { border-color: rgba(13,33,64,0.3); }
+.search-input::placeholder { color: var(--text-dim); }
 
 table {
   width: 100%;
@@ -479,16 +490,17 @@ thead th {
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   text-align: left;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  background: var(--bg);
 }
 
 tbody td {
   padding: 12px 16px;
   font-size: 13px;
-  color: var(--silver-light);
+  color: var(--text-mid);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
 }
@@ -500,7 +512,7 @@ tbody tr {
   cursor: pointer;
 }
 
-tbody tr:hover { background: rgba(255,255,255,0.025); }
+tbody tr:hover { background: rgba(13,33,64,0.025); }
 
 /* Status badges */
 .badge {
@@ -531,7 +543,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
 .spinner {
   width: 18px; height: 18px;
   border: 2px solid var(--border-mid);
-  border-top-color: var(--silver);
+  border-top-color: var(--navy-mid);
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
@@ -546,7 +558,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
 }
 
 .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
-.empty-state h3 { font-size: 16px; color: var(--silver); margin-bottom: 6px; }
+.empty-state h3 { font-size: 16px; color: var(--text-mid); margin-bottom: 6px; }
 .empty-state p  { font-size: 13px; }
 
 /* Access denied */
@@ -580,7 +592,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
 .modal-overlay.open { display: flex; }
 
 .modal {
-  background: var(--navy-mid);
+  background: var(--bg-card);
   border: 1px solid var(--border-mid);
   border-radius: 14px;
   width: 560px;
@@ -608,7 +620,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
   font-family: 'Syne', sans-serif;
   font-size: 16px;
   font-weight: 700;
-  color: var(--white);
+  color: var(--text);
 }
 
 .modal-close {
@@ -616,12 +628,12 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
   display: flex; align-items: center; justify-content: center;
   border-radius: 6px;
   cursor: pointer;
-  color: var(--silver-dim);
+  color: var(--text-dim);
   font-size: 18px;
   transition: all 0.15s;
 }
 
-.modal-close:hover { background: var(--navy-hover); color: var(--white); }
+.modal-close:hover { background: var(--bg); color: var(--text); }
 
 .modal-body { padding: 24px; }
 
@@ -650,30 +662,29 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--silver-dim);
+  color: var(--text-dim);
 }
 
 .form-input, .form-select, .form-textarea {
-  background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
+  background: var(--bg);
+  border: 1px solid var(--border-mid);
   border-radius: 7px;
   padding: 10px 13px;
   font-family: 'DM Sans', sans-serif;
   font-size: 14px;
-  color: var(--white);
+  color: var(--text);
   outline: none;
   transition: border-color 0.2s;
   width: 100%;
 }
 
 .form-input:focus, .form-select:focus, .form-textarea:focus {
-  border-color: var(--border-mid);
-  background: rgba(184,196,208,0.06);
+  border-color: rgba(13,33,64,0.4);
 }
 
-.form-input::placeholder { color: rgba(106,125,144,0.5); }
+.form-input::placeholder { color: var(--text-dim); }
 .form-select { cursor: pointer; }
-.form-select option { background: var(--navy-mid); }
+.form-select option { background: #fff; color: var(--text); }
 .form-textarea { resize: vertical; min-height: 80px; }
 
 /* ═══════════════════════════════════════════════
@@ -690,7 +701,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
 }
 
 .coming-soon .cs-icon { font-size: 48px; }
-.coming-soon h3 { font-family: 'Syne', sans-serif; font-size: 18px; color: var(--silver); }
+.coming-soon h3 { font-family: 'Syne', sans-serif; font-size: 18px; color: var(--text-mid); }
 .coming-soon p { font-size: 13px; }
 
 </style>
@@ -701,7 +712,7 @@ tbody tr:hover { background: rgba(255,255,255,0.025); }
 <nav class="sidebar" id="sidebar">
 
   <div class="sidebar-logo">
-    <img src="logo.png" alt="Petras Group" style="height:28px;filter:brightness(0)invert(1);opacity:0.9;max-width:160px;object-fit:contain;">
+    <img src="logo.png" alt="Petras Group" style="height:34px;filter:brightness(0)invert(1);opacity:0.92;max-width:180px;object-fit:contain;">
   </div>
 
   <div class="sidebar-nav" id="sidebarNav">
@@ -1031,7 +1042,7 @@ async function renderDashboard() {
 
       <div class="table-wrap">
         <div class="table-toolbar">
-          <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--silver)">Ενεργά Trips</span>
+          <span style="font-family:'Syne',sans-serif;font-size:13px;font-weight:600;color:var(--text)">Ενεργά Trips</span>
         </div>
         <table>
           <thead><tr>
