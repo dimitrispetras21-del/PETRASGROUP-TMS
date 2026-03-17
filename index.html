@@ -4,116 +4,185 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --navy: #0B1628;
-    --navy-mid: #132040;
-    --navy-light: #1E3058;
-    --gold: #F4A535;
-    --gold-dim: #C4832A;
-    --white: #F0F4FF;
-    --muted: #6B7FA3;
-    --danger: #E63946;
-    --success: #2EC4B6;
-    --border: rgba(244,165,53,0.15);
+    --volvo-dark:    #0D1F35;
+    --volvo-navy:    #003057;
+    --volvo-mid:     #0A2744;
+    --silver:        #B8C4D0;
+    --silver-light:  #D6DDE5;
+    --silver-dim:    #7A8A9A;
+    --white:         #EEF2F7;
+    --border:        rgba(184,196,208,0.15);
+    --border-focus:  rgba(184,196,208,0.45);
+    --danger:        #C94040;
   }
 
   body {
     font-family: 'DM Sans', sans-serif;
-    background: var(--navy);
+    background: var(--volvo-dark);
     min-height: 100vh;
+    display: flex;
+    align-items: stretch;
+    overflow: hidden;
+  }
+
+  /* Left panel — branding */
+  .left-panel {
+    flex: 1;
+    background: linear-gradient(160deg, var(--volvo-navy) 0%, var(--volvo-dark) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 52px 56px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .left-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(184,196,208,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(184,196,208,0.03) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  /* Diagonal silver stripe */
+  .left-panel::after {
+    content: '';
+    position: absolute;
+    top: -20%;
+    right: -60px;
+    width: 3px;
+    height: 160%;
+    background: linear-gradient(180deg, transparent, rgba(184,196,208,0.2), rgba(184,196,208,0.08), transparent);
+    transform: rotate(-8deg);
+  }
+
+  .panel-logo {
+    position: relative;
+    z-index: 2;
+  }
+
+  .panel-logo img {
+    height: 48px;
+    filter: brightness(0) invert(1);
+    opacity: 0.92;
+  }
+
+  .panel-tagline {
+    position: relative;
+    z-index: 2;
+  }
+
+  .panel-tagline h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 38px;
+    line-height: 1.15;
+    color: var(--white);
+    letter-spacing: -0.5px;
+    margin-bottom: 16px;
+  }
+
+  .panel-tagline h1 span {
+    color: var(--silver);
+    font-weight: 400;
+  }
+
+  .panel-tagline p {
+    font-size: 14px;
+    color: var(--silver-dim);
+    line-height: 1.6;
+    max-width: 320px;
+    font-weight: 300;
+  }
+
+  .panel-stats {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: 40px;
+  }
+
+  .stat { }
+  .stat-num {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.5px;
+  }
+  .stat-label {
+    font-size: 11px;
+    color: var(--silver-dim);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  /* Right panel — login form */
+  .right-panel {
+    width: 440px;
+    flex-shrink: 0;
+    background: var(--volvo-mid);
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow: hidden;
-    position: relative;
-  }
-
-  /* Background grid */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background-image:
-      linear-gradient(rgba(244,165,53,0.04) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(244,165,53,0.04) 1px, transparent 1px);
-    background-size: 48px 48px;
-    pointer-events: none;
-  }
-
-  /* Glow orbs */
-  .orb {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(80px);
-    pointer-events: none;
-    opacity: 0.35;
-  }
-  .orb-1 { width: 500px; height: 500px; background: #1E3A6E; top: -100px; left: -100px; }
-  .orb-2 { width: 400px; height: 400px; background: #F4A53520; bottom: -80px; right: -80px; }
-
-  .login-card {
-    position: relative;
-    z-index: 10;
-    width: 420px;
-    background: linear-gradient(145deg, #132040, #0F1E38);
-    border: 1px solid var(--border);
-    border-radius: 20px;
     padding: 48px 44px;
-    box-shadow: 0 40px 80px rgba(0,0,0,0.5), inset 0 1px 0 rgba(244,165,53,0.1);
-    animation: cardIn 0.6s cubic-bezier(0.22,1,0.36,1) forwards;
+    border-left: 1px solid var(--border);
+    position: relative;
   }
 
-  @keyframes cardIn {
-    from { opacity: 0; transform: translateY(24px); }
-    to   { opacity: 1; transform: translateY(0); }
+  .right-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, var(--silver), transparent);
+    opacity: 0.3;
   }
 
-  .logo-area {
-    text-align: center;
-    margin-bottom: 40px;
+  .form-wrap {
+    width: 100%;
+    animation: formIn 0.5s cubic-bezier(0.22,1,0.36,1) forwards;
   }
 
-  .logo-badge {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px; height: 56px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-dim));
-    border-radius: 14px;
-    margin-bottom: 16px;
-    box-shadow: 0 8px 24px rgba(244,165,53,0.3);
+  @keyframes formIn {
+    from { opacity: 0; transform: translateX(16px); }
+    to   { opacity: 1; transform: translateX(0); }
   }
 
-  .logo-badge svg { width: 28px; height: 28px; fill: var(--navy); }
+  .form-header { margin-bottom: 40px; }
 
-  .logo-name {
+  .form-header h2 {
     font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 20px;
+    font-size: 24px;
+    font-weight: 700;
     color: var(--white);
-    letter-spacing: 0.5px;
+    letter-spacing: -0.3px;
+    margin-bottom: 6px;
   }
 
-  .logo-sub {
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-top: 4px;
+  .form-header p {
+    font-size: 13px;
+    color: var(--silver-dim);
+    font-weight: 300;
   }
 
   .field-group { margin-bottom: 20px; }
 
   label {
     display: block;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
-    color: var(--muted);
-    letter-spacing: 1.5px;
+    color: var(--silver-dim);
+    letter-spacing: 2px;
     text-transform: uppercase;
     margin-bottom: 8px;
   }
@@ -121,8 +190,8 @@
   input {
     width: 100%;
     background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(244,165,53,0.15);
-    border-radius: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
     padding: 13px 16px;
     font-family: 'DM Sans', sans-serif;
     font-size: 15px;
@@ -132,93 +201,136 @@
   }
 
   input:focus {
-    border-color: var(--gold);
-    background: rgba(244,165,53,0.06);
+    border-color: var(--border-focus);
+    background: rgba(184,196,208,0.06);
   }
 
-  input::placeholder { color: var(--muted); }
+  input::placeholder { color: rgba(122,138,154,0.6); }
 
   .btn-login {
     width: 100%;
-    margin-top: 28px;
+    margin-top: 32px;
     padding: 14px;
-    background: linear-gradient(135deg, var(--gold), var(--gold-dim));
-    border: none;
-    border-radius: 10px;
+    background: linear-gradient(135deg, #1E4A7A, var(--volvo-navy));
+    border: 1px solid rgba(184,196,208,0.25);
+    border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 14px;
-    letter-spacing: 1px;
+    font-size: 13px;
+    letter-spacing: 2px;
     text-transform: uppercase;
-    color: var(--navy);
+    color: var(--silver-light);
     cursor: pointer;
-    transition: opacity 0.2s, transform 0.1s;
-    box-shadow: 0 8px 24px rgba(244,165,53,0.25);
+    transition: all 0.2s;
+    box-shadow: 0 4px 20px rgba(0,48,87,0.4);
   }
 
-  .btn-login:hover { opacity: 0.9; transform: translateY(-1px); }
+  .btn-login:hover {
+    background: linear-gradient(135deg, #2A5A8A, #0A4070);
+    border-color: rgba(184,196,208,0.4);
+    color: var(--white);
+    transform: translateY(-1px);
+    box-shadow: 0 8px 28px rgba(0,48,87,0.5);
+  }
+
   .btn-login:active { transform: translateY(0); }
 
   .error-msg {
     display: none;
     margin-top: 14px;
     padding: 11px 14px;
-    background: rgba(230,57,70,0.12);
-    border: 1px solid rgba(230,57,70,0.3);
-    border-radius: 8px;
-    color: #FF6B75;
+    background: rgba(201,64,64,0.1);
+    border: 1px solid rgba(201,64,64,0.25);
+    border-radius: 7px;
+    color: #E88;
     font-size: 13px;
     text-align: center;
   }
 
   .version {
+    position: absolute;
+    bottom: 24px;
+    left: 0; right: 0;
     text-align: center;
-    margin-top: 32px;
-    font-size: 11px;
-    color: rgba(107,127,163,0.5);
-    letter-spacing: 1px;
+    font-size: 10px;
+    color: rgba(122,138,154,0.35);
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
+  @media (max-width: 768px) {
+    body { flex-direction: column; }
+    .left-panel { padding: 36px 28px 32px; flex: none; min-height: 220px; }
+    .panel-tagline h1 { font-size: 26px; }
+    .panel-stats { gap: 24px; }
+    .right-panel { width: 100%; padding: 36px 28px; border-left: none; border-top: 1px solid var(--border); }
   }
 </style>
 </head>
 <body>
-<div class="orb orb-1"></div>
-<div class="orb orb-2"></div>
 
-<div class="login-card">
-  <div class="logo-area">
-    <div class="logo-badge">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M20 8h-3V4H3c-1.1 0-2 .9-2 2v11h2c0 1.66 1.34 3 3 3s3-1.34 3-3h6c0 1.66 1.34 3 3 3s3-1.34 3-3h2v-5l-3-4zM6 18.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm13.5-9l1.96 2.5H17V9.5h2.5zm-1.5 9c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5z"/>
-      </svg>
+<!-- LEFT BRANDING PANEL -->
+<div class="left-panel">
+  <div class="panel-logo">
+    <img src="logo.jpg" alt="Petras Group">
+  </div>
+
+  <div class="panel-tagline">
+    <h1>Transport<br><span>Management</span><br>System</h1>
+    <p>Πλήρης διαχείριση δρομολογίων, στόλου και κόστους για διεθνείς μεταφορές.</p>
+  </div>
+
+  <div class="panel-stats">
+    <div class="stat">
+      <div class="stat-num">36</div>
+      <div class="stat-label">Trucks</div>
     </div>
-    <div class="logo-name">PETRAS GROUP</div>
-    <div class="logo-sub">Transport Management System</div>
+    <div class="stat">
+      <div class="stat-num">60</div>
+      <div class="stat-label">Drivers</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">397</div>
+      <div class="stat-label">Partners</div>
+    </div>
+    <div class="stat">
+      <div class="stat-num">4.7K</div>
+      <div class="stat-label">Clients</div>
+    </div>
+  </div>
+</div>
+
+<!-- RIGHT LOGIN PANEL -->
+<div class="right-panel">
+  <div class="form-wrap">
+    <div class="form-header">
+      <h2>Καλώς ήρθατε</h2>
+      <p>Συνδεθείτε με τα στοιχεία σας</p>
+    </div>
+
+    <div class="field-group">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="Εισάγετε username" autocomplete="username">
+    </div>
+
+    <div class="field-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="btn-login" onclick="doLogin()">Είσοδος →</button>
+    <div class="error-msg" id="errMsg">Λάθος username ή password</div>
   </div>
 
-  <div class="field-group">
-    <label>Username</label>
-    <input type="text" id="username" placeholder="Εισάγετε username" autocomplete="username">
-  </div>
-
-  <div class="field-group">
-    <label>Password</label>
-    <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
-  </div>
-
-  <button class="btn-login" onclick="doLogin()">Είσοδος</button>
-  <div class="error-msg" id="errMsg">Λάθος username ή password</div>
-
-  <div class="version">v1.0 · Petras Group TMS</div>
+  <div class="version">v1.0 · Petras Group TMS · 2026</div>
 </div>
 
 <script>
-// ── USERS CONFIG ─────────────────────────────────────────────────────────────
-// Role: owner | dispatcher | management | accountant
 const USERS = [
-  { username: 'dimitris',    password: 'petras2024',  role: 'owner',      name: 'Δημήτρης Πέτρας' },
-  { username: 'dispatcher',  password: 'dispatch24',  role: 'dispatcher', name: 'Dispatcher' },
-  { username: 'management',  password: 'manage24',    role: 'management', name: 'Management' },
-  { username: 'accountant',  password: 'account24',   role: 'accountant', name: 'Accountant' },
+  { username: 'dimitris',   password: 'petras2024',  role: 'owner',      name: 'Δημήτρης Πέτρας' },
+  { username: 'dispatcher', password: 'dispatch24',  role: 'dispatcher', name: 'Dispatcher' },
+  { username: 'management', password: 'manage24',    role: 'management', name: 'Management' },
+  { username: 'accountant', password: 'account24',   role: 'accountant', name: 'Accountant' },
 ];
 
 function doLogin() {
@@ -235,10 +347,7 @@ function doLogin() {
   }
 }
 
-// Enter key
 document.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
-
-// Redirect if already logged in
 if(sessionStorage.getItem('tms_user')) window.location.href = 'app.html';
 </script>
 </body>
