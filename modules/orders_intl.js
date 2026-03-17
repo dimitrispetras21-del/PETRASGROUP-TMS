@@ -85,10 +85,15 @@ function _renderIntlLayout(c) {
         <div class="page-title">International Orders</div>
         <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} orders</div>
       </div>
-      ${canEdit ? `<button class="btn btn-success" onclick="openIntlCreate()">
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost" style="display:flex;align-items:center;gap:6px" onclick="openIntlScan()">
+          <span>📄</span> Scan CMR
+        </button>
+        ${canEdit ? `<button class="btn btn-success" onclick="openIntlCreate()">
         <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
         </svg> New Order</button>` : ''}
+      </div>
     </div>
     <div class="entity-layout">
       <div class="entity-list-panel">
@@ -408,10 +413,10 @@ function openIntlEdit(recId) {
   if (rec) _openModal(recId, rec.fields);
 }
 
-async function _openModal(recId, f) {
+async function _openModal(recId, f, _clientLabelOverride) {
   const isEdit = !!recId;
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-  const clientLabel = clientId ? (await _resolveClientName(clientId)) : '';
+  const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
 
   // Count filled loading stops
   let cntL = 1, cntU = 1;
@@ -650,4 +655,255 @@ async function toggleIntlInvoiced(recId, current) {
     _applyIntlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
   } catch(e) { toast('Error: ' + e.message, 'danger'); }
+}
+
+// ═══════════════════════════════════════════════
+// CMR SCAN — AI Pre-fill
+// ═══════════════════════════════════════════════
+
+function openIntlScan() {
+  const body = `
+    <div style="text-align:center;padding:8px 0 20px">
+      <div style="font-size:28px;margin-bottom:8px">📄</div>
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">Scan CMR / Order Document</div>
+      <div style="font-size:12px;color:var(--text-dim)">Upload image or PDF — AI θα εξάγει τα στοιχεία και θα προσυμπληρώσει τη φόρμα</div>
+    </div>
+
+    <div id="scanDropZone" onclick="document.getElementById('scanFileInput').click()"
+      style="border:2px dashed var(--border-dark);border-radius:10px;padding:32px 20px;
+             text-align:center;cursor:pointer;transition:all 0.2s;background:var(--bg-hover)"
+      ondragover="event.preventDefault();this.style.borderColor='var(--success)'"
+      ondragleave="this.style.borderColor='var(--border-dark)'"
+      ondrop="_scanHandleDrop(event)">
+      <div style="font-size:32px;margin-bottom:8px">📎</div>
+      <div style="font-size:13px;color:var(--text-mid)">Drag & drop ή κλικ για upload</div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:4px">JPG, PNG, PDF — max 10MB</div>
+    </div>
+    <input type="file" id="scanFileInput" accept="image/*,application/pdf" style="display:none"
+      onchange="_scanHandleFile(this.files[0])">
+
+    <div id="scanStatus" style="display:none;margin-top:16px"></div>
+    <div id="scanPreview" style="display:none;margin-top:12px;text-align:center">
+      <img id="scanImg" style="max-width:100%;max-height:220px;border-radius:6px;border:1px solid var(--border)">
+    </div>`;
+
+  const footer = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-success" id="btnScanExtract" onclick="_scanExtract()" disabled
+      style="gap:6px;display:flex;align-items:center">
+      <span>🤖</span> Extract & Fill Form
+    </button>`;
+
+  document.getElementById('modal').style.maxWidth = '560px';
+  openModal('New Order from CMR', body, footer);
+}
+
+function _scanHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('scanDropZone').style.borderColor = 'var(--border-dark)';
+  const file = e.dataTransfer.files[0];
+  if (file) _scanHandleFile(file);
+}
+
+function _scanHandleFile(file) {
+  if (!file) return;
+  window._scanFile = file;
+  const btn = document.getElementById('btnScanExtract');
+  if (btn) btn.disabled = false;
+
+  // Show preview for images
+  if (file.type.startsWith('image/')) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      document.getElementById('scanImg').src = e.target.result;
+      document.getElementById('scanPreview').style.display = 'block';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  const zone = document.getElementById('scanDropZone');
+  if (zone) zone.innerHTML = `
+    <div style="font-size:20px;margin-bottom:6px">✅</div>
+    <div style="font-size:13px;color:var(--success);font-weight:500">${file.name}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:2px">${(file.size/1024).toFixed(0)} KB — κλικ για αλλαγή</div>`;
+}
+
+async function _scanExtract() {
+  const file = window._scanFile;
+  if (!file) return;
+
+  const btn    = document.getElementById('btnScanExtract');
+  const status = document.getElementById('scanStatus');
+  btn.disabled = true;
+  status.style.display = 'block';
+  status.innerHTML = `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-mid);
+    background:var(--bg-hover);border-radius:6px;padding:10px 14px">
+    <span style="animation:spin 1s linear infinite;display:inline-block">⏳</span>
+    AI αναλύει το document...</div>`;
+
+  try {
+    // Encode file to base64
+    const b64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload  = () => res(r.result.split(',')[1]);
+      r.onerror = () => rej(new Error('File read error'));
+      r.readAsDataURL(file);
+    });
+
+    const isPDF  = file.type === 'application/pdf';
+    const mType  = isPDF ? 'application/pdf' : file.type;
+
+    const contentBlock = isPDF
+      ? { type: 'document', source: { type: 'base64', media_type: mType, data: b64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: mType, data: b64 } };
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-5',
+        max_tokens: 1000,
+        system: `You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
+Extract order data from CMR waybills, delivery orders, or transport documents.
+Return ONLY valid JSON, no markdown, no explanation.
+Schema:
+{
+  "client_name": "string or null",
+  "goods": "string or null",
+  "gross_weight_kg": number or null,
+  "pallets": number or null,
+  "temperature_c": number or null,
+  "loading_city": "string or null",
+  "loading_country": "string or null",
+  "loading_date": "YYYY-MM-DD or null",
+  "delivery_city": "string or null",
+  "delivery_country": "string or null",
+  "delivery_date": "YYYY-MM-DD or null",
+  "direction": "Export or Import or null",
+  "confidence": "HIGH or MEDIUM or LOW",
+  "notes": "any relevant info not captured above or null"
+}
+Direction: Export = loading in Greece, Import = loading outside Greece.
+For temperature: only fill if explicitly stated (reefer/cold transport). Null if unknown.`,
+        messages: [{ role: 'user', content: [
+          contentBlock,
+          { type: 'text', text: 'Extract all order data from this transport document.' }
+        ]}]
+      })
+    });
+
+    const d = await res.json();
+    if (d.error) throw new Error(d.error.message);
+
+    const raw    = d.content.find(c => c.type === 'text')?.text || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    await _scanBuildPreview(parsed);
+
+  } catch(e) {
+    status.innerHTML = `<div style="color:var(--danger);font-size:12.5px;background:rgba(220,38,38,0.08);
+      border-radius:6px;padding:10px 14px">❌ Σφάλμα: ${e.message}</div>`;
+    btn.disabled = false;
+  }
+}
+
+async function _scanBuildPreview(data) {
+  const status = document.getElementById('scanStatus');
+
+  // Try to match client
+  let clientId = '', clientLabel = '';
+  if (data.client_name) {
+    const results = await _searchClients(data.client_name);
+    if (results.length) {
+      clientId    = results[0].id;
+      clientLabel = results[0].label;
+    }
+  }
+
+  // Try to match loading location
+  let loadLocId = '', loadLocLabel = '';
+  if (data.loading_city) {
+    const q = (data.loading_city + ' ' + (data.loading_country||'')).toLowerCase();
+    const match = _locationsArr.find(l => l.label.toLowerCase().includes(data.loading_city.toLowerCase()));
+    if (match) { loadLocId = match.id; loadLocLabel = match.label; }
+  }
+
+  // Try to match delivery location
+  let delLocId = '', delLocLabel = '';
+  if (data.delivery_city) {
+    const match = _locationsArr.find(l => l.label.toLowerCase().includes(data.delivery_city.toLowerCase()));
+    if (match) { delLocId = match.id; delLocLabel = match.label; }
+  }
+
+  const conf     = data.confidence || 'LOW';
+  const confColor= conf==='HIGH' ? 'var(--success)' : conf==='MEDIUM' ? 'var(--warn)' : 'var(--danger)';
+  const row = (label, val, matched) => val
+    ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;
+         border-bottom:1px solid var(--border);font-size:12.5px">
+         <span style="color:var(--text-dim);min-width:110px">${label}</span>
+         <span style="color:var(--text);font-weight:500;text-align:right">${val}
+           ${matched ? '<span style="color:var(--success);font-size:11px;margin-left:4px">✓ matched</span>'
+                     : '<span style="color:var(--warn);font-size:11px;margin-left:4px">⚠ manual</span>'}</span>
+       </div>`
+    : '';
+
+  status.innerHTML = `
+    <div style="background:var(--bg-hover);border-radius:8px;padding:14px;margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:12px;font-weight:600;color:var(--text)">AI Extraction Results</span>
+        <span style="font-size:11px;font-weight:600;color:${confColor}">${conf} CONFIDENCE</span>
+      </div>
+      ${row('Client', clientLabel || data.client_name, !!clientId)}
+      ${row('Loading', loadLocLabel || (data.loading_city ? data.loading_city+', '+data.loading_country : ''), !!loadLocId)}
+      ${row('Delivery', delLocLabel || (data.delivery_city ? data.delivery_city+', '+data.delivery_country : ''), !!delLocId)}
+      ${row('Load Date', data.loading_date, true)}
+      ${row('Del Date', data.delivery_date, true)}
+      ${row('Goods', data.goods, true)}
+      ${row('Weight', data.gross_weight_kg ? data.gross_weight_kg+' kg' : '', true)}
+      ${row('Pallets', data.pallets, true)}
+      ${row('Temperature', data.temperature_c!=null ? data.temperature_c+' °C' : '', true)}
+      ${row('Direction', data.direction, true)}
+      ${data.notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${data.notes}</div>` : ''}
+    </div>
+    <div style="font-size:12px;color:var(--text-dim);text-align:center">
+      Τα ⚠ matched πεδία χρειάζονται manual επιλογή στη φόρμα
+    </div>`;
+
+  // Update footer button
+  const footer = document.getElementById('modalFooter');
+  footer.innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-ghost" onclick="openIntlScan()">↩ Rescan</button>
+    <button class="btn btn-success" onclick="_scanOpenForm(${JSON.stringify({
+      clientId, clientLabel, loadLocId, loadLocLabel, delLocId, delLocLabel
+    }).replace(/'/g,"\\'")} , ${JSON.stringify(data).replace(/'/g,"\\'")})">
+      Open Form →
+    </button>`;
+}
+
+async function _scanOpenForm(matched, data) {
+  // Build fields object for _openModal
+  const f = {};
+  if (matched.clientId)   f['Client']            = [matched.clientId];
+  if (matched.loadLocId)  f['Loading Location 1'] = [matched.loadLocId];
+  if (matched.delLocId)   f['Unloading Location 1'] = [matched.delLocId];
+  if (data.loading_date)  f['Loading DateTime']   = data.loading_date;
+  if (data.delivery_date) f['Delivery DateTime']  = data.delivery_date;
+  if (data.goods)         f['Goods']              = data.goods;
+  if (data.gross_weight_kg) f['Gross Weight kg']  = data.gross_weight_kg;
+  if (data.pallets)       f['Loading Pallets 1']  = data.pallets;
+  if (data.temperature_c!=null) f['Temperature °C'] = data.temperature_c;
+  if (data.direction)     f['Direction']          = data.direction;
+  if (data.temperature_c!=null) f['Refrigerator Mode'] = 'Continuous';
+
+  // Cache the matched client label for display
+  if (matched.clientId && matched.clientLabel) {
+    _clientsMap[matched.clientId] = matched.clientLabel;
+  }
+
+  closeModal();
+  await _openModal(null, f, matched.clientLabel);
 }
