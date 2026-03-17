@@ -1,5 +1,5 @@
 # PETRAS GROUP — SYSTEM STATUS
-_Last updated: 2026-03-17 (Session 14)_
+_Last updated: 2026-03-18 (Session 15)_
 
 ---
 
@@ -32,41 +32,38 @@ _Last updated: 2026-03-17 (Session 14)_
 | NATIONAL TRIPS | tbloI9yAxxyOJpMyr |
 | NATIONAL ORDERS | tblGHCCsTMqAy4KR2 |
 | CLIENTS | tblFWKAQVUzAM8mCE |
-| PARTNERS | tbl6LTpiXxQv72R1m |
+| PARTNERS | tblLHl5m8bqONfhWv |
 | LOCATIONS | tblxu8DRfTQOFRCzS |
 | RAMP PLAN | tblT8W5WcuToBQNiY |
 | PALLET LEDGER | tblAAH3N1bIcBRPXi |
 
 ---
 
-## ✅ DECISION: Custom Web App (Session 14)
+## DECISION: Custom Web App
 
 **Architecture:**
 ```
-Database:  Airtable (€20/month) — unchanged
+Database:  Airtable (€20/month)
 Frontend:  Vanilla JS SPA — single app.html
 Hosting:   GitHub Pages (PETRASGROUP-TMS repo) — free
-Auth:      sessionStorage + hardcoded users
+Auth:      sessionStorage + hardcoded users in app.html
 ```
-
-**Stack rationale:** No Node.js, no build step, no frameworks.
-Change = push = live. Claude writes/debugs reliably. Full control.
 
 ---
 
-## TMS App — Roles & Permissions
+## Roles & Permissions
 
 | Module | Owner | Dispatcher | Management | Accountant |
 |---|---|---|---|---|
-| Planning | ✅ Full | ✅ Full | 👁️ View | 👁️ View |
-| Orders Management | ✅ Full | ✅ Full | 👁️ View | 👁️ View |
+| Planning | ✅ Full | ✅ Full | 👁 View | 👁 View |
+| Orders | ✅ Full | ✅ Full | 👁 View | 👁 View |
 | Clients & Partners | ✅ Full | ✅ Full | ✅ Full | ✅ Full |
-| Maintenance | ✅ Full | 👁️ View | ✅ Full | 👁️ View |
-| Drivers | ✅ Full | 👁️ View | ✅ Full | ✅ Full |
-| Costs / P&L | ✅ Full | ❌ | 👁️ View | ✅ Full |
+| Maintenance | ✅ Full | 👁 View | ✅ Full | 👁 View |
+| Drivers | ✅ Full | 👁 View | ✅ Full | ✅ Full |
+| Costs / P&L | ✅ Full | ❌ | 👁 View | ✅ Full |
 | Settings | ✅ Full | ❌ | ✅ Full | ❌ |
 
-**Default Users:**
+**Login users:**
 | Username | Password | Role |
 |---|---|---|
 | dimitris | petras2024 | owner |
@@ -76,18 +73,18 @@ Change = push = live. Claude writes/debugs reliably. Full control.
 
 ---
 
-## TMS App — Navigation Structure
+## Navigation Structure
 
 ```
 PLANNING
-  Dashboard          — KPIs, active trips overview
-  Weekly International Plan
-  Weekly National Plan
-  Weekly National Pick Ups
-  Daily Operational Plan
+  Dashboard
+  Weekly International
+  Weekly National
+  National Pick Ups
+  Daily Ops Plan
   Daily Ramp Board
 
-ORDERS MANAGEMENT
+ORDERS
   International Orders
   National Orders
   Locations
@@ -99,20 +96,20 @@ CLIENTS & PARTNERS
 MAINTENANCE
   Dashboard
   Overview
-  Trucks Maintenance History
-  Trailers Maintenance History
+  Trucks History
+  Trailers History
   Expiry Alerts
-  Trucks (CRUD)
-  Trailers (CRUD)
+  Trucks
+  Trailers
 
 DRIVERS
-  Drivers (CRUD)
+  Drivers
   Driver Payroll
 
 COSTS
   Dashboard
-  Fuels (Fuel Import)
-  Costs (Trip Costs)
+  Fuels
+  Costs
   P&Ls
 
 SETTINGS
@@ -120,40 +117,65 @@ SETTINGS
 
 ---
 
-## TMS App — Build Status
+## TMS App — Build Status (Session 15)
 
 ### ✅ COMPLETED
+
 | File | Description |
 |---|---|
-| `index.html` | Login page — Volvo navy/silver, truck photo, role-based auth |
-| `app.html` | Full SPA shell — dark sidebar + light content, collapsible nav |
-| `logo.png` | Petras Group logo (cropped) |
-| `truck.jpg` | Scania truck photo (login background graphic) |
-| `truck2.jpg` | Volvo truck photo |
+| `index.html` | Login page — dark navy, truck photo, role-based auth |
+| `app.html` | Full SPA — 2150+ lines, all modules |
+| `logo.png` | Petras Group logo (cropped, white-inverted in sidebar) |
+| `truck.jpg` | Login background graphic |
+| `SYSTEM_STATUS.md` | This file |
 
-**Live modules in app.html:**
-- Dashboard (KPIs + active trips table from Airtable)
-- International Orders (list + search)
-- Trucks, Trailers, Drivers, Clients, Partners (list view)
-
-**Design system:**
+**Design system (Session 15 final):**
 - Fonts: Syne (headings/nav) + DM Sans (body)
-- Sidebar: dark navy `#0D2140`, collapsible to icons
-- Content: light `#F4F6F9` background, white cards
+- Sidebar: dark navy `#080F1A`, collapsible to 56px icon-only mode
+- Nav: compact — 10px font, 5px padding, all items fit without scroll
+- Logo: 36px height, prominent
+- Content: `#F7F8FA` background, white cards `#FFFFFF`
 - Icons: custom SVG line-style (no emoji)
-- Nav labels: uppercase, letter-spacing
+- Nav labels: UPPERCASE, 10px, 1.3px letter-spacing
+- All UI strings: 100% English
+- Buttons: solid dark navy — single CTA style
+- Badges: flat, 4px border-radius
+- Detail panel: slides in from right, `#F7F8FA` bg
 
-### ⏳ NEXT — Build Queue (priority order)
-1. **Planning → Weekly International Plan** — trips per week, assignment status, filter by week
-2. **Planning → Daily Ramp Board** — migrate from Airtable Interface
-3. **Orders → International Orders** — full CRUD (create/edit modal)
-4. **Orders → National Orders** — full CRUD
-5. **Trips module** — migrate petras_assign-2.html
-6. **Costs → Fuel Import** — migrate fuel_import.html
-7. **Costs → Trip Costs + P&L** — migrate trip_costs.html
-8. **Maintenance** — trucks/trailers CRUD + service history
-9. **Drivers** — CRUD + payroll
-10. **Settings** — user management
+**Live & functional modules:**
+
+| Module | Features |
+|---|---|
+| Dashboard | KPIs (active trips, weekly trips, pending orders, total), active trips table |
+| Clients | List + search + country/status filter + detail panel + create/edit modal |
+| Partners | List + search + country/status filter + detail panel + create/edit modal |
+| Drivers | List + search + type/status filter + detail panel + create/edit modal |
+| Trucks | List + search + brand/status filter + detail panel + create/edit modal |
+| Trailers | List + search + type/status filter + detail panel + create/edit modal |
+
+**Master data engine features (all 5 entities):**
+- Search across all relevant text fields simultaneously
+- Multiple dropdown filters (dynamic options from live data)
+- Sticky table headers
+- Click row → detail panel slides in from right
+- Expiry date coloring: green/amber/red based on days remaining
+- Active/Inactive toggle directly in detail panel (updates Airtable)
+- Edit button per row → modal form
+- Create new record → modal form with sections
+- Form saves directly to Airtable via PATCH/POST API
+- Cache invalidation on save → auto-refresh
+
+### ⏳ NEXT BUILD QUEUE
+
+1. **International Orders** — full CRUD with trip assignment status
+2. **Weekly International Plan** — trips per week, assignment view
+3. **Daily Ramp Board** — migrate from Airtable Interface
+4. **Trips module** — migrate petras_assign-2.html
+5. **Costs → Fuel Import** — migrate fuel_import.html
+6. **Costs → Trip P&L** — migrate trip_costs.html
+7. **Maintenance** — service history per vehicle
+8. **Driver Payroll** — ledger view
+9. **Settings** — user management
 
 ---
 
@@ -177,34 +199,38 @@ SETTINGS
 ### Airtable API
 - Rate limit: 5 req/sec → cache 60s in JS `_cache` object
 - Linked record filter: `FIND("recXXX", ARRAYJOIN({Trip Link}, ","))`
-- Cannot create formula fields via API (UNSUPPORTED_FIELD_TYPE_FOR_CREATE)
+- Cannot create formula fields via API
 - Cannot set rollup filter conditions via API → manual UI only
 - Button formula: `RECORD_ID()` not `{Record ID}`
+- PARTNERS table ID confirmed: `tblLHl5m8bqONfhWv`
+- PARTNERS field: `Adress` (single 'd') — exact match required
 
-### Greek Plate Matching
-```javascript
-const greek2latin = {'Ι':'I','Α':'A','Β':'B','Ε':'E','Ζ':'Z','Η':'H',
-  'Κ':'K','Μ':'M','Ν':'N','Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X'};
-```
+### Master Data Engine Pattern
+- Config-driven: `ENTITY_CONFIG` object defines columns, filters, form fields, detail sections per entity
+- `renderEntity(key)` → single function handles all 5 entities
+- `buildEntityTable()` → renders table from config
+- `selectEntity()` → populates detail panel
+- `openEntityCreate/Edit()` → builds modal form from config
+- `saveEntityRecord()` → PATCH or POST to Airtable
+- `applyEntityFilters()` → client-side filtering after initial load
+- `toggleActive()` → instant PATCH + cache bust + re-render
+
+### GitHub
+- Push protection: Airtable token in code → allow via secret scanning UI
+- Force push allowed (no branch protection on main)
 
 ### Browser → Anthropic API
 - Requires header: `anthropic-dangerous-direct-browser-access: true`
-- Missing it causes silent failure
-
-### GitHub Push Protection
-- Airtable token in code triggers secret scanning block
-- Allow via: repo → Security → Secret scanning → unblock
 
 ### Airtable Scripting
 - Use `console.log()` not `output.text()`
 - `sendEmail()` does NOT exist → use `output.set()` + Send Email action
-- PARTNERS table: field is `Adress` (single 'd') — exact match required
 
 ---
 
 ## Pending — Airtable Manual UI Tasks
 1. ⏳ TRIPS rollup filters (6 fields: DADI/External/Reefer liters+cost)
-2. ⏳ Total Costs formula update (add DADI Cost + External Cost + Reefer Cost)
+2. ⏳ Total Costs formula update (add fuel cost fields)
 3. ⏳ RAMP PLAN automation (script ready, not added)
 4. ⏳ Driver Pay rollup in TRIPS from DRIVER LEDGER
 
