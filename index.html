@@ -52,28 +52,28 @@
   /* Truck photo — small, top-left area, below logo */
   .truck-graphic {
     position: absolute;
-    top: 110px;
-    left: 52px;
-    width: 340px;
-    border-radius: 12px;
+    bottom: 0;
+    right: -20px;
+    width: 68%;
+    border-radius: 16px 0 0 0;
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    opacity: 0.7;
+    opacity: 0.5;
   }
 
   .truck-graphic img {
     width: 100%;
     height: auto;
     display: block;
+    object-position: center center;
   }
 
-  /* Fade bottom edge of photo into background */
   .truck-graphic::after {
     content: '';
     position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 50%;
-    background: linear-gradient(to top, var(--navy), transparent);
+    inset: 0;
+    background:
+      linear-gradient(to top, var(--navy) 0%, transparent 50%),
+      linear-gradient(to right, var(--navy) 0%, transparent 30%);
   }
 
   .brand-logo {
@@ -273,7 +273,7 @@
 
   <!-- Truck photo: small, top-left, below logo -->
   <div class="truck-graphic">
-    <img src="truck2.jpg" alt="Petras Group Volvo">
+    <img src="truck.jpg" alt="Petras Group Volvo">
   </div>
 
   <div class="brand-tagline">
