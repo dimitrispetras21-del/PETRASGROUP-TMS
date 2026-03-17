@@ -4,24 +4,18 @@
 
 const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _intlFilters = {};
-let _clientsMap  = {}; // recId → name
-let _locationsMap = {}; // recId → label
-let _locationsArr = []; // [{id, label}] for dropdown
+let _clientsMap   = {};
+let _locationsMap = {};
+let _locationsArr = [];
 
-// ── Reference data loaders ────────────────────────
+// ── Reference data ────────────────────────────────
 async function _loadRefData() {
   if (Object.keys(_clientsMap).length && _locationsArr.length) return;
-  const [clients, locs] = await Promise.all([
-    atGet(TABLES.CLIENTS),
-    atGet(TABLES.LOCATIONS),
-  ]);
-  clients.forEach(r => {
-    _clientsMap[r.id] = r.fields['Company Name'] || r.id.slice(-6);
-  });
-  _locationsArr = locs.map(r => ({
-    id: r.id,
-    label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', '),
-  })).sort((a,b) => a.label.localeCompare(b.label));
+  const [clients, locs] = await Promise.all([atGet(TABLES.CLIENTS), atGet(TABLES.LOCATIONS)]);
+  clients.forEach(r => { _clientsMap[r.id] = r.fields['Company Name'] || r.id.slice(-6); });
+  _locationsArr = locs
+    .map(r => ({ id: r.id, label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ') }))
+    .sort((a,b) => a.label.localeCompare(b.label));
   _locationsArr.forEach(l => { _locationsMap[l.id] = l.label; });
 }
 
@@ -32,6 +26,13 @@ function _clientName(f) {
 function _cleanSummary(s) {
   if (!s) return '—';
   return s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—';
+}
+function _airtableWeekNum(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  const weekStart = new Date(jan1);
+  weekStart.setDate(jan1.getDate() - jan1.getDay());
+  return Math.floor((d - weekStart) / 604800000) + 1;
 }
 
 // ── Main render ───────────────────────────────────
@@ -113,13 +114,10 @@ function _buildWeekOpts() {
   return s;
 }
 
-// ── Table renderer ────────────────────────────────
+// ── Table ─────────────────────────────────────────
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
-  if (!records.length) {
-    wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`;
-    return;
-  }
+  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
   const rows = records.slice(0,300).map(r => {
     const f = r.fields;
     const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
@@ -127,19 +125,18 @@ function _renderIntlTable(records) {
     const dirB = dir==='Export' ? '<span class="badge badge-blue">↑ Export</span>'
                : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
                : `<span class="badge badge-grey">${dir||'—'}</span>`;
-    const tripB = hasTrip
-      ? '<span class="badge badge-green">Assigned</span>'
-      : '<span class="badge badge-yellow">Pending</span>';
+    const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
     const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
+    const grp = f['National Groupage'] ? '<span class="badge badge-blue" title="Groupage" style="margin-right:4px">GRP</span>' : '';
     const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
     return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}">
-      <td style="white-space:nowrap">${hr}<strong style="color:var(--text);font-size:12px">${f['Order Number']||r.id.slice(-6)}</strong></td>
+      <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${f['Order Number']||r.id.slice(-6)}</strong></td>
       <td>W${f['Week Number']||'—'}</td>
       <td>${dirB}</td>
       <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
-      <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
+      <td>${f['Loading DateTime'] ? formatDateShort(f['Loading DateTime']) : '—'}</td>
       <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
       <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
       <td>${tripB}</td>
@@ -153,7 +150,7 @@ function _renderIntlTable(records) {
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-// ── Search & Filter ───────────────────────────────
+// ── Filters ───────────────────────────────────────
 function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _applyIntlFilters(); }
 function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _applyIntlFilters(); }
 
@@ -174,10 +171,8 @@ function _applyIntlFilters() {
   if (_intlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _intlFilters['Status']);
   if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
   if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
-  if (_intlFilters['_trip']==='unassigned') recs = recs.filter(r =>
-    !r.fields['TRIPS (Export Order)']?.length && !r.fields['TRIPS (Import Order)']?.length);
-  if (_intlFilters['_trip']==='assigned') recs = recs.filter(r =>
-    r.fields['TRIPS (Export Order)']?.length>0 || r.fields['TRIPS (Import Order)']?.length>0);
+  if (_intlFilters['_trip']==='unassigned') recs = recs.filter(r => !r.fields['TRIPS (Export Order)']?.length && !r.fields['TRIPS (Import Order)']?.length);
+  if (_intlFilters['_trip']==='assigned')   recs = recs.filter(r => r.fields['TRIPS (Export Order)']?.length>0 || r.fields['TRIPS (Import Order)']?.length>0);
   INTL_ORDERS.filtered = recs;
   _renderIntlTable(recs);
   const n = recs.length + ' orders';
@@ -200,18 +195,20 @@ function selectIntlOrder(recId) {
   const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
   const stMap = {Pending:'badge-yellow',Assigned:'badge-blue',Active:'badge-green',Delivered:'badge-grey',Cancelled:'badge-red'};
 
-  // Build stop lines using resolved location names
-  const buildStops = (prefix) => {
+  const buildStopLines = (locPrefix, palPrefix, dtPrefix, dtField1) => {
     let html = '';
-    for (let i=1;i<=5;i++) {
-      const locArr = f[`${prefix} Location ${i}`];
+    for (let i=1;i<=10;i++) {
+      const locKey = i===1 ? `${locPrefix} Location 1` : `${locPrefix} Location ${i}`;
+      const locArr = f[locKey];
       const locId  = Array.isArray(locArr) ? locArr[0] : null;
-      const pal    = f[`${prefix} Pallets ${i}`];
       if (!locId) break;
-      const name = _locationsMap[locId] || _cleanSummary(f[`${prefix} Summary`]) || locId.slice(-6);
-      html += _dF(`Stop ${i}`, `${name}${pal ? ' — '+pal+' pal' : ''}`);
+      const name   = _locationsMap[locId] || locId.slice(-6);
+      const pal    = f[`${palPrefix} Pallets ${i}`] || '';
+      const dt     = i===1 ? f[dtField1] : f[`${dtPrefix} DateTime ${i}`];
+      const dtStr  = dt ? formatDateShort(dt) : '';
+      html += _dF(`Stop ${i}`, `${name}${pal?' — '+pal+' pal':''}${dtStr?' · '+dtStr:''}`);
     }
-    return html || _dF('Location', _cleanSummary(f[`${prefix.includes('Load')?'Loading':'Delivery'} Summary`]));
+    return html || _dF('Location', _cleanSummary(f['Loading Summary']||f['Delivery Summary']));
   };
 
   panel.innerHTML = `
@@ -244,7 +241,6 @@ function selectIntlOrder(recId) {
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
-        ${_dF('Type',         f['Type']||'—')}
         ${_dF('Goods',        f['Goods']||'—')}
         ${_dF('Temperature',  f['Temperature °C']!=null ? f['Temperature °C']+' °C' : '—')}
         ${_dF('Reefer Mode',  f['Refrigerator Mode']||'—')}
@@ -256,20 +252,18 @@ function selectIntlOrder(recId) {
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Loading</div>
-        ${_dF('Date', f['Loading DateTime'] ? formatDate(f['Loading DateTime']) : '—')}
-        ${buildStops('Loading')}
+        ${buildStopLines('Loading','Loading','Loading','Loading DateTime')}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Delivery</div>
-        ${_dF('Date', f['Delivery DateTime'] ? formatDate(f['Delivery DateTime']) : '—')}
-        ${buildStops('Unloading')}
+        ${buildStopLines('Unloading','Unloading','Unloading','Delivery DateTime')}
       </div>
       ${can('costs')!=='none'?`
       <div class="detail-section">
         <div class="detail-section-title">Financial</div>
-        ${_dF('Price',          f['Price']     ? '€ '+Number(f['Price']).toLocaleString('el-GR')     : '—')}
-        ${_dF('Net Price',      f['Net Price'] ? '€ '+Number(f['Net Price']).toLocaleString('el-GR') : '—')}
-        ${_dF('Invoice Status', f['Invoice Status']||'—')}
+        ${_dF('Price',         f['Price']     ? '€ '+Number(f['Price']).toLocaleString('el-GR')     : '—')}
+        ${_dF('Net Price',     f['Net Price'] ? '€ '+Number(f['Net Price']).toLocaleString('el-GR') : '—')}
+        ${_dF('Invoice Status',f['Invoice Status']||'—')}
       </div>`:''}
       <div class="detail-section">
         <div class="detail-section-title">Checklist</div>
@@ -284,73 +278,99 @@ function selectIntlOrder(recId) {
           ${_chk('Invoiced',        f['Invoiced'])}
         </div>
       </div>
-      ${f['Notes']?`<div class="detail-section">
-        <div class="detail-section-title">Notes</div>
-        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${f['Notes']}</div>
-      </div>`:''}
+      ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
+        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${f['Notes']}</div></div>`:''}
     </div>`;
 }
 
 function _dF(l,v){return `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`;}
 function _chk(l,v){return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`;}
 
-// ── Linked record select helpers ──────────────────
-function _makeLinkedSelect(id, currentId, options, placeholder) {
-  // options = [{id, label}]
-  const current = currentId ? (options.find(o=>o.id===currentId)||null) : null;
-  return `<div class="linked-select-wrap" style="position:relative">
-    <input class="form-input" id="${id}_search" autocomplete="off"
-      value="${current?current.label:''}"
-      placeholder="${placeholder}"
-      oninput="_filterLinkedOpts('${id}',this.value)"
-      onfocus="_showLinkedOpts('${id}')"
-      onblur="_hideLinkedOpts('${id}')">
-    <input type="hidden" id="${id}_val" value="${currentId||''}">
-    <div id="${id}_opts" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:200;
-      background:#fff;border:1px solid var(--border-dark);border-radius:6px;max-height:200px;
-      overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.1)">
+// ── Linked select widget ──────────────────────────
+function _makeLinkedSelect(id, currentId, placeholder) {
+  const current = currentId ? (_locationsMap[currentId]||currentId.slice(-6)) : '';
+  return `<div style="position:relative">
+    <input class="form-input" id="${id}_s" autocomplete="off"
+      value="${current}" placeholder="${placeholder}"
+      oninput="_filterLinkedOpts('${id}',this.value,'loc')"
+      onfocus="_filterLinkedOpts('${id}',this.value,'loc')"
+      onblur="_hideDropdown('${id}')">
+    <input type="hidden" id="${id}_v" value="${currentId||''}">
+    <div id="${id}_d" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
+      background:var(--bg);border:1px solid var(--border-dark);border-radius:6px;
+      max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.15)"></div>
+  </div>`;
+}
+
+function _makeClientSelect(id, currentId) {
+  const current = currentId ? (_clientsMap[currentId]||currentId.slice(-6)) : '';
+  return `<div style="position:relative">
+    <input class="form-input" id="${id}_s" autocomplete="off"
+      value="${current}" placeholder="Search client..."
+      oninput="_filterLinkedOpts('${id}',this.value,'client')"
+      onfocus="_filterLinkedOpts('${id}',this.value,'client')"
+      onblur="_hideDropdown('${id}')">
+    <input type="hidden" id="${id}_v" value="${currentId||''}">
+    <div id="${id}_d" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:300;
+      background:var(--bg);border:1px solid var(--border-dark);border-radius:6px;
+      max-height:180px;overflow-y:auto;box-shadow:0 4px 16px rgba(0,0,0,0.15)"></div>
+  </div>`;
+}
+
+function _hideDropdown(id) {
+  setTimeout(() => { const d=document.getElementById(id+'_d'); if(d) d.style.display='none'; }, 200);
+}
+
+function _filterLinkedOpts(id, q, type) {
+  const pool = type==='client'
+    ? Object.entries(_clientsMap).map(([i,l])=>({id:i,label:l})).sort((a,b)=>a.label.localeCompare(b.label))
+    : _locationsArr;
+  const filtered = q.trim()
+    ? pool.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
+    : pool.slice(0,25);
+  const drop = document.getElementById(id+'_d');
+  if (!drop) return;
+  if (!filtered.length) { drop.style.display='none'; return; }
+  drop.style.display='block';
+  drop.innerHTML = filtered.map(o =>
+    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'")}',this)"
+      style="padding:8px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+      onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background=''">${o.label}</div>`
+  ).join('');
+}
+
+function _pickLinked(id, recId, label) {
+  const s=document.getElementById(id+'_s'); if(s) s.value=label;
+  const v=document.getElementById(id+'_v'); if(v) v.value=recId;
+  const d=document.getElementById(id+'_d'); if(d) d.style.display='none';
+}
+
+// ── Build one stop row ────────────────────────────
+function _stopRowHTML(type, i, locId, palVal, dtVal) {
+  // type: 'l' (loading) or 'u' (unloading)
+  const label = type==='l' ? 'Loading' : 'Unloading';
+  const req   = i===1 ? ' *' : '';
+  // For stop 1: DateTime field = Loading DateTime / Delivery DateTime (existing)
+  // For stop 2-10: Loading DateTime 2-10 / Unloading DateTime 1-10
+  return `<div class="intl-stop-row" id="stop_${type}_${i}" style="display:grid;grid-template-columns:1fr 160px 120px;gap:8px;align-items:end;margin-bottom:10px">
+    <div>
+      <label class="form-label" style="font-size:11px">${label} Location ${i}${req}</label>
+      ${_makeLinkedSelect(`io_${type}loc_${i}`, locId, 'Search location...')}
+    </div>
+    <div>
+      <label class="form-label" style="font-size:11px">Pallets${req}</label>
+      <input class="form-input" type="number" id="io_${type}pal_${i}"
+        value="${palVal||''}" placeholder="0" min="0">
+    </div>
+    <div>
+      <label class="form-label" style="font-size:11px">Date${req}</label>
+      <input class="form-input" type="date" id="io_${type}dt_${i}"
+        value="${dtVal||''}">
     </div>
   </div>`;
 }
 
-function _showLinkedOpts(id) {
-  const search = document.getElementById(id+'_search');
-  _filterLinkedOpts(id, search ? search.value : '');
-}
-
-function _hideLinkedOpts(id) {
-  setTimeout(() => {
-    const el = document.getElementById(id+'_opts');
-    if (el) el.style.display = 'none';
-  }, 200);
-}
-
-function _filterLinkedOpts(id, q) {
-  const opts = id.startsWith('io_loc') ? _locationsArr
-             : id.startsWith('io_client') ? Object.entries(_clientsMap).map(([id,label])=>({id,label}))
-             : [];
-  const filtered = q.trim()
-    ? opts.filter(o => o.label.toLowerCase().includes(q.toLowerCase())).slice(0,20)
-    : opts.slice(0,20);
-  const container = document.getElementById(id+'_opts');
-  if (!container) return;
-  if (!filtered.length) { container.style.display='none'; return; }
-  container.style.display = 'block';
-  container.innerHTML = filtered.map(o =>
-    `<div onmousedown="_selectLinkedOpt('${id}','${o.id}',this)"
-      style="padding:8px 12px;font-size:13px;cursor:pointer;transition:background 0.1s"
-      onmouseover="this.style.background='var(--bg-hover)'"
-      onmouseout="this.style.background=''">${o.label}</div>`
-  ).join('');
-}
-
-function _selectLinkedOpt(id, recId, el) {
-  document.getElementById(id+'_search').value = el.textContent;
-  document.getElementById(id+'_val').value    = recId;
-  document.getElementById(id+'_opts').style.display = 'none';
-}
-
-// ── New Order Modal ───────────────────────────────
+// ── Modal ─────────────────────────────────────────
 function openIntlCreate() { _buildIntlModal(null,{}); }
 function openIntlEdit(recId) {
   const rec = INTL_ORDERS.data.find(r=>r.id===recId);
@@ -361,180 +381,117 @@ function _buildIntlModal(recId, f) {
   const isEdit = !!recId;
   const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
 
-  // Current linked values
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-  const locIds   = (i) => {
-    const arr = f[`Loading Location ${i}`];
-    return Array.isArray(arr) ? arr[0] : '';
-  };
-  const ulocIds  = (i) => {
-    const arr = f[`Unloading Location ${i}`];
-    return Array.isArray(arr) ? arr[0] : '';
-  };
 
-  // Build initial stop rows — only show rows that have data, always min 1
-  const buildStopRows = (prefix, locFn, palFn, idPrefix) => {
-    // Find how many stops have data
-    let filled = 0;
-    for(let i=1;i<=5;i++) { if(locFn(i)||palFn(i)) filled=i; }
-    const show = Math.max(1, filled); // always show at least 1
-    let rows = '';
-    for(let i=1;i<=show;i++){
-      rows += `<div class="form-grid" id="${idPrefix}_row_${i}" style="margin-bottom:0">
-        <div class="form-field">
-          <label class="form-label">${prefix} Location ${i}${i===1?' *':''}</label>
-          ${_makeLinkedSelect(idPrefix+'_l'+i, locFn(i), _locationsArr, 'Search location...')}
-        </div>
-        <div class="form-field">
-          <label class="form-label">${prefix} Pallets ${i}${i===1?' *':''}</label>
-          <input class="form-input" type="number" id="${idPrefix}_pal_${i}"
-            value="${palFn(i)||''}" placeholder="0">
-        </div>
-      </div>`;
+  // Count existing loading stops
+  let initL=1, initU=1;
+  for(let i=2;i<=10;i++) { if(Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) initL=i; }
+  for(let i=2;i<=10;i++) { if(Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) initU=i; }
+  window._stopCntL = initL;
+  window._stopCntU = initU;
+
+  // Build initial stop rows
+  const buildStops = (type) => {
+    const isL = type==='l';
+    const cnt  = isL ? initL : initU;
+    let html = '';
+    for(let i=1;i<=cnt;i++){
+      const locKey = `${isL?'Loading':'Unloading'} Location ${i}`;
+      const palKey = `${isL?'Loading':'Unloading'} Pallets ${i}`;
+      // DateTime: stop 1 → Loading DateTime / Delivery DateTime; stop 2+ → Loading DateTime i / Unloading DateTime i
+      const dtKey  = i===1
+        ? (isL ? 'Loading DateTime' : 'Delivery DateTime')
+        : `${isL?'Loading':'Unloading'} DateTime ${i}`;
+      const locId  = Array.isArray(f[locKey]) ? f[locKey][0] : '';
+      html += _stopRowHTML(type, i, locId, f[palKey], f[dtKey]?.split('T')[0]);
     }
-    return rows;
+    return html;
   };
-
-  // Track how many stops are visible
-  window._intlLoadStops = Math.max(1, (() => { let n=0; for(let i=1;i<=5;i++) if(locIds(i)||f[`Loading Pallets ${i}`]) n=i; return n; })());
-  window._intlDelStops  = Math.max(1, (() => { let n=0; for(let i=1;i<=5;i++) if(ulocIds(i)||f[`Unloading Pallets ${i}`]) n=i; return n; })());
-
-  const loadRows = buildStopRows('Loading',   locIds,  (i)=>f[`Loading Pallets ${i}`],   'io_loc_l');
-  const delRows  = buildStopRows('Unloading', ulocIds, (i)=>f[`Unloading Pallets ${i}`], 'io_loc_u');
 
   const body = `
     <div class="form-grid">
-
-      <!-- Row 1: Brand -->
       <div class="form-field span-2">
         <label class="form-label">Brand</label>
-        <select class="form-select" id="io_Brand">
-          <option value="">— Select —</option>
-          ${opt(['Petras Group','DPS'],'Brand')}
-        </select>
+        <select class="form-select" id="io_Brand"><option value="">— Select —</option>
+          ${opt(['Petras Group','DPS'],'Brand')}</select>
       </div>
-
-      <!-- Row 2: Type + Direction -->
       <div class="form-field">
         <label class="form-label">Type *</label>
-        <select class="form-select" id="io_Type">
-          <option value="">— Select —</option>
-          ${opt(['International','National'],'Type')}
-        </select>
+        <select class="form-select" id="io_Type"><option value="">— Select —</option>
+          ${opt(['International','National'],'Type')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Direction *</label>
-        <select class="form-select" id="io_Direction">
-          <option value="">— Select —</option>
-          ${opt(['Export','Import'],'Direction')}
-        </select>
+        <select class="form-select" id="io_Direction"><option value="">— Select —</option>
+          ${opt(['Export','Import'],'Direction')}</select>
       </div>
-
-      <!-- Row 3: Client + Price -->
       <div class="form-field">
         <label class="form-label">Client *</label>
-        ${_makeLinkedSelect('io_client', clientId,
-          Object.entries(_clientsMap).map(([id,label])=>({id,label})).sort((a,b)=>a.label.localeCompare(b.label)),
-          'Search client...')}
+        ${_makeClientSelect('io_client', clientId)}
       </div>
       <div class="form-field">
         <label class="form-label">Price *</label>
-        <input class="form-input" type="number" id="io_Price"
-          value="${f['Price']||''}" placeholder="0.00">
+        <input class="form-input" type="number" id="io_Price" value="${f['Price']||''}" placeholder="0.00">
       </div>
-
-      <!-- Row 4: Goods + Gross Weight -->
       <div class="form-field">
         <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="io_Goods"
-          value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
+        <input class="form-input" type="text" id="io_Goods" value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
       </div>
       <div class="form-field">
         <label class="form-label">Gross Weight kg</label>
-        <input class="form-input" type="number" id="io_Gross_Weight_kg"
-          value="${f['Gross Weight kg']||''}">
+        <input class="form-input" type="number" id="io_Gross_Weight_kg" value="${f['Gross Weight kg']||''}">
       </div>
-
-      <!-- Row 5: Temperature + Refrigerator Mode -->
       <div class="form-field">
         <label class="form-label">Temperature °C *</label>
-        <input class="form-input" type="number" id="io_Temperature"
-          value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
+        <input class="form-input" type="number" id="io_Temperature" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
       <div class="form-field">
         <label class="form-label">Refrigerator Mode *</label>
-        <select class="form-select" id="io_Refrigerator_Mode">
-          <option value="">— Select —</option>
-          ${opt(['Continuous','Start-Stop','No temp'],'Refrigerator Mode')}
-        </select>
+        <select class="form-select" id="io_Refrigerator_Mode"><option value="">— Select —</option>
+          ${opt(['Continuous','Start-Stop','No temp'],'Refrigerator Mode')}</select>
       </div>
-
-      <!-- Row 6: Pallet Type + Pallet Exchange -->
       <div class="form-field">
         <label class="form-label">Pallet Type *</label>
-        <select class="form-select" id="io_Pallet_Type">
-          <option value="">— Select —</option>
-          ${opt(['EUR','CHEP','Industrial','Euro'],'Pallet Type')}
-        </select>
+        <select class="form-select" id="io_Pallet_Type"><option value="">— Select —</option>
+          ${opt(['EUR','CHEP','Industrial','Euro'],'Pallet Type')}</select>
       </div>
-      <div class="form-field" style="justify-content:flex-end;padding-top:22px">
+      <div class="form-field" style="padding-top:22px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="io_Pallet_Exchange"
-            ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
-          Pallet Exchange
-        </label>
+          <input type="checkbox" id="io_Pallet_Exchange" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
+          Pallet Exchange</label>
       </div>
-
-      <!-- High Risk -->
-      <div class="form-field span-2">
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" id="io_High_Risk_Flag"
-            ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
-          High Risk Flag
-        </label>
-      </div>
-
     </div>
 
-    <!-- ── Loading Section ── -->
-    <div style="margin:20px 0 10px;padding-top:16px;border-top:1px solid var(--border)">
+    <div style="display:flex;gap:24px;margin:14px 0 20px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="io_High_Risk_Flag" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
+        High Risk Flag</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="io_Veroia_Switch" ${f['Veroia Switch ']?'checked':''} style="width:15px;height:15px">
+        Veroia Switch</label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="io_National_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
+        National Groupage</label>
+    </div>
+
+    <!-- LOADING -->
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-bottom:4px">
       <div class="detail-section-title" style="margin-bottom:12px">Loading</div>
-      <div class="form-grid" style="margin-bottom:12px">
-        <div class="form-field span-2">
-          <label class="form-label">Loading Date *</label>
-          <input class="form-input" type="date" id="io_Loading_DateTime"
-            value="${f['Loading DateTime']?f['Loading DateTime'].split('T')[0]:''}">
-        </div>
-      </div>
-      <div id="intl_load_stops">${loadRows}</div>
-      <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:5px 12px"
-        onclick="_addIntlStop('load')" id="intl_add_load">
+      <div id="intl_stops_l">${buildStops('l')}</div>
+      <button type="button" class="btn btn-ghost" id="btn_add_l"
+        style="font-size:12px;padding:5px 14px;margin-top:4px"
+        onclick="_addStop('l')" ${initL>=10?'style="display:none"':''}>
         + Add Loading Stop
       </button>
     </div>
 
-    <!-- ── Veroia Switch ── -->
-    <div style="margin:4px 0 16px">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="io_Veroia_Switch"
-          ${f['Veroia Switch ']?'checked':''} style="width:15px;height:15px">
-        Veroia Switch
-      </label>
-    </div>
-
-    <!-- ── Delivery Section ── -->
-    <div style="margin:0 0 10px;padding-top:16px;border-top:1px solid var(--border)">
+    <!-- DELIVERY -->
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin:16px 0 4px">
       <div class="detail-section-title" style="margin-bottom:12px">Delivery</div>
-      <div class="form-grid" style="margin-bottom:12px">
-        <div class="form-field span-2">
-          <label class="form-label">Delivery Date *</label>
-          <input class="form-input" type="date" id="io_Delivery_DateTime"
-            value="${f['Delivery DateTime']?f['Delivery DateTime'].split('T')[0]:''}">
-        </div>
-      </div>
-      <div id="intl_del_stops">${delRows}</div>
-      <button type="button" class="btn btn-ghost" style="margin-top:8px;font-size:12px;padding:5px 12px"
-        onclick="_addIntlStop('del')" id="intl_add_del">
+      <div id="intl_stops_u">${buildStops('u')}</div>
+      <button type="button" class="btn btn-ghost" id="btn_add_u"
+        style="font-size:12px;padding:5px 14px;margin-top:4px"
+        onclick="_addStop('u')" ${initU>=10?'style="display:none"':''}>
         + Add Delivery Stop
       </button>
     </div>`;
@@ -545,139 +502,96 @@ function _buildIntlModal(recId, f) {
       ${isEdit?'Save Changes':'Submit'}
     </button>`;
 
-  // Wide modal for this form
-  document.getElementById('modal').style.width = '700px';
+  document.getElementById('modal').style.maxWidth = '760px';
   openModal(isEdit ? 'Edit Order' : 'New Order', body, footer);
+}
+
+function _addStop(type) {
+  const cntKey = type==='l' ? '_stopCntL' : '_stopCntU';
+  const current = window[cntKey] || 1;
+  if (current >= 10) return;
+  const next = current + 1;
+  window[cntKey] = next;
+  const container = document.getElementById(`intl_stops_${type}`);
+  const div = document.createElement('div');
+  div.innerHTML = _stopRowHTML(type, next, '', '', '');
+  container.appendChild(div.firstElementChild);
+  if (next >= 10) document.getElementById(`btn_add_${type}`).style.display = 'none';
 }
 
 // ── Save ──────────────────────────────────────────
 async function saveIntlOrder(recId) {
   const fields = {};
 
-  // Strings
-  const strF = {
-    io_Brand:'Brand', io_Type:'Type', io_Direction:'Direction',
-    io_Goods:'Goods', io_Pallet_Type:'Pallet Type',
-    io_Refrigerator_Mode:'Refrigerator Mode',
-  };
+  const strF = {io_Brand:'Brand',io_Type:'Type',io_Direction:'Direction',
+    io_Goods:'Goods',io_Pallet_Type:'Pallet Type',io_Refrigerator_Mode:'Refrigerator Mode'};
   for(const[id,f] of Object.entries(strF)){
     const el=document.getElementById(id); if(el?.value?.trim()) fields[f]=el.value.trim();
   }
-
-  // Dates
-  // Auto-calculate Week Number — matches WEEKNUM({Delivery DateTime}, "Sunday")
-  const deliveryEl = document.getElementById('io_Delivery_DateTime');
-  if (deliveryEl?.value) {
-    fields['Week Number'] = _airtableWeekNum(deliveryEl.value);
-  }
-  const dateF = {io_Loading_DateTime:'Loading DateTime', io_Delivery_DateTime:'Delivery DateTime'};
-  for(const[id,f] of Object.entries(dateF)){
-    const el=document.getElementById(id); if(el?.value) fields[f]=el.value;
-  }
-
-  // Numbers
-  const numF = {io_Price:'Price', io_Temperature:'Temperature °C', io_Gross_Weight_kg:'Gross Weight kg'};
+  const numF = {io_Price:'Price',io_Temperature:'Temperature °C',io_Gross_Weight_kg:'Gross Weight kg'};
   for(const[id,f] of Object.entries(numF)){
     const el=document.getElementById(id);
-    if(el?.value!==''&&el?.value!==undefined&&el?.value!==null) fields[f]=parseFloat(el.value);
+    if(el?.value!==''&&el?.value!==undefined) fields[f]=parseFloat(el.value);
   }
-
-  // Checkboxes
-  const chkF = {
-    io_Pallet_Exchange:'Pallet Exchange', io_High_Risk_Flag:'High Risk Flag',
-    io_Veroia_Switch:'Veroia Switch ',
-  };
+  const chkF = {io_Pallet_Exchange:'Pallet Exchange',io_High_Risk_Flag:'High Risk Flag',
+    io_Veroia_Switch:'Veroia Switch ',io_National_Groupage:'National Groupage'};
   for(const[id,f] of Object.entries(chkF)){
     const el=document.getElementById(id); if(el) fields[f]=el.checked;
   }
 
-  // Linked: Client
-  const clientVal = document.getElementById('io_client_val')?.value;
+  // Client
+  const clientVal = document.getElementById('io_client_v')?.value;
   if (clientVal) fields['Client'] = [clientVal];
 
-  // Linked: Loading Locations + Pallets
-  for(let i=1;i<=5;i++){
-    const locVal = document.getElementById(`io_loc_l${i}_val`)?.value;
-    const palEl  = document.getElementById(`io_lpal_${i}`);
-    if(locVal)                       fields[`Loading Location ${i}`] = [locVal];
-    if(palEl?.value!=='')            fields[`Loading Pallets ${i}`]  = parseFloat(palEl.value)||0;
+  // Loading stops 1-10
+  for(let i=1;i<=10;i++){
+    const locEl = document.getElementById(`io_lloc_${i}_v`);
+    const palEl = document.getElementById(`io_lpal_${i}`);
+    const dtEl  = document.getElementById(`io_ldt_${i}`);
+    if (!locEl && !palEl) break;
+    if (locEl?.value) fields[`Loading Location ${i}`] = [locEl.value];
+    if (palEl?.value!=='') fields[`Loading Pallets ${i}`] = parseFloat(palEl.value)||0;
+    // DateTime: stop 1 → Loading DateTime; stop 2+ → Loading DateTime i
+    const dtField = i===1 ? 'Loading DateTime' : `Loading DateTime ${i}`;
+    if (dtEl?.value) fields[dtField] = dtEl.value;
   }
 
-  // Linked: Unloading Locations + Pallets
-  for(let i=1;i<=5;i++){
-    const locVal = document.getElementById(`io_loc_u${i}_val`)?.value;
-    const palEl  = document.getElementById(`io_upal_${i}`);
-    if(locVal)                       fields[`Unloading Location ${i}`] = [locVal];
-    if(palEl?.value!=='')            fields[`Unloading Pallets ${i}`]  = parseFloat(palEl.value)||0;
+  // Delivery DateTime for Week Number (use stop 1 delivery date)
+  const del1dt = document.getElementById('io_udt_1')?.value;
+  if (del1dt) {
+    fields['Delivery DateTime'] = del1dt;
+    fields['Week Number'] = _airtableWeekNum(del1dt);
+  }
+
+  // Unloading stops 1-10
+  for(let i=1;i<=10;i++){
+    const locEl = document.getElementById(`io_uloc_${i}_v`);
+    const palEl = document.getElementById(`io_upal_${i}`);
+    const dtEl  = document.getElementById(`io_udt_${i}`);
+    if (!locEl && !palEl) break;
+    if (locEl?.value) fields[`Unloading Location ${i}`] = [locEl.value];
+    if (palEl?.value!=='') fields[`Unloading Pallets ${i}`] = parseFloat(palEl.value)||0;
+    // DateTime: stop 1 → handled above as Delivery DateTime; stop 2+ → Unloading DateTime i
+    if (i > 1 && dtEl?.value) fields[`Unloading DateTime ${i}`] = dtEl.value;
+    if (i === 1 && dtEl?.value) fields[`Unloading DateTime 1`] = dtEl.value;
   }
 
   // Validation
-  if(!fields['Direction']){ alert('Direction is required'); return; }
-  if(!fields['Client']){ alert('Client is required'); return; }
-  if(!fields['Loading Location 1']){ alert('Loading Location 1 is required'); return; }
-  if(!fields['Unloading Location 1']){ alert('Delivery Location 1 is required'); return; }
-  if(!fields['Loading DateTime']){ alert('Loading Date is required'); return; }
-  if(!fields['Delivery DateTime']){ alert('Delivery Date is required'); return; }
+  if (!fields['Direction'])            { alert('Direction is required'); return; }
+  if (!fields['Client'])               { alert('Client is required'); return; }
+  if (!fields['Loading Location 1'])   { alert('Loading Location 1 is required'); return; }
+  if (!fields['Unloading Location 1']) { alert('Delivery Location 1 is required'); return; }
+  if (!fields['Loading DateTime'])     { alert('Loading Date (Stop 1) is required'); return; }
+  if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); return; }
 
-  const btn=event.target; btn.textContent='Saving...'; btn.disabled=true;
+  const btn = event.target; btn.textContent='Saving...'; btn.disabled=true;
   try {
     if(recId) await atPatch(TABLES.ORDERS, recId, fields);
     else      await atCreate(TABLES.ORDERS, fields);
     invalidateCache(TABLES.ORDERS);
-    document.getElementById('modal').style.width = '';
+    document.getElementById('modal').style.maxWidth = '';
     closeModal();
     toast(recId?'Order updated':'Order created');
     await renderOrdersIntl();
-  } catch(e){
-    btn.textContent='Save'; btn.disabled=false;
-    alert('Error: '+e.message);
-  }
-}
-
-// ── Dynamic stop add ──────────────────────────────
-function _addIntlStop(type) {
-  const isLoad = type === 'load';
-  const countKey = isLoad ? '_intlLoadStops' : '_intlDelStops';
-  const containerId = isLoad ? 'intl_load_stops' : 'intl_del_stops';
-  const btnId = isLoad ? 'intl_add_load' : 'intl_add_del';
-  const idPrefix = isLoad ? 'io_loc_l' : 'io_loc_u';
-  const palPrefix = isLoad ? 'io_lpal_' : 'io_upal_';
-  const label = isLoad ? 'Loading' : 'Unloading';
-
-  const current = window[countKey] || 1;
-  if (current >= 5) {
-    document.getElementById(btnId).style.display = 'none';
-    return;
-  }
-
-  const next = current + 1;
-  window[countKey] = next;
-
-  const container = document.getElementById(containerId);
-  const div = document.createElement('div');
-  div.className = 'form-grid';
-  div.id = `${idPrefix}_row_${next}`;
-  div.style.marginBottom = '0';
-  div.innerHTML = `
-    <div class="form-field">
-      <label class="form-label">${label} Location ${next}</label>
-      ${_makeLinkedSelect(idPrefix+next, '', _locationsArr, 'Search location...')}
-    </div>
-    <div class="form-field">
-      <label class="form-label">${label} Pallets ${next}</label>
-      <input class="form-input" type="number" id="${palPrefix}${next}" placeholder="0">
-    </div>`;
-  container.appendChild(div);
-
-  // Hide button if at max
-  if (next >= 5) document.getElementById(btnId).style.display = 'none';
-}
-
-function _airtableWeekNum(dateStr) {
-  // Exact match for WEEKNUM({date}, "Sunday") used in Airtable
-  const d = new Date(dateStr + 'T12:00:00');
-  const jan1 = new Date(d.getFullYear(), 0, 1);
-  const weekStart = new Date(jan1);
-  weekStart.setDate(jan1.getDate() - jan1.getDay()); // back to Sunday
-  return Math.floor((d - weekStart) / 604800000) + 1;
+  } catch(e){ btn.textContent='Save'; btn.disabled=false; alert('Error: '+e.message); }
 }
