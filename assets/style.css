@@ -966,3 +966,15 @@ tbody tr:hover { background: var(--bg-hover); }
   transition: all 0.12s;
 }
 .btn-icon:hover { background: var(--bg-hover); border-color: var(--border-mid); color: var(--text); }
+/* ── Linked dropdown ─────────────────────────── */
+.linked-drop {
+  position: absolute; top: 100%; left: 0; right: 0; z-index: 300;
+  background: var(--bg); border: 1px solid var(--border-dark);
+  border-radius: 6px; max-height: 200px; overflow-y: auto;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.linked-drop-item {
+  padding: 8px 12px; font-size: 12.5px; cursor: pointer;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.linked-drop-item:hover { background: var(--bg-hover); }
