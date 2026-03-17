@@ -4,118 +4,140 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --navy:       #0B1E35;
-    --navy-panel: rgba(10, 22, 42, 0.92);
-    --silver:     #B8C4D0;
-    --silver-dim: #7A8A9A;
-    --white:      #EEF2F7;
-    --border:     rgba(184,196,208,0.18);
-    --border-foc: rgba(184,196,208,0.5);
+    --navy:      #091828;
+    --navy-mid:  #0D2140;
+    --navy-card: #0F2545;
+    --silver:    #B8C4D0;
+    --silver-dim:#6A7D90;
+    --white:     #EEF2F7;
+    --border:    rgba(184,196,208,0.15);
+    --border-foc:rgba(184,196,208,0.45);
   }
 
   body {
     font-family: 'DM Sans', sans-serif;
+    background: var(--navy);
     min-height: 100vh;
     display: flex;
     overflow: hidden;
-    position: relative;
   }
 
-  /* Full-bleed truck photo */
-  .bg-photo {
-    position: fixed;
-    inset: 0;
-    background: url('truck.jpg') center center / cover no-repeat;
+  /* Subtle grid */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(184,196,208,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(184,196,208,0.03) 1px, transparent 1px);
+    background-size: 52px 52px;
+    pointer-events: none;
     z-index: 0;
   }
 
-  /* Dark overlay on photo */
-  .bg-photo::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(
-      100deg,
-      rgba(8,18,34,0.82) 0%,
-      rgba(8,18,34,0.55) 50%,
-      rgba(8,18,34,0.75) 100%
-    );
-  }
-
-  /* Left branding */
+  /* ── LEFT PANEL ─────────────────────────── */
   .left-panel {
     position: relative;
-    z-index: 2;
+    z-index: 1;
     flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 52px 60px;
+    padding: 52px 60px 48px;
+    overflow: hidden;
+  }
+
+  /* Truck photo as contained graphic — bottom right of left panel */
+  .truck-graphic {
+    position: absolute;
+    bottom: 0;
+    right: -40px;
+    width: 72%;
+    aspect-ratio: 16/9;
+    border-radius: 16px 0 0 0;
+    overflow: hidden;
+    opacity: 0.55;
+    mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 60%, transparent 100%),
+                linear-gradient(to right, transparent 0%, rgba(0,0,0,1) 30%);
+    -webkit-mask-image: linear-gradient(to top, rgba(0,0,0,0.9) 60%, transparent 100%);
+  }
+
+  .truck-graphic img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center center;
+  }
+
+  .brand-logo {
+    position: relative;
+    z-index: 2;
   }
 
   .brand-logo img {
-    height: 44px;
-    /* logo is dark — invert to white */
+    height: 40px;
     filter: brightness(0) invert(1);
-    opacity: 0.95;
+    opacity: 0.92;
   }
 
   .brand-tagline {
-    max-width: 420px;
+    position: relative;
+    z-index: 2;
+    max-width: 480px;
   }
 
   .brand-tagline h1 {
     font-family: 'Syne', sans-serif;
-    font-size: 52px;
+    font-size: 50px;
     font-weight: 800;
     line-height: 1.1;
     color: var(--white);
     letter-spacing: -1px;
   }
 
-  .brand-tagline h1 .light {
-    font-weight: 400;
+  .brand-tagline h1 .line2 {
+    font-weight: 300;
     color: var(--silver);
+    display: block;
   }
 
-  .brand-tagline h1 .tms {
-    font-weight: 400;
-    font-style: normal;
+  .brand-tagline h1 .line3 {
+    font-weight: 300;
     color: var(--silver);
-    letter-spacing: 2px;
-    font-size: 44px;
+    display: block;
+    letter-spacing: 6px;
+    font-size: 32px;
+    margin-top: 4px;
   }
 
   .brand-tagline p {
-    margin-top: 18px;
-    font-size: 15px;
-    color: rgba(184,196,208,0.75);
+    margin-top: 20px;
+    font-size: 14px;
+    color: var(--silver-dim);
     font-weight: 300;
-    line-height: 1.65;
-    max-width: 360px;
+    line-height: 1.7;
   }
 
   .brand-footer {
-    font-size: 11px;
-    color: rgba(184,196,208,0.35);
-    letter-spacing: 1.5px;
+    position: relative;
+    z-index: 2;
+    font-size: 10px;
+    color: rgba(106,125,144,0.5);
+    letter-spacing: 2px;
     text-transform: uppercase;
   }
 
-  /* Right login panel */
+  /* ── RIGHT PANEL ────────────────────────── */
   .right-panel {
     position: relative;
     z-index: 2;
     width: 420px;
     flex-shrink: 0;
-    background: var(--navy-panel);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--navy-card);
     border-left: 1px solid var(--border);
     display: flex;
     align-items: center;
@@ -123,13 +145,12 @@
     padding: 52px 44px;
   }
 
-  /* Top silver line accent */
   .right-panel::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
-    background: linear-gradient(90deg, transparent, rgba(184,196,208,0.4), transparent);
+    background: linear-gradient(90deg, transparent, rgba(184,196,208,0.35), transparent);
   }
 
   .form-wrap {
@@ -143,12 +164,12 @@
   }
 
   .form-logo {
-    margin-bottom: 36px;
     text-align: center;
+    margin-bottom: 36px;
   }
 
   .form-logo img {
-    height: 36px;
+    height: 34px;
     filter: brightness(0) invert(1);
     opacity: 0.8;
   }
@@ -158,8 +179,8 @@
     font-size: 22px;
     font-weight: 700;
     color: var(--white);
-    margin-bottom: 6px;
     text-align: center;
+    margin-bottom: 6px;
   }
 
   .form-sub {
@@ -184,7 +205,7 @@
 
   input {
     width: 100%;
-    background: rgba(255,255,255,0.05);
+    background: rgba(255,255,255,0.04);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 13px 16px;
@@ -197,24 +218,24 @@
 
   input:focus {
     border-color: var(--border-foc);
-    background: rgba(184,196,208,0.07);
+    background: rgba(184,196,208,0.06);
   }
 
-  input::placeholder { color: rgba(122,138,154,0.5); }
+  input::placeholder { color: rgba(106,125,144,0.5); }
 
   .btn-login {
     width: 100%;
     margin-top: 28px;
     padding: 14px;
     background: linear-gradient(135deg, #1A4068, #0D2F55);
-    border: 1px solid rgba(184,196,208,0.3);
+    border: 1px solid rgba(184,196,208,0.25);
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
     font-size: 12px;
     letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: var(--silver-light, #D6DDE5);
+    color: #D6DDE5;
     cursor: pointer;
     transition: all 0.2s;
     box-shadow: 0 4px 20px rgba(0,0,0,0.3);
@@ -222,10 +243,9 @@
 
   .btn-login:hover {
     background: linear-gradient(135deg, #235080, #1A3D68);
-    border-color: rgba(184,196,208,0.5);
+    border-color: rgba(184,196,208,0.45);
     color: var(--white);
     transform: translateY(-1px);
-    box-shadow: 0 8px 28px rgba(0,0,0,0.4);
   }
 
   .btn-login:active { transform: translateY(0); }
@@ -235,7 +255,7 @@
     margin-top: 14px;
     padding: 11px 14px;
     background: rgba(201,64,64,0.1);
-    border: 1px solid rgba(201,64,64,0.3);
+    border: 1px solid rgba(201,64,64,0.25);
     border-radius: 7px;
     color: #E88;
     font-size: 13px;
@@ -246,7 +266,7 @@
     text-align: center;
     margin-top: 32px;
     font-size: 10px;
-    color: rgba(122,138,154,0.35);
+    color: rgba(106,125,144,0.3);
     letter-spacing: 1.5px;
     text-transform: uppercase;
   }
@@ -259,8 +279,6 @@
 </head>
 <body>
 
-<div class="bg-photo"></div>
-
 <!-- LEFT BRANDING -->
 <div class="left-panel">
   <div class="brand-logo">
@@ -269,22 +287,26 @@
 
   <div class="brand-tagline">
     <h1>
-      Transport<br>
-      <span class="light">Management</span><br>
-      <span class="tms">SYSTEM</span>
+      Transport
+      <span class="line2">Management</span>
+      <span class="line3">SYSTEM</span>
     </h1>
-    <p>Πλήρης διαχείριση διεθνών δρομολογίων, στόλου και κόστους για την Petras Group.</p>
+    <p>Πλήρης διαχείριση διεθνών δρομολογίων,<br>στόλου και κόστους για την Petras Group.</p>
   </div>
 
   <div class="brand-footer">
     Petras Group · International Road Transport Services
+  </div>
+
+  <!-- Truck photo as graphic -->
+  <div class="truck-graphic">
+    <img src="truck.jpg" alt="">
   </div>
 </div>
 
 <!-- RIGHT LOGIN -->
 <div class="right-panel">
   <div class="form-wrap">
-
     <div class="form-logo">
       <img src="logo.jpg" alt="Petras Group">
     </div>
@@ -304,7 +326,6 @@
 
     <button class="btn-login" onclick="doLogin()">Είσοδος →</button>
     <div class="error-msg" id="errMsg">Λάθος username ή password</div>
-
     <div class="form-version">v1.0 · Petras Group TMS · 2026</div>
   </div>
 </div>
