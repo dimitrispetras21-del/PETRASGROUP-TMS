@@ -4,178 +4,173 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --volvo-dark:    #0D1F35;
-    --volvo-navy:    #003057;
-    --volvo-mid:     #0A2744;
-    --silver:        #B8C4D0;
-    --silver-light:  #D6DDE5;
-    --silver-dim:    #7A8A9A;
-    --white:         #EEF2F7;
-    --border:        rgba(184,196,208,0.15);
-    --border-focus:  rgba(184,196,208,0.45);
-    --danger:        #C94040;
+    --navy:       #0B1E35;
+    --navy-panel: rgba(10, 22, 42, 0.92);
+    --silver:     #B8C4D0;
+    --silver-dim: #7A8A9A;
+    --white:      #EEF2F7;
+    --border:     rgba(184,196,208,0.18);
+    --border-foc: rgba(184,196,208,0.5);
   }
 
   body {
     font-family: 'DM Sans', sans-serif;
-    background: var(--volvo-dark);
     min-height: 100vh;
     display: flex;
-    align-items: stretch;
     overflow: hidden;
-  }
-
-  /* Left panel — branding */
-  .left-panel {
-    flex: 1;
-    background: linear-gradient(160deg, var(--volvo-navy) 0%, var(--volvo-dark) 100%);
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    padding: 52px 56px;
     position: relative;
-    overflow: hidden;
   }
 
-  .left-panel::before {
+  /* Full-bleed truck photo */
+  .bg-photo {
+    position: fixed;
+    inset: 0;
+    background: url('truck.jpg') center center / cover no-repeat;
+    z-index: 0;
+  }
+
+  /* Dark overlay on photo */
+  .bg-photo::after {
     content: '';
     position: absolute;
     inset: 0;
-    background-image:
-      linear-gradient(rgba(184,196,208,0.03) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(184,196,208,0.03) 1px, transparent 1px);
-    background-size: 56px 56px;
+    background: linear-gradient(
+      100deg,
+      rgba(8,18,34,0.82) 0%,
+      rgba(8,18,34,0.55) 50%,
+      rgba(8,18,34,0.75) 100%
+    );
   }
 
-  /* Diagonal silver stripe */
-  .left-panel::after {
-    content: '';
-    position: absolute;
-    top: -20%;
-    right: -60px;
-    width: 3px;
-    height: 160%;
-    background: linear-gradient(180deg, transparent, rgba(184,196,208,0.2), rgba(184,196,208,0.08), transparent);
-    transform: rotate(-8deg);
-  }
-
-  .panel-logo {
+  /* Left branding */
+  .left-panel {
     position: relative;
     z-index: 2;
-  }
-
-  .panel-logo img {
-    height: 48px;
-    filter: brightness(0) invert(1);
-    opacity: 0.92;
-  }
-
-  .panel-tagline {
-    position: relative;
-    z-index: 2;
-  }
-
-  .panel-tagline h1 {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 38px;
-    line-height: 1.15;
-    color: var(--white);
-    letter-spacing: -0.5px;
-    margin-bottom: 16px;
-  }
-
-  .panel-tagline h1 span {
-    color: var(--silver);
-    font-weight: 400;
-  }
-
-  .panel-tagline p {
-    font-size: 14px;
-    color: var(--silver-dim);
-    line-height: 1.6;
-    max-width: 320px;
-    font-weight: 300;
-  }
-
-  .panel-stats {
-    position: relative;
-    z-index: 2;
+    flex: 1;
     display: flex;
-    gap: 40px;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 52px 60px;
   }
 
-  .stat { }
-  .stat-num {
-    font-family: 'Syne', sans-serif;
-    font-size: 26px;
-    font-weight: 700;
-    color: var(--white);
-    letter-spacing: -0.5px;
+  .brand-logo img {
+    height: 44px;
+    /* logo is dark — invert to white */
+    filter: brightness(0) invert(1);
+    opacity: 0.95;
   }
-  .stat-label {
+
+  .brand-tagline {
+    max-width: 420px;
+  }
+
+  .brand-tagline h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1.1;
+    color: var(--white);
+    letter-spacing: -1px;
+  }
+
+  .brand-tagline h1 .light {
+    font-weight: 400;
+    color: var(--silver);
+  }
+
+  .brand-tagline h1 .tms {
+    font-weight: 400;
+    font-style: normal;
+    color: var(--silver);
+    letter-spacing: 2px;
+    font-size: 44px;
+  }
+
+  .brand-tagline p {
+    margin-top: 18px;
+    font-size: 15px;
+    color: rgba(184,196,208,0.75);
+    font-weight: 300;
+    line-height: 1.65;
+    max-width: 360px;
+  }
+
+  .brand-footer {
     font-size: 11px;
-    color: var(--silver-dim);
+    color: rgba(184,196,208,0.35);
     letter-spacing: 1.5px;
     text-transform: uppercase;
-    margin-top: 2px;
   }
 
-  /* Right panel — login form */
+  /* Right login panel */
   .right-panel {
-    width: 440px;
+    position: relative;
+    z-index: 2;
+    width: 420px;
     flex-shrink: 0;
-    background: var(--volvo-mid);
+    background: var(--navy-panel);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-left: 1px solid var(--border);
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 48px 44px;
-    border-left: 1px solid var(--border);
-    position: relative;
+    padding: 52px 44px;
   }
 
+  /* Top silver line accent */
   .right-panel::before {
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, transparent, var(--silver), transparent);
-    opacity: 0.3;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(184,196,208,0.4), transparent);
   }
 
   .form-wrap {
     width: 100%;
-    animation: formIn 0.5s cubic-bezier(0.22,1,0.36,1) forwards;
+    animation: slideIn 0.5s cubic-bezier(0.22,1,0.36,1);
   }
 
-  @keyframes formIn {
-    from { opacity: 0; transform: translateX(16px); }
-    to   { opacity: 1; transform: translateX(0); }
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
   }
 
-  .form-header { margin-bottom: 40px; }
+  .form-logo {
+    margin-bottom: 36px;
+    text-align: center;
+  }
 
-  .form-header h2 {
+  .form-logo img {
+    height: 36px;
+    filter: brightness(0) invert(1);
+    opacity: 0.8;
+  }
+
+  .form-title {
     font-family: 'Syne', sans-serif;
-    font-size: 24px;
+    font-size: 22px;
     font-weight: 700;
     color: var(--white);
-    letter-spacing: -0.3px;
     margin-bottom: 6px;
+    text-align: center;
   }
 
-  .form-header p {
+  .form-sub {
     font-size: 13px;
     color: var(--silver-dim);
     font-weight: 300;
+    text-align: center;
+    margin-bottom: 36px;
   }
 
-  .field-group { margin-bottom: 20px; }
+  .field-group { margin-bottom: 18px; }
 
   label {
     display: block;
@@ -189,7 +184,7 @@
 
   input {
     width: 100%;
-    background: rgba(255,255,255,0.04);
+    background: rgba(255,255,255,0.05);
     border: 1px solid var(--border);
     border-radius: 8px;
     padding: 13px 16px;
@@ -201,36 +196,36 @@
   }
 
   input:focus {
-    border-color: var(--border-focus);
-    background: rgba(184,196,208,0.06);
+    border-color: var(--border-foc);
+    background: rgba(184,196,208,0.07);
   }
 
-  input::placeholder { color: rgba(122,138,154,0.6); }
+  input::placeholder { color: rgba(122,138,154,0.5); }
 
   .btn-login {
     width: 100%;
-    margin-top: 32px;
+    margin-top: 28px;
     padding: 14px;
-    background: linear-gradient(135deg, #1E4A7A, var(--volvo-navy));
-    border: 1px solid rgba(184,196,208,0.25);
+    background: linear-gradient(135deg, #1A4068, #0D2F55);
+    border: 1px solid rgba(184,196,208,0.3);
     border-radius: 8px;
     font-family: 'Syne', sans-serif;
     font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 2px;
+    font-size: 12px;
+    letter-spacing: 2.5px;
     text-transform: uppercase;
-    color: var(--silver-light);
+    color: var(--silver-light, #D6DDE5);
     cursor: pointer;
     transition: all 0.2s;
-    box-shadow: 0 4px 20px rgba(0,48,87,0.4);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
   }
 
   .btn-login:hover {
-    background: linear-gradient(135deg, #2A5A8A, #0A4070);
-    border-color: rgba(184,196,208,0.4);
+    background: linear-gradient(135deg, #235080, #1A3D68);
+    border-color: rgba(184,196,208,0.5);
     color: var(--white);
     transform: translateY(-1px);
-    box-shadow: 0 8px 28px rgba(0,48,87,0.5);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.4);
   }
 
   .btn-login:active { transform: translateY(0); }
@@ -240,18 +235,16 @@
     margin-top: 14px;
     padding: 11px 14px;
     background: rgba(201,64,64,0.1);
-    border: 1px solid rgba(201,64,64,0.25);
+    border: 1px solid rgba(201,64,64,0.3);
     border-radius: 7px;
     color: #E88;
     font-size: 13px;
     text-align: center;
   }
 
-  .version {
-    position: absolute;
-    bottom: 24px;
-    left: 0; right: 0;
+  .form-version {
     text-align: center;
+    margin-top: 32px;
     font-size: 10px;
     color: rgba(122,138,154,0.35);
     letter-spacing: 1.5px;
@@ -259,54 +252,45 @@
   }
 
   @media (max-width: 768px) {
-    body { flex-direction: column; }
-    .left-panel { padding: 36px 28px 32px; flex: none; min-height: 220px; }
-    .panel-tagline h1 { font-size: 26px; }
-    .panel-stats { gap: 24px; }
-    .right-panel { width: 100%; padding: 36px 28px; border-left: none; border-top: 1px solid var(--border); }
+    .left-panel { display: none; }
+    .right-panel { width: 100%; border-left: none; }
   }
 </style>
 </head>
 <body>
 
-<!-- LEFT BRANDING PANEL -->
+<div class="bg-photo"></div>
+
+<!-- LEFT BRANDING -->
 <div class="left-panel">
-  <div class="panel-logo">
+  <div class="brand-logo">
     <img src="logo.jpg" alt="Petras Group">
   </div>
 
-  <div class="panel-tagline">
-    <h1>Transport<br><span>Management</span><br>System</h1>
-    <p>Πλήρης διαχείριση δρομολογίων, στόλου και κόστους για διεθνείς μεταφορές.</p>
+  <div class="brand-tagline">
+    <h1>
+      Transport<br>
+      <span class="light">Management</span><br>
+      <span class="tms">SYSTEM</span>
+    </h1>
+    <p>Πλήρης διαχείριση διεθνών δρομολογίων, στόλου και κόστους για την Petras Group.</p>
   </div>
 
-  <div class="panel-stats">
-    <div class="stat">
-      <div class="stat-num">36</div>
-      <div class="stat-label">Trucks</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">60</div>
-      <div class="stat-label">Drivers</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">397</div>
-      <div class="stat-label">Partners</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">4.7K</div>
-      <div class="stat-label">Clients</div>
-    </div>
+  <div class="brand-footer">
+    Petras Group · International Road Transport Services
   </div>
 </div>
 
-<!-- RIGHT LOGIN PANEL -->
+<!-- RIGHT LOGIN -->
 <div class="right-panel">
   <div class="form-wrap">
-    <div class="form-header">
-      <h2>Καλώς ήρθατε</h2>
-      <p>Συνδεθείτε με τα στοιχεία σας</p>
+
+    <div class="form-logo">
+      <img src="logo.jpg" alt="Petras Group">
     </div>
+
+    <div class="form-title">Καλώς ήρθατε</div>
+    <div class="form-sub">Συνδεθείτε για πρόσβαση στο σύστημα</div>
 
     <div class="field-group">
       <label>Username</label>
@@ -320,9 +304,9 @@
 
     <button class="btn-login" onclick="doLogin()">Είσοδος →</button>
     <div class="error-msg" id="errMsg">Λάθος username ή password</div>
-  </div>
 
-  <div class="version">v1.0 · Petras Group TMS · 2026</div>
+    <div class="form-version">v1.0 · Petras Group TMS · 2026</div>
+  </div>
 </div>
 
 <script>
