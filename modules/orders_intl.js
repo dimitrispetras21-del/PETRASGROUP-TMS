@@ -165,13 +165,19 @@ function _renderIntlTable(records) {
       <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
       <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
       <td>${tripB}</td>
-      <td>${f['Invoiced']?'<span class="badge badge-grey">INV</span>':''}</td>
+      <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})" 
+        title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
+        style="cursor:pointer;text-align:center">
+        ${f['Invoiced']
+          ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
+          : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
+      </td>
     </tr>`;
   }).join('');
   wrap.innerHTML = `<table><thead><tr>
     <th>Order No</th><th>Week</th><th>Dir</th><th>Client</th>
     <th>Loading</th><th>Delivery</th><th>Load Date</th><th>Del Date</th>
-    <th>PAL</th><th>Trip</th><th></th>
+    <th>PAL</th><th>Trip</th><th>INV</th>
   </tr></thead><tbody>${rows}</tbody></table>`;
 }
 
@@ -630,4 +636,18 @@ async function submitIntlOrder(recId) {
     if (e.message !== 'validation') alert('Error saving: ' + e.message);
     if (btn) { btn.textContent = recId ? 'Save Changes' : 'Submit'; btn.disabled = false; }
   }
+}
+
+// ─── Inline toggle ───────────────────────────────
+async function toggleIntlInvoiced(recId, current) {
+  const newVal = !current;
+  try {
+    await atPatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
+    // Update local data
+    const rec = INTL_ORDERS.data.find(r => r.id === recId);
+    if (rec) rec.fields['Invoiced'] = newVal;
+    // Re-render table only (no full reload)
+    _applyIntlFilters();
+    toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
+  } catch(e) { toast('Error: ' + e.message, 'danger'); }
 }
