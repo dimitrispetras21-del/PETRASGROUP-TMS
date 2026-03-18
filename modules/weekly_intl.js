@@ -57,7 +57,7 @@ async function _wiLoadAssets() {
     atGetAll(TABLES.PARTNERS,{fields:['Company Name']}),
   ]);
   WINTL.trucks   = trucks.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-  WINTL.trailers = trailers.map(r=>({id:r.id,label:r.fields['Plate']||r.id}));
+  WINTL.trailers = trailers.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.drivers  = drivers.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
   WINTL.partners = partners.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
   WINTL.assetsLoaded=true;
@@ -75,7 +75,8 @@ async function renderWeeklyIntl() {
       atGetAll(TABLES.ORDERS, {filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`}),
       atGetAll(TABLES.TRIPS,  {filterByFormula:`{Week Number}=${WINTL.week}`,
         fields:['Export Order','Import Order','Truck','Trailer','Driver','Partner',
-                'Week Number','TripID','Trip Νο','Partner Cost']}),
+                'Week Number','TripID','Trip Νο','Is Partner Trip',
+                'Partner Rate Export','Partner Rate Import']}),
     ]);
     WINTL.exports = allOrders.filter(r=>r.fields.Direction==='Export')
       .sort((a,b)=>(a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
@@ -96,28 +97,29 @@ function _wiBuildRows() {
   // ── Build rows from TRIPS table (source of truth) ──────────────
   trips.forEach(trip=>{
     const f = trip.fields;
-    const expIds  = (f['Export Order'] || []);
-    const impId   = (f['Import Order'] || [])[0] || null;
-    const truckId    = (f['Truck']   || [])[0] || '';
-    const trailerId  = (f['Trailer'] || [])[0] || '';
-    const driverId   = (f['Driver']  || [])[0] || '';
-    const partnerId  = (f['Partner'] || [])[0] || '';
-    const isPartner  = !!partnerId;
-    const partnerCost= f['Partner Cost'] ? String(f['Partner Cost']) : '';
-    const tripNo     = f['Trip Νο'] || f['TripID'] || '';
+    const expIds        = (f['Export Order'] || []);
+    const impId         = (f['Import Order'] || [])[0] || null;
+    const truckId       = (f['Truck']   || [])[0] || '';
+    const trailerId     = (f['Trailer'] || [])[0] || '';
+    const driverId      = (f['Driver']  || [])[0] || '';
+    const partnerId     = (f['Partner'] || [])[0] || '';
+    const isPartner     = !!(f['Is Partner Trip'] || partnerId);
+    const partnerRateExp= f['Partner Rate Export'] ? String(f['Partner Rate Export']) : '';
+    const partnerRateImp= f['Partner Rate Import'] ? String(f['Partner Rate Import']) : '';
+    const tripNo        = f['TripID'] ? String(f['TripID']) : '';
 
     expIds.forEach(id=>usedExp.add(id));
     if (impId) usedImp.add(impId);
 
     WINTL.rows.push({
       id: ++WINTL._rc,
-      tripRecId: trip.id,       // Airtable record ID of the TRIP
+      tripRecId: trip.id,
       tripNo,
       exportIds: expIds,
       importId:  impId,
       truckId, trailerId, driverId, partnerId,
       carrierType: isPartner ? 'partner' : 'owned',
-      partnerCost,
+      partnerRateExp, partnerRateImp,
       saved: true,
       open: false,
     });
@@ -130,7 +132,7 @@ function _wiBuildRows() {
       tripRecId: null, tripNo: '',
       exportIds: [r.id], importId: null,
       truckId:'', trailerId:'', driverId:'', partnerId:'',
-      carrierType: 'owned', partnerCost: '',
+      carrierType: 'owned', partnerRateExp:'', partnerRateImp:'',
       saved: false, open: false,
     });
   });
@@ -425,10 +427,18 @@ function _wiAssignPanel(row) {
       </div>
       <div>
         <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-                    color:var(--text-dim);margin-bottom:3px">Cost (EUR)</div>
-        <input type="number" placeholder="0.00" value="${row.partnerCost||''}"
-               oninput="_wiRowField(${row.id},'partnerCost',this.value)"
-               style="width:110px;padding:5px 8px;font-size:11px;border-radius:6px;
+                    color:var(--text-dim);margin-bottom:3px">Rate Export (€)</div>
+        <input type="number" placeholder="0.00" value="${row.partnerRateExp||''}"
+               oninput="_wiRowField(${row.id},'partnerRateExp',this.value)"
+               style="width:100px;padding:5px 8px;font-size:11px;border-radius:6px;
+                      border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Rate Import (€)</div>
+        <input type="number" placeholder="0.00" value="${row.partnerRateImp||''}"
+               oninput="_wiRowField(${row.id},'partnerRateImp',this.value)"
+               style="width:100px;padding:5px 8px;font-size:11px;border-radius:6px;
                       border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
       </div>
     </div>`;
@@ -646,7 +656,7 @@ function _wiSplitRow(rowId) {
   const [first,...rest]=row.exportIds;
   row.exportIds=[first];
   rest.forEach(expId=>WINTL.rows.push({id:++WINTL._rc,exportIds:[expId],importId:null,
-    truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:false,open:false}));
+    truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerRateExp:'',partnerRateImp:'',saved:false,open:false}));
   _wiRender(); toast('Split ✓');
 }
 function _wiDeleteRow(rowId) {
@@ -704,8 +714,9 @@ async function _wiCreateTrip(rowId,exportOnly=false) {
       if(el&&el.value) row0[field]=el.value;
     };
     sync('tk','truckId'); sync('tl','trailerId'); sync('dr','driverId'); sync('pt','partnerId');
-    const costEl=document.querySelector('#wi_row_'+rowId+' input[type=number]');
-    if(costEl&&costEl.value) row0.partnerCost=costEl.value;
+    const costEls=document.querySelectorAll('#wi_row_'+rowId+' input[type=number]');
+    if(costEls[0]&&costEls[0].value) row0.partnerRateExp=costEls[0].value;
+    if(costEls[1]&&costEls[1].value) row0.partnerRateImp=costEls[1].value;
   }
   const row=WINTL.rows.find(r=>r.id===rowId);
   if (!row) return;
@@ -717,18 +728,22 @@ async function _wiCreateTrip(rowId,exportOnly=false) {
   const btn=event?.target;
   if (btn) { btn.disabled=true; btn.textContent='Creating…'; }
   try {
-    const fields={'Export Order':row.exportIds,'Week Number':WINTL.week};
-    if (!exportOnly&&row.importId) fields['Import Order']=[row.importId];
+    const fields={
+      'Export Order': row.exportIds,
+      'Week Number':  WINTL.week,
+    };
+    if (!exportOnly && row.importId) fields['Import Order'] = [row.importId];
     if (isPartner) {
-      if(row.partnerId) fields['Partner']=[row.partnerId];
-      if(row.partnerCost) fields['Partner Cost']=parseFloat(row.partnerCost)||0;
+      if (row.partnerId)    fields['Partner']            = [row.partnerId];
+      if (row.partnerRateExp) fields['Partner Rate Export'] = parseFloat(row.partnerRateExp)||0;
+      if (row.partnerRateImp) fields['Partner Rate Import'] = parseFloat(row.partnerRateImp)||0;
+      fields['Is Partner Trip'] = true;
+    } else {
+      if (row.truckId)    fields['Truck']   = [row.truckId];
+      if (row.trailerId)  fields['Trailer'] = [row.trailerId];
+      if (row.driverId)   fields['Driver']  = [row.driverId];
     }
-    else {
-      if(row.truckId)   fields['Truck']  =[row.truckId];
-      if(row.trailerId) fields['Trailer']=[row.trailerId];
-      if(row.driverId)  fields['Driver'] =[row.driverId];
-    }
-    await atCreate(TABLES.TRIPS,fields);
+    await atCreate(TABLES.TRIPS, fields);
     toast(exportOnly?'Export-only trip created ✓':'Trip created ✓');
     WINTL.assetsLoaded=true; await renderWeeklyIntl();
   } catch(e) {
