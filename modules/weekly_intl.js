@@ -121,13 +121,14 @@ const WINTL = {
 }
 .wi-gr-tip:hover .wi-gr-tooltip { display:block; }
 .wi-gr-tip-row {
-  display:flex; align-items:baseline; gap:8px;
-  padding:4px 12px; font-size:11px;
+  display:flex; align-items:flex-start; gap:8px;
+  padding:5px 12px; font-size:11px;
   border-bottom:1px solid var(--border);
 }
 .wi-gr-tip-row:last-child { border-bottom:none; }
-.wi-gr-tip-n { font-size:9px; font-weight:700; color:var(--text-dim); min-width:14px; flex-shrink:0; }
-.wi-gr-tip-dest { font-weight:600; color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis; }
+.wi-gr-tip-n { font-size:9px; font-weight:700; color:var(--text-dim);
+  min-width:14px; flex-shrink:0; padding-top:1px; }
+.wi-gr-tip-dest { font-weight:600; color:var(--text); flex:1; min-width:0; }
 .wi-gr-tip-meta { font-size:9.5px; color:var(--text-dim); flex-shrink:0; }
 
 /* assignment col */
@@ -718,8 +719,8 @@ function _wiImpRowHTML(row){
     class="wi-row"
     style="background:rgba(14,165,233,0.022);border-top:1px solid rgba(14,165,233,0.1)"
     draggable="true"
-    ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-compact" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
+    ondragstart="_wiImpDragStart(event,'${imp.id}')">
+    <div class="wi-compact">
       <div class="wi-cn" style="cursor:grab">
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
@@ -1081,9 +1082,7 @@ window._wiDragging=null;
 function _wiImpDragStart(e,impId){
   window._wiDragging=impId;
   e.dataTransfer.effectAllowed='move';
-  // Dim the row slightly
-  e.currentTarget.style.opacity='0.5';
-  setTimeout(()=>{ if(e.currentTarget) e.currentTarget.style.opacity=''; },0);
+  e.stopPropagation();
 }
 
 // Legacy compat (shelf chips no longer exist but keep for safety)
@@ -1558,14 +1557,17 @@ function _wiShowGrpTip(e, rowId){
   const exps=row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
   const items=exps.map((exp,i)=>{
     const f=exp.fields;
-    const to=_wiClean(f['Delivery Summary']||'—');
+    const from=_wiClean(f['Loading Summary']||'—');
+    const to  =_wiClean(f['Delivery Summary']||'—');
     const pals=f['Total Pallets']||0;
     const loadD=_wiFmt(f['Loading DateTime']);
-    const delD=_wiFmt(f['Delivery DateTime']);
+    const delD =_wiFmt(f['Delivery DateTime']);
     return `<div class="wi-gr-tip-row">
       <span class="wi-gr-tip-n">${i+1}.</span>
-      <span class="wi-gr-tip-dest">${to}</span>
-      <span class="wi-gr-tip-meta">${loadD}→${delD} · ${pals} pal</span>
+      <div class="wi-gr-tip-dest">
+        <div style="font-weight:700">${from} → ${to}</div>
+        <div style="font-size:9.5px;color:var(--text-dim);margin-top:1px">${loadD} → ${delD} · ${pals} pal</div>
+      </div>
     </div>`;
   }).join('');
   const tip=document.getElementById('wi-grp-tip');
