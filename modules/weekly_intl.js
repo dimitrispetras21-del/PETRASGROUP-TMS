@@ -1258,17 +1258,20 @@ function _wiClosePopover(){
 }
 
 async function _wiSaveFromPopover(rowId){
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  if(!row){alert('DEBUG: row not found for id='+rowId);return;}
   const syncPop=(p,f,l)=>{
     const uid=`${p}_p_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
+    console.log('syncPop',uid,'val=',val,'lbl=',lbl);
     if(val){row[f]=val;row[l]=lbl;}
   };
   syncPop('tk','truckId','truckLabel');
   syncPop('tl','trailerId','trailerLabel');
   syncPop('dr','driverId','driverLabel');
   syncPop('pt','partnerId','partnerLabel');
+  console.log('After sync — partnerId:',row.partnerId,'truckId:',row.truckId,'type:',row.type);
   const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
   if(ppEl) row.partnerPlates=ppEl.value;
   const rateExpEl=document.getElementById(`wi-pop-rate-exp-${rowId}`);
@@ -1308,8 +1311,9 @@ async function _wiSaveFromPopover(rowId){
   }
   if(errors.length){
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
-    toast('Error: '+errors[0].slice(0,60),'warn');
-    console.error('Save errors:',errors);
+    const msg='SAVE ERROR: '+errors[0];
+    console.error(msg);
+    alert(msg);
     return;
   }
   _wiClosePopover();
