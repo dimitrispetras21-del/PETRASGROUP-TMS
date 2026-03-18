@@ -309,18 +309,28 @@ function _wiRow(row, i) {
   const _driver  = row.driverName   || WINTL.drivers.find(d=>d.id===row.driverId)?.label  || '';
   const _partner = row.partnerName  || WINTL.partners.find(p=>p.id===row.partnerId)?.label|| '';
 
-  const assignBadge = row.carrierType==='partner'
-    ? (_partner
-        ? `<div style="text-align:center;line-height:1.4">
-            <div style="font-size:10px;font-weight:600;color:var(--accent)">${_partner.substring(0,20)}</div>
-           </div>`
-        : `<span style="font-size:10px;color:var(--warning)">UNASSIGNED</span>`)
-    : (_plate
-        ? `<div style="text-align:center;line-height:1.4">
-            <div style="font-size:10px;font-weight:600;color:var(--text-mid)">${_plate}</div>
-            ${_driver ? `<div style="font-size:9px;color:var(--text-dim)">${_driver.split(' ').pop()}</div>` : ''}
-           </div>`
-        : `<span style="font-size:10px;color:var(--warning)">UNASSIGNED</span>`);
+  // Assignment column:
+  //   owned + plate known  → plate (bold) + driver surname (dim)
+  //   partner + name known → partner name (accent)
+  //   nothing selected     → UNASSIGNED (warning)
+  let assignBadge;
+  if (row.carrierType === 'partner') {
+    assignBadge = _partner
+      ? `<div style="line-height:1.4;text-align:center">
+           <div style="font-size:10px;font-weight:600;color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px">${_partner}</div>
+         </div>`
+      : `<span style="font-size:10px;letter-spacing:0.3px;color:var(--warning)">UNASSIGNED</span>`;
+  } else {
+    if (_plate) {
+      const surname = _driver ? _driver.trim().split(/\s+/).pop() : '';
+      assignBadge = `<div style="line-height:1.5;text-align:center">
+           <div style="font-size:11px;font-weight:700;color:var(--text-mid);letter-spacing:0.2px">${_plate}</div>
+           ${surname ? `<div style="font-size:10px;color:var(--text-dim)">${surname}</div>` : ''}
+         </div>`;
+    } else {
+      assignBadge = `<span style="font-size:10px;letter-spacing:0.3px;color:var(--warning)">UNASSIGNED</span>`;
+    }
+  }
 
   // ── Import cell ──────────────────────────────────
   const hasImp=!!imp;
