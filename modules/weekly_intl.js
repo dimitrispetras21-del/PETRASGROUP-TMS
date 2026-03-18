@@ -48,7 +48,7 @@ const WINTL = {
 
 /* date separator */
 .wi-dsep { display:flex; align-items:center; gap:10px; padding:0 13px; height:28px;
-  background:var(--navy-mid); border-top:1px solid rgba(255,255,255,0.04); }
+  background:#172C45; border-top:1px solid rgba(255,255,255,0.04); }
 .wi-dsep:first-child { border-top:none; }
 .wi-dsep-lbl  { font-size:9px; color:rgba(196,207,219,0.45); text-transform:uppercase; letter-spacing:.8px; }
 .wi-dsep-date { font-family:'Syne',sans-serif; font-size:10px; font-weight:700;
@@ -86,23 +86,23 @@ const WINTL = {
   white-space:nowrap; flex-shrink:0; }
 .wi-sub { font-size:10px; font-weight:600; color:var(--text-mid); display:flex; align-items:center; gap:7px; }
 .wi-sub-div { width:1px; height:9px; background:var(--border-mid); }
-/* ── order badges ── */
+/* ── order badges — solid bg, white text ── */
 .wi-badge {
   display:inline-flex; align-items:center; gap:3px;
   font-size:7.5px; font-weight:800; letter-spacing:.9px;
-  text-transform:uppercase; padding:1px 5px; border-radius:3px;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px;
   vertical-align:middle; margin-left:4px; flex-shrink:0;
-  white-space:nowrap;
+  white-space:nowrap; color:#fff; border:none;
 }
-.wi-b-veroia  { background:rgba(11,25,41,0.1);   color:#0B1929;               border:1px solid rgba(11,25,41,0.25); }
-.wi-b-group   { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.85);  border:1px solid rgba(14,165,233,0.2); }
-.wi-b-risk    { background:rgba(220,38,38,0.09);  color:rgba(210,30,30,1);      border:1px solid rgba(220,38,38,0.3);  }
-.wi-b-pe      { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.22); }
-.wi-b-pe-ok   { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
-.wi-b-docs    { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
-.wi-b-nodocs  { background:rgba(245,158,11,0.1);  color:rgba(245,158,11,0.9);   border:1px solid rgba(245,158,11,0.25); }
-.wi-b-done    { background:rgba(5,150,105,0.12);  color:rgba(5,150,105,0.95);   border:1px solid rgba(5,150,105,0.25); }
-.wi-b-grpg    { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.9);   border:1px solid rgba(14,165,233,0.25); }
+.wi-b-risk   { background:#DC2626; }
+.wi-b-pe     { background:#059669; }
+.wi-b-pe-ok  { background:#059669; }
+.wi-b-grpg   { background:#0EA5E9; }
+.wi-b-veroia { background:#0B1929; }
+.wi-b-docs   { background:#059669; }
+.wi-b-done   { background:#059669; }
+.wi-b-nodocs { background:#D97706; }
+.wi-b-group  { background:#0EA5E9; }
 .wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
   background:rgba(11,25,41,0.1); color:#0B1929; border:1px solid rgba(11,25,41,0.28); }
@@ -653,7 +653,7 @@ function _wiRowHTML(row,i){
         <span class="wi-ci-save">✓ saved</span>
       </div>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
-  background:var(--navy-mid);margin:-6px -13px;padding:6px 13px;min-height:42px;">
+  background:#172C45;margin:-6px -12px;padding:6px 12px;min-height:46px;">
   <span style="font-size:10px;color:rgba(196,207,219,0.35);font-style:italic;letter-spacing:0.3px;">drag import here</span>
 </div>`;
 
