@@ -498,12 +498,15 @@ function _wiRowHTML(row,i){
 
   let pill;
   if(row.saved){
-    if(row.carrierType==='partner'){
+    if(partner){
+      // Partner trip
+      const sub=[row.partnerPlates].filter(Boolean).join('');
       pill=`<div class="wi-pill wi-pill-bp">
         <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
+        ${sub?`<span class="ps">${sub}</span>`:''}
       </div>`;
     } else {
+      // Owned fleet
       const parts=[truck,trailer,surname].filter(Boolean).join(' · ');
       pill=`<div class="wi-pill wi-pill-ok">
         <span class="pt">${parts||'—'}</span>
@@ -555,21 +558,12 @@ function _wiRowHTML(row,i){
 /* ─── PANEL ──────────────────────────────────────────────────────────── */
 function _wiPanelHTML(row){
   const {trucks,trailers,drivers,partners}=WINTL.data;
-  const isPartner=row.carrierType==='partner';
   const canFull=can('planning')==='full';
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
-  const toggle=`<div class="wi-pf" style="justify-content:flex-end">
-    <label class="wi-ptog" onclick="event.stopPropagation()">
-      <input type="checkbox" ${isPartner?'checked':''}
-             onchange="_wiSetCarrier(${row.id},this.checked?'partner':'owned')"/>
-      Partner trip
-    </label>
-  </div>`;
-
-  let fields='';
-  if(!isPartner){
-    fields=`
+  // All fields always visible — no toggle needed
+  const fields=`
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
       <div class="wi-pf" onclick="event.stopPropagation()">
         <span class="wi-plbl">Truck</span>
         ${_wiSdrop('tk',row.id,trucks,row.truckId,row.truckLabel||'Plate…')}
@@ -581,39 +575,26 @@ function _wiPanelHTML(row){
       <div class="wi-pf" onclick="event.stopPropagation()">
         <span class="wi-plbl">Driver</span>
         ${_wiSdrop('dr',row.id,drivers,row.driverId,row.driverLabel||'Name…')}
-      </div>`;
-  } else {
-    fields=`
+      </div>
+      <div style="width:1px;height:32px;background:var(--border-mid);align-self:flex-end;margin:0 2px"></div>
       <div class="wi-pf" onclick="event.stopPropagation()">
         <span class="wi-plbl">Partner</span>
         ${_wiSdrop('pt',row.id,partners,row.partnerId,row.partnerLabel||'Company…')}
       </div>
       <div class="wi-pf" onclick="event.stopPropagation()">
-        <span class="wi-plbl">Truck Plates</span>
-        <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099 / CB0138"
+        <span class="wi-plbl">Partner Plates</span>
+        <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099"
                value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
                oninput="_wiField(${row.id},'partnerPlates',this.value)"
                onclick="event.stopPropagation()"/>
       </div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
-        <span class="wi-plbl">Rate Export €</span>
-        <input class="wi-rate" type="number" placeholder="0.00" value="${row.partnerRateExp||''}"
-               oninput="_wiField(${row.id},'partnerRateExp',this.value)"
-               onclick="event.stopPropagation()"/>
-      </div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
-        <span class="wi-plbl">Rate Import €</span>
-        <input class="wi-rate" type="number" placeholder="0.00" value="${row.partnerRateImp||''}"
-               oninput="_wiField(${row.id},'partnerRateImp',this.value)"
-               onclick="event.stopPropagation()"/>
-      </div>`;
-  }
+    </div>`;
 
   const actions=canFull?`
     <div class="wi-pf" style="flex-direction:row;gap:6px;align-self:flex-end" onclick="event.stopPropagation()">
       <button class="wi-btn" id="wi-btn-${row.id}"
               onclick="event.stopPropagation();_wiSave(${row.id})">
-        ${row.saved?'Update':'Save Assignment'}
+        ${row.saved?'Update':'Save'}
       </button>
       ${row.saved?`<button class="wi-btn-d" onclick="event.stopPropagation();_wiClearAssignment(${row.id})">Clear</button>`:''}
     </div>`:'';
@@ -634,7 +615,10 @@ function _wiPanelHTML(row){
   </div>`;
 
   return `<div class="wi-panel" onclick="event.stopPropagation()">
-    <div class="wi-prow">${toggle}${fields}${actions}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+      ${fields}
+      ${actions}
+    </div>
     ${impZone}
   </div>`;
 }
@@ -777,9 +761,9 @@ async function _wiSave(rowId){
   syncDrop('dr','driverId','driverLabel');
   syncDrop('pt','partnerId','partnerLabel');
 
-  const isPartner=row.carrierType==='partner';
-  if(isPartner&&!row.partnerId){toast('Select a partner first','warn');return;}
-  if(!isPartner&&!row.truckId){toast('Select a truck first','warn');return;}
+  // Auto-detect: if partner is filled → partner trip; if truck → owned
+  const isPartner=!!(row.partnerId);
+  if(!isPartner&&!row.truckId){toast('Επέλεξε Truck ή Partner','warn');return;}
 
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
@@ -789,19 +773,17 @@ async function _wiSave(rowId){
   for(const orderId of row.orderIds){
     const fields={};
     if(isPartner){
-      fields['Partner']         =[row.partnerId];
-      fields['Is Partner Trip'] =true;
-      if(row.partnerPlates)   fields['Partner Truck Plates']=row.partnerPlates;
-      // clear owned fields
+      fields['Partner']              =[row.partnerId];
+      fields['Is Partner Trip']      =true;
+      fields['Partner Truck Plates'] =row.partnerPlates||'';
       fields['Truck']  =[];
       fields['Trailer']=[];
       fields['Driver'] =[];
     } else {
-      fields['Truck']           =[row.truckId];
-      fields['Trailer']         =row.trailerId?[row.trailerId]:[];
-      fields['Driver']          =row.driverId ?[row.driverId] :[];
-      fields['Is Partner Trip'] =false;
-      // clear partner
+      fields['Truck']               =[row.truckId];
+      fields['Trailer']             =row.trailerId?[row.trailerId]:[];
+      fields['Driver']              =row.driverId?[row.driverId]:[];
+      fields['Is Partner Trip']     =false;
       fields['Partner']             =[];
       fields['Partner Truck Plates']='';
     }
