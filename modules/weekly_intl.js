@@ -564,7 +564,8 @@ function _wiPaint(){
       </div>
     </div>
     <div id="wi-ctx"></div>
-    <div id="wi-popover"></div>`;
+    <div id="wi-popover"></div>
+    <div id="wi-grp-tip" style="display:none;position:fixed;z-index:9999;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,0.14);padding:6px 0;min-width:280px;pointer-events:none"></div>`;
   window._wiDragging=null;
 }
 
@@ -825,23 +826,18 @@ function _wiRowHTML(row,i){
   }
 
   // Import preview — saved state shown
+  // Export import cell: minimal tag when matched, dark cell when empty
   const impPrev=imp
-    ?`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
-          <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
-        </div>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
-          <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
-          ${_wiBadges(imp.fields)}
-        </div>
-        <span style="font-size:9px;color:rgba(14,165,233,0.7);font-weight:600">↩ matched</span>
-      </div>`
+    ?`<span style="font-size:9.5px;font-weight:700;color:rgba(14,165,233,0.8);
+                   display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden">
+        <span style="font-size:11px;flex-shrink:0">↩</span>
+        <span style="overflow:hidden;text-overflow:ellipsis">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+        <span style="color:rgba(14,165,233,0.5);font-weight:400;flex-shrink:0">${_wiFmt(imp.fields['Loading DateTime'])}</span>
+      </span>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
-  background:#172C45;margin:-6px -12px;padding:6px 12px;min-height:46px;">
-  <span style="font-size:10px;color:rgba(196,207,219,0.35);font-style:italic;letter-spacing:0.3px;">drag import here</span>
-</div>`;
+        background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
+        <span style="font-size:10px;color:rgba(196,207,219,0.3);font-style:italic">drag import here</span>
+      </div>`;
 
   return `
   <div id="wi-row-${row.id}" class="wi-row ${sCls}">
@@ -855,19 +851,9 @@ function _wiRowHTML(row,i){
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr wi-gr-tip" onclick="event.stopPropagation()" style="cursor:default;position:relative">
-  ×${exps.length}
-  <div class="wi-gr-tooltip">
-    ${exps.map((e,i)=>{
-      const f=e.fields;
-      const to=_wiClean(f['Delivery Summary']||'—');
-      const pals=f['Total Pallets']||0;
-      const loadD=_wiFmt(f['Loading DateTime']);
-      const delD=_wiFmt(f['Delivery DateTime']);
-      return '<div class=\'wi-gr-tip-row\'><span class=\'wi-gr-tip-n\'>'+(i+1)+'.</span><span class=\'wi-gr-tip-dest\'>'+to+'</span><span class=\'wi-gr-tip-meta\'>'+loadD+'→'+delD+' · '+pals+' pal</span></div>';
-    }).join('')}
-  </div>
-</span>`:''}
+          ${isGroup?`<span class="wi-gr" style="cursor:default"
+            onmouseenter="_wiShowGrpTip(event,${row.id})"
+            onmouseleave="_wiHideGrpTip()">×${exps.length}</span>`:''}
         </div>
         <div class="wi-sub">
           <span>${loadDt} → ${delDt}</span>
@@ -1564,6 +1550,35 @@ function _wiPrint(rowId, leg){
 function _wiToggleGroup(rowId){
   WINTL.ui.openGroup = WINTL.ui.openGroup===rowId ? null : rowId;
   _wiRepaintRow(rowId);
+}
+
+// Groupage floating tooltip
+function _wiShowGrpTip(e, rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const exps=row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
+  const items=exps.map((exp,i)=>{
+    const f=exp.fields;
+    const to=_wiClean(f['Delivery Summary']||'—');
+    const pals=f['Total Pallets']||0;
+    const loadD=_wiFmt(f['Loading DateTime']);
+    const delD=_wiFmt(f['Delivery DateTime']);
+    return `<div class="wi-gr-tip-row">
+      <span class="wi-gr-tip-n">${i+1}.</span>
+      <span class="wi-gr-tip-dest">${to}</span>
+      <span class="wi-gr-tip-meta">${loadD}→${delD} · ${pals} pal</span>
+    </div>`;
+  }).join('');
+  const tip=document.getElementById('wi-grp-tip');
+  if(!tip) return;
+  tip.innerHTML=items;
+  const r=e.currentTarget.getBoundingClientRect();
+  tip.style.display='block';
+  tip.style.left=`${r.left}px`;
+  tip.style.top=`${r.bottom+4}px`;
+}
+function _wiHideGrpTip(){
+  const tip=document.getElementById('wi-grp-tip');
+  if(tip) tip.style.display='none';
 }
 
 function _wiOpenImpPopover(e, impId, rowId){
