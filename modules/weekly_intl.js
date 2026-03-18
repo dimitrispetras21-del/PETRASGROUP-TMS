@@ -18,6 +18,9 @@
 
 'use strict';
 
+// PARTNER ASSIGNMENTS table (tblUhgqnmiam5MGNK)
+const PA_TABLE = 'tblUhgqnmiam5MGNK';
+
 const WINTL = {
   week:      _wiCurrentWeek(),
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
@@ -1076,8 +1079,66 @@ async function _wiSaveFromPopover(rowId){
     toast('Error: '+errors[0].slice(0,60),'warn');return;
   }
   _wiClosePopover();
+
+  // Create PARTNER ASSIGNMENT record for each order assigned to partner
+  if(isPartner){
+    await _wiCreatePartnerAssignments(row, fields);
+  }
+
   toast(row.saved?'Updated':'Saved');
   await renderWeeklyIntl();
+}
+
+async function _wiCreatePartnerAssignments(row, fields){
+  // Build list of all orders (export + import) with their rates
+  const assignments = [];
+
+  // Export orders
+  for(const orderId of row.orderIds){
+    assignments.push({
+      orderId,
+      partnerId: row.partnerId,
+      rate: row.partnerRate ? parseFloat(row.partnerRate) : null,
+    });
+  }
+  // Import order
+  if(row.importId && !row.orderIds.includes(row.importId)){
+    assignments.push({
+      orderId: row.importId,
+      partnerId: row.partnerId,
+      rate: row.partnerRateImp ? parseFloat(row.partnerRateImp) : null,
+    });
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+
+  for(const asgn of assignments){
+    try{
+      // Check if a PARTNER ASSIGNMENT already exists for this order
+      const existing = await atGetAll(PA_TABLE, {
+        filterByFormula: `FIND('${asgn.orderId}', ARRAYJOIN({Order}, ','))`,
+        fields: ['Order'],
+      }, false);
+
+      const paFields = {
+        'Partner':         [asgn.partnerId],
+        'Order':           [asgn.orderId],
+        'Assignment Date': today,
+        'Status':          'Pending',
+      };
+      if(asgn.rate) paFields['Partner Rate'] = asgn.rate;
+
+      if(existing.length > 0){
+        // Update existing
+        await atPatch(PA_TABLE, existing[0].id, paFields);
+      } else {
+        // Create new
+        await atCreate(PA_TABLE, paFields);
+      }
+    }catch(err){
+      console.error('PARTNER ASSIGNMENT create/update failed:', err.message);
+    }
+  }
 }
 
 async function _wiSave(rowId){
