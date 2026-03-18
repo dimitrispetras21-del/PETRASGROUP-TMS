@@ -92,13 +92,13 @@ const WINTL = {
 }
 .wi-b-veroia  { background:rgba(11,25,41,0.1);   color:#0B1929;               border:1px solid rgba(11,25,41,0.25); }
 .wi-b-group   { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.85);  border:1px solid rgba(14,165,233,0.2); }
-.wi-b-risk    { background:rgba(220,38,38,0.1);   color:rgba(220,38,38,0.9);    border:1px solid rgba(220,38,38,0.25); }
-.wi-b-pe      { background:rgba(217,119,6,0.1);   color:rgba(217,119,6,0.9);    border:1px solid rgba(217,119,6,0.25); }
+.wi-b-risk    { background:rgba(220,38,38,0.09);  color:rgba(210,30,30,1);      border:1px solid rgba(220,38,38,0.3);  }
+.wi-b-pe      { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.22); }
 .wi-b-pe-ok   { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
 .wi-b-docs    { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
 .wi-b-nodocs  { background:rgba(245,158,11,0.1);  color:rgba(245,158,11,0.9);   border:1px solid rgba(245,158,11,0.25); }
 .wi-b-done    { background:rgba(5,150,105,0.12);  color:rgba(5,150,105,0.95);   border:1px solid rgba(5,150,105,0.25); }
-.wi-b-grpg    { background:rgba(139,92,246,0.1);  color:rgba(139,92,246,0.9);   border:1px solid rgba(139,92,246,0.22); }
+.wi-b-grpg    { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.9);   border:1px solid rgba(14,165,233,0.25); }
 .wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
   background:rgba(11,25,41,0.1); color:#0B1929; border:1px solid rgba(11,25,41,0.28); }
@@ -479,19 +479,13 @@ function _wiDelDate(row){
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
 function _wiBadges(f){
   const b=[];
-  // Risk
-  if(f['High Risk Flag']) b.push('<span class="wi-badge wi-b-risk">! Risk</span>');
-  // Pallet Exchange
-  if(f['Pallet Exchange']){
-    if(f['Pallet Exchange Confirmed']) b.push('<span class="wi-badge wi-b-pe-ok">PE ✓</span>');
-    else b.push('<span class="wi-badge wi-b-pe">PE</span>');
-  }
-  // National Groupage
-  if(f['National Groupage']) b.push('<span class="wi-badge wi-b-grpg">Groupage</span>');
-  // Docs
-  if(f['Docs Ready']) b.push('<span class="wi-badge wi-b-docs">Docs ✓</span>');
-  // Done
-  if(f['DONE']) b.push('<span class="wi-badge wi-b-done">Done</span>');
+  if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk">! Risk</span>');
+  if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
+  if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
+  const veroia=f['Veroia Switch ']||f['Veroia Switch'];
+  if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
+  if(f['Docs Ready'])       b.push('<span class="wi-badge wi-b-docs">Docs</span>');
+  if(f['DONE'])             b.push('<span class="wi-badge wi-b-done">Done</span>');
   return b.join('');
 }
 
@@ -517,7 +511,6 @@ function _wiRowHTML(row,i){
   const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||'—'):'—';
   const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):
                         (primary?.fields['Total Pallets']||0);
-  const veroia =primary?.fields['Veroia Switch ']||primary?.fields['Veroia Switch'];
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
   const delDt  =_wiFmt(primary?.fields['Delivery DateTime']);
 
@@ -571,7 +564,6 @@ function _wiRowHTML(row,i){
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
           ${isGroup?`<span class="wi-gr">×\${exps.length}</span>`:''}
-          ${veroia?`<span class="wi-vx">Veroia</span>`:''}
           ${_wiBadges(primary?.fields||{})}
         </div>
         <div class="wi-sub">
