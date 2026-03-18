@@ -75,7 +75,9 @@ async function renderWeeklyIntl() {
       atGetAll(TABLES.ORDERS, {filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`}),
       atGetAll(TABLES.TRIPS,  {filterByFormula:`{Week Number}=${WINTL.week}`,
         fields:['Export Order','Import Order','Truck','Trailer','Driver','Partner',
-                'Week Number','TripID','Trip Νο','Is Partner Trip',
+                'Truck Plate','Trailer Plate','Driver Name','Partner Name',
+                'Export Loading DateTime',
+                'Week Number','TripID','Is Partner Trip',
                 'Partner Rate Export','Partner Rate Import']}),
     ]);
     WINTL.exports = allOrders.filter(r=>r.fields.Direction==='Export')
@@ -107,6 +109,12 @@ function _wiBuildRows() {
     const partnerRateExp= f['Partner Rate Export'] ? String(f['Partner Rate Export']) : '';
     const partnerRateImp= f['Partner Rate Import'] ? String(f['Partner Rate Import']) : '';
     const tripNo        = f['TripID'] ? String(f['TripID']) : '';
+    // Lookup display values (arrays → first element)
+    const truckPlate    = (f['Truck Plate']   || [])[0] || '';
+    const trailerPlate  = (f['Trailer Plate'] || [])[0] || '';
+    const driverName    = (f['Driver Name']   || [])[0] || '';
+    const partnerName   = (f['Partner Name']  || [])[0] || '';
+    const loadingDate   = (f['Export Loading DateTime'] || [])[0] || '';
 
     expIds.forEach(id=>usedExp.add(id));
     if (impId) usedImp.add(impId);
@@ -118,6 +126,8 @@ function _wiBuildRows() {
       exportIds: expIds,
       importId:  impId,
       truckId, trailerId, driverId, partnerId,
+      truckPlate, trailerPlate, driverName, partnerName,
+      loadingDate,
       carrierType: isPartner ? 'partner' : 'owned',
       partnerRateExp, partnerRateImp,
       saved: true,
@@ -132,6 +142,8 @@ function _wiBuildRows() {
       tripRecId: null, tripNo: '',
       exportIds: [r.id], importId: null,
       truckId:'', trailerId:'', driverId:'', partnerId:'',
+      truckPlate:'', trailerPlate:'', driverName:'', partnerName:'',
+      loadingDate:'',
       carrierType: 'owned', partnerRateExp:'', partnerRateImp:'',
       saved: false, open: false,
     });
@@ -763,7 +775,11 @@ function _wiRenderRows(rows) {
   rows.forEach((row, i) => {
     // Get delivery date from first export
     const exp = WINTL.exports.find(r => r.id === row.exportIds[0]);
-    const delDate = exp?.fields['Loading DateTime'] || exp?.fields['Delivery DateTime'] || null;
+    // For saved trips use the lookup date; for unsaved use order field
+    const delDate = row.loadingDate
+                 || exp?.fields['Loading DateTime']
+                 || exp?.fields['Delivery DateTime']
+                 || null;
     const delDateFmt = delDate ? _wiFullDate(delDate) : null;
 
     // Date separator bar
