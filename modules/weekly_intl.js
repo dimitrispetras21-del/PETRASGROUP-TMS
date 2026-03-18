@@ -484,8 +484,7 @@ function _wiBadges(f){
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   const veroia=f['Veroia Switch ']||f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
-  if(f['Docs Ready'])       b.push('<span class="wi-badge wi-b-docs">Docs</span>');
-  if(f['DONE'])             b.push('<span class="wi-badge wi-b-done">Done</span>');
+
   return b.join('');
 }
 
