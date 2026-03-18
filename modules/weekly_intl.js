@@ -113,31 +113,26 @@ const WINTL = {
 .wi-ca { padding:6px 10px; border-right:1px solid var(--border);
   background:var(--bg); display:flex; align-items:center; justify-content:center; }
 
-/* assignment wrapper — click opens popover, hover shows print btn */
+/* assignment wrapper with flanking print buttons */
 .wi-ca-wrap {
-  padding:6px 10px; border-right:1px solid var(--border);
-  background:var(--bg); display:flex; align-items:center; justify-content:center;
-  position:relative; cursor:pointer;
+  border-right:1px solid var(--border);
+  background:var(--bg);
+  display:flex; align-items:stretch;
+  overflow:hidden;
 }
 .wi-ca-wrap:hover { background:var(--bg-hover); }
 
-/* print icon button — hidden by default, appears on row hover */
-.wi-print-btn {
-  display:none; position:absolute;
-  bottom:4px; right:4px;
-  background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:4px; padding:1px 5px; font-size:10px;
-  cursor:pointer; color:var(--text-dim); line-height:1.4;
-  transition:all .1s; z-index:2;
+/* side print buttons — left and right of pill */
+.wi-side-btn {
+  flex-shrink:0; width:28px;
+  border:none; background:transparent;
+  cursor:pointer; color:var(--text-dim);
+  font-size:11px; display:flex; align-items:center; justify-content:center;
+  transition:background .1s, color .1s;
+  opacity:0;
 }
-.wi-print-btn:hover { background:var(--navy-mid); color:#fff; border-color:var(--navy-mid); }
-.wi-row:hover .wi-print-btn { display:block; }
-
-/* import print btn — positioned bottom right of import cell */
-.wi-ci { position:relative; }
-.wi-print-imp {
-  bottom:4px; right:4px;
-}
+.wi-row:hover .wi-side-btn { opacity:1; }
+.wi-side-btn:hover { background:rgba(11,25,41,0.06); color:var(--text); }
 .wi-pill { display:flex; flex-direction:column; align-items:center;
   padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden; gap:1px; }
 .wi-pill-ok { background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2); }
@@ -636,13 +631,15 @@ function _wiRowHTML(row,i){
   // Import preview — saved state shown
   const impPrev=imp
     ?`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:0;min-width:0">
           <span class="wi-ci-from">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
           <span class="wi-ci-sep">→</span>
           <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
+          <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
           ${_wiBadges(imp.fields)}
         </div>
-        <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
         <span class="wi-ci-save">✓ saved</span>
       </div>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
@@ -671,10 +668,17 @@ function _wiRowHTML(row,i){
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
-        ${pill}
-        <button class="wi-print-btn" title="Print Export Order"
+      <div class="wi-ca-wrap">
+        <button class="wi-side-btn" title="Print Export"
                 onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center"
+             onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
+          ${pill}
+        </div>
+        ${row.importId
+          ? `<button class="wi-side-btn" title="Print Import"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>`
+          : `<div style="width:26px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wi-ci-${row.id}"
            onclick="event.stopPropagation()"
@@ -682,8 +686,6 @@ function _wiRowHTML(row,i){
            ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
            ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
         ${impPrev}
-        ${row.importId?`<button class="wi-print-btn wi-print-imp" title="Print Import Order"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>`:''}
       </div>
 
     </div>
