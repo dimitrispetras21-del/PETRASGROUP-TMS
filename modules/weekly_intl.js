@@ -377,6 +377,7 @@ function _wiBuildRows(){
       driverLabel: WINTL.data.drivers.find(d=>d.id===driverId)?.label||'',
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
+      partnerRate:f['Partner Rate']?String(f['Partner Rate']):'',
       saved:!!(truckId||partnerId),
     });
   }
@@ -971,6 +972,13 @@ function _wiOpenPopover(e,rowId){
                    placeholder="e.g. ΙΑΒ 1099" id="wi-pop-pp-${rowId}"
                    value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
           </div>
+          <div class="wi-pop-field">
+            <span class="wi-pop-lbl">Rate €</span>
+            <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
+                   id="wi-pop-rate-${rowId}"
+                   style="width:90px"
+                   value="${row.partnerRate||''}"/>
+          </div>
         </div>
       </div>
     </div>
@@ -1022,13 +1030,18 @@ async function _wiSaveFromPopover(rowId){
   syncPop('pt','partnerId','partnerLabel');
   const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
   if(ppEl) row.partnerPlates=ppEl.value;
+  const rateEl=document.getElementById(`wi-pop-rate-${rowId}`);
+  if(rateEl) row.partnerRate=rateEl.value;
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
   const fields=isPartner
-    ?{'Partner':[row.partnerId],'Is Partner Trip':true,'Partner Truck Plates':row.partnerPlates||'','Truck':[],'Trailer':[],'Driver':[]}
+    ?{'Partner':[row.partnerId],'Is Partner Trip':true,
+      'Partner Truck Plates':row.partnerPlates||'',
+      'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null,
+      'Truck':[],'Trailer':[],'Driver':[]}
     :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
   const errors=[];
   for(const orderId of row.orderIds){
