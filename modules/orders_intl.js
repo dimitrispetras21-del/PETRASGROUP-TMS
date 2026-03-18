@@ -778,8 +778,28 @@ ANTH_KEY length = ${typeof ANTH_KEY==='string' ? ANTH_KEY.length : 'N/A'}
         system:`You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
 Extract order data from CMR waybills, delivery orders, or transport documents.
 Return ONLY valid JSON, no markdown, no explanation.
-Schema: {"client_name":"string or null","goods":"string or null","gross_weight_kg":number or null,"pallets":number or null,"temperature_c":number or null,"loading_city":"string or null","loading_country":"string or null","loading_date":"YYYY-MM-DD or null","delivery_city":"string or null","delivery_country":"string or null","delivery_date":"YYYY-MM-DD or null","direction":"Export or Import or null","confidence":"HIGH or MEDIUM or LOW","notes":"string or null"}
-Direction: Export = loading in Greece. Import = loading outside Greece.`,
+Schema:
+{
+  "client_name": "string or null",
+  "goods": "string or null",
+  "gross_weight_kg": number or null,
+  "pallets": number or null,
+  "temperature_c": number or null,
+  "direction": "Export or Import or null",
+  "confidence": "HIGH or MEDIUM or LOW",
+  "notes": "string or null",
+  "loading_stops": [
+    {"city": "string", "country": "string", "date": "YYYY-MM-DD or null", "pallets": number or null}
+  ],
+  "delivery_stops": [
+    {"city": "string", "country": "string", "date": "YYYY-MM-DD or null", "pallets": number or null}
+  ]
+}
+Rules:
+- loading_stops: each distinct loading point as a separate object. If dates not specified per stop, use the main loading date for all.
+- delivery_stops: each distinct unloading/delivery point as a separate object.
+- pallets per stop: if total pallets split across stops, distribute them. If not specified per stop, put total on first stop only, null on others.
+- direction: Export = loading in Greece. Import = loading outside Greece.`,
         messages:[{role:'user', content:[cb, {type:'text',text:'Extract all order data from this transport document.'}]}]
       })
     });
@@ -849,8 +869,8 @@ async function _scanPreview(data) {
         <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
       </div>
       ${row('Client',   clientLabel||data.client_name, !!clientId)}
-      ${row('Loading',  loadLocLabel||(data.loading_city?data.loading_city+(data.loading_country?', '+data.loading_country:''):''), !!loadLocId)}
-      ${row('Delivery', delLocLabel||(data.delivery_city?data.delivery_city+(data.delivery_country?', '+data.delivery_country:''):''), !!delLocId)}
+      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), s._locLabel||s.city+(s.country?', '+s.country:''), !!s._locId)).join('')}
+      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), s._locLabel||s.city+(s.country?', '+s.country:''), !!s._locId)).join('')}
       ${row('Load Date',  data.loading_date,  true)}
       ${row('Del Date',   data.delivery_date,  true)}
       ${row('Goods',      data.goods,          true)}
@@ -865,7 +885,7 @@ async function _scanPreview(data) {
     </div>`;
 
   // Store result globally — avoids JSON encoding issues in onclick
-  window._scanResult = { matched: {clientId,clientLabel,loadLocId,loadLocLabel,delLocId,delLocLabel}, data };
+  window._scanResult = { matched: {clientId,clientLabel,loadLocId,loadLocLabel,delLocId,delLocLabel,loadStops,delStops}, data };
 
   // Update footer
   document.getElementById('modalFooter').innerHTML = `
@@ -881,18 +901,32 @@ async function _scanOpenStored() {
 
 async function _scanOpen(matched, data) {
   const f = {};
-  if (matched.clientId)   f['Client']              = [matched.clientId];
-  if (matched.loadLocId)  f['Loading Location 1']  = [matched.loadLocId];
-  if (matched.delLocId)   f['Unloading Location 1']= [matched.delLocId];
-  if (data.loading_date)  f['Loading DateTime']    = data.loading_date;
-  if (data.delivery_date) f['Delivery DateTime']   = data.delivery_date;
-  if (data.goods)         f['Goods']               = data.goods;
-  if (data.gross_weight_kg) f['Gross Weight kg']   = data.gross_weight_kg;
-  if (data.pallets)       f['Loading Pallets 1']   = data.pallets;
-  // NOTE: delivery pallets intentionally NOT filled — same pallets, dispatcher confirms
-  if (data.temperature_c!=null) f['Temperature °C']= data.temperature_c;
-  if (data.direction)     f['Direction']           = data.direction;
-  if (data.temperature_c!=null) f['Refrigerator Mode'] = 'Continuous';
+  if (matched.clientId) f['Client'] = [matched.clientId];
+  if (data.goods)       f['Goods']  = data.goods;
+  if (data.gross_weight_kg) f['Gross Weight kg'] = data.gross_weight_kg;
+  if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
+  if (data.direction)   f['Direction'] = data.direction;
+
+  // Loading stops
+  const ls = matched.loadStops || [];
+  ls.forEach((s,i) => {
+    const n = i+1;
+    if (s._locId) f[n===1?'Loading Location 1':`Loading Location ${n}`] = [s._locId];
+    if (s.pallets!=null) f[n===1?'Loading Pallets 1':`Loading Pallets ${n}`] = s.pallets;
+    if (s.date) f[n===1?'Loading DateTime':`Loading DateTime ${n}`] = s.date;
+  });
+  // First loading date fallback
+  if (!ls.length && data.loading_date) f['Loading DateTime'] = data.loading_date;
+
+  // Delivery stops
+  const ds = matched.delStops || [];
+  ds.forEach((s,i) => {
+    const n = i+1;
+    if (s._locId) f[n===1?'Unloading Location 1':`Unloading Location ${n}`] = [s._locId];
+    if (s.date) f[n===1?'Delivery DateTime':`Unloading DateTime ${n}`] = s.date;
+  });
+  if (!ds.length && data.delivery_date) f['Delivery DateTime'] = data.delivery_date;
+
   if (matched.clientId && matched.clientLabel) _clientsMap[matched.clientId] = matched.clientLabel;
   closeModal();
   await _openModal(null, f, matched.clientLabel);
