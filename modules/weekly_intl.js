@@ -497,14 +497,23 @@ function _wiRowHTML(row,i){
   const isGroup=exps.length>1;
   const primary=exps[0];
 
-  // Status
+  // Status based on operational state
   const hasPartner=!!(row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label);
+  const delDateRaw=primary?.fields['Delivery DateTime']||null;
+  const isOverdue=delDateRaw && new Date(delDateRaw.split('T')[0]) < new Date(new Date().toISOString().split('T')[0]);
   let sCls,dotColor;
-  if(row.saved){
-    sCls    =hasPartner?'s-partner':'s-ok';
-    dotColor=hasPartner?'rgba(59,130,246,0.7)':'var(--success)';
+  if(isOverdue){
+    // Red — overdue delivery
+    sCls='s-overdue'; dotColor='rgba(220,38,38,0.85)';
+  } else if(hasPartner){
+    // Blue — partner trip
+    sCls='s-partner'; dotColor='rgba(59,130,246,0.75)';
+  } else if(row.saved && !row.importId){
+    // Orange — owned fleet assigned, no import
+    sCls='s-noimport'; dotColor='rgba(217,119,6,0.8)';
   } else {
-    sCls='s-pending'; dotColor='rgba(217,119,6,0.75)';
+    // Green — on time (assigned + import, or unassigned future)
+    sCls='s-ok'; dotColor='var(--success)';
   }
 
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||'—'):'—';
@@ -535,7 +544,13 @@ function _wiRowHTML(row,i){
       </div>`;
     }
   } else {
-    pill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
+    if(isOverdue){
+      pill=`<div class="wi-pill" style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.22)">
+        <span class="pt" style="color:rgba(220,38,38,0.9)">Unassigned</span>
+      </div>`;
+    } else {
+      pill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
+    }
   }
 
   // Import preview — saved state shown
