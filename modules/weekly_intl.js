@@ -123,7 +123,7 @@ const WINTL = {
   max-width:192px; opacity:.75; color:var(--text-mid); }
 
 /* import col */
-.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; background:var(--bg); }
+.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
 .wi-ci-n { font-size:11px; font-weight:700; color:var(--text);
@@ -565,7 +565,10 @@ function _wiRowHTML(row,i){
         <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
         <span class="wi-ci-save">✓ saved</span>
       </div>`
-    :`<span class="wi-ci-e">drag import here</span>`;
+    :`<div style="width:100%;height:100%;display:flex;align-items:center;
+  background:var(--navy-mid);margin:-6px -13px;padding:6px 13px;min-height:42px;">
+  <span style="font-size:10px;color:rgba(196,207,219,0.35);font-style:italic;letter-spacing:0.3px;">drag import here</span>
+</div>`;
 
   return `
   <div id="wi-row-${row.id}" class="wi-row ${sCls}">
