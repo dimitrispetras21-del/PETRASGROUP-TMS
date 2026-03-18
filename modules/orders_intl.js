@@ -937,7 +937,7 @@ async function _scanOpen(matched, data) {
   if (data.gross_weight_kg) f['Gross Weight kg'] = data.gross_weight_kg;
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;
-  if (data.price_eur)   f['Price (€)'] = data.price_eur;
+  if (data.price_eur)   f['Price'] = data.price_eur;
 
   // Loading stops
   const ls = matched.loadStops || [];
@@ -959,6 +959,9 @@ async function _scanOpen(matched, data) {
   });
   if (!ds.length && data.delivery_date) f['Delivery DateTime'] = data.delivery_date;
 
+  // Register matched locations in _locationsMap so _locSelect can show label
+  const ls2 = matched.loadStops||[], ds2 = matched.delStops||[];
+  [...ls2,...ds2].forEach(s=>{ if(s._locId && s._locLabel) _locationsMap[s._locId]=s._locLabel; });
   if (matched.clientId && matched.clientLabel) _clientsMap[matched.clientId] = matched.clientLabel;
   closeModal();
   await _openModal(null, f, matched.clientLabel);
