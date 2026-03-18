@@ -37,7 +37,7 @@ const WINTL = {
   s.textContent=`
 .wi-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
 .wi-head {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 270px 1fr;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
 }
@@ -65,7 +65,7 @@ const WINTL = {
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 270px 1fr;
   min-height:42px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
@@ -73,7 +73,7 @@ const WINTL = {
 .wi-dot { width:6px; height:6px; border-radius:50%; }
 .wi-num { font-size:9px; color:var(--text-dim); }
 
-.wi-ce { padding:6px 13px; border-right:1px solid var(--border);
+.wi-ce { padding:6px 12px; border-right:1px solid var(--border);
   display:flex; flex-direction:column; gap:2px; justify-content:center; overflow:hidden; }
 .wi-route { font-size:11.5px; font-weight:700; color:var(--text);
   display:flex; align-items:center; gap:0; min-width:0; }
@@ -120,19 +120,24 @@ const WINTL = {
   display:flex; align-items:stretch;
   overflow:hidden;
 }
-.wi-ca-wrap:hover { background:var(--bg-hover); }
+.wi-ca-wrap:hover { background:rgba(0,0,0,0.012); }
 
-/* side print buttons — left and right of pill */
+/* side print buttons */
 .wi-side-btn {
-  flex-shrink:0; width:28px;
-  border:none; background:transparent;
+  flex-shrink:0; width:30px;
+  border:none;
+  border-radius:0;
+  background:transparent;
   cursor:pointer; color:var(--text-dim);
-  font-size:11px; display:flex; align-items:center; justify-content:center;
-  transition:background .1s, color .1s;
+  font-size:11px;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .12s, color .12s, opacity .12s;
   opacity:0;
 }
+.wi-side-btn:first-child { border-right:1px solid var(--border); }
+.wi-side-btn:last-child  { border-left:1px solid var(--border); }
 .wi-row:hover .wi-side-btn { opacity:1; }
-.wi-side-btn:hover { background:rgba(11,25,41,0.06); color:var(--text); }
+.wi-side-btn:hover { background:rgba(11,25,41,0.07); color:var(--navy); }
 .wi-pill { display:flex; flex-direction:column; align-items:center;
   padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden; gap:1px; }
 .wi-pill-ok { background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2); }
@@ -147,7 +152,7 @@ const WINTL = {
   max-width:192px; opacity:.75; color:var(--text-mid); }
 
 /* import col */
-.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; }
+.wi-ci { padding:6px 12px; display:flex; align-items:center; transition:background .1s; overflow:hidden; }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
 .wi-ci-n { font-size:11px; font-weight:700; color:var(--text);
@@ -671,7 +676,8 @@ function _wiRowHTML(row,i){
       <div class="wi-ca-wrap">
         <button class="wi-side-btn" title="Print Export"
                 onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center"
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;
+                    padding:4px 6px;cursor:pointer;min-width:0"
              onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
           ${pill}
         </div>
