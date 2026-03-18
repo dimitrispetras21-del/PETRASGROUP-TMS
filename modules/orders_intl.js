@@ -787,6 +787,7 @@ Output schema:
   "pallets": total pallet count across all loading stops as number,
   "temperature_c": required transport temperature as number or null,
   "direction": "Export if loading in Greece, Import if loading outside Greece",
+  "price_eur": freight cost or order price as number or null,
   "confidence": "HIGH or MEDIUM or LOW",
   "notes": "any special instructions, trailer requirements, etc.",
   "loading_stops": [
@@ -936,6 +937,7 @@ async function _scanOpen(matched, data) {
   if (data.gross_weight_kg) f['Gross Weight kg'] = data.gross_weight_kg;
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;
+  if (data.price_eur)   f['Price (€)'] = data.price_eur;
 
   // Loading stops
   const ls = matched.loadStops || [];
