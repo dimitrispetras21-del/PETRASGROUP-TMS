@@ -268,11 +268,13 @@ const WINTL = {
 /* ── IMPORT ROWS ── */
 .wi-imp-row {
   display:flex; align-items:center; gap:10px;
-  padding:7px 12px 7px 6px;
+  padding:7px 12px 7px 10px;
   border-top:1px solid var(--border);
   background:rgba(217,119,6,0.03);
   cursor:grab; transition:background .1s;
-  min-height:40px;
+  min-height:38px;
+  width:100%;
+  box-sizing:border-box;
 }
 .wi-imp-row:active { cursor:grabbing; }
 .wi-imp-row:hover  { background:rgba(217,119,6,0.06); }
@@ -507,11 +509,11 @@ function _wiAllRowsHTML(){
   // ── IMPORTS section ──
   if(impRows.length){
     const matched=impRows.filter(r=>r.matchedTo).length;
-    html+=`<div class="wi-dsep" style="background:#1A3550">
-      <span class="wi-dsep-lbl" style="color:rgba(217,119,6,0.6)">Imports</span>
-      <span class="wi-dsep-date" style="color:rgba(217,119,6,0.9)">${impRows.length} orders</span>
+    html+=`<div class="wi-dsep" style="background:#1A3550;border-top:2px solid rgba(217,119,6,0.3)">
+      <span class="wi-dsep-lbl" style="color:rgba(217,119,6,0.55)">Loading</span>
+      <span class="wi-dsep-date" style="color:rgba(217,119,6,0.85)">Imports · ${impRows.length} orders</span>
       <span class="wi-dsep-n">${matched} matched · ${impRows.length-matched} free</span>
-      <span style="font-size:9px;color:rgba(196,207,219,0.4);margin-left:auto">drag to match · re-drag anytime</span>
+      <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag to match</span>
     </div>`;
     impRows.forEach(row=>{ html+=_wiImpRowHTML(row); });
   }
