@@ -82,6 +82,23 @@ const WINTL = {
   white-space:nowrap; flex-shrink:0; }
 .wi-sub { font-size:10px; font-weight:600; color:var(--text-mid); display:flex; align-items:center; gap:7px; }
 .wi-sub-div { width:1px; height:9px; background:var(--border-mid); }
+/* ── order badges ── */
+.wi-badge {
+  display:inline-flex; align-items:center; gap:3px;
+  font-size:7.5px; font-weight:800; letter-spacing:.9px;
+  text-transform:uppercase; padding:1px 5px; border-radius:3px;
+  vertical-align:middle; margin-left:4px; flex-shrink:0;
+  white-space:nowrap;
+}
+.wi-b-veroia  { background:rgba(99,102,241,0.1);  color:rgba(99,102,241,0.85);  border:1px solid rgba(99,102,241,0.22); }
+.wi-b-group   { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.85);  border:1px solid rgba(14,165,233,0.2); }
+.wi-b-risk    { background:rgba(220,38,38,0.1);   color:rgba(220,38,38,0.9);    border:1px solid rgba(220,38,38,0.25); }
+.wi-b-pe      { background:rgba(217,119,6,0.1);   color:rgba(217,119,6,0.9);    border:1px solid rgba(217,119,6,0.25); }
+.wi-b-pe-ok   { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
+.wi-b-docs    { background:rgba(5,150,105,0.1);   color:rgba(5,150,105,0.9);    border:1px solid rgba(5,150,105,0.2); }
+.wi-b-nodocs  { background:rgba(245,158,11,0.1);  color:rgba(245,158,11,0.9);   border:1px solid rgba(245,158,11,0.25); }
+.wi-b-done    { background:rgba(5,150,105,0.12);  color:rgba(5,150,105,0.95);   border:1px solid rgba(5,150,105,0.25); }
+.wi-b-grpg    { background:rgba(139,92,246,0.1);  color:rgba(139,92,246,0.9);   border:1px solid rgba(139,92,246,0.22); }
 .wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
   background:rgba(99,102,241,0.1); color:rgba(99,102,241,0.85); border:1px solid rgba(99,102,241,0.2); }
@@ -460,6 +477,24 @@ function _wiDelDate(row){
 }
 
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
+function _wiBadges(f){
+  const b=[];
+  // Risk
+  if(f['High Risk Flag']) b.push('<span class="wi-badge wi-b-risk">! Risk</span>');
+  // Pallet Exchange
+  if(f['Pallet Exchange']){
+    if(f['Pallet Exchange Confirmed']) b.push('<span class="wi-badge wi-b-pe-ok">PE ✓</span>');
+    else b.push('<span class="wi-badge wi-b-pe">PE</span>');
+  }
+  // National Groupage
+  if(f['National Groupage']) b.push('<span class="wi-badge wi-b-grpg">Groupage</span>');
+  // Docs
+  if(f['Docs Ready']) b.push('<span class="wi-badge wi-b-docs">Docs ✓</span>');
+  // Done
+  if(f['DONE']) b.push('<span class="wi-badge wi-b-done">Done</span>');
+  return b.join('');
+}
+
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
   const exps   =row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
@@ -535,8 +570,9 @@ function _wiRowHTML(row,i){
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr">Group ${exps.length}</span>`:''}
+          ${isGroup?`<span class="wi-gr">×\${exps.length}</span>`:''}
           ${veroia?`<span class="wi-vx">Veroia</span>`:''}
+          ${_wiBadges(primary?.fields||{})}
         </div>
         <div class="wi-sub">
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
