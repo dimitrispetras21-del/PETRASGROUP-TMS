@@ -23,6 +23,7 @@ const PA_TABLE = 'tblUhgqnmiam5MGNK';
 
 const WINTL = {
   week:      _wiCurrentWeek(),
+  shelf:     [], // kept for compat, not used for display
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
   ui:        { openRow:null },
@@ -392,7 +393,6 @@ function _wiBuildRows(){
     exports.map(r=>r.fields['Matched Import ID']).filter(Boolean)
   );
 
-  WINTL.shelf=imports.filter(r=>!matchedImports.has(r.id));
 
   for(const exp of exports){
     const f=exp.fields;
