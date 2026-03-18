@@ -1043,8 +1043,12 @@ async function _wiSaveFromPopover(rowId){
       'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null,
       'Truck':[],'Trailer':[],'Driver':[]}
     :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
+  // All order IDs to update: export orders + matched import order (if any)
+  const allOrderIds=[...row.orderIds];
+  if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
+
   const errors=[];
-  for(const orderId of row.orderIds){
+  for(const orderId of allOrderIds){
     try{
       const res=await atPatch(TABLES.ORDERS,orderId,fields);
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
@@ -1119,8 +1123,10 @@ async function _wiSave(rowId){
 async function _wiClear(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   if(!confirm('Clear assignment?')) return;
+  const allOrderIds=[...row.orderIds];
+  if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
   const errors=[];
-  for(const orderId of row.orderIds){
+  for(const orderId of allOrderIds){
     try{
       const res=await atPatch(TABLES.ORDERS,orderId,{
         'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
