@@ -683,7 +683,7 @@ function openIntlScan() {
       <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
     </div>
     <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none"
-      onchange="_scanFile(this.files[0])">
+      onchange="_scanHandleFile(this.files[0])">
 
     <div id="scanStatus" style="display:none;margin-top:14px"></div>`,
 
@@ -696,12 +696,12 @@ function openIntlScan() {
 function _scanDrop(e) {
   e.preventDefault();
   document.getElementById('scanDrop').style.borderColor = 'var(--border-dark)';
-  _scanFile(e.dataTransfer.files[0]);
+  _scanHandleFile(e.dataTransfer.files[0]);
 }
 
-function _scanFile(file) {
+function _scanHandleFile(file) {
   if (!file) return;
-  window._scanFile = file;
+  window._scanUploadedFile = file;
   const btn = document.getElementById('btnScanGo');
   if (btn) btn.disabled = false;
 
@@ -727,7 +727,7 @@ function _scanFile(file) {
 }
 
 async function _scanExtract() {
-  const file = window._scanFile;
+  const file = window._scanUploadedFile;
   if (!file) return;
   const btn = document.getElementById('btnScanGo');
   const st  = document.getElementById('scanStatus');
