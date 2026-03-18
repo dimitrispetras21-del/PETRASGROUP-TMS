@@ -457,6 +457,8 @@ function _wiBuildRows(){
     const f=imp.fields;
     const truckId  =(f['Truck']  ||[])[0]||'';
     const partnerId=(f['Partner']||[])[0]||'';
+    const impTrailerId=(f['Trailer']||[])[0]||'';
+    const impDriverId =(f['Driver'] ||[])[0]||'';
     WINTL.rows.push({
       id:          ++WINTL._seq,
       type:        'import',
@@ -464,9 +466,10 @@ function _wiBuildRows(){
       orderIds:    [imp.id],
       importId:    null,
       matchedTo:   matchedMap[imp.id]||null,
-      truckId, trailerId:'', driverId:'', partnerId,
+      truckId,   trailerId:impTrailerId, driverId:impDriverId, partnerId,
       truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel:'', driverLabel:'',
+      trailerLabel:WINTL.data.trailers.find(t=>t.id===impTrailerId)?.label||'',
+      driverLabel: WINTL.data.drivers.find(d=>d.id===impDriverId)?.label||'',
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
       partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
@@ -1305,12 +1308,14 @@ async function _wiSaveFromPopover(rowId){
   }
   if(errors.length){
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
-    toast('Error: '+errors[0].slice(0,60),'warn');return;
+    toast('Error: '+errors[0].slice(0,60),'warn');
+    console.error('Save errors:',errors);
+    return;
   }
   _wiClosePopover();
 
-  // Create PARTNER ASSIGNMENT record
-  if(isPartner){
+  // Create PARTNER ASSIGNMENT record (only for export rows)
+  if(isPartner && row.type==='export'){
     try{ await _wiCreatePartnerAssignments(row, fields); }
     catch(e){ console.warn('PA create error:',e.message); }
   }
@@ -1516,8 +1521,9 @@ function _wiToggleGroup(rowId){
 }
 
 function _wiOpenImpPopover(e, impId, rowId){
-  // Reuse same popover for import row assignment
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  // Import row uses same popover — row IS the import row, orderId = import order
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  if(!row){console.error('Import row not found:',rowId);return;}
   _wiOpenPopover(e, rowId);
 }
 
