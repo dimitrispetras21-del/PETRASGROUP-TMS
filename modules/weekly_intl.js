@@ -566,8 +566,8 @@ function _wiAllRowsHTML(){
     // Export rows
     grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
 
-    // Import rows — same width as export rows, cyan style
-    grp.imps.forEach(row=>{ html+=_wiImpRowHTML(row); });
+    // Only unmatched imports get their own row (matched ones show in export import cell)
+    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row); });
   });
 
   return html;
@@ -616,43 +616,33 @@ function _wiImpRowHTML(row){
         unmatched
       </span>`;
 
-  // Same 4-col grid as export rows
+  // Unmatched import: only right (import) column active, left cols empty
   return `<div id="wi-imp-${imp.id}"
-    class="wi-row ${isMatched?'s-ok':'s-pending'}"
-    style="background:${isMatched?'rgba(14,165,233,0.03)':'rgba(14,165,233,0.015)'};cursor:grab"
+    class="wi-row"
+    style="background:rgba(14,165,233,0.02);cursor:grab;border-top:1px solid rgba(14,165,233,0.12)"
     draggable="true"
     ondragstart="_wiImpDragStart(event,'${imp.id}')">
     <div class="wi-compact" style="cursor:grab">
       <div class="wi-cn">
-        <div class="wi-dot" style="background:${isMatched?'rgba(14,165,233,0.8)':'rgba(14,165,233,0.3)'}"></div>
-        <span style="font-size:8px;color:rgba(14,165,233,0.6);font-weight:700">IMP</span>
+        <div class="wi-dot" style="background:rgba(14,165,233,0.35)"></div>
+        <span style="font-size:7.5px;color:rgba(14,165,233,0.5);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce">
-        <div class="wi-route">
-          <span class="from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
-          ${_wiBadges(f)}
+      <div class="wi-ce" style="opacity:0"></div>
+      <div class="wi-ca-wrap" style="cursor:default;opacity:0"></div>
+      <div class="wi-ci"
+           style="background:rgba(14,165,233,0.04)"
+           ondragover="event.preventDefault()"
+           onclick="event.stopPropagation()">
+        <div class="wi-ci-data" style="flex:1">
+          <div style="display:flex;align-items:center;gap:0;min-width:0">
+            <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+            <span class="wi-ci-sep">→</span>
+            <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+            ${_wiBadges(f)}
+          </div>
+          <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
         </div>
-        <div class="wi-sub">
-          <span>${loadDt} → ${delDt}</span>
-          <span class="wi-sub-div"></span>
-          <span>${pals} pal</span>
-          ${matchBadge}
-        </div>
-      </div>
-      <div class="wi-ca-wrap" style="cursor:default" onclick="event.stopPropagation()">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px">
-          ${matchBadge2}
-        </div>
-      </div>
-      <div class="wi-ci" onclick="event.stopPropagation()"
-           style="background:${isMatched?'rgba(14,165,233,0.04)':''}">
-        <div style="flex:1"></div>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          ${isMatched?`<button onclick="event.stopPropagation();_wiUnmatch('${imp.id}')"
-            style="font-size:9px;border:1px solid var(--border-mid);border-radius:4px;
-                   padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
+        <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
           <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
             style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
                    padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
