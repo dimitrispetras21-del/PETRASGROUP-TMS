@@ -638,9 +638,9 @@ function _wiImpRowHTML(row){
   const matchCell=isMatched
     ?`<div class="wi-ci-data">
         <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+          <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
           <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+          <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
           ${_wiBadges(f)}
         </div>
         <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
@@ -650,9 +650,9 @@ function _wiImpRowHTML(row){
       </div>`
     :`<div class="wi-ci-data">
         <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+          <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
           <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+          <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
           ${_wiBadges(f)}
         </div>
         <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
@@ -662,19 +662,13 @@ function _wiImpRowHTML(row){
     class="wi-row"
     style="background:rgba(14,165,233,0.022);border-top:1px solid rgba(14,165,233,0.1)"
     draggable="true"
-    ondragstart="_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-compact">
+    ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
+    <div class="wi-compact" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
       <div class="wi-cn" style="cursor:grab">
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab;border-right:1px solid rgba(14,165,233,0.12)">
-        <div style="font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
-                    color:rgba(14,165,233,0.4);margin-bottom:2px">Import Order</div>
-        <div style="font-size:10.5px;font-weight:600;color:rgba(14,165,233,0.7)">
-          ${loadDt} → ${delDt} &nbsp;·&nbsp; ${pals} pal
-        </div>
-      </div>
+      <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         <button class="wi-side-btn" title="Print Import"
                 onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
