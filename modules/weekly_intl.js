@@ -13,6 +13,7 @@ const WINTL = {
   assetsLoaded: false,
   _rc: 0,
   _shelfFilter: '',
+  trips: [],
 };
 
 // ── Badge / sdrop styles injected once ─────────
@@ -69,11 +70,17 @@ async function renderWeeklyIntl() {
   document.getElementById('content').innerHTML = `<div class="loading"><span class="spinner"></span> Loading week ${WINTL.week}…</div>`;
   try {
     await _wiLoadAssets();
-    const formula=`AND({Type}='International',{ Week Number}=${WINTL.week})`;
-    const all=await atGetAll(TABLES.ORDERS,{filterByFormula:formula});
-    WINTL.exports=all.filter(r=>r.fields.Direction==='Export')
-      .sort((a,b)=>(a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
-    WINTL.imports=all.filter(r=>r.fields.Direction==='Import');
+    // Fetch ORDERS + TRIPS in parallel
+    const [allOrders, allTrips] = await Promise.all([
+      atGetAll(TABLES.ORDERS, {filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`}),
+      atGetAll(TABLES.TRIPS,  {filterByFormula:`{Week Number}=${WINTL.week}`,
+        fields:['Export Order','Import Order','Truck','Trailer','Driver','Partner',
+                'Week Number','TripID','Trip Νο','Partner Cost']}),
+    ]);
+    WINTL.exports = allOrders.filter(r=>r.fields.Direction==='Export')
+      .sort((a,b)=>(a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
+    WINTL.imports = allOrders.filter(r=>r.fields.Direction==='Import');
+    WINTL.trips   = allTrips;
     _wiBuildRows();
     _wiRender();
   } catch(e) {
@@ -84,26 +91,52 @@ async function renderWeeklyIntl() {
 function _wiBuildRows() {
   WINTL.rows=[]; WINTL._rc=0;
   const usedExp=new Set(), usedImp=new Set();
-  // existing trips
-  const tripMap={};
-  [...WINTL.exports,...WINTL.imports].forEach(r=>{
-    (r.fields['TRIPS (Import Order)']||[]).forEach(tid=>{
-      if(!tripMap[tid]) tripMap[tid]={exp:[],imp:[]};
-      r.fields.Direction==='Export'?tripMap[tid].exp.push(r.id):tripMap[tid].imp.push(r.id);
+  const trips = WINTL.trips || [];
+
+  // ── Build rows from TRIPS table (source of truth) ──────────────
+  trips.forEach(trip=>{
+    const f = trip.fields;
+    const expIds  = (f['Export Order'] || []);
+    const impId   = (f['Import Order'] || [])[0] || null;
+    const truckId    = (f['Truck']   || [])[0] || '';
+    const trailerId  = (f['Trailer'] || [])[0] || '';
+    const driverId   = (f['Driver']  || [])[0] || '';
+    const partnerId  = (f['Partner'] || [])[0] || '';
+    const isPartner  = !!partnerId;
+    const partnerCost= f['Partner Cost'] ? String(f['Partner Cost']) : '';
+    const tripNo     = f['Trip Νο'] || f['TripID'] || '';
+
+    expIds.forEach(id=>usedExp.add(id));
+    if (impId) usedImp.add(impId);
+
+    WINTL.rows.push({
+      id: ++WINTL._rc,
+      tripRecId: trip.id,       // Airtable record ID of the TRIP
+      tripNo,
+      exportIds: expIds,
+      importId:  impId,
+      truckId, trailerId, driverId, partnerId,
+      carrierType: isPartner ? 'partner' : 'owned',
+      partnerCost,
+      saved: true,
+      open: false,
     });
   });
-  Object.values(tripMap).forEach(t=>{
-    t.exp.forEach(id=>usedExp.add(id));
-    t.imp.forEach(id=>usedImp.add(id));
-    WINTL.rows.push({id:++WINTL._rc,exportIds:t.exp,importId:t.imp[0]||null,
-      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:true,open:false});
-  });
-  // remaining exports → 1 row each
+
+  // ── Unassigned exports → 1 row each ────────────────────────────
   WINTL.exports.filter(r=>!usedExp.has(r.id)).forEach(r=>{
-    WINTL.rows.push({id:++WINTL._rc,exportIds:[r.id],importId:null,
-      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:false,open:false});
+    WINTL.rows.push({
+      id: ++WINTL._rc,
+      tripRecId: null, tripNo: '',
+      exportIds: [r.id], importId: null,
+      truckId:'', trailerId:'', driverId:'', partnerId:'',
+      carrierType: 'owned', partnerCost: '',
+      saved: false, open: false,
+    });
   });
-  WINTL.importShelf=WINTL.imports.filter(r=>!usedImp.has(r.id));
+
+  // ── Unmatched imports → shelf ───────────────────────────────────
+  WINTL.importShelf = WINTL.imports.filter(r=>!usedImp.has(r.id));
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -260,7 +293,7 @@ function _wiRow(row, i) {
   const _partnerLabel = row.partnerId ? WINTL.partners.find(p=>p.id===row.partnerId)?.label?.substring(0,16)||'Partner' : null;
   const _truckLabel   = row.truckId   ? WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—' : null;
   const assignBadge=isSaved
-    ?`<span class="wi-badge wi-badge-ok">TRIP</span>`
+    ?`<span class="wi-badge wi-badge-ok">TRIP ${row.tripNo||''}</span>`
     :(row.partnerId
       ?`<div style="text-align:center;line-height:1.3">
           <div style="font-size:10px;font-weight:600;color:var(--accent)">${_partnerLabel}</div>
