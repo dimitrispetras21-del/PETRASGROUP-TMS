@@ -56,7 +56,7 @@ const WINTL = {
   overflow:hidden; background:var(--bg-card);
 }
 .wi-head {
-  display:grid; grid-template-columns:48px 1fr 40px 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
 }
@@ -91,7 +91,7 @@ const WINTL = {
 .wi-row.s-pending { background:var(--bg-card); }
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 .wi-compact {
-  display:grid; grid-template-columns:48px 1fr 40px 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr;
   min-height:42px; align-items:stretch;
 }
 .wi-cn {
@@ -126,14 +126,7 @@ const WINTL = {
   background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85);
   border:1px solid rgba(14,165,233,0.18); vertical-align:middle; margin-left:4px;
 }
-.wi-chev {
-  display:flex; align-items:center; justify-content:center;
-  cursor:pointer; border-right:1px solid var(--border);
-  color:var(--border-dark); font-size:14px; user-select:none;
-  transition:color 0.1s, background 0.1s;
-}
-.wi-chev:hover { color:var(--text-mid); background:rgba(0,0,0,0.04); }
-.wi-chev.open  { color:var(--text-mid); transform:rotate(90deg); }
+
 .wi-ca {
   padding:6px 10px; border-right:1px solid var(--border);
   background:var(--bg); display:flex; align-items:center; justify-content:center;
@@ -387,7 +380,6 @@ function _wiPaint(){
           Export (${expN})
           <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:var(--text-dim);margin-left:6px">right-click to group</span>
         </div>
-        <div class="wi-hc" style="padding:0"></div>
         <div class="wi-hc" style="text-align:center">Assignment</div>
         <div class="wi-hc" style="color:var(--warning)">
           Import (${impN})
@@ -549,8 +541,7 @@ function _wiRowHTML(row,i){
           ${pals?`<span>${pals} pal</span>`:''}
         </div>
       </div>
-      <div class="wi-chev${isOpen?' open':''}" onclick="_wiToggle(${row.id})">›</div>
-      <div class="wi-ca">${pill}</div>
+      <div class="wi-ca" onclick="event.stopPropagation()">${pill}</div>
       <div class="wi-ci" id="wi-ci-${row.id}"
            ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
@@ -920,3 +911,4 @@ function _wiNavWeek(delta){
   WINTL._assetsOk=true;
   renderWeeklyIntl();
 }
+
