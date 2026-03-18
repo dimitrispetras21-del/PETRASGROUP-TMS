@@ -279,7 +279,7 @@ async function renderWeeklyIntl(){
   try{
     await _wiLoadAssets();
     const allOrders = await atGetAll(TABLES.ORDERS,{
-      filterByFormula:`AND({Type}='International',{Week Number}=${WINTL.week})`,
+      filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`,
     });
 
     // Sort exports by Delivery DateTime
