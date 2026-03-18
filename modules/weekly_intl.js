@@ -37,7 +37,7 @@ const WINTL = {
   s.textContent=`
 .wi-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
 .wi-head {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr 52px;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
 }
@@ -65,7 +65,7 @@ const WINTL = {
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr 52px;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr;
   min-height:42px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
@@ -434,7 +434,6 @@ function _wiPaint(){
           <span style="font-weight:400;text-transform:none;letter-spacing:0;
                        font-size:9px;color:var(--text-dim);margin-left:6px">drag from shelf</span>
         </div>
-        <div class="wi-hc" style="text-align:center;padding:8px 4px"></div>
       </div>
       <div id="wi-rows">
         ${rows.length?_wiAllRowsHTML():`
@@ -646,36 +645,36 @@ function _wiRowHTML(row,i){
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
-      <div class="wi-ca" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})" style="cursor:pointer">${pill}</div>
-      <div class="wi-ci" id="wi-ci-${row.id}"
-           onclick="event.stopPropagation()"
-           ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
-           ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
-        ${impPrev}
-      </div>
-      <div style="display:flex;flex-direction:column;justify-content:center;
-                  gap:3px;padding:4px 6px;border-left:1px solid var(--border);
-                  background:var(--bg);flex-shrink:0"
-           onclick="event.stopPropagation()">
-        <button title="Print Export Order"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'export')"
-                style="padding:3px 7px;font-size:9px;font-weight:700;letter-spacing:.5px;
-                       border:1px solid var(--border-mid);border-radius:4px;cursor:pointer;
-                       background:var(--bg-card);color:var(--text-mid);
-                       transition:all .1s;white-space:nowrap">
+      <div style="display:flex;align-items:center;border-right:1px solid var(--border);background:var(--bg)">
+        <button title="Print Export" onclick="event.stopPropagation();_wiPrint(${row.id},'export')"
+          style="flex-shrink:0;height:100%;padding:0 8px;border:none;border-right:1px solid var(--border);
+                 background:transparent;cursor:pointer;color:var(--text-dim);font-size:8.5px;font-weight:700;
+                 letter-spacing:.6px;transition:color .1s,background .1s;min-height:42px"
+          onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text-dim)'">
           EXP
         </button>
+        <div class="wi-ca" style="border:none;flex:1" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">${pill}</div>
+      </div>
+      <div style="display:flex;align-items:center">
+        <div class="wi-ci" id="wi-ci-${row.id}" style="flex:1"
+             onclick="event.stopPropagation()"
+             ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
+             ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
+             ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
+          ${impPrev}
+        </div>
         ${row.importId?`
-        <button title="Print Import Order"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'import')"
-                style="padding:3px 7px;font-size:9px;font-weight:700;letter-spacing:.5px;
-                       border:1px solid var(--border-mid);border-radius:4px;cursor:pointer;
-                       background:var(--bg-card);color:var(--text-mid);
-                       transition:all .1s;white-space:nowrap">
+        <button title="Print Import" onclick="event.stopPropagation();_wiPrint(${row.id},'import')"
+          style="flex-shrink:0;height:100%;padding:0 8px;border:none;border-left:1px solid var(--border);
+                 background:transparent;cursor:pointer;color:var(--text-dim);font-size:8.5px;font-weight:700;
+                 letter-spacing:.6px;transition:color .1s,background .1s;min-height:42px"
+          onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'"
+          onmouseout="this.style.background='transparent';this.style.color='var(--text-dim)'">
           IMP
         </button>`:''}
       </div>
+
     </div>
     ${isOpen?_wiPanelHTML(row):''}
   </div>`;
