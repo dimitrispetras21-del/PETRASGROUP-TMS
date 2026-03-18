@@ -45,9 +45,9 @@ async function _wiLoadAssets() {
 
 // ────────────────────────────────────────────────────────────────
 async function renderWeeklyIntl() {
-  if (!checkPerm('planning','view')) return renderAccessDenied();
-  setTitle('Weekly International',`Week ${WINTL.week}`);
-  setContent(`<div class="loading"><span class="spinner"></span> Loading week ${WINTL.week}…</div>`);
+  if (can('planning')==='none') { document.getElementById('content').innerHTML = showAccessDenied(); return; }
+  document.getElementById('topbarTitle').textContent = `Weekly International — Week ${WINTL.week}`;
+  document.getElementById('content').innerHTML = `<div class="loading"><span class="spinner"></span> Loading week ${WINTL.week}…</div>`;
   try {
     await _wiLoadAssets();
     const formula=`AND({Type}='International',{ Week Number}=${WINTL.week})`;
@@ -58,7 +58,7 @@ async function renderWeeklyIntl() {
     _wiBuildRows();
     _wiRender();
   } catch(e) {
-    setContent(`<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`);
+    document.getElementById('content').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`);
   }
 }
 
@@ -101,7 +101,7 @@ function _wiRender() {
     return s.toLowerCase().includes(sf);
   }) : IS;
 
-  setContent(`
+  document.getElementById('content').innerHTML = `
     <!-- ── HEADER ── -->
     <div class="page-header" style="margin-bottom:12px">
       <div>
@@ -328,7 +328,7 @@ function _wiAssignPanel(row) {
       `:`
         <div>${sel(WINTL.partners,row.partnerId,'Select Partner','partnerId')}</div>
       `}
-      ${checkPerm('planning','full')?`
+      ${can('planning')==='full'?`
       <div style="display:flex;flex-direction:column;gap:4px">
         <button class="btn btn-primary" style="font-size:11px;padding:5px 14px;white-space:nowrap"
                 onclick="_wiCreateTrip(${row.id})">🔗 Create Trip</button>
