@@ -429,10 +429,11 @@ function _wiChipHTML(r){
   const pals=f['Total Pallets']||0;
   const del=_wiFmt(f['Delivery DateTime']);
   return `<div class="wi-chip" draggable="true" ondragstart="_wiDragStart(event,'${r.id}')">
-    <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
+    <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden;flex-wrap:wrap">
       <span class="wi-chip-n" style="flex-shrink:1;min-width:0">${name}</span>
       <span style="color:var(--text-dim);margin:0 5px;flex-shrink:0;font-size:11px">→</span>
       <span class="wi-chip-n" style="flex-shrink:0">${dest}</span>
+      ${_wiBadges(r.fields)}
     </div>
     <div class="wi-chip-m">${del} · ${pals} pal</div>
   </div>`;
@@ -540,10 +541,11 @@ function _wiRowHTML(row,i){
   // Import preview — saved state shown
   const impPrev=imp
     ?`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0">
+        <div style="display:flex;align-items:center;gap:0;min-width:0;flex-wrap:wrap">
           <span class="wi-ci-from">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
           <span class="wi-ci-sep">→</span>
           <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+          ${_wiBadges(imp.fields)}
         </div>
         <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
         <span class="wi-ci-save">✓ saved</span>
@@ -665,13 +667,14 @@ function _wiPanelHTML(row){
         ${imp
           ?`<div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
               <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
-              <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
+              <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden;flex-wrap:wrap">
                 <span style="font-size:11px;font-weight:700;color:var(--text);
                              white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
                              flex-shrink:1;min-width:0">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
                 <span style="font-size:11px;color:var(--text-dim);margin:0 5px;flex-shrink:0">→</span>
                 <span style="font-size:11px;font-weight:700;color:var(--text);
                              white-space:nowrap;flex-shrink:0">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+                ${_wiBadges(imp.fields)}
               </div>
               <div style="font-size:10px;color:var(--text-dim);margin-top:1px">
                 ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal
