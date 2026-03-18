@@ -37,9 +37,10 @@ const WINTL = {
   s.textContent=`
 .wi-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
 .wi-head {
-  display:grid; grid-template-columns:48px 1fr 270px 1fr;
+  display:grid; grid-template-columns:36px 1fr 270px 1fr;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
+  box-shadow:0 1px 0 var(--border-mid);
 }
 .wi-hc { padding:8px 13px; font-size:9.5px; font-weight:700; letter-spacing:1.3px;
   text-transform:uppercase; color:var(--text-dim); border-right:1px solid var(--border); }
@@ -65,11 +66,11 @@ const WINTL = {
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
-  display:grid; grid-template-columns:48px 1fr 270px 1fr;
-  min-height:42px; align-items:stretch; cursor:pointer;
+  display:grid; grid-template-columns:36px 1fr 270px 1fr;
+  min-height:46px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
-  justify-content:center; gap:4px; padding:4px 0; border-right:1px solid var(--border); }
+  justify-content:center; gap:4px; padding:4px 0; border-right:1px solid var(--border); min-width:0; }
 .wi-dot { width:6px; height:6px; border-radius:50%; }
 .wi-num { font-size:9px; color:var(--text-dim); }
 
@@ -317,8 +318,12 @@ function _wiFmt(s){
 }
 function _wiFmtFull(s){
   if(!s) return null;
-  try{return new Date(s).toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'});}
-  catch{return s;}
+  try{
+    // Full Greek date, capitalize first letter
+    const d=new Date(s);
+    const str=d.toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'});
+    return str.charAt(0).toUpperCase()+str.slice(1);
+  }catch{return s;}
 }
 function _wiClean(s){return(s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim();}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
