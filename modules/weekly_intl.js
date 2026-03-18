@@ -37,7 +37,7 @@ const WINTL = {
   s.textContent=`
 .wi-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
 .wi-head {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr 52px;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
 }
@@ -65,7 +65,7 @@ const WINTL = {
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
-  display:grid; grid-template-columns:48px 1fr 220px 1fr;
+  display:grid; grid-template-columns:48px 1fr 220px 1fr 52px;
   min-height:42px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
@@ -434,6 +434,7 @@ function _wiPaint(){
           <span style="font-weight:400;text-transform:none;letter-spacing:0;
                        font-size:9px;color:var(--text-dim);margin-left:6px">drag from shelf</span>
         </div>
+        <div class="wi-hc" style="text-align:center;padding:8px 4px"></div>
       </div>
       <div id="wi-rows">
         ${rows.length?_wiAllRowsHTML():`
@@ -652,6 +653,28 @@ function _wiRowHTML(row,i){
            ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
            ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
         ${impPrev}
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;
+                  gap:3px;padding:4px 6px;border-left:1px solid var(--border);
+                  background:var(--bg);flex-shrink:0"
+           onclick="event.stopPropagation()">
+        <button title="Print Export Order"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'export')"
+                style="padding:3px 7px;font-size:9px;font-weight:700;letter-spacing:.5px;
+                       border:1px solid var(--border-mid);border-radius:4px;cursor:pointer;
+                       background:var(--bg-card);color:var(--text-mid);
+                       transition:all .1s;white-space:nowrap">
+          EXP
+        </button>
+        ${row.importId?`
+        <button title="Print Import Order"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')"
+                style="padding:3px 7px;font-size:9px;font-weight:700;letter-spacing:.5px;
+                       border:1px solid var(--border-mid);border-radius:4px;cursor:pointer;
+                       background:var(--bg-card);color:var(--text-mid);
+                       transition:all .1s;white-space:nowrap">
+          IMP
+        </button>`:''}
       </div>
     </div>
     ${isOpen?_wiPanelHTML(row):''}
@@ -1273,6 +1296,13 @@ function _wiSplit(rowId){
 }
 
 /* ── NAVIGATION ────────────────────────────────────────────────────── */
+function _wiPrint(rowId, leg){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const orderId = leg==='export' ? row.orderIds[0] : (row.importId||row.orderIds[0]);
+  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  window.open(`${base}?orderId=${orderId}&leg=${leg}`,'_blank');
+}
+
 function _wiNavWeek(delta){
   WINTL.week=Math.max(1,Math.min(53,WINTL.week+delta));
   WINTL.ui.openRow=null;
