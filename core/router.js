@@ -137,7 +137,7 @@ function navigate(page) {
   switch (page) {
     // Planning
     case 'dashboard':      renderDashboard();            break;
-    case 'weekly_intl':    c.innerHTML = showComingSoon('Weekly International');  break;
+    case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    c.innerHTML = showComingSoon('Weekly National');       break;
     case 'weekly_pickups': c.innerHTML = showComingSoon('National Pick Ups');     break;
     case 'daily_ops':      c.innerHTML = showComingSoon('Daily Ops Plan');        break;
