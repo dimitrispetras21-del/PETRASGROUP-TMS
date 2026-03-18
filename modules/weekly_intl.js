@@ -15,6 +15,25 @@ const WINTL = {
   _shelfFilter: '',
 };
 
+// ── Badge / sdrop styles injected once ─────────
+(function(){
+  if(document.getElementById('wi-styles')) return;
+  const s=document.createElement('style');
+  s.id='wi-styles';
+  s.textContent=`
+    .wi-badge{display:inline-block;font-size:8px;font-weight:700;letter-spacing:1px;
+      text-transform:uppercase;padding:1px 5px;border-radius:3px;vertical-align:middle}
+    .wi-badge-vx{background:rgba(99,102,241,0.1);color:rgba(99,102,241,0.9);border:1px solid rgba(99,102,241,0.2)}
+    .wi-badge-gr{background:rgba(59,130,246,0.1);color:rgba(59,130,246,0.9);border:1px solid rgba(59,130,246,0.2)}
+    .wi-badge-ok{background:rgba(5,150,105,0.12);color:rgba(5,150,105,0.9);border:1px solid rgba(5,150,105,0.2)}
+    .wi-sdrop{position:relative;display:inline-block}
+    .wi-sdrop-input:focus{border-color:var(--accent)!important}
+    .wi-sdrop-opt:hover{background:var(--bg-hover)}
+  `;
+  document.head.appendChild(s);
+})();
+
+
 function _wiCurrentWeek() {
   const d=new Date(), y=d.getFullYear();
   return Math.ceil(((d-new Date(y,0,1))/86400000+new Date(y,0,1).getDay()+1)/7);
@@ -77,12 +96,12 @@ function _wiBuildRows() {
     t.exp.forEach(id=>usedExp.add(id));
     t.imp.forEach(id=>usedImp.add(id));
     WINTL.rows.push({id:++WINTL._rc,exportIds:t.exp,importId:t.imp[0]||null,
-      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',saved:true,open:false});
+      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:true,open:false});
   });
   // remaining exports → 1 row each
   WINTL.exports.filter(r=>!usedExp.has(r.id)).forEach(r=>{
     WINTL.rows.push({id:++WINTL._rc,exportIds:[r.id],importId:null,
-      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',saved:false,open:false});
+      truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:false,open:false});
   });
   WINTL.importShelf=WINTL.imports.filter(r=>!usedImp.has(r.id));
 }
@@ -194,146 +213,235 @@ function _wiRenderShelf() {
 }
 
 // ────────────────────────────────────────────────────────────────
-// TABLE ROW — compact overview, click to expand assignment
+// TABLE ROW
 // ────────────────────────────────────────────────────────────────
 function _wiRow(row, i) {
   const exps=row.exportIds.map(id=>WINTL.exports.find(r=>r.id===id)).filter(Boolean);
   const imp=row.importId?WINTL.imports.find(r=>r.id===row.importId):null;
   const isGroupage=exps.length>1;
   const isSaved=row.saved;
+  const isAssigned=!isSaved&&(row.truckId||row.partnerId);
 
   // Status dot
-  const dot=isSaved
-    ?'background:var(--success);'
-    :(row.truckId||row.partnerId)?'background:var(--accent);':'background:var(--warning);';
+  const dotColor=isSaved?'var(--success)':isAssigned?'var(--accent)':'var(--warning)';
 
-  // Row background
-  const rowBg=isSaved?'background:rgba(5,150,105,0.06)':'';
+  // Row background: saved=light green, assigned=light blue, empty=default
+  const rowBg=isSaved?'background:rgba(5,150,105,0.06)'
+             :isAssigned?'background:rgba(59,130,246,0.04)':'';
 
-  // Compact export summary (1 line)
+  // ── Export cell content ──────────────────────────
   const expSummary=exps.map(r=>{
-    const loading=_wiClean(r.fields['Loading Summary']||'—');
-    const delivery=_wiClean(r.fields['Delivery Summary']||'—');
-    const pals=r.fields['Total Pallets']||0;
-    const delDt=_wiFmt(r.fields['Delivery DateTime']);
-    const veroia=r.fields['Veroia Switch '];
-    return `<div style="padding:${isGroupage?'3px 0':'0'}">
-      <span style="font-size:12px;font-weight:600;color:var(--text)">${loading}</span>
-      ${veroia?`<span style="font-size:9px;font-weight:600;letter-spacing:0.5px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin-left:5px;color:var(--text-dim)">VX</span>`:''}
-      <span style="font-size:11px;color:var(--text-dim);margin-left:6px">→ ${delivery}</span>
-      <span style="font-size:11px;color:var(--text-mid);margin-left:8px">${pals} pal · ${delDt}</span>
+    const loading  = _wiClean(r.fields['Loading Summary']||'—');
+    const delivery = _wiClean(r.fields['Delivery Summary']||'—');
+    const pals     = r.fields['Total Pallets']||0;
+    const loadDt   = _wiFmt(r.fields['Loading DateTime']);
+    const veroia   = r.fields['Veroia Switch '];
+    // badges
+    const badges=[
+      veroia  ? `<span class="wi-badge wi-badge-vx">VEROIA</span>`:'' ,
+      isGroupage&&exps.length>1 ? '' : '',  // groupage shown at row level
+    ].filter(Boolean).join('');
+    return `<div style="padding:${isGroupage?'2px 0':'0'};display:flex;align-items:baseline;flex-wrap:wrap;gap:0">
+      <span style="font-size:11px;font-weight:600;color:var(--text)">${loading}</span>
+      <span style="font-size:11px;color:var(--text-dim);margin:0 5px">→</span>
+      <span style="font-size:11px;color:var(--text-dim)">${delivery}</span>
+      <span style="font-size:10px;color:var(--text-mid);margin-left:8px">${pals} pal</span>
+      <span style="font-size:10px;color:var(--text-mid);margin-left:6px">load. ${loadDt}</span>
+      ${veroia?`<span class="wi-badge wi-badge-vx" style="margin-left:6px">VEROIA</span>`:''}
     </div>`;
   }).join('');
 
-  // Assignment badge (compact — shown in row)
-  const assignBadge=isSaved
-    ?`<span class="badge badge-green" style="font-size:10px">Trip ✓</span>`
-    :(row.truckId
-      ?`<span style="font-size:11px;color:var(--text-dim)">${WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—'}</span>`
-      :(row.partnerId
-        ?`<span style="font-size:11px;color:var(--accent)">${WINTL.partners.find(p=>p.id===row.partnerId)?.label||'—'}</span>`
-        :`<span style="font-size:11px;color:var(--warning)">Unassigned</span>`));
+  // Row-level badges
+  const rowBadges=[
+    isGroupage?`<span class="wi-badge wi-badge-gr">GROUPAGE ×${exps.length}</span>`:'',
+  ].filter(Boolean).join('');
 
-  // Import compact summary
-  const impSummary=imp?`
+  // ── Assignment badge (compact) ──────────────────
+  const assignBadge=isSaved
+    ?`<span class="wi-badge wi-badge-ok">TRIP</span>`
+    :(row.partnerId
+      ?`<span style="font-size:10px;font-weight:600;color:var(--accent)">${WINTL.partners.find(p=>p.id===row.partnerId)?.label?.substring(0,18)||'Partner'}</span>`
+      :(row.truckId
+        ?`<span style="font-size:10px;color:var(--text-mid)">${WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—'}</span>`
+        :`<span style="font-size:10px;color:var(--warning);letter-spacing:0.3px">UNASSIGNED</span>`));
+
+  // ── Import cell ──────────────────────────────────
+  const hasImp=!!imp;
+  const impBg=hasImp?'background:rgba(217,119,6,0.04)':'background:rgba(0,0,0,0.015)';
+  const impContent=hasImp?`
     <div draggable="true" data-impid="${imp.id}" ondragstart="_wiDragImport(event,'${imp.id}')"
          style="cursor:grab">
-      <div style="font-size:12px;font-weight:600;color:var(--text)">${_wiClean(imp.fields['Loading Summary']||'—')}</div>
-      <div style="font-size:11px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal · ${_wiFmt(imp.fields['Delivery DateTime'])}</div>
-    </div>`:
-    `<div style="font-size:11px;color:var(--text-dim);font-style:italic">drag import here</div>`;
+      <div style="font-size:11px;font-weight:600;color:var(--text)">${_wiClean(imp.fields['Loading Summary']||'—')}</div>
+      <div style="font-size:10px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal</div>
+    </div>`
+    :`<span style="font-size:10px;color:var(--border-dark,#cbd5e1);letter-spacing:0.5px">— empty —</span>`;
 
-  // Expanded assignment panel (only if row.open)
   const expandedPanel=row.open?_wiAssignPanel(row):'';
 
   return `
   <div id="wi_row_${row.id}" style="${rowBg};border-top:1px solid var(--border)">
-
-    <!-- COMPACT ROW -->
     <div style="display:grid;grid-template-columns:36px 1fr 24px 200px 1fr;min-height:34px;cursor:context-menu"
          oncontextmenu="_wiCtxMenu(event,${row.id})">
 
-      <!-- # + status dot -->
+      <!-- # + dot -->
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
                   padding:5px 0;border-right:1px solid var(--border);gap:3px">
-        <div style="width:8px;height:8px;border-radius:50%;${dot}flex-shrink:0"></div>
+        <div style="width:7px;height:7px;border-radius:50%;background:${dotColor};flex-shrink:0"></div>
         <span style="font-size:9px;color:var(--text-dim)">${i+1}</span>
       </div>
 
-      <!-- Export cell -->
-      <div style="padding:5px 14px;border-right:1px solid var(--border);display:flex;align-items:center">
+      <!-- Export -->
+      <div style="padding:6px 12px;border-right:1px solid var(--border);display:flex;align-items:center">
         <div style="flex:1">
-          ${isGroupage?`<span style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent);margin-bottom:3px;display:block">GROUPAGE ×${exps.length}</span>`:''}
+          ${rowBadges?`<div style="margin-bottom:3px">${rowBadges}</div>`:''}
           ${expSummary}
         </div>
       </div>
 
-      <!-- Toggle expand -->
+      <!-- Toggle -->
       <div style="display:flex;align-items:center;justify-content:center;border-right:1px solid var(--border);cursor:pointer"
-           onclick="_wiToggleRow(${row.id})" title="${row.open?'Collapse':'Assign'}">
-        <span style="font-size:14px;color:var(--text-dim);transition:transform 0.2s;display:inline-block;transform:rotate(${row.open?'90deg':'0deg'})">›</span>
+           onclick="_wiToggleRow(${row.id})">
+        <span style="font-size:13px;color:var(--text-dim);display:inline-block;
+                     transform:rotate(${row.open?'90deg':'0deg'});transition:transform 0.15s">›</span>
       </div>
 
-      <!-- Assignment cell (compact badge) -->
+      <!-- Assignment -->
       <div style="padding:5px 10px;border-right:1px solid var(--border);background:var(--bg);
                   display:flex;align-items:center;justify-content:center;cursor:pointer"
            onclick="_wiToggleRow(${row.id})">
         ${assignBadge}
       </div>
 
-      <!-- Import cell (drop zone) -->
-      <div id="wi_imp_${row.id}" style="padding:5px 14px;transition:background 0.12s"
+      <!-- Import drop zone -->
+      <div id="wi_imp_${row.id}" style="padding:6px 12px;transition:background 0.12s;${impBg};
+           display:flex;align-items:center"
            ondragover="event.preventDefault();_wiImpHover(${row.id},true)"
            ondragleave="_wiImpHover(${row.id},false)"
            ondrop="_wiDropImport(event,${row.id})">
-        ${impSummary}
+        ${impContent}
       </div>
     </div>
 
-    <!-- EXPANDED ASSIGNMENT PANEL -->
     ${row.open?`
-    <div style="border-top:1px solid var(--border);background:var(--bg);padding:12px 14px 14px;
-                display:grid;grid-template-columns:36px 1fr;gap:0">
-      <div></div>
-      <div>${expandedPanel}</div>
-    </div>` : ''}
-
+    <div style="border-top:1px solid var(--border);background:var(--bg);padding:10px 12px 12px;
+                display:grid;grid-template-columns:36px 1fr">
+      <div></div><div>${expandedPanel}</div>
+    </div>`:''}
   </div>`;
 }
 
+
 // ── Assignment Panel (inline expanded) ─────────
 function _wiAssignPanel(row) {
-  const isPartner=row.carrierType==='partner';
-  const sel=(arr,val,ph,field)=>
-    `<select class="form-select" style="font-size:11px;padding:5px 8px;width:180px"
-       onchange="_wiRowField(${row.id},'${field}',this.value)">
-      <option value="">${ph}</option>
-      ${arr.map(x=>`<option value="${x.id}" ${x.id===val?'selected':''}>${x.label}</option>`).join('')}
-    </select>`;
+  const isPartner = row.carrierType === 'partner';
+  // Searchable dropdown builder
+  const sdrop = (id, arr, val, ph) => {
+    const selLabel = arr.find(x=>x.id===val)?.label || '';
+    return `
+      <div class="wi-sdrop" id="wsd_${id}">
+        <input type="text" class="wi-sdrop-input" placeholder="${ph}"
+               value="${selLabel}"
+               oninput="_wiSDropFilter('${id}',this.value)"
+               onfocus="_wiSDropOpen('${id}')"
+               autocomplete="off"
+               style="width:190px;padding:5px 8px;font-size:11px;border-radius:6px;
+                      border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
+        <input type="hidden" id="wsd_val_${id}" value="${val}"/>
+        <div id="wsd_list_${id}" class="wi-sdrop-list" style="display:none;position:absolute;z-index:999;
+             width:220px;max-height:180px;overflow-y:auto;background:var(--bg-card);
+             border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12);
+             margin-top:2px">
+          ${arr.map(x=>`<div class="wi-sdrop-opt" data-id="${x.id}" data-label="${x.label}"
+               onclick="_wiSDropPick('${id}','${x.id}','${x.label.replace(/'/g,"&#39;")}')"
+               style="padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text)">
+               ${x.label}</div>`).join('')}
+        </div>
+      </div>`;
+  };
+
+  const carrierSection = !isPartner ? `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Truck</div>
+        ${sdrop('tk_'+row.id, WINTL.trucks,   row.truckId,   'Truck plate')}
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Trailer</div>
+        ${sdrop('tl_'+row.id, WINTL.trailers, row.trailerId, 'Trailer plate')}
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Driver</div>
+        ${sdrop('dr_'+row.id, WINTL.drivers,  row.driverId,  'Driver name')}
+      </div>
+    </div>` : `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Partner</div>
+        ${sdrop('pt_'+row.id, WINTL.partners, row.partnerId, 'Partner name')}
+      </div>
+      <div>
+        <div style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+                    color:var(--text-dim);margin-bottom:3px">Cost (EUR)</div>
+        <input type="number" placeholder="0.00" value="${row.partnerCost||''}"
+               oninput="_wiRowField(${row.id},'partnerCost',this.value)"
+               style="width:110px;padding:5px 8px;font-size:11px;border-radius:6px;
+                      border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
+      </div>
+    </div>`;
 
   return `
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
-      <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;color:var(--text-mid);align-self:center">
-        <input type="checkbox" ${isPartner?'checked':''} onchange="_wiRowCarrier(${row.id},this.checked)"> Partner trip
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start">
+      <label style="display:flex;align-items:center;gap:5px;font-size:11px;cursor:pointer;
+                    color:var(--text-mid);padding-top:18px">
+        <input type="checkbox" ${isPartner?'checked':''} onchange="_wiRowCarrier(${row.id},this.checked)">
+        Partner trip
       </label>
-      ${!isPartner?`
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${sel(WINTL.trucks,  row.truckId,  'Select Truck',   'truckId')}
-          ${sel(WINTL.trailers,row.trailerId,'Select Trailer', 'trailerId')}
-          ${sel(WINTL.drivers, row.driverId, 'Select Driver',  'driverId')}
-        </div>
-      `:`
-        <div>${sel(WINTL.partners,row.partnerId,'Select Partner','partnerId')}</div>
-      `}
+      ${carrierSection}
       ${can('planning')==='full'?`
-      <div style="display:flex;flex-direction:column;gap:4px">
-        <button class="btn btn-primary" style="font-size:11px;padding:5px 14px;white-space:nowrap"
+      <div style="display:flex;flex-direction:column;gap:4px;padding-top:18px">
+        <button class="btn btn-primary" style="font-size:11px;padding:5px 16px"
                 onclick="_wiCreateTrip(${row.id})">Create Trip</button>
-        <button class="btn btn-ghost"   style="font-size:10px;padding:4px 14px;white-space:nowrap"
+        <button class="btn btn-ghost" style="font-size:10px;padding:4px 16px"
                 onclick="_wiCreateTrip(${row.id},true)">Export only</button>
       </div>`:''}
     </div>`;
 }
+
+// ── Searchable dropdown helpers ─────────────────
+function _wiSDropOpen(id) {
+  document.getElementById('wsd_list_'+id).style.display='block';
+  setTimeout(()=>document.addEventListener('click',function h(e){
+    const wrap=document.getElementById('wsd_'+id);
+    if(wrap&&!wrap.contains(e.target)){document.getElementById('wsd_list_'+id).style.display='none';}
+    document.removeEventListener('click',h);
+  }),10);
+}
+function _wiSDropFilter(id, q) {
+  const list=document.getElementById('wsd_list_'+id);
+  if(!list) return;
+  list.style.display='block';
+  const ql=q.toLowerCase();
+  list.querySelectorAll('.wi-sdrop-opt').forEach(el=>{
+    el.style.display=el.dataset.label.toLowerCase().includes(ql)?'':'none';
+  });
+}
+function _wiSDropPick(id, recId, label) {
+  document.getElementById('wsd_val_'+id).value=recId;
+  const inp=document.querySelector('#wsd_'+id+' .wi-sdrop-input');
+  if(inp) inp.value=label;
+  document.getElementById('wsd_list_'+id).style.display='none';
+  // Map id prefix to row field
+  const rowId=parseInt(id.split('_').pop());
+  const prefix=id.split('_')[0];
+  const fieldMap={tk:'truckId',tl:'trailerId',dr:'driverId',pt:'partnerId'};
+  const field=fieldMap[prefix];
+  if(field) _wiRowField(rowId, field, recId);
+}
+
 
 // ── Toggle row expand ──────────────────────────
 function _wiToggleRow(rowId) {
@@ -470,7 +578,7 @@ function _wiSplitRow(rowId) {
   const [first,...rest]=row.exportIds;
   row.exportIds=[first];
   rest.forEach(expId=>WINTL.rows.push({id:++WINTL._rc,exportIds:[expId],importId:null,
-    truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',saved:false,open:false}));
+    truckId:'',trailerId:'',driverId:'',partnerId:'',carrierType:'owned',partnerCost:'',saved:false,open:false}));
   _wiRender(); toast('Split ✓');
 }
 function _wiDeleteRow(rowId) {
@@ -554,7 +662,7 @@ function _wiRenderRows(rows) {
   rows.forEach((row, i) => {
     // Get delivery date from first export
     const exp = WINTL.exports.find(r => r.id === row.exportIds[0]);
-    const delDate = exp?.fields['Delivery DateTime'] || null;
+    const delDate = exp?.fields['Loading DateTime'] || exp?.fields['Delivery DateTime'] || null;
     const delDateFmt = delDate ? _wiFullDate(delDate) : null;
 
     // Date separator bar
