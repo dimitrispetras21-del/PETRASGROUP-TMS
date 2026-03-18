@@ -566,8 +566,8 @@ function _wiAllRowsHTML(){
     // Export rows
     grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
 
-    // Only unmatched imports get their own row (matched ones show in export import cell)
-    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row); });
+    // ALL imports shown as rows — always draggable
+    grp.imps.forEach(row=>{ html+=_wiImpRowHTML(row); });
   });
 
   return html;
@@ -781,7 +781,7 @@ function _wiRowHTML(row,i){
           <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
           ${_wiBadges(imp.fields)}
         </div>
-        <span class="wi-ci-save">✓ saved</span>
+        <span style="font-size:9px;color:rgba(14,165,233,0.7);font-weight:600">↩ matched</span>
       </div>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
   background:#172C45;margin:-6px -12px;padding:6px 12px;min-height:46px;">
