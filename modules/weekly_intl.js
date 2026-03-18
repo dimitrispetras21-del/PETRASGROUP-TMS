@@ -109,9 +109,16 @@ const WINTL = {
 .wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
-.wi-ci-n { font-size:11px; font-weight:600; color:var(--text);
+.wi-ci-n { font-size:11px; font-weight:700; color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-ci-s { font-size:10px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-ci-from { font-size:11px; font-weight:700; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  flex-shrink:1; min-width:0; }
+.wi-ci-sep  { font-size:11px; color:var(--text-dim); margin:0 5px; flex-shrink:0; }
+.wi-ci-dest { font-size:11px; font-weight:700; color:var(--text);
+  white-space:nowrap; flex-shrink:0; }
+.wi-ci-s { font-size:10px; font-weight:600; color:var(--text-mid);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-ci-e { font-size:10px; color:var(--border-dark); }
 .wi-ci-save { font-size:9px; color:var(--success); margin-top:1px; }
 
@@ -180,8 +187,7 @@ const WINTL = {
 .wi-chip:active { cursor:grabbing; }
 .wi-chip-n { font-size:11px; font-weight:700; color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-chip-d { font-size:10px; color:var(--text-dim); margin-top:1px; }
-.wi-chip-m { font-size:9.5px; color:var(--text-dim); margin-top:1px; }
+.wi-chip-m { font-size:9.5px; font-weight:600; color:var(--text-mid); margin-top:2px; }
 
 /* ctx menu */
 #wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card);
@@ -406,8 +412,11 @@ function _wiChipHTML(r){
   const pals=f['Total Pallets']||0;
   const del=_wiFmt(f['Delivery DateTime']);
   return `<div class="wi-chip" draggable="true" ondragstart="_wiDragStart(event,'${r.id}')">
-    <div class="wi-chip-n">${name}</div>
-    <div class="wi-chip-d">${dest}</div>
+    <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
+      <span class="wi-chip-n" style="flex-shrink:1;min-width:0">${name}</span>
+      <span style="color:var(--text-dim);margin:0 5px;flex-shrink:0;font-size:11px">→</span>
+      <span class="wi-chip-n" style="flex-shrink:0">${dest}</span>
+    </div>
     <div class="wi-chip-m">${del} · ${pals} pal</div>
   </div>`;
 }
@@ -504,9 +513,12 @@ function _wiRowHTML(row,i){
   // Import preview — saved state shown
   const impPrev=imp
     ?`<div class="wi-ci-data">
-        <span class="wi-ci-n">${_wiClean(imp.fields['Delivery Summary']||'—').slice(0,38)}</span>
-        <span class="wi-ci-s">${_wiClean(imp.fields['Loading Summary']||'—').slice(0,32)} · ${imp.fields['Total Pallets']||0} pal</span>
-        <span class="wi-ci-s">del ${_wiFmt(imp.fields['Delivery DateTime'])}</span>
+        <div style="display:flex;align-items:center;gap:0;min-width:0">
+          <span class="wi-ci-from">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
+          <span class="wi-ci-sep">→</span>
+          <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+        </div>
+        <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
         <span class="wi-ci-save">✓ saved</span>
       </div>`
     :`<span class="wi-ci-e">drag import here</span>`;
@@ -626,11 +638,16 @@ function _wiPanelHTML(row){
         ${imp
           ?`<div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
               <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
-              <div style="font-size:11px;font-weight:700;color:var(--text)">
-                ${_wiClean(imp.fields['Loading Summary']||'—')}
+              <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
+                <span style="font-size:11px;font-weight:700;color:var(--text);
+                             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                             flex-shrink:1;min-width:0">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
+                <span style="font-size:11px;color:var(--text-dim);margin:0 5px;flex-shrink:0">→</span>
+                <span style="font-size:11px;font-weight:700;color:var(--text);
+                             white-space:nowrap;flex-shrink:0">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
               </div>
-              <div style="font-size:10.5px;color:var(--text-dim)">
-                → ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal
+              <div style="font-size:10px;color:var(--text-dim);margin-top:1px">
+                ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal
               </div>
               <div style="font-size:10px;color:var(--text-mid);margin-top:1px">
                 ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])}
