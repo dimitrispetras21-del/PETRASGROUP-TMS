@@ -791,7 +791,8 @@ Output schema:
   "notes": "any special instructions, trailer requirements, etc.",
   "loading_stops": [
     {
-      "city": "city name only, no supplier/warehouse name",
+      "location_name": "the SUPPLIER/WAREHOUSE name as it appears in the document (e.g. IRINOUPOLI SÜD, ANGELAKIS - NAFPAKTOS, LEVENTOGIANNIS - ARGOS)",
+      "city": "city name",
       "country": "country name",
       "date": "YYYY-MM-DD",
       "pallets": number of pallets loaded at this stop
@@ -799,7 +800,8 @@ Output schema:
   ],
   "delivery_stops": [
     {
-      "city": "city name only",
+      "location_name": "the COMPANY/WAREHOUSE name as it appears (e.g. LIDL SLOVENIJA D.O.O. K.D.)",
+      "city": "city name",
       "country": "country name",
       "date": "YYYY-MM-DD",
       "pallets": null
@@ -808,15 +810,14 @@ Output schema:
 }
 
 CRITICAL RULES for OGL/Fruitservice Carrier Orders:
-- The table has rows with Type=Loading (↑) and Type=Unloading (↓)
-- Each Loading section header contains the city and address — extract CITY only
-- PAL column = pallet count per product line — SUM all PAL values per loading stop address
-- Each distinct loading address = one loading_stop object
-- Unloading addresses = delivery_stops
+- The table has numbered rows. Each section = one stop.
+- "Supplier" column contains the warehouse/supplier name — use this as location_name
+- PAL column = pallet count per product line — SUM all PAL values per loading stop
+- Each distinct Supplier group = one loading_stop object
+- Unloading stops (↓) = delivery_stops
 - client_name = the company at the top of the document (e.g. "OGL Food Trade Lebensmittelvertrieb GmbH")
 - direction: if all loading addresses are in Greece → Export
-- goods: list all distinct product descriptions (deduplicated)
-- Do NOT confuse supplier names (e.g. IRINOUPOLI SÜD, ANGELAKIS) with city names`,
+- goods: list all distinct product descriptions (deduplicated)`,
         messages:[{role:'user', content:[cb, {type:'text',text:'Extract all order data from this transport document.'}]}]
       })
     });
@@ -845,24 +846,30 @@ async function _scanPreview(data) {
     const r = await _searchClients(data.client_name);
     if (r.length) { clientId=r[0].id; clientLabel=r[0].label; }
   }
-  // Match loading location
-  let loadLocId='', loadLocLabel='';
-  if (data.loading_city) {
-    const lcities = data.loading_city.split(/[\/,]+/).map(s=>s.trim()).filter(Boolean);
-    for (const city of lcities) {
-      const m = _locationsArr.find(l=>l.label.toLowerCase().includes(city.toLowerCase()));
-      if (m) { loadLocId=m.id; loadLocLabel=m.label; break; }
-    }
+  // Match loading stops — try location_name first, then city fallback
+  const loadStops = (data.loading_stops||[]);
+  if (!loadStops.length && data.loading_city) loadStops.push({location_name:'',city:data.loading_city,country:data.loading_country||'',date:data.loading_date,pallets:data.pallets});
+  for (const s of loadStops) {
+    const nm = (s.location_name||'').toLowerCase();
+    const ct = (s.city||'').toLowerCase();
+    const m = _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
+           || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
+    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city||'');
   }
-  // Match delivery location — split multi-city strings
-  let delLocId='', delLocLabel='';
-  if (data.delivery_city) {
-    const dcities = data.delivery_city.split(/[\/,]+/).map(s=>s.trim()).filter(Boolean);
-    for (const city of dcities) {
-      const m = _locationsArr.find(l=>l.label.toLowerCase().includes(city.toLowerCase()));
-      if (m) { delLocId=m.id; delLocLabel=m.label; break; }
-    }
+  // Match delivery stops
+  const delStops = (data.delivery_stops||[]);
+  if (!delStops.length && data.delivery_city) delStops.push({location_name:'',city:data.delivery_city,country:data.delivery_country||'',date:data.delivery_date,pallets:null});
+  for (const s of delStops) {
+    const nm = (s.location_name||'').toLowerCase();
+    const ct = (s.city||'').toLowerCase();
+    const m = _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
+           || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
+    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city||'');
   }
+  const loadLocId = loadStops[0]?._locId||'';
+  const loadLocLabel = loadStops[0]?._locLabel||'';
+  const delLocId = delStops[0]?._locId||'';
+  const delLocLabel = delStops[0]?._locLabel||'';
 
   const conf = data.confidence||'LOW';
   const confC = conf==='HIGH'?'var(--success)':conf==='MEDIUM'?'var(--warning)':'var(--danger)';
