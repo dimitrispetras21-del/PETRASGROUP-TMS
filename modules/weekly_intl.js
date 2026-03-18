@@ -254,12 +254,11 @@ function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
 /* ─── LOAD ASSETS ────────────────────────────────────────────────────── */
 async function _wiLoadAssets(){
-  if(WINTL._assetsOk) return;
   const [t,tl,d,p]=await Promise.all([
-    atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'}),
-    atGetAll(TABLES.TRAILERS,{fields:['License Plate']}),
-    atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'}),
-    atGetAll(TABLES.PARTNERS,{fields:['Company Name']}),
+    atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
+    atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
+    atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
+    atGetAll(TABLES.PARTNERS,{fields:['Company Name'],filterByFormula:'{Active}=TRUE()'},false),
   ]);
   WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.trailers = tl.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
