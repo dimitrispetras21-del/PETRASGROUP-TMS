@@ -109,6 +109,26 @@ const WINTL = {
 .wi-gr { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
   background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85); border:1px solid rgba(14,165,233,0.18); }
+/* groupage tooltip */
+.wi-gr-tip { position:relative; }
+.wi-gr-tooltip {
+  display:none; position:absolute; z-index:999;
+  left:0; top:calc(100% + 4px);
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:7px; box-shadow:0 6px 24px rgba(0,0,0,0.14);
+  padding:6px 0; min-width:280px; max-width:380px;
+  white-space:nowrap;
+}
+.wi-gr-tip:hover .wi-gr-tooltip { display:block; }
+.wi-gr-tip-row {
+  display:flex; align-items:baseline; gap:8px;
+  padding:4px 12px; font-size:11px;
+  border-bottom:1px solid var(--border);
+}
+.wi-gr-tip-row:last-child { border-bottom:none; }
+.wi-gr-tip-n { font-size:9px; font-weight:700; color:var(--text-dim); min-width:14px; flex-shrink:0; }
+.wi-gr-tip-dest { font-weight:600; color:var(--text); flex:1; overflow:hidden; text-overflow:ellipsis; }
+.wi-gr-tip-meta { font-size:9.5px; color:var(--text-dim); flex-shrink:0; }
 
 /* assignment col */
 .wi-ca { padding:6px 10px; border-right:1px solid var(--border);
@@ -822,7 +842,18 @@ function _wiRowHTML(row,i){
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span>`:''}
+          ${isGroup?`<span class="wi-gr wi-gr-tip" onclick="event.stopPropagation()" style="cursor:default;position:relative">
+  ×${exps.length}
+  <div class="wi-gr-tooltip">
+    ${exps.map((e,i)=>{
+      const f=e.fields;
+      const to=_wiClean(f['Delivery Summary']||'—');
+      const pals=f['Total Pallets']||0;
+      const dt=_wiFmt(f['Delivery DateTime']);
+      return '<div class=\'wi-gr-tip-row\'><span class=\'wi-gr-tip-n\'>'+(i+1)+'.</span><span class=\'wi-gr-tip-dest\'>'+to+'</span><span class=\'wi-gr-tip-meta\'>'+dt+' · '+pals+' pal</span></div>';
+    }).join('')}
+  </div>
+</span>`:''}
         </div>
         <div class="wi-sub">
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
