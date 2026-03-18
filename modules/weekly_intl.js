@@ -123,7 +123,7 @@ const WINTL = {
   max-width:192px; opacity:.75; color:var(--text-mid); }
 
 /* import col */
-.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; }
+.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; background:var(--bg); }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
 .wi-ci-n { font-size:11px; font-weight:700; color:var(--text);
@@ -136,7 +136,7 @@ const WINTL = {
   white-space:nowrap; flex-shrink:0; }
 .wi-ci-s { font-size:10px; font-weight:600; color:var(--text-mid);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-ci-e { font-size:10px; color:var(--border-dark); }
+.wi-ci-e { font-size:10px; color:var(--text-dim); font-style:italic; letter-spacing:0.2px; }
 .wi-ci-save { font-size:9px; color:var(--success); margin-top:1px; }
 
 /* PANEL */
