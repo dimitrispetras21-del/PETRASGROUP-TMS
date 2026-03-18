@@ -304,18 +304,23 @@ function _wiRow(row, i) {
   ].filter(Boolean).join('');
 
   // ── Assignment badge (compact) ──────────────────
-  const _partnerLabel = row.partnerId ? WINTL.partners.find(p=>p.id===row.partnerId)?.label?.substring(0,16)||'Partner' : null;
-  const _truckLabel   = row.truckId   ? WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—' : null;
-  const assignBadge=isSaved
-    ?`<span class="wi-badge wi-badge-ok">TRIP ${row.tripNo||''}</span>`
-    :(row.partnerId
-      ?`<div style="text-align:center;line-height:1.3">
-          <div style="font-size:10px;font-weight:600;color:var(--accent)">${_partnerLabel}</div>
-          ${row.partnerCost?`<div style="font-size:9px;color:var(--text-mid)">€${Number(row.partnerCost).toLocaleString('el-GR')}</div>`:''}
-        </div>`
-      :(row.truckId
-        ?`<span style="font-size:10px;color:var(--text-mid)">${_truckLabel}</span>`
-        :`<span style="font-size:10px;color:var(--warning);letter-spacing:0.3px">UNASSIGNED</span>`));
+  // Use lookup fields for saved rows, dropdown selections for unsaved
+  const _plate   = row.truckPlate   || WINTL.trucks.find(t=>t.id===row.truckId)?.label   || '';
+  const _driver  = row.driverName   || WINTL.drivers.find(d=>d.id===row.driverId)?.label  || '';
+  const _partner = row.partnerName  || WINTL.partners.find(p=>p.id===row.partnerId)?.label|| '';
+
+  const assignBadge = row.carrierType==='partner'
+    ? (_partner
+        ? `<div style="text-align:center;line-height:1.4">
+            <div style="font-size:10px;font-weight:600;color:var(--accent)">${_partner.substring(0,20)}</div>
+           </div>`
+        : `<span style="font-size:10px;color:var(--warning)">UNASSIGNED</span>`)
+    : (_plate
+        ? `<div style="text-align:center;line-height:1.4">
+            <div style="font-size:10px;font-weight:600;color:var(--text-mid)">${_plate}</div>
+            ${_driver ? `<div style="font-size:9px;color:var(--text-dim)">${_driver.split(' ').pop()}</div>` : ''}
+           </div>`
+        : `<span style="font-size:10px;color:var(--warning)">UNASSIGNED</span>`);
 
   // ── Import cell ──────────────────────────────────
   const hasImp=!!imp;
