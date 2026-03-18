@@ -582,7 +582,7 @@ function _wiRowHTML(row,i){
   const trailer=row.trailerLabel||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
   const driver =row.driverLabel ||data.drivers.find(d=>d.id===row.driverId)?.label||'';
   const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
-  const surname=driver?driver.trim().split(/\s+/).pop():'';
+  const surname=driver?driver.trim().split(/\s+/)[0]:'';
 
   let pill;
   if(row.saved){
@@ -637,12 +637,12 @@ function _wiRowHTML(row,i){
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
           ${isGroup?`<span class="wi-gr">×\${exps.length}</span>`:''}
-          ${_wiBadges(primary?.fields||{})}
         </div>
         <div class="wi-sub">
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
+          ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
       <div class="wi-ca" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})" style="cursor:pointer">${pill}</div>
