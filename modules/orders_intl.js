@@ -792,7 +792,8 @@ Output schema:
   "loading_stops": [
     {
       "location_name": "the SUPPLIER/WAREHOUSE name as it appears in the document (e.g. IRINOUPOLI SÜD, ANGELAKIS - NAFPAKTOS, LEVENTOGIANNIS - ARGOS)",
-      "city": "city name",
+      "city": "city name in English/Latin",
+      "city_gr": "city name in Greek (e.g. Ασπρόπυργος, Ναύπακτος, Ναύπλιο, Αγρίνιο, Βέλο, Κατερίνη)",
       "country": "country name",
       "date": "YYYY-MM-DD",
       "pallets": number of pallets loaded at this stop
@@ -801,7 +802,8 @@ Output schema:
   "delivery_stops": [
     {
       "location_name": "the COMPANY/WAREHOUSE name as it appears (e.g. LIDL SLOVENIJA D.O.O. K.D.)",
-      "city": "city name",
+      "city": "city name in English/Latin",
+      "city_gr": "city name in Greek if applicable",
       "country": "country name",
       "date": "YYYY-MM-DD",
       "pallets": null
@@ -849,22 +851,26 @@ async function _scanPreview(data) {
   // Match loading stops — try location_name first, then city fallback
   const loadStops = (data.loading_stops||[]);
   if (!loadStops.length && data.loading_city) loadStops.push({location_name:'',city:data.loading_city,country:data.loading_country||'',date:data.loading_date,pallets:data.pallets});
-  for (const s of loadStops) {
+  const _locMatch = s => {
     const nm = (s.location_name||'').toLowerCase();
     const ct = (s.city||'').toLowerCase();
-    const m = _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
-           || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
-    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city||'');
+    const cg = (s.city_gr||'').toLowerCase();
+    // Try: full name, first word of name, Greek city, Latin city
+    return _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
+        || _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm.split(/[\s-]+/)[0]))
+        || _locationsArr.find(l=>cg && l.label.toLowerCase().includes(cg))
+        || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
+  };
+  for (const s of loadStops) {
+    const m = _locMatch(s);
+    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city_gr||s.city||'');
   }
   // Match delivery stops
   const delStops = (data.delivery_stops||[]);
-  if (!delStops.length && data.delivery_city) delStops.push({location_name:'',city:data.delivery_city,country:data.delivery_country||'',date:data.delivery_date,pallets:null});
+  if (!delStops.length && data.delivery_city) delStops.push({location_name:'',city:data.delivery_city,city_gr:'',country:data.delivery_country||'',date:data.delivery_date,pallets:null});
   for (const s of delStops) {
-    const nm = (s.location_name||'').toLowerCase();
-    const ct = (s.city||'').toLowerCase();
-    const m = _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
-           || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
-    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city||'');
+    const m = _locMatch(s);
+    s._locId = m?m.id:''; s._locLabel = m?m.label:(s.location_name||s.city_gr||s.city||'');
   }
   const loadLocId = loadStops[0]?._locId||'';
   const loadLocLabel = loadStops[0]?._locLabel||'';
