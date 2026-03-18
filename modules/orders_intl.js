@@ -811,14 +811,20 @@ async function _scanPreview(data) {
   // Match loading location
   let loadLocId='', loadLocLabel='';
   if (data.loading_city) {
-    const m = _locationsArr.find(l=>l.label.toLowerCase().includes(data.loading_city.toLowerCase()));
-    if (m) { loadLocId=m.id; loadLocLabel=m.label; }
+    const lcities = data.loading_city.split(/[\/,]+/).map(s=>s.trim()).filter(Boolean);
+    for (const city of lcities) {
+      const m = _locationsArr.find(l=>l.label.toLowerCase().includes(city.toLowerCase()));
+      if (m) { loadLocId=m.id; loadLocLabel=m.label; break; }
+    }
   }
-  // Match delivery location
+  // Match delivery location — split multi-city strings
   let delLocId='', delLocLabel='';
   if (data.delivery_city) {
-    const m = _locationsArr.find(l=>l.label.toLowerCase().includes(data.delivery_city.toLowerCase()));
-    if (m) { delLocId=m.id; delLocLabel=m.label; }
+    const dcities = data.delivery_city.split(/[\/,]+/).map(s=>s.trim()).filter(Boolean);
+    for (const city of dcities) {
+      const m = _locationsArr.find(l=>l.label.toLowerCase().includes(city.toLowerCase()));
+      if (m) { delLocId=m.id; delLocLabel=m.label; break; }
+    }
   }
 
   const conf = data.confidence||'LOW';
@@ -883,6 +889,7 @@ async function _scanOpen(matched, data) {
   if (data.goods)         f['Goods']               = data.goods;
   if (data.gross_weight_kg) f['Gross Weight kg']   = data.gross_weight_kg;
   if (data.pallets)       f['Loading Pallets 1']   = data.pallets;
+  // NOTE: delivery pallets intentionally NOT filled — same pallets, dispatcher confirms
   if (data.temperature_c!=null) f['Temperature °C']= data.temperature_c;
   if (data.direction)     f['Direction']           = data.direction;
   if (data.temperature_c!=null) f['Refrigerator Mode'] = 'Continuous';
