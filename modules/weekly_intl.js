@@ -519,35 +519,56 @@ function _wiPaint(){
 function _wiAllRowsHTML(){
   const expRows=WINTL.rows.filter(r=>r.type==='export');
   const impRows=WINTL.rows.filter(r=>r.type==='import');
-  let html='',lastDate=null,idx=0;
+  let html='',idx=0;
 
-  // ── EXPORTS grouped by delivery date ──
-  const dc={};
-  expRows.forEach(row=>{ const lbl=_wiDelDate(row); if(lbl) dc[lbl]=(dc[lbl]||0)+1; });
+  // Build date groups — key = date label string
+  // exports: keyed by delivery date
+  // imports: keyed by loading date (same format)
+  const groups={}; // label → {date, exps:[], imps:[]}
+
   expRows.forEach(row=>{
-    const lbl=_wiDelDate(row);
-    if(lbl&&lbl!==lastDate){
-      lastDate=lbl;
-      html+=`<div class="wi-dsep">
-        <span class="wi-dsep-lbl">Delivery</span>
-        <span class="wi-dsep-date">${lbl}</span>
-        <span class="wi-dsep-n">${dc[lbl]} order${dc[lbl]!==1?'s':''}</span>
-      </div>`;
-    }
-    html+=_wiRowHTML(row,idx++);
+    const lbl=_wiDelDate(row)||'—';
+    if(!groups[lbl]) groups[lbl]={lbl,exps:[],imps:[]};
+    groups[lbl].exps.push(row);
   });
 
-  // ── IMPORTS section ──
-  if(impRows.length){
-    const matched=impRows.filter(r=>r.matchedTo).length;
-    html+=`<div class="wi-dsep" style="background:#1A3550;border-top:2px solid rgba(14,165,233,0.4)">
-      <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Loading</span>
-      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.9)">Imports · ${impRows.length} orders</span>
-      <span class="wi-dsep-n">${matched} matched · ${impRows.length-matched} free</span>
-      <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag to match</span>
+  impRows.forEach(row=>{
+    const imp=WINTL.data.imports.find(r=>r.id===row.orderId);
+    const raw=imp?.fields['Loading DateTime']||null;
+    const lbl=raw?_wiFmtFull(raw):'—';
+    if(!groups[lbl]) groups[lbl]={lbl,exps:[],imps:[]};
+    groups[lbl].imps.push(row);
+  });
+
+  // Sort group keys by actual date value
+  const sorted=Object.values(groups).sort((a,b)=>{
+    const ra=WINTL.data.exports.find(r=>r.id===(a.exps[0]?.orderIds[0]))||
+             WINTL.data.imports.find(r=>r.id===a.imps[0]?.orderId);
+    const rb=WINTL.data.exports.find(r=>r.id===(b.exps[0]?.orderIds[0]))||
+             WINTL.data.imports.find(r=>r.id===b.imps[0]?.orderId);
+    const da=ra?.fields['Delivery DateTime']||ra?.fields['Loading DateTime']||'';
+    const db=rb?.fields['Delivery DateTime']||rb?.fields['Loading DateTime']||'';
+    return da.localeCompare(db);
+  });
+
+  sorted.forEach(grp=>{
+    const expCount=grp.exps.length;
+    const impCount=grp.imps.length;
+
+    // Separator — same dark navy style as before
+    html+=`<div class="wi-dsep">
+      <span class="wi-dsep-lbl">Date</span>
+      <span class="wi-dsep-date">${grp.lbl}</span>
+      ${expCount?`<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${expCount} exp</span>`:''}
+      ${impCount?`<span class="wi-dsep-n" style="color:rgba(14,165,233,0.7);margin-left:2px">${impCount} imp</span>`:''}
     </div>`;
-    impRows.forEach(row=>{ html+=_wiImpRowHTML(row); });
-  }
+
+    // Export rows
+    grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
+
+    // Import rows — same width as export rows, cyan style
+    grp.imps.forEach(row=>{ html+=_wiImpRowHTML(row); });
+  });
 
   return html;
 }
@@ -576,6 +597,13 @@ function _wiImpRowHTML(row){
     }
   }
 
+  const matchBadge2=isMatched
+    ?`<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;
+                   background:rgba(14,165,233,0.1);color:rgba(14,165,233,0.9);
+                   border:1px solid rgba(14,165,233,0.25)">${matchedExp||'matched'}</span>`
+    :`<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;
+                   background:var(--bg);color:var(--text-dim);
+                   border:1px solid var(--border-mid)">unmatched</span>`;
   const matchBadge=isMatched
     ?`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
                    background:rgba(5,150,105,0.1);color:var(--success);
@@ -588,31 +616,48 @@ function _wiImpRowHTML(row){
         unmatched
       </span>`;
 
-  return `<div class="wi-imp-row ${isMatched?'wi-imp-matched':''}"
-               draggable="true"
-               ondragstart="_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-imp-arrow">↩</div>
-    <div class="wi-imp-content">
-      <div style="display:flex;align-items:center;gap:0;min-width:0;flex:1;overflow:hidden">
-        <span class="wi-ci-from" style="color:rgba(14,165,233,0.9)">${fromStr}</span>
-        <span class="wi-ci-sep">→</span>
-        <span class="wi-ci-dest" style="color:rgba(14,165,233,0.9)">${toStr}</span>
-        ${_wiBadges(f)}
+  // Same 4-col grid as export rows
+  return `<div id="wi-imp-${imp.id}"
+    class="wi-row ${isMatched?'s-ok':'s-pending'}"
+    style="background:${isMatched?'rgba(14,165,233,0.03)':'rgba(14,165,233,0.015)'};cursor:grab"
+    draggable="true"
+    ondragstart="_wiImpDragStart(event,'${imp.id}')">
+    <div class="wi-compact" style="cursor:grab">
+      <div class="wi-cn">
+        <div class="wi-dot" style="background:${isMatched?'rgba(14,165,233,0.8)':'rgba(14,165,233,0.3)'}"></div>
+        <span style="font-size:8px;color:rgba(14,165,233,0.6);font-weight:700">IMP</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:1px;flex-wrap:wrap">
-        <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
-        ${matchBadge}
+      <div class="wi-ce">
+        <div class="wi-route">
+          <span class="from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+          ${_wiBadges(f)}
+        </div>
+        <div class="wi-sub">
+          <span>${loadDt} → ${delDt}</span>
+          <span class="wi-sub-div"></span>
+          <span>${pals} pal</span>
+          ${matchBadge}
+        </div>
       </div>
-    </div>
-    <div class="wi-imp-actions">
-      ${isMatched?`<button onclick="event.stopPropagation();_wiUnmatch('${imp.id}')"
-        title="Remove match"
-        style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
-               padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
-      <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
-        title="Print import order"
-        style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
-               padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
+      <div class="wi-ca-wrap" style="cursor:default" onclick="event.stopPropagation()">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px">
+          ${matchBadge2}
+        </div>
+      </div>
+      <div class="wi-ci" onclick="event.stopPropagation()"
+           style="background:${isMatched?'rgba(14,165,233,0.04)':''}">
+        <div style="flex:1"></div>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          ${isMatched?`<button onclick="event.stopPropagation();_wiUnmatch('${imp.id}')"
+            style="font-size:9px;border:1px solid var(--border-mid);border-radius:4px;
+                   padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
+          <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
+            style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
+                   padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
+        </div>
+      </div>
     </div>
   </div>`;
 }
