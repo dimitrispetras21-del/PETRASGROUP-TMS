@@ -267,12 +267,12 @@ const WINTL = {
 .wi-pop-cancel:hover { background:var(--bg-hover); }
 /* ── IMPORT ROWS ── */
 .wi-imp-row {
-  display:flex; align-items:center; gap:10px;
-  padding:7px 12px 7px 10px;
-  border-top:1px solid var(--border);
+  display:flex; align-items:center; gap:8px;
+  padding:5px 12px 5px 46px;
+  border-top:1px solid rgba(14,165,233,0.1);
   background:rgba(14,165,233,0.025);
   cursor:grab; transition:background .1s;
-  min-height:38px;
+  min-height:34px;
   width:100%;
   box-sizing:border-box;
 }
@@ -282,9 +282,9 @@ const WINTL = {
 .wi-imp-matched:hover { background:rgba(5,150,105,0.05); }
 .wi-imp-matched.dh { background:rgba(5,150,105,0.08); }
 .wi-imp-row.dh     { outline:2px dashed rgba(14,165,233,0.6); }
-.wi-imp-handle {
-  font-size:14px; color:var(--border-dark);
-  cursor:grab; padding:0 4px; flex-shrink:0; line-height:1;
+.wi-imp-arrow {
+  font-size:12px; color:rgba(14,165,233,0.45);
+  flex-shrink:0; line-height:1; margin-right:2px;
 }
 .wi-imp-content { flex:1; min-width:0; overflow:hidden; }
 .wi-imp-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
@@ -591,12 +591,12 @@ function _wiImpRowHTML(row){
   return `<div class="wi-imp-row ${isMatched?'wi-imp-matched':''}"
                draggable="true"
                ondragstart="_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-imp-handle">⠿</div>
+    <div class="wi-imp-arrow">↩</div>
     <div class="wi-imp-content">
-      <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
-        <span class="wi-ci-from">${fromStr}</span>
+      <div style="display:flex;align-items:center;gap:0;min-width:0;flex:1;overflow:hidden">
+        <span class="wi-ci-from" style="color:rgba(14,165,233,0.9)">${fromStr}</span>
         <span class="wi-ci-sep">→</span>
-        <span class="wi-ci-dest">${toStr}</span>
+        <span class="wi-ci-dest" style="color:rgba(14,165,233,0.9)">${toStr}</span>
         ${_wiBadges(f)}
       </div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:1px;flex-wrap:wrap">
@@ -606,11 +606,13 @@ function _wiImpRowHTML(row){
     </div>
     <div class="wi-imp-actions">
       ${isMatched?`<button onclick="event.stopPropagation();_wiUnmatch('${imp.id}')"
-        style="font-size:9px;border:1px solid var(--border-mid);border-radius:4px;
-               padding:2px 8px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
-      <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
+        title="Remove match"
         style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
-               padding:2px 8px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
+               padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
+      <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
+        title="Print import order"
+        style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
+               padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
     </div>
   </div>`;
 }
