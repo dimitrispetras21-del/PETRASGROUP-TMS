@@ -90,7 +90,7 @@ const WINTL = {
   vertical-align:middle; margin-left:4px; flex-shrink:0;
   white-space:nowrap;
 }
-.wi-b-veroia  { background:rgba(99,102,241,0.1);  color:rgba(99,102,241,0.85);  border:1px solid rgba(99,102,241,0.22); }
+.wi-b-veroia  { background:rgba(11,25,41,0.1);   color:#0B1929;               border:1px solid rgba(11,25,41,0.25); }
 .wi-b-group   { background:rgba(14,165,233,0.1);  color:rgba(14,165,233,0.85);  border:1px solid rgba(14,165,233,0.2); }
 .wi-b-risk    { background:rgba(220,38,38,0.1);   color:rgba(220,38,38,0.9);    border:1px solid rgba(220,38,38,0.25); }
 .wi-b-pe      { background:rgba(217,119,6,0.1);   color:rgba(217,119,6,0.9);    border:1px solid rgba(217,119,6,0.25); }
@@ -101,7 +101,7 @@ const WINTL = {
 .wi-b-grpg    { background:rgba(139,92,246,0.1);  color:rgba(139,92,246,0.9);   border:1px solid rgba(139,92,246,0.22); }
 .wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
-  background:rgba(99,102,241,0.1); color:rgba(99,102,241,0.85); border:1px solid rgba(99,102,241,0.2); }
+  background:rgba(11,25,41,0.1); color:#0B1929; border:1px solid rgba(11,25,41,0.28); }
 .wi-gr { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
   background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85); border:1px solid rgba(14,165,233,0.18); }
