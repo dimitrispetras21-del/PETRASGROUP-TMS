@@ -26,7 +26,7 @@ const WINTL = {
   shelf:     [], // kept for compat, not used for display
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
-  ui:        { openRow:null },
+  ui:        { openRow:null, openGroup:null },
   _seq:      0,
 };
 
@@ -288,6 +288,28 @@ const WINTL = {
 }
 .wi-imp-content { flex:1; min-width:0; overflow:hidden; }
 .wi-imp-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+
+/* group accordion */
+.wi-group-detail {
+  background:#F8FAFC;
+  border-top:1px solid var(--border);
+  padding:6px 12px 8px 48px;
+}
+.wi-group-item {
+  display:flex; align-items:center; gap:8px;
+  padding:4px 0;
+  border-bottom:1px solid var(--border);
+  font-size:10.5px;
+}
+.wi-group-item:last-child { border-bottom:none; }
+.wi-group-num {
+  font-size:8.5px; font-weight:700; color:var(--text-dim);
+  min-width:16px; text-align:right;
+}
+.wi-group-route { flex:1; min-width:0; overflow:hidden; }
+.wi-group-from { font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-group-meta { font-size:9.5px; color:var(--text-dim); white-space:nowrap; margin-top:1px; }
+.wi-group-pals { font-size:9.5px; color:var(--text-dim); white-space:nowrap; }
 
 /* ctx menu */
 #wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card);
@@ -800,7 +822,7 @@ function _wiRowHTML(row,i){
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr">×\${exps.length}</span>`:''}
+          ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span>`:''}
         </div>
         <div class="wi-sub">
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
@@ -1486,6 +1508,11 @@ function _wiPrint(rowId, leg){
   const orderId = leg==='export' ? row.orderIds[0] : (row.importId||row.orderIds[0]);
   const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   window.open(`${base}?orderId=${orderId}&leg=${leg}`,'_blank');
+}
+
+function _wiToggleGroup(rowId){
+  WINTL.ui.openGroup = WINTL.ui.openGroup===rowId ? null : rowId;
+  _wiRepaintRow(rowId);
 }
 
 function _wiOpenImpPopover(e, impId, rowId){
