@@ -378,6 +378,7 @@ function _wiBuildRows(){
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
       partnerRate:f['Partner Rate']?String(f['Partner Rate']):'',
+      partnerRateImp:'',
       saved:!!(truckId||partnerId),
     });
   }
@@ -973,11 +974,16 @@ function _wiOpenPopover(e,rowId){
                    value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
           </div>
           <div class="wi-pop-field">
-            <span class="wi-pop-lbl">Rate €</span>
+            <span class="wi-pop-lbl">Export Rate €</span>
             <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
-                   id="wi-pop-rate-${rowId}"
-                   style="width:90px"
+                   id="wi-pop-rate-exp-${rowId}" style="width:90px"
                    value="${row.partnerRate||''}"/>
+          </div>
+          <div class="wi-pop-field" ${!row.importId?'style="opacity:0.4;pointer-events:none" title="No import matched"':''}>
+            <span class="wi-pop-lbl">Import Rate €</span>
+            <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
+                   id="wi-pop-rate-imp-${rowId}" style="width:90px"
+                   value="${row.partnerRateImp||''}"/>
           </div>
         </div>
       </div>
@@ -1030,8 +1036,10 @@ async function _wiSaveFromPopover(rowId){
   syncPop('pt','partnerId','partnerLabel');
   const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
   if(ppEl) row.partnerPlates=ppEl.value;
-  const rateEl=document.getElementById(`wi-pop-rate-${rowId}`);
-  if(rateEl) row.partnerRate=rateEl.value;
+  const rateExpEl=document.getElementById(`wi-pop-rate-exp-${rowId}`);
+  if(rateExpEl) row.partnerRate=rateExpEl.value;
+  const rateImpEl=document.getElementById(`wi-pop-rate-imp-${rowId}`);
+  if(rateImpEl) row.partnerRateImp=rateImpEl.value;
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
@@ -1040,17 +1048,26 @@ async function _wiSaveFromPopover(rowId){
   const fields=isPartner
     ?{'Partner':[row.partnerId],'Is Partner Trip':true,
       'Partner Truck Plates':row.partnerPlates||'',
-      'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null,
       'Truck':[],'Trailer':[],'Driver':[]}
     :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
-  // All order IDs to update: export orders + matched import order (if any)
-  const allOrderIds=[...row.orderIds];
-  if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
+  // Save to export orders (with export rate)
+  const expFields={...fields};
+  if(isPartner) expFields['Partner Rate']=row.partnerRate?parseFloat(row.partnerRate):null;
+
+  // Save to import order (with import rate) if matched
+  const impFields={...fields};
+  if(isPartner) impFields['Partner Rate']=row.partnerRateImp?parseFloat(row.partnerRateImp):null;
 
   const errors=[];
-  for(const orderId of allOrderIds){
+  for(const orderId of row.orderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,fields);
+      const res=await atPatch(TABLES.ORDERS,orderId,expFields);
+      if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+    }catch(err){errors.push(err.message);}
+  }
+  if(row.importId && !row.orderIds.includes(row.importId)){
+    try{
+      const res=await atPatch(TABLES.ORDERS,row.importId,impFields);
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
     }catch(err){errors.push(err.message);}
   }
