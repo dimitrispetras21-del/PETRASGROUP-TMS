@@ -41,6 +41,28 @@ async function atCreate(tableId, fields) {
   return res.json();
 }
 
+// atGetAll — accepts options object {filterByFormula, fields, sort}
+async function atGetAll(tableId, opts = {}, useCache = true) {
+  const params = [];
+  if (opts.filterByFormula) params.push(`filterByFormula=${encodeURIComponent(opts.filterByFormula)}`);
+  if (opts.fields) opts.fields.forEach(f => params.push(`fields[]=${encodeURIComponent(f)}`));
+  if (opts.sort) opts.sort.forEach(s => params.push(`sort[0][field]=${encodeURIComponent(s.field)}&sort[0][direction]=${s.direction||'asc'}`));
+  const paramStr = params.join('&');
+  const key = tableId + paramStr;
+  if (useCache && _cache[key] && (Date.now() - _cache[key].ts < 60000)) return _cache[key].data;
+  let records = [], offset = '';
+  do {
+    let url = `https://api.airtable.com/v0/${AT_BASE}/${tableId}?pageSize=100${paramStr?'&'+paramStr:''}`;
+    if (offset) url += `&offset=${offset}`;
+    const res = await fetch(url, { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } });
+    const data = await res.json();
+    records = records.concat(data.records || []);
+    offset = data.offset || '';
+  } while (offset);
+  _cache[key] = { data: records, ts: Date.now() };
+  return records;
+}
+
 async function atDelete(tableId, recId) {
   const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
     method: 'DELETE',
