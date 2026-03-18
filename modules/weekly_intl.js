@@ -849,16 +849,17 @@ function _wiRowHTML(row,i){
       const f=e.fields;
       const to=_wiClean(f['Delivery Summary']||'—');
       const pals=f['Total Pallets']||0;
-      const dt=_wiFmt(f['Delivery DateTime']);
-      return '<div class=\'wi-gr-tip-row\'><span class=\'wi-gr-tip-n\'>'+(i+1)+'.</span><span class=\'wi-gr-tip-dest\'>'+to+'</span><span class=\'wi-gr-tip-meta\'>'+dt+' · '+pals+' pal</span></div>';
+      const loadD=_wiFmt(f['Loading DateTime']);
+      const delD=_wiFmt(f['Delivery DateTime']);
+      return '<div class=\'wi-gr-tip-row\'><span class=\'wi-gr-tip-n\'>'+(i+1)+'.</span><span class=\'wi-gr-tip-dest\'>'+to+'</span><span class=\'wi-gr-tip-meta\'>'+loadD+'→'+delD+' · '+pals+' pal</span></div>';
     }).join('')}
   </div>
 </span>`:''}
         </div>
         <div class="wi-sub">
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
-          ${pals?`<span>${pals} pal</span>`:''}
+          <span>${loadDt} → ${delDt}</span>
+          <span class="wi-sub-div"></span>
+          <span>${pals} pal</span>
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
