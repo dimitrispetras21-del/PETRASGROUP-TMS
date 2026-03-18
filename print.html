@@ -21,13 +21,13 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .pbar-left{display:flex;align-items:center;gap:14px}
 .pbar-logo{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;
   letter-spacing:0.5px;color:#fff}
-.pbar-logo span{color:#E87722}
+.pbar-logo span{color:#8B95A1}
 .pbar-div{width:1px;height:16px;background:rgba(255,255,255,0.15)}
 .pbar-title{font-size:11px;color:rgba(196,207,219,0.7);letter-spacing:0.3px}
-.pbar-btn{background:#E87722;color:#fff;border:none;padding:7px 20px;
+.pbar-btn{background:#6B7280;color:#fff;border:none;padding:7px 20px;
   border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;
   font-family:'DM Sans',sans-serif;letter-spacing:0.4px;transition:background .12s}
-.pbar-btn:hover{background:#C96A1A}
+.pbar-btn:hover{background:#4B5563}
 .pbar-spacer{height:46px}
 
 /* ── DOC WRAPPER ── */
@@ -46,7 +46,7 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .brand-wrap{text-align:right}
 .brand{font-family:'Syne',sans-serif;font-size:19px;font-weight:800;
   color:#0B1929;letter-spacing:0.5px}
-.brand span{color:#E87722}
+.brand span{color:#8B95A1}
 .brand-sub{font-size:7.5px;color:#9CA3AF;letter-spacing:2px;text-transform:uppercase;margin-top:1px}
 .co-info{margin-top:6px;font-size:10.5px;color:#4B5563;line-height:1.7;text-align:right}
 .co-info b{color:#0B1929;font-weight:600}
@@ -77,9 +77,9 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 
 /* ── PRICE BAR ── */
 .price-bar{display:flex;justify-content:space-between;align-items:center;
-  background:#F8FAFC;border:1.5px solid #E87722;border-radius:6px;
+  background:#F8FAFC;border:1.5px solid #8B95A1;border-radius:6px;
   padding:12px 20px;margin-bottom:20px}
-.price-amount{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#E87722}
+.price-amount{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:#8B95A1}
 .price-lbl{font-size:8.5px;font-weight:700;letter-spacing:1px;
   text-transform:uppercase;color:#9CA3AF;margin-bottom:3px}
 .price-terms{text-align:right}
@@ -89,7 +89,7 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .section-title{font-size:9px;font-weight:800;text-transform:uppercase;
   letter-spacing:1.8px;color:#fff;background:#172C45;
   padding:5px 14px;margin:18px 0 8px;
-  border-left:3px solid #E87722;border-radius:0 3px 3px 0}
+  border-left:3px solid #8B95A1;border-radius:0 3px 3px 0}
 
 /* ── STOP CARD ── */
 .stop-card{border:1px solid #E5E7EB;border-radius:6px;padding:14px 18px;
@@ -348,7 +348,9 @@ function generatePDF(orderRec){
     var truck=allTrucks.find(r=>f['Truck']&&r.id===f['Truck'][0])||{};
     var trailer=allTrailers.find(r=>f['Trailer']&&r.id===f['Trailer'][0])||{};
     var df=driver.fields||{},tf=truck.fields||{},trf=trailer.fields||{};
-    var totalW=(parseFloat(tf['Gross Vehicle Weight kg']||0)+parseFloat(trf['Weight kg']||0));
+    var truckW=parseFloat(tf['Gross Vehicle Weight kg']||tf['Weight kg']||0);
+    var trailerW=parseFloat(trf['Weight kg']||trf['Gross Vehicle Weight kg']||0);
+    var totalW=truckW+trailerW;
     html=pbarHTML+
     '<div class="doc-header">'+
       '<div class="brand-wrap" style="text-align:left">'+
@@ -367,7 +369,7 @@ function generatePDF(orderRec){
         '<div class="db-item"><div class="lbl">Driver</div><div class="val">'+(df['Full Name']||'—')+'</div></div>'+
         '<div class="db-item"><div class="lbl">Truck</div><div class="val">'+(tf['License Plate']||'—')+'</div></div>'+
         '<div class="db-item"><div class="lbl">Trailer</div><div class="val">'+(trf['License Plate']||'—')+'</div></div>'+
-        (totalW>0?'<div class="db-item"><div class="lbl">Total Weight</div><div class="val">'+totalW.toLocaleString('de-DE')+' KG</div></div>':'')+
+        '<div class="db-item"><div class="lbl">Total Weight</div><div class="val">'+(totalW>0?totalW.toLocaleString('de-DE')+' KG':'—')+'</div></div>'+
       '</div>'+
     '</div>'+
     metaHTML+
