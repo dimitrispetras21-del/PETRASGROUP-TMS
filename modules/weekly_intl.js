@@ -108,8 +108,8 @@ function _wiRender() {
         <div class="page-title">Weekly International</div>
         <div class="page-sub" style="display:flex;gap:12px;flex-wrap:wrap;margin-top:3px">
           <span>Week ${WINTL.week} · ${_wiWeekRange(WINTL.week)}</span>
-          <span style="color:var(--success)">↑ ${expN} exports</span>
-          <span style="color:rgba(217,119,6,0.9)">↓ ${impN} imports</span>
+          <span style="color:var(--success)">${expN} exp</span>
+          <span style="color:rgba(217,119,6,0.9)">${impN} imp</span>
           <span style="color:var(--text-dim)">${onTrip} on trip · ${pending} pending</span>
           ${unmatched?`<span style="color:rgba(217,119,6,0.9)">${unmatched} imports unmatched</span>`:'<span style="color:var(--success)">all imports matched ✓</span>'}
         </div>
@@ -130,7 +130,7 @@ function _wiRender() {
     <div style="margin-bottom:12px;background:var(--bg-card);border:1px solid rgba(217,119,6,0.2);border-radius:10px;overflow:hidden">
       <div style="display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid rgba(217,119,6,0.1)">
         <span style="font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:rgba(217,119,6,0.85)">
-          ↓ Import Shelf ${IS.length?`(${IS.length})`:'— all matched ✓'}
+          IMPORT SHELF ${IS.length?`(${IS.length})`:'— all matched ✓'}
         </span>
         ${IS.length>5?`
         <input type="text" placeholder="search imports…" value="${WINTL._shelfFilter}"
@@ -155,22 +155,20 @@ function _wiRender() {
                   position:sticky;top:0;z-index:10">
         <div style="padding:9px 0 9px 12px;border-right:1px solid var(--border);font-size:10px;color:var(--text-dim)">#</div>
         <div style="padding:9px 14px;border-right:1px solid var(--border)">
-          <span style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--success)">↑ EXPORT</span>
-          <span style="font-size:10px;color:var(--text-dim);margin-left:8px">right-click → groupage</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--success)">EXPORT</span>
+          <span style="font-size:10px;color:var(--text-dim);margin-left:8px">right-click to group</span>
         </div>
         <div style="border-right:1px solid var(--border)"></div>
         <div style="padding:9px 10px;border-right:1px solid var(--border);text-align:center">
           <span style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--text-dim)">Assignment</span>
         </div>
         <div style="padding:9px 14px">
-          <span style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:rgba(217,119,6,0.85)">↓ IMPORT</span>
+          <span style="font-size:10px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:rgba(217,119,6,0.85)">IMPORT</span>
           <span style="font-size:10px;color:var(--text-dim);margin-left:8px">drag from shelf</span>
         </div>
       </div>
 
-      ${R.length
-        ? R.map((row,i)=>_wiRow(row,i)).join('')
-        : `<div class="empty-state" style="padding:60px"><div class="icon">📋</div><p>No exports this week</p></div>`}
+      ${R.length ? _wiRenderRows(R) : `<div class="empty-state" style="padding:60px"><p>No exports this week</p></div>`}
     </div>
 
     <!-- context menu -->
@@ -210,7 +208,7 @@ function _wiRow(row, i) {
     :(row.truckId||row.partnerId)?'background:var(--accent);':'background:var(--warning);';
 
   // Row background
-  const rowBg=isSaved?'background:rgba(5,150,105,0.02)':'';
+  const rowBg=isSaved?'background:rgba(5,150,105,0.06)':'';
 
   // Compact export summary (1 line)
   const expSummary=exps.map(r=>{
@@ -219,12 +217,11 @@ function _wiRow(row, i) {
     const pals=r.fields['Total Pallets']||0;
     const delDt=_wiFmt(r.fields['Delivery DateTime']);
     const veroia=r.fields['Veroia Switch '];
-    const temp=r.fields['Temperature °C']!=null?` · ${r.fields['Temperature °C']}°C`:'';
     return `<div style="padding:${isGroupage?'3px 0':'0'}">
       <span style="font-size:12px;font-weight:600;color:var(--text)">${loading}</span>
-      ${veroia?`<span style="font-size:9px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 4px;margin-left:4px">🔄</span>`:''}
+      ${veroia?`<span style="font-size:9px;font-weight:600;letter-spacing:0.5px;background:var(--bg);border:1px solid var(--border);border-radius:3px;padding:1px 5px;margin-left:5px;color:var(--text-dim)">VX</span>`:''}
       <span style="font-size:11px;color:var(--text-dim);margin-left:6px">→ ${delivery}</span>
-      <span style="font-size:11px;color:var(--text-mid);margin-left:8px">📦${pals}${temp} · ${delDt}</span>
+      <span style="font-size:11px;color:var(--text-mid);margin-left:8px">${pals} pal · ${delDt}</span>
     </div>`;
   }).join('');
 
@@ -242,7 +239,7 @@ function _wiRow(row, i) {
     <div draggable="true" data-impid="${imp.id}" ondragstart="_wiDragImport(event,'${imp.id}')"
          style="cursor:grab">
       <div style="font-size:12px;font-weight:600;color:var(--text)">${_wiClean(imp.fields['Loading Summary']||'—')}</div>
-      <div style="font-size:11px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · 📦${imp.fields['Total Pallets']||0} · ${_wiFmt(imp.fields['Delivery DateTime'])}</div>
+      <div style="font-size:11px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal · ${_wiFmt(imp.fields['Delivery DateTime'])}</div>
     </div>`:
     `<div style="font-size:11px;color:var(--text-dim);font-style:italic">drag import here</div>`;
 
@@ -253,20 +250,20 @@ function _wiRow(row, i) {
   <div id="wi_row_${row.id}" style="${rowBg};border-top:1px solid var(--border)">
 
     <!-- COMPACT ROW -->
-    <div style="display:grid;grid-template-columns:36px 1fr 24px 200px 1fr;min-height:44px;cursor:context-menu"
+    <div style="display:grid;grid-template-columns:36px 1fr 24px 200px 1fr;min-height:34px;cursor:context-menu"
          oncontextmenu="_wiCtxMenu(event,${row.id})">
 
       <!-- # + status dot -->
       <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                  padding:8px 0;border-right:1px solid var(--border);gap:4px">
+                  padding:5px 0;border-right:1px solid var(--border);gap:3px">
         <div style="width:8px;height:8px;border-radius:50%;${dot}flex-shrink:0"></div>
         <span style="font-size:9px;color:var(--text-dim)">${i+1}</span>
       </div>
 
       <!-- Export cell -->
-      <div style="padding:8px 14px;border-right:1px solid var(--border);display:flex;align-items:center">
+      <div style="padding:5px 14px;border-right:1px solid var(--border);display:flex;align-items:center">
         <div style="flex:1">
-          ${isGroupage?`<span style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent);margin-bottom:3px;display:block">🔗 GROUPAGE ×${exps.length}</span>`:''}
+          ${isGroupage?`<span style="font-size:9px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--accent);margin-bottom:3px;display:block">GROUPAGE ×${exps.length}</span>`:''}
           ${expSummary}
         </div>
       </div>
@@ -278,14 +275,14 @@ function _wiRow(row, i) {
       </div>
 
       <!-- Assignment cell (compact badge) -->
-      <div style="padding:8px 10px;border-right:1px solid var(--border);background:var(--bg);
+      <div style="padding:5px 10px;border-right:1px solid var(--border);background:var(--bg);
                   display:flex;align-items:center;justify-content:center;cursor:pointer"
            onclick="_wiToggleRow(${row.id})">
         ${assignBadge}
       </div>
 
       <!-- Import cell (drop zone) -->
-      <div id="wi_imp_${row.id}" style="padding:8px 14px;transition:background 0.12s"
+      <div id="wi_imp_${row.id}" style="padding:5px 14px;transition:background 0.12s"
            ondragover="event.preventDefault();_wiImpHover(${row.id},true)"
            ondragleave="_wiImpHover(${row.id},false)"
            ondrop="_wiDropImport(event,${row.id})">
@@ -331,9 +328,9 @@ function _wiAssignPanel(row) {
       ${can('planning')==='full'?`
       <div style="display:flex;flex-direction:column;gap:4px">
         <button class="btn btn-primary" style="font-size:11px;padding:5px 14px;white-space:nowrap"
-                onclick="_wiCreateTrip(${row.id})">🔗 Create Trip</button>
+                onclick="_wiCreateTrip(${row.id})">Create Trip</button>
         <button class="btn btn-ghost"   style="font-size:10px;padding:4px 14px;white-space:nowrap"
-                onclick="_wiCreateTrip(${row.id},true)">Export only →</button>
+                onclick="_wiCreateTrip(${row.id},true)">Export only</button>
       </div>`:''}
     </div>`;
 }
@@ -367,7 +364,7 @@ function _wiShelfChip(r) {
          onmouseout="this.style.boxShadow=''">
       <div style="font-size:11px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${loading}</div>
       <div style="font-size:10px;color:var(--text-dim)">→ ${delivery}</div>
-      <div style="font-size:10px;color:var(--text-mid);margin-top:2px">${delDt} · ${pals} pal</div>
+      <div style="font-size:10px;color:var(--text-mid);margin-top:2px">${pals} pal · del. ${delDt}</div>
     </div>`;
 }
 
@@ -549,3 +546,39 @@ async function _wiCreateTrip(rowId,exportOnly=false) {
 // ── Helpers ────────────────────────────────────
 function _wiFmt(s){if(!s)return'—';const p=s.split('-');return`${p[2]}/${p[1]}`;}
 function _wiClean(s){return(s||'').replace(/^['"]+/,'').replace(/\/+$/,'').trim();}
+
+// ── Render rows with date separator bars ────────
+function _wiRenderRows(rows) {
+  let lastDate = null;
+  let html = '';
+  rows.forEach((row, i) => {
+    // Get delivery date from first export
+    const exp = WINTL.exports.find(r => r.id === row.exportIds[0]);
+    const delDate = exp?.fields['Delivery DateTime'] || null;
+    const delDateFmt = delDate ? _wiFullDate(delDate) : null;
+
+    // Date separator bar
+    if (delDateFmt && delDateFmt !== lastDate) {
+      lastDate = delDateFmt;
+      html += `
+        <div style="display:grid;grid-template-columns:36px 1fr 24px 200px 1fr;background:var(--bg);
+                    border-top:${i===0?'none':'2px solid var(--border-dark, #d1d5db)'}">
+          <div style="border-right:1px solid var(--border)"></div>
+          <div colspan="4" style="padding:5px 14px;grid-column:2/-1;
+               border-bottom:1px solid var(--border)">
+            <span style="font-size:10px;font-weight:700;letter-spacing:1.2px;
+                         text-transform:uppercase;color:var(--text-mid)">${delDateFmt}</span>
+          </div>
+        </div>`;
+    }
+    html += _wiRow(row, i);
+  });
+  return html;
+}
+
+function _wiFullDate(s) {
+  if (!s) return null;
+  try {
+    return new Date(s).toLocaleDateString('el-GR', {weekday:'short', day:'numeric', month:'long'});
+  } catch { return s; }
+}
