@@ -858,13 +858,19 @@ async function _scanPreview(data) {
       ⚠ = δεν βρέθηκε match · επιλογή χειροκίνητα στη φόρμα
     </div>`;
 
+  // Store result globally — avoids JSON encoding issues in onclick
+  window._scanResult = { matched: {clientId,clientLabel,loadLocId,loadLocLabel,delLocId,delLocLabel}, data };
+
   // Update footer
   document.getElementById('modalFooter').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-ghost" onclick="openIntlScan()">↩ Rescan</button>
-    <button class="btn btn-success" onclick="_scanOpen(${JSON.stringify({clientId,clientLabel,loadLocId,loadLocLabel,delLocId,delLocLabel}).replace(/'/g,"\'")},${JSON.stringify(data).replace(/'/g,"\'")})">
-      Open Form →
-    </button>`;
+    <button class="btn btn-success" onclick="_scanOpenStored()">Open Form →</button>`;
+}
+
+async function _scanOpenStored() {
+  const r = window._scanResult;
+  if (r) await _scanOpen(r.matched, r.data);
 }
 
 async function _scanOpen(matched, data) {
