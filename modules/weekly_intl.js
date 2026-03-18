@@ -206,6 +206,54 @@ const WINTL = {
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-chip-m { font-size:9.5px; font-weight:600; color:var(--text-mid); margin-top:2px; }
 
+/* ── ASSIGNMENT POPOVER ── */
+#wi-popover {
+  display:none; position:fixed; z-index:9999;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
+  width:430px; padding:0; overflow:hidden;
+}
+.wi-pop-header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:10px 14px 9px; background:var(--navy-mid);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.wi-pop-title { font-family:'Syne',sans-serif; font-size:11px; font-weight:700;
+  letter-spacing:0.8px; text-transform:uppercase; color:var(--silver); }
+.wi-pop-subtitle { font-size:10px; color:var(--silver-dim); margin-top:1px; }
+.wi-pop-close { background:none; border:none; cursor:pointer; color:var(--silver-dim);
+  font-size:18px; line-height:1; padding:2px 4px; border-radius:4px; }
+.wi-pop-close:hover { color:var(--silver); background:rgba(255,255,255,0.08); }
+.wi-pop-body { padding:12px 14px 0; display:flex; flex-direction:column; gap:10px; }
+.wi-pop-section-lbl { font-size:8px; font-weight:700; letter-spacing:1.2px;
+  text-transform:uppercase; color:var(--text-dim);
+  padding-bottom:5px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.wi-pop-row { display:flex; gap:6px; align-items:flex-end; flex-wrap:wrap; }
+.wi-pop-field { display:flex; flex-direction:column; gap:3px; }
+.wi-pop-lbl { font-size:8px; font-weight:700; letter-spacing:1px;
+  text-transform:uppercase; color:var(--text-dim); }
+.wi-pop-inp { width:120px; padding:7px 9px; font-size:11px; border-radius:6px;
+  border:1px solid var(--border-mid); background:var(--bg);
+  color:var(--text); outline:none; transition:border-color .15s,box-shadow .15s; }
+.wi-pop-inp:focus { border-color:rgba(11,25,41,0.4);
+  box-shadow:0 0 0 3px rgba(11,25,41,0.08); background:var(--bg-card); }
+.wi-pop-inp-wide { width:185px; }
+.wi-pop-divider { display:flex; align-items:center; gap:8px; font-size:9px;
+  color:var(--text-dim); letter-spacing:.5px; text-transform:uppercase; margin:2px 0; }
+.wi-pop-divider::before,.wi-pop-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+.wi-pop-footer { display:flex; gap:8px; justify-content:flex-end;
+  padding:10px 14px 12px; border-top:1px solid var(--border);
+  background:var(--bg); margin-top:12px; }
+.wi-pop-save { display:inline-flex; align-items:center; gap:6px;
+  padding:8px 24px; font-size:11.5px; font-weight:700; border:none;
+  border-radius:6px; cursor:pointer; background:var(--navy-mid); color:#fff;
+  transition:background .15s; box-shadow:0 1px 4px rgba(0,0,0,0.15); }
+.wi-pop-save:hover { background:var(--navy); }
+.wi-pop-save:disabled { opacity:.45; cursor:default; }
+.wi-pop-cancel { padding:7px 16px; font-size:11px; border:1px solid var(--border-mid);
+  border-radius:6px; cursor:pointer; background:none; color:var(--text-mid); }
+.wi-pop-cancel:hover { background:var(--bg-hover); }
 /* ctx menu */
 #wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card);
   border:1px solid var(--border-mid); border-radius:8px;
@@ -389,7 +437,8 @@ function _wiPaint(){
           </div>`}
       </div>
     </div>
-    <div id="wi-ctx"></div>`;
+    <div id="wi-ctx"></div>
+    <div id="wi-popover"></div>`;
   window._wiDragging=null;
 }
 
@@ -591,7 +640,7 @@ function _wiRowHTML(row,i){
           ${pals?`<span>${pals} pal</span>`:''}
         </div>
       </div>
-      <div class="wi-ca" onclick="event.stopPropagation()">${pill}</div>
+      <div class="wi-ca" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})" style="cursor:pointer">${pill}</div>
       <div class="wi-ci" id="wi-ci-${row.id}"
            onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
@@ -781,10 +830,7 @@ function _wiField(rowId,field,val){
   if(row) row[field]=val;
 }
 function _wiToggle(rowId){
-  const prev=WINTL.ui.openRow;
-  WINTL.ui.openRow=prev===rowId?null:rowId;
-  if(prev&&prev!==rowId) _wiRepaintRow(prev);
-  _wiRepaintRow(rowId);
+  // Popover handles assignment — no-op
 }
 function _wiRepaintRow(rowId){
   const el=document.getElementById('wi-row-'+rowId);
@@ -871,6 +917,135 @@ async function _wiRemoveImport(rowId){
 }
 
 /* ── SAVE ASSIGNMENT ───────────────────────────────────────────────── */
+/* ── POPOVER ─────────────────────────────────────────────────── */
+function _wiOpenPopover(e,rowId){
+  e.stopPropagation();
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const {trucks,trailers,drivers,partners}=WINTL.data;
+  const primaryExp=WINTL.data.exports.find(r=>r.id===row.orderIds[0]);
+  const fromStr=_wiClean(primaryExp?.fields['Loading Summary']||'').slice(0,28);
+  const toStr  =_wiClean(primaryExp?.fields['Delivery Summary']||'').slice(0,28);
+
+  const mkDrop=(px,arr,selId,ph,wide)=>{
+    const uid=`${px}_p_${rowId}`;
+    const sel=arr.find(x=>x.id===selId)?.label||'';
+    const opts=arr.map(x=>{
+      const l=(x.label||'').replace(/"/g,'&quot;');
+      return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
+    }).join('');
+    return `<div class="wi-sd" id="wsd-${uid}">
+      <input type="text" class="wi-pop-inp${wide?' wi-pop-inp-wide':''} wi-sdi"
+             placeholder="${ph}" value="${sel.replace(/"/g,'&quot;')}"
+             oninput="_wiSdF('${uid}',this.value)" onfocus="_wiSdO('${uid}')" autocomplete="off"/>
+      <input type="hidden" id="wsd-v-${uid}" value="${selId||''}"/>
+      <div id="wsd-l-${uid}" class="wi-sdl">${opts}</div>
+    </div>`;
+  };
+
+  const pop=document.getElementById('wi-popover');
+  pop.innerHTML=`
+    <div class="wi-pop-header">
+      <div>
+        <div class="wi-pop-title">Assign Trip</div>
+        <div class="wi-pop-subtitle">${fromStr} → ${toStr}</div>
+      </div>
+      <button class="wi-pop-close" onclick="_wiClosePopover()">×</button>
+    </div>
+    <div class="wi-pop-body">
+      <div>
+        <div class="wi-pop-section-lbl">Owned Fleet</div>
+        <div class="wi-pop-row">
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Truck</span>${mkDrop('tk',trucks,row.truckId,'Plate…',false)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Trailer</span>${mkDrop('tl',trailers,row.trailerId,'Plate…',false)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Driver</span>${mkDrop('dr',drivers,row.driverId,'Name…',false)}</div>
+        </div>
+      </div>
+      <div class="wi-pop-divider">or partner</div>
+      <div>
+        <div class="wi-pop-section-lbl">Partner</div>
+        <div class="wi-pop-row">
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Company</span>${mkDrop('pt',partners,row.partnerId,'Company…',true)}</div>
+          <div class="wi-pop-field">
+            <span class="wi-pop-lbl">Plates</span>
+            <input class="wi-pop-inp wi-pop-inp-wide" type="text"
+                   placeholder="e.g. ΙΑΒ 1099" id="wi-pop-pp-${rowId}"
+                   value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="wi-pop-footer">
+      ${row.saved?`<button class="wi-pop-cancel" onclick="event.stopPropagation();_wiClear(${rowId}).then(()=>_wiClosePopover())">Clear</button>`:''}
+      <button class="wi-pop-cancel" onclick="_wiClosePopover()">Cancel</button>
+      <button class="wi-pop-save" id="wi-pop-btn-${rowId}"
+              onclick="event.stopPropagation();_wiSaveFromPopover(${rowId})">
+        <div id="wi-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;display:none;animation:wi-spin .6s linear infinite"></div>
+        ${row.saved?'Update':'Save Assignment'}
+      </button>
+    </div>`;
+
+  const rect=e.currentTarget.getBoundingClientRect();
+  const popW=430, popH=300;
+  let left=rect.left-10;
+  let top=rect.bottom+6;
+  if(left+popW>window.innerWidth-12) left=window.innerWidth-popW-12;
+  if(top+popH>window.innerHeight-12) top=rect.top-popH-6;
+  if(top<10) top=10;
+  Object.assign(pop.style,{display:'block',left:`${Math.max(10,left)}px`,top:`${top}px`});
+  pop.dataset.rowId=String(rowId);
+  setTimeout(()=>document.addEventListener('click',_wiPopoverOutside,{capture:true}),10);
+}
+
+function _wiPopoverOutside(e){
+  const pop=document.getElementById('wi-popover');
+  if(pop&&!pop.contains(e.target)&&!e.target.closest('.wi-ca')){
+    _wiClosePopover();
+  }
+}
+function _wiClosePopover(){
+  const pop=document.getElementById('wi-popover');
+  if(pop) pop.style.display='none';
+  document.removeEventListener('click',_wiPopoverOutside,{capture:true});
+}
+
+async function _wiSaveFromPopover(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const syncPop=(p,f,l)=>{
+    const uid=`${p}_p_${rowId}`;
+    const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
+    const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
+    if(val){row[f]=val;row[l]=lbl;}
+  };
+  syncPop('tk','truckId','truckLabel');
+  syncPop('tl','trailerId','trailerLabel');
+  syncPop('dr','driverId','driverLabel');
+  syncPop('pt','partnerId','partnerLabel');
+  const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
+  if(ppEl) row.partnerPlates=ppEl.value;
+  const isPartner=!!row.partnerId;
+  if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
+  const btn=document.getElementById(`wi-pop-btn-${rowId}`);
+  const spin=document.getElementById(`wi-pop-spin-${rowId}`);
+  if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
+  const fields=isPartner
+    ?{'Partner':[row.partnerId],'Is Partner Trip':true,'Partner Truck Plates':row.partnerPlates||'','Truck':[],'Trailer':[],'Driver':[]}
+    :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
+  const errors=[];
+  for(const orderId of row.orderIds){
+    try{
+      const res=await atPatch(TABLES.ORDERS,orderId,fields);
+      if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+    }catch(err){errors.push(err.message);}
+  }
+  if(errors.length){
+    if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
+    toast('Error: '+errors[0].slice(0,60),'warn');return;
+  }
+  _wiClosePopover();
+  toast(row.saved?'Updated':'Saved');
+  await renderWeeklyIntl();
+}
+
 async function _wiSave(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
