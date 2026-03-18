@@ -1,20 +1,13 @@
 // ═══════════════════════════════════════════════════════════════════════
-// WEEKLY INTERNATIONAL — v9  FINAL
+// WEEKLY INTERNATIONAL — v10
 // ───────────────────────────────────────────────────────────────────────
-// Layout (5-col grid):
-//   48px  |  1fr  |  40px  |  200px  |  1fr
-//    #    | EXPORT |   ›   | ASSIGN  | IMPORT
-//
-// Design rules:
-//  · No emoji anywhere
-//  · No temperature field
-//  · Compact rows (~40px default)
-//  · Date separator = full-width bold bar with date label
-//  · Saved rows  = subtle green-tinted background
-//  · Partner rows = subtle blue-tinted background
-//  · Unsaved     = plain white
-//  · Left border strip = status color (3px)
-//  · Professional, minimal typography
+// KEY CHANGES vs v9:
+//  · Group/sort rows by DELIVERY DATE (not loading date)
+//  · Date separator label = delivery date
+//  · Assignment pill: Truck · Trailer · Driver  OR  Partner + plates text
+//  · Panel: owned = 3 dropdowns, partner = partner dropdown + free-text plates + rates
+//  · Save: proper error detection from AT response
+//  · Excel-first: table is center, no decorative complexity
 // ═══════════════════════════════════════════════════════════════════════
 
 'use strict';
@@ -32,416 +25,315 @@ const WINTL = {
 
 /* ─── CSS ─────────────────────────────────────────────────────────────── */
 (function(){
-  if(document.getElementById('wi9')) return;
+  if(document.getElementById('wi10')) return;
   const s = document.createElement('style');
-  s.id = 'wi9';
+  s.id = 'wi10';
   s.textContent = `
 
-/* ════════════════════ CORE TABLE ════════════════════ */
+/* ── table wrapper ── */
 .wi-wrap {
-  border: 1px solid var(--border-mid);
-  border-radius: 10px;
-  overflow: hidden;
-  background: var(--bg-card);
+  border:1px solid var(--border-mid); border-radius:10px;
+  overflow:hidden; background:var(--bg-card);
 }
 
-/* sticky column header */
+/* ── sticky header ── */
 .wi-head {
-  display: grid;
-  grid-template-columns: 48px 1fr 40px 200px 1fr;
-  background: var(--bg);
-  border-bottom: 2px solid var(--border-mid);
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  display:grid;
+  grid-template-columns: 48px 1fr 40px 220px 1fr;
+  background:var(--bg);
+  border-bottom:2px solid var(--border-mid);
+  position:sticky; top:0; z-index:20;
 }
 .wi-hc {
-  padding: 8px 13px;
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 1.3px;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  border-right: 1px solid var(--border);
+  padding:8px 13px; font-size:9.5px; font-weight:700;
+  letter-spacing:1.3px; text-transform:uppercase; color:var(--text-dim);
+  border-right:1px solid var(--border);
 }
-.wi-hc:last-child { border-right: none; }
+.wi-hc:last-child { border-right:none; }
 
-/* ════════════════════ DATE SEPARATOR ════════════════ */
+/* ── date separator — dark bar by delivery date ── */
 .wi-dsep {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 0 13px;
-  height: 28px;
-  background: var(--navy-mid);
-  border-top: 1px solid rgba(255,255,255,0.04);
+  display:flex; align-items:center; gap:12px;
+  padding:0 13px; height:28px;
+  background:var(--navy-mid);
+  border-top:1px solid rgba(255,255,255,0.04);
 }
-.wi-dsep:first-child { border-top: none; }
+.wi-dsep:first-child { border-top:none; }
 .wi-dsep-date {
-  font-family: 'Syne', sans-serif;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 1.4px;
-  text-transform: uppercase;
-  color: var(--silver);
+  font-family:'Syne',sans-serif; font-size:10px; font-weight:700;
+  letter-spacing:1.4px; text-transform:uppercase; color:var(--silver);
 }
-.wi-dsep-count {
-  font-size: 9px;
-  color: var(--silver-dim);
-  font-weight: 400;
+.wi-dsep-lbl {
+  font-size:9px; color:rgba(196,207,219,0.5);
+  font-weight:400; text-transform:uppercase; letter-spacing:0.8px;
 }
+.wi-dsep-count { font-size:9px; color:var(--silver-dim); }
 
-/* ════════════════════ ROW ═══════════════════════════ */
+/* ── row ── */
 .wi-row {
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  position: relative;
+  border-top:1px solid var(--border);
+  display:flex; flex-direction:column; position:relative;
 }
-
-/* left status strip */
 .wi-row::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0; width: 3px;
+  content:''; position:absolute;
+  left:0; top:0; bottom:0; width:3px;
 }
-.wi-row.s-saved::before    { background: var(--success); }
-.wi-row.s-partner::before  { background: rgba(59,130,246,0.65); }
-.wi-row.s-unsaved::before  { background: rgba(217,119,6,0.5); }
+.wi-row.s-ok::before      { background:var(--success); }
+.wi-row.s-partner::before { background:rgba(59,130,246,0.65); }
+.wi-row.s-pending::before { background:rgba(217,119,6,0.5); }
+.wi-row.s-ok      { background:rgba(5,150,105,0.025); }
+.wi-row.s-partner { background:rgba(59,130,246,0.022); }
+.wi-row.s-pending { background:var(--bg-card); }
+.wi-row.hi        { background:rgba(5,150,105,0.07) !important; }
+.wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
-/* row bg */
-.wi-row.s-saved   { background: rgba(5,150,105,0.025); }
-.wi-row.s-partner { background: rgba(59,130,246,0.025); }
-.wi-row.s-unsaved { background: var(--bg-card); }
-.wi-row.hi        { background: rgba(5,150,105,0.07) !important; }
-
-.wi-row:hover .wi-compact { background: rgba(0,0,0,0.01); }
-
-/* compact bar */
+/* ── compact bar (5 cols) ── */
 .wi-compact {
-  display: grid;
-  grid-template-columns: 48px 1fr 40px 200px 1fr;
-  min-height: 42px;
-  align-items: stretch;
+  display:grid;
+  grid-template-columns: 48px 1fr 40px 220px 1fr;
+  min-height:42px; align-items:stretch;
 }
 
-/* ── cell: number ── */
+/* col: number */
 .wi-cn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 4px 0;
-  border-right: 1px solid var(--border);
+  display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:4px; padding:4px 0;
+  border-right:1px solid var(--border);
 }
-.wi-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.wi-num { font-size: 9px; color: var(--text-dim); line-height: 1; }
+.wi-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.wi-num { font-size:9px; color:var(--text-dim); line-height:1; }
 
-/* ── cell: export ── */
+/* col: export */
 .wi-ce {
-  padding: 7px 13px;
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  justify-content: center;
-  overflow: hidden;
+  padding:6px 13px; border-right:1px solid var(--border);
+  display:flex; flex-direction:column; gap:2px;
+  justify-content:center; overflow:hidden;
 }
 .wi-route {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.35;
+  font-size:11.5px; font-weight:600; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  line-height:1.35;
 }
-.wi-route .sep  { color: var(--text-dim); margin: 0 5px; font-weight: 300; }
-.wi-route .dest { color: var(--text-mid); font-weight: 400; }
+.wi-route .sep  { color:var(--text-dim); margin:0 5px; font-weight:300; }
+.wi-route .dest { color:var(--text-mid); font-weight:400; }
 .wi-sub {
-  font-size: 10px;
-  color: var(--text-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size:10px; color:var(--text-dim);
+  white-space:nowrap; display:flex; align-items:center; gap:7px;
 }
-.wi-sub-sep { width: 1px; height: 9px; background: var(--border-mid); flex-shrink: 0; }
-
-/* Veroia badge */
+.wi-sub-div { width:1px; height:9px; background:var(--border-mid); flex-shrink:0; }
 .wi-vx {
-  display: inline-block;
-  font-size: 7.5px;
-  font-weight: 800;
-  letter-spacing: 1.1px;
-  text-transform: uppercase;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(99,102,241,0.1);
-  color: rgba(99,102,241,0.85);
-  border: 1px solid rgba(99,102,241,0.2);
-  vertical-align: middle;
-  margin-left: 4px;
+  display:inline-block; font-size:7.5px; font-weight:800;
+  letter-spacing:1px; text-transform:uppercase;
+  padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
+  background:rgba(99,102,241,0.1); color:rgba(99,102,241,0.85);
+  border:1px solid rgba(99,102,241,0.2);
 }
 .wi-gr {
-  display: inline-block;
-  font-size: 7.5px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(14,165,233,0.1);
-  color: rgba(14,165,233,0.85);
-  border: 1px solid rgba(14,165,233,0.2);
-  vertical-align: middle;
-  margin-left: 4px;
+  display:inline-block; font-size:7.5px; font-weight:800;
+  letter-spacing:1px; text-transform:uppercase;
+  padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
+  background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85);
+  border:1px solid rgba(14,165,233,0.18);
 }
 
-/* ── cell: chevron ── */
+/* col: chevron */
 .wi-chev {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  border-right: 1px solid var(--border);
-  color: var(--border-dark);
-  font-size: 14px;
-  user-select: none;
-  transition: color 0.1s, background 0.1s;
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; border-right:1px solid var(--border);
+  color:var(--border-dark); font-size:14px; user-select:none;
+  transition:color 0.1s, background 0.1s;
 }
-.wi-chev:hover { color: var(--text-mid); background: rgba(0,0,0,0.04); }
-.wi-chev.open  { color: var(--text-mid); transform: rotate(90deg); }
+.wi-chev:hover { color:var(--text-mid); background:rgba(0,0,0,0.04); }
+.wi-chev.open  { color:var(--text-mid); transform:rotate(90deg); }
 
-/* ── cell: assignment ── */
+/* col: assignment */
 .wi-ca {
-  padding: 7px 11px;
-  border-right: 1px solid var(--border);
-  background: var(--bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding:6px 11px; border-right:1px solid var(--border);
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
 }
 
-/* pill badges */
+/* assignment pill */
 .wi-pill {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 4px 12px;
-  border-radius: 16px;
-  max-width: 178px;
-  overflow: hidden;
+  display:flex; flex-direction:column; align-items:center; gap:0px;
+  padding:4px 12px; border-radius:14px; max-width:200px; overflow:hidden;
 }
 .wi-pill-ok {
-  background: rgba(5,150,105,0.08);
-  border: 1px solid rgba(5,150,105,0.2);
+  background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2);
 }
-.wi-pill-ok .pt  { color: rgba(5,150,105,0.95); }
-.wi-pill-ok .ps  { color: rgba(5,150,105,0.65); }
+.wi-pill-ok .pt  { color:rgba(5,150,105,0.95); }
+.wi-pill-ok .ps  { color:rgba(5,150,105,0.6); }
 .wi-pill-bp {
-  background: rgba(59,130,246,0.08);
-  border: 1px solid rgba(59,130,246,0.2);
+  background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2);
 }
-.wi-pill-bp .pt  { color: rgba(59,130,246,0.9); }
-.wi-pill-bp .ps  { color: rgba(59,130,246,0.6); }
+.wi-pill-bp .pt  { color:rgba(59,130,246,0.9); }
+.wi-pill-bp .ps  { color:rgba(59,130,246,0.6); }
 .wi-pill-un {
-  background: rgba(217,119,6,0.07);
-  border: 1px solid rgba(217,119,6,0.2);
+  background:rgba(217,119,6,0.07); border:1px solid rgba(217,119,6,0.2);
 }
-.wi-pill-un .pt  { color: rgba(217,119,6,0.85); font-size: 10px; }
+.wi-pill-un .pt  { color:rgba(217,119,6,0.85); }
 .pt {
-  font-size: 10.5px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 158px;
+  font-size:10.5px; font-weight:700; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:196px;
 }
 .ps {
-  font-size: 9px;
-  letter-spacing: 0.2px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 158px;
+  font-size:9px; opacity:0.8; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:196px;
 }
 
-/* ── cell: import ── */
+/* col: import */
 .wi-ci {
-  padding: 7px 13px;
-  display: flex;
-  align-items: center;
-  min-height: 42px;
-  transition: background 0.1s;
+  padding:6px 13px; display:flex; align-items:center;
+  transition:background 0.1s;
 }
-.wi-ci.dh { background: rgba(217,119,6,0.04); }
-.wi-ci-data {
-  display: flex; flex-direction: column; gap: 1px; width: 100%; overflow: hidden;
-}
-.wi-ci-name {
-  font-size: 11px; font-weight: 600; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.wi-ci-sub  {
-  font-size: 10px; color: var(--text-dim);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.wi-ci-none { font-size: 10px; color: var(--border-dark); letter-spacing: 0.2px; }
+.wi-ci.dh { background:rgba(217,119,6,0.04); }
+.wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
+.wi-ci-n { font-size:11px; font-weight:600; color:var(--text);
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-ci-s { font-size:10px; color:var(--text-dim);
+           white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-ci-e { font-size:10px; color:var(--border-dark); }
 
-/* ════════════════════ PANEL ══════════════════════ */
+/* ── PANEL ── */
 .wi-panel {
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-  padding: 11px 14px 13px 62px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  border-top:1px solid var(--border); background:var(--bg);
+  padding:10px 14px 12px 62px;
+  display:flex; flex-direction:column; gap:10px;
 }
-.wi-prow { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
-.wi-pf   { display: flex; flex-direction: column; gap: 3px; }
+.wi-prow { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; }
+.wi-pf   { display:flex; flex-direction:column; gap:3px; }
 .wi-plbl {
-  font-size: 8.5px; font-weight: 700; letter-spacing: 1px;
-  text-transform: uppercase; color: var(--text-dim);
+  font-size:8.5px; font-weight:700; letter-spacing:1px;
+  text-transform:uppercase; color:var(--text-dim);
 }
 .wi-ptog {
-  display: flex; align-items: center; gap: 5px;
-  font-size: 10.5px; color: var(--text-mid);
-  cursor: pointer; user-select: none; padding-bottom: 1px;
+  display:flex; align-items:center; gap:5px; font-size:10.5px;
+  color:var(--text-mid); cursor:pointer; user-select:none; padding-bottom:1px;
 }
-.wi-ptog input { cursor: pointer; accent-color: var(--text); }
+.wi-ptog input { cursor:pointer; accent-color:var(--text); }
 
 /* dropdown */
-.wi-sd { position: relative; }
+.wi-sd { position:relative; }
 .wi-sdi {
-  width: 172px; padding: 5px 8px; font-size: 11px;
-  border-radius: 5px; border: 1px solid var(--border-mid);
-  background: var(--bg-card); color: var(--text); outline: none;
+  width:168px; padding:5px 8px; font-size:11px; border-radius:5px;
+  border:1px solid var(--border-mid); background:var(--bg-card);
+  color:var(--text); outline:none;
 }
-.wi-sdi:focus { border-color: rgba(11,25,41,0.3); box-shadow: 0 0 0 2px rgba(11,25,41,0.06); }
+.wi-sdi:focus { border-color:rgba(11,25,41,0.3); box-shadow:0 0 0 2px rgba(11,25,41,0.06); }
 .wi-sdl {
-  display: none; position: fixed; z-index: 9999;
-  min-width: 190px; max-height: 196px; overflow-y: auto;
-  background: var(--bg-card); border: 1px solid var(--border-mid);
-  border-radius: 6px; box-shadow: 0 6px 24px rgba(0,0,0,0.12);
+  display:none; position:fixed; z-index:9999;
+  min-width:190px; max-height:200px; overflow-y:auto;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:6px; box-shadow:0 6px 24px rgba(0,0,0,0.12);
 }
 .wi-sdo {
-  padding: 6px 10px; font-size: 11px; cursor: pointer; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  padding:6px 10px; font-size:11px; cursor:pointer; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.wi-sdo:hover { background: var(--bg-hover); }
+.wi-sdo:hover { background:var(--bg-hover); }
 
-/* rate input */
+/* text inputs */
+.wi-ti {
+  width:168px; padding:5px 8px; font-size:11px; border-radius:5px;
+  border:1px solid var(--border-mid); background:var(--bg-card);
+  color:var(--text); outline:none;
+}
+.wi-ti:focus { border-color:rgba(11,25,41,0.3); box-shadow:0 0 0 2px rgba(11,25,41,0.06); }
 .wi-rate {
-  width: 84px; padding: 5px 8px; font-size: 11px;
-  border-radius: 5px; border: 1px solid var(--border-mid);
-  background: var(--bg-card); color: var(--text); outline: none;
+  width:80px; padding:5px 8px; font-size:11px; border-radius:5px;
+  border:1px solid var(--border-mid); background:var(--bg-card);
+  color:var(--text); outline:none;
 }
 
 /* import drop zone */
 .wi-piz {
-  min-height: 54px; border: 1.5px dashed var(--border-mid);
-  border-radius: 7px; padding: 7px 12px;
-  display: flex; align-items: center;
-  transition: background 0.1s, border-color 0.1s;
+  min-height:52px; border:1.5px dashed var(--border-mid); border-radius:7px;
+  padding:7px 12px; display:flex; align-items:center;
+  transition:background 0.1s, border-color 0.1s;
 }
-.wi-piz.dh { background: rgba(217,119,6,0.05); border-color: rgba(217,119,6,0.38); }
-
-/* import chip in panel */
+.wi-piz.dh { background:rgba(217,119,6,0.05); border-color:rgba(217,119,6,0.35); }
 .wi-ichip {
-  width: 100%; padding: 6px 28px 6px 10px; position: relative;
-  background: rgba(217,119,6,0.07); border: 1px solid rgba(217,119,6,0.2);
-  border-radius: 6px; cursor: grab; display: flex; flex-direction: column; gap: 2px;
+  width:100%; padding:6px 26px 6px 10px; position:relative;
+  background:rgba(217,119,6,0.07); border:1px solid rgba(217,119,6,0.2);
+  border-radius:6px; cursor:grab; display:flex; flex-direction:column; gap:2px;
 }
-.wi-ichip:active { cursor: grabbing; }
+.wi-ichip:active { cursor:grabbing; }
 .wi-irm {
-  position: absolute; top: 7px; right: 9px;
-  font-size: 11px; cursor: pointer; color: var(--text-dim); opacity: 0.5;
+  position:absolute; top:7px; right:8px; font-size:11px;
+  cursor:pointer; color:var(--text-dim); opacity:0.5;
 }
-.wi-irm:hover { opacity: 1; color: var(--danger); }
-.wi-inone { font-size: 10.5px; color: var(--border-dark); }
+.wi-irm:hover { opacity:1; color:var(--danger); }
+.wi-inone { font-size:10px; color:var(--border-dark); }
 
 /* buttons */
 .wi-btn {
-  padding: 6px 18px; font-size: 11px; font-weight: 600;
-  border: none; border-radius: 5px; cursor: pointer;
-  background: var(--text); color: #fff; transition: opacity 0.1s;
-  white-space: nowrap;
+  padding:6px 18px; font-size:11px; font-weight:600;
+  border:none; border-radius:5px; cursor:pointer;
+  background:var(--text); color:#fff; transition:opacity 0.1s; white-space:nowrap;
 }
-.wi-btn:hover { opacity: 0.85; }
-.wi-btn:disabled { opacity: 0.4; cursor: default; }
+.wi-btn:hover { opacity:0.85; }
+.wi-btn:disabled { opacity:0.4; cursor:default; }
 .wi-btn-g {
-  padding: 5px 14px; font-size: 10.5px;
-  border: 1px solid var(--border-mid); border-radius: 5px;
-  cursor: pointer; background: none; color: var(--text-mid);
+  padding:5px 13px; font-size:10.5px; border:1px solid var(--border-mid);
+  border-radius:5px; cursor:pointer; background:none; color:var(--text-mid);
 }
-.wi-btn-g:hover { background: var(--bg-hover); }
+.wi-btn-g:hover { background:var(--bg-hover); }
 .wi-btn-d {
-  padding: 5px 14px; font-size: 10.5px;
-  border: 1px solid rgba(220,38,38,0.22); border-radius: 5px;
-  cursor: pointer; background: none; color: var(--danger);
+  padding:5px 13px; font-size:10.5px;
+  border:1px solid rgba(220,38,38,0.22); border-radius:5px;
+  cursor:pointer; background:none; color:var(--danger);
 }
-.wi-btn-d:hover { background: var(--danger-bg); }
+.wi-btn-d:hover { background:var(--danger-bg); }
 
-/* ════════════════════ IMPORT SHELF ══════════════ */
+/* ── SHELF ── */
 .wi-shelf {
-  background: var(--bg-card);
-  border: 1px solid rgba(217,119,6,0.2);
-  border-radius: 10px; overflow: hidden; margin-bottom: 12px;
+  background:var(--bg-card); border:1px solid rgba(217,119,6,0.2);
+  border-radius:10px; overflow:hidden; margin-bottom:12px;
 }
 .wi-shelf-hdr {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 14px; cursor: pointer; user-select: none;
+  display:flex; align-items:center; gap:8px; padding:8px 14px;
+  cursor:pointer; user-select:none;
 }
-.wi-shelf-hdr:hover { background: var(--bg-hover); }
+.wi-shelf-hdr:hover { background:var(--bg-hover); }
 .wi-shelf-ttl {
-  font-size: 10px; font-weight: 700; letter-spacing: 1.5px;
-  text-transform: uppercase; color: var(--warning);
+  font-size:10px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--warning);
 }
 .wi-shelf-n {
-  background: rgba(217,119,6,0.1); color: var(--warning);
-  font-size: 9.5px; font-weight: 700; padding: 1px 8px; border-radius: 10px;
+  background:rgba(217,119,6,0.1); color:var(--warning);
+  font-size:9.5px; font-weight:700; padding:1px 8px; border-radius:10px;
 }
-.wi-shelf-body { padding: 10px 14px 12px; }
-.wi-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.wi-chips { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px 12px; }
 .wi-chip {
-  padding: 7px 11px; border-radius: 8px; cursor: grab;
-  min-width: 140px; max-width: 210px;
-  background: rgba(217,119,6,0.06);
-  border: 1px solid rgba(217,119,6,0.18);
-  transition: box-shadow 0.12s, transform 0.1s;
+  padding:7px 11px; border-radius:8px; cursor:grab;
+  min-width:138px; max-width:205px;
+  background:rgba(217,119,6,0.06); border:1px solid rgba(217,119,6,0.18);
+  transition:box-shadow 0.12s, transform 0.1s;
 }
-.wi-chip:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.08); transform: translateY(-1px); }
-.wi-chip:active { cursor: grabbing; }
-.wi-chip-n {
-  font-size: 11px; font-weight: 700; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.wi-chip-d { font-size: 10px; color: var(--text-dim); margin-top: 1px; }
-.wi-chip-m { font-size: 9.5px; color: var(--text-dim); margin-top: 1px; }
+.wi-chip:hover { box-shadow:0 3px 10px rgba(0,0,0,0.08); transform:translateY(-1px); }
+.wi-chip:active { cursor:grabbing; }
+.wi-chip-n { font-size:11px; font-weight:700; color:var(--text);
+             white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-chip-d { font-size:10px; color:var(--text-dim); margin-top:1px; }
+.wi-chip-m { font-size:9.5px; color:var(--text-dim); margin-top:1px; }
 
-/* ════════════════════ CONTEXT MENU ══════════════ */
+/* ── context menu ── */
 #wi-ctx {
-  display: none; position: fixed; z-index: 9999;
-  background: var(--bg-card); border: 1px solid var(--border-mid);
-  border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,0.12);
-  min-width: 210px; padding: 5px 0;
+  display:none; position:fixed; z-index:9999;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,0.12);
+  min-width:210px; padding:5px 0;
 }
 .wi-ctx-i {
-  display: block; width: 100%; padding: 7px 14px; text-align: left;
-  font-size: 12px; cursor: pointer; color: var(--text);
-  background: none; border: none; transition: background 0.07s;
+  display:block; width:100%; padding:7px 14px; text-align:left;
+  font-size:12px; cursor:pointer; color:var(--text);
+  background:none; border:none; transition:background 0.07s;
 }
-.wi-ctx-i:hover { background: var(--bg-hover); }
-.wi-ctx-i.d { color: var(--danger); }
-.wi-ctx-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.wi-ctx-i:hover { background:var(--bg-hover); }
+.wi-ctx-i.d { color:var(--danger); }
+.wi-ctx-sep { height:1px; background:var(--border); margin:4px 0; }
 .wi-ctx-h {
-  padding: 4px 14px 2px; font-size: 9px; font-weight: 700;
-  letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim);
+  padding:4px 14px 2px; font-size:9px; font-weight:700;
+  letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
 }
 `;
   document.head.appendChild(s);
@@ -465,6 +357,7 @@ function _wiFmt(s){
   try{const p=s.split('T')[0].split('-');return`${p[2]}/${p[1]}`;}catch{return s;}
 }
 function _wiFmtFull(s){
+  // Returns "ΠΑΡΑΣΚΕΥΗ 7 ΜΑΡΤΙΟΥ" style
   if(!s) return null;
   try{return new Date(s).toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'});}
   catch{return s;}
@@ -510,25 +403,35 @@ async function renderWeeklyIntl(){
       }),
       atGetAll(TABLES.TRIPS,{
         filterByFormula:`{Week Number}=${WINTL.week}`,
-        fields:['Export Order','Import Order','Truck','Trailer','Driver','Partner',
+        fields:['Export Order','Import Order',
+                'Truck','Trailer','Driver','Partner',
                 'Truck Plate','Trailer Plate','Driver Name','Partner Name',
-                'Export Loading DateTime','Week Number','TripID',
+                'Partner Plates',
+                'Export Loading DateTime','Delivery DateTime',
+                'Week Number','TripID',
                 'Is Partner Trip','Partner Rate Export','Partner Rate Import'],
       }),
     ]);
-    WINTL.data.exports=allOrders
+
+    // Sort exports by delivery date (primary) then loading date (secondary)
+    WINTL.data.exports = allOrders
       .filter(r=>r.fields.Direction==='Export')
-      .sort((a,b)=>(a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
-    WINTL.data.imports=allOrders.filter(r=>r.fields.Direction==='Import');
-    WINTL.data.trips=allTrips;
+      .sort((a,b)=>{
+        const da=(a.fields['Delivery DateTime']||a.fields['Loading DateTime']||'');
+        const db=(b.fields['Delivery DateTime']||b.fields['Loading DateTime']||'');
+        return da.localeCompare(db);
+      });
+    WINTL.data.imports = allOrders.filter(r=>r.fields.Direction==='Import');
+    WINTL.data.trips   = allTrips;
+
     _wiBuildRows();
     await _wiFetchMissingExports();
     _wiPaint();
   }catch(err){
     document.getElementById('content').innerHTML=`
       <div class="empty-state">
-        <div class="icon" style="font-size:28px">!</div>
-        <p style="color:var(--danger)">${err.message}</p>
+        <div class="icon" style="font-size:28px;margin-bottom:8px">!</div>
+        <p style="color:var(--danger);font-size:13px">${err.message}</p>
         <button class="btn btn-ghost" onclick="renderWeeklyIntl()" style="margin-top:12px">Retry</button>
       </div>`;
   }
@@ -539,6 +442,7 @@ function _wiBuildRows(){
   WINTL.rows=[];WINTL._seq=0;
   const usedExp=new Set(),usedImp=new Set();
   const {exports,imports,trips}=WINTL.data;
+
   for(const trip of trips){
     const f=trip.fields;
     const expIds=f['Export Order']||[];
@@ -550,10 +454,13 @@ function _wiBuildRows(){
       id:++WINTL._seq, tripRecId:trip.id,
       tripNo:f['TripID']?String(f['TripID']):'',
       exportIds:expIds, importId:impId,
-      truckId:_wiFv(f['Truck']),trailerId:_wiFv(f['Trailer']),
-      driverId:_wiFv(f['Driver']),partnerId:_wiFv(f['Partner']),
-      truckPlate:_wiFv(f['Truck Plate']),trailerPlate:_wiFv(f['Trailer Plate']),
-      driverName:_wiFv(f['Driver Name']),partnerName:_wiFv(f['Partner Name']),
+      truckId:_wiFv(f['Truck']),    trailerId:_wiFv(f['Trailer']),
+      driverId:_wiFv(f['Driver']),  partnerId:_wiFv(f['Partner']),
+      truckPlate:_wiFv(f['Truck Plate']),
+      trailerPlate:_wiFv(f['Trailer Plate']),
+      driverName:_wiFv(f['Driver Name']),
+      partnerName:_wiFv(f['Partner Name']),
+      partnerPlates:f['Partner Plates']||'',   // free-text partner truck plates
       loadingDate:_wiFv(f['Export Loading DateTime']),
       carrierType:isPartner?'partner':'owned',
       partnerRateExp:f['Partner Rate Export']?String(f['Partner Rate Export']):'',
@@ -561,17 +468,29 @@ function _wiBuildRows(){
       saved:true,
     });
   }
+
   for(const exp of exports.filter(r=>!usedExp.has(r.id))){
     WINTL.rows.push({
-      id:++WINTL._seq,tripRecId:null,tripNo:'',
-      exportIds:[exp.id],importId:null,
+      id:++WINTL._seq, tripRecId:null, tripNo:'',
+      exportIds:[exp.id], importId:null,
       truckId:'',trailerId:'',driverId:'',partnerId:'',
-      truckPlate:'',trailerPlate:'',driverName:'',partnerName:'',
+      truckPlate:'',trailerPlate:'',driverName:'',
+      partnerName:'',partnerPlates:'',
       loadingDate:exp.fields['Loading DateTime']||'',
       carrierType:'owned',partnerRateExp:'',partnerRateImp:'',
       saved:false,
     });
   }
+
+  // Sort rows by delivery date of primary export
+  WINTL.rows.sort((a,b)=>{
+    const ea=WINTL.data.exports.find(r=>r.id===a.exportIds[0]);
+    const eb=WINTL.data.exports.find(r=>r.id===b.exportIds[0]);
+    const da=ea?.fields['Delivery DateTime']||ea?.fields['Loading DateTime']||'';
+    const db=eb?.fields['Delivery DateTime']||eb?.fields['Loading DateTime']||'';
+    return da.localeCompare(db);
+  });
+
   WINTL.shelf=imports.filter(r=>!usedImp.has(r.id));
 }
 
@@ -580,15 +499,19 @@ async function _wiFetchMissingExports(){
   const missing=[];
   WINTL.rows.forEach(row=>row.exportIds.forEach(id=>{ if(!known.has(id)) missing.push(id); }));
   if(!missing.length) return;
-  const batches=[];
-  for(let i=0;i<missing.length;i+=8) batches.push(missing.slice(i,i+8));
-  for(const batch of batches){
+  for(let i=0;i<missing.length;i+=8){
+    const batch=missing.slice(i,i+8);
     const formula=`OR(${batch.map(id=>`RECORD_ID()='${id}'`).join(',')})`;
     try{
-      const records=await atGetAll(TABLES.ORDERS,{filterByFormula:formula});
-      records.forEach(r=>{ if(!known.has(r.id)){WINTL.data.exports.push(r);known.add(r.id);} });
+      const recs=await atGetAll(TABLES.ORDERS,{filterByFormula:formula});
+      recs.forEach(r=>{ if(!known.has(r.id)){WINTL.data.exports.push(r);known.add(r.id);} });
     }catch(_){}
   }
+  // Re-sort after fetching missing
+  WINTL.data.exports.sort((a,b)=>(
+    (a.fields['Delivery DateTime']||a.fields['Loading DateTime']||'')
+    .localeCompare(b.fields['Delivery DateTime']||b.fields['Loading DateTime']||'')
+  ));
 }
 
 /* ─── PAINT ──────────────────────────────────────────────────────────── */
@@ -600,7 +523,6 @@ function _wiPaint(){
   const unmatched=shelf.length;
 
   document.getElementById('content').innerHTML=`
-    <!-- HEADER -->
     <div class="page-header" style="margin-bottom:12px">
       <div>
         <div class="page-title">Weekly International</div>
@@ -623,10 +545,8 @@ function _wiPaint(){
       </div>
     </div>
 
-    <!-- SHELF -->
     ${unmatched?_wiShelfHTML():''}
 
-    <!-- TABLE -->
     <div class="wi-wrap">
       <div class="wi-head">
         <div class="wi-hc" style="text-align:center">#</div>
@@ -658,7 +578,9 @@ function _wiPaint(){
 function _wiShelfHTML(){
   const {shelf,ui}=WINTL;
   const sf=ui.shelfFilter.toLowerCase();
-  const vis=sf?shelf.filter(r=>((r.fields['Loading Summary']||'')+(r.fields['Delivery Summary']||'')).toLowerCase().includes(sf)):shelf;
+  const vis=sf
+    ?shelf.filter(r=>((r.fields['Loading Summary']||'')+(r.fields['Delivery Summary']||'')).toLowerCase().includes(sf))
+    :shelf;
   return `
   <div class="wi-shelf">
     <div class="wi-shelf-hdr" onclick="_wiToggleShelf()">
@@ -666,31 +588,27 @@ function _wiShelfHTML(){
       <span class="wi-shelf-n">${shelf.length}</span>
       ${shelf.length>5?`
       <input type="text" placeholder="search…" value="${ui.shelfFilter}"
-             oninput="WINTL.ui.shelfFilter=this.value;_wiRefreshShelf()"
+             oninput="WINTL.ui.shelfFilter=this.value;_wiRepaintShelf()"
              onclick="event.stopPropagation()"
              style="padding:4px 8px;font-size:11px;border-radius:5px;
                     border:1px solid var(--border-mid);background:var(--bg);
                     color:var(--text);width:140px;outline:none"/>`:''}
-      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">
-        ${ui.shelfCollapsed?'▸':'▾'}
-      </span>
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">${ui.shelfCollapsed?'▸':'▾'}</span>
     </div>
     <div id="wi-shelf-body" style="display:${ui.shelfCollapsed?'none':'block'}">
-      <div class="wi-shelf-body">
-        <div class="wi-chips">
-          ${vis.map(r=>{
-            const f=r.fields;
-            const name=_wiClean(f['Loading Summary']||'—').slice(0,26);
-            const dest=_wiClean(f['Delivery Summary']||'—').slice(0,24);
-            const pals=f['Total Pallets']||0;
-            const del=_wiFmt(f['Delivery DateTime']);
-            return `<div class="wi-chip" draggable="true" ondragstart="_wiDragStart(event,'${r.id}')">
-              <div class="wi-chip-n">${name}</div>
-              <div class="wi-chip-d">${dest}</div>
-              <div class="wi-chip-m">${del} · ${pals} pal</div>
-            </div>`;
-          }).join('')}
-        </div>
+      <div class="wi-chips" id="wi-chips">
+        ${vis.map(r=>{
+          const f=r.fields;
+          const name=_wiClean(f['Loading Summary']||'—').slice(0,26);
+          const dest=_wiClean(f['Delivery Summary']||'—').slice(0,24);
+          const pals=f['Total Pallets']||0;
+          const del=_wiFmt(f['Delivery DateTime']);
+          return `<div class="wi-chip" draggable="true" ondragstart="_wiDragStart(event,'${r.id}')">
+            <div class="wi-chip-n">${name}</div>
+            <div class="wi-chip-d">${dest}</div>
+            <div class="wi-chip-m">${del} · ${pals} pal</div>
+          </div>`;
+        }).join('')}
       </div>
     </div>
   </div>`;
@@ -700,7 +618,7 @@ function _wiToggleShelf(){
   const el=document.getElementById('wi-shelf-body');
   if(el) el.style.display=WINTL.ui.shelfCollapsed?'none':'block';
 }
-function _wiRefreshShelf(){
+function _wiRepaintShelf(){
   const el=document.querySelector('.wi-shelf');
   if(el) el.outerHTML=_wiShelfHTML();
 }
@@ -710,14 +628,15 @@ function _wiAllRowsHTML(){
   let html='',lastDate=null;
   const dateCounts={};
   WINTL.rows.forEach(row=>{
-    const lbl=_wiRowDate(row);
+    const lbl=_wiDeliveryDateLabel(row);
     if(lbl) dateCounts[lbl]=(dateCounts[lbl]||0)+1;
   });
   WINTL.rows.forEach((row,i)=>{
-    const lbl=_wiRowDate(row);
+    const lbl=_wiDeliveryDateLabel(row);
     if(lbl&&lbl!==lastDate){
       lastDate=lbl;
       html+=`<div class="wi-dsep">
+        <span class="wi-dsep-lbl">Delivery</span>
         <span class="wi-dsep-date">${lbl}</span>
         <span class="wi-dsep-count">${dateCounts[lbl]} order${dateCounts[lbl]!==1?'s':''}</span>
       </div>`;
@@ -727,9 +646,11 @@ function _wiAllRowsHTML(){
   return html;
 }
 
-function _wiRowDate(row){
-  const rawDate=row.loadingDate||WINTL.data.exports.find(r=>r.id===row.exportIds[0])?.fields['Loading DateTime']||null;
-  return rawDate?_wiFmtFull(rawDate):null;
+// Group key = delivery date of primary export
+function _wiDeliveryDateLabel(row){
+  const exp=WINTL.data.exports.find(r=>r.id===row.exportIds[0]);
+  const raw=exp?.fields['Delivery DateTime']||exp?.fields['Loading DateTime']||null;
+  return raw?_wiFmtFull(raw):null;
 }
 
 function _wiRowHTML(row,i){
@@ -740,54 +661,60 @@ function _wiRowHTML(row,i){
   const isGroup=exps.length>1;
   const primary=exps[0];
 
-  // Status
+  // status
   let sCls,dotColor;
   if(row.saved){
-    sCls    =row.carrierType==='partner'?'s-partner':'s-saved';
+    sCls    =row.carrierType==='partner'?'s-partner':'s-ok';
     dotColor=row.carrierType==='partner'?'rgba(59,130,246,0.7)':'var(--success)';
   } else {
-    sCls='s-unsaved'; dotColor='rgba(217,119,6,0.75)';
+    sCls='s-pending'; dotColor='rgba(217,119,6,0.75)';
   }
 
-  // Export data
+  // export fields
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||'—'):'—';
   const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||'—'):'—';
-  const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):(primary?.fields['Total Pallets']||0);
+  const pals   =isGroup
+    ?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0)
+    :(primary?.fields['Total Pallets']||0);
   const veroia =primary?.fields['Veroia Switch ']||primary?.fields['Veroia Switch'];
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
   const delDt  =_wiFmt(primary?.fields['Delivery DateTime']);
 
-  // Assignment pill
-  const plate  =row.truckPlate  ||data.trucks.find(t=>t.id===row.truckId)?.label||'';
-  const driver =row.driverName  ||data.drivers.find(d=>d.id===row.driverId)?.label||'';
-  const partner=row.partnerName ||data.partners.find(p=>p.id===row.partnerId)?.label||'';
-  const surname=driver?driver.trim().split(/\s+/).pop():'';
+  // assignment pill
+  const plate   =row.truckPlate  ||data.trucks.find(t=>t.id===row.truckId)?.label||'';
+  const trailer =row.trailerPlate||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
+  const driver  =row.driverName  ||data.drivers.find(d=>d.id===row.driverId)?.label||'';
+  const partner =row.partnerName ||data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const surname =driver?driver.trim().split(/\s+/).pop():'';
 
   let pill;
   if(row.saved){
     if(row.carrierType==='partner'){
+      // Partner: name + plates text
+      const pPlates=row.partnerPlates||'';
       pill=`<div class="wi-pill wi-pill-bp">
-        <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-        ${row.tripNo?`<span class="ps">#${row.tripNo}</span>`:''}
+        <span class="pt">${partner.slice(0,24)}${partner.length>24?'…':''}</span>
+        ${pPlates?`<span class="ps">${pPlates}</span>`:''}
       </div>`;
     } else {
+      // Owned: truck · trailer · driver (no trip#)
+      const parts=[plate,trailer,surname].filter(Boolean).join(' · ');
       pill=`<div class="wi-pill wi-pill-ok">
-        <span class="pt">${plate||'—'}</span>
-        <span class="ps">${surname||''}${row.tripNo?' · #'+row.tripNo:''}</span>
+        <span class="pt">${parts||'—'}</span>
       </div>`;
     }
   } else {
     pill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
   }
 
-  // Import preview
+  // import preview
   const impPrev=imp
     ?`<div class="wi-ci-data">
-        <span class="wi-ci-name">${_wiClean(imp.fields['Delivery Summary']||'—').slice(0,38)}</span>
-        <span class="wi-ci-sub">${_wiClean(imp.fields['Loading Summary']||'—').slice(0,34)} · ${imp.fields['Total Pallets']||0} pal</span>
-        <span class="wi-ci-sub">del ${_wiFmt(imp.fields['Delivery DateTime'])}</span>
+        <span class="wi-ci-n">${_wiClean(imp.fields['Delivery Summary']||'—').slice(0,38)}</span>
+        <span class="wi-ci-s">${_wiClean(imp.fields['Loading Summary']||'—').slice(0,32)} · ${imp.fields['Total Pallets']||0} pal</span>
+        <span class="wi-ci-s">del ${_wiFmt(imp.fields['Delivery DateTime'])}</span>
       </div>`
-    :`<span class="wi-ci-none">drag import here</span>`;
+    :`<span class="wi-ci-e">drag import here</span>`;
 
   return `
   <div id="wi-row-${row.id}" class="wi-row ${sCls}">
@@ -803,8 +730,8 @@ function _wiRowHTML(row,i){
           ${veroia?`<span class="wi-vx">Veroia</span>`:''}
         </div>
         <div class="wi-sub">
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-sep"></span>`:''}
+          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''} 
+          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
         </div>
       </div>
@@ -828,8 +755,20 @@ function _wiPanelHTML(row){
   const canFull=can('planning')==='full';
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
+  // Carrier type toggle
+  const toggle=`
+    <div class="wi-pf" style="justify-content:flex-end">
+      <label class="wi-ptog" onclick="event.stopPropagation()">
+        <input type="checkbox" ${isPartner?'checked':''}
+               onchange="_wiSetCarrier(${row.id},this.checked?'partner':'owned')"/>
+        Partner trip
+      </label>
+    </div>`;
+
+  // Fields depend on carrier type
   let fields='';
   if(!isPartner){
+    // OWNED: Truck + Trailer + Driver
     fields=`
       <div class="wi-pf" onclick="event.stopPropagation()">
         <span class="wi-plbl">Truck</span>
@@ -844,69 +783,71 @@ function _wiPanelHTML(row){
         ${_wiSdrop('dr',row.id,drivers,row.driverId,row.driverName||'Name…')}
       </div>`;
   } else {
+    // PARTNER: Partner dropdown + free-text plates + rates
     fields=`
       <div class="wi-pf" onclick="event.stopPropagation()">
         <span class="wi-plbl">Partner</span>
         ${_wiSdrop('pt',row.id,partners,row.partnerId,row.partnerName||'Company…')}
       </div>
       <div class="wi-pf" onclick="event.stopPropagation()">
-        <span class="wi-plbl">Rate Export</span>
-        <input class="wi-rate" type="number" placeholder="0.00" value="${row.partnerRateExp||''}"
-               oninput="_wiField(${row.id},'partnerRateExp',this.value)" onclick="event.stopPropagation()"/>
+        <span class="wi-plbl">Truck Plates</span>
+        <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099 / CB 0138"
+               value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
+               oninput="_wiField(${row.id},'partnerPlates',this.value)"
+               onclick="event.stopPropagation()"/>
       </div>
       <div class="wi-pf" onclick="event.stopPropagation()">
-        <span class="wi-plbl">Rate Import</span>
+        <span class="wi-plbl">Rate Exp €</span>
+        <input class="wi-rate" type="number" placeholder="0.00" value="${row.partnerRateExp||''}"
+               oninput="_wiField(${row.id},'partnerRateExp',this.value)"
+               onclick="event.stopPropagation()"/>
+      </div>
+      <div class="wi-pf" onclick="event.stopPropagation()">
+        <span class="wi-plbl">Rate Imp €</span>
         <input class="wi-rate" type="number" placeholder="0.00" value="${row.partnerRateImp||''}"
-               oninput="_wiField(${row.id},'partnerRateImp',this.value)" onclick="event.stopPropagation()"/>
+               oninput="_wiField(${row.id},'partnerRateImp',this.value)"
+               onclick="event.stopPropagation()"/>
       </div>`;
   }
 
   const actions=canFull?`
     <div class="wi-pf" style="flex-direction:row;gap:6px;align-self:flex-end" onclick="event.stopPropagation()">
       ${row.saved
-        ?`<button class="wi-btn" id="wi-btn-${row.id}" onclick="event.stopPropagation();_wiSaveTrip(${row.id})">Update</button>
+        ?`<button class="wi-btn" id="wi-btn-${row.id}"
+                   onclick="event.stopPropagation();_wiSaveTrip(${row.id})">Update</button>
           <button class="wi-btn-d" onclick="event.stopPropagation();_wiDeleteTrip(${row.id})">Delete</button>`
-        :`<button class="wi-btn" id="wi-btn-${row.id}" onclick="event.stopPropagation();_wiSaveTrip(${row.id})">Create Trip</button>
+        :`<button class="wi-btn" id="wi-btn-${row.id}"
+                   onclick="event.stopPropagation();_wiSaveTrip(${row.id})">Create Trip</button>
           <button class="wi-btn-g" onclick="event.stopPropagation();_wiSaveTrip(${row.id},true)">Export only</button>`}
     </div>`:'';
 
   const impZone=`
     <div>
-      <div class="wi-plbl" style="margin-bottom:5px">Import</div>
+      <div class="wi-plbl" style="margin-bottom:4px">Import</div>
       <div id="wi-piz-${row.id}" class="wi-piz"
            ondragover="event.preventDefault();document.getElementById('wi-piz-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wi-piz-${row.id}').classList.remove('dh')"
            ondrop="event.stopPropagation();_wiDrop(event,${row.id})">
-        ${imp?`
-          <div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
-            <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
-            <div style="font-size:11px;font-weight:700;color:var(--text)">
-              ${_wiClean(imp.fields['Loading Summary']||'—')}
-            </div>
-            <div style="font-size:10.5px;color:var(--text-dim)">
-              → ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal
-            </div>
-            <div style="font-size:10px;color:var(--text-mid);margin-top:1px">
-              ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])}
-            </div>
-          </div>`
+        ${imp
+          ?`<div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
+              <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
+              <div style="font-size:11px;font-weight:700;color:var(--text)">
+                ${_wiClean(imp.fields['Loading Summary']||'—')}
+              </div>
+              <div style="font-size:10.5px;color:var(--text-dim)">
+                → ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal
+              </div>
+              <div style="font-size:10px;color:var(--text-mid);margin-top:1px">
+                ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])}
+              </div>
+            </div>`
           :`<span class="wi-inone">drop import here</span>`}
       </div>
     </div>`;
 
   return `
     <div class="wi-panel" onclick="event.stopPropagation()">
-      <div class="wi-prow">
-        <div class="wi-pf" style="justify-content:flex-end">
-          <label class="wi-ptog" onclick="event.stopPropagation()">
-            <input type="checkbox" ${isPartner?'checked':''}
-                   onchange="_wiSetCarrier(${row.id},this.checked?'partner':'owned')"/>
-            Partner trip
-          </label>
-        </div>
-        ${fields}
-        ${actions}
-      </div>
+      <div class="wi-prow">${toggle}${fields}${actions}</div>
       ${impZone}
     </div>`;
 }
@@ -945,7 +886,8 @@ function _wiSdO(uid){
   const lst=document.getElementById('wsd-l-'+uid);
   if(!inp||!lst) return;
   const r=inp.getBoundingClientRect();
-  Object.assign(lst.style,{display:'block',left:`${r.left}px`,top:`${r.bottom+2}px`,width:`${Math.max(r.width,195)}px`});
+  Object.assign(lst.style,{display:'block',left:`${r.left}px`,top:`${r.bottom+2}px`,
+    width:`${Math.max(r.width,195)}px`});
   lst.querySelectorAll('.wi-sdo').forEach(el=>el.style.display='');
 }
 function _wiSdF(uid,q){
@@ -993,7 +935,7 @@ function _wiDrop(e,rowId){
   document.getElementById('wi-piz-'+rowId)?.classList.remove('dh');
   const impId=window._wiDragging;if(!impId) return;
   window._wiDragging=null;
-  _wiAssign(rowId,impId);_wiRefreshShelf();_wiRepaintRow(rowId);
+  _wiAssign(rowId,impId);_wiRepaintShelf();_wiRepaintRow(rowId);
 }
 function _wiDropCompact(e,rowId){
   e.preventDefault();
@@ -1001,7 +943,7 @@ function _wiDropCompact(e,rowId){
   const impId=window._wiDragging;if(!impId) return;
   window._wiDragging=null;
   WINTL.ui.openRow=rowId;
-  _wiAssign(rowId,impId);_wiRefreshShelf();_wiRepaintRow(rowId);
+  _wiAssign(rowId,impId);_wiRepaintShelf();_wiRepaintRow(rowId);
 }
 function _wiAssign(rowId,impId){
   WINTL.shelf=WINTL.shelf.filter(r=>r.id!==impId);
@@ -1017,7 +959,7 @@ function _wiRemoveImport(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||!row.importId) return;
   const imp=WINTL.data.imports.find(r=>r.id===row.importId);
   if(imp&&!WINTL.shelf.find(r=>r.id===imp.id)) WINTL.shelf.push(imp);
-  row.importId=null;_wiRefreshShelf();_wiRepaintRow(rowId);
+  row.importId=null;_wiRepaintShelf();_wiRepaintRow(rowId);
 }
 
 /* ─── CONTEXT MENU ───────────────────────────────────────────────────── */
@@ -1069,11 +1011,13 @@ function _wiSplit(rowId){
   const [first,...rest]=row.exportIds;row.exportIds=[first];
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
-    WINTL.rows.push({id:++WINTL._seq,tripRecId:null,tripNo:'',exportIds:[expId],importId:null,
+    WINTL.rows.push({
+      id:++WINTL._seq,tripRecId:null,tripNo:'',exportIds:[expId],importId:null,
       truckId:'',trailerId:'',driverId:'',partnerId:'',
-      truckPlate:'',trailerPlate:'',driverName:'',partnerName:'',
+      truckPlate:'',trailerPlate:'',driverName:'',partnerName:'',partnerPlates:'',
       loadingDate:exp?.fields['Loading DateTime']||'',
-      carrierType:'owned',partnerRateExp:'',partnerRateImp:'',saved:false});
+      carrierType:'owned',partnerRateExp:'',partnerRateImp:'',saved:false,
+    });
   });
   _wiPaint();toast('Split');
 }
@@ -1093,52 +1037,85 @@ function _wiViewExport(rowId){
   }
 }
 
-/* ─── SAVE ───────────────────────────────────────────────────────────── */
+/* ─── SAVE — with proper error detection ─────────────────────────────── */
 async function _wiSaveTrip(rowId,exportOnly=false){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  const sync=(p,f,l)=>{
+
+  // Sync dropdowns into row state
+  const syncDrop=(p,f,l)=>{
     const uid=`${p}_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value;
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value;
     if(val){row[f]=val;row[l]=lbl||'';}
   };
-  sync('tk','truckId','truckPlate');sync('tl','trailerId','trailerPlate');
-  sync('dr','driverId','driverName');sync('pt','partnerId','partnerName');
-  if(!row.exportIds.length){toast('No export order','warn');return;}
+  syncDrop('tk','truckId','truckPlate');
+  syncDrop('tl','trailerId','trailerPlate');
+  syncDrop('dr','driverId','driverName');
+  syncDrop('pt','partnerId','partnerName');
+
+  // Validation
+  if(!row.exportIds.length){toast('No export order attached','warn');return;}
   const isPartner=row.carrierType==='partner';
   if(isPartner&&!row.partnerId){toast('Select a partner first','warn');return;}
+  if(!isPartner&&!row.truckId){toast('Select a truck first','warn');return;}
+
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
+
   try{
     const fields={'Export Order':row.exportIds,'Week Number':WINTL.week};
     if(!exportOnly&&row.importId) fields['Import Order']=[row.importId];
+
     if(isPartner){
-      if(row.partnerId)      fields['Partner']=[row.partnerId];
-      if(row.partnerRateExp) fields['Partner Rate Export']=parseFloat(row.partnerRateExp)||0;
-      if(row.partnerRateImp) fields['Partner Rate Import']=parseFloat(row.partnerRateImp)||0;
-      fields['Is Partner Trip']=true;
+      fields['Partner']         =[row.partnerId];
+      fields['Is Partner Trip'] =true;
+      if(row.partnerPlates)    fields['Partner Plates']       =row.partnerPlates;
+      if(row.partnerRateExp)   fields['Partner Rate Export']  =parseFloat(row.partnerRateExp)||0;
+      if(row.partnerRateImp)   fields['Partner Rate Import']  =parseFloat(row.partnerRateImp)||0;
     } else {
-      if(row.truckId)   fields['Truck']  =[row.truckId];
-      if(row.trailerId) fields['Trailer']=[row.trailerId];
-      if(row.driverId)  fields['Driver'] =[row.driverId];
+      fields['Truck']   =[row.truckId];
+      fields['Trailer'] =[row.trailerId];
+      if(row.driverId) fields['Driver']=[row.driverId];
     }
-    if(row.saved&&row.tripRecId) await atPatch(TABLES.TRIPS,row.tripRecId,fields);
-    else await atCreate(TABLES.TRIPS,fields);
+
+    let res;
+    if(row.saved&&row.tripRecId){
+      res=await atPatch(TABLES.TRIPS,row.tripRecId,fields);
+    } else {
+      res=await atCreate(TABLES.TRIPS,fields);
+    }
+
+    // Detect Airtable error in response
+    if(res?.error){
+      throw new Error(`Airtable: ${res.error} — ${res.message||''}`);
+    }
+
     toast(row.saved?'Trip updated':'Trip created');
-    WINTL.ui.openRow=null;WINTL._assetsOk=true;
+    WINTL.ui.openRow=null;
+    WINTL._assetsOk=true;
     await renderWeeklyIntl();
+
   }catch(err){
     if(btn){btn.disabled=false;btn.textContent=row.saved?'Update':'Create Trip';}
-    alert('Save failed: '+err.message);
+    // Show detailed error
+    const msg=err.message||String(err);
+    toast(`Save failed: ${msg.slice(0,60)}`,'warn');
+    console.error('_wiSaveTrip error:',err);
   }
 }
+
 async function _wiDeleteTrip(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row?.tripRecId) return;
   if(!confirm('Delete this trip?')) return;
   try{
-    await atDelete(TABLES.TRIPS,row.tripRecId);toast('Trip deleted');
-    WINTL.ui.openRow=null;WINTL._assetsOk=true;await renderWeeklyIntl();
-  }catch(err){alert('Delete failed: '+err.message);}
+    const res=await atDelete(TABLES.TRIPS,row.tripRecId);
+    if(res?.error) throw new Error(res.error);
+    toast('Trip deleted');
+    WINTL.ui.openRow=null;WINTL._assetsOk=true;
+    await renderWeeklyIntl();
+  }catch(err){
+    toast(`Delete failed: ${err.message}`,'warn');
+  }
 }
 
 /* ─── NAVIGATION ─────────────────────────────────────────────────────── */
