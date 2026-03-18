@@ -717,12 +717,12 @@ function _wiImpRowHTML(row){
 
   return `<div id="wi-imp-${imp.id}"
     class="wi-row"
-    style="background:${isMatched?'rgba(5,150,105,0.025)':'rgba(14,165,233,0.022)'};border-top:1px solid ${isMatched?'rgba(5,150,105,0.12)':'rgba(14,165,233,0.1)'}"
+    style="background:var(--bg-card);border-top:1px solid var(--border)"
     draggable="${!isMatched}"
     ondragstart="${!isMatched?`_wiImpDragStart(event,'${imp.id}')`:''}">
     <div class="wi-compact">
-      <div class="wi-cn" style="cursor:${isMatched?'default':'grab'}">
-        <div class="wi-dot" style="background:${isMatched?'var(--success)':'rgba(14,165,233,0.5)'}"></div>
+      <div class="wi-cn">
+        <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
       <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
