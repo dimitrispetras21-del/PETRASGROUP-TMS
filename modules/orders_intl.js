@@ -753,6 +753,17 @@ async function _scanExtract() {
       ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } }
       : { type:'image',    source:{ type:'base64', media_type:file.type, data:b64 } };
 
+    // DEBUG
+    const _dbg = document.getElementById('scanStatus');
+    const _keyPreview = typeof ANTH_KEY === 'string' ? ANTH_KEY.slice(0,20)+'...('+ANTH_KEY.length+' chars)' : 'NOT A STRING: '+typeof ANTH_KEY;
+    _dbg.style.display='block';
+    _dbg.innerHTML = `<div style="background:#f0f2f5;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;margin-bottom:10px">
+      <b>DEBUG</b><br>
+      key: ${_keyPreview}<br>
+      file: ${file ? file.name+' ('+file.type+', '+file.size+'b)' : 'NULL'}<br>
+      model: claude-opus-4-6
+    </div>`;
+
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
       headers:{
