@@ -4,7 +4,8 @@
 
 const AT_BASE  = 'appElT5CQV6JQvym8';
 const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
-const ANTH_KEY  = 'sk-ant-api03-HG9...3gAA';
+const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+
+                 'zG3klf7diFSUiNY056CRFBAeUZ1H_dZwDfhVbf7IRD3HQ-_nYO3gAA';
 
 const TABLES = {
   TRIPS:         'tblgoyV26PBc6L9uE',
