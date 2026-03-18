@@ -58,7 +58,7 @@ async function renderWeeklyIntl() {
     _wiBuildRows();
     _wiRender();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`);
+    document.getElementById('content').innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${e.message}</p></div>`;
   }
 }
 
@@ -175,7 +175,7 @@ function _wiRender() {
 
     <!-- context menu -->
     <div id="wi_ctx" style="display:none;position:fixed;z-index:9999"></div>
-  `);
+  `;
 
   window._wiDragging=null;
 }
