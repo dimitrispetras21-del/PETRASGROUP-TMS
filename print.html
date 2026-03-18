@@ -4,324 +4,304 @@
 <meta charset="UTF-8"/>
 <title>Petras Group — Print</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:'Helvetica Neue',Arial,sans-serif;font-size:11px;color:#111;background:#fff;padding:24px 32px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:11.5px;color:#1B2A4A;background:#fff}
+#loading{display:flex;align-items:center;justify-content:center;height:90vh;font-size:14px;color:#888;gap:10px}
+.spin{width:20px;height:20px;border:2px solid #ddd;border-top-color:#1B2A4A;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#doc{display:none;padding:32px 40px}
 
-  /* ── LOADING SCREEN ── */
-  #loading{display:flex;align-items:center;justify-content:center;height:80vh;font-size:14px;color:#888;gap:10px}
-  .spin{width:20px;height:20px;border:2px solid #ddd;border-top-color:#0B1929;border-radius:50%;animation:sp .7s linear infinite}
-  @keyframes sp{to{transform:rotate(360deg)}}
-  #doc{display:none}
+/* Print bar */
+.pbar{position:fixed;top:0;left:0;right:0;background:#1B2A4A;padding:9px 20px;
+  display:flex;align-items:center;justify-content:space-between;z-index:999}
+.pbar-title{color:#fff;font-size:12px;font-weight:600}
+.pbar-btn{background:#2D7FF9;color:#fff;border:none;padding:7px 22px;
+  border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
+.pbar-btn:hover{background:#1A6DE3}
+.pbar-spacer{height:42px}
 
-  /* ── LAYOUT ── */
-  .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #0B1929;padding-bottom:14px;margin-bottom:14px}
-  .brand{font-size:20px;font-weight:900;letter-spacing:-0.5px;color:#0B1929}
-  .brand span{color:#e87722}
-  .brand-sub{font-size:8px;color:#888;letter-spacing:2px;text-transform:uppercase;margin-top:2px}
-  .company-info{font-size:10px;color:#444;line-height:1.6;margin-top:4px}
-  .carrier-block .label{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px}
-  .carrier-name{font-size:14px;font-weight:700;color:#0B1929}
-  .carrier-sub{font-size:10px;color:#555;line-height:1.6;margin-top:2px}
-  .plates{margin-top:6px;font-size:13px;font-weight:700;color:#e87722;letter-spacing:1px}
+/* Document */
+.header{display:flex;justify-content:space-between;align-items:flex-start;
+  margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #2D7FF9}
+.brand{font-size:20px;font-weight:900;letter-spacing:1px;color:#1B2A4A}
+.brand span{color:#e87722}
+.brand-sub{font-size:8px;color:#888;letter-spacing:2.5px;text-transform:uppercase;margin-top:2px}
+.company{margin-top:8px;font-size:11px;line-height:1.6}
+.carrier-name{font-size:15px;font-weight:700}
+.plates-tag{display:inline-block;background:#2D7FF9;color:#fff;font-weight:700;
+  font-size:13px;padding:4px 12px;border-radius:4px;margin-top:8px;letter-spacing:1px}
+.title{text-align:center;font-size:14px;font-weight:700;padding:10px 0;margin:16px 0;
+  border-top:2px solid #1B2A4A;border-bottom:2px solid #1B2A4A;letter-spacing:1px;text-transform:uppercase}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:16px;
+  border:1px solid #ddd;border-radius:4px;overflow:hidden}
+.meta-item{padding:8px 14px;border-bottom:1px solid #eee;display:flex;gap:8px}
+.meta-item:nth-child(odd){border-right:1px solid #eee}
+.meta-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;min-width:70px}
+.meta-value{font-weight:600}
+.price-bar{display:flex;justify-content:space-between;align-items:center;
+  background:#f0f6ff;border:2px solid #2D7FF9;border-radius:6px;padding:12px 20px;margin-bottom:20px}
+.price-amount{font-size:22px;font-weight:900;color:#2D7FF9}
+.price-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1.5px}
+.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;
+  color:#fff;background:#1B2A4A;padding:6px 14px;margin:18px 0 10px;border-left:4px solid #2D7FF9}
+.stop-card{border:1px solid #ddd;border-radius:6px;padding:18px 20px;margin-bottom:12px;background:#fafbfc}
+.stop-name{font-size:15px;font-weight:700;color:#1B2A4A;margin-bottom:2px}
+.stop-addr{font-size:12px;color:#666;margin-bottom:4px}
+.stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px}
+.stop-field{display:flex;gap:6px;padding:3px 0}
+.stop-field b{color:#1B2A4A;min-width:120px;font-size:12px}
+.stop-field span{font-size:12.5px}
+.sig-table{width:100%;margin-top:20px;border-collapse:collapse}
+.sig-table td{width:50%;padding:14px 20px;border:1px solid #1B2A4A;vertical-align:top}
+.sig-name{font-weight:700;font-size:12px;margin-bottom:4px}
+.sig-role{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}
+.sig-line{margin-top:30px;border-top:1px solid #aaa;padding-top:6px;font-size:10px;color:#aaa;text-align:center}
+.info-left b{color:#1B2A4A}
+.notes-box{margin:16px 0;padding:12px 18px;border:1px solid #ddd;border-radius:6px;background:#fafbfc;font-size:12.5px}
 
-  .doc-title{text-align:center;font-size:13px;font-weight:700;padding:10px;border:2px solid #0B1929;margin-bottom:12px;letter-spacing:0.5px;text-transform:uppercase}
-
-  table.meta{width:100%;border-collapse:collapse;margin-bottom:12px}
-  table.meta td{border:1px solid #0B1929;padding:6px 10px;font-size:11px}
-  table.meta td:first-child{font-weight:700;width:18%;background:#f7f8fa}
-  table.meta td:nth-child(3){font-weight:700;width:18%;background:#f7f8fa}
-
-  .price-box{border:2px solid #e87722;border-radius:4px;padding:10px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center}
-  .price-val{font-size:22px;font-weight:700;color:#e87722}
-  .price-lbl{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-  .price-terms{text-align:right}
-
-  .section-title{font-weight:700;border-left:3px solid #e87722;padding-left:8px;margin:14px 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px}
-  .stop-block{border:1px solid #ddd;border-radius:4px;padding:10px 14px;margin-bottom:8px}
-  .stop-block p{margin-bottom:3px;font-size:11px;line-height:1.5}
-  .stop-block .loc{font-weight:700;font-size:12px}
-
-  .notes-box{border:1px solid #ddd;border-radius:4px;padding:10px 14px;min-height:40px;font-size:11px;color:#444}
-
-  table.sig{width:100%;border-collapse:collapse;margin-top:32px;border:1px solid #0B1929}
-  table.sig td{padding:14px;border:1px solid #0B1929;text-align:center;width:50%;vertical-align:bottom}
-  .sig-label{font-size:9px;color:#888;margin-top:36px;border-top:1px solid #ccc;padding-top:4px}
-
-  /* ── DRIVER DOC ── */
-  .driver-header{background:#0B1929;color:#fff;padding:12px 16px;border-radius:4px 4px 0 0;margin-bottom:0}
-  .driver-header h2{font-size:14px;font-weight:700;letter-spacing:0.5px}
-  .driver-header p{font-size:10px;opacity:0.7;margin-top:2px}
-  .driver-body{border:1px solid #0B1929;border-top:none;padding:14px;border-radius:0 0 4px 4px;margin-bottom:14px}
-  .info-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px}
-  .info-item .lbl{font-size:8px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
-  .info-item .val{font-size:12px;font-weight:700;color:#0B1929}
-
-  @media print{
-    body{padding:14px 20px}
-    .no-print{display:none!important}
-  }
-
-  /* ── PRINT BUTTON (screen only) ── */
-  .print-bar{position:fixed;top:0;left:0;right:0;background:#0B1929;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:999}
-  .print-bar-title{color:#fff;font-size:12px;font-weight:600;letter-spacing:0.3px}
-  .btn-print{background:#e87722;color:#fff;border:none;padding:7px 22px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:0.5px}
-  .btn-print:hover{background:#d06a1a}
-  .print-spacer{height:44px}
+@media print{.pbar,.pbar-spacer{display:none}body,#doc{padding:20px 28px}}
 </style>
 </head>
 <body>
-
-<div id="loading"><div class="spin"></div> Loading order data…</div>
+<div id="loading"><div class="spin"></div> Loading…</div>
 <div id="doc"></div>
 
 <script>
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
-const AT_BASE  = 'appElT5CQV6JQvym8';
-const ORDERS_TABLE   = 'tblgHlNmLBH3JTdIM';
-const PARTNERS_TABLE = 'tblLHl5m8bqONfhWv';
-const TRUCKS_TABLE   = 'tblEAPExIAjiA3asD';
-const TRAILERS_TABLE = 'tblDcrqRJXzPrtYLm';
-const DRIVERS_TABLE  = 'tbl7UGmYhc2Y82pPs';
+const AT_TOKEN   = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+const AT_BASE    = 'appElT5CQV6JQvym8';
+const T_ORDERS   = 'tblgHlNmLBH3JTdIM';
+const T_PARTNERS = 'tblLHl5m8bqONfhWv';
+const T_TRUCKS   = 'tblEAPExIAjiA3asD';
+const T_TRAILERS = 'tblDcrqRJXzPrtYLm';
+const T_DRIVERS  = 'tbl7UGmYhc2Y82pPs';
+const T_LOCS     = 'tblxu8DRfTQOFRCzS';
 const DISPATCHER = 'Δ. Πέτρας';
 
-function fv(v){ return Array.isArray(v)?v[0]||'':v||''; }
-function fmt(s){ if(!s)return'—'; try{const p=s.split('T')[0].split('-');return`${p[2]}/${p[1]}/${p[0]}`;}catch{return s;} }
-function eur(v){ if(!v&&v!==0)return'—'; return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR'; }
+function fv(v){return Array.isArray(v)?v[0]||'':v||'';}
+function fmt(s){if(!s)return'—';try{var p=s.split('T')[0].split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}}
+function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR';}
 
-async function atGet(tableId, recId){
-  const r = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`,
+async function atGet(table,id){
+  var r=await fetch('https://api.airtable.com/v0/'+AT_BASE+'/'+table+'/'+id,
     {headers:{Authorization:'Bearer '+AT_TOKEN}});
   return r.json();
 }
-
-async function atGetAll(tableId, params=''){
-  let records=[],offset='';
+async function atGetAll(table,params){
+  var records=[],offset='';
   do{
-    const r=await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}?pageSize=100${params}${offset?'&offset='+offset:''}`,
-      {headers:{Authorization:'Bearer '+AT_TOKEN}});
-    const d=await r.json();
+    var url='https://api.airtable.com/v0/'+AT_BASE+'/'+table+'?pageSize=100'+(params||'')+(offset?'&offset='+offset:'');
+    var r=await fetch(url,{headers:{Authorization:'Bearer '+AT_TOKEN}});
+    var d=await r.json();
     records=records.concat(d.records||[]);
     offset=d.offset||'';
   }while(offset);
   return records;
 }
 
-async function init(){
-  const params = new URLSearchParams(window.location.search);
-  const orderId = params.get('orderId');
-  const leg     = params.get('leg')||'export'; // 'export' | 'import'
-
-  if(!orderId){
-    document.getElementById('loading').innerHTML='<span style="color:red">Missing orderId parameter</span>';
-    return;
+// Locations cache
+var locCache={};
+async function resolveLoc(locField){
+  if(!locField||!Array.isArray(locField)||!locField.length) return null;
+  var id=locField[0];
+  if(!locCache[id]){
+    var r=await atGet(T_LOCS,id);
+    locCache[id]=r.fields||{};
   }
+  var l=locCache[id];
+  var parts=[];
+  if(l['Address'])parts.push(l['Address']);
+  if(l['City'])parts.push(l['City']);
+  if(l['State/province'])parts.push(l['State/province']);
+  if(l['Country'])parts.push(l['Country']);
+  return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||''};
+}
+
+function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr,notes){
+  var html='<div class="stop-card"><div class="stop-name">'+num+'. '+loc.name+'</div>';
+  if(loc.address) html+='<div class="stop-addr">'+loc.address+'</div>';
+  if(loc.lat&&loc.lng) html+='<div class="stop-addr"><a href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" style="color:#2D7FF9;text-decoration:none">Google Maps ('+loc.lat+', '+loc.lng+')</a></div>';
+  html+='<div class="stop-grid">';
+  html+='<div class="stop-field"><b>Date of '+dtLabel+':</b><span>'+fmt(dt)+'</span></div>';
+  if(showDetails){
+    if(goods) html+='<div class="stop-field"><b>Goods:</b><span>'+goods+'</span></div>';
+    html+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
+    html+='<div class="stop-field"><b>Pallet Exchange:</b><span>'+pe+'</span></div>';
+    if(gw) html+='<div class="stop-field"><b>Gross Weight:</b><span>'+gw+' KG</span></div>';
+    if(temp) html+='<div class="stop-field"><b>Temperature:</b><span>'+temp+'°C</span></div>';
+    if(refr) html+='<div class="stop-field"><b>Refrigerator:</b><span>'+refr+'</span></div>';
+  } else {
+    html+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
+  }
+  html+='</div>';
+  if(notes) html+='<div style="margin-top:8px;font-size:11.5px;color:#555"><b>Notes:</b> '+notes+'</div>';
+  html+='</div>';
+  return html;
+}
+
+async function buildLoadHTML(f,isExport,od,veroiaSwitch,VEROIA,dt){
+  if(veroiaSwitch&&isExport){
+    var vDt=dt?new Date(new Date(dt).getTime()+86400000).toISOString():'';
+    var vLoc=od&&od['Veroia Cross-dock']?await resolveLoc(od['Veroia Cross-dock']):null;
+    var loc=vLoc||{name:'VERMION FRESH / CROSS-DOCK',address:'Kopanos, Naousa, Imathia',lat:'',lng:''};
+    return buildCard(1,loc,'loading',vDt,fv(od&&od['Total Pallets'])||'—',fv(od&&od['Pallet Type']),true,fv(od&&od['Goods']),od&&od['Pallet Exchange']?'YES':'NO',fv(od&&od['Gross Weight kg']),fv(od&&od['Temperature °C']),fv(od&&od['Refrigerator Mode']),'');
+  }
+  var html='';var count=0;
+  if(od){
+    for(var i=1;i<=10;i++){
+      var lf=od['Loading Location '+i];
+      if(!lf) continue;
+      var loc=await resolveLoc(lf);
+      if(!loc) continue;
+      count++;
+      var loadDt=od['Loading DateTime'+(i===1?'':' '+i)]||dt;
+      html+=buildCard(count,loc,'loading',loadDt,fv(od['Loading Pallets '+i]),fv(od['Pallet Type']),count===1,fv(od['Goods']),od['Pallet Exchange']?'YES':'NO',fv(od['Gross Weight kg']),fv(od['Temperature °C']),fv(od['Refrigerator Mode']),count===1?fv(od['Notes']):'');
+    }
+  }
+  if(!count) html=buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,fv(od&&od['Total Pallets']),fv(od&&od['Pallet Type']),true,fv(od&&od['Goods']),(od&&od['Pallet Exchange'])?'YES':'NO','','','','');
+  return html;
+}
+
+async function buildDelHTML(f,isExport,od,veroiaSwitch,dt){
+  if(veroiaSwitch&&!isExport){
+    var vDt=dt?new Date(new Date(dt).getTime()-86400000).toISOString():'';
+    var vLoc=od&&od['Veroia Cross-dock']?await resolveLoc(od['Veroia Cross-dock']):null;
+    var loc=vLoc||{name:'VERMION FRESH / CROSS-DOCK',address:'Kopanos, Naousa, Imathia',lat:'',lng:''};
+    return buildCard(1,loc,'delivery',vDt,fv(od&&od['Total Pallets'])||'—',fv(od&&od['Pallet Type']),false,'','','','','','');
+  }
+  var html='';var count=0;
+  if(od){
+    for(var i=1;i<=10;i++){
+      var lf=od['Unloading Location '+i];
+      if(!lf) continue;
+      var loc=await resolveLoc(lf);
+      if(!loc) continue;
+      count++;
+      var delDt=od['Unloading DateTime'+i]||dt;
+      html+=buildCard(count,loc,'delivery',delDt,fv(od['Unloading Pallets '+i]),fv(od['Pallet Type']),false,'','','','','','');
+    }
+  }
+  if(!count) html=buildCard(1,{name:'—',address:'',lat:'',lng:''},'delivery',dt,fv(od&&od['Total Pallets']),fv(od&&od['Pallet Type']),false,'','','','','','');
+  return html;
+}
+
+async function init(){
+  var params=new URLSearchParams(window.location.search);
+  var orderId=params.get('orderId');
+  var leg=params.get('leg')||'export';
+  if(!orderId){document.getElementById('loading').innerHTML='<span style="color:red">Missing orderId</span>';return;}
 
   try{
-    // Fetch the ORDER record
-    const order = await atGet(ORDERS_TABLE, orderId);
-    const f = order.fields;
+    var order=await atGet(T_ORDERS,orderId);
+    var f=order.fields;
+    var isExport=leg==='export';
+    var legLabel=isExport?'Export':'Import';
+    var weekNum=f[' Week Number']||f['Week Number']||'—';
+    var goods=f['Goods']||'—';
+    var totalPals=f['Total Pallets']||'—';
+    var palType=f['Pallet Type']||'Europallets 0.8x1.2';
+    var pe=f['Pallet Exchange']?'YES':'NO';
+    var gw=f['Gross Weight kg']?f['Gross Weight kg']+' KG':'—';
+    var temp=f['Temperature °C']!=null?f['Temperature °C']+'°C':'—';
+    var refr=f['Refrigerator Mode']||'Continuous';
+    var notes=f['Notes']||'';
+    var loadDT=f['Loading DateTime']||'';
+    var delDT=f['Delivery DateTime']||'';
+    var veroiaSwitch=!!(f['Veroia Switch ']||f['Veroia Switch']);
+    var orderNo=f['Order Number']||orderId.slice(-6).toUpperCase();
+    var rate=eur(f['Partner Rate']);
 
-    // Fetch partner if exists
-    const partnerId = fv(f['Partner']);
-    let partner = null;
-    if(partnerId){
-      const pr = await atGet(PARTNERS_TABLE, partnerId);
-      partner = pr.fields;
-    }
+    // Fetch linked records in parallel
+    var partnerId=fv(f['Partner']);
+    var truckId=fv(f['Truck']);
+    var trailerId=fv(f['Trailer']);
+    var driverId=fv(f['Driver']);
 
-    // Fetch truck/trailer/driver if owned
-    const truckId   = fv(f['Truck']);
-    const trailerId = fv(f['Trailer']);
-    const driverId  = fv(f['Driver']);
-    let truck=null,trailer=null,driver=null;
-    if(truckId)   { const r=await atGet(TRUCKS_TABLE,  truckId);   truck=r.fields; }
-    if(trailerId) { const r=await atGet(TRAILERS_TABLE,trailerId); trailer=r.fields; }
-    if(driverId)  { const r=await atGet(DRIVERS_TABLE, driverId);  driver=r.fields; }
+    var [partnerR,truckR,trailerR,driverR]=await Promise.all([
+      partnerId?atGet(T_PARTNERS,partnerId):Promise.resolve(null),
+      truckId?atGet(T_TRUCKS,truckId):Promise.resolve(null),
+      trailerId?atGet(T_TRAILERS,trailerId):Promise.resolve(null),
+      driverId?atGet(T_DRIVERS,driverId):Promise.resolve(null),
+    ]);
 
-    const isPartner = !!(f['Is Partner Trip'] || partnerId);
-    const weekNum   = f[' Week Number'] || f['Week Number'] || '—';
-    const goods     = f['Goods'] || '—';
-    const pallets   = f['Total Pallets'] || '—';
-    const grossWeight = f['Gross Weight kg'] ? f['Gross Weight kg']+' kg' : '—';
-    const temp      = f['Temperature °C'] != null ? f['Temperature °C']+'°C' : '—';
-    const refMode   = f['Refrigerator Mode'] || '—';
-    const palExch   = f['Pallet Exchange'] ? 'YES' : 'NO';
-    const palType   = f['Pallet Type'] || 'EUR';
-    const notes     = f['Notes'] || '';
-    const loadDT    = fmt(f['Loading DateTime']);
-    const delDT     = fmt(f['Delivery DateTime']);
-    const loadSum   = (f['Loading Summary']||'').replace(/^['"\/\s]+/,'').replace(/['"\/\s]+$/,'').trim();
-    const delSum    = (f['Delivery Summary']||'').replace(/^['"\/\s]+/,'').replace(/['"\/\s]+$/,'').trim();
-    const rate      = f['Partner Rate'];
-    const partnerPlates = f['Partner Truck Plates'] || '—';
-    const docTitle  = `PARTNER ASSIGNMENT ORDER — ${leg.toUpperCase()} — PAO-${orderId.slice(-6).toUpperCase()}`;
-    const orderNo   = f['Order Number'] || orderId.slice(-6).toUpperCase();
+    var pf=partnerR?.fields||{};
+    var tf=truckR?.fields||{};
+    var trf=trailerR?.fields||{};
+    var df=driverR?.fields||{};
 
-    let html = '';
+    var partnerPlates=f['Partner Truck Plates']||'—';
+    var isPartner=!!(f['Is Partner Trip']||partnerId);
 
-    if(isPartner && partner){
-      /* ══════════════ PARTNER ASSIGNMENT ORDER ══════════════ */
-      html = `
-        <div class="print-bar no-print">
-          <span class="print-bar-title">Partner Assignment Order — ${leg.toUpperCase()} — W${weekNum}</span>
-          <button class="btn-print" onclick="window.print()">Print / PDF</button>
-        </div>
-        <div class="print-spacer no-print"></div>
+    // Build stop HTML
+    var loadHTML=await buildLoadHTML(f,isExport,f,veroiaSwitch,null,loadDT);
+    var delHTML=await buildDelHTML(f,isExport,f,veroiaSwitch,delDT);
 
-        <div class="header">
-          <div class="carrier-block">
-            <div class="label">Carrier</div>
-            <div class="carrier-name">${partner['Company Name']||'—'}</div>
-            <div class="carrier-sub">
-              ${partner['VAT Number']?`VAT: ${partner['VAT Number']}<br>`:''}
-              ${partner['Adress']?`${partner['Adress']}<br>`:''}
-              ${partner['Email']||''}
-            </div>
-            <div class="plates">${partnerPlates}</div>
-          </div>
-          <div style="text-align:right">
-            <div class="brand">PETRAS<span> GROUP</span></div>
-            <div class="brand-sub">International Road Transport Services</div>
-            <div class="company-info">
-              <strong>VERMION FRESH SA</strong><br>
-              Kopanos, Naousa — Imathia, Greece<br>
-              VAT: EL800816168<br>
-              vermionfresh@petrasgroup.com
-            </div>
-          </div>
-        </div>
+    var titleStr=(isPartner?'Partner Assignment Order':'Driver Order')+' — '+legLabel+' — W'+weekNum+'-'+orderNo;
 
-        <div class="doc-title">${docTitle}</div>
+    var html='';
 
-        <table class="meta">
-          <tr>
-            <td>Date</td><td>${new Date().toLocaleDateString('el-GR')}</td>
-            <td>Week</td><td>W${weekNum}</td>
-          </tr>
-          <tr>
-            <td>Category</td><td>${leg.charAt(0).toUpperCase()+leg.slice(1)}</td>
-            <td>Dispatcher</td><td>${DISPATCHER}</td>
-          </tr>
-          <tr>
-            <td>Order No</td><td colspan="3">${orderNo}</td>
-          </tr>
-        </table>
-
-        <div class="price-box">
-          <div>
-            <div class="price-lbl">Agreed Rate — ${leg.toUpperCase()}</div>
-            <div class="price-val">${eur(rate)}</div>
-          </div>
-          <div class="price-terms">
-            <div class="price-lbl">Payment Terms</div>
-            <div style="font-size:13px;font-weight:600">30 days</div>
-          </div>
-        </div>
-
-        <div class="section-title">Loading Place</div>
-        <div class="stop-block">
-          <p class="loc">${loadSum||'—'}</p>
-          <p><strong>Date:</strong> ${loadDT}</p>
-          <p><strong>Goods:</strong> ${goods}</p>
-          <p><strong>Pallets:</strong> ${pallets} ${palType} (0.8×1.2m)</p>
-          <p><strong>Gross Weight:</strong> ${grossWeight}</p>
-          <p><strong>Temperature:</strong> ${temp} &nbsp;|&nbsp; <strong>Refrigerator Mode:</strong> ${refMode}</p>
-          <p><strong>Pallet Exchange:</strong> ${palExch}</p>
-        </div>
-
-        <div class="section-title">Delivery Place</div>
-        <div class="stop-block">
-          <p class="loc">${delSum||'—'}</p>
-          <p><strong>Date:</strong> ${delDT}</p>
-          <p><strong>Pallets:</strong> ${pallets} ${palType}</p>
-        </div>
-
-        ${notes?`<div class="section-title">Notes</div><div class="notes-box">${notes}</div>`:''}
-
-        <table class="sig">
-          <tr>
-            <td>
-              <div style="font-size:11px">PETRAS GROUP / VERMION FRESH SA</div>
-              <div class="sig-label">Signature &amp; Date</div>
-            </td>
-            <td>
-              <div style="font-size:11px">${partner['Company Name']||'CARRIER'}</div>
-              <div class="sig-label">Signature &amp; Date</div>
-            </td>
-          </tr>
-        </table>`;
-
+    if(isPartner){
+      html='<div class="pbar no-print"><span class="pbar-title">'+titleStr+'</span><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div><div class="pbar-spacer no-print"></div>'+
+      '<div class="header"><div><div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Carrier</div>'+
+      '<div class="carrier-name">'+(pf['Company Name']||'—')+'</div>'+
+      (pf['VAT Number']?'<div style="margin-top:4px;font-size:11px">VAT: '+pf['VAT Number']+'</div>':'')+
+      (pf['Adress']?'<div style="font-size:11px">'+pf['Adress']+'</div>':'')+
+      (pf['Email']?'<div style="font-size:11px">'+pf['Email']+'</div>':'')+
+      '<div class="plates-tag">'+partnerPlates+'</div></div>'+
+      '<div style="text-align:right"><div class="brand">PETRAS<span> GROUP</span></div>'+
+      '<div class="brand-sub">International Road Transport Services</div>'+
+      '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>VAT: EL800816168<br>vermionfresh@petrasgroup.com</div></div></div>'+
+      '<div class="title">Partner Assignment Order — '+legLabel+' — PAO-W'+weekNum+'-'+orderNo+'</div>'+
+      '<div class="meta">'+
+      '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+weekNum+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
+      '</div>'+
+      '<div class="price-bar"><div><div class="price-label">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+'</div></div>'+
+      '<div style="text-align:right"><div class="price-label">Payment Terms</div><div style="font-size:14px;font-weight:700">30 days</div></div></div>'+
+      '<div class="section-title">Loading Place</div>'+loadHTML+
+      '<div class="section-title">Delivery Place</div>'+delHTML+
+      (notes?'<div class="notes-box"><b>Notes:</b> '+notes+'</div>':'')+
+      '<table class="sig-table"><tr>'+
+      '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
+      '<td><div class="sig-name">'+(pf['Company Name']||'CARRIER')+'</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
+      '</tr></table>';
     } else {
-      /* ══════════════ DRIVER ORDER ══════════════ */
-      const driverName = driver ? driver['Full Name'] : (f['Driver Name']||'—');
-      const truckPlate = truck ? truck['License Plate'] : '—';
-      const trailerPlate = trailer ? trailer['License Plate'] : '—';
-
-      html = `
-        <div class="print-bar no-print">
-          <span class="print-bar-title">Driver Order — ${leg.toUpperCase()} — W${weekNum}</span>
-          <button class="btn-print" onclick="window.print()">Print / PDF</button>
-        </div>
-        <div class="print-spacer no-print"></div>
-
-        <div class="header">
-          <div>
-            <div class="brand">PETRAS<span> GROUP</span></div>
-            <div class="brand-sub">International Road Transport Services</div>
-            <div class="company-info">VERMION FRESH SA · Kopanos, Naousa — Imathia · vermionfresh@petrasgroup.com</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:3px">Driver Order</div>
-            <div style="font-size:18px;font-weight:900;color:#0B1929">W${weekNum} — ${leg.toUpperCase()}</div>
-            <div style="font-size:10px;color:#555;margin-top:2px">${new Date().toLocaleDateString('el-GR')} · ${DISPATCHER}</div>
-          </div>
-        </div>
-
-        <div class="driver-header">
-          <h2>${driverName}</h2>
-          <p>${truckPlate} / ${trailerPlate}</p>
-        </div>
-        <div class="driver-body">
-          <div class="info-grid">
-            <div class="info-item"><div class="lbl">Truck</div><div class="val">${truckPlate}</div></div>
-            <div class="info-item"><div class="lbl">Trailer</div><div class="val">${trailerPlate}</div></div>
-            <div class="info-item"><div class="lbl">Temperature</div><div class="val">${temp}</div></div>
-            <div class="info-item"><div class="lbl">Refrigerator Mode</div><div class="val">${refMode}</div></div>
-          </div>
-        </div>
-
-        <div class="section-title">Loading</div>
-        <div class="stop-block">
-          <p class="loc">${loadSum||'—'}</p>
-          <p><strong>Date:</strong> ${loadDT}</p>
-          <p><strong>Goods:</strong> ${goods}</p>
-          <p><strong>Pallets:</strong> ${pallets} ${palType} (0.8×1.2m) &nbsp;|&nbsp; <strong>Weight:</strong> ${grossWeight}</p>
-          <p><strong>Pallet Exchange:</strong> ${palExch}</p>
-        </div>
-
-        <div class="section-title">Delivery</div>
-        <div class="stop-block">
-          <p class="loc">${delSum||'—'}</p>
-          <p><strong>Date:</strong> ${delDT}</p>
-          <p><strong>Pallets:</strong> ${pallets} ${palType}</p>
-        </div>
-
-        ${notes?`<div class="section-title">Notes</div><div class="notes-box">${notes}</div>`:''}
-
-        <div style="margin-top:24px;border-top:1px solid #ddd;padding-top:12px;color:#888;font-size:9px;text-align:center">
-          Petras Group · VERMION FRESH SA · vermionfresh@petrasgroup.com · ${new Date().toLocaleDateString('el-GR')}
-        </div>`;
+      var driverFull=df['Full Name']||f['Driver Name']||'—';
+      var truckPlate=tf['License Plate']||'—';
+      var trailerPlate=trf['License Plate']||'—';
+      html='<div class="pbar no-print"><span class="pbar-title">'+titleStr+'</span><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div><div class="pbar-spacer no-print"></div>'+
+      '<div class="header"><div><div class="info-left" style="font-size:11.5px;line-height:1.8">'+
+      '<b>DRIVER:</b> <b>'+driverFull+'</b><br>'+
+      '<b>TRUCK:</b> <b>'+truckPlate+'</b><br>'+
+      '<b>TRAILER:</b> <b>'+trailerPlate+'</b></div></div>'+
+      '<div style="text-align:right"><div class="brand">PETRAS<span> GROUP</span></div>'+
+      '<div class="brand-sub">International Road Transport Services</div>'+
+      '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>vermionfresh@petrasgroup.com</div></div></div>'+
+      '<div class="title">Driver Order — '+legLabel+' — W'+weekNum+'</div>'+
+      '<div class="meta">'+
+      '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+weekNum+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
+      '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
+      '</div>'+
+      '<div class="section-title">Loading Place</div>'+loadHTML+
+      '<div class="section-title">Delivery Place</div>'+delHTML+
+      (notes?'<div class="notes-box"><b>Notes:</b> '+notes+'</div>':'')+
+      '<table class="sig-table"><tr>'+
+      '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Signature &amp; Date</div></td>'+
+      '<td><div class="sig-name">'+driverFull+'</div><div class="sig-role">Driver — Receipt of Order</div><div class="sig-line">Signature &amp; Date</div></td>'+
+      '</tr></table>';
     }
 
     document.getElementById('loading').style.display='none';
-    document.getElementById('doc').style.display='block';
-    document.getElementById('doc').innerHTML = html;
-
+    var docEl=document.getElementById('doc');
+    docEl.style.display='block';
+    docEl.innerHTML=html;
   }catch(err){
-    document.getElementById('loading').innerHTML=`<span style="color:red">Error: ${err.message}</span>`;
+    document.getElementById('loading').innerHTML='<span style="color:red">Error: '+err.message+'</span>';
   }
 }
-
 init();
 </script>
 </body>
