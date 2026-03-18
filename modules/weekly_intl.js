@@ -25,8 +25,7 @@ const WINTL = {
   week:      _wiCurrentWeek(),
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
-  shelf:     [],
-  ui:        { openRow:null, shelfFilter:'', shelfCollapsed:false },
+  ui:        { openRow:null },
   _seq:      0,
 };
 
@@ -216,25 +215,6 @@ const WINTL = {
 .wi-irm:hover { opacity:1; color:var(--danger); }
 .wi-inone { font-size:10px; color:var(--border-dark); }
 
-/* shelf */
-.wi-shelf { background:var(--bg-card); border:1px solid rgba(217,119,6,0.2);
-  border-radius:10px; overflow:hidden; margin-bottom:12px; }
-.wi-shelf-hdr { display:flex; align-items:center; gap:8px; padding:8px 14px;
-  cursor:pointer; user-select:none; }
-.wi-shelf-hdr:hover { background:var(--bg-hover); }
-.wi-shelf-ttl { font-size:10px; font-weight:700; letter-spacing:1.5px;
-  text-transform:uppercase; color:var(--warning); }
-.wi-shelf-n { background:rgba(217,119,6,0.1); color:var(--warning);
-  font-size:9.5px; font-weight:700; padding:1px 8px; border-radius:10px; }
-.wi-chips { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px 12px; }
-.wi-chip { padding:7px 11px; border-radius:8px; cursor:grab; min-width:138px; max-width:205px;
-  background:rgba(217,119,6,0.06); border:1px solid rgba(217,119,6,0.18);
-  transition:box-shadow .12s, transform .1s; }
-.wi-chip:hover { box-shadow:0 3px 10px rgba(0,0,0,0.08); transform:translateY(-1px); }
-.wi-chip:active { cursor:grabbing; }
-.wi-chip-n { font-size:11px; font-weight:700; color:var(--text);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-chip-m { font-size:9.5px; font-weight:600; color:var(--text-mid); margin-top:2px; }
 
 /* ── ASSIGNMENT POPOVER ── */
 #wi-popover {
@@ -284,6 +264,28 @@ const WINTL = {
 .wi-pop-cancel { padding:7px 16px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; cursor:pointer; background:none; color:var(--text-mid); }
 .wi-pop-cancel:hover { background:var(--bg-hover); }
+/* ── IMPORT ROWS ── */
+.wi-imp-row {
+  display:flex; align-items:center; gap:10px;
+  padding:7px 12px 7px 6px;
+  border-top:1px solid var(--border);
+  background:rgba(217,119,6,0.03);
+  cursor:grab; transition:background .1s;
+  min-height:40px;
+}
+.wi-imp-row:active { cursor:grabbing; }
+.wi-imp-row:hover  { background:rgba(217,119,6,0.06); }
+.wi-imp-matched    { background:rgba(5,150,105,0.025); }
+.wi-imp-matched:hover { background:rgba(5,150,105,0.05); }
+.wi-imp-matched.dh { background:rgba(5,150,105,0.08); }
+.wi-imp-row.dh     { outline:2px dashed var(--warning); }
+.wi-imp-handle {
+  font-size:14px; color:var(--border-dark);
+  cursor:grab; padding:0 4px; flex-shrink:0; line-height:1;
+}
+.wi-imp-content { flex:1; min-width:0; overflow:hidden; }
+.wi-imp-actions { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+
 /* ctx menu */
 #wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card);
   border:1px solid var(--border-mid); border-radius:8px;
@@ -420,11 +422,14 @@ function _wiBuildRows(){
 
 /* ── PAINT ─────────────────────────────────────────────────────────── */
 function _wiPaint(){
-  const {rows,shelf,week,data,ui}=WINTL;
+  const {rows,week,data,ui}=WINTL;
+  const expRows=rows.filter(r=>r.type==='export');
+  const impRows=rows.filter(r=>r.type==='import');
   const expN=data.exports.length, impN=data.imports.length;
-  const assigned=rows.filter(r=>r.saved).length;
-  const pending=rows.filter(r=>!r.saved).length;
-  const unmatched=shelf.length;
+  const assigned=expRows.filter(r=>r.saved).length;
+  const pending=expRows.filter(r=>!r.saved).length;
+  const matched=impRows.filter(r=>r.matchedTo).length;
+  const unmatched=impRows.filter(r=>!r.matchedTo).length;
 
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:12px">
@@ -435,9 +440,7 @@ function _wiPaint(){
           <span style="color:var(--success)">${expN} exports</span>
           <span style="color:var(--warning)">${impN} imports</span>
           <span style="color:var(--text-dim)">${assigned} assigned · ${pending} pending</span>
-          ${unmatched
-            ?`<span style="color:var(--warning);font-weight:600">${unmatched} imports unmatched</span>`
-            :`<span style="color:var(--success)">all imports matched</span>`}
+          <span style="color:var(--text-dim)">${matched} imports matched · ${unmatched} free</span>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
@@ -448,8 +451,6 @@ function _wiPaint(){
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
       </div>
     </div>
-
-    ${unmatched?_wiShelfHTML():''}
 
     <div class="wi-wrap">
       <div class="wi-head">
@@ -463,7 +464,7 @@ function _wiPaint(){
         <div class="wi-hc" style="color:var(--warning)">
           Import (${impN})
           <span style="font-weight:400;text-transform:none;letter-spacing:0;
-                       font-size:9px;color:var(--text-dim);margin-left:6px">drag from shelf</span>
+                       font-size:9px;color:var(--text-dim);margin-left:6px">drag to match</span>
         </div>
       </div>
       <div id="wi-rows">
@@ -478,70 +479,18 @@ function _wiPaint(){
   window._wiDragging=null;
 }
 
-/* ── SHELF ─────────────────────────────────────────────────────────── */
-function _wiShelfHTML(){
-  const {shelf,ui}=WINTL;
-  const sf=ui.shelfFilter.toLowerCase();
-  const vis=sf?shelf.filter(r=>
-    ((r.fields['Loading Summary']||'')+(r.fields['Delivery Summary']||''))
-    .toLowerCase().includes(sf)):shelf;
-  return `
-  <div class="wi-shelf">
-    <div class="wi-shelf-hdr" onclick="_wiToggleShelf()">
-      <span class="wi-shelf-ttl">Import Shelf</span>
-      <span class="wi-shelf-n">${shelf.length}</span>
-      ${shelf.length>5?`<input type="text" placeholder="search…" value="${ui.shelfFilter}"
-        oninput="WINTL.ui.shelfFilter=this.value;_wiRepaintShelf()"
-        onclick="event.stopPropagation()"
-        style="padding:4px 8px;font-size:11px;border-radius:5px;
-               border:1px solid var(--border-mid);background:var(--bg);
-               color:var(--text);width:140px;outline:none"/>`:''}
-      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">
-        ${ui.shelfCollapsed?'▸':'▾'}
-      </span>
-    </div>
-    <div id="wi-shelf-body" style="display:${ui.shelfCollapsed?'none':'block'}">
-      <div class="wi-chips" id="wi-chips-inner">
-        ${vis.map(_wiChipHTML).join('')}
-      </div>
-    </div>
-  </div>`;
-}
-function _wiChipHTML(r){
-  const f=r.fields;
-  const name=_wiClean(f['Loading Summary']||'—').slice(0,26);
-  const dest=_wiClean(f['Delivery Summary']||'—').slice(0,24);
-  const pals=f['Total Pallets']||0;
-  const del=_wiFmt(f['Delivery DateTime']);
-  return `<div class="wi-chip" draggable="true" ondragstart="_wiDragStart(event,'${r.id}')">
-    <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden;flex-wrap:wrap">
-      <span class="wi-chip-n" style="flex-shrink:1;min-width:0">${name}</span>
-      <span style="color:var(--text-dim);margin:0 5px;flex-shrink:0;font-size:11px">→</span>
-      <span class="wi-chip-n" style="flex-shrink:0">${dest}</span>
-      ${_wiBadges(r.fields)}
-    </div>
-    <div class="wi-chip-m">${del} · ${pals} pal</div>
-  </div>`;
-}
-function _wiToggleShelf(){
-  WINTL.ui.shelfCollapsed=!WINTL.ui.shelfCollapsed;
-  const el=document.getElementById('wi-shelf-body');
-  if(el) el.style.display=WINTL.ui.shelfCollapsed?'none':'block';
-}
-function _wiRepaintShelf(){
-  const el=document.querySelector('.wi-shelf');
-  if(el) el.outerHTML=_wiShelfHTML();
-}
+
 
 /* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
-  let html='',lastDate=null;
+  const expRows=WINTL.rows.filter(r=>r.type==='export');
+  const impRows=WINTL.rows.filter(r=>r.type==='import');
+  let html='',lastDate=null,idx=0;
+
+  // ── EXPORTS grouped by delivery date ──
   const dc={};
-  WINTL.rows.forEach(row=>{
-    const lbl=_wiDelDate(row);
-    if(lbl) dc[lbl]=(dc[lbl]||0)+1;
-  });
-  WINTL.rows.forEach((row,i)=>{
+  expRows.forEach(row=>{ const lbl=_wiDelDate(row); if(lbl) dc[lbl]=(dc[lbl]||0)+1; });
+  expRows.forEach(row=>{
     const lbl=_wiDelDate(row);
     if(lbl&&lbl!==lastDate){
       lastDate=lbl;
@@ -551,9 +500,85 @@ function _wiAllRowsHTML(){
         <span class="wi-dsep-n">${dc[lbl]} order${dc[lbl]!==1?'s':''}</span>
       </div>`;
     }
-    html+=_wiRowHTML(row,i);
+    html+=_wiRowHTML(row,idx++);
   });
+
+  // ── IMPORTS section ──
+  if(impRows.length){
+    const matched=impRows.filter(r=>r.matchedTo).length;
+    html+=`<div class="wi-dsep" style="background:#1A3550">
+      <span class="wi-dsep-lbl" style="color:rgba(217,119,6,0.6)">Imports</span>
+      <span class="wi-dsep-date" style="color:rgba(217,119,6,0.9)">${impRows.length} orders</span>
+      <span class="wi-dsep-n">${matched} matched · ${impRows.length-matched} free</span>
+      <span style="font-size:9px;color:rgba(196,207,219,0.4);margin-left:auto">drag to match · re-drag anytime</span>
+    </div>`;
+    impRows.forEach(row=>{ html+=_wiImpRowHTML(row); });
+  }
+
   return html;
+}
+
+
+/* ── IMPORT ROW ──────────────────────────────────────────────────── */
+function _wiImpRowHTML(row){
+  const {data}=WINTL;
+  const imp=data.imports.find(r=>r.id===row.orderId);
+  if(!imp) return '';
+  const f=imp.fields;
+  const fromStr=_wiClean(f['Loading Summary']||'—');
+  const toStr  =_wiClean(f['Delivery Summary']||'—');
+  const pals   =f['Total Pallets']||0;
+  const loadDt =_wiFmt(f['Loading DateTime']);
+  const delDt  =_wiFmt(f['Delivery DateTime']);
+  const isMatched=!!row.matchedTo;
+
+  // Find which export it's matched to
+  let matchedExp=null;
+  if(row.matchedTo){
+    const mRow=WINTL.rows.find(r=>r.type==='export'&&r.orderIds.includes(row.matchedTo));
+    if(mRow){
+      const mExp=data.exports.find(r=>r.id===mRow.orderIds[0]);
+      matchedExp=mExp?_wiClean(mExp.fields['Delivery Summary']||'').slice(0,24):'';
+    }
+  }
+
+  const matchBadge=isMatched
+    ?`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
+                   background:rgba(5,150,105,0.1);color:var(--success);
+                   border:1px solid rgba(5,150,105,0.2);white-space:nowrap;flex-shrink:0">
+        ✓ ${matchedExp||'matched'}
+      </span>`
+    :`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
+                   background:rgba(217,119,6,0.1);color:var(--warning);
+                   border:1px solid rgba(217,119,6,0.2);flex-shrink:0">
+        unmatched
+      </span>`;
+
+  return `<div class="wi-imp-row ${isMatched?'wi-imp-matched':''}"
+               draggable="true"
+               ondragstart="_wiImpDragStart(event,'${imp.id}')">
+    <div class="wi-imp-handle">⠿</div>
+    <div class="wi-imp-content">
+      <div style="display:flex;align-items:center;gap:0;min-width:0;overflow:hidden">
+        <span class="wi-ci-from">${fromStr}</span>
+        <span class="wi-ci-sep">→</span>
+        <span class="wi-ci-dest">${toStr}</span>
+        ${_wiBadges(f)}
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:1px;flex-wrap:wrap">
+        <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
+        ${matchBadge}
+      </div>
+    </div>
+    <div class="wi-imp-actions">
+      ${isMatched?`<button onclick="event.stopPropagation();_wiUnmatch('${imp.id}')"
+        style="font-size:9px;border:1px solid var(--border-mid);border-radius:4px;
+               padding:2px 8px;background:none;cursor:pointer;color:var(--text-dim)">✕</button>`:''}
+      <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
+        style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
+               padding:2px 8px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
+    </div>
+  </div>`;
 }
 
 function _wiDelDate(row){
@@ -892,9 +917,34 @@ function _wiRepaintRow(rowId){
 
 /* ── DRAG & DROP ───────────────────────────────────────────────────── */
 window._wiDragging=null;
+
+// Drag from import ROWS (new — replaces shelf drag)
+function _wiImpDragStart(e,impId){
+  window._wiDragging=impId;
+  e.dataTransfer.effectAllowed='move';
+  // Dim the row slightly
+  e.currentTarget.style.opacity='0.5';
+  setTimeout(()=>{ if(e.currentTarget) e.currentTarget.style.opacity=''; },0);
+}
+
+// Legacy compat (shelf chips no longer exist but keep for safety)
 function _wiDragStart(e,impId){
   window._wiDragging=impId;
   e.dataTransfer.effectAllowed='move';
+}
+
+// Unmatch an import
+async function _wiUnmatch(impId){
+  // Find export row that has this import
+  const expRow=WINTL.rows.find(r=>r.type==='export'&&r.importId===impId);
+  if(!expRow) return;
+  await _wiRemoveImport(expRow.id);
+}
+
+// Print import
+function _wiPrintImp(impId){
+  const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  window.open(`${base}?orderId=${impId}&leg=import`,'_blank');
 }
 
 // Drop on compact row import cell → auto-save
@@ -919,21 +969,24 @@ async function _wiDropOnPanel(e,rowId){
 async function _wiSaveImportMatch(rowId,impId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
-  // Optimistic UI update first
+  // Optimistic UI update
   const oldImp=row.importId;
   row.importId=impId;
-  // Remove from shelf
-  WINTL.shelf=WINTL.shelf.filter(r=>r.id!==impId);
-  // Return old import to shelf if it was set
-  if(oldImp&&oldImp!==impId){
-    const old=WINTL.data.imports.find(r=>r.id===oldImp);
-    if(old&&!WINTL.shelf.find(r=>r.id===old.id)) WINTL.shelf.push(old);
-  }
-  // Also remove from any other row
-  WINTL.rows.forEach(r=>{if(r.id!==rowId&&r.importId===impId) r.importId=null;});
 
-  _wiRepaintShelf();
-  _wiRepaintRow(rowId);
+  // Clear previous match on any other export row
+  WINTL.rows.forEach(r=>{
+    if(r.type==='export'&&r.id!==rowId&&r.importId===impId) r.importId=null;
+  });
+
+  // Update import row matchedTo
+  WINTL.rows.forEach(r=>{
+    if(r.type==='import'){
+      if(r.orderId===impId) r.matchedTo=row.orderId;
+      else if(r.matchedTo===row.orderId&&oldImp&&r.orderId!==oldImp) r.matchedTo=null;
+    }
+  });
+
+  _wiPaint();
 
   // Save to ALL export orders in group
   for(const orderId of row.orderIds){
@@ -949,12 +1002,14 @@ async function _wiSaveImportMatch(rowId,impId){
 
 async function _wiRemoveImport(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||!row.importId) return;
-  const imp=WINTL.data.imports.find(r=>r.id===row.importId);
-  if(imp&&!WINTL.shelf.find(r=>r.id===imp.id)) WINTL.shelf.push(imp);
+  const impId=row.importId;
   row.importId=null;
 
-  _wiRepaintShelf();
-  _wiRepaintRow(rowId);
+  // Update import row
+  const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
+  if(impRow) impRow.matchedTo=null;
+
+  _wiPaint();
 
   // Clear from ORDERS
   for(const orderId of row.orderIds){
