@@ -257,12 +257,17 @@ function _wiRow(row, i) {
   ].filter(Boolean).join('');
 
   // ── Assignment badge (compact) ──────────────────
+  const _partnerLabel = row.partnerId ? WINTL.partners.find(p=>p.id===row.partnerId)?.label?.substring(0,16)||'Partner' : null;
+  const _truckLabel   = row.truckId   ? WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—' : null;
   const assignBadge=isSaved
     ?`<span class="wi-badge wi-badge-ok">TRIP</span>`
     :(row.partnerId
-      ?`<span style="font-size:10px;font-weight:600;color:var(--accent)">${WINTL.partners.find(p=>p.id===row.partnerId)?.label?.substring(0,18)||'Partner'}</span>`
+      ?`<div style="text-align:center;line-height:1.3">
+          <div style="font-size:10px;font-weight:600;color:var(--accent)">${_partnerLabel}</div>
+          ${row.partnerCost?`<div style="font-size:9px;color:var(--text-mid)">€${Number(row.partnerCost).toLocaleString('el-GR')}</div>`:''}
+        </div>`
       :(row.truckId
-        ?`<span style="font-size:10px;color:var(--text-mid)">${WINTL.trucks.find(t=>t.id===row.truckId)?.label||'—'}</span>`
+        ?`<span style="font-size:10px;color:var(--text-mid)">${_truckLabel}</span>`
         :`<span style="font-size:10px;color:var(--warning);letter-spacing:0.3px">UNASSIGNED</span>`));
 
   // ── Import cell ──────────────────────────────────
@@ -273,6 +278,7 @@ function _wiRow(row, i) {
          style="cursor:grab">
       <div style="font-size:11px;font-weight:600;color:var(--text)">${_wiClean(imp.fields['Loading Summary']||'—')}</div>
       <div style="font-size:10px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal</div>
+      <div style="font-size:10px;color:var(--text-mid)">load. ${_wiFmt(imp.fields['Loading DateTime'])} · del. ${_wiFmt(imp.fields['Delivery DateTime'])}</div>
     </div>`
     :`<span style="font-size:10px;color:var(--border-dark,#cbd5e1);letter-spacing:0.5px">— empty —</span>`;
 
@@ -413,33 +419,53 @@ function _wiAssignPanel(row) {
 
 // ── Searchable dropdown helpers ─────────────────
 function _wiSDropOpen(id) {
-  document.getElementById('wsd_list_'+id).style.display='block';
-  setTimeout(()=>document.addEventListener('click',function h(e){
+  // Close any other open dropdowns first
+  document.querySelectorAll('.wi-sdrop-list').forEach(el=>{
+    if(el.id !== 'wsd_list_'+id) el.style.display='none';
+  });
+  const inp = document.querySelector('#wsd_'+id+' .wi-sdrop-input');
+  const list = document.getElementById('wsd_list_'+id);
+  if(!inp||!list) return;
+  // Position with fixed so it escapes any overflow:hidden parent
+  const rect = inp.getBoundingClientRect();
+  list.style.cssText = `display:block;position:fixed;z-index:9999;
+    left:${rect.left}px;top:${rect.bottom+2}px;
+    width:${Math.max(rect.width, 220)}px;max-height:200px;overflow-y:auto;
+    background:var(--bg-card);border:1px solid var(--border);
+    border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.15)`;
+  // Show all options
+  list.querySelectorAll('.wi-sdrop-opt').forEach(el=>el.style.display='');
+  setTimeout(()=>document.addEventListener('mousedown',function h(e){
     const wrap=document.getElementById('wsd_'+id);
-    if(wrap&&!wrap.contains(e.target)){document.getElementById('wsd_list_'+id).style.display='none';}
-    document.removeEventListener('click',h);
-  }),10);
+    if(!wrap||!wrap.contains(e.target)){
+      list.style.display='none';
+    }
+    document.removeEventListener('mousedown',h);
+  }),50);
 }
 function _wiSDropFilter(id, q) {
   const list=document.getElementById('wsd_list_'+id);
-  if(!list) return;
-  list.style.display='block';
+  if(!list||list.style.display==='none') _wiSDropOpen(id);
   const ql=q.toLowerCase();
   list.querySelectorAll('.wi-sdrop-opt').forEach(el=>{
     el.style.display=el.dataset.label.toLowerCase().includes(ql)?'':'none';
   });
 }
 function _wiSDropPick(id, recId, label) {
-  document.getElementById('wsd_val_'+id).value=recId;
+  // Update hidden value and input text
+  const valEl=document.getElementById('wsd_val_'+id);
+  if(valEl) valEl.value=recId;
   const inp=document.querySelector('#wsd_'+id+' .wi-sdrop-input');
   if(inp) inp.value=label;
-  document.getElementById('wsd_list_'+id).style.display='none';
-  // Map id prefix to row field
-  const rowId=parseInt(id.split('_').pop());
-  const prefix=id.split('_')[0];
+  const list=document.getElementById('wsd_list_'+id);
+  if(list) list.style.display='none';
+  // Parse prefix and rowId: format is PREFIX_ROWID e.g. tk_3, tl_12
+  const parts=id.split('_');
+  const prefix=parts[0];
+  const rowId=parseInt(parts[parts.length-1]);
   const fieldMap={tk:'truckId',tl:'trailerId',dr:'driverId',pt:'partnerId'};
   const field=fieldMap[prefix];
-  if(field) _wiRowField(rowId, field, recId);
+  if(field&&!isNaN(rowId)) _wiRowField(rowId, field, recId);
 }
 
 
@@ -628,15 +654,18 @@ async function _wiCreateTrip(rowId,exportOnly=false) {
   if (!row) return;
   const isPartner=row.carrierType==='partner';
   if (!row.exportIds.length) { toast('Δεν υπάρχει Export'); return; }
-  if (isPartner&&!row.partnerId)   { toast('Επίλεξε Partner'); return; }
-  if (!isPartner&&(!row.truckId||!row.trailerId||!row.driverId)) { toast('Επίλεξε Truck, Trailer, Driver'); return; }
+  if (isPartner&&!row.partnerId) { toast('Επίλεξε Partner'); return; }
+  // Partial save allowed — no strict truck/trailer/driver check
 
   const btn=event?.target;
   if (btn) { btn.disabled=true; btn.textContent='Creating…'; }
   try {
     const fields={'Export Order':row.exportIds,'Week Number':WINTL.week};
     if (!exportOnly&&row.importId) fields['Import Order']=[row.importId];
-    if (isPartner) { if(row.partnerId) fields['Partner']=[row.partnerId]; }
+    if (isPartner) {
+      if(row.partnerId) fields['Partner']=[row.partnerId];
+      if(row.partnerCost) fields['Partner Cost']=parseFloat(row.partnerCost)||0;
+    }
     else {
       if(row.truckId)   fields['Truck']  =[row.truckId];
       if(row.trailerId) fields['Trailer']=[row.trailerId];
