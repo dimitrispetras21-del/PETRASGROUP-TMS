@@ -51,7 +51,7 @@ async function _wiLoadAssets() {
   if (WINTL.assetsLoaded) return;
   const [trucks,trailers,drivers,partners]=await Promise.all([
     atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:"{Active}=TRUE()"}),
-    atGetAll(TABLES.TRAILERS,{fields:['Plate'],         filterByFormula:"{Active}=TRUE()"}),
+    atGetAll(TABLES.TRAILERS,{fields:['Plate']}),
     atGetAll(TABLES.DRIVERS, {fields:['Full Name'],     filterByFormula:"{Active}=TRUE()"}),
     atGetAll(TABLES.PARTNERS,{fields:['Company Name']}),
   ]);
@@ -331,7 +331,7 @@ function _wiRow(row, i) {
     ${row.open?`
     <div style="border-top:1px solid var(--border);background:var(--bg);padding:10px 12px 12px;
                 display:grid;grid-template-columns:36px 1fr">
-      <div></div><div>${expandedPanel}</div>
+      <div></div><div class="wi-panel">${expandedPanel}</div>
     </div>`:''}
   </div>`;
 }
@@ -648,7 +648,11 @@ function _wiRowField(rowId,field,val) {
 }
 function _wiRowCarrier(rowId,isPartner) {
   const row=WINTL.rows.find(r=>r.id===rowId);
-  if (row) { row.carrierType=isPartner?'partner':'owned'; _wiToggleRow(rowId); _wiToggleRow(rowId); }
+  if (!row) return;
+  row.carrierType=isPartner?'partner':'owned';
+  // Re-render only the panel section, not the whole row
+  const panelEl=document.querySelector('#wi_row_'+rowId+' .wi-panel');
+  if (panelEl) panelEl.innerHTML=_wiAssignPanel(row);
 }
 
 // ── Navigation ─────────────────────────────────
@@ -659,6 +663,17 @@ function _wiNavWeek(delta) {
 
 // ── Create Trip ────────────────────────────────
 async function _wiCreateTrip(rowId,exportOnly=false) {
+  // Sync any searchable dropdown values into row state before saving
+  const row0=WINTL.rows.find(r=>r.id===rowId);
+  if (row0) {
+    const sync=(prefix,field)=>{
+      const el=document.getElementById('wsd_val_'+prefix+'_'+rowId);
+      if(el&&el.value) row0[field]=el.value;
+    };
+    sync('tk','truckId'); sync('tl','trailerId'); sync('dr','driverId'); sync('pt','partnerId');
+    const costEl=document.querySelector('#wi_row_'+rowId+' input[type=number]');
+    if(costEl&&costEl.value) row0.partnerCost=costEl.value;
+  }
   const row=WINTL.rows.find(r=>r.id===rowId);
   if (!row) return;
   const isPartner=row.carrierType==='partner';
