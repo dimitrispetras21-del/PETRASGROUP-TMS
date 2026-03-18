@@ -416,7 +416,38 @@ function _wiBuildRows(){
       driverLabel: WINTL.data.drivers.find(d=>d.id===driverId)?.label||'',
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
-      partnerRate:f['Partner Rate']?String(f['Partner Rate']):'',
+      partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
+      partnerRateImp:'',
+      saved:!!(truckId||partnerId),
+    });
+  }
+
+  // ── IMPORT ROWS — sorted by loading date, always draggable ──
+  const importsSorted=[...imports].sort((a,b)=>(
+    (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||'')
+  ));
+
+  // Build matchedMap: importOrderId → exportOrderId
+  const matchedMap={};
+  exports.forEach(r=>{ const mid=r.fields['Matched Import ID']; if(mid) matchedMap[mid]=r.id; });
+
+  for(const imp of importsSorted){
+    const f=imp.fields;
+    const truckId  =(f['Truck']  ||[])[0]||'';
+    const partnerId=(f['Partner']||[])[0]||'';
+    WINTL.rows.push({
+      id:          ++WINTL._seq,
+      type:        'import',
+      orderId:     imp.id,
+      orderIds:    [imp.id],
+      importId:    null,
+      matchedTo:   matchedMap[imp.id]||null,
+      truckId, trailerId:'', driverId:'', partnerId,
+      truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
+      trailerLabel:'', driverLabel:'',
+      partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
+      partnerPlates:f['Partner Truck Plates']||'',
+      partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
       partnerRateImp:'',
       saved:!!(truckId||partnerId),
     });
@@ -1184,9 +1215,10 @@ async function _wiSaveFromPopover(rowId){
   }
   _wiClosePopover();
 
-  // Create PARTNER ASSIGNMENT record for each order assigned to partner
+  // Create PARTNER ASSIGNMENT record
   if(isPartner){
-    await _wiCreatePartnerAssignments(row, fields);
+    try{ await _wiCreatePartnerAssignments(row, fields); }
+    catch(e){ console.warn('PA create error:',e.message); }
   }
 
   toast(row.saved?'Updated':'Saved');
