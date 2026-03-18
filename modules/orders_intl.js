@@ -728,17 +728,12 @@ function _scanHandleFile(file) {
 
 async function _scanExtract() {
   const file = window._scanUploadedFile;
+  if (!file) return;
   const st  = document.getElementById('scanStatus');
-  st.style.display = 'block';
-  st.innerHTML = `<pre style="font-size:11px;background:#f0f2f5;padding:10px;border-radius:6px;white-space:pre-wrap">
-STEP 1: file = ${file ? file.name+' type='+file.type+' size='+file.size : 'NULL/UNDEFINED'}
-ANTH_KEY type = ${typeof ANTH_KEY}
-ANTH_KEY starts = ${typeof ANTH_KEY==='string' ? ANTH_KEY.slice(0,25) : 'NOT STRING'}
-ANTH_KEY length = ${typeof ANTH_KEY==='string' ? ANTH_KEY.length : 'N/A'}
-  </pre>`;
-  if (!file) { st.innerHTML += '<div style="color:red">ERROR: no file</div>'; return; }
   const btn = document.getElementById('btnScanGo');
-  if (btn) { btn.disabled = true; btn.innerHTML = 'Analyzing...'; }
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block"></span> &nbsp;Analyzing...'; }
+  st.style.display = 'block';
+  st.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);font-size:13px;color:var(--text-mid)"><span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>AI αναλύει το document...</div>`;
 
   try {
     const b64 = await new Promise((res,rej) => {
@@ -752,17 +747,6 @@ ANTH_KEY length = ${typeof ANTH_KEY==='string' ? ANTH_KEY.length : 'N/A'}
     const cb = isPDF
       ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } }
       : { type:'image',    source:{ type:'base64', media_type:file.type, data:b64 } };
-
-    // DEBUG
-    const _dbg = document.getElementById('scanStatus');
-    const _keyPreview = typeof ANTH_KEY === 'string' ? ANTH_KEY.slice(0,20)+'...('+ANTH_KEY.length+' chars)' : 'NOT A STRING: '+typeof ANTH_KEY;
-    _dbg.style.display='block';
-    _dbg.innerHTML = `<div style="background:#f0f2f5;border-radius:6px;padding:10px;font-size:11px;font-family:monospace;margin-bottom:10px">
-      <b>DEBUG</b><br>
-      key: ${_keyPreview}<br>
-      file: ${file ? file.name+' ('+file.type+', '+file.size+'b)' : 'NULL'}<br>
-      model: claude-opus-4-6
-    </div>`;
 
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method:'POST',
