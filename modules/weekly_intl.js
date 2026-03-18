@@ -1,233 +1,200 @@
 // ═══════════════════════════════════════════════════════════════════════
-// WEEKLY INTERNATIONAL — v11
-// ───────────────────────────────────────────────────────────────────────
-// Architecture: ORDERS-only. No TRIPS table.
-// Assignment (truck/trailer/driver/partner) saved directly on ORDERS record.
-// Groups by Delivery Date of export order.
-// Import matching: saved on export ORDER record (Import Order linked field
-//   still lives in TRIPS — but we don't use TRIPS anymore).
-//   Instead, we store matched import order ID in a new "Matched Import" field
-//   OR: we keep a local pairing only and save both export+import together
-//   via a lightweight "pairing" record if needed.
+// WEEKLY INTERNATIONAL — v12
+// ─────────────────────────────────────────────────────────────────────
+// ORDERS-only. No TRIPS.
 //
-// SIMPLER: Save assignment on ORDERS. Import match is local UI state only
-//   (the dispatcher sees them side-by-side but the "save" only writes
-//   the assignment fields to the export ORDER record).
-//   Import orders are just shown for reference — drag & drop is visual.
+// Fields read from ORDERS:
+//   Direction, Type, " Week Number", Loading DateTime, Delivery DateTime,
+//   Loading Summary, Delivery Summary, Total Pallets, Veroia Switch ,
+//   Truck[], Trailer[], Driver[], Partner[], Is Partner Trip,
+//   Partner Truck Plates, Matched Import ID
 //
-// Fields written to ORDERS on save:
-//   Truck              (multipleRecordLinks)
-//   Trailer            (multipleRecordLinks)
-//   Driver             (multipleRecordLinks)
-//   Partner            (multipleRecordLinks)
-//   Is Partner Trip    (checkbox)
-//   Partner Truck Plates (singleLineText)
+// Fields written on assignment save:
+//   Truck, Trailer, Driver, Partner, Is Partner Trip, Partner Truck Plates
+//
+// Fields written on import drop (auto-save, independent):
+//   Matched Import ID  (stores import order record ID as text)
 // ═══════════════════════════════════════════════════════════════════════
 
 'use strict';
 
-/* ─── STATE ──────────────────────────────────────────────────────────── */
 const WINTL = {
   week:      _wiCurrentWeek(),
-  data: {
-    exports:  [],
-    imports:  [],
-    trucks:   [],
-    trailers: [],
-    drivers:  [],
-    partners: [],
-  },
-  rows:      [],   // one per export ORDER
-  shelf:     [],   // unmatched import ORDERs (local UI state only)
-  localPairs:{},   // exportOrderId → importOrderId (local, not saved to AT)
+  data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
+  rows:      [],
+  shelf:     [],
   ui:        { openRow:null, shelfFilter:'', shelfCollapsed:false },
   _seq:      0,
-  _assetsOk: false,
 };
 
-/* ─── CSS ─────────────────────────────────────────────────────────────── */
+/* ── CSS ──────────────────────────────────────────────────────────── */
 (function(){
-  if(document.getElementById('wi11')) return;
-  const s = document.createElement('style');
-  s.id = 'wi11';
-  s.textContent = `
-.wi-wrap {
-  border:1px solid var(--border-mid); border-radius:10px;
-  overflow:hidden; background:var(--bg-card);
-}
+  if(document.getElementById('wi12')) return;
+  const s=document.createElement('style'); s.id='wi12';
+  s.textContent=`
+.wi-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
 .wi-head {
   display:grid; grid-template-columns:48px 1fr 220px 1fr;
   background:var(--bg); border-bottom:2px solid var(--border-mid);
   position:sticky; top:0; z-index:20;
 }
-.wi-hc {
-  padding:8px 13px; font-size:9.5px; font-weight:700;
-  letter-spacing:1.3px; text-transform:uppercase; color:var(--text-dim);
-  border-right:1px solid var(--border);
-}
+.wi-hc { padding:8px 13px; font-size:9.5px; font-weight:700; letter-spacing:1.3px;
+  text-transform:uppercase; color:var(--text-dim); border-right:1px solid var(--border); }
 .wi-hc:last-child { border-right:none; }
-.wi-dsep {
-  display:flex; align-items:center; gap:10px;
-  padding:0 13px; height:28px;
-  background:var(--navy-mid);
-  border-top:1px solid rgba(255,255,255,0.04);
-}
+
+/* date separator */
+.wi-dsep { display:flex; align-items:center; gap:10px; padding:0 13px; height:28px;
+  background:var(--navy-mid); border-top:1px solid rgba(255,255,255,0.04); }
 .wi-dsep:first-child { border-top:none; }
-.wi-dsep-lbl  { font-size:9px; color:rgba(196,207,219,0.45); text-transform:uppercase; letter-spacing:0.8px; }
-.wi-dsep-date { font-family:'Syne',sans-serif; font-size:10px; font-weight:700; letter-spacing:1.4px; text-transform:uppercase; color:var(--silver); }
-.wi-dsep-n    { font-size:9px; color:var(--silver-dim); }
-.wi-row {
-  border-top:1px solid var(--border);
-  display:flex; flex-direction:column; position:relative;
-}
-.wi-row::before {
-  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
-}
+.wi-dsep-lbl  { font-size:9px; color:rgba(196,207,219,0.45); text-transform:uppercase; letter-spacing:.8px; }
+.wi-dsep-date { font-family:'Syne',sans-serif; font-size:10px; font-weight:700;
+  letter-spacing:1.4px; text-transform:uppercase; color:var(--silver); }
+.wi-dsep-n { font-size:9px; color:var(--silver-dim); }
+
+/* row */
+.wi-row { border-top:1px solid var(--border); display:flex; flex-direction:column; position:relative; }
+.wi-row::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
 .wi-row.s-ok::before      { background:var(--success); }
 .wi-row.s-partner::before { background:rgba(59,130,246,0.65); }
-.wi-row.s-pending::before { background:rgba(217,119,6,0.45); }
+.wi-row.s-pending::before { background:rgba(217,119,6,0.4); }
 .wi-row.s-ok      { background:rgba(5,150,105,0.025); }
 .wi-row.s-partner { background:rgba(59,130,246,0.022); }
-.wi-row.s-pending { background:var(--bg-card); }
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
+
 .wi-compact {
   display:grid; grid-template-columns:48px 1fr 220px 1fr;
-  min-height:42px; align-items:stretch;
+  min-height:42px; align-items:stretch; cursor:pointer;
 }
-.wi-cn {
-  display:flex; flex-direction:column; align-items:center;
-  justify-content:center; gap:4px; padding:4px 0;
-  border-right:1px solid var(--border);
-}
+.wi-cn { display:flex; flex-direction:column; align-items:center;
+  justify-content:center; gap:4px; padding:4px 0; border-right:1px solid var(--border); }
 .wi-dot { width:6px; height:6px; border-radius:50%; }
 .wi-num { font-size:9px; color:var(--text-dim); }
-.wi-ce {
-  padding:6px 13px; border-right:1px solid var(--border);
-  display:flex; flex-direction:column; gap:2px;
-  justify-content:center; overflow:hidden;
-}
-.wi-route {
-  font-size:11.5px; font-weight:600; color:var(--text);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-}
+
+.wi-ce { padding:6px 13px; border-right:1px solid var(--border);
+  display:flex; flex-direction:column; gap:2px; justify-content:center; overflow:hidden; }
+.wi-route { font-size:11.5px; font-weight:600; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-route .sep  { color:var(--text-dim); margin:0 5px; font-weight:300; }
 .wi-route .dest { color:var(--text-mid); font-weight:400; }
 .wi-sub { font-size:10px; color:var(--text-dim); display:flex; align-items:center; gap:7px; }
 .wi-sub-div { width:1px; height:9px; background:var(--border-mid); }
-.wi-vx {
-  display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
-  text-transform:uppercase; padding:1px 5px; border-radius:3px;
-  background:rgba(99,102,241,0.1); color:rgba(99,102,241,0.85);
-  border:1px solid rgba(99,102,241,0.2); vertical-align:middle; margin-left:4px;
-}
-.wi-gr {
-  display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
-  text-transform:uppercase; padding:1px 5px; border-radius:3px;
-  background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85);
-  border:1px solid rgba(14,165,233,0.18); vertical-align:middle; margin-left:4px;
-}
+.wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
+  text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
+  background:rgba(99,102,241,0.1); color:rgba(99,102,241,0.85); border:1px solid rgba(99,102,241,0.2); }
+.wi-gr { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
+  text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
+  background:rgba(14,165,233,0.1); color:rgba(14,165,233,0.85); border:1px solid rgba(14,165,233,0.18); }
 
-.wi-ca {
-  padding:6px 10px; border-right:1px solid var(--border);
-  background:var(--bg); display:flex; align-items:center; justify-content:center;
-}
-.wi-pill {
-  display:flex; flex-direction:column; align-items:center;
-  padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden;
-}
-.wi-pill-ok  { background:rgba(5,150,105,0.08);  border:1px solid rgba(5,150,105,0.2); }
-.wi-pill-bp  { background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); }
-.wi-pill-un  { background:rgba(217,119,6,0.07);  border:1px solid rgba(217,119,6,0.2); }
+/* assignment col */
+.wi-ca { padding:6px 10px; border-right:1px solid var(--border);
+  background:var(--bg); display:flex; align-items:center; justify-content:center; }
+.wi-pill { display:flex; flex-direction:column; align-items:center;
+  padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden; gap:1px; }
+.wi-pill-ok { background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2); }
+.wi-pill-bp { background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); }
+.wi-pill-un { background:rgba(217,119,6,0.07); border:1px solid rgba(217,119,6,0.2); }
 .wi-pill-ok .pt { color:rgba(5,150,105,0.95); }
-.wi-pill-ok .ps { color:rgba(5,150,105,0.6); }
 .wi-pill-bp .pt { color:rgba(59,130,246,0.9); }
-.wi-pill-bp .ps { color:rgba(59,130,246,0.6); }
 .wi-pill-un .pt { color:rgba(217,119,6,0.85); }
-.pt { font-size:10.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:192px; }
-.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:192px; opacity:0.78; }
-.wi-ci {
-  padding:6px 13px; display:flex; align-items:center; transition:background 0.1s;
-}
+.pt { font-size:10.5px; font-weight:700; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; max-width:192px; }
+.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:192px; opacity:.75; color:var(--text-mid); }
+
+/* import col */
+.wi-ci { padding:6px 13px; display:flex; align-items:center; transition:background .1s; }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
-.wi-ci-n { font-size:11px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-ci-n { font-size:11px; font-weight:600; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-ci-s { font-size:10px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-ci-e { font-size:10px; color:var(--border-dark); }
-/* panel */
-.wi-panel {
-  border-top:1px solid var(--border); background:var(--bg);
-  padding:10px 14px 12px 62px; display:flex; flex-direction:column; gap:10px;
-}
-.wi-prow { display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end; }
-.wi-pf   { display:flex; flex-direction:column; gap:3px; }
-.wi-plbl { font-size:8.5px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
-.wi-ptog { display:flex; align-items:center; gap:5px; font-size:10.5px; color:var(--text-mid); cursor:pointer; user-select:none; }
-.wi-ptog input { cursor:pointer; accent-color:var(--text); }
+.wi-ci-save { font-size:9px; color:var(--success); margin-top:1px; }
+
+/* PANEL */
+.wi-panel { border-top:1px solid var(--border); background:var(--bg);
+  padding:10px 14px 12px 13px; display:flex; flex-direction:column; gap:10px; }
+.wi-panel-fields { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-end; }
+.wi-pf { display:flex; flex-direction:column; gap:3px; }
+.wi-plbl { font-size:8.5px; font-weight:700; letter-spacing:1px;
+  text-transform:uppercase; color:var(--text-dim); }
+.wi-div { width:1px; height:34px; background:var(--border-mid); align-self:flex-end; margin:0 3px; }
+
+/* dropdown */
 .wi-sd { position:relative; }
-.wi-sdi {
-  width:168px; padding:5px 8px; font-size:11px; border-radius:5px;
-  border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none;
-}
+.wi-sdi { width:156px; padding:6px 9px; font-size:11px; border-radius:5px;
+  border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none; }
 .wi-sdi:focus { border-color:rgba(11,25,41,0.3); box-shadow:0 0 0 2px rgba(11,25,41,0.06); }
-.wi-sdl {
-  display:none; position:fixed; z-index:9999; min-width:188px; max-height:200px;
+.wi-sdl { display:none; position:fixed; z-index:9999; min-width:185px; max-height:220px;
   overflow-y:auto; background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:6px; box-shadow:0 6px 24px rgba(0,0,0,0.12);
-}
-.wi-sdo { padding:6px 10px; font-size:11px; cursor:pointer; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  border-radius:6px; box-shadow:0 6px 24px rgba(0,0,0,0.12); }
+.wi-sdo { padding:6px 10px; font-size:11px; cursor:pointer; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-sdo:hover { background:var(--bg-hover); }
-.wi-ti {
-  width:168px; padding:5px 8px; font-size:11px; border-radius:5px;
-  border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none;
-}
+
+.wi-ti { width:156px; padding:6px 9px; font-size:11px; border-radius:5px;
+  border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none; }
 .wi-ti:focus { border-color:rgba(11,25,41,0.3); }
-.wi-rate { width:80px; padding:5px 8px; font-size:11px; border-radius:5px; border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none; }
-.wi-piz {
-  min-height:50px; border:1.5px dashed var(--border-mid); border-radius:7px;
-  padding:7px 12px; display:flex; align-items:center; transition:background 0.1s, border-color 0.1s;
-}
+
+/* buttons */
+.wi-btn { padding:6px 20px; font-size:11px; font-weight:600; border:none; border-radius:5px;
+  cursor:pointer; background:var(--text); color:#fff; transition:opacity .1s; white-space:nowrap; }
+.wi-btn:hover { opacity:.85; }
+.wi-btn:disabled { opacity:.4; cursor:default; }
+.wi-btn-d { padding:5px 13px; font-size:10.5px; border:1px solid rgba(220,38,38,0.22);
+  border-radius:5px; cursor:pointer; background:none; color:var(--danger); }
+.wi-btn-d:hover { background:var(--danger-bg); }
+
+/* import drop zone in panel */
+.wi-piz { min-height:50px; border:1.5px dashed var(--border-mid); border-radius:7px;
+  padding:7px 12px; display:flex; align-items:center; transition:background .1s, border-color .1s; }
 .wi-piz.dh { background:rgba(217,119,6,0.05); border-color:rgba(217,119,6,0.35); }
-.wi-ichip {
-  width:100%; padding:6px 26px 6px 10px; position:relative;
+.wi-ichip { width:100%; padding:6px 26px 6px 10px; position:relative;
   background:rgba(217,119,6,0.07); border:1px solid rgba(217,119,6,0.2);
-  border-radius:6px; cursor:grab; display:flex; flex-direction:column; gap:2px;
-}
+  border-radius:6px; cursor:grab; display:flex; flex-direction:column; gap:2px; }
 .wi-ichip:active { cursor:grabbing; }
-.wi-irm { position:absolute; top:7px; right:8px; font-size:11px; cursor:pointer; color:var(--text-dim); opacity:0.5; }
+.wi-irm { position:absolute; top:7px; right:8px; font-size:11px;
+  cursor:pointer; color:var(--text-dim); opacity:.5; }
 .wi-irm:hover { opacity:1; color:var(--danger); }
 .wi-inone { font-size:10px; color:var(--border-dark); }
-.wi-btn { padding:6px 18px; font-size:11px; font-weight:600; border:none; border-radius:5px; cursor:pointer; background:var(--text); color:#fff; transition:opacity 0.1s; white-space:nowrap; }
-.wi-btn:hover { opacity:0.85; }
-.wi-btn:disabled { opacity:0.4; cursor:default; }
-.wi-btn-g { padding:5px 13px; font-size:10.5px; border:1px solid var(--border-mid); border-radius:5px; cursor:pointer; background:none; color:var(--text-mid); }
-.wi-btn-g:hover { background:var(--bg-hover); }
-.wi-btn-d { padding:5px 13px; font-size:10.5px; border:1px solid rgba(220,38,38,0.22); border-radius:5px; cursor:pointer; background:none; color:var(--danger); }
-.wi-btn-d:hover { background:var(--danger-bg); }
+
 /* shelf */
-.wi-shelf { background:var(--bg-card); border:1px solid rgba(217,119,6,0.2); border-radius:10px; overflow:hidden; margin-bottom:12px; }
-.wi-shelf-hdr { display:flex; align-items:center; gap:8px; padding:8px 14px; cursor:pointer; user-select:none; }
+.wi-shelf { background:var(--bg-card); border:1px solid rgba(217,119,6,0.2);
+  border-radius:10px; overflow:hidden; margin-bottom:12px; }
+.wi-shelf-hdr { display:flex; align-items:center; gap:8px; padding:8px 14px;
+  cursor:pointer; user-select:none; }
 .wi-shelf-hdr:hover { background:var(--bg-hover); }
-.wi-shelf-ttl { font-size:10px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase; color:var(--warning); }
-.wi-shelf-n { background:rgba(217,119,6,0.1); color:var(--warning); font-size:9.5px; font-weight:700; padding:1px 8px; border-radius:10px; }
+.wi-shelf-ttl { font-size:10px; font-weight:700; letter-spacing:1.5px;
+  text-transform:uppercase; color:var(--warning); }
+.wi-shelf-n { background:rgba(217,119,6,0.1); color:var(--warning);
+  font-size:9.5px; font-weight:700; padding:1px 8px; border-radius:10px; }
 .wi-chips { display:flex; flex-wrap:wrap; gap:8px; padding:10px 14px 12px; }
-.wi-chip { padding:7px 11px; border-radius:8px; cursor:grab; min-width:138px; max-width:205px; background:rgba(217,119,6,0.06); border:1px solid rgba(217,119,6,0.18); transition:box-shadow 0.12s, transform 0.1s; }
+.wi-chip { padding:7px 11px; border-radius:8px; cursor:grab; min-width:138px; max-width:205px;
+  background:rgba(217,119,6,0.06); border:1px solid rgba(217,119,6,0.18);
+  transition:box-shadow .12s, transform .1s; }
 .wi-chip:hover { box-shadow:0 3px 10px rgba(0,0,0,0.08); transform:translateY(-1px); }
 .wi-chip:active { cursor:grabbing; }
-.wi-chip-n { font-size:11px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-chip-n { font-size:11px; font-weight:700; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-chip-d { font-size:10px; color:var(--text-dim); margin-top:1px; }
 .wi-chip-m { font-size:9.5px; color:var(--text-dim); margin-top:1px; }
-/* context menu */
-#wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card); border:1px solid var(--border-mid); border-radius:8px; box-shadow:0 8px 28px rgba(0,0,0,0.12); min-width:210px; padding:5px 0; }
-.wi-ctx-i { display:block; width:100%; padding:7px 14px; text-align:left; font-size:12px; cursor:pointer; color:var(--text); background:none; border:none; transition:background 0.07s; }
+
+/* ctx menu */
+#wi-ctx { display:none; position:fixed; z-index:9999; background:var(--bg-card);
+  border:1px solid var(--border-mid); border-radius:8px;
+  box-shadow:0 8px 28px rgba(0,0,0,0.12); min-width:210px; padding:5px 0; }
+.wi-ctx-i { display:block; width:100%; padding:7px 14px; text-align:left; font-size:12px;
+  cursor:pointer; color:var(--text); background:none; border:none; transition:background .07s; }
 .wi-ctx-i:hover { background:var(--bg-hover); }
 .wi-ctx-i.d { color:var(--danger); }
 .wi-ctx-sep { height:1px; background:var(--border); margin:4px 0; }
-.wi-ctx-h { padding:4px 14px 2px; font-size:9px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
+.wi-ctx-h { padding:4px 14px 2px; font-size:9px; font-weight:700;
+  letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }
 `;
   document.head.appendChild(s);
 })();
 
-/* ─── UTILS ──────────────────────────────────────────────────────────── */
+/* ── UTILS ─────────────────────────────────────────────────────────── */
 function _wiCurrentWeek(){
   const d=new Date(),y=d.getFullYear(),j=new Date(y,0,1);
   return Math.ceil(((d-j)/86400000+j.getDay()+1)/7);
@@ -252,22 +219,21 @@ function _wiFmtFull(s){
 function _wiClean(s){return(s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim();}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
-/* ─── LOAD ASSETS ────────────────────────────────────────────────────── */
+/* ── LOAD ASSETS ───────────────────────────────────────────────────── */
 async function _wiLoadAssets(){
   const [t,tl,d,p]=await Promise.all([
     atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
     atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
     atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
-    atGetAll(TABLES.PARTNERS,{fields:['Company Name'],filterByFormula:'{Active}=TRUE()'},false),
+    atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false),
   ]);
   WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.trailers = tl.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.drivers  = d.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
   WINTL.data.partners = p.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
-  WINTL._assetsOk=true;
 }
 
-/* ─── MAIN ENTRY ─────────────────────────────────────────────────────── */
+/* ── MAIN ENTRY ────────────────────────────────────────────────────── */
 async function renderWeeklyIntl(){
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
   document.getElementById('topbarTitle').textContent=`Weekly International — Week ${WINTL.week}`;
@@ -280,9 +246,8 @@ async function renderWeeklyIntl(){
     await _wiLoadAssets();
     const allOrders = await atGetAll(TABLES.ORDERS,{
       filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`,
-    });
+    },false);
 
-    // Sort exports by Delivery DateTime
     WINTL.data.exports = allOrders
       .filter(r=>r.fields.Direction==='Export')
       .sort((a,b)=>(
@@ -296,56 +261,58 @@ async function renderWeeklyIntl(){
   }catch(err){
     document.getElementById('content').innerHTML=`
       <div class="empty-state">
-        <div class="icon" style="font-size:24px;margin-bottom:8px">!</div>
         <p style="color:var(--danger);font-size:13px">${err.message}</p>
         <button class="btn btn-ghost" onclick="renderWeeklyIntl()" style="margin-top:12px">Retry</button>
       </div>`;
   }
 }
 
-/* ─── BUILD ROWS ─────────────────────────────────────────────────────── */
+/* ── BUILD ROWS ────────────────────────────────────────────────────── */
 function _wiBuildRows(){
   WINTL.rows=[];WINTL._seq=0;
   const {exports,imports}=WINTL.data;
 
-  // Export rows — one per export ORDER
-  // (groupage: multiple exports can be merged via right-click, stored as group)
+  // Map import ID → import record for fast lookup
+  const impById={};
+  imports.forEach(r=>impById[r.id]=r);
+
+  // Build shelf: imports not matched
+  const matchedImports=new Set(
+    exports.map(r=>r.fields['Matched Import ID']).filter(Boolean)
+  );
+
+  WINTL.shelf=imports.filter(r=>!matchedImports.has(r.id));
+
   for(const exp of exports){
     const f=exp.fields;
-    const isPartner=!!(f['Is Partner Trip']||(f['Partner']||[]).length);
     const truckId  =(f['Truck']  ||[])[0]||'';
     const trailerId=(f['Trailer']||[])[0]||'';
     const driverId =(f['Driver'] ||[])[0]||'';
     const partnerId=(f['Partner']||[])[0]||'';
+    const importId =f['Matched Import ID']||null;
 
     WINTL.rows.push({
       id:          ++WINTL._seq,
-      orderIds:    [exp.id],        // exportIds group (for groupage)
-      importId:    WINTL.localPairs[exp.id]||null,  // local pairing
-      truckId,trailerId,driverId,partnerId,
+      orderId:     exp.id,          // single export ORDER record ID
+      orderIds:    [exp.id],        // array for groupage
+      importId,
+      truckId, trailerId, driverId, partnerId,
       truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
       trailerLabel:WINTL.data.trailers.find(t=>t.id===trailerId)?.label||'',
       driverLabel: WINTL.data.drivers.find(d=>d.id===driverId)?.label||'',
       partnerLabel:WINTL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates:f['Partner Truck Plates']||'',
-      carrierType: isPartner?'partner':'owned',
-      partnerRateExp:'',
-      partnerRateImp:'',
-      saved:        !!(truckId||partnerId),
+      saved:!!(truckId||partnerId),
     });
   }
-
-  // Shelf = all imports not locally paired
-  const pairedImports=new Set(Object.values(WINTL.localPairs));
-  WINTL.shelf=imports.filter(r=>!pairedImports.has(r.id));
 }
 
-/* ─── PAINT ──────────────────────────────────────────────────────────── */
+/* ── PAINT ─────────────────────────────────────────────────────────── */
 function _wiPaint(){
   const {rows,shelf,week,data,ui}=WINTL;
-  const expN=data.exports.length,impN=data.imports.length;
+  const expN=data.exports.length, impN=data.imports.length;
   const assigned=rows.filter(r=>r.saved).length;
-  const pending =rows.filter(r=>!r.saved).length;
+  const pending=rows.filter(r=>!r.saved).length;
   const unmatched=shelf.length;
 
   document.getElementById('content').innerHTML=`
@@ -364,9 +331,10 @@ function _wiPaint(){
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-ghost" style="padding:5px 18px" onclick="_wiNavWeek(-1)">Prev</button>
-        <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;min-width:62px;text-align:center">W ${week}</span>
+        <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
+                     min-width:62px;text-align:center">W ${week}</span>
         <button class="btn btn-ghost" style="padding:5px 18px" onclick="_wiNavWeek(1)">Next</button>
-        <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiReload()">Refresh</button>
+        <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
       </div>
     </div>
 
@@ -377,12 +345,14 @@ function _wiPaint(){
         <div class="wi-hc" style="text-align:center">#</div>
         <div class="wi-hc" style="color:var(--success)">
           Export (${expN})
-          <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:var(--text-dim);margin-left:6px">right-click to group</span>
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;
+                       font-size:9px;color:var(--text-dim);margin-left:6px">right-click to group</span>
         </div>
         <div class="wi-hc" style="text-align:center">Assignment</div>
         <div class="wi-hc" style="color:var(--warning)">
           Import (${impN})
-          <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px;color:var(--text-dim);margin-left:6px">drag from shelf</span>
+          <span style="font-weight:400;text-transform:none;letter-spacing:0;
+                       font-size:9px;color:var(--text-dim);margin-left:6px">drag from shelf</span>
         </div>
       </div>
       <div id="wi-rows">
@@ -396,26 +366,32 @@ function _wiPaint(){
   window._wiDragging=null;
 }
 
-function _wiReload(){WINTL._assetsOk=true;renderWeeklyIntl();}
-
-/* ─── SHELF ──────────────────────────────────────────────────────────── */
+/* ── SHELF ─────────────────────────────────────────────────────────── */
 function _wiShelfHTML(){
   const {shelf,ui}=WINTL;
   const sf=ui.shelfFilter.toLowerCase();
-  const vis=sf?shelf.filter(r=>((r.fields['Loading Summary']||'')+(r.fields['Delivery Summary']||'')).toLowerCase().includes(sf)):shelf;
+  const vis=sf?shelf.filter(r=>
+    ((r.fields['Loading Summary']||'')+(r.fields['Delivery Summary']||''))
+    .toLowerCase().includes(sf)):shelf;
   return `
   <div class="wi-shelf">
     <div class="wi-shelf-hdr" onclick="_wiToggleShelf()">
       <span class="wi-shelf-ttl">Import Shelf</span>
       <span class="wi-shelf-n">${shelf.length}</span>
       ${shelf.length>5?`<input type="text" placeholder="search…" value="${ui.shelfFilter}"
-             oninput="WINTL.ui.shelfFilter=this.value;document.querySelector('.wi-chips').outerHTML='<div class=wi-chips>'+WINTL.shelf.filter(r=>((r.fields[\'Loading Summary\']||\'\')).toLowerCase().includes(this.value.toLowerCase())).map(_wiChipHTML).join('')+'</div>'"
-             onclick="event.stopPropagation()"
-             style="padding:4px 8px;font-size:11px;border-radius:5px;border:1px solid var(--border-mid);background:var(--bg);color:var(--text);width:140px;outline:none"/>`:''}
-      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">${ui.shelfCollapsed?'▸':'▾'}</span>
+        oninput="WINTL.ui.shelfFilter=this.value;_wiRepaintShelf()"
+        onclick="event.stopPropagation()"
+        style="padding:4px 8px;font-size:11px;border-radius:5px;
+               border:1px solid var(--border-mid);background:var(--bg);
+               color:var(--text);width:140px;outline:none"/>`:''}
+      <span style="margin-left:auto;font-size:11px;color:var(--text-dim)">
+        ${ui.shelfCollapsed?'▸':'▾'}
+      </span>
     </div>
     <div id="wi-shelf-body" style="display:${ui.shelfCollapsed?'none':'block'}">
-      <div class="wi-chips">${vis.map(_wiChipHTML).join('')}</div>
+      <div class="wi-chips" id="wi-chips-inner">
+        ${vis.map(_wiChipHTML).join('')}
+      </div>
     </div>
   </div>`;
 }
@@ -436,14 +412,18 @@ function _wiToggleShelf(){
   const el=document.getElementById('wi-shelf-body');
   if(el) el.style.display=WINTL.ui.shelfCollapsed?'none':'block';
 }
+function _wiRepaintShelf(){
+  const el=document.querySelector('.wi-shelf');
+  if(el) el.outerHTML=_wiShelfHTML();
+}
 
-/* ─── ROWS ───────────────────────────────────────────────────────────── */
+/* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
   let html='',lastDate=null;
-  const dateCounts={};
+  const dc={};
   WINTL.rows.forEach(row=>{
     const lbl=_wiDelDate(row);
-    if(lbl) dateCounts[lbl]=(dateCounts[lbl]||0)+1;
+    if(lbl) dc[lbl]=(dc[lbl]||0)+1;
   });
   WINTL.rows.forEach((row,i)=>{
     const lbl=_wiDelDate(row);
@@ -452,7 +432,7 @@ function _wiAllRowsHTML(){
       html+=`<div class="wi-dsep">
         <span class="wi-dsep-lbl">Delivery</span>
         <span class="wi-dsep-date">${lbl}</span>
-        <span class="wi-dsep-n">${dateCounts[lbl]} order${dateCounts[lbl]!==1?'s':''}</span>
+        <span class="wi-dsep-n">${dc[lbl]} order${dc[lbl]!==1?'s':''}</span>
       </div>`;
     }
     html+=_wiRowHTML(row,i);
@@ -461,11 +441,12 @@ function _wiAllRowsHTML(){
 }
 
 function _wiDelDate(row){
-  const primaryExp=WINTL.data.exports.find(r=>r.id===row.orderIds[0]);
-  const raw=primaryExp?.fields['Delivery DateTime']||primaryExp?.fields['Loading DateTime']||null;
+  const exp=WINTL.data.exports.find(r=>r.id===row.orderIds[0]);
+  const raw=exp?.fields['Delivery DateTime']||exp?.fields['Loading DateTime']||null;
   return raw?_wiFmtFull(raw):null;
 }
 
+/* ── ROW HTML ──────────────────────────────────────────────────────── */
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
   const exps   =row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
@@ -474,17 +455,20 @@ function _wiRowHTML(row,i){
   const isGroup=exps.length>1;
   const primary=exps[0];
 
+  // Status
+  const hasPartner=!!(row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label);
   let sCls,dotColor;
   if(row.saved){
-    sCls    =row.carrierType==='partner'?'s-partner':'s-ok';
-    dotColor=row.carrierType==='partner'?'rgba(59,130,246,0.7)':'var(--success)';
+    sCls    =hasPartner?'s-partner':'s-ok';
+    dotColor=hasPartner?'rgba(59,130,246,0.7)':'var(--success)';
   } else {
     sCls='s-pending'; dotColor='rgba(217,119,6,0.75)';
   }
 
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||'—'):'—';
   const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||'—'):'—';
-  const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):(primary?.fields['Total Pallets']||0);
+  const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):
+                        (primary?.fields['Total Pallets']||0);
   const veroia =primary?.fields['Veroia Switch ']||primary?.fields['Veroia Switch'];
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
   const delDt  =_wiFmt(primary?.fields['Delivery DateTime']);
@@ -499,14 +483,11 @@ function _wiRowHTML(row,i){
   let pill;
   if(row.saved){
     if(partner){
-      // Partner trip
-      const sub=[row.partnerPlates].filter(Boolean).join('');
       pill=`<div class="wi-pill wi-pill-bp">
         <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-        ${sub?`<span class="ps">${sub}</span>`:''}
+        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
       </div>`;
     } else {
-      // Owned fleet
       const parts=[truck,trailer,surname].filter(Boolean).join(' · ');
       pill=`<div class="wi-pill wi-pill-ok">
         <span class="pt">${parts||'—'}</span>
@@ -516,22 +497,24 @@ function _wiRowHTML(row,i){
     pill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
   }
 
+  // Import preview — saved state shown
   const impPrev=imp
     ?`<div class="wi-ci-data">
         <span class="wi-ci-n">${_wiClean(imp.fields['Delivery Summary']||'—').slice(0,38)}</span>
         <span class="wi-ci-s">${_wiClean(imp.fields['Loading Summary']||'—').slice(0,32)} · ${imp.fields['Total Pallets']||0} pal</span>
         <span class="wi-ci-s">del ${_wiFmt(imp.fields['Delivery DateTime'])}</span>
+        <span class="wi-ci-save">✓ saved</span>
       </div>`
     :`<span class="wi-ci-e">drag import here</span>`;
 
   return `
   <div id="wi-row-${row.id}" class="wi-row ${sCls}">
-    <div class="wi-compact">
+    <div class="wi-compact" onclick="_wiToggle(${row.id})">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
-      <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id})">
+      <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)">
         <div class="wi-route">
           <b>${fromStr}</b><span class="sep">→</span><span class="dest">${toStr}</span>
           ${isGroup?`<span class="wi-gr">Group ${exps.length}</span>`:''}
@@ -545,9 +528,10 @@ function _wiRowHTML(row,i){
       </div>
       <div class="wi-ca" onclick="event.stopPropagation()">${pill}</div>
       <div class="wi-ci" id="wi-ci-${row.id}"
+           onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
-           ondrop="_wiDropCompact(event,${row.id})">
+           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
         ${impPrev}
       </div>
     </div>
@@ -555,75 +539,80 @@ function _wiRowHTML(row,i){
   </div>`;
 }
 
-/* ─── PANEL ──────────────────────────────────────────────────────────── */
+/* ── PANEL HTML ────────────────────────────────────────────────────── */
 function _wiPanelHTML(row){
   const {trucks,trailers,drivers,partners}=WINTL.data;
   const canFull=can('planning')==='full';
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
-  // All fields always visible — no toggle needed
-  const fields=`
-    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
-      <div class="wi-pf" onclick="event.stopPropagation()">
+  return `
+  <div class="wi-panel" onclick="event.stopPropagation()">
+
+    <!-- Assignment fields -->
+    <div class="wi-panel-fields">
+      <div class="wi-pf">
         <span class="wi-plbl">Truck</span>
         ${_wiSdrop('tk',row.id,trucks,row.truckId,row.truckLabel||'Plate…')}
       </div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
+      <div class="wi-pf">
         <span class="wi-plbl">Trailer</span>
         ${_wiSdrop('tl',row.id,trailers,row.trailerId,row.trailerLabel||'Plate…')}
       </div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
+      <div class="wi-pf">
         <span class="wi-plbl">Driver</span>
         ${_wiSdrop('dr',row.id,drivers,row.driverId,row.driverLabel||'Name…')}
       </div>
-      <div style="width:1px;height:32px;background:var(--border-mid);align-self:flex-end;margin:0 2px"></div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
+      <div class="wi-div"></div>
+      <div class="wi-pf">
         <span class="wi-plbl">Partner</span>
         ${_wiSdrop('pt',row.id,partners,row.partnerId,row.partnerLabel||'Company…')}
       </div>
-      <div class="wi-pf" onclick="event.stopPropagation()">
+      <div class="wi-pf">
         <span class="wi-plbl">Partner Plates</span>
         <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099"
                value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
+               id="wi-pp-${row.id}"
                oninput="_wiField(${row.id},'partnerPlates',this.value)"
                onclick="event.stopPropagation()"/>
       </div>
-    </div>`;
-
-  const actions=canFull?`
-    <div class="wi-pf" style="flex-direction:row;gap:6px;align-self:flex-end" onclick="event.stopPropagation()">
-      <button class="wi-btn" id="wi-btn-${row.id}"
-              onclick="event.stopPropagation();_wiSave(${row.id})">
-        ${row.saved?'Update':'Save'}
-      </button>
-      ${row.saved?`<button class="wi-btn-d" onclick="event.stopPropagation();_wiClearAssignment(${row.id})">Clear</button>`:''}
-    </div>`:'';
-
-  const impZone=`<div>
-    <div class="wi-plbl" style="margin-bottom:4px">Import</div>
-    <div id="wi-piz-${row.id}" class="wi-piz"
-         ondragover="event.preventDefault();document.getElementById('wi-piz-${row.id}').classList.add('dh')"
-         ondragleave="document.getElementById('wi-piz-${row.id}').classList.remove('dh')"
-         ondrop="event.stopPropagation();_wiDrop(event,${row.id})">
-      ${imp?`<div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
-          <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
-          <div style="font-size:11px;font-weight:700;color:var(--text)">${_wiClean(imp.fields['Loading Summary']||'—')}</div>
-          <div style="font-size:10.5px;color:var(--text-dim)">→ ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal</div>
-          <div style="font-size:10px;color:var(--text-mid);margin-top:1px">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])}</div>
-        </div>`:`<span class="wi-inone">drop import here</span>`}
+      ${canFull?`
+      <div class="wi-pf" style="flex-direction:row;gap:6px;align-self:flex-end">
+        <button class="wi-btn" id="wi-btn-${row.id}"
+                onclick="event.stopPropagation();_wiSave(${row.id})">
+          ${row.saved?'Update':'Save'}
+        </button>
+        ${row.saved?`<button class="wi-btn-d"
+                onclick="event.stopPropagation();_wiClear(${row.id})">Clear</button>`:''}
+      </div>`:''}
     </div>
-  </div>`;
 
-  return `<div class="wi-panel" onclick="event.stopPropagation()">
-    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
-      ${fields}
-      ${actions}
+    <!-- Import drop zone (independent from assignment) -->
+    <div>
+      <div class="wi-plbl" style="margin-bottom:4px">Matched Import</div>
+      <div id="wi-piz-${row.id}" class="wi-piz"
+           ondragover="event.preventDefault();document.getElementById('wi-piz-${row.id}').classList.add('dh')"
+           ondragleave="document.getElementById('wi-piz-${row.id}').classList.remove('dh')"
+           ondrop="event.stopPropagation();_wiDropOnPanel(event,${row.id})">
+        ${imp
+          ?`<div class="wi-ichip" draggable="true" ondragstart="_wiDragStart(event,'${imp.id}')">
+              <span class="wi-irm" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</span>
+              <div style="font-size:11px;font-weight:700;color:var(--text)">
+                ${_wiClean(imp.fields['Loading Summary']||'—')}
+              </div>
+              <div style="font-size:10.5px;color:var(--text-dim)">
+                → ${_wiClean(imp.fields['Delivery Summary']||'—')} · ${imp.fields['Total Pallets']||0} pal
+              </div>
+              <div style="font-size:10px;color:var(--text-mid);margin-top:1px">
+                ${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])}
+              </div>
+            </div>`
+          :`<span class="wi-inone">drop import here</span>`}
+      </div>
     </div>
-    ${impZone}
   </div>`;
 }
 
-/* ─── DROPDOWN ───────────────────────────────────────────────────────── */
+/* ── DROPDOWN ──────────────────────────────────────────────────────── */
 function _wiSdrop(px,rowId,arr,selId,ph){
   const uid=`${px}_${rowId}`;
   const sel=arr.find(x=>x.id===selId)?.label||'';
@@ -631,15 +620,18 @@ function _wiSdrop(px,rowId,arr,selId,ph){
     const l=(x.label||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
     return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
   }).join('');
-  return `<div class="wi-sd" id="wsd-${uid}">
+  return `<div class="wi-sd" id="wsd-${uid}" onclick="event.stopPropagation()">
     <input type="text" class="wi-sdi" placeholder="${ph}"
            value="${sel.replace(/"/g,'&quot;')}"
            oninput="_wiSdF('${uid}',this.value)"
-           onfocus="_wiSdO('${uid}')" autocomplete="off"/>
+           onfocus="_wiSdO('${uid}')"
+           autocomplete="off"/>
     <input type="hidden" id="wsd-v-${uid}" value="${selId||''}"/>
     <div id="wsd-l-${uid}" class="wi-sdl">${opts}</div>
   </div>`;
 }
+
+// Global click handler for dropdown options
 document.addEventListener('click',e=>{
   const o=e.target.closest('.wi-sdo');
   if(o){
@@ -650,13 +642,21 @@ document.addEventListener('click',e=>{
   if(!e.target.closest('.wi-sd'))
     document.querySelectorAll('.wi-sdl').forEach(el=>el.style.display='none');
 });
+
 function _wiSdO(uid){
-  document.querySelectorAll('.wi-sdl').forEach(el=>{if(el.id!=='wsd-l-'+uid) el.style.display='none';});
+  document.querySelectorAll('.wi-sdl').forEach(el=>{
+    if(el.id!=='wsd-l-'+uid) el.style.display='none';
+  });
   const inp=document.querySelector(`#wsd-${uid} .wi-sdi`);
   const lst=document.getElementById('wsd-l-'+uid);
   if(!inp||!lst) return;
   const r=inp.getBoundingClientRect();
-  Object.assign(lst.style,{display:'block',left:`${r.left}px`,top:`${r.bottom+2}px`,width:`${Math.max(r.width,192)}px`});
+  Object.assign(lst.style,{
+    display:'block',
+    left:`${r.left}px`,
+    top:`${r.bottom+2}px`,
+    width:`${Math.max(r.width,190)}px`,
+  });
   lst.querySelectorAll('.wi-sdo').forEach(el=>el.style.display='');
 }
 function _wiSdF(uid,q){
@@ -674,14 +674,16 @@ function _wiSdP(uid,recId,label){
   const parts=uid.split('_'),px=parts[0],rowId=parseInt(parts[parts.length-1]);
   const fm={tk:'truckId',   tl:'trailerId',   dr:'driverId',   pt:'partnerId'};
   const lm={tk:'truckLabel',tl:'trailerLabel',dr:'driverLabel',pt:'partnerLabel'};
-  if(fm[px]&&!isNaN(rowId)){_wiField(rowId,fm[px],recId);_wiField(rowId,lm[px],label);}
+  if(fm[px]&&!isNaN(rowId)){
+    _wiField(rowId,fm[px],recId);
+    _wiField(rowId,lm[px],label);
+  }
 }
 
-/* ─── STATE ──────────────────────────────────────────────────────────── */
-function _wiField(rowId,field,val){const row=WINTL.rows.find(r=>r.id===rowId);if(row) row[field]=val;}
-function _wiSetCarrier(rowId,type){
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  row.carrierType=type;_wiRepaintRow(rowId);
+/* ── STATE ─────────────────────────────────────────────────────────── */
+function _wiField(rowId,field,val){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  if(row) row[field]=val;
 }
 function _wiToggle(rowId){
   const prev=WINTL.ui.openRow;
@@ -696,120 +698,142 @@ function _wiRepaintRow(rowId){
   el.outerHTML=_wiRowHTML(row,WINTL.rows.findIndex(r=>r.id===rowId));
 }
 
-/* ─── DRAG & DROP ────────────────────────────────────────────────────── */
+/* ── DRAG & DROP ───────────────────────────────────────────────────── */
 window._wiDragging=null;
-function _wiDragStart(e,impId){window._wiDragging=impId;e.dataTransfer.effectAllowed='move';}
-function _wiDrop(e,rowId){
-  e.preventDefault();
-  document.getElementById('wi-piz-'+rowId)?.classList.remove('dh');
-  const impId=window._wiDragging;if(!impId) return;
-  window._wiDragging=null;
-  _wiAssign(rowId,impId);
-  _wiPaint();  // full repaint to update shelf
+function _wiDragStart(e,impId){
+  window._wiDragging=impId;
+  e.dataTransfer.effectAllowed='move';
 }
-function _wiDropCompact(e,rowId){
+
+// Drop on compact row import cell → auto-save
+async function _wiDropOnRow(e,rowId){
   e.preventDefault();
   document.getElementById('wi-ci-'+rowId)?.classList.remove('dh');
   const impId=window._wiDragging;if(!impId) return;
   window._wiDragging=null;
-  WINTL.ui.openRow=rowId;
-  _wiAssign(rowId,impId);
-  _wiPaint();
-}
-function _wiAssign(rowId,impId){
-  // Remove from any existing pairing
-  for(const [k,v] of Object.entries(WINTL.localPairs)){
-    if(v===impId) delete WINTL.localPairs[k];
-  }
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  // Return displaced import to shelf
-  if(row.importId&&row.importId!==impId){
-    WINTL.localPairs && null; // already removed above
-  }
-  // Pair export primary order → import
-  WINTL.localPairs[row.orderIds[0]]=impId;
-  row.importId=impId;
-  WINTL.shelf=WINTL.data.imports.filter(r=>{
-    const paired=new Set(Object.values(WINTL.localPairs));
-    return !paired.has(r.id);
-  });
-}
-function _wiRemoveImport(rowId){
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row||!row.importId) return;
-  delete WINTL.localPairs[row.orderIds[0]];
-  row.importId=null;
-  WINTL.shelf=WINTL.data.imports.filter(r=>{
-    const paired=new Set(Object.values(WINTL.localPairs));
-    return !paired.has(r.id);
-  });
-  _wiPaint();
+  await _wiSaveImportMatch(rowId,impId);
 }
 
-/* ─── SAVE ASSIGNMENT TO ORDERS ──────────────────────────────────────── */
+// Drop on panel drop zone → auto-save
+async function _wiDropOnPanel(e,rowId){
+  e.preventDefault();
+  document.getElementById('wi-piz-'+rowId)?.classList.remove('dh');
+  const impId=window._wiDragging;if(!impId) return;
+  window._wiDragging=null;
+  await _wiSaveImportMatch(rowId,impId);
+}
+
+// Auto-save import match directly to ORDERS record
+async function _wiSaveImportMatch(rowId,impId){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+
+  // Optimistic UI update first
+  const oldImp=row.importId;
+  row.importId=impId;
+  // Remove from shelf
+  WINTL.shelf=WINTL.shelf.filter(r=>r.id!==impId);
+  // Return old import to shelf if it was set
+  if(oldImp&&oldImp!==impId){
+    const old=WINTL.data.imports.find(r=>r.id===oldImp);
+    if(old&&!WINTL.shelf.find(r=>r.id===old.id)) WINTL.shelf.push(old);
+  }
+  // Also remove from any other row
+  WINTL.rows.forEach(r=>{if(r.id!==rowId&&r.importId===impId) r.importId=null;});
+
+  _wiRepaintShelf();
+  _wiRepaintRow(rowId);
+
+  // Save to ALL export orders in group
+  for(const orderId of row.orderIds){
+    try{
+      const res=await atPatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+    }catch(err){
+      console.error('Import match save failed:',err.message);
+      toast('Import save failed: '+err.message.slice(0,50),'warn');
+    }
+  }
+}
+
+async function _wiRemoveImport(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row||!row.importId) return;
+  const imp=WINTL.data.imports.find(r=>r.id===row.importId);
+  if(imp&&!WINTL.shelf.find(r=>r.id===imp.id)) WINTL.shelf.push(imp);
+  row.importId=null;
+
+  _wiRepaintShelf();
+  _wiRepaintRow(rowId);
+
+  // Clear from ORDERS
+  for(const orderId of row.orderIds){
+    try{
+      const res=await atPatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+    }catch(err){
+      toast('Clear failed: '+err.message.slice(0,50),'warn');
+    }
+  }
+}
+
+/* ── SAVE ASSIGNMENT ───────────────────────────────────────────────── */
 async function _wiSave(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
   // Sync dropdowns
-  const syncDrop=(p,f,l)=>{
+  const sync=(p,f,l)=>{
     const uid=`${p}_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value;
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value;
-    if(val){row[f]=val;row[l]=lbl||'';}
+    if(val!==undefined&&val!==null){row[f]=val;row[l]=lbl||'';}
   };
-  syncDrop('tk','truckId','truckLabel');
-  syncDrop('tl','trailerId','trailerLabel');
-  syncDrop('dr','driverId','driverLabel');
-  syncDrop('pt','partnerId','partnerLabel');
+  sync('tk','truckId','truckLabel');
+  sync('tl','trailerId','trailerLabel');
+  sync('dr','driverId','driverLabel');
+  sync('pt','partnerId','partnerLabel');
 
-  // Auto-detect: if partner is filled → partner trip; if truck → owned
-  const isPartner=!!(row.partnerId);
-  if(!isPartner&&!row.truckId){toast('Επέλεξε Truck ή Partner','warn');return;}
+  // Read partner plates from input
+  const ppInput=document.getElementById(`wi-pp-${rowId}`);
+  if(ppInput) row.partnerPlates=ppInput.value;
+
+  const isPartner=!!row.partnerId;
+  if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
 
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.textContent='Saving…';}
 
-  // Save to ALL export orders in this row (groupage)
+  const fields=isPartner
+    ?{ 'Partner'            :[row.partnerId],
+       'Is Partner Trip'    :true,
+       'Partner Truck Plates':row.partnerPlates||'',
+       'Truck':[],'Trailer':[],'Driver':[] }
+    :{ 'Truck'              :[row.truckId],
+       'Trailer'            :row.trailerId?[row.trailerId]:[],
+       'Driver'             :row.driverId?[row.driverId]:[],
+       'Is Partner Trip'    :false,
+       'Partner':[],'Partner Truck Plates':'' };
+
   const errors=[];
   for(const orderId of row.orderIds){
-    const fields={};
-    if(isPartner){
-      fields['Partner']              =[row.partnerId];
-      fields['Is Partner Trip']      =true;
-      fields['Partner Truck Plates'] =row.partnerPlates||'';
-      fields['Truck']  =[];
-      fields['Trailer']=[];
-      fields['Driver'] =[];
-    } else {
-      fields['Truck']               =[row.truckId];
-      fields['Trailer']             =row.trailerId?[row.trailerId]:[];
-      fields['Driver']              =row.driverId?[row.driverId]:[];
-      fields['Is Partner Trip']     =false;
-      fields['Partner']             =[];
-      fields['Partner Truck Plates']='';
-    }
     try{
       const res=await atPatch(TABLES.ORDERS,orderId,fields);
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
-    }catch(err){
-      errors.push(`${orderId}: ${err.message}`);
-    }
+    }catch(err){ errors.push(err.message); }
   }
 
   if(errors.length){
-    if(btn){btn.disabled=false;btn.textContent=row.saved?'Update':'Save Assignment';}
-    toast(`Error: ${errors[0].slice(0,60)}`,'warn');
-    console.error('_wiSave errors:',errors);
+    if(btn){btn.disabled=false;btn.textContent=row.saved?'Update':'Save';}
+    toast('Error: '+errors[0].slice(0,60),'warn');
     return;
   }
 
   toast(row.saved?'Updated':'Assignment saved');
-  WINTL._assetsOk=true;
+  WINTL.ui.openRow=null;
   await renderWeeklyIntl();
 }
 
-async function _wiClearAssignment(rowId){
+async function _wiClear(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  if(!confirm('Clear assignment for this order?')) return;
+  if(!confirm('Clear assignment?')) return;
   const errors=[];
   for(const orderId of row.orderIds){
     try{
@@ -818,15 +842,15 @@ async function _wiClearAssignment(rowId){
         'Is Partner Trip':false,'Partner Truck Plates':'',
       });
       if(res?.error) throw new Error(res.error.message||res.error.type);
-    }catch(err){errors.push(err.message);}
+    }catch(err){ errors.push(err.message); }
   }
-  if(errors.length){toast(`Error: ${errors[0].slice(0,60)}`,'warn');return;}
+  if(errors.length){toast('Clear failed: '+errors[0].slice(0,50),'warn');return;}
   toast('Assignment cleared');
-  WINTL._assetsOk=true;
+  WINTL.ui.openRow=null;
   await renderWeeklyIntl();
 }
 
-/* ─── CONTEXT MENU ───────────────────────────────────────────────────── */
+/* ── CONTEXT MENU ──────────────────────────────────────────────────── */
 function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
@@ -846,7 +870,7 @@ function _wiCtx(e,rowId){
   }
   if(isGroup) html+=btn('Split groupage',`_wiSplit(${rowId})`);
   if(row.importId) html+=btn('Remove import',`_wiRemoveImport(${rowId})`);
-  if(row.saved) html+=btn('Clear assignment',`_wiClearAssignment(${rowId})`);
+  if(row.saved) html+=btn('Clear assignment',`_wiClear(${rowId})`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   Object.assign(ctx.style,{display:'block',
@@ -856,15 +880,11 @@ function _wiCtx(e,rowId){
 }
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
 
-/* ─── GROUPAGE ───────────────────────────────────────────────────────── */
+/* ── GROUPAGE ──────────────────────────────────────────────────────── */
 function _wiMerge(rowId,otherId){
   const row=WINTL.rows.find(r=>r.id===rowId),other=WINTL.rows.find(r=>r.id===otherId);
   if(!row||!other) return;
   other.orderIds.forEach(id=>{if(!row.orderIds.includes(id)) row.orderIds.push(id);});
-  if(!row.importId&&other.importId){
-    row.importId=other.importId;
-    WINTL.localPairs[row.orderIds[0]]=other.importId;
-  }
   WINTL.rows=WINTL.rows.filter(r=>r.id!==otherId);
   _wiPaint();toast('Grouped');
 }
@@ -874,22 +894,18 @@ function _wiSplit(rowId){
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
     WINTL.rows.push({
-      id:++WINTL._seq, orderIds:[expId], importId:null,
+      id:++WINTL._seq, orderId:expId, orderIds:[expId], importId:null,
       truckId:'',trailerId:'',driverId:'',partnerId:'',
       truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
-      partnerPlates:'', carrierType:'owned',
-      partnerRateExp:'',partnerRateImp:'',saved:false,
+      partnerPlates:'',saved:false,
     });
   });
   _wiPaint();toast('Split');
 }
 
-/* ─── NAVIGATION ─────────────────────────────────────────────────────── */
+/* ── NAVIGATION ────────────────────────────────────────────────────── */
 function _wiNavWeek(delta){
   WINTL.week=Math.max(1,Math.min(53,WINTL.week+delta));
-  WINTL.localPairs={};
   WINTL.ui.openRow=null;
-  WINTL._assetsOk=true;
   renderWeeklyIntl();
 }
-
