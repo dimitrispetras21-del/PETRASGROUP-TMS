@@ -47,8 +47,8 @@ const WINTL = {
 .wi-hc:last-child { border-right:none; }
 
 /* date separator */
-.wi-dsep { display:flex; align-items:center; gap:10px; padding:0 13px; height:28px;
-  background:#172C45; border-top:1px solid rgba(255,255,255,0.04); }
+.wi-dsep { display:flex; align-items:center; gap:10px; padding:0 13px; height:24px;
+  background:#172C45; border-top:1px solid rgba(255,255,255,0.04); height:24px; }
 .wi-dsep:first-child { border-top:none; }
 .wi-dsep-lbl  { font-size:9px; color:rgba(196,207,219,0.45); text-transform:uppercase; letter-spacing:.8px; }
 .wi-dsep-date { font-family:'Syne',sans-serif; font-size:10px; font-weight:700;
@@ -67,14 +67,14 @@ const WINTL = {
 
 .wi-compact {
   display:grid; grid-template-columns:36px 1fr 270px 1fr;
-  min-height:46px; align-items:stretch; cursor:pointer;
+  min-height:36px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
-  justify-content:center; gap:4px; padding:4px 0; border-right:1px solid var(--border); min-width:0; }
+  justify-content:center; gap:3px; padding:3px 0; border-right:1px solid var(--border); min-width:0; }
 .wi-dot { width:6px; height:6px; border-radius:50%; }
 .wi-num { font-size:9px; color:var(--text-dim); }
 
-.wi-ce { padding:6px 12px; border-right:1px solid var(--border);
+.wi-ce { padding:4px 12px; border-right:1px solid var(--border);
   display:flex; flex-direction:column; gap:2px; justify-content:center; overflow:hidden; }
 .wi-route { font-size:11.5px; font-weight:700; color:var(--text);
   display:flex; align-items:center; gap:0; min-width:0; }
@@ -153,7 +153,7 @@ const WINTL = {
   max-width:192px; opacity:.75; color:var(--text-mid); }
 
 /* import col */
-.wi-ci { padding:6px 12px; display:flex; align-items:center; transition:background .1s; overflow:hidden; }
+.wi-ci { padding:4px 12px; display:flex; align-items:center; transition:background .1s; overflow:hidden; }
 .wi-ci.dh { background:rgba(217,119,6,0.04); }
 .wi-ci-data { display:flex; flex-direction:column; gap:1px; width:100%; overflow:hidden; }
 .wi-ci-n { font-size:11px; font-weight:700; color:var(--text);
