@@ -270,18 +270,18 @@ const WINTL = {
   display:flex; align-items:center; gap:10px;
   padding:7px 12px 7px 10px;
   border-top:1px solid var(--border);
-  background:rgba(217,119,6,0.03);
+  background:rgba(14,165,233,0.025);
   cursor:grab; transition:background .1s;
   min-height:38px;
   width:100%;
   box-sizing:border-box;
 }
 .wi-imp-row:active { cursor:grabbing; }
-.wi-imp-row:hover  { background:rgba(217,119,6,0.06); }
+.wi-imp-row:hover  { background:rgba(14,165,233,0.06); }
 .wi-imp-matched    { background:rgba(5,150,105,0.025); }
 .wi-imp-matched:hover { background:rgba(5,150,105,0.05); }
 .wi-imp-matched.dh { background:rgba(5,150,105,0.08); }
-.wi-imp-row.dh     { outline:2px dashed var(--warning); }
+.wi-imp-row.dh     { outline:2px dashed rgba(14,165,233,0.6); }
 .wi-imp-handle {
   font-size:14px; color:var(--border-dark);
   cursor:grab; padding:0 4px; flex-shrink:0; line-height:1;
@@ -509,9 +509,9 @@ function _wiAllRowsHTML(){
   // ── IMPORTS section ──
   if(impRows.length){
     const matched=impRows.filter(r=>r.matchedTo).length;
-    html+=`<div class="wi-dsep" style="background:#1A3550;border-top:2px solid rgba(217,119,6,0.3)">
-      <span class="wi-dsep-lbl" style="color:rgba(217,119,6,0.55)">Loading</span>
-      <span class="wi-dsep-date" style="color:rgba(217,119,6,0.85)">Imports · ${impRows.length} orders</span>
+    html+=`<div class="wi-dsep" style="background:#1A3550;border-top:2px solid rgba(14,165,233,0.4)">
+      <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Loading</span>
+      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.9)">Imports · ${impRows.length} orders</span>
       <span class="wi-dsep-n">${matched} matched · ${impRows.length-matched} free</span>
       <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag to match</span>
     </div>`;
@@ -552,8 +552,8 @@ function _wiImpRowHTML(row){
         ✓ ${matchedExp||'matched'}
       </span>`
     :`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
-                   background:rgba(217,119,6,0.1);color:var(--warning);
-                   border:1px solid rgba(217,119,6,0.2);flex-shrink:0">
+                   background:rgba(14,165,233,0.1);color:rgba(14,165,233,0.9);
+                   border:1px solid rgba(14,165,233,0.25);flex-shrink:0">
         unmatched
       </span>`;
 
