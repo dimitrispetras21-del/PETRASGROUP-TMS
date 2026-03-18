@@ -725,7 +725,20 @@ function _wiImpRowHTML(row){
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
+      <div class="wi-ce" style="${!isMatched?'cursor:grab':''}">
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
+          ${_wiBadges(f)}
+        </div>
+        <div class="wi-sub">
+          <span>${loadDt} → ${delDt}</span>
+          <span class="wi-sub-div"></span>
+          <span>${pals} pal</span>
+          ${isMatched?`<span style="font-size:8.5px;font-weight:700;color:rgba(14,165,233,0.7);margin-left:4px">↩ matched</span>`:''}
+        </div>
+      </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         <button class="wi-side-btn" title="Print Import"
                 onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
@@ -827,17 +840,17 @@ function _wiRowHTML(row,i){
   }
 
   // Import preview — saved state shown
-  // Export import cell: minimal tag when matched, dark cell when empty
+  // Export import cell: always dark, just an indicator
   const impPrev=imp
-    ?`<span style="font-size:9.5px;font-weight:700;color:rgba(14,165,233,0.8);
-                   display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden">
-        <span style="font-size:11px;flex-shrink:0">↩</span>
-        <span style="overflow:hidden;text-overflow:ellipsis">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
-        <span style="color:rgba(14,165,233,0.5);font-weight:400;flex-shrink:0">${_wiFmt(imp.fields['Loading DateTime'])}</span>
-      </span>`
+    ?`<div style="width:100%;height:100%;display:flex;align-items:center;gap:6px;
+        background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
+        <span style="font-size:10px;color:rgba(14,165,233,0.6);font-weight:700">↩</span>
+        <span style="font-size:9.5px;color:rgba(196,207,219,0.5);white-space:nowrap;
+                     overflow:hidden;text-overflow:ellipsis">${_wiFmt(imp.fields['Loading DateTime'])}</span>
+      </div>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
         background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
-        <span style="font-size:10px;color:rgba(196,207,219,0.3);font-style:italic">drag import here</span>
+        <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">—</span>
       </div>`;
 
   return `
