@@ -1,308 +1,283 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="el">
 <head>
-<meta charset="UTF-8"/>
+<meta charset="UTF-8">
 <title>Petras Group — Print</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',Arial,sans-serif;font-size:11.5px;color:#1B2A4A;background:#fff}
-#loading{display:flex;align-items:center;justify-content:center;height:90vh;font-size:14px;color:#888;gap:10px}
-.spin{width:20px;height:20px;border:2px solid #ddd;border-top-color:#1B2A4A;border-radius:50%;animation:sp .7s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-#doc{display:none;padding:32px 40px}
-
-/* Print bar */
-.pbar{position:fixed;top:0;left:0;right:0;background:#1B2A4A;padding:9px 20px;
-  display:flex;align-items:center;justify-content:space-between;z-index:999}
-.pbar-title{color:#fff;font-size:12px;font-weight:600}
-.pbar-btn{background:#2D7FF9;color:#fff;border:none;padding:7px 22px;
-  border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
-.pbar-btn:hover{background:#1A6DE3}
-.pbar-spacer{height:42px}
-
-/* Document */
-.header{display:flex;justify-content:space-between;align-items:flex-start;
-  margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #2D7FF9}
-.brand{font-size:20px;font-weight:900;letter-spacing:1px;color:#1B2A4A}
-.brand span{color:#e87722}
-.brand-sub{font-size:8px;color:#888;letter-spacing:2.5px;text-transform:uppercase;margin-top:2px}
-.company{margin-top:8px;font-size:11px;line-height:1.6}
-.carrier-name{font-size:15px;font-weight:700}
-.plates-tag{display:inline-block;background:#2D7FF9;color:#fff;font-weight:700;
-  font-size:13px;padding:4px 12px;border-radius:4px;margin-top:8px;letter-spacing:1px}
-.title{text-align:center;font-size:14px;font-weight:700;padding:10px 0;margin:16px 0;
-  border-top:2px solid #1B2A4A;border-bottom:2px solid #1B2A4A;letter-spacing:1px;text-transform:uppercase}
-.meta{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:16px;
-  border:1px solid #ddd;border-radius:4px;overflow:hidden}
-.meta-item{padding:8px 14px;border-bottom:1px solid #eee;display:flex;gap:8px}
-.meta-item:nth-child(odd){border-right:1px solid #eee}
-.meta-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;min-width:70px}
-.meta-value{font-weight:600}
-.price-bar{display:flex;justify-content:space-between;align-items:center;
-  background:#f0f6ff;border:2px solid #2D7FF9;border-radius:6px;padding:12px 20px;margin-bottom:20px}
-.price-amount{font-size:22px;font-weight:900;color:#2D7FF9}
-.price-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1.5px}
-.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;
-  color:#fff;background:#1B2A4A;padding:6px 14px;margin:18px 0 10px;border-left:4px solid #2D7FF9}
-.stop-card{border:1px solid #ddd;border-radius:6px;padding:18px 20px;margin-bottom:12px;background:#fafbfc}
-.stop-name{font-size:15px;font-weight:700;color:#1B2A4A;margin-bottom:2px}
-.stop-addr{font-size:12px;color:#666;margin-bottom:4px}
-.stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px}
-.stop-field{display:flex;gap:6px;padding:3px 0}
-.stop-field b{color:#1B2A4A;min-width:120px;font-size:12px}
-.stop-field span{font-size:12.5px}
-.sig-table{width:100%;margin-top:20px;border-collapse:collapse}
-.sig-table td{width:50%;padding:14px 20px;border:1px solid #1B2A4A;vertical-align:top}
-.sig-name{font-weight:700;font-size:12px;margin-bottom:4px}
-.sig-role{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}
-.sig-line{margin-top:30px;border-top:1px solid #aaa;padding-top:6px;font-size:10px;color:#aaa;text-align:center}
-.info-left b{color:#1B2A4A}
-.notes-box{margin:16px 0;padding:12px 18px;border:1px solid #ddd;border-radius:6px;background:#fafbfc;font-size:12.5px}
-
-@media print{.pbar,.pbar-spacer{display:none}body,#doc{padding:20px 28px}}
-</style>
 </head>
 <body>
-<div id="loading"><div class="spin"></div> Loading…</div>
-<div id="doc"></div>
+<div id="app" style="font-family:Segoe UI,Arial,sans-serif;padding:40px;color:#888;text-align:center">
+  <div id="loading">Loading order data…</div>
+</div>
 
 <script>
-const AT_TOKEN   = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
 const AT_BASE    = 'appElT5CQV6JQvym8';
+const AT_TOKEN   = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+const DISPATCHER = 'Dimitrios Petras';
+
 const T_ORDERS   = 'tblgHlNmLBH3JTdIM';
 const T_PARTNERS = 'tblLHl5m8bqONfhWv';
 const T_TRUCKS   = 'tblEAPExIAjiA3asD';
 const T_TRAILERS = 'tblDcrqRJXzPrtYLm';
 const T_DRIVERS  = 'tbl7UGmYhc2Y82pPs';
 const T_LOCS     = 'tblxu8DRfTQOFRCzS';
-const DISPATCHER = 'Δ. Πέτρας';
 
-function fv(v){return Array.isArray(v)?v[0]||'':v||'';}
-function fmt(s){if(!s)return'—';try{var p=s.split('T')[0].split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}}
-function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR';}
+const params  = new URLSearchParams(window.location.search);
+const orderId = params.get('orderId');
+const leg     = params.get('leg') || 'export';
 
-async function atGet(table,id){
-  var r=await fetch('https://api.airtable.com/v0/'+AT_BASE+'/'+table+'/'+id,
-    {headers:{Authorization:'Bearer '+AT_TOKEN}});
-  return r.json();
+// Global asset arrays (same pattern as original)
+var allLocations = [], allPartners = [], allTrucks = [], allTrailers = [], allDrivers = [];
+
+function fv(v){ return Array.isArray(v) ? v[0]||'' : v||''; }
+
+function formatDate(s){
+  if(!s) return '—';
+  try{ var p=s.split('T')[0].split('-'); return p[2]+'/'+p[1]+'/'+p[0]; }catch(e){ return s; }
 }
-async function atGetAll(table,params){
-  var records=[],offset='';
-  do{
-    var url='https://api.airtable.com/v0/'+AT_BASE+'/'+table+'?pageSize=100'+(params||'')+(offset?'&offset='+offset:'');
+
+async function atFetch(table, params2){
+  var records=[], offset='';
+  do {
+    var url='https://api.airtable.com/v0/'+AT_BASE+'/'+table+'?pageSize=100'+(params2||'')+(offset?'&offset='+offset:'');
     var r=await fetch(url,{headers:{Authorization:'Bearer '+AT_TOKEN}});
     var d=await r.json();
     records=records.concat(d.records||[]);
     offset=d.offset||'';
-  }while(offset);
+  } while(offset);
   return records;
 }
 
-// Locations cache
-var locCache={};
-async function resolveLoc(locField){
-  if(!locField||!Array.isArray(locField)||!locField.length) return null;
-  var id=locField[0];
-  if(!locCache[id]){
-    var r=await atGet(T_LOCS,id);
-    locCache[id]=r.fields||{};
-  }
-  var l=locCache[id];
-  var parts=[];
-  if(l['Address'])parts.push(l['Address']);
-  if(l['City'])parts.push(l['City']);
-  if(l['State/province'])parts.push(l['State/province']);
-  if(l['Country'])parts.push(l['Country']);
-  return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||''};
+async function atGet(table, id){
+  var r=await fetch('https://api.airtable.com/v0/'+AT_BASE+'/'+table+'/'+id,
+    {headers:{Authorization:'Bearer '+AT_TOKEN}});
+  return r.json();
 }
 
-function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr,notes){
-  var html='<div class="stop-card"><div class="stop-name">'+num+'. '+loc.name+'</div>';
-  if(loc.address) html+='<div class="stop-addr">'+loc.address+'</div>';
-  if(loc.lat&&loc.lng) html+='<div class="stop-addr"><a href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" style="color:#2D7FF9;text-decoration:none">Google Maps ('+loc.lat+', '+loc.lng+')</a></div>';
-  html+='<div class="stop-grid">';
-  html+='<div class="stop-field"><b>Date of '+dtLabel+':</b><span>'+fmt(dt)+'</span></div>';
-  if(showDetails){
-    if(goods) html+='<div class="stop-field"><b>Goods:</b><span>'+goods+'</span></div>';
-    html+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
-    html+='<div class="stop-field"><b>Pallet Exchange:</b><span>'+pe+'</span></div>';
-    if(gw) html+='<div class="stop-field"><b>Gross Weight:</b><span>'+gw+' KG</span></div>';
-    if(temp) html+='<div class="stop-field"><b>Temperature:</b><span>'+temp+'°C</span></div>';
-    if(refr) html+='<div class="stop-field"><b>Refrigerator:</b><span>'+refr+'</span></div>';
-  } else {
-    html+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
+async function loadAll(){
+  if(!orderId){
+    document.getElementById('loading').innerHTML='<span style="color:red">Missing orderId</span>';
+    return;
   }
-  html+='</div>';
-  if(notes) html+='<div style="margin-top:8px;font-size:11.5px;color:#555"><b>Notes:</b> '+notes+'</div>';
-  html+='</div>';
-  return html;
-}
-
-async function buildLoadHTML(f,isExport,od,veroiaSwitch,VEROIA,dt){
-  if(veroiaSwitch&&isExport){
-    var vDt=dt?new Date(new Date(dt).getTime()+86400000).toISOString():'';
-    var vLoc=od&&od['Veroia Cross-dock']?await resolveLoc(od['Veroia Cross-dock']):null;
-    var loc=vLoc||{name:'VERMION FRESH / CROSS-DOCK',address:'Kopanos, Naousa, Imathia',lat:'',lng:''};
-    return buildCard(1,loc,'loading',vDt,fv(od&&od['Total Pallets'])||'—',fv(od&&od['Pallet Type']),true,fv(od&&od['Goods']),od&&od['Pallet Exchange']?'YES':'NO',fv(od&&od['Gross Weight kg']),fv(od&&od['Temperature °C']),fv(od&&od['Refrigerator Mode']),'');
-  }
-  var html='';var count=0;
-  if(od){
-    for(var i=1;i<=10;i++){
-      var lf=od['Loading Location '+i];
-      if(!lf) continue;
-      var loc=await resolveLoc(lf);
-      if(!loc) continue;
-      count++;
-      var loadDt=od['Loading DateTime'+(i===1?'':' '+i)]||dt;
-      html+=buildCard(count,loc,'loading',loadDt,fv(od['Loading Pallets '+i]),fv(od['Pallet Type']),count===1,fv(od['Goods']),od['Pallet Exchange']?'YES':'NO',fv(od['Gross Weight kg']),fv(od['Temperature °C']),fv(od['Refrigerator Mode']),count===1?fv(od['Notes']):'');
-    }
-  }
-  if(!count) html=buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,fv(od&&od['Total Pallets']),fv(od&&od['Pallet Type']),true,fv(od&&od['Goods']),(od&&od['Pallet Exchange'])?'YES':'NO','','','','');
-  return html;
-}
-
-async function buildDelHTML(f,isExport,od,veroiaSwitch,dt){
-  if(veroiaSwitch&&!isExport){
-    var vDt=dt?new Date(new Date(dt).getTime()-86400000).toISOString():'';
-    var vLoc=od&&od['Veroia Cross-dock']?await resolveLoc(od['Veroia Cross-dock']):null;
-    var loc=vLoc||{name:'VERMION FRESH / CROSS-DOCK',address:'Kopanos, Naousa, Imathia',lat:'',lng:''};
-    return buildCard(1,loc,'delivery',vDt,fv(od&&od['Total Pallets'])||'—',fv(od&&od['Pallet Type']),false,'','','','','','');
-  }
-  var html='';var count=0;
-  if(od){
-    for(var i=1;i<=10;i++){
-      var lf=od['Unloading Location '+i];
-      if(!lf) continue;
-      var loc=await resolveLoc(lf);
-      if(!loc) continue;
-      count++;
-      var delDt=od['Unloading DateTime'+i]||dt;
-      html+=buildCard(count,loc,'delivery',delDt,fv(od['Unloading Pallets '+i]),fv(od['Pallet Type']),false,'','','','','','');
-    }
-  }
-  if(!count) html=buildCard(1,{name:'—',address:'',lat:'',lng:''},'delivery',dt,fv(od&&od['Total Pallets']),fv(od&&od['Pallet Type']),false,'','','','','','');
-  return html;
-}
-
-async function init(){
-  var params=new URLSearchParams(window.location.search);
-  var orderId=params.get('orderId');
-  var leg=params.get('leg')||'export';
-  if(!orderId){document.getElementById('loading').innerHTML='<span style="color:red">Missing orderId</span>';return;}
-
-  try{
-    var order=await atGet(T_ORDERS,orderId);
-    var f=order.fields;
-    var isExport=leg==='export';
-    var legLabel=isExport?'Export':'Import';
-    var weekNum=f[' Week Number']||f['Week Number']||'—';
-    var goods=f['Goods']||'—';
-    var totalPals=f['Total Pallets']||'—';
-    var palType=f['Pallet Type']||'Europallets 0.8x1.2';
-    var pe=f['Pallet Exchange']?'YES':'NO';
-    var gw=f['Gross Weight kg']?f['Gross Weight kg']+' KG':'—';
-    var temp=f['Temperature °C']!=null?f['Temperature °C']+'°C':'—';
-    var refr=f['Refrigerator Mode']||'Continuous';
-    var notes=f['Notes']||'';
-    var loadDT=f['Loading DateTime']||'';
-    var delDT=f['Delivery DateTime']||'';
-    var veroiaSwitch=!!(f['Veroia Switch ']||f['Veroia Switch']);
-    var orderNo=f['Order Number']||orderId.slice(-6).toUpperCase();
-    var rate=eur(f['Partner Rate']);
-
-    // Fetch linked records in parallel
-    var partnerId=fv(f['Partner']);
-    var truckId=fv(f['Truck']);
-    var trailerId=fv(f['Trailer']);
-    var driverId=fv(f['Driver']);
-
-    var [partnerR,truckR,trailerR,driverR]=await Promise.all([
-      partnerId?atGet(T_PARTNERS,partnerId):Promise.resolve(null),
-      truckId?atGet(T_TRUCKS,truckId):Promise.resolve(null),
-      trailerId?atGet(T_TRAILERS,trailerId):Promise.resolve(null),
-      driverId?atGet(T_DRIVERS,driverId):Promise.resolve(null),
+  try {
+    // Load the order + all assets in parallel
+    var [orderR, partners, trucks, trailers, drivers, locations] = await Promise.all([
+      atGet(T_ORDERS, orderId),
+      atFetch(T_PARTNERS,'&fields[]=Company Name&fields[]=VAT Number&fields[]=Adress&fields[]=Email&fields[]=Active'),
+      atFetch(T_TRUCKS,'&fields[]=License Plate&fields[]=Gross Vehicle Weight kg&fields[]=Brand&fields[]=Model'),
+      atFetch(T_TRAILERS,'&fields[]=License Plate&fields[]=Weight kg'),
+      atFetch(T_DRIVERS,'&fields[]=Full Name'),
+      atFetch(T_LOCS,'&fields[]=Name&fields[]=Address&fields[]=City&fields[]=State/province&fields[]=Country&fields[]=Latitude&fields[]=Longitude'),
     ]);
 
-    var pf=partnerR?.fields||{};
-    var tf=truckR?.fields||{};
-    var trf=trailerR?.fields||{};
-    var df=driverR?.fields||{};
+    allPartners  = partners;
+    allTrucks    = trucks;
+    allTrailers  = trailers;
+    allDrivers   = drivers;
+    allLocations = locations;
 
-    var partnerPlates=f['Partner Truck Plates']||'—';
-    var isPartner=!!(f['Is Partner Trip']||partnerId);
+    generatePDF(orderR);
 
-    // Build stop HTML
-    var loadHTML=await buildLoadHTML(f,isExport,f,veroiaSwitch,null,loadDT);
-    var delHTML=await buildDelHTML(f,isExport,f,veroiaSwitch,delDT);
-
-    var titleStr=(isPartner?'Partner Assignment Order':'Driver Order')+' — '+legLabel+' — W'+weekNum+'-'+orderNo;
-
-    var html='';
-
-    if(isPartner){
-      html='<div class="pbar no-print"><span class="pbar-title">'+titleStr+'</span><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div><div class="pbar-spacer no-print"></div>'+
-      '<div class="header"><div><div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Carrier</div>'+
-      '<div class="carrier-name">'+(pf['Company Name']||'—')+'</div>'+
-      (pf['VAT Number']?'<div style="margin-top:4px;font-size:11px">VAT: '+pf['VAT Number']+'</div>':'')+
-      (pf['Adress']?'<div style="font-size:11px">'+pf['Adress']+'</div>':'')+
-      (pf['Email']?'<div style="font-size:11px">'+pf['Email']+'</div>':'')+
-      '<div class="plates-tag">'+partnerPlates+'</div></div>'+
-      '<div style="text-align:right"><div class="brand">PETRAS<span> GROUP</span></div>'+
-      '<div class="brand-sub">International Road Transport Services</div>'+
-      '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>VAT: EL800816168<br>vermionfresh@petrasgroup.com</div></div></div>'+
-      '<div class="title">Partner Assignment Order — '+legLabel+' — PAO-W'+weekNum+'-'+orderNo+'</div>'+
-      '<div class="meta">'+
-      '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+weekNum+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
-      '</div>'+
-      '<div class="price-bar"><div><div class="price-label">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+'</div></div>'+
-      '<div style="text-align:right"><div class="price-label">Payment Terms</div><div style="font-size:14px;font-weight:700">30 days</div></div></div>'+
-      '<div class="section-title">Loading Place</div>'+loadHTML+
-      '<div class="section-title">Delivery Place</div>'+delHTML+
-      (notes?'<div class="notes-box"><b>Notes:</b> '+notes+'</div>':'')+
-      '<table class="sig-table"><tr>'+
-      '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '<td><div class="sig-name">'+(pf['Company Name']||'CARRIER')+'</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '</tr></table>';
-    } else {
-      var driverFull=df['Full Name']||f['Driver Name']||'—';
-      var truckPlate=tf['License Plate']||'—';
-      var trailerPlate=trf['License Plate']||'—';
-      html='<div class="pbar no-print"><span class="pbar-title">'+titleStr+'</span><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div><div class="pbar-spacer no-print"></div>'+
-      '<div class="header"><div><div class="info-left" style="font-size:11.5px;line-height:1.8">'+
-      '<b>DRIVER:</b> <b>'+driverFull+'</b><br>'+
-      '<b>TRUCK:</b> <b>'+truckPlate+'</b><br>'+
-      '<b>TRAILER:</b> <b>'+trailerPlate+'</b></div></div>'+
-      '<div style="text-align:right"><div class="brand">PETRAS<span> GROUP</span></div>'+
-      '<div class="brand-sub">International Road Transport Services</div>'+
-      '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>vermionfresh@petrasgroup.com</div></div></div>'+
-      '<div class="title">Driver Order — '+legLabel+' — W'+weekNum+'</div>'+
-      '<div class="meta">'+
-      '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+weekNum+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
-      '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
-      '</div>'+
-      '<div class="section-title">Loading Place</div>'+loadHTML+
-      '<div class="section-title">Delivery Place</div>'+delHTML+
-      (notes?'<div class="notes-box"><b>Notes:</b> '+notes+'</div>':'')+
-      '<table class="sig-table"><tr>'+
-      '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '<td><div class="sig-name">'+driverFull+'</div><div class="sig-role">Driver — Receipt of Order</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '</tr></table>';
-    }
-
-    document.getElementById('loading').style.display='none';
-    var docEl=document.getElementById('doc');
-    docEl.style.display='block';
-    docEl.innerHTML=html;
-  }catch(err){
+  } catch(err) {
     document.getElementById('loading').innerHTML='<span style="color:red">Error: '+err.message+'</span>';
   }
 }
-init();
+
+function generatePDF(orderRec){
+  var f = orderRec.fields;
+  var isExport = leg === 'export';
+  var legLabel = isExport ? 'Export' : 'Import';
+  var rate     = f['Partner Rate'] || '—';
+  var wk       = f[' Week Number'] || f['Week Number'] || '—';
+
+  // ORDER DATA — use f directly (we are ON the order record)
+  var orderData = f;
+  var goods     = orderData['Goods'] || '';
+  var veroiaSwitch = !!(orderData['Veroia Switch '] || orderData['Veroia Switch']);
+  var totalPals = orderData['Total Pallets'] || '';
+  var palType   = orderData['Pallet Type']   || 'Europallets 0.8x1.2';
+  var pe        = orderData['Pallet Exchange'] ? 'YES' : 'NO';
+  var gw        = orderData['Gross Weight kg'] || '';
+  var temp      = orderData['Temperature °C'] != null ? orderData['Temperature °C'] : '';
+  var refr      = orderData['Refrigerator Mode'] || 'Continuous';
+  var orderNo   = orderData['Order Number'] || orderId.slice(-6).toUpperCase();
+
+  // Veroia cross-dock location
+  var VEROIA='VERMION FRESH / CROSS-DOCK', VEROIA_ADDR='', VEROIA_LAT='', VEROIA_LNG='';
+  if(orderData['Veroia Cross-dock']){
+    var vLoc=resolveLoc(orderData['Veroia Cross-dock']);
+    if(vLoc){ VEROIA=vLoc.name; VEROIA_ADDR=vLoc.address; VEROIA_LAT=vLoc.lat; VEROIA_LNG=vLoc.lng; }
+  }
+
+  // ===== RESOLVE LOCATION =====
+  function resolveLoc(locField){
+    if(!locField||!Array.isArray(locField)||!locField.length) return null;
+    var loc=allLocations.find(function(r){return r.id===locField[0];});
+    if(!loc) return null;
+    var l=loc.fields;
+    var parts=[];
+    if(l['Address'])       parts.push(l['Address']);
+    if(l['City'])          parts.push(l['City']);
+    if(l['State/province'])parts.push(l['State/province']);
+    if(l['Country'])       parts.push(l['Country']);
+    return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||''};
+  }
+
+  // ===== BUILD STOP CARD — IDENTICAL TO ORIGINAL =====
+  function buildCard(num,loc,dtLabel,dt,pals,showDetails,notes){
+    var html='<div class="stop-card"><div class="stop-name">'+num+'. '+loc.name+'</div>';
+    if(loc.address) html+='<div class="stop-addr">📍 '+loc.address+'</div>';
+    if(loc.lat&&loc.lng) html+='<div class="stop-addr"><a href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank" style="color:#2D7FF9;text-decoration:none">Open in Maps ('+loc.lat+', '+loc.lng+')</a></div>';
+    html+='<div class="stop-grid">';
+    html+='<div class="stop-field"><b>Date of '+dtLabel+':</b> <span>'+formatDate(dt)+'</span></div>';
+    if(showDetails){
+      if(goods) html+='<div class="stop-field"><b>Goods:</b> <span>'+goods+'</span></div>';
+      html+='<div class="stop-field"><b>Pallet no:</b> <span>'+(pals||'—')+' '+palType+'</span></div>';
+      html+='<div class="stop-field"><b>Pallet Exchange:</b> <span>'+pe+'</span></div>';
+      if(gw) html+='<div class="stop-field"><b>Gross Weight:</b> <span>'+gw+' KG</span></div>';
+      if(temp!=='') html+='<div class="stop-field"><b>Temperature:</b> <span>'+temp+'°C</span></div>';
+      html+='<div class="stop-field"><b>Refrigerator:</b> <span>'+refr+'</span></div>';
+    } else {
+      html+='<div class="stop-field"><b>Pallet no:</b> <span>'+(pals||'—')+' '+palType+'</span></div>';
+    }
+    html+='</div></div>';
+    return html;
+  }
+
+  // ===== BUILD LOADING HTML — IDENTICAL LOGIC =====
+  function buildLoadHTML(){
+    var dt = orderData['Loading DateTime'] || '';
+    var od = orderData;
+
+    if(veroiaSwitch && isExport){
+      var pals=totalPals||'—';
+      var vDt=dt?new Date(new Date(dt).getTime()+86400000).toISOString():'';
+      return buildCard(1,{name:VEROIA,address:VEROIA_ADDR,lat:VEROIA_LAT,lng:VEROIA_LNG},'loading',vDt,pals,true,'');
+    }
+
+    var html='', count=0;
+    for(var i=1;i<=10;i++){
+      var locField=od['Loading Location '+i];
+      if(!locField) continue;
+      var loc=resolveLoc(locField);
+      if(!loc) continue;
+      count++;
+      // Loading DateTime: field 1 = Loading DateTime, 2+ = Loading DateTime 2..10
+      var stopDt = i===1 ? dt : (od['Loading DateTime '+i] || dt);
+      var pals=fv(od['Loading Pallets '+i])||'';
+      html+=buildCard(count,loc,'loading',stopDt,pals,count===1,count===1?fv(od['Notes']):'');
+    }
+    if(count>0) return html;
+
+    // Fallback
+    return buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,totalPals,true,'');
+  }
+
+  // ===== BUILD DELIVERY HTML — IDENTICAL LOGIC =====
+  function buildDeliveryHTML(){
+    var dt = orderData['Delivery DateTime'] || '';
+    var od = orderData;
+
+    if(veroiaSwitch && !isExport){
+      var pals=totalPals||'—';
+      var vDt=dt?new Date(new Date(dt).getTime()-86400000).toISOString():'';
+      return buildCard(1,{name:VEROIA,address:VEROIA_ADDR,lat:VEROIA_LAT,lng:VEROIA_LNG},'delivery',vDt,pals,false,'');
+    }
+
+    var html='', count=0;
+    for(var i=1;i<=10;i++){
+      var locField=od['Unloading Location '+i];
+      if(!locField) continue;
+      var loc=resolveLoc(locField);
+      if(!loc) continue;
+      count++;
+      var stopDt = od['Unloading DateTime '+i] || dt;
+      var pals=fv(od['Unloading Pallets '+i])||'';
+      html+=buildCard(count,loc,'delivery',stopDt,pals,false,'');
+    }
+    if(count>0) return html;
+
+    return buildCard(1,{name:'—',address:'',lat:'',lng:''},'delivery',dt,totalPals,false,'');
+  }
+
+  // ===== EXACT CSS FROM ORIGINAL =====
+  var css='*{margin:0;padding:0;box-sizing:border-box}body{font-family:Segoe UI,Arial,sans-serif;font-size:11.5px;color:#1B2A4A;padding:32px 40px;line-height:1.5}.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:16px;border-bottom:3px solid #2D7FF9}.brand{font-size:20px;font-weight:900;letter-spacing:1px;color:#1B2A4A}.brand-sub{font-size:8px;color:#888;letter-spacing:2.5px;text-transform:uppercase;margin-top:2px}.company{margin-top:8px;font-size:11px;line-height:1.6}.company b{font-size:12px}.title{text-align:center;font-size:14px;font-weight:700;padding:10px 0;margin:16px 0;border-top:2px solid #1B2A4A;border-bottom:2px solid #1B2A4A;letter-spacing:1px;text-transform:uppercase}.meta{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-bottom:16px;border:1px solid #ddd;border-radius:4px;overflow:hidden}.meta-item{padding:8px 14px;border-bottom:1px solid #eee;display:flex;gap:8px}.meta-item:nth-child(odd){border-right:1px solid #eee}.meta-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;min-width:70px}.meta-value{font-weight:600}.price-bar{display:flex;justify-content:space-between;align-items:center;background:#f0f6ff;border:2px solid #2D7FF9;border-radius:6px;padding:12px 20px;margin-bottom:20px}.price-amount{font-size:22px;font-weight:900;color:#2D7FF9}.price-label{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1.5px}.section-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#fff;background:#1B2A4A;padding:6px 14px;margin:18px 0 10px;border-left:4px solid #2D7FF9}.stop-card{border:1px solid #ddd;border-radius:6px;padding:18px 20px;margin-bottom:12px;background:#fafbfc}.stop-name{font-size:15px;font-weight:700;color:#1B2A4A;margin-bottom:2px}.stop-addr{font-size:12px;color:#666;margin-bottom:4px}.stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 20px}.stop-field{display:flex;gap:6px;padding:3px 0}.stop-field b{color:#1B2A4A;min-width:120px;font-size:12px}.stop-field span{font-size:12.5px}.sig-table{width:100%;margin-top:20px;border-collapse:collapse}.sig-table td{width:50%;padding:14px 20px;border:1px solid #1B2A4A;vertical-align:top}.sig-name{font-weight:700;font-size:12px;margin-bottom:4px}.sig-role{font-size:9px;color:#888;text-transform:uppercase;letter-spacing:1px}.sig-line{margin-top:30px;border-top:1px solid #aaa;padding-top:6px;font-size:10px;color:#aaa;text-align:center}.info-left b{color:#1B2A4A}.plates-tag{display:inline-block;background:#2D7FF9;color:#fff;font-weight:700;font-size:13px;padding:4px 12px;border-radius:4px;margin-top:8px;letter-spacing:1px}@media print{body{padding:20px 28px}}';
+
+  var html = '';
+
+  if(f['Is Partner Trip'] || (f['Partner']||[]).length){
+    var partner = allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];})||{};
+    var pf = partner.fields||{};
+    html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+css+'</style></head><body>'+
+    '<div class="header"><div>'+
+    '<div style="font-size:9px;color:#888;text-transform:uppercase;letter-spacing:2px;margin-bottom:4px">Carrier</div>'+
+    '<div style="font-size:15px;font-weight:700">'+(pf['Company Name']||'—')+'</div>'+
+    (pf['VAT Number']?'<div style="margin-top:4px">VAT: '+pf['VAT Number']+'</div>':'')+
+    (pf['Adress']?'<div>'+pf['Adress']+'</div>':'')+
+    (pf['Email']?'<div>'+pf['Email']+'</div>':'')+
+    '<div class="plates-tag">'+(f['Partner Truck Plates']||'—')+'</div>'+
+    '</div><div style="text-align:right">'+
+    '<div class="brand">PETRAS GROUP</div>'+
+    '<div class="brand-sub">International Road Transport Services</div>'+
+    '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia, Greece<br>VAT: EL800816168<br>vermionfresh@petrasgroup.com</div>'+
+    '</div></div>'+
+    '<div class="title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+orderNo+'</div>'+
+    '<div class="meta">'+
+    '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
+    '</div>'+
+    '<div class="price-bar"><div><div class="price-label">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+' EUR</div></div><div style="text-align:right"><div class="price-label">Payment Terms</div><div style="font-size:14px;font-weight:700">30 days</div></div></div>'+
+    '<div class="section-title">Loading Place</div>'+buildLoadHTML()+
+    '<div class="section-title">Delivery Place</div>'+buildDeliveryHTML()+
+    (f['Notes']?'<div style="margin:16px 0;padding:12px 18px;border:1px solid #ddd;border-radius:6px;background:#fafbfc;font-size:12.5px"><b>Notes:</b> '+f['Notes']+'</div>':'')+
+    '<table class="sig-table"><tr>'+
+    '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
+    '<td><div class="sig-name">'+(pf['Company Name']||'CARRIER')+'</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
+    '</tr></table>'+
+    '</body></html>';
+  } else {
+    var driver  = allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];})||{};
+    var truck   = allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];})||{};
+    var trailer = allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];})||{};
+    var df2=driver.fields||{}, tf=truck.fields||{}, trf=trailer.fields||{};
+    html='<!DOCTYPE html><html><head><meta charset="UTF-8"><style>'+css+'</style></head><body>'+
+    '<div class="header"><div>'+
+    '<div class="info-left" style="font-size:11.5px;line-height:1.7">'+
+    '<b>DRIVER:</b> <b>'+(df2['Full Name']||'—')+'</b><br>'+
+    '<b>TRUCK:</b> <b>'+(tf['License Plate']||'—')+'</b><br>'+
+    '<b>TRAILER:</b> <b>'+(trf['License Plate']||'—')+'</b><br>'+
+    '<b>TOTAL WEIGHT:</b> <b>'+(parseFloat(tf['Gross Vehicle Weight kg']||0)+parseFloat(trf['Weight kg']||0)).toLocaleString('de-DE')+' KG</b>'+
+    '</div></div>'+
+    '<div style="text-align:right">'+
+    '<div class="brand">PETRAS GROUP</div>'+
+    '<div class="brand-sub">International Road Transport Services</div>'+
+    '<div class="company"><b>VERMION FRESH SA</b><br>Kopanos, Naousa<br>EL800816168<br>vermionfresh@petrasgroup.com</div>'+
+    '</div></div>'+
+    '<div class="title">Driver Order — '+legLabel+'</div>'+
+    '<div class="meta">'+
+    '<div class="meta-item"><span class="meta-label">Date</span><span class="meta-value">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Week</span><span class="meta-value">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Category</span><span class="meta-value">'+legLabel+'</span></div>'+
+    '<div class="meta-item"><span class="meta-label">Dispatcher</span><span class="meta-value">'+DISPATCHER+'</span></div>'+
+    '</div>'+
+    '<div class="section-title">Loading Place</div>'+buildLoadHTML()+
+    '<div class="section-title">Delivery Place</div>'+buildDeliveryHTML()+
+    (f['Notes']?'<div style="margin:16px 0;padding:12px 18px;border:1px solid #ddd;border-radius:6px;background:#fafbfc;font-size:12.5px"><b>Notes:</b> '+f['Notes']+'</div>':'')+
+    '<table class="sig-table"><tr>'+
+    '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Signature &amp; Date</div></td>'+
+    '<td><div class="sig-name">'+(df2['Full Name']||'—')+'</div><div class="sig-role">Driver — Παραλαβή εντολής</div><div class="sig-line">Signature &amp; Date</div></td>'+
+    '</tr></table>'+
+    '</body></html>';
+  }
+
+  document.open();
+  document.write(html);
+  document.close();
+  setTimeout(function(){window.print();},600);
+}
+
+loadAll();
 </script>
 </body>
 </html>
