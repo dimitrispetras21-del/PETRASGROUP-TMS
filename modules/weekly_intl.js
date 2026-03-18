@@ -343,24 +343,25 @@ function _wiAssignPanel(row) {
   // Searchable dropdown builder
   const sdrop = (id, arr, val, ph) => {
     const selLabel = arr.find(x=>x.id===val)?.label || '';
+    const opts = arr.map(x=>{
+      const lbl = (x.label||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+      return `<div class="wi-sdrop-opt" data-id="${x.id}" data-lbl="${lbl}"
+        style="padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text)">${lbl}</div>`;
+    }).join('');
     return `
-      <div class="wi-sdrop" id="wsd_${id}">
+      <div class="wi-sdrop" id="wsd_${id}" data-field-id="${id}">
         <input type="text" class="wi-sdrop-input" placeholder="${ph}"
-               value="${selLabel}"
+               value="${selLabel.replace(/"/g,'&quot;')}"
                oninput="_wiSDropFilter('${id}',this.value)"
                onfocus="_wiSDropOpen('${id}')"
                autocomplete="off"
                style="width:190px;padding:5px 8px;font-size:11px;border-radius:6px;
                       border:1px solid var(--border);background:var(--bg);color:var(--text);outline:none"/>
         <input type="hidden" id="wsd_val_${id}" value="${val}"/>
-        <div id="wsd_list_${id}" class="wi-sdrop-list" style="display:none;position:absolute;z-index:999;
-             width:220px;max-height:180px;overflow-y:auto;background:var(--bg-card);
-             border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.12);
-             margin-top:2px">
-          ${arr.map(x=>`<div class="wi-sdrop-opt" data-id="${x.id}" data-label="${x.label}"
-               onclick="_wiSDropPick('${id}','${x.id}','${x.label.replace(/'/g,"&#39;")}')"
-               style="padding:6px 10px;font-size:11px;cursor:pointer;color:var(--text)">
-               ${x.label}</div>`).join('')}
+        <div id="wsd_list_${id}" class="wi-sdrop-list" style="display:none;position:fixed;z-index:9999;
+             width:220px;max-height:200px;overflow-y:auto;background:var(--bg-card);
+             border:1px solid var(--border);border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.15)">
+          ${opts}
         </div>
       </div>`;
   };
@@ -418,48 +419,56 @@ function _wiAssignPanel(row) {
 }
 
 // ── Searchable dropdown helpers ─────────────────
+// Use event delegation — no inline onclick on options (avoids quote escaping issues)
+document.addEventListener('click', function(e) {
+  // Option pick
+  const opt = e.target.closest('.wi-sdrop-opt');
+  if (opt) {
+    const list = opt.closest('.wi-sdrop-list');
+    if (!list) return;
+    const id = list.id.replace('wsd_list_','');
+    const recId = opt.dataset.id;
+    const label = opt.dataset.lbl || opt.textContent.trim();
+    _wiSDropPick(id, recId, label);
+    e.stopPropagation();
+    return;
+  }
+  // Click outside — close all dropdowns
+  if (!e.target.closest('.wi-sdrop')) {
+    document.querySelectorAll('.wi-sdrop-list').forEach(el=>el.style.display='none');
+  }
+});
+
 function _wiSDropOpen(id) {
-  // Close any other open dropdowns first
   document.querySelectorAll('.wi-sdrop-list').forEach(el=>{
     if(el.id !== 'wsd_list_'+id) el.style.display='none';
   });
   const inp = document.querySelector('#wsd_'+id+' .wi-sdrop-input');
   const list = document.getElementById('wsd_list_'+id);
   if(!inp||!list) return;
-  // Position with fixed so it escapes any overflow:hidden parent
   const rect = inp.getBoundingClientRect();
   list.style.cssText = `display:block;position:fixed;z-index:9999;
     left:${rect.left}px;top:${rect.bottom+2}px;
-    width:${Math.max(rect.width, 220)}px;max-height:200px;overflow-y:auto;
+    width:${Math.max(rect.width,220)}px;max-height:200px;overflow-y:auto;
     background:var(--bg-card);border:1px solid var(--border);
     border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,0.15)`;
-  // Show all options
   list.querySelectorAll('.wi-sdrop-opt').forEach(el=>el.style.display='');
-  setTimeout(()=>document.addEventListener('mousedown',function h(e){
-    const wrap=document.getElementById('wsd_'+id);
-    if(!wrap||!wrap.contains(e.target)){
-      list.style.display='none';
-    }
-    document.removeEventListener('mousedown',h);
-  }),50);
 }
 function _wiSDropFilter(id, q) {
   const list=document.getElementById('wsd_list_'+id);
   if(!list||list.style.display==='none') _wiSDropOpen(id);
   const ql=q.toLowerCase();
   list.querySelectorAll('.wi-sdrop-opt').forEach(el=>{
-    el.style.display=el.dataset.label.toLowerCase().includes(ql)?'':'none';
+    el.style.display=(el.dataset.lbl||el.textContent).toLowerCase().includes(ql)?'':'none';
   });
 }
 function _wiSDropPick(id, recId, label) {
-  // Update hidden value and input text
   const valEl=document.getElementById('wsd_val_'+id);
   if(valEl) valEl.value=recId;
   const inp=document.querySelector('#wsd_'+id+' .wi-sdrop-input');
   if(inp) inp.value=label;
   const list=document.getElementById('wsd_list_'+id);
   if(list) list.style.display='none';
-  // Parse prefix and rowId: format is PREFIX_ROWID e.g. tk_3, tl_12
   const parts=id.split('_');
   const prefix=parts[0];
   const rowId=parseInt(parts[parts.length-1]);
