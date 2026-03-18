@@ -112,6 +112,32 @@ const WINTL = {
 /* assignment col */
 .wi-ca { padding:6px 10px; border-right:1px solid var(--border);
   background:var(--bg); display:flex; align-items:center; justify-content:center; }
+
+/* assignment wrapper — click opens popover, hover shows print btn */
+.wi-ca-wrap {
+  padding:6px 10px; border-right:1px solid var(--border);
+  background:var(--bg); display:flex; align-items:center; justify-content:center;
+  position:relative; cursor:pointer;
+}
+.wi-ca-wrap:hover { background:var(--bg-hover); }
+
+/* print icon button — hidden by default, appears on row hover */
+.wi-print-btn {
+  display:none; position:absolute;
+  bottom:4px; right:4px;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:4px; padding:1px 5px; font-size:10px;
+  cursor:pointer; color:var(--text-dim); line-height:1.4;
+  transition:all .1s; z-index:2;
+}
+.wi-print-btn:hover { background:var(--navy-mid); color:#fff; border-color:var(--navy-mid); }
+.wi-row:hover .wi-print-btn { display:block; }
+
+/* import print btn — positioned bottom right of import cell */
+.wi-ci { position:relative; }
+.wi-print-imp {
+  bottom:4px; right:4px;
+}
 .wi-pill { display:flex; flex-direction:column; align-items:center;
   padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden; gap:1px; }
 .wi-pill-ok { background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2); }
@@ -645,34 +671,19 @@ function _wiRowHTML(row,i){
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
-      <div style="display:flex;align-items:center;border-right:1px solid var(--border);background:var(--bg)">
-        <button title="Print Export" onclick="event.stopPropagation();_wiPrint(${row.id},'export')"
-          style="flex-shrink:0;height:100%;padding:0 8px;border:none;border-right:1px solid var(--border);
-                 background:transparent;cursor:pointer;color:var(--text-dim);font-size:8.5px;font-weight:700;
-                 letter-spacing:.6px;transition:color .1s,background .1s;min-height:42px"
-          onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'"
-          onmouseout="this.style.background='transparent';this.style.color='var(--text-dim)'">
-          EXP
-        </button>
-        <div class="wi-ca" style="border:none;flex:1" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">${pill}</div>
+      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
+        ${pill}
+        <button class="wi-print-btn" title="Print Export Order"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
       </div>
-      <div style="display:flex;align-items:center">
-        <div class="wi-ci" id="wi-ci-${row.id}" style="flex:1"
-             onclick="event.stopPropagation()"
-             ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
-             ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
-             ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
-          ${impPrev}
-        </div>
-        ${row.importId?`
-        <button title="Print Import" onclick="event.stopPropagation();_wiPrint(${row.id},'import')"
-          style="flex-shrink:0;height:100%;padding:0 8px;border:none;border-left:1px solid var(--border);
-                 background:transparent;cursor:pointer;color:var(--text-dim);font-size:8.5px;font-weight:700;
-                 letter-spacing:.6px;transition:color .1s,background .1s;min-height:42px"
-          onmouseover="this.style.background='var(--bg-hover)';this.style.color='var(--text)'"
-          onmouseout="this.style.background='transparent';this.style.color='var(--text-dim)'">
-          IMP
-        </button>`:''}
+      <div class="wi-ci" id="wi-ci-${row.id}"
+           onclick="event.stopPropagation()"
+           ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
+           ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
+           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
+        ${impPrev}
+        ${row.importId?`<button class="wi-print-btn wi-print-imp" title="Print Import Order"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>`:''}
       </div>
 
     </div>
