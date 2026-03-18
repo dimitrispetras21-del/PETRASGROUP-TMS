@@ -776,30 +776,47 @@ ANTH_KEY length = ${typeof ANTH_KEY==='string' ? ANTH_KEY.length : 'N/A'}
         model:'claude-opus-4-6',
         max_tokens:1000,
         system:`You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
-Extract order data from CMR waybills, delivery orders, or transport documents.
-Return ONLY valid JSON, no markdown, no explanation.
-Schema:
+Extract order data from CMR waybills, Carrier Orders, delivery orders, or transport documents.
+Return ONLY valid JSON — no markdown, no explanation, no extra text.
+
+Output schema:
 {
-  "client_name": "string or null",
-  "goods": "string or null",
-  "gross_weight_kg": number or null,
-  "pallets": number or null,
-  "temperature_c": number or null,
-  "direction": "Export or Import or null",
+  "client_name": "company that issued the order (e.g. OGL Food Trade)",
+  "goods": "comma-separated list of all product descriptions",
+  "gross_weight_kg": total gross weight as number or null,
+  "pallets": total pallet count across all loading stops as number,
+  "temperature_c": required transport temperature as number or null,
+  "direction": "Export if loading in Greece, Import if loading outside Greece",
   "confidence": "HIGH or MEDIUM or LOW",
-  "notes": "string or null",
+  "notes": "any special instructions, trailer requirements, etc.",
   "loading_stops": [
-    {"city": "string", "country": "string", "date": "YYYY-MM-DD or null", "pallets": number or null}
+    {
+      "city": "city name only, no supplier/warehouse name",
+      "country": "country name",
+      "date": "YYYY-MM-DD",
+      "pallets": number of pallets loaded at this stop
+    }
   ],
   "delivery_stops": [
-    {"city": "string", "country": "string", "date": "YYYY-MM-DD or null", "pallets": number or null}
+    {
+      "city": "city name only",
+      "country": "country name",
+      "date": "YYYY-MM-DD",
+      "pallets": null
+    }
   ]
 }
-Rules:
-- loading_stops: each distinct loading point as a separate object. If dates not specified per stop, use the main loading date for all.
-- delivery_stops: each distinct unloading/delivery point as a separate object.
-- pallets per stop: if total pallets split across stops, distribute them. If not specified per stop, put total on first stop only, null on others.
-- direction: Export = loading in Greece. Import = loading outside Greece.`,
+
+CRITICAL RULES for OGL/Fruitservice Carrier Orders:
+- The table has rows with Type=Loading (↑) and Type=Unloading (↓)
+- Each Loading section header contains the city and address — extract CITY only
+- PAL column = pallet count per product line — SUM all PAL values per loading stop address
+- Each distinct loading address = one loading_stop object
+- Unloading addresses = delivery_stops
+- client_name = the company at the top of the document (e.g. "OGL Food Trade Lebensmittelvertrieb GmbH")
+- direction: if all loading addresses are in Greece → Export
+- goods: list all distinct product descriptions (deduplicated)
+- Do NOT confuse supplier names (e.g. IRINOUPOLI SÜD, ANGELAKIS) with city names`,
         messages:[{role:'user', content:[cb, {type:'text',text:'Extract all order data from this transport document.'}]}]
       })
     });
