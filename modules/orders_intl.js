@@ -728,17 +728,17 @@ function _scanHandleFile(file) {
 
 async function _scanExtract() {
   const file = window._scanUploadedFile;
-  if (!file) return;
-  const btn = document.getElementById('btnScanGo');
   const st  = document.getElementById('scanStatus');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px"></span> &nbsp;Analyzing...'; }
   st.style.display = 'block';
-  st.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;
-    background:var(--bg);border-radius:8px;border:1px solid var(--border);
-    font-size:13px;color:var(--text-mid)">
-    <span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>
-    AI αναλύει το document...
-  </div>`;
+  st.innerHTML = `<pre style="font-size:11px;background:#f0f2f5;padding:10px;border-radius:6px;white-space:pre-wrap">
+STEP 1: file = ${file ? file.name+' type='+file.type+' size='+file.size : 'NULL/UNDEFINED'}
+ANTH_KEY type = ${typeof ANTH_KEY}
+ANTH_KEY starts = ${typeof ANTH_KEY==='string' ? ANTH_KEY.slice(0,25) : 'NOT STRING'}
+ANTH_KEY length = ${typeof ANTH_KEY==='string' ? ANTH_KEY.length : 'N/A'}
+  </pre>`;
+  if (!file) { st.innerHTML += '<div style="color:red">ERROR: no file</div>'; return; }
+  const btn = document.getElementById('btnScanGo');
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Analyzing...'; }
 
   try {
     const b64 = await new Promise((res,rej) => {
