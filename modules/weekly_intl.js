@@ -588,8 +588,8 @@ function _wiAllRowsHTML(){
     // Export rows
     grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
 
-    // ALL imports shown as rows — always draggable
-    grp.imps.forEach(row=>{ html+=_wiImpRowHTML(row); });
+    // Only unmatched imports shown as rows
+    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row); });
   });
 
   return html;
