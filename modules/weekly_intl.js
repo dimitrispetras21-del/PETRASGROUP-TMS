@@ -438,6 +438,8 @@ function _wiBuildRows(){
   );
 
 
+  // Group exports by Groupage ID
+  const groupMap={}; // groupageId → first row index
   for(const exp of exports){
     const f=exp.fields;
     const truckId  =(f['Truck']  ||[])[0]||'';
@@ -445,6 +447,16 @@ function _wiBuildRows(){
     const driverId =(f['Driver'] ||[])[0]||'';
     const partnerId=(f['Partner']||[])[0]||'';
     const importId =f['Matched Import ID']||null;
+    const groupageId=f['Groupage ID']||null;
+
+    // If this order has a groupageId and we already have a row for it, merge
+    if(groupageId && groupMap[groupageId]!==undefined){
+      WINTL.rows[groupMap[groupageId]].orderIds.push(exp.id);
+      continue;
+    }
+
+    const rowIdx=WINTL.rows.length;
+    if(groupageId) groupMap[groupageId]=rowIdx;
 
     WINTL.rows.push({
       id:          ++WINTL._seq,
@@ -452,6 +464,7 @@ function _wiBuildRows(){
       orderId:     exp.id,
       orderIds:    [exp.id],
       importId,
+      groupageId:  groupageId||null,
       truckId, trailerId, driverId, partnerId,
       truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
       trailerLabel:WINTL.data.trailers.find(t=>t.id===trailerId)?.label||'',
@@ -1518,6 +1531,12 @@ function _wiMerge(rowId,otherId){
   other.orderIds.forEach(id=>{if(!row.orderIds.includes(id)) row.orderIds.push(id);});
   WINTL.rows=WINTL.rows.filter(r=>r.id!==otherId);
   _wiPaint();toast('Grouped');
+  // Persist groupage to Airtable
+  const gid=row.groupageId||('GRP-'+Date.now());
+  row.groupageId=gid;
+  row.orderIds.forEach(id=>{
+    atPatch(TABLES.ORDERS,id,{'Groupage ID':gid}).catch(e=>console.warn('Groupage save:',e));
+  });
 }
 function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
