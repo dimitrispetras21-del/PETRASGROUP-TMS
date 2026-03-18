@@ -406,8 +406,7 @@ async function renderWeeklyIntl(){
         fields:['Export Order','Import Order',
                 'Truck','Trailer','Driver','Partner',
                 'Truck Plate','Trailer Plate','Driver Name','Partner Name',
-                'Partner Plates',
-                'Export Loading DateTime','Delivery DateTime',
+                'Export Loading DateTime','Export Delivery DateTime',
                 'Week Number','TripID',
                 'Is Partner Trip','Partner Rate Export','Partner Rate Import'],
       }),
@@ -460,7 +459,7 @@ function _wiBuildRows(){
       trailerPlate:_wiFv(f['Trailer Plate']),
       driverName:_wiFv(f['Driver Name']),
       partnerName:_wiFv(f['Partner Name']),
-      partnerPlates:f['Partner Plates']||'',   // free-text partner truck plates
+      partnerPlates:f['Partner Truck Plates']||'',
       loadingDate:_wiFv(f['Export Loading DateTime']),
       carrierType:isPartner?'partner':'owned',
       partnerRateExp:f['Partner Rate Export']?String(f['Partner Rate Export']):'',
@@ -1069,7 +1068,7 @@ async function _wiSaveTrip(rowId,exportOnly=false){
     if(isPartner){
       fields['Partner']         =[row.partnerId];
       fields['Is Partner Trip'] =true;
-      if(row.partnerPlates)    fields['Partner Plates']       =row.partnerPlates;
+      if(row.partnerPlates)    fields['Partner Truck Plates']       =row.partnerPlates;
       if(row.partnerRateExp)   fields['Partner Rate Export']  =parseFloat(row.partnerRateExp)||0;
       if(row.partnerRateImp)   fields['Partner Rate Import']  =parseFloat(row.partnerRateImp)||0;
     } else {
@@ -1124,3 +1123,4 @@ function _wiNavWeek(delta){
   WINTL.ui.openRow=null;WINTL._assetsOk=true;
   renderWeeklyIntl();
 }
+
