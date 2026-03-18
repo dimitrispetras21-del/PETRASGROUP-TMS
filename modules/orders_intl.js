@@ -562,6 +562,22 @@ async function submitIntlOrder(recId) {
   try {
     const fields = {};
 
+    // Validate: no unmatched location text (text input filled but hidden recId empty)
+    const unmatchedLocs = [];
+    for (let i=1;i<=10;i++) {
+      const txt = document.getElementById('ls_l_'+i)?.value?.trim();
+      const id  = document.getElementById('lv_l_'+i)?.value?.trim();
+      if (txt && !id) unmatchedLocs.push(`Loading Location ${i}: "${txt}"`);
+      const txt2 = document.getElementById('ls_u_'+i)?.value?.trim();
+      const id2  = document.getElementById('lv_u_'+i)?.value?.trim();
+      if (txt2 && !id2) unmatchedLocs.push(`Delivery Location ${i}: "${txt2}"`);
+    }
+    if (unmatchedLocs.length) {
+      alert('⚠ Αδύνατη υποβολή — οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.');
+      if (btn) { btn.textContent = recId ? 'Update Order' : 'Submit'; btn.disabled = false; }
+      throw new Error('validation');
+    }
+
     // Strings
     const sv = id => document.getElementById(id)?.value?.trim()||'';
     if (sv('f_Brand'))     fields['Brand']             = sv('f_Brand');
