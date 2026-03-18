@@ -404,8 +404,9 @@ function _wiBuildRows(){
 
     WINTL.rows.push({
       id:          ++WINTL._seq,
-      orderId:     exp.id,          // single export ORDER record ID
-      orderIds:    [exp.id],        // array for groupage
+      type:        'export',
+      orderId:     exp.id,
+      orderIds:    [exp.id],
       importId,
       truckId, trailerId, driverId, partnerId,
       truckLabel:  WINTL.data.trucks.find(t=>t.id===truckId)?.label||'',
