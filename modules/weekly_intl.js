@@ -126,7 +126,7 @@ const WINTL = {
 
 /* dropdown */
 .wi-sd { position:relative; }
-.wi-sdi { width:156px; padding:6px 9px; font-size:11px; border-radius:5px;
+.wi-sdi { width:162px; padding:6px 9px; font-size:11px; border-radius:5px;
   border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none; }
 .wi-sdi:focus { border-color:rgba(11,25,41,0.3); box-shadow:0 0 0 2px rgba(11,25,41,0.06); }
 .wi-sdl { display:none; position:fixed; z-index:9999; min-width:185px; max-height:220px;
@@ -136,7 +136,7 @@ const WINTL = {
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .wi-sdo:hover { background:var(--bg-hover); }
 
-.wi-ti { width:156px; padding:6px 9px; font-size:11px; border-radius:5px;
+.wi-ti { width:148px; padding:6px 9px; font-size:11px; border-radius:5px;
   border:1px solid var(--border-mid); background:var(--bg-card); color:var(--text); outline:none; }
 .wi-ti:focus { border-color:rgba(11,25,41,0.3); }
 
@@ -551,44 +551,68 @@ function _wiPanelHTML(row){
   const canFull=can('planning')==='full';
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
+  const savedTruck  = row.truckLabel  ||data.trucks.find(t=>t.id===row.truckId)?.label  ||'';
+  const savedTrailer= row.trailerLabel||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
+  const savedDriver = row.driverLabel ||data.drivers.find(d=>d.id===row.driverId)?.label  ||'';
+  const savedPartner= row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
+
   return `
   <div class="wi-panel" onclick="event.stopPropagation()">
 
-    <!-- Assignment fields -->
-    <div class="wi-panel-fields">
-      <div class="wi-pf">
-        <span class="wi-plbl">Truck</span>
-        ${_wiSdrop('tk',row.id,trucks,row.truckId,row.truckLabel||'Plate…')}
+    <div class="wi-panel-top">
+      <!-- OWNED FLEET -->
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div class="wi-section-lbl">Owned Fleet</div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <div class="wi-pf">
+            <span class="wi-plbl">Truck</span>
+            ${_wiSdrop('tk',row.id,trucks,row.truckId,savedTruck||'Plate…')}
+          </div>
+          <div class="wi-pf">
+            <span class="wi-plbl">Trailer</span>
+            ${_wiSdrop('tl',row.id,trailers,row.trailerId,savedTrailer||'Plate…')}
+          </div>
+          <div class="wi-pf">
+            <span class="wi-plbl">Driver</span>
+            ${_wiSdrop('dr',row.id,drivers,row.driverId,savedDriver||'Name…')}
+          </div>
+        </div>
       </div>
-      <div class="wi-pf">
-        <span class="wi-plbl">Trailer</span>
-        ${_wiSdrop('tl',row.id,trailers,row.trailerId,row.trailerLabel||'Plate…')}
+
+      <div class="wi-div" style="height:52px"></div>
+
+      <!-- PARTNER -->
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div class="wi-section-lbl">Partner</div>
+        <div style="display:flex;gap:6px;align-items:flex-end">
+          <div class="wi-pf">
+            <span class="wi-plbl">Company</span>
+            ${_wiSdrop('pt',row.id,partners,row.partnerId,savedPartner||'Company…')}
+          </div>
+          <div class="wi-pf">
+            <span class="wi-plbl">Truck Plates</span>
+            <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099"
+                   value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
+                   id="wi-pp-${row.id}"
+                   oninput="_wiField(${row.id},'partnerPlates',this.value)"
+                   onclick="event.stopPropagation()"/>
+          </div>
+        </div>
       </div>
-      <div class="wi-pf">
-        <span class="wi-plbl">Driver</span>
-        ${_wiSdrop('dr',row.id,drivers,row.driverId,row.driverLabel||'Name…')}
-      </div>
-      <div class="wi-div"></div>
-      <div class="wi-pf">
-        <span class="wi-plbl">Partner</span>
-        ${_wiSdrop('pt',row.id,partners,row.partnerId,row.partnerLabel||'Company…')}
-      </div>
-      <div class="wi-pf">
-        <span class="wi-plbl">Partner Plates</span>
-        <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099"
-               value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
-               id="wi-pp-${row.id}"
-               oninput="_wiField(${row.id},'partnerPlates',this.value)"
-               onclick="event.stopPropagation()"/>
-      </div>
+
+      <div class="wi-div" style="height:52px"></div>
+
+      <!-- ACTIONS -->
       ${canFull?`
-      <div class="wi-pf" style="flex-direction:row;gap:6px;align-self:flex-end">
-        <button class="wi-btn" id="wi-btn-${row.id}"
+      <div style="display:flex;flex-direction:column;gap:6px;align-self:flex-end">
+        <button class="wi-save-btn" id="wi-btn-${row.id}"
                 onclick="event.stopPropagation();_wiSave(${row.id})">
-          ${row.saved?'Update':'Save'}
+          <div class="wi-spin"></div>
+          ${row.saved?'Update Assignment':'Save Assignment'}
         </button>
-        ${row.saved?`<button class="wi-btn-d"
-                onclick="event.stopPropagation();_wiClear(${row.id})">Clear</button>`:''}
+        ${row.saved?`<button class="wi-clear-btn"
+                onclick="event.stopPropagation();_wiClear(${row.id})">
+                Clear</button>`:''}
       </div>`:''}
     </div>
 
@@ -785,12 +809,13 @@ async function _wiRemoveImport(rowId){
 async function _wiSave(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
-  // Sync dropdowns
+  // Sync dropdowns — only overwrite if user has made a selection (non-empty)
   const sync=(p,f,l)=>{
     const uid=`${p}_${rowId}`;
-    const val=document.getElementById(`wsd-v-${uid}`)?.value;
-    const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value;
-    if(val!==undefined&&val!==null){row[f]=val;row[l]=lbl||'';}
+    const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
+    const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
+    if(val) { row[f]=val; row[l]=lbl; }
+    else if(lbl===''&&row[f]) { /* keep existing */ }
   };
   sync('tk','truckId','truckLabel');
   sync('tl','trailerId','trailerLabel');
@@ -805,7 +830,8 @@ async function _wiSave(rowId){
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
 
   const btn=document.getElementById('wi-btn-'+rowId);
-  if(btn){btn.disabled=true;btn.textContent='Saving…';}
+  if(btn){btn.disabled=true;btn.classList.add('saving');
+    btn.querySelector('.wi-spin').style.display='block';}
 
   const fields=isPartner
     ?{ 'Partner'            :[row.partnerId],
@@ -827,7 +853,7 @@ async function _wiSave(rowId){
   }
 
   if(errors.length){
-    if(btn){btn.disabled=false;btn.textContent=row.saved?'Update':'Save';}
+    if(btn){btn.disabled=false;btn.classList.remove('saving');}
     toast('Error: '+errors[0].slice(0,60),'warn');
     return;
   }
