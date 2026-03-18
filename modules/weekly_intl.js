@@ -72,11 +72,15 @@ const WINTL = {
 
 .wi-ce { padding:6px 13px; border-right:1px solid var(--border);
   display:flex; flex-direction:column; gap:2px; justify-content:center; overflow:hidden; }
-.wi-route { font-size:11.5px; font-weight:600; color:var(--text);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-route .sep  { color:var(--text-dim); margin:0 5px; font-weight:300; }
-.wi-route .dest { color:var(--text-mid); font-weight:400; }
-.wi-sub { font-size:10px; color:var(--text-dim); display:flex; align-items:center; gap:7px; }
+.wi-route { font-size:11.5px; font-weight:700; color:var(--text);
+  display:flex; align-items:center; gap:0; min-width:0; }
+.wi-route .from { font-weight:700; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  min-width:0; flex-shrink:1; }
+.wi-route .sep  { color:var(--text-dim); margin:0 5px; font-weight:300; flex-shrink:0; }
+.wi-route .dest { font-weight:700; color:var(--text);
+  white-space:nowrap; flex-shrink:0; }
+.wi-sub { font-size:10px; font-weight:600; color:var(--text-mid); display:flex; align-items:center; gap:7px; }
 .wi-sub-div { width:1px; height:9px; background:var(--border-mid); }
 .wi-vx { display:inline-block; font-size:7.5px; font-weight:800; letter-spacing:1px;
   text-transform:uppercase; padding:1px 5px; border-radius:3px; vertical-align:middle; margin-left:4px;
@@ -516,7 +520,9 @@ function _wiRowHTML(row,i){
       </div>
       <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)">
         <div class="wi-route">
-          <b>${fromStr}</b><span class="sep">→</span><span class="dest">${toStr}</span>
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
           ${isGroup?`<span class="wi-gr">Group ${exps.length}</span>`:''}
           ${veroia?`<span class="wi-vx">Veroia</span>`:''}
         </div>
