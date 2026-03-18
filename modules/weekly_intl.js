@@ -616,37 +616,78 @@ function _wiImpRowHTML(row){
         unmatched
       </span>`;
 
-  // Unmatched import: only right (import) column active, left cols empty
+  // Import row — full 4-col grid, always draggable, has assignment + match cell
+  const impTruck  =row.truckLabel  ||WINTL.data.trucks.find(t=>t.id===row.truckId)?.label||'';
+  const impPartner=row.partnerLabel||WINTL.data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const impSurname=row.driverLabel?row.driverLabel.trim().split(/\s+/)[0]:'';
+  let impPill;
+  if(row.saved){
+    if(impPartner){
+      impPill=`<div class="wi-pill wi-pill-bp">
+        <span class="pt">${impPartner.slice(0,22)}${impPartner.length>22?'…':''}</span>
+        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
+      </div>`;
+    } else {
+      const parts=[impTruck,impSurname].filter(Boolean).join(' · ');
+      impPill=`<div class="wi-pill wi-pill-ok"><span class="pt">${parts||'—'}</span></div>`;
+    }
+  } else {
+    impPill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
+  }
+
+  const matchCell=isMatched
+    ?`<div class="wi-ci-data">
+        <div style="display:flex;align-items:center;gap:0;min-width:0">
+          <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+          <span class="wi-ci-sep">→</span>
+          <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+          ${_wiBadges(f)}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
+          <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
+        </div>
+      </div>`
+    :`<div class="wi-ci-data">
+        <div style="display:flex;align-items:center;gap:0;min-width:0">
+          <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+          <span class="wi-ci-sep">→</span>
+          <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+          ${_wiBadges(f)}
+        </div>
+        <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
+      </div>`;
+
   return `<div id="wi-imp-${imp.id}"
     class="wi-row"
-    style="background:rgba(14,165,233,0.02);cursor:grab;border-top:1px solid rgba(14,165,233,0.12)"
+    style="background:rgba(14,165,233,0.022);border-top:1px solid rgba(14,165,233,0.1)"
     draggable="true"
     ondragstart="_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-compact" style="cursor:grab">
-      <div class="wi-cn">
-        <div class="wi-dot" style="background:rgba(14,165,233,0.35)"></div>
-        <span style="font-size:7.5px;color:rgba(14,165,233,0.5);font-weight:800;letter-spacing:.5px">IMP</span>
+    <div class="wi-compact">
+      <div class="wi-cn" style="cursor:grab">
+        <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
+        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="opacity:0"></div>
-      <div class="wi-ca-wrap" style="cursor:default;opacity:0"></div>
-      <div class="wi-ci"
-           style="background:rgba(14,165,233,0.04)"
-           ondragover="event.preventDefault()"
-           onclick="event.stopPropagation()">
-        <div class="wi-ci-data" style="flex:1">
-          <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
-            <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
-            ${_wiBadges(f)}
-          </div>
-          <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
+      <div class="wi-ce" style="cursor:grab;border-right:1px solid rgba(14,165,233,0.12)">
+        <div style="font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;
+                    color:rgba(14,165,233,0.4);margin-bottom:2px">Import Order</div>
+        <div style="font-size:10.5px;font-weight:600;color:rgba(14,165,233,0.7)">
+          ${loadDt} → ${delDt} &nbsp;·&nbsp; ${pals} pal
         </div>
-        <div style="display:flex;gap:4px;flex-shrink:0;margin-left:8px">
-          <button onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"
-            style="font-size:10px;border:1px solid var(--border-mid);border-radius:4px;
-                   padding:2px 7px;background:none;cursor:pointer;color:var(--text-dim)">🖨</button>
+      </div>
+      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
+        <button class="wi-side-btn" title="Print Import"
+                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
+          ${impPill}
         </div>
+        ${isMatched
+          ?`<button class="wi-side-btn" title="Remove match"
+                onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
+          :`<div style="width:30px;flex-shrink:0"></div>`}
+      </div>
+      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
+        ${matchCell}
       </div>
     </div>
   </div>`;
@@ -1451,6 +1492,12 @@ function _wiPrint(rowId, leg){
   const orderId = leg==='export' ? row.orderIds[0] : (row.importId||row.orderIds[0]);
   const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   window.open(`${base}?orderId=${orderId}&leg=${leg}`,'_blank');
+}
+
+function _wiOpenImpPopover(e, impId, rowId){
+  // Reuse same popover for import row assignment
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  _wiOpenPopover(e, rowId);
 }
 
 function _wiNavWeek(delta){
