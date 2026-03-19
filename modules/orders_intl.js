@@ -566,13 +566,16 @@ async function _syncNationalOrder(orderId, fields) {
   const direction    = fields['Direction'];
   const isIntl       = fields['Type'] === 'International';
 
-  if (!isIntl) return;
+  console.log('_syncNationalOrder called:', {orderId, veroiaSwitch, direction, isIntl});
+  if (!isIntl) { console.log('SKIP: not intl'); return; }
+  if (!veroiaSwitch) { console.log('SKIP: veroia switch off'); }
 
   // ── Find existing NATIONAL ORDER for this ORDER ──
   const existing = await atGetAll(TABLES.NAT_ORDERS, {
-    filterByFormula: `{Linked Order}="${orderId}"`,
+    filterByFormula: '{Linked Order}="'+orderId+'"',
     fields: ['Linked Order'],
   }, false);
+  console.log('existing natl orders:', existing.length);
 
   // ── Veroia Switch OFF → delete any existing national order ──
   if (!veroiaSwitch) {
@@ -630,13 +633,14 @@ async function _syncNationalOrder(orderId, fields) {
     natFields[i === 0 ? 'Delivery Location' : `Delivery Location ${i+1}`] = [loc];
   });
 
+  console.log('natFields to save:', JSON.stringify(natFields));
   if (existing.length > 0) {
-    // Update existing
-    await atPatch(TABLES.NAT_ORDERS, existing[0].id, natFields);
+    const upd = await atPatch(TABLES.NAT_ORDERS, existing[0].id, natFields);
+    console.log('Updated natl:', upd?.id, upd?.error);
   } else {
-    // Create new
-    await atCreate(TABLES.NAT_ORDERS, natFields);
-    await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+    const cre = await atCreate(TABLES.NAT_ORDERS, natFields);
+    console.log('Created natl:', cre?.id, cre?.error);
+    if (!cre?.error) await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
   }
 }
 
