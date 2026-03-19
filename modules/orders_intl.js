@@ -625,13 +625,13 @@ async function _syncNationalOrder(orderId, fields) {
     'Price':         fields['Price'] ?? null,
   };
 
-  // Pickup locations 1-10 (plain string IDs for NATIONAL ORDERS)
+  // Pickup locations 1-10 — field names are 'Pickup Location 1', 'Pickup Location 2', etc.
   pickupLocs.forEach((id, i) => {
-    natFields[i === 0 ? 'Pickup Location' : 'Pickup Location '+(i+1)] = [id];
+    natFields['Pickup Location '+(i+1)] = [id];
   });
-  // Delivery locations 1-10
+  // Delivery locations 1-10 — field names are 'Delivery Location 1', 'Delivery Location 2', etc.
   delivLocs.forEach((id, i) => {
-    natFields[i === 0 ? 'Delivery Location' : 'Delivery Location '+(i+1)] = [id];
+    natFields['Delivery Location '+(i+1)] = [id];
   });
 
   if (existing.length > 0) {
