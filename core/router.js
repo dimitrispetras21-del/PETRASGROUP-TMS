@@ -138,7 +138,7 @@ function navigate(page) {
     // Planning
     case 'dashboard':      renderDashboard();            break;
     case 'weekly_intl':    renderWeeklyIntl(); break;
-    case 'weekly_natl':    c.innerHTML = showComingSoon('Weekly National');       break;
+    case 'weekly_natl':    renderWeeklyNatl();       break;
     case 'weekly_pickups': c.innerHTML = showComingSoon('National Pick Ups');     break;
     case 'daily_ops':      c.innerHTML = showComingSoon('Daily Ops Plan');        break;
     case 'daily_ramp':     c.innerHTML = showComingSoon('Daily Ramp Board');      break;
