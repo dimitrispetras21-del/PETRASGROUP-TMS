@@ -63,18 +63,20 @@ async function renderWeeklyNatl() {
 
 /* ── LOAD ASSETS ─────────────────────────────────────────────────── */
 async function _wnLoadAssets() {
-  const [t, tl, d, p, c] = await Promise.all([
-    atGetAll(TABLES.TRUCKS,   {fields:['License Plate'], filterByFormula:'{Active}=TRUE()'}, false),
-    atGetAll(TABLES.TRAILERS, {fields:['License Plate']}, false),
-    atGetAll(TABLES.DRIVERS,  {fields:['Full Name'],     filterByFormula:'{Active}=TRUE()'}, false),
-    atGetAll(TABLES.PARTNERS, {fields:['Company Name']}, false),
-    atGetAll(TABLES.CLIENTS,  {fields:['Company Name']}, false),
+  const [t, tl, d, p, c, locs] = await Promise.all([
+    atGetAll(TABLES.TRUCKS,    {fields:['License Plate'], filterByFormula:'{Active}=TRUE()'}, false),
+    atGetAll(TABLES.TRAILERS,  {fields:['License Plate']}, false),
+    atGetAll(TABLES.DRIVERS,   {fields:['Full Name'],     filterByFormula:'{Active}=TRUE()'}, false),
+    atGetAll(TABLES.PARTNERS,  {fields:['Company Name']}, false),
+    atGetAll(TABLES.CLIENTS,   {fields:['Company Name']}, false),
+    atGetAll(TABLES.LOCATIONS, {fields:['Name','City','Country']}, true),
   ]);
-  WNATL.data.trucks    = t.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
-  WNATL.data.trailers  = tl.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
-  WNATL.data.drivers   = d.map(r=>({id:r.id, label:r.fields['Full Name']||r.id}));
-  WNATL.data.partners  = p.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
-  WNATL.data.clients   = c.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
+  WNATL.data.trucks     = t.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
+  WNATL.data.trailers   = tl.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
+  WNATL.data.drivers    = d.map(r=>({id:r.id, label:r.fields['Full Name']||r.id}));
+  WNATL.data.partners   = p.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
+  WNATL.data.clients    = c.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
+  WNATL.data.locations  = locs;
 }
 
 /* ── LOAD ORDERS ─────────────────────────────────────────────────── */
@@ -292,8 +294,10 @@ function _wnRowHTML(row, i) {
   // Pickup / Delivery
   const pickupId  = (f['Pickup Location'] ||[])[0]||'';
   const delivId   = (f['Delivery Location']||[])[0]||'';
-  const fromStr   = _wnLocLabel(pickupId)  || (f['Type']==='Veroia Switch'?'Veroia':'—');
-  const toStr     = _wnLocLabel(delivId)   || clientLabel;
+  const fromStr   = f['Type']==='Veroia Switch'
+    ? 'Veroia'
+    : (_wnLocLabel(pickupId)||'—');
+  const toStr     = _wnLocLabel(delivId) || clientLabel;
 
   // Status
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
@@ -395,9 +399,12 @@ function _wnSnRowHTML(row) {
   const f = ord.fields;
   const clientId = (f['Client']||[])[0]||'';
   const clientLabel = data.clients.find(c=>c.id===clientId)?.label||'—';
-  const pickupId = (f['Pickup Location']||[])[0]||'';
-  const fromStr  = _wnLocLabel(pickupId) || '—';
-  const toStr    = clientLabel;
+  const pickupId  = (f['Pickup Location'] ||[])[0]||'';
+  const delivId2  = (f['Delivery Location']||[])[0]||'';
+  const fromStr   = f['Type']==='Veroia Switch'
+    ? 'Veroia'
+    : (_wnLocLabel(pickupId)||'—');
+  const toStr     = _wnLocLabel(delivId2) || clientLabel;
   const pals     = f['Pallets']||0;
   const loadDt   = _wnFmt(f['Loading DateTime']);
   const delDt    = _wnFmt(f['Delivery DateTime']);
@@ -475,7 +482,10 @@ function _wnDelDate(row){
 function _wnLocLabel(locId){
   if(!locId) return null;
   const loc = WNATL.data.locations?.find(r=>r.id===locId);
-  return loc?.fields?.['Name']||null;
+  if(!loc) return null;
+  const f = loc.fields;
+  // Show City if available, else Name
+  return f['City']||f['Name']||null;
 }
 function _wnSnLabel(snRec){
   const f = snRec.fields;
