@@ -428,20 +428,7 @@ function _wnSnRowHTML(row) {
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
-      <div class="wi-ce">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-          ${badges}
-        </div>
-        <div class="wi-sub">
-          <span>${loadDt} → ${delDt}</span>
-          <span class="wi-sub-div"></span>
-          <span>${pals} pal</span>
-          ${f['Type']==='Veroia Switch'?'<span class="wi-badge wi-b-veroia">Veroia</span>':''}
-        </div>
-      </div>
+      <div class="wi-ce" style="background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <button class="wi-side-btn" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
@@ -449,8 +436,19 @@ function _wnSnRowHTML(row) {
         </div>
         <div style="width:30px;flex-shrink:0"></div>
       </div>
-      <div class="wi-ci" style="background:#172C45;cursor:grab">
-        <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">—</span>
+      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
+        <div class="wi-ci-data">
+          <div style="display:flex;align-items:center;gap:0;min-width:0">
+            <span class="wi-ci-from">${fromStr}</span>
+            <span class="wi-ci-sep">→</span>
+            <span class="wi-ci-dest">${toStr}</span>
+            ${badges}
+          </div>
+          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
+            <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
+            ${f['Type']==='Veroia Switch'?'<span class="wi-badge wi-b-veroia">Veroia</span>':''}
+          </div>
+        </div>
       </div>
     </div>
   </div>`;
