@@ -55,7 +55,7 @@ function _wnCurrentWeek() {
 async function renderWeeklyNatl() {
   document.getElementById('topbarTitle').textContent = `Weekly National — Week ${WNATL.week}`;
   const content = document.getElementById('content');
-  content.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:60px;color:var(--text-dim)">
+  content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
     await _wnLoadAssets();
@@ -287,7 +287,8 @@ function _wnRowHTML(row, i) {
   const pickupId = (f['Pickup Location']||[])[0]||'';
   const delivId  = (f['Delivery Location']||[])[0]||'';
   const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const toStr    = _wnLocCity(delivId) || _wnClientLabel((f['Client']||[])[0]) || '—';
+  const _rawTo   = _wnLocCity(delivId);
+  const toStr    = (_rawTo && _rawTo !== fromStr) ? _rawTo : (_wnClientLabel((f['Client']||[])[0]) || _rawTo || '—');
 
   // Client
   const clientLabel = _wnClientLabel((f['Client']||[])[0]);
@@ -368,7 +369,8 @@ function _wnSnInlineCell(snRec, rowId) {
   const pickupId = (f['Pickup Location']||[])[0]||'';
   const delivId  = (f['Delivery Location']||[])[0]||'';
   const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const toStr    = _wnLocCity(delivId) || clientLabel || '—';
+  const _rawTo2  = _wnLocCity(delivId);
+  const toStr    = (_rawTo2 && _rawTo2 !== fromStr) ? _rawTo2 : (clientLabel || _rawTo2 || '—');
   const loadDt   = _wnFmt(f['Loading DateTime']);
   const pals     = f['Pallets']||0;
   return `<div class="wi-ci-data">
@@ -407,7 +409,8 @@ function _wnSnRowHTML(row) {
   const pickupId    = (f['Pickup Location']||[])[0]||'';
   const delivId     = (f['Delivery Location']||[])[0]||'';
   const fromStr     = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const toStr       = _wnLocCity(delivId) || clientLabel || '—';
+  const _rawToSN    = _wnLocCity(delivId);
+  const toStr       = (_rawToSN && _rawToSN !== fromStr) ? _rawToSN : (clientLabel || _rawToSN || '—');
   const pals        = f['Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
@@ -495,15 +498,17 @@ function _wnPill(row) {
   const trailer = row.trailerLabel || data.trailers.find(t=>t.id===row.trailerId)?.label||'';
   const driver  = row.driverLabel  || data.drivers.find(d=>d.id===row.driverId)?.label||'';
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
-  const surname = driver ? driver.trim().split(/\s+/)[0] : '';
 
   if (!row.saved) return `<div class="wi-pill wi-pill-un"><span class="pt">Αδιάθετο</span></div>`;
   if (partner) return `<div class="wi-pill wi-pill-bp">
     <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
     ${row.partnerPlates ? `<span class="ps">${row.partnerPlates}</span>` : ''}
   </div>`;
-  return `<div class="wi-pill wi-pill-ok">
-    <span class="pt">${[truck, trailer, surname].filter(Boolean).join(' · ')||'—'}</span>
+  // Owned fleet: TRUCK/TRAILER on top, DRIVER on bottom
+  const vehicleLine = truck && trailer ? `${truck}/${trailer}` : (truck || trailer || '—');
+  return `<div class="wi-pill wi-pill-ok" style="gap:2px">
+    <span class="pt" style="font-size:11px;letter-spacing:0.3px">${vehicleLine}</span>
+    ${driver ? `<span class="ps" style="font-size:10px;font-weight:600;color:rgba(5,150,105,0.85)">${driver}</span>` : ''}
   </div>`;
 }
 
