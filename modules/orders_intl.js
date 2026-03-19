@@ -598,14 +598,14 @@ async function _syncNationalOrder(orderId, fields) {
   if (direction === 'Export') {
     for (let i = 1; i <= 10; i++) {
       const val = fields['Loading Location '+i];
-      if (val && val.length) { const id=_lid(val[0]); if(id) pickupLocs.push({id}); }
+      if (val && val.length) { const id=_lid(val[0]); if(id) pickupLocs.push(id); }
     }
-    delivLocs.push({id: 'recJucKOhC1zh4IP3'});
+    delivLocs.push('recJucKOhC1zh4IP3');
   } else {
-    pickupLocs.push({id: 'recJucKOhC1zh4IP3'});
+    pickupLocs.push('recJucKOhC1zh4IP3');
     for (let i = 1; i <= 10; i++) {
       const val = fields['Unloading Location '+i];
-      if (val && val.length) { const id=_lid(val[0]); if(id) delivLocs.push({id}); }
+      if (val && val.length) { const id=_lid(val[0]); if(id) delivLocs.push(id); }
     }
   }
 
@@ -613,7 +613,7 @@ async function _syncNationalOrder(orderId, fields) {
   const natFields = {
     'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
     'Type':          'Veroia Switch',
-    'Client':        (fields['Client']||[]).map(v=>({id:_lid(v)||v.id||v})).filter(v=>v.id),
+    'Client':        (fields['Client']||[]).map(v=>_lid(v)).filter(Boolean),
     'Goods':         fields['Goods']         || '',
     'Pallets':       fields['Total Pallets'] || fields['Loading Pallets 1'] || 0,
     'Temperature °C':fields['Temperature °C'] ?? null,
@@ -624,13 +624,13 @@ async function _syncNationalOrder(orderId, fields) {
     'National Groupage': !!fields['National Groupage'],
   };
 
-  // Pickup locations 1-10
-  pickupLocs.forEach((loc, i) => {
-    natFields[i === 0 ? 'Pickup Location' : `Pickup Location ${i+1}`] = [loc];
+  // Pickup locations 1-10 (plain string IDs for NATIONAL ORDERS)
+  pickupLocs.forEach((id, i) => {
+    natFields[i === 0 ? 'Pickup Location' : 'Pickup Location '+(i+1)] = [id];
   });
   // Delivery locations 1-10
-  delivLocs.forEach((loc, i) => {
-    natFields[i === 0 ? 'Delivery Location' : `Delivery Location ${i+1}`] = [loc];
+  delivLocs.forEach((id, i) => {
+    natFields[i === 0 ? 'Delivery Location' : 'Delivery Location '+(i+1)] = [id];
   });
 
   console.log('natFields to save:', JSON.stringify(natFields));
