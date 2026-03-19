@@ -738,20 +738,13 @@ async function submitIntlOrder(recId) {
     // Sync Veroia Switch → NATIONAL ORDERS
     const savedOrderId = recId || result.id;
     try {
-      const savedRec = await atGetAll(TABLES.ORDERS, {
-        filterByFormula: 'RECORD_ID()="'+savedOrderId+'"',
-        fields: ['Direction','Type','Veroia Switch ','National Order Created',
-          'Client','Goods','Total Pallets','Temperature °C','Pallet Exchange',
-          'National Groupage','Loading DateTime','Delivery DateTime',
-          'Loading Location 1','Loading Location 2','Loading Location 3',
-          'Loading Location 4','Loading Location 5','Loading Location 6',
-          'Loading Location 7','Loading Location 8','Loading Location 9','Loading Location 10',
-          'Unloading Location 1','Unloading Location 2','Unloading Location 3',
-          'Unloading Location 4','Unloading Location 5','Unloading Location 6',
-          'Unloading Location 7','Unloading Location 8','Unloading Location 9','Unloading Location 10',
-        ],
-      }, false);
-      if (savedRec.length > 0) await _syncNationalOrder(savedOrderId, savedRec[0].fields);
+      // Direct fetch (no cache) to get the just-saved record
+      const res = await fetch(
+        'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.ORDERS+'/'+savedOrderId,
+        {headers: {'Authorization': 'Bearer '+AT_TOKEN}}
+      );
+      const rec = await res.json();
+      if (rec.fields) await _syncNationalOrder(savedOrderId, rec.fields);
     } catch(e) { console.warn('National sync error:', e.message); }
 
     document.getElementById('modal').style.maxWidth = '';
