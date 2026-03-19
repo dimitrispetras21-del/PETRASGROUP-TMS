@@ -276,11 +276,9 @@ function _wnRowHTML(row, i) {
   const sn      = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
 
   // Route
-  const pickupId = _wnFirstPickup(f);
-  const delivId  = _wnLastDelivery(f);
-  const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const _rawTo   = _wnLocCity(delivId);
-  const toStr    = (_rawTo && _rawTo !== fromStr) ? _rawTo : (_wnClientLabel((f['Client']||[])[0]) || _rawTo || '—');
+  const fromStr  = f['Type']==='Veroia Switch'
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
+  const toStr    = _wnDeliverySummary(f) || _wnClientLabel((f['Client']||[])[0]) || '—';
 
   // Client
   const clientLabel = _wnClientLabel((f['Client']||[])[0]);
@@ -358,11 +356,9 @@ function _wnSnInlineCell(snRec, rowId) {
   const f = snRec.fields;
   const clientId = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const pickupId = _wnFirstPickup(f);
-  const delivId  = _wnLastDelivery(f);
-  const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const _rawTo2  = _wnLocCity(delivId);
-  const toStr    = (_rawTo2 && _rawTo2 !== fromStr) ? _rawTo2 : (clientLabel || _rawTo2 || '—');
+  const fromStr  = f['Type']==='Veroia Switch'
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
+  const toStr    = _wnDeliverySummary(f) || clientLabel || '—';
   const loadDt   = _wnFmt(f['Loading DateTime']);
   const pals     = f['Pallets']||0;
   return `<div class="wi-ci-data">
@@ -398,11 +394,9 @@ function _wnSnRowHTML(row) {
 
   const clientId    = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const pickupId    = _wnFirstPickup(f);
-  const delivId     = _wnLastDelivery(f);
-  const fromStr     = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
-  const _rawToSN    = _wnLocCity(delivId);
-  const toStr       = (_rawToSN && _rawToSN !== fromStr) ? _rawToSN : (clientLabel || _rawToSN || '—');
+  const fromStr     = f['Type']==='Veroia Switch'
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
+  const toStr       = _wnDeliverySummary(f) || clientLabel || '—';
   const pals        = f['Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
@@ -452,30 +446,33 @@ function _wnLocCity(locId) {
   return loc.fields['City'] || loc.fields['Name'] || null;
 }
 
-// Returns city of the FIRST filled pickup location (1→10)
-function _wnFirstPickup(f) {
+// Returns Location Name (not city) for a locId
+function _wnLocName(locId) {
+  if (!locId) return null;
+  const loc = WNATL.data.locations.find(r => r.id===locId);
+  if (!loc) return null;
+  return loc.fields['Name'] || loc.fields['City'] || null;
+}
+
+// Returns all pickup location names joined by " / "
+function _wnPickupSummary(f) {
   const keys = ['Pickup Location','Pickup Location 2','Pickup Location 3','Pickup Location 4',
                  'Pickup Location 5','Pickup Location 6','Pickup Location 7','Pickup Location 8',
                  'Pickup Location 9','Pickup Location 10'];
-  for (const k of keys) {
-    const id = (f[k]||[])[0];
-    if (id) return id;
-  }
-  return null;
+  return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
 }
 
-// Returns city of the LAST filled delivery location (10→1)
-function _wnLastDelivery(f) {
-  const keys = ['Delivery Location 10','Delivery Location 9','Delivery Location 8',
-                 'Delivery Location 7','Delivery Location 6','Delivery Location 5',
-                 'Delivery Location 4','Delivery Location 3','Delivery Location 2',
-                 'Delivery Location'];
-  for (const k of keys) {
-    const id = (f[k]||[])[0];
-    if (id) return id;
-  }
-  return null;
+// Returns all delivery location names joined by " / "
+function _wnDeliverySummary(f) {
+  const keys = ['Delivery Location','Delivery Location 2','Delivery Location 3','Delivery Location 4',
+                 'Delivery Location 5','Delivery Location 6','Delivery Location 7','Delivery Location 8',
+                 'Delivery Location 9','Delivery Location 10'];
+  return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
 }
+
+// Keep for backwards compat (used in old calls — now replaced below)
+function _wnFirstPickup(f)  { return (f['Pickup Location']  ||[])[0]||null; }
+function _wnLastDelivery(f) { return (f['Delivery Location']||[])[0]||null; }
 
 function _wnClientLabel(clientId) {
   if (!clientId) return '';
