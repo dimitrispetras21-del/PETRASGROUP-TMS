@@ -99,11 +99,6 @@ async function _wnLoadOrders() {
 
   const all = await atGetAll(TABLES.NAT_ORDERS, {
     filterByFormula: filter,
-    fields: ['Direction','Type','Client','Pickup Location','Delivery Location',
-             'Loading DateTime','Delivery DateTime','Pallets','National Groupage',
-             'Pallet Exchange','Temperature °C','Notes','Status','Goods',
-             'Truck','Trailer','Driver','Partner','Is Partner Trip',
-             'Partner Truck Plates','Partner Rate','Groupage ID','Matched Order ID','Invoiced'],
   }, false);
 
   WNATL.data.northsouth = all
@@ -281,8 +276,8 @@ function _wnRowHTML(row, i) {
   const sn      = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
 
   // Route
-  const pickupId = (f['Pickup Location']||[])[0]||'';
-  const delivId  = (f['Delivery Location']||[])[0]||'';
+  const pickupId = _wnFirstPickup(f);
+  const delivId  = _wnLastDelivery(f);
   const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
   const _rawTo   = _wnLocCity(delivId);
   const toStr    = (_rawTo && _rawTo !== fromStr) ? _rawTo : (_wnClientLabel((f['Client']||[])[0]) || _rawTo || '—');
@@ -363,8 +358,8 @@ function _wnSnInlineCell(snRec, rowId) {
   const f = snRec.fields;
   const clientId = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const pickupId = (f['Pickup Location']||[])[0]||'';
-  const delivId  = (f['Delivery Location']||[])[0]||'';
+  const pickupId = _wnFirstPickup(f);
+  const delivId  = _wnLastDelivery(f);
   const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
   const _rawTo2  = _wnLocCity(delivId);
   const toStr    = (_rawTo2 && _rawTo2 !== fromStr) ? _rawTo2 : (clientLabel || _rawTo2 || '—');
@@ -403,8 +398,8 @@ function _wnSnRowHTML(row) {
 
   const clientId    = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const pickupId    = (f['Pickup Location']||[])[0]||'';
-  const delivId     = (f['Delivery Location']||[])[0]||'';
+  const pickupId    = _wnFirstPickup(f);
+  const delivId     = _wnLastDelivery(f);
   const fromStr     = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
   const _rawToSN    = _wnLocCity(delivId);
   const toStr       = (_rawToSN && _rawToSN !== fromStr) ? _rawToSN : (clientLabel || _rawToSN || '—');
@@ -455,6 +450,31 @@ function _wnLocCity(locId) {
   const loc = WNATL.data.locations.find(r => r.id===locId);
   if (!loc) return null;
   return loc.fields['City'] || loc.fields['Name'] || null;
+}
+
+// Returns city of the FIRST filled pickup location (1→10)
+function _wnFirstPickup(f) {
+  const keys = ['Pickup Location','Pickup Location 2','Pickup Location 3','Pickup Location 4',
+                 'Pickup Location 5','Pickup Location 6','Pickup Location 7','Pickup Location 8',
+                 'Pickup Location 9','Pickup Location 10'];
+  for (const k of keys) {
+    const id = (f[k]||[])[0];
+    if (id) return id;
+  }
+  return null;
+}
+
+// Returns city of the LAST filled delivery location (10→1)
+function _wnLastDelivery(f) {
+  const keys = ['Delivery Location 10','Delivery Location 9','Delivery Location 8',
+                 'Delivery Location 7','Delivery Location 6','Delivery Location 5',
+                 'Delivery Location 4','Delivery Location 3','Delivery Location 2',
+                 'Delivery Location'];
+  for (const k of keys) {
+    const id = (f[k]||[])[0];
+    if (id) return id;
+  }
+  return null;
 }
 
 function _wnClientLabel(clientId) {
