@@ -1271,7 +1271,7 @@ async function _wiSaveFromPopover(rowId){
   syncPop('tl','trailerId','trailerLabel');
   syncPop('dr','driverId','driverLabel');
   syncPop('pt','partnerId','partnerLabel');
-  console.log('After sync — partnerId:',row.partnerId,'truckId:',row.truckId,'type:',row.type);
+  alert('DEBUG\nrow.type: '+row.type+'\nrow.orderId: '+row.orderId+'\npartnerId: '+row.partnerId+'\ntruckId: '+row.truckId+'\nisPartner: '+(!!row.partnerId));
   const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
   if(ppEl) row.partnerPlates=ppEl.value;
   const rateExpEl=document.getElementById(`wi-pop-rate-exp-${rowId}`);
