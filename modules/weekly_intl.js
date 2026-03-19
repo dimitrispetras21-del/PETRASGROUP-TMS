@@ -1325,6 +1325,28 @@ async function _wiSaveFromPopover(rowId){
   }
 
   toast(row.saved?'Updated':'Saved');
+
+  // Sync Veroia Switch → NATIONAL ORDERS
+  try {
+    for (const oid of row.orderIds) {
+      const recs = await atGetAll(TABLES.ORDERS, {
+        filterByFormula: 'RECORD_ID()="'+oid+'"',
+        fields: ['Direction','Type','Veroia Switch ','National Order Created',
+          'Client','Goods','Total Pallets','Temperature °C','Pallet Exchange',
+          'National Groupage','Loading DateTime','Delivery DateTime',
+          'Loading Location 1','Loading Location 2','Loading Location 3',
+          'Loading Location 4','Loading Location 5','Loading Location 6',
+          'Loading Location 7','Loading Location 8','Loading Location 9','Loading Location 10',
+          'Unloading Location 1','Unloading Location 2','Unloading Location 3',
+          'Unloading Location 4','Unloading Location 5','Unloading Location 6',
+          'Unloading Location 7','Unloading Location 8','Unloading Location 9','Unloading Location 10',
+        ],
+      }, false);
+      if (recs.length > 0 && typeof _syncNationalOrder === 'function')
+        await _syncNationalOrder(oid, recs[0].fields);
+    }
+  } catch(e) { console.warn('Natl sync (weekly):', e.message); }
+
   await renderWeeklyIntl();
 }
 
