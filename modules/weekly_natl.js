@@ -276,8 +276,10 @@ function _wnRowHTML(row, i) {
   const sn      = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
 
   // Route
+  // N→S: Veroia Switch means truck picks up FROM Veroia, delivers TO clients
   const fromStr  = f['Type']==='Veroia Switch'
-    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
+    : (_wnPickupSummary(f) || '—');
   const toStr    = _wnDeliverySummary(f) || _wnClientLabel((f['Client']||[])[0]) || '—';
 
   // Client
@@ -356,9 +358,11 @@ function _wnSnInlineCell(snRec, rowId) {
   const f = snRec.fields;
   const clientId = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const fromStr  = f['Type']==='Veroia Switch'
-    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
-  const toStr    = _wnDeliverySummary(f) || clientLabel || '—';
+  // S→N: Veroia Switch means truck picks up FROM Greek suppliers, delivers TO Veroia
+  const fromStr  = _wnPickupSummary(f) || '—';
+  const toStr    = f['Type']==='Veroia Switch'
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
+    : (_wnDeliverySummary(f) || clientLabel || '—');
   const loadDt   = _wnFmt(f['Loading DateTime']);
   const pals     = f['Pallets']||0;
   return `<div class="wi-ci-data">
@@ -394,9 +398,11 @@ function _wnSnRowHTML(row) {
 
   const clientId    = (f['Client']||[])[0]||'';
   const clientLabel = _wnClientLabel(clientId);
-  const fromStr     = f['Type']==='Veroia Switch'
-    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ' : (_wnPickupSummary(f) || '—');
-  const toStr       = _wnDeliverySummary(f) || clientLabel || '—';
+  // S→N: Veroia Switch means truck picks up FROM Greek suppliers, delivers TO Veroia
+  const fromStr     = _wnPickupSummary(f) || '—';
+  const toStr       = f['Type']==='Veroia Switch'
+    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
+    : (_wnDeliverySummary(f) || clientLabel || '—');
   const pals        = f['Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
