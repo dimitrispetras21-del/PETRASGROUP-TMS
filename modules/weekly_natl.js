@@ -197,8 +197,8 @@ function _wnPaint() {
         <div class="page-title">Weekly National</div>
         <div class="page-sub">
           Week ${week} · ${weekRange}
-          <span style="margin-left:12px;color:var(--success)">${nsRows.length} N→S</span>
-          <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} S→N free</span>
+          <span style="margin-left:12px;color:var(--success)">${nsRows.length} κάθοδος</span>
+          <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος ελεύθερα</span>
           <span style="margin-left:8px;color:var(--text-dim)">${assigned} assigned · ${pending} pending</span>
         </div>
       </div>
@@ -212,9 +212,9 @@ function _wnPaint() {
     <div class="wn-wrap">
       <div class="wn-head">
         <div class="wn-hc">#</div>
-        <div class="wn-hc" style="color:var(--success)">N→S (${nsRows.length})</div>
-        <div class="wn-hc">ASSIGNMENT</div>
-        <div class="wn-hc" style="color:rgba(14,165,233,0.9)">S→N (${data.southnorth.length})</div>
+        <div class="wn-hc">ΚΑΘΟΔΟΣ (${nsRows.length})</div>
+        <div class="wn-hc">ΑΝΑΘΕΣΗ</div>
+        <div class="wn-hc" style="color:rgba(14,165,233,0.9)">ΑΝΟΔΟΣ (${data.southnorth.length})</div>
       </div>
       <div id="wn-rows">
         ${rows.length ? _wnAllRowsHTML() : `<div class="empty-state" style="padding:60px">
@@ -247,7 +247,7 @@ function _wnAllRowsHTML() {
     if(lbl && lbl !== lastDate) {
       lastDate = lbl;
       html += `<div class="wi-dsep">
-        <span class="wi-dsep-lbl">Delivery</span>
+        <span class="wi-dsep-lbl">Παράδοση</span>
         <span class="wi-dsep-date">${lbl}</span>
         <span class="wi-dsep-n">${dc[lbl]} order${dc[lbl]!==1?'s':''}</span>
       </div>`;
@@ -258,8 +258,8 @@ function _wnAllRowsHTML() {
   // Unmatched S→N orders below
   if(snRows.length) {
     html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.3)">
-      <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Loading</span>
-      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">S→N · ${snRows.length} unmatched</span>
+      <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Φόρτωση</span>
+      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">Άνοδος · ${snRows.length} ελεύθερα</span>
       <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag to match</span>
     </div>`;
     snRows.forEach(row => { html += _wnSnRowHTML(row); });
@@ -333,7 +333,7 @@ function _wnRowHTML(row, i) {
       </span>`
     : `<div style="width:100%;height:100%;display:flex;align-items:center;
         background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
-        <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">drag S→N here</span>
+        <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">drag άνοδος εδώ</span>
       </div>`;
 
   // Badges
@@ -426,7 +426,7 @@ function _wnSnRowHTML(row) {
     <div class="wi-compact">
       <div class="wi-cn">
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
-        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">S→N</span>
+        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
       <div class="wi-ce">
         <div class="wi-route">
