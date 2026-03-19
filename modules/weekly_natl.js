@@ -108,6 +108,9 @@ async function _wnLoadOrders() {
   WNATL.data.southnorth = all
     .filter(r => r.fields['Direction'] === 'South→North')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
+
+  // Also filter week by Loading DateTime for S→N (pick-up this week)
+  // N→S already filtered by Delivery DateTime above
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
@@ -245,10 +248,11 @@ function _wnAllRowsHTML() {
     const lbl = _wnDelDateFull(row);
     if (lbl && lbl !== lastDate) {
       lastDate = lbl;
+      const cnt = dc[lbl];
       html += `<div class="wi-dsep">
-        <span class="wi-dsep-lbl">Παράδοση</span>
+        <span class="wi-dsep-lbl">Date</span>
         <span class="wi-dsep-date">${lbl}</span>
-        <span class="wi-dsep-n">${dc[lbl]} order${dc[lbl]!==1?'s':''}</span>
+        <span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${cnt} κάθοδος</span>
       </div>`;
     }
     html += _wnRowHTML(row, idx++);
@@ -256,9 +260,10 @@ function _wnAllRowsHTML() {
 
   if (snRows.length) {
     html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.25)">
-      <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Φόρτωση</span>
-      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">Άνοδος · ${snRows.length} ελεύθερα</span>
-      <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag για σύνδεση</span>
+      <span class="wi-dsep-lbl">Date</span>
+      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">Άνοδος</span>
+      <span class="wi-dsep-n" style="color:rgba(14,165,233,0.7);margin-left:2px">${snRows.length} ελεύθερα</span>
+      <span style="font-size:9px;color:rgba(196,207,219,0.25);margin-left:auto;font-style:italic">drag για σύνδεση</span>
     </div>`;
     snRows.forEach(row => { html += _wnSnRowHTML(row); });
   }
