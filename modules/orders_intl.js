@@ -620,7 +620,7 @@ async function _syncNationalOrder(orderId, fields) {
     'Pallet Exchange':!!fields['Pallet Exchange'],
     'Loading DateTime':  fields['Loading DateTime']  || null,
     'Delivery DateTime': fields['Delivery DateTime'] || null,
-    'Linked Order':  [{id: orderId}],
+    'Linked Order':  [orderId],
     'National Groupage': !!fields['National Groupage'],
   };
 
@@ -639,7 +639,7 @@ async function _syncNationalOrder(orderId, fields) {
   } else {
     const cre = await atCreate(TABLES.NAT_ORDERS, natFields);
     if (cre?.error) {
-      alert('NATL CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nFields sent: ' + JSON.stringify(natFields).slice(0,300));
+      alert('NATL CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nALL Fields: ' + JSON.stringify(natFields));
     } else {
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
     }
