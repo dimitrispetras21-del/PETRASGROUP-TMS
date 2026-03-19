@@ -461,24 +461,22 @@ function _wnLocName(locId) {
 }
 
 // Returns all pickup location names joined by " / "
+// NATIONAL ORDERS uses 'Pickup Location 1' through 'Pickup Location 10'
 function _wnPickupSummary(f) {
-  const keys = ['Pickup Location','Pickup Location 2','Pickup Location 3','Pickup Location 4',
+  const keys = ['Pickup Location 1','Pickup Location 2','Pickup Location 3','Pickup Location 4',
                  'Pickup Location 5','Pickup Location 6','Pickup Location 7','Pickup Location 8',
                  'Pickup Location 9','Pickup Location 10'];
   return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
 }
 
 // Returns all delivery location names joined by " / "
+// NATIONAL ORDERS uses 'Delivery Location 1' through 'Delivery Location 10'
 function _wnDeliverySummary(f) {
-  const keys = ['Delivery Location','Delivery Location 2','Delivery Location 3','Delivery Location 4',
+  const keys = ['Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4',
                  'Delivery Location 5','Delivery Location 6','Delivery Location 7','Delivery Location 8',
                  'Delivery Location 9','Delivery Location 10'];
   return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
 }
-
-// Keep for backwards compat (used in old calls — now replaced below)
-function _wnFirstPickup(f)  { return (f['Pickup Location']  ||[])[0]||null; }
-function _wnLastDelivery(f) { return (f['Delivery Location']||[])[0]||null; }
 
 function _wnClientLabel(clientId) {
   if (!clientId) return '';
