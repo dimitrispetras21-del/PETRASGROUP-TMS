@@ -2,7 +2,7 @@
 // WEEKLY NATIONAL — v1.0
 // ─────────────────────────────────────────────────────────────────────
 // NATIONAL ORDERS-only.
-// Direction: 'North→South' | 'South→North'
+// Direction: 'NORTH→SOUTH' | 'SOUTH→NORTH'
 // Type: 'Veroia Switch' | 'Independent'
 //
 // Fields read: Direction, Type, Client, Pickup Location, Delivery Location,
@@ -101,10 +101,10 @@ async function _wnLoadOrders() {
   }, false);
 
   WNATL.data.northsouth = allOrders
-    .filter(r => r.fields['Direction'] === 'North→South')
+    .filter(r => r.fields['Direction'] === 'NORTH→SOUTH')
     .sort((a,b) => (a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
   WNATL.data.southnorth = allOrders
-    .filter(r => r.fields['Direction'] === 'South→North')
+    .filter(r => r.fields['Direction'] === 'SOUTH→NORTH')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
 }
 
