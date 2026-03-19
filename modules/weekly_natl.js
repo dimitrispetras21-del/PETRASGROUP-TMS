@@ -259,13 +259,30 @@ function _wnAllRowsHTML() {
   });
 
   if (snRows.length) {
-    html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.25)">
-      <span class="wi-dsep-lbl">Date</span>
-      <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">Άνοδος</span>
-      <span class="wi-dsep-n" style="color:rgba(14,165,233,0.7);margin-left:2px">${snRows.length} ελεύθερα</span>
-      <span style="font-size:9px;color:rgba(196,207,219,0.25);margin-left:auto;font-style:italic">drag για σύνδεση</span>
-    </div>`;
-    snRows.forEach(row => { html += _wnSnRowHTML(row); });
+    // Group S→N by Loading DateTime (same style as N→S)
+    const snDc = {};
+    snRows.forEach(row => {
+      const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
+      const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null);
+      if (lbl) snDc[lbl] = (snDc[lbl]||0) + 1;
+    });
+
+    let lastSnDate = null;
+    snRows.forEach(row => {
+      const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
+      const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null);
+      if (lbl !== lastSnDate) {
+        lastSnDate = lbl;
+        const cnt = snDc[lbl]||1;
+        html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.18)">
+          <span class="wi-dsep-lbl">Date</span>
+          <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">${lbl||'—'}</span>
+          <span class="wi-dsep-n" style="color:rgba(14,165,233,0.6);margin-left:2px">${cnt} άνοδος</span>
+          <span style="font-size:9px;color:rgba(196,207,219,0.22);margin-left:auto;font-style:italic">drag για σύνδεση</span>
+        </div>`;
+      }
+      html += _wnSnRowHTML(row);
+    });
   }
 
   return html;
