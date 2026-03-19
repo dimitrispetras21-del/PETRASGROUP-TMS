@@ -610,7 +610,7 @@ async function _syncNationalOrder(orderId, fields) {
 
   // Build NATIONAL ORDER fields
   const natFields = {
-    'Direction':     direction === 'Export' ? 'SOUTH\u2192NORTH' : 'NORTH\u2192SOUTH',
+    'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
     'Type':          'Veroia Switch',
     'Client':        fields['Client']        || [],
     'Goods':         fields['Goods']         || '',
