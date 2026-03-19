@@ -633,14 +633,16 @@ async function _syncNationalOrder(orderId, fields) {
     natFields[i === 0 ? 'Delivery Location' : 'Delivery Location '+(i+1)] = [id];
   });
 
-  console.log('natFields to save:', JSON.stringify(natFields));
   if (existing.length > 0) {
     const upd = await atPatch(TABLES.NAT_ORDERS, existing[0].id, natFields);
-    console.log('Updated natl:', upd?.id, upd?.error);
+    if (upd?.error) alert('NATL UPDATE ERROR: ' + JSON.stringify(upd.error));
   } else {
     const cre = await atCreate(TABLES.NAT_ORDERS, natFields);
-    console.log('Created natl:', cre?.id, cre?.error);
-    if (!cre?.error) await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+    if (cre?.error) {
+      alert('NATL CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nFields sent: ' + JSON.stringify(natFields).slice(0,300));
+    } else {
+      await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+    }
   }
 }
 
