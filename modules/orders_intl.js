@@ -590,21 +590,19 @@ async function _syncNationalOrder(orderId, fields) {
   const pickupLocs  = [];
   const delivLocs   = [];
 
+  const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
+
   if (direction === 'Export') {
-    // S→N: pickup = Loading Location 1-10, delivery = Cross-dock
     for (let i = 1; i <= 10; i++) {
-      const key = i === 1 ? 'Loading Location 1' : `Loading Location ${i}`;
-      const val = fields[key];
-      if (val && val.length) pickupLocs.push({id: val[0].id || val[0]});
+      const val = fields['Loading Location '+i];
+      if (val && val.length) { const id=_lid(val[0]); if(id) pickupLocs.push({id}); }
     }
     delivLocs.push({id: 'recJucKOhC1zh4IP3'});
   } else {
-    // N→S: pickup = Cross-dock, delivery = Unloading Location 1-10
     pickupLocs.push({id: 'recJucKOhC1zh4IP3'});
     for (let i = 1; i <= 10; i++) {
-      const key = `Unloading Location ${i}`;
-      const val = fields[key];
-      if (val && val.length) delivLocs.push({id: val[0].id || val[0]});
+      const val = fields['Unloading Location '+i];
+      if (val && val.length) { const id=_lid(val[0]); if(id) delivLocs.push({id}); }
     }
   }
 
@@ -612,7 +610,7 @@ async function _syncNationalOrder(orderId, fields) {
   const natFields = {
     'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
     'Type':          'Veroia Switch',
-    'Client':        fields['Client']        || [],
+    'Client':        (fields['Client']||[]).map(v=>({id:_lid(v)||v.id||v})).filter(v=>v.id),
     'Goods':         fields['Goods']         || '',
     'Pallets':       fields['Total Pallets'] || fields['Loading Pallets 1'] || 0,
     'Temperature °C':fields['Temperature °C'] ?? null,
@@ -739,12 +737,22 @@ async function submitIntlOrder(recId) {
 
     // Sync Veroia Switch → NATIONAL ORDERS
     const savedOrderId = recId || result.id;
-    const savedFields  = {...fields,
-      'Direction': fields['Direction'],
-      'Veroia Switch ': fields['Veroia Switch '],
-      'National Order Created': fields['National Order Created'],
-    };
-    await _syncNationalOrder(savedOrderId, savedFields);
+    try {
+      const savedRec = await atGetAll(TABLES.ORDERS, {
+        filterByFormula: 'RECORD_ID()="'+savedOrderId+'"',
+        fields: ['Direction','Type','Veroia Switch ','National Order Created',
+          'Client','Goods','Total Pallets','Temperature °C','Pallet Exchange',
+          'National Groupage','Loading DateTime','Delivery DateTime',
+          'Loading Location 1','Loading Location 2','Loading Location 3',
+          'Loading Location 4','Loading Location 5','Loading Location 6',
+          'Loading Location 7','Loading Location 8','Loading Location 9','Loading Location 10',
+          'Unloading Location 1','Unloading Location 2','Unloading Location 3',
+          'Unloading Location 4','Unloading Location 5','Unloading Location 6',
+          'Unloading Location 7','Unloading Location 8','Unloading Location 9','Unloading Location 10',
+        ],
+      }, false);
+      if (savedRec.length > 0) await _syncNationalOrder(savedOrderId, savedRec[0].fields);
+    } catch(e) { console.warn('National sync error:', e.message); }
 
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
