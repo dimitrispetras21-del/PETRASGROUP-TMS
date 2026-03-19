@@ -95,10 +95,7 @@ async function _wnLoadOrders() {
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
   const fmt    = d => d.toISOString().split('T')[0];
 
-  const filter = `AND(
-    IS_AFTER({Delivery DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),
-    IS_BEFORE({Delivery DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}')
-  )`;
+  const filter = `AND(IS_AFTER({Delivery DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Delivery DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
   const all = await atGetAll(TABLES.NAT_ORDERS, {
     filterByFormula: filter,
