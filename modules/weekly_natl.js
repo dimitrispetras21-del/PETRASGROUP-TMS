@@ -1,14 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════════
-// WEEKLY NATIONAL — v1.0
+// WEEKLY NATIONAL — v2.0
 // ─────────────────────────────────────────────────────────────────────
-// NATIONAL ORDERS-only.
-// Direction: 'North→South' | 'South→North'
-// Type: 'Veroia Switch' | 'Independent'
+// Same layout philosophy as Weekly International.
+// 3 columns: ΚΑΘΟΔΟΣ (N→S) | ΑΝΑΘΕΣΗ | ΑΝΟΔΟΣ (S→N)
 //
-// Fields read: Direction, Type, Client, Pickup Location, Delivery Location,
-//   Loading DateTime, Delivery DateTime, Pallets, National Groupage,
-//   Truck[], Trailer[], Driver[], Partner[], Is Partner Trip,
-//   Partner Truck Plates, Groupage ID, Matched Order ID
+// Fields read from NATIONAL ORDERS:
+//   Direction ('North→South' | 'South→North')
+//   Type ('Veroia Switch' | 'Independent')
+//   Client, Pickup Location, Delivery Location
+//   Loading DateTime, Delivery DateTime
+//   Pallets, Pallet Exchange, National Groupage, Temperature °C
+//   Truck[], Trailer[], Driver[], Partner[], Is Partner Trip
+//   Partner Truck Plates, Partner Rate, Groupage ID, Matched Order ID
+//   Status, Invoiced, Notes
 //
 // Fields written: Truck, Trailer, Driver, Partner, Is Partner Trip,
 //   Partner Truck Plates, Partner Rate, Groupage ID, Matched Order ID
@@ -17,28 +21,32 @@
 'use strict';
 
 const WNATL = {
-  week: (()=>{ const d=new Date(); const jan4=new Date(d.getFullYear(),0,4); const mon=new Date(jan4); mon.setDate(jan4.getDate()-jan4.getDay()+1); return Math.ceil((d-mon)/(7*864e5))+1; })(),
+  week: _wnCurrentWeek(),
   data: { northsouth:[], southnorth:[], trucks:[], trailers:[], drivers:[], partners:[], clients:[], locations:[] },
   rows: [],
-  ui:   { openRow: null },
   _seq: 0,
 };
 
-/* ── CSS ──────────────────────────────────────────────────────────── */
-(function(){
-  if(document.getElementById('wnatl-css')) return;
-  const s=document.createElement('style'); s.id='wnatl-css';
-  s.textContent=`
-/* Reuses wi-* classes from weekly_intl. Natl-specific overrides: */
-.wn-wrap { border:1px solid var(--border-mid); border-radius:10px; overflow:hidden; background:var(--bg-card); }
-.wn-head {
-  display:grid; grid-template-columns:36px 1fr 270px 1fr;
-  background:var(--bg); border-bottom:2px solid var(--border-mid);
-  position:sticky; top:0; z-index:20;
+function _wnCurrentWeek() {
+  const d = new Date();
+  const jan4 = new Date(d.getFullYear(), 0, 4);
+  const mon = new Date(jan4);
+  mon.setDate(jan4.getDate() - jan4.getDay() + 1);
+  return Math.ceil((d - mon) / (7 * 864e5)) + 1;
 }
-.wn-hc { padding:8px 13px; font-size:9.5px; font-weight:700; letter-spacing:1.3px;
-  text-transform:uppercase; color:var(--text-dim); border-right:1px solid var(--border); }
-.wn-hc:last-child { border-right:none; }
+
+/* ── CSS (injects once, reuses wi-* from weekly_intl) ─────────────── */
+(function(){
+  if (document.getElementById('wnatl-css2')) return;
+  const s = document.createElement('style'); s.id = 'wnatl-css2';
+  s.textContent = `
+#wn-popover {
+  display:none; position:fixed; z-index:9999;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:10px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
+  width:430px; overflow:hidden;
+}
 `;
   document.head.appendChild(s);
 })();
@@ -48,15 +56,14 @@ async function renderWeeklyNatl() {
   document.getElementById('topbarTitle').textContent = `Weekly National — Week ${WNATL.week}`;
   const content = document.getElementById('content');
   content.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:60px;color:var(--text-dim)">
-    <div class="spinner"></div> Loading week ${WNATL.week}…</div>`;
-
+    <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
     await _wnLoadAssets();
     await _wnLoadOrders();
     _wnBuildRows();
     _wnPaint();
   } catch(e) {
-    content.innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`;
     console.error('renderWeeklyNatl:', e);
   }
 }
@@ -64,46 +71,49 @@ async function renderWeeklyNatl() {
 /* ── LOAD ASSETS ─────────────────────────────────────────────────── */
 async function _wnLoadAssets() {
   const [t, tl, d, p, c, locs] = await Promise.all([
-    atGetAll(TABLES.TRUCKS,    {fields:['License Plate'], filterByFormula:'{Active}=TRUE()'}, false),
-    atGetAll(TABLES.TRAILERS,  {fields:['License Plate']}, false),
-    atGetAll(TABLES.DRIVERS,   {fields:['Full Name'],     filterByFormula:'{Active}=TRUE()'}, false),
-    atGetAll(TABLES.PARTNERS,  {fields:['Company Name']}, false),
-    atGetAll(TABLES.CLIENTS,   {fields:['Company Name']}, false),
-    atGetAll(TABLES.LOCATIONS, {fields:['Name','City','Country']}, true),
+    atGetAll(TABLES.TRUCKS,    { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.TRAILERS,  { fields:['License Plate'] }, false),
+    atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.PARTNERS,  { fields:['Company Name'] }, false),
+    atGetAll(TABLES.CLIENTS,   { fields:['Company Name'] }, false),
+    atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
   ]);
-  WNATL.data.trucks     = t.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
-  WNATL.data.trailers   = tl.map(r=>({id:r.id, label:r.fields['License Plate']||r.id}));
-  WNATL.data.drivers    = d.map(r=>({id:r.id, label:r.fields['Full Name']||r.id}));
-  WNATL.data.partners   = p.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
-  WNATL.data.clients    = c.map(r=>({id:r.id, label:r.fields['Company Name']||r.id}));
-  WNATL.data.locations  = locs;
+  WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  WNATL.data.clients   = c.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  WNATL.data.locations = locs;
 }
 
 /* ── LOAD ORDERS ─────────────────────────────────────────────────── */
 async function _wnLoadOrders() {
-  // Week filter by delivery date range
-  const year  = new Date().getFullYear();
-  const jan4  = new Date(year, 0, 4);
-  const mon   = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
-  const wStart= new Date(mon); wStart.setDate(mon.getDate() + (WNATL.week-1)*7);
-  const wEnd  = new Date(wStart); wEnd.setDate(wStart.getDate()+6);
-  const fmt   = d => d.toISOString().split('T')[0];
+  const year   = new Date().getFullYear();
+  const jan4   = new Date(year, 0, 4);
+  const mon    = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
+  const wStart = new Date(mon); wStart.setDate(mon.getDate() + (WNATL.week - 1) * 7);
+  const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+  const fmt    = d => d.toISOString().split('T')[0];
 
-  const filter = `AND(IS_AFTER({Delivery DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Delivery DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
+  const filter = `AND(
+    IS_AFTER({Delivery DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),
+    IS_BEFORE({Delivery DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}')
+  )`;
 
-  const allOrders = await atGetAll(TABLES.NAT_ORDERS, {
+  const all = await atGetAll(TABLES.NAT_ORDERS, {
     filterByFormula: filter,
     fields: ['Direction','Type','Client','Pickup Location','Delivery Location',
              'Loading DateTime','Delivery DateTime','Pallets','National Groupage',
              'Pallet Exchange','Temperature °C','Notes','Status','Goods',
              'Truck','Trailer','Driver','Partner','Is Partner Trip',
-             'Partner Truck Plates','Partner Rate','Groupage ID','Matched Order ID'],
+             'Partner Truck Plates','Partner Rate','Groupage ID','Matched Order ID','Invoiced'],
   }, false);
 
-  WNATL.data.northsouth = allOrders
+  WNATL.data.northsouth = all
     .filter(r => r.fields['Direction'] === 'North→South')
     .sort((a,b) => (a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
-  WNATL.data.southnorth = allOrders
+
+  WNATL.data.southnorth = all
     .filter(r => r.fields['Direction'] === 'South→North')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
 }
@@ -111,86 +121,79 @@ async function _wnLoadOrders() {
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
 function _wnBuildRows() {
   WNATL.rows = []; WNATL._seq = 0;
-  const {northsouth, southnorth} = WNATL.data;
+  const { northsouth, southnorth } = WNATL.data;
 
-  // Groupage: group N→S orders by Groupage ID
-  const grpMap = {}; // groupageId → row index
-  for(const ord of northsouth) {
+  const grpMap = {};
+
+  for (const ord of northsouth) {
     const f = ord.fields;
-    const truckId   = (f['Truck']  ||[])[0]||'';
-    const trailerId = (f['Trailer']||[])[0]||'';
-    const driverId  = (f['Driver'] ||[])[0]||'';
-    const partnerId = (f['Partner']||[])[0]||'';
-    const gid       = f['Groupage ID']||null;
-    const matchedId = f['Matched Order ID']||null;
+    const gid = f['Groupage ID'] || null;
 
-    if(gid && grpMap[gid] !== undefined) {
+    if (gid && grpMap[gid] !== undefined) {
       WNATL.rows[grpMap[gid]].orderIds.push(ord.id);
       continue;
     }
 
     const idx = WNATL.rows.length;
-    if(gid) grpMap[gid] = idx;
+    if (gid) grpMap[gid] = idx;
+
+    const truckId   = (f['Truck']  ||[])[0]||'';
+    const trailerId = (f['Trailer']||[])[0]||'';
+    const driverId  = (f['Driver'] ||[])[0]||'';
+    const partnerId = (f['Partner']||[])[0]||'';
+    const matchedId = f['Matched Order ID']||null;
 
     WNATL.rows.push({
-      id:           ++WNATL._seq,
-      type:         'northsouth',
-      orderId:      ord.id,
-      orderIds:     [ord.id],
-      matchedId,          // matched S→N order ID
-      groupageId:   gid,
+      id: ++WNATL._seq, type:'northsouth',
+      orderId: ord.id, orderIds:[ord.id],
+      matchedId, groupageId:gid,
       truckId, trailerId, driverId, partnerId,
       truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
       trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
       driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
       partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates:f['Partner Truck Plates']||'',
-      partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
-      saved:        !!(truckId||partnerId),
+      partnerPlates: f['Partner Truck Plates']||'',
+      partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
+      saved: !!(truckId || partnerId),
     });
   }
 
-  // S→N orders that are NOT matched — show as standalone rows
   const matchedSN = new Set(WNATL.rows.map(r=>r.matchedId).filter(Boolean));
-  for(const ord of southnorth) {
-    if(matchedSN.has(ord.id)) continue; // already shown inline
+
+  for (const ord of southnorth) {
+    if (matchedSN.has(ord.id)) continue;
     const f = ord.fields;
     const truckId   = (f['Truck']  ||[])[0]||'';
     const partnerId = (f['Partner']||[])[0]||'';
     WNATL.rows.push({
-      id:           ++WNATL._seq,
-      type:         'southnorth',
-      orderId:      ord.id,
-      orderIds:     [ord.id],
-      matchedId:    null,
-      groupageId:   f['Groupage ID']||null,
+      id: ++WNATL._seq, type:'southnorth',
+      orderId: ord.id, orderIds:[ord.id],
+      matchedId: null, groupageId: f['Groupage ID']||null,
       truckId, trailerId:'', driverId:'', partnerId,
       truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
       trailerLabel:'', driverLabel:'',
       partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates:f['Partner Truck Plates']||'',
-      partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
-      saved:        !!(truckId||partnerId),
+      partnerPlates: f['Partner Truck Plates']||'',
+      partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
+      saved: !!(truckId || partnerId),
     });
   }
 }
 
 /* ── PAINT ───────────────────────────────────────────────────────── */
 function _wnPaint() {
-  const {rows, week, data} = WNATL;
-  const nsRows = rows.filter(r=>r.type==='northsouth');
-  const snRows = rows.filter(r=>r.type==='southnorth');
-  const assigned = nsRows.filter(r=>r.saved).length;
-  const pending  = nsRows.filter(r=>!r.saved).length;
-  const matched  = nsRows.filter(r=>r.matchedId).length;
+  const { rows, week, data } = WNATL;
+  const nsRows = rows.filter(r => r.type==='northsouth');
+  const snRows = rows.filter(r => r.type==='southnorth');
+  const assigned = nsRows.filter(r => r.saved).length;
+  const pending  = nsRows.filter(r => !r.saved).length;
 
-  // Week range
   const year = new Date().getFullYear();
   const jan4 = new Date(year,0,4);
   const mon  = new Date(jan4); mon.setDate(jan4.getDate()-jan4.getDay()+1);
   const wS   = new Date(mon); wS.setDate(mon.getDate()+(week-1)*7);
   const wE   = new Date(wS);  wE.setDate(wS.getDate()+6);
-  const fmtD = d=>d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
+  const fmtD = d => d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
@@ -198,55 +201,57 @@ function _wnPaint() {
       <div>
         <div class="page-title">Weekly National</div>
         <div class="page-sub">
-          Week ${week} · ${weekRange}
+          Εβδομάδα ${week} · ${weekRange}
           <span style="margin-left:12px;color:var(--success)">${nsRows.length} κάθοδος</span>
           <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος ελεύθερα</span>
-          <span style="margin-left:8px;color:var(--text-dim)">${assigned} assigned · ${pending} pending</span>
+          <span style="margin-left:8px;color:var(--text-dim)">${assigned} ανατεθειμένα · ${pending} εκκρεμή</span>
         </div>
       </div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_wnNavWeek(-1)">← Prev</button>
+        <button class="btn btn-ghost" onclick="_wnNavWeek(-1)">← Προηγ.</button>
         <div style="padding:6px 14px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px">W ${week}</div>
-        <button class="btn btn-ghost" onclick="_wnNavWeek(1)">Next →</button>
+        <button class="btn btn-ghost" onclick="_wnNavWeek(1)">Επόμ. →</button>
         <button class="btn btn-ghost" onclick="renderWeeklyNatl()">Refresh</button>
       </div>
     </div>
-    <div class="wn-wrap">
-      <div class="wn-head">
-        <div class="wn-hc">#</div>
-        <div class="wn-hc">ΚΑΘΟΔΟΣ (${nsRows.length})</div>
-        <div class="wn-hc">ΑΝΑΘΕΣΗ</div>
-        <div class="wn-hc" style="color:rgba(14,165,233,0.9)">ΑΝΟΔΟΣ (${data.southnorth.length})</div>
+
+    <div class="wi-wrap">
+      <div class="wi-head">
+        <div class="wi-hc">#</div>
+        <div class="wi-hc">ΚΑΘΟΔΟΣ (${nsRows.length})</div>
+        <div class="wi-hc">ΑΝΑΘΕΣΗ</div>
+        <div class="wi-hc" style="color:rgba(14,165,233,0.9)">ΑΝΟΔΟΣ (${data.southnorth.length})</div>
       </div>
       <div id="wn-rows">
         ${rows.length ? _wnAllRowsHTML() : `<div class="empty-state" style="padding:60px">
-          <p>No national orders for week ${week}</p></div>`}
+          <p>Δεν υπάρχουν εθνικές εντολές για την εβδομάδα ${week}</p></div>`}
       </div>
     </div>
+
     <div id="wn-ctx"></div>
-    <div id="wn-popover"></div>
-    <div id="wn-grp-tip" style="display:none;position:fixed;z-index:9999;background:var(--bg-card);
-      border:1px solid var(--border-mid);border-radius:7px;box-shadow:0 6px 24px rgba(0,0,0,0.14);
-      padding:6px 0;min-width:260px;pointer-events:none"></div>`;
+    <div id="wn-popover"></div>`;
 
   window._wnDragging = null;
 }
 
 /* ── ALL ROWS ────────────────────────────────────────────────────── */
 function _wnAllRowsHTML() {
-  const nsRows = WNATL.rows.filter(r=>r.type==='northsouth');
-  const snRows = WNATL.rows.filter(r=>r.type==='southnorth');
-  let html = '', idx = 0, lastDate = null;
+  const nsRows = WNATL.rows.filter(r => r.type==='northsouth');
+  const snRows = WNATL.rows.filter(r => r.type==='southnorth');
+  let html = '';
+  let lastDate = null;
+  let idx = 0;
 
   // Group N→S by delivery date
   const dc = {};
   nsRows.forEach(row => {
-    const lbl = _wnDelDate(row); if(lbl) dc[lbl] = (dc[lbl]||0)+1;
+    const lbl = _wnDelDateFull(row);
+    if (lbl) dc[lbl] = (dc[lbl]||0) + 1;
   });
 
   nsRows.forEach(row => {
-    const lbl = _wnDelDate(row);
-    if(lbl && lbl !== lastDate) {
+    const lbl = _wnDelDateFull(row);
+    if (lbl && lbl !== lastDate) {
       lastDate = lbl;
       html += `<div class="wi-dsep">
         <span class="wi-dsep-lbl">Παράδοση</span>
@@ -257,12 +262,11 @@ function _wnAllRowsHTML() {
     html += _wnRowHTML(row, idx++);
   });
 
-  // Unmatched S→N orders below
-  if(snRows.length) {
-    html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.3)">
+  if (snRows.length) {
+    html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.25)">
       <span class="wi-dsep-lbl" style="color:rgba(14,165,233,0.55)">Φόρτωση</span>
       <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">Άνοδος · ${snRows.length} ελεύθερα</span>
-      <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag to match</span>
+      <span style="font-size:9px;color:rgba(196,207,219,0.3);margin-left:auto;font-style:italic">drag για σύνδεση</span>
     </div>`;
     snRows.forEach(row => { html += _wnSnRowHTML(row); });
   }
@@ -270,82 +274,52 @@ function _wnAllRowsHTML() {
   return html;
 }
 
-/* ── N→S ROW HTML ────────────────────────────────────────────────── */
+/* ── N→S ROW ─────────────────────────────────────────────────────── */
 function _wnRowHTML(row, i) {
-  const {data, ui} = WNATL;
-  const ords  = row.orderIds.map(id=>data.northsouth.find(r=>r.id===id)).filter(Boolean);
-  const sn    = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
+  const { data } = WNATL;
+  const ords    = row.orderIds.map(id => data.northsouth.find(r=>r.id===id)).filter(Boolean);
   const primary = ords[0];
-  const f     = primary?.fields||{};
+  const f       = primary?.fields || {};
   const isGroup = ords.length > 1;
+  const sn      = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
 
-  // Sorted for groupage range
-  const sorted = isGroup ? [...ords].sort((a,b)=>(a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||'')) : ords;
-  const pals   = ords.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
+  // Route
+  const pickupId = (f['Pickup Location']||[])[0]||'';
+  const delivId  = (f['Delivery Location']||[])[0]||'';
+  const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
+  const toStr    = _wnLocCity(delivId) || _wnClientLabel((f['Client']||[])[0]) || '—';
+
+  // Client
+  const clientLabel = _wnClientLabel((f['Client']||[])[0]);
+
+  // Dates & pallets
+  const pals   = ords.reduce((s,r) => s + (r.fields['Pallets']||0), 0);
   const loadDt = _wnFmt(f['Loading DateTime']);
-  const delDtE = _wnFmt(sorted[0]?.fields['Delivery DateTime']);
-  const delDtL = _wnFmt(sorted[sorted.length-1]?.fields['Delivery DateTime']);
-  const delDt  = isGroup && delDtE !== delDtL ? `${delDtE}–${delDtL}` : delDtE;
+  const delDts = ords.map(r => r.fields['Delivery DateTime']).filter(Boolean).sort();
+  const delDt  = delDts.length
+    ? (isGroup && _wnFmt(delDts[0]) !== _wnFmt(delDts[delDts.length-1])
+        ? `${_wnFmt(delDts[0])}–${_wnFmt(delDts[delDts.length-1])}`
+        : _wnFmt(delDts[0]))
+    : '—';
 
-  // Client name from first order
-  const clientId = (f['Client']||[])[0]||'';
-  const clientLabel = data.clients.find(c=>c.id===clientId)?.label||'—';
-
-  // Pickup / Delivery
-  const pickupId  = (f['Pickup Location'] ||[])[0]||'';
-  const delivId   = (f['Delivery Location']||[])[0]||'';
-  const fromStr   = f['Type']==='Veroia Switch'
-    ? 'Veroia'
-    : (_wnLocLabel(pickupId)||'—');
-  const toStr     = _wnLocLabel(delivId) || clientLabel;
-
-  // Status
+  // Status dot
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
-  let sCls = 's-ok', dotColor = 'var(--success)';
-  if(isPartner)  { sCls='s-partner'; dotColor='rgba(59,130,246,0.75)'; }
-  if(!row.saved) { sCls='s-pending'; dotColor='rgba(217,119,6,0.5)'; }
+  let sCls = 's-pending', dotColor = 'rgba(217,119,6,0.5)';
+  if (row.saved && isPartner) { sCls='s-partner'; dotColor='rgba(59,130,246,0.75)'; }
+  else if (row.saved)         { sCls='s-ok';      dotColor='var(--success)'; }
 
   // Pill
-  const truck   = row.truckLabel   || data.trucks.find(t=>t.id===row.truckId)?.label||'';
-  const trailer = row.trailerLabel || data.trailers.find(t=>t.id===row.trailerId)?.label||'';
-  const driver  = row.driverLabel  || data.drivers.find(d=>d.id===row.driverId)?.label||'';
-  const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
-  const surname = driver ? driver.trim().split(/\s+/)[0] : '';
-  let pill;
-  if(row.saved) {
-    if(partner) {
-      pill = `<div class="wi-pill wi-pill-bp">
-        <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
-      </div>`;
-    } else {
-      pill = `<div class="wi-pill wi-pill-ok">
-        <span class="pt">${[truck,trailer,surname].filter(Boolean).join(' · ')||'—'}</span>
-      </div>`;
-    }
-  } else {
-    pill = `<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
-  }
+  const pill = _wnPill(row);
 
-  // S→N (matched) preview
-  const snPrev = sn
-    ? `<span style="font-size:9.5px;font-weight:700;color:rgba(14,165,233,0.8);
-                    display:flex;align-items:center;gap:5px;white-space:nowrap;overflow:hidden">
-        <span style="font-size:11px;flex-shrink:0">↩</span>
-        <span style="overflow:hidden;text-overflow:ellipsis">${_wnSnLabel(sn)}</span>
-        <span style="color:rgba(14,165,233,0.5);font-weight:400;flex-shrink:0">${_wnFmt(sn.fields['Loading DateTime'])}</span>
-      </span>`
-    : `<div style="width:100%;height:100%;display:flex;align-items:center;
-        background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
-        <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">drag άνοδος εδώ</span>
-      </div>`;
+  // Matched S→N preview (right column)
+  const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(row.id);
 
   // Badges
   const badges = _wnBadges(f);
 
   return `
   <div id="wn-row-${row.id}" class="wi-row ${sCls}">
-    <div class="wi-compact" onclick="_wnToggle(${row.id})">
+    <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
@@ -355,93 +329,106 @@ function _wnRowHTML(row, i) {
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr" style="cursor:default"
-            onmouseenter="_wnShowGrpTip(event,${row.id})"
-            onmouseleave="_wnHideGrpTip()">×${ords.length}</span>`:''}
+          ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
+          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia">VEROIA</span>' : ''}
           ${badges}
         </div>
         <div class="wi-sub">
+          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
           <span>${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
           <span>${pals} pal</span>
-          ${f['Type']==='Veroia Switch'?'<span class="wi-badge wi-b-veroia">Veroia</span>':''}
         </div>
       </div>
-      <div class="wi-ca-wrap">
-        <button class="wi-side-btn" title="Print N→S"
-                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;
-                    padding:4px 6px;cursor:pointer;min-width:0"
-             onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
+      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
+        <button class="wi-side-btn" title="Εκτύπωση" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
         ${row.matchedId
-          ? `<button class="wi-side-btn" title="Print S→N"
-                onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>`
-          : `<div style="width:26px;flex-shrink:0"></div>`}
+          ? `<button class="wi-side-btn" title="Εκτύπωση ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>`
+          : `<div style="width:30px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wn-ci-${row.id}"
            onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
            ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})">
-        ${snPrev}
+        ${snCell}
       </div>
     </div>
   </div>`;
 }
 
-/* ── S→N FREE ROW ────────────────────────────────────────────────── */
-function _wnSnRowHTML(row) {
-  const {data} = WNATL;
-  const ord = data.southnorth.find(r=>r.id===row.orderId);
-  if(!ord) return '';
-  const f = ord.fields;
+/* ── Matched S→N cell (right column when linked) ─────────────────── */
+function _wnSnInlineCell(snRec, rowId) {
+  const f = snRec.fields;
   const clientId = (f['Client']||[])[0]||'';
-  const clientLabel = data.clients.find(c=>c.id===clientId)?.label||'—';
-  const pickupId  = (f['Pickup Location'] ||[])[0]||'';
-  const delivId2  = (f['Delivery Location']||[])[0]||'';
-  const fromStr   = f['Type']==='Veroia Switch'
-    ? 'Veroia'
-    : (_wnLocLabel(pickupId)||'—');
-  const toStr     = _wnLocLabel(delivId2) || clientLabel;
-  const pals     = f['Pallets']||0;
+  const clientLabel = _wnClientLabel(clientId);
+  const pickupId = (f['Pickup Location']||[])[0]||'';
+  const delivId  = (f['Delivery Location']||[])[0]||'';
+  const fromStr  = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
+  const toStr    = _wnLocCity(delivId) || clientLabel || '—';
   const loadDt   = _wnFmt(f['Loading DateTime']);
-  const delDt    = _wnFmt(f['Delivery DateTime']);
-  const badges   = _wnBadges(f);
+  const pals     = f['Pallets']||0;
+  return `<div class="wi-ci-data">
+    <div style="display:flex;align-items:center;gap:0;min-width:0">
+      <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+      <span class="wi-ci-sep">→</span>
+      <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+      <span style="font-size:8px;color:rgba(14,165,233,0.5);margin-left:6px;cursor:pointer"
+            onclick="_wnUnmatch(${rowId},'${snRec.id}')">✕</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px">
+      <span class="wi-ci-s">${loadDt} · ${pals} pal</span>
+      ${_wnBadges(f)}
+    </div>
+    <span style="font-size:9px;color:rgba(14,165,233,0.45)">↩ matched</span>
+  </div>`;
+}
 
-  // Assignment pill for S→N
-  const truckId  = (f['Truck']  ||[])[0]||'';
-  const partnerId= (f['Partner']||[])[0]||'';
-  const truck    = row.truckLabel  ||data.trucks.find(t=>t.id===truckId)?.label||'';
-  const partner  = row.partnerLabel||data.partners.find(p=>p.id===partnerId)?.label||'';
-  const surname  = row.driverLabel?row.driverLabel.trim().split(/\s+/)[0]:'';
-  let pill;
-  if(row.saved){
-    pill = partner
-      ? `<div class="wi-pill wi-pill-bp"><span class="pt">${partner.slice(0,22)}</span>${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}</div>`
-      : `<div class="wi-pill wi-pill-ok"><span class="pt">${[truck,surname].filter(Boolean).join(' · ')||'—'}</span></div>`;
-  } else {
-    pill = `<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
-  }
+/* ── Drag-here cell ───────────────────────────────────────────────── */
+function _wnDragCell(rowId) {
+  return `<div style="width:100%;height:100%;display:flex;align-items:center;
+      background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
+    <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">drag άνοδος εδώ</span>
+  </div>`;
+}
+
+/* ── S→N standalone row ──────────────────────────────────────────── */
+function _wnSnRowHTML(row) {
+  const { data } = WNATL;
+  const ord = data.southnorth.find(r => r.id===row.orderId);
+  if (!ord) return '';
+  const f = ord.fields;
+
+  const clientId    = (f['Client']||[])[0]||'';
+  const clientLabel = _wnClientLabel(clientId);
+  const pickupId    = (f['Pickup Location']||[])[0]||'';
+  const delivId     = (f['Delivery Location']||[])[0]||'';
+  const fromStr     = f['Type']==='Veroia Switch' ? 'Veroia' : (_wnLocCity(pickupId)||'—');
+  const toStr       = _wnLocCity(delivId) || clientLabel || '—';
+  const pals        = f['Pallets']||0;
+  const loadDt      = _wnFmt(f['Loading DateTime']);
+  const delDt       = _wnFmt(f['Delivery DateTime']);
+  const badges      = _wnBadges(f);
+  const pill        = _wnPill(row);
 
   return `<div id="wn-sn-${ord.id}"
     class="wi-row"
     style="background:var(--bg-card);border-top:1px solid rgba(14,165,233,0.1)"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')">
-    <div class="wi-compact">
+    <div class="wi-compact" style="cursor:grab">
       <div class="wi-cn">
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
       <div class="wi-ce" style="background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <button class="wi-side-btn" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer">
           ${pill}
         </div>
-        <div style="width:30px;flex-shrink:0"></div>
       </div>
       <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
         <div class="wi-ci-data">
@@ -449,11 +436,12 @@ function _wnSnRowHTML(row) {
             <span class="wi-ci-from">${fromStr}</span>
             <span class="wi-ci-sep">→</span>
             <span class="wi-ci-dest">${toStr}</span>
+            ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
           </div>
-          <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
-            <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
-            ${f['Type']==='Veroia Switch'?'<span class="wi-badge wi-b-veroia">Veroia</span>':''}
+          <div class="wi-sub">
+            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+            <span>${loadDt} → ${delDt} · ${pals} pal</span>
           </div>
         </div>
       </div>
@@ -462,90 +450,138 @@ function _wnSnRowHTML(row) {
 }
 
 /* ── HELPERS ─────────────────────────────────────────────────────── */
-function _wnFmt(s){
-  if(!s) return '—';
-  try{const p=s.split('T')[0].split('-');return`${p[2]}/${p[1]}`;}catch{return s;}
+function _wnLocCity(locId) {
+  if (!locId) return null;
+  const loc = WNATL.data.locations.find(r => r.id===locId);
+  if (!loc) return null;
+  return loc.fields['City'] || loc.fields['Name'] || null;
 }
-function _wnFmtFull(s){
-  if(!s) return null;
-  try{
-    const d=new Date(s+'T12:00:00');
-    const str=d.toLocaleDateString('el-GR',{weekday:'long',day:'numeric',month:'long'});
-    return str.charAt(0).toUpperCase()+str.slice(1);
-  }catch{return s;}
+
+function _wnClientLabel(clientId) {
+  if (!clientId) return '';
+  return WNATL.data.clients.find(c => c.id===clientId)?.label || '';
 }
-function _wnDelDate(row){
-  const ord=WNATL.data.northsouth.find(r=>r.id===row.orderIds[0]);
-  const raw=ord?.fields['Delivery DateTime']||null;
-  return raw?_wnFmtFull(raw):null;
+
+function _wnFmt(s) {
+  if (!s) return '—';
+  try { const p=s.split('T')[0].split('-'); return `${p[2]}/${p[1]}`; }
+  catch { return s; }
 }
-function _wnLocLabel(locId){
-  if(!locId) return null;
-  const loc = WNATL.data.locations?.find(r=>r.id===locId);
-  if(!loc) return null;
-  const f = loc.fields;
-  // Show City if available, else Name
-  return f['City']||f['Name']||null;
+
+function _wnFmtFull(s) {
+  if (!s) return null;
+  try {
+    const d = new Date(s+'T12:00:00');
+    const str = d.toLocaleDateString('el-GR', { weekday:'long', day:'numeric', month:'long' });
+    return str.charAt(0).toUpperCase() + str.slice(1);
+  } catch { return s; }
 }
-function _wnSnLabel(snRec){
-  const f = snRec.fields;
-  const clientId=(f['Client']||[])[0]||'';
-  return WNATL.data.clients.find(c=>c.id===clientId)?.label||'—';
+
+function _wnDelDateFull(row) {
+  const ord = WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
+  return _wnFmtFull(ord?.fields['Delivery DateTime']||null);
 }
-function _wnBadges(f){
-  const b=[];
-  if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
-  if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
+
+function _wnBadges(f) {
+  const b = [];
+  if (f['Pallet Exchange'])   b.push('<span class="wi-badge wi-b-pe">PE</span>');
+  if (f['National Groupage']) b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   return b.join('');
 }
 
-function _wnNavWeek(d){
-  WNATL.week = Math.max(1, Math.min(53, WNATL.week+d));
+function _wnPill(row) {
+  const { data } = WNATL;
+  const truck   = row.truckLabel   || data.trucks.find(t=>t.id===row.truckId)?.label||'';
+  const trailer = row.trailerLabel || data.trailers.find(t=>t.id===row.trailerId)?.label||'';
+  const driver  = row.driverLabel  || data.drivers.find(d=>d.id===row.driverId)?.label||'';
+  const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const surname = driver ? driver.trim().split(/\s+/)[0] : '';
+
+  if (!row.saved) return `<div class="wi-pill wi-pill-un"><span class="pt">Αδιάθετο</span></div>`;
+  if (partner) return `<div class="wi-pill wi-pill-bp">
+    <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
+    ${row.partnerPlates ? `<span class="ps">${row.partnerPlates}</span>` : ''}
+  </div>`;
+  return `<div class="wi-pill wi-pill-ok">
+    <span class="pt">${[truck, trailer, surname].filter(Boolean).join(' · ')||'—'}</span>
+  </div>`;
+}
+
+function _wnNavWeek(d) {
+  WNATL.week = Math.max(1, Math.min(53, WNATL.week + d));
   renderWeeklyNatl();
 }
 
-/* ── DRAG & DROP (S→N onto N→S row) ─────────────────────────────── */
+/* ── DRAG & DROP ─────────────────────────────────────────────────── */
 window._wnDragging = null;
-function _wnDragStart(e, snId){
+
+function _wnDragStart(e, snId) {
   window._wnDragging = snId;
   e.dataTransfer.effectAllowed = 'move';
   e.stopPropagation();
 }
-function _wnDropOnRow(e, rowId){
+
+function _wnDropOnRow(e, rowId) {
   e.preventDefault();
   const snId = window._wnDragging;
-  if(!snId) return;
+  if (!snId) return;
   document.getElementById('wn-ci-'+rowId)?.classList.remove('dh');
   _wnSaveMatch(rowId, snId);
 }
-async function _wnSaveMatch(rowId, snId){
-  const row = WNATL.rows.find(r=>r.id===rowId); if(!row) return;
-  const oldSnId = row.matchedId;
+
+async function _wnSaveMatch(rowId, snId) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   row.matchedId = snId;
-  // Remove from S→N standalone list
-  WNATL.rows = WNATL.rows.filter(r=>!(r.type==='southnorth'&&r.orderId===snId));
+  WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
   try {
-    // Save on N→S order
-    await atPatch(TABLES.NAT_ORDERS, row.orderIds[0], {'Matched Order ID': snId});
-    // Save on S→N order
-    await atPatch(TABLES.NAT_ORDERS, snId, {'Matched Order ID': row.orderIds[0]});
-    toast('Matched ✓');
-  } catch(err) { toast('Match save error: '+err.message, 'warn'); }
+    await atPatch(TABLES.NAT_ORDERS, row.orderIds[0], { 'Matched Order ID': snId });
+    await atPatch(TABLES.NAT_ORDERS, snId, { 'Matched Order ID': row.orderIds[0] });
+    toast('Σύνδεση αποθηκεύτηκε ✓');
+  } catch(err) { toast('Σφάλμα σύνδεσης: '+err.message, 'warn'); }
 }
 
-/* ── POPOVER (N→S assignment) ────────────────────────────────────── */
-function _wnOpenPopover(e, rowId){
-  e.stopPropagation();
-  const row = WNATL.rows.find(r=>r.id===rowId); if(!row) return;
-  const {trucks, trailers, drivers, partners} = WNATL.data;
+async function _wnUnmatch(rowId, snId) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  const snOrd = WNATL.data.southnorth.find(r => r.id===snId);
+  row.matchedId = null;
+  if (snOrd) {
+    WNATL.rows.push({
+      id: ++WNATL._seq, type:'southnorth',
+      orderId: snId, orderIds:[snId],
+      matchedId:null, groupageId:snOrd.fields['Groupage ID']||null,
+      truckId:(snOrd.fields['Truck']||[])[0]||'',
+      trailerId:'', driverId:'',
+      partnerId:(snOrd.fields['Partner']||[])[0]||'',
+      truckLabel:'', trailerLabel:'', driverLabel:'',
+      partnerLabel:WNATL.data.partners.find(p=>p.id===(snOrd.fields['Partner']||[])[0])?.label||'',
+      partnerPlates:snOrd.fields['Partner Truck Plates']||'',
+      partnerRate:snOrd.fields['Partner Rate']?String(snOrd.fields['Partner Rate']):'',
+      saved:!!(snOrd.fields['Truck']?.length || snOrd.fields['Partner']?.length),
+    });
+  }
+  _wnPaint();
+  try {
+    await atPatch(TABLES.NAT_ORDERS, row.orderIds[0], { 'Matched Order ID': '' });
+    await atPatch(TABLES.NAT_ORDERS, snId, { 'Matched Order ID': '' });
+    toast('Σύνδεση αφαιρέθηκε');
+  } catch(err) { toast('Σφάλμα: '+err.message, 'warn'); }
+}
 
-  const mkDrop=(px,arr,selId,ph,wide)=>{
-    const uid=`${px}_wn_${rowId}`;
-    const sel=arr.find(x=>x.id===selId)?.label||'';
-    const opts=arr.map(x=>{const l=(x.label||'').replace(/"/g,'&quot;');
-      return`<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;}).join('');
-    return`<div class="wi-sd" id="wsd-${uid}">
+/* ── POPOVER ─────────────────────────────────────────────────────── */
+function _wnOpenPopover(e, rowId) {
+  e.stopPropagation();
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  const { trucks, trailers, drivers, partners } = WNATL.data;
+
+  const mkDrop = (px, arr, selId, ph, wide) => {
+    const uid  = `${px}_wn_${rowId}`;
+    const sel  = arr.find(x => x.id===selId)?.label||'';
+    const opts = arr.map(x => {
+      const l = (x.label||'').replace(/"/g,'&quot;');
+      return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
+    }).join('');
+    return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp${wide?' wi-pop-inp-wide':''} wi-sdi"
              placeholder="${ph}" value="${sel.replace(/"/g,'&quot;')}"
              oninput="_wiSdF('${uid}',this.value)" onfocus="_wiSdO('${uid}')" autocomplete="off"/>
@@ -555,35 +591,35 @@ function _wnOpenPopover(e, rowId){
   };
 
   const pop = document.getElementById('wn-popover');
-  pop.innerHTML=`
+  pop.innerHTML = `
     <div class="wi-pop-header">
       <div>
-        <div class="wi-pop-title">Assign N→S Trip</div>
-        <div class="wi-pop-subtitle">Week ${WNATL.week} · ${row.orderIds.length} order${row.orderIds.length>1?'s':''}</div>
+        <div class="wi-pop-title">Ανάθεση Δρομολογίου</div>
+        <div class="wi-pop-subtitle">Κάθοδος · ${row.orderIds.length} εντολ${row.orderIds.length>1?'ές':'ή'}</div>
       </div>
       <button class="wi-pop-close" onclick="_wnClosePopover()">×</button>
     </div>
     <div class="wi-pop-body">
       <div>
-        <div class="wi-pop-section-lbl">Owned Fleet</div>
+        <div class="wi-pop-section-lbl">Ιδιόκτητο Όχημα</div>
         <div class="wi-pop-row">
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Truck</span>${mkDrop('tk',trucks,row.truckId,'Plate…',false)}</div>
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Trailer</span>${mkDrop('tl',trailers,row.trailerId,'Plate…',false)}</div>
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Driver</span>${mkDrop('dr',drivers,row.driverId,'Name…',false)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Τράκτορας</span>${mkDrop('tk',trucks,row.truckId,'Πινακίδα…',false)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Τρέιλερ</span>${mkDrop('tl',trailers,row.trailerId,'Πινακίδα…',false)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Οδηγός</span>${mkDrop('dr',drivers,row.driverId,'Όνομα…',false)}</div>
         </div>
       </div>
-      <div class="wi-pop-divider">or partner</div>
+      <div class="wi-pop-divider">ή συνεργάτης</div>
       <div>
-        <div class="wi-pop-section-lbl">Partner</div>
+        <div class="wi-pop-section-lbl">Συνεργάτης</div>
         <div class="wi-pop-row">
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Company</span>${mkDrop('pt',partners,row.partnerId,'Company…',true)}</div>
+          <div class="wi-pop-field"><span class="wi-pop-lbl">Εταιρεία</span>${mkDrop('pt',partners,row.partnerId,'Επωνυμία…',true)}</div>
           <div class="wi-pop-field">
-            <span class="wi-pop-lbl">Plates</span>
-            <input class="wi-pop-inp wi-pop-inp-wide" type="text" placeholder="e.g. ΙΑΒ 1099"
+            <span class="wi-pop-lbl">Πινακίδα</span>
+            <input class="wi-pop-inp wi-pop-inp-wide" type="text" placeholder="π.χ. ΙΑΒ 1099"
                    id="wn-pop-pp-${rowId}" value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
           </div>
           <div class="wi-pop-field">
-            <span class="wi-pop-lbl">Rate €</span>
+            <span class="wi-pop-lbl">Κόμιστρο €</span>
             <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
                    id="wn-pop-rate-${rowId}" style="width:90px" value="${row.partnerRate||''}"/>
           </div>
@@ -591,142 +627,140 @@ function _wnOpenPopover(e, rowId){
       </div>
     </div>
     <div class="wi-pop-footer">
-      ${row.saved?`<button class="wi-pop-cancel" onclick="_wnClear(${rowId}).then(()=>_wnClosePopover())">Clear</button>`:''}
-      <button class="wi-pop-cancel" onclick="_wnClosePopover()">Cancel</button>
+      ${row.saved ? `<button class="wi-pop-cancel" onclick="_wnClear(${rowId}).then(()=>_wnClosePopover())">Εκκαθάριση</button>` : ''}
+      <button class="wi-pop-cancel" onclick="_wnClosePopover()">Ακύρωση</button>
       <button class="wi-pop-save" id="wn-pop-btn-${rowId}"
               onclick="event.stopPropagation();_wnSaveFromPopover(${rowId})">
         <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;display:none;animation:wi-spin .6s linear infinite"></div>
-        ${row.saved?'Update':'Save Assignment'}
+        ${row.saved ? 'Ενημέρωση' : 'Αποθήκευση'}
       </button>
     </div>`;
 
   const rect = e.currentTarget.getBoundingClientRect();
-  const popW=430, popH=300;
-  let left=rect.left-10, top=rect.bottom+6;
-  if(left+popW>window.innerWidth-12) left=window.innerWidth-popW-12;
-  if(top+popH>window.innerHeight-12) top=rect.top-popH-6;
-  if(top<10) top=10;
-  Object.assign(pop.style,{display:'block',left:`${Math.max(10,left)}px`,top:`${top}px`});
-  setTimeout(()=>document.addEventListener('click',_wnPopoverOutside,{capture:true}),10);
+  const popW=430, popH=310;
+  let left = rect.left - 10;
+  let top  = rect.bottom + 6;
+  if (left + popW > window.innerWidth - 12) left = window.innerWidth - popW - 12;
+  if (top + popH  > window.innerHeight - 12) top = rect.top - popH - 6;
+  if (top < 10) top = 10;
+  Object.assign(pop.style, { display:'block', left:`${Math.max(10,left)}px`, top:`${top}px` });
+  setTimeout(() => document.addEventListener('click', _wnPopoverOutside, { capture:true }), 10);
 }
-function _wnOpenSnPopover(e, snId, rowId){ _wnOpenPopover(e, rowId); }
-function _wnPopoverOutside(e){
-  const pop=document.getElementById('wn-popover');
-  if(pop&&!pop.contains(e.target)&&!e.target.closest('.wi-ca-wrap')) _wnClosePopover();
+
+function _wnOpenSnPopover(e, snId, rowId) { _wnOpenPopover(e, rowId); }
+
+function _wnPopoverOutside(e) {
+  const pop = document.getElementById('wn-popover');
+  if (pop && !pop.contains(e.target) && !e.target.closest('.wi-ca-wrap')) _wnClosePopover();
 }
-function _wnClosePopover(){
-  const pop=document.getElementById('wn-popover');
-  if(pop) pop.style.display='none';
-  document.removeEventListener('click',_wnPopoverOutside,{capture:true});
+
+function _wnClosePopover() {
+  const pop = document.getElementById('wn-popover');
+  if (pop) pop.style.display = 'none';
+  document.removeEventListener('click', _wnPopoverOutside, { capture:true });
 }
 
 /* ── SAVE ────────────────────────────────────────────────────────── */
-async function _wnSaveFromPopover(rowId){
-  const row = WNATL.rows.find(r=>r.id===rowId); if(!row) return;
+async function _wnSaveFromPopover(rowId) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
 
-  // Sync dropdowns → row state
-  const syncDrop=(px,fId,lId)=>{
-    const uid=`${px}_wn_${rowId}`;
-    const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
-    const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
-    if(val){row[fId]=val;row[lId]=lbl;}
+  const syncDrop = (px, fId, lId) => {
+    const uid = `${px}_wn_${rowId}`;
+    const val = document.getElementById(`wsd-v-${uid}`)?.value||'';
+    const lbl = document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
+    if (val) { row[fId]=val; row[lId]=lbl; }
   };
   syncDrop('tk','truckId','truckLabel');
   syncDrop('tl','trailerId','trailerLabel');
   syncDrop('dr','driverId','driverLabel');
   syncDrop('pt','partnerId','partnerLabel');
-  const pp=document.getElementById(`wn-pop-pp-${rowId}`);
-  if(pp) row.partnerPlates=pp.value;
-  const rt=document.getElementById(`wn-pop-rate-${rowId}`);
-  if(rt) row.partnerRate=rt.value;
+  const pp = document.getElementById(`wn-pop-pp-${rowId}`);
+  if (pp) row.partnerPlates = pp.value;
+  const rt = document.getElementById(`wn-pop-rate-${rowId}`);
+  if (rt) row.partnerRate = rt.value;
 
   const isPartner = !!row.partnerId;
-  if(!isPartner && !row.truckId){ toast('Select Truck or Partner','warn'); return; }
+  if (!isPartner && !row.truckId) { toast('Επίλεξε Τράκτορα ή Συνεργάτη', 'warn'); return; }
 
-  const btn=document.getElementById(`wn-pop-btn-${rowId}`);
-  const spin=document.getElementById(`wn-pop-spin-${rowId}`);
-  if(btn){btn.disabled=true; if(spin)spin.style.display='block';}
+  const btn  = document.getElementById(`wn-pop-btn-${rowId}`);
+  const spin = document.getElementById(`wn-pop-spin-${rowId}`);
+  if (btn)  { btn.disabled=true; if(spin) spin.style.display='block'; }
 
   const fields = isPartner
-    ? {'Partner':[row.partnerId],'Is Partner Trip':true,
-       'Partner Truck Plates':row.partnerPlates||'',
-       'Truck':[],'Trailer':[],'Driver':[],
-       'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null}
-    : {'Truck':[row.truckId],
-       'Trailer':row.trailerId?[row.trailerId]:[],
-       'Driver': row.driverId?[row.driverId]:[],
-       'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
+    ? { 'Partner':[row.partnerId], 'Is Partner Trip':true,
+        'Partner Truck Plates':row.partnerPlates||'',
+        'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null,
+        'Truck':[],'Trailer':[],'Driver':[] }
+    : { 'Truck':[row.truckId],
+        'Trailer':row.trailerId?[row.trailerId]:[],
+        'Driver': row.driverId?[row.driverId]:[],
+        'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':'' };
 
-  const errors=[];
-  for(const orderId of row.orderIds){
-    try{
+  const errors = [];
+  for (const orderId of row.orderIds) {
+    try {
       const res = await atPatch(TABLES.NAT_ORDERS, orderId, fields);
-      if(res?.error) throw new Error(res.error.message||res.error.type);
-    }catch(err){errors.push(err.message);}
+      if (res?.error) throw new Error(res.error.message||res.error.type);
+    } catch(err) { errors.push(err.message); }
   }
-  // Also assign S→N if matched
-  if(row.matchedId){
-    try{
+  if (row.matchedId) {
+    try {
       const res = await atPatch(TABLES.NAT_ORDERS, row.matchedId, fields);
-      if(res?.error) throw new Error(res.error.message||res.error.type);
-    }catch(err){errors.push('S→N: '+err.message);}
+      if (res?.error) throw new Error(res.error.message||res.error.type);
+    } catch(err) { errors.push('Άνοδος: '+err.message); }
   }
 
-  if(btn){btn.disabled=false; if(spin)spin.style.display='none';}
-  if(errors.length){ toast('Error: '+errors[0].slice(0,60),'warn'); return; }
+  if (btn) { btn.disabled=false; if(spin) spin.style.display='none'; }
+  if (errors.length) { toast('Σφάλμα: '+errors[0].slice(0,60), 'warn'); return; }
 
   row.saved = true;
+  invalidateCache(TABLES.NAT_ORDERS);
   _wnClosePopover();
-  toast(row.saved?'Updated':'Saved');
+  toast('Αποθηκεύτηκε ✓');
   await renderWeeklyNatl();
 }
 
 /* ── CLEAR ───────────────────────────────────────────────────────── */
-async function _wnClear(rowId){
-  const row=WNATL.rows.find(r=>r.id===rowId); if(!row) return;
-  const errors=[];
-  for(const orderId of row.orderIds){
-    try{
+async function _wnClear(rowId) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  for (const orderId of row.orderIds) {
+    try {
       await atPatch(TABLES.NAT_ORDERS, orderId,
-        {'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':''});
-    }catch(e){errors.push(e.message);}
+        { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' });
+    } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
   }
-  if(errors.length){ toast('Clear error','warn'); return; }
-  toast('Cleared');
-  await renderWeeklyNatl();
+  Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
+    truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
+    partnerPlates:'',partnerRate:'',saved:false });
+  invalidateCache(TABLES.NAT_ORDERS);
+  toast('Εκκαθαρίστηκε');
 }
 
-/* ── CONTEXT MENU (right-click groupage) ────────────────────────── */
-function _wnCtx(e, rowId){
+/* ── CONTEXT MENU (right-click for groupage) ─────────────────────── */
+function _wnCtx(e, rowId) {
   e.preventDefault(); e.stopPropagation();
-  const allNsRows = WNATL.rows.filter(r=>r.type==='northsouth');
-  const ctx=document.getElementById('wn-ctx');
-  const items=[];
-  items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Assign</div>`);
-  if(allNsRows.length>1)
-    items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnStartGroup(${rowId})">Group with…</div>`);
-  if(WNATL.rows.find(r=>r.id===rowId)?.orderIds?.length>1)
-    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnSplit(${rowId})">Split groupage</div>`);
+  const row = WNATL.rows.find(r => r.id===rowId);
+  const ctx = document.getElementById('wn-ctx');
+  const items = [];
+  items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</div>`);
+  if (row?.orderIds?.length > 1)
+    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnSplit(${rowId})">Διάλυση groupage</div>`);
+  ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
+  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${e.pageY}px` });
+  setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
+}
 
-  ctx.innerHTML=`<div class="wi-ctx-menu">${items.join('')}</div>`;
-  Object.assign(ctx.style,{display:'block',left:`${e.pageX}px`,top:`${e.pageY}px`});
-  setTimeout(()=>document.addEventListener('click',_wnCtxClose,{once:true}),10);
+function _wnCtxClose() {
+  const ctx = document.getElementById('wn-ctx');
+  if (ctx) ctx.style.display = 'none';
 }
-function _wnCtxClose(){
-  const ctx=document.getElementById('wn-ctx');
-  if(ctx) ctx.style.display='none';
-}
-function _wnToggle(rowId){ /* no-op — click opens popover via wi-ca-wrap */ }
 
-/* ── GROUPAGE ────────────────────────────────────────────────────── */
-function _wnStartGroup(rowId){
-  toast('Right-click on the row to merge with…','warn'); // simple: auto-group nearest unassigned
-}
-function _wnSplit(rowId){
-  const row=WNATL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<=1) return;
-  const allIds=[...row.orderIds];
-  const [first,...rest]=row.orderIds; row.orderIds=[first]; row.groupageId=null;
-  rest.forEach(id=>{
+function _wnSplit(rowId) {
+  const row = WNATL.rows.find(r => r.id===rowId);
+  if (!row || row.orderIds.length <= 1) return;
+  const [first, ...rest] = row.orderIds;
+  row.orderIds = [first]; row.groupageId = null;
+  rest.forEach(id => {
     WNATL.rows.push({
       id:++WNATL._seq, type:'northsouth', orderId:id, orderIds:[id],
       matchedId:null, groupageId:null,
@@ -735,42 +769,16 @@ function _wnSplit(rowId){
       partnerPlates:'',partnerRate:'',saved:false,
     });
   });
-  _wnPaint(); toast('Split');
-  allIds.forEach(id=>atPatch(TABLES.NAT_ORDERS,id,{'Groupage ID':''}).catch(()=>{}));
-}
-
-/* ── GROUPAGE TOOLTIP ────────────────────────────────────────────── */
-function _wnShowGrpTip(e, rowId){
-  const row=WNATL.rows.find(r=>r.id===rowId); if(!row) return;
-  const ords=row.orderIds.map(id=>WNATL.data.northsouth.find(r=>r.id===id)).filter(Boolean);
-  const items=ords.map((ord,i)=>{
-    const f=ord.fields;
-    const clientId=(f['Client']||[])[0]||'';
-    const client=WNATL.data.clients.find(c=>c.id===clientId)?.label||'—';
-    return`<div class="wi-gr-tip-row">
-      <span class="wi-gr-tip-n">${i+1}.</span>
-      <div class="wi-gr-tip-dest">
-        <div style="font-weight:700">${client}</div>
-        <div style="font-size:9.5px;color:var(--text-dim)">${_wnFmt(f['Loading DateTime'])}→${_wnFmt(f['Delivery DateTime'])} · ${f['Pallets']||0} pal</div>
-      </div>
-    </div>`;
-  }).join('');
-  const tip=document.getElementById('wn-grp-tip'); if(!tip) return;
-  tip.innerHTML=items;
-  const r=e.currentTarget.getBoundingClientRect();
-  tip.style.display='block';
-  tip.style.left=`${r.left}px`;
-  tip.style.top=`${r.bottom+4}px`;
-}
-function _wnHideGrpTip(){
-  const tip=document.getElementById('wn-grp-tip'); if(tip) tip.style.display='none';
+  _wnPaint(); toast('Διαχωρίστηκε');
+  const allIds = [first, ...rest];
+  allIds.forEach(id => atPatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' }).catch(()=>{}));
 }
 
 /* ── PRINT ───────────────────────────────────────────────────────── */
-function _wnPrint(rowId, leg){
-  const row=WNATL.rows.find(r=>r.id===rowId); if(!row) return;
+function _wnPrint(rowId, leg) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const orderId = leg==='northsouth' ? row.orderIds[0] : row.matchedId;
-  if(!orderId){ toast('No order to print','warn'); return; }
-  const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  window.open(`${base}?orderId=${orderId}&leg=${leg==='northsouth'?'export':'import'}`,'_blank');
+  if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
+  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  window.open(`${base}?orderId=${orderId}&leg=${leg==='northsouth'?'export':'import'}`, '_blank');
 }
