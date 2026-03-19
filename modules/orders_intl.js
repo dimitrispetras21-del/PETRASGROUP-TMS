@@ -555,6 +555,93 @@ function _addStop(type) {
 }
 
 // ─── Submit ─────────────────────────────────────
+
+// ═══════════════════════════════════════════════════════
+// Veroia Switch → sync NATIONAL ORDERS
+// Called after every ORDER create/update
+// ═══════════════════════════════════════════════════════
+async function _syncNationalOrder(orderId, fields) {
+  const veroiaSwitch = fields['Veroia Switch '];
+  const natCreated   = fields['National Order Created'];
+  const direction    = fields['Direction'];
+  const isIntl       = fields['Type'] === 'International';
+
+  if (!isIntl) return;
+
+  // ── Find existing NATIONAL ORDER for this ORDER ──
+  const existing = await atGetAll(TABLES.NAT_ORDERS, {
+    filterByFormula: `{Linked Order}="${orderId}"`,
+    fields: ['Linked Order'],
+  }, false);
+
+  // ── Veroia Switch OFF → delete any existing national order ──
+  if (!veroiaSwitch) {
+    for (const rec of existing) {
+      await atDelete(TABLES.NAT_ORDERS, rec.id);
+    }
+    if (existing.length) {
+      await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
+    }
+    return;
+  }
+
+  // ── Veroia Switch ON ──
+  // Build location arrays (up to 10 stops)
+  const pickupLocs  = [];
+  const delivLocs   = [];
+
+  if (direction === 'Export') {
+    // S→N: pickup = Loading Location 1-10, delivery = Cross-dock
+    for (let i = 1; i <= 10; i++) {
+      const key = i === 1 ? 'Loading Location 1' : `Loading Location ${i}`;
+      const val = fields[key];
+      if (val && val.length) pickupLocs.push({id: val[0].id || val[0]});
+    }
+    delivLocs.push({id: 'recJucKOhC1zh4IP3'});
+  } else {
+    // N→S: pickup = Cross-dock, delivery = Unloading Location 1-10
+    pickupLocs.push({id: 'recJucKOhC1zh4IP3'});
+    for (let i = 1; i <= 10; i++) {
+      const key = `Unloading Location ${i}`;
+      const val = fields[key];
+      if (val && val.length) delivLocs.push({id: val[0].id || val[0]});
+    }
+  }
+
+  // Build NATIONAL ORDER fields
+  const natFields = {
+    'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
+    'Type':          'Veroia Switch',
+    'Client':        fields['Client']        || [],
+    'Goods':         fields['Goods']         || '',
+    'Pallets':       fields['Total Pallets'] || fields['Loading Pallets 1'] || 0,
+    'Temperature °C':fields['Temperature °C'] ?? null,
+    'Pallet Exchange':!!fields['Pallet Exchange'],
+    'Loading DateTime':  fields['Loading DateTime']  || null,
+    'Delivery DateTime': fields['Delivery DateTime'] || null,
+    'Linked Order':  [{id: orderId}],
+    'National Groupage': !!fields['National Groupage'],
+  };
+
+  // Pickup locations 1-10
+  pickupLocs.forEach((loc, i) => {
+    natFields[i === 0 ? 'Pickup Location' : `Pickup Location ${i+1}`] = [loc];
+  });
+  // Delivery locations 1-10
+  delivLocs.forEach((loc, i) => {
+    natFields[i === 0 ? 'Delivery Location' : `Delivery Location ${i+1}`] = [loc];
+  });
+
+  if (existing.length > 0) {
+    // Update existing
+    await atPatch(TABLES.NAT_ORDERS, existing[0].id, natFields);
+  } else {
+    // Create new
+    await atCreate(TABLES.NAT_ORDERS, natFields);
+    await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+  }
+}
+
 async function submitIntlOrder(recId) {
   const btn = document.getElementById('btnSubmit');
   if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
@@ -649,6 +736,16 @@ async function submitIntlOrder(recId) {
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
 
     invalidateCache(TABLES.ORDERS);
+
+    // Sync Veroia Switch → NATIONAL ORDERS
+    const savedOrderId = recId || result.id;
+    const savedFields  = {...fields,
+      'Direction': fields['Direction'],
+      'Veroia Switch ': fields['Veroia Switch '],
+      'National Order Created': fields['National Order Created'],
+    };
+    await _syncNationalOrder(savedOrderId, savedFields);
+
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
     toast(recId ? 'Order updated ✓' : 'Order created ✓');
