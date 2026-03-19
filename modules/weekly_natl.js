@@ -17,7 +17,7 @@
 'use strict';
 
 const WNATL = {
-  week: _wiCurrentWeek(),
+  week: (()=>{ const d=new Date(); const jan4=new Date(d.getFullYear(),0,4); const mon=new Date(jan4); mon.setDate(jan4.getDate()-jan4.getDay()+1); return Math.ceil((d-mon)/(7*864e5))+1; })(),
   data: { northsouth:[], southnorth:[], trucks:[], trailers:[], drivers:[], partners:[], clients:[], locations:[] },
   rows: [],
   ui:   { openRow: null },
@@ -490,7 +490,7 @@ function _wnBadges(f){
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   return b.join('');
 }
-function _wnCurrentWeek(){ return _wiCurrentWeek(); }
+
 function _wnNavWeek(d){
   WNATL.week = Math.max(1, Math.min(53, WNATL.week+d));
   renderWeeklyNatl();
