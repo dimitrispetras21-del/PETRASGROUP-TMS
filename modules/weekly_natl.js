@@ -229,61 +229,51 @@ function _wnPaint() {
   window._wnDragging = null;
 }
 
-/* ── ALL ROWS ────────────────────────────────────────────────────── */
+/* ── ALL ROWS — grouped by date, N→S + S→N per day ─────────────── */
 function _wnAllRowsHTML() {
   const nsRows = WNATL.rows.filter(r => r.type==='northsouth');
   const snRows = WNATL.rows.filter(r => r.type==='southnorth');
   let html = '';
-  let lastDate = null;
   let idx = 0;
 
-  // Group N→S by delivery date
-  const dc = {};
-  nsRows.forEach(row => {
-    const lbl = _wnDelDateFull(row);
-    if (lbl) dc[lbl] = (dc[lbl]||0) + 1;
-  });
+  // Build map: dateKey → { lbl, ns:[], sn:[] }
+  const dayMap = {};
 
   nsRows.forEach(row => {
-    const lbl = _wnDelDateFull(row);
-    if (lbl && lbl !== lastDate) {
-      lastDate = lbl;
-      const cnt = dc[lbl];
-      html += `<div class="wi-dsep">
-        <span class="wi-dsep-lbl">Date</span>
-        <span class="wi-dsep-date">${lbl}</span>
-        <span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${cnt} κάθοδος</span>
-      </div>`;
-    }
-    html += _wnRowHTML(row, idx++);
+    const ord = WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
+    const key = ord?.fields['Delivery DateTime']?.split('T')[0] || 'zzz';
+    const lbl = _wnFmtFull(ord?.fields['Delivery DateTime']||null) || '—';
+    if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
+    dayMap[key].ns.push(row);
   });
 
-  if (snRows.length) {
-    // Group S→N by Loading DateTime (same style as N→S)
-    const snDc = {};
-    snRows.forEach(row => {
-      const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
-      const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null);
-      if (lbl) snDc[lbl] = (snDc[lbl]||0) + 1;
-    });
+  snRows.forEach(row => {
+    const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
+    const key = ord?.fields['Loading DateTime']?.split('T')[0] || 'zzz';
+    const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null) || '—';
+    if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
+    dayMap[key].sn.push(row);
+  });
 
-    let lastSnDate = null;
-    snRows.forEach(row => {
-      const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
-      const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null);
-      if (lbl !== lastSnDate) {
-        lastSnDate = lbl;
-        const cnt = snDc[lbl]||1;
-        html += `<div class="wi-dsep" style="border-top:2px solid rgba(14,165,233,0.18)">
-          <span class="wi-dsep-lbl">Date</span>
-          <span class="wi-dsep-date" style="color:rgba(14,165,233,0.85)">${lbl||'—'}</span>
-          <span class="wi-dsep-n" style="color:rgba(14,165,233,0.6);margin-left:2px">${cnt} άνοδος</span>
-          <span style="font-size:9px;color:rgba(196,207,219,0.22);margin-left:auto;font-style:italic">drag για σύνδεση</span>
-        </div>`;
-      }
-      html += _wnSnRowHTML(row);
-    });
-  }
+  // Sort days chronologically
+  const sortedKeys = Object.keys(dayMap).sort();
+
+  sortedKeys.forEach(key => {
+    const { lbl, ns, sn } = dayMap[key];
+    const nsCount = ns.length;
+    const snCount = sn.length;
+
+    html += `<div class="wi-dsep">
+      <span class="wi-dsep-lbl">Date</span>
+      <span class="wi-dsep-date">${lbl}</span>
+      ${nsCount ? `<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${nsCount} κάθοδος</span>` : ''}
+      ${snCount ? `<span class="wi-dsep-n" style="color:rgba(14,165,233,0.65);margin-left:${nsCount?'4px':'2px'}">${snCount} άνοδος</span>` : ''}
+      ${snCount ? `<span style="font-size:9px;color:rgba(196,207,219,0.22);margin-left:auto;font-style:italic">drag για σύνδεση</span>` : ''}
+    </div>`;
+
+    ns.forEach(row => { html += _wnRowHTML(row, idx++); });
+    sn.forEach(row => { html += _wnSnRowHTML(row); });
+  });
 
   return html;
 }
