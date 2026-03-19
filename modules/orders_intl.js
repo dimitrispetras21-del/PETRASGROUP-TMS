@@ -644,8 +644,11 @@ async function submitIntlOrder(recId) {
     if (!fields['Loading DateTime'])     { alert('Loading Date (Stop 1) is required'); throw new Error('validation'); }
     if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); throw new Error('validation'); }
 
-    if (recId) await atPatch(TABLES.ORDERS, recId, fields);
-    else       await atCreate(TABLES.ORDERS, fields);
+    const result = recId
+      ? await atPatch(TABLES.ORDERS, recId, fields)
+      : await atCreate(TABLES.ORDERS, fields);
+
+    if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
 
     invalidateCache(TABLES.ORDERS);
     document.getElementById('modal').style.maxWidth = '';
