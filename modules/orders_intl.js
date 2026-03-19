@@ -738,14 +738,20 @@ async function submitIntlOrder(recId) {
     // Sync Veroia Switch → NATIONAL ORDERS
     const savedOrderId = recId || result.id;
     try {
-      // Direct fetch (no cache) to get the just-saved record
+      toast('Syncing national order...', 'info');
       const res = await fetch(
         'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.ORDERS+'/'+savedOrderId,
         {headers: {'Authorization': 'Bearer '+AT_TOKEN}}
       );
       const rec = await res.json();
-      if (rec.fields) await _syncNationalOrder(savedOrderId, rec.fields);
-    } catch(e) { console.warn('National sync error:', e.message); }
+      console.log('SYNC: fetched record', savedOrderId, rec.fields?.['Veroia Switch '], rec.fields?.['Direction'], rec.fields?.['Type']);
+      if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
+      await _syncNationalOrder(savedOrderId, rec.fields);
+      toast('National order synced ✓');
+    } catch(e) {
+      console.error('National sync error:', e);
+      toast('Sync error: '+e.message, 'warn');
+    }
 
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
