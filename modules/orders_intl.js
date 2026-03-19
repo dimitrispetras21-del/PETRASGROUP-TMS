@@ -633,8 +633,6 @@ async function submitIntlOrder(recId) {
       }
     }
 
-    // Week number from first delivery date
-    if (del1dt) fields[' Week Number'] = _weekNum(del1dt);
 
     // Validate required
     if (!fields['Direction'])            { alert('Direction is required'); throw new Error('validation'); }
