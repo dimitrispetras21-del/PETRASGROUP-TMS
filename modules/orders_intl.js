@@ -622,6 +622,7 @@ async function _syncNationalOrder(orderId, fields) {
     'Delivery DateTime': fields['Delivery DateTime'] || null,
     'Linked Order':  [orderId],
     'National Groupage': !!fields['National Groupage'],
+    'Price':         fields['Price'] ?? null,
   };
 
   // Pickup locations 1-10 (plain string IDs for NATIONAL ORDERS)
@@ -1077,3 +1078,4 @@ async function _scanOpen(matched, data) {
   closeModal();
   await _openModal(null, f, matched.clientLabel);
 }
+
