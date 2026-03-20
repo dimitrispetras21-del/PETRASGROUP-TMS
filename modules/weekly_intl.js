@@ -1322,7 +1322,7 @@ function _wiClosePopover(){
 
 async function _wiSaveFromPopover(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);
-  if(!row){alert('DEBUG: row not found for id='+rowId);return;}
+  if(!row){return;}
   const syncPop=(p,f,l)=>{
     const uid=`${p}_p_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
@@ -1334,7 +1334,7 @@ async function _wiSaveFromPopover(rowId){
   syncPop('tl','trailerId','trailerLabel');
   syncPop('dr','driverId','driverLabel');
   syncPop('pt','partnerId','partnerLabel');
-  alert('DEBUG\nrow.type: '+row.type+'\nrow.orderId: '+row.orderId+'\npartnerId: '+row.partnerId+'\ntruckId: '+row.truckId+'\nisPartner: '+(!!row.partnerId));
+
   const ppEl=document.getElementById(`wi-pop-pp-${rowId}`);
   if(ppEl) row.partnerPlates=ppEl.value;
   const rateExpEl=document.getElementById(`wi-pop-rate-exp-${rowId}`);
