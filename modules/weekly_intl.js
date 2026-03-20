@@ -141,49 +141,44 @@ const WINTL = {
 .wi-side-btn:hover { background:rgba(11,25,41,0.07); color:var(--navy); }
 /* ── ASSIGNMENT PILLS v3 — left accent bar ── */
 .wi-pill {
-  display:flex; flex-direction:column; align-items:flex-start;
-  padding:6px 12px 6px 14px;
-  border-radius:5px; max-width:220px; overflow:hidden; gap:2px;
+  display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:0; border-radius:0; max-width:230px; overflow:hidden; gap:0;
   transition:opacity .15s; cursor:pointer;
-  position:relative;
-  border-left: 3px solid transparent;
+  background:none; border:none;
 }
 .wi-pill:hover { opacity:.82; }
 
-/* OWNED — dark fill, green left bar */
-.wi-pill-ok {
-  background: rgba(15,37,69,0.85);
-  border-left: 3px solid #059669;
-  border-top: 1px solid rgba(184,196,208,0.12);
-  border-right: 1px solid rgba(184,196,208,0.12);
-  border-bottom: 1px solid rgba(184,196,208,0.12);
+/* ── STATUS TAG ── */
+.wi-tag {
+  display:inline-flex; align-items:center; gap:7px;
+  padding:7px 14px; border-radius:4px; width:100%;
+  font-size:11px; font-weight:700; letter-spacing:.4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.wi-pill-ok .pt { color: #E2EAF2; }
-.wi-pill-ok .ps { color: rgba(184,196,208,0.5); }
-
-/* PARTNER — subtle fill, blue left bar */
-.wi-pill-bp {
-  background: rgba(30,58,138,0.25);
-  border-left: 3px solid #3B82F6;
-  border-top: 1px solid rgba(59,130,246,0.2);
-  border-right: 1px solid rgba(59,130,246,0.2);
-  border-bottom: 1px solid rgba(59,130,246,0.2);
+.wi-tag-dot {
+  width:7px; height:7px; border-radius:50%; flex-shrink:0;
 }
-.wi-pill-bp .pt { color: #93C5FD; }
-.wi-pill-bp .ps { color: rgba(147,197,253,0.55); }
 
-/* UNASSIGNED — warm dim fill, amber left bar */
-.wi-pill-un {
-  background: rgba(120,53,15,0.15);
-  border-left: 3px solid #D97706;
-  border-top: 1px solid rgba(217,119,6,0.15);
-  border-right: 1px solid rgba(217,119,6,0.15);
-  border-bottom: 1px solid rgba(217,119,6,0.15);
+/* OWNED */
+.wi-tag-ok  { background:rgba(5,150,105,0.1); color:#34D399; }
+.wi-tag-ok  .wi-tag-dot { background:#059669; box-shadow:0 0 0 2px rgba(5,150,105,0.25); }
+
+/* PARTNER */
+.wi-tag-bp  { background:rgba(59,130,246,0.1); color:#60A5FA; }
+.wi-tag-bp  .wi-tag-dot { background:#3B82F6; box-shadow:0 0 0 2px rgba(59,130,246,0.25); }
+
+/* UNASSIGNED */
+.wi-tag-un  { background:rgba(255,255,255,0.04); color:rgba(184,196,208,0.45); }
+.wi-tag-un  .wi-tag-dot { background:rgba(184,196,208,0.25); }
+
+.wi-tag-sub {
+  font-size:9px; font-weight:500; color:rgba(184,196,208,0.4);
+  padding:0 14px 5px; letter-spacing:.3px;
 }
-.wi-pill-un .pt { color: rgba(251,191,36,0.7); font-weight:600; letter-spacing:.3px; }
-
-.pt { font-size:10.5px; font-weight:700; white-space:nowrap; overflow:hidden;
+.pt { font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden;
   text-overflow:ellipsis; max-width:200px; }
+.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:200px; }
 .ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   max-width:200px; }
 
@@ -686,16 +681,16 @@ function _wiImpRowHTML(row){
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wi-pill wi-pill-bp">
-        <span class="pt">${impPartner.slice(0,22)}${impPartner.length>22?'…':''}</span>
-        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
+      impPill=`<div class="wi-pill">
+        <div class="wi-tag wi-tag-bp"><span class="wi-tag-dot"></span>${impPartner.slice(0,22)}${impPartner.length>22?'…':''}</div>
+        ${row.partnerPlates?`<div class="wi-tag-sub">${row.partnerPlates}</div>`:''}
       </div>`;
     } else {
       const parts=[impTruck,impSurname].filter(Boolean).join(' · ');
-      impPill=`<div class="wi-pill wi-pill-ok"><span class="pt">${parts||'—'}</span></div>`;
+      impPill=`<div class="wi-pill"><div class="wi-tag wi-tag-ok"><span class="wi-tag-dot"></span>${parts||'—'}</div></div>`;
     }
   } else {
-    impPill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
+    impPill=`<div class="wi-pill"><div class="wi-tag wi-tag-un"><span class="wi-tag-dot"></span>Unassigned</div></div>`;
   }
 
   const matchCell=isMatched
@@ -812,23 +807,23 @@ function _wiRowHTML(row,i){
   let pill;
   if(row.saved){
     if(partner){
-      pill=`<div class="wi-pill wi-pill-bp">
-        <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-        ${row.partnerPlates?`<span class="ps">${row.partnerPlates}</span>`:''}
+      pill=`<div class="wi-pill">
+        <div class="wi-tag wi-tag-bp"><span class="wi-tag-dot"></span>${partner.slice(0,22)}${partner.length>22?'…':''}</div>
+        ${row.partnerPlates?`<div class="wi-tag-sub">${row.partnerPlates}</div>`:''}
       </div>`;
     } else {
       const parts=[truck,trailer,surname].filter(Boolean).join(' · ');
-      pill=`<div class="wi-pill wi-pill-ok">
-        <span class="pt">${parts||'—'}</span>
-      </div>`;
+      pill=`<div class="wi-pill"><div class="wi-tag wi-tag-ok"><span class="wi-tag-dot"></span>${parts||'—'}</div></div>`;
     }
   } else {
     if(isOverdue){
-      pill=`<div class="wi-pill" style="background:rgba(220,38,38,0.08);border:1px solid rgba(220,38,38,0.22)">
-        <span class="pt" style="color:rgba(220,38,38,0.9)">Unassigned</span>
+      pill=`<div class="wi-pill">
+        <div class="wi-tag wi-tag-un" style="background:rgba(220,38,38,0.1);color:rgba(239,68,68,0.85)">
+          <span class="wi-tag-dot" style="background:#EF4444"></span>Unassigned
+        </div>
       </div>`;
     } else {
-      pill=`<div class="wi-pill wi-pill-un"><span class="pt">Unassigned</span></div>`;
+      pill=`<div class="wi-pill"><div class="wi-tag wi-tag-un"><span class="wi-tag-dot"></span>Unassigned</div></div>`;
     }
   }
 
