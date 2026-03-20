@@ -497,34 +497,49 @@ function _wnSnRowHTML(row) {
   const badges      = _wnBadges(f);
   const pill        = _wnPill(row);
 
+  // S→N status — same logic as N→S
+  const isPartnerSN = !!(row.partnerLabel || WNATL.data.partners.find(p=>p.id===row.partnerId)?.label);
+  let sClsSN = 's-pending', dotColorSN = 'rgba(217,119,6,0.5)';
+  if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
+  else if (row.saved)           { sClsSN='s-ok';      dotColorSN='var(--success)'; }
+
   return `<div id="wn-sn-${ord.id}"
-    class="wi-row"
-    style="background:var(--bg-card);border-top:1px solid rgba(14,165,233,0.1)"
+    class="wi-row ${sClsSN}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')">
-    <div class="wi-compact" style="cursor:grab">
+    <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
-        <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
+        <div class="wi-dot" style="background:${dotColorSN}"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
-      <div class="wi-ce" style="background:#172C45;border-right:none"></div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer">
-          ${pill}
+      <div class="wi-ce">
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
+        </div>
+        <div class="wi-sub">
+          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+          <span>${loadDt} → ${delDt}</span>
+          <span class="wi-sub-div"></span>
+          <span>${pals} pal</span>
+          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
+          ${badges}
         </div>
       </div>
-      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
+      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
+        <button class="wi-side-btn" title="Εκτύπωση ανόδου"
+          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
+        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
+          ${pill}
+        </div>
+        <div style="width:30px;flex-shrink:0"></div>
+      </div>
+      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)"
+           title="Drag για σύνδεση με Κάθοδο">
         <div class="wi-ci-data">
-          <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from">${fromStr}</span>
-            <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest">${toStr}</span>
-          </div>
-          <div class="wi-sub">
-            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-            <span>${loadDt} → ${delDt} · ${pals} pal</span>
-            ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
-            ${badges}
+          <div style="font-size:10px;color:rgba(14,165,233,0.35);font-style:italic">
+            ↕ drag για σύνδεση με Κάθοδο
           </div>
         </div>
       </div>
@@ -764,7 +779,22 @@ function _wnOpenPopover(e, rowId) {
   setTimeout(() => document.addEventListener('click', _wnPopoverOutside, { capture:true }), 10);
 }
 
-function _wnOpenSnPopover(e, snId, rowId) { _wnOpenPopover(e, rowId); }
+function _wnOpenSnPopover(e, snId, rowId) {
+  // Find the standalone S→N row object
+  const row = WNATL.rows.find(r => r.type==='southnorth' && r.orderId===snId);
+  if (row) {
+    _wnOpenPopover(e, row.id);
+  } else {
+    // fallback: open N→S popover
+    _wnOpenPopover(e, rowId);
+  }
+}
+
+function _wnPrintSn(orderId) {
+  if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
+  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  window.open(`${base}?orderId=${orderId}&leg=import`, '_blank');
+}
 
 function _wnPopoverOutside(e) {
   const pop = document.getElementById('wn-popover');
