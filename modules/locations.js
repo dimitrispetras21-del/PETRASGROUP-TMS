@@ -37,7 +37,7 @@ function _locShell() {
   return `
 <div class="page-header">
   <div>
-    <div class="page-title">Locations</div>
+    <div class="page-title" style="border-bottom:2px solid var(--navy-mid);display:inline-block;padding-bottom:2px">Locations</div>
     <div class="page-sub" id="locSub">—</div>
   </div>
   <button class="btn btn-primary" onclick="_locOpenCreate()">+ New Location</button>
@@ -53,13 +53,13 @@ function _locShell() {
   <div class="kpi-grid" id="locKpis"></div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="table-wrap" style="overflow:hidden">
-      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
         By Country <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locCountryLabel"></span>
       </div>
       <div id="locCountryBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
     </div>
     <div class="table-wrap" style="overflow:hidden">
-      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--text-dim);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
         By Category <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
       </div>
       <div id="locTypeBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
@@ -69,9 +69,9 @@ function _locShell() {
 
 <!-- List Panel -->
 <div id="locPanel-list" class="loc-panel" style="display:none">
-  <div class="entity-layout" style="height:calc(100vh - 265px)">
+  <div class="entity-layout" style="height:calc(100vh - 265px);border-top:3px solid var(--navy-mid)">
     <div class="entity-list-panel">
-      <div class="entity-toolbar">
+      <div class="entity-toolbar" style="border-bottom:2px solid rgba(11,25,41,0.12)">
         <input class="search-input" id="locSearch" placeholder="Search name, city, address…" style="max-width:280px">
         <select class="filter-select" id="locCountryFilter">
           <option value="">All Countries</option>
@@ -85,9 +85,9 @@ function _locShell() {
         <table id="locTable">
           <thead>
             <tr>
-              <th class="loc-th" data-col="Name" style="cursor:pointer">Name ↕</th>
-              <th class="loc-th" data-col="City" style="cursor:pointer">City ↕</th>
-              <th class="loc-th" data-col="Country" style="cursor:pointer">Country ↕</th>
+              <th class="loc-th" data-col="Name" style="cursor:pointer;color:var(--navy-mid)">Name ↕</th>
+              <th class="loc-th" data-col="City" style="cursor:pointer;color:var(--navy-mid)">City ↕</th>
+              <th class="loc-th" data-col="Country" style="cursor:pointer;color:var(--navy-mid)">Country ↕</th>
               <th class="loc-th">Type</th>
               <th class="loc-th">Coordinates</th>
               <th class="loc-th" style="width:80px"></th>
@@ -104,7 +104,7 @@ function _locShell() {
 <style>
 .loc-tab { padding:10px 20px;font-size:13px;font-weight:500;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;display:inline-block; }
 .loc-tab:hover { color:var(--text); }
-.loc-tab.active { color:var(--text);border-bottom-color:var(--accent); }
+.loc-tab.active { color:var(--navy-mid);border-bottom-color:var(--navy-mid);font-weight:600; }
 .loc-bar-row { display:flex;align-items:center;padding:7px 18px;gap:12px; }
 .loc-bar-row.clickable { cursor:pointer;transition:background .1s; }
 .loc-bar-row.clickable:hover { background:var(--bg-hover); }
@@ -113,7 +113,9 @@ function _locShell() {
 .loc-bar-fill  { height:100%;background:var(--navy-mid);border-radius:3px;transition:width .5s ease; }
 .loc-bar-count { font-size:12px;color:var(--text-dim);min-width:32px;text-align:right;font-variant-numeric:tabular-nums; }
 .loc-pager-btn { background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 10px;font-size:12px;color:var(--text-mid);cursor:pointer;transition:all .12s; }
-.loc-pager-btn:hover:not(:disabled) { border-color:var(--accent);color:var(--accent); }
+.loc-pager-btn:hover:not(:disabled) { border-color:var(--navy-mid);color:var(--navy-mid); }
+.loc-pager-btn.active { background:var(--navy-mid);color:#fff;border-color:var(--navy-mid);font-weight:700; }
+#locSearch:focus, #locCountryFilter:focus, #locTypeFilter:focus { border-color:var(--navy-mid) !important; box-shadow:0 0 0 3px rgba(11,25,41,0.08) !important; }
 .loc-pager-btn.active { background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700; }
 .loc-pager-btn:disabled { opacity:.3;cursor:not-allowed; }
 .loc-act-btn { background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:5px;color:var(--text-dim);transition:all .12s;font-size:12px;line-height:1; }
