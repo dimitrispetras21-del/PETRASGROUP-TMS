@@ -628,6 +628,7 @@ async function _syncNationalOrder(orderId, fields) {
     'Linked Order':  [orderId],
     'National Groupage': !!fields['National Groupage'],
     'Price':         fields['Price'] ?? null,
+    'Reference':     fields['Reference'] || '',
   };
 
   // Pickup locations 1-10 — field names are 'Pickup Location 1', 'Pickup Location 2', etc.
