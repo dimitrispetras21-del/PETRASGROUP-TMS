@@ -116,7 +116,7 @@ async function _rampLoadAssets() {
 
 /* ── LOAD RECORDS ─────────────────────────────────────────────── */
 async function _rampLoadRecords() {
-  const filter = `{Plan Date}='${RAMP.date}'`;
+  const filter = `IS_SAME({Plan Date}, '${RAMP.date}', 'day')`;
   const recs = await atGetAll(TABLES.RAMP, {
     filterByFormula: filter,
     fields: ['Plan Date','Time','Type','Status','Pallets','Goods',
