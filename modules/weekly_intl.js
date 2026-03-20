@@ -498,7 +498,8 @@ function _wiPaint(){
           <span>Week ${week} · ${_wiWeekRange(week)}</span>
           <span style="color:var(--success)">${expN} exports</span>
           <span style="color:var(--warning)">${impN} imports</span>
-          <span style="color:var(--text-dim)">${assigned} assigned · ${pending} pending</span>
+          <span style="color:var(--success)">${assigned} assigned</span>
+          <span style="color:#E05252">· ${pending} pending</span>
           <span style="color:var(--text-dim)">${matched} imports matched · ${unmatched} free</span>
         </div>
       </div>
@@ -512,18 +513,20 @@ function _wiPaint(){
     </div>
 
     <div class="wi-wrap">
-      <div class="wi-head">
-        <div class="wi-hc" style="text-align:center">#</div>
-        <div class="wi-hc" style="color:var(--success)">
-          Export (${expN})
-          <span style="font-weight:400;text-transform:none;letter-spacing:0;
-                       font-size:9px;color:var(--text-dim);margin-left:6px">right-click to group</span>
+      <div class="wi-head" style="background:#B8C4D0">
+        <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
+          ↑ EXPORT
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${expN}</span>
+          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">right-click to group</span>
         </div>
-        <div class="wi-hc" style="text-align:center">Assignment</div>
-        <div class="wi-hc" style="color:var(--warning)">
-          Import (${impN})
-          <span style="font-weight:400;text-transform:none;letter-spacing:0;
-                       font-size:9px;color:var(--text-dim);margin-left:6px">drag to match</span>
+        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
+          ASSIGNMENT
+        </div>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
+          ↓ IMPORT
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${impN}</span>
+          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">drag to match</span>
         </div>
       </div>
       <div id="wi-rows">
