@@ -197,9 +197,10 @@ function _wnPaint() {
         <div class="page-title">Weekly National</div>
         <div class="page-sub">
           Εβδομάδα ${week} · ${weekRange}
-          <span style="margin-left:12px;color:var(--success)">${nsRows.length} κάθοδος</span>
+          <span style="margin-left:12px;color:var(--text)">${nsRows.length} κάθοδος</span>
           <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος ελεύθερα</span>
-          <span style="margin-left:8px;color:var(--text-dim)">${assigned} ανατεθειμένα · ${pending} εκκρεμή</span>
+          <span style="margin-left:8px;color:var(--success)">${assigned} ανατεθειμένα</span>
+          <span style="margin-left:4px;color:#E05252">· ${pending} εκκρεμή</span>
         </div>
       </div>
       <div style="display:flex;gap:8px">
