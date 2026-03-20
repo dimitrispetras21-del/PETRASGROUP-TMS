@@ -121,6 +121,15 @@ function _locShell() {
 .loc-act-btn { background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:5px;color:var(--text-dim);transition:all .12s;font-size:12px;line-height:1; }
 .loc-act-btn:hover { background:var(--bg-hover);color:var(--text); }
 .loc-act-btn.del:hover { background:var(--danger-bg);color:var(--danger); }
+#locTable thead th {
+  background: var(--navy-mid) !important;
+  color: rgba(196,207,219,0.85) !important;
+  border-bottom: none !important;
+  letter-spacing: 1.2px;
+}
+#locTable thead th.loc-th[data-col]:hover {
+  color: #fff !important;
+}
 #locTable tbody tr { cursor:default !important; }
 .kpi-card { cursor:default !important; }
 </style>`;
