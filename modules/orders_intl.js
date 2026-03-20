@@ -274,6 +274,7 @@ function selectIntlOrder(recId) {
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
+        ${_dF('Reference',    f['Reference']?'('+f['Reference']+')':'—')}
         ${_dF('Goods',        f['Goods']||'—')}
         ${_dF('Temperature',  f['Temperature °C']!=null?f['Temperature °C']+' °C':'—')}
         ${_dF('Reefer Mode',  f['Refrigerator Mode']||'—')}
@@ -474,6 +475,10 @@ async function _openModal(recId, f, _clientLabelOverride) {
       <div class="form-field">
         <label class="form-label">Price (€) *</label>
         <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Reference (4-digit)</label>
+        <input class="form-input" type="text" id="f_Reference" value="${f['Reference']||''}" placeholder="e.g. 3813" maxlength="10">
       </div>
       <div class="form-field">
         <label class="form-label">Goods</label>
@@ -812,6 +817,7 @@ async function submitIntlOrder(recId) {
     if (sv('f_Goods'))     fields['Goods']             = sv('f_Goods');
     if (sv('f_PalletType'))fields['Pallet Type']       = sv('f_PalletType');
     if (sv('f_ReeferMode'))fields['Refrigerator Mode'] = sv('f_ReeferMode');
+    if (sv('f_Reference')) fields['Reference']         = sv('f_Reference');
 
     // Numbers
     const nv = id => { const v=document.getElementById(id)?.value; return v!==''&&v!=null?parseFloat(v):null; };
