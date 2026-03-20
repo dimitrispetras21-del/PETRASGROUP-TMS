@@ -295,9 +295,9 @@ function _locRenderTable() {
       <td>${_locEsc(f.City || '—')}</td>
       <td><span class="badge badge-blue" style="font-size:11px">${_locEsc(f.Country || '—')}</span></td>
       <td style="font-size:12px" title="${_locEsc(f.Type||'')}">${_locEsc(f.Type || '—')}</td>
-      <td style="font-family:monospace;font-size:11px;white-space:nowrap">
+      <td style="white-space:nowrap">
         ${hasCoords
-          ? `<a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--navy-mid);text-decoration:none;opacity:.55" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} ↗</a>`
+          ? `<a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--text-mid);text-decoration:none" onmouseover="this.style.color='var(--navy-mid)'" onmouseout="this.style.color='var(--text-mid)'">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} ↗</a>`
           : '<span style="color:var(--text-dim)">—</span>'}
       </td>
       <td onclick="event.stopPropagation()" style="text-align:right;padding-right:14px">
