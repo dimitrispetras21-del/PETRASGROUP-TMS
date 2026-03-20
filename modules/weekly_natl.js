@@ -214,14 +214,16 @@ function _wnPaint() {
     <div class="wi-wrap">
       <div class="wi-head" style="background:#B8C4D0">
         <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
-          ↓ ΚΑΘΟΔΟΣ <span style="font-weight:400;opacity:0.5;font-size:9px">${nsRows.length}</span>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
+          ↓ ΚΑΘΟΔΟΣ
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${nsRows.length}</span>
         </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.55;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
+        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
           ΑΝΑΘΕΣΗ
         </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px">
-          ↑ ΑΝΟΔΟΣ <span style="font-weight:400;opacity:0.5;font-size:9px">${data.southnorth.length}</span>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
+          ↑ ΑΝΟΔΟΣ
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${data.southnorth.length}</span>
         </div>
       </div>
       <div id="wn-rows">
