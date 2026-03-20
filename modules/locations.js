@@ -44,8 +44,8 @@ function _locShell() {
 </div>
 
 <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
-  <div class="loc-tab active" data-tab="overview">📊 Overview</div>
-  <div class="loc-tab" data-tab="list">📋 All Locations</div>
+  <div class="loc-tab active" data-tab="overview">Overview</div>
+  <div class="loc-tab" data-tab="list">All Locations</div>
 </div>
 
 <!-- Overview Panel -->
@@ -395,7 +395,7 @@ function _locFormHTML(f) {
     <input id="locF_lon" class="form-input" type="number" step="any" placeholder="22.2033" value="${f.Longitude != null ? f.Longitude : ''}">
   </div>
   <div class="form-field span-2">
-    <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">🌍 Auto-fill coordinates from Name + City</button>
+    <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">Auto-fill coordinates from Name + City</button>
   </div>
 </div>`;
 }
@@ -463,7 +463,7 @@ async function _locGeocode() {
       toast('Coordinates filled ✓', 'success');
     } else { toast('No result found', 'danger'); }
   } catch (e) { toast('Geocode failed', 'danger'); }
-  finally { if (btn) { btn.textContent = '🌍 Auto-fill coordinates from Name + City'; btn.disabled = false; } }
+  finally { if (btn) { btn.textContent = 'Auto-fill coordinates from Name + City'; btn.disabled = false; } }
 }
 
 // ── Delete ─────────────────────────────────────
@@ -471,7 +471,7 @@ function _locConfirmDelete(id, name) {
   openModal('Delete Location?',
     `<div style="color:var(--text-mid);font-size:14px;line-height:1.7">
       Delete <strong style="color:var(--text)">${name}</strong>?<br>
-      <span style="color:var(--danger);font-size:12px">⚠️ Orders linked to this location will lose the reference.</span>
+      <span style="color:var(--danger);font-size:12px">Orders linked to this location will lose the reference.</span>
      </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
      <button class="btn btn-danger" onclick="_locDoDelete('${id}')">Delete</button>`);
