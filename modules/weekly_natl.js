@@ -213,9 +213,15 @@ function _wnPaint() {
     <div class="wi-wrap">
       <div class="wi-head">
         <div class="wi-hc">#</div>
-        <div class="wi-hc">ΚΑΘΟΔΟΣ (${nsRows.length})</div>
-        <div class="wi-hc">ΑΝΑΘΕΣΗ</div>
-        <div class="wi-hc" style="color:rgba(14,165,233,0.9)">ΑΝΟΔΟΣ (${data.southnorth.length})</div>
+        <div class="wi-hc" style="color:#fff;background:rgba(5,150,105,0.12);border-bottom:2px solid rgba(5,150,105,0.5)">
+          ↓ ΚΑΘΟΔΟΣ <span style="opacity:0.6;font-weight:400">(${nsRows.length})</span>
+        </div>
+        <div class="wi-hc" style="color:#fff;background:rgba(255,255,255,0.04);border-bottom:2px solid rgba(255,255,255,0.15)">
+          ΑΝΑΘΕΣΗ
+        </div>
+        <div class="wi-hc" style="color:#38BDF8;background:rgba(14,165,233,0.08);border-bottom:2px solid rgba(14,165,233,0.4)">
+          ↑ ΑΝΟΔΟΣ <span style="opacity:0.6;font-weight:400">(${data.southnorth.length})</span>
+        </div>
       </div>
       <div id="wn-rows">
         ${rows.length ? _wnAllRowsHTML() : `<div class="empty-state" style="padding:60px">
@@ -330,19 +336,19 @@ function _wnRowHTML(row, i) {
         <span class="wi-num">${i+1}</span>
       </div>
       <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
+        <div class="wi-route" style="color:#0F172A">
+          <span class="from" style="color:#0F172A;font-weight:700">${fromStr}</span>
+          <span class="sep" style="color:#64748B">→</span>
+          <span class="dest" style="color:#0F172A;font-weight:700">${toStr}</span>
           ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
-          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia">VEROIA</span>' : ''}
-          ${badges}
         </div>
-        <div class="wi-sub">
-          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-          <span>${loadDt} → ${delDt}</span>
+        <div class="wi-sub" style="margin-top:2px">
+          ${clientLabel ? `<span style="color:#475569;font-weight:500">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+          <span style="color:#475569">${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
-          <span>${pals} pal</span>
+          <span style="color:#475569">${pals} pal</span>
+          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
+          ${badges}
         </div>
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
@@ -440,15 +446,15 @@ function _wnSnRowHTML(row) {
       <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from">${fromStr}</span>
-            <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest">${toStr}</span>
+            <span class="wi-ci-from" style="color:#0F172A;font-weight:700">${fromStr}</span>
+            <span class="wi-ci-sep" style="color:#64748B">→</span>
+            <span class="wi-ci-dest" style="color:#0F172A;font-weight:700">${toStr}</span>
+          </div>
+          <div class="wi-sub" style="margin-top:2px">
+            ${clientLabel ? `<span style="color:#475569;font-weight:500">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+            <span style="color:#475569">${loadDt} → ${delDt} · ${pals} pal</span>
             ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
-          </div>
-          <div class="wi-sub">
-            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-            <span>${loadDt} → ${delDt} · ${pals} pal</span>
           </div>
         </div>
       </div>
