@@ -226,14 +226,17 @@ function _wnBuildRows() {
     if (matchedSN.has(ord.id)) continue;
     const f = ord.fields;
     const truckId   = (f['Truck']  ||[])[0]||'';
+    const trailerId = (f['Trailer']||[])[0]||'';
+    const driverId  = (f['Driver'] ||[])[0]||'';
     const partnerId = (f['Partner']||[])[0]||'';
     WNATL.rows.push({
       id: ++WNATL._seq, type:'southnorth',
       orderId: ord.id, orderIds:[ord.id],
       matchedId: null, groupageId: f['Groupage ID']||null,
-      truckId, trailerId:'', driverId:'', partnerId,
+      truckId, trailerId, driverId, partnerId,
       truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel:'', driverLabel:'',
+      trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
+      driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
       partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
       partnerPlates: f['Partner Truck Plates']||'',
       partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
