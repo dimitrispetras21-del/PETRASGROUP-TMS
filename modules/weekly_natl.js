@@ -49,26 +49,64 @@ function _wnCurrentWeek() {
 }
 /* pill overrides */
 .wi-pill {
-  display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
-  padding:0; border-radius:0; max-width:230px; overflow:hidden; gap:0;
-  transition:opacity .15s; cursor:pointer; background:none; border:none;
+  display:flex; flex-direction:column; align-items:stretch;
+  width:100%; max-width:240px;
+  border-radius:3px; overflow:hidden;
+  transition:opacity .12s; cursor:pointer;
+  background:none; border:none; padding:0; gap:0;
 }
-.wi-pill:hover { opacity:.82; }
-.wi-tag { display:inline-flex; align-items:center; gap:7px;
-  padding:7px 14px; border-radius:4px; width:100%;
-  font-size:11px; font-weight:700; letter-spacing:.4px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.wi-tag-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-.wi-tag-ok  { background:rgba(5,150,105,0.1); color:#34D399; }
-.wi-tag-ok  .wi-tag-dot { background:#059669; box-shadow:0 0 0 2px rgba(5,150,105,0.25); }
-.wi-tag-bp  { background:rgba(59,130,246,0.1); color:#60A5FA; }
-.wi-tag-bp  .wi-tag-dot { background:#3B82F6; box-shadow:0 0 0 2px rgba(59,130,246,0.25); }
-.wi-tag-un  { background:rgba(255,255,255,0.04); color:rgba(184,196,208,0.45); }
-.wi-tag-un  .wi-tag-dot { background:rgba(184,196,208,0.25); }
-.wi-tag-sub { font-size:9px; font-weight:500; color:rgba(184,196,208,0.4);
-  padding:0 14px 5px; letter-spacing:.3px; }
+.wi-pill:hover { opacity:.8; }
+
+/* ── COMPACT CARD ── */
+.wi-card {
+  display:flex; flex-direction:column; gap:1px;
+  padding:6px 10px 6px 12px;
+  border-radius:3px;
+  border-left: 2px solid transparent;
+}
+.wi-card-top {
+  font-size:11px; font-weight:700; letter-spacing:.3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  line-height:1.3;
+}
+.wi-card-bot {
+  font-size:9.5px; font-weight:500; letter-spacing:.2px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  line-height:1.3; opacity:.6;
+}
+
+/* OWNED — green */
+.wi-card-ok {
+  background: rgba(5,150,105,0.08);
+  border-left-color: #059669;
+}
+.wi-card-ok .wi-card-top { color: #6EE7B7; }
+.wi-card-ok .wi-card-bot { color: #A7F3D0; }
+
+/* PARTNER — blue */
+.wi-card-bp {
+  background: rgba(59,130,246,0.08);
+  border-left-color: #3B82F6;
+}
+.wi-card-bp .wi-card-top { color: #93C5FD; }
+.wi-card-bp .wi-card-bot { color: #BFDBFE; }
+
+/* UNASSIGNED — single line, very dim */
+.wi-card-un {
+  background: transparent;
+  border-left-color: rgba(184,196,208,0.2);
+  padding-top:8px; padding-bottom:8px;
+}
+.wi-card-un .wi-card-top {
+  color: rgba(184,196,208,0.3);
+  font-weight:500; font-size:10.5px; letter-spacing:.5px;
+}
+
+/* legacy compat */
 .pt { font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden;
   text-overflow:ellipsis; max-width:200px; }
+.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:200px; }
 .ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   max-width:200px; }
 `;
@@ -563,22 +601,20 @@ function _wnPill(row) {
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
 
   if (!row.saved) return `<div class="wi-pill">
-    <div class="wi-tag wi-tag-un"><span class="wi-tag-dot"></span>Αδιάθετο</div>
+    <div class="wi-card wi-card-un"><div class="wi-card-top">— Αδιάθετο</div></div>
   </div>`;
   if (partner) return `<div class="wi-pill">
-    <div class="wi-tag wi-tag-bp">
-      <span class="wi-tag-dot"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
+    <div class="wi-card wi-card-bp">
+      <div class="wi-card-top">${partner.slice(0,26)}${partner.length>26?'…':''}</div>
+      ${row.partnerPlates ? `<div class="wi-card-bot">${row.partnerPlates}</div>` : ''}
     </div>
-    ${row.partnerPlates ? `<div class="wi-tag-sub">${row.partnerPlates}</div>` : ''}
   </div>`;
-  const vehicleLine = truck && trailer ? `${truck} / ${trailer}` : (truck || trailer || '—');
+  const vehicleLine = truck && trailer ? `${truck} · ${trailer}` : (truck || trailer || '—');
   return `<div class="wi-pill">
-    <div class="wi-tag wi-tag-ok">
-      <span class="wi-tag-dot"></span>
-      <span style="overflow:hidden;text-overflow:ellipsis">${vehicleLine}</span>
+    <div class="wi-card wi-card-ok">
+      <div class="wi-card-top">${vehicleLine}</div>
+      ${driver ? `<div class="wi-card-bot">${driver}</div>` : ''}
     </div>
-    ${driver ? `<div class="wi-tag-sub">${driver}</div>` : ''}
   </div>`;
 }
 
