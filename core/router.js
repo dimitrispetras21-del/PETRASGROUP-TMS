@@ -141,7 +141,7 @@ function navigate(page) {
     case 'weekly_natl':    renderWeeklyNatl();       break;
     case 'weekly_pickups': c.innerHTML = showComingSoon('National Pick Ups');     break;
     case 'daily_ops':      c.innerHTML = showComingSoon('Daily Ops Plan');        break;
-    case 'daily_ramp':     c.innerHTML = showComingSoon('Daily Ramp Board');      break;
+    case 'daily_ramp':     renderDailyRamp(); break;
     // Orders
     case 'orders_intl':    renderOrdersIntl();            break;
     case 'orders_natl':    renderOrdersNatl();            break;
