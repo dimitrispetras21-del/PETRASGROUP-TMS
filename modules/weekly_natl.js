@@ -48,19 +48,24 @@ function _wnCurrentWeek() {
   width:430px; overflow:hidden;
 }
 /* pill overrides */
-.wi-pill { display:flex; flex-direction:column; align-items:center;
-  padding:5px 13px; border-radius:6px; max-width:220px; overflow:hidden; gap:2px;
+.wi-pill { display:flex; flex-direction:column; align-items:flex-start;
+  padding:6px 12px 6px 14px; border-radius:5px; max-width:220px; overflow:hidden; gap:2px;
   transition:opacity .15s; cursor:pointer; }
-.wi-pill:hover { opacity:.85; }
-.wi-pill-ok { background:#0F2545; border:1px solid rgba(184,196,208,0.25);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.06); }
-.wi-pill-ok .pt { color:#C8D4E0; }
-.wi-pill-ok .ps { color:rgba(184,196,208,0.55); }
-.wi-pill-bp { background:transparent; border:1.5px solid rgba(59,130,246,0.45); }
-.wi-pill-bp .pt { color:rgba(147,197,253,0.9); }
-.wi-pill-bp .ps { color:rgba(147,197,253,0.5); }
-.wi-pill-un { background:transparent; border:1.5px dashed rgba(184,196,208,0.2); }
-.wi-pill-un .pt { color:rgba(184,196,208,0.35); font-weight:500; letter-spacing:.5px; }
+.wi-pill:hover { opacity:.82; }
+.wi-pill-ok { background:rgba(15,37,69,0.85); border-left:3px solid #059669;
+  border-top:1px solid rgba(184,196,208,0.12); border-right:1px solid rgba(184,196,208,0.12);
+  border-bottom:1px solid rgba(184,196,208,0.12); }
+.wi-pill-ok .pt { color:#E2EAF2; }
+.wi-pill-ok .ps { color:rgba(184,196,208,0.5); }
+.wi-pill-bp { background:rgba(30,58,138,0.25); border-left:3px solid #3B82F6;
+  border-top:1px solid rgba(59,130,246,0.2); border-right:1px solid rgba(59,130,246,0.2);
+  border-bottom:1px solid rgba(59,130,246,0.2); }
+.wi-pill-bp .pt { color:#93C5FD; }
+.wi-pill-bp .ps { color:rgba(147,197,253,0.55); }
+.wi-pill-un { background:rgba(120,53,15,0.15); border-left:3px solid #D97706;
+  border-top:1px solid rgba(217,119,6,0.15); border-right:1px solid rgba(217,119,6,0.15);
+  border-bottom:1px solid rgba(217,119,6,0.15); }
+.wi-pill-un .pt { color:rgba(251,191,36,0.7); font-weight:600; letter-spacing:.3px; }
 `;
   document.head.appendChild(s);
 })();
