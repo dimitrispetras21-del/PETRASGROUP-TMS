@@ -515,21 +515,7 @@ function _wnSnRowHTML(row) {
         <div class="wi-dot" style="background:${dotColorSN}"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
-      <div class="wi-ce">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-        </div>
-        <div class="wi-sub">
-          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-          <span>${loadDt} → ${delDt}</span>
-          <span class="wi-sub-div"></span>
-          <span>${pals} pal</span>
-          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
-          ${badges}
-        </div>
-      </div>
+      <div class="wi-ce" style="background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <button class="wi-side-btn" title="Εκτύπωση ανόδου"
           onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
@@ -538,12 +524,20 @@ function _wnSnRowHTML(row) {
         </div>
         <div style="width:30px;flex-shrink:0"></div>
       </div>
-      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)"
-           title="Drag για σύνδεση με Κάθοδο">
+      <div class="wi-ci" style="cursor:grab">
         <div class="wi-ci-data">
-          <div style="font-size:10px;color:rgba(14,165,233,0.35);font-style:italic">
-            ↕ drag για σύνδεση με Κάθοδο
+          <div style="display:flex;align-items:center;gap:0;min-width:0">
+            <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
+            <span class="wi-ci-sep">→</span>
+            <span class="wi-ci-dest" style="font-weight:700">${toStr}</span>
           </div>
+          <div class="wi-sub">
+            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+            <span>${loadDt} → ${delDt} · ${pals} pal</span>
+            ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
+            ${badges}
+          </div>
+          <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση με Κάθοδο</div>
         </div>
       </div>
     </div>
