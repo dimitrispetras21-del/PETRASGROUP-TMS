@@ -366,8 +366,23 @@ async function submitNatlOrder(recId) {
     if(!fields['Loading DateTime'])   { alert('Loading Date is required'); throw new Error('v'); }
     if(!fields['Delivery DateTime'])  { alert('Delivery Date is required'); throw new Error('v'); }
 
-    if(recId) await atPatch(TABLES.NAT_ORDERS, recId, fields);
-    else      await atCreate(TABLES.NAT_ORDERS, fields);
+    let savedNatlId = recId;
+    if(recId) {
+      await atPatch(TABLES.NAT_ORDERS, recId, fields);
+    } else {
+      const created = await atCreate(TABLES.NAT_ORDERS, fields);
+      savedNatlId = created.id;
+    }
+
+    // Sync Ramp Plan
+    try {
+      const natlRec = await fetch(
+        'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.NAT_ORDERS+'/'+savedNatlId,
+        {headers:{'Authorization':'Bearer '+AT_TOKEN}}
+      );
+      const natlData = await natlRec.json();
+      if (natlData.fields) await _syncRampPlan(savedNatlId, natlData.fields, TABLES.NAT_ORDERS);
+    } catch(e) { console.error('Ramp sync error:', e); }
 
     invalidateCache(TABLES.NAT_ORDERS);
     document.getElementById('modal').style.maxWidth = '';
