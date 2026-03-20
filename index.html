@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="el">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -37,7 +37,6 @@
     z-index: 0;
   }
 
-  /* ── LEFT PANEL ─────────────────────────── */
   .left-panel {
     position: relative;
     z-index: 1;
@@ -49,7 +48,6 @@
     overflow: hidden;
   }
 
-  /* Truck photo — small, top-left area, below logo */
   .truck-graphic {
     position: absolute;
     bottom: 0;
@@ -82,7 +80,7 @@
   }
 
   .brand-logo img {
-    height: 38px;
+    height: 114px;
     filter: brightness(0) invert(1);
     opacity: 0.9;
   }
@@ -119,7 +117,6 @@
     text-transform: uppercase;
   }
 
-  /* ── RIGHT PANEL ────────────────────────── */
   .right-panel {
     position: relative;
     z-index: 2;
@@ -157,7 +154,7 @@
   }
 
   .form-logo img {
-    height: 32px;
+    height: 96px;
     filter: brightness(0) invert(1);
     opacity: 0.75;
   }
@@ -271,14 +268,13 @@
     <img src="logo.png" alt="Petras Group">
   </div>
 
-  <!-- Truck photo: small, top-left, below logo -->
   <div class="truck-graphic">
-    <img src="truck.jpg" alt="Petras Group Volvo">
+    <img src="truck.jpg" alt="Petras Group Truck">
   </div>
 
   <div class="brand-tagline">
     <h1>Transport<br>Management<br>System</h1>
-    <p>Πλήρης διαχείριση διεθνών δρομολογίων,<br>στόλου και κόστους για την Petras Group.</p>
+    <p>Full management of international routes,<br>fleet and costs for Petras Group.</p>
   </div>
 
   <div class="brand-footer">
@@ -292,12 +288,12 @@
       <img src="logo.png" alt="Petras Group">
     </div>
 
-    <div class="form-title">Καλώς ήρθατε</div>
-    <div class="form-sub">Συνδεθείτε για πρόσβαση στο σύστημα</div>
+    <div class="form-title">Welcome</div>
+    <div class="form-sub">Sign in to access the system</div>
 
     <div class="field-group">
       <label>Username</label>
-      <input type="text" id="username" placeholder="Εισάγετε username" autocomplete="username">
+      <input type="text" id="username" placeholder="Enter username" autocomplete="username">
     </div>
 
     <div class="field-group">
@@ -305,8 +301,8 @@
       <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
     </div>
 
-    <button class="btn-login" onclick="doLogin()">Είσοδος →</button>
-    <div class="error-msg" id="errMsg">Λάθος username ή password</div>
+    <button class="btn-login" onclick="doLogin()">Sign In →</button>
+    <div class="error-msg" id="errMsg">Incorrect username or password</div>
     <div class="form-version">v1.0 · Petras Group TMS · 2026</div>
   </div>
 </div>
