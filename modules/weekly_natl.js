@@ -211,16 +211,16 @@ function _wnPaint() {
     </div>
 
     <div class="wi-wrap">
-      <div class="wi-head">
-        <div class="wi-hc" style="text-align:center">#</div>
-        <div class="wi-hc" style="text-align:center;color:rgba(255,255,255,0.85);border-bottom:1px solid rgba(255,255,255,0.12);letter-spacing:2px">
-          ↓ &nbsp;ΚΑΘΟΔΟΣ &nbsp;<span style="opacity:0.4;font-weight:400;font-size:9px">${nsRows.length}</span>
+      <div class="wi-head" style="background:#B8C4D0">
+        <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
+          ↓ ΚΑΘΟΔΟΣ <span style="font-weight:400;opacity:0.5;font-size:9px">${nsRows.length}</span>
         </div>
-        <div class="wi-hc" style="text-align:center;color:rgba(255,255,255,0.4);border-bottom:1px solid rgba(255,255,255,0.06);letter-spacing:2px">
+        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.55;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
           ΑΝΑΘΕΣΗ
         </div>
-        <div class="wi-hc" style="text-align:center;color:rgba(148,204,236,0.85);border-bottom:1px solid rgba(148,204,236,0.18);letter-spacing:2px">
-          ↑ &nbsp;ΑΝΟΔΟΣ &nbsp;<span style="opacity:0.4;font-weight:400;font-size:9px">${data.southnorth.length}</span>
+        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px">
+          ↑ ΑΝΟΔΟΣ <span style="font-weight:400;opacity:0.5;font-size:9px">${data.southnorth.length}</span>
         </div>
       </div>
       <div id="wn-rows">
