@@ -336,17 +336,17 @@ function _wnRowHTML(row, i) {
         <span class="wi-num">${i+1}</span>
       </div>
       <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})">
-        <div class="wi-route" style="color:#0F172A">
-          <span class="from" style="color:#0F172A;font-weight:700">${fromStr}</span>
-          <span class="sep" style="color:#64748B">→</span>
-          <span class="dest" style="color:#0F172A;font-weight:700">${toStr}</span>
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
           ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
         </div>
-        <div class="wi-sub" style="margin-top:2px">
-          ${clientLabel ? `<span style="color:#475569;font-weight:500">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-          <span style="color:#475569">${loadDt} → ${delDt}</span>
+        <div class="wi-sub">
+          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+          <span>${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
-          <span style="color:#475569">${pals} pal</span>
+          <span>${pals} pal</span>
           ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
         </div>
@@ -446,13 +446,13 @@ function _wnSnRowHTML(row) {
       <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from" style="color:#0F172A;font-weight:700">${fromStr}</span>
-            <span class="wi-ci-sep" style="color:#64748B">→</span>
-            <span class="wi-ci-dest" style="color:#0F172A;font-weight:700">${toStr}</span>
+            <span class="wi-ci-from">${fromStr}</span>
+            <span class="wi-ci-sep">→</span>
+            <span class="wi-ci-dest">${toStr}</span>
           </div>
-          <div class="wi-sub" style="margin-top:2px">
-            ${clientLabel ? `<span style="color:#475569;font-weight:500">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
-            <span style="color:#475569">${loadDt} → ${delDt} · ${pals} pal</span>
+          <div class="wi-sub">
+            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+            <span>${loadDt} → ${delDt} · ${pals} pal</span>
             ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
           </div>
