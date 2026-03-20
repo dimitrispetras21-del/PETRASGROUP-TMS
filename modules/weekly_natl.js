@@ -77,27 +77,27 @@ function _wnCurrentWeek() {
 
 /* OWNED — green */
 .wi-card-ok {
-  background: #065F46;
-  border-left-color: #34D399;
-}
-.wi-card-ok .wi-card-top { color: #ECFDF5; }
-.wi-card-ok .wi-card-bot { color: rgba(236,253,245,0.65); }
-
-.wi-card-bp {
   background: #1E3A8A;
   border-left-color: #93C5FD;
 }
-.wi-card-bp .wi-card-top { color: #EFF6FF; }
-.wi-card-bp .wi-card-bot { color: rgba(239,246,255,0.65); }
+.wi-card-ok .wi-card-top { color: #EFF6FF; font-weight:800; }
+.wi-card-ok .wi-card-bot { color: rgba(239,246,255,0.9); font-weight:700; font-size:10px; }
+
+.wi-card-bp {
+  background: #065F46;
+  border-left-color: #34D399;
+}
+.wi-card-bp .wi-card-top { color: #ECFDF5; font-weight:800; }
+.wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
 
 .wi-card-un {
-  background: rgba(255,255,255,0.05);
-  border-left-color: rgba(184,196,208,0.25);
+  background: #7F1D1D;
+  border-left-color: #FCA5A5;
   padding-top:8px; padding-bottom:8px;
 }
 .wi-card-un .wi-card-top {
-  color: rgba(184,196,208,0.35);
-  font-weight:500; font-size:10.5px; letter-spacing:.5px;
+  color: #FEE2E2;
+  font-weight:700; font-size:10.5px; letter-spacing:.3px;
 }
 
 /* legacy compat */
