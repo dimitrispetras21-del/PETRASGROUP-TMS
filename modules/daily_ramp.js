@@ -106,12 +106,14 @@ async function renderDailyRamp() {
 /* ── ASSETS ───────────────────────────────────────────────────── */
 async function _rampLoadAssets() {
   if (RAMP.trucks.length) return;
-  const [t, d] = await Promise.all([
-    atGetAll(TABLES.TRUCKS,  { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
-    atGetAll(TABLES.DRIVERS, { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
+  const [t, d, locs] = await Promise.all([
+    atGetAll(TABLES.TRUCKS,    { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
   ]);
-  RAMP.trucks  = t.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-  RAMP.drivers = d.map(r => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  RAMP.trucks    = t.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  RAMP.drivers   = d.map(r => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  RAMP.locations = locs;
 }
 
 /* ── LOAD RECORDS ─────────────────────────────────────────────── */
@@ -120,17 +122,78 @@ async function _rampLoadRecords() {
   const recs = await atGetAll(TABLES.RAMP, {
     filterByFormula: filter,
     fields: ['Plan Date','Time','Type','Status','Pallets','Goods',
-             'Supplier/Client','Notes','Postponed To','Order','Truck','Driver'],
+             'Supplier/Client','Notes','Postponed To','Order','National Order','Truck','Driver'],
   }, false);
 
-  // Sort: records with Time first (ascending), then unset
   recs.sort((a, b) => {
     const ta = a.fields['Time']||'ZZ';
     const tb = b.fields['Time']||'ZZ';
     return ta.localeCompare(tb);
   });
 
+  // Fetch linked order details for each ramp record
+  RAMP.orderData = {};
+
+  const orderIds  = recs.flatMap(r => (r.fields['Order']||[]).map(o=>o.id||o)).filter(Boolean);
+  const natIds    = recs.flatMap(r => (r.fields['National Order']||[]).map(o=>o.id||o)).filter(Boolean);
+
+  const ORDER_FIELDS = [
+    'Direction','Goods','Temperature °C','Total Pallets','Loading Pallets 1',
+    'Loading Location 1','Loading Location 2','Loading Location 3','Loading Location 4','Loading Location 5',
+    'Unloading Location 1','Unloading Location 2','Unloading Location 3','Unloading Location 4','Unloading Location 5',
+    'Loading DateTime','Delivery DateTime','Client',
+  ];
+  const NAT_FIELDS = [
+    'Direction','Goods','Temperature °C','Pallets',
+    'Pickup Location 1','Pickup Location 2','Pickup Location 3','Pickup Location 4','Pickup Location 5',
+    'Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4','Delivery Location 5',
+    'Loading DateTime','Delivery DateTime','Client',
+  ];
+
+  // Fetch orders in parallel (batches of 1 for now, simple)
+  await Promise.all([
+    ...orderIds.map(async id => {
+      try {
+        const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.ORDERS}/${id}`,
+          {headers:{'Authorization':'Bearer '+AT_TOKEN}});
+        const d = await res.json();
+        if (d.fields) RAMP.orderData[id] = {fields: d.fields, table:'orders'};
+      } catch(e) {}
+    }),
+    ...natIds.map(async id => {
+      try {
+        const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${id}`,
+          {headers:{'Authorization':'Bearer '+AT_TOKEN}});
+        const d = await res.json();
+        if (d.fields) RAMP.orderData[id] = {fields: d.fields, table:'nat'};
+      } catch(e) {}
+    }),
+  ]);
+
   RAMP.records = recs;
+}
+
+// Resolve location name from RAMP.locations cache
+function _rampLocName(locId) {
+  if (!locId) return null;
+  const loc = (RAMP.locations||[]).find(r=>r.id===locId);
+  if (loc) return loc.fields['Name']||loc.fields['City']||null;
+  return null;
+}
+
+function _rampStopSummary(orderFields, prefixes) {
+  for (const {locPfx, maxN} of prefixes) {
+    const names = [];
+    for (let i=1; i<=maxN; i++) {
+      const key = i===1 ? locPfx : `${locPfx} ${i}`;
+      const arr = orderFields[key];
+      const id  = Array.isArray(arr) ? (arr[0]?.id||arr[0]) : null;
+      const name = _rampLocName(id);
+      if (name) names.push(name);
+    }
+    if (names.length) return names.join(' / ');
+  }
+  return null;
 }
 
 /* ── PAINT ────────────────────────────────────────────────────── */
@@ -213,7 +276,32 @@ function _rampRowHTML(rec) {
   const driver   = driverId ? RAMP.drivers.find(d=>d.id===driverId)?.label||'' : '';
 
   const mainLine = [truck, driver].filter(Boolean).join(' · ') || (f['Supplier/Client']||'—');
-  const subLine  = f['Goods'] || '';
+
+  // Get linked order details
+  const orderId = ((f['Order']||[])[0]?.id || (f['Order']||[])[0]) ||
+                  ((f['National Order']||[])[0]?.id || (f['National Order']||[])[0]) || null;
+  const orderRec = orderId ? RAMP.orderData?.[orderId] : null;
+  const of = orderRec?.fields || {};
+  const isNat = orderRec?.table === 'nat';
+
+  // Loading stops
+  const loadPfx = isNat
+    ? [{locPfx:'Pickup Location',  maxN:5}]
+    : [{locPfx:'Loading Location', maxN:5}];
+  const delivPfx = isNat
+    ? [{locPfx:'Delivery Location',  maxN:5}]
+    : [{locPfx:'Unloading Location', maxN:5}];
+
+  const loadStops  = _rampStopSummary(of, loadPfx);
+  const delivStops = _rampStopSummary(of, delivPfx);
+  const temp       = of['Temperature °C'] != null ? `${of['Temperature °C']}°C` : null;
+  const pallets    = f['Pallets'] || of['Total Pallets'] || of['Pallets'] || 0;
+  const goods      = (f['Goods'] || of['Goods'] || '').replace(/ · \d+°C$/,'');
+  const subLine    = [goods, temp].filter(Boolean).join(' · ');
+
+  const routeLine = loadStops && delivStops
+    ? `<span style="font-weight:700">${loadStops}</span> <span style="opacity:.5">→</span> <span style="font-weight:700">${delivStops}</span>`
+    : loadStops || delivStops || '';
 
   const statusBadge = isDone
     ? `<span class="ramp-badge rb-done">✓ Έγινε</span>`
@@ -224,10 +312,11 @@ function _rampRowHTML(rec) {
   return `<div class="ramp-row${isDone?' done':''}" onclick="_rampToggleEdit('${rec.id}')">
     <div class="${time ? 'ramp-time' : 'ramp-time unset'}">${time || '—:—'}</div>
     <div class="ramp-info">
-      <div class="ramp-main">${mainLine}</div>
+      ${routeLine ? `<div class="ramp-main" style="font-size:11.5px">${routeLine}</div>` : `<div class="ramp-main">${mainLine}</div>`}
       ${subLine ? `<div class="ramp-sub">${subLine}</div>` : ''}
+      ${mainLine && routeLine ? `<div class="ramp-sub">${mainLine}</div>` : ''}
       <div class="ramp-badges">
-        ${f['Pallets'] ? `<span class="ramp-badge rb-pallets">${f['Pallets']} pal</span>` : ''}
+        ${pallets ? `<span class="ramp-badge rb-pallets">${pallets} pal</span>` : ''}
         ${statusBadge}
       </div>
     </div>
