@@ -48,24 +48,29 @@ function _wnCurrentWeek() {
   width:430px; overflow:hidden;
 }
 /* pill overrides */
-.wi-pill { display:flex; flex-direction:column; align-items:flex-start;
-  padding:6px 12px 6px 14px; border-radius:5px; max-width:220px; overflow:hidden; gap:2px;
-  transition:opacity .15s; cursor:pointer; }
+.wi-pill {
+  display:inline-flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:0; border-radius:0; max-width:230px; overflow:hidden; gap:0;
+  transition:opacity .15s; cursor:pointer; background:none; border:none;
+}
 .wi-pill:hover { opacity:.82; }
-.wi-pill-ok { background:rgba(15,37,69,0.85); border-left:3px solid #059669;
-  border-top:1px solid rgba(184,196,208,0.12); border-right:1px solid rgba(184,196,208,0.12);
-  border-bottom:1px solid rgba(184,196,208,0.12); }
-.wi-pill-ok .pt { color:#E2EAF2; }
-.wi-pill-ok .ps { color:rgba(184,196,208,0.5); }
-.wi-pill-bp { background:rgba(30,58,138,0.25); border-left:3px solid #3B82F6;
-  border-top:1px solid rgba(59,130,246,0.2); border-right:1px solid rgba(59,130,246,0.2);
-  border-bottom:1px solid rgba(59,130,246,0.2); }
-.wi-pill-bp .pt { color:#93C5FD; }
-.wi-pill-bp .ps { color:rgba(147,197,253,0.55); }
-.wi-pill-un { background:rgba(120,53,15,0.15); border-left:3px solid #D97706;
-  border-top:1px solid rgba(217,119,6,0.15); border-right:1px solid rgba(217,119,6,0.15);
-  border-bottom:1px solid rgba(217,119,6,0.15); }
-.wi-pill-un .pt { color:rgba(251,191,36,0.7); font-weight:600; letter-spacing:.3px; }
+.wi-tag { display:inline-flex; align-items:center; gap:7px;
+  padding:7px 14px; border-radius:4px; width:100%;
+  font-size:11px; font-weight:700; letter-spacing:.4px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wi-tag-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.wi-tag-ok  { background:rgba(5,150,105,0.1); color:#34D399; }
+.wi-tag-ok  .wi-tag-dot { background:#059669; box-shadow:0 0 0 2px rgba(5,150,105,0.25); }
+.wi-tag-bp  { background:rgba(59,130,246,0.1); color:#60A5FA; }
+.wi-tag-bp  .wi-tag-dot { background:#3B82F6; box-shadow:0 0 0 2px rgba(59,130,246,0.25); }
+.wi-tag-un  { background:rgba(255,255,255,0.04); color:rgba(184,196,208,0.45); }
+.wi-tag-un  .wi-tag-dot { background:rgba(184,196,208,0.25); }
+.wi-tag-sub { font-size:9px; font-weight:500; color:rgba(184,196,208,0.4);
+  padding:0 14px 5px; letter-spacing:.3px; }
+.pt { font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; max-width:200px; }
+.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  max-width:200px; }
 `;
   document.head.appendChild(s);
 })();
@@ -557,16 +562,23 @@ function _wnPill(row) {
   const driver  = row.driverLabel  || data.drivers.find(d=>d.id===row.driverId)?.label||'';
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
 
-  if (!row.saved) return `<div class="wi-pill wi-pill-un"><span class="pt">Αδιάθετο</span></div>`;
-  if (partner) return `<div class="wi-pill wi-pill-bp">
-    <span class="pt">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
-    ${row.partnerPlates ? `<span class="ps">${row.partnerPlates}</span>` : ''}
+  if (!row.saved) return `<div class="wi-pill">
+    <div class="wi-tag wi-tag-un"><span class="wi-tag-dot"></span>Αδιάθετο</div>
   </div>`;
-  // Owned fleet: TRUCK/TRAILER on top, DRIVER on bottom
-  const vehicleLine = truck && trailer ? `${truck}/${trailer}` : (truck || trailer || '—');
-  return `<div class="wi-pill wi-pill-ok" style="gap:2px">
-    <span class="pt" style="font-size:11px;letter-spacing:0.3px">${vehicleLine}</span>
-    ${driver ? `<span class="ps" style="font-size:10px;font-weight:600;color:rgba(5,150,105,0.85)">${driver}</span>` : ''}
+  if (partner) return `<div class="wi-pill">
+    <div class="wi-tag wi-tag-bp">
+      <span class="wi-tag-dot"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis">${partner.slice(0,22)}${partner.length>22?'…':''}</span>
+    </div>
+    ${row.partnerPlates ? `<div class="wi-tag-sub">${row.partnerPlates}</div>` : ''}
+  </div>`;
+  const vehicleLine = truck && trailer ? `${truck} / ${trailer}` : (truck || trailer || '—');
+  return `<div class="wi-pill">
+    <div class="wi-tag wi-tag-ok">
+      <span class="wi-tag-dot"></span>
+      <span style="overflow:hidden;text-overflow:ellipsis">${vehicleLine}</span>
+    </div>
+    ${driver ? `<div class="wi-tag-sub">${driver}</div>` : ''}
   </div>`;
 }
 
