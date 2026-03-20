@@ -139,18 +139,40 @@ const WINTL = {
 .wi-side-btn:last-child  { border-left:1px solid var(--border); }
 .wi-row:hover .wi-side-btn { opacity:1; }
 .wi-side-btn:hover { background:rgba(11,25,41,0.07); color:var(--navy); }
+/* ── ASSIGNMENT PILLS v2 ── */
 .wi-pill { display:flex; flex-direction:column; align-items:center;
-  padding:4px 11px; border-radius:14px; max-width:200px; overflow:hidden; gap:1px; }
-.wi-pill-ok { background:rgba(5,150,105,0.08); border:1px solid rgba(5,150,105,0.2); }
-.wi-pill-bp { background:rgba(59,130,246,0.08); border:1px solid rgba(59,130,246,0.2); }
-.wi-pill-un { background:rgba(217,119,6,0.07); border:1px solid rgba(217,119,6,0.2); }
-.wi-pill-ok .pt { color:rgba(5,150,105,0.95); }
-.wi-pill-bp .pt { color:rgba(59,130,246,0.9); }
-.wi-pill-un .pt { color:rgba(217,119,6,0.85); }
+  padding:5px 13px; border-radius:6px; max-width:220px; overflow:hidden; gap:2px;
+  transition: opacity .15s; cursor:pointer; }
+.wi-pill:hover { opacity: .85; }
+
+/* OWNED — dark navy, solid */
+.wi-pill-ok {
+  background: #0F2545;
+  border: 1px solid rgba(184,196,208,0.25);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
+}
+.wi-pill-ok .pt { color: #C8D4E0; }
+.wi-pill-ok .ps { color: rgba(184,196,208,0.55); }
+
+/* PARTNER — outline only, blue accent */
+.wi-pill-bp {
+  background: transparent;
+  border: 1.5px solid rgba(59,130,246,0.45);
+}
+.wi-pill-bp .pt { color: rgba(147,197,253,0.9); }
+.wi-pill-bp .ps { color: rgba(147,197,253,0.5); }
+
+/* UNASSIGNED — dashed, dim */
+.wi-pill-un {
+  background: transparent;
+  border: 1.5px dashed rgba(184,196,208,0.2);
+}
+.wi-pill-un .pt { color: rgba(184,196,208,0.35); font-weight:500; letter-spacing:.5px; }
+
 .pt { font-size:10.5px; font-weight:700; white-space:nowrap; overflow:hidden;
-  text-overflow:ellipsis; max-width:192px; }
+  text-overflow:ellipsis; max-width:200px; }
 .ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  max-width:192px; opacity:.75; color:var(--text-mid); }
+  max-width:200px; }
 
 /* import col */
 .wi-ci { padding:4px 12px; display:flex; align-items:center; transition:background .1s; overflow:hidden; }
