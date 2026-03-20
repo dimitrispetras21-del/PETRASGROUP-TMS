@@ -145,7 +145,7 @@ function navigate(page) {
     // Orders
     case 'orders_intl':    renderOrdersIntl();            break;
     case 'orders_natl':    renderOrdersNatl();            break;
-    case 'locations':      c.innerHTML = showComingSoon('Locations');             break;
+    case 'locations':      renderLocations();                                     break;
     // Clients & Partners
     case 'clients':        renderEntity('clients');       break;
     case 'partners':       renderEntity('partners');      break;
