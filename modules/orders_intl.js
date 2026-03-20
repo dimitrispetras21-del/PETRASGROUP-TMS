@@ -647,6 +647,140 @@ async function _syncNationalOrder(orderId, fields) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// _syncRampPlan — auto-create/update RAMP PLAN records
+// Called after every ORDER or NATIONAL ORDER save
+//
+// Veroia detection:
+//   1. Veroia Switch ✅
+//   2. Loading/Pickup Location = recJucKOhC1zh4IP3 (Vermion Fresh Cross-Dock)
+//   3. Delivery/Unloading Location = recJucKOhC1zh4IP3
+//
+// Direction → Type mapping:
+//   ORDERS Export   + Veroia → Φόρτωση   (Loading DateTime)
+//   ORDERS Import   + Veroia → Παραλαβή  (Delivery DateTime)
+//   NAT N→S (ΚΑΘΟΔΟΣ) + Veroia → Φόρτωση   (Loading DateTime)
+//   NAT S→N (ΑΝΟΔΟΣ)  + Veroia → Παραλαβή  (Delivery DateTime)
+// ═══════════════════════════════════════════════════════════════
+
+const VEROIA_LOC_ID = 'recJucKOhC1zh4IP3';
+
+function _rampGetLocIds(fields, prefix, max) {
+  const ids = [];
+  for (let i = 1; i <= max; i++) {
+    const key = i === 1 ? prefix : `${prefix} ${i}`;
+    const val = fields[key];
+    const id = Array.isArray(val) ? (val[0]?.id || val[0]) : null;
+    if (id) ids.push(id);
+  }
+  return ids;
+}
+
+async function _syncRampPlan(orderId, fields, tableId) {
+  try {
+    const direction = fields['Direction'] || '';
+    const isNatl    = tableId === TABLES.NAT_ORDERS;
+
+    // Detect Veroia involvement
+    const veroiaSwitch = fields['Veroia Switch '] || fields['Veroia Switch'] || false;
+
+    const loadingLocs = isNatl
+      ? _rampGetLocIds(fields, 'Pickup Location', 10)
+      : _rampGetLocIds(fields, 'Loading Location', 10);
+
+    const deliveryLocs = isNatl
+      ? _rampGetLocIds(fields, 'Delivery Location', 10)
+      : _rampGetLocIds(fields, 'Unloading Location', 10);
+
+    const veroiaInLoading  = loadingLocs.includes(VEROIA_LOC_ID);
+    const veroiaInDelivery = deliveryLocs.includes(VEROIA_LOC_ID);
+
+    const isVeroia = veroiaSwitch || veroiaInLoading || veroiaInDelivery;
+    if (!isVeroia) return;
+
+    // Determine what to create
+    // { type, date } pairs
+    const toCreate = [];
+
+    if (veroiaSwitch) {
+      if (direction === 'Export' || direction === 'North→South') {
+        // Truck loads FROM Veroia → Φόρτωση
+        toCreate.push({ type: 'Φόρτωση', rawDate: fields['Loading DateTime'] });
+      } else if (direction === 'Import' || direction === 'South→North') {
+        // Truck delivers TO Veroia → Παραλαβή
+        toCreate.push({ type: 'Παραλαβή', rawDate: fields['Delivery DateTime'] });
+      }
+    }
+
+    if (!veroiaSwitch) {
+      if (veroiaInLoading) {
+        // Loading at Veroia = truck being loaded = Φόρτωση
+        toCreate.push({ type: 'Φόρτωση', rawDate: fields['Loading DateTime'] });
+      }
+      if (veroiaInDelivery) {
+        // Delivery at Veroia = truck arriving = Παραλαβή
+        const delivDate = isNatl ? fields['Delivery DateTime'] : fields['Delivery DateTime'];
+        toCreate.push({ type: 'Παραλαβή', rawDate: delivDate });
+      }
+    }
+
+    if (!toCreate.length) return;
+
+    // Shared fields for ramp record
+    const pallets = fields['Total Pallets'] || fields['Loading Pallets 1'] || fields['Pallets'] || 0;
+    const goods   = fields['Goods'] || '';
+    const temp    = fields['Temperature °C'];
+    const goodsWithTemp = goods + (temp != null ? ` · ${temp}°C` : '');
+
+    // Client name lookup
+    const clientIds = (fields['Client'] || []).map(v => v?.id || v).filter(Boolean);
+    const clientId  = clientIds[0] || null;
+
+    // Truck / Driver (if already assigned)
+    const truckId  = ((fields['Truck']  || [])[0]?.id || (fields['Truck']  || [])[0]) || null;
+    const driverId = ((fields['Driver'] || [])[0]?.id || (fields['Driver'] || [])[0]) || null;
+
+    for (const item of toCreate) {
+      const dateStr = item.rawDate?.split('T')[0];
+      if (!dateStr) continue;
+
+      // Anti-duplicate check
+      const filterFormula = `AND(FIND("${orderId}", ARRAYJOIN({Order}, ","))>0, {Type}="${item.type}")`;
+      const existing = await atGetAll(TABLES.RAMP, {
+        filterByFormula: filterFormula,
+        fields: ['Plan Date', 'Type', 'Order'],
+      }, false);
+
+      const rampFields = {
+        'Plan Date': dateStr,
+        'Goods':     goodsWithTemp,
+        'Pallets':   pallets,
+      };
+
+      if (truckId)  rampFields['Truck']  = [truckId];
+      if (driverId) rampFields['Driver'] = [driverId];
+      if (clientId) rampFields['Supplier/Client'] = clientId; // stored as text via lookup
+
+      if (existing.length > 0) {
+        // Update date/goods/pallets — don't overwrite Time/Status set by warehouse
+        await atPatch(TABLES.RAMP, existing[0].id, rampFields);
+        console.log(`RAMP PLAN updated: ${item.type} ${dateStr}`);
+      } else {
+        // Create new
+        rampFields['Type']    = { name: item.type };
+        rampFields['Status']  = { name: 'Προγραμματισμένο' };
+        rampFields['Order']   = [orderId];  // works for both ORDERS and NAT_ORDERS (link field accepts any recId)
+        await atCreate(TABLES.RAMP, rampFields);
+        console.log(`RAMP PLAN created: ${item.type} ${dateStr}`);
+      }
+    }
+  } catch(e) {
+    console.error('_syncRampPlan error:', e.message);
+    // Non-blocking — don't throw
+  }
+}
+
+
 async function submitIntlOrder(recId) {
   const btn = document.getElementById('btnSubmit');
   if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
@@ -754,6 +888,7 @@ async function submitIntlOrder(recId) {
       console.log('SYNC: fetched record', savedOrderId, rec.fields?.['Veroia Switch '], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
       await _syncNationalOrder(savedOrderId, rec.fields);
+      await _syncRampPlan(savedOrderId, rec.fields, TABLES.ORDERS);
       toast('National order synced ✓');
     } catch(e) {
       console.error('National sync error:', e);
