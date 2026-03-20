@@ -45,8 +45,15 @@ function _wnCurrentWeek() {
   background:var(--bg-card); border:1px solid var(--border-mid);
   border-radius:10px;
   box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
-  width:430px; overflow:hidden;
+  width:480px; padding:0; overflow:visible;
 }
+#wn-popover .wi-pop-body { padding:12px 14px 0; display:flex; flex-direction:column; gap:10px; }
+#wn-popover .wi-pop-row  { display:flex; gap:6px; align-items:flex-end; flex-wrap:nowrap; }
+#wn-popover .wi-pop-field { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+#wn-popover .wi-pop-inp  { width:100%; padding:7px 9px; font-size:11px; border-radius:6px;
+  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
+#wn-popover .wi-sdi { width:100%; padding:7px 9px; font-size:11px; border-radius:6px;
+  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
 /* pill overrides */
 .wi-pill {
   display:flex; flex-direction:column; align-items:stretch;
@@ -745,8 +752,9 @@ function _wnOpenPopover(e, rowId) {
       </button>
     </div>`;
 
-  const rect = e.currentTarget.getBoundingClientRect();
-  const popW=430, popH=310;
+  const _el = e.currentTarget || e.target || document.body;
+  const rect = _el.getBoundingClientRect ? _el.getBoundingClientRect() : {left:200,bottom:200,top:200};
+  const popW=480, popH=320;
   let left = rect.left - 10;
   let top  = rect.bottom + 6;
   if (left + popW > window.innerWidth - 12) left = window.innerWidth - popW - 12;
