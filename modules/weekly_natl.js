@@ -212,7 +212,7 @@ async function _wnLoadOrders() {
   // Build synthetic NO-compatible records from CL
   // Only South→North groupage loads
   WNATL.data.clLoads = clRecs
-    .filter(r => (r.fields['Direction']||'').includes('South'))
+    .filter(r => { const d=r.fields['Direction']||''; return d.includes('South')||d==='ΑΝΟΔΟΣ'; })
     .sort((a,b) => (a.fields['Date']||'').localeCompare(b.fields['Date']||''));
 
   // Also filter week by Loading DateTime for S→N (pick-up this week)
