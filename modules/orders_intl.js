@@ -656,93 +656,19 @@ async function _syncNationalOrder(orderId, fields) {
   }
 
   // Sync GROUPAGE LINES for this National Order
-  if (noId && fields['National Groupage']) {
-    await _syncGroupageLines(orderId, noId, fields);
-  }
-}
-
-// ═══════════════════════════════════════════════
-// _syncGroupageLines
-// Called after NATIONAL ORDER is created/updated
-// Creates/updates one GROUPAGE LINE per loading stop
-// ═══════════════════════════════════════════════
-async function _syncGroupageLines(orderId, noId, orderFields) {
-  try {
-    const direction = orderFields['Direction'];
-    const ref       = orderFields['Reference'] || '';
-    const goods     = orderFields['Goods'] || '';
-    const temp      = orderFields['Temperature °C'] ?? null;
-    const loadDt    = orderFields['Loading DateTime'] || null;
-    const delDt     = orderFields['Delivery DateTime'] || null;
-    const delivery  = direction === 'Export'
-      ? ['recJucKOhC1zh4IP3']  // Veroia cross-dock
-      : (orderFields['Unloading Location 1'] || []).map(v => v?.id || v).filter(Boolean);
-
-    const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
-
-    // Delete existing GL lines for this NO (full resync)
-    const existing = await atGetAll(TABLES.GL_LINES, {
-      filterByFormula: `FIND("${noId}", ARRAYJOIN({Linked National Order}, ",")) > 0`,
-      fields: ['Name'],
-    }, false);
-    for (let i = 0; i < existing.length; i += 10) {
-      const batch = existing.slice(i, i+10);
-      for (const rec of batch) {
-        await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}/${rec.id}`,
-          {method:'DELETE', headers:{Authorization:'Bearer '+AT_TOKEN}});
-      }
-    }
-
-    // Build one GL record per loading stop
-    const glRecords = [];
-    for (let i = 1; i <= 10; i++) {
-      const locField = direction === 'Export'
-        ? `Loading Location ${i}`
-        : `Unloading Location ${i}`;
-      const palField = direction === 'Export'
-        ? `Loading Pallets ${i}`
-        : `Unloading Pallets ${i}`;
-
-      const locArr = orderFields[locField];
-      const pal    = orderFields[palField];
-      if (!locArr?.length || !pal) break;
-
-      const locId = _lid(locArr[0]);
-      if (!locId) break;
-
-      const gl = {
-        'Name':                   `GL — ${ref || '?'} — Stop ${i}`,
-        'Reference':              ref,
-        'Pallets':                pal,
-        'Direction':              direction === 'Export' ? 'South→North' : 'North→South',
-        'Status':                 'Unassigned',
-        'Goods':                  goods,
-        'Loading Location':       [locId],
-        'Linked National Order':  [noId],
-      };
-      if (loadDt)    gl['Loading Date']   = loadDt.split('T')[0];
-      if (delDt)     gl['Delivery Date']  = delDt.split('T')[0];
-      if (temp != null) gl['Temperature C'] = temp;
-      if (delivery.length) gl['Delivery Location'] = delivery.slice(0,1).map(v=>_lid(v)||v).filter(Boolean);
-
-      glRecords.push(gl);
-    }
-
-    // Create in batches of 10
-    for (let i = 0; i < glRecords.length; i += 10) {
-      const batch = glRecords.slice(i, i+10);
-      const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}`, {
-        method: 'POST',
-        headers: {Authorization: 'Bearer '+AT_TOKEN, 'Content-Type': 'application/json'},
-        body: JSON.stringify({records: batch.map(f => ({fields: f}))})
-      });
-      const data = await res.json();
-      if (data.error) console.error('GL create error:', data.error);
-      else console.log(`Created ${data.records?.length} GL lines for NO ${noId}`);
-    }
-    toast(`✓ ${glRecords.length} groupage lines synced`, 'success');
-  } catch(e) {
-    console.error('_syncGroupageLines error:', e);
+  // Trigger GL sync if either ORDERS or the new NO has National Groupage
+  const ngroupage = !!fields['National Groupage'] || !!natFields?.['National Groupage'];
+  if (noId && ngroupage) {
+    await _syncGroupageLines(orderId, noId, fields, natFields);
+  } else if (noId && !ngroupage) {
+    // Clean up any unassigned GL lines
+    try {
+      const stale = await atGetAll(TABLES.GL_LINES, {
+        filterByFormula: `AND(FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+        fields: ['Status']
+      }, false);
+      for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+    } catch(e) { console.warn('GL cleanup',e); }
   }
 }
 
@@ -773,14 +699,27 @@ async function _syncGroupageLines(orderId, noId, orderFields) {
       return;
     }
 
-    // Build target stops from ORDERS Loading Locations + Pallets
+    // Build target stops: NO Pickup Locations + ORDERS pallets
+    const nf = natFields || {};
     const targets = [];
     for (let i=1; i<=10; i++) {
-      const locArr = orderFields[`Loading Location ${i}`];
-      const pal    = orderFields[`Loading Pallets ${i}`];
-      if (!locArr?.length || !pal) break;
-      const locId = _lid(locArr[0]);
-      if (locId) targets.push({locId, pal});
+      // Use NO Pickup Location N (already mapped from ORDERS Loading Location)
+      const puArr = nf[`Pickup Location ${i}`];
+      const pal   = orderFields[`Loading Pallets ${i}`] || orderFields[`Unloading Pallets ${i}`];
+      if (!puArr?.length) break;
+      if (!pal) continue;
+      const locId = _lid(puArr[0]);
+      if (locId) targets.push({locId, pal: parseInt(pal)||0});
+    }
+    // Fallback: use ORDERS Loading Locations directly if NO has no Pickup Locs
+    if (!targets.length) {
+      for (let i=1; i<=10; i++) {
+        const locArr = orderFields[`Loading Location ${i}`];
+        const pal    = orderFields[`Loading Pallets ${i}`];
+        if (!locArr?.length || !pal) break;
+        const locId = _lid(locArr[0]);
+        if (locId) targets.push({locId, pal: parseInt(pal)||0});
+      }
     }
     if (!targets.length) return;
 
