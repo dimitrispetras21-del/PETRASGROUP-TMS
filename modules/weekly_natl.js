@@ -451,7 +451,8 @@ function _wnRowHTML(row, i) {
     fromStr = f['Type']==='Veroia Switch'
       ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
       : (_wnPickupSummary(f) || '—');
-    toStr = _wnDeliverySummary(f) || _wnCl
+    toStr = _wnDeliverySummary(f) || _wnClientLabel((f['Client']||[])[0]) || '—';
+  }
 
   // Client
   const clientLabel = _wnClientLabel((f['Client']||[])[0]);
