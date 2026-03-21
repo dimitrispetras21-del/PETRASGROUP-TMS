@@ -374,6 +374,24 @@ async function submitNatlOrder(recId) {
       savedNatlId = created.id;
     }
 
+    // ── Sync GROUPAGE LINES ──────────────────────────────────
+    if (savedNatlId && fields['National Groupage']) {
+      try {
+        await _syncGroupageLinesFromNO(savedNatlId, fields);
+      } catch(e) { console.warn('GL sync error:', e); }
+    } else if (savedNatlId && !fields['National Groupage']) {
+      // National Groupage turned OFF → delete unassigned GL lines
+      try {
+        const stale = await atGetAll(TABLES.GL_LINES, {
+          filterByFormula: `AND(FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+          fields: ['Status']
+        }, false);
+        for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+        if (stale.length) toast(`Αφαιρέθηκαν ${stale.length} GL lines`, 'info');
+      } catch(e) { console.warn('GL cleanup:', e); }
+    }
+    // ─────────────────────────────────────────────────────────
+
     // Sync Ramp Plan
     try {
       const natlRec = await fetch(
@@ -406,4 +424,111 @@ async function toggleNatlInvoiced(recId, current) {
     _applyNatlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
   } catch(e) { toast('Error: '+e.message, 'danger'); }
+}
+
+// ═══════════════════════════════════════════════
+// _syncGroupageLinesFromNO
+// For INDEPENDENT National Orders (no parent ORDERS)
+// Creates/updates GL lines from NO Pickup Locations
+// ═══════════════════════════════════════════════
+async function _syncGroupageLinesFromNO(noId, noFields) {
+  const _lid = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
+  const dir  = noFields['Direction']||'';
+  const ref  = noFields['Reference']||'';
+  const goods= noFields['Goods']||'';
+  const temp = noFields['Temperature °C']??null;
+  const loadDt = (noFields['Loading DateTime']||'').slice(0,10)||null;
+  const delDt  = (noFields['Delivery DateTime']||'').slice(0,10)||null;
+  const noDir  = dir.includes('South')||dir==='South→North' ? 'South→North' : 'North→South';
+
+  // Get all pickup locations — support both old 'Pickup Location' and new '1-10' fields
+  const pickupLocs = [];
+  // New style: Pickup Location 1-10
+  for (let i=1; i<=10; i++) {
+    const arr = noFields[`Pickup Location ${i}`];
+    if (!arr?.length) { if(i>1) break; continue; }
+    pickupLocs.push(_lid(arr[0]));
+  }
+  // Old style: single 'Pickup Location' field
+  if (!pickupLocs.length) {
+    const arr = noFields['Pickup Location'];
+    if (arr?.length) pickupLocs.push(_lid(arr[0]));
+  }
+
+  if (!pickupLocs.length) return;
+
+  const totalPal = noFields['Pallets'] || 0;
+  const palPerStop = pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal;
+
+  const delivArr = noFields['Delivery Location 1'] || noFields['Delivery Location'] || [];
+  const delivId  = delivArr.length ? _lid(delivArr[0]) : null;
+
+  // Get existing GL for this NO
+  const existing = await atGetAll(TABLES.GL_LINES, {
+    filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
+    fields: ['Loading Location','Status','Pallets']
+  }, false);
+
+  const existMap = {};
+  existing.forEach(r => {
+    const loc = (r.fields['Loading Location']||[])[0];
+    if (loc) existMap[loc] = r;
+  });
+
+  const toCreate = [];
+  const toUpdate = [];
+
+  pickupLocs.forEach((locId, i) => {
+    if (!locId) return;
+    const pal = palPerStop || totalPal;
+    const fields = {
+      'Reference':             ref,
+      'Pallets':               pal,
+      'Direction':             noDir,
+      'Status':                'Unassigned',
+      'Goods':                 goods,
+      'Loading Location':      [locId],
+      'Linked National Order': [noId],
+    };
+    if (loadDt) fields['Loading Date']  = loadDt;
+    if (delDt)  fields['Delivery Date'] = delDt;
+    if (temp !== null) fields['Temperature C'] = temp;
+    if (delivId) fields['Delivery Location'] = [delivId];
+
+    if (existMap[locId]) {
+      if (existMap[locId].fields.Status !== 'Assigned') {
+        toUpdate.push({ id: existMap[locId].id, fields });
+      }
+      delete existMap[locId];
+    } else {
+      toCreate.push(fields);
+    }
+  });
+
+  // Delete stale GL lines (locId no longer in NO)
+  for (const [locId, rec] of Object.entries(existMap)) {
+    if (rec.fields.Status !== 'Assigned') await atDelete(TABLES.GL_LINES, rec.id);
+  }
+
+  // Batch create
+  for (let i=0; i<toCreate.length; i+=10) {
+    const batch = toCreate.slice(i,i+10);
+    await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}`, {
+      method: 'POST',
+      headers: {'Authorization':'Bearer '+AT_TOKEN,'Content-Type':'application/json'},
+      body: JSON.stringify({records: batch.map(f=>({fields:f}))})
+    });
+  }
+
+  // Batch update
+  for (let i=0; i<toUpdate.length; i+=10) {
+    const batch = toUpdate.slice(i,i+10);
+    await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}`, {
+      method: 'PATCH',
+      headers: {'Authorization':'Bearer '+AT_TOKEN,'Content-Type':'application/json'},
+      body: JSON.stringify({records: batch})
+    });
+  }
+
+  console.log(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
 }
