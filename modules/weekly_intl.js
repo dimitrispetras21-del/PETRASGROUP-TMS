@@ -572,16 +572,16 @@ function _wiPaint(){
   const unmatched=impRows.filter(r=>!r.matchedTo).length;
 
   document.getElementById('content').innerHTML=`
+    <div style="display:block;width:100%">
     <!-- Horizontal week bar -->
     <div id="wi-week-bar" style="
-      display:flex;gap:4px;align-items:center;
+      display:flex;flex-direction:row;gap:4px;align-items:center;
       overflow-x:auto;padding:0 0 12px 0;
-      scrollbar-width:thin;
+      scrollbar-width:thin;width:100%;
     ">
       ${_wiWeekSidebarItems(week)}
     </div>
-
-    <div style="min-width:0">
+    <div style="display:block;width:100%">
     <div class="page-header" style="margin-bottom:12px">
       <div>
         <div class="page-title">Weekly International</div>
@@ -626,6 +626,7 @@ function _wiPaint(){
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
     </div><!-- /main -->
+    </div><!-- /block wrapper -->
   `;
   window._wiDragging=null;
 }
