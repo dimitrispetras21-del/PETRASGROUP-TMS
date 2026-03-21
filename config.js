@@ -23,6 +23,7 @@ const TABLES = {
   LOCATIONS:     'tblxu8DRfTQOFRCzS',
   RAMP:          'tblT8W5WcuToBQNiY',
   GL_LINES:      'tblxUAaIsUMEDl3qQ',
+  CONS_LOADS:    'tbl5XSLQjOnG6yLCW',
 };
 
 // Users are defined in index.html / auth layer
