@@ -375,10 +375,21 @@ async function submitNatlOrder(recId) {
     }
 
     // ── Sync GROUPAGE LINES ──────────────────────────────────
-    if (savedNatlId && fields['National Groupage']) {
+    // Sync GL: create/update if Groupage ON, delete unassigned if OFF
+  if (savedNatlId && fields['National Groupage']) {
       try {
         await _syncGroupageLinesFromNO(savedNatlId, fields);
       } catch(e) { console.warn('GL sync error:', e); }
+    } else if (savedNatlId && !fields['National Groupage']) {
+      // National Groupage turned OFF → clean up unassigned GL lines
+      try {
+        const stale = await atGetAll(TABLES.GL_LINES, {
+          filterByFormula: `AND(FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+          fields: ['Status']
+        }, false);
+        for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+        if (stale.length) console.log(`Deleted ${stale.length} stale GL lines`);
+      } catch(e) { console.warn('GL cleanup error:', e); }
     } else if (savedNatlId && !fields['National Groupage']) {
       // National Groupage turned OFF → delete unassigned GL lines
       try {
@@ -457,8 +468,13 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
 
   if (!pickupLocs.length) return;
 
+  // Per-stop pallets from Loading Pallets 1-10 fields, fallback to total/count
   const totalPal = noFields['Pallets'] || 0;
-  const palPerStop = pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal;
+  const palPerLoc = {};
+  pickupLocs.forEach((locId, i) => {
+    const p = noFields[`Loading Pallets ${i+1}`] || noFields['Loading Pallets'] || 0;
+    palPerLoc[locId] = p || (pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal);
+  });
 
   const delivArr = noFields['Delivery Location 1'] || noFields['Delivery Location'] || [];
   const delivId  = delivArr.length ? _lid(delivArr[0]) : null;
