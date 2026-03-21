@@ -22,6 +22,7 @@ const TABLES = {
   PARTNERS:      'tblLHl5m8bqONfhWv',
   LOCATIONS:     'tblxu8DRfTQOFRCzS',
   RAMP:          'tblT8W5WcuToBQNiY',
+  GL_LINES:      'tblxUAaIsUMEDl3qQ',
 };
 
 // Users are defined in index.html / auth layer
