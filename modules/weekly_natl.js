@@ -314,26 +314,27 @@ function _wnBuildRows() {
 function _wnWeekSidebarItems(currentWeek) {
   const year = new Date().getFullYear();
   let html = '';
-  // Show weeks from -8 to +12 relative to current week
   for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
     if (w < 1 || w > 52) continue;
     const isActive = w === currentWeek;
-    // Calculate week date range label
     const jan4 = new Date(year, 0, 4);
     const mon  = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
     const wS   = new Date(mon); wS.setDate(mon.getDate() + (w - 1) * 7);
     const wE   = new Date(wS);  wE.setDate(wS.getDate() + 6);
-    const fmt  = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
+    const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,#0B1929)';
+    const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
+    const fw   = isActive ? '700' : '500';
     html += `<div onclick="WNATL.week=${w};renderWeeklyNatl()" style="
-      padding:7px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;
-      background:${isActive ? 'var(--accent,#0EA5E9)' : 'transparent'};
-      color:${isActive ? '#fff' : 'rgba(196,207,219,.7)'};
-      font-family:'Syne',sans-serif;font-size:11px;font-weight:${isActive ? '700' : '500'};
-      transition:background .12s;
-    " onmouseover="if(${!isActive})this.style.background='rgba(14,165,233,.12)'"
-       onmouseout="if(${!isActive})this.style.background='transparent'">
+      flex-shrink:0;padding:6px 14px;cursor:pointer;border-radius:8px;
+      background:${bg};color:${col};
+      font-family:'Syne',sans-serif;font-size:12px;font-weight:${fw};
+      transition:background .12s;white-space:nowrap;text-align:center;
+      border:1px solid ${isActive ? 'transparent' : 'rgba(196,207,219,.12)'};
+    " onmouseover="this.style.background='${isActive?'var(--accent,#0EA5E9)':'rgba(14,165,233,.15)'}'"
+       onmouseout="this.style.background='${bg}'">
       <div>W${w}</div>
-      <div style="font-size:9px;opacity:.6;font-family:'DM Sans',sans-serif">${fmt(wS)}–${fmt(wE)}</div>
+      <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
     </div>`;
   }
   return html;
@@ -355,21 +356,16 @@ function _wnPaint() {
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
-    <div style="display:flex;gap:0;align-items:flex-start;min-height:calc(100vh - 120px)">
-
-    <!-- Week Sidebar -->
-    <div id="wn-week-sidebar" style="
-      width:110px;min-width:110px;margin-right:16px;
-      background:var(--navy-mid,#0B1929);border-radius:10px;
-      padding:8px 0;position:sticky;top:0;max-height:calc(100vh - 120px);overflow-y:auto;
+    <!-- Horizontal week bar -->
+    <div id="wn-week-bar" style="
+      display:flex;gap:4px;align-items:center;
+      overflow-x:auto;padding:0 0 12px 0;
+      scrollbar-width:thin;
     ">
-      <div style="padding:8px 12px 6px;font-size:10px;font-weight:700;
-                  letter-spacing:.08em;color:rgba(196,207,219,.4);text-transform:uppercase">Εβδομάδα</div>
       ${_wnWeekSidebarItems(week)}
     </div>
 
-    <!-- Main content -->
-    <div style="flex:1;min-width:0">
+    <div style="min-width:0">
       <div class="page-header" style="margin-bottom:12px">
         <div>
           <div class="page-title">Weekly National</div>
@@ -410,7 +406,6 @@ function _wnPaint() {
     <div id="wn-ctx"></div>
     <div id="wn-popover"></div>
     </div><!-- /main content -->
-    </div><!-- /flex wrapper -->
   `;
 
   window._wnDragging = null;
