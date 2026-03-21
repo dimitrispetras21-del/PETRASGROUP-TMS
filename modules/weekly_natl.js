@@ -356,16 +356,16 @@ function _wnPaint() {
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
+    <div style="display:block;width:100%">
     <!-- Horizontal week bar -->
     <div id="wn-week-bar" style="
-      display:flex;gap:4px;align-items:center;
+      display:flex;flex-direction:row;gap:4px;align-items:center;
       overflow-x:auto;padding:0 0 12px 0;
-      scrollbar-width:thin;
+      scrollbar-width:thin;width:100%;
     ">
       ${_wnWeekSidebarItems(week)}
     </div>
-
-    <div style="min-width:0">
+    <div style="display:block;width:100%">
       <div class="page-header" style="margin-bottom:12px">
         <div>
           <div class="page-title">Weekly National</div>
@@ -406,6 +406,7 @@ function _wnPaint() {
     <div id="wn-ctx"></div>
     <div id="wn-popover"></div>
     </div><!-- /main content -->
+    </div><!-- /block wrapper -->
   `;
 
   window._wnDragging = null;
