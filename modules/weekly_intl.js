@@ -530,6 +530,34 @@ function _wiBuildRows(){
 }
 
 /* ── PAINT ─────────────────────────────────────────────────────────── */
+
+/* ── WEEK SIDEBAR (INTL) ──────────────────────────────── */
+function _wiWeekSidebarItems(currentWeek) {
+  const year = new Date().getFullYear();
+  let html = '';
+  for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
+    if (w < 1 || w > 52) continue;
+    const isActive = w === currentWeek;
+    const jan4 = new Date(year, 0, 4);
+    const mon  = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
+    const wS   = new Date(mon); wS.setDate(mon.getDate() + (w - 1) * 7);
+    const wE   = new Date(wS);  wE.setDate(wS.getDate() + 6);
+    const fmt  = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    html += `<div onclick="WINTL.week=${w};renderWeeklyIntl()" style="
+      padding:7px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;
+      background:${isActive ? 'var(--accent,#0EA5E9)' : 'transparent'};
+      color:${isActive ? '#fff' : 'rgba(196,207,219,.7)'};
+      font-family:'Syne',sans-serif;font-size:11px;font-weight:${isActive ? '700' : '500'};
+      transition:background .12s;
+    " onmouseover="this.style.background='${isActive?'var(--accent,#0EA5E9)':'rgba(14,165,233,.12)'}'"
+       onmouseout="this.style.background='${isActive?'var(--accent,#0EA5E9)':'transparent'}'">
+      <div>W${w}</div>
+      <div style="font-size:9px;opacity:.6;font-family:'DM Sans',sans-serif">${fmt(wS)}–${fmt(wE)}</div>
+    </div>`;
+  }
+  return html;
+}
+
 function _wiPaint(){
   const {rows,week,data,ui}=WINTL;
   const expRows=rows.filter(r=>r.type==='export');
@@ -541,6 +569,21 @@ function _wiPaint(){
   const unmatched=impRows.filter(r=>!r.matchedTo).length;
 
   document.getElementById('content').innerHTML=`
+    <div style="display:flex;gap:0;align-items:flex-start;min-height:calc(100vh - 120px)">
+
+    <!-- Week Sidebar -->
+    <div id="wi-week-sidebar" style="
+      width:110px;min-width:110px;margin-right:16px;
+      background:var(--navy-mid,#0B1929);border-radius:10px;
+      padding:8px 0;position:sticky;top:0;max-height:calc(100vh - 120px);overflow-y:auto;
+    ">
+      <div style="padding:8px 12px 6px;font-size:10px;font-weight:700;
+                  letter-spacing:.08em;color:rgba(196,207,219,.4);text-transform:uppercase">Week</div>
+      ${_wiWeekSidebarItems(week)}
+    </div>
+
+    <!-- Main -->
+    <div style="flex:1;min-width:0">
     <div class="page-header" style="margin-bottom:12px">
       <div>
         <div class="page-title">Weekly International</div>
@@ -550,19 +593,15 @@ function _wiPaint(){
           <span style="color:var(--warning)">${impN} imports</span>
           <span style="color:var(--success)">${assigned} assigned</span>
           <span style="color:#E05252">· ${pending} pending</span>
-          <span style="color:var(--text-dim)">${matched} imports matched · ${unmatched} free</span>
+          <span style="color:var(--text-dim)">${matched} matched · ${unmatched} free</span>
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-ghost" style="padding:5px 18px" onclick="_wiNavWeek(-1)">Prev</button>
-        <span style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;
-                     min-width:62px;text-align:center">W ${week}</span>
-        <button class="btn btn-ghost" style="padding:5px 18px" onclick="_wiNavWeek(1)">Next</button>
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
       </div>
     </div>
 
-    <div class="wi-wrap">
+    <div class="wi-wrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px);">
       <div class="wi-head" style="background:#B8C4D0">
         <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
@@ -587,7 +626,10 @@ function _wiPaint(){
       </div>
     </div>
     <div id="wi-ctx"></div>
-    <div id="wi-popover"></div>`;
+    <div id="wi-popover"></div>
+    </div><!-- /main -->
+    </div><!-- /flex wrapper -->
+  `;
   window._wiDragging=null;
 }
 
