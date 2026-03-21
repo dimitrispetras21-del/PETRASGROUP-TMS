@@ -431,9 +431,16 @@ function _wnAllRowsHTML() {
   });
 
   snRows.forEach(row => {
-    const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
-    const key = ord?.fields['Loading DateTime']?.split('T')[0] || 'zzz';
-    const lbl = _wnFmtFull(ord?.fields['Loading DateTime']||null) || '—';
+    // CL rows: look in clLoads; NO rows: look in southnorth
+    const ord = row.source === 'cl'
+      ? (WNATL.data.clLoads||[]).find(r => r.id===row.orderId)
+      : WNATL.data.southnorth.find(r => r.id===row.orderId);
+    // CL uses Date field; NO uses Loading DateTime
+    const dtRaw = row.source === 'cl'
+      ? (ord?.fields['Date'] || ord?.fields['Loading DateTime'] || '')
+      : (ord?.fields['Loading DateTime'] || '');
+    const key = dtRaw.split('T')[0] || 'zzz';
+    const lbl = _wnFmtFull(dtRaw||null) || '—';
     if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
     dayMap[key].sn.push(row);
   });
