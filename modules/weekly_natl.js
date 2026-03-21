@@ -309,6 +309,36 @@ function _wnBuildRows() {
 }
 
 /* ── PAINT ───────────────────────────────────────────────────────── */
+
+/* ── WEEK SIDEBAR ─────────────────────────────────────── */
+function _wnWeekSidebarItems(currentWeek) {
+  const year = new Date().getFullYear();
+  let html = '';
+  // Show weeks from -8 to +12 relative to current week
+  for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
+    if (w < 1 || w > 52) continue;
+    const isActive = w === currentWeek;
+    // Calculate week date range label
+    const jan4 = new Date(year, 0, 4);
+    const mon  = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
+    const wS   = new Date(mon); wS.setDate(mon.getDate() + (w - 1) * 7);
+    const wE   = new Date(wS);  wE.setDate(wS.getDate() + 6);
+    const fmt  = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+    html += `<div onclick="WNATL.week=${w};renderWeeklyNatl()" style="
+      padding:7px 12px;cursor:pointer;border-radius:6px;margin:1px 6px;
+      background:${isActive ? 'var(--accent,#0EA5E9)' : 'transparent'};
+      color:${isActive ? '#fff' : 'rgba(196,207,219,.7)'};
+      font-family:'Syne',sans-serif;font-size:11px;font-weight:${isActive ? '700' : '500'};
+      transition:background .12s;
+    " onmouseover="if(${!isActive})this.style.background='rgba(14,165,233,.12)'"
+       onmouseout="if(${!isActive})this.style.background='transparent'">
+      <div>W${w}</div>
+      <div style="font-size:9px;opacity:.6;font-family:'DM Sans',sans-serif">${fmt(wS)}–${fmt(wE)}</div>
+    </div>`;
+  }
+  return html;
+}
+
 function _wnPaint() {
   const { rows, week, data } = WNATL;
   const nsRows = rows.filter(r => r.type==='northsouth');
@@ -325,26 +355,38 @@ function _wnPaint() {
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:12px">
-      <div>
-        <div class="page-title">Weekly National</div>
-        <div class="page-sub">
-          Εβδομάδα ${week} · ${weekRange}
-          <span style="margin-left:12px;color:var(--text)">${nsRows.length} κάθοδος</span>
-          <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος ελεύθερα</span>
-          <span style="margin-left:8px;color:var(--success)">${assigned} ανατεθειμένα</span>
-          <span style="margin-left:4px;color:#E05252">· ${pending} εκκρεμή</span>
-        </div>
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_wnNavWeek(-1)">← Προηγ.</button>
-        <div style="padding:6px 14px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px">W ${week}</div>
-        <button class="btn btn-ghost" onclick="_wnNavWeek(1)">Επόμ. →</button>
-        <button class="btn btn-ghost" onclick="renderWeeklyNatl()">Refresh</button>
-      </div>
+    <div style="display:flex;gap:0;align-items:flex-start;min-height:calc(100vh - 120px)">
+
+    <!-- Week Sidebar -->
+    <div id="wn-week-sidebar" style="
+      width:110px;min-width:110px;margin-right:16px;
+      background:var(--navy-mid,#0B1929);border-radius:10px;
+      padding:8px 0;position:sticky;top:0;max-height:calc(100vh - 120px);overflow-y:auto;
+    ">
+      <div style="padding:8px 12px 6px;font-size:10px;font-weight:700;
+                  letter-spacing:.08em;color:rgba(196,207,219,.4);text-transform:uppercase">Εβδομάδα</div>
+      ${_wnWeekSidebarItems(week)}
     </div>
 
-    <div class="wi-wrap">
+    <!-- Main content -->
+    <div style="flex:1;min-width:0">
+      <div class="page-header" style="margin-bottom:12px">
+        <div>
+          <div class="page-title">Weekly National</div>
+          <div class="page-sub">
+            Εβδομάδα ${week} · ${weekRange}
+            <span style="margin-left:12px;color:var(--text)">${nsRows.length} κάθοδος</span>
+            <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος</span>
+            <span style="margin-left:8px;color:var(--success)">${assigned} ανατεθειμένα</span>
+            <span style="margin-left:4px;color:#E05252">· ${pending} εκκρεμή</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" onclick="renderWeeklyNatl()">Refresh</button>
+        </div>
+      </div>
+
+    <div class="wi-wrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px);">
       <div class="wi-head" style="background:#B8C4D0">
         <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
@@ -366,7 +408,10 @@ function _wnPaint() {
     </div>
 
     <div id="wn-ctx"></div>
-    <div id="wn-popover"></div>`;
+    <div id="wn-popover"></div>
+    </div><!-- /main content -->
+    </div><!-- /flex wrapper -->
+  `;
 
   window._wnDragging = null;
 }
