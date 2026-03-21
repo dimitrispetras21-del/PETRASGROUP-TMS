@@ -747,6 +747,93 @@ async function _syncGroupageLines(orderId, noId, orderFields) {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// _syncGroupageLines — 1 GL record per loading stop
+// ═══════════════════════════════════════════════════════════════
+async function _syncGroupageLines(orderId, noId, orderFields) {
+  try {
+    const isGrp = !!orderFields['National Groupage'];
+    const dir   = orderFields['Direction']||'';
+    const ref   = orderFields['Reference']||'';
+    const goods = orderFields['Goods']||'';
+    const temp  = orderFields['Temperature °C']??null;
+    const loadDt= (orderFields['Loading DateTime']||'').slice(0,10)||null;
+    const delDt = (orderFields['Delivery DateTime']||'').slice(0,10)||null;
+    const direction = dir==='Export'?'South→North':'North→South';
+    const _lid = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
+
+    // Get existing GL lines for this NO
+    const existing = await atGetAll(TABLES.GL_LINES, {
+      filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
+      fields: ['Loading Location','Status'],
+    }, false);
+
+    // National Groupage OFF → delete all GL lines
+    if (!isGrp) {
+      for (const r of existing) await atDelete(TABLES.GL_LINES, r.id);
+      return;
+    }
+
+    // Build target stops from ORDERS Loading Locations + Pallets
+    const targets = [];
+    for (let i=1; i<=10; i++) {
+      const locArr = orderFields[`Loading Location ${i}`];
+      const pal    = orderFields[`Loading Pallets ${i}`];
+      if (!locArr?.length || !pal) break;
+      const locId = _lid(locArr[0]);
+      if (locId) targets.push({locId, pal});
+    }
+    if (!targets.length) return;
+
+    // Delivery location
+    const delLocArr = dir==='Import'
+      ? orderFields['Unloading Location 1']
+      : null; // Export → Veroia cross-dock
+    const delLoc = delLocArr?.length ? _lid(delLocArr[0]) : 'recJucKOhC1zh4IP3';
+
+    // locId → existing GL record id
+    const existMap = {};
+    existing.forEach(r => {
+      const loc = (r.fields['Loading Location']||[])[0];
+      if (loc) existMap[loc] = {id: r.id, status: r.fields.Status||'Unassigned'};
+    });
+
+    const keptIds = new Set();
+    for (let i=0; i<targets.length; i++) {
+      const {locId, pal} = targets[i];
+      const glFields = {
+        'Name':                  `Stop ${i+1} (${ref||'—'})`,
+        'Reference':             ref,
+        'Pallets':               pal,
+        'Direction':             direction,
+        'Goods':                 goods,
+        'Loading Location':      [locId],
+        'Linked National Order': [noId],
+      };
+      if (loadDt)    glFields['Loading Date']    = loadDt;
+      if (delDt)     glFields['Delivery Date']   = delDt;
+      if (temp!=null) glFields['Temperature C']  = temp;
+      if (delLoc)    glFields['Delivery Location'] = [delLoc];
+
+      if (existMap[locId]) {
+        // Preserve Status if already Assigned
+        if (existMap[locId].status !== 'Assigned') glFields['Status'] = 'Unassigned';
+        await atPatch(TABLES.GL_LINES, existMap[locId].id, glFields);
+        keptIds.add(existMap[locId].id);
+      } else {
+        glFields['Status'] = 'Unassigned';
+        const res = await atCreate(TABLES.GL_LINES, glFields);
+        if (res?.id) keptIds.add(res.id);
+      }
+    }
+
+    // Delete removed stops
+    for (const r of existing) {
+      if (!keptIds.has(r.id)) await atDelete(TABLES.GL_LINES, r.id);
+    }
+  } catch(e) { console.error('_syncGroupageLines:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // _syncRampPlan — auto-create/update RAMP PLAN records
 // Called after every ORDER or NATIONAL ORDER save
 //
