@@ -16,6 +16,7 @@ const RAMP_FIELDS = [
   'Supplier/Client','Notes','Postponed To','Temperature',
   'Order','National Order','Truck','Driver',
   'Is Veroia Switch','Ramp Category','Stock Status',
+  'Loading Points','Delivery Points',
 ];
 
 /* ── CSS ──────────────────────────────────────────────────────── */
@@ -176,7 +177,8 @@ async function _rampAutoSync() {
 
   const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
-    'Loading Location 1','Unloading Location 1'];
+    'Loading Location 1','Loading Location 2','Loading Location 3',
+    'Unloading Location 1','Unloading Location 2','Unloading Location 3'];
 
   const intlResults = await Promise.all(
     intlFilters.map(f => atGetAll(TABLES.ORDERS, {filterByFormula:f, fields:intlFields}, false).catch(()=>[]))
@@ -382,7 +384,24 @@ function _rampBuildRecord(orderRec, type, category, date, isVS) {
   if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
   if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
   if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+  // Resolve locations
+  rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5);
+  rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5);
   return rec;
+}
+
+function _rampResolveStops(f, prefix, max) {
+  const names = [];
+  for (let i=1; i<=max; i++) {
+    const key = `${prefix} ${i}`;
+    const arr = f[key];
+    const id = Array.isArray(arr) ? (arr[0]?.id||arr[0]) : null;
+    if (id) {
+      const loc = RAMP.locs.find(r=>r.id===id);
+      if (loc) names.push(loc.fields['Name']||loc.fields['City']||'');
+    }
+  }
+  return names.filter(Boolean).join(' / ') || '';
 }
 
 /* ── HELPERS ──────────────────────────────────────────────────── */
@@ -466,20 +485,20 @@ function _rampDraw() {
       <div>
         <div class="ramp-sec-hd inbound"><span>↓ Inbound</span><span style="opacity:.5">${inb.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Cat</th><th>Actions</th>
+          <th>#</th><th>Time</th><th>Client</th><th>Loading Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Actions</th>
         </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No inbound</td></tr>'}</tbody></table>
       </div>
       <div>
         <div class="ramp-sec-hd outbound"><span>↑ Outbound</span><span style="opacity:.5">${out.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Cat</th><th>Actions</th>
+          <th>#</th><th>Time</th><th>Client</th><th>Delivery Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Actions</th>
         </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No outbound</td></tr>'}</tbody></table>
       </div>
     </div>
 
     <div class="ramp-sec-hd timeline"><span>🕐 Timeline — All Operations</span><span style="opacity:.5">${allSorted.length}</span></div>
     <table class="ramp-t"><thead><tr>
-      <th>Time</th><th>Type</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Cat</th><th>Status</th>
+      <th>Time</th><th>Type</th><th>Client</th><th>Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Status</th>
     </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
 
     <div style="margin-top:16px">
@@ -537,12 +556,15 @@ function _rRow(rec,num,tOpts) {
     }).join('');
   }
 
+  const locField = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
+
   return`<tr class="${isDone?'done':''}">
     <td class="rn">${num}</td><td>${timeSel}</td>
     <td class="trn" title="${clientDisplay}">${clientDisplay}</td>
+    <td class="trn" title="${locField}">${locField||'—'}</td>
     <td class="trn" title="${goods}">${goods}</td>
     <td>${temp?temp+'°C':''}</td><td>${pal}</td>
-    <td>${truck||'—'}</td><td>${_rCat(f)}</td><td>${acts}</td></tr>${subHtml}`;
+    <td>${truck||'—'}</td><td>${acts}</td></tr>${subHtml}`;
 }
 
 /* ── TIMELINE ROW ─────────────────────────────────────────────── */
@@ -556,14 +578,16 @@ function _rTlRow(rec) {
     :status==='⏩ Postponed'?'<span style="color:var(--warning)">Postponed</span>'
     :'<span style="color:var(--text-dim)">Planned</span>';
 
+  const tlLoc = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
   return`<tr class="${isDone?'done':''}">
     <td>${f['Time']||'—'}</td><td>${typeBadge}</td>
     <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
+    <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${(f['Goods']||'').substring(0,35)}</td>
     <td>${f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):''}</td>
     <td>${f['Pallets']||''}</td>
     <td>${_rTruck(f)||'—'}</td><td>${_rDriver(f)||'—'}</td>
-    <td>${_rCat(f)}</td><td>${statusTxt}</td></tr>`;
+    <td>${statusTxt}</td></tr>`;
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
