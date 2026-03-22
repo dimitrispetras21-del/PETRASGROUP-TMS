@@ -2,7 +2,7 @@
 // CORE — AUTH
 // ═══════════════════════════════════════════════
 
-const user = JSON.parse(sessionStorage.getItem('tms_user') || 'null');
+const user = JSON.parse(localStorage.getItem('tms_user') || 'null');
 if (!user) window.location.href = 'index.html';
 
 const ROLE = user?.role || 'dispatcher';

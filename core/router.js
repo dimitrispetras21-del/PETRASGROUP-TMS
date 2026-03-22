@@ -109,6 +109,7 @@ let currentPage = '';
 
 function navigate(page) {
   currentPage = page;
+  localStorage.setItem('tms_page', page);
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById('nav_' + page);
@@ -184,6 +185,6 @@ function navigate(page) {
 }
 
 function logout() {
-  sessionStorage.removeItem('tms_user');
+  localStorage.removeItem('tms_user'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';
 }

@@ -99,7 +99,7 @@ function init() {
   rb.className   = 'role-badge ' + user.role;
   initModal();
   renderNav();
-  navigate('dashboard');
+  navigate(localStorage.getItem('tms_page') || 'dashboard');
 }
 init();
 </script>
