@@ -295,8 +295,9 @@ async function _rampAutoSync() {
           const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
           const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
           const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
+          const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
           const ref = sf['Reference'] || '';
-          return {client:clientName, location:locName, pallets:pal, ref:ref};
+          return {client:clientName, location:locName, pallets:pal, temp:temp, ref:ref};
         } catch { return null; }
       }));
       supplierLines = srcOrders.filter(Boolean);
@@ -307,7 +308,7 @@ async function _rampAutoSync() {
     const supplierStr = clientNames.length ? clientNames.join(' / ') : clName;
 
     // Build notes with breakdown: "Client | Location | PAL | REF" per line
-    const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ref: ${s.ref}`);
+    const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
     const notesStr = notesLines.join('\n');
 
     const rec = {
@@ -561,15 +562,16 @@ function _rRow(rec,num,tOpts) {
       const sup = parts[0]?.trim()||'';
       const loc = parts[1]?.trim()||'';
       const palInfo = parts[2]||'';
-      const refInfo = parts[3]||'';
+      const tempInfo = parts[3]||'';
+      const refInfo = parts[4]||'';
       return `<tr style="background:rgba(124,58,237,0.04);font-size:11px;color:var(--text-mid)">
         <td></td><td></td>
         <td style="padding-left:20px">↳ ${sup}</td>
         <td>${loc}</td>
-        <td></td><td></td>
-        <td>${palInfo}</td>
         <td style="font-size:10px">${refInfo}</td>
-        <td></td></tr>`;
+        <td>${tempInfo}</td>
+        <td>${palInfo}</td>
+        <td></td><td></td></tr>`;
     }).join('');
   }
 
