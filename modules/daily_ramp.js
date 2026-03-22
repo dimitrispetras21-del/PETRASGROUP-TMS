@@ -247,19 +247,48 @@ async function _rampAutoSync() {
   // ── 3. CONS_LOADS → Inbound (VS + Groupage) ──────────────
   const clFilter = `IS_SAME({Loading DateTime},'${date}','day')`;
   const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
-    'Truck','Trailer','Driver','Name','Groupage ID'];
+    'Truck','Trailer','Driver','Name','Groupage ID','Source Orders',
+    'Pallets 1','Pallets 2','Pallets 3','Pallets 4','Pallets 5',
+    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10'];
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  consLoads.forEach(r => {
+  // Deduplicate by CL Name
+  const existingCLNames = new Set(existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage')
+    .map(e=>(e.fields['Supplier/Client']||'').split(' | ')[0]));
+
+  for (const r of consLoads) {
     const f = r.fields;
-    // Use a special key to check duplicates — no Order link, use Name/Groupage ID
-    const checkKey = existing.some(e => {
-      const cat = e.fields['Ramp Category'];
-      const goods = (e.fields['Goods']||'').substring(0,20);
-      return cat === 'VS + Groupage' && goods === (f['Goods']||'').substring(0,20);
-    });
-    if (checkKey) return;
+    const clName = f['Name']||'';
+    if (existingCLNames.has(clName)) continue;
+
+    // Fetch source order details for supplier breakdown
+    const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
+    let supplierLines = [];
+    if (srcIds.length) {
+      const srcOrders = await Promise.all(srcIds.map(async (sid,i) => {
+        try {
+          const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${sid}`,
+            {headers:{'Authorization':'Bearer '+AT_TOKEN}});
+          const d = await res.json();
+          const sf = d.fields||{};
+          const clientArr = sf['Client'];
+          const clientName = Array.isArray(clientArr) ? (clientArr[0]||'') : (clientArr||'');
+          const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
+          const ref = sf['Reference'] || '';
+          return {client:clientName, pallets:pal, ref:ref, goods:(sf['Goods']||'').substring(0,40)};
+        } catch { return null; }
+      }));
+      supplierLines = srcOrders.filter(Boolean);
+    }
+
+    // Build supplier/client as "Name1 / Name2 / ..."
+    const clientNames = supplierLines.map(s=>s.client).filter(Boolean);
+    const supplierStr = clientNames.length ? clientNames.join(' / ') : clName;
+
+    // Build notes with breakdown: "Client | PAL | REF" per line
+    const notesLines = supplierLines.map(s => `${s.client} | ${s.pallets} pal | ref: ${s.ref}`);
+    const notesStr = notesLines.join('\n');
 
     const rec = {
       'Plan Date': date,
@@ -267,15 +296,16 @@ async function _rampAutoSync() {
       'Status': 'Προγραμματισμένο',
       'Ramp Category': 'VS + Groupage',
       'Is Veroia Switch': true,
-      'Goods': f['Goods'] || f['Name'] || '',
+      'Goods': f['Goods'] || '',
       'Pallets': f['Total Pallets'] || 0,
-      'Supplier/Client': f['Name'] || f['Groupage ID'] || 'Consolidated Load',
+      'Supplier/Client': clName + ' | ' + supplierStr,
+      'Notes': notesStr,
     };
     if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
     if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
     toCreate.push(rec);
-  });
+  }
 
   // ── Create all new RAMP records ──────────────────────────
   if (toCreate.length) {
@@ -415,16 +445,42 @@ function _rRow(rec,num,tOpts) {
   const truck=_rTruck(f);
   const isIn=f['Type']==='Παραλαβή';
 
-  const timeSel=`<select class="tinp" onchange="_rampSvF('${id}','Time',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   const acts=isDone?'<span style="color:var(--success);font-size:10px">✓ Done</span>'
     :`<button class="abtn abtn-ok" onclick="_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="abtn abtn-pp" onclick="_rampPostpone('${id}')">Postpone</button>`;
 
+  // CL sub-rows: parse Notes for supplier breakdown
+  const notes = f['Notes']||'';
+  const isVSG = (f['Ramp Category']||'')==='VS + Groupage';
+  const clientDisplay = isVSG && client.includes(' | ')
+    ? client.split(' | ').slice(1).join(' / ')
+    : client;
+
+  // Sub-rows for VS+G consolidated loads
+  let subHtml = '';
+  if (isVSG && notes) {
+    const lines = notes.split('\n').filter(Boolean);
+    subHtml = lines.map(line => {
+      const parts = line.split(' | ');
+      const sup = parts[0]||'';
+      const palInfo = parts[1]||'';
+      const refInfo = parts[2]||'';
+      return `<tr style="background:rgba(124,58,237,0.04);font-size:11px;color:var(--text-mid)">
+        <td></td><td></td>
+        <td style="padding-left:20px">↳ ${sup}</td>
+        <td></td><td></td>
+        <td>${palInfo}</td>
+        <td colspan="2" style="font-size:10px">${refInfo}</td>
+        <td></td></tr>`;
+    }).join('');
+  }
+
   return`<tr class="${isDone?'done':''}">
     <td class="rn">${num}</td><td>${timeSel}</td>
-    <td class="trn" title="${client}">${client}</td>
+    <td class="trn" title="${clientDisplay}">${clientDisplay}</td>
     <td class="trn" title="${goods}">${goods}</td>
     <td>${temp?temp+'°C':''}</td><td>${pal}</td>
-    <td>${truck||'—'}</td><td>${_rCat(f)}</td><td>${acts}</td></tr>`;
+    <td>${truck||'—'}</td><td>${_rCat(f)}</td><td>${acts}</td></tr>${subHtml}`;
 }
 
 /* ── TIMELINE ROW ─────────────────────────────────────────────── */
@@ -451,6 +507,14 @@ function _rTlRow(rec) {
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
 async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
+async function _rampSvTime(id,v){
+  try{await atPatch(TABLES.RAMP,id,{'Time':v||null});
+    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v;
+    // Re-sort and re-draw
+    RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
+    _rampDraw();
+  }catch(e){toast('Error','danger');}
+}
 
 async function _rampDone(id,isIn){
   const fields={'Status':'✅ Έγινε'};
