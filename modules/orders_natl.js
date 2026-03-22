@@ -384,20 +384,26 @@ async function submitNatlOrder(recId) {
       // National Groupage turned OFF → clean up unassigned GL lines
       try {
         const stale = await atGetAll(TABLES.GL_LINES, {
-          filterByFormula: `AND(FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+          filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
           fields: ['Status']
         }, false);
-        for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+        for (const r of stale) {
+          if (r.fields.Status !== 'Assigned')
+            await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+        }
         if (stale.length) console.log(`Deleted ${stale.length} stale GL lines`);
       } catch(e) { console.warn('GL cleanup error:', e); }
     } else if (savedNatlId && !fields['National Groupage']) {
       // National Groupage turned OFF → delete unassigned GL lines
       try {
         const stale = await atGetAll(TABLES.GL_LINES, {
-          filterByFormula: `AND(FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+          filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
           fields: ['Status']
         }, false);
-        for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+        for (const r of stale) {
+          if (r.fields.Status !== 'Assigned')
+            await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+        }
         if (stale.length) toast(`Αφαιρέθηκαν ${stale.length} GL lines`, 'info');
       } catch(e) { console.warn('GL cleanup:', e); }
     }
@@ -523,7 +529,7 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
 
   // Delete stale GL lines (locId no longer in NO)
   for (const [locId, rec] of Object.entries(existMap)) {
-    if (rec.fields.Status !== 'Assigned') await atDelete(TABLES.GL_LINES, rec.id);
+    if (rec.fields.Status !== 'Assigned') await atPatch(TABLES.GL_LINES, rec.id, {Status:'Unassigned', Pallets:0});
   }
 
   // Batch create
