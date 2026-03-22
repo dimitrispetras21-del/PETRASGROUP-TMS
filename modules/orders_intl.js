@@ -664,10 +664,13 @@ async function _syncNationalOrder(orderId, fields) {
     // Clean up any unassigned GL lines
     try {
       const stale = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `AND(FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Unassigned')`,
+        filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
-      for (const r of stale) await atDelete(TABLES.GL_LINES, r.id);
+      for (const r of stale) {
+        if (r.fields.Status !== 'Assigned')
+          await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+      }
     } catch(e) { console.warn('GL cleanup',e); }
   }
 }
@@ -675,7 +678,7 @@ async function _syncNationalOrder(orderId, fields) {
 // ═══════════════════════════════════════════════════════════════
 // _syncGroupageLines — 1 GL record per loading stop
 // ═══════════════════════════════════════════════════════════════
-async function _syncGroupageLines(orderId, noId, orderFields) {
+async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
   try {
     const isGrp = !!orderFields['National Groupage'];
     const dir   = orderFields['Direction']||'';
@@ -690,12 +693,15 @@ async function _syncGroupageLines(orderId, noId, orderFields) {
     // Get existing GL lines for this NO
     const existing = await atGetAll(TABLES.GL_LINES, {
       filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
-      fields: ['Loading Location','Status'],
+      fields: ['Loading Location','Status','Pallets'],
     }, false);
 
-    // National Groupage OFF → delete all GL lines
+    // National Groupage OFF → mark all Unassigned (NEVER delete)
     if (!isGrp) {
-      for (const r of existing) await atDelete(TABLES.GL_LINES, r.id);
+      for (const r of existing) {
+        if (r.fields.Status !== 'Assigned')
+          await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+      }
       return;
     }
 
@@ -765,9 +771,11 @@ async function _syncGroupageLines(orderId, noId, orderFields) {
       }
     }
 
-    // Delete removed stops
+    // Removed stops (location no longer in order) → mark Unassigned (NEVER delete)
     for (const r of existing) {
-      if (!keptIds.has(r.id)) await atDelete(TABLES.GL_LINES, r.id);
+      if (!keptIds.has(r.id) && r.fields.Status !== 'Assigned') {
+        await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned', Pallets:0});
+      }
     }
   } catch(e) { console.error('_syncGroupageLines:', e); }
 }
