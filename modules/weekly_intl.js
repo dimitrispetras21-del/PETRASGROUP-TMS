@@ -169,11 +169,11 @@ const WINTL = {
 
 /* OWNED — green */
 .wi-card-ok {
-  background: #1E3A8A;
-  border-left-color: #93C5FD;
+  background: #0C2D5C;
+  border-left-color: #38BDF8;
 }
-.wi-card-ok .wi-card-top { color: #EFF6FF; font-weight:800; }
-.wi-card-ok .wi-card-bot { color: rgba(239,246,255,0.9); font-weight:700; font-size:10px; }
+.wi-card-ok .wi-card-top { color: #E0F2FE; font-weight:800; }
+.wi-card-ok .wi-card-bot { color: rgba(224,242,254,0.85); font-weight:700; font-size:10px; }
 
 .wi-card-bp {
   background: #065F46;
@@ -183,12 +183,14 @@ const WINTL = {
 .wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
 
 .wi-card-un {
-  background: #7F1D1D;
-  border-left-color: #FCA5A5;
+  background: rgba(2,132,199,0.12);
+  border: 1px solid rgba(2,132,199,0.25);
+  border-left: 3px solid #0284C7;
   padding-top:8px; padding-bottom:8px;
+  border-radius:5px;
 }
 .wi-card-un .wi-card-top {
-  color: #FEE2E2;
+  color: #0EA5E9;
   font-weight:700; font-size:10.5px; letter-spacing:.3px;
 }
 
