@@ -148,7 +148,7 @@ function navigate(page) {
       c.style.overflow = 'hidden';
       c.innerHTML = '<iframe src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" allow="clipboard-write"></iframe>';
       break;
-    case 'daily_ops':      c.innerHTML = showComingSoon('Daily Ops Plan');        break;
+    case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;
     // Orders
     case 'orders_intl':    renderOrdersIntl();            break;
