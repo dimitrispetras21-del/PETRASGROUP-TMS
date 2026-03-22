@@ -34,6 +34,7 @@ const RAMP_FIELDS = [
 .ramp-date-inp { padding:6px 10px; font-size:11px; border-radius:7px;
   border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; }
+.ramp-date-inp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.15); }
 
 /* KPIs */
 .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -66,23 +67,31 @@ const RAMP_FIELDS = [
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
   text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:#F0F7FF; }
 .ramp-t thead th.c { text-align:center; }
-.ramp-t tbody td { padding:8px 10px; font-size:12px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.ramp-t tbody td { padding:10px 10px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .ramp-t tbody tr:last-child td { border-bottom:none; }
 .ramp-t tbody tr:hover td { background:var(--bg-hover); }
 .ramp-t tbody tr.done td { opacity:.4; }
 .ramp-t .c { text-align:center; }
-.ramp-t .trn { max-width:130px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ramp-t .trn { max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ramp-t .rn { font-family:'Syne',sans-serif; font-weight:700; color:var(--text-dim); font-size:11px; }
-.ramp-t select.tinp { padding:3px 4px; font-size:10px; border:1px solid var(--border-mid);
-  border-radius:5px; background:var(--bg-card); color:var(--text); outline:none;
+.ramp-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
+  border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
-.ramp-t .abtn { font-size:10px; font-weight:500; padding:3px 8px;
-  border-radius:5px; border:1px solid var(--border-mid); background:none;
+.ramp-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.15); }
+.ramp-t .abtn { font-size:11px; font-weight:500; letter-spacing:.2px; padding:5px 12px;
+  border-radius:6px; border:1px solid var(--border-mid); background:none;
   cursor:pointer; white-space:nowrap; transition:all .15s; }
 .ramp-t .abtn:hover { background:var(--bg-hover); }
-.ramp-t .abtn-ok { border-color:rgba(5,150,105,0.3); color:var(--success); }
-.ramp-t .abtn-pp { border-color:rgba(217,119,6,0.3); color:var(--warning); }
-.ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:16px !important; }
+.ramp-t .abtn-ok { border-color:rgba(5,150,105,0.25); color:var(--success); }
+.ramp-t .abtn-ok:hover { background:rgba(5,150,105,0.06); }
+.ramp-t .abtn-pp { border-color:rgba(217,119,6,0.25); color:var(--warning); }
+.ramp-t .abtn-pp:hover { background:rgba(217,119,6,0.06); }
+.ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
+
+/* sub-rows refined */
+.ramp-t .sub-row td { padding:6px 10px; font-size:11px; color:var(--text-mid);
+  background:rgba(14,165,233,0.03); border-bottom:1px solid rgba(0,0,0,0.03); }
+.ramp-t .sub-row:last-child td { border-bottom:1px solid var(--border); }
 
 /* badges */
 .vs-badge { font-size:8px; font-weight:800; letter-spacing:.6px; padding:2px 6px;
@@ -564,11 +573,11 @@ function _rRow(rec,num,tOpts) {
       const palInfo = parts[2]||'';
       const tempInfo = parts[3]||'';
       const refInfo = parts[4]||'';
-      return `<tr style="background:rgba(124,58,237,0.04);font-size:11px;color:var(--text-mid)">
+      return `<tr class="sub-row">
         <td></td><td></td>
-        <td style="padding-left:20px">↳ ${sup}</td>
+        <td style="padding-left:18px">↳ ${sup}</td>
         <td>${loc}</td>
-        <td style="font-size:10px">${refInfo}</td>
+        <td>${refInfo}</td>
         <td>${tempInfo}</td>
         <td>${palInfo}</td>
         <td></td><td></td></tr>`;
