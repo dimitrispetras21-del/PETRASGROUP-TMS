@@ -30,12 +30,14 @@ const OPS_FIELDS = [
   cursor:pointer; letter-spacing:.5px; text-transform:uppercase; font-family:'Syne',sans-serif;
   transition:all .15s; }
 .ops-day-btn:hover { background:var(--bg-hover); }
-.ops-day-btn.active { background:var(--navy-mid); color:#fff; border-color:var(--navy-mid); }
+.ops-day-btn.active { background:#0EA5E9; color:#fff; border-color:#0EA5E9;
+  box-shadow:0 2px 8px rgba(14,165,233,0.25); }
 
 /* KPI cards — matches project .kpi-card style */
 .ops-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ops-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
-  border-radius:10px; padding:14px 18px; flex:1; min-width:130px; }
+.ops-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid #0EA5E9;
+  border-radius:10px; padding:14px 18px; flex:1; min-width:130px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .ops-kpi-label { font-size:11px; font-weight:500; letter-spacing:.3px;
   color:var(--text-dim); margin-bottom:8px; }
 .ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
@@ -83,7 +85,7 @@ const OPS_FIELDS = [
 .ops-t thead th { padding:9px 14px; font-size:10px; font-weight:600;
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
   text-align:left; border-bottom:1px solid var(--border); white-space:nowrap;
-  background:#F0F5FA; }
+  background:#F0F7FF; }
 .ops-t thead th.c { text-align:center; }
 .ops-t tbody td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border);
   vertical-align:middle; }
@@ -98,18 +100,18 @@ const OPS_FIELDS = [
 .ops-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
-.ops-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+.ops-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
 .ops-t input.tinp { padding:4px 8px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; width:60px; }
-.ops-t input.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-glow); }
+.ops-t input.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
 
 /* action buttons — match project btn style */
 .ops-t .abtn { font-size:11px; font-weight:500; letter-spacing:.2px; padding:4px 10px;
   border-radius:6px; border:1px solid var(--border-mid); background:none;
   cursor:pointer; white-space:nowrap; transition:all .15s; }
 .ops-t .abtn:hover { background:var(--bg-hover); }
-.ops-t .abtn-ld { border-color:rgba(6,182,212,0.3); color:#0891B2; }
+.ops-t .abtn-ld { border-color:rgba(14,165,233,0.3); color:#0EA5E9; }
 .ops-t .abtn-dv { border-color:rgba(5,150,105,0.3); color:var(--success); }
 .ops-t .abtn-dy { border-color:rgba(220,38,38,0.3); color:var(--danger); }
 .ops-t .abtn-pp { border-color:rgba(217,119,6,0.3); color:var(--warning); }
@@ -227,7 +229,7 @@ function _opsDraw() {
       <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${nPend}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Loaded</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0891B2">${nLoad}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0EA5E9">${nLoad}</span></div></div>
       <div class="ops-kpi" style="border-left-color:var(--success)"><div class="ops-kpi-label">Delivered</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${nDel}</span><span class="ops-kpi-sub">/ ${total}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${total?Math.round(nDel/total*100):0}%;background:var(--success)"></div></div></div>
