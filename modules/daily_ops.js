@@ -277,7 +277,8 @@ function _opsRow(rec,num,type,isToday) {
   const isExp=type==='el'||type==='ed';
 
   const chk=(fld,v)=>`<input type="checkbox" ${v?'checked':''} onchange="_opsTog('${rec.id}','${fld}',this.checked)">`;
-  const inp=(fld,v,w)=>`<input class="inp" style="width:${w||42}px" value="${v||''}" placeholder="--:--" onblur="_opsSvF('${rec.id}','${fld}',this.value)">`;
+  const inp=(fld,v)=>{const hrs=[];for(let h=0;h<24;h++)for(let m=0;m<60;m+=30){const t=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');hrs.push(t);}
+    return `<select class="inp" style="width:62px" onchange="_opsSvF('${rec.id}','${fld}',this.value)"><option value="">--:--</option>${hrs.map(t=>`<option value="${t}"${v===t?' selected':''}>${t}</option>`).join('')}</select>`;};
   const amt=(fld,v)=>`<input class="inp inp-amt" type="number" step="1" value="${v||''}" placeholder="0" onblur="_opsSvF('${rec.id}','${fld}',parseFloat(this.value)||null)">`;
 
   let cells='';
