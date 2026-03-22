@@ -7,7 +7,7 @@
 
 'use strict';
 
-const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], overdue:[] };
+const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[] };
 
 const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
@@ -117,14 +117,16 @@ async function renderDailyOps() {
 async function _opsLoad() {
   // Assets
   if (!OPS.trucks.length) {
-    const [t,d,l] = await Promise.all([
+    const [t,d,l,cl] = await Promise.all([
       atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.DRIVERS,{fields:['Full Name'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.LOCATIONS,{fields:['Name','City','Country']},true),
+      atGetAll(TABLES.CLIENTS,{fields:['Company Name']},true),
     ]);
     OPS.trucks=t.map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
     OPS.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     OPS.locs=l;
+    OPS.clients=cl;
   }
   // Orders
   const today=new Date().toISOString().split('T')[0];
@@ -143,6 +145,7 @@ async function _opsLoad() {
 
 /* ── HELPERS ──────────────────────────────────────────────────── */
 const _L=id=>{if(!id)return'—';const l=OPS.locs.find(r=>r.id===id);return l?(l.fields['Name']||l.fields['City']||'—'):'—';};
+const _C=f=>{const raw=f['Client'];const id=Array.isArray(raw)?raw[0]:raw;if(!id)return'—';const c=OPS.clients.find(r=>r.id===id);return c?(c.fields['Company Name']||'—'):String(id).substring(0,12);};
 const _K=a=>a?.length?(a[0]?.id||a[0]||null):null;
 const _T=f=>{const id=_K(f['Truck']);return id?OPS.trucks.find(t=>t.id===id)?.lb||'—':'';}
 const _D=f=>{const id=_K(f['Driver']);return id?OPS.drivers.find(d=>d.id===id)?.lb||'—':'';}
@@ -268,8 +271,7 @@ function _opsRow(rec,num,type,isToday) {
   const delivL=_L(_K(f['Unloading Location 1']));
   const truck=_T(f), driver=_D(f), partner=_P(f);
   const pal=f['Total Pallets']||'';
-  const clientRaw=f['Client'];
-  const client=Array.isArray(clientRaw)?(clientRaw[0]||'—'):(clientRaw||'—');
+  const client=_C(f);
   const ops=f['Ops Status']||'';
   const isDone=ops==='Delivered'||ops==='Client Notified';
   const isL=type==='el'||type==='il';
