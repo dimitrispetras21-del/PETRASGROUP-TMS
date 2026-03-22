@@ -298,8 +298,9 @@ function _opsPaint() {
       <div class="ops-overdue-items">${OPS.overdue.map(r => {
         const f = r.fields;
         const tbl = r._table === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+        const cName = Array.isArray(f['Client']) ? (f['Client'][0]||'Order') : (f['Client']||'Order');
         return `<div class="ops-overdue-item">
-          ${(f['Client']||'Order').substring(0,20)} · ${(f['Delivery DateTime']||'').substring(0,10)}
+          ${String(cName).substring(0,20)} · ${(f['Delivery DateTime']||'').substring(0,10)}
           <span class="ops-overdue-btns">
             <button class="ops-overdue-btn delivered" onclick="_opsOverdueAction('${r.id}','${tbl}','Delivered')">✓ Delivered</button>
             <button class="ops-overdue-btn delayed" onclick="_opsOverdueAction('${r.id}','${tbl}','Delayed')">✗ Delayed</button>
@@ -375,7 +376,8 @@ function _opsCardHTML(rec, sectionType, isToday) {
   const pallets  = f['Total Pallets'] || f['Pallets'] || '';
   const temp     = f['Temperature °C'] != null ? `${f['Temperature °C']}°C` : '';
   const goods    = (f['Goods']||'').substring(0, 60);
-  const client   = f['Client'] || '—';
+  const clientRaw = f['Client'];
+  const client   = Array.isArray(clientRaw) ? (clientRaw[0]||'—') : (clientRaw||'—');
   const opsStatus = f['Ops Status'] || '';
   const isDone   = opsStatus === 'Delivered' || opsStatus === 'Client Notified';
   const isLoad   = sectionType.includes('load');
