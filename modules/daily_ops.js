@@ -73,10 +73,10 @@ const OPS_FIELDS = [
   letter-spacing:1.5px; text-transform:uppercase;
   display:flex; justify-content:space-between; align-items:center;
 }
-.ops-sec-hd.el { background:#065F46; color:#ECFDF5; }
-.ops-sec-hd.ed { background:#1E3A8A; color:#EFF6FF; }
-.ops-sec-hd.il { background:#7C3AED; color:#F5F3FF; }
-.ops-sec-hd.id { background:#9D174D; color:#FDF2F8; }
+.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid #059669; }
+.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid #0EA5E9; }
+.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid #7C3AED; }
+.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid #9D174D; }
 
 /* table — uses global thead/tbody styles from style.css */
 .ops-t { width:100%; border-collapse:collapse; background:var(--bg-card);
