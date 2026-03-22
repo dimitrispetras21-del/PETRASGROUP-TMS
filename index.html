@@ -320,7 +320,7 @@ function doLogin() {
   const p = document.getElementById('password').value;
   const user = USERS.find(x => x.username === u && x.password === p);
   if (user) {
-    sessionStorage.setItem('tms_user', JSON.stringify(user));
+    localStorage.setItem('tms_user', JSON.stringify(user));
     window.location.href = 'app.html';
   } else {
     const err = document.getElementById('errMsg');
@@ -330,7 +330,7 @@ function doLogin() {
 }
 
 document.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
-if(sessionStorage.getItem('tms_user')) window.location.href = 'app.html';
+if(localStorage.getItem('tms_user')) window.location.href = 'app.html';
 </script>
 </body>
 </html>
