@@ -123,6 +123,10 @@ async function _rampLoad() {
     RAMP.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     RAMP.locs=l;
   }
+
+  // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
+  await _rampAutoSync();
+
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
   const recs=await atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false);
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
@@ -130,6 +134,178 @@ async function _rampLoad() {
 
   const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
   RAMP.stock=await atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false);
+}
+
+/* ── AUTO-SYNC: Create RAMP records from source tables ────────── */
+async function _rampAutoSync() {
+  const date = RAMP.date;
+  const nextDay = new Date(new Date(date).getTime()+864e5).toISOString().split('T')[0];
+  const prevDay = new Date(new Date(date).getTime()-864e5).toISOString().split('T')[0];
+
+  // Get existing RAMP records for this date to avoid duplicates
+  const existing = await atGetAll(TABLES.RAMP, {
+    filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
+    fields: ['Order','National Order','Type','Ramp Category'],
+  }, false);
+  const existingKeys = new Set(existing.map(r => {
+    const oid = (r.fields['Order']||[])[0]?.id || (r.fields['Order']||[])[0] || '';
+    const nid = (r.fields['National Order']||[])[0]?.id || (r.fields['National Order']||[])[0] || '';
+    return `${oid||nid}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
+  }));
+
+  const toCreate = [];
+
+  // ── 1. ORDERS (International) ──────────────────────────────
+  // VF Export: Loading Date = today → Outbound
+  // VF Import: Delivery Date = today → Inbound
+  // VS Export: Loading Date = yesterday (today = Loading+1) → Outbound
+  // VS Import: Delivery Date = tomorrow (today = Delivery-1) → Inbound
+
+  const intlFilters = [
+    // VF Export: non-VS, Export, Loading = today
+    `AND(NOT({Veroia Switch}),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day'))`,
+    // VF Import: non-VS, Import, Delivery = today
+    `AND(NOT({Veroia Switch}),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day'))`,
+    // VS Export: VS=true, Export, Loading = yesterday (ramp date = loading+1)
+    `AND({Veroia Switch},    {Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day'))`,
+    // VS Import: VS=true, Import, Delivery = tomorrow (ramp date = delivery-1)
+    `AND({Veroia Switch},    {Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day'))`,
+  ];
+
+  const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
+    'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
+    'Loading Location 1','Unloading Location 1'];
+
+  const intlResults = await Promise.all(
+    intlFilters.map(f => atGetAll(TABLES.ORDERS, {filterByFormula:f, fields:intlFields}, false).catch(()=>[]))
+  );
+
+  const [vfExp, vfImp, vsExp, vsImp] = intlResults;
+
+  // VF Export → Outbound
+  vfExp.forEach(r => {
+    const key = `${r.id}_Φόρτωση_Vermion Fresh`;
+    if (existingKeys.has(key)) return;
+    toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'Vermion Fresh', date, false));
+  });
+
+  // VF Import → Inbound
+  vfImp.forEach(r => {
+    const key = `${r.id}_Παραλαβή_Vermion Fresh`;
+    if (existingKeys.has(key)) return;
+    toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'Vermion Fresh', date, false));
+  });
+
+  // VS Export → Outbound (date = loading+1)
+  vsExp.forEach(r => {
+    const key = `${r.id}_Φόρτωση_VS Simple`;
+    if (existingKeys.has(key)) return;
+    toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'VS Simple', date, true));
+  });
+
+  // VS Import → Inbound (date = delivery-1)
+  vsImp.forEach(r => {
+    const key = `${r.id}_Παραλαβή_VS Simple`;
+    if (existingKeys.has(key)) return;
+    toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'VS Simple', date, true));
+  });
+
+  // ── 2. NAT_ORDERS (National) — exclude VS + National Groupage ──
+  const natFilter = `AND(
+    NOT(AND({Type}='Veroia Switch',{National Groupage})),
+    OR(IS_SAME({Loading DateTime},'${date}','day'),IS_SAME({Delivery DateTime},'${date}','day'))
+  )`;
+  const natFields = ['Direction','Type','Loading DateTime','Delivery DateTime',
+    'Goods','Temperature °C','Pallets','Client','Truck','Driver',
+    'Pickup Location 1','Delivery Location 1','National Groupage'];
+
+  const natOrders = await atGetAll(TABLES.NAT_ORDERS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]);
+
+  natOrders.forEach(r => {
+    const f = r.fields;
+    const isLoading = f['Loading DateTime'] && f['Loading DateTime'].substring(0,10) === date;
+    const isDelivery = f['Delivery DateTime'] && f['Delivery DateTime'].substring(0,10) === date;
+    const type = isLoading ? 'Παραλαβή' : 'Φόρτωση'; // national pickup = inbound to Veroia
+    const key = `${r.id}_${type}_`;
+    if (existingKeys.has(key)) return;
+
+    const rec = {
+      'Plan Date': date,
+      'Type': type,
+      'Status': 'Προγραμματισμένο',
+      'National Order': [r.id],
+      'Goods': f['Goods'] || '',
+      'Pallets': f['Pallets'] || 0,
+      'Supplier/Client': Array.isArray(f['Client']) ? (f['Client'][0]||'') : (f['Client']||''),
+    };
+    if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
+    if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
+    if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+    toCreate.push(rec);
+  });
+
+  // ── 3. CONS_LOADS → Inbound (VS + Groupage) ──────────────
+  const clFilter = `IS_SAME({Loading DateTime},'${date}','day')`;
+  const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
+    'Truck','Trailer','Driver','Name','Groupage ID'];
+
+  const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
+
+  consLoads.forEach(r => {
+    const f = r.fields;
+    // Use a special key to check duplicates — no Order link, use Name/Groupage ID
+    const checkKey = existing.some(e => {
+      const cat = e.fields['Ramp Category'];
+      const goods = (e.fields['Goods']||'').substring(0,20);
+      return cat === 'VS + Groupage' && goods === (f['Goods']||'').substring(0,20);
+    });
+    if (checkKey) return;
+
+    const rec = {
+      'Plan Date': date,
+      'Type': 'Παραλαβή',
+      'Status': 'Προγραμματισμένο',
+      'Ramp Category': 'VS + Groupage',
+      'Is Veroia Switch': true,
+      'Goods': f['Goods'] || f['Name'] || '',
+      'Pallets': f['Total Pallets'] || 0,
+      'Supplier/Client': f['Name'] || f['Groupage ID'] || 'Consolidated Load',
+    };
+    if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
+    if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
+    if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+    toCreate.push(rec);
+  });
+
+  // ── Create all new RAMP records ──────────────────────────
+  if (toCreate.length) {
+    // Batch create (max 10 per request for Airtable)
+    for (let i = 0; i < toCreate.length; i += 10) {
+      const batch = toCreate.slice(i, i + 10);
+      await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => console.error('Ramp sync error:', e))));
+    }
+    console.log(`Ramp auto-sync: created ${toCreate.length} records`);
+  }
+}
+
+/* ── BUILD RAMP RECORD from ORDERS ────────────────────────────── */
+function _rampBuildRecord(orderRec, type, category, date, isVS) {
+  const f = orderRec.fields;
+  const rec = {
+    'Plan Date': date,
+    'Type': type,
+    'Status': 'Προγραμματισμένο',
+    'Ramp Category': category,
+    'Is Veroia Switch': isVS,
+    'Order': [orderRec.id],
+    'Goods': f['Goods'] || '',
+    'Pallets': f['Total Pallets'] || 0,
+    'Supplier/Client': Array.isArray(f['Client']) ? (f['Client'][0]||'') : (f['Client']||''),
+  };
+  if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
+  if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
+  if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+  return rec;
 }
 
 /* ── HELPERS ──────────────────────────────────────────────────── */
