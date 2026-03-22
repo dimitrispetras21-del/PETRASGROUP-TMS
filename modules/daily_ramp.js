@@ -8,7 +8,7 @@
 
 const RAMP = {
   date: new Date().toISOString().split('T')[0],
-  records: [], trucks: [], drivers: [], locs: [], stock: [],
+  records: [], trucks: [], drivers: [], locs: [], clients: [], stock: [],
 };
 
 const RAMP_FIELDS = [
@@ -114,14 +114,16 @@ async function renderDailyRamp() {
 
 async function _rampLoad() {
   if (!RAMP.trucks.length) {
-    const [t,d,l] = await Promise.all([
+    const [t,d,l,cl] = await Promise.all([
       atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.DRIVERS,{fields:['Full Name'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.LOCATIONS,{fields:['Name','City','Country']},true),
+      atGetAll(TABLES.CLIENTS,{fields:['Company Name']},true),
     ]);
     RAMP.trucks=t.map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
     RAMP.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     RAMP.locs=l;
+    RAMP.clients=cl;
   }
 
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
@@ -383,6 +385,21 @@ function _rampBuildRecord(orderRec, type, category, date, isVS) {
 const _rK=a=>a?.length?(a[0]?.id||a[0]||null):null;
 const _rTruck=f=>{const id=_rK(f['Truck']);return id?RAMP.trucks.find(t=>t.id===id)?.lb||'':'';};
 const _rDriver=f=>{const id=_rK(f['Driver']);return id?RAMP.drivers.find(d=>d.id===id)?.lb||'':'';};
+function _rClient(val) {
+  if (!val) return '—';
+  // If it's already a resolved name (not a record ID), return as-is
+  if (typeof val === 'string' && !val.startsWith('rec')) return val;
+  // If it's a record ID, try to resolve
+  const id = typeof val === 'string' ? val : (Array.isArray(val) ? val[0] : val);
+  if (!id || typeof id !== 'string') return String(val||'—');
+  const c = RAMP.clients.find(r=>r.id===id);
+  return c ? (c.fields['Company Name']||'—') : String(id).substring(0,15);
+}
+function _rResolveClientStr(str) {
+  if (!str) return '—';
+  // Handle "Name | supplier1 / supplier2" format or "recXXX / recYYY"
+  return str.split(/\s*[/|]\s*/).map(s => _rClient(s.trim())).join(' / ');
+}
 function _rCat(f){
   const c=f['Ramp Category']||'',vs=f['Is Veroia Switch'];
   if(c==='Vermion Fresh')return'<span class="vs-badge vf">VF</span>';
@@ -493,9 +510,9 @@ function _rRow(rec,num,tOpts) {
   // CL sub-rows: parse Notes for supplier breakdown
   const notes = f['Notes']||'';
   const isVSG = (f['Ramp Category']||'')==='VS + Groupage';
-  const clientDisplay = isVSG && client.includes(' | ')
+  const clientDisplay = _rResolveClientStr(isVSG && client.includes(' | ')
     ? client.split(' | ').slice(1).join(' / ')
-    : client;
+    : client);
 
   // Sub-rows for VS+G consolidated loads
   let subHtml = '';
@@ -503,7 +520,7 @@ function _rRow(rec,num,tOpts) {
     const lines = notes.split('\n').filter(Boolean);
     subHtml = lines.map(line => {
       const parts = line.split(' | ');
-      const sup = parts[0]||'';
+      const sup = _rClient(parts[0]?.trim()||'');
       const palInfo = parts[1]||'';
       const refInfo = parts[2]||'';
       return `<tr style="background:rgba(124,58,237,0.04);font-size:11px;color:var(--text-mid)">
@@ -537,7 +554,7 @@ function _rTlRow(rec) {
 
   return`<tr class="${isDone?'done':''}">
     <td>${f['Time']||'—'}</td><td>${typeBadge}</td>
-    <td class="trn">${f['Supplier/Client']||'—'}</td>
+    <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
     <td class="trn">${(f['Goods']||'').substring(0,35)}</td>
     <td>${f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):''}</td>
     <td>${f['Pallets']||''}</td>
