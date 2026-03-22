@@ -255,14 +255,18 @@ async function _rampAutoSync() {
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  // Deduplicate by CL Name
-  const existingCLNames = new Set(existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage')
-    .map(e=>(e.fields['Supplier/Client']||'').split(' | ')[0]));
+  // Deduplicate by CL Name — check if ANY existing VS+G record contains this CL Name
+  const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
 
   for (const r of consLoads) {
     const f = r.fields;
     const clName = f['Name']||'';
-    if (existingCLNames.has(clName)) continue;
+    // Check if any existing record already references this CL (by name anywhere in Supplier/Client or Notes)
+    const alreadyExists = existingVSG.some(e => {
+      const sc = e.fields['Supplier/Client']||'';
+      return sc.includes(clName) || sc === clName;
+    });
+    if (alreadyExists) continue;
 
     // Fetch source order details for supplier breakdown
     const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
