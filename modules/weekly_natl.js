@@ -98,14 +98,12 @@ function _wnCurrentWeek() {
 .wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
 
 .wi-card-un {
-  background: rgba(2,132,199,0.12);
-  border: 1px solid rgba(2,132,199,0.25);
-  border-left: 3px solid #0284C7;
+  background: #7F1D1D;
+  border-left-color: #FCA5A5;
   padding-top:8px; padding-bottom:8px;
-  border-radius:5px;
 }
 .wi-card-un .wi-card-top {
-  color: #0EA5E9;
+  color: #FEE2E2;
   font-weight:700; font-size:10.5px; letter-spacing:.3px;
 }
 
@@ -556,10 +554,10 @@ function _wnRowHTML(row, i) {
         </div>
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
-        <button class="wi-side-btn" title="Εκτύπωση" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
+        <button class="wi-side-btn" title="Εκτύπωση" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
         ${row.matchedId
           ? `<button class="wi-side-btn" title="Εκτύπωση ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>`
           : `<div style="width:30px;flex-shrink:0"></div>`}
