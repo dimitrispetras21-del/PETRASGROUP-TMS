@@ -183,14 +183,12 @@ const WINTL = {
 .wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
 
 .wi-card-un {
-  background: rgba(2,132,199,0.12);
-  border: 1px solid rgba(2,132,199,0.25);
-  border-left: 3px solid #0284C7;
+  background: #7F1D1D;
+  border-left-color: #FCA5A5;
   padding-top:8px; padding-bottom:8px;
-  border-radius:5px;
 }
 .wi-card-un .wi-card-top {
-  color: #0EA5E9;
+  color: #FEE2E2;
   font-weight:700; font-size:10.5px; letter-spacing:.3px;
 }
 
@@ -1237,24 +1235,33 @@ async function _wiSaveImportMatch(rowId,impId){
 }
 
 async function _wiRemoveImport(rowId){
-  const row=WINTL.rows.find(r=>r.id===rowId);if(!row||!row.importId) return;
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  if(!row){ toast('Row not found','warn'); return; }
+  if(!row.importId){ toast('No import linked','warn'); return; }
   const impId=row.importId;
   row.importId=null;
 
-  // Update import row
+  // Update import row UI
   const impRow=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
   if(impRow) impRow.matchedTo=null;
 
   _wiPaint();
 
-  // Clear from ORDERS
+  // Clear from ORDERS (patch export order)
+  let ok=true;
   for(const orderId of row.orderIds){
     try{
       const res=await atPatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
-      if(res?.error) throw new Error(res.error.message||res.error.type);
+      if(res?.error){ ok=false; throw new Error(res.error.message||res.error.type); }
     }catch(err){
-      toast('Clear failed: '+err.message.slice(0,50),'warn');
+      toast('Error: '+err.message.slice(0,60),'warn');
+      ok=false;
     }
+  }
+  if(ok){
+    // Invalidate cache so next load is fresh
+    if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
+    toast('Import removed ✓');
   }
 }
 
