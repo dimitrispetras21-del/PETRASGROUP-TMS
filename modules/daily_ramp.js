@@ -480,6 +480,7 @@ function _rampDraw() {
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost" onclick="_rampAddNew('Παραλαβή')">+ Inbound</button>
         <button class="btn btn-ghost" onclick="_rampAddNew('Φόρτωση')">+ Outbound</button>
+        <button class="btn btn-ghost" onclick="_rampPrint()">Print</button>
         <button class="btn btn-ghost" onclick="renderDailyRamp()">Refresh</button>
       </div>
     </div>
@@ -680,4 +681,46 @@ async function _rampSaveNew(type){
     if(res?.error)throw new Error(res.error.message);
     invalidateCache(TABLES.RAMP);closeModal();toast('Added ✓');renderDailyRamp();
   }catch(e){toast('Error: '+e.message,'danger');}
+}
+
+function _rampPrint() {
+  const content = document.getElementById('content').innerHTML;
+  const win = window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Daily Ramp Board — Vermion Fresh</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      * { box-sizing:border-box; margin:0; padding:0; }
+      body { font-family:'DM Sans',sans-serif; padding:20px; color:#0F172A; font-size:12px; }
+      .page-title { font-family:'Syne',sans-serif; font-size:18px; font-weight:700; }
+      .page-sub { font-size:11px; color:#475569; margin-bottom:12px; }
+      .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; }
+      .ramp-kpi { border:1px solid #ddd; border-left:3px solid #0EA5E9; border-radius:6px; padding:10px 14px; flex:1; }
+      .ramp-kpi-lbl { font-size:9px; font-weight:600; color:#9CA3AF; text-transform:uppercase; letter-spacing:1px; }
+      .ramp-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; }
+      .ramp-kpi-sub { font-size:10px; color:#9CA3AF; }
+      .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+      .ramp-sec-hd { background:#0B1929; color:#C4CFDB; padding:6px 12px; border-radius:6px 6px 0 0;
+        font-family:'Syne',sans-serif; font-size:9px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+        display:flex; justify-content:space-between; }
+      .ramp-sec-hd.inbound { border-left:3px solid #059669; }
+      .ramp-sec-hd.outbound { border-left:3px solid #0EA5E9; }
+      .ramp-sec-hd.timeline { border-left:3px solid #6B7280; }
+      .ramp-sec-hd.stock { border-left:3px solid #D97706; }
+      table { width:100%; border-collapse:collapse; border:1px solid #ddd; border-top:none; }
+      thead th { padding:6px 8px; font-size:8px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
+        color:#9CA3AF; background:#F0F7FF; border-bottom:1px solid #ddd; text-align:left; }
+      tbody td { padding:6px 8px; font-size:11px; border-bottom:1px solid #eee; }
+      .sub-row td { font-size:10px; color:#475569; background:#FAFBFC; }
+      .rn { font-family:'Syne',sans-serif; font-weight:700; color:#9CA3AF; }
+      .btn, select.tinp, .ramp-toolbar, .ramp-day-btn, .ramp-date-inp { display:none !important; }
+      .tl-type { font-size:7px; font-weight:800; padding:1px 4px; border-radius:2px; color:#fff; }
+      .tl-type.in { background:#059669; } .tl-type.out { background:#0EA5E9; }
+      .vs-badge { font-size:7px; font-weight:800; padding:1px 4px; border-radius:2px; border:1px solid; }
+      .vs-badge.vf { color:#059669; border-color:#059669; } .vs-badge.vs { color:#0EA5E9; border-color:#0EA5E9; }
+      .vs-badge.vsg { color:#7C3AED; border-color:#7C3AED; }
+      .stock-days.fresh { color:#059669; } .stock-days.aging { color:#D97706; } .stock-days.old { color:#DC2626; }
+      @media print { body { padding:10px; } }
+    </style></head><body>${content}</body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(), 500);
 }
