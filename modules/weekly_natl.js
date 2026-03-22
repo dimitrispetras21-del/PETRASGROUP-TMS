@@ -619,15 +619,21 @@ function _wnSnRowHTML(row) {
   if (!ord) return '';
   const f = ord.fields;
 
-  const clientId    = (f['Client']||[])[0]||'';
-  const clientLabel = _wnClientLabel(clientId);
+  // CL rows may have multiple clients
+  const clientIds = f['Client']||[];
+  const clientId  = clientIds[0]||'';
+  const clientLabel = clientIds.length > 1
+    ? clientIds.map(id=>_wnClientLabel(id)).filter(Boolean).join(' · ')
+    : _wnClientLabel(clientId);
   // S→N: CL = pickup from suppliers → Veroia; NO = pickup summary
   const fromStr     = row.source==='cl'
     ? (_wnClLoadingSummary(f) || f['Name'] || '—')
     : (_wnPickupSummary(f) || '—');
-  const toStr       = f['Type']==='Veroia Switch'
+  const toStr = row.source==='cl'
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-    : (_wnDeliverySummary(f) || clientLabel || '—');
+    : (f['Type']==='Veroia Switch'
+        ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
+        : (_wnDeliverySummary(f) || clientLabel || '—'));
   const pals        = f['Total Pallets']||f['Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
