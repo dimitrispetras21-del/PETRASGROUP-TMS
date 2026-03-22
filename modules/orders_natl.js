@@ -17,6 +17,13 @@ async function renderOrdersNatl() {
     NATL_ORDERS.filtered = records;
     NATL_ORDERS.selectedId = null;
     Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
+
+    // Pre-populate _clientsMap for all records
+    const _allClientIds = [...new Set(records
+      .flatMap(r => r.fields['Client']||[])
+      .filter(Boolean))];
+    await Promise.all(_allClientIds.map(id => _resolveClientName(id)));
+
     _renderNatlLayout(c);
     _applyNatlFilters();
   } catch(e) { c.innerHTML = showError(e.message); }
@@ -34,7 +41,7 @@ function _renderNatlLayout(c) {
         <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
         </svg>
-        Νέα Εντολή</button>
+        New Order</button>
       <button class="btn btn-scan" onclick="openScan ? openScan() : alert('Scan — coming soon')">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
@@ -100,9 +107,15 @@ function _renderNatlTable(records) {
     const grpB   = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
     const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
 
-    const pickup  = _locationsMap[Array.isArray(f['Pickup Location']) ? f['Pickup Location'][0] : ''] || '—';
-    const delivery= _locationsMap[Array.isArray(f['Delivery Location']) ? f['Delivery Location'][0] : ''] || '—';
-    const client  = _clientsMap[Array.isArray(f['Client']) ? f['Client'][0] : ''] || '—';
+    // Pickup: try 'Pickup Location 1' first, fallback to 'Pickup Location'
+    const _pickupId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+    const pickup = _pickupId ? (_locationsMap[_pickupId]||'—') : '—';
+    // Delivery: try 'Delivery Location 1' first
+    const _delivId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
+    const delivery = _delivId ? (_locationsMap[_delivId]||'—') : '—';
+    // Client
+    const _clientId = (f['Client']||[])[0]||'';
+    const client = _clientId ? (_clientsMap[_clientId]||'—') : '—';
 
     return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}">
       <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${f['Name']||r.id.slice(-6)}</strong></td>
