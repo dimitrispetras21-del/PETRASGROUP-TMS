@@ -983,3 +983,50 @@ tbody tr:hover { background: var(--bg-hover); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .linked-drop-item:hover { background: var(--bg-hover); }
+
+/* ═══════════════════════════════════════════════
+   ORDER ACTION BUTTONS
+═══════════════════════════════════════════════ */
+.btn-new-order {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  background: var(--navy-mid);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #E2E8F0;
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-new-order:hover {
+  background: var(--accent);
+  border-color: rgba(2,132,199,0.40);
+  color: #fff;
+}
+.btn-scan {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid rgba(2,132,199,0.30);
+  border-radius: 8px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  letter-spacing: 0.3px;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-scan:hover {
+  background: var(--accent-light);
+  border-color: rgba(2,132,199,0.50);
+}
