@@ -111,6 +111,14 @@ function navigate(page) {
   currentPage = page;
   localStorage.setItem('tms_page', page);
 
+  // Auto-collapse sidebar on nav click
+  const sb = document.getElementById('sidebar');
+  if (sb && !sb.classList.contains('collapsed')) {
+    sb.classList.add('collapsed');
+    const icon = document.getElementById('toggleIcon');
+    if (icon) icon.textContent = '▶';
+  }
+
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById('nav_' + page);
   if (navEl) {

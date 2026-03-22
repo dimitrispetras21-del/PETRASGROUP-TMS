@@ -99,7 +99,7 @@ const OPS_FIELDS = [
 .ops-t input[type=checkbox] { width:15px; height:15px; cursor:pointer; accent-color:var(--success); }
 .ops-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
-  font-family:'DM Sans',sans-serif; cursor:pointer; }
+  font-family:'DM Sans',sans-serif; cursor:pointer; max-height:200px; }
 .ops-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
 .ops-t input.tinp { padding:4px 8px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
