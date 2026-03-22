@@ -30,10 +30,17 @@ function _renderNatlLayout(c) {
         <div class="page-title">National Orders</div>
         <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} orders</div>
       </div>
-      ${canEdit ? `<button class="btn btn-success" onclick="openNatlCreate()">
-        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2">
+      ${canEdit ? `<button class="btn btn-new-order" onclick="openNatlCreate()">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
-        </svg> New Order</button>` : ''}
+        </svg>
+        Νέα Εντολή</button>
+      <button class="btn btn-scan" onclick="openScan ? openScan() : alert('Scan — coming soon')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
+          <line x1="8" y1="12" x2="16" y2="12"/>
+        </svg>
+        Scan</button>` : ''}
     </div>
     <div class="entity-layout">
       <div class="entity-list-panel">
