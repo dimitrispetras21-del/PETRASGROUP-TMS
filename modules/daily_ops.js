@@ -51,13 +51,20 @@ const OPS_FIELDS_NATL = [
 
 /* overdue banner */
 .ops-overdue { background:rgba(220,38,38,0.08); border:1px solid rgba(220,38,38,0.25);
-  border-radius:8px; padding:10px 14px; margin-bottom:16px; display:flex; align-items:center;
-  gap:10px; flex-wrap:wrap; }
+  border-radius:8px; padding:10px 14px; margin-bottom:16px; }
+.ops-overdue-header { display:flex; align-items:center; gap:8px; cursor:pointer; }
 .ops-overdue-text { font-size:12px; font-weight:600; color:#DC2626; flex:1; }
-.ops-overdue-items { display:flex; gap:6px; flex-wrap:wrap; }
-.ops-overdue-item { font-size:10px; background:rgba(220,38,38,0.1); color:#DC2626;
-  padding:4px 10px; border-radius:4px; font-weight:600; }
-.ops-overdue-btns { display:flex; gap:4px; }
+.ops-overdue-toggle { font-size:10px; color:#DC2626; opacity:.6; }
+.ops-overdue-items { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;
+  max-height:200px; overflow-y:auto; }
+.ops-overdue-item { font-size:10px; background:rgba(220,38,38,0.1); color:var(--text);
+  padding:6px 10px; border-radius:4px; font-weight:500; display:flex; align-items:center;
+  gap:8px; }
+.ops-overdue-item-info { min-width:0; }
+.ops-overdue-item-route { font-weight:700; font-size:10px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; max-width:200px; }
+.ops-overdue-item-date { font-size:9px; color:var(--text-dim); }
+.ops-overdue-btns { display:flex; gap:4px; flex-shrink:0; }
 .ops-overdue-btn { font-size:9px; font-weight:700; padding:3px 8px; border-radius:4px;
   border:1px solid rgba(220,38,38,0.3); background:none; cursor:pointer; }
 .ops-overdue-btn.delivered { color:#059669; border-color:rgba(5,150,105,0.3); }
@@ -293,20 +300,32 @@ function _opsPaint() {
 
   let overdueHTML = '';
   if (isToday && OPS.overdue.length) {
+    const overdueItems = OPS.overdue.map(r => {
+      const f = r.fields;
+      const tbl = r._table === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+      const isNatl = r._table !== 'intl';
+      const loadLoc  = _opsLoadLoc(f, isNatl);
+      const delivLoc = _opsDelivLoc(f, isNatl);
+      const goods = (f['Goods']||'').substring(0, 30);
+      const delDate = (f['Delivery DateTime']||'').substring(0,10);
+      return `<div class="ops-overdue-item">
+        <div class="ops-overdue-item-info">
+          <div class="ops-overdue-item-route">${loadLoc} → ${delivLoc}</div>
+          <div class="ops-overdue-item-date">${goods} · ${delDate}</div>
+        </div>
+        <span class="ops-overdue-btns">
+          <button class="ops-overdue-btn delivered" onclick="event.stopPropagation();_opsOverdueAction('${r.id}','${tbl}','Delivered')">✓ Delivered</button>
+          <button class="ops-overdue-btn delayed" onclick="event.stopPropagation();_opsOverdueAction('${r.id}','${tbl}','Delayed')">✗ Delayed</button>
+        </span>
+      </div>`;
+    }).join('');
+
     overdueHTML = `<div class="ops-overdue">
-      <div class="ops-overdue-text">⚠ ${OPS.overdue.length} order${OPS.overdue.length>1?'s':''} με παράδοση που πέρασε χωρίς status update</div>
-      <div class="ops-overdue-items">${OPS.overdue.map(r => {
-        const f = r.fields;
-        const tbl = r._table === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
-        const cName = Array.isArray(f['Client']) ? (f['Client'][0]||'Order') : (f['Client']||'Order');
-        return `<div class="ops-overdue-item">
-          ${String(cName).substring(0,20)} · ${(f['Delivery DateTime']||'').substring(0,10)}
-          <span class="ops-overdue-btns">
-            <button class="ops-overdue-btn delivered" onclick="_opsOverdueAction('${r.id}','${tbl}','Delivered')">✓ Delivered</button>
-            <button class="ops-overdue-btn delayed" onclick="_opsOverdueAction('${r.id}','${tbl}','Delayed')">✗ Delayed</button>
-          </span>
-        </div>`;
-      }).join('')}</div>
+      <div class="ops-overdue-header" onclick="document.getElementById('overdueList').style.display=document.getElementById('overdueList').style.display==='none'?'flex':'none'">
+        <div class="ops-overdue-text">⚠ ${OPS.overdue.length} orders με παράδοση που πέρασε χωρίς status update</div>
+        <div class="ops-overdue-toggle">▼ Εμφάνιση</div>
+      </div>
+      <div class="ops-overdue-items" id="overdueList" style="display:none">${overdueItems}</div>
     </div>`;
   }
 
