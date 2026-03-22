@@ -89,10 +89,11 @@ function _renderIntlLayout(c) {
         <button class="btn btn-ghost" style="display:flex;align-items:center;gap:6px" onclick="openIntlScan()">
           <span>📄</span> Scan Order
         </button>
-        ${canEdit ? `<button class="btn btn-success" onclick="openIntlCreate()">
-        <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2">
+        ${canEdit ? `<button class="btn btn-new-order" onclick="openIntlCreate()">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
           <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
-        </svg> New Order</button>` : ''}
+        </svg>
+        Νέα Εντολή</button>` : ''}
       </div>
     </div>
     <div class="entity-layout">
