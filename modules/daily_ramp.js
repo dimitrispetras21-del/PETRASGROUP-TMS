@@ -307,9 +307,50 @@ async function _rampAutoSync() {
     toCreate.push(rec);
   }
 
+  // ── Cleanup: remove orphan RAMP records ──────────────────
+  // Collect all valid source IDs from what we just fetched
+  const validOrderIds = new Set([
+    ...vfExp.map(r=>r.id), ...vfImp.map(r=>r.id),
+    ...vsExp.map(r=>r.id), ...vsImp.map(r=>r.id),
+  ]);
+  const validNatIds = new Set(natOrders.map(r=>r.id));
+  const validCLNames = new Set(consLoads.map(r=>r.fields['Name']||''));
+
+  const toDelete = [];
+  for (const ramp of existing) {
+    const rf = ramp.fields;
+    const status = rf['Status']||'';
+    // Don't delete manually created or already done records
+    if (status === '✅ Έγινε') continue;
+
+    const orderId = (rf['Order']||[])[0]?.id || (rf['Order']||[])[0] || '';
+    const natId = (rf['National Order']||[])[0]?.id || (rf['National Order']||[])[0] || '';
+    const cat = rf['Ramp Category']||'';
+
+    if (orderId && !validOrderIds.has(orderId)) {
+      // Source international order no longer matches this date
+      toDelete.push(ramp.id);
+    } else if (natId && !validNatIds.has(natId)) {
+      // Source national order no longer matches this date
+      toDelete.push(ramp.id);
+    } else if (cat === 'VS + Groupage' && !orderId && !natId) {
+      // CL record — check if CL still exists for this date
+      const clName = (rf['Supplier/Client']||'').split(' | ')[0];
+      if (clName && !validCLNames.has(clName)) {
+        toDelete.push(ramp.id);
+      }
+    }
+  }
+
+  if (toDelete.length) {
+    for (const id of toDelete) {
+      await atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e));
+    }
+    console.log(`Ramp cleanup: removed ${toDelete.length} orphan records`);
+  }
+
   // ── Create all new RAMP records ──────────────────────────
   if (toCreate.length) {
-    // Batch create (max 10 per request for Airtable)
     for (let i = 0; i < toCreate.length; i += 10) {
       const batch = toCreate.slice(i, i + 10);
       await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => console.error('Ramp sync error:', e))));
