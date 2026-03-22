@@ -58,9 +58,8 @@ const OPS_FIELDS = [
 .ops-ovb.d { color:#059669; border-color:rgba(5,150,105,0.3); }
 .ops-ovb.l { color:#DC2626; border-color:rgba(220,38,38,0.3); }
 
-/* 2-col section grid */
-.ops-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px; }
-@media(max-width:1000px) { .ops-pair { grid-template-columns:1fr; } }
+/* stacked sections */
+.ops-pair { display:flex; flex-direction:column; gap:14px; margin-bottom:14px; }
 
 /* section */
 .ops-sec { min-width:0; }
@@ -86,8 +85,8 @@ const OPS_FIELDS = [
 .ops-tbl tr:hover td { background:var(--bg-hover); }
 .ops-tbl tr.done td { opacity:.45; }
 .ops-tbl .c { text-align:center; }
-.ops-tbl .trunc { max-width:100px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ops-tbl .trunc-sm { max-width:70px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ops-tbl .trunc { max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ops-tbl .trunc-sm { max-width:110px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ops-tbl input[type=checkbox] { margin:0; cursor:pointer; accent-color:#059669; }
 .ops-tbl .inp { padding:2px 4px; font-size:10px; border:1px solid var(--border-mid);
   border-radius:3px; background:var(--bg); color:var(--text); width:42px; outline:none;
