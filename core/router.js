@@ -142,7 +142,12 @@ function navigate(page) {
     case 'dashboard':      renderDashboard();            break;
     case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    renderWeeklyNatl();       break;
-    case 'weekly_pickups': c.innerHTML = showComingSoon('National Pick Ups');     break;
+    case 'weekly_pickups':
+      document.getElementById('topbarTitle').textContent = 'National Pick Ups';
+      c.style.padding = '0';
+      c.style.overflow = 'hidden';
+      c.innerHTML = '<iframe src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" allow="clipboard-write"></iframe>';
+      break;
     case 'daily_ops':      c.innerHTML = showComingSoon('Daily Ops Plan');        break;
     case 'daily_ramp':     renderDailyRamp(); break;
     // Orders
