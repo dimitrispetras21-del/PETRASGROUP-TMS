@@ -582,9 +582,19 @@ async function _syncNationalOrder(orderId, fields) {
   }, false);
   console.log('existing natl orders:', existing.length);
 
-  // ── Veroia Switch OFF → delete any existing national order ──
+  // ── Veroia Switch OFF → mark GL Unassigned, then delete NO ──
   if (!veroiaSwitch) {
     for (const rec of existing) {
+      // First: mark all GL lines for this NO → Unassigned
+      const glLines = await atGetAll(TABLES.GL_LINES, {
+        filterByFormula: `FIND("${rec.id}",ARRAYJOIN({Linked National Order},","))>0`,
+        fields: ['Status']
+      }, false);
+      for (const gl of glLines) {
+        if (gl.fields.Status !== 'Assigned')
+          await atPatch(TABLES.GL_LINES, gl.id, {Status:'Unassigned'});
+      }
+      // Then delete the NO
       await atDelete(TABLES.NAT_ORDERS, rec.id);
     }
     if (existing.length) {
