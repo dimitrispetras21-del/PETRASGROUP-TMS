@@ -1,125 +1,169 @@
 # PETRAS GROUP TMS — Claude Code Context
 
-## Project Overview
-Airtable-based Transport Management System for Petras Group / Vermio Fresh AE.
-International temperature-controlled road transport: Greece ↔ Central/Eastern Europe.
-
-## Key Rule
-**Always ask before making performance, caching, architecture, or infrastructure changes.**
-Only make the specific change requested. No "while I'm here" improvements without asking.
+## PRIME DIRECTIVE
+Ask before making performance, caching, architecture, or infrastructure changes.
+Only make the specific change requested. No unrequested improvements.
+After every file change: bump its `?v=TIMESTAMP` in app.html + git add/commit/push.
 
 ---
 
 ## Repositories
 - **TMS App**: `https://github.com/dimitrispetras21-del/PETRASGROUP-TMS`
-  - Deployed at: `https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/app.html`
+  - Live: `https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/app.html`
 - **Standalone apps**: `https://github.com/dimitrispetras21-del/petras-assign`
-  - Deployed at: `https://dimitrispetras21-del.github.io/petras-assign/`
+  - Live: `https://dimitrispetras21-del.github.io/petras-assign/`
 
-## Credentials (never commit these to public files)
-- **Airtable API Token**: stored in `.env.local` (ask Dimitris)
-- **Airtable Base ID**: `appElT5CQV6JQvym8`
-- **GitHub Token**: stored in `.env.local` (ask Dimitris)
+## Credentials
+Store in `.env.local` — never commit. Ask Dimitris for values.
+- Airtable PAT: `patpPJXnFYnxdgoK3.*`
+- Airtable Base ID: `appElT5CQV6JQvym8`
+- GitHub Token: `ghp_S98IhpFBSDxt*`
 
 ---
 
-## Airtable Table IDs
+## Table IDs
 | Table | ID |
 |---|---|
 | ORDERS | tblgHlNmLBH3JTdIM |
-| TRIPS | tblgoyV26PBc6L9uE |
-| TRIP COSTS | tblWUus6uSpqE1LMW |
-| TRUCKS | tblEAPExIAjiA3asD |
-| TRAILERS | tblDcrqRJXzPrtYLm |
-| DRIVERS | tblTJ5HJCTFLuMrdb |
-| PARTNERS | tbl... (check config.js) |
-| CLIENTS | tblFWKAQVUzAM8mCE |
-| LOCATIONS | tblxu8DRfTQOFRCzS |
-| NATIONAL TRIPS | tbloI9yAxxyOJpMyr |
 | NATIONAL ORDERS | tblGHCCsTMqAy4KR2 |
-| FUEL RECEIPTS | tblxRFsMeVhlLrBjF |
 | GROUPAGE LINES | tblxUAaIsUMEDl3qQ |
 | CONSOLIDATED LOADS | tbl5XSLQjOnG6yLCW |
+| TRIP COSTS | tblWUus6uSpqE1LMW |
+| FUEL RECEIPTS | tblxRFsMeVhlLrBjF |
+| PALLET LEDGER | tblAAH3N1bIcBRPXi |
+| RAMP PLAN | tblT8W5WcuToBQNiY |
+| TRUCKS | tblEAPExIAjiA3asD |
+| TRAILERS | tblDcrqRJXzPrtYLm |
+| DRIVERS | tbl7UGmYhc2Y82pPs |
+| CLIENTS | tblFWKAQVUzAM8mCE |
+| PARTNERS | tblLHl5m8bqONfhWv |
+| LOCATIONS | tblxu8DRfTQOFRCzS |
+
+Special: Veroia Cross-Dock location = `recJucKOhC1zh4IP3`
 
 ---
 
 ## File Structure
 ```
 PETRASGROUP-TMS/
-├── app.html              # Main entry point — loads all JS modules
-├── config.js             # Table IDs, constants
-├── assets/
-│   └── style.css         # Global styles (--accent: #0284C7 cold chain blue)
+├── app.html              ← Shell + all <script> tags with ?v= cache busting
+├── config.js             ← AT_TOKEN, AT_BASE, TABLES constants
+├── assets/style.css      ← Global styles
 ├── core/
-│   ├── api.js            # atGet, atGetAll, atPatch, atCreate, atDelete + localStorage cache
-│   ├── auth.js           # User auth, roles
-│   ├── router.js         # Page navigation + module loading
-│   └── utils.js, ui.js, entity.js
+│   ├── api.js            ← atGet/atGetAll/atPatch/atCreate/atDelete + localStorage cache
+│   ├── auth.js           ← Roles: dispatcher/warehouse/management
+│   ├── router.js         ← navigate(), sidebar render, page routing
+│   ├── utils.js
+│   ├── ui.js
+│   └── entity.js         ← Generic CRUD for master data
 └── modules/
-    ├── orders_intl.js    # International Orders page
-    ├── orders_natl.js    # National Orders page
-    ├── weekly_intl.js    # Weekly International planner
-    ├── weekly_natl.js    # Weekly National planner
-    ├── daily_ramp.js     # Ramp plan
-    └── dashboard.js      # Dashboard
-```
+    ├── orders_intl.js    ← International Orders CRUD
+    ├── orders_natl.js    ← National Orders CRUD
+    ├── weekly_intl.js    ← Weekly International planner
+    ├── weekly_natl.js    ← Weekly National planner
+    ├── daily_ramp.js     ← Ramp Board (Veroia WH)
+    └── dashboard.js
 
-**petras-assign repo** (standalone apps):
-```
 petras-assign/
-├── national_consolidation.html   # National Pick Ups planner (embedded as iframe in TMS)
-├── petras_assign.html            # International trip assignment
-└── fuel_import.html              # Fuel receipt importer
+├── national_consolidation.html  ← National Pick Ups (embedded as iframe in TMS)
+├── fuel_import.html             ← Fuel receipt importer
+└── pallet_upload_v2.html        ← AI pallet sheet extractor
 ```
 
 ---
 
-## Architecture Rules
+## Architecture Rules (CRITICAL)
 
-### Sync Chain (CRITICAL — never break this)
+### Sync Chain — never break
 ```
 ORDERS (Veroia Switch=ON) → NATIONAL ORDERS (auto-created)
-NATIONAL ORDERS (National Groupage=ON) → GROUPAGE LINES (auto-created)
-GROUPAGE LINES (Status: Unassigned/Assigned) → CONSOLIDATED LOADS (created by planner)
+  ↓ National Groupage=ON
+GROUPAGE LINES (1 per stop, Status: Unassigned/Assigned)
+  ↓ national_consolidation.html drag & drop
+CONSOLIDATED LOADS (1 per truck)
+  ↓ appears in
+Weekly National ΑΝΟΔΟΣ column
 ```
 
-### GL Records Rule (CRITICAL)
-**GROUPAGE LINES records are NEVER deleted.**
-- On restore/undo: set Status='Unassigned' only
-- On Groupage OFF: set Status='Unassigned' only
-- Only CONSOLIDATED LOADS records get deleted
+### GL Records — NEVER deleted
+- On restore: set Status='Unassigned' only
+- On Groupage OFF: set Status='Unassigned' only  
+- Only CONSOLIDATED LOADS records get deleted on restore
 
-### Design System
-- Primary accent: `#0284C7` (cold chain blue)
-- Hover: `#0369A1`
-- Navy sidebar: `#0B1929`
-- Fonts: Syne (headings) + DM Sans (body)
-- Buttons: `.btn-new-order` (navy→blue hover), `.btn-scan` (blue outline)
+### Airtable API Critical Patterns
+```js
+// Linked records: plain string array
+fields['Driver'] = ['recABC123']       // ✅
+fields['Driver'] = [{id: 'recABC123'}] // ❌ INVALID_RECORD_ID
 
-### Deploy Process
-After editing any file, bump its `?v=` cache version in `app.html`:
+// Filter for linked record
+filterByFormula = `FIND("recXXX", ARRAYJOIN({Linked Order}, ","))>0`
+// NOT SEARCH() — unreliable
+
+// Checkbox filter
+filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
+
+// Direction field in NATIONAL ORDERS: arrow chars
+'North→South' (ΚΑΘΟΔΟΣ), 'South→North' (ΑΝΟΔΟΣ)
+
+// Direction field in CONSOLIDATED LOADS: Greek
+'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ'  — NOT English
+
+// Field name traps:
+' Week Number'  ← leading space, formula, NOT writable
+'Veroia Switch ' ← trailing space
+'Adress' ← one 'd' in PARTNERS table
+```
+
+### Deploy pattern
 ```bash
-# Example
-sed -i '' 's/orders_natl.js?v=[0-9]*/orders_natl.js?v=TIMESTAMP/' app.html
-git add . && git commit -m "description" && git push
+# After editing any module file:
+# 1. Edit file
+# 2. Bump version in app.html: modules/orders_natl.js?v=TIMESTAMP
+# 3. git add . && git commit -m "description" && git push
 ```
 
 ---
 
-## Key Operational Concepts
-- **Veroia Switch**: Cross-docking at Vermion/Veroia warehouse — internal operation, never show to clients
-- **Wednesday Cutoff**: All export orders accepted until Wednesday for weekend delivery
-- **Proactive Pulse Protocol**: 3-stage client communication (Mission Start / Pre-Alert / Fresh-Check Close)
-- **National Groupage**: Multiple small suppliers consolidated into one truck (S→N direction)
-- **ΑΝΟΔΟΣ** = South→North, **ΚΑΘΟΔΟΣ** = North→South
+## Design System
+- Primary accent: `#0284C7` (cold chain blue), hover: `#0369A1`
+- Sidebar: `#0B1929` navy, active item: blue left border `#38BDF8`
+- Fonts: Syne (headings) + DM Sans (body)
+- Button classes: `.btn-new-order` (navy→blue), `.btn-scan` (blue outline)
+- Assignment cards: navy blue (owned fleet), dark green (partner), dark red (unassigned)
 
 ---
 
-## Common Tasks & How To Ask
-- "Πρόσθεσε κουμπί X στη σελίδα Y" → edit the relevant module .js file
-- "Φτιάξε το bug στο Z" → find and fix in module
-- "Πρόσθεσε field X στο Airtable" → use Airtable Metadata API
-- "Ανέβασε τις αλλαγές" → git add/commit/push + bump cache version
+## Module Status (March 2026)
+### Live ✅
+- Weekly International (assignment, groupage, drag-drop)
+- Weekly National (ΚΑΘΟΔΟΣ / ΑΝΟΔΟΣ / CONSOLIDATED LOADS)
+- National Pick Ups (embedded iframe from national_consolidation.html)
+- International Orders CRUD
+- National Orders CRUD
+- Locations, Clients, Partners, Drivers (entity.js)
+- Daily Ramp Board
+- Fuel Import, Pallet Upload (standalone apps)
+
+### Critical — Next to build 🔴
+- Trip Costs / P&L entry (trip_costs.js)
+- Fuel Receipts management UI (fuels.js)
+- P&L Dashboard (pnl.js)
+
+### Post-launch 🔵
+- Fleet management (fleet.js)
+- Driver Payroll (payroll.js)
+- MyGeotab GPS integration via Make.com
+- Settings (settings.js)
+
+---
+
+## Key Business Concepts
+- **Veroia Switch**: Internal cross-docking at Vermion/Veroia — NEVER tell clients
+- **Wednesday Cutoff**: Export orders accepted until Wed for weekend delivery
+- **ΑΝΟΔΟΣ** = South→North (suppliers → Veroia), **ΚΑΘΟΔΟΣ** = North→South
+- **Proactive Pulse**: 3-stage client comms (Mission Start / Pre-Alert / Fresh-Check Close)
+- **National Groupage**: Multiple small suppliers consolidated into one truck
 
 ## Language
-User communicates in Greek. Respond in Greek for discussion, English for code comments.
+User (Dimitris) communicates in Greek. Respond in Greek for discussion, English for code comments.
