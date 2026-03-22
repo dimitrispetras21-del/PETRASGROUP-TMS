@@ -78,14 +78,7 @@ const RAMP_FIELDS = [
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
 .ramp-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.15); }
-.ramp-t .abtn { font-size:11px; font-weight:500; letter-spacing:.2px; padding:5px 12px;
-  border-radius:6px; border:1px solid var(--border-mid); background:none;
-  cursor:pointer; white-space:nowrap; transition:all .15s; }
-.ramp-t .abtn:hover { background:var(--bg-hover); }
-.ramp-t .abtn-ok { border-color:rgba(5,150,105,0.25); color:var(--success); }
-.ramp-t .abtn-ok:hover { background:rgba(5,150,105,0.06); }
-.ramp-t .abtn-pp { border-color:rgba(217,119,6,0.25); color:var(--warning); }
-.ramp-t .abtn-pp:hover { background:rgba(217,119,6,0.06); }
+/* action buttons — inherit global .btn styling */
 .ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
 
 /* sub-rows refined */
@@ -552,8 +545,8 @@ function _rRow(rec,num,tOpts) {
   const isIn=f['Type']==='Παραλαβή';
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
-  const acts=isDone?'<span style="color:var(--success);font-size:10px">✓ Done</span>'
-    :`<button class="abtn abtn-ok" onclick="_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="abtn abtn-pp" onclick="_rampPostpone('${id}')">Postpone</button>`;
+  const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Done</span>'
+    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_rampPostpone('${id}')">Postpone</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
   const notes = f['Notes']||'';
