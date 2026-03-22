@@ -1,23 +1,20 @@
 // ═══════════════════════════════════════════════════════════════
-// DAILY RAMP BOARD — v2.0
-// Vermion Fresh warehouse — Veroia
-// Table layout: Παραλαβές | Φορτώσεις | Stock (αφόρτωτα)
-// Categories: Vermion Fresh, VS Simple, VS + Groupage
+// DAILY RAMP BOARD — v2.1
+// Vermion Fresh — Veroia warehouse
+// 2-col: Inbound | Outbound + Combined timeline + Stock
 // ═══════════════════════════════════════════════════════════════
 
 'use strict';
 
 const RAMP = {
   date: new Date().toISOString().split('T')[0],
-  records: [], trucks: [], drivers: [], locs: [],
-  stock: [],  // inbound Done records not yet loaded out
+  records: [], trucks: [], drivers: [], locs: [], stock: [],
 };
 
 const RAMP_FIELDS = [
   'Plan Date','Time','Type','Status','Pallets','Goods',
-  'Supplier/Client','Notes','Postponed To',
+  'Supplier/Client','Notes','Postponed To','Temperature',
   'Order','National Order','Truck','Driver',
-  'Temp Checked','Pallets Counted','Goods Staged','Temp Set',
   'Is Veroia Switch','Ramp Category','Stock Status',
 ];
 
@@ -47,53 +44,58 @@ const RAMP_FIELDS = [
   letter-spacing:-1px; line-height:1; }
 .ramp-kpi-sub { font-size:12px; color:var(--text-dim); margin-left:4px; }
 
+/* 2-col grid */
+.ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
+@media(max-width:1000px) { .ramp-pair { grid-template-columns:1fr; } }
+
 /* sections */
-.ramp-sections { display:flex; flex-direction:column; gap:16px; }
 .ramp-sec-hd { padding:8px 14px; border-radius:10px 10px 0 0;
   font-family:'Syne',sans-serif; font-size:10px; font-weight:800;
   letter-spacing:1.5px; text-transform:uppercase; background:#0B1929; color:#C4CFDB;
   display:flex; justify-content:space-between; align-items:center; }
 .ramp-sec-hd.inbound  { border-left:3px solid #059669; }
 .ramp-sec-hd.outbound { border-left:3px solid #0EA5E9; }
+.ramp-sec-hd.timeline { border-left:3px solid #6B7280; }
 .ramp-sec-hd.stock    { border-left:3px solid #D97706; }
 
 /* table */
 .ramp-t { width:100%; border-collapse:collapse; background:var(--bg-card);
   border:1px solid var(--border); border-top:none; border-radius:0 0 10px 10px; overflow:hidden; }
-.ramp-t thead th { padding:9px 14px; font-size:10px; font-weight:600;
+.ramp-t thead th { padding:9px 10px; font-size:10px; font-weight:600;
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
   text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:#F0F7FF; }
 .ramp-t thead th.c { text-align:center; }
-.ramp-t tbody td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.ramp-t tbody td { padding:8px 10px; font-size:12px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .ramp-t tbody tr:last-child td { border-bottom:none; }
 .ramp-t tbody tr:hover td { background:var(--bg-hover); }
 .ramp-t tbody tr.done td { opacity:.4; }
 .ramp-t .c { text-align:center; }
-.ramp-t .trn { max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ramp-t .trn { max-width:130px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .ramp-t .rn { font-family:'Syne',sans-serif; font-weight:700; color:var(--text-dim); font-size:11px; }
-.ramp-t input[type=checkbox] { width:15px; height:15px; cursor:pointer; accent-color:var(--success); }
-.ramp-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
-  border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
+.ramp-t select.tinp { padding:3px 4px; font-size:10px; border:1px solid var(--border-mid);
+  border-radius:5px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
-.ramp-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
-.ramp-t .abtn { font-size:11px; font-weight:500; letter-spacing:.2px; padding:4px 10px;
-  border-radius:6px; border:1px solid var(--border-mid); background:none;
+.ramp-t .abtn { font-size:10px; font-weight:500; padding:3px 8px;
+  border-radius:5px; border:1px solid var(--border-mid); background:none;
   cursor:pointer; white-space:nowrap; transition:all .15s; }
 .ramp-t .abtn:hover { background:var(--bg-hover); }
 .ramp-t .abtn-ok { border-color:rgba(5,150,105,0.3); color:var(--success); }
 .ramp-t .abtn-pp { border-color:rgba(217,119,6,0.3); color:var(--warning); }
-.ramp-t .abtn-add { border-color:rgba(14,165,233,0.3); color:#0EA5E9; }
-.ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
+.ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:16px !important; }
 
-/* VS badge */
+/* badges */
 .vs-badge { font-size:8px; font-weight:800; letter-spacing:.6px; padding:2px 6px;
   border-radius:3px; text-transform:uppercase; border:1px solid; }
 .vs-badge.vf  { color:#059669; border-color:rgba(5,150,105,0.3); background:rgba(5,150,105,0.08); }
 .vs-badge.vs  { color:#0EA5E9; border-color:rgba(14,165,233,0.3); background:rgba(14,165,233,0.08); }
 .vs-badge.vsg { color:#7C3AED; border-color:rgba(124,58,237,0.3); background:rgba(124,58,237,0.08); }
+.tl-type { font-size:8px; font-weight:800; letter-spacing:.5px; padding:2px 6px;
+  border-radius:3px; text-transform:uppercase; color:#fff; }
+.tl-type.in  { background:#059669; }
+.tl-type.out { background:#0EA5E9; }
 
-/* stock client rows */
-.stock-client { font-weight:700; font-size:12px; color:var(--text); }
+/* stock */
+.stock-client { font-weight:700; font-size:12px; }
 .stock-days { font-size:11px; }
 .stock-days.fresh { color:var(--success); }
 .stock-days.aging { color:var(--warning); }
@@ -110,9 +112,7 @@ async function renderDailyRamp() {
   catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
 }
 
-/* ── LOAD ─────────────────────────────────────────────────────── */
 async function _rampLoad() {
-  // Assets
   if (!RAMP.trucks.length) {
     const [t,d,l] = await Promise.all([
       atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
@@ -123,30 +123,24 @@ async function _rampLoad() {
     RAMP.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     RAMP.locs=l;
   }
-
-  // Day records
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
-  const recs = await atGetAll(TABLES.RAMP, {filterByFormula:filter, fields:RAMP_FIELDS}, false);
+  const recs=await atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false);
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
-  RAMP.records = recs;
+  RAMP.records=recs;
 
-  // Stock: inbound Done records NOT loaded out (all time)
-  const stockFilter = `AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  RAMP.stock = await atGetAll(TABLES.RAMP, {filterByFormula:stockFilter, fields:RAMP_FIELDS}, false);
+  const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
+  RAMP.stock=await atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false);
 }
 
 /* ── HELPERS ──────────────────────────────────────────────────── */
-const _rL=a=>{if(!a||!a.length)return null;return a[0]?.id||a[0]||null;};
-const _rTruck=f=>{const id=_rL(f['Truck']);return id?RAMP.trucks.find(t=>t.id===id)?.lb||'—':'';};
-const _rDriver=f=>{const id=_rL(f['Driver']);return id?RAMP.drivers.find(d=>d.id===id)?.lb||'—':'';};
-
-function _rCatBadge(f) {
-  const cat = f['Ramp Category']||'';
-  const vs = f['Is Veroia Switch'];
-  if (cat==='Vermion Fresh') return '<span class="vs-badge vf">VF</span>';
-  if (cat==='VS + Groupage'||vs) return '<span class="vs-badge vsg">VS+G</span>';
-  if (cat==='VS Simple') return '<span class="vs-badge vs">VS</span>';
-  if (vs) return '<span class="vs-badge vs">VS</span>';
+const _rK=a=>a?.length?(a[0]?.id||a[0]||null):null;
+const _rTruck=f=>{const id=_rK(f['Truck']);return id?RAMP.trucks.find(t=>t.id===id)?.lb||'':'';};
+const _rDriver=f=>{const id=_rK(f['Driver']);return id?RAMP.drivers.find(d=>d.id===id)?.lb||'':'';};
+function _rCat(f){
+  const c=f['Ramp Category']||'',vs=f['Is Veroia Switch'];
+  if(c==='Vermion Fresh')return'<span class="vs-badge vf">VF</span>';
+  if(c==='VS + Groupage')return'<span class="vs-badge vsg">VS+G</span>';
+  if(c==='VS Simple'||vs)return'<span class="vs-badge vs">VS</span>';
   return '';
 }
 
@@ -154,29 +148,27 @@ function _rCatBadge(f) {
 function _rampDraw() {
   const today=new Date().toISOString().split('T')[0];
   const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
-  const fD=d=>{try{const p=d.split('-');return `${p[2]}/${p[1]}/${p[0]}`;}catch{return d;}};
+  const fD=d=>{try{const p=d.split('-');return`${p[2]}/${p[1]}/${p[0]}`;}catch{return d;}};
 
-  const inbound = RAMP.records.filter(r=>r.fields['Type']==='Παραλαβή');
-  const outbound = RAMP.records.filter(r=>r.fields['Type']==='Φόρτωση');
+  const inb=RAMP.records.filter(r=>r.fields['Type']==='Παραλαβή');
+  const out=RAMP.records.filter(r=>r.fields['Type']==='Φόρτωση');
+  const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
+  const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
+  const net=inPal-outPal;
+  const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
 
-  const inPal = inbound.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
-  const outPal = outbound.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
-  const netPal = inPal - outPal;
-  const stockPal = RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
+  // Stock by client
+  const sbc={};
+  RAMP.stock.forEach(r=>{const cl=r.fields['Supplier/Client']||'Unknown';
+    if(!sbc[cl])sbc[cl]={pal:0,items:[]};sbc[cl].pal+=(r.fields['Pallets']||0);sbc[cl].items.push(r);});
 
-  // Stock breakdown by client
-  const stockByClient = {};
-  RAMP.stock.forEach(r=>{
-    const cl = r.fields['Supplier/Client']||'Unknown';
-    if(!stockByClient[cl]) stockByClient[cl]={pallets:0,items:[]};
-    stockByClient[cl].pallets += (r.fields['Pallets']||0);
-    stockByClient[cl].items.push(r);
-  });
+  // Time options
+  const tOpts=(()=>{const h=[];for(let i=0;i<24;i++)for(let m=0;m<60;m+=30){const t=String(i).padStart(2,'0')+':'+String(m).padStart(2,'0');h.push(t);}return h;})();
 
-  // Time select helper
-  const timeOpts = (()=>{const h=[];for(let i=0;i<24;i++)for(let m=0;m<60;m+=30){const t=String(i).padStart(2,'0')+':'+String(m).padStart(2,'0');h.push(t);}return h;})();
+  // Combined timeline (all records sorted by time)
+  const allSorted=[...RAMP.records].sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
 
-  document.getElementById('content').innerHTML = `
+  document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Daily Ramp Board</div>
         <div class="page-sub">Vermion Fresh · ${fD(RAMP.date)}</div></div>
@@ -186,192 +178,159 @@ function _rampDraw() {
         <button class="btn btn-ghost" onclick="renderDailyRamp()">Refresh</button>
       </div>
     </div>
-
     <div class="ramp-toolbar">
-      <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSetDate('${today}')">Today</button>
-      <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSetDate('${tmrw}')">Tomorrow</button>
-      <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSetDate(this.value)">
+      <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSD('${today}')">Today</button>
+      <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Tomorrow</button>
+      <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
     </div>
-
     <div class="ramp-kpis">
       <div class="ramp-kpi" style="border-left-color:#059669"><div class="ramp-kpi-lbl">Inbound Today</div>
         <div><span class="ramp-kpi-val" style="color:#059669">+${inPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
       <div class="ramp-kpi" style="border-left-color:#0EA5E9"><div class="ramp-kpi-lbl">Outbound Today</div>
         <div><span class="ramp-kpi-val" style="color:#0EA5E9">-${outPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi" style="border-left-color:${netPal>=0?'var(--success)':'var(--danger)'}"><div class="ramp-kpi-lbl">Net Today</div>
-        <div><span class="ramp-kpi-val" style="color:${netPal>=0?'var(--success)':'var(--danger)'}">${netPal>=0?'+':''}${netPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi" style="border-left-color:${net>=0?'var(--success)':'var(--danger)'}"><div class="ramp-kpi-lbl">Net Today</div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
       <div class="ramp-kpi" style="border-left-color:#D97706"><div class="ramp-kpi-lbl">Stock Total</div>
         <div><span class="ramp-kpi-val" style="color:#D97706">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
     </div>
 
-    <div class="ramp-sections">
-      ${_rampSec('inbound','↓ Inbound — Παραλαβές',inbound,timeOpts)}
-      ${_rampSec('outbound','↑ Outbound — Φορτώσεις',outbound,timeOpts)}
-      ${_rampStockSec(stockByClient,stockPal)}
+    <div class="ramp-pair">
+      <div>
+        <div class="ramp-sec-hd inbound"><span>↓ Inbound</span><span style="opacity:.5">${inb.length}</span></div>
+        <table class="ramp-t"><thead><tr>
+          <th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Cat</th><th>Actions</th>
+        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No inbound</td></tr>'}</tbody></table>
+      </div>
+      <div>
+        <div class="ramp-sec-hd outbound"><span>↑ Outbound</span><span style="opacity:.5">${out.length}</span></div>
+        <table class="ramp-t"><thead><tr>
+          <th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Cat</th><th>Actions</th>
+        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No outbound</td></tr>'}</tbody></table>
+      </div>
     </div>
-  `;
+
+    <div class="ramp-sec-hd timeline"><span>🕐 Timeline — All Operations</span><span style="opacity:.5">${allSorted.length}</span></div>
+    <table class="ramp-t"><thead><tr>
+      <th>Time</th><th>Type</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Cat</th><th>Status</th>
+    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
+
+    <div style="margin-top:16px">
+      <div class="ramp-sec-hd stock"><span>📦 Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
+      <table class="ramp-t"><thead><tr><th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th></tr></thead>
+      <tbody>${Object.keys(sbc).length?Object.keys(sbc).sort().map((cl,i)=>{
+        const d=sbc[cl],dates=d.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort(),
+          oldest=dates[0]||'',days=oldest?Math.floor((Date.now()-new Date(oldest).getTime())/864e5):0,
+          dc=days<=1?'fresh':days<=3?'aging':'old';
+        return`<tr><td class="rn">${i+1}</td><td class="stock-client">${cl}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
+      }).join(''):'<tr class="ramp-empty"><td colspan="5">Warehouse empty</td></tr>'}</tbody></table>
+    </div>`;
 }
 
-/* ── SECTION TABLE ────────────────────────────────────────────── */
-function _rampSec(type,label,items,timeOpts) {
-  const isIn = type==='inbound';
-  const cols = isIn
-    ? '<th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Truck</th><th>Driver</th><th>Pallets</th><th class="c">Temp</th><th class="c">Counted</th><th>Category</th><th>Actions</th>'
-    : '<th>#</th><th>Time</th><th>Client</th><th>Goods</th><th>Truck</th><th>Driver</th><th>Pallets</th><th class="c">Staged</th><th class="c">Temp</th><th>Category</th><th>Actions</th>';
-
-  const rows = items.length
-    ? items.map((r,i)=>_rampRow(r,i+1,type,timeOpts)).join('')
-    : '<tr class="ramp-empty"><td colspan="20">No records</td></tr>';
-
-  return `<div>
-    <div class="ramp-sec-hd ${type}"><span>${label}</span><span style="opacity:.5">${items.length}</span></div>
-    <table class="ramp-t"><thead><tr>${cols}</tr></thead><tbody>${rows}</tbody></table>
-  </div>`;
-}
-
-/* ── ROW ──────────────────────────────────────────────────────── */
-function _rampRow(rec,num,type,timeOpts) {
-  const f=rec.fields, id=rec.id, isIn=type==='inbound';
-  const status=f['Status']||'Προγραμματισμένο';
+/* ── TABLE ROW ────────────────────────────────────────────────── */
+function _rRow(rec,num,tOpts) {
+  const f=rec.fields,id=rec.id;
+  const status=f['Status']||'';
   const isDone=status==='✅ Έγινε';
-  const truck=_rTruck(f), driver=_rDriver(f);
-  const pal=f['Pallets']||'';
-  const client=f['Supplier/Client']||'—';
-  const goods=(f['Goods']||'').substring(0,40);
   const time=f['Time']||'';
+  const client=f['Supplier/Client']||'—';
+  const goods=(f['Goods']||'').substring(0,35);
+  const temp=f['Temperature']||f['Temperature °C']||'';
+  const pal=f['Pallets']||'';
+  const truck=_rTruck(f);
+  const isIn=f['Type']==='Παραλαβή';
 
-  const chk=(fld,v)=>`<input type="checkbox" ${v?'checked':''} onchange="_rampTog('${id}','${fld}',this.checked)">`;
-  const timeSel=`<select class="tinp" onchange="_rampSvF('${id}','Time',this.value)"><option value="">--:--</option>${timeOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  const timeSel=`<select class="tinp" onchange="_rampSvF('${id}','Time',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  const acts=isDone?'<span style="color:var(--success);font-size:10px">✓ Done</span>'
+    :`<button class="abtn abtn-ok" onclick="_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="abtn abtn-pp" onclick="_rampPostpone('${id}')">Postpone</button>`;
 
-  let checks='';
-  if(isIn) {
-    checks=`<td class="c">${chk('Temp Checked',f['Temp Checked'])}</td><td class="c">${chk('Pallets Counted',f['Pallets Counted'])}</td>`;
-  } else {
-    checks=`<td class="c">${chk('Goods Staged',f['Goods Staged'])}</td><td class="c">${chk('Temp Set',f['Temp Set'])}</td>`;
-  }
-
-  const actLabel = isIn ? 'Done' : 'Loaded';
-  const acts = isDone ? '' : `<button class="abtn abtn-ok" onclick="_rampDone('${id}','${isIn}')">${actLabel}</button> <button class="abtn abtn-pp" onclick="_rampPostpone('${id}')">Postponed</button>`;
-
-  return `<tr class="${isDone?'done':''}">
-    <td class="rn">${num}</td>
-    <td>${timeSel}</td>
+  return`<tr class="${isDone?'done':''}">
+    <td class="rn">${num}</td><td>${timeSel}</td>
     <td class="trn" title="${client}">${client}</td>
     <td class="trn" title="${goods}">${goods}</td>
-    <td>${truck||'—'}</td><td>${driver||'—'}</td>
-    <td>${pal}</td>
-    ${checks}
-    <td>${_rCatBadge(f)}</td>
-    <td>${acts}</td>
-  </tr>`;
+    <td>${temp?temp+'°C':''}</td><td>${pal}</td>
+    <td>${truck||'—'}</td><td>${_rCat(f)}</td><td>${acts}</td></tr>`;
 }
 
-/* ── STOCK SECTION ────────────────────────────────────────────── */
-function _rampStockSec(byClient,totalPal) {
-  const clients = Object.keys(byClient).sort();
-  const rows = clients.length ? clients.map((cl,i) => {
-    const data = byClient[cl];
-    // Oldest item date
-    const dates = data.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort();
-    const oldest = dates[0]||'';
-    const daysInStock = oldest ? Math.floor((Date.now()-new Date(oldest).getTime())/864e5) : 0;
-    const daysCls = daysInStock<=1?'fresh':daysInStock<=3?'aging':'old';
+/* ── TIMELINE ROW ─────────────────────────────────────────────── */
+function _rTlRow(rec) {
+  const f=rec.fields;
+  const status=f['Status']||'Planned';
+  const isDone=status==='✅ Έγινε';
+  const isIn=f['Type']==='Παραλαβή';
+  const typeBadge=isIn?'<span class="tl-type in">IN</span>':'<span class="tl-type out">OUT</span>';
+  const statusTxt=isDone?'<span style="color:var(--success)">✓ Done</span>'
+    :status==='⏩ Postponed'?'<span style="color:var(--warning)">Postponed</span>'
+    :'<span style="color:var(--text-dim)">Planned</span>';
 
-    return `<tr>
-      <td class="rn">${i+1}</td>
-      <td class="stock-client">${cl}</td>
-      <td>${data.pallets}</td>
-      <td>${oldest?oldest.substring(5):''}</td>
-      <td class="stock-days ${daysCls}">${daysInStock}d</td>
-    </tr>`;
-  }).join('') : '<tr class="ramp-empty"><td colspan="5">No stock — warehouse empty</td></tr>';
-
-  return `<div>
-    <div class="ramp-sec-hd stock"><span>📦 Stock — In Warehouse</span><span style="opacity:.5">${totalPal} pal</span></div>
-    <table class="ramp-t"><thead><tr>
-      <th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th>
-    </tr></thead><tbody>${rows}</tbody></table>
-  </div>`;
+  return`<tr class="${isDone?'done':''}">
+    <td>${f['Time']||'—'}</td><td>${typeBadge}</td>
+    <td class="trn">${f['Supplier/Client']||'—'}</td>
+    <td class="trn">${(f['Goods']||'').substring(0,35)}</td>
+    <td>${f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):''}</td>
+    <td>${f['Pallets']||''}</td>
+    <td>${_rTruck(f)||'—'}</td><td>${_rDriver(f)||'—'}</td>
+    <td>${_rCat(f)}</td><td>${statusTxt}</td></tr>`;
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-function _rampSetDate(d) { RAMP.date=d; renderDailyRamp(); }
+function _rampSD(d){RAMP.date=d;renderDailyRamp();}
+async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 
-async function _rampTog(id,fld,v) {
-  try { await atPatch(TABLES.RAMP,id,{[fld]:v}); const r=RAMP.records.find(x=>x.id===id);
-    if(r)r.fields[fld]=v; toast(v?'✓':'—'); } catch(e){toast('Error','danger');}
-}
-async function _rampSvF(id,fld,v) {
-  try { await atPatch(TABLES.RAMP,id,{[fld]:v||null}); const r=RAMP.records.find(x=>x.id===id);
-    if(r)r.fields[fld]=v; } catch(e){toast('Error','danger');}
-}
-async function _rampDone(id,isIn) {
-  const fields = {'Status':'✅ Έγινε'};
+async function _rampDone(id,isIn){
+  const fields={'Status':'✅ Έγινε'};
   if(isIn==='true') fields['Stock Status']='In Stock';
-  try { await atPatch(TABLES.RAMP,id,fields); invalidateCache(TABLES.RAMP);
-    toast('Done ✓'); renderDailyRamp(); } catch(e){toast('Error','danger');}
-}
-async function _rampPostpone(id) {
-  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
-  try { await atPatch(TABLES.RAMP,id,{'Status':'⏩ Postponed','Postponed To':tmrw});
-    invalidateCache(TABLES.RAMP); toast('Postponed → tomorrow'); renderDailyRamp();
-  } catch(e){toast('Error','danger');}
+  try{await atPatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 
-function _rampAddNew(type) {
-  const truckOpts=RAMP.trucks.map(t=>`<option value="${t.id}">${t.lb}</option>`).join('');
-  const driverOpts=RAMP.drivers.map(d=>`<option value="${d.id}">${d.lb}</option>`).join('');
+async function _rampPostpone(id){
+  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
+  try{await atPatch(TABLES.RAMP,id,{'Status':'⏩ Postponed','Plan Date':tmrw,'Postponed To':tmrw});
+    invalidateCache(TABLES.RAMP);toast('Postponed → tomorrow');renderDailyRamp();}catch(e){toast('Error','danger');}
+}
+
+function _rampAddNew(type){
+  const trOpts=RAMP.trucks.map(t=>`<option value="${t.id}">${t.lb}</option>`).join('');
+  const drOpts=RAMP.drivers.map(d=>`<option value="${d.id}">${d.lb}</option>`).join('');
   const catOpts=['Vermion Fresh','VS Simple','VS + Groupage','Other'].map(c=>`<option value="${c}">${c}</option>`).join('');
 
-  openModal(`New ${type==='Παραλαβή'?'Inbound':'Outbound'}`, `
+  openModal(`New ${type==='Παραλαβή'?'Inbound':'Outbound'}`,`
     <div class="form-grid">
       <div class="form-field"><label class="form-label">Time</label>
         <input class="form-input" id="nr_time" type="text" placeholder="08:00" style="max-width:100px"></div>
       <div class="form-field"><label class="form-label">Category</label>
         <select class="form-select" id="nr_cat">${catOpts}</select></div>
-      <div class="form-field"><label class="form-label">Truck</label>
-        <select class="form-select" id="nr_truck"><option value="">—</option>${truckOpts}</select></div>
-      <div class="form-field"><label class="form-label">Driver</label>
-        <select class="form-select" id="nr_driver"><option value="">—</option>${driverOpts}</select></div>
-      <div class="form-field"><label class="form-label">Pallets</label>
-        <input class="form-input" id="nr_pal" type="number" min="0"></div>
       <div class="form-field"><label class="form-label">Client</label>
         <input class="form-input" id="nr_client" type="text"></div>
-      <div class="form-field span-2"><label class="form-label">Goods</label>
-        <input class="form-input" id="nr_goods" type="text" placeholder="e.g. Fresh produce"></div>
+      <div class="form-field"><label class="form-label">Goods</label>
+        <input class="form-input" id="nr_goods" type="text"></div>
+      <div class="form-field"><label class="form-label">Temperature °C</label>
+        <input class="form-input" id="nr_temp" type="text" placeholder="e.g. 2"></div>
+      <div class="form-field"><label class="form-label">Pallets</label>
+        <input class="form-input" id="nr_pal" type="number" min="0"></div>
+      <div class="form-field"><label class="form-label">Truck</label>
+        <select class="form-select" id="nr_truck"><option value="">—</option>${trOpts}</select></div>
+      <div class="form-field"><label class="form-label">Driver</label>
+        <select class="form-select" id="nr_driver"><option value="">—</option>${drOpts}</select></div>
     </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Save</button>`
-  );
+     <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Save</button>`);
 }
 
-async function _rampSaveNew(type) {
-  const fields = {
-    'Plan Date': RAMP.date,
-    'Type': type,
-    'Status': 'Προγραμματισμένο',
-  };
-  const time=document.getElementById('nr_time')?.value.trim();
-  const cat=document.getElementById('nr_cat')?.value;
-  const truckId=document.getElementById('nr_truck')?.value;
-  const driverId=document.getElementById('nr_driver')?.value;
-  const pal=document.getElementById('nr_pal')?.value;
-  const client=document.getElementById('nr_client')?.value.trim();
-  const goods=document.getElementById('nr_goods')?.value.trim();
+async function _rampSaveNew(type){
+  const fields={'Plan Date':RAMP.date,'Type':type,'Status':'Προγραμματισμένο'};
+  const v=id=>document.getElementById(id)?.value?.trim();
+  if(v('nr_time'))    fields['Time']=v('nr_time');
+  if(v('nr_cat'))     fields['Ramp Category']=v('nr_cat');
+  if(v('nr_client'))  fields['Supplier/Client']=v('nr_client');
+  if(v('nr_goods'))   fields['Goods']=v('nr_goods');
+  if(v('nr_temp'))    fields['Temperature']=v('nr_temp');
+  if(v('nr_pal'))     fields['Pallets']=parseFloat(v('nr_pal'));
+  if(v('nr_truck'))   fields['Truck']=[v('nr_truck')];
+  if(v('nr_driver'))  fields['Driver']=[v('nr_driver')];
+  if(v('nr_cat')&&v('nr_cat').includes('VS')) fields['Is Veroia Switch']=true;
 
-  if(time)    fields['Time']=time;
-  if(cat)     fields['Ramp Category']=cat;
-  if(pal)     fields['Pallets']=parseFloat(pal);
-  if(goods)   fields['Goods']=goods;
-  if(client)  fields['Supplier/Client']=client;
-  if(truckId) fields['Truck']=[truckId];
-  if(driverId)fields['Driver']=[driverId];
-  if(cat&&cat.includes('VS')) fields['Is Veroia Switch']=true;
-
-  try {
-    const res=await atCreate(TABLES.RAMP,fields);
-    if(res?.error) throw new Error(res.error.message);
-    invalidateCache(TABLES.RAMP);
-    closeModal(); toast('Added ✓'); renderDailyRamp();
-  } catch(e){toast('Error: '+e.message,'danger');}
+  try{const res=await atCreate(TABLES.RAMP,fields);
+    if(res?.error)throw new Error(res.error.message);
+    invalidateCache(TABLES.RAMP);closeModal();toast('Added ✓');renderDailyRamp();
+  }catch(e){toast('Error: '+e.message,'danger');}
 }
