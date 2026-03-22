@@ -114,7 +114,7 @@ async function renderDailyRamp() {
 }
 
 async function _rampLoad() {
-  if (!RAMP.trucks.length) {
+  if (!RAMP.trucks.length || !RAMP.clients.length) {
     const [t,d,l,cl] = await Promise.all([
       atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.DRIVERS,{fields:['Full Name'],filterByFormula:'{Active}=TRUE()'},false),
