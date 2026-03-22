@@ -286,11 +286,17 @@ async function _rampAutoSync() {
             {headers:{'Authorization':'Bearer '+AT_TOKEN}});
           const d = await res.json();
           const sf = d.fields||{};
-          const clientArr = sf['Client'];
-          const clientName = Array.isArray(clientArr) ? (clientArr[0]||'') : (clientArr||'');
+          // Resolve client name
+          const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
+          const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
+          const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
+          // Resolve pickup location
+          const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
+          const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
+          const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
           const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
           const ref = sf['Reference'] || '';
-          return {client:clientName, pallets:pal, ref:ref, goods:(sf['Goods']||'').substring(0,40)};
+          return {client:clientName, location:locName, pallets:pal, ref:ref};
         } catch { return null; }
       }));
       supplierLines = srcOrders.filter(Boolean);
@@ -300,8 +306,8 @@ async function _rampAutoSync() {
     const clientNames = supplierLines.map(s=>s.client).filter(Boolean);
     const supplierStr = clientNames.length ? clientNames.join(' / ') : clName;
 
-    // Build notes with breakdown: "Client | PAL | REF" per line
-    const notesLines = supplierLines.map(s => `${s.client} | ${s.pallets} pal | ref: ${s.ref}`);
+    // Build notes with breakdown: "Client | Location | PAL | REF" per line
+    const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ref: ${s.ref}`);
     const notesStr = notesLines.join('\n');
 
     const rec = {
@@ -552,15 +558,17 @@ function _rRow(rec,num,tOpts) {
     const lines = notes.split('\n').filter(Boolean);
     subHtml = lines.map(line => {
       const parts = line.split(' | ');
-      const sup = _rClient(parts[0]?.trim()||'');
-      const palInfo = parts[1]||'';
-      const refInfo = parts[2]||'';
+      const sup = parts[0]?.trim()||'';
+      const loc = parts[1]?.trim()||'';
+      const palInfo = parts[2]||'';
+      const refInfo = parts[3]||'';
       return `<tr style="background:rgba(124,58,237,0.04);font-size:11px;color:var(--text-mid)">
         <td></td><td></td>
         <td style="padding-left:20px">↳ ${sup}</td>
+        <td>${loc}</td>
         <td></td><td></td>
         <td>${palInfo}</td>
-        <td colspan="2" style="font-size:10px">${refInfo}</td>
+        <td style="font-size:10px">${refInfo}</td>
         <td></td></tr>`;
     }).join('');
   }
