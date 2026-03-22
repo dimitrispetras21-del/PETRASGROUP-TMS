@@ -735,9 +735,10 @@ function _wiImpRowHTML(row){
       </span>`;
 
   // Import row — full 4-col grid, always draggable, has assignment + match cell
-  const impTruck  =row.truckLabel  ||WINTL.data.trucks.find(t=>t.id===row.truckId)?.label||'';
-  const impPartner=row.partnerLabel||WINTL.data.partners.find(p=>p.id===row.partnerId)?.label||'';
-  const impSurname=row.driverLabel?row.driverLabel.trim().split(/\s+/)[0]:'';
+  const impTruck   =row.truckLabel   ||WINTL.data.trucks.find(t=>t.id===row.truckId)?.label||'';
+  const impTrailer =row.trailerLabel ||WINTL.data.trailers.find(t=>t.id===row.trailerId)?.label||'';
+  const impPartner =row.partnerLabel ||WINTL.data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const impSurname =row.driverLabel  ?row.driverLabel.trim().split(/\s+/)[0]:'';
   let impPill;
   if(row.saved){
     if(impPartner){
