@@ -221,7 +221,9 @@ async function _rampAutoSync() {
   )`;
   const natFields = ['Direction','Type','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Pallets','Client','Truck','Driver',
-    'Pickup Location 1','Delivery Location 1','National Groupage'];
+    'Pickup Location 1','Pickup Location 2','Pickup Location 3',
+    'Delivery Location 1','Delivery Location 2','Delivery Location 3',
+    'National Groupage'];
 
   const natOrders = await atGetAll(TABLES.NAT_ORDERS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]);
 
@@ -245,6 +247,8 @@ async function _rampAutoSync() {
     if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
     if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+    rec['Loading Points'] = _rampResolveStops(f, 'Pickup Location', 3);
+    rec['Delivery Points'] = _rampResolveStops(f, 'Delivery Location', 3);
     toCreate.push(rec);
   });
 
@@ -253,7 +257,9 @@ async function _rampAutoSync() {
   const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
     'Truck','Trailer','Driver','Name','Groupage ID','Source Orders',
     'Pallets 1','Pallets 2','Pallets 3','Pallets 4','Pallets 5',
-    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10'];
+    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10',
+    'Loading Location 1','Loading Location 2','Loading Location 3','Loading Location 4','Loading Location 5',
+    'Delivery Location 1','Delivery Location 2','Delivery Location 3'];
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
@@ -312,6 +318,9 @@ async function _rampAutoSync() {
     if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
     if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
+    // Resolve CL locations
+    rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 10);
+    rec['Delivery Points'] = _rampResolveStops(f, 'Delivery Location', 10);
     toCreate.push(rec);
   }
 
