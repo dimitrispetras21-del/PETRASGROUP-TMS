@@ -107,14 +107,7 @@ const OPS_FIELDS = [
 .ops-t input.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
 
 /* action buttons — match project btn style */
-.ops-t .abtn { font-size:11px; font-weight:500; letter-spacing:.2px; padding:4px 10px;
-  border-radius:6px; border:1px solid var(--border-mid); background:none;
-  cursor:pointer; white-space:nowrap; transition:all .15s; }
-.ops-t .abtn:hover { background:var(--bg-hover); }
-.ops-t .abtn-ld { border-color:rgba(14,165,233,0.3); color:#0EA5E9; }
-.ops-t .abtn-dv { border-color:rgba(5,150,105,0.3); color:var(--success); }
-.ops-t .abtn-dy { border-color:rgba(220,38,38,0.3); color:var(--danger); }
-.ops-t .abtn-pp { border-color:rgba(217,119,6,0.3); color:var(--warning); }
+/* action buttons — use global .btn classes */
 .ops-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
 `;
   document.head.appendChild(s);
@@ -303,7 +296,7 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${chk('Docs Ready',f['Docs Ready'])}</td>
       <td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>
       <td class="c">${!partner?chk('Second Card',f['Second Card']):''}</td>
-      <td><button class="abtn abtn-ld" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="abtn abtn-pp" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      <td><button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
   } else if(isToday && isL && !isExp) {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
@@ -312,7 +305,7 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
       <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
       <td>${timeSelect('ETA',f['ETA'])}</td>
-      <td><button class="abtn abtn-ld" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="abtn abtn-pp" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      <td><button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
   } else if(isToday && !isL) {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
@@ -321,7 +314,7 @@ function _opsRow(rec,num,type,isToday) {
       <td>${timeSelect('ETA',f['ETA'])}</td>
       <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
       <td class="c">${chk('Client Notified',f['Client Notified'])}</td>
-      <td><button class="abtn abtn-dv" onclick="_opsDel('${id}','On Time')">Delivered</button> <button class="abtn abtn-dy" onclick="_opsDel('${id}','Delayed')">Delayed</button> <button class="abtn abtn-pp" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      <td><button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="_opsDel('${id}','On Time')">Delivered</button> <button class="btn btn-danger" style="padding:4px 12px;font-size:11px" onclick="_opsDel('${id}','Delayed')">Delayed</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
   } else if(!isToday && isL && isExp) {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
