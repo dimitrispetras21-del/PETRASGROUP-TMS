@@ -147,7 +147,7 @@ async function _rampAutoSync() {
   // Get existing RAMP records for this date to avoid duplicates
   const existing = await atGetAll(TABLES.RAMP, {
     filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
-    fields: ['Order','National Order','Type','Ramp Category'],
+    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status'],
   }, false);
   const existingKeys = new Set(existing.map(r => {
     const oid = (r.fields['Order']||[])[0]?.id || (r.fields['Order']||[])[0] || '';
