@@ -133,6 +133,9 @@ function navigate(page) {
   document.getElementById('topbarTitle').textContent = label;
 
   const c = document.getElementById('content');
+  // Reset content padding (some pages like pickups use zero-padding iframe)
+  c.style.padding = '';
+  c.style.overflow = '';
 
   switch (page) {
     // Planning
