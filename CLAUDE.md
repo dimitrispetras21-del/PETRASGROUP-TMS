@@ -167,3 +167,42 @@ filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
 
 ## Language
 User (Dimitris) communicates in Greek. Respond in Greek for discussion, English for code comments.
+
+
+---
+
+## Current Build Status (March 2026)
+
+### Live ✅
+- Weekly International — full assignment, groupage, drag-drop, remove import
+- Weekly National — ΚΑΘΟΔΟΣ / ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ + CONSOLIDATED LOADS display
+- National Pick Ups — embedded as iframe (national_consolidation.html)
+- International Orders CRUD
+- National Orders CRUD (Pickup/Delivery/Client columns working)
+- Locations manager
+- Daily Ramp Board
+- Clients / Partners / Drivers CRUD
+- Fuel Import (DADI + DKV)
+- Pallet Upload (AI extraction)
+- National Consolidation Planner (drag-drop, save, restore, split)
+- Veroia Switch sync chain (ORDERS → NO → GL, never-delete GL rule)
+- localStorage cache (30min for stable tables)
+
+### Critical — Next to build
+- Trip Costs P&L entry (trip_costs.js)
+- Fuel receipts UI in TMS (fuels.js)
+- P&L dashboard (pnl.js)
+
+### Known Issues
+- 1,090 test records in Airtable need cleanup
+- RAMP PLAN automation script ready but not added to Airtable
+- Driver Payroll bulk import pending
+
+### Design System
+- Accent: `#0284C7` (Cold Chain Blue)
+- Hover: `#0369A1`
+- Sidebar navy: `#0B1929`
+- Unassigned pills: `#7F1D1D` (dark red)
+- Owned fleet pills: `#0C2D5C` (deep navy)
+- Fonts: Syne (headings) + DM Sans (body)
+- Button classes: `.btn-new-order` (navy→blue), `.btn-scan` (blue outline)
