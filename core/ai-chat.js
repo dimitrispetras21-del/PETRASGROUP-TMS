@@ -231,34 +231,67 @@ async function _aicExecTool(name, input) {
   }
 }
 
+/* ── ROLE PROFILES ─────────────────────────────────────────── */
+const AIC_PROFILES = {
+  owner: {
+    persona: 'You are Petras, a strategic logistics copilot for the company owner.',
+    focus: 'You focus on big-picture KPIs, cost efficiency, fleet utilization, and business growth. You proactively suggest optimizations and flag risks. You know the owner manages everything — planning, maintenance, costs, clients.',
+    greeting: name => `Γεια σου ${name}! Είμαι ο Petras, ο AI σύμβουλός σου. Ρώτησέ με ό,τι θες για orders, fleet, maintenance ή costs.`,
+    tools: ['read_orders','read_fleet','create_work_order','update_record','navigate_to'],
+  },
+  dispatcher: {
+    persona: 'You are a dispatch assistant focused on daily operations.',
+    focus: 'You help the dispatcher with order assignment, weekly planning, trip management, and load consolidation. You prioritize speed — finding orders, checking truck availability, and suggesting assignments. You don\'t discuss costs or financial data.',
+    greeting: name => `Hi ${name}! I'm your dispatch assistant. Ask me about orders, truck availability, weekly planning, or say "go to weekly intl" to navigate.`,
+    tools: ['read_orders','read_fleet','create_work_order','navigate_to'],
+  },
+  management: {
+    persona: 'You are a management reporting assistant.',
+    focus: 'You help management with fleet oversight, maintenance tracking, driver management, and client relations. You summarize data clearly and flag issues that need attention. You can read all data but should confirm before making changes.',
+    greeting: name => `Hello ${name}! I'm your TMS assistant. I can help with fleet status, maintenance alerts, driver info, and client overview.`,
+    tools: ['read_orders','read_fleet','create_work_order','update_record','navigate_to'],
+  },
+  accountant: {
+    persona: 'You are a finance-focused TMS assistant.',
+    focus: 'You help the accountant with cost tracking, fuel receipts, driver payroll data, and trip cost analysis. You focus on numbers and financial accuracy. You can read order and fleet data for reference.',
+    greeting: name => `Hello ${name}! I can help you find cost data, fuel receipts, trip costs, and driver payroll information.`,
+    tools: ['read_orders','read_fleet','navigate_to'],
+  }
+};
+
 /* ── SYSTEM PROMPT ─────────────────────────────────────────── */
 function _aicSystemPrompt() {
   const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
   const page = typeof currentPage !== 'undefined' ? currentPage : 'dashboard';
   const week = typeof currentWeekNumber === 'function' ? currentWeekNumber() : '?';
   const userName = typeof user !== 'undefined' ? (user.name || 'User') : 'User';
-  return `You are the Petras Group TMS AI Assistant — a smart logistics copilot for a cold chain transport company (Greece ↔ Europe).
+  const profile = AIC_PROFILES[role] || AIC_PROFILES.owner;
+
+  return `${profile.persona}
+You work for Petras Group — a cold chain transport company (Greece ↔ Central/Eastern Europe).
+
+${profile.focus}
 
 Current context:
 - User: ${userName}, Role: ${role}
 - Current page: ${page}
-- Date: ${new Date().toISOString().substring(0,10)}
-- Week: W${week}
-
-You help with:
-- Finding orders, trucks, trailers, maintenance data
-- Creating work orders for vehicle repairs
-- Navigating the TMS to the right page
-- Answering logistics questions
+- Date: ${new Date().toISOString().substring(0,10)}, Week: W${week}
 
 Rules:
-- Be concise and direct. Short answers preferred.
-- Use Greek when the user writes in Greek, English when they write in English.
-- When using tools that modify data (create_work_order, update_record), ALWAYS confirm with the user first before executing.
-- For read_fleet: after getting data, summarize it clearly — don't dump raw JSON.
-- Permission check: user role is "${role}". Only owners and dispatchers can modify data.
+- Be concise and direct. Short answers, no fluff.
+- Match the user's language — Greek or English.
+- ALWAYS confirm before modifying data (create_work_order, update_record).
+- Summarize tool results clearly — never dump raw JSON to the user.
+- ${role === 'dispatcher' ? 'You cannot access cost or financial data.' : ''}
+- ${role === 'accountant' ? 'You cannot create or modify orders. Focus on financial data.' : ''}
 
 TMS pages: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers.`;
+}
+
+function _aicAllowedTools() {
+  const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
+  const profile = AIC_PROFILES[role] || AIC_PROFILES.owner;
+  return AIC_TOOLS.filter(t => profile.tools.includes(t.name));
 }
 
 /* ── CLAUDE API CALL ───────────────────────────────────────── */
@@ -277,7 +310,7 @@ async function _aicCallClaude(messages) {
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: _aicSystemPrompt(),
-      tools: AIC_TOOLS,
+      tools: _aicAllowedTools(),
       messages: messages
     })
   });
@@ -504,7 +537,10 @@ async function _aicToggle() {
     _aicRenderMsgs();
     // Welcome message if empty
     if (!AiChat.messages.length) {
-      AiChat.messages.push({ role: 'assistant', content: 'Hello! I\'m your TMS Assistant. Ask me anything about orders, fleet, maintenance, or say "go to weekly national" to navigate.' });
+      const _role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
+      const _name = typeof user !== 'undefined' ? (user.name || 'User').split(' ')[0] : 'User';
+      const _profile = AIC_PROFILES[_role] || AIC_PROFILES.owner;
+      AiChat.messages.push({ role: 'assistant', content: _profile.greeting(_name) });
       _aicRenderMsgs();
     }
     setTimeout(() => document.getElementById('aic-input')?.focus(), 250);
