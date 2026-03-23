@@ -24,6 +24,8 @@ const TABLES = {
   RAMP:          'tblT8W5WcuToBQNiY',
   GL_LINES:      'tblxUAaIsUMEDl3qQ',
   CONS_LOADS:    'tbl5XSLQjOnG6yLCW',
+  WORKSHOPS:     'tblMiFxbm9ky8PCQi',
+  MAINT_HISTORY: 'tbllPbPPd6N3zEZF1',
 };
 
 // Users are defined in index.html / auth layer

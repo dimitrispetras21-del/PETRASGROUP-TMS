@@ -21,13 +21,14 @@ const NAV = [
     { id: 'partners', label: 'Partners', icon: 'handshake' },
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
-    { id: 'maint_dash',     label: 'Dashboard',       icon: 'dashboard' },
-    { id: 'maint_overview', label: 'Overview',        icon: 'wrench' },
-    { id: 'maint_trucks',   label: 'Trucks History',  icon: 'truck' },
-    { id: 'maint_trailers', label: 'Trailers History',icon: 'trailer' },
-    { id: 'maint_expiry',   label: 'Expiry Alerts',   icon: 'alert' },
-    { id: 'trucks',         label: 'Trucks',          icon: 'truck' },
-    { id: 'trailers',       label: 'Trailers',        icon: 'trailer' },
+    { id: 'maint_dash',     label: 'Dashboard',        icon: 'dashboard' },
+    { id: 'maint_expiry',   label: 'Expiry Alerts',    icon: 'alert' },
+    { id: 'maint_svc',      label: 'Service Records',  icon: 'wrench' },
+    { id: 'maint_trucks',   label: 'Trucks History',   icon: 'truck' },
+    { id: 'maint_trailers', label: 'Trailers History', icon: 'trailer' },
+    { id: 'trucks',         label: 'Trucks',           icon: 'truck' },
+    { id: 'trailers',       label: 'Trailers',         icon: 'trailer' },
+    { id: 'workshops',      label: 'Workshops',        icon: 'wrench' },
   ]},
   { section: 'Drivers', perm: 'drivers', items: [
     { id: 'drivers', label: 'Drivers',        icon: 'person' },
@@ -167,11 +168,12 @@ function navigate(page) {
     case 'clients':        renderEntity('clients');       break;
     case 'partners':       renderEntity('partners');      break;
     // Maintenance
-    case 'maint_dash':     c.innerHTML = showComingSoon('Maintenance Dashboard'); break;
-    case 'maint_overview': c.innerHTML = showComingSoon('Maintenance Overview');  break;
-    case 'maint_trucks':   c.innerHTML = showComingSoon('Trucks History');        break;
-    case 'maint_trailers': c.innerHTML = showComingSoon('Trailers History');      break;
-    case 'maint_expiry':   c.innerHTML = showComingSoon('Expiry Alerts');         break;
+    case 'maint_dash':     renderMaintDash();       break;
+    case 'maint_expiry':   renderExpiryAlerts();    break;
+    case 'maint_svc':      renderServiceRecords();  break;
+    case 'maint_trucks':   renderTrucksHistory();   break;
+    case 'maint_trailers': renderTrailersHistory(); break;
+    case 'workshops':      renderEntity('workshops'); break;
     case 'trucks':         renderEntity('trucks');        break;
     case 'trailers':       renderEntity('trailers');      break;
     // Drivers

@@ -244,6 +244,50 @@ const ENTITY_CONFIG = {
     ],
   },
 
+  workshops: {
+    tableId: TABLES.WORKSHOPS,
+    label: 'Workshops',
+    labelSingle: 'Workshop',
+    perm: 'maintenance',
+    searchFields: ['Name', 'City', 'Contact Person', 'Specialty'],
+    filters: [
+      { field: 'Specialty', label: 'Specialty', type: 'dynamic' },
+      { field: 'Active',    label: 'Status',    type: 'bool', options: [
+        { val: '', label: 'All' },
+        { val: 'true',  label: 'Active' },
+        { val: 'false', label: 'Inactive' },
+      ]},
+    ],
+    columns: [
+      { field: 'Name',           label: 'Name',      primary: true },
+      { field: 'City',           label: 'City' },
+      { field: 'Specialty',      label: 'Specialty' },
+      { field: 'Contact Person', label: 'Contact' },
+      { field: 'Phone',          label: 'Phone' },
+      { field: 'Active',         label: 'Status', type: 'active' },
+    ],
+    formFields: [
+      { section: 'Details', fields: [
+        { f: 'Name',           label: 'Workshop Name', req: true },
+        { f: 'Specialty',      label: 'Specialty', type: 'select', options: ['General','Reefer','Tyres','Electrical','Body','Hydraulic'] },
+        { f: 'Phone',          label: 'Phone' },
+        { f: 'Email',          label: 'Email' },
+        { f: 'Contact Person', label: 'Contact Person' },
+      ]},
+      { section: 'Location', fields: [
+        { f: 'Address',        label: 'Address' },
+        { f: 'City',           label: 'City' },
+      ]},
+      { section: 'Notes', fields: [
+        { f: 'Notes',          label: 'Notes', type: 'textarea' },
+      ]},
+    ],
+    detailSections: [
+      { title: 'Details',  fields: ['Name','Specialty','Phone','Email','Contact Person'] },
+      { title: 'Location', fields: ['Address','City'] },
+    ],
+  },
+
 };
 
 // ── State ────────────────────────────────────────
