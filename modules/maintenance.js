@@ -893,8 +893,7 @@ function _mreqPaint() {
           <td style="font-size:12px">${f['Workshop']||'—'}</td>
           <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
           <td class="c" onclick="event.stopPropagation()">
-            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','${f['Status']==='Pending'?'In Progress':'Done'}')">
-              ${f['Status']==='Pending'?'▶ Start':'✓ Done'}</button>` : ''}
+            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Done</button>` : ''}
           </td>
         </tr>`;
       }).join('') : (expiryAlerts.length ? '' : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No work orders</td></tr>')}</tbody>
