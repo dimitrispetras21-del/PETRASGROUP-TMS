@@ -17,6 +17,11 @@ const RAMP_FIELDS = [
   'Order','National Order','Truck','Driver',
   'Is Veroia Switch','Ramp Category','Stock Status',
   'Loading Points','Delivery Points',
+  'Stop Client 1','Stop Client 2','Stop Client 3','Stop Client 4','Stop Client 5',
+  'Stop Location 1','Stop Location 2','Stop Location 3','Stop Location 4','Stop Location 5',
+  'Stop Pallets 1','Stop Pallets 2','Stop Pallets 3','Stop Pallets 4','Stop Pallets 5',
+  'Stop Temp 1','Stop Temp 2','Stop Temp 3','Stop Temp 4','Stop Temp 5',
+  'Stop Ref 1','Stop Ref 2','Stop Ref 3','Stop Ref 4','Stop Ref 5',
 ];
 
 /* ── CSS ──────────────────────────────────────────────────────── */
@@ -323,10 +328,6 @@ async function _rampAutoSync() {
     if (existingCLIds.has(r.id)) continue;
     if (existingVSGClients.has(supplierStr)) continue;
 
-    // Build notes with CL:recXXX prefix for future dedup + breakdown per supplier
-    const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
-    const notesStr = `CL:${r.id}\n` + notesLines.join('\n');
-
     const rec = {
       'Plan Date': date,
       'Type': 'Παραλαβή',
@@ -336,12 +337,20 @@ async function _rampAutoSync() {
       'Goods': f['Goods'] || '',
       'Pallets': f['Total Pallets'] || 0,
       'Supplier/Client': supplierStr || clName,
-      'Notes': notesStr,
+      'Notes': `CL:${r.id}`,
     };
+    // Write per-stop structured fields (up to 5)
+    supplierLines.slice(0, 5).forEach((s, idx) => {
+      const n = idx + 1;
+      rec[`Stop Client ${n}`]   = s.client || '';
+      rec[`Stop Location ${n}`] = s.location || '';
+      rec[`Stop Pallets ${n}`]  = s.pallets || 0;
+      rec[`Stop Temp ${n}`]     = s.temp || '';
+      rec[`Stop Ref ${n}`]      = s.ref || '';
+    });
     if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
     if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-    // Resolve CL locations
     rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 10);
     rec['Delivery Points'] = _rampResolveStops(f, 'Delivery Location', 10);
     toCreate.push(rec);
@@ -573,26 +582,36 @@ function _rRow(rec,num,tOpts) {
     ? client.split(' | ').slice(1).join(' / ')
     : client);
 
-  // Sub-rows for VS+G consolidated loads
+  // Sub-rows for VS+G consolidated loads — read from structured Stop fields
   let subHtml = '';
-  if (isVSG && notes) {
-    const lines = notes.split('\n').filter(l => l && !l.startsWith('CL:'));
-    subHtml = lines.map(line => {
-      const parts = line.split(' | ');
-      const sup = parts[0]?.trim()||'';
-      const loc = parts[1]?.trim()||'';
-      const palInfo = parts[2]||'';
-      const tempInfo = parts[3]||'';
-      const refInfo = parts[4]||'';
-      return `<tr class="sub-row">
-        <td></td><td></td>
-        <td style="padding-left:18px">↳ ${sup}</td>
-        <td>${loc}</td>
-        <td>${refInfo}</td>
-        <td>${tempInfo}</td>
-        <td>${palInfo}</td>
-        <td></td><td></td></tr>`;
-    }).join('');
+  if (isVSG) {
+    const stops = [];
+    for (let si = 1; si <= 5; si++) {
+      const sc = f[`Stop Client ${si}`];
+      if (!sc) break;
+      stops.push({
+        client: sc,
+        loc: f[`Stop Location ${si}`] || '',
+        pal: f[`Stop Pallets ${si}`] || 0,
+        temp: f[`Stop Temp ${si}`] || '',
+        ref: f[`Stop Ref ${si}`] || '',
+      });
+    }
+    // Fallback: parse Notes for legacy records without Stop fields
+    if (!stops.length && notes) {
+      notes.split('\n').filter(l => l && !l.startsWith('CL:')).forEach(line => {
+        const p = line.split(' | ');
+        stops.push({ client: p[0]?.trim()||'', loc: p[1]?.trim()||'', pal: p[2]||'', temp: p[3]||'', ref: p[4]||'' });
+      });
+    }
+    subHtml = stops.map(s => `<tr class="sub-row">
+      <td></td><td></td>
+      <td style="padding-left:18px">↳ ${s.client}</td>
+      <td>${s.loc}</td>
+      <td>${s.ref}</td>
+      <td>${s.temp}</td>
+      <td>${typeof s.pal==='number' ? s.pal+' pal' : s.pal}</td>
+      <td></td><td></td></tr>`).join('');
   }
 
   const locField = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
