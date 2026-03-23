@@ -777,6 +777,41 @@ function _mreqStatusBadge(s) {
   return '<span class="exp-badge" style="background:#92400E;color:#FEF3C7">PENDING</span>';
 }
 
+// Build auto-generated expiry work orders (≤14 days)
+function _mreqExpiryAlerts() {
+  const alerts = [];
+  const existingPlates = new Set(MREQ.data.map(r => (r.fields['Vehicle Plate']||'').toUpperCase()));
+  const check = (vehicles, fields, vType) => {
+    for (const v of vehicles) {
+      const f = v.fields;
+      if (!f['Active']) continue;
+      const plate = f['License Plate'] || '';
+      for (const ef of fields) {
+        const d = f[ef.field];
+        if (!d) continue;
+        const days = _daysUntil(d);
+        if (days !== null && days <= 14) {
+          // Skip if a manual work order already exists for same plate + same doc type keyword
+          const hasManual = MREQ.data.some(r =>
+            (r.fields['Vehicle Plate']||'').toUpperCase() === plate.toUpperCase() &&
+            r.fields['Status'] !== 'Done' &&
+            (r.fields['Description']||'').toUpperCase().includes(ef.label.toUpperCase())
+          );
+          if (hasManual) continue;
+          alerts.push({
+            plate, vType, doc: ef.label, days, date: d.substring(0,10),
+            desc: `${ef.label} ${days < 0 ? 'EXPIRED' : 'expiring'} — ${Math.abs(days)}d ${days < 0 ? 'overdue' : 'left'}`,
+          });
+        }
+      }
+    }
+  };
+  check(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
+  check(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
+  alerts.sort((a,b) => a.days - b.days);
+  return alerts;
+}
+
 function _mreqPaint() {
   const all = [...MREQ.data].sort((a,b) => {
     const po = { SOS: 0, 'Άμεσα': 1, 'Κανονικό': 2 };
@@ -789,6 +824,7 @@ function _mreqPaint() {
   const active = all.filter(r => r.fields['Status'] !== 'Done');
   const done = all.filter(r => r.fields['Status'] === 'Done');
   const filtered = _mreqTab === 'active' ? active : _mreqTab === 'done' ? done : all;
+  const expiryAlerts = _mreqTab !== 'done' ? _mreqExpiryAlerts() : [];
 
   const pending = all.filter(r => r.fields['Status'] === 'Pending').length;
   const inProg = all.filter(r => r.fields['Status'] === 'In Progress').length;
@@ -831,9 +867,21 @@ function _mreqPaint() {
 
     <table class="mt">
       <thead><tr>
-        <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:80px" class="c">Actions</th>
+        <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:100px" class="c">Actions</th>
       </tr></thead>
-      <tbody>${filtered.length ? filtered.map((r, i) => {
+      <tbody>${expiryAlerts.length ? expiryAlerts.map((ea, i) => `<tr style="background:rgba(146,64,14,0.06)">
+          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">AUTO</span></td>
+          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
+          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+'d OVERDUE':ea.days+'d left'}</span></td>
+          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">EXPIRED</span>':'<span class="exp-badge exp-warning">EXPIRING</span>'}</td>
+          <td class="c"><span class="exp-badge" style="background:#92400E;color:#FEF3C7">AUTO</span></td>
+          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
+          <td style="font-size:12px">${ea.vType}</td>
+          <td style="font-size:11px">Expiry ≤14d</td>
+          <td class="c" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:9px" onclick="_mreqCreateFromExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">+ Create WO</button>
+          </td>
+        </tr>`).join('') : ''}${expiryAlerts.length && filtered.length ? '<tr><td colspan="9" style="padding:4px;background:var(--border);font-size:0"></td></tr>' : ''}${filtered.length ? filtered.map((r, i) => {
         const f = r.fields;
         return `<tr style="${f['Priority']==='SOS'?'background:rgba(127,29,29,0.06)':''}" onclick="_mreqOpenForm('${r.id}')">
           <td class="rn">${i+1}</td>
@@ -849,9 +897,24 @@ function _mreqPaint() {
               ${f['Status']==='Pending'?'▶ Start':'✓ Done'}</button>` : ''}
           </td>
         </tr>`;
-      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No work orders</td></tr>'}</tbody>
+      }).join('') : (expiryAlerts.length ? '' : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No work orders</td></tr>')}</tbody>
     </table>
     <div id="mreq-form-container"></div>`;
+}
+
+function _mreqCreateFromExpiry(plate, docType, desc) {
+  _mreqOpenForm();
+  setTimeout(() => {
+    const selPlate = document.getElementById('mreq-plate');
+    const custPlate = document.getElementById('mreq-plate-custom');
+    // Try to select from dropdown
+    const opt = [...selPlate.options].find(o => o.value === plate);
+    if (opt) { selPlate.value = plate; } else { selPlate.value = '__custom'; }
+    custPlate.value = plate;
+    document.getElementById('mreq-desc').value = docType + ' — Renewal needed';
+    document.getElementById('mreq-prio').value = 'SOS';
+    document.getElementById('mreq-notes').value = desc;
+  }, 50);
 }
 
 async function _mreqQuickStatus(recId, newStatus) {
