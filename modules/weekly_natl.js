@@ -394,7 +394,7 @@ function _wnPaint() {
         </div>
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
           ↑ ΑΝΟΔΟΣ
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${data.southnorth.length}</span>
+          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${snRows.length}</span>
         </div>
       </div>
       <div id="wn-rows">
@@ -708,10 +708,11 @@ function _wnClLoadingSummary(f) {
   for (let i = 1; i <= 10; i++) {
     const arr = f[`Loading Location ${i}`];
     if (!arr?.length) break;
-    const loc = WNATL.data._locMap?.[arr[0]];
+    const locId = arr[0]?.id || arr[0];
+    const loc = WNATL.data._locMap?.[locId];
     if (loc) locs.push(loc.split(',')[0]);
   }
-  return locs.join(' · ') || '';
+  return locs.join(' / ') || '';
 }
 
 function _wnPickupSummary(f) {
