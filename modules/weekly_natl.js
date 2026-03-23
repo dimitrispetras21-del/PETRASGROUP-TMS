@@ -119,17 +119,22 @@ function _wnCurrentWeek() {
 })();
 
 /* ── ENTRY POINT ──────────────────────────────────────────────────── */
+let _wnLoadId = 0; // prevents stale renders from rapid week switching
 async function renderWeeklyNatl() {
+  const loadId = ++_wnLoadId;
   document.getElementById('topbarTitle').textContent = `Weekly National — Week ${WNATL.week}`;
   const content = document.getElementById('content');
   content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
     await _wnLoadAssets();
+    if (loadId !== _wnLoadId) return; // user switched week, abort
     await _wnLoadOrders();
+    if (loadId !== _wnLoadId) return;
     _wnBuildRows();
     _wnPaint();
   } catch(e) {
+    if (loadId !== _wnLoadId) return; // stale error, ignore
     content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`;
     console.error('renderWeeklyNatl:', e);
   }
@@ -147,24 +152,7 @@ async function _wnLoadAssets() {
   ]);
   WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
 
-  // Build location name map for CL rows
-  {
-    const allLocIds = new Set();
-    (WNATL.data.clLoads||[]).forEach(r => {
-      for (let i=1;i<=10;i++) {
-        const arr = r.fields[`Loading Location ${i}`];
-        if (arr?.length) allLocIds.add(arr[0]);
-      }
-    });
-    if (allLocIds.size) {
-      const locRecs = await atGetAll(TABLES.LOCATIONS, {
-        filterByFormula: `OR(${[...allLocIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
-        fields: ['Name'],
-      }, false);
-      WNATL.data._locMap = {};
-      locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
-    }
-  }
+  // _locMap built in _wnLoadOrders after clLoads are available
   WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
   WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
   WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
@@ -198,7 +186,7 @@ async function _wnLoadOrders() {
 
   // Load CONSOLIDATED LOADS for this week (southnorth groupage)
   const clFilter = `AND(IS_AFTER({Date},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Date},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
-  const clRecs = await atGetAll('tbl5XSLQjOnG6yLCW', {
+  const clRecs = await atGetAll(TABLES.CONS_LOADS, {
     filterByFormula: clFilter,
     fields: ['Name','Date','Direction','Total Pallets','Status','Notes',
              'Source Orders','Loading DateTime','Delivery DateTime','Goods','Temperature C',
@@ -215,8 +203,24 @@ async function _wnLoadOrders() {
     .filter(r => { const d=r.fields['Direction']||''; return d.includes('South')||d==='ΑΝΟΔΟΣ'; })
     .sort((a,b) => (a.fields['Date']||'').localeCompare(b.fields['Date']||''));
 
-  // Also filter week by Loading DateTime for S→N (pick-up this week)
-  // N→S already filtered by Delivery DateTime above
+  // Build location name map for CL rows (now that clLoads is populated)
+  {
+    const allLocIds = new Set();
+    (WNATL.data.clLoads||[]).forEach(r => {
+      for (let i=1;i<=10;i++) {
+        const arr = r.fields[`Loading Location ${i}`];
+        if (arr?.length) allLocIds.add(arr[0]);
+      }
+    });
+    if (allLocIds.size) {
+      const locRecs = await atGetAll(TABLES.LOCATIONS, {
+        filterByFormula: `OR(${[...allLocIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+        fields: ['Name'],
+      }, false);
+      WNATL.data._locMap = {};
+      locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
+    }
+  }
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
@@ -531,13 +535,15 @@ function _wnRowHTML(row, i) {
   const badges = _wnBadges(f);
 
   return `
-  <div id="wn-row-${row.id}" class="wi-row ${sCls}">
+  <div id="wn-row-${row.id}" class="wi-row ${sCls}"
+    draggable="true"
+    ondragstart="_wnDragStart(event,'${row.orderId||ord.id}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
-      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})">
+      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
         <div class="wi-route">
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
@@ -552,21 +558,20 @@ function _wnRowHTML(row, i) {
           ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
         </div>
+        <button class="wi-side-btn" title="Εκτύπωση κάθοδος" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
-        <button class="wi-side-btn" title="Εκτύπωση" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
-        ${row.matchedId
-          ? `<button class="wi-side-btn" title="Εκτύπωση ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>`
-          : `<div style="width:30px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wn-ci-${row.id}"
            onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})">
+           ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})"
+           style="position:relative">
         ${snCell}
       </div>
     </div>
@@ -583,7 +588,8 @@ function _wnSnInlineCell(snRec, rowId) {
   const toStr    = f['Type']==='Veroia Switch'
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
     : (_wnDeliverySummary(f) || clientLabel || '—');
-  const loadDt   = row.source==='cl' ? _wnFmt(f['Date']) : _wnFmt(f['Loading DateTime']);
+  const isCL     = !!f['Date'] && !f['Loading DateTime'];
+  const loadDt   = isCL ? _wnFmt(f['Date']) : _wnFmt(f['Loading DateTime']);
   const pals     = f['Total Pallets']||f['Pallets']||0;  // CL uses Total Pallets
   return `<div class="wi-ci-data">
     <div style="display:flex;align-items:center;gap:0;min-width:0">
@@ -657,14 +663,11 @@ function _wnSnRowHTML(row) {
       </div>
       <div class="wi-ce" style="background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <button class="wi-side-btn" title="Εκτύπωση ανόδου"
-          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
-        <div style="width:30px;flex-shrink:0"></div>
       </div>
-      <div class="wi-ci" style="cursor:grab">
+      <div class="wi-ci" style="cursor:grab;position:relative">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
             <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
@@ -679,6 +682,8 @@ function _wnSnRowHTML(row) {
           </div>
           <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
         </div>
+        <button class="wi-side-btn" title="Εκτύπωση ανόδου" style="position:absolute;top:2px;left:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
       </div>
     </div>
   </div>`;
@@ -997,7 +1002,7 @@ async function _wnSaveFromPopover(rowId) {
   for (const orderId of row.orderIds) {
     try {
       // CL rows patch CONSOLIDATED LOADS; NO rows patch NAT_ORDERS
-      const tableId = row.source==='cl' ? 'tbl5XSLQjOnG6yLCW' : TABLES.NAT_ORDERS;
+      const tableId = row.source==='cl' ? TABLES.CONS_LOADS : TABLES.NAT_ORDERS;
       const res = await atPatch(tableId, orderId, fields);
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push(err.message); }

@@ -30,12 +30,12 @@ const OPS_FIELDS = [
   cursor:pointer; letter-spacing:.5px; text-transform:uppercase; font-family:'Syne',sans-serif;
   transition:all .15s; }
 .ops-day-btn:hover { background:var(--bg-hover); }
-.ops-day-btn.active { background:#0EA5E9; color:#fff; border-color:#0EA5E9;
-  box-shadow:0 2px 8px rgba(14,165,233,0.25); }
+.ops-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
+  box-shadow:0 2px 8px rgba(2,132,199,0.25); }
 
 /* KPI cards — matches project .kpi-card style */
 .ops-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ops-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid #0EA5E9;
+.ops-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
   border-radius:10px; padding:14px 18px; flex:1; min-width:130px;
   box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .ops-kpi-label { font-size:11px; font-weight:500; letter-spacing:.3px;
@@ -73,10 +73,10 @@ const OPS_FIELDS = [
   letter-spacing:1.5px; text-transform:uppercase;
   display:flex; justify-content:space-between; align-items:center;
 }
-.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid #059669; }
-.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid #0EA5E9; }
-.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid #7C3AED; }
-.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid #9D174D; }
+.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
+.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
+.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
+.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
 
 /* table — uses global thead/tbody styles from style.css */
 .ops-t { width:100%; border-collapse:collapse; background:var(--bg-card);
@@ -85,7 +85,7 @@ const OPS_FIELDS = [
 .ops-t thead th { padding:9px 14px; font-size:10px; font-weight:600;
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
   text-align:left; border-bottom:1px solid var(--border); white-space:nowrap;
-  background:#F0F7FF; }
+  background:#F0F5FA; }
 .ops-t thead th.c { text-align:center; }
 .ops-t tbody td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border);
   vertical-align:middle; }
@@ -100,11 +100,11 @@ const OPS_FIELDS = [
 .ops-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; max-height:200px; }
-.ops-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
+.ops-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
 .ops-t input.tinp { padding:4px 8px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; width:60px; }
-.ops-t input.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.20); }
+.ops-t input.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
 
 /* action buttons — match project btn style */
 /* action buttons — use global .btn classes */
@@ -212,7 +212,10 @@ function _opsDraw() {
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Daily Ops Plan</div>
         <div class="page-sub">${fD(tgt)} · ${total} orders</div></div>
-      <button class="btn btn-ghost" onclick="renderDailyOps()">Refresh</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="_opsPrint()">Print</button>
+        <button class="btn btn-ghost" onclick="renderDailyOps()">Refresh</button>
+      </div>
     </div>
     <div class="ops-toolbar">
       <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">Today</button>
@@ -220,14 +223,14 @@ function _opsDraw() {
     </div>
     <div class="ops-kpis">
       <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${nPend}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${total?nPend:'—'}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Loaded</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0EA5E9">${nLoad}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--accent)">${total?nLoad:'—'}</span></div></div>
       <div class="ops-kpi" style="border-left-color:var(--success)"><div class="ops-kpi-label">Delivered</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${nDel}</span><span class="ops-kpi-sub">/ ${total}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${total?nDel:'—'}</span><span class="ops-kpi-sub">${total?'/ '+total:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${total?Math.round(nDel/total*100):0}%;background:var(--success)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Checklist</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${dC}</span><span class="ops-kpi-sub">/ ${tC}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
     </div>
     ${ovH}
@@ -346,10 +349,48 @@ async function _opsDel(id,perf){const d=new Date().toISOString().split('T')[0];
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
-async function _opsPost(id){const nd=prompt('New delivery date (YYYY-MM-DD):');if(!nd||!/\d{4}-\d{2}-\d{2}/.test(nd))return;
-  try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Postponed','Postponed To':nd});
-  const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']='Postponed';
-  toast('Postponed → '+nd);_opsDraw();}catch(e){toast('Error','danger');}}
+async function _opsPost(id){
+  // Auto-postpone to next day
+  const r=OPS.intl.find(x=>x.id===id);if(!r)return;
+  const f=r.fields;
+  const loadDt=f['Loading DateTime']?.slice(0,10)||'';
+  const delDt=f['Delivery DateTime']?.slice(0,10)||'';
+  const nextLoad=loadDt?new Date(new Date(loadDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
+  const nextDel=delDt?new Date(new Date(delDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
+  const patch={'Ops Status':'Postponed','Postponed To':nextLoad||nextDel};
+  if(nextLoad) patch['Loading DateTime']=nextLoad;
+  if(nextDel) patch['Delivery DateTime']=nextDel;
+  try{await atPatch(TABLES.ORDERS,id,patch);
+  invalidateCache(TABLES.ORDERS);
+  toast('Postponed → '+(nextLoad||nextDel));renderDailyOps();}catch(e){toast('Error','danger');}}
+function _opsPrint() {
+  const content = document.querySelector('.ops-sections');
+  if (!content) return;
+  const win = window.open('','_blank','width=1100,height=800');
+  win.document.write(`<html><head><title>Daily Ops Plan</title>
+    <style>
+      body{font-family:'DM Sans',sans-serif;padding:20px;color:#1E293B;font-size:12px}
+      h1{font-family:'Syne',sans-serif;font-size:18px;margin-bottom:4px}
+      .sub{color:#64748B;font-size:12px;margin-bottom:16px}
+      table{width:100%;border-collapse:collapse;margin-bottom:18px}
+      th{background:#F0F5FA;padding:7px 10px;font-size:9px;text-transform:uppercase;
+        letter-spacing:.8px;text-align:left;border-bottom:2px solid #E2E8F0;font-weight:600}
+      td{padding:6px 10px;border-bottom:1px solid #E2E8F0;font-size:11px}
+      .sec{background:#0B1929;color:#C4CFDB;padding:6px 12px;font-size:9px;
+        font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border-radius:6px 6px 0 0;
+        border-left:3px solid #0284C7;margin-top:12px}
+      .ops-toolbar,.btn,.ops-alert,.ops-kpis{display:none!important}
+      input,select,button{display:none}
+      @media print{body{padding:10px}table{page-break-inside:auto}}
+    </style></head><body>
+    <h1>Daily Ops Plan</h1>
+    <div class="sub">${document.querySelector('.page-sub')?.textContent||''}</div>
+    ${content.innerHTML}
+  </body></html>`);
+  win.document.close();
+  setTimeout(()=>{win.print();},400);
+}
+
 async function _opsOvAct(id,perf='Delayed'){const d=new Date().toISOString().split('T')[0];
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}

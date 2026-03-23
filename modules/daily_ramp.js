@@ -29,16 +29,16 @@ const RAMP_FIELDS = [
   border:1px solid var(--border-mid); background:var(--bg); color:var(--text-mid);
   cursor:pointer; font-family:'Syne',sans-serif; transition:all .15s; }
 .ramp-day-btn:hover { background:var(--bg-hover); }
-.ramp-day-btn.active { background:#0EA5E9; color:#fff; border-color:#0EA5E9;
-  box-shadow:0 2px 8px rgba(14,165,233,0.25); }
+.ramp-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
+  box-shadow:0 2px 8px rgba(2,132,199,0.25); }
 .ramp-date-inp { padding:6px 10px; font-size:11px; border-radius:7px;
   border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; }
-.ramp-date-inp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.15); }
+.ramp-date-inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
 
 /* KPIs */
 .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ramp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid #0EA5E9;
+.ramp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
   border-radius:10px; padding:14px 18px; flex:1; min-width:110px;
   box-shadow:0 1px 3px rgba(0,0,0,0.04); }
 .ramp-kpi-lbl { font-size:11px; font-weight:500; letter-spacing:.3px; color:var(--text-dim); margin-bottom:8px; }
@@ -55,17 +55,17 @@ const RAMP_FIELDS = [
   font-family:'Syne',sans-serif; font-size:10px; font-weight:800;
   letter-spacing:1.5px; text-transform:uppercase; background:#0B1929; color:#C4CFDB;
   display:flex; justify-content:space-between; align-items:center; }
-.ramp-sec-hd.inbound  { border-left:3px solid #059669; }
-.ramp-sec-hd.outbound { border-left:3px solid #0EA5E9; }
-.ramp-sec-hd.timeline { border-left:3px solid #6B7280; }
-.ramp-sec-hd.stock    { border-left:3px solid #D97706; }
+.ramp-sec-hd.inbound  { border-left:3px solid var(--accent); }
+.ramp-sec-hd.outbound { border-left:3px solid var(--accent); }
+.ramp-sec-hd.timeline { border-left:3px solid var(--accent); }
+.ramp-sec-hd.stock    { border-left:3px solid var(--warning); }
 
 /* table */
 .ramp-t { width:100%; border-collapse:collapse; background:var(--bg-card);
   border:1px solid var(--border); border-top:none; border-radius:0 0 10px 10px; overflow:hidden; }
 .ramp-t thead th { padding:9px 10px; font-size:10px; font-weight:600;
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
-  text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:#F0F7FF; }
+  text-align:left; border-bottom:1px solid var(--border); white-space:nowrap; background:#F0F5FA; }
 .ramp-t thead th.c { text-align:center; }
 .ramp-t tbody td { padding:10px 10px; font-size:13px; border-bottom:1px solid var(--border); vertical-align:middle; }
 .ramp-t tbody tr:last-child td { border-bottom:none; }
@@ -77,7 +77,7 @@ const RAMP_FIELDS = [
 .ramp-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
   border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
-.ramp-t select.tinp:focus { border-color:#0EA5E9; box-shadow:0 0 0 3px rgba(14,165,233,0.15); }
+.ramp-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
 /* action buttons — inherit global .btn styling */
 .ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
 
@@ -265,49 +265,54 @@ async function _rampAutoSync() {
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  // Deduplicate by CL Name — check if ANY existing VS+G record contains this CL Name
+  // Deduplicate by CL Name OR Notes content — check existing VS+G records
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
+  const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
+  const existingVSGNotes = new Set(existingVSG.map(e=>(e.fields['Notes']||'').slice(0,50)).filter(Boolean));
+
+  // Pre-fetch ALL source order IDs from all CLs in one batch
+  const allSrcIds = new Set();
+  consLoads.forEach(r => {
+    (r.fields['Source Orders']||[]).forEach(o => { const id = o?.id||o; if(id) allSrcIds.add(id); });
+  });
+  const srcOrderMap = {};
+  if (allSrcIds.size) {
+    const srcFilter = `OR(${[...allSrcIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`;
+    const srcRecs = await atGetAll(TABLES.NAT_ORDERS, {
+      filterByFormula: srcFilter,
+      fields: ['Client','Pickup Location 1','Pallets','Temperature °C','Reference']
+    }, false).catch(()=>[]);
+    srcRecs.forEach(r => { srcOrderMap[r.id] = r; });
+  }
 
   for (const r of consLoads) {
     const f = r.fields;
     const clName = f['Name']||'';
-    // Check if any existing record already references this CL (by name anywhere in Supplier/Client or Notes)
-    const alreadyExists = existingVSG.some(e => {
-      const sc = e.fields['Supplier/Client']||'';
-      return sc.includes(clName) || sc === clName;
-    });
-    if (alreadyExists) continue;
-
-    // Fetch source order details for supplier breakdown
+    // Build supplier string first for dedup check
     const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
     let supplierLines = [];
-    if (srcIds.length) {
-      const srcOrders = await Promise.all(srcIds.map(async (sid,i) => {
-        try {
-          const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${sid}`,
-            {headers:{'Authorization':'Bearer '+AT_TOKEN}});
-          const d = await res.json();
-          const sf = d.fields||{};
-          // Resolve client name
-          const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
-          const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
-          const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
-          // Resolve pickup location
-          const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
-          const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
-          const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
-          const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
-          const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
-          const ref = sf['Reference'] || '';
-          return {client:clientName, location:locName, pallets:pal, temp:temp, ref:ref};
-        } catch { return null; }
-      }));
-      supplierLines = srcOrders.filter(Boolean);
-    }
+    srcIds.forEach((sid, i) => {
+      const srcRec = srcOrderMap[sid];
+      if (!srcRec) return;
+      const sf = srcRec.fields||{};
+      const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
+      const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
+      const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
+      const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
+      const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
+      const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
+      const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
+      const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
+      const ref = sf['Reference'] || '';
+      supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
+    });
+    const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
+    if (existingVSGClients.has(supplierStr)) continue;
+    // Also check by notes prefix to catch duplicates with same suppliers
+    const notesPrefix = supplierLines.map(s=>`${s.client} | ${s.location}`).join('\n').slice(0,50);
+    if (notesPrefix && existingVSGNotes.has(notesPrefix)) continue;
 
-    // Build supplier/client as "Name1 / Name2 / ..."
-    const clientNames = supplierLines.map(s=>s.client).filter(Boolean);
-    const supplierStr = clientNames.length ? clientNames.join(' / ') : clName;
+    // supplierLines and supplierStr already built above for dedup
 
     // Build notes with breakdown: "Client | Location | PAL | REF" per line
     const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
@@ -321,7 +326,7 @@ async function _rampAutoSync() {
       'Is Veroia Switch': true,
       'Goods': f['Goods'] || '',
       'Pallets': f['Total Pallets'] || 0,
-      'Supplier/Client': clName + ' | ' + supplierStr,
+      'Supplier/Client': supplierStr || clName,
       'Notes': notesStr,
     };
     if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
@@ -360,17 +365,18 @@ async function _rampAutoSync() {
       // Source national order no longer matches this date
       toDelete.push(ramp.id);
     } else if (cat === 'VS + Groupage' && !orderId && !natId) {
-      // CL record — check if CL still exists for this date
-      const clName = (rf['Supplier/Client']||'').split(' | ')[0];
-      if (clName && !validCLNames.has(clName)) {
+      // CL record — check if its supplier/client matches any active CL
+      const sc = rf['Supplier/Client']||'';
+      if (sc && !existingVSGClients.has(sc) && !validCLNames.has(sc)) {
         toDelete.push(ramp.id);
       }
     }
   }
 
   if (toDelete.length) {
-    for (const id of toDelete) {
-      await atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e));
+    for (let i = 0; i < toDelete.length; i += 10) {
+      const batch = toDelete.slice(i, i + 10);
+      await Promise.all(batch.map(id => atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e))));
     }
     console.log(`Ramp cleanup: removed ${toDelete.length} orphan records`);
   }
@@ -614,7 +620,7 @@ function _rTlRow(rec) {
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
-async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
+async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
   try{await atPatch(TABLES.RAMP,id,{'Time':v||null});
     const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v;
@@ -708,7 +714,7 @@ function _rampPrint() {
       .ramp-sec-hd.stock { border-left:3px solid #D97706; }
       table { width:100%; border-collapse:collapse; border:1px solid #ddd; border-top:none; }
       thead th { padding:6px 8px; font-size:8px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
-        color:#9CA3AF; background:#F0F7FF; border-bottom:1px solid #ddd; text-align:left; }
+        color:#9CA3AF; background:#F0F5FA; border-bottom:1px solid #ddd; text-align:left; }
       tbody td { padding:6px 8px; font-size:11px; border-bottom:1px solid #eee; }
       .sub-row td { font-size:10px; color:#475569; background:#FAFBFC; }
       .rn { font-family:'Syne',sans-serif; font-weight:700; color:#9CA3AF; }
