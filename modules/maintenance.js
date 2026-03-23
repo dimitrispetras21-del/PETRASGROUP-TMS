@@ -13,12 +13,9 @@ const MAINT = {
 const TRUCK_EXPIRY_FIELDS = [
   { field: 'KTEO Expiry',        label: 'KTEO' },
   { field: 'Insurance Expiry',   label: 'Insurance' },
-  { field: 'Tachograph Expiry',  label: 'Tachograph' },
-  { field: 'ADR Expiry',         label: 'ADR' },
   { field: 'KEK Expiry',         label: 'KEK' },
 ];
 const TRAILER_EXPIRY_FIELDS = [
-  { field: 'ATP Expiry',         label: 'ATP' },
   { field: 'KTEO Expiry',        label: 'KTEO' },
   { field: 'Insurance Expiry',   label: 'Insurance' },
   { field: 'FRC Expiry',         label: 'FRC' },
