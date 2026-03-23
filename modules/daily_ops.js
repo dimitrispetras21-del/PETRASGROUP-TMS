@@ -223,14 +223,14 @@ function _opsDraw() {
     </div>
     <div class="ops-kpis">
       <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${nPend}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${total?nPend:'—'}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Loaded</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--accent)">${nLoad}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--accent)">${total?nLoad:'—'}</span></div></div>
       <div class="ops-kpi" style="border-left-color:var(--success)"><div class="ops-kpi-label">Delivered</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${nDel}</span><span class="ops-kpi-sub">/ ${total}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${total?nDel:'—'}</span><span class="ops-kpi-sub">${total?'/ '+total:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${total?Math.round(nDel/total*100):0}%;background:var(--success)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Checklist</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${dC}</span><span class="ops-kpi-sub">/ ${tC}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
     </div>
     ${ovH}

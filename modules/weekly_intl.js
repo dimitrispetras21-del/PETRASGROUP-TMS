@@ -420,7 +420,9 @@ async function _wiLoadAssets(){
 }
 
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
+let _wiLoadId = 0;
 async function renderWeeklyIntl(){
+  const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
   document.getElementById('topbarTitle').textContent=`Weekly International — Week ${WINTL.week}`;
   document.getElementById('content').innerHTML=`
@@ -430,6 +432,7 @@ async function renderWeeklyIntl(){
     </div>`;
   try{
     await _wiLoadAssets();
+    if (loadId !== _wiLoadId) return;
     const allOrders = await atGetAll(TABLES.ORDERS,{
       filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`,
     },false);
@@ -442,9 +445,11 @@ async function renderWeeklyIntl(){
       ));
     WINTL.data.imports = allOrders.filter(r=>r.fields.Direction==='Import');
 
+    if (loadId !== _wiLoadId) return;
     _wiBuildRows();
     _wiPaint();
   }catch(err){
+    if (loadId !== _wiLoadId) return;
     document.getElementById('content').innerHTML=`
       <div class="empty-state">
         <p style="color:var(--danger);font-size:13px">${err.message}</p>

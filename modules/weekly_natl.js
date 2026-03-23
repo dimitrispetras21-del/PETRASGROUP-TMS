@@ -119,17 +119,22 @@ function _wnCurrentWeek() {
 })();
 
 /* ── ENTRY POINT ──────────────────────────────────────────────────── */
+let _wnLoadId = 0; // prevents stale renders from rapid week switching
 async function renderWeeklyNatl() {
+  const loadId = ++_wnLoadId;
   document.getElementById('topbarTitle').textContent = `Weekly National — Week ${WNATL.week}`;
   const content = document.getElementById('content');
   content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
     await _wnLoadAssets();
+    if (loadId !== _wnLoadId) return; // user switched week, abort
     await _wnLoadOrders();
+    if (loadId !== _wnLoadId) return;
     _wnBuildRows();
     _wnPaint();
   } catch(e) {
+    if (loadId !== _wnLoadId) return; // stale error, ignore
     content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`;
     console.error('renderWeeklyNatl:', e);
   }
@@ -181,7 +186,7 @@ async function _wnLoadOrders() {
 
   // Load CONSOLIDATED LOADS for this week (southnorth groupage)
   const clFilter = `AND(IS_AFTER({Date},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Date},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
-  const clRecs = await atGetAll('tbl5XSLQjOnG6yLCW', {
+  const clRecs = await atGetAll(TABLES.CONS_LOADS, {
     filterByFormula: clFilter,
     fields: ['Name','Date','Direction','Total Pallets','Status','Notes',
              'Source Orders','Loading DateTime','Delivery DateTime','Goods','Temperature C',
@@ -997,7 +1002,7 @@ async function _wnSaveFromPopover(rowId) {
   for (const orderId of row.orderIds) {
     try {
       // CL rows patch CONSOLIDATED LOADS; NO rows patch NAT_ORDERS
-      const tableId = row.source==='cl' ? 'tbl5XSLQjOnG6yLCW' : TABLES.NAT_ORDERS;
+      const tableId = row.source==='cl' ? TABLES.CONS_LOADS : TABLES.NAT_ORDERS;
       const res = await atPatch(tableId, orderId, fields);
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push(err.message); }
