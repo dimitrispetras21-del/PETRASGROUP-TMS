@@ -131,6 +131,30 @@ function _wsName(wsArr) {
   return ws ? (ws.fields['Name'] || '—') : '—';
 }
 
+// Flat list of all expiry rows (used by Dashboard)
+function _expiryBuildRows() {
+  const rows = [];
+  const addVehicles = (vehicles, fields, vType) => {
+    for (const v of vehicles) {
+      const f = v.fields;
+      if (!f['Active']) continue;
+      for (const ef of fields) {
+        const d = f[ef.field] || null;
+        rows.push({ plate: f['License Plate']||'?', vType, docType: ef.label, date: d, days: _daysUntil(d), brand: f['Brand']||'' });
+      }
+    }
+  };
+  addVehicles(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
+  addVehicles(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
+  rows.sort((a, b) => {
+    if (a.days === null && b.days === null) return 0;
+    if (a.days === null) return 1;
+    if (b.days === null) return -1;
+    return a.days - b.days;
+  });
+  return rows;
+}
+
 // ═════════════════════════════════════════════════════════════════
 // PAGE 1: EXPIRY ALERTS — Airtable-style layout
 // ═════════════════════════════════════════════════════════════════
@@ -175,7 +199,8 @@ function _expiryVehicleRows(vehicles, expiryFields) {
 function _expCell(doc) {
   if (!doc.date) return '<td class="c" style="color:var(--text-dim)">—</td>';
   const d = _daysUntil(doc.date);
-  const dateStr = doc.date.substring(5); // MM-DD
+  const parts = doc.date.substring(0,10).split('-');
+  const dateStr = parts[2]+'/'+parts[1]; // DD/MM format
   let bg = '', color = '';
   if (d < 0)        { bg = '#7F1D1D'; color = '#FEE2E2'; }
   else if (d <= 7)  { bg = '#991B1B'; color = '#FEE2E2'; }
