@@ -169,54 +169,47 @@ async function _wnLoadOrders() {
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
   const fmt    = d => d.toISOString().split('T')[0];
 
-  const filter = `AND(IS_AFTER({Delivery DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Delivery DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
+  // ── Single query to NATIONAL LOADS ──
+  const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
-  const all = await atGetAll(TABLES.NAT_ORDERS, {
+  const all = await atGetAll(TABLES.NAT_LOADS, {
     filterByFormula: filter,
   }, false);
 
+  // Split by direction
   WNATL.data.northsouth = all
-    .filter(r => r.fields['Direction'] === 'North→South')
+    .filter(r => r.fields['Direction'] === 'ΚΑΘΟΔΟΣ')
     .sort((a,b) => (a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
 
-  // Exclude National Groupage NOs from southnorth (they come via CONSOLIDATED LOADS)
   WNATL.data.southnorth = all
-    .filter(r => r.fields['Direction'] === 'South→North' && !r.fields['National Groupage'])
+    .filter(r => r.fields['Direction'] === 'ΑΝΟΔΟΣ')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
 
-  // Load CONSOLIDATED LOADS for this week (southnorth groupage)
-  const clFilter = `AND(IS_AFTER({Date},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Date},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
-  const clRecs = await atGetAll(TABLES.CONS_LOADS, {
-    filterByFormula: clFilter,
-    fields: ['Name','Date','Direction','Total Pallets','Status','Notes',
-             'Source Orders','Loading DateTime','Delivery DateTime','Goods','Temperature C',
-             'Truck','Trailer','Driver','Partner','Partner Truck Plates','Partner Rate',
-             'Groupage ID','Matched Order ID','Is Groupage',
-             'Loading Location 1','Loading Location 2','Loading Location 3',
-             'Loading Location 4','Loading Location 5',
-             'Delivery Location 1'],
-  }, false);
+  // No more separate CL query — everything is in NAT_LOADS
+  WNATL.data.clLoads = [];
 
-  // Build synthetic NO-compatible records from CL
-  // Only South→North groupage loads
-  WNATL.data.clLoads = clRecs
-    .filter(r => { const d=r.fields['Direction']||''; return d.includes('South')||d==='ΑΝΟΔΟΣ'; })
-    .sort((a,b) => (a.fields['Date']||'').localeCompare(b.fields['Date']||''));
-
-  // Build location name map for CL rows (now that clLoads is populated)
+  // Build location name map for pickup locations
   {
     const allLocIds = new Set();
-    (WNATL.data.clLoads||[]).forEach(r => {
+    all.forEach(r => {
       for (let i=1;i<=10;i++) {
-        const arr = r.fields[`Loading Location ${i}`];
+        const arr = r.fields[`Pickup Location ${i}`];
         if (arr?.length) allLocIds.add(arr[0]);
+        const darr = r.fields[`Delivery Location ${i}`];
+        if (darr?.length) allLocIds.add(darr[0]);
       }
     });
     if (allLocIds.size) {
-      const locRecs = await atGetAll(TABLES.LOCATIONS, {
-        filterByFormula: `OR(${[...allLocIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
-        fields: ['Name'],
-      }, false);
+      const ids = [...allLocIds];
+      const locRecs = [];
+      for (let i=0; i<ids.length; i+=20) {
+        const batch = ids.slice(i,i+20);
+        const recs = await atGetAll(TABLES.LOCATIONS, {
+          filterByFormula: `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+          fields: ['Name'],
+        }, false);
+        locRecs.push(...recs);
+      }
       WNATL.data._locMap = {};
       locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
     }
@@ -224,91 +217,45 @@ async function _wnLoadOrders() {
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
+function _wnBuildRow(ord, type) {
+  const f = ord.fields;
+  const truckId   = (f['Truck']  ||[])[0]||'';
+  const trailerId = (f['Trailer']||[])[0]||'';
+  const driverId  = (f['Driver'] ||[])[0]||'';
+  const partnerId = (f['Partner']||[])[0]||'';
+  return {
+    id: ++WNATL._seq, type,
+    source: f['Source Type'] === 'Groupage' ? 'cl' : undefined,
+    orderId: ord.id, orderIds:[ord.id],
+    matchedId: f['Matched Load']||null,
+    groupageId: null,
+    truckId, trailerId, driverId, partnerId,
+    truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
+    trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
+    driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
+    partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
+    partnerPlates: f['Partner Truck Plates']||'',
+    partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
+    saved: !!(truckId || partnerId),
+  };
+}
+
 function _wnBuildRows() {
   WNATL.rows = []; WNATL._seq = 0;
   const { northsouth, southnorth } = WNATL.data;
 
-  const grpMap = {};
-
+  // ΚΑΘΟΔΟΣ rows
   for (const ord of northsouth) {
-    const f = ord.fields;
-    const gid = f['Groupage ID'] || null;
-
-    if (gid && grpMap[gid] !== undefined) {
-      WNATL.rows[grpMap[gid]].orderIds.push(ord.id);
-      continue;
-    }
-
-    const idx = WNATL.rows.length;
-    if (gid) grpMap[gid] = idx;
-
-    const truckId   = (f['Truck']  ||[])[0]||'';
-    const trailerId = (f['Trailer']||[])[0]||'';
-    const driverId  = (f['Driver'] ||[])[0]||'';
-    const partnerId = (f['Partner']||[])[0]||'';
-    const matchedId = f['Matched Order ID']||null;
-
-    WNATL.rows.push({
-      id: ++WNATL._seq, type:'northsouth',
-      orderId: ord.id, orderIds:[ord.id],
-      matchedId, groupageId:gid,
-      truckId, trailerId, driverId, partnerId,
-      truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
-      driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
-      partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates: f['Partner Truck Plates']||'',
-      partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
-      saved: !!(truckId || partnerId),
-    });
+    WNATL.rows.push(_wnBuildRow(ord, 'northsouth'));
   }
 
-  // Build CL rows (groupage southnorth) — same structure as NO rows
-  for (const cl of (WNATL.data.clLoads || [])) {
-    const f = cl.fields;
-    const truckId   = (f['Truck']  ||[])[0]||'';
-    const trailerId = (f['Trailer']||[])[0]||'';
-    const driverId  = (f['Driver'] ||[])[0]||'';
-    const partnerId = (f['Partner']||[])[0]||'';
-    WNATL.rows.push({
-      id: ++WNATL._seq, type:'southnorth',
-      source: 'cl',                    // mark as CL origin
-      orderId: cl.id, orderIds:[cl.id],
-      matchedId: f['Matched Order ID']||null,
-      groupageId: f['Groupage ID']||cl.id,   // use CL id as groupage id
-      truckId, trailerId, driverId, partnerId,
-      truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
-      driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
-      partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates: f['Partner Truck Plates']||'',
-      partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
-      saved: !!(truckId || partnerId),
-    });
-  }
-
+  // Collect matched S→N ids
   const matchedSN = new Set(WNATL.rows.map(r=>r.matchedId).filter(Boolean));
 
+  // ΑΝΟΔΟΣ rows — skip if already matched to a ΚΑΘΟΔΟΣ row
   for (const ord of southnorth) {
     if (matchedSN.has(ord.id)) continue;
-    const f = ord.fields;
-    const truckId   = (f['Truck']  ||[])[0]||'';
-    const trailerId = (f['Trailer']||[])[0]||'';
-    const driverId  = (f['Driver'] ||[])[0]||'';
-    const partnerId = (f['Partner']||[])[0]||'';
-    WNATL.rows.push({
-      id: ++WNATL._seq, type:'southnorth',
-      orderId: ord.id, orderIds:[ord.id],
-      matchedId: null, groupageId: f['Groupage ID']||null,
-      truckId, trailerId, driverId, partnerId,
-      truckLabel:   WNATL.data.trucks.find(t=>t.id===truckId)?.label||'',
-      trailerLabel: WNATL.data.trailers.find(t=>t.id===trailerId)?.label||'',
-      driverLabel:  WNATL.data.drivers.find(d=>d.id===driverId)?.label||'',
-      partnerLabel: WNATL.data.partners.find(p=>p.id===partnerId)?.label||'',
-      partnerPlates: f['Partner Truck Plates']||'',
-      partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
-      saved: !!(truckId || partnerId),
-    });
+    WNATL.rows.push(_wnBuildRow(ord, 'southnorth'));
   }
 }
 
@@ -476,48 +423,31 @@ function _wnAllRowsHTML() {
 function _wnRowHTML(row, i) {
   const { data } = WNATL;
 
-  // CL rows: look up in clLoads; NO rows: look up in northsouth
-  let ords, primary, f, isGroup;
-  if (row.source === 'cl') {
-    primary = (data.clLoads||[]).find(r=>r.id===row.orderId);
-    ords = primary ? [primary] : [];
-    f = primary?.fields || {};
-    isGroup = true;  // always groupage
-  } else {
-    ords    = row.orderIds.map(id => data.northsouth.find(r=>r.id===id)).filter(Boolean);
-    primary = ords[0];
-    f       = primary?.fields || {};
-    isGroup = ords.length > 1;
-  }
-  const sn = row.matchedId ? data.southnorth.find(r=>r.id===row.matchedId) : null;
+  // All rows come from NAT_LOADS — unified lookup
+  const allLoads = [...(data.northsouth||[]), ...(data.southnorth||[])];
+  const primary = allLoads.find(r=>r.id===row.orderId);
+  const f = primary?.fields || {};
+  const ords = [primary].filter(Boolean);
+  const isGroup = f['Source Type'] === 'Groupage';
+  const sn = row.matchedId ? allLoads.find(r=>r.id===row.matchedId) : null;
 
-  // Route
-  // CL rows: Loading Locations = pickup points (suppliers → Veroia)
-  // N→S NO rows: Veroia Switch = FROM Veroia; else pickup summary
+  // Route — use unified Pickup/Delivery Location fields
   let fromStr, toStr;
-  if (row.source === 'cl') {
-    // CL: multiple supplier pickups → Veroia cross-dock
-    fromStr = _wnClLoadingSummary(f) || f['Name'] || '—';
+  if (isGroup) {
+    fromStr = _wnNlPickupSummary(f) || f['Name'] || '—';
     toStr   = 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK';
   } else {
-    fromStr = f['Type']==='Veroia Switch'
-      ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-      : (_wnPickupSummary(f) || '—');
-    toStr = _wnDeliverySummary(f) || _wnClientLabel((f['Client']||[])[0]) || '—';
+    fromStr = _wnNlPickupSummary(f) || '—';
+    toStr   = _wnNlDeliverySummary(f) || f['Client'] || '—';
   }
 
-  // Client
-  const clientLabel = _wnClientLabel((f['Client']||[])[0]);
+  // Client (plain text in NL)
+  const clientLabel = f['Client'] || '';
 
   // Dates & pallets
-  const pals   = ords.reduce((s,r) => s + (r.fields['Pallets']||0), 0);
+  const pals   = f['Total Pallets'] || 0;
   const loadDt = _wnFmt(f['Loading DateTime']);
-  const delDts = ords.map(r => r.fields['Delivery DateTime']).filter(Boolean).sort();
-  const delDt  = delDts.length
-    ? (isGroup && _wnFmt(delDts[0]) !== _wnFmt(delDts[delDts.length-1])
-        ? `${_wnFmt(delDts[0])}–${_wnFmt(delDts[delDts.length-1])}`
-        : _wnFmt(delDts[0]))
-    : '—';
+  const delDt  = _wnFmt(f['Delivery DateTime']) || '—';
 
   // Status dot
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
@@ -736,6 +666,31 @@ function _wnDeliverySummary(f) {
   return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
 }
 
+// Unified NL location summaries using _locMap
+function _wnNlPickupSummary(f) {
+  const locs = [];
+  for (let i = 1; i <= 10; i++) {
+    const arr = f[`Pickup Location ${i}`];
+    if (!arr?.length) continue;
+    const locId = arr[0]?.id || arr[0];
+    const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
+    if (name) locs.push(name.split(',')[0]);
+  }
+  return locs.join(' / ') || '';
+}
+
+function _wnNlDeliverySummary(f) {
+  const locs = [];
+  for (let i = 1; i <= 10; i++) {
+    const arr = f[`Delivery Location ${i}`];
+    if (!arr?.length) continue;
+    const locId = arr[0]?.id || arr[0];
+    const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
+    if (name) locs.push(name.split(',')[0]);
+  }
+  return locs.join(' / ') || '';
+}
+
 function _wnClientLabel(clientId) {
   if (!clientId) return '';
   return WNATL.data.clients.find(c => c.id===clientId)?.label || '';
@@ -821,8 +776,8 @@ async function _wnSaveMatch(rowId, snId) {
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
   try {
-    await atPatch(TABLES.NAT_ORDERS, row.orderIds[0], { 'Matched Order ID': snId });
-    await atPatch(TABLES.NAT_ORDERS, snId, { 'Matched Order ID': row.orderIds[0] });
+    await atPatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': snId });
+    await atPatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
     toast('Σύνδεση αποθηκεύτηκε ✓');
   } catch(err) { toast('Σφάλμα σύνδεσης: '+err.message, 'warn'); }
 }
@@ -832,24 +787,12 @@ async function _wnUnmatch(rowId, snId) {
   const snOrd = WNATL.data.southnorth.find(r => r.id===snId);
   row.matchedId = null;
   if (snOrd) {
-    WNATL.rows.push({
-      id: ++WNATL._seq, type:'southnorth',
-      orderId: snId, orderIds:[snId],
-      matchedId:null, groupageId:snOrd.fields['Groupage ID']||null,
-      truckId:(snOrd.fields['Truck']||[])[0]||'',
-      trailerId:'', driverId:'',
-      partnerId:(snOrd.fields['Partner']||[])[0]||'',
-      truckLabel:'', trailerLabel:'', driverLabel:'',
-      partnerLabel:WNATL.data.partners.find(p=>p.id===(snOrd.fields['Partner']||[])[0])?.label||'',
-      partnerPlates:snOrd.fields['Partner Truck Plates']||'',
-      partnerRate:snOrd.fields['Partner Rate']?String(snOrd.fields['Partner Rate']):'',
-      saved:!!(snOrd.fields['Truck']?.length || snOrd.fields['Partner']?.length),
-    });
+    WNATL.rows.push(_wnBuildRow(snOrd, 'southnorth'));
   }
   _wnPaint();
   try {
-    await atPatch(TABLES.NAT_ORDERS, row.orderIds[0], { 'Matched Order ID': '' });
-    await atPatch(TABLES.NAT_ORDERS, snId, { 'Matched Order ID': '' });
+    await atPatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
+    await atPatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
     toast('Σύνδεση αφαιρέθηκε');
   } catch(err) { toast('Σφάλμα: '+err.message, 'warn'); }
 }
@@ -1001,15 +944,14 @@ async function _wnSaveFromPopover(rowId) {
   const errors = [];
   for (const orderId of row.orderIds) {
     try {
-      // CL rows patch CONSOLIDATED LOADS; NO rows patch NAT_ORDERS
-      const tableId = row.source==='cl' ? TABLES.CONS_LOADS : TABLES.NAT_ORDERS;
-      const res = await atPatch(tableId, orderId, fields);
+      // All rows are now in NAT_LOADS
+      const res = await atPatch(TABLES.NAT_LOADS, orderId, fields);
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push(err.message); }
   }
   if (row.matchedId) {
     try {
-      const res = await atPatch(TABLES.NAT_ORDERS, row.matchedId, fields);
+      const res = await atPatch(TABLES.NAT_LOADS, row.matchedId, fields);
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push('Άνοδος: '+err.message); }
   }
@@ -1018,7 +960,7 @@ async function _wnSaveFromPopover(rowId) {
   if (errors.length) { toast('Σφάλμα: '+errors[0].slice(0,60), 'warn'); return; }
 
   row.saved = true;
-  invalidateCache(TABLES.NAT_ORDERS);
+  invalidateCache(TABLES.NAT_LOADS);
   _wnClosePopover();
   toast('Αποθηκεύτηκε ✓');
   await renderWeeklyNatl();
@@ -1029,14 +971,14 @@ async function _wnClear(rowId) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   for (const orderId of row.orderIds) {
     try {
-      await atPatch(TABLES.NAT_ORDERS, orderId,
+      await atPatch(TABLES.NAT_LOADS, orderId,
         { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' });
     } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
   }
   Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
     truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
     partnerPlates:'',partnerRate:'',saved:false });
-  invalidateCache(TABLES.NAT_ORDERS);
+  invalidateCache(TABLES.NAT_LOADS);
   toast('Εκκαθαρίστηκε');
 }
 
