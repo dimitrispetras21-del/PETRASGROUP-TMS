@@ -879,7 +879,7 @@ function _mreqPaint() {
           <td style="font-size:12px">${ea.vType}</td>
           <td style="font-size:11px">Expiry ≤14d</td>
           <td class="c" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost" style="padding:3px 8px;font-size:9px" onclick="_mreqCreateFromExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">+ Create WO</button>
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Done</button>
           </td>
         </tr>`).join('') : ''}${expiryAlerts.length && filtered.length ? '<tr><td colspan="9" style="padding:4px;background:var(--border);font-size:0"></td></tr>' : ''}${filtered.length ? filtered.map((r, i) => {
         const f = r.fields;
@@ -902,19 +902,20 @@ function _mreqPaint() {
     <div id="mreq-form-container"></div>`;
 }
 
-function _mreqCreateFromExpiry(plate, docType, desc) {
-  _mreqOpenForm();
-  setTimeout(() => {
-    const selPlate = document.getElementById('mreq-plate');
-    const custPlate = document.getElementById('mreq-plate-custom');
-    // Try to select from dropdown
-    const opt = [...selPlate.options].find(o => o.value === plate);
-    if (opt) { selPlate.value = plate; } else { selPlate.value = '__custom'; }
-    custPlate.value = plate;
-    document.getElementById('mreq-desc').value = docType + ' — Renewal needed';
-    document.getElementById('mreq-prio').value = 'SOS';
-    document.getElementById('mreq-notes').value = desc;
-  }, 50);
+async function _mreqDismissExpiry(plate, docType, desc) {
+  try {
+    const fields = {
+      'Vehicle Plate': plate,
+      'Description': docType + ' — Renewal',
+      'Priority': 'SOS',
+      'Status': 'Done',
+      'Date Reported': new Date().toISOString().substring(0,10),
+      'Notes': desc,
+    };
+    const created = await atCreate(TABLES.MAINT_REQ, fields);
+    MREQ.data.push(created);
+    _mreqPaint();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 
 async function _mreqQuickStatus(recId, newStatus) {
