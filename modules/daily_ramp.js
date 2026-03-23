@@ -265,9 +265,10 @@ async function _rampAutoSync() {
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  // Deduplicate by CL Name — check existing VS+G records
+  // Deduplicate by CL Name OR Notes content — check existing VS+G records
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
   const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
+  const existingVSGNotes = new Set(existingVSG.map(e=>(e.fields['Notes']||'').slice(0,50)).filter(Boolean));
 
   // Pre-fetch ALL source order IDs from all CLs in one batch
   const allSrcIds = new Set();
@@ -307,6 +308,9 @@ async function _rampAutoSync() {
     });
     const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
     if (existingVSGClients.has(supplierStr)) continue;
+    // Also check by notes prefix to catch duplicates with same suppliers
+    const notesPrefix = supplierLines.map(s=>`${s.client} | ${s.location}`).join('\n').slice(0,50);
+    if (notesPrefix && existingVSGNotes.has(notesPrefix)) continue;
 
     // supplierLines and supplierStr already built above for dedup
 

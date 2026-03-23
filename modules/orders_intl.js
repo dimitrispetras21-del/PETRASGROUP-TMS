@@ -72,6 +72,17 @@ async function renderOrdersIntl() {
     INTL_ORDERS.filtered = records;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
+    // Pre-resolve all client names in batch
+    const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
+    const unresolvedIds = clientIds.filter(id=>!_clientsMap[id]);
+    if (unresolvedIds.length) {
+      for (let i=0; i<unresolvedIds.length; i+=10) {
+        const batch = unresolvedIds.slice(i,i+10);
+        const f = `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`;
+        const recs = await atGetAll(TABLES.CLIENTS,{filterByFormula:f,fields:['Company Name']},false).catch(()=>[]);
+        recs.forEach(r=>{ _clientsMap[r.id] = r.fields['Company Name']||r.id; });
+      }
+    }
     _renderIntlLayout(c);
     _applyIntlFilters();
   } catch(e) { c.innerHTML = showError(e.message); }
@@ -165,7 +176,7 @@ function _renderIntlTable(records) {
     const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
     return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}">
       <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${f['Order Number']||r.id.slice(-6)}</strong></td>
-      <td>W${f['Week Number']||'—'}</td>
+      <td>W${f[' Week Number']||'—'}</td>
       <td>${dirB}</td>
       <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
       <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
@@ -210,7 +221,7 @@ function _applyIntlFilters() {
   if (_intlFilters['Direction']) recs = recs.filter(r => r.fields['Direction'] === _intlFilters['Direction']);
   if (_intlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _intlFilters['Status']);
   if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
-  if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
+  if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields[' Week Number']) === String(_intlFilters['_week']));
   if (_intlFilters['_trip']==='unassigned') recs = recs.filter(r => !r.fields['TRIPS (Export Order)']?.length && !r.fields['TRIPS (Import Order)']?.length);
   if (_intlFilters['_trip']==='assigned')   recs = recs.filter(r => r.fields['TRIPS (Export Order)']?.length>0 || r.fields['TRIPS (Import Order)']?.length>0);
   INTL_ORDERS.filtered = recs;
@@ -256,7 +267,7 @@ function selectIntlOrder(recId) {
           ${f['Order Number']||recId.slice(-6)}
         </div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${f['Brand']||''} · ${f['Direction']||''} · W${f['Week Number']||'—'}
+          ${f['Brand']||''} · ${f['Direction']||''} · W${f[' Week Number']||'—'}
         </div>
       </div>
       <div class="detail-actions">

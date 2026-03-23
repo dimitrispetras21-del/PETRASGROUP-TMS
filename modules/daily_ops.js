@@ -349,10 +349,20 @@ async function _opsDel(id,perf){const d=new Date().toISOString().split('T')[0];
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
-async function _opsPost(id){const nd=prompt('New delivery date (YYYY-MM-DD):');if(!nd||!/\d{4}-\d{2}-\d{2}/.test(nd))return;
-  try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Postponed','Postponed To':nd});
-  const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']='Postponed';
-  toast('Postponed → '+nd);_opsDraw();}catch(e){toast('Error','danger');}}
+async function _opsPost(id){
+  // Auto-postpone to next day
+  const r=OPS.intl.find(x=>x.id===id);if(!r)return;
+  const f=r.fields;
+  const loadDt=f['Loading DateTime']?.slice(0,10)||'';
+  const delDt=f['Delivery DateTime']?.slice(0,10)||'';
+  const nextLoad=loadDt?new Date(new Date(loadDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
+  const nextDel=delDt?new Date(new Date(delDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
+  const patch={'Ops Status':'Postponed','Postponed To':nextLoad||nextDel};
+  if(nextLoad) patch['Loading DateTime']=nextLoad;
+  if(nextDel) patch['Delivery DateTime']=nextDel;
+  try{await atPatch(TABLES.ORDERS,id,patch);
+  invalidateCache(TABLES.ORDERS);
+  toast('Postponed → '+(nextLoad||nextDel));renderDailyOps();}catch(e){toast('Error','danger');}}
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
   if (!content) return;
