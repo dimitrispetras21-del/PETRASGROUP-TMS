@@ -841,9 +841,9 @@ function _mreqPaint() {
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Work Orders</div>
-        <div class="page-sub">Ημερήσιο δελτίο εργασιών συντήρησης</div></div>
+        <div class="page-sub">Daily maintenance work orders</div></div>
       <div style="display:flex;gap:8px">
-        <button class="btn btn-new-order" onclick="_mreqOpenForm()">+ Νέο Αίτημα</button>
+        <button class="btn btn-new-order" onclick="_mreqOpenForm()">+ New Request</button>
         <button class="btn btn-ghost" onclick="MREQ._loaded=false;renderMaintRequests()">Refresh</button>
       </div>
     </div>
