@@ -929,7 +929,7 @@ function _wiRowHTML(row,i){
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
-      <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)">
+      <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)" style="position:relative">
         <div class="wi-route">
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
@@ -942,26 +942,25 @@ function _wiRowHTML(row,i){
           ${pals?`<span>${pals} pal</span>`:''}
           ${_wiBadges(primary?.fields||{})}
         </div>
+        <button class="wi-side-btn" title="Print Export" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
       </div>
       <div class="wi-ca-wrap">
-        <button class="wi-side-btn" title="Print Export"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;
                     padding:4px 6px;cursor:pointer;min-width:0"
              onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
           ${pill}
         </div>
-        ${row.importId
-          ? `<button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>`
-          : `<div style="width:26px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wi-ci-${row.id}"
            onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
+           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})"
+           style="position:relative">
         ${impPrev}
+        ${row.importId ? `<button class="wi-side-btn" title="Print Import" style="position:absolute;top:2px;left:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>` : ''}
       </div>
 
     </div>

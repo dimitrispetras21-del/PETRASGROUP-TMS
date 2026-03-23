@@ -543,7 +543,7 @@ function _wnRowHTML(row, i) {
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
-      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})">
+      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
         <div class="wi-route">
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
@@ -558,21 +558,20 @@ function _wnRowHTML(row, i) {
           ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
         </div>
+        <button class="wi-side-btn" title="Εκτύπωση κάθοδος" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
-        <button class="wi-side-btn" title="Εκτύπωση" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
-        ${row.matchedId
-          ? `<button class="wi-side-btn" title="Εκτύπωση ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">🖨</button>`
-          : `<div style="width:30px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wn-ci-${row.id}"
            onclick="event.stopPropagation()"
            ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
            ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})">
+           ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})"
+           style="position:relative">
         ${snCell}
       </div>
     </div>
@@ -664,14 +663,11 @@ function _wnSnRowHTML(row) {
       </div>
       <div class="wi-ce" style="background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <button class="wi-side-btn" title="Εκτύπωση ανόδου"
-          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
           ${pill}
         </div>
-        <div style="width:30px;flex-shrink:0"></div>
       </div>
-      <div class="wi-ci" style="cursor:grab">
+      <div class="wi-ci" style="cursor:grab;position:relative">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
             <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
@@ -686,6 +682,8 @@ function _wnSnRowHTML(row) {
           </div>
           <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
         </div>
+        <button class="wi-side-btn" title="Εκτύπωση ανόδου" style="position:absolute;top:2px;left:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
       </div>
     </div>
   </div>`;
