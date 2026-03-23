@@ -132,7 +132,7 @@ function _wsName(wsArr) {
 }
 
 // ═════════════════════════════════════════════════════════════════
-// PAGE 1: EXPIRY ALERTS
+// PAGE 1: EXPIRY ALERTS — Airtable-style layout
 // ═════════════════════════════════════════════════════════════════
 async function renderExpiryAlerts() {
   document.getElementById('topbarTitle').textContent = 'Expiry Alerts';
@@ -146,57 +146,81 @@ async function renderExpiryAlerts() {
   }
 }
 
-function _expiryBuildRows() {
-  const rows = [];
-  for (const t of MAINT.trucks) {
-    const f = t.fields;
-    if (!f['Active']) continue;
-    for (const ef of TRUCK_EXPIRY_FIELDS) {
-      const d = f[ef.field];
-      rows.push({ plate: f['License Plate']||'?', vType: 'Truck', docType: ef.label, date: d||null, days: _daysUntil(d), brand: f['Brand']||'' });
-    }
-  }
-  for (const t of MAINT.trailers) {
-    const f = t.fields;
-    if (!f['Active']) continue;
-    for (const ef of TRAILER_EXPIRY_FIELDS) {
-      const d = f[ef.field];
-      rows.push({ plate: f['License Plate']||'?', vType: 'Trailer', docType: ef.label, date: d||null, days: _daysUntil(d), brand: f['Brand']||'' });
-    }
-  }
-  rows.sort((a, b) => {
-    if (a.days === null && b.days === null) return 0;
-    if (a.days === null) return 1;
-    if (b.days === null) return -1;
-    return a.days - b.days;
-  });
-  return rows;
+// Build per-vehicle rows with all expiry fields as columns
+function _expiryVehicleRows(vehicles, expiryFields) {
+  return vehicles
+    .filter(v => v.fields['Active'])
+    .map(v => {
+      const f = v.fields;
+      const docs = expiryFields.map(ef => {
+        const d = f[ef.field] || null;
+        return { label: ef.label, date: d, days: _daysUntil(d) };
+      });
+      // Worst (soonest) expiry for sorting
+      const worst = docs.reduce((min, d) => {
+        if (d.days === null) return min;
+        return (min === null || d.days < min) ? d.days : min;
+      }, null);
+      return { plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'', docs, worst };
+    })
+    .sort((a, b) => {
+      if (a.worst === null && b.worst === null) return 0;
+      if (a.worst === null) return 1;
+      if (b.worst === null) return -1;
+      return a.worst - b.worst;
+    });
 }
 
-let _expiryFilter = { docType: '', vType: '', urgency: '' };
+// Cell with color-coded date
+function _expCell(doc) {
+  if (!doc.date) return '<td class="c" style="color:var(--text-dim)">—</td>';
+  const d = _daysUntil(doc.date);
+  const dateStr = doc.date.substring(5); // MM-DD
+  let bg = '', color = '';
+  if (d < 0)        { bg = '#7F1D1D'; color = '#FEE2E2'; }
+  else if (d <= 7)  { bg = '#991B1B'; color = '#FEE2E2'; }
+  else if (d <= 30) { bg = '#92400E'; color = '#FEF3C7'; }
+  else if (d <= 60) { bg = '#78350F'; color = '#FDE68A'; }
+  else              { bg = ''; color = ''; }
+  const style = bg ? `background:${bg};color:${color};font-weight:700;border-radius:4px;padding:4px 8px` : '';
+  return `<td class="c"><span style="${style}">${dateStr}</span><div style="font-size:9px;color:${d<0?'#FCA5A5':d<=30?'#D97706':'var(--text-dim)'};margin-top:1px">${d}d</div></td>`;
+}
+
+let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
 function _expiryPaint() {
-  const allRows = _expiryBuildRows();
-  let rows = allRows;
+  const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS);
+  const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS);
 
-  if (_expiryFilter.docType) rows = rows.filter(r => r.docType === _expiryFilter.docType);
-  if (_expiryFilter.vType) rows = rows.filter(r => r.vType === _expiryFilter.vType);
-  if (_expiryFilter.urgency === 'overdue') rows = rows.filter(r => r.days !== null && r.days < 0);
-  else if (_expiryFilter.urgency === 'critical') rows = rows.filter(r => r.days !== null && r.days <= 7);
-  else if (_expiryFilter.urgency === 'warning') rows = rows.filter(r => r.days !== null && r.days <= 30);
-  else if (_expiryFilter.urgency === 'upcoming') rows = rows.filter(r => r.days !== null && r.days <= 60);
+  // KPIs — count per vehicle (not per document)
+  const expiredTrucks = truckRows.filter(r => r.worst !== null && r.worst < 0).length;
+  const expiring30Trucks = truckRows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
+  const validTrucks = truckRows.filter(r => r.worst === null || r.worst > 30).length;
+  const expiredTrailers = trailerRows.filter(r => r.worst !== null && r.worst < 0).length;
+  const expiring30Trailers = trailerRows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
+  const validTrailers = trailerRows.filter(r => r.worst === null || r.worst > 30).length;
 
-  const overdue = allRows.filter(r => r.days !== null && r.days < 0).length;
-  const critical = allRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 7).length;
-  const warning = allRows.filter(r => r.days !== null && r.days > 7 && r.days <= 30).length;
-  const ok = allRows.filter(r => r.days !== null && r.days > 30).length;
-  const na = allRows.filter(r => r.days === null).length;
+  // Filter by tab
+  const filterRows = (rows) => {
+    if (_expiryTab === 'expired') return rows.filter(r => r.worst !== null && r.worst < 0);
+    if (_expiryTab === 'expiring30') return rows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
+    if (_expiryTab === 'valid') return rows.filter(r => r.worst === null || r.worst > 30);
+    return rows;
+  };
+  const fTrucks = filterRows(truckRows);
+  const fTrailers = filterRows(trailerRows);
 
-  const docTypes = [...new Set(allRows.map(r => r.docType))].sort();
+  const tabBtn = (id, label, count) => {
+    const active = _expiryTab === id;
+    return `<button onclick="_expiryTab='${id}';_expiryPaint()" style="
+      padding:7px 16px;font-size:11px;font-weight:${active?'700':'500'};border-radius:8px;border:1px solid ${active?'var(--accent)':'var(--border-mid)'};
+      background:${active?'var(--accent)':'var(--bg)'};color:${active?'#fff':'var(--text-mid)'};cursor:pointer;font-family:'Syne',sans-serif;
+      transition:all .15s">${label} <span style="font-size:10px;opacity:.7">${count}</span></button>`;
+  };
 
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Expiry Alerts</div>
-        <div class="page-sub">${allRows.length} certificates tracked · ${overdue + critical} need attention</div></div>
+        <div class="page-sub">Fleet document expiry overview</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost" onclick="_expiryPrint()">Print</button>
         <button class="btn btn-ghost" onclick="MAINT._loaded=false;renderExpiryAlerts()">Refresh</button>
@@ -204,50 +228,59 @@ function _expiryPaint() {
     </div>
 
     <div class="mk-kpis">
-      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Overdue</div>
-        <div class="mk-kpi-val" style="color:#991B1B">${overdue}</div></div>
-      <div class="mk-kpi" style="border-left-color:#DC2626"><div class="mk-kpi-lbl">Critical ≤7d</div>
-        <div class="mk-kpi-val" style="color:#DC2626">${critical}</div></div>
-      <div class="mk-kpi" style="border-left-color:#D97706"><div class="mk-kpi-lbl">Warning ≤30d</div>
-        <div class="mk-kpi-val" style="color:#D97706">${warning}</div></div>
-      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">OK</div>
-        <div class="mk-kpi-val" style="color:#059669">${ok}</div></div>
-      <div class="mk-kpi" style="border-left-color:#6B7280"><div class="mk-kpi-lbl">N/A</div>
-        <div class="mk-kpi-val" style="color:#6B7280">${na}</div></div>
+      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Expired Trucks</div>
+        <div class="mk-kpi-val" style="color:#991B1B">${expiredTrucks}</div></div>
+      <div class="mk-kpi" style="border-left-color:#D97706"><div class="mk-kpi-lbl">Expiring ≤30d</div>
+        <div class="mk-kpi-val" style="color:#D97706">${expiring30Trucks + expiring30Trailers}</div></div>
+      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Valid Trucks</div>
+        <div class="mk-kpi-val" style="color:#059669">${validTrucks}</div></div>
+      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Expired Trailers</div>
+        <div class="mk-kpi-val" style="color:#991B1B">${expiredTrailers}</div></div>
+      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Valid Trailers</div>
+        <div class="mk-kpi-val" style="color:#059669">${validTrailers}</div></div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <select onchange="_expiryFilter.docType=this.value;_expiryPaint()" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg);color:var(--text)">
-        <option value="">All Documents</option>
-        ${docTypes.map(d => `<option value="${d}"${_expiryFilter.docType===d?' selected':''}>${d}</option>`).join('')}
-      </select>
-      <select onchange="_expiryFilter.vType=this.value;_expiryPaint()" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg);color:var(--text)">
-        <option value="">All Vehicles</option>
-        <option value="Truck"${_expiryFilter.vType==='Truck'?' selected':''}>Trucks</option>
-        <option value="Trailer"${_expiryFilter.vType==='Trailer'?' selected':''}>Trailers</option>
-      </select>
-      <select onchange="_expiryFilter.urgency=this.value;_expiryPaint()" style="padding:6px 10px;font-size:11px;border-radius:6px;border:1px solid var(--border-mid);background:var(--bg);color:var(--text)">
-        <option value="">All Urgency</option>
-        <option value="overdue"${_expiryFilter.urgency==='overdue'?' selected':''}>Overdue</option>
-        <option value="critical"${_expiryFilter.urgency==='critical'?' selected':''}>Critical ≤7d</option>
-        <option value="warning"${_expiryFilter.urgency==='warning'?' selected':''}>Warning ≤30d</option>
-        <option value="upcoming"${_expiryFilter.urgency==='upcoming'?' selected':''}>Upcoming ≤60d</option>
-      </select>
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+      ${tabBtn('all', 'All', truckRows.length + trailerRows.length)}
+      ${tabBtn('expired', 'Expired', expiredTrucks + expiredTrailers)}
+      ${tabBtn('expiring30', 'Expiring ≤30d', expiring30Trucks + expiring30Trailers)}
+      ${tabBtn('valid', 'Valid', validTrucks + validTrailers)}
     </div>
 
-    <table class="mt">
+    <!-- TRUCKS SECTION -->
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;margin-bottom:8px;color:var(--accent)">
+      TRUCKS <span style="font-weight:500;font-size:11px;color:var(--text-dim)">${fTrucks.length} vehicles</span>
+    </div>
+    <table class="mt" style="margin-bottom:24px">
       <thead><tr>
-        <th>#</th><th>Type</th><th>Plate</th><th>Brand</th><th>Document</th><th>Expiry Date</th><th>Status</th>
+        <th>#</th><th>Plate</th><th>Brand</th>
+        ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
+        <th>Insurer</th>
       </tr></thead>
-      <tbody>${rows.length ? rows.map((r, i) => `<tr>
+      <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr>
         <td class="rn">${i+1}</td>
-        <td><span style="font-size:10px;font-weight:700;letter-spacing:.5px;color:${r.vType==='Truck'?'var(--accent)':'#7C3AED'}">${r.vType.toUpperCase()}</span></td>
         <td style="font-weight:700">${r.plate}</td>
         <td>${r.brand}</td>
-        <td>${r.docType}</td>
-        <td>${_fmtDate(r.date)}</td>
-        <td>${_expBadge(r.days)}</td>
-      </tr>`).join('') : '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:30px">No certificates found</td></tr>'}</tbody>
+        ${r.docs.map(d => _expCell(d)).join('')}
+        <td style="font-size:11px">${r.insurer}</td>
+      </tr>`).join('') : `<tr><td colspan="${4 + TRUCK_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:20px">No trucks in this category</td></tr>`}</tbody>
+    </table>
+
+    <!-- TRAILERS SECTION -->
+    <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;margin-bottom:8px;color:#7C3AED">
+      TRAILERS <span style="font-weight:500;font-size:11px;color:var(--text-dim)">${fTrailers.length} vehicles</span>
+    </div>
+    <table class="mt">
+      <thead><tr>
+        <th>#</th><th>Plate</th><th>Brand</th>
+        ${TRAILER_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
+      </tr></thead>
+      <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr>
+        <td class="rn">${i+1}</td>
+        <td style="font-weight:700">${r.plate}</td>
+        <td>${r.brand}</td>
+        ${r.docs.map(d => _expCell(d)).join('')}
+      </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:20px">No trailers in this category</td></tr>`}</tbody>
     </table>`;
 }
 
