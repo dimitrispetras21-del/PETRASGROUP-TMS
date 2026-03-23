@@ -192,6 +192,14 @@ function navigate(page) {
     default:
       c.innerHTML = showComingSoon(label);
   }
+
+  // Inject footer after page renders (delay for async renderers)
+  setTimeout(() => {
+    if (!document.querySelector('.page-footer') && c.scrollHeight > 100) {
+      c.insertAdjacentHTML('beforeend',
+        `<div class="page-footer"><span class="footer-logo">PETRAS GROUP TMS</span><span>v2.0 · ${new Date().getFullYear()}</span></div>`);
+    }
+  }, 2000);
 }
 
 function logout() {

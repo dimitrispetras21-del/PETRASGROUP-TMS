@@ -261,6 +261,7 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -361,10 +362,30 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 36px;
+  padding: 32px 36px 80px;
   background: var(--bg);
   scrollbar-width: thin;
   scrollbar-color: #D1D5DB transparent;
+}
+
+/* Footer — end of content marker */
+.page-footer {
+  margin-top: 40px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 0.3px;
+}
+.page-footer .footer-logo {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: rgba(2,132,199,0.4);
 }
 
 /* ═══════════════════════════════════════════════
