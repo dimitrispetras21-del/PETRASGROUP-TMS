@@ -382,14 +382,8 @@ function _wnAllRowsHTML() {
   });
 
   snRows.forEach(row => {
-    // CL rows: look in clLoads; NO rows: look in southnorth
-    const ord = row.source === 'cl'
-      ? (WNATL.data.clLoads||[]).find(r => r.id===row.orderId)
-      : WNATL.data.southnorth.find(r => r.id===row.orderId);
-    // CL uses Date field; NO uses Loading DateTime
-    const dtRaw = row.source === 'cl'
-      ? (ord?.fields['Date'] || ord?.fields['Loading DateTime'] || '')
-      : (ord?.fields['Loading DateTime'] || '');
+    const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
+    const dtRaw = ord?.fields['Loading DateTime'] || '';
     const key = dtRaw.split('T')[0] || 'zzz';
     const lbl = _wnFmtFull(dtRaw||null) || '—';
     if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
@@ -485,7 +479,7 @@ function _wnRowHTML(row, i) {
           <span>${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
           <span>${pals} pal</span>
-          ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
+          ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
         </div>
         <button class="wi-side-btn" title="Εκτύπωση κάθοδος" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
@@ -511,16 +505,14 @@ function _wnRowHTML(row, i) {
 /* ── Matched S→N cell (right column when linked) ─────────────────── */
 function _wnSnInlineCell(snRec, rowId) {
   const f = snRec.fields;
-  const clientId = (f['Client']||[])[0]||'';
-  const clientLabel = _wnClientLabel(clientId);
-  // S→N: Veroia Switch means truck picks up FROM Greek suppliers, delivers TO Veroia
-  const fromStr  = _wnPickupSummary(f) || '—';
-  const toStr    = f['Type']==='Veroia Switch'
+  const clientLabel = f['Client'] || '';
+  const isGroupage = f['Source Type'] === 'Groupage';
+  const fromStr  = _wnNlPickupSummary(f) || '—';
+  const toStr    = isGroupage
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-    : (_wnDeliverySummary(f) || clientLabel || '—');
-  const isCL     = !!f['Date'] && !f['Loading DateTime'];
-  const loadDt   = isCL ? _wnFmt(f['Date']) : _wnFmt(f['Loading DateTime']);
-  const pals     = f['Total Pallets']||f['Pallets']||0;  // CL uses Total Pallets
+    : (_wnNlDeliverySummary(f) || clientLabel || '—');
+  const loadDt   = _wnFmt(f['Loading DateTime']);
+  const pals     = f['Total Pallets']||0;
   return `<div class="wi-ci-data">
     <div style="display:flex;align-items:center;gap:0;min-width:0">
       <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
@@ -548,29 +540,21 @@ function _wnDragCell(rowId) {
 /* ── S→N standalone row ──────────────────────────────────────────── */
 function _wnSnRowHTML(row) {
   const { data } = WNATL;
-  // CL rows: look up in clLoads; NO rows: southnorth
-  const ord = row.source==='cl'
-    ? (data.clLoads||[]).find(r => r.id===row.orderId)
-    : data.southnorth.find(r => r.id===row.orderId);
+  const ord = data.southnorth.find(r => r.id===row.orderId);
   if (!ord) return '';
   const f = ord.fields;
 
-  // CL rows may have multiple clients
-  const clientIds = f['Client']||[];
-  const clientId  = clientIds[0]||'';
-  const clientLabel = clientIds.length > 1
-    ? clientIds.map(id=>_wnClientLabel(id)).filter(Boolean).join(' · ')
-    : _wnClientLabel(clientId);
-  // S→N: CL = pickup from suppliers → Veroia; NO = pickup summary
-  const fromStr     = row.source==='cl'
-    ? (_wnClLoadingSummary(f) || f['Name'] || '—')
-    : (_wnPickupSummary(f) || '—');
-  const toStr = row.source==='cl'
+  // Client is plain text in NAT_LOADS
+  const clientLabel = f['Client'] || '';
+  // S→N: Groupage = pickup from suppliers → Veroia; Direct = pickup summary
+  const isGroupage = f['Source Type'] === 'Groupage';
+  const fromStr     = isGroupage
+    ? (_wnNlPickupSummary(f) || f['Name'] || '—')
+    : (_wnNlPickupSummary(f) || '—');
+  const toStr = isGroupage
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-    : (f['Type']==='Veroia Switch'
-        ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-        : (_wnDeliverySummary(f) || clientLabel || '—'));
-  const pals        = f['Total Pallets']||f['Pallets']||0;
+    : (_wnNlDeliverySummary(f) || clientLabel || '—');
+  const pals        = f['Total Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
   const badges      = _wnBadges(f);
@@ -607,7 +591,7 @@ function _wnSnRowHTML(row) {
           <div class="wi-sub">
             ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
             <span>${loadDt} → ${delDt} · ${pals} pal</span>
-            ${f['Type']==='Veroia Switch' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
+            ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
           </div>
           <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
@@ -719,7 +703,7 @@ function _wnDelDateFull(row) {
 function _wnBadges(f) {
   const b = [];
   if (f['Pallet Exchange'])   b.push('<span class="wi-badge wi-b-pe">PE</span>');
-  if (f['National Groupage']) b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
+  if (f['Source Type']==='Groupage') b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   return b.join('');
 }
 
