@@ -226,31 +226,25 @@ async function _rampAutoSync() {
     toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'VS Simple', date, true));
   });
 
-  // ── 2. NAT_ORDERS (National) — exclude VS + National Groupage ──
+  // ── 2. NATIONAL LOADS (Direct only — Groupage handled via CL below) ──
   const natFilter = `AND(
-    NOT(AND({Type}='Veroia Switch',{National Groupage})),
+    {Source Type}='Direct',
     OR(IS_SAME({Loading DateTime},'${date}','day'),IS_SAME({Delivery DateTime},'${date}','day'))
   )`;
-  const natFields = ['Direction','Type','Loading DateTime','Delivery DateTime',
-    'Goods','Temperature °C','Pallets','Client','Truck','Driver',
+  const natFields = ['Direction','Loading DateTime','Delivery DateTime',
+    'Goods','Temperature C','Total Pallets','Client','Truck','Driver',
     'Pickup Location 1','Pickup Location 2','Pickup Location 3',
     'Delivery Location 1','Delivery Location 2','Delivery Location 3',
-    'National Groupage'];
+    'Source Type'];
 
-  const natOrders = await atGetAll(TABLES.NAT_ORDERS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]);
+  const natOrders = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]);
 
   natOrders.forEach(r => {
     const f = r.fields;
     const isLoading = f['Loading DateTime'] && f['Loading DateTime'].substring(0,10) === date;
-    const isDelivery = f['Delivery DateTime'] && f['Delivery DateTime'].substring(0,10) === date;
-    const type = isLoading ? 'Παραλαβή' : 'Φόρτωση'; // national pickup = inbound to Veroia
+    const type = isLoading ? 'Παραλαβή' : 'Φόρτωση';
     const key = `${r.id}_${type}_`;
     if (existingKeys.has(key)) return;
-
-    // Resolve client name from linked record ID
-    const natClientId = Array.isArray(f['Client']) ? f['Client'][0] : f['Client'];
-    const natClientRec = natClientId ? RAMP.clients.find(c=>c.id===natClientId) : null;
-    const natClientName = natClientRec ? (natClientRec.fields['Company Name']||natClientId) : (natClientId||'—');
 
     const rec = {
       'Plan Date': date,
@@ -258,10 +252,10 @@ async function _rampAutoSync() {
       'Status': 'Προγραμματισμένο',
       'National Order': [r.id],
       'Goods': f['Goods'] || '',
-      'Pallets': f['Pallets'] || 0,
-      'Supplier/Client': natClientName,
+      'Pallets': f['Total Pallets'] || 0,
+      'Supplier/Client': f['Client'] || '—',
     };
-    if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
+    if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
     if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
     rec['Loading Points'] = _rampResolveStops(f, 'Pickup Location', 3);
@@ -362,7 +356,7 @@ async function _rampAutoSync() {
     ...vfExp.map(r=>r.id), ...vfImp.map(r=>r.id),
     ...vsExp.map(r=>r.id), ...vsImp.map(r=>r.id),
   ]);
-  const validNatIds = new Set(natOrders.map(r=>r.id));
+  const validNatIds = new Set(natOrders.map(r=>r.id));  // now from NAT_LOADS
   const validCLIds = new Set(consLoads.map(r=>r.id));
 
   const toDelete = [];
