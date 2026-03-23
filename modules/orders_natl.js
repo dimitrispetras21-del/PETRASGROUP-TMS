@@ -418,6 +418,22 @@ async function submitNatlOrder(recId) {
     }
     // ─────────────────────────────────────────────────────────
 
+    // ── Sync NATIONAL LOADS ─────────────────────────────────
+    try {
+      if (!fields['National Groupage']) {
+        // Non-groupage → create/update NL record
+        const fullRec = await fetch(
+          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${savedNatlId}`,
+          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+        ).then(r => r.json());
+        if (fullRec.fields) await _syncNationalLoad(savedNatlId, fullRec.fields, false);
+      } else {
+        // Groupage ON → remove NL (CL save will create its own NL)
+        await _syncNationalLoad(savedNatlId, {}, true);
+      }
+    } catch(e) { console.warn('NL sync error:', e); }
+    // ─────────────────────────────────────────────────────────
+
     // Sync Ramp Plan
     try {
       const natlRec = await fetch(
@@ -562,4 +578,88 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   }
 
   console.log(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
+}
+
+// ═══════════════════════════════════════════════
+// _syncNationalLoad — Sync non-groupage NO → NATIONAL LOADS
+// Creates/updates a unified record for Weekly National consumption
+// ═══════════════════════════════════════════════
+async function _syncNationalLoad(noId, noFields, isDelete) {
+  if (!TABLES.NAT_LOADS) return;
+
+  // Find existing NL record for this NO
+  const existing = await atGetAll(TABLES.NAT_LOADS, {
+    filterByFormula: `{Source Record}="${noId}"`,
+    fields: ['Name']
+  }, false);
+
+  if (isDelete) {
+    // Delete NL record(s) when NO is deleted or groupage turned ON
+    for (const r of existing) {
+      try { await atDelete(TABLES.NAT_LOADS, r.id); } catch(e) { console.warn('NL delete err:', e); }
+    }
+    console.log(`_syncNationalLoad: deleted ${existing.length} NL for NO ${noId}`);
+    return;
+  }
+
+  // Build direction
+  const dir = noFields['Direction'] || '';
+  let nlDir = 'ΚΑΘΟΔΟΣ';
+  if (dir.includes('South') || dir === 'South→North') nlDir = 'ΑΝΟΔΟΣ';
+
+  // Resolve client name
+  let clientName = '';
+  try {
+    const cArr = noFields['Client'];
+    const cId = Array.isArray(cArr) ? (cArr[0]?.id || cArr[0]) : null;
+    if (cId) {
+      const cRec = await fetch(
+        `https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${cId}`,
+        { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+      ).then(r => r.json());
+      clientName = cRec.fields?.['Company Name'] || '';
+    }
+  } catch(e) {}
+
+  const _lid = v => {
+    if (!v) return null;
+    if (Array.isArray(v)) return v.length ? (v[0]?.id || v[0]) : null;
+    return typeof v === 'object' ? v.id : v;
+  };
+
+  // Build NL fields
+  const nlFields = {
+    'Name': `${clientName || 'Order'} — ${(noFields['Loading DateTime']||'').substring(0,10)}`,
+    'Direction': nlDir,
+    'Source Type': 'Direct',
+    'Source Record': noId,
+    'Source Orders': noId,
+    'Client': clientName,
+    'Goods': noFields['Goods'] || '',
+    'Total Pallets': noFields['Pallets'] || 0,
+    'Temperature C': noFields['Temperature °C'] ?? null,
+    'Loading DateTime': noFields['Loading DateTime'] || null,
+    'Delivery DateTime': noFields['Delivery DateTime'] || null,
+    'Reference': noFields['Reference'] || '',
+    'Status': 'Pending',
+    'Pallet Exchange': !!noFields['Pallet Exchange'],
+  };
+
+  // Copy Pickup/Delivery Locations 1-10
+  for (let i = 1; i <= 10; i++) {
+    const pId = _lid(noFields[`Pickup Location ${i}`]);
+    const dId = _lid(noFields[`Delivery Location ${i}`]);
+    if (pId) nlFields[`Pickup Location ${i}`] = [pId];
+    if (dId) nlFields[`Delivery Location ${i}`] = [dId];
+  }
+
+  if (existing.length) {
+    // Update existing
+    await atPatch(TABLES.NAT_LOADS, existing[0].id, nlFields);
+    console.log(`_syncNationalLoad: updated NL ${existing[0].id} for NO ${noId}`);
+  } else {
+    // Create new
+    const created = await atCreate(TABLES.NAT_LOADS, nlFields);
+    console.log(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
+  }
 }

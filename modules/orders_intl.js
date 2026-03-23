@@ -611,6 +611,10 @@ async function _syncNationalOrder(orderId, fields) {
       }
       // Then delete the NO
       await atDelete(TABLES.NAT_ORDERS, rec.id);
+      // Also delete corresponding National Load
+      try {
+        if (typeof _syncNationalLoad === 'function') await _syncNationalLoad(rec.id, {}, true);
+      } catch(e) { console.warn('NL cleanup err:', e); }
     }
     if (existing.length) {
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
@@ -697,6 +701,21 @@ async function _syncNationalOrder(orderId, fields) {
           await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
       }
     } catch(e) { console.warn('GL cleanup',e); }
+  }
+
+  // Sync NATIONAL LOADS: non-groupage → create/update NL, groupage → delete NL (CL will create its own)
+  if (noId && typeof _syncNationalLoad === 'function') {
+    try {
+      if (!ngroupage) {
+        const fullRec = await fetch(
+          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${noId}`,
+          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+        ).then(r => r.json());
+        if (fullRec.fields) await _syncNationalLoad(noId, fullRec.fields, false);
+      } else {
+        await _syncNationalLoad(noId, {}, true);
+      }
+    } catch(e) { console.warn('NL sync err:', e); }
   }
 }
 
