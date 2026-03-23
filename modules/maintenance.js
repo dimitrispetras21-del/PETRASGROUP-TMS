@@ -12,13 +12,13 @@ const MAINT = {
 
 const TRUCK_EXPIRY_FIELDS = [
   { field: 'KTEO Expiry',        label: 'KTEO' },
-  { field: 'Insurance Expiry',   label: 'Insurance' },
   { field: 'KEK Expiry',         label: 'KEK' },
+  { field: 'Insurance Expiry',   label: 'Insurance' },
 ];
 const TRAILER_EXPIRY_FIELDS = [
   { field: 'KTEO Expiry',        label: 'KTEO' },
-  { field: 'Insurance Expiry',   label: 'Insurance' },
   { field: 'FRC Expiry',         label: 'FRC' },
+  { field: 'Insurance Expiry',   label: 'Insurance' },
 ];
 
 const MAINT_HISTORY_FIELDS = [
