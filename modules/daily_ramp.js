@@ -268,42 +268,47 @@ async function _rampAutoSync() {
   // Deduplicate by CL Name — check if ANY existing VS+G record contains this CL Name
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
 
+  // Pre-fetch ALL source order IDs from all CLs in one batch
+  const allSrcIds = new Set();
+  consLoads.forEach(r => {
+    (r.fields['Source Orders']||[]).forEach(o => { const id = o?.id||o; if(id) allSrcIds.add(id); });
+  });
+  const srcOrderMap = {};
+  if (allSrcIds.size) {
+    const srcFilter = `OR(${[...allSrcIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`;
+    const srcRecs = await atGetAll(TABLES.NAT_ORDERS, {
+      filterByFormula: srcFilter,
+      fields: ['Client','Pickup Location 1','Pallets','Temperature °C','Reference']
+    }, false).catch(()=>[]);
+    srcRecs.forEach(r => { srcOrderMap[r.id] = r; });
+  }
+
   for (const r of consLoads) {
     const f = r.fields;
     const clName = f['Name']||'';
-    // Check if any existing record already references this CL (by name anywhere in Supplier/Client or Notes)
     const alreadyExists = existingVSG.some(e => {
       const sc = e.fields['Supplier/Client']||'';
       return sc.includes(clName) || sc === clName;
     });
     if (alreadyExists) continue;
 
-    // Fetch source order details for supplier breakdown
     const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
     let supplierLines = [];
-    if (srcIds.length) {
-      const srcOrders = await Promise.all(srcIds.map(async (sid,i) => {
-        try {
-          const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${sid}`,
-            {headers:{'Authorization':'Bearer '+AT_TOKEN}});
-          const d = await res.json();
-          const sf = d.fields||{};
-          // Resolve client name
-          const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
-          const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
-          const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
-          // Resolve pickup location
-          const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
-          const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
-          const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
-          const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
-          const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
-          const ref = sf['Reference'] || '';
-          return {client:clientName, location:locName, pallets:pal, temp:temp, ref:ref};
-        } catch { return null; }
-      }));
-      supplierLines = srcOrders.filter(Boolean);
-    }
+    srcIds.forEach((sid, i) => {
+      const srcRec = srcOrderMap[sid];
+      if (!srcRec) return;
+      const sf = srcRec.fields||{};
+      const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
+      const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
+      const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
+      const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
+      const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
+      const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
+      const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
+      const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
+      const ref = sf['Reference'] || '';
+      supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
+    });
 
     // Build supplier/client as "Name1 / Name2 / ..."
     const clientNames = supplierLines.map(s=>s.client).filter(Boolean);
@@ -369,8 +374,9 @@ async function _rampAutoSync() {
   }
 
   if (toDelete.length) {
-    for (const id of toDelete) {
-      await atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e));
+    for (let i = 0; i < toDelete.length; i += 10) {
+      const batch = toDelete.slice(i, i + 10);
+      await Promise.all(batch.map(id => atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e))));
     }
     console.log(`Ramp cleanup: removed ${toDelete.length} orphan records`);
   }
@@ -614,7 +620,7 @@ function _rTlRow(rec) {
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
-async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
+async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
   try{await atPatch(TABLES.RAMP,id,{'Time':v||null});
     const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v;
