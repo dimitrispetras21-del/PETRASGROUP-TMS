@@ -265,8 +265,9 @@ async function _rampAutoSync() {
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  // Deduplicate by CL Name — check if ANY existing VS+G record contains this CL Name
+  // Deduplicate by CL Name — check existing VS+G records
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
+  const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
 
   // Pre-fetch ALL source order IDs from all CLs in one batch
   const allSrcIds = new Set();
@@ -286,12 +287,7 @@ async function _rampAutoSync() {
   for (const r of consLoads) {
     const f = r.fields;
     const clName = f['Name']||'';
-    const alreadyExists = existingVSG.some(e => {
-      const sc = e.fields['Supplier/Client']||'';
-      return sc.includes(clName) || sc === clName;
-    });
-    if (alreadyExists) continue;
-
+    // Build supplier string first for dedup check
     const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
     let supplierLines = [];
     srcIds.forEach((sid, i) => {
@@ -309,10 +305,10 @@ async function _rampAutoSync() {
       const ref = sf['Reference'] || '';
       supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
     });
+    const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
+    if (existingVSGClients.has(supplierStr)) continue;
 
-    // Build supplier/client as "Name1 / Name2 / ..."
-    const clientNames = supplierLines.map(s=>s.client).filter(Boolean);
-    const supplierStr = clientNames.length ? clientNames.join(' / ') : clName;
+    // supplierLines and supplierStr already built above for dedup
 
     // Build notes with breakdown: "Client | Location | PAL | REF" per line
     const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
@@ -326,7 +322,7 @@ async function _rampAutoSync() {
       'Is Veroia Switch': true,
       'Goods': f['Goods'] || '',
       'Pallets': f['Total Pallets'] || 0,
-      'Supplier/Client': clName + ' | ' + supplierStr,
+      'Supplier/Client': supplierStr || clName,
       'Notes': notesStr,
     };
     if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
@@ -365,9 +361,9 @@ async function _rampAutoSync() {
       // Source national order no longer matches this date
       toDelete.push(ramp.id);
     } else if (cat === 'VS + Groupage' && !orderId && !natId) {
-      // CL record — check if CL still exists for this date
-      const clName = (rf['Supplier/Client']||'').split(' | ')[0];
-      if (clName && !validCLNames.has(clName)) {
+      // CL record — check if its supplier/client matches any active CL
+      const sc = rf['Supplier/Client']||'';
+      if (sc && !existingVSGClients.has(sc) && !validCLNames.has(sc)) {
         toDelete.push(ramp.id);
       }
     }
