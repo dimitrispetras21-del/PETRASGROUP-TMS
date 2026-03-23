@@ -168,21 +168,20 @@ async function renderExpiryAlerts() {
 }
 
 // Build per-vehicle rows with all expiry fields as columns
-function _expiryVehicleRows(vehicles, expiryFields) {
+function _expiryVehicleRows(vehicles, expiryFields, vType) {
   return vehicles
     .filter(v => v.fields['Active'])
     .map(v => {
       const f = v.fields;
       const docs = expiryFields.map(ef => {
         const d = f[ef.field] || null;
-        return { label: ef.label, date: d, days: _daysUntil(d) };
+        return { label: ef.label, field: ef.field, date: d, days: _daysUntil(d) };
       });
-      // Worst (soonest) expiry for sorting
       const worst = docs.reduce((min, d) => {
         if (d.days === null) return min;
         return (min === null || d.days < min) ? d.days : min;
       }, null);
-      return { plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'', docs, worst };
+      return { id: v.id, plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'', docs, worst, vType };
     })
     .sort((a, b) => {
       if (a.worst === null && b.worst === null) return 0;
@@ -192,26 +191,69 @@ function _expiryVehicleRows(vehicles, expiryFields) {
     });
 }
 
-// Cell with color-coded date
-function _expCell(doc) {
-  if (!doc.date) return '<td class="c" style="color:var(--text-dim)">—</td>';
+// Cell with color-coded date + days badge + inline edit
+function _expCell(doc, recId, fieldName, vType) {
+  const editAttr = recId ? `onclick="_expInlineEdit(event,'${recId}','${fieldName}','${vType}')"` : '';
+  const cursor = recId ? 'cursor:pointer' : '';
+  if (!doc.date) return `<td class="c" style="color:var(--text-dim);${cursor}" ${editAttr}>
+    <span style="font-size:11px">—</span></td>`;
   const d = _daysUntil(doc.date);
   const parts = doc.date.substring(0,10).split('-');
-  const dateStr = parts[2]+'/'+parts[1]; // DD/MM format
-  let bg = '', color = '';
-  if (d < 0)        { bg = '#7F1D1D'; color = '#FEE2E2'; }
-  else if (d <= 7)  { bg = '#991B1B'; color = '#FEE2E2'; }
-  else if (d <= 30) { bg = '#92400E'; color = '#FEF3C7'; }
-  else if (d <= 60) { bg = '#78350F'; color = '#FDE68A'; }
-  else              { bg = ''; color = ''; }
-  const style = bg ? `background:${bg};color:${color};font-weight:700;border-radius:4px;padding:4px 8px` : '';
-  return `<td class="c"><span style="${style}">${dateStr}</span><div style="font-size:9px;color:${d<0?'#FCA5A5':d<=30?'#D97706':'var(--text-dim)'};margin-top:1px">${d}d</div></td>`;
+  const dateStr = parts[2]+'/'+parts[1];
+  let bg = '', color = '', daysBg = '', daysColor = '';
+  if (d < 0)        { bg = '#7F1D1D'; color = '#FEE2E2'; daysBg = '#7F1D1D'; daysColor = '#FEE2E2'; }
+  else if (d <= 7)  { bg = '#991B1B'; color = '#FEE2E2'; daysBg = '#991B1B'; daysColor = '#FEE2E2'; }
+  else if (d <= 30) { bg = '#92400E'; color = '#FEF3C7'; daysBg = '#92400E'; daysColor = '#FEF3C7'; }
+  else if (d <= 60) { bg = '#78350F'; color = '#FDE68A'; daysBg = '#78350F'; daysColor = '#FDE68A'; }
+  else              { bg = ''; color = ''; daysBg = '#065F46'; daysColor = '#D1FAE5'; }
+  const dateSt = bg ? `background:${bg};color:${color};font-weight:700;border-radius:4px;padding:3px 8px;font-size:12px` : 'font-size:12px';
+  const daysLabel = d < 0 ? `${Math.abs(d)}d OVERDUE` : `${d}d`;
+  return `<td class="c" style="${cursor}" ${editAttr}>
+    <span style="${dateSt}">${dateStr}</span>
+    <div style="margin-top:3px"><span style="display:inline-block;background:${daysBg};color:${daysColor};font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;letter-spacing:.3px">${daysLabel}</span></div>
+  </td>`;
+}
+
+// Inline date editor
+async function _expInlineEdit(e, recId, fieldName, vType) {
+  e.stopPropagation();
+  const td = e.currentTarget;
+  if (td.querySelector('input[type="date"]')) return;
+  const currentVal = (vType === 'Truck'
+    ? MAINT.trucks.find(v=>v.id===recId)
+    : MAINT.trailers.find(v=>v.id===recId)
+  )?.fields[fieldName] || '';
+  const inp = document.createElement('input');
+  inp.type = 'date';
+  inp.value = currentVal ? currentVal.substring(0,10) : '';
+  inp.style.cssText = 'font-size:12px;padding:4px 6px;border:2px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--text);outline:none;width:130px;font-family:"DM Sans",sans-serif';
+  td.innerHTML = '';
+  td.appendChild(inp);
+  inp.focus();
+
+  const save = async () => {
+    const newVal = inp.value || null;
+    td.innerHTML = '<span style="color:var(--accent);font-size:11px">Saving…</span>';
+    try {
+      const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
+      await atPatch(tableId, recId, { [fieldName]: newVal });
+      const rec = (vType === 'Truck' ? MAINT.trucks : MAINT.trailers).find(v=>v.id===recId);
+      if (rec) rec.fields[fieldName] = newVal;
+      _expiryPaint();
+    } catch(err) {
+      alert('Save failed: ' + err.message);
+      _expiryPaint();
+    }
+  };
+  inp.addEventListener('change', save);
+  inp.addEventListener('blur', () => { if (td.contains(inp)) _expiryPaint(); });
+  inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
 }
 
 let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
 function _expiryPaint() {
-  const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS);
-  const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS);
+  const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
+  const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
 
   // KPIs — count per vehicle (not per document)
   const expiredTrucks = truckRows.filter(r => r.worst !== null && r.worst < 0).length;
@@ -283,7 +325,7 @@ function _expiryPaint() {
         <td class="rn">${i+1}</td>
         <td style="font-weight:700">${r.plate}</td>
         <td>${r.brand}</td>
-        ${r.docs.map(d => _expCell(d)).join('')}
+        ${r.docs.map(d => _expCell(d, r.id, d.field, 'Truck')).join('')}
         <td style="font-size:11px">${r.insurer}</td>
       </tr>`).join('') : `<tr><td colspan="${4 + TRUCK_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:20px">No trucks in this category</td></tr>`}</tbody>
     </table>
@@ -301,7 +343,7 @@ function _expiryPaint() {
         <td class="rn">${i+1}</td>
         <td style="font-weight:700">${r.plate}</td>
         <td>${r.brand}</td>
-        ${r.docs.map(d => _expCell(d)).join('')}
+        ${r.docs.map(d => _expCell(d, r.id, d.field, 'Trailer')).join('')}
       </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:20px">No trailers in this category</td></tr>`}</tbody>
     </table>`;
 }
