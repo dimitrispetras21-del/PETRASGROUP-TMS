@@ -736,3 +736,226 @@ async function renderMaintDash() {
     console.error(e);
   }
 }
+
+// ═════════════════════════════════════════════════════════════════
+// PAGE: MAINTENANCE REQUESTS (Work Orders)
+// ═════════════════════════════════════════════════════════════════
+const MREQ = { data: [], _loaded: false };
+let _mreqTab = 'active';
+
+const MREQ_FIELDS = ['Vehicle Plate','Vehicle Type','Description','Priority','Status','Date Reported','Workshop','Notes'];
+const MREQ_PRIORITIES = ['SOS','Άμεσα','Κανονικό'];
+const MREQ_STATUSES = ['Pending','In Progress','Done'];
+
+async function _mreqLoad(force) {
+  if (!MREQ._loaded || force) {
+    MREQ.data = await atGetAll(TABLES.MAINT_REQ, { fields: MREQ_FIELDS }, false);
+    MREQ._loaded = true;
+  }
+}
+
+async function renderMaintRequests() {
+  document.getElementById('topbarTitle').textContent = 'Work Orders';
+  document.getElementById('content').innerHTML = showLoading('Loading work orders…');
+  try {
+    await _mreqLoad();
+    if (!MAINT._loaded) await _maintLoad();
+    _mreqPaint();
+  } catch(e) {
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+  }
+}
+
+function _mreqPrioBadge(p) {
+  if (p === 'SOS') return '<span class="exp-badge exp-overdue">SOS</span>';
+  if (p === 'Άμεσα') return '<span class="exp-badge exp-warning">ΆΜΕΣΑ</span>';
+  return '<span class="exp-badge exp-ok">ΚΑΝΟΝΙΚΌ</span>';
+}
+function _mreqStatusBadge(s) {
+  if (s === 'Done') return '<span class="exp-badge exp-ok">DONE</span>';
+  if (s === 'In Progress') return '<span class="exp-badge" style="background:#1E40AF;color:#DBEAFE">IN PROGRESS</span>';
+  return '<span class="exp-badge" style="background:#92400E;color:#FEF3C7">PENDING</span>';
+}
+
+function _mreqPaint() {
+  const all = [...MREQ.data].sort((a,b) => {
+    const po = { SOS: 0, 'Άμεσα': 1, 'Κανονικό': 2 };
+    const pa = po[a.fields['Priority']] ?? 2;
+    const pb = po[b.fields['Priority']] ?? 2;
+    if (pa !== pb) return pa - pb;
+    return (b.fields['Date Reported']||'').localeCompare(a.fields['Date Reported']||'');
+  });
+
+  const active = all.filter(r => r.fields['Status'] !== 'Done');
+  const done = all.filter(r => r.fields['Status'] === 'Done');
+  const filtered = _mreqTab === 'active' ? active : _mreqTab === 'done' ? done : all;
+
+  const pending = all.filter(r => r.fields['Status'] === 'Pending').length;
+  const inProg = all.filter(r => r.fields['Status'] === 'In Progress').length;
+  const sos = active.filter(r => r.fields['Priority'] === 'SOS').length;
+
+  const tabBtn = (id, label, count) => {
+    const act = _mreqTab === id;
+    return `<button onclick="_mreqTab='${id}';_mreqPaint()" style="
+      padding:7px 16px;font-size:11px;font-weight:${act?'700':'500'};border-radius:8px;border:1px solid ${act?'var(--accent)':'var(--border-mid)'};
+      background:${act?'var(--accent)':'var(--bg)'};color:${act?'#fff':'var(--text-mid)'};cursor:pointer;font-family:'Syne',sans-serif;
+      transition:all .15s">${label} <span style="font-size:10px;opacity:.7">${count}</span></button>`;
+  };
+
+  document.getElementById('content').innerHTML = `
+    <div class="page-header" style="margin-bottom:12px">
+      <div><div class="page-title">Work Orders</div>
+        <div class="page-sub">Ημερήσιο δελτίο εργασιών συντήρησης</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-new-order" onclick="_mreqOpenForm()">+ Νέο Αίτημα</button>
+        <button class="btn btn-ghost" onclick="MREQ._loaded=false;renderMaintRequests()">Refresh</button>
+      </div>
+    </div>
+
+    <div class="mk-kpis">
+      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">SOS</div>
+        <div class="mk-kpi-val" style="color:#991B1B">${sos}</div></div>
+      <div class="mk-kpi" style="border-left-color:#92400E"><div class="mk-kpi-lbl">Pending</div>
+        <div class="mk-kpi-val" style="color:#92400E">${pending}</div></div>
+      <div class="mk-kpi" style="border-left-color:#1E40AF"><div class="mk-kpi-lbl">In Progress</div>
+        <div class="mk-kpi-val" style="color:#1E40AF">${inProg}</div></div>
+      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Completed</div>
+        <div class="mk-kpi-val" style="color:#059669">${done.length}</div></div>
+    </div>
+
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+      ${tabBtn('active', 'Active', active.length)}
+      ${tabBtn('done', 'Completed', done.length)}
+      ${tabBtn('all', 'All', all.length)}
+    </div>
+
+    <table class="mt">
+      <thead><tr>
+        <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:80px" class="c">Actions</th>
+      </tr></thead>
+      <tbody>${filtered.length ? filtered.map((r, i) => {
+        const f = r.fields;
+        return `<tr style="${f['Priority']==='SOS'?'background:rgba(127,29,29,0.06)':''}" onclick="_mreqOpenForm('${r.id}')">
+          <td class="rn">${i+1}</td>
+          <td style="font-weight:700;white-space:nowrap">${f['Vehicle Plate']||'—'}</td>
+          <td style="max-width:250px">${f['Description']||'—'}</td>
+          <td class="c">${_mreqPrioBadge(f['Priority'])}</td>
+          <td class="c">${_mreqStatusBadge(f['Status'])}</td>
+          <td style="white-space:nowrap;font-size:12px">${f['Date Reported']?f['Date Reported'].substring(0,10).split('-').reverse().join('/'):'—'}</td>
+          <td style="font-size:12px">${f['Workshop']||'—'}</td>
+          <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
+          <td class="c" onclick="event.stopPropagation()">
+            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','${f['Status']==='Pending'?'In Progress':'Done'}')">
+              ${f['Status']==='Pending'?'▶ Start':'✓ Done'}</button>` : ''}
+          </td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No work orders</td></tr>'}</tbody>
+    </table>
+    <div id="mreq-form-container"></div>`;
+}
+
+async function _mreqQuickStatus(recId, newStatus) {
+  try {
+    await atPatch(TABLES.MAINT_REQ, recId, { Status: newStatus });
+    const rec = MREQ.data.find(r => r.id === recId);
+    if (rec) rec.fields['Status'] = newStatus;
+    _mreqPaint();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function _mreqOpenForm(editId) {
+  const rec = editId ? MREQ.data.find(r => r.id === editId) : null;
+  const f = rec ? rec.fields : {};
+
+  const allPlates = [
+    ...MAINT.trucks.filter(t=>t.fields['Active']).map(t => t.fields['License Plate']||''),
+    ...MAINT.trailers.filter(t=>t.fields['Active']).map(t => t.fields['License Plate']||''),
+  ].filter(Boolean).sort();
+
+  const plateOpts = allPlates.map(p => `<option value="${p}"${f['Vehicle Plate']===p?' selected':''}>${p}</option>`).join('');
+  const prioOpts = MREQ_PRIORITIES.map(p => `<option value="${p}"${f['Priority']===p?' selected':''}>${p}</option>`).join('');
+  const statusOpts = MREQ_STATUSES.map(s => `<option value="${s}"${f['Status']===s?' selected':''}>${s}</option>`).join('');
+
+  const html = `
+  <div class="mf-overlay" onclick="if(event.target===this)document.getElementById('mreq-form-container').innerHTML=''">
+    <div class="mf-modal">
+      <div class="mf-head"><span>${editId?'Edit':'New'} Work Order</span>
+        <button onclick="document.getElementById('mreq-form-container').innerHTML=''" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim)">✕</button></div>
+      <div class="mf-body">
+        <div class="mf-row">
+          <div class="mf-field"><label>Vehicle Plate</label>
+            <select id="mreq-plate"><option value="">— Select —</option>${plateOpts}
+            <option value="__custom">Other (type below)</option></select></div>
+          <div class="mf-field"><label>Or type plate</label>
+            <input id="mreq-plate-custom" value="${f['Vehicle Plate']||''}" placeholder="e.g. CB1286KE"></div>
+        </div>
+        <div class="mf-row">
+          <div class="mf-field"><label>Priority</label>
+            <select id="mreq-prio">${prioOpts}</select></div>
+          <div class="mf-field"><label>Status</label>
+            <select id="mreq-status">${statusOpts}</select></div>
+        </div>
+        <div class="mf-field"><label>Description</label>
+          <textarea id="mreq-desc" rows="3" style="resize:vertical">${f['Description']||''}</textarea></div>
+        <div class="mf-row">
+          <div class="mf-field"><label>Date Reported</label>
+            <input type="date" id="mreq-date" value="${f['Date Reported']?f['Date Reported'].substring(0,10):new Date().toISOString().substring(0,10)}"></div>
+          <div class="mf-field"><label>Workshop</label>
+            <input id="mreq-workshop" value="${f['Workshop']||''}" placeholder="π.χ. Δρόσος, Σαρακάκης"></div>
+        </div>
+        <div class="mf-field"><label>Notes</label>
+          <textarea id="mreq-notes" rows="2" style="resize:vertical">${f['Notes']||''}</textarea></div>
+      </div>
+      <div class="mf-foot">
+        ${editId?`<button class="btn" style="background:#7F1D1D;color:#FEE2E2;margin-right:auto" onclick="_mreqDelete('${editId}')">Delete</button>`:''}
+        <button class="btn btn-ghost" onclick="document.getElementById('mreq-form-container').innerHTML=''">Cancel</button>
+        <button class="btn btn-new-order" onclick="_mreqSave('${editId||''}')">Save</button>
+      </div>
+    </div>
+  </div>`;
+  document.getElementById('mreq-form-container').innerHTML = html;
+
+  const sel = document.getElementById('mreq-plate');
+  if (f['Vehicle Plate'] && !allPlates.includes(f['Vehicle Plate'])) sel.value = '__custom';
+}
+
+async function _mreqSave(editId) {
+  const sel = document.getElementById('mreq-plate');
+  const plate = sel.value === '__custom' || !sel.value
+    ? document.getElementById('mreq-plate-custom').value.trim()
+    : sel.value;
+  if (!plate) { alert('Vehicle Plate is required'); return; }
+
+  const fields = {
+    'Vehicle Plate': plate,
+    'Description': document.getElementById('mreq-desc').value.trim(),
+    'Priority': document.getElementById('mreq-prio').value,
+    'Status': document.getElementById('mreq-status').value,
+    'Date Reported': document.getElementById('mreq-date').value || null,
+    'Workshop': document.getElementById('mreq-workshop').value.trim() || null,
+    'Notes': document.getElementById('mreq-notes').value.trim() || null,
+  };
+
+  try {
+    if (editId) {
+      await atPatch(TABLES.MAINT_REQ, editId, fields);
+      const rec = MREQ.data.find(r => r.id === editId);
+      if (rec) Object.assign(rec.fields, fields);
+    } else {
+      const created = await atCreate(TABLES.MAINT_REQ, fields);
+      MREQ.data.push(created);
+    }
+    document.getElementById('mreq-form-container').innerHTML = '';
+    _mreqPaint();
+  } catch(e) { alert('Save failed: ' + e.message); }
+}
+
+async function _mreqDelete(recId) {
+  if (!confirm('Delete this work order?')) return;
+  try {
+    await atDelete(TABLES.MAINT_REQ, recId);
+    MREQ.data = MREQ.data.filter(r => r.id !== recId);
+    document.getElementById('mreq-form-container').innerHTML = '';
+    _mreqPaint();
+  } catch(e) { alert('Delete failed: ' + e.message); }
+}

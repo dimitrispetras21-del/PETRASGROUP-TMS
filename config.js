@@ -26,6 +26,7 @@ const TABLES = {
   CONS_LOADS:    'tbl5XSLQjOnG6yLCW',
   WORKSHOPS:     'tblMiFxbm9ky8PCQi',
   MAINT_HISTORY: 'tbllPbPPd6N3zEZF1',
+  MAINT_REQ:     'tbl3vhUmzKDWhJynR',
 };
 
 // Users are defined in index.html / auth layer

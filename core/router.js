@@ -22,6 +22,7 @@ const NAV = [
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
     { id: 'maint_dash',     label: 'Dashboard',        icon: 'dashboard' },
+    { id: 'maint_req',      label: 'Work Orders',      icon: 'clipboard' },
     { id: 'maint_expiry',   label: 'Expiry Alerts',    icon: 'alert' },
     { id: 'maint_svc',      label: 'Service Records',  icon: 'wrench' },
     { id: 'maint_trucks',   label: 'Trucks History',   icon: 'truck' },
@@ -169,6 +170,7 @@ function navigate(page) {
     case 'partners':       renderEntity('partners');      break;
     // Maintenance
     case 'maint_dash':     renderMaintDash();       break;
+    case 'maint_req':      renderMaintRequests();   break;
     case 'maint_expiry':   renderExpiryAlerts();    break;
     case 'maint_svc':      renderServiceRecords();  break;
     case 'maint_trucks':   renderTrucksHistory();   break;
