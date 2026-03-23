@@ -537,7 +537,7 @@ function _wnRowHTML(row, i) {
   return `
   <div id="wn-row-${row.id}" class="wi-row ${sCls}"
     draggable="true"
-    ondragstart="_wnDragStart(event,'${row.orderId||ord.id}')">
+    ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>
