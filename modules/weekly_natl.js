@@ -535,7 +535,9 @@ function _wnRowHTML(row, i) {
   const badges = _wnBadges(f);
 
   return `
-  <div id="wn-row-${row.id}" class="wi-row ${sCls}">
+  <div id="wn-row-${row.id}" class="wi-row ${sCls}"
+    draggable="true"
+    ondragstart="_wnDragStart(event,'${row.orderId||ord.id}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>

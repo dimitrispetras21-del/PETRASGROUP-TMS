@@ -415,19 +415,6 @@ async function submitNatlOrder(recId) {
         }
         if (stale.length) console.log(`Deleted ${stale.length} stale GL lines`);
       } catch(e) { console.warn('GL cleanup error:', e); }
-    } else if (savedNatlId && !fields['National Groupage']) {
-      // National Groupage turned OFF → delete unassigned GL lines
-      try {
-        const stale = await atGetAll(TABLES.GL_LINES, {
-          filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
-          fields: ['Status']
-        }, false);
-        for (const r of stale) {
-          if (r.fields.Status !== 'Assigned')
-            await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
-        }
-        if (stale.length) toast(`Αφαιρέθηκαν ${stale.length} GL lines`, 'info');
-      } catch(e) { console.warn('GL cleanup:', e); }
     }
     // ─────────────────────────────────────────────────────────
 
@@ -478,7 +465,7 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   const temp = noFields['Temperature °C']??null;
   const loadDt = (noFields['Loading DateTime']||'').slice(0,10)||null;
   const delDt  = (noFields['Delivery DateTime']||'').slice(0,10)||null;
-  const noDir  = dir.includes('South')||dir==='South→North' ? 'South→North' : 'North→South';
+  const noDir = dir === 'South→North' ? 'South→North' : 'North→South';
 
   // Get all pickup locations — support both old 'Pickup Location' and new '1-10' fields
   const pickupLocs = [];
