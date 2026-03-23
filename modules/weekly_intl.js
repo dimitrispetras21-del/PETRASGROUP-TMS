@@ -142,7 +142,7 @@ const WINTL = {
 /* ── ASSIGNMENT PILLS v3 — left accent bar ── */
 .wi-pill {
   display:flex; flex-direction:column; align-items:stretch;
-  width:100%; max-width:240px;
+  width:240px; min-width:240px;
   border-radius:3px; overflow:hidden;
   transition:opacity .12s; cursor:pointer;
   background:none; border:none; padding:0; gap:0;
@@ -867,6 +867,7 @@ function _wiRowHTML(row,i){
                         (primary?.fields['Total Pallets']||0);
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
   const delDt  =_wiFmt(primary?.fields['Delivery DateTime']);
+  const ref    =primary?.fields['Reference']||'';
 
   // Assignment pill
   const truck  =row.truckLabel  ||data.trucks.find(t=>t.id===row.truckId)?.label||'';
@@ -940,6 +941,7 @@ function _wiRowHTML(row,i){
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
+          ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${ref}</span>`:''}
           ${_wiBadges(primary?.fields||{})}
         </div>
         <button class="wi-side-btn" title="Print Export" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
