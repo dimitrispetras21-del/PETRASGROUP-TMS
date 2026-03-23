@@ -155,6 +155,7 @@ const WINTL = {
   padding:6px 10px 6px 12px;
   border-radius:3px;
   border-left: 2px solid transparent;
+  min-height:38px; justify-content:center;
 }
 .wi-card-top {
   font-size:11px; font-weight:700; letter-spacing:.3px;
@@ -913,7 +914,7 @@ function _wiRowHTML(row,i){
           <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
         </div>
         <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
-          <span class="wi-ci-s">${_wiFmt(imp.fields['Loading DateTime'])} → ${_wiFmt(imp.fields['Delivery DateTime'])} · ${imp.fields['Total Pallets']||0} pal</span>
+          <span class="wi-ci-s">${imp.fields['Total Pallets']||0} pal</span>
           ${_wiBadges(imp.fields)}
         </div>
         <span style="font-size:9px;color:rgba(14,165,233,0.7);font-weight:600">↩ matched</span>
