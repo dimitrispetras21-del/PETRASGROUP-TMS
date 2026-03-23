@@ -276,7 +276,9 @@ async function _rampAutoSync() {
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
   // Deduplicate VS+G records by CL record ID (stored in Notes as CL:recXXX)
+  // Also keep string-based fallback for legacy records without CL: prefix
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
+  const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
 
   // Pre-fetch ALL source order IDs from all CLs in one batch
   const allSrcIds = new Set();
@@ -306,7 +308,9 @@ async function _rampAutoSync() {
       const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
       const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
       const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
-      const locId = Array.isArray(sf['Pickup Location 1']) ? (sf['Pickup Location 1'][0]?.id||sf['Pickup Location 1'][0]) : null;
+      // Use CL's Loading Location N (per-stop) instead of source NO's Pickup Location 1
+      const clLocArr = f[`Loading Location ${i+1}`];
+      const locId = clLocArr?.length ? (clLocArr[0]?.id||clLocArr[0]) : null;
       const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
       const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
       const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
@@ -315,8 +319,9 @@ async function _rampAutoSync() {
       supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
     });
     const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
-    // Dedup by CL record ID (reliable) instead of string matching
+    // Dedup by CL record ID (reliable) + string fallback for legacy records
     if (existingCLIds.has(r.id)) continue;
+    if (existingVSGClients.has(supplierStr)) continue;
 
     // Build notes with CL:recXXX prefix for future dedup + breakdown per supplier
     const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
@@ -371,9 +376,11 @@ async function _rampAutoSync() {
     } else if (cat === 'VS + Groupage' && !orderId && !natId) {
       // CL record — parse CL ID from Notes (CL:recXXX) and check if it still exists
       const clMatch = (rf['Notes']||'').match(/^CL:(rec[a-zA-Z0-9]+)/);
-      if (clMatch && !validCLIds.has(clMatch[1])) {
-        toDelete.push(ramp.id);
+      if (clMatch) {
+        // New format: CL ID in Notes
+        if (!validCLIds.has(clMatch[1])) toDelete.push(ramp.id);
       }
+      // Legacy records without CL: prefix are kept (no reliable way to detect orphans)
     }
   }
 
