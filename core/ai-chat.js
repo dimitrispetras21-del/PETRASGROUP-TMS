@@ -246,10 +246,10 @@ const AIC_PROFILES = {
     tools: ['read_orders','read_fleet','create_work_order','navigate_to'],
   },
   management: {
-    persona: 'You are a management reporting assistant.',
-    focus: 'You help management with fleet oversight, maintenance tracking, driver management, and client relations. You summarize data clearly and flag issues that need attention. You can read all data but should confirm before making changes.',
-    greeting: name => `Hello ${name}! I'm your TMS assistant. I can help with fleet status, maintenance alerts, driver info, and client overview.`,
-    tools: ['read_orders','read_fleet','create_work_order','update_record','navigate_to'],
+    persona: 'You are a management assistant focused on maintenance, drivers, and costs.',
+    focus: 'You help management with maintenance oversight (work orders, expiry alerts, service records), driver management (assignments, payroll), and cost tracking (trip costs, fuel). You don\'t deal with order dispatch or weekly planning — that\'s the dispatcher\'s job.',
+    greeting: name => `Hello ${name}! I can help with maintenance status, driver info, and cost tracking.`,
+    tools: ['read_fleet','create_work_order','update_record','navigate_to'],
   },
   accountant: {
     persona: 'You are a finance-focused TMS assistant.',
