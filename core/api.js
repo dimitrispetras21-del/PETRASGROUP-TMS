@@ -14,14 +14,15 @@ const _STABLE_TABLES = new Set([
   'tblxu8DRfTQOFRCzS',  // LOCATIONS
   'tblEAPExIAjiA3asD',  // TRUCKS
   'tblDcrqRJXzPrtYLm',  // TRAILERS
-  'tblTJ5HJCTFLuMrdb',  // DRIVERS
-  'tblpartners',         // PARTNERS (covered by prefix match below)
+  'tbl7UGmYhc2Y82pPs',  // DRIVERS
+  'tblLHl5m8bqONfhWv',  // PARTNERS
+  'tblFWKAQVUzAM8mCE',  // CLIENTS
 ]);
 const STABLE_MS   = 30 * 60 * 1000;  // 30 min
 const SESSION_MS  =  2 * 60 * 1000;  //  2 min
 
 function _isStable(tableId) {
-  return _STABLE_TABLES.has(tableId) || tableId.startsWith('tblxu8') || tableId.startsWith('tblEAP') || tableId.startsWith('tblDcr') || tableId.startsWith('tblTJ5') || tableId.startsWith('tblFWK');
+  return _STABLE_TABLES.has(tableId) || tableId.startsWith('tblxu8') || tableId.startsWith('tblEAP') || tableId.startsWith('tblDcr') || tableId.startsWith('tbl7UG') || tableId.startsWith('tblFWK');
 }
 
 function _lsGet(key) {

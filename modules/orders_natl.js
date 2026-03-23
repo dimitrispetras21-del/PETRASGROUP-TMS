@@ -524,7 +524,7 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
 
   pickupLocs.forEach((locId, i) => {
     if (!locId) return;
-    const pal = palPerStop || totalPal;
+    const pal = palPerLoc[locId] || totalPal;
     const fields = {
       'Reference':             ref,
       'Pallets':               pal,

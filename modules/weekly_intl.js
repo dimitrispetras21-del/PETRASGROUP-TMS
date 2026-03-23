@@ -970,10 +970,10 @@ function _wiPanelHTML(row){
   const canFull=can('planning')==='full';
   const imp=row.importId?WINTL.data.imports.find(r=>r.id===row.importId):null;
 
-  const savedTruck  = row.truckLabel  ||data.trucks.find(t=>t.id===row.truckId)?.label  ||'';
-  const savedTrailer= row.trailerLabel||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
-  const savedDriver = row.driverLabel ||data.drivers.find(d=>d.id===row.driverId)?.label  ||'';
-  const savedPartner= row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const savedTruck  = row.truckLabel  ||trucks.find(t=>t.id===row.truckId)?.label  ||'';
+  const savedTrailer= row.trailerLabel||trailers.find(t=>t.id===row.trailerId)?.label||'';
+  const savedDriver = row.driverLabel ||drivers.find(d=>d.id===row.driverId)?.label  ||'';
+  const savedPartner= row.partnerLabel||partners.find(p=>p.id===row.partnerId)?.label||'';
 
   return `
   <div class="wi-panel" onclick="event.stopPropagation()">

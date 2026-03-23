@@ -147,24 +147,7 @@ async function _wnLoadAssets() {
   ]);
   WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
 
-  // Build location name map for CL rows
-  {
-    const allLocIds = new Set();
-    (WNATL.data.clLoads||[]).forEach(r => {
-      for (let i=1;i<=10;i++) {
-        const arr = r.fields[`Loading Location ${i}`];
-        if (arr?.length) allLocIds.add(arr[0]);
-      }
-    });
-    if (allLocIds.size) {
-      const locRecs = await atGetAll(TABLES.LOCATIONS, {
-        filterByFormula: `OR(${[...allLocIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
-        fields: ['Name'],
-      }, false);
-      WNATL.data._locMap = {};
-      locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
-    }
-  }
+  // _locMap built in _wnLoadOrders after clLoads are available
   WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
   WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
   WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
@@ -215,8 +198,24 @@ async function _wnLoadOrders() {
     .filter(r => { const d=r.fields['Direction']||''; return d.includes('South')||d==='ΑΝΟΔΟΣ'; })
     .sort((a,b) => (a.fields['Date']||'').localeCompare(b.fields['Date']||''));
 
-  // Also filter week by Loading DateTime for S→N (pick-up this week)
-  // N→S already filtered by Delivery DateTime above
+  // Build location name map for CL rows (now that clLoads is populated)
+  {
+    const allLocIds = new Set();
+    (WNATL.data.clLoads||[]).forEach(r => {
+      for (let i=1;i<=10;i++) {
+        const arr = r.fields[`Loading Location ${i}`];
+        if (arr?.length) allLocIds.add(arr[0]);
+      }
+    });
+    if (allLocIds.size) {
+      const locRecs = await atGetAll(TABLES.LOCATIONS, {
+        filterByFormula: `OR(${[...allLocIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+        fields: ['Name'],
+      }, false);
+      WNATL.data._locMap = {};
+      locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
+    }
+  }
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
@@ -583,7 +582,8 @@ function _wnSnInlineCell(snRec, rowId) {
   const toStr    = f['Type']==='Veroia Switch'
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
     : (_wnDeliverySummary(f) || clientLabel || '—');
-  const loadDt   = row.source==='cl' ? _wnFmt(f['Date']) : _wnFmt(f['Loading DateTime']);
+  const isCL     = !!f['Date'] && !f['Loading DateTime'];
+  const loadDt   = isCL ? _wnFmt(f['Date']) : _wnFmt(f['Loading DateTime']);
   const pals     = f['Total Pallets']||f['Pallets']||0;  // CL uses Total Pallets
   return `<div class="wi-ci-data">
     <div style="display:flex;align-items:center;gap:0;min-width:0">
