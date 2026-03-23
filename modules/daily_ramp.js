@@ -150,13 +150,18 @@ async function _rampAutoSync() {
   // Get existing RAMP records for this date to avoid duplicates
   const existing = await atGetAll(TABLES.RAMP, {
     filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
-    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status'],
+    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes'],
   }, false);
   const existingKeys = new Set(existing.map(r => {
     const oid = (r.fields['Order']||[])[0]?.id || (r.fields['Order']||[])[0] || '';
     const nid = (r.fields['National Order']||[])[0]?.id || (r.fields['National Order']||[])[0] || '';
     return `${oid||nid}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
   }));
+  // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
+  const existingCLIds = new Set(existing
+    .filter(e => e.fields['Ramp Category']==='VS + Groupage')
+    .map(e => { const m=(e.fields['Notes']||'').match(/^CL:(rec[a-zA-Z0-9]+)/); return m?m[1]:''; })
+    .filter(Boolean));
 
   const toCreate = [];
 
@@ -237,6 +242,11 @@ async function _rampAutoSync() {
     const key = `${r.id}_${type}_`;
     if (existingKeys.has(key)) return;
 
+    // Resolve client name from linked record ID
+    const natClientId = Array.isArray(f['Client']) ? f['Client'][0] : f['Client'];
+    const natClientRec = natClientId ? RAMP.clients.find(c=>c.id===natClientId) : null;
+    const natClientName = natClientRec ? (natClientRec.fields['Company Name']||natClientId) : (natClientId||'—');
+
     const rec = {
       'Plan Date': date,
       'Type': type,
@@ -244,7 +254,7 @@ async function _rampAutoSync() {
       'National Order': [r.id],
       'Goods': f['Goods'] || '',
       'Pallets': f['Pallets'] || 0,
-      'Supplier/Client': Array.isArray(f['Client']) ? (f['Client'][0]||'') : (f['Client']||''),
+      'Supplier/Client': natClientName,
     };
     if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
     if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
@@ -265,10 +275,8 @@ async function _rampAutoSync() {
 
   const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
 
-  // Deduplicate by CL Name OR Notes content — check existing VS+G records
+  // Deduplicate VS+G records by CL record ID (stored in Notes as CL:recXXX)
   const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
-  const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
-  const existingVSGNotes = new Set(existingVSG.map(e=>(e.fields['Notes']||'').slice(0,50)).filter(Boolean));
 
   // Pre-fetch ALL source order IDs from all CLs in one batch
   const allSrcIds = new Set();
@@ -307,16 +315,12 @@ async function _rampAutoSync() {
       supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
     });
     const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
-    if (existingVSGClients.has(supplierStr)) continue;
-    // Also check by notes prefix to catch duplicates with same suppliers
-    const notesPrefix = supplierLines.map(s=>`${s.client} | ${s.location}`).join('\n').slice(0,50);
-    if (notesPrefix && existingVSGNotes.has(notesPrefix)) continue;
+    // Dedup by CL record ID (reliable) instead of string matching
+    if (existingCLIds.has(r.id)) continue;
 
-    // supplierLines and supplierStr already built above for dedup
-
-    // Build notes with breakdown: "Client | Location | PAL | REF" per line
+    // Build notes with CL:recXXX prefix for future dedup + breakdown per supplier
     const notesLines = supplierLines.map(s => `${s.client} | ${s.location} | ${s.pallets} pal | ${s.temp} | ref: ${s.ref}`);
-    const notesStr = notesLines.join('\n');
+    const notesStr = `CL:${r.id}\n` + notesLines.join('\n');
 
     const rec = {
       'Plan Date': date,
@@ -345,7 +349,7 @@ async function _rampAutoSync() {
     ...vsExp.map(r=>r.id), ...vsImp.map(r=>r.id),
   ]);
   const validNatIds = new Set(natOrders.map(r=>r.id));
-  const validCLNames = new Set(consLoads.map(r=>r.fields['Name']||''));
+  const validCLIds = new Set(consLoads.map(r=>r.id));
 
   const toDelete = [];
   for (const ramp of existing) {
@@ -365,9 +369,9 @@ async function _rampAutoSync() {
       // Source national order no longer matches this date
       toDelete.push(ramp.id);
     } else if (cat === 'VS + Groupage' && !orderId && !natId) {
-      // CL record — check if its supplier/client matches any active CL
-      const sc = rf['Supplier/Client']||'';
-      if (sc && !existingVSGClients.has(sc) && !validCLNames.has(sc)) {
+      // CL record — parse CL ID from Notes (CL:recXXX) and check if it still exists
+      const clMatch = (rf['Notes']||'').match(/^CL:(rec[a-zA-Z0-9]+)/);
+      if (clMatch && !validCLIds.has(clMatch[1])) {
         toDelete.push(ramp.id);
       }
     }
@@ -565,7 +569,7 @@ function _rRow(rec,num,tOpts) {
   // Sub-rows for VS+G consolidated loads
   let subHtml = '';
   if (isVSG && notes) {
-    const lines = notes.split('\n').filter(Boolean);
+    const lines = notes.split('\n').filter(l => l && !l.startsWith('CL:'));
     subHtml = lines.map(line => {
       const parts = line.split(' | ');
       const sup = parts[0]?.trim()||'';
