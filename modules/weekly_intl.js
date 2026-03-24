@@ -812,11 +812,11 @@ function _wiImpRowHTML(row){
       </div>
       <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
+        <button class="wi-side-btn" title="Print Import"
+                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
           ${impPill}
         </div>
-        <button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
                 onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
