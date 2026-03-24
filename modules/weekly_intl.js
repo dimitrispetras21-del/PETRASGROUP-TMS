@@ -811,11 +811,11 @@ function _wiImpRowHTML(row){
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
+      <div class="wi-ce" style="cursor:grab;background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         <button class="wi-side-btn" title="Print Import"
                 onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
+        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
           ${impPill}
         </div>
         ${isMatched
@@ -962,8 +962,8 @@ function _wiRowHTML(row,i){
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
         <button class="wi-side-btn" title="Print Export"
                 onclick="event.stopPropagation();_wiPrint(${row.id},'export')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;
-                    padding:4px 6px;cursor:pointer;min-width:0">
+        <div style="width:240px;display:flex;align-items:center;justify-content:center;
+                    padding:4px 0;cursor:pointer">
           ${pill}
         </div>
         ${row.importId
