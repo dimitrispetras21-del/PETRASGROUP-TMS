@@ -452,13 +452,14 @@ function _wnRowHTML(row, i) {
           ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
         </div>
-        <button class="wi-side-btn" title="Εκτύπωση κάθοδος" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
-                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">🖨</button>
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
+        <button class="wi-side-btn" title="Print"
+                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
+        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
           ${pill}
         </div>
+        <div style="width:30px;flex-shrink:0"></div>
       </div>
       <div class="wi-ci" id="wn-ci-${row.id}"
            onclick="event.stopPropagation()"
@@ -547,11 +548,14 @@ function _wnSnRowHTML(row) {
       </div>
       <div class="wi-ce" style="background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 8px;cursor:pointer;min-width:0">
+        <div style="width:30px;flex-shrink:0"></div>
+        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
           ${pill}
         </div>
+        <button class="wi-side-btn" title="Print"
+          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
       </div>
-      <div class="wi-ci" style="cursor:grab;position:relative">
+      <div class="wi-ci" style="cursor:grab">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
             <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
@@ -566,8 +570,6 @@ function _wnSnRowHTML(row) {
           </div>
           <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
         </div>
-        <button class="wi-side-btn" title="Εκτύπωση ανόδου" style="position:absolute;top:2px;left:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
-          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">🖨</button>
       </div>
     </div>
   </div>`;
