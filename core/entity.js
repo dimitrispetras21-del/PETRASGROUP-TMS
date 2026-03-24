@@ -113,10 +113,12 @@ const ENTITY_CONFIG = {
       ]},
     ],
     columns: [
-      { field: 'Full Name',      label: 'Full Name', primary: true },
+      { field: 'Full Name',      label: 'Driver', primary: true },
       { field: 'Phone',          label: 'Phone' },
       { field: 'Type',           label: 'Type' },
-      { field: 'License Expiry', label: 'Licence Expiry', type: 'expiry' },
+      { field: 'Salary Base',    label: 'Salary' },
+      { field: 'License Number', label: 'License No.' },
+      { field: 'License Expiry', label: 'License Expiry', type: 'expiry' },
       { field: 'Active',         label: 'Status', type: 'active' },
     ],
     formFields: [

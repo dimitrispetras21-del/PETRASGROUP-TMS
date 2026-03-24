@@ -112,11 +112,19 @@ const RAMP_FIELDS = [
 })();
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
+let _rampAutoRefresh = null;
+
 async function renderDailyRamp() {
   document.getElementById('topbarTitle').textContent = 'Daily Ramp Board';
   document.getElementById('content').innerHTML = showLoading('Φόρτωση ράμπας…');
   try { await _rampLoad(); _rampDraw(); }
   catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
+  // Auto-refresh every 2 minutes while on this page
+  clearInterval(_rampAutoRefresh);
+  _rampAutoRefresh = setInterval(async () => {
+    if (currentPage !== 'daily_ramp') { clearInterval(_rampAutoRefresh); return; }
+    try { await _rampLoad(); _rampDraw(); } catch(e) { console.warn('Ramp auto-refresh failed:', e); }
+  }, 120000);
 }
 
 async function _rampLoad() {
@@ -484,6 +492,8 @@ function _rampDraw() {
   const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
+  const total=RAMP.records.length;
+  const done=RAMP.records.filter(r=>r.fields['Status']==='Ολοκληρώθηκε'||r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
 
   // Stock by client
@@ -522,6 +532,8 @@ function _rampDraw() {
         <div><span class="ramp-kpi-val" style="color:${net>=0?'#059669':'#EF4444'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">Stock Total</div>
         <div><span class="ramp-kpi-val" style="color:#D97706">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Progress</div>
+        <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'#10B981':'#0284C7':'#F1F5F9'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
     </div>
 
     <div class="ramp-pair">
