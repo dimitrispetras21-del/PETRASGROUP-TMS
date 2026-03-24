@@ -1031,6 +1031,24 @@ function _wiPanelHTML(row){
                    oninput="_wiField(${row.id},'partnerPlates',this.value)"
                    onclick="event.stopPropagation()"/>
           </div>
+          <div class="wi-pf">
+            <span class="wi-plbl">Export Rate €</span>
+            <input class="wi-ti" type="number" step="0.01" placeholder="0.00"
+                   style="width:80px"
+                   value="${row.partnerRate||''}"
+                   id="wi-pr-exp-${row.id}"
+                   oninput="_wiField(${row.id},'partnerRate',this.value)"
+                   onclick="event.stopPropagation()"/>
+          </div>
+          <div class="wi-pf" ${!row.importId?'style="opacity:0.4;pointer-events:none" title="No import matched"':''}>
+            <span class="wi-plbl">Import Rate €</span>
+            <input class="wi-ti" type="number" step="0.01" placeholder="0.00"
+                   style="width:80px"
+                   value="${row.partnerRateImp||''}"
+                   id="wi-pr-imp-${row.id}"
+                   oninput="_wiField(${row.id},'partnerRateImp',this.value)"
+                   onclick="event.stopPropagation()"/>
+          </div>
         </div>
       </div>
 
@@ -1170,9 +1188,15 @@ window._wiDragging=null;
 
 // Drag from import ROWS (new — replaces shelf drag)
 function _wiImpDragStart(e,impId){
+  // Block drag if import is already matched to an export
+  const imp=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
+  if(imp&&imp.matchedTo){
+    e.preventDefault();
+    toast('Unassign this import first','warn');
+    return;
+  }
   window._wiDragging=impId;
   e.dataTransfer.effectAllowed='move';
-  // Dim the row slightly
   e.currentTarget.style.opacity='0.5';
   setTimeout(()=>{ if(e.currentTarget) e.currentTarget.style.opacity=''; },0);
 }
@@ -1408,6 +1432,8 @@ async function _wiSaveFromPopover(rowId){
   if(rateImpEl) row.partnerRateImp=rateImpEl.value;
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
+  if(isPartner&&!row.partnerRate){toast('Export Rate is required for Partner','warn');return;}
+  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required for Partner','warn');return;}
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
@@ -1546,12 +1572,18 @@ async function _wiSave(rowId){
   sync('dr','driverId','driverLabel');
   sync('pt','partnerId','partnerLabel');
 
-  // Read partner plates from input
+  // Read partner plates + rates from inputs
   const ppInput=document.getElementById(`wi-pp-${rowId}`);
   if(ppInput) row.partnerPlates=ppInput.value;
+  const prExpInput=document.getElementById(`wi-pr-exp-${rowId}`);
+  if(prExpInput) row.partnerRate=prExpInput.value;
+  const prImpInput=document.getElementById(`wi-pr-imp-${rowId}`);
+  if(prImpInput) row.partnerRateImp=prImpInput.value;
 
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
+  if(isPartner&&!row.partnerRate){toast('Partner Rate is required','warn');return;}
+  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required','warn');return;}
 
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.classList.add('saving');
@@ -1561,6 +1593,7 @@ async function _wiSave(rowId){
     ?{ 'Partner'            :[row.partnerId],
        'Is Partner Trip'    :true,
        'Partner Truck Plates':row.partnerPlates||'',
+       'Partner Rate'       :row.partnerRate?parseFloat(row.partnerRate):null,
        'Status'             :'Assigned',
        'Truck':[],'Trailer':[],'Driver':[] }
     :{ 'Truck'              :[row.truckId],

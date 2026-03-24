@@ -676,6 +676,13 @@ function _wnNavWeek(d) {
 window._wnDragging = null;
 
 function _wnDragStart(e, snId) {
+  // Block drag if S→N is already matched to a N→S row
+  const snRow = WNATL.rows.find(r => r.type==='southnorth' && r.orderId===snId);
+  if (!snRow) {
+    // Also check if this snId is already used as matchedId in any N→S row
+    const alreadyMatched = WNATL.rows.find(r => r.type==='northsouth' && r.matchedId===snId);
+    if (alreadyMatched) { e.preventDefault(); toast('Πρέπει πρώτα να αφαιρεθεί η αντιστοίχιση', 'warn'); return; }
+  }
   window._wnDragging = snId;
   e.dataTransfer.effectAllowed = 'move';
   e.stopPropagation();
@@ -845,6 +852,7 @@ async function _wnSaveFromPopover(rowId) {
 
   const isPartner = !!row.partnerId;
   if (!isPartner && !row.truckId) { toast('Επίλεξε Τράκτορα ή Συνεργάτη', 'warn'); return; }
+  if (isPartner && !row.partnerRate) { toast('Το Κόμιστρο είναι υποχρεωτικό για Συνεργάτη', 'warn'); return; }
 
   const btn  = document.getElementById(`wn-pop-btn-${rowId}`);
   const spin = document.getElementById(`wn-pop-spin-${rowId}`);
