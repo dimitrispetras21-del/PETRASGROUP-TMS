@@ -410,6 +410,8 @@ function _expiryPrint() {
 // ═════════════════════════════════════════════════════════════════
 // PAGE 2: SERVICE RECORDS
 // ═════════════════════════════════════════════════════════════════
+let _svcFilters = { vehicle: '', type: '', status: '' };
+
 async function renderServiceRecords() {
   document.getElementById('topbarTitle').textContent = 'Service Records';
   document.getElementById('content').innerHTML = showLoading('Loading service records…');
@@ -422,38 +424,85 @@ async function renderServiceRecords() {
   }
 }
 
+function _svcSetFilter(k, v) { _svcFilters[k] = v; _svcPaint(); }
+
 function _svcPaint() {
-  const records = [...MAINT.history].sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
+  let records = [...MAINT.history].sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
+
+  // Apply filters
+  if (_svcFilters.vehicle) records = records.filter(r => r.fields['Vehicle Plate'] === _svcFilters.vehicle);
+  if (_svcFilters.type)    records = records.filter(r => r.fields['Type'] === _svcFilters.type);
+  if (_svcFilters.status)  records = records.filter(r => r.fields['Status'] === _svcFilters.status);
+
+  // KPI calculations
+  const allRecs = MAINT.history;
+  const costYTD = allRecs.filter(r => (r.fields['Date']||'').startsWith('2026') && (r.fields['Status']==='Completed'||r.fields['Status']==='Done'))
+    .reduce((s, r) => s + (r.fields['Cost']||0), 0);
+  const svcCount = allRecs.filter(r => (r.fields['Date']||'').startsWith('2026')).length;
+  const avgCost = svcCount ? costYTD / svcCount : 0;
+  const types = [...new Set(allRecs.map(r => r.fields['Type']).filter(Boolean))].sort();
+  const vehicles = [...new Set(allRecs.map(r => r.fields['Vehicle Plate']).filter(Boolean))].sort();
+  const statuses = [...new Set(allRecs.map(r => r.fields['Status']).filter(Boolean))].sort();
 
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Service Records</div>
-        <div class="page-sub">${records.length} records</div></div>
+        <div class="page-sub">${MAINT.history.length} total · showing ${records.length}</div></div>
       <div style="display:flex;gap:8px">
         <button class="btn btn-ghost" onclick="_svcOpenForm()">+ New Record</button>
         <button class="btn btn-ghost" onclick="MAINT.history=[];renderServiceRecords()">Refresh</button>
       </div>
     </div>
 
+    <div class="mk-kpis" style="margin-bottom:14px">
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Cost YTD</div>
+        <div class="mk-kpi-val" style="color:#F1F5F9">${_fmtCost(costYTD)}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">2026 total</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Services YTD</div>
+        <div class="mk-kpi-val" style="color:#0284C7">${svcCount}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">records</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Avg Cost</div>
+        <div class="mk-kpi-val" style="color:#F59E0B">${_fmtCost(avgCost)}</div>
+        <div style="font-size:11px;color:#64748B;margin-top:2px">per service</div></div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
+              onchange="_svcSetFilter('vehicle',this.value)">
+        <option value="">All Vehicles</option>
+        ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
+      </select>
+      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
+              onchange="_svcSetFilter('type',this.value)">
+        <option value="">All Types</option>
+        ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${t}</option>`).join('')}
+      </select>
+      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
+              onchange="_svcSetFilter('status',this.value)">
+        <option value="">All Statuses</option>
+        ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
+      </select>
+    </div>
+
     <table class="mt">
       <thead><tr>
-        <th>#</th><th>Date</th><th>Plate</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
+        <th style="width:30px">#</th><th>Date</th><th>Plate</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
       </tr></thead>
       <tbody>${records.length ? records.map((r, i) => {
         const f = r.fields;
-        const statusCls = f['Status']==='Completed'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
+        const statusCls = f['Status']==='Completed'||f['Status']==='Done'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
         return `<tr onclick="_svcOpenForm('${r.id}')">
           <td class="rn">${i+1}</td>
-          <td>${_fmtDate(f['Date'])}</td>
-          <td style="font-weight:700">${f['Vehicle Plate']||'—'}</td>
-          <td>${f['Type']||'—'}</td>
-          <td>${_wsName(f['Workshop'])}</td>
-          <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(f['Description']||'').substring(0,60)}</td>
-          <td class="r">${_fmtCost(f['Cost'])}</td>
-          <td>${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
-          <td><span class="exp-badge ${statusCls}">${f['Status']||'—'}</span></td>
+          <td style="font-size:12px">${_fmtDate(f['Date'])}</td>
+          <td style="font-weight:700;font-size:12px">${f['Vehicle Plate']||'—'}</td>
+          <td style="font-size:12px">${f['Type']||'—'}</td>
+          <td style="font-size:11px;color:var(--text-mid)">${_wsName(f['Workshop'])}</td>
+          <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${(f['Description']||'').substring(0,60)}</td>
+          <td class="r" style="font-size:12px">${_fmtCost(f['Cost'])}</td>
+          <td style="font-size:11px">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
+          <td><span class="exp-badge ${statusCls}" style="font-size:9px">${f['Status']||'—'}</span></td>
         </tr>`;
-      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No service records yet</td></tr>'}</tbody>
+      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No service records found</td></tr>'}</tbody>
     </table>
     <div id="mf-container"></div>`;
 }
