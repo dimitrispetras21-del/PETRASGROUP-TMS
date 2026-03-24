@@ -152,12 +152,17 @@ function navigate(page) {
     }
   }
 
-  let label = page;
+  let label = page, section = '';
   for (const g of NAV) {
     const item = g.items.find(i => i.id === page);
-    if (item) { label = item.label; break; }
+    if (item) { label = item.label; section = g.section; break; }
   }
-  document.getElementById('topbarTitle').textContent = label;
+  const topbar = document.getElementById('topbarTitle');
+  if (section && section !== label) {
+    topbar.innerHTML = `<span style="color:var(--text-dim);font-weight:400">${section}</span> <span style="color:var(--text-dim);margin:0 4px;font-weight:300">/</span> ${label}`;
+  } else {
+    topbar.textContent = label;
+  }
 
   const c = document.getElementById('content');
   // Reset content padding (some pages like pickups use zero-padding iframe)
