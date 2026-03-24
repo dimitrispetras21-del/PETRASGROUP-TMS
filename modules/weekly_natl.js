@@ -127,9 +127,7 @@ async function renderWeeklyNatl() {
   content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
-    await _wnLoadAssets();
-    if (loadId !== _wnLoadId) return; // user switched week, abort
-    await _wnLoadOrders();
+    await _wnLoadAll();
     if (loadId !== _wnLoadId) return;
     _wnBuildRows();
     _wnPaint();
@@ -140,80 +138,47 @@ async function renderWeeklyNatl() {
   }
 }
 
-/* ── LOAD ASSETS ─────────────────────────────────────────────────── */
-async function _wnLoadAssets() {
-  const [t, tl, d, p, c, locs] = await Promise.all([
-    atGetAll(TABLES.TRUCKS,    { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
-    atGetAll(TABLES.TRAILERS,  { fields:['License Plate'] }, false),
-    atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
-    atGetAll(TABLES.PARTNERS,  { fields:['Company Name'] }, false),
-    atGetAll(TABLES.CLIENTS,   { fields:['Company Name'] }, false),
-    atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
-  ]);
-  WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-
-  // _locMap built in _wnLoadOrders after clLoads are available
-  WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-  WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
-  WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
-  WNATL.data.clients   = c.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
-  WNATL.data.locations = locs;
-}
-
-/* ── LOAD ORDERS ─────────────────────────────────────────────────── */
-async function _wnLoadOrders() {
+/* ── LOAD ALL (assets + orders in parallel) ──────────────────────── */
+async function _wnLoadAll() {
   const year   = new Date().getFullYear();
   const jan4   = new Date(year, 0, 4);
   const mon    = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
   const wStart = new Date(mon); wStart.setDate(mon.getDate() + (WNATL.week - 1) * 7);
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
   const fmt    = d => d.toISOString().split('T')[0];
-
-  // ── Single query to NATIONAL LOADS ──
   const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
-  const all = await atGetAll(TABLES.NAT_LOADS, {
-    filterByFormula: filter,
-  }, false);
+  // All 7 fetches in parallel (assets + orders)
+  const [t, tl, d, p, c, locs, all] = await Promise.all([
+    atGetAll(TABLES.TRUCKS,    { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.TRAILERS,  { fields:['License Plate'] }, false),
+    atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
+    atGetAll(TABLES.PARTNERS,  { fields:['Company Name'] }, false),
+    atGetAll(TABLES.CLIENTS,   { fields:['Company Name'] }, false),
+    atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
+    atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter }, false),
+  ]);
 
-  // Split by direction
+  // Map assets
+  WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  WNATL.data.clients   = c.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  WNATL.data.locations = locs;
+
+  // Split orders by direction
   WNATL.data.northsouth = all
     .filter(r => r.fields['Direction'] === 'ΚΑΘΟΔΟΣ')
     .sort((a,b) => (a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
-
   WNATL.data.southnorth = all
     .filter(r => r.fields['Direction'] === 'ΑΝΟΔΟΣ')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
-
-  // No more separate CL query — everything is in NAT_LOADS
   WNATL.data.clLoads = [];
 
-  // Build location name map for pickup locations
-  {
-    const allLocIds = new Set();
-    all.forEach(r => {
-      for (let i=1;i<=10;i++) {
-        const arr = r.fields[`Pickup Location ${i}`];
-        if (arr?.length) allLocIds.add(arr[0]);
-        const darr = r.fields[`Delivery Location ${i}`];
-        if (darr?.length) allLocIds.add(darr[0]);
-      }
-    });
-    if (allLocIds.size) {
-      const ids = [...allLocIds];
-      const locRecs = [];
-      for (let i=0; i<ids.length; i+=20) {
-        const batch = ids.slice(i,i+20);
-        const recs = await atGetAll(TABLES.LOCATIONS, {
-          filterByFormula: `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`,
-          fields: ['Name'],
-        }, false);
-        locRecs.push(...recs);
-      }
-      WNATL.data._locMap = {};
-      locRecs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||''; });
-    }
-  }
+  // Build location map — use already-fetched locs instead of extra API calls
+  WNATL.data._locMap = {};
+  locs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||r.fields.City||''; });
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */

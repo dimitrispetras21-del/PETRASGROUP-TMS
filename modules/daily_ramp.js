@@ -137,13 +137,16 @@ async function _rampLoad() {
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
   await _rampAutoSync();
 
+  // Fetch today's ramp + stock in parallel
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
-  const recs=await atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false);
+  const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
+  const [recs, stock] = await Promise.all([
+    atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false),
+    atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false),
+  ]);
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
   RAMP.records=recs;
-
-  const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  RAMP.stock=await atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false);
+  RAMP.stock=stock;
 }
 
 /* ── AUTO-SYNC: Create RAMP records from source tables ────────── */
@@ -226,7 +229,7 @@ async function _rampAutoSync() {
     toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'VS Simple', date, true));
   });
 
-  // ── 2. NATIONAL LOADS (Direct only — Groupage handled via CL below) ──
+  // ── 2+3. NATIONAL LOADS + CONS_LOADS in parallel ──────────────
   const natFilter = `AND(
     {Source Type}='Direct',
     OR(IS_SAME({Loading DateTime},'${date}','day'),IS_SAME({Delivery DateTime},'${date}','day'))
@@ -236,8 +239,18 @@ async function _rampAutoSync() {
     'Pickup Location 1','Pickup Location 2','Pickup Location 3',
     'Delivery Location 1','Delivery Location 2','Delivery Location 3',
     'Source Type'];
+  const clFilter = `IS_SAME({Loading DateTime},'${date}','day')`;
+  const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
+    'Truck','Trailer','Driver','Name','Groupage ID','Source Orders',
+    'Pallets 1','Pallets 2','Pallets 3','Pallets 4','Pallets 5',
+    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10',
+    'Loading Location 1','Loading Location 2','Loading Location 3','Loading Location 4','Loading Location 5',
+    'Delivery Location 1','Delivery Location 2','Delivery Location 3'];
 
-  const natOrders = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]);
+  const [natOrders, consLoads] = await Promise.all([
+    atGetAll(TABLES.NAT_LOADS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]),
+    atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]),
+  ]);
 
   natOrders.forEach(r => {
     const f = r.fields;
@@ -263,16 +276,7 @@ async function _rampAutoSync() {
     toCreate.push(rec);
   });
 
-  // ── 3. CONS_LOADS → Inbound (VS + Groupage) ──────────────
-  const clFilter = `IS_SAME({Loading DateTime},'${date}','day')`;
-  const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
-    'Truck','Trailer','Driver','Name','Groupage ID','Source Orders',
-    'Pallets 1','Pallets 2','Pallets 3','Pallets 4','Pallets 5',
-    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10',
-    'Loading Location 1','Loading Location 2','Loading Location 3','Loading Location 4','Loading Location 5',
-    'Delivery Location 1','Delivery Location 2','Delivery Location 3'];
-
-  const consLoads = await atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]);
+  // ── 3. CONS_LOADS → Inbound (VS + Groupage) — already fetched above ──
 
   // Deduplicate VS+G records by CL record ID (stored in Notes as CL:recXXX)
   // Also keep string-based fallback for legacy records without CL: prefix

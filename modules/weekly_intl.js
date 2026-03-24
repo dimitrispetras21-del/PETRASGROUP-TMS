@@ -432,11 +432,19 @@ async function renderWeeklyIntl(){
       <div class="spinner"></div> Loading week ${WINTL.week}…
     </div>`;
   try{
-    await _wiLoadAssets();
+    // All fetches in parallel (assets + orders)
+    const [t,tl,d,p,allOrders] = await Promise.all([
+      atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
+      atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
+      atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
+      atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false),
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`},false),
+    ]);
     if (loadId !== _wiLoadId) return;
-    const allOrders = await atGetAll(TABLES.ORDERS,{
-      filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`,
-    },false);
+    WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+    WINTL.data.trailers = tl.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+    WINTL.data.drivers  = d.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
+    WINTL.data.partners = p.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 
     WINTL.data.exports = allOrders
       .filter(r=>r.fields.Direction==='Export')

@@ -10,8 +10,10 @@ async function renderOrdersNatl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading national orders...');
   try {
-    await _loadLocations(); // shared with orders_intl
-    const records = await atGet(TABLES.NAT_ORDERS, '', false);
+    const [, records] = await Promise.all([
+      _loadLocations(),
+      atGet(TABLES.NAT_ORDERS, '', false),
+    ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     NATL_ORDERS.data = records;
     NATL_ORDERS.filtered = records;

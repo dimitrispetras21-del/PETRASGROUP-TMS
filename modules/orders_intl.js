@@ -65,23 +65,27 @@ async function renderOrdersIntl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading orders...');
   try {
-    await _loadLocations();
-    const records = await atGet(TABLES.ORDERS, '', false);
+    const [, records] = await Promise.all([
+      _loadLocations(),
+      atGet(TABLES.ORDERS, '', false),
+    ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     INTL_ORDERS.data = records;
     INTL_ORDERS.filtered = records;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
-    // Pre-resolve all client names in batch
+    // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
     const unresolvedIds = clientIds.filter(id=>!_clientsMap[id]);
     if (unresolvedIds.length) {
+      const batches = [];
       for (let i=0; i<unresolvedIds.length; i+=10) {
         const batch = unresolvedIds.slice(i,i+10);
         const f = `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`;
-        const recs = await atGetAll(TABLES.CLIENTS,{filterByFormula:f,fields:['Company Name']},false).catch(()=>[]);
-        recs.forEach(r=>{ _clientsMap[r.id] = r.fields['Company Name']||r.id; });
+        batches.push(atGetAll(TABLES.CLIENTS,{filterByFormula:f,fields:['Company Name']},false).catch(()=>[]));
       }
+      const results = await Promise.all(batches);
+      results.flat().forEach(r=>{ _clientsMap[r.id] = r.fields['Company Name']||r.id; });
     }
     _renderIntlLayout(c);
     _applyIntlFilters();
