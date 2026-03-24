@@ -672,6 +672,11 @@ async function _renderHistory(vType) {
 function _historyPaint(vType) {
   const vehicles = vType === 'trucks' ? MAINT.trucks : MAINT.trailers;
   const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
+  // Auto-select first active vehicle if nothing selected
+  if (!_historyVehicle[vType]) {
+    const first = vehicles.filter(v => v.fields['Active']).sort((a,b) => (a.fields['License Plate']||'').localeCompare(b.fields['License Plate']||''))[0];
+    if (first) _historyVehicle[vType] = first.fields['License Plate'] || '';
+  }
   const selected = _historyVehicle[vType];
 
   const vehicleOpts = vehicles
@@ -976,6 +981,11 @@ function _mreqPaint() {
       </div>
     </div>
 
+    ${sos ? `<div style="background:#7F1D1D;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">&#9888;</span>
+      <span style="color:#FEE2E2;font-size:13px;font-weight:600">${sos} SOS work order${sos>1?'s':''} — immediate attention required</span>
+    </div>` : ''}
+
     <div class="mk-kpis">
       <div class="mk-kpi"><div class="mk-kpi-lbl">SOS</div>
         <div class="mk-kpi-val" style="color:#EF4444">${sos}</div></div>
@@ -1092,7 +1102,15 @@ function _mreqOpenForm(editId) {
           <div class="mf-field"><label>Date Reported</label>
             <input type="date" id="mreq-date" value="${f['Date Reported']?f['Date Reported'].substring(0,10):new Date().toISOString().substring(0,10)}"></div>
           <div class="mf-field"><label>Workshop</label>
-            <input id="mreq-workshop" value="${f['Workshop']||''}" placeholder="π.χ. Δρόσος, Σαρακάκης"></div>
+            <select id="mreq-workshop">
+              <option value="">— Select —</option>
+              ${MAINT.workshops.filter(w=>w.fields['Active']).map(w =>
+                `<option value="${w.fields['Name']||''}"${f['Workshop']===w.fields['Name']?' selected':''}>${w.fields['Name']||'?'}${w.fields['City']?' — '+w.fields['City']:''}</option>`
+              ).join('')}
+              <option value="__other"${f['Workshop']&&!MAINT.workshops.find(w=>w.fields['Name']===f['Workshop'])?' selected':''}>Other</option>
+            </select></div>
+          <div class="mf-field"><label>Est. Cost €</label>
+            <input type="number" id="mreq-cost" step="0.01" value="${f['Estimated Cost']||''}" placeholder="0.00"></div>
         </div>
         <div class="mf-field"><label>Notes</label>
           <textarea id="mreq-notes" rows="2" style="resize:vertical">${f['Notes']||''}</textarea></div>
@@ -1117,15 +1135,18 @@ async function _mreqSave(editId) {
     : sel.value;
   if (!plate) { alert('Vehicle Plate is required'); return; }
 
+  const wsVal = document.getElementById('mreq-workshop').value;
   const fields = {
     'Vehicle Plate': plate,
     'Description': document.getElementById('mreq-desc').value.trim(),
     'Priority': document.getElementById('mreq-prio').value,
     'Status': document.getElementById('mreq-status').value,
     'Date Reported': document.getElementById('mreq-date').value || null,
-    'Workshop': document.getElementById('mreq-workshop').value.trim() || null,
+    'Workshop': wsVal === '__other' ? null : (wsVal || null),
     'Notes': document.getElementById('mreq-notes').value.trim() || null,
   };
+  const costEl = document.getElementById('mreq-cost');
+  if (costEl && costEl.value) fields['Estimated Cost'] = parseFloat(costEl.value);
 
   try {
     if (editId) {
