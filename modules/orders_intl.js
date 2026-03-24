@@ -291,6 +291,23 @@ function selectIntlOrder(recId) {
         ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
       </div>
       <div class="detail-section">
+        <div class="detail-section-title">Timeline</div>
+        <div style="display:flex;align-items:center;gap:0;padding:4px 0">
+          ${['Pending','Assigned','In Transit','Delivered','Invoiced'].map((st,i,arr) => {
+            const statuses = ['Pending','Assigned','In Transit','Delivered','Invoiced'];
+            const currentIdx = statuses.indexOf(f['Status']||'Pending');
+            const done = i <= currentIdx;
+            const active = i === currentIdx;
+            const col = done ? '#0284C7' : '#1E293B';
+            return `<div style="display:flex;align-items:center;gap:0">
+              <div style="width:${active?'10':'8'}px;height:${active?'10':'8'}px;border-radius:50%;background:${done?col:'transparent'};border:2px solid ${col};flex-shrink:0${active?';box-shadow:0 0 0 3px rgba(2,132,199,0.2)':''}"></div>
+              <div style="font-size:9px;color:${done?'#0284C7':'#475569'};font-weight:${active?'700':'400'};margin:0 2px;white-space:nowrap">${st}</div>
+              ${i<arr.length-1?`<div style="width:12px;height:2px;background:${i<currentIdx?'#0284C7':'#1E293B'};flex-shrink:0"></div>`:''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
         ${_dF('Reference',    f['Reference']?'('+f['Reference']+')':'—')}

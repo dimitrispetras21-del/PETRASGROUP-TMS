@@ -614,6 +614,7 @@ function _wiPaint(){
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiPrintWeek()">Print Week</button>
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
       </div>
     </div>
@@ -1726,4 +1727,45 @@ function _wiNavWeek(delta){
   WINTL.week=Math.max(1,Math.min(53,WINTL.week+delta));
   WINTL.ui.openRow=null;
   renderWeeklyIntl();
+}
+
+function _wiPrintWeek(){
+  const rows=WINTL.rows.filter(r=>r.type==='export');
+  const data=WINTL.data;
+  let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly International — W${WINTL.week}</h2>
+    <p style="font-size:12px;color:#666;margin-bottom:16px">${rows.length} exports · ${data.imports.length} imports · Printed ${new Date().toLocaleString('en-GB')}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="background:#F0F5FA">
+        <th style="padding:6px;border:1px solid #ddd;text-align:left">#</th>
+        <th style="padding:6px;border:1px solid #ddd;text-align:left">Route</th>
+        <th style="padding:6px;border:1px solid #ddd;text-align:left">Date</th>
+        <th style="padding:6px;border:1px solid #ddd;text-align:center">Pal</th>
+        <th style="padding:6px;border:1px solid #ddd;text-align:left">Assignment</th>
+        <th style="padding:6px;border:1px solid #ddd;text-align:left">Import</th>
+      </tr></thead><tbody>`;
+  rows.forEach((row,i)=>{
+    const exps=row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
+    const primary=exps[0];if(!primary)return;
+    const f=primary.fields;
+    const imp=row.importId?data.imports.find(r=>r.id===row.importId):null;
+    const partner=row.partnerLabel||'';
+    const truck=row.truckLabel||'';
+    const assign=partner?`Partner: ${partner}`:(truck?`Owned: ${truck}`:'Unassigned');
+    html+=`<tr>
+      <td style="padding:4px 6px;border:1px solid #ddd">${i+1}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd">${(f['Loading Summary']||'').slice(0,30)} → ${(f['Delivery Summary']||'').slice(0,30)}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd">${(f['Loading DateTime']||'').substring(0,10)} → ${(f['Delivery DateTime']||'').substring(0,10)}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">${f['Total Pallets']||0}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd">${assign}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd">${imp?((imp.fields['Loading Summary']||'').slice(0,25)+' → '+(imp.fields['Delivery Summary']||'').slice(0,25)):'—'}</td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  const win=window.open('','_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Week ${WINTL.week} — Petras TMS</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style>
+  </head><body style="padding:20px">${html}</body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(),500);
 }

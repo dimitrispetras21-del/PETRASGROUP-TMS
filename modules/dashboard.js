@@ -158,8 +158,120 @@ async function renderDashboard() {
             </tr>`).join('')}
           </tbody></table>
         </div>
-      </div>`;
+      </div>
+
+      <!-- C11-C13: Analytics row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-top:20px">
+        ${_dashTopClients(orders)}
+        ${_dashDeliveryRate(orders)}
+        ${_dashPartnerCost(orders)}
+      </div>
+
+      <!-- C15: Notification center -->
+      ${_dashNotifications(orders, natOrders)}
+      `;
   } catch(e) {
     c.innerHTML = showError(e.message);
   }
+}
+
+// C11: Top clients by order count
+function _dashTopClients(orders) {
+  const counts = {};
+  orders.forEach(r => {
+    const name = (r.fields['Client Name'] || r.fields['Client Summary'] || '').split(',')[0].trim() || 'Unknown';
+    counts[name] = (counts[name] || 0) + 1;
+  });
+  const top = Object.entries(counts).sort((a,b) => b[1]-a[1]).slice(0,5);
+  return `<div>
+    <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">TOP CLIENTS</div>
+    <table class="mt"><thead><tr><th>Client</th><th class="r">Orders</th><th class="r">%</th></tr></thead>
+    <tbody>${top.map(([name, c]) => `<tr>
+      <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</td>
+      <td class="r" style="font-size:12px;font-weight:700">${c}</td>
+      <td class="r" style="font-size:11px;color:var(--text-dim)">${Math.round(c/orders.length*100)}%</td>
+    </tr>`).join('')}</tbody></table>
+  </div>`;
+}
+
+// C12: On-time delivery rate
+function _dashDeliveryRate(orders) {
+  const delivered = orders.filter(r => r.fields['Delivery Performance']);
+  const onTime = delivered.filter(r => r.fields['Delivery Performance'] === 'On Time').length;
+  const delayed = delivered.filter(r => r.fields['Delivery Performance'] === 'Delayed').length;
+  const total = onTime + delayed;
+  const pct = total ? Math.round(onTime / total * 100) : 0;
+  return `<div>
+    <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">DELIVERY PERFORMANCE</div>
+    <div style="background:#0F172A;border:1px solid #1E293B;border-radius:10px;padding:16px 20px;text-align:center">
+      <div style="font-family:'Syne',sans-serif;font-size:36px;font-weight:700;color:${pct>=90?'#10B981':pct>=70?'#F59E0B':'#EF4444'}">${pct}%</div>
+      <div style="font-size:11px;color:#94A3B8;margin-top:4px">on-time rate</div>
+      <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:11px">
+        <span style="color:#10B981">${onTime} on time</span>
+        <span style="color:#EF4444">${delayed} delayed</span>
+      </div>
+      ${total ? `<div style="height:4px;background:#1E293B;border-radius:2px;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:#10B981;border-radius:2px"></div>
+      </div>` : '<div style="font-size:11px;color:#475569;margin-top:8px">No delivery data yet</div>'}
+    </div>
+  </div>`;
+}
+
+// C13: Partner cost comparison
+function _dashPartnerCost(orders) {
+  const partnerOrders = orders.filter(r => r.fields['Is Partner Trip'] && r.fields['Partner Rate']);
+  const byPartner = {};
+  partnerOrders.forEach(r => {
+    const name = (Array.isArray(r.fields['Partner']) ? '' : '') || 'Unknown';
+    const pName = r.fields['Partner Summary'] || r.fields['Partner Name'] || 'Partner';
+    byPartner[pName] = byPartner[pName] || { count: 0, total: 0 };
+    byPartner[pName].count++;
+    byPartner[pName].total += (r.fields['Partner Rate'] || 0);
+  });
+  const top = Object.entries(byPartner).sort((a,b) => b[1].count-a[1].count).slice(0,5);
+  return `<div>
+    <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">PARTNER TRIPS</div>
+    <table class="mt"><thead><tr><th>Partner</th><th class="r">Trips</th><th class="r">Avg Rate</th></tr></thead>
+    <tbody>${top.length ? top.map(([name, d]) => `<tr>
+      <td style="font-size:11px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</td>
+      <td class="r" style="font-size:12px;font-weight:700">${d.count}</td>
+      <td class="r" style="font-size:11px;color:var(--text-dim)">${d.count?Math.round(d.total/d.count)+'€':'—'}</td>
+    </tr>`).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text-dim);padding:16px;font-size:11px">No partner data yet</td></tr>'}</tbody></table>
+  </div>`;
+}
+
+// C15: Notification center
+function _dashNotifications(orders, natOrders) {
+  const alerts = [];
+  // Overdue deliveries
+  const today = new Date().toISOString().split('T')[0];
+  orders.forEach(r => {
+    const f = r.fields;
+    if (f['Status']==='Assigned' || f['Status']==='In Transit') {
+      const del = (f['Delivery DateTime']||'').substring(0,10);
+      if (del && del < today) alerts.push({ type: 'danger', msg: `Overdue: ${(f['Loading Summary']||'').slice(0,20)} → ${(f['Delivery Summary']||'').slice(0,20)}`, sub: `Due ${del}` });
+    }
+  });
+  // Pending orders without assignment
+  const pendingOld = orders.filter(r => r.fields['Status']==='Pending').length;
+  if (pendingOld > 5) alerts.push({ type: 'warn', msg: `${pendingOld} orders pending assignment`, sub: 'Check Weekly International' });
+  // National pending
+  const nPend = natOrders.filter(r => r.fields['Status']==='Pending').length;
+  if (nPend > 10) alerts.push({ type: 'warn', msg: `${nPend} national orders pending`, sub: 'Check Weekly National' });
+
+  if (!alerts.length) return '';
+  return `<div style="margin-top:20px">
+    <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">ALERTS</div>
+    <div style="display:flex;flex-direction:column;gap:6px">
+      ${alerts.slice(0,8).map(a => `<div style="display:flex;align-items:center;gap:10px;padding:8px 14px;border-radius:8px;
+        background:${a.type==='danger'?'rgba(239,68,68,0.06)':'rgba(245,158,11,0.06)'};
+        border:1px solid ${a.type==='danger'?'rgba(239,68,68,0.15)':'rgba(245,158,11,0.15)'}">
+        <span style="font-size:14px">${a.type==='danger'?'&#9888;':'&#9888;'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:600;color:${a.type==='danger'?'#EF4444':'#F59E0B'}">${a.msg}</div>
+          <div style="font-size:10px;color:var(--text-dim)">${a.sub}</div>
+        </div>
+      </div>`).join('')}
+    </div>
+  </div>`;
 }
