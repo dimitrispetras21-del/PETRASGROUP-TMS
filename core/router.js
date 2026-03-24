@@ -14,6 +14,7 @@ const NAV = [
   { section: 'Orders', perm: 'orders', items: [
     { id: 'orders_intl', label: 'International Orders', icon: 'doc' },
     { id: 'orders_natl', label: 'National Orders',      icon: 'doc' },
+    { id: 'invoicing',   label: 'Invoicing',            icon: 'invoice' },
     { id: 'locations',   label: 'Locations',            icon: 'location' },
   ]},
   { section: 'Clients & Partners', perm: 'clients', items: [
@@ -69,6 +70,7 @@ const ICONS = {
   trending:  `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="2,15 7,9 11,12 18,5"/><polyline points="13,5 18,5 18,10"/></svg>`,
   gear:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.9 4.9l1.4 1.4M13.7 13.7l1.4 1.4M4.9 15.1l1.4-1.4M13.7 6.3l1.4-1.4"/></svg>`,
   pallet:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="12" width="16" height="3" rx="0.5"/><rect x="2" y="5" width="16" height="3" rx="0.5"/><line x1="5" y1="8" x2="5" y2="12"/><line x1="10" y1="8" x2="10" y2="12"/><line x1="15" y1="8" x2="15" y2="12"/><line x1="5" y1="15" x2="5" y2="18"/><line x1="15" y1="15" x2="15" y2="18"/></svg>`,
+  invoice:   `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="16" rx="1.5"/><line x1="6" y1="6" x2="14" y2="6"/><line x1="6" y1="9" x2="14" y2="9"/><line x1="6" y1="12" x2="10" y2="12"/><path d="M12 14l1.5 1.5 3-3"/></svg>`,
 };
 
 // ── Sidebar ───────────────────────────────────────
@@ -171,6 +173,7 @@ function navigate(page) {
     case 'clients':        renderEntity('clients');       break;
     case 'partners':       renderEntity('partners');      break;
     case 'pallet_ledger':  renderPalletLedger();          break;
+    case 'invoicing':      renderInvoicing();             break;
     // Maintenance
     case 'maint_dash':     renderMaintDash();       break;
     case 'maint_req':      renderMaintRequests();   break;
