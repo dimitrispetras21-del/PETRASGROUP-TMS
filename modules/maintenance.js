@@ -724,12 +724,43 @@ async function renderMaintDash() {
   document.getElementById('content').innerHTML = showLoading('Loading dashboard…');
   try {
     await _maintLoad(true);
+
+    // KPI calculations
     const activeTrucks = MAINT.trucks.filter(t => t.fields['Active']).length;
     const activeTrailers = MAINT.trailers.filter(t => t.fields['Active']).length;
-    const allRows = _expiryBuildRows();
-    const overdue = allRows.filter(r => r.days !== null && r.days < 0).length;
-    const critical = allRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 7).length;
-    const recentSvc = [...MAINT.history].sort((a,b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||'')).slice(0, 8);
+    const activeFleet = activeTrucks + activeTrailers;
+
+    // Average fleet age (trucks only — trailers don't have meaningful "age")
+    const years = MAINT.trucks.filter(t => t.fields['Active'] && t.fields['Year'])
+      .map(t => 2026 - Number(t.fields['Year']));
+    const avgAge = years.length ? (years.reduce((a,b) => a+b, 0) / years.length).toFixed(1) : '—';
+
+    // Expiry stats (per vehicle, not per document)
+    const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
+    const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
+    const allVehicles = [...truckRows, ...trailerRows];
+    const expiredVehicles = allVehicles.filter(r => r.worst !== null && r.worst < 0).length;
+    const expiring30Vehicles = allVehicles.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
+
+    // Overdue services (scheduled but past due)
+    const overdueSvc = MAINT.history.filter(r => {
+      const f = r.fields;
+      return (f['Status'] === 'Scheduled' || f['Status'] === 'In Progress')
+        && f['Next Service Date'] && _daysUntil(f['Next Service Date']) < 0;
+    }).length;
+
+    // Services completed YTD
+    const ytdSvc = MAINT.history.filter(r => {
+      const f = r.fields;
+      return (f['Status'] === 'Completed' || f['Status'] === 'Done')
+        && f['Date'] && f['Date'].startsWith('2026');
+    }).length;
+
+    // Flat expiry rows for "expiring soon" table
+    const allExpRows = _expiryBuildRows();
+    const recentSvc = [...MAINT.history]
+      .sort((a,b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
+      .slice(0, 8);
 
     document.getElementById('content').innerHTML = `
       <div class="page-header" style="margin-bottom:12px">
@@ -739,32 +770,43 @@ async function renderMaintDash() {
       </div>
 
       <div class="mk-kpis">
-        <div class="mk-kpi"><div class="mk-kpi-lbl">Active Trucks</div>
-          <div class="mk-kpi-val" style="color:#0284C7">${activeTrucks}</div></div>
-        <div class="mk-kpi"><div class="mk-kpi-lbl">Active Trailers</div>
-          <div class="mk-kpi-val" style="color:#0284C7">${activeTrailers}</div></div>
-        <div class="mk-kpi"><div class="mk-kpi-lbl">Overdue Docs</div>
-          <div class="mk-kpi-val" style="color:#EF4444">${overdue}</div></div>
-        <div class="mk-kpi"><div class="mk-kpi-lbl">Critical ≤7d</div>
-          <div class="mk-kpi-val" style="color:#EF4444">${critical}</div></div>
-        <div class="mk-kpi"><div class="mk-kpi-lbl">Workshops</div>
-          <div class="mk-kpi-val">${MAINT.workshops.filter(w=>w.fields['Active']).length}</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Active Fleet</div>
+          <div class="mk-kpi-val" style="color:#0284C7">${activeFleet}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">${activeTrucks} trucks · ${activeTrailers} trailers</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Avg Fleet Age</div>
+          <div class="mk-kpi-val" style="color:#F1F5F9">${avgAge}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">years (trucks)</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Expired Docs</div>
+          <div class="mk-kpi-val" style="color:#EF4444">${expiredVehicles}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">vehicles</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Expiring ≤30d</div>
+          <div class="mk-kpi-val" style="color:#F59E0B">${expiring30Vehicles}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">vehicles</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Overdue Services</div>
+          <div class="mk-kpi-val" style="color:${overdueSvc?'#EF4444':'#10B981'}">${overdueSvc}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">past due date</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Services YTD</div>
+          <div class="mk-kpi-val" style="color:#10B981">${ytdSvc}</div>
+          <div style="font-size:11px;color:#64748B;margin-top:2px">completed 2026</div></div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div>
           <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">EXPIRING SOON</div>
-          <table class="mt"><thead><tr><th>Plate</th><th>Document</th><th>Status</th></tr></thead>
-          <tbody>${allRows.filter(r=>r.days!==null&&r.days<=30).slice(0,10).map(r => `<tr>
-            <td style="font-weight:700">${r.plate}</td><td>${r.docType}</td><td>${_expBadge(r.days)}</td>
-          </tr>`).join('')||'<tr><td colspan="3" style="text-align:center;color:var(--text-dim);padding:20px">All clear!</td></tr>'}</tbody></table>
+          <table class="mt"><thead><tr><th>Plate</th><th>Document</th><th class="c">Days</th><th>Status</th></tr></thead>
+          <tbody>${allExpRows.filter(r=>r.days!==null&&r.days<=30).slice(0,10).map(r => `<tr>
+            <td style="font-weight:700;font-size:12px">${r.plate}</td>
+            <td style="font-size:12px">${r.docType}</td>
+            <td class="c" style="font-size:12px;font-weight:600;color:${r.days<0?'#EF4444':r.days<=7?'#EF4444':'#F59E0B'}">${r.days<0?Math.abs(r.days)+'d overdue':r.days+'d'}</td>
+            <td><span style="font-size:10px;color:${r.days<0?'#EF4444':'#F59E0B'}">${r.days<0?'EXPIRED':'EXPIRING'}</span></td>
+          </tr>`).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px">All clear!</td></tr>'}</tbody></table>
         </div>
         <div>
           <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">RECENT SERVICE</div>
           <table class="mt"><thead><tr><th>Date</th><th>Plate</th><th>Type</th><th class="r">Cost</th></tr></thead>
           <tbody>${recentSvc.map(r => {const f=r.fields; return `<tr>
-            <td>${_fmtDate(f['Date'])}</td><td style="font-weight:700">${f['Vehicle Plate']||'—'}</td>
-            <td>${f['Type']||'—'}</td><td class="r">${_fmtCost(f['Cost'])}</td>
+            <td style="font-size:12px">${_fmtDate(f['Date'])}</td><td style="font-weight:700;font-size:12px">${f['Vehicle Plate']||'—'}</td>
+            <td style="font-size:12px">${f['Type']||'—'}</td><td class="r" style="font-size:12px">${_fmtCost(f['Cost'])}</td>
           </tr>`;}).join('')||'<tr><td colspan="4" style="text-align:center;color:var(--text-dim);padding:20px">No records yet</td></tr>'}</tbody></table>
         </div>
       </div>`;
