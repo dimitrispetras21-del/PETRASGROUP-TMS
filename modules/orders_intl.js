@@ -189,7 +189,7 @@ function _renderIntlTable(records) {
       <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
       <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
       <td>${tripB}</td>
-      <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})" 
+      <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
         title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
         style="cursor:pointer;text-align:center">
         ${f['Invoiced']
@@ -301,6 +301,19 @@ function selectIntlOrder(recId) {
         ${_dF('Total Pallets',f['Total Pallets']||'—')}
         ${_dF('Gross Weight', f['Gross Weight kg']?f['Gross Weight kg']+' kg':'—')}
         ${_dF('Pallet Exch.', f['Pallet Exchange']?'✓ Yes':'No')}
+        ${f['Pallet Exchange'] ? `
+        <div style="margin:8px 0;padding:8px;background:rgba(2,132,199,0.08);border-radius:6px;border:1px solid rgba(2,132,199,0.15)">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="font-weight:600;font-size:11px;color:var(--accent)">PALLET SHEETS</span>
+            <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">
+              Upload Sheet
+            </button>
+          </div>
+          <div style="display:flex;gap:12px;font-size:11px">
+            <span>Sheet 1: ${f['Pallet Sheet 1 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>
+            ${f['Veroia Switch ']?`<span>Sheet 2: ${f['Pallet Sheet 2 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>`:'<span style="color:var(--text-dim)">Sheet 2: N/A</span>'}
+          </div>
+        </div>` : ''}
         ${_dF('Carrier',      f['Carrier Type']||'—')}
       </div>
       <div class="detail-section">
@@ -1105,6 +1118,8 @@ async function submitIntlOrder(recId) {
 // ─── Inline toggle ───────────────────────────────
 async function toggleIntlInvoiced(recId, current) {
   const newVal = !current;
+  // Block invoice if PE sheets missing
+  if (newVal && !(await _checkPalletSheets(recId))) return;
   try {
     await atPatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
     // Update local data
@@ -1114,6 +1129,62 @@ async function toggleIntlInvoiced(recId, current) {
     _applyIntlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
   } catch(e) { toast('Error: ' + e.message, 'danger'); }
+}
+
+// ─── Invoice Block — check PE sheets ─────────
+async function _checkPalletSheets(recId) {
+  const rec = INTL_ORDERS.data.find(r => r.id === recId);
+  if (!rec) return true;
+  const f = rec.fields;
+  if (!f['Pallet Exchange']) return true; // no PE, allow invoice
+  if (!f['Pallet Sheet 1 Uploaded']) {
+    toast('Pallet Sheet 1 missing — upload before invoicing', 'danger');
+    return false;
+  }
+  if (f['Veroia Switch '] && !f['Pallet Sheet 2 Uploaded']) {
+    toast('Pallet Sheet 2 (Crossdock) missing — upload before invoicing', 'danger');
+    return false;
+  }
+  return true;
+}
+
+// ─── Pallet Sheet Upload Overlay ───────────────
+function openPalletUpload(orderId) {
+  // Create full-screen iframe overlay
+  let overlay = document.getElementById('palletUploadOverlay');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'palletUploadOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center';
+    overlay.innerHTML = `
+      <div style="position:relative;width:95vw;max-width:900px;height:90vh;background:var(--sidebar-bg);border-radius:12px;overflow:hidden">
+        <button onclick="closePalletUpload()" style="position:absolute;top:8px;right:12px;z-index:10;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center">✕</button>
+        <iframe id="palletUploadFrame" style="width:100%;height:100%;border:none;border-radius:12px" src=""></iframe>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+  const iframe = document.getElementById('palletUploadFrame');
+  iframe.src = `https://dimitrispetras21-del.github.io/petras-assign/pallet_upload_v2.html?id=${orderId}`;
+  overlay.style.display = 'flex';
+  // Listen for save messages
+  window._palletMsgHandler = function(e) {
+    if (e.data?.type === 'pallet-saved') {
+      toast('Pallet sheet saved ✓');
+      // Refresh the order data
+      invalidateCache(TABLES.ORDERS);
+      renderOrdersIntl();
+    }
+  };
+  window.addEventListener('message', window._palletMsgHandler);
+}
+function closePalletUpload() {
+  const overlay = document.getElementById('palletUploadOverlay');
+  if (overlay) overlay.style.display = 'none';
+  document.getElementById('palletUploadFrame').src = '';
+  if (window._palletMsgHandler) {
+    window.removeEventListener('message', window._palletMsgHandler);
+    delete window._palletMsgHandler;
+  }
 }
 
 
