@@ -966,7 +966,10 @@ function _wiRowHTML(row,i){
                     padding:4px 0;cursor:pointer">
           ${pill}
         </div>
-        <div style="width:30px;flex-shrink:0"></div>
+        ${row.importId
+          ?`<button class="wi-side-btn" title="Print Import"
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>`
+          :`<div style="width:30px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wi-ci-${row.id}"
            onclick="event.stopPropagation()"
