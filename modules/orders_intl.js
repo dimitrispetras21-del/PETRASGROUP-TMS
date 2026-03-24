@@ -1167,23 +1167,52 @@ function openPalletUpload(orderId) {
   iframe.src = `https://dimitrispetras21-del.github.io/petras-assign/pallet_upload_v2.html?id=${orderId}`;
   overlay.style.display = 'flex';
   // Listen for save messages
-  window._palletMsgHandler = function(e) {
+  window._palletMsgHandler = async function(e) {
     if (e.data?.type === 'pallet-saved') {
       toast('Pallet sheet saved ✓');
-      // Refresh the order data
+      // Refresh the specific order from Airtable to get updated sheet flags
+      try {
+        const freshRec = await fetch(
+          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.ORDERS}/${e.data.orderId || orderId}`,
+          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+        ).then(r => r.json());
+        if (freshRec.fields) {
+          // Update in-memory data
+          const idx = INTL_ORDERS.data.findIndex(r => r.id === (e.data.orderId || orderId));
+          if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
+        }
+      } catch(err) { console.warn('Refresh order err:', err); }
       invalidateCache(TABLES.ORDERS);
-      renderOrdersIntl();
+      _applyIntlFilters();
+      // Re-select to update detail panel
+      selectIntlOrder(e.data.orderId || orderId);
     }
   };
   window.addEventListener('message', window._palletMsgHandler);
 }
-function closePalletUpload() {
+async function closePalletUpload() {
   const overlay = document.getElementById('palletUploadOverlay');
   if (overlay) overlay.style.display = 'none';
+  const orderId = INTL_ORDERS.selectedId;
   document.getElementById('palletUploadFrame').src = '';
   if (window._palletMsgHandler) {
     window.removeEventListener('message', window._palletMsgHandler);
     delete window._palletMsgHandler;
+  }
+  // Always refresh order on close (in case sheets were uploaded)
+  if (orderId) {
+    try {
+      const freshRec = await fetch(
+        `https://api.airtable.com/v0/${AT_BASE}/${TABLES.ORDERS}/${orderId}`,
+        { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
+      ).then(r => r.json());
+      if (freshRec.fields) {
+        const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
+        if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
+      }
+    } catch(err) {}
+    _applyIntlFilters();
+    selectIntlOrder(orderId);
   }
 }
 
