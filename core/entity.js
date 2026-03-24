@@ -48,6 +48,7 @@ const ENTITY_CONFIG = {
       { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
       { title: 'Commercial',      fields: ['Payment Terms Days','Pallet Balance'] },
     ],
+    history: { type: 'client' },
   },
 
   partners: {
@@ -90,6 +91,7 @@ const ENTITY_CONFIG = {
       { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
       { title: 'Statistics',      fields: ['Pallet Balance'] },
     ],
+    history: { type: 'partner' },
   },
 
   drivers: {
@@ -473,7 +475,65 @@ function selectEntity(entityKey, recId) {
           }).join('')}
         </div>
       `).join('')}
+      ${cfg.history ? `<div class="detail-section">
+        <div class="detail-section-title">Order History</div>
+        <div id="entity_history_${recId}" style="font-size:11px;color:var(--text-dim)">Loading...</div>
+      </div>` : ''}
     </div>`;
+
+  // Load order history async
+  if (cfg.history) _loadEntityHistory(cfg.history.type, recId, title);
+}
+
+// ── Order History for Clients & Partners ─────────
+async function _loadEntityHistory(type, recId, name) {
+  const el = document.getElementById('entity_history_' + recId);
+  if (!el) return;
+  try {
+    let orders = [];
+    if (type === 'client') {
+      // Client linked in ORDERS table
+      const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
+      const [intl, natl] = await Promise.all([
+        atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location','Delivery Location','Status','Pallets','Pickup Date'] }, false),
+      ]);
+      orders = [
+        ...intl.map(r => ({ type: 'INTL', dir: r.fields['Direction']||'—', route: `${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Total Pallets']||0, date: (r.fields['Loading DateTime']||'').substring(0,10) })),
+        ...natl.map(r => ({ type: 'NATL', dir: r.fields['Direction']||'—', route: `${(r.fields['Pickup Location']||'').slice(0,20)} → ${(r.fields['Delivery Location']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Pallets']||0, date: (r.fields['Pickup Date']||'').substring(0,10) })),
+      ];
+    } else if (type === 'partner') {
+      // Partner linked in ORDERS table
+      const filter = `FIND("${recId}", ARRAYJOIN({Partner}, ","))>0`;
+      const intl = await atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime','Partner Rate'] }, false);
+      orders = intl.map(r => ({ type: 'INTL', dir: r.fields['Direction']||'—', route: `${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Total Pallets']||0, date: (r.fields['Loading DateTime']||'').substring(0,10), rate: r.fields['Partner Rate']||'' }));
+    }
+    orders.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+    if (!orders.length) {
+      el.innerHTML = '<div style="color:var(--text-dim);padding:8px 0;font-size:11px">No orders found</div>';
+      return;
+    }
+    el.innerHTML = `
+      <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${orders.length} orders</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="border-bottom:1px solid var(--border)">
+          <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Date</th>
+          <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Type</th>
+          <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Route</th>
+          <th style="text-align:center;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Pal</th>
+          <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Status</th>
+        </tr></thead>
+        <tbody>${orders.slice(0,30).map(o => `<tr style="border-bottom:1px solid var(--border)">
+          <td style="padding:4px 6px;color:var(--text-mid)">${o.date||'—'}</td>
+          <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${o.type==='INTL'?'#0284C7':'#059669'}">${o.type}</span></td>
+          <td style="padding:4px 6px;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.route}</td>
+          <td style="padding:4px 6px;text-align:center;color:var(--text-mid)">${o.pals}</td>
+          <td style="padding:4px 6px"><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='Invoiced'?'badge-blue':o.status==='Assigned'?'badge-yellow':'badge-grey'}" style="font-size:9px">${o.status}</span></td>
+        </tr>`).join('')}${orders.length>30?`<tr><td colspan="5" style="padding:6px;text-align:center;color:var(--text-dim)">+${orders.length-30} more</td></tr>`:''}</tbody>
+      </table>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Error: ${e.message}</div>`;
+  }
 }
 
 async function toggleActive(entityKey, recId, newVal) {
