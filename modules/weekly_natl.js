@@ -583,38 +583,7 @@ function _wnLocName(locId) {
   return loc.fields['Name'] || loc.fields['City'] || null;
 }
 
-// Returns all pickup location names joined by " / "
-// NATIONAL ORDERS uses 'Pickup Location 1' through 'Pickup Location 10'
-// Helper: summarize CL Loading Locations for display
-function _wnClLoadingSummary(f) {
-  const locs = [];
-  for (let i = 1; i <= 10; i++) {
-    const arr = f[`Loading Location ${i}`];
-    if (!arr?.length) break;
-    const locId = arr[0]?.id || arr[0];
-    const loc = WNATL.data._locMap?.[locId];
-    if (loc) locs.push(loc.split(',')[0]);
-  }
-  return locs.join(' / ') || '';
-}
-
-function _wnPickupSummary(f) {
-  const keys = ['Pickup Location 1','Pickup Location 2','Pickup Location 3','Pickup Location 4',
-                 'Pickup Location 5','Pickup Location 6','Pickup Location 7','Pickup Location 8',
-                 'Pickup Location 9','Pickup Location 10'];
-  return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
-}
-
-// Returns all delivery location names joined by " / "
-// NATIONAL ORDERS uses 'Delivery Location 1' through 'Delivery Location 10'
-function _wnDeliverySummary(f) {
-  const keys = ['Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4',
-                 'Delivery Location 5','Delivery Location 6','Delivery Location 7','Delivery Location 8',
-                 'Delivery Location 9','Delivery Location 10'];
-  return keys.map(k => _wnLocName((f[k]||[])[0])).filter(Boolean).join(' / ') || null;
-}
-
-// Unified NL location summaries using _locMap
+// NL location summaries using _locMap
 function _wnNlPickupSummary(f) {
   const locs = [];
   for (let i = 1; i <= 10; i++) {

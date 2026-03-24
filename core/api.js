@@ -5,32 +5,40 @@
 // ── Cache layer ──────────────────────────────────
 // Memory cache (session) + localStorage (cross-refresh)
 // TTL tiers:
-//   STABLE  (LOCATIONS, TRUCKS, TRAILERS, DRIVERS, PARTNERS): 30 min localStorage
-//   NORMAL  (ORDERS, TRIPS, etc):                              2 min memory only
+//   LONG    (LOCATIONS, TRUCKS, TRAILERS, DRIVERS): 4h localStorage (rarely change)
+//   STABLE  (CLIENTS, PARTNERS):                     30 min localStorage
+//   NORMAL  (ORDERS, TRIPS, etc):                     2 min memory only
 
 const _MEM = {};   // { key: { data, ts } }
 
-const _STABLE_TABLES = new Set([
+const _LONG_TABLES = new Set([
   'tblxu8DRfTQOFRCzS',  // LOCATIONS
   'tblEAPExIAjiA3asD',  // TRUCKS
   'tblDcrqRJXzPrtYLm',  // TRAILERS
   'tbl7UGmYhc2Y82pPs',  // DRIVERS
+]);
+const _STABLE_TABLES = new Set([
   'tblLHl5m8bqONfhWv',  // PARTNERS
   'tblFWKAQVUzAM8mCE',  // CLIENTS
 ]);
+const LONG_MS     =  4 * 60 * 60 * 1000;  // 4 hours
 const STABLE_MS   = 30 * 60 * 1000;  // 30 min
 const SESSION_MS  =  2 * 60 * 1000;  //  2 min
 
+function _isLong(tableId) {
+  return _LONG_TABLES.has(tableId);
+}
 function _isStable(tableId) {
-  return _STABLE_TABLES.has(tableId) || tableId.startsWith('tblxu8') || tableId.startsWith('tblEAP') || tableId.startsWith('tblDcr') || tableId.startsWith('tbl7UG') || tableId.startsWith('tblFWK');
+  return _isLong(tableId) || _STABLE_TABLES.has(tableId);
 }
 
-function _lsGet(key) {
+function _lsGet(key, tableId) {
   try {
     const raw = localStorage.getItem('at_' + key);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
-    if (Date.now() - ts > STABLE_MS) { localStorage.removeItem('at_' + key); return null; }
+    const ttl = _isLong(tableId) ? LONG_MS : STABLE_MS;
+    if (Date.now() - ts > ttl) { localStorage.removeItem('at_' + key); return null; }
     return data;
   } catch { return null; }
 }
@@ -68,9 +76,10 @@ async function atGet(tableId, filter = '', useCache = true) {
   const stable = _isStable(tableId);
 
   if (useCache) {
-    const mem = _memGet(key, stable ? STABLE_MS : SESSION_MS);
+    const memTtl = _isLong(tableId) ? LONG_MS : (stable ? STABLE_MS : SESSION_MS);
+    const mem = _memGet(key, memTtl);
     if (mem) return mem;
-    if (stable) { const ls = _lsGet(key); if (ls) { _memSet(key, ls); return ls; } }
+    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls); return ls; } }
   }
 
   const records = await _atFetch(tableId, paramStr);
@@ -89,9 +98,10 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
   const stable = _isStable(tableId);
 
   if (useCache) {
-    const mem = _memGet(key, stable ? STABLE_MS : SESSION_MS);
+    const memTtl = _isLong(tableId) ? LONG_MS : (stable ? STABLE_MS : SESSION_MS);
+    const mem = _memGet(key, memTtl);
     if (mem) return mem;
-    if (stable) { const ls = _lsGet(key); if (ls) { _memSet(key, ls); return ls; } }
+    if (stable) { const ls = _lsGet(key, tableId); if (ls) { _memSet(key, ls); return ls; } }
   }
 
   const records = await _atFetch(tableId, paramStr);
