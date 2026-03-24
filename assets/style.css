@@ -1193,3 +1193,21 @@ tbody tr:hover { background: var(--bg-hover); }
 .pl-debtor-list li:last-child { border-bottom: none; }
 .pl-debtor-amt { font-weight: 700; color: #10B981; }
 }
+
+/* ═══════════════════════════════════════════════
+   RESPONSIVE
+═══════════════════════════════════════════════ */
+@media (max-width: 1024px) {
+  .sidebar { width: 56px !important; }
+  .sidebar .nav-label,
+  .sidebar .nav-section span:first-child,
+  .sidebar .sidebar-brand span { display: none; }
+  .main-content { margin-left: 56px; }
+}
+
+/* ═══════════════════════════════════════════════
+   Z-INDEX LAYERS
+═══════════════════════════════════════════════ */
+.modal-overlay { z-index: 9000; }
+.mf-overlay { z-index: 9100; }
+#toast { z-index: 9999; }

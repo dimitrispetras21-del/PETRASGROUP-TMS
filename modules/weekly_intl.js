@@ -423,6 +423,7 @@ async function _wiLoadAssets(){
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
 let _wiLoadId = 0;
 async function renderWeeklyIntl(){
+  WINTL._seq = 0;
   const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
   document.getElementById('topbarTitle').textContent=`Weekly International — Week ${WINTL.week}`;

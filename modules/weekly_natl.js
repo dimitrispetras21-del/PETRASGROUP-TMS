@@ -155,7 +155,13 @@ async function _wnLoadAll() {
     atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
     atGetAll(TABLES.PARTNERS,  { fields:['Company Name'] }, false),
     atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
-    atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter }, false),
+    atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter, fields: [
+      'Direction','Loading DateTime','Delivery DateTime','Truck','Trailer','Driver','Partner',
+      'Client','Total Pallets','Goods','Status','Source Type','Source Record','Matched Load',
+      'Is Partner Trip','Partner Truck Plates','Partner Rate',
+      'Pickup Location 1','Pickup Location 2','Pickup Location 3','Pickup Location 4','Pickup Location 5',
+      'Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4','Delivery Location 5',
+    ] }, false),
   ]);
 
   // Map assets

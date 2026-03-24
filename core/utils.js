@@ -44,3 +44,29 @@ function debounce(fn, ms = 250) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
+
+// Extract first ID from linked-record field (handles all Airtable formats)
+function getLinkId(v) {
+  if (!v) return null;
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) {
+    const first = v[0];
+    if (!first) return null;
+    return typeof first === 'string' ? first : first.id || null;
+  }
+  return v.id || null;
+}
+
+// Format date as DD/MM/YYYY consistently
+function fmtDate(d) {
+  if (!d) return '—';
+  const p = d.substring(0, 10).split('-');
+  return `${p[2]}/${p[1]}/${p[0]}`;
+}
+
+// Format date as DD/MM (short)
+function fmtDateDM(d) {
+  if (!d) return '—';
+  const p = d.substring(0, 10).split('-');
+  return `${p[2]}/${p[1]}`;
+}

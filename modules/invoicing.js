@@ -45,14 +45,16 @@ function _invWeek(rec) {
 }
 
 function _invPERequired(rec) {
-  if (rec._type !== 'intl') return false;
   return !!rec.fields['Pallet Exchange'];
 }
 
 function _invPESheetsOK(rec) {
-  if (rec._type !== 'intl') return true;
   if (!rec.fields['Pallet Exchange']) return true;
-  return !!(rec.fields['Pallet Sheet 1 Uploaded'] && rec.fields['Pallet Sheet 2 Uploaded']);
+  if (rec._type === 'intl') {
+    return !!(rec.fields['Pallet Sheet 1 Uploaded'] && rec.fields['Pallet Sheet 2 Uploaded']);
+  }
+  // National: check single pallet sheet field
+  return !!rec.fields['Pallet Sheet Uploaded'];
 }
 
 function _invIsInvoiced(rec) {

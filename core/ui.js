@@ -59,7 +59,7 @@ function toast(msg, type = 'success') {
       font-size:13px;font-weight:500;z-index:9999;transition:opacity 0.3s;box-shadow:0 4px 16px rgba(0,0,0,0.15)`;
     document.body.appendChild(el);
   }
-  const colors = { success: '#059669', danger: '#DC2626', info: '#3B82F6' };
+  const colors = { success: '#059669', danger: '#DC2626', info: '#3B82F6', warn: '#D97706' };
   el.style.background = colors[type] || colors.success;
   el.style.color = '#fff';
   el.style.opacity = '1';

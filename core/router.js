@@ -107,7 +107,18 @@ function toggleSidebar() {
   const sb   = document.getElementById('sidebar');
   const icon = document.getElementById('toggleIcon');
   sb.classList.toggle('collapsed');
-  icon.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
+  const isCollapsed = sb.classList.contains('collapsed');
+  icon.textContent = isCollapsed ? '▶' : '◀';
+  localStorage.setItem('tms_sidebar_collapsed', isCollapsed ? 'true' : 'false');
+}
+
+function restoreSidebar() {
+  if (localStorage.getItem('tms_sidebar_collapsed') === 'true') {
+    const sb = document.getElementById('sidebar');
+    const icon = document.getElementById('toggleIcon');
+    if (sb) sb.classList.add('collapsed');
+    if (icon) icon.textContent = '▶';
+  }
 }
 
 // ── Router ────────────────────────────────────────
@@ -117,12 +128,13 @@ function navigate(page) {
   currentPage = page;
   localStorage.setItem('tms_page', page);
 
-  // Auto-collapse sidebar on nav click
+  // Auto-collapse sidebar on nav click + persist
   const sb = document.getElementById('sidebar');
   if (sb && !sb.classList.contains('collapsed')) {
     sb.classList.add('collapsed');
     const icon = document.getElementById('toggleIcon');
     if (icon) icon.textContent = '▶';
+    localStorage.setItem('tms_sidebar_collapsed', 'true');
   }
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
