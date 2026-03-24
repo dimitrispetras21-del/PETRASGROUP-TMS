@@ -122,6 +122,10 @@ function _renderInvLayout(c) {
         <div class="page-title">Invoicing</div>
         <div class="page-sub" id="invSub">${INV.data.length} orders</div>
       </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="_invBatchInvoice()" id="invBatchBtn" style="display:none">Mark Selected Invoiced</button>
+        <button class="btn btn-ghost" onclick="_invExportCSV()">Export CSV</button>
+      </div>
     </div>
 
     <!-- KPI Cards -->
@@ -151,6 +155,7 @@ function _renderInvLayout(c) {
         <div class="table-wrap">
           <table>
             <thead><tr>
+              <th style="width:30px"><input type="checkbox" onchange="_invToggleAll(this.checked)" style="cursor:pointer"></th>
               <th>Order No</th><th>Type</th><th>Client</th><th>Route</th>
               <th style="text-align:right">Pallets</th><th style="text-align:right">Price</th>
               <th style="text-align:right">Net Price</th><th>PE</th><th>Status</th>
@@ -292,7 +297,7 @@ function _renderInvTable() {
   if (!tbody) return;
 
   if (!INV.filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#64748B;padding:32px">No orders match current filters</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#64748B;padding:32px">No orders match current filters</td></tr>`;
     return;
   }
 
@@ -317,7 +322,9 @@ function _renderInvTable() {
       statusBadge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C4A6E;color:#7DD3FC">Ready</span>';
     }
 
+    const isReady = _invIsReady(r);
     return `<tr onclick="_invSelect('${r.id}')" style="cursor:pointer;${sel}transition:background 0.15s">
+      <td onclick="event.stopPropagation()"><input type="checkbox" class="inv-cb" data-id="${r.id}" onchange="_invCheckChanged()" ${!isReady?'disabled style="opacity:0.3"':'style="cursor:pointer"'}></td>
       <td><strong>${_invOrderNo(r)}</strong></td>
       <td>${typeBadge}</td>
       <td>${_invClientName(f)}</td>
@@ -436,4 +443,60 @@ async function _invMarkInvoiced(recId) {
   } catch (e) {
     toast('Failed to invoice: ' + e.message, 'error');
   }
+}
+
+// ─── Batch Operations ───────────────────────────
+function _invCheckChanged() {
+  const checked = document.querySelectorAll('.inv-cb:checked');
+  const btn = document.getElementById('invBatchBtn');
+  if (btn) btn.style.display = checked.length > 0 ? '' : 'none';
+}
+
+function _invToggleAll(checked) {
+  document.querySelectorAll('.inv-cb:not(:disabled)').forEach(cb => cb.checked = checked);
+  _invCheckChanged();
+}
+
+async function _invBatchInvoice() {
+  const ids = [...document.querySelectorAll('.inv-cb:checked')].map(cb => cb.dataset.id);
+  if (!ids.length) return;
+  if (!confirm(`Mark ${ids.length} orders as Invoiced?`)) return;
+  let ok = 0;
+  for (const id of ids) {
+    const rec = INV.data.find(r => r.id === id);
+    if (!rec) continue;
+    try {
+      const tbl = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+      await atPatch(tbl, id, { 'Status': 'Invoiced' });
+      rec.fields['Status'] = 'Invoiced';
+      ok++;
+    } catch(e) { console.error('Batch fail:', id, e); }
+  }
+  toast(`${ok} orders marked as Invoiced`);
+  _applyInvFilters();
+}
+
+// ─── CSV Export ─────────────────────────────────
+function _invExportCSV() {
+  const rows = [['Order No','Type','Client','Route','Pallets','Price','Net Price','PE Status','Status']];
+  INV.filtered.forEach(r => {
+    rows.push([
+      _invOrderNo(r),
+      r._type === 'intl' ? 'International' : 'National',
+      _invClientName(r.fields),
+      _invRoute(r).replace(/,/g, ' '),
+      _invPallets(r),
+      _invPrice(r) || 0,
+      _invNetPrice(r) || 0,
+      _invPESheetsOK(r) ? 'OK' : 'Missing',
+      _invIsInvoiced(r) ? 'Invoiced' : _invIsBlocked(r) ? 'Blocked' : 'Ready',
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `invoicing_${new Date().toISOString().split('T')[0]}.csv`;
+  a.click(); URL.revokeObjectURL(url);
+  toast('CSV exported');
 }
