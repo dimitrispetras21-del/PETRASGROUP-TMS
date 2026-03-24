@@ -154,7 +154,9 @@ const ENTITY_CONFIG = {
       { field: 'Brand',               label: 'Brand' },
       { field: 'Model',               label: 'Model' },
       { field: 'Year',                label: 'Year' },
-      { field: 'Fuel Type',           label: 'Fuel' },
+      { field: 'Euro Standard',       label: 'Euro' },
+      { field: 'Fuel Tank Truck Lt',  label: 'Tank Lt' },
+      { field: 'Gross Vehicle Weight kg', label: 'GVW kg' },
       { field: 'Active',              label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -195,11 +197,15 @@ const ENTITY_CONFIG = {
       ]},
     ],
     columns: [
-      { field: 'License Plate',  label: 'Plate',  primary: true },
-      { field: 'Brand',          label: 'Brand' },
-      { field: 'Trailer Type',   label: 'Type' },
-      { field: 'Pallet Capacity',label: 'Pallets' },
-      { field: 'Active',         label: 'Status', type: 'active' },
+      { field: 'License Plate',           label: 'Plate',  primary: true },
+      { field: 'Brand',                   label: 'Brand' },
+      { field: 'Model',                   label: 'Model' },
+      { field: 'Year',                    label: 'Year' },
+      { field: 'Trailer Type',            label: 'Type' },
+      { field: 'Refrigeration Brand',     label: 'Reefer' },
+      { field: 'Fuel Tank Refrigeration Lt', label: 'Reefer Tank Lt' },
+      { field: 'Pallet Capacity',         label: 'Pallets' },
+      { field: 'Active',                  label: 'Status', type: 'active' },
     ],
     formFields: [
       { section: 'Identity', fields: [
