@@ -1413,9 +1413,9 @@ async function _wiSaveFromPopover(rowId){
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
   const fields=isPartner
     ?{'Partner':[row.partnerId],'Is Partner Trip':true,
-      'Partner Truck Plates':row.partnerPlates||'',
+      'Partner Truck Plates':row.partnerPlates||'','Status':'Assigned',
       'Truck':[],'Trailer':[],'Driver':[]}
-    :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':''};
+    :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':''};
   // Save to export orders (with export rate)
   const expFields={...fields};
   if(isPartner) expFields['Partner Rate']=row.partnerRate?parseFloat(row.partnerRate):null;
@@ -1561,11 +1561,13 @@ async function _wiSave(rowId){
     ?{ 'Partner'            :[row.partnerId],
        'Is Partner Trip'    :true,
        'Partner Truck Plates':row.partnerPlates||'',
+       'Status'             :'Assigned',
        'Truck':[],'Trailer':[],'Driver':[] }
     :{ 'Truck'              :[row.truckId],
        'Trailer'            :row.trailerId?[row.trailerId]:[],
        'Driver'             :row.driverId?[row.driverId]:[],
        'Is Partner Trip'    :false,
+       'Status'             :'Assigned',
        'Partner':[],'Partner Truck Plates':'' };
 
   const errors=[];

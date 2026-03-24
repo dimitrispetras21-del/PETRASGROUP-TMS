@@ -854,11 +854,12 @@ async function _wnSaveFromPopover(rowId) {
     ? { 'Partner':[row.partnerId], 'Is Partner Trip':true,
         'Partner Truck Plates':row.partnerPlates||'',
         'Partner Rate':row.partnerRate?parseFloat(row.partnerRate):null,
+        'Status':'Assigned',
         'Truck':[],'Trailer':[],'Driver':[] }
     : { 'Truck':[row.truckId],
         'Trailer':row.trailerId?[row.trailerId]:[],
         'Driver': row.driverId?[row.driverId]:[],
-        'Is Partner Trip':false,'Partner':[],'Partner Truck Plates':'' };
+        'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':'' };
 
   const errors = [];
   for (const orderId of row.orderIds) {
@@ -879,7 +880,16 @@ async function _wnSaveFromPopover(rowId) {
   if (errors.length) { toast('Σφάλμα: '+errors[0].slice(0,60), 'warn'); return; }
 
   row.saved = true;
+  // Also update source NAT_ORDER status to Assigned
+  try {
+    for (const orderId of row.orderIds) {
+      const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r=>r.id===orderId);
+      const srcId = nlRec?.fields?.['Source Record'];
+      if (srcId) await atPatch(TABLES.NAT_ORDERS, srcId, { 'Status': 'Assigned' });
+    }
+  } catch(e) { console.warn('NO status sync:', e); }
   invalidateCache(TABLES.NAT_LOADS);
+  invalidateCache(TABLES.NAT_ORDERS);
   _wnClosePopover();
   toast('Αποθηκεύτηκε ✓');
   await renderWeeklyNatl();
