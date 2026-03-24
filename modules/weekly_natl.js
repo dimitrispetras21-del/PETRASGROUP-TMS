@@ -689,7 +689,9 @@ function _wnFmt(s) {
 function _wnFmtFull(s) {
   if (!s) return null;
   try {
-    const d = new Date(s+'T12:00:00');
+    const dateOnly = s.split('T')[0];
+    const d = new Date(dateOnly+'T12:00:00');
+    if (isNaN(d.getTime())) return s;
     const str = d.toLocaleDateString('el-GR', { weekday:'long', day:'numeric', month:'long' });
     return str.charAt(0).toUpperCase() + str.slice(1);
   } catch { return s; }
