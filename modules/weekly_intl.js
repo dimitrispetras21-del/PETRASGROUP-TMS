@@ -69,7 +69,7 @@ const WINTL = {
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
-  display:grid; grid-template-columns:36px 1fr 270px 1fr;
+  display:grid; grid-template-columns:36px 1fr 300px 1fr;
   min-height:36px; align-items:stretch; cursor:pointer;
 }
 .wi-cn { display:flex; flex-direction:column; align-items:center;
@@ -129,19 +129,20 @@ const WINTL = {
 /* side print buttons */
 .wi-side-btn {
   flex-shrink:0; width:30px;
-  border:none;
-  border-radius:0;
+  border:none; border-radius:0;
   background:transparent;
   cursor:pointer; color:var(--text-dim);
-  font-size:11px;
+  font-size:13px;
   display:flex; align-items:center; justify-content:center;
-  transition:background .12s, color .12s, opacity .12s;
-  opacity:0;
+  transition:background .12s, color .12s;
+  opacity:0.35;
 }
 .wi-side-btn:first-child { border-right:1px solid var(--border); }
 .wi-side-btn:last-child  { border-left:1px solid var(--border); }
-.wi-row:hover .wi-side-btn { opacity:1; }
-.wi-side-btn:hover { background:rgba(11,25,41,0.07); color:var(--navy); }
+.wi-row:hover .wi-side-btn { opacity:0.7; }
+.wi-side-btn:hover { opacity:1; background:rgba(11,25,41,0.07); color:var(--navy); }
+/* placeholder to keep alignment when no button */
+.wi-side-ph { flex-shrink:0; width:30px; }
 /* ── ASSIGNMENT PILLS v3 — left accent bar ── */
 .wi-pill {
   display:flex; flex-direction:column; align-items:stretch;
@@ -813,7 +814,7 @@ function _wiImpRowHTML(row){
       <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         <button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
+                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
           ${impPill}
         </div>
@@ -960,14 +961,14 @@ function _wiRowHTML(row,i){
       </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
         <button class="wi-side-btn" title="Print Export"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'export')">🖨</button>
+                onclick="event.stopPropagation();_wiPrint(${row.id},'export')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;
                     padding:4px 6px;cursor:pointer;min-width:0">
           ${pill}
         </div>
         ${row.importId
           ?`<button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>`
+                onclick="event.stopPropagation();_wiPrint(${row.id},'import')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>`
           :`<div style="width:30px;flex-shrink:0"></div>`}
       </div>
       <div class="wi-ci" id="wi-ci-${row.id}"
