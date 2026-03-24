@@ -290,9 +290,6 @@ function selectIntlOrder(recId) {
         ${f['Veroia Switch ']?'<span class="badge badge-yellow">Veroia Switch</span>':''}
         ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
       </div>
-      ${canEdit && f['Status']==='Assigned' ? `<button onclick="_intlChangeStatus('${recId}','In Transit')" style="width:100%;padding:8px;margin-bottom:10px;background:#0284C7;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🚛 Mark In Transit</button>` : ''}
-      ${canEdit && f['Status']==='In Transit' ? `<button onclick="_intlChangeStatus('${recId}','Delivered')" style="width:100%;padding:8px;margin-bottom:10px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">✓ Mark Delivered</button>` : ''}
-      ${canEdit && f['Status']==='Delivered' && !f['Invoiced'] ? `<button onclick="toggleIntlInvoiced('${recId}',false)" style="width:100%;padding:8px;margin-bottom:10px;background:#7C3AED;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">💰 Mark Invoiced</button>` : ''}
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
@@ -334,19 +331,6 @@ function selectIntlOrder(recId) {
         ${_dF('Net Price', f['Net Price']?'€ '+Number(f['Net Price']).toLocaleString('el-GR') :'—')}
         ${_dF('Invoice Status',f['Invoice Status']||'—')}
       </div>`:''}
-      <div class="detail-section">
-        <div class="detail-section-title">Checklist</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
-          ${_chk('Docs Ready',      f['Docs Ready'])}
-          ${_chk('Temp Check',      f['Temp Check'])}
-          ${_chk('Pallet Sheet',    f['Pallet Sheet 1 Uploaded'])}
-          ${_chk('SMS to Driver',   f['SMS to Driver'])}
-          ${_chk('Money Confirmed', f['Money Confirmed'])}
-          ${_chk('Client Updated',  f['Client Updated'])}
-          ${_chk('Done',            f['DONE'])}
-          ${_chk('Invoiced',        f['Invoiced'])}
-        </div>
-      </div>
       ${f['Pallet Exchange'] ? `
       <div class="detail-section">
         <div class="detail-section-title">Pallet Exchange</div>
