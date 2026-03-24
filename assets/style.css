@@ -853,12 +853,12 @@ tbody tr:hover { background: var(--bg-hover); }
 .entity-table-wrap thead th {
   position: sticky;
   top: 0;
-  background: var(--bg);
+  background: #F0F5FA;
   z-index: 2;
-  padding: 10px 18px;
+  padding: 7px 12px;
   font-size: 10px;
   font-weight: 600;
-  letter-spacing: 1px;
+  letter-spacing: .8px;
   text-transform: uppercase;
   color: var(--text-dim);
   text-align: left;
@@ -868,8 +868,8 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 
 .entity-table-wrap tbody td {
-  padding: 12px 18px;
-  font-size: 13.5px;
+  padding: 7px 12px;
+  font-size: 12px;
   color: var(--text-mid);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
