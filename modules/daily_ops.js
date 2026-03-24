@@ -33,18 +33,17 @@ const OPS_FIELDS = [
 .ops-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
   box-shadow:0 2px 8px rgba(2,132,199,0.25); }
 
-/* KPI cards — matches project .kpi-card style */
+/* KPI cards — dark navy */
 .ops-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ops-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
-  border-radius:10px; padding:14px 18px; flex:1; min-width:130px;
-  box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.ops-kpi-label { font-size:11px; font-weight:500; letter-spacing:.3px;
-  color:var(--text-dim); margin-bottom:8px; }
+.ops-kpi { background:#0F172A; border:1px solid #1E293B;
+  border-radius:10px; padding:14px 18px; flex:1; min-width:130px; }
+.ops-kpi-label { font-size:12px; font-weight:500; letter-spacing:.3px;
+  color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
 .ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
-.ops-kpi-val { font-family:'Syne',sans-serif; font-size:30px; font-weight:700;
-  letter-spacing:-1px; line-height:1; }
-.ops-kpi-sub { font-size:12px; color:var(--text-dim); }
-.ops-kpi-bar { height:3px; background:var(--border); border-radius:2px; margin-top:8px; overflow:hidden; }
+.ops-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
+  line-height:1; color:#F1F5F9; }
+.ops-kpi-sub { font-size:11px; color:#64748B; }
+.ops-kpi-bar { height:3px; background:#1E293B; border-radius:2px; margin-top:8px; overflow:hidden; }
 .ops-kpi-fill { height:100%; border-radius:2px; transition:width .3s; }
 
 /* overdue alert */
@@ -223,10 +222,10 @@ function _opsDraw() {
     </div>
     <div class="ops-kpis">
       <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--text)">${total?nPend:'—'}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#F1F5F9">${total?nPend:'—'}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Loaded</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--accent)">${total?nLoad:'—'}</span></div></div>
-      <div class="ops-kpi" style="border-left-color:var(--success)"><div class="ops-kpi-label">Delivered</div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0284C7">${total?nLoad:'—'}</span></div></div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Delivered</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${total?nDel:'—'}</span><span class="ops-kpi-sub">${total?'/ '+total:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${total?Math.round(nDel/total*100):0}%;background:var(--success)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Checklist</div>

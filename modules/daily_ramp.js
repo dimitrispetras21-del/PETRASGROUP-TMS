@@ -41,15 +41,14 @@ const RAMP_FIELDS = [
   font-family:'DM Sans',sans-serif; }
 .ramp-date-inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
 
-/* KPIs */
+/* KPIs — dark navy */
 .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ramp-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
-  border-radius:10px; padding:14px 18px; flex:1; min-width:110px;
-  box-shadow:0 1px 3px rgba(0,0,0,0.04); }
-.ramp-kpi-lbl { font-size:11px; font-weight:500; letter-spacing:.3px; color:var(--text-dim); margin-bottom:8px; }
-.ramp-kpi-val { font-family:'Syne',sans-serif; font-size:30px; font-weight:700;
-  letter-spacing:-1px; line-height:1; }
-.ramp-kpi-sub { font-size:12px; color:var(--text-dim); margin-left:4px; }
+.ramp-kpi { background:#0F172A; border:1px solid #1E293B;
+  border-radius:10px; padding:14px 18px; flex:1; min-width:110px; }
+.ramp-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
+.ramp-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
+  line-height:1; color:#F1F5F9; }
+.ramp-kpi-sub { font-size:11px; color:#64748B; margin-left:4px; }
 
 /* 2-col grid */
 .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
@@ -514,13 +513,13 @@ function _rampDraw() {
       <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
     </div>
     <div class="ramp-kpis">
-      <div class="ramp-kpi" style="border-left-color:#059669"><div class="ramp-kpi-lbl">Inbound Today</div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Inbound Today</div>
         <div><span class="ramp-kpi-val" style="color:#059669">+${inPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi" style="border-left-color:#0EA5E9"><div class="ramp-kpi-lbl">Outbound Today</div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Outbound Today</div>
         <div><span class="ramp-kpi-val" style="color:#0EA5E9">-${outPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi" style="border-left-color:${net>=0?'var(--success)':'var(--danger)'}"><div class="ramp-kpi-lbl">Net Today</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi" style="border-left-color:#D97706"><div class="ramp-kpi-lbl">Stock Total</div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Net Today</div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'#059669':'#EF4444'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Stock Total</div>
         <div><span class="ramp-kpi-val" style="color:#D97706">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
     </div>
 

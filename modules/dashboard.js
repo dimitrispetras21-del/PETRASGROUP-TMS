@@ -27,17 +27,17 @@ async function renderDashboard() {
       <div class="kpi-grid">
         <div class="kpi-card">
           <div class="kpi-label">Active Trips</div>
-          <div class="kpi-value">${activeTrips.length}</div>
+          <div class="kpi-value" style="color:#0284C7">${activeTrips.length}</div>
           <div class="kpi-delta">Currently in progress</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">This Week</div>
-          <div class="kpi-value">${thisWeek.length}</div>
+          <div class="kpi-value" style="color:#0284C7">${thisWeek.length}</div>
           <div class="kpi-delta">Current week</div>
         </div>
         <div class="kpi-card">
           <div class="kpi-label">Pending Orders</div>
-          <div class="kpi-value">${pendingOrders.length}</div>
+          <div class="kpi-value" style="color:#F59E0B">${pendingOrders.length}</div>
           <div class="kpi-delta">Without trip assignment</div>
         </div>
         <div class="kpi-card">

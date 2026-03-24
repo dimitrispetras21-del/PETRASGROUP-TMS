@@ -41,12 +41,12 @@ const MAINT_HISTORY_FIELDS = [
 .exp-ok { background:#065F46; color:#D1FAE5; }
 .exp-none { background:#374151; color:#9CA3AF; }
 
-/* KPI cards */
+/* KPI cards — dark navy */
 .mk-kpis { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-.mk-kpi { background:var(--bg-card); border:1px solid var(--border); border-left:3px solid var(--accent);
+.mk-kpi { background:#0F172A; border:1px solid #1E293B;
   border-radius:10px; padding:14px 18px; flex:1; min-width:100px; }
-.mk-kpi-lbl { font-size:10px; font-weight:600; letter-spacing:.5px; color:var(--text-dim); text-transform:uppercase; margin-bottom:6px; }
-.mk-kpi-val { font-family:'Syne',sans-serif; font-size:28px; font-weight:700; line-height:1; }
+.mk-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
+.mk-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; line-height:1; color:#F1F5F9; }
 
 /* tables */
 .mt { width:100%; border-collapse:collapse; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
@@ -292,16 +292,16 @@ function _expiryPaint() {
     </div>
 
     <div class="mk-kpis">
-      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Expired Trucks</div>
-        <div class="mk-kpi-val" style="color:#991B1B">${expiredTrucks}</div></div>
-      <div class="mk-kpi" style="border-left-color:#D97706"><div class="mk-kpi-lbl">Expiring ≤30d</div>
-        <div class="mk-kpi-val" style="color:#D97706">${expiring30Trucks + expiring30Trailers}</div></div>
-      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Valid Trucks</div>
-        <div class="mk-kpi-val" style="color:#059669">${validTrucks}</div></div>
-      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Expired Trailers</div>
-        <div class="mk-kpi-val" style="color:#991B1B">${expiredTrailers}</div></div>
-      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Valid Trailers</div>
-        <div class="mk-kpi-val" style="color:#059669">${validTrailers}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Expired Trucks</div>
+        <div class="mk-kpi-val" style="color:#EF4444">${expiredTrucks}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Expiring ≤30d</div>
+        <div class="mk-kpi-val" style="color:#F59E0B">${expiring30Trucks + expiring30Trailers}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Valid Trucks</div>
+        <div class="mk-kpi-val" style="color:#10B981">${validTrucks}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Expired Trailers</div>
+        <div class="mk-kpi-val" style="color:#EF4444">${expiredTrailers}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Valid Trailers</div>
+        <div class="mk-kpi-val" style="color:#10B981">${validTrailers}</div></div>
     </div>
 
     <div style="display:flex;gap:6px;margin-bottom:16px">
@@ -703,13 +703,13 @@ async function renderMaintDash() {
 
       <div class="mk-kpis">
         <div class="mk-kpi"><div class="mk-kpi-lbl">Active Trucks</div>
-          <div class="mk-kpi-val" style="color:var(--accent)">${activeTrucks}</div></div>
+          <div class="mk-kpi-val" style="color:#0284C7">${activeTrucks}</div></div>
         <div class="mk-kpi"><div class="mk-kpi-lbl">Active Trailers</div>
-          <div class="mk-kpi-val" style="color:var(--accent)">${activeTrailers}</div></div>
-        <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">Overdue Docs</div>
-          <div class="mk-kpi-val" style="color:#991B1B">${overdue}</div></div>
-        <div class="mk-kpi" style="border-left-color:#DC2626"><div class="mk-kpi-lbl">Critical ≤7d</div>
-          <div class="mk-kpi-val" style="color:#DC2626">${critical}</div></div>
+          <div class="mk-kpi-val" style="color:#0284C7">${activeTrailers}</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Overdue Docs</div>
+          <div class="mk-kpi-val" style="color:#EF4444">${overdue}</div></div>
+        <div class="mk-kpi"><div class="mk-kpi-lbl">Critical ≤7d</div>
+          <div class="mk-kpi-val" style="color:#EF4444">${critical}</div></div>
         <div class="mk-kpi"><div class="mk-kpi-lbl">Workshops</div>
           <div class="mk-kpi-val">${MAINT.workshops.filter(w=>w.fields['Active']).length}</div></div>
       </div>
@@ -849,14 +849,14 @@ function _mreqPaint() {
     </div>
 
     <div class="mk-kpis">
-      <div class="mk-kpi" style="border-left-color:#991B1B"><div class="mk-kpi-lbl">SOS</div>
-        <div class="mk-kpi-val" style="color:#991B1B">${sos}</div></div>
-      <div class="mk-kpi" style="border-left-color:#92400E"><div class="mk-kpi-lbl">Pending</div>
-        <div class="mk-kpi-val" style="color:#92400E">${pending}</div></div>
-      <div class="mk-kpi" style="border-left-color:#1E40AF"><div class="mk-kpi-lbl">In Progress</div>
-        <div class="mk-kpi-val" style="color:#1E40AF">${inProg}</div></div>
-      <div class="mk-kpi" style="border-left-color:#059669"><div class="mk-kpi-lbl">Completed</div>
-        <div class="mk-kpi-val" style="color:#059669">${done.length}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">SOS</div>
+        <div class="mk-kpi-val" style="color:#EF4444">${sos}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Pending</div>
+        <div class="mk-kpi-val" style="color:#F59E0B">${pending}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">In Progress</div>
+        <div class="mk-kpi-val" style="color:#3B82F6">${inProg}</div></div>
+      <div class="mk-kpi"><div class="mk-kpi-lbl">Completed</div>
+        <div class="mk-kpi-val" style="color:#10B981">${done.length}</div></div>
     </div>
 
     <div style="display:flex;gap:6px;margin-bottom:16px">
