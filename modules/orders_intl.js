@@ -290,6 +290,9 @@ function selectIntlOrder(recId) {
         ${f['Veroia Switch ']?'<span class="badge badge-yellow">Veroia Switch</span>':''}
         ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
       </div>
+      ${canEdit && f['Status']==='Assigned' ? `<button onclick="_intlChangeStatus('${recId}','In Transit')" style="width:100%;padding:8px;margin-bottom:10px;background:#0284C7;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">🚛 Mark In Transit</button>` : ''}
+      ${canEdit && f['Status']==='In Transit' ? `<button onclick="_intlChangeStatus('${recId}','Delivered')" style="width:100%;padding:8px;margin-bottom:10px;background:#059669;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">✓ Mark Delivered</button>` : ''}
+      ${canEdit && f['Status']==='Delivered' && !f['Invoiced'] ? `<button onclick="toggleIntlInvoiced('${recId}',false)" style="width:100%;padding:8px;margin-bottom:10px;background:#7C3AED;color:white;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600">💰 Mark Invoiced</button>` : ''}
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
@@ -1128,6 +1131,18 @@ async function toggleIntlInvoiced(recId, current) {
     // Re-render table only (no full reload)
     _applyIntlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
+  } catch(e) { toast('Error: ' + e.message, 'danger'); }
+}
+
+// ─── Status Change ─────────────────────────────
+async function _intlChangeStatus(recId, newStatus) {
+  try {
+    await atPatch(TABLES.ORDERS, recId, { 'Status': newStatus });
+    const rec = INTL_ORDERS.data.find(r => r.id === recId);
+    if (rec) rec.fields['Status'] = newStatus;
+    _applyIntlFilters();
+    selectIntlOrder(recId);
+    toast(`Status → ${newStatus} ✓`);
   } catch(e) { toast('Error: ' + e.message, 'danger'); }
 }
 
