@@ -110,6 +110,40 @@ function _plFiltered() {
   });
 }
 
+/* ── Monthly trend ───────────────────────────── */
+function _plMonthlyTrend() {
+  const months = {};
+  const mNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  PL.records.forEach(r => {
+    const d = r.fields['Date'];
+    if (!d) return;
+    const key = d.substring(0,7); // YYYY-MM
+    if (!months[key]) months[key] = { in: 0, out: 0 };
+    const pals = r.fields['Pallets'] || 0;
+    if (r.fields['Direction'] === 'IN') months[key].in += pals;
+    else months[key].out += pals;
+  });
+  const sorted = Object.entries(months).sort((a,b) => a[0].localeCompare(b[0])).slice(-6);
+  if (!sorted.length) return '';
+  return `<div style="margin-bottom:16px">
+    <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;margin-bottom:8px;letter-spacing:.5px">MONTHLY TREND</div>
+    <div style="display:flex;gap:6px;overflow-x:auto">
+      ${sorted.map(([key, v]) => {
+        const net = v.in - v.out;
+        const m = parseInt(key.split('-')[1]) - 1;
+        return `<div style="background:#0F172A;border:1px solid #1E293B;border-radius:8px;padding:10px 14px;min-width:110px;flex:1">
+          <div style="font-size:11px;color:#94A3B8;margin-bottom:4px">${mNames[m]} ${key.split('-')[0]}</div>
+          <div style="display:flex;gap:8px;font-size:12px;font-weight:600">
+            <span style="color:#10B981">+${v.in}</span>
+            <span style="color:#EF4444">-${v.out}</span>
+          </div>
+          <div style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif;color:${net>=0?'#10B981':'#EF4444'};margin-top:2px">${net>=0?'+':''}${net}</div>
+        </div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
 /* ── Full render ─────────────────────────────── */
 function _plRender() {
   const c = document.getElementById('content');
@@ -161,6 +195,8 @@ function _plRender() {
       ).join('')}</ul>` : '<div style="font-size:12px;color:#94A3B8">No debtors</div>'}
     </div>
   </div>
+
+  ${_plMonthlyTrend()}
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:end">
     <div style="display:flex;flex-direction:column;gap:2px">
