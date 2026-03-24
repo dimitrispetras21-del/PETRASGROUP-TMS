@@ -58,11 +58,14 @@ const WINTL = {
 /* row */
 .wi-row { border-top:1px solid var(--border); display:flex; flex-direction:column; position:relative; }
 .wi-row::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
-.wi-row.s-ok::before      { background:var(--success); }
-.wi-row.s-partner::before { background:rgba(59,130,246,0.65); }
-.wi-row.s-pending::before { background:rgba(217,119,6,0.4); }
-.wi-row.s-ok      { background:rgba(5,150,105,0.025); }
-.wi-row.s-partner { background:rgba(59,130,246,0.022); }
+.wi-row.s-ok::before          { background:#0284C7; }
+.wi-row.s-partner::before     { background:#059669; }
+.wi-row.s-unassigned::before  { background:#EF4444; }
+.wi-row.s-overdue::before     { background:#EF4444; }
+.wi-row.s-ok          { background:rgba(2,132,199,0.02); }
+.wi-row.s-partner     { background:rgba(5,150,105,0.02); }
+.wi-row.s-unassigned  { background:rgba(239,68,68,0.02); }
+.wi-row.s-overdue     { background:rgba(239,68,68,0.02); }
 .wi-row:hover .wi-compact { background:rgba(0,0,0,0.009); }
 
 .wi-compact {
@@ -809,11 +812,11 @@ function _wiImpRowHTML(row){
       </div>
       <div class="wi-ce" style="cursor:grab;background:#172C45;border-right:none"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
-        <button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
         <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:4px 6px;cursor:pointer">
           ${impPill}
         </div>
+        <button class="wi-side-btn" title="Print Import"
+                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">🖨</button>
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
                 onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
