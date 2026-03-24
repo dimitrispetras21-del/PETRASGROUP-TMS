@@ -857,18 +857,18 @@ function _wiRowHTML(row,i){
   const delDateRaw=primary?.fields['Delivery DateTime']||null;
   const isOverdue=delDateRaw && new Date(delDateRaw.split('T')[0]) < new Date(new Date().toISOString().split('T')[0]);
   let sCls,dotColor;
-  if(isOverdue){
+  if(!row.saved){
+    // Red — unassigned
+    sCls='s-unassigned'; dotColor='#EF4444';
+  } else if(isOverdue){
     // Red — overdue delivery
-    sCls='s-overdue'; dotColor='rgba(220,38,38,0.85)';
+    sCls='s-overdue'; dotColor='#EF4444';
   } else if(hasPartner){
-    // Blue — partner trip
-    sCls='s-partner'; dotColor='rgba(59,130,246,0.75)';
-  } else if(row.saved && !row.importId){
-    // Orange — owned fleet assigned, no import
-    sCls='s-noimport'; dotColor='rgba(217,119,6,0.8)';
+    // Green — partner trip
+    sCls='s-partner'; dotColor='#059669';
   } else {
-    // Green — on time (assigned + import, or unassigned future)
-    sCls='s-ok'; dotColor='var(--success)';
+    // Navy blue — owned fleet
+    sCls='s-ok'; dotColor='#0284C7';
   }
 
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||'—'):'—';
@@ -971,7 +971,7 @@ function _wiRowHTML(row,i){
            ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})"
            style="position:relative">
         ${impPrev}
-        ${row.importId ? `<button class="wi-side-btn" title="Print Import" style="position:absolute;top:2px;left:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px"
+        ${row.importId ? `<button class="wi-side-btn" title="Print Import" style="position:absolute;top:2px;right:2px;padding:2px 4px;font-size:10px;border:none;border-radius:4px;background:rgba(0,0,0,0.15);color:#fff;z-index:2"
                 onclick="event.stopPropagation();_wiPrint(${row.id},'import')">🖨</button>` : ''}
       </div>
 

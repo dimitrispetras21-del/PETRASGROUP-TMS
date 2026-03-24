@@ -80,7 +80,7 @@ body {
   height: 104px;
   display: flex;
   align-items: center;
-  padding: 0 18px;
+  padding: 0 8px;
   border-bottom: 1px solid rgba(255,255,255,0.05);
   flex-shrink: 0;
   overflow: hidden;
@@ -94,6 +94,7 @@ body {
   flex-shrink: 0;
   max-width: 180px;
   object-fit: contain;
+  object-position: left;
 }
 
 .sidebar-logo-text {
@@ -247,11 +248,15 @@ body {
   flex-shrink: 0;
   cursor: pointer;
   color: rgba(196,207,219,0.3);
-  transition: color 0.15s;
+  transition: color 0.15s, background 0.15s;
 }
 
-.sidebar.collapsed .sidebar-toggle { justify-content: center; }
-.sidebar-toggle:hover { color: rgba(226,232,240,0.7); }
+.sidebar.collapsed .sidebar-toggle {
+  justify-content: center;
+  color: rgba(196,207,219,0.7);
+  background: rgba(255,255,255,0.04);
+}
+.sidebar-toggle:hover { color: rgba(226,232,240,0.9); background: rgba(255,255,255,0.06); }
 
 /* ═══════════════════════════════════════════════
    MAIN AREA
