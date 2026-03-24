@@ -17,8 +17,9 @@ const NAV = [
     { id: 'locations',   label: 'Locations',            icon: 'location' },
   ]},
   { section: 'Clients & Partners', perm: 'clients', items: [
-    { id: 'clients',  label: 'Clients',  icon: 'building' },
-    { id: 'partners', label: 'Partners', icon: 'handshake' },
+    { id: 'clients',        label: 'Clients',        icon: 'building' },
+    { id: 'partners',       label: 'Partners',        icon: 'handshake' },
+    { id: 'pallet_ledger',  label: 'Pallet Ledger',   icon: 'pallet' },
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
     { id: 'maint_dash',     label: 'Dashboard',        icon: 'dashboard' },
@@ -67,6 +68,7 @@ const ICONS = {
   chart:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="3" y1="17" x2="17" y2="17"/><rect x="4" y="10" width="3" height="7"/><rect x="8.5" y="6" width="3" height="11"/><rect x="13" y="3" width="3" height="14"/></svg>`,
   trending:  `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="2,15 7,9 11,12 18,5"/><polyline points="13,5 18,5 18,10"/></svg>`,
   gear:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.9 4.9l1.4 1.4M13.7 13.7l1.4 1.4M4.9 15.1l1.4-1.4M13.7 6.3l1.4-1.4"/></svg>`,
+  pallet:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="12" width="16" height="3" rx="0.5"/><rect x="2" y="5" width="16" height="3" rx="0.5"/><line x1="5" y1="8" x2="5" y2="12"/><line x1="10" y1="8" x2="10" y2="12"/><line x1="15" y1="8" x2="15" y2="12"/><line x1="5" y1="15" x2="5" y2="18"/><line x1="15" y1="15" x2="15" y2="18"/></svg>`,
 };
 
 // ── Sidebar ───────────────────────────────────────
@@ -168,6 +170,7 @@ function navigate(page) {
     // Clients & Partners
     case 'clients':        renderEntity('clients');       break;
     case 'partners':       renderEntity('partners');      break;
+    case 'pallet_ledger':  renderPalletLedger();          break;
     // Maintenance
     case 'maint_dash':     renderMaintDash();       break;
     case 'maint_req':      renderMaintRequests();   break;

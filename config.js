@@ -28,6 +28,7 @@ const TABLES = {
   MAINT_HISTORY: 'tbllPbPPd6N3zEZF1',
   MAINT_REQ:     'tbl3vhUmzKDWhJynR',
   NAT_LOADS:     'tblVW42cZnfC47gTb',
+  PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',
 };
 
 // Users are defined in index.html / auth layer

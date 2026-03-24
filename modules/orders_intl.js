@@ -331,6 +331,20 @@ function selectIntlOrder(recId) {
           ${_chk('Invoiced',        f['Invoiced'])}
         </div>
       </div>
+      ${f['Pallet Exchange'] ? `
+      <div class="detail-section">
+        <div class="detail-section-title">Pallet Exchange</div>
+        <button class="btn btn-scan" onclick="openPalletUpload('${recId}')" style="width:100%;margin-bottom:8px">
+          Upload Pallet Sheet
+        </button>
+        <div style="display:flex;gap:8px">
+          ${_chk('Sheet 1', f['Pallet Sheet 1 Uploaded'])}
+          ${f['Veroia Switch '] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
+        </div>
+        <div style="margin-top:6px">
+          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color:#0284C7">View Ledger Records →</a>
+        </div>
+      </div>` : ''}
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
         <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${f['Notes']}</div></div>`:''}
     </div>`;
