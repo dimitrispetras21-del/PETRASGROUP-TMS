@@ -17,6 +17,15 @@ const PU = {
   locations: null, // cached
 };
 
+/* ── Fetch single record by ID ────────────────── */
+async function _puFetchRecord(tableId, recId) {
+  const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
+    headers: { Authorization: 'Bearer ' + AT_TOKEN },
+  });
+  if (!res.ok) throw new Error('Fetch failed: ' + res.status);
+  return res.json();
+}
+
 /* ── Entry point ─────────────────────────────── */
 async function openPalletUpload(orderId) {
   PU.orderId = orderId;
@@ -25,7 +34,7 @@ async function openPalletUpload(orderId) {
 
   // Fetch order
   try {
-    PU.order = await atGet(TABLES.ORDERS, orderId);
+    PU.order = await _puFetchRecord(TABLES.ORDERS, orderId);
   } catch (e) {
     alert('Error loading order: ' + e.message);
     return;
@@ -96,7 +105,7 @@ async function _puLocName(locId) {
 
 async function _puClientName(clientId) {
   try {
-    const rec = await atGet(TABLES.CLIENTS, clientId);
+    const rec = await _puFetchRecord(TABLES.CLIENTS, clientId);
     return rec.fields['Company Name'] || '';
   } catch { return ''; }
 }
