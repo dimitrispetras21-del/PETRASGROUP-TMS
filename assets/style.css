@@ -944,8 +944,11 @@ tbody tr:hover { background: var(--bg-hover); }
 .detail-field:last-child { border-bottom: none; }
 
 .detail-field-label {
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  color: #94A3B8;
+  text-transform: uppercase;
   white-space: nowrap;
   flex-shrink: 0;
   min-width: 100px;
@@ -954,7 +957,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .detail-field-value {
   font-size: 13px;
   color: var(--text);
-  font-weight: 500;
+  font-weight: 600;
   text-align: right;
   word-break: break-word;
 }

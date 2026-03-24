@@ -31,6 +31,24 @@ const TABLES = {
   PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',
 };
 
+// ── Tricky Airtable field names (document here, reference everywhere) ──
+// These fields have unusual naming that causes silent bugs if mistyped.
+const F = {
+  // ORDERS table
+  WEEK_NUM:       ' Week Number',        // Leading space! Formula field, NOT writable
+  VEROIA_SWITCH:  'Veroia Switch ',      // Trailing space!
+  // PARTNERS table
+  ADDRESS:        'Adress',              // Single 'd' — Airtable typo
+  // NATIONAL ORDERS — direction values (arrow chars)
+  DIR_NS:         'North→South',         // ΚΑΘΟΔΟΣ
+  DIR_SN:         'South→North',         // ΑΝΟΔΟΣ
+  // CONSOLIDATED LOADS — direction values (Greek)
+  CL_KATHODOS:    'ΚΑΘΟΔΟΣ',
+  CL_ANODOS:      'ΑΝΟΔΟΣ',
+  // Special location
+  VEROIA_LOC:     'recJucKOhC1zh4IP3',
+};
+
 // Users are defined in index.html / auth layer
 // Role permission matrix
 const PERMS = {

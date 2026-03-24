@@ -160,9 +160,10 @@ async function _rampAutoSync() {
     fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes'],
   }, false);
   const existingKeys = new Set(existing.map(r => {
-    const oid = (r.fields['Order']||[])[0]?.id || (r.fields['Order']||[])[0] || '';
-    const nid = (r.fields['National Order']||[])[0]?.id || (r.fields['National Order']||[])[0] || '';
-    return `${oid||nid}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
+    const oid = getLinkId(r.fields['Order']) || '';
+    const nid = getLinkId(r.fields['National Order']) || '';
+    const src = oid || nid || r.id; // fallback to ramp record ID if no source
+    return `${src}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
   }));
   // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
   const existingCLIds = new Set(existing
