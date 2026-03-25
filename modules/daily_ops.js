@@ -186,7 +186,7 @@ function _opsDraw() {
   const all=[...cats.el,...cats.ed,...cats.il,...cats.id];
   const total=all.length;
   const nDel=all.filter(r=>['Delivered','Client Notified'].includes(r.fields['Ops Status']||'')).length;
-  const nLoad=all.filter(r=>r.fields['Ops Status']==='Loaded').length;
+  const nLoad=all.filter(r=>r.fields['Ops Status']==='In Transit'||r.fields['Ops Status']==='Loaded').length;
   const nPend=total-nDel-nLoad;
   const chkF=['Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'];
   let tC=0,dC=0;all.forEach(r=>chkF.forEach(f=>{if(r.fields[f]!==undefined){tC++;if(r.fields[f])dC++;}}));
@@ -278,7 +278,7 @@ function _opsRow(rec,num,type,isToday) {
   const pal=f['Total Pallets']||'';
   const ops=f['Ops Status']||'';
   const isDone=ops==='Delivered'||ops==='Client Notified';
-  const isLoaded=ops==='Loaded';
+  const isLoaded=ops==='Loaded'||ops==='In Transit';
   const isInTransit=ops==='In Transit';
   const isPostponed=ops==='Postponed';
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
@@ -299,7 +299,7 @@ function _opsRow(rec,num,type,isToday) {
 
   // Action buttons with confirmation
   const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="if(confirm('${label}?'))${action}">${label}</button>`;
-  const loadBtn = _btn('btn-primary','Loaded',`_opsStat('${id}','Loaded')`);
+  const loadBtn = _btn('btn-primary','Loaded',`_opsStat('${id}','In Transit')`);
   const postBtn = _btn('btn-ghost','Postponed',`_opsPost('${id}')`);
   const delBtn = _btn('btn-success','Delivered',`_opsDel('${id}','On Time')`);
   const delayBtn = _btn('btn-danger','Delayed',`_opsDel('${id}','Delayed')`);
