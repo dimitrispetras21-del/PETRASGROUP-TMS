@@ -144,16 +144,19 @@ async function _rampLoad() {
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
   await _rampAutoSync();
 
-  // Fetch today's ramp + stock in parallel
+  // Fetch today's ramp + stock + postponed in parallel
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
   const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  const [recs, stock] = await Promise.all([
+  const postponedFilter=`AND({Status}='⏩ Postponed',{Postponed To}='${RAMP.date}')`;
+  const [recs, stock, postponed] = await Promise.all([
     atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false),
     atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false),
+    atGetAll(TABLES.RAMP,{filterByFormula:postponedFilter,fields:RAMP_FIELDS},false),
   ]);
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
   RAMP.records=recs;
   RAMP.stock=stock;
+  RAMP.postponed=postponed;
 }
 
 /* ── AUTO-SYNC: Create RAMP records from source tables ────────── */
@@ -559,6 +562,24 @@ function _rampDraw() {
       <th>Time</th><th>Type</th><th>Client</th><th>Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Status</th>
     </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
 
+    ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
+      <div class="ramp-sec-hd" style="background:#92400E"><span>⏩ Postponed</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
+      <table class="ramp-t"><thead><tr>
+        <th>#</th><th>Type</th><th>Client</th><th>Goods</th><th>Pallets</th><th>Original Date</th><th>Actions</th>
+      </tr></thead><tbody>${RAMP.postponed.map((r,i)=>{
+        const f=r.fields;
+        const isIn=f['Type']==='Παραλαβή';
+        return`<tr style="background:#FEF3C7">
+          <td class="rn">${i+1}</td>
+          <td>${isIn?'<span style="color:#059669">↓ IN</span>':'<span style="color:#0EA5E9">↑ OUT</span>'}</td>
+          <td>${f['Supplier/Client']||'—'}</td>
+          <td>${(f['Goods']||'').substring(0,25)}</td>
+          <td>${f['Pallets']||''}</td>
+          <td>${(f['Plan Date']||'').substring(5)}</td>
+          <td><button class="btn btn-primary" style="padding:4px 8px;font-size:10px" onclick="if(confirm('Restore to today?'))_rampRestore('${r.id}')">Restore</button></td>
+        </tr>`;}).join('')}</tbody></table>
+    </div>`:''}
+
     <div style="margin-top:16px">
       <div class="ramp-sec-hd stock"><span>📦 Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
       <table class="ramp-t"><thead><tr><th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th></tr></thead>
@@ -679,6 +700,11 @@ async function _rampDone(id,isIn){
   try{await atPatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 
+async function _rampRestore(id){
+  const today=new Date().toISOString().split('T')[0];
+  try{await atPatch(TABLES.RAMP,id,{'Status':'Προγραμματισμένο','Plan Date':today,'Postponed To':null});
+    invalidateCache(TABLES.RAMP);toast('Restored ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
+}
 async function _rampPostpone(id){
   const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
   try{await atPatch(TABLES.RAMP,id,{'Status':'⏩ Postponed','Plan Date':tmrw,'Postponed To':tmrw});
