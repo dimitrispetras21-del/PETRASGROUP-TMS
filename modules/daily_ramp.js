@@ -527,24 +527,6 @@ function _rampDraw() {
       <th>Time</th><th>Type</th><th>Client</th><th>Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Status</th>
     </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
 
-    ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
-      <div class="ramp-sec-hd" style="background:#92400E"><span>⏩ Postponed</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
-      <table class="ramp-t"><thead><tr>
-        <th>#</th><th>Type</th><th>Client</th><th>Goods</th><th>Pallets</th><th>Original Date</th><th>Actions</th>
-      </tr></thead><tbody>${RAMP.postponed.map((r,i)=>{
-        const f=r.fields;
-        const isIn=f['Type']==='Παραλαβή';
-        return`<tr style="background:#FEF3C7">
-          <td class="rn">${i+1}</td>
-          <td>${isIn?'<span style="color:#059669">↓ IN</span>':'<span style="color:#0EA5E9">↑ OUT</span>'}</td>
-          <td>${f['Supplier/Client']||'—'}</td>
-          <td>${(f['Goods']||'').substring(0,25)}</td>
-          <td>${f['Pallets']||''}</td>
-          <td>${(f['Plan Date']||'').substring(5)}</td>
-          <td><button class="btn btn-primary" style="padding:4px 8px;font-size:10px" onclick="if(confirm('Restore to today?'))_rampRestore('${r.id}')">Restore</button></td>
-        </tr>`;}).join('')}</tbody></table>
-    </div>`:''}
-
     <div style="margin-top:16px">
       <div class="ramp-sec-hd stock"><span>📦 Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
       <table class="ramp-t"><thead><tr><th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th></tr></thead>
@@ -562,6 +544,7 @@ function _rRow(rec,num,tOpts) {
   const f=rec.fields,id=rec.id;
   const status=f['Status']||'';
   const isDone=status==='✅ Έγινε';
+  const isPostponed=status==='⏩ Postponed';
   const rawTime=f['Time']||'';
   const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
   const client=f['Supplier/Client']||'—';
@@ -573,6 +556,7 @@ function _rRow(rec,num,tOpts) {
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Done</span>'
+    :isPostponed?'<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">POSTPONED ⏩</span> <button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="if(confirm(\'Restore?\'))_rampRestore(\''+id+'\')">Restore</button>'
     :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Mark as ${isIn?'Done':'Loaded'}?'))_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Postpone to tomorrow?'))_rampPostpone('${id}')">Postpone</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
@@ -616,7 +600,7 @@ function _rRow(rec,num,tOpts) {
 
   const locField = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
 
-  return`<tr class="${isDone?'done':''}">
+  return`<tr class="${isDone?'done':''}" style="${isPostponed?'background:#FEF3C7;opacity:.7':''}">
     <td class="rn">${num}</td><td>${timeSel}</td>
     <td class="trn" title="${clientDisplay}">${clientDisplay}</td>
     <td class="trn" title="${locField}">${locField||'—'}</td>
@@ -675,8 +659,9 @@ async function _rampRestore(id){
 }
 async function _rampPostpone(id){
   const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
-  try{await atPatch(TABLES.RAMP,id,{'Status':'⏩ Postponed','Plan Date':tmrw,'Postponed To':tmrw});
-    invalidateCache(TABLES.RAMP);toast('Postponed → tomorrow');renderDailyRamp();}catch(e){toast('Error','danger');}
+  try{await atPatch(TABLES.RAMP,id,{'Status':'⏩ Postponed','Postponed To':tmrw});
+    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Status']='⏩ Postponed';
+    toast('Postponed ✓');_rampDraw();}catch(e){toast('Error','danger');}
 }
 
 function _rampAddNew(type){
