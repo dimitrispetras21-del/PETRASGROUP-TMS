@@ -189,16 +189,16 @@ async function _rampAutoSync() {
 
   const intlFilters = [
     // VF Export: non-VS, Export, Loading = today
-    `AND(NOT({Veroia Switch}),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day'))`,
+    `AND(NOT({Veroia Switch }),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day'))`,
     // VF Import: non-VS, Import, Delivery = today
-    `AND(NOT({Veroia Switch}),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day'))`,
+    `AND(NOT({Veroia Switch }),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day'))`,
     // VS Export: VS=true, Export, Loading = yesterday (ramp date = loading+1)
-    `AND({Veroia Switch},    {Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day'))`,
+    `AND({Veroia Switch },    {Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day'))`,
     // VS Import: VS=true, Import, Delivery = tomorrow (ramp date = delivery-1)
-    `AND({Veroia Switch},    {Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day'))`,
+    `AND({Veroia Switch },    {Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day'))`,
   ];
 
-  const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
+  const intlFields = ['Direction','Veroia Switch ','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
     'Loading Location 1','Loading Location 2','Loading Location 3',
     'Unloading Location 1','Unloading Location 2','Unloading Location 3'];
