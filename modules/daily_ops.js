@@ -303,12 +303,11 @@ function _opsRow(rec,num,type,isToday) {
   const postBtn = _btn('btn-ghost','Postponed',`_opsPost('${id}')`);
   const delBtn = _btn('btn-success','Delivered',`_opsDel('${id}','On Time')`);
   const delayBtn = _btn('btn-danger','Delayed',`_opsDel('${id}','Delayed')`);
-  const transitBtn = _btn('btn-primary','In Transit',`_opsStat('${id}','In Transit')`);
 
   let cells='';
   if(isToday && isL && isExp) {
     const actionCol = statusBadge
-      ? `<td>${statusBadge}${isLoaded?' '+transitBtn:''}</td>`
+      ? `<td>${statusBadge}</td>`
       : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
@@ -322,7 +321,7 @@ function _opsRow(rec,num,type,isToday) {
       ${actionCol}`;
   } else if(isToday && isL && !isExp) {
     const actionCol = statusBadge
-      ? `<td>${statusBadge}${isLoaded?' '+transitBtn:''}</td>`
+      ? `<td>${statusBadge}</td>`
       : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
