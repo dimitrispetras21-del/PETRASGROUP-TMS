@@ -627,7 +627,7 @@ async function _syncNationalOrder(orderId, fields) {
 
   // ── Find existing NATIONAL ORDER for this ORDER ──
   const existing = await atGetAll(TABLES.NAT_ORDERS, {
-    filterByFormula: '{Linked Order}="'+orderId+'"',
+    filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
     fields: ['Linked Order'],
   }, false);
   console.log('existing natl orders:', existing.length);
