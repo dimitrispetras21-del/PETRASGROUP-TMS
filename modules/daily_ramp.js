@@ -374,44 +374,9 @@ async function _rampAutoSync() {
   const validNatIds = new Set(natOrders.map(r=>r.id));  // now from NAT_LOADS
   const validCLIds = new Set(consLoads.map(r=>r.id));
 
-  const toDelete = [];
-  for (const ramp of existing) {
-    const rf = ramp.fields;
-    const status = rf['Status']||'';
-    const hasTime = !!rf['Time'];
-    // Don't delete manually created, already done, or user-edited records
-    if (status === '✅ Έγινε') continue;
-    if (hasTime) continue;  // User set a time → preserve
-    if (status === '⏩ Postponed') continue;  // Already postponed → preserve
-
-    const orderId = (rf['Order']||[])[0]?.id || (rf['Order']||[])[0] || '';
-    const natId = (rf['National Order']||[])[0]?.id || (rf['National Order']||[])[0] || '';
-    const cat = rf['Ramp Category']||'';
-
-    if (orderId && !validOrderIds.has(orderId)) {
-      // Source international order no longer matches this date
-      toDelete.push(ramp.id);
-    } else if (natId && !validNatIds.has(natId)) {
-      // Source national order no longer matches this date
-      toDelete.push(ramp.id);
-    } else if (cat === 'VS + Groupage' && !orderId && !natId) {
-      // CL record — parse CL ID from Notes (CL:recXXX) and check if it still exists
-      const clMatch = (rf['Notes']||'').match(/^CL:(rec[a-zA-Z0-9]+)/);
-      if (clMatch) {
-        // New format: CL ID in Notes
-        if (!validCLIds.has(clMatch[1])) toDelete.push(ramp.id);
-      }
-      // Legacy records without CL: prefix are kept (no reliable way to detect orphans)
-    }
-  }
-
-  if (toDelete.length) {
-    for (let i = 0; i < toDelete.length; i += 10) {
-      const batch = toDelete.slice(i, i + 10);
-      await Promise.all(batch.map(id => atDelete(TABLES.RAMP, id).catch(e => console.error('Ramp cleanup error:', e))));
-    }
-    console.log(`Ramp cleanup: removed ${toDelete.length} orphan records`);
-  }
+  // NOTE: No orphan cleanup — records are preserved once created.
+  // Users manage records via Done/Postpone buttons.
+  // Only skip creating duplicates (via existingKeys check above).
 
   // ── Create all new RAMP records ──────────────────────────
   if (toCreate.length) {
