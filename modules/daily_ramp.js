@@ -597,7 +597,8 @@ function _rRow(rec,num,tOpts) {
   const f=rec.fields,id=rec.id;
   const status=f['Status']||'';
   const isDone=status==='✅ Έγινε';
-  const time=f['Time']||'';
+  const rawTime=f['Time']||'';
+  const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
   const client=f['Supplier/Client']||'—';
   const goods=(f['Goods']||'').substring(0,35);
   const temp=f['Temperature']||f['Temperature °C']||'';
@@ -672,7 +673,7 @@ function _rTlRow(rec) {
 
   const tlLoc = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
   return`<tr class="${isDone?'done':''}">
-    <td>${f['Time']||'—'}</td><td>${typeBadge}</td>
+    <td>${f['Time']?.includes('T')?f['Time'].split('T')[1]?.substring(0,5):(f['Time']||'—')}</td><td>${typeBadge}</td>
     <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${(f['Goods']||'').substring(0,35)}</td>
@@ -686,8 +687,10 @@ function _rTlRow(rec) {
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
 async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
-  try{await atPatch(TABLES.RAMP,id,{'Time':v||null});
-    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v;
+  // Time field is DateTime in Airtable — convert "HH:MM" to ISO
+  const isoTime = v ? `${RAMP.date}T${v}:00.000Z` : null;
+  try{await atPatch(TABLES.RAMP,id,{'Time':isoTime});
+    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=isoTime;
     // Re-sort and re-draw
     RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
     _rampDraw();
