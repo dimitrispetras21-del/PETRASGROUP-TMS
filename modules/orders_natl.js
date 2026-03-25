@@ -4,6 +4,8 @@
 
 const NATL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _natlFilters = {};
+let _natlSortCol = null;
+let _natlSortDir = 0;
 
 // ─── Main ───────────────────────────────────────
 async function renderOrdersNatl() {
@@ -92,12 +94,51 @@ function _renderNatlLayout(c) {
     </div>`;
 }
 
+// ─── Sort helpers ────────────────────────────────
+const _natlColDefs = [
+  { key: 'name',     label: 'Name',      type: 'text',   get: (f) => f['Name']||'' },
+  { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'Client',    type: 'text',   get: (f) => { const id=(f['Client']||[])[0]; return id?(_clientsMap[id]||''):''; } },
+  { key: 'pickup',   label: 'Pickup',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||f['Pickup Location']||[])[0]; return id?(_locationsMap[id]||''):''; } },
+  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_locationsMap[id]||''):''; } },
+  { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'PAL',       type: 'number', get: (f) => f['Pallets']||0 },
+  { key: 'trip',     label: 'Trip',      type: 'text',   get: (f) => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'inv',      label: 'INV',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
+];
+
+function _natlSortToggle(key) {
+  if (_natlSortCol === key) {
+    _natlSortDir = (_natlSortDir + 1) % 3;
+    if (_natlSortDir === 0) _natlSortCol = null;
+  } else {
+    _natlSortCol = key;
+    _natlSortDir = 1;
+  }
+  _applyNatlFilters();
+}
+
+function _natlSortRecords(recs) {
+  if (!_natlSortCol || _natlSortDir === 0) return recs;
+  const col = _natlColDefs.find(c => c.key === _natlSortCol);
+  if (!col) return recs;
+  const dir = _natlSortDir === 1 ? 1 : -1;
+  return [...recs].sort((a, b) => {
+    let va = col.get(a.fields), vb = col.get(b.fields);
+    if (col.type === 'number') return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
+    if (col.type === 'date') return (va||'').localeCompare(vb||'') * dir;
+    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
+  });
+}
+
 // ─── Table ──────────────────────────────────────
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
 
-  const rows = records.slice(0,300).map(r => {
+  const sortedRecs = _natlSortRecords(records);
+  const rows = sortedRecs.slice(0,300).map(r => {
     const f = r.fields;
     const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
     const dir = f['Direction']||'';
@@ -141,11 +182,11 @@ function _renderNatlTable(records) {
     </tr>`;
   }).join('');
 
-  wrap.innerHTML = `<table><thead><tr>
-    <th>Name</th><th>Dir</th><th>Client</th>
-    <th>Pickup</th><th>Delivery</th><th>Load Date</th><th>Del Date</th>
-    <th>PAL</th><th>Trip</th><th>INV</th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  const ths = _natlColDefs.map(c => {
+    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:#0284C7">▲</span>':_natlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('');
+  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ─── Filters ────────────────────────────────────

@@ -283,6 +283,8 @@ const ENTITY_CONFIG = {
 
 // ── State ────────────────────────────────────────
 const _entityState = {};
+// Sort state per entity: { col: null|index, dir: 0|1|2 }
+const _entitySort = {};
 
 // ── Main Renderer ─────────────────────────────────
 async function renderEntity(entityKey) {
@@ -350,15 +352,53 @@ async function renderEntity(entityKey) {
     </div>`;
 }
 
+function entitySortToggle(entityKey, colIdx) {
+  if (!_entitySort[entityKey]) _entitySort[entityKey] = { col: null, dir: 0 };
+  const s = _entitySort[entityKey];
+  if (s.col === colIdx) {
+    s.dir = (s.dir + 1) % 3;
+    if (s.dir === 0) s.col = null;
+  } else {
+    s.col = colIdx;
+    s.dir = 1;
+  }
+  applyEntityFilters(entityKey);
+}
+
+function _entitySortRecords(entityKey, recs) {
+  const s = _entitySort[entityKey];
+  if (!s || s.col === null || s.dir === 0) return recs;
+  const cfg = ENTITY_CONFIG[entityKey];
+  const col = cfg.columns[s.col];
+  if (!col) return recs;
+  const dir = s.dir === 1 ? 1 : -1;
+  const isNum = col.type === 'number' || col.field.match(/Year|Salary|Tank|Weight|Capacity|Pallets|Lt|kg|HP/i);
+  const isDate = col.type === 'expiry' || col.field.match(/Date|Expiry/i);
+  return [...recs].sort((a, b) => {
+    let va = a.fields[col.field], vb = b.fields[col.field];
+    if (va == null) va = ''; if (vb == null) vb = '';
+    if (isNum) return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
+    if (isDate) return String(va).localeCompare(String(vb)) * dir;
+    if (col.type === 'active') { va = va ? 'Active' : 'Inactive'; vb = vb ? 'Active' : 'Inactive'; }
+    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
+  });
+}
+
 function buildEntityTable(entityKey, records) {
   const cfg = ENTITY_CONFIG[entityKey];
   const cols = cfg.columns;
+  const s = _entitySort[entityKey] || { col: null, dir: 0 };
+  const sortedRecs = _entitySortRecords(entityKey, records);
+  const ths = cols.map((c, i) => {
+    const arrow = s.col===i ? (s.dir===1?' <span style="color:#0284C7">▲</span>':s.dir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    return `<th style="cursor:pointer;user-select:none" onclick="entitySortToggle('${entityKey}',${i})">${c.label}${arrow}</th>`;
+  }).join('');
   return `<table>
-    <thead><tr>${cols.map(c => `<th>${c.label}</th>`).join('')}<th></th></tr></thead>
+    <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
-      ${records.length === 0
+      ${sortedRecs.length === 0
         ? `<tr><td colspan="${cols.length+1}" style="text-align:center;padding:40px;color:var(--text-dim)">No records found</td></tr>`
-        : records.slice(0, 200).map(r => buildEntityRow(entityKey, r, cols)).join('')
+        : sortedRecs.slice(0, 200).map(r => buildEntityRow(entityKey, r, cols)).join('')
       }
     </tbody>
   </table>`;

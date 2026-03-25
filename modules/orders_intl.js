@@ -4,6 +4,8 @@
 
 const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _intlFilters = {};
+let _intlSortCol = null;   // current sort column key
+let _intlSortDir = 0;      // 0=none, 1=asc, 2=desc
 let _locationsMap = {};   // recId → label
 let _locationsArr = [];   // [{id,label}]
 const _clientsMap  = {};  // recId → name (populated on search)
@@ -163,11 +165,51 @@ function _buildWeekOpts() {
   return s;
 }
 
+// ─── Sort helpers ────────────────────────────────
+const _intlColDefs = [
+  { key: 'orderNo',  label: 'Order No',  type: 'text',   get: (f) => f['Order Number']||'' },
+  { key: 'week',     label: 'Week',      type: 'number', get: (f) => f[' Week Number']||0 },
+  { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'Client',    type: 'text',   get: (f) => _clientName(f) },
+  { key: 'loading',  label: 'Loading',   type: 'text',   get: (f) => _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f) => _cleanSummary(f['Delivery Summary']) },
+  { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'PAL',       type: 'number', get: (f) => f['Total Pallets']||f['Loading Pallets 1']||0 },
+  { key: 'trip',     label: 'Trip',      type: 'text',   get: (f) => ((f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'inv',      label: 'INV',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
+];
+
+function _intlSortToggle(key) {
+  if (_intlSortCol === key) {
+    _intlSortDir = (_intlSortDir + 1) % 3;
+    if (_intlSortDir === 0) _intlSortCol = null;
+  } else {
+    _intlSortCol = key;
+    _intlSortDir = 1;
+  }
+  _applyIntlFilters();
+}
+
+function _intlSortRecords(recs) {
+  if (!_intlSortCol || _intlSortDir === 0) return recs;
+  const col = _intlColDefs.find(c => c.key === _intlSortCol);
+  if (!col) return recs;
+  const dir = _intlSortDir === 1 ? 1 : -1;
+  return [...recs].sort((a, b) => {
+    let va = col.get(a.fields), vb = col.get(b.fields);
+    if (col.type === 'number') return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
+    if (col.type === 'date') return (va||'').localeCompare(vb||'') * dir;
+    return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
+  });
+}
+
 // ─── Table ──────────────────────────────────────
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
-  const rows = records.slice(0,300).map(r => {
+  const sortedRecs = _intlSortRecords(records);
+  const rows = sortedRecs.slice(0,300).map(r => {
     const f = r.fields;
     const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
     const dir = f['Direction']||'';
@@ -198,11 +240,11 @@ function _renderIntlTable(records) {
       </td>
     </tr>`;
   }).join('');
-  wrap.innerHTML = `<table><thead><tr>
-    <th>Order No</th><th>Week</th><th>Dir</th><th>Client</th>
-    <th>Loading</th><th>Delivery</th><th>Load Date</th><th>Del Date</th>
-    <th>PAL</th><th>Trip</th><th>INV</th>
-  </tr></thead><tbody>${rows}</tbody></table>`;
+  const ths = _intlColDefs.map(c => {
+    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:#0284C7">▲</span>':_intlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    return `<th style="cursor:pointer;user-select:none" onclick="_intlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('');
+  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 // ─── Filters ────────────────────────────────────
