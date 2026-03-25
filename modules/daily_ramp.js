@@ -165,7 +165,7 @@ async function _rampAutoSync() {
   // Get existing RAMP records for this date to avoid duplicates
   const existing = await atGetAll(TABLES.RAMP, {
     filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
-    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes'],
+    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
   }, false);
   const existingKeys = new Set(existing.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
@@ -375,8 +375,11 @@ async function _rampAutoSync() {
   for (const ramp of existing) {
     const rf = ramp.fields;
     const status = rf['Status']||'';
-    // Don't delete manually created or already done records
+    const hasTime = !!rf['Time'];
+    // Don't delete manually created, already done, or user-edited records
     if (status === '✅ Έγινε') continue;
+    if (hasTime) continue;  // User set a time → preserve
+    if (status === '⏩ Postponed') continue;  // Already postponed → preserve
 
     const orderId = (rf['Order']||[])[0]?.id || (rf['Order']||[])[0] || '';
     const natId = (rf['National Order']||[])[0]?.id || (rf['National Order']||[])[0] || '';
@@ -583,7 +586,7 @@ function _rRow(rec,num,tOpts) {
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Done</span>'
-    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_rampPostpone('${id}')">Postpone</button>`;
+    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Mark as ${isIn?'Done':'Loaded'}?'))_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Postpone to tomorrow?'))_rampPostpone('${id}')">Postpone</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
   const notes = f['Notes']||'';
