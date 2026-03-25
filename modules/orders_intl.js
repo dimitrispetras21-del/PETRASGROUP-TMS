@@ -632,28 +632,76 @@ async function _syncNationalOrder(orderId, fields) {
   }, false);
   console.log('existing natl orders:', existing.length);
 
-  // ── Veroia Switch OFF → mark GL Unassigned, then delete NO ──
+  // ── Veroia Switch OFF → FULL CLEANUP: GL + CL + NL + RAMP + NO ──
   if (!veroiaSwitch) {
     for (const rec of existing) {
-      // First: mark all GL lines for this NO → Unassigned
+      // 1. Find all GL lines for this NO
       const glLines = await atGetAll(TABLES.GL_LINES, {
         filterByFormula: `FIND("${rec.id}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
+
+      // 2. Find & delete CONS_LOADS that reference these GL lines
       for (const gl of glLines) {
-        if (gl.fields.Status !== 'Assigned')
-          await atPatch(TABLES.GL_LINES, gl.id, {Status:'Unassigned'});
+        try {
+          const cls = await atGetAll(TABLES.CONS_LOADS, {
+            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+            fields: ['Name']
+          }, false);
+          for (const cl of cls) {
+            // Delete NL records linked to this CL
+            try {
+              const nlsForCL = await atGetAll(TABLES.NAT_LOADS, {
+                filterByFormula: `{Source Record}="${cl.id}"`,
+                fields: ['Name']
+              }, false);
+              for (const nl of nlsForCL) await atDelete(TABLES.NAT_LOADS, nl.id);
+            } catch(e) { console.warn('NL-from-CL cleanup:', e); }
+            await atDelete(TABLES.CONS_LOADS, cl.id);
+          }
+        } catch(e) { console.warn('CL cleanup:', e); }
       }
-      // Then delete the NO
-      await atDelete(TABLES.NAT_ORDERS, rec.id);
-      // Also delete corresponding National Load
+
+      // 3. Delete all GL lines
+      for (const gl of glLines) {
+        try { await atDelete(TABLES.GL_LINES, gl.id); }
+        catch(e) { console.warn('GL delete:', e); }
+      }
+
+      // 4. Delete NL records linked to this NO (Direct type)
       try {
         if (typeof _syncNationalLoad === 'function') await _syncNationalLoad(rec.id, {}, true);
-      } catch(e) { console.warn('NL cleanup err:', e); }
+      } catch(e) { console.warn('NL cleanup:', e); }
+
+      // 5. Delete RAMP records linked to this NO
+      try {
+        const ramps = await atGetAll(TABLES.RAMP, {
+          filterByFormula: `FIND("${rec.id}",ARRAYJOIN({Order},","))>0`,
+          fields: ['Plan Date']
+        }, false);
+        for (const rp of ramps) await atDelete(TABLES.RAMP, rp.id);
+      } catch(e) { console.warn('RAMP cleanup:', e); }
+
+      // 6. Delete the NO itself
+      await atDelete(TABLES.NAT_ORDERS, rec.id);
     }
+
+    // 7. Also delete RAMP records linked to the parent INTL ORDER
+    try {
+      const intlRamps = await atGetAll(TABLES.RAMP, {
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Order},","))>0`,
+        fields: ['Plan Date']
+      }, false);
+      for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
+    } catch(e) { console.warn('RAMP intl cleanup:', e); }
+
+    // 8. Reset flag on parent order
     if (existing.length) {
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
     }
+    invalidateCache(TABLES.NAT_ORDERS);
+    invalidateCache(TABLES.GL_LINES);
+    invalidateCache(TABLES.NAT_LOADS);
     return;
   }
 
@@ -725,16 +773,33 @@ async function _syncNationalOrder(orderId, fields) {
   if (noId && ngroupage) {
     await _syncGroupageLines(orderId, noId, fields, natFields);
   } else if (noId && !ngroupage) {
-    // Clean up any unassigned GL lines
+    // Groupage OFF → DELETE unassigned GL + their CL + NL
     try {
       const stale = await atGetAll(TABLES.GL_LINES, {
         filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
       for (const r of stale) {
-        if (r.fields.Status !== 'Assigned')
-          await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+        if (r.fields.Status !== 'Assigned') {
+          // Delete CL linked to this GL
+          try {
+            const cls = await atGetAll(TABLES.CONS_LOADS, {
+              filterByFormula: `FIND("${r.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+              fields: ['Name']
+            }, false);
+            for (const cl of cls) {
+              try {
+                const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
+                for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
+              } catch(e) {}
+              await atDelete(TABLES.CONS_LOADS, cl.id);
+            }
+          } catch(e) {}
+          await atDelete(TABLES.GL_LINES, r.id);
+        }
       }
+      invalidateCache(TABLES.GL_LINES);
+      invalidateCache(TABLES.NAT_LOADS);
     } catch(e) { console.warn('GL cleanup',e); }
   }
 
@@ -775,11 +840,13 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
       fields: ['Loading Location','Status','Pallets'],
     }, false);
 
-    // National Groupage OFF → mark all Unassigned (NEVER delete)
+    // National Groupage OFF → DELETE unassigned GL lines
     if (!isGrp) {
       for (const r of existing) {
-        if (r.fields.Status !== 'Assigned')
-          await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+        if (r.fields.Status !== 'Assigned') {
+          try { await atDelete(TABLES.GL_LINES, r.id); }
+          catch(e) { console.warn('GL delete:', e); }
+        }
       }
       return;
     }

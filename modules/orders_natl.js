@@ -405,17 +405,40 @@ async function submitNatlOrder(recId) {
         await _syncGroupageLinesFromNO(savedNatlId, fields);
       } catch(e) { console.warn('GL sync error:', e); }
     } else if (savedNatlId && !fields['National Groupage']) {
-      // National Groupage turned OFF → clean up unassigned GL lines
+      // National Groupage turned OFF → DELETE GL + CL + CL-linked NL
       try {
-        const stale = await atGetAll(TABLES.GL_LINES, {
+        const staleGL = await atGetAll(TABLES.GL_LINES, {
           filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
           fields: ['Status']
         }, false);
-        for (const r of stale) {
-          if (r.fields.Status !== 'Assigned')
-            await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned'});
+        // Delete CONS_LOADS linked to these GL lines
+        for (const gl of staleGL) {
+          try {
+            const cls = await atGetAll(TABLES.CONS_LOADS, {
+              filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+              fields: ['Name']
+            }, false);
+            for (const cl of cls) {
+              // Delete NL records from this CL
+              try {
+                const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
+                  filterByFormula: `{Source Record}="${cl.id}"`,
+                  fields: ['Name']
+                }, false);
+                for (const nl of nlsFromCL) await atDelete(TABLES.NAT_LOADS, nl.id);
+              } catch(e) { console.warn('NL-CL cleanup:', e); }
+              await atDelete(TABLES.CONS_LOADS, cl.id);
+            }
+          } catch(e) { console.warn('CL cleanup:', e); }
         }
-        if (stale.length) console.log(`Deleted ${stale.length} stale GL lines`);
+        // Delete GL lines
+        for (const r of staleGL) {
+          try { await atDelete(TABLES.GL_LINES, r.id); }
+          catch(e) { console.warn('GL delete:', e); }
+        }
+        if (staleGL.length) console.log(`Deleted ${staleGL.length} GL + linked CL/NL`);
+        invalidateCache(TABLES.GL_LINES);
+        invalidateCache(TABLES.NAT_LOADS);
       } catch(e) { console.warn('GL cleanup error:', e); }
     }
     // ─────────────────────────────────────────────────────────
@@ -556,7 +579,10 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
 
   // Delete stale GL lines (locId no longer in NO)
   for (const [locId, rec] of Object.entries(existMap)) {
-    if (rec.fields.Status !== 'Assigned') await atPatch(TABLES.GL_LINES, rec.id, {Status:'Unassigned', Pallets:0});
+    if (rec.fields.Status !== 'Assigned') {
+      try { await atDelete(TABLES.GL_LINES, rec.id); }
+      catch(e) { console.warn('GL stale delete:', e); }
+    }
   }
 
   // Batch create
