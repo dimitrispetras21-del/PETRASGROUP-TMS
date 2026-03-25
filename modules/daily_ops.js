@@ -278,7 +278,17 @@ function _opsRow(rec,num,type,isToday) {
   const pal=f['Total Pallets']||'';
   const ops=f['Ops Status']||'';
   const isDone=ops==='Delivered'||ops==='Client Notified';
+  const isLoaded=ops==='Loaded';
+  const isInTransit=ops==='In Transit';
+  const isPostponed=ops==='Postponed';
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
+
+  // Status badge for completed states
+  const statusBadge = isLoaded ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">LOADED ✓</span>'
+    : isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">IN TRANSIT</span>'
+    : isPostponed ? '<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">POSTPONED</span>'
+    : isDone ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">DELIVERED ✓</span>'
+    : null;
 
   const chk=(fld,v)=>`<input type="checkbox" ${v?'checked':''} onchange="_opsTog('${id}','${fld}',this.checked)">`;
   const timeSelect=(fld,v)=>{
@@ -287,8 +297,19 @@ function _opsRow(rec,num,type,isToday) {
   };
   const amtInp=(fld,v)=>`<input class="tinp" type="number" step="1" value="${v||''}" placeholder="0" style="width:60px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
+  // Action buttons with confirmation
+  const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="if(confirm('${label}?'))${action}">${label}</button>`;
+  const loadBtn = _btn('btn-primary','Loaded',`_opsStat('${id}','Loaded')`);
+  const postBtn = _btn('btn-ghost','Postponed',`_opsPost('${id}')`);
+  const delBtn = _btn('btn-success','Delivered',`_opsDel('${id}','On Time')`);
+  const delayBtn = _btn('btn-danger','Delayed',`_opsDel('${id}','Delayed')`);
+  const transitBtn = _btn('btn-primary','In Transit',`_opsStat('${id}','In Transit')`);
+
   let cells='';
   if(isToday && isL && isExp) {
+    const actionCol = statusBadge
+      ? `<td>${statusBadge}${isLoaded?' '+transitBtn:''}</td>`
+      : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
@@ -298,8 +319,11 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${chk('Docs Ready',f['Docs Ready'])}</td>
       <td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>
       <td class="c">${!partner?chk('Second Card',f['Second Card']):''}</td>
-      <td><button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      ${actionCol}`;
   } else if(isToday && isL && !isExp) {
+    const actionCol = statusBadge
+      ? `<td>${statusBadge}${isLoaded?' '+transitBtn:''}</td>`
+      : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
@@ -307,8 +331,11 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
       <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
       <td>${timeSelect('ETA',f['ETA'])}</td>
-      <td><button class="btn btn-primary" style="padding:4px 12px;font-size:11px" onclick="_opsStat('${id}','Loaded')">Loaded</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      ${actionCol}`;
   } else if(isToday && !isL) {
+    const actionCol = statusBadge
+      ? `<td>${statusBadge}</td>`
+      : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL}</td>
@@ -316,28 +343,31 @@ function _opsRow(rec,num,type,isToday) {
       <td>${timeSelect('ETA',f['ETA'])}</td>
       <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
       <td class="c">${chk('Client Notified',f['Client Notified'])}</td>
-      <td><button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="_opsDel('${id}','On Time')">Delivered</button> <button class="btn btn-danger" style="padding:4px 12px;font-size:11px" onclick="_opsDel('${id}','Delayed')">Delayed</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="_opsPost('${id}')">Postponed</button></td>`;
+      ${actionCol}`;
   } else if(!isToday && isL && isExp) {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>`;
+      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
+      <td>${postBtn}</td>`;
   } else if(!isToday && isL && !isExp) {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
       <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>`;
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      <td>${postBtn}</td>`;
   } else {
     cells=`<td class="rn">${num}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>`;
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      <td>${postBtn}</td>`;
   }
-  return `<tr class="${isDone?'done':''}">${cells}</tr>`;
+  return `<tr class="${isDone?'done':isLoaded?'loaded':isInTransit?'transit':''}" style="${isLoaded?'background:#F0FDF4':isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}">${cells}</tr>`;
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
