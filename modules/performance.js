@@ -39,46 +39,65 @@ const PERF_KPIS = {
   if (document.getElementById('perf-css')) return;
   const s = document.createElement('style'); s.id = 'perf-css';
   s.textContent = `
-.perf-wrap { max-width:1200px; }
+/* Reuse dashboard vars */
+.perf-wrap {
+  --d-bg: transparent;  --d-card: #0B1929;  --d-card-hover: #0F2035;
+  --d-border: rgba(0,0,0,0.08);  --d-border-mid: rgba(0,0,0,0.12);
+  --d-text: #E2E8F0;  --d-text-mid: #94A3B8;  --d-text-dim: #64748B;
+  --d-accent: #38BDF8;  --d-success: #10B981;  --d-danger: #EF4444;  --d-warning: #F59E0B;
+  max-width:1600px;
+}
 .perf-header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; }
-.perf-name { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; color:#0F172A; }
-.perf-role { font-size:12px; color:#64748B; margin-top:2px; }
+.perf-name { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; color:#0F172A; letter-spacing:-0.3px; }
+.perf-role { font-size:12px; color:#64748B; margin-top:2px; font-weight:400; }
 
-.perf-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:24px; }
+/* KPI Bar — same as dashboard */
+.perf-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
 @media(max-width:900px) { .perf-kpi-grid { grid-template-columns:repeat(2,1fr); } }
+.perf-kpi { background:var(--d-card); border:1px solid var(--d-border); border-radius:8px;
+  padding:14px 16px; position:relative; overflow:hidden; transition:all .15s; }
+.perf-kpi:hover { border-color:var(--d-border-mid); transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,0,0,0.15); }
+.perf-kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--d-text-dim); margin-bottom:6px; }
+.perf-kpi-val { font-family:'DM Sans',monospace; font-size:26px; font-weight:700; line-height:1; margin-bottom:4px; }
+.perf-kpi-target { font-size:10px; color:var(--d-text-dim); }
+.perf-kpi-glow { position:absolute; top:0; left:0; right:0; height:2px; opacity:0.6; }
 
-.perf-kpi { background:#0B1929; border-radius:10px; padding:18px 20px; position:relative; overflow:hidden; }
-.perf-kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#64748B; margin-bottom:8px; }
-.perf-kpi-val { font-family:'DM Sans',sans-serif; font-size:32px; font-weight:700; line-height:1; margin-bottom:4px; }
-.perf-kpi-target { font-size:10px; color:#64748B; }
-.perf-kpi-bar { position:absolute; bottom:0; left:0; right:0; height:3px; background:#1E293B; }
-.perf-kpi-fill { height:100%; border-radius:0 2px 0 0; transition:width .5s; }
+/* Cards — same as dashboard */
+.perf-card { background:var(--d-card); border:1px solid var(--d-border); border-radius:8px; overflow:hidden; }
+.perf-card-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px;
+  border-bottom:1px solid var(--d-border); }
+.perf-card-title { font-family:'Syne',sans-serif; font-size:11px; font-weight:700;
+  letter-spacing:.8px; text-transform:uppercase; color:var(--d-text-mid); }
+.perf-card-body { padding:12px 16px; }
 
-.perf-section { background:#fff; border:1px solid #E2E8F0; border-radius:10px; margin-bottom:16px; overflow:hidden; }
-.perf-sec-head { padding:14px 20px; border-bottom:1px solid #E2E8F0; font-family:'Syne',sans-serif;
-  font-size:11px; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#64748B;
-  display:flex; justify-content:space-between; align-items:center; }
-.perf-sec-body { padding:16px 20px; }
+/* Grid layout — same as dashboard */
+.perf-grid { display:grid; grid-template-columns:1fr 320px; gap:16px; }
+.perf-left { display:flex; flex-direction:column; gap:16px; }
+.perf-right { display:flex; flex-direction:column; gap:12px; }
+@media(max-width:1100px) { .perf-grid { grid-template-columns:1fr; } }
 
-.perf-trend-row { display:flex; align-items:center; gap:12px; margin-bottom:6px; }
-.perf-trend-wk { font-size:11px; font-weight:600; color:#64748B; width:35px; }
-.perf-trend-bar { flex:1; height:20px; background:#F1F5F9; border-radius:6px; overflow:hidden; }
-.perf-trend-fill { height:100%; border-radius:6px; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; }
-.perf-trend-val { font-size:10px; font-weight:700; min-width:35px; text-align:right; }
+/* Trend bars — dark theme */
+.perf-trend-row { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
+.perf-trend-wk { font-size:11px; font-weight:600; color:var(--d-text-mid); width:35px; }
+.perf-trend-bar { flex:1; height:20px; background:rgba(255,255,255,0.04); border-radius:6px; overflow:hidden; }
+.perf-trend-fill { height:100%; border-radius:6px; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; transition:width .5s; }
+.perf-trend-val { font-size:10px; font-weight:700; color:var(--d-text); min-width:35px; text-align:right; }
 
-.perf-feedback { background:linear-gradient(135deg,#0B1929,#172C45); border-radius:10px; padding:20px; color:#E2E8F0; }
-.perf-feedback-head { font-family:'Syne',sans-serif; font-size:12px; font-weight:700; color:#38BDF8; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
-.perf-feedback-text { font-size:13px; line-height:1.6; color:#CBD5E1; }
-
+/* Activity table — dark theme */
 .perf-activity { width:100%; border-collapse:collapse; }
-.perf-activity th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:#64748B;
-  padding:8px 10px; text-align:left; border-bottom:2px solid #E2E8F0; }
-.perf-activity td { font-size:12px; padding:8px 10px; border-bottom:1px solid #F1F5F9; color:#334155; }
-.perf-activity tr:hover td { background:#F8FAFC; }
-.perf-pill { font-size:9px; font-weight:700; padding:2px 8px; border-radius:10px; }
-.perf-pill-ok { background:#ECFDF5; color:#059669; }
-.perf-pill-warn { background:#FEF3C7; color:#D97706; }
-.perf-pill-bad { background:#FEF2F2; color:#DC2626; }
+.perf-activity th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
+  color:var(--d-text-dim); padding:6px 8px; text-align:left; border-bottom:1px solid var(--d-border-mid); }
+.perf-activity td { font-size:11px; color:var(--d-text); padding:7px 8px; border-bottom:1px solid var(--d-border); }
+.perf-activity tr { cursor:pointer; transition:background .1s; }
+.perf-activity tbody tr:hover { background:var(--d-card-hover); }
+.perf-pill { font-size:9px; font-weight:700; padding:2px 8px; border-radius:10px; white-space:nowrap; }
+.perf-pill-ok { background:rgba(16,185,129,0.12); color:#10B981; }
+.perf-pill-bad { background:rgba(239,68,68,0.12); color:#EF4444; }
+
+/* Score circle — same as dashboard */
+.perf-score-ring { position:relative; width:140px; height:140px; margin:0 auto 12px; }
+.perf-score-num { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-family:'Syne',sans-serif; font-size:38px; font-weight:800; line-height:1; }
 `;
   document.head.appendChild(s);
 })();
@@ -288,49 +307,111 @@ function _perfDraw() {
     </tr>`;
   }).join('');
 
+  // Score circle SVG
+  const scoreColor = vals.weekly_score >= 85 ? '#10B981' : vals.weekly_score >= 70 ? '#F59E0B' : '#EF4444';
+  const scoreDash = Math.round(vals.weekly_score * 3.77); // circumference ~377 for r=60
+
+  // Feedback text
+  const feedback = vals.weekly_score >= 85
+    ? `Εξαιρετική εβδομάδα! On-time ${vals.on_time}%, empty legs μόλις ${vals.empty_legs}%.`
+    : vals.weekly_score >= 70
+    ? `Καλή εβδομάδα. Πρόσεξε: empty legs ${vals.empty_legs}% (target ≤20%).`
+    : `Χρειάζεται βελτίωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
+  const warnings = [
+    vals.empty_legs > 25 ? '⚠ Empty legs >25% — δοκίμασε Auto-Match' : '',
+    vals.fleet_usage < 60 ? '⚠ Fleet usage χαμηλό — αδρανή φορτηγά' : '',
+  ].filter(Boolean).join(' · ');
+
   document.getElementById('content').innerHTML = `
     <div class="perf-wrap">
       <div class="perf-header">
         <div>
           <div class="perf-name">${userName}</div>
-          <div class="perf-role">${roleLabels[role] || role} · Week ${wn}</div>
+          <div class="perf-role">${roleLabels[role] || role} · Εβδομάδα ${wn}</div>
         </div>
-        <button class="btn btn-ghost" onclick="renderPerformance()">Refresh</button>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="display:flex;align-items:center;gap:6px;font-size:10px;color:#64748B;letter-spacing:.5px;text-transform:uppercase">
+            <span style="width:6px;height:6px;border-radius:50%;background:#10B981;animation:dash-pulse 2s infinite"></span>
+            LIVE
+          </span>
+          <button class="btn btn-ghost" onclick="renderPerformance()">Refresh</button>
+        </div>
       </div>
 
       <div class="perf-kpi-grid">${kpiCards}</div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
-        <div class="perf-section">
-          <div class="perf-sec-head">Weekly Score Trend</div>
-          <div class="perf-sec-body">${trendHTML || '<div style="color:#94A3B8;font-size:12px">No trend data yet</div>'}</div>
-        </div>
+      <div class="perf-grid">
+        <div class="perf-left">
+          <!-- Weekly Trend -->
+          <div class="perf-card">
+            <div class="perf-card-head">
+              <div class="perf-card-title">WEEKLY SCORE TREND</div>
+              <span style="font-size:10px;color:#64748B">Last 4 weeks</span>
+            </div>
+            <div class="perf-card-body">
+              ${trendHTML || '<div style="color:var(--d-text-dim);font-size:12px">No trend data yet</div>'}
+            </div>
+          </div>
 
-        <div class="perf-feedback">
-          <div class="perf-feedback-head">💬 Νάκης Feedback — W${wn}</div>
-          <div class="perf-feedback-text" id="perf-feedback-text">
-            ${vals.weekly_score >= 85
-              ? `Εξαιρετική εβδομάδα! Score ${vals.weekly_score}/100. On-time ${vals.on_time}%, empty legs ${vals.empty_legs}%.`
-              : vals.weekly_score >= 70
-              ? `Καλή εβδομάδα. Score ${vals.weekly_score}/100. Πρόσεξε: empty legs ${vals.empty_legs}% (target ≤20%).`
-              : `Score ${vals.weekly_score}/100 — χρειάζεται βελτίωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`
-            }
-            ${vals.empty_legs > 25 ? ' ⚠ Empty legs πάνω από 25% — δοκίμασε Auto-Match.' : ''}
-            ${vals.fleet_usage < 60 ? ' ⚠ Fleet usage χαμηλό — αδρανή φορτηγά.' : ''}
+          <!-- Recent Activity -->
+          <div class="perf-card">
+            <div class="perf-card-head">
+              <div class="perf-card-title">ΠΡΟΣΦΑΤΕΣ ΠΑΡΑΔΟΣΕΙΣ</div>
+              <span style="font-size:10px;color:#64748B">${delivered.length} orders</span>
+            </div>
+            <div class="perf-card-body" style="padding:0">
+              <table class="perf-activity">
+                <thead><tr><th>Date</th><th>Route</th><th>Pal</th><th>Performance</th></tr></thead>
+                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--d-text-dim);padding:20px">No delivered orders yet</td></tr>'}</tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div class="perf-section">
-        <div class="perf-sec-head">
-          <span>Recent Deliveries</span>
-          <span style="font-size:10px;color:#94A3B8">${delivered.length} orders</span>
-        </div>
-        <div class="perf-sec-body" style="padding:0">
-          <table class="perf-activity">
-            <thead><tr><th>Date</th><th>Route</th><th>Pallets</th><th>Performance</th></tr></thead>
-            <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:#94A3B8;padding:20px">No delivered orders yet</td></tr>'}</tbody>
-          </table>
+        <div class="perf-right">
+          <!-- Weekly Score Circle -->
+          <div class="perf-card">
+            <div class="perf-card-head">
+              <div class="perf-card-title">ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
+              <span style="font-size:10px;color:#64748B">W${wn}</span>
+            </div>
+            <div class="perf-card-body" style="text-align:center;padding:20px 16px">
+              <div class="perf-score-ring">
+                <svg viewBox="0 0 140 140" style="transform:rotate(-90deg)">
+                  <circle cx="70" cy="70" r="60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
+                  <circle cx="70" cy="70" r="60" fill="none" stroke="${scoreColor}" stroke-width="8"
+                    stroke-dasharray="${scoreDash} 377" stroke-linecap="round"/>
+                </svg>
+                <div class="perf-score-num" style="color:${scoreColor}">${vals.weekly_score}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px;text-align:left">
+                ${kpiDefs.map(kpi => {
+                  const v = vals[kpi.id] ?? 0;
+                  const c = kpi.invert ? (v <= kpi.target ? '#10B981' : '#EF4444') : (v >= kpi.target ? '#10B981' : '#EF4444');
+                  return `<div style="display:flex;align-items:center;gap:8px">
+                    <span style="font-size:10px;color:var(--d-text-mid);width:80px">${kpi.label.split(' ').slice(0,2).join(' ')}</span>
+                    <div style="flex:1;height:6px;background:rgba(255,255,255,0.04);border-radius:3px;overflow:hidden">
+                      <div style="height:100%;width:${Math.min(kpi.invert?(kpi.target/Math.max(v,1)*100):(v/kpi.target*100),100)}%;background:${c};border-radius:3px"></div>
+                    </div>
+                    <span style="font-size:10px;font-weight:700;color:${c};width:35px;text-align:right">${v}${kpi.unit}</span>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>
+          </div>
+
+          <!-- Νάκης Feedback -->
+          <div class="perf-card" style="background:linear-gradient(135deg,#0B1929,#172C45);border:none">
+            <div class="perf-card-body" style="padding:16px">
+              <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#38BDF8;margin-bottom:8px;letter-spacing:.5px">
+                💬 ΝΑΚΗΣ FEEDBACK — W${wn}
+              </div>
+              <div style="font-size:12px;line-height:1.6;color:#CBD5E1">
+                ${feedback}
+                ${warnings ? `<div style="margin-top:6px;color:#F59E0B;font-size:11px;font-weight:600">${warnings}</div>` : ''}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
