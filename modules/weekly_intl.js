@@ -1375,7 +1375,6 @@ async function _wiAutoMatch() {
     const ef = exp.fields;
     const expDelLoc = _getCoords(ef, 'Unloading Location 1');
     const expDelDate = toLocalDate(ef['Delivery DateTime']);
-    const expPals = ef['Total Pallets'] || 0;
 
     let bestImp = null, bestScore = 0, bestDist = Infinity;
     for (const impRow of impRows) {
@@ -1404,19 +1403,6 @@ async function _wiAutoMatch() {
         if (diff <= 1) score += 30;
         else if (diff <= 2) score += 15;
       }
-
-      // PALLETS: similar size (max 15 points)
-      const impPals = imf['Total Pallets'] || 0;
-      if (expPals && impPals) {
-        const ratio = Math.min(expPals, impPals) / Math.max(expPals, impPals);
-        if (ratio >= 0.7) score += 15;
-        else if (ratio >= 0.5) score += 8;
-      }
-
-      // CLIENT: same client bonus (5 points)
-      const expClient = (ef['Client Name'] || ef['Client Summary'] || '').split(',')[0].trim().toLowerCase();
-      const impClient = (imf['Client Name'] || imf['Client Summary'] || '').split(',')[0].trim().toLowerCase();
-      if (expClient && impClient && expClient === impClient) score += 5;
 
       if (score > bestScore || (score === bestScore && dist < bestDist)) {
         bestScore = score; bestImp = impRow; bestDist = dist;
