@@ -772,27 +772,36 @@ function _wiImpRowHTML(row){
     impPill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
   }
 
+  const impRef2=f['Reference']||'';
   const matchCell=isMatched
     ?`<div class="wi-ci-data">
         <div style="display:flex;align-items:center;gap:0;min-width:0">
           <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
           <span class="wi-ci-sep">→</span>
           <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
+        </div>
+        <div class="wi-sub" style="margin-top:1px">
+          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
+          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
+          ${pals?`<span>${pals} pal</span>`:''}
+          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
           ${_wiBadges(f)}
         </div>
-        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
-          <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
-        </div>
+        <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
       </div>`
     :`<div class="wi-ci-data">
         <div style="display:flex;align-items:center;gap:0;min-width:0">
           <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
           <span class="wi-ci-sep">→</span>
           <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
+        </div>
+        <div class="wi-sub" style="margin-top:1px">
+          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
+          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
+          ${pals?`<span>${pals} pal</span>`:''}
+          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
           ${_wiBadges(f)}
         </div>
-        <span class="wi-ci-s">${loadDt} → ${delDt} · ${pals} pal</span>
       </div>`;
 
   return `<div id="wi-imp-${imp.id}"
@@ -912,7 +921,15 @@ function _wiRowHTML(row,i){
     }
   }
 
-  // Import preview — saved state shown
+  // Import preview — saved state shown (full details like export)
+  const impClientId=imp?(imp.fields['Client']||[])[0]||'':null;
+  const impClientName=impClientId?data.imports.reduce((n,r)=>{
+    if(r.id===imp.id){const cn=r.fields['Client Name']||r.fields['Client Summary']||'';return cn.split(',')[0].trim();}return n;
+  },''):'';
+  const impRef=imp?imp.fields['Reference']||'':'';
+  const impLoadDt=imp?_wiFmt(imp.fields['Loading DateTime']):'';
+  const impDelDt=imp?_wiFmt(imp.fields['Delivery DateTime']):'';
+  const impPals=imp?imp.fields['Total Pallets']||0:0;
   const impPrev=imp
     ?`<div class="wi-ci-data">
         <div style="display:flex;align-items:center;gap:0;min-width:0">
@@ -920,8 +937,11 @@ function _wiRowHTML(row,i){
           <span class="wi-ci-sep">→</span>
           <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:1px">
-          <span class="wi-ci-s">${imp.fields['Total Pallets']||0} pal</span>
+        <div class="wi-sub" style="margin-top:1px">
+          ${impLoadDt!=='—'?`<span>${impLoadDt} → ${impDelDt}</span>`:''}
+          ${impLoadDt!=='—'&&impPals?`<span class="wi-sub-div"></span>`:''}
+          ${impPals?`<span>${impPals} pal</span>`:''}
+          ${impRef?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef}</span>`:''}
           ${_wiBadges(imp.fields)}
         </div>
         <span style="font-size:9px;color:#0F172A;font-weight:600;opacity:0.5">↩ matched</span>
