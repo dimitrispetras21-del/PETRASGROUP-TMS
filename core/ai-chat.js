@@ -81,7 +81,7 @@ function _aicPageContext() {
       lines.push(`  ${total} orders today, ${overdue} OVERDUE`);
     }
 
-    if ((page === 'maint_dashboard' || page === 'maint_expiry' || page === 'maint_req') && typeof MAINT !== 'undefined') {
+    if ((page === 'maint_dashboard' || page === 'maint_expiry' || page === 'maint_req') && typeof MAINT !== 'undefined' && _canSee('maintenance')) {
       const trucks = MAINT.trucks || [];
       const trailers = MAINT.trailers || [];
       const expiring = [];
@@ -597,6 +597,12 @@ function _aicShowToolBadge(toolName) {
 }
 
 /* ── LOCAL OBSERVER ────────────────────────────────────────── */
+function _canSee(section) {
+  const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
+  const p = PERMS[role] || PERMS.owner;
+  return p[section] && p[section] !== 'none';
+}
+
 async function _aicRunObserver() {
   // Check cache (10 min)
   if (AiChat._obsCache && Date.now() - AiChat._obsCacheTs < 600000) {
@@ -606,16 +612,35 @@ async function _aicRunObserver() {
 
   const alerts = [];
   try {
-    const [trucks, trailers] = await Promise.all([
-      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
-      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Active','KTEO Expiry','FRC Expiry','Insurance Expiry'] }, true),
-    ]);
+    // MAINTENANCE alerts — only for roles with maintenance access
+    if (_canSee('maintenance')) {
+      const [trucks, trailers] = await Promise.all([
+        atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
+        atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Active','KTEO Expiry','FRC Expiry','Insurance Expiry'] }, true),
+      ]);
 
-    // Check truck expiries
-    for (const t of trucks) {
-      if (!t.fields['Active']) continue;
-      const plate = t.fields['License Plate'] || '';
-      for (const [field, label] of [['KTEO Expiry','KTEO'],['KEK Expiry','KEK'],['Insurance Expiry','Insurance']]) {
+      for (const t of trucks) {
+        if (!t.fields['Active']) continue;
+        const plate = t.fields['License Plate'] || '';
+        for (const [field, label] of [['KTEO Expiry','KTEO'],['KEK Expiry','KEK'],['Insurance Expiry','Insurance']]) {
+          const d = t.fields[field];
+          if (!d) continue;
+          const days = _daysUntil(d);
+          if (days !== null && days <= 30) {
+            alerts.push({
+              type: 'expiry', severity: days < 0 ? 'critical' : days <= 14 ? 'warning' : 'info',
+              title: `${plate} — ${label}`,
+              detail: days < 0 ? `Expired ${Math.abs(days)} days ago` : `Expires in ${days} days`,
+              page: 'maint_expiry'
+            });
+          }
+        }
+      }
+
+      for (const t of trailers) {
+        if (!t.fields['Active']) continue;
+        const plate = t.fields['License Plate'] || '';
+        for (const [field, label] of [['KTEO Expiry','KTEO'],['FRC Expiry','FRC'],['Insurance Expiry','Insurance']]) {
         const d = t.fields[field];
         if (!d) continue;
         const days = _daysUntil(d);
@@ -630,37 +655,47 @@ async function _aicRunObserver() {
       }
     }
 
-    // Check trailer expiries
-    for (const t of trailers) {
-      if (!t.fields['Active']) continue;
-      const plate = t.fields['License Plate'] || '';
-      for (const [field, label] of [['KTEO Expiry','KTEO'],['FRC Expiry','FRC'],['Insurance Expiry','Insurance']]) {
-        const d = t.fields[field];
-        if (!d) continue;
-        const days = _daysUntil(d);
-        if (days !== null && days <= 30) {
+      // Check pending work orders (maintenance role only)
+      try {
+        const wos = await atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority'] }, true);
+        const sosCount = wos.filter(r => r.fields['Status'] !== 'Done' && r.fields['Priority'] === 'SOS').length;
+        const pendCount = wos.filter(r => r.fields['Status'] === 'Pending').length;
+        if (sosCount > 0) {
+          alerts.push({ type: 'workorder', severity: 'critical', title: `${sosCount} SOS work orders`, detail: 'Require immediate attention', page: 'maint_req' });
+        }
+        if (pendCount > 0) {
+          alerts.push({ type: 'workorder', severity: 'warning', title: `${pendCount} pending work orders`, detail: 'Awaiting action', page: 'maint_req' });
+        }
+      } catch(e) {}
+    } // end maintenance block
+
+    // PLANNING alerts — only for roles with planning access
+    if (_canSee('planning')) {
+      try {
+        // Check for unassigned orders delivering in next 3 days
+        const in3d = toLocalDate(new Date(Date.now() + 3 * 864e5));
+        const urgent = await atGetAll(TABLES.ORDERS, {
+          filterByFormula: `AND({Type}='International',{Direction}='Export',{Truck}=BLANK(),IS_BEFORE({Delivery DateTime},'${in3d}'))`,
+          fields: ['Delivery Summary','Delivery DateTime']
+        }, true);
+        if (urgent.length) {
           alerts.push({
-            type: 'expiry', severity: days < 0 ? 'critical' : days <= 14 ? 'warning' : 'info',
-            title: `${plate} — ${label}`,
-            detail: days < 0 ? `Expired ${Math.abs(days)} days ago` : `Expires in ${days} days`,
-            page: 'maint_expiry'
+            type: 'unassigned', severity: urgent.length > 3 ? 'critical' : 'warning',
+            title: `${urgent.length} unassigned exports`,
+            detail: `Delivering within 3 days — need truck assignment`,
+            page: 'weekly_intl'
           });
         }
-      }
+      } catch(e) {}
     }
 
-    // Check pending work orders
-    try {
-      const wos = await atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority'] }, true);
-      const sosCount = wos.filter(r => r.fields['Status'] !== 'Done' && r.fields['Priority'] === 'SOS').length;
-      const pendCount = wos.filter(r => r.fields['Status'] === 'Pending').length;
-      if (sosCount > 0) {
-        alerts.push({ type: 'workorder', severity: 'critical', title: `${sosCount} SOS work orders`, detail: 'Require immediate attention', page: 'maint_req' });
-      }
-      if (pendCount > 0) {
-        alerts.push({ type: 'workorder', severity: 'warning', title: `${pendCount} pending work orders`, detail: 'Awaiting action', page: 'maint_req' });
-      }
-    } catch(e) {}
+    // REMINDERS — check user reminders due today
+    const notifs = _nakisGetNotifs();
+    const today = localToday();
+    const dueReminders = notifs.filter(n => !n.dismissed && n.type === 'reminder' && n.due_date <= today);
+    dueReminders.forEach(n => {
+      alerts.push({ type: 'reminder', severity: 'info', title: 'Υπενθύμιση', detail: n.text, page: null });
+    });
 
     // Sort: critical first
     const sevOrder = { critical: 0, warning: 1, info: 2 };
