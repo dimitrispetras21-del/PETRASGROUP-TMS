@@ -438,6 +438,16 @@ async function submitNatlOrder(recId) {
     if(recId) {
       await atPatch(TABLES.NAT_ORDERS, recId, fields);
     } else {
+      // Duplicate check: same client + same loading date
+      if (clientId && fields['Loading DateTime']) {
+        const dupFilter = `AND(FIND("${clientId}",ARRAYJOIN({Client},","))>0,IS_SAME({Loading DateTime},'${fields['Loading DateTime']}','day'))`;
+        const dups = await atGetAll(TABLES.NAT_ORDERS, { filterByFormula: dupFilter, fields:['Name'], maxRecords:1 }, false).catch(()=>[]);
+        if (dups.length) {
+          if (!confirm('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;')) {
+            throw new Error('v');
+          }
+        }
+      }
       const created = await atCreate(TABLES.NAT_ORDERS, fields);
       savedNatlId = created.id;
     }
