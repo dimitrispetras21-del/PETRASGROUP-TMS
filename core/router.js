@@ -43,6 +43,9 @@ const NAV = [
     { id: 'costs',      label: 'Costs',     icon: 'chart' },
     { id: 'pl',         label: 'P&Ls',      icon: 'trending' },
   ]},
+  { section: 'HR', perm: 'performance', items: [
+    { id: 'performance', label: 'My Performance', icon: 'trending' },
+  ]},
   { section: 'Settings', perm: 'settings', items: [
     { id: 'settings', label: 'Settings', icon: 'gear' },
   ]},
@@ -209,6 +212,8 @@ function navigate(page) {
     case 'fuel':           c.innerHTML = showComingSoon('Fuels');                 break;
     case 'costs':          c.innerHTML = showComingSoon('Costs');                 break;
     case 'pl':             c.innerHTML = showComingSoon('P&Ls');                  break;
+    // HR
+    case 'performance':    renderPerformance();                                   break;
     // Settings
     case 'settings':
       if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
