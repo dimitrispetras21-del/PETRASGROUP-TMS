@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// AI CHAT + OBSERVER — Floating TMS Assistant
+// ΝΑΚΗΣ — Ψηφιακός Βοηθός Petras Group
 // ═══════════════════════════════════════════════════════════════
 'use strict';
 
@@ -12,6 +12,105 @@ const AiChat = {
   _obsCache: null,
   _obsCacheTs: 0,
 };
+
+/* ── PROFILE MANAGEMENT ──────────────────────────────────── */
+function _nakisProfileKey() {
+  const name = typeof user !== 'undefined' ? (user.name || 'default') : 'default';
+  return 'nakis_profile_' + name.replace(/\s+/g, '_');
+}
+function _nakisGetProfile() {
+  try { return JSON.parse(localStorage.getItem(_nakisProfileKey())); } catch { return null; }
+}
+function _nakisSaveProfile(profile) {
+  profile.interviewDate = localToday();
+  localStorage.setItem(_nakisProfileKey(), JSON.stringify(profile));
+}
+function _nakisNotifsKey() {
+  const name = typeof user !== 'undefined' ? (user.name || 'default') : 'default';
+  return 'nakis_notifs_' + name.replace(/\s+/g, '_');
+}
+function _nakisGetNotifs() {
+  try { return JSON.parse(localStorage.getItem(_nakisNotifsKey())) || []; } catch { return []; }
+}
+function _nakisSaveNotifs(notifs) {
+  localStorage.setItem(_nakisNotifsKey(), JSON.stringify(notifs));
+}
+
+/* ── PAGE CONTEXT COLLECTOR ──────────────────────────────── */
+function _aicPageContext() {
+  const page = typeof currentPage !== 'undefined' ? currentPage : '';
+  const lines = [];
+
+  try {
+    if (page === 'weekly_intl' && typeof WINTL !== 'undefined' && WINTL.rows) {
+      const exp = WINTL.data?.exports || [];
+      const imp = WINTL.data?.imports || [];
+      const rows = WINTL.rows || [];
+      const expRows = rows.filter(r => r.type === 'export');
+      const unassigned = expRows.filter(r => !r.saved).length;
+      const assigned = expRows.filter(r => r.saved).length;
+      const unmatched = expRows.filter(r => !r.importId).length;
+      lines.push(`Weekly International W${WINTL.week}:`);
+      lines.push(`  ${exp.length} exports (${assigned} assigned, ${unassigned} UNASSIGNED)`);
+      lines.push(`  ${imp.length} imports, ${unmatched} exports χωρίς matched import (empty return risk)`);
+    }
+
+    if (page === 'weekly_natl' && typeof WNATL !== 'undefined' && WNATL.rows) {
+      const ns = WNATL.rows.filter(r => r.type === 'northsouth');
+      const sn = WNATL.rows.filter(r => r.type === 'southnorth');
+      const unassNS = ns.filter(r => !r.saved).length;
+      const unassSN = sn.filter(r => !r.saved).length;
+      lines.push(`Weekly National W${WNATL.week}:`);
+      lines.push(`  ${ns.length} ΚΑΘΟΔΟΣ (${unassNS} unassigned), ${sn.length} ΑΝΟΔΟΣ (${unassSN} unassigned)`);
+    }
+
+    if (page === 'daily_ramp' && typeof RAMP !== 'undefined') {
+      const inb = (RAMP.records || []).filter(r => r.fields['Type'] === 'Παραλαβή');
+      const out = (RAMP.records || []).filter(r => r.fields['Type'] === 'Φόρτωση');
+      const done = (RAMP.records || []).filter(r => r.fields['Status'] === '✅ Έγινε').length;
+      const stockItems = RAMP.stock || [];
+      lines.push(`Ramp Board ${RAMP.date}:`);
+      lines.push(`  ${inb.length} inbound, ${out.length} outbound, ${done} completed`);
+      if (stockItems.length) lines.push(`  Stock: ${stockItems.length} items in warehouse`);
+    }
+
+    if (page === 'daily_ops' && typeof OPS !== 'undefined') {
+      const total = OPS.intl?.length || 0;
+      const overdue = OPS.overdue?.length || 0;
+      lines.push(`Daily Ops (${OPS.date}):`);
+      lines.push(`  ${total} orders today, ${overdue} OVERDUE`);
+    }
+
+    if ((page === 'maint_dashboard' || page === 'maint_expiry' || page === 'maint_req') && typeof MAINT !== 'undefined') {
+      const trucks = MAINT.trucks || [];
+      const trailers = MAINT.trailers || [];
+      const expiring = [];
+      for (const t of trucks) {
+        if (!t.fields['Active']) continue;
+        for (const f of ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry']) {
+          const d = t.fields[f];
+          if (d) {
+            const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+            if (days <= 30) expiring.push(`${t.fields['License Plate']} ${f.replace(' Expiry','')}: ${days}d`);
+          }
+        }
+      }
+      lines.push(`Maintenance: ${trucks.length} trucks, ${trailers.length} trailers`);
+      if (expiring.length) lines.push(`  Expiring soon: ${expiring.slice(0, 5).join(', ')}`);
+    }
+
+    if (page === 'orders_intl' && typeof INTL_ORDERS !== 'undefined') {
+      lines.push(`International Orders: ${INTL_ORDERS.data?.length || 0} records loaded`);
+    }
+    if (page === 'orders_natl' && typeof NATL_ORDERS !== 'undefined') {
+      lines.push(`National Orders: ${NATL_ORDERS.data?.length || 0} records loaded`);
+    }
+  } catch (e) {
+    lines.push(`(context error: ${e.message})`);
+  }
+
+  return lines.join('\n') || 'No page-specific data loaded yet.';
+}
 
 /* ── CSS INJECTION ──────────────────────────────────────────── */
 (function(){
@@ -157,6 +256,41 @@ const AIC_TOOLS = [
       },
       required:['page']
     }
+  },
+  {
+    name: 'save_profile',
+    description: 'Save user profile after onboarding interview. Call this after collecting all answers.',
+    input_schema: {
+      type:'object',
+      properties: {
+        role_description: { type:'string', description:'User role and responsibilities' },
+        morning_routine: { type:'string', description:'What they check first each morning' },
+        focus_clients: { type:'array', items:{type:'string'}, description:'Key clients they care about' },
+        focus_routes: { type:'array', items:{type:'string'}, description:'Key routes/corridors' },
+        pain_points: { type:'array', items:{type:'string'}, description:'Common problems they face' },
+        detail_level: { type:'string', enum:['brief','detailed'], description:'Preferred notification detail' },
+        daily_must_do: { type:'array', items:{type:'string'}, description:'Daily mandatory tasks' },
+        reminders: { type:'array', items:{type:'string'}, description:'Things to remind about' }
+      },
+      required:['role_description']
+    }
+  },
+  {
+    name: 'set_reminder',
+    description: 'Set a reminder for the user. Shows as notification next time they open TMS.',
+    input_schema: {
+      type:'object',
+      properties: {
+        text: { type:'string', description:'Reminder text' },
+        due_date: { type:'string', description:'When to show (YYYY-MM-DD). Use today for immediate.' }
+      },
+      required:['text','due_date']
+    }
+  },
+  {
+    name: 'read_page_context',
+    description: 'Get a summary of what data is loaded on the current TMS page, plus user profile and pending notifications.',
+    input_schema: { type:'object', properties:{} }
   }
 ];
 
@@ -206,7 +340,7 @@ async function _aicExecTool(name, input) {
           'Description': input.description,
           'Priority': input.priority,
           'Status': 'Pending',
-          'Date Reported': new Date().toISOString().substring(0,10),
+          'Date Reported': localToday(),
         };
         if (input.notes) fields['Notes'] = input.notes;
         const created = await atCreate(TABLES.MAINT_REQ, fields);
@@ -224,6 +358,36 @@ async function _aicExecTool(name, input) {
         navigate(input.page);
         return { success: true, navigated_to: input.page };
       }
+      case 'save_profile': {
+        _nakisSaveProfile(input);
+        toast('Profile saved!', 'success');
+        return { success: true, message: 'Profile saved. I will now personalize suggestions based on this profile.' };
+      }
+      case 'set_reminder': {
+        const notifs = _nakisGetNotifs();
+        notifs.push({
+          id: 'rem_' + Date.now(),
+          text: input.text,
+          due_date: input.due_date,
+          type: 'reminder',
+          severity: 'info',
+          created: localToday(),
+          dismissed: false
+        });
+        _nakisSaveNotifs(notifs);
+        toast('Reminder set!', 'success');
+        return { success: true, reminder: input.text, due: input.due_date };
+      }
+      case 'read_page_context': {
+        const profile = _nakisGetProfile();
+        const notifs = _nakisGetNotifs().filter(n => !n.dismissed && n.due_date <= localToday());
+        return {
+          page: typeof currentPage !== 'undefined' ? currentPage : 'unknown',
+          context: _aicPageContext(),
+          profile: profile || 'No profile — interview needed',
+          pending_notifications: notifs.length ? notifs : 'None'
+        };
+      }
       default: return { error: 'Unknown tool: ' + name };
     }
   } catch(e) {
@@ -234,28 +398,16 @@ async function _aicExecTool(name, input) {
 /* ── ROLE PROFILES ─────────────────────────────────────────── */
 const AIC_PROFILES = {
   owner: {
-    persona: 'You are Petras, a strategic logistics copilot for the company owner.',
-    focus: 'You focus on big-picture KPIs, cost efficiency, fleet utilization, and business growth. You proactively suggest optimizations and flag risks. You know the owner manages everything — planning, maintenance, costs, clients.',
-    greeting: name => `Γεια σου ${name}! Είμαι ο Petras, ο AI σύμβουλός σου. Ρώτησέ με ό,τι θες για orders, fleet, maintenance ή costs.`,
-    tools: ['read_orders','read_fleet','create_work_order','update_record','navigate_to'],
+    tools: ['read_orders','read_fleet','create_work_order','update_record','navigate_to','save_profile','set_reminder','read_page_context'],
   },
   dispatcher: {
-    persona: 'You are a dispatch assistant focused on daily operations.',
-    focus: 'You help the dispatcher with order assignment, weekly planning, trip management, and load consolidation. You prioritize speed — finding orders, checking truck availability, and suggesting assignments. You don\'t discuss costs or financial data.',
-    greeting: name => `Hi ${name}! I'm your dispatch assistant. Ask me about orders, truck availability, weekly planning, or say "go to weekly intl" to navigate.`,
-    tools: ['read_orders','read_fleet','create_work_order','navigate_to'],
+    tools: ['read_orders','read_fleet','create_work_order','navigate_to','save_profile','set_reminder','read_page_context'],
   },
   management: {
-    persona: 'You are a management assistant focused on maintenance, drivers, and costs.',
-    focus: 'You help management with maintenance oversight (work orders, expiry alerts, service records), driver management (assignments, payroll), and cost tracking (trip costs, fuel). You don\'t deal with order dispatch or weekly planning — that\'s the dispatcher\'s job.',
-    greeting: name => `Hello ${name}! I can help with maintenance status, driver info, and cost tracking.`,
-    tools: ['read_fleet','create_work_order','update_record','navigate_to'],
+    tools: ['read_fleet','create_work_order','update_record','navigate_to','save_profile','set_reminder','read_page_context'],
   },
   accountant: {
-    persona: 'You are a finance-focused TMS assistant.',
-    focus: 'You help the accountant with cost tracking, fuel receipts, driver payroll data, and trip cost analysis. You focus on numbers and financial accuracy. You can read order and fleet data for reference.',
-    greeting: name => `Hello ${name}! I can help you find cost data, fuel receipts, trip costs, and driver payroll information.`,
-    tools: ['read_orders','read_fleet','navigate_to'],
+    tools: ['read_orders','read_fleet','navigate_to','save_profile','set_reminder','read_page_context'],
   }
 };
 
@@ -265,27 +417,54 @@ function _aicSystemPrompt() {
   const page = typeof currentPage !== 'undefined' ? currentPage : 'dashboard';
   const week = typeof currentWeekNumber === 'function' ? currentWeekNumber() : '?';
   const userName = typeof user !== 'undefined' ? (user.name || 'User') : 'User';
-  const profile = AIC_PROFILES[role] || AIC_PROFILES.owner;
+  const profile = _nakisGetProfile();
+  const notifs = _nakisGetNotifs().filter(n => !n.dismissed && n.due_date <= localToday());
+  const pageCtx = _aicPageContext();
 
-  return `${profile.persona}
-You work for Petras Group — a cold chain transport company (Greece ↔ Central/Eastern Europe).
+  const interviewBlock = !profile ? `
+ΣΗΜΑΝΤΙΚΟ: Δεν υπάρχει profile για αυτόν τον χρήστη. ΠΡΕΠΕΙ να κάνεις onboarding interview.
+Πες: "Γεια σου, είμαι ο Νάκης, ο ψηφιακός βοηθός της Petras Group! Για να σε βοηθάω καλύτερα, θέλω να σε γνωρίσω λίγο."
+Μετά ρώτα ΜΙΑ-ΜΙΑ τις ερωτήσεις (περίμενε απάντηση πριν τη next):
+1. Ποιος είσαι και ποιος ο ρόλος σου στην εταιρεία;
+2. Τι κοιτάς πρώτο κάθε πρωί στο TMS;
+3. Ποιοι πελάτες ή δρομολόγια σε αφορούν περισσότερο;
+4. Τι πηγαίνει συχνά στραβά στη δουλειά σου;
+5. Πόσο λεπτομερείς θες τις ειδοποιήσεις; (σύντομο/αναλυτικό)
+6. Ποια tasks ΠΡΕΠΕΙ να γίνουν καθημερινά χωρίς εξαίρεση;
+7. Τι θα ήθελες να σου υπενθυμίζω;
+Αφού μαζέψεις ΟΛΕΣ τις απαντήσεις, κάλεσε save_profile με τα δεδομένα.
+Μετά το save πες: "Τέλεια, τώρα σε γνωρίζω! Από εδώ και πέρα θα σου δίνω εξατομικευμένες συμβουλές."` :
+  `USER PROFILE:
+${JSON.stringify(profile, null, 1)}`;
 
-${profile.focus}
+  return `Είσαι ο Νάκης, ο ψηφιακός βοηθός της Petras Group — εταιρεία ψυγειομεταφορών (Ελλάδα ↔ Κεντρική/Ανατολική Ευρώπη).
+Μιλάς Ελληνικά. Είσαι σύντομος, πρακτικός, φιλικός αλλά χωρίς φλυαρίες.
 
-Current context:
-- User: ${userName}, Role: ${role}
-- Current page: ${page}
-- Date: ${new Date().toISOString().substring(0,10)}, Week: W${week}
+${interviewBlock}
 
-Rules:
-- Be concise and direct. Short answers, no fluff.
-- Match the user's language — Greek or English.
-- ALWAYS confirm before modifying data (create_work_order, update_record).
-- Summarize tool results clearly — never dump raw JSON to the user.
-- ${role === 'dispatcher' ? 'You cannot access cost or financial data.' : ''}
-- ${role === 'accountant' ? 'You cannot create or modify orders. Focus on financial data.' : ''}
+ΤΡΕΧΟΝ CONTEXT:
+- Χρήστης: ${userName}, Ρόλος: ${role}
+- Σελίδα: ${page}
+- Ημερομηνία: ${localToday()}, Εβδομάδα: W${week}
 
-TMS pages: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers.`;
+ΔΕΔΟΜΕΝΑ ΣΕΛΙΔΑΣ:
+${pageCtx}
+
+${notifs.length ? `ΕΚΚΡΕΜΕΙΣ ΥΠΕΝΘΥΜΙΣΕΙΣ:\n${notifs.map(n => '- ' + n.text + (n.due_date ? ' (λήξη: ' + n.due_date + ')' : '')).join('\n')}` : ''}
+
+ΚΑΝΟΝΕΣ ΣΥΜΠΕΡΙΦΟΡΑΣ:
+${profile ? `- Ξεκίνα ΠΑΝΤΑ με 1-2 ΣΥΓΚΕΚΡΙΜΕΝΕΣ παρατηρήσεις βάσει δεδομένων σελίδας
+- Δώσε προτεραιότητα: ${(profile.pain_points || []).join(', ') || 'general'}
+- Focus πελάτες: ${(profile.focus_clients || []).join(', ') || 'all'}
+- Επίπεδο λεπτομέρειας: ${profile.detail_level || 'brief'}
+- Daily must-do: ${(profile.daily_must_do || []).join(', ') || 'none set'}
+- Αν ο χρήστης πει "ξανα-γνώρισέ με" → ξεκίνα νέο interview` : ''}
+- ΠΑΝΤΑ επιβεβαίωσε πριν αλλάξεις data (create_work_order, update_record)
+- Συνόψισε αποτελέσματα tools — ποτέ raw JSON
+- ${role === 'dispatcher' ? 'Δεν έχεις πρόσβαση σε κόστη/οικονομικά.' : ''}
+- ${role === 'accountant' ? 'Δεν μπορείς να δημιουργήσεις orders. Focus σε οικονομικά.' : ''}
+
+ΣΕΛΙΔΕΣ TMS: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers.`;
 }
 
 function _aicAllowedTools() {
@@ -327,6 +506,17 @@ async function _aicSend() {
   const text = inp.value.trim();
   if (!text || AiChat.isLoading) return;
   inp.value = '';
+
+  // Re-interview trigger
+  if (text.includes('ξανα-γνώρισέ') || text.includes('ξαναγνωρισε') || text.includes('reset profile')) {
+    localStorage.removeItem(_nakisProfileKey());
+    AiChat.messages = [];
+    _aicRenderMsgs();
+    toast('Profile reset — starting interview');
+    _aicToggle(); // close
+    setTimeout(() => _aicToggle(), 300); // reopen → triggers interview
+    return;
+  }
 
   // Add user message
   AiChat.messages.push({ role: 'user', content: text });
@@ -507,7 +697,7 @@ function _aicInit() {
   panel.id = 'aic-panel';
   panel.innerHTML = `
     <div class="aic-head">
-      <span class="aic-head-title">TMS Assistant</span>
+      <span class="aic-head-title">Νάκης</span>
       <button class="aic-head-close" onclick="_aicToggle()">✕</button>
     </div>
     <div class="aic-obs" id="aic-obs"></div>
@@ -535,13 +725,41 @@ async function _aicToggle() {
     await _aicRunObserver();
     _aicRenderObs();
     _aicRenderMsgs();
-    // Welcome message if empty
+    // Contextual greeting or interview start
     if (!AiChat.messages.length) {
-      const _role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
-      const _name = typeof user !== 'undefined' ? (user.name || 'User').split(' ')[0] : 'User';
-      const _profile = AIC_PROFILES[_role] || AIC_PROFILES.owner;
-      AiChat.messages.push({ role: 'assistant', content: _profile.greeting(_name) });
-      _aicRenderMsgs();
+      const profile = _nakisGetProfile();
+      if (!profile) {
+        // No profile → trigger interview via Claude
+        AiChat.messages.push({ role: 'user', content: 'Γεια σου Νάκη!' });
+        _aicRenderMsgs();
+        _aicSetLoading(true);
+        try {
+          const response = await _aicCallClaude(AiChat.messages.map(m => ({role:m.role, content:m.content})));
+          const text = response.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+          AiChat.messages.push({ role: 'assistant', content: text || 'Γεια σου! Είμαι ο Νάκης.' });
+        } catch(e) {
+          AiChat.messages.push({ role: 'assistant', content: 'Γεια σου! Είμαι ο Νάκης, ο ψηφιακός βοηθός σου. Ας γνωριστούμε — ποιος είσαι και ποιος ο ρόλος σου;' });
+        }
+        _aicSetLoading(false);
+        _aicRenderMsgs();
+        _aicSaveHistory();
+      } else {
+        // Has profile → contextual greeting via Claude
+        AiChat.messages.push({ role: 'user', content: '(ο χρήστης μόλις άνοιξε τον Νάκη)' });
+        _aicRenderMsgs();
+        _aicSetLoading(true);
+        try {
+          const response = await _aicCallClaude(AiChat.messages.map(m => ({role:m.role, content:m.content})));
+          const text = response.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+          // Replace the fake user message with just the greeting
+          AiChat.messages = [{ role: 'assistant', content: text || 'Γεια σου! Τι χρειάζεσαι;' }];
+        } catch(e) {
+          AiChat.messages = [{ role: 'assistant', content: 'Γεια σου! Τι μπορώ να κάνω για σένα;' }];
+        }
+        _aicSetLoading(false);
+        _aicRenderMsgs();
+        _aicSaveHistory();
+      }
     }
     setTimeout(() => document.getElementById('aic-input')?.focus(), 250);
   } else {
