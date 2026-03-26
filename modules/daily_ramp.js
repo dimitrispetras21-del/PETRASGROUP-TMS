@@ -7,7 +7,7 @@
 'use strict';
 
 const RAMP = {
-  date: new Date().toISOString().split('T')[0],
+  date: localToday(),
   records: [], trucks: [], drivers: [], locs: [], clients: [], stock: [],
 };
 
@@ -144,15 +144,17 @@ async function _rampLoad() {
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
   await _rampAutoSync();
 
-  // Fetch today's ramp + stock + postponed in parallel
+  // Fetch today's ramp + stock + all postponed (filter in JS)
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
   const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  const postponedFilter=`IS_SAME({Postponed To},'${RAMP.date}','day')`;
-  const [recs, stock, postponed] = await Promise.all([
+  const postponedFilter=`{Postponed To}!=BLANK()`;
+  const [recs, stock, allPostponed] = await Promise.all([
     atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false),
     atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false),
     atGetAll(TABLES.RAMP,{filterByFormula:postponedFilter,fields:RAMP_FIELDS},false),
   ]);
+  // Filter postponed: show records whose Postponed To matches current view date
+  const postponed = allPostponed.filter(r => toLocalDate(r.fields['Postponed To']) === RAMP.date);
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
   RAMP.records=recs;
   RAMP.stock=stock;
@@ -162,26 +164,21 @@ async function _rampLoad() {
 /* ── AUTO-SYNC: Create RAMP records from source tables ────────── */
 async function _rampAutoSync() {
   const date = RAMP.date;
-  const nextDay = new Date(new Date(date).getTime()+864e5).toISOString().split('T')[0];
-  const prevDay = new Date(new Date(date).getTime()-864e5).toISOString().split('T')[0];
+  const nextDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()+864e5));
+  const prevDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()-864e5));
 
-  // Get existing RAMP records for this date + postponed TO/FROM this date to avoid duplicates
-  const [existing, postponedFromToday, postponedToToday] = await Promise.all([
+  // Get existing RAMP records for this date + all postponed records to avoid duplicates
+  const [existing, allPostponedSync] = await Promise.all([
     atGetAll(TABLES.RAMP, {
       filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
       fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
     }, false),
     atGetAll(TABLES.RAMP, {
-      filterByFormula: `IS_SAME({Postponed To},'${date}','day')`,
-      fields: ['Order','National Order','Type','Ramp Category'],
-    }, false).catch(()=>[]),
-    // Also check records postponed FROM elsewhere TO this date (Plan Date=date, has Postponed To set)
-    atGetAll(TABLES.RAMP, {
-      filterByFormula: `AND(IS_SAME({Plan Date},'${date}','day'),{Postponed To}!='')`,
-      fields: ['Order','National Order','Type','Ramp Category'],
+      filterByFormula: `{Postponed To}!=BLANK()`,
+      fields: ['Order','National Order','Type','Ramp Category','Plan Date','Postponed To'],
     }, false).catch(()=>[]),
   ]);
-  const allExisting = [...existing, ...postponedFromToday, ...postponedToToday];
+  const allExisting = [...existing, ...allPostponedSync];
   const existingKeys = new Set(allExisting.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
     const nid = getLinkId(r.fields['National Order']) || '';
@@ -466,8 +463,8 @@ function _rCat(f){
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
 function _rampDraw() {
-  const today=new Date().toISOString().split('T')[0];
-  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
+  const today=localToday();
+  const tmrw=localTomorrow();
   const fD=d=>{try{const p=d.split('-');return`${p[2]}/${p[1]}/${p[0]}`;}catch{return d;}};
 
   const inb=RAMP.records.filter(r=>r.fields['Type']==='Παραλαβή');
@@ -686,7 +683,7 @@ async function _rampRestore(id){
     invalidateCache(TABLES.RAMP);toast('Restored ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 async function _rampPostpone(id){
-  const tmrw=new Date(new Date(RAMP.date).getTime()+864e5).toISOString().split('T')[0];
+  const tmrw=toLocalDate(new Date(new Date(RAMP.date+'T12:00:00').getTime()+864e5));
   try{await atPatch(TABLES.RAMP,id,{'Plan Date':tmrw,'Postponed To':RAMP.date});
     invalidateCache(TABLES.RAMP);toast('Postponed → '+tmrw);renderDailyRamp();}catch(e){toast('Error','danger');}
 }

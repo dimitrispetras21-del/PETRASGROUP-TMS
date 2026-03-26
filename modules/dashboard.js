@@ -30,8 +30,8 @@ async function renderDashboard() {
 
     // Time references
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const tmrw = new Date(Date.now() + 864e5).toISOString().split('T')[0];
+    const today = localToday();
+    const tmrw = localTomorrow();
     const wn = currentWeekNumber();
     const weekStart = _getWeekStart(now);
     const weekEnd = new Date(weekStart.getTime() + 6 * 864e5);
@@ -145,7 +145,7 @@ async function renderDashboard() {
     }).sort((a, b) => b.hoursOld - a.hoursOld).slice(0, 10);
 
     // Section 5a: High Risk — orders due in 48h with no truck
-    const in48h = new Date(Date.now() + 48 * 3600000).toISOString().split('T')[0];
+    const in48h = toLocalDate(new Date(Date.now() + 48 * 3600000));
     const highRisk = unassignedOrders.filter(r => {
       const del = (r.fields['Delivery DateTime'] || '').substring(0, 10);
       return del && del <= in48h && del >= today;
@@ -153,7 +153,7 @@ async function renderDashboard() {
 
     // Section 5b: Fleet Alerts — expiring docs
     const fleetAlerts = [];
-    const alertThreshold = new Date(Date.now() + 30 * 864e5).toISOString().split('T')[0];
+    const alertThreshold = toLocalDate(new Date(Date.now() + 30 * 864e5));
     trucks.filter(t => t.fields['Active']).forEach(t => {
       const f = t.fields;
       const plate = f['License Plate'] || '—';

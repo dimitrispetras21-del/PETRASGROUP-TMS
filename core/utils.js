@@ -2,6 +2,30 @@
 // CORE — UTILS
 // ═══════════════════════════════════════════════
 
+// Convert Airtable UTC datetime to local YYYY-MM-DD string
+function toLocalDate(raw) {
+  if (!raw) return '';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// Today's date as YYYY-MM-DD in local timezone
+function localToday() {
+  const d = new Date();
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+// Tomorrow's date as YYYY-MM-DD in local timezone
+function localTomorrow() {
+  const d = new Date();
+  d.setDate(d.getDate() + 1);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
 function formatDate(d) {
   if (!d) return '—';
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });

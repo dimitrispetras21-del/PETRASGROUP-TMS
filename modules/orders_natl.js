@@ -364,7 +364,7 @@ async function _openNatlModal(recId, f) {
         <div class="form-field">
           <label class="form-label">Loading Date *</label>
           <input class="form-input" type="date" id="nf_LoadDate"
-            value="${f['Loading DateTime']?f['Loading DateTime'].split('T')[0]:''}">
+            value="${f['Loading DateTime']?toLocalDate(f['Loading DateTime']):''}">
         </div>
         <div class="form-field">
           <label class="form-label">Delivery Location *</label>
@@ -373,7 +373,7 @@ async function _openNatlModal(recId, f) {
         <div class="form-field">
           <label class="form-label">Delivery Date *</label>
           <input class="form-input" type="date" id="nf_DelDate"
-            value="${f['Delivery DateTime']?f['Delivery DateTime'].split('T')[0]:''}">
+            value="${f['Delivery DateTime']?toLocalDate(f['Delivery DateTime']):''}">
         </div>
       </div>
     </div>

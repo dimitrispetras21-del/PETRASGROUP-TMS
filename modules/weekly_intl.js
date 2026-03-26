@@ -396,7 +396,7 @@ function _wiWeekRange(w){
 }
 function _wiFmt(s){
   if(!s) return '—';
-  try{const p=s.split('T')[0].split('-');return`${p[2]}/${p[1]}`;}catch{return s;}
+  try{const p=toLocalDate(s).split('-');return`${p[2]}/${p[1]}`;}catch{return s;}
 }
 function _wiFmtFull(s){
   if(!s) return null;
@@ -814,7 +814,20 @@ function _wiImpRowHTML(row){
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab;background:#172C45"></div>
+      <div class="wi-ce" style="cursor:grab">
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
+        </div>
+        <div class="wi-sub">
+          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
+          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
+          ${pals?`<span>${pals} pal</span>`:''}
+          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
+          ${_wiBadges(f)}
+        </div>
+      </div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
@@ -862,7 +875,7 @@ function _wiRowHTML(row,i){
   // Status based on operational state
   const hasPartner=!!(row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label);
   const delDateRaw=primary?.fields['Delivery DateTime']||null;
-  const isOverdue=delDateRaw && new Date(delDateRaw.split('T')[0]) < new Date(new Date().toISOString().split('T')[0]);
+  const isOverdue=delDateRaw && toLocalDate(delDateRaw) < localToday();
   let sCls,dotColor;
   if(!row.saved){
     // Red — unassigned
@@ -1545,7 +1558,7 @@ async function _wiCreatePartnerAssignments(row, fields){
     });
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = localToday();
 
   for(const asgn of assignments){
     try{

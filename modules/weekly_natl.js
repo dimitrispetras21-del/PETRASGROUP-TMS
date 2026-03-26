@@ -40,6 +40,17 @@ function _wnCurrentWeek() {
   if (document.getElementById('wnatl-css2')) return;
   const s = document.createElement('style'); s.id = 'wnatl-css2';
   s.textContent = `
+#wn-ctx {
+  display:none; position:fixed; z-index:9999;
+  background:var(--bg-card); border:1px solid var(--border-mid);
+  border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.2);
+  min-width:180px; overflow:hidden;
+}
+.wi-ctx-item { display:block; width:100%; padding:8px 14px; text-align:left; font-size:12px;
+  cursor:pointer; border:none; background:none; color:var(--text); }
+.wi-ctx-item:hover { background:var(--bg-hover); }
+.wi-ctx-danger { color:var(--danger) !important; }
+
 #wn-popover {
   display:none; position:fixed; z-index:9999;
   background:var(--bg-card); border:1px solid var(--border-mid);
@@ -153,7 +164,7 @@ async function _wnLoadAll() {
   const mon    = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
   const wStart = new Date(mon); wStart.setDate(mon.getDate() + (WNATL.week - 1) * 7);
   const wEnd   = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
-  const fmt    = d => d.toISOString().split('T')[0];
+  const fmt    = d => toLocalDate(d);
   const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
   // 6 fetches in parallel (assets + orders — no CLIENTS, not needed)
@@ -353,7 +364,7 @@ function _wnAllRowsHTML() {
 
   nsRows.forEach(row => {
     const ord = WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
-    const key = ord?.fields['Delivery DateTime']?.split('T')[0] || 'zzz';
+    const key = toLocalDate(ord?.fields['Delivery DateTime']) || 'zzz';
     const lbl = _wnFmtFull(ord?.fields['Delivery DateTime']||null) || '—';
     if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
     dayMap[key].ns.push(row);
@@ -362,7 +373,7 @@ function _wnAllRowsHTML() {
   snRows.forEach(row => {
     const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
     const dtRaw = ord?.fields['Loading DateTime'] || '';
-    const key = dtRaw.split('T')[0] || 'zzz';
+    const key = toLocalDate(dtRaw) || 'zzz';
     const lbl = _wnFmtFull(dtRaw||null) || '—';
     if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
     dayMap[key].sn.push(row);
@@ -640,14 +651,14 @@ function _wnClientLabel(clientId) {
 
 function _wnFmt(s) {
   if (!s) return '—';
-  try { const p=s.split('T')[0].split('-'); return `${p[2]}/${p[1]}`; }
+  try { const p=toLocalDate(s).split('-'); return `${p[2]}/${p[1]}`; }
   catch { return s; }
 }
 
 function _wnFmtFull(s) {
   if (!s) return null;
   try {
-    const dateOnly = s.split('T')[0];
+    const dateOnly = toLocalDate(s);
     const d = new Date(dateOnly+'T12:00:00');
     if (isNaN(d.getTime())) return s;
     const str = d.toLocaleDateString('el-GR', { weekday:'long', day:'numeric', month:'long' });
@@ -956,12 +967,13 @@ function _wnCtx(e, rowId) {
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</div>`);
   if (row?.matchedId)
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</div>`);
-  ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
-  // Position — flip up if near bottom
+  ctx.innerHTML = items.join('');
+  // Position — flip up if near bottom (fixed positioning uses clientX/Y)
   const menuH = items.length * 36 + 16;
   const spaceBelow = window.innerHeight - e.clientY;
-  const top = spaceBelow < menuH ? (e.pageY - menuH) : e.pageY;
-  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${Math.max(10, top)}px` });
+  const top = spaceBelow < menuH ? (e.clientY - menuH) : e.clientY;
+  const left = Math.min(e.clientX, window.innerWidth - 200);
+  Object.assign(ctx.style, { display:'block', left:`${left}px`, top:`${Math.max(10, top)}px` });
   setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
 }
 
@@ -978,11 +990,12 @@ function _wnCtxSn(e, rowId, snId) {
   items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</div>`);
   if (row?.saved)
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</div>`);
-  ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
+  ctx.innerHTML = items.join('');
   const menuH = items.length * 36 + 16;
   const spaceBelow = window.innerHeight - e.clientY;
-  const top = spaceBelow < menuH ? (e.pageY - menuH) : e.pageY;
-  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${Math.max(10, top)}px` });
+  const top = spaceBelow < menuH ? (e.clientY - menuH) : e.clientY;
+  const left = Math.min(e.clientX, window.innerWidth - 200);
+  Object.assign(ctx.style, { display:'block', left:`${left}px`, top:`${Math.max(10, top)}px` });
   setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
 }
 
