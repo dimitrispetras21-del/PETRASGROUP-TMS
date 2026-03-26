@@ -556,7 +556,8 @@ function _wnSnRowHTML(row) {
     class="wi-row ${sClsSN}"
     style="${clBgSN}"
     draggable="true"
-    ondragstart="_wnDragStart(event,'${ord.id}')">
+    ondragstart="_wnDragStart(event,'${ord.id}')"
+    oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColorSN}"></div>
@@ -967,6 +968,50 @@ function _wnCtx(e, rowId) {
 function _wnCtxClose() {
   const ctx = document.getElementById('wn-ctx');
   if (ctx) ctx.style.display = 'none';
+}
+
+function _wnCtxSn(e, rowId, snId) {
+  e.preventDefault(); e.stopPropagation();
+  const row = WNATL.rows.find(r => r.id===rowId);
+  const ctx = document.getElementById('wn-ctx');
+  const items = [];
+  items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</div>`);
+  if (row?.saved)
+    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</div>`);
+  ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
+  const menuH = items.length * 36 + 16;
+  const spaceBelow = window.innerHeight - e.clientY;
+  const top = spaceBelow < menuH ? (e.pageY - menuH) : e.pageY;
+  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${Math.max(10, top)}px` });
+  setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
+}
+
+async function _wnUnassignSn(rowId, snId) {
+  const row = WNATL.rows.find(r => r.id===rowId);
+  if (!row) return;
+  if (!confirm('Αφαίρεση ανάθεσης;')) return;
+
+  const fields = {
+    'Truck': [], 'Trailer': [], 'Driver': [],
+    'Partner': [], 'Is Partner Trip': false,
+    'Partner Truck Plates': '', 'Partner Rate': null,
+    'Status': 'Pending'
+  };
+
+  try {
+    await atPatch(TABLES.NAT_LOADS, snId, fields);
+  } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
+
+  row.saved = false;
+  row.truckId = ''; row.truckLabel = '';
+  row.trailerId = ''; row.trailerLabel = '';
+  row.driverId = ''; row.driverLabel = '';
+  row.partnerId = ''; row.partnerLabel = '';
+  row.partnerPlates = ''; row.partnerRate = '';
+
+  invalidateCache(TABLES.NAT_LOADS);
+  toast('Ανάθεση αφαιρέθηκε');
+  _wnPaint();
 }
 
 async function _wnUnassign(rowId) {
