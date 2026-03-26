@@ -225,24 +225,24 @@ async function renderDashboard() {
       <style>
         .dash-wrap { padding: 0; max-width: 1600px; }
         .dash-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; padding: 0 2px; }
-        .dash-greeting { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px; }
-        .dash-date { font-size: 12px; color: #64748B; margin-top: 2px; font-weight: 400; }
-        .dash-live { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; }
+        .dash-greeting { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.3px; }
+        .dash-date { font-size: 12px; color: var(--text-dim); margin-top: 2px; font-weight: 400; }
+        .dash-live { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-dim); letter-spacing: 0.5px; text-transform: uppercase; }
         .dash-live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10B981; animation: dash-pulse 2s infinite; }
         @keyframes dash-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
         /* Alert Banner */
-        .dash-alert-banner { background: linear-gradient(135deg, rgba(239,68,68,0.06), rgba(239,68,68,0.02)); border: 1px solid rgba(239,68,68,0.15); border-radius: 10px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
-        .dash-alert-icon { width: 28px; height: 28px; border-radius: 50%; background: rgba(239,68,68,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .dash-alert-text { font-size: 12px; color: #DC2626; font-weight: 500; }
+        .dash-alert-banner { background: var(--danger-bg); border: 1px solid rgba(220,38,38,0.15); border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+        .dash-alert-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--danger-bg); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .dash-alert-text { font-size: 12px; color: var(--danger); font-weight: 500; }
 
         /* KPI Bar */
         .dash-kpi-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
-        .dash-kpi { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 14px 16px; cursor: pointer; transition: all 0.15s ease; position: relative; overflow: hidden; }
-        .dash-kpi:hover { border-color: #CBD5E1; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-        .dash-kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #64748B; margin-bottom: 6px; }
+        .dash-kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: all 0.15s ease; position: relative; overflow: hidden; }
+        .dash-kpi:hover { border-color: var(--border-mid); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+        .dash-kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-mid); margin-bottom: 6px; }
         .dash-kpi-value { font-family: 'DM Sans', monospace; font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-        .dash-kpi-sub { font-size: 10px; color: #94A3B8; }
+        .dash-kpi-sub { font-size: 10px; color: var(--text-dim); }
         .dash-kpi-glow { position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0.8; }
 
         /* Section Grid */
@@ -251,75 +251,75 @@ async function renderDashboard() {
         .dash-right { display: flex; flex-direction: column; gap: 12px; }
 
         /* Cards */
-        .dash-card { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; overflow: hidden; }
-        .dash-card-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid #F1F5F9; }
-        .dash-card-title { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: #475569; }
-        .dash-card-link { font-size: 10px; color: #0284C7; cursor: pointer; text-decoration: none; font-weight: 500; }
-        .dash-card-link:hover { color: #0369A1; }
+        .dash-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .dash-card-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+        .dash-card-title { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-mid); }
+        .dash-card-link { font-size: 10px; color: var(--accent); cursor: pointer; text-decoration: none; font-weight: 500; }
+        .dash-card-link:hover { color: var(--accent-hover); }
         .dash-card-body { padding: 12px 16px; }
 
         /* Two Column Ops */
         .dash-ops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
         /* Ops rows */
-        .dash-ops-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid #F1F5F9; cursor: pointer; transition: background 0.1s; }
+        .dash-ops-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
         .dash-ops-row:last-child { border-bottom: none; }
-        .dash-ops-row:hover { background: rgba(2,132,199,0.03); }
+        .dash-ops-row:hover { background: var(--bg-hover); }
         .dash-status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
         .dash-ops-info { flex: 1; min-width: 0; }
-        .dash-ops-client { font-size: 12px; font-weight: 600; color: #0F172A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dash-ops-route { font-size: 10px; color: #64748B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dash-ops-client { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dash-ops-route { font-size: 10px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .dash-ops-meta { text-align: right; flex-shrink: 0; }
-        .dash-ops-pal { font-size: 11px; font-weight: 700; color: #475569; }
-        .dash-ops-time { font-size: 9px; color: #94A3B8; }
-        .dash-ops-truck { font-size: 9px; color: #0284C7; font-weight: 500; }
+        .dash-ops-pal { font-size: 11px; font-weight: 700; color: var(--text-mid); }
+        .dash-ops-time { font-size: 9px; color: var(--text-dim); }
+        .dash-ops-truck { font-size: 9px; color: var(--accent); font-weight: 500; }
         .dash-day-tag { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 6px; border-radius: 4px; }
 
         /* Fleet Utilization Bars */
         .dash-util-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-        .dash-util-label { font-size: 11px; color: #475569; width: 60px; font-weight: 500; }
-        .dash-util-bar { flex: 1; height: 20px; background: #F1F5F9; border-radius: 6px; overflow: hidden; position: relative; }
+        .dash-util-label { font-size: 11px; color: var(--text-mid); width: 60px; font-weight: 500; }
+        .dash-util-bar { flex: 1; height: 20px; background: var(--bg); border-radius: 6px; overflow: hidden; position: relative; }
         .dash-util-fill { height: 100%; border-radius: 6px; transition: width 0.5s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 6px; }
-        .dash-util-pct { font-size: 10px; font-weight: 700; color: #0F172A; min-width: 30px; text-align: right; }
+        .dash-util-pct { font-size: 10px; font-weight: 700; color: var(--text); min-width: 30px; text-align: right; }
 
         /* Aging Table */
         .dash-aging-table { width: 100%; border-collapse: collapse; }
-        .dash-aging-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748B; padding: 6px 8px; text-align: left; border-bottom: 1px solid #E2E8F0; }
-        .dash-aging-table td { font-size: 11px; color: #334155; padding: 7px 8px; border-bottom: 1px solid #F1F5F9; }
+        .dash-aging-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--border-mid); }
+        .dash-aging-table td { font-size: 11px; color: var(--text); padding: 7px 8px; border-bottom: 1px solid var(--border); }
         .dash-aging-table tr { cursor: pointer; transition: background 0.1s; }
-        .dash-aging-table tbody tr:hover { background: rgba(2,132,199,0.03); }
+        .dash-aging-table tbody tr:hover { background: var(--bg-hover); }
         .dash-aging-pill { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
 
         /* Right panel items */
-        .dash-risk-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid #F1F5F9; }
+        .dash-risk-item { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--border); }
         .dash-risk-item:last-child { border-bottom: none; }
-        .dash-risk-icon { width: 6px; height: 6px; border-radius: 50%; background: #EF4444; flex-shrink: 0; }
-        .dash-risk-text { font-size: 11px; color: #334155; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dash-risk-due { font-size: 9px; color: #EF4444; font-weight: 600; flex-shrink: 0; }
+        .dash-risk-icon { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); flex-shrink: 0; }
+        .dash-risk-text { font-size: 11px; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dash-risk-due { font-size: 9px; color: var(--danger); font-weight: 600; flex-shrink: 0; }
 
-        .dash-fleet-alert-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid #F1F5F9; font-size: 11px; }
+        .dash-fleet-alert-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 11px; }
         .dash-fleet-alert-row:last-child { border-bottom: none; }
-        .dash-fleet-plate { color: #0F172A; font-weight: 600; width: 70px; }
-        .dash-fleet-doc { color: #64748B; flex: 1; }
+        .dash-fleet-plate { color: var(--text); font-weight: 600; width: 70px; }
+        .dash-fleet-doc { color: var(--text-mid); flex: 1; }
         .dash-fleet-days { font-weight: 700; font-size: 10px; }
 
         /* Compliance blocks */
         .dash-comp-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-        .dash-comp-plate { font-size: 10px; color: #334155; font-weight: 600; width: 70px; }
+        .dash-comp-plate { font-size: 10px; color: var(--text); font-weight: 600; width: 70px; }
         .dash-comp-blocks { display: flex; gap: 3px; }
         .dash-comp-block { font-size: 8px; font-weight: 700; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.3px; }
 
         /* Weekly Score */
         .dash-score-ring { width: 80px; height: 80px; margin: 0 auto 8px; position: relative; }
-        .dash-score-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: #0F172A; }
+        .dash-score-num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 800; color: var(--text); }
         .dash-score-bar { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-        .dash-score-bar-label { font-size: 9px; color: #64748B; width: 70px; }
-        .dash-score-bar-track { flex: 1; height: 4px; background: #F1F5F9; border-radius: 2px; overflow: hidden; }
+        .dash-score-bar-label { font-size: 9px; color: var(--text-dim); width: 70px; }
+        .dash-score-bar-track { flex: 1; height: 4px; background: var(--bg); border-radius: 2px; overflow: hidden; }
         .dash-score-bar-fill { height: 100%; border-radius: 2px; }
-        .dash-score-bar-val { font-size: 9px; color: #475569; width: 28px; text-align: right; }
+        .dash-score-bar-val { font-size: 9px; color: var(--text-mid); width: 28px; text-align: right; }
 
         /* Empty state */
-        .dash-empty { text-align: center; padding: 20px; color: #94A3B8; font-size: 11px; }
+        .dash-empty { text-align: center; padding: 20px; color: var(--text-dim); font-size: 11px; }
 
         @media (max-width: 1200px) {
           .dash-kpi-bar { grid-template-columns: repeat(3, 1fr); }
@@ -354,31 +354,31 @@ async function renderDashboard() {
           <div class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#EF4444,transparent)"></div>
             <div class="dash-kpi-label">Χωρίς Ανάθεση (Export)</div>
-            <div class="dash-kpi-value" style="color:#EF4444">${unassignedExport}</div>
+            <div class="dash-kpi-value" style="color:var(--danger)">${unassignedExport}</div>
             <div class="dash-kpi-sub">ανοιχτές εξαγωγές</div>
           </div>
           <div class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
             <div class="dash-kpi-label">Χωρίς Ανάθεση (Import)</div>
-            <div class="dash-kpi-value" style="color:#F59E0B">${unassignedImport}</div>
+            <div class="dash-kpi-value" style="color:var(--warning)">${unassignedImport}</div>
             <div class="dash-kpi-sub">ανοιχτές εισαγωγές</div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
             <div class="dash-kpi-label">Αξιοποίηση Στόλου</div>
-            <div class="dash-kpi-value" style="color:#0284C7">${utilPct}%</div>
+            <div class="dash-kpi-value" style="color:var(--accent)">${utilPct}%</div>
             <div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#94A3B8,transparent)"></div>
             <div class="dash-kpi-label">Κενά Επιστροφής</div>
-            <div class="dash-kpi-value" style="color:#E2E8F0">${emptyLegs}</div>
+            <div class="dash-kpi-value" style="color:var(--text-mid)">${emptyLegs}</div>
             <div class="dash-kpi-sub">export χωρίς import W${wn}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
             <div class="dash-kpi-label">On-Time Παράδοση</div>
-            <div class="dash-kpi-value" style="color:#10B981">${onTimePct}%</div>
+            <div class="dash-kpi-value" style="color:var(--success)">${onTimePct}%</div>
             <div class="dash-kpi-sub">${onTimeCount}/${totalDelivered} on time</div>
           </div>
         </div>
@@ -393,7 +393,7 @@ async function renderDashboard() {
               <!-- Departures -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">&#128666; ΑΝΑΧΩΡΗΣΕΙΣ</div>
+                  <div class="dash-card-title">ΑΝΑΧΩΡΗΣΕΙΣ</div>
                   <span class="dash-card-link" onclick="navigate('weekly_intl')">&#8594; Εβδομαδιαίο</span>
                 </div>
                 <div class="dash-card-body">
@@ -405,7 +405,7 @@ async function renderDashboard() {
               <!-- Deliveries -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">&#128230; ΠΑΡΑΔΟΣΕΙΣ</div>
+                  <div class="dash-card-title">ΠΑΡΑΔΟΣΕΙΣ</div>
                   <span class="dash-card-link" onclick="navigate('orders_intl')">&#8594; Παραγγελίες</span>
                 </div>
                 <div class="dash-card-body">
@@ -419,7 +419,7 @@ async function renderDashboard() {
             <div class="dash-card">
               <div class="dash-card-header">
                 <div class="dash-card-title">ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
-                <span style="font-size:10px;color:#64748B">W${wn} vs W${nextWn}</span>
+                <span style="font-size:10px;color:var(--text-dim)">W${wn} vs W${nextWn}</span>
               </div>
               <div class="dash-card-body">
                 <div class="dash-util-row">
@@ -428,7 +428,7 @@ async function renderDashboard() {
                     <div class="dash-util-fill" style="width:${utilPct}%;background:linear-gradient(90deg,#0284C7,#38BDF8)">
                     </div>
                   </div>
-                  <div class="dash-util-pct" style="color:${utilPct >= 70 ? '#10B981' : utilPct >= 40 ? '#F59E0B' : '#EF4444'}">${utilPct}%</div>
+                  <div class="dash-util-pct" style="color:${utilPct >= 70 ? 'var(--success)' : utilPct >= 40 ? 'var(--warning)' : 'var(--danger)'}">${utilPct}%</div>
                 </div>
                 <div class="dash-util-row">
                   <div class="dash-util-label">W${nextWn}</div>
@@ -436,9 +436,9 @@ async function renderDashboard() {
                     <div class="dash-util-fill" style="width:${nextUtilPct}%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">
                     </div>
                   </div>
-                  <div class="dash-util-pct" style="color:${nextUtilPct >= 70 ? '#10B981' : nextUtilPct >= 40 ? '#F59E0B' : '#EF4444'}">${nextUtilPct}%</div>
+                  <div class="dash-util-pct" style="color:${nextUtilPct >= 70 ? 'var(--success)' : nextUtilPct >= 40 ? 'var(--warning)' : 'var(--danger)'}">${nextUtilPct}%</div>
                 </div>
-                <div style="display:flex;gap:16px;margin-top:6px;font-size:9px;color:#475569">
+                <div style="display:flex;gap:16px;margin-top:6px;font-size:9px;color:var(--text-mid)">
                   <span>&#9632; Ανατεθειμένα: ${trucksInUse.size}</span>
                   <span>&#9632; Διαθέσιμα: ${activeTrucks - trucksInUse.size}</span>
                   <span>&#9632; Σύνολο: ${activeTrucks}</span>
@@ -450,7 +450,7 @@ async function renderDashboard() {
             <div class="dash-card">
               <div class="dash-card-header">
                 <div class="dash-card-title">ΑΝΑΜΟΝΗ ΑΝΑΘΕΣΗΣ — AGING</div>
-                <span style="font-size:10px;color:#64748B">${unassignedOrders.length} ανοιχτές</span>
+                <span style="font-size:10px;color:var(--text-dim)">${unassignedOrders.length} ανοιχτές</span>
               </div>
               <div class="dash-card-body" style="padding:0">
                 ${agingRows.length ? `<table class="dash-aging-table">
@@ -463,13 +463,13 @@ async function renderDashboard() {
                   </tr></thead>
                   <tbody>
                     ${agingRows.map(r => `<tr onclick="navigate('orders_intl')">
-                      <td style="font-weight:600;color:#94A3B8">${r.orderNum}</td>
+                      <td style="font-weight:600;color:var(--text-dim)">${r.orderNum}</td>
                       <td>
-                        <div style="font-weight:500;color:#E2E8F0;font-size:11px">${r.client}</div>
-                        <div style="font-size:9px;color:#475569">${r.route}</div>
+                        <div style="font-weight:500;color:var(--text);font-size:11px">${r.client}</div>
+                        <div style="font-size:9px;color:var(--text-mid)">${r.route}</div>
                       </td>
-                      <td style="color:#94A3B8">${r.delDate ? fmtDateDM(r.delDate) : '—'}</td>
-                      <td style="text-align:center;font-weight:700;color:#94A3B8">${r.pallets}</td>
+                      <td style="color:var(--text-dim)">${r.delDate ? fmtDateDM(r.delDate) : '—'}</td>
+                      <td style="text-align:center;font-weight:700;color:var(--text-mid)">${r.pallets}</td>
                       <td style="text-align:right">${_dashAgingPill(r.hoursOld)}</td>
                     </tr>`).join('')}
                   </tbody>
@@ -485,7 +485,7 @@ async function renderDashboard() {
             <!-- HIGH RISK -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title" style="color:#EF4444">&#9888; ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ</div>
+                <div class="dash-card-title" style="color:var(--danger)">ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ</div>
               </div>
               <div class="dash-card-body">
                 ${highRisk.length ? highRisk.map(r => {
@@ -505,13 +505,13 @@ async function renderDashboard() {
             <!-- FLEET ALERTS -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">&#128272; ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ</div>
+                <div class="dash-card-title">ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ</div>
               </div>
               <div class="dash-card-body">
                 ${fleetAlerts.length ? fleetAlerts.slice(0, 6).map(a => `<div class="dash-fleet-alert-row">
                   <div class="dash-fleet-plate">${a.plate}</div>
                   <div class="dash-fleet-doc">${a.label}</div>
-                  <div class="dash-fleet-days" style="color:${a.expired ? '#EF4444' : a.days < 14 ? '#F59E0B' : '#94A3B8'}">${a.expired ? 'ΛΗΓΜΕΝΟ' : a.days + 'μ'}</div>
+                  <div class="dash-fleet-days" style="color:${a.expired ? 'var(--danger)' : a.days < 14 ? 'var(--warning)' : 'var(--text-dim)'}">${a.expired ? 'ΛΗΓΜΕΝΟ' : a.days + 'μ'}</div>
                 </div>`).join('') : '<div class="dash-empty">Χωρίς ειδοποιήσεις</div>'}
               </div>
             </div>
@@ -539,12 +539,12 @@ async function renderDashboard() {
             <div class="dash-card">
               <div class="dash-card-header">
                 <div class="dash-card-title">ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
-                <span style="font-size:10px;color:#64748B">W${wn}</span>
+                <span style="font-size:10px;color:var(--text-dim)">W${wn}</span>
               </div>
               <div class="dash-card-body" style="text-align:center">
                 <div class="dash-score-ring">
                   <svg width="80" height="80" viewBox="0 0 80 80">
-                    <circle cx="40" cy="40" r="34" fill="none" stroke="#1E293B" stroke-width="6"/>
+                    <circle cx="40" cy="40" r="34" fill="none" stroke="#E2E8F0" stroke-width="6"/>
                     <circle cx="40" cy="40" r="34" fill="none" stroke="${scoreColor}" stroke-width="6"
                       stroke-dasharray="${Math.round(213.6 * weeklyScore / 100)} 213.6"
                       stroke-linecap="round" transform="rotate(-90 40 40)"
@@ -586,9 +586,9 @@ async function renderDashboard() {
 
 // ── Helper: Ops Row ──
 function _dashOpsRow(d, type) {
-  const dotColor = d.status === 'Delivered' ? '#10B981' : d.status === 'In Transit' ? '#7C3AED' : d.status === 'Assigned' ? '#0284C7' : '#F59E0B';
-  const dayBg = d.day === 'Σήμερα' ? 'rgba(2,132,199,0.12)' : 'rgba(100,116,139,0.1)';
-  const dayColor = d.day === 'Σήμερα' ? '#38BDF8' : '#64748B';
+  const dotColor = d.status === 'Delivered' ? 'var(--success)' : d.status === 'In Transit' ? '#7C3AED' : d.status === 'Assigned' ? 'var(--accent)' : 'var(--warning)';
+  const dayBg = d.day === 'Σήμερα' ? 'var(--accent-light)' : 'rgba(100,116,139,0.08)';
+  const dayColor = d.day === 'Σήμερα' ? 'var(--accent)' : 'var(--text-dim)';
   return `<div class="dash-ops-row" onclick="navigate('orders_intl')">
     <div class="dash-status-dot" style="background:${dotColor}"></div>
     <span class="dash-day-tag" style="background:${dayBg};color:${dayColor}">${d.day}</span>
@@ -608,11 +608,11 @@ function _dashOpsRow(d, type) {
 function _dashAgingPill(hours) {
   let bg, color, text;
   if (hours > 48) {
-    bg = 'rgba(239,68,68,0.12)'; color = '#EF4444'; text = Math.round(hours / 24) + 'μ';
+    bg = 'var(--danger-bg)'; color = 'var(--danger)'; text = Math.round(hours / 24) + 'μ';
   } else if (hours > 24) {
-    bg = 'rgba(245,158,11,0.12)'; color = '#F59E0B'; text = Math.round(hours / 24) + 'μ';
+    bg = 'var(--warning-bg)'; color = 'var(--warning)'; text = Math.round(hours / 24) + 'μ';
   } else {
-    bg = 'rgba(16,185,129,0.12)'; color = '#10B981'; text = hours + 'ω';
+    bg = 'var(--success-bg)'; color = 'var(--success)'; text = hours + 'ω';
   }
   return `<span class="dash-aging-pill" style="background:${bg};color:${color}">${text}</span>`;
 }
@@ -639,7 +639,7 @@ function _dashSkeleton() {
   return `<div style="padding:0;max-width:1600px">
     <style>
       @keyframes dash-sk { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
-      .dash-sk-block { background: #0F172A; border: 1px solid #1E293B; border-radius: 10px; animation: dash-sk 1.4s ease-in-out infinite; }
+      .dash-sk-block { background: var(--bg-hover); border: 1px solid var(--border); border-radius: 8px; animation: dash-sk 1.4s ease-in-out infinite; }
     </style>
     <div style="display:flex;justify-content:space-between;margin-bottom:20px">
       <div>
