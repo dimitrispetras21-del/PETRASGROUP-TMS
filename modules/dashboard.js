@@ -128,22 +128,19 @@ async function renderDashboard() {
       weekOrders.forEach(r => {
         const tid = getLinkId(r.fields['Truck']);
         if (!tid) return;
-        if (!truckDays[tid]) truckDays[tid] = new Set();
+        if (!truckDays[tid]) truckDays[tid] = 0;
         const loadDate = toLocalDate(r.fields['Loading DateTime']);
         const delDate = toLocalDate(r.fields['Delivery DateTime']);
-        if (!loadDate) return;
-        // Add all days from loading to delivery (inclusive)
-        const start = new Date(loadDate + 'T12:00:00');
-        const end = delDate ? new Date(delDate + 'T12:00:00') : start;
-        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-          truckDays[tid].add(toLocalDate(d));
-        }
+        if (!loadDate || !delDate) return;
+        // Working days = difference in days (Mon morning → Wed morning = 2 days)
+        const diff = Math.round((new Date(delDate+'T12:00:00') - new Date(loadDate+'T12:00:00')) / 864e5);
+        if (diff > 0) truckDays[tid] += diff;
       });
 
       // Per-truck usage rates
       const rates = [];
       activeTruckList.forEach(t => {
-        const days = truckDays[t.id] ? truckDays[t.id].size : 0;
+        const days = truckDays[t.id] || 0;
         const rate = Math.min(days * 4.5 * 4.5, 100);
         rates.push({ id: t.id, plate: t.fields['License Plate'] || '?', days, rate: Math.round(rate) });
       });
