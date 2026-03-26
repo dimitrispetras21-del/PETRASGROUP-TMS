@@ -735,7 +735,7 @@ function _aicInit() {
       <span class="aic-head-title">Νάκης</span>
       <button class="aic-head-close" onclick="_aicToggle()">✕</button>
     </div>
-    <div class="aic-obs" id="aic-obs"></div>
+    <!-- observer cards removed — Νάκης mentions alerts conversationally -->
     <div class="aic-msgs" id="aic-msgs"></div>
     <div class="aic-input-bar">
       <textarea class="aic-input" id="aic-input" rows="1" placeholder="Ask anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aicSend()}"></textarea>
@@ -745,8 +745,8 @@ function _aicInit() {
     </div>`;
   document.body.appendChild(panel);
 
-  // Run observer in background
-  setTimeout(() => _aicRunObserver().then(() => _aicUpdateDot()), 2000);
+  // Run observer in background (feeds data to system prompt, no pinned cards)
+  setTimeout(() => _aicRunObserver(), 2000);
 }
 
 async function _aicToggle() {
@@ -758,7 +758,6 @@ async function _aicToggle() {
     btn.style.display = 'none';
     panel.classList.add('open');
     await _aicRunObserver();
-    _aicRenderObs();
     _aicRenderMsgs();
     // Contextual greeting or interview start
     if (!AiChat.messages.length) {
@@ -800,7 +799,6 @@ async function _aicToggle() {
   } else {
     panel.classList.remove('open');
     btn.style.display = 'flex';
-    _aicUpdateDot();
   }
 }
 
