@@ -951,6 +951,10 @@ function _wnCtx(e, rowId) {
   const ctx = document.getElementById('wn-ctx');
   const items = [];
   items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</div>`);
+  if (row?.saved)
+    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</div>`);
+  if (row?.matchedId)
+    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</div>`);
   if (row?.orderIds?.length > 1)
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnSplit(${rowId})">Διάλυση groupage</div>`);
   ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
@@ -961,6 +965,47 @@ function _wnCtx(e, rowId) {
 function _wnCtxClose() {
   const ctx = document.getElementById('wn-ctx');
   if (ctx) ctx.style.display = 'none';
+}
+
+async function _wnUnassign(rowId) {
+  const row = WNATL.rows.find(r => r.id===rowId);
+  if (!row) return;
+  if (!confirm('Αφαίρεση ανάθεσης;')) return;
+
+  const fields = {
+    'Truck': [], 'Trailer': [], 'Driver': [],
+    'Partner': [], 'Is Partner Trip': false,
+    'Partner Truck Plates': '', 'Partner Rate': null,
+    'Status': 'Pending'
+  };
+
+  const errors = [];
+  for (const orderId of row.orderIds) {
+    try {
+      const res = await atPatch(TABLES.NAT_LOADS, orderId, fields);
+      if (res?.error) throw new Error(res.error.message || res.error.type);
+    } catch(err) { errors.push(err.message); }
+  }
+  // Also unassign matched S→N if exists
+  if (row.matchedId) {
+    try {
+      await atPatch(TABLES.NAT_LOADS, row.matchedId, fields);
+    } catch(err) { errors.push(err.message); }
+  }
+
+  if (errors.length) { toast('Σφάλμα: ' + errors[0].slice(0, 60), 'warn'); return; }
+
+  // Reset row state
+  row.saved = false;
+  row.truckId = ''; row.truckLabel = '';
+  row.trailerId = ''; row.trailerLabel = '';
+  row.driverId = ''; row.driverLabel = '';
+  row.partnerId = ''; row.partnerLabel = '';
+  row.partnerPlates = ''; row.partnerRate = '';
+
+  invalidateCache(TABLES.NAT_LOADS);
+  toast('Ανάθεση αφαιρέθηκε');
+  _wnPaint();
 }
 
 function _wnSplit(rowId) {
