@@ -654,44 +654,78 @@ function _addStop(type) {
 // ─── Submit ─────────────────────────────────────
 
 // ═══════════════════════════════════════════════════════
-// Veroia Switch → sync NATIONAL ORDERS
-// Called after every ORDER create/update
+// Veroia Switch → sync directly to NAT_LOADS (v2)
+// Called after every ORDERS create/update
+// VS ON  → create/update NAT_LOADS (Source Type='VS')
+// VS OFF → delete NAT_LOADS (VS) + GL + CL + RAMP cascade
 // ═══════════════════════════════════════════════════════
-async function _syncNationalOrder(orderId, fields) {
-  const veroiaSwitch = fields['Veroia Switch '];
-  const natCreated   = fields['National Order Created'];
+
+// Date helpers for VS date calculations
+function _vsToLocalDate(raw) {
+  if (!raw) return null;
+  const d = new Date(raw);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function _vsAddDays(dateStr, days) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+async function _syncVeroiaSwitch(orderId, fields) {
+  const veroiaSwitch = fields[F.VEROIA_SWITCH];
   const direction    = fields['Direction'];
   const isIntl       = fields['Type'] === 'International';
 
-  console.log('_syncNationalOrder called:', {orderId, veroiaSwitch, direction, isIntl});
+  console.log('_syncVeroiaSwitch called:', {orderId, veroiaSwitch, direction, isIntl});
   if (!isIntl) { console.log('SKIP: not intl'); return; }
-  if (!veroiaSwitch) { console.log('SKIP: veroia switch off'); }
 
-  // ── Find existing NATIONAL ORDER for this ORDER ──
-  const existing = await atGetAll(TABLES.NAT_ORDERS, {
+  const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
+
+  // ── Find existing NAT_LOADS for this ORDERS record (VS type) ──
+  const existingNL = await atGetAll(TABLES.NAT_LOADS, {
+    filterByFormula: `AND({Source Record}="${orderId}",{Source Type}="VS")`,
+    fields: ['Name','Direction'],
+  }, false);
+  console.log('existing VS NAT_LOADS:', existingNL.length);
+
+  // ── Also find legacy NAT_ORDERS linked to this order (for cleanup) ──
+  const legacyNO = await atGetAll(TABLES.NAT_ORDERS, {
     filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
     fields: ['Linked Order'],
   }, false);
-  console.log('existing natl orders:', existing.length);
 
-  // ── Veroia Switch OFF → FULL CLEANUP: GL + CL + NL + RAMP + NO ──
+  // ══════════════════════════════════════════════
+  // VS OFF → FULL CLEANUP
+  // ══════════════════════════════════════════════
   if (!veroiaSwitch) {
-    for (const rec of existing) {
-      // 1. Find all GL lines for this NO
+    console.log('VS OFF → cleanup');
+
+    // 1. Delete NAT_LOADS with Source Type='VS' for this order
+    for (const nl of existingNL) {
+      try { await atDelete(TABLES.NAT_LOADS, nl.id); }
+      catch(e) { console.warn('NL VS delete:', e); }
+    }
+
+    // 2. Find & delete GL lines linked to this order
+    try {
       const glLines = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${rec.id}",ARRAYJOIN({Linked National Order},","))>0`,
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
         fields: ['Status']
       }, false);
 
-      // 2. Find & delete CONS_LOADS that reference these GL lines
       for (const gl of glLines) {
+        // Delete CONS_LOADS that reference this GL
         try {
           const cls = await atGetAll(TABLES.CONS_LOADS, {
             filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
             fields: ['Name']
           }, false);
           for (const cl of cls) {
-            // Delete NL records linked to this CL
+            // Delete NL records linked to this CL (Groupage type)
             try {
               const nlsForCL = await atGetAll(TABLES.NAT_LOADS, {
                 filterByFormula: `{Source Record}="${cl.id}"`,
@@ -702,33 +736,57 @@ async function _syncNationalOrder(orderId, fields) {
             await atDelete(TABLES.CONS_LOADS, cl.id);
           }
         } catch(e) { console.warn('CL cleanup:', e); }
-      }
-
-      // 3. Delete all GL lines
-      for (const gl of glLines) {
+        // Delete the GL line itself
         try { await atDelete(TABLES.GL_LINES, gl.id); }
         catch(e) { console.warn('GL delete:', e); }
       }
+    } catch(e) { console.warn('GL lookup:', e); }
 
-      // 4. Delete NL records linked to this NO (Direct type)
+    // 3. Also try GL via legacy NO link (backward compat)
+    for (const no of legacyNO) {
       try {
-        if (typeof _syncNationalLoad === 'function') await _syncNationalLoad(rec.id, {}, true);
-      } catch(e) { console.warn('NL cleanup:', e); }
+        const glLines = await atGetAll(TABLES.GL_LINES, {
+          filterByFormula: `FIND("${no.id}",ARRAYJOIN({Linked National Order},","))>0`,
+          fields: ['Status']
+        }, false);
+        for (const gl of glLines) {
+          try {
+            const cls = await atGetAll(TABLES.CONS_LOADS, {
+              filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+              fields: ['Name']
+            }, false);
+            for (const cl of cls) {
+              try {
+                const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
+                for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
+              } catch(e) {}
+              await atDelete(TABLES.CONS_LOADS, cl.id);
+            }
+          } catch(e) {}
+          try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) {}
+        }
+      } catch(e) {}
 
-      // 5. Delete RAMP records linked to this NO
+      // Delete NL records linked to this NO
+      try {
+        const nlsNO = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${no.id}"`,fields:['Name']},false);
+        for (const nl of nlsNO) await atDelete(TABLES.NAT_LOADS, nl.id);
+      } catch(e) {}
+
+      // Delete RAMP records linked to this NO
       try {
         const ramps = await atGetAll(TABLES.RAMP, {
-          filterByFormula: `FIND("${rec.id}",ARRAYJOIN({Order},","))>0`,
+          filterByFormula: `FIND("${no.id}",ARRAYJOIN({Order},","))>0`,
           fields: ['Plan Date']
         }, false);
         for (const rp of ramps) await atDelete(TABLES.RAMP, rp.id);
-      } catch(e) { console.warn('RAMP cleanup:', e); }
+      } catch(e) {}
 
-      // 6. Delete the NO itself
-      await atDelete(TABLES.NAT_ORDERS, rec.id);
+      // Delete the legacy NO itself
+      try { await atDelete(TABLES.NAT_ORDERS, no.id); } catch(e) {}
     }
 
-    // 7. Also delete RAMP records linked to the parent INTL ORDER
+    // 4. Delete RAMP records linked to the INTL ORDER
     try {
       const intlRamps = await atGetAll(TABLES.RAMP, {
         filterByFormula: `FIND("${orderId}",ARRAYJOIN({Order},","))>0`,
@@ -737,8 +795,8 @@ async function _syncNationalOrder(orderId, fields) {
       for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
     } catch(e) { console.warn('RAMP intl cleanup:', e); }
 
-    // 8. Reset flag on parent order
-    if (existing.length) {
+    // 5. Reset flag on parent order
+    if (existingNL.length || legacyNO.length) {
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
     }
     invalidateCache(TABLES.NAT_ORDERS);
@@ -747,119 +805,131 @@ async function _syncNationalOrder(orderId, fields) {
     return;
   }
 
-  // ── Veroia Switch ON ──
-  // Build location arrays (up to 10 stops)
-  const pickupLocs  = [];
-  const delivLocs   = [];
+  // ══════════════════════════════════════════════
+  // VS ON → Create/Update NAT_LOADS record
+  // ══════════════════════════════════════════════
+  console.log('VS ON → sync NAT_LOADS');
 
-  const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
+  // Clean up legacy NAT_ORDERS if any exist (migration path)
+  for (const no of legacyNO) {
+    try {
+      // Delete NL records linked to this NO
+      const nlsNO = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${no.id}"`,fields:['Name']},false);
+      for (const nl of nlsNO) await atDelete(TABLES.NAT_LOADS, nl.id);
+      // Delete the NO itself
+      await atDelete(TABLES.NAT_ORDERS, no.id);
+      console.log('Cleaned up legacy NO:', no.id);
+    } catch(e) { console.warn('Legacy NO cleanup:', e); }
+  }
+
+  // Build location arrays
+  const pickupLocs = [];
+  const delivLocs  = [];
 
   if (direction === 'Export') {
+    // ΑΝΟΔΟΣ: supplier(s) → Veroia
     for (let i = 1; i <= 10; i++) {
       const val = fields['Loading Location '+i];
-      if (val && val.length) { const id=_lid(val[0]); if(id) pickupLocs.push(id); }
+      if (val && val.length) { const id = _lid(val[0]); if (id) pickupLocs.push(id); }
     }
-    delivLocs.push('recJucKOhC1zh4IP3');
+    delivLocs.push(F.VEROIA_LOC);
   } else {
-    pickupLocs.push('recJucKOhC1zh4IP3');
+    // ΚΑΘΟΔΟΣ: Veroia → client(s)
+    pickupLocs.push(F.VEROIA_LOC);
     for (let i = 1; i <= 10; i++) {
       const val = fields['Unloading Location '+i];
-      if (val && val.length) { const id=_lid(val[0]); if(id) delivLocs.push(id); }
+      if (val && val.length) { const id = _lid(val[0]); if (id) delivLocs.push(id); }
     }
   }
 
-  // Calculate National leg dates based on VS logic:
-  // Export (ΑΝΟΔΟΣ S→N): suppliers → Veroia
-  //   National Loading  = International Loading DateTime (pickup day)
-  //   National Delivery = International Loading DateTime + 1 day (arrives Veroia)
-  // Import (ΚΑΘΟΔΟΣ N→S): Veroia → delivery
-  //   National Loading  = International Delivery DateTime - 1 day (leaves Veroia = VS day)
-  //   National Delivery = International Delivery DateTime (final delivery)
-  // IMPORTANT: Airtable stores dates as UTC midnight Greece time (e.g. 2026-03-30 → 2026-03-29T21:00Z)
-  // We must extract the LOCAL date, not the UTC date
-  const _toLocalDate = (raw) => {
-    if (!raw) return null;
-    // Parse as local date to avoid timezone shift
-    const d = new Date(raw);
-    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  };
-  const _addDays = (dateStr, days) => {
-    if (!dateStr) return null;
-    // Use noon to avoid DST issues
-    const d = new Date(dateStr + 'T12:00:00');
-    d.setDate(d.getDate() + days);
-    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
-    return `${y}-${m}-${day}`;
-  };
-
+  // Calculate National leg dates
+  // Export (ΑΝΟΔΟΣ): natLoad = intlLoad, natDel = intlLoad + 1
+  // Import (ΚΑΘΟΔΟΣ): natLoad = intlDel - 1, natDel = intlDel
   let natLoadDt = null, natDelDt = null;
   if (direction === 'Export') {
-    const localLoad = _toLocalDate(fields['Loading DateTime']);
+    const localLoad = _vsToLocalDate(fields['Loading DateTime']);
     natLoadDt = localLoad;
-    natDelDt = _addDays(localLoad, 1);
+    natDelDt  = _vsAddDays(localLoad, 1);
   } else {
-    const localDel = _toLocalDate(fields['Delivery DateTime']);
-    natDelDt = localDel;
-    natLoadDt = _addDays(localDel, -1);
+    const localDel = _vsToLocalDate(fields['Delivery DateTime']);
+    natDelDt  = localDel;
+    natLoadDt = _vsAddDays(localDel, -1);
   }
 
-  // Build NATIONAL ORDER fields
-  const natFields = {
-    'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
-    'Type':          'Veroia Switch',
-    'Client':        (fields['Client']||[]).map(v=>_lid(v)).filter(Boolean),
-    'Goods':         fields['Goods']         || '',
-    'Pallets':       fields['Total Pallets'] || fields['Loading Pallets 1'] || 0,
-    'Temperature °C':fields['Temperature °C'] ?? null,
-    'Pallet Exchange':!!fields['Pallet Exchange'],
+  // Resolve client name for the Name field
+  let clientName = '';
+  try {
+    const cArr = fields['Client'];
+    const cId = Array.isArray(cArr) ? _lid(cArr[0]) : null;
+    if (cId) clientName = _clientsMap[cId] || (await _resolveClientName(cId)) || '';
+  } catch(e) {}
+
+  // Build NAT_LOADS fields
+  const nlDirection = direction === 'Export' ? F.CL_ANODOS : F.CL_KATHODOS;
+  const nlFields = {
+    'Name':              `${clientName || 'VS Order'} — ${natLoadDt || ''}`,
+    'Direction':         nlDirection,
+    'Source Type':       'VS',
+    'Source Record':     orderId,
+    'Source Orders':     orderId,
+    'Client':            clientName,
+    'Goods':             fields['Goods'] || '',
+    'Temperature C':     fields['Temperature °C'] ?? null,
+    'Total Pallets':     direction === 'Export'
+                           ? (fields['Loading Pallets 1'] || fields['Total Pallets'] || 0)
+                           : (fields['Unloading Pallets 1'] || fields['Loading Pallets 1'] || fields['Total Pallets'] || 0),
+    'Pallet Exchange':   !!fields['Pallet Exchange'],
+    'Reference':         fields['Reference'] || '',
     'Loading DateTime':  natLoadDt,
     'Delivery DateTime': natDelDt,
-    'Linked Order':  [orderId],
-    'National Groupage': !!fields['National Groupage'],
-    'Price':         fields['Price'] ?? null,
-    'Reference':     fields['Reference'] || '',
+    'Status':            'Pending',
   };
 
-  // Pickup locations 1-10 — field names are 'Pickup Location 1', 'Pickup Location 2', etc.
+  // Pickup locations 1-N
   pickupLocs.forEach((id, i) => {
-    natFields['Pickup Location '+(i+1)] = [id];
+    nlFields['Pickup Location '+(i+1)] = [id];
   });
-  // Delivery locations 1-10 — field names are 'Delivery Location 1', 'Delivery Location 2', etc.
+  // Delivery locations 1-N
   delivLocs.forEach((id, i) => {
-    natFields['Delivery Location '+(i+1)] = [id];
+    nlFields['Delivery Location '+(i+1)] = [id];
   });
 
-  let noId = null;
-  if (existing.length > 0) {
-    const upd = await atPatch(TABLES.NAT_ORDERS, existing[0].id, natFields);
-    if (upd?.error) alert('NATL UPDATE ERROR: ' + JSON.stringify(upd.error));
-    else noId = existing[0].id;
+  // Duplicate prevention: update if exists, create if not
+  let nlId = null;
+  if (existingNL.length > 0) {
+    // Don't overwrite Status if it was changed by dispatcher
+    delete nlFields['Status'];
+    const upd = await atPatch(TABLES.NAT_LOADS, existingNL[0].id, nlFields);
+    if (upd?.error) alert('NAT_LOADS UPDATE ERROR: ' + JSON.stringify(upd.error));
+    else nlId = existingNL[0].id;
+    console.log('NAT_LOADS updated:', nlId);
   } else {
-    const cre = await atCreate(TABLES.NAT_ORDERS, natFields);
+    const cre = await atCreate(TABLES.NAT_LOADS, nlFields);
     if (cre?.error) {
-      alert('NATL CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nALL Fields: ' + JSON.stringify(natFields));
+      alert('NAT_LOADS CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nFields: ' + JSON.stringify(nlFields));
     } else {
-      noId = cre.id;
+      nlId = cre.id;
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+      console.log('NAT_LOADS created:', nlId);
     }
   }
 
-  // Sync GROUPAGE LINES for this National Order
-  // Trigger GL sync if either ORDERS or the new NO has National Groupage
-  const ngroupage = !!fields['National Groupage'] || !!natFields?.['National Groupage'];
-  if (noId && ngroupage) {
-    await _syncGroupageLines(orderId, noId, fields, natFields);
-  } else if (noId && !ngroupage) {
-    // Groupage OFF → DELETE unassigned GL + their CL + NL
+  // ── Groupage sync ──
+  // If National Groupage is ON, sync GL lines (linked to orderId directly)
+  const ngroupage = !!fields['National Groupage'];
+  if (nlId && ngroupage) {
+    // Pass orderId as the "owner" for GL lines
+    await _syncGroupageLines(orderId, orderId, fields, null);
+  } else if (nlId && !ngroupage) {
+    // Groupage OFF → clean up GL + CL + Groupage NL
     try {
+      // Find GL via order link
       const stale = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
         fields: ['Status']
       }, false);
       for (const r of stale) {
         if (r.fields.Status !== 'Assigned') {
-          // Delete CL linked to this GL
           try {
             const cls = await atGetAll(TABLES.CONS_LOADS, {
               filterByFormula: `FIND("${r.id}",ARRAYJOIN({Groupage Lines},","))>0`,
@@ -876,25 +946,26 @@ async function _syncNationalOrder(orderId, fields) {
           await atDelete(TABLES.GL_LINES, r.id);
         }
       }
+      // Also check legacy NO-linked GL
+      for (const no of legacyNO) {
+        try {
+          const glLegacy = await atGetAll(TABLES.GL_LINES, {
+            filterByFormula: `FIND("${no.id}",ARRAYJOIN({Linked National Order},","))>0`,
+            fields: ['Status']
+          }, false);
+          for (const r of glLegacy) {
+            if (r.fields.Status !== 'Assigned') {
+              try { await atDelete(TABLES.GL_LINES, r.id); } catch(e) {}
+            }
+          }
+        } catch(e) {}
+      }
       invalidateCache(TABLES.GL_LINES);
       invalidateCache(TABLES.NAT_LOADS);
-    } catch(e) { console.warn('GL cleanup',e); }
+    } catch(e) { console.warn('GL cleanup', e); }
   }
 
-  // Sync NATIONAL LOADS: non-groupage → create/update NL, groupage → delete NL (CL will create its own)
-  if (noId && typeof _syncNationalLoad === 'function') {
-    try {
-      if (!ngroupage) {
-        const fullRec = await fetch(
-          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${noId}`,
-          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-        ).then(r => r.json());
-        if (fullRec.fields) await _syncNationalLoad(noId, fullRec.fields, false);
-      } else {
-        await _syncNationalLoad(noId, {}, true);
-      }
-    } catch(e) { console.warn('NL sync err:', e); }
-  }
+  invalidateCache(TABLES.NAT_LOADS);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1234,22 +1305,22 @@ async function submitIntlOrder(recId) {
 
     invalidateCache(TABLES.ORDERS);
 
-    // Sync Veroia Switch → NATIONAL ORDERS
+    // Sync Veroia Switch → NAT_LOADS (direct, no intermediate NAT_ORDERS)
     const savedOrderId = recId || result.id;
     try {
-      toast('Syncing national order...', 'info');
+      toast('Syncing VS national load...', 'info');
       const res = await fetch(
         'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.ORDERS+'/'+savedOrderId,
         {headers: {'Authorization': 'Bearer '+AT_TOKEN}}
       );
       const rec = await res.json();
-      console.log('SYNC: fetched record', savedOrderId, rec.fields?.['Veroia Switch '], rec.fields?.['Direction'], rec.fields?.['Type']);
+      console.log('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
-      await _syncNationalOrder(savedOrderId, rec.fields);
+      await _syncVeroiaSwitch(savedOrderId, rec.fields);
       await _syncRampPlan(savedOrderId, rec.fields, TABLES.ORDERS);
-      toast('National order synced ✓');
+      toast('National load synced ✓');
     } catch(e) {
-      console.error('National sync error:', e);
+      console.error('VS sync error:', e);
       toast('Sync error: '+e.message, 'warn');
     }
 
