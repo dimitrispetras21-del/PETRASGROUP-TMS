@@ -496,7 +496,7 @@ function _invExportCSV() {
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `invoicing_${new Date().toISOString().split('T')[0]}.csv`;
+  a.href = url; a.download = `invoicing_${localToday()}.csv`;
   a.click(); URL.revokeObjectURL(url);
   toast('CSV exported');
 }

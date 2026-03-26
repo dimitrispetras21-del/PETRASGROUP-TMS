@@ -362,7 +362,7 @@ function _puShowConfirm(data) {
     document.getElementById('puIn').value = inn;
   }
 
-  document.getElementById('puDate').value = data.date || new Date().toISOString().split('T')[0];
+  document.getElementById('puDate').value = data.date || localToday();
   document.getElementById('puTransport').value = data.transport_number || '';
   document.getElementById('puIssuer').value = data.issuer_company || '';
 

@@ -711,7 +711,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 
   // Build NL fields
   const nlFields = {
-    'Name': `${clientName || 'Order'} — ${(noFields['Loading DateTime']||'').substring(0,10)}`,
+    'Name': `${clientName || 'Order'} — ${toLocalDate(noFields['Loading DateTime'])}`,
     'Direction': nlDir,
     'Source Type': 'Direct',
     'Source Record': noId,
