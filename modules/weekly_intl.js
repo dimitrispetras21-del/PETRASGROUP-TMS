@@ -382,17 +382,23 @@ const WINTL = {
 })();
 
 /* ── UTILS ─────────────────────────────────────────────────────────── */
+// Week number matching Airtable WEEKNUM (Sunday-start)
 function _wiCurrentWeek(){
   const d=new Date(),y=d.getFullYear(),j=new Date(y,0,1);
   return Math.ceil(((d-j)/86400000+j.getDay()+1)/7);
 }
+// Week start (Sunday) for a given week number — matches Airtable WEEKNUM
+function _wiWeekStart(w){
+  const y=new Date().getFullYear(),jan1=new Date(y,0,1);
+  const firstSun=new Date(jan1); firstSun.setDate(jan1.getDate()-jan1.getDay());
+  const ws=new Date(firstSun); ws.setDate(firstSun.getDate()+(w-1)*7);
+  return ws;
+}
 function _wiWeekRange(w){
-  const y=new Date().getFullYear(),j=new Date(y,0,1);
-  const b=new Date(j.getTime()+(w-1)*7*86400000),day=b.getDay();
-  const m=new Date(b); m.setDate(b.getDate()-(day===0?6:day-1));
-  const s=new Date(m); s.setDate(m.getDate()+6);
+  const ws=_wiWeekStart(w);
+  const we=new Date(ws); we.setDate(ws.getDate()+6);
   const f=d=>d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
-  return `${f(m)} – ${f(s)}`;
+  return `${f(ws)} – ${f(we)}`;
 }
 function _wiFmt(s){
   if(!s) return '—';
@@ -552,15 +558,12 @@ function _wiBuildRows(){
 
 /* ── WEEK SIDEBAR (INTL) ──────────────────────────────── */
 function _wiWeekSidebarItems(currentWeek) {
-  const year = new Date().getFullYear();
   let html = '';
   for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
     if (w < 1 || w > 52) continue;
     const isActive = w === currentWeek;
-    const jan4 = new Date(year, 0, 4);
-    const mon  = new Date(jan4); mon.setDate(jan4.getDate() - jan4.getDay() + 1);
-    const wS   = new Date(mon); wS.setDate(mon.getDate() + (w - 1) * 7);
-    const wE   = new Date(wS);  wE.setDate(wS.getDate() + 6);
+    const wS   = _wiWeekStart(w);
+    const wE   = new Date(wS); wE.setDate(wS.getDate() + 6);
     const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
     const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,#0B1929)';
     const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
