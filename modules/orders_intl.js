@@ -526,7 +526,7 @@ async function _openModal(recId, f, _clientLabelOverride) {
   };
   const getDt = (prefix, mainField, i) => {
     const raw = i===1 ? f[mainField] : f[`${prefix} DateTime ${i}`];
-    return raw ? raw.split('T')[0] : '';
+    return raw ? toLocalDate(raw) : '';
   };
 
   const buildStopRows = (type) => {
@@ -1169,7 +1169,7 @@ async function _syncRampPlan(orderId, fields, tableId) {
     const driverId = ((fields['Driver'] || [])[0]?.id || (fields['Driver'] || [])[0]) || null;
 
     for (const item of toCreate) {
-      const dateStr = item.rawDate?.split('T')[0];
+      const dateStr = toLocalDate(item.rawDate);
       if (!dateStr) continue;
 
       // Anti-duplicate check
