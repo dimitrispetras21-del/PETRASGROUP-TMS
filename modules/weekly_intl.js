@@ -668,7 +668,7 @@ function _wiAllRowsHTML(){
 
   expRows.forEach(row=>{
     const exp=WINTL.data.exports.find(r=>r.id===row.orderIds[0]);
-    const raw=(exp?.fields['Delivery DateTime']||exp?.fields['Loading DateTime']||'').substring(0,10);
+    const raw=toLocalDate(exp?.fields['Delivery DateTime']||exp?.fields['Loading DateTime']||'');
     const lbl=_wiDelDate(row)||'—';
     if(!groups[raw]) groups[raw]={lbl,rawDate:raw,exps:[],imps:[]};
     groups[raw].exps.push(row);
@@ -676,8 +676,8 @@ function _wiAllRowsHTML(){
 
   impRows.forEach(row=>{
     const imp=WINTL.data.imports.find(r=>r.id===row.orderId);
-    const raw=(imp?.fields['Loading DateTime']||'').substring(0,10);
-    const lbl=raw?_wiFmtFull(raw):'—';
+    const raw=toLocalDate(imp?.fields['Delivery DateTime']||imp?.fields['Loading DateTime']||'');
+    const lbl=raw?_wiFmtFull(imp?.fields['Delivery DateTime']||imp?.fields['Loading DateTime']||''):'—';
     if(!groups[raw]) groups[raw]={lbl,rawDate:raw,exps:[],imps:[]};
     groups[raw].imps.push(row);
   });
