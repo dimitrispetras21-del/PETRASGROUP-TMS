@@ -775,21 +775,33 @@ async function _syncNationalOrder(orderId, fields) {
   // Import (ΚΑΘΟΔΟΣ N→S): Veroia → delivery
   //   National Loading  = International Delivery DateTime - 1 day (leaves Veroia = VS day)
   //   National Delivery = International Delivery DateTime (final delivery)
+  // IMPORTANT: Airtable stores dates as UTC midnight Greece time (e.g. 2026-03-30 → 2026-03-29T21:00Z)
+  // We must extract the LOCAL date, not the UTC date
+  const _toLocalDate = (raw) => {
+    if (!raw) return null;
+    // Parse as local date to avoid timezone shift
+    const d = new Date(raw);
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  };
+  const _addDays = (dateStr, days) => {
+    if (!dateStr) return null;
+    // Use noon to avoid DST issues
+    const d = new Date(dateStr + 'T12:00:00');
+    d.setDate(d.getDate() + days);
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  };
+
   let natLoadDt = null, natDelDt = null;
   if (direction === 'Export') {
-    const rawLoad = (fields['Loading DateTime']||'').slice(0,10);
-    natLoadDt = rawLoad || null;
-    if (rawLoad) {
-      const d = new Date(rawLoad); d.setDate(d.getDate()+1);
-      natDelDt = d.toISOString().slice(0,10);
-    }
+    const localLoad = _toLocalDate(fields['Loading DateTime']);
+    natLoadDt = localLoad;
+    natDelDt = _addDays(localLoad, 1);
   } else {
-    const rawDel = (fields['Delivery DateTime']||'').slice(0,10);
-    natDelDt = rawDel || null;
-    if (rawDel) {
-      const d = new Date(rawDel); d.setDate(d.getDate()-1);
-      natLoadDt = d.toISOString().slice(0,10);
-    }
+    const localDel = _toLocalDate(fields['Delivery DateTime']);
+    natDelDt = localDel;
+    natLoadDt = _addDays(localDel, -1);
   }
 
   // Build NATIONAL ORDER fields
