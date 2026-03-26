@@ -9,28 +9,28 @@ const PERF = { orders: [], natLoads: [], trucks: [], drivers: [], maint: [] };
 // Role-specific KPI definitions
 const PERF_KPIS = {
   owner: [
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '🚛', unit: '%',  target: 80 },
-    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '↩',  unit: '%',  target: 20, invert: true },
-    { id: 'on_time',       label: 'On-Time Delivery',     icon: '⏱',  unit: '%',  target: 90 },
-    { id: 'weekly_score',  label: 'Weekly Score',          icon: '🏆', unit: '/100', target: 85 },
+    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
+    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '',  unit: '%',  target: 20, invert: true },
+    { id: 'on_time',       label: 'On-Time Delivery',     icon: '',  unit: '%',  target: 90 },
+    { id: 'weekly_score',  label: 'Weekly Score',          icon: '', unit: '/100', target: 85 },
   ],
   dispatcher: [
-    { id: 'plan_complete', label: 'Plan Completion',       icon: '📋', unit: '%',  target: 100 },
-    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '↩',  unit: '%',  target: 20, invert: true },
-    { id: 'assign_speed',  label: 'Assignment Speed',     icon: '⚡', unit: 'h',  target: 4,  invert: true },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '🚛', unit: '%',  target: 80 },
+    { id: 'plan_complete', label: 'Plan Completion',       icon: '', unit: '%',  target: 100 },
+    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '',  unit: '%',  target: 20, invert: true },
+    { id: 'assign_speed',  label: 'Assignment Speed',     icon: '', unit: 'h',  target: 4,  invert: true },
+    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
   ],
   management: [
-    { id: 'natl_on_time',  label: 'National On-Time',     icon: '⏱',  unit: '%',  target: 90 },
-    { id: 'plan_reviewed', label: 'Plan Reviewed by Fri',  icon: '✅', unit: '',   target: 1 },
-    { id: 'crisis_resolved',label:'Crises Resolved',       icon: '🔥', unit: '',   target: 0 },
-    { id: 'zero_anxiety',  label: 'Zero Anxiety Score',   icon: '📡', unit: '%',  target: 95 },
+    { id: 'natl_on_time',  label: 'National On-Time',     icon: '',  unit: '%',  target: 90 },
+    { id: 'plan_reviewed', label: 'Plan Reviewed by Fri',  icon: '', unit: '',   target: 1 },
+    { id: 'crisis_resolved',label:'Crises Resolved',       icon: '', unit: '',   target: 0 },
+    { id: 'zero_anxiety',  label: 'Zero Anxiety Score',   icon: '', unit: '%',  target: 95 },
   ],
   accountant: [
-    { id: 'invoiced_pct',  label: 'Orders Invoiced',      icon: '🧾', unit: '%',  target: 100 },
-    { id: 'cmr_collected', label: 'CMR Collected',         icon: '📄', unit: '%',  target: 95 },
-    { id: 'outstanding',   label: 'Outstanding Balance',   icon: '💰', unit: '€',  target: 0, invert: true },
-    { id: 'pallet_balance',label: 'Pallet Balance',        icon: '📦', unit: '',   target: 0 },
+    { id: 'invoiced_pct',  label: 'Orders Invoiced',      icon: '', unit: '%',  target: 100 },
+    { id: 'cmr_collected', label: 'CMR Collected',         icon: '', unit: '%',  target: 95 },
+    { id: 'outstanding',   label: 'Outstanding Balance',   icon: '', unit: '€',  target: 0, invert: true },
+    { id: 'pallet_balance',label: 'Pallet Balance',        icon: '', unit: '',   target: 0 },
   ],
 };
 
@@ -264,7 +264,7 @@ function _perfDraw() {
       ? (val <= kpi.target ? '#10B981' : val <= kpi.target * 1.5 ? '#F59E0B' : '#EF4444')
       : (val >= kpi.target ? '#10B981' : val >= kpi.target * 0.7 ? '#F59E0B' : '#EF4444');
     return `<div class="perf-kpi">
-      <div class="perf-kpi-label">${kpi.icon} ${kpi.label}</div>
+      <div class="perf-kpi-label">${kpi.label}</div>
       <div class="perf-kpi-val" style="color:${color}">${val}${kpi.unit}</div>
       <div class="perf-kpi-target">Target: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
       <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${color}"></div></div>
@@ -318,8 +318,8 @@ function _perfDraw() {
     ? `Καλή εβδομάδα. Πρόσεξε: empty legs ${vals.empty_legs}% (target ≤20%).`
     : `Χρειάζεται βελτίωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
   const warnings = [
-    vals.empty_legs > 25 ? '⚠ Empty legs >25% — δοκίμασε Auto-Match' : '',
-    vals.fleet_usage < 60 ? '⚠ Fleet usage χαμηλό — αδρανή φορτηγά' : '',
+    vals.empty_legs > 25 ? 'Empty legs >25% — δοκίμασε Auto-Match' : '',
+    vals.fleet_usage < 60 ? 'Fleet usage χαμηλό — αδρανή φορτηγά' : '',
   ].filter(Boolean).join(' · ');
 
   document.getElementById('content').innerHTML = `
@@ -404,7 +404,7 @@ function _perfDraw() {
           <div class="perf-card" style="background:linear-gradient(135deg,#0B1929,#172C45);border:none">
             <div class="perf-card-body" style="padding:16px">
               <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#38BDF8;margin-bottom:8px;letter-spacing:.5px">
-                💬 ΝΑΚΗΣ FEEDBACK — W${wn}
+                ΝΑΚΗΣ FEEDBACK — W${wn}
               </div>
               <div style="font-size:12px;line-height:1.6;color:#CBD5E1">
                 ${feedback}
