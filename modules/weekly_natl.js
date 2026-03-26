@@ -438,10 +438,8 @@ function _wnRowHTML(row, i) {
   // Badges
   const badges = _wnBadges(f);
 
-  const clBg = isCL ? 'background:rgba(13,148,136,0.04);' : '';
   return `
   <div id="wn-row-${row.id}" class="wi-row ${sCls}"
-    style="${clBg}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
     <div class="wi-compact" style="cursor:default">
@@ -449,15 +447,15 @@ function _wnRowHTML(row, i) {
         <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
-      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
+      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative;${isCL?'background:rgba(13,148,136,0.08);':''}">
         <div class="wi-route">
-          <span class="from">${fromStr}</span>
+          <span class="from" ${isCL?'style="color:#0F172A"':''}>${fromStr}</span>
           <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
+          <span class="dest" ${isCL?'style="color:#334155"':''}>${toStr}</span>
           ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
         </div>
-        <div class="wi-sub">
-          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+        <div class="wi-sub" ${isCL?'style="color:#475569"':''}>
+          ${clientLabel ? `<span style="color:${isCL?'#475569':'var(--text-mid)'}">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
           <span>${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
           <span>${pals} pal</span>
@@ -551,18 +549,16 @@ function _wnSnRowHTML(row) {
   else if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
   else if (row.saved)           { sClsSN='s-ok';      dotColorSN='var(--success)'; }
 
-  const clBgSN = isCLsn ? 'background:rgba(13,148,136,0.04);' : '';
   return `<div id="wn-sn-${ord.id}"
     class="wi-row ${sClsSN}"
-    style="${clBgSN}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColorSN}"></div>
-        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
+        <span style="font-size:7px;color:${isCLsn?'rgba(13,148,136,0.7)':'rgba(14,165,233,0.55)'};font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
-      <div class="wi-ce" style="background:#172C45"></div>
+      <div class="wi-ce" style="background:${isCLsn?'#0F766E':'#172C45'}"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <div style="width:30px;flex-shrink:0"></div>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
@@ -571,20 +567,20 @@ function _wnSnRowHTML(row) {
         <button class="wi-side-btn" title="Print"
           onclick="event.stopPropagation();_wnPrintSn('${ord.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
       </div>
-      <div class="wi-ci" style="cursor:grab">
+      <div class="wi-ci" style="cursor:grab;${isCLsn?'background:rgba(13,148,136,0.08);':''}">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
+            <span class="wi-ci-from" style="font-weight:700;${isCLsn?'color:#0F172A;':''}">${fromStr}</span>
             <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest" style="font-weight:700">${toStr}</span>
+            <span class="wi-ci-dest" style="font-weight:700;${isCLsn?'color:#334155;':''}">${toStr}</span>
           </div>
-          <div class="wi-sub">
-            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+          <div class="wi-sub" style="${isCLsn?'color:#475569;':''}">
+            ${clientLabel ? `<span style="color:${isCLsn?'#475569':'var(--text-mid)'}">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
             <span>${loadDt} → ${delDt} · ${pals} pal</span>
             ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
           </div>
-          <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
+          <div style="font-size:9px;color:${isCLsn?'rgba(13,148,136,0.5)':'rgba(14,165,233,0.3)'};margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
         </div>
       </div>
     </div>
