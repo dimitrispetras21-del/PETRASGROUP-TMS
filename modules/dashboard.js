@@ -11,9 +11,9 @@ async function renderDashboard() {
 
   try {
     // Load all data in parallel
-    const [orders, natOrders, trucks, trailers, drivers, clients] = await Promise.all([
+    const [orders, natLoads, trucks, trailers, drivers, clients] = await Promise.all([
       atGet(TABLES.ORDERS),
-      atGet(TABLES.NAT_ORDERS),
+      atGet(TABLES.NAT_LOADS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.TRAILERS, { fields: ['Plate','ATP Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.DRIVERS, { fields: ['Full Name'] }, true),
