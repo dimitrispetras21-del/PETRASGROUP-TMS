@@ -438,8 +438,10 @@ function _wnRowHTML(row, i) {
   // Badges
   const badges = _wnBadges(f);
 
+  const clBg = isCL ? 'background:rgba(13,148,136,0.04);' : '';
   return `
   <div id="wn-row-${row.id}" class="wi-row ${sCls}"
+    style="${clBg}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
     <div class="wi-compact" style="cursor:default">
@@ -549,8 +551,10 @@ function _wnSnRowHTML(row) {
   else if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
   else if (row.saved)           { sClsSN='s-ok';      dotColorSN='var(--success)'; }
 
+  const clBgSN = isCLsn ? 'background:rgba(13,148,136,0.04);' : '';
   return `<div id="wn-sn-${ord.id}"
     class="wi-row ${sClsSN}"
+    style="${clBgSN}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')">
     <div class="wi-compact" style="cursor:default">
