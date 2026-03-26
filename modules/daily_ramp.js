@@ -147,7 +147,7 @@ async function _rampLoad() {
   // Fetch today's ramp + stock + postponed in parallel
   const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
   const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  const postponedFilter=`{Postponed To}='${RAMP.date}'`;
+  const postponedFilter=`IS_SAME({Postponed To},'${RAMP.date}','day')`;
   const [recs, stock, postponed] = await Promise.all([
     atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false),
     atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false),
@@ -172,7 +172,7 @@ async function _rampAutoSync() {
       fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
     }, false),
     atGetAll(TABLES.RAMP, {
-      filterByFormula: `{Postponed To}='${date}'`,
+      filterByFormula: `IS_SAME({Postponed To},'${date}','day')`,
       fields: ['Order','National Order','Type','Ramp Category'],
     }, false).catch(()=>[]),
     // Also check records postponed FROM elsewhere TO this date (Plan Date=date, has Postponed To set)
