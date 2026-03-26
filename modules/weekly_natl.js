@@ -955,10 +955,12 @@ function _wnCtx(e, rowId) {
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</div>`);
   if (row?.matchedId)
     items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</div>`);
-  if (row?.orderIds?.length > 1)
-    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnSplit(${rowId})">Διάλυση groupage</div>`);
   ctx.innerHTML = `<div class="wi-ctx-menu">${items.join('')}</div>`;
-  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${e.pageY}px` });
+  // Position — flip up if near bottom
+  const menuH = items.length * 36 + 16;
+  const spaceBelow = window.innerHeight - e.clientY;
+  const top = spaceBelow < menuH ? (e.pageY - menuH) : e.pageY;
+  Object.assign(ctx.style, { display:'block', left:`${e.pageX}px`, top:`${Math.max(10, top)}px` });
   setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
 }
 
