@@ -253,6 +253,9 @@ function selectNatlOrder(recId) {
       <div class="detail-actions">
         ${canEdit?`<div class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
+        </div>
+        <div class="btn-icon" title="Delete" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         </div>`:''}
         <div class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</div>
       </div>
@@ -714,12 +717,22 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     'Pallet Exchange': !!noFields['Pallet Exchange'],
   };
 
-  // Copy Pickup/Delivery Locations 1-10
+  // Copy Pickup/Delivery Locations 1-10 (new-style), fallback to old-style
+  let hasNewPickup = false, hasNewDeliv = false;
   for (let i = 1; i <= 10; i++) {
     const pId = _lid(noFields[`Pickup Location ${i}`]);
     const dId = _lid(noFields[`Delivery Location ${i}`]);
-    if (pId) nlFields[`Pickup Location ${i}`] = [pId];
-    if (dId) nlFields[`Delivery Location ${i}`] = [dId];
+    if (pId) { nlFields[`Pickup Location ${i}`] = [pId]; hasNewPickup = true; }
+    if (dId) { nlFields[`Delivery Location ${i}`] = [dId]; hasNewDeliv = true; }
+  }
+  // Fallback: old-style single Pickup/Delivery Location → Location 1
+  if (!hasNewPickup) {
+    const pId = _lid(noFields['Pickup Location']);
+    if (pId) nlFields['Pickup Location 1'] = [pId];
+  }
+  if (!hasNewDeliv) {
+    const dId = _lid(noFields['Delivery Location']);
+    if (dId) nlFields['Delivery Location 1'] = [dId];
   }
 
   if (existing.length) {
@@ -730,5 +743,83 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     // Create new
     const created = await atCreate(TABLES.NAT_LOADS, nlFields);
     console.log(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// deleteNatlOrder — Delete a National Order + cleanup NL/GL/CL/Ramp
+// ═══════════════════════════════════════════════
+async function deleteNatlOrder(recId) {
+  if (!confirm('Delete this National Order? This will also remove linked loads and groupage lines.')) return;
+
+  try {
+    toast('Deleting order...', 'info');
+
+    // 1. Delete NAT_LOADS (Direct) linked to this NO
+    try {
+      const nls = await atGetAll(TABLES.NAT_LOADS, {
+        filterByFormula: `{Source Record}="${recId}"`,
+        fields: ['Name']
+      }, false);
+      for (const nl of nls) {
+        try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { console.warn('NL delete:', e); }
+      }
+      if (nls.length) console.log(`Deleted ${nls.length} NAT_LOADS for NO ${recId}`);
+    } catch(e) { console.warn('NL cleanup error:', e); }
+
+    // 2. Delete GL lines + linked CL + CL-linked NL
+    try {
+      const gls = await atGetAll(TABLES.GL_LINES, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Linked National Order},","))>0`,
+        fields: ['Status']
+      }, false);
+      for (const gl of gls) {
+        // Delete CONS_LOADS linked to this GL
+        try {
+          const cls = await atGetAll(TABLES.CONS_LOADS, {
+            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+            fields: ['Name']
+          }, false);
+          for (const cl of cls) {
+            // Delete NL records from this CL
+            try {
+              const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
+                filterByFormula: `{Source Record}="${cl.id}"`,
+                fields: ['Name']
+              }, false);
+              for (const nl of nlsFromCL) await atDelete(TABLES.NAT_LOADS, nl.id);
+            } catch(e) { console.warn('NL-CL cleanup:', e); }
+            await atDelete(TABLES.CONS_LOADS, cl.id);
+          }
+        } catch(e) { console.warn('CL cleanup:', e); }
+        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { console.warn('GL delete:', e); }
+      }
+      if (gls.length) console.log(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
+    } catch(e) { console.warn('GL cleanup error:', e); }
+
+    // 3. Delete RAMP records linked to this NO
+    try {
+      const ramps = await atGetAll(TABLES.RAMP, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Source Order},","))>0`,
+        fields: ['Name']
+      }, false);
+      for (const r of ramps) {
+        try { await atDelete(TABLES.RAMP, r.id); } catch(e) { console.warn('Ramp delete:', e); }
+      }
+    } catch(e) { console.warn('Ramp cleanup:', e); }
+
+    // 4. Delete the NAT_ORDER itself
+    await atDelete(TABLES.NAT_ORDERS, recId);
+
+    // Invalidate caches
+    invalidateCache(TABLES.NAT_ORDERS);
+    invalidateCache(TABLES.NAT_LOADS);
+    invalidateCache(TABLES.GL_LINES);
+    invalidateCache(TABLES.CONS_LOADS);
+
+    toast('Order deleted', 'success');
+    await renderOrdersNatl();
+  } catch(e) {
+    toast('Delete failed: ' + e.message, 'danger');
   }
 }
