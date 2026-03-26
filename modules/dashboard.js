@@ -90,10 +90,12 @@ async function renderDashboard() {
     const deliveries = [];
     orders.forEach(r => {
       const f = r.fields;
-      const loadDt = (f['Loading DateTime'] || '').substring(0, 10);
-      const delDt = (f['Delivery DateTime'] || '').substring(0, 10);
-      const loadTime = (f['Loading DateTime'] || '').substring(11, 16);
-      const delTime = (f['Delivery DateTime'] || '').substring(11, 16);
+      const loadDt = toLocalDate(f['Loading DateTime']);
+      const delDt = toLocalDate(f['Delivery DateTime']);
+      const loadRaw = f['Loading DateTime'] || '';
+      const delRaw = f['Delivery DateTime'] || '';
+      const loadTime = loadRaw.includes('T') ? loadRaw.split('T')[1]?.substring(0,5) || '—' : '—';
+      const delTime = delRaw.includes('T') ? delRaw.split('T')[1]?.substring(0,5) || '—' : '—';
       const clientId = getLinkId(f['Client']);
       const clientName = clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—';
       const truckId = getLinkId(f['Truck']);
@@ -112,8 +114,20 @@ async function renderDashboard() {
     departures.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
     deliveries.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
 
-    // Section 3: Fleet Utilization bars (current + next week)
+    // Section 3: Fleet Utilization bars (today + current week + next week)
     const nextWn = wn + 1;
+
+    // Today's assigned trucks
+    const trucksToday = new Set();
+    orders.filter(r => {
+      const f = r.fields;
+      const ld = toLocalDate(f['Loading DateTime']);
+      const dd = toLocalDate(f['Delivery DateTime']);
+      return (ld === today || dd === today) && f['Truck'];
+    }).forEach(r => { const tid = getLinkId(r.fields['Truck']); if (tid) trucksToday.add(tid); });
+    const todayUtilPct = activeTrucks ? Math.round(trucksToday.size / activeTrucks * 100) : 0;
+
+    // Next week
     const trucksNextWeek = new Set();
     orders.filter(r => {
       const w = r.fields[' Week Number'];
@@ -123,6 +137,11 @@ async function renderDashboard() {
       if (tid) trucksNextWeek.add(tid);
     });
     const nextUtilPct = activeTrucks ? Math.round(trucksNextWeek.size / activeTrucks * 100) : 0;
+
+    // Idle trucks (active but not assigned this week)
+    const activeTruckList = trucks.filter(t => t.fields['Active']);
+    const idleTrucks = activeTruckList.filter(t => !trucksInUse.has(t.id));
+    const idlePlates = idleTrucks.map(t => t.fields['License Plate'] || '?').slice(0, 6);
 
     // Section 4: Unassigned Orders Aging
     const unassignedOrders = orders.filter(r => {
@@ -440,26 +459,32 @@ async function renderDashboard() {
               </div>
               <div class="dash-card-body">
                 <div class="dash-util-row">
+                  <div class="dash-util-label">Σήμερα</div>
+                  <div class="dash-util-bar">
+                    <div class="dash-util-fill" style="width:${todayUtilPct}%;background:linear-gradient(90deg,#059669,#34D399)"></div>
+                  </div>
+                  <div class="dash-util-pct" style="color:${todayUtilPct >= 70 ? '#10B981' : todayUtilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksToday.size}/${activeTrucks}</div>
+                </div>
+                <div class="dash-util-row">
                   <div class="dash-util-label">W${wn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${utilPct}%;background:linear-gradient(90deg,#0284C7,#38BDF8)">
-                    </div>
+                    <div class="dash-util-fill" style="width:${utilPct}%;background:linear-gradient(90deg,#0284C7,#38BDF8)"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${utilPct >= 70 ? 'var(--success)' : utilPct >= 40 ? 'var(--warning)' : 'var(--danger)'}">${utilPct}%</div>
+                  <div class="dash-util-pct" style="color:${utilPct >= 70 ? '#10B981' : utilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksInUse.size}/${activeTrucks}</div>
                 </div>
                 <div class="dash-util-row">
                   <div class="dash-util-label">W${nextWn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${nextUtilPct}%;background:linear-gradient(90deg,#7C3AED,#A78BFA)">
-                    </div>
+                    <div class="dash-util-fill" style="width:${nextUtilPct}%;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${nextUtilPct >= 70 ? 'var(--success)' : nextUtilPct >= 40 ? 'var(--warning)' : 'var(--danger)'}">${nextUtilPct}%</div>
+                  <div class="dash-util-pct" style="color:${nextUtilPct >= 70 ? '#10B981' : nextUtilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksNextWeek.size}/${activeTrucks}</div>
                 </div>
-                <div style="display:flex;gap:16px;margin-top:6px;font-size:9px;color:#94A3B8">
-                  <span>&#9632; Ανατεθειμένα: ${trucksInUse.size}</span>
-                  <span>&#9632; Διαθέσιμα: ${activeTrucks - trucksInUse.size}</span>
-                  <span>&#9632; Σύνολο: ${activeTrucks}</span>
-                </div>
+                ${idleTrucks.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--d-border)">
+                  <div style="font-size:9px;font-weight:700;color:#EF4444;letter-spacing:.5px;margin-bottom:4px">ΑΔΡΑΝΗ ΦΟΡΤΗΓΑ W${wn}</div>
+                  <div style="display:flex;flex-wrap:wrap;gap:4px">${idlePlates.map(p =>
+                    `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(239,68,68,0.08);color:#EF4444;border:1px solid rgba(239,68,68,0.15)">${p}</span>`
+                  ).join('')}</div>
+                </div>` : `<div style="margin-top:6px;font-size:10px;color:#10B981;font-weight:600">Πλήρης αξιοποίηση στόλου W${wn}</div>`}
               </div>
             </div>
 

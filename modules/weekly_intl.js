@@ -623,6 +623,7 @@ function _wiPaint(){
         </div>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
+        ${unmatched>0?`<button class="btn btn-primary" style="padding:5px 12px;font-size:11px" onclick="_wiAutoMatch()">⚡ Auto-Match (${unmatched})</button>`:''}
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiPrintWeek()">Print Week</button>
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
       </div>
@@ -1332,6 +1333,102 @@ async function _wiRemoveImport(rowId){
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Import removed ✓');
   }
+}
+
+/* ── AUTO-MATCH ALGORITHM ─────────────────────────────────────────── */
+function _wiAutoMatch() {
+  const {data, rows} = WINTL;
+  const expRows = rows.filter(r => r.type === 'export' && !r.importId);
+  const impRows = rows.filter(r => r.type === 'import' && !r.matchedTo);
+  if (!impRows.length || !expRows.length) { toast('No unmatched pairs available'); return; }
+
+  // Extract country from summary (last word before /)
+  const _country = s => {
+    if (!s) return '';
+    const clean = s.replace(/^['"\s/]+/, '').replace(/['"\s/]+$/, '').trim();
+    const parts = clean.split(/[,/]/);
+    return (parts[parts.length - 1] || '').trim().toUpperCase().slice(0, 2);
+  };
+
+  // Score each export-import pair
+  const suggestions = [];
+  for (const expRow of expRows) {
+    const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
+    if (!exp) continue;
+    const ef = exp.fields;
+    const expCountry = _country(ef['Delivery Summary']);
+    const expDelDate = toLocalDate(ef['Delivery DateTime']);
+    const expPals = ef['Total Pallets'] || 0;
+
+    let bestImp = null, bestScore = 0;
+    for (const impRow of impRows) {
+      if (impRow.matchedTo) continue; // already suggested
+      const imp = data.imports.find(r => r.id === impRow.orderId);
+      if (!imp) continue;
+      const imf = imp.fields;
+      let score = 0;
+
+      // +40: same country
+      const impCountry = _country(imf['Loading Summary']);
+      if (expCountry && impCountry && expCountry === impCountry) score += 40;
+
+      // +30: date overlap (import loading within ±1 day of export delivery)
+      const impLoadDate = toLocalDate(imf['Loading DateTime']);
+      if (expDelDate && impLoadDate) {
+        const diff = Math.abs(new Date(expDelDate) - new Date(impLoadDate)) / 864e5;
+        if (diff <= 1) score += 30;
+        else if (diff <= 2) score += 15;
+      }
+
+      // +20: similar pallets (within 30%)
+      const impPals = imf['Total Pallets'] || 0;
+      if (expPals && impPals) {
+        const ratio = Math.min(expPals, impPals) / Math.max(expPals, impPals);
+        if (ratio >= 0.7) score += 20;
+        else if (ratio >= 0.5) score += 10;
+      }
+
+      // +10: same client
+      const expClient = (ef['Client Name'] || ef['Client Summary'] || '').split(',')[0].trim();
+      const impClient = (imf['Client Name'] || imf['Client Summary'] || '').split(',')[0].trim();
+      if (expClient && impClient && expClient === impClient) score += 10;
+
+      if (score > bestScore) { bestScore = score; bestImp = impRow; }
+    }
+
+    if (bestImp && bestScore >= 40) {
+      suggestions.push({ expRow, impRow: bestImp, score: bestScore });
+      bestImp.matchedTo = '__suggested__'; // temporarily mark to avoid double-suggest
+    }
+  }
+
+  // Reset temp marks
+  suggestions.forEach(s => { s.impRow.matchedTo = null; });
+
+  if (!suggestions.length) { toast('No good matches found (score <40)'); return; }
+
+  // Show confirmation dialog
+  const imp_label = (impRow) => {
+    const imp = data.imports.find(r => r.id === impRow.orderId);
+    return imp ? (imp.fields['Loading Summary'] || '').replace(/^['"\s/]+/, '').slice(0, 30) : '?';
+  };
+  const exp_label = (expRow) => {
+    const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
+    return exp ? (exp.fields['Delivery Summary'] || '').replace(/^['"\s/]+/, '').slice(0, 30) : '?';
+  };
+
+  const msg = suggestions.map((s, i) =>
+    `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (score: ${s.score})`
+  ).join('\n');
+
+  if (!confirm(`Auto-Match βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`)) return;
+
+  // Apply all matches
+  suggestions.forEach(async (s) => {
+    await _wiSaveImportMatch(s.expRow.id, s.impRow.orderId);
+  });
+
+  toast(`${suggestions.length} matches applied!`, 'success');
 }
 
 /* ── SAVE ASSIGNMENT ───────────────────────────────────────────────── */
