@@ -97,6 +97,14 @@ function _wnCurrentWeek() {
 .wi-card-bp .wi-card-top { color: #ECFDF5; font-weight:800; }
 .wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
 
+/* CONSOLIDATED LOAD — teal */
+.wi-card-cl {
+  background: #134E4A;
+  border-left-color: #2DD4BF;
+}
+.wi-card-cl .wi-card-top { color: #CCFBF1; font-weight:800; }
+.wi-card-cl .wi-card-bot { color: rgba(204,251,241,0.85); font-weight:700; font-size:10px; }
+
 .wi-card-un {
   background: #7F1D1D;
   border-left-color: #FCA5A5;
@@ -415,8 +423,10 @@ function _wnRowHTML(row, i) {
 
   // Status dot
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
+  const isCL = row.source === 'cl';
   let sCls = 's-pending', dotColor = 'rgba(217,119,6,0.5)';
-  if (row.saved && isPartner) { sCls='s-partner'; dotColor='rgba(59,130,246,0.75)'; }
+  if (row.saved && isCL)      { sCls='s-cl';      dotColor='#0D9488'; }
+  else if (row.saved && isPartner) { sCls='s-partner'; dotColor='rgba(59,130,246,0.75)'; }
   else if (row.saved)         { sCls='s-ok';      dotColor='var(--success)'; }
 
   // Pill
@@ -533,8 +543,10 @@ function _wnSnRowHTML(row) {
 
   // S→N status — same logic as N→S
   const isPartnerSN = !!(row.partnerLabel || WNATL.data.partners.find(p=>p.id===row.partnerId)?.label);
+  const isCLsn = row.source === 'cl';
   let sClsSN = 's-pending', dotColorSN = 'rgba(217,119,6,0.5)';
-  if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
+  if (row.saved && isCLsn)      { sClsSN='s-cl';      dotColorSN='#0D9488'; }
+  else if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
   else if (row.saved)           { sClsSN='s-ok';      dotColorSN='var(--success)'; }
 
   return `<div id="wn-sn-${ord.id}"
@@ -656,19 +668,20 @@ function _wnPill(row) {
   const trailer = row.trailerLabel || data.trailers.find(t=>t.id===row.trailerId)?.label||'';
   const driver  = row.driverLabel  || data.drivers.find(d=>d.id===row.driverId)?.label||'';
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  const isCL    = row.source === 'cl';
 
   if (!row.saved) return `<div class="wi-pill">
     <div class="wi-card wi-card-un"><div class="wi-card-top">— Αδιάθετο</div></div>
   </div>`;
   if (partner) return `<div class="wi-pill">
-    <div class="wi-card wi-card-bp">
+    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-bp'}">
       <div class="wi-card-top">${partner.slice(0,26)}${partner.length>26?'…':''}</div>
       ${row.partnerPlates ? `<div class="wi-card-bot">${row.partnerPlates}</div>` : ''}
     </div>
   </div>`;
   const vehicleLine = truck && trailer ? `${truck} · ${trailer}` : (truck || trailer || '—');
   return `<div class="wi-pill">
-    <div class="wi-card wi-card-ok">
+    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-ok'}">
       <div class="wi-card-top">${vehicleLine}</div>
       ${driver ? `<div class="wi-card-bot">${driver}</div>` : ''}
     </div>
