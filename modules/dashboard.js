@@ -225,11 +225,11 @@ async function renderDashboard() {
       <style>
         /* ── Dark theme scoped to dashboard ── */
         .dash-wrap {
-          --d-bg: #080F1A;
+          --d-bg: transparent;
           --d-card: #0B1929;
           --d-card-hover: #0F2035;
-          --d-border: rgba(255,255,255,0.06);
-          --d-border-mid: rgba(255,255,255,0.10);
+          --d-border: rgba(0,0,0,0.08);
+          --d-border-mid: rgba(0,0,0,0.12);
           --d-text: #E2E8F0;
           --d-text-mid: #94A3B8;
           --d-text-dim: #64748B;
@@ -239,28 +239,24 @@ async function renderDashboard() {
           --d-danger: #EF4444;
           --d-warning: #F59E0B;
           padding: 0; max-width: 1600px;
-          color: var(--d-text);
         }
 
-        /* Force dark bg on content area when dashboard is active */
-        .dash-wrap { background: var(--d-bg); margin: -28px; padding: 28px; min-height: calc(100vh - 52px); }
-
         .dash-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; padding: 0 2px; }
-        .dash-greeting { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: var(--d-text); letter-spacing: -0.3px; }
-        .dash-date { font-size: 12px; color: var(--d-text-dim); margin-top: 2px; font-weight: 400; }
-        .dash-live { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--d-text-dim); letter-spacing: 0.5px; text-transform: uppercase; }
+        .dash-greeting { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px; }
+        .dash-date { font-size: 12px; color: #64748B; margin-top: 2px; font-weight: 400; }
+        .dash-live { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; }
         .dash-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--d-success); animation: dash-pulse 2s infinite; }
         @keyframes dash-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
         /* Alert Banner */
-        .dash-alert-banner { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
-        .dash-alert-icon { width: 28px; height: 28px; border-radius: 50%; background: rgba(239,68,68,0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .dash-alert-text { font-size: 12px; color: #FCA5A5; font-weight: 500; }
+        .dash-alert-banner { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
+        .dash-alert-icon { width: 28px; height: 28px; border-radius: 50%; background: rgba(239,68,68,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .dash-alert-text { font-size: 12px; color: #DC2626; font-weight: 500; }
 
         /* KPI Bar */
         .dash-kpi-bar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 20px; }
         .dash-kpi { background: var(--d-card); border: 1px solid var(--d-border); border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: all 0.15s ease; position: relative; overflow: hidden; }
-        .dash-kpi:hover { border-color: var(--d-border-mid); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
+        .dash-kpi:hover { border-color: var(--d-border-mid); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
         .dash-kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--d-text-dim); margin-bottom: 6px; }
         .dash-kpi-value { font-family: 'DM Sans', monospace; font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
         .dash-kpi-sub { font-size: 10px; color: var(--d-text-dim); }
@@ -657,7 +653,7 @@ function _getWeekStart(d) {
 
 // ── Skeleton loader for dashboard ──
 function _dashSkeleton() {
-  return `<div style="padding:28px;max-width:1600px;background:#080F1A;margin:-28px;min-height:calc(100vh - 52px)">
+  return `<div style="padding:0;max-width:1600px">
     <style>
       @keyframes dash-sk { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
       .dash-sk-block { background: #0B1929; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; animation: dash-sk 1.4s ease-in-out infinite; }
