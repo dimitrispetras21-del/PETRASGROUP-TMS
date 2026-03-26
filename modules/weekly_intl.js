@@ -1385,15 +1385,14 @@ async function _wiAutoMatch() {
       let score = 0;
       let dist = Infinity;
 
-      // DISTANCE: export delivery → import loading (max 50 points)
+      // DISTANCE: export delivery → import loading (max 70 points — primary factor)
       const impLoadLoc = _getCoords(imf, 'Loading Location 1');
       if (expDelLoc && impLoadLoc) {
         dist = _wiHaversine(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
-        if (dist <= 50)       score += 50;  // <50km = same city/area
-        else if (dist <= 150) score += 40;  // <150km = nearby
-        else if (dist <= 300) score += 25;  // <300km = same region
-        else if (dist <= 500) score += 10;  // <500km = reachable
-        // >500km = no distance points
+        if (dist <= 50)       score += 70;  // <50km = same city
+        else if (dist <= 150) score += 55;  // <150km = nearby
+        else if (dist <= 300) score += 40;  // <300km = same region
+        else if (dist <= 500) score += 20;  // <500km = reachable
       }
 
       // DATE: import loading within ±1 day of export delivery (max 30 points)
