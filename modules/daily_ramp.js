@@ -165,8 +165,8 @@ async function _rampAutoSync() {
   const nextDay = new Date(new Date(date).getTime()+864e5).toISOString().split('T')[0];
   const prevDay = new Date(new Date(date).getTime()-864e5).toISOString().split('T')[0];
 
-  // Get existing RAMP records for this date + postponed from this date to avoid duplicates
-  const [existing, postponedFromToday] = await Promise.all([
+  // Get existing RAMP records for this date + postponed TO/FROM this date to avoid duplicates
+  const [existing, postponedFromToday, postponedToToday] = await Promise.all([
     atGetAll(TABLES.RAMP, {
       filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
       fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
@@ -175,8 +175,13 @@ async function _rampAutoSync() {
       filterByFormula: `{Postponed To}='${date}'`,
       fields: ['Order','National Order','Type','Ramp Category'],
     }, false).catch(()=>[]),
+    // Also check records postponed FROM elsewhere TO this date (Plan Date=date, has Postponed To set)
+    atGetAll(TABLES.RAMP, {
+      filterByFormula: `AND(IS_SAME({Plan Date},'${date}','day'),{Postponed To}!='')`,
+      fields: ['Order','National Order','Type','Ramp Category'],
+    }, false).catch(()=>[]),
   ]);
-  const allExisting = [...existing, ...postponedFromToday];
+  const allExisting = [...existing, ...postponedFromToday, ...postponedToToday];
   const existingKeys = new Set(allExisting.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
     const nid = getLinkId(r.fields['National Order']) || '';
