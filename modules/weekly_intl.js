@@ -659,35 +659,28 @@ function _wiAllRowsHTML(){
   const impRows=WINTL.rows.filter(r=>r.type==='import');
   let html='',idx=0;
 
-  // Build date groups — key = date label string
-  // exports: keyed by delivery date
-  // imports: keyed by loading date (same format)
-  const groups={}; // label → {date, exps:[], imps:[]}
+  // Build date groups — key = raw date string (YYYY-MM-DD)
+  // exports: keyed by delivery date, imports: keyed by loading date
+  const groups={}; // rawDate → {lbl, rawDate, exps:[], imps:[]}
 
   expRows.forEach(row=>{
+    const exp=WINTL.data.exports.find(r=>r.id===row.orderIds[0]);
+    const raw=(exp?.fields['Delivery DateTime']||exp?.fields['Loading DateTime']||'').substring(0,10);
     const lbl=_wiDelDate(row)||'—';
-    if(!groups[lbl]) groups[lbl]={lbl,exps:[],imps:[]};
-    groups[lbl].exps.push(row);
+    if(!groups[raw]) groups[raw]={lbl,rawDate:raw,exps:[],imps:[]};
+    groups[raw].exps.push(row);
   });
 
   impRows.forEach(row=>{
     const imp=WINTL.data.imports.find(r=>r.id===row.orderId);
-    const raw=imp?.fields['Loading DateTime']||null;
+    const raw=(imp?.fields['Loading DateTime']||'').substring(0,10);
     const lbl=raw?_wiFmtFull(raw):'—';
-    if(!groups[lbl]) groups[lbl]={lbl,exps:[],imps:[]};
-    groups[lbl].imps.push(row);
+    if(!groups[raw]) groups[raw]={lbl,rawDate:raw,exps:[],imps:[]};
+    groups[raw].imps.push(row);
   });
 
-  // Sort group keys by actual date value
-  const sorted=Object.values(groups).sort((a,b)=>{
-    const ra=WINTL.data.exports.find(r=>r.id===(a.exps[0]?.orderIds[0]))||
-             WINTL.data.imports.find(r=>r.id===a.imps[0]?.orderId);
-    const rb=WINTL.data.exports.find(r=>r.id===(b.exps[0]?.orderIds[0]))||
-             WINTL.data.imports.find(r=>r.id===b.imps[0]?.orderId);
-    const da=ra?.fields['Delivery DateTime']||ra?.fields['Loading DateTime']||'';
-    const db=rb?.fields['Delivery DateTime']||rb?.fields['Loading DateTime']||'';
-    return da.localeCompare(db);
-  });
+  // Sort groups by raw date
+  const sorted=Object.values(groups).sort((a,b)=>a.rawDate.localeCompare(b.rawDate));
 
   sorted.forEach(grp=>{
     const expCount=grp.exps.length;
