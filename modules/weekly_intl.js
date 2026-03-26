@@ -737,15 +737,15 @@ function _wiImpRowHTML(row){
 
   const matchBadge2=isMatched
     ?`<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;
-                   background:rgba(14,165,233,0.1);color:rgba(14,165,233,0.9);
-                   border:1px solid rgba(14,165,233,0.25)">${matchedExp||'matched'}</span>`
+                   background:rgba(15,23,42,0.08);color:#0F172A;
+                   border:1px solid rgba(15,23,42,0.2)">${matchedExp||'matched'}</span>`
     :`<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;
                    background:var(--bg);color:var(--text-dim);
                    border:1px solid var(--border-mid)">unmatched</span>`;
   const matchBadge=isMatched
     ?`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
-                   background:rgba(5,150,105,0.1);color:var(--success);
-                   border:1px solid rgba(5,150,105,0.2);white-space:nowrap;flex-shrink:0">
+                   background:rgba(15,23,42,0.08);color:#0F172A;
+                   border:1px solid rgba(15,23,42,0.2);white-space:nowrap;flex-shrink:0">
         ✓ ${matchedExp||'matched'}
       </span>`
     :`<span style="font-size:8.5px;font-weight:700;padding:2px 7px;border-radius:3px;
@@ -931,7 +931,7 @@ function _wiRowHTML(row,i){
           <span class="wi-ci-s">${imp.fields['Total Pallets']||0} pal</span>
           ${_wiBadges(imp.fields)}
         </div>
-        <span style="font-size:9px;color:rgba(14,165,233,0.7);font-weight:600">↩ matched</span>
+        <span style="font-size:9px;color:#0F172A;font-weight:600;opacity:0.5">↩ matched</span>
       </div>`
     :`<div style="width:100%;height:100%;display:flex;align-items:center;
   background:${row.saved&&!hasPartner?'#3B1111':'#172C45'};margin:-6px -12px;padding:6px 12px;min-height:46px;">
