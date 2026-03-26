@@ -1336,18 +1336,35 @@ async function _wiRemoveImport(rowId){
 }
 
 /* ── AUTO-MATCH ALGORITHM ─────────────────────────────────────────── */
-function _wiAutoMatch() {
+// Haversine distance in km between two lat/lng points
+function _wiHaversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+async function _wiAutoMatch() {
   const {data, rows} = WINTL;
   const expRows = rows.filter(r => r.type === 'export' && !r.importId);
   const impRows = rows.filter(r => r.type === 'import' && !r.matchedTo);
   if (!impRows.length || !expRows.length) { toast('No unmatched pairs available'); return; }
 
-  // Extract country from summary (last word before /)
-  const _country = s => {
-    if (!s) return '';
-    const clean = s.replace(/^['"\s/]+/, '').replace(/['"\s/]+$/, '').trim();
-    const parts = clean.split(/[,/]/);
-    return (parts[parts.length - 1] || '').trim().toUpperCase().slice(0, 2);
+  toast('Calculating matches…');
+
+  // Load locations with coordinates (cached)
+  const locs = await atGetAll(TABLES.LOCATIONS, { fields: ['Name','Latitude','Longitude','Country'] }, true);
+  const locMap = {};
+  locs.forEach(r => { locMap[r.id] = { lat: r.fields['Latitude'], lng: r.fields['Longitude'], name: r.fields['Name']||'', country: r.fields['Country']||'' }; });
+
+  // Get location coords from order's linked record
+  const _getCoords = (fields, locField) => {
+    const arr = fields[locField];
+    const id = Array.isArray(arr) ? arr[0] : arr;
+    if (!id || !locMap[id]) return null;
+    const loc = locMap[id];
+    return (loc.lat && loc.lng) ? loc : null;
   };
 
   // Score each export-import pair
@@ -1356,49 +1373,59 @@ function _wiAutoMatch() {
     const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
     if (!exp) continue;
     const ef = exp.fields;
-    const expCountry = _country(ef['Delivery Summary']);
+    const expDelLoc = _getCoords(ef, 'Unloading Location 1');
     const expDelDate = toLocalDate(ef['Delivery DateTime']);
     const expPals = ef['Total Pallets'] || 0;
 
-    let bestImp = null, bestScore = 0;
+    let bestImp = null, bestScore = 0, bestDist = Infinity;
     for (const impRow of impRows) {
-      if (impRow.matchedTo) continue; // already suggested
+      if (impRow.matchedTo) continue;
       const imp = data.imports.find(r => r.id === impRow.orderId);
       if (!imp) continue;
       const imf = imp.fields;
       let score = 0;
+      let dist = Infinity;
 
-      // +40: same country
-      const impCountry = _country(imf['Loading Summary']);
-      if (expCountry && impCountry && expCountry === impCountry) score += 40;
+      // DISTANCE: export delivery → import loading (max 50 points)
+      const impLoadLoc = _getCoords(imf, 'Loading Location 1');
+      if (expDelLoc && impLoadLoc) {
+        dist = _wiHaversine(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
+        if (dist <= 50)       score += 50;  // <50km = same city/area
+        else if (dist <= 150) score += 40;  // <150km = nearby
+        else if (dist <= 300) score += 25;  // <300km = same region
+        else if (dist <= 500) score += 10;  // <500km = reachable
+        // >500km = no distance points
+      }
 
-      // +30: date overlap (import loading within ±1 day of export delivery)
+      // DATE: import loading within ±1 day of export delivery (max 30 points)
       const impLoadDate = toLocalDate(imf['Loading DateTime']);
       if (expDelDate && impLoadDate) {
-        const diff = Math.abs(new Date(expDelDate) - new Date(impLoadDate)) / 864e5;
+        const diff = Math.abs(new Date(expDelDate+'T12:00:00') - new Date(impLoadDate+'T12:00:00')) / 864e5;
         if (diff <= 1) score += 30;
         else if (diff <= 2) score += 15;
       }
 
-      // +20: similar pallets (within 30%)
+      // PALLETS: similar size (max 15 points)
       const impPals = imf['Total Pallets'] || 0;
       if (expPals && impPals) {
         const ratio = Math.min(expPals, impPals) / Math.max(expPals, impPals);
-        if (ratio >= 0.7) score += 20;
-        else if (ratio >= 0.5) score += 10;
+        if (ratio >= 0.7) score += 15;
+        else if (ratio >= 0.5) score += 8;
       }
 
-      // +10: same client
-      const expClient = (ef['Client Name'] || ef['Client Summary'] || '').split(',')[0].trim();
-      const impClient = (imf['Client Name'] || imf['Client Summary'] || '').split(',')[0].trim();
-      if (expClient && impClient && expClient === impClient) score += 10;
+      // CLIENT: same client bonus (5 points)
+      const expClient = (ef['Client Name'] || ef['Client Summary'] || '').split(',')[0].trim().toLowerCase();
+      const impClient = (imf['Client Name'] || imf['Client Summary'] || '').split(',')[0].trim().toLowerCase();
+      if (expClient && impClient && expClient === impClient) score += 5;
 
-      if (score > bestScore) { bestScore = score; bestImp = impRow; }
+      if (score > bestScore || (score === bestScore && dist < bestDist)) {
+        bestScore = score; bestImp = impRow; bestDist = dist;
+      }
     }
 
     if (bestImp && bestScore >= 40) {
-      suggestions.push({ expRow, impRow: bestImp, score: bestScore });
-      bestImp.matchedTo = '__suggested__'; // temporarily mark to avoid double-suggest
+      suggestions.push({ expRow, impRow: bestImp, score: bestScore, dist: bestDist });
+      bestImp.matchedTo = '__suggested__';
     }
   }
 
@@ -1407,26 +1434,26 @@ function _wiAutoMatch() {
 
   if (!suggestions.length) { toast('No good matches found (score <40)'); return; }
 
-  // Show confirmation dialog
+  // Show confirmation dialog with distance info
   const imp_label = (impRow) => {
     const imp = data.imports.find(r => r.id === impRow.orderId);
-    return imp ? (imp.fields['Loading Summary'] || '').replace(/^['"\s/]+/, '').slice(0, 30) : '?';
+    return imp ? _wiClean(imp.fields['Loading Summary'] || '').slice(0, 25) : '?';
   };
   const exp_label = (expRow) => {
     const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
-    return exp ? (exp.fields['Delivery Summary'] || '').replace(/^['"\s/]+/, '').slice(0, 30) : '?';
+    return exp ? _wiClean(exp.fields['Delivery Summary'] || '').slice(0, 25) : '?';
   };
 
   const msg = suggestions.map((s, i) =>
-    `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (score: ${s.score})`
+    `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (${s.dist < 9999 ? Math.round(s.dist)+'km' : '?'} · score ${s.score})`
   ).join('\n');
 
   if (!confirm(`Auto-Match βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`)) return;
 
   // Apply all matches
-  suggestions.forEach(async (s) => {
+  for (const s of suggestions) {
     await _wiSaveImportMatch(s.expRow.id, s.impRow.orderId);
-  });
+  }
 
   toast(`${suggestions.length} matches applied!`, 'success');
 }
