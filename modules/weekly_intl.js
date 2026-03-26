@@ -814,20 +814,7 @@ function _wiImpRowHTML(row){
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-        </div>
-        <div class="wi-sub">
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
-          ${pals?`<span>${pals} pal</span>`:''}
-          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
-          ${_wiBadges(f)}
-        </div>
-      </div>
+      <div class="wi-ce" style="cursor:grab;background:#172C45"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
