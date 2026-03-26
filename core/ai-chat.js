@@ -672,21 +672,50 @@ async function _aicRunObserver() {
     // PLANNING alerts — only for roles with planning access
     if (_canSee('planning')) {
       try {
-        // Check for unassigned orders delivering in next 3 days
-        const in3d = toLocalDate(new Date(Date.now() + 3 * 864e5));
-        const urgent = await atGetAll(TABLES.ORDERS, {
-          filterByFormula: `AND({Type}='International',{Direction}='Export',{Truck}=BLANK(),IS_BEFORE({Delivery DateTime},'${in3d}'))`,
-          fields: ['Delivery Summary','Delivery DateTime']
+        // Unassigned orders — multi-tier urgency
+        const in48h = toLocalDate(new Date(Date.now() + 2 * 864e5));
+        const in7d = toLocalDate(new Date(Date.now() + 7 * 864e5));
+        const unassigned = await atGetAll(TABLES.ORDERS, {
+          filterByFormula: `AND({Type}='International',{Truck}=BLANK(),IS_AFTER({Delivery DateTime},'${localToday()}'))`,
+          fields: ['Delivery Summary','Delivery DateTime','Direction','Created']
         }, true);
-        if (urgent.length) {
-          alerts.push({
-            type: 'unassigned', severity: urgent.length > 3 ? 'critical' : 'warning',
-            title: `${urgent.length} unassigned exports`,
-            detail: `Delivering within 3 days — need truck assignment`,
-            page: 'weekly_intl'
-          });
+
+        // CRITICAL: delivering in <48h
+        const crit48 = unassigned.filter(r => toLocalDate(r.fields['Delivery DateTime']) <= in48h);
+        if (crit48.length) {
+          alerts.push({ type:'unassigned_critical', severity:'critical',
+            title:`${crit48.length} unassigned — delivery <48h!`,
+            detail: crit48.slice(0,3).map(r => (r.fields['Delivery Summary']||'').split('/')[0].trim().slice(0,20)).join(', '),
+            page:'weekly_intl' });
         }
-      } catch(e) {}
+
+        // WARNING: aging >24h unassigned
+        const aging = unassigned.filter(r => {
+          const created = r.createdTime || r.fields['Created'];
+          return created && (Date.now() - new Date(created).getTime()) > 24 * 3600000;
+        });
+        const agingNon48 = aging.filter(r => toLocalDate(r.fields['Delivery DateTime']) > in48h);
+        if (agingNon48.length) {
+          alerts.push({ type:'unassigned_aging', severity:'warning',
+            title:`${agingNon48.length} unassigned >24h`,
+            detail: `${aging.length} total unassigned, oldest ${Math.round((Date.now() - new Date(aging[0]?.createdTime || '').getTime()) / 3600000)}h`,
+            page:'weekly_intl' });
+        }
+
+        // INFO: empty return legs this week
+        const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+        const weekExports = unassigned.length ? [] : await atGetAll(TABLES.ORDERS, {
+          filterByFormula: `AND({Type}='International',{Direction}='Export',{ Week Number}=${wn},{Truck}!='')`,
+          fields: ['Truck','Matched Import ID']
+        }, true).catch(() => []);
+        const emptyLegs = weekExports.filter(r => !r.fields['Matched Import ID']);
+        if (emptyLegs.length > 2) {
+          alerts.push({ type:'empty_legs', severity:'info',
+            title:`${emptyLegs.length} exports χωρίς return trip`,
+            detail: 'Empty leg risk — check import matching',
+            page:'weekly_intl' });
+        }
+      } catch(e) { console.warn('Planning observer error:', e); }
     }
 
     // REMINDERS — check user reminders due today

@@ -370,7 +370,41 @@ function _opsRow(rec,num,type,isToday) {
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-async function _opsTog(id,fld,v){try{await atPatch(TABLES.ORDERS,id,{[fld]:v});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
+async function _opsTog(id,fld,v){
+  try{
+    await atPatch(TABLES.ORDERS,id,{[fld]:v});
+    const r=OPS.intl.find(x=>x.id===id);
+    if(r) r.fields[fld]=v;
+    toast(v?'✓':'—');
+
+    // Auto-status transitions based on checklist completion
+    if(v && r) {
+      const f=r.fields;
+      const status=f['Ops Status']||'';
+      const loadChecks=['Docs Ready','Temp OK','Driver Notified'];
+      const delChecks=['CMR Photo Received','Client Notified'];
+
+      // All loading checks done + status is Assigned/Pending → suggest "Loaded"
+      if(loadChecks.includes(fld) && (status==='Assigned'||status==='Pending'||status==='')) {
+        const allLoaded=loadChecks.every(c=>f[c]);
+        if(allLoaded && confirm('Ολα τα loading checks ✓ — Αλλαγή σε "Loaded";')) {
+          await _opsStat(id,'Loaded');
+          return;
+        }
+      }
+
+      // All delivery checks done + status is In Transit → suggest "Delivered"
+      if(delChecks.includes(fld) && status==='In Transit') {
+        const allDel=delChecks.every(c=>f[c]);
+        if(allDel && confirm('Ολα τα delivery checks ✓ — Αλλαγή σε "Delivered (On Time)";')) {
+          await _opsDel(id,'On Time');
+          return;
+        }
+      }
+    }
+    _opsDraw();
+  }catch(e){toast('Error','danger');}
+}
 async function _opsSvF(id,fld,v){try{await atPatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 async function _opsStat(id,st){try{await atPatch(TABLES.ORDERS,id,{'Ops Status':st});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']=st;toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
