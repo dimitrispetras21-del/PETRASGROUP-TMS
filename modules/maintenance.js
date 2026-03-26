@@ -197,7 +197,7 @@ function _expCell(doc, recId, fieldName, vType) {
   const cursor = recId ? 'cursor:pointer' : '';
   if (!doc.date) return `<td class="c" style="color:#475569;${cursor}" ${editAttr}><span style="font-size:11px">—</span></td>`;
   const d = _daysUntil(doc.date);
-  const parts = doc.date.substring(0,10).split('-');
+  const parts = toLocalDate(doc.date).split('-');
   const dateStr = parts[2]+'/'+parts[1];
   let color, daysStr;
   if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'd overdue'; }
@@ -222,7 +222,7 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   )?.fields[fieldName] || '';
   const inp = document.createElement('input');
   inp.type = 'date';
-  inp.value = currentVal ? currentVal.substring(0,10) : '';
+  inp.value = currentVal ? toLocalDate(currentVal) : '';
   inp.style.cssText = 'font-size:12px;padding:4px 6px;border:2px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--text);outline:none;width:130px;font-family:"DM Sans",sans-serif';
   td.innerHTML = '';
   td.appendChild(inp);
@@ -538,7 +538,7 @@ function _svcOpenForm(editId) {
               </select>
             </div>
             <div class="mf-field"><label>Date</label>
-              <input type="date" id="mf-date" value="${f['Date']||new Date().toISOString().split('T')[0]}">
+              <input type="date" id="mf-date" value="${f['Date']?toLocalDate(f['Date']):localToday()}">
             </div>
           </div>
           <div class="mf-row">
@@ -844,7 +844,7 @@ async function renderMaintDash() {
     await _maintLoad(true);
 
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
+    const today = localToday();
     const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     // ═══ CALCULATIONS ═══
@@ -1294,7 +1294,7 @@ function _mreqExpiryAlerts() {
           );
           if (hasManual) continue;
           alerts.push({
-            plate, vType, doc: ef.label, days, date: d.substring(0,10),
+            plate, vType, doc: ef.label, days, date: toLocalDate(d),
             desc: `${ef.label} ${days < 0 ? 'EXPIRED' : 'expiring'} — ${Math.abs(days)}d ${days < 0 ? 'overdue' : 'left'}`,
           });
         }
@@ -1389,7 +1389,7 @@ function _mreqPaint() {
           <td style="max-width:250px">${f['Description']||'—'}</td>
           <td class="c">${_mreqPrioBadge(f['Priority'])}</td>
           <td class="c">${_mreqStatusBadge(f['Status'])}</td>
-          <td style="white-space:nowrap;font-size:12px">${f['Date Reported']?f['Date Reported'].substring(0,10).split('-').reverse().join('/'):'—'}</td>
+          <td style="white-space:nowrap;font-size:12px">${f['Date Reported']?toLocalDate(f['Date Reported']).split('-').reverse().join('/'):'—'}</td>
           <td style="font-size:12px">${f['Workshop']||'—'}</td>
           <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
           <td class="c" onclick="event.stopPropagation()">
@@ -1408,7 +1408,7 @@ async function _mreqDismissExpiry(plate, docType, desc) {
       'Description': docType + ' — Renewal',
       'Priority': 'SOS',
       'Status': 'Done',
-      'Date Reported': new Date().toISOString().substring(0,10),
+      'Date Reported': localToday(),
       'Notes': desc,
     };
     const created = await atCreate(TABLES.MAINT_REQ, fields);
@@ -1462,7 +1462,7 @@ function _mreqOpenForm(editId) {
           <textarea id="mreq-desc" rows="3" style="resize:vertical">${f['Description']||''}</textarea></div>
         <div class="mf-row">
           <div class="mf-field"><label>Date Reported</label>
-            <input type="date" id="mreq-date" value="${f['Date Reported']?f['Date Reported'].substring(0,10):new Date().toISOString().substring(0,10)}"></div>
+            <input type="date" id="mreq-date" value="${f['Date Reported']?toLocalDate(f['Date Reported']):localToday()}"></div>
           <div class="mf-field"><label>Workshop</label>
             <select id="mreq-workshop">
               <option value="">— Select —</option>

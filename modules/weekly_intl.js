@@ -1776,7 +1776,7 @@ function _wiPrintWeek(){
     html+=`<tr>
       <td style="padding:4px 6px;border:1px solid #ddd">${i+1}</td>
       <td style="padding:4px 6px;border:1px solid #ddd">${(f['Loading Summary']||'').slice(0,30)} → ${(f['Delivery Summary']||'').slice(0,30)}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd">${(f['Loading DateTime']||'').substring(0,10)} → ${(f['Delivery DateTime']||'').substring(0,10)}</td>
+      <td style="padding:4px 6px;border:1px solid #ddd">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
       <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">${f['Total Pallets']||0}</td>
       <td style="padding:4px 6px;border:1px solid #ddd">${assign}</td>
       <td style="padding:4px 6px;border:1px solid #ddd">${imp?((imp.fields['Loading Summary']||'').slice(0,25)+' → '+(imp.fields['Delivery Summary']||'').slice(0,25)):'—'}</td>

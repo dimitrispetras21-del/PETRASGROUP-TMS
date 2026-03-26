@@ -316,7 +316,7 @@ function _plOpenForm(recId) {
         <div class="pu-form-grid">
           <div class="pu-field">
             <label>Date</label>
-            <input type="date" id="plf_date" value="${f['Date'] || new Date().toISOString().split('T')[0]}">
+            <input type="date" id="plf_date" value="${f['Date'] ? toLocalDate(f['Date']) : localToday()}">
           </div>
           <div class="pu-field">
             <label>Direction</label>

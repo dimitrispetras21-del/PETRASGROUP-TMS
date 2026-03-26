@@ -132,8 +132,8 @@ async function _opsLoad() {
     OPS.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
     OPS.locs=l; OPS.clients=cl;
   }
-  const today=new Date().toISOString().split('T')[0];
-  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
+  const today=localToday();
+  const tmrw=localTomorrow();
   const tgt=OPS.date==='tomorrow'?tmrw:today;
   const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
   const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Ops Status}='In Transit',{Ops Status}='Loaded',{Ops Status}='Assigned',{Ops Status}='Pending',{Ops Status}=''))`;
@@ -152,12 +152,12 @@ const _C=f=>{const raw=f['Client'];const id=Array.isArray(raw)?raw[0]:raw;if(!id
 const _K=a=>a?.length?(a[0]?.id||a[0]||null):null;
 const _T=f=>{const id=_K(f['Truck']);return id?OPS.trucks.find(t=>t.id===id)?.lb||'—':'';}
 const _D=f=>{const id=_K(f['Driver']);return id?OPS.drivers.find(d=>d.id===id)?.lb||'—':'';}
-const _DM=(dt,d)=>dt?dt.substring(0,10)===d:false;
+const _DM=(dt,d)=>dt?toLocalDate(dt)===d:false;
 const _P=f=>f['Is Partner Trip']===true||f['Is Partner Trip']==='Yes';
 
 function _opsCats() {
-  const today=new Date().toISOString().split('T')[0];
-  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
+  const today=localToday();
+  const tmrw=localTomorrow();
   const tgt=OPS.date==='tomorrow'?tmrw:today;
   const c={el:[],ed:[],il:[],id:[]};
   for (const r of OPS.intl) {
@@ -173,8 +173,8 @@ function _opsCats() {
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
 function _opsDraw() {
-  const today=new Date().toISOString().split('T')[0];
-  const tmrw=new Date(Date.now()+864e5).toISOString().split('T')[0];
+  const today=localToday();
+  const tmrw=localTomorrow();
   const isToday=OPS.date==='today';
   const tgt=isToday?today:tmrw;
   const fD=d=>{try{const dt=new Date(d);
@@ -201,7 +201,7 @@ function _opsDraw() {
       </div>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
-          <span class="ops-alert-info">${_L(_K(f['Loading Location 1']))} → ${_L(_K(f['Unloading Location 1']))}<span class="ops-alert-dt">${(f['Delivery DateTime']||'').substring(0,10)}</span></span>
+          <span class="ops-alert-info">${_L(_K(f['Loading Location 1']))} → ${_L(_K(f['Unloading Location 1']))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
           <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Delivered</button>
           <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Delayed</button>
         </div>`;}).join('')}</div></div>`;
@@ -373,7 +373,7 @@ function _opsRow(rec,num,type,isToday) {
 async function _opsTog(id,fld,v){try{await atPatch(TABLES.ORDERS,id,{[fld]:v});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _opsSvF(id,fld,v){try{await atPatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 async function _opsStat(id,st){try{await atPatch(TABLES.ORDERS,id,{'Ops Status':st});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']=st;toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
-async function _opsDel(id,perf){const d=new Date().toISOString().split('T')[0];
+async function _opsDel(id,perf){const d=localToday();
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
@@ -381,10 +381,10 @@ async function _opsPost(id){
   // Auto-postpone to next day
   const r=OPS.intl.find(x=>x.id===id);if(!r)return;
   const f=r.fields;
-  const loadDt=f['Loading DateTime']?.slice(0,10)||'';
-  const delDt=f['Delivery DateTime']?.slice(0,10)||'';
-  const nextLoad=loadDt?new Date(new Date(loadDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
-  const nextDel=delDt?new Date(new Date(delDt+'T12:00:00').getTime()+864e5).toISOString().split('T')[0]:'';
+  const loadDt=toLocalDate(f['Loading DateTime']);
+  const delDt=toLocalDate(f['Delivery DateTime']);
+  const nextLoad=loadDt?toLocalDate(new Date(new Date(loadDt+'T12:00:00').getTime()+864e5)):'';
+  const nextDel=delDt?toLocalDate(new Date(new Date(delDt+'T12:00:00').getTime()+864e5)):'';
   const patch={'Ops Status':'Postponed','Postponed To':nextLoad||nextDel};
   if(nextLoad) patch['Loading DateTime']=nextLoad;
   if(nextDel) patch['Delivery DateTime']=nextDel;
@@ -419,6 +419,6 @@ function _opsPrint() {
   setTimeout(()=>{win.print();},400);
 }
 
-async function _opsOvAct(id,perf='Delayed'){const d=new Date().toISOString().split('T')[0];
+async function _opsOvAct(id,perf='Delayed'){const d=localToday();
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}

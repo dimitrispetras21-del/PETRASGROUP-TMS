@@ -274,7 +274,7 @@ async function _rampAutoSync() {
 
   natOrders.forEach(r => {
     const f = r.fields;
-    const isLoading = f['Loading DateTime'] && f['Loading DateTime'].substring(0,10) === date;
+    const isLoading = f['Loading DateTime'] && toLocalDate(f['Loading DateTime']) === date;
     const type = isLoading ? 'Παραλαβή' : 'Φόρτωση';
     const key = `${r.id}_${type}_`;
     if (existingKeys.has(key)) return;
