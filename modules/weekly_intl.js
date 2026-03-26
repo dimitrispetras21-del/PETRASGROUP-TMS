@@ -443,13 +443,20 @@ async function renderWeeklyIntl(){
       <div class="spinner"></div> Loading week ${WINTL.week}…
     </div>`;
   try{
-    // All fetches in parallel (assets + orders)
-    const [t,tl,d,p,allOrders] = await Promise.all([
+    // Exports: filtered by Airtable Week Number (delivery-based)
+    // Imports: filtered by Loading DateTime range (loading-based)
+    const ws=_wiWeekStart(WINTL.week);
+    const we=new Date(ws); we.setDate(ws.getDate()+6);
+    const wsFmt=toLocalDate(ws), weFmt=toLocalDate(we);
+    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}'))`;
+
+    const [t,tl,d,p,expOrders,impOrders] = await Promise.all([
       atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
       atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
       atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false),
-      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{ Week Number}=${WINTL.week})`},false),
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',{ Week Number}=${WINTL.week})`},false),
+      atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
     WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
@@ -457,13 +464,12 @@ async function renderWeeklyIntl(){
     WINTL.data.drivers  = d.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
     WINTL.data.partners = p.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 
-    WINTL.data.exports = allOrders
-      .filter(r=>r.fields.Direction==='Export')
+    WINTL.data.exports = expOrders
       .sort((a,b)=>(
         (a.fields['Delivery DateTime']||a.fields['Loading DateTime']||'')
         .localeCompare(b.fields['Delivery DateTime']||b.fields['Loading DateTime']||'')
       ));
-    WINTL.data.imports = allOrders.filter(r=>r.fields.Direction==='Import');
+    WINTL.data.imports = impOrders;
 
     if (loadId !== _wiLoadId) return;
     _wiBuildRows();
@@ -676,8 +682,8 @@ function _wiAllRowsHTML(){
 
   impRows.forEach(row=>{
     const imp=WINTL.data.imports.find(r=>r.id===row.orderId);
-    const raw=toLocalDate(imp?.fields['Delivery DateTime']||imp?.fields['Loading DateTime']||'');
-    const lbl=raw?_wiFmtFull(imp?.fields['Delivery DateTime']||imp?.fields['Loading DateTime']||''):'—';
+    const raw=toLocalDate(imp?.fields['Loading DateTime']||'');
+    const lbl=raw?_wiFmtFull(imp?.fields['Loading DateTime']||''):'—';
     if(!groups[raw]) groups[raw]={lbl,rawDate:raw,exps:[],imps:[]};
     groups[raw].imps.push(row);
   });
