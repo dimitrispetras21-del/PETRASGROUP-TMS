@@ -114,34 +114,49 @@ async function renderDashboard() {
     departures.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
     deliveries.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
 
-    // Section 3: Fleet Utilization bars (today + current week + next week)
+    // Section 3: Fleet Usage Rate — working days per week
+    // Formula: usage = min(working_days * 4.5 * 4.5%, 100%)
+    // A truck "works" on days between Loading→Delivery of any assigned order
     const nextWn = wn + 1;
-
-    // Today's assigned trucks
-    const trucksToday = new Set();
-    orders.filter(r => {
-      const f = r.fields;
-      const ld = toLocalDate(f['Loading DateTime']);
-      const dd = toLocalDate(f['Delivery DateTime']);
-      return (ld === today || dd === today) && f['Truck'];
-    }).forEach(r => { const tid = getLinkId(r.fields['Truck']); if (tid) trucksToday.add(tid); });
-    const todayUtilPct = activeTrucks ? Math.round(trucksToday.size / activeTrucks * 100) : 0;
-
-    // Next week
-    const trucksNextWeek = new Set();
-    orders.filter(r => {
-      const w = r.fields[' Week Number'];
-      return w == nextWn && r.fields['Truck'];
-    }).forEach(r => {
-      const tid = getLinkId(r.fields['Truck']);
-      if (tid) trucksNextWeek.add(tid);
-    });
-    const nextUtilPct = activeTrucks ? Math.round(trucksNextWeek.size / activeTrucks * 100) : 0;
-
-    // Idle trucks (active but not assigned this week)
     const activeTruckList = trucks.filter(t => t.fields['Active']);
-    const idleTrucks = activeTruckList.filter(t => !trucksInUse.has(t.id));
-    const idlePlates = idleTrucks.map(t => t.fields['License Plate'] || '?').slice(0, 6);
+
+    // Calculate working days per truck for current week
+    function _calcUsageRate(weekNum) {
+      const weekOrders = orders.filter(r => r.fields[' Week Number'] == weekNum && r.fields['Truck'] && !r.fields['Is Partner Trip']);
+      const truckDays = {}; // truckId → Set of YYYY-MM-DD days active
+
+      weekOrders.forEach(r => {
+        const tid = getLinkId(r.fields['Truck']);
+        if (!tid) return;
+        if (!truckDays[tid]) truckDays[tid] = new Set();
+        const loadDate = toLocalDate(r.fields['Loading DateTime']);
+        const delDate = toLocalDate(r.fields['Delivery DateTime']);
+        if (!loadDate) return;
+        // Add all days from loading to delivery (inclusive)
+        const start = new Date(loadDate + 'T12:00:00');
+        const end = delDate ? new Date(delDate + 'T12:00:00') : start;
+        for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+          truckDays[tid].add(toLocalDate(d));
+        }
+      });
+
+      // Per-truck usage rates
+      const rates = [];
+      activeTruckList.forEach(t => {
+        const days = truckDays[t.id] ? truckDays[t.id].size : 0;
+        const rate = Math.min(days * 4.5 * 4.5, 100);
+        rates.push({ id: t.id, plate: t.fields['License Plate'] || '?', days, rate: Math.round(rate) });
+      });
+      return rates;
+    }
+
+    const currentRates = _calcUsageRate(wn);
+    const nextRates = _calcUsageRate(nextWn);
+    const avgCurrent = currentRates.length ? Math.round(currentRates.reduce((s, r) => s + r.rate, 0) / currentRates.length) : 0;
+    const avgNext = nextRates.length ? Math.round(nextRates.reduce((s, r) => s + r.rate, 0) / nextRates.length) : 0;
+    const idleTrucks = currentRates.filter(r => r.days === 0);
+    const idlePlates = idleTrucks.map(r => r.plate).slice(0, 6);
+    const topTrucks = currentRates.filter(r => r.days > 0).sort((a, b) => b.rate - a.rate);
 
     // Section 4: Unassigned Orders Aging
     const unassignedOrders = orders.filter(r => {
@@ -451,40 +466,44 @@ async function renderDashboard() {
               </div>
             </div>
 
-            <!-- Fleet Utilization Bars -->
+            <!-- Fleet Usage Rate -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
-                <span style="font-size:10px;color:#64748B">W${wn} vs W${nextWn}</span>
+                <div class="dash-card-title">USAGE RATE ΣΤΟΛΟΥ</div>
+                <span style="font-size:10px;color:#64748B">W${wn} avg ${avgCurrent}% · W${nextWn} avg ${avgNext}%</span>
               </div>
               <div class="dash-card-body">
                 <div class="dash-util-row">
-                  <div class="dash-util-label">Σήμερα</div>
-                  <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${todayUtilPct}%;background:linear-gradient(90deg,#059669,#34D399)"></div>
-                  </div>
-                  <div class="dash-util-pct" style="color:${todayUtilPct >= 70 ? '#10B981' : todayUtilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksToday.size}/${activeTrucks}</div>
-                </div>
-                <div class="dash-util-row">
                   <div class="dash-util-label">W${wn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${utilPct}%;background:linear-gradient(90deg,#0284C7,#38BDF8)"></div>
+                    <div class="dash-util-fill" style="width:${Math.min(avgCurrent,100)}%;background:linear-gradient(90deg,${avgCurrent>=80?'#059669,#34D399':avgCurrent>=50?'#0284C7,#38BDF8':'#DC2626,#F87171'})"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${utilPct >= 70 ? '#10B981' : utilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksInUse.size}/${activeTrucks}</div>
+                  <div class="dash-util-pct" style="color:${avgCurrent>=80?'#10B981':avgCurrent>=50?'#38BDF8':'#EF4444'}">${avgCurrent}%</div>
                 </div>
                 <div class="dash-util-row">
                   <div class="dash-util-label">W${nextWn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${nextUtilPct}%;background:linear-gradient(90deg,#7C3AED,#A78BFA)"></div>
+                    <div class="dash-util-fill" style="width:${Math.min(avgNext,100)}%;background:linear-gradient(90deg,${avgNext>=80?'#059669,#34D399':avgNext>=50?'#7C3AED,#A78BFA':'#DC2626,#F87171'})"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${nextUtilPct >= 70 ? '#10B981' : nextUtilPct >= 40 ? '#F59E0B' : '#EF4444'}">${trucksNextWeek.size}/${activeTrucks}</div>
+                  <div class="dash-util-pct" style="color:${avgNext>=80?'#10B981':avgNext>=50?'#A78BFA':'#EF4444'}">${avgNext}%</div>
                 </div>
-                ${idleTrucks.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--d-border)">
-                  <div style="font-size:9px;font-weight:700;color:#EF4444;letter-spacing:.5px;margin-bottom:4px">ΑΔΡΑΝΗ ΦΟΡΤΗΓΑ W${wn}</div>
+                ${topTrucks.length ? `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--d-border)">
+                  <div style="font-size:9px;font-weight:600;color:#94A3B8;letter-spacing:.5px;margin-bottom:6px">W${wn} PER TRUCK</div>
+                  ${topTrucks.slice(0, 6).map(t => `<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+                    <span style="font-size:10px;font-weight:600;color:#E2E8F0;width:75px">${t.plate}</span>
+                    <div style="flex:1;height:12px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">
+                      <div style="height:100%;width:${Math.min(t.rate,100)}%;background:${t.rate>=80?'#10B981':t.rate>=50?'#38BDF8':'#EF4444'};border-radius:4px"></div>
+                    </div>
+                    <span style="font-size:10px;font-weight:700;color:${t.rate>=80?'#10B981':t.rate>=50?'#38BDF8':'#EF4444'};width:35px;text-align:right">${t.rate}%</span>
+                    <span style="font-size:9px;color:#64748B">${t.days}d</span>
+                  </div>`).join('')}
+                </div>` : ''}
+                ${idleTrucks.length ? `<div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--d-border)">
+                  <div style="font-size:9px;font-weight:700;color:#EF4444;letter-spacing:.5px;margin-bottom:4px">ΑΔΡΑΝΗ W${wn}</div>
                   <div style="display:flex;flex-wrap:wrap;gap:4px">${idlePlates.map(p =>
                     `<span style="font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;background:rgba(239,68,68,0.08);color:#EF4444;border:1px solid rgba(239,68,68,0.15)">${p}</span>`
                   ).join('')}</div>
-                </div>` : `<div style="margin-top:6px;font-size:10px;color:#10B981;font-weight:600">Πλήρης αξιοποίηση στόλου W${wn}</div>`}
+                </div>` : ''}
               </div>
             </div>
 
