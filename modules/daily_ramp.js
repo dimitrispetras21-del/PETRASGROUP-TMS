@@ -165,15 +165,22 @@ async function _rampAutoSync() {
   const nextDay = new Date(new Date(date).getTime()+864e5).toISOString().split('T')[0];
   const prevDay = new Date(new Date(date).getTime()-864e5).toISOString().split('T')[0];
 
-  // Get existing RAMP records for this date to avoid duplicates
-  const existing = await atGetAll(TABLES.RAMP, {
-    filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
-    fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
-  }, false);
-  const existingKeys = new Set(existing.map(r => {
+  // Get existing RAMP records for this date + postponed from this date to avoid duplicates
+  const [existing, postponedFromToday] = await Promise.all([
+    atGetAll(TABLES.RAMP, {
+      filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
+      fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
+    }, false),
+    atGetAll(TABLES.RAMP, {
+      filterByFormula: `{Postponed To}='${date}'`,
+      fields: ['Order','National Order','Type','Ramp Category'],
+    }, false).catch(()=>[]),
+  ]);
+  const allExisting = [...existing, ...postponedFromToday];
+  const existingKeys = new Set(allExisting.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
     const nid = getLinkId(r.fields['National Order']) || '';
-    const src = oid || nid || r.id; // fallback to ramp record ID if no source
+    const src = oid || nid || r.id;
     return `${src}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
   }));
   // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
@@ -654,10 +661,9 @@ function _rTlRow(rec) {
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
 async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
-  // Time field is DateTime in Airtable — convert "HH:MM" to ISO
-  const isoTime = v ? `${RAMP.date}T${v}:00.000Z` : null;
-  try{await atPatch(TABLES.RAMP,id,{'Time':isoTime});
-    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=isoTime;
+  // Save time as plain "HH:MM" string — NOT ISO datetime
+  try{await atPatch(TABLES.RAMP,id,{'Time': v || null});
+    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v||'';
     // Re-sort and re-draw
     RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
     _rampDraw();
