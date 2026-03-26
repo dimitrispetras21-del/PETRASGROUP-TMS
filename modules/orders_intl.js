@@ -768,6 +768,30 @@ async function _syncNationalOrder(orderId, fields) {
     }
   }
 
+  // Calculate National leg dates based on VS logic:
+  // Export (ΑΝΟΔΟΣ S→N): suppliers → Veroia
+  //   National Loading  = International Loading DateTime (pickup day)
+  //   National Delivery = International Loading DateTime + 1 day (arrives Veroia)
+  // Import (ΚΑΘΟΔΟΣ N→S): Veroia → delivery
+  //   National Loading  = International Delivery DateTime - 1 day (leaves Veroia = VS day)
+  //   National Delivery = International Delivery DateTime (final delivery)
+  let natLoadDt = null, natDelDt = null;
+  if (direction === 'Export') {
+    const rawLoad = (fields['Loading DateTime']||'').slice(0,10);
+    natLoadDt = rawLoad || null;
+    if (rawLoad) {
+      const d = new Date(rawLoad); d.setDate(d.getDate()+1);
+      natDelDt = d.toISOString().slice(0,10);
+    }
+  } else {
+    const rawDel = (fields['Delivery DateTime']||'').slice(0,10);
+    natDelDt = rawDel || null;
+    if (rawDel) {
+      const d = new Date(rawDel); d.setDate(d.getDate()-1);
+      natLoadDt = d.toISOString().slice(0,10);
+    }
+  }
+
   // Build NATIONAL ORDER fields
   const natFields = {
     'Direction':     direction === 'Export' ? 'South\u2192North' : 'North\u2192South',
@@ -777,8 +801,8 @@ async function _syncNationalOrder(orderId, fields) {
     'Pallets':       fields['Total Pallets'] || fields['Loading Pallets 1'] || 0,
     'Temperature °C':fields['Temperature °C'] ?? null,
     'Pallet Exchange':!!fields['Pallet Exchange'],
-    'Loading DateTime':  fields['Loading DateTime']  || null,
-    'Delivery DateTime': fields['Delivery DateTime'] || null,
+    'Loading DateTime':  natLoadDt,
+    'Delivery DateTime': natDelDt,
     'Linked Order':  [orderId],
     'National Groupage': !!fields['National Groupage'],
     'Price':         fields['Price'] ?? null,
