@@ -310,10 +310,12 @@
 <script>
 // Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [
-  { username: 'dimitris',   hash: 'f2309b93851ec13296745db68804dddc527dd56813f3127158419c548e1bba98', role: 'owner',      name: 'Δημήτρης Πέτρας' },
-  { username: 'dispatcher', hash: '4efcfc926606b18cea649a3cd8c3623e679bbc826adac5f212d5789b6c99e897', role: 'dispatcher', name: 'Dispatcher' },
-  { username: 'management', hash: 'bee0d35dd6e761b81b134a61c8dbd63ffe01df291dd419dc81ff869042c641aa', role: 'management', name: 'Management' },
-  { username: 'accountant', hash: 'a9b99ed7bffc3f84e0df324545c4a196da0d2696236cfe9e2039995a5e7a1df7', role: 'accountant', name: 'Accountant' },
+  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
+  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
+  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
+  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
+  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
+  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
 ];
 
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
