@@ -94,3 +94,115 @@ function fmtDateDM(d) {
   const p = d.substring(0, 10).split('-');
   return `${p[2]}/${p[1]}`;
 }
+
+// ═══ NOTIFICATION CENTER ═══
+let _notifOpen = false;
+let _notifItems = [];
+
+function _toggleNotifPanel() {
+  _notifOpen = !_notifOpen;
+  const panel = document.getElementById('notifPanel');
+  if (!panel) return;
+  if (_notifOpen) {
+    _refreshNotifs().then(() => { panel.style.display = 'block'; });
+    setTimeout(() => document.addEventListener('click', _closeNotifOutside, { once: true }), 50);
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function _closeNotifOutside(e) {
+  const wrap = document.getElementById('notifWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    _notifOpen = false;
+    document.getElementById('notifPanel').style.display = 'none';
+  } else if (_notifOpen) {
+    setTimeout(() => document.addEventListener('click', _closeNotifOutside, { once: true }), 50);
+  }
+}
+
+async function _refreshNotifs() {
+  const items = [];
+  const today = localToday();
+  const in48h = toLocalDate(new Date(Date.now() + 48 * 3600000));
+  try {
+    const [orders, trucks, trailers] = await Promise.all([
+      atGet(TABLES.ORDERS),
+      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
+      atGetAll(TABLES.TRAILERS, { fields: ['Plate','ATP Expiry','Insurance Expiry'] }, true),
+    ]);
+
+    // Unassigned orders due in 48h
+    orders.filter(r => {
+      const f = r.fields;
+      const noTruck = !f['Truck'] || (Array.isArray(f['Truck']) && !f['Truck'].length);
+      const del = toLocalDate(f['Delivery DateTime']);
+      return noTruck && del && del <= in48h && del >= today && f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
+    }).forEach(r => {
+      const f = r.fields;
+      const route = `${(f['Loading Summary']||'').slice(0,20)} → ${(f['Delivery Summary']||'').slice(0,20)}`;
+      items.push({ type: 'danger', title: `${f['Direction']} χωρίς ανάθεση`, sub: route, page: 'orders_intl' });
+    });
+
+    // Expired fleet docs (role-aware: only for owner/maintenance)
+    if (user.role === 'owner' || user.role === 'maintenance') {
+      const now = new Date();
+      const checkDocs = (list, plateField, docFields) => {
+        list.filter(t => t.fields['Active'] !== false).forEach(t => {
+          docFields.forEach(field => {
+            const dt = (t.fields[field] || '').substring(0, 10);
+            if (dt) {
+              const days = Math.ceil((new Date(dt) - now) / 864e5);
+              if (days < 0) {
+                items.push({ type: 'danger', title: `${t.fields[plateField]} — ${field.replace(' Expiry','')} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'expiry_alerts' });
+              } else if (days <= 14) {
+                items.push({ type: 'warn', title: `${t.fields[plateField]} — ${field.replace(' Expiry','')} ληγει σε ${days}μ`, sub: dt, page: 'expiry_alerts' });
+              }
+            }
+          });
+        });
+      };
+      checkDocs(trucks, 'License Plate', ['KTEO Expiry','KEK Expiry','Insurance Expiry']);
+      checkDocs(trailers, 'Plate', ['ATP Expiry','Insurance Expiry']);
+    }
+
+    // Reminders from Nakis
+    const reminders = JSON.parse(localStorage.getItem('tms_reminders') || '[]');
+    const nowMs = Date.now();
+    reminders.filter(r => new Date(r.time).getTime() <= nowMs && !r.dismissed).forEach(r => {
+      items.push({ type: 'info', title: 'Υπενθύμιση', sub: r.text, page: null });
+    });
+
+  } catch(e) { console.warn('Notif refresh error:', e); }
+
+  _notifItems = items;
+
+  // Update dot
+  const dot = document.getElementById('notifDot');
+  if (dot) dot.style.display = items.length ? 'block' : 'none';
+
+  // Render panel
+  const panel = document.getElementById('notifPanel');
+  if (panel) {
+    panel.innerHTML = `
+      <div class="notif-header">
+        <span>Ειδοποιησεις</span>
+        <span style="font-size:10px;font-weight:400;color:var(--text-dim)">${items.length} ενεργές</span>
+      </div>
+      <div class="notif-list">
+        ${items.length ? items.slice(0, 12).map(n => `
+          <div class="notif-item" ${n.page ? `onclick="_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}')"` : ''}>
+            <div class="notif-icon ${n.type}">${n.type==='danger'?'!':n.type==='warn'?'!':'i'}</div>
+            <div class="notif-body">
+              <div class="notif-title">${n.title}</div>
+              <div class="notif-sub">${n.sub}</div>
+            </div>
+          </div>`).join('') : '<div class="notif-empty">Δεν υπαρχουν ειδοποιησεις</div>'}
+      </div>`;
+  }
+}
+
+// Auto-refresh notifications every 5 min
+setInterval(() => { _refreshNotifs(); }, 300000);
+// Initial load after 3 seconds
+setTimeout(() => { _refreshNotifs(); }, 3000);
