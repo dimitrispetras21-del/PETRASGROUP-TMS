@@ -308,19 +308,35 @@
 </div>
 
 <script>
+// Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [
-  { username: 'dimitris',   password: 'petras2024',  role: 'owner',      name: 'Δημήτρης Πέτρας' },
-  { username: 'dispatcher', password: 'dispatch24',  role: 'dispatcher', name: 'Dispatcher' },
-  { username: 'management', password: 'manage24',    role: 'management', name: 'Management' },
-  { username: 'accountant', password: 'account24',   role: 'accountant', name: 'Accountant' },
+  { username: 'dimitris',   hash: 'f2309b93851ec13296745db68804dddc527dd56813f3127158419c548e1bba98', role: 'owner',      name: 'Δημήτρης Πέτρας' },
+  { username: 'dispatcher', hash: '4efcfc926606b18cea649a3cd8c3623e679bbc826adac5f212d5789b6c99e897', role: 'dispatcher', name: 'Dispatcher' },
+  { username: 'management', hash: 'bee0d35dd6e761b81b134a61c8dbd63ffe01df291dd419dc81ff869042c641aa', role: 'management', name: 'Management' },
+  { username: 'accountant', hash: 'a9b99ed7bffc3f84e0df324545c4a196da0d2696236cfe9e2039995a5e7a1df7', role: 'accountant', name: 'Accountant' },
 ];
 
-function doLogin() {
+const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function doLogin() {
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
-  const user = USERS.find(x => x.username === u && x.password === p);
+  const inputHash = await sha256(p);
+  const user = USERS.find(x => x.username === u && x.hash === inputHash);
   if (user) {
-    localStorage.setItem('tms_user', JSON.stringify(user));
+    const session = {
+      name: user.name,
+      role: user.role,
+      username: user.username,
+      loginAt: Date.now(),
+      expiresAt: Date.now() + SESSION_TTL
+    };
+    localStorage.setItem('tms_user', JSON.stringify(session));
     window.location.href = 'app.html';
   } else {
     const err = document.getElementById('errMsg');
@@ -330,7 +346,14 @@ function doLogin() {
 }
 
 document.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
-if(localStorage.getItem('tms_user')) window.location.href = 'app.html';
+
+// Check existing session: auto-login if valid, expire if stale
+const existing = JSON.parse(localStorage.getItem('tms_user') || 'null');
+if (existing && existing.expiresAt && Date.now() < existing.expiresAt) {
+  window.location.href = 'app.html';
+} else if (existing) {
+  localStorage.removeItem('tms_user');
+}
 </script>
 </body>
 </html>
