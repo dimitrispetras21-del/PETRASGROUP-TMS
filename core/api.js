@@ -108,6 +108,7 @@ async function _atRetry(fn, retries = 3) {
       const res = await fn();
       if (res.status === 401) {
         localStorage.removeItem('tms_user');
+        localStorage.removeItem('tms_jwt');
         window.location.href = 'index.html';
         throw new Error('Unauthorized');
       }
@@ -138,7 +139,12 @@ function _apiUrl(path) {
 
 function _apiHeaders(method) {
   const h = {};
-  if (typeof USE_PROXY === 'undefined' || !USE_PROXY) {
+  if (typeof USE_PROXY !== 'undefined' && USE_PROXY) {
+    // Proxy mode: send JWT token (worker swaps it for the real Airtable PAT)
+    const jwt = localStorage.getItem('tms_jwt');
+    if (jwt) h['Authorization'] = 'Bearer ' + jwt;
+  } else {
+    // Direct mode: send Airtable token directly
     h['Authorization'] = 'Bearer ' + AT_TOKEN;
   }
   if (method !== 'GET' && method !== 'DELETE') {
@@ -268,6 +274,78 @@ function atPreload() {
   ].filter(Boolean);
   // Fire and forget — warms both memory + localStorage
   preloadIds.forEach(id => atGet(id, '', true).catch(() => {}));
+}
+
+// ═══════════════════════════════════════════════
+// REFERENCE DATA — Single fetch, global cache
+// ═══════════════════════════════════════════════
+// Fetches ALL reference tables once with ALL needed fields.
+// Modules use getRefTrucks() etc. instead of calling atGetAll() repeatedly.
+
+const REF_DATA = {
+  trucks: null, drivers: null, trailers: null,
+  locations: null, clients: null, partners: null,
+  _loaded: false, _loading: null,
+};
+
+const _REF_FIELDS = {
+  trucks:    ['License Plate', 'Active', 'KTEO Expiry', 'Insurance Expiry', 'ATP Expiry'],
+  drivers:   ['Full Name', 'Active'],
+  trailers:  ['License Plate', 'Active'],
+  locations: ['Name', 'City', 'Country'],
+  clients:   ['Company Name'],
+  partners:  ['Company Name', 'Adress', 'Country'],
+};
+
+async function preloadReferenceData() {
+  if (REF_DATA._loaded) return REF_DATA;
+  // Prevent duplicate parallel loads
+  if (REF_DATA._loading) return REF_DATA._loading;
+
+  const T = typeof TABLES !== 'undefined' ? TABLES : {};
+  REF_DATA._loading = Promise.all([
+    atGetAll(T.TRUCKS,    { fields: _REF_FIELDS.trucks },    true),
+    atGetAll(T.DRIVERS,   { fields: _REF_FIELDS.drivers },   true),
+    atGetAll(T.TRAILERS,  { fields: _REF_FIELDS.trailers },  true),
+    atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations },  true),
+    atGetAll(T.CLIENTS,   { fields: _REF_FIELDS.clients },   true),
+    atGetAll(T.PARTNERS,  { fields: _REF_FIELDS.partners },  true),
+  ]).then(([trucks, drivers, trailers, locations, clients, partners]) => {
+    REF_DATA.trucks    = trucks;
+    REF_DATA.drivers   = drivers;
+    REF_DATA.trailers  = trailers;
+    REF_DATA.locations = locations;
+    REF_DATA.clients   = clients;
+    REF_DATA.partners  = partners;
+    REF_DATA._loaded   = true;
+    REF_DATA._loading  = null;
+    return REF_DATA;
+  });
+
+  return REF_DATA._loading;
+}
+
+// Convenience accessors — return cached arrays or empty arrays if not yet loaded
+function getRefTrucks()    { return REF_DATA.trucks    || []; }
+function getRefDrivers()   { return REF_DATA.drivers   || []; }
+function getRefTrailers()  { return REF_DATA.trailers  || []; }
+function getRefLocations() { return REF_DATA.locations || []; }
+function getRefClients()   { return REF_DATA.clients   || []; }
+function getRefPartners()  { return REF_DATA.partners  || []; }
+
+// Build id→fields lookup map from ref data array
+function refMap(arr) {
+  const m = {};
+  (arr || []).forEach(r => { m[r.id] = r.fields; });
+  return m;
+}
+
+// Invalidate ref data (call after mutations to ref tables)
+function invalidateRefData() {
+  REF_DATA.trucks = REF_DATA.drivers = REF_DATA.trailers = null;
+  REF_DATA.locations = REF_DATA.clients = REF_DATA.partners = null;
+  REF_DATA._loaded = false;
+  REF_DATA._loading = null;
 }
 
 // ═══════════════════════════════════════════════

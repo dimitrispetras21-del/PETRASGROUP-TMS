@@ -308,6 +308,10 @@
 </div>
 
 <script>
+// ── API Mode (must match config.js) ──
+const USE_PROXY  = false;
+const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
+
 // Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [
   { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
@@ -325,25 +329,62 @@ async function sha256(text) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function showError(msg) {
+  const err = document.getElementById('errMsg');
+  err.textContent = msg || 'Incorrect username or password';
+  err.style.display = 'block';
+  setTimeout(() => err.style.display = 'none', 3000);
+}
+
 async function doLogin() {
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
   const inputHash = await sha256(p);
-  const user = USERS.find(x => x.username === u && x.hash === inputHash);
-  if (user) {
-    const session = {
-      name: user.name,
-      role: user.role,
-      username: user.username,
-      loginAt: Date.now(),
-      expiresAt: Date.now() + SESSION_TTL
-    };
-    localStorage.setItem('tms_user', JSON.stringify(session));
-    window.location.href = 'app.html';
+
+  if (USE_PROXY) {
+    // ── Proxy mode: authenticate via Cloudflare Worker ──
+    try {
+      const res = await fetch(`${PROXY_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: u, passwordHash: inputHash }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showError(data.error || 'Login failed');
+        return;
+      }
+      // Store JWT token
+      localStorage.setItem('tms_jwt', data.token);
+      // Store session (same shape as client-side auth)
+      const session = {
+        name: data.name,
+        role: data.role,
+        username: data.username,
+        loginAt: Date.now(),
+        expiresAt: data.expiresAt,
+      };
+      localStorage.setItem('tms_user', JSON.stringify(session));
+      window.location.href = 'app.html';
+    } catch (e) {
+      showError('Connection error — try again');
+    }
   } else {
-    const err = document.getElementById('errMsg');
-    err.style.display = 'block';
-    setTimeout(() => err.style.display = 'none', 3000);
+    // ── Direct mode: client-side hash comparison ──
+    const user = USERS.find(x => x.username === u && x.hash === inputHash);
+    if (user) {
+      const session = {
+        name: user.name,
+        role: user.role,
+        username: user.username,
+        loginAt: Date.now(),
+        expiresAt: Date.now() + SESSION_TTL
+      };
+      localStorage.setItem('tms_user', JSON.stringify(session));
+      window.location.href = 'app.html';
+    } else {
+      showError();
+    }
   }
 }
 
@@ -355,6 +396,7 @@ if (existing && existing.expiresAt && Date.now() < existing.expiresAt) {
   window.location.href = 'app.html';
 } else if (existing) {
   localStorage.removeItem('tms_user');
+  localStorage.removeItem('tms_jwt');
 }
 </script>
 </body>

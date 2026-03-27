@@ -233,6 +233,6 @@ function navigate(page) {
 }
 
 function logout() {
-  localStorage.removeItem('tms_user'); localStorage.removeItem('tms_page');
+  localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';
 }

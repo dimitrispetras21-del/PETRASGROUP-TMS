@@ -163,11 +163,11 @@ function _renderNatlTable(records) {
     const client = _clientId ? (_clientsMap[_clientId]||'—') : '—';
 
     return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}">
-      <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${f['Name']||r.id.slice(-6)}</strong></td>
+      <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Name']||r.id.slice(-6))}</strong></td>
       <td>${dirB}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${client}</td>
-      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${pickup}</td>
-      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${delivery}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(client)}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pickup)}</td>
+      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(delivery)}</td>
       <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
       <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
       <td>${f['Pallets']||'—'}</td>
@@ -245,9 +245,9 @@ function selectNatlOrder(recId) {
   panel.innerHTML = `
     <div class="detail-header">
       <div>
-        <div class="detail-title" style="font-size:13px">${f['Name']||recId.slice(-6)}</div>
+        <div class="detail-title" style="font-size:13px">${escapeHtml(f['Name']||recId.slice(-6))}</div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${f['Direction']||''} · ${f['Type']||''}
+          ${escapeHtml(f['Direction']||'')} · ${escapeHtml(f['Type']||'')}
         </div>
       </div>
       <div class="detail-actions">
@@ -262,7 +262,7 @@ function selectNatlOrder(recId) {
     </div>
     <div class="detail-body">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${f['Status']||'No Status'}</span>
+        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${escapeHtml(f['Status']||'No Status')}</span>
         ${hasTrip?'<span class="badge badge-green">Trip Assigned</span>':'<span class="badge badge-yellow">No Trip</span>'}
         ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
         ${f['Type']==='Veroia Switch'?'<span class="badge badge-yellow">Veroia Switch</span>':''}
@@ -271,18 +271,18 @@ function selectNatlOrder(recId) {
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
-        ${_dF('Client',      _clientsMap[cId]||cId||'—')}
-        ${_dF('Direction',   f['Direction']||'—')}
-        ${_dF('Type',        f['Type']||'—')}
-        ${_dF('Goods',       f['Goods']||'—')}
-        ${_dF('Pallets',     f['Pallets']||'—')}
-        ${_dF('Temperature', f['Temperature °C']!=null?f['Temperature °C']+' °C':'—')}
+        ${_dF('Client',      escapeHtml(_clientsMap[cId]||cId||'—'))}
+        ${_dF('Direction',   escapeHtml(f['Direction']||'—'))}
+        ${_dF('Type',        escapeHtml(f['Type']||'—'))}
+        ${_dF('Goods',       escapeHtml(f['Goods']||'—'))}
+        ${_dF('Pallets',     escapeHtml(f['Pallets']||'—'))}
+        ${_dF('Temperature', f['Temperature °C']!=null?escapeHtml(f['Temperature °C'])+' °C':'—')}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Route</div>
-        ${_dF('Pickup',    _locationsMap[pId]||pId||'—')}
+        ${_dF('Pickup',    escapeHtml(_locationsMap[pId]||pId||'—'))}
         ${_dF('Load Date', f['Loading DateTime']  ? formatDate(f['Loading DateTime'])  : '—')}
-        ${_dF('Delivery',  _locationsMap[dId]||dId||'—')}
+        ${_dF('Delivery',  escapeHtml(_locationsMap[dId]||dId||'—'))}
         ${_dF('Del Date',  f['Delivery DateTime'] ? formatDate(f['Delivery DateTime']) : '—')}
       </div>
       ${can('costs')!=='none'?`
@@ -291,7 +291,7 @@ function selectNatlOrder(recId) {
         ${_dF('Price', f['Price']?'€ '+Number(f['Price']).toLocaleString('el-GR'):'—')}
       </div>`:''}
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
-        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${f['Notes']}</div></div>`:''}
+        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${escapeHtml(f['Notes'])}</div></div>`:''}
     </div>`;
 }
 
@@ -332,7 +332,7 @@ async function _openNatlModal(recId, f) {
       </div>
       <div class="form-field">
         <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="nf_Goods" value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
+        <input class="form-input" type="text" id="nf_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="e.g. Fresh Produce">
       </div>
       <div class="form-field">
         <label class="form-label">Pallets</label>
@@ -380,7 +380,7 @@ async function _openNatlModal(recId, f) {
 
     <div style="margin-top:16px">
       <label class="form-label">Notes</label>
-      <textarea class="form-textarea" id="nf_Notes" rows="2">${f['Notes']||''}</textarea>
+      <textarea class="form-textarea" id="nf_Notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>
     </div>`;
 
   const footer = `

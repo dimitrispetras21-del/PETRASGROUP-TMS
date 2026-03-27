@@ -10,14 +10,17 @@ async function renderDashboard() {
   c.innerHTML = _dashSkeleton();
 
   try {
-    // Load all data in parallel
-    const [orders, natLoads, trucks, trailers, drivers, clients] = await Promise.all([
-      atGet(TABLES.ORDERS),
+    // Load all data in parallel — orders limited to last 30 days for performance
+    const _dashCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    // Ensure ref data is loaded (single normalized fetch)
+    await preloadReferenceData();
+    const trucks = getRefTrucks();
+    const drivers = getRefDrivers();
+    const clients = getRefClients();
+    const [orders, natLoads, trailers] = await Promise.all([
+      atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
       atGet(TABLES.NAT_LOADS),
-      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.TRAILERS, { fields: ['Plate','ATP Expiry','Insurance Expiry'] }, true),
-      atGetAll(TABLES.DRIVERS, { fields: ['Full Name'] }, true),
-      atGetAll(TABLES.CLIENTS, { fields: ['Company Name'] }, true),
     ]);
 
     // Build lookup maps
@@ -123,10 +126,10 @@ async function renderDashboard() {
       const loadTime = loadRaw.includes('T') ? loadRaw.split('T')[1]?.substring(0,5) || '—' : '—';
       const delTime = delRaw.includes('T') ? delRaw.split('T')[1]?.substring(0,5) || '—' : '—';
       const clientId = getLinkId(f['Client']);
-      const clientName = clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—';
+      const clientName = escapeHtml(clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—');
       const truckId = getLinkId(f['Truck']);
-      const truckPlate = truckId && truckMap[truckId] ? truckMap[truckId]['License Plate'] : '';
-      const route = `${(f['Loading Summary'] || '').slice(0, 20)} → ${(f['Delivery Summary'] || '').slice(0, 20)}`;
+      const truckPlate = escapeHtml(truckId && truckMap[truckId] ? truckMap[truckId]['License Plate'] : '');
+      const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 20))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 20))}`;
       const pallets = f['Total Pallets'] || 0;
       const status = f['Status'] || 'Pending';
 
@@ -192,15 +195,15 @@ async function renderDashboard() {
     const agingRows = unassignedOrders.map(r => {
       const f = r.fields;
       const clientId = getLinkId(f['Client']);
-      const clientName = clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—';
-      const route = `${(f['Loading Summary'] || '').slice(0, 18)} → ${(f['Delivery Summary'] || '').slice(0, 18)}`;
+      const clientName = escapeHtml(clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—');
+      const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 18))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 18))}`;
       const delDate = (f['Delivery DateTime'] || '').substring(0, 10);
       const pallets = f['Total Pallets'] || 0;
       const created = f['Created'] || f['Date Created'] || '';
       const hoursOld = created ? Math.round((Date.now() - new Date(created).getTime()) / 3600000) : 0;
       const dir = f['Direction'];
       const ref = f['Reference'] || '';
-      const orderLabel = ref ? `${dir === 'Export' ? 'EXP' : 'IMP'} ${ref}` : (f['Order Number'] || (dir === 'Export' ? 'EXP' : 'IMP'));
+      const orderLabel = escapeHtml(ref ? `${dir === 'Export' ? 'EXP' : 'IMP'} ${ref}` : (f['Order Number'] || (dir === 'Export' ? 'EXP' : 'IMP')));
       return { id: r.id, orderNum: orderLabel, client: clientName, route, delDate, pallets, hoursOld, direction: dir };
     }).sort((a, b) => b.hoursOld - a.hoursOld).slice(0, 10);
 
@@ -216,7 +219,7 @@ async function renderDashboard() {
     const alertThreshold = toLocalDate(new Date(Date.now() + 30 * 864e5));
     trucks.filter(t => t.fields['Active']).forEach(t => {
       const f = t.fields;
-      const plate = f['License Plate'] || '—';
+      const plate = escapeHtml(f['License Plate'] || '—');
       ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'].forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
         if (dt && dt <= alertThreshold) {
@@ -228,7 +231,7 @@ async function renderDashboard() {
     });
     trailers.forEach(t => {
       const f = t.fields;
-      const plate = f['Plate'] || '—';
+      const plate = escapeHtml(f['Plate'] || '—');
       ['ATP Expiry', 'Insurance Expiry'].forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
         if (dt && dt <= alertThreshold) {
@@ -243,7 +246,7 @@ async function renderDashboard() {
     // Section 5c: Compliance Snapshot — top trucks with expiry blocks
     const complianceTrucks = trucks.filter(t => t.fields['Active']).slice(0, 8).map(t => {
       const f = t.fields;
-      const plate = f['License Plate'] || '—';
+      const plate = escapeHtml(f['License Plate'] || '—');
       const docs = {};
       ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'].forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
@@ -413,7 +416,7 @@ async function renderDashboard() {
         <!-- Header -->
         <div class="dash-header">
           <div>
-            <div class="dash-greeting">${greeting}, ${user.name.split(' ')[0]}</div>
+            <div class="dash-greeting">${greeting}, ${escapeHtml(user.name.split(' ')[0])}</div>
             <div class="dash-date">${dateStr} — Εβδομάδα ${wn}</div>
           </div>
           <div class="dash-live">
@@ -583,7 +586,7 @@ async function renderDashboard() {
                 ${highRisk.length ? highRisk.map(r => {
                   const f = r.fields;
                   const del = (f['Delivery DateTime'] || '').substring(0, 10);
-                  const route = `${(f['Loading Summary'] || '').slice(0, 15)} → ${(f['Delivery Summary'] || '').slice(0, 15)}`;
+                  const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 15))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 15))}`;
                   const hours = del ? Math.round((new Date(del) - now) / 3600000) : 0;
                   return `<div class="dash-risk-item" onclick="navigate('orders_intl')" style="cursor:pointer">
                     <div class="dash-risk-icon"></div>

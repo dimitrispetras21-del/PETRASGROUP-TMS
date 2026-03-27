@@ -370,7 +370,7 @@ function _perfDraw() {
     const pill = perf === 'On Time'
       ? '<span class="perf-pill perf-pill-ok">On Time</span>'
       : '<span class="perf-pill perf-pill-bad">Delayed</span>';
-    const route = `${(f['Loading Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?'} → ${(f['Delivery Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?'}`;
+    const route = `${escapeHtml((f['Loading Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')} → ${escapeHtml((f['Delivery Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')}`;
     const date = toLocalDate(f['Delivery DateTime']);
     return `<tr>
       <td>${date ? date.split('-').reverse().join('/') : '—'}</td>
@@ -401,7 +401,7 @@ function _perfDraw() {
   const goalsHTML = goals.length ? goals.map((g, i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
       <input type="checkbox" ${g.done ? 'checked' : ''} onchange="_perfToggleGoal(${i})" style="accent-color:#38BDF8">
-      <span style="font-size:12px;color:${g.done?'#64748B':'#E2E8F0'};${g.done?'text-decoration:line-through;':''}flex:1">${g.text}</span>
+      <span style="font-size:12px;color:${g.done?'#64748B':'#E2E8F0'};${g.done?'text-decoration:line-through;':''}flex:1">${escapeHtml(g.text)}</span>
       <button onclick="_perfRemoveGoal(${i})" style="background:none;border:none;color:#EF4444;cursor:pointer;font-size:11px;padding:2px 6px">x</button>
     </div>`).join('') : '<div style="color:var(--d-text-dim);font-size:11px;padding:8px 0">Δεν εχουν οριστει στοχοι</div>';
   const goalInput = `<div style="display:flex;gap:6px;margin-top:8px">
@@ -413,8 +413,8 @@ function _perfDraw() {
     <div class="perf-wrap">
       <div class="perf-header">
         <div>
-          <div class="perf-name">${userName}</div>
-          <div class="perf-role">${roleLabels[uname] || roleLabelsFallback[role] || role} · Εβδομάδα ${wn}</div>
+          <div class="perf-name">${escapeHtml(userName)}</div>
+          <div class="perf-role">${escapeHtml(roleLabels[uname] || roleLabelsFallback[role] || role)} · Εβδομάδα ${wn}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <span style="display:flex;align-items:center;gap:6px;font-size:10px;color:#64748B;letter-spacing:.5px;text-transform:uppercase">
