@@ -414,9 +414,9 @@ function _rampBuildRecord(orderRec, type, category, date, isVS) {
   if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
   if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
   if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-  // Resolve locations
-  rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5);
-  rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5);
+  // Resolve locations — try linked IDs first, fallback to Summary fields
+  rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5) || (f['Loading Summary']||'').split(',')[0].trim();
+  rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5) || (f['Delivery Summary']||'').split(',')[0].trim();
   return rec;
 }
 
