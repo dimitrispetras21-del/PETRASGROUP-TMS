@@ -3,6 +3,14 @@
 // ═══════════════════════════════════════════════
 
 const AT_BASE  = 'appElT5CQV6JQvym8';
+
+// ── API Mode ──
+// Set USE_PROXY = true after deploying the Cloudflare Worker
+// Then the AT_TOKEN is no longer needed in the browser
+const USE_PROXY  = false;
+const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
+
+// Direct mode (fallback) — REMOVE these after proxy is live
 const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
 const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+
                  'zG3klf7diFSUiNY056CRFBAeUZ1H_dZwDfhVbf7IRD3HQ-_nYO3gAA';

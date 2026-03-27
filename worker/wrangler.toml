@@ -1,0 +1,7 @@
+name = "tms-api-proxy"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# AT_TOKEN is stored as a secret, NOT here
+# Run: npx wrangler secret put AT_TOKEN
+# Then paste your Airtable PAT when prompted
