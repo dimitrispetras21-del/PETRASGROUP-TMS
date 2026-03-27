@@ -10,13 +10,13 @@ const PERF = { orders: [], natLoads: [], trucks: [], drivers: [], maint: [] };
 const PERF_KPIS = {
   owner: [
     { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
-    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '',  unit: '%',  target: 20, invert: true },
+    { id: 'dead_km',       label: 'Dead Kilometers',       icon: '',  unit: 'km', target: 50, invert: true },
     { id: 'on_time',       label: 'On-Time Delivery',     icon: '',  unit: '%',  target: 90 },
     { id: 'weekly_score',  label: 'Weekly Score',          icon: '', unit: '/100', target: 85 },
   ],
   dispatcher: [
     { id: 'plan_complete', label: 'Plan Completion',       icon: '', unit: '%',  target: 100 },
-    { id: 'empty_legs',    label: 'Empty Return Legs',    icon: '',  unit: '%',  target: 20, invert: true },
+    { id: 'dead_km',       label: 'Dead Kilometers',       icon: '',  unit: 'km', target: 50, invert: true },
     { id: 'assign_speed',  label: 'Assignment Speed',     icon: '', unit: 'h',  target: 4,  invert: true },
     { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
   ],
@@ -183,6 +183,9 @@ function _perfCompute() {
   // Assignment Speed (avg hours from creation to truck assigned — simplified)
   const assign_speed = 3.2; // placeholder — would need Created field + assignment timestamp
 
+  // Dead KM (placeholder — full calc needs location coordinates, use 0 for now)
+  const dead_km = 0; // TODO: integrate with dashboard Haversine calc
+
   // National On-Time
   const natlWithStatus = PERF.natLoads.filter(r => r.fields['Status'] === 'Delivered');
   const natl_on_time = 0; // placeholder — no Delivery Performance field on NAT_LOADS yet
@@ -208,7 +211,7 @@ function _perfCompute() {
   );
 
   return {
-    on_time, empty_legs, fleet_usage, plan_complete, assign_speed,
+    on_time, dead_km, fleet_usage, plan_complete, assign_speed,
     natl_on_time, invoiced_pct, cmr_collected, weekly_score,
     plan_reviewed: 1, crisis_resolved: 0, zero_anxiety: 0,
     outstanding: 0, pallet_balance: 0,
@@ -313,14 +316,28 @@ function _perfDraw() {
 
   // Feedback text
   const feedback = vals.weekly_score >= 85
-    ? `Εξαιρετική εβδομάδα! On-time ${vals.on_time}%, empty legs μόλις ${vals.empty_legs}%.`
+    ? `Εξαιρετικη εβδομαδα! On-time ${vals.on_time}%, dead km μολις ${vals.dead_km || 0}km.`
     : vals.weekly_score >= 70
-    ? `Καλή εβδομάδα. Πρόσεξε: empty legs ${vals.empty_legs}% (target ≤20%).`
-    : `Χρειάζεται βελτίωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
+    ? `Καλη εβδομαδα. Προσεξε: dead km ${vals.dead_km || 0}km (target ≤50km).`
+    : `Χρειαζεται βελτιωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
   const warnings = [
-    vals.empty_legs > 25 ? 'Empty legs >25% — δοκίμασε Auto-Match' : '',
-    vals.fleet_usage < 60 ? 'Fleet usage χαμηλό — αδρανή φορτηγά' : '',
+    (vals.dead_km || 0) > 100 ? 'Dead KM >100km — ελεγξε import matching' : '',
+    vals.fleet_usage < 60 ? 'Fleet usage χαμηλο — αδρανη φορτηγα' : '',
   ].filter(Boolean).join(' · ');
+
+  // Goals (from localStorage)
+  const goalsKey = `perf_goals_${user?.name?.replace(/\s/g,'_')||'default'}`;
+  const goals = JSON.parse(localStorage.getItem(goalsKey) || '[]');
+  const goalsHTML = goals.length ? goals.map((g, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
+      <input type="checkbox" ${g.done ? 'checked' : ''} onchange="_perfToggleGoal(${i})" style="accent-color:#38BDF8">
+      <span style="font-size:12px;color:${g.done?'#64748B':'#E2E8F0'};${g.done?'text-decoration:line-through;':''}flex:1">${g.text}</span>
+      <button onclick="_perfRemoveGoal(${i})" style="background:none;border:none;color:#EF4444;cursor:pointer;font-size:11px;padding:2px 6px">x</button>
+    </div>`).join('') : '<div style="color:var(--d-text-dim);font-size:11px;padding:8px 0">Δεν εχουν οριστει στοχοι</div>';
+  const goalInput = `<div style="display:flex;gap:6px;margin-top:8px">
+    <input id="perf-goal-input" type="text" placeholder="Νεος στοχος..." style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#E2E8F0;font-size:11px">
+    <button onclick="_perfAddGoal()" style="padding:4px 12px;border-radius:6px;background:#0284C7;color:#fff;border:none;font-size:10px;font-weight:600;cursor:pointer">+</button>
+  </div>`;
 
   document.getElementById('content').innerHTML = `
     <div class="perf-wrap">
@@ -412,7 +429,48 @@ function _perfDraw() {
               </div>
             </div>
           </div>
+
+          <!-- Goals -->
+          <div class="perf-card">
+            <div class="perf-card-head">
+              <div class="perf-card-title">ΣΤΟΧΟΙ</div>
+              <span style="font-size:10px;color:#64748B">${goals.filter(g=>g.done).length}/${goals.length}</span>
+            </div>
+            <div class="perf-card-body">
+              ${goalsHTML}
+              ${goalInput}
+            </div>
+          </div>
         </div>
       </div>
     </div>`;
+}
+
+/* ── GOALS MANAGEMENT ─────────────────────────────────────── */
+function _perfGoalsKey() {
+  return `perf_goals_${user?.name?.replace(/\s/g,'_')||'default'}`;
+}
+function _perfGetGoals() {
+  return JSON.parse(localStorage.getItem(_perfGoalsKey()) || '[]');
+}
+function _perfSaveGoals(goals) {
+  localStorage.setItem(_perfGoalsKey(), JSON.stringify(goals));
+}
+function _perfAddGoal() {
+  const input = document.getElementById('perf-goal-input');
+  if (!input || !input.value.trim()) return;
+  const goals = _perfGetGoals();
+  goals.push({ text: input.value.trim(), done: false, created: localToday() });
+  _perfSaveGoals(goals);
+  renderPerformance();
+}
+function _perfToggleGoal(i) {
+  const goals = _perfGetGoals();
+  if (goals[i]) { goals[i].done = !goals[i].done; _perfSaveGoals(goals); }
+}
+function _perfRemoveGoal(i) {
+  const goals = _perfGetGoals();
+  goals.splice(i, 1);
+  _perfSaveGoals(goals);
+  renderPerformance();
 }
