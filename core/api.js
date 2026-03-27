@@ -55,6 +55,51 @@ function _memGet(key, ttl) {
 
 function _memSet(key, data) { _MEM[key] = { data, ts: Date.now() }; }
 
+// ── Request Queue (max 4 concurrent, Airtable limit = 5) ──
+const _Q = { running: 0, max: 4, queue: [] };
+function _enqueue(fn) {
+  return new Promise((resolve, reject) => {
+    const run = async () => {
+      _Q.running++;
+      try { resolve(await fn()); }
+      catch (e) { reject(e); }
+      finally {
+        _Q.running--;
+        if (_Q.queue.length > 0) _Q.queue.shift()();
+      }
+    };
+    if (_Q.running < _Q.max) run();
+    else _Q.queue.push(run);
+  });
+}
+
+// ── Audit Log (mutations only, last 200 entries) ──
+const _AUDIT_MAX = 200;
+function _auditLog(action, tableId, recId, fields) {
+  try {
+    const user = JSON.parse(localStorage.getItem('tms_user') || '{}');
+    const entry = {
+      ts: new Date().toISOString(),
+      user: user.name || 'unknown',
+      role: user.role || 'unknown',
+      action,          // PATCH | CREATE | DELETE
+      table: tableId,
+      record: recId || null,
+      fields: fields ? Object.keys(fields) : null
+    };
+    const log = JSON.parse(localStorage.getItem('tms_audit') || '[]');
+    log.push(entry);
+    if (log.length > _AUDIT_MAX) log.splice(0, log.length - _AUDIT_MAX);
+    localStorage.setItem('tms_audit', JSON.stringify(log));
+  } catch {}
+}
+
+// Read audit log (for admin/debug)
+function atGetAuditLog() {
+  try { return JSON.parse(localStorage.getItem('tms_audit') || '[]'); }
+  catch { return []; }
+}
+
 // ── Retry wrapper (exponential backoff) ───────────
 async function _atRetry(fn, retries = 3) {
   for (let i = 0; i < retries; i++) {
@@ -88,7 +133,7 @@ async function _atFetch(tableId, paramStr = '') {
   do {
     let url = `https://api.airtable.com/v0/${AT_BASE}/${tableId}?pageSize=100${paramStr ? '&' + paramStr : ''}`;
     if (offset) url += `&offset=${offset}`;
-    const res  = await _atRetry(() => fetch(url, { headers: { Authorization: 'Bearer ' + AT_TOKEN } }));
+    const res  = await _enqueue(() => _atRetry(() => fetch(url, { headers: { Authorization: 'Bearer ' + AT_TOKEN } })));
     const data = await res.json();
     records = records.concat(data.records || []);
     offset  = data.offset || '';
@@ -138,28 +183,31 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
 }
 
 async function atPatch(tableId, recId, fields) {
-  const res = await _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
+  _auditLog('PATCH', tableId, recId, fields);
+  const res = await _enqueue(() => _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
     method: 'PATCH',
     headers: { Authorization: 'Bearer ' + AT_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields })
-  }));
+  })));
   return res.json();
 }
 
 async function atCreate(tableId, fields) {
-  const res = await _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}`, {
+  _auditLog('CREATE', tableId, null, fields);
+  const res = await _enqueue(() => _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}`, {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + AT_TOKEN, 'Content-Type': 'application/json' },
     body: JSON.stringify({ fields })
-  }));
+  })));
   return res.json();
 }
 
 async function atDelete(tableId, recId) {
-  const res = await _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
+  _auditLog('DELETE', tableId, recId, null);
+  const res = await _enqueue(() => _atRetry(() => fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
     method: 'DELETE',
     headers: { Authorization: 'Bearer ' + AT_TOKEN }
-  }));
+  })));
   return res.json();
 }
 
