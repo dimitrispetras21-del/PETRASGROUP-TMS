@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1774601492">
+<link rel="stylesheet" href="assets/style.css?v=1774618509">
 </head>
 <body>
 
@@ -79,10 +79,10 @@
 
 <!-- ═══ SCRIPTS — load order matters ══════════ -->
 <!-- 1. Config (credentials, table IDs, role matrix) -->
-<script src="config.js?v=1774973000"></script>
+<script src="config.js?v=1774618882"></script>
 <!-- 2. Core: auth → api → utils → ui → entity → router -->
-<script src="core/auth.js?v=1774410000"></script>
-<script src="core/api.js?v=1774630000"></script>
+<script src="core/auth.js?v=1774620766"></script>
+<script src="core/api.js?v=1774619777"></script>
 <script src="core/utils.js?v=1774601492"></script>
 <script src="core/ui.js?v=1774800000"></script>
 <script src="core/entity.js?v=1774820000"></script>
@@ -102,7 +102,7 @@
 <script src="modules/pallet_upload.js?v=1774971000"></script>
 <script src="modules/pallet_ledger.js?v=1774971000"></script>
 <script src="modules/invoicing.js?v=1774971000"></script>
-<script src="modules/performance.js?v=1774604702"></script>
+<script src="modules/performance.js?v=1774622758"></script>
 
 <!-- 4. Init -->
 <script>
@@ -116,10 +116,23 @@ function init() {
   renderNav();
   restoreSidebar();
   navigate(localStorage.getItem('tms_page') || 'dashboard');
+  atPresenceStart(); // Multi-user presence tracking
 }
 init();
+
+// Register Service Worker for offline mode
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 
+<div class="offline-banner" id="offlineBanner">Offline Mode — data may not be current</div>
+<script>
+const _ob = document.getElementById('offlineBanner');
+window.addEventListener('offline', () => _ob.classList.add('show'));
+window.addEventListener('online', () => _ob.classList.remove('show'));
+if (!navigator.onLine) _ob.classList.add('show');
+</script>
 </body>
 </html>
 <!-- rebuild 1774552719 -->

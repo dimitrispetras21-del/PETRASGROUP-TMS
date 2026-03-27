@@ -6,32 +6,58 @@
 
 const PERF = { orders: [], natLoads: [], trucks: [], drivers: [], maint: [] };
 
-// Role-specific KPI definitions
+// Per-person KPI definitions based on org chart
+const PERF_KPIS_BY_USER = {
+  // Dimitris Petras — Founder: Approval & Strategy
+  dimitris: [
+    { id: 'weekly_score',  label: 'Weekly Score',          unit: '/100', target: 85 },
+    { id: 'fleet_usage',   label: 'Fleet Usage Rate',      unit: '%',  target: 80 },
+    { id: 'dead_km',       label: 'Dead Kilometers',       unit: 'km', target: 50, invert: true },
+    { id: 'on_time',       label: 'On-Time Delivery',      unit: '%',  target: 90 },
+  ],
+  // Dimitris Kelesmitos — Master Planner: plan routes, assign trucks, find return loads
+  kelesmitos: [
+    { id: 'plan_complete', label: 'Plan Completion',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
+    { id: 'dead_km',       label: 'Dead Kilometers',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
+    { id: 'fleet_usage',   label: 'Fleet Usage Rate',       unit: '%',  target: 80, desc: 'Working days vs available days' },
+    { id: 'sub_cost_pct',  label: 'Subcontractor Cost',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
+  ],
+  // Pantelis Tsanaktsidis — Control Tower: execution, tracking, client updates
+  pantelis: [
+    { id: 'on_time',       label: 'On-Time Delivery',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
+    { id: 'cmr_collected', label: 'CMR Same-Day',           unit: '%',  target: 95, desc: 'CMR collected within 24h of delivery' },
+    { id: 'client_updates',label: 'Client Updates Sent',    unit: '%',  target: 100, desc: 'Zero Anxiety: Loaded/In Transit/Delivered updates' },
+    { id: 'response_time', label: 'Response Time',          unit: 'h',  target: 2, invert: true, desc: 'Avg time to handle issues' },
+  ],
+  // Sotiris Koulouriotis — Chief Ops: national transport, plan review, crisis management
+  sotiris: [
+    { id: 'natl_on_time',  label: 'National On-Time',       unit: '%',  target: 90, desc: 'National deliveries on time' },
+    { id: 'plan_reviewed', label: 'Plan Review by Friday',  unit: '',   target: 1, desc: 'Weekly plan checked before submission' },
+    { id: 'crisis_count',  label: 'Crises Resolved',        unit: '',   target: 0, desc: 'Issues escalated and resolved this week' },
+    { id: 'natl_profit',   label: 'National Profitability',  unit: '%',  target: 15, desc: 'National routes margin' },
+  ],
+  // Thodoris Vainas — Equipment Manager + HR: fleet maintenance, driver payroll
+  thodoris: [
+    { id: 'expired_docs',  label: 'Expired Documents',      unit: '',   target: 0, invert: true, desc: 'KTEO/Insurance/ATP expired count' },
+    { id: 'work_orders',   label: 'Work Orders Resolved',   unit: '%',  target: 80, desc: 'Resolved vs total this week' },
+    { id: 'downtime_hrs',  label: 'Fleet Downtime',         unit: 'h',  target: 24, invert: true, desc: 'Total hours trucks out of service' },
+    { id: 'service_adherence', label: 'Service Schedule',   unit: '%',  target: 100, desc: 'Preventive maintenance on time' },
+  ],
+  // Eirini Papazoi — Invoicing: invoices, CMR archive, pallet tracking
+  eirini: [
+    { id: 'invoiced_pct',  label: 'Orders Invoiced',        unit: '%',  target: 100, desc: 'Delivered orders with invoice issued' },
+    { id: 'cmr_archived',  label: 'CMR Archived',           unit: '%',  target: 95, desc: 'CMR documents filed and archived' },
+    { id: 'outstanding',   label: 'Outstanding Balance',    unit: 'EUR',  target: 0, invert: true, desc: 'Unpaid client invoices total' },
+    { id: 'pallet_balance',label: 'Pallet Balance',         unit: '',   target: 0, desc: 'EUR-pallet net balance with partners' },
+  ],
+};
+
+// Fallback role-based mapping
 const PERF_KPIS = {
-  owner: [
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
-    { id: 'dead_km',       label: 'Dead Kilometers',       icon: '',  unit: 'km', target: 50, invert: true },
-    { id: 'on_time',       label: 'On-Time Delivery',     icon: '',  unit: '%',  target: 90 },
-    { id: 'weekly_score',  label: 'Weekly Score',          icon: '', unit: '/100', target: 85 },
-  ],
-  dispatcher: [
-    { id: 'plan_complete', label: 'Plan Completion',       icon: '', unit: '%',  target: 100 },
-    { id: 'dead_km',       label: 'Dead Kilometers',       icon: '',  unit: 'km', target: 50, invert: true },
-    { id: 'assign_speed',  label: 'Assignment Speed',     icon: '', unit: 'h',  target: 4,  invert: true },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',     icon: '', unit: '%',  target: 80 },
-  ],
-  management: [
-    { id: 'natl_on_time',  label: 'National On-Time',     icon: '',  unit: '%',  target: 90 },
-    { id: 'plan_reviewed', label: 'Plan Reviewed by Fri',  icon: '', unit: '',   target: 1 },
-    { id: 'crisis_resolved',label:'Crises Resolved',       icon: '', unit: '',   target: 0 },
-    { id: 'zero_anxiety',  label: 'Zero Anxiety Score',   icon: '', unit: '%',  target: 95 },
-  ],
-  accountant: [
-    { id: 'invoiced_pct',  label: 'Orders Invoiced',      icon: '', unit: '%',  target: 100 },
-    { id: 'cmr_collected', label: 'CMR Collected',         icon: '', unit: '%',  target: 95 },
-    { id: 'outstanding',   label: 'Outstanding Balance',   icon: '', unit: '€',  target: 0, invert: true },
-    { id: 'pallet_balance',label: 'Pallet Balance',        icon: '', unit: '',   target: 0 },
-  ],
+  owner: PERF_KPIS_BY_USER.dimitris,
+  dispatcher: PERF_KPIS_BY_USER.kelesmitos,
+  management: PERF_KPIS_BY_USER.thodoris,
+  accountant: PERF_KPIS_BY_USER.eirini,
 };
 
 /* ── CSS ──────────────────────────────────────────────────── */
@@ -200,7 +226,38 @@ function _perfCompute() {
 
   // Maintenance
   const pendingMaint = PERF.maint.filter(r => r.fields['Status'] !== 'Done').length;
-  const sosMaint = PERF.maint.filter(r => r.fields['Status'] !== 'Done' && r.fields['Priority'] === 'SOS').length;
+  const resolvedMaint = PERF.maint.filter(r => r.fields['Status'] === 'Done').length;
+  const totalMaint = PERF.maint.length;
+  const work_orders = totalMaint ? Math.round(resolvedMaint / totalMaint * 100) : 100;
+
+  // Subcontractor cost % (partner trips vs total assigned trips)
+  const assignedTrips = weekOrders.filter(r => r.fields['Truck'] || r.fields['Partner']);
+  const partnerTrips = assignedTrips.filter(r => r.fields['Is Partner Trip']);
+  const sub_cost_pct = assignedTrips.length ? Math.round(partnerTrips.length / assignedTrips.length * 100) : 0;
+
+  // Client updates (placeholder — would need status change log)
+  const client_updates = 0; // TODO: track status transitions per order
+
+  // Response time (placeholder)
+  const response_time = 0; // TODO: track issue creation to resolution time
+
+  // Expired documents count
+  const expired_docs = pendingMaint; // Use maintenance open items as proxy
+
+  // Fleet downtime (placeholder)
+  const downtime_hrs = 0; // TODO: track from maintenance records
+
+  // Service schedule adherence (placeholder)
+  const service_adherence = work_orders;
+
+  // National profitability (placeholder)
+  const natl_profit = 0; // TODO: needs trip cost data
+
+  // CMR archived (same as collected for now)
+  const cmr_archived = cmr_collected;
+
+  // Crisis count (placeholder)
+  const crisis_count = 0; // TODO: track escalations
 
   // Weekly Score (composite)
   const weekly_score = Math.round(
@@ -212,8 +269,11 @@ function _perfCompute() {
 
   return {
     on_time, dead_km, fleet_usage, plan_complete, assign_speed,
-    natl_on_time, invoiced_pct, cmr_collected, weekly_score,
-    plan_reviewed: 1, crisis_resolved: 0, zero_anxiety: 0,
+    natl_on_time, invoiced_pct, cmr_collected, cmr_archived, weekly_score,
+    sub_cost_pct, client_updates, response_time,
+    expired_docs, work_orders, downtime_hrs, service_adherence,
+    natl_profit, crisis_count,
+    plan_reviewed: 1, zero_anxiety: 0,
     outstanding: 0, pallet_balance: 0,
     _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length }
   };
@@ -246,16 +306,26 @@ function _perfTrends() {
 function _perfDraw() {
   const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
   const userName = typeof user !== 'undefined' ? (user.name || 'User') : 'User';
+  const uname = typeof user !== 'undefined' ? (user.username || '') : '';
   const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
-  const kpiDefs = PERF_KPIS[role] || PERF_KPIS.owner;
+  // Per-username KPIs first, fallback to role-based
+  const kpiDefs = PERF_KPIS_BY_USER[uname] || PERF_KPIS[role] || PERF_KPIS.owner;
   const vals = _perfCompute();
   const trends = _perfTrends();
 
   const roleLabels = {
+    dimitris: 'Founder — Approval & Strategy',
+    kelesmitos: 'Master Planner — Chief Dispatcher',
+    pantelis: 'Control Tower — Execution & Zero Anxiety',
+    sotiris: 'Chief Ops — National Transport & Oversight',
+    thodoris: 'Equipment Manager & HR Director',
+    eirini: 'Invoicing & Finance',
+  };
+  const roleLabelsFallback = {
     owner: 'Founder — Approval & Strategy',
-    dispatcher: 'Master Planner — Chief Dispatcher',
-    management: 'Chief Ops — Operations & National',
-    accountant: 'Invoicing & Finance',
+    dispatcher: 'Planner / Dispatcher',
+    management: 'Management',
+    accountant: 'Finance',
   };
 
   // KPI cards
@@ -344,7 +414,7 @@ function _perfDraw() {
       <div class="perf-header">
         <div>
           <div class="perf-name">${userName}</div>
-          <div class="perf-role">${roleLabels[role] || role} · Εβδομάδα ${wn}</div>
+          <div class="perf-role">${roleLabels[uname] || roleLabelsFallback[role] || role} · Εβδομάδα ${wn}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <span style="display:flex;align-items:center;gap:6px;font-size:10px;color:#64748B;letter-spacing:.5px;text-transform:uppercase">

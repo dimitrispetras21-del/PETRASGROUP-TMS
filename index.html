@@ -308,19 +308,37 @@
 </div>
 
 <script>
+// Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [
-  { username: 'dimitris',   password: 'petras2024',  role: 'owner',      name: 'Δημήτρης Πέτρας' },
-  { username: 'dispatcher', password: 'dispatch24',  role: 'dispatcher', name: 'Dispatcher' },
-  { username: 'management', password: 'manage24',    role: 'management', name: 'Management' },
-  { username: 'accountant', password: 'account24',   role: 'accountant', name: 'Accountant' },
+  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
+  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
+  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
+  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
+  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
+  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
 ];
 
-function doLogin() {
+const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function doLogin() {
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
-  const user = USERS.find(x => x.username === u && x.password === p);
+  const inputHash = await sha256(p);
+  const user = USERS.find(x => x.username === u && x.hash === inputHash);
   if (user) {
-    localStorage.setItem('tms_user', JSON.stringify(user));
+    const session = {
+      name: user.name,
+      role: user.role,
+      username: user.username,
+      loginAt: Date.now(),
+      expiresAt: Date.now() + SESSION_TTL
+    };
+    localStorage.setItem('tms_user', JSON.stringify(session));
     window.location.href = 'app.html';
   } else {
     const err = document.getElementById('errMsg');
@@ -330,7 +348,14 @@ function doLogin() {
 }
 
 document.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
-if(localStorage.getItem('tms_user')) window.location.href = 'app.html';
+
+// Check existing session: auto-login if valid, expire if stale
+const existing = JSON.parse(localStorage.getItem('tms_user') || 'null');
+if (existing && existing.expiresAt && Date.now() < existing.expiresAt) {
+  window.location.href = 'app.html';
+} else if (existing) {
+  localStorage.removeItem('tms_user');
+}
 </script>
 </body>
 </html>
