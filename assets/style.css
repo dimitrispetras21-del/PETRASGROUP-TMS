@@ -363,6 +363,48 @@ body {
   color: var(--danger);
 }
 
+/* Notification Bell */
+.notif-bell {
+  background: none; border: none; cursor: pointer; padding: 6px;
+  color: var(--text-dim); position: relative; border-radius: 6px;
+  transition: all 0.15s;
+}
+.notif-bell:hover { background: rgba(0,0,0,0.04); color: var(--text); }
+.notif-dot {
+  position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
+  border-radius: 50%; background: #EF4444; border: 2px solid var(--bg);
+}
+.notif-panel {
+  position: absolute; top: 40px; right: 0; width: 340px; max-height: 420px;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.12); z-index: 8000; overflow: hidden;
+}
+.notif-header {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-dim);
+  display: flex; justify-content: space-between; align-items: center;
+}
+.notif-list { max-height: 360px; overflow-y: auto; }
+.notif-item {
+  display: flex; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; transition: background 0.1s; align-items: flex-start;
+}
+.notif-item:hover { background: var(--bg); }
+.notif-item:last-child { border-bottom: none; }
+.notif-icon {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; flex-shrink: 0; font-size: 12px;
+}
+.notif-icon.danger { background: rgba(239,68,68,0.1); color: #EF4444; }
+.notif-icon.warn { background: rgba(245,158,11,0.1); color: #F59E0B; }
+.notif-icon.info { background: rgba(2,132,199,0.1); color: #0284C7; }
+.notif-body { flex: 1; min-width: 0; }
+.notif-title { font-size: 12px; font-weight: 600; color: var(--text); }
+.notif-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+.notif-time { font-size: 9px; color: var(--text-dim); flex-shrink: 0; margin-top: 2px; }
+.notif-empty { padding: 30px; text-align: center; color: var(--text-dim); font-size: 12px; }
+
 /* Content area */
 .content {
   flex: 1;
