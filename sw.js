@@ -1,81 +1,144 @@
-// ═══════════════════════════════════════════════
-// SERVICE WORKER — Offline Mode for TMS
-// Strategy: Network-first, fall back to cache
-// ═══════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// SERVICE WORKER — Petras Group TMS
+// Strategies:
+//   - App shell: cache on install, network-first on fetch
+//   - Airtable API (GET): network-first, cache fallback
+//   - Static assets (fonts, images): cache-first
+//   - Offline banner via postMessage to all clients
+// ═══════════════════════════════════════════════════════════
 
-const CACHE_NAME = 'tms-v1';
+const SW_VERSION = 'tms-sw-v2';
 
-// App shell files to pre-cache on install
+// ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
   '/PETRASGROUP-TMS/app.html',
+  '/PETRASGROUP-TMS/index.html',
   '/PETRASGROUP-TMS/config.js',
+  '/PETRASGROUP-TMS/logo.png',
   '/PETRASGROUP-TMS/assets/style.css',
+  // Core
   '/PETRASGROUP-TMS/core/api.js',
   '/PETRASGROUP-TMS/core/auth.js',
   '/PETRASGROUP-TMS/core/router.js',
   '/PETRASGROUP-TMS/core/utils.js',
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
+  '/PETRASGROUP-TMS/core/ai-chat.js',
+  // Modules
   '/PETRASGROUP-TMS/modules/dashboard.js',
   '/PETRASGROUP-TMS/modules/weekly_intl.js',
   '/PETRASGROUP-TMS/modules/weekly_natl.js',
   '/PETRASGROUP-TMS/modules/daily_ramp.js',
+  '/PETRASGROUP-TMS/modules/daily_ops.js',
   '/PETRASGROUP-TMS/modules/orders_intl.js',
   '/PETRASGROUP-TMS/modules/orders_natl.js',
+  '/PETRASGROUP-TMS/modules/locations.js',
+  '/PETRASGROUP-TMS/modules/maintenance.js',
+  '/PETRASGROUP-TMS/modules/pallet_upload.js',
+  '/PETRASGROUP-TMS/modules/pallet_ledger.js',
+  '/PETRASGROUP-TMS/modules/invoicing.js',
+  '/PETRASGROUP-TMS/modules/performance.js',
 ];
 
-// Install: pre-cache app shell
+// ── Helpers ──────────────────────────────────────────────
+
+function isAirtableAPI(url) {
+  return url.hostname === 'api.airtable.com';
+}
+
+function isStaticAsset(url) {
+  return url.hostname === 'fonts.googleapis.com'
+      || url.hostname === 'fonts.gstatic.com'
+      || /\.(png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot)(\?|$)/i.test(url.pathname);
+}
+
+// Notify all clients about online/offline status
+function notifyClients(msg) {
+  self.clients.matchAll({ type: 'window' }).then(clients => {
+    clients.forEach(c => c.postMessage(msg));
+  });
+}
+
+// ── INSTALL: pre-cache app shell ────────────────────────
 self.addEventListener('install', e => {
   e.waitUntil(
-    caches.open(CACHE_NAME)
+    caches.open(SW_VERSION)
       .then(cache => cache.addAll(APP_SHELL))
       .then(() => self.skipWaiting())
   );
 });
 
-// Activate: clean old caches
+// ── ACTIVATE: purge old caches, claim clients ───────────
 self.addEventListener('activate', e => {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then(keys => Promise.all(
+        keys.filter(k => k !== SW_VERSION).map(k => caches.delete(k))
+      ))
+      .then(() => self.clients.claim())
+      .then(() => notifyClients({ type: 'SW_ACTIVATED', version: SW_VERSION }))
   );
 });
 
-// Fetch: network-first for everything
-// If network fails, serve from cache (offline mode)
+// ── FETCH ───────────────────────────────────────────────
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Airtable API calls: network-first, cache response for offline reads
-  if (url.hostname === 'api.airtable.com') {
-    // Only cache GET requests
-    if (e.request.method === 'GET') {
-      e.respondWith(
-        fetch(e.request)
-          .then(res => {
+  // ── 1. Airtable API: network-first, cache GET responses ──
+  if (isAirtableAPI(url)) {
+    if (e.request.method !== 'GET') return; // POST/PATCH/DELETE pass through
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          if (res.ok) {
             const clone = res.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-            return res;
-          })
-          .catch(() => caches.match(e.request))
-      );
-    }
-    // POST/PATCH/DELETE: network only, queue if offline
+            caches.open(SW_VERSION).then(cache => cache.put(e.request, clone));
+          }
+          notifyClients({ type: 'SW_ONLINE' });
+          return res;
+        })
+        .catch(() => {
+          notifyClients({ type: 'SW_OFFLINE' });
+          return caches.match(e.request);
+        })
+    );
     return;
   }
 
-  // App files: network-first, cache fallback
+  // ── 2. Static assets (fonts, images): cache-first ──
+  if (isStaticAsset(url)) {
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(res => {
+          if (res.ok) {
+            const clone = res.clone();
+            caches.open(SW_VERSION).then(cache => cache.put(e.request, clone));
+          }
+          return res;
+        });
+      })
+    );
+    return;
+  }
+
+  // ── 3. App shell / other: network-first, cache fallback ──
   e.respondWith(
     fetch(e.request)
       .then(res => {
-        // Cache successful responses for app files
-        if (res.ok && (url.pathname.includes('/PETRASGROUP-TMS/') || url.hostname === 'fonts.googleapis.com')) {
+        if (res.ok) {
           const clone = res.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          caches.open(SW_VERSION).then(cache => cache.put(e.request, clone));
         }
         return res;
       })
       .catch(() => caches.match(e.request))
   );
+});
+
+// ── MESSAGE: handle skip-waiting from app ───────────────
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });

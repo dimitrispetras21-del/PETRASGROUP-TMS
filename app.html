@@ -120,9 +120,41 @@ function init() {
 }
 init();
 
-// Register Service Worker for offline mode
+// Register Service Worker for offline mode + auto-update
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    // Check for updates every 30 minutes
+    setInterval(() => reg.update(), 30 * 60 * 1000);
+    // When a new SW is waiting, tell it to activate immediately
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      if (!nw) return;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          nw.postMessage({ type: 'SKIP_WAITING' });
+        }
+      });
+    });
+  }).catch(() => {});
+
+  // Listen for SW messages (offline/online notifications)
+  navigator.serviceWorker.addEventListener('message', e => {
+    const ob = document.getElementById('offlineBanner');
+    if (!ob) return;
+    if (e.data.type === 'SW_OFFLINE') ob.classList.add('show');
+    if (e.data.type === 'SW_ONLINE')  ob.classList.remove('show');
+    if (e.data.type === 'SW_ACTIVATED') {
+      console.log('[SW] Activated version:', e.data.version);
+    }
+  });
+
+  // Reload when new SW takes control (seamless update)
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    refreshing = true;
+    window.location.reload();
+  });
 }
 </script>
 
@@ -130,7 +162,7 @@ if ('serviceWorker' in navigator) {
 <script>
 const _ob = document.getElementById('offlineBanner');
 window.addEventListener('offline', () => _ob.classList.add('show'));
-window.addEventListener('online', () => _ob.classList.remove('show'));
+window.addEventListener('online',  () => _ob.classList.remove('show'));
 if (!navigator.onLine) _ob.classList.add('show');
 </script>
 </body>
