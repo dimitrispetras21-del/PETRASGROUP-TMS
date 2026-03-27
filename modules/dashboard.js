@@ -60,23 +60,49 @@ async function renderDashboard() {
     });
     const utilPct = activeTrucks ? Math.round(trucksInUse.size / activeTrucks * 100) : 0;
 
-    // KPI 4: Empty Return Legs — exports this week with no matching import
-    const weekExports = orders.filter(r => {
-      const f = r.fields;
-      return f[' Week Number'] == wn && f['Direction'] === 'Export' && f['Truck'];
+    // KPI 4: Dead KM — avg distance between Export Delivery and matched Import Loading
+    // Load locations for coordinate lookup
+    const locs = await atGetAll(TABLES.LOCATIONS, { fields: ['Name','Latitude','Longitude'] }, true);
+    const locCoords = {};
+    locs.forEach(l => {
+      const lat = l.fields['Latitude'], lng = l.fields['Longitude'];
+      if (lat && lng) locCoords[l.id] = { lat: +lat, lng: +lng };
     });
-    const weekImportTrucks = new Set();
-    orders.filter(r => {
-      const f = r.fields;
-      return f[' Week Number'] == wn && f['Direction'] === 'Import' && f['Truck'];
-    }).forEach(r => {
-      const tid = getLinkId(r.fields['Truck']);
-      if (tid) weekImportTrucks.add(tid);
+
+    function _dashHaversine(lat1,lon1,lat2,lon2) {
+      const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+      const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+      return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+    }
+
+    // Find matched export-import pairs this week
+    const weekExports = orders.filter(r => r.fields[' Week Number']==wn && r.fields['Direction']==='Export' && r.fields['Truck']);
+    const weekImports = orders.filter(r => r.fields[' Week Number']==wn && r.fields['Direction']==='Import' && r.fields['Truck']);
+    const deadKmList = [];
+    weekExports.forEach(exp => {
+      const expTruck = getLinkId(exp.fields['Truck']);
+      if (!expTruck) return;
+      const matchedImp = weekImports.find(imp => getLinkId(imp.fields['Truck']) === expTruck);
+      if (!matchedImp) return;
+      // Export last unloading location
+      let expLocId = null;
+      for (let i=10; i>=1; i--) {
+        const ul = exp.fields[`Unloading Location ${i}`];
+        if (ul) { expLocId = Array.isArray(ul) ? ul[0] : ul; break; }
+      }
+      // Import first loading location
+      let impLocId = null;
+      for (let i=1; i<=10; i++) {
+        const ll = matchedImp.fields[`Loading Location ${i}`];
+        if (ll) { impLocId = Array.isArray(ll) ? ll[0] : ll; break; }
+      }
+      if (expLocId && impLocId && locCoords[expLocId] && locCoords[impLocId]) {
+        const d = _dashHaversine(locCoords[expLocId].lat, locCoords[expLocId].lng, locCoords[impLocId].lat, locCoords[impLocId].lng);
+        deadKmList.push(Math.round(d));
+      }
     });
-    const emptyLegs = weekExports.filter(r => {
-      const tid = getLinkId(r.fields['Truck']);
-      return tid && !weekImportTrucks.has(tid);
-    }).length;
+    const avgDeadKm = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : -1;
+    const maxDeadKm = deadKmList.length ? Math.max(...deadKmList) : 0;
 
     // KPI 5: On-Time Delivery
     const deliveredWithPerf = orders.filter(r => r.fields['Delivery Performance']);
@@ -241,10 +267,12 @@ async function renderDashboard() {
       return (!kteo || kteo > today) && (!kek || kek > today) && (!ins || ins > today);
     }).length;
     const complianceRate = activeTrucks ? Math.round(complianceOk / activeTrucks * 100) : 100;
-    const emptyLegScore = weekExports.length ? Math.round((1 - emptyLegs / weekExports.length) * 100) : -1; // -1 = no data
-    const safeEmptyLeg = emptyLegScore >= 0 ? emptyLegScore : 100; // default 100 for score if no data
+    // emptyLegScore removed — replaced by deadKmScore above
+    // Dead KM score: <50km = 100%, 50-150km = linear 100→50%, >150km = linear 50→0%
+    const deadKmScore = avgDeadKm < 0 ? -1 : avgDeadKm <= 50 ? 100 : avgDeadKm <= 150 ? Math.round(100 - (avgDeadKm - 50)) : Math.max(0, Math.round(50 - (avgDeadKm - 150) * 0.33));
+    const safeDeadKm = deadKmScore >= 0 ? deadKmScore : 100;
     const safeOnTime = totalDelivered > 0 ? onTimePct : -1; // -1 = no data
-    const weeklyScore = Math.round(assignmentRate * 0.30 + (safeOnTime >= 0 ? safeOnTime : 80) * 0.30 + complianceRate * 0.25 + safeEmptyLeg * 0.15);
+    const weeklyScore = Math.round(assignmentRate * 0.30 + (safeOnTime >= 0 ? safeOnTime : 80) * 0.30 + complianceRate * 0.25 + safeDeadKm * 0.15);
     const scoreColor = weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
 
     // Alert banner
@@ -423,10 +451,10 @@ async function renderDashboard() {
             <div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${weekExports.length ? '#94A3B8' : '#475569'},transparent)"></div>
-            <div class="dash-kpi-label">Κενά Επιστροφής</div>
-            <div class="dash-kpi-value" style="color:${weekExports.length ? '#CBD5E1' : '#475569'}">${weekExports.length ? emptyLegs : 'N/A'}</div>
-            <div class="dash-kpi-sub">${weekExports.length ? `export χωρίς import W${wn}` : 'δεν υπάρχουν exports αυτή τη βδομάδα'}</div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'#10B981':avgDeadKm<=150?'#F59E0B':'#EF4444') : '#475569'},transparent)"></div>
+            <div class="dash-kpi-label">Dead Kilometers</div>
+            <div class="dash-kpi-value" style="color:${avgDeadKm>=0 ? (avgDeadKm<=50?'var(--success)':avgDeadKm<=150?'var(--warning)':'var(--danger)') : '#475569'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}</div>
+            <div class="dash-kpi-sub">${avgDeadKm>=0 ? `avg ${deadKmList.length} pairs W${wn} (max ${maxDeadKm}km)` : 'δεν υπάρχουν matched pairs'}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? '#10B981' : '#475569'},transparent)"></div>
@@ -619,7 +647,7 @@ async function renderDashboard() {
                   ${_dashScoreBar('Ανάθεση', assignmentRate, '#0284C7')}
                   ${_dashScoreBar('On-Time', onTimePct, '#10B981')}
                   ${_dashScoreBar('Compliance', complianceRate, '#7C3AED')}
-                  ${_dashScoreBar('Empty Legs', emptyLegScore, '#F59E0B')}
+                  ${_dashScoreBar('Dead KM', deadKmScore >= 0 ? deadKmScore : 100, '#F59E0B')}
                 </div>
               </div>
             </div>
