@@ -172,7 +172,10 @@ async function renderDashboard() {
       const pallets = f['Total Pallets'] || 0;
       const created = f['Created'] || f['Date Created'] || '';
       const hoursOld = created ? Math.round((Date.now() - new Date(created).getTime()) / 3600000) : 0;
-      return { id: r.id, orderNum: f['Order Number'] || f['Order ID'] || '—', client: clientName, route, delDate, pallets, hoursOld, direction: f['Direction'] };
+      const dir = f['Direction'];
+      const ref = f['Reference'] || '';
+      const orderLabel = ref ? `${dir === 'Export' ? 'EXP' : 'IMP'} ${ref}` : (f['Order Number'] || (dir === 'Export' ? 'EXP' : 'IMP'));
+      return { id: r.id, orderNum: orderLabel, client: clientName, route, delDate, pallets, hoursOld, direction: dir };
     }).sort((a, b) => b.hoursOld - a.hoursOld).slice(0, 10);
 
     // Section 5a: High Risk — orders due in 48h with no truck
@@ -238,8 +241,10 @@ async function renderDashboard() {
       return (!kteo || kteo > today) && (!kek || kek > today) && (!ins || ins > today);
     }).length;
     const complianceRate = activeTrucks ? Math.round(complianceOk / activeTrucks * 100) : 100;
-    const emptyLegScore = weekExports.length ? Math.round((1 - emptyLegs / weekExports.length) * 100) : 100;
-    const weeklyScore = Math.round(assignmentRate * 0.30 + onTimePct * 0.30 + complianceRate * 0.25 + emptyLegScore * 0.15);
+    const emptyLegScore = weekExports.length ? Math.round((1 - emptyLegs / weekExports.length) * 100) : -1; // -1 = no data
+    const safeEmptyLeg = emptyLegScore >= 0 ? emptyLegScore : 100; // default 100 for score if no data
+    const safeOnTime = totalDelivered > 0 ? onTimePct : -1; // -1 = no data
+    const weeklyScore = Math.round(assignmentRate * 0.30 + (safeOnTime >= 0 ? safeOnTime : 80) * 0.30 + complianceRate * 0.25 + safeEmptyLeg * 0.15);
     const scoreColor = weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
 
     // Alert banner
@@ -418,16 +423,16 @@ async function renderDashboard() {
             <div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#94A3B8,transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${weekExports.length ? '#94A3B8' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">Κενά Επιστροφής</div>
-            <div class="dash-kpi-value" style="color:#CBD5E1">${emptyLegs}</div>
-            <div class="dash-kpi-sub">export χωρίς import W${wn}</div>
+            <div class="dash-kpi-value" style="color:${weekExports.length ? '#CBD5E1' : '#475569'}">${weekExports.length ? emptyLegs : 'N/A'}</div>
+            <div class="dash-kpi-sub">${weekExports.length ? `export χωρίς import W${wn}` : 'δεν υπάρχουν exports αυτή τη βδομάδα'}</div>
           </div>
           <div class="dash-kpi" onclick="navigate('orders_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? '#10B981' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">On-Time Παράδοση</div>
-            <div class="dash-kpi-value" style="color:var(--success)">${onTimePct}%</div>
-            <div class="dash-kpi-sub">${onTimeCount}/${totalDelivered} on time</div>
+            <div class="dash-kpi-value" style="color:${totalDelivered > 0 ? 'var(--success)' : '#475569'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}</div>
+            <div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} on time` : 'δεν υπάρχουν δεδομένα παράδοσης'}</div>
           </div>
         </div>
 

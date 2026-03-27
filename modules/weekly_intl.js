@@ -888,8 +888,8 @@ function _wiRowHTML(row,i){
     sCls='s-ok'; dotColor='#0284C7';
   }
 
-  const fromStr=primary?_wiClean(primary.fields['Loading Summary']||'—'):'—';
-  const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||'—'):'—';
+  const fromStr=primary?_wiClean(primary.fields['Loading Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
+  const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
   const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):
                         (primary?.fields['Total Pallets']||0);
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
