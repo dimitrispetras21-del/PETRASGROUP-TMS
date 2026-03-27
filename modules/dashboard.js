@@ -432,13 +432,13 @@ async function renderDashboard() {
 
         <!-- KPI Bar -->
         <div class="dash-kpi-bar">
-          <div class="dash-kpi" onclick="navigate('orders_intl')">
+          <div class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#EF4444,transparent)"></div>
             <div class="dash-kpi-label">Χωρίς Ανάθεση (Export)</div>
             <div class="dash-kpi-value" style="color:var(--danger)">${unassignedExport}</div>
             <div class="dash-kpi-sub">ανοιχτές εξαγωγές</div>
           </div>
-          <div class="dash-kpi" onclick="navigate('orders_intl')">
+          <div class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
             <div class="dash-kpi-label">Χωρίς Ανάθεση (Import)</div>
             <div class="dash-kpi-value" style="color:var(--warning)">${unassignedImport}</div>
@@ -577,6 +577,7 @@ async function renderDashboard() {
             <div class="dash-card">
               <div class="dash-card-header">
                 <div class="dash-card-title" style="color:var(--danger)">ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ</div>
+                <span class="dash-card-link" onclick="window._dashNav={trip:'unassigned'};navigate('orders_intl')">&#8594; Orders</span>
               </div>
               <div class="dash-card-body">
                 ${highRisk.length ? highRisk.map(r => {
@@ -597,6 +598,7 @@ async function renderDashboard() {
             <div class="dash-card">
               <div class="dash-card-header">
                 <div class="dash-card-title">ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ</div>
+                <span class="dash-card-link" onclick="navigate('expiry_alerts')">&#8594; Expiry Alerts</span>
               </div>
               <div class="dash-card-body">
                 ${fleetAlerts.length ? fleetAlerts.slice(0, 6).map(a => `<div class="dash-fleet-alert-row">

@@ -76,6 +76,12 @@ async function renderOrdersIntl() {
     INTL_ORDERS.filtered = records;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
+    // Apply dashboard nav filter if coming from KPI click
+    if (window._dashNav) {
+      if (window._dashNav.dir) _intlFilters.direction = window._dashNav.dir;
+      if (window._dashNav.trip) _intlFilters.trip = window._dashNav.trip;
+      window._dashNav = null;
+    }
     // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
     const unresolvedIds = clientIds.filter(id=>!_clientsMap[id]);
