@@ -188,6 +188,10 @@ function _aicPageContext() {
   transition:all .15s; }
 .aic-send:hover { background:var(--accent-hover); }
 .aic-send:disabled { opacity:0.4; cursor:not-allowed; }
+.aic-qbtn { padding:4px 10px; border-radius:12px; border:1px solid rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.04); color:#94A3B8; font-size:10px; font-weight:500;
+  cursor:pointer; transition:all .15s; white-space:nowrap; }
+.aic-qbtn:hover { background:rgba(56,189,248,0.1); color:#38BDF8; border-color:rgba(56,189,248,0.3); }
 `;
   document.head.appendChild(s);
 })();
@@ -764,7 +768,12 @@ function _aicInit() {
       <span class="aic-head-title">Νάκης</span>
       <button class="aic-head-close" onclick="_aicToggle()">✕</button>
     </div>
-    <!-- observer cards removed — Νάκης mentions alerts conversationally -->
+    <div class="aic-quick" id="aic-quick" style="display:flex;gap:6px;padding:8px 12px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.06)">
+      <button class="aic-qbtn" onclick="_aicQuick('Morning briefing')">Briefing</button>
+      <button class="aic-qbtn" onclick="_aicQuick('Τι πρεπει να κανω σημερα?')">Today</button>
+      <button class="aic-qbtn" onclick="_aicQuick('Ποια orders ειναι unassigned?')">Unassigned</button>
+      <button class="aic-qbtn" onclick="_aicQuick('Fleet status - τι ληγει?')">Fleet</button>
+    </div>
     <div class="aic-msgs" id="aic-msgs"></div>
     <div class="aic-input-bar">
       <textarea class="aic-input" id="aic-input" rows="1" placeholder="Ask anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aicSend()}"></textarea>
@@ -807,8 +816,14 @@ async function _aicToggle() {
         _aicRenderMsgs();
         _aicSaveHistory();
       } else {
-        // Has profile → contextual greeting via Claude
-        AiChat.messages.push({ role: 'user', content: '(ο χρήστης μόλις άνοιξε τον Νάκη)' });
+        // Has profile → morning briefing or contextual greeting
+        const briefKey = 'nakis_brief_' + localToday();
+        const hadBriefToday = localStorage.getItem(briefKey);
+        const briefPrompt = !hadBriefToday
+          ? '(MORNING BRIEFING: ο χρήστης μόλις μπήκε για πρώτη φορά σήμερα. Δώσε σύντομο morning briefing στα ελληνικά: 1) Πόσα unassigned orders υπάρχουν 2) Τι φορτώνει/παραδίδεται σήμερα 3) Urgent θέματα από τα observer data. Μέγιστο 4-5 γραμμές. Ξεκίνα με "Καλημέρα" ή "Καλό απόγευμα" ανάλογα την ώρα.)'
+          : '(ο χρήστης μόλις άνοιξε τον Νάκη)';
+        if (!hadBriefToday) localStorage.setItem(briefKey, '1');
+        AiChat.messages.push({ role: 'user', content: briefPrompt });
         _aicRenderMsgs();
         _aicSetLoading(true);
         try {
@@ -887,6 +902,11 @@ function _aicSaveHistory() {
     const toSave = AiChat.messages.slice(-20).filter(m => typeof m.content === 'string');
     sessionStorage.setItem('aic_history', JSON.stringify(toSave));
   } catch(e) {}
+}
+
+function _aicQuick(text) {
+  const input = document.getElementById('aic-input');
+  if (input) { input.value = text; _aicSend(); }
 }
 
 /* ── INIT ON LOAD ──────────────────────────────────────────── */
