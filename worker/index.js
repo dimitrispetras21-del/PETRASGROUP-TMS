@@ -1,130 +1,144 @@
 // ═══════════════════════════════════════════════
-// CLOUDFLARE WORKER — Airtable API Proxy
-// Security + Server-side Rate Limiting for multi-user
+// PETRAS GROUP TMS — Cloudflare Worker API Proxy
+// Hides Airtable API key from the browser
+// Server-side concurrency limiting (max 4 to Airtable)
 // ═══════════════════════════════════════════════
 
-const ALLOWED_ORIGINS = [
-  'https://dimitrispetras21-del.github.io',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000',
-];
+const ALLOWED_ORIGIN = 'https://dimitrispetras21-del.github.io';
+const AIRTABLE_API   = 'https://api.airtable.com';
+const MAX_CONCURRENT = 4;
+const MAX_QUEUED     = 20;
 
-const AIRTABLE_BASE = 'https://api.airtable.com';
-const RATE_LIMIT = 4;        // max 4 req/sec to Airtable (limit is 5)
-const RATE_WINDOW_MS = 1000; // 1 second window
+let activeRequests = 0;
+const queue = [];
 
-// In-memory sliding window (resets per worker instance)
-let requestTimestamps = [];
-
-function isRateLimited() {
-  const now = Date.now();
-  // Remove timestamps older than window
-  requestTimestamps = requestTimestamps.filter(t => now - t < RATE_WINDOW_MS);
-  if (requestTimestamps.length >= RATE_LIMIT) {
-    return true;
+function processQueue() {
+  while (queue.length > 0 && activeRequests < MAX_CONCURRENT) {
+    const next = queue.shift();
+    next();
   }
-  requestTimestamps.push(now);
-  return false;
 }
 
-// Wait until a slot is available (max 5 sec)
-async function waitForSlot() {
-  for (let i = 0; i < 25; i++) {
-    if (!isRateLimited()) return true;
-    await new Promise(r => setTimeout(r, 200));
-  }
-  return false; // timeout
+function enqueue() {
+  return new Promise((resolve) => {
+    const tryRun = () => {
+      activeRequests++;
+      resolve();
+    };
+    if (activeRequests < MAX_CONCURRENT) {
+      tryRun();
+    } else {
+      queue.push(tryRun);
+    }
+  });
+}
+
+function release() {
+  activeRequests--;
+  processQueue();
+}
+
+function corsHeaders(origin) {
+  const allowed = (origin === ALLOWED_ORIGIN) ? ALLOWED_ORIGIN : '';
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+
+function jsonError(message, status, origin) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { ...corsHeaders(origin), 'Content-Type': 'application/json' },
+  });
 }
 
 export default {
   async fetch(request, env) {
+    const origin = request.headers.get('Origin') || '';
+    const cors = corsHeaders(origin);
+
     // CORS preflight
     if (request.method === 'OPTIONS') {
-      return handleCORS(request);
+      return new Response(null, { status: 204, headers: cors });
     }
 
-    // Validate origin
-    const origin = request.headers.get('Origin') || '';
-    if (!ALLOWED_ORIGINS.includes(origin)) {
-      return new Response('Forbidden', { status: 403 });
+    // Reject disallowed origins (allow no-origin for direct/curl testing)
+    if (origin && origin !== ALLOWED_ORIGIN) {
+      return jsonError('Origin not allowed', 403, origin);
     }
 
-    // Parse path
+    // Health check
     const url = new URL(request.url);
-    const path = url.pathname;
-
-    // Health check endpoint
-    if (path === '/health') {
-      return jsonResponse({ status: 'ok', queue: requestTimestamps.length }, origin);
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({
+        status: 'ok',
+        active: activeRequests,
+        queued: queue.length,
+      }), {
+        status: 200,
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Only allow /v0/ paths
-    if (!path.startsWith('/v0/')) {
-      return new Response('Not found', { status: 404 });
+    // Only allow /v0/ paths (Airtable REST API)
+    if (!url.pathname.startsWith('/v0/')) {
+      return jsonError('Invalid path. Expected /v0/{baseId}/{tableId}', 400, origin);
     }
 
-    // Server-side rate limiting — wait for slot
-    const gotSlot = await waitForSlot();
-    if (!gotSlot) {
-      return jsonResponse({ error: 'Rate limit exceeded. Try again.' }, origin, 429);
+    // Check secret is configured
+    if (!env.AIRTABLE_TOKEN) {
+      return jsonError('Server misconfigured: missing AIRTABLE_TOKEN secret', 500, origin);
     }
 
-    // Build Airtable URL
-    const airtableUrl = `${AIRTABLE_BASE}${path}${url.search}`;
-
-    // Forward request to Airtable with secret API key
-    const headers = new Headers();
-    headers.set('Authorization', `Bearer ${env.AT_TOKEN}`);
-    if (request.method !== 'GET' && request.method !== 'DELETE') {
-      headers.set('Content-Type', 'application/json');
+    // Reject if queue is full
+    if (queue.length >= MAX_QUEUED) {
+      return new Response(JSON.stringify({ error: 'Too many queued requests. Try again shortly.' }), {
+        status: 429,
+        headers: { ...cors, 'Content-Type': 'application/json', 'Retry-After': '2' },
+      });
     }
+
+    // Wait for concurrency slot
+    await enqueue();
 
     try {
-      const airtableResponse = await fetch(airtableUrl, {
+      const airtableUrl = AIRTABLE_API + url.pathname + url.search;
+
+      const proxyHeaders = {
+        'Authorization': `Bearer ${env.AIRTABLE_TOKEN}`,
+      };
+
+      // Forward Content-Type for write requests
+      const ct = request.headers.get('Content-Type');
+      if (ct) proxyHeaders['Content-Type'] = ct;
+
+      const fetchOpts = {
         method: request.method,
-        headers,
-        body: ['POST', 'PATCH', 'PUT'].includes(request.method) ? request.body : null,
+        headers: proxyHeaders,
+      };
+
+      // Forward body for POST/PATCH/PUT
+      if (['POST', 'PATCH', 'PUT'].includes(request.method)) {
+        fetchOpts.body = await request.text();
+      }
+
+      const resp = await fetch(airtableUrl, fetchOpts);
+      const body = await resp.text();
+
+      return new Response(body, {
+        status: resp.status,
+        headers: {
+          ...cors,
+          'Content-Type': resp.headers.get('Content-Type') || 'application/json',
+        },
       });
-
-      // Return response with CORS headers
-      const response = new Response(airtableResponse.body, {
-        status: airtableResponse.status,
-        statusText: airtableResponse.statusText,
-      });
-
-      response.headers.set('Access-Control-Allow-Origin', origin);
-      response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
-      response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
-      response.headers.set('Content-Type', 'application/json');
-
-      return response;
     } catch (err) {
-      return jsonResponse({ error: 'Upstream error: ' + err.message }, origin, 502);
+      return jsonError('Proxy error: ' + err.message, 502, origin);
+    } finally {
+      release();
     }
-  }
+  },
 };
-
-function jsonResponse(data, origin, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': origin || '*',
-    }
-  });
-}
-
-function handleCORS(request) {
-  const origin = request.headers.get('Origin') || '';
-  if (!ALLOWED_ORIGINS.includes(origin)) {
-    return new Response('Forbidden', { status: 403 });
-  }
-  return new Response(null, {
-    headers: {
-      'Access-Control-Allow-Origin': origin,
-      'Access-Control-Allow-Methods': 'GET, POST, PATCH, PUT, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type',
-      'Access-Control-Max-Age': '86400',
-    }
-  });
-}
