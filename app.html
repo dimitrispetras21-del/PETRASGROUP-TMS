@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1774601492">
+<link rel="stylesheet" href="assets/style.css?v=1774618509">
 </head>
 <body>
 
@@ -118,8 +118,20 @@ function init() {
   navigate(localStorage.getItem('tms_page') || 'dashboard');
 }
 init();
+
+// Register Service Worker for offline mode
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
 </script>
 
+<div class="offline-banner" id="offlineBanner">Offline Mode — data may not be current</div>
+<script>
+const _ob = document.getElementById('offlineBanner');
+window.addEventListener('offline', () => _ob.classList.add('show'));
+window.addEventListener('online', () => _ob.classList.remove('show'));
+if (!navigator.onLine) _ob.classList.add('show');
+</script>
 </body>
 </html>
 <!-- rebuild 1774552719 -->

@@ -1261,3 +1261,17 @@ tbody tr:hover { background: var(--bg-hover); }
 .modal-overlay { z-index: 9000; }
 .mf-overlay { z-index: 9100; }
 #toast { z-index: 9999; }
+
+/* ═══════════════════════════════════════════════
+   OFFLINE INDICATOR
+═══════════════════════════════════════════════ */
+.offline-banner {
+  position: fixed; top: 0; left: 0; right: 0;
+  background: #DC2626; color: #fff;
+  text-align: center; padding: 6px 0;
+  font: 500 13px 'DM Sans', sans-serif;
+  z-index: 10000;
+  transform: translateY(-100%);
+  transition: transform 0.3s ease;
+}
+.offline-banner.show { transform: translateY(0); }
