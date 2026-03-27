@@ -49,11 +49,11 @@ async function _resolveClientName(recId) {
 
 function _clientName(f) {
   const id = Array.isArray(f['Client']) ? f['Client'][0] : null;
-  return id ? (_clientsMap[id] || id.slice(-6)) : '—';
+  return id ? escapeHtml(_clientsMap[id] || id.slice(-6)) : '—';
 }
 function _cleanSummary(s) {
   if (!s) return '—';
-  return s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—';
+  return escapeHtml(s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—');
 }
 function _weekNum(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
@@ -227,8 +227,8 @@ function _renderIntlTable(records) {
     const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
     const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
     return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}">
-      <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${f['Order Number']||r.id.slice(-6)}</strong></td>
-      <td>W${f[' Week Number']||'—'}</td>
+      <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Order Number']||r.id.slice(-6))}</strong></td>
+      <td>W${escapeHtml(f[' Week Number']||'—')}</td>
       <td>${dirB}</td>
       <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
       <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
@@ -302,11 +302,11 @@ function selectIntlOrder(recId) {
       const locArr = f[`${locPfx} Location ${i}`];
       const locId  = Array.isArray(locArr) ? locArr[0] : null;
       if (!locId) break;
-      const name  = _locationsMap[locId] || locId.slice(-6);
+      const name  = escapeHtml(_locationsMap[locId] || locId.slice(-6));
       const pal   = f[`${palPfx} Pallets ${i}`];
       const dtRaw = i===1 ? f[dt1field] : f[`${dtPfx} DateTime ${i}`];
       const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
-      html += _dF(`Stop ${i}`, `${name}${pal?' — '+pal+' pal':''}${dtStr?' · '+dtStr:''}`);
+      html += _dF(`Stop ${i}`, `${name}${pal?' — '+escapeHtml(pal)+' pal':''}${dtStr?' · '+dtStr:''}`);
     }
     return html || _dF('Location', '—');
   };
@@ -316,10 +316,10 @@ function selectIntlOrder(recId) {
       <div>
         <div class="detail-title" style="font-size:13px">
           ${f['High Risk Flag']?'<span style="color:var(--danger);margin-right:4px">⚠</span>':''}
-          ${f['Order Number']||recId.slice(-6)}
+          ${escapeHtml(f['Order Number']||recId.slice(-6))}
         </div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${f['Brand']||''} · ${f['Direction']||''} · W${f[' Week Number']||'—'}
+          ${escapeHtml(f['Brand']||'')} · ${escapeHtml(f['Direction']||'')} · W${escapeHtml(f[' Week Number']||'—')}
         </div>
       </div>
       <div class="detail-actions">
@@ -331,7 +331,7 @@ function selectIntlOrder(recId) {
     </div>
     <div class="detail-body">
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${f['Status']||'No Status'}</span>
+        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${escapeHtml(f['Status']||'No Status')}</span>
         ${hasTrip?'<span class="badge badge-green">Trip Assigned</span>':'<span class="badge badge-yellow">No Trip</span>'}
         ${f['Invoiced']?'<span class="badge badge-grey">Invoiced</span>':''}
         ${f['High Risk Flag']?'<span class="badge badge-red">⚠ High Risk</span>':''}
@@ -358,13 +358,13 @@ function selectIntlOrder(recId) {
       <div class="detail-section">
         <div class="detail-section-title">Order</div>
         ${_dF('Client',       _clientName(f))}
-        ${_dF('Reference',    f['Reference']?'('+f['Reference']+')':'—')}
-        ${_dF('Goods',        f['Goods']||'—')}
-        ${_dF('Temperature',  f['Temperature °C']!=null?f['Temperature °C']+' °C':'—')}
-        ${_dF('Reefer Mode',  f['Refrigerator Mode']||'—')}
-        ${_dF('Pallet Type',  f['Pallet Type']||'—')}
-        ${_dF('Total Pallets',f['Total Pallets']||'—')}
-        ${_dF('Gross Weight', f['Gross Weight kg']?f['Gross Weight kg']+' kg':'—')}
+        ${_dF('Reference',    f['Reference']?'('+escapeHtml(f['Reference'])+')':'—')}
+        ${_dF('Goods',        escapeHtml(f['Goods']||'—'))}
+        ${_dF('Temperature',  f['Temperature °C']!=null?escapeHtml(f['Temperature °C'])+' °C':'—')}
+        ${_dF('Reefer Mode',  escapeHtml(f['Refrigerator Mode']||'—'))}
+        ${_dF('Pallet Type',  escapeHtml(f['Pallet Type']||'—'))}
+        ${_dF('Total Pallets',escapeHtml(f['Total Pallets']||'—'))}
+        ${_dF('Gross Weight', f['Gross Weight kg']?escapeHtml(f['Gross Weight kg'])+' kg':'—')}
         ${_dF('Pallet Exch.', f['Pallet Exchange']?'✓ Yes':'No')}
         ${f['Pallet Exchange'] ? `
         <div style="margin:8px 0;padding:8px;background:rgba(2,132,199,0.08);border-radius:6px;border:1px solid rgba(2,132,199,0.15)">
@@ -379,7 +379,7 @@ function selectIntlOrder(recId) {
             ${f['Veroia Switch ']?`<span>Sheet 2: ${f['Pallet Sheet 2 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>`:'<span style="color:var(--text-dim)">Sheet 2: N/A</span>'}
           </div>
         </div>` : ''}
-        ${_dF('Carrier',      f['Carrier Type']||'—')}
+        ${_dF('Carrier',      escapeHtml(f['Carrier Type']||'—'))}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Loading</div>
@@ -394,7 +394,7 @@ function selectIntlOrder(recId) {
         <div class="detail-section-title">Financial</div>
         ${_dF('Price',     f['Price']    ?'€ '+Number(f['Price']).toLocaleString('el-GR')    :'—')}
         ${_dF('Net Price', f['Net Price']?'€ '+Number(f['Net Price']).toLocaleString('el-GR') :'—')}
-        ${_dF('Invoice Status',f['Invoice Status']||'—')}
+        ${_dF('Invoice Status',escapeHtml(f['Invoice Status']||'—'))}
       </div>`:''}
       ${f['Pallet Exchange'] ? `
       <div class="detail-section">
@@ -411,18 +411,18 @@ function selectIntlOrder(recId) {
         </div>
       </div>` : ''}
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
-        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${f['Notes']}</div></div>`:''}
+        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${escapeHtml(f['Notes'])}</div></div>`:''}
     </div>`;
 }
 
-function _dF(l,v) { return `<div class="detail-field"><span class="detail-field-label">${l}</span><span class="detail-field-value">${v}</span></div>`; }
+function _dF(l,v) { return `<div class="detail-field"><span class="detail-field-label">${escapeHtml(l)}</span><span class="detail-field-value">${v}</span></div>`; }
 function _chk(l,v) { return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`; }
 
 // ─── Linked select widgets ───────────────────────
 function _locSelect(id, currentId) {
   const label = currentId ? (_locationsMap[currentId]||'') : '';
   return `<div style="position:relative">
-    <input class="form-input" id="ls_${id}" autocomplete="off" value="${label}"
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(label)}"
       placeholder="Search location..."
       oninput="_locDrop('${id}',this.value)"
       onfocus="_locDrop('${id}',this.value)"
@@ -434,7 +434,7 @@ function _locSelect(id, currentId) {
 
 function _clientSelect(id, currentId, currentLabel) {
   return `<div style="position:relative">
-    <input class="form-input" id="ls_${id}" autocomplete="off" value="${currentLabel||''}"
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(currentLabel||'')}"
       placeholder="Type 2+ chars to search..."
       oninput="_clientDrop('${id}',this.value)"
       onblur="_hideDrop('ls_${id}_d')">
@@ -471,8 +471,8 @@ function _showDrop(dropId, id, items) {
   if (!items.length) { d.style.display='none'; return; }
   d.style.display = 'block';
   d.innerHTML = items.map(o =>
-    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'")}')"
-      class="linked-drop-item">${o.label}</div>`
+    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'").replace(/</g,'&lt;')}')"
+      class="linked-drop-item">${escapeHtml(o.label)}</div>`
   ).join('');
 }
 
@@ -576,11 +576,11 @@ async function _openModal(recId, f, _clientLabelOverride) {
       </div>
       <div class="form-field">
         <label class="form-label">Reference (4-digit)</label>
-        <input class="form-input" type="text" id="f_Reference" value="${f['Reference']||''}" placeholder="e.g. 3813" maxlength="10">
+        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="e.g. 3813" maxlength="10">
       </div>
       <div class="form-field">
         <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="f_Goods" value="${f['Goods']||''}" placeholder="e.g. Fresh Produce">
+        <input class="form-input" type="text" id="f_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="e.g. Fresh Produce">
       </div>
       <div class="form-field">
         <label class="form-label">Gross Weight (kg)</label>
@@ -1505,7 +1505,7 @@ function _scanHandleFile(file) {
   const drop = document.getElementById('scanDrop');
   if (drop) drop.innerHTML = `
     <div style="font-size:24px;margin-bottom:6px">✅</div>
-    <div style="font-size:13px;font-weight:500;color:var(--success)">${file.name}</div>
+    <div style="font-size:13px;font-weight:500;color:var(--success)">${escapeHtml(file.name)}</div>
     <div style="font-size:12px;color:var(--text-dim);margin-top:3px">${(file.size/1024).toFixed(0)} KB — κλικ για αλλαγή</div>`;
 
   if (file.type.startsWith('image/')) {
@@ -1680,17 +1680,17 @@ async function _scanPreview(data) {
         <span class="detail-section-title" style="margin:0">AI Extraction</span>
         <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
       </div>
-      ${row('Client',   clientLabel||data.client_name, !!clientId)}
-      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), s._locLabel||s.city+(s.country?', '+s.country:''), !!s._locId)).join('')}
-      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), s._locLabel||s.city+(s.country?', '+s.country:''), !!s._locId)).join('')}
-      ${row('Load Date',  data.loading_date,  true)}
-      ${row('Del Date',   data.delivery_date,  true)}
-      ${row('Goods',      data.goods,          true)}
-      ${row('Weight',     data.gross_weight_kg?data.gross_weight_kg+' kg':null, true)}
-      ${row('Pallets',    data.pallets?String(data.pallets):null, true)}
-      ${row('Temp',       data.temperature_c!=null?data.temperature_c+' °C':null, true)}
-      ${row('Direction',  data.direction, true)}
-      ${data.notes?`<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${data.notes}</div>`:''}
+      ${row('Client',   escapeHtml(clientLabel||data.client_name), !!clientId)}
+      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
+      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
+      ${row('Load Date',  escapeHtml(data.loading_date),  true)}
+      ${row('Del Date',   escapeHtml(data.delivery_date),  true)}
+      ${row('Goods',      escapeHtml(data.goods),          true)}
+      ${row('Weight',     data.gross_weight_kg?escapeHtml(data.gross_weight_kg)+' kg':null, true)}
+      ${row('Pallets',    data.pallets?escapeHtml(String(data.pallets)):null, true)}
+      ${row('Temp',       data.temperature_c!=null?escapeHtml(data.temperature_c)+' °C':null, true)}
+      ${row('Direction',  escapeHtml(data.direction), true)}
+      ${data.notes?`<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${escapeHtml(data.notes)}</div>`:''}
     </div>
     <div style="font-size:11px;color:var(--text-dim);text-align:center;padding-top:4px">
       ⚠ = δεν βρέθηκε match · επιλογή χειροκίνητα στη φόρμα

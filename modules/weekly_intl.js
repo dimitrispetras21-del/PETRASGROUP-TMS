@@ -413,7 +413,7 @@ function _wiFmtFull(s){
     return str.charAt(0).toUpperCase()+str.slice(1);
   }catch{return s;}
 }
-function _wiClean(s){return(s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim();}
+function _wiClean(s){return escapeHtml((s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim());}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
@@ -767,15 +767,15 @@ function _wiImpRowHTML(row){
     if(impPartner){
       impPill=`<div class="wi-pill">
         <div class="wi-card wi-card-bp">
-          <div class="wi-card-top">${impPartner.slice(0,26)}${impPartner.length>26?'…':''}</div>
-          ${row.partnerPlates?`<div class="wi-card-bot">${row.partnerPlates}</div>`:''}
+          <div class="wi-card-top">${escapeHtml(impPartner.slice(0,26))}${impPartner.length>26?'…':''}</div>
+          ${row.partnerPlates?`<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>`:''}
         </div>
       </div>`;
     } else {
       const impTruckLine=[impTruck,impTrailer].filter(Boolean).join(' · ');
       impPill=`<div class="wi-pill"><div class="wi-card wi-card-ok">
-        <div class="wi-card-top">${impTruckLine||'—'}</div>
-        ${impSurname?`<div class="wi-card-bot">${row.driverLabel||''}</div>`:''}
+        <div class="wi-card-top">${escapeHtml(impTruckLine||'—')}</div>
+        ${impSurname?`<div class="wi-card-bot">${escapeHtml(row.driverLabel||'')}</div>`:''}
       </div></div>`;
     }
   } else {
@@ -794,7 +794,7 @@ function _wiImpRowHTML(row){
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
-          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
+          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef2)}</span>`:''}
           ${_wiBadges(f)}
         </div>
         <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
@@ -809,7 +809,7 @@ function _wiImpRowHTML(row){
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
-          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef2}</span>`:''}
+          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef2)}</span>`:''}
           ${_wiBadges(f)}
         </div>
       </div>`;
@@ -908,15 +908,15 @@ function _wiRowHTML(row,i){
     if(partner){
       pill=`<div class="wi-pill">
         <div class="wi-card wi-card-bp">
-          <div class="wi-card-top">${partner.slice(0,26)}${partner.length>26?'…':''}</div>
-          ${row.partnerPlates?`<div class="wi-card-bot">${row.partnerPlates}</div>`:''}
+          <div class="wi-card-top">${escapeHtml(partner.slice(0,26))}${partner.length>26?'…':''}</div>
+          ${row.partnerPlates?`<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>`:''}
         </div>
       </div>`;
     } else {
       const truckLine=[truck,trailer].filter(Boolean).join(' · ');
       pill=`<div class="wi-pill"><div class="wi-card wi-card-ok">
-        <div class="wi-card-top">${truckLine||'—'}</div>
-        ${surname?`<div class="wi-card-bot">${row.driverLabel||''}</div>`:''}
+        <div class="wi-card-top">${escapeHtml(truckLine||'—')}</div>
+        ${surname?`<div class="wi-card-bot">${escapeHtml(row.driverLabel||'')}</div>`:''}
       </div></div>`;
     }
   } else {
@@ -951,7 +951,7 @@ function _wiRowHTML(row,i){
           ${impLoadDt!=='—'?`<span>${impLoadDt} → ${impDelDt}</span>`:''}
           ${impLoadDt!=='—'&&impPals?`<span class="wi-sub-div"></span>`:''}
           ${impPals?`<span>${impPals} pal</span>`:''}
-          ${impRef?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${impRef}</span>`:''}
+          ${impRef?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef)}</span>`:''}
           ${_wiBadges(imp.fields)}
         </div>
         <span style="font-size:9px;color:#0F172A;font-weight:600;opacity:0.5">↩ matched</span>
@@ -979,7 +979,7 @@ function _wiRowHTML(row,i){
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
-          ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${ref}</span>`:''}
+          ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(ref)}</span>`:''}
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
@@ -1056,7 +1056,7 @@ function _wiPanelHTML(row){
           <div class="wi-pf">
             <span class="wi-plbl">Truck Plates</span>
             <input class="wi-ti" type="text" placeholder="e.g. ΙΑΒ 1099"
-                   value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"
+                   value="${escapeHtml(row.partnerPlates||'')}"
                    id="wi-pp-${row.id}"
                    oninput="_wiField(${row.id},'partnerPlates',this.value)"
                    onclick="event.stopPropagation()"/>
@@ -1496,7 +1496,7 @@ function _wiOpenPopover(e,rowId){
             <span class="wi-pop-lbl">Plates</span>
             <input class="wi-pop-inp wi-pop-inp-wide" type="text"
                    placeholder="e.g. ΙΑΒ 1099" id="wi-pop-pp-${rowId}"
-                   value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
+                   value="${escapeHtml(row.partnerPlates||'')}"/>
           </div>
           <div class="wi-pop-field">
             <span class="wi-pop-lbl">Export Rate €</span>

@@ -460,13 +460,13 @@ function _wnRowHTML(row, i) {
       </div>
       <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
         <div class="wi-route">
-          <span class="from">${fromStr}</span>
+          <span class="from">${escapeHtml(fromStr)}</span>
           <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
+          <span class="dest">${escapeHtml(toStr)}</span>
           ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
         </div>
         <div class="wi-sub">
-          ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+          ${clientLabel ? `<span style="color:var(--text-mid)">${escapeHtml(clientLabel)}</span><span class="wi-sub-div"></span>` : ''}
           <span>${loadDt} → ${delDt}</span>
           <span class="wi-sub-div"></span>
           <span>${pals} pal</span>
@@ -507,9 +507,9 @@ function _wnSnInlineCell(snRec, rowId) {
   const pals     = f['Total Pallets']||0;
   return `<div class="wi-ci-data">
     <div style="display:flex;align-items:center;gap:0;min-width:0">
-      <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${fromStr}</span>
+      <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${escapeHtml(fromStr)}</span>
       <span class="wi-ci-sep">→</span>
-      <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${toStr}</span>
+      <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${escapeHtml(toStr)}</span>
       <span style="font-size:8px;color:rgba(14,165,233,0.5);margin-left:6px;cursor:pointer"
             onclick="_wnUnmatch(${rowId},'${snRec.id}')">✕</span>
     </div>
@@ -584,12 +584,12 @@ function _wnSnRowHTML(row) {
       <div class="wi-ci" style="cursor:grab">
         <div class="wi-ci-data">
           <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from" style="font-weight:700">${fromStr}</span>
+            <span class="wi-ci-from" style="font-weight:700">${escapeHtml(fromStr)}</span>
             <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest" style="font-weight:700">${toStr}</span>
+            <span class="wi-ci-dest" style="font-weight:700">${escapeHtml(toStr)}</span>
           </div>
           <div class="wi-sub">
-            ${clientLabel ? `<span style="color:var(--text-mid)">${clientLabel}</span><span class="wi-sub-div"></span>` : ''}
+            ${clientLabel ? `<span style="color:var(--text-mid)">${escapeHtml(clientLabel)}</span><span class="wi-sub-div"></span>` : ''}
             <span>${loadDt} → ${delDt} · ${pals} pal</span>
             ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
             ${badges}
@@ -689,15 +689,15 @@ function _wnPill(row) {
   </div>`;
   if (partner) return `<div class="wi-pill">
     <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-bp'}">
-      <div class="wi-card-top">${partner.slice(0,26)}${partner.length>26?'…':''}</div>
-      ${row.partnerPlates ? `<div class="wi-card-bot">${row.partnerPlates}</div>` : ''}
+      <div class="wi-card-top">${escapeHtml(partner.slice(0,26))}${partner.length>26?'…':''}</div>
+      ${row.partnerPlates ? `<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>` : ''}
     </div>
   </div>`;
   const vehicleLine = truck && trailer ? `${truck} · ${trailer}` : (truck || trailer || '—');
   return `<div class="wi-pill">
     <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-ok'}">
-      <div class="wi-card-top">${vehicleLine}</div>
-      ${driver ? `<div class="wi-card-bot">${driver}</div>` : ''}
+      <div class="wi-card-top">${escapeHtml(vehicleLine)}</div>
+      ${driver ? `<div class="wi-card-bot">${escapeHtml(driver)}</div>` : ''}
     </div>
   </div>`;
 }

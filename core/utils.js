@@ -2,6 +2,17 @@
 // CORE — UTILS
 // ═══════════════════════════════════════════════
 
+// Escape HTML special characters to prevent XSS
+function escapeHtml(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Convert Airtable UTC datetime to local YYYY-MM-DD string
 function toLocalDate(raw) {
   if (!raw) return '';
@@ -141,7 +152,7 @@ async function _refreshNotifs() {
     }).forEach(r => {
       const f = r.fields;
       const route = `${(f['Loading Summary']||'').slice(0,20)} → ${(f['Delivery Summary']||'').slice(0,20)}`;
-      items.push({ type: 'danger', title: `${f['Direction']} χωρίς ανάθεση`, sub: route, page: 'orders_intl' });
+      items.push({ type: 'danger', title: `${escapeHtml(f['Direction'])} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
     });
 
     // Expired fleet docs (role-aware: only for owner/maintenance)
@@ -154,9 +165,9 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ type: 'danger', title: `${t.fields[plateField]} — ${field.replace(' Expiry','')} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'expiry_alerts' });
+                items.push({ type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'expiry_alerts' });
               } else if (days <= 14) {
-                items.push({ type: 'warn', title: `${t.fields[plateField]} — ${field.replace(' Expiry','')} ληγει σε ${days}μ`, sub: dt, page: 'expiry_alerts' });
+                items.push({ type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'expiry_alerts' });
               }
             }
           });
@@ -170,7 +181,7 @@ async function _refreshNotifs() {
     const reminders = JSON.parse(localStorage.getItem('tms_reminders') || '[]');
     const nowMs = Date.now();
     reminders.filter(r => new Date(r.time).getTime() <= nowMs && !r.dismissed).forEach(r => {
-      items.push({ type: 'info', title: 'Υπενθύμιση', sub: r.text, page: null });
+      items.push({ type: 'info', title: 'Υπενθύμιση', sub: escapeHtml(r.text), page: null });
     });
 
   } catch(e) { console.warn('Notif refresh error:', e); }

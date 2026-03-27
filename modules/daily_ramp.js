@@ -451,7 +451,7 @@ function _rClient(val) {
 function _rResolveClientStr(str) {
   if (!str) return '—';
   // Handle "Name | supplier1 / supplier2" format or "recXXX / recYYY"
-  return str.split(/\s*[/|]\s*/).map(s => _rClient(s.trim())).join(' / ');
+  return escapeHtml(str.split(/\s*[/|]\s*/).map(s => _rClient(s.trim())).join(' / '));
 }
 function _rCat(f){
   const c=f['Ramp Category']||'',vs=f['Is Veroia Switch'];
@@ -548,9 +548,9 @@ function _rampDraw() {
           <td class="rn">${i+1}</td>
           <td>${isIn?'<span style="color:#059669">↓ IN</span>':'<span style="color:#0EA5E9">↑ OUT</span>'}</td>
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
-          <td>${(f['Goods']||'').substring(0,25)}</td>
-          <td>${f['Temperature']||''}</td>
-          <td>${f['Pallets']||''}</td>
+          <td>${escapeHtml((f['Goods']||'').substring(0,25))}</td>
+          <td>${escapeHtml(f['Temperature']||'')}</td>
+          <td>${escapeHtml(f['Pallets']||'')}</td>
           <td>${movedTo}</td>
           <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="if(confirm('Restore to today?'))_rampRestore('${r.id}')">Restore</button></td>
         </tr>`;}).join('')}</tbody></table>
@@ -563,7 +563,7 @@ function _rampDraw() {
         const d=sbc[cl],dates=d.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort(),
           oldest=dates[0]||'',days=oldest?Math.floor((Date.now()-new Date(oldest).getTime())/864e5):0,
           dc=days<=1?'fresh':days<=3?'aging':'old';
-        return`<tr><td class="rn">${i+1}</td><td class="stock-client">${cl}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
+        return`<tr><td class="rn">${i+1}</td><td class="stock-client">${escapeHtml(cl)}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
       }).join(''):'<tr class="ramp-empty"><td colspan="5">Warehouse empty</td></tr>'}</tbody></table>
     </div>`;
 }
@@ -576,10 +576,10 @@ function _rRow(rec,num,tOpts) {
   const rawTime=f['Time']||'';
   const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
   const client=f['Supplier/Client']||'—';
-  const goods=(f['Goods']||'').substring(0,35);
-  const temp=f['Temperature']||f['Temperature °C']||'';
-  const pal=f['Pallets']||'';
-  const truck=_rTruck(f);
+  const goods=escapeHtml((f['Goods']||'').substring(0,35));
+  const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
+  const pal=escapeHtml(f['Pallets']||'');
+  const truck=escapeHtml(_rTruck(f));
   const isIn=f['Type']==='Παραλαβή';
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
@@ -617,15 +617,15 @@ function _rRow(rec,num,tOpts) {
     }
     subHtml = stops.map(s => `<tr class="sub-row">
       <td></td><td></td>
-      <td style="padding-left:18px">↳ ${s.client}</td>
-      <td>${s.loc}</td>
-      <td>${s.ref}</td>
-      <td>${s.temp}</td>
-      <td>${typeof s.pal==='number' ? s.pal+' pal' : s.pal}</td>
+      <td style="padding-left:18px">↳ ${escapeHtml(s.client)}</td>
+      <td>${escapeHtml(s.loc)}</td>
+      <td>${escapeHtml(s.ref)}</td>
+      <td>${escapeHtml(s.temp)}</td>
+      <td>${typeof s.pal==='number' ? s.pal+' pal' : escapeHtml(s.pal)}</td>
       <td></td><td></td></tr>`).join('');
   }
 
-  const locField = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
+  const locField = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
 
   return`<tr class="${isDone?'done':''}">
     <td class="rn">${num}</td><td>${timeSel}</td>
@@ -647,15 +647,15 @@ function _rTlRow(rec) {
     :status==='⏩ Postponed'?'<span style="color:var(--warning)">Postponed</span>'
     :'<span style="color:var(--text-dim)">Planned</span>';
 
-  const tlLoc = isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'');
+  const tlLoc = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
   return`<tr class="${isDone?'done':''}">
     <td>${f['Time']?.includes('T')?f['Time'].split('T')[1]?.substring(0,5):(f['Time']||'—')}</td><td>${typeBadge}</td>
     <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
     <td class="trn">${tlLoc||'—'}</td>
-    <td class="trn">${(f['Goods']||'').substring(0,35)}</td>
-    <td>${f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):''}</td>
-    <td>${f['Pallets']||''}</td>
-    <td>${_rTruck(f)||'—'}</td><td>${_rDriver(f)||'—'}</td>
+    <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
+    <td>${escapeHtml(f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
+    <td>${escapeHtml(f['Pallets']||'')}</td>
+    <td>${escapeHtml(_rTruck(f)||'—')}</td><td>${escapeHtml(_rDriver(f)||'—')}</td>
     <td>${statusTxt}</td></tr>`;
 }
 

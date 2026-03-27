@@ -2,6 +2,6 @@ name = "tms-api-proxy"
 main = "index.js"
 compatibility_date = "2024-01-01"
 
-# AIRTABLE_TOKEN must be set as a secret:
+# Secrets (set via wrangler CLI, never committed):
 #   wrangler secret put AIRTABLE_TOKEN
-# Paste the Airtable PAT when prompted.
+#   wrangler secret put JWT_SECRET
