@@ -48,6 +48,7 @@ const NAV = [
   ]},
   { section: 'Settings', perm: 'settings', items: [
     { id: 'settings', label: 'Settings', icon: 'gear' },
+    { id: 'error_log', label: 'Error Log', icon: 'alert' },
   ]},
 ];
 
@@ -223,6 +224,9 @@ function navigate(page) {
     case 'settings':
       if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
       c.innerHTML = showComingSoon('Settings');
+      break;
+    case 'error_log':
+      renderErrorLog();
       break;
     default:
       c.innerHTML = showComingSoon(label);

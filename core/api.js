@@ -74,6 +74,58 @@ function _enqueue(fn) {
   });
 }
 
+// ── Offline Queue ───────────────────────────────
+const _offlineQueue = [];
+
+function _isOnline() { return navigator.onLine; }
+
+function _queueOffline(method, url, body) {
+  _offlineQueue.push({ method, url, body, timestamp: Date.now() });
+  _saveOfflineQueue();
+  if (typeof showErrorToast === 'function') {
+    showErrorToast('\u0391\u03C0\u03BF\u03B8\u03B7\u03BA\u03B5\u03CD\u03C4\u03B7\u03BA\u03B5 \u03C4\u03BF\u03C0\u03B9\u03BA\u03AC \u2014 \u03B8\u03B1 \u03C3\u03C4\u03B1\u03BB\u03B5\u03AF \u03BC\u03CC\u03BB\u03B9\u03C2 \u03B3\u03C5\u03C1\u03AF\u03C3\u03B5\u03B9 \u03C4\u03BF internet', 'warn');
+  }
+}
+
+function _saveOfflineQueue() {
+  try { localStorage.setItem('tms_offline_queue', JSON.stringify(_offlineQueue)); } catch {}
+}
+
+function _loadOfflineQueue() {
+  try {
+    const q = JSON.parse(localStorage.getItem('tms_offline_queue') || '[]');
+    _offlineQueue.push(...q);
+  } catch {}
+}
+
+async function _flushOfflineQueue() {
+  if (!_offlineQueue.length || !navigator.onLine) return;
+  const batch = [..._offlineQueue];
+  _offlineQueue.length = 0;
+  _saveOfflineQueue();
+
+  let failed = 0;
+  for (const item of batch) {
+    try {
+      await fetch(item.url, {
+        method: item.method,
+        headers: _apiHeaders(item.method),
+        body: item.body ? JSON.stringify(item.body) : undefined,
+      });
+    } catch {
+      _offlineQueue.push(item);
+      failed++;
+    }
+  }
+  _saveOfflineQueue();
+  if (failed === 0 && batch.length > 0 && typeof showErrorToast === 'function') {
+    showErrorToast(`${batch.length} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C3\u03C5\u03B3\u03C7\u03C1\u03BF\u03BD\u03AF\u03C3\u03C4\u03B7\u03BA\u03B1\u03BD`, 'info');
+  }
+}
+
+// Flush when back online
+window.addEventListener('online', _flushOfflineQueue);
+
 // ── Audit Log (mutations only, last 200 entries) ──
 const _AUDIT_MAX = 200;
 function _auditLog(action, tableId, recId, fields) {
@@ -134,6 +186,7 @@ async function _atRetry(fn, retries = 3) {
       return res;
     } catch (e) {
       if (i === retries - 1) {
+        if (typeof logError === 'function') logError(e, 'API retry exhausted');
         if (typeof showErrorToast === 'function') {
           showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 \u03C3\u03CD\u03BD\u03B4\u03B5\u03C3\u03B7\u03C2 \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
         }
@@ -250,6 +303,10 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
  */
 async function atPatch(tableId, recId, fields) {
   _auditLog('PATCH', tableId, recId, fields);
+  if (!_isOnline()) {
+    _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields });
+    return { id: recId, fields, _offline: true };
+  }
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
     headers: _apiHeaders('PATCH'),
@@ -269,6 +326,10 @@ async function atPatch(tableId, recId, fields) {
  */
 async function atCreate(tableId, fields) {
   _auditLog('CREATE', tableId, null, fields);
+  if (!_isOnline()) {
+    _queueOffline('POST', _apiUrl(`/v0/${AT_BASE}/${tableId}`), { fields });
+    return { id: 'offline_' + Date.now(), fields, _offline: true };
+  }
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
     headers: _apiHeaders('POST'),
@@ -288,6 +349,10 @@ async function atCreate(tableId, fields) {
  */
 async function atDelete(tableId, recId) {
   _auditLog('DELETE', tableId, recId, null);
+  if (!_isOnline()) {
+    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null);
+    return { id: recId, deleted: true, _offline: true };
+  }
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE')
@@ -326,6 +391,9 @@ function atPreload() {
   ].filter(Boolean);
   // Fire and forget — warms both memory + localStorage
   preloadIds.forEach(id => atGet(id, '', true).catch(() => {}));
+  // Load and flush any queued offline mutations
+  _loadOfflineQueue();
+  _flushOfflineQueue();
 }
 
 // ═══════════════════════════════════════════════

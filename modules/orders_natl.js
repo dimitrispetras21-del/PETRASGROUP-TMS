@@ -11,6 +11,11 @@ let _natlSortDir = 0;
 let _onPage = 1;
 const _onPageSize = 50;
 
+// ─── Virtual Scroll State ─────────────────────
+const _onVS = { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
+const _ON_ROW_H = 40;
+const _ON_BUFFER = 10;
+
 // ─── Main ───────────────────────────────────────
 async function renderOrdersNatl() {
   const c = document.getElementById('content');
@@ -137,69 +142,113 @@ function _natlSortRecords(recs) {
   });
 }
 
-// ─── Table ──────────────────────────────────────
+// ─── Table (Virtual Scroll) ─────────────────────
+function _onRowHtml(r) {
+  const f = r.fields;
+  const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
+  const dir = f['Direction']||'';
+  const dirB = dir==='South→North'
+    ? '<span class="badge badge-blue">↑ S→N</span>'
+    : dir==='North→South'
+      ? '<span class="badge badge-green">↓ N→S</span>'
+      : `<span class="badge badge-grey">${dir||'—'}</span>`;
+  const tripB  = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
+  const vsB    = f['Type']==='Veroia Switch' ? '<span class="badge badge-yellow" style="margin-right:4px;font-size:10px">VS</span>' : '';
+  const grpB   = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
+  const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
+
+  const _pickupId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const pickup = _pickupId ? (_locationsMap[_pickupId]||'—') : '—';
+  const _delivId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
+  const delivery = _delivId ? (_locationsMap[_delivId]||'—') : '—';
+  const _clientId = (f['Client']||[])[0]||'';
+  const client = _clientId ? (_clientsMap[_clientId]||'—') : '—';
+
+  return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}" style="height:${_ON_ROW_H}px">
+    <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Name']||r.id.slice(-6))}</strong></td>
+    <td>${dirB}</td>
+    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(client)}</td>
+    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pickup)}</td>
+    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(delivery)}</td>
+    <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
+    <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
+    <td>${f['Pallets']||'—'}</td>
+    <td>${tripB}</td>
+    <td onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
+      title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
+      style="cursor:pointer;text-align:center">
+      ${f['Invoiced']
+        ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
+        : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
+    </td>
+  </tr>`;
+}
+
+function _onVirtualPaint() {
+  const scroller = document.getElementById('onVScroll');
+  if (!scroller) return;
+  const tbody = scroller.querySelector('tbody');
+  const topSp = document.getElementById('onTopSpacer');
+  const botSp = document.getElementById('onBottomSpacer');
+  if (!tbody || !topSp || !botSp) return;
+
+  const total = _onVS.sortedRecs.length;
+  const scrollTop = scroller.scrollTop;
+  const visH = scroller.clientHeight;
+  const startIdx = Math.max(0, Math.floor(scrollTop / _ON_ROW_H) - _ON_BUFFER);
+  const endIdx = Math.min(total, Math.ceil((scrollTop + visH) / _ON_ROW_H) + _ON_BUFFER);
+
+  if (startIdx === _onVS.lastStart && endIdx === _onVS.lastEnd) return;
+  _onVS.lastStart = startIdx;
+  _onVS.lastEnd = endIdx;
+
+  topSp.style.height = (startIdx * _ON_ROW_H) + 'px';
+  botSp.style.height = ((total - endIdx) * _ON_ROW_H) + 'px';
+
+  const html = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    html.push(_onRowHtml(_onVS.sortedRecs[i]));
+  }
+  tbody.innerHTML = html.join('');
+}
+
+function _onOnScroll() {
+  if (_onVS.rafId) return;
+  _onVS.rafId = requestAnimationFrame(() => {
+    _onVS.rafId = null;
+    _onVirtualPaint();
+  });
+}
+
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
 
   const sortedRecs = _natlSortRecords(records);
-  const totalPages = Math.max(1, Math.ceil(sortedRecs.length / _onPageSize));
-  if (_onPage > totalPages) _onPage = totalPages;
-  const pageRows = sortedRecs.slice((_onPage - 1) * _onPageSize, _onPage * _onPageSize);
-  const rows = pageRows.map(r => {
-    const f = r.fields;
-    const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
-    const dir = f['Direction']||'';
-    const dirB = dir==='South→North'
-      ? '<span class="badge badge-blue">↑ S→N</span>'
-      : dir==='North→South'
-        ? '<span class="badge badge-green">↓ N→S</span>'
-        : `<span class="badge badge-grey">${dir||'—'}</span>`;
-    const tripB  = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
-    const vsB    = f['Type']==='Veroia Switch' ? '<span class="badge badge-yellow" style="margin-right:4px;font-size:10px">VS</span>' : '';
-    const grpB   = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
-    const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
-
-    // Pickup: try 'Pickup Location 1' first, fallback to 'Pickup Location'
-    const _pickupId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
-    const pickup = _pickupId ? (_locationsMap[_pickupId]||'—') : '—';
-    // Delivery: try 'Delivery Location 1' first
-    const _delivId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
-    const delivery = _delivId ? (_locationsMap[_delivId]||'—') : '—';
-    // Client
-    const _clientId = (f['Client']||[])[0]||'';
-    const client = _clientId ? (_clientsMap[_clientId]||'—') : '—';
-
-    return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}">
-      <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Name']||r.id.slice(-6))}</strong></td>
-      <td>${dirB}</td>
-      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(client)}</td>
-      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pickup)}</td>
-      <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(delivery)}</td>
-      <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
-      <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-      <td>${f['Pallets']||'—'}</td>
-      <td>${tripB}</td>
-      <td onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
-        title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
-        style="cursor:pointer;text-align:center">
-        ${f['Invoiced']
-          ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
-          : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
-      </td>
-    </tr>`;
-  }).join('');
+  _onVS.sortedRecs = sortedRecs;
+  _onVS.lastStart = -1;
+  _onVS.lastEnd = -1;
 
   const ths = _natlColDefs.map(c => {
     const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:#0284C7">▲</span>':_natlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
-  const paginationHtml = totalPages > 1 ? `<div style="display:flex;justify-content:center;gap:12px;padding:16px;align-items:center;">
-    <button onclick="_onPage--;_applyNatlFilters()" ${_onPage<=1?'disabled':''} class="btn btn-scan">Previous</button>
-    <span style="color:#94A3B8">Page ${_onPage} of ${totalPages}</span>
-    <button onclick="_onPage++;_applyNatlFilters()" ${_onPage>=totalPages?'disabled':''} class="btn btn-scan">Next</button>
-  </div>` : '';
-  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>${paginationHtml}`;
+
+  const totalH = sortedRecs.length * _ON_ROW_H;
+  wrap.innerHTML = `
+    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
+      <table>
+        <thead><tr>${ths}</tr></thead>
+      </table>
+      <div id="onTopSpacer" style="height:0"></div>
+      <table><tbody></tbody></table>
+      <div id="onBottomSpacer" style="height:${totalH}px"></div>
+    </div>
+    <div style="padding:8px 16px;color:#94A3B8;font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+
+  const scroller = document.getElementById('onVScroll');
+  scroller.addEventListener('scroll', _onOnScroll, { passive: true });
+  _onVirtualPaint();
 }
 
 // ─── Filters ────────────────────────────────────
