@@ -10,6 +10,7 @@ let _intlSortCol = null;   // current sort column key
 let _intlSortDir = 0;      // 0=none, 1=asc, 2=desc
 let _oiPage = 1;
 const _oiPageSize = 50;
+let _intlPeriod = '60'; // '60' | '180' | 'all'
 
 // ─── Virtual Scroll State ─────────────────────
 const _oiVS = { allRows: [], sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
@@ -74,13 +75,18 @@ async function renderOrdersIntl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading orders...');
   try {
-    // Default: last 60 days of orders (server-side filter for performance)
-    const _intlCutoff = new Date();
-    _intlCutoff.setDate(_intlCutoff.getDate() - 60);
-    const _intlCutoffStr = _intlCutoff.toISOString().split('T')[0];
+    // Date range filter based on period dropdown
+    let _intlDateFormula = '';
+    if (_intlPeriod !== 'all') {
+      const days = _intlPeriod === '180' ? 180 : 60;
+      const _intlCutoff = new Date();
+      _intlCutoff.setDate(_intlCutoff.getDate() - days);
+      const _intlCutoffStr = _intlCutoff.toISOString().split('T')[0];
+      _intlDateFormula = `IS_AFTER({Loading DateTime}, '${_intlCutoffStr}')`;
+    }
     const [, records] = await Promise.all([
       _loadLocations(),
-      atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_intlCutoffStr}')`, false),
+      atGet(TABLES.ORDERS, _intlDateFormula || '', false),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     INTL_ORDERS.data = records;
@@ -165,6 +171,11 @@ function _renderIntlLayout(c) {
             <option value="">Trip: All</option>
             <option value="unassigned">Unassigned</option>
             <option value="assigned">Assigned</option>
+          </select>
+          <select class="filter-select" onchange="intlPeriodChange(this.value)">
+            <option value="60" ${_intlPeriod==='60'?'selected':''}>Last 60 days</option>
+            <option value="180" ${_intlPeriod==='180'?'selected':''}>Last 6 months</option>
+            <option value="all" ${_intlPeriod==='all'?'selected':''}>All time</option>
           </select>
           <span class="entity-count" id="intlCount">${INTL_ORDERS.data.length} orders</span>
         </div>
@@ -325,6 +336,7 @@ function _renderIntlTable(records) {
 // ─── Filters ────────────────────────────────────
 function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _oiPage = 1; _applyIntlFilters(); }
 function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _oiPage = 1; _applyIntlFilters(); }
+function intlPeriodChange(v) { _intlPeriod = v; _oiVS.lastStart = -1; _oiVS.lastEnd = -1; renderOrdersIntl(); }
 
 function _applyIntlFilters() {
   let recs = INTL_ORDERS.data;
@@ -1818,6 +1830,7 @@ window._intlSortToggle = _intlSortToggle;
 window._applyIntlFilters = _applyIntlFilters;
 window.intlSearch = intlSearch;
 window.intlFilter = intlFilter;
+window.intlPeriodChange = intlPeriodChange;
 window.openPalletUpload = openPalletUpload;
 window.closePalletUpload = closePalletUpload;
 window.submitIntlOrder = submitIntlOrder;

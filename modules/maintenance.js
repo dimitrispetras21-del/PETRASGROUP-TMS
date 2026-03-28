@@ -526,7 +526,7 @@ function _svcOpenForm(editId) {
 
   document.getElementById('mf-container').innerHTML = `
     <div class="mf-overlay" onclick="if(event.target===this)this.remove()">
-      <div class="mf-modal">
+      <div class="mf-modal" role="dialog" aria-modal="true">
         <div class="mf-head"><span>${editId ? 'Edit' : 'New'} Service Record</span>
           <button class="btn btn-ghost" style="padding:4px 8px" onclick="this.closest('.mf-overlay').remove()">✕</button></div>
         <div class="mf-body">
@@ -1441,7 +1441,7 @@ function _mreqOpenForm(editId) {
 
   const html = `
   <div class="mf-overlay" onclick="if(event.target===this)document.getElementById('mreq-form-container').innerHTML=''">
-    <div class="mf-modal">
+    <div class="mf-modal" role="dialog" aria-modal="true">
       <div class="mf-head"><span>${editId?'Edit':'New'} Work Order</span>
         <button onclick="document.getElementById('mreq-form-container').innerHTML=''" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim)">✕</button></div>
       <div class="mf-body">

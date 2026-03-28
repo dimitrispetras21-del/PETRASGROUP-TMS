@@ -10,12 +10,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1774691339">
+<link rel="stylesheet" href="assets/style.css?v=1774719575">
 </head>
 <body>
 
 <!-- ═══ SIDEBAR ═══════════════════════════════ -->
-<nav class="sidebar" id="sidebar">
+<nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
 
   <div class="sidebar-logo">
     <img src="logo.png" alt="Petras Group"
@@ -36,7 +36,7 @@
 <div class="main">
 
   <!-- Topbar -->
-  <div class="topbar">
+  <div class="topbar" role="banner">
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <div class="topbar-breadcrumb" id="topbarBreadcrumb"></div>
     <div class="topbar-right">
@@ -59,7 +59,7 @@
   </div>
 
   <!-- Content -->
-  <div class="content" id="content">
+  <div class="content" id="content" role="main">
     <div class="loading"><div class="spinner"></div> Loading...</div>
   </div>
 
@@ -67,7 +67,7 @@
 
 <!-- ═══ MODAL ═════════════════════════════════ -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal" id="modal">
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
     <div class="modal-header">
       <div class="modal-title" id="modalTitle">—</div>
       <div class="modal-close" onclick="closeModal()">✕</div>
@@ -94,9 +94,9 @@
 <script src="modules/weekly_intl.js?v=1774693340"></script>
 <script src="modules/weekly_natl.js?v=1774693340"></script>
   <script src="modules/daily_ramp.js?v=1774693340"></script>
-  <script src="modules/maintenance.js?v=1774971000"></script>
-  <script src="modules/orders_intl.js?v=1774718975"></script>
-<script src="modules/orders_natl.js?v=1774718975"></script>
+  <script src="modules/maintenance.js?v=1774719575"></script>
+  <script src="modules/orders_intl.js?v=1774719575"></script>
+<script src="modules/orders_natl.js?v=1774719575"></script>
 
 <script src="modules/locations.js?v=1774693340"></script>
 <script src="modules/daily_ops.js?v=1774693340"></script>
