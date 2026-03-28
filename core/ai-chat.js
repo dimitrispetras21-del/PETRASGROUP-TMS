@@ -670,7 +670,7 @@ async function _aicRunObserver() {
         if (pendCount > 0) {
           alerts.push({ type: 'workorder', severity: 'warning', title: `${pendCount} pending work orders`, detail: 'Awaiting action', page: 'maint_req' });
         }
-      } catch(e) {}
+      } catch(e) { logError(e, 'ai-chat maintenance alerts'); }
     } // end maintenance block
 
     // PLANNING alerts — only for roles with planning access
@@ -749,7 +749,7 @@ function _aicInit() {
   try {
     const saved = sessionStorage.getItem('aic_history');
     if (saved) AiChat.messages = JSON.parse(saved).slice(-20);
-  } catch(e) {}
+  } catch(e) { logError(e, 'ai-chat restore history'); }
 
   // Inject floating button
   const btn = document.createElement('button');
@@ -901,7 +901,7 @@ function _aicSaveHistory() {
   try {
     const toSave = AiChat.messages.slice(-20).filter(m => typeof m.content === 'string');
     sessionStorage.setItem('aic_history', JSON.stringify(toSave));
-  } catch(e) {}
+  } catch(e) { logError(e, 'ai-chat save history'); }
 }
 
 function _aicQuick(text) {

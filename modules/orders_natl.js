@@ -747,7 +747,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
       const cRec = await atGetOne(TABLES.CLIENTS, cId);
       clientName = cRec.fields?.['Company Name'] || '';
     }
-  } catch(e) {}
+  } catch(e) { logError(e, 'orders_natl resolve client name'); }
 
   const _lid = v => {
     if (!v) return null;

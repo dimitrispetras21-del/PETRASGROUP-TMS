@@ -91,15 +91,31 @@ self.addEventListener('fetch', e => {
       fetch(e.request)
         .then(res => {
           if (res.ok) {
-            const clone = res.clone();
-            caches.open(SW_VERSION).then(cache => cache.put(e.request, clone));
+            // Store cache timestamp as a custom header in cached response
+            const headers = new Headers(res.headers);
+            headers.set('X-Cache-Timestamp', String(Date.now()));
+            const cachedRes = new Response(res.clone().body, {
+              status: res.status,
+              statusText: res.statusText,
+              headers: headers
+            });
+            caches.open(SW_VERSION).then(cache => cache.put(e.request, cachedRes));
           }
           notifyClients({ type: 'SW_ONLINE' });
           return res;
         })
         .catch(() => {
           notifyClients({ type: 'SW_OFFLINE' });
-          return caches.match(e.request);
+          return caches.match(e.request).then(cached => {
+            if (cached) {
+              const cacheTs = cached.headers.get('X-Cache-Timestamp');
+              if (cacheTs) {
+                const ageMs = Date.now() - parseInt(cacheTs, 10);
+                notifyClients({ type: 'SW_CACHE_AGE', ageMs });
+              }
+            }
+            return cached;
+          });
         })
     );
     return;

@@ -79,24 +79,24 @@
 
 <!-- ═══ SCRIPTS — load order matters ══════════ -->
 <!-- 1. Config (credentials, table IDs, role matrix) -->
-<script src="config.js?v=1774618882"></script>
+<script src="config.js?v=1774718975"></script>
 <!-- 2. Core: constants → auth → api → utils → ui → entity → router -->
 <script src="core/constants.js?v=1774689225"></script>
 <script src="core/auth.js?v=1774632576"></script>
-<script src="core/api.js?v=1774693340"></script>
-<script src="core/utils.js?v=1774691339"></script>
+<script src="core/api.js?v=1774718975"></script>
+<script src="core/utils.js?v=1774718975"></script>
 <script src="core/ui.js?v=1774800000"></script>
 <script src="core/entity.js?v=1774820000"></script>
 <script src="core/router.js?v=1774691339"></script>
-<script src="core/ai-chat.js?v=1774603750"></script>
+<script src="core/ai-chat.js?v=1774718975"></script>
 <!-- 3. Modules -->
 <script src="modules/dashboard.js?v=1774693340"></script>
 <script src="modules/weekly_intl.js?v=1774693340"></script>
 <script src="modules/weekly_natl.js?v=1774693340"></script>
   <script src="modules/daily_ramp.js?v=1774693340"></script>
   <script src="modules/maintenance.js?v=1774971000"></script>
-  <script src="modules/orders_intl.js?v=1774693340"></script>
-<script src="modules/orders_natl.js?v=1774693340"></script>
+  <script src="modules/orders_intl.js?v=1774718975"></script>
+<script src="modules/orders_natl.js?v=1774718975"></script>
 
 <script src="modules/locations.js?v=1774693340"></script>
 <script src="modules/daily_ops.js?v=1774693340"></script>
@@ -158,11 +158,34 @@ if ('serviceWorker' in navigator) {
     const ob = document.getElementById('offlineBanner');
     if (!ob) return;
     if (e.data.type === 'SW_OFFLINE') ob.classList.add('show');
-    if (e.data.type === 'SW_ONLINE')  ob.classList.remove('show');
+    if (e.data.type === 'SW_ONLINE')  { ob.classList.remove('show'); _hideCacheAgeBanner(); }
     if (e.data.type === 'SW_ACTIVATED') {
       console.log('[SW] Activated version:', e.data.version);
     }
+    if (e.data.type === 'SW_CACHE_AGE' && e.data.ageMs) {
+      _showCacheAgeBanner(e.data.ageMs);
+    }
   });
+
+  // Cache age banner helpers
+  function _showCacheAgeBanner(ageMs) {
+    let banner = document.getElementById('cacheAgeBanner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'cacheAgeBanner';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:#92400E;color:#fff;text-align:center;padding:6px 12px;font:12px/1.4 "DM Sans",sans-serif;transition:opacity .3s;';
+      document.body.appendChild(banner);
+    }
+    const mins = Math.round(ageMs / 60000);
+    const label = mins < 1 ? 'less than 1 min' : mins < 60 ? `${mins} min` : `${Math.round(mins/60)}h`;
+    banner.textContent = `Offline \u2014 data from ${label} ago`;
+    banner.style.opacity = '1';
+    banner.style.display = 'block';
+  }
+  function _hideCacheAgeBanner() {
+    const banner = document.getElementById('cacheAgeBanner');
+    if (banner) { banner.style.opacity = '0'; setTimeout(() => { if (banner) banner.style.display = 'none'; }, 300); }
+  }
 
   // Reload when new SW takes control (seamless update)
   let refreshing = false;

@@ -834,19 +834,19 @@ async function _syncVeroiaSwitch(orderId, fields) {
               try {
                 const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
                 for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-              } catch(e) {}
+              } catch(e) { logError(e, 'cascade delete NL for CL'); }
               await atDelete(TABLES.CONS_LOADS, cl.id);
             }
-          } catch(e) {}
-          try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) {}
+          } catch(e) { logError(e, 'cascade delete CL for GL'); }
+          try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { logError(e, 'cascade delete GL'); }
         }
-      } catch(e) {}
+      } catch(e) { logError(e, 'cascade delete GL lines for NO'); }
 
       // Delete NL records linked to this NO
       try {
         const nlsNO = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${no.id}"`,fields:['Name']},false);
         for (const nl of nlsNO) await atDelete(TABLES.NAT_LOADS, nl.id);
-      } catch(e) {}
+      } catch(e) { logError(e, 'cascade delete NL for NO'); }
 
       // Delete RAMP records linked to this NO
       try {
@@ -855,10 +855,10 @@ async function _syncVeroiaSwitch(orderId, fields) {
           fields: ['Plan Date']
         }, false);
         for (const rp of ramps) await atDelete(TABLES.RAMP, rp.id);
-      } catch(e) {}
+      } catch(e) { logError(e, 'cascade delete RAMP for NO'); }
 
       // Delete the legacy NO itself
-      try { await atDelete(TABLES.NAT_ORDERS, no.id); } catch(e) {}
+      try { await atDelete(TABLES.NAT_ORDERS, no.id); } catch(e) { logError(e, 'cascade delete NO'); }
     }
 
     // 4. Delete RAMP records linked to the INTL ORDER
@@ -937,7 +937,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     const cArr = fields['Client'];
     const cId = Array.isArray(cArr) ? _lid(cArr[0]) : null;
     if (cId) clientName = _clientsMap[cId] || (await _resolveClientName(cId)) || '';
-  } catch(e) {}
+  } catch(e) { logError(e, 'orders_intl resolve client name for VS'); }
 
   // Build NAT_LOADS fields
   const nlDirection = direction === 'Export' ? F.CL_ANODOS : F.CL_KATHODOS;
@@ -1014,10 +1014,10 @@ async function _syncVeroiaSwitch(orderId, fields) {
               try {
                 const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
                 for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-              } catch(e) {}
+              } catch(e) { logError(e, 'groupage OFF: delete NL for CL'); }
               await atDelete(TABLES.CONS_LOADS, cl.id);
             }
-          } catch(e) {}
+          } catch(e) { logError(e, 'groupage OFF: delete CL for GL'); }
           await atDelete(TABLES.GL_LINES, r.id);
         }
       }
@@ -1030,10 +1030,10 @@ async function _syncVeroiaSwitch(orderId, fields) {
           }, false);
           for (const r of glLegacy) {
             if (r.fields.Status !== 'Assigned') {
-              try { await atDelete(TABLES.GL_LINES, r.id); } catch(e) {}
+              try { await atDelete(TABLES.GL_LINES, r.id); } catch(e) { logError(e, 'groupage OFF: delete legacy GL'); }
             }
           }
-        } catch(e) {}
+        } catch(e) { logError(e, 'groupage OFF: fetch legacy GL'); }
       }
       invalidateCache(TABLES.GL_LINES);
       invalidateCache(TABLES.NAT_LOADS);
@@ -1507,7 +1507,7 @@ async function closePalletUpload() {
         const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
         if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
       }
-    } catch(err) {}
+    } catch(err) { logError(err, 'orders_intl refresh after pallet close'); }
     _applyIntlFilters();
     selectIntlOrder(orderId);
   }

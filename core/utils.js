@@ -196,7 +196,7 @@ function logError(error, context = '') {
   };
   _errorLog.push(entry);
   if (_errorLog.length > MAX_ERROR_LOG) _errorLog.shift();
-  try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); } catch {}
+  try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); } catch(e) { console.warn('[TMS] Failed to persist error log:', e); }
   console.error(`[TMS ERROR] ${context}:`, error);
 }
 
@@ -250,7 +250,7 @@ function renderErrorLog() {
 try {
   const stored = JSON.parse(localStorage.getItem('tms_errors') || '[]');
   _errorLog.push(...stored);
-} catch {}
+} catch(e) { console.warn('[TMS] Failed to load stored error log:', e); }
 
 // ═══ NOTIFICATION CENTER ═══
 let _notifOpen = false;
