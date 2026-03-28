@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════════
 // MODULE — NATIONAL ORDERS  v2
 // ═══════════════════════════════════════════════
+(function() {
+'use strict';
 
 const NATL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _natlFilters = {};
@@ -844,3 +846,23 @@ async function deleteNatlOrder(recId) {
     toast('Delete failed: ' + e.message, 'danger');
   }
 }
+
+// Expose functions used from onclick/onchange handlers
+window.renderOrdersNatl = renderOrdersNatl;
+window.openNatlCreate = openNatlCreate;
+window.openNatlEdit = openNatlEdit;
+window.selectNatlOrder = selectNatlOrder;
+window.toggleNatlInvoiced = toggleNatlInvoiced;
+window._natlSortToggle = _natlSortToggle;
+window._applyNatlFilters = _applyNatlFilters;
+window.natlSearch = natlSearch;
+window.natlFilter = natlFilter;
+window.submitNatlOrder = submitNatlOrder;
+window.deleteNatlOrder = deleteNatlOrder;
+// _onPage is mutated from onclick (++/--) so expose as getter/setter
+Object.defineProperty(window, '_onPage', {
+  get: function() { return _onPage; },
+  set: function(v) { _onPage = v; },
+  configurable: true
+});
+})();

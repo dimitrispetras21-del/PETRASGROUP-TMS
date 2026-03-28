@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════════
 // MODULE — INTERNATIONAL ORDERS  v4
 // ═══════════════════════════════════════════════
+(function() {
+'use strict';
 
 const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _intlFilters = {};
@@ -1759,3 +1761,34 @@ async function _scanOpen(matched, data) {
   await _openModal(null, f, matched.clientLabel);
 }
 
+// Expose functions used from onclick/onchange/oninput/onblur handlers
+window.renderOrdersIntl = renderOrdersIntl;
+window.openIntlScan = openIntlScan;
+window.openIntlCreate = openIntlCreate;
+window.openIntlEdit = openIntlEdit;
+window.selectIntlOrder = selectIntlOrder;
+window.toggleIntlInvoiced = toggleIntlInvoiced;
+window._intlSortToggle = _intlSortToggle;
+window._applyIntlFilters = _applyIntlFilters;
+window.intlSearch = intlSearch;
+window.intlFilter = intlFilter;
+window.openPalletUpload = openPalletUpload;
+window.closePalletUpload = closePalletUpload;
+window.submitIntlOrder = submitIntlOrder;
+window._addStop = _addStop;
+window._scanExtract = _scanExtract;
+window._scanOpenStored = _scanOpenStored;
+window._scanDrop = _scanDrop;
+window._scanHandleFile = _scanHandleFile;
+window._locDrop = _locDrop;
+window._clientDrop = _clientDrop;
+window._hideDrop = _hideDrop;
+window._showDrop = _showDrop;
+window._pickLinked = _pickLinked;
+// _oiPage is mutated from onclick (++/--) so expose as getter/setter
+Object.defineProperty(window, '_oiPage', {
+  get: function() { return _oiPage; },
+  set: function(v) { _oiPage = v; },
+  configurable: true
+});
+})();

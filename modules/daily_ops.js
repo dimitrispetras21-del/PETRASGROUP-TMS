@@ -3,7 +3,7 @@
 // Table-based spreadsheet layout — International ORDERS only
 // Stacked: Export Load → Export Deliver → Import Load → Import Deliver
 // ═══════════════════════════════════════════════════════════════
-
+(function() {
 'use strict';
 
 const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[] };
@@ -18,99 +18,7 @@ const OPS_FIELDS = [
   'Truck','Trailer','Driver','Is Partner Trip','Partner',
 ];
 
-/* ── CSS — follows Petras Group TMS design system ─────────────── */
-(function(){
-  if (document.getElementById('ops-css')) return;
-  const s = document.createElement('style'); s.id = 'ops-css';
-  s.textContent = `
-/* day toggle */
-.ops-toolbar { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
-.ops-day-btn { padding:7px 18px; font-size:11px; font-weight:700; border-radius:7px;
-  border:1px solid var(--border-mid); background:var(--bg); color:var(--text-mid);
-  cursor:pointer; letter-spacing:.5px; text-transform:uppercase; font-family:'Syne',sans-serif;
-  transition:all .15s; }
-.ops-day-btn:hover { background:var(--bg-hover); }
-.ops-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
-  box-shadow:0 2px 8px rgba(2,132,199,0.25); }
-
-/* KPI cards — dark navy */
-.ops-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
-.ops-kpi { background:#0F172A; border:1px solid #1E293B;
-  border-radius:10px; padding:14px 18px; flex:1; min-width:130px; }
-.ops-kpi-label { font-size:12px; font-weight:500; letter-spacing:.3px;
-  color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
-.ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
-.ops-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
-  line-height:1; color:#F1F5F9; }
-.ops-kpi-sub { font-size:11px; color:#64748B; }
-.ops-kpi-bar { height:3px; background:#1E293B; border-radius:2px; margin-top:8px; overflow:hidden; }
-.ops-kpi-fill { height:100%; border-radius:2px; transition:width .3s; }
-
-/* overdue alert */
-.ops-alert { background:var(--danger-bg); border:1px solid rgba(220,38,38,0.18);
-  border-radius:10px; padding:10px 14px; margin-bottom:14px; }
-.ops-alert-hdr { display:flex; align-items:center; cursor:pointer; }
-.ops-alert-txt { font-size:12px; font-weight:600; color:var(--danger); flex:1; }
-.ops-alert-tog { font-size:10px; color:var(--danger); opacity:.5; }
-.ops-alert-list { display:none; flex-direction:column; gap:3px; margin-top:8px;
-  max-height:200px; overflow-y:auto; }
-.ops-alert-row { display:flex; align-items:center; gap:8px; padding:5px 8px;
-  border-radius:6px; background:rgba(220,38,38,0.04); font-size:10.5px; }
-.ops-alert-info { flex:1; min-width:0; font-weight:600; color:var(--text); }
-.ops-alert-dt { font-size:9px; color:var(--text-dim); margin-left:6px; font-weight:400; }
-.ops-alert-btn { font-size:9px; font-weight:600; padding:3px 10px; border-radius:6px;
-  border:1px solid; background:none; cursor:pointer; transition:all .15s; }
-.ops-alert-btn:hover { opacity:.7; }
-.ops-alert-btn.ok { color:var(--success); border-color:rgba(5,150,105,0.25); }
-.ops-alert-btn.no { color:var(--danger); border-color:rgba(220,38,38,0.25); }
-
-/* section blocks — stacked */
-.ops-sections { display:flex; flex-direction:column; gap:16px; }
-.ops-sec-hd {
-  padding:8px 14px; border-radius:10px 10px 0 0;
-  font-family:'Syne',sans-serif; font-size:10px; font-weight:800;
-  letter-spacing:1.5px; text-transform:uppercase;
-  display:flex; justify-content:space-between; align-items:center;
-}
-.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-
-/* table — uses global thead/tbody styles from style.css */
-.ops-t { width:100%; border-collapse:collapse; background:var(--bg-card);
-  border:1px solid var(--border); border-top:none; border-radius:0 0 10px 10px;
-  overflow:hidden; }
-.ops-t thead th { padding:9px 14px; font-size:10px; font-weight:600;
-  letter-spacing:1px; text-transform:uppercase; color:var(--text-dim);
-  text-align:left; border-bottom:1px solid var(--border); white-space:nowrap;
-  background:#F0F5FA; }
-.ops-t thead th.c { text-align:center; }
-.ops-t tbody td { padding:10px 14px; font-size:13px; border-bottom:1px solid var(--border);
-  vertical-align:middle; }
-.ops-t tbody tr:last-child td { border-bottom:none; }
-.ops-t tbody tr:hover td { background:var(--bg-hover); }
-.ops-t tbody tr.done td { opacity:.4; }
-.ops-t .c { text-align:center; }
-.ops-t .trn { max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ops-t .trn-s { max-width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ops-t .rn { font-family:'Syne',sans-serif; font-weight:700; color:var(--text-dim); font-size:11px; }
-.ops-t input[type=checkbox] { width:15px; height:15px; cursor:pointer; accent-color:var(--success); }
-.ops-t select.tinp { padding:4px 6px; font-size:11px; border:1px solid var(--border-mid);
-  border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
-  font-family:'DM Sans',sans-serif; cursor:pointer; max-height:200px; }
-.ops-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
-.ops-t input.tinp { padding:4px 8px; font-size:11px; border:1px solid var(--border-mid);
-  border-radius:6px; background:var(--bg-card); color:var(--text); outline:none;
-  font-family:'DM Sans',sans-serif; width:60px; }
-.ops-t input.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
-
-/* action buttons — match project btn style */
-/* action buttons — use global .btn classes */
-.ops-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
-`;
-  document.head.appendChild(s);
-})();
+/* ── CSS moved to assets/style.css ── */
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
 async function renderDailyOps() {
@@ -456,3 +364,15 @@ function _opsPrint() {
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
   try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
+
+// Expose functions used from onclick/onchange handlers
+window.renderDailyOps = renderDailyOps;
+window.OPS = OPS;
+window._opsPrint = _opsPrint;
+window._opsTog = _opsTog;
+window._opsSvF = _opsSvF;
+window._opsStat = _opsStat;
+window._opsDel = _opsDel;
+window._opsPost = _opsPost;
+window._opsOvAct = _opsOvAct;
+})();

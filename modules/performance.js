@@ -2,6 +2,7 @@
 // MY PERFORMANCE — HR Performance Dashboard
 // Per-user KPIs, trends, and AI feedback via Νάκης
 // ═══════════════════════════════════════════════════════════════
+(function() {
 'use strict';
 
 const PERF = { orders: [], natLoads: [], trucks: [], drivers: [], maint: [] };
@@ -60,73 +61,7 @@ const PERF_KPIS = {
   accountant: PERF_KPIS_BY_USER.eirini,
 };
 
-/* ── CSS ──────────────────────────────────────────────────── */
-(function(){
-  if (document.getElementById('perf-css')) return;
-  const s = document.createElement('style'); s.id = 'perf-css';
-  s.textContent = `
-/* Reuse dashboard vars */
-.perf-wrap {
-  --d-bg: transparent;  --d-card: #0B1929;  --d-card-hover: #0F2035;
-  --d-border: rgba(0,0,0,0.08);  --d-border-mid: rgba(0,0,0,0.12);
-  --d-text: #E2E8F0;  --d-text-mid: #94A3B8;  --d-text-dim: #64748B;
-  --d-accent: #38BDF8;  --d-success: #10B981;  --d-danger: #EF4444;  --d-warning: #F59E0B;
-  max-width:1600px;
-}
-.perf-header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:20px; }
-.perf-name { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; color:#0F172A; letter-spacing:-0.3px; }
-.perf-role { font-size:12px; color:#64748B; margin-top:2px; font-weight:400; }
-
-/* KPI Bar — same as dashboard */
-.perf-kpi-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:20px; }
-@media(max-width:900px) { .perf-kpi-grid { grid-template-columns:repeat(2,1fr); } }
-.perf-kpi { background:var(--d-card); border:1px solid var(--d-border); border-radius:8px;
-  padding:14px 16px; position:relative; overflow:hidden; transition:all .15s; }
-.perf-kpi:hover { border-color:var(--d-border-mid); transform:translateY(-1px); box-shadow:0 4px 16px rgba(0,0,0,0.15); }
-.perf-kpi-label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:var(--d-text-dim); margin-bottom:6px; }
-.perf-kpi-val { font-family:'DM Sans',monospace; font-size:26px; font-weight:700; line-height:1; margin-bottom:4px; }
-.perf-kpi-target { font-size:10px; color:var(--d-text-dim); }
-.perf-kpi-glow { position:absolute; top:0; left:0; right:0; height:2px; opacity:0.6; }
-
-/* Cards — same as dashboard */
-.perf-card { background:var(--d-card); border:1px solid var(--d-border); border-radius:8px; overflow:hidden; }
-.perf-card-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px;
-  border-bottom:1px solid var(--d-border); }
-.perf-card-title { font-family:'Syne',sans-serif; font-size:11px; font-weight:700;
-  letter-spacing:.8px; text-transform:uppercase; color:var(--d-text-mid); }
-.perf-card-body { padding:12px 16px; }
-
-/* Grid layout — same as dashboard */
-.perf-grid { display:grid; grid-template-columns:1fr 320px; gap:16px; }
-.perf-left { display:flex; flex-direction:column; gap:16px; }
-.perf-right { display:flex; flex-direction:column; gap:12px; }
-@media(max-width:1100px) { .perf-grid { grid-template-columns:1fr; } }
-
-/* Trend bars — dark theme */
-.perf-trend-row { display:flex; align-items:center; gap:12px; margin-bottom:8px; }
-.perf-trend-wk { font-size:11px; font-weight:600; color:var(--d-text-mid); width:35px; }
-.perf-trend-bar { flex:1; height:20px; background:rgba(255,255,255,0.04); border-radius:6px; overflow:hidden; }
-.perf-trend-fill { height:100%; border-radius:6px; display:flex; align-items:center; justify-content:flex-end; padding-right:8px; transition:width .5s; }
-.perf-trend-val { font-size:10px; font-weight:700; color:var(--d-text); min-width:35px; text-align:right; }
-
-/* Activity table — dark theme */
-.perf-activity { width:100%; border-collapse:collapse; }
-.perf-activity th { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.5px;
-  color:var(--d-text-dim); padding:6px 8px; text-align:left; border-bottom:1px solid var(--d-border-mid); }
-.perf-activity td { font-size:11px; color:var(--d-text); padding:7px 8px; border-bottom:1px solid var(--d-border); }
-.perf-activity tr { cursor:pointer; transition:background .1s; }
-.perf-activity tbody tr:hover { background:var(--d-card-hover); }
-.perf-pill { font-size:9px; font-weight:700; padding:2px 8px; border-radius:10px; white-space:nowrap; }
-.perf-pill-ok { background:rgba(16,185,129,0.12); color:#10B981; }
-.perf-pill-bad { background:rgba(239,68,68,0.12); color:#EF4444; }
-
-/* Score circle — same as dashboard */
-.perf-score-ring { position:relative; width:140px; height:140px; margin:0 auto 12px; }
-.perf-score-num { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-  font-family:'Syne',sans-serif; font-size:38px; font-weight:800; line-height:1; }
-`;
-  document.head.appendChild(s);
-})();
+/* ── CSS moved to assets/style.css ── */
 
 /* ── ENTRY ────────────────────────────────────────────────── */
 async function renderPerformance() {
@@ -544,3 +479,10 @@ function _perfRemoveGoal(i) {
   _perfSaveGoals(goals);
   renderPerformance();
 }
+
+// Expose functions used from onclick handlers
+window.renderPerformance = renderPerformance;
+window._perfRemoveGoal = _perfRemoveGoal;
+window._perfAddGoal = _perfAddGoal;
+window._perfToggleGoal = _perfToggleGoal;
+})();
