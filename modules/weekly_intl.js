@@ -721,11 +721,13 @@ function _wiImpRowHTML(row){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
-  const fromStr=_wiClean(f['Loading Summary']||'—');
-  const toStr  =_wiClean(f['Delivery Summary']||'—');
+  const fromStr=_wiClean(f['Loading Summary']||f['Client Name']||f['Client Summary']||'—');
+  const toStr  =_wiClean(f['Delivery Summary']||f['Client Name']||f['Client Summary']||'—');
+  const clientName=_wiClean((f['Client Name']||f['Client Summary']||'').split(',')[0].trim()||'');
   const pals   =f['Total Pallets']||0;
   const loadDt =_wiFmt(f['Loading DateTime']);
   const delDt  =_wiFmt(f['Delivery DateTime']);
+  const impRef2=f['Reference']||'';
   const isMatched=!!row.matchedTo;
 
   // Find which export it's matched to
@@ -782,15 +784,15 @@ function _wiImpRowHTML(row){
     impPill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
   }
 
-  const impRef2=f['Reference']||'';
   const matchCell=isMatched
     ?`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
-          <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
         </div>
-        <div class="wi-sub" style="margin-top:1px">
+        <div class="wi-sub">
+          ${clientName?`<span style="font-weight:700">${clientName}</span><span class="wi-sub-div"></span>`:''}
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
@@ -800,12 +802,13 @@ function _wiImpRowHTML(row){
         <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
       </div>`
     :`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from" style="color:var(--text);font-weight:700">${fromStr}</span>
-          <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest" style="color:var(--text-mid)">${toStr}</span>
+        <div class="wi-route">
+          <span class="from">${fromStr}</span>
+          <span class="sep">→</span>
+          <span class="dest">${toStr}</span>
         </div>
-        <div class="wi-sub" style="margin-top:1px">
+        <div class="wi-sub">
+          ${clientName?`<span style="font-weight:700">${clientName}</span><span class="wi-sub-div"></span>`:''}
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
           ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
@@ -824,7 +827,7 @@ function _wiImpRowHTML(row){
         <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
-      <div class="wi-ce" style="cursor:grab;background:#172C45"></div>
+      <div class="wi-ce" style="background:#0B1929"></div>
       <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
@@ -932,22 +935,20 @@ function _wiRowHTML(row,i){
   }
 
   // Import preview — saved state shown (full details like export)
-  const impClientId=imp?(imp.fields['Client']||[])[0]||'':null;
-  const impClientName=impClientId?data.imports.reduce((n,r)=>{
-    if(r.id===imp.id){const cn=r.fields['Client Name']||r.fields['Client Summary']||'';return cn.split(',')[0].trim();}return n;
-  },''):'';
+  const impClientName=imp?_wiClean((imp.fields['Client Name']||imp.fields['Client Summary']||'').split(',')[0].trim()||''):'';
   const impRef=imp?imp.fields['Reference']||'':'';
   const impLoadDt=imp?_wiFmt(imp.fields['Loading DateTime']):'';
   const impDelDt=imp?_wiFmt(imp.fields['Delivery DateTime']):'';
   const impPals=imp?imp.fields['Total Pallets']||0:0;
   const impPrev=imp
     ?`<div class="wi-ci-data">
-        <div style="display:flex;align-items:center;gap:0;min-width:0">
-          <span class="wi-ci-from">${_wiClean(imp.fields['Loading Summary']||'—')}</span>
-          <span class="wi-ci-sep">→</span>
-          <span class="wi-ci-dest">${_wiClean(imp.fields['Delivery Summary']||'—')}</span>
+        <div class="wi-route">
+          <span class="from">${_wiClean(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}</span>
+          <span class="sep">→</span>
+          <span class="dest">${_wiClean(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}</span>
         </div>
-        <div class="wi-sub" style="margin-top:1px">
+        <div class="wi-sub">
+          ${impClientName?`<span style="font-weight:700">${impClientName}</span><span class="wi-sub-div"></span>`:''}
           ${impLoadDt!=='—'?`<span>${impLoadDt} → ${impDelDt}</span>`:''}
           ${impLoadDt!=='—'&&impPals?`<span class="wi-sub-div"></span>`:''}
           ${impPals?`<span>${impPals} pal</span>`:''}
