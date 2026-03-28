@@ -1925,3 +1925,217 @@ tbody tr:hover { background: var(--bg-hover); }
 .perf-score-ring { position:relative; width:140px; height:140px; margin:0 auto 12px; }
 .perf-score-num { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
   font-family:'Syne',sans-serif; font-size:38px; font-weight:800; line-height:1; }
+
+/* ═══════════════════════════════════════════════
+   PRINT STYLES — Weekly International & National
+═══════════════════════════════════════════════ */
+@media print {
+  /* Page setup */
+  @page {
+    size: landscape;
+    margin: 1cm;
+  }
+
+  /* ── Hide non-essential chrome ──────────────────── */
+  .sidebar,
+  .topbar,
+  .ai-chat-btn,
+  .ai-chat-panel,
+  #notifBell,
+  #cacheAgeBanner,
+  #offlineBanner,
+  .page-footer,
+  button,
+  .btn,
+  .btn-new-order,
+  .btn-scan,
+  .btn-ghost,
+  .btn-primary { display: none !important; }
+
+  /* Keep the Print Week button hidden (it's a button) */
+
+  /* ── Hide week pill bars, context menus, popovers ── */
+  #wi-week-bar,
+  #wn-week-bar,
+  #wi-ctx,
+  #wn-ctx,
+  #wi-popover,
+  #wn-popover { display: none !important; }
+
+  /* ── Hide side print buttons & drag handles ─────── */
+  .wi-side-btn,
+  .wi-side-ph,
+  .wi-ca-wrap .wi-side-btn { display: none !important; }
+
+  /* ── Full-width content area ────────────────────── */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10px !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .content {
+    margin-left: 0 !important;
+    padding: 8px !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+
+  /* ── Page header: keep title & stats ────────────── */
+  .page-header { margin-bottom: 8px !important; }
+  .page-title {
+    color: black !important;
+    font-size: 16px !important;
+  }
+  .page-sub,
+  .page-sub span { color: #333 !important; }
+
+  /* ── Table wrapper: remove scroll constraints ───── */
+  .wi-wrap {
+    overflow: visible !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    border: 1px solid #999 !important;
+  }
+
+  /* ── Column header ──────────────────────────────── */
+  .wi-head {
+    background: #E8ECF0 !important;
+    position: static !important;
+    box-shadow: none !important;
+  }
+  .wi-hc {
+    color: black !important;
+    opacity: 1 !important;
+    border-right-color: #ccc !important;
+  }
+
+  /* ── Date separators ────────────────────────────── */
+  .wi-dsep {
+    background: #F0F0F0 !important;
+    border-top: 1px solid #ccc !important;
+    page-break-before: auto;
+  }
+  .wi-dsep-lbl { color: #666 !important; }
+  .wi-dsep-date { color: black !important; }
+  .wi-dsep-n { color: #555 !important; }
+
+  /* ── Rows ────────────────────────────────────────── */
+  .wi-row {
+    border-top: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+  .wi-row::before {
+    /* Keep left status bar but use darker print-friendly colors */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .wi-row:hover .wi-compact { background: transparent !important; }
+
+  /* Grid: ensure it displays */
+  .wi-compact {
+    display: grid !important;
+    background: transparent !important;
+  }
+
+  /* Row number column */
+  .wi-cn { border-right-color: #ccc !important; }
+  .wi-dot {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .wi-num { color: #333 !important; }
+
+  /* ── Export column ──────────────────────────────── */
+  .wi-ce { border-right-color: #ccc !important; background: transparent !important; }
+  .wi-route .from,
+  .wi-route .dest { color: black !important; }
+  .wi-route .sep { color: #666 !important; }
+  .wi-sub { color: #444 !important; }
+  .wi-sub span { color: #444 !important; }
+  .wi-sub-div { background: #999 !important; }
+
+  /* ── Badges: outline style for print ────────────── */
+  .wi-badge {
+    background: white !important;
+    color: black !important;
+    border: 1px solid #555 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .wi-vx,
+  .wi-gr {
+    background: white !important;
+    color: black !important;
+    border: 1px solid #666 !important;
+  }
+
+  /* ── Assignment column ──────────────────────────── */
+  .wi-ca-wrap {
+    border-right-color: #ccc !important;
+    background: transparent !important;
+  }
+  .wi-pill { width: auto !important; min-width: 0 !important; }
+
+  /* Assignment cards: clean black-on-white */
+  .wi-card {
+    background: white !important;
+    border: 1px solid #555 !important;
+    border-left: 3px solid #555 !important;
+    border-radius: 0 !important;
+  }
+  .wi-card-top { color: black !important; }
+  .wi-card-bot { color: #444 !important; opacity: 1 !important; }
+
+  /* Status-specific left borders for print */
+  .wi-card-ok  { border-left-color: #0284C7 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .wi-card-bp  { border-left-color: #059669 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .wi-card-cl  { border-left-color: #0D9488 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .wi-card-un  { border-left-color: #DC2626 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  /* ── Import column ──────────────────────────────── */
+  .wi-ci { background: transparent !important; }
+  .wi-ci-data { color: black !important; }
+  .wi-ci-n,
+  .wi-ci-from,
+  .wi-ci-dest { color: black !important; }
+  .wi-ci-s { color: #444 !important; }
+  .wi-ci-e { color: #555 !important; }
+  .wi-ci-save { color: #059669 !important; }
+
+  /* ── Import rows (unmatched list) ───────────────── */
+  .wi-imp-row {
+    background: transparent !important;
+    border-top: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+  .wi-imp-arrow { color: #666 !important; }
+  .wi-imp-actions { display: none !important; }
+
+  /* ── Panel (expanded assignment details) ─────────── */
+  .wi-panel { display: none !important; }
+
+  /* ── Group accordion ────────────────────────────── */
+  .wi-group-detail {
+    background: #F8F8F8 !important;
+    border-top: 1px solid #ddd !important;
+    page-break-inside: avoid;
+  }
+
+  /* ── Drop zones ─────────────────────────────────── */
+  .wi-piz { display: none !important; }
+
+  /* ── Remove all decorative effects ──────────────── */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* ── Ensure text visibility ─────────────────────── */
+  h1, h2, h3 { color: black !important; }
+
+  /* ── Consolidated loads in national view ─────────── */
+  .wn-sn-row { page-break-inside: avoid; }
+}
