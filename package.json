@@ -1,0 +1,12 @@
+{
+  "name": "petrasgroup-tms",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Petras Group Transport Management System",
+  "scripts": {
+    "build": "bash build.sh"
+  },
+  "devDependencies": {
+    "terser": "^5.0.0"
+  }
+}

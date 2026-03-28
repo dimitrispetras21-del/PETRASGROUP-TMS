@@ -10,6 +10,11 @@ let _intlSortCol = null;   // current sort column key
 let _intlSortDir = 0;      // 0=none, 1=asc, 2=desc
 let _oiPage = 1;
 const _oiPageSize = 50;
+
+// ─── Virtual Scroll State ─────────────────────
+const _oiVS = { allRows: [], sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
+const _OI_ROW_H = 40; // row height in px
+const _OI_BUFFER = 10; // buffer rows above/below
 let _locationsMap = {};   // recId → label
 let _locationsArr = [];   // [{id,label}]
 const _clientsMap  = {};  // recId → name (populated on search)
@@ -215,55 +220,104 @@ function _intlSortRecords(recs) {
   });
 }
 
-// ─── Table ──────────────────────────────────────
+// ─── Table (Virtual Scroll) ─────────────────────
+function _oiRowHtml(r) {
+  const f = r.fields;
+  const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
+  const dir = f['Direction']||'';
+  const dirB = dir==='Export' ? '<span class="badge badge-blue">↑ Export</span>'
+             : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
+             : `<span class="badge badge-grey">${dir||'—'}</span>`;
+  const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
+  const hr  = f['High Risk Flag'] ? '<span title="⚠" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
+  const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
+  const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
+  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
+    <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Order Number']||r.id.slice(-6))}</strong></td>
+    <td>W${escapeHtml(f[' Week Number']||'—')}</td>
+    <td>${dirB}</td>
+    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
+    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
+    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
+    <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
+    <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
+    <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
+    <td>${tripB}</td>
+    <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
+      title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
+      style="cursor:pointer;text-align:center">
+      ${f['Invoiced']
+        ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
+        : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
+    </td>
+  </tr>`;
+}
+
+function _oiVirtualPaint() {
+  const scroller = document.getElementById('oiVScroll');
+  if (!scroller) return;
+  const tbody = scroller.querySelector('tbody');
+  const topSp = document.getElementById('oiTopSpacer');
+  const botSp = document.getElementById('oiBottomSpacer');
+  if (!tbody || !topSp || !botSp) return;
+
+  const total = _oiVS.sortedRecs.length;
+  const scrollTop = scroller.scrollTop;
+  const visH = scroller.clientHeight;
+  const startIdx = Math.max(0, Math.floor(scrollTop / _OI_ROW_H) - _OI_BUFFER);
+  const endIdx = Math.min(total, Math.ceil((scrollTop + visH) / _OI_ROW_H) + _OI_BUFFER);
+
+  // Skip if range unchanged
+  if (startIdx === _oiVS.lastStart && endIdx === _oiVS.lastEnd) return;
+  _oiVS.lastStart = startIdx;
+  _oiVS.lastEnd = endIdx;
+
+  topSp.style.height = (startIdx * _OI_ROW_H) + 'px';
+  botSp.style.height = ((total - endIdx) * _OI_ROW_H) + 'px';
+
+  const html = [];
+  for (let i = startIdx; i < endIdx; i++) {
+    html.push(_oiRowHtml(_oiVS.sortedRecs[i]));
+  }
+  tbody.innerHTML = html.join('');
+}
+
+function _oiOnScroll() {
+  if (_oiVS.rafId) return;
+  _oiVS.rafId = requestAnimationFrame(() => {
+    _oiVS.rafId = null;
+    _oiVirtualPaint();
+  });
+}
+
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
   const sortedRecs = _intlSortRecords(records);
-  const totalPages = Math.max(1, Math.ceil(sortedRecs.length / _oiPageSize));
-  if (_oiPage > totalPages) _oiPage = totalPages;
-  const pageRows = sortedRecs.slice((_oiPage - 1) * _oiPageSize, _oiPage * _oiPageSize);
-  const rows = pageRows.map(r => {
-    const f = r.fields;
-    const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
-    const dir = f['Direction']||'';
-    const dirB = dir==='Export' ? '<span class="badge badge-blue">↑ Export</span>'
-               : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
-               : `<span class="badge badge-grey">${dir||'—'}</span>`;
-    const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
-    const hr  = f['High Risk Flag'] ? '<span title="⚠" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
-    const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
-    const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
-    return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}">
-      <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Order Number']||r.id.slice(-6))}</strong></td>
-      <td>W${escapeHtml(f[' Week Number']||'—')}</td>
-      <td>${dirB}</td>
-      <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
-      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
-      <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
-      <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
-      <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-      <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
-      <td>${tripB}</td>
-      <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
-        title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
-        style="cursor:pointer;text-align:center">
-        ${f['Invoiced']
-          ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
-          : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
-      </td>
-    </tr>`;
-  }).join('');
+  _oiVS.sortedRecs = sortedRecs;
+  _oiVS.lastStart = -1;
+  _oiVS.lastEnd = -1;
+
   const ths = _intlColDefs.map(c => {
     const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:#0284C7">▲</span>':_intlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_intlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
-  const paginationHtml = totalPages > 1 ? `<div style="display:flex;justify-content:center;gap:12px;padding:16px;align-items:center;">
-    <button onclick="_oiPage--;_applyIntlFilters()" ${_oiPage<=1?'disabled':''} class="btn btn-scan">Previous</button>
-    <span style="color:#94A3B8">Page ${_oiPage} of ${totalPages}</span>
-    <button onclick="_oiPage++;_applyIntlFilters()" ${_oiPage>=totalPages?'disabled':''} class="btn btn-scan">Next</button>
-  </div>` : '';
-  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>${paginationHtml}`;
+
+  const totalH = sortedRecs.length * _OI_ROW_H;
+  wrap.innerHTML = `
+    <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
+      <table>
+        <thead><tr>${ths}</tr></thead>
+      </table>
+      <div id="oiTopSpacer" style="height:0"></div>
+      <table><tbody></tbody></table>
+      <div id="oiBottomSpacer" style="height:${totalH}px"></div>
+    </div>
+    <div style="padding:8px 16px;color:#94A3B8;font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+
+  const scroller = document.getElementById('oiVScroll');
+  scroller.addEventListener('scroll', _oiOnScroll, { passive: true });
+  _oiVirtualPaint();
 }
 
 // ─── Filters ────────────────────────────────────

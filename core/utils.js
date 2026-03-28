@@ -176,6 +176,82 @@ function fmtDateDM(d) {
   return `${p[2]}/${p[1]}`;
 }
 
+// ═══ ERROR LOGGER ═══
+const _errorLog = [];
+const MAX_ERROR_LOG = 50;
+
+/**
+ * Log an error to the persistent error log (localStorage)
+ * @param {Error|string} error - The error object or message
+ * @param {string} [context=''] - Where the error occurred
+ */
+function logError(error, context = '') {
+  const entry = {
+    ts: new Date().toISOString(),
+    msg: error?.message || String(error),
+    stack: error?.stack?.split('\n').slice(0, 3).join('\n') || '',
+    ctx: context,
+    user: (function() { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').name || 'unknown'; } catch { return 'unknown'; } })(),
+    page: window.location.hash || (localStorage.getItem('tms_page') || 'dashboard'),
+  };
+  _errorLog.push(entry);
+  if (_errorLog.length > MAX_ERROR_LOG) _errorLog.shift();
+  try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); } catch {}
+  console.error(`[TMS ERROR] ${context}:`, error);
+}
+
+/**
+ * Get the persisted error log
+ * @returns {Array} Array of error log entries
+ */
+function getErrorLog() {
+  try { return JSON.parse(localStorage.getItem('tms_errors') || '[]'); } catch { return []; }
+}
+
+/**
+ * Render the error log viewer page (owner role only)
+ */
+function renderErrorLog() {
+  const c = document.getElementById('content');
+  const u = JSON.parse(localStorage.getItem('tms_user') || '{}');
+  if (u.role !== 'owner') { c.innerHTML = showAccessDenied(); return; }
+
+  const errors = getErrorLog().reverse(); // newest first
+  const rows = errors.map(e => `<tr>
+    <td style="white-space:nowrap;font-size:11px">${escapeHtml(e.ts ? new Date(e.ts).toLocaleString('el-GR') : '—')}</td>
+    <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(e.msg)}">${escapeHtml(e.msg)}</td>
+    <td>${escapeHtml(e.ctx || '—')}</td>
+    <td>${escapeHtml(e.user || '—')}</td>
+    <td>${escapeHtml(e.page || '—')}</td>
+    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-size:10px;color:var(--text-dim)" title="${escapeHtml(e.stack||'')}">${escapeHtml((e.stack||'').split('\n')[0] || '—')}</td>
+  </tr>`).join('');
+
+  c.innerHTML = `
+    <div class="page-header" style="margin-bottom:14px">
+      <div>
+        <div class="page-title">Error Log</div>
+        <div class="page-sub">${errors.length} errors (last 50)</div>
+      </div>
+      <div>
+        <button class="btn btn-scan" onclick="localStorage.removeItem('tms_errors');renderErrorLog()">Clear Log</button>
+      </div>
+    </div>
+    <div class="entity-table-wrap" style="max-height:calc(100vh - 200px)">
+      <table>
+        <thead><tr>
+          <th>Timestamp</th><th>Message</th><th>Context</th><th>User</th><th>Page</th><th>Stack</th>
+        </tr></thead>
+        <tbody>${rows.length ? rows : '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-dim)">No errors logged</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
+// Load persisted errors into memory on init
+try {
+  const stored = JSON.parse(localStorage.getItem('tms_errors') || '[]');
+  _errorLog.push(...stored);
+} catch {}
+
 // ═══ NOTIFICATION CENTER ═══
 let _notifOpen = false;
 let _notifItems = [];
