@@ -6,6 +6,8 @@ const INTL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _intlFilters = {};
 let _intlSortCol = null;   // current sort column key
 let _intlSortDir = 0;      // 0=none, 1=asc, 2=desc
+let _oiPage = 1;
+const _oiPageSize = 50;
 let _locationsMap = {};   // recId → label
 let _locationsArr = [];   // [{id,label}]
 const _clientsMap  = {};  // recId → name (populated on search)
@@ -76,6 +78,7 @@ async function renderOrdersIntl() {
     INTL_ORDERS.filtered = records;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
+    _oiPage = 1;
     // Apply dashboard nav filter if coming from KPI click
     if (window._dashNav) {
       if (window._dashNav.dir) _intlFilters.direction = window._dashNav.dir;
@@ -215,7 +218,10 @@ function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
   const sortedRecs = _intlSortRecords(records);
-  const rows = sortedRecs.slice(0,300).map(r => {
+  const totalPages = Math.max(1, Math.ceil(sortedRecs.length / _oiPageSize));
+  if (_oiPage > totalPages) _oiPage = totalPages;
+  const pageRows = sortedRecs.slice((_oiPage - 1) * _oiPageSize, _oiPage * _oiPageSize);
+  const rows = pageRows.map(r => {
     const f = r.fields;
     const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
     const dir = f['Direction']||'';
@@ -250,12 +256,17 @@ function _renderIntlTable(records) {
     const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:#0284C7">▲</span>':_intlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_intlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
-  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
+  const paginationHtml = totalPages > 1 ? `<div style="display:flex;justify-content:center;gap:12px;padding:16px;align-items:center;">
+    <button onclick="_oiPage--;_applyIntlFilters()" ${_oiPage<=1?'disabled':''} class="btn btn-scan">Previous</button>
+    <span style="color:#94A3B8">Page ${_oiPage} of ${totalPages}</span>
+    <button onclick="_oiPage++;_applyIntlFilters()" ${_oiPage>=totalPages?'disabled':''} class="btn btn-scan">Next</button>
+  </div>` : '';
+  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>${paginationHtml}`;
 }
 
 // ─── Filters ────────────────────────────────────
-function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _applyIntlFilters(); }
-function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _applyIntlFilters(); }
+function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _oiPage = 1; _applyIntlFilters(); }
+function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _oiPage = 1; _applyIntlFilters(); }
 
 function _applyIntlFilters() {
   let recs = INTL_ORDERS.data;
@@ -886,8 +897,8 @@ async function _syncVeroiaSwitch(orderId, fields) {
                            : (fields['Unloading Pallets 1'] || fields['Loading Pallets 1'] || fields['Total Pallets'] || 0),
     'Pallet Exchange':   !!fields['Pallet Exchange'],
     'Reference':         fields['Reference'] || '',
-    'Loading DateTime':  natLoadDt,
-    'Delivery DateTime': natDelDt,
+    'Loading DateTime':  natLoadDt ? natLoadDt + 'T12:00:00.000Z' : null,
+    'Delivery DateTime': natDelDt ? natDelDt + 'T12:00:00.000Z' : null,
     'Status':            'Pending',
   };
 

@@ -6,6 +6,8 @@ const NATL_ORDERS = { data: [], filtered: [], selectedId: null };
 const _natlFilters = {};
 let _natlSortCol = null;
 let _natlSortDir = 0;
+let _onPage = 1;
+const _onPageSize = 50;
 
 // ─── Main ───────────────────────────────────────
 async function renderOrdersNatl() {
@@ -21,6 +23,7 @@ async function renderOrdersNatl() {
     NATL_ORDERS.filtered = records;
     NATL_ORDERS.selectedId = null;
     Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
+    _onPage = 1;
 
     // Pre-populate _clientsMap for all records
     const _allClientIds = [...new Set(records
@@ -138,7 +141,10 @@ function _renderNatlTable(records) {
   if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
 
   const sortedRecs = _natlSortRecords(records);
-  const rows = sortedRecs.slice(0,300).map(r => {
+  const totalPages = Math.max(1, Math.ceil(sortedRecs.length / _onPageSize));
+  if (_onPage > totalPages) _onPage = totalPages;
+  const pageRows = sortedRecs.slice((_onPage - 1) * _onPageSize, _onPage * _onPageSize);
+  const rows = pageRows.map(r => {
     const f = r.fields;
     const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
     const dir = f['Direction']||'';
@@ -186,12 +192,17 @@ function _renderNatlTable(records) {
     const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:#0284C7">▲</span>':_natlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
-  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>`;
+  const paginationHtml = totalPages > 1 ? `<div style="display:flex;justify-content:center;gap:12px;padding:16px;align-items:center;">
+    <button onclick="_onPage--;_applyNatlFilters()" ${_onPage<=1?'disabled':''} class="btn btn-scan">Previous</button>
+    <span style="color:#94A3B8">Page ${_onPage} of ${totalPages}</span>
+    <button onclick="_onPage++;_applyNatlFilters()" ${_onPage>=totalPages?'disabled':''} class="btn btn-scan">Next</button>
+  </div>` : '';
+  wrap.innerHTML = `<table><thead><tr>${ths}</tr></thead><tbody>${rows}</tbody></table>${paginationHtml}`;
 }
 
 // ─── Filters ────────────────────────────────────
-function natlSearch(q) { _natlFilters._q = q.toLowerCase().trim(); _applyNatlFilters(); }
-function natlFilter(k,v) { if(!v) delete _natlFilters[k]; else _natlFilters[k]=v; _applyNatlFilters(); }
+function natlSearch(q) { _natlFilters._q = q.toLowerCase().trim(); _onPage = 1; _applyNatlFilters(); }
+function natlFilter(k,v) { if(!v) delete _natlFilters[k]; else _natlFilters[k]=v; _onPage = 1; _applyNatlFilters(); }
 
 function _applyNatlFilters() {
   let recs = NATL_ORDERS.data;
