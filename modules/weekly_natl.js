@@ -69,13 +69,9 @@ async function _wnLoadAll() {
   const fmt    = d => toLocalDate(d);
   const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
-  // 6 fetches in parallel (assets + orders — no CLIENTS, not needed)
-  const [t, tl, d, p, locs, all] = await Promise.all([
-    atGetAll(TABLES.TRUCKS,    { fields:['License Plate'], filterByFormula:'{Active}=TRUE()' }, false),
-    atGetAll(TABLES.TRAILERS,  { fields:['License Plate'] }, false),
-    atGetAll(TABLES.DRIVERS,   { fields:['Full Name'],     filterByFormula:'{Active}=TRUE()' }, false),
-    atGetAll(TABLES.PARTNERS,  { fields:['Company Name'] }, false),
-    atGetAll(TABLES.LOCATIONS, { fields:['Name','City','Country'] }, true),
+  // Ref data (cached) + orders in parallel
+  const [, all] = await Promise.all([
+    preloadReferenceData(),
     atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter, fields: [
       'Direction','Loading DateTime','Delivery DateTime','Truck','Trailer','Driver','Partner',
       'Client','Total Pallets','Goods','Status','Source Type','Source Record','Matched Load',
@@ -85,11 +81,12 @@ async function _wnLoadAll() {
     ] }, false),
   ]);
 
-  // Map assets
-  WNATL.data.trucks    = t.map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-  WNATL.data.trailers  = tl.map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-  WNATL.data.drivers   = d.map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
-  WNATL.data.partners  = p.map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
+  // Map assets from ref data
+  const locs = getRefLocations();
+  WNATL.data.trucks    = getRefTrucks().filter(r=>r.fields['Active']).map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.trailers  = getRefTrailers().map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
+  WNATL.data.drivers   = getRefDrivers().filter(r=>r.fields['Active']).map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  WNATL.data.partners  = getRefPartners().map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
   WNATL.data.clients   = [];
   WNATL.data.locations = locs;
 

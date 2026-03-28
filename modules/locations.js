@@ -420,16 +420,10 @@ async function _locSave() {
   const btn = document.getElementById('locSaveBtn');
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
   try {
-    const url = LOC.editingId
-      ? `https://api.airtable.com/v0/${AT_BASE}/${TABLES.LOCATIONS}/${LOC.editingId}`
-      : `https://api.airtable.com/v0/${AT_BASE}/${TABLES.LOCATIONS}`;
-    const res = await fetch(url, {
-      method: LOC.editingId ? 'PATCH' : 'POST',
-      headers: { Authorization: 'Bearer ' + AT_TOKEN, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Save failed');
+    const data = LOC.editingId
+      ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
+      : await atCreate(TABLES.LOCATIONS, fields);
+    if (data.error) throw new Error(data.error.message || 'Save failed');
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;
@@ -480,11 +474,8 @@ function _locConfirmDelete(id, name) {
 async function _locDoDelete(id) {
   closeModal();
   try {
-    const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.LOCATIONS}/${id}`, {
-      method: 'DELETE', headers: { Authorization: 'Bearer ' + AT_TOKEN }
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error?.message || 'Delete failed');
+    const data = await atDelete(TABLES.LOCATIONS, id);
+    if (data.error) throw new Error(data.error.message || 'Delete failed');
     LOC.records = LOC.records.filter(r => r.id !== id);
     _locRenderOverview();
     _locApplyFilters();
@@ -494,18 +485,9 @@ async function _locDoDelete(id) {
 
 // ── Fetch ───────────────────────────────────────
 async function _locFetchAll() {
-  const records = [];
-  let offset = null;
-  const fp = ['Name','Country','City','Address','Type','Latitude','Longitude'].map(f => `fields[]=${encodeURIComponent(f)}`).join('&');
-  do {
-    const url = `https://api.airtable.com/v0/${AT_BASE}/${TABLES.LOCATIONS}?${fp}&pageSize=100${offset?'&offset='+offset:''}`;
-    const r = await fetch(url, { headers: { Authorization: 'Bearer ' + AT_TOKEN } });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error?.message || 'API error');
-    records.push(...d.records);
-    offset = d.offset || null;
-  } while (offset);
-  return records;
+  return atGetAll(TABLES.LOCATIONS, {
+    fields: ['Name','Country','City','Address','Type','Latitude','Longitude']
+  }, false);
 }
 
 // ── Utils ───────────────────────────────────────

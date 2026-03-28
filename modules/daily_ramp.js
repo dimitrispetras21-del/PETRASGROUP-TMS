@@ -44,16 +44,11 @@ async function renderDailyRamp() {
 
 async function _rampLoad() {
   if (!RAMP.trucks.length || !RAMP.clients.length) {
-    const [t,d,l,cl] = await Promise.all([
-      atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.DRIVERS,{fields:['Full Name'],filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.LOCATIONS,{fields:['Name','City','Country']},true),
-      atGetAll(TABLES.CLIENTS,{fields:['Company Name']},true),
-    ]);
-    RAMP.trucks=t.map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
-    RAMP.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
-    RAMP.locs=l;
-    RAMP.clients=cl;
+    await preloadReferenceData();
+    RAMP.trucks=getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
+    RAMP.drivers=getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
+    RAMP.locs=getRefLocations();
+    RAMP.clients=getRefClients();
   }
 
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS

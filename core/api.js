@@ -363,6 +363,74 @@ async function atDelete(tableId, recId) {
   return data;
 }
 
+/**
+ * Fetch a single Airtable record by ID
+ * @param {string} tableId - Airtable table ID
+ * @param {string} recId - Record ID to fetch
+ * @returns {Promise<{id:string, fields:Object}>} Single Airtable record
+ */
+async function atGetOne(tableId, recId) {
+  const res = await _enqueue(() => _atRetry(() => fetch(
+    _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`),
+    { headers: _apiHeaders('GET') }
+  )));
+  return res.json();
+}
+
+/**
+ * Batch create multiple Airtable records (up to 10 per request)
+ * @param {string} tableId - Airtable table ID
+ * @param {Array<Object>} recordsArr - Array of {fields: {...}} objects
+ * @returns {Promise<Array<{id:string, fields:Object}>>} Created records
+ */
+async function atCreateBatch(tableId, recordsArr) {
+  const results = [];
+  for (let i = 0; i < recordsArr.length; i += 10) {
+    const batch = recordsArr.slice(i, i + 10);
+    _auditLog('CREATE_BATCH', tableId, null, { count: batch.length });
+    const res = await _enqueue(() => _atRetry(() => fetch(
+      _apiUrl(`/v0/${AT_BASE}/${tableId}`),
+      {
+        method: 'POST',
+        headers: _apiHeaders('POST'),
+        body: JSON.stringify({ records: batch })
+      }
+    )));
+    const data = await res.json();
+    if (data.records) results.push(...data.records);
+  }
+  invalidateCache(tableId);
+  atNotifyChange(tableId);
+  return results;
+}
+
+/**
+ * Batch update multiple Airtable records (up to 10 per request)
+ * @param {string} tableId - Airtable table ID
+ * @param {Array<{id:string, fields:Object}>} recordsArr - Array of {id, fields} objects
+ * @returns {Promise<Array<{id:string, fields:Object}>>} Updated records
+ */
+async function atPatchBatch(tableId, recordsArr) {
+  const results = [];
+  for (let i = 0; i < recordsArr.length; i += 10) {
+    const batch = recordsArr.slice(i, i + 10);
+    _auditLog('PATCH_BATCH', tableId, null, { count: batch.length });
+    const res = await _enqueue(() => _atRetry(() => fetch(
+      _apiUrl(`/v0/${AT_BASE}/${tableId}`),
+      {
+        method: 'PATCH',
+        headers: _apiHeaders('PATCH'),
+        body: JSON.stringify({ records: batch })
+      }
+    )));
+    const data = await res.json();
+    if (data.records) results.push(...data.records);
+  }
+  invalidateCache(tableId);
+  atNotifyChange(tableId);
+  return results;
+}
+
 function invalidateCache(tableId) {
   Object.keys(_MEM).forEach(k => { if (k.startsWith(tableId)) delete _MEM[k]; });
   try {
@@ -409,10 +477,10 @@ const REF_DATA = {
 };
 
 const _REF_FIELDS = {
-  trucks:    ['License Plate', 'Active', 'KTEO Expiry', 'Insurance Expiry', 'ATP Expiry'],
+  trucks:    ['License Plate', 'Active', 'KTEO Expiry', 'KEK Expiry', 'Insurance Expiry', 'ATP Expiry'],
   drivers:   ['Full Name', 'Active'],
-  trailers:  ['License Plate', 'Active'],
-  locations: ['Name', 'City', 'Country'],
+  trailers:  ['License Plate', 'Active', 'ATP Expiry', 'Insurance Expiry'],
+  locations: ['Name', 'City', 'Country', 'Latitude', 'Longitude'],
   clients:   ['Company Name'],
   partners:  ['Company Name', 'Adress', 'Country'],
 };

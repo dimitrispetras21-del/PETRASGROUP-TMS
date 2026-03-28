@@ -19,10 +19,10 @@ async function renderDashboard() {
     const trucks = getRefTrucks();
     const drivers = getRefDrivers();
     const clients = getRefClients();
-    const [orders, natLoads, trailers] = await Promise.all([
+    const trailers = getRefTrailers();
+    const [orders, natLoads] = await Promise.all([
       atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
       atGet(TABLES.NAT_LOADS),
-      atGetAll(TABLES.TRAILERS, { fields: ['Plate','ATP Expiry','Insurance Expiry'] }, true),
     ]);
 
     // Build lookup maps
@@ -67,7 +67,7 @@ async function renderDashboard() {
 
     // KPI 4: Dead KM — avg distance between Export Delivery and matched Import Loading
     // Load locations for coordinate lookup
-    const locs = await atGetAll(TABLES.LOCATIONS, { fields: ['Name','Latitude','Longitude'] }, true);
+    const locs = getRefLocations();
     const locCoords = {};
     locs.forEach(l => {
       const lat = l.fields['Latitude'], lng = l.fields['Longitude'];
@@ -233,7 +233,7 @@ async function renderDashboard() {
     });
     trailers.forEach(t => {
       const f = t.fields;
-      const plate = escapeHtml(f['Plate'] || '—');
+      const plate = escapeHtml(f['License Plate'] || '—');
       ['ATP Expiry', 'Insurance Expiry'].forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
         if (dt && dt <= alertThreshold) {

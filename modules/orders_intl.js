@@ -47,9 +47,7 @@ async function _resolveClientName(recId) {
   if (!recId) return '';
   if (_clientsMap[recId]) return _clientsMap[recId];
   try {
-    const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${recId}`,
-      { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } });
-    const d = await res.json();
+    const d = await atGetOne(TABLES.CLIENTS, recId);
     const name = d.fields?.['Company Name'] || '';
     _clientsMap[recId] = name;
     return name;
@@ -76,9 +74,13 @@ async function renderOrdersIntl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading orders...');
   try {
+    // Default: last 60 days of orders (server-side filter for performance)
+    const _intlCutoff = new Date();
+    _intlCutoff.setDate(_intlCutoff.getDate() - 60);
+    const _intlCutoffStr = _intlCutoff.toISOString().split('T')[0];
     const [, records] = await Promise.all([
       _loadLocations(),
-      atGet(TABLES.ORDERS, '', false),
+      atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_intlCutoffStr}')`, false),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     INTL_ORDERS.data = records;
@@ -1382,11 +1384,7 @@ async function submitIntlOrder(recId) {
     const savedOrderId = recId || result.id;
     try {
       toast('Syncing VS national load...', 'info');
-      const res = await fetch(
-        'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.ORDERS+'/'+savedOrderId,
-        {headers: {'Authorization': 'Bearer '+AT_TOKEN}}
-      );
-      const rec = await res.json();
+      const rec = await atGetOne(TABLES.ORDERS, savedOrderId);
       console.log('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
       await _syncVeroiaSwitch(savedOrderId, rec.fields);
@@ -1477,10 +1475,7 @@ function openPalletUpload(orderId) {
       toast('Pallet sheet saved ✓');
       // Refresh the specific order from Airtable to get updated sheet flags
       try {
-        const freshRec = await fetch(
-          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.ORDERS}/${e.data.orderId || orderId}`,
-          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-        ).then(r => r.json());
+        const freshRec = await atGetOne(TABLES.ORDERS, e.data.orderId || orderId);
         if (freshRec.fields) {
           // Update in-memory data
           const idx = INTL_ORDERS.data.findIndex(r => r.id === (e.data.orderId || orderId));
@@ -1507,10 +1502,7 @@ async function closePalletUpload() {
   // Always refresh order on close (in case sheets were uploaded)
   if (orderId) {
     try {
-      const freshRec = await fetch(
-        `https://api.airtable.com/v0/${AT_BASE}/${TABLES.ORDERS}/${orderId}`,
-        { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-      ).then(r => r.json());
+      const freshRec = await atGetOne(TABLES.ORDERS, orderId);
       if (freshRec.fields) {
         const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
         if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
