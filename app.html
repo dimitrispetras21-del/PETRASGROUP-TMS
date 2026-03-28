@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1774618509">
+<link rel="stylesheet" href="assets/style.css?v=1774689225">
 </head>
 <body>
 
@@ -80,32 +80,48 @@
 <!-- ═══ SCRIPTS — load order matters ══════════ -->
 <!-- 1. Config (credentials, table IDs, role matrix) -->
 <script src="config.js?v=1774618882"></script>
-<!-- 2. Core: auth → api → utils → ui → entity → router -->
+<!-- 2. Core: constants → auth → api → utils → ui → entity → router -->
+<script src="core/constants.js?v=1774689225"></script>
 <script src="core/auth.js?v=1774632576"></script>
-<script src="core/api.js?v=1774687659"></script>
-<script src="core/utils.js?v=1774632576"></script>
+<script src="core/api.js?v=1774689225"></script>
+<script src="core/utils.js?v=1774689225"></script>
 <script src="core/ui.js?v=1774800000"></script>
 <script src="core/entity.js?v=1774820000"></script>
-<script src="core/router.js?v=1774687659"></script>
+<script src="core/router.js?v=1774689225"></script>
 <script src="core/ai-chat.js?v=1774603750"></script>
 <!-- 3. Modules -->
-<script src="modules/dashboard.js?v=1774687659"></script>
-<script src="modules/weekly_intl.js?v=1774687659"></script>
-<script src="modules/weekly_natl.js?v=1774632576"></script>
-  <script src="modules/daily_ramp.js?v=1774632576"></script>
+<script src="modules/dashboard.js?v=1774689225"></script>
+<script src="modules/weekly_intl.js?v=1774689225"></script>
+<script src="modules/weekly_natl.js?v=1774689225"></script>
+  <script src="modules/daily_ramp.js?v=1774689225"></script>
   <script src="modules/maintenance.js?v=1774971000"></script>
-  <script src="modules/orders_intl.js?v=1774687659"></script>
-<script src="modules/orders_natl.js?v=1774687659"></script>
+  <script src="modules/orders_intl.js?v=1774689225"></script>
+<script src="modules/orders_natl.js?v=1774689225"></script>
 
 <script src="modules/locations.js?v=1774610000"></script>
-<script src="modules/daily_ops.js?v=1774632576"></script>
+<script src="modules/daily_ops.js?v=1774689225"></script>
 <script src="modules/pallet_upload.js?v=1774971000"></script>
 <script src="modules/pallet_ledger.js?v=1774971000"></script>
 <script src="modules/invoicing.js?v=1774971000"></script>
-<script src="modules/performance.js?v=1774632576"></script>
+<script src="modules/performance.js?v=1774689225"></script>
 
-<!-- 4. Init -->
+<!-- 4. Global error handlers + Init -->
 <script>
+// Catch uncaught errors and show user-friendly toast instead of raw messages
+window.onerror = function(msg, src, line, col, err) {
+  console.error('[TMS Error]', msg, src, line, col, err);
+  if (typeof showErrorToast === 'function') {
+    showErrorToast('\u039A\u03AC\u03C4\u03B9 \u03C0\u03AE\u03B3\u03B5 \u03C3\u03C4\u03C1\u03B1\u03B2\u03AC. \u0391\u03BD\u03B1\u03BD\u03B5\u03CE\u03C3\u03C4\u03B5 \u03C4\u03B7 \u03C3\u03B5\u03BB\u03AF\u03B4\u03B1.');
+  }
+  return true; // suppress default browser error display
+};
+window.addEventListener('unhandledrejection', function(e) {
+  console.error('[TMS Unhandled Promise]', e.reason);
+  if (typeof showErrorToast === 'function') {
+    showErrorToast('\u039A\u03AC\u03C4\u03B9 \u03C0\u03AE\u03B3\u03B5 \u03C3\u03C4\u03C1\u03B1\u03B2\u03AC. \u0391\u03BD\u03B1\u03BD\u03B5\u03CE\u03C3\u03C4\u03B5 \u03C4\u03B7 \u03C3\u03B5\u03BB\u03AF\u03B4\u03B1.');
+  }
+});
+
 function init() {
   document.getElementById('userName').textContent   = user.name;
   document.getElementById('userAvatar').textContent = user.name.charAt(0).toUpperCase();

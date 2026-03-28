@@ -2,6 +2,8 @@
 // MODULE — OPERATIONS DASHBOARD (Complete Rewrite)
 // Bloomberg-meets-SaaS command center
 // ═══════════════════════════════════════════════
+(function() {
+'use strict';
 
 let _dashRefreshTimer = null;
 
@@ -765,3 +767,7 @@ function _dashSkeleton() {
     </div>
   </div>`;
 }
+
+// Expose render function
+window.renderDashboard = renderDashboard;
+})();

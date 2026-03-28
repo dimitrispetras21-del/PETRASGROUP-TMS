@@ -127,6 +127,11 @@ function restoreSidebar() {
 // ── Router ────────────────────────────────────────
 let currentPage = '';
 
+/**
+ * Navigate to a page by ID. Updates sidebar highlight, topbar breadcrumb,
+ * persists the choice to localStorage, and renders the target module.
+ * @param {string} page - Page identifier (e.g. 'dashboard', 'orders_intl')
+ */
 function navigate(page) {
   currentPage = page;
   localStorage.setItem('tms_page', page);
@@ -232,6 +237,9 @@ function navigate(page) {
   }, 2000);
 }
 
+/**
+ * Log the current user out. Clears session data and redirects to the login page.
+ */
 function logout() {
   localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';

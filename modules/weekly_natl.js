@@ -17,7 +17,7 @@
 // Fields written: Truck, Trailer, Driver, Partner, Is Partner Trip,
 //   Partner Truck Plates, Partner Rate, Groupage ID, Matched Order ID
 // ═══════════════════════════════════════════════════════════════════════
-
+(function() {
 'use strict';
 
 const WNATL = {
@@ -40,107 +40,7 @@ function _wnWeekStart(w) {
   return ws;
 }
 
-/* ── CSS (injects once, reuses wi-* from weekly_intl) ─────────────── */
-(function(){
-  if (document.getElementById('wnatl-css2')) return;
-  const s = document.createElement('style'); s.id = 'wnatl-css2';
-  s.textContent = `
-#wn-ctx {
-  display:none; position:fixed; z-index:9999;
-  background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.2);
-  min-width:180px; overflow:hidden;
-}
-.wi-ctx-item { display:block; width:100%; padding:8px 14px; text-align:left; font-size:12px;
-  cursor:pointer; border:none; background:none; color:var(--text); }
-.wi-ctx-item:hover { background:var(--bg-hover); }
-.wi-ctx-danger { color:var(--danger) !important; }
-
-#wn-popover {
-  display:none; position:fixed; z-index:9999;
-  background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:10px;
-  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
-  width:480px; padding:0; overflow:visible;
-}
-#wn-popover .wi-pop-body { padding:12px 14px 0; display:flex; flex-direction:column; gap:10px; }
-#wn-popover .wi-pop-row  { display:flex; gap:6px; align-items:flex-end; flex-wrap:nowrap; }
-#wn-popover .wi-pop-field { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
-#wn-popover .wi-pop-inp  { width:100%; padding:7px 9px; font-size:11px; border-radius:6px;
-  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
-#wn-popover .wi-sdi { width:100%; padding:7px 9px; font-size:11px; border-radius:6px;
-  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
-/* pill overrides */
-.wi-pill {
-  display:flex; flex-direction:column; align-items:stretch;
-  width:100%; max-width:240px;
-  border-radius:3px; overflow:hidden;
-  transition:opacity .12s; cursor:pointer;
-  background:none; border:none; padding:0; gap:0;
-}
-.wi-pill:hover { opacity:.8; }
-
-/* ── COMPACT CARD ── */
-.wi-card {
-  display:flex; flex-direction:column; gap:1px;
-  padding:6px 10px 6px 12px;
-  border-radius:3px;
-  border-left: 2px solid transparent;
-}
-.wi-card-top {
-  font-size:11px; font-weight:700; letter-spacing:.3px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  line-height:1.3;
-}
-.wi-card-bot {
-  font-size:9.5px; font-weight:500; letter-spacing:.2px;
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  line-height:1.3; opacity:.6;
-}
-
-/* OWNED — green */
-.wi-card-ok {
-  background: #0C2D5C;
-  border-left-color: #38BDF8;
-}
-.wi-card-ok .wi-card-top { color: #E0F2FE; font-weight:800; }
-.wi-card-ok .wi-card-bot { color: rgba(224,242,254,0.85); font-weight:700; font-size:10px; }
-
-.wi-card-bp {
-  background: #065F46;
-  border-left-color: #34D399;
-}
-.wi-card-bp .wi-card-top { color: #ECFDF5; font-weight:800; }
-.wi-card-bp .wi-card-bot { color: rgba(236,253,245,0.9); font-weight:700; font-size:10px; }
-
-/* CONSOLIDATED LOAD — teal */
-.wi-card-cl {
-  background: #134E4A;
-  border-left-color: #2DD4BF;
-}
-.wi-card-cl .wi-card-top { color: #CCFBF1; font-weight:800; }
-.wi-card-cl .wi-card-bot { color: rgba(204,251,241,0.85); font-weight:700; font-size:10px; }
-
-.wi-card-un {
-  background: #7F1D1D;
-  border-left-color: #FCA5A5;
-  padding-top:8px; padding-bottom:8px;
-}
-.wi-card-un .wi-card-top {
-  color: #FEE2E2;
-  font-weight:700; font-size:10.5px; letter-spacing:.3px;
-}
-
-/* legacy compat */
-.pt { font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden;
-  text-overflow:ellipsis; max-width:200px; }
-.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  max-width:200px; }
-.ps { font-size:9px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  max-width:200px; }
-`;
-  document.head.appendChild(s);
-})();
+/* ── CSS moved to assets/style.css ── */
 
 /* ── ENTRY POINT ──────────────────────────────────────────────────── */
 let _wnLoadId = 0; // prevents stale renders from rapid week switching
@@ -1093,3 +993,25 @@ function _wnPrint(rowId, leg) {
   const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   window.open(`${base}?orderId=${orderId}&leg=${leg==='northsouth'?'export':'import'}`, '_blank');
 }
+
+// Expose functions used from onclick/oninput/onfocus handlers
+window.renderWeeklyNatl = renderWeeklyNatl;
+window.WNATL = WNATL;
+window._wnOpenPopover = _wnOpenPopover;
+window._wnOpenSnPopover = _wnOpenSnPopover;
+window._wnClosePopover = _wnClosePopover;
+window._wnSaveFromPopover = _wnSaveFromPopover;
+window._wnClear = _wnClear;
+window._wnPrint = _wnPrint;
+window._wnPrintSn = _wnPrintSn;
+window._wnUnmatch = _wnUnmatch;
+window._wnCtxClose = _wnCtxClose;
+window._wnCtx = _wnCtx;
+window._wnCtxSn = _wnCtxSn;
+window._wnUnassign = _wnUnassign;
+window._wnUnassignSn = _wnUnassignSn;
+window._wnDragStart = _wnDragStart;
+window._wnDropOnRow = _wnDropOnRow;
+window._wnSplit = _wnSplit;
+window._wnNavWeek = _wnNavWeek;
+})();

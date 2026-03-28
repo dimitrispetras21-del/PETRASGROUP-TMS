@@ -113,8 +113,18 @@ async function _atRetry(fn, retries = 3) {
         throw new Error('Unauthorized');
       }
       if (res.status === 429) {
+        if (typeof showErrorToast === 'function') {
+          showErrorToast('\u03A0\u03BF\u03BB\u03BB\u03AC \u03B1\u03B9\u03C4\u03AE\u03BC\u03B1\u03C4\u03B1 \u2014 \u03B1\u03C5\u03C4\u03CC\u03BC\u03B1\u03C4\u03B7 \u03B5\u03C0\u03B1\u03BD\u03AC\u03BB\u03B7\u03C8\u03B7...', 'warn');
+        }
         const wait = Math.pow(2, i) * 1000 + Math.random() * 500;
         await new Promise(r => setTimeout(r, wait));
+        continue;
+      }
+      if (res.status >= 500 && i < retries - 1) {
+        if (typeof showErrorToast === 'function') {
+          showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 server \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
+        }
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
         continue;
       }
       if (!res.ok && i < retries - 1) {
@@ -123,7 +133,12 @@ async function _atRetry(fn, retries = 3) {
       }
       return res;
     } catch (e) {
-      if (i === retries - 1) throw e;
+      if (i === retries - 1) {
+        if (typeof showErrorToast === 'function') {
+          showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 \u03C3\u03CD\u03BD\u03B4\u03B5\u03C3\u03B7\u03C2 \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');
+        }
+        throw e;
+      }
       await new Promise(r => setTimeout(r, 1000 * (i + 1)));
     }
   }
@@ -168,6 +183,14 @@ async function _atFetch(tableId, paramStr = '') {
 }
 
 // ── Public API ────────────────────────────────────
+
+/**
+ * Fetch records from an Airtable table with optional filtering and caching
+ * @param {string} tableId - Airtable table ID (e.g. TABLES.ORDERS)
+ * @param {string} [filter=''] - filterByFormula string
+ * @param {boolean} [useCache=true] - Whether to use memory/localStorage cache
+ * @returns {Promise<Array<{id:string, fields:Object}>>} Array of Airtable records
+ */
 async function atGet(tableId, filter = '', useCache = true) {
   const paramStr = filter ? `filterByFormula=${encodeURIComponent(filter)}` : '';
   const key = tableId + paramStr;
@@ -186,6 +209,16 @@ async function atGet(tableId, filter = '', useCache = true) {
   return records;
 }
 
+/**
+ * Fetch records with advanced options (fields, sort, filter)
+ * @param {string} tableId - Airtable table ID
+ * @param {Object} [opts={}] - Query options
+ * @param {string} [opts.filterByFormula] - Airtable filter formula
+ * @param {string[]} [opts.fields] - Array of field names to return
+ * @param {Array<{field:string, direction?:string}>} [opts.sort] - Sort specification
+ * @param {boolean} [useCache=true] - Whether to use cache
+ * @returns {Promise<Array<{id:string, fields:Object}>>} Array of Airtable records
+ */
 async function atGetAll(tableId, opts = {}, useCache = true) {
   const params = [];
   if (opts.filterByFormula) params.push(`filterByFormula=${encodeURIComponent(opts.filterByFormula)}`);
@@ -208,6 +241,13 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
   return records;
 }
 
+/**
+ * Update (PATCH) a single Airtable record
+ * @param {string} tableId - Airtable table ID
+ * @param {string} recId - Record ID to update
+ * @param {Object} fields - Key/value pairs of fields to update
+ * @returns {Promise<{id:string, fields:Object}>} Updated record
+ */
 async function atPatch(tableId, recId, fields) {
   _auditLog('PATCH', tableId, recId, fields);
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
@@ -221,6 +261,12 @@ async function atPatch(tableId, recId, fields) {
   return data;
 }
 
+/**
+ * Create a new Airtable record
+ * @param {string} tableId - Airtable table ID
+ * @param {Object} fields - Key/value pairs for the new record
+ * @returns {Promise<{id:string, fields:Object}>} Created record with generated ID
+ */
 async function atCreate(tableId, fields) {
   _auditLog('CREATE', tableId, null, fields);
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
@@ -234,6 +280,12 @@ async function atCreate(tableId, fields) {
   return data;
 }
 
+/**
+ * Delete a single Airtable record
+ * @param {string} tableId - Airtable table ID
+ * @param {string} recId - Record ID to delete
+ * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
+ */
 async function atDelete(tableId, recId) {
   _auditLog('DELETE', tableId, recId, null);
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
@@ -297,6 +349,11 @@ const _REF_FIELDS = {
   partners:  ['Company Name', 'Adress', 'Country'],
 };
 
+/**
+ * Preload all reference/lookup tables (trucks, drivers, trailers, locations, clients, partners).
+ * Fetches in parallel and populates REF_DATA. Safe to call multiple times (deduped).
+ * @returns {Promise<Object>} REF_DATA object with all reference arrays populated
+ */
 async function preloadReferenceData() {
   if (REF_DATA._loaded) return REF_DATA;
   // Prevent duplicate parallel loads

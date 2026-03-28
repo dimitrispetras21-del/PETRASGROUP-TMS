@@ -1,8 +1,64 @@
-// ═══════════════════════════════════════════════
-// CORE — UTILS
-// ═══════════════════════════════════════════════
+// ===============================================
+// CORE -- UTILS
+// ===============================================
 
-// Escape HTML special characters to prevent XSS
+// -- Error Toast Notifications -----------------
+// Non-blocking bottom-right toast for API / runtime errors.
+// Max 3 visible at once; auto-dismiss after 5 s.
+
+const _TOAST_MAX = 3;
+const _toastQueue = [];
+
+/**
+ * Show a non-blocking toast notification (bottom-right corner)
+ * @param {string} message - Text to display
+ * @param {'error'|'warn'|'info'} [type='error'] - Toast type (controls colour)
+ * @param {number} [durationMs=5000] - Auto-dismiss delay in ms
+ */
+function showErrorToast(message, type = 'error', durationMs = 5000) {
+  // Ensure container exists
+  let container = document.getElementById('tms-toast-container');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'tms-toast-container';
+    container.style.cssText =
+      'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;max-width:380px;';
+    document.body.appendChild(container);
+  }
+
+  // Enforce max visible
+  while (container.children.length >= _TOAST_MAX) {
+    container.removeChild(container.firstChild);
+  }
+
+  const toast = document.createElement('div');
+  const bg = type === 'warn' ? '#92400E' : type === 'info' ? '#1E3A5F' : '#7F1D1D';
+  toast.style.cssText =
+    `background:${bg};color:#fff;padding:12px 18px;border-radius:8px;font:13px/1.4 "DM Sans",sans-serif;`
+    + 'box-shadow:0 4px 12px rgba(0,0,0,.35);pointer-events:auto;opacity:0;transform:translateY(8px);'
+    + 'transition:opacity .25s,transform .25s;';
+  toast.textContent = message;
+  container.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateY(0)';
+  });
+
+  // Auto-dismiss
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(8px)';
+    setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+  }, durationMs);
+}
+
+/**
+ * Escape HTML special characters to prevent XSS
+ * @param {string|null|undefined} str - Raw string
+ * @returns {string} Escaped string safe for innerHTML
+ */
 function escapeHtml(str) {
   if (str == null) return '';
   return String(str)
@@ -13,7 +69,11 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Convert Airtable UTC datetime to local YYYY-MM-DD string
+/**
+ * Convert Airtable UTC datetime to local YYYY-MM-DD string
+ * @param {string|null} raw - ISO datetime string from Airtable
+ * @returns {string} Local date as YYYY-MM-DD, or empty string if invalid
+ */
 function toLocalDate(raw) {
   if (!raw) return '';
   const d = new Date(raw);
@@ -22,14 +82,20 @@ function toLocalDate(raw) {
   return `${y}-${m}-${day}`;
 }
 
-// Today's date as YYYY-MM-DD in local timezone
+/**
+ * Today's date as YYYY-MM-DD in the browser's local timezone
+ * @returns {string} e.g. '2026-03-28'
+ */
 function localToday() {
   const d = new Date();
   const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${day}`;
 }
 
-// Tomorrow's date as YYYY-MM-DD in local timezone
+/**
+ * Tomorrow's date as YYYY-MM-DD in the browser's local timezone
+ * @returns {string} e.g. '2026-03-29'
+ */
 function localTomorrow() {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -69,6 +135,10 @@ function expiryLabel(dateStr) {
   return `<span class="expiry-ok">${base}</span>`;
 }
 
+/**
+ * ISO-ish week number for the current date (1-based)
+ * @returns {number} Week number (1-53)
+ */
 function currentWeekNumber() {
   const now = new Date();
   const start = new Date(now.getFullYear(), 0, 1);
