@@ -1247,12 +1247,51 @@ tbody tr:hover { background: var(--bg-hover); }
 /* ═══════════════════════════════════════════════
    RESPONSIVE
 ═══════════════════════════════════════════════ */
+
+/* Tablet: sidebar icons only */
 @media (max-width: 1024px) {
   .sidebar { width: 56px !important; }
   .sidebar .nav-label,
   .sidebar .nav-section span:first-child,
-  .sidebar .sidebar-brand span { display: none; }
-  .main-content { margin-left: 56px; }
+  .sidebar .sidebar-logo-text { display: none; }
+  .sidebar .nav-section { padding: 8px 0 3px 0; justify-content: center; }
+  .sidebar .nav-section .chevron { display: none; }
+  .sidebar .nav-item { justify-content: center; padding: 12px 0; }
+  .sidebar .nav-icon { margin: 0; }
+  .sidebar .sidebar-toggle { display: none; }
+  .main { margin-left: 0; }
+  .topbar { padding: 0 16px; }
+}
+
+/* Mobile: bottom tab bar */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    width: 100% !important; height: 56px; min-height: 56px;
+    flex-direction: row; overflow-x: auto; overflow-y: hidden;
+    z-index: 9999; border-top: 1px solid rgba(255,255,255,0.1);
+    border-right: none;
+  }
+  .sidebar .nav-label,
+  .sidebar .nav-section,
+  .sidebar .sidebar-logo,
+  .sidebar .sidebar-toggle { display: none; }
+  .sidebar-nav { flex-direction: row; padding: 0; display: flex; align-items: center; overflow-x: auto; }
+  .sidebar .nav-group-items { display: flex; flex-direction: row; max-height: none; }
+  .sidebar .nav-item {
+    flex-direction: column; padding: 8px 12px; font-size: 9px;
+    margin: 0; border-radius: 0; gap: 2px; white-space: nowrap;
+  }
+  .sidebar .nav-icon { margin: 0 0 2px 0; }
+  .sidebar .nav-item.active::before { display: none; }
+  body { flex-direction: column; }
+  .main { margin-left: 0; height: calc(100vh - 56px); }
+  .content { padding-bottom: 64px; }
+  .topbar { padding: 0 12px; }
+  .topbar-breadcrumb { display: none; }
+  /* Horizontal scroll for tables */
+  .entity-table-wrap table,
+  table { display: block; overflow-x: auto; white-space: nowrap; }
 }
 
 /* ═══════════════════════════════════════════════

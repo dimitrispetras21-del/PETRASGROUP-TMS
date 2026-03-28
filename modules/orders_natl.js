@@ -10,6 +10,7 @@ let _natlSortCol = null;
 let _natlSortDir = 0;
 let _onPage = 1;
 const _onPageSize = 50;
+let _natlPeriod = '60'; // '60' | '180' | 'all'
 
 // ─── Virtual Scroll State ─────────────────────
 const _onVS = { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
@@ -21,13 +22,18 @@ async function renderOrdersNatl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading national orders...');
   try {
-    // Default: last 60 days of orders (server-side filter for performance)
-    const _natlCutoff = new Date();
-    _natlCutoff.setDate(_natlCutoff.getDate() - 60);
-    const _natlCutoffStr = _natlCutoff.toISOString().split('T')[0];
+    // Date range filter based on period dropdown
+    let _natlDateFormula = '';
+    if (_natlPeriod !== 'all') {
+      const days = _natlPeriod === '180' ? 180 : 60;
+      const _natlCutoff = new Date();
+      _natlCutoff.setDate(_natlCutoff.getDate() - days);
+      const _natlCutoffStr = _natlCutoff.toISOString().split('T')[0];
+      _natlDateFormula = `IS_AFTER({Loading DateTime}, '${_natlCutoffStr}')`;
+    }
     const [, records] = await Promise.all([
       _loadLocations(),
-      atGet(TABLES.NAT_ORDERS, `IS_AFTER({Loading DateTime}, '${_natlCutoffStr}')`, false),
+      atGet(TABLES.NAT_ORDERS, _natlDateFormula || '', false),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     NATL_ORDERS.data = records;
@@ -99,6 +105,11 @@ function _renderNatlLayout(c) {
           <select class="filter-select" onchange="natlFilter('_groupage',this.value)">
             <option value="">Groupage: All</option>
             <option value="1">Groupage only</option>
+          </select>
+          <select class="filter-select" onchange="natlPeriodChange(this.value)">
+            <option value="60" ${_natlPeriod==='60'?'selected':''}>Last 60 days</option>
+            <option value="180" ${_natlPeriod==='180'?'selected':''}>Last 6 months</option>
+            <option value="all" ${_natlPeriod==='all'?'selected':''}>All time</option>
           </select>
           <span class="entity-count" id="natlCount">${NATL_ORDERS.data.length} orders</span>
         </div>
@@ -258,6 +269,7 @@ function _renderNatlTable(records) {
 // ─── Filters ────────────────────────────────────
 function natlSearch(q) { _natlFilters._q = q.toLowerCase().trim(); _onPage = 1; _applyNatlFilters(); }
 function natlFilter(k,v) { if(!v) delete _natlFilters[k]; else _natlFilters[k]=v; _onPage = 1; _applyNatlFilters(); }
+function natlPeriodChange(v) { _natlPeriod = v; _onVS.lastStart = -1; _onVS.lastEnd = -1; renderOrdersNatl(); }
 
 function _applyNatlFilters() {
   let recs = NATL_ORDERS.data;
@@ -890,6 +902,7 @@ window._natlSortToggle = _natlSortToggle;
 window._applyNatlFilters = _applyNatlFilters;
 window.natlSearch = natlSearch;
 window.natlFilter = natlFilter;
+window.natlPeriodChange = natlPeriodChange;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
 // _onPage is mutated from onclick (++/--) so expose as getter/setter
