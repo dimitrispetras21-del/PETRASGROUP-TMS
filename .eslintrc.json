@@ -1,0 +1,17 @@
+{
+  "env": { "browser": true, "es2020": true },
+  "parserOptions": { "ecmaVersion": 2020 },
+  "rules": {
+    "no-undef": "warn",
+    "no-unused-vars": "off"
+  },
+  "globals": {
+    "AT_TOKEN": "readonly",
+    "AT_BASE": "readonly",
+    "TABLES": "readonly",
+    "USE_PROXY": "readonly",
+    "PROXY_URL": "readonly",
+    "F": "readonly",
+    "ANTHROPIC_KEY": "readonly"
+  }
+}

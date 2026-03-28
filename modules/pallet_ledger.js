@@ -27,8 +27,8 @@ async function renderPalletLedger() {
                'Verified','Notes'],
       sort: [{ field: 'Date', direction: 'desc' }],
     }),
-    atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] }),
-    atGetAll(TABLES.LOCATIONS, { fields: ['Name','City'] }),
+    preloadReferenceData().then(() => getRefPartners()),
+    preloadReferenceData().then(() => getRefLocations()),
   ]);
 
   PL.records = recs;

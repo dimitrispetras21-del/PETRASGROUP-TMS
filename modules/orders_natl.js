@@ -21,9 +21,13 @@ async function renderOrdersNatl() {
   const c = document.getElementById('content');
   c.innerHTML = showLoading('Loading national orders...');
   try {
+    // Default: last 60 days of orders (server-side filter for performance)
+    const _natlCutoff = new Date();
+    _natlCutoff.setDate(_natlCutoff.getDate() - 60);
+    const _natlCutoffStr = _natlCutoff.toISOString().split('T')[0];
     const [, records] = await Promise.all([
       _loadLocations(),
-      atGet(TABLES.NAT_ORDERS, '', false),
+      atGet(TABLES.NAT_ORDERS, `IS_AFTER({Loading DateTime}, '${_natlCutoffStr}')`, false),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
     NATL_ORDERS.data = records;
@@ -563,10 +567,7 @@ async function submitNatlOrder(recId) {
     try {
       if (!fields['National Groupage']) {
         // Non-groupage → create/update NL record
-        const fullRec = await fetch(
-          `https://api.airtable.com/v0/${AT_BASE}/${TABLES.NAT_ORDERS}/${savedNatlId}`,
-          { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-        ).then(r => r.json());
+        const fullRec = await atGetOne(TABLES.NAT_ORDERS, savedNatlId);
         if (fullRec.fields) await _syncNationalLoad(savedNatlId, fullRec.fields, false);
       } else {
         // Groupage ON → remove NL (CL save will create its own NL)
@@ -577,11 +578,7 @@ async function submitNatlOrder(recId) {
 
     // Sync Ramp Plan
     try {
-      const natlRec = await fetch(
-        'https://api.airtable.com/v0/'+AT_BASE+'/'+TABLES.NAT_ORDERS+'/'+savedNatlId,
-        {headers:{'Authorization':'Bearer '+AT_TOKEN}}
-      );
-      const natlData = await natlRec.json();
+      const natlData = await atGetOne(TABLES.NAT_ORDERS, savedNatlId);
       if (natlData.fields) await _syncRampPlan(savedNatlId, natlData.fields, TABLES.NAT_ORDERS);
     } catch(e) { console.error('Ramp sync error:', e); }
 
@@ -702,23 +699,13 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   }
 
   // Batch create
-  for (let i=0; i<toCreate.length; i+=10) {
-    const batch = toCreate.slice(i,i+10);
-    await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}`, {
-      method: 'POST',
-      headers: {'Authorization':'Bearer '+AT_TOKEN,'Content-Type':'application/json'},
-      body: JSON.stringify({records: batch.map(f=>({fields:f}))})
-    });
+  if (toCreate.length) {
+    await atCreateBatch(TABLES.GL_LINES, toCreate.map(f => ({ fields: f })));
   }
 
   // Batch update
-  for (let i=0; i<toUpdate.length; i+=10) {
-    const batch = toUpdate.slice(i,i+10);
-    await fetch(`https://api.airtable.com/v0/${AT_BASE}/${TABLES.GL_LINES}`, {
-      method: 'PATCH',
-      headers: {'Authorization':'Bearer '+AT_TOKEN,'Content-Type':'application/json'},
-      body: JSON.stringify({records: batch})
-    });
+  if (toUpdate.length) {
+    await atPatchBatch(TABLES.GL_LINES, toUpdate);
   }
 
   console.log(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
@@ -757,10 +744,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     const cArr = noFields['Client'];
     const cId = Array.isArray(cArr) ? (cArr[0]?.id || cArr[0]) : null;
     if (cId) {
-      const cRec = await fetch(
-        `https://api.airtable.com/v0/${AT_BASE}/${TABLES.CLIENTS}/${cId}`,
-        { headers: { 'Authorization': 'Bearer ' + AT_TOKEN } }
-      ).then(r => r.json());
+      const cRec = await atGetOne(TABLES.CLIENTS, cId);
       clientName = cRec.fields?.['Company Name'] || '';
     }
   } catch(e) {}

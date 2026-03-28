@@ -19,11 +19,7 @@ const PU = {
 
 /* ── Fetch single record by ID ────────────────── */
 async function _puFetchRecord(tableId, recId) {
-  const res = await fetch(`https://api.airtable.com/v0/${AT_BASE}/${tableId}/${recId}`, {
-    headers: { Authorization: 'Bearer ' + AT_TOKEN },
-  });
-  if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-  return res.json();
+  return atGetOne(tableId, recId);
 }
 
 /* ── Entry point ─────────────────────────────── */
@@ -81,10 +77,10 @@ async function openPalletUpload(orderId) {
     PU.tabs.filter(t => t.stopType === 'Crossdock').forEach(t => t.done = true);
   }
 
-  // Load partners cache
+  // Load partners from ref cache
   if (!PU.partners) {
-    const recs = await atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] });
-    PU.partners = recs.sort((a, b) => (a.fields['Company Name'] || '').localeCompare(b.fields['Company Name'] || ''));
+    await preloadReferenceData();
+    PU.partners = getRefPartners().slice().sort((a, b) => (a.fields['Company Name'] || '').localeCompare(b.fields['Company Name'] || ''));
   }
 
   // Get client name for display
@@ -97,7 +93,8 @@ async function openPalletUpload(orderId) {
 /* ── Resolve location name ───────────────────── */
 async function _puLocName(locId) {
   if (!PU.locations) {
-    PU.locations = await atGetAll(TABLES.LOCATIONS, { fields: ['Name', 'City'] });
+    await preloadReferenceData();
+    PU.locations = getRefLocations();
   }
   const loc = PU.locations.find(l => l.id === locId);
   return loc ? (loc.fields['Name'] || loc.fields['City'] || locId) : locId;

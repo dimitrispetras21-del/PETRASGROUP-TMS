@@ -68,16 +68,11 @@ function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
 async function _wiLoadAssets(){
-  const [t,tl,d,p]=await Promise.all([
-    atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
-    atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
-    atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
-    atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false),
-  ]);
-  WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-  WINTL.data.trailers = tl.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-  WINTL.data.drivers  = d.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
-  WINTL.data.partners = p.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+  await preloadReferenceData();
+  WINTL.data.trucks   = getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+  WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+  WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
+  WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 }
 
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
@@ -100,19 +95,17 @@ async function renderWeeklyIntl(){
     const wsFmt=toLocalDate(ws), weFmt=toLocalDate(we);
     const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}'))`;
 
-    const [t,tl,d,p,expOrders,impOrders] = await Promise.all([
-      atGetAll(TABLES.TRUCKS,  {fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.TRAILERS,{fields:['License Plate']},false),
-      atGetAll(TABLES.DRIVERS, {fields:['Full Name'],    filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false),
+    const [,,expOrders,impOrders] = await Promise.all([
+      preloadReferenceData(),
+      Promise.resolve(), // placeholder to keep destructuring aligned
       atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',{ Week Number}=${WINTL.week})`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
-    WINTL.data.trucks   = t.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-    WINTL.data.trailers = tl.map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-    WINTL.data.drivers  = d.map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
-    WINTL.data.partners = p.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+    WINTL.data.trucks   = getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+    WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
+    WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
+    WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 
     WINTL.data.exports = expOrders
       .sort((a,b)=>(
@@ -1004,8 +997,9 @@ async function _wiAutoMatch() {
 
   toast('Calculating matches…');
 
-  // Load locations with coordinates (cached)
-  const locs = await atGetAll(TABLES.LOCATIONS, { fields: ['Name','Latitude','Longitude','Country'] }, true);
+  // Load locations with coordinates (from ref data cache)
+  await preloadReferenceData();
+  const locs = getRefLocations();
   const locMap = {};
   locs.forEach(r => { locMap[r.id] = { lat: r.fields['Latitude'], lng: r.fields['Longitude'], name: r.fields['Name']||'', country: r.fields['Country']||'' }; });
 

@@ -90,7 +90,7 @@ async function _perfLoad() {
     atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']
     }, true),
-    atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active'] }, true),
+    preloadReferenceData().then(() => getRefTrucks()),
     atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
   ]);
   PERF.orders = orders;

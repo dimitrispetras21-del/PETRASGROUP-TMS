@@ -30,15 +30,10 @@ async function renderDailyOps() {
 
 async function _opsLoad() {
   if (!OPS.trucks.length) {
-    const [t,d,l,cl] = await Promise.all([
-      atGetAll(TABLES.TRUCKS,{fields:['License Plate'],filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.DRIVERS,{fields:['Full Name'],filterByFormula:'{Active}=TRUE()'},false),
-      atGetAll(TABLES.LOCATIONS,{fields:['Name','City','Country']},true),
-      atGetAll(TABLES.CLIENTS,{fields:['Company Name']},true),
-    ]);
-    OPS.trucks=t.map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
-    OPS.drivers=d.map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
-    OPS.locs=l; OPS.clients=cl;
+    await preloadReferenceData();
+    OPS.trucks=getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['License Plate']||''}));
+    OPS.drivers=getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,lb:r.fields['Full Name']||''}));
+    OPS.locs=getRefLocations(); OPS.clients=getRefClients();
   }
   const today=localToday();
   const tmrw=localTomorrow();
