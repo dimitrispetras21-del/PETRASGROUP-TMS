@@ -40,11 +40,11 @@ function _lsGet(key, tableId) {
     const ttl = _isLong(tableId) ? LONG_MS : STABLE_MS;
     if (Date.now() - ts > ttl) { localStorage.removeItem('at_' + key); return null; }
     return data;
-  } catch { return null; }
+  } catch(e) { if (typeof logError === 'function') logError(e, '_lsGet cache read'); return null; }
 }
 
 function _lsSet(key, data) {
-  try { localStorage.setItem('at_' + key, JSON.stringify({ data, ts: Date.now() })); } catch {}
+  try { localStorage.setItem('at_' + key, JSON.stringify({ data, ts: Date.now() })); } catch(e) { if (typeof logError === 'function') logError(e, '_lsSet cache write'); }
 }
 
 function _memGet(key, ttl) {
@@ -79,8 +79,8 @@ const _offlineQueue = [];
 
 function _isOnline() { return navigator.onLine; }
 
-function _queueOffline(method, url, body) {
-  _offlineQueue.push({ method, url, body, timestamp: Date.now() });
+function _queueOffline(method, url, body, recordId) {
+  _offlineQueue.push({ method, url, body, timestamp: Date.now(), recordId: recordId || null });
   _saveOfflineQueue();
   if (typeof showErrorToast === 'function') {
     showErrorToast('\u0391\u03C0\u03BF\u03B8\u03B7\u03BA\u03B5\u03CD\u03C4\u03B7\u03BA\u03B5 \u03C4\u03BF\u03C0\u03B9\u03BA\u03AC \u2014 \u03B8\u03B1 \u03C3\u03C4\u03B1\u03BB\u03B5\u03AF \u03BC\u03CC\u03BB\u03B9\u03C2 \u03B3\u03C5\u03C1\u03AF\u03C3\u03B5\u03B9 \u03C4\u03BF internet', 'warn');
@@ -88,14 +88,14 @@ function _queueOffline(method, url, body) {
 }
 
 function _saveOfflineQueue() {
-  try { localStorage.setItem('tms_offline_queue', JSON.stringify(_offlineQueue)); } catch {}
+  try { localStorage.setItem('tms_offline_queue', JSON.stringify(_offlineQueue)); } catch(e) { if (typeof logError === 'function') logError(e, '_saveOfflineQueue'); }
 }
 
 function _loadOfflineQueue() {
   try {
     const q = JSON.parse(localStorage.getItem('tms_offline_queue') || '[]');
     _offlineQueue.push(...q);
-  } catch {}
+  } catch(e) { if (typeof logError === 'function') logError(e, '_loadOfflineQueue'); }
 }
 
 async function _flushOfflineQueue() {
@@ -104,22 +104,47 @@ async function _flushOfflineQueue() {
   _offlineQueue.length = 0;
   _saveOfflineQueue();
 
-  let failed = 0;
+  let failed = 0, conflicts = 0;
   for (const item of batch) {
     try {
+      // For PATCH operations, check if record was modified since we queued
+      if (item.method === 'PATCH' && item.recordId) {
+        try {
+          const chkRes = await _atRetry(() => fetch(item.url.replace(/\?.*/, ''), { headers: _apiHeaders('GET') }));
+          const currentData = await chkRes.json();
+          if (currentData && currentData.fields) {
+            const serverModified = new Date(currentData.fields['Last Modified'] || 0).getTime();
+            if (serverModified > item.timestamp) {
+              conflicts++;
+              if (typeof showErrorToast === 'function') {
+                showErrorToast('Conflict: record modified while offline', 'warn');
+              }
+              continue; // Skip this mutation, don't overwrite
+            }
+          }
+        } catch(e) {
+          // If conflict check fails, proceed with the mutation anyway
+          if (typeof logError === 'function') logError(e, '_flushOfflineQueue conflict check');
+        }
+      }
       await fetch(item.url, {
         method: item.method,
         headers: _apiHeaders(item.method),
         body: item.body ? JSON.stringify(item.body) : undefined,
       });
-    } catch {
+    } catch(e) {
+      if (typeof logError === 'function') logError(e, '_flushOfflineQueue mutation');
       _offlineQueue.push(item);
       failed++;
     }
   }
   _saveOfflineQueue();
-  if (failed === 0 && batch.length > 0 && typeof showErrorToast === 'function') {
-    showErrorToast(`${batch.length} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C3\u03C5\u03B3\u03C7\u03C1\u03BF\u03BD\u03AF\u03C3\u03C4\u03B7\u03BA\u03B1\u03BD`, 'info');
+  const synced = batch.length - failed - conflicts;
+  if (synced > 0 && typeof showErrorToast === 'function') {
+    showErrorToast(`${synced} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C3\u03C5\u03B3\u03C7\u03C1\u03BF\u03BD\u03AF\u03C3\u03C4\u03B7\u03BA\u03B1\u03BD${conflicts ? `, ${conflicts} conflicts` : ''}`, 'info');
+  }
+  if (conflicts > 0 && typeof showErrorToast === 'function') {
+    showErrorToast(`${conflicts} \u03B1\u03BB\u03BB\u03B1\u03B3\u03AD\u03C2 \u03C0\u03B1\u03C1\u03B1\u03BB\u03B5\u03AF\u03C6\u03B8\u03B7\u03BA\u03B1\u03BD \u03BB\u03CC\u03B3\u03C9 conflict \u2014 reload`, 'warn');
   }
 }
 
@@ -144,7 +169,7 @@ function _auditLog(action, tableId, recId, fields) {
     log.push(entry);
     if (log.length > _AUDIT_MAX) log.splice(0, log.length - _AUDIT_MAX);
     localStorage.setItem('tms_audit', JSON.stringify(log));
-  } catch {}
+  } catch(e) { if (typeof logError === 'function') logError(e, '_auditLog'); }
 }
 
 // Read audit log (for admin/debug)
@@ -304,7 +329,7 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
 async function atPatch(tableId, recId, fields) {
   _auditLog('PATCH', tableId, recId, fields);
   if (!_isOnline()) {
-    _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields });
+    _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
     return { id: recId, fields, _offline: true };
   }
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
@@ -313,6 +338,11 @@ async function atPatch(tableId, recId, fields) {
     body: JSON.stringify({ fields })
   })));
   const data = await res.json();
+  if (data.error) {
+    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
+    throw new Error(errMsg);
+  }
   invalidateCache(tableId);
   atNotifyChange(tableId);
   return data;
@@ -336,6 +366,11 @@ async function atCreate(tableId, fields) {
     body: JSON.stringify({ fields })
   })));
   const data = await res.json();
+  if (data.error) {
+    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    if (typeof logError === 'function') logError(new Error(errMsg), `atCreate(${tableId})`);
+    throw new Error(errMsg);
+  }
   invalidateCache(tableId);
   atNotifyChange(tableId);
   return data;
@@ -350,7 +385,7 @@ async function atCreate(tableId, fields) {
 async function atDelete(tableId, recId) {
   _auditLog('DELETE', tableId, recId, null);
   if (!_isOnline()) {
-    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null);
+    _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
@@ -358,6 +393,11 @@ async function atDelete(tableId, recId) {
     headers: _apiHeaders('DELETE')
   })));
   const data = await res.json();
+  if (data.error) {
+    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    if (typeof logError === 'function') logError(new Error(errMsg), `atDelete(${tableId}, ${recId})`);
+    throw new Error(errMsg);
+  }
   invalidateCache(tableId);
   atNotifyChange(tableId);
   return data;
@@ -374,7 +414,13 @@ async function atGetOne(tableId, recId) {
     _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`),
     { headers: _apiHeaders('GET') }
   )));
-  return res.json();
+  const data = await res.json();
+  if (data.error) {
+    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
+    throw new Error(errMsg);
+  }
+  return data;
 }
 
 /**
@@ -397,7 +443,19 @@ async function atCreateBatch(tableId, recordsArr) {
       }
     )));
     const data = await res.json();
-    if (data.records) results.push(...data.records);
+    if (data.error) {
+      const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+      if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId})`);
+      throw new Error(errMsg);
+    }
+    if (data.records) {
+      const errors = data.records.filter(r => r.error);
+      if (errors.length) {
+        const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
+        if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId}) partial`);
+      }
+      results.push(...data.records.filter(r => !r.error));
+    }
   }
   invalidateCache(tableId);
   atNotifyChange(tableId);
@@ -424,7 +482,19 @@ async function atPatchBatch(tableId, recordsArr) {
       }
     )));
     const data = await res.json();
-    if (data.records) results.push(...data.records);
+    if (data.error) {
+      const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+      if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId})`);
+      throw new Error(errMsg);
+    }
+    if (data.records) {
+      const errors = data.records.filter(r => r.error);
+      if (errors.length) {
+        const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
+        if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId}) partial`);
+      }
+      results.push(...data.records.filter(r => !r.error));
+    }
   }
   invalidateCache(tableId);
   atNotifyChange(tableId);
@@ -437,7 +507,7 @@ function invalidateCache(tableId) {
     Object.keys(localStorage).forEach(k => {
       if (k.startsWith('at_' + tableId)) localStorage.removeItem(k);
     });
-  } catch {}
+  } catch(e) { if (typeof logError === 'function') logError(e, 'invalidateCache localStorage'); }
 }
 
 function atClearCache(tableId) { invalidateCache(tableId); }
@@ -603,7 +673,7 @@ async function atSafePatch(tableId, recId, fields) {
         );
         if (!proceed) return { conflict: true, current };
       }
-    } catch {} // If check fails, proceed anyway
+    } catch(e) { if (typeof logError === 'function') logError(e, 'atSafePatch version check'); } // If check fails, proceed anyway
   }
 
   const result = await atPatch(tableId, recId, fields);
@@ -638,7 +708,7 @@ function atPresenceStart() {
         if (Date.now() - all[k].ts > _PRESENCE_TTL) delete all[k];
       });
       localStorage.setItem(_PRESENCE_KEY, JSON.stringify(all));
-    } catch {}
+    } catch(e) { if (typeof logError === 'function') logError(e, 'presence heartbeat'); }
   };
   beat();
   setInterval(beat, 30000);
@@ -652,7 +722,7 @@ function atPresenceStart() {
         if (_autoRefreshCb) _autoRefreshCb();
       }
     };
-  } catch {} // BroadcastChannel not supported in all browsers
+  } catch(e) { if (typeof logError === 'function') logError(e, 'BroadcastChannel init'); } // BroadcastChannel not supported in all browsers
 }
 
 // Notify other tabs that a table changed (call after mutations)
@@ -661,7 +731,7 @@ function atNotifyChange(tableId) {
     if (_presenceChannel) {
       _presenceChannel.postMessage({ type: 'invalidate', table: tableId });
     }
-  } catch {}
+  } catch(e) { if (typeof logError === 'function') logError(e, 'atNotifyChange broadcast'); }
 }
 
 // Get list of online users
@@ -672,5 +742,5 @@ function atGetOnlineUsers() {
     return Object.entries(all)
       .filter(([_, v]) => now - v.ts < _PRESENCE_TTL)
       .map(([name, v]) => ({ name, role: v.role, page: v.page, lastSeen: v.ts }));
-  } catch { return []; }
+  } catch(e) { if (typeof logError === 'function') logError(e, 'atGetOnlineUsers'); return []; }
 }
