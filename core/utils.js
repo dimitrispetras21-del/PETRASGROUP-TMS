@@ -320,7 +320,7 @@ async function _refreshNotifs() {
         });
       };
       checkDocs(trucks, 'License Plate', ['KTEO Expiry','KEK Expiry','Insurance Expiry']);
-      checkDocs(trailers, 'Plate', ['ATP Expiry','Insurance Expiry']);
+      checkDocs(trailers, 'License Plate', ['ATP Expiry','Insurance Expiry']);
     }
 
     // Reminders from Nakis

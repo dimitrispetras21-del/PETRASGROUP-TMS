@@ -695,7 +695,7 @@ async function _aicRunObserver() {
 
         // WARNING: aging >24h unassigned
         const aging = unassigned.filter(r => {
-          const created = r.createdTime || r.fields['Created'];
+          const created = r.createdTime || '';
           return created && (Date.now() - new Date(created).getTime()) > 24 * 3600000;
         });
         const agingNon48 = aging.filter(r => toLocalDate(r.fields['Delivery DateTime']) > in48h);
