@@ -569,9 +569,9 @@ const REF_DATA = {
 };
 
 const _REF_FIELDS = {
-  trucks:    ['License Plate', 'Active', 'KTEO Expiry', 'KEK Expiry', 'Insurance Expiry', 'ATP Expiry'],
+  trucks:    ['License Plate', 'Active', 'KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'],
   drivers:   ['Full Name', 'Active'],
-  trailers:  ['License Plate', 'Active', 'ATP Expiry', 'Insurance Expiry'],
+  trailers:  ['License Plate', 'Active', 'KTEO Expiry', 'Insurance Expiry'],
   locations: ['Name', 'City', 'Country', 'Latitude', 'Longitude'],
   clients:   ['Company Name'],
   partners:  ['Company Name', 'Adress', 'Country'],
