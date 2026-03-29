@@ -254,6 +254,12 @@ async function _atFetch(tableId, paramStr = '') {
     if (offset) url += `&offset=${offset}`;
     const res  = await _enqueue(() => _atRetry(() => fetch(url, { headers: _apiHeaders('GET') })));
     const data = await res.json();
+    if (data.error) {
+      const errMsg = data.error.message || data.error.type || 'Airtable error';
+      if (typeof logError === 'function') logError(new Error(errMsg), '_atFetch');
+      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+      throw new Error(errMsg);
+    }
     records = records.concat(data.records || []);
     offset  = data.offset || '';
   } while (offset);
@@ -341,6 +347,7 @@ async function atPatch(tableId, recId, fields) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
+    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
   }
   invalidateCache(tableId);
@@ -369,6 +376,7 @@ async function atCreate(tableId, fields) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atCreate(${tableId})`);
+    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
   }
   invalidateCache(tableId);
@@ -396,6 +404,7 @@ async function atDelete(tableId, recId) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atDelete(${tableId}, ${recId})`);
+    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
   }
   invalidateCache(tableId);
@@ -418,6 +427,7 @@ async function atGetOne(tableId, recId) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
+    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
   }
   return data;
@@ -446,6 +456,7 @@ async function atCreateBatch(tableId, recordsArr) {
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
       if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId})`);
+      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
       throw new Error(errMsg);
     }
     if (data.records) {
@@ -453,6 +464,7 @@ async function atCreateBatch(tableId, recordsArr) {
       if (errors.length) {
         const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
         if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId}) partial`);
+        if (typeof showErrorToast === 'function') showErrorToast(`Batch partial error: ${errMsg}`, 'warn');
       }
       results.push(...data.records.filter(r => !r.error));
     }
@@ -485,6 +497,7 @@ async function atPatchBatch(tableId, recordsArr) {
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
       if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId})`);
+      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
       throw new Error(errMsg);
     }
     if (data.records) {
@@ -492,6 +505,7 @@ async function atPatchBatch(tableId, recordsArr) {
       if (errors.length) {
         const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
         if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId}) partial`);
+        if (typeof showErrorToast === 'function') showErrorToast(`Batch partial error: ${errMsg}`, 'warn');
       }
       results.push(...data.records.filter(r => !r.error));
     }
