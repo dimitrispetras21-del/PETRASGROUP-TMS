@@ -275,7 +275,7 @@ function _opsRow(rec,num,type,isToday) {
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 async function _opsTog(id,fld,v){
   try{
-    await atPatch(TABLES.ORDERS,id,{[fld]:v});
+    await atSafePatch(TABLES.ORDERS,id,{[fld]:v});
     const r=OPS.intl.find(x=>x.id===id);
     if(r) r.fields[fld]=v;
     toast(v?'✓':'—');
@@ -308,10 +308,10 @@ async function _opsTog(id,fld,v){
     _opsDraw();
   }catch(e){toast('Error','danger');}
 }
-async function _opsSvF(id,fld,v){try{await atPatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
-async function _opsStat(id,st){try{await atPatch(TABLES.ORDERS,id,{'Ops Status':st});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']=st;toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
+async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
+async function _opsStat(id,st){try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':st});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']=st;toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
-  try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsPost(id){
@@ -325,7 +325,7 @@ async function _opsPost(id){
   const patch={'Ops Status':'Postponed','Postponed To':nextLoad||nextDel};
   if(nextLoad) patch['Loading DateTime']=nextLoad;
   if(nextDel) patch['Delivery DateTime']=nextDel;
-  try{await atPatch(TABLES.ORDERS,id,patch);
+  try{await atSafePatch(TABLES.ORDERS,id,patch);
   invalidateCache(TABLES.ORDERS);
   toast('Postponed → '+(nextLoad||nextDel));renderDailyOps();}catch(e){toast('Error','danger');}}
 function _opsPrint() {
@@ -357,7 +357,7 @@ function _opsPrint() {
 }
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
-  try{await atPatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
 
 // Expose functions used from onclick/onchange handlers

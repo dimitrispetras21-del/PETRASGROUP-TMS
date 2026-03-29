@@ -32,19 +32,26 @@ function _isStable(tableId) {
   return _isLong(tableId) || _STABLE_TABLES.has(tableId);
 }
 
+function _userPrefix() {
+  try {
+    const u = JSON.parse(localStorage.getItem('tms_user') || '{}');
+    return u.username || u.name || 'anon';
+  } catch { return 'anon'; }
+}
+
 function _lsGet(key, tableId) {
   try {
-    const raw = localStorage.getItem('at_' + key);
+    const raw = localStorage.getItem('at_' + _userPrefix() + '_' + key);
     if (!raw) return null;
     const { data, ts } = JSON.parse(raw);
     const ttl = _isLong(tableId) ? LONG_MS : STABLE_MS;
-    if (Date.now() - ts > ttl) { localStorage.removeItem('at_' + key); return null; }
+    if (Date.now() - ts > ttl) { localStorage.removeItem('at_' + _userPrefix() + '_' + key); return null; }
     return data;
   } catch(e) { if (typeof logError === 'function') logError(e, '_lsGet cache read'); return null; }
 }
 
 function _lsSet(key, data) {
-  try { localStorage.setItem('at_' + key, JSON.stringify({ data, ts: Date.now() })); } catch(e) { if (typeof logError === 'function') logError(e, '_lsSet cache write'); }
+  try { localStorage.setItem('at_' + _userPrefix() + '_' + key, JSON.stringify({ data, ts: Date.now() })); } catch(e) { if (typeof logError === 'function') logError(e, '_lsSet cache write'); }
 }
 
 function _memGet(key, ttl) {
@@ -518,8 +525,9 @@ async function atPatchBatch(tableId, recordsArr) {
 function invalidateCache(tableId) {
   Object.keys(_MEM).forEach(k => { if (k.startsWith(tableId)) delete _MEM[k]; });
   try {
+    const prefix = 'at_' + _userPrefix() + '_' + tableId;
     Object.keys(localStorage).forEach(k => {
-      if (k.startsWith('at_' + tableId)) localStorage.removeItem(k);
+      if (k.startsWith(prefix)) localStorage.removeItem(k);
     });
   } catch(e) { if (typeof logError === 'function') logError(e, 'invalidateCache localStorage'); }
 }

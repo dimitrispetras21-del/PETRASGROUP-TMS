@@ -917,6 +917,30 @@ async function _wiDropOnPanel(e,rowId){
 async function _wiSaveImportMatch(rowId,impId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
+  // Lock check: verify import is still unmatched on server
+  try {
+    const importRec = await atGetOne(TABLES.ORDERS, impId);
+    const existingMatch = importRec.fields?.['Matched Export ID'] || importRec.fields?.['Matched Import ID'];
+    if (existingMatch) {
+      if (typeof showErrorToast === 'function') showErrorToast('This import was already matched by another user. Refreshing...', 'warn');
+      else toast('Import already matched by another user — refreshing', 'warn');
+      await renderWeeklyIntl();
+      return;
+    }
+  } catch(e) { console.warn('Import lock check failed, proceeding:', e.message); }
+
+  // Lock check: verify export doesn't already have a matched import on server
+  try {
+    const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
+    const existingExpMatch = exportRec.fields?.['Matched Import ID'];
+    if (existingExpMatch && existingExpMatch !== impId) {
+      if (typeof showErrorToast === 'function') showErrorToast('This export already has a different import matched. Refreshing...', 'warn');
+      else toast('Export already matched — refreshing', 'warn');
+      await renderWeeklyIntl();
+      return;
+    }
+  } catch(e) { console.warn('Export lock check failed, proceeding:', e.message); }
+
   // Optimistic UI update
   const oldImp=row.importId;
   row.importId=impId;
@@ -939,7 +963,8 @@ async function _wiSaveImportMatch(rowId,impId){
   // Save to ALL export orders in group
   for(const orderId of row.orderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
+      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
     }catch(err){
       console.error('Import match save failed:',err.message);
@@ -965,7 +990,7 @@ async function _wiRemoveImport(rowId){
   let ok=true;
   for(const orderId of row.orderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
       if(res?.error){ ok=false; throw new Error(res.error.message||res.error.type); }
     }catch(err){
       toast('Error: '+err.message.slice(0,60),'warn');
@@ -1236,13 +1261,15 @@ async function _wiSaveFromPopover(rowId){
   const errors=[];
   for(const orderId of row.orderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,expFields);
+      const res=await atSafePatch(TABLES.ORDERS,orderId,expFields);
+      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
     }catch(err){errors.push(err.message);}
   }
   if(row.importId && !row.orderIds.includes(row.importId)){
     try{
-      const res=await atPatch(TABLES.ORDERS,row.importId,impFields);
+      const res=await atSafePatch(TABLES.ORDERS,row.importId,impFields);
+      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
     }catch(err){errors.push(err.message);}
   }
@@ -1389,7 +1416,8 @@ async function _wiSave(rowId){
   const errors=[];
   for(const orderId of row.orderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,fields);
+      const res=await atSafePatch(TABLES.ORDERS,orderId,fields);
+      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
     }catch(err){ errors.push(err.message); }
   }
@@ -1413,7 +1441,7 @@ async function _wiClear(rowId){
   const errors=[];
   for(const orderId of allOrderIds){
     try{
-      const res=await atPatch(TABLES.ORDERS,orderId,{
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{
         'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
         'Is Partner Trip':false,'Partner Truck Plates':'',
       });

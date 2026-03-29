@@ -623,7 +623,8 @@ async function submitNatlOrder(recId) {
 
     let savedNatlId = recId;
     if(recId) {
-      await atPatch(TABLES.NAT_ORDERS, recId, fields);
+      const patchRes = await atSafePatch(TABLES.NAT_ORDERS, recId, fields);
+      if (patchRes?.conflict) { toast('Record modified by another user — reload and try again','warn'); return; }
     } else {
       // Duplicate check: same client + same loading date
       if (clientId && fields['Loading DateTime']) {
@@ -719,7 +720,8 @@ async function submitNatlOrder(recId) {
 async function toggleNatlInvoiced(recId, current) {
   const newVal = !current;
   try {
-    await atPatch(TABLES.NAT_ORDERS, recId, { 'Invoiced': newVal });
+    const res = await atSafePatch(TABLES.NAT_ORDERS, recId, { 'Invoiced': newVal });
+    if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
     const rec = NATL_ORDERS.data.find(r => r.id === recId);
     if(rec) rec.fields['Invoiced'] = newVal;
     _applyNatlFilters();
