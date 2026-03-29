@@ -201,7 +201,7 @@ async function renderDashboard() {
       const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 18))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 18))}`;
       const delDate = (f['Delivery DateTime'] || '').substring(0, 10);
       const pallets = f['Total Pallets'] || 0;
-      const created = f['Created'] || f['Date Created'] || '';
+      const created = r.createdTime || '';
       const hoursOld = created ? Math.round((Date.now() - new Date(created).getTime()) / 3600000) : 0;
       const dir = f['Direction'];
       const ref = f['Reference'] || '';

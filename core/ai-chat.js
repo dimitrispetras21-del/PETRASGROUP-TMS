@@ -681,7 +681,7 @@ async function _aicRunObserver() {
         const in7d = toLocalDate(new Date(Date.now() + 7 * 864e5));
         const unassigned = await atGetAll(TABLES.ORDERS, {
           filterByFormula: `AND({Type}='International',{Truck}=BLANK(),IS_AFTER({Delivery DateTime},'${localToday()}'))`,
-          fields: ['Delivery Summary','Delivery DateTime','Direction','Created']
+          fields: ['Delivery Summary','Delivery DateTime','Direction']
         }, true);
 
         // CRITICAL: delivering in <48h
