@@ -17,6 +17,113 @@ const _onVS = { sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
 const _ON_ROW_H = 40;
 const _ON_BUFFER = 10;
 
+// ─── Local ref-data caches (self-contained, no dependency on orders_intl) ──
+let _locationsMap = {};   // recId → label
+let _locationsArr = [];   // [{id,label}]
+const _clientsMap  = {};  // recId → name
+const _clientCache = {};  // query → [{id,label}]
+
+async function _loadLocations() {
+  if (_locationsArr.length) return;
+  const locs = await atGet(TABLES.LOCATIONS);
+  _locationsArr = locs
+    .map(r => ({ id: r.id, label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ') }))
+    .sort((a,b) => a.label.localeCompare(b.label));
+  _locationsArr.forEach(l => { _locationsMap[l.id] = l.label; });
+}
+
+async function _searchClients(q) {
+  if (!q || q.length < 2) return [];
+  const key = q.toLowerCase();
+  if (_clientCache[key]) return _clientCache[key];
+  const formula = `SEARCH(LOWER("${q.replace(/"/g,'')}"), LOWER({Company Name}))`;
+  const recs = await atGet(TABLES.CLIENTS, formula, false);
+  const res = recs.map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
+    .sort((a,b) => a.label.localeCompare(b.label)).slice(0, 30);
+  _clientCache[key] = res;
+  res.forEach(c => { _clientsMap[c.id] = c.label; });
+  return res;
+}
+
+// Batch resolve client IDs → names (single OR formula, batched in groups of 10)
+async function _batchResolveClients(ids) {
+  const unresolvedIds = ids.filter(id => !_clientsMap[id]);
+  if (!unresolvedIds.length) return;
+  const batches = [];
+  for (let i = 0; i < unresolvedIds.length; i += 10) {
+    const batch = unresolvedIds.slice(i, i + 10);
+    const f = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+    batches.push(
+      atGetAll(TABLES.CLIENTS, { filterByFormula: f, fields: ['Company Name'] }, false).catch(() => [])
+    );
+  }
+  const results = await Promise.all(batches);
+  results.flat().forEach(r => { _clientsMap[r.id] = r.fields['Company Name'] || r.id; });
+}
+
+// Form helpers for location/client selects
+function _locSelect(id, currentId) {
+  const label = currentId ? (_locationsMap[currentId]||'') : '';
+  return `<div style="position:relative">
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(label)}"
+      placeholder="Search location..."
+      oninput="_natlLocDrop('${id}',this.value)"
+      onfocus="_natlLocDrop('${id}',this.value)"
+      onblur="_hideDrop('ls_${id}_d')">
+    <input type="hidden" id="lv_${id}" value="${currentId||''}">
+    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
+  </div>`;
+}
+
+function _clientSelect(id, currentId, currentLabel) {
+  return `<div style="position:relative">
+    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(currentLabel||'')}"
+      placeholder="Type 2+ chars to search..."
+      oninput="_natlClientDrop('${id}',this.value)"
+      onblur="_hideDrop('ls_${id}_d')">
+    <input type="hidden" id="lv_${id}" value="${currentId||''}">
+    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
+  </div>`;
+}
+
+// Natl-specific client dropdown (uses local _searchClients + _clientsMap)
+let _natlClientTimer = null;
+function _natlClientDrop(id, q) {
+  clearTimeout(_natlClientTimer);
+  const d = document.getElementById('ls_'+id+'_d');
+  if (q.length < 2) { if(d) d.style.display='none'; return; }
+  if (d) { d.style.display='block'; d.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">Searching...</div>'; }
+  _natlClientTimer = setTimeout(async () => {
+    const results = await _searchClients(q);
+    _natlShowDrop('ls_'+id+'_d', id, results);
+  }, 300);
+}
+
+function _natlLocDrop(id, q) {
+  const pool = q.trim()
+    ? _locationsArr.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
+    : _locationsArr.slice(0,25);
+  _natlShowDrop('ls_'+id+'_d', id, pool);
+}
+
+function _natlShowDrop(dropId, id, items) {
+  const d = document.getElementById(dropId); if(!d) return;
+  if (!items.length) { d.style.display='none'; return; }
+  d.style.display='block';
+  d.innerHTML = items.map(o =>
+    `<div class="linked-drop-item" onmousedown="_natlPickLinked('${id}','${o.id}',\`${escapeHtml(o.label)}\`)">${escapeHtml(o.label)}</div>`
+  ).join('');
+}
+
+function _natlPickLinked(id, recId, label) {
+  const inp = document.getElementById('ls_'+id);
+  const hid = document.getElementById('lv_'+id);
+  if(inp) inp.value = label;
+  if(hid) hid.value = recId;
+  const d = document.getElementById('ls_'+id+'_d');
+  if(d) d.style.display='none';
+}
+
 // ─── Main ───────────────────────────────────────
 async function renderOrdersNatl() {
   const c = document.getElementById('content');
@@ -42,11 +149,11 @@ async function renderOrdersNatl() {
     Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
     _onPage = 1;
 
-    // Pre-populate _clientsMap for all records
+    // Pre-resolve all client names — batch fetches in parallel (not N+1)
     const _allClientIds = [...new Set(records
       .flatMap(r => r.fields['Client']||[])
       .filter(Boolean))];
-    await Promise.all(_allClientIds.map(id => _resolveClientName(id)));
+    await _batchResolveClients(_allClientIds);
 
     _renderNatlLayout(c);
     _applyNatlFilters();
@@ -385,7 +492,9 @@ async function _openNatlModal(recId, f) {
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
   const pickupId  = Array.isArray(f['Pickup Location'])  ? f['Pickup Location'][0]  : '';
   const delivId   = Array.isArray(f['Delivery Location'])? f['Delivery Location'][0]: '';
-  const clientLabel = clientId ? (await _resolveClientName(clientId)) : '';
+  // Resolve single client name for edit form (batch if not cached)
+  if (clientId && !_clientsMap[clientId]) await _batchResolveClients([clientId]);
+  const clientLabel = clientId ? (_clientsMap[clientId] || '') : '';
   const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
 
   const body = `
@@ -905,6 +1014,11 @@ window.natlFilter = natlFilter;
 window.natlPeriodChange = natlPeriodChange;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
+// Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
+window._natlClientDrop = _natlClientDrop;
+window._natlLocDrop = _natlLocDrop;
+window._natlShowDrop = _natlShowDrop;
+window._natlPickLinked = _natlPickLinked;
 // _onPage is mutated from onclick (++/--) so expose as getter/setter
 Object.defineProperty(window, '_onPage', {
   get: function() { return _onPage; },
