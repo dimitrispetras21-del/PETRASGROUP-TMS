@@ -193,7 +193,6 @@ async function _rampAutoSync() {
       'Plan Date': date,
       'Type': type,
       'Status': 'Προγραμματισμένο',
-      'National Order': [r.id],
       'Goods': f['Goods'] || '',
       'Pallets': f['Total Pallets'] || 0,
       'Supplier/Client': f['Client'] || '—',

@@ -286,7 +286,7 @@ async function _refreshNotifs() {
     const [orders, trucks, trailers] = await Promise.all([
       atGet(TABLES.ORDERS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
-      atGetAll(TABLES.TRAILERS, { fields: ['Plate','ATP Expiry','Insurance Expiry'] }, true),
+      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true),
     ]);
 
     // Unassigned orders due in 48h
