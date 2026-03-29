@@ -49,12 +49,11 @@ async function _opsLoad() {
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
 }
 
-/* ── HELPERS ──────────────────────────────────────────────────── */
-const _L=id=>{if(!id)return'—';const l=OPS.locs.find(r=>r.id===id);return escapeHtml(l?(l.fields['Name']||l.fields['City']||'—'):'—');};
-const _C=f=>{const raw=f['Client'];const id=Array.isArray(raw)?raw[0]:raw;if(!id)return'—';const c=OPS.clients.find(r=>r.id===id);return escapeHtml(c?(c.fields['Company Name']||'—'):String(id).substring(0,12));};
-const _K=a=>a?.length?(a[0]?.id||a[0]||null):null;
-const _T=f=>{const id=_K(f['Truck']);return escapeHtml(id?OPS.trucks.find(t=>t.id===id)?.lb||'—':'');}
-const _D=f=>{const id=_K(f['Driver']);return escapeHtml(id?OPS.drivers.find(d=>d.id===id)?.lb||'—':'');}
+/* ── HELPERS (using shared data-helpers.js) ───────────────────── */
+const _L=id=>getLocationName(id);
+const _C=f=>{const raw=f['Client'];const id=Array.isArray(raw)?raw[0]:raw;return getClientName(id);};
+const _T=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
+const _D=f=>getDriverName(getLinkedId(f['Driver']))||'';
 const _DM=(dt,d)=>dt?toLocalDate(dt)===d:false;
 const _P=f=>f['Is Partner Trip']===true||f['Is Partner Trip']==='Yes';
 

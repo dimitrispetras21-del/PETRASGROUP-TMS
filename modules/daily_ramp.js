@@ -344,25 +344,10 @@ function _rampResolveStops(f, prefix, max) {
   return names.filter(Boolean).join(' / ') || '';
 }
 
-/* ── HELPERS ──────────────────────────────────────────────────── */
-const _rK=a=>a?.length?(a[0]?.id||a[0]||null):null;
-const _rTruck=f=>{const id=_rK(f['Truck']);return id?RAMP.trucks.find(t=>t.id===id)?.lb||'':'';};
-const _rDriver=f=>{const id=_rK(f['Driver']);return id?RAMP.drivers.find(d=>d.id===id)?.lb||'':'';};
-function _rClient(val) {
-  if (!val) return '—';
-  // If it's already a resolved name (not a record ID), return as-is
-  if (typeof val === 'string' && !val.startsWith('rec')) return val;
-  // If it's a record ID, try to resolve
-  const id = typeof val === 'string' ? val : (Array.isArray(val) ? val[0] : val);
-  if (!id || typeof id !== 'string') return String(val||'—');
-  const c = RAMP.clients.find(r=>r.id===id);
-  return c ? (c.fields['Company Name']||'—') : String(id).substring(0,15);
-}
-function _rResolveClientStr(str) {
-  if (!str) return '—';
-  // Handle "Name | supplier1 / supplier2" format or "recXXX / recYYY"
-  return escapeHtml(str.split(/\s*[/|]\s*/).map(s => _rClient(s.trim())).join(' / '));
-}
+/* ── HELPERS (using shared data-helpers.js) ───────────────────── */
+const _rTruck=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
+const _rDriver=f=>getDriverName(getLinkedId(f['Driver']))||'';
+const _rResolveClientStr=str=>resolveClientStr(str);
 function _rCat(f){
   const c=f['Ramp Category']||'',vs=f['Is Veroia Switch'];
   if(c==='Vermion Fresh')return'<span class="vs-badge vf">VF</span>';
