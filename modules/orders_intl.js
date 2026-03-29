@@ -762,7 +762,21 @@ function _vsAddDays(dateStr, days) {
   return `${y}-${m}-${day}`;
 }
 
+// Semaphore: prevent concurrent VS syncs on the same order
+const _syncingOrders = new Set();
+
 async function _syncVeroiaSwitch(orderId, fields) {
+  if (_syncingOrders.has(orderId)) {
+    if (typeof showErrorToast === 'function') showErrorToast('Sync already in progress for this order', 'warn');
+    else console.warn('VS sync already in progress for', orderId);
+    return;
+  }
+  _syncingOrders.add(orderId);
+
+  // Track created records for rollback on failure
+  const _createdIds = []; // { table, id }
+
+  try {
   const veroiaSwitch = fields[F.VEROIA_SWITCH];
   const direction    = fields['Direction'];
   const isIntl       = fields['Type'] === 'International';
@@ -996,6 +1010,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
       alert('NAT_LOADS CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nFields: ' + JSON.stringify(nlFields));
     } else {
       nlId = cre.id;
+      _createdIds.push({ table: TABLES.NAT_LOADS, id: cre.id });
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
       console.log('NAT_LOADS created:', nlId);
     }
@@ -1053,6 +1068,18 @@ async function _syncVeroiaSwitch(orderId, fields) {
   }
 
   invalidateCache(TABLES.NAT_LOADS);
+
+  } catch (err) {
+    // Rollback: delete all records created during this sync
+    for (const item of _createdIds.reverse()) {
+      try { await atDelete(item.table, item.id); } catch(_) {}
+    }
+    if (typeof showErrorToast === 'function') showErrorToast('VS sync failed and was rolled back', 'error');
+    else console.error('VS sync failed and was rolled back:', err);
+    throw err;
+  } finally {
+    _syncingOrders.delete(orderId);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1385,8 +1412,9 @@ async function submitIntlOrder(recId) {
     if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); throw new Error('validation'); }
 
     const result = recId
-      ? await atPatch(TABLES.ORDERS, recId, fields)
+      ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
+    if (result?.conflict) { toast('Record modified by another user — reload and try again','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
 
@@ -1424,7 +1452,8 @@ async function toggleIntlInvoiced(recId, current) {
   // Block invoice if PE sheets missing
   if (newVal && !(await _checkPalletSheets(recId))) return;
   try {
-    await atPatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
+    const res = await atSafePatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
+    if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
     // Update local data
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Invoiced'] = newVal;
@@ -1437,7 +1466,8 @@ async function toggleIntlInvoiced(recId, current) {
 // ─── Status Change ─────────────────────────────
 async function _intlChangeStatus(recId, newStatus) {
   try {
-    await atPatch(TABLES.ORDERS, recId, { 'Status': newStatus });
+    const res = await atSafePatch(TABLES.ORDERS, recId, { 'Status': newStatus });
+    if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
     _applyIntlFilters();

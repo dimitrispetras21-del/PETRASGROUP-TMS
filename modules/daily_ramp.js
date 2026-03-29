@@ -571,10 +571,10 @@ function _rTlRow(rec) {
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
-async function _rampSvF(id,fld,v){try{await atPatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
+async function _rampSvF(id,fld,v){try{await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
   // Save time as plain "HH:MM" string — NOT ISO datetime
-  try{await atPatch(TABLES.RAMP,id,{'Time': v || null});
+  try{await atSafePatch(TABLES.RAMP,id,{'Time': v || null});
     const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v||'';
     // Re-sort and re-draw
     RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
@@ -585,16 +585,16 @@ async function _rampSvTime(id,v){
 async function _rampDone(id,isIn){
   const fields={'Status':'✅ Έγινε'};
   if(isIn==='true') fields['Stock Status']='In Stock';
-  try{await atPatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
+  try{await atSafePatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 
 async function _rampRestore(id){
-  try{await atPatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
+  try{await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
     invalidateCache(TABLES.RAMP);toast('Restored ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 async function _rampPostpone(id){
   const tmrw=toLocalDate(new Date(new Date(RAMP.date+'T12:00:00').getTime()+864e5));
-  try{await atPatch(TABLES.RAMP,id,{'Plan Date':tmrw,'Postponed To':RAMP.date});
+  try{await atSafePatch(TABLES.RAMP,id,{'Plan Date':tmrw,'Postponed To':RAMP.date});
     invalidateCache(TABLES.RAMP);toast('Postponed → '+tmrw);renderDailyRamp();}catch(e){toast('Error','danger');}
 }
 

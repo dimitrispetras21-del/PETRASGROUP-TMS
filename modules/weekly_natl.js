@@ -634,8 +634,10 @@ async function _wnSaveMatch(rowId, snId) {
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
   try {
-    await atPatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': snId });
-    await atPatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
+    const r1 = await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': snId });
+    if(r1?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
+    const r2 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
+    if(r2?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
     toast('Σύνδεση αποθηκεύτηκε ✓');
   } catch(err) { toast('Σφάλμα σύνδεσης: '+err.message, 'warn'); }
 }
@@ -649,8 +651,8 @@ async function _wnUnmatch(rowId, snId) {
   }
   _wnPaint();
   try {
-    await atPatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
-    await atPatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
+    await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
+    await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
     toast('Σύνδεση αφαιρέθηκε');
   } catch(err) { toast('Σφάλμα: '+err.message, 'warn'); }
 }
@@ -805,13 +807,15 @@ async function _wnSaveFromPopover(rowId) {
   for (const orderId of row.orderIds) {
     try {
       // All rows are now in NAT_LOADS
-      const res = await atPatch(TABLES.NAT_LOADS, orderId, fields);
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
+      if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push(err.message); }
   }
   if (row.matchedId) {
     try {
-      const res = await atPatch(TABLES.NAT_LOADS, row.matchedId, fields);
+      const res = await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields);
+      if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message||res.error.type);
     } catch(err) { errors.push('Άνοδος: '+err.message); }
   }
@@ -840,8 +844,9 @@ async function _wnClear(rowId) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   for (const orderId of row.orderIds) {
     try {
-      await atPatch(TABLES.NAT_LOADS, orderId,
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId,
         { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' });
+      if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
     } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
   }
   Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
@@ -907,7 +912,8 @@ async function _wnUnassignSn(rowId, snId) {
   };
 
   try {
-    await atPatch(TABLES.NAT_LOADS, snId, fields);
+    const res = await atSafePatch(TABLES.NAT_LOADS, snId, fields);
+    if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
 
   row.saved = false;
@@ -937,14 +943,15 @@ async function _wnUnassign(rowId) {
   const errors = [];
   for (const orderId of row.orderIds) {
     try {
-      const res = await atPatch(TABLES.NAT_LOADS, orderId, fields);
+      const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
+      if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
     } catch(err) { errors.push(err.message); }
   }
   // Also unassign matched S→N if exists
   if (row.matchedId) {
     try {
-      await atPatch(TABLES.NAT_LOADS, row.matchedId, fields);
+      await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields);
     } catch(err) { errors.push(err.message); }
   }
 
