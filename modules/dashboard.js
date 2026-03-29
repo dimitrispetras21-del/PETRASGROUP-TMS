@@ -25,7 +25,7 @@ async function renderDashboard() {
       atGet(TABLES.NAT_LOADS),
     ]);
 
-    // Build lookup maps
+    // Lookup maps (dashboard-local, for computed metrics that need raw fields)
     const truckMap = {};
     trucks.forEach(t => { truckMap[t.id] = t.fields; });
     const driverMap = {};

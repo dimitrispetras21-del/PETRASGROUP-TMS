@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>TMS Tests</title>
+  <style>
+    body { font-family: 'DM Sans', sans-serif; background: #0B1929; color: #E2E8F0; padding: 24px; }
+    h1 { color: #38BDF8; margin-bottom: 8px; }
+    h2 { margin: 16px 0 12px; }
+    .pass { color: #22C55E; }
+    .fail { color: #EF4444; font-weight: 600; }
+    .section { margin: 18px 0 6px; font-size: 15px; color: #94A3B8; border-bottom: 1px solid #1E293B; padding-bottom: 4px; }
+    #results div { padding: 3px 0; font-size: 13px; font-family: monospace; }
+    #summary { font-size: 18px; margin: 16px 0; padding: 12px; border-radius: 8px; }
+    #summary.all-pass { background: #14532D; }
+    #summary.has-fail { background: #7F1D1D; }
+  </style>
+</head>
+<body>
+  <h1>TMS Test Suite</h1>
+  <div id="summary"></div>
+  <div id="results"></div>
+
+  <script>
+    // ── Simple test framework ──
+    const _results = [];
+    let _passed = 0, _failed = 0;
+
+    function assert(condition, message) {
+      if (condition) {
+        _passed++;
+        _results.push({ pass: true, msg: message });
+      } else {
+        _failed++;
+        _results.push({ pass: false, msg: message });
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      const pass = actual === expected;
+      if (pass) {
+        _passed++;
+        _results.push({ pass: true, msg: message });
+      } else {
+        _failed++;
+        _results.push({ pass: false, msg: `${message}: expected "${expected}", got "${actual}"` });
+      }
+    }
+
+    function assertDeepEqual(actual, expected, message) {
+      const pass = JSON.stringify(actual) === JSON.stringify(expected);
+      if (pass) {
+        _passed++;
+        _results.push({ pass: true, msg: message });
+      } else {
+        _failed++;
+        _results.push({ pass: false, msg: `${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}` });
+      }
+    }
+
+    function assertNotNull(val, message) {
+      assert(val != null, `${message}: expected non-null`);
+    }
+
+    function section(name) {
+      _results.push({ section: true, msg: name });
+    }
+
+    function showResults() {
+      const el = document.getElementById('results');
+      const sum = document.getElementById('summary');
+
+      sum.textContent = `${_passed} passed, ${_failed} failed`;
+      sum.className = _failed === 0 ? 'all-pass' : 'has-fail';
+
+      el.innerHTML = _results.map(r => {
+        if (r.section) return `<div class="section">${r.msg}</div>`;
+        const cls = r.pass ? 'pass' : 'fail';
+        const icon = r.pass ? 'PASS' : 'FAIL';
+        return `<div class="${cls}">${icon} -- ${r.msg}</div>`;
+      }).join('');
+    }
+  </script>
+
+  <!-- Load app dependencies (order matters) -->
+  <script src="../config.js"></script>
+  <script src="../core/constants.js"></script>
+  <script src="../core/utils.js"></script>
+
+  <!-- Test suites -->
+  <script src="test-utils.js"></script>
+  <script src="test-vs-sync.js"></script>
+
+  <!-- Run -->
+  <script>
+    showResults();
+  </script>
+</body>
+</html>
