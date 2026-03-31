@@ -640,7 +640,7 @@ async function _svcSave(editId) {
 async function _svcDelete(id) {
   if (!confirm('Delete this service record?')) return;
   try {
-    await atDelete(TABLES.MAINT_HISTORY, id);
+    await atSoftDelete(TABLES.MAINT_HISTORY, id);
     toast('Deleted');
     document.querySelector('.mf-overlay')?.remove();
     MAINT.history = [];
@@ -1527,7 +1527,7 @@ async function _mreqSave(editId) {
 async function _mreqDelete(recId) {
   if (!confirm('Delete this work order?')) return;
   try {
-    await atDelete(TABLES.MAINT_REQ, recId);
+    await atSoftDelete(TABLES.MAINT_REQ, recId);
     MREQ.data = MREQ.data.filter(r => r.id !== recId);
     document.getElementById('mreq-form-container').innerHTML = '';
     _mreqPaint();

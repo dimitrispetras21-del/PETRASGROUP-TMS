@@ -614,12 +614,25 @@ async function submitNatlOrder(recId) {
     if(delivId)   fields['Delivery Location']= [delivId];
 
     // Validation
-    if(!fields['Direction'])          { alert('Direction is required'); throw new Error('v'); }
-    if(!clientId)                     { alert('Client is required'); throw new Error('v'); }
-    if(!pickupId)                     { alert('Pickup Location is required'); throw new Error('v'); }
-    if(!delivId)                      { alert('Delivery Location is required'); throw new Error('v'); }
-    if(!fields['Loading DateTime'])   { alert('Loading Date is required'); throw new Error('v'); }
-    if(!fields['Delivery DateTime'])  { alert('Delivery Date is required'); throw new Error('v'); }
+    const _vErrors = [];
+    if(!fields['Direction'])          _vErrors.push('Direction is required');
+    if(!clientId)                     _vErrors.push('Client is required');
+    if(!pickupId)                     _vErrors.push('Pickup Location is required');
+    if(!delivId)                      _vErrors.push('Delivery Location is required');
+    if(!fields['Loading DateTime'])   _vErrors.push('Loading Date is required');
+    if(!fields['Delivery DateTime'])  _vErrors.push('Delivery Date is required');
+
+    // Date cross-validation
+    if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
+      if (new Date(fields['Delivery DateTime']) < new Date(fields['Loading DateTime'])) {
+        _vErrors.push('Delivery date cannot be before loading date');
+      }
+    }
+
+    if (_vErrors.length) {
+      toast(_vErrors[0], 'warn');
+      throw new Error('v');
+    }
 
     let savedNatlId = recId;
     if(recId) {
@@ -997,8 +1010,8 @@ async function deleteNatlOrder(recId) {
       }
     } catch(e) { console.warn('Ramp cleanup:', e); }
 
-    // 4. Delete the NAT_ORDER itself
-    await atDelete(TABLES.NAT_ORDERS, recId);
+    // 4. Delete the NAT_ORDER itself (soft delete — saved to trash)
+    await atSoftDelete(TABLES.NAT_ORDERS, recId);
 
     // Invalidate caches
     invalidateCache(TABLES.NAT_ORDERS);

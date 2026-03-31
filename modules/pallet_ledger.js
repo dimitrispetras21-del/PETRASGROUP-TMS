@@ -421,7 +421,7 @@ async function _plSaveForm(recId) {
 async function _plDelete(id) {
   if (!confirm('Delete this pallet record?')) return;
   try {
-    await atDelete(TABLES.PALLET_LEDGER, id);
+    await atSoftDelete(TABLES.PALLET_LEDGER, id);
     invalidateCache(TABLES.PALLET_LEDGER);
     renderPalletLedger();
   } catch (e) {

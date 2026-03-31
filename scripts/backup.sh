@@ -43,10 +43,13 @@ declare -A TABLES=(
   ["NAT_LOADS"]="tblVW42cZnfC47gTb"
   ["GROUPAGE_LINES"]="tblxUAaIsUMEDl3qQ"
   ["CONSOLIDATED_LOADS"]="tbl5XSLQjOnG6yLCW"
+  ["RAMP_PLAN"]="tblT8W5WcuToBQNiY"
+  ["TRUCKS"]="tblEAPExIAjiA3asD"
+  ["TRAILERS"]="tblDcrqRJXzPrtYLm"
+  ["DRIVERS"]="tbl7UGmYhc2Y82pPs"
   ["CLIENTS"]="tblFWKAQVUzAM8mCE"
   ["PARTNERS"]="tblLHl5m8bqONfhWv"
-  ["TRUCKS"]="tblEAPExIAjiA3asD"
-  ["DRIVERS"]="tbl7UGmYhc2Y82pPs"
+  ["LOCATIONS"]="tblxu8DRfTQOFRCzS"
 )
 
 # ── Functions ─────────────────────────────────
@@ -162,9 +165,19 @@ done
 
 echo "──────────────────────────────────────────────"
 
-# Total backup size
+# Count total records and tables
+total_records=0
+table_count=0
+for f in "$BACKUP_DIR"/*.json; do
+  [ -f "$f" ] || continue
+  table_count=$((table_count + 1))
+  count=$(python3 -c "import sys,json; print(len(json.load(open('$f'))))" 2>/dev/null || echo "0")
+  total_records=$((total_records + count))
+done
+
 total_size=$(du -sh "$BACKUP_DIR" | cut -f1)
 echo ""
+echo "Backed up $table_count tables, $total_records total records"
 echo "Total backup size: $total_size"
 
 if [ $failed -gt 0 ]; then

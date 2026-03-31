@@ -415,6 +415,105 @@ const AIC_PROFILES = {
   }
 };
 
+/* ── APP KNOWLEDGE BASE ────────────────────────────────────── */
+const APP_KNOWLEDGE = `
+You are Nakis, the AI assistant for Petras Group TMS. You help users learn and use the app.
+
+## App Pages & How to Use Them:
+
+### Dashboard
+- Shows overview KPIs: fleet usage, dead km, on-time delivery, weekly score
+- KPI cards are clickable — click "Unassigned Exports" to jump to orders
+- Weekly Score: 0-100 based on assignment, on-time, compliance, empty legs
+
+### International Orders (ORDERS menu)
+- Create: Click "+ New Order" → fill Direction (Export/Import), Client, Loading/Delivery locations, dates, pallets, goods, temperature
+- Required: Direction, Client, Loading Date, Delivery Date, at least 1 location
+- Edit: Click any row → edit form opens
+- Veroia Switch: Toggle ON to auto-create National Order for cross-dock at Veroia
+- Search: Type in search bar to filter by client, location, goods
+- Period: Use "Last 60 days / 6 months / All" dropdown to see older orders
+
+### National Orders (ORDERS menu)
+- Auto-created by Veroia Switch OR created manually
+- National Groupage: Toggle ON to create Groupage Lines for consolidation
+- Direction: South→North (ΑΝΟΔΟΣ) = supplier to Veroia, North→South (ΚΑΘΟΔΟΣ) = Veroia to client
+
+### Weekly International (PLANNING menu)
+- Shows exports (left), assignment (center), imports (right) for selected week
+- Assign truck: Right-click export row → select truck/driver/trailer from popover
+- Match import: Drag import card from right column → drop on export row
+- Auto-Match: Click "Auto Match" to let AI suggest import/export pairs based on distance and dates
+- Print: Click "Print Week" for PDF export
+- Navigate weeks: Click week pills at top (W13, W14, W15...)
+
+### Weekly National (PLANNING menu)
+- Shows ΚΑΘΟΔΟΣ (left), ΑΝΑΘΕΣΗ (center), ΑΝΟΔΟΣ (right)
+- Assign: Right-click → select truck/driver
+- Context menu: Right-click for more options (unassign, split, print)
+
+### Daily Ramp Board (PLANNING menu)
+- Shows today's warehouse operations at Veroia
+- Inbound (left): incoming deliveries — click "Done" when unloaded
+- Outbound (right): outgoing shipments
+- Postpone: Click "Postpone" to move to tomorrow
+- Time: Set arrival/departure time from dropdown
+- Auto-syncs from Orders — no need to create manually
+
+### Daily Ops Plan (PLANNING menu)
+- Today/Tomorrow view of all international operations
+- Status flow: Pending → Assigned → Loaded → In Transit → Delivered
+- Checklists: Docs Ready, Temp OK, CMR Photo, Client Notified, Driver Notified
+- Overdue banner shows orders past delivery date
+
+### My Performance (HR menu)
+- Personalized KPIs based on your role
+- Weekly Score trend (last 4 weeks)
+- Nakis Feedback: AI-generated weekly assessment
+- Goals: Set and track personal targets
+
+### Master Data (various menus)
+- Clients, Partners, Drivers, Trucks, Trailers, Locations
+- Click "+ New" to add, click row to edit
+- Trucks/Trailers: track KTEO, Insurance, ATP expiry dates
+
+## Key Concepts:
+- **Veroia Switch**: Cross-docking at Veroia warehouse. Export goods arrive, get consolidated, then go to national delivery.
+- **ΑΝΟΔΟΣ (Anodos)**: South→North direction (supplier → Veroia)
+- **ΚΑΘΟΔΟΣ (Kathodos)**: North→South direction (Veroia → client)
+- **Groupage**: Consolidating multiple small shipments into one truck
+- **Wednesday Cutoff**: Export orders must be confirmed by Wednesday for weekend delivery
+- **Dead Kilometers**: Distance truck drives empty between delivery and next pickup
+
+## Common Questions:
+- "How do I assign a truck?" → Go to Weekly International, right-click the order row, select truck from popover
+- "How do I match import/export?" → Drag the import card and drop it on the export row
+- "What does the red pill mean?" → Unassigned order (no truck allocated yet)
+- "How do I postpone a ramp entry?" → Click "Postpone" button on the ramp row
+- "How do I see older orders?" → Change the Period dropdown from "Last 60 days" to "All time"
+`;
+
+const _PAGE_HELP_NAMES = {
+  dashboard: 'Dashboard',
+  weekly_intl: 'Weekly International',
+  weekly_natl: 'Weekly National',
+  weekly_pickups: 'National Pick Ups',
+  daily_ramp: 'Daily Ramp Board',
+  daily_ops: 'Daily Ops Plan',
+  orders_intl: 'International Orders',
+  orders_natl: 'National Orders',
+  locations: 'Locations',
+  clients: 'Clients',
+  partners: 'Partners',
+  trucks: 'Trucks',
+  trailers: 'Trailers',
+  drivers: 'Drivers',
+  maint_dashboard: 'Maintenance Dashboard',
+  maint_expiry: 'Expiry Alerts',
+  maint_req: 'Maintenance Requests',
+  my_performance: 'My Performance',
+};
+
 /* ── SYSTEM PROMPT ─────────────────────────────────────────── */
 function _aicSystemPrompt() {
   const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
@@ -448,8 +547,11 @@ ${interviewBlock}
 
 ΤΡΕΧΟΝ CONTEXT:
 - Χρήστης: ${userName}, Ρόλος: ${role}
-- Σελίδα: ${page}
+- Σελίδα: ${page} (${_PAGE_HELP_NAMES[page] || page})
 - Ημερομηνία: ${localToday()}, Εβδομάδα: W${week}
+
+APP TRAINING GUIDE:
+${APP_KNOWLEDGE}
 
 ΔΕΔΟΜΕΝΑ ΣΕΛΙΔΑΣ:
 ${pageCtx}
@@ -463,6 +565,8 @@ ${profile ? `- Ξεκίνα ΠΑΝΤΑ με 1-2 ΣΥΓΚΕΚΡΙΜΕΝΕΣ πα�
 - Επίπεδο λεπτομέρειας: ${profile.detail_level || 'brief'}
 - Daily must-do: ${(profile.daily_must_do || []).join(', ') || 'none set'}
 - Αν ο χρήστης πει "ξανα-γνώρισέ με" → ξεκίνα νέο interview` : ''}
+- Αν ρωτήσουν "How do I use this page?" ή "πώς λειτουργεί αυτή η σελίδα", χρησιμοποίησε το APP TRAINING GUIDE για να δώσεις οδηγίες σχετικά με τη σελίδα ${_PAGE_HELP_NAMES[page] || page}
+- Αν ρωτήσουν για concepts (Veroia Switch, Groupage, ΑΝΟΔΟΣ κλπ), εξήγησε με βάση το APP TRAINING GUIDE
 - ΠΑΝΤΑ επιβεβαίωσε πριν αλλάξεις data (create_work_order, update_record)
 - Συνόψισε αποτελέσματα tools — ποτέ raw JSON
 - ${role === 'dispatcher' ? 'Δεν έχεις πρόσβαση σε κόστη/οικονομικά.' : ''}
@@ -773,6 +877,7 @@ function _aicInit() {
       <button class="aic-qbtn" onclick="_aicQuick('Τι πρεπει να κανω σημερα?')">Today</button>
       <button class="aic-qbtn" onclick="_aicQuick('Ποια orders ειναι unassigned?')">Unassigned</button>
       <button class="aic-qbtn" onclick="_aicQuick('Fleet status - τι ληγει?')">Fleet</button>
+      <button class="aic-qbtn" onclick="_aicQuick('How do I use this page?')">Help</button>
     </div>
     <div class="aic-msgs" id="aic-msgs"></div>
     <div class="aic-input-bar">

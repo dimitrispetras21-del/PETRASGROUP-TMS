@@ -363,3 +363,107 @@ async function _refreshNotifs() {
 setInterval(() => { _refreshNotifs(); }, 300000);
 // Initial load after 3 seconds
 setTimeout(() => { _refreshNotifs(); }, 3000);
+
+// ═══ TRASH VIEWER (Owner only) ═══
+
+// Reverse-lookup table name from ID
+function _tableNameFromId(tableId) {
+  if (typeof TABLES === 'undefined') return tableId;
+  for (const [name, id] of Object.entries(TABLES)) {
+    if (id === tableId) return name;
+  }
+  return tableId;
+}
+
+function renderTrashViewer() {
+  const c = document.getElementById('content');
+  const trash = typeof getTrash === 'function' ? getTrash() : [];
+
+  let html = `
+    <div style="max-width:1100px;margin:0 auto;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+        <div>
+          <h2 style="margin:0;font-family:'Syne',sans-serif;font-size:22px;color:var(--text-primary,#e2e8f0);">Trash</h2>
+          <p style="margin:4px 0 0;color:var(--text-dim,#94a3b8);font-size:13px;">${trash.length} deleted record(s) — last 50 kept in browser storage</p>
+        </div>
+        ${trash.length ? `<button onclick="_clearAllTrash()" style="background:#7F1D1D;color:#fca5a5;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;">Clear All Trash</button>` : ''}
+      </div>`;
+
+  if (!trash.length) {
+    html += `
+      <div style="text-align:center;padding:60px 20px;color:var(--text-dim,#94a3b8);">
+        <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.4;margin-bottom:16px;"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>
+        <p style="font-size:15px;">Trash is empty</p>
+        <p style="font-size:12px;margin-top:4px;">Deleted records will appear here for recovery</p>
+      </div>`;
+  } else {
+    html += `<div style="display:flex;flex-direction:column;gap:8px;">`;
+    trash.forEach((item, idx) => {
+      const tableName = _tableNameFromId(item.table);
+      const deletedAt = new Date(item.deletedAt);
+      const timeAgo = _trashTimeAgo(deletedAt);
+      // Show a few key fields as preview
+      const preview = _trashPreview(item.fields);
+
+      html += `
+        <div style="background:var(--card-bg,#111827);border:1px solid var(--border,#1e293b);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="background:#1e3a5f;color:#93c5fd;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${escapeHtml(tableName)}</span>
+              <span style="color:var(--text-dim,#94a3b8);font-size:11px;">${escapeHtml(item.id)}</span>
+            </div>
+            <div style="color:var(--text-primary,#e2e8f0);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(preview)}</div>
+            <div style="color:var(--text-dim,#94a3b8);font-size:11px;margin-top:4px;">Deleted ${escapeHtml(timeAgo)} by ${escapeHtml(item.deletedBy || 'unknown')}</div>
+          </div>
+          <button onclick="_restoreTrashItem(${idx})" style="background:#0c4a1a;color:#86efac;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;white-space:nowrap;">Restore</button>
+        </div>`;
+    });
+    html += `</div>`;
+  }
+
+  html += `</div>`;
+  c.innerHTML = html;
+}
+
+function _trashTimeAgo(date) {
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
+}
+
+function _trashPreview(fields) {
+  if (!fields) return '(no data)';
+  // Try common identifying fields
+  const tryFields = ['Name', 'Company Name', 'Full Name', 'License Plate', 'Direction', 'Status', 'Client', 'Type', 'City'];
+  const parts = [];
+  for (const f of tryFields) {
+    if (fields[f]) {
+      let val = fields[f];
+      if (Array.isArray(val)) val = val.join(', ');
+      if (typeof val === 'string' && val.length > 40) val = val.substring(0, 40) + '...';
+      parts.push(f + ': ' + val);
+      if (parts.length >= 3) break;
+    }
+  }
+  return parts.length ? parts.join(' | ') : Object.keys(fields).slice(0, 3).join(', ');
+}
+
+async function _restoreTrashItem(idx) {
+  if (!confirm('Restore this record to its original table?')) return;
+  const result = await atRestoreFromTrash(idx);
+  if (result) {
+    if (typeof showErrorToast === 'function') showErrorToast('Record restored successfully', 'info');
+    renderTrashViewer(); // Re-render
+  }
+}
+
+function _clearAllTrash() {
+  if (!confirm('Permanently clear all trash? This cannot be undone.')) return;
+  localStorage.setItem('tms_trash', '[]');
+  renderTrashViewer();
+}

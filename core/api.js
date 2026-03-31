@@ -295,6 +295,11 @@ async function atGet(tableId, filter = '', useCache = true) {
   }
 
   const records = await _atFetch(tableId, paramStr);
+  // Field change protection: validate expected fields on first fetch
+  const expectation = _FIELD_EXPECTATIONS[tableId];
+  if (expectation && records.length > 0) {
+    _validateFields(records, expectation.fields, expectation.context);
+  }
   _memSet(key, records);
   if (stable) _lsSet(key, records);
   return records;
@@ -327,6 +332,13 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
   }
 
   const records = await _atFetch(tableId, paramStr);
+  // Field change protection: validate expected fields (only when not using field filter)
+  if (!opts.fields) {
+    const expectation = _FIELD_EXPECTATIONS[tableId];
+    if (expectation && records.length > 0) {
+      _validateFields(records, expectation.fields, expectation.context);
+    }
+  }
   _memSet(key, records);
   if (stable) _lsSet(key, records);
   return records;
@@ -755,6 +767,93 @@ function atNotifyChange(tableId) {
     }
   } catch(e) { if (typeof logError === 'function') logError(e, 'atNotifyChange broadcast'); }
 }
+
+// ── 4. Soft Delete (trash before delete) ─────────
+/**
+ * Save record to localStorage trash, then permanently delete from Airtable.
+ * Keeps last 50 deleted records for potential recovery.
+ * @param {string} tableId - Airtable table ID
+ * @param {string} recordId - Record ID to delete
+ * @returns {Promise<{id:string, deleted:boolean}>} Deletion confirmation
+ */
+async function atSoftDelete(tableId, recordId) {
+  // Save to trash before deleting
+  try {
+    const rec = await atGetOne(tableId, recordId);
+    const trash = JSON.parse(localStorage.getItem('tms_trash') || '[]');
+    trash.unshift({
+      id: recordId,
+      table: tableId,
+      fields: rec.fields,
+      deletedAt: new Date().toISOString(),
+      deletedBy: JSON.parse(localStorage.getItem('tms_user') || '{}').name || 'unknown',
+    });
+    // Keep last 50 deleted records
+    if (trash.length > 50) trash.length = 50;
+    localStorage.setItem('tms_trash', JSON.stringify(trash));
+  } catch(e) {
+    if (typeof logError === 'function') logError(e, 'soft delete backup');
+  }
+  // Then actually delete
+  return atDelete(tableId, recordId);
+}
+
+/**
+ * Get all items in the trash (soft-deleted records)
+ * @returns {Array} Array of trash entries
+ */
+function getTrash() {
+  try { return JSON.parse(localStorage.getItem('tms_trash') || '[]'); }
+  catch { return []; }
+}
+
+/**
+ * Restore a record from trash back to its original table
+ * @param {number} trashIndex - Index of the item in the trash array
+ * @returns {Promise<{id:string, fields:Object}|null>} Restored record or null
+ */
+async function atRestoreFromTrash(trashIndex) {
+  try {
+    const trash = getTrash();
+    if (trashIndex < 0 || trashIndex >= trash.length) return null;
+    const item = trash[trashIndex];
+    // Re-create the record in its original table
+    const restored = await atCreate(item.table, item.fields);
+    // Remove from trash
+    trash.splice(trashIndex, 1);
+    localStorage.setItem('tms_trash', JSON.stringify(trash));
+    return restored;
+  } catch(e) {
+    if (typeof logError === 'function') logError(e, 'atRestoreFromTrash');
+    if (typeof showErrorToast === 'function') showErrorToast('Restore failed: ' + e.message, 'error');
+    return null;
+  }
+}
+
+// ── 5. Field Change Protection ───────────────────
+/**
+ * Validate that expected fields exist in fetched records.
+ * Warns in console and logs error if fields are missing (e.g. renamed in Airtable).
+ * @param {Array} records - Array of Airtable records
+ * @param {string[]} expectedFields - Field names that should exist
+ * @param {string} context - Description for the warning message
+ */
+function _validateFields(records, expectedFields, context) {
+  if (!records.length || !expectedFields.length) return;
+  const actualFields = Object.keys(records[0].fields || {});
+  const missing = expectedFields.filter(f => !actualFields.includes(f));
+  if (missing.length > 0) {
+    const msg = `Missing fields in ${context}: ${missing.join(', ')}`;
+    console.warn('[TMS]', msg);
+    if (typeof logError === 'function') logError(new Error(msg), 'field_validation');
+  }
+}
+
+// Field expectations per table (add more as needed)
+const _FIELD_EXPECTATIONS = {};
+_FIELD_EXPECTATIONS[typeof TABLES !== 'undefined' && TABLES.ORDERS   ? TABLES.ORDERS   : ''] = { fields: ['Direction', 'Status', 'Loading DateTime', 'Delivery DateTime', 'Client'], context: 'ORDERS' };
+_FIELD_EXPECTATIONS[typeof TABLES !== 'undefined' && TABLES.TRUCKS   ? TABLES.TRUCKS   : ''] = { fields: ['License Plate', 'Active'], context: 'TRUCKS' };
+_FIELD_EXPECTATIONS[typeof TABLES !== 'undefined' && TABLES.RAMP     ? TABLES.RAMP     : ''] = { fields: ['Type', 'Plan Date', 'Status', 'Supplier/Client'], context: 'RAMP PLAN' };
 
 // Get list of online users
 function atGetOnlineUsers() {
