@@ -89,11 +89,17 @@ async function _rampAutoSync() {
     }, false).catch(()=>[]),
   ]);
   const allExisting = [...existing, ...allPostponedSync];
+  // Primary key: Order/NatOrder + Type + Category
   const existingKeys = new Set(allExisting.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
     const nid = getLinkId(r.fields['National Order']) || '';
     const src = oid || nid || r.id;
     return `${src}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
+  }));
+  // Secondary dedup key: Client + Type + Pallets (catches records without Order link)
+  const existingClientKeys = new Set(allExisting.map(r => {
+    const client = r.fields['Supplier/Client'] || '';
+    return `${client}_${r.fields['Type']}_${r.fields['Pallets']||''}`;
   }));
   // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
   const existingCLIds = new Set(existing
@@ -102,6 +108,22 @@ async function _rampAutoSync() {
     .filter(Boolean));
 
   const toCreate = [];
+
+  // Helper: check both primary key AND client-based dedup
+  function _shouldCreate(primaryKey, rec) {
+    if (existingKeys.has(primaryKey)) return false;
+    // Secondary dedup: client + type + pallets
+    const f = rec.fields || rec;
+    const client = f['Client Name'] || f['Supplier/Client'] || f['Client'] || '';
+    const type = primaryKey.split('_')[1] || '';
+    const pals = f['Total Pallets'] || f['Pallets'] || '';
+    const clientKey = `${client}_${type}_${pals}`;
+    if (existingClientKeys.has(clientKey)) return false;
+    // Add to both sets to prevent within-batch duplicates
+    existingKeys.add(primaryKey);
+    existingClientKeys.add(clientKey);
+    return true;
+  }
 
   // ── 1. ORDERS (International) ──────────────────────────────
   // VF Export: Loading Date = today → Outbound
@@ -134,28 +156,28 @@ async function _rampAutoSync() {
   // VF Export → Outbound
   vfExp.forEach(r => {
     const key = `${r.id}_Φόρτωση_Vermion Fresh`;
-    if (existingKeys.has(key)) return;
+    if (!_shouldCreate(key, r)) return;
     toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'Vermion Fresh', date, false));
   });
 
   // VF Import → Inbound
   vfImp.forEach(r => {
     const key = `${r.id}_Παραλαβή_Vermion Fresh`;
-    if (existingKeys.has(key)) return;
+    if (!_shouldCreate(key, r)) return;
     toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'Vermion Fresh', date, false));
   });
 
   // VS Export → Outbound (date = loading+1)
   vsExp.forEach(r => {
     const key = `${r.id}_Φόρτωση_VS Simple`;
-    if (existingKeys.has(key)) return;
+    if (!_shouldCreate(key, r)) return;
     toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'VS Simple', date, true));
   });
 
   // VS Import → Inbound (date = delivery-1)
   vsImp.forEach(r => {
     const key = `${r.id}_Παραλαβή_VS Simple`;
-    if (existingKeys.has(key)) return;
+    if (!_shouldCreate(key, r)) return;
     toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'VS Simple', date, true));
   });
 
@@ -187,7 +209,7 @@ async function _rampAutoSync() {
     const isLoading = f['Loading DateTime'] && toLocalDate(f['Loading DateTime']) === date;
     const type = isLoading ? 'Παραλαβή' : 'Φόρτωση';
     const key = `${r.id}_${type}_`;
-    if (existingKeys.has(key)) return;
+    if (!_shouldCreate(key, r)) return;
 
     const rec = {
       'Plan Date': date,
