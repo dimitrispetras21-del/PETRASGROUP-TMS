@@ -698,11 +698,7 @@ async function submitNatlOrder(recId) {
     } catch(e) { console.warn('NL sync error:', e); }
     // ─────────────────────────────────────────────────────────
 
-    // Sync Ramp Plan
-    try {
-      const natlData = await atGetOne(TABLES.NAT_ORDERS, savedNatlId);
-      if (natlData.fields) await _syncRampPlan(savedNatlId, natlData.fields, TABLES.NAT_ORDERS);
-    } catch(e) { console.error('Ramp sync error:', e); }
+    // RAMP records are created by daily_ramp.js auto-sync (sole source)
 
     invalidateCache(TABLES.NAT_ORDERS);
     document.getElementById('modal').style.maxWidth = '';
@@ -734,7 +730,11 @@ async function toggleNatlInvoiced(recId, current) {
 // For INDEPENDENT National Orders (no parent ORDERS)
 // Creates/updates GL lines from NO Pickup Locations
 // ═══════════════════════════════════════════════
+const _syncingNOs = new Set();
 async function _syncGroupageLinesFromNO(noId, noFields) {
+  if (_syncingNOs.has(noId)) return;
+  _syncingNOs.add(noId);
+  try {
   const _lid = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
   const dir  = noFields['Direction']||'';
   const ref  = noFields['Reference']||'';
@@ -832,14 +832,21 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   }
 
   console.log(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
+  } finally {
+    _syncingNOs.delete(noId);
+  }
 }
 
 // ═══════════════════════════════════════════════
 // _syncNationalLoad — Sync non-groupage NO → NATIONAL LOADS
 // Creates/updates a unified record for Weekly National consumption
 // ═══════════════════════════════════════════════
+const _syncingNLs = new Set();
 async function _syncNationalLoad(noId, noFields, isDelete) {
   if (!TABLES.NAT_LOADS) return;
+  if (_syncingNLs.has(noId)) return;
+  _syncingNLs.add(noId);
+  try {
 
   // Find existing NL record for this NO
   const existing = await atGetAll(TABLES.NAT_LOADS, {
@@ -922,6 +929,9 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     // Create new
     const created = await atCreate(TABLES.NAT_LOADS, nlFields);
     console.log(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
+  }
+  } finally {
+    _syncingNLs.delete(noId);
   }
 }
 
