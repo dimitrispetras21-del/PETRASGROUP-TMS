@@ -1270,13 +1270,26 @@ async function submitIntlOrder(recId) {
     }
 
 
-    // Validate required
-    if (!fields['Direction'])            { alert('Direction is required'); throw new Error('validation'); }
-    if (!clientId)                       { alert('Client is required'); throw new Error('validation'); }
-    if (!fields['Loading Location 1'])   { alert('Loading Location 1 is required'); throw new Error('validation'); }
-    if (!fields['Unloading Location 1']) { alert('Delivery Location 1 is required'); throw new Error('validation'); }
-    if (!fields['Loading DateTime'])     { alert('Loading Date (Stop 1) is required'); throw new Error('validation'); }
-    if (!fields['Delivery DateTime'])    { alert('Delivery Date (Stop 1) is required'); throw new Error('validation'); }
+    // Validate required fields
+    const _vErrors = [];
+    if (!fields['Direction'])            _vErrors.push('Direction is required');
+    if (!clientId)                       _vErrors.push('Client is required');
+    if (!fields['Loading Location 1'])   _vErrors.push('Loading Location 1 is required');
+    if (!fields['Unloading Location 1']) _vErrors.push('Delivery Location 1 is required');
+    if (!fields['Loading DateTime'])     _vErrors.push('Loading Date (Stop 1) is required');
+    if (!fields['Delivery DateTime'])    _vErrors.push('Delivery Date (Stop 1) is required');
+
+    // Date cross-validation
+    if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
+      if (new Date(fields['Delivery DateTime']) < new Date(fields['Loading DateTime'])) {
+        _vErrors.push('Delivery date cannot be before loading date');
+      }
+    }
+
+    if (_vErrors.length) {
+      toast(_vErrors[0], 'warn');
+      throw new Error('validation');
+    }
 
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)

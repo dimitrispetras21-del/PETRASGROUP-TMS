@@ -474,7 +474,7 @@ function _locConfirmDelete(id, name) {
 async function _locDoDelete(id) {
   closeModal();
   try {
-    const data = await atDelete(TABLES.LOCATIONS, id);
+    const data = await atSoftDelete(TABLES.LOCATIONS, id);
     if (data.error) throw new Error(data.error.message || 'Delete failed');
     LOC.records = LOC.records.filter(r => r.id !== id);
     _locRenderOverview();
