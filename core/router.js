@@ -43,7 +43,7 @@ const NAV = [
     { id: 'costs',      label: 'Costs',     icon: 'chart' },
     { id: 'pl',         label: 'P&Ls',      icon: 'trending' },
   ]},
-  { section: 'CEO', perm: 'ceo_dashboard', items: [
+  { section: 'Executive', perm: 'ceo_dashboard', items: [
     { id: 'ceo_dashboard', label: 'CEO Dashboard', icon: 'ceo' },
   ]},
   { section: 'HR', perm: 'performance', items: [
