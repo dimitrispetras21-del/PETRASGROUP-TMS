@@ -155,8 +155,7 @@
     const revenue = _calcRevenue(data.allOrders);
     const revTarget = _getRevTarget();
     const revPct = revTarget ? (revenue / revTarget * 100) : 0;
-    const { emptyPct, emptyCount, exportCount } = _calcEmptyLegs(data.allOrders);
-    const cutoffPct = _calcWedCutoff(data.allOrders);
+    const deadKM = _calcDeadKM(data.allOrders);
     const topClients = _calcTopClients(data.allOrders, 5);
 
     el('strat-revenue-val').textContent = _eur(revenue);
@@ -167,15 +166,19 @@
       el('strat-rev-bar').style.background = _colorScore(revPct, 100);
     }
 
-    el('strat-empty-val').textContent  = _pct(emptyPct);
-    el('strat-empty-val').style.color  = emptyPct < 20 ? '#22c55e' : emptyPct < 35 ? '#f59e0b' : '#ef4444';
-    el('strat-empty-sub').textContent  = `${emptyCount} κενά από ${exportCount} export`;
-    _sparkline('chart-empty', _computeWeeklyEmpty(data.sparkOrders), '#f59e0b', 20, true);
-
-    el('strat-cutoff-val').textContent = _pct(cutoffPct);
-    el('strat-cutoff-val').style.color = _colorScore(cutoffPct, 95);
-    el('strat-cutoff-sub').textContent = 'έγκαιρη υποβολή export ανά Wednesday Cutoff';
-    _sparkline('chart-cutoff', _computeWeeklyCutoff(data.sparkOrders), '#0284C7', 95, false);
+    if (deadKM.hasData) {
+      el('strat-deadkm-val').textContent = _km(deadKM.totalDead);
+      el('strat-deadkm-val').style.color  = deadKM.pct < 15 ? '#22c55e' : deadKM.pct < 25 ? '#f59e0b' : '#ef4444';
+      el('strat-deadkm-sub').textContent  = `${_pct(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded`;
+      el('strat-deadkm-bar').style.width  = Math.min(deadKM.pct, 100) + '%';
+      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#22c55e' : deadKM.pct < 25 ? '#f59e0b' : '#ef4444';
+      _sparkline('chart-deadkm', _computeWeeklyDeadKM(data.sparkOrders), '#f59e0b', 15, true);
+    } else {
+      el('strat-deadkm-val').textContent = 'N/A';
+      el('strat-deadkm-val').style.color  = '#7A92B0';
+      el('strat-deadkm-sub').textContent  = deadKM.hint;
+      el('strat-deadkm-bar').style.width  = '0%';
+    }
 
     // Top Clients table
     el('strat-clients-body').innerHTML = topClients.length
@@ -247,7 +250,7 @@
         </td></tr>`;
 
     // ── NAKIS Commentary ──
-    _renderNakis({ allOrders: data.allOrders, deliveredOrders: data.deliveredOrders, speed, emptyPct, highRiskCount: data.highRiskOrders.length, revenue: deliveredRev, uninvoicedRev });
+    _renderNakis({ allOrders: data.allOrders, deliveredOrders: data.deliveredOrders, speed, deadKM, highRiskCount: data.highRiskOrders.length, revenue: deliveredRev, uninvoicedRev });
 
     // Revenue target setter
     const tgt = el('rev-target-input');
@@ -312,27 +315,30 @@
     return allOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
   }
 
-  function _calcEmptyLegs(allOrders) {
-    const exports = allOrders.filter(r => r.fields['Direction'] === 'Export');
-    const emptyCount = exports.filter(r => {
-      const m = r.fields['Matched Import ID'];
-      return !m || String(m).trim() === '';
-    }).length;
-    return { emptyPct: exports.length ? emptyCount / exports.length * 100 : 0, emptyCount, exportCount: exports.length };
-  }
-
-  function _calcWedCutoff(allOrders) {
-    const exports = allOrders.filter(r => r.fields['Direction'] === 'Export' && r.fields['Loading DateTime']);
-    if (!exports.length) return 0;
-    const onTime = exports.filter(r => {
-      const loading = new Date(r.fields['Loading DateTime']);
-      // Wednesday of that loading week (day 3)
-      const wedOffset = (3 - loading.getDay() + 7) % 7;
-      const wed = new Date(loading); wed.setDate(loading.getDate() + wedOffset - 7); wed.setHours(23,59,59,999);
-      const created = new Date(r.createdTime || r.fields['Created'] || 0);
-      return created <= wed;
-    }).length;
-    return onTime / exports.length * 100;
+  // Dead KM: checks for 'Dead KM' field OR computes from 'Total KM' - 'Loaded KM'
+  // Add one of these to ORDERS in Airtable to activate this metric.
+  function _calcDeadKM(allOrders) {
+    // Option A: explicit Dead KM field
+    const withDead = allOrders.filter(r => r.fields['Dead KM'] != null && r.fields['Dead KM'] !== '');
+    if (withDead.length > 0) {
+      const totalDead   = withDead.reduce((s, r) => s + (parseFloat(r.fields['Dead KM']) || 0), 0);
+      const totalLoaded = withDead.reduce((s, r) => s + (parseFloat(r.fields['Loaded KM'] || r.fields['Total KM']) || 0), 0);
+      const totalAll    = totalDead + totalLoaded;
+      return { hasData: true, totalDead, totalLoaded, pct: totalAll ? totalDead / totalAll * 100 : 0 };
+    }
+    // Option B: Total KM + Loaded KM → Dead = Total - Loaded
+    const withBoth = allOrders.filter(r => r.fields['Total KM'] != null && r.fields['Loaded KM'] != null);
+    if (withBoth.length > 0) {
+      const totalKM   = withBoth.reduce((s, r) => s + (parseFloat(r.fields['Total KM']) || 0), 0);
+      const loadedKM  = withBoth.reduce((s, r) => s + (parseFloat(r.fields['Loaded KM']) || 0), 0);
+      const deadKM    = Math.max(totalKM - loadedKM, 0);
+      return { hasData: true, totalDead: deadKM, totalLoaded: loadedKM, pct: totalKM ? deadKM / totalKM * 100 : 0 };
+    }
+    // No data: return hint for what to add
+    return {
+      hasData: false, totalDead: 0, totalLoaded: 0, pct: 0,
+      hint: 'Προσθέστε πεδίο "Dead KM" ή "Total KM" + "Loaded KM" στον πίνακα ORDERS'
+    };
   }
 
   function _calcTopClients(allOrders, n) {
@@ -423,33 +429,21 @@
       .map(([label, v]) => ({ label, value: v.total ? Math.round(v.onTime / v.total * 100) : 0 }));
   }
 
-  function _computeWeeklyEmpty(sparkOrders) {
+  // Dead KM weekly trend — % dead of total per week
+  function _computeWeeklyDeadKM(sparkOrders) {
     const weeks = {};
-    sparkOrders.filter(r => r.fields['Direction'] === 'Export').forEach(r => {
-      const d = new Date(r.fields['Loading DateTime'] || r.createdTime);
+    sparkOrders.forEach(r => {
+      const d  = new Date(r.fields['Loading DateTime'] || r.createdTime);
       const wk = `W${_getWeekNum(d)}`;
-      if (!weeks[wk]) weeks[wk] = { total: 0, empty: 0 };
-      weeks[wk].total++;
-      if (!r.fields['Matched Import ID'] || String(r.fields['Matched Import ID']).trim() === '') weeks[wk].empty++;
+      if (!weeks[wk]) weeks[wk] = { dead: 0, total: 0 };
+      const dead   = parseFloat(r.fields['Dead KM']) || 0;
+      const loaded = parseFloat(r.fields['Loaded KM'] || r.fields['Total KM']) || 0;
+      const totalKM = parseFloat(r.fields['Total KM']) || 0;
+      if (dead > 0) { weeks[wk].dead += dead; weeks[wk].total += dead + loaded; }
+      else if (totalKM > 0 && loaded > 0) { weeks[wk].dead += Math.max(totalKM - loaded, 0); weeks[wk].total += totalKM; }
     });
     return Object.entries(weeks).sort(([a],[b]) => a.localeCompare(b)).slice(-8)
-      .map(([label, v]) => ({ label, value: v.total ? Math.round(v.empty / v.total * 100) : 0 }));
-  }
-
-  function _computeWeeklyCutoff(sparkOrders) {
-    const weeks = {};
-    sparkOrders.filter(r => r.fields['Direction'] === 'Export').forEach(r => {
-      const d   = new Date(r.fields['Loading DateTime'] || r.createdTime);
-      const wk  = `W${_getWeekNum(d)}`;
-      if (!weeks[wk]) weeks[wk] = { total: 0, onTime: 0 };
-      weeks[wk].total++;
-      const wedOffset = (3 - d.getDay() + 7) % 7;
-      const wed = new Date(d); wed.setDate(d.getDate() + wedOffset - 7); wed.setHours(23,59,59,999);
-      const created = new Date(r.createdTime || 0);
-      if (created <= wed) weeks[wk].onTime++;
-    });
-    return Object.entries(weeks).sort(([a],[b]) => a.localeCompare(b)).slice(-8)
-      .map(([label, v]) => ({ label, value: v.total ? Math.round(v.onTime / v.total * 100) : 0 }));
+      .map(([label, v]) => ({ label, value: v.total ? Math.round(v.dead / v.total * 100) : 0 }));
   }
 
   function _weekAvg(data) {
@@ -632,7 +626,7 @@
 
   // ── Nakis Commentary ─────────────────────────────────────────
 
-  function _renderNakis({ allOrders, deliveredOrders, speed, emptyPct, highRiskCount, revenue, uninvoicedRev }) {
+  function _renderNakis({ allOrders, deliveredOrders, speed, deadKM, highRiskCount, revenue, uninvoicedRev }) {
     const el = document.getElementById('nakis-commentary');
     if (!el) return;
 
@@ -651,9 +645,13 @@
       lines.push(`ℹ️ **Speed Score:** Δεν υπάρχουν δεδομένα on-time. Απαιτείται πεδίο "Actual Delivery Date" ή συμπλήρωση "Delivery Performance".`);
     }
 
-    if (emptyPct < 20) lines.push(`✅ **Empty Return Legs ${_pct(emptyPct)}** — καλή "Tetris Efficiency". Λιγότερο από 1 στα 5 exports επιστρέφει κενό.`);
-    else if (emptyPct < 35) lines.push(`⚠️ **Empty Return Legs ${_pct(emptyPct)}** — αξίζει review. Εξέτασε backhaul ευκαιρίες για τις κενές επιστροφές.`);
-    else lines.push(`🚨 **Empty Return Legs ${_pct(emptyPct)}** — υψηλό ποσοστό κενών. Κάθε κενή επιστροφή = χαμένο έσοδο.`);
+    if (deadKM.hasData) {
+      if (deadKM.pct < 15) lines.push(`✅ **Dead KM ${_pct(deadKM.pct)}** — καλή απόδοση στόλου. ${_km(deadKM.totalDead)} νεκρά km σε σύνολο ${_km(deadKM.totalDead + deadKM.totalLoaded)}.`);
+      else if (deadKM.pct < 25) lines.push(`⚠️ **Dead KM ${_pct(deadKM.pct)}** — αξίζει βελτιστοποίηση δρομολογίων. Στόχος <15%.`);
+      else lines.push(`🚨 **Dead KM ${_pct(deadKM.pct)}** — υψηλά νεκρά χιλιόμετρα. Εξέτασε backhaul και διαδρομές επιστροφής.`);
+    } else {
+      lines.push(`ℹ️ **Dead KM:** ${deadKM.hint}`);
+    }
 
     if (highRiskCount > 0) lines.push(`🚨 **${highRiskCount} φορτία** με παράδοση <48h χωρίς Delivered status. Επιβεβαίωσε άμεσα τους οδηγούς.`);
     else lines.push(`✅ **Κανένα high-risk** φορτίο για τις επόμενες 48h.`);
@@ -675,6 +673,10 @@
 
   function _eur(n) {
     return '€' + Math.round(n || 0).toLocaleString('el-GR');
+  }
+
+  function _km(n) {
+    return Math.round(n || 0).toLocaleString('el-GR') + ' km';
   }
 
   // ── Period buttons ───────────────────────────────────────────
@@ -902,19 +904,14 @@
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
-          <div class="ceo-kpi-num" id="strat-empty-val">—</div>
-          <div class="ceo-kpi-label">Tetris Efficiency (Empty Legs)</div>
-          <div class="ceo-kpi-sub" id="strat-empty-sub">Φόρτωση...</div>
-          <div class="ceo-chart-wrap"><canvas id="chart-empty"></canvas></div>
-        </div>
-      </div>
-
-      <div class="ceo-kpi-row">
-        <div style="flex:1">
-          <div class="ceo-kpi-num" id="strat-cutoff-val">—</div>
-          <div class="ceo-kpi-label">Wednesday Cutoff Compliance</div>
-          <div class="ceo-kpi-sub" id="strat-cutoff-sub">Φόρτωση...</div>
-          <div class="ceo-chart-wrap"><canvas id="chart-cutoff"></canvas></div>
+          <div class="ceo-kpi-num" id="strat-deadkm-val">—</div>
+          <div class="ceo-kpi-label">Dead KM — Νεκρά Χιλιόμετρα</div>
+          <div class="ceo-kpi-sub" id="strat-deadkm-sub">Φόρτωση...</div>
+          <div class="ceo-bar-track" style="margin-top:6px"><div class="ceo-bar-fill" id="strat-deadkm-bar" style="width:0%"></div></div>
+          <div class="ceo-chart-wrap" style="margin-top:10px"><canvas id="chart-deadkm"></canvas></div>
+          <div style="margin-top:8px;padding:8px;background:#0a1628;border-radius:6px;font-size:10px;color:#334155;line-height:1.5">
+            📌 Για να ενεργοποιηθεί: προσθέστε πεδίο <strong style="color:#7A92B0">"Dead KM"</strong> ή <strong style="color:#7A92B0">"Total KM" + "Loaded KM"</strong> στον πίνακα ORDERS
+          </div>
         </div>
       </div>
 
