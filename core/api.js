@@ -99,6 +99,7 @@ function _saveOfflineQueue() {
 }
 
 function _loadOfflineQueue() {
+  if (_offlineQueue.length > 0) return; // already loaded
   try {
     const q = JSON.parse(localStorage.getItem('tms_offline_queue') || '[]');
     _offlineQueue.push(...q);
@@ -120,14 +121,18 @@ async function _flushOfflineQueue() {
           const chkRes = await _atRetry(() => fetch(item.url.replace(/\?.*/, ''), { headers: _apiHeaders('GET') }));
           const currentData = await chkRes.json();
           if (currentData && currentData.fields) {
-            const serverModified = new Date(currentData.fields['Last Modified'] || 0).getTime();
-            if (serverModified > item.timestamp) {
-              conflicts++;
-              if (typeof showErrorToast === 'function') {
-                showErrorToast('Conflict: record modified while offline', 'warn');
+            const lastMod = currentData.fields['Last Modified'] || currentData.fields['lastModifiedTime'];
+            if (lastMod) {
+              const serverModified = new Date(lastMod).getTime();
+              if (serverModified > item.timestamp) {
+                conflicts++;
+                if (typeof showErrorToast === 'function') {
+                  showErrorToast('Conflict: record modified while offline', 'warn');
+                }
+                continue; // Skip this mutation, don't overwrite
               }
-              continue; // Skip this mutation, don't overwrite
             }
+            // If no Last Modified field, proceed with the mutation (can't detect conflicts)
           }
         } catch(e) {
           // If conflict check fails, proceed with the mutation anyway

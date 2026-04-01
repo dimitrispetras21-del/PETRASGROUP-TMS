@@ -36,7 +36,9 @@ async function fhSearchClients(q) {
   if (!q || q.length < 2) return [];
   const key = q.toLowerCase();
   if (_fhClientCache[key]) return _fhClientCache[key];
-  const formula = `SEARCH(LOWER("${q.replace(/"/g, '')}"), LOWER({Company Name}))`;
+  const safe = q.replace(/[^a-zA-Z0-9\s\u0370-\u03FF\u1F00-\u1FFF.-]/g, '').trim();
+  if (!safe) return [];
+  const formula = `SEARCH(LOWER("${safe}"), LOWER({Company Name}))`;
   const recs = await atGet(TABLES.CLIENTS, formula, false);
   const res = recs
     .map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
@@ -181,10 +183,11 @@ function fhShowDrop(dropId, id, items) {
   if (!d) return;
   if (!items.length) { d.style.display = 'none'; return; }
   d.style.display = 'block';
-  d.innerHTML = items.map(o =>
-    `<div onmousedown="fhPickLinked('${id}','${o.id}','${o.label.replace(/'/g, "\\'").replace(/</g, '&lt;')}')"
-      class="linked-drop-item">${escapeHtml(o.label)}</div>`
-  ).join('');
+  d.innerHTML = items.map(o => {
+    const safeLabel = o.label.replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return `<div onmousedown="fhPickLinked('${id}','${o.id}','${safeLabel}')"
+      class="linked-drop-item">${escapeHtml(o.label)}</div>`;
+  }).join('');
 }
 
 /**

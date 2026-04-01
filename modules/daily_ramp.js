@@ -99,7 +99,7 @@ async function _rampAutoSync() {
   // Secondary dedup key: Client + Type + Pallets (catches records without Order link)
   const existingClientKeys = new Set(allExisting.map(r => {
     const client = r.fields['Supplier/Client'] || '';
-    return `${client}_${r.fields['Type']}_${r.fields['Pallets']||''}`;
+    return `${client}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`;
   }));
   // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
   const existingCLIds = new Set(existing

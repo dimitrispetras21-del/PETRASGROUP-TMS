@@ -1182,7 +1182,7 @@ async function submitIntlOrder(recId) {
     }
 
     if (_vErrors.length) {
-      toast(_vErrors[0], 'warn');
+      showErrorToast(_vErrors.join(' | '), 'warn', 8000);
       throw new Error('validation');
     }
 
