@@ -1,0 +1,97 @@
+name: CI — Petras Group TMS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Check for exposed secrets
+        run: |
+          echo "=== Checking for exposed secrets ==="
+          FAIL=0
+
+          # Check all JS files except config.js for API key patterns
+          for f in $(find . -name '*.js' ! -name 'config.js' ! -path './node_modules/*'); do
+            if grep -qE "pat[A-Za-z0-9]{14,}" "$f" 2>/dev/null; then
+              echo "FAIL: Possible Airtable PAT in $f"
+              FAIL=1
+            fi
+            if grep -qE "sk-ant-" "$f" 2>/dev/null; then
+              echo "FAIL: Possible Anthropic key in $f"
+              FAIL=1
+            fi
+            if grep -qE "ghp_[A-Za-z0-9]{36,}" "$f" 2>/dev/null; then
+              echo "FAIL: Possible GitHub token in $f"
+              FAIL=1
+            fi
+          done
+
+          if [ "$FAIL" -eq 1 ]; then
+            echo "::error::Secrets detected in non-config files!"
+            exit 1
+          fi
+          echo "No exposed secrets found."
+
+      - name: ESLint syntax check
+        run: |
+          npm install eslint@8 --no-save
+          echo "=== Running ESLint (syntax errors only) ==="
+          npx eslint --no-eslintrc -c .eslintrc.json \
+            --ignore-pattern 'node_modules/' \
+            --ignore-pattern 'sw.js' \
+            'core/**/*.js' 'modules/**/*.js' 'config.js'
+          echo "ESLint check complete."
+
+      - name: Verify script references in app.html
+        run: |
+          echo "=== Verifying script/link references ==="
+          FAIL=0
+
+          # Extract src= from <script> tags, strip ?v= params
+          grep -oP 'src="[^"]+' app.html | sed 's/src="//' | sed 's/?.*//' | while read -r FILE; do
+            if [ ! -f "$FILE" ]; then
+              echo "FAIL: Referenced file not found: $FILE"
+              echo "MISSING=1" >> /tmp/ci_missing
+            else
+              echo "  OK: $FILE"
+            fi
+          done
+
+          # Extract href= from <link rel="stylesheet"> tags
+          grep -oP 'href="[^"]+\.css[^"]*' app.html | sed 's/href="//' | sed 's/?.*//' | while read -r FILE; do
+            if [ ! -f "$FILE" ]; then
+              echo "FAIL: Referenced CSS not found: $FILE"
+              echo "MISSING=1" >> /tmp/ci_missing
+            else
+              echo "  OK: $FILE"
+            fi
+          done
+
+          if [ -f /tmp/ci_missing ]; then
+            echo "::error::Some referenced files are missing!"
+            exit 1
+          fi
+          echo "All referenced files exist."
+
+      - name: Summary
+        run: |
+          echo "============================================"
+          echo "  CI PASSED — Petras Group TMS"
+          echo "============================================"
+          echo "  Secrets check:    OK"
+          echo "  ESLint:           OK"
+          echo "  File references:  OK"
+          echo "============================================"
