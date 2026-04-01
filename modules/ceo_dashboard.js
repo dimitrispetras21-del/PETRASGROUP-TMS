@@ -1090,10 +1090,8 @@
     }
     if (_timer) clearInterval(_timer);
     _destroyAllCharts();
-    // Full dark page — override content background + remove padding (ceo-wrap handles it)
-    c.style.background = '#080F1A';
+    // ceo-wrap handles its own dark background via CSS
     c.style.padding = '0';
-    c.style.overflow = 'auto';
     await _ensureChartJs();
     c.innerHTML = _shellHTML();
     _bindPeriodButtons();

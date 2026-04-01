@@ -180,9 +180,10 @@ function navigate(page) {
   }
 
   const c = document.getElementById('content');
-  // Reset content padding (some pages like pickups use zero-padding iframe)
+  // Reset content styles (some pages override these)
   c.style.padding = '';
   c.style.overflow = '';
+  c.style.background = '';
 
   switch (page) {
     // Planning
