@@ -16,48 +16,13 @@ let _intlPeriod = '60'; // '60' | '180' | 'all'
 const _oiVS = { allRows: [], sortedRecs: [], lastStart: -1, lastEnd: -1, rafId: null };
 const _OI_ROW_H = 40; // row height in px
 const _OI_BUFFER = 10; // buffer rows above/below
-let _locationsMap = {};   // recId → label
-let _locationsArr = [];   // [{id,label}]
-const _clientsMap  = {};  // recId → name (populated on search)
-const _clientCache = {};  // query → [{id,label}]
-
-// ─── Ref data ──────────────────────────────────
-async function _loadLocations() {
-  if (_locationsArr.length) return;
-  const locs = await atGet(TABLES.LOCATIONS);
-  _locationsArr = locs
-    .map(r => ({ id: r.id, label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ') }))
-    .sort((a,b) => a.label.localeCompare(b.label));
-  _locationsArr.forEach(l => { _locationsMap[l.id] = l.label; });
-}
-
-async function _searchClients(q) {
-  if (!q || q.length < 2) return [];
-  const key = q.toLowerCase();
-  if (_clientCache[key]) return _clientCache[key];
-  const formula = `SEARCH(LOWER("${q.replace(/"/g,'')}"), LOWER({Company Name}))`;
-  const recs = await atGet(TABLES.CLIENTS, formula, false);
-  const res = recs.map(r => ({ id: r.id, label: r.fields['Company Name'] || '' }))
-    .sort((a,b) => a.label.localeCompare(b.label)).slice(0, 30);
-  _clientCache[key] = res;
-  res.forEach(c => { _clientsMap[c.id] = c.label; });
-  return res;
-}
-
-async function _resolveClientName(recId) {
-  if (!recId) return '';
-  if (_clientsMap[recId]) return _clientsMap[recId];
-  try {
-    const d = await atGetOne(TABLES.CLIENTS, recId);
-    const name = d.fields?.['Company Name'] || '';
-    _clientsMap[recId] = name;
-    return name;
-  } catch(e) { return ''; }
-}
+// ─── Ref data: delegates to shared form-helpers.js ──
+const _loadLocations = fhLoadLocations;
+const _searchClients = fhSearchClients;
+const _resolveClientName = fhResolveClientName;
 
 function _clientName(f) {
-  const id = Array.isArray(f['Client']) ? f['Client'][0] : null;
-  return id ? escapeHtml(_clientsMap[id] || id.slice(-6)) : '—';
+  return fhClientName(f['Client']);
 }
 function _cleanSummary(s) {
   if (!s) return '—';
@@ -102,17 +67,7 @@ async function renderOrdersIntl() {
     }
     // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
-    const unresolvedIds = clientIds.filter(id=>!_clientsMap[id]);
-    if (unresolvedIds.length) {
-      const batches = [];
-      for (let i=0; i<unresolvedIds.length; i+=10) {
-        const batch = unresolvedIds.slice(i,i+10);
-        const f = `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`;
-        batches.push(atGetAll(TABLES.CLIENTS,{filterByFormula:f,fields:['Company Name']},false).catch(()=>[]));
-      }
-      const results = await Promise.all(batches);
-      results.flat().forEach(r=>{ _clientsMap[r.id] = r.fields['Company Name']||r.id; });
-    }
+    await fhBatchResolveClients(clientIds);
     _renderIntlLayout(c);
     _applyIntlFilters();
   } catch(e) { c.innerHTML = showError(e.message); }
@@ -383,7 +338,7 @@ function selectIntlOrder(recId) {
       const locArr = f[`${locPfx} Location ${i}`];
       const locId  = Array.isArray(locArr) ? locArr[0] : null;
       if (!locId) break;
-      const name  = escapeHtml(_locationsMap[locId] || locId.slice(-6));
+      const name  = escapeHtml(_fhLocationsMap[locId] || locId.slice(-6));
       const pal   = f[`${palPfx} Pallets ${i}`];
       const dtRaw = i===1 ? f[dt1field] : f[`${dtPfx} DateTime ${i}`];
       const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
@@ -499,69 +454,9 @@ function selectIntlOrder(recId) {
 function _dF(l,v) { return `<div class="detail-field"><span class="detail-field-label">${escapeHtml(l)}</span><span class="detail-field-value">${v}</span></div>`; }
 function _chk(l,v) { return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`; }
 
-// ─── Linked select widgets ───────────────────────
-function _locSelect(id, currentId) {
-  const label = currentId ? (_locationsMap[currentId]||'') : '';
-  return `<div style="position:relative">
-    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(label)}"
-      placeholder="Search location..."
-      oninput="_locDrop('${id}',this.value)"
-      onfocus="_locDrop('${id}',this.value)"
-      onblur="_hideDrop('ls_${id}_d')">
-    <input type="hidden" id="lv_${id}" value="${currentId||''}">
-    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
-  </div>`;
-}
-
-function _clientSelect(id, currentId, currentLabel) {
-  return `<div style="position:relative">
-    <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(currentLabel||'')}"
-      placeholder="Type 2+ chars to search..."
-      oninput="_clientDrop('${id}',this.value)"
-      onblur="_hideDrop('ls_${id}_d')">
-    <input type="hidden" id="lv_${id}" value="${currentId||''}">
-    <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>
-  </div>`;
-}
-
-function _hideDrop(dropId) {
-  setTimeout(() => { const d=document.getElementById(dropId); if(d) d.style.display='none'; }, 200);
-}
-
-function _locDrop(id, q) {
-  const pool = q.trim()
-    ? _locationsArr.filter(o=>o.label.toLowerCase().includes(q.toLowerCase())).slice(0,25)
-    : _locationsArr.slice(0,25);
-  _showDrop('ls_'+id+'_d', id, pool);
-}
-
-let _clientTimer = null;
-function _clientDrop(id, q) {
-  clearTimeout(_clientTimer);
-  const d = document.getElementById('ls_'+id+'_d');
-  if (q.length < 2) { if(d) d.style.display='none'; return; }
-  if (d) { d.style.display='block'; d.innerHTML='<div style="padding:10px 12px;font-size:12px;color:var(--text-dim)">Searching...</div>'; }
-  _clientTimer = setTimeout(async () => {
-    const results = await _searchClients(q);
-    _showDrop('ls_'+id+'_d', id, results);
-  }, 300);
-}
-
-function _showDrop(dropId, id, items) {
-  const d = document.getElementById(dropId); if(!d) return;
-  if (!items.length) { d.style.display='none'; return; }
-  d.style.display = 'block';
-  d.innerHTML = items.map(o =>
-    `<div onmousedown="_pickLinked('${id}','${o.id}','${o.label.replace(/'/g,"\\'").replace(/</g,'&lt;')}')"
-      class="linked-drop-item">${escapeHtml(o.label)}</div>`
-  ).join('');
-}
-
-function _pickLinked(id, recId, label) {
-  const s = document.getElementById('ls_'+id); if(s) s.value = label;
-  const v = document.getElementById('lv_'+id); if(v) v.value = recId;
-  const d = document.getElementById('ls_'+id+'_d'); if(d) d.style.display='none';
-}
+// ─── Linked select widgets (delegates to core/form-helpers.js) ──
+function _locSelect(id, currentId) { return fhLocSelect(id, currentId, 'fhLocDrop'); }
+function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, currentId, currentLabel, 'fhClientDrop'); }
 
 // ─── Stop row HTML ───────────────────────────────
 // type: 'l'=loading, 'u'=unloading
@@ -962,7 +857,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
   try {
     const cArr = fields['Client'];
     const cId = Array.isArray(cArr) ? _lid(cArr[0]) : null;
-    if (cId) clientName = _clientsMap[cId] || (await _resolveClientName(cId)) || '';
+    if (cId) clientName = _fhClientsMap[cId] || (await _resolveClientName(cId)) || '';
   } catch(e) { logError(e, 'orders_intl resolve client name for VS'); }
 
   // Build NAT_LOADS fields
@@ -1619,10 +1514,10 @@ async function _scanPreview(data) {
     const ct = (s.city||'').toLowerCase();
     const cg = (s.city_gr||'').toLowerCase();
     // Try: full name, first word of name, Greek city, Latin city
-    return _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
-        || _locationsArr.find(l=>nm && l.label.toLowerCase().includes(nm.split(/[\s-]+/)[0]))
-        || _locationsArr.find(l=>cg && l.label.toLowerCase().includes(cg))
-        || _locationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
+    return _fhLocationsArr.find(l=>nm && l.label.toLowerCase().includes(nm))
+        || _fhLocationsArr.find(l=>nm && l.label.toLowerCase().includes(nm.split(/[\s-]+/)[0]))
+        || _fhLocationsArr.find(l=>cg && l.label.toLowerCase().includes(cg))
+        || _fhLocationsArr.find(l=>ct && l.label.toLowerCase().includes(ct));
   };
   for (const s of loadStops) {
     const m = _locMatch(s);
@@ -1723,8 +1618,8 @@ async function _scanOpen(matched, data) {
 
   // Register matched locations in _locationsMap so _locSelect can show label
   const ls2 = matched.loadStops||[], ds2 = matched.delStops||[];
-  [...ls2,...ds2].forEach(s=>{ if(s._locId && s._locLabel) _locationsMap[s._locId]=s._locLabel; });
-  if (matched.clientId && matched.clientLabel) _clientsMap[matched.clientId] = matched.clientLabel;
+  [...ls2,...ds2].forEach(s=>{ if(s._locId && s._locLabel) _fhLocationsMap[s._locId]=s._locLabel; });
+  if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
   closeModal();
   await _openModal(null, f, matched.clientLabel);
 }
@@ -1749,11 +1644,13 @@ window._scanExtract = _scanExtract;
 window._scanOpenStored = _scanOpenStored;
 window._scanDrop = _scanDrop;
 window._scanHandleFile = _scanHandleFile;
-window._locDrop = _locDrop;
-window._clientDrop = _clientDrop;
-window._hideDrop = _hideDrop;
-window._showDrop = _showDrop;
-window._pickLinked = _pickLinked;
+// Form dropdown handlers now in core/form-helpers.js (fhLocDrop, fhClientDrop, etc.)
+// Legacy aliases for backward compat with any inline HTML that still uses old names
+window._locDrop = fhLocDrop;
+window._clientDrop = fhClientDrop;
+window._hideDrop = fhHideDrop;
+window._showDrop = fhShowDrop;
+window._pickLinked = fhPickLinked;
 // _oiPage is mutated from onclick (++/--) so expose as getter/setter
 Object.defineProperty(window, '_oiPage', {
   get: function() { return _oiPage; },

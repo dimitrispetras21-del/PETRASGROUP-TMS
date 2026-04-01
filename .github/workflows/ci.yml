@@ -52,7 +52,7 @@ jobs:
           npx eslint --no-eslintrc -c .eslintrc.json \
             --ignore-pattern 'node_modules/' \
             --ignore-pattern 'sw.js' \
-            'core/**/*.js' 'modules/**/*.js' 'config.js' || true
+            'core/**/*.js' 'modules/**/*.js' 'config.js'
           echo "ESLint check complete."
 
       - name: Verify script references in app.html
