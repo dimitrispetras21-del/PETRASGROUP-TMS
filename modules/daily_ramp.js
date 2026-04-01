@@ -54,17 +54,16 @@ async function _rampLoad() {
   // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
   await _rampAutoSync();
 
-  // Fetch today's ramp + stock + all postponed (filter in JS)
-  const filter=`IS_SAME({Plan Date},'${RAMP.date}','day')`;
-  const stockFilter=`AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}=''))`;
-  const postponedFilter=`{Postponed To}!=BLANK()`;
-  const [recs, stock, allPostponed] = await Promise.all([
-    atGetAll(TABLES.RAMP,{filterByFormula:filter,fields:RAMP_FIELDS},false),
-    atGetAll(TABLES.RAMP,{filterByFormula:stockFilter,fields:RAMP_FIELDS},false),
-    atGetAll(TABLES.RAMP,{filterByFormula:postponedFilter,fields:RAMP_FIELDS},false),
-  ]);
-  // Filter postponed: show records whose Postponed To matches current view date
-  const postponed = allPostponed.filter(r => toLocalDate(r.fields['Postponed To']) === RAMP.date);
+  // Single combined query: today's ramp + stock + postponed (split client-side)
+  // Reduces 3 parallel API calls → 1 call
+  const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}='')),{Postponed To}!=BLANK())`;
+  const allRamp = await atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false);
+
+  // Split results client-side
+  const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date);
+  const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && (r.fields['Status']==='✅ Έγινε') && (r.fields['Stock Status']==='In Stock' || !r.fields['Stock Status']));
+  const postponed = allRamp.filter(r => r.fields['Postponed To'] && toLocalDate(r.fields['Postponed To']) === RAMP.date);
+
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
   RAMP.records=recs;
   RAMP.stock=stock;
@@ -77,18 +76,14 @@ async function _rampAutoSync() {
   const nextDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()+864e5));
   const prevDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()-864e5));
 
-  // Get existing RAMP records for this date + all postponed records to avoid duplicates
-  const [existing, allPostponedSync] = await Promise.all([
-    atGetAll(TABLES.RAMP, {
-      filterByFormula: `IS_SAME({Plan Date},'${date}','day')`,
-      fields: ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time'],
-    }, false),
-    atGetAll(TABLES.RAMP, {
-      filterByFormula: `{Postponed To}!=BLANK()`,
-      fields: ['Order','National Order','Type','Ramp Category','Plan Date','Postponed To'],
-    }, false).catch(()=>[]),
-  ]);
-  const allExisting = [...existing, ...allPostponedSync];
+  // Single query: today's RAMP + all postponed (for dedup) — reduces 2 calls → 1
+  const dedupFields = ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time','Plan Date','Postponed To','Pallets'];
+  const allExistingRaw = await atGetAll(TABLES.RAMP, {
+    filterByFormula: `OR(IS_SAME({Plan Date},'${date}','day'),{Postponed To}!=BLANK())`,
+    fields: dedupFields,
+  }, false);
+  const existing = allExistingRaw.filter(r => toLocalDate(r.fields['Plan Date']) === date);
+  const allExisting = allExistingRaw;
   // Primary key: Order/NatOrder + Type + Category
   const existingKeys = new Set(allExisting.map(r => {
     const oid = getLinkId(r.fields['Order']) || '';
@@ -131,27 +126,22 @@ async function _rampAutoSync() {
   // VS Export: Loading Date = yesterday (today = Loading+1) → Outbound
   // VS Import: Delivery Date = tomorrow (today = Delivery-1) → Inbound
 
-  const intlFilters = [
-    // VF Export: non-VS, Export, Loading = today
-    `AND(NOT({Veroia Switch }),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day'))`,
-    // VF Import: non-VS, Import, Delivery = today
-    `AND(NOT({Veroia Switch }),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day'))`,
-    // VS Export: VS=true, Export, Loading = yesterday (ramp date = loading+1)
-    `AND({Veroia Switch },    {Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day'))`,
-    // VS Import: VS=true, Import, Delivery = tomorrow (ramp date = delivery-1)
-    `AND({Veroia Switch },    {Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day'))`,
-  ];
+  // Single combined ORDERS query — reduces 4 parallel calls → 1 call
+  // Fetches all orders that touch today's ramp (VF or VS, export or import)
+  const intlCombinedFilter = `OR(AND(NOT({Veroia Switch }),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day')),AND(NOT({Veroia Switch }),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day')),AND({Veroia Switch },{Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day')),AND({Veroia Switch },{Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day')))`;
 
   const intlFields = ['Direction','Veroia Switch ','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
     'Loading Location 1','Loading Location 2','Loading Location 3',
     'Unloading Location 1','Unloading Location 2','Unloading Location 3'];
 
-  const intlResults = await Promise.all(
-    intlFilters.map(f => atGetAll(TABLES.ORDERS, {filterByFormula:f, fields:intlFields}, false).catch(()=>[]))
-  );
+  const allIntl = await atGetAll(TABLES.ORDERS, {filterByFormula:intlCombinedFilter, fields:intlFields}, false).catch(()=>[]);
 
-  const [vfExp, vfImp, vsExp, vsImp] = intlResults;
+  // Split results client-side into the 4 categories
+  const vfExp = allIntl.filter(r => !r.fields['Veroia Switch '] && r.fields['Direction']==='Export');
+  const vfImp = allIntl.filter(r => !r.fields['Veroia Switch '] && r.fields['Direction']==='Import');
+  const vsExp = allIntl.filter(r => r.fields['Veroia Switch ']  && r.fields['Direction']==='Export');
+  const vsImp = allIntl.filter(r => r.fields['Veroia Switch ']  && r.fields['Direction']==='Import');
 
   // VF Export → Outbound
   vfExp.forEach(r => {

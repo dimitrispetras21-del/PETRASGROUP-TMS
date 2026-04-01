@@ -39,22 +39,157 @@ const TABLES = {
   PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',
 };
 
-// ── Tricky Airtable field names (document here, reference everywhere) ──
-// These fields have unusual naming that causes silent bugs if mistyped.
+// ── Airtable field name constants ──────────────────────────────────────
+// Single source of truth. Modules should migrate to F.XXX over time.
+// Fields with unusual naming are marked with comments.
 const F = {
-  // ORDERS table
-  WEEK_NUM:       ' Week Number',        // Leading space! Formula field, NOT writable
-  VEROIA_SWITCH:  'Veroia Switch ',      // Trailing space!
-  // PARTNERS table
-  ADDRESS:        'Adress',              // Single 'd' — Airtable typo
-  // NATIONAL ORDERS — direction values (arrow chars)
-  DIR_NS:         'North→South',         // ΚΑΘΟΔΟΣ
-  DIR_SN:         'South→North',         // ΑΝΟΔΟΣ
-  // CONSOLIDATED LOADS — direction values (Greek)
-  CL_KATHODOS:    'ΚΑΘΟΔΟΣ',
-  CL_ANODOS:      'ΑΝΟΔΟΣ',
-  // Special location
-  VEROIA_LOC:     'recJucKOhC1zh4IP3',
+  // ── ORDERS (International) ──────────────────────────────────────
+  ORDER_NUMBER:     'Order Number',
+  DIRECTION:        'Direction',
+  STATUS:           'Status',
+  BRAND:            'Brand',
+  TYPE:             'Type',
+  LOADING_DT:       'Loading DateTime',
+  DELIVERY_DT:      'Delivery DateTime',
+  LOADING_SUMMARY:  'Loading Summary',
+  DELIVERY_SUMMARY: 'Delivery Summary',
+  CLIENT:           'Client',
+  CLIENT_NAME:      'Client Name',
+  CLIENT_SUMMARY:   'Client Summary',
+  REFERENCE:        'Reference',
+  GOODS:            'Goods',
+  TEMP:             'Temperature °C',
+  REEFER_MODE:      'Refrigerator Mode',
+  TOTAL_PALLETS:    'Total Pallets',
+  LOADING_PALLETS1: 'Loading Pallets 1',
+  UNLOADING_PALLETS1:'Unloading Pallets 1',
+  PALLET_TYPE:      'Pallet Type',
+  PALLET_EXCHANGE:  'Pallet Exchange',
+  PALLET_SHEET1:    'Pallet Sheet 1 Uploaded',
+  PALLET_SHEET2:    'Pallet Sheet 2 Uploaded',
+  GROSS_WEIGHT:     'Gross Weight kg',
+  PRICE:            'Price',
+  NET_PRICE:        'Net Price',
+  INVOICE_STATUS:   'Invoice Status',
+  INVOICED:         'Invoiced',
+  HIGH_RISK:        'High Risk Flag',
+  CARRIER_TYPE:     'Carrier Type',
+  NOTES:            'Notes',
+  TRUCK:            'Truck',
+  DRIVER:           'Driver',
+  TRAILER:          'Trailer',
+  PARTNER:          'Partner',
+  IS_PARTNER:       'Is Partner Trip',
+  PARTNER_PLATES:   'Partner Truck Plates',
+  PARTNER_RATE:     'Partner Rate',
+  MATCHED_IMPORT:   'Matched Import ID',
+  OPS_STATUS:       'Ops Status',
+  DELIVERY_PERF:    'Delivery Performance',
+  NAT_ORDER_CREATED:'National Order Created',
+  WEEK_NUM:         ' Week Number',        // Leading space! Formula field, NOT writable
+  VEROIA_SWITCH:    'Veroia Switch ',      // Trailing space!
+  NAT_GROUPAGE:     'National Groupage',
+  TRIPS_EXPORT:     'TRIPS (Export Order)',
+  TRIPS_IMPORT:     'TRIPS (Import Order)',
+  // Loading/Unloading locations (1-5)
+  LOADING_LOC1:     'Loading Location 1',
+  LOADING_LOC2:     'Loading Location 2',
+  LOADING_LOC3:     'Loading Location 3',
+  UNLOADING_LOC1:   'Unloading Location 1',
+  UNLOADING_LOC2:   'Unloading Location 2',
+  UNLOADING_LOC3:   'Unloading Location 3',
+  // Ops checklist fields
+  TEMP_OK:          'Temp OK',
+  DOCS_READY:       'Docs Ready',
+  ADVANCE_PAID:     'Advance Paid',
+  SECOND_CARD:      'Second Card',
+  CMR_PHOTO:        'CMR Photo Received',
+  CLIENT_NOTIFIED:  'Client Notified',
+  DRIVER_NOTIFIED:  'Driver Notified',
+  ETA:              'ETA',
+
+  // ── NATIONAL ORDERS ──────────────────────────────────────────────
+  PALLETS:          'Pallets',           // NAT_ORDERS uses 'Pallets' not 'Total Pallets'
+  PICKUP_LOC:       'Pickup Location',
+  PICKUP_LOC1:      'Pickup Location 1',
+  DELIVERY_LOC:     'Delivery Location',
+  DELIVERY_LOC1:    'Delivery Location 1',
+  LINKED_TRIP:      'Linked Trip',
+  NAT_TRIPS:        'NATIONAL TRIPS',
+  NAT_TRIPS2:       'NATIONAL TRIPS 2',
+  LINKED_NAT_ORDER: 'Linked National Order',
+  LOADING_LOC_GL:   'Loading Location',  // GL_LINES uses this
+
+  // ── NAT_LOADS ────────────────────────────────────────────────────
+  NAME:             'Name',
+  SOURCE_TYPE:      'Source Type',
+  SOURCE_RECORD:    'Source Record',
+  SOURCE_ORDERS:    'Source Orders',
+  TEMPERATURE_C:    'Temperature C',     // NAT_LOADS uses 'Temperature C' (no °)
+  MATCHED_LOAD:     'Matched Load',
+  LOADING_DATE:     'Loading Date',
+  DELIVERY_DATE:    'Delivery Date',
+
+  // ── TRUCKS / TRAILERS ────────────────────────────────────────────
+  LICENSE_PLATE:    'License Plate',
+  ACTIVE:           'Active',
+  KTEO_EXPIRY:      'KTEO Expiry',
+  KEK_EXPIRY:       'KEK Expiry',
+  INSURANCE_EXPIRY: 'Insurance Expiry',
+
+  // ── DRIVERS ──────────────────────────────────────────────────────
+  FULL_NAME:        'Full Name',
+
+  // ── CLIENTS ──────────────────────────────────────────────────────
+  COMPANY_NAME:     'Company Name',
+
+  // ── PARTNERS ─────────────────────────────────────────────────────
+  ADDRESS:          'Adress',              // Single 'd' — Airtable typo
+
+  // ── LOCATIONS ────────────────────────────────────────────────────
+  LOC_NAME:         'Name',
+  LOC_CITY:         'City',
+  LOC_COUNTRY:      'Country',
+  LATITUDE:         'Latitude',
+  LONGITUDE:        'Longitude',
+
+  // ── RAMP PLAN ────────────────────────────────────────────────────
+  PLAN_DATE:        'Plan Date',
+  RAMP_TYPE:        'Type',
+  RAMP_TIME:        'Time',
+  RAMP_STATUS:      'Status',
+  SUPPLIER_CLIENT:  'Supplier/Client',
+  RAMP_CAT:         'Ramp Category',
+  RAMP_TEMPERATURE: 'Temperature',       // RAMP uses 'Temperature' (no °C)
+  POSTPONED_TO:     'Postponed To',
+  STOCK_STATUS:     'Stock Status',
+  IS_VS:            'Is Veroia Switch',
+  LOADING_POINTS:   'Loading Points',
+  DELIVERY_POINTS:  'Delivery Points',
+  RAMP_ORDER:       'Order',
+  RAMP_NAT_ORDER:   'National Order',
+
+  // ── CONSOLIDATED LOADS ───────────────────────────────────────────
+  GROUPAGE_ID:      'Groupage ID',
+
+  // ── GROUPAGE LINES ───────────────────────────────────────────────
+  GL_STATUS:        'Status',
+  GL_PALLETS:       'Pallets',
+
+  // ── Direction values (NOT field names — used as values) ──────────
+  DIR_NS:           'North→South',         // ΚΑΘΟΔΟΣ
+  DIR_SN:           'South→North',         // ΑΝΟΔΟΣ
+  CL_KATHODOS:      'ΚΑΘΟΔΟΣ',
+  CL_ANODOS:        'ΑΝΟΔΟΣ',
+
+  // ── Special records ──────────────────────────────────────────────
+  VEROIA_LOC:       'recJucKOhC1zh4IP3',
+
+  // ── MAINTENANCE ──────────────────────────────────────────────────
+  MAINT_STATUS:     'Status',
+
+  // ── API meta fields ──────────────────────────────────────────────
+  LAST_MODIFIED:    'Last Modified',
 };
 
 // ── User accounts (SHA-256 hashed passwords) ──
