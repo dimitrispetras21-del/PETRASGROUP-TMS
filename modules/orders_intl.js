@@ -986,14 +986,23 @@ async function _syncGrpFromIntl(orderId, fields) {
   if (ul1?.length) noFields['Delivery Location 1'] = ul1;
 
   // Find or create NAT_ORDER linked to this intl order
+  // NOTE: ARRAYJOIN({Linked Order}) returns display names, NOT record IDs.
+  // Fix: fetch candidates by Reference, then check Linked Order in JS.
   let noId = null;
   try {
-    const existing = await atGetAll(TABLES.NAT_ORDERS, {
-      filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
-      fields: ['Name']
+    const ref = fields['Reference'] || '';
+    // Fetch candidates: same Reference + Groupage + Independent (our auto-created type)
+    const candidates = await atGetAll(TABLES.NAT_ORDERS, {
+      filterByFormula: `AND({National Groupage}=1,{Type}='Independent')`,
+      fields: ['Name', 'Linked Order']
     }, false);
-    if (existing.length) {
-      noId = existing[0].id;
+    // Find in JS — Linked Order field returns actual record IDs in GET response
+    const found = candidates.filter(r => {
+      const links = r.fields['Linked Order'] || [];
+      return links.some(l => (l?.id || l) === orderId);
+    });
+    if (found.length) {
+      noId = found[0].id;
       await atPatch(TABLES.NAT_ORDERS, noId, noFields);
     } else {
       noFields['Linked Order'] = [orderId];
@@ -1013,10 +1022,15 @@ async function _syncGrpFromIntl(orderId, fields) {
 // Deletes auto-created NAT_ORDER + GL + linked CL + linked NL
 // ═══════════════════════════════════════════════════════════════
 async function _deleteGrpForIntl(orderId) {
-  const nos = await atGetAll(TABLES.NAT_ORDERS, {
-    filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
-    fields: ['Name']
+  // Fetch all auto-created NAT_ORDERS (Groupage+Independent) then filter by Linked Order in JS
+  const candidates = await atGetAll(TABLES.NAT_ORDERS, {
+    filterByFormula: `AND({National Groupage}=1,{Type}='Independent')`,
+    fields: ['Name','Linked Order']
   }, false);
+  const nos = candidates.filter(r => {
+    const links = r.fields['Linked Order'] || [];
+    return links.some(l => (l?.id || l) === orderId);
+  });
   for (const no of nos) {
     // Delete GL lines linked to this NAT_ORDER
     const gls = await atGetAll(TABLES.GL_LINES, {
