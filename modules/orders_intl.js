@@ -923,9 +923,10 @@ async function _syncVeroiaSwitch(orderId, fields) {
   } else if (nlId && !ngroupage) {
     // Groupage OFF → clean up GL + CL + Groupage NL
     try {
-      // Find GL via order link
+      // VS+GRP GL lines are identified by Reference (not Linked National Order)
+      const grpRef = fields['Reference']||'';
       const stale = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
+        filterByFormula: grpRef ? `{Reference}="${grpRef}"` : `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
       for (const r of stale) {
@@ -995,9 +996,15 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
     const direction = dir==='Export'?'South→North':'North→South';
     const _lid = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
 
-    // Get existing GL lines for this NO
+    // When called from intl order (VS+GRP), noId IS the orderId — a linked field to NAT_ORDERS
+    // cannot accept an ORDERS record ID. Use reference-based filtering instead.
+    const isIntlSide = (noId === orderId);
+
+    // Get existing GL lines
     const existing = await atGetAll(TABLES.GL_LINES, {
-      filterByFormula: `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
+      filterByFormula: isIntlSide
+        ? `{Reference}="${ref}"`
+        : `FIND("${noId}",ARRAYJOIN({Linked National Order},","))>0`,
       fields: ['Loading Location','Status','Pallets'],
     }, false);
 
@@ -1053,14 +1060,15 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
     for (let i=0; i<targets.length; i++) {
       const {locId, pal} = targets[i];
       const glFields = {
-        'Name':                  `Stop ${i+1} (${ref||'—'})`,
-        'Reference':             ref,
-        'Pallets':               pal,
-        'Direction':             direction,
-        'Goods':                 goods,
-        'Loading Location':      [locId],
-        'Linked National Order': [noId],
+        'Name':             `Stop ${i+1} (${ref||'—'})`,
+        'Reference':        ref,
+        'Pallets':          pal,
+        'Direction':        direction,
+        'Goods':            goods,
+        'Loading Location': [locId],
       };
+      // Only link to NAT_ORDERS when called from natl side (noId is a NAT_ORDERS record)
+      if (!isIntlSide) glFields['Linked National Order'] = [noId];
       if (loadDt)    glFields['Loading Date']    = loadDt;
       if (delDt)     glFields['Delivery Date']   = delDt;
       if (temp!=null) glFields['Temperature C']  = temp;
