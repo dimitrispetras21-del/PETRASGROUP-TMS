@@ -286,8 +286,8 @@ function _applyNatlFilters() {
     recs = recs.filter(r => {
       const f = r.fields;
       const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-      const pId = Array.isArray(f['Pickup Location'])  ? f['Pickup Location'][0]  : '';
-      const dId = Array.isArray(f['Delivery Location'])? f['Delivery Location'][0]: '';
+      const pId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+      const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
       return String(f['Name']||'').toLowerCase().includes(q)
         || (_fhClientsMap[cId]||'').toLowerCase().includes(q)
         || (_fhLocationsMap[pId]||'').toLowerCase().includes(q)
@@ -325,8 +325,8 @@ function selectNatlOrder(recId) {
   const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
   const stMap = {Pending:'badge-yellow',Confirmed:'badge-blue','In Transit':'badge-green',Delivered:'badge-grey'};
   const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-  const pId = Array.isArray(f['Pickup Location'])   ? f['Pickup Location'][0]   : '';
-  const dId = Array.isArray(f['Delivery Location'])  ? f['Delivery Location'][0] : '';
+  const pId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
 
   panel.innerHTML = `
     <div class="detail-header">
@@ -391,8 +391,8 @@ function openNatlEdit(recId) {
 async function _openNatlModal(recId, f) {
   const isEdit = !!recId;
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
-  const pickupId  = Array.isArray(f['Pickup Location'])  ? f['Pickup Location'][0]  : '';
-  const delivId   = Array.isArray(f['Delivery Location'])? f['Delivery Location'][0]: '';
+  const pickupId  = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const delivId   = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
   // Resolve single client name for edit form (batch if not cached)
   if (clientId && !_fhClientsMap[clientId]) await _batchResolveClients([clientId]);
   const clientLabel = clientId ? (_fhClientsMap[clientId] || '') : '';
