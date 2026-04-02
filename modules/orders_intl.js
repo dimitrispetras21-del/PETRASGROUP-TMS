@@ -804,10 +804,29 @@ async function _syncVeroiaSwitch(orderId, fields) {
     return;
   }
 
+  const ngroupage = !!fields['National Groupage'];
+
   // ══════════════════════════════════════════════
-  // VS ON → Create/Update NAT_LOADS record
+  // VS ON + GRP ON → GL lines only, no Direct NL
+  // NAT_LOADS will be created by Pick Ups (Groupage type)
   // ══════════════════════════════════════════════
-  console.log('VS ON → sync NAT_LOADS');
+  if (ngroupage) {
+    // If GRP was previously OFF, a Direct NL may exist — delete it
+    for (const nl of existingNL) {
+      try { await atDelete(TABLES.NAT_LOADS, nl.id); }
+      catch(e) { console.warn('NL Direct cleanup (switched to GRP ON):', e); }
+    }
+    // Sync GL lines anchored to auto-created NAT_ORDER
+    try { await _syncGrpFromIntl(orderId, fields); }
+    catch(e) { logError(e, 'intl GRP sync (VS+GRP)'); }
+    invalidateCache(TABLES.NAT_LOADS);
+    return; // finally block still runs (_syncingOrders.delete)
+  }
+
+  // ══════════════════════════════════════════════
+  // VS ON + GRP OFF → Create/Update Direct NAT_LOADS
+  // ══════════════════════════════════════════════
+  console.log('VS ON → sync NAT_LOADS (Direct)');
 
   // Clean up legacy NAT_ORDERS if any exist (migration path)
   for (const no of legacyNO) {
@@ -914,17 +933,9 @@ async function _syncVeroiaSwitch(orderId, fields) {
     }
   }
 
-  // ── Groupage sync — independent of VS ──
-  // Always runs: intl GRP order auto-creates a NAT_ORDER to anchor GL lines
-  const ngroupage = !!fields['National Groupage'];
-  if (ngroupage) {
-    try { await _syncGrpFromIntl(orderId, fields); }
-    catch(e) { logError(e, 'intl GRP sync'); }
-  } else {
-    // GRP OFF → delete auto-created NAT_ORDER + its GL + CL + NL
-    try { await _deleteGrpForIntl(orderId); }
-    catch(e) { console.warn('GL cleanup (grp OFF)', e); }
-  }
+  // GRP OFF → delete any auto-created NAT_ORDER + its GL + CL + NL
+  try { await _deleteGrpForIntl(orderId); }
+  catch(e) { console.warn('GL cleanup (grp OFF):', e); }
 
   invalidateCache(TABLES.NAT_LOADS);
 
