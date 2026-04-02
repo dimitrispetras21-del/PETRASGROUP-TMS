@@ -122,8 +122,8 @@
     el('brand-quality-sub').textContent  = quality.hasData  ? `${quality.sent} με proof από ${quality.total}` : '';
     const wkNum = _getWeekNum(new Date());
     el('brand-anxiety-sub').textContent  = `W${wkNum} · ${anxiety.value} ${anxiety.value === 1 ? 'κλήση' : 'κλήσεις'}`;
-    el('brand-speed-val').style.color    = speed.hasData    ? _colorScore(speed.value, 98)    : '#2d3f55';
-    el('brand-quality-val').style.color  = quality.hasData  ? _colorScore(quality.value, 100) : '#2d3f55';
+    el('brand-speed-val').style.color    = speed.hasData    ? _colorScore(speed.value, 98)    : '#cbd5e1';
+    el('brand-quality-val').style.color  = quality.hasData  ? _colorScore(quality.value, 100) : '#cbd5e1';
     el('brand-anxiety-val').style.color  = anxiety.value === 0 ? '#22c55e' : anxiety.value <= 3 ? '#f59e0b' : '#ef4444';
 
     // Toggle no-data class for visual state
@@ -170,8 +170,8 @@
     const topClients = _calcTopClients(data.allOrders, 5);
 
     el('strat-revenue-val').textContent = _eur(revenue);
-    el('strat-revenue-sub').textContent = revTarget ? `${_pct(revPct)} vs στόχο ${_eur(revTarget)}` : 'Ορίστε μηνιαίο στόχο';
-    el('strat-revenue-val').style.color  = revTarget ? _colorScore(revPct, 100) : '#7A92B0';
+    el('strat-revenue-sub').textContent = revTarget ? `${_pct(revPct)} vs στόχο ${_eur(revTarget)}` : 'Πατήστε ✎ για να ορίσετε μηνιαίο στόχο';
+    el('strat-revenue-val').style.color  = revTarget ? _colorScore(revPct, 100) : '#0B1929';
     if (revTarget) {
       el('strat-rev-bar').style.width = Math.min(revPct, 100) + '%';
       el('strat-rev-bar').style.background = _colorScore(revPct, 100);
@@ -195,12 +195,12 @@
     el('strat-clients-body').innerHTML = topClients.length
       ? topClients.map((cl, i) => `
           <tr>
-            <td style="color:#7A92B0;font-size:11px">#${i+1}</td>
-            <td style="color:#e2e8f0;font-weight:500">${escapeHtml(cl.name)}</td>
+            <td style="color:#94a3b8;font-size:11px">#${i+1}</td>
+            <td style="color:#334155;font-weight:500">${escapeHtml(cl.name)}</td>
             <td style="color:#22c55e;font-family:monospace">${_eur(cl.revenue)}</td>
-            <td style="color:#7A92B0">${_pct(cl.pct)}</td>
+            <td style="color:#94a3b8">${_pct(cl.pct)}</td>
           </tr>`).join('')
-      : '<tr><td colspan="4" style="color:#7A92B0;text-align:center;padding:20px">Χωρίς δεδομένα εσόδων</td></tr>';
+      : '<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:20px">Χωρίς δεδομένα εσόδων</td></tr>';
 
     // ── SECTION 3: Execution ──
     const { onTimePct } = _calcSpeed(data.deliveredOrders);
@@ -209,7 +209,7 @@
     const assignedPct   = _calcAssignedRate(data.allOrders);
 
     el('exec-ontime-val').textContent = data.deliveredOrders.length ? _pct(onTimePct || 0) : 'N/A';
-    el('exec-ontime-val').style.color = _colorScore(onTimePct || 0, 98);
+    el('exec-ontime-val').style.color = data.deliveredOrders.length ? _colorScore(onTimePct || 0, 98) : '#cbd5e1';
     el('exec-ontime-sub').textContent = `4-εβδ. μέσος: ${_weekAvg(weeklyOnTime)}%`;
     _trendLine('chart-ontime', weeklyOnTime, 98);
 
@@ -246,17 +246,19 @@
     el('cash-maint-sub').textContent  = deliveredRev > 0 ? `${_pct(maintPct)} των εσόδων (στόχος <8%)` : 'Χωρίς δεδομένα εσόδων';
 
     el('cash-partner-val').textContent = data.tripCosts.length > 0 ? _pct(partnerMargin) : 'N/A';
-    el('cash-partner-val').style.color  = partnerMargin > 30 ? '#22c55e' : partnerMargin > 15 ? '#f59e0b' : '#ef4444';
+    el('cash-partner-val').style.color  = data.tripCosts.length > 0
+      ? (partnerMargin > 30 ? '#22c55e' : partnerMargin > 15 ? '#f59e0b' : '#ef4444')
+      : '#cbd5e1';
     el('cash-partner-sub').textContent  = data.tripCosts.length > 0 ? 'margin σε partner φορτία' : 'Απαιτείται TRIP COSTS data';
 
     el('cash-loss-body').innerHTML = lossTrips.length
       ? lossTrips.map(t => `<tr>
-          <td style="color:#e2e8f0">${escapeHtml(t.route)}</td>
+          <td style="color:#334155">${escapeHtml(t.route)}</td>
           <td style="color:#22c55e;font-family:monospace">${_eur(t.revenue)}</td>
-          <td style="color:#ef4444;font-family:monospace">${_eur(t.cost)}</td>
+          <td style="color:#64748b;font-family:monospace">${_eur(t.cost)}</td>
           <td style="color:#ef4444;font-weight:700;font-family:monospace">-${_eur(t.loss)}</td>
         </tr>`).join('')
-      : `<tr><td colspan="4" style="color:#7A92B0;text-align:center;padding:20px">
+      : `<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:20px">
           ${data.tripCosts.length === 0 ? 'Απαιτείται Trip Costs data (D1)' : 'Καμία ζημιογόνος διαδρομή'}
         </td></tr>`;
 
@@ -612,7 +614,8 @@
       const d = r.fields['Driver'];
       const ids = Array.isArray(d) ? d : (d ? [d] : []);
       ids.forEach(id => {
-        const name = driverMap[id] || id;
+        const name = driverMap[id] || null;
+        if (!name) return; // skip unknown/unmapped IDs (Airtable rec IDs)
         const short = name.split(' ')[0]; // First name only
         counts[short] = (counts[short] || 0) + 1;
       });
@@ -654,33 +657,33 @@
     const total = allOrders.length;
     const period = _periodLabel(_period);
 
-    lines.push(`📊 **Σύνοψη ${period}:** ${total} φορτία στη βάση δεδομένων`
+    lines.push(`**Σύνοψη ${period}:** ${total} φορτία στη βάση δεδομένων`
       + (deliveredOrders.length ? `, ${deliveredOrders.length} παραδόθηκαν.` : '.'));
 
     if (speed.hasData) {
-      if (speed.value >= 98) lines.push(`✅ **Speed Score ${_pct(speed.value)}** — εξαιρετική επίδοση on-time. Στόχος 98% επιτυγχάνεται.`);
-      else if (speed.value >= 95) lines.push(`⚠️ **Speed Score ${_pct(speed.value)}** — οριακά κάτω από στόχο. Έλεγξε τις καθυστερημένες αποστολές.`);
-      else lines.push(`🚨 **Speed Score ${_pct(speed.value)}** — σημαντική απόκλιση. Απαιτείται άμεση ανάλυση αιτίων.`);
+      if (speed.value >= 98) lines.push(`**Speed Score ${_pct(speed.value)}** — εξαιρετική επίδοση on-time. Στόχος 98% επιτυγχάνεται.`);
+      else if (speed.value >= 95) lines.push(`**Speed Score ${_pct(speed.value)}** — οριακά κάτω από στόχο. Έλεγξε τις καθυστερημένες αποστολές.`);
+      else lines.push(`**Speed Score ${_pct(speed.value)}** — σημαντική απόκλιση. Απαιτείται άμεση ανάλυση αιτίων.`);
     } else {
-      lines.push(`ℹ️ **Speed Score:** Δεν υπάρχουν δεδομένα on-time. Απαιτείται πεδίο "Actual Delivery Date" ή συμπλήρωση "Delivery Performance".`);
+      lines.push(`**Speed Score:** Δεν υπάρχουν δεδομένα on-time. Απαιτείται πεδίο "Actual Delivery Date" ή συμπλήρωση "Delivery Performance".`);
     }
 
     if (deadKM.hasData) {
-      if (deadKM.pct < 15) lines.push(`✅ **Dead KM ${_pct(deadKM.pct)}** — καλή απόδοση στόλου. ${_km(deadKM.totalDead)} νεκρά km σε σύνολο ${_km(deadKM.totalDead + deadKM.totalLoaded)}.`);
-      else if (deadKM.pct < 25) lines.push(`⚠️ **Dead KM ${_pct(deadKM.pct)}** — αξίζει βελτιστοποίηση δρομολογίων. Στόχος <15%.`);
-      else lines.push(`🚨 **Dead KM ${_pct(deadKM.pct)}** — υψηλά νεκρά χιλιόμετρα. Εξέτασε backhaul και διαδρομές επιστροφής.`);
+      if (deadKM.pct < 15) lines.push(`**Dead KM ${_pct(deadKM.pct)}** — καλή απόδοση στόλου. ${_km(deadKM.totalDead)} νεκρά km σε σύνολο ${_km(deadKM.totalDead + deadKM.totalLoaded)}.`);
+      else if (deadKM.pct < 25) lines.push(`**Dead KM ${_pct(deadKM.pct)}** — αξίζει βελτιστοποίηση δρομολογίων. Στόχος <15%.`);
+      else lines.push(`**Dead KM ${_pct(deadKM.pct)}** — υψηλά νεκρά χιλιόμετρα. Εξέτασε backhaul και διαδρομές επιστροφής.`);
     } else {
-      lines.push(`ℹ️ **Dead KM:** ${deadKM.hint}`);
+      lines.push(`**Dead KM:** ${deadKM.hint}`);
     }
 
-    if (highRiskCount > 0) lines.push(`🚨 **${highRiskCount} φορτία** με παράδοση <48h χωρίς Delivered status. Επιβεβαίωσε άμεσα τους οδηγούς.`);
-    else lines.push(`✅ **Κανένα high-risk** φορτίο για τις επόμενες 48h.`);
+    if (highRiskCount > 0) lines.push(`**${highRiskCount} φορτία** με παράδοση <48h χωρίς Delivered status. Επιβεβαίωσε άμεσα τους οδηγούς.`);
+    else lines.push(`**Κανένα high-risk** φορτίο για τις επόμενες 48h.`);
 
-    if (uninvoicedRev > 5000) lines.push(`💰 **${_eur(uninvoicedRev)} αδρανούν** σε παραδοθέντα χωρίς τιμολόγιο. Δώσε προτεραιότητα στην τιμολόγηση.`);
+    if (uninvoicedRev > 5000) lines.push(`**${_eur(uninvoicedRev)} αδρανούν** σε παραδοθέντα χωρίς τιμολόγιο. Δώσε προτεραιότητα στην τιμολόγηση.`);
 
-    if (revenue > 0) lines.push(`💶 **Έσοδα ${_eur(revenue)}** για ${period} (παραδοθέντα + τιμολογημένα).`);
+    if (revenue > 0) lines.push(`**Έσοδα ${_eur(revenue)}** για ${period} (παραδοθέντα + τιμολογημένα).`);
 
-    el.innerHTML = lines.map(l => `<div class="nakis-line">${l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`).join('');
+    el.innerHTML = lines.map(l => `<div class="nakis-line"><span class="nakis-dot">—</span>${l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`).join('');
   }
 
   // ── Color / formatting helpers ───────────────────────────────
@@ -810,9 +813,10 @@
 /* Nakis */
 .ceo-nakis { background:#ffffff; border-radius:14px; padding:22px; border:1px solid #e2e8f0; margin-bottom:20px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
 .ceo-nakis-title { font-size:9px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:#0284C7; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
-.nakis-line { font-size:13px; color:#64748b; line-height:1.7; padding:6px 0; border-bottom:1px solid #f8fafc; }
+.nakis-line { font-size:13px; color:#64748b; line-height:1.7; padding:7px 0; border-bottom:1px solid #f8fafc; display:flex; gap:10px; }
 .nakis-line:last-child { border-bottom:none; }
 .nakis-line strong { color:#334155; }
+.nakis-dot { color:#cbd5e1; font-size:14px; flex-shrink:0; margin-top:1px; font-style:normal; }
 
 @media (max-width:768px) {
   .ceo-brand-row { grid-template-columns:1fr; }
