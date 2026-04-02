@@ -914,56 +914,16 @@ async function _syncVeroiaSwitch(orderId, fields) {
     }
   }
 
-  // ── Groupage sync ──
-  // If National Groupage is ON, sync GL lines (linked to orderId directly)
+  // ── Groupage sync — independent of VS ──
+  // Always runs: intl GRP order auto-creates a NAT_ORDER to anchor GL lines
   const ngroupage = !!fields['National Groupage'];
-  if (nlId && ngroupage) {
-    // Pass orderId as the "owner" for GL lines
-    await _syncGroupageLines(orderId, orderId, fields, null);
-  } else if (nlId && !ngroupage) {
-    // Groupage OFF → clean up GL + CL + Groupage NL
-    try {
-      // VS+GRP GL lines are identified by Reference (not Linked National Order)
-      const grpRef = fields['Reference']||'';
-      const stale = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: grpRef ? `{Reference}="${grpRef}"` : `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
-        fields: ['Status']
-      }, false);
-      for (const r of stale) {
-        if (r.fields.Status !== 'Assigned') {
-          try {
-            const cls = await atGetAll(TABLES.CONS_LOADS, {
-              filterByFormula: `FIND("${r.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-              fields: ['Name']
-            }, false);
-            for (const cl of cls) {
-              try {
-                const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
-                for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-              } catch(e) { logError(e, 'groupage OFF: delete NL for CL'); }
-              await atDelete(TABLES.CONS_LOADS, cl.id);
-            }
-          } catch(e) { logError(e, 'groupage OFF: delete CL for GL'); }
-          await atDelete(TABLES.GL_LINES, r.id);
-        }
-      }
-      // Also check legacy NO-linked GL
-      for (const no of legacyNO) {
-        try {
-          const glLegacy = await atGetAll(TABLES.GL_LINES, {
-            filterByFormula: `FIND("${no.id}",ARRAYJOIN({Linked National Order},","))>0`,
-            fields: ['Status']
-          }, false);
-          for (const r of glLegacy) {
-            if (r.fields.Status !== 'Assigned') {
-              try { await atDelete(TABLES.GL_LINES, r.id); } catch(e) { logError(e, 'groupage OFF: delete legacy GL'); }
-            }
-          }
-        } catch(e) { logError(e, 'groupage OFF: fetch legacy GL'); }
-      }
-      invalidateCache(TABLES.GL_LINES);
-      invalidateCache(TABLES.NAT_LOADS);
-    } catch(e) { console.warn('GL cleanup', e); }
+  if (ngroupage) {
+    try { await _syncGrpFromIntl(orderId, fields); }
+    catch(e) { logError(e, 'intl GRP sync'); }
+  } else {
+    // GRP OFF → delete auto-created NAT_ORDER + its GL + CL + NL
+    try { await _deleteGrpForIntl(orderId); }
+    catch(e) { console.warn('GL cleanup (grp OFF)', e); }
   }
 
   invalidateCache(TABLES.NAT_LOADS);
@@ -979,6 +939,102 @@ async function _syncVeroiaSwitch(orderId, fields) {
   } finally {
     _syncingOrders.delete(orderId);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// _syncGrpFromIntl — auto-create/update NAT_ORDER for intl GRP
+// Anchors GL lines to a proper NAT_ORDER (Linked National Order)
+// Works for both VS+GRP and non-VS GRP international orders
+// ═══════════════════════════════════════════════════════════════
+async function _syncGrpFromIntl(orderId, fields) {
+  const dir    = fields['Direction'] || 'Export';
+  const natDir = dir === 'Export' ? 'South→North' : 'North→South';
+  const _lid   = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
+
+  // Build NAT_ORDER fields from intl order data
+  const noFields = {
+    'Direction':        natDir,
+    'Type':             'Independent',
+    'Goods':            fields['Goods'] || '',
+    'National Groupage':true,
+    'Reference':        fields['Reference'] || '',
+  };
+  if (fields['Loading DateTime'])   noFields['Loading DateTime']   = (fields['Loading DateTime']).slice(0,10);
+  if (fields['Delivery DateTime'])  noFields['Delivery DateTime']  = (fields['Delivery DateTime']).slice(0,10);
+  if (fields['Temperature °C'] != null) noFields['Temperature °C'] = fields['Temperature °C'];
+  if (fields['Client']?.length)     noFields['Client']             = fields['Client'];
+
+  // Map Loading Locations 1-10 → Pickup Locations 1-10
+  for (let i = 1; i <= 10; i++) {
+    const ll = fields[`Loading Location ${i}`];
+    if (!ll?.length) break;
+    noFields[`Pickup Location ${i}`] = ll;
+  }
+  // Map Unloading Location 1 → Delivery Location 1
+  const ul1 = fields['Unloading Location 1'];
+  if (ul1?.length) noFields['Delivery Location 1'] = ul1;
+
+  // Find or create NAT_ORDER linked to this intl order
+  let noId = null;
+  try {
+    const existing = await atGetAll(TABLES.NAT_ORDERS, {
+      filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
+      fields: ['Name']
+    }, false);
+    if (existing.length) {
+      noId = existing[0].id;
+      await atPatch(TABLES.NAT_ORDERS, noId, noFields);
+    } else {
+      noFields['Linked Order'] = [orderId];
+      const created = await atCreate(TABLES.NAT_ORDERS, noFields);
+      noId = created.id;
+      invalidateCache(TABLES.NAT_ORDERS);
+    }
+  } catch(e) { logError(e, '_syncGrpFromIntl: NAT_ORDER find/create'); return; }
+
+  // Sync GL lines using existing function — now with proper NAT_ORDER ID
+  await _syncGroupageLines(orderId, noId, fields, null);
+  invalidateCache(TABLES.GL_LINES);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// _deleteGrpForIntl — cleanup when intl GRP is turned OFF
+// Deletes auto-created NAT_ORDER + GL + linked CL + linked NL
+// ═══════════════════════════════════════════════════════════════
+async function _deleteGrpForIntl(orderId) {
+  const nos = await atGetAll(TABLES.NAT_ORDERS, {
+    filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
+    fields: ['Name']
+  }, false);
+  for (const no of nos) {
+    // Delete GL lines linked to this NAT_ORDER
+    const gls = await atGetAll(TABLES.GL_LINES, {
+      filterByFormula: `FIND("${no.id}",ARRAYJOIN({Linked National Order},","))>0`,
+      fields: ['Status']
+    }, false);
+    for (const gl of gls) {
+      if (gl.fields.Status !== 'Assigned') {
+        try {
+          const cls = await atGetAll(TABLES.CONS_LOADS, {
+            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+            fields: ['Name']
+          }, false);
+          for (const cl of cls) {
+            try {
+              const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
+              for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
+            } catch(e) { logError(e, '_deleteGrpForIntl: delete NL'); }
+            await atDelete(TABLES.CONS_LOADS, cl.id);
+          }
+        } catch(e) { logError(e, '_deleteGrpForIntl: delete CL'); }
+        await atDelete(TABLES.GL_LINES, gl.id);
+      }
+    }
+    // Delete the auto-created NAT_ORDER itself
+    try { await atDelete(TABLES.NAT_ORDERS, no.id); } catch(e) { logError(e, '_deleteGrpForIntl: delete NO'); }
+  }
+  invalidateCache(TABLES.GL_LINES);
+  invalidateCache(TABLES.NAT_ORDERS);
 }
 
 // ═══════════════════════════════════════════════════════════════
