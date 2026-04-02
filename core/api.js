@@ -365,7 +365,7 @@ async function atPatch(tableId, recId, fields) {
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
     headers: _apiHeaders('PATCH'),
-    body: JSON.stringify({ fields })
+    body: JSON.stringify({ fields, typecast: true })
   })));
   const data = await res.json();
   if (data.error) {
@@ -394,7 +394,7 @@ async function atCreate(tableId, fields) {
   const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
     headers: _apiHeaders('POST'),
-    body: JSON.stringify({ fields })
+    body: JSON.stringify({ fields, typecast: true })
   })));
   const data = await res.json();
   if (data.error) {
@@ -473,7 +473,7 @@ async function atCreateBatch(tableId, recordsArr) {
       {
         method: 'POST',
         headers: _apiHeaders('POST'),
-        body: JSON.stringify({ records: batch })
+        body: JSON.stringify({ records: batch, typecast: true })
       }
     )));
     const data = await res.json();
@@ -514,7 +514,7 @@ async function atPatchBatch(tableId, recordsArr) {
       {
         method: 'PATCH',
         headers: _apiHeaders('PATCH'),
-        body: JSON.stringify({ records: batch })
+        body: JSON.stringify({ records: batch, typecast: true })
       }
     )));
     const data = await res.json();
