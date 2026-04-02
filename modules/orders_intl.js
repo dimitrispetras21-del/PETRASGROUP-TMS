@@ -959,7 +959,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
 // ═══════════════════════════════════════════════════════════════
 async function _syncGrpFromIntl(orderId, fields) {
   const dir    = fields['Direction'] || 'Export';
-  const natDir = dir === 'Export' ? 'South→North' : 'North→South';
+  const natDir = dir === 'Export' ? F.DIR_SN : F.DIR_NS;
   const _lid   = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
 
   // Build NAT_ORDER fields from intl order data
@@ -1060,7 +1060,7 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
     const temp  = orderFields['Temperature °C']??null;
     const loadDt= (orderFields['Loading DateTime']||'').slice(0,10)||null;
     const delDt = (orderFields['Delivery DateTime']||'').slice(0,10)||null;
-    const direction = dir==='Export'?'South→North':'North→South';
+    const direction = dir==='Export'?F.DIR_SN:F.DIR_NS;
     const _lid = v => (v&&typeof v==='object'&&v.id)?v.id:(typeof v==='string'?v:null);
 
     // When called from intl order (VS+GRP), noId IS the orderId — a linked field to NAT_ORDERS

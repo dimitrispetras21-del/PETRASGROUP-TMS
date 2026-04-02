@@ -177,10 +177,11 @@ const F = {
   GL_PALLETS:       'Pallets',
 
   // ── Direction values (NOT field names — used as values) ──────────
-  DIR_NS:           'North→South',         // ΚΑΘΟΔΟΣ
-  DIR_SN:           'South→North',         // ΑΝΟΔΟΣ
-  CL_KATHODOS:      'ΚΑΘΟΔΟΣ',
-  CL_ANODOS:        'ΑΝΟΔΟΣ',
+  // All national tables use arrow format: South→North / North→South
+  DIR_NS:           'North→South',        // ΚΑΘΟΔΟΣ
+  DIR_SN:           'South→North',        // ΑΝΟΔΟΣ
+  CL_KATHODOS:      'North→South',        // unified — was 'ΚΑΘΟΔΟΣ'
+  CL_ANODOS:        'South→North',        // unified — was 'ΑΝΟΔΟΣ'
 
   // ── Special records ──────────────────────────────────────────────
   VEROIA_LOC:       'recJucKOhC1zh4IP3',

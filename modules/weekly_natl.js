@@ -92,10 +92,10 @@ async function _wnLoadAll() {
 
   // Split orders by direction
   WNATL.data.northsouth = all
-    .filter(r => r.fields['Direction'] === 'ΚΑΘΟΔΟΣ')
+    .filter(r => r.fields['Direction'] === 'North→South')
     .sort((a,b) => (a.fields['Delivery DateTime']||'').localeCompare(b.fields['Delivery DateTime']||''));
   WNATL.data.southnorth = all
-    .filter(r => r.fields['Direction'] === 'ΑΝΟΔΟΣ')
+    .filter(r => r.fields['Direction'] === 'South→North')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
   WNATL.data.clLoads = [];
 

@@ -779,8 +779,8 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 
   // Build direction
   const dir = noFields['Direction'] || '';
-  let nlDir = 'ΚΑΘΟΔΟΣ';
-  if (dir === 'South→North') nlDir = 'ΑΝΟΔΟΣ';
+  let nlDir = 'North→South';
+  if (dir === 'South→North') nlDir = 'South→North';
 
   // Resolve client name
   let clientName = '';
