@@ -505,9 +505,11 @@
     const color = lowerIsBetter
       ? (value < target * 0.7 ? '#22c55e' : value < target ? '#f59e0b' : '#ef4444')
       : _colorScore(value, target);
+    // Use a visible track color so the arc shows even at value=0
+    const clampedVal = Math.min(Math.max(value, 0), 100);
     _charts[id] = new Chart(el, {
       type: 'doughnut',
-      data: { datasets: [{ data: [value, 100 - Math.max(value,0)], backgroundColor: [color, '#0d1e2e'], borderWidth: 0, circumference: 180, rotation: 270 }] },
+      data: { datasets: [{ data: [clampedVal, 100 - clampedVal], backgroundColor: [color, '#16304a'], borderWidth: 0, circumference: 180, rotation: 270 }] },
       options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, cutout: '72%', animation: { duration: 800 } }
     });
   }
@@ -516,11 +518,12 @@
     _destroyChart(id);
     const el = document.getElementById(id);
     if (!el || !window.Chart) return;
-    const safeVal = Math.min(value, 10);
+    const safeVal = Math.min(Math.max(value, 0), 10);
     const color   = value === 0 ? '#22c55e' : value <= 3 ? '#f59e0b' : '#ef4444';
+    // Always show a visible arc track; value=0 shows full gray arc
     _charts[id] = new Chart(el, {
       type: 'doughnut',
-      data: { datasets: [{ data: [safeVal, 10 - safeVal], backgroundColor: [color, '#0d1e2e'], borderWidth: 0, circumference: 180, rotation: 270 }] },
+      data: { datasets: [{ data: [safeVal, 10 - safeVal], backgroundColor: [color, '#16304a'], borderWidth: 0, circumference: 180, rotation: 270 }] },
       options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, cutout: '72%', animation: { duration: 800 } }
     });
   }
@@ -616,24 +619,26 @@
       });
     });
 
-    const entries = Object.entries(counts).sort(([,a],[,b]) => b - a);
+    const entries = Object.entries(counts).sort(([,a],[,b]) => b - a).slice(0, 8);
     if (!entries.length) { el.parentNode.innerHTML = '<div style="color:#7A92B0;font-size:12px;text-align:center;padding:20px">Χωρίς δεδομένα οδηγών</div>'; return; }
 
     const maxV = Math.max(...entries.map(([,v]) => v));
     const minV = Math.min(...entries.map(([,v]) => v));
-    const colors = entries.map(([,v]) => v === maxV ? '#f59e0b' : v === minV ? '#0284C7' : '#334155');
+    const colors = entries.map(([,v]) => v === maxV ? '#f59e0b' : v === minV ? '#0284C7' : '#243c58');
 
+    // Horizontal bar chart — labels are readable without rotation
     _charts[id] = new Chart(el, {
       type: 'bar',
       data: {
         labels: entries.map(([k]) => k),
-        datasets: [{ data: entries.map(([,v]) => v), backgroundColor: colors, borderRadius: 4 }]
+        datasets: [{ data: entries.map(([,v]) => v), backgroundColor: colors, borderRadius: 3 }]
       },
       options: {
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.y} φορτία` } } },
+        indexAxis: 'y',
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} φορτία` } } },
         scales: {
-          x: { ticks: { color: '#7A92B0', font: { size: 9 } }, grid: { display: false } },
-          y: { ticks: { color: '#7A92B0', font: { size: 9 }, stepSize: 1 }, grid: { color: '#1c2a3a' } }
+          x: { ticks: { color: '#4a6280', font: { size: 9 }, stepSize: 1 }, grid: { color: '#0f1e2e' } },
+          y: { ticks: { color: '#7A92B0', font: { size: 10 } }, grid: { display: false } }
         },
         animation: { duration: 500 }
       }
@@ -746,20 +751,23 @@
 .ceo-brand-sub   { font-size:11px; color:#4a6280; min-height:16px; }
 .ceo-target      { font-size:10px; color:#2a3f55; margin-top:auto; padding-top:8px; border-top:1px solid #112030; }
 
-/* No-data state — hide gauge, show badge instead */
+/* No-data state — hide gauge, show badge + locked icon */
 .ceo-brand-card.no-data .ceo-gauge-wrap { display:none; }
-.ceo-brand-card.no-data .ceo-brand-big  { font-size:28px; color:#1e3044; letter-spacing:2px; }
-.ceo-setup-badge { display:none; align-items:center; gap:10px; padding:10px 14px; background:#0a1628; border-radius:8px; border:1px dashed #1c2a3a; margin:12px 0 8px; }
+.ceo-brand-card.no-data .ceo-brand-big  { font-size:18px; color:#1a2e40; letter-spacing:3px; font-family:'DM Sans',sans-serif; font-weight:400; margin:0 0 12px; }
+.ceo-brand-card.no-data .ceo-brand-body { justify-content:flex-start; padding-top:16px; }
+.ceo-setup-badge { display:none; align-items:flex-start; gap:10px; padding:12px 14px; background:#080f1a; border-radius:8px; border:1px dashed #1a2e40; margin:0 0 8px; }
 .ceo-brand-card.no-data .ceo-setup-badge { display:flex; }
-.ceo-setup-badge span { font-size:11px; color:#3a5068; line-height:1.5; }
+.ceo-setup-badge span { font-size:11px; color:#2d4a62; line-height:1.6; }
+.ceo-setup-badge span strong { color:#3a5a72; }
 
 /* Anxiety entry */
 .anxiety-entry { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:12px; border-top:1px solid #112030; }
 .anxiety-entry label { font-size:10px; color:#3a5068; white-space:nowrap; }
 .anxiety-entry input { width:58px; padding:5px 8px; background:#0a1628; border:1px solid #1c2a3a; border-radius:6px; color:#e2e8f0; font-size:15px; text-align:center; font-family:'Syne',monospace; }
 .anxiety-entry input:focus { outline:none; border-color:#0284C7; }
-.anxiety-entry button { padding:5px 12px; background:#0284C7; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; }
-.anxiety-entry button:hover { background:#0369A1; }
+/* Ghost button — subtle, doesn't break executive tone */
+.anxiety-entry button { padding:5px 12px; background:transparent; color:#3a5068; border:1px solid #1c3a50; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; transition:all 0.2s; }
+.anxiety-entry button:hover { border-color:#0284C7; color:#38BDF8; }
 
 /* Quadrant grid */
 .ceo-quadrants { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
@@ -918,16 +926,16 @@
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
-          <div class="ceo-kpi-num" id="people-partner-val">—</div>
+          <div class="ceo-kpi-num" id="people-partner-val" style="font-size:22px">—</div>
           <div class="ceo-kpi-label">Partner Ratio</div>
           <div class="ceo-kpi-sub" id="people-partner-sub">Φόρτωση...</div>
         </div>
-        <div style="width:110px; height:80px; flex-shrink:0;"><canvas id="chart-partner"></canvas></div>
+        <div style="width:100px; height:80px; flex-shrink:0;"><canvas id="chart-partner"></canvas></div>
       </div>
 
       <div style="margin-top:10px;">
         <div class="ceo-kpi-label" style="margin-bottom:8px">Workload Distribution</div>
-        <div style="height:80px;"><canvas id="chart-workload"></canvas></div>
+        <div style="height:110px;"><canvas id="chart-workload"></canvas></div>
       </div>
     </div>
 
