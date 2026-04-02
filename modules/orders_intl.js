@@ -681,9 +681,9 @@ async function _syncVeroiaSwitch(orderId, fields) {
 
   const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
 
-  // ── Find existing NAT_LOADS for this ORDERS record (VS type) ──
+  // ── Find existing NAT_LOADS for this ORDERS record (identified by Source Record) ──
   const existingNL = await atGetAll(TABLES.NAT_LOADS, {
-    filterByFormula: `AND({Source Record}="${orderId}",{Source Type}="VS")`,
+    filterByFormula: `{Source Record}="${orderId}"`,
     fields: ['Name','Direction'],
   }, false);
   console.log('existing VS NAT_LOADS:', existingNL.length);
@@ -703,7 +703,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
   if (!veroiaSwitch) {
     console.log('VS OFF → cleanup');
 
-    // 1. Delete NAT_LOADS with Source Type='VS' for this order
+    // 1. Delete NAT_LOADS linked to this order
     for (const nl of existingNL) {
       try { await atDelete(TABLES.NAT_LOADS, nl.id); }
       catch(e) { console.warn('NL VS delete:', e); }
@@ -868,7 +868,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
   const nlFields = {
     'Name':              `${clientName || 'VS Order'} — ${natLoadDt || ''}`,
     'Direction':         nlDirection,
-    'Source Type':       'VS',
+    'Source Type':       'Direct',
     'Source Record':     orderId,
     'Source Orders':     orderId,
     'Client':            clientName,
