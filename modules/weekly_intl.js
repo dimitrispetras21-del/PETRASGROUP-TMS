@@ -1241,7 +1241,7 @@ async function _wiSaveFromPopover(rowId){
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Export Rate is required for Partner','warn');return;}
-  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required for Partner','warn');return;}
+  // Import rate is optional — 0 is valid (partner may handle return leg at no extra charge)
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
@@ -1393,7 +1393,7 @@ async function _wiSave(rowId){
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Partner Rate is required','warn');return;}
-  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required','warn');return;}
+  // Import rate is optional — 0 is valid (partner may handle return leg at no extra charge)
 
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.classList.add('saving');
