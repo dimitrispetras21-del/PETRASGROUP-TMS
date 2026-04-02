@@ -714,12 +714,13 @@ function _wiPanelHTML(row){
                    oninput="_wiField(${row.id},'partnerRate',this.value)"
                    onclick="event.stopPropagation()"/>
           </div>
-          <div class="wi-pf" ${!row.importId?'style="opacity:0.4;pointer-events:none" title="No import matched"':''}>
+          <div class="wi-pf" ${!row.importId?'style="opacity:0.35" title="No import matched — field disabled"':''}>
             <span class="wi-plbl">Import Rate €</span>
-            <input class="wi-ti" type="number" step="0.01" placeholder="0.00"
+            <input class="wi-ti" type="number" step="0.01" placeholder="—"
                    style="width:80px"
-                   value="${row.partnerRateImp||''}"
+                   value="${row.importId?(row.partnerRateImp||''):''}"
                    id="wi-pr-imp-${row.id}"
+                   ${!row.importId?'disabled':''}
                    oninput="_wiField(${row.id},'partnerRateImp',this.value)"
                    onclick="event.stopPropagation()"/>
           </div>
@@ -1174,11 +1175,13 @@ function _wiOpenPopover(e,rowId){
                    id="wi-pop-rate-exp-${rowId}" style="width:90px"
                    value="${row.partnerRate||''}"/>
           </div>
-          <div class="wi-pop-field" ${!row.importId?'style="opacity:0.4;pointer-events:none" title="No import matched"':''}>
+          <div class="wi-pop-field" ${!row.importId?'style="opacity:0.35" title="No import matched — field disabled"':''}>
             <span class="wi-pop-lbl">Import Rate €</span>
-            <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
+            <input class="wi-pop-inp" type="number" step="0.01"
+                   placeholder="${row.importId?'0.00':'—'}"
                    id="wi-pop-rate-imp-${rowId}" style="width:90px"
-                   value="${row.partnerRateImp||''}"/>
+                   value="${row.importId?(row.partnerRateImp||''):''}"
+                   ${!row.importId?'disabled':''}/>
           </div>
         </div>
       </div>
@@ -1241,7 +1244,7 @@ async function _wiSaveFromPopover(rowId){
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Export Rate is required for Partner','warn');return;}
-  // Import rate is optional — 0 is valid (partner may handle return leg at no extra charge)
+  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required for Partner','warn');return;}
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
@@ -1393,7 +1396,7 @@ async function _wiSave(rowId){
   const isPartner=!!row.partnerId;
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Partner Rate is required','warn');return;}
-  // Import rate is optional — 0 is valid (partner may handle return leg at no extra charge)
+  if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required','warn');return;}
 
   const btn=document.getElementById('wi-btn-'+rowId);
   if(btn){btn.disabled=true;btn.classList.add('saving');
