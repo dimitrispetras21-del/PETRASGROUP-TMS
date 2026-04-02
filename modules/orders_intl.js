@@ -688,11 +688,14 @@ async function _syncVeroiaSwitch(orderId, fields) {
   }, false);
   console.log('existing VS NAT_LOADS:', existingNL.length);
 
-  // ── Also find legacy NAT_ORDERS linked to this order (for cleanup) ──
-  const legacyNO = await atGetAll(TABLES.NAT_ORDERS, {
-    filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
-    fields: ['Linked Order'],
-  }, false);
+  // ── Legacy NAT_ORDERS cleanup (v1.0 migration) — field may not exist, catch silently ──
+  let legacyNO = [];
+  try {
+    legacyNO = await atGetAll(TABLES.NAT_ORDERS, {
+      filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
+      fields: ['Linked Order'],
+    }, false);
+  } catch(e) { console.log('Legacy NAT_ORDERS lookup skipped (field not found):', e?.message||e); }
 
   // ══════════════════════════════════════════════
   // VS OFF → FULL CLEANUP
@@ -709,7 +712,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // 2. Find & delete GL lines linked to this order
     try {
       const glLines = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
 
@@ -922,7 +925,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     try {
       // Find GL via order link
       const stale = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
         fields: ['Status']
       }, false);
       for (const r of stale) {
