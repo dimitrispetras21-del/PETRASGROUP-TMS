@@ -551,8 +551,8 @@ async function _openModal(recId, f, _clientLabelOverride) {
         <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
       </div>
       <div class="form-field">
-        <label class="form-label">Reference (4-digit)</label>
-        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="e.g. 3813" maxlength="10">
+        <label class="form-label">Reference</label>
+        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="e.g. 3813">
       </div>
       <div class="form-field">
         <label class="form-label">Goods</label>
