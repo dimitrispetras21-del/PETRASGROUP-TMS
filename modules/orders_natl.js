@@ -510,9 +510,9 @@ async function submitNatlOrder(recId) {
     const pickupId  = document.getElementById('lv_npickup')?.value;
     const delivId   = document.getElementById('lv_ndelivery')?.value;
 
-    if(clientId)  fields['Client']           = [clientId];
-    if(pickupId)  fields['Pickup Location']  = [pickupId];
-    if(delivId)   fields['Delivery Location']= [delivId];
+    if(clientId)  fields['Client']              = [clientId];
+    if(pickupId)  fields['Pickup Location 1']  = [pickupId];
+    if(delivId)   fields['Delivery Location 1']= [delivId];
 
     // Validation
     const _vErrors = [];
