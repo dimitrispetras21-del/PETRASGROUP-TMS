@@ -709,83 +709,12 @@ async function _syncVeroiaSwitch(orderId, fields) {
       catch(e) { console.warn('NL VS delete:', e); }
     }
 
-    // 2. Find & delete GL lines linked to this order
-    try {
-      const glLines = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked National Order},","))>0`,
-        fields: ['Status']
-      }, false);
+    // 2. Delete GL + NAT_ORDER + CL + NL created by _syncGrpFromIntl
+    // _deleteGrpForIntl handles the full cascade correctly (finds NAT_ORDER via JS filter)
+    try { await _deleteGrpForIntl(orderId); }
+    catch(e) { console.warn('GRP cleanup on VS OFF:', e); }
 
-      for (const gl of glLines) {
-        // Delete CONS_LOADS that reference this GL
-        try {
-          const cls = await atGetAll(TABLES.CONS_LOADS, {
-            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-            fields: ['Name']
-          }, false);
-          for (const cl of cls) {
-            // Delete NL records linked to this CL (Groupage type)
-            try {
-              const nlsForCL = await atGetAll(TABLES.NAT_LOADS, {
-                filterByFormula: `{Source Record}="${cl.id}"`,
-                fields: ['Name']
-              }, false);
-              for (const nl of nlsForCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-            } catch(e) { console.warn('NL-from-CL cleanup:', e); }
-            await atDelete(TABLES.CONS_LOADS, cl.id);
-          }
-        } catch(e) { console.warn('CL cleanup:', e); }
-        // Delete the GL line itself
-        try { await atDelete(TABLES.GL_LINES, gl.id); }
-        catch(e) { console.warn('GL delete:', e); }
-      }
-    } catch(e) { console.warn('GL lookup:', e); }
-
-    // 3. Also try GL via legacy NO link (backward compat)
-    for (const no of legacyNO) {
-      try {
-        const glLines = await atGetAll(TABLES.GL_LINES, {
-          filterByFormula: `FIND("${no.id}",ARRAYJOIN({Linked National Order},","))>0`,
-          fields: ['Status']
-        }, false);
-        for (const gl of glLines) {
-          try {
-            const cls = await atGetAll(TABLES.CONS_LOADS, {
-              filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-              fields: ['Name']
-            }, false);
-            for (const cl of cls) {
-              try {
-                const nlsCL = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
-                for (const nl of nlsCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-              } catch(e) { logError(e, 'cascade delete NL for CL'); }
-              await atDelete(TABLES.CONS_LOADS, cl.id);
-            }
-          } catch(e) { logError(e, 'cascade delete CL for GL'); }
-          try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { logError(e, 'cascade delete GL'); }
-        }
-      } catch(e) { logError(e, 'cascade delete GL lines for NO'); }
-
-      // Delete NL records linked to this NO
-      try {
-        const nlsNO = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${no.id}"`,fields:['Name']},false);
-        for (const nl of nlsNO) await atDelete(TABLES.NAT_LOADS, nl.id);
-      } catch(e) { logError(e, 'cascade delete NL for NO'); }
-
-      // Delete RAMP records linked to this NO
-      try {
-        const ramps = await atGetAll(TABLES.RAMP, {
-          filterByFormula: `FIND("${no.id}",ARRAYJOIN({Order},","))>0`,
-          fields: ['Plan Date']
-        }, false);
-        for (const rp of ramps) await atDelete(TABLES.RAMP, rp.id);
-      } catch(e) { logError(e, 'cascade delete RAMP for NO'); }
-
-      // Delete the legacy NO itself
-      try { await atDelete(TABLES.NAT_ORDERS, no.id); } catch(e) { logError(e, 'cascade delete NO'); }
-    }
-
-    // 4. Delete RAMP records linked to the INTL ORDER
+    // 3. Delete RAMP records linked to the INTL ORDER
     try {
       const intlRamps = await atGetAll(TABLES.RAMP, {
         filterByFormula: `FIND("${orderId}",ARRAYJOIN({Order},","))>0`,
@@ -794,10 +723,8 @@ async function _syncVeroiaSwitch(orderId, fields) {
       for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
     } catch(e) { console.warn('RAMP intl cleanup:', e); }
 
-    // 5. Reset flag on parent order
-    if (existingNL.length || legacyNO.length) {
-      await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
-    }
+    // 4. Reset flag on parent order
+    await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
     invalidateCache(TABLES.NAT_ORDERS);
     invalidateCache(TABLES.GL_LINES);
     invalidateCache(TABLES.NAT_LOADS);
@@ -817,7 +744,10 @@ async function _syncVeroiaSwitch(orderId, fields) {
       catch(e) { console.warn('NL Direct cleanup (switched to GRP ON):', e); }
     }
     // Sync GL lines anchored to auto-created NAT_ORDER
-    try { await _syncGrpFromIntl(orderId, fields); }
+    try {
+      await _syncGrpFromIntl(orderId, fields);
+      await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
+    }
     catch(e) { logError(e, 'intl GRP sync (VS+GRP)'); }
     invalidateCache(TABLES.NAT_LOADS);
     return; // finally block still runs (_syncingOrders.delete)
