@@ -1208,6 +1208,52 @@ async function submitIntlOrder(recId) {
       throw new Error('validation');
     }
 
+    // ── Pre-save check: warn if GRP order has Assigned GL lines ────
+    // Assigned GL = already part of a CL. Saving will update GL data
+    // but CL/NAT_LOADS must be refreshed manually in Pick Ups.
+    if (recId && fields['National Groupage'] && fields['Veroia Switch ']) {
+      try {
+        const grpCandidates = await atGetAll(TABLES.NAT_ORDERS, {
+          filterByFormula: `AND({National Groupage}=1,{Type}='Independent')`,
+          fields: ['Linked Order']
+        }, false);
+        const myNO = grpCandidates.find(r =>
+          (r.fields['Linked Order']||[]).some(l => (l?.id||l) === recId)
+        );
+        if (myNO) {
+          const assignedGLs = await atGetAll(TABLES.GL_LINES, {
+            filterByFormula: `AND(FIND("${myNO.id}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Assigned')`,
+            fields: ['Status','Loading Location']
+          }, false);
+          if (assignedGLs.length > 0) {
+            // Check if loading locations changed (requires CL restore)
+            const savedLocs = new Set();
+            for (let i=1;i<=10;i++) {
+              const v = fields[`Loading Location ${i}`];
+              if (v?.length) savedLocs.add(v[0]?.id||v[0]);
+            }
+            const assignedLocs = new Set(
+              assignedGLs.flatMap(r => r.fields['Loading Location']||[]).map(l=>l?.id||l)
+            );
+            const locsChanged = [...assignedLocs].some(id => !savedLocs.has(id)) ||
+                                [...savedLocs].some(id => !assignedLocs.has(id));
+            if (locsChanged) {
+              const ok = confirm(
+                `⚠️ ${assignedGLs.length} GL line(s) είναι ήδη Assigned σε Consolidated Load.\n\n` +
+                `Έχεις αλλάξει loading locations — πρέπει πρώτα να κάνεις RESTORE το CL στο Pick Ups,\n` +
+                `αλλιώς θα υπάρχουν ασυνέπειες.\n\n` +
+                `Θέλεις να συνεχίσεις παρόλα αυτά;`
+              );
+              if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
+            } else {
+              toast(`ℹ️ ${assignedGLs.length} GL lines είναι Assigned — το CL θα πρέπει να ανανεωθεί χειροκίνητα στο Pick Ups`, 'warn', 6000);
+            }
+          }
+        }
+      } catch(e) { console.warn('Pre-save CL check:', e); }
+    }
+    // ────────────────────────────────────────────────────────────
+
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
