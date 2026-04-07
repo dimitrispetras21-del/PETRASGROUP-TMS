@@ -1226,28 +1226,15 @@ async function submitIntlOrder(recId) {
             fields: ['Status','Loading Location']
           }, false);
           if (assignedGLs.length > 0) {
-            // Check if loading locations changed (requires CL restore)
-            const savedLocs = new Set();
-            for (let i=1;i<=10;i++) {
-              const v = fields[`Loading Location ${i}`];
-              if (v?.length) savedLocs.add(v[0]?.id||v[0]);
-            }
-            const assignedLocs = new Set(
-              assignedGLs.flatMap(r => r.fields['Loading Location']||[]).map(l=>l?.id||l)
+            // Always block — CL must be restored first before any edit
+            // (dates, pallets, or locations could all invalidate the existing CL)
+            showErrorToast(
+              `⛔ ${assignedGLs.length} GL line(s) είναι ήδη Assigned σε Consolidated Load.\n` +
+              `Κάνε πρώτα RESTORE το CL στο Pick Ups και μετά επεξεργάσου την παραγγελία.`,
+              'warn', 8000
             );
-            const locsChanged = [...assignedLocs].some(id => !savedLocs.has(id)) ||
-                                [...savedLocs].some(id => !assignedLocs.has(id));
-            if (locsChanged) {
-              const ok = confirm(
-                `⚠️ ${assignedGLs.length} GL line(s) είναι ήδη Assigned σε Consolidated Load.\n\n` +
-                `Έχεις αλλάξει loading locations — πρέπει πρώτα να κάνεις RESTORE το CL στο Pick Ups,\n` +
-                `αλλιώς θα υπάρχουν ασυνέπειες.\n\n` +
-                `Θέλεις να συνεχίσεις παρόλα αυτά;`
-              );
-              if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
-            } else {
-              toast(`ℹ️ ${assignedGLs.length} GL lines είναι Assigned — το CL θα πρέπει να ανανεωθεί χειροκίνητα στο Pick Ups`, 'warn', 6000);
-            }
+            btn.textContent = 'Save Changes'; btn.disabled = false;
+            return;
           }
         }
       } catch(e) { console.warn('Pre-save CL check:', e); }
