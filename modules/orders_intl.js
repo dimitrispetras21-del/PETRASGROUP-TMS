@@ -1208,9 +1208,7 @@ async function submitIntlOrder(recId) {
       throw new Error('validation');
     }
 
-    // ── Pre-save check: warn if GRP order has Assigned GL lines ────
-    // Assigned GL = already part of a CL. Saving will update GL data
-    // but CL/NAT_LOADS must be refreshed manually in Pick Ups.
+    // ── Pre-save check: auto-restore CL if GL lines are Assigned ───
     if (recId && fields['National Groupage'] && fields['Veroia Switch ']) {
       try {
         const grpCandidates = await atGetAll(TABLES.NAT_ORDERS, {
@@ -1223,21 +1221,44 @@ async function submitIntlOrder(recId) {
         if (myNO) {
           const assignedGLs = await atGetAll(TABLES.GL_LINES, {
             filterByFormula: `AND(FIND("${myNO.id}",ARRAYJOIN({Linked National Order},","))>0,{Status}='Assigned')`,
-            fields: ['Status','Loading Location']
+            fields: ['Status']
           }, false);
           if (assignedGLs.length > 0) {
-            // Always block — CL must be restored first before any edit
-            // (dates, pallets, or locations could all invalidate the existing CL)
-            showErrorToast(
-              `⛔ ${assignedGLs.length} GL line(s) είναι ήδη Assigned σε Consolidated Load.\n` +
-              `Κάνε πρώτα RESTORE το CL στο Pick Ups και μετά επεξεργάσου την παραγγελία.`,
-              'warn', 8000
+            const ok = confirm(
+              `⚠️ ${assignedGLs.length} GL line(s) ανήκουν ήδη σε Consolidated Load.\n\n` +
+              `Αν συνεχίσεις, το Consolidated Load θα γίνει αυτόματα RESTORE\n` +
+              `(διαγραφή CL + NAT_LOADS) και τα GL lines θα επιστρέψουν σε Unassigned.\n\n` +
+              `Θέλεις να συνεχίσεις;`
             );
-            btn.textContent = 'Save Changes'; btn.disabled = false;
-            return;
+            if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
+
+            // Auto-restore: delete CL + NL, set GL → Unassigned
+            toast('Auto-restore CL...', 'info');
+            for (const gl of assignedGLs) {
+              try {
+                const cls = await atGetAll(TABLES.CONS_LOADS, {
+                  filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+                  fields: ['Name']
+                }, false);
+                for (const cl of cls) {
+                  try {
+                    const nls = await atGetAll(TABLES.NAT_LOADS, {
+                      filterByFormula: `{Source Record}="${cl.id}"`, fields: ['Name']
+                    }, false);
+                    for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
+                  } catch(e) { console.warn('auto-restore NL delete:', e); }
+                  await atDelete(TABLES.CONS_LOADS, cl.id);
+                }
+              } catch(e) { console.warn('auto-restore CL delete:', e); }
+              await atPatch(TABLES.GL_LINES, gl.id, { 'Status': 'Unassigned' });
+            }
+            invalidateCache(TABLES.CONS_LOADS);
+            invalidateCache(TABLES.NAT_LOADS);
+            invalidateCache(TABLES.GL_LINES);
+            toast(`Restore ολοκληρώθηκε (${assignedGLs.length} GL → Unassigned)`, 'info');
           }
         }
-      } catch(e) { console.warn('Pre-save CL check:', e); }
+      } catch(e) { console.warn('Pre-save CL restore:', e); }
     }
     // ────────────────────────────────────────────────────────────
 
