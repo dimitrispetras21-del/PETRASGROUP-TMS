@@ -1225,9 +1225,9 @@ async function submitIntlOrder(recId) {
           }, false);
           if (assignedGLs.length > 0) {
             const ok = confirm(
-              `⚠️ ${assignedGLs.length} GL line(s) ανήκουν ήδη σε Consolidated Load.\n\n` +
-              `Αν συνεχίσεις, το Consolidated Load θα γίνει αυτόματα RESTORE\n` +
-              `(διαγραφή CL + NAT_LOADS) και τα GL lines θα επιστρέψουν σε Unassigned.\n\n` +
+              `⚠️ Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
+              `Αν αποθηκεύσεις αλλαγές, το φορτίο θα διαλυθεί αυτόματα\n` +
+              `ώστε να ξαναφτιαχτεί με τα νέα δεδομένα.\n\n` +
               `Θέλεις να συνεχίσεις;`
             );
             if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
@@ -1255,7 +1255,7 @@ async function submitIntlOrder(recId) {
             invalidateCache(TABLES.CONS_LOADS);
             invalidateCache(TABLES.NAT_LOADS);
             invalidateCache(TABLES.GL_LINES);
-            toast(`Restore ολοκληρώθηκε (${assignedGLs.length} GL → Unassigned)`, 'info');
+            toast('Το φορτίο διαλύθηκε — συνεχίζει η αποθήκευση...', 'info');
           }
         }
       } catch(e) { console.warn('Pre-save CL restore:', e); }
