@@ -950,16 +950,16 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
     // Get existing GL lines
     let existing;
     if (isIntlSide) {
-      // Fetch by Reference then JS-filter by Linked International Order
-      // (ARRAYJOIN on linked fields returns display names not IDs)
-      const byRef = await atGetAll(TABLES.GL_LINES, {
-        filterByFormula: `{Reference}="${ref}"`,
+      // Fetch ALL intl-linked GL lines, then JS-filter for this orderId
+      // Cannot use ARRAYJOIN filter (returns display names not IDs, not record IDs)
+      // Must NOT filter by Reference — Reference can change on order edit → causes duplicates
+      const allIntlGLs = await atGetAll(TABLES.GL_LINES, {
+        filterByFormula: `COUNTA({Linked International Order})>0`,
         fields: ['Loading Location','Status','Pallets','Linked International Order'],
       }, false);
-      existing = byRef.filter(r => {
+      existing = allIntlGLs.filter(r => {
         const links = r.fields['Linked International Order'] || [];
-        // Include: linked to this order OR unlinked (old records before migration)
-        return links.length === 0 || links.some(l => (l?.id || l) === orderId);
+        return links.some(l => (l?.id || l) === orderId);
       });
     } else {
       existing = await atGetAll(TABLES.GL_LINES, {
