@@ -26,7 +26,9 @@ function _clientName(f) {
 }
 function _cleanSummary(s) {
   if (!s) return '—';
-  return escapeHtml(s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—');
+  // Airtable formula wraps location names in quotes and joins with /
+  // Strip all quotes, clean up slashes, trim
+  return escapeHtml(s.replace(/["']+/g,'').replace(/\s*\/\s*/g, ' / ').replace(/\s*\/\s*$/, '').trim() || '—');
 }
 // Resolve location names from ORDER_STOPS for a given order + stop type
 function _stopsLocationSummary(orderId, stopType) {
@@ -252,7 +254,7 @@ function _oiRowHtml(r) {
   const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
-    <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Order Number']||r.id.slice(-6))}</strong></td>
+    <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
     <td>W${escapeHtml(f['Week Number']||'—')}</td>
     <td>${dirB}</td>
     <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
