@@ -493,11 +493,25 @@ async function _openModal(recId, f, _clientLabelOverride) {
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
 
-  // Count filled loading stops
+  // ── Try loading ORDER_STOPS (new normalized data) ──
+  let _orderStops = [];
+  if (isEdit) {
+    try { _orderStops = await stopsLoad(recId, F.STOP_PARENT_ORDER); } catch(e) { console.warn('stopsLoad:', e); }
+  }
+  const _hasStops = _orderStops.length > 0;
+  const _loadStops = _hasStops ? _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0)) : [];
+  const _unloadStops = _hasStops ? _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0)) : [];
+
+  // Count filled stops (from ORDER_STOPS or flat fields)
   let cntL = 1, cntU = 1;
-  for (let i=2;i<=10;i++) {
-    if (Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) cntL=i;
-    if (Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) cntU=i;
+  if (_hasStops) {
+    cntL = Math.max(1, _loadStops.length);
+    cntU = Math.max(1, _unloadStops.length);
+  } else {
+    for (let i=2;i<=10;i++) {
+      if (Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) cntL=i;
+      if (Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) cntU=i;
+    }
   }
   window._sCntL = cntL;
   window._sCntU = cntU;
@@ -516,9 +530,23 @@ async function _openModal(recId, f, _clientLabelOverride) {
     const pfx  = isL ? 'Loading' : 'Unloading';
     const main = isL ? 'Loading DateTime' : 'Delivery DateTime';
     const cnt  = isL ? cntL : cntU;
+    const stopsOfType = isL ? _loadStops : _unloadStops;
+
     let html = '';
-    for (let i=1;i<=cnt;i++) {
-      html += _stopRow(type, i, getLocId(pfx, i), f[`${pfx} Pallets ${i}`], getDt(pfx, main, i));
+    if (_hasStops && stopsOfType.length) {
+      // Read from ORDER_STOPS
+      for (let i = 0; i < stopsOfType.length; i++) {
+        const sf = stopsOfType[i].fields;
+        const locArr = sf[F.STOP_LOCATION];
+        const locId = Array.isArray(locArr) ? locArr[0] : '';
+        const dt = sf[F.STOP_DATETIME] ? toLocalDate(sf[F.STOP_DATETIME]) : '';
+        html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt);
+      }
+    } else {
+      // Fallback: read from flat fields (old orders)
+      for (let i=1;i<=cnt;i++) {
+        html += _stopRow(type, i, getLocId(pfx, i), f[`${pfx} Pallets ${i}`], getDt(pfx, main, i));
+      }
     }
     return html;
   };
@@ -1158,6 +1186,13 @@ async function submitIntlOrder(recId) {
       throw new Error('validation');
     }
 
+    // ── Pallets mismatch warning (non-blocking) ──
+    const _loadPals = Array.from({length:10}, (_,i)=>parseFloat(document.getElementById('pal_l_'+(i+1))?.value)||0).reduce((a,b)=>a+b,0);
+    const _unloadPals = Array.from({length:10}, (_,i)=>parseFloat(document.getElementById('pal_u_'+(i+1))?.value)||0).reduce((a,b)=>a+b,0);
+    if (_loadPals > 0 && _unloadPals > 0 && _loadPals !== _unloadPals) {
+      toast(`⚠️ Loading pallets (${_loadPals}) ≠ Unloading pallets (${_unloadPals})`, 'warn', 5000);
+    }
+
     // ── Pre-save check: auto-restore CL if GL lines are Assigned ───
     if (recId && fields['National Groupage'] && fields['Veroia Switch']) {
       try {
@@ -1218,6 +1253,36 @@ async function submitIntlOrder(recId) {
 
     // Sync Veroia Switch → NAT_LOADS (direct, no intermediate NAT_ORDERS)
     const savedOrderId = recId || result.id;
+
+    // ── Dual-write: save ORDER_STOPS sub-records ──
+    try {
+      const _formStops = [];
+      for (let i = 1; i <= 10; i++) {
+        const locId = document.getElementById('lv_l_'+i)?.value;
+        if (!locId) { if (i > 1) break; continue; }
+        _formStops.push({
+          stopNumber: i, stopType: 'Loading', locationId: locId,
+          pallets: parseFloat(document.getElementById('pal_l_'+i)?.value) || 0,
+          dateTime: document.getElementById('dt_l_'+i)?.value || null,
+        });
+      }
+      for (let i = 1; i <= 10; i++) {
+        const locId = document.getElementById('lv_u_'+i)?.value;
+        if (!locId) { if (i > 1) break; continue; }
+        _formStops.push({
+          stopNumber: i, stopType: 'Unloading', locationId: locId,
+          pallets: parseFloat(document.getElementById('pal_u_'+i)?.value) || 0,
+          dateTime: document.getElementById('dt_u_'+i)?.value || null,
+        });
+      }
+      if (_formStops.length) {
+        await stopsSave(savedOrderId, _formStops, F.STOP_PARENT_ORDER);
+      }
+    } catch(e) {
+      console.warn('ORDER_STOPS dual-write error (non-fatal):', e);
+      toast('Stops sync warning: '+e.message, 'warn', 4000);
+    }
+
     try {
       toast('Syncing VS national load...', 'info');
       const rec = await atGetOne(TABLES.ORDERS, savedOrderId);

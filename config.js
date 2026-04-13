@@ -37,6 +37,8 @@ const TABLES = {
   MAINT_REQ:     'tbl3vhUmzKDWhJynR',
   NAT_LOADS:     'tblVW42cZnfC47gTb',
   PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',
+  ORDER_STOPS:   'tblaeY5QOHAS1gyE8',
+  RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
 };
 
 // ── Airtable field name constants ──────────────────────────────────────
@@ -188,6 +190,44 @@ const F = {
 
   // ── MAINTENANCE ──────────────────────────────────────────────────
   MAINT_STATUS:     'Status',
+
+  // ── ORDER_STOPS ──────────────────────────────────────────────────
+  STOP_LABEL:           'Stop Label',
+  STOP_PARENT_ORDER:    'Parent Order',
+  STOP_PARENT_NAT:      'Parent Nat Order',
+  STOP_NUMBER:          'Stop Number',
+  STOP_TYPE:            'Stop Type',
+  STOP_LOCATION:        'Location',
+  STOP_DATETIME:        'DateTime',
+  STOP_PALLETS:         'Pallets',
+  STOP_CLIENT:          'Client at Stop',
+  STOP_TEMP:            'Temperature',
+  STOP_REF:             'Reference',
+  STOP_GOODS:           'Goods',
+  STOP_NOTES:           'Notes',
+  STOP_PALLET_SHEET:    'Pallet Sheet',
+  STOP_PALLET_SHEET_OK: 'Pallet Sheet OK',
+  STOP_PALLETS_LOADED:  'Pallets Loaded',
+  STOP_PALLETS_EXCHANGED:'Pallets Exchanged',
+
+  // ── RAMP_EVENTS ──────────────────────────────────────────────────
+  RE_SOURCE_STOP:   'Source Stop',
+  RE_SOURCE_ORDER:  'Source Order',
+  RE_PLAN_DATE:     'Plan Date',
+  RE_TIME_SLOT:     'Time Slot',
+  RE_RAMP_NUMBER:   'Ramp Number',
+  RE_DIRECTION:     'Direction',
+  RE_STATUS:        'Status',
+  RE_TRUCK:         'Truck',
+  RE_DRIVER:        'Driver',
+  RE_PALLETS:       'Pallets',
+  RE_CLIENT:        'Client',
+  RE_LOC_NAME:      'Location Name',
+  RE_GOODS:         'Goods',
+  RE_TEMPERATURE:   'Temperature',
+  RE_NOTES:         'Notes',
+  RE_IS_VS:         'Is Veroia Switch',
+  RE_RAMP_CAT:      'Ramp Category',
 
   // ── API meta fields ──────────────────────────────────────────────
   LAST_MODIFIED:    'Last Modified',
