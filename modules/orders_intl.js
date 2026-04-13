@@ -1199,6 +1199,11 @@ async function submitIntlOrder(recId) {
       if (locId) _formStops.push({ stopNumber: i, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
 
+    // Auto-create Cross-dock stop for Veroia Switch orders
+    if (ck('f_VeroiaSwitch')) {
+      _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: 0, dateTime: null });
+    }
+
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
     const _firstLoad = _formStops.find(s => s.stopType === 'Loading');
     const _firstUnload = _formStops.find(s => s.stopType === 'Unloading');
