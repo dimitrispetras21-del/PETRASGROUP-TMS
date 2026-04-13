@@ -1037,35 +1037,47 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
       return;
     }
 
-    // Build target stops: NO Pickup Locations + ORDERS pallets
+    // Build target stops from ORDER_STOPS (sole source of truth)
     const nf = natFields || {};
     const targets = [];
+    // Try NAT_ORDERS Pickup Locations first (natl side)
     for (let i=1; i<=10; i++) {
-      // Use NO Pickup Location N (already mapped from ORDERS Loading Location)
       const puArr = nf[`Pickup Location ${i}`];
-      const pal   = orderFields[`Loading Pallets ${i}`] || orderFields[`Unloading Pallets ${i}`];
+      const pal   = nf[`Loading Pallets ${i}`] || nf['Pallets'];
       if (!puArr?.length) break;
-      if (!pal) continue;
       const locId = _lid(puArr[0]);
       if (locId) targets.push({locId, pal: parseInt(pal)||0});
     }
-    // Fallback: use ORDERS Loading Locations directly if NO has no Pickup Locs
-    if (!targets.length) {
-      for (let i=1; i<=10; i++) {
-        const locArr = orderFields[`Loading Location ${i}`];
-        const pal    = orderFields[`Loading Pallets ${i}`];
-        if (!locArr?.length || !pal) break;
-        const locId = _lid(locArr[0]);
-        if (locId) targets.push({locId, pal: parseInt(pal)||0});
-      }
+    // Fallback: read from ORDER_STOPS (INTL side — flat fields no longer written)
+    let _glStops = null;
+    if (!targets.length && isIntlSide) {
+      try {
+        _glStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
+        const loadStops = _glStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+          .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+        loadStops.forEach(s => {
+          const loc = (s.fields[F.STOP_LOCATION]||[])[0];
+          if (loc) targets.push({locId: loc, pal: s.fields[F.STOP_PALLETS]||0});
+        });
+      } catch(e) { console.warn('GL sync: ORDER_STOPS load failed', e); }
     }
     if (!targets.length) return;
 
-    // Delivery location
-    const delLocArr = dir==='Import'
-      ? orderFields['Unloading Location 1']
-      : null; // Export → Veroia cross-dock
-    const delLoc = delLocArr?.length ? _lid(delLocArr[0]) : 'recJucKOhC1zh4IP3';
+    // Delivery location from ORDER_STOPS (for Import) or Veroia (for Export)
+    let delLoc = F.VEROIA_LOC; // default for Export
+    if (dir === 'Import') {
+      if (isIntlSide) {
+        try {
+          if (!_glStops) _glStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
+          const unloadStops = _glStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+            .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+          if (unloadStops.length) delLoc = (unloadStops[0].fields[F.STOP_LOCATION]||[])[0] || F.VEROIA_LOC;
+        } catch(e) { /* keep default */ }
+      } else {
+        const delLocArr = nf['Delivery Location 1'];
+        if (delLocArr?.length) delLoc = _lid(delLocArr[0]) || F.VEROIA_LOC;
+      }
+    }
 
     // locId → existing GL record id
     const existMap = {};

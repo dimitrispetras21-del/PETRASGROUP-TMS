@@ -906,7 +906,16 @@ async function deleteNatlOrder(recId) {
       }
     } catch(e) { console.warn('Ramp cleanup:', e); }
 
-    // 4. Delete the NAT_ORDER itself (soft delete — saved to trash)
+    // 4. Delete ORDER_STOPS linked to this NO
+    try {
+      const natStops = await stopsLoad(recId, F.STOP_PARENT_NAT);
+      for (const s of natStops) {
+        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { console.warn('Stop delete:', e); }
+      }
+      if (natStops.length) console.log(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
+    } catch(e) { console.warn('ORDER_STOPS cleanup:', e); }
+
+    // 5. Delete the NAT_ORDER itself (soft delete — saved to trash)
     await atSoftDelete(TABLES.NAT_ORDERS, recId);
 
     // Invalidate caches
