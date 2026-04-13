@@ -1226,6 +1226,18 @@ async function submitIntlOrder(recId) {
     if (_firstUnload?.dateTime) fields['Delivery DateTime'] = _firstUnload.dateTime;
     // Total Pallets is a computed field in Airtable — do not write to it
 
+    // Write flat Location fields so Airtable formulas (Loading Summary, Order Number) work
+    const _loadStops = _formStops.filter(s => s.stopType === 'Loading').sort((a,b) => a.stopNumber - b.stopNumber);
+    const _unloadStops = _formStops.filter(s => s.stopType === 'Unloading').sort((a,b) => a.stopNumber - b.stopNumber);
+    for (let i = 0; i < 10; i++) {
+      const ls = _loadStops[i];
+      fields[`Loading Location ${i+1}`]   = ls?.locationId ? [ls.locationId] : null;
+      fields[`Loading Pallets ${i+1}`]    = ls?.pallets || null;
+      const us = _unloadStops[i];
+      fields[`Unloading Location ${i+1}`] = us?.locationId ? [us.locationId] : null;
+      fields[`Unloading Pallets ${i+1}`]  = us?.pallets || null;
+    }
+
     // Validate required fields
     const _vErrors = [];
     if (!fields['Direction'])            _vErrors.push('Direction is required');
