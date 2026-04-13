@@ -37,44 +37,71 @@ async function openPalletUpload(orderId) {
   }
   const f = PU.order.fields;
 
-  // Build tabs from Loading Location 1-10
+  // Build tabs — try ORDER_STOPS first, fallback to flat fields
   PU.tabs = [];
   const letters = 'abcdefghij';
-  let loadingCount = 0;
-  for (let i = 1; i <= 10; i++) {
-    const locField = f[`Loading Location ${i}`];
-    const locId = Array.isArray(locField) ? locField[0] : null;
-    if (!locId) continue;
-    loadingCount++;
-    const locName = await _puLocName(locId);
-    PU.tabs.push({
-      idx: PU.tabs.length,
-      label: loadingCount > 1 ? `Sheet 1${letters[loadingCount-1]}` : 'Sheet 1',
-      locId,
-      locName: locName || `Location ${i}`,
-      stopType: 'Loading',
-      done: false,
-    });
-  }
+  let _puStops = [];
+  try {
+    _puStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
+  } catch(e) { console.warn('PU: stopsLoad failed, using flat fields', e); }
 
-  // Add crossdock tab if Veroia Switch
-  if (f['Veroia Switch']) {
-    PU.tabs.push({
-      idx: PU.tabs.length,
-      label: 'Sheet 2',
-      locId: null,
-      locName: 'Veroia Crossdock',
-      stopType: 'Crossdock',
-      done: false,
-    });
-  }
+  if (_puStops.length) {
+    // ORDER_STOPS path: build tabs from stop records
+    const loadStops = _puStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+    const crossDockStops = _puStops.filter(s => s.fields[F.STOP_TYPE] === 'Cross-dock');
 
-  // Check existing upload status
-  if (f['Pallet Sheet 1 Uploaded']) {
-    PU.tabs.filter(t => t.stopType === 'Loading').forEach(t => t.done = true);
-  }
-  if (f['Pallet Sheet 2 Uploaded']) {
-    PU.tabs.filter(t => t.stopType === 'Crossdock').forEach(t => t.done = true);
+    for (let i = 0; i < loadStops.length; i++) {
+      const sf = loadStops[i].fields;
+      const locArr = sf[F.STOP_LOCATION];
+      const locId = Array.isArray(locArr) ? locArr[0] : null;
+      const locName = locId ? await _puLocName(locId) : `Stop ${i+1}`;
+      PU.tabs.push({
+        idx: PU.tabs.length,
+        label: loadStops.length > 1 ? `Sheet 1${letters[i]}` : 'Sheet 1',
+        locId, locName, stopType: 'Loading', done: !!sf[F.STOP_PALLET_SHEET_OK],
+        stopRecId: loadStops[i].id,
+      });
+    }
+    // Cross-dock tabs
+    for (const cd of crossDockStops) {
+      PU.tabs.push({
+        idx: PU.tabs.length, label: 'Sheet 2',
+        locId: null, locName: 'Veroia Crossdock', stopType: 'Crossdock',
+        done: !!cd.fields[F.STOP_PALLET_SHEET_OK], stopRecId: cd.id,
+      });
+    }
+    // If VS order has no cross-dock stop yet, add placeholder tab
+    if (f['Veroia Switch'] && !crossDockStops.length) {
+      PU.tabs.push({ idx: PU.tabs.length, label: 'Sheet 2', locId: null,
+        locName: 'Veroia Crossdock', stopType: 'Crossdock', done: false });
+    }
+  } else {
+    // Fallback: flat fields (old orders without ORDER_STOPS)
+    let loadingCount = 0;
+    for (let i = 1; i <= 10; i++) {
+      const locField = f[`Loading Location ${i}`];
+      const locId = Array.isArray(locField) ? locField[0] : null;
+      if (!locId) continue;
+      loadingCount++;
+      const locName = await _puLocName(locId);
+      PU.tabs.push({
+        idx: PU.tabs.length,
+        label: loadingCount > 1 ? `Sheet 1${letters[loadingCount-1]}` : 'Sheet 1',
+        locId, locName: locName || `Location ${i}`, stopType: 'Loading', done: false,
+      });
+    }
+    if (f['Veroia Switch']) {
+      PU.tabs.push({ idx: PU.tabs.length, label: 'Sheet 2', locId: null,
+        locName: 'Veroia Crossdock', stopType: 'Crossdock', done: false });
+    }
+    // Check existing upload status (flat fields path)
+    if (f['Pallet Sheet 1 Uploaded']) {
+      PU.tabs.filter(t => t.stopType === 'Loading').forEach(t => t.done = true);
+    }
+    if (f['Pallet Sheet 2 Uploaded']) {
+      PU.tabs.filter(t => t.stopType === 'Crossdock').forEach(t => t.done = true);
+    }
   }
 
   // Load partners from ref cache

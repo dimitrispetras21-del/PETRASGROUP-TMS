@@ -133,9 +133,29 @@ async function _rampAutoSync() {
   const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
     'Loading Location 1','Loading Location 2','Loading Location 3',
-    'Unloading Location 1','Unloading Location 2','Unloading Location 3'];
+    'Unloading Location 1','Unloading Location 2','Unloading Location 3',
+    'ORDER STOPS'];
 
   const allIntl = await atGetAll(TABLES.ORDERS, {filterByFormula:intlCombinedFilter, fields:intlFields}, false).catch(()=>[]);
+
+  // Batch-fetch ORDER_STOPS for all fetched orders (via reverse-link IDs)
+  const allStopIds = allIntl.flatMap(r => r.fields['ORDER STOPS'] || []);
+  let allStopsMap = {};
+  if (allStopIds.length) {
+    try {
+      const stopFilter = `OR(${allStopIds.slice(0, 100).map(id => `RECORD_ID()="${id}"`).join(',')})`;
+      const allStops = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: stopFilter }, false);
+      // Group by parent order ID
+      for (const s of allStops) {
+        const parentId = (s.fields[F.STOP_PARENT_ORDER] || [])[0];
+        if (!parentId) continue;
+        if (!allStopsMap[parentId]) allStopsMap[parentId] = [];
+        allStopsMap[parentId].push(s);
+      }
+    } catch(e) { console.warn('Ramp: ORDER_STOPS batch fetch failed:', e); }
+  }
+  // Attach stops to order records for _rampBuildRecord
+  allIntl.forEach(r => { r._stops = allStopsMap[r.id] || []; });
 
   // Split results client-side into the 4 categories
   const vfExp = allIntl.filter(r => !r.fields['Veroia Switch'] && r.fields['Direction']==='Export');
@@ -335,10 +355,32 @@ function _rampBuildRecord(orderRec, type, category, date, isVS) {
   if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
   if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
   if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-  // Resolve locations — try linked IDs first, fallback to Summary fields
-  rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5) || (f['Loading Summary']||'').split(',')[0].trim();
-  rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5) || (f['Delivery Summary']||'').split(',')[0].trim();
+
+  // Resolve locations — try ORDER_STOPS first, then flat fields, then Summary
+  const stops = orderRec._stops || [];
+  if (stops.length) {
+    rec['Loading Points'] = _rampResolveFromStops(stops, 'Loading');
+    rec['Delivery Points'] = _rampResolveFromStops(stops, 'Unloading');
+  } else {
+    rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5) || (f['Loading Summary']||'').split(',')[0].trim();
+    rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5) || (f['Delivery Summary']||'').split(',')[0].trim();
+  }
   return rec;
+}
+
+/** Resolve location names from ORDER_STOPS records */
+function _rampResolveFromStops(stops, stopType) {
+  return stops
+    .filter(s => s.fields[F.STOP_TYPE] === stopType)
+    .sort((a, b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0))
+    .map(s => {
+      const locArr = s.fields[F.STOP_LOCATION];
+      const id = Array.isArray(locArr) ? locArr[0] : null;
+      if (!id) return '';
+      const loc = RAMP.locs.find(r => r.id === id);
+      return loc ? (loc.fields['Name'] || loc.fields['City'] || '') : '';
+    })
+    .filter(Boolean).join(' / ') || '';
 }
 
 function _rampResolveStops(f, prefix, max) {

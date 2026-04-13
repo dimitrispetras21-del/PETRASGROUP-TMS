@@ -141,7 +141,9 @@ const AT_TOKEN='patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f
 const AT_BASE='appElT5CQV6JQvym8';
 const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_TRUCKS='tblEAPExIAjiA3asD',T_TRAILERS='tblDcrqRJXzPrtYLm',
-      T_DRIVERS='tbl7UGmYhc2Y82pPs',T_LOCS='tblxu8DRfTQOFRCzS';
+      T_DRIVERS='tbl7UGmYhc2Y82pPs',T_LOCS='tblxu8DRfTQOFRCzS',
+      T_STOPS='tblaeY5QOHAS1gyE8';
+var orderStops=[];
 const DISPATCHER='Δ. Πέτρας';
 
 const params=new URLSearchParams(window.location.search);
@@ -198,21 +200,38 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
 
 function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Loading DateTime']||'';
-  var od=f;
   if(veroiaSwitch&&isExport){
     var vDt=dt?new Date(new Date(dt).getTime()+86400000).toISOString():'';
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
   }
+  // Try ORDER_STOPS first
+  var loadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Loading'})
+    .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+  if(loadStops.length){
+    var html='';
+    for(var si=0;si<loadStops.length;si++){
+      var sf=loadStops[si].fields;
+      var loc=resolveLoc(sf['Location']);
+      if(!loc)continue;
+      var stopDt=sf['DateTime']||dt;
+      html+=buildCard(si+1,loc,'loading',stopDt,sf['Pallets']||'',
+        fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
+        f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
+        sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
+    }
+    if(html)return html;
+  }
+  // Fallback: flat fields
   var html='',count=0;
   for(var i=1;i<=10;i++){
-    var lf=od['Loading Location '+i];if(!lf)continue;
+    var lf=f['Loading Location '+i];if(!lf)continue;
     var loc=resolveLoc(lf);if(!loc)continue;count++;
-    var stopDt=i===1?dt:(od['Loading DateTime '+i]||dt);
-    html+=buildCard(count,loc,'loading',stopDt,fv(od['Loading Pallets '+i]),
-      fv(od['Pallet Type']),count===1,fv(od['Goods']),
-      od['Pallet Exchange']?'YES':'NO',od['Gross Weight kg'],od['Temperature °C'],od['Refrigerator Mode']);
+    var stopDt=i===1?dt:(f['Loading DateTime '+i]||dt);
+    html+=buildCard(count,loc,'loading',stopDt,fv(f['Loading Pallets '+i]),
+      fv(f['Pallet Type']),count===1,fv(f['Goods']),
+      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
   }
   if(count>0)return html;
   return buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,
@@ -227,6 +246,22 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'delivery',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
   }
+  // Try ORDER_STOPS first
+  var unloadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Unloading'})
+    .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+  if(unloadStops.length){
+    var html='';
+    for(var si=0;si<unloadStops.length;si++){
+      var sf=unloadStops[si].fields;
+      var loc=resolveLoc(sf['Location']);
+      if(!loc)continue;
+      var stopDt=sf['DateTime']||dt;
+      html+=buildCard(si+1,loc,'delivery',stopDt,sf['Pallets']||'',
+        fv(f['Pallet Type']),false,'','','','','');
+    }
+    if(html)return html;
+  }
+  // Fallback: flat fields
   var html='',count=0;
   for(var i=1;i<=10;i++){
     var lf=f['Unloading Location '+i];if(!lf)continue;
@@ -262,6 +297,14 @@ async function loadAll(){
     ]);
     allPartners=partners;allTrucks=trucks;allTrailers=trailers;
     allDrivers=drivers;allLocations=locs;
+    // Fetch ORDER_STOPS via reverse-link field
+    var stopIds=orderR.fields['ORDER STOPS']||[];
+    if(stopIds.length){
+      try{
+        var stopFilter='OR('+stopIds.map(function(id){return'RECORD_ID()="'+id+'"'}).join(',')+')';
+        orderStops=await atFetch(T_STOPS,'&filterByFormula='+encodeURIComponent(stopFilter));
+      }catch(e){console.warn('print: ORDER_STOPS fetch failed',e);}
+    }
     generatePDF(orderR);
   }catch(err){
     document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+err.message+'</span>';

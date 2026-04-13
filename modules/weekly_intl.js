@@ -1029,7 +1029,7 @@ async function _wiAutoMatch() {
   const locMap = {};
   locs.forEach(r => { locMap[r.id] = { lat: r.fields['Latitude'], lng: r.fields['Longitude'], name: r.fields['Name']||'', country: r.fields['Country']||'' }; });
 
-  // Get location coords from order's linked record
+  // Get location coords from order's linked record (flat field)
   const _getCoords = (fields, locField) => {
     const arr = fields[locField];
     const id = Array.isArray(arr) ? arr[0] : arr;
@@ -1038,13 +1038,58 @@ async function _wiAutoMatch() {
     return (loc.lat && loc.lng) ? loc : null;
   };
 
+  // Batch-fetch ORDER_STOPS for all orders to get accurate stop locations
+  const allOrders = [...data.exports, ...data.imports];
+  const allStopIds = allOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
+  const stopsByOrder = {}; // orderId → {Loading: [locId,...], Unloading: [locId,...]}
+  if (allStopIds.length) {
+    try {
+      const chunks = [];
+      for (let i = 0; i < allStopIds.length; i += 100) chunks.push(allStopIds.slice(i, i + 100));
+      const allStops = [];
+      for (const chunk of chunks) {
+        const f = `OR(${chunk.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+        const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f }, false);
+        allStops.push(...recs);
+      }
+      for (const s of allStops) {
+        const pid = (s.fields[F.STOP_PARENT_ORDER] || [])[0];
+        if (!pid) continue;
+        if (!stopsByOrder[pid]) stopsByOrder[pid] = { Loading: [], Unloading: [] };
+        const type = s.fields[F.STOP_TYPE];
+        if (type === 'Loading' || type === 'Unloading') {
+          stopsByOrder[pid][type].push(s);
+        }
+      }
+      // Sort each by stop number
+      for (const pid of Object.keys(stopsByOrder)) {
+        stopsByOrder[pid].Loading.sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
+        stopsByOrder[pid].Unloading.sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
+      }
+    } catch (e) { console.warn('Auto-match: ORDER_STOPS fetch failed, using flat fields', e); }
+  }
+
+  // Get coords: try ORDER_STOPS first, fallback to flat field
+  const _getCoordsEx = (orderId, fields, stopType, flatField) => {
+    const stops = stopsByOrder[orderId]?.[stopType];
+    if (stops && stops.length) {
+      const locArr = stops[0].fields[F.STOP_LOCATION];
+      const locId = Array.isArray(locArr) ? locArr[0] : null;
+      if (locId && locMap[locId]) {
+        const loc = locMap[locId];
+        if (loc.lat && loc.lng) return loc;
+      }
+    }
+    return _getCoords(fields, flatField);
+  };
+
   // Score each export-import pair
   const suggestions = [];
   for (const expRow of expRows) {
     const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
     if (!exp) continue;
     const ef = exp.fields;
-    const expDelLoc = _getCoords(ef, 'Unloading Location 1');
+    const expDelLoc = _getCoordsEx(exp.id, ef, 'Unloading', 'Unloading Location 1');
     const expDelDate = toLocalDate(ef['Delivery DateTime']);
 
     let bestImp = null, bestScore = 0, bestDist = Infinity;
@@ -1057,7 +1102,7 @@ async function _wiAutoMatch() {
       let dist = Infinity;
 
       // DISTANCE: export delivery → import loading (max 70 points — primary factor)
-      const impLoadLoc = _getCoords(imf, 'Loading Location 1');
+      const impLoadLoc = _getCoordsEx(imp.id, imf, 'Loading', 'Loading Location 1');
       if (expDelLoc && impLoadLoc) {
         dist = _wiHaversine(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
         if (dist <= 50)       score += 70;  // <50km = same city
