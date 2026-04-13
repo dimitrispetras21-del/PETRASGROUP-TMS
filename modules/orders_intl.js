@@ -1202,17 +1202,21 @@ async function submitIntlOrder(recId) {
     // Auto-create Cross-dock stop for Veroia Switch orders
     if (ck('f_VeroiaSwitch')) {
       const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
-      // Cross-dock DateTime: Export → Loading +8h, Import → Unloading -8h
-      let _cdDt = null;
+      // Cross-dock Date rule: Export = Loading date, Import = Delivery - 1 day
+      let _cdDate = null;
       const _dir = fields['Direction'];
       if (_dir === 'Export') {
         const ld = _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
-        if (ld) _cdDt = new Date(new Date(ld.dateTime).getTime() + 8*3600000).toISOString();
+        if (ld) _cdDate = _vsToLocalDate(ld.dateTime);
       } else {
         const ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
-        if (ud) _cdDt = new Date(new Date(ud.dateTime).getTime() - 8*3600000).toISOString();
+        if (ud) _cdDate = _vsAddDays(_vsToLocalDate(ud.dateTime), -1);
       }
+      const _cdDt = _cdDate ? _cdDate + 'T12:00:00.000Z' : null;
+      fields['Cross-dock Date'] = _cdDt;
       _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: _cdPal, dateTime: _cdDt, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+    } else {
+      fields['Cross-dock Date'] = null;
     }
 
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
