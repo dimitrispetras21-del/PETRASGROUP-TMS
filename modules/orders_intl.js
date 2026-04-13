@@ -1112,20 +1112,25 @@ async function submitIntlOrder(recId) {
     if (clientId) fields['Client'] = [clientId];
 
     // ── Collect stops from form (ORDER_STOPS is the sole write target) ──
+    // Order-level fields inherited by every stop
+    const _stopRef   = val('f_Reference');
+    const _stopGoods = val('f_Goods');
+    const _stopTemp  = val('f_Temp');
+
     const _formStops = [];
     for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_l_'+i)?.value;
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
       if (!locId && !pal && !dt) { if (i > 1) break; continue; }
-      if (locId) _formStops.push({ stopNumber: i, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null });
+      if (locId) _formStops.push({ stopNumber: i, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
     for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_u_'+i)?.value;
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
       if (!locId && !pal && !dt) { if (i > 1) break; continue; }
-      if (locId) _formStops.push({ stopNumber: i, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null });
+      if (locId) _formStops.push({ stopNumber: i, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
 
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)

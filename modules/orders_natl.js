@@ -557,8 +557,9 @@ async function submitNatlOrder(recId) {
     // ── Save ORDER_STOPS for national order ──
     try {
       const _natStops = [];
-      if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || 0, dateTime: fields['Loading DateTime'] || null });
-      if (delivId)  _natStops.push({ stopNumber: 1, stopType: 'Unloading', locationId: delivId, pallets: pallets || 0, dateTime: fields['Delivery DateTime'] || null });
+      const _sRef = fields['Reference'] || null, _sGoods = fields['Goods'] || null, _sTemp = fields['Temperature °C'] ?? null;
+      if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || 0, dateTime: fields['Loading DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
+      if (delivId)  _natStops.push({ stopNumber: 1, stopType: 'Unloading', locationId: delivId, pallets: pallets || 0, dateTime: fields['Delivery DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
       if (_natStops.length) await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT);
     } catch(e) { console.warn('NAT ORDER_STOPS save:', e); }
 
