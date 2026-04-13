@@ -829,24 +829,23 @@ async function _syncVeroiaSwitch(orderId, fields) {
     } catch(e) { console.warn('Legacy NO cleanup:', e); }
   }
 
-  // Build location arrays
+  // Build location arrays from ORDER_STOPS (sole source of truth)
   const pickupLocs = [];
   const delivLocs  = [];
 
+  const _vsStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
   if (direction === 'Export') {
     // ΑΝΟΔΟΣ: supplier(s) → Veroia
-    for (let i = 1; i <= 10; i++) {
-      const val = fields['Loading Location '+i];
-      if (val && val.length) { const id = _lid(val[0]); if (id) pickupLocs.push(id); }
-    }
+    _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0))
+      .forEach(s => { const loc = (s.fields[F.STOP_LOCATION]||[])[0]; if (loc) pickupLocs.push(loc); });
     delivLocs.push(F.VEROIA_LOC);
   } else {
     // ΚΑΘΟΔΟΣ: Veroia → client(s)
     pickupLocs.push(F.VEROIA_LOC);
-    for (let i = 1; i <= 10; i++) {
-      const val = fields['Unloading Location '+i];
-      if (val && val.length) { const id = _lid(val[0]); if (id) delivLocs.push(id); }
-    }
+    _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0))
+      .forEach(s => { const loc = (s.fields[F.STOP_LOCATION]||[])[0]; if (loc) delivLocs.push(loc); });
   }
 
   // Calculate National leg dates
@@ -1168,9 +1167,9 @@ async function submitIntlOrder(recId) {
 
     // ── Collect stops from form (ORDER_STOPS is the sole write target) ──
     // Order-level fields inherited by every stop
-    const _stopRef   = val('f_Reference');
-    const _stopGoods = val('f_Goods');
-    const _stopTemp  = val('f_Temp');
+    const _stopRef   = sv('f_Reference');
+    const _stopGoods = sv('f_Goods');
+    const _stopTemp  = sv('f_Temp');
 
     const _formStops = [];
     for (let i = 1; i <= 10; i++) {

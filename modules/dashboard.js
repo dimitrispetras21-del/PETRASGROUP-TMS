@@ -25,6 +25,23 @@ async function renderDashboard() {
       atGet(TABLES.NAT_LOADS),
     ]);
 
+    // Batch fetch ORDER_STOPS for deadheading calc
+    const _dashStopsByOrder = {};
+    const _dashStopIds = orders.flatMap(r => r.fields['ORDER STOPS'] || []);
+    if (_dashStopIds.length) {
+      try {
+        for (let b = 0; b < _dashStopIds.length; b += 90) {
+          const batch = _dashStopIds.slice(b, b + 90);
+          const ff = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+          const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: ff }, false);
+          recs.forEach(sr => {
+            const pid = (sr.fields[F.STOP_PARENT_ORDER] || [])[0];
+            if (pid) { if (!_dashStopsByOrder[pid]) _dashStopsByOrder[pid] = []; _dashStopsByOrder[pid].push(sr); }
+          });
+        }
+      } catch(e) { console.warn('Dashboard ORDER_STOPS fetch:', e); }
+    }
+
     // Lookup maps (dashboard-local, for computed metrics that need raw fields)
     const truckMap = {};
     trucks.forEach(t => { truckMap[t.id] = t.fields; });
@@ -89,18 +106,18 @@ async function renderDashboard() {
       if (!expTruck) return;
       const matchedImp = weekImports.find(imp => getLinkId(imp.fields['Truck']) === expTruck);
       if (!matchedImp) return;
-      // Export last unloading location
+      // Export last unloading location (from ORDER_STOPS)
       let expLocId = null;
-      for (let i=10; i>=1; i--) {
-        const ul = exp.fields[`Unloading Location ${i}`];
-        if (ul) { expLocId = Array.isArray(ul) ? ul[0] : ul; break; }
-      }
-      // Import first loading location
+      const expUnloads = (_dashStopsByOrder[exp.id] || [])
+        .filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+        .sort((a,b) => (b.fields[F.STOP_NUMBER]||0) - (a.fields[F.STOP_NUMBER]||0));
+      if (expUnloads.length) expLocId = (expUnloads[0].fields[F.STOP_LOCATION] || [])[0] || null;
+      // Import first loading location (from ORDER_STOPS)
       let impLocId = null;
-      for (let i=1; i<=10; i++) {
-        const ll = matchedImp.fields[`Loading Location ${i}`];
-        if (ll) { impLocId = Array.isArray(ll) ? ll[0] : ll; break; }
-      }
+      const impLoads = (_dashStopsByOrder[matchedImp.id] || [])
+        .filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+        .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+      if (impLoads.length) impLocId = (impLoads[0].fields[F.STOP_LOCATION] || [])[0] || null;
       if (expLocId && impLocId && locCoords[expLocId] && locCoords[impLocId]) {
         const d = _dashHaversine(locCoords[expLocId].lat, locCoords[expLocId].lng, locCoords[impLocId].lat, locCoords[impLocId].lng);
         deadKmList.push(Math.round(d));
