@@ -66,6 +66,46 @@ function _wiFmtFull(s){
 function _wiClean(s){return escapeHtml((s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim());}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
+// Batch fetch ORDER_STOPS and inject Loading/Delivery Summary into records missing them
+async function _wiInjectStopSummaries(allOrders) {
+  const allStopIds = allOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
+  if (!allStopIds.length) return;
+  try {
+    await fhLoadLocations();
+    const stopsByOrder = {};
+    for (let b = 0; b < allStopIds.length; b += 90) {
+      const batch = allStopIds.slice(b, b + 90);
+      const f = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+      const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f }, false);
+      recs.forEach(sr => {
+        const pid = Array.isArray(sr.fields[F.STOP_PARENT_ORDER]) ? sr.fields[F.STOP_PARENT_ORDER][0] : null;
+        if (pid) { if (!stopsByOrder[pid]) stopsByOrder[pid] = []; stopsByOrder[pid].push(sr); }
+      });
+    }
+    const _resolveName = (stopType, orderId) => {
+      const stops = stopsByOrder[orderId];
+      if (!stops) return null;
+      const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
+        .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+      if (!filtered.length) return null;
+      return filtered.map(s => {
+        const locId = Array.isArray(s.fields[F.STOP_LOCATION]) ? s.fields[F.STOP_LOCATION][0] : null;
+        return locId ? (_fhLocationsMap[locId] || locId.slice(-6)) : '?';
+      }).join(', ');
+    };
+    allOrders.forEach(r => {
+      if (!r.fields['Loading Summary']) {
+        const ls = _resolveName('Loading', r.id);
+        if (ls) r.fields['Loading Summary'] = ls;
+      }
+      if (!r.fields['Delivery Summary']) {
+        const ds = _resolveName('Unloading', r.id);
+        if (ds) r.fields['Delivery Summary'] = ds;
+      }
+    });
+  } catch(e) { console.warn('Weekly INTL: ORDER_STOPS summary inject failed', e); }
+}
+
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
 async function _wiLoadAssets(){
   await preloadReferenceData();
@@ -106,6 +146,9 @@ async function renderWeeklyIntl(){
     WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
     WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
     WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+
+    // ── Inject Loading/Delivery Summary from ORDER_STOPS for new orders ──
+    await _wiInjectStopSummaries([...expOrders, ...impOrders]);
 
     WINTL.data.exports = expOrders
       .sort((a,b)=>(
