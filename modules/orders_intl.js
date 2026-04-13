@@ -28,6 +28,26 @@ function _cleanSummary(s) {
   if (!s) return '—';
   return escapeHtml(s.replace(/^["']+|["']+$/g,'').replace(/\/\s*$/,'').trim() || '—');
 }
+// Resolve location names from ORDER_STOPS for a given order + stop type
+function _stopsLocationSummary(orderId, stopType) {
+  const stops = (window._intlStopsByOrder || {})[orderId];
+  if (!stops || !stops.length) return null;
+  const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
+    .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+  if (!filtered.length) return null;
+  return filtered.map(s => {
+    const locArr = s.fields[F.STOP_LOCATION];
+    const locId = Array.isArray(locArr) ? locArr[0] : null;
+    return locId ? (_fhLocationsMap[locId] || locId.slice(-6)) : '?';
+  }).join(', ');
+}
+// Get total pallets from ORDER_STOPS loading stops
+function _stopsTotalPallets(orderId) {
+  const stops = (window._intlStopsByOrder || {})[orderId];
+  if (!stops || !stops.length) return 0;
+  return stops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+    .reduce((sum, s) => sum + (s.fields[F.STOP_PALLETS] || 0), 0);
+}
 function _weekNum(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
   const jan1 = new Date(d.getFullYear(), 0, 1);
@@ -65,6 +85,37 @@ async function renderOrdersIntl() {
       if (window._dashNav.trip) _intlFilters.trip = window._dashNav.trip;
       window._dashNav = null;
     }
+    // Batch fetch ORDER_STOPS for all orders (for list + detail display)
+    const allStopIds = records.flatMap(r => r.fields['ORDER STOPS'] || []);
+    window._intlStopsByOrder = {};
+    if (allStopIds.length) {
+      try {
+        // Fetch in batches of 90 (OR formula limit)
+        const stopRecs = [];
+        for (let b = 0; b < allStopIds.length; b += 90) {
+          const batch = allStopIds.slice(b, b + 90);
+          const f = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+          const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: f }, false);
+          stopRecs.push(...recs);
+        }
+        stopRecs.forEach(sr => {
+          const parentArr = sr.fields[F.STOP_PARENT_ORDER];
+          const parentId = Array.isArray(parentArr) ? parentArr[0] : null;
+          if (parentId) {
+            if (!window._intlStopsByOrder[parentId]) window._intlStopsByOrder[parentId] = [];
+            window._intlStopsByOrder[parentId].push(sr);
+          }
+        });
+      } catch(e) { console.warn('Batch ORDER_STOPS fetch:', e); }
+    }
+    // Inject Loading/Delivery Summary from ORDER_STOPS for orders missing them
+    await _loadLocations();
+    records.forEach(r => {
+      const loadSummary = _stopsLocationSummary(r.id, 'Loading');
+      const delSummary = _stopsLocationSummary(r.id, 'Unloading');
+      if (loadSummary && !r.fields['Loading Summary']) r.fields['Loading Summary'] = loadSummary;
+      if (delSummary && !r.fields['Delivery Summary']) r.fields['Delivery Summary'] = delSummary;
+    });
     // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
     await fhBatchResolveClients(clientIds);
@@ -155,8 +206,8 @@ const _intlColDefs = [
   { key: 'week',     label: 'Week',      type: 'number', get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'Client',    type: 'text',   get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'Loading',   type: 'text',   get: (f) => _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f) => _cleanSummary(f['Delivery Summary']) },
+  { key: 'loading',  label: 'Loading',   type: 'text',   get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
   { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
   { key: 'pal',      label: 'PAL',       type: 'number', get: (f) => f['Total Pallets']||f['Loading Pallets 1']||0 },
@@ -181,7 +232,7 @@ function _intlSortRecords(recs) {
   if (!col) return recs;
   const dir = _intlSortDir === 1 ? 1 : -1;
   return [...recs].sort((a, b) => {
-    let va = col.get(a.fields), vb = col.get(b.fields);
+    let va = col.get(a.fields, a), vb = col.get(b.fields, b);
     if (col.type === 'number') return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
     if (col.type === 'date') return (va||'').localeCompare(vb||'') * dir;
     return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
@@ -205,11 +256,11 @@ function _oiRowHtml(r) {
     <td>W${escapeHtml(f['Week Number']||'—')}</td>
     <td>${dirB}</td>
     <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
-    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
-    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Delivery Summary'])}</td>
+    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(_stopsLocationSummary(r.id,'Loading')) || _cleanSummary(f['Loading Summary'])}</td>
+    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(_stopsLocationSummary(r.id,'Unloading')) || _cleanSummary(f['Delivery Summary'])}</td>
     <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
     <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-    <td>${f['Total Pallets']||f['Loading Pallets 1']||'—'}</td>
+    <td>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
     <td>${tripB}</td>
     <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
       title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
@@ -332,17 +383,21 @@ function selectIntlOrder(recId) {
   const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
   const stMap = {Pending:'badge-yellow',Assigned:'badge-blue',Active:'badge-green',Delivered:'badge-grey',Cancelled:'badge-red'};
 
-  const buildStops = (locPfx, palPfx, dtPfx, dt1field) => {
+  const buildStops = (stopType) => {
     let html = '';
-    for (let i=1;i<=10;i++) {
-      const locArr = f[`${locPfx} Location ${i}`];
-      const locId  = Array.isArray(locArr) ? locArr[0] : null;
-      if (!locId) break;
-      const name  = escapeHtml(_fhLocationsMap[locId] || locId.slice(-6));
-      const pal   = f[`${palPfx} Pallets ${i}`];
-      const dtRaw = i===1 ? f[dt1field] : f[`${dtPfx} DateTime ${i}`];
-      const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
-      html += _dF(`Stop ${i}`, `${name}${pal?' — '+escapeHtml(pal)+' pal':''}${dtStr?' · '+dtStr:''}`);
+    const stops = (window._intlStopsByOrder || {})[recId];
+    if (stops && stops.length) {
+      const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
+        .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+      filtered.forEach((s, idx) => {
+        const locArr = s.fields[F.STOP_LOCATION];
+        const locId = Array.isArray(locArr) ? locArr[0] : null;
+        const name = locId ? escapeHtml(_fhLocationsMap[locId] || locId.slice(-6)) : '?';
+        const pal = s.fields[F.STOP_PALLETS];
+        const dtRaw = s.fields[F.STOP_DATETIME];
+        const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
+        html += _dF(`Stop ${idx+1}`, `${name}${pal?' — '+escapeHtml(String(pal))+' pal':''}${dtStr?' · '+dtStr:''}`);
+      });
     }
     return html || _dF('Location', '—');
   };
@@ -419,11 +474,11 @@ function selectIntlOrder(recId) {
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Loading</div>
-        ${buildStops('Loading','Loading','Loading','Loading DateTime')}
+        ${buildStops('Loading')}
       </div>
       <div class="detail-section">
         <div class="detail-section-title">Delivery</div>
-        ${buildStops('Unloading','Unloading','Unloading','Delivery DateTime')}
+        ${buildStops('Unloading')}
       </div>
       ${can('costs')!=='none'?`
       <div class="detail-section">
