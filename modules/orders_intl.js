@@ -1212,7 +1212,7 @@ async function submitIntlOrder(recId) {
         const ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
         if (ud) _cdDt = new Date(new Date(ud.dateTime).getTime() - 8*3600000).toISOString();
       }
-      _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: _cdPal, dateTime: _cdDt });
+      _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: _cdPal, dateTime: _cdDt, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
 
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
