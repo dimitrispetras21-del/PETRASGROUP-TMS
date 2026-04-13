@@ -130,7 +130,7 @@ async function _rampAutoSync() {
   // Fetches all orders that touch today's ramp (VF or VS, export or import)
   const intlCombinedFilter = `OR(AND(NOT({Veroia Switch }),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day')),AND(NOT({Veroia Switch }),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day')),AND({Veroia Switch },{Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day')),AND({Veroia Switch },{Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day')))`;
 
-  const intlFields = ['Direction','Veroia Switch ','Loading DateTime','Delivery DateTime',
+  const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
     'Loading Location 1','Loading Location 2','Loading Location 3',
     'Unloading Location 1','Unloading Location 2','Unloading Location 3'];
@@ -138,10 +138,10 @@ async function _rampAutoSync() {
   const allIntl = await atGetAll(TABLES.ORDERS, {filterByFormula:intlCombinedFilter, fields:intlFields}, false).catch(()=>[]);
 
   // Split results client-side into the 4 categories
-  const vfExp = allIntl.filter(r => !r.fields['Veroia Switch '] && r.fields['Direction']==='Export');
-  const vfImp = allIntl.filter(r => !r.fields['Veroia Switch '] && r.fields['Direction']==='Import');
-  const vsExp = allIntl.filter(r => r.fields['Veroia Switch ']  && r.fields['Direction']==='Export');
-  const vsImp = allIntl.filter(r => r.fields['Veroia Switch ']  && r.fields['Direction']==='Import');
+  const vfExp = allIntl.filter(r => !r.fields['Veroia Switch'] && r.fields['Direction']==='Export');
+  const vfImp = allIntl.filter(r => !r.fields['Veroia Switch'] && r.fields['Direction']==='Import');
+  const vsExp = allIntl.filter(r => r.fields['Veroia Switch']  && r.fields['Direction']==='Export');
+  const vsImp = allIntl.filter(r => r.fields['Veroia Switch']  && r.fields['Direction']==='Import');
 
   // VF Export → Outbound
   vfExp.forEach(r => {

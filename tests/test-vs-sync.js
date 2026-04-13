@@ -36,8 +36,8 @@ assertEqual(SOURCE_TYPE.GROUPAGE, 'Groupage', 'SOURCE_TYPE.GROUPAGE correct');
 // ── Tricky field names (F constants) ──
 section('Tricky field names (F constants)');
 
-assertEqual(F.WEEK_NUM, ' Week Number', 'F.WEEK_NUM has leading space');
-assertEqual(F.VEROIA_SWITCH, 'Veroia Switch ', 'F.VEROIA_SWITCH has trailing space');
+assertEqual(F.WEEK_NUM, 'Week Number', 'F.WEEK_NUM is "Week Number"');
+assertEqual(F.VEROIA_SWITCH, 'Veroia Switch', 'F.VEROIA_SWITCH is "Veroia Switch"');
 assertEqual(F.ADDRESS, 'Adress', 'F.ADDRESS is single-d "Adress"');
 assertEqual(F.VEROIA_LOC, 'recJucKOhC1zh4IP3', 'F.VEROIA_LOC is correct record ID');
 assertEqual(F.CL_KATHODOS, '\u039A\u0391\u0398\u039F\u0394\u039F\u03A3', 'F.CL_KATHODOS matches DIR.KATHODOS');

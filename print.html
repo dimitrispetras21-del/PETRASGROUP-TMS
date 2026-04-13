@@ -245,7 +245,7 @@ function badges(f){
   if(f['High Risk Flag'])b+='<span class="badge b-risk">! Risk</span>';
   if(f['Pallet Exchange'])b+='<span class="badge b-pe">PE</span>';
   if(f['National Groupage'])b+='<span class="badge b-grp">GRP</span>';
-  if(f['Veroia Switch ']||f['Veroia Switch'])b+='<span class="badge b-veroia">Veroia</span>';
+  if(f['Veroia Switch'])b+='<span class="badge b-veroia">Veroia</span>';
   return b;
 }
 
@@ -272,13 +272,13 @@ function generatePDF(orderRec){
   var f=orderRec.fields;
   var isExport=leg==='export';
   var legLabel=isExport?'Export':'Import';
-  var wk=f[' Week Number']||f['Week Number']||'—';
+  var wk=f['Week Number']||f['Week Number']||'—';
   var rate=eur(f['Partner Rate']);
   var orderNo=f['Order Number']||orderId.slice(-6).toUpperCase();
   var isPartner=!!(f['Is Partner Trip']||(f['Partner']||[]).length);
 
   // Veroia
-  var veroiaSwitch=!!(f['Veroia Switch ']||f['Veroia Switch']);
+  var veroiaSwitch=!!(f['Veroia Switch']);
   var VEROIA='VERMION FRESH / CROSS-DOCK',VADDR='',VLAT='',VLNG='';
   if(f['Veroia Cross-dock']){
     var vl=resolveLoc(f['Veroia Cross-dock']);

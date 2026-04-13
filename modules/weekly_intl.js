@@ -4,8 +4,8 @@
 // ORDERS-only. No TRIPS.
 //
 // Fields read from ORDERS:
-//   Direction, Type, " Week Number", Loading DateTime, Delivery DateTime,
-//   Loading Summary, Delivery Summary, Total Pallets, Veroia Switch ,
+//   Direction, Type, "Week Number", Loading DateTime, Delivery DateTime,
+//   Loading Summary, Delivery Summary, Total Pallets, Veroia Switch,
 //   Truck[], Trailer[], Driver[], Partner[], Is Partner Trip,
 //   Partner Truck Plates, Matched Import ID
 //
@@ -98,7 +98,7 @@ async function renderWeeklyIntl(){
     const [,,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
       Promise.resolve(), // placeholder to keep destructuring aligned
-      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',{ Week Number}=${WINTL.week})`},false),
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',{Week Number}=${WINTL.week})`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
@@ -501,7 +501,7 @@ function _wiBadges(f){
   if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk">! Risk</span>');
   if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
-  const veroia=f['Veroia Switch ']||f['Veroia Switch'];
+  const veroia=f['Veroia Switch'];
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
 
   return b.join('');
@@ -1298,7 +1298,7 @@ async function _wiSaveFromPopover(rowId){
     for (const oid of row.orderIds) {
       const recs = await atGetAll(TABLES.ORDERS, {
         filterByFormula: 'RECORD_ID()="'+oid+'"',
-        fields: ['Direction','Type','Veroia Switch ','National Order Created',
+        fields: ['Direction','Type','Veroia Switch','National Order Created',
           'Client','Goods','Total Pallets','Temperature °C','Pallet Exchange',
           'National Groupage','Loading DateTime','Delivery DateTime',
           'Loading Location 1','Loading Location 2','Loading Location 3',

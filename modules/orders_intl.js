@@ -152,7 +152,7 @@ function _buildWeekOpts() {
 // ─── Sort helpers ────────────────────────────────
 const _intlColDefs = [
   { key: 'orderNo',  label: 'Order No',  type: 'text',   get: (f) => f['Order Number']||'' },
-  { key: 'week',     label: 'Week',      type: 'number', get: (f) => f[' Week Number']||0 },
+  { key: 'week',     label: 'Week',      type: 'number', get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'Client',    type: 'text',   get: (f) => _clientName(f) },
   { key: 'loading',  label: 'Loading',   type: 'text',   get: (f) => _cleanSummary(f['Loading Summary']) },
@@ -202,7 +202,7 @@ function _oiRowHtml(r) {
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
     <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Order Number']||r.id.slice(-6))}</strong></td>
-    <td>W${escapeHtml(f[' Week Number']||'—')}</td>
+    <td>W${escapeHtml(f['Week Number']||'—')}</td>
     <td>${dirB}</td>
     <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
     <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${_cleanSummary(f['Loading Summary'])}</td>
@@ -309,7 +309,7 @@ function _applyIntlFilters() {
   if (_intlFilters['Direction']) recs = recs.filter(r => r.fields['Direction'] === _intlFilters['Direction']);
   if (_intlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _intlFilters['Status']);
   if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
-  if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields[' Week Number']) === String(_intlFilters['_week']));
+  if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
   if (_intlFilters['_trip']==='unassigned') recs = recs.filter(r => !r.fields['TRIPS (Export Order)']?.length && !r.fields['TRIPS (Import Order)']?.length);
   if (_intlFilters['_trip']==='assigned')   recs = recs.filter(r => r.fields['TRIPS (Export Order)']?.length>0 || r.fields['TRIPS (Import Order)']?.length>0);
   INTL_ORDERS.filtered = recs;
@@ -355,7 +355,7 @@ function selectIntlOrder(recId) {
           ${escapeHtml(f['Order Number']||recId.slice(-6))}
         </div>
         <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${escapeHtml(f['Brand']||'')} · ${escapeHtml(f['Direction']||'')} · W${escapeHtml(f[' Week Number']||'—')}
+          ${escapeHtml(f['Brand']||'')} · ${escapeHtml(f['Direction']||'')} · W${escapeHtml(f['Week Number']||'—')}
         </div>
       </div>
       <div class="detail-actions">
@@ -371,7 +371,7 @@ function selectIntlOrder(recId) {
         ${hasTrip?'<span class="badge badge-green">Trip Assigned</span>':'<span class="badge badge-yellow">No Trip</span>'}
         ${f['Invoiced']?'<span class="badge badge-grey">Invoiced</span>':''}
         ${f['High Risk Flag']?'<span class="badge badge-red">⚠ High Risk</span>':''}
-        ${f['Veroia Switch ']?'<span class="badge badge-yellow">Veroia Switch</span>':''}
+        ${f['Veroia Switch']?'<span class="badge badge-yellow">Veroia Switch</span>':''}
         ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
       </div>
       <div class="detail-section">
@@ -412,7 +412,7 @@ function selectIntlOrder(recId) {
           </div>
           <div style="display:flex;gap:12px;font-size:11px">
             <span>Sheet 1: ${f['Pallet Sheet 1 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>
-            ${f['Veroia Switch ']?`<span>Sheet 2: ${f['Pallet Sheet 2 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>`:'<span style="color:var(--text-dim)">Sheet 2: N/A</span>'}
+            ${f['Veroia Switch']?`<span>Sheet 2: ${f['Pallet Sheet 2 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>`:'<span style="color:var(--text-dim)">Sheet 2: N/A</span>'}
           </div>
         </div>` : ''}
         ${_dF('Carrier',      escapeHtml(f['Carrier Type']||'—'))}
@@ -440,7 +440,7 @@ function selectIntlOrder(recId) {
         </button>
         <div style="display:flex;gap:8px">
           ${_chk('Sheet 1', f['Pallet Sheet 1 Uploaded'])}
-          ${f['Veroia Switch '] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
+          ${f['Veroia Switch'] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
         </div>
         <div style="margin-top:6px">
           <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color:#0284C7">View Ledger Records →</a>
@@ -587,7 +587,7 @@ async function _openModal(recId, f, _clientLabelOverride) {
         <input type="checkbox" id="f_HighRisk" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
         ⚠ High Risk</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch ']?'checked':''} style="width:15px;height:15px">
+        <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
@@ -1100,7 +1100,7 @@ async function submitIntlOrder(recId) {
     const ck = id => !!document.getElementById(id)?.checked;
     fields['Pallet Exchange'] = ck('f_PalletExch');
     fields['High Risk Flag']  = ck('f_HighRisk');
-    fields['Veroia Switch ']  = ck('f_VeroiaSwitch');
+    fields['Veroia Switch']  = ck('f_VeroiaSwitch');
     fields['National Groupage'] = ck('f_Groupage');
 
     // Client
@@ -1159,7 +1159,7 @@ async function submitIntlOrder(recId) {
     }
 
     // ── Pre-save check: auto-restore CL if GL lines are Assigned ───
-    if (recId && fields['National Groupage'] && fields['Veroia Switch ']) {
+    if (recId && fields['National Groupage'] && fields['Veroia Switch']) {
       try {
         // Find GL lines linked to this intl order via Linked International Order (JS filter)
         const allGLs = await atGetAll(TABLES.GL_LINES, {
@@ -1282,7 +1282,7 @@ async function _checkPalletSheets(recId) {
     toast('Pallet Sheet 1 missing — upload before invoicing', 'danger');
     return false;
   }
-  if (f['Veroia Switch '] && !f['Pallet Sheet 2 Uploaded']) {
+  if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) {
     toast('Pallet Sheet 2 (Crossdock) missing — upload before invoicing', 'danger');
     return false;
   }

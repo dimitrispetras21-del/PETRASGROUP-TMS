@@ -132,7 +132,7 @@ const _natlColDefs = [
   { key: 'name',     label: 'Name',      type: 'text',   get: (f) => f['Name']||'' },
   { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'Client',    type: 'text',   get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
-  { key: 'pickup',   label: 'Pickup',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||f['Pickup Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
+  { key: 'pickup',   label: 'Pickup',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
   { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
   { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
@@ -180,7 +180,7 @@ function _onRowHtml(r) {
   const grpB   = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
   const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
 
-  const _pickupId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const _pickupId = (f['Pickup Location 1']||[])[0]||'';
   const pickup = _pickupId ? (_fhLocationsMap[_pickupId]||'—') : '—';
   const _delivId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
   const delivery = _delivId ? (_fhLocationsMap[_delivId]||'—') : '—';
@@ -286,7 +286,7 @@ function _applyNatlFilters() {
     recs = recs.filter(r => {
       const f = r.fields;
       const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-      const pId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+      const pId = (f['Pickup Location 1']||[])[0]||'';
       const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
       return String(f['Name']||'').toLowerCase().includes(q)
         || (_fhClientsMap[cId]||'').toLowerCase().includes(q)
@@ -325,7 +325,7 @@ function selectNatlOrder(recId) {
   const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
   const stMap = {Pending:'badge-yellow',Confirmed:'badge-blue','In Transit':'badge-green',Delivered:'badge-grey'};
   const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
-  const pId = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const pId = (f['Pickup Location 1']||[])[0]||'';
   const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
 
   panel.innerHTML = `
@@ -391,7 +391,7 @@ function openNatlEdit(recId) {
 async function _openNatlModal(recId, f) {
   const isEdit = !!recId;
   const clientId  = Array.isArray(f['Client'])           ? f['Client'][0]           : '';
-  const pickupId  = (f['Pickup Location 1']||f['Pickup Location']||[])[0]||'';
+  const pickupId  = (f['Pickup Location 1']||[])[0]||'';
   const delivId   = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
   // Resolve single client name for edit form (batch if not cached)
   if (clientId && !_fhClientsMap[clientId]) await _batchResolveClients([clientId]);
@@ -658,18 +658,12 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   const delDt  = (noFields['Delivery DateTime']||'').slice(0,10)||null;
   const noDir = dir === 'South→North' ? 'South→North' : 'North→South';
 
-  // Get all pickup locations — support both old 'Pickup Location' and new '1-10' fields
+  // Get all pickup locations from Pickup Location 1-10
   const pickupLocs = [];
-  // New style: Pickup Location 1-10
   for (let i=1; i<=10; i++) {
     const arr = noFields[`Pickup Location ${i}`];
     if (!arr?.length) { if(i>1) break; continue; }
     pickupLocs.push(_lid(arr[0]));
-  }
-  // Old style: single 'Pickup Location' field
-  if (!pickupLocs.length) {
-    const arr = noFields['Pickup Location'];
-    if (arr?.length) pickupLocs.push(_lid(arr[0]));
   }
 
   if (!pickupLocs.length) return;
@@ -825,15 +819,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     if (pId) { nlFields[`Pickup Location ${i}`] = [pId]; hasNewPickup = true; }
     if (dId) { nlFields[`Delivery Location ${i}`] = [dId]; hasNewDeliv = true; }
   }
-  // Fallback: old-style single Pickup/Delivery Location → Location 1
-  if (!hasNewPickup) {
-    const pId = _lid(noFields['Pickup Location']);
-    if (pId) nlFields['Pickup Location 1'] = [pId];
-  }
-  if (!hasNewDeliv) {
-    const dId = _lid(noFields['Delivery Location']);
-    if (dId) nlFields['Delivery Location 1'] = [dId];
-  }
+  // Note: old-style single 'Pickup Location' / 'Delivery Location' fields no longer exist in schema
 
   if (existing.length) {
     // Update existing

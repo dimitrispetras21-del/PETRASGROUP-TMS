@@ -372,7 +372,7 @@
   function _calcVSRate(allOrders) {
     const exports = allOrders.filter(r => r.fields['Direction'] === 'Export');
     if (!exports.length) return 0;
-    const vsCount = allOrders.filter(r => r.fields['Veroia Switch ']).length;
+    const vsCount = allOrders.filter(r => r.fields['Veroia Switch']).length;
     return vsCount / exports.length * 100;
   }
 

@@ -57,7 +57,7 @@ async function renderDashboard() {
     const activeTrucks = trucks.filter(t => t.fields['Active']).length;
     const trucksInUse = new Set();
     orders.filter(r => {
-      const w = r.fields[' Week Number'];
+      const w = r.fields['Week Number'];
       return w == wn && r.fields['Truck'] && (Array.isArray(r.fields['Truck']) ? r.fields['Truck'].length > 0 : true);
     }).forEach(r => {
       const tid = getLinkId(r.fields['Truck']);
@@ -81,8 +81,8 @@ async function renderDashboard() {
     }
 
     // Find matched export-import pairs this week
-    const weekExports = orders.filter(r => r.fields[' Week Number']==wn && r.fields['Direction']==='Export' && r.fields['Truck']);
-    const weekImports = orders.filter(r => r.fields[' Week Number']==wn && r.fields['Direction']==='Import' && r.fields['Truck']);
+    const weekExports = orders.filter(r => r.fields['Week Number']==wn && r.fields['Direction']==='Export' && r.fields['Truck']);
+    const weekImports = orders.filter(r => r.fields['Week Number']==wn && r.fields['Direction']==='Import' && r.fields['Truck']);
     const deadKmList = [];
     weekExports.forEach(exp => {
       const expTruck = getLinkId(exp.fields['Truck']);
@@ -153,7 +153,7 @@ async function renderDashboard() {
 
     // Calculate working days per truck for current week
     function _calcUsageRate(weekNum) {
-      const weekOrders = orders.filter(r => r.fields[' Week Number'] == weekNum && r.fields['Truck'] && !r.fields['Is Partner Trip']);
+      const weekOrders = orders.filter(r => r.fields['Week Number'] == weekNum && r.fields['Truck'] && !r.fields['Is Partner Trip']);
       const truckDays = {}; // truckId → Set of YYYY-MM-DD days active
 
       weekOrders.forEach(r => {
@@ -263,7 +263,7 @@ async function renderDashboard() {
     });
 
     // Section 5d: Weekly Score
-    const assignmentRate = orders.length ? Math.round(orders.filter(r => r.fields['Truck'] && (Array.isArray(r.fields['Truck']) ? r.fields['Truck'].length > 0 : true) && r.fields[' Week Number'] == wn).length / Math.max(orders.filter(r => r.fields[' Week Number'] == wn).length, 1) * 100) : 0;
+    const assignmentRate = orders.length ? Math.round(orders.filter(r => r.fields['Truck'] && (Array.isArray(r.fields['Truck']) ? r.fields['Truck'].length > 0 : true) && r.fields['Week Number'] == wn).length / Math.max(orders.filter(r => r.fields['Week Number'] == wn).length, 1) * 100) : 0;
     const complianceOk = trucks.filter(t => {
       if (!t.fields['Active']) return false;
       const kteo = (t.fields['KTEO Expiry'] || '').substring(0, 10);

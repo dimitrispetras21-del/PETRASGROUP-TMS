@@ -40,8 +40,8 @@ function _invNetPrice(rec) {
 }
 
 function _invWeek(rec) {
-  if (rec._type === 'intl') return rec.fields[' Week Number'] || '—';
-  return rec.fields[' Week Number'] || rec.fields['Week Number'] || '—';
+  if (rec._type === 'intl') return rec.fields['Week Number'] || '—';
+  return rec.fields['Week Number'] || '—';
 }
 
 function _invPERequired(rec) {
@@ -53,8 +53,8 @@ function _invPESheetsOK(rec) {
   if (rec._type === 'intl') {
     return !!(rec.fields['Pallet Sheet 1 Uploaded'] && rec.fields['Pallet Sheet 2 Uploaded']);
   }
-  // National: check single pallet sheet field
-  return !!rec.fields['Pallet Sheet Uploaded'];
+  // National: no pallet sheet upload flow exists yet — skip PE check
+  return true;
 }
 
 function _invIsInvoiced(rec) {

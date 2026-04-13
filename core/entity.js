@@ -538,11 +538,11 @@ async function _loadEntityHistory(type, recId, name) {
       const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
       const [intl, natl] = await Promise.all([
         atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime'] }, false),
-        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location','Delivery Location','Status','Pallets','Pickup Date'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location 1','Delivery Location 1','Status','Pallets','Loading DateTime'] }, false),
       ]);
       orders = [
         ...intl.map(r => ({ type: 'INTL', dir: r.fields['Direction']||'—', route: `${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Total Pallets']||0, date: (r.fields['Loading DateTime']||'').substring(0,10) })),
-        ...natl.map(r => ({ type: 'NATL', dir: r.fields['Direction']||'—', route: `${(r.fields['Pickup Location']||'').slice(0,20)} → ${(r.fields['Delivery Location']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Pallets']||0, date: (r.fields['Pickup Date']||'').substring(0,10) })),
+        ...natl.map(r => ({ type: 'NATL', dir: r.fields['Direction']||'—', route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status: r.fields['Status']||'—', pals: r.fields['Pallets']||0, date: toLocalDate(r.fields['Loading DateTime']) })),
       ];
     } else if (type === 'partner') {
       // Partner linked in ORDERS table

@@ -58,7 +58,7 @@ async function openPalletUpload(orderId) {
   }
 
   // Add crossdock tab if Veroia Switch
-  if (f['Veroia Switch ']) {
+  if (f['Veroia Switch']) {
     PU.tabs.push({
       idx: PU.tabs.length,
       label: 'Sheet 2',

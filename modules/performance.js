@@ -85,7 +85,7 @@ async function _perfLoad() {
     atGetAll(TABLES.ORDERS, {
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
-               'Total Pallets','Client',' Week Number','Ops Status']
+               'Total Pallets','Client','Week Number','Ops Status']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']
@@ -103,7 +103,7 @@ async function _perfLoad() {
 function _perfCompute() {
   const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
   const orders = PERF.orders;
-  const weekOrders = orders.filter(r => r.fields[' Week Number'] == wn);
+  const weekOrders = orders.filter(r => r.fields['Week Number'] == wn);
   const activeTrucks = PERF.trucks.filter(t => t.fields['Active']).length;
 
   // On-Time %
@@ -220,7 +220,7 @@ function _perfTrends() {
   const trends = [];
   for (let w = wn - 3; w <= wn; w++) {
     if (w < 1) continue;
-    const weekOrders = PERF.orders.filter(r => r.fields[' Week Number'] == w);
+    const weekOrders = PERF.orders.filter(r => r.fields['Week Number'] == w);
     const exports = weekOrders.filter(r => r.fields['Direction'] === 'Export');
     const assigned = exports.filter(r => r.fields['Truck']).length;
     const noReturn = exports.filter(r => r.fields['Truck'] && !r.fields['Matched Import ID']).length;

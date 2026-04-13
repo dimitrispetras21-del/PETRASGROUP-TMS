@@ -308,10 +308,17 @@ async function _opsTog(id,fld,v){
   }catch(e){toast('Error','danger');}
 }
 async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
-async function _opsStat(id,st){try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':st});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Ops Status']=st;toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
+// Map Ops Status → high-level Status (keeps Invoicing/Dashboard in sync)
+const _opsToStatus = {'Loaded':'In Transit','In Transit':'In Transit','Delivered':'Delivered'};
+async function _opsStat(id,st){try{
+  const patch = {'Ops Status':st};
+  if(_opsToStatus[st]) patch['Status'] = _opsToStatus[st];
+  await atSafePatch(TABLES.ORDERS,id,patch);
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']=st;if(_opsToStatus[st])r.fields['Status']=_opsToStatus[st];}
+  toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Delivery Performance']=perf;}
+  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsPost(id){
   // Auto-postpone to next day
@@ -356,7 +363,7 @@ function _opsPrint() {
 }
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
 
 // Expose functions used from onclick/onchange handlers

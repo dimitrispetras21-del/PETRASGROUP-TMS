@@ -86,8 +86,8 @@ const F = {
   OPS_STATUS:       'Ops Status',
   DELIVERY_PERF:    'Delivery Performance',
   NAT_ORDER_CREATED:'National Order Created',
-  WEEK_NUM:         ' Week Number',        // Leading space! Formula field, NOT writable
-  VEROIA_SWITCH:    'Veroia Switch ',      // Trailing space!
+  WEEK_NUM:         'Week Number',          // Formula field, NOT writable (leading space removed)
+  VEROIA_SWITCH:    'Veroia Switch',       // Trailing space removed
   NAT_GROUPAGE:     'National Groupage',
   TRIPS_EXPORT:     'TRIPS (Export Order)',
   TRIPS_IMPORT:     'TRIPS (Import Order)',

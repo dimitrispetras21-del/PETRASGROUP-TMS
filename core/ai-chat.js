@@ -813,7 +813,7 @@ async function _aicRunObserver() {
         // INFO: empty return legs this week
         const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
         const weekExports = unassigned.length ? [] : await atGetAll(TABLES.ORDERS, {
-          filterByFormula: `AND({Type}='International',{Direction}='Export',{ Week Number}=${wn},{Truck}!='')`,
+          filterByFormula: `AND({Type}='International',{Direction}='Export',{Week Number}=${wn},{Truck}!='')`,
           fields: ['Truck','Matched Import ID']
         }, true).catch(() => []);
         const emptyLegs = weekExports.filter(r => !r.fields['Matched Import ID']);
