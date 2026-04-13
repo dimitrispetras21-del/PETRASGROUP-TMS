@@ -11,7 +11,7 @@ const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[],
 const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
   'Loading DateTime','Delivery DateTime','Status',
-  'Loading Location 1','Unloading Location 1',
+  'Loading Location 1','Unloading Location 1','ORDER STOPS',
   'Ops Status','Delivery Performance','Ops Notes','Postponed To',
   'Actual Delivery Date','ETA','CMR Photo Received','Client Notified',
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
@@ -47,6 +47,33 @@ async function _opsLoad() {
   OPS.intl=intl;
   const ids=new Set(intl.map(r=>r.id));
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
+
+  // Batch fetch ORDER_STOPS for location resolution
+  const allRecs = [...intl, ...OPS.overdue];
+  const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
+  OPS._stopsByOrder = {};
+  if (stopIds.length) {
+    try {
+      for (let b = 0; b < stopIds.length; b += 90) {
+        const batch = stopIds.slice(b, b + 90);
+        const ff = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+        const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: ff }, false);
+        recs.forEach(sr => {
+          const pid = (sr.fields[F.STOP_PARENT_ORDER] || [])[0];
+          if (pid) { if (!OPS._stopsByOrder[pid]) OPS._stopsByOrder[pid] = []; OPS._stopsByOrder[pid].push(sr); }
+        });
+      }
+    } catch(e) { console.warn('DailyOps ORDER_STOPS fetch:', e); }
+  }
+}
+
+// Get first location ID from ORDER_STOPS for a given order + stop type
+function _opsStopLoc(orderId, stopType) {
+  const stops = (OPS._stopsByOrder || {})[orderId];
+  if (!stops) return null;
+  const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
+    .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+  return filtered.length ? (filtered[0].fields[F.STOP_LOCATION] || [])[0] || null : null;
 }
 
 /* ── HELPERS (using shared data-helpers.js) ───────────────────── */
@@ -103,7 +130,7 @@ function _opsDraw() {
       </div>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
-          <span class="ops-alert-info">${_L(getLinkedId(f['Loading Location 1']))} → ${_L(getLinkedId(f['Unloading Location 1']))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
+          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading')||getLinkedId(f['Loading Location 1']))} → ${_L(_opsStopLoc(r.id,'Unloading')||getLinkedId(f['Unloading Location 1']))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
           <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Delivered</button>
           <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Delayed</button>
         </div>`;}).join('')}</div></div>`;
@@ -174,8 +201,8 @@ function _opsSec(type,label,items,isToday) {
 function _opsRow(rec,num,type,isToday) {
   const f=rec.fields, id=rec.id;
   const client=_C(f);
-  const loadL=_L(getLinkedId(f['Loading Location 1']));
-  const delivL=_L(getLinkedId(f['Unloading Location 1']));
+  const loadL=_L(_opsStopLoc(id,'Loading')||getLinkedId(f['Loading Location 1']));
+  const delivL=_L(_opsStopLoc(id,'Unloading')||getLinkedId(f['Unloading Location 1']));
   const truck=_T(f), driver=_D(f), partner=_P(f);
   const pal=f['Total Pallets']||'';
   const ops=f['Ops Status']||'';
