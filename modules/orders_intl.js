@@ -1201,7 +1201,8 @@ async function submitIntlOrder(recId) {
 
     // Auto-create Cross-dock stop for Veroia Switch orders
     if (ck('f_VeroiaSwitch')) {
-      _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: 0, dateTime: null });
+      const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
+      _formStops.push({ stopNumber: 1, stopType: 'Cross-dock', locationId: F.VEROIA_LOC, pallets: _cdPal, dateTime: null });
     }
 
     // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
