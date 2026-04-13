@@ -1202,12 +1202,12 @@ async function submitIntlOrder(recId) {
     // Auto-create Cross-dock stop for Veroia Switch orders
     if (ck('f_VeroiaSwitch')) {
       const _cdPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
-      // Cross-dock Date rule: Export = Loading date, Import = Delivery - 1 day
+      // Cross-dock Date rule: Export = Loading +1 day, Import = Delivery -1 day
       let _cdDate = null;
       const _dir = fields['Direction'];
       if (_dir === 'Export') {
         const ld = _formStops.find(s => s.stopType === 'Loading' && s.dateTime);
-        if (ld) _cdDate = _vsToLocalDate(ld.dateTime);
+        if (ld) _cdDate = _vsAddDays(_vsToLocalDate(ld.dateTime), 1);
       } else {
         const ud = _formStops.find(s => s.stopType === 'Unloading' && s.dateTime);
         if (ud) _cdDate = _vsAddDays(_vsToLocalDate(ud.dateTime), -1);
