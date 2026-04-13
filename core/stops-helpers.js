@@ -13,18 +13,30 @@
  */
 async function stopsLoad(orderId, parentField) {
   if (!orderId) return [];
-  const filter = `FIND("${orderId}", ARRAYJOIN({${parentField}}, ","))>0`;
-  const recs = await atGetAll(TABLES.ORDER_STOPS, {
-    filterByFormula: filter,
-  }, false);
-  // Sort: Loading first, then Unloading, then Cross-dock; within type by Stop Number
-  const typeOrder = { 'Loading': 1, 'Unloading': 2, 'Cross-dock': 3 };
-  return recs.sort((a, b) => {
-    const ta = typeOrder[a.fields[F.STOP_TYPE]] || 9;
-    const tb = typeOrder[b.fields[F.STOP_TYPE]] || 9;
-    if (ta !== tb) return ta - tb;
-    return (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0);
-  });
+  // Linked record filters via ARRAYJOIN don't work (returns display names, not IDs).
+  // Instead: fetch the parent order's reverse-link field to get stop record IDs,
+  // then batch-fetch the stop records by ID.
+  const reverseLinkField = parentField === F.STOP_PARENT_ORDER ? 'ORDER STOPS' : 'ORDER STOPS';
+  const parentTable = parentField === F.STOP_PARENT_ORDER ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+  try {
+    const parentRec = await atGetOne(parentTable, orderId);
+    const stopIds = parentRec.fields?.[reverseLinkField] || [];
+    if (!stopIds.length) return [];
+    // Batch fetch stop records by ID (max 100 via OR formula)
+    const idFilter = `OR(${stopIds.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+    const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: idFilter }, false);
+    // Sort: Loading first, then Unloading, then Cross-dock; within type by Stop Number
+    const typeOrder = { 'Loading': 1, 'Unloading': 2, 'Cross-dock': 3 };
+    return recs.sort((a, b) => {
+      const ta = typeOrder[a.fields[F.STOP_TYPE]] || 9;
+      const tb = typeOrder[b.fields[F.STOP_TYPE]] || 9;
+      if (ta !== tb) return ta - tb;
+      return (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0);
+    });
+  } catch (e) {
+    console.warn('stopsLoad fallback: reverse-link failed, trying direct filter', e);
+    return [];
+  }
 }
 
 /**
