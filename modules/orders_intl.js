@@ -498,43 +498,21 @@ async function _openModal(recId, f, _clientLabelOverride) {
   if (isEdit) {
     try { _orderStops = await stopsLoad(recId, F.STOP_PARENT_ORDER); } catch(e) { console.warn('stopsLoad:', e); }
   }
-  const _hasStops = _orderStops.length > 0;
-  const _loadStops = _hasStops ? _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0)) : [];
-  const _unloadStops = _hasStops ? _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0)) : [];
+  const _loadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+  const _unloadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
 
-  // Count filled stops (from ORDER_STOPS or flat fields)
-  let cntL = 1, cntU = 1;
-  if (_hasStops) {
-    cntL = Math.max(1, _loadStops.length);
-    cntU = Math.max(1, _unloadStops.length);
-  } else {
-    for (let i=2;i<=10;i++) {
-      if (Array.isArray(f[`Loading Location ${i}`])&&f[`Loading Location ${i}`][0]) cntL=i;
-      if (Array.isArray(f[`Unloading Location ${i}`])&&f[`Unloading Location ${i}`][0]) cntU=i;
-    }
-  }
+  // Count filled stops from ORDER_STOPS
+  let cntL = Math.max(1, _loadStops.length);
+  let cntU = Math.max(1, _unloadStops.length);
   window._sCntL = cntL;
   window._sCntU = cntU;
 
-  const getLocId = (prefix, i) => {
-    const arr = f[`${prefix} Location ${i}`];
-    return Array.isArray(arr) ? arr[0] : '';
-  };
-  const getDt = (prefix, mainField, i) => {
-    const raw = i===1 ? f[mainField] : f[`${prefix} DateTime ${i}`];
-    return raw ? toLocalDate(raw) : '';
-  };
-
   const buildStopRows = (type) => {
     const isL  = type==='l';
-    const pfx  = isL ? 'Loading' : 'Unloading';
-    const main = isL ? 'Loading DateTime' : 'Delivery DateTime';
-    const cnt  = isL ? cntL : cntU;
     const stopsOfType = isL ? _loadStops : _unloadStops;
 
     let html = '';
-    if (_hasStops && stopsOfType.length) {
-      // Read from ORDER_STOPS
+    if (stopsOfType.length) {
       for (let i = 0; i < stopsOfType.length; i++) {
         const sf = stopsOfType[i].fields;
         const locArr = sf[F.STOP_LOCATION];
@@ -543,10 +521,8 @@ async function _openModal(recId, f, _clientLabelOverride) {
         html += _stopRow(type, i + 1, locId, sf[F.STOP_PALLETS], dt);
       }
     } else {
-      // Fallback: read from flat fields (old orders)
-      for (let i=1;i<=cnt;i++) {
-        html += _stopRow(type, i, getLocId(pfx, i), f[`${pfx} Pallets ${i}`], getDt(pfx, main, i));
-      }
+      // New order or no stops — single empty row
+      html += _stopRow(type, 1, '', '', '');
     }
     return html;
   };
@@ -1135,42 +1111,37 @@ async function submitIntlOrder(recId) {
     const clientId = document.getElementById('lv_client')?.value;
     if (clientId) fields['Client'] = [clientId];
 
-    // Loading stops 1-10
-    for (let i=1;i<=10;i++) {
+    // ── Collect stops from form (ORDER_STOPS is the sole write target) ──
+    const _formStops = [];
+    for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_l_'+i)?.value;
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
-      if (!locId && !pal && !dt) { if(i>1) break; else continue; }
-      if (locId) fields[`Loading Location ${i}`] = [locId];
-      if (pal)   fields[`Loading Pallets ${i}`]  = parseFloat(pal)||0;
-      if (dt) {
-        if (i===1) fields['Loading DateTime'] = dt;
-        else       fields[`Loading DateTime ${i}`] = dt;
-      }
+      if (!locId && !pal && !dt) { if (i > 1) break; continue; }
+      if (locId) _formStops.push({ stopNumber: i, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null });
     }
-
-    // Delivery stops 1-10
-    let del1dt = null;
-    for (let i=1;i<=10;i++) {
+    for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_u_'+i)?.value;
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
-      if (!locId && !pal && !dt) { if(i>1) break; else continue; }
-      if (locId) fields[`Unloading Location ${i}`] = [locId];
-      if (pal)   fields[`Unloading Pallets ${i}`]  = parseFloat(pal)||0;
-      if (dt) {
-        fields[`Unloading DateTime ${i}`] = dt;
-        if (i===1) { fields['Delivery DateTime'] = dt; del1dt = dt; }
-      }
+      if (!locId && !pal && !dt) { if (i > 1) break; continue; }
+      if (locId) _formStops.push({ stopNumber: i, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null });
     }
 
+    // Derive order-level summary fields from stops (needed for filters, sorting, weekly views)
+    const _firstLoad = _formStops.find(s => s.stopType === 'Loading');
+    const _firstUnload = _formStops.find(s => s.stopType === 'Unloading');
+    if (_firstLoad?.dateTime) fields['Loading DateTime'] = _firstLoad.dateTime;
+    if (_firstUnload?.dateTime) fields['Delivery DateTime'] = _firstUnload.dateTime;
+    const _totalPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
+    if (_totalPal > 0) fields['Total Pallets'] = _totalPal;
 
     // Validate required fields
     const _vErrors = [];
     if (!fields['Direction'])            _vErrors.push('Direction is required');
     if (!clientId)                       _vErrors.push('Client is required');
-    if (!fields['Loading Location 1'])   _vErrors.push('Loading Location 1 is required');
-    if (!fields['Unloading Location 1']) _vErrors.push('Delivery Location 1 is required');
+    if (!_firstLoad?.locationId)         _vErrors.push('Loading Location 1 is required');
+    if (!_firstUnload?.locationId)       _vErrors.push('Delivery Location 1 is required');
     if (!fields['Loading DateTime'])     _vErrors.push('Loading Date (Stop 1) is required');
     if (!fields['Delivery DateTime'])    _vErrors.push('Delivery Date (Stop 1) is required');
 
@@ -1254,33 +1225,9 @@ async function submitIntlOrder(recId) {
     // Sync Veroia Switch → NAT_LOADS (direct, no intermediate NAT_ORDERS)
     const savedOrderId = recId || result.id;
 
-    // ── Dual-write: save ORDER_STOPS sub-records ──
-    try {
-      const _formStops = [];
-      for (let i = 1; i <= 10; i++) {
-        const locId = document.getElementById('lv_l_'+i)?.value;
-        if (!locId) { if (i > 1) break; continue; }
-        _formStops.push({
-          stopNumber: i, stopType: 'Loading', locationId: locId,
-          pallets: parseFloat(document.getElementById('pal_l_'+i)?.value) || 0,
-          dateTime: document.getElementById('dt_l_'+i)?.value || null,
-        });
-      }
-      for (let i = 1; i <= 10; i++) {
-        const locId = document.getElementById('lv_u_'+i)?.value;
-        if (!locId) { if (i > 1) break; continue; }
-        _formStops.push({
-          stopNumber: i, stopType: 'Unloading', locationId: locId,
-          pallets: parseFloat(document.getElementById('pal_u_'+i)?.value) || 0,
-          dateTime: document.getElementById('dt_u_'+i)?.value || null,
-        });
-      }
-      if (_formStops.length) {
-        await stopsSave(savedOrderId, _formStops, F.STOP_PARENT_ORDER);
-      }
-    } catch(e) {
-      console.warn('ORDER_STOPS dual-write error (non-fatal):', e);
-      toast('Stops sync warning: '+e.message, 'warn', 4000);
+    // ── Save ORDER_STOPS (primary write for stop data) ──
+    if (_formStops.length) {
+      await stopsSave(savedOrderId, _formStops, F.STOP_PARENT_ORDER);
     }
 
     try {

@@ -206,7 +206,6 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
   }
-  // Try ORDER_STOPS first
   var loadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Loading'})
     .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
   if(loadStops.length){
@@ -223,17 +222,6 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     }
     if(html)return html;
   }
-  // Fallback: flat fields
-  var html='',count=0;
-  for(var i=1;i<=10;i++){
-    var lf=f['Loading Location '+i];if(!lf)continue;
-    var loc=resolveLoc(lf);if(!loc)continue;count++;
-    var stopDt=i===1?dt:(f['Loading DateTime '+i]||dt);
-    html+=buildCard(count,loc,'loading',stopDt,fv(f['Loading Pallets '+i]),
-      fv(f['Pallet Type']),count===1,fv(f['Goods']),
-      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
-  }
-  if(count>0)return html;
   return buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,
     fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
     f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
@@ -261,16 +249,6 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     }
     if(html)return html;
   }
-  // Fallback: flat fields
-  var html='',count=0;
-  for(var i=1;i<=10;i++){
-    var lf=f['Unloading Location '+i];if(!lf)continue;
-    var loc=resolveLoc(lf);if(!loc)continue;count++;
-    var stopDt=f['Unloading DateTime '+i]||dt;
-    html+=buildCard(count,loc,'delivery',stopDt,fv(f['Unloading Pallets '+i]),
-      fv(f['Pallet Type']),false,'','','','','');
-  }
-  if(count>0)return html;
   return buildCard(1,{name:'—',address:'',lat:'',lng:''},'delivery',dt,
     fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
 }

@@ -77,31 +77,9 @@ async function openPalletUpload(orderId) {
         locName: 'Veroia Crossdock', stopType: 'Crossdock', done: false });
     }
   } else {
-    // Fallback: flat fields (old orders without ORDER_STOPS)
-    let loadingCount = 0;
-    for (let i = 1; i <= 10; i++) {
-      const locField = f[`Loading Location ${i}`];
-      const locId = Array.isArray(locField) ? locField[0] : null;
-      if (!locId) continue;
-      loadingCount++;
-      const locName = await _puLocName(locId);
-      PU.tabs.push({
-        idx: PU.tabs.length,
-        label: loadingCount > 1 ? `Sheet 1${letters[loadingCount-1]}` : 'Sheet 1',
-        locId, locName: locName || `Location ${i}`, stopType: 'Loading', done: false,
-      });
-    }
-    if (f['Veroia Switch']) {
-      PU.tabs.push({ idx: PU.tabs.length, label: 'Sheet 2', locId: null,
-        locName: 'Veroia Crossdock', stopType: 'Crossdock', done: false });
-    }
-    // Check existing upload status (flat fields path)
-    if (f['Pallet Sheet 1 Uploaded']) {
-      PU.tabs.filter(t => t.stopType === 'Loading').forEach(t => t.done = true);
-    }
-    if (f['Pallet Sheet 2 Uploaded']) {
-      PU.tabs.filter(t => t.stopType === 'Crossdock').forEach(t => t.done = true);
-    }
+    // No ORDER_STOPS found — show empty state
+    PU.tabs.push({ idx: 0, label: 'Sheet 1', locId: null,
+      locName: 'No stops found', stopType: 'Loading', done: false });
   }
 
   // Load partners from ref cache
@@ -162,7 +140,7 @@ function _puRenderModal(clientName) {
         <div><span class="pu-strip-label">Order</span><span class="pu-strip-val">${f['Order Number'] || '—'}</span></div>
         <div><span class="pu-strip-label">Direction</span><span class="pu-strip-val">${f['Direction'] || '—'}</span></div>
         <div><span class="pu-strip-label">Client</span><span class="pu-strip-val">${clientName || '—'}</span></div>
-        <div><span class="pu-strip-label">Pallets</span><span class="pu-strip-val">${f['Total Pallets'] || f['Loading Pallets 1'] || '—'}</span></div>
+        <div><span class="pu-strip-label">Pallets</span><span class="pu-strip-val">${f['Total Pallets'] || '—'}</span></div>
       </div>
 
       <div class="pu-tabs" id="puTabs">${tabsHtml}</div>

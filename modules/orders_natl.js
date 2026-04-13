@@ -554,6 +554,14 @@ async function submitNatlOrder(recId) {
       savedNatlId = created.id;
     }
 
+    // ── Save ORDER_STOPS for national order ──
+    try {
+      const _natStops = [];
+      if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || 0, dateTime: fields['Loading DateTime'] || null });
+      if (delivId)  _natStops.push({ stopNumber: 1, stopType: 'Unloading', locationId: delivId, pallets: pallets || 0, dateTime: fields['Delivery DateTime'] || null });
+      if (_natStops.length) await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT);
+    } catch(e) { console.warn('NAT ORDER_STOPS save:', e); }
+
     // ── Sync GROUPAGE LINES ──────────────────────────────────
     // Sync GL: create/update if Groupage ON, delete unassigned if OFF
   if (savedNatlId && fields['National Groupage']) {

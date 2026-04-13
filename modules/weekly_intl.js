@@ -1029,16 +1029,7 @@ async function _wiAutoMatch() {
   const locMap = {};
   locs.forEach(r => { locMap[r.id] = { lat: r.fields['Latitude'], lng: r.fields['Longitude'], name: r.fields['Name']||'', country: r.fields['Country']||'' }; });
 
-  // Get location coords from order's linked record (flat field)
-  const _getCoords = (fields, locField) => {
-    const arr = fields[locField];
-    const id = Array.isArray(arr) ? arr[0] : arr;
-    if (!id || !locMap[id]) return null;
-    const loc = locMap[id];
-    return (loc.lat && loc.lng) ? loc : null;
-  };
-
-  // Batch-fetch ORDER_STOPS for all orders to get accurate stop locations
+  // Batch-fetch ORDER_STOPS for all orders to get stop locations
   const allOrders = [...data.exports, ...data.imports];
   const allStopIds = allOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
   const stopsByOrder = {}; // orderId → {Loading: [locId,...], Unloading: [locId,...]}
@@ -1069,8 +1060,8 @@ async function _wiAutoMatch() {
     } catch (e) { console.warn('Auto-match: ORDER_STOPS fetch failed, using flat fields', e); }
   }
 
-  // Get coords: try ORDER_STOPS first, fallback to flat field
-  const _getCoordsEx = (orderId, fields, stopType, flatField) => {
+  // Get coords from ORDER_STOPS for an order
+  const _getCoordsEx = (orderId, fields, stopType) => {
     const stops = stopsByOrder[orderId]?.[stopType];
     if (stops && stops.length) {
       const locArr = stops[0].fields[F.STOP_LOCATION];
@@ -1080,7 +1071,7 @@ async function _wiAutoMatch() {
         if (loc.lat && loc.lng) return loc;
       }
     }
-    return _getCoords(fields, flatField);
+    return null;
   };
 
   // Score each export-import pair
@@ -1089,7 +1080,7 @@ async function _wiAutoMatch() {
     const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
     if (!exp) continue;
     const ef = exp.fields;
-    const expDelLoc = _getCoordsEx(exp.id, ef, 'Unloading', 'Unloading Location 1');
+    const expDelLoc = _getCoordsEx(exp.id, ef, 'Unloading');
     const expDelDate = toLocalDate(ef['Delivery DateTime']);
 
     let bestImp = null, bestScore = 0, bestDist = Infinity;
@@ -1102,7 +1093,7 @@ async function _wiAutoMatch() {
       let dist = Infinity;
 
       // DISTANCE: export delivery → import loading (max 70 points — primary factor)
-      const impLoadLoc = _getCoordsEx(imp.id, imf, 'Loading', 'Loading Location 1');
+      const impLoadLoc = _getCoordsEx(imp.id, imf, 'Loading');
       if (expDelLoc && impLoadLoc) {
         dist = _wiHaversine(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
         if (dist <= 50)       score += 70;  // <50km = same city
