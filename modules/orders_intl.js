@@ -210,7 +210,7 @@ const _intlColDefs = [
   { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
   { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'PAL',       type: 'number', get: (f) => f['Total Pallets']||f['Loading Pallets 1']||0 },
+  { key: 'pal',      label: 'PAL',       type: 'number', get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
   { key: 'trip',     label: 'Trip',      type: 'text',   get: (f) => ((f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0))>0?'Assigned':'Pending' },
   { key: 'inv',      label: 'INV',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
 ];
@@ -881,9 +881,9 @@ async function _syncVeroiaSwitch(orderId, fields) {
     'Client':            clientName,
     'Goods':             fields['Goods'] || '',
     'Temperature C':     fields['Temperature °C'] ?? null,
-    'Total Pallets':     direction === 'Export'
-                           ? (fields['Loading Pallets 1'] || fields['Total Pallets'] || 0)
-                           : (fields['Unloading Pallets 1'] || fields['Loading Pallets 1'] || fields['Total Pallets'] || 0),
+    'Total Pallets':     _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+                           .reduce((sum, s) => sum + (s.fields[F.STOP_PALLETS] || 0), 0)
+                           || fields['Total Pallets'] || 0,
     'Pallet Exchange':   !!fields['Pallet Exchange'],
     'Reference':         fields['Reference'] || '',
     'Loading DateTime':  natLoadDt ? natLoadDt + 'T12:00:00.000Z' : null,
