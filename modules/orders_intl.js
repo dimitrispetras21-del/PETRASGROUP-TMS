@@ -1133,8 +1133,7 @@ async function submitIntlOrder(recId) {
     const _firstUnload = _formStops.find(s => s.stopType === 'Unloading');
     if (_firstLoad?.dateTime) fields['Loading DateTime'] = _firstLoad.dateTime;
     if (_firstUnload?.dateTime) fields['Delivery DateTime'] = _firstUnload.dateTime;
-    const _totalPal = _formStops.filter(s => s.stopType === 'Loading').reduce((sum, s) => sum + (s.pallets || 0), 0);
-    if (_totalPal > 0) fields['Total Pallets'] = _totalPal;
+    // Total Pallets is a computed field in Airtable — do not write to it
 
     // Validate required fields
     const _vErrors = [];
