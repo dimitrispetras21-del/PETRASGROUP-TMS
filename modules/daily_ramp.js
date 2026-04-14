@@ -128,7 +128,7 @@ async function _rampAutoSync() {
 
   // Single combined ORDERS query — reduces 4 parallel calls → 1 call
   // Fetches all orders that touch today's ramp (VF or VS, export or import)
-  const intlCombinedFilter = `OR(AND(NOT({Veroia Switch }),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day')),AND(NOT({Veroia Switch }),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day')),AND({Veroia Switch },{Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day')),AND({Veroia Switch },{Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day')))`;
+  const intlCombinedFilter = `OR(AND(NOT({Veroia Switch}),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day')),AND(NOT({Veroia Switch}),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day')),AND({Veroia Switch},{Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day')),AND({Veroia Switch},{Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day')))`;
 
   const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
     'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
