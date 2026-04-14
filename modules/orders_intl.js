@@ -175,10 +175,13 @@ function _renderIntlLayout(c) {
             <option value="">Week: All</option>
             ${_buildWeekOpts()}
           </select>
-          <select class="filter-select" onchange="intlFilter('_trip',this.value)">
-            <option value="">Trip: All</option>
-            <option value="unassigned">Unassigned</option>
-            <option value="assigned">Assigned</option>
+          <select class="filter-select" onchange="intlFilter('_status',this.value)">
+            <option value="">Status: All</option>
+            <option value="Pending">Pending</option>
+            <option value="Assigned">Assigned</option>
+            <option value="Loaded">Loaded</option>
+            <option value="In Transit">In Transit</option>
+            <option value="Delivered">Delivered</option>
           </select>
           <select class="filter-select" onchange="intlPeriodChange(this.value)">
             <option value="60" ${_intlPeriod==='60'?'selected':''}>Last 60 days</option>
@@ -214,7 +217,7 @@ const _intlColDefs = [
   { key: 'loadDate', label: 'Load Date', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'Del Date',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
   { key: 'pal',      label: 'PAL',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
-  { key: 'trip',     label: 'Trip',      type: 'text',   w: '75px',  get: (f) => ((f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'status',   label: 'Status',    type: 'text',   w: '80px',  get: (f) => f['Status']||'Pending' },
   { key: 'inv',      label: 'INV',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
 ];
 
@@ -245,12 +248,16 @@ function _intlSortRecords(recs) {
 // ─── Table (Virtual Scroll) ─────────────────────
 function _oiRowHtml(r) {
   const f = r.fields;
-  const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
   const dir = f['Direction']||'';
   const dirB = dir==='Export' ? '<span class="badge badge-blue">↑ Export</span>'
              : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
              : `<span class="badge badge-grey">${dir||'—'}</span>`;
-  const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
+  const st = f['Status']||'Pending';
+  const stB = st==='Assigned' ? '<span class="badge badge-green">Assigned</span>'
+            : st==='Loaded' ? '<span class="badge" style="background:#7C3AED;color:#fff">Loaded</span>'
+            : st==='In Transit' ? '<span class="badge" style="background:#0369A1;color:#fff">In Transit</span>'
+            : st==='Delivered' ? '<span class="badge badge-grey">Delivered</span>'
+            : '<span class="badge badge-yellow">Pending</span>';
   // Flags: all badges in separate column
   const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);font-size:11px">⚠</span>' : '';
   const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 4px">GRP</span>' : '';
@@ -269,7 +276,7 @@ function _oiRowHtml(r) {
     <td ${_cw('75px')}>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
     <td ${_cw('75px')}>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
     <td ${_cw('45px')}>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
-    <td ${_cw('75px')}>${tripB}</td>
+    <td ${_cw('80px')}>${stB}</td>
     <td ${_cw('45px')} onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
       title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
       style="cursor:pointer;text-align:center;width:45px;min-width:45px;max-width:45px">
@@ -371,8 +378,10 @@ function _applyIntlFilters() {
   if (_intlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _intlFilters['Status']);
   if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
   if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
-  if (_intlFilters['_trip']==='unassigned') recs = recs.filter(r => !r.fields['TRIPS (Export Order)']?.length && !r.fields['TRIPS (Import Order)']?.length);
-  if (_intlFilters['_trip']==='assigned')   recs = recs.filter(r => r.fields['TRIPS (Export Order)']?.length>0 || r.fields['TRIPS (Import Order)']?.length>0);
+  if (_intlFilters['_status']) {
+    const sv = _intlFilters['_status'];
+    recs = recs.filter(r => (r.fields['Status']||'Pending') === sv);
+  }
   INTL_ORDERS.filtered = recs;
   _renderIntlTable(recs);
   const n = recs.length + ' orders';
