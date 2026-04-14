@@ -204,17 +204,18 @@ function _buildWeekOpts() {
 
 // ─── Sort helpers ────────────────────────────────
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'Order No',  type: 'text',   get: (f) => f['Order Number']||'' },
-  { key: 'week',     label: 'Week',      type: 'number', get: (f) => f['Week Number']||0 },
-  { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'Client',    type: 'text',   get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'Loading',   type: 'text',   get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
-  { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'PAL',       type: 'number', get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
-  { key: 'trip',     label: 'Trip',      type: 'text',   get: (f) => ((f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0))>0?'Assigned':'Pending' },
-  { key: 'inv',      label: 'INV',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
+  { key: 'orderNo',  label: 'Order No',  type: 'text',   w: '200px', get: (f) => f['Order Number']||'' },
+  { key: 'flags',    label: '',           type: 'text',   w: '80px',  get: () => '', nosort: true },
+  { key: 'week',     label: 'Week',      type: 'number', w: '55px',  get: (f) => f['Week Number']||0 },
+  { key: 'dir',      label: 'Dir',       type: 'text',   w: '75px',  get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'Client',    type: 'text',   w: '140px', get: (f) => _clientName(f) },
+  { key: 'loading',  label: 'Loading',   type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'Delivery',  type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
+  { key: 'loadDate', label: 'Load Date', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'Del Date',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'PAL',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
+  { key: 'trip',     label: 'Trip',      type: 'text',   w: '75px',  get: (f) => ((f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'inv',      label: 'INV',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
 ];
 
 function _intlSortToggle(key) {
@@ -250,23 +251,28 @@ function _oiRowHtml(r) {
              : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
              : `<span class="badge badge-grey">${dir||'—'}</span>`;
   const tripB = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
-  const hr  = f['High Risk Flag'] ? '<span title="⚠" style="color:var(--danger);margin-right:4px">⚠</span>' : '';
-  const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
+  // Flags: all badges in separate column
+  const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);font-size:11px">⚠</span>' : '';
+  const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 4px">GRP</span>' : '';
+  const vs  = f['Veroia Switch'] ? '<span class="badge" style="font-size:9px;padding:1px 4px;background:#7C3AED;color:#fff">VS</span>' : '';
+  const flags = [hr, grp, vs].filter(Boolean).join(' ');
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
+  const _cw = (w) => `style="width:${w};min-width:${w};max-width:${w};overflow:hidden;text-overflow:ellipsis;white-space:nowrap"`;
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
-    <td style="white-space:nowrap">${hr}${grp}<strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
-    <td>W${escapeHtml(f['Week Number']||'—')}</td>
-    <td>${dirB}</td>
-    <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${_clientName(f)}</td>
-    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(_stopsLocationSummary(r.id,'Loading')) || _cleanSummary(f['Loading Summary'])}</td>
-    <td style="max-width:130px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(_stopsLocationSummary(r.id,'Unloading')) || _cleanSummary(f['Delivery Summary'])}</td>
-    <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
-    <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-    <td>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
-    <td>${tripB}</td>
-    <td onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
+    <td ${_cw('200px')}><strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
+    <td ${_cw('80px')}>${flags}</td>
+    <td ${_cw('55px')}>W${escapeHtml(f['Week Number']||'—')}</td>
+    <td ${_cw('75px')}>${dirB}</td>
+    <td ${_cw('140px')}>${_clientName(f)}</td>
+    <td ${_cw('140px')}>${escapeHtml(_stopsLocationSummary(r.id,'Loading')) || _cleanSummary(f['Loading Summary'])}</td>
+    <td ${_cw('140px')}>${escapeHtml(_stopsLocationSummary(r.id,'Unloading')) || _cleanSummary(f['Delivery Summary'])}</td>
+    <td ${_cw('75px')}>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
+    <td ${_cw('75px')}>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
+    <td ${_cw('45px')}>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
+    <td ${_cw('75px')}>${tripB}</td>
+    <td ${_cw('45px')} onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
       title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
-      style="cursor:pointer;text-align:center">
+      style="cursor:pointer;text-align:center;width:45px;min-width:45px;max-width:45px">
       ${f['Invoiced']
         ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
         : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
@@ -321,17 +327,19 @@ function _renderIntlTable(records) {
 
   const ths = _intlColDefs.map(c => {
     const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:#0284C7">▲</span>':_intlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
-    return `<th style="cursor:pointer;user-select:none" onclick="_intlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
+    const click = c.nosort ? '' : ` onclick="_intlSortToggle('${c.key}')"`;
+    const cursor = c.nosort ? 'default' : 'pointer';
+    return `<th style="cursor:${cursor};user-select:none;width:${c.w};min-width:${c.w};max-width:${c.w}"${click}>${c.label}${arrow}</th>`;
   }).join('');
 
   const totalH = sortedRecs.length * _OI_ROW_H;
   wrap.innerHTML = `
     <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
-      <table>
+      <table style="table-layout:fixed;width:100%">
         <thead><tr>${ths}</tr></thead>
       </table>
       <div id="oiTopSpacer" style="height:0"></div>
-      <table><tbody></tbody></table>
+      <table style="table-layout:fixed;width:100%"><tbody></tbody></table>
       <div id="oiBottomSpacer" style="height:${totalH}px"></div>
     </div>
     <div style="padding:8px 16px;color:#94A3B8;font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
