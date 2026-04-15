@@ -11,7 +11,7 @@ const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[],
 const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
   'Loading DateTime','Delivery DateTime','Status',
-  'Loading Location 1','Unloading Location 1','ORDER STOPS',
+  'ORDER STOPS',
   'Ops Status','Delivery Performance','Ops Notes','Postponed To',
   'Actual Delivery Date','ETA','CMR Photo Received','Client Notified',
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
@@ -130,7 +130,7 @@ function _opsDraw() {
       </div>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
-          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading')||getLinkedId(f['Loading Location 1']))} → ${_L(_opsStopLoc(r.id,'Unloading')||getLinkedId(f['Unloading Location 1']))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
+          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))} → ${_L(_opsStopLoc(r.id,'Unloading'))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
           <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Delivered</button>
           <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Delayed</button>
         </div>`;}).join('')}</div></div>`;
@@ -201,8 +201,8 @@ function _opsSec(type,label,items,isToday) {
 function _opsRow(rec,num,type,isToday) {
   const f=rec.fields, id=rec.id;
   const client=_C(f);
-  const loadL=_L(_opsStopLoc(id,'Loading')||getLinkedId(f['Loading Location 1']));
-  const delivL=_L(_opsStopLoc(id,'Unloading')||getLinkedId(f['Unloading Location 1']));
+  const loadL=_L(_opsStopLoc(id,'Loading'));
+  const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_T(f), driver=_D(f), partner=_P(f);
   const pal=f['Total Pallets']||'';
   const ops=f['Ops Status']||'';

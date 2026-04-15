@@ -830,15 +830,44 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
   }
   // Note: old-style single 'Pickup Location' / 'Delivery Location' fields no longer exist in schema
 
+  let _nlRecId = null;
   if (existing.length) {
     // Update existing
     await atPatch(TABLES.NAT_LOADS, existing[0].id, nlFields);
+    _nlRecId = existing[0].id;
     console.log(`_syncNationalLoad: updated NL ${existing[0].id} for NO ${noId}`);
   } else {
     // Create new
     const created = await atCreate(TABLES.NAT_LOADS, nlFields);
+    _nlRecId = created.id;
     console.log(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
   }
+
+  // Write ORDER_STOPS for the NAT_LOADS record
+  if (_nlRecId) {
+    const _nlStops = [];
+    const _pals = noFields['Pallets'] || 0;
+    const _clientId = Array.isArray(noFields['Client']) ? (_lid(noFields['Client'][0]) || _lid(noFields['Client'])) : null;
+    const _goods = noFields['Goods'] || null;
+    const _temp  = noFields['Temperature °C'] ?? null;
+    const _ref   = noFields['Reference'] || null;
+
+    for (let i = 1; i <= 10; i++) {
+      const pId = _lid(noFields[`Pickup Location ${i}`]);
+      if (pId) _nlStops.push({ stopNumber: i, stopType: 'Loading', locationId: pId,
+        pallets: _pals, dateTime: noFields['Loading DateTime'] || null,
+        clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
+      const dId = _lid(noFields[`Delivery Location ${i}`]);
+      if (dId) _nlStops.push({ stopNumber: i, stopType: 'Unloading', locationId: dId,
+        pallets: _pals, dateTime: noFields['Delivery DateTime'] || null,
+        clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
+    }
+    if (_nlStops.length) {
+      try { await stopsSave(_nlRecId, _nlStops, F.STOP_PARENT_NL); }
+      catch(e) { console.warn('NL ORDER_STOPS write error:', e); }
+    }
+  }
+
   } finally {
     _syncingNLs.delete(noId);
   }

@@ -70,302 +70,213 @@ async function _rampLoad() {
   RAMP.postponed=postponed;
 }
 
-/* ── AUTO-SYNC: Create RAMP records from source tables ────────── */
+/* ── AUTO-SYNC: Create RAMP records from ORDER_STOPS (single source of truth) ── */
 async function _rampAutoSync() {
   const date = RAMP.date;
-  const nextDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()+864e5));
-  const prevDay = toLocalDate(new Date(new Date(date+'T12:00:00').getTime()-864e5));
 
-  // Single query: today's RAMP + all postponed (for dedup) — reduces 2 calls → 1
+  // ── Existing RAMP records for dedup ──
   const dedupFields = ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time','Plan Date','Postponed To','Pallets'];
   const allExistingRaw = await atGetAll(TABLES.RAMP, {
     filterByFormula: `OR(IS_SAME({Plan Date},'${date}','day'),{Postponed To}!=BLANK())`,
     fields: dedupFields,
   }, false);
-  const existing = allExistingRaw.filter(r => toLocalDate(r.fields['Plan Date']) === date);
-  const allExisting = allExistingRaw;
-  // Primary key: Order/NatOrder + Type + Category
-  const existingKeys = new Set(allExisting.map(r => {
-    const oid = getLinkId(r.fields['Order']) || '';
-    const nid = getLinkId(r.fields['National Order']) || '';
-    const src = oid || nid || r.id;
-    return `${src}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`;
-  }));
-  // Secondary dedup key: Client + Type + Pallets (catches records without Order link)
-  const existingClientKeys = new Set(allExisting.map(r => {
-    const client = r.fields['Supplier/Client'] || '';
-    return `${client}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`;
-  }));
-  // Extract CL record IDs from existing VS+G ramp records (stored as CL:recXXX in Notes)
-  const existingCLIds = new Set(existing
-    .filter(e => e.fields['Ramp Category']==='VS + Groupage')
-    .map(e => { const m=(e.fields['Notes']||'').match(/^CL:(rec[a-zA-Z0-9]+)/); return m?m[1]:''; })
-    .filter(Boolean));
 
-  const toCreate = [];
+  const existingStopKeys = new Set();
+  const existingKeys = new Set();
+  const existingClientKeys = new Set();
 
-  // Helper: check both primary key AND client-based dedup
-  function _shouldCreate(primaryKey, rec) {
-    if (existingKeys.has(primaryKey)) return false;
-    // Secondary dedup: client + type + pallets
-    const f = rec.fields || rec;
-    const client = f['Client Name'] || f['Supplier/Client'] || f['Client'] || '';
-    const type = primaryKey.split('_')[1] || '';
-    const pals = f['Total Pallets'] || f['Pallets'] || '';
-    const clientKey = `${client}_${type}_${pals}`;
-    if (existingClientKeys.has(clientKey)) return false;
-    // Add to both sets to prevent within-batch duplicates
-    existingKeys.add(primaryKey);
-    existingClientKeys.add(clientKey);
-    return true;
+  for (const r of allExistingRaw) {
+    const note = r.fields['Notes']||'';
+    // New stop-based key (STOP:recXXX)
+    const stopM = note.match(/^STOP:(rec[a-zA-Z0-9]+)/);
+    if (stopM) existingStopKeys.add(stopM[1]);
+    // Legacy CL-based key
+    const clM = note.match(/^CL:(rec[a-zA-Z0-9]+)/);
+    if (clM) existingStopKeys.add('CL:'+clM[1]);
+    // Legacy primary key: Order/NatOrder + Type + Category
+    const oid = getLinkId(r.fields['Order'])||'';
+    const nid = getLinkId(r.fields['National Order'])||'';
+    existingKeys.add(`${oid||nid||r.id}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`);
+    // Client-based key
+    existingClientKeys.add(`${r.fields['Supplier/Client']||''}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`);
   }
 
-  // ── 1. ORDERS (International) ──────────────────────────────
-  // VF Export: Loading Date = today → Outbound
-  // VF Import: Delivery Date = today → Inbound
-  // VS Export: Loading Date = yesterday (today = Loading+1) → Outbound
-  // VS Import: Delivery Date = tomorrow (today = Delivery-1) → Inbound
+  // ── Query ORDER_STOPS for today (INTL + NAT_LOADS parents only, not NAT_ORDERS) ──
+  const stopsFilter = `AND(IS_SAME({${F.STOP_DATETIME}},'${date}','day'),OR({${F.STOP_PARENT_ORDER}}!=BLANK(),{${F.STOP_PARENT_NL}}!=BLANK()))`;
+  const allStops = await atGetAll(TABLES.ORDER_STOPS, {
+    filterByFormula: stopsFilter,
+    fields: [F.STOP_TYPE, F.STOP_NUMBER, F.STOP_LOCATION, F.STOP_DATETIME,
+             F.STOP_PALLETS, F.STOP_CLIENT, F.STOP_GOODS, F.STOP_TEMP,
+             F.STOP_REF, F.STOP_NOTES, F.STOP_PARENT_ORDER, F.STOP_PARENT_NL]
+  }, false).catch(()=>[]);
 
-  // Single combined ORDERS query — reduces 4 parallel calls → 1 call
-  // Fetches all orders that touch today's ramp (VF or VS, export or import)
-  const intlCombinedFilter = `OR(AND(NOT({Veroia Switch}),{Direction}='Export',IS_SAME({Loading DateTime},'${date}','day')),AND(NOT({Veroia Switch}),{Direction}='Import',IS_SAME({Delivery DateTime},'${date}','day')),AND({Veroia Switch},{Direction}='Export',IS_SAME({Loading DateTime},'${prevDay}','day')),AND({Veroia Switch},{Direction}='Import',IS_SAME({Delivery DateTime},'${nextDay}','day')))`;
+  // Filter for Veroia location client-side (ARRAYJOIN on linked fields returns names, not IDs)
+  const veroiaStops = allStops.filter(s => {
+    const loc = (s.fields[F.STOP_LOCATION]||[])[0];
+    return loc === F.VEROIA_LOC;
+  });
 
-  const intlFields = ['Direction','Veroia Switch','Loading DateTime','Delivery DateTime',
-    'Goods','Temperature °C','Total Pallets','Client','Truck','Trailer','Driver',
-    'Loading Location 1','Loading Location 2','Loading Location 3',
-    'Unloading Location 1','Unloading Location 2','Unloading Location 3',
-    'ORDER STOPS'];
+  if (!veroiaStops.length) return;
 
-  const allIntl = await atGetAll(TABLES.ORDERS, {filterByFormula:intlCombinedFilter, fields:intlFields}, false).catch(()=>[]);
+  // ── Collect parent IDs ──
+  const intlIds = new Set(), nlIds = new Set();
+  for (const s of veroiaStops) {
+    const iid = (s.fields[F.STOP_PARENT_ORDER]||[])[0];
+    const nid = (s.fields[F.STOP_PARENT_NL]||[])[0];
+    if (iid) intlIds.add(iid);
+    if (nid) nlIds.add(nid);
+  }
 
-  // Batch-fetch ORDER_STOPS for all fetched orders (via reverse-link IDs)
-  const allStopIds = allIntl.flatMap(r => r.fields['ORDER STOPS'] || []);
-  let allStopsMap = {};
-  if (allStopIds.length) {
+  // ── Batch-fetch parent records ──
+  const [intlParents, nlParents] = await Promise.all([
+    intlIds.size ? atGetAll(TABLES.ORDERS, {
+      filterByFormula: `OR(${[...intlIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+      fields: ['Direction','Veroia Switch','National Groupage','Truck','Driver','Client','ORDER STOPS']
+    }, false).catch(()=>[]) : [],
+    nlIds.size ? atGetAll(TABLES.NAT_LOADS, {
+      filterByFormula: `OR(${[...nlIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+      fields: ['Direction','Truck','Driver','Client','Source Type','ORDER STOPS']
+    }, false).catch(()=>[]) : [],
+  ]);
+  const intlMap = Object.fromEntries(intlParents.map(r=>[r.id,r]));
+  const nlMap = Object.fromEntries(nlParents.map(r=>[r.id,r]));
+
+  // ── Batch-fetch sibling stops for Loading/Delivery Points ──
+  const allSibIds = new Set();
+  intlParents.forEach(r=>(r.fields['ORDER STOPS']||[]).forEach(id=>allSibIds.add(id)));
+  nlParents.forEach(r=>(r.fields['ORDER STOPS']||[]).forEach(id=>allSibIds.add(id)));
+  const sibMap = {};
+  if (allSibIds.size) {
     try {
-      const stopFilter = `OR(${allStopIds.slice(0, 100).map(id => `RECORD_ID()="${id}"`).join(',')})`;
-      const allStops = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: stopFilter }, false);
-      // Group by parent order ID
-      for (const s of allStops) {
-        const parentId = (s.fields[F.STOP_PARENT_ORDER] || [])[0];
-        if (!parentId) continue;
-        if (!allStopsMap[parentId]) allStopsMap[parentId] = [];
-        allStopsMap[parentId].push(s);
+      const idArr = [...allSibIds];
+      for (let b = 0; b < idArr.length; b += 100) {
+        const batch = idArr.slice(b, b+100);
+        const sibStops = await atGetAll(TABLES.ORDER_STOPS, {
+          filterByFormula: `OR(${batch.map(id=>`RECORD_ID()="${id}"`).join(',')})`,
+          fields: [F.STOP_TYPE, F.STOP_NUMBER, F.STOP_LOCATION, F.STOP_PARENT_ORDER, F.STOP_PARENT_NL]
+        }, false);
+        for (const s of sibStops) {
+          const pid = (s.fields[F.STOP_PARENT_ORDER]||[])[0] || (s.fields[F.STOP_PARENT_NL]||[])[0];
+          if (!pid) continue;
+          if (!sibMap[pid]) sibMap[pid] = [];
+          sibMap[pid].push(s);
+        }
       }
-    } catch(e) { console.warn('Ramp: ORDER_STOPS batch fetch failed:', e); }
-  }
-  // Attach stops to order records for _rampBuildRecord
-  allIntl.forEach(r => { r._stops = allStopsMap[r.id] || []; });
-
-  // Split results client-side into the 4 categories
-  const vfExp = allIntl.filter(r => !r.fields['Veroia Switch'] && r.fields['Direction']==='Export');
-  const vfImp = allIntl.filter(r => !r.fields['Veroia Switch'] && r.fields['Direction']==='Import');
-  const vsExp = allIntl.filter(r => r.fields['Veroia Switch']  && r.fields['Direction']==='Export');
-  const vsImp = allIntl.filter(r => r.fields['Veroia Switch']  && r.fields['Direction']==='Import');
-
-  // VF Export → Outbound
-  vfExp.forEach(r => {
-    const key = `${r.id}_Φόρτωση_Vermion Fresh`;
-    if (!_shouldCreate(key, r)) return;
-    toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'Vermion Fresh', date, false));
-  });
-
-  // VF Import → Inbound
-  vfImp.forEach(r => {
-    const key = `${r.id}_Παραλαβή_Vermion Fresh`;
-    if (!_shouldCreate(key, r)) return;
-    toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'Vermion Fresh', date, false));
-  });
-
-  // VS Export → Outbound (date = loading+1)
-  vsExp.forEach(r => {
-    const key = `${r.id}_Φόρτωση_VS Simple`;
-    if (!_shouldCreate(key, r)) return;
-    toCreate.push(_rampBuildRecord(r, 'Φόρτωση', 'VS Simple', date, true));
-  });
-
-  // VS Import → Inbound (date = delivery-1)
-  vsImp.forEach(r => {
-    const key = `${r.id}_Παραλαβή_VS Simple`;
-    if (!_shouldCreate(key, r)) return;
-    toCreate.push(_rampBuildRecord(r, 'Παραλαβή', 'VS Simple', date, true));
-  });
-
-  // ── 2+3. NATIONAL LOADS + CONS_LOADS in parallel ──────────────
-  const natFilter = `AND(
-    {Source Type}='Direct',
-    OR(IS_SAME({Loading DateTime},'${date}','day'),IS_SAME({Delivery DateTime},'${date}','day'))
-  )`;
-  const natFields = ['Direction','Loading DateTime','Delivery DateTime',
-    'Goods','Temperature C','Total Pallets','Client','Truck','Driver',
-    'Pickup Location 1','Pickup Location 2','Pickup Location 3',
-    'Delivery Location 1','Delivery Location 2','Delivery Location 3',
-    'Source Type'];
-  const clFilter = `IS_SAME({Loading DateTime},'${date}','day')`;
-  const clFields = ['Loading DateTime','Goods','Temperature C','Total Pallets','Client',
-    'Truck','Trailer','Driver','Name','Groupage ID','Source Orders',
-    'Pallets 1','Pallets 2','Pallets 3','Pallets 4','Pallets 5',
-    'Pallets 6','Pallets 7','Pallets 8','Pallets 9','Pallets 10',
-    'Loading Location 1','Loading Location 2','Loading Location 3','Loading Location 4','Loading Location 5',
-    'Delivery Location 1','Delivery Location 2','Delivery Location 3'];
-
-  const [natOrders, consLoads] = await Promise.all([
-    atGetAll(TABLES.NAT_LOADS, {filterByFormula:natFilter, fields:natFields}, false).catch(()=>[]),
-    atGetAll(TABLES.CONS_LOADS, {filterByFormula:clFilter, fields:clFields}, false).catch(()=>[]),
-  ]);
-
-  natOrders.forEach(r => {
-    const f = r.fields;
-    const isLoading = f['Loading DateTime'] && toLocalDate(f['Loading DateTime']) === date;
-    const type = isLoading ? 'Παραλαβή' : 'Φόρτωση';
-    const key = `${r.id}_${type}_`;
-    if (!_shouldCreate(key, r)) return;
-
-    const rec = {
-      'Plan Date': date,
-      'Type': type,
-      'Status': 'Προγραμματισμένο',
-      'Goods': f['Goods'] || '',
-      'Pallets': f['Total Pallets'] || 0,
-      'Supplier/Client': f['Client'] || '—',
-    };
-    if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
-    if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
-    if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-    rec['Loading Points'] = _rampResolveStops(f, 'Pickup Location', 3);
-    rec['Delivery Points'] = _rampResolveStops(f, 'Delivery Location', 3);
-    toCreate.push(rec);
-  });
-
-  // ── 3. CONS_LOADS → Inbound (VS + Groupage) — already fetched above ──
-
-  // Deduplicate VS+G records by CL record ID (stored in Notes as CL:recXXX)
-  // Also keep string-based fallback for legacy records without CL: prefix
-  const existingVSG = existing.filter(e=>e.fields['Ramp Category']==='VS + Groupage');
-  const existingVSGClients = new Set(existingVSG.map(e=>e.fields['Supplier/Client']||'').filter(Boolean));
-
-  // Pre-fetch ALL source order IDs from all CLs in one batch
-  const allSrcIds = new Set();
-  consLoads.forEach(r => {
-    (r.fields['Source Orders']||[]).forEach(o => { const id = o?.id||o; if(id) allSrcIds.add(id); });
-  });
-  const srcOrderMap = {};
-  if (allSrcIds.size) {
-    const srcFilter = `OR(${[...allSrcIds].map(id=>`RECORD_ID()="${id}"`).join(',')})`;
-    const srcRecs = await atGetAll(TABLES.NAT_ORDERS, {
-      filterByFormula: srcFilter,
-      fields: ['Client','Pickup Location 1','Pallets','Temperature °C','Reference']
-    }, false).catch(()=>[]);
-    srcRecs.forEach(r => { srcOrderMap[r.id] = r; });
+    } catch(e) { console.warn('Ramp: sibling stops fetch failed:', e); }
   }
 
-  for (const r of consLoads) {
-    const f = r.fields;
-    const clName = f['Name']||'';
-    // Build supplier string first for dedup check
-    const srcIds = (f['Source Orders']||[]).map(o=>o?.id||o).filter(Boolean);
-    let supplierLines = [];
-    srcIds.forEach((sid, i) => {
-      const srcRec = srcOrderMap[sid];
-      if (!srcRec) return;
-      const sf = srcRec.fields||{};
-      const clientId = Array.isArray(sf['Client']) ? sf['Client'][0] : sf['Client'];
-      const clientRec = clientId ? RAMP.clients.find(c=>c.id===clientId) : null;
-      const clientName = clientRec ? (clientRec.fields['Company Name']||clientId) : (clientId||'—');
-      // Use CL's Loading Location N (per-stop) instead of source NO's Pickup Location 1
-      const clLocArr = f[`Loading Location ${i+1}`];
-      const locId = clLocArr?.length ? (clLocArr[0]?.id||clLocArr[0]) : null;
-      const locRec = locId ? RAMP.locs.find(l=>l.id===locId) : null;
-      const locName = locRec ? (locRec.fields['Name']||locRec.fields['City']||'') : '';
-      const pal = f[`Pallets ${i+1}`] || sf['Pallets'] || 0;
-      const temp = sf['Temperature °C'] != null ? sf['Temperature °C']+'°C' : '';
-      const ref = sf['Reference'] || '';
-      supplierLines.push({client:clientName, location:locName, pallets:pal, temp:temp, ref:ref});
-    });
-    const supplierStr = supplierLines.map(s=>s.client).filter(Boolean).join(' / ') || clName;
-    // Dedup by CL record ID (reliable) + string fallback for legacy records
-    if (existingCLIds.has(r.id)) continue;
-    if (existingVSGClients.has(supplierStr)) continue;
+  // ── Build RAMP records from Veroia stops ──
+  const toCreate = [];
+  for (const stop of veroiaStops) {
+    const sf = stop.fields;
+    const stopType = sf[F.STOP_TYPE];
+    const intlPid = (sf[F.STOP_PARENT_ORDER]||[])[0];
+    const nlPid = (sf[F.STOP_PARENT_NL]||[])[0];
+    const parentId = intlPid || nlPid;
 
+    // Already synced (by stop ID)?
+    if (existingStopKeys.has(stop.id)) continue;
+
+    // Determine Ramp Type: Loading@Veroia=Φόρτωση, Unloading@Veroia=Παραλαβή
+    // Cross-dock: Export=Φόρτωση (truck departs), Import=Παραλαβή (truck arrives)
+    let rampType;
+    if (stopType === 'Loading') rampType = 'Φόρτωση';
+    else if (stopType === 'Unloading') rampType = 'Παραλαβή';
+    else if (stopType === 'Cross-dock') {
+      const p = intlPid ? intlMap[intlPid] : null;
+      rampType = p?.fields['Direction'] === 'Export' ? 'Φόρτωση' : 'Παραλαβή';
+    } else continue;
+
+    // Determine Ramp Category
+    let category = '', isVS = false;
+    if (intlPid) {
+      const p = intlMap[intlPid];
+      if (p?.fields['Veroia Switch'] && p?.fields['National Groupage']) {
+        category = 'VS + Groupage'; isVS = true;
+      } else if (p?.fields['Veroia Switch']) {
+        category = 'VS Simple'; isVS = true;
+      } else {
+        category = 'Vermion Fresh';
+      }
+    }
+
+    // Legacy dedup (Order+Type+Category)
+    const legacyKey = `${parentId||stop.id}_${rampType}_${category}`;
+    if (existingKeys.has(legacyKey)) continue;
+
+    // Resolve client name
+    const clientStr = _rampClientFromStop(sf, intlPid ? intlMap[intlPid] : nlPid ? nlMap[nlPid] : null);
+
+    // Client-based dedup
+    const clientKey = `${clientStr}_${rampType}_${parseInt(sf[F.STOP_PALLETS])||0}`;
+    if (existingClientKeys.has(clientKey)) continue;
+
+    // Mark as used
+    existingStopKeys.add(stop.id);
+    existingKeys.add(legacyKey);
+    existingClientKeys.add(clientKey);
+
+    // Build RAMP record
     const rec = {
       'Plan Date': date,
-      'Type': 'Παραλαβή',
+      'Type': rampType,
       'Status': 'Προγραμματισμένο',
-      'Ramp Category': 'VS + Groupage',
-      'Is Veroia Switch': true,
-      'Goods': f['Goods'] || '',
-      'Pallets': f['Total Pallets'] || 0,
-      'Supplier/Client': supplierStr || clName,
-      'Notes': `CL:${r.id}`,
+      'Is Veroia Switch': isVS,
+      'Goods': sf[F.STOP_GOODS] || '',
+      'Pallets': sf[F.STOP_PALLETS] || 0,
+      'Supplier/Client': clientStr || '—',
+      'Notes': `STOP:${stop.id}`,
     };
-    // Write per-stop structured fields (up to 5)
-    supplierLines.slice(0, 5).forEach((s, idx) => {
-      const n = idx + 1;
-      rec[`Stop Client ${n}`]   = s.client || '';
-      rec[`Stop Location ${n}`] = s.location || '';
-      rec[`Stop Pallets ${n}`]  = s.pallets || 0;
-      rec[`Stop Temp ${n}`]     = s.temp || '';
-      rec[`Stop Ref ${n}`]      = s.ref || '';
-    });
-    if (f['Temperature C']) rec['Temperature'] = String(f['Temperature C']);
-    if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
-    if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-    rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 10);
-    rec['Delivery Points'] = _rampResolveStops(f, 'Delivery Location', 10);
+    if (category) rec['Ramp Category'] = category;
+    if (sf[F.STOP_TEMP]) rec['Temperature'] = String(sf[F.STOP_TEMP]);
+    if (intlPid) rec['Order'] = [intlPid];
+
+    // Truck/Driver from parent
+    const parent = intlPid ? intlMap[intlPid] : nlPid ? nlMap[nlPid] : null;
+    if (parent) {
+      const pf = parent.fields;
+      if (pf['Truck']?.length) rec['Truck'] = [pf['Truck'][0]?.id || pf['Truck'][0]];
+      if (pf['Driver']?.length) rec['Driver'] = [pf['Driver'][0]?.id || pf['Driver'][0]];
+    }
+
+    // Loading/Delivery Points from sibling stops
+    const siblings = sibMap[parentId] || [];
+    if (siblings.length) {
+      rec['Loading Points'] = _rampResolveFromStops(siblings, 'Loading');
+      rec['Delivery Points'] = _rampResolveFromStops(siblings, 'Unloading');
+    }
+
     toCreate.push(rec);
   }
 
-  // ── Cleanup: remove orphan RAMP records ──────────────────
-  // Collect all valid source IDs from what we just fetched
-  const validOrderIds = new Set([
-    ...vfExp.map(r=>r.id), ...vfImp.map(r=>r.id),
-    ...vsExp.map(r=>r.id), ...vsImp.map(r=>r.id),
-  ]);
-  const validNatIds = new Set(natOrders.map(r=>r.id));  // now from NAT_LOADS
-  const validCLIds = new Set(consLoads.map(r=>r.id));
-
-  // NOTE: No orphan cleanup — records are preserved once created.
-  // Users manage records via Done/Postpone buttons.
-  // Only skip creating duplicates (via existingKeys check above).
-
-  // ── Create all new RAMP records ──────────────────────────
+  // ── Create new RAMP records ──
   if (toCreate.length) {
     for (let i = 0; i < toCreate.length; i += 10) {
-      const batch = toCreate.slice(i, i + 10);
+      const batch = toCreate.slice(i, i+10);
       await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => console.error('Ramp sync error:', e))));
     }
-    console.log(`Ramp auto-sync: created ${toCreate.length} records`);
+    console.log(`Ramp auto-sync: created ${toCreate.length} records from ORDER_STOPS`);
   }
 }
 
-/* ── BUILD RAMP RECORD from ORDERS ────────────────────────────── */
-function _rampBuildRecord(orderRec, type, category, date, isVS) {
-  const f = orderRec.fields;
-  const rec = {
-    'Plan Date': date,
-    'Type': type,
-    'Status': 'Προγραμματισμένο',
-    'Ramp Category': category,
-    'Is Veroia Switch': isVS,
-    'Order': [orderRec.id],
-    'Goods': f['Goods'] || '',
-    'Pallets': f['Total Pallets'] || 0,
-    'Supplier/Client': Array.isArray(f['Client']) ? (f['Client'][0]||'') : (f['Client']||''),
-  };
-  if (f['Temperature °C']) rec['Temperature'] = String(f['Temperature °C']);
-  if (f['Truck']?.length) rec['Truck'] = [f['Truck'][0]?.id || f['Truck'][0]];
-  if (f['Driver']?.length) rec['Driver'] = [f['Driver'][0]?.id || f['Driver'][0]];
-
-  // Resolve locations — try ORDER_STOPS first, then flat fields, then Summary
-  const stops = orderRec._stops || [];
-  if (stops.length) {
-    rec['Loading Points'] = _rampResolveFromStops(stops, 'Loading');
-    rec['Delivery Points'] = _rampResolveFromStops(stops, 'Unloading');
-  } else {
-    rec['Loading Points'] = _rampResolveStops(f, 'Loading Location', 5) || (f['Loading Summary']||'').split(',')[0].trim();
-    rec['Delivery Points'] = _rampResolveStops(f, 'Unloading Location', 5) || (f['Delivery Summary']||'').split(',')[0].trim();
+/** Resolve client name from ORDER_STOP fields, fallback to parent */
+function _rampClientFromStop(sf, parent) {
+  const clientArr = sf[F.STOP_CLIENT];
+  const clientId = Array.isArray(clientArr) ? clientArr[0] : null;
+  if (clientId) {
+    const rec = RAMP.clients.find(c => c.id === clientId);
+    if (rec) return rec.fields['Company Name'] || '';
   }
-  return rec;
+  if (parent) {
+    const pc = parent.fields['Client'];
+    if (typeof pc === 'string') return pc;
+    if (Array.isArray(pc) && pc.length) {
+      const pcId = pc[0]?.id || pc[0];
+      const rec = RAMP.clients.find(c => c.id === pcId);
+      return rec ? (rec.fields['Company Name']||'') : '';
+    }
+  }
+  return '';
 }
 
 /** Resolve location names from ORDER_STOPS records */
@@ -381,20 +292,6 @@ function _rampResolveFromStops(stops, stopType) {
       return loc ? (loc.fields['Name'] || loc.fields['City'] || '') : '';
     })
     .filter(Boolean).join(' / ') || '';
-}
-
-function _rampResolveStops(f, prefix, max) {
-  const names = [];
-  for (let i=1; i<=max; i++) {
-    const key = `${prefix} ${i}`;
-    const arr = f[key];
-    const id = Array.isArray(arr) ? (arr[0]?.id||arr[0]) : null;
-    if (id) {
-      const loc = RAMP.locs.find(r=>r.id===id);
-      if (loc) names.push(loc.fields['Name']||loc.fields['City']||'');
-    }
-  }
-  return names.filter(Boolean).join(' / ') || '';
 }
 
 /* ── HELPERS (using shared data-helpers.js) ───────────────────── */

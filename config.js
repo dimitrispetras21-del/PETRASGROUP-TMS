@@ -195,6 +195,7 @@ const F = {
   STOP_LABEL:           'Stop Label',
   STOP_PARENT_ORDER:    'Parent Order',
   STOP_PARENT_NAT:      'Parent Nat Order',
+  STOP_PARENT_NL:       'Parent Nat Load',
   STOP_NUMBER:          'Stop Number',
   STOP_TYPE:            'Stop Type',
   STOP_LOCATION:        'Location',

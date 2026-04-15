@@ -940,6 +940,43 @@ async function _syncVeroiaSwitch(orderId, fields) {
     }
   }
 
+  // Write ORDER_STOPS for the NAT_LOADS record (national leg stops)
+  if (nlId) {
+    const _nlStops = [];
+    const _totalPal = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+      .reduce((sum, s) => sum + (s.fields[F.STOP_PALLETS] || 0), 0);
+    const _loadDtISO = natLoadDt ? natLoadDt + 'T12:00:00.000Z' : null;
+    const _delDtISO  = natDelDt  ? natDelDt  + 'T12:00:00.000Z' : null;
+    const _clientId = Array.isArray(fields['Client']) ? (_lid(fields['Client'][0])) : null;
+    const _goods = fields['Goods'] || null;
+    const _temp  = fields['Temperature °C'] ?? null;
+    const _ref   = fields['Reference'] || null;
+
+    pickupLocs.forEach((locId, i) => {
+      // Distribute pallets from INTL stops if available, else equal split
+      let pals = _totalPal;
+      if (direction === 'Export' && _vsStops.length) {
+        const loadStop = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')[i];
+        if (loadStop) pals = loadStop.fields[F.STOP_PALLETS] || 0;
+      }
+      _nlStops.push({ stopNumber: i+1, stopType: 'Loading', locationId: locId,
+        pallets: pals, dateTime: _loadDtISO, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
+    });
+    delivLocs.forEach((locId, i) => {
+      let pals = _totalPal;
+      if (direction === 'Import' && _vsStops.length) {
+        const unloadStop = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')[i];
+        if (unloadStop) pals = unloadStop.fields[F.STOP_PALLETS] || 0;
+      }
+      _nlStops.push({ stopNumber: i+1, stopType: 'Unloading', locationId: locId,
+        pallets: pals, dateTime: _delDtISO, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
+    });
+    if (_nlStops.length) {
+      try { await stopsSave(nlId, _nlStops, F.STOP_PARENT_NL); }
+      catch(e) { console.warn('NL ORDER_STOPS write error:', e); }
+    }
+  }
+
   // GRP OFF → delete any auto-created NAT_ORDER + its GL + CL + NL
   try { await _deleteGrpForIntl(orderId); }
   catch(e) { console.warn('GL cleanup (grp OFF):', e); }

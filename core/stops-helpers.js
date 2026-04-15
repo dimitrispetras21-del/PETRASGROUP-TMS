@@ -16,8 +16,10 @@ async function stopsLoad(orderId, parentField) {
   // Linked record filters via ARRAYJOIN don't work (returns display names, not IDs).
   // Instead: fetch the parent order's reverse-link field to get stop record IDs,
   // then batch-fetch the stop records by ID.
-  const reverseLinkField = parentField === F.STOP_PARENT_ORDER ? 'ORDER STOPS' : 'ORDER STOPS';
-  const parentTable = parentField === F.STOP_PARENT_ORDER ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+  const reverseLinkField = 'ORDER STOPS'; // same name on all parent tables
+  const parentTable = parentField === F.STOP_PARENT_ORDER ? TABLES.ORDERS
+                    : parentField === F.STOP_PARENT_NL    ? TABLES.NAT_LOADS
+                    :                                        TABLES.NAT_ORDERS;
   try {
     const parentRec = await atGetOne(parentTable, orderId);
     const stopIds = parentRec.fields?.[reverseLinkField] || [];
