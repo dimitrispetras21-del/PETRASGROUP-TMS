@@ -67,7 +67,7 @@ function _aicPageContext() {
     if (page === 'daily_ramp' && typeof RAMP !== 'undefined') {
       const inb = (RAMP.records || []).filter(r => r.fields['Type'] === 'Παραλαβή');
       const out = (RAMP.records || []).filter(r => r.fields['Type'] === 'Φόρτωση');
-      const done = (RAMP.records || []).filter(r => r.fields['Status'] === '✅ Έγινε').length;
+      const done = (RAMP.records || []).filter(r => r.fields['Status'] === 'Done').length;
       const stockItems = RAMP.stock || [];
       lines.push(`Ramp Board ${RAMP.date}:`);
       lines.push(`  ${inb.length} inbound, ${out.length} outbound, ${done} completed`);
@@ -462,7 +462,7 @@ You are Nakis, the AI assistant for Petras Group TMS. You help users learn and u
 
 ### Daily Ops Plan (PLANNING menu)
 - Today/Tomorrow view of all international operations
-- Status flow: Pending → Assigned → Loaded → In Transit → Delivered
+- Status flow: Pending → Assigned → In Transit → Delivered → Invoiced
 - Checklists: Docs Ready, Temp OK, CMR Photo, Client Notified, Driver Notified
 - Overdue banner shows orders past delivery date
 

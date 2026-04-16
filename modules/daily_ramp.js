@@ -56,12 +56,12 @@ async function _rampLoad() {
 
   // Single combined query: today's ramp + stock + postponed (split client-side)
   // Reduces 3 parallel API calls → 1 call
-  const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='✅ Έγινε',OR({Stock Status}='In Stock',{Stock Status}='')),{Postponed To}!=BLANK())`;
+  const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='Done',OR({Stock Status}='In Stock',{Stock Status}='')),{Postponed To}!=BLANK())`;
   const allRamp = await atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false);
 
   // Split results client-side
   const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date);
-  const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && (r.fields['Status']==='✅ Έγινε') && (r.fields['Stock Status']==='In Stock' || !r.fields['Stock Status']));
+  const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && (r.fields['Status']==='Done') && (r.fields['Stock Status']==='In Stock' || !r.fields['Stock Status']));
   const postponed = allRamp.filter(r => r.fields['Postponed To'] && toLocalDate(r.fields['Postponed To']) === RAMP.date);
 
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
@@ -220,7 +220,7 @@ async function _rampAutoSync() {
     const rec = {
       'Plan Date': date,
       'Type': rampType,
-      'Status': 'Προγραμματισμένο',
+      'Status': 'Planned',
       'Is Veroia Switch': isVS,
       'Goods': sf[F.STOP_GOODS] || '',
       'Pallets': sf[F.STOP_PALLETS] || 0,
@@ -318,7 +318,7 @@ function _rampDraw() {
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
   const total=RAMP.records.length;
-  const done=RAMP.records.filter(r=>r.fields['Status']==='Ολοκληρώθηκε'||r.fields['Status']==='Done').length;
+  const done=RAMP.records.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
 
   // Stock by client
@@ -417,7 +417,7 @@ function _rampDraw() {
 function _rRow(rec,num,tOpts) {
   const f=rec.fields,id=rec.id;
   const status=f['Status']||'';
-  const isDone=status==='✅ Έγινε';
+  const isDone=status==='Done';
   const rawTime=f['Time']||'';
   const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
   const client=f['Supplier/Client']||'—';
@@ -485,11 +485,11 @@ function _rRow(rec,num,tOpts) {
 function _rTlRow(rec) {
   const f=rec.fields;
   const status=f['Status']||'Planned';
-  const isDone=status==='✅ Έγινε';
+  const isDone=status==='Done';
   const isIn=f['Type']==='Παραλαβή';
   const typeBadge=isIn?'<span class="tl-type in">IN</span>':'<span class="tl-type out">OUT</span>';
   const statusTxt=isDone?'<span style="color:var(--success)">✓ Done</span>'
-    :status==='⏩ Postponed'?'<span style="color:var(--warning)">Postponed</span>'
+    :f['Postponed To']?'<span style="color:var(--warning)">Postponed</span>'
     :'<span style="color:var(--text-dim)">Planned</span>';
 
   const tlLoc = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
@@ -518,7 +518,7 @@ async function _rampSvTime(id,v){
 }
 
 async function _rampDone(id,isIn){
-  const fields={'Status':'✅ Έγινε'};
+  const fields={'Status':'Done'};
   if(isIn==='true') fields['Stock Status']='In Stock';
   try{await atSafePatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
 }
@@ -562,7 +562,7 @@ function _rampAddNew(type){
 }
 
 async function _rampSaveNew(type){
-  const fields={'Plan Date':RAMP.date,'Type':type,'Status':'Προγραμματισμένο'};
+  const fields={'Plan Date':RAMP.date,'Type':type,'Status':'Planned'};
   const v=id=>document.getElementById(id)?.value?.trim();
   if(v('nr_time'))    fields['Time']=v('nr_time');
   if(v('nr_cat'))     fields['Ramp Category']=v('nr_cat');

@@ -6,16 +6,17 @@
 // this file is the single-source-of-truth reference
 // for a future refactor pass.
 
-// -- Order / Trip Status -----------------------
+// -- Order / Trip Status (unified lifecycle) ---
+// Single canonical enum for ORDERS, NAT_ORDERS, PA
+// NAT_LOADS keeps simpler 3-state (Pending/Assigned/Done) — see README
 const STATUS = {
   PENDING:           'Pending',
   ASSIGNED:          'Assigned',
-  LOADED:            'Loaded',
   IN_TRANSIT:        'In Transit',
   DELIVERED:         'Delivered',
   INVOICED:          'Invoiced',
   CANCELLED:         'Cancelled',
-  CONFIRMED:         'Confirmed',
+  // Planning-only (GL, internal)
   UNASSIGNED:        'Unassigned',
   GROUPAGE_ASSIGNED: 'Groupage Assigned',
 };
@@ -30,15 +31,9 @@ const DIR = {
   NORTH_SOUTH:  'North\u2192South',  // arrow char used in NATIONAL ORDERS
 };
 
-// -- Daily Ops Status --------------------------
-const OPS_STATUS = {
-  PENDING:         'Pending',
-  ASSIGNED:        'Assigned',
-  LOADED:          'Loaded',
-  IN_TRANSIT:      'In Transit',
-  DELIVERED:       'Delivered',
-  CLIENT_NOTIFIED: 'Client Notified',
-};
+// -- Daily Ops Status (DEPRECATED — use STATUS) -
+// Kept temporarily for any legacy reads; writes should go to STATUS.
+// TODO: remove after full migration of Ops Status field.
 
 // -- Delivery Performance ----------------------
 const DELIVERY_PERF = {
@@ -46,15 +41,11 @@ const DELIVERY_PERF = {
   DELAYED: 'Delayed',
 };
 
-// -- Ramp Board Status -------------------------
+// -- Ramp Board Status (simplified) ------------
+// Just "did it happen or not" — 2 states only.
 const RAMP_STATUS = {
-  SCHEDULED:  '\u03A0\u03C1\u03BF\u03B3\u03C1\u03B1\u03BC\u03BC\u03B1\u03C4\u03B9\u03C3\u03BC\u03AD\u03BD\u03BF',
-  ARRIVED:    '\u0388\u03C6\u03C4\u03B1\u03C3\u03B5',
-  LOADING:    '\u03A6\u03CC\u03C1\u03C4\u03C9\u03C3\u03B7',
-  UNLOADING:  '\u0395\u03BA\u03C6\u03CC\u03C1\u03C4\u03C9\u03C3\u03B7',
-  COMPLETED:  '\u039F\u03BB\u03BF\u03BA\u03BB\u03B7\u03C1\u03CE\u03B8\u03B7\u03BA\u03B5',
-  POSTPONED:  '\u0391\u03BD\u03B1\u03B2\u03BB\u03AE\u03B8\u03B7\u03BA\u03B5',
-  DONE:       '\u2705 \u0388\u03B3\u03B9\u03BD\u03B5',
+  PLANNED: 'Planned',
+  DONE:    'Done',
 };
 
 // -- Ramp Type ---------------------------------
@@ -102,10 +93,12 @@ const MAINT_STATUS = {
 // -- Badge CSS class map (status -> class) -----
 const STATUS_BADGE = {
   'Pending':    'badge-yellow',
-  'Confirmed':  'badge-blue',
   'Assigned':   'badge-blue',
   'In Transit': 'badge-green',
   'Delivered':  'badge-grey',
   'Invoiced':   'badge-grey',
   'Cancelled':  'badge-red',
+  // Legacy (read-only for migration period)
+  'Loaded':     'badge-green',
+  'Confirmed':  'badge-blue',
 };

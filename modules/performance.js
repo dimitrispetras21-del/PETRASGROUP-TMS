@@ -85,7 +85,7 @@ async function _perfLoad() {
     atGetAll(TABLES.ORDERS, {
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
-               'Total Pallets','Client','Week Number','Ops Status']
+               'Total Pallets','Client','Week Number']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']

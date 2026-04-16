@@ -85,7 +85,6 @@ const F = {
   PARTNER_PLATES:   'Partner Truck Plates',
   PARTNER_RATE:     'Partner Rate',
   MATCHED_IMPORT:   'Matched Import ID',
-  OPS_STATUS:       'Ops Status',
   DELIVERY_PERF:    'Delivery Performance',
   NAT_ORDER_CREATED:'National Order Created',
   WEEK_NUM:         'Week Number',          // Formula field, NOT writable (leading space removed)

@@ -179,9 +179,10 @@ function _renderIntlLayout(c) {
             <option value="">Status: All</option>
             <option value="Pending">Pending</option>
             <option value="Assigned">Assigned</option>
-            <option value="Loaded">Loaded</option>
             <option value="In Transit">In Transit</option>
             <option value="Delivered">Delivered</option>
+            <option value="Invoiced">Invoiced</option>
+            <option value="Cancelled">Cancelled</option>
           </select>
           <select class="filter-select" onchange="intlPeriodChange(this.value)">
             <option value="60" ${_intlPeriod==='60'?'selected':''}>Last 60 days</option>
@@ -254,9 +255,10 @@ function _oiRowHtml(r) {
              : `<span class="badge badge-grey">${dir||'—'}</span>`;
   const st = f['Status']||'Pending';
   const stB = st==='Assigned' ? '<span class="badge badge-green">Assigned</span>'
-            : st==='Loaded' ? '<span class="badge" style="background:#7C3AED;color:#fff">Loaded</span>'
             : st==='In Transit' ? '<span class="badge" style="background:#0369A1;color:#fff">In Transit</span>'
             : st==='Delivered' ? '<span class="badge badge-grey">Delivered</span>'
+            : st==='Invoiced' ? '<span class="badge badge-grey">Invoiced</span>'
+            : st==='Cancelled' ? '<span class="badge badge-red">Cancelled</span>'
             : '<span class="badge badge-yellow">Pending</span>';
   // Flags: all badges in separate column
   const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);font-size:11px">⚠</span>' : '';

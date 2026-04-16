@@ -12,7 +12,7 @@ const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
   'Loading DateTime','Delivery DateTime','Status',
   'ORDER STOPS',
-  'Ops Status','Delivery Performance','Ops Notes','Postponed To',
+  'Delivery Performance','Ops Notes','Postponed To',
   'Actual Delivery Date','ETA','CMR Photo Received','Client Notified',
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
   'Truck','Trailer','Driver','Is Partner Trip','Partner',
@@ -39,7 +39,7 @@ async function _opsLoad() {
   const tmrw=localTomorrow();
   const tgt=OPS.date==='tomorrow'?tmrw:today;
   const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
-  const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Ops Status}='In Transit',{Ops Status}='Loaded',{Ops Status}='Assigned',{Ops Status}='Pending',{Ops Status}=''))`;
+  const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Status}='In Transit',{Status}='Assigned',{Status}='Pending',{Status}=''))`;
   const [intl,ov] = await Promise.all([
     atGetAll(TABLES.ORDERS,{filterByFormula:dayF,fields:OPS_FIELDS},false),
     OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
@@ -114,8 +114,8 @@ function _opsDraw() {
   const cats=_opsCats();
   const all=[...cats.el,...cats.ed,...cats.il,...cats.id];
   const total=all.length;
-  const nDel=all.filter(r=>['Delivered','Client Notified'].includes(r.fields['Ops Status']||'')).length;
-  const nLoad=all.filter(r=>r.fields['Ops Status']==='In Transit'||r.fields['Ops Status']==='Loaded').length;
+  const nDel=all.filter(r=>(r.fields['Status']||'')==='Delivered').length;
+  const nLoad=all.filter(r=>(r.fields['Status']||'')==='In Transit').length;
   const nPend=total-nDel-nLoad;
   const chkF=['Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'];
   let tC=0,dC=0;all.forEach(r=>chkF.forEach(f=>{if(r.fields[f]!==undefined){tC++;if(r.fields[f])dC++;}}));
@@ -205,16 +205,14 @@ function _opsRow(rec,num,type,isToday) {
   const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_T(f), driver=_D(f), partner=_P(f);
   const pal=f['Total Pallets']||'';
-  const ops=f['Ops Status']||'';
-  const isDone=ops==='Delivered'||ops==='Client Notified';
-  const isLoaded=ops==='Loaded'||ops==='In Transit';
-  const isInTransit=ops==='In Transit';
-  const isPostponed=ops==='Postponed';
+  const st=f['Status']||'';
+  const isDone=st==='Delivered';
+  const isInTransit=st==='In Transit';
+  const isPostponed=!!f['Postponed To']&&!isDone&&!isInTransit;
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
 
   // Status badge for completed states
-  const statusBadge = isLoaded ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">LOADED ✓</span>'
-    : isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">IN TRANSIT</span>'
+  const statusBadge = isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">IN TRANSIT</span>'
     : isPostponed ? '<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">POSTPONED</span>'
     : isDone ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">DELIVERED ✓</span>'
     : null;
@@ -228,7 +226,7 @@ function _opsRow(rec,num,type,isToday) {
 
   // Action buttons with confirmation
   const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="if(confirm('${label}?'))${action}">${label}</button>`;
-  const loadBtn = _btn('btn-primary','Loaded',`_opsStat('${id}','In Transit')`);
+  const loadBtn = _btn('btn-primary','In Transit',`_opsStat('${id}','In Transit')`);
   const postBtn = _btn('btn-ghost','Postponed',`_opsPost('${id}')`);
   const delBtn = _btn('btn-success','Delivered',`_opsDel('${id}','On Time')`);
   const delayBtn = _btn('btn-danger','Delayed',`_opsDel('${id}','Delayed')`);
@@ -295,7 +293,7 @@ function _opsRow(rec,num,type,isToday) {
       <td>${timeSelect('ETA',f['ETA'])}</td>
       <td>${postBtn}</td>`;
   }
-  return `<tr class="${isDone?'done':isLoaded?'loaded':isInTransit?'transit':''}" style="${isLoaded?'background:#F0FDF4':isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}">${cells}</tr>`;
+  return `<tr class="${isDone?'done':isInTransit?'transit':''}" style="${isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}">${cells}</tr>`;
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
@@ -309,15 +307,15 @@ async function _opsTog(id,fld,v){
     // Auto-status transitions based on checklist completion
     if(v && r) {
       const f=r.fields;
-      const status=f['Ops Status']||'';
+      const status=f['Status']||'';
       const loadChecks=['Docs Ready','Temp OK','Driver Notified'];
       const delChecks=['CMR Photo Received','Client Notified'];
 
-      // All loading checks done + status is Assigned/Pending → suggest "Loaded"
+      // All loading checks done + status is Assigned/Pending → suggest "In Transit"
       if(loadChecks.includes(fld) && (status==='Assigned'||status==='Pending'||status==='')) {
         const allLoaded=loadChecks.every(c=>f[c]);
-        if(allLoaded && confirm('Ολα τα loading checks ✓ — Αλλαγή σε "Loaded";')) {
-          await _opsStat(id,'Loaded');
+        if(allLoaded && confirm('Ολα τα loading checks ✓ — Αλλαγή σε "In Transit";')) {
+          await _opsStat(id,'In Transit');
           return;
         }
       }
@@ -335,27 +333,24 @@ async function _opsTog(id,fld,v){
   }catch(e){toast('Error','danger');}
 }
 async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
-// Map Ops Status → high-level Status (keeps Invoicing/Dashboard in sync)
-const _opsToStatus = {'Loaded':'In Transit','In Transit':'In Transit','Delivered':'Delivered'};
+// Single Status field — unified lifecycle (Pending/Assigned/In Transit/Delivered/Invoiced/Cancelled)
 async function _opsStat(id,st){try{
-  const patch = {'Ops Status':st};
-  if(_opsToStatus[st]) patch['Status'] = _opsToStatus[st];
-  await atSafePatch(TABLES.ORDERS,id,patch);
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']=st;if(_opsToStatus[st])r.fields['Status']=_opsToStatus[st];}
+  await atSafePatch(TABLES.ORDERS,id,{'Status':st});
+  const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Status']=st;
   toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Ops Status']='Delivered';r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
+  try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsPost(id){
-  // Auto-postpone to next day
+  // Auto-postpone to next day (Status stays as-is; Postponed To carries the flag)
   const r=OPS.intl.find(x=>x.id===id);if(!r)return;
   const f=r.fields;
   const loadDt=toLocalDate(f['Loading DateTime']);
   const delDt=toLocalDate(f['Delivery DateTime']);
   const nextLoad=loadDt?toLocalDate(new Date(new Date(loadDt+'T12:00:00').getTime()+864e5)):'';
   const nextDel=delDt?toLocalDate(new Date(new Date(delDt+'T12:00:00').getTime()+864e5)):'';
-  const patch={'Ops Status':'Postponed','Postponed To':nextLoad||nextDel};
+  const patch={'Postponed To':nextLoad||nextDel};
   if(nextLoad) patch['Loading DateTime']=nextLoad;
   if(nextDel) patch['Delivery DateTime']=nextDel;
   try{await atSafePatch(TABLES.ORDERS,id,patch);
@@ -390,7 +385,7 @@ function _opsPrint() {
 }
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Ops Status':'Delivered','Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
 
 // Expose functions used from onclick/onchange handlers
