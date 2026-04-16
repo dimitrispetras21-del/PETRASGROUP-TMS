@@ -19,7 +19,8 @@
 'use strict';
 
 // PARTNER ASSIGNMENTS table (tblUhgqnmiam5MGNK)
-const PA_TABLE = 'tblUhgqnmiam5MGNK';
+// PA table/fields now live in config.js (TABLES.PARTNER_ASSIGN + F.PA_*)
+// PA writes delegated to core/pa-helpers.js
 
 const WINTL = {
   week:      _wiCurrentWeek(),
@@ -1364,10 +1365,16 @@ async function _wiSaveFromPopover(rowId){
   }
   _wiClosePopover();
 
-  // Create PARTNER ASSIGNMENT record (only for export rows)
-  if(isPartner && row.type==='export'){
-    try{ await _wiCreatePartnerAssignments(row, fields); }
-    catch(e){ console.warn('PA create error:',e.message); }
+  // PARTNER ASSIGNMENT sync (both export + import rows)
+  if(isPartner){
+    try{ await _wiCreatePartnerAssignments(row); }
+    catch(e){ console.warn('PA upsert error:',e.message); }
+  } else {
+    // Partner removed → delete PA records
+    const allOids=[...row.orderIds];
+    if(row.importId && !allOids.includes(row.importId)) allOids.push(row.importId);
+    try{ await _wiDeletePartnerAssignments(allOids); }
+    catch(e){ console.warn('PA delete error:',e.message); }
   }
 
   toast(row.saved?'Updated':'Saved');
@@ -1390,55 +1397,36 @@ async function _wiSaveFromPopover(rowId){
   await renderWeeklyIntl();
 }
 
-async function _wiCreatePartnerAssignments(row, fields){
+async function _wiCreatePartnerAssignments(row){
   // Build list of all orders (export + import) with their rates
   const assignments = [];
 
-  // Export orders
   for(const orderId of row.orderIds){
-    assignments.push({
-      orderId,
-      partnerId: row.partnerId,
-      rate: row.partnerRate ? parseFloat(row.partnerRate) : null,
-    });
+    assignments.push({ orderId, rate: row.partnerRate });
   }
-  // Import order
   if(row.importId && !row.orderIds.includes(row.importId)){
-    assignments.push({
-      orderId: row.importId,
-      partnerId: row.partnerId,
-      rate: row.partnerRateImp ? parseFloat(row.partnerRateImp) : null,
-    });
+    assignments.push({ orderId: row.importId, rate: row.partnerRateImp });
   }
-
-  const today = localToday();
 
   for(const asgn of assignments){
-    try{
-      // Check if a PARTNER ASSIGNMENT already exists for this order
-      const existing = await atGetAll(PA_TABLE, {
-        filterByFormula: `FIND('${asgn.orderId}', ARRAYJOIN({Order}, ','))`,
-        fields: ['Order'],
-      }, false);
-
-      const paFields = {
-        'Partner':         [asgn.partnerId],
-        'Order':           [asgn.orderId],
-        'Assignment Date': today,
-        'Status':          'Pending',
-      };
-      if(asgn.rate) paFields['Partner Rate'] = asgn.rate;
-
-      if(existing.length > 0){
-        // Update existing
-        await atPatch(PA_TABLE, existing[0].id, paFields);
-      } else {
-        // Create new
-        await atCreate(PA_TABLE, paFields);
-      }
-    }catch(err){
-      console.error('PARTNER ASSIGNMENT create/update failed:', err.message);
+    try {
+      await paUpsert({
+        parentType: 'order',
+        parentId:   asgn.orderId,
+        partnerId:  row.partnerId,
+        rate:       asgn.rate,
+        status:     'Assigned',
+      });
+    } catch(err) {
+      console.error('PA upsert failed:', asgn.orderId, err.message);
     }
+  }
+}
+
+async function _wiDeletePartnerAssignments(orderIds){
+  for(const oid of orderIds){
+    try { await paDelete({ parentType: 'order', parentId: oid }); }
+    catch(err) { console.warn('PA delete failed:', oid, err.message); }
   }
 }
 
@@ -1504,6 +1492,15 @@ async function _wiSave(rowId){
     return;
   }
 
+  // PARTNER ASSIGNMENT sync
+  if(isPartner){
+    try{ await _wiCreatePartnerAssignments(row); }
+    catch(e){ console.warn('PA upsert error:',e.message); }
+  } else {
+    try{ await _wiDeletePartnerAssignments(row.orderIds); }
+    catch(e){ console.warn('PA delete error:',e.message); }
+  }
+
   toast(row.saved?'Updated':'Assignment saved');
   WINTL.ui.openRow=null;
   await renderWeeklyIntl();
@@ -1525,6 +1522,11 @@ async function _wiClear(rowId){
     }catch(err){ errors.push(err.message); }
   }
   if(errors.length){toast('Clear failed: '+errors[0].slice(0,50),'warn');return;}
+
+  // Remove PA records for cleared orders
+  try{ await _wiDeletePartnerAssignments(allOrderIds); }
+  catch(e){ console.warn('PA delete error:',e.message); }
+
   toast('Assignment cleared');
   WINTL.ui.openRow=null;
   await renderWeeklyIntl();

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v8';
+const SW_VERSION = 'tms-sw-v9';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
@@ -23,6 +23,7 @@ const APP_SHELL = [
   '/PETRASGROUP-TMS/core/utils.js',
   '/PETRASGROUP-TMS/core/ui.js',
   '/PETRASGROUP-TMS/core/entity.js',
+  '/PETRASGROUP-TMS/core/pa-helpers.js',
   '/PETRASGROUP-TMS/core/ai-chat.js',
   // Modules
   '/PETRASGROUP-TMS/modules/dashboard.js',

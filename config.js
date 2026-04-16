@@ -39,6 +39,7 @@ const TABLES = {
   PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',
   ORDER_STOPS:   'tblaeY5QOHAS1gyE8',
   RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
+  PARTNER_ASSIGN:'tblUhgqnmiam5MGNK',
 };
 
 // ── Airtable field name constants ──────────────────────────────────────
@@ -209,6 +210,16 @@ const F = {
   STOP_PALLET_SHEET_OK: 'Pallet Sheet OK',
   STOP_PALLETS_LOADED:  'Pallets Loaded',
   STOP_PALLETS_EXCHANGED:'Pallets Exchanged',
+
+  // ── PARTNER_ASSIGN ───────────────────────────────────────────────
+  PA_PARTNER:       'Partner',
+  PA_ORDER:         'Order',
+  PA_NAT_LOAD:      'Nat Load',
+  PA_ASSIGN_DATE:   'Assignment Date',
+  PA_STATUS:        'Status',
+  PA_RATE:          'Partner Rate',
+  PA_NOTES:         'Notes',
+  PA_PAYMENT_TERMS: 'Payment Terms',
 
   // ── RAMP_EVENTS ──────────────────────────────────────────────────
   RE_SOURCE_STOP:   'Source Stop',

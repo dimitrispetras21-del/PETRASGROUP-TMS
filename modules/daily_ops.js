@@ -337,10 +337,15 @@ async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v
 async function _opsStat(id,st){try{
   await atSafePatch(TABLES.ORDERS,id,{'Status':st});
   const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Status']=st;
+  // Mirror Status on any linked PARTNER ASSIGNMENT
+  try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
+  catch(e) { console.warn('PA status sync:', e.message); }
   toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
   try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
+  try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
+  catch(e) { console.warn('PA status sync:', e.message); }
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsPost(id){
   // Auto-postpone to next day (Status stays as-is; Postponed To carries the flag)

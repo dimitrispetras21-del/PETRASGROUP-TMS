@@ -832,6 +832,23 @@ async function _wnSaveFromPopover(rowId) {
       if (srcId) await atPatch(TABLES.NAT_ORDERS, srcId, { 'Status': 'Assigned' });
     }
   } catch(e) { console.warn('NO status sync:', e); }
+
+  // PARTNER ASSIGNMENT sync (one PA record per NAT_LOAD)
+  try {
+    const allLoadIds = [...row.orderIds];
+    if (row.matchedId) allLoadIds.push(row.matchedId);
+    if (isPartner) {
+      const rate = row.partnerRate ? parseFloat(row.partnerRate) : null;
+      for (const loadId of allLoadIds) {
+        await paUpsert({ parentType:'nat_load', parentId:loadId, partnerId:row.partnerId, rate, status:'Assigned' });
+      }
+    } else {
+      for (const loadId of allLoadIds) {
+        await paDelete({ parentType:'nat_load', parentId:loadId });
+      }
+    }
+  } catch(e) { console.warn('NAT PA sync:', e.message); }
+
   invalidateCache(TABLES.NAT_LOADS);
   invalidateCache(TABLES.NAT_ORDERS);
   _wnClosePopover();
@@ -849,6 +866,13 @@ async function _wnClear(rowId) {
       if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
     } catch(e) { toast('Σφάλμα εκκαθάρισης','warn'); return; }
   }
+  // Delete PA records for cleared loads
+  try {
+    for (const loadId of row.orderIds) {
+      await paDelete({ parentType:'nat_load', parentId:loadId });
+    }
+  } catch(e) { console.warn('NAT PA delete:', e.message); }
+
   Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
     truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
     partnerPlates:'',partnerRate:'',saved:false });
@@ -915,6 +939,10 @@ async function _wnUnassignSn(rowId, snId) {
     const res = await atSafePatch(TABLES.NAT_LOADS, snId, fields);
     if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
+
+  // Delete PA record for this NAT_LOAD
+  try { await paDelete({ parentType:'nat_load', parentId:snId }); }
+  catch(e) { console.warn('PA delete:', e.message); }
 
   row.saved = false;
   row.truckId = ''; row.truckLabel = '';

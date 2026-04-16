@@ -323,6 +323,8 @@ async function renderEntity(entityKey) {
       </button>` : ''}
     </div>
 
+    ${entityKey === 'partners' ? `<div id="partners_stats_strip" style="margin-bottom:16px"></div>` : ''}
+
     <div class="entity-layout">
       <div class="entity-list-panel">
         <div class="entity-toolbar">
@@ -350,6 +352,70 @@ async function renderEntity(entityKey) {
       </div>
       <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
     </div>`;
+
+  if (entityKey === 'partners') _renderPartnersStatsStrip(records);
+}
+
+// ── Partners top stats strip ──────────────────────
+async function _renderPartnersStatsStrip(partners) {
+  const el = document.getElementById('partners_stats_strip');
+  if (!el) return;
+  try {
+    const allPA = await atGetAll(TABLES.PARTNER_ASSIGN, {
+      fields: [F.PA_PARTNER, F.PA_STATUS, F.PA_RATE, F.PA_ASSIGN_DATE],
+    }, false);
+
+    const activePartners = partners.filter(p => p.fields['Active']).length;
+    const activeAssign   = allPA.filter(r => ['Assigned','In Transit'].includes(r.fields[F.PA_STATUS]||'')).length;
+
+    // This-month spend
+    const now = new Date();
+    const yyyymm = now.toISOString().slice(0,7);
+    const monthSpend = allPA
+      .filter(r => (r.fields[F.PA_ASSIGN_DATE]||'').startsWith(yyyymm))
+      .reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0), 0);
+
+    // Top 3 partners by total rate
+    const byPartner = {};
+    for (const r of allPA) {
+      const pid = (r.fields[F.PA_PARTNER]||[])[0];
+      if (!pid) continue;
+      byPartner[pid] = (byPartner[pid] || 0) + (parseFloat(r.fields[F.PA_RATE])||0);
+    }
+    const pNameById = {};
+    for (const p of partners) pNameById[p.id] = p.fields['Company Name'] || '—';
+    const top3 = Object.entries(byPartner)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(([pid,total]) => ({ name: pNameById[pid]||'Unknown', total }));
+
+    const card = (label, val, color) => `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};margin-top:4px">${val}</div>
+      </div>`;
+
+    const topHTML = top3.length
+      ? `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Partners (All Time)</div>
+          ${top3.map((p,i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
+              <span style="color:var(--text)"><strong style="color:#0284C7">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+            </div>`).join('')}
+        </div>`
+      : '';
+
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${card('Active Partners', activePartners)}
+        ${card('Active Assignments', activeAssign, activeAssign>0?'#0284C7':'var(--text-dim)')}
+        ${card('This Month', '€'+Math.round(monthSpend).toLocaleString(), '#059669')}
+        ${topHTML}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+  }
 }
 
 function entitySortToggle(entityKey, colIdx) {
@@ -518,7 +584,7 @@ function selectEntity(entityKey, recId) {
         </div>
       `).join('')}
       ${cfg.history ? `<div class="detail-section">
-        <div class="detail-section-title">Order History</div>
+        <div class="detail-section-title">${cfg.history.type==='partner'?'Assignments & Performance':'Order History'}</div>
         <div id="entity_history_${recId}" style="font-size:11px;color:var(--text-dim)">Loading...</div>
       </div>` : ''}
     </div>`;
@@ -545,10 +611,10 @@ async function _loadEntityHistory(type, recId, name) {
         ...natl.map(r => ({ type: 'NATL', dir: r.fields['Direction']||'—', route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status: r.fields['Status']||'—', pals: r.fields['Pallets']||0, date: toLocalDate(r.fields['Loading DateTime']) })),
       ];
     } else if (type === 'partner') {
-      // Partner linked in ORDERS table
-      const filter = `FIND("${recId}", ARRAYJOIN({Partner}, ","))>0`;
-      const intl = await atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime','Partner Rate'] }, false);
-      orders = intl.map(r => ({ type: 'INTL', dir: r.fields['Direction']||'—', route: `${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Total Pallets']||0, date: (r.fields['Loading DateTime']||'').substring(0,10), rate: r.fields['Partner Rate']||'' }));
+      // Partner assignments via PARTNER_ASSIGN table (unified INTL + NAT)
+      const paRecs = await paListByPartner(recId);
+      _renderPartnerAssignments(el, paRecs);
+      return;
     }
     orders.sort((a,b) => (b.date||'').localeCompare(a.date||''));
     if (!orders.length) {
@@ -576,6 +642,80 @@ async function _loadEntityHistory(type, recId, name) {
   } catch(e) {
     el.innerHTML = `<div style="color:var(--danger);font-size:11px">Error: ${e.message}</div>`;
   }
+}
+
+// ── Partner: render PA metrics cards + assignment history ─────────
+function _renderPartnerAssignments(el, paRecs) {
+  // Metrics
+  const total     = paRecs.length;
+  const active    = paRecs.filter(r => ['Assigned','In Transit'].includes(r.fields[F.PA_STATUS]||'')).length;
+  const completed = paRecs.filter(r => r.fields[F.PA_STATUS]==='Delivered').length;
+  const totalSpent= paRecs.filter(r => r.fields[F.PA_STATUS]==='Delivered')
+                          .reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0),0);
+  const avgRate   = total ? paRecs.reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0),0)/total : 0;
+  const marginVals= paRecs.map(r=>parseFloat(r.fields['Margin Percent'])).filter(n=>!isNaN(n));
+  const avgMargin = marginVals.length ? marginVals.reduce((s,v)=>s+v,0)/marginVals.length : 0;
+
+  const card = (label,val,color) => `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:${color||'var(--text)'};margin-top:2px">${val}</div>
+    </div>`;
+
+  const metricsHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
+      ${card('Total', total)}
+      ${card('Active', active, active>0?'#0284C7':'var(--text-dim)')}
+      ${card('Completed', completed, '#059669')}
+      ${card('Total Spent', '€'+Math.round(totalSpent).toLocaleString())}
+      ${card('Avg Rate', '€'+Math.round(avgRate).toLocaleString())}
+      ${card('Avg Margin', avgMargin.toFixed(1)+'%', avgMargin>=20?'#059669':avgMargin>=10?'#D97706':avgMargin>0?'#DC2626':'var(--text-dim)')}
+    </div>`;
+
+  if (!paRecs.length) {
+    el.innerHTML = metricsHTML + '<div style="color:var(--text-dim);padding:8px 0;font-size:11px">No assignments yet</div>';
+    return;
+  }
+
+  // Sort by assignment date desc
+  paRecs.sort((a,b)=>(b.fields[F.PA_ASSIGN_DATE]||'').localeCompare(a.fields[F.PA_ASSIGN_DATE]||''));
+
+  const rowsHTML = paRecs.slice(0,30).map(r => {
+    const f      = r.fields;
+    const date   = (f[F.PA_ASSIGN_DATE]||'').substring(0,10);
+    const rate   = parseFloat(f[F.PA_RATE])||0;
+    const rev    = parseFloat(f['Client Revenue'])||0;
+    const margin = parseFloat(f['Margin Percent']);
+    const status = f[F.PA_STATUS]||'—';
+    const isOrder= Array.isArray(f[F.PA_ORDER]) && f[F.PA_ORDER].length;
+    const kind   = isOrder ? 'INTL' : 'NAT';
+    const kindColor = isOrder ? '#0284C7' : '#059669';
+    const marginTxt = isNaN(margin) ? '—' : margin.toFixed(1)+'%';
+    const marginColor = isNaN(margin) ? 'var(--text-dim)' : margin>=20?'#059669':margin>=10?'#D97706':'#DC2626';
+    const badgeCls = status==='Delivered'?'badge-green':status==='In Transit'?'badge-blue':status==='Assigned'?'badge-yellow':'badge-grey';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:4px 6px;color:var(--text-mid)">${date||'—'}</td>
+      <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${kindColor}">${kind}</span></td>
+      <td style="padding:4px 6px;text-align:right;color:var(--text);font-weight:600">€${rate.toFixed(0)}</td>
+      <td style="padding:4px 6px;text-align:right;color:var(--text-mid)">€${rev.toFixed(0)}</td>
+      <td style="padding:4px 6px;text-align:right;color:${marginColor};font-weight:600">${marginTxt}</td>
+      <td style="padding:4px 6px"><span class="badge ${badgeCls}" style="font-size:9px">${status}</span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = metricsHTML + `
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${paRecs.length} assignments</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Date</th>
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Type</th>
+        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Rate</th>
+        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Revenue</th>
+        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Margin</th>
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Status</th>
+      </tr></thead>
+      <tbody>${rowsHTML}${paRecs.length>30?`<tr><td colspan="6" style="padding:6px;text-align:center;color:var(--text-dim)">+${paRecs.length-30} more</td></tr>`:''}</tbody>
+    </table>`;
 }
 
 async function toggleActive(entityKey, recId, newVal) {
