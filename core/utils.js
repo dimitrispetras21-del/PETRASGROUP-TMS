@@ -282,14 +282,29 @@ async function _refreshNotifs() {
   const items = [];
   const today = localToday();
   const in48h = toLocalDate(new Date(Date.now() + 48 * 3600000));
+  const username = (user.username || '').toLowerCase();
+  const role = user.role;
+  const isOwner = role === 'owner' || username === 'dimitris';
+
+  // Per-user feature flags (owner sees everything)
+  const isPlanner   = username === 'kelesmitos' || isOwner;
+  const isControl   = username === 'pantelis'   || isOwner;
+  const isChiefOps  = username === 'sotiris'    || isOwner;
+  const isEquip     = username === 'thodoris'   || isOwner || role === 'maintenance' || role === 'management';
+  const isInvoicing = username === 'eirini'     || isOwner || role === 'accountant';
+
   try {
-    const [orders, trucks, trailers] = await Promise.all([
+    // Fetch base data + extras only for users that need them
+    const promises = [
       atGet(TABLES.ORDERS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true),
-    ]);
+      (isChiefOps) ? atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime','Delivery Performance'] }, true).catch(()=>[]) : Promise.resolve([]),
+      (isChiefOps || isEquip) ? atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(()=>[]) : Promise.resolve([]),
+    ];
+    const [orders, trucks, trailers, natLoads, maint] = await Promise.all(promises);
 
-    // Unassigned orders due in 48h
+    // ── 1. UNIVERSAL: Unassigned orders due in 48h ──
     orders.filter(r => {
       const f = r.fields;
       const noTruck = !f['Truck'] || (Array.isArray(f['Truck']) && !f['Truck'].length);
@@ -298,11 +313,99 @@ async function _refreshNotifs() {
     }).forEach(r => {
       const f = r.fields;
       const route = `${(f['Loading Summary']||'').slice(0,20)} → ${(f['Delivery Summary']||'').slice(0,20)}`;
-      items.push({ type: 'danger', title: `${escapeHtml(f['Direction'])} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
+      items.push({ type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
     });
 
-    // Expired fleet docs (role-aware: only for owner/maintenance)
-    if (user.role === 'owner' || user.role === 'maintenance') {
+    // ── 2. KELESMITOS — Master Planner ──
+    if (isPlanner) {
+      const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+      // Exports this week assigned but no matched return load
+      orders.filter(r => {
+        const f = r.fields;
+        return f['Direction'] === 'Export' && f['Week Number'] == wn && f['Truck'] &&
+               !f['Matched Import ID'] && f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'warn', title: 'Export χωρίς return load',
+          sub: escapeHtml(`${(f['Delivery Summary']||'').slice(0,30)} — βρες import`), page: 'weekly_intl' });
+      });
+    }
+
+    // ── 3. PANTELIS — Control Tower ──
+    if (isControl) {
+      // Loadings today, assigned, but Driver Notified is false
+      orders.filter(r => {
+        const f = r.fields;
+        const ld = toLocalDate(f['Loading DateTime']);
+        return ld === today && f['Truck'] && !f['Driver Notified'] &&
+               f['Status'] !== 'Cancelled' && f['Status'] !== 'Delivered';
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'warn', title: 'Οδηγός μη ενημερωμένος',
+          sub: escapeHtml(`Φόρτωση σήμερα: ${(f['Loading Summary']||'').slice(0,25)}`), page: 'daily_ops' });
+      });
+
+      // Deliveries today, assigned, but Client Notified is false
+      orders.filter(r => {
+        const f = r.fields;
+        const dd = toLocalDate(f['Delivery DateTime']);
+        return dd === today && f['Truck'] && !f['Client Notified'] &&
+               f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'warn', title: 'Πελάτης μη ενημερωμένος',
+          sub: escapeHtml(`Παράδοση σήμερα: ${(f['Delivery Summary']||'').slice(0,25)}`), page: 'daily_ops' });
+      });
+
+      // Delivered last 3 days without CMR Photo
+      orders.filter(r => {
+        const f = r.fields;
+        if (f['Status'] !== 'Delivered') return false;
+        if (f['CMR Photo Received']) return false;
+        const dd = toLocalDate(f['Delivery DateTime']);
+        if (!dd) return false;
+        const dayDiff = Math.floor((new Date(today) - new Date(dd)) / 864e5);
+        return dayDiff >= 0 && dayDiff <= 3;
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'info', title: 'CMR εκκρεμεί',
+          sub: escapeHtml(`${f['Order Number']||''} ${(f['Delivery Summary']||'').slice(0,20)}`), page: 'daily_ops' });
+      });
+    }
+
+    // ── 4. SOTIRIS — Chief Ops ──
+    if (isChiefOps) {
+      // National loads delivered today/recently without Performance set
+      natLoads.filter(r => {
+        const f = r.fields;
+        if (f['Status'] !== 'Delivered') return false;
+        if (f['Delivery Performance']) return false;
+        const dd = toLocalDate(f['Delivery DateTime']);
+        if (!dd) return false;
+        const dayDiff = Math.floor((new Date(today) - new Date(dd)) / 864e5);
+        return dayDiff >= 0 && dayDiff <= 3;
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'info', title: 'National χωρίς Performance',
+          sub: escapeHtml(`${f['Direction']||''} — ορίσε On-Time/Delayed`), page: 'weekly_natl' });
+      });
+
+      // Critical maintenance issues open
+      maint.filter(r => {
+        const f = r.fields;
+        const st = (f['Status']||'').toLowerCase();
+        if (st === 'done' || st === 'closed' || st === 'resolved' || st === 'completed') return false;
+        const prio = (f['Priority']||'').toLowerCase();
+        return prio === 'high' || prio === 'critical' || prio === 'urgent';
+      }).slice(0, 5).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'danger', title: `Κρίσιμη βλάβη — ${escapeHtml(f['Priority']||'')}`,
+          sub: escapeHtml(`Status: ${f['Status']||'Open'}`), page: 'maint_req' });
+      });
+    }
+
+    // ── 5. THODORIS / OWNER / MAINTENANCE — Equipment Manager ──
+    if (isEquip) {
       const now = new Date();
       const checkDocs = (list, plateField, docFields) => {
         list.filter(t => t.fields['Active'] !== false).forEach(t => {
@@ -311,9 +414,9 @@ async function _refreshNotifs() {
             if (dt) {
               const days = Math.ceil((new Date(dt) - now) / 864e5);
               if (days < 0) {
-                items.push({ type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'expiry_alerts' });
+                items.push({ type: 'danger', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ΛΗΓΜΕΝΟ`, sub: `Εληξε ${Math.abs(days)} μερες πριν`, page: 'maint_expiry' });
               } else if (days <= 14) {
-                items.push({ type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'expiry_alerts' });
+                items.push({ type: 'warn', title: `${escapeHtml(t.fields[plateField])} — ${escapeHtml(field.replace(' Expiry',''))} ληγει σε ${days}μ`, sub: escapeHtml(dt), page: 'maint_expiry' });
               }
             }
           });
@@ -323,7 +426,26 @@ async function _refreshNotifs() {
       checkDocs(trailers, 'License Plate', ['ATP Expiry','Insurance Expiry']);
     }
 
-    // Reminders from Nakis
+    // ── 6. EIRINI / ACCOUNTANT — Invoicing ──
+    if (isInvoicing) {
+      // Delivered last 14 days without invoice
+      orders.filter(r => {
+        const f = r.fields;
+        if (f['Status'] !== 'Delivered') return false;
+        const inv = (f['Invoice Status']||'').toLowerCase();
+        if (f['Invoiced'] || inv === 'invoiced' || inv === 'paid') return false;
+        const dd = toLocalDate(f['Delivery DateTime']);
+        if (!dd) return false;
+        const dayDiff = Math.floor((new Date(today) - new Date(dd)) / 864e5);
+        return dayDiff >= 0 && dayDiff <= 14;
+      }).slice(0, 8).forEach(r => {
+        const f = r.fields;
+        items.push({ type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
+          sub: escapeHtml(`${f['Order Number']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
+      });
+    }
+
+    // ── 7. NAKIS REMINDERS — Universal ──
     const reminders = JSON.parse(localStorage.getItem('tms_reminders') || '[]');
     const nowMs = Date.now();
     reminders.filter(r => new Date(r.time).getTime() <= nowMs && !r.dismissed).forEach(r => {
@@ -332,29 +454,48 @@ async function _refreshNotifs() {
 
   } catch(e) { console.warn('Notif refresh error:', e); }
 
+  // Sort by severity: danger > warn > info
+  const sevOrder = { danger: 0, warn: 1, info: 2 };
+  items.sort((a, b) => (sevOrder[a.type]||3) - (sevOrder[b.type]||3));
+
   _notifItems = items;
 
-  // Update dot
+  // Update dot (red = danger present, otherwise just visible)
   const dot = document.getElementById('notifDot');
-  if (dot) dot.style.display = items.length ? 'block' : 'none';
+  if (dot) {
+    dot.style.display = items.length ? 'block' : 'none';
+    dot.style.background = items.some(i => i.type === 'danger') ? '#DC2626' : '#F59E0B';
+  }
+
+  // Greeting line based on role/time of day
+  const hr = new Date().getHours();
+  const greet = hr < 12 ? 'Καλημέρα' : hr < 18 ? 'Καλησπέρα' : 'Καλό βράδυ';
+  const firstName = (user.name || username).split(' ')[0];
+  const dangerCount = items.filter(i => i.type === 'danger').length;
+  const warnCount = items.filter(i => i.type === 'warn').length;
+  const headerSub = items.length
+    ? `${dangerCount ? `${dangerCount} κρίσιμα` : ''}${dangerCount && warnCount ? ' • ' : ''}${warnCount ? `${warnCount} προς ενέργεια` : ''}${!dangerCount && !warnCount ? `${items.length} info` : ''}`
+    : 'Όλα ΟΚ';
 
   // Render panel
   const panel = document.getElementById('notifPanel');
   if (panel) {
     panel.innerHTML = `
-      <div class="notif-header">
-        <span>Ειδοποιησεις</span>
-        <span style="font-size:10px;font-weight:400;color:var(--text-dim)">${items.length} ενεργές</span>
+      <div class="notif-header" style="text-transform:none;letter-spacing:0;color:var(--text)">
+        <div>
+          <div style="font-size:13px;font-weight:700">${escapeHtml(greet)}, ${escapeHtml(firstName)}</div>
+          <div style="font-size:11px;font-weight:400;color:var(--text-dim);margin-top:2px">${headerSub}</div>
+        </div>
       </div>
       <div class="notif-list">
-        ${items.length ? items.slice(0, 12).map(n => `
+        ${items.length ? items.slice(0, 15).map(n => `
           <div class="notif-item" ${n.page ? `onclick="_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}')"` : ''}>
             <div class="notif-icon ${n.type}">${n.type==='danger'?'!':n.type==='warn'?'!':'i'}</div>
             <div class="notif-body">
               <div class="notif-title">${n.title}</div>
               <div class="notif-sub">${n.sub}</div>
             </div>
-          </div>`).join('') : '<div class="notif-empty">Δεν υπαρχουν ειδοποιησεις</div>'}
+          </div>`).join('') : '<div class="notif-empty">Δεν υπαρχουν εκκρεμότητες · καλή δουλειά!</div>'}
       </div>`;
   }
 }
