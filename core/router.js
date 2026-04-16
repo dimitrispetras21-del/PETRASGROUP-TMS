@@ -10,6 +10,7 @@ const NAV = [
     { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'pickup' },
     { id: 'daily_ops',      label: 'Daily Ops Plan',      icon: 'clipboard' },
     { id: 'daily_ramp',     label: 'Daily Ramp Board',    icon: 'ramp' },
+    { id: 'pulse',          label: 'Proactive Pulse',     icon: 'pulse' },
   ]},
   { section: 'Orders', perm: 'orders', items: [
     { id: 'orders_intl', label: 'International Orders', icon: 'doc' },
@@ -81,6 +82,7 @@ const ICONS = {
   invoice:   `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="16" rx="1.5"/><line x1="6" y1="6" x2="14" y2="6"/><line x1="6" y1="9" x2="14" y2="9"/><line x1="6" y1="12" x2="10" y2="12"/><path d="M12 14l1.5 1.5 3-3"/></svg>`,
   trash:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>`,
   ceo:       `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="10,2 12.5,7.5 18.5,8 14,12.5 15.5,18.5 10,15.5 4.5,18.5 6,12.5 1.5,8 7.5,7.5"/></svg>`,
+  pulse:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 10h3l2-5 4 10 2-5h5"/></svg>`,
 };
 
 // ── Sidebar ───────────────────────────────────────
@@ -198,6 +200,7 @@ function navigate(page) {
       break;
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;
+    case 'pulse':          renderPulse(); break;
     // Orders
     case 'orders_intl':    renderOrdersIntl();            break;
     case 'orders_natl':    renderOrdersNatl();            break;

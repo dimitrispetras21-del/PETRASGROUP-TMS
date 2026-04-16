@@ -520,7 +520,50 @@ async function _rampSvTime(id,v){
 async function _rampDone(id,isIn){
   const fields={'Status':'Done'};
   if(isIn==='true') fields['Stock Status']='In Stock';
-  try{await atSafePatch(TABLES.RAMP,id,fields);invalidateCache(TABLES.RAMP);toast('Done ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
+  try{
+    await atSafePatch(TABLES.RAMP,id,fields);
+    invalidateCache(TABLES.RAMP);
+
+    // ── Sync RAMP Done → ORDERS / NAT_ORDERS Status ──
+    // Outbound (Παράδοση) Done = truck loaded & departed Veroia → ORDER 'In Transit'
+    // Inbound (Παραλαβή) Done = goods received at Veroia (Loaded leg complete)
+    //   For non-VS orders this also means the order has been loaded → 'In Transit'
+    const r = RAMP.records.find(x=>x.id===id);
+    if (r) {
+      const orderId = getLinkId(r.fields['Order']);
+      const natOrderId = getLinkId(r.fields['National Order']);
+      const isOutbound = r.fields['Type']==='Παράδοση';
+      // Outbound always advances to In Transit. Inbound only advances if not VS (VS inbound is just a leg).
+      const isVS = r.fields['Is Veroia Switch']===true || r.fields['Is Veroia Switch']==='Yes';
+      const shouldAdvance = isOutbound || !isVS;
+
+      if (shouldAdvance && orderId) {
+        try {
+          const orderRec = await atGetOne(TABLES.ORDERS, orderId);
+          const curSt = orderRec?.fields?.['Status'] || '';
+          if (curSt!=='In Transit' && curSt!=='Delivered' && curSt!=='Invoiced' && curSt!=='Cancelled') {
+            await atSafePatch(TABLES.ORDERS, orderId, {'Status':'In Transit'});
+            invalidateCache(TABLES.ORDERS);
+            try { await paSyncStatus({ parentType:'order', parentId:orderId, status:'In Transit' }); }
+            catch(e) { console.warn('PA sync (ramp):', e.message); }
+          }
+        } catch(e) { console.warn('Ramp→Order sync failed:', e.message); }
+      }
+      if (shouldAdvance && natOrderId) {
+        try {
+          const noRec = await atGetOne(TABLES.NAT_ORDERS, natOrderId);
+          const curSt = noRec?.fields?.['Status'] || '';
+          if (curSt!=='In Transit' && curSt!=='Delivered' && curSt!=='Invoiced' && curSt!=='Cancelled') {
+            await atSafePatch(TABLES.NAT_ORDERS, natOrderId, {'Status':'In Transit'});
+            invalidateCache(TABLES.NAT_ORDERS);
+          }
+        } catch(e) { console.warn('Ramp→NatOrder sync failed:', e.message); }
+      }
+    }
+
+    toast('Done ✓');
+    renderDailyRamp();
+  } catch(e) { toast('Error','danger'); }
 }
 
 async function _rampRestore(id){

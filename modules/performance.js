@@ -85,11 +85,11 @@ async function _perfLoad() {
     atGetAll(TABLES.ORDERS, {
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
-               'Total Pallets','Client','Week Number']
+               'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
-      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']
-    }, true),
+      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver','Delivery Performance']
+    }, true).catch(() => []),
     preloadReferenceData().then(() => getRefTrucks()),
     atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
   ]);
@@ -97,6 +97,42 @@ async function _perfLoad() {
   PERF.natLoads = natLoads;
   PERF.trucks = trucks;
   PERF.maint = maint;
+  PERF.locs = getRefLocations();
+
+  // Build location coordinates lookup (for dead_km calc)
+  PERF.locCoords = {};
+  PERF.locs.forEach(l => {
+    const lat = l.fields['Latitude'], lng = l.fields['Longitude'];
+    if (lat && lng) PERF.locCoords[l.id] = { lat: +lat, lng: +lng };
+  });
+
+  // Batch fetch ORDER_STOPS for dead_km calc (this week's exports + imports)
+  const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+  const weekOrders = orders.filter(r => r.fields['Week Number'] == wn && r.fields['Truck']);
+  const stopIds = weekOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
+  PERF.stopsByOrder = {};
+  if (stopIds.length) {
+    try {
+      for (let b = 0; b < stopIds.length; b += 90) {
+        const batch = stopIds.slice(b, b + 90);
+        const ff = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
+        const recs = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: ff }, false);
+        recs.forEach(sr => {
+          const pid = (sr.fields[F.STOP_PARENT_ORDER] || [])[0];
+          if (pid) { if (!PERF.stopsByOrder[pid]) PERF.stopsByOrder[pid] = []; PERF.stopsByOrder[pid].push(sr); }
+        });
+      }
+    } catch(e) { console.warn('Performance ORDER_STOPS fetch:', e); }
+  }
+}
+
+// Haversine distance in km between two lat/lng pairs
+function _perfHaversine(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
 /* ── COMPUTE KPIs ─────────────────────────────────────────── */
@@ -144,12 +180,37 @@ function _perfCompute() {
   // Assignment Speed (avg hours from creation to truck assigned — simplified)
   const assign_speed = 3.2; // placeholder — would need Created field + assignment timestamp
 
-  // Dead KM (placeholder — full calc needs location coordinates, use 0 for now)
-  const dead_km = 0; // TODO: integrate with dashboard Haversine calc
+  // Dead KM — avg distance between Export Delivery and matched Import Loading (this week)
+  // Uses ORDER_STOPS + LOCATIONS coords + Haversine (same algo as dashboard.js)
+  const weekExportsAll = weekOrders.filter(r => r.fields['Direction'] === 'Export' && r.fields['Truck']);
+  const weekImportsAll = weekOrders.filter(r => r.fields['Direction'] === 'Import' && r.fields['Truck']);
+  const deadKmList = [];
+  weekExportsAll.forEach(exp => {
+    const expTruck = getLinkId(exp.fields['Truck']);
+    if (!expTruck) return;
+    const matchedImp = weekImportsAll.find(imp => getLinkId(imp.fields['Truck']) === expTruck);
+    if (!matchedImp) return;
+    const expUnloads = (PERF.stopsByOrder[exp.id] || [])
+      .filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+      .sort((a,b) => (b.fields[F.STOP_NUMBER]||0) - (a.fields[F.STOP_NUMBER]||0));
+    const impLoads = (PERF.stopsByOrder[matchedImp.id] || [])
+      .filter(s => s.fields[F.STOP_TYPE] === 'Loading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+    const expLocId = expUnloads.length ? (expUnloads[0].fields[F.STOP_LOCATION] || [])[0] : null;
+    const impLocId = impLoads.length ? (impLoads[0].fields[F.STOP_LOCATION] || [])[0] : null;
+    if (expLocId && impLocId && PERF.locCoords[expLocId] && PERF.locCoords[impLocId]) {
+      deadKmList.push(Math.round(_perfHaversine(
+        PERF.locCoords[expLocId].lat, PERF.locCoords[expLocId].lng,
+        PERF.locCoords[impLocId].lat, PERF.locCoords[impLocId].lng
+      )));
+    }
+  });
+  const dead_km = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : 0;
 
-  // National On-Time
-  const natlWithStatus = PERF.natLoads.filter(r => r.fields['Status'] === 'Delivered');
-  const natl_on_time = 0; // placeholder — no Delivery Performance field on NAT_LOADS yet
+  // National On-Time — from NAT_LOADS Delivery Performance
+  const natlWithPerf = PERF.natLoads.filter(r => r.fields['Delivery Performance']);
+  const natlOnTime = natlWithPerf.filter(r => r.fields['Delivery Performance'] === 'On Time').length;
+  const natl_on_time = natlWithPerf.length ? Math.round(natlOnTime / natlWithPerf.length * 100) : 0;
 
   // Invoiced %
   const deliveredOrders = orders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');
@@ -170,29 +231,48 @@ function _perfCompute() {
   const partnerTrips = assignedTrips.filter(r => r.fields['Is Partner Trip']);
   const sub_cost_pct = assignedTrips.length ? Math.round(partnerTrips.length / assignedTrips.length * 100) : 0;
 
-  // Client updates (placeholder — would need status change log)
-  const client_updates = 0; // TODO: track status transitions per order
+  // Client updates — % of delivered orders this week with Client Notified=true
+  const weekDelivered = weekOrders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');
+  const weekNotified = weekDelivered.filter(r => r.fields['Client Notified']).length;
+  const client_updates = weekDelivered.length ? Math.round(weekNotified / weekDelivered.length * 100) : 0;
 
-  // Response time (placeholder)
-  const response_time = 0; // TODO: track issue creation to resolution time
+  // Response time — proxy from open maintenance age (avg days since reported)
+  const today = new Date();
+  const openWithDate = PERF.maint.filter(r => r.fields['Status'] !== 'Done' && r.fields['Date Reported']);
+  const totalAgeHrs = openWithDate.reduce((s, r) => {
+    const d = new Date(r.fields['Date Reported']);
+    return s + Math.max(0, Math.round((today - d) / 3600000));
+  }, 0);
+  const response_time = openWithDate.length ? Math.round(totalAgeHrs / openWithDate.length) : 0;
 
-  // Expired documents count
-  const expired_docs = pendingMaint; // Use maintenance open items as proxy
+  // Expired documents count — trucks with KTEO/KEK/Insurance expiry <= today
+  const todayStr = (typeof localToday === 'function') ? localToday() : new Date().toISOString().slice(0,10);
+  const expFields = ['KTEO Expiry','KEK Expiry','Insurance Expiry'];
+  let expired_docs = 0;
+  PERF.trucks.filter(t => t.fields['Active']).forEach(t => {
+    expFields.forEach(f => {
+      const val = t.fields[f];
+      if (val && val <= todayStr) expired_docs++;
+    });
+  });
 
-  // Fleet downtime (placeholder)
-  const downtime_hrs = 0; // TODO: track from maintenance records
+  // Fleet downtime — proxy from open maintenance count × 24h (each open WO = est 1 day downtime)
+  const downtime_hrs = pendingMaint * 24;
 
-  // Service schedule adherence (placeholder)
+  // Service schedule adherence — % of maintenance items resolved on time
   const service_adherence = work_orders;
 
-  // National profitability (placeholder)
-  const natl_profit = 0; // TODO: needs trip cost data
+  // National profitability (placeholder — needs trip cost data not yet available)
+  const natl_profit = 0;
 
   // CMR archived (same as collected for now)
   const cmr_archived = cmr_collected;
 
-  // Crisis count (placeholder)
-  const crisis_count = 0; // TODO: track escalations
+  // Crisis count — high/critical priority maintenance issues open
+  const crisis_count = PERF.maint.filter(r => {
+    const p = (r.fields['Priority']||'').toLowerCase();
+    return r.fields['Status'] !== 'Done' && (p === 'high' || p === 'critical' || p === 'urgent');
+  }).length;
 
   // Weekly Score (composite)
   const weekly_score = Math.round(
