@@ -323,7 +323,7 @@ async function renderEntity(entityKey) {
       </button>` : ''}
     </div>
 
-    ${entityKey === 'partners' ? `<div id="partners_stats_strip" style="margin-bottom:16px"></div>` : ''}
+    ${(entityKey === 'partners' || entityKey === 'clients') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:16px"></div>` : ''}
 
     <div class="entity-layout">
       <div class="entity-list-panel">
@@ -354,6 +354,7 @@ async function renderEntity(entityKey) {
     </div>`;
 
   if (entityKey === 'partners') _renderPartnersStatsStrip(records);
+  if (entityKey === 'clients')  _renderClientsStatsStrip(records);
 }
 
 // ── Partners top stats strip ──────────────────────
@@ -390,17 +391,17 @@ async function _renderPartnersStatsStrip(partners) {
       .map(([pid,total]) => ({ name: pNameById[pid]||'Unknown', total }));
 
     const card = (label, val, color) => `
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
         <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
         <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};margin-top:4px">${val}</div>
       </div>`;
 
     const topHTML = top3.length
-      ? `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
+      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
           <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Partners (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:var(--text)"><strong style="color:#0284C7">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${p.name}</span>
               <span style="color:var(--text);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
@@ -409,8 +410,70 @@ async function _renderPartnersStatsStrip(partners) {
     el.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap">
         ${card('Active Partners', activePartners)}
-        ${card('Active Assignments', activeAssign, activeAssign>0?'#0284C7':'var(--text-dim)')}
-        ${card('This Month', '€'+Math.round(monthSpend).toLocaleString(), '#059669')}
+        ${card('Active Assignments', activeAssign, activeAssign>0?'var(--accent)':'var(--text-dim)')}
+        ${card('This Month', '€'+Math.round(monthSpend).toLocaleString(), 'var(--success)')}
+        ${topHTML}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+  }
+}
+
+// ── Clients top stats strip ───────────────────────
+async function _renderClientsStatsStrip(clients) {
+  const el = document.getElementById('clients_stats_strip');
+  if (!el) return;
+  try {
+    const [intl, natl] = await Promise.all([
+      atGetAll(TABLES.ORDERS,     { fields: ['Client','Status','Price','Loading DateTime'] }, false),
+      atGetAll(TABLES.NAT_ORDERS, { fields: ['Client','Status','Price','Loading DateTime'] }, false),
+    ]);
+    const all = [...intl, ...natl];
+
+    const activeClients = clients.filter(c => c.fields['Active']).length;
+    const activeOrders  = all.filter(r => !['Delivered','Invoiced','Cancelled'].includes(r.fields['Status']||'')).length;
+
+    const yyyymm = new Date().toISOString().slice(0,7);
+    const monthRev = all
+      .filter(r => (r.fields['Loading DateTime']||'').startsWith(yyyymm))
+      .reduce((s,r)=>s+(parseFloat(r.fields['Price'])||0), 0);
+
+    // Top 3 clients by total revenue (all time)
+    const byClient = {};
+    for (const r of all) {
+      const cid = (r.fields['Client']||[])[0];
+      if (!cid) continue;
+      byClient[cid] = (byClient[cid] || 0) + (parseFloat(r.fields['Price'])||0);
+    }
+    const cNameById = {};
+    for (const c of clients) cNameById[c.id] = c.fields['Company Name'] || '—';
+    const top3 = Object.entries(byClient)
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,3)
+      .map(([cid,total]) => ({ name: cNameById[cid]||'Unknown', total }));
+
+    const card = (label, val, color) => `
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};margin-top:4px">${val}</div>
+      </div>`;
+
+    const topHTML = top3.length
+      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Clients (All Time)</div>
+          ${top3.map((p,i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
+              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+            </div>`).join('')}
+        </div>`
+      : '';
+
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${card('Active Clients', activeClients)}
+        ${card('Active Orders', activeOrders, activeOrders>0?'var(--accent)':'var(--text-dim)')}
+        ${card('This Month', '€'+Math.round(monthRev).toLocaleString(), 'var(--success)')}
         ${topHTML}
       </div>`;
   } catch(e) {
@@ -456,7 +519,7 @@ function buildEntityTable(entityKey, records) {
   const s = _entitySort[entityKey] || { col: null, dir: 0 };
   const sortedRecs = _entitySortRecords(entityKey, records);
   const ths = cols.map((c, i) => {
-    const arrow = s.col===i ? (s.dir===1?' <span style="color:#0284C7">▲</span>':s.dir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    const arrow = s.col===i ? (s.dir===1?' <span style="color:var(--accent)">▲</span>':s.dir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="entitySortToggle('${entityKey}',${i})">${c.label}${arrow}</th>`;
   }).join('');
   return `<table>
@@ -584,7 +647,7 @@ function selectEntity(entityKey, recId) {
         </div>
       `).join('')}
       ${cfg.history ? `<div class="detail-section">
-        <div class="detail-section-title">${cfg.history.type==='partner'?'Assignments & Performance':'Order History'}</div>
+        <div class="detail-section-title">${cfg.history.type==='partner'?'Assignments & Performance':cfg.history.type==='client'?'Orders & Performance':'Order History'}</div>
         <div id="entity_history_${recId}" style="font-size:11px;color:var(--text-dim)">Loading...</div>
       </div>` : ''}
     </div>`;
@@ -600,16 +663,18 @@ async function _loadEntityHistory(type, recId, name) {
   try {
     let orders = [];
     if (type === 'client') {
-      // Client linked in ORDERS table
+      // Client linked in ORDERS + NAT_ORDERS tables
       const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
       const [intl, natl] = await Promise.all([
-        atGetAll(TABLES.ORDERS, { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime'] }, false),
-        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location 1','Delivery Location 1','Status','Pallets','Loading DateTime'] }, false),
+        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime','Price','Delivery Performance'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location 1','Delivery Location 1','Status','Pallets','Loading DateTime','Price','Delivery Performance'] }, false),
       ]);
       orders = [
-        ...intl.map(r => ({ type: 'INTL', dir: r.fields['Direction']||'—', route: `${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status: r.fields['Status']||'—', pals: r.fields['Total Pallets']||0, date: (r.fields['Loading DateTime']||'').substring(0,10) })),
-        ...natl.map(r => ({ type: 'NATL', dir: r.fields['Direction']||'—', route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status: r.fields['Status']||'—', pals: r.fields['Pallets']||0, date: toLocalDate(r.fields['Loading DateTime']) })),
+        ...intl.map(r => ({ type:'INTL', dir:r.fields['Direction']||'—', route:`${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status:r.fields['Status']||'—', pals:r.fields['Total Pallets']||0, date:(r.fields['Loading DateTime']||'').substring(0,10), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
+        ...natl.map(r => ({ type:'NATL', dir:r.fields['Direction']||'—', route:`${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status:r.fields['Status']||'—', pals:r.fields['Pallets']||0, date:toLocalDate(r.fields['Loading DateTime']), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
       ];
+      _renderClientOrders(el, orders);
+      return;
     } else if (type === 'partner') {
       // Partner assignments via PARTNER_ASSIGN table (unified INTL + NAT)
       const paRecs = await paListByPartner(recId);
@@ -633,7 +698,7 @@ async function _loadEntityHistory(type, recId, name) {
         </tr></thead>
         <tbody>${orders.slice(0,30).map(o => `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:4px 6px;color:var(--text-mid)">${o.date||'—'}</td>
-          <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${o.type==='INTL'?'#0284C7':'#059669'}">${o.type}</span></td>
+          <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${o.type==='INTL'?'var(--accent)':'var(--success)'}">${o.type}</span></td>
           <td style="padding:4px 6px;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.route}</td>
           <td style="padding:4px 6px;text-align:center;color:var(--text-mid)">${o.pals}</td>
           <td style="padding:4px 6px"><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='Invoiced'?'badge-blue':o.status==='Assigned'?'badge-yellow':'badge-grey'}" style="font-size:9px">${o.status}</span></td>
@@ -657,7 +722,7 @@ function _renderPartnerAssignments(el, paRecs) {
   const avgMargin = marginVals.length ? marginVals.reduce((s,v)=>s+v,0)/marginVals.length : 0;
 
   const card = (label,val,color) => `
-    <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:8px">
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px">
       <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${label}</div>
       <div style="font-size:15px;font-weight:700;color:${color||'var(--text)'};margin-top:2px">${val}</div>
     </div>`;
@@ -665,11 +730,11 @@ function _renderPartnerAssignments(el, paRecs) {
   const metricsHTML = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
       ${card('Total', total)}
-      ${card('Active', active, active>0?'#0284C7':'var(--text-dim)')}
-      ${card('Completed', completed, '#059669')}
+      ${card('Active', active, active>0?'var(--accent)':'var(--text-dim)')}
+      ${card('Completed', completed, 'var(--success)')}
       ${card('Total Spent', '€'+Math.round(totalSpent).toLocaleString())}
       ${card('Avg Rate', '€'+Math.round(avgRate).toLocaleString())}
-      ${card('Avg Margin', avgMargin.toFixed(1)+'%', avgMargin>=20?'#059669':avgMargin>=10?'#D97706':avgMargin>0?'#DC2626':'var(--text-dim)')}
+      ${card('Avg Margin', avgMargin.toFixed(1)+'%', avgMargin>=20?'var(--success)':avgMargin>=10?'var(--warning)':avgMargin>0?'var(--danger)':'var(--text-dim)')}
     </div>`;
 
   if (!paRecs.length) {
@@ -689,9 +754,9 @@ function _renderPartnerAssignments(el, paRecs) {
     const status = f[F.PA_STATUS]||'—';
     const isOrder= Array.isArray(f[F.PA_ORDER]) && f[F.PA_ORDER].length;
     const kind   = isOrder ? 'INTL' : 'NAT';
-    const kindColor = isOrder ? '#0284C7' : '#059669';
+    const kindColor = isOrder ? 'var(--accent)' : 'var(--success)';
     const marginTxt = isNaN(margin) ? '—' : margin.toFixed(1)+'%';
-    const marginColor = isNaN(margin) ? 'var(--text-dim)' : margin>=20?'#059669':margin>=10?'#D97706':'#DC2626';
+    const marginColor = isNaN(margin) ? 'var(--text-dim)' : margin>=20?'var(--success)':margin>=10?'var(--warning)':'var(--danger)';
     const badgeCls = status==='Delivered'?'badge-green':status==='In Transit'?'badge-blue':status==='Assigned'?'badge-yellow':'badge-grey';
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:4px 6px;color:var(--text-mid)">${date||'—'}</td>
@@ -715,6 +780,71 @@ function _renderPartnerAssignments(el, paRecs) {
         <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Status</th>
       </tr></thead>
       <tbody>${rowsHTML}${paRecs.length>30?`<tr><td colspan="6" style="padding:6px;text-align:center;color:var(--text-dim)">+${paRecs.length-30} more</td></tr>`:''}</tbody>
+    </table>`;
+}
+
+// ── Client: render metrics cards + order history ─────────
+function _renderClientOrders(el, orders) {
+  // Metrics
+  const total     = orders.length;
+  const active    = orders.filter(o => !['Delivered','Invoiced','Cancelled'].includes(o.status)).length;
+  const delivered = orders.filter(o => ['Delivered','Invoiced'].includes(o.status));
+  const revenue   = delivered.reduce((s,o)=>s+(o.price||0), 0);
+  const avgValue  = delivered.length ? revenue/delivered.length : 0;
+  const perfVals  = orders.filter(o => o.perf === 'On Time' || o.perf === 'Delayed');
+  const onTime    = perfVals.filter(o => o.perf === 'On Time').length;
+  const onTimePct = perfVals.length ? (onTime / perfVals.length * 100) : 0;
+
+  const card = (label,val,color) => `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:8px">
+      <div style="font-size:9px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px">${label}</div>
+      <div style="font-size:15px;font-weight:700;color:${color||'var(--text)'};margin-top:2px">${val}</div>
+    </div>`;
+
+  const metricsHTML = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
+      ${card('Total', total)}
+      ${card('Active', active, active>0?'var(--accent)':'var(--text-dim)')}
+      ${card('Delivered', delivered.length, 'var(--success)')}
+      ${card('Revenue', '€'+Math.round(revenue).toLocaleString())}
+      ${card('Avg Value', '€'+Math.round(avgValue).toLocaleString())}
+      ${card('On-Time', perfVals.length ? onTimePct.toFixed(0)+'%' : '—',
+        !perfVals.length ? 'var(--text-dim)' : onTimePct>=90?'var(--success)':onTimePct>=75?'var(--warning)':'var(--danger)')}
+    </div>`;
+
+  if (!orders.length) {
+    el.innerHTML = metricsHTML + '<div style="color:var(--text-dim);padding:8px 0;font-size:11px">No orders yet</div>';
+    return;
+  }
+
+  // Sort by date desc
+  orders.sort((a,b) => (b.date||'').localeCompare(a.date||''));
+
+  const rowsHTML = orders.slice(0,30).map(o => {
+    const kindColor = o.type==='INTL' ? 'var(--accent)' : 'var(--success)';
+    const badgeCls  = o.status==='Delivered'?'badge-green':o.status==='Invoiced'?'badge-blue':o.status==='Assigned'?'badge-yellow':o.status==='In Transit'?'badge-blue':'badge-grey';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:4px 6px;color:var(--text-mid)">${o.date||'—'}</td>
+      <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${kindColor}">${o.type}</span></td>
+      <td style="padding:4px 6px;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.route}</td>
+      <td style="padding:4px 6px;text-align:center;color:var(--text-mid)">${o.pals}</td>
+      <td style="padding:4px 6px;text-align:right;color:var(--text);font-weight:600">${o.price?'€'+Math.round(o.price):'—'}</td>
+      <td style="padding:4px 6px"><span class="badge ${badgeCls}" style="font-size:9px">${o.status}</span></td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = metricsHTML + `
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">${orders.length} orders</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Date</th>
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Type</th>
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Route</th>
+        <th style="text-align:center;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Pal</th>
+        <th style="text-align:right;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Price</th>
+        <th style="text-align:left;padding:4px 6px;font-size:9px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text-dim)">Status</th>
+      </tr></thead>
+      <tbody>${rowsHTML}${orders.length>30?`<tr><td colspan="6" style="padding:6px;text-align:center;color:var(--text-dim)">+${orders.length-30} more</td></tr>`:''}</tbody>
     </table>`;
 }
 
