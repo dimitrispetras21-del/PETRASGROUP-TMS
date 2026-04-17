@@ -198,7 +198,29 @@ function logError(error, context = '') {
   if (_errorLog.length > MAX_ERROR_LOG) _errorLog.shift();
   try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); } catch(e) { console.warn('[TMS] Failed to persist error log:', e); }
   console.error(`[TMS ERROR] ${context}:`, error);
+  // Forward to Sentry if available (loaded lazily — see _initSentry)
+  try {
+    if (window.Sentry && typeof window.Sentry.captureException === 'function') {
+      window.Sentry.captureException(error instanceof Error ? error : new Error(String(error)), { extra: { ctx: context, user: entry.user, page: entry.page } });
+    }
+  } catch(_) {}
 }
+
+// Sentry: lazy-loaded. To enable: set window.SENTRY_DSN in config.js, then call _initSentry()
+function _initSentry() {
+  if (window.Sentry || !window.SENTRY_DSN) return;
+  const s = document.createElement('script');
+  s.src = 'https://browser.sentry-cdn.com/7.99.0/bundle.min.js';
+  s.crossOrigin = 'anonymous';
+  s.onload = () => {
+    try {
+      window.Sentry.init({ dsn: window.SENTRY_DSN, tracesSampleRate: 0.1, environment: location.hostname.includes('github.io') ? 'production' : 'dev' });
+    } catch(e) { console.warn('Sentry init failed:', e); }
+  };
+  document.head.appendChild(s);
+}
+// Auto-init if DSN configured
+if (typeof window !== 'undefined' && window.SENTRY_DSN) _initSentry();
 
 /**
  * Get the persisted error log

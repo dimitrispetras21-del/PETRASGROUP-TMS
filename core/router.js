@@ -140,6 +140,15 @@ let currentPage = '';
  * @param {string} page - Page identifier (e.g. 'dashboard', 'orders_intl')
  */
 function navigate(page) {
+  // Permission guard: block navigation if user lacks access
+  const _pagePerm = {};
+  NAV.forEach(g => g.items.forEach(i => { _pagePerm[i.id] = g.perm; }));
+  const reqPerm = _pagePerm[page];
+  if (reqPerm && typeof can === 'function' && can(reqPerm) === 'none') {
+    if (typeof toast === 'function') toast('Δεν έχετε πρόσβαση σε αυτή τη σελίδα', 'error');
+    if (typeof logError === 'function') logError(new Error('Permission denied: ' + page), 'navigate');
+    return;
+  }
   currentPage = page;
   localStorage.setItem('tms_page', page);
 
@@ -258,6 +267,8 @@ function navigate(page) {
  * Log the current user out. Clears session data and redirects to the login page.
  */
 function logout() {
+  if (typeof clearApiCaches === 'function') clearApiCaches();
+  if (typeof atStopAutoRefresh === 'function') atStopAutoRefresh();
   localStorage.removeItem('tms_user'); localStorage.removeItem('tms_jwt'); localStorage.removeItem('tms_page');
   window.location.href = 'index.html';
 }

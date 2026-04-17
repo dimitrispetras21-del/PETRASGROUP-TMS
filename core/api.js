@@ -275,13 +275,18 @@ function _apiHeaders(method) {
   return h;
 }
 
-// ── Core fetch (paginated) ────────────────────────
+// ── Core fetch (paginated, 30s timeout per request) ─
 async function _atFetch(tableId, paramStr = '') {
   let records = [], offset = '';
   do {
     let url = _apiUrl(`/v0/${AT_BASE}/${tableId}`) + `?pageSize=100${paramStr ? '&' + paramStr : ''}`;
     if (offset) url += `&offset=${offset}`;
-    const res  = await _enqueue(() => _atRetry(() => fetch(url, { headers: _apiHeaders('GET') })));
+    const res  = await _enqueue(() => _atRetry(() => {
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 30000);
+      return fetch(url, { headers: _apiHeaders('GET'), signal: ctrl.signal })
+        .finally(() => clearTimeout(to));
+    }));
     const data = await res.json();
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Airtable error';
@@ -341,7 +346,7 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
   const params = [];
   if (opts.filterByFormula) params.push(`filterByFormula=${encodeURIComponent(opts.filterByFormula)}`);
   if (opts.fields) opts.fields.forEach(f => params.push(`fields[]=${encodeURIComponent(f)}`));
-  if (opts.sort) opts.sort.forEach(s => params.push(`sort[0][field]=${encodeURIComponent(s.field)}&sort[0][direction]=${s.direction || 'asc'}`));
+  if (opts.sort) opts.sort.forEach((s, i) => params.push(`sort[${i}][field]=${encodeURIComponent(s.field)}&sort[${i}][direction]=${s.direction || 'asc'}`));
   const paramStr = params.join('&');
   const key = tableId + paramStr;
   const stable = _isStable(tableId);
@@ -564,6 +569,21 @@ function invalidateCache(tableId) {
       if (k.startsWith(prefix)) localStorage.removeItem(k);
     });
   } catch(e) { if (typeof logError === 'function') logError(e, 'invalidateCache localStorage'); }
+  // Auto-invalidate ref data if mutation hits a reference table
+  try {
+    const T = typeof TABLES !== 'undefined' ? TABLES : {};
+    const refIds = [T.TRUCKS, T.TRAILERS, T.DRIVERS, T.PARTNERS, T.CLIENTS, T.LOCATIONS].filter(Boolean);
+    if (refIds.includes(tableId) && typeof invalidateRefData === 'function') invalidateRefData();
+  } catch(_) {}
+}
+
+// Clear ALL API caches (memory + localStorage) — call on logout/user switch
+function clearApiCaches() {
+  Object.keys(_MEM).forEach(k => delete _MEM[k]);
+  try {
+    Object.keys(localStorage).forEach(k => { if (k.startsWith('at_')) localStorage.removeItem(k); });
+  } catch(e) { if (typeof logError === 'function') logError(e, 'clearApiCaches'); }
+  if (typeof invalidateRefData === 'function') invalidateRefData();
 }
 
 function atClearCache(tableId) { invalidateCache(tableId); }

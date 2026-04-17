@@ -35,11 +35,21 @@ async function renderDailyRamp() {
   document.getElementById('content').innerHTML = showLoading('Φόρτωση ράμπας…');
   try { await _rampLoad(); _rampDraw(); }
   catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
-  // Auto-refresh every 2 minutes while on this page
+  // Auto-refresh every 2 minutes while on this page (disable after 3 consecutive failures)
   clearInterval(_rampAutoRefresh);
+  let _rampFailCount = 0;
   _rampAutoRefresh = setInterval(async () => {
     if (currentPage !== 'daily_ramp') { clearInterval(_rampAutoRefresh); return; }
-    try { await _rampLoad(); _rampDraw(); } catch(e) { console.warn('Ramp auto-refresh failed:', e); }
+    try { await _rampLoad(); _rampDraw(); _rampFailCount = 0; }
+    catch(e) {
+      _rampFailCount++;
+      console.warn('Ramp auto-refresh failed:', e);
+      if (_rampFailCount >= 3) {
+        clearInterval(_rampAutoRefresh);
+        if (typeof showErrorToast === 'function') showErrorToast('Ramp auto-refresh disabled (3 failures) — refresh page', 'error');
+        if (typeof logError === 'function') logError(e, 'daily_ramp auto-refresh threshold');
+      }
+    }
   }, 120000);
 }
 
