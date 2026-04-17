@@ -87,6 +87,11 @@ const _offlineQueue = [];
 function _isOnline() { return navigator.onLine; }
 
 function _queueOffline(method, url, body, recordId) {
+  if (_offlineQueue.length >= 50) {
+    if (typeof showErrorToast === 'function') showErrorToast('Offline queue full (50) — αλλαγή δεν αποθηκεύτηκε', 'error');
+    if (typeof logError === 'function') logError(new Error('Offline queue overflow'), '_queueOffline');
+    return;
+  }
   _offlineQueue.push({ method, url, body, timestamp: Date.now(), recordId: recordId || null });
   _saveOfflineQueue();
   if (typeof showErrorToast === 'function') {

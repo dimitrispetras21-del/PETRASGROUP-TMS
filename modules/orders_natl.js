@@ -882,6 +882,7 @@ async function deleteNatlOrder(recId) {
 
   try {
     toast('Deleting order...', 'info');
+    let _delFail = 0;
 
     // 1. Delete NAT_LOADS (Direct) linked to this NO
     try {
@@ -890,10 +891,10 @@ async function deleteNatlOrder(recId) {
         fields: ['Name']
       }, false);
       for (const nl of nls) {
-        try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { console.warn('NL delete:', e); }
+        try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; console.warn('NL delete:', e); }
       }
       if (nls.length) console.log(`Deleted ${nls.length} NAT_LOADS for NO ${recId}`);
-    } catch(e) { console.warn('NL cleanup error:', e); }
+    } catch(e) { _delFail++; console.warn('NL cleanup error:', e); }
 
     // 2. Delete GL lines + linked CL + CL-linked NL
     try {
@@ -915,15 +916,15 @@ async function deleteNatlOrder(recId) {
                 filterByFormula: `{Source Record}="${cl.id}"`,
                 fields: ['Name']
               }, false);
-              for (const nl of nlsFromCL) await atDelete(TABLES.NAT_LOADS, nl.id);
-            } catch(e) { console.warn('NL-CL cleanup:', e); }
-            await atDelete(TABLES.CONS_LOADS, cl.id);
+              for (const nl of nlsFromCL) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
+            } catch(e) { _delFail++; console.warn('NL-CL cleanup:', e); }
+            try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; console.warn('CL delete:', e); }
           }
-        } catch(e) { console.warn('CL cleanup:', e); }
-        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { console.warn('GL delete:', e); }
+        } catch(e) { _delFail++; console.warn('CL cleanup:', e); }
+        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('GL delete:', e); }
       }
       if (gls.length) console.log(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
-    } catch(e) { console.warn('GL cleanup error:', e); }
+    } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
 
     // 3. Delete RAMP records linked to this NO
     try {
@@ -932,18 +933,18 @@ async function deleteNatlOrder(recId) {
         fields: ['Name']
       }, false);
       for (const r of ramps) {
-        try { await atDelete(TABLES.RAMP, r.id); } catch(e) { console.warn('Ramp delete:', e); }
+        try { await atDelete(TABLES.RAMP, r.id); } catch(e) { _delFail++; console.warn('Ramp delete:', e); }
       }
-    } catch(e) { console.warn('Ramp cleanup:', e); }
+    } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
 
     // 4. Delete ORDER_STOPS linked to this NO
     try {
       const natStops = await stopsLoad(recId, F.STOP_PARENT_NAT);
       for (const s of natStops) {
-        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { console.warn('Stop delete:', e); }
+        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { _delFail++; console.warn('Stop delete:', e); }
       }
       if (natStops.length) console.log(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
-    } catch(e) { console.warn('ORDER_STOPS cleanup:', e); }
+    } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
 
     // 5. Delete the NAT_ORDER itself (soft delete — saved to trash)
     await atSoftDelete(TABLES.NAT_ORDERS, recId);
@@ -954,7 +955,8 @@ async function deleteNatlOrder(recId) {
     invalidateCache(TABLES.GL_LINES);
     invalidateCache(TABLES.CONS_LOADS);
 
-    toast('Order deleted', 'success');
+    toast(_delFail ? `Order deleted (${_delFail} linked records failed — check data)` : 'Order deleted', _delFail ? 'warn' : 'success');
+    if (_delFail && typeof logError === 'function') logError(new Error(`Cascade delete: ${_delFail} sub-deletes failed`), 'deleteNatlOrder ' + recId);
     await renderOrdersNatl();
   } catch(e) {
     toast('Delete failed: ' + e.message, 'danger');

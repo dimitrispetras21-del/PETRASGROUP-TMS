@@ -3,20 +3,45 @@
 // ═══════════════════════════════════════════════
 
 // ── Modal ────────────────────────────────────────
+let _modalPrevFocus = null;
+
 function openModal(title, bodyHTML, footerHTML = '') {
+  _modalPrevFocus = document.activeElement;
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML = bodyHTML;
   document.getElementById('modalFooter').innerHTML = footerHTML;
-  document.getElementById('modalOverlay').classList.add('open');
+  const overlay = document.getElementById('modalOverlay');
+  overlay.classList.add('open');
+  // Focus first focusable element inside modal
+  requestAnimationFrame(() => {
+    const modal = document.getElementById('modal');
+    const focusable = modal.querySelectorAll('input,select,textarea,button,[tabindex]:not([tabindex="-1"])');
+    if (focusable.length) focusable[0].focus();
+    else modal.querySelector('.modal-close')?.focus();
+  });
 }
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
+  if (_modalPrevFocus) { try { _modalPrevFocus.focus(); } catch(_) {} _modalPrevFocus = null; }
 }
 
 function initModal() {
   document.getElementById('modalOverlay').addEventListener('click', e => {
     if (e.target === document.getElementById('modalOverlay')) closeModal();
+  });
+  // Trap focus inside modal + Escape to close
+  document.addEventListener('keydown', e => {
+    const overlay = document.getElementById('modalOverlay');
+    if (!overlay || !overlay.classList.contains('open')) return;
+    if (e.key === 'Escape') { closeModal(); return; }
+    if (e.key !== 'Tab') return;
+    const modal = document.getElementById('modal');
+    const focusable = [...modal.querySelectorAll('input,select,textarea,button,a,[tabindex]:not([tabindex="-1"])')];
+    if (!focusable.length) return;
+    const first = focusable[0], last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   });
 }
 

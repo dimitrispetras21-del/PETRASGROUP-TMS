@@ -189,7 +189,7 @@ function logError(error, context = '') {
   const entry = {
     ts: new Date().toISOString(),
     msg: error?.message || String(error),
-    stack: error?.stack?.split('\n').slice(0, 3).join('\n') || '',
+    stack: error?.stack?.split('\n').slice(0, 8).join('\n') || '',
     ctx: context,
     user: (function() { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').name || 'unknown'; } catch { return 'unknown'; } })(),
     page: window.location.hash || (localStorage.getItem('tms_page') || 'dashboard'),

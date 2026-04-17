@@ -1248,7 +1248,7 @@ tbody tr:hover { background: var(--bg-hover); }
    RESPONSIVE
 ═══════════════════════════════════════════════ */
 
-/* Tablet: sidebar icons only */
+/* Tablet: sidebar icons only + forms & panels */
 @media (max-width: 1024px) {
   .sidebar { width: 56px !important; }
   .sidebar .nav-label,
@@ -1261,6 +1261,16 @@ tbody tr:hover { background: var(--bg-hover); }
   .sidebar .sidebar-toggle { display: none; }
   .main { margin-left: 0; }
   .topbar { padding: 0 16px; }
+  .entity-detail-panel { width: 95% !important; max-width: none !important; }
+  .modal { width: 95% !important; max-width: none !important; }
+  .form-grid { grid-template-columns: 1fr !important; }
+  .form-field.span-2 { grid-column: span 1; }
+  .wi-pop-row { flex-direction: column; }
+  .wi-pop-field { width: 100% !important; }
+  .wi-pop-inp, .wi-pop-inp-wide { width: 100% !important; }
+  .wi-panel-fields { flex-direction: column; }
+  .wi-pf { width: 100% !important; }
+  .wi-sdi, .wi-ti { width: 100% !important; }
 }
 
 /* Mobile: bottom tab bar */
@@ -1289,33 +1299,8 @@ tbody tr:hover { background: var(--bg-hover); }
   .content { padding-bottom: 64px; }
   .topbar { padding: 0 12px; }
   .topbar-breadcrumb { display: none; }
-  /* Horizontal scroll for tables */
   .entity-table-wrap table,
   table { display: block; overflow-x: auto; white-space: nowrap; }
-}
-
-/* ── Tablet: forms & panels ── */
-@media (max-width: 1024px) {
-  .entity-detail-panel {
-    width: 95% !important;
-    max-width: none !important;
-  }
-  .modal {
-    width: 95% !important;
-    max-width: none !important;
-  }
-  .form-grid {
-    grid-template-columns: 1fr !important;
-  }
-  .form-field.span-2 {
-    grid-column: span 1;
-  }
-  .wi-pop-row { flex-direction: column; }
-  .wi-pop-field { width: 100% !important; }
-  .wi-pop-inp, .wi-pop-inp-wide { width: 100% !important; }
-  .wi-panel-fields { flex-direction: column; }
-  .wi-pf { width: 100% !important; }
-  .wi-sdi, .wi-ti { width: 100% !important; }
 }
 
 /* ── Mobile: full-screen detail panels, stacked forms, touch targets ── */
@@ -2223,6 +2208,20 @@ tbody tr:hover { background: var(--bg-hover); }
     transition-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Focus indicators for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent, #0284C7);
+  outline-offset: 2px;
+}
+.sidebar .nav-item:focus-visible { outline-color: #38BDF8; }
+.modal-close:focus-visible { outline-color: #fff; }
+
+/* Sidebar toggle as button — reset browser defaults */
+button.sidebar-toggle {
+  background: none; border: none; color: inherit;
+  font: inherit; cursor: pointer; padding: inherit;
 }
 
 /* 5C: Touch targets — minimum 44×44px on mobile */
