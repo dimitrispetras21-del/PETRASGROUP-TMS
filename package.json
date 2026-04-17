@@ -8,6 +8,6 @@
     "test": "echo 'Open tests/test-runner.html in a browser to run tests'"
   },
   "devDependencies": {
-    "terser": "^5.0.0"
+    "esbuild": "^0.20.0"
   }
 }
