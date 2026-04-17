@@ -146,6 +146,7 @@ function _renderIntlLayout(c) {
           <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
         </svg>
         New Order</button>` : ''}
+        <button class="btn btn-ghost" onclick="_intlExportCSV()">Export CSV</button>
       </div>
     </div>
     <div class="entity-layout">
@@ -1817,6 +1818,23 @@ async function _scanOpen(matched, data) {
   await _openModal(null, f, matched.clientLabel);
 }
 
+function _intlExportCSV() {
+  const recs = INTL_ORDERS.filtered;
+  if (!recs.length) { toast('No records to export', 'error'); return; }
+  const rows = [['Order No','Week','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Goods','Status','Invoiced','Price']];
+  recs.forEach(r => { const f = r.fields; rows.push([
+    f['Order Number']||'', f['Week Number']||'', f['Direction']||'', _clientName(f),
+    _cleanSummary(f['Loading Summary']), _cleanSummary(f['Delivery Summary']),
+    f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
+    f['Goods']||'', f['Status']||'Pending', f['Invoiced']?'Yes':'No', f['Price']||0,
+  ]); });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `orders_intl_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
+}
+
 // Expose functions used from onclick/onchange/oninput/onblur handlers
 window.renderOrdersIntl = renderOrdersIntl;
 window.openIntlScan = openIntlScan;
@@ -1829,6 +1847,7 @@ window._applyIntlFilters = _applyIntlFilters;
 window.intlSearch = intlSearch;
 window.intlFilter = intlFilter;
 window.intlPeriodChange = intlPeriodChange;
+window._intlExportCSV = _intlExportCSV;
 window.openPalletUpload = openPalletUpload;
 window.closePalletUpload = closePalletUpload;
 window.submitIntlOrder = submitIntlOrder;

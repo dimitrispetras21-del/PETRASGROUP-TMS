@@ -437,6 +437,7 @@ function _perfDraw() {
             LIVE
           </span>
           <button class="btn btn-ghost" onclick="renderPerformance()">Refresh</button>
+          <button class="btn btn-ghost" onclick="_perfExportCSV()">Export CSV</button>
         </div>
       </div>
 
@@ -565,4 +566,26 @@ window.renderPerformance = renderPerformance;
 window._perfRemoveGoal = _perfRemoveGoal;
 window._perfAddGoal = _perfAddGoal;
 window._perfToggleGoal = _perfToggleGoal;
+window._perfExportCSV = _perfExportCSV;
+
+function _perfExportCSV() {
+  const orders = PERF.orders;
+  if (!orders.length) { toast('No data to export', 'error'); return; }
+  const rows = [['Order No','Direction','Week','Client','Load Date','Del Date','Pallets','Truck','Driver','Partner','Delivery Performance','Status']];
+  orders.forEach(r => { const f = r.fields;
+    rows.push([f['Order Number']||'', f['Direction']||'', f['Week Number']||'',
+      typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
+      f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
+      typeof getTruckPlate==='function' ? getTruckPlate((f['Truck']||[])[0]) : '',
+      typeof getDriverName==='function' ? getDriverName((f['Driver']||[])[0]) : '',
+      typeof getPartnerName==='function' ? getPartnerName((f['Partner']||[])[0]) : '',
+      f['Delivery Performance']||'', f['Status']||'',
+    ]); });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `performance_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
+}
+
 })();

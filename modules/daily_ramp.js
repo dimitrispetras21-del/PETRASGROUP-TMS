@@ -10,6 +10,7 @@ const RAMP = {
   date: localToday(),
   records: [], trucks: [], drivers: [], locs: [], clients: [], stock: [],
 };
+const _rampFilters = {};
 
 const RAMP_FIELDS = [
   'Plan Date','Time','Type','Status','Pallets','Goods',
@@ -312,13 +313,25 @@ function _rampDraw() {
   const tmrw=localTomorrow();
   const fD=d=>{try{const p=d.split('-');return`${p[2]}/${p[1]}/${p[0]}`;}catch{return d;}};
 
-  const inb=RAMP.records.filter(r=>r.fields['Type']==='Παραλαβή');
-  const out=RAMP.records.filter(r=>r.fields['Type']==='Φόρτωση');
+  // Apply client-side filters
+  let recs=RAMP.records;
+  if(_rampFilters._q){const q=_rampFilters._q;recs=recs.filter(r=>{const f=r.fields;
+    return(f['Supplier/Client']||'').toLowerCase().includes(q)||(f['Goods']||'').toLowerCase().includes(q)
+      ||(f['Loading Points']||'').toLowerCase().includes(q)||(f['Delivery Points']||'').toLowerCase().includes(q)
+      ||(_rTruck(f)||'').toLowerCase().includes(q);});}
+  if(_rampFilters.type)recs=recs.filter(r=>r.fields['Type']===_rampFilters.type);
+  if(_rampFilters.status)recs=recs.filter(r=>(r.fields['Status']||'Planned')===_rampFilters.status);
+  if(_rampFilters.cat){const cv=_rampFilters.cat;recs=recs.filter(r=>{const c=r.fields['Ramp Category']||'';
+    if(cv==='VF')return c==='Vermion Fresh';if(cv==='VS')return c==='VS Simple'||r.fields['Is Veroia Switch'];
+    if(cv==='VS+G')return c==='VS + Groupage';if(cv==='Direct')return!c&&!r.fields['Is Veroia Switch'];return true;});}
+
+  const inb=recs.filter(r=>r.fields['Type']==='Παραλαβή');
+  const out=recs.filter(r=>r.fields['Type']==='Φόρτωση');
   const inPal=inb.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const outPal=out.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
   const net=inPal-outPal;
-  const total=RAMP.records.length;
-  const done=RAMP.records.filter(r=>r.fields['Status']==='Done').length;
+  const total=recs.length;
+  const done=recs.filter(r=>r.fields['Status']==='Done').length;
   const stockPal=RAMP.stock.reduce((s,r)=>s+(r.fields['Pallets']||0),0);
 
   // Stock by client
@@ -330,7 +343,7 @@ function _rampDraw() {
   const tOpts=(()=>{const h=[];for(let i=0;i<24;i++)for(let m=0;m<60;m+=30){const t=String(i).padStart(2,'0')+':'+String(m).padStart(2,'0');h.push(t);}return h;})();
 
   // Combined timeline (all records sorted by time)
-  const allSorted=[...RAMP.records].sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
+  const allSorted=[...recs].sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
 
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:12px">
@@ -347,6 +360,27 @@ function _rampDraw() {
       <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSD('${today}')">Today</button>
       <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Tomorrow</button>
       <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
+    </div>
+    <div class="ramp-toolbar" style="margin-top:6px;gap:8px;flex-wrap:wrap">
+      <input class="search-input" style="max-width:200px;height:32px;font-size:12px" placeholder="Search client / goods / location..." value="${_rampFilters._q||''}" oninput="_rampSearch(this.value)">
+      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('type',this.value)">
+        <option value="">Type: All</option>
+        <option value="Παραλαβή"${_rampFilters.type==='Παραλαβή'?' selected':''}>↓ Inbound</option>
+        <option value="Φόρτωση"${_rampFilters.type==='Φόρτωση'?' selected':''}>↑ Outbound</option>
+      </select>
+      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('status',this.value)">
+        <option value="">Status: All</option>
+        <option value="Planned"${_rampFilters.status==='Planned'?' selected':''}>Planned</option>
+        <option value="Done"${_rampFilters.status==='Done'?' selected':''}>Done</option>
+      </select>
+      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('cat',this.value)">
+        <option value="">Category: All</option>
+        <option value="VF"${_rampFilters.cat==='VF'?' selected':''}>VF</option>
+        <option value="VS"${_rampFilters.cat==='VS'?' selected':''}>VS</option>
+        <option value="VS+G"${_rampFilters.cat==='VS+G'?' selected':''}>VS+G</option>
+        <option value="Direct"${_rampFilters.cat==='Direct'?' selected':''}>Direct</option>
+      </select>
+      <span style="font-size:12px;color:#64748B;padding:4px 0" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''} ops</span>
     </div>
     <div class="ramp-kpis">
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">Inbound Today</div>
@@ -666,10 +700,15 @@ function _rampPrint() {
 }
 
 // Expose functions used from onclick/onchange handlers
+function _rampSearch(q){_rampFilters._q=q.toLowerCase().trim();_rampDraw();}
+function _rampFilterBy(k,v){if(!v)delete _rampFilters[k];else _rampFilters[k]=v;_rampDraw();}
+
 window.renderDailyRamp = renderDailyRamp;
 window._rampAddNew = _rampAddNew;
 window._rampPrint = _rampPrint;
 window._rampSD = _rampSD;
+window._rampSearch = _rampSearch;
+window._rampFilterBy = _rampFilterBy;
 window._rampRestore = _rampRestore;
 window._rampDone = _rampDone;
 window._rampPostpone = _rampPostpone;

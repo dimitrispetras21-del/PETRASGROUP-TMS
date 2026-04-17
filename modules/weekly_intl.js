@@ -313,6 +313,7 @@ function _wiPaint(){
         ${unmatched>0?`<button class="btn btn-primary" style="padding:5px 12px;font-size:11px" onclick="_wiAutoMatch()">⚡ Auto-Match (${unmatched})</button>`:''}
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiPrintWeek()">Print Week</button>
         <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
+        <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiExportCSV()">Export CSV</button>
       </div>
     </div>
 
@@ -1683,4 +1684,29 @@ window._wiDropOnPanel = _wiDropOnPanel;
 window._wiCtx = _wiCtx;
 window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
+window._wiExportCSV = _wiExportCSV;
+
+function _wiExportCSV() {
+  const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
+  if (!allOrders.length) { toast('No data to export', 'error'); return; }
+  const rows = [['Order No','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Truck','Trailer','Driver','Partner','Status']];
+  allOrders.forEach(r => { const f = r.fields;
+    const trk = WINTL.data.trucks.find(t => t.id === ((f['Truck']||[])[0]))?.label || '';
+    const trl = WINTL.data.trailers.find(t => t.id === ((f['Trailer']||[])[0]))?.label || '';
+    const drv = WINTL.data.drivers.find(d => d.id === ((f['Driver']||[])[0]))?.label || '';
+    const prt = WINTL.data.partners.find(p => p.id === ((f['Partner']||[])[0]))?.label || '';
+    const assigned = !!(trk || prt);
+    rows.push([f['Order Number']||'', f['Direction']||'',
+      typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
+      (f['Loading Summary']||'').replace(/["\n]/g,' '), (f['Delivery Summary']||'').replace(/["\n]/g,' '),
+      f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
+      trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
+    ]); });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `weekly_intl_W${WINTL.week}_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
+}
+
 })();

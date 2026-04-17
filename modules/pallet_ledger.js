@@ -8,7 +8,7 @@ const PL = {
   partners: [],
   locations: [],
   clients: [],
-  filters: { from: '', to: '', counterparty: '', partner: '', supplier: '', direction: '' },
+  filters: { from: '', to: '', counterparty: '', partner: '', supplier: '', direction: '', _q: '' },
   selected: null,
 };
 
@@ -91,9 +91,17 @@ function _plPartnerName(id) {
 
 /* ── Filter records ──────────────────────────── */
 function _plFiltered() {
-  const { from, to, counterparty, partner, supplier, direction } = PL.filters;
+  const { from, to, counterparty, partner, supplier, direction, _q } = PL.filters;
   return PL.records.filter(r => {
     const f = r.fields;
+    if (_q) {
+      const q = _q.toLowerCase();
+      const pName = _plPartnerName(Array.isArray(f['Partner Account']) ? f['Partner Account'][0] : null);
+      const lName = _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
+      if (!pName.toLowerCase().includes(q) && !lName.toLowerCase().includes(q)
+        && !(f['Notes']||'').toLowerCase().includes(q)
+        && !(f['Pallet Type']||'').toLowerCase().includes(q)) return false;
+    }
     if (from && (f['Date'] || '') < from) return false;
     if (to && (f['Date'] || '') > to) return false;
     if (counterparty && f['Counterparty Type'] !== counterparty) return false;
@@ -166,7 +174,10 @@ function _plRender() {
       <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Pallet Ledger</h2>
       <div style="font-size:13px;color:#94A3B8;margin-top:4px">${PL.records.length} total records</div>
     </div>
-    <button class="btn btn-new-order" onclick="_plOpenCreate()">+ New Record</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="_plExportCSV()">Export CSV</button>
+      <button class="btn btn-new-order" onclick="_plOpenCreate()">+ New Record</button>
+    </div>
   </div>
 
   <div class="pl-balance-cards">
@@ -199,6 +210,10 @@ function _plRender() {
   ${_plMonthlyTrend()}
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:end">
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">Search</label>
+      <input type="text" placeholder="Partner / Location / Notes..." value="${PL.filters._q||''}" oninput="PL.filters._q=this.value.toLowerCase().trim();_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px;width:180px">
+    </div>
     <div style="display:flex;flex-direction:column;gap:2px">
       <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">From</label>
       <input type="date" value="${PL.filters.from}" onchange="PL.filters.from=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
@@ -415,6 +430,25 @@ async function _plSaveForm(recId) {
   } catch (e) {
     alert('Error: ' + e.message);
   }
+}
+
+/* ── CSV Export ─────────────────────────────── */
+function _plExportCSV() {
+  const recs = _plFiltered();
+  if (!recs.length) { toast('No records to export', 'error'); return; }
+  const rows = [['Date','Direction','Pallets','Pallet Type','Counterparty','Name','Stop Type','Verified','Notes']];
+  recs.forEach(r => { const f = r.fields;
+    const name = f['Counterparty Type'] === 'Partner'
+      ? _plPartnerName(Array.isArray(f['Partner Account']) ? f['Partner Account'][0] : null)
+      : _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
+    rows.push([f['Date']||'', f['Direction']||'', f['Pallets']||0, f['Pallet Type']||'',
+      f['Counterparty Type']||'', name, f['Stop Type']||'', f['Verified']?'Yes':'No', f['Notes']||'']);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `pallet_ledger_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
 }
 
 /* ── Delete ──────────────────────────────────── */

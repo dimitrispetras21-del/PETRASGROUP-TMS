@@ -81,6 +81,7 @@ function _renderNatlLayout(c) {
             <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
           </svg>
           New Order</button>` : ''}
+        <button class="btn btn-ghost" onclick="_natlExportCSV()">Export CSV</button>
       </div>
     </div>
     <div class="entity-layout">
@@ -961,6 +962,26 @@ async function deleteNatlOrder(recId) {
 }
 
 // Expose functions used from onclick/onchange handlers
+function _natlExportCSV() {
+  const recs = NATL_ORDERS.filtered;
+  if (!recs.length) { toast('No records to export', 'error'); return; }
+  const rows = [['Name','Direction','Client','Pickup','Delivery','Load Date','Del Date','Pallets','Goods','Type','Trip','Invoiced','Price']];
+  recs.forEach(r => { const f = r.fields;
+    const cId = (f['Client']||[])[0]; const pId = (f['Pickup Location 1']||[])[0];
+    const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0];
+    const trip = ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending';
+    rows.push([f['Name']||'', f['Direction']||'', cId?(_fhClientsMap[cId]||''):'',
+      pId?(_fhLocationsMap[pId]||''):'', dId?(_fhLocationsMap[dId]||''):'',
+      f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Pallets']||0,
+      f['Goods']||'', f['Type']||'', trip, f['Invoiced']?'Yes':'No', f['Price']||0,
+    ]); });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `orders_natl_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
+}
+
 window.renderOrdersNatl = renderOrdersNatl;
 window.openNatlCreate = openNatlCreate;
 window.openNatlEdit = openNatlEdit;
@@ -971,6 +992,7 @@ window._applyNatlFilters = _applyNatlFilters;
 window.natlSearch = natlSearch;
 window.natlFilter = natlFilter;
 window.natlPeriodChange = natlPeriodChange;
+window._natlExportCSV = _natlExportCSV;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)

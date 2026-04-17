@@ -288,6 +288,7 @@ async function _expInsurerEdit(e, recId, vType) {
 }
 
 let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
+let _expirySearch = '';
 function _expiryPaint() {
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
@@ -302,10 +303,12 @@ function _expiryPaint() {
 
   // Filter by tab
   const filterRows = (rows) => {
-    if (_expiryTab === 'expired') return rows.filter(r => r.worst !== null && r.worst < 0);
-    if (_expiryTab === 'expiring30') return rows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
-    if (_expiryTab === 'valid') return rows.filter(r => r.worst === null || r.worst > 30);
-    return rows;
+    let out = rows;
+    if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
+    if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
+    if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+    if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
+    return out;
   };
   const fTrucks = filterRows(truckRows);
   const fTrailers = filterRows(trailerRows);
@@ -323,6 +326,7 @@ function _expiryPaint() {
       <div><div class="page-title">Expiry Alerts</div>
         <div class="page-sub">Fleet document expiry overview</div></div>
       <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="_expiryExportCSV()">Export CSV</button>
         <button class="btn btn-ghost" onclick="_expiryPrint()">Print</button>
         <button class="btn btn-ghost" onclick="MAINT._loaded=false;renderExpiryAlerts()">Refresh</button>
       </div>
@@ -341,11 +345,12 @@ function _expiryPaint() {
         <div class="mk-kpi-val" style="color:#10B981">${validTrailers}</div></div>
     </div>
 
-    <div style="display:flex;gap:6px;margin-bottom:16px">
+    <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;align-items:center">
       ${tabBtn('all', 'All', truckRows.length + trailerRows.length)}
       ${tabBtn('expired', 'Expired', expiredTrucks + expiredTrailers)}
       ${tabBtn('expiring30', 'Expiring ≤30d', expiring30Trucks + expiring30Trailers)}
       ${tabBtn('valid', 'Valid', validTrucks + validTrailers)}
+      <input class="search-input" style="margin-left:auto;max-width:200px;height:32px;font-size:12px" placeholder="Search plate / brand..." value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
     </div>
 
     <!-- TRUCKS SECTION -->
@@ -383,6 +388,26 @@ function _expiryPaint() {
         ${r.docs.map(d => _expCell(d, r.id, d.field, 'Trailer')).join('')}
       </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:20px">No trailers in this category</td></tr>`}</tbody>
     </table>`;
+}
+
+function _expirySearchFn(v) { _expirySearch = v.toLowerCase().trim(); _expiryPaint(); }
+
+function _expiryExportCSV() {
+  const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
+  const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
+  const all = [...truckRows.map(r => ({...r, vType:'Truck'})), ...trailerRows.map(r => ({...r, vType:'Trailer'}))];
+  if (!all.length) { toast('No data to export', 'error'); return; }
+  const rows = [['Type','Plate','Brand','Model','KTEO Expiry','KTEO Days','KEK/FRC Expiry','KEK/FRC Days','Insurance Expiry','Insurance Days','Insurer']];
+  all.forEach(r => {
+    const d = r.docs;
+    rows.push([r.vType, r.plate, r.brand, r.model,
+      d[0]?.date||'', d[0]?.days??'', d[1]?.date||'', d[1]?.days??'', d[2]?.date||'', d[2]?.days??'', r.insurer]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = `fleet_expiry_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV exported');
 }
 
 function _expiryPrint() {
