@@ -378,8 +378,33 @@ async function atGetAll(tableId, opts = {}, useCache = true) {
  * @param {Object} fields - Key/value pairs of fields to update
  * @returns {Promise<{id:string, fields:Object}>} Updated record
  */
+// Suppress undo tracking inside cascading sync routines (set true before sync, reset after)
+let _atSuppressUndo = false;
+function atSuppressUndo(fn) {
+  return async (...args) => { _atSuppressUndo = true; try { return await fn(...args); } finally { _atSuppressUndo = false; } };
+}
+
 async function atPatch(tableId, recId, fields) {
   _auditLog('PATCH', tableId, recId, fields);
+  // Capture pre-state for undo (from cache only — no extra fetch)
+  let _undoPrev = null;
+  if (!_atSuppressUndo) {
+    try {
+      // Find any cached version of this record
+      for (const k in _MEM) {
+        if (!k.startsWith(tableId)) continue;
+        const cached = _MEM[k].data || _MEM[k];
+        if (Array.isArray(cached)) {
+          const hit = cached.find(r => r.id === recId);
+          if (hit && hit.fields) {
+            _undoPrev = {};
+            Object.keys(fields).forEach(fk => { _undoPrev[fk] = hit.fields[fk]; });
+            break;
+          }
+        }
+      }
+    } catch(_) {}
+  }
   if (!_isOnline()) {
     _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
     return { id: recId, fields, _offline: true };
@@ -395,6 +420,11 @@ async function atPatch(tableId, recId, fields) {
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
     if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
+  }
+  // Track for undo
+  if (_undoPrev && typeof _undoSet === 'function') {
+    const lbl = data.fields?.['Name'] || data.fields?.['Order Number'] || data.fields?.['Full Name'] || data.fields?.['License Plate'] || recId;
+    _undoSet({ type: 'patch', tableId, recId, prevFields: _undoPrev, label: lbl });
   }
   invalidateCache(tableId);
   atNotifyChange(tableId);
@@ -424,6 +454,11 @@ async function atCreate(tableId, fields) {
     if (typeof logError === 'function') logError(new Error(errMsg), `atCreate(${tableId})`);
     if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
     throw new Error(errMsg);
+  }
+  // Track for undo (skip if inside cascade)
+  if (!_atSuppressUndo && typeof _undoSet === 'function') {
+    const lbl = data.fields?.['Name'] || data.fields?.['Order Number'] || data.fields?.['Full Name'] || data.fields?.['License Plate'] || data.id;
+    _undoSet({ type: 'create', tableId, recId: data.id, label: lbl });
   }
   invalidateCache(tableId);
   atNotifyChange(tableId);

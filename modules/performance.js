@@ -88,7 +88,7 @@ async function _perfLoad() {
                'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
-      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver','Delivery Performance']
+      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']
     }, true).catch(() => []),
     preloadReferenceData().then(() => getRefTrucks()),
     atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
@@ -207,10 +207,8 @@ function _perfCompute() {
   });
   const dead_km = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : 0;
 
-  // National On-Time — from NAT_LOADS Delivery Performance
-  const natlWithPerf = PERF.natLoads.filter(r => r.fields['Delivery Performance']);
-  const natlOnTime = natlWithPerf.filter(r => r.fields['Delivery Performance'] === 'On Time').length;
-  const natl_on_time = natlWithPerf.length ? Math.round(natlOnTime / natlWithPerf.length * 100) : 0;
+  // National On-Time — NAT_LOADS doesn't have Delivery Performance field, fall back to Status
+  const natl_on_time = 0; // TODO: derive from Actual Delivery Date vs Delivery DateTime if needed
 
   // Invoiced %
   const deliveredOrders = orders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');

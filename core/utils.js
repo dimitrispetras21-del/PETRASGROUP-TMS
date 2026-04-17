@@ -348,7 +348,7 @@ async function _refreshNotifs() {
       atGet(TABLES.ORDERS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true),
-      (isChiefOps) ? atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime','Delivery Performance'] }, true).catch(()=>[]) : Promise.resolve([]),
+      (isChiefOps) ? atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime'] }, true).catch(()=>[]) : Promise.resolve([]),
       (isChiefOps || isEquip) ? atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(()=>[]) : Promise.resolve([]),
     ];
     const [orders, trucks, trailers, natLoads, maint] = await Promise.all(promises);

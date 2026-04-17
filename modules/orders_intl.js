@@ -752,6 +752,9 @@ async function _syncVeroiaSwitch(orderId, fields) {
   // Track created records for rollback on failure
   const _createdIds = []; // { table, id }
 
+  // Suppress undo tracking for internal cascade operations
+  if (typeof _atSuppressUndo !== 'undefined') _atSuppressUndo = true;
+
   try {
   const veroiaSwitch = fields[F.VEROIA_SWITCH];
   const direction    = fields['Direction'];
@@ -996,6 +999,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     throw err;
   } finally {
     _syncingOrders.delete(orderId);
+    if (typeof _atSuppressUndo !== 'undefined') _atSuppressUndo = false;
   }
 }
 
