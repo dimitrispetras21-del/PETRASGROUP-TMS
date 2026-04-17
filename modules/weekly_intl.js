@@ -1698,7 +1698,7 @@ function _wiExportCSV() {
     const assigned = !!(trk || prt);
     rows.push([f['Order Number']||'', f['Direction']||'',
       typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
-      (f['Loading Summary']||'').replace(/["\n]/g,' '), (f['Delivery Summary']||'').replace(/["\n]/g,' '),
+      f['Loading Summary']||'', f['Delivery Summary']||'',
       f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
       trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
     ]); });

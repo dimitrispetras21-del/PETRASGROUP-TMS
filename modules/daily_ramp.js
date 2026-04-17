@@ -566,7 +566,7 @@ async function _rampDone(id,isIn){
     if (r) {
       const orderId = getLinkId(r.fields['Order']);
       const natOrderId = getLinkId(r.fields['National Order']);
-      const isOutbound = r.fields['Type']==='Παράδοση';
+      const isOutbound = r.fields['Type']==='Φόρτωση';
       // Outbound always advances to In Transit. Inbound only advances if not VS (VS inbound is just a leg).
       const isVS = r.fields['Is Veroia Switch']===true || r.fields['Is Veroia Switch']==='Yes';
       const shouldAdvance = isOutbound || !isVS;

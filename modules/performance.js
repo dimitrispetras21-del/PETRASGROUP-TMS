@@ -93,11 +93,11 @@ async function _perfLoad() {
     preloadReferenceData().then(() => getRefTrucks()),
     atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
   ]);
-  PERF.orders = orders;
-  PERF.natLoads = natLoads;
-  PERF.trucks = trucks;
-  PERF.maint = maint;
-  PERF.locs = getRefLocations();
+  PERF.orders = orders || [];
+  PERF.natLoads = natLoads || [];
+  PERF.trucks = trucks || [];
+  PERF.maint = maint || [];
+  PERF.locs = getRefLocations() || [];
 
   // Build location coordinates lookup (for dead_km calc)
   PERF.locCoords = {};

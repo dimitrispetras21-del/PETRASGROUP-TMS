@@ -289,6 +289,14 @@ async function _expInsurerEdit(e, recId, vType) {
 
 let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
 let _expirySearch = '';
+function _expiryFilterRows(rows) {
+  let out = rows;
+  if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
+  if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
+  if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+  if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
+  return out;
+}
 function _expiryPaint() {
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
@@ -301,17 +309,9 @@ function _expiryPaint() {
   const expiring30Trailers = trailerRows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
   const validTrailers = trailerRows.filter(r => r.worst === null || r.worst > 30).length;
 
-  // Filter by tab
-  const filterRows = (rows) => {
-    let out = rows;
-    if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
-    if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
-    if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
-    if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
-    return out;
-  };
-  const fTrucks = filterRows(truckRows);
-  const fTrailers = filterRows(trailerRows);
+  // Filter by tab + search (shared function)
+  const fTrucks = _expiryFilterRows(truckRows);
+  const fTrailers = _expiryFilterRows(trailerRows);
 
   const tabBtn = (id, label, count) => {
     const active = _expiryTab === id;
@@ -395,16 +395,8 @@ function _expirySearchFn(v) { _expirySearch = v.toLowerCase().trim(); _expiryPai
 function _expiryExportCSV() {
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
-  // Apply same filters as the UI (tab + search)
-  const filterRows = (rows) => {
-    let out = rows;
-    if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
-    if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
-    if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
-    if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
-    return out;
-  };
-  const all = [...filterRows(truckRows).map(r => ({...r, vType:'Truck'})), ...filterRows(trailerRows).map(r => ({...r, vType:'Trailer'}))];
+  // Apply same shared filter (tab + search)
+  const all = [..._expiryFilterRows(truckRows).map(r => ({...r, vType:'Truck'})), ..._expiryFilterRows(trailerRows).map(r => ({...r, vType:'Trailer'}))];
   if (!all.length) { toast('No data to export', 'error'); return; }
   const rows = [['Type','Plate','Brand','Model','KTEO Expiry','KTEO Days','KEK/FRC Expiry','KEK/FRC Days','Insurance Expiry','Insurance Days','Insurer']];
   all.forEach(r => {
