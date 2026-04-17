@@ -1182,7 +1182,7 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
         await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned', Pallets:0});
       }
     }
-  } catch(e) { console.error('_syncGroupageLines:', e); }
+  } catch(e) { console.error('_syncGroupageLines:', e); if (typeof logError === 'function') logError(e, '_syncGroupageLines'); if (typeof toast === 'function') toast('Σφάλμα sync groupage lines', 'error'); }
 }
 
 

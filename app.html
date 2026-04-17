@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1776326771">
+<link rel="stylesheet" href="assets/style.css?v=1776408227">
 </head>
 <body>
 
@@ -47,7 +47,7 @@
           </svg>
           <span class="notif-dot" id="notifDot" style="display:none"></span>
         </button>
-        <div class="notif-panel" id="notifPanel" style="display:none"></div>
+        <div class="notif-panel" id="notifPanel" role="log" aria-label="Notifications" style="display:none"></div>
       </div>
       <div class="user-chip">
         <div class="user-avatar" id="userAvatar">—</div>
@@ -59,7 +59,7 @@
   </div>
 
   <!-- Content -->
-  <div class="content" id="content" role="main">
+  <div class="content" id="content" role="main" aria-live="polite">
     <div class="loading"><div class="spinner"></div> Loading...</div>
   </div>
 
@@ -67,10 +67,10 @@
 
 <!-- ═══ MODAL ═════════════════════════════════ -->
 <div class="modal-overlay" id="modalOverlay">
-  <div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody">
     <div class="modal-header">
       <div class="modal-title" id="modalTitle">—</div>
-      <div class="modal-close" onclick="closeModal()">✕</div>
+      <div class="modal-close" onclick="closeModal()" aria-label="Close">✕</div>
     </div>
     <div class="modal-body" id="modalBody"></div>
     <div class="modal-footer" id="modalFooter"></div>
@@ -83,7 +83,7 @@
 <!-- 2. Core: constants → auth → api → utils → ui → entity → router -->
 <script src="core/constants.js?v=1776320633"></script>
 <script src="core/auth.js?v=1774632576"></script>
-<script src="core/api.js?v=1775119894"></script>
+<script src="core/api.js?v=1776408227"></script>
 <script src="core/utils.js?v=1776330000"></script>
 <script src="core/ui.js?v=1774800000"></script>
 <script src="core/entity.js?v=1776324974"></script>
@@ -96,7 +96,7 @@
 <!-- 3. Modules -->
 <script src="modules/dashboard.js?v=1776105918"></script>
 <script src="modules/weekly_intl.js?v=1776405990"></script>
-<script src="modules/weekly_natl.js?v=1775220001"></script>
+<script src="modules/weekly_natl.js?v=1776408227"></script>
   <script src="modules/daily_ramp.js?v=1776405990"></script>
   <script src="modules/maintenance.js?v=1776405990"></script>
   <script src="modules/orders_intl.js?v=1776405990"></script>
@@ -106,7 +106,7 @@
 <script src="modules/daily_ops.js?v=1776320633"></script>
 <script src="modules/pallet_upload.js?v=1776102450"></script>
 <script src="modules/pallet_ledger.js?v=1776405990"></script>
-<script src="modules/invoicing.js?v=1776330500"></script>
+<script src="modules/invoicing.js?v=1776408227"></script>
 <script src="modules/performance.js?v=1776405990"></script>
 <script src="modules/ceo_dashboard.js?v=1776082901"></script>
 

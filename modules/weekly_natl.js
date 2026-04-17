@@ -1014,7 +1014,7 @@ function _wnSplit(rowId) {
   });
   _wnPaint(); toast('Διαχωρίστηκε');
   const allIds = [first, ...rest];
-  allIds.forEach(id => atPatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' }).catch(()=>{}));
+  allIds.forEach(id => atPatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' }).catch(e => { console.warn('Groupage clear:', e); if (typeof logError === 'function') logError(e, '_wnSplit groupage clear'); }));
 }
 
 /* ── PRINT ───────────────────────────────────────────────────────── */

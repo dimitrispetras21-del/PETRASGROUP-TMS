@@ -209,6 +209,18 @@ async function _atRetry(fn, retries = 3) {
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
+      if (res.status === 400 || res.status === 422) {
+        const errData = await res.json().catch(() => ({}));
+        const msg = (errData.error && (errData.error.message || errData.error.type)) || `Validation error (${res.status})`;
+        const mapped = msg.includes('INVALID_RECORD_ID') ? 'Μη έγκυρο linked record ID'
+          : msg.includes('UNKNOWN_FIELD') ? 'Άγνωστο πεδίο στο Airtable'
+          : msg.includes('INVALID_VALUE') ? 'Μη αποδεκτή τιμή πεδίου'
+          : msg.includes('INVALID_PERMISSIONS') ? 'Δεν έχετε δικαίωμα'
+          : msg;
+        if (typeof logError === 'function') logError(new Error(mapped), `_atRetry ${res.status}`);
+        if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
+        throw new Error(mapped);
+      }
       if (res.status >= 500 && i < retries - 1) {
         if (typeof showErrorToast === 'function') {
           showErrorToast('\u03A3\u03C6\u03AC\u03BB\u03BC\u03B1 server \u2014 \u03B4\u03BF\u03BA\u03B9\u03BC\u03AC\u03C3\u03C4\u03B5 \u03BE\u03B1\u03BD\u03AC', 'error');

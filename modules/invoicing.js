@@ -562,7 +562,7 @@ async function _invBatchInvoice() {
   if (!ids.length) return;
   if (!confirm(`Mark ${ids.length} orders as Invoiced?\n(Auto-generated invoice numbers, today's date)`)) return;
 
-  let ok = 0;
+  let ok = 0, fail = 0;
   const today = localToday();
   for (const id of ids) {
     const rec = INV.data.find(r => r.id === id);
@@ -579,11 +579,11 @@ async function _invBatchInvoice() {
       await atPatch(tbl, id, fields);
       Object.assign(rec.fields, fields);
       ok++;
-    } catch(e) { console.error('Batch fail:', id, e); }
+    } catch(e) { console.error('Batch fail:', id, e); if (typeof logError === 'function') logError(e, 'invBatchInvoice ' + id); fail++; }
   }
   invalidateCache(TABLES.ORDERS);
   invalidateCache(TABLES.NAT_ORDERS);
-  toast(`${ok} τιμολόγια εκδόθηκαν`);
+  toast(fail ? `${ok} τιμολόγια εκδόθηκαν, ${fail} απέτυχαν` : `${ok} τιμολόγια εκδόθηκαν`, fail ? 'warn' : 'success');
   _applyInvFilters();
 }
 

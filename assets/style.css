@@ -2211,3 +2211,26 @@ tbody tr:hover { background: var(--bg-hover); }
   /* ── Consolidated loads in national view ─────────── */
   .wn-sn-row { page-break-inside: avoid; }
 }
+
+/* ═══════════════════════════════════════════════
+   ACCESSIBILITY
+═══════════════════════════════════════════════ */
+
+/* 5A: Respect user's motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* 5C: Touch targets — minimum 44×44px on mobile */
+@media (max-width: 768px) {
+  .btn, .btn-new-order, .btn-scan, .btn-logout,
+  .filter-select, .filter-input,
+  .nav-item,
+  .notif-bell,
+  .modal-close,
+  .entity-action-btn { min-height: 44px; min-width: 44px; }
+}
