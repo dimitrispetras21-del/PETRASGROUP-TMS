@@ -810,6 +810,62 @@ function atNotifyChange(tableId) {
   } catch(e) { if (typeof logError === 'function') logError(e, 'atNotifyChange broadcast'); }
 }
 
+// ── Undo: track last user-initiated mutation (60s TTL) ─
+let _undoAction = null;
+const UNDO_TTL_MS = 60000;
+function _undoSet(action) {
+  _undoAction = { ...action, ts: Date.now() };
+  if (typeof renderUndoButton === 'function') renderUndoButton();
+}
+function _undoExpired() {
+  return !_undoAction || (Date.now() - _undoAction.ts) > UNDO_TTL_MS;
+}
+function getUndoAction() { return _undoExpired() ? null : _undoAction; }
+function clearUndo() { _undoAction = null; if (typeof renderUndoButton === 'function') renderUndoButton(); }
+
+// Patch with undo support: fetches current state first so we can revert
+async function atPatchUndoable(tableId, recId, fields, label) {
+  let prevFields = null;
+  try {
+    const cur = await atGetOne(tableId, recId);
+    if (cur && cur.fields) {
+      prevFields = {};
+      Object.keys(fields).forEach(k => { prevFields[k] = cur.fields[k]; });
+    }
+  } catch(e) { if (typeof logError === 'function') logError(e, 'atPatchUndoable pre-fetch'); }
+  const result = await atPatch(tableId, recId, fields);
+  if (prevFields) _undoSet({ type: 'patch', tableId, recId, prevFields, label: label || 'edit' });
+  return result;
+}
+
+// Execute the undo
+async function undoLastAction() {
+  const a = getUndoAction();
+  if (!a) { if (typeof toast === 'function') toast('Nothing to undo', 'warn'); return; }
+  try {
+    if (a.type === 'delete') {
+      // Restore from trash (item is at index 0 since soft-delete used unshift)
+      const trash = getTrash();
+      const idx = trash.findIndex(t => t.id === a.recId && t.table === a.tableId);
+      if (idx < 0) { if (typeof toast === 'function') toast('Trash entry no longer available', 'error'); clearUndo(); return; }
+      await atRestoreFromTrash(idx);
+      if (typeof toast === 'function') toast(`Restored ${a.label || 'record'}`, 'success');
+    } else if (a.type === 'patch') {
+      await atPatch(a.tableId, a.recId, a.prevFields);
+      if (typeof toast === 'function') toast(`Reverted ${a.label || 'edit'}`, 'success');
+    } else if (a.type === 'create') {
+      await atDelete(a.tableId, a.recId);
+      if (typeof toast === 'function') toast(`Removed created ${a.label || 'record'}`, 'success');
+    }
+    clearUndo();
+    // Trigger page re-render if router supports it
+    if (typeof currentPage !== 'undefined' && typeof navigate === 'function') navigate(currentPage);
+  } catch(e) {
+    if (typeof showErrorToast === 'function') showErrorToast('Undo failed: ' + e.message, 'error');
+    if (typeof logError === 'function') logError(e, 'undoLastAction');
+  }
+}
+
 // ── 4. Soft Delete (trash before delete) ─────────
 /**
  * Save record to localStorage trash, then permanently delete from Airtable.
@@ -820,8 +876,10 @@ function atNotifyChange(tableId) {
  */
 async function atSoftDelete(tableId, recordId) {
   // Save to trash before deleting
+  let recLabel = '';
   try {
     const rec = await atGetOne(tableId, recordId);
+    recLabel = rec.fields?.['Name'] || rec.fields?.['Order Number'] || rec.fields?.['Full Name'] || rec.fields?.['License Plate'] || recordId;
     const trash = JSON.parse(localStorage.getItem('tms_trash') || '[]');
     trash.unshift({
       id: recordId,
@@ -836,6 +894,8 @@ async function atSoftDelete(tableId, recordId) {
   } catch(e) {
     if (typeof logError === 'function') logError(e, 'soft delete backup');
   }
+  // Track for undo
+  _undoSet({ type: 'delete', tableId, recId: recordId, label: recLabel });
   // Then actually delete
   return atDelete(tableId, recordId);
 }

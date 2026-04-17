@@ -363,6 +363,20 @@ body {
   color: var(--danger);
 }
 
+/* Undo Button (topbar) */
+.undo-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D;
+  padding: 6px 10px; margin-right: 8px; border-radius: 6px;
+  font: 600 12px/1 'DM Sans', sans-serif; cursor: pointer;
+  transition: all 0.15s;
+}
+.undo-btn:hover { background: #FDE68A; }
+.undo-countdown {
+  font-size: 10px; color: #B45309; font-weight: 500;
+  padding: 2px 5px; background: rgba(255,255,255,0.6); border-radius: 4px;
+}
+
 /* Notification Bell */
 .notif-bell {
   background: none; border: none; cursor: pointer; padding: 6px;

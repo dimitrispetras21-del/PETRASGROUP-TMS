@@ -274,6 +274,33 @@ try {
   _errorLog.push(...stored);
 } catch(e) { console.warn('[TMS] Failed to load stored error log:', e); }
 
+// ═══ UNDO BUTTON RENDERER ═══
+let _undoTickTimer = null;
+function renderUndoButton() {
+  const btn = document.getElementById('undoBtn');
+  if (!btn) return;
+  const a = (typeof getUndoAction === 'function') ? getUndoAction() : null;
+  if (!a) {
+    btn.style.display = 'none';
+    if (_undoTickTimer) { clearInterval(_undoTickTimer); _undoTickTimer = null; }
+    return;
+  }
+  btn.style.display = 'inline-flex';
+  const lbl = document.getElementById('undoLabel');
+  const cd = document.getElementById('undoCountdown');
+  const verb = a.type === 'delete' ? 'Restore' : a.type === 'patch' ? 'Revert' : 'Undo';
+  if (lbl) lbl.textContent = `${verb}: ${String(a.label || '').slice(0, 24)}`;
+  // Tick countdown every second
+  if (_undoTickTimer) clearInterval(_undoTickTimer);
+  const tick = () => {
+    const left = Math.max(0, Math.round((60000 - (Date.now() - a.ts)) / 1000));
+    if (cd) cd.textContent = left + 's';
+    if (left <= 0) { if (typeof clearUndo === 'function') clearUndo(); }
+  };
+  tick();
+  _undoTickTimer = setInterval(tick, 1000);
+}
+
 // ═══ NOTIFICATION CENTER ═══
 let _notifOpen = false;
 let _notifItems = [];
