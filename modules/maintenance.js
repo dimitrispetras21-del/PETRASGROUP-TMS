@@ -395,7 +395,16 @@ function _expirySearchFn(v) { _expirySearch = v.toLowerCase().trim(); _expiryPai
 function _expiryExportCSV() {
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
-  const all = [...truckRows.map(r => ({...r, vType:'Truck'})), ...trailerRows.map(r => ({...r, vType:'Trailer'}))];
+  // Apply same filters as the UI (tab + search)
+  const filterRows = (rows) => {
+    let out = rows;
+    if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
+    if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
+    if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+    if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
+    return out;
+  };
+  const all = [...filterRows(truckRows).map(r => ({...r, vType:'Truck'})), ...filterRows(trailerRows).map(r => ({...r, vType:'Trailer'}))];
   if (!all.length) { toast('No data to export', 'error'); return; }
   const rows = [['Type','Plate','Brand','Model','KTEO Expiry','KTEO Days','KEK/FRC Expiry','KEK/FRC Days','Insurance Expiry','Insurance Days','Insurer']];
   all.forEach(r => {

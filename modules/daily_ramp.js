@@ -532,7 +532,7 @@ function _rTlRow(rec) {
     <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
-    <td>${escapeHtml(f['Temperature']||f['Temperature °C']?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
+    <td>${escapeHtml((f['Temperature']||f['Temperature °C'])?((f['Temperature']||f['Temperature °C'])+'°C'):'')}</td>
     <td>${escapeHtml(f['Pallets']||'')}</td>
     <td>${escapeHtml(_rTruck(f)||'—')}</td><td>${escapeHtml(_rDriver(f)||'—')}</td>
     <td>${statusTxt}</td></tr>`;
@@ -540,7 +540,7 @@ function _rTlRow(rec) {
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
-async function _rampSvF(id,fld,v){try{await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampRender();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
+async function _rampSvF(id,fld,v){try{await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampDraw();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
 async function _rampSvTime(id,v){
   // Save time as plain "HH:MM" string — NOT ISO datetime
   try{await atSafePatch(TABLES.RAMP,id,{'Time': v || null});

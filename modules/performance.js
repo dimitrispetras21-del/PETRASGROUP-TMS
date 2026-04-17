@@ -570,7 +570,7 @@ window._perfExportCSV = _perfExportCSV;
 
 function _perfExportCSV() {
   const orders = PERF.orders;
-  if (!orders.length) { toast('No data to export', 'error'); return; }
+  if (!orders || !orders.length) { toast('No data to export', 'error'); return; }
   const rows = [['Order No','Direction','Week','Client','Load Date','Del Date','Pallets','Truck','Driver','Partner','Delivery Performance','Status']];
   orders.forEach(r => { const f = r.fields;
     rows.push([f['Order Number']||'', f['Direction']||'', f['Week Number']||'',
