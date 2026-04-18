@@ -363,7 +363,7 @@ body {
   color: var(--danger);
 }
 
-/* Undo Button (topbar) */
+/* Undo Button (topbar) — always visible, icon-only when idle */
 .undo-btn {
   display: inline-flex; align-items: center; gap: 6px;
   background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D;
@@ -371,7 +371,17 @@ body {
   font: 600 12px/1 'DM Sans', sans-serif; cursor: pointer;
   transition: all 0.15s;
 }
-.undo-btn:hover { background: #FDE68A; }
+.undo-btn:hover:not(.undo-btn-idle) { background: #FDE68A; }
+/* Idle state: minimal, icon-only, subtle */
+.undo-btn-idle {
+  background: transparent;
+  color: var(--text-dim, #94A3B8);
+  border: 1px solid var(--border, #E2E8F0);
+  padding: 6px;
+  cursor: default;
+  opacity: 0.5;
+}
+.undo-btn-idle:hover { background: transparent; opacity: 0.7; }
 .undo-countdown {
   font-size: 10px; color: #B45309; font-weight: 500;
   padding: 2px 5px; background: rgba(255,255,255,0.6); border-radius: 4px;

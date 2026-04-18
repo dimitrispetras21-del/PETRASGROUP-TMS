@@ -280,16 +280,26 @@ function renderUndoButton() {
   const btn = document.getElementById('undoBtn');
   if (!btn) return;
   const a = (typeof getUndoAction === 'function') ? getUndoAction() : null;
+  const lbl = document.getElementById('undoLabel');
+  const cd = document.getElementById('undoCountdown');
+
   if (!a) {
-    btn.style.display = 'none';
+    // Idle state: always visible, icon only, dimmed, title shows "nothing to undo"
+    btn.classList.add('undo-btn-idle');
+    btn.title = 'Nothing to undo';
+    if (lbl) lbl.style.display = 'none';
+    if (cd) cd.style.display = 'none';
     if (_undoTickTimer) { clearInterval(_undoTickTimer); _undoTickTimer = null; }
     return;
   }
-  btn.style.display = 'inline-flex';
-  const lbl = document.getElementById('undoLabel');
-  const cd = document.getElementById('undoCountdown');
+
+  // Active state: full button with label + countdown
+  btn.classList.remove('undo-btn-idle');
   const verb = a.type === 'delete' ? 'Restore' : a.type === 'patch' ? 'Revert' : 'Undo';
-  if (lbl) lbl.textContent = `${verb}: ${String(a.label || '').slice(0, 24)}`;
+  const labelText = `${verb}: ${String(a.label || '').slice(0, 24)}`;
+  btn.title = labelText;
+  if (lbl) { lbl.style.display = ''; lbl.textContent = labelText; }
+  if (cd) cd.style.display = '';
   // Tick countdown every second
   if (_undoTickTimer) clearInterval(_undoTickTimer);
   const tick = () => {
@@ -299,6 +309,11 @@ function renderUndoButton() {
   };
   tick();
   _undoTickTimer = setInterval(tick, 1000);
+}
+
+// Initial render on page load (so idle icon shows immediately)
+if (typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', () => { try { renderUndoButton(); } catch(_) {} });
 }
 
 // ═══ NOTIFICATION CENTER ═══
