@@ -695,15 +695,7 @@ function _wiRowHTML(row,i){
       </div></div>`;
     }
   } else {
-    if(isOverdue){
-      pill=`<div class="wi-pill">
-        <div class="wi-card wi-card-un">
-          <div class="wi-card-top">— Unassigned</div>
-        </div>
-      </div>`;
-    } else {
-      pill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
-    }
+    pill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
   }
 
   // Import preview — saved state shown (full details like export)
