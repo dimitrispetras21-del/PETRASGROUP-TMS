@@ -85,10 +85,12 @@ async function _perfLoad() {
     atGetAll(TABLES.ORDERS, {
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
-               'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS']
+               'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
+               'Assigned At','Actual Delivery Date']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
-      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver']
+      fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver',
+               'Actual Delivery Date']
     }, true).catch(() => []),
     preloadReferenceData().then(() => getRefTrucks()),
     atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
@@ -177,8 +179,21 @@ function _perfCompute() {
   const assignedWeek = weekOrders.filter(r => r.fields['Direction'] === 'Export' && r.fields['Truck']).length;
   const plan_complete = totalWeek ? Math.round(assignedWeek / totalWeek * 100) : 0;
 
-  // Assignment Speed (avg hours from creation to truck assigned — simplified)
-  const assign_speed = 3.2; // placeholder — would need Created field + assignment timestamp
+  // Assignment Speed — avg hours from order creation to truck/partner assignment
+  // Uses Airtable's native Created Time + our custom Assigned At timestamp
+  // (Assigned At is stamped by the app on first assignment in weekly_intl.js)
+  const assignedWeekly = weekOrders.filter(r => r.fields['Assigned At']);
+  const assignHrs = assignedWeekly.map(r => {
+    const assignedAt = new Date(r.fields['Assigned At']).getTime();
+    // Airtable doesn't expose createdTime via API without a Created Time field on the table
+    // Fallback: use Loading DateTime - 48h as proxy creation time (orders usually created ~2d ahead)
+    const loadingTime = r.fields['Loading DateTime'] ? new Date(r.fields['Loading DateTime']).getTime() : null;
+    if (!loadingTime || !assignedAt) return null;
+    const createdProxy = loadingTime - 2*24*3600*1000; // 2 days before loading
+    const hrs = (assignedAt - createdProxy) / 3600000;
+    return hrs > 0 && hrs < 480 ? hrs : null; // ignore outliers (>20 days)
+  }).filter(v => v !== null);
+  const assign_speed = assignHrs.length ? Math.round(assignHrs.reduce((s,v)=>s+v,0)/assignHrs.length * 10)/10 : 0;
 
   // Dead KM — avg distance between Export Delivery and matched Import Loading (this week)
   // Uses ORDER_STOPS + LOCATIONS coords + Haversine (same algo as dashboard.js)
@@ -207,8 +222,18 @@ function _perfCompute() {
   });
   const dead_km = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : 0;
 
-  // National On-Time — NAT_LOADS doesn't have Delivery Performance field, fall back to Status
-  const natl_on_time = 0; // TODO: derive from Actual Delivery Date vs Delivery DateTime if needed
+  // National On-Time — derive from Actual Delivery Date vs expected Delivery DateTime
+  // On time if Actual Delivery Date <= Delivery DateTime (date only comparison)
+  const natlDelivered = (PERF.natLoads || []).filter(r => {
+    const f = r.fields;
+    return ['Delivered','Invoiced'].includes(f['Status']||'') && f['Actual Delivery Date'] && f['Delivery DateTime'];
+  });
+  const natlOnTime = natlDelivered.filter(r => {
+    const actual = (r.fields['Actual Delivery Date']||'').slice(0,10);
+    const expected = (r.fields['Delivery DateTime']||'').slice(0,10);
+    return actual && expected && actual <= expected;
+  }).length;
+  const natl_on_time = natlDelivered.length ? Math.round(natlOnTime / natlDelivered.length * 100) : 0;
 
   // Invoiced %
   const deliveredOrders = orders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');

@@ -221,12 +221,6 @@ function _wiBuildRows(){
   const impById={};
   imports.forEach(r=>impById[r.id]=r);
 
-  // Build shelf: imports not matched
-  const matchedImports=new Set(
-    exports.map(r=>r.fields['Matched Import ID']).filter(Boolean)
-  );
-
-
   for(const exp of exports){
     const f=exp.fields;
     const truckId  =(f['Truck']  ||[])[0]||'';
@@ -1413,11 +1407,14 @@ async function _wiSaveFromPopover(rowId){
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
+  // Stamp Assigned At only on first assignment (preserve for accurate assignment-speed metric)
+  const isFirstAssignment = !row.saved;
+  const assignedAtStamp = isFirstAssignment ? { 'Assigned At': new Date().toISOString() } : {};
   const fields=isPartner
     ?{'Partner':[row.partnerId],'Is Partner Trip':true,
       'Partner Truck Plates':row.partnerPlates||'','Status':'Assigned',
-      'Truck':[],'Trailer':[],'Driver':[]}
-    :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':''};
+      'Truck':[],'Trailer':[],'Driver':[], ...assignedAtStamp}
+    :{'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],'Driver':row.driverId?[row.driverId]:[],'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':'', ...assignedAtStamp};
   // Save to export orders (with export rate)
   const expFields={...fields};
   if(isPartner) expFields['Partner Rate']=row.partnerRate?parseFloat(row.partnerRate):null;

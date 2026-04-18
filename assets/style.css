@@ -2219,6 +2219,35 @@ tbody tr:hover { background: var(--bg-hover); }
 
   /* ── Consolidated loads in national view ─────────── */
   .wn-sn-row { page-break-inside: avoid; }
+
+  /* ── Generic table print improvements ─────────────── */
+  table { page-break-inside: auto !important; }
+  tr { page-break-inside: avoid !important; page-break-after: auto !important; }
+  thead { display: table-header-group !important; }
+  tfoot { display: table-footer-group !important; }
+  .entity-table, .ops-t { font-size: 10px !important; }
+  .entity-table th, .entity-table td,
+  .ops-t th, .ops-t td { padding: 4px 6px !important; border: 0.5px solid #D1D5DB !important; }
+
+  /* Hide interactive widgets when printing */
+  button, .btn, .filter-input, .filter-select,
+  .undo-btn, .notif-bell, .ops-toolbar,
+  #undoBtn, #notifWrap { display: none !important; }
+
+  /* Command center: no gradient background on print */
+  [style*="linear-gradient"] {
+    background: #F8FAFC !important;
+    color: #0B1929 !important;
+    border: 1px solid #CBD5E1 !important;
+  }
+
+  /* Avoid breaking inside key blocks */
+  .ops-kpi, .wi-dsep, .pl-balance-card,
+  .stop-card, .notes-box, .sig-table { page-break-inside: avoid !important; }
+
+  /* Shrink top paddings on print for space */
+  .content { padding: 10px !important; }
+  .page-header { margin-bottom: 6px !important; }
 }
 
 /* ═══════════════════════════════════════════════
