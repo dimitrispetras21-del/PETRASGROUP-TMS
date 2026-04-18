@@ -115,7 +115,17 @@ async function _wnLoadAll() {
   const locs = getRefLocations();
   WNATL.data.trucks    = getRefTrucks().filter(r=>r.fields['Active']).map(r  => ({ id:r.id, label:r.fields['License Plate']||r.id }));
   WNATL.data.trailers  = getRefTrailers().map(r => ({ id:r.id, label:r.fields['License Plate']||r.id }));
-  WNATL.data.drivers   = getRefDrivers().filter(r=>r.fields['Active']).map(r  => ({ id:r.id, label:r.fields['Full Name']||r.id }));
+  WNATL.data.drivers   = getRefDrivers().filter(r=>r.fields['Active']).map(r => {
+    const f = r.fields || {};
+    return {
+      id: r.id,
+      label: f['Full Name'] || r.id,
+      phone: f['Phone'] || '',
+      type: f['Type'] || '',
+      licenseExpiry: f['License Expiry'] || '',
+      licenseNumber: f['License Number'] || '',
+    };
+  });
   WNATL.data.partners  = getRefPartners().map(r  => ({ id:r.id, label:r.fields['Company Name']||r.id }));
   WNATL.data.clients   = [];
   WNATL.data.locations = locs;
@@ -671,13 +681,65 @@ function _wnPill(row) {
     </div>
   </div>`;
   const vehicleLine = truck && trailer ? `${truck} · ${trailer}` : (truck || trailer || '—');
+  // Driver enrichment
+  const dObj = data.drivers.find(d => d.id === row.driverId) || null;
+  const licDays = _wnLicenseDaysLeft(dObj);
+  const licBadge = (licDays !== null && licDays <= 30)
+    ? `<span class="wi-lic-badge ${licDays<0?'expired':licDays<=7?'crit':'warn'}" title="License ${licDays<0?'expired '+Math.abs(licDays)+'d ago':'expires '+licDays+'d'}">${licDays<0?'EXP':licDays+'d'}</span>` : '';
+  const phoneBtn = (dObj && dObj.phone)
+    ? `<a href="tel:${escapeHtml(dObj.phone)}" class="wi-phone" title="Call ${escapeHtml(dObj.phone)}" onclick="event.stopPropagation()">📞</a>` : '';
+  const doubleBooked = row.driverId && WNATL.rows.filter(r => r.id !== row.id && r.driverId === row.driverId && r.saved).length > 0;
+  const dbBadge = doubleBooked ? `<span class="wi-lic-badge warn" title="Double-booked">×${WNATL.rows.filter(r=>r.driverId===row.driverId&&r.saved).length}</span>` : '';
+  const tip = dObj ? JSON.stringify({ name: dObj.label, phone: dObj.phone, type: dObj.type, license: dObj.licenseNumber, licDays, doubleBooked }).replace(/"/g,'&quot;') : '';
+
   return `<div class="wi-pill">
-    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-ok'}">
-      <div class="wi-card-top">${escapeHtml(vehicleLine)}</div>
-      ${driver ? `<div class="wi-card-bot">${escapeHtml(driver)}</div>` : ''}
+    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-ok'}" ${tip?`data-driver-tip="${tip}" onmouseover="_wnShowDriverTip(event,this)" onmouseout="_wnHideDriverTip()"`:''}>
+      <div class="wi-card-plate">${escapeHtml(vehicleLine)}</div>
+      ${driver ? `<div class="wi-card-driver">
+        <span class="wi-driver-name">${escapeHtml(driver)}</span>
+        <span class="wi-driver-meta">${phoneBtn}${licBadge}${dbBadge}</span>
+      </div>` : ''}
     </div>
   </div>`;
 }
+
+function _wnLicenseDaysLeft(driver){
+  if (!driver || !driver.licenseExpiry) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(driver.licenseExpiry); exp.setHours(0,0,0,0);
+  return Math.floor((exp - today) / 86400000);
+}
+function _wnShowDriverTip(ev, el){
+  const raw = el.getAttribute('data-driver-tip'); if (!raw) return;
+  let d; try { d = JSON.parse(raw.replace(/&quot;/g,'"')); } catch { return; }
+  const tip = document.getElementById('wi-driver-tip') || (() => {
+    const t = document.createElement('div'); t.id = 'wi-driver-tip'; t.className = 'wi-driver-tip';
+    document.body.appendChild(t); return t;
+  })();
+  const licText = d.licDays === null ? '—'
+    : d.licDays < 0 ? `⚠ EXPIRED ${Math.abs(d.licDays)}d ago`
+    : d.licDays <= 30 ? `⚠ ${d.licDays}d left` : `${d.licDays}d left`;
+  const licColor = d.licDays === null ? '#94A3B8'
+    : d.licDays < 0 ? '#DC2626' : d.licDays <= 7 ? '#DC2626' : d.licDays <= 30 ? '#D97706' : '#10B981';
+  tip.innerHTML = `
+    <div class="wi-tip-header">${escapeHtml(d.name||'—')}</div>
+    ${d.phone ? `<div class="wi-tip-row">📞 <a href="tel:${escapeHtml(d.phone)}">${escapeHtml(d.phone)}</a></div>` : ''}
+    ${d.type ? `<div class="wi-tip-row">Type: <b>${escapeHtml(d.type)}</b></div>` : ''}
+    ${d.license ? `<div class="wi-tip-row">License: ${escapeHtml(d.license)}</div>` : ''}
+    <div class="wi-tip-row" style="color:${licColor}"><b>${licText}</b></div>
+    ${d.doubleBooked ? `<div class="wi-tip-row" style="color:#D97706">⚠ Double-booked this week</div>` : ''}
+  `;
+  const rect = el.getBoundingClientRect();
+  tip.style.left = (rect.left + window.scrollX) + 'px';
+  tip.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  tip.style.display = 'block';
+}
+function _wnHideDriverTip(){
+  const tip = document.getElementById('wi-driver-tip');
+  if (tip) tip.style.display = 'none';
+}
+window._wnShowDriverTip = _wnShowDriverTip;
+window._wnHideDriverTip = _wnHideDriverTip;
 
 function _wnNavWeek(d) {
   WNATL.week = Math.max(1, Math.min(53, WNATL.week + d));

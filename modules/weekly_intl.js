@@ -153,8 +153,30 @@ async function _wiLoadAssets(){
   await preloadReferenceData();
   WINTL.data.trucks   = getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
   WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-  WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
+  WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>_wiMapDriver(r));
   WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+}
+
+// Extended driver mapping — include phone, license, type for richer UI
+function _wiMapDriver(r){
+  const f = r.fields || {};
+  return {
+    id: r.id,
+    label: f['Full Name'] || r.id,
+    phone: f['Phone'] || '',
+    type: f['Type'] || '',
+    licenseExpiry: f['License Expiry'] || '',
+    licenseNumber: f['License Number'] || '',
+    assignedTruckId: (f['Assigned Truck']||[])[0] || null,
+  };
+}
+
+// Days until license expires (negative = expired)
+function _wiLicenseDaysLeft(driver){
+  if (!driver || !driver.licenseExpiry) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const exp = new Date(driver.licenseExpiry); exp.setHours(0,0,0,0);
+  return Math.floor((exp - today) / 86400000);
 }
 
 /* ── MAIN ENTRY ────────────────────────────────────────────────────── */
@@ -186,7 +208,7 @@ async function renderWeeklyIntl(){
     if (loadId !== _wiLoadId) return;
     WINTL.data.trucks   = getRefTrucks().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
     WINTL.data.trailers = getRefTrailers().map(r=>({id:r.id,label:r.fields['License Plate']||r.id}));
-    WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>({id:r.id,label:r.fields['Full Name']||r.id}));
+    WINTL.data.drivers  = getRefDrivers().filter(r=>r.fields['Active']).map(r=>_wiMapDriver(r));
     WINTL.data.partners = getRefPartners().map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
 
     // ── Inject Loading/Delivery Summary from ORDER_STOPS for new orders ──
@@ -678,6 +700,28 @@ function _wiRowHTML(row,i){
   const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
   const surname=driver?driver.trim().split(/\s+/)[0]:'';
 
+  // Build driver enrichment (phone, license) from WINTL.data.drivers
+  const driverObj = data.drivers.find(d => d.id === row.driverId) || null;
+  const licDays = _wiLicenseDaysLeft(driverObj);
+  const licBadge = (licDays !== null && licDays <= 30)
+    ? `<span class="wi-lic-badge ${licDays<0?'expired':licDays<=7?'crit':'warn'}" title="License expires ${licDays<0?Math.abs(licDays)+' days ago':'in '+licDays+' days'}">${licDays<0?'EXP':licDays+'d'}</span>`
+    : '';
+  const phoneBtn = (driverObj && driverObj.phone)
+    ? `<a href="tel:${escapeHtml(driverObj.phone)}" class="wi-phone" title="Call ${escapeHtml(driverObj.phone)}" onclick="event.stopPropagation()" aria-label="Call driver">📞</a>`
+    : '';
+  // Double-booking check: is this driver used in another row this week?
+  const doubleBooked = row.driverId && WINTL.rows.filter(r =>
+    r.id !== row.id && r.driverId === row.driverId && r.saved
+  ).length > 0;
+  const dbBadge = doubleBooked ? `<span class="wi-lic-badge warn" title="Driver assigned to multiple orders this week">×${WINTL.rows.filter(r=>r.driverId===row.driverId&&r.saved).length}</span>` : '';
+
+  // Tooltip payload for hover (stringified, decoded in template)
+  const tip = driverObj ? JSON.stringify({
+    name: driverObj.label, phone: driverObj.phone, type: driverObj.type,
+    license: driverObj.licenseNumber, licExp: driverObj.licenseExpiry,
+    licDays, doubleBooked,
+  }).replace(/"/g,'&quot;') : '';
+
   let pill;
   if(row.saved){
     if(partner){
@@ -688,11 +732,18 @@ function _wiRowHTML(row,i){
         </div>
       </div>`;
     } else {
-      const truckLine=[truck,trailer].filter(Boolean).join(' · ');
-      pill=`<div class="wi-pill"><div class="wi-card wi-card-ok">
-        <div class="wi-card-top">${escapeHtml(truckLine||'—')}</div>
-        ${surname?`<div class="wi-card-bot">${escapeHtml(row.driverLabel||'')}</div>`:''}
-      </div></div>`;
+      // Redesign: larger plate top, driver row below with phone + badges
+      const plateLine = [truck,trailer].filter(Boolean).join(' · ') || '—';
+      pill=`<div class="wi-pill">
+        <div class="wi-card wi-card-ok" data-driver-tip="${tip}" onmouseover="_wiShowDriverTip(event,this)" onmouseout="_wiHideDriverTip()">
+          <div class="wi-card-plate">${escapeHtml(plateLine)}</div>
+          ${driver ? `
+            <div class="wi-card-driver">
+              <span class="wi-driver-name">${escapeHtml(driver)}</span>
+              <span class="wi-driver-meta">${phoneBtn}${licBadge}${dbBadge}</span>
+            </div>` : ''}
+        </div>
+      </div>`;
     }
   } else {
     pill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
@@ -901,6 +952,18 @@ function _wiSdrop(px,rowId,arr,selId,ph){
   const sel=arr.find(x=>x.id===selId)?.label||'';
   const opts=arr.map(x=>{
     const l=(x.label||'').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    // For drivers: show license warning + phone inline
+    if (px === 'dr' && x.licenseExpiry !== undefined) {
+      const licDays = _wiLicenseDaysLeft(x);
+      const warn = (licDays !== null && licDays <= 30)
+        ? `<span class="wi-sdo-warn ${licDays<0?'expired':licDays<=7?'crit':'warn'}" title="${licDays<0?'License expired':licDays+' days left'}">${licDays<0?'⚠ EXP':'⚠ '+licDays+'d'}</span>`
+        : '';
+      const phone = x.phone ? `<span class="wi-sdo-phone">📞 ${escapeHtml(x.phone)}</span>` : '';
+      return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">
+        <span class="wi-sdo-main">${l}</span>
+        <span class="wi-sdo-side">${phone}${warn}</span>
+      </div>`;
+    }
     return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
   }).join('');
   return `<div class="wi-sd" id="wsd-${uid}" onclick="event.stopPropagation()">
@@ -1785,5 +1848,84 @@ function _wiExportCSV() {
   a.download = `weekly_intl_W${WINTL.week}_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
   toast('CSV exported');
 }
+
+// ── Driver hover tooltip ────────────────────────────────
+function _wiShowDriverTip(ev, el) {
+  const raw = el.getAttribute('data-driver-tip');
+  if (!raw) return;
+  let d; try { d = JSON.parse(raw.replace(/&quot;/g,'"')); } catch { return; }
+  const tip = document.getElementById('wi-driver-tip') || (() => {
+    const t = document.createElement('div'); t.id = 'wi-driver-tip'; t.className = 'wi-driver-tip';
+    document.body.appendChild(t); return t;
+  })();
+  const licText = d.licDays === null ? '—'
+    : d.licDays < 0 ? `⚠ EXPIRED ${Math.abs(d.licDays)}d ago`
+    : d.licDays <= 30 ? `⚠ ${d.licDays} days left`
+    : `${d.licDays} days left`;
+  const licColor = d.licDays === null ? '#94A3B8'
+    : d.licDays < 0 ? '#DC2626'
+    : d.licDays <= 7 ? '#DC2626'
+    : d.licDays <= 30 ? '#D97706' : '#10B981';
+  tip.innerHTML = `
+    <div class="wi-tip-header">${escapeHtml(d.name||'—')}</div>
+    ${d.phone ? `<div class="wi-tip-row">📞 <a href="tel:${escapeHtml(d.phone)}">${escapeHtml(d.phone)}</a></div>` : ''}
+    ${d.type ? `<div class="wi-tip-row">Type: <b>${escapeHtml(d.type)}</b></div>` : ''}
+    ${d.license ? `<div class="wi-tip-row">License: ${escapeHtml(d.license)}</div>` : ''}
+    <div class="wi-tip-row" style="color:${licColor}"><b>${licText}</b></div>
+    ${d.doubleBooked ? `<div class="wi-tip-row" style="color:#D97706">⚠ Double-booked this week</div>` : ''}
+  `;
+  const rect = el.getBoundingClientRect();
+  tip.style.left = (rect.left + window.scrollX) + 'px';
+  tip.style.top = (rect.bottom + window.scrollY + 6) + 'px';
+  tip.style.display = 'block';
+}
+function _wiHideDriverTip() {
+  const tip = document.getElementById('wi-driver-tip');
+  if (tip) tip.style.display = 'none';
+}
+
+// ── Driver profile side-panel ──────────────────────────
+function _wiOpenDriverPanel(driverId) {
+  const d = WINTL.data.drivers.find(x => x.id === driverId);
+  if (!d) { toast('Driver not found', 'error'); return; }
+  const licDays = _wiLicenseDaysLeft(d);
+  const licColor = licDays === null ? '#94A3B8'
+    : licDays < 0 ? '#DC2626' : licDays <= 30 ? '#D97706' : '#10B981';
+  const licText = licDays === null ? 'No expiry set'
+    : licDays < 0 ? `EXPIRED ${Math.abs(licDays)} days ago`
+    : `${licDays} days until expiry`;
+
+  // Count this driver's rows in current week
+  const weekAssignments = WINTL.rows.filter(r => r.driverId === d.id && r.saved);
+  const assignmentList = weekAssignments.map(r => {
+    const exp = WINTL.data.exports.find(e => e.id === r.orderIds[0]);
+    const route = exp ? `${exp.fields['Loading Summary']||'?'} → ${exp.fields['Delivery Summary']||'?'}` : '—';
+    return `<li>${escapeHtml(route.slice(0,60))}</li>`;
+  }).join('');
+
+  const html = `
+    <div class="wi-side-overlay" onclick="if(event.target===this)document.getElementById('wi-side-overlay').remove()" id="wi-side-overlay">
+      <div class="wi-side-panel">
+        <div class="wi-side-hdr">
+          <h3>${escapeHtml(d.label)}</h3>
+          <button class="wi-side-close" onclick="document.getElementById('wi-side-overlay').remove()">✕</button>
+        </div>
+        <div class="wi-side-body">
+          <div class="wi-side-row"><span>Type</span><b>${escapeHtml(d.type||'—')}</b></div>
+          ${d.phone ? `<div class="wi-side-row"><span>Phone</span><a href="tel:${escapeHtml(d.phone)}">${escapeHtml(d.phone)}</a></div>` : ''}
+          ${d.licenseNumber ? `<div class="wi-side-row"><span>License #</span><b>${escapeHtml(d.licenseNumber)}</b></div>` : ''}
+          <div class="wi-side-row"><span>License status</span><b style="color:${licColor}">${licText}</b></div>
+          <div class="wi-side-row"><span>This week</span><b>${weekAssignments.length} assignment${weekAssignments.length!==1?'s':''}</b></div>
+        </div>
+        ${assignmentList ? `<div class="wi-side-section"><h4>Assignments (W${WINTL.week})</h4><ul class="wi-side-list">${assignmentList}</ul></div>` : ''}
+      </div>
+    </div>`;
+  document.getElementById('wi-side-overlay')?.remove();
+  document.body.insertAdjacentHTML('beforeend', html);
+}
+
+window._wiShowDriverTip = _wiShowDriverTip;
+window._wiHideDriverTip = _wiHideDriverTip;
+window._wiOpenDriverPanel = _wiOpenDriverPanel;
 
 })();
