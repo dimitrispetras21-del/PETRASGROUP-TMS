@@ -120,6 +120,55 @@ function _opsDraw() {
   const chkF=['Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'];
   let tC=0,dC=0;all.forEach(r=>chkF.forEach(f=>{if(r.fields[f]!==undefined){tC++;if(r.fields[f])dC++;}}));
 
+  // Per-direction completion
+  const loadsAll = [...cats.el, ...cats.il];
+  const delsAll  = [...cats.ed, ...cats.id];
+  const loadsDone = loadsAll.filter(r=>['In Transit','Delivered'].includes(r.fields['Status']||'')).length;
+  const delsDone  = delsAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
+  const expAll = [...cats.el, ...cats.ed];
+  const impAll = [...cats.il, ...cats.id];
+  const expDone = expAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
+  const impDone = impAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
+  const overallPct = total ? Math.round(nDel/total*100) : 0;
+
+  // ═══ COMMAND CENTER — computed action recommendations ═══
+  const now = new Date();
+  const nowH = now.getHours() + now.getMinutes()/60;
+  const actions = [];
+  if (isToday && total) {
+    // Overdue unhandled
+    if (OPS.overdue.length) actions.push({icon:'🚨', sev:'crit', text:`${OPS.overdue.length} overdue deliveries awaiting confirmation`, scrollTo:'ovL'});
+
+    // Loadings without truck/driver assigned
+    const noAssign = loadsAll.filter(r => !_T(r.fields) || !_D(r.fields)).filter(r=>(r.fields['Status']||'')!=='Delivered' && (r.fields['Status']||'')!=='In Transit');
+    if (noAssign.length) actions.push({icon:'👤', sev:'warn', text:`${noAssign.length} loading${noAssign.length>1?'s':''} without truck/driver assigned`});
+
+    // Loadings without Docs Ready (pending status)
+    const missingDocs = loadsAll.filter(r => !r.fields['Docs Ready'] && (r.fields['Status']||'')==='');
+    if (missingDocs.length) actions.push({icon:'📋', sev:'warn', text:`${missingDocs.length} pending loading${missingDocs.length>1?'s':''} without Docs Ready`});
+
+    // Deliveries in transit without CMR
+    const missingCMR = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['CMR Photo Received']);
+    if (missingCMR.length) actions.push({icon:'📷', sev:'warn', text:`${missingCMR.length} in-transit deliver${missingCMR.length>1?'ies':'y'} without CMR photo`});
+
+    // Deliveries in transit without ETA
+    const missingETA = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['ETA']);
+    if (missingETA.length) actions.push({icon:'⏰', sev:'warn', text:`${missingETA.length} in-transit deliver${missingETA.length>1?'ies':'y'} without ETA`});
+
+    // Pending deliveries that are still not delivered after noon
+    if (nowH > 14 && nPend > 0) {
+      const pendDels = delsAll.filter(r => (r.fields['Status']||'')!=='Delivered').length;
+      if (pendDels > 0) actions.push({icon:'🕐', sev:'warn', text:`Afternoon — ${pendDels} delivery${pendDels>1?'ies':''} still not confirmed`});
+    }
+
+    // All good
+    if (!actions.length && total > 0) {
+      if (nDel === total) actions.push({icon:'🎉', sev:'ok', text:'All orders delivered — day complete!'});
+      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:'✅', sev:'ok', text:'All loadings done — waiting on deliveries'});
+      else actions.push({icon:'✓', sev:'ok', text:'No pending actions — all under control'});
+    }
+  }
+
   // Overdue
   let ovH='';
   if(isToday&&OPS.overdue.length){
@@ -136,6 +185,45 @@ function _opsDraw() {
         </div>`;}).join('')}</div></div>`;
   }
 
+  // Command Center HTML
+  const sevColor = s => s==='crit'?'#DC2626':s==='warn'?'#D97706':s==='ok'?'#059669':'#0284C7';
+  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'#FEF3C7':s==='ok'?'#D1FAE5':'#DBEAFE';
+  const cmdCenterH = (isToday && total) ? `
+    <div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:16px 20px;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:14px">
+          <!-- Circular completion ring -->
+          <div style="position:relative;width:64px;height:64px">
+            <svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg)">
+              <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
+              <circle cx="32" cy="32" r="28" fill="none" stroke="#10B981" stroke-width="6"
+                stroke-dasharray="${2*Math.PI*28}" stroke-dashoffset="${2*Math.PI*28*(1-overallPct/100)}" stroke-linecap="round"/>
+            </svg>
+            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Syne',sans-serif">
+              <div style="font-size:18px;font-weight:700;line-height:1">${overallPct}%</div>
+              <div style="font-size:9px;opacity:0.7;letter-spacing:0.5px">DONE</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px">COMMAND CENTER</div>
+            <div style="font-size:12px;opacity:0.7;margin-top:2px">${nDel}/${total} delivered · ${nLoad} in transit · ${nPend} pending</div>
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="display:flex;gap:16px;font-size:11px">
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">EXPORT</div><div style="font-weight:700;font-size:14px">${expAll.length?Math.round(expDone/expAll.length*100):0}%</div></div>
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">IMPORT</div><div style="font-weight:700;font-size:14px">${impAll.length?Math.round(impDone/impAll.length*100):0}%</div></div>
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">CHECKLIST</div><div style="font-weight:700;font-size:14px">${tC?Math.round(dC/tC*100):0}%</div></div>
+          </div>
+        </div>
+      </div>
+      ${actions.length ? `<div style="display:flex;flex-direction:column;gap:6px">
+        ${actions.map(a => `<div style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px${a.scrollTo?';cursor:pointer':''}" ${a.scrollTo?`onclick="document.getElementById('${a.scrollTo}').style.display='flex';window.scrollTo({top:document.getElementById('${a.scrollTo}').offsetTop-80,behavior:'smooth'})"`:''}>
+          <span style="font-size:16px">${a.icon}</span><span>${a.text}</span>
+        </div>`).join('')}
+      </div>` : ''}
+    </div>` : '';
+
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:12px">
       <div><div class="page-title">Daily Ops Plan</div>
@@ -149,14 +237,16 @@ function _opsDraw() {
       <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">Today</button>
       <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">Tomorrow</button>
     </div>
+    ${cmdCenterH}
     <div class="ops-kpis">
       <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#F1F5F9">${total?nPend:'—'}</span></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Loaded</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0284C7">${total?nLoad:'—'}</span></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Delivered</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${total?nDel:'—'}</span><span class="ops-kpi-sub">${total?'/ '+total:''}</span></div>
-        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${total?Math.round(nDel/total*100):0}%;background:var(--success)"></div></div></div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Loadings</div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0284C7">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
+        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:#0284C7"></div></div></div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Deliveries</div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
+        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${delsAll.length?Math.round(delsDone/delsAll.length*100):0}%;background:var(--success)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Checklist</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
@@ -211,6 +301,13 @@ function _opsRow(rec,num,type,isToday) {
   const isPostponed=!!f['Postponed To']&&!isDone&&!isInTransit;
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
 
+  // Per-row checklist progress mini-bar
+  const _rowChks = isL ? ['Docs Ready','Temp OK','Driver Notified'] : ['CMR Photo Received','Client Notified'];
+  const _rowDone = _rowChks.filter(k => f[k]).length;
+  const _rowPct = Math.round(_rowDone/_rowChks.length*100);
+  const _rowBar = isDone ? ''
+    : `<div title="${_rowDone}/${_rowChks.length} checks" style="width:24px;height:3px;background:#E5E7EB;border-radius:2px;margin-top:3px;overflow:hidden"><div style="width:${_rowPct}%;height:100%;background:${_rowPct===100?'#10B981':_rowPct>=50?'#0284C7':'#D97706'};transition:width .3s"></div></div>`;
+
   // Status badge for completed states
   const statusBadge = isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">IN TRANSIT</span>'
     : isPostponed ? '<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">POSTPONED</span>'
@@ -236,7 +333,7 @@ function _opsRow(rec,num,type,isToday) {
     const actionCol = statusBadge
       ? `<td>${statusBadge}</td>`
       : `<td>${loadBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
@@ -250,7 +347,7 @@ function _opsRow(rec,num,type,isToday) {
     const actionCol = statusBadge
       ? `<td>${statusBadge}</td>`
       : `<td>${loadBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
@@ -262,7 +359,7 @@ function _opsRow(rec,num,type,isToday) {
     const actionCol = statusBadge
       ? `<td>${statusBadge}</td>`
       : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
@@ -271,14 +368,14 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${chk('Client Notified',f['Client Notified'])}</td>
       ${actionCol}`;
   } else if(!isToday && isL && isExp) {
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
       <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
       <td>${postBtn}</td>`;
   } else if(!isToday && isL && !isExp) {
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
@@ -286,7 +383,7 @@ function _opsRow(rec,num,type,isToday) {
       <td>${timeSelect('ETA',f['ETA'])}</td>
       <td>${postBtn}</td>`;
   } else {
-    cells=`<td class="rn">${num}</td>
+    cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL}</td>
       <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
