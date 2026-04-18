@@ -612,7 +612,6 @@ function _wiImpRowHTML(row){
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
     <div class="wi-compact" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
       <div class="wi-cn" style="cursor:grab">
-        <div class="wi-dot" style="background:rgba(14,165,233,0.5)"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
       <div class="wi-ce" style="background:#0B1929"></div>
@@ -660,24 +659,9 @@ function _wiRowHTML(row,i){
   const isGroup=exps.length>1;
   const primary=exps[0];
 
-  // Status based on operational state
+  // Classic design — no colored dots on row numbers
   const hasPartner=!!(row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label);
-  const delDateRaw=primary?.fields['Delivery DateTime']||null;
-  const isOverdue=delDateRaw && toLocalDate(delDateRaw) < localToday();
-  let sCls,dotColor;
-  if(!row.saved){
-    // Red — unassigned
-    sCls='s-unassigned'; dotColor='#EF4444';
-  } else if(isOverdue){
-    // Red — overdue delivery
-    sCls='s-overdue'; dotColor='#EF4444';
-  } else if(hasPartner){
-    // Green — partner trip
-    sCls='s-partner'; dotColor='#059669';
-  } else {
-    // Navy blue — owned fleet
-    sCls='s-ok'; dotColor='#0284C7';
-  }
+  let sCls='s-default';
 
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
   const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
@@ -754,7 +738,6 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}">
     <div class="wi-compact" onclick="_wiToggle(${row.id})">
       <div class="wi-cn">
-        <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
       <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)" style="position:relative">

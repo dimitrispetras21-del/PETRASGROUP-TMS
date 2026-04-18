@@ -415,13 +415,10 @@ function _wnRowHTML(row, i) {
   const loadDt = _wnFmt(f['Loading DateTime']);
   const delDt  = _wnFmt(f['Delivery DateTime']) || '—';
 
-  // Status dot
+  // Classic design — no colored dots on row numbers
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
   const isCL = row.source === 'cl';
-  let sCls = 's-pending', dotColor = 'rgba(217,119,6,0.5)';
-  if (row.saved && isCL)      { sCls='s-cl';      dotColor='#0D9488'; }
-  else if (row.saved && isPartner) { sCls='s-partner'; dotColor='rgba(59,130,246,0.75)'; }
-  else if (row.saved)         { sCls='s-ok';      dotColor='var(--success)'; }
+  let sCls = 's-default';
 
   // Pill
   const pill = _wnPill(row);
@@ -440,7 +437,6 @@ function _wnRowHTML(row, i) {
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
-        <div class="wi-dot" style="background:${dotColor}"></div>
         <span class="wi-num">${i+1}</span>
       </div>
       <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
@@ -537,13 +533,10 @@ function _wnSnRowHTML(row) {
   const badges      = _wnBadges(f);
   const pill        = _wnPill(row);
 
-  // S→N status — same logic as N→S
+  // Classic design — no colored dots
   const isPartnerSN = !!(row.partnerLabel || WNATL.data.partners.find(p=>p.id===row.partnerId)?.label);
   const isCLsn = row.source === 'cl';
-  let sClsSN = 's-pending', dotColorSN = 'rgba(217,119,6,0.5)';
-  if (row.saved && isCLsn)      { sClsSN='s-cl';      dotColorSN='#0D9488'; }
-  else if (row.saved && isPartnerSN) { sClsSN='s-partner'; dotColorSN='rgba(59,130,246,0.75)'; }
-  else if (row.saved)           { sClsSN='s-ok';      dotColorSN='var(--success)'; }
+  let sClsSN = 's-default';
 
   const clBgSN = isCLsn ? 'background:rgba(13,148,136,0.04);' : '';
   return `<div id="wn-sn-${ord.id}"
@@ -554,7 +547,6 @@ function _wnSnRowHTML(row) {
     oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
-        <div class="wi-dot" style="background:${dotColorSN}"></div>
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
       <div class="wi-ce" style="background:#172C45"></div>
