@@ -28,7 +28,7 @@ async function renderMetricsAudit() {
         'Order Number','Direction','Status','Invoiced','Price','Loading DateTime','Delivery DateTime',
         'Truck','Partner','Trailer','Driver','Total Pallets','Week Number',
         'Delivery Performance','Pallet Exchange','Pallet Sheet 1 Uploaded','Pallet Sheet 2 Uploaded',
-        'Veroia Switch ','Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'
+        'Veroia Switch','Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'
       ]}, true).catch(() => []),
       atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true).catch(() => []),
       atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true).catch(() => []),

@@ -109,9 +109,9 @@ filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
 // Direction field in CONSOLIDATED LOADS: Greek
 'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ'  — NOT English
 
-// Field name traps:
-' Week Number'  ← leading space, formula, NOT writable
-'Veroia Switch ' ← trailing space
+// Field name traps (verified via Airtable Meta API 2026-04-18):
+'Week Number'   ← NO space, formula field, NOT writable
+'Veroia Switch' ← NO trailing space
 'Adress' ← one 'd' in PARTNERS table
 ```
 

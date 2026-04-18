@@ -275,7 +275,7 @@ const metrics = (function() {
         if (f['Pallet Exchange']) {
           // Must have both sheets uploaded (if VS) or sheet 1 only (if not VS)
           if (!f['Pallet Sheet 1 Uploaded']) return false;
-          if (f['Veroia Switch '] && !f['Pallet Sheet 2 Uploaded']) return false;
+          if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) return false;
         }
         return true;
       })
@@ -426,7 +426,7 @@ const metrics = (function() {
     const complete = withPE.filter(r => {
       const f = r.fields;
       if (!f['Pallet Sheet 1 Uploaded']) return false;
-      if (f['Veroia Switch '] && !f['Pallet Sheet 2 Uploaded']) return false;
+      if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) return false;
       return true;
     }).length;
     return { complete, missing: withPE.length - complete, total: withPE.length, pct: _pct(complete, withPE.length) };
