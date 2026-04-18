@@ -807,14 +807,18 @@ async function _syncVeroiaSwitch(orderId, fields) {
       for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
     } catch(e) { console.warn('RAMP intl cleanup:', e); }
 
-    // 3b. Delete Pallet Ledger entries linked to this INTL ORDER
+    // 3b. Delete Pallet Ledger entries linked via ORDER_STOPS (SUPPLIERS + PARTNERS)
     try {
-      const pls = await atGetAll(TABLES.PALLET_LEDGER, {
-        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Order},","))>0`,
-        fields: ['Pallets']
-      }, false);
-      for (const pl of pls) { try { await atDelete(TABLES.PALLET_LEDGER, pl.id); } catch(e) { console.warn('PL delete:', e); } }
-      if (pls.length) console.log(`Deleted ${pls.length} Pallet Ledger entries for INTL ${orderId}`);
+      const intlStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
+      const stopIds = intlStops.map(s => s.id);
+      if (stopIds.length) {
+        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
+        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
+          const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(()=>[]);
+          for (const pl of pls) { try { await atDelete(tbl, pl.id); } catch(e) { console.warn('PL delete:', e); } }
+          if (pls.length) console.log(`Deleted ${pls.length} PL entries from ${tbl} for INTL ${orderId}`);
+        }
+      }
     } catch(e) { console.warn('Pallet Ledger intl cleanup:', e); }
 
     // 4. Reset flag on parent order

@@ -937,16 +937,20 @@ async function deleteNatlOrder(recId) {
       }
     } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
 
-    // 3b. Delete Pallet Ledger entries linked to this NO
+    // 3b. Delete Pallet Ledger entries linked via ORDER_STOPS (both SUPPLIERS + PARTNERS tables)
     try {
-      const pls = await atGetAll(TABLES.PALLET_LEDGER, {
-        filterByFormula: `FIND("${recId}",ARRAYJOIN({Order},","))>0`,
-        fields: ['Pallets']
-      }, false);
-      for (const pl of pls) {
-        try { await atDelete(TABLES.PALLET_LEDGER, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
+      const natStops = await stopsLoad(recId, F.STOP_PARENT_NAT);
+      const stopIds = natStops.map(s => s.id);
+      if (stopIds.length) {
+        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
+        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
+          const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(()=>[]);
+          for (const pl of pls) {
+            try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
+          }
+          if (pls.length) console.log(`Deleted ${pls.length} PL entries from ${tbl} for NO ${recId}`);
+        }
       }
-      if (pls.length) console.log(`Deleted ${pls.length} Pallet Ledger entries for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
 
     // 4. Delete ORDER_STOPS linked to this NO
