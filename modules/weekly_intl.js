@@ -352,23 +352,25 @@ function _wiPaint(){
     </div>
     <div style="display:block;width:100%">
 
-    <!-- Command Center banner -->
-    ${total>0?`<div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
-      <div style="position:relative;width:56px;height:56px;flex-shrink:0">
-        <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg)">
-          <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="5"/>
-          <circle cx="28" cy="28" r="24" fill="none" stroke="#10B981" stroke-width="5"
-            stroke-dasharray="${2*Math.PI*24}" stroke-dashoffset="${2*Math.PI*24*(1-pct/100)}" stroke-linecap="round"/>
-        </svg>
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:700">${pct}%</div>
-      </div>
-      <div style="flex:1;min-width:200px">
-        <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;opacity:0.8">COMMAND CENTER · W${week}</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
-          ${actions.map(a=>`<span style="background:${a.sev==='crit'?'#FEE2E2':a.sev==='warn'?'#FEF3C7':'#D1FAE5'};color:${a.sev==='crit'?'#DC2626':a.sev==='warn'?'#D97706':'#059669'};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600">${a.icon} ${a.text}</span>`).join('')}
-        </div>
-      </div>
-    </div>`:''}
+    <!-- Command Center (universal component) -->
+    ${total>0?(()=>{
+      // Compute widgets synchronously
+      const assignedTruckIds = new Set();
+      rows.forEach(r => { if (r.truckId) assignedTruckIds.add(r.truckId); });
+      const emptyLegs = computeEmptyLegs(data.exports, data.imports);
+      const widgets = [
+        widgetFleet(data.trucks || [], assignedTruckIds),
+        widgetEmptyLegs(emptyLegs.soloExp, emptyLegs.soloImp),
+        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 VS LAST WEEK</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">⏱ ON-TIME</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+      ];
+      return buildCommandCenterHTML({
+        title: `COMMAND CENTER · W${week}`,
+        pct,
+        actions,
+        widgets,
+      });
+    })():''}
 
     <!-- Search/filter bar -->
     <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:6px">
@@ -432,6 +434,19 @@ function _wiPaint(){
     </div><!-- /block wrapper -->
   `;
   window._wiDragging=null;
+
+  // Async: fill "vs last week" + "on-time streak" widgets after initial render
+  if (total > 0) {
+    Promise.all([
+      fetchPreviousWeekStats(week, TABLES.ORDERS),
+      fetchOnTimeStreak(TABLES.ORDERS, week, 8),
+    ]).then(([prev, ot]) => {
+      const el1 = document.getElementById('wi-cc-vswk');
+      if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
+      const el2 = document.getElementById('wi-cc-ontime');
+      if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+    }).catch(e => console.warn('CC async widgets:', e));
+  }
 }
 
 
