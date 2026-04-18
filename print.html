@@ -85,37 +85,37 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .price-terms{text-align:right}
 .price-terms .val{font-size:12px;font-weight:700;color:#0B1929}
 
-/* ── SECTION TITLE (lighter, accent-only) ── */
+/* ── SECTION TITLE (navy accent — matches app palette) ── */
 .section-title{font-size:9px;font-weight:800;text-transform:uppercase;
   letter-spacing:1.8px;color:#0B1929;background:transparent;
   padding:4px 0 4px 10px;margin:16px 0 6px;
   border-left:3px solid #0B1929}
-.section-title.load-section{border-left-color:#059669;color:#059669}
-.section-title.unload-section{border-left-color:#DC2626;color:#DC2626}
+.section-title.load-section{border-left-color:#0B1929;color:#0B1929}
+.section-title.unload-section{border-left-color:#8B95A1;color:#475569}
 
-/* ── STOP CARD (color-coded left stripe) ── */
+/* ── STOP CARD (navy/silver tones — matches app) ── */
 .stop-card{border:1px solid #E5E7EB;border-left:4px solid #0B1929;border-radius:6px;padding:12px 16px;
   margin-bottom:8px;background:#FAFAFA;position:relative}
-.stop-card.load{border-left-color:#059669}
-.stop-card.unload{border-left-color:#DC2626}
-.stop-card.crossdock{border-left-color:#0EA5E9}
+.stop-card.load{border-left-color:#0B1929}
+.stop-card.unload{border-left-color:#8B95A1}
+.stop-card.crossdock{border-left-color:#0284C7}
 .stop-name{font-size:14px;font-weight:700;color:#0B1929;margin-bottom:2px;display:flex;align-items:center;gap:6px}
 .stop-badge{font-size:8px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;
   padding:1px 6px;border-radius:3px;color:#fff}
-.stop-badge.load{background:#059669}
-.stop-badge.unload{background:#DC2626}
-.stop-badge.crossdock{background:#0EA5E9}
+.stop-badge.load{background:#0B1929}
+.stop-badge.unload{background:#475569}
+.stop-badge.crossdock{background:#0284C7}
 .stop-addr{font-size:10.5px;color:#6B7280;margin-bottom:6px}
-.stop-map{font-size:10px;color:#2563EB;text-decoration:none;display:inline-block;margin-bottom:6px}
+.stop-map{font-size:10px;color:#0284C7;text-decoration:none;display:inline-block;margin-bottom:6px}
 .stop-map:hover{text-decoration:underline}
 .stop-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 24px}
 .stop-field{display:flex;gap:8px;padding:2px 0;font-size:10.5px}
 .stop-field b{color:#374151;min-width:116px;font-weight:600;flex-shrink:0}
 .stop-field span{color:#111827}
-/* Temperature visual hint */
-.temp-cold{color:#0EA5E9;font-weight:700}
-.temp-frozen{color:#2563EB;font-weight:700}
-.temp-chilled{color:#059669;font-weight:700}
+/* Temperature — subtle navy tone emphasis, no clashing colors */
+.temp-cold{color:#0B1929;font-weight:700}
+.temp-frozen{color:#0B1929;font-weight:700;letter-spacing:0.3px}
+.temp-chilled{color:#0284C7;font-weight:700}
 
 /* ── BADGE ── */
 .badge{display:inline-block;font-size:8px;font-weight:800;letter-spacing:0.8px;
@@ -128,10 +128,10 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 
 /* ── NOTES ── */
 .notes-box{margin:12px 0;padding:12px 18px;border:1px solid #E5E7EB;
-  border-left:4px solid #6B7280;border-radius:6px;background:#FAFAFA;font-size:11px;color:#374151}
+  border-left:4px solid #8B95A1;border-radius:6px;background:#FAFAFA;font-size:11px;color:#374151}
 .notes-box b{color:#0B1929}
-.notes-box.urgent{border-left-color:#DC2626;background:#FEF2F2}
-.notes-box.urgent b{color:#DC2626}
+.notes-box.urgent{border-left:4px solid #0B1929;background:#F8FAFC}
+.notes-box.urgent b{color:#0B1929;text-transform:uppercase;letter-spacing:1px;font-size:10px}
 
 /* ── SIGNATURE (larger, clearer) ── */
 .sig-table{width:100%;border-collapse:collapse;margin-top:24px}
@@ -231,11 +231,11 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
     h+='<div class="stop-field"><b>Pallet Exchange:</b><span>'+pe+'</span></div>';
     if(gw)h+='<div class="stop-field"><b>Gross Weight:</b><span>'+gw+' KG</span></div>';
     if(temp!==''&&temp!=null){
-      // Visual temp cue: frozen <= -10, chilled 0..8, cold other
+      // Navy-toned emphasis, no emoji
       var tNum=parseFloat(temp);
       var tCls=!isNaN(tNum)&&tNum<=-10?'temp-frozen':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'temp-chilled':'temp-cold');
-      var tIcon=!isNaN(tNum)&&tNum<=-10?'❄️ ':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'🧊 ':'');
-      h+='<div class="stop-field"><b>Temperature:</b><span class="'+tCls+'">'+tIcon+temp+'°C</span></div>';
+      var tLbl=!isNaN(tNum)&&tNum<=-10?' (FROZEN)':'';
+      h+='<div class="stop-field"><b>Temperature:</b><span class="'+tCls+'">'+temp+'°C'+tLbl+'</span></div>';
     }
     if(refr)h+='<div class="stop-field"><b>Refrigerator:</b><span>'+refr+'</span></div>';
   }else{
