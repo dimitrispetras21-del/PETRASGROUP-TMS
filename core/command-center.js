@@ -133,11 +133,24 @@ function computeEmptyLegs(exports, imports) {
 
 /**
  * Fetch previous week's order counts (async).
+ * Uses Week Number field if available, else falls back to date range filter.
  */
-async function fetchPreviousWeekStats(week, tableId) {
+async function fetchPreviousWeekStats(week, tableId, useDateRange = false) {
   try {
     const prevWeek = week - 1;
-    const filter = `{ Week Number}=${prevWeek}`;
+    let filter;
+    if (useDateRange) {
+      // Compute prev week date range (Sunday start)
+      const y = new Date().getFullYear(), jan1 = new Date(y, 0, 1);
+      const firstSun = new Date(jan1); firstSun.setDate(jan1.getDate() - jan1.getDay());
+      const ws = new Date(firstSun); ws.setDate(firstSun.getDate() + (prevWeek - 1) * 7);
+      const we = new Date(ws); we.setDate(ws.getDate() + 6);
+      const wsStr = ws.toISOString().slice(0,10);
+      const weStr = we.toISOString().slice(0,10);
+      filter = `AND(IS_AFTER({Loading DateTime},'${wsStr}'),IS_BEFORE({Loading DateTime},'${weStr}T23:59:59'))`;
+    } else {
+      filter = `{Week Number}=${prevWeek}`;
+    }
     const recs = await atGetAll(tableId, { filterByFormula: filter, fields: ['Truck','Partner','Status'] }, false).catch(() => []);
     const total = recs.length;
     const assigned = recs.filter(r => (r.fields['Truck']||[]).length || (r.fields['Partner']||[]).length).length;
@@ -147,21 +160,20 @@ async function fetchPreviousWeekStats(week, tableId) {
 
 /**
  * Fetch on-time performance streak for last N weeks.
+ * Only works on tables with Week Number + Delivery Performance (ORDERS).
  */
 async function fetchOnTimeStreak(tableId, currentWeek, lookbackWeeks = 8) {
   try {
-    // Fetch delivered orders from last N weeks with Delivery Performance field
     const fromWeek = currentWeek - lookbackWeeks;
-    const filter = `AND({ Week Number}>=${fromWeek},{Status}='Delivered')`;
+    const filter = `AND({Week Number}>=${fromWeek},{Status}='Delivered')`;
     const recs = await atGetAll(tableId, {
       filterByFormula: filter,
-      fields: [' Week Number', 'Delivery Performance']
+      fields: ['Week Number', 'Delivery Performance']
     }, false).catch(() => []);
 
-    // Group by week
     const byWeek = {};
     recs.forEach(r => {
-      const w = r.fields[' Week Number'];
+      const w = r.fields['Week Number'];
       if (!w) return;
       if (!byWeek[w]) byWeek[w] = { total: 0, onTime: 0 };
       byWeek[w].total++;

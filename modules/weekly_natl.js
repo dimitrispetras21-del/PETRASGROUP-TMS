@@ -324,7 +324,7 @@ function _wnPaint() {
   // Async: fill "vs last week" + "on-time streak" widgets
   if (total > 0) {
     Promise.all([
-      fetchPreviousWeekStats(week, TABLES.NAT_LOADS).catch(()=>({total:0,assigned:0})),
+      fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true).catch(()=>({total:0,assigned:0})),
       fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(()=>({currentWeekPct:0,streakWeeks:0})),
     ]).then(([prev, ot]) => {
       const el1 = document.getElementById('wn-cc-vswk');
