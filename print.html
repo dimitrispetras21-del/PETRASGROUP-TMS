@@ -85,16 +85,26 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .price-terms{text-align:right}
 .price-terms .val{font-size:12px;font-weight:700;color:#0B1929}
 
-/* ── SECTION TITLE ── */
+/* ── SECTION TITLE (lighter, accent-only) ── */
 .section-title{font-size:9px;font-weight:800;text-transform:uppercase;
-  letter-spacing:1.8px;color:#fff;background:#172C45;
-  padding:5px 14px;margin:18px 0 8px;
-  border-left:3px solid #8B95A1;border-radius:0 3px 3px 0}
+  letter-spacing:1.8px;color:#0B1929;background:transparent;
+  padding:4px 0 4px 10px;margin:16px 0 6px;
+  border-left:3px solid #0B1929}
+.section-title.load-section{border-left-color:#059669;color:#059669}
+.section-title.unload-section{border-left-color:#DC2626;color:#DC2626}
 
-/* ── STOP CARD ── */
-.stop-card{border:1px solid #E5E7EB;border-radius:6px;padding:14px 18px;
-  margin-bottom:8px;background:#FAFAFA}
-.stop-name{font-size:14px;font-weight:700;color:#0B1929;margin-bottom:2px}
+/* ── STOP CARD (color-coded left stripe) ── */
+.stop-card{border:1px solid #E5E7EB;border-left:4px solid #0B1929;border-radius:6px;padding:12px 16px;
+  margin-bottom:8px;background:#FAFAFA;position:relative}
+.stop-card.load{border-left-color:#059669}
+.stop-card.unload{border-left-color:#DC2626}
+.stop-card.crossdock{border-left-color:#0EA5E9}
+.stop-name{font-size:14px;font-weight:700;color:#0B1929;margin-bottom:2px;display:flex;align-items:center;gap:6px}
+.stop-badge{font-size:8px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase;
+  padding:1px 6px;border-radius:3px;color:#fff}
+.stop-badge.load{background:#059669}
+.stop-badge.unload{background:#DC2626}
+.stop-badge.crossdock{background:#0EA5E9}
 .stop-addr{font-size:10.5px;color:#6B7280;margin-bottom:6px}
 .stop-map{font-size:10px;color:#2563EB;text-decoration:none;display:inline-block;margin-bottom:6px}
 .stop-map:hover{text-decoration:underline}
@@ -102,6 +112,10 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .stop-field{display:flex;gap:8px;padding:2px 0;font-size:10.5px}
 .stop-field b{color:#374151;min-width:116px;font-weight:600;flex-shrink:0}
 .stop-field span{color:#111827}
+/* Temperature visual hint */
+.temp-cold{color:#0EA5E9;font-weight:700}
+.temp-frozen{color:#2563EB;font-weight:700}
+.temp-chilled{color:#059669;font-weight:700}
 
 /* ── BADGE ── */
 .badge{display:inline-block;font-size:8px;font-weight:800;letter-spacing:0.8px;
@@ -113,16 +127,18 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .b-veroia {background:#0B1929}
 
 /* ── NOTES ── */
-.notes-box{margin:12px 0;padding:10px 16px;border:1px solid #E5E7EB;
-  border-radius:6px;background:#FAFAFA;font-size:10.5px;color:#374151}
+.notes-box{margin:12px 0;padding:12px 18px;border:1px solid #E5E7EB;
+  border-left:4px solid #6B7280;border-radius:6px;background:#FAFAFA;font-size:11px;color:#374151}
 .notes-box b{color:#0B1929}
+.notes-box.urgent{border-left-color:#DC2626;background:#FEF2F2}
+.notes-box.urgent b{color:#DC2626}
 
-/* ── SIGNATURE ── */
-.sig-table{width:100%;border-collapse:collapse;margin-top:28px}
-.sig-table td{width:50%;padding:12px 18px;border:1px solid #0B1929;vertical-align:top}
+/* ── SIGNATURE (larger, clearer) ── */
+.sig-table{width:100%;border-collapse:collapse;margin-top:24px}
+.sig-table td{width:50%;padding:14px 18px;border:1px solid #0B1929;vertical-align:top}
 .sig-name{font-weight:700;font-size:12px;color:#0B1929;margin-bottom:2px}
 .sig-role{font-size:8.5px;font-weight:700;letter-spacing:1px;
-  text-transform:uppercase;color:#9CA3AF;margin-bottom:28px}
+  text-transform:uppercase;color:#9CA3AF;margin-bottom:44px}
 .sig-line{border-top:1px solid #D1D5DB;padding-top:5px;
   font-size:9px;color:#9CA3AF;text-align:center}
 
@@ -193,9 +209,18 @@ function resolveLoc(locField){
   return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||''};
 }
 
+// dtLabel: 'loading' | 'delivery' | 'crossdock'
 function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr){
-  var h='<div class="stop-card">';
-  h+='<div class="stop-name">'+num+'. '+loc.name+'</div>';
+  // Derive type class + badge
+  var typeCls='', typeLbl='';
+  if(dtLabel==='loading'){typeCls='load'; typeLbl='LOAD';}
+  else if(dtLabel==='delivery'){typeCls='unload'; typeLbl='UNLOAD';}
+  else if(dtLabel==='crossdock'){typeCls='crossdock'; typeLbl='CROSSDOCK';}
+
+  var h='<div class="stop-card '+typeCls+'">';
+  h+='<div class="stop-name">';
+  if(typeLbl) h+='<span class="stop-badge '+typeCls+'">'+typeLbl+'</span>';
+  h+='#'+num+' · '+loc.name+'</div>';
   if(loc.address)h+='<div class="stop-addr">'+loc.address+'</div>';
   if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 Open in Maps ('+loc.lat+', '+loc.lng+')</a>';
   h+='<div class="stop-grid">';
@@ -205,7 +230,13 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
     h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
     h+='<div class="stop-field"><b>Pallet Exchange:</b><span>'+pe+'</span></div>';
     if(gw)h+='<div class="stop-field"><b>Gross Weight:</b><span>'+gw+' KG</span></div>';
-    if(temp!==''&&temp!=null)h+='<div class="stop-field"><b>Temperature:</b><span>'+temp+'°C</span></div>';
+    if(temp!==''&&temp!=null){
+      // Visual temp cue: frozen <= -10, chilled 0..8, cold other
+      var tNum=parseFloat(temp);
+      var tCls=!isNaN(tNum)&&tNum<=-10?'temp-frozen':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'temp-chilled':'temp-cold');
+      var tIcon=!isNaN(tNum)&&tNum<=-10?'❄️ ':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'🧊 ':'');
+      h+='<div class="stop-field"><b>Temperature:</b><span class="'+tCls+'">'+tIcon+temp+'°C</span></div>';
+    }
     if(refr)h+='<div class="stop-field"><b>Refrigerator:</b><span>'+refr+'</span></div>';
   }else{
     h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
@@ -324,7 +355,9 @@ function generatePDF(orderRec){
   var loadHTML=buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   var delHTML=buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   var badgeHTML=badges(f);
-  var notesHTML=f['Notes']?'<div class="notes-box"><b>Notes:</b> '+f['Notes']+'</div>':'';
+  var rawNotes=f['Notes']||'';
+  var urgent=/urgent|προσοχή|attention|critical|must|fragile|εύθραυστ|χειριστεί|χειρισμ|ασφαλ/i.test(rawNotes);
+  var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
   var titleStr=(isPartner?'Partner Assignment Order':'Driver Order')+' — '+legLabel+' — W'+wk;
   var pbarHTML='<div class="pbar"><div class="pbar-left">'+
@@ -374,8 +407,8 @@ function generatePDF(orderRec){
       '<div><div class="price-lbl">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+'</div></div>'+
       '<div class="price-terms"><div class="price-lbl">Payment Terms</div><div class="val">30 days</div></div>'+
     '</div>'+
-    '<div class="section-title">Loading Place</div>'+loadHTML+
-    '<div class="section-title">Delivery Place</div>'+delHTML+
+    '<div class="section-title load-section">Loading Place</div>'+loadHTML+
+    '<div class="section-title unload-section">Delivery Place</div>'+delHTML+
     notesHTML+
     '<table class="sig-table"><tr>'+
       '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
@@ -411,8 +444,8 @@ function generatePDF(orderRec){
       '</div>'+
     '</div>'+
     metaHTML+
-    '<div class="section-title">Loading Place</div>'+loadHTML+
-    '<div class="section-title">Delivery Place</div>'+delHTML+
+    '<div class="section-title load-section">Loading Place</div>'+loadHTML+
+    '<div class="section-title unload-section">Delivery Place</div>'+delHTML+
     notesHTML+
     '<table class="sig-table"><tr>'+
       '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Signature &amp; Date</div></td>'+
