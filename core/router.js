@@ -50,9 +50,10 @@ const NAV = [
     { id: 'performance', label: 'My Performance', icon: 'trending' },
   ]},
   { section: 'Settings', perm: 'settings', items: [
-    { id: 'settings', label: 'Settings', icon: 'gear' },
-    { id: 'trash',     label: 'Trash',    icon: 'trash' },
-    { id: 'error_log', label: 'Error Log', icon: 'alert' },
+    { id: 'settings',       label: 'Settings',       icon: 'gear' },
+    { id: 'metrics_audit',  label: 'Metrics Audit',  icon: 'chart' },
+    { id: 'trash',          label: 'Trash',          icon: 'trash' },
+    { id: 'error_log',      label: 'Error Log',      icon: 'alert' },
   ]},
 ];
 
@@ -249,6 +250,10 @@ function navigate(page) {
       break;
     case 'error_log':
       renderErrorLog();
+      break;
+    case 'metrics_audit':
+      if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
+      renderMetricsAudit();
       break;
     default:
       c.innerHTML = showComingSoon(label);
