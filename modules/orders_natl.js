@@ -622,7 +622,11 @@ async function submitNatlOrder(recId) {
     } catch(e) { console.warn('NL sync error:', e); }
     // ─────────────────────────────────────────────────────────
 
-    // RAMP records are created by daily_ramp.js auto-sync (sole source)
+    // Central sync — RAMP trigger + PL orphan cleanup + PA sync + cache invalidation
+    if (savedNatlId && typeof syncOrderDownstream === 'function') {
+      syncOrderDownstream(savedNatlId, { source: 'natl', skipVS: true, skipGRP: true })
+        .catch(e => console.warn('[natl save sync]', e));
+    }
 
     invalidateCache(TABLES.NAT_ORDERS);
     document.getElementById('modal').style.maxWidth = '';
@@ -644,6 +648,11 @@ async function toggleNatlInvoiced(recId, current) {
     if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
     const rec = NATL_ORDERS.data.find(r => r.id === recId);
     if(rec) rec.fields['Invoiced'] = newVal;
+    // Central sync
+    if (typeof syncOrderDownstream === 'function') {
+      syncOrderDownstream(recId, { source: 'natl', changedFields: ['Invoiced'], skipVS: true, skipGRP: true, skipRamp: true, skipPA: true })
+        .catch(e => console.warn('[natl invoice sync]', e));
+    }
     _applyNatlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
   } catch(e) { toast('Error: '+e.message, 'danger'); }

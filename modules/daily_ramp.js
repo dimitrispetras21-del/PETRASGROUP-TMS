@@ -612,6 +612,11 @@ async function _rampDone(id,isIn){
           if (curSt!=='In Transit' && curSt!=='Delivered' && curSt!=='Invoiced' && curSt!=='Cancelled') {
             await atSafePatch(TABLES.NAT_ORDERS, natOrderId, {'Status':'In Transit'});
             invalidateCache(TABLES.NAT_ORDERS);
+            // Central sync — status propagation to downstream
+            if (typeof syncOrderDownstream === 'function') {
+              syncOrderDownstream(natOrderId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
+                .catch(e => console.warn('[ramp→nat sync]', e));
+            }
           }
         } catch(e) { console.warn('Ramp→NatOrder sync failed:', e.message); }
       }

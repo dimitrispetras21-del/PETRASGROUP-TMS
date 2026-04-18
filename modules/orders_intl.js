@@ -1415,7 +1415,11 @@ async function submitIntlOrder(recId) {
       console.log('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
       await _syncVeroiaSwitch(savedOrderId, rec.fields);
-      // RAMP records are created by daily_ramp.js auto-sync (sole source)
+      // Central sync — RAMP trigger + PL cleanup (if PE=OFF) + cache invalidation
+      if (typeof syncOrderDownstream === 'function') {
+        syncOrderDownstream(savedOrderId, { source: 'intl', skipVS: true, skipGRP: true })
+          .catch(e => console.warn('[intl save sync]', e));
+      }
       toast('National load synced ✓');
     } catch(e) {
       console.error('VS sync error:', e);
@@ -1444,6 +1448,11 @@ async function toggleIntlInvoiced(recId, current) {
     // Update local data
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Invoiced'] = newVal;
+    // Central sync (Invoiced flag affects NAT_LOADS mirror status)
+    if (typeof syncOrderDownstream === 'function') {
+      syncOrderDownstream(recId, { source: 'intl', changedFields: ['Invoiced'], skipVS: true, skipGRP: true, skipRamp: true, skipPA: true })
+        .catch(e => console.warn('[intl invoice sync]', e));
+    }
     // Re-render table only (no full reload)
     _applyIntlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');

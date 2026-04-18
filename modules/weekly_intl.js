@@ -1087,6 +1087,11 @@ async function _wiSaveImportMatch(rowId,impId){
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
       if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
+      // Central sync — matching link can affect downstream planning
+      if (typeof syncOrderDownstream === 'function') {
+        syncOrderDownstream(orderId, { source: 'intl', changedFields: ['Matched Import ID'], skipPA: true, skipVS: true, skipGRP: true, skipPL: true })
+          .catch(e => console.warn('[wi match sync]', e));
+      }
     }catch(err){
       console.error('Import match save failed:',err.message);
       toast('Import save failed: '+err.message.slice(0,50),'warn');
@@ -1113,6 +1118,10 @@ async function _wiRemoveImport(rowId){
     try{
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':''});
       if(res?.error){ ok=false; throw new Error(res.error.message||res.error.type); }
+      if (typeof syncOrderDownstream === 'function') {
+        syncOrderDownstream(orderId, { source: 'intl', changedFields: ['Matched Import ID'], skipPA: true, skipVS: true, skipGRP: true, skipPL: true })
+          .catch(e => console.warn('[wi unmatch sync]', e));
+      }
     }catch(err){
       toast('Error: '+err.message.slice(0,60),'warn');
       ok=false;

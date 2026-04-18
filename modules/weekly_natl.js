@@ -909,7 +909,13 @@ async function _wnSaveFromPopover(rowId) {
     for (const orderId of row.orderIds) {
       const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r=>r.id===orderId);
       const srcId = nlRec?.fields?.['Source Record'];
-      if (srcId) await atPatch(TABLES.NAT_ORDERS, srcId, { 'Status': 'Assigned' });
+      if (srcId) {
+        await atSafePatch(TABLES.NAT_ORDERS, srcId, { 'Status': 'Assigned' });
+        if (typeof syncOrderDownstream === 'function') {
+          syncOrderDownstream(srcId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
+            .catch(e => console.warn('[wn assigned sync]', e));
+        }
+      }
     }
   } catch(e) { console.warn('NO status sync:', e); }
 
@@ -1094,7 +1100,16 @@ function _wnSplit(rowId) {
   });
   _wnPaint(); toast('Διαχωρίστηκε');
   const allIds = [first, ...rest];
-  allIds.forEach(id => atPatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' }).catch(e => { console.warn('Groupage clear:', e); if (typeof logError === 'function') logError(e, '_wnSplit groupage clear'); }));
+  // Use safe patch + central sync; Groupage ID clear unlinks these orders from GRP chain
+  for (const id of allIds) {
+    atSafePatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' })
+      .then(() => {
+        if (typeof syncOrderDownstream === 'function') {
+          return syncOrderDownstream(id, { source: 'natl', changedFields: ['Groupage ID'], skipPA: true, skipRamp: true });
+        }
+      })
+      .catch(e => { console.warn('Groupage clear:', e); if (typeof logError === 'function') logError(e, '_wnSplit groupage clear'); });
+  }
 }
 
 /* ── PRINT ───────────────────────────────────────────────────────── */
