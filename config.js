@@ -42,6 +42,7 @@ const TABLES = {
   ORDER_STOPS:   'tblaeY5QOHAS1gyE8',
   RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
   PARTNER_ASSIGN:'tblUhgqnmiam5MGNK',
+  METRICS_SNAPSHOTS: 'tblakFiR37kf4uQXy',
 };
 
 // ── Airtable field name constants ──────────────────────────────────────
