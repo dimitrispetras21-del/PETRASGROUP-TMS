@@ -87,7 +87,7 @@
       const [allOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.all([
         atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${s}'),IS_BEFORE({Loading DateTime},'${e}'))`),
         atGet(TABLES.DRIVERS, `{Active}=1`),
-        atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Date},'${s}'),IS_BEFORE({Date},'${e}'))`).catch(() => []),
+        atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Trip Start Date},'${s}'),IS_BEFORE({Trip Start Date},'${e}'))`).catch(() => []),
         atGet(TABLES.MAINT_HISTORY).catch(() => []),
         atGet(TABLES.ORDERS, `AND(IS_BEFORE({Delivery DateTime},'${plus48}'),{Status}!='Delivered',{Status}!='Cancelled',{Status}!='')`),
         atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime},'${sparkS}')`),

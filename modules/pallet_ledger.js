@@ -24,7 +24,7 @@ async function renderPalletLedger() {
   const [supRecs, partRecs, partners, locations, clients, intlOrders, natOrders] = await Promise.all([
     atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, {
       fields: ['Date','Direction','Pallets','Pallet Type','Order Stop','Loading Supplier',
-               'Stop Location Lookup','Stop Type Lookup','AI Extracted','Verified','Notes'],
+               'AI Extracted','Verified','Notes'],
       sort: [{ field: 'Date', direction: 'desc' }],
     }).catch(() => []),
     atGetAll(TABLES.PALLET_LEDGER_PARTNERS, {
