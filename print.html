@@ -154,6 +154,21 @@ var allLocations=[],allPartners=[],allTrucks=[],allTrailers=[],allDrivers=[];
 
 function fv(v){return Array.isArray(v)?v[0]||'':v||'';}
 function fmt(s){if(!s)return'—';try{var p=s.split('T')[0].split('-');return p[2]+'/'+p[1]+'/'+p[0];}catch(e){return s;}}
+// Format with time if time component is meaningful (not 00:00 or 12:00 sentinel)
+function fmtDT(s){
+  if(!s)return'—';
+  try{
+    var p=s.split('T');
+    var d=p[0].split('-');
+    var base=d[2]+'/'+d[1]+'/'+d[0];
+    if(p[1]){
+      var t=p[1].slice(0,5); // HH:MM
+      // Skip sentinel times (00:00, 12:00) that usually indicate "time unknown"
+      if(t!=='00:00'&&t!=='12:00') return base+' '+t;
+    }
+    return base;
+  }catch(e){return s;}
+}
 function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR';}
 
 async function atFetch(table,qs){
@@ -184,7 +199,7 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   if(loc.address)h+='<div class="stop-addr">'+loc.address+'</div>';
   if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 Open in Maps ('+loc.lat+', '+loc.lng+')</a>';
   h+='<div class="stop-grid">';
-  h+='<div class="stop-field"><b>Date of '+dtLabel+':</b><span>'+fmt(dt)+'</span></div>';
+  h+='<div class="stop-field"><b>Date &amp; Time of '+dtLabel+':</b><span>'+fmtDT(dt)+'</span></div>';
   if(showDetails){
     if(goods)h+='<div class="stop-field"><b>Goods:</b><span>'+goods+'</span></div>';
     h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
@@ -319,12 +334,14 @@ function generatePDF(orderRec){
     '</div><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div>'+
     '<div class="pbar-spacer"></div>';
 
+  var refNo=f['Reference']||'';
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">Date</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">Week</span><span class="meta-val">W'+wk+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">Category</span><span class="meta-val">'+legLabel+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">Dispatcher</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">Order No</span><span class="meta-val">'+orderNo+'</span></div>'+
+    (refNo?'<div class="meta-item"><span class="meta-lbl">Reference</span><span class="meta-val">'+refNo+'</span></div>':'')+
     (badgeHTML?'<div class="meta-item"><span class="meta-lbl">Flags</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
