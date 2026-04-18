@@ -457,6 +457,11 @@ async function _opsPost(id){
   if(nextDel) patch['Delivery DateTime']=nextDel;
   try{await atSafePatch(TABLES.ORDERS,id,patch);
   invalidateCache(TABLES.ORDERS);
+  // Central sync — dates changed, propagate to NAT_LOADS, GL, RAMP
+  if (typeof syncOrderDownstream === 'function') {
+    syncOrderDownstream(id, { source: 'intl', changedFields: ['Loading DateTime','Delivery DateTime','Postponed To'], skipPA: true })
+      .catch(e => console.warn('[ops postpone sync]', e));
+  }
   toast('Postponed → '+(nextLoad||nextDel));renderDailyOps();}catch(e){toast('Error','danger');}}
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
@@ -488,6 +493,11 @@ function _opsPrint() {
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
   try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  // Central sync — propagate status to partner assignments
+  if (typeof syncOrderDownstream === 'function') {
+    syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
+      .catch(e => console.warn('[ops overdue sync]', e));
+  }
   OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
 
 // Expose functions used from onclick/onchange handlers

@@ -1455,6 +1455,11 @@ async function _intlChangeStatus(recId, newStatus) {
   try {
     const res = await atSafePatch(TABLES.ORDERS, recId, { 'Status': newStatus });
     if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
+    // Central sync — propagates status to partner assignments + downstream
+    if (typeof syncOrderDownstream === 'function') {
+      syncOrderDownstream(recId, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
+        .catch(e => console.warn('[intl status sync]', e));
+    }
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
     _applyIntlFilters();
