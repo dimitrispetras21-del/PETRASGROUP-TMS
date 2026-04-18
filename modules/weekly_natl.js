@@ -24,8 +24,38 @@ const WNATL = {
   week: _wnCurrentWeek(),
   data: { northsouth:[], southnorth:[], trucks:[], trailers:[], drivers:[], partners:[], clients:[], locations:[] },
   rows: [],
+  filter: '',
+  filterStatus: '',
   _seq: 0,
 };
+
+function _wnApplyFilter() {
+  const q = (WNATL.filter||'').toLowerCase();
+  const fs = WNATL.filterStatus||'';
+  document.querySelectorAll('#wn-rows > [data-row-id]').forEach(el => {
+    const row = WNATL.rows.find(r => String(r.id) === el.dataset.rowId);
+    if (!row) { el.style.display=''; return; }
+    let show = true;
+    if (q) {
+      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||''].join(' ').toLowerCase();
+      if (!blob.includes(q)) show = false;
+    }
+    if (show && fs) {
+      if (fs === 'pending' && row.saved) show = false;
+      else if (fs === 'assigned' && !row.saved) show = false;
+    }
+    el.style.display = show ? '' : 'none';
+  });
+}
+
+function _wnPulseRow(rowId) {
+  const el = document.getElementById('wn-row-'+rowId);
+  if (!el) return;
+  const orig = el.style.background;
+  el.style.transition = 'background 0.3s';
+  el.style.background = 'rgba(16,185,129,0.15)';
+  setTimeout(() => { el.style.background = orig; }, 700);
+}
 
 // Week number matching Airtable WEEKNUM (Sunday-start)
 function _wnCurrentWeek() {
@@ -182,6 +212,18 @@ function _wnPaint() {
   const snRows = rows.filter(r => r.type==='southnorth');
   const assigned = nsRows.filter(r => r.saved).length;
   const pending  = nsRows.filter(r => !r.saved).length;
+  const total = nsRows.length + snRows.length;
+  const pct = total ? Math.round(assigned / total * 100) : 0;
+
+  // Command Center actions
+  const actions=[];
+  if (pending > 0) actions.push({icon:'📋', sev:'warn', text:`${pending} χωρίς ανάθεση`});
+  const missingTruck = rows.filter(r => r.saved && !r.truckId && !r.partnerId).length;
+  if (missingTruck > 0) actions.push({icon:'🚛', sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`});
+  const missingDriver = rows.filter(r => r.saved && r.truckId && !r.driverId && !r.partnerId).length;
+  if (missingDriver > 0) actions.push({icon:'👤', sev:'warn', text:`${missingDriver} με truck χωρίς driver`});
+  if (!actions.length && total > 0 && pct === 100) actions.push({icon:'🎉', sev:'ok', text:'Όλα assigned!'});
+  else if (!actions.length && total > 0) actions.push({icon:'✓', sev:'ok', text:'No pending actions'});
 
   const wS   = _wnWeekStart(week);
   const wE   = new Date(wS);  wE.setDate(wS.getDate()+6);
@@ -199,6 +241,36 @@ function _wnPaint() {
       ${_wnWeekSidebarItems(week)}
     </div>
     <div style="display:block;width:100%">
+
+      <!-- Command Center -->
+      ${total>0?`<div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+        <div style="position:relative;width:56px;height:56px;flex-shrink:0">
+          <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg)">
+            <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="5"/>
+            <circle cx="28" cy="28" r="24" fill="none" stroke="#10B981" stroke-width="5"
+              stroke-dasharray="${2*Math.PI*24}" stroke-dashoffset="${2*Math.PI*24*(1-pct/100)}" stroke-linecap="round"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:700">${pct}%</div>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;opacity:0.8">COMMAND CENTER · W${week}</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+            ${actions.map(a=>`<span style="background:${a.sev==='crit'?'#FEE2E2':a.sev==='warn'?'#FEF3C7':'#D1FAE5'};color:${a.sev==='crit'?'#DC2626':a.sev==='warn'?'#D97706':'#059669'};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600">${a.icon} ${a.text}</span>`).join('')}
+          </div>
+        </div>
+      </div>`:''}
+
+      <!-- Search/filter bar -->
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:6px">
+        <input id="wn-search" type="text" placeholder="🔍 Search client / truck / driver..." oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        <select onchange="WNATL.filterStatus=this.value;_wnApplyFilter()" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <option value="">All</option>
+          <option value="pending" ${WNATL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
+          <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Assigned</option>
+        </select>
+        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">Clear</button>`:''}
+      </div>
+
       <div class="page-header" style="margin-bottom:12px">
         <div>
           <div class="page-title">Weekly National</div>
@@ -346,7 +418,7 @@ function _wnRowHTML(row, i) {
 
   const clBg = isCL ? 'background:rgba(13,148,136,0.04);' : '';
   return `
-  <div id="wn-row-${row.id}" class="wi-row ${sCls}"
+  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}"
     style="${clBg}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
@@ -1046,4 +1118,6 @@ window._wnDragStart = _wnDragStart;
 window._wnDropOnRow = _wnDropOnRow;
 window._wnSplit = _wnSplit;
 window._wnNavWeek = _wnNavWeek;
+window._wnApplyFilter = _wnApplyFilter;
+window._wnPulseRow = _wnPulseRow;
 })();

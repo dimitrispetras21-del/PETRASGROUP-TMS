@@ -28,8 +28,49 @@ const WINTL = {
   data:      { exports:[], imports:[], trucks:[], trailers:[], drivers:[], partners:[] },
   rows:      [],
   ui:        { openRow:null, openGroup:null },
+  filter:    '',
+  filterStatus: '',
   _seq:      0,
 };
+
+// Apply search/status filter by hiding rows
+function _wiApplyFilter() {
+  const q = (WINTL.filter || '').toLowerCase();
+  const fs = WINTL.filterStatus || '';
+  document.querySelectorAll('#wi-rows > [data-row-id]').forEach(el => {
+    const row = WINTL.rows.find(r => String(r.id) === el.dataset.rowId);
+    if (!row) { el.style.display = ''; return; }
+    let show = true;
+    if (q) {
+      const blob = [
+        row.truckLabel, row.driverLabel, row.partnerLabel,
+        ...(row.orderIds || []).map(oid => {
+          const o = WINTL.data.exports.find(r=>r.id===oid) || WINTL.data.imports.find(r=>r.id===oid);
+          if (!o) return '';
+          const f = o.fields;
+          return [f['Loading Summary'], f['Delivery Summary'], f['Order Number']].filter(Boolean).join(' ');
+        })
+      ].join(' ').toLowerCase();
+      if (!blob.includes(q)) show = false;
+    }
+    if (show && fs) {
+      if (fs === 'pending' && row.saved) show = false;
+      else if (fs === 'assigned' && !row.saved) show = false;
+      else if (fs === 'unmatched' && (row.type !== 'import' || row.matchedTo)) show = false;
+    }
+    el.style.display = show ? '' : 'none';
+  });
+}
+
+// Row save indicator — pulse animation on save
+function _wiPulseRow(rowId) {
+  const el = document.getElementById('wi-row-'+rowId);
+  if (!el) return;
+  el.style.transition = 'background 0.3s';
+  const orig = el.style.background;
+  el.style.background = 'rgba(16,185,129,0.15)';
+  setTimeout(() => { el.style.background = orig; }, 700);
+}
 
 /* ── CSS moved to assets/style.css ── */
 /* ── UTILS ─────────────────────────────────────────────────────────── */
@@ -285,6 +326,19 @@ function _wiPaint(){
   const pending=expRows.filter(r=>!r.saved).length;
   const matched=impRows.filter(r=>r.matchedTo).length;
   const unmatched=impRows.filter(r=>!r.matchedTo).length;
+  const total=expRows.length+impRows.length;
+  const pct=total?Math.round((assigned+matched)/total*100):0;
+
+  // Command Center actions
+  const actions=[];
+  if(pending>0) actions.push({icon:'📋',sev:'warn',text:`${pending} export${pending>1?'s':''} χωρίς ανάθεση`});
+  if(unmatched>0) actions.push({icon:'🔗',sev:'warn',text:`${unmatched} import${unmatched>1?'s':''} χωρίς match σε export`});
+  const missingTruck=expRows.filter(r=>r.saved && !r.truckId && !r.partnerId).length;
+  if(missingTruck>0) actions.push({icon:'🚛',sev:'warn',text:`${missingTruck} assigned χωρίς truck/partner`});
+  const missingDriver=expRows.filter(r=>r.saved && r.truckId && !r.driverId && !r.partnerId).length;
+  if(missingDriver>0) actions.push({icon:'👤',sev:'warn',text:`${missingDriver} με truck αλλά χωρίς driver`});
+  if(!actions.length && total>0 && pct===100) actions.push({icon:'🎉',sev:'ok',text:'Όλα assigned + matched για την εβδομάδα!'});
+  else if(!actions.length && total>0) actions.push({icon:'✓',sev:'ok',text:'No pending actions'});
 
   document.getElementById('content').innerHTML=`
     <div style="display:block;width:100%">
@@ -297,6 +351,37 @@ function _wiPaint(){
       ${_wiWeekSidebarItems(week)}
     </div>
     <div style="display:block;width:100%">
+
+    <!-- Command Center banner -->
+    ${total>0?`<div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+      <div style="position:relative;width:56px;height:56px;flex-shrink:0">
+        <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg)">
+          <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="5"/>
+          <circle cx="28" cy="28" r="24" fill="none" stroke="#10B981" stroke-width="5"
+            stroke-dasharray="${2*Math.PI*24}" stroke-dashoffset="${2*Math.PI*24*(1-pct/100)}" stroke-linecap="round"/>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:14px;font-weight:700">${pct}%</div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div style="font-family:'Syne',sans-serif;font-size:12px;font-weight:700;letter-spacing:1px;opacity:0.8">COMMAND CENTER · W${week}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+          ${actions.map(a=>`<span style="background:${a.sev==='crit'?'#FEE2E2':a.sev==='warn'?'#FEF3C7':'#D1FAE5'};color:${a.sev==='crit'?'#DC2626':a.sev==='warn'?'#D97706':'#059669'};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600">${a.icon} ${a.text}</span>`).join('')}
+        </div>
+      </div>
+    </div>`:''}
+
+    <!-- Search/filter bar -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:6px">
+      <input id="wi-search" type="text" placeholder="🔍 Search client / truck / driver / location..." oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+      <select onchange="WINTL.filterStatus=this.value;_wiApplyFilter()" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        <option value="">All statuses</option>
+        <option value="pending" ${WINTL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
+        <option value="assigned" ${WINTL.filterStatus==='assigned'?'selected':''}>Assigned</option>
+        <option value="unmatched" ${WINTL.filterStatus==='unmatched'?'selected':''}>Unmatched imports</option>
+      </select>
+      ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">Clear</button>`:''}
+    </div>
+
     <div class="page-header" style="margin-bottom:12px">
       <div>
         <div class="page-title">Weekly International</div>
@@ -505,7 +590,7 @@ function _wiImpRowHTML(row){
         </div>
       </div>`;
 
-  return `<div id="wi-imp-${imp.id}"
+  return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
     class="wi-row"
     style="background:rgba(14,165,233,0.022);border-top:1px solid rgba(14,165,233,0.1)"
     draggable="true"
@@ -651,7 +736,7 @@ function _wiRowHTML(row,i){
 </div>`;
 
   return `
-  <div id="wi-row-${row.id}" class="wi-row ${sCls}">
+  <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}">
     <div class="wi-compact" onclick="_wiToggle(${row.id})">
       <div class="wi-cn">
         <div class="wi-dot" style="background:${dotColor}"></div>
@@ -1685,6 +1770,8 @@ window._wiCtx = _wiCtx;
 window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
 window._wiExportCSV = _wiExportCSV;
+window._wiApplyFilter = _wiApplyFilter;
+window._wiPulseRow = _wiPulseRow;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
