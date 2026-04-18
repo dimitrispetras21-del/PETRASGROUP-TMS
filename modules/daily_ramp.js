@@ -67,12 +67,13 @@ async function _rampLoad() {
 
   // Single combined query: today's ramp + stock + postponed (split client-side)
   // Reduces 3 parallel API calls → 1 call
-  const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='Done',OR({Stock Status}='In Stock',{Stock Status}='')),{Postponed To}!=BLANK())`;
+  // Stock requires EXPLICIT 'In Stock' (blank is ambiguous, don't auto-count)
+  const combinedFilter = `OR(IS_SAME({Plan Date},'${RAMP.date}','day'),AND({Type}='Παραλαβή',{Status}='Done',{Stock Status}='In Stock'),{Postponed To}!=BLANK())`;
   const allRamp = await atGetAll(TABLES.RAMP,{filterByFormula:combinedFilter,fields:RAMP_FIELDS},false);
 
   // Split results client-side
   const recs = allRamp.filter(r => toLocalDate(r.fields['Plan Date']) === RAMP.date);
-  const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && (r.fields['Status']==='Done') && (r.fields['Stock Status']==='In Stock' || !r.fields['Stock Status']));
+  const stock = allRamp.filter(r => r.fields['Type']==='Παραλαβή' && r.fields['Status']==='Done' && r.fields['Stock Status']==='In Stock');
   const postponed = allRamp.filter(r => r.fields['Postponed To'] && toLocalDate(r.fields['Postponed To']) === RAMP.date);
 
   recs.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
@@ -86,9 +87,10 @@ async function _rampAutoSync() {
   const date = RAMP.date;
 
   // ── Existing RAMP records for dedup ──
+  // Include: today's records, any postponed records, and records postponed-to-today
   const dedupFields = ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time','Plan Date','Postponed To','Pallets'];
   const allExistingRaw = await atGetAll(TABLES.RAMP, {
-    filterByFormula: `OR(IS_SAME({Plan Date},'${date}','day'),{Postponed To}!=BLANK())`,
+    filterByFormula: `OR(IS_SAME({Plan Date},'${date}','day'),IS_SAME({Postponed To},'${date}','day'),{Postponed To}!=BLANK())`,
     fields: dedupFields,
   }, false);
 
@@ -194,8 +196,11 @@ async function _rampAutoSync() {
     if (stopType === 'Loading') rampType = 'Φόρτωση';
     else if (stopType === 'Unloading') rampType = 'Παραλαβή';
     else if (stopType === 'Cross-dock') {
-      const p = intlPid ? intlMap[intlPid] : null;
-      rampType = p?.fields['Direction'] === 'Export' ? 'Φόρτωση' : 'Παραλαβή';
+      // Check BOTH intl and nl parent — NAT_LOADS cross-docks must also work
+      const p = intlPid ? intlMap[intlPid] : (nlPid ? nlMap[nlPid] : null);
+      const dir = p?.fields['Direction'] || '';
+      // Export / ΑΝΟΔΟΣ / South→North = outbound = Φόρτωση
+      rampType = (dir === 'Export' || dir === F.CL_ANODOS || dir === 'South→North') ? 'Φόρτωση' : 'Παραλαβή';
     } else continue;
 
     // Determine Ramp Category
@@ -209,6 +214,12 @@ async function _rampAutoSync() {
       } else {
         category = 'Vermion Fresh';
       }
+    } else if (nlPid) {
+      // NAT_LOADS parent — classify by Source Type
+      const p = nlMap[nlPid];
+      const srcType = p?.fields['Source Type'] || '';
+      category = srcType === 'Groupage' ? 'VS + Groupage' : (srcType === 'Direct' ? 'VS Simple' : 'Direct');
+      isVS = (srcType === 'Direct' || srcType === 'Groupage');
     }
 
     // Legacy dedup (Order+Type+Category)
@@ -241,6 +252,7 @@ async function _rampAutoSync() {
     if (category) rec['Ramp Category'] = category;
     if (sf[F.STOP_TEMP]) rec['Temperature'] = String(sf[F.STOP_TEMP]);
     if (intlPid) rec['Order'] = [intlPid];
+    else if (nlPid) rec['National Order'] = [nlPid];
 
     // Truck/Driver from parent
     const parent = intlPid ? intlMap[intlPid] : nlPid ? nlMap[nlPid] : null;

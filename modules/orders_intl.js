@@ -807,6 +807,16 @@ async function _syncVeroiaSwitch(orderId, fields) {
       for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
     } catch(e) { console.warn('RAMP intl cleanup:', e); }
 
+    // 3b. Delete Pallet Ledger entries linked to this INTL ORDER
+    try {
+      const pls = await atGetAll(TABLES.PALLET_LEDGER, {
+        filterByFormula: `FIND("${orderId}",ARRAYJOIN({Order},","))>0`,
+        fields: ['Pallets']
+      }, false);
+      for (const pl of pls) { try { await atDelete(TABLES.PALLET_LEDGER, pl.id); } catch(e) { console.warn('PL delete:', e); } }
+      if (pls.length) console.log(`Deleted ${pls.length} Pallet Ledger entries for INTL ${orderId}`);
+    } catch(e) { console.warn('Pallet Ledger intl cleanup:', e); }
+
     // 4. Reset flag on parent order
     await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
     invalidateCache(TABLES.NAT_ORDERS);

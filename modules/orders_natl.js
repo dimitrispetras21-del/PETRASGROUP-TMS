@@ -926,16 +926,28 @@ async function deleteNatlOrder(recId) {
       if (gls.length) console.log(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
 
-    // 3. Delete RAMP records linked to this NO
+    // 3. Delete RAMP records linked to this NO (field is 'National Order', NOT 'Source Order')
     try {
       const ramps = await atGetAll(TABLES.RAMP, {
-        filterByFormula: `FIND("${recId}",ARRAYJOIN({Source Order},","))>0`,
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({National Order},","))>0`,
         fields: ['Name']
       }, false);
       for (const r of ramps) {
         try { await atDelete(TABLES.RAMP, r.id); } catch(e) { _delFail++; console.warn('Ramp delete:', e); }
       }
     } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
+
+    // 3b. Delete Pallet Ledger entries linked to this NO
+    try {
+      const pls = await atGetAll(TABLES.PALLET_LEDGER, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Order},","))>0`,
+        fields: ['Pallets']
+      }, false);
+      for (const pl of pls) {
+        try { await atDelete(TABLES.PALLET_LEDGER, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
+      }
+      if (pls.length) console.log(`Deleted ${pls.length} Pallet Ledger entries for NO ${recId}`);
+    } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
 
     // 4. Delete ORDER_STOPS linked to this NO
     try {
