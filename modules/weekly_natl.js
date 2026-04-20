@@ -217,13 +217,14 @@ function _wnPaint() {
 
   // Command Center actions
   const actions=[];
-  if (pending > 0) actions.push({icon:'📋', sev:'warn', text:`${pending} χωρίς ανάθεση`});
+  const _ico = n => (typeof icon === 'function') ? icon(n, 14) : '';
+  if (pending > 0) actions.push({icon:_ico('file_text'), sev:'warn', text:`${pending} χωρίς ανάθεση`});
   const missingTruck = rows.filter(r => r.saved && !r.truckId && !r.partnerId).length;
-  if (missingTruck > 0) actions.push({icon:'🚛', sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`});
+  if (missingTruck > 0) actions.push({icon:_ico('truck'), sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`});
   const missingDriver = rows.filter(r => r.saved && r.truckId && !r.driverId && !r.partnerId).length;
-  if (missingDriver > 0) actions.push({icon:'👤', sev:'warn', text:`${missingDriver} με truck χωρίς driver`});
-  if (!actions.length && total > 0 && pct === 100) actions.push({icon:'🎉', sev:'ok', text:'Όλα assigned!'});
-  else if (!actions.length && total > 0) actions.push({icon:'✓', sev:'ok', text:'No pending actions'});
+  if (missingDriver > 0) actions.push({icon:_ico('user'), sev:'warn', text:`${missingDriver} με truck χωρίς driver`});
+  if (!actions.length && total > 0 && pct === 100) actions.push({icon:_ico('party'), sev:'ok', text:'Όλα assigned!'});
+  else if (!actions.length && total > 0) actions.push({icon:_ico('check'), sev:'ok', text:'No pending actions'});
 
   const wS   = _wnWeekStart(week);
   const wE   = new Date(wS);  wE.setDate(wS.getDate()+6);

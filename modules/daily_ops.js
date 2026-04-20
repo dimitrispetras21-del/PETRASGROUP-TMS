@@ -136,36 +136,37 @@ function _opsDraw() {
   const nowH = now.getHours() + now.getMinutes()/60;
   const actions = [];
   if (isToday && total) {
+    const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
     // Overdue unhandled
-    if (OPS.overdue.length) actions.push({icon:'🚨', sev:'crit', text:`${OPS.overdue.length} overdue deliveries awaiting confirmation`, scrollTo:'ovL'});
+    if (OPS.overdue.length) actions.push({icon:_i('alert_circle'), sev:'crit', text:`${OPS.overdue.length} overdue deliveries awaiting confirmation`, scrollTo:'ovL'});
 
     // Loadings without truck/driver assigned
     const noAssign = loadsAll.filter(r => !_T(r.fields) || !_D(r.fields)).filter(r=>(r.fields['Status']||'')!=='Delivered' && (r.fields['Status']||'')!=='In Transit');
-    if (noAssign.length) actions.push({icon:'👤', sev:'warn', text:`${noAssign.length} loading${noAssign.length>1?'s':''} without truck/driver assigned`});
+    if (noAssign.length) actions.push({icon:_i('user'), sev:'warn', text:`${noAssign.length} loading${noAssign.length>1?'s':''} without truck/driver assigned`});
 
     // Loadings without Docs Ready (pending status)
     const missingDocs = loadsAll.filter(r => !r.fields['Docs Ready'] && (r.fields['Status']||'')==='');
-    if (missingDocs.length) actions.push({icon:'📋', sev:'warn', text:`${missingDocs.length} pending loading${missingDocs.length>1?'s':''} without Docs Ready`});
+    if (missingDocs.length) actions.push({icon:_i('file_text'), sev:'warn', text:`${missingDocs.length} pending loading${missingDocs.length>1?'s':''} without Docs Ready`});
 
     // Deliveries in transit without CMR
     const missingCMR = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['CMR Photo Received']);
-    if (missingCMR.length) actions.push({icon:'📷', sev:'warn', text:`${missingCMR.length} in-transit deliver${missingCMR.length>1?'ies':'y'} without CMR photo`});
+    if (missingCMR.length) actions.push({icon:_i('camera'), sev:'warn', text:`${missingCMR.length} in-transit deliver${missingCMR.length>1?'ies':'y'} without CMR photo`});
 
     // Deliveries in transit without ETA
     const missingETA = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['ETA']);
-    if (missingETA.length) actions.push({icon:'⏰', sev:'warn', text:`${missingETA.length} in-transit deliver${missingETA.length>1?'ies':'y'} without ETA`});
+    if (missingETA.length) actions.push({icon:_i('clock'), sev:'warn', text:`${missingETA.length} in-transit deliver${missingETA.length>1?'ies':'y'} without ETA`});
 
     // Pending deliveries that are still not delivered after noon
     if (nowH > 14 && nPend > 0) {
       const pendDels = delsAll.filter(r => (r.fields['Status']||'')!=='Delivered').length;
-      if (pendDels > 0) actions.push({icon:'🕐', sev:'warn', text:`Afternoon — ${pendDels} delivery${pendDels>1?'ies':''} still not confirmed`});
+      if (pendDels > 0) actions.push({icon:_i('clock'), sev:'warn', text:`Afternoon — ${pendDels} delivery${pendDels>1?'ies':''} still not confirmed`});
     }
 
     // All good
     if (!actions.length && total > 0) {
-      if (nDel === total) actions.push({icon:'🎉', sev:'ok', text:'All orders delivered — day complete!'});
-      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:'✅', sev:'ok', text:'All loadings done — waiting on deliveries'});
-      else actions.push({icon:'✓', sev:'ok', text:'No pending actions — all under control'});
+      if (nDel === total) actions.push({icon:_i('party'), sev:'ok', text:'All orders delivered — day complete!'});
+      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:_i('check_circle'), sev:'ok', text:'All loadings done — waiting on deliveries'});
+      else actions.push({icon:_i('check'), sev:'ok', text:'No pending actions — all under control'});
     }
   }
 
