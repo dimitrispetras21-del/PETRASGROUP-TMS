@@ -346,10 +346,10 @@ function _perfDraw() {
   const userName = typeof user !== 'undefined' ? (user.name || 'User') : 'User';
   const uname = typeof user !== 'undefined' ? (user.username || '') : '';
   const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
-  // Per-username KPIs first, fallback to role-based
   const kpiDefs = PERF_KPIS_BY_USER[uname] || PERF_KPIS[role] || PERF_KPIS.owner;
   const vals = _perfCompute();
   const trends = _perfTrends();
+  const _i = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
 
   const roleLabels = {
     dimitris: 'Founder — Approval & Strategy',
@@ -366,31 +366,82 @@ function _perfDraw() {
     accountant: 'Finance',
   };
 
-  // KPI cards
+  // KPI → Lucide icon map (optional visual cue)
+  const kpiIconMap = {
+    weekly_score: 'award',
+    fleet_usage: 'truck',
+    dead_km: 'route',
+    on_time: 'check_circle',
+    plan_complete: 'checklist',
+    sub_cost_pct: 'coins',
+    cmr_collected: 'file_check',
+    client_updates: 'bell',
+    response_time: 'clock',
+    natl_on_time: 'check_circle',
+    plan_reviewed: 'check',
+    crisis_count: 'alert_triangle',
+    natl_profit: 'trending_up',
+    expired_docs: 'alert_triangle',
+    work_orders: 'checklist',
+    downtime_hrs: 'pause_circle',
+    service_adherence: 'file_check',
+    invoiced_pct: 'euro',
+    cmr_archived: 'file_text',
+    outstanding: 'euro',
+    pallet_balance: 'package',
+  };
+
+  // WoW delta helper (current week vs previous trend entry)
+  const prevTrend = trends.length >= 2 ? trends[trends.length - 2] : null;
+  // Delta data per KPI (where we have trend values)
+  const kpiDeltaSrc = {
+    weekly_score: prevTrend?.score,
+    on_time:      prevTrend?.otPct,
+    plan_complete: prevTrend?.assignPct,
+  };
+  function _wowDelta(kpiId, curr, lowerBetter) {
+    const prev = kpiDeltaSrc[kpiId];
+    if (prev == null || prev === 0 || isNaN(prev)) return '';
+    const diff = curr - prev;
+    const pct = Math.round(diff / prev * 100);
+    if (pct === 0) return `<span class="perf-delta flat">${_i('minus', 10)}0%</span>`;
+    const isUp = pct > 0;
+    const cls = lowerBetter
+      ? (isUp ? 'up-bad' : 'down')
+      : (isUp ? 'up' : 'down-bad');
+    const iconName = isUp ? 'trending_up' : 'trending_down';
+    return `<span class="perf-delta ${cls}">${_i(iconName, 10)}${isUp ? '+' : ''}${pct}%</span>`;
+  }
+
+  // KPI cards — with Lucide icon + WoW delta
   const kpiCards = kpiDefs.map(kpi => {
     const raw = vals[kpi.id] ?? 0;
     const val = typeof raw === 'number' ? raw : 0;
     const pct = kpi.target ? Math.min(Math.round((kpi.invert ? (kpi.target / Math.max(val, 0.1)) : (val / kpi.target)) * 100), 120) : 0;
-    const color = kpi.invert
-      ? (val <= kpi.target ? '#10B981' : val <= kpi.target * 1.5 ? '#F59E0B' : '#EF4444')
-      : (val >= kpi.target ? '#10B981' : val >= kpi.target * 0.7 ? '#F59E0B' : '#EF4444');
+    const valCls = kpi.invert
+      ? (val <= kpi.target ? 'perf-val-ok' : val <= kpi.target * 1.5 ? 'perf-val-warn' : 'perf-val-bad')
+      : (val >= kpi.target ? 'perf-val-ok' : val >= kpi.target * 0.7 ? 'perf-val-warn' : 'perf-val-bad');
+    const barColor = kpi.invert
+      ? (val <= kpi.target ? '#34D399' : val <= kpi.target * 1.5 ? '#F59E0B' : '#F87171')
+      : (val >= kpi.target ? '#34D399' : val >= kpi.target * 0.7 ? '#F59E0B' : '#F87171');
+    const glowColor = barColor;
+    const iconName = kpiIconMap[kpi.id] || 'activity';
     return `<div class="perf-kpi">
-      <div class="perf-kpi-label">${kpi.label}</div>
-      <div class="perf-kpi-val" style="color:${color}">${val}${kpi.unit}</div>
+      <div class="perf-kpi-glow" style="background:linear-gradient(90deg,${glowColor},transparent)"></div>
+      <div class="perf-kpi-label">${_i(iconName, 11)} ${kpi.label}</div>
+      <div class="perf-kpi-val ${valCls}">${val}${kpi.unit}${_wowDelta(kpi.id, val, !!kpi.invert)}</div>
       <div class="perf-kpi-target">Target: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
-      <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${color}"></div></div>
+      <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div></div>
     </div>`;
   }).join('');
 
-  // Trend bars
+  // Trend bars (overall weekly score last 4 weeks)
   const trendHTML = trends.map(t => {
-    const color = t.score >= 85 ? '#10B981' : t.score >= 70 ? '#F59E0B' : '#EF4444';
+    const color = t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
     return `<div class="perf-trend-row">
       <div class="perf-trend-wk">W${t.week}</div>
       <div class="perf-trend-bar">
-        <div class="perf-trend-fill" style="width:${t.score}%;background:${color}">
-          <span style="font-size:9px;font-weight:700;color:#fff">${t.score}</span>
-        </div>
+        <div class="perf-trend-fill" style="width:${t.score}%;background:${color}">${t.score}</div>
       </div>
       <div class="perf-trend-val" style="color:${color}">${t.score}/100</div>
     </div>`;
@@ -411,40 +462,40 @@ function _perfDraw() {
     const route = `${escapeHtml((f['Loading Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')} → ${escapeHtml((f['Delivery Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')}`;
     const date = toLocalDate(f['Delivery DateTime']);
     return `<tr>
-      <td>${date ? date.split('-').reverse().join('/') : '—'}</td>
-      <td style="font-weight:600">${route}</td>
-      <td>${f['Total Pallets'] || '—'}</td>
+      <td style="color:var(--p-text-dim)">${date ? date.split('-').reverse().join('/') : '—'}</td>
+      <td style="font-weight:600;color:var(--p-text)">${route}</td>
+      <td style="color:var(--p-text-mid);font-weight:600">${f['Total Pallets'] || '—'}</td>
       <td>${pill}</td>
     </tr>`;
   }).join('');
 
-  // Score circle SVG
-  const scoreColor = vals.weekly_score >= 85 ? '#10B981' : vals.weekly_score >= 70 ? '#F59E0B' : '#EF4444';
-  const scoreDash = Math.round(vals.weekly_score * 3.77); // circumference ~377 for r=60
+  // Conic score ring — weekly score
+  const scoreColor = vals.weekly_score >= 85 ? '#34D399' : vals.weekly_score >= 70 ? '#F59E0B' : '#F87171';
+  const scoreDeg = Math.min(vals.weekly_score, 100) * 3.6;
 
-  // Feedback text
+  // Executive Briefing (was Nakis Feedback)
   const feedback = vals.weekly_score >= 85
     ? `Εξαιρετικη εβδομαδα! On-time ${vals.on_time}%, dead km μολις ${vals.dead_km || 0}km.`
     : vals.weekly_score >= 70
     ? `Καλη εβδομαδα. Προσεξε: dead km ${vals.dead_km || 0}km (target ≤50km).`
     : `Χρειαζεται βελτιωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
   const warnings = [
-    (vals.dead_km || 0) > 100 ? 'Dead KM >100km — ελεγξε import matching' : '',
-    vals.fleet_usage < 60 ? 'Fleet usage χαμηλο — αδρανη φορτηγα' : '',
+    (vals.dead_km || 0) > 100 ? 'Dead KM >100km — έλεγξε import matching' : '',
+    vals.fleet_usage < 60 ? 'Fleet usage χαμηλό — αδρανή φορτηγά' : '',
   ].filter(Boolean).join(' · ');
 
-  // Goals (from localStorage)
+  // Goals
   const goalsKey = `perf_goals_${user?.name?.replace(/\s/g,'_')||'default'}`;
   const goals = JSON.parse(localStorage.getItem(goalsKey) || '[]');
   const goalsHTML = goals.length ? goals.map((g, i) => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,0.04)">
-      <input type="checkbox" ${g.done ? 'checked' : ''} onchange="_perfToggleGoal(${i})" style="accent-color:#38BDF8">
-      <span style="font-size:12px;color:${g.done?'#64748B':'#E2E8F0'};${g.done?'text-decoration:line-through;':''}flex:1">${escapeHtml(g.text)}</span>
-      <button onclick="_perfRemoveGoal(${i})" style="background:none;border:none;color:#EF4444;cursor:pointer;font-size:11px;padding:2px 6px">x</button>
-    </div>`).join('') : '<div style="color:var(--d-text-dim);font-size:11px;padding:8px 0">Δεν εχουν οριστει στοχοι</div>';
-  const goalInput = `<div style="display:flex;gap:6px;margin-top:8px">
-    <input id="perf-goal-input" type="text" placeholder="Νεος στοχος..." style="flex:1;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,0.1);background:rgba(255,255,255,0.04);color:#E2E8F0;font-size:11px">
-    <button onclick="_perfAddGoal()" style="padding:4px 12px;border-radius:6px;background:#0284C7;color:#fff;border:none;font-size:10px;font-weight:600;cursor:pointer">+</button>
+    <div class="perf-goal-row">
+      <input type="checkbox" class="perf-goal-check" ${g.done ? 'checked' : ''} onchange="_perfToggleGoal(${i})">
+      <span class="perf-goal-text ${g.done ? 'done' : ''}">${escapeHtml(g.text)}</span>
+      <button class="perf-goal-remove" onclick="_perfRemoveGoal(${i})" title="Remove">${_i('x', 12)}</button>
+    </div>`).join('') : '<div class="perf-goal-empty">Δεν έχουν οριστεί στόχοι</div>';
+  const goalInput = `<div class="perf-goal-input-row">
+    <input id="perf-goal-input" type="text" placeholder="Νέος στόχος..." onkeydown="if(event.key==='Enter')_perfAddGoal()">
+    <button onclick="_perfAddGoal()">${_i('plus', 12)}</button>
   </div>`;
 
   document.getElementById('content').innerHTML = `
@@ -454,13 +505,13 @@ function _perfDraw() {
           <div class="perf-name">${escapeHtml(userName)}</div>
           <div class="perf-role">${escapeHtml(roleLabels[uname] || roleLabelsFallback[role] || role)} · Εβδομάδα ${wn}</div>
         </div>
-        <div style="display:flex;align-items:center;gap:12px">
-          <span style="display:flex;align-items:center;gap:6px;font-size:10px;color:#64748B;letter-spacing:.5px;text-transform:uppercase">
-            <span style="width:6px;height:6px;border-radius:50%;background:#10B981;animation:dash-pulse 2s infinite"></span>
+        <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
+          <div class="perf-live">
+            <span class="perf-live-dot"></span>
             LIVE
-          </span>
-          <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${(typeof icon==='function'?icon('refresh',14):'')} Refresh</button>
-          <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${(typeof icon==='function'?icon('file_text',14):'')} Export CSV</button>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${_i('refresh', 14)} Refresh</button>
+          <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${_i('file_text', 14)} Export CSV</button>
         </div>
       </div>
 
@@ -471,79 +522,74 @@ function _perfDraw() {
           <!-- Weekly Trend -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">WEEKLY SCORE TREND</div>
-              <span style="font-size:10px;color:#64748B">Last 4 weeks</span>
+              <div class="perf-card-title">${_i('activity', 12)} WEEKLY SCORE TREND</div>
+              <span class="perf-card-meta">Last 4 weeks</span>
             </div>
             <div class="perf-card-body">
-              ${trendHTML || '<div style="color:var(--d-text-dim);font-size:12px">No trend data yet</div>'}
+              ${trendHTML || '<div style="color:var(--p-text-dim);font-size:12px;padding:var(--space-3) 0">No trend data yet</div>'}
             </div>
           </div>
 
           <!-- Recent Activity -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">ΠΡΟΣΦΑΤΕΣ ΠΑΡΑΔΟΣΕΙΣ</div>
-              <span style="font-size:10px;color:#64748B">${delivered.length} orders</span>
+              <div class="perf-card-title">${_i('truck', 12)} ΠΡΟΣΦΑΤΕΣ ΠΑΡΑΔΟΣΕΙΣ</div>
+              <span class="perf-card-meta">${delivered.length} orders</span>
             </div>
-            <div class="perf-card-body" style="padding:0">
+            <div class="perf-card-body flush">
               <table class="perf-activity">
                 <thead><tr><th>Date</th><th>Route</th><th>Pal</th><th>Performance</th></tr></thead>
-                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--d-text-dim);padding:20px">No delivered orders yet</td></tr>'}</tbody>
+                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--p-text-dim);padding:var(--space-5)">No delivered orders yet</td></tr>'}</tbody>
               </table>
             </div>
           </div>
         </div>
 
         <div class="perf-right">
-          <!-- Weekly Score Circle -->
+          <!-- Weekly Score Conic Ring -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
-              <span style="font-size:10px;color:#64748B">W${wn}</span>
+              <div class="perf-card-title">${_i('award', 12)} ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
+              <span class="perf-card-meta">W${wn}</span>
             </div>
-            <div class="perf-card-body" style="text-align:center;padding:20px 16px">
-              <div class="perf-score-ring">
-                <svg viewBox="0 0 140 140" style="transform:rotate(-90deg)">
-                  <circle cx="70" cy="70" r="60" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="8"/>
-                  <circle cx="70" cy="70" r="60" fill="none" stroke="${scoreColor}" stroke-width="8"
-                    stroke-dasharray="${scoreDash} 377" stroke-linecap="round"/>
-                </svg>
+            <div class="perf-card-body perf-score-wrap">
+              <div class="perf-score-ring" style="--perf-score-color:${scoreColor};--perf-score-deg:${scoreDeg}deg">
                 <div class="perf-score-num" style="color:${scoreColor}">${vals.weekly_score}</div>
               </div>
-              <div style="display:flex;flex-direction:column;gap:6px;text-align:left">
+              <div class="perf-score-label">συνολική απόδοση</div>
+              <div class="perf-score-bars">
                 ${kpiDefs.map(kpi => {
                   const v = vals[kpi.id] ?? 0;
-                  const c = kpi.invert ? (v <= kpi.target ? '#10B981' : '#EF4444') : (v >= kpi.target ? '#10B981' : '#EF4444');
-                  return `<div style="display:flex;align-items:center;gap:8px">
-                    <span style="font-size:10px;color:var(--d-text-mid);width:80px">${kpi.label.split(' ').slice(0,2).join(' ')}</span>
-                    <div style="flex:1;height:6px;background:rgba(255,255,255,0.04);border-radius:3px;overflow:hidden">
-                      <div style="height:100%;width:${Math.min(kpi.invert?(kpi.target/Math.max(v,1)*100):(v/kpi.target*100),100)}%;background:${c};border-radius:3px"></div>
+                  const c = kpi.invert ? (v <= kpi.target ? '#34D399' : '#F87171') : (v >= kpi.target ? '#34D399' : '#F87171');
+                  const pctFill = Math.min(kpi.invert ? (kpi.target / Math.max(v, 1) * 100) : (v / kpi.target * 100), 100);
+                  return `<div class="perf-score-bar-row">
+                    <span class="perf-score-bar-lbl">${kpi.label.split(' ').slice(0,2).join(' ')}</span>
+                    <div class="perf-score-bar-track">
+                      <div class="perf-score-bar-fill" style="width:${pctFill}%;background:${c}"></div>
                     </div>
-                    <span style="font-size:10px;font-weight:700;color:${c};width:35px;text-align:right">${v}${kpi.unit}</span>
+                    <span class="perf-score-bar-val" style="color:${c}">${v}${kpi.unit}</span>
                   </div>`;
                 }).join('')}
               </div>
             </div>
           </div>
 
-          <!-- Νάκης Feedback -->
-          <div class="perf-card" style="background:linear-gradient(135deg,#0B1929,#172C45);border:none">
-            <div class="perf-card-body" style="padding:16px">
-              <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#38BDF8;margin-bottom:8px;letter-spacing:.5px">
-                ΝΑΚΗΣ FEEDBACK — W${wn}
-              </div>
-              <div style="font-size:12px;line-height:1.6;color:#CBD5E1">
-                ${feedback}
-                ${warnings ? `<div style="margin-top:6px;color:#F59E0B;font-size:11px;font-weight:600">${warnings}</div>` : ''}
-              </div>
+          <!-- Executive Briefing (was Nakis) -->
+          <div class="perf-brief">
+            <div class="perf-brief-title">
+              ${_i('brain', 12)} EXECUTIVE BRIEFING · W${wn}
+            </div>
+            <div class="perf-brief-body">
+              ${feedback}
+              ${warnings ? `<div class="perf-brief-warn">${_i('alert_triangle', 11)} ${warnings}</div>` : ''}
             </div>
           </div>
 
           <!-- Goals -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">ΣΤΟΧΟΙ</div>
-              <span style="font-size:10px;color:#64748B">${goals.filter(g=>g.done).length}/${goals.length}</span>
+              <div class="perf-card-title">${_i('target', 12)} ΣΤΟΧΟΙ</div>
+              <span class="perf-card-meta">${goals.filter(g=>g.done).length}/${goals.length}</span>
             </div>
             <div class="perf-card-body">
               ${goalsHTML}

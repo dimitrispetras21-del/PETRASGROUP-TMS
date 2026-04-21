@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v22-maint-dash-v2';
+const SW_VERSION = 'tms-sw-v23-perf-v2';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
