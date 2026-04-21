@@ -57,6 +57,8 @@ const ICONS_LIB = {
   file_check: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 15l2 2 4-4"/>',
   award: '<circle cx="12" cy="8" r="6"/><polyline points="8.21 13.89 7 22 12 19 17 22 15.79 13.88"/>',
   chevron_right: '<polyline points="9 18 15 12 9 6"/>',
+  trending_down: '<polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/>',
+  minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
 };
 
 /**

@@ -181,6 +181,73 @@ async function renderDashboard() {
     const idlePlates = idleTrucks.map(r => r.plate).slice(0, 6);
     const topTrucks = currentRates.filter(r => r.days > 0).sort((a, b) => b.rate - a.rate);
 
+    // ═══ HISTORICAL TRENDS (last 7 weeks for sparklines) ═══
+    const trendWeeks = [];
+    for (let i = 6; i >= 0; i--) {
+      const w = wn - i;
+      if (w < 1) continue;
+      trendWeeks.push(w);
+    }
+    // Utilization trend per week
+    const utilTrend = trendWeeks.map(w => {
+      const wkOrders = orders.filter(r => r.fields['Week Number'] == w && r.fields['Truck']);
+      const used = new Set();
+      wkOrders.forEach(r => { const t = getLinkId(r.fields['Truck']); if (t) used.add(t); });
+      return activeTrucks ? Math.round(used.size / activeTrucks * 100) : 0;
+    });
+    // Dead KM trend per week (using same haversine logic)
+    const deadKmTrend = trendWeeks.map(w => {
+      const wExp = orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Export' && r.fields['Truck']);
+      const wImp = orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Import' && r.fields['Truck']);
+      const list = [];
+      wExp.forEach(exp => {
+        const et = getLinkId(exp.fields['Truck']);
+        if (!et) return;
+        const mi = wImp.find(imp => getLinkId(imp.fields['Truck']) === et);
+        if (!mi) return;
+        const expUn = (_dashStopsByOrder[exp.id]||[]).filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b)=>(b.fields[F.STOP_NUMBER]||0)-(a.fields[F.STOP_NUMBER]||0));
+        const impLd = (_dashStopsByOrder[mi.id]||[]).filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+        const el = expUn.length ? (expUn[0].fields[F.STOP_LOCATION]||[])[0] : null;
+        const il = impLd.length ? (impLd[0].fields[F.STOP_LOCATION]||[])[0] : null;
+        if (el && il && locCoords[el] && locCoords[il]) {
+          list.push(_dashHaversine(locCoords[el].lat, locCoords[el].lng, locCoords[il].lat, locCoords[il].lng));
+        }
+      });
+      return list.length ? Math.round(list.reduce((s,v)=>s+v,0)/list.length) : 0;
+    });
+    // On-time trend per week
+    const onTimeTrend = trendWeeks.map(w => {
+      const wkDel = orders.filter(r => r.fields['Week Number']==w && r.fields['Delivery Performance']);
+      const onT = wkDel.filter(r => r.fields['Delivery Performance']==='On Time').length;
+      return wkDel.length ? Math.round(onT / wkDel.length * 100) : 0;
+    });
+    // Unassigned trend — snapshot per week (approximation: count unassigned at end of each week)
+    const unassignedExpTrend = trendWeeks.map(w => {
+      return orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Export' && (!r.fields['Truck'] || (Array.isArray(r.fields['Truck']) && r.fields['Truck'].length===0))).length;
+    });
+    const unassignedImpTrend = trendWeeks.map(w => {
+      return orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Import' && (!r.fields['Truck'] || (Array.isArray(r.fields['Truck']) && r.fields['Truck'].length===0))).length;
+    });
+
+    // WoW deltas (current vs previous week)
+    function _deltaPct(curr, prev, lowerIsBetter) {
+      if (prev === 0 || prev == null) return null;
+      const diff = curr - prev;
+      const pct = Math.round(diff / prev * 100);
+      return { pct, raw: diff, lowerBetter: !!lowerIsBetter };
+    }
+    const prevWn = wn - 1;
+    const utilPrev = utilTrend[utilTrend.length - 2] ?? 0;
+    const deadKmPrev = deadKmTrend[deadKmTrend.length - 2] ?? 0;
+    const onTimePrev = onTimeTrend[onTimeTrend.length - 2] ?? 0;
+    const unExpPrev = unassignedExpTrend[unassignedExpTrend.length - 2] ?? 0;
+    const unImpPrev = unassignedImpTrend[unassignedImpTrend.length - 2] ?? 0;
+    const utilDelta = _deltaPct(utilPct, utilPrev);
+    const deadKmDelta = avgDeadKm >= 0 ? _deltaPct(avgDeadKm, deadKmPrev, true) : null;
+    const onTimeDelta = totalDelivered > 0 ? _deltaPct(onTimePct, onTimePrev) : null;
+    const unExpDelta = _deltaPct(unassignedExport, unExpPrev, true);
+    const unImpDelta = _deltaPct(unassignedImport, unImpPrev, true);
+
     // Aging
     const unassignedOrders = orders.filter(r => {
       const f = r.fields;
@@ -311,32 +378,47 @@ async function renderDashboard() {
           <div class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_up_right', 11)} Export χωρίς Ανάθεση</div>
-            <div class="dash-kpi-value dash-val-danger">${unassignedExport}</div>
-            <div class="dash-kpi-sub">ανοιχτές εξαγωγές</div>
+            <div class="dash-kpi-value dash-val-danger">${unassignedExport}${_dashDelta(unExpDelta)}</div>
+            <div class="dash-kpi-bottom">
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές</div></div>
+              ${_dashSpark(unassignedExpTrend, '#F87171')}
+            </div>
           </div>
           <div class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_down_left', 11)} Import χωρίς Ανάθεση</div>
-            <div class="dash-kpi-value dash-val-warning">${unassignedImport}</div>
-            <div class="dash-kpi-sub">ανοιχτές εισαγωγές</div>
+            <div class="dash-kpi-value dash-val-warning">${unassignedImport}${_dashDelta(unImpDelta)}</div>
+            <div class="dash-kpi-bottom">
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εισαγωγές</div></div>
+              ${_dashSpark(unassignedImpTrend, '#FBBF24')}
+            </div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
             <div class="dash-kpi-label">${_i('truck', 11)} Αξιοποίηση Στόλου</div>
-            <div class="dash-kpi-value dash-val-accent">${utilPct}%</div>
-            <div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div>
+            <div class="dash-kpi-value dash-val-accent">${utilPct}%${_dashDelta(utilDelta)}</div>
+            <div class="dash-kpi-bottom">
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div></div>
+              ${_dashSpark(utilTrend, '#38BDF8')}
+            </div>
           </div>
           <div class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'#10B981':avgDeadKm<=150?'#D97706':'#DC2626') : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('route', 11)} Dead Kilometers</div>
-            <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}</div>
-            <div class="dash-kpi-sub">${avgDeadKm>=0 ? `avg ${deadKmList.length} pairs · max ${maxDeadKm}km` : 'δεν υπάρχουν matched pairs'}</div>
+            <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
+            <div class="dash-kpi-bottom">
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `avg ${deadKmList.length} pairs · max ${maxDeadKm}km` : 'no matched pairs'}</div></div>
+              ${_dashSpark(deadKmTrend, '#F59E0B')}
+            </div>
           </div>
           <div class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? '#10B981' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('check_circle', 11)} On-Time Παράδοση</div>
-            <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}</div>
-            <div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} on time` : 'κανένα δεδομένο'}</div>
+            <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}${_dashDelta(onTimeDelta)}</div>
+            <div class="dash-kpi-bottom">
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} on time` : 'κανένα δεδομένο'}</div></div>
+              ${_dashSpark(onTimeTrend, '#34D399')}
+            </div>
           </div>
         </div>
 
@@ -506,13 +588,7 @@ async function renderDashboard() {
                 <span class="dash-card-meta">W${wn}</span>
               </div>
               <div class="dash-card-body dash-score-wrap">
-                <div class="dash-score-ring">
-                  <svg width="90" height="90" viewBox="0 0 90 90">
-                    <circle cx="45" cy="45" r="38" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="7"/>
-                    <circle cx="45" cy="45" r="38" fill="none" stroke="${scoreColor}" stroke-width="7"
-                      stroke-dasharray="${Math.round(238.76 * weeklyScore / 100)} 238.76"
-                      stroke-linecap="round"/>
-                  </svg>
+                <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${Math.round(weeklyScore * 3.6)}deg">
                   <div class="dash-score-num" style="color:${scoreColor}">${weeklyScore}</div>
                 </div>
                 <div class="dash-score-label">συνολική απόδοση</div>
@@ -587,6 +663,56 @@ function _dashScoreBar(label, val, color) {
 
 function _dashEmpty(iconName, text) {
   return `<div class="dash-empty">${_i(iconName, 28)}<div>${text}</div></div>`;
+}
+
+// ── Sparkline (inline SVG polyline) ─────────────────────
+function _dashSpark(values, color) {
+  if (!values || values.length < 2) return '';
+  const w = 54, h = 20, pad = 2;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = (w - pad * 2) / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = pad + i * step;
+    const y = pad + (h - pad * 2) * (1 - (v - min) / range);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  // Last point dot
+  const lastX = pad + (values.length - 1) * step;
+  const lastY = pad + (h - pad * 2) * (1 - (values[values.length - 1] - min) / range);
+  // Area fill (gradient below line)
+  const areaPoints = `${pad},${h-pad} ${points} ${lastX.toFixed(1)},${h-pad}`;
+  const gradId = 'sg' + Math.random().toString(36).slice(2,8);
+  return `<svg class="dash-spark" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <polygon points="${areaPoints}" fill="url(#${gradId})"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="1.6" fill="${color}"/>
+  </svg>`;
+}
+
+// ── WoW Delta pill ──────────────────────────────────────
+function _dashDelta(d) {
+  if (!d || d.pct === null || isNaN(d.pct)) return '';
+  const abs = Math.abs(d.pct);
+  if (abs === 0) {
+    return `<span class="dash-delta flat">${_i('minus', 10)}0%</span>`;
+  }
+  const isUp = d.pct > 0;
+  // Class logic: is this change GOOD or BAD?
+  // lowerBetter: up = bad (red), down = good (green)
+  // !lowerBetter: up = good (green), down = bad (red)
+  let cls;
+  if (d.lowerBetter) cls = isUp ? 'up-bad' : 'down';
+  else              cls = isUp ? 'up'     : 'down-bad';
+  const iconName = isUp ? 'trending_up' : 'trending_down';
+  return `<span class="dash-delta ${cls}">${_i(iconName, 10)}${isUp ? '+' : ''}${d.pct}%</span>`;
 }
 
 function _getWeekStart(d) {

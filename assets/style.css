@@ -3545,16 +3545,62 @@ button.sidebar-toggle {
 .dash-comp-block.expired { background: var(--dc-bad-soft);  color: #F87171; }
 .dash-comp-block.none    { background: rgba(100,116,139,0.12); color: var(--dc-text-dim); }
 
-/* ── Right Panel: Weekly Score Ring ───────────────────── */
+/* ── KPI Sparkline + Delta ────────────────────────────── */
+.dash-kpi-bottom {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+.dash-kpi-bottom-left { flex: 1; min-width: 0; }
+.dash-spark {
+  width: 54px; height: 20px;
+  flex-shrink: 0;
+  opacity: 0.85;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.dash-kpi:hover .dash-spark { opacity: 1; }
+.dash-spark polyline { transition: stroke-dashoffset 0.8s var(--ease-out); }
+
+.dash-delta {
+  display: inline-flex; align-items: center;
+  gap: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-family: var(--dc-nums);
+  letter-spacing: -0.2px;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.dash-delta.up       { background: var(--dc-ok-soft);   color: #34D399; }
+.dash-delta.down-bad { background: var(--dc-bad-soft);  color: #F87171; }
+.dash-delta.up-bad   { background: var(--dc-bad-soft);  color: #F87171; } /* up when lower-is-better */
+.dash-delta.down     { background: var(--dc-ok-soft);   color: #34D399; } /* down when lower-is-better */
+.dash-delta.flat     { background: rgba(100,116,139,0.12); color: var(--dc-text-dim); }
+.dash-delta svg { width: 10px; height: 10px; }
+
+/* ── Right Panel: Weekly Score Ring (conic-gradient) ──── */
 .dash-score-wrap { text-align: center; }
 .dash-score-ring {
-  width: 90px; height: 90px;
+  width: 96px; height: 96px;
   margin: 0 auto var(--space-2);
   position: relative;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--score-color, #38BDF8) 0deg,
+    var(--score-color, #38BDF8) calc(var(--score-deg, 0deg)),
+    rgba(255,255,255,0.08) calc(var(--score-deg, 0deg)),
+    rgba(255,255,255,0.08) 360deg
+  );
+  transition: background 0.8s var(--ease-out);
 }
-.dash-score-ring svg { transform: rotate(-90deg); }
-.dash-score-ring circle {
-  transition: stroke-dasharray 0.8s var(--ease-out), stroke 0.4s var(--ease-out);
+.dash-score-ring::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--dc-card-bg);
 }
 .dash-score-num {
   position: absolute; inset: 0;

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v19-dashboard';
+const SW_VERSION = 'tms-sw-v20-dash-tier3';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
