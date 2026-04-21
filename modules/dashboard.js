@@ -363,7 +363,7 @@ async function renderDashboard() {
             <div class="dash-date">${dateStr} — Εβδομάδα ${wn}</div>
           </div>
           <div style="display:flex;align-items:center;gap:var(--space-3)">
-            ${typeof cmdkOpen === 'function' ? `<div class="dash-cmdk-hint" onclick="cmdkOpen()">${_i('command', 12)} <kbd>⌘K</kbd> Γρήγορες ενέργειες</div>` : ''}
+            ${typeof openCommandPalette === 'function' ? `<div class="dash-cmdk-hint" onclick="openCommandPalette()">${_i('command', 12)} <kbd>⌘K</kbd> Γρήγορες ενέργειες</div>` : ''}
             <div class="dash-live">
               <span class="dash-live-dot"></span>
               LIVE — ανανέωση κάθε 5'

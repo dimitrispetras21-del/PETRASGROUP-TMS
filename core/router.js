@@ -4,102 +4,105 @@
 
 const NAV = [
   { section: 'Planning', perm: 'planning', items: [
-    { id: 'dashboard',      label: 'Dashboard',           icon: 'dashboard' },
+    { id: 'dashboard',      label: 'Dashboard',           icon: 'layout_grid' },
     { id: 'weekly_intl',    label: 'Weekly International',icon: 'globe' },
     { id: 'weekly_natl',    label: 'Weekly National',     icon: 'home' },
-    { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'pickup' },
-    { id: 'daily_ops',      label: 'Daily Ops Plan',      icon: 'clipboard' },
-    { id: 'daily_ramp',     label: 'Daily Ramp Board',    icon: 'ramp' },
+    { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'package' },
+  ]},
+  { section: 'Daily Ops', perm: 'planning', items: [
+    { id: 'daily_ops',      label: 'Daily Ops Plan',      icon: 'list_checks' },
+    { id: 'daily_ramp',     label: 'Daily Ramp Board',    icon: 'activity' },
   ]},
   { section: 'Orders', perm: 'orders', items: [
-    { id: 'orders_intl', label: 'International Orders', icon: 'doc' },
-    { id: 'orders_natl', label: 'National Orders',      icon: 'doc' },
-    { id: 'invoicing',   label: 'Invoicing',            icon: 'invoice' },
-    { id: 'locations',   label: 'Locations',            icon: 'location' },
+    { id: 'orders_intl', label: 'International Orders', icon: 'file_text' },
+    { id: 'orders_natl', label: 'National Orders',      icon: 'file_text' },
+    { id: 'locations',   label: 'Locations',            icon: 'map_pin' },
   ]},
   { section: 'Clients & Partners', perm: 'clients', items: [
-    { id: 'clients',        label: 'Clients',        icon: 'building' },
-    { id: 'partners',       label: 'Partners',        icon: 'handshake' },
-    { id: 'pallet_ledger',  label: 'Pallet Ledger',   icon: 'pallet' },
-  ]},
-  { section: 'Maintenance', perm: 'maintenance', items: [
-    { id: 'maint_dash',     label: 'Dashboard',        icon: 'dashboard' },
-    { id: 'maint_req',      label: 'Work Orders',      icon: 'clipboard' },
-    { id: 'maint_expiry',   label: 'Expiry Alerts',    icon: 'alert' },
-    { id: 'maint_svc',      label: 'Service Records',  icon: 'wrench' },
-    { id: 'maint_trucks',   label: 'Trucks History',   icon: 'truck' },
-    { id: 'maint_trailers', label: 'Trailers History', icon: 'trailer' },
-    { id: 'trucks',         label: 'Trucks',           icon: 'truck' },
-    { id: 'trailers',       label: 'Trailers',         icon: 'trailer' },
-    { id: 'workshops',      label: 'Workshops',        icon: 'wrench' },
+    { id: 'clients',  label: 'Clients',  icon: 'building' },
+    { id: 'partners', label: 'Partners', icon: 'users' },
   ]},
   { section: 'Drivers', perm: 'drivers', items: [
-    { id: 'drivers', label: 'Drivers',        icon: 'person' },
-    { id: 'payroll', label: 'Driver Payroll', icon: 'money' },
+    { id: 'drivers', label: 'Drivers',        icon: 'user' },
+    { id: 'payroll', label: 'Driver Payroll', icon: 'coins' },
   ]},
-  { section: 'Costs', perm: 'costs', items: [
-    { id: 'costs_dash', label: 'Dashboard', icon: 'dashboard' },
-    { id: 'fuel',       label: 'Fuels',     icon: 'fuel' },
-    { id: 'costs',      label: 'Costs',     icon: 'chart' },
-    { id: 'pl',         label: 'P&Ls',      icon: 'trending' },
+  { section: 'Maintenance', perm: 'maintenance', items: [
+    { id: 'maint_dash',   label: 'Dashboard',       icon: 'layout_grid' },
+    { id: 'maint_req',    label: 'Work Orders',     icon: 'list_checks' },
+    { id: 'maint_expiry', label: 'Expiry Alerts',   icon: 'alert_triangle' },
+    { id: 'maint_svc',    label: 'Service Records', icon: 'tool' },
   ]},
-  { section: 'Executive', perm: 'ceo_dashboard', items: [
-    { id: 'ceo_dashboard', label: 'CEO Dashboard', icon: 'ceo' },
+  { section: 'Fleet', perm: 'maintenance', items: [
+    { id: 'trucks',         label: 'Trucks',           icon: 'truck' },
+    { id: 'trailers',       label: 'Trailers',         icon: 'truck' },
+    { id: 'workshops',      label: 'Workshops',        icon: 'tool' },
+    { id: 'maint_trucks',   label: 'Trucks History',   icon: 'clock' },
+    { id: 'maint_trailers', label: 'Trailers History', icon: 'clock' },
   ]},
-  { section: 'HR', perm: 'performance', items: [
-    { id: 'performance', label: 'My Performance', icon: 'trending' },
+  { section: 'Finance', perm: 'orders', items: [
+    { id: 'invoicing',     label: 'Invoicing',     icon: 'file_check' },
+    { id: 'pallet_ledger', label: 'Pallet Ledger', icon: 'package' },
+    { id: 'costs',         label: 'Costs (soon)',  icon: 'coins' },
   ]},
-  { section: 'Settings', perm: 'settings', items: [
-    { id: 'settings',       label: 'Settings',       icon: 'gear' },
-    { id: 'metrics_audit',  label: 'Metrics Audit',  icon: 'chart' },
-    { id: 'trash',          label: 'Trash',          icon: 'trash' },
-    { id: 'error_log',      label: 'Error Log',      icon: 'alert' },
+  { section: 'Insights', perm: 'ceo_dashboard', items: [
+    { id: 'ceo_dashboard', label: 'CEO Dashboard',  icon: 'award' },
+    { id: 'performance',   label: 'My Performance', icon: 'trending_up' },
+  ]},
+  { section: 'Admin', perm: 'settings', items: [
+    { id: 'settings',      label: 'Settings',      icon: 'settings' },
+    { id: 'metrics_audit', label: 'Metrics Audit', icon: 'bar_chart' },
+    { id: 'trash',         label: 'Trash',         icon: 'trash' },
+    { id: 'error_log',     label: 'Error Log',     icon: 'alert_triangle' },
   ]},
 ];
 
-const ICONS = {
-  dashboard: `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="2" width="7" height="7" rx="1.5"/><rect x="11" y="2" width="7" height="7" rx="1.5"/><rect x="2" y="11" width="7" height="7" rx="1.5"/><rect x="11" y="11" width="7" height="7" rx="1.5"/></svg>`,
-  globe:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="8"/><ellipse cx="10" cy="10" rx="3.5" ry="8"/><line x1="2" y1="10" x2="18" y2="10"/><line x1="4" y1="6.5" x2="16" y2="6.5"/><line x1="4" y1="13.5" x2="16" y2="13.5"/></svg>`,
-  home:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path d="M8 18v-5h4v5"/></svg>`,
-  pickup:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 15h16M4 15V9l2-4h8l2 4v6"/><circle cx="7" cy="15.5" r="1.5"/><circle cx="13" cy="15.5" r="1.5"/><line x1="4" y1="11" x2="16" y2="11"/></svg>`,
-  clipboard: `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="5" y="3" width="10" height="14" rx="1.5"/><path d="M8 3V2h4v1"/><line x1="8" y1="8" x2="12" y2="8"/><line x1="8" y1="11" x2="12" y2="11"/><line x1="8" y1="14" x2="11" y2="14"/></svg>`,
-  ramp:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="13" width="18" height="3" rx="1"/><path d="M3 13V8l4-4h6l4 4v5"/><circle cx="6" cy="16" r="1"/><circle cx="14" cy="16" r="1"/></svg>`,
-  doc:       `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2h7l4 4v12a1 1 0 01-1 1H5a1 1 0 01-1-1V3a1 1 0 011-1z"/><path d="M12 2v4h4"/><line x1="7" y1="9" x2="13" y2="9"/><line x1="7" y1="12" x2="11" y2="12"/></svg>`,
-  location:  `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2a5 5 0 015 5c0 4-5 10-5 10S5 11 5 7a5 5 0 015-5z"/><circle cx="10" cy="7" r="2"/></svg>`,
-  building:  `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="14" height="15" rx="1"/><path d="M8 18v-5h4v5"/><line x1="3" y1="7" x2="17" y2="7"/><line x1="7" y1="11" x2="9" y2="11"/><line x1="11" y1="11" x2="13" y2="11"/></svg>`,
-  handshake: `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 12l3-3 3 2 3-2 5 3"/><path d="M5 9L3 11M11 7l5 5M8 9l5 5"/></svg>`,
-  wrench:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.5 2a3.5 3.5 0 00-3.2 4.9L3.4 14.8a1.3 1.3 0 001.8 1.8l7.9-7.9A3.5 3.5 0 1014.5 2z"/></svg>`,
-  truck:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="7" width="11" height="8" rx="1"/><path d="M12 10h4l2 3v2h-6V10z"/><circle cx="4" cy="16.5" r="1.5"/><circle cx="10" cy="16.5" r="1.5"/><circle cx="16" cy="16.5" r="1.5"/></svg>`,
-  trailer:   `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="1" y="6" width="15" height="9" rx="1"/><circle cx="5" cy="16.5" r="1.5"/><circle cx="12" cy="16.5" r="1.5"/><line x1="16" y1="10.5" x2="19" y2="10.5"/></svg>`,
-  alert:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.5L2.5 17h15L10 2.5z"/><line x1="10" y1="9" x2="10" y2="12.5"/><circle cx="10" cy="14.5" r="0.8" fill="currentColor" stroke="none"/></svg>`,
-  person:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="6" r="3.5"/><path d="M3 18c0-3.9 3.1-7 7-7s7 3.1 7 7"/></svg>`,
-  money:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="5" width="16" height="10" rx="1.5"/><circle cx="10" cy="10" r="2.5"/></svg>`,
-  fuel:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 18V4a1 1 0 011-1h5a1 1 0 011 1v6l2 1v4a1 1 0 002 0V9l-2-2"/><line x1="7" y1="8" x2="10" y2="8"/></svg>`,
-  chart:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><line x1="3" y1="17" x2="17" y2="17"/><rect x="4" y="10" width="3" height="7"/><rect x="8.5" y="6" width="3" height="11"/><rect x="13" y="3" width="3" height="14"/></svg>`,
-  trending:  `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><polyline points="2,15 7,9 11,12 18,5"/><polyline points="13,5 18,5 18,10"/></svg>`,
-  gear:      `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.9 4.9l1.4 1.4M13.7 13.7l1.4 1.4M4.9 15.1l1.4-1.4M13.7 6.3l1.4-1.4"/></svg>`,
-  pallet:    `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2" y="12" width="16" height="3" rx="0.5"/><rect x="2" y="5" width="16" height="3" rx="0.5"/><line x1="5" y1="8" x2="5" y2="12"/><line x1="10" y1="8" x2="10" y2="12"/><line x1="15" y1="8" x2="15" y2="12"/><line x1="5" y1="15" x2="5" y2="18"/><line x1="15" y1="15" x2="15" y2="18"/></svg>`,
-  invoice:   `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="2" width="14" height="16" rx="1.5"/><line x1="6" y1="6" x2="14" y2="6"/><line x1="6" y1="9" x2="14" y2="9"/><line x1="6" y1="12" x2="10" y2="12"/><path d="M12 14l1.5 1.5 3-3"/></svg>`,
-  trash:     `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>`,
-  ceo:       `<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><polygon points="10,2 12.5,7.5 18.5,8 14,12.5 15.5,18.5 10,15.5 4.5,18.5 6,12.5 1.5,8 7.5,7.5"/></svg>`,
-};
+// Lucide icon helper — pulls SVGs from core/icons.js (single source of truth)
+function _navIcon(name) {
+  if (typeof icon === 'function') return icon(name, 16);
+  return ''; // fallback if icons.js not loaded
+}
+
+// Per-group collapsed state persistence
+function _navGroupKey(gi) { return `tms_nav_grp_${gi}_collapsed`; }
+function _navGroupIsCollapsed(gi) {
+  // Default: first group open, rest collapsed (only on first visit)
+  const stored = localStorage.getItem(_navGroupKey(gi));
+  if (stored === null) return false; // default: all open
+  return stored === '1';
+}
+function _navGroupSetCollapsed(gi, collapsed) {
+  localStorage.setItem(_navGroupKey(gi), collapsed ? '1' : '0');
+}
 
 // ── Sidebar ───────────────────────────────────────
 function renderNav() {
   const nav = document.getElementById('sidebarNav');
   let html = '';
+
+  // ⌘K quick-jump button at the top
+  if (typeof openCommandPalette === 'function') {
+    html += '<button class="sidebar-cmdk" onclick="openCommandPalette()" title="Quick jump (⌘K)">'
+          + (typeof icon === 'function' ? icon('search', 14) : '')
+          + '<span class="sidebar-cmdk-label">Quick jump…</span>'
+          + '<kbd>⌘K</kbd>'
+          + '</button>';
+  }
+
   NAV.forEach((group, gi) => {
     if (can(group.perm) === 'none') return;
-    const isOpen = gi === 0;
+    const collapsed = _navGroupIsCollapsed(gi);
     const sid = 'navgrp_' + gi;
-    html += '<div class="nav-section' + (isOpen ? '' : ' collapsed-section') + '" onclick="toggleNavSection(this,\'' + sid + '\')">'
+    html += '<div class="nav-section' + (collapsed ? ' collapsed-section' : '') + '" onclick="toggleNavSection(this,\'' + sid + '\',' + gi + ')">'
           + '<span>' + group.section + '</span>'
-          + '<span class="chevron">&#9662;</span>'
+          + '<span class="chevron">' + _navIcon('chevron_down') + '</span>'
           + '</div>';
-    html += '<div class="nav-group-items' + (isOpen ? '' : ' collapsed-items') + '" id="' + sid + '">';
+    html += '<div class="nav-group-items' + (collapsed ? ' collapsed-items' : '') + '" id="' + sid + '">';
     for (const item of group.items) {
-      html += '<div class="nav-item" data-tooltip="' + item.label + '" onclick="navigate(\'' + item.id + '\')" id="nav_' + item.id + '">'
-            + '<div class="nav-icon">' + (ICONS[item.icon] || item.icon) + '</div>'
+      html += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
+            + '" onclick="navigate(\'' + item.id + '\')"'
+            + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'
+            + ' id="nav_' + item.id + '">'
+            + '<div class="nav-icon">' + _navIcon(item.icon) + '</div>'
             + '<span class="nav-label">' + item.label + '</span>'
             + '</div>';
     }
@@ -108,10 +111,11 @@ function renderNav() {
   nav.innerHTML = html;
 }
 
-function toggleNavSection(el, groupId) {
+function toggleNavSection(el, groupId, gi) {
   const items = document.getElementById(groupId);
   const isCollapsed = el.classList.toggle('collapsed-section');
   items.classList.toggle('collapsed-items', isCollapsed);
+  if (typeof gi === 'number') _navGroupSetCollapsed(gi, isCollapsed);
 }
 
 function toggleSidebar() {
