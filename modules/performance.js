@@ -459,8 +459,8 @@ function _perfDraw() {
             <span style="width:6px;height:6px;border-radius:50%;background:#10B981;animation:dash-pulse 2s infinite"></span>
             LIVE
           </span>
-          <button class="btn btn-ghost" onclick="renderPerformance()">Refresh</button>
-          <button class="btn btn-ghost" onclick="_perfExportCSV()">Export CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${(typeof icon==='function'?icon('refresh',14):'')} Refresh</button>
+          <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${(typeof icon==='function'?icon('file_text',14):'')} Export CSV</button>
         </div>
       </div>
 

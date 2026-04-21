@@ -845,19 +845,19 @@ function _historyPaint(vType) {
   const vRec = selected ? vehicles.find(v => v.fields['License Plate'] === selected) : null;
   const vf = vRec?.fields || {};
 
+  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:12px">
+    <div class="page-header" style="margin-bottom:var(--space-3)">
       <div><div class="page-title">${vType === 'trucks' ? 'Trucks' : 'Trailers'} History</div>
         <div class="page-sub">Service & maintenance records per vehicle</div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_svcOpenFormForVehicle('${vType}')">+ New Record</button>
-        <button class="btn btn-ghost" onclick="MAINT.history=[];_renderHistory('${vType}')">Refresh</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} New Record</button>
+        <button class="btn btn-secondary btn-sm" onclick="MAINT.history=[];_renderHistory('${vType}')">${_i('refresh')} Refresh</button>
       </div>
     </div>
 
-    <div style="margin-bottom:14px">
-      <select onchange="_historyVehicle['${vType}']=this.value;_historyPaint('${vType}')"
-        style="padding:8px 12px;font-size:13px;border-radius:8px;border:1px solid var(--border-mid);background:var(--bg);color:var(--text);min-width:300px">
+    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
+      <select class="svc-filter" style="min-width:340px" onchange="_historyVehicle['${vType}']=this.value;_historyPaint('${vType}')">
         <option value="">Select ${vTypeLabel}…</option>
         ${vehicleOpts}
       </select>

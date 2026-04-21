@@ -142,39 +142,43 @@ async function renderInvoicing() {
 
 // ─── Layout ──────────────────────────────────────
 function _renderInvLayout(c) {
+  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
   c.innerHTML = `
-    <div class="page-header" style="margin-bottom:14px">
+    <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Invoicing</div>
         <div class="page-sub" id="invSub">${INV.data.length} orders</div>
       </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_invShowOutstandingModal()">Outstanding by Client</button>
-        <button class="btn btn-ghost" onclick="_invExportPDF()">PDF για Λογιστή</button>
-        <button class="btn btn-ghost" onclick="_invBatchInvoice()" id="invBatchBtn" style="display:none">Mark Selected Invoiced</button>
-        <button class="btn btn-ghost" onclick="_invExportCSV()">Export CSV</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        <button class="btn btn-ghost btn-sm" onclick="_invShowOutstandingModal()">${_i('users')} Outstanding by Client</button>
+        <button class="btn btn-secondary btn-sm" onclick="_invExportPDF()">${_i('file_text')} PDF για Λογιστή</button>
+        <button class="btn btn-primary btn-sm" onclick="_invBatchInvoice()" id="invBatchBtn" style="display:none">${_i('check')} Mark Selected Invoiced</button>
+        <button class="btn btn-ghost btn-sm" onclick="_invExportCSV()">${_i('file_text')} Export CSV</button>
       </div>
     </div>
 
     <!-- KPI Cards -->
-    <div id="invKPI" style="display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:18px"></div>
+    <div id="invKPI" style="display:grid;grid-template-columns:repeat(5,1fr);gap:var(--space-3);margin-bottom:var(--space-5)"></div>
 
     <!-- Tabs -->
-    <div id="invTabs" style="display:flex;gap:0;margin-bottom:14px;border-bottom:2px solid #1E293B"></div>
+    <div id="invTabs" style="display:flex;gap:0;margin-bottom:var(--space-4);border-bottom:2px solid var(--border-default, #1E293B)"></div>
 
     <!-- Filters -->
-    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-      <select class="filter-select" onchange="_invSetFilter('type',this.value)">
+    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
+      <div class="entity-search-wrap">
+        ${_i('search')}
+        <input class="entity-search-input" placeholder="Search client..."
+          oninput="_invSetFilter('client',this.value)">
+      </div>
+      <select class="svc-filter" onchange="_invSetFilter('type',this.value)">
         <option value="">Type: All</option>
         <option value="intl">International</option>
         <option value="natl">National</option>
       </select>
-      <input type="number" class="filter-select" style="width:90px" placeholder="Week from"
+      <input type="number" class="svc-filter" style="width:110px" placeholder="Week from"
         onchange="_invSetFilter('weekFrom',this.value)">
-      <input type="number" class="filter-select" style="width:90px" placeholder="Week to"
+      <input type="number" class="svc-filter" style="width:110px" placeholder="Week to"
         onchange="_invSetFilter('weekTo',this.value)">
-      <input class="search-input" style="max-width:220px" placeholder="Search client..."
-        oninput="_invSetFilter('client',this.value)">
     </div>
 
     <div style="display:flex;gap:16px;align-items:flex-start">
