@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v28-sidebar-open';
+const SW_VERSION = 'tms-sw-v29-nakis-hardening';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

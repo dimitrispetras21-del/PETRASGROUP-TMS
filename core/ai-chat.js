@@ -3,6 +3,19 @@
 // ═══════════════════════════════════════════════════════════════
 'use strict';
 
+// Profile schema version — bump when profile shape changes for migrations
+const _NAKIS_PROFILE_VERSION = 2;
+
+// Tools that mutate Airtable data — require user confirmation before exec
+const _DESTRUCTIVE_TOOLS = new Set(['create_work_order', 'update_record']);
+
+// System prompt size cap (~4K tokens; rough estimate = chars / 4)
+const _MAX_PAGE_CTX_CHARS = 2000;
+const _MAX_APP_KNOWLEDGE_CHARS = 5000;
+
+// Daily token quota per user (rough cap to prevent bill blowups)
+const _DAILY_TOKEN_LIMIT = 100000;
+
 const AiChat = {
   isOpen: false,
   messages: [],
@@ -13,27 +26,65 @@ const AiChat = {
   _obsCacheTs: 0,
 };
 
-/* ── PROFILE MANAGEMENT ──────────────────────────────────── */
-function _nakisProfileKey() {
+/* ── USER-SCOPED STORAGE KEYS ─────────────────────────────── */
+function _nakisUserSlug() {
   const name = typeof user !== 'undefined' ? (user.name || 'default') : 'default';
-  return 'nakis_profile_' + name.replace(/\s+/g, '_');
+  return name.replace(/\s+/g, '_');
 }
+function _nakisProfileKey()  { return 'nakis_profile_' + _nakisUserSlug(); }
+function _nakisNotifsKey()   { return 'nakis_notifs_'  + _nakisUserSlug(); }
+function _nakisHistoryKey()  { return 'aic_history_'   + _nakisUserSlug(); }
+function _nakisTokensKey()   { return 'nakis_tokens_'  + _nakisUserSlug() + '_' + localToday(); }
+
+/* ── PROFILE MANAGEMENT (with schema versioning) ──────────── */
 function _nakisGetProfile() {
-  try { return JSON.parse(localStorage.getItem(_nakisProfileKey())); } catch { return null; }
+  try {
+    const raw = JSON.parse(localStorage.getItem(_nakisProfileKey()));
+    if (!raw) return null;
+    return _nakisMigrateProfile(raw);
+  } catch { return null; }
 }
 function _nakisSaveProfile(profile) {
   profile.interviewDate = localToday();
+  profile.profileVersion = _NAKIS_PROFILE_VERSION;
   localStorage.setItem(_nakisProfileKey(), JSON.stringify(profile));
 }
-function _nakisNotifsKey() {
-  const name = typeof user !== 'undefined' ? (user.name || 'default') : 'default';
-  return 'nakis_notifs_' + name.replace(/\s+/g, '_');
+function _nakisMigrateProfile(p) {
+  // v0/v1 → v2: ensure all expected arrays exist as arrays (not undefined)
+  if (!p.profileVersion || p.profileVersion < 2) {
+    p.focus_clients = Array.isArray(p.focus_clients) ? p.focus_clients : [];
+    p.focus_routes  = Array.isArray(p.focus_routes)  ? p.focus_routes  : [];
+    p.pain_points   = Array.isArray(p.pain_points)   ? p.pain_points   : [];
+    p.daily_must_do = Array.isArray(p.daily_must_do) ? p.daily_must_do : [];
+    p.reminders     = Array.isArray(p.reminders)     ? p.reminders     : [];
+    p.detail_level  = p.detail_level || 'brief';
+    p.profileVersion = _NAKIS_PROFILE_VERSION;
+    try { localStorage.setItem(_nakisProfileKey(), JSON.stringify(p)); } catch {}
+  }
+  return p;
 }
+
+/* ── REMINDERS ───────────────────────────────────────────── */
 function _nakisGetNotifs() {
   try { return JSON.parse(localStorage.getItem(_nakisNotifsKey())) || []; } catch { return []; }
 }
 function _nakisSaveNotifs(notifs) {
   localStorage.setItem(_nakisNotifsKey(), JSON.stringify(notifs));
+}
+
+/* ── DAILY TOKEN QUOTA ───────────────────────────────────── */
+function _nakisTokensUsed() {
+  return parseInt(localStorage.getItem(_nakisTokensKey()) || '0', 10) || 0;
+}
+function _nakisAddTokens(n) {
+  if (!n || n < 0) return;
+  localStorage.setItem(_nakisTokensKey(), String(_nakisTokensUsed() + n));
+}
+function _nakisQuotaOk() {
+  return _nakisTokensUsed() < _DAILY_TOKEN_LIMIT;
+}
+function _nakisQuotaPct() {
+  return Math.min(100, Math.round(_nakisTokensUsed() / _DAILY_TOKEN_LIMIT * 100));
 }
 
 /* ── PAGE CONTEXT COLLECTOR ──────────────────────────────── */
@@ -112,86 +163,160 @@ function _aicPageContext() {
   return lines.join('\n') || 'No page-specific data loaded yet.';
 }
 
-/* ── CSS INJECTION ──────────────────────────────────────────── */
+/* ── CSS INJECTION (uses app design tokens) ────────────────── */
 (function(){
   if (document.getElementById('ai-chat-css')) return;
   const s = document.createElement('style'); s.id = 'ai-chat-css';
   s.textContent = `
-/* floating button */
+/* Floating launcher button */
 .aic-btn { position:fixed; bottom:24px; right:24px; z-index:950;
   width:52px; height:52px; border-radius:50%; border:none;
   background:var(--accent); color:#fff; cursor:pointer;
   box-shadow:0 4px 16px rgba(2,132,199,0.35);
   display:flex; align-items:center; justify-content:center;
-  transition:all .2s ease; }
-.aic-btn:hover { background:var(--accent-hover); transform:scale(1.08); }
+  transition:all var(--duration-base, .2s) var(--ease-out, ease); }
+.aic-btn:hover { background:var(--accent-hover, #0369A1); transform:scale(1.08); }
 .aic-btn .aic-dot { position:absolute; top:2px; right:2px; width:12px; height:12px;
-  background:#DC2626; border-radius:50%; border:2px solid var(--bg-card);
+  background:var(--danger, #DC2626); border-radius:50%; border:2px solid var(--bg-card, #fff);
   display:none; }
 .aic-btn.has-alerts .aic-dot { display:block; }
 
-/* panel */
+/* Panel */
 .aic-panel { position:fixed; bottom:24px; right:24px; z-index:950;
-  width:400px; height:580px; max-height:80vh;
-  background:var(--bg-card); border-radius:16px;
-  box-shadow:0 8px 40px rgba(0,0,0,0.18);
+  width:400px; height:600px; max-height:80vh;
+  background:#0F1C2F; border-radius:var(--radius-lg, 12px);
+  box-shadow:0 12px 48px rgba(15,23,42,0.4);
   display:flex; flex-direction:column; overflow:hidden;
   transform:scale(0.92) translateY(16px); opacity:0;
-  pointer-events:none; transition:all .2s ease; }
+  pointer-events:none; transition:all var(--duration-base, .2s) var(--ease-out, ease);
+  border:1px solid rgba(255,255,255,0.06); }
 .aic-panel.open { transform:scale(1) translateY(0); opacity:1; pointer-events:auto; }
 
-/* header */
-.aic-head { height:48px; background:#0B1929; color:#fff;
-  display:flex; align-items:center; padding:0 16px; flex-shrink:0; }
-.aic-head-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:600; flex:1; }
+/* Header */
+.aic-head { height:52px; background:#0B1929; color:#fff;
+  display:flex; align-items:center; padding:0 var(--space-4, 16px);
+  flex-shrink:0; border-bottom:1px solid rgba(255,255,255,0.06); }
+.aic-head-title { font-family:'Syne',sans-serif; font-size:15px; font-weight:700;
+  flex:1; letter-spacing:0.3px; display:inline-flex; align-items:center; gap:8px; }
+.aic-head-title .aic-head-status { width:7px; height:7px; border-radius:50%;
+  background:#34D399; box-shadow:0 0 0 3px rgba(16,185,129,0.15); }
+.aic-quota-badge { font-size:9px; font-weight:600; color:#94A3B8;
+  font-family:'DM Sans',monospace; padding:2px 8px;
+  background:rgba(255,255,255,0.05); border-radius:10px; margin-right:8px; }
+.aic-quota-badge.warn { color:#F59E0B; background:rgba(245,158,11,0.12); }
+.aic-quota-badge.full { color:#F87171; background:rgba(220,38,38,0.15); }
 .aic-head-close { background:none; border:none; color:#94A3B8; cursor:pointer;
-  font-size:18px; padding:4px 8px; border-radius:6px; }
+  padding:6px; border-radius:6px; display:flex; align-items:center;
+  transition:all var(--duration-fast, .12s) ease; }
 .aic-head-close:hover { color:#fff; background:rgba(255,255,255,0.1); }
 
-/* observer suggestions */
-.aic-obs { max-height:160px; overflow-y:auto; border-bottom:1px solid var(--border);
-  background:linear-gradient(180deg,rgba(2,132,199,0.04),transparent); padding:8px 12px; }
-.aic-obs:empty { display:none; padding:0; border:none; }
-.aic-obs-card { display:flex; align-items:flex-start; gap:8px; padding:6px 8px;
-  background:var(--bg); border-radius:8px; margin-bottom:4px; font-size:11px;
-  line-height:1.4; border-left:3px solid var(--accent); }
-.aic-obs-card.sev-critical { border-left-color:#DC2626; }
-.aic-obs-card.sev-warning { border-left-color:#D97706; }
-.aic-obs-card.sev-info { border-left-color:var(--accent); }
-.aic-obs-card .aic-obs-text { flex:1; color:var(--text); }
-.aic-obs-card .aic-obs-title { font-weight:700; font-size:11px; }
-.aic-obs-card .aic-obs-detail { color:var(--text-mid); font-size:10px; margin-top:1px; }
-.aic-obs-dismiss { background:none; border:none; color:var(--text-dim); cursor:pointer;
-  font-size:14px; padding:0 4px; flex-shrink:0; }
+/* Quick action buttons */
+.aic-quick { display:flex; gap:6px; padding:8px var(--space-3, 12px); flex-wrap:wrap;
+  border-bottom:1px solid rgba(255,255,255,0.06); }
+.aic-qbtn { padding:5px 11px; border-radius:14px; border:1px solid rgba(255,255,255,0.10);
+  background:rgba(255,255,255,0.04); color:#94A3B8; font-size:11px; font-weight:600;
+  cursor:pointer; transition:all var(--duration-fast, .15s) ease; white-space:nowrap; }
+.aic-qbtn:hover { background:rgba(56,189,248,0.12); color:#38BDF8; border-color:rgba(56,189,248,0.3); }
 
-/* messages */
-.aic-msgs { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
-.aic-msg { max-width:85%; padding:10px 14px; border-radius:12px; font-size:13px;
-  line-height:1.5; word-wrap:break-word; white-space:pre-wrap; }
-.aic-msg.user { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
-.aic-msg.asst { align-self:flex-start; background:var(--bg); color:var(--text); border-bottom-left-radius:4px; }
-.aic-msg.asst .tool-badge { display:inline-block; background:rgba(2,132,199,0.1); color:var(--accent);
-  font-size:10px; font-weight:600; padding:2px 6px; border-radius:4px; margin-bottom:4px; }
-.aic-msg.typing { background:var(--bg); color:var(--text-dim); font-style:italic; align-self:flex-start; }
+/* Messages */
+.aic-msgs { flex:1; overflow-y:auto; padding:var(--space-3, 12px); display:flex;
+  flex-direction:column; gap:8px;
+  scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent; }
+.aic-msgs::-webkit-scrollbar { width:6px; }
+.aic-msgs::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:3px; }
+.aic-msg { max-width:88%; padding:9px 13px; border-radius:12px; font-size:13px;
+  line-height:1.5; word-wrap:break-word; white-space:pre-wrap;
+  animation:aic-msg-in 0.18s var(--ease-out, ease); }
+@keyframes aic-msg-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
+.aic-msg.user { align-self:flex-end; background:var(--accent, #0284C7); color:#fff; border-bottom-right-radius:4px; }
+.aic-msg.asst { align-self:flex-start; background:rgba(255,255,255,0.04); color:#E2E8F0;
+  border-bottom-left-radius:4px; border:1px solid rgba(255,255,255,0.04); }
+.aic-msg.asst .tool-badge { display:inline-flex; align-items:center; gap:5px;
+  background:rgba(56,189,248,0.12); color:#38BDF8;
+  font-size:11px; font-weight:600; padding:3px 9px; border-radius:6px;
+  font-family:inherit; }
+.aic-msg.typing { background:rgba(255,255,255,0.04); color:#94A3B8;
+  font-style:italic; align-self:flex-start; }
 
-/* input */
-.aic-input-bar { display:flex; align-items:center; border-top:1px solid var(--border);
-  padding:8px 12px; gap:8px; flex-shrink:0; }
-.aic-input { flex:1; border:1px solid var(--border-mid); border-radius:10px;
+/* Input bar */
+.aic-input-bar { display:flex; align-items:center;
+  border-top:1px solid rgba(255,255,255,0.06);
+  padding:10px var(--space-3, 12px); gap:8px; flex-shrink:0;
+  background:rgba(0,0,0,0.15); }
+.aic-input { flex:1; border:1px solid rgba(255,255,255,0.10); border-radius:10px;
   padding:10px 14px; font-size:13px; font-family:'DM Sans',sans-serif;
-  outline:none; background:var(--bg); color:var(--text); resize:none;
-  max-height:80px; overflow-y:auto; }
-.aic-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.12); }
+  outline:none; background:rgba(255,255,255,0.04); color:#E2E8F0; resize:none;
+  max-height:80px; overflow-y:auto;
+  transition:border-color var(--duration-fast, .15s) ease, box-shadow var(--duration-fast, .15s) ease; }
+.aic-input::placeholder { color:#64748B; }
+.aic-input:focus { border-color:#38BDF8; box-shadow:0 0 0 3px rgba(56,189,248,0.15); }
 .aic-send { width:36px; height:36px; border-radius:50%; border:none;
-  background:var(--accent); color:#fff; cursor:pointer;
+  background:var(--accent, #0284C7); color:#fff; cursor:pointer;
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
-  transition:all .15s; }
-.aic-send:hover { background:var(--accent-hover); }
-.aic-send:disabled { opacity:0.4; cursor:not-allowed; }
-.aic-qbtn { padding:4px 10px; border-radius:12px; border:1px solid rgba(255,255,255,0.12);
-  background:rgba(255,255,255,0.04); color:#94A3B8; font-size:10px; font-weight:500;
-  cursor:pointer; transition:all .15s; white-space:nowrap; }
-.aic-qbtn:hover { background:rgba(56,189,248,0.1); color:#38BDF8; border-color:rgba(56,189,248,0.3); }
+  transition:all var(--duration-fast, .15s) ease; }
+.aic-send:hover { background:var(--accent-hover, #0369A1); transform:scale(1.05); }
+.aic-send:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+
+/* Confirmation modal for destructive tools */
+.aic-confirm-overlay {
+  position:fixed; inset:0; z-index:1000;
+  background:rgba(0,0,0,0.55);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+  animation:aic-overlay-in 0.15s var(--ease-out, ease);
+}
+@keyframes aic-overlay-in { from { opacity:0; } to { opacity:1; } }
+.aic-confirm-card {
+  background:#0F1C2F; color:#E2E8F0;
+  border:1px solid rgba(255,255,255,0.08);
+  border-radius:var(--radius-lg, 12px);
+  width:100%; max-width:440px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.5);
+  overflow:hidden;
+  animation:aic-card-in 0.2s var(--ease-out, ease);
+}
+@keyframes aic-card-in { from { opacity:0; transform:translateY(8px) scale(0.98); } to { opacity:1; transform:translateY(0) scale(1); } }
+.aic-confirm-head {
+  display:flex; align-items:center; gap:10px;
+  padding:16px var(--space-4, 16px);
+  border-bottom:1px solid rgba(255,255,255,0.06);
+}
+.aic-confirm-icon { color:#F59E0B; display:inline-flex; }
+.aic-confirm-title { font-family:'Syne',sans-serif; font-size:14px;
+  font-weight:700; letter-spacing:0.3px; }
+.aic-confirm-body {
+  padding:var(--space-4, 16px);
+  font-size:12px; line-height:1.6;
+  display:flex; flex-direction:column; gap:5px;
+}
+.aic-confirm-body strong { color:#94A3B8; font-weight:600; min-width:90px; display:inline-block; }
+.aic-confirm-foot {
+  display:flex; gap:10px; justify-content:flex-end;
+  padding:12px var(--space-4, 16px);
+  border-top:1px solid rgba(255,255,255,0.06);
+  background:rgba(0,0,0,0.15);
+}
+.aic-confirm-foot button {
+  padding:7px 16px; border-radius:6px;
+  font-size:12px; font-weight:700; cursor:pointer;
+  transition:all var(--duration-fast, .12s) ease;
+  font-family:inherit;
+  letter-spacing:0.2px;
+}
+.aic-confirm-cancel {
+  background:rgba(255,255,255,0.04); color:#94A3B8;
+  border:1px solid rgba(255,255,255,0.08);
+}
+.aic-confirm-cancel:hover { background:rgba(255,255,255,0.08); color:#E2E8F0; }
+.aic-confirm-ok {
+  background:#38BDF8; color:#0B1929;
+  border:1px solid #38BDF8;
+}
+.aic-confirm-ok:hover { background:#7DD3FC; }
+
+@media (prefers-reduced-motion: reduce) {
+  .aic-msg, .aic-confirm-overlay, .aic-confirm-card { animation:none; }
+}
 `;
   document.head.appendChild(s);
 })();
@@ -304,7 +429,61 @@ const _TABLE_MAP = {
   trailers: 'TRAILERS', maintenance_requests: 'MAINT_REQ'
 };
 
+/* ── DESTRUCTIVE-ACTION CONFIRMATION MODAL ───────────────── */
+function _aicConfirmDestructive(toolName, input) {
+  return new Promise(resolve => {
+    // Build human-readable preview of what will happen
+    let title = '', preview = '';
+    if (toolName === 'create_work_order') {
+      title = 'Δημιουργία Work Order;';
+      preview = `<div><strong>Όχημα:</strong> ${_aicEscape(input.vehicle_plate || '?')}</div>`
+              + `<div><strong>Priority:</strong> <span style="padding:2px 8px;border-radius:4px;background:rgba(245,158,11,.15);color:#F59E0B">${_aicEscape(input.priority || '?')}</span></div>`
+              + `<div><strong>Description:</strong> ${_aicEscape(input.description || '')}</div>`
+              + (input.notes ? `<div><strong>Notes:</strong> ${_aicEscape(input.notes)}</div>` : '');
+    } else if (toolName === 'update_record') {
+      title = 'Ενημέρωση record;';
+      preview = `<div><strong>Table:</strong> ${_aicEscape(input.table || '?')}</div>`
+              + `<div><strong>Record:</strong> <code style="font-family:'DM Sans',monospace;font-size:11px;background:rgba(0,0,0,.2);padding:1px 5px;border-radius:3px">${_aicEscape(input.record_id || '?')}</code></div>`
+              + `<div style="margin-top:8px"><strong>Fields:</strong></div>`
+              + `<pre style="margin:4px 0 0;padding:8px;background:rgba(0,0,0,.2);border-radius:4px;font-size:11px;max-height:120px;overflow:auto">${_aicEscape(JSON.stringify(input.fields || {}, null, 2))}</pre>`;
+    } else {
+      title = 'Επιβεβαίωση ενέργειας;';
+      preview = `<pre style="margin:0;padding:8px;background:rgba(0,0,0,.2);border-radius:4px;font-size:11px;max-height:160px;overflow:auto">${_aicEscape(JSON.stringify(input, null, 2))}</pre>`;
+    }
+
+    // Inject overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'aic-confirm-overlay';
+    overlay.innerHTML = `
+      <div class="aic-confirm-card">
+        <div class="aic-confirm-head">
+          <span class="aic-confirm-icon">${typeof icon === 'function' ? icon('alert_triangle', 18) : '⚠'}</span>
+          <span class="aic-confirm-title">${title}</span>
+        </div>
+        <div class="aic-confirm-body">${preview}</div>
+        <div class="aic-confirm-foot">
+          <button class="aic-confirm-cancel">Ακύρωση</button>
+          <button class="aic-confirm-ok">Επιβεβαίωση</button>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const cleanup = (result) => { overlay.remove(); resolve(result); };
+    overlay.querySelector('.aic-confirm-cancel').onclick = () => cleanup(false);
+    overlay.querySelector('.aic-confirm-ok').onclick = () => cleanup(true);
+    overlay.onclick = (e) => { if (e.target === overlay) cleanup(false); };
+    // Esc to cancel
+    const escHandler = (e) => { if (e.key === 'Escape') { cleanup(false); document.removeEventListener('keydown', escHandler); } };
+    document.addEventListener('keydown', escHandler);
+  });
+}
+
 async function _aicExecTool(name, input) {
+  // Destructive-action gate: ask user before mutating data
+  if (_DESTRUCTIVE_TOOLS.has(name)) {
+    const ok = await _aicConfirmDestructive(name, input);
+    if (!ok) return { error: 'Cancelled by user — no changes made.', cancelled: true };
+  }
   try {
     switch(name) {
       case 'read_orders': {
@@ -502,16 +681,28 @@ const _PAGE_HELP_NAMES = {
   daily_ops: 'Daily Ops Plan',
   orders_intl: 'International Orders',
   orders_natl: 'National Orders',
+  invoicing: 'Invoicing',
   locations: 'Locations',
   clients: 'Clients',
   partners: 'Partners',
+  pallet_ledger: 'Pallet Ledger',
   trucks: 'Trucks',
   trailers: 'Trailers',
+  workshops: 'Workshops',
   drivers: 'Drivers',
-  maint_dashboard: 'Maintenance Dashboard',
+  payroll: 'Driver Payroll',
+  maint_dash: 'Maintenance Dashboard',     // FIX: was 'maint_dashboard'
   maint_expiry: 'Expiry Alerts',
   maint_req: 'Maintenance Requests',
-  my_performance: 'My Performance',
+  maint_svc: 'Service Records',
+  maint_trucks: 'Trucks History',
+  maint_trailers: 'Trailers History',
+  ceo_dashboard: 'CEO Dashboard',
+  performance: 'My Performance',           // FIX: was 'my_performance'
+  settings: 'Settings',
+  trash: 'Trash',
+  error_log: 'Error Log',
+  metrics_audit: 'Metrics Audit',
 };
 
 /* ── SYSTEM PROMPT ─────────────────────────────────────────── */
@@ -540,6 +731,16 @@ function _aicSystemPrompt() {
   `USER PROFILE:
 ${JSON.stringify(profile, null, 1)}`;
 
+  // Budget caps to prevent prompt bloat over time
+  const trimmedAppKnowledge = APP_KNOWLEDGE.length > _MAX_APP_KNOWLEDGE_CHARS
+    ? APP_KNOWLEDGE.slice(0, _MAX_APP_KNOWLEDGE_CHARS) + '\n…(truncated for brevity)'
+    : APP_KNOWLEDGE;
+  const trimmedPageCtx = pageCtx.length > _MAX_PAGE_CTX_CHARS
+    ? pageCtx.slice(0, _MAX_PAGE_CTX_CHARS) + '\n…(truncated)'
+    : pageCtx;
+  // Cap notifications: max 5 entries
+  const cappedNotifs = (notifs || []).slice(0, 5);
+
   return `Είσαι ο Νάκης, ο ψηφιακός βοηθός της Petras Group — εταιρεία ψυγειομεταφορών (Ελλάδα ↔ Κεντρική/Ανατολική Ευρώπη).
 Μιλάς Ελληνικά. Είσαι σύντομος, πρακτικός, φιλικός αλλά χωρίς φλυαρίες.
 
@@ -551,12 +752,12 @@ ${interviewBlock}
 - Ημερομηνία: ${localToday()}, Εβδομάδα: W${week}
 
 APP TRAINING GUIDE:
-${APP_KNOWLEDGE}
+${trimmedAppKnowledge}
 
 ΔΕΔΟΜΕΝΑ ΣΕΛΙΔΑΣ:
-${pageCtx}
+${trimmedPageCtx}
 
-${notifs.length ? `ΕΚΚΡΕΜΕΙΣ ΥΠΕΝΘΥΜΙΣΕΙΣ:\n${notifs.map(n => '- ' + n.text + (n.due_date ? ' (λήξη: ' + n.due_date + ')' : '')).join('\n')}` : ''}
+${cappedNotifs.length ? `ΕΚΚΡΕΜΕΙΣ ΥΠΕΝΘΥΜΙΣΕΙΣ:\n${cappedNotifs.map(n => '- ' + n.text + (n.due_date ? ' (λήξη: ' + n.due_date + ')' : '')).join('\n')}${notifs.length > 5 ? `\n(+${notifs.length - 5} more)` : ''}` : ''}
 
 ΚΑΝΟΝΕΣ ΣΥΜΠΕΡΙΦΟΡΑΣ:
 ${profile ? `- Ξεκίνα ΠΑΝΤΑ με 1-2 ΣΥΓΚΕΚΡΙΜΕΝΕΣ παρατηρήσεις βάσει δεδομένων σελίδας
@@ -581,7 +782,7 @@ function _aicAllowedTools() {
   return AIC_TOOLS.filter(t => profile.tools.includes(t.name));
 }
 
-/* ── CLAUDE API CALL ───────────────────────────────────────── */
+/* ── CLAUDE API CALL (non-streaming, used inside tool loops) ── */
 async function _aicCallClaude(messages) {
   AiChat.abortCtrl = new AbortController();
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -605,7 +806,98 @@ async function _aicCallClaude(messages) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `API error ${res.status}`);
   }
-  return res.json();
+  const json = await res.json();
+  // Track token usage for daily quota
+  if (json.usage) {
+    _nakisAddTokens((json.usage.input_tokens || 0) + (json.usage.output_tokens || 0));
+  }
+  return json;
+}
+
+/* ── CLAUDE API STREAMING (used for the final user-visible response) ── */
+async function _aicCallClaudeStream(messages, onTextDelta) {
+  AiChat.abortCtrl = new AbortController();
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    signal: AiChat.abortCtrl.signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTH_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: _aicSystemPrompt(),
+      tools: _aicAllowedTools(),
+      messages: messages,
+      stream: true
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  const toolUses = [];
+  let currentToolJson = '';
+  let currentToolBlock = null;
+  let stopReason = null;
+  const usage = { input_tokens: 0, output_tokens: 0 };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (!data || data === '[DONE]') continue;
+      let evt;
+      try { evt = JSON.parse(data); } catch { continue; }
+      if (evt.type === 'message_start' && evt.message?.usage) {
+        usage.input_tokens = evt.message.usage.input_tokens || 0;
+      } else if (evt.type === 'content_block_start' && evt.content_block?.type === 'tool_use') {
+        currentToolBlock = { type: 'tool_use', id: evt.content_block.id, name: evt.content_block.name, input: {} };
+        currentToolJson = '';
+      } else if (evt.type === 'content_block_delta') {
+        if (evt.delta?.type === 'text_delta') {
+          fullText += evt.delta.text;
+          if (onTextDelta) onTextDelta(fullText);
+        } else if (evt.delta?.type === 'input_json_delta' && currentToolBlock) {
+          currentToolJson += evt.delta.partial_json || '';
+        }
+      } else if (evt.type === 'content_block_stop') {
+        if (currentToolBlock) {
+          try { currentToolBlock.input = JSON.parse(currentToolJson || '{}'); }
+          catch { currentToolBlock.input = {}; }
+          toolUses.push(currentToolBlock);
+          currentToolBlock = null;
+          currentToolJson = '';
+        }
+      } else if (evt.type === 'message_delta') {
+        if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason;
+        if (evt.usage?.output_tokens) usage.output_tokens = evt.usage.output_tokens;
+      }
+    }
+  }
+
+  // Build pseudo-response shape compatible with non-streaming flow
+  const content = [];
+  if (fullText) content.push({ type: 'text', text: fullText });
+  toolUses.forEach(tu => content.push(tu));
+
+  // Track token usage for daily quota
+  _nakisAddTokens((usage.input_tokens || 0) + (usage.output_tokens || 0));
+
+  return { content, stop_reason: stopReason || (toolUses.length ? 'tool_use' : 'end_turn'), usage };
 }
 
 /* ── SEND MESSAGE ──────────────────────────────────────────── */
@@ -626,39 +918,57 @@ async function _aicSend() {
     return;
   }
 
+  // Daily quota check
+  if (!_nakisQuotaOk()) {
+    AiChat.messages.push({ role: 'user', content: text });
+    AiChat.messages.push({
+      role: 'assistant',
+      content: `⚠ Έφτασες το ημερήσιο όριο tokens (${_DAILY_TOKEN_LIMIT.toLocaleString()}). Δοκίμασε ξανά αύριο.`
+    });
+    _aicRenderMsgs();
+    _aicSaveHistory();
+    return;
+  }
+
   // Add user message
   AiChat.messages.push({ role: 'user', content: text });
   _aicRenderMsgs();
   _aicSetLoading(true);
 
   try {
-    // Build API messages from history
-    let apiMsgs = AiChat.messages.map(m => ({
-      role: m.role,
-      content: typeof m.content === 'string' ? m.content : m.content
-    }));
+    // Build API messages from history (string-only for safety)
+    let apiMsgs = AiChat.messages
+      .filter(m => typeof m.content === 'string')
+      .map(m => ({ role: m.role, content: m.content }));
 
-    let response = await _aicCallClaude(apiMsgs);
     let maxLoops = 5;
+    while (maxLoops-- > 0) {
+      // Allocate a placeholder assistant message that the stream fills incrementally
+      const idx = AiChat.messages.length;
+      AiChat.messages.push({ role: 'assistant', content: '' });
+      _aicRenderMsgs();
 
-    // Tool use loop
-    while (response.stop_reason === 'tool_use' && maxLoops-- > 0) {
-      const toolBlocks = response.content.filter(b => b.type === 'tool_use');
-      const textBlocks = response.content.filter(b => b.type === 'text');
+      // STREAM this round-trip (text deltas appear progressively)
+      const response = await _aicCallClaudeStream(apiMsgs, (partialText) => {
+        AiChat.messages[idx].content = partialText;
+        _aicRenderMsgs();
+      });
 
-      // Show any text before tool calls
-      if (textBlocks.length) {
-        const txt = textBlocks.map(b => b.text).join('');
-        if (txt.trim()) {
-          AiChat.messages.push({ role: 'assistant', content: txt });
-          _aicRenderMsgs();
-        }
+      const streamedText = response.content.find(b => b.type === 'text')?.text || '';
+      if (streamedText) {
+        AiChat.messages[idx].content = streamedText;
+      } else {
+        // No text in this turn (pure tool_use) — drop the empty placeholder
+        AiChat.messages.splice(idx, 1);
       }
 
-      // Execute tools and collect results
+      // Done if model didn't call more tools
+      if (response.stop_reason !== 'tool_use') break;
+
+      // Execute tool calls and feed results back into next loop iteration
+      const toolBlocks = response.content.filter(b => b.type === 'tool_use');
       const toolResults = [];
       for (const tb of toolBlocks) {
-        // Show tool badge
         _aicShowToolBadge(tb.name);
         const result = await _aicExecTool(tb.name, tb.input);
         toolResults.push({
@@ -668,21 +978,10 @@ async function _aicSend() {
         });
       }
 
-      // Add assistant response + tool results to messages
+      // Append assistant-with-tools turn + user tool_result turn for next API call
       apiMsgs.push({ role: 'assistant', content: response.content });
       apiMsgs.push({ role: 'user', content: toolResults });
-
-      // Get next response
-      response = await _aicCallClaude(apiMsgs);
     }
-
-    // Final text response
-    const finalText = response.content
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('');
-
-    AiChat.messages.push({ role: 'assistant', content: finalText || '(no response)' });
   } catch(e) {
     if (e.name === 'AbortError') return;
     AiChat.messages.push({ role: 'assistant', content: '⚠ Error: ' + e.message });
@@ -694,12 +993,32 @@ async function _aicSend() {
 }
 
 function _aicShowToolBadge(toolName) {
-  const labels = { read_orders: 'Reading orders…', read_fleet: 'Reading fleet…', create_work_order: 'Creating work order…', update_record: 'Updating record…', navigate_to: 'Navigating…' };
+  const labels = {
+    read_orders: 'Reading orders',
+    read_fleet: 'Reading fleet',
+    create_work_order: 'Creating work order',
+    update_record: 'Updating record',
+    navigate_to: 'Navigating',
+    save_profile: 'Saving profile',
+    set_reminder: 'Setting reminder',
+    read_page_context: 'Reading page context',
+  };
+  const iconMap = {
+    read_orders: 'file_text',
+    read_fleet: 'truck',
+    create_work_order: 'plus',
+    update_record: 'edit',
+    navigate_to: 'arrow_up_right',
+    save_profile: 'user_check',
+    set_reminder: 'bell',
+    read_page_context: 'info',
+  };
   const msgs = document.getElementById('aic-msgs');
   if (!msgs) return;
   const div = document.createElement('div');
   div.className = 'aic-msg asst';
-  div.innerHTML = `<span class="tool-badge">🔧 ${labels[toolName] || toolName}</span>`;
+  const ic = (typeof icon === 'function') ? icon(iconMap[toolName] || 'tool', 11) : '';
+  div.innerHTML = `<span class="tool-badge">${ic} ${labels[toolName] || toolName}…</span>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -849,9 +1168,9 @@ async function _aicRunObserver() {
 
 /* ── UI RENDER ─────────────────────────────────────────────── */
 function _aicInit() {
-  // Restore history
+  // Restore history (per-user key)
   try {
-    const saved = sessionStorage.getItem('aic_history');
+    const saved = sessionStorage.getItem(_nakisHistoryKey());
     if (saved) AiChat.messages = JSON.parse(saved).slice(-20);
   } catch(e) { logError(e, 'ai-chat restore history'); }
 
@@ -867,12 +1186,14 @@ function _aicInit() {
   const panel = document.createElement('div');
   panel.className = 'aic-panel';
   panel.id = 'aic-panel';
+  const closeIcon = (typeof icon === 'function') ? icon('x', 16) : '✕';
   panel.innerHTML = `
     <div class="aic-head">
-      <span class="aic-head-title">Νάκης</span>
-      <button class="aic-head-close" onclick="_aicToggle()">✕</button>
+      <span class="aic-head-title"><span class="aic-head-status" title="Online"></span>Νάκης</span>
+      <span class="aic-quota-badge" id="aic-quota-badge" title="Daily token usage"></span>
+      <button class="aic-head-close" onclick="_aicToggle()" aria-label="Close">${closeIcon}</button>
     </div>
-    <div class="aic-quick" id="aic-quick" style="display:flex;gap:6px;padding:8px 12px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.06)">
+    <div class="aic-quick" id="aic-quick">
       <button class="aic-qbtn" onclick="_aicQuick('Morning briefing')">Briefing</button>
       <button class="aic-qbtn" onclick="_aicQuick('Τι πρεπει να κανω σημερα?')">Today</button>
       <button class="aic-qbtn" onclick="_aicQuick('Ποια orders ειναι unassigned?')">Unassigned</button>
@@ -882,7 +1203,7 @@ function _aicInit() {
     <div class="aic-msgs" id="aic-msgs"></div>
     <div class="aic-input-bar">
       <textarea class="aic-input" id="aic-input" rows="1" placeholder="Ask anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aicSend()}"></textarea>
-      <button class="aic-send" id="aic-send-btn" onclick="_aicSend()">
+      <button class="aic-send" id="aic-send-btn" onclick="_aicSend()" aria-label="Send">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
       </button>
     </div>`;
@@ -990,6 +1311,26 @@ function _aicSetLoading(v) {
   const btn = document.getElementById('aic-send-btn');
   if (btn) btn.disabled = v;
   _aicRenderMsgs();
+  _aicUpdateQuotaBadge();
+}
+
+function _aicUpdateQuotaBadge() {
+  const badge = document.getElementById('aic-quota-badge');
+  if (!badge) return;
+  const pct = _nakisQuotaPct();
+  const used = _nakisTokensUsed();
+  if (used === 0) {
+    badge.textContent = '';
+    badge.style.display = 'none';
+    return;
+  }
+  badge.style.display = '';
+  // Format: "12.4K / 100K"
+  const usedFmt = used >= 1000 ? (used / 1000).toFixed(1) + 'K' : String(used);
+  const limFmt  = (_DAILY_TOKEN_LIMIT / 1000) + 'K';
+  badge.textContent = `${usedFmt}/${limFmt}`;
+  badge.title = `${pct}% of daily token quota used today`;
+  badge.className = 'aic-quota-badge' + (pct >= 100 ? ' full' : pct >= 80 ? ' warn' : '');
 }
 
 function _aicUpdateDot() {
@@ -1005,7 +1346,7 @@ function _aicUpdateDot() {
 function _aicSaveHistory() {
   try {
     const toSave = AiChat.messages.slice(-20).filter(m => typeof m.content === 'string');
-    sessionStorage.setItem('aic_history', JSON.stringify(toSave));
+    sessionStorage.setItem(_nakisHistoryKey(), JSON.stringify(toSave));
   } catch(e) { logError(e, 'ai-chat save history'); }
 }
 
