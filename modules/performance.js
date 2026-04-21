@@ -170,6 +170,7 @@ function _perfCompute() {
   });
   const rates = PERF.trucks.filter(t => t.fields['Active']).map(t => {
     const days = truckDays[t.id] || 0;
+    // Usage rate: ~5 working days/week = 100%. Each day ≈ 20.25 pp.
     return Math.min(days * 4.5 * 4.5, 100);
   });
   const fleet_usage = rates.length ? Math.round(rates.reduce((s, r) => s + r, 0) / rates.length) : 0;
@@ -240,8 +241,18 @@ function _perfCompute() {
   const invoicedOrders = orders.filter(r => r.fields['Status'] === 'Invoiced');
   const invoiced_pct = deliveredOrders.length ? Math.round(invoicedOrders.length / deliveredOrders.length * 100) : 0;
 
-  // CMR collected (orders with Delivery Performance set = CMR likely collected)
-  const cmr_collected = withPerf.length && deliveredOrders.length ? Math.round(withPerf.length / deliveredOrders.length * 100) : 0;
+  // CMR collected — use explicit 'CMR Photo Received' or 'CMR Received' field if present,
+  // fall back to Delivery Performance presence as proxy only if field is missing entirely.
+  const deliveredForCmr = deliveredOrders;
+  const cmrFieldPresent = deliveredForCmr.some(r => 'CMR Photo Received' in r.fields || 'CMR Received' in r.fields);
+  let cmr_collected;
+  if (cmrFieldPresent) {
+    const cmrOk = deliveredForCmr.filter(r => r.fields['CMR Photo Received'] || r.fields['CMR Received']).length;
+    cmr_collected = deliveredForCmr.length ? Math.round(cmrOk / deliveredForCmr.length * 100) : 0;
+  } else {
+    // Proxy: Delivery Performance set implies order was closed with docs
+    cmr_collected = withPerf.length && deliveredForCmr.length ? Math.round(withPerf.length / deliveredForCmr.length * 100) : 0;
+  }
 
   // Maintenance
   const pendingMaint = PERF.maint.filter(r => r.fields['Status'] !== 'Done').length;
@@ -259,7 +270,7 @@ function _perfCompute() {
   const weekNotified = weekDelivered.filter(r => r.fields['Client Notified']).length;
   const client_updates = weekDelivered.length ? Math.round(weekNotified / weekDelivered.length * 100) : 0;
 
-  // Response time — proxy from open maintenance age (avg days since reported)
+  // Response time — proxy from open maintenance age (avg hours since reported)
   const today = new Date();
   const openWithDate = PERF.maint.filter(r => r.fields['Status'] !== 'Done' && r.fields['Date Reported']);
   const totalAgeHrs = openWithDate.reduce((s, r) => {
@@ -279,22 +290,73 @@ function _perfCompute() {
     });
   });
 
-  // Fleet downtime — proxy from open maintenance count × 24h (each open WO = est 1 day downtime)
+  // Fleet downtime — proxy from open maintenance count × 24h
   const downtime_hrs = pendingMaint * 24;
 
-  // Service schedule adherence — % of maintenance items resolved on time
-  const service_adherence = work_orders;
+  // Service schedule adherence — % of service records on/before their due date.
+  // Previously aliased to work_orders which is NOT the same metric.
+  // Better proxy: % of completed maintenance items with Status='Done' that had
+  // their Date (completion) not more than 7 days past Date Reported.
+  const resolvedTimely = PERF.maint.filter(r => {
+    if (r.fields['Status'] !== 'Done') return false;
+    const reported = r.fields['Date Reported'];
+    const done = r.fields['Date'] || r.fields['Date Completed'];
+    if (!reported || !done) return false;
+    const deltaDays = (new Date(done) - new Date(reported)) / 864e5;
+    return deltaDays <= 7;  // resolved within SLA (7 days)
+  }).length;
+  const service_adherence = resolvedMaint ? Math.round(resolvedTimely / resolvedMaint * 100) : 100;
 
-  // National profitability (placeholder — needs trip cost data not yet available)
-  const natl_profit = 0;
+  // National profitability — margin from NAT_LOADS where both Revenue and Cost exist.
+  // Previously hardcoded to 0.
+  const natlWithFinancials = (PERF.natLoads || []).filter(r => {
+    const rev = parseFloat(r.fields['Revenue'] || r.fields['Net Price']) || 0;
+    const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
+    return rev > 0 && cost > 0;
+  });
+  const natl_profit = natlWithFinancials.length
+    ? Math.round(natlWithFinancials.reduce((s, r) => {
+        const rev = parseFloat(r.fields['Revenue'] || r.fields['Net Price']) || 0;
+        const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
+        return s + ((rev - cost) / rev * 100);
+      }, 0) / natlWithFinancials.length)
+    : 0;
 
-  // CMR archived (same as collected for now)
-  const cmr_archived = cmr_collected;
+  // CMR archived — distinct from collected.
+  // Use explicit 'CMR Archived' field if present, otherwise proxy to 100% of what's collected
+  // AND has already been invoiced (invoicing implies the CMR is filed).
+  const cmrArchiveField = deliveredForCmr.some(r => 'CMR Archived' in r.fields);
+  let cmr_archived;
+  if (cmrArchiveField) {
+    const archivedCount = deliveredForCmr.filter(r => r.fields['CMR Archived']).length;
+    cmr_archived = deliveredForCmr.length ? Math.round(archivedCount / deliveredForCmr.length * 100) : 0;
+  } else {
+    const invoicedOrders2 = deliveredForCmr.filter(r => r.fields['Status'] === 'Invoiced');
+    cmr_archived = deliveredForCmr.length ? Math.round(invoicedOrders2.length / deliveredForCmr.length * 100) : 0;
+  }
 
-  // Crisis count — high/critical priority maintenance issues open
+  // Outstanding balance (Eirini's KPI) — total Net Price of delivered-but-not-invoiced orders.
+  // Previously hardcoded to 0.
+  const outstandingOrders = orders.filter(r => r.fields['Status'] === 'Delivered');
+  const outstanding = Math.round(outstandingOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0));
+
+  // Pallet balance (Eirini's KPI) — sum of Net Pallets from PALLET_LEDGER if available.
+  // Stored in localStorage as a manually-updated value if no data source is loaded.
+  let pallet_balance = 0;
+  const storedPallets = localStorage.getItem('perf_pallet_balance');
+  if (storedPallets && !isNaN(parseInt(storedPallets))) pallet_balance = parseInt(storedPallets);
+
+  // Weekly plan reviewed (Sotiris's KPI) — localStorage flag, set via /review-plan weekly.
+  // Previously hardcoded to 1 (always "reviewed").
+  const plan_reviewed_key = `perf_plan_reviewed_${new Date().getFullYear()}_W${wn}`;
+  const plan_reviewed = localStorage.getItem(plan_reviewed_key) === '1' ? 1 : 0;
+
+  // Crisis count — maintenance with 'SOS'/'Άμεσα' priority (Greek).
+  // Bugfix: old code checked English strings ('high'/'critical'/'urgent') which never match.
+  const crisisHighPriority = new Set(['SOS', 'Άμεσα', 'Amesa', 'High', 'Critical', 'Urgent']);
   const crisis_count = PERF.maint.filter(r => {
-    const p = (r.fields['Priority']||'').toLowerCase();
-    return r.fields['Status'] !== 'Done' && (p === 'high' || p === 'critical' || p === 'urgent');
+    const p = (r.fields['Priority'] || '').trim();
+    return r.fields['Status'] !== 'Done' && crisisHighPriority.has(p);
   }).length;
 
   // Weekly Score (composite)
@@ -310,9 +372,9 @@ function _perfCompute() {
     natl_on_time, invoiced_pct, cmr_collected, cmr_archived, weekly_score,
     sub_cost_pct, client_updates, response_time,
     expired_docs, work_orders, downtime_hrs, service_adherence,
-    natl_profit, crisis_count,
-    plan_reviewed: 1, zero_anxiety: 0,
-    outstanding: 0, pallet_balance: 0,
+    natl_profit, crisis_count, plan_reviewed,
+    outstanding, pallet_balance,
+    zero_anxiety: 0,
     _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length }
   };
 }

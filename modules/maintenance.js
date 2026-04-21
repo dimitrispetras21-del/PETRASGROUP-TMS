@@ -988,7 +988,10 @@ function _maintMonthlyCost(history) {
     if (!dateStr) return;
     const key = dateStr.slice(0, 7);
     if (!(key in byMonth)) return; // outside our 6-month window
-    byMonth[key] += parseFloat(r.fields['Cost'] || r.fields['Total Cost'] || 0);
+    // Bugfix: old `parseFloat(a || b || 0)` returns NaN if `a` is empty string.
+    // Proper fallback chain with separate parseFloat calls:
+    const cost = parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0;
+    byMonth[key] += cost;
   });
   return Object.entries(byMonth)
     .sort(([a],[b]) => a.localeCompare(b))
@@ -1331,7 +1334,7 @@ async function renderMaintDash() {
                   </div>`;
                 }).join('')}
                 ${activeTrailers.length ? `
-                  <div class="md-comp-divider">TRAILERS</div>
+                  <div class="md-comp-divider" title="FRC = Cold chain certificate (trailers use FRC instead of KEK)">TRAILERS <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--dc-text-dim);margin-left:6px;font-size:9px">KT · FRC · INS</span></div>
                   ${activeTrailers.slice(0, 5).map(t => {
                     const f = t.fields;
                     return `<div class="md-comp-row">

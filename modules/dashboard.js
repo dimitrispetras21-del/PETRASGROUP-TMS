@@ -168,6 +168,10 @@ async function renderDashboard() {
       const rates = [];
       activeTruckList.forEach(t => {
         const days = truckDays[t.id] || 0;
+        // Usage rate formula: days × 4.5 × 4.5 (capped at 100%).
+        // Reasoning: a truck is considered "fully utilized" at ~5 working days
+        // per week. 5 × 4.5 × 4.5 = 101.25, capped to 100%. Each day contributes
+        // ≈20.25 percentage points. Stays accurate for partial weeks (e.g. 3 days = 61%).
         const rate = Math.min(days * 4.5 * 4.5, 100);
         rates.push({ id: t.id, plate: t.fields['License Plate'] || '?', days, rate: Math.round(rate) });
       });

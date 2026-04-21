@@ -225,7 +225,7 @@
     if (deadKM.hasData) {
       el('strat-deadkm-val').textContent = _km(deadKM.totalDead);
       el('strat-deadkm-val').className = 'ceo-kpi-num ' + (deadKM.pct < 15 ? 'ceo-val-ok' : deadKM.pct < 25 ? 'ceo-val-warn' : 'ceo-val-bad');
-      el('strat-deadkm-sub').textContent = `${_pctShort(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded`;
+      el('strat-deadkm-sub').innerHTML = `${_pctShort(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded${deadKM.isEstimate ? ` <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--ceo-warn-soft);color:var(--ceo-warn);font-weight:700;letter-spacing:.3px;margin-left:4px">ESTIMATE</span>` : ''}`;
       el('strat-deadkm-bar').style.width = Math.min(deadKM.pct, 100) + '%';
       el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#34D399' : deadKM.pct < 25 ? '#F59E0B' : '#F87171';
       // Sparkline (inline SVG, no Chart.js)
@@ -449,9 +449,12 @@
   }
 
   function _calcVSRate(allOrders) {
+    // VS Rate = percentage of EXPORT orders that use Veroia Switch
+    // Bugfix: previously counted ALL orders with VS flag against exports denominator,
+    // which inflated the rate if any import had VS set.
     const exports = allOrders.filter(r => r.fields['Direction'] === 'Export');
     if (!exports.length) return 0;
-    const vsCount = allOrders.filter(r => r.fields['Veroia Switch']).length;
+    const vsCount = exports.filter(r => r.fields['Veroia Switch']).length;
     return vsCount / exports.length * 100;
   }
 
@@ -465,9 +468,12 @@
   }
 
   function _calcCashMetrics(allOrders) {
+    // Uninvoiced = orders with Status='Delivered' (not yet transitioned to 'Invoiced').
+    // Previously also checked a separate Invoiced boolean field which may not exist
+    // in Airtable — redundant check removed to avoid false positives.
     const delivered = allOrders.filter(r => ['Delivered','Invoiced'].includes(r.fields['Status']));
     const deliveredRev = delivered.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
-    const uninvoiced = allOrders.filter(r => r.fields['Status'] === 'Delivered' && !r.fields['Invoiced']);
+    const uninvoiced = allOrders.filter(r => r.fields['Status'] === 'Delivered');
     const uninvoicedRev = uninvoiced.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
     return { deliveredRev, uninvoicedCount: uninvoiced.length, uninvoicedRev };
   }
@@ -487,15 +493,22 @@
   }
 
   function _calcLossTrips(tripCosts) {
+    // Defensive field lookup — Airtable field name for revenue may vary.
+    // Skip rows that have only cost and no revenue at all (otherwise they'd
+    // appear as 100% loss, which is misleading if the field is just missing).
     return tripCosts
-      .map(r => ({
-        route: r.fields['Route'] || r.fields['Name'] || 'Unknown route',
-        revenue: parseFloat(r.fields['Revenue']) || 0,
-        cost:    parseFloat(r.fields['Total Cost']) || parseFloat(r.fields['Cost']) || 0,
-        loss: 0
-      }))
-      .map(t => ({ ...t, loss: t.cost - t.revenue }))
-      .filter(t => t.loss > 0)
+      .map(r => {
+        const f = r.fields;
+        const revenue = parseFloat(f['Revenue']) || parseFloat(f['Net Price']) || parseFloat(f['Gross Revenue']) || 0;
+        const cost = parseFloat(f['Total Cost']) || parseFloat(f['Cost']) || 0;
+        return {
+          route: f['Route'] || f['Name'] || 'Unknown route',
+          revenue, cost,
+          loss: cost - revenue,
+          hasBoth: revenue > 0 && cost > 0,  // guard: only count as loss if both sides exist
+        };
+      })
+      .filter(t => t.hasBoth && t.loss > 0)
       .sort((a, b) => b.loss - a.loss)
       .slice(0, 3);
   }
