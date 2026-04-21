@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v26-sidebar-v2';
+const SW_VERSION = 'tms-sw-v27-maint-fix';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

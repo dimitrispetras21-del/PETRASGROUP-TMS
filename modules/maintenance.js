@@ -1379,7 +1379,7 @@ async function renderMaintDash() {
         </div>
       </div>
     `;
-\n
+
     // Auto-refresh every 5 minutes
     if (_maintDashRefreshTimer) clearInterval(_maintDashRefreshTimer);
     _maintDashRefreshTimer = setInterval(() => {
