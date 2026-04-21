@@ -960,25 +960,97 @@ function _maintExpiryStatus(dateStr) {
 }
 
 function _maintDaysPill(days, status) {
-  if (days === null) return '<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:rgba(100,116,139,0.1);color:#64748B">N/A</span>';
-  const bg = status === 'expired' ? 'rgba(239,68,68,0.12)' : status === 'expiring' ? 'rgba(245,158,11,0.12)' : 'rgba(16,185,129,0.12)';
-  const color = status === 'expired' ? '#EF4444' : status === 'expiring' ? '#F59E0B' : '#10B981';
-  const label = status === 'expired' ? days + 'd overdue' : days + 'd';
-  return `<span style="font-size:9px;font-weight:700;padding:2px 8px;border-radius:10px;background:${bg};color:${color};white-space:nowrap">${label}</span>`;
+  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:#64748B">N/A</span>';
+  const cls = status === 'expired' ? 'red' : status === 'expiring' ? 'amber' : 'green';
+  const label = status === 'expired' ? days + 'd late' : days + 'd';
+  return `<span class="dash-aging-pill ${cls}">${label}</span>`;
 }
 
-function _maintCompBlock(dateStr) {
+function _maintCompBlock(dateStr, label) {
   const s = _maintExpiryStatus(dateStr);
-  if (s.status === 'unknown') return '<span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:rgba(71,85,105,0.15)"></span>';
-  const bg = s.status === 'expired' ? 'rgba(239,68,68,0.2)' : s.status === 'expiring' ? 'rgba(245,158,11,0.2)' : 'rgba(16,185,129,0.2)';
-  const border = s.status === 'expired' ? '#EF4444' : s.status === 'expiring' ? '#F59E0B' : '#10B981';
-  return `<span style="display:inline-block;width:22px;height:14px;border-radius:3px;background:${bg};border:1px solid ${border}"></span>`;
+  const lbl = label || '';
+  if (s.status === 'unknown') return `<span class="md-comp-block none">${lbl || '—'}</span>`;
+  return `<span class="md-comp-block ${s.status === 'expired' ? 'expired' : s.status === 'expiring' ? 'warn' : 'ok'}">${lbl || ''}</span>`;
+}
+
+// ── Monthly cost aggregator (replaces "coming soon" placeholder) ──
+function _maintMonthlyCost(history) {
+  const byMonth = {};
+  const now = new Date();
+  // Initialize last 6 months (even if 0)
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = d.toISOString().slice(0, 7); // YYYY-MM
+    byMonth[key] = 0;
+  }
+  history.forEach(r => {
+    const dateStr = r.fields['Date'];
+    if (!dateStr) return;
+    const key = dateStr.slice(0, 7);
+    if (!(key in byMonth)) return; // outside our 6-month window
+    byMonth[key] += parseFloat(r.fields['Cost'] || r.fields['Total Cost'] || 0);
+  });
+  return Object.entries(byMonth)
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([key, cost]) => ({
+      key,
+      month: ['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'][parseInt(key.slice(5,7))-1],
+      cost: Math.round(cost)
+    }));
+}
+
+// ── Inline sparkline for maintenance ──
+function _mdSpark(values, color, width) {
+  if (!values || values.length < 2) return '';
+  const w = width || 120, h = 32, pad = 2;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const step = (w - pad * 2) / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = pad + i * step;
+    const y = pad + (h - pad * 2) * (1 - (v - min) / range);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const lastX = pad + (values.length - 1) * step;
+  const lastY = pad + (h - pad * 2) * (1 - (values[values.length - 1] - min) / range);
+  const areaPoints = `${pad},${h-pad} ${points} ${lastX.toFixed(1)},${h-pad}`;
+  const gradId = 'md' + Math.random().toString(36).slice(2,8);
+  return `<svg class="md-cost-spark" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+    <defs><linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+    </linearGradient></defs>
+    <polygon points="${areaPoints}" fill="url(#${gradId})"/>
+    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="1.8" fill="${color}"/>
+  </svg>`;
+}
+
+// ── MoM delta pill for maintenance ──
+function _mdDelta(curr, prev, lowerIsBetter) {
+  if (!prev || prev === 0 || isNaN(prev)) return '';
+  const diff = curr - prev;
+  const pct = Math.round(diff / prev * 100);
+  const _ic = (n, s) => (typeof icon === 'function') ? icon(n, s || 10) : '';
+  if (pct === 0) return `<span class="dash-kpi-delta flat">${_ic('minus')}0%</span>`;
+  const isUp = pct > 0;
+  const cls = lowerIsBetter
+    ? (isUp ? 'down' : 'up')  // reversed semantics for "down-bad" class naming
+    : (isUp ? 'up' : 'down');
+  const iconName = isUp ? 'trending_up' : 'trending_down';
+  // Use ceo-delta pattern for consistency (has more variants)
+  const finalCls = lowerIsBetter
+    ? (isUp ? 'down-bad' : 'down')
+    : (isUp ? 'up' : 'down-bad');
+  return `<span class="ceo-delta ${finalCls}">${_ic(iconName)}${isUp ? '+' : ''}${pct}%</span>`;
 }
 
 async function renderMaintDash() {
   document.getElementById('topbarTitle').textContent = 'Maintenance Dashboard';
   const c = document.getElementById('content');
   c.innerHTML = _maintDashSkeleton();
+  const _ic = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
 
   try {
     await _maintLoad(true);
@@ -1009,231 +1081,160 @@ async function renderMaintDash() {
     const allVehicleRows = [...truckRowsAll, ...trailerRowsAll];
     const totalExpiredVehicles = allVehicleRows.filter(r => r.worst !== null && r.worst < 0).length;
     const compliancePct = totalFleet ? Math.round((totalFleet - totalExpiredVehicles) / totalFleet * 100) : 100;
-    const complianceColor = compliancePct >= 90 ? '#10B981' : compliancePct >= 70 ? '#F59E0B' : '#EF4444';
+    const scoreColor = compliancePct >= 90 ? '#34D399' : compliancePct >= 70 ? '#F59E0B' : '#F87171';
 
-    // Overdue list (all expired docs sorted worst first)
-    const overdueList = expiredRows.slice(0, 12);
-
+    // Overdue list
+    const overdueList = expiredRows.slice(0, 10);
     // Expiring soon list (within 60 days, not expired)
-    const soonList = expiring60Rows.sort((a,b) => a.days - b.days).slice(0, 12);
+    const soonList = expiring60Rows.sort((a,b) => a.days - b.days).slice(0, 10);
 
     // Recent service records
     const recentSvc = [...MAINT.history]
       .sort((a,b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
       .slice(0, 8);
 
+    // Monthly cost breakdown (last 6 months, with MoM delta)
+    const monthlyCosts = _maintMonthlyCost(MAINT.history);
+    const currentMonth = monthlyCosts[monthlyCosts.length - 1]?.cost || 0;
+    const prevMonth = monthlyCosts[monthlyCosts.length - 2]?.cost || 0;
+    const maxMonthly = Math.max(...monthlyCosts.map(m => m.cost), 1);
+
+    // Service count trend per month (from same history)
+    const serviceCountTrend = (() => {
+      const byMonth = {};
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        byMonth[d.toISOString().slice(0, 7)] = 0;
+      }
+      MAINT.history.forEach(r => {
+        const key = (r.fields['Date'] || '').slice(0, 7);
+        if (key in byMonth) byMonth[key]++;
+      });
+      return Object.entries(byMonth).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => v);
+    })();
+    const currentSvcCount = serviceCountTrend[serviceCountTrend.length - 1] || 0;
+    const prevSvcCount = serviceCountTrend[serviceCountTrend.length - 2] || 0;
+
     // Alert banner
     const totalExpired = expiredRows.length;
 
     // ═══ RENDER ═══
     c.innerHTML = `
-      <style>
-        /* ── Maintenance Dashboard scoped styles ── */
-        .maint-wrap {
-          --m-bg: transparent;
-          --m-card: #0B1120;
-          --m-card-hover: #0F1B2E;
-          --m-border: rgba(30,41,59,0.6);
-          --m-border-mid: rgba(30,41,59,0.8);
-          --m-text: #E2E8F0;
-          --m-text-mid: #94A3B8;
-          --m-text-dim: #64748B;
-          --m-accent: #38BDF8;
-          --m-success: #10B981;
-          --m-danger: #EF4444;
-          --m-warning: #F59E0B;
-          padding: 0; max-width: 1600px;
-        }
-
-        .maint-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; padding: 0 2px; }
-        .maint-greeting { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; color: #0F172A; letter-spacing: -0.3px; }
-        .maint-date { font-size: 12px; color: #64748B; margin-top: 2px; font-weight: 400; }
-        .maint-live { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #64748B; letter-spacing: 0.5px; text-transform: uppercase; }
-        .maint-live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--m-success); animation: maint-pulse 2s infinite; }
-        @keyframes maint-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-
-        /* Alert Banner */
-        .maint-alert-banner { background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.15); border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px; }
-        .maint-alert-icon { width: 28px; height: 28px; border-radius: 50%; background: rgba(239,68,68,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .maint-alert-text { font-size: 12px; color: #DC2626; font-weight: 500; }
-
-        /* KPI Bar */
-        .maint-kpi-bar { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-bottom: 20px; }
-        .maint-kpi { background: var(--m-card); border: 1px solid var(--m-border); border-radius: 8px; padding: 14px 16px; cursor: pointer; transition: all 0.15s ease; position: relative; overflow: hidden; }
-        .maint-kpi:hover { border-color: var(--m-border-mid); transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0,0,0,0.15); }
-        .maint-kpi-label { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--m-text-dim); margin-bottom: 6px; }
-        .maint-kpi-value { font-family: 'DM Sans', monospace; font-size: 26px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
-        .maint-kpi-sub { font-size: 10px; color: var(--m-text-dim); }
-        .maint-kpi-glow { position: absolute; top: 0; left: 0; right: 0; height: 2px; opacity: 0.6; }
-
-        /* Section Grid */
-        .maint-grid-main { display: grid; grid-template-columns: 1fr 320px; gap: 16px; }
-        .maint-left { display: flex; flex-direction: column; gap: 16px; }
-        .maint-right { display: flex; flex-direction: column; gap: 12px; }
-
-        /* Cards */
-        .maint-card { background: var(--m-card); border: 1px solid var(--m-border); border-radius: 8px; overflow: hidden; }
-        .maint-card-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--m-border); }
-        .maint-card-title { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase; color: var(--m-text-mid); }
-        .maint-card-link { font-size: 10px; color: var(--m-accent); cursor: pointer; text-decoration: none; font-weight: 500; }
-        .maint-card-link:hover { color: #7DD3FC; }
-        .maint-card-body { padding: 12px 16px; }
-
-        /* Expiry Timeline 2-col */
-        .maint-timeline-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-
-        /* Expiry rows inside cards */
-        .maint-exp-row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--m-border); }
-        .maint-exp-row:last-child { border-bottom: none; }
-        .maint-exp-plate { font-size: 12px; font-weight: 700; color: var(--m-text); width: 80px; font-family: 'Syne', sans-serif; }
-        .maint-exp-doc { font-size: 11px; color: var(--m-text-mid); flex: 1; }
-        .maint-exp-date { font-size: 10px; color: var(--m-text-dim); width: 55px; }
-        .maint-exp-days { flex-shrink: 0; }
-
-        /* Fleet Overview Table */
-        .maint-fleet-table { width: 100%; border-collapse: collapse; }
-        .maint-fleet-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--m-text-dim); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--m-border-mid); }
-        .maint-fleet-table td { font-size: 11px; color: var(--m-text); padding: 7px 8px; border-bottom: 1px solid var(--m-border); }
-        .maint-fleet-table tbody tr { cursor: pointer; transition: background 0.1s; }
-        .maint-fleet-table tbody tr:hover { background: var(--m-card-hover); }
-
-        /* Service table */
-        .maint-svc-table { width: 100%; border-collapse: collapse; }
-        .maint-svc-table th { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--m-text-dim); padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--m-border-mid); }
-        .maint-svc-table td { font-size: 11px; color: var(--m-text); padding: 7px 8px; border-bottom: 1px solid var(--m-border); }
-
-        /* Compliance rows */
-        .maint-comp-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
-        .maint-comp-plate { font-size: 10px; color: var(--m-text); font-weight: 600; width: 70px; }
-        .maint-comp-blocks { display: flex; gap: 3px; }
-
-        /* Empty state */
-        .maint-empty { text-align: center; padding: 20px; color: var(--m-text-dim); font-size: 11px; }
-
-        @media (max-width: 1200px) {
-          .maint-kpi-bar { grid-template-columns: repeat(3, 1fr); }
-          .maint-grid-main { grid-template-columns: 1fr; }
-          .maint-timeline-grid { grid-template-columns: 1fr; }
-        }
-      </style>
-
-      <div class="maint-wrap">
+      <div class="dash-wrap">
         <!-- Header -->
-        <div class="maint-header">
+        <div class="dash-header">
           <div>
-            <div class="maint-greeting">Maintenance Dashboard</div>
-            <div class="maint-date">Petras Group Fleet -- ${dateStr}</div>
+            <div class="dash-greeting">Maintenance Dashboard</div>
+            <div class="dash-date">Petras Group Fleet · ${dateStr}</div>
           </div>
-          <div class="maint-live">
-            <span class="maint-live-dot"></span>
-            LIVE -- refresh every 5 min
+          <div class="dash-live">
+            <span class="dash-live-dot"></span>
+            LIVE — refresh every 5'
           </div>
         </div>
 
         <!-- Alert Banner -->
-        ${totalExpired > 0 ? `<div class="maint-alert-banner">
-          <div class="maint-alert-icon">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          </div>
-          <div class="maint-alert-text">${totalExpired} expired document${totalExpired > 1 ? 's' : ''} require${totalExpired === 1 ? 's' : ''} immediate attention</div>
+        ${totalExpired > 0 ? `<div class="dash-alert-banner">
+          <div class="dash-alert-icon">${_ic('alert_triangle', 16)}</div>
+          <div class="dash-alert-text">${totalExpired} expired document${totalExpired > 1 ? 's' : ''} require${totalExpired === 1 ? 's' : ''} immediate attention</div>
         </div>` : ''}
 
-        <!-- KPI Bar -->
-        <div class="maint-kpi-bar">
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
-            <div class="maint-kpi-label">Total Fleet</div>
-            <div class="maint-kpi-value" style="color:#38BDF8">${totalFleet}</div>
-            <div class="maint-kpi-sub">${activeTrucks.length} trucks / ${activeTrailers.length} trailers</div>
+        <!-- KPI Bar (6 cards) -->
+        <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
+            <div class="dash-kpi-label">${_ic('truck', 11)} Total Fleet</div>
+            <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
+            <div class="dash-kpi-sub">${activeTrucks.length} trucks · ${activeTrailers.length} trailers</div>
           </div>
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,#EF4444,transparent)"></div>
-            <div class="maint-kpi-label">KTEO Expired</div>
-            <div class="maint-kpi-value" style="color:${kteoExpired ? '#EF4444' : '#10B981'}">${kteoExpired}</div>
-            <div class="maint-kpi-sub">trucks + trailers</div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} KTEO Expired</div>
+            <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
+            <div class="dash-kpi-sub">trucks + trailers</div>
           </div>
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,#EF4444,transparent)"></div>
-            <div class="maint-kpi-label">KEK Expired</div>
-            <div class="maint-kpi-value" style="color:${kekExpired ? '#EF4444' : '#10B981'}">${kekExpired}</div>
-            <div class="maint-kpi-sub">trucks only</div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} KEK Expired</div>
+            <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
+            <div class="dash-kpi-sub">trucks only</div>
           </div>
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
-            <div class="maint-kpi-label">Insurance Expired</div>
-            <div class="maint-kpi-value" style="color:${insExpired ? '#F59E0B' : '#10B981'}">${insExpired}</div>
-            <div class="maint-kpi-sub">trucks + trailers</div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('shield', 11)} Insurance Expired</div>
+            <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
+            <div class="dash-kpi-sub">trucks + trailers</div>
           </div>
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
-            <div class="maint-kpi-label">Expiring &lt;30d</div>
-            <div class="maint-kpi-value" style="color:${expiring30Rows.length ? '#F59E0B' : '#10B981'}">${expiring30Rows.length}</div>
-            <div class="maint-kpi-sub">all document types</div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('clock', 11)} Expiring &lt;30d</div>
+            <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
+            <div class="dash-kpi-sub">all document types</div>
           </div>
-          <div class="maint-kpi" onclick="navigate('maint_expiry')">
-            <div class="maint-kpi-glow" style="background:linear-gradient(90deg,${complianceColor},transparent)"></div>
-            <div class="maint-kpi-label">Fleet Compliance</div>
-            <div class="maint-kpi-value" style="color:${complianceColor}">${compliancePct}%</div>
-            <div class="maint-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} compliant</div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('award', 11)} Fleet Compliance</div>
+            <div class="dash-kpi-value" style="color:${scoreColor}">${compliancePct}%</div>
+            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} compliant</div>
           </div>
         </div>
 
         <!-- Main Grid -->
-        <div class="maint-grid-main">
-          <!-- Left Column -->
-          <div class="maint-left">
+        <div class="dash-grid-main">
+          <!-- LEFT -->
+          <div class="dash-left">
 
-            <!-- Expiry Timeline -->
-            <div class="maint-timeline-grid">
+            <!-- Expiry Timeline 2-col -->
+            <div class="md-timeline-grid">
               <!-- OVERDUE -->
-              <div class="maint-card">
-                <div class="maint-card-header">
-                  <div class="maint-card-title" style="color:#EF4444">OVERDUE</div>
-                  <span class="maint-card-link" onclick="navigate('maint_expiry')">&#8594; Expiry Alerts</span>
+              <div class="dash-card">
+                <div class="dash-card-header">
+                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} OVERDUE</div>
+                  <span class="dash-card-link" onclick="navigate('maint_expiry')">Expiry Alerts ${_ic('chevron_right', 12)}</span>
                 </div>
-                <div class="maint-card-body">
+                <div class="dash-card-body">
                   ${overdueList.length ? overdueList.map(r => {
                     const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '--';
-                    return `<div class="maint-exp-row">
-                      <div class="maint-exp-plate">${r.plate}</div>
-                      <div class="maint-exp-doc">${r.docType} (${r.vType})</div>
-                      <div class="maint-exp-date">${dateDisp}</div>
-                      <div class="maint-exp-days">${_maintDaysPill(s.days, s.status)}</div>
+                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '—';
+                    return `<div class="md-exp-row">
+                      <div class="md-exp-plate">${r.plate}</div>
+                      <div class="md-exp-doc">${r.docType} · ${r.vType}</div>
+                      <div class="md-exp-date">${dateDisp}</div>
+                      <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : '<div class="maint-empty">No overdue documents</div>'}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>No overdue documents</div></div>`}
                 </div>
               </div>
 
               <!-- EXPIRING SOON -->
-              <div class="maint-card">
-                <div class="maint-card-header">
-                  <div class="maint-card-title" style="color:#F59E0B">EXPIRING SOON</div>
-                  <span style="font-size:10px;color:#64748B">within 60 days</span>
+              <div class="dash-card">
+                <div class="dash-card-header">
+                  <div class="dash-card-title">${_ic('clock', 12)} EXPIRING SOON</div>
+                  <span class="dash-card-meta">within 60 days</span>
                 </div>
-                <div class="maint-card-body">
+                <div class="dash-card-body">
                   ${soonList.length ? soonList.map(r => {
                     const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '--';
-                    return `<div class="maint-exp-row">
-                      <div class="maint-exp-plate">${r.plate}</div>
-                      <div class="maint-exp-doc">${r.docType} (${r.vType})</div>
-                      <div class="maint-exp-date">${dateDisp}</div>
-                      <div class="maint-exp-days">${_maintDaysPill(s.days, s.status)}</div>
+                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '—';
+                    return `<div class="md-exp-row">
+                      <div class="md-exp-plate">${r.plate}</div>
+                      <div class="md-exp-doc">${r.docType} · ${r.vType}</div>
+                      <div class="md-exp-date">${dateDisp}</div>
+                      <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : '<div class="maint-empty">No documents expiring soon</div>'}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Nothing expiring soon</div></div>`}
                 </div>
               </div>
             </div>
 
             <!-- Fleet Overview Table -->
-            <div class="maint-card">
-              <div class="maint-card-header">
-                <div class="maint-card-title">FLEET OVERVIEW -- TRUCKS</div>
-                <span style="font-size:10px;color:#64748B">${activeTrucks.length} active</span>
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <div class="dash-card-title">${_ic('truck', 12)} FLEET OVERVIEW · TRUCKS</div>
+                <span class="dash-card-meta">${activeTrucks.length} active</span>
               </div>
-              <div class="maint-card-body" style="padding:0">
-                <table class="maint-fleet-table">
+              <div class="dash-card-body flush">
+                <table class="md-fleet-table">
                   <thead><tr>
                     <th>Plate</th><th>Brand</th><th>Model</th>
                     <th style="text-align:center">KT</th>
@@ -1252,16 +1253,16 @@ async function renderMaintDash() {
                         const db = b.status === 'expired' ? -b.days : b.days;
                         return da - db;
                       })[0];
-                      const statusLabel = !worst ? 'N/A' : worst.status === 'expired' ? 'EXPIRED' : worst.status === 'expiring' ? 'ATTENTION' : 'OK';
-                      const statusColor = !worst ? '#64748B' : worst.status === 'expired' ? '#EF4444' : worst.status === 'expiring' ? '#F59E0B' : '#10B981';
+                      const statusLabel = !worst ? 'N/A' : worst.status === 'expired' ? 'EXPIRED' : worst.status === 'expiring' ? 'WARN' : 'OK';
+                      const statusCls = !worst ? 'na' : worst.status === 'expired' ? 'expired' : worst.status === 'expiring' ? 'warn' : 'ok';
                       return `<tr onclick="navigate('maint_expiry')">
-                        <td style="font-weight:700">${f['License Plate'] || '--'}</td>
-                        <td style="color:#94A3B8">${f['Brand'] || '--'}</td>
-                        <td style="color:#94A3B8">${f['Model'] || '--'}</td>
+                        <td><span class="md-fleet-plate">${f['License Plate'] || '—'}</span></td>
+                        <td><span class="md-fleet-dim">${f['Brand'] || '—'}</span></td>
+                        <td><span class="md-fleet-dim">${f['Model'] || '—'}</span></td>
                         <td style="text-align:center">${_maintCompBlock(f['KTEO Expiry'])}</td>
                         <td style="text-align:center">${_maintCompBlock(f['KEK Expiry'])}</td>
                         <td style="text-align:center">${_maintCompBlock(f['Insurance Expiry'])}</td>
-                        <td style="text-align:center;font-size:9px;font-weight:700;letter-spacing:0.5px;color:${statusColor}">${statusLabel}</td>
+                        <td style="text-align:center"><span class="md-fleet-status ${statusCls}">${statusLabel}</span></td>
                       </tr>`;
                     }).join('')}
                   </tbody>
@@ -1270,80 +1271,103 @@ async function renderMaintDash() {
             </div>
 
             <!-- Recent Service -->
-            <div class="maint-card">
-              <div class="maint-card-header">
-                <div class="maint-card-title">RECENT SERVICE</div>
-                <span class="maint-card-link" onclick="navigate('maint_svc')">&#8594; Service History</span>
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <div class="dash-card-title">${_ic('file_text', 12)} RECENT SERVICE</div>
+                <span class="dash-card-link" onclick="navigate('maint_svc')">Service History ${_ic('chevron_right', 12)}</span>
               </div>
-              <div class="maint-card-body" style="padding:0">
-                ${recentSvc.length ? `<table class="maint-svc-table">
+              <div class="dash-card-body flush">
+                ${recentSvc.length ? `<table class="md-svc-table">
                   <thead><tr><th>Date</th><th>Plate</th><th>Type</th><th style="text-align:right">Cost</th></tr></thead>
                   <tbody>
                     ${recentSvc.map(r => { const f = r.fields; return `<tr>
-                      <td style="color:#94A3B8">${_fmtDate(f['Date'])}</td>
-                      <td style="font-weight:600">${f['Vehicle Plate'] || '--'}</td>
-                      <td style="color:#94A3B8">${f['Type'] || '--'}</td>
-                      <td style="text-align:right;font-weight:600;color:#E2E8F0">${_fmtCost(f['Cost'])}</td>
+                      <td style="color:var(--dc-text-dim)">${_fmtDate(f['Date'])}</td>
+                      <td><span class="md-fleet-plate">${f['Vehicle Plate'] || '—'}</span></td>
+                      <td style="color:var(--dc-text-mid)">${f['Type'] || '—'}</td>
+                      <td class="mono" style="text-align:right;color:var(--dc-text)">${_fmtCost(f['Cost'])}</td>
                     </tr>`; }).join('')}
                   </tbody>
-                </table>` : '<div class="maint-empty">No service records yet</div>'}
+                </table>` : `<div style="padding:var(--space-4)"><div class="dash-empty">${_ic('file_text', 24)}<div>No service records yet</div></div></div>`}
               </div>
             </div>
 
           </div>
 
-          <!-- Right Panel -->
-          <div class="maint-right">
+          <!-- RIGHT -->
+          <div class="dash-right">
 
-            <!-- Compliance Snapshot -->
-            <div class="maint-card">
-              <div class="maint-card-header">
-                <div class="maint-card-title">COMPLIANCE SNAPSHOT</div>
-                <span style="font-size:10px;color:${complianceColor};font-weight:700">${compliancePct}%</span>
+            <!-- Fleet Compliance Score Ring -->
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <div class="dash-card-title">${_ic('award', 12)} FLEET COMPLIANCE</div>
+                <span class="dash-card-meta">${totalFleet - totalExpiredVehicles}/${totalFleet}</span>
               </div>
-              <div class="maint-card-body" style="padding:8px 16px">
-                <div style="display:flex;gap:12px;margin-bottom:10px;font-size:9px;color:#64748B;padding-left:78px">
-                  <span style="width:22px;text-align:center">KT</span>
-                  <span style="width:22px;text-align:center">KK</span>
-                  <span style="width:22px;text-align:center">INS</span>
+              <div class="dash-card-body md-score-wrap">
+                <div class="md-score-ring" style="--md-score-color:${scoreColor};--md-score-deg:${Math.round(compliancePct * 3.6)}deg">
+                  <div class="md-score-num" style="color:${scoreColor}">${compliancePct}%</div>
                 </div>
-                ${activeTrucks.slice(0, 12).map(t => {
+                <div class="md-score-label">vehicles compliant</div>
+              </div>
+            </div>
+
+            <!-- Compliance Snapshot (block grid) -->
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <div class="dash-card-title">${_ic('file_check', 12)} COMPLIANCE SNAPSHOT</div>
+              </div>
+              <div class="dash-card-body" style="padding:var(--space-2) var(--space-4)">
+                <div class="md-comp-headers">
+                  <span>KT</span><span>KK</span><span>INS</span>
+                </div>
+                ${activeTrucks.slice(0, 10).map(t => {
                   const f = t.fields;
-                  return `<div class="maint-comp-row">
-                    <div class="maint-comp-plate">${f['License Plate'] || '--'}</div>
-                    <div class="maint-comp-blocks">
-                      ${_maintCompBlock(f['KTEO Expiry'])}
-                      ${_maintCompBlock(f['KEK Expiry'])}
-                      ${_maintCompBlock(f['Insurance Expiry'])}
+                  return `<div class="md-comp-row">
+                    <div class="md-comp-plate">${f['License Plate'] || '—'}</div>
+                    <div class="md-comp-blocks">
+                      ${_maintCompBlock(f['KTEO Expiry'], 'KT')}
+                      ${_maintCompBlock(f['KEK Expiry'], 'KK')}
+                      ${_maintCompBlock(f['Insurance Expiry'], 'INS')}
                     </div>
                   </div>`;
                 }).join('')}
                 ${activeTrailers.length ? `
-                  <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(30,41,59,0.6);font-size:9px;font-weight:700;color:#64748B;letter-spacing:0.5px;margin-bottom:6px">TRAILERS</div>
-                  ${activeTrailers.slice(0, 6).map(t => {
+                  <div class="md-comp-divider">TRAILERS</div>
+                  ${activeTrailers.slice(0, 5).map(t => {
                     const f = t.fields;
-                    return `<div class="maint-comp-row">
-                      <div class="maint-comp-plate">${f['License Plate'] || '--'}</div>
-                      <div class="maint-comp-blocks">
-                        ${_maintCompBlock(f['KTEO Expiry'])}
-                        ${_maintCompBlock(f['FRC Expiry'])}
-                        ${_maintCompBlock(f['Insurance Expiry'])}
+                    return `<div class="md-comp-row">
+                      <div class="md-comp-plate">${f['License Plate'] || '—'}</div>
+                      <div class="md-comp-blocks">
+                        ${_maintCompBlock(f['KTEO Expiry'], 'KT')}
+                        ${_maintCompBlock(f['FRC Expiry'], 'FRC')}
+                        ${_maintCompBlock(f['Insurance Expiry'], 'INS')}
                       </div>
                     </div>`;
-                  }).join('')}
-                ` : ''}
+                  }).join('')}` : ''}
               </div>
             </div>
 
-            <!-- Monthly Cost Summary (placeholder) -->
-            <div class="maint-card">
-              <div class="maint-card-header">
-                <div class="maint-card-title">MONTHLY COST SUMMARY</div>
+            <!-- Monthly Cost Summary (REAL DATA, replaces placeholder) -->
+            <div class="dash-card">
+              <div class="dash-card-header">
+                <div class="dash-card-title">${_ic('coins', 12)} MONTHLY COST</div>
+                <span class="dash-card-meta">last 6 months</span>
               </div>
-              <div class="maint-card-body">
-                <div class="maint-empty" style="padding:30px 20px">
-                  <div style="font-size:12px;color:#94A3B8;margin-bottom:4px">Cost tracking coming soon</div>
-                  <div style="font-size:10px;color:#64748B">Service costs will be aggregated here monthly</div>
+              <div class="dash-card-body">
+                <div class="md-cost-label">Τρέχων μήνας</div>
+                <div class="md-cost-big">${_fmtCost(currentMonth)}${_mdDelta(currentMonth, prevMonth, true)}</div>
+                <div class="md-cost-sub">${currentSvcCount} service${currentSvcCount !== 1 ? 's' : ''}${prevSvcCount ? ` · ${_mdDelta(currentSvcCount, prevSvcCount, true).replace('<span class="ceo-delta', '<span class="ceo-delta" style="margin-left:4px;padding:0 4px;font-size:9px"')}` : ''}</div>
+                <div class="md-cost-spark-wrap">
+                  <span class="md-cost-spark-label">6μ trend</span>
+                  ${_mdSpark(monthlyCosts.map(m => m.cost), '#38BDF8', 140)}
+                </div>
+                <div class="md-cost-breakdown">
+                  ${monthlyCosts.map(m => `<div class="md-cost-month-row">
+                    <span class="md-cost-month-label">${m.month}</span>
+                    <div class="md-cost-month-bar">
+                      <div class="md-cost-month-fill" style="width:${maxMonthly ? (m.cost/maxMonthly*100) : 0}%"></div>
+                    </div>
+                    <span class="md-cost-month-val">${_fmtCost(m.cost)}</span>
+                  </div>`).join('')}
                 </div>
               </div>
             </div>
@@ -1352,7 +1376,7 @@ async function renderMaintDash() {
         </div>
       </div>
     `;
-
+\n
     // Auto-refresh every 5 minutes
     if (_maintDashRefreshTimer) clearInterval(_maintDashRefreshTimer);
     _maintDashRefreshTimer = setInterval(() => {

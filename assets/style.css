@@ -4374,3 +4374,318 @@ button.sidebar-toggle {
   .ceo-period-seg { justify-content: space-between; width: 100%; }
   .ceo-period-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   MAINTENANCE DASHBOARD V2 — Extensions over .dash-* base
+   Reuses dash-wrap, dash-kpi, dash-card for shared visual language
+   Adds .md-* classes only for maintenance-specific components
+   ═══════════════════════════════════════════════════════════ */
+
+/* Timeline 2-col grid (OVERDUE | EXPIRING SOON) */
+.md-timeline-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+/* Expiry rows (plate · doc · date · days pill) */
+.md-exp-row {
+  display: flex; align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--dc-card-border);
+  font-variant-numeric: tabular-nums;
+  transition: background var(--duration-fast) var(--ease-out);
+  margin: 0 calc(var(--space-4) * -1);
+  padding-left: var(--space-4); padding-right: var(--space-4);
+  cursor: pointer;
+}
+.md-exp-row:hover { background: var(--dc-card-bg-hover); }
+.md-exp-row:last-child { border-bottom: none; }
+.md-exp-plate {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--dc-text);
+  width: 82px;
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 0.3px;
+}
+.md-exp-doc {
+  font-size: 11px;
+  color: var(--dc-text-mid);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.md-exp-date {
+  font-size: 10px;
+  color: var(--dc-text-dim);
+  width: 48px;
+  font-family: var(--dc-nums);
+}
+.md-exp-days { flex-shrink: 0; }
+
+/* Fleet overview table */
+.md-fleet-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.md-fleet-table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dc-text-dim);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--dc-card-border);
+  background: rgba(255,255,255,0.02);
+}
+.md-fleet-table td {
+  font-size: 12px;
+  color: var(--dc-text);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--dc-card-border);
+}
+.md-fleet-table tbody tr {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.md-fleet-table tbody tr:hover { background: var(--dc-card-bg-hover); }
+.md-fleet-table tbody tr:last-child td { border-bottom: none; }
+.md-fleet-plate {
+  font-weight: 700;
+  color: var(--dc-text);
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 0.3px;
+}
+.md-fleet-dim { color: var(--dc-text-mid); font-size: 11px; }
+.md-fleet-status {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+}
+.md-fleet-status.ok      { background: var(--dc-ok-soft);   color: var(--dc-ok); }
+.md-fleet-status.warn    { background: var(--dc-warn-soft); color: #F59E0B; }
+.md-fleet-status.expired { background: var(--dc-bad-soft);  color: #F87171; }
+.md-fleet-status.na      { background: rgba(100,116,139,0.12); color: var(--dc-text-dim); }
+
+/* Service records table */
+.md-svc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.md-svc-table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dc-text-dim);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--dc-card-border);
+  background: rgba(255,255,255,0.02);
+}
+.md-svc-table td {
+  font-size: 12px;
+  color: var(--dc-text);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--dc-card-border);
+}
+.md-svc-table tbody tr:last-child td { border-bottom: none; }
+.md-svc-table .mono { font-family: var(--dc-nums); font-weight: 600; }
+
+/* Compliance snapshot (right panel, plate + doc blocks) */
+.md-comp-row {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+.md-comp-plate {
+  font-size: 11px;
+  color: var(--dc-text);
+  font-weight: 600;
+  width: 74px;
+  font-family: 'Syne', sans-serif;
+  letter-spacing: 0.2px;
+}
+.md-comp-blocks { display: flex; gap: 3px; }
+.md-comp-block {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  letter-spacing: 0.3px;
+  min-width: 22px;
+  text-align: center;
+}
+.md-comp-block.ok      { background: var(--dc-ok-soft);   color: var(--dc-ok); }
+.md-comp-block.warn    { background: var(--dc-warn-soft); color: #F59E0B; }
+.md-comp-block.expired { background: var(--dc-bad-soft);  color: #F87171; }
+.md-comp-block.none    { background: rgba(100,116,139,0.12); color: var(--dc-text-dim); }
+.md-comp-headers {
+  display: flex;
+  gap: 3px;
+  margin-bottom: var(--space-2);
+  padding-left: 78px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--dc-text-dim);
+  letter-spacing: 0.4px;
+}
+.md-comp-headers span {
+  min-width: 22px;
+  text-align: center;
+}
+.md-comp-divider {
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--dc-card-border);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--dc-text-dim);
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-1);
+}
+
+/* Fleet compliance big ring — conic gradient (replaces text-only %) */
+.md-score-wrap {
+  text-align: center;
+  padding: var(--space-3) 0;
+}
+.md-score-ring {
+  width: 100px; height: 100px;
+  margin: 0 auto var(--space-2);
+  position: relative;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--md-score-color, #34D399) 0deg,
+    var(--md-score-color, #34D399) var(--md-score-deg, 0deg),
+    rgba(255,255,255,0.08) var(--md-score-deg, 0deg),
+    rgba(255,255,255,0.08) 360deg
+  );
+  transition: background 0.8s var(--ease-out);
+}
+.md-score-ring::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--dc-card-bg);
+}
+.md-score-num {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif;
+  font-size: 24px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+.md-score-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dc-text-dim);
+  font-weight: 600;
+}
+
+/* Monthly Cost — real card (replaces placeholder) */
+.md-cost-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-2);
+}
+.md-cost-big {
+  font-family: var(--dc-nums);
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--dc-text);
+  letter-spacing: -0.4px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  display: inline-flex; align-items: baseline; gap: var(--space-2);
+}
+.md-cost-label {
+  font-size: 10px;
+  color: var(--dc-text-dim);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: var(--space-1);
+}
+.md-cost-sub {
+  font-size: 11px;
+  color: var(--dc-text-dim);
+  margin-top: var(--space-1);
+}
+.md-cost-spark-wrap {
+  margin-top: var(--space-3);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2);
+}
+.md-cost-spark-label {
+  font-size: 10px;
+  color: var(--dc-text-dim);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.md-cost-spark {
+  flex: 1;
+  max-width: 140px;
+  height: 32px;
+}
+.md-cost-breakdown {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--dc-card-border);
+  display: flex; flex-direction: column;
+  gap: 6px;
+}
+.md-cost-month-row {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.md-cost-month-label {
+  width: 40px;
+  color: var(--dc-text-mid);
+  font-weight: 600;
+  font-family: var(--dc-nums);
+}
+.md-cost-month-bar {
+  flex: 1;
+  height: 10px;
+  background: rgba(255,255,255,0.04);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.md-cost-month-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--dc-accent), #7DD3FC);
+  border-radius: var(--radius-sm);
+  transition: width 0.6s var(--ease-out);
+}
+.md-cost-month-val {
+  width: 64px;
+  text-align: right;
+  font-weight: 700;
+  color: var(--dc-text);
+  font-family: var(--dc-nums);
+  font-size: 11px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .md-timeline-grid { grid-template-columns: 1fr; }
+}
+
