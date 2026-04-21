@@ -167,7 +167,7 @@
     const anxietyRing = document.querySelector('.ceo-brand-card.anxiety .ceo-gauge-ring');
     if (anxietyRing) {
       const clamped = Math.min(anxiety.value, 10);
-      const col = anxiety.value === 0 ? '#059669' : anxiety.value <= 3 ? '#D97706' : '#DC2626';
+      const col = anxiety.value === 0 ? '#34D399' : anxiety.value <= 3 ? '#F59E0B' : '#F87171';
       anxietyRing.style.setProperty('--g-color', col);
       anxietyRing.style.setProperty('--g-deg', clamped * 36 + 'deg');
       el('brand-anxiety-val').style.color = col;
@@ -227,7 +227,7 @@
       el('strat-deadkm-val').className = 'ceo-kpi-num ' + (deadKM.pct < 15 ? 'ceo-val-ok' : deadKM.pct < 25 ? 'ceo-val-warn' : 'ceo-val-bad');
       el('strat-deadkm-sub').textContent = `${_pctShort(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded`;
       el('strat-deadkm-bar').style.width = Math.min(deadKM.pct, 100) + '%';
-      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#059669' : deadKM.pct < 25 ? '#D97706' : '#DC2626';
+      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#34D399' : deadKM.pct < 25 ? '#F59E0B' : '#F87171';
       // Sparkline (inline SVG, no Chart.js)
       const weeklyDead = _computeWeeklyDeadKM(data.sparkOrders);
       el('strat-deadkm-spark').innerHTML = _ceoSpark(weeklyDead.map(d => d.value), '#D97706', 64);
@@ -672,7 +672,7 @@
 
   // ── Helpers ────────────────────────────────────────────────
   function _colorScoreHex(value, target) {
-    return value >= target ? '#059669' : value >= target * 0.97 ? '#D97706' : '#DC2626';
+    return value >= target ? '#34D399' : value >= target * 0.97 ? '#F59E0B' : '#F87171';
   }
   function _cssScoreClass(value, target) {
     return value >= target ? 'ceo-val-ok' : value >= target * 0.97 ? 'ceo-val-warn' : 'ceo-val-bad';
@@ -741,7 +741,7 @@
         <div><div class="ceo-brand-label">Brand Promise 1</div><div class="ceo-brand-name">Speed Score — Faster to Shelf</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#0284C7;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:#38BDF8;--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-speed-val">—</div>
           </div>
@@ -761,7 +761,7 @@
         <div><div class="ceo-brand-label">Brand Promise 2</div><div class="ceo-brand-name">Quality Score — Verified Freshness</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#059669;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:#34D399;--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-quality-val">—</div>
           </div>
@@ -781,7 +781,7 @@
         <div><div class="ceo-brand-label">Brand Promise 3</div><div class="ceo-brand-name">Anxiety Score — Zero Anxiety Service</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#1E3A8A;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:#3B82F6;--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-anxiety-val">—</div>
           </div>
