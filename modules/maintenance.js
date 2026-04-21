@@ -546,66 +546,104 @@ function _svcPaint() {
   const vehicles = [...new Set(allRecs.map(r => r.fields['Vehicle Plate']).filter(Boolean))].sort();
   const statuses = [...new Set(allRecs.map(r => r.fields['Status']).filter(Boolean))].sort();
 
+  const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
+  const currentYear = new Date().getFullYear();
+
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:12px">
-      <div><div class="page-title">Service Records</div>
-        <div class="page-sub">${MAINT.history.length} total · showing ${records.length}</div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_svcOpenForm()">+ New Record</button>
-        <button class="btn btn-ghost" onclick="MAINT.history=[];renderServiceRecords()">Refresh</button>
+    <div class="page-header" style="margin-bottom:var(--space-4)">
+      <div>
+        <div class="page-title">Service Records</div>
+        <div class="page-sub">${MAINT.history.length} total · showing ${records.length}</div>
+      </div>
+      <div style="display:flex;gap:var(--space-2)">
+        <button class="btn btn-primary btn-sm" onclick="_svcOpenForm()">${_i('plus')} New Record</button>
+        <button class="btn btn-ghost btn-sm" onclick="MAINT.history=[];renderServiceRecords()">${_i('refresh')} Refresh</button>
       </div>
     </div>
 
-    <div class="mk-kpis" style="margin-bottom:14px">
-      <div class="mk-kpi"><div class="mk-kpi-lbl">Cost YTD</div>
-        <div class="mk-kpi-val" style="color:#F1F5F9">${_fmtCost(costYTD)}</div>
-        <div style="font-size:11px;color:#64748B;margin-top:2px">2026 total</div></div>
-      <div class="mk-kpi"><div class="mk-kpi-lbl">Services YTD</div>
-        <div class="mk-kpi-val" style="color:#0284C7">${svcCount}</div>
-        <div style="font-size:11px;color:#64748B;margin-top:2px">records</div></div>
-      <div class="mk-kpi"><div class="mk-kpi-lbl">Avg Cost</div>
-        <div class="mk-kpi-val" style="color:#F59E0B">${_fmtCost(avgCost)}</div>
-        <div style="font-size:11px;color:#64748B;margin-top:2px">per service</div></div>
+    <!-- KPI Cards v2 -->
+    <div class="exp-kpis">
+      <div class="exp-kpi" style="color:var(--accent)">
+        <div class="exp-kpi-ico">${_i('trending_up')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">Cost YTD</div>
+          <div class="exp-kpi-val">${_fmtCost(costYTD)}</div>
+          <div class="exp-kpi-sub">${currentYear} total</div>
+        </div>
+      </div>
+      <div class="exp-kpi" style="color:var(--text-mid)">
+        <div class="exp-kpi-ico">${_i('clipboard')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">Services YTD</div>
+          <div class="exp-kpi-val">${svcCount}</div>
+          <div class="exp-kpi-sub">records</div>
+        </div>
+      </div>
+      <div class="exp-kpi exp-kpi-warning">
+        <div class="exp-kpi-ico">${_i('target')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">Avg Cost</div>
+          <div class="exp-kpi-val">${_fmtCost(avgCost)}</div>
+          <div class="exp-kpi-sub">per service</div>
+        </div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
-              onchange="_svcSetFilter('vehicle',this.value)">
-        <option value="">All Vehicles</option>
-        ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
-      </select>
-      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
-              onchange="_svcSetFilter('type',this.value)">
-        <option value="">All Types</option>
-        ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${t}</option>`).join('')}
-      </select>
-      <select style="padding:6px 10px;font-size:11px;border:1px solid var(--border-mid);border-radius:6px;background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif"
-              onchange="_svcSetFilter('status',this.value)">
-        <option value="">All Statuses</option>
-        ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
-      </select>
+    <!-- Filter bar -->
+    <div class="exp-tab-bar">
+      <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+        <select class="svc-filter" onchange="_svcSetFilter('vehicle',this.value)">
+          <option value="">All Vehicles</option>
+          ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
+        </select>
+        <select class="svc-filter" onchange="_svcSetFilter('type',this.value)">
+          <option value="">All Types</option>
+          ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${t}</option>`).join('')}
+        </select>
+        <select class="svc-filter" onchange="_svcSetFilter('status',this.value)">
+          <option value="">All Statuses</option>
+          ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
     </div>
 
-    <table class="mt">
-      <thead><tr>
-        <th style="width:30px">#</th><th>Date</th><th>Plate</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
-      </tr></thead>
-      <tbody>${records.length ? records.map((r, i) => {
-        const f = r.fields;
-        const statusCls = f['Status']==='Completed'||f['Status']==='Done'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
-        return `<tr onclick="_svcOpenForm('${r.id}')">
-          <td class="rn">${i+1}</td>
-          <td style="font-size:12px">${_fmtDate(f['Date'])}</td>
-          <td style="font-weight:700;font-size:12px">${f['Vehicle Plate']||'—'}</td>
-          <td style="font-size:12px">${f['Type']||'—'}</td>
-          <td style="font-size:11px;color:var(--text-mid)">${_wsName(f['Workshop'])}</td>
-          <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px">${(f['Description']||'').substring(0,60)}</td>
-          <td class="r" style="font-size:12px">${_fmtCost(f['Cost'])}</td>
-          <td style="font-size:11px">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
-          <td><span class="exp-badge ${statusCls}" style="font-size:9px">${f['Status']||'—'}</span></td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No service records found</td></tr>'}</tbody>
-    </table>
+    <!-- Records table -->
+    <div class="exp-section">
+      <div class="exp-section-hdr">
+        <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('clipboard')}</div>
+        <div>
+          <div class="exp-section-title">All Services</div>
+          <div class="exp-section-sub">${records.length} records in view</div>
+        </div>
+      </div>
+      <div class="exp-table-wrap">
+        <table class="mt">
+          <thead><tr>
+            <th style="width:30px">#</th><th>Date</th><th>Plate</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
+          </tr></thead>
+          <tbody>${records.length ? records.map((r, i) => {
+            const f = r.fields;
+            const statusCls = f['Status']==='Completed'||f['Status']==='Done'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
+            return `<tr onclick="_svcOpenForm('${r.id}')">
+              <td class="rn">${i+1}</td>
+              <td style="font-size:var(--text-sm)">${_fmtDate(f['Date'])}</td>
+              <td style="font-weight:700;font-size:var(--text-sm)">${f['Vehicle Plate']||'—'}</td>
+              <td style="font-size:var(--text-sm)">${f['Type']||'—'}</td>
+              <td style="font-size:var(--text-xs);color:var(--text-mid)">${_wsName(f['Workshop'])}</td>
+              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-xs)">${(f['Description']||'').substring(0,80)}</td>
+              <td class="r" style="font-size:var(--text-sm);font-variant-numeric:tabular-nums">${_fmtCost(f['Cost'])}</td>
+              <td style="font-size:var(--text-xs);font-variant-numeric:tabular-nums">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
+              <td><span class="exp-badge ${statusCls}" style="font-size:9px">${f['Status']||'—'}</span></td>
+            </tr>`;
+          }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+            illustration: 'order',
+            title: 'No service records yet',
+            description: 'Track maintenance, repairs, and inspections for your fleet vehicles here.',
+            action: { label: 'Create first record', onClick: '_svcOpenForm()' }
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No service records found</div>'}</td></tr>`}</tbody>
+        </table>
+      </div>
+    </div>
     <div id="mf-container"></div>`;
 }
 
@@ -1427,51 +1465,95 @@ function _mreqPaint() {
   const inProg = all.filter(r => r.fields['Status'] === 'In Progress').length;
   const sos = active.filter(r => r.fields['Priority'] === 'SOS').length;
 
-  const tabBtn = (id, label, count) => {
+  const tabBtn = (id, label, count, sev) => {
     const act = _mreqTab === id;
-    return `<button onclick="_mreqTab='${id}';_mreqPaint()" style="
-      padding:7px 16px;font-size:11px;font-weight:${act?'700':'500'};border-radius:8px;border:1px solid ${act?'var(--accent)':'var(--border-mid)'};
-      background:${act?'var(--accent)':'var(--bg)'};color:${act?'#fff':'var(--text-mid)'};cursor:pointer;font-family:'Syne',sans-serif;
-      transition:all .15s">${label} <span style="font-size:10px;opacity:.7">${count}</span></button>`;
+    const sevColor = sev === 'danger' ? 'var(--danger)' : sev === 'warning' ? 'var(--warning)' : sev === 'success' ? 'var(--success)' : 'var(--text-mid)';
+    return `<button class="exp-tab ${act?'active':''}" onclick="_mreqTab='${id}';_mreqPaint()">
+      <span>${label}</span>
+      <span class="exp-tab-count" style="${act?'':'color:'+sevColor}">${count}</span>
+    </button>`;
   };
 
+  const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
+
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:12px">
-      <div><div class="page-title">Work Orders</div>
-        <div class="page-sub">Daily maintenance work orders</div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-new-order" onclick="_mreqOpenForm()">+ New Request</button>
-        <button class="btn btn-ghost" onclick="MREQ._loaded=false;renderMaintRequests()">Refresh</button>
+    <div class="page-header" style="margin-bottom:var(--space-4)">
+      <div>
+        <div class="page-title">Work Orders</div>
+        <div class="page-sub">Daily maintenance requests</div>
+      </div>
+      <div style="display:flex;gap:var(--space-2)">
+        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} New Request</button>
+        <button class="btn btn-ghost btn-sm" onclick="MREQ._loaded=false;renderMaintRequests()">${_i('refresh')} Refresh</button>
       </div>
     </div>
 
-    ${sos ? `<div style="background:#7F1D1D;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px 16px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
-      <span style="font-size:18px">&#9888;</span>
-      <span style="color:#FEE2E2;font-size:13px;font-weight:600">${sos} SOS work order${sos>1?'s':''} — immediate attention required</span>
+    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-left:4px solid var(--danger);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
+      <div style="width:36px;height:36px;border-radius:var(--radius-full);background:var(--danger);color:#fff;display:inline-flex;align-items:center;justify-content:center">${_i('alert_circle',18)}</div>
+      <div style="flex:1">
+        <div style="color:var(--danger);font-size:var(--text-sm);font-weight:700">${sos} SOS work order${sos>1?'s':''} — immediate attention required</div>
+        <div style="color:var(--text-mid);font-size:var(--text-xs);margin-top:2px">Click a row below to update</div>
+      </div>
     </div>` : ''}
 
-    <div class="mk-kpis">
-      <div class="mk-kpi"><div class="mk-kpi-lbl">SOS</div>
-        <div class="mk-kpi-val" style="color:#EF4444">${sos}</div></div>
-      <div class="mk-kpi"><div class="mk-kpi-lbl">Pending</div>
-        <div class="mk-kpi-val" style="color:#F59E0B">${pending}</div></div>
-      <div class="mk-kpi"><div class="mk-kpi-lbl">In Progress</div>
-        <div class="mk-kpi-val" style="color:#3B82F6">${inProg}</div></div>
-      <div class="mk-kpi"><div class="mk-kpi-lbl">Completed</div>
-        <div class="mk-kpi-val" style="color:#10B981">${done.length}</div></div>
+    <!-- KPI Cards v2 -->
+    <div class="exp-kpis">
+      <div class="exp-kpi exp-kpi-danger">
+        <div class="exp-kpi-ico">${_i('alert_circle')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">SOS</div>
+          <div class="exp-kpi-val">${sos}</div>
+          <div class="exp-kpi-sub">urgent</div>
+        </div>
+      </div>
+      <div class="exp-kpi exp-kpi-warning">
+        <div class="exp-kpi-ico">${_i('clock')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">Pending</div>
+          <div class="exp-kpi-val">${pending}</div>
+          <div class="exp-kpi-sub">not started</div>
+        </div>
+      </div>
+      <div class="exp-kpi" style="color:var(--accent)">
+        <div class="exp-kpi-ico">${_i('refresh')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">In Progress</div>
+          <div class="exp-kpi-val">${inProg}</div>
+          <div class="exp-kpi-sub">active</div>
+        </div>
+      </div>
+      <div class="exp-kpi exp-kpi-success">
+        <div class="exp-kpi-ico">${_i('check_circle')}</div>
+        <div class="exp-kpi-body">
+          <div class="exp-kpi-lbl">Completed</div>
+          <div class="exp-kpi-val">${done.length}</div>
+          <div class="exp-kpi-sub">done</div>
+        </div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:6px;margin-bottom:16px">
-      ${tabBtn('active', 'Active', active.length)}
-      ${tabBtn('done', 'Completed', done.length)}
-      ${tabBtn('all', 'All', all.length)}
+    <div class="exp-tab-bar">
+      <div class="exp-tab-group">
+        ${tabBtn('active', 'Active', active.length, 'warning')}
+        ${tabBtn('done', 'Completed', done.length, 'success')}
+        ${tabBtn('all', 'All', all.length)}
+      </div>
     </div>
 
-    <table class="mt">
-      <thead><tr>
-        <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:100px" class="c">Actions</th>
-      </tr></thead>
-      <tbody>${expiryAlerts.length ? expiryAlerts.map((ea, i) => `<tr style="background:rgba(146,64,14,0.06)">
+    <div class="exp-section">
+      <div class="exp-section-hdr">
+        <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('checklist')}</div>
+        <div>
+          <div class="exp-section-title">${_mreqTab === 'active' ? 'Active Orders' : _mreqTab === 'done' ? 'Completed Orders' : 'All Orders'}</div>
+          <div class="exp-section-sub">${filtered.length} shown${expiryAlerts.length ? ' · ' + expiryAlerts.length + ' auto-detected from expiry' : ''}</div>
+        </div>
+      </div>
+      <div class="exp-table-wrap">
+        <table class="mt">
+          <thead><tr>
+            <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:100px" class="c">Actions</th>
+          </tr></thead>
+          <tbody>${expiryAlerts.length ? expiryAlerts.map((ea, i) => `<tr style="background:rgba(146,64,14,0.06)">
           <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">AUTO</span></td>
           <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
           <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+'d OVERDUE':ea.days+'d left'}</span></td>
@@ -1498,8 +1580,15 @@ function _mreqPaint() {
             ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Done</button>` : ''}
           </td>
         </tr>`;
-      }).join('') : (expiryAlerts.length ? '' : '<tr><td colspan="9" style="text-align:center;color:var(--text-dim);padding:30px">No work orders</td></tr>')}</tbody>
-    </table>
+      }).join('') : (expiryAlerts.length ? '' : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+            illustration: 'truck',
+            title: _mreqTab === 'done' ? 'No completed orders yet' : 'No active work orders',
+            description: _mreqTab === 'done' ? 'Completed maintenance will appear here' : 'Create a work order or check Expiry Alerts for auto-detected issues',
+            action: _mreqTab !== 'done' ? { label: 'New Request', onClick: '_mreqOpenForm()' } : null
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No work orders</div>'}</td></tr>`)}</tbody>
+        </table>
+      </div>
+    </div>
     <div id="mreq-form-container"></div>`;
 }
 
