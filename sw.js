@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v12-polish';
+const SW_VERSION = 'tms-sw-v13-maint';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
