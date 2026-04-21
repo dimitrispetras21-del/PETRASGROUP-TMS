@@ -308,43 +308,45 @@ async function renderEntity(entityKey) {
 
   const canEdit = can(cfg.perm) === 'full';
 
+  const _i = n => (typeof icon === 'function') ? icon(n, 16) : '';
   c.innerHTML = `
-    <div class="page-header" style="margin-bottom:16px">
+    <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">${cfg.label}</div>
         <div class="page-sub" id="${entityKey}_sub">${records.length} records</div>
       </div>
       ${canEdit ? `
-      <button class="btn btn-success" onclick="openEntityCreate('${entityKey}')">
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
-        </svg>
+      <button class="btn btn-primary btn-sm" onclick="openEntityCreate('${entityKey}')">
+        ${_i('plus')}
         New ${cfg.labelSingle}
       </button>` : ''}
     </div>
 
-    ${(entityKey === 'partners' || entityKey === 'clients') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:16px"></div>` : ''}
+    ${(entityKey === 'partners' || entityKey === 'clients') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:var(--space-4)"></div>` : ''}
 
     <div class="entity-layout">
       <div class="entity-list-panel">
-        <div class="entity-toolbar">
-          <input class="search-input" style="max-width:240px" placeholder="🔍  Search..."
-            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
+        <div class="entity-toolbar-v2">
+          <div class="entity-search-wrap">
+            ${_i('search')}
+            <input class="entity-search-input" placeholder="Search..."
+              oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
+          </div>
           ${cfg.filters.map(fi => {
             if (fi.type === 'bool' || fi.type === 'select') {
-              return `<select class="filter-select" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
+              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
                 ${fi.options.map(o => `<option value="${o.val}">${fi.label}: ${o.label}</option>`).join('')}
               </select>`;
             } else if (fi.type === 'dynamic') {
               const opts = dynamicOpts[fi.field] || [];
-              return `<select class="filter-select" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
+              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
                 <option value="">${fi.label}: All</option>
                 ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
               </select>`;
             }
             return '';
           }).join('')}
-          <span class="entity-count" id="${entityKey}_count">${records.length} records</span>
+          <span class="entity-count-chip" id="${entityKey}_count">${records.length}</span>
         </div>
         <div class="entity-table-wrap" id="${entityKey}_table">
           ${buildEntityTable(entityKey, records)}
@@ -526,7 +528,11 @@ function buildEntityTable(entityKey, records) {
     <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
       ${sortedRecs.length === 0
-        ? `<tr><td colspan="${cols.length+1}" style="text-align:center;padding:40px;color:var(--text-dim)">No records found</td></tr>`
+        ? `<tr><td colspan="${cols.length+1}" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+            illustration: entityKey === 'trucks' ? 'truck' : entityKey === 'trailers' ? 'truck' : 'inbox',
+            title: `No ${cfg.label.toLowerCase()} found`,
+            description: `Try adjusting filters or create a new ${cfg.labelSingle.toLowerCase()}`,
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No records found</div>'}</td></tr>`
         : sortedRecs.slice(0, 200).map(r => buildEntityRow(entityKey, r, cols)).join('')
       }
     </tbody>

@@ -2939,3 +2939,70 @@ button.sidebar-toggle {
 }
 .svc-filter:hover { border-color: var(--accent); }
 .svc-filter:focus { outline: none; border-color: var(--accent); box-shadow: var(--shadow-focus); }
+
+/* ═══ Entity Pages (Drivers, Trucks, Trailers, Clients, Partners, Workshops) v2 ═══ */
+.entity-toolbar-v2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  flex-wrap: wrap;
+}
+.entity-search-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--bg);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 0 var(--space-3);
+  height: 36px;
+  min-width: 240px;
+  flex: 1;
+  max-width: 340px;
+  transition: border-color var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.entity-search-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-focus);
+  background: var(--bg-card);
+}
+.entity-search-wrap .icon { color: var(--text-dim); flex-shrink: 0; }
+.entity-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: var(--text-sm);
+  color: var(--text);
+  background: transparent;
+  height: 100%;
+}
+.entity-search-input::placeholder { color: var(--text-dim); }
+
+.entity-count-chip {
+  margin-left: auto;
+  background: var(--accent-light);
+  color: var(--accent);
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.3px;
+}
+
+/* Entity table wrap adjustments when using v2 toolbar */
+.entity-list-panel .entity-toolbar-v2 + .entity-table-wrap {
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-top: none;
+}
+
+/* Smoother row transitions */
+.entity-table-wrap tbody tr {
+  transition: background var(--duration-fast) var(--ease-out);
+}
