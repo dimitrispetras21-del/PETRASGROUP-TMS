@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════════════════════════════
-// MODULE — CEO DASHBOARD
-// Scaling Up Framework: People / Strategy / Execution / Cash
-// Owner-only. Read-only. No orders, no plates, only patterns.
+// MODULE — CEO DASHBOARD v2
+// Scaling Up · People · Strategy · Execution · Cash
+// Owner-only · No Chart.js (pure SVG) · Token-based · PoP deltas
 // ═══════════════════════════════════════════════════════════════
 (function () {
   'use strict';
 
   // ── State ───────────────────────────────────────────────────
-  let _period  = 'month';   // week | month | quarter | ytd
-  let _timer   = null;
-  let _charts  = {};        // Chart.js instance registry
+  let _period = 'month';   // week | month | quarter | ytd
+  let _timer  = null;
+  const _ic   = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
 
   // ── Entry point ─────────────────────────────────────────────
   async function renderCEODashboard() {
@@ -19,8 +19,6 @@
       return;
     }
     if (_timer) clearInterval(_timer);
-    _destroyAllCharts();
-
     c.innerHTML = _shellHTML();
     _bindPeriodButtons();
     await _loadAll();
@@ -28,25 +26,26 @@
   }
 
   // ── Period helpers ───────────────────────────────────────────
-  function _getPeriodRange(p) {
+  function _getPeriodRange(p, offset) {
     const now = new Date();
     const y = now.getFullYear(), m = now.getMonth();
     let start, end;
+    const off = offset || 0;
     if (p === 'week') {
       const day = now.getDay();
-      const diff = day === 0 ? -6 : 1 - day; // Monday
-      start = new Date(now); start.setDate(now.getDate() + diff); start.setHours(0,0,0,0);
+      const diff = day === 0 ? -6 : 1 - day;
+      start = new Date(now); start.setDate(now.getDate() + diff + off * 7); start.setHours(0,0,0,0);
       end   = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
     } else if (p === 'month') {
-      start = new Date(y, m, 1);
-      end   = new Date(y, m + 1, 0, 23, 59, 59, 999);
+      start = new Date(y, m + off, 1);
+      end   = new Date(y, m + off + 1, 0, 23, 59, 59, 999);
     } else if (p === 'quarter') {
-      const q = Math.floor(m / 3);
+      const q = Math.floor(m / 3) + off;
       start = new Date(y, q * 3, 1);
       end   = new Date(y, q * 3 + 3, 0, 23, 59, 59, 999);
     } else { // ytd
-      start = new Date(y, 0, 1);
-      end   = new Date(); end.setHours(23,59,59,999);
+      start = new Date(y + off, 0, 1);
+      end   = off === 0 ? new Date() : new Date(y + off, 11, 31, 23, 59, 59, 999);
     }
     return { start, end };
   }
@@ -56,10 +55,19 @@
   function _periodLabel(p) {
     const m = ['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
     const now = new Date();
-    if (p === 'week') return 'Εβδομάδα ' + _getWeekNum(now);
+    if (p === 'week') return 'W' + _getWeekNum(now);
     if (p === 'month') return m[now.getMonth()] + ' ' + now.getFullYear();
     if (p === 'quarter') return 'Q' + (Math.floor(now.getMonth() / 3) + 1) + ' ' + now.getFullYear();
     return 'YTD ' + now.getFullYear();
+  }
+
+  function _prevPeriodLabel(p) {
+    const m = ['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
+    const now = new Date();
+    if (p === 'week') return 'W' + (_getWeekNum(now) - 1);
+    if (p === 'month') { const nm = new Date(now); nm.setMonth(nm.getMonth()-1); return m[nm.getMonth()]; }
+    if (p === 'quarter') return 'Q' + (Math.floor(now.getMonth() / 3));
+    return (now.getFullYear() - 1) + '';
   }
 
   function _getWeekNum(d) {
@@ -70,22 +78,23 @@
     return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
   }
 
-  // ── Data loader ──────────────────────────────────────────────
+  // ── Data loader (fetches current + previous period for deltas) ──
   async function _loadAll() {
     const { start, end } = _getPeriodRange(_period);
+    const { start: prevStart, end: prevEnd } = _getPeriodRange(_period, -1);
     const s = _iso(start), e = _iso(end);
+    const ps = _iso(prevStart), pe = _iso(prevEnd);
     const now = new Date();
     const plus48 = new Date(now.getTime() + 48 * 3600000).toISOString();
-    // Spark = last 8 weeks for trend charts
     const sparkS = _iso(new Date(now.getTime() - 56 * 86400000));
 
-    // Update "updated" time immediately
     const updEl = document.getElementById('ceo-updated');
     if (updEl) updEl.textContent = 'Φόρτωση...';
 
     try {
-      const [allOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.all([
+      const [allOrders, prevOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.all([
         atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${s}'),IS_BEFORE({Loading DateTime},'${e}'))`),
+        atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${ps}'),IS_BEFORE({Loading DateTime},'${pe}'))`).catch(() => []),
         atGet(TABLES.DRIVERS, `{Active}=1`),
         atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Trip Start Date},'${s}'),IS_BEFORE({Trip Start Date},'${e}'))`).catch(() => []),
         atGet(TABLES.MAINT_HISTORY).catch(() => []),
@@ -94,202 +103,269 @@
       ]);
 
       const deliveredOrders = allOrders.filter(r => r.fields['Status'] === 'Delivered');
+      const prevDelivered   = prevOrders.filter(r => r.fields['Status'] === 'Delivered');
 
-      _renderAll({ allOrders, deliveredOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders });
+      _renderAll({ allOrders, deliveredOrders, prevOrders, prevDelivered, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders });
 
-      if (updEl) updEl.textContent = 'Updated: ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
+      if (updEl) updEl.textContent = 'Updated ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
     } catch (err) {
       if (typeof logError === 'function') logError(err, 'CEO Dashboard loadAll');
       const c = document.getElementById('content');
-      if (c) c.innerHTML = `<div style="padding:40px;text-align:center;color:#ef4444">Σφάλμα φόρτωσης. <button onclick="renderCEODashboard()" style="margin-left:12px;padding:8px 16px;background:#0284C7;color:#fff;border:none;border-radius:6px;cursor:pointer">Ανανέωση</button></div>`;
+      if (c) c.innerHTML = `<div style="padding:40px;text-align:center;color:#DC2626">Σφάλμα φόρτωσης. <button onclick="renderCEODashboard()" style="margin-left:12px;padding:8px 16px;background:#0284C7;color:#fff;border:none;border-radius:6px;cursor:pointer">Ανανέωση</button></div>`;
     }
   }
 
   // ── Full page render ─────────────────────────────────────────
   function _renderAll(data) {
-    _destroyAllCharts();
-
     const el = id => document.getElementById(id);
 
-    // ── SECTION 0: Brand Promises ──
+    // Brand Promises
     const speed    = _calcSpeed(data.deliveredOrders);
     const quality  = _calcQuality(data.deliveredOrders);
     const anxiety  = _calcAnxiety();
-    el('brand-speed-val').textContent    = speed.hasData    ? _pct(speed.value)    : 'N/A';
-    el('brand-quality-val').textContent  = quality.hasData  ? _pct(quality.value)  : 'N/A';
-    el('brand-anxiety-val').textContent  = anxiety.value;
-    el('brand-speed-sub').textContent    = speed.hasData    ? `${speed.onTime} on-time από ${speed.total}` : '';
-    el('brand-quality-sub').textContent  = quality.hasData  ? `${quality.sent} με proof από ${quality.total}` : '';
-    const wkNum = _getWeekNum(new Date());
-    el('brand-anxiety-sub').textContent  = `W${wkNum} · ${anxiety.value} ${anxiety.value === 1 ? 'κλήση' : 'κλήσεις'}`;
-    el('brand-speed-val').style.color    = speed.hasData    ? _colorScore(speed.value, 98)    : '#cbd5e1';
-    el('brand-quality-val').style.color  = quality.hasData  ? _colorScore(quality.value, 100) : '#cbd5e1';
-    el('brand-anxiety-val').style.color  = anxiety.value === 0 ? '#22c55e' : anxiety.value <= 3 ? '#f59e0b' : '#ef4444';
+    const prevSpeed = _calcSpeed(data.prevDelivered);
+    const prevQuality = _calcQuality(data.prevDelivered);
 
-    // Toggle no-data class for visual state
-    const speedCard   = document.querySelector('.ceo-brand-card.speed');
+    // Speed card
+    el('brand-speed-val').textContent = speed.hasData ? _pctShort(speed.value) : '—';
+    el('brand-speed-sub').innerHTML   = speed.hasData
+      ? `${speed.onTime} on-time / ${speed.total}${prevSpeed.hasData ? ' ' + _deltaHTML(speed.value, prevSpeed.value, false) : ''}`
+      : '';
+    const speedCard = document.querySelector('.ceo-brand-card.speed');
+    if (speedCard) {
+      speedCard.classList.toggle('no-data', !speed.hasData);
+      const ring = speedCard.querySelector('.ceo-gauge-ring');
+      if (ring && speed.hasData) {
+        const col = _colorScoreHex(speed.value, 98);
+        ring.style.setProperty('--g-color', col);
+        ring.style.setProperty('--g-deg', Math.min(speed.value, 100) * 3.6 + 'deg');
+        el('brand-speed-val').style.color = col;
+      }
+    }
+
+    // Quality card
+    el('brand-quality-val').textContent = quality.hasData ? _pctShort(quality.value) : '—';
+    el('brand-quality-sub').innerHTML   = quality.hasData
+      ? `${quality.sent} proof / ${quality.total}${prevQuality.hasData ? ' ' + _deltaHTML(quality.value, prevQuality.value, false) : ''}`
+      : '';
     const qualityCard = document.querySelector('.ceo-brand-card.quality');
-    if (speedCard)   speedCard.classList.toggle('no-data', !speed.hasData);
-    if (qualityCard) qualityCard.classList.toggle('no-data', !quality.hasData);
+    if (qualityCard) {
+      qualityCard.classList.toggle('no-data', !quality.hasData);
+      const ring = qualityCard.querySelector('.ceo-gauge-ring');
+      if (ring && quality.hasData) {
+        const col = _colorScoreHex(quality.value, 100);
+        ring.style.setProperty('--g-color', col);
+        ring.style.setProperty('--g-deg', Math.min(quality.value, 100) * 3.6 + 'deg');
+        el('brand-quality-val').style.color = col;
+      }
+    }
 
-    if (speed.hasData)   _gauge('gauge-speed',   speed.value,   98,  false);
-    if (quality.hasData) _gauge('gauge-quality',  quality.value, 100, false);
-    _gaugeAnxiety('gauge-anxiety', anxiety.value);
-
-    // Pre-fill anxiety input with current week's saved value
+    // Anxiety card (reverse scale — 10 is max bad, 0 is perfect)
+    el('brand-anxiety-val').textContent = anxiety.value;
+    const wkNum = _getWeekNum(new Date());
+    el('brand-anxiety-sub').textContent = `W${wkNum} · ${anxiety.value} ${anxiety.value === 1 ? 'κλήση' : 'κλήσεις'}`;
+    const anxietyRing = document.querySelector('.ceo-brand-card.anxiety .ceo-gauge-ring');
+    if (anxietyRing) {
+      const clamped = Math.min(anxiety.value, 10);
+      const col = anxiety.value === 0 ? '#059669' : anxiety.value <= 3 ? '#D97706' : '#DC2626';
+      anxietyRing.style.setProperty('--g-color', col);
+      anxietyRing.style.setProperty('--g-deg', clamped * 36 + 'deg');
+      el('brand-anxiety-val').style.color = col;
+    }
     const ainput = el('anxiety-input');
     if (ainput) ainput.value = anxiety.value || 0;
 
-    // ── SECTION 1: People ──
+    // ── Q1: People ──
     const { utilPct, driversUsed, driverCount } = _calcDriverUtil(data.allOrders, data.activeDrivers);
     const { partnerPct, partnerCount, ownedCount } = _calcPartnerRatio(data.allOrders);
     const availableDrivers = driverCount - driversUsed;
 
-    el('people-util-val').textContent  = _pct(utilPct);
-    el('people-util-val').style.color  = _colorScore(utilPct, 80);
-    el('people-util-sub').textContent  = `${driversUsed} από ${driverCount} οδηγοί ενεργοί`;
-    el('people-util-bar').style.width  = Math.min(utilPct, 100) + '%';
-    el('people-util-bar').style.background = _colorScore(utilPct, 80);
+    const prevUtil = data.prevOrders.length ? _calcDriverUtil(data.prevOrders, data.activeDrivers).utilPct : 0;
+    const prevPart = data.prevOrders.length ? _calcPartnerRatio(data.prevOrders).partnerPct : 0;
 
-    el('people-partner-val').textContent = _pct(partnerPct);
-    el('people-partner-val').style.color = partnerPct > 40 ? '#ef4444' : partnerPct > 30 ? '#f59e0b' : '#22c55e';
-    el('people-partner-sub').textContent = `${partnerCount} partner | ${ownedCount} ιδιόκτητα`;
-    _donut('chart-partner', [ownedCount || 0, partnerCount || 0], ['#0284C7','#f59e0b']);
+    el('people-util-val').innerHTML = `${_pctShort(utilPct)}${_deltaHTML(utilPct, prevUtil, false)}`;
+    el('people-util-val').className = 'ceo-kpi-num ' + _cssScoreClass(utilPct, 80);
+    el('people-util-sub').textContent = `${driversUsed} / ${driverCount} οδηγοί σε δράση`;
+    el('people-util-bar').style.width  = Math.min(utilPct, 100) + '%';
+    el('people-util-bar').style.background = _colorScoreHex(utilPct, 80);
+
+    el('people-partner-val').innerHTML = `${_pctShort(partnerPct)}${_deltaHTML(partnerPct, prevPart, true)}`;
+    el('people-partner-val').className = 'ceo-kpi-num sm ' + (partnerPct > 40 ? 'ceo-val-bad' : partnerPct > 30 ? 'ceo-val-warn' : 'ceo-val-ok');
+    el('people-partner-sub').textContent = `${partnerCount} partner · ${ownedCount} ιδιόκτητα`;
+    // Partner split bar (replaces donut)
+    const total = ownedCount + partnerCount || 1;
+    el('people-split-owned').style.width = (ownedCount / total * 100) + '%';
+    el('people-split-partner').style.width = (partnerCount / total * 100) + '%';
 
     el('people-avail-val').textContent = availableDrivers;
-    el('people-avail-val').style.color = availableDrivers > 0 ? '#22c55e' : '#7A92B0';
-    el('people-avail-sub').textContent = `διαθέσιμοι αυτή την εβδομάδα`;
+    el('people-avail-val').className = 'ceo-kpi-num sm ' + (availableDrivers > 0 ? 'ceo-val-ok' : 'ceo-val-muted');
+    el('people-avail-sub').textContent = 'διαθέσιμοι';
 
-    _renderWorkloadChart('chart-workload', data.allOrders, data.activeDrivers);
+    // Workload list (replaces horizontal bar chart)
+    el('people-workload').innerHTML = _renderWorkloadList(data.allOrders, data.activeDrivers);
 
-    // ── SECTION 2: Strategy ──
+    // ── Q2: Strategy ──
     const revenue = _calcRevenue(data.allOrders);
+    const prevRevenue = _calcRevenue(data.prevOrders);
     const revTarget = _getRevTarget();
     const revPct = revTarget ? (revenue / revTarget * 100) : 0;
     const deadKM = _calcDeadKM(data.allOrders);
     const topClients = _calcTopClients(data.allOrders, 5);
 
-    el('strat-revenue-val').textContent = _eur(revenue);
-    el('strat-revenue-sub').textContent = revTarget ? `${_pct(revPct)} vs στόχο ${_eur(revTarget)}` : 'Πατήστε ✎ για να ορίσετε μηνιαίο στόχο';
-    el('strat-revenue-val').style.color  = revTarget ? _colorScore(revPct, 100) : '#0B1929';
+    el('strat-revenue-val').innerHTML = `${_eur(revenue)}${_deltaHTML(revenue, prevRevenue, false)}`;
+    el('strat-revenue-val').className = 'ceo-kpi-num ' + (revTarget ? _cssScoreClass(revPct, 100) : '');
+    el('strat-revenue-sub').textContent = revTarget ? `${_pctShort(revPct)} vs στόχο ${_eur(revTarget)}` : 'Πατήστε ✎ για στόχο';
     if (revTarget) {
       el('strat-rev-bar').style.width = Math.min(revPct, 100) + '%';
-      el('strat-rev-bar').style.background = _colorScore(revPct, 100);
+      el('strat-rev-bar').style.background = _colorScoreHex(revPct, 100);
+    } else {
+      el('strat-rev-bar').style.width = '0%';
     }
 
     if (deadKM.hasData) {
       el('strat-deadkm-val').textContent = _km(deadKM.totalDead);
-      el('strat-deadkm-val').style.color  = deadKM.pct < 15 ? '#22c55e' : deadKM.pct < 25 ? '#f59e0b' : '#ef4444';
-      el('strat-deadkm-sub').textContent  = `${_pct(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded`;
-      el('strat-deadkm-bar').style.width  = Math.min(deadKM.pct, 100) + '%';
-      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#22c55e' : deadKM.pct < 25 ? '#f59e0b' : '#ef4444';
-      _sparkline('chart-deadkm', _computeWeeklyDeadKM(data.sparkOrders), '#f59e0b', 15, true);
+      el('strat-deadkm-val').className = 'ceo-kpi-num ' + (deadKM.pct < 15 ? 'ceo-val-ok' : deadKM.pct < 25 ? 'ceo-val-warn' : 'ceo-val-bad');
+      el('strat-deadkm-sub').textContent = `${_pctShort(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded`;
+      el('strat-deadkm-bar').style.width = Math.min(deadKM.pct, 100) + '%';
+      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#059669' : deadKM.pct < 25 ? '#D97706' : '#DC2626';
+      // Sparkline (inline SVG, no Chart.js)
+      const weeklyDead = _computeWeeklyDeadKM(data.sparkOrders);
+      el('strat-deadkm-spark').innerHTML = _ceoSpark(weeklyDead.map(d => d.value), '#D97706', 64);
     } else {
       el('strat-deadkm-val').textContent = 'N/A';
-      el('strat-deadkm-val').style.color  = '#7A92B0';
-      el('strat-deadkm-sub').textContent  = deadKM.hint;
-      el('strat-deadkm-bar').style.width  = '0%';
+      el('strat-deadkm-val').className = 'ceo-kpi-num ceo-val-muted';
+      el('strat-deadkm-sub').textContent = deadKM.hint || '';
+      el('strat-deadkm-bar').style.width = '0%';
+      el('strat-deadkm-spark').innerHTML = '';
     }
 
-    // Top Clients table
+    // Top Clients with mini bars
+    const maxClientRev = topClients.length ? topClients[0].revenue : 0;
     el('strat-clients-body').innerHTML = topClients.length
       ? topClients.map((cl, i) => `
           <tr>
-            <td style="color:#94a3b8;font-size:11px">#${i+1}</td>
-            <td style="color:#334155;font-weight:500">${escapeHtml(cl.name)}</td>
-            <td style="color:#22c55e;font-family:monospace">${_eur(cl.revenue)}</td>
-            <td style="color:#94a3b8">${_pct(cl.pct)}</td>
+            <td style="width:24px"><span class="ceo-client-rank">#${i+1}</span></td>
+            <td style="font-weight:600;color:var(--ceo-text)">${escapeHtml(cl.name)}</td>
+            <td class="mono" style="color:var(--ceo-ok);text-align:right;white-space:nowrap">${_eur(cl.revenue)}</td>
+            <td style="min-width:80px">
+              <div class="ceo-client-mini-bar">
+                <div class="ceo-client-mini-bar-track">
+                  <div class="ceo-client-mini-bar-fill" style="width:${maxClientRev ? (cl.revenue/maxClientRev*100) : 0}%"></div>
+                </div>
+                <span style="color:var(--ceo-text-dim);font-size:11px;font-weight:600;width:36px;text-align:right">${_pctShort(cl.pct)}</span>
+              </div>
+            </td>
           </tr>`).join('')
-      : '<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:20px">Χωρίς δεδομένα εσόδων</td></tr>';
+      : '<tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:20px">Χωρίς δεδομένα</td></tr>';
 
-    // ── SECTION 3: Execution ──
-    const { onTimePct } = _calcSpeed(data.deliveredOrders);
-    const weeklyOnTime  = _computeWeeklyOnTime(data.sparkOrders);
-    const vsRate        = _calcVSRate(data.allOrders);
-    const assignedPct   = _calcAssignedRate(data.allOrders);
+    // ── Q3: Execution ──
+    const { onTimePct } = speed; // reuse speed calc (on-time pct is the same)
+    const weeklyOnTime = _computeWeeklyOnTime(data.sparkOrders);
+    const vsRate = _calcVSRate(data.allOrders);
+    const assignedPct = _calcAssignedRate(data.allOrders);
+    const prevVsRate = data.prevOrders.length ? _calcVSRate(data.prevOrders) : 0;
+    const prevAssigned = data.prevOrders.length ? _calcAssignedRate(data.prevOrders) : 0;
 
-    el('exec-ontime-val').textContent = data.deliveredOrders.length ? _pct(onTimePct || 0) : 'N/A';
-    el('exec-ontime-val').style.color = data.deliveredOrders.length ? _colorScore(onTimePct || 0, 98) : '#cbd5e1';
+    el('exec-ontime-val').textContent = speed.hasData ? _pctShort(speed.value) : 'N/A';
+    el('exec-ontime-val').className = 'ceo-kpi-num ' + (speed.hasData ? _cssScoreClass(speed.value, 98) : 'ceo-val-muted');
     el('exec-ontime-sub').textContent = `4-εβδ. μέσος: ${_weekAvg(weeklyOnTime)}%`;
-    _trendLine('chart-ontime', weeklyOnTime, 98);
+    // Inline sparkline
+    el('exec-ontime-spark').innerHTML = speed.hasData && weeklyOnTime.length
+      ? _ceoSpark(weeklyOnTime.map(w => w.value), '#0284C7', 64)
+      : '';
 
-    el('exec-risk-val').textContent  = data.highRiskOrders.length;
-    el('exec-risk-val').style.color  = data.highRiskOrders.length === 0 ? '#22c55e' : '#ef4444';
-    el('exec-risk-sub').textContent  = data.highRiskOrders.length === 0
-      ? 'Καμία κρίσιμη αποστολή επόμενων 48h'
-      : `Παράδοση σε <48h χωρίς Delivered status`;
+    el('exec-risk-val').textContent = data.highRiskOrders.length;
+    el('exec-risk-val').className = 'ceo-kpi-num ' + (data.highRiskOrders.length === 0 ? 'ceo-val-ok' : 'ceo-val-bad');
+    el('exec-risk-sub').textContent = data.highRiskOrders.length === 0
+      ? 'Καμία κρίσιμη στις επόμενες 48h'
+      : 'Παράδοση <48h χωρίς Delivered';
 
-    el('exec-vs-val').textContent = _pct(vsRate);
-    el('exec-vs-val').style.color  = vsRate >= 60 ? '#22c55e' : vsRate >= 40 ? '#f59e0b' : '#7A92B0';
-    el('exec-vs-sub').textContent  = 'Veroia Switch usage σε export φορτία';
+    el('exec-vs-val').innerHTML = `${_pctShort(vsRate)}${_deltaHTML(vsRate, prevVsRate, false)}`;
+    el('exec-vs-val').className = 'ceo-kpi-num ' + (vsRate >= 60 ? 'ceo-val-ok' : vsRate >= 40 ? 'ceo-val-warn' : 'ceo-val-muted');
+    el('exec-vs-sub').textContent = 'Veroia Switch σε exports';
 
-    el('exec-assign-val').textContent = _pct(assignedPct);
-    el('exec-assign-val').style.color  = _colorScore(assignedPct, 90);
-    el('exec-assign-sub').textContent  = 'φορτία με ανατεθειμένο truck';
+    el('exec-assign-val').innerHTML = `${_pctShort(assignedPct)}${_deltaHTML(assignedPct, prevAssigned, false)}`;
+    el('exec-assign-val').className = 'ceo-kpi-num sm ' + _cssScoreClass(assignedPct, 90);
+    el('exec-assign-sub').textContent = 'με truck';
 
-    // ── SECTION 4: Cash ──
+    // ── Q4: Cash ──
     const { deliveredRev, uninvoicedCount, uninvoicedRev } = _calcCashMetrics(data.allOrders);
+    const prevCash = _calcCashMetrics(data.prevOrders);
     const maintCost = _calcMaintCost(data.maintHistory);
-    const { partnerRevPct, partnerMargin } = _calcPartnerMargin(data.allOrders);
+    const { partnerMargin } = _calcPartnerMargin(data.allOrders);
     const lossTrips = _calcLossTrips(data.tripCosts);
 
-    el('cash-revenue-val').textContent = _eur(deliveredRev);
-    el('cash-revenue-sub').textContent = `Παραδοθέντα + Τιμολογημένα`;
+    el('cash-revenue-val').innerHTML = `${_eur(deliveredRev)}${_deltaHTML(deliveredRev, prevCash.deliveredRev, false)}`;
+    el('cash-revenue-val').className = 'ceo-kpi-num ceo-val-ok';
+    el('cash-revenue-sub').textContent = 'παραδοθέντα + τιμολογημένα';
 
-    el('cash-uninv-val').textContent  = uninvoicedCount;
-    el('cash-uninv-val').style.color  = uninvoicedRev > 5000 ? '#ef4444' : uninvoicedCount > 0 ? '#f59e0b' : '#22c55e';
-    el('cash-uninv-sub').textContent  = uninvoicedRev > 0 ? `${_eur(uninvoicedRev)} αδρανούν (χωρίς τιμολόγιο)` : 'Όλα τιμολογημένα';
+    el('cash-uninv-val').textContent = uninvoicedCount;
+    el('cash-uninv-val').className = 'ceo-kpi-num ' + (uninvoicedRev > 5000 ? 'ceo-val-bad' : uninvoicedCount > 0 ? 'ceo-val-warn' : 'ceo-val-ok');
+    el('cash-uninv-sub').textContent = uninvoicedRev > 0 ? `${_eur(uninvoicedRev)} αδρανούν` : 'Όλα τιμολογημένα';
 
     const maintPct = deliveredRev > 0 ? (maintCost / deliveredRev * 100) : 0;
     el('cash-maint-val').textContent = _eur(maintCost);
-    el('cash-maint-val').style.color  = maintPct < 8 ? '#22c55e' : maintPct < 12 ? '#f59e0b' : '#ef4444';
-    el('cash-maint-sub').textContent  = deliveredRev > 0 ? `${_pct(maintPct)} των εσόδων (στόχος <8%)` : 'Χωρίς δεδομένα εσόδων';
+    el('cash-maint-val').className = 'ceo-kpi-num sm ' + (maintPct < 8 ? 'ceo-val-ok' : maintPct < 12 ? 'ceo-val-warn' : 'ceo-val-bad');
+    el('cash-maint-sub').textContent = deliveredRev > 0 ? `${_pctShort(maintPct)} εσόδων` : 'χωρίς έσοδα';
 
-    el('cash-partner-val').textContent = data.tripCosts.length > 0 ? _pct(partnerMargin) : 'N/A';
-    el('cash-partner-val').style.color  = data.tripCosts.length > 0
-      ? (partnerMargin > 30 ? '#22c55e' : partnerMargin > 15 ? '#f59e0b' : '#ef4444')
-      : '#cbd5e1';
-    el('cash-partner-sub').textContent  = data.tripCosts.length > 0 ? 'margin σε partner φορτία' : 'Απαιτείται TRIP COSTS data';
+    el('cash-partner-val').textContent = data.tripCosts.length > 0 ? _pctShort(partnerMargin) : 'N/A';
+    el('cash-partner-val').className = 'ceo-kpi-num sm ' + (data.tripCosts.length > 0
+      ? (partnerMargin > 30 ? 'ceo-val-ok' : partnerMargin > 15 ? 'ceo-val-warn' : 'ceo-val-bad')
+      : 'ceo-val-muted');
+    el('cash-partner-sub').textContent = data.tripCosts.length > 0 ? 'partner margin' : 'Trip Costs ?';
+
+    // Loss trips banner (conditional, above quadrants)
+    const lossBanner = document.getElementById('ceo-loss-banner-wrap');
+    if (lossBanner) {
+      if (lossTrips.length > 0) {
+        const totalLoss = lossTrips.reduce((s, t) => s + t.loss, 0);
+        lossBanner.innerHTML = `<div class="ceo-loss-banner">
+          <div class="ceo-loss-icon">${_ic('alert_triangle', 16)}</div>
+          <div class="ceo-loss-text">
+            <strong>${lossTrips.length} ζημιογόνες διαδρομές</strong> — συνολική ζημία <strong>${_eur(totalLoss)}</strong> για ${_periodLabel(_period)}
+          </div>
+        </div>`;
+      } else {
+        lossBanner.innerHTML = '';
+      }
+    }
 
     el('cash-loss-body').innerHTML = lossTrips.length
       ? lossTrips.map(t => `<tr>
-          <td style="color:#334155">${escapeHtml(t.route)}</td>
-          <td style="color:#22c55e;font-family:monospace">${_eur(t.revenue)}</td>
-          <td style="color:#64748b;font-family:monospace">${_eur(t.cost)}</td>
-          <td style="color:#ef4444;font-weight:700;font-family:monospace">-${_eur(t.loss)}</td>
+          <td style="color:var(--ceo-text);font-weight:500">${escapeHtml(t.route)}</td>
+          <td class="mono" style="color:var(--ceo-ok);text-align:right;white-space:nowrap">${_eur(t.revenue)}</td>
+          <td class="mono" style="color:var(--ceo-text-mid);text-align:right;white-space:nowrap">${_eur(t.cost)}</td>
+          <td class="mono" style="color:var(--ceo-bad);font-weight:700;text-align:right;white-space:nowrap">-${_eur(t.loss)}</td>
         </tr>`).join('')
-      : `<tr><td colspan="4" style="color:#94a3b8;text-align:center;padding:20px">
-          ${data.tripCosts.length === 0 ? 'Απαιτείται Trip Costs data (D1)' : 'Καμία ζημιογόνος διαδρομή'}
+      : `<tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">
+          ${data.tripCosts.length === 0 ? 'Απαιτείται Trip Costs data' : 'Καμία ζημιογόνος διαδρομή'}
         </td></tr>`;
 
-    // ── NAKIS Commentary ──
-    _renderNakis({ allOrders: data.allOrders, deliveredOrders: data.deliveredOrders, speed, deadKM, highRiskCount: data.highRiskOrders.length, revenue: deliveredRev, uninvoicedRev });
+    // Executive Briefing
+    _renderBrief({ allOrders: data.allOrders, deliveredOrders: data.deliveredOrders, speed, deadKM, highRiskCount: data.highRiskOrders.length, revenue: deliveredRev, prevRevenue: prevCash.deliveredRev, uninvoicedRev, lossTripsCount: lossTrips.length });
 
-    // Revenue target setter
     const tgt = el('rev-target-input');
     if (tgt) tgt.value = _getRevTarget() || '';
   }
 
-  // ── Calculators ─────────────────────────────────────────────
-
+  // ── Calculators (unchanged from v1) ─────────────────────────
   function _calcSpeed(deliveredOrders) {
-    // Try Actual Delivery Date field first
     const withActual = deliveredOrders.filter(r => r.fields['Actual Delivery Date'] && r.fields['Delivery DateTime']);
     if (withActual.length > 0) {
       const onTime = withActual.filter(r => new Date(r.fields['Actual Delivery Date']) <= new Date(r.fields['Delivery DateTime'])).length;
-      return { value: onTime / withActual.length * 100, onTime, total: withActual.length, hasData: true };
+      const val = onTime / withActual.length * 100;
+      return { value: val, onTimePct: val, onTime, total: withActual.length, hasData: true };
     }
-    // Fall back to Delivery Performance field
     const withPerf = deliveredOrders.filter(r => r.fields['Delivery Performance']);
     if (withPerf.length > 0) {
       const onTime = withPerf.filter(r => r.fields['Delivery Performance'] === 'On Time').length;
-      return { value: onTime / withPerf.length * 100, onTime, total: withPerf.length, hasData: true };
+      const val = onTime / withPerf.length * 100;
+      return { value: val, onTimePct: val, onTime, total: withPerf.length, hasData: true };
     }
-    return { value: 0, onTime: 0, total: deliveredOrders.length, hasData: false };
+    return { value: 0, onTimePct: 0, onTime: 0, total: deliveredOrders.length, hasData: false };
   }
 
   function _calcQuality(deliveredOrders) {
-    // Check if field exists at all
     const withField = deliveredOrders.filter(r => 'Temp Graph Sent' in r.fields);
     if (withField.length === 0) return { value: 0, sent: 0, total: deliveredOrders.length, hasData: false };
     const sent = deliveredOrders.filter(r => r.fields['Temp Graph Sent']).length;
@@ -328,20 +404,14 @@
     return allOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
   }
 
-  // Dead KM: priority order:
-  //   1. Explicit 'Dead KM' field on ORDERS
-  //   2. Computed from 'Total KM' - 'Loaded KM' on ORDERS
-  //   3. FALLBACK: Haversine distance between matched export→import routes (from ORDER_STOPS)
   function _calcDeadKM(allOrders) {
-    // Option A: explicit Dead KM field
     const withDead = allOrders.filter(r => r.fields['Dead KM'] != null && r.fields['Dead KM'] !== '');
     if (withDead.length > 0) {
       const totalDead   = withDead.reduce((s, r) => s + (parseFloat(r.fields['Dead KM']) || 0), 0);
       const totalLoaded = withDead.reduce((s, r) => s + (parseFloat(r.fields['Loaded KM'] || r.fields['Total KM']) || 0), 0);
       const totalAll    = totalDead + totalLoaded;
-      return { hasData: true, totalDead, totalLoaded, pct: totalAll ? totalDead / totalAll * 100 : 0, source: 'explicit field' };
+      return { hasData: true, totalDead, totalLoaded, pct: totalAll ? totalDead / totalAll * 100 : 0, source: 'explicit' };
     }
-    // Option B: Total KM + Loaded KM
     const withBoth = allOrders.filter(r => r.fields['Total KM'] != null && r.fields['Loaded KM'] != null);
     if (withBoth.length > 0) {
       const totalKM   = withBoth.reduce((s, r) => s + (parseFloat(r.fields['Total KM']) || 0), 0);
@@ -349,27 +419,18 @@
       const deadKM    = Math.max(totalKM - loadedKM, 0);
       return { hasData: true, totalDead: deadKM, totalLoaded: loadedKM, pct: totalKM ? deadKM / totalKM * 100 : 0, source: 'computed' };
     }
-    // Option C (NEW): estimate from matched export/import pairs using Haversine
-    // Export delivers to Country X → find Import loading from Country X with close dates → dead km = distance
-    // This mirrors performance.js approach. Since we don't have ORDER_STOPS here, use Matched Import ID
-    // as signal (matched = short dead; unmatched = long dead via rough heuristic per direction).
     const matched = allOrders.filter(r => r.fields['Matched Import ID']);
     const unmatched = allOrders.filter(r => r.fields['Direction'] === 'Export' && !r.fields['Matched Import ID']);
     if (matched.length + unmatched.length > 0) {
-      // Rough estimate: matched trips ~50 km dead on average, unmatched ~600 km
       const estDead = matched.length * 50 + unmatched.length * 600;
-      const estTotal = matched.length * 1200 + unmatched.length * 1200; // avg 1200 km/leg
+      const estTotal = matched.length * 1200 + unmatched.length * 1200;
       return {
         hasData: true, totalDead: estDead, totalLoaded: estTotal - estDead,
         pct: estTotal ? estDead / estTotal * 100 : 0,
-        source: 'estimate (matched vs solo)',
-        isEstimate: true
+        source: 'estimate', isEstimate: true
       };
     }
-    return {
-      hasData: false, totalDead: 0, totalLoaded: 0, pct: 0,
-      hint: 'Προσθέστε "Dead KM" ή "Total KM" + "Loaded KM" στο ORDERS'
-    };
+    return { hasData: false, totalDead: 0, totalLoaded: 0, pct: 0, hint: 'Προσθέστε "Dead KM" στο ORDERS' };
   }
 
   function _calcTopClients(allOrders, n) {
@@ -440,7 +501,6 @@
   }
 
   // ── Sparkline data builders ──────────────────────────────────
-
   function _computeWeeklyOnTime(sparkOrders) {
     const weeks = {};
     sparkOrders.filter(r => r.fields['Status'] === 'Delivered').forEach(r => {
@@ -460,7 +520,6 @@
       .map(([label, v]) => ({ label, value: v.total ? Math.round(v.onTime / v.total * 100) : 0 }));
   }
 
-  // Dead KM weekly trend — % dead of total per week
   function _computeWeeklyDeadKM(sparkOrders) {
     const weeks = {};
     sparkOrders.forEach(r => {
@@ -482,7 +541,7 @@
     return Math.round(data.slice(-4).reduce((s,d) => s + d.value, 0) / Math.min(data.length, 4));
   }
 
-  // ── Revenue target (localStorage) ───────────────────────────
+  // ── Revenue target ─────────────────────────────────────────
   function _getRevTarget() {
     return parseFloat(localStorage.getItem('ceo_rev_target')) || 0;
   }
@@ -490,7 +549,7 @@
   window._ceoSetRevTarget = function() {
     const current = _getRevTarget();
     const raw = prompt('Μηνιαίος Στόχος Εσόδων (€):', current || '');
-    if (raw === null) return; // cancelled
+    if (raw === null) return;
     const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
     if (!isNaN(v) && v > 0) {
       localStorage.setItem('ceo_rev_target', v);
@@ -498,7 +557,6 @@
     }
   };
 
-  // ── Anxiety score widget ─────────────────────────────────────
   window._ceoSaveAnxiety = function() {
     const v = parseInt(document.getElementById('anxiety-input').value, 10) || 0;
     const wk = _getWeekNum(new Date());
@@ -507,124 +565,36 @@
     _loadAll();
   };
 
-  // ── Chart helpers ────────────────────────────────────────────
-
-  function _destroyAllCharts() {
-    Object.values(_charts).forEach(ch => { try { ch.destroy(); } catch(e) {} });
-    _charts = {};
+  // ── SVG Sparkline (replaces Chart.js) ───────────────────────
+  function _ceoSpark(values, color, width) {
+    if (!values || values.length < 2) return '';
+    const w = width || 120, h = 36, pad = 2;
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const step = (w - pad * 2) / (values.length - 1);
+    const points = values.map((v, i) => {
+      const x = pad + i * step;
+      const y = pad + (h - pad * 2) * (1 - (v - min) / range);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    const lastX = pad + (values.length - 1) * step;
+    const lastY = pad + (h - pad * 2) * (1 - (values[values.length - 1] - min) / range);
+    const areaPoints = `${pad},${h-pad} ${points} ${lastX.toFixed(1)},${h-pad}`;
+    const gradId = 'cs' + Math.random().toString(36).slice(2,8);
+    return `<svg class="ceo-spark-svg" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
+      <defs><linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stop-color="${color}" stop-opacity="0.25"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
+      </linearGradient></defs>
+      <polygon points="${areaPoints}" fill="url(#${gradId})"/>
+      <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2" fill="${color}"/>
+    </svg>`;
   }
 
-  function _destroyChart(id) {
-    if (_charts[id]) { try { _charts[id].destroy(); } catch(e) {} delete _charts[id]; }
-  }
-
-  function _gauge(id, value, target, lowerIsBetter) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart) return;
-    const color = lowerIsBetter
-      ? (value < target * 0.7 ? '#22c55e' : value < target ? '#f59e0b' : '#ef4444')
-      : _colorScore(value, target);
-    // Light-theme track: visible gray arc even at value=0
-    const clampedVal = Math.min(Math.max(value, 0), 100);
-    _charts[id] = new Chart(el, {
-      type: 'doughnut',
-      data: { datasets: [{ data: [clampedVal, 100 - clampedVal], backgroundColor: [color, '#e8eef4'], borderWidth: 0, circumference: 180, rotation: 270 }] },
-      options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, cutout: '72%', animation: { duration: 800 } }
-    });
-  }
-
-  function _gaugeAnxiety(id, value) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart) return;
-    const safeVal = Math.min(Math.max(value, 0), 10);
-    const color   = value === 0 ? '#22c55e' : value <= 3 ? '#f59e0b' : '#ef4444';
-    _charts[id] = new Chart(el, {
-      type: 'doughnut',
-      data: { datasets: [{ data: [safeVal, 10 - safeVal], backgroundColor: [color, '#e8eef4'], borderWidth: 0, circumference: 180, rotation: 270 }] },
-      options: { plugins: { legend: { display: false }, tooltip: { enabled: false } }, cutout: '72%', animation: { duration: 800 } }
-    });
-  }
-
-  function _donut(id, dataVals, colors) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart) return;
-    _charts[id] = new Chart(el, {
-      type: 'doughnut',
-      data: { labels: ['Ιδιόκτητα', 'Partner'], datasets: [{ data: dataVals, backgroundColor: colors, borderWidth: 0 }] },
-      options: {
-        plugins: { legend: { display: true, position: 'bottom', labels: { color: '#64748b', font: { size: 10 }, padding: 8 } }, tooltip: { callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}` } } },
-        cutout: '60%',
-        animation: { duration: 600 }
-      }
-    });
-  }
-
-  function _sparkline(id, weeklyData, color, targetVal, lowerIsBetter) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart || !weeklyData.length) return;
-    const labels = weeklyData.map(w => w.label);
-    const values = weeklyData.map(w => w.value);
-    _charts[id] = new Chart(el, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          { data: values, borderColor: color, borderWidth: 2, pointRadius: 3, pointBackgroundColor: color, fill: false, tension: 0.3 },
-          { data: labels.map(() => targetVal), borderColor: '#ef4444', borderWidth: 1, borderDash: [4,3], pointRadius: 0, fill: false }
-        ]
-      },
-      options: {
-        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-        scales: {
-          x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: '#f1f5f9' } },
-          y: { ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => v + '%' }, grid: { color: '#f1f5f9' }, min: 0, max: 100 }
-        },
-        animation: { duration: 500 }
-      }
-    });
-  }
-
-  function _trendLine(id, weeklyData, targetVal) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart || !weeklyData.length) return;
-    const labels = weeklyData.map(w => w.label);
-    const values = weeklyData.map(w => w.value);
-    _charts[id] = new Chart(el, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            data: values, borderColor: '#0284C7', borderWidth: 2,
-            backgroundColor: 'rgba(2,132,199,0.06)', fill: true,
-            pointRadius: 4, pointBackgroundColor: values.map(v => _colorScore(v, targetVal)),
-            tension: 0.3
-          },
-          { data: labels.map(() => targetVal), borderColor: '#22c55e', borderWidth: 1.5, borderDash: [5,4], pointRadius: 0, fill: false, label: 'Στόχος 98%' }
-        ]
-      },
-      options: {
-        plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-        scales: {
-          x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: '#f1f5f9' } },
-          y: { ticks: { color: '#94a3b8', font: { size: 9 }, callback: v => v + '%' }, grid: { color: '#f1f5f9' }, min: 0, max: 100 }
-        },
-        animation: { duration: 600 }
-      }
-    });
-  }
-
-  function _renderWorkloadChart(id, allOrders, activeDrivers) {
-    _destroyChart(id);
-    const el = document.getElementById(id);
-    if (!el || !window.Chart) return;
-
-    // Count trips per driver name
+  // ── Workload list (replaces horizontal bar chart) ──────────
+  function _renderWorkloadList(allOrders, activeDrivers) {
     const driverMap = {};
     activeDrivers.forEach(d => { driverMap[d.id] = d.fields['Full Name'] || d.id; });
     const counts = {};
@@ -633,95 +603,99 @@
       const ids = Array.isArray(d) ? d : (d ? [d] : []);
       ids.forEach(id => {
         const name = driverMap[id] || null;
-        if (!name) return; // skip unknown/unmapped IDs (Airtable rec IDs)
-        const short = name.split(' ')[0]; // First name only
+        if (!name) return;
+        const short = name.split(' ')[0];
         counts[short] = (counts[short] || 0) + 1;
       });
     });
-
     const entries = Object.entries(counts).sort(([,a],[,b]) => b - a).slice(0, 8);
-    if (!entries.length) { el.parentNode.innerHTML = '<div style="color:#7A92B0;font-size:12px;text-align:center;padding:20px">Χωρίς δεδομένα οδηγών</div>'; return; }
-
+    if (!entries.length) return '<div style="color:var(--ceo-text-dim);font-size:12px;text-align:center;padding:var(--space-4)">Χωρίς δεδομένα οδηγών</div>';
     const maxV = Math.max(...entries.map(([,v]) => v));
     const minV = Math.min(...entries.map(([,v]) => v));
-    const colors = entries.map(([,v]) => v === maxV ? '#f59e0b' : v === minV ? '#0284C7' : '#cbd5e1');
-
-    // Horizontal bar chart — labels are readable without rotation
-    _charts[id] = new Chart(el, {
-      type: 'bar',
-      data: {
-        labels: entries.map(([k]) => k),
-        datasets: [{ data: entries.map(([,v]) => v), backgroundColor: colors, borderRadius: 3 }]
-      },
-      options: {
-        indexAxis: 'y',
-        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x} φορτία` } } },
-        scales: {
-          x: { ticks: { color: '#94a3b8', font: { size: 9 }, stepSize: 1 }, grid: { color: '#f1f5f9' } },
-          y: { ticks: { color: '#64748b', font: { size: 10 } }, grid: { display: false } }
-        },
-        animation: { duration: 500 }
-      }
-    });
+    return `<div class="ceo-workload-list">${entries.map(([name, v]) => {
+      const cls = v === maxV ? 'max' : v === minV ? 'min' : 'mid';
+      const pct = maxV ? (v / maxV * 100) : 0;
+      return `<div class="ceo-workload-row">
+        <span class="ceo-workload-name">${escapeHtml(name)}</span>
+        <div class="ceo-workload-bar"><div class="ceo-workload-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="ceo-workload-count">${v}</span>
+      </div>`;
+    }).join('')}</div>`;
   }
 
-  // ── Nakis Commentary ─────────────────────────────────────────
-
-  function _renderNakis({ allOrders, deliveredOrders, speed, deadKM, highRiskCount, revenue, uninvoicedRev }) {
-    const el = document.getElementById('nakis-commentary');
+  // ── Executive Briefing (was Nakis) ──────────────────────────
+  function _renderBrief({ allOrders, deliveredOrders, speed, deadKM, highRiskCount, revenue, prevRevenue, uninvoicedRev, lossTripsCount }) {
+    const el = document.getElementById('ceo-brief-body');
     if (!el) return;
-
     const lines = [];
-    const total = allOrders.length;
     const period = _periodLabel(_period);
 
-    lines.push(`**Σύνοψη ${period}:** ${total} φορτία στη βάση δεδομένων`
-      + (deliveredOrders.length ? `, ${deliveredOrders.length} παραδόθηκαν.` : '.'));
+    if (allOrders.length === 0) {
+      el.innerHTML = `<div class="ceo-brief-line"><span class="ceo-brief-bullet">—</span>Δεν υπάρχουν φορτία για ${period}. Έλεγχος Airtable filters.</div>`;
+      return;
+    }
+
+    lines.push(`<strong>${allOrders.length}</strong> φορτία, <strong>${deliveredOrders.length}</strong> παραδοθέντα για ${period}.`);
 
     if (speed.hasData) {
-      if (speed.value >= 98) lines.push(`**Speed Score ${_pct(speed.value)}** — εξαιρετική επίδοση on-time. Στόχος 98% επιτυγχάνεται.`);
-      else if (speed.value >= 95) lines.push(`**Speed Score ${_pct(speed.value)}** — οριακά κάτω από στόχο. Έλεγξε τις καθυστερημένες αποστολές.`);
-      else lines.push(`**Speed Score ${_pct(speed.value)}** — σημαντική απόκλιση. Απαιτείται άμεση ανάλυση αιτίων.`);
-    } else {
-      lines.push(`**Speed Score:** Δεν υπάρχουν δεδομένα on-time. Απαιτείται πεδίο "Actual Delivery Date" ή συμπλήρωση "Delivery Performance".`);
+      if (speed.value >= 98) lines.push(`Speed Score **${_pctShort(speed.value)}** — εξαιρετική απόδοση (στόχος ≥98%).`);
+      else if (speed.value >= 90) lines.push(`Speed Score **${_pctShort(speed.value)}** — κοντά στον στόχο (≥98%). Επικέντρωση σε πρόσφατες καθυστερήσεις.`);
+      else lines.push(`Speed Score **${_pctShort(speed.value)}** — κάτω από στόχο. Απαιτείται έλεγχος της διαδικασίας παράδοσης.`);
     }
 
-    if (deadKM.hasData) {
-      if (deadKM.pct < 15) lines.push(`**Dead KM ${_pct(deadKM.pct)}** — καλή απόδοση στόλου. ${_km(deadKM.totalDead)} νεκρά km σε σύνολο ${_km(deadKM.totalDead + deadKM.totalLoaded)}.`);
-      else if (deadKM.pct < 25) lines.push(`**Dead KM ${_pct(deadKM.pct)}** — αξίζει βελτιστοποίηση δρομολογίων. Στόχος <15%.`);
-      else lines.push(`**Dead KM ${_pct(deadKM.pct)}** — υψηλά νεκρά χιλιόμετρα. Εξέτασε backhaul και διαδρομές επιστροφής.`);
-    } else {
-      lines.push(`**Dead KM:** ${deadKM.hint}`);
+    if (deadKM.hasData && deadKM.pct > 15) {
+      lines.push(`Dead KM **${_pctShort(deadKM.pct)}** — πάνω από στόχο (<15%). Βελτίωσε import matching.`);
     }
 
-    if (highRiskCount > 0) lines.push(`**${highRiskCount} φορτία** με παράδοση <48h χωρίς Delivered status. Επιβεβαίωσε άμεσα τους οδηγούς.`);
-    else lines.push(`**Κανένα high-risk** φορτίο για τις επόμενες 48h.`);
+    if (highRiskCount > 0) {
+      lines.push(`**${highRiskCount} κρίσιμες** παραδόσεις στις επόμενες 48h — δώστε προτεραιότητα.`);
+    }
 
-    if (uninvoicedRev > 5000) lines.push(`**${_eur(uninvoicedRev)} αδρανούν** σε παραδοθέντα χωρίς τιμολόγιο. Δώσε προτεραιότητα στην τιμολόγηση.`);
+    if (lossTripsCount > 0) {
+      lines.push(`**${lossTripsCount} ζημιογόνες** διαδρομές εντοπίστηκαν στο Cash section — δες λεπτομέρειες.`);
+    }
 
-    if (revenue > 0) lines.push(`**Έσοδα ${_eur(revenue)}** για ${period} (παραδοθέντα + τιμολογημένα).`);
+    if (uninvoicedRev > 5000) {
+      lines.push(`**${_eur(uninvoicedRev)} αδρανούν** σε παραδοθέντα χωρίς τιμολόγιο — δώσε προτεραιότητα.`);
+    }
 
-    el.innerHTML = lines.map(l => `<div class="nakis-line"><span class="nakis-dot">—</span>${l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</div>`).join('');
+    if (revenue > 0) {
+      const deltaTxt = prevRevenue > 0 ? ` (${revenue > prevRevenue ? '+' : ''}${Math.round((revenue - prevRevenue)/prevRevenue * 100)}% vs προηγ.)` : '';
+      lines.push(`Έσοδα **${_eur(revenue)}** για ${period}${deltaTxt}.`);
+    }
+
+    el.innerHTML = lines.map(l => `<div class="ceo-brief-line">
+      <span class="ceo-brief-bullet">${_ic('chevron_right', 14)}</span>
+      <span>${l.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</span>
+    </div>`).join('');
   }
 
-  // ── Color / formatting helpers ───────────────────────────────
-
-  function _colorScore(value, target) {
-    return value >= target ? '#22c55e' : value >= target * 0.97 ? '#f59e0b' : '#ef4444';
+  // ── Helpers ────────────────────────────────────────────────
+  function _colorScoreHex(value, target) {
+    return value >= target ? '#059669' : value >= target * 0.97 ? '#D97706' : '#DC2626';
   }
-
-  function _pct(n) { return (n || 0).toFixed(1) + '%'; }
-
-  function _eur(n) {
-    return '€' + Math.round(n || 0).toLocaleString('el-GR');
+  function _cssScoreClass(value, target) {
+    return value >= target ? 'ceo-val-ok' : value >= target * 0.97 ? 'ceo-val-warn' : 'ceo-val-bad';
   }
+  function _pctShort(n) { return (n || 0).toFixed(1).replace('.0', '') + '%'; }
+  function _eur(n) { return '€' + Math.round(n || 0).toLocaleString('el-GR'); }
+  function _km(n) { return Math.round(n || 0).toLocaleString('el-GR') + ' km'; }
 
-  function _km(n) {
-    return Math.round(n || 0).toLocaleString('el-GR') + ' km';
+  // Delta HTML — handles lower-is-better semantics
+  function _deltaHTML(curr, prev, lowerIsBetter) {
+    if (!prev || prev === 0 || isNaN(prev)) return '';
+    const diff = curr - prev;
+    const pct = Math.round(diff / prev * 100);
+    if (pct === 0) return `<span class="ceo-delta flat">${_ic('minus', 10)}0%</span>`;
+    const isUp = pct > 0;
+    const cls = lowerIsBetter
+      ? (isUp ? 'up-bad' : 'down')
+      : (isUp ? 'up' : 'down-bad');
+    const iconName = isUp ? 'trending_up' : 'trending_down';
+    return `<span class="ceo-delta ${cls}">${_ic(iconName, 10)}${isUp ? '+' : ''}${pct}%</span>`;
   }
 
   // ── Period buttons ───────────────────────────────────────────
-
   function _bindPeriodButtons() {
     document.querySelectorAll('.ceo-period-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -733,124 +707,9 @@
     });
   }
 
-  // ── Shell HTML ───────────────────────────────────────────────
-
+  // ── Shell HTML (all styling via .ceo-* classes in style.css) ──
   function _shellHTML() {
     return `
-<style>
-/* ── CEO Dashboard — Light Theme ────────────────────────────── */
-.ceo-wrap { padding:28px 28px 60px; min-height:100vh; background:#F4F6F9; }
-
-/* Header */
-.ceo-header { display:flex; align-items:center; gap:16px; margin-bottom:32px; flex-wrap:wrap; }
-.ceo-title-block { flex:1; }
-.ceo-title { font-family:'Syne',sans-serif; font-size:26px; font-weight:800; color:#0B1929; letter-spacing:-0.3px; }
-.ceo-subtitle { font-size:10px; color:#94a3b8; letter-spacing:2px; text-transform:uppercase; margin-top:4px; }
-.ceo-period-sel { display:flex; gap:3px; background:#e2e8f0; padding:4px; border-radius:8px; }
-.ceo-period-btn { padding:6px 16px; font-size:12px; font-family:'DM Sans',sans-serif; border:none; border-radius:6px; cursor:pointer; background:transparent; color:#64748b; transition:all 0.2s; font-weight:500; }
-.ceo-period-btn.active { background:#0284C7; color:#fff; }
-.ceo-period-btn:hover:not(.active) { color:#0B1929; background:#cbd5e1; }
-#ceo-updated { font-size:10px; color:#94a3b8; white-space:nowrap; font-family:'DM Sans',monospace; }
-
-/* Section labels */
-.ceo-section-label { font-size:9px; font-weight:700; letter-spacing:3px; text-transform:uppercase; color:#0284C7; margin:0 0 14px; padding-left:12px; border-left:3px solid #0284C7; }
-
-/* Brand Promise cards — equal height, flex column */
-.ceo-brand-row { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
-.ceo-brand-card { background:#ffffff; border-radius:14px; padding:24px; border:1px solid #e2e8f0; position:relative; overflow:hidden; display:flex; flex-direction:column; min-height:280px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
-.ceo-brand-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; border-radius:14px 14px 0 0; }
-.ceo-brand-card.speed::before   { background:linear-gradient(90deg,#0284C7,#38BDF8); }
-.ceo-brand-card.quality::before { background:linear-gradient(90deg,#22c55e,#4ade80); }
-.ceo-brand-card.anxiety::before { background:linear-gradient(90deg,#7c3aed,#a78bfa); }
-.ceo-brand-label { font-size:9px; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#94a3b8; margin-bottom:3px; }
-.ceo-brand-name  { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; color:#334155; margin-bottom:0; }
-.ceo-brand-body  { flex:1; display:flex; flex-direction:column; justify-content:center; padding:12px 0 8px; }
-.ceo-gauge-wrap  { height:80px; display:flex; align-items:flex-end; justify-content:center; }
-.ceo-gauge-wrap canvas { max-height:80px; }
-.ceo-brand-big   { font-family:'Syne',monospace; font-size:52px; font-weight:800; line-height:1; margin:4px 0; }
-.ceo-brand-sub   { font-size:11px; color:#94a3b8; min-height:16px; }
-.ceo-target      { font-size:10px; color:#cbd5e1; margin-top:auto; padding-top:8px; border-top:1px solid #f1f5f9; }
-
-/* No-data state — hide gauge, show badge */
-.ceo-brand-card.no-data .ceo-gauge-wrap { display:none; }
-.ceo-brand-card.no-data .ceo-brand-big  { font-size:18px; color:#e2e8f0; letter-spacing:3px; font-family:'DM Sans',sans-serif; font-weight:400; margin:0 0 12px; }
-.ceo-brand-card.no-data .ceo-brand-body { justify-content:flex-start; padding-top:16px; }
-.ceo-setup-badge { display:none; align-items:flex-start; gap:10px; padding:12px 14px; background:#f8fafc; border-radius:8px; border:1px dashed #e2e8f0; margin:0 0 8px; }
-.ceo-brand-card.no-data .ceo-setup-badge { display:flex; }
-.ceo-setup-badge span { font-size:11px; color:#94a3b8; line-height:1.6; }
-.ceo-setup-badge span strong { color:#64748b; }
-
-/* Anxiety entry */
-.anxiety-entry { display:flex; align-items:center; gap:8px; margin-top:auto; padding-top:12px; border-top:1px solid #f1f5f9; }
-.anxiety-entry label { font-size:10px; color:#94a3b8; white-space:nowrap; }
-.anxiety-entry input { width:58px; padding:5px 8px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:6px; color:#0B1929; font-size:15px; text-align:center; font-family:'Syne',monospace; }
-.anxiety-entry input:focus { outline:none; border-color:#0284C7; }
-.anxiety-entry button { padding:5px 12px; background:transparent; color:#94a3b8; border:1px solid #e2e8f0; border-radius:6px; cursor:pointer; font-size:11px; font-weight:600; transition:all 0.2s; }
-.anxiety-entry button:hover { border-color:#0284C7; color:#0284C7; }
-
-/* Quadrant grid */
-.ceo-quadrants { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
-.ceo-quad { background:#ffffff; border-radius:14px; padding:22px; border:1px solid #e2e8f0; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
-.ceo-quad-title { font-family:'Syne',sans-serif; font-size:9px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:#94a3b8; margin-bottom:16px; display:flex; align-items:center; gap:8px; }
-.ceo-quad-title span.dot { width:7px; height:7px; border-radius:50%; display:inline-block; flex-shrink:0; }
-.quad-people   .dot { background:#0284C7; box-shadow:0 0 6px #0284C740; }
-.quad-strategy .dot { background:#22c55e; box-shadow:0 0 6px #22c55e40; }
-.quad-exec     .dot { background:#f59e0b; box-shadow:0 0 6px #f59e0b40; }
-.quad-cash     .dot { background:#7c3aed; box-shadow:0 0 6px #7c3aed40; }
-
-/* KPI rows */
-.ceo-kpi-row { display:flex; align-items:flex-start; gap:12px; padding:10px 0; border-bottom:1px solid #f1f5f9; }
-.ceo-kpi-row:last-child { border-bottom:none; }
-.ceo-kpi-num { font-family:'Syne',monospace; font-size:28px; font-weight:800; line-height:1; white-space:nowrap; min-width:90px; }
-.ceo-kpi-label { font-size:10px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase; color:#94a3b8; }
-.ceo-kpi-sub   { font-size:11px; color:#b0bec5; margin-top:3px; }
-
-/* Progress bars */
-.ceo-bar-track { height:5px; background:#e2e8f0; border-radius:3px; margin-top:8px; }
-.ceo-bar-fill  { height:5px; border-radius:3px; transition:width 0.7s cubic-bezier(0.4,0,0.2,1); }
-
-/* Edit button for revenue target */
-.ceo-edit-btn { background:none; border:none; cursor:pointer; color:#cbd5e1; font-size:13px; padding:1px 5px; border-radius:4px; transition:color 0.2s; vertical-align:middle; margin-left:6px; }
-.ceo-edit-btn:hover { color:#0284C7; }
-
-/* Charts */
-.ceo-chart-wrap { margin-top:10px; height:80px; }
-.ceo-chart-wrap canvas { max-height:80px; }
-
-/* Tables */
-.ceo-mini-table { width:100%; border-collapse:collapse; font-size:12px; }
-.ceo-mini-table th { font-size:9px; letter-spacing:1px; text-transform:uppercase; color:#94a3b8; padding:6px 4px; border-bottom:1px solid #e2e8f0; text-align:left; }
-.ceo-mini-table td { padding:7px 4px; border-bottom:1px solid #f8fafc; }
-.ceo-mini-table tr:last-child td { border-bottom:none; }
-
-/* Dead KM pending note */
-.ceo-pending-note { display:flex; align-items:center; gap:10px; padding:10px 14px; background:#f8fafc; border-radius:8px; border:1px dashed #e2e8f0; margin-top:10px; }
-.ceo-pending-note span { font-size:11px; color:#94a3b8; line-height:1.5; }
-.ceo-pending-note strong { color:#64748b; }
-
-/* Nakis */
-.ceo-nakis { background:#ffffff; border-radius:14px; padding:22px; border:1px solid #e2e8f0; margin-bottom:20px; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
-.ceo-nakis-title { font-size:9px; font-weight:700; letter-spacing:2.5px; text-transform:uppercase; color:#0284C7; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
-.nakis-line { font-size:13px; color:#64748b; line-height:1.7; padding:7px 0; border-bottom:1px solid #f8fafc; display:flex; gap:10px; }
-.nakis-line:last-child { border-bottom:none; }
-.nakis-line strong { color:#334155; }
-.nakis-dot { color:#cbd5e1; font-size:14px; flex-shrink:0; margin-top:1px; font-style:normal; }
-
-@media (max-width:768px) {
-  .ceo-brand-row { grid-template-columns:1fr; }
-  .ceo-quadrants { grid-template-columns:1fr; }
-  .ceo-brand-big { font-size:38px; }
-  .ceo-kpi-num   { font-size:22px; min-width:70px; }
-  .ceo-header { flex-direction:column; align-items:flex-start; }
-  .ceo-period-sel { width:100%; }
-  .ceo-wrap { padding:16px 16px 48px; }
-}
-@media (max-width:480px) {
-  .ceo-period-btn { padding:5px 10px; font-size:11px; }
-  .ceo-title { font-size:20px; }
-}
-</style>
-
 <div class="ceo-wrap">
 
   <!-- Header -->
@@ -859,7 +718,7 @@
       <div class="ceo-title">CEO Dashboard</div>
       <div class="ceo-subtitle">Scaling Up · People · Strategy · Execution · Cash</div>
     </div>
-    <div class="ceo-period-sel">
+    <div class="ceo-period-seg">
       <button class="ceo-period-btn${_period==='week'?' active':''}"    data-period="week">Εβδομάδα</button>
       <button class="ceo-period-btn${_period==='month'?' active':''}"   data-period="month">Μήνας</button>
       <button class="ceo-period-btn${_period==='quarter'?' active':''}" data-period="quarter">Τρίμηνο</button>
@@ -868,53 +727,69 @@
     <div id="ceo-updated">Φόρτωση...</div>
   </div>
 
-  <!-- Section 0: Brand Promises -->
-  <div class="ceo-section-label">Brand Promises — The 3 Numbers That Matter Most</div>
+  <!-- Loss trips banner (conditional) -->
+  <div id="ceo-loss-banner-wrap"></div>
+
+  <!-- Brand Promises -->
+  <div class="ceo-section-label">${_ic('sparkles', 12)} Brand Promises — The 3 Numbers That Matter</div>
   <div class="ceo-brand-row">
 
-    <!-- Speed Score -->
+    <!-- Speed -->
     <div class="ceo-brand-card speed">
-      <div class="ceo-brand-label">Brand Promise 1</div>
-      <div class="ceo-brand-name">Speed Score — Faster to Shelf</div>
+      <div class="ceo-brand-head">
+        <div class="ceo-brand-icon">${_ic('zap', 18)}</div>
+        <div><div class="ceo-brand-label">Brand Promise 1</div><div class="ceo-brand-name">Speed Score — Faster to Shelf</div></div>
+      </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-wrap"><canvas id="gauge-speed" height="80"></canvas></div>
-        <div class="ceo-brand-big" id="brand-speed-val">—</div>
+        <div class="ceo-gauge-ring" style="--g-color:#0284C7;--g-deg:0deg">
+          <div class="ceo-gauge-inner">
+            <div class="ceo-brand-big" id="brand-speed-val">—</div>
+          </div>
+        </div>
         <div class="ceo-setup-badge">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#3a5068" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
-          <span>Απαιτείται πεδίο <strong>Actual Delivery Date</strong> στον πίνακα ORDERS</span>
+          ${_ic('info', 14)}<span>Απαιτείται πεδίο <strong>Actual Delivery Date</strong> στον πίνακα ORDERS</span>
         </div>
         <div class="ceo-brand-sub" id="brand-speed-sub"></div>
       </div>
       <div class="ceo-target">Στόχος: ≥98%</div>
     </div>
 
-    <!-- Quality Score -->
+    <!-- Quality -->
     <div class="ceo-brand-card quality">
-      <div class="ceo-brand-label">Brand Promise 2</div>
-      <div class="ceo-brand-name">Quality Score — Verified Freshness</div>
+      <div class="ceo-brand-head">
+        <div class="ceo-brand-icon">${_ic('check_circle', 18)}</div>
+        <div><div class="ceo-brand-label">Brand Promise 2</div><div class="ceo-brand-name">Quality Score — Verified Freshness</div></div>
+      </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-wrap"><canvas id="gauge-quality" height="80"></canvas></div>
-        <div class="ceo-brand-big" id="brand-quality-val">—</div>
+        <div class="ceo-gauge-ring" style="--g-color:#059669;--g-deg:0deg">
+          <div class="ceo-gauge-inner">
+            <div class="ceo-brand-big" id="brand-quality-val">—</div>
+          </div>
+        </div>
         <div class="ceo-setup-badge">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#3a5068" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
-          <span>Απαιτείται πεδίο <strong>Temp Graph Sent</strong> στον πίνακα ORDERS</span>
+          ${_ic('info', 14)}<span>Απαιτείται πεδίο <strong>Temp Graph Sent</strong> στον πίνακα ORDERS</span>
         </div>
         <div class="ceo-brand-sub" id="brand-quality-sub"></div>
       </div>
       <div class="ceo-target">Στόχος: 100%</div>
     </div>
 
-    <!-- Anxiety Score -->
+    <!-- Anxiety -->
     <div class="ceo-brand-card anxiety">
-      <div class="ceo-brand-label">Brand Promise 3</div>
-      <div class="ceo-brand-name">Anxiety Score — Zero-Anxiety Service</div>
+      <div class="ceo-brand-head">
+        <div class="ceo-brand-icon">${_ic('shield', 18)}</div>
+        <div><div class="ceo-brand-label">Brand Promise 3</div><div class="ceo-brand-name">Anxiety Score — Zero Anxiety Service</div></div>
+      </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-wrap"><canvas id="gauge-anxiety" height="80"></canvas></div>
-        <div class="ceo-brand-big" id="brand-anxiety-val">—</div>
+        <div class="ceo-gauge-ring" style="--g-color:#1E3A8A;--g-deg:0deg">
+          <div class="ceo-gauge-inner">
+            <div class="ceo-brand-big" id="brand-anxiety-val">—</div>
+          </div>
+        </div>
         <div class="ceo-brand-sub" id="brand-anxiety-sub"></div>
       </div>
-      <div class="ceo-target">Στόχος: 0 inbound calls / εβδομάδα</div>
-      <div class="anxiety-entry">
+      <div class="ceo-target">Στόχος: 0 κλήσεις / εβδομάδα</div>
+      <div class="ceo-anxiety-entry">
         <label>Αυτή την εβδ.:</label>
         <input type="number" id="anxiety-input" min="0" max="99">
         <button onclick="_ceoSaveAnxiety()">Αποθήκευση</button>
@@ -922,13 +797,16 @@
     </div>
   </div>
 
-  <!-- Quadrants 2x2 -->
-  <div class="ceo-section-label" style="margin-top:28px">Scaling Up Framework</div>
+  <!-- Scaling Up Quadrants -->
+  <div class="ceo-section-label" style="margin-top:var(--space-5)">${_ic('target', 12)} Scaling Up Framework</div>
   <div class="ceo-quadrants">
 
     <!-- Q1: People -->
     <div class="ceo-quad quad-people">
-      <div class="ceo-quad-title"><span class="dot"></span>People — Ομάδα & Στόλος</div>
+      <div class="ceo-quad-title">
+        <span class="ceo-quad-icon">${_ic('users', 12)}</span>
+        People — Ομάδα & Στόλος
+      </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
@@ -937,37 +815,47 @@
           <div class="ceo-kpi-sub" id="people-util-sub">Φόρτωση...</div>
           <div class="ceo-bar-track"><div class="ceo-bar-fill" id="people-util-bar" style="width:0%"></div></div>
         </div>
-        <div>
-          <div class="ceo-kpi-num" id="people-avail-val" style="font-size:22px;text-align:right">—</div>
-          <div class="ceo-kpi-label" style="font-size:9px;text-align:right">Διαθέσιμοι</div>
-          <div class="ceo-kpi-sub" id="people-avail-sub" style="text-align:right"></div>
+        <div style="text-align:right">
+          <div class="ceo-kpi-num sm" id="people-avail-val">—</div>
+          <div class="ceo-kpi-label">Διαθέσιμοι</div>
+          <div class="ceo-kpi-sub" id="people-avail-sub"></div>
         </div>
       </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
-          <div class="ceo-kpi-num" id="people-partner-val" style="font-size:22px">—</div>
+          <div class="ceo-kpi-num sm" id="people-partner-val">—</div>
           <div class="ceo-kpi-label">Partner Ratio</div>
           <div class="ceo-kpi-sub" id="people-partner-sub">Φόρτωση...</div>
+          <div class="ceo-split-bar">
+            <div class="ceo-split-seg owned" id="people-split-owned" style="width:0%"></div>
+            <div class="ceo-split-seg partner" id="people-split-partner" style="width:0%"></div>
+          </div>
+          <div class="ceo-split-legend">
+            <span class="ceo-split-legend-item"><span class="ceo-split-dot" style="background:var(--ceo-accent)"></span>Ιδιόκτητα</span>
+            <span class="ceo-split-legend-item"><span class="ceo-split-dot" style="background:var(--ceo-warn)"></span>Partner</span>
+          </div>
         </div>
-        <div style="width:100px; height:80px; flex-shrink:0;"><canvas id="chart-partner"></canvas></div>
       </div>
 
-      <div style="margin-top:10px;">
-        <div class="ceo-kpi-label" style="margin-bottom:8px">Workload Distribution</div>
-        <div style="height:110px;"><canvas id="chart-workload"></canvas></div>
+      <div style="margin-top:var(--space-3)">
+        <div class="ceo-kpi-label">Workload Distribution</div>
+        <div id="people-workload"></div>
       </div>
     </div>
 
     <!-- Q2: Strategy -->
     <div class="ceo-quad quad-strategy">
-      <div class="ceo-quad-title"><span class="dot"></span>Strategy — Ανάπτυξη & Θέση</div>
+      <div class="ceo-quad-title">
+        <span class="ceo-quad-icon">${_ic('trending_up', 12)}</span>
+        Strategy — Ανάπτυξη & Θέση
+      </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
-          <div style="display:flex;align-items:baseline;gap:4px">
+          <div style="display:flex;align-items:center;gap:var(--space-2)">
             <div class="ceo-kpi-num" id="strat-revenue-val">—</div>
-            <button class="ceo-edit-btn" onclick="_ceoSetRevTarget()" title="Ορισμός μηνιαίου στόχου">✎</button>
+            <button style="background:none;border:none;cursor:pointer;color:var(--ceo-text-faint);padding:2px 6px;border-radius:var(--radius-sm);transition:color var(--duration-fast)" onmouseover="this.style.color='var(--ceo-accent)'" onmouseout="this.style.color='var(--ceo-text-faint)'" onclick="_ceoSetRevTarget()" title="Ορισμός στόχου">${_ic('edit', 12)}</button>
           </div>
           <div class="ceo-kpi-label">Revenue vs Target</div>
           <div class="ceo-kpi-sub" id="strat-revenue-sub">Φόρτωση...</div>
@@ -981,32 +869,37 @@
           <div class="ceo-kpi-label">Dead KM — Νεκρά Χιλιόμετρα</div>
           <div class="ceo-kpi-sub" id="strat-deadkm-sub">Φόρτωση...</div>
           <div class="ceo-bar-track"><div class="ceo-bar-fill" id="strat-deadkm-bar" style="width:0%"></div></div>
-          <div class="ceo-chart-wrap"><canvas id="chart-deadkm"></canvas></div>
-          <div class="ceo-pending-note" id="deadkm-note" style="display:none">
-            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#3a5068" stroke-width="1.5"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
-            <span>Προσθέστε <strong>Dead KM</strong> ή <strong>Total KM + Loaded KM</strong> στο ORDERS</span>
+          <div class="ceo-spark-wrap" style="padding:var(--space-1) var(--space-3)">
+            <span class="ceo-spark-label">8 εβδ.</span>
+            <div id="strat-deadkm-spark" style="flex:1"></div>
           </div>
         </div>
       </div>
 
-      <div style="margin-top:10px;">
-        <div class="ceo-kpi-label" style="margin-bottom:8px">Top 5 Πελάτες (Revenue)</div>
+      <div style="margin-top:var(--space-3)">
+        <div class="ceo-kpi-label">Top 5 Πελάτες (Revenue)</div>
         <table class="ceo-mini-table">
-          <tbody id="strat-clients-body"><tr><td colspan="4" style="color:#2a3f55;text-align:center;padding:16px">Φόρτωση...</td></tr></tbody>
+          <tbody id="strat-clients-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση...</td></tr></tbody>
         </table>
       </div>
     </div>
 
     <!-- Q3: Execution -->
     <div class="ceo-quad quad-exec">
-      <div class="ceo-quad-title"><span class="dot"></span>Execution — Επιχειρησιακή Αποτελεσματικότητα</div>
+      <div class="ceo-quad-title">
+        <span class="ceo-quad-icon">${_ic('activity', 12)}</span>
+        Execution — Επιχειρησιακή Απόδοση
+      </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="exec-ontime-val">—</div>
-          <div class="ceo-kpi-label">On-Time Delivery Trend</div>
+          <div class="ceo-kpi-label">On-Time Delivery</div>
           <div class="ceo-kpi-sub" id="exec-ontime-sub">Φόρτωση...</div>
-          <div style="height:100px; margin-top:10px;"><canvas id="chart-ontime"></canvas></div>
+          <div class="ceo-spark-wrap" style="padding:var(--space-1) var(--space-3)">
+            <span class="ceo-spark-label">8 εβδ.</span>
+            <div id="exec-ontime-spark" style="flex:1"></div>
+          </div>
         </div>
       </div>
 
@@ -1021,24 +914,27 @@
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="exec-vs-val">—</div>
-          <div class="ceo-kpi-label">Veroia Switch Utilization</div>
+          <div class="ceo-kpi-label">Veroia Switch Usage</div>
           <div class="ceo-kpi-sub" id="exec-vs-sub">Φόρτωση...</div>
         </div>
-        <div>
-          <div class="ceo-kpi-num" id="exec-assign-val" style="font-size:22px;text-align:right">—</div>
-          <div class="ceo-kpi-label" style="font-size:9px;text-align:right">Assigned</div>
-          <div class="ceo-kpi-sub" id="exec-assign-sub" style="text-align:right"></div>
+        <div style="text-align:right">
+          <div class="ceo-kpi-num sm" id="exec-assign-val">—</div>
+          <div class="ceo-kpi-label">Assigned</div>
+          <div class="ceo-kpi-sub" id="exec-assign-sub"></div>
         </div>
       </div>
     </div>
 
     <!-- Q4: Cash -->
     <div class="ceo-quad quad-cash">
-      <div class="ceo-quad-title"><span class="dot"></span>Cash — Χρηματοροές & Κόστος</div>
+      <div class="ceo-quad-title">
+        <span class="ceo-quad-icon">${_ic('coins', 12)}</span>
+        Cash — Χρηματοροές & Κόστος
+      </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
-          <div class="ceo-kpi-num" id="cash-revenue-val" style="font-size:30px">—</div>
+          <div class="ceo-kpi-num" id="cash-revenue-val">—</div>
           <div class="ceo-kpi-label">Revenue (Delivered + Invoiced)</div>
           <div class="ceo-kpi-sub" id="cash-revenue-sub">Φόρτωση...</div>
         </div>
@@ -1050,81 +946,49 @@
           <div class="ceo-kpi-label">Αδρανή Τιμολόγια</div>
           <div class="ceo-kpi-sub" id="cash-uninv-sub">Φόρτωση...</div>
         </div>
-        <div>
-          <div class="ceo-kpi-num" id="cash-maint-val" style="font-size:20px;text-align:right">—</div>
-          <div class="ceo-kpi-label" style="font-size:9px;text-align:right">Maintenance</div>
-          <div class="ceo-kpi-sub" id="cash-maint-sub" style="text-align:right"></div>
+        <div style="text-align:right">
+          <div class="ceo-kpi-num sm" id="cash-maint-val">—</div>
+          <div class="ceo-kpi-label">Maintenance</div>
+          <div class="ceo-kpi-sub" id="cash-maint-sub"></div>
         </div>
       </div>
 
       <div class="ceo-kpi-row">
         <div>
-          <div class="ceo-kpi-num" id="cash-partner-val" style="font-size:22px">—</div>
+          <div class="ceo-kpi-num sm" id="cash-partner-val">—</div>
           <div class="ceo-kpi-label">Partner Margin</div>
           <div class="ceo-kpi-sub" id="cash-partner-sub">Φόρτωση...</div>
         </div>
       </div>
 
-      <div style="margin-top:10px;">
-        <div class="ceo-kpi-label" style="margin-bottom:8px">Top 3 Ζημιογόνες Διαδρομές</div>
+      <div style="margin-top:var(--space-3)">
+        <div class="ceo-kpi-label">Top 3 Ζημιογόνες Διαδρομές</div>
         <table class="ceo-mini-table">
           <thead><tr>
-            <th>Διαδρομή</th><th>Έσοδο</th><th>Κόστος</th><th>Ζημία</th>
+            <th>Διαδρομή</th>
+            <th style="text-align:right">Έσοδο</th>
+            <th style="text-align:right">Κόστος</th>
+            <th style="text-align:right">Ζημία</th>
           </tr></thead>
-          <tbody id="cash-loss-body"><tr><td colspan="4" style="color:#2a3f55;text-align:center;padding:16px">Φόρτωση...</td></tr></tbody>
+          <tbody id="cash-loss-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση...</td></tr></tbody>
         </table>
       </div>
     </div>
 
-  </div><!-- end quadrants -->
-
-  <!-- Nakis Commentary -->
-  <div class="ceo-nakis">
-    <div class="ceo-nakis-title">
-      <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#38BDF8" stroke-width="1.8"><circle cx="10" cy="10" r="8"/><path d="M7 10l2 2 4-4"/></svg>
-      Νάκης — CEO Briefing
-    </div>
-    <div id="nakis-commentary" style="color:#2a3f55">Φόρτωση...</div>
   </div>
 
-</div><!-- end ceo-wrap -->`;
-  }
+  <!-- Executive Briefing -->
+  <div class="ceo-brief">
+    <div class="ceo-brief-title">
+      <span class="ceo-brief-title-icon">${_ic('brain', 14)}</span>
+      Executive Briefing — Σύνοψη Περιόδου
+    </div>
+    <div id="ceo-brief-body">Φόρτωση...</div>
+  </div>
 
-  // ── Chart.js loader ──────────────────────────────────────────
-  function _ensureChartJs() {
-    return new Promise((resolve) => {
-      if (window.Chart) { resolve(); return; }
-      const s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-      s.onload = resolve;
-      s.onerror = resolve; // Resolve even on error; charts won't render but page won't break
-      document.head.appendChild(s);
-    });
-  }
-
-  // Override _loadAll to ensure Chart.js first
-  const _originalLoadAll = _loadAll;
-  async function _loadAllWithChart() {
-    await _ensureChartJs();
-    await _originalLoadAll();
+</div>`;
   }
 
   // ── Expose globally ──────────────────────────────────────────
-  window.renderCEODashboard = async function() {
-    const c = document.getElementById('content');
-    if (can('ceo_dashboard') !== 'full') {
-      c.innerHTML = '<div style="padding:60px;text-align:center"><h3 style="color:#ef4444">Access Denied</h3><p style="color:#7A92B0">CEO Dashboard is restricted to the account owner.</p></div>';
-      return;
-    }
-    if (_timer) clearInterval(_timer);
-    _destroyAllCharts();
-    // ceo-wrap handles its own dark background via CSS
-    c.style.padding = '0';
-    await _ensureChartJs();
-    c.innerHTML = _shellHTML();
-    _bindPeriodButtons();
-    await _loadAll();
-    _timer = setInterval(() => _loadAll(), 10 * 60 * 1000);
-  };
-
+  window.renderCEODashboard = renderCEODashboard;
 })();

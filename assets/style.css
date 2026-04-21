@@ -3701,3 +3701,676 @@ button.sidebar-toggle {
   .dash-header { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
   .dash-cmdk-hint { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CEO DASHBOARD V2 — Executive Command Center (Light Theme)
+   Scaling Up · People · Strategy · Execution · Cash
+   ═══════════════════════════════════════════════════════════ */
+.ceo-wrap {
+  --ceo-bg: #F4F6F9;
+  --ceo-card: #FFFFFF;
+  --ceo-card-border: #E6EAF0;
+  --ceo-card-shadow: 0 1px 3px rgba(15,23,42,0.04), 0 4px 12px rgba(15,23,42,0.04);
+  --ceo-text: #0B1929;
+  --ceo-text-mid: #475569;
+  --ceo-text-dim: #94A3B8;
+  --ceo-text-faint: #CBD5E1;
+  --ceo-accent: #0284C7;
+  --ceo-accent-deep: #0369A1;
+  --ceo-accent-soft: rgba(2,132,199,0.08);
+  --ceo-ok: #059669;
+  --ceo-ok-soft: rgba(5,150,105,0.10);
+  --ceo-warn: #D97706;
+  --ceo-warn-soft: rgba(217,119,6,0.10);
+  --ceo-bad: #DC2626;
+  --ceo-bad-soft: rgba(220,38,38,0.08);
+  --ceo-navy: #1E3A8A;
+  --ceo-navy-soft: rgba(30,58,138,0.08);
+  --ceo-nums: 'DM Sans', -apple-system, sans-serif;
+  padding: var(--space-6) var(--space-6) var(--space-12);
+  min-height: 100vh;
+  background: var(--ceo-bg);
+}
+.ceo-wrap [class*="ceo-kpi-num"],
+.ceo-wrap [class*="ceo-brand-big"],
+.ceo-wrap [class*="ceo-delta"],
+.ceo-wrap .ceo-mini-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Header ────────────────────────────────────────────── */
+.ceo-header {
+  display: flex; align-items: center; gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  flex-wrap: wrap;
+}
+.ceo-title-block { flex: 1; min-width: 200px; }
+.ceo-title {
+  font-family: 'Syne', sans-serif;
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--ceo-text);
+  letter-spacing: -0.4px;
+  line-height: 1.1;
+}
+.ceo-subtitle {
+  font-size: 10px;
+  color: var(--ceo-text-dim);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+/* Period segment control */
+.ceo-period-seg {
+  display: inline-flex;
+  background: #E8EDF2;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  gap: 2px;
+}
+.ceo-period-btn {
+  padding: 6px var(--space-4);
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  border: none;
+  border-radius: calc(var(--radius-md) - 3px);
+  cursor: pointer;
+  background: transparent;
+  color: var(--ceo-text-mid);
+  transition: all var(--duration-fast) var(--ease-out);
+  font-weight: 600;
+}
+.ceo-period-btn.active {
+  background: var(--ceo-card);
+  color: var(--ceo-text);
+  box-shadow: 0 1px 2px rgba(15,23,42,0.08);
+}
+.ceo-period-btn:hover:not(.active) {
+  color: var(--ceo-text);
+  background: rgba(255,255,255,0.6);
+}
+#ceo-updated {
+  font-size: 10px;
+  color: var(--ceo-text-dim);
+  white-space: nowrap;
+  font-family: var(--ceo-nums);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* Section labels */
+.ceo-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--ceo-accent);
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--ceo-accent);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+
+/* ── Loss Trips Banner (conditional, CRITICAL) ─────────── */
+.ceo-loss-banner {
+  background: linear-gradient(135deg, rgba(220,38,38,0.04), rgba(220,38,38,0.08));
+  border: 1px solid rgba(220,38,38,0.15);
+  border-left: 4px solid var(--ceo-bad);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-3);
+  animation: ceo-slide-in var(--duration-base) var(--ease-out);
+}
+@keyframes ceo-slide-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
+.ceo-loss-icon {
+  width: 32px; height: 32px;
+  border-radius: var(--radius-full);
+  background: rgba(220,38,38,0.10);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--ceo-bad); flex-shrink: 0;
+}
+.ceo-loss-text {
+  font-size: var(--text-sm);
+  color: var(--ceo-bad);
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ceo-loss-text strong { font-weight: 700; }
+
+/* ── Brand Promise Cards ───────────────────────────────── */
+.ceo-brand-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.ceo-brand-card {
+  background: var(--ceo-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  border: 1px solid var(--ceo-card-border);
+  position: relative;
+  overflow: hidden;
+  display: flex; flex-direction: column;
+  min-height: 220px;
+  box-shadow: var(--ceo-card-shadow);
+  transition: transform var(--duration-fast) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out);
+}
+.ceo-brand-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(15,23,42,0.06), 0 12px 24px rgba(15,23,42,0.06);
+}
+.ceo-brand-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+.ceo-brand-card.speed::before   { background: linear-gradient(90deg, var(--ceo-accent), #38BDF8); }
+.ceo-brand-card.quality::before { background: linear-gradient(90deg, var(--ceo-ok), #10B981); }
+.ceo-brand-card.anxiety::before { background: linear-gradient(90deg, var(--ceo-navy), #3B82F6); }
+
+.ceo-brand-head {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.ceo-brand-icon {
+  width: 36px; height: 36px;
+  border-radius: var(--radius-md);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.ceo-brand-card.speed   .ceo-brand-icon { background: var(--ceo-accent-soft); color: var(--ceo-accent); }
+.ceo-brand-card.quality .ceo-brand-icon { background: var(--ceo-ok-soft);     color: var(--ceo-ok); }
+.ceo-brand-card.anxiety .ceo-brand-icon { background: var(--ceo-navy-soft);   color: var(--ceo-navy); }
+
+.ceo-brand-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ceo-text-dim);
+}
+.ceo-brand-name {
+  font-family: 'Syne', sans-serif;
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ceo-text);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+.ceo-brand-body {
+  flex: 1;
+  display: flex; flex-direction: column;
+  justify-content: center;
+  padding: var(--space-3) 0 var(--space-2);
+  align-items: center;
+  text-align: center;
+}
+
+/* Gauge ring (conic-gradient, shared with dashboard pattern) */
+.ceo-gauge-ring {
+  width: 96px; height: 96px;
+  position: relative;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--g-color, var(--ceo-accent)) 0deg,
+    var(--g-color, var(--ceo-accent)) var(--g-deg, 0deg),
+    #E8EDF2 var(--g-deg, 0deg),
+    #E8EDF2 360deg
+  );
+  transition: background 0.8s var(--ease-out);
+  margin-bottom: var(--space-3);
+}
+.ceo-gauge-ring::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  background: var(--ceo-card);
+}
+.ceo-gauge-ring .ceo-gauge-inner {
+  position: absolute;
+  inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+}
+.ceo-brand-big {
+  font-family: var(--ceo-nums);
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.5px;
+  color: var(--ceo-text);
+}
+.ceo-brand-sub {
+  font-size: 11px;
+  color: var(--ceo-text-dim);
+  min-height: 16px;
+  margin-top: var(--space-2);
+}
+.ceo-target {
+  font-size: 10px;
+  color: var(--ceo-text-faint);
+  margin-top: auto;
+  padding-top: var(--space-2);
+  border-top: 1px solid #F1F5F9;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* No-data state */
+.ceo-brand-card.no-data .ceo-gauge-ring { display: none; }
+.ceo-brand-card.no-data .ceo-brand-big { font-size: var(--text-lg); color: var(--ceo-text-faint); letter-spacing: 2px; }
+.ceo-setup-badge {
+  display: none;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #F8FAFC;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--ceo-card-border);
+  margin-top: var(--space-3);
+}
+.ceo-brand-card.no-data .ceo-setup-badge { display: flex; }
+.ceo-setup-badge span { font-size: 11px; color: var(--ceo-text-dim); line-height: 1.5; text-align: left; }
+.ceo-setup-badge span strong { color: var(--ceo-text-mid); font-weight: 600; }
+
+/* Anxiety entry */
+.ceo-anxiety-entry {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid #F1F5F9;
+}
+.ceo-anxiety-entry label {
+  font-size: 10px;
+  color: var(--ceo-text-dim);
+  white-space: nowrap;
+  font-weight: 500;
+}
+.ceo-anxiety-entry input {
+  width: 60px;
+  padding: 5px var(--space-2);
+  background: #F8FAFC;
+  border: 1px solid var(--ceo-card-border);
+  border-radius: var(--radius-sm);
+  color: var(--ceo-text);
+  font-size: var(--text-md);
+  text-align: center;
+  font-family: var(--ceo-nums);
+  font-weight: 700;
+}
+.ceo-anxiety-entry input:focus {
+  outline: none;
+  border-color: var(--ceo-accent);
+  box-shadow: var(--shadow-focus);
+}
+.ceo-anxiety-entry button {
+  padding: 5px var(--space-3);
+  background: transparent;
+  color: var(--ceo-text-dim);
+  border: 1px solid var(--ceo-card-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.ceo-anxiety-entry button:hover {
+  border-color: var(--ceo-accent);
+  color: var(--ceo-accent);
+  background: var(--ceo-accent-soft);
+}
+
+/* ── Quadrants (4 cards, Scaling Up framework) ─────────── */
+.ceo-quadrants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.ceo-quad {
+  background: var(--ceo-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  border: 1px solid var(--ceo-card-border);
+  box-shadow: var(--ceo-card-shadow);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+}
+.ceo-quad:hover { box-shadow: 0 2px 6px rgba(15,23,42,0.05), 0 8px 16px rgba(15,23,42,0.05); }
+.ceo-quad-title {
+  font-family: 'Syne', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ceo-text-mid);
+  margin-bottom: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.ceo-quad-title .ceo-quad-icon {
+  width: 22px; height: 22px;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.quad-people   .ceo-quad-icon { background: var(--ceo-accent-soft); color: var(--ceo-accent); }
+.quad-strategy .ceo-quad-icon { background: var(--ceo-ok-soft);     color: var(--ceo-ok); }
+.quad-exec     .ceo-quad-icon { background: var(--ceo-warn-soft);   color: var(--ceo-warn); }
+.quad-cash     .ceo-quad-icon { background: var(--ceo-navy-soft);   color: var(--ceo-navy); }
+
+/* KPI rows inside quadrants */
+.ceo-kpi-row {
+  display: flex; align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid #F1F5F9;
+}
+.ceo-kpi-row:last-child { border-bottom: none; }
+.ceo-kpi-row > div { min-width: 0; }
+.ceo-kpi-num {
+  font-family: var(--ceo-nums);
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  letter-spacing: -0.4px;
+  color: var(--ceo-text);
+  display: inline-flex; align-items: baseline; gap: var(--space-2);
+}
+.ceo-kpi-num.sm { font-size: 20px; }
+.ceo-kpi-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--ceo-text-dim);
+  margin-top: var(--space-1);
+}
+.ceo-kpi-sub {
+  font-size: 11px;
+  color: var(--ceo-text-dim);
+  margin-top: 2px;
+}
+
+/* Color utility for kpi values */
+.ceo-val-ok   { color: var(--ceo-ok); }
+.ceo-val-warn { color: var(--ceo-warn); }
+.ceo-val-bad  { color: var(--ceo-bad); }
+.ceo-val-accent { color: var(--ceo-accent); }
+.ceo-val-navy { color: var(--ceo-navy); }
+.ceo-val-muted { color: var(--ceo-text-faint); }
+
+/* Delta pill (PoP comparison) */
+.ceo-delta {
+  display: inline-flex; align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  font-family: var(--ceo-nums);
+  letter-spacing: -0.2px;
+}
+.ceo-delta.up       { background: var(--ceo-ok-soft);  color: var(--ceo-ok); }
+.ceo-delta.down-bad { background: var(--ceo-bad-soft); color: var(--ceo-bad); }
+.ceo-delta.up-bad   { background: var(--ceo-bad-soft); color: var(--ceo-bad); }
+.ceo-delta.down     { background: var(--ceo-ok-soft);  color: var(--ceo-ok); }
+.ceo-delta.flat     { background: #F1F5F9; color: var(--ceo-text-dim); }
+.ceo-delta svg { width: 11px; height: 11px; }
+
+/* Progress bars */
+.ceo-bar-track {
+  height: 6px;
+  background: #E8EDF2;
+  border-radius: var(--radius-full);
+  margin-top: var(--space-2);
+  overflow: hidden;
+}
+.ceo-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.7s var(--ease-out), background 0.4s var(--ease-out);
+}
+
+/* Partner split bar (stacked horizontal, replaces donut) */
+.ceo-split-bar {
+  display: flex;
+  height: 8px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: #E8EDF2;
+  margin-top: var(--space-3);
+}
+.ceo-split-seg {
+  transition: width 0.6s var(--ease-out);
+}
+.ceo-split-seg.owned   { background: var(--ceo-accent); }
+.ceo-split-seg.partner { background: var(--ceo-warn); }
+.ceo-split-legend {
+  display: flex; gap: var(--space-4);
+  margin-top: var(--space-2);
+  font-size: 11px;
+  color: var(--ceo-text-mid);
+}
+.ceo-split-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.ceo-split-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* Workload list (replaces horizontal bar chart) */
+.ceo-workload-list {
+  display: flex; flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.ceo-workload-row {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+}
+.ceo-workload-name {
+  width: 80px;
+  color: var(--ceo-text);
+  font-weight: 600;
+  font-size: 12px;
+}
+.ceo-workload-bar {
+  flex: 1;
+  height: 14px;
+  background: #F1F5F9;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+.ceo-workload-fill {
+  height: 100%;
+  border-radius: var(--radius-sm);
+  transition: width 0.6s var(--ease-out);
+}
+.ceo-workload-fill.max  { background: var(--ceo-warn); }
+.ceo-workload-fill.min  { background: var(--ceo-accent); }
+.ceo-workload-fill.mid  { background: #CBD5E1; }
+.ceo-workload-count {
+  font-family: var(--ceo-nums);
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--ceo-text-mid);
+  width: 28px;
+  text-align: right;
+}
+
+/* Inline sparkline container */
+.ceo-spark-wrap {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: #F8FAFC;
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2);
+}
+.ceo-spark-label {
+  font-size: 10px;
+  color: var(--ceo-text-dim);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.ceo-spark-svg { flex: 1; max-width: 180px; height: 36px; }
+.ceo-spark-svg polyline { transition: stroke-dashoffset 0.8s var(--ease-out); }
+
+/* Mini tables (Top Clients, Loss Trips) */
+.ceo-mini-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: var(--space-2);
+}
+.ceo-mini-table th {
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--ceo-text-dim);
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--ceo-card-border);
+  text-align: left;
+  font-weight: 700;
+}
+.ceo-mini-table td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid #F8FAFC;
+  color: var(--ceo-text);
+}
+.ceo-mini-table tbody tr:last-child td { border-bottom: none; }
+.ceo-mini-table tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.ceo-mini-table tbody tr:hover { background: #F8FAFC; }
+.ceo-mini-table .mono { font-family: var(--ceo-nums); font-weight: 700; }
+.ceo-client-rank {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ceo-text-dim);
+  font-family: var(--ceo-nums);
+}
+.ceo-client-mini-bar {
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.ceo-client-mini-bar-track {
+  flex: 1;
+  height: 5px;
+  background: #F1F5F9;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  min-width: 40px;
+}
+.ceo-client-mini-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--ceo-accent), #38BDF8);
+  border-radius: var(--radius-full);
+  transition: width 0.6s var(--ease-out);
+}
+
+/* Pending note (missing data hint) */
+.ceo-pending-note {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #F8FAFC;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--ceo-card-border);
+  margin-top: var(--space-3);
+  color: var(--ceo-text-dim);
+}
+.ceo-pending-note span { font-size: 11px; line-height: 1.5; }
+.ceo-pending-note strong { color: var(--ceo-text-mid); font-weight: 600; }
+
+/* ── Executive Briefing (formerly Nakis) ───────────────── */
+.ceo-brief {
+  background: var(--ceo-card);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+  border: 1px solid var(--ceo-card-border);
+  box-shadow: var(--ceo-card-shadow);
+  margin-bottom: var(--space-5);
+}
+.ceo-brief-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--ceo-accent);
+  margin-bottom: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.ceo-brief-title-icon {
+  width: 24px; height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--ceo-accent-soft);
+  color: var(--ceo-accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.ceo-brief-line {
+  font-size: var(--text-sm);
+  color: var(--ceo-text-mid);
+  line-height: 1.6;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid #F8FAFC;
+  display: flex; gap: var(--space-2);
+}
+.ceo-brief-line:last-child { border-bottom: none; }
+.ceo-brief-line strong { color: var(--ceo-text); font-weight: 700; }
+.ceo-brief-bullet {
+  color: var(--ceo-accent);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Stagger-in animation on first paint ──────────────── */
+.ceo-wrap .ceo-brand-card,
+.ceo-wrap .ceo-quad,
+.ceo-wrap .ceo-brief,
+.ceo-wrap .ceo-loss-banner {
+  animation: ceo-fade-up var(--duration-base) var(--ease-out) both;
+}
+.ceo-wrap .ceo-loss-banner { animation-delay: 0ms; }
+.ceo-wrap .ceo-brand-row .ceo-brand-card:nth-child(1) { animation-delay: 60ms; }
+.ceo-wrap .ceo-brand-row .ceo-brand-card:nth-child(2) { animation-delay: 120ms; }
+.ceo-wrap .ceo-brand-row .ceo-brand-card:nth-child(3) { animation-delay: 180ms; }
+.ceo-wrap .ceo-quadrants .ceo-quad:nth-child(1) { animation-delay: 240ms; }
+.ceo-wrap .ceo-quadrants .ceo-quad:nth-child(2) { animation-delay: 300ms; }
+.ceo-wrap .ceo-quadrants .ceo-quad:nth-child(3) { animation-delay: 360ms; }
+.ceo-wrap .ceo-quadrants .ceo-quad:nth-child(4) { animation-delay: 420ms; }
+.ceo-wrap .ceo-brief { animation-delay: 480ms; }
+@keyframes ceo-fade-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ceo-wrap .ceo-brand-card,
+  .ceo-wrap .ceo-quad,
+  .ceo-wrap .ceo-brief,
+  .ceo-wrap .ceo-loss-banner { animation: none; }
+}
+
+/* ── Responsive ───────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .ceo-brand-row { grid-template-columns: 1fr; }
+  .ceo-quadrants { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .ceo-wrap { padding: var(--space-4) var(--space-4) var(--space-12); }
+  .ceo-brand-big { font-size: 28px; }
+  .ceo-kpi-num { font-size: 20px; }
+  .ceo-kpi-num.sm { font-size: 18px; }
+  .ceo-header { flex-direction: column; align-items: stretch; }
+  .ceo-period-seg { justify-content: space-between; width: 100%; }
+  .ceo-period-btn { flex: 1; padding: 6px 4px; font-size: 11px; }
+}
