@@ -128,6 +128,14 @@ function toggleSidebar() {
 }
 
 function restoreSidebar() {
+  // One-time migration: clear stale collapsed flag from before the
+  // navigate-auto-collapse fix, so users don't stay stuck closed forever.
+  if (!localStorage.getItem('tms_sidebar_v2_migrated')) {
+    localStorage.removeItem('tms_sidebar_collapsed');
+    localStorage.setItem('tms_sidebar_v2_migrated', '1');
+    return;
+  }
+  // Honor user's explicit toggle preference if set
   if (localStorage.getItem('tms_sidebar_collapsed') === 'true') {
     const sb = document.getElementById('sidebar');
     const icon = document.getElementById('toggleIcon');
@@ -157,13 +165,15 @@ function navigate(page) {
   currentPage = page;
   localStorage.setItem('tms_page', page);
 
-  // Auto-collapse sidebar on nav click + persist
+  // Auto-collapse sidebar ONLY on mobile (≤768px) — never on desktop.
+  // Previously auto-collapsed on every navigate AND persisted, which made the
+  // sidebar feel "permanently closed" on desktop after the first click.
   const sb = document.getElementById('sidebar');
-  if (sb && !sb.classList.contains('collapsed')) {
+  if (sb && window.matchMedia('(max-width: 768px)').matches && !sb.classList.contains('collapsed')) {
     sb.classList.add('collapsed');
     const icon = document.getElementById('toggleIcon');
     if (icon) icon.textContent = '▶';
-    localStorage.setItem('tms_sidebar_collapsed', 'true');
+    // Do NOT persist — mobile collapse is transient (user reopens via hamburger)
   }
 
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
