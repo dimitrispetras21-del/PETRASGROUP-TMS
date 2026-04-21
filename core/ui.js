@@ -45,6 +45,76 @@ function initModal() {
   });
 }
 
+// ── Empty State helper (custom illustrations) ────
+/**
+ * Build a polished empty state block.
+ * @param {Object} cfg
+ * @param {string} cfg.illustration - key for SVG illustration
+ * @param {string} cfg.title - main message
+ * @param {string} [cfg.description] - secondary hint
+ * @param {{label, onClick}} [cfg.action] - optional CTA
+ */
+function showEmpty(cfg) {
+  const { illustration = 'inbox', title = 'No records', description = '', action } = cfg || {};
+  const svg = _EMPTY_SVG[illustration] || _EMPTY_SVG.inbox;
+  return `<div class="empty-state">
+    <div class="empty-state-illustration">${svg}</div>
+    <h3>${title}</h3>
+    ${description ? `<p>${description}</p>` : ''}
+    ${action ? `<button class="btn btn-primary" onclick="${action.onClick}">${action.label}</button>` : ''}
+  </div>`;
+}
+
+// Minimal custom SVG illustrations (monochrome, brand-aligned)
+const _EMPTY_SVG = {
+  inbox: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="20" y="40" width="80" height="60" rx="8" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"/>
+    <path d="M20 70 L45 70 L52 78 L68 78 L75 70 L100 70" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M35 40 L35 25 L85 25 L85 40" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+    <circle cx="60" cy="55" r="3" fill="currentColor" opacity="0.3"/>
+  </svg>`,
+  search: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="24" fill="none" stroke="currentColor" stroke-width="2.5"/>
+    <line x1="68" y1="68" x2="90" y2="90" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="8" fill="currentColor" opacity="0.15"/>
+  </svg>`,
+  order: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="30" y="20" width="60" height="80" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="42" y1="40" x2="78" y2="40" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+    <line x1="42" y1="54" x2="78" y2="54" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+    <line x1="42" y1="68" x2="65" y2="68" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+    <circle cx="78" cy="82" r="6" fill="currentColor" opacity="0.3"/>
+    <path d="M75 82 L77 84 L81 80" stroke="white" stroke-width="1.5" fill="none"/>
+  </svg>`,
+  truck: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="15" y="50" width="55" height="32" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M70 60 L85 60 L95 68 L95 82 L70 82 Z" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="30" cy="86" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+    <circle cx="82" cy="86" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="20" y1="60" x2="60" y2="60" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+    <line x1="20" y1="70" x2="55" y2="70" stroke="currentColor" stroke-width="1.5" opacity="0.4"/>
+  </svg>`,
+  plan: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect x="20" y="25" width="80" height="75" rx="4" fill="none" stroke="currentColor" stroke-width="2"/>
+    <line x1="20" y1="42" x2="100" y2="42" stroke="currentColor" stroke-width="1.5"/>
+    <circle cx="35" cy="55" r="3" fill="currentColor" opacity="0.5"/>
+    <line x1="42" y1="55" x2="85" y2="55" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+    <circle cx="35" cy="68" r="3" fill="currentColor" opacity="0.5"/>
+    <line x1="42" y1="68" x2="75" y2="68" stroke="currentColor" stroke-width="1.5" opacity="0.3"/>
+    <circle cx="35" cy="81" r="3" fill="currentColor" opacity="0.3"/>
+    <line x1="42" y1="81" x2="70" y2="81" stroke="currentColor" stroke-width="1.5" opacity="0.2"/>
+    <rect x="32" y="18" width="8" height="12" rx="1" fill="currentColor" opacity="0.6"/>
+    <rect x="80" y="18" width="8" height="12" rx="1" fill="currentColor" opacity="0.6"/>
+  </svg>`,
+  ramp: `<svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <path d="M10 95 L110 95" stroke="currentColor" stroke-width="2"/>
+    <path d="M30 95 L30 60 L90 60 L90 95" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="M30 60 L50 45 L90 45 L90 60" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+    <rect x="45" y="70" width="15" height="18" rx="1" fill="currentColor" opacity="0.3"/>
+    <rect x="65" y="70" width="15" height="18" rx="1" fill="currentColor" opacity="0.3"/>
+  </svg>`,
+};
+
 // ── Loading Skeletons ────────────────────────────
 function showLoading(msg = 'Loading...') {
   return `<div style="padding:24px">
@@ -158,3 +228,8 @@ document.addEventListener('keydown', e => {
     }
   }
 });
+
+// Expose empty state helper
+if (typeof window !== 'undefined') {
+  window.showEmpty = showEmpty;
+}

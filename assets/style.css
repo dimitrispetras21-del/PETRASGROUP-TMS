@@ -2599,3 +2599,128 @@ button.sidebar-toggle {
   font-size: 10px;
   margin-right: 3px;
 }
+
+/* ═══ Empty state illustration (custom SVG) ═══ */
+.empty-state-illustration {
+  width: 120px; height: 120px;
+  margin: 0 auto var(--space-5);
+  color: var(--accent);
+  opacity: 0.7;
+  animation: slide-up-fade var(--duration-slow) var(--ease-out);
+}
+.empty-state-illustration svg {
+  width: 100%; height: 100%;
+  display: block;
+}
+
+/* ═══ Table polish v2 ═══ */
+.entity-table-wrap tbody tr:nth-child(even) td { background: rgba(15,23,42,0.015); }
+.entity-table-wrap tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
+.entity-table-wrap tbody tr { transition: background var(--duration-fast) var(--ease-out); }
+.entity-table-wrap thead th[data-sortable] { cursor: pointer; position: sticky; top: 0; user-select: none; }
+.entity-table-wrap thead th[data-sortable]:hover { color: var(--accent); background: var(--accent-light); }
+.entity-table-wrap thead th .sort-indicator {
+  margin-left: 4px;
+  opacity: 0.4;
+  font-size: 10px;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.entity-table-wrap thead th.sorted .sort-indicator { opacity: 1; color: var(--accent); }
+
+/* Sticky first column for wide tables */
+.entity-table-wrap table.sticky-first th:first-child,
+.entity-table-wrap table.sticky-first td:first-child {
+  position: sticky; left: 0;
+  background: var(--bg-card); z-index: 1;
+}
+
+/* ═══ Notification panel v2 — clearer hierarchy ═══ */
+.notif-panel {
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-lg) !important;
+  overflow: hidden;
+}
+.notif-header {
+  padding: var(--space-4) var(--space-5) !important;
+  border-bottom: 1px solid var(--border);
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: var(--text-xs);
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-mid);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.notif-header .count-chip {
+  background: var(--accent);
+  color: #fff;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+}
+.notif-list {
+  max-height: 420px;
+  overflow-y: auto;
+}
+.notif-item {
+  padding: var(--space-4) var(--space-5) !important;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out);
+  position: relative;
+}
+.notif-item:hover { background: var(--bg-hover); }
+.notif-item::before {
+  content: '';
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.notif-item.urgent::before { background: var(--danger); }
+.notif-item.warning::before { background: var(--warning); }
+.notif-item.info::before { background: var(--accent); }
+.notif-item.success::before { background: var(--success); }
+.notif-item-icon {
+  flex-shrink: 0;
+  width: 32px; height: 32px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-hover);
+  border-radius: var(--radius-full);
+  color: var(--text-mid);
+}
+.notif-item.urgent .notif-item-icon { background: var(--danger-bg); color: var(--danger); }
+.notif-item.warning .notif-item-icon { background: var(--warning-bg); color: var(--warning); }
+.notif-item.info .notif-item-icon { background: var(--accent-light); color: var(--accent); }
+.notif-item.success .notif-item-icon { background: var(--success-bg); color: var(--success); }
+.notif-item-body { flex: 1; min-width: 0; }
+.notif-item-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 2px;
+  line-height: var(--leading-snug);
+}
+.notif-item-meta {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  display: flex; gap: 8px;
+}
+.notif-empty {
+  padding: var(--space-10) var(--space-5);
+  text-align: center;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+}
+
+/* Auto-apply stagger on common list containers */
+.entity-table-wrap tbody,
+.cmdk-list,
+.notif-list,
+.pl-list {
+  /* Opt-in via .animate-stagger parent class when desired */
+}
