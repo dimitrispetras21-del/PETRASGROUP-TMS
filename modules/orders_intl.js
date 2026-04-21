@@ -128,55 +128,33 @@ async function renderOrdersIntl() {
 
 function _renderIntlLayout(c) {
   const canEdit = can('orders') === 'full';
+  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
   c.innerHTML = `
-    <div class="page-header" style="margin-bottom:14px">
+    <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">International Orders</div>
         <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} orders</div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <button class="btn btn-scan" onclick="openIntlScan()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"/>
-            <line x1="8" y1="12" x2="16" y2="12"/>
-          </svg>
-          Scan</button>
-        ${canEdit ? `<button class="btn btn-new-order" onclick="openIntlCreate()">
-        <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-          <line x1="7" y1="1" x2="7" y2="13"/><line x1="1" y1="7" x2="13" y2="7"/>
-        </svg>
-        New Order</button>` : ''}
-        <button class="btn btn-ghost" onclick="_intlExportCSV()">Export CSV</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Scan</button>
+        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">${_i('plus')} New Order</button>` : ''}
+        <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('file_text')} Export CSV</button>
       </div>
     </div>
     <div class="entity-layout">
       <div class="entity-list-panel">
-        <div class="entity-toolbar" style="flex-wrap:wrap;gap:8px">
-          <input class="search-input" style="max-width:210px" placeholder="🔍  Client / Location / Goods..."
-            oninput="intlSearch(this.value)">
-          <select class="filter-select" onchange="intlFilter('Direction',this.value)">
+        <div class="entity-toolbar-v2">
+          <div class="entity-search-wrap">
+            ${_i('search')}
+            <input class="entity-search-input" placeholder="Search client / location / goods..."
+              oninput="intlSearch(this.value)">
+          </div>
+          <select class="svc-filter" onchange="intlFilter('Direction',this.value)">
             <option value="">Direction: All</option>
             <option value="Export">↑ Export</option>
             <option value="Import">↓ Import</option>
           </select>
-          <select class="filter-select" onchange="intlFilter('Status',this.value)">
-            <option value="">Status: All</option>
-            <option value="Pending">Pending</option>
-            <option value="Assigned">Assigned</option>
-            <option value="Active">Active</option>
-            <option value="Delivered">Delivered</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
-          <select class="filter-select" onchange="intlFilter('Brand',this.value)">
-            <option value="">Brand: All</option>
-            <option value="Petras Group">Petras Group</option>
-            <option value="DPS">DPS</option>
-          </select>
-          <select class="filter-select" onchange="intlFilter('_week',this.value)">
-            <option value="">Week: All</option>
-            ${_buildWeekOpts()}
-          </select>
-          <select class="filter-select" onchange="intlFilter('_status',this.value)">
+          <select class="svc-filter" onchange="intlFilter('_status',this.value)">
             <option value="">Status: All</option>
             <option value="Pending">Pending</option>
             <option value="Assigned">Assigned</option>
@@ -185,12 +163,21 @@ function _renderIntlLayout(c) {
             <option value="Invoiced">Invoiced</option>
             <option value="Cancelled">Cancelled</option>
           </select>
-          <select class="filter-select" onchange="intlPeriodChange(this.value)">
+          <select class="svc-filter" onchange="intlFilter('Brand',this.value)">
+            <option value="">Brand: All</option>
+            <option value="Petras Group">Petras Group</option>
+            <option value="DPS">DPS</option>
+          </select>
+          <select class="svc-filter" onchange="intlFilter('_week',this.value)">
+            <option value="">Week: All</option>
+            ${_buildWeekOpts()}
+          </select>
+          <select class="svc-filter" onchange="intlPeriodChange(this.value)">
             <option value="60" ${_intlPeriod==='60'?'selected':''}>Last 60 days</option>
             <option value="180" ${_intlPeriod==='180'?'selected':''}>Last 6 months</option>
             <option value="all" ${_intlPeriod==='all'?'selected':''}>All time</option>
           </select>
-          <span class="entity-count" id="intlCount">${INTL_ORDERS.data.length} orders</span>
+          <span class="entity-count-chip" id="intlCount">${INTL_ORDERS.data.length}</span>
         </div>
         <div class="entity-table-wrap" id="intlTable"></div>
       </div>
