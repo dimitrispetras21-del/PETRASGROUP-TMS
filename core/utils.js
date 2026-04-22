@@ -178,7 +178,45 @@ function fmtDateDM(d) {
 
 // ═══ ERROR LOGGER ═══
 const _errorLog = [];
-const MAX_ERROR_LOG = 50;
+const MAX_ERROR_LOG = 200;  // Bumped from 50 for busy-day coverage
+
+/**
+ * Infer severity from error shape + message heuristics.
+ * @returns {'critical'|'warning'|'info'}
+ */
+function _inferSeverity(error, context) {
+  const msg = (error?.message || String(error || '')).toLowerCase();
+  const st = error?.status;
+  // Explicit HTTP status
+  if (st >= 500) return 'critical';
+  if (st === 401 || st === 403) return 'warning';
+  if (st === 404) return 'warning';
+  if (st === 422 || st === 400) return 'warning';
+  // Aborts / cancellations → info
+  if (msg.includes('abort') || error?.name === 'AbortError') return 'info';
+  // Critical keywords
+  if (/rate[- ]?limit|quota|authentication|permission denied|unauthori[sz]ed/i.test(msg)) return 'warning';
+  if (/timeout|network|failed to fetch|cors|offline/i.test(msg)) return 'warning';
+  if (/cannot read|undefined is not|typeerror|syntaxerror|referenceerror/i.test(msg)) return 'critical';
+  // Context-based
+  const ctxLo = (context || '').toLowerCase();
+  if (ctxLo.includes('save') || ctxLo.includes('create') || ctxLo.includes('delete')) return 'critical';
+  return 'warning'; // default
+}
+
+/**
+ * Dedup: if the last entry has the same msg+ctx, bump its count instead of appending.
+ */
+function _maybeDedup(entry) {
+  if (_errorLog.length === 0) return false;
+  const last = _errorLog[_errorLog.length - 1];
+  if (last.msg === entry.msg && last.ctx === entry.ctx) {
+    last.count = (last.count || 1) + 1;
+    last.ts = entry.ts; // update to most recent
+    return true;
+  }
+  return false;
+}
 
 /**
  * Log an error to the persistent error log (localStorage)
@@ -191,17 +229,31 @@ function logError(error, context = '') {
     msg: error?.message || String(error),
     stack: error?.stack?.split('\n').slice(0, 8).join('\n') || '',
     ctx: context,
+    severity: _inferSeverity(error, context),
     user: (function() { try { return JSON.parse(localStorage.getItem('tms_user') || '{}').name || 'unknown'; } catch { return 'unknown'; } })(),
-    page: window.location.hash || (localStorage.getItem('tms_page') || 'dashboard'),
+    page: localStorage.getItem('tms_page') || 'dashboard',
+    count: 1,
   };
-  _errorLog.push(entry);
-  if (_errorLog.length > MAX_ERROR_LOG) _errorLog.shift();
-  try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); } catch(e) { console.warn('[TMS] Failed to persist error log:', e); }
+  if (!_maybeDedup(entry)) {
+    _errorLog.push(entry);
+    if (_errorLog.length > MAX_ERROR_LOG) _errorLog.shift();
+  }
+  try { localStorage.setItem('tms_errors', JSON.stringify(_errorLog)); }
+  catch(e) {
+    // Quota exceeded — trim to half and retry once
+    try {
+      _errorLog.splice(0, Math.floor(_errorLog.length / 2));
+      localStorage.setItem('tms_errors', JSON.stringify(_errorLog));
+    } catch(_) { console.warn('[TMS] Failed to persist error log:', e); }
+  }
   console.error(`[TMS ERROR] ${context}:`, error);
   // Forward to Sentry if available (loaded lazily — see _initSentry)
   try {
     if (window.Sentry && typeof window.Sentry.captureException === 'function') {
-      window.Sentry.captureException(error instanceof Error ? error : new Error(String(error)), { extra: { ctx: context, user: entry.user, page: entry.page } });
+      window.Sentry.captureException(error instanceof Error ? error : new Error(String(error)), {
+        level: entry.severity === 'info' ? 'info' : entry.severity === 'warning' ? 'warning' : 'error',
+        extra: { ctx: context, user: entry.user, page: entry.page }
+      });
     }
   } catch(_) {}
 }
@@ -230,6 +282,143 @@ function getErrorLog() {
   try { return JSON.parse(localStorage.getItem('tms_errors') || '[]'); } catch { return []; }
 }
 
+// Error log UI state (filters)
+const _errLogState = { search: '', severity: '', user: '', ctx: '', range: 'all' };
+
+function _elRelTime(iso) {
+  if (!iso) return '—';
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return 'just now';
+  if (diff < 3600) return Math.round(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.round(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.round(diff / 86400) + 'd ago';
+  return new Date(iso).toLocaleDateString('el-GR');
+}
+
+function _elSeverityPill(sev) {
+  const map = { critical: 'red', warning: 'amber', info: 'green' };
+  const label = { critical: 'CRIT', warning: 'WARN', info: 'INFO' };
+  return `<span class="dash-aging-pill ${map[sev] || 'amber'}">${label[sev] || 'WARN'}</span>`;
+}
+
+function _elFilter(errors) {
+  const s = _errLogState;
+  return errors.filter(e => {
+    if (s.severity && e.severity !== s.severity) return false;
+    if (s.user && e.user !== s.user) return false;
+    if (s.ctx && !String(e.ctx || '').toLowerCase().includes(s.ctx.toLowerCase())) return false;
+    if (s.search) {
+      const q = s.search.toLowerCase();
+      const blob = [e.msg, e.ctx, e.user, e.page, e.stack].join(' ').toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    if (s.range && s.range !== 'all') {
+      const now = Date.now();
+      const cutoffs = { '1h': 3600e3, '24h': 86400e3, '7d': 7 * 86400e3 };
+      if (e.ts && (now - new Date(e.ts).getTime()) > (cutoffs[s.range] || 0)) return false;
+    }
+    return true;
+  });
+}
+
+function _errLogSetFilter(key, val) { _errLogState[key] = val; renderErrorLog(); }
+
+function _errLogExport(format) {
+  const errors = getErrorLog();
+  if (!errors.length) { if (typeof toast === 'function') toast('No errors to export'); return; }
+  let blob, filename;
+  if (format === 'csv') {
+    const rows = [['Timestamp','Severity','Count','User','Page','Context','Message','Stack']];
+    errors.forEach(e => rows.push([
+      e.ts || '', e.severity || '', e.count || 1, e.user || '', e.page || '',
+      e.ctx || '', e.msg || '', (e.stack || '').replace(/\n/g, ' | ')
+    ]));
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    filename = `tms-errors-${new Date().toISOString().slice(0,10)}.csv`;
+  } else {
+    blob = new Blob([JSON.stringify(errors, null, 2)], { type: 'application/json' });
+    filename = `tms-errors-${new Date().toISOString().slice(0,10)}.json`;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  if (typeof toast === 'function') toast('Exported ' + format.toUpperCase());
+}
+
+function _errLogClear() {
+  // Confirmation modal (uses same styling as Nakis confirm)
+  const existing = document.querySelector('.aic-confirm-overlay.el-clear');
+  if (existing) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'aic-confirm-overlay el-clear';
+  const _ic = (typeof icon === 'function') ? icon('alert_triangle', 18) : '⚠';
+  overlay.innerHTML = `
+    <div class="aic-confirm-card">
+      <div class="aic-confirm-head">
+        <span class="aic-confirm-icon">${_ic}</span>
+        <span class="aic-confirm-title">Καθαρισμός Error Log;</span>
+      </div>
+      <div class="aic-confirm-body">
+        <div>Θα διαγραφούν <strong>${_errorLog.length}</strong> error entries.</div>
+        <div style="margin-top:8px;color:#94A3B8;font-size:11px">Μπορείς να κάνεις Export πρώτα (JSON/CSV) αν θέλεις να κρατήσεις backup.</div>
+      </div>
+      <div class="aic-confirm-foot">
+        <button class="aic-confirm-cancel">Ακύρωση</button>
+        <button class="aic-confirm-ok">Διαγραφή</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('.aic-confirm-cancel').onclick = close;
+  overlay.querySelector('.aic-confirm-ok').onclick = () => {
+    // FIX: clear BOTH memory and localStorage (bug: was only localStorage)
+    _errorLog.length = 0;
+    localStorage.removeItem('tms_errors');
+    close();
+    renderErrorLog();
+    if (typeof toast === 'function') toast('Error log cleared');
+  };
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+}
+
+function _errLogShowStack(idx) {
+  const errors = getErrorLog().reverse();
+  const e = errors[idx];
+  if (!e) return;
+  const overlay = document.createElement('div');
+  overlay.className = 'aic-confirm-overlay';
+  overlay.innerHTML = `
+    <div class="aic-confirm-card" style="max-width:680px">
+      <div class="aic-confirm-head">
+        <span class="aic-confirm-icon">${_elSeverityPill(e.severity)}</span>
+        <span class="aic-confirm-title" style="font-size:13px">${escapeHtml(e.msg || '')}</span>
+      </div>
+      <div class="aic-confirm-body">
+        <div><strong>Context:</strong> ${escapeHtml(e.ctx || '—')}</div>
+        <div><strong>User:</strong> ${escapeHtml(e.user || '—')}</div>
+        <div><strong>Page:</strong> ${escapeHtml(e.page || '—')}</div>
+        <div><strong>When:</strong> ${e.ts ? new Date(e.ts).toLocaleString('el-GR') : '—'} (${_elRelTime(e.ts)})</div>
+        ${(e.count && e.count > 1) ? `<div><strong>Count:</strong> ${e.count} occurrences</div>` : ''}
+        <div style="margin-top:10px"><strong>Stack trace:</strong></div>
+        <pre style="margin:4px 0 0;padding:10px;background:rgba(0,0,0,.25);border-radius:4px;font-size:11px;line-height:1.4;max-height:300px;overflow:auto;white-space:pre-wrap;font-family:'DM Sans',monospace">${escapeHtml(e.stack || '(no stack trace)')}</pre>
+      </div>
+      <div class="aic-confirm-foot">
+        <button class="aic-confirm-cancel">Close</button>
+        <button class="aic-confirm-ok" onclick="navigator.clipboard.writeText(${JSON.stringify(JSON.stringify(e, null, 2))});this.textContent='Copied!';setTimeout(()=>this.textContent='Copy JSON',1200)">Copy JSON</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('.aic-confirm-cancel').onclick = close;
+  overlay.onclick = (e2) => { if (e2.target === overlay) close(); };
+  document.addEventListener('keydown', function esc(ev) {
+    if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
+  });
+}
+
 /**
  * Render the error log viewer page (owner role only)
  */
@@ -238,35 +427,119 @@ function renderErrorLog() {
   const u = JSON.parse(localStorage.getItem('tms_user') || '{}');
   if (u.role !== 'owner') { c.innerHTML = showAccessDenied(); return; }
 
-  const errors = getErrorLog().reverse(); // newest first
-  const rows = errors.map(e => `<tr>
-    <td style="white-space:nowrap;font-size:11px">${escapeHtml(e.ts ? new Date(e.ts).toLocaleString('el-GR') : '—')}</td>
-    <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(e.msg)}">${escapeHtml(e.msg)}</td>
-    <td>${escapeHtml(e.ctx || '—')}</td>
-    <td>${escapeHtml(e.user || '—')}</td>
-    <td>${escapeHtml(e.page || '—')}</td>
-    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;font-size:10px;color:var(--text-dim)" title="${escapeHtml(e.stack||'')}">${escapeHtml((e.stack||'').split('\n')[0] || '—')}</td>
-  </tr>`).join('');
+  const all = getErrorLog().reverse(); // newest first
+  const filtered = _elFilter(all);
+
+  // Severity counts (on full set, not filtered)
+  const counts = { critical: 0, warning: 0, info: 0 };
+  all.forEach(e => { counts[e.severity || 'warning'] = (counts[e.severity || 'warning'] || 0) + 1; });
+
+  // Unique users for filter dropdown
+  const users = [...new Set(all.map(e => e.user).filter(Boolean))];
+  const sentryOn = !!(window.Sentry && window.SENTRY_DSN);
+  const _ic = (name, size) => (typeof icon === 'function') ? icon(name, size || 14) : '';
+
+  const rows = filtered.map((e, idx) => {
+    // Find original index in `all` for modal lookup
+    const origIdx = all.indexOf(e);
+    return `<tr onclick="_errLogShowStack(${origIdx})" style="cursor:pointer">
+      <td style="white-space:nowrap">${_elSeverityPill(e.severity)}</td>
+      <td style="white-space:nowrap;font-family:'DM Sans',monospace;font-size:11px;color:var(--dc-text-dim)" title="${e.ts ? new Date(e.ts).toLocaleString('el-GR') : ''}">${_elRelTime(e.ts)}</td>
+      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500">${escapeHtml((e.msg || '').substring(0, 140))}${(e.count && e.count > 1) ? `<span style="margin-left:6px;padding:1px 6px;background:rgba(56,189,248,0.12);color:#38BDF8;border-radius:3px;font-size:10px;font-weight:700;font-family:'DM Sans',monospace">×${e.count}</span>` : ''}</td>
+      <td style="color:var(--dc-text-mid)">${escapeHtml(e.ctx || '—')}</td>
+      <td style="color:var(--dc-text-mid)">${escapeHtml(e.user || '—')}</td>
+      <td style="color:var(--dc-text-dim);font-size:11px">${escapeHtml(e.page || '—')}</td>
+    </tr>`;
+  }).join('');
 
   c.innerHTML = `
-    <div class="page-header" style="margin-bottom:14px">
-      <div>
-        <div class="page-title">Error Log</div>
-        <div class="page-sub">${errors.length} errors (last 50)</div>
+    <div class="dash-wrap">
+      <div class="dash-header">
+        <div>
+          <div class="dash-greeting">${_ic('alert_triangle', 22)} Error Log</div>
+          <div class="dash-date">${all.length} entries total · ${filtered.length} shown · Sentry ${sentryOn ? 'ON' : 'OFF'}</div>
+        </div>
+        <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('json')">${_ic('file_text', 14)} JSON</button>
+          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('csv')">${_ic('file_text', 14)} CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="_errLogClear()">${_ic('trash', 14)} Clear</button>
+        </div>
       </div>
-      <div>
-        <button class="btn btn-scan" onclick="localStorage.removeItem('tms_errors');renderErrorLog()">Clear Log</button>
+
+      <!-- KPI Bar (3 severity counts) -->
+      <div class="dash-kpi-bar" style="grid-template-columns:repeat(3,1fr)">
+        <div class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
+          <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Critical</div>
+          <div class="dash-kpi-value ${counts.critical ? 'dash-val-danger' : 'dash-val-muted'}">${counts.critical}</div>
+          <div class="dash-kpi-sub">errors + exceptions</div>
+        </div>
+        <div class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
+          <div class="dash-kpi-label">${_ic('clock', 11)} Warning</div>
+          <div class="dash-kpi-value ${counts.warning ? 'dash-val-warning' : 'dash-val-muted'}">${counts.warning}</div>
+          <div class="dash-kpi-sub">auth, network, 4xx</div>
+        </div>
+        <div class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
+          <div class="dash-kpi-label">${_ic('info', 11)} Info</div>
+          <div class="dash-kpi-value ${counts.info ? 'dash-val-success' : 'dash-val-muted'}">${counts.info}</div>
+          <div class="dash-kpi-sub">aborts, expected</div>
+        </div>
       </div>
-    </div>
-    <div class="entity-table-wrap" style="max-height:calc(100vh - 200px)">
-      <table>
-        <thead><tr>
-          <th>Timestamp</th><th>Message</th><th>Context</th><th>User</th><th>Page</th><th>Stack</th>
-        </tr></thead>
-        <tbody>${rows.length ? rows : '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-dim)">No errors logged</td></tr>'}</tbody>
-      </table>
+
+      <!-- Filters -->
+      <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
+        <div class="entity-search-wrap">
+          ${_ic('search')}
+          <input class="entity-search-input" placeholder="Search message / context / user…"
+            value="${escapeHtml(_errLogState.search)}"
+            oninput="_errLogState.search=this.value;renderErrorLog()">
+        </div>
+        <select class="svc-filter" onchange="_errLogSetFilter('severity',this.value)">
+          <option value="">Severity: All</option>
+          <option value="critical"${_errLogState.severity==='critical'?' selected':''}>Critical</option>
+          <option value="warning"${_errLogState.severity==='warning'?' selected':''}>Warning</option>
+          <option value="info"${_errLogState.severity==='info'?' selected':''}>Info</option>
+        </select>
+        <select class="svc-filter" onchange="_errLogSetFilter('user',this.value)">
+          <option value="">User: All</option>
+          ${users.map(u => `<option value="${escapeHtml(u)}"${_errLogState.user===u?' selected':''}>${escapeHtml(u)}</option>`).join('')}
+        </select>
+        <select class="svc-filter" onchange="_errLogSetFilter('range',this.value)">
+          <option value="all">Time: All</option>
+          <option value="1h"${_errLogState.range==='1h'?' selected':''}>Last hour</option>
+          <option value="24h"${_errLogState.range==='24h'?' selected':''}>Last 24h</option>
+          <option value="7d"${_errLogState.range==='7d'?' selected':''}>Last 7 days</option>
+        </select>
+        <span class="entity-count-chip">${filtered.length}</span>
+      </div>
+
+      <!-- Table -->
+      <div class="dash-card">
+        <div class="dash-card-body flush">
+          <table class="md-fleet-table">
+            <thead><tr>
+              <th style="width:70px">Sev</th>
+              <th style="width:90px">When</th>
+              <th>Message</th>
+              <th style="width:160px">Context</th>
+              <th style="width:120px">User</th>
+              <th style="width:120px">Page</th>
+            </tr></thead>
+            <tbody>${rows.length ? rows : `<tr><td colspan="6"><div class="dash-empty" style="padding:var(--space-8) var(--space-4)">${_ic('check_circle', 28)}<div>No errors logged${all.length && !rows.length ? ' matching filters' : ''}</div></div></td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
     </div>`;
 }
+
+// Expose globally for onclick handlers
+window._errLogSetFilter = _errLogSetFilter;
+window._errLogExport = _errLogExport;
+window._errLogClear = _errLogClear;
+window._errLogShowStack = _errLogShowStack;
+window._errLogState = _errLogState;
 
 // Load persisted errors into memory on init
 try {
