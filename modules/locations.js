@@ -1,6 +1,8 @@
 // ═══════════════════════════════════════════════
 // MODULE — LOCATIONS v2
 // ═══════════════════════════════════════════════
+// Module state uses 'LOC' / '_loc' prefix to avoid global collisions.
+'use strict';
 
 const LOC = {
   records: [],

@@ -5,3 +5,7 @@ dist/
 .DS_Store
 *.log
 backups/
+# Playwright artifacts
+test-results/
+playwright-report/
+playwright/.cache/

@@ -2,6 +2,9 @@
 // MODULE — INVOICING  v2
 // Bug fixes + Aging buckets + Invoice Number/Date + Outstanding KPI + Sort
 // ═══════════════════════════════════════════════
+// Note: module state is declared at script-level (INV, _invFilters).
+// Naming prefix 'INV' / '_inv' prevents collision with other modules.
+'use strict';
 
 const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', dir: 'desc' } };
 const _invFilters = { tab: 'ready', type: '', weekFrom: '', weekTo: '', client: '' };

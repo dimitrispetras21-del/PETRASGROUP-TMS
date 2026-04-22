@@ -4,6 +4,8 @@
 // Purpose: verify accuracy. Compare values against what
 // other pages (Dashboard, Invoicing, etc.) show.
 // ═══════════════════════════════════════════════════════════
+// Module state uses 'AUDIT' / '_audit' prefix to avoid global collisions.
+'use strict';
 
 const AUDIT = {
   results: null,

@@ -4,6 +4,8 @@
 // Dynamic sheet tabs: 1 per loading location + crossdock (if Veroia Switch)
 // AI extraction via Claude Sonnet from uploaded image/PDF
 // ═══════════════════════════════════════════════
+// Module state uses 'PU' / '_pu' prefix to avoid global collisions.
+'use strict';
 
 const PU = {
   orderId: null,

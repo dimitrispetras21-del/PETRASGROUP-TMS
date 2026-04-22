@@ -3,6 +3,8 @@
 // Suppliers ledger + Partners ledger. Each entry linked to ORDER_STOP.
 // Rule: unloading stops never create entries. Partners only on INTL leg.
 // ═══════════════════════════════════════════════════════════
+// Module state uses 'PL' / '_pl' prefix to avoid global collisions.
+'use strict';
 
 const PL = {
   supplierRecs: [],   // entries from PALLET_LEDGER_SUPPLIERS
