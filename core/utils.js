@@ -2,6 +2,18 @@
 // CORE -- UTILS
 // ===============================================
 
+// -- Debug Logger --------------------------------
+// Gated console.log for verbose sync/flow logs.
+// Enable at runtime via DevTools:   TMS_DEBUG = true
+// Persist across reloads:           localStorage.setItem('tms_debug','1')
+function _tmsLog(...args) {
+  try {
+    if (typeof window !== 'undefined' && window.TMS_DEBUG) { console.log('[TMS]', ...args); return; }
+    if (typeof localStorage !== 'undefined' && localStorage.getItem('tms_debug') === '1') { console.log('[TMS]', ...args); }
+  } catch(_) {}
+}
+if (typeof window !== 'undefined') window._tmsLog = _tmsLog;
+
 // -- Error Toast Notifications -----------------
 // Non-blocking bottom-right toast for API / runtime errors.
 // Max 3 visible at once; auto-dismiss after 5 s.

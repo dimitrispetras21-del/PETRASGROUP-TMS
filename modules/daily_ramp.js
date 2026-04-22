@@ -285,7 +285,7 @@ async function _rampAutoSync() {
       const batch = toCreate.slice(i, i+10);
       await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => console.error('Ramp sync error:', e))));
     }
-    console.log(`Ramp auto-sync: created ${toCreate.length} records from ORDER_STOPS`);
+    _tmsLog(`Ramp auto-sync: created ${toCreate.length} records from ORDER_STOPS`);
   }
 }
 
@@ -588,7 +588,10 @@ async function _rampSvTime(id,v){
 
 async function _rampDone(id,isIn){
   const fields={'Status':'Done'};
-  if(isIn==='true') fields['Stock Status']='In Stock';
+  // isIn may arrive as boolean (direct call) or string 'true'/'false' (via onclick template literal).
+  // Accept both so Stock Status is set reliably for inbound deliveries.
+  const isInbound = isIn === true || isIn === 'true';
+  if(isInbound) fields['Stock Status']='In Stock';
   try{
     await atSafePatch(TABLES.RAMP,id,fields);
     invalidateCache(TABLES.RAMP);

@@ -44,7 +44,10 @@ const _orderSync = (function() {
       await run('paSyncStatus', async () => {
         if (typeof paSyncStatus !== 'function') return;
         const tableId = source === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
-        const rec = await atGetOne(tableId, orderId).catch(() => null);
+        const rec = await atGetOne(tableId, orderId).catch(e => {
+          console.warn('[order-sync] paSyncStatus fetch failed:', e && e.message);
+          return null;
+        });
         if (!rec) return;
         await paSyncStatus({ parentType: 'order', parentId: orderId, status: rec.fields['Status'] });
       });
@@ -54,7 +57,10 @@ const _orderSync = (function() {
     if (source === 'intl' && !skipVS) {
       await run('VS chain', async () => {
         if (typeof _syncVeroiaSwitch !== 'function') return;
-        const rec = await atGetOne(TABLES.ORDERS, orderId).catch(() => null);
+        const rec = await atGetOne(TABLES.ORDERS, orderId).catch(e => {
+          console.warn('[order-sync] VS chain fetch failed:', e && e.message);
+          return null;
+        });
         if (!rec) return;
         await _syncVeroiaSwitch(orderId, rec.fields);
       });
@@ -126,7 +132,10 @@ const _orderSync = (function() {
     // For each affected CL, recompute totals from its current GL lines
     for (const clId of clIds) {
       try {
-        const cl = await atGetOne(TABLES.CONS_LOADS, clId).catch(() => null);
+        const cl = await atGetOne(TABLES.CONS_LOADS, clId).catch(e => {
+          console.warn('[order-sync] CL fetch failed for', clId, e && e.message);
+          return null;
+        });
         if (!cl) continue;
         const clGlIds = cl.fields['Groupage Lines'] || [];
         if (!clGlIds.length) continue;
@@ -169,7 +178,10 @@ const _orderSync = (function() {
    */
   async function cleanupPLorphans(orderId, source) {
     const tableId = source === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
-    const rec = await atGetOne(tableId, orderId).catch(() => null);
+    const rec = await atGetOne(tableId, orderId).catch(e => {
+      console.warn('[order-sync] PL cleanup fetch failed:', e && e.message);
+      return null;
+    });
     if (!rec || rec.fields['Pallet Exchange']) return; // Only cleanup if PE is OFF
 
     // Find all stops for this order

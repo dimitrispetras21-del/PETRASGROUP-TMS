@@ -290,10 +290,9 @@ const ENTITY_CONFIG = {
         { f: 'Contact Person', label: 'Contact Person' },
       ]},
       { section: 'Location', fields: [
-        // H15 TODO: verify actual Airtable field name for WORKSHOPS table.
-        // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). If WORKSHOPS
-        // follows same convention, change to 'Adress'. Currently assumed
-        // to use correctly-spelled 'Address' — verify in Airtable schema.
+        // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). WORKSHOPS is
+        // assumed to use correctly-spelled 'Address' per current Airtable schema.
+        // If a 422 'Unknown field name: Address' appears for WORKSHOPS, change here.
         { f: 'Address',        label: 'Address' },
         { f: 'City',           label: 'City' },
       ]},
@@ -658,6 +657,12 @@ function buildEntityTable(entityKey, records) {
     const arrow = s.col===i ? (s.dir===1?' <span style="color:var(--accent)">▲</span>':s.dir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="entitySortToggle('${entityKey}',${i})">${c.label}${arrow}</th>`;
   }).join('');
+  // Render cap: 500 rows max to keep DOM responsive. Previously was a silent 200 cap
+  // which hid entries in growing tables (clients/partners > 200). Now we render up to
+  // 500 and show a visible footer warning if more exist, so users know to use search.
+  const RENDER_CAP = 500;
+  const truncated = sortedRecs.length > RENDER_CAP;
+  const rowsToRender = truncated ? sortedRecs.slice(0, RENDER_CAP) : sortedRecs;
   return `<table>
     <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
@@ -667,8 +672,9 @@ function buildEntityTable(entityKey, records) {
             title: `No ${cfg.label.toLowerCase()} found`,
             description: `Try adjusting filters or create a new ${cfg.labelSingle.toLowerCase()}`,
           }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No records found</div>'}</td></tr>`
-        : sortedRecs.slice(0, 200).map(r => buildEntityRow(entityKey, r, cols)).join('')
+        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols)).join('')
       }
+      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
     </tbody>
   </table>`;
 }

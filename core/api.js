@@ -403,7 +403,10 @@ async function atPatch(tableId, recId, fields) {
           }
         }
       }
-    } catch(_) {}
+    } catch(e) {
+      // Undo buffer capture is best-effort; log so silent undo failures are visible.
+      console.warn('[api] undo buffer capture failed:', e && e.message);
+    }
   }
   if (!_isOnline()) {
     _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
@@ -609,7 +612,9 @@ function invalidateCache(tableId) {
     const T = typeof TABLES !== 'undefined' ? TABLES : {};
     const refIds = [T.TRUCKS, T.TRAILERS, T.DRIVERS, T.PARTNERS, T.CLIENTS, T.LOCATIONS].filter(Boolean);
     if (refIds.includes(tableId) && typeof invalidateRefData === 'function') invalidateRefData();
-  } catch(_) {}
+  } catch(e) {
+    console.warn('[api] ref-data auto-invalidation failed:', e && e.message);
+  }
 }
 
 // Clear ALL API caches (memory + localStorage) — call on logout/user switch
@@ -638,8 +643,12 @@ function atPreload() {
     TABLES_CFG.TRAILERS,
     TABLES_CFG.DRIVERS,
   ].filter(Boolean);
-  // Fire and forget — warms both memory + localStorage
-  preloadIds.forEach(id => atGet(id, '', true).catch(() => {}));
+  // Fire and forget — warms both memory + localStorage.
+  // Log failures so stale reference data is surfaced instead of silent.
+  preloadIds.forEach(id => atGet(id, '', true).catch(e => {
+    console.warn('[TMS] Preload failed for table', id, e && e.message);
+    if (typeof logError === 'function') logError(e, 'preload_' + id);
+  }));
   // Load and flush any queued offline mutations
   _loadOfflineQueue();
   _flushOfflineQueue();

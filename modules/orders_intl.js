@@ -747,8 +747,8 @@ async function _syncVeroiaSwitch(orderId, fields) {
   const direction    = fields['Direction'];
   const isIntl       = fields['Type'] === 'International';
 
-  console.log('_syncVeroiaSwitch called:', {orderId, veroiaSwitch, direction, isIntl});
-  if (!isIntl) { console.log('SKIP: not intl'); return; }
+  _tmsLog('_syncVeroiaSwitch called:', {orderId, veroiaSwitch, direction, isIntl});
+  if (!isIntl) { _tmsLog('SKIP: not intl'); return; }
 
   const _lid = v => (v && typeof v === 'object' && v.id) ? v.id : (typeof v === 'string' ? v : null);
 
@@ -757,7 +757,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     filterByFormula: `{Source Record}="${orderId}"`,
     fields: ['Name','Direction'],
   }, false);
-  console.log('existing VS NAT_LOADS:', existingNL.length);
+  _tmsLog('existing VS NAT_LOADS:', existingNL.length);
 
   // ── Legacy NAT_ORDERS cleanup (v1.0 migration) — field may not exist, catch silently ──
   let legacyNO = [];
@@ -766,13 +766,13 @@ async function _syncVeroiaSwitch(orderId, fields) {
       filterByFormula: `FIND("${orderId}",ARRAYJOIN({Linked Order},","))>0`,
       fields: ['Linked Order'],
     }, false);
-  } catch(e) { console.log('Legacy NAT_ORDERS lookup skipped (field not found):', e?.message||e); }
+  } catch(e) { _tmsLog('Legacy NAT_ORDERS lookup skipped (field not found):', e?.message||e); }
 
   // ══════════════════════════════════════════════
   // VS OFF → FULL CLEANUP
   // ══════════════════════════════════════════════
   if (!veroiaSwitch) {
-    console.log('VS OFF → cleanup');
+    _tmsLog('VS OFF → cleanup');
 
     // 1. Delete NAT_LOADS linked to this order
     for (const nl of existingNL) {
@@ -803,7 +803,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
         for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
           const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(()=>[]);
           for (const pl of pls) { try { await atDelete(tbl, pl.id); } catch(e) { console.warn('PL delete:', e); } }
-          if (pls.length) console.log(`Deleted ${pls.length} PL entries from ${tbl} for INTL ${orderId}`);
+          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for INTL ${orderId}`);
         }
       }
     } catch(e) { console.warn('Pallet Ledger intl cleanup:', e); }
@@ -841,7 +841,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
   // ══════════════════════════════════════════════
   // VS ON + GRP OFF → Create/Update Direct NAT_LOADS
   // ══════════════════════════════════════════════
-  console.log('VS ON → sync NAT_LOADS (Direct)');
+  _tmsLog('VS ON → sync NAT_LOADS (Direct)');
 
   // Clean up legacy NAT_ORDERS if any exist (migration path)
   for (const no of legacyNO) {
@@ -851,7 +851,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
       for (const nl of nlsNO) await atDelete(TABLES.NAT_LOADS, nl.id);
       // Delete the NO itself
       await atDelete(TABLES.NAT_ORDERS, no.id);
-      console.log('Cleaned up legacy NO:', no.id);
+      _tmsLog('Cleaned up legacy NO:', no.id);
     } catch(e) { console.warn('Legacy NO cleanup:', e); }
   }
 
@@ -941,7 +941,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
     const upd = await atPatch(TABLES.NAT_LOADS, existingNL[0].id, nlFields);
     if (upd?.error) alert('NAT_LOADS UPDATE ERROR: ' + JSON.stringify(upd.error));
     else nlId = existingNL[0].id;
-    console.log('NAT_LOADS updated:', nlId);
+    _tmsLog('NAT_LOADS updated:', nlId);
   } else {
     const cre = await atCreate(TABLES.NAT_LOADS, nlFields);
     if (cre?.error) {
@@ -950,7 +950,7 @@ async function _syncVeroiaSwitch(orderId, fields) {
       nlId = cre.id;
       _createdIds.push({ table: TABLES.NAT_LOADS, id: cre.id });
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
-      console.log('NAT_LOADS created:', nlId);
+      _tmsLog('NAT_LOADS created:', nlId);
     }
   }
 
@@ -998,12 +998,25 @@ async function _syncVeroiaSwitch(orderId, fields) {
   invalidateCache(TABLES.NAT_LOADS);
 
   } catch (err) {
-    // Rollback: delete all records created during this sync
+    // Rollback: delete all records created during this sync.
+    // Track orphaned records so user is informed if cleanup partially fails.
+    const rollbackFailed = [];
     for (const item of _createdIds.reverse()) {
-      try { await atDelete(item.table, item.id); } catch(_) {}
+      try {
+        await atDelete(item.table, item.id);
+      } catch(e) {
+        rollbackFailed.push({ table: item.table, id: item.id, err: e && e.message });
+        console.error('[orders_intl] Rollback delete failed:', item.table, item.id, e && e.message);
+      }
     }
-    if (typeof showErrorToast === 'function') showErrorToast('VS sync failed and was rolled back', 'error');
-    else console.error('VS sync failed and was rolled back:', err);
+    if (rollbackFailed.length && typeof logError === 'function') {
+      logError(new Error(`VS rollback left ${rollbackFailed.length} orphan record(s): ${JSON.stringify(rollbackFailed)}`), 'vs_rollback_orphan');
+    }
+    const msg = rollbackFailed.length
+      ? `VS sync failed; rollback left ${rollbackFailed.length} orphan(s) — check Error Log`
+      : 'VS sync failed and was rolled back';
+    if (typeof showErrorToast === 'function') showErrorToast(msg, 'error');
+    else console.error(msg, err);
     throw err;
   } finally {
     _syncingOrders.delete(orderId);
@@ -1420,7 +1433,7 @@ async function submitIntlOrder(recId) {
     try {
       toast('Syncing VS national load...', 'info');
       const rec = await atGetOne(TABLES.ORDERS, savedOrderId);
-      console.log('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
+      _tmsLog('SYNC: fetched record', savedOrderId, rec.fields?.[F.VEROIA_SWITCH], rec.fields?.['Direction'], rec.fields?.['Type']);
       if (!rec.fields) { toast('SYNC ERROR: no fields', 'warn'); return; }
       await _syncVeroiaSwitch(savedOrderId, rec.fields);
       // Central sync — RAMP trigger + PL cleanup (if PE=OFF) + cache invalidation

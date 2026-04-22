@@ -90,8 +90,8 @@ async function renderDashboard() {
       const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
       return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
     }
-    const weekExports = orders.filter(r => r.fields['Week Number']==wn && r.fields['Direction']==='Export' && r.fields['Truck']);
-    const weekImports = orders.filter(r => r.fields['Week Number']==wn && r.fields['Direction']==='Import' && r.fields['Truck']);
+    const weekExports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Export' && r.fields['Truck']);
+    const weekImports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Import' && r.fields['Truck']);
     const deadKmList = [];
     weekExports.forEach(exp => {
       const expTruck = getLinkId(exp.fields['Truck']);

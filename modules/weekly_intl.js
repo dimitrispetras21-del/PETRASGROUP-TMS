@@ -1392,7 +1392,7 @@ async function _wiSaveFromPopover(rowId){
     const uid=`${p}_p_${rowId}`;
     const val=document.getElementById(`wsd-v-${uid}`)?.value||'';
     const lbl=document.querySelector(`#wsd-${uid} .wi-sdi`)?.value||'';
-    console.log('syncPop',uid,'val=',val,'lbl=',lbl);
+    _tmsLog('syncPop',uid,'val=',val,'lbl=',lbl);
     if(val){row[f]=val;row[l]=lbl;}
   };
   syncPop('tk','truckId','truckLabel');

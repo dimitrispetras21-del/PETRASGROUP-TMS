@@ -604,7 +604,7 @@ async function submitNatlOrder(recId) {
           try { await atDelete(TABLES.GL_LINES, r.id); }
           catch(e) { console.warn('GL delete:', e); }
         }
-        if (staleGL.length) console.log(`Deleted ${staleGL.length} GL + linked CL/NL`);
+        if (staleGL.length) _tmsLog(`Deleted ${staleGL.length} GL + linked CL/NL`);
         invalidateCache(TABLES.GL_LINES);
         invalidateCache(TABLES.NAT_LOADS);
       } catch(e) { console.warn('GL cleanup error:', e); }
@@ -689,12 +689,17 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
 
   if (!pickupLocs.length) return;
 
-  // Per-stop pallets from Loading Pallets 1-10 fields, fallback to total/count
+  // Per-stop pallets from Loading Pallets 1-10 fields, fallback to total/count.
+  // Bugfix: Math.floor(totalPal / locs.length) dropped the remainder (e.g. 100÷3 = 33+33+33 = 99).
+  // We now distribute the remainder to the first N stops so the sum always equals totalPal.
   const totalPal = noFields['Pallets'] || 0;
   const palPerLoc = {};
+  const base = pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal;
+  const remainder = pickupLocs.length > 0 ? (totalPal - base * pickupLocs.length) : 0;
   pickupLocs.forEach((locId, i) => {
-    const p = noFields[`Loading Pallets ${i+1}`] || noFields['Loading Pallets'] || 0;
-    palPerLoc[locId] = p || (pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal);
+    const explicit = noFields[`Loading Pallets ${i+1}`] || noFields['Loading Pallets'] || 0;
+    // Explicit field wins; otherwise base + 1 for the first `remainder` stops
+    palPerLoc[locId] = explicit || (base + (i < remainder ? 1 : 0));
   });
 
   const delivArr = noFields['Delivery Location 1'] || noFields['Delivery Location'] || [];
@@ -760,7 +765,7 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
     await atPatchBatch(TABLES.GL_LINES, toUpdate);
   }
 
-  console.log(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
+  _tmsLog(`_syncGroupageLinesFromNO: ${toCreate.length} created, ${toUpdate.length} updated for NO ${noId}`);
   } finally {
     _syncingNOs.delete(noId);
   }
@@ -788,7 +793,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     for (const r of existing) {
       try { await atDelete(TABLES.NAT_LOADS, r.id); } catch(e) { console.warn('NL delete err:', e); }
     }
-    console.log(`_syncNationalLoad: deleted ${existing.length} NL for NO ${noId}`);
+    _tmsLog(`_syncNationalLoad: deleted ${existing.length} NL for NO ${noId}`);
     return;
   }
 
@@ -847,12 +852,12 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     // Update existing
     await atPatch(TABLES.NAT_LOADS, existing[0].id, nlFields);
     _nlRecId = existing[0].id;
-    console.log(`_syncNationalLoad: updated NL ${existing[0].id} for NO ${noId}`);
+    _tmsLog(`_syncNationalLoad: updated NL ${existing[0].id} for NO ${noId}`);
   } else {
     // Create new
     const created = await atCreate(TABLES.NAT_LOADS, nlFields);
     _nlRecId = created.id;
-    console.log(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
+    _tmsLog(`_syncNationalLoad: created NL ${created.id} for NO ${noId}`);
   }
 
   // Write ORDER_STOPS for the NAT_LOADS record
@@ -904,7 +909,7 @@ async function deleteNatlOrder(recId) {
       for (const nl of nls) {
         try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; console.warn('NL delete:', e); }
       }
-      if (nls.length) console.log(`Deleted ${nls.length} NAT_LOADS for NO ${recId}`);
+      if (nls.length) _tmsLog(`Deleted ${nls.length} NAT_LOADS for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('NL cleanup error:', e); }
 
     // 2. Delete GL lines + linked CL + CL-linked NL
@@ -934,7 +939,7 @@ async function deleteNatlOrder(recId) {
         } catch(e) { _delFail++; console.warn('CL cleanup:', e); }
         try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('GL delete:', e); }
       }
-      if (gls.length) console.log(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
+      if (gls.length) _tmsLog(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
 
     // 3. Delete RAMP records linked to this NO (field is 'National Order', NOT 'Source Order')
@@ -959,7 +964,7 @@ async function deleteNatlOrder(recId) {
           for (const pl of pls) {
             try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
           }
-          if (pls.length) console.log(`Deleted ${pls.length} PL entries from ${tbl} for NO ${recId}`);
+          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for NO ${recId}`);
         }
       }
     } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
@@ -970,7 +975,7 @@ async function deleteNatlOrder(recId) {
       for (const s of natStops) {
         try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { _delFail++; console.warn('Stop delete:', e); }
       }
-      if (natStops.length) console.log(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
+      if (natStops.length) _tmsLog(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
 
     // 5. Delete the NAT_ORDER itself (soft delete — saved to trash)
