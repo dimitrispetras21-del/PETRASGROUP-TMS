@@ -58,8 +58,13 @@ function initModal() {
  * @param {string} [cfg.description] - secondary hint
  * @param {{label, onClick}} [cfg.action] - optional CTA
  */
-function showEmpty(cfg) {
-  const { illustration = 'inbox', title = 'No records', description = '', action } = cfg || {};
+function showEmpty(cfgOrMsg, sub) {
+  // Legacy string signature: showEmpty('No records found', 'hint')
+  if (typeof cfgOrMsg === 'string' || cfgOrMsg == null) {
+    return showEmptyLegacy(cfgOrMsg || 'No records found', sub || '');
+  }
+  // Object config signature: showEmpty({illustration, title, description, action})
+  const { illustration = 'inbox', title = 'No records', description = '', action } = cfgOrMsg;
   const svg = _EMPTY_SVG[illustration] || _EMPTY_SVG.inbox;
   return `<div class="empty-state">
     <div class="empty-state-illustration">${svg}</div>
@@ -142,8 +147,10 @@ function showError(msg) {
   return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Error</h3><p style="color:var(--text-dim);font-size:13px">${msg}</p></div>`;
 }
 
-// A4: Empty states with subtle illustrations
-function showEmpty(msg = 'No records found', sub = '') {
+// A4: Empty states with subtle illustrations — legacy string-based signature
+// Kept for callers that do showEmpty('msg', 'sub'); the object-config variant
+// is defined above (line ~61) and handles illustration/title/description/action.
+function showEmptyLegacy(msg = 'No records found', sub = '') {
   return `<div class="empty-state" style="padding:60px 20px;text-align:center">
     <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.5"><path d="M9 5H2v14h20V5h-7"/><path d="M9 5l3-3 3 3"/><path d="M12 2v10"/></svg>

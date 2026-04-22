@@ -86,7 +86,8 @@ async function _perfLoad() {
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
                'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
-               'Assigned At','Actual Delivery Date']
+               'Assigned At','Actual Delivery Date',
+               'Loading Summary','Delivery Summary','Loading Points','Delivery Points']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver',
@@ -359,13 +360,23 @@ function _perfCompute() {
     return r.fields['Status'] !== 'Done' && crisisHighPriority.has(p);
   }).length;
 
-  // Weekly Score (composite)
-  const weekly_score = Math.round(
-    (plan_complete * 0.30) +
-    (on_time * 0.30) +
-    ((100 - empty_legs) * 0.25) +
-    (fleet_usage * 0.15)
-  );
+  // Weekly Score (composite) — matches Dashboard formula so both show same number.
+  // Canonical weights 30/30/25/15 per METRICS.md:
+  //   assignment_rate (plan_complete) / on_time / compliance (service_adherence) /
+  //   dead_km_score (derived from dead_km with same mapping as Dashboard).
+  const _ontimeForScore = on_time >= 0 ? on_time : 80; // default matches Dashboard fallback
+  const _deadKmScore = dead_km < 0 ? 100
+    : dead_km <= 50 ? 100
+    : dead_km <= 150 ? Math.round(100 - (dead_km - 50))
+    : Math.max(0, Math.round(50 - (dead_km - 150) * 0.33));
+  const weekly_score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+    ? metrics.weeklyScore({
+        assignment_rate: plan_complete,
+        on_time: _ontimeForScore,
+        compliance: service_adherence,
+        dead_km_score: _deadKmScore,
+      }).score
+    : Math.round(plan_complete * 0.30 + _ontimeForScore * 0.30 + service_adherence * 0.25 + _deadKmScore * 0.15);
 
   return {
     on_time, dead_km, fleet_usage, plan_complete, assign_speed,
@@ -521,7 +532,12 @@ function _perfDraw() {
     const pill = perf === 'On Time'
       ? '<span class="perf-pill perf-pill-ok">On Time</span>'
       : '<span class="perf-pill perf-pill-bad">Delayed</span>';
-    const route = `${escapeHtml((f['Loading Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')} → ${escapeHtml((f['Delivery Summary'] || '').split('/')[0]?.trim().slice(0, 15) || '?')}`;
+    // Fallback chain: Summary (formula) → Points (lookup) → '?'
+    const _loadRaw = f['Loading Summary'] || f['Loading Points'] || '';
+    const _delRaw  = f['Delivery Summary'] || f['Delivery Points'] || '';
+    const _load = (Array.isArray(_loadRaw) ? _loadRaw.join(' / ') : _loadRaw).split('/')[0]?.trim().slice(0, 15) || '?';
+    const _del  = (Array.isArray(_delRaw) ? _delRaw.join(' / ') : _delRaw).split('/')[0]?.trim().slice(0, 15) || '?';
+    const route = `${escapeHtml(_load)} → ${escapeHtml(_del)}`;
     const date = toLocalDate(f['Delivery DateTime']);
     return `<tr>
       <td style="color:var(--p-text-dim)">${date ? date.split('-').reverse().join('/') : '—'}</td>

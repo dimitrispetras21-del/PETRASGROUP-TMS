@@ -393,7 +393,9 @@ async function _renderWorkshopsStatsStrip(workshops) {
   const el = document.getElementById('workshops_stats_strip');
   if (!el) return;
   try {
-    const history = await atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Total Cost','Date'] }, true).catch(() => []);
+    // C1 fix: removed 'Total Cost' from fields[] — it's not in MAINT_HISTORY schema (422 error).
+    // Code below still reads r.fields['Total Cost'] as a safety fallback in case it's added later.
+    const history = await atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Date'] }, true).catch(() => []);
     const activeWs = workshops.filter(w => w.fields['Active']).length;
     const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
     const yyyymm = new Date().toISOString().slice(0, 7);

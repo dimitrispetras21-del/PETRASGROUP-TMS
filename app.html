@@ -92,13 +92,13 @@
 <script src="core/auth.js?v=1776845114"></script>
 <script src="core/api.js?v=1776841975"></script>
 <script src="core/utils.js?v=1776838966"></script>
-<script src="core/ui.js?v=1776844195"></script>
+<script src="core/ui.js?v=1776847744"></script>
 <script src="core/entity.js?v=1776844195"></script>
 <script src="core/data-helpers.js?v=1774971000"></script>
 <script src="core/form-helpers.js?v=1775026933"></script>
 <script src="core/stops-helpers.js?v=1776286034"></script>
 <script src="core/pa-helpers.js?v=1776323985"></script>
-<script src="core/router.js?v=1776844195"></script>
+<script src="core/router.js?v=1776847744"></script>
 <script src="core/icons.js?v=1776807442"></script>
 <script src="core/command-palette.js?v=1776708938"></script>
 <script src="core/metrics.js?v=1776545154"></script>
@@ -107,19 +107,19 @@
 <script src="core/ai-chat.js?v=1776808965"></script>
 <!-- 3. Modules -->
 <script src="modules/dashboard.js?v=1776844195"></script>
-<script src="modules/weekly_intl.js?v=1776840153"></script>
+<script src="modules/weekly_intl.js?v=1776847744"></script>
 <script src="modules/weekly_natl.js?v=1776840153"></script>
-  <script src="modules/daily_ramp.js?v=1776845114"></script>
+  <script src="modules/daily_ramp.js?v=1776847744"></script>
   <script src="modules/maintenance.js?v=1776844195"></script>
   <script src="modules/orders_intl.js?v=1776845114"></script>
 <script src="modules/orders_natl.js?v=1776845114"></script>
 
 <script src="modules/locations.js?v=1774985956"></script>
-<script src="modules/daily_ops.js?v=1776845114"></script>
+<script src="modules/daily_ops.js?v=1776847744"></script>
 <script src="modules/pallet_upload.js?v=1776102450"></script>
 <script src="modules/pallet_ledger.js?v=1776545287"></script>
 <script src="modules/invoicing.js?v=1776844195"></script>
-<script src="modules/performance.js?v=1776845114"></script>
+<script src="modules/performance.js?v=1776847744"></script>
 <script src="modules/ceo_dashboard.js?v=1776845114"></script>
 <script src="modules/metrics_audit.js?v=1776545154"></script>
 
@@ -156,7 +156,10 @@ init();
 
 // Register Service Worker for offline mode + auto-update
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').then(reg => {
+  // Build an absolute URL so the registration doesn't depend on document.baseURI
+  // being correctly set (some CDNs/Nakis-proxied rewrites truncate relative paths).
+  const _swUrl = new URL('sw.js', window.location.href).href;
+  navigator.serviceWorker.register(_swUrl).then(reg => {
     // Check for updates every 30 minutes
     setInterval(() => reg.update(), 30 * 60 * 1000);
     // When a new SW is waiting, tell it to activate immediately
@@ -169,7 +172,10 @@ if ('serviceWorker' in navigator) {
         }
       });
     });
-  }).catch(() => {});
+  }).catch(err => {
+    // Log so the URL that failed is visible (previously swallowed silently).
+    console.warn('[SW] registration failed for', _swUrl, err && err.message);
+  });
 
   // Listen for SW messages (offline/online notifications)
   navigator.serviceWorker.addEventListener('message', e => {

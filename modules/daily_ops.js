@@ -229,7 +229,7 @@ function _opsDraw() {
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div><div class="page-title">${_opsI('list_checks', 22)} Daily Ops Plan</div>
-        <div class="page-sub">${fD(tgt)} · ${total} orders</div></div>
+        <div class="page-sub">${fD(tgt)} · ${total} orders${isToday && OPS.overdue.length ? ` · <span style="color:#DC2626;font-weight:600">${OPS.overdue.length} overdue</span>` : ''}</div></div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
         <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Refresh</button>

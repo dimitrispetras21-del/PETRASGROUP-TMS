@@ -522,10 +522,12 @@ function _rRow(rec,num,tOpts) {
     }
     // Fallback: parse Notes for legacy records without Stop fields
     if (!stops.length && notes) {
-      notes.split('\n').filter(l => l && !l.startsWith('CL:')).forEach(line => {
-        const p = line.split(' | ');
-        stops.push({ client: p[0]?.trim()||'', loc: p[1]?.trim()||'', pal: p[2]||'', temp: p[3]||'', ref: p[4]||'' });
-      });
+      notes.split('\n')
+        .filter(l => l && !l.startsWith('CL:') && !l.startsWith('STOP:'))
+        .forEach(line => {
+          const p = line.split(' | ');
+          stops.push({ client: p[0]?.trim()||'', loc: p[1]?.trim()||'', pal: p[2]||'', temp: p[3]||'', ref: p[4]||'' });
+        });
     }
     subHtml = stops.map(s => `<tr class="sub-row">
       <td></td><td></td>

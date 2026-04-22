@@ -109,6 +109,14 @@ function renderNav() {
     html += '</div>';
   });
   nav.innerHTML = html;
+
+  // Re-apply active state after re-render so the highlighted nav item
+  // matches currentPage (otherwise the first render loses active state
+  // and navigating before re-render leaves stale highlighting).
+  if (currentPage) {
+    const navEl = document.getElementById('nav_' + currentPage);
+    if (navEl) navEl.classList.add('active');
+  }
 }
 
 function toggleNavSection(el, groupId, gi) {
