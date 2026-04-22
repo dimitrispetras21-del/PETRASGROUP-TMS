@@ -39,7 +39,10 @@ async function renderDashboard() {
             if (pid) { if (!_dashStopsByOrder[pid]) _dashStopsByOrder[pid] = []; _dashStopsByOrder[pid].push(sr); }
           });
         }
-      } catch(e) { console.warn('Dashboard ORDER_STOPS fetch:', e); }
+      } catch(e) {
+        console.warn('Dashboard ORDER_STOPS fetch:', e);
+        if (typeof logError === 'function') logError(e, 'dashboard ORDER_STOPS fetch');
+      }
     }
 
     // Lookup maps

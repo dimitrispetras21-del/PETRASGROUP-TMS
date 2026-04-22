@@ -31,8 +31,24 @@ function _invPallets(rec) {
   return rec._type === 'intl' ? (rec.fields['Total Pallets'] || 0) : (rec.fields['Pallets'] || 0);
 }
 
-function _invPrice(rec) { return rec.fields['Price'] || 0; }
-function _invNetPrice(rec) { return rec.fields['Net Price'] || 0; }
+// H5 fix: defensive fallback chain — older records may use 'Price', newer 'Net Price'.
+// If field is renamed in Airtable, revenue calculations shouldn't silently become 0.
+function _invPrice(rec) {
+  const f = rec.fields;
+  const v = parseFloat(f['Price']);
+  if (Number.isFinite(v)) return v;
+  const v2 = parseFloat(f['Net Price']);
+  if (Number.isFinite(v2)) return v2;
+  const v3 = parseFloat(f['Total Price'] || f['Amount'] || f['Revenue']);
+  return Number.isFinite(v3) ? v3 : 0;
+}
+function _invNetPrice(rec) {
+  const f = rec.fields;
+  const v = parseFloat(f['Net Price']);
+  if (Number.isFinite(v)) return v;
+  const v2 = parseFloat(f['Price']);
+  return Number.isFinite(v2) ? v2 : 0;
+}
 function _invWeek(rec) { return rec.fields['Week Number'] || '—'; }
 
 function _invPERequired(rec) { return !!rec.fields['Pallet Exchange']; }
@@ -69,8 +85,11 @@ function _invDeliveredAt(rec) {
 function _invDaysSinceDelivery(rec) {
   const dt = _invDeliveredAt(rec);
   if (!dt) return null;
-  const diff = (Date.now() - new Date(dt).getTime()) / 86400000;
-  return Math.floor(diff);
+  // C9 fix: validate before arithmetic — malformed date string produces NaN
+  // which propagates through all aging logic.
+  const parsed = new Date(dt).getTime();
+  if (isNaN(parsed)) return null;
+  return Math.floor((Date.now() - parsed) / 86400000);
 }
 
 function _invAgingBucket(days) {
@@ -566,7 +585,9 @@ async function _invBatchInvoice() {
   if (!ids.length) return;
   if (!confirm(`Mark ${ids.length} orders as Invoiced?\n(Auto-generated invoice numbers, today's date)`)) return;
 
-  let ok = 0, fail = 0;
+  // H4 fix: track failures in detail + show detailed report instead of silent fail count.
+  let ok = 0;
+  const failures = []; // [{id, msg, client}]
   const today = localToday();
   for (const id of ids) {
     const rec = INV.data.find(r => r.id === id);
@@ -583,11 +604,29 @@ async function _invBatchInvoice() {
       await atPatch(tbl, id, fields);
       Object.assign(rec.fields, fields);
       ok++;
-    } catch(e) { console.error('Batch fail:', id, e); if (typeof logError === 'function') logError(e, 'invBatchInvoice ' + id); fail++; }
+    } catch(e) {
+      const clientName = (rec.fields['Client Name'] || rec.fields['Client Summary'] || '').slice(0, 30);
+      failures.push({ id, msg: e.message || String(e), client: clientName });
+      if (typeof logError === 'function') logError(e, 'invBatchInvoice ' + id);
+    }
   }
   invalidateCache(TABLES.ORDERS);
   invalidateCache(TABLES.NAT_ORDERS);
-  toast(fail ? `${ok} τιμολόγια εκδόθηκαν, ${fail} απέτυχαν` : `${ok} τιμολόγια εκδόθηκαν`, fail ? 'warn' : 'success');
+  if (failures.length) {
+    // Show detailed failure report via modal so user knows exactly which orders to retry
+    const body = `
+      <p style="margin-bottom:var(--space-3)">Τιμολογήθηκαν <strong style="color:var(--success)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>:</p>
+      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:var(--space-2)">
+        ${failures.map(f => `<div style="padding:6px;border-bottom:1px solid var(--border);font-size:12px">
+          <strong>${escapeHtml(f.client || f.id)}</strong><br>
+          <span style="color:var(--danger);font-family:'DM Sans',monospace;font-size:11px">${escapeHtml(f.msg)}</span>
+        </div>`).join('')}
+      </div>`;
+    if (typeof openModal === 'function') openModal('Batch Invoice Report', body);
+    else toast(`${ok} τιμολόγια εκδόθηκαν, ${failures.length} απέτυχαν`, 'warn');
+  } else {
+    toast(`${ok} τιμολόγια εκδόθηκαν`, 'success');
+  }
   _applyInvFilters();
 }
 

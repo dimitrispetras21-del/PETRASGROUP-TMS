@@ -860,6 +860,13 @@ async function _syncVeroiaSwitch(orderId, fields) {
   const delivLocs  = [];
 
   const _vsStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
+  // C13 fix: guard against null/empty stops — VS sync would create NAT_LOADS
+  // with empty location arrays, producing unusable records downstream.
+  if (!Array.isArray(_vsStops) || _vsStops.length === 0) {
+    if (typeof toast === 'function') toast('VS sync skipped — no ORDER_STOPS found', 'error');
+    if (typeof logError === 'function') logError(new Error(`VS sync: no stops for order ${orderId}`), 'orders_intl._syncVSDirect');
+    return;
+  }
   if (direction === 'Export') {
     // ΑΝΟΔΟΣ: supplier(s) → Veroia
     _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Loading')
@@ -1043,10 +1050,14 @@ async function _deleteGrpForIntl(orderId) {
           await atDelete(TABLES.CONS_LOADS, cl.id);
         }
       } catch(e) { logError(e, '_deleteGrpForIntl: delete CL'); }
-      await atDelete(TABLES.GL_LINES, gl.id);
+      // Business rule: GL records are NEVER deleted — set to Unassigned instead.
+      try { await atPatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); }
+      catch(e) { if (typeof logError === 'function') logError(e, '_deleteGrpForIntl: GL→Unassigned'); }
     }
   }
   invalidateCache(TABLES.GL_LINES);
+  invalidateCache(TABLES.CONS_LOADS);  // C6: missing cache invalidation
+  invalidateCache(TABLES.NAT_LOADS);   // C6: missing cache invalidation
   invalidateCache(TABLES.NAT_ORDERS);
 }
 
@@ -1090,14 +1101,17 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
       }, false);
     }
 
-    // National Groupage OFF → DELETE unassigned GL lines
+    // National Groupage OFF → mark unassigned GL lines as 'Unassigned' (NEVER delete).
+    // Business rule: GL records are NEVER deleted — only Status flipped.
+    // Previous code incorrectly deleted, losing historical pallet/temp data.
     if (!isGrp) {
       for (const r of existing) {
         if (r.fields.Status !== 'Assigned') {
-          try { await atDelete(TABLES.GL_LINES, r.id); }
-          catch(e) { console.warn('GL delete:', e); }
+          try { await atPatch(TABLES.GL_LINES, r.id, { Status: 'Unassigned' }); }
+          catch(e) { if (typeof logError === 'function') logError(e, 'GL patch Unassigned'); }
         }
       }
+      invalidateCache(TABLES.GL_LINES);
       return;
     }
 
@@ -1492,7 +1506,7 @@ function openPalletUpload(orderId) {
     overlay.innerHTML = `
       <div style="position:relative;width:95vw;max-width:900px;height:90vh;background:var(--sidebar-bg);border-radius:12px;overflow:hidden">
         <button onclick="closePalletUpload()" style="position:absolute;top:8px;right:12px;z-index:10;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center">✕</button>
-        <iframe id="palletUploadFrame" style="width:100%;height:100%;border:none;border-radius:12px" src=""></iframe>
+        <iframe id="palletUploadFrame" style="width:100%;height:100%;border:none;border-radius:12px" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write" src=""></iframe>
       </div>`;
     document.body.appendChild(overlay);
   }
@@ -1501,6 +1515,8 @@ function openPalletUpload(orderId) {
   overlay.style.display = 'flex';
   // Listen for save messages
   window._palletMsgHandler = async function(e) {
+    // C4 fix: verify origin to prevent malicious postMessage from unrelated sites
+    if (e.origin !== 'https://dimitrispetras21-del.github.io') return;
     if (e.data?.type === 'pallet-saved') {
       toast('Pallet sheet saved ✓');
       // Refresh the specific order from Airtable to get updated sheet flags

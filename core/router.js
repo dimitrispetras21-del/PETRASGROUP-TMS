@@ -218,7 +218,11 @@ function navigate(page) {
       document.getElementById('topbarTitle').textContent = 'National Pick Ups';
       c.style.padding = '0';
       c.style.overflow = 'hidden';
-      c.innerHTML = '<iframe src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" allow="clipboard-write"></iframe>';
+      // C3 fix: sandbox the iframe to limit its access to the parent DOM/storage.
+      // allow-scripts: iframe runs JS; allow-forms: can submit forms (drag-drop saves);
+      // allow-same-origin: only allowed because we fully control the source (same account);
+      // allow-popups: needed for print preview; clipboard-write kept for copy actions.
+      c.innerHTML = '<iframe src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write"></iframe>';
       break;
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;

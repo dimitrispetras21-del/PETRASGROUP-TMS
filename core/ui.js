@@ -5,6 +5,10 @@
 // ── Modal ────────────────────────────────────────
 let _modalPrevFocus = null;
 
+// SECURITY NOTE (H3): bodyHTML and footerHTML are injected via innerHTML.
+// Callers MUST pass HTML-escaped strings for any user-generated content.
+// Use `escapeHtml(userInput)` on order numbers, client names, notes, etc.
+// Static HTML (button markup, icon SVGs) is safe as-is.
 function openModal(title, bodyHTML, footerHTML = '') {
   _modalPrevFocus = document.activeElement;
   document.getElementById('modalTitle').textContent = title;

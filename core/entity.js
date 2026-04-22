@@ -290,6 +290,10 @@ const ENTITY_CONFIG = {
         { f: 'Contact Person', label: 'Contact Person' },
       ]},
       { section: 'Location', fields: [
+        // H15 TODO: verify actual Airtable field name for WORKSHOPS table.
+        // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). If WORKSHOPS
+        // follows same convention, change to 'Adress'. Currently assumed
+        // to use correctly-spelled 'Address' — verify in Airtable schema.
         { f: 'Address',        label: 'Address' },
         { f: 'City',           label: 'City' },
       ]},
@@ -605,13 +609,39 @@ function _entitySortRecords(entityKey, recs) {
   const col = cfg.columns[s.col];
   if (!col) return recs;
   const dir = s.dir === 1 ? 1 : -1;
-  const isNum = col.type === 'number' || col.field.match(/Year|Salary|Tank|Weight|Capacity|Pallets|Lt|kg|HP/i);
-  const isDate = col.type === 'expiry' || col.field.match(/Date|Expiry/i);
+  // H13 fix: explicit handlers for new column types so sorting matches display order
+  const isNum = col.type === 'number' || col.type === 'currency'
+                || col.field.match(/Year|Salary|Tank|Weight|Capacity|Pallets|Lt|kg|HP/i);
+  const isDate = col.type === 'expiry' || col.type === 'date_rel'
+                 || col.field.match(/Date|Expiry/i);
+  const isCompliance = col.type === 'compliance';
   return [...recs].sort((a, b) => {
     let va = a.fields[col.field], vb = b.fields[col.field];
     if (va == null) va = ''; if (vb == null) vb = '';
     if (isNum) return ((parseFloat(va)||0) - (parseFloat(vb)||0)) * dir;
-    if (isDate) return String(va).localeCompare(String(vb)) * dir;
+    if (isDate) {
+      // For date_rel and expiry, sort by underlying timestamp (not display string).
+      // Fallbacks: empty string → epoch 0 (sorts to oldest in ascending).
+      const ta = va ? new Date(va).getTime() : 0;
+      const tb = vb ? new Date(vb).getTime() : 0;
+      return ((isNaN(ta) ? 0 : ta) - (isNaN(tb) ? 0 : tb)) * dir;
+    }
+    if (isCompliance) {
+      // Sort by worst expiry status across all doc fields in the compliance column.
+      // 0 = expired (worst), 1 = expiring <30d, 2 = ok, 3 = missing.
+      const scoreOf = r => {
+        let worst = 3;
+        (col.fields || []).forEach(fc => {
+          const d = r.fields[fc.field];
+          if (!d) return;
+          const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+          const s = days < 0 ? 0 : days < 30 ? 1 : 2;
+          if (s < worst) worst = s;
+        });
+        return worst;
+      };
+      return (scoreOf(a) - scoreOf(b)) * dir;
+    }
     if (col.type === 'active') { va = va ? 'Active' : 'Inactive'; vb = vb ? 'Active' : 'Inactive'; }
     return String(va).toLowerCase().localeCompare(String(vb).toLowerCase()) * dir;
   });

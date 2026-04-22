@@ -108,8 +108,15 @@ async function _maintLoad(forceHistory = false) {
 /* ── HELPERS ──────────────────────────────────────────────────── */
 function _daysUntil(dateStr) {
   if (!dateStr) return null;
+  // C8 fix: use date-only comparison to avoid timezone off-by-one errors.
+  // Previous `Math.ceil((d - new Date()) / 864e5)` mixed a midnight-UTC date
+  // with a local `now`, causing expiry dates near midnight to report wrong.
   const d = new Date(dateStr);
-  return Math.ceil((d - new Date()) / 864e5);
+  if (isNaN(d.getTime())) return null;
+  const dDate = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const now = new Date();
+  const nDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return Math.round((dDate - nDate) / 864e5);
 }
 function _expBadge(days) {
   if (days === null) return '<span class="exp-badge exp-none">N/A</span>';
@@ -122,8 +129,20 @@ function _expBadge(days) {
 function _fmtDate(d) { return d ? d.substring(0, 10) : '—'; }
 function _fmtCost(v) { return v != null ? '€' + Number(v).toLocaleString('el-GR', {minimumFractionDigits:0}) : '—'; }
 function _wsName(wsArr) {
-  if (!wsArr?.length) return '—';
-  const id = wsArr[0]?.id || wsArr[0];
+  // H9 fix: handle all Airtable linked-record shapes + guard MAINT.workshops null.
+  // Input can be: null, undefined, string 'recXXX', [string], [{id}], empty array.
+  if (!wsArr) return '—';
+  if (!MAINT.workshops || !MAINT.workshops.length) return '—';
+  let id;
+  if (Array.isArray(wsArr)) {
+    if (!wsArr.length) return '—';
+    id = typeof wsArr[0] === 'string' ? wsArr[0] : wsArr[0]?.id;
+  } else if (typeof wsArr === 'string') {
+    id = wsArr;
+  } else if (typeof wsArr === 'object') {
+    id = wsArr.id;
+  }
+  if (!id) return '—';
   const ws = MAINT.workshops.find(w => w.id === id);
   return ws ? (ws.fields['Name'] || '—') : '—';
 }
@@ -1204,7 +1223,11 @@ function _maintMonthlyCost(history) {
     if (!(key in byMonth)) return; // outside our 6-month window
     // Bugfix: old `parseFloat(a || b || 0)` returns NaN if `a` is empty string.
     // Proper fallback chain with separate parseFloat calls:
-    const cost = parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0;
+    // C10 fix: previous `parseFloat(a) || parseFloat(b)` incorrectly fell through to
+    // the fallback when the primary field was a legitimate 0. Use isFinite() check.
+    const c1 = parseFloat(r.fields['Cost']);
+    const c2 = parseFloat(r.fields['Total Cost']);
+    const cost = Number.isFinite(c1) ? c1 : (Number.isFinite(c2) ? c2 : 0);
     byMonth[key] += cost;
   });
   return Object.entries(byMonth)
@@ -1689,10 +1712,13 @@ function _mreqExpiryAlerts() {
 }
 
 function _mreqPaint() {
+  // H8 fix: normalize Greek priority strings (NFC) to handle Unicode variants
+  // H7 note: missing priority defaults to 'Κανονικό' (2) which is correct for sort
+  const _normP = s => (s||'').normalize('NFC').trim();
   const all = [...MREQ.data].sort((a,b) => {
-    const po = { SOS: 0, 'Άμεσα': 1, 'Κανονικό': 2 };
-    const pa = po[a.fields['Priority']] ?? 2;
-    const pb = po[b.fields['Priority']] ?? 2;
+    const po = { 'SOS': 0, 'Άμεσα': 1, 'Κανονικό': 2 };
+    const pa = po[_normP(a.fields['Priority'])] ?? 2;
+    const pb = po[_normP(b.fields['Priority'])] ?? 2;
     if (pa !== pb) return pa - pb;
     return (b.fields['Date Reported']||'').localeCompare(a.fields['Date Reported']||'');
   });
@@ -1933,7 +1959,8 @@ async function _mreqSave(editId) {
   const fields = {
     'Vehicle Plate': plate,
     'Description': document.getElementById('mreq-desc').value.trim(),
-    'Priority': document.getElementById('mreq-prio').value,
+    // H7 fix: ensure Priority always has a value — default 'Κανονικό'
+    'Priority': document.getElementById('mreq-prio').value || 'Κανονικό',
     'Status': document.getElementById('mreq-status').value,
     'Date Reported': document.getElementById('mreq-date').value || null,
     'Workshop': wsVal === '__other' ? null : (wsVal || null),

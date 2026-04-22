@@ -180,7 +180,7 @@ function _opsDraw() {
       </div>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
-          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))} → ${_L(_opsStopLoc(r.id,'Unloading'))}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
+          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
           <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Delivered</button>
           <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Delayed</button>
         </div>`;}).join('')}</div></div>`;
