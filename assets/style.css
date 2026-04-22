@@ -421,10 +421,10 @@ body {
 .topbar-title {
   flex: 1;
   font-family: 'Syne', sans-serif;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: var(--text);
-  letter-spacing: 0.2px;
+  letter-spacing: 0.1px;
 }
 
 .topbar-breadcrumb {
@@ -608,10 +608,14 @@ body {
 
 .page-title {
   font-family: 'Syne', sans-serif;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 700;
   color: var(--text);
   letter-spacing: -0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.2;
 }
 
 .page-sub {
@@ -5340,3 +5344,198 @@ button.sidebar-toggle {
   .md-timeline-grid { grid-template-columns: 1fr; }
 }
 
+
+/* ═══════════════════════════════════════════════════════════════
+   TMS UNIFIED DESIGN TOKENS — v3 (Apr 2026)
+   Single source of truth for cards, buttons, page headers, pills,
+   and error banners. Modules should prefer these classes over
+   inline styles to keep the design language consistent.
+═══════════════════════════════════════════════════════════════ */
+
+/* ── A. Unified stat / KPI card — dark navy, applies to all pages ── */
+.tms-stat-card {
+  background: #0F1C2F;
+  color: #fff;
+  border-radius: 8px;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.tms-stat-card .tms-stat-label {
+  font: 500 11px/1 'DM Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: rgba(255, 255, 255, 0.55);
+  margin-bottom: 8px;
+}
+.tms-stat-card .tms-stat-value {
+  font: 700 24px/1.1 'Syne', sans-serif;
+  color: #fff;
+}
+.tms-stat-card .tms-stat-sub {
+  font: 500 11px/1.3 'DM Sans', sans-serif;
+  color: rgba(255, 255, 255, 0.5);
+  margin-top: 4px;
+}
+/* Backwards-compat: alias common existing card classes to the new look */
+.dash-card, .aic-panel, .entity-kpi-card, .ramp-stat-card, .ops-kpi-card {
+  background: #0F1C2F;
+  color: #fff;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* ── B. Unified primary button — gradient navy → blue, 36px ── */
+.tms-btn,
+.btn-primary,
+.btn-new-order,
+.btn-new-entry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #0B1929 0%, #0284C7 100%);
+  color: #fff;
+  height: 36px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  font: 600 13px/1 'DM Sans', sans-serif;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.05s;
+  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.18);
+}
+.tms-btn:hover, .btn-primary:hover, .btn-new-order:hover, .btn-new-entry:hover {
+  filter: brightness(1.08);
+}
+.tms-btn:active, .btn-primary:active, .btn-new-order:active, .btn-new-entry:active {
+  transform: translateY(1px);
+}
+/* Outline variant — same dimensions */
+.tms-btn-outline,
+.btn-scan {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #fff;
+  color: #0284C7;
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid #0284C7;
+  border-radius: 8px;
+  font: 600 13px/1 'DM Sans', sans-serif;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.tms-btn-outline:hover, .btn-scan:hover {
+  background: rgba(2, 132, 199, 0.06);
+}
+
+/* ── C. Page header — consistent H1 + subtitle + actions row ── */
+.tms-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 20px;
+  flex-wrap: wrap;
+}
+.tms-page-header .tms-page-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tms-page-header .tms-page-title {
+  font: 700 24px/1.2 'Syne', sans-serif;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+.tms-page-header .tms-page-sub {
+  font: 500 13px/1.4 'DM Sans', sans-serif;
+  color: var(--text-mid);
+}
+.tms-page-header .tms-page-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── D. Pill system — 4 semantic variants, single shape ── */
+.tms-pill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 10px;
+  border-radius: 11px;
+  font: 600 11px/1 'DM Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+.tms-pill-ok    { background: #064E3B; color: #A7F3D0; }
+.tms-pill-warn  { background: #78350F; color: #FDE68A; }
+.tms-pill-bad   { background: #7F1D1D; color: #FECACA; }
+.tms-pill-info  { background: #1E3A8A; color: #BFDBFE; }
+.tms-pill-owned { background: #0C2D5C; color: #BFDBFE; }
+.tms-pill-partner { background: #064E3B; color: #A7F3D0; }
+.tms-pill-mute  { background: #374151; color: #D1D5DB; }
+/* Outline alternative for use on dark backgrounds */
+.tms-pill-outline {
+  background: transparent;
+  border: 1px solid currentColor;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ── E. Error banner — replaces raw red text ── */
+.tms-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  border-left: 3px solid #DC2626;
+  color: #7F1D1D;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font: 500 13px/1.5 'DM Sans', sans-serif;
+  margin: 16px 0;
+}
+.tms-error-banner .tms-error-icon {
+  flex: 0 0 auto;
+  color: #DC2626;
+  font-size: 18px;
+  line-height: 1;
+}
+.tms-error-banner .tms-error-content {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tms-error-banner .tms-error-title {
+  font-weight: 700;
+  color: #7F1D1D;
+}
+.tms-error-banner .tms-error-msg {
+  color: #991B1B;
+  font-weight: 500;
+}
+.tms-error-banner .tms-error-action {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  background: #DC2626;
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+}

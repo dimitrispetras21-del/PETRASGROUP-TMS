@@ -74,8 +74,25 @@ async function renderPerformance() {
     await _perfLoad();
     _perfDraw();
   } catch(e) {
-    c.innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    // Use unified error banner instead of raw red text
+    const safeMsg = (e && e.message ? e.message : 'Unknown error').replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+    c.innerHTML = `
+      <div class="tms-page-header">
+        <div class="tms-page-titles">
+          <h1 class="tms-page-title">My Performance</h1>
+          <div class="tms-page-sub">Personal KPIs and goals</div>
+        </div>
+      </div>
+      <div class="tms-error-banner" role="alert">
+        <span class="tms-error-icon">⚠</span>
+        <div class="tms-error-content">
+          <div class="tms-error-title">Δεν φορτώθηκαν τα δεδομένα</div>
+          <div class="tms-error-msg">${safeMsg}</div>
+          <button class="tms-error-action" onclick="renderPerformance()">Δοκιμή ξανά</button>
+        </div>
+      </div>`;
     console.error('Performance:', e);
+    if (typeof logError === 'function') logError(e, 'renderPerformance');
   }
 }
 

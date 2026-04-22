@@ -437,18 +437,21 @@ async function _renderWorkshopsStatsStrip(workshops) {
     const tableEl = document.getElementById('workshops_table');
     if (tableEl) tableEl.innerHTML = buildEntityTable('workshops', workshops);
 
-    const card = (label, val, color) => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
-        <div style="font-size:22px;font-weight:700;color:${color || 'var(--text)'};margin-top:4px;font-variant-numeric:tabular-nums">${val}</div>
+    // Use unified .tms-stat-card (dark navy). Map black text-color to white so values stay readable.
+    const card = (label, val, color) => {
+      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
+        <div class="tms-stat-label">${label}</div>
+        <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
       </div>`;
+    };
     const topHTML = top3.length
-      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Workshops (All Time)</div>
+      ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Workshops (All Time)</div>
           ${top3.map((p, i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${escapeHtml(p.name)}</span>
-              <span style="color:var(--text);font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${escapeHtml(p.name)}</span>
+              <span style="color:#fff;font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -499,19 +502,21 @@ async function _renderPartnersStatsStrip(partners) {
       .slice(0,3)
       .map(([pid,total]) => ({ name: pNameById[pid]||'Unknown', total }));
 
-    const card = (label, val, color) => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
-        <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};margin-top:4px">${val}</div>
+    const card = (label, val, color) => {
+      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
+        <div class="tms-stat-label">${label}</div>
+        <div class="tms-stat-value" style="color:${valColor}">${val}</div>
       </div>`;
+    };
 
     const topHTML = top3.length
-      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Partners (All Time)</div>
+      ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Partners (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${p.name}</span>
-              <span style="color:var(--text);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
+              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -561,19 +566,21 @@ async function _renderClientsStatsStrip(clients) {
       .slice(0,3)
       .map(([cid,total]) => ({ name: cNameById[cid]||'Unknown', total }));
 
-    const card = (label, val, color) => `
-      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
-        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
-        <div style="font-size:22px;font-weight:700;color:${color||'var(--text)'};margin-top:4px">${val}</div>
+    const card = (label, val, color) => {
+      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
+        <div class="tms-stat-label">${label}</div>
+        <div class="tms-stat-value" style="color:${valColor}">${val}</div>
       </div>`;
+    };
 
     const topHTML = top3.length
-      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Clients (All Time)</div>
+      ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Clients (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${p.name}</span>
-              <span style="color:var(--text);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
+              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
