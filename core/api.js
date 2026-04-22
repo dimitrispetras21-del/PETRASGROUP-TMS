@@ -229,12 +229,21 @@ async function _atRetry(fn, retries = 3) {
       }
       if (res.status === 400 || res.status === 422) {
         const errData = await res.json().catch(() => ({}));
-        const msg = (errData.error && (errData.error.message || errData.error.type)) || `Validation error (${res.status})`;
-        const mapped = msg.includes('INVALID_RECORD_ID') ? 'Μη έγκυρο linked record ID'
-          : msg.includes('UNKNOWN_FIELD') ? 'Άγνωστο πεδίο στο Airtable'
-          : msg.includes('INVALID_VALUE') ? 'Μη αποδεκτή τιμή πεδίου'
-          : msg.includes('INVALID_PERMISSIONS') ? 'Δεν έχετε δικαίωμα'
-          : msg;
+        const rawMsg = (errData.error && (errData.error.message || errData.error.type)) || `Validation error (${res.status})`;
+        // Airtable returns both `type` (e.g. UNKNOWN_FIELD_NAME) and `message`
+        // (e.g. "Unknown field name: 'Total Cost'"). Match against BOTH so
+        // English messages also get friendly Greek translations.
+        const lowerMsg = rawMsg.toLowerCase();
+        const typeStr = (errData.error && errData.error.type) || '';
+        const matchesUnknownField = typeStr.includes('UNKNOWN_FIELD') || lowerMsg.includes('unknown field');
+        const matchesInvalidId = typeStr.includes('INVALID_RECORD_ID') || lowerMsg.includes('invalid record id');
+        const matchesInvalidValue = typeStr.includes('INVALID_VALUE') || lowerMsg.includes('invalid value') || lowerMsg.includes('invalid format');
+        const matchesPermissions = typeStr.includes('INVALID_PERMISSIONS') || lowerMsg.includes('not permitted') || lowerMsg.includes('permission');
+        const mapped = matchesInvalidId ? 'Μη έγκυρο linked record ID'
+          : matchesUnknownField ? `Άγνωστο πεδίο στο Airtable: ${rawMsg}`
+          : matchesInvalidValue ? 'Μη αποδεκτή τιμή πεδίου'
+          : matchesPermissions ? 'Δεν έχετε δικαίωμα'
+          : rawMsg;
         if (typeof logError === 'function') logError(new Error(mapped), `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
         throw new Error(mapped);

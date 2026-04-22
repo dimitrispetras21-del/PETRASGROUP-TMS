@@ -332,7 +332,20 @@ function _rampResolveFromStops(stops, stopType) {
 /* ── HELPERS (using shared data-helpers.js) ───────────────────── */
 const _rTruck=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
 const _rDriver=f=>getDriverName(getLinkedId(f['Driver']))||'';
-const _rResolveClientStr=str=>resolveClientStr(str);
+// Strip internal markers that must never leak to the UI:
+//   - `STOP:recXXXXXX...` (sync-correlation markers written to Notes)
+//   - Bare Airtable record IDs (14-17 char strings starting with "rec")
+// Applied as a final safety net over resolveClientStr to guard against legacy
+// records whose Supplier/Client got a raw ID instead of a resolved name.
+function _rStripMarkers(s) {
+  if (typeof s !== 'string') return s;
+  return s
+    .replace(/STOP:rec[A-Za-z0-9]{14,17}/g, '')
+    .replace(/\brec[A-Za-z0-9]{14,17}\b/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+const _rResolveClientStr = str => _rStripMarkers(resolveClientStr(str));
 function _rCat(f){
   const c=f['Ramp Category']||'',vs=f['Is Veroia Switch'];
   if(c==='Vermion Fresh')return'<span class="vs-badge vf">VF</span>';
@@ -492,8 +505,8 @@ function _rRow(rec,num,tOpts) {
   const isDone=status==='Done';
   const rawTime=f['Time']||'';
   const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
-  const client=f['Supplier/Client']||'—';
-  const goods=escapeHtml((f['Goods']||'').substring(0,35));
+  const client=_rStripMarkers(f['Supplier/Client']||'—')||'—';
+  const goods=escapeHtml(_rStripMarkers((f['Goods']||'').substring(0,35)));
   const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
   const pal=escapeHtml(f['Pallets']||'');
   const truck=escapeHtml(_rTruck(f));
@@ -544,7 +557,7 @@ function _rRow(rec,num,tOpts) {
       <td></td><td></td></tr>`).join('');
   }
 
-  const locField = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
+  const locField = escapeHtml(_rStripMarkers(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'')));
 
   return`<tr class="${isDone?'done':''}">
     <td class="rn">${num}</td><td>${timeSel}</td>
