@@ -196,6 +196,19 @@ function atGetAuditLog() {
 }
 
 // ── Retry wrapper (exponential backoff) ───────────
+/**
+ * Wraps fetch with an AbortController timeout so network calls don't hang forever.
+ * All POST/PATCH/DELETE sites should use this instead of raw fetch.
+ * @param {string} url
+ * @param {RequestInit} opts
+ * @param {number} [ms=30000] - Timeout in ms
+ */
+function _fetchWithTimeout(url, opts = {}, ms = 30000) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(to));
+}
+
 async function _atRetry(fn, retries = 3) {
   for (let i = 0; i < retries; i++) {
     try {
@@ -412,7 +425,7 @@ async function atPatch(tableId, recId, fields) {
     _queueOffline('PATCH', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), { fields }, recId);
     return { id: recId, fields, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'PATCH',
     headers: _apiHeaders('PATCH'),
     body: JSON.stringify({ fields, typecast: true })
@@ -446,7 +459,7 @@ async function atCreate(tableId, fields) {
     _queueOffline('POST', _apiUrl(`/v0/${AT_BASE}/${tableId}`), { fields });
     return { id: 'offline_' + Date.now(), fields, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
+  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}`), {
     method: 'POST',
     headers: _apiHeaders('POST'),
     body: JSON.stringify({ fields, typecast: true })
@@ -480,7 +493,7 @@ async function atDelete(tableId, recId) {
     _queueOffline('DELETE', _apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), null, recId);
     return { id: recId, deleted: true, _offline: true };
   }
-  const res = await _enqueue(() => _atRetry(() => fetch(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
+  const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(_apiUrl(`/v0/${AT_BASE}/${tableId}/${recId}`), {
     method: 'DELETE',
     headers: _apiHeaders('DELETE')
   })));
@@ -528,7 +541,7 @@ async function atCreateBatch(tableId, recordsArr) {
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
     _auditLog('CREATE_BATCH', tableId, null, { count: batch.length });
-    const res = await _enqueue(() => _atRetry(() => fetch(
+    const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(
       _apiUrl(`/v0/${AT_BASE}/${tableId}`),
       {
         method: 'POST',
@@ -569,7 +582,7 @@ async function atPatchBatch(tableId, recordsArr) {
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
     _auditLog('PATCH_BATCH', tableId, null, { count: batch.length });
-    const res = await _enqueue(() => _atRetry(() => fetch(
+    const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(
       _apiUrl(`/v0/${AT_BASE}/${tableId}`),
       {
         method: 'PATCH',

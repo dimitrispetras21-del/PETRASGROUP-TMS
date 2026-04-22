@@ -17,7 +17,19 @@ function _authSessionExpired(u) {
   return Date.now() > exp;
 }
 
-if (!user || _authSessionExpired(user)) {
+// Role escalation guard: user.role comes from localStorage (mutable by attacker).
+// Cross-check against the canonical USERS array — if the stored role does not
+// match the role registered for this username, force a logout.
+// This closes the window where an attacker edits tms_user in DevTools to 'owner'.
+function _authRoleTampered(u) {
+  if (!u || !u.username) return false;  // nothing to check
+  if (typeof USERS === 'undefined' || !Array.isArray(USERS)) return false;  // USERS not loaded yet
+  const known = USERS.find(x => x.username === u.username);
+  if (!known) return true;  // username not in allowed list
+  return known.role !== u.role;
+}
+
+if (!user || _authSessionExpired(user) || _authRoleTampered(user)) {
   localStorage.removeItem('tms_user');
   localStorage.removeItem('tms_jwt');
   window.location.href = 'index.html';

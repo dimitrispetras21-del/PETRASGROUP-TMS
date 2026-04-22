@@ -10,6 +10,12 @@ const AT_BASE  = 'appElT5CQV6JQvym8';
 const USE_PROXY  = false;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
+// ── Sentry DSN (error monitoring) ──
+// Leave empty to disable. When set, all errors logged via logError() are
+// forwarded to Sentry in addition to the local error log.
+// Get a DSN at https://sentry.io (free tier: 5k errors/month).
+const TMS_SENTRY_DSN = '';
+
 // Direct mode (fallback) — REMOVE these after proxy is live
 const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
 const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+

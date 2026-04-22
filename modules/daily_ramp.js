@@ -47,6 +47,11 @@ async function renderDailyRamp() {
     if (['input','select','textarea'].includes(activeTag)) {
       return;  // skip this tick, retry in 2 min
     }
+    // Skip refresh if a recent edit is still within cooldown — prevents the
+    // race where Airtable hasn't indexed our mutation yet and we'd pull stale.
+    if (_rampInEditCooldown()) {
+      return;
+    }
     try { await _rampLoad(); _rampDraw(); _rampFailCount = 0; }
     catch(e) {
       _rampFailCount++;
@@ -574,16 +579,45 @@ function _rTlRow(rec) {
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
+// Cooldown flag: when set, auto-refresh skips one tick. Prevents race where a
+// fresh mutation is committed to Airtable but the next auto-refresh fires
+// before the server reflects it, pulling back the stale value.
+let _rampEditCooldownUntil = 0;
+function _rampMarkEdit() { _rampEditCooldownUntil = Date.now() + 10000; }  // 10s
+function _rampInEditCooldown() { return Date.now() < _rampEditCooldownUntil; }
+
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
-async function _rampSvF(id,fld,v){try{await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;if(fld==='Time')_rampDraw();toast(v?'✓':'—');}catch(e){toast('Error','danger');}}
+async function _rampSvF(id,fld,v){
+  _rampMarkEdit();
+  try {
+    await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});
+    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields[fld]=v;
+    if(fld==='Time')_rampDraw();
+    toast(v?'✓':'—');
+  } catch(e) {
+    console.error('[ramp] _rampSvF failed for', fld, e && e.message);
+    if (typeof logError === 'function') logError(e, `ramp_sv_${fld}`);
+    toast('Error: '+(e.message||'save failed'),'danger');
+  }
+}
 async function _rampSvTime(id,v){
-  // Save time as plain "HH:MM" string — NOT ISO datetime
-  try{await atSafePatch(TABLES.RAMP,id,{'Time': v || null});
-    const r=RAMP.records.find(x=>x.id===id);if(r)r.fields['Time']=v||'';
+  // Save time as plain "HH:MM" string — NOT ISO datetime.
+  // Mark edit cooldown so auto-refresh doesn't overwrite our optimistic update
+  // before Airtable's indexed-read reflects the change.
+  _rampMarkEdit();
+  try {
+    await atSafePatch(TABLES.RAMP,id,{'Time': v || null});
+    const r=RAMP.records.find(x=>x.id===id);
+    if(r)r.fields['Time']=v||'';
     // Re-sort and re-draw
     RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
     _rampDraw();
-  }catch(e){toast('Error','danger');}
+    toast('Time saved ✓');
+  } catch(e) {
+    console.error('[ramp] _rampSvTime failed:', e && e.message);
+    if (typeof logError === 'function') logError(e, 'ramp_sv_time');
+    toast('Error: '+(e.message||'time save failed'),'danger');
+  }
 }
 
 async function _rampDone(id,isIn){
@@ -644,13 +678,46 @@ async function _rampDone(id,isIn){
 }
 
 async function _rampRestore(id){
-  try{await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
-    invalidateCache(TABLES.RAMP);toast('Restored ✓');renderDailyRamp();}catch(e){toast('Error','danger');}
+  _rampMarkEdit();
+  try {
+    await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
+    invalidateCache(TABLES.RAMP);
+    toast('Restored ✓');
+    renderDailyRamp();
+  } catch(e) {
+    console.error('[ramp] _rampRestore failed for', id, e && e.message);
+    if (typeof logError === 'function') logError(e, 'ramp_restore');
+    toast('Error: '+(e.message||'restore failed'),'danger');
+  }
 }
 async function _rampPostpone(id){
-  const tmrw=toLocalDate(new Date(new Date(RAMP.date+'T12:00:00').getTime()+864e5));
-  try{await atSafePatch(TABLES.RAMP,id,{'Plan Date':tmrw,'Postponed To':RAMP.date});
-    invalidateCache(TABLES.RAMP);toast('Postponed → '+tmrw);renderDailyRamp();}catch(e){toast('Error','danger');}
+  // Date arithmetic: anchor at noon to avoid DST off-by-one. 864e5 = 1 day in ms.
+  // Guard: ensure RAMP.date is a valid YYYY-MM-DD string before computing tomorrow.
+  if (!RAMP.date || !/^\d{4}-\d{2}-\d{2}$/.test(RAMP.date)) {
+    toast('Invalid ramp date — refresh page','danger');
+    return;
+  }
+  const tmrw = toLocalDate(new Date(new Date(RAMP.date+'T12:00:00').getTime()+864e5));
+  _rampMarkEdit();
+  try {
+    await atSafePatch(TABLES.RAMP, id, {
+      'Plan Date': tmrw,
+      'Postponed To': RAMP.date,  // marker so the record appears in postponed list on the original date
+    });
+    invalidateCache(TABLES.RAMP);
+    // Optimistic in-memory update so the re-render reflects the move without waiting for re-fetch
+    const r = RAMP.records.find(x => x.id === id);
+    if (r) {
+      r.fields['Plan Date'] = tmrw;
+      r.fields['Postponed To'] = RAMP.date;
+    }
+    toast('Postponed → '+tmrw);
+    renderDailyRamp();
+  } catch(e) {
+    console.error('[ramp] _rampPostpone failed for', id, e && e.message);
+    if (typeof logError === 'function') logError(e, 'ramp_postpone');
+    toast('Error: '+(e.message||'postpone failed'),'danger');
+  }
 }
 
 function _rampAddNew(type){

@@ -329,6 +329,14 @@ async function sha256(text) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Per-user-salted SHA-256 — prevents rainbow-table attacks AND identical
+// passwords across users producing identical hashes.
+// To migrate: once each user logs in, the salted hash is printed to console
+// so the admin can paste it into config.js/index.html as `saltedHash`.
+async function sha256Salted(username, password) {
+  return sha256((username || '').toLowerCase() + ':tms:' + password);
+}
+
 function showError(msg) {
   const err = document.getElementById('errMsg');
   err.textContent = msg || 'Incorrect username or password';
@@ -371,8 +379,26 @@ async function doLogin() {
     }
   } else {
     // ── Direct mode: client-side hash comparison ──
-    const user = USERS.find(x => x.username === u && x.hash === inputHash);
+    // Dual-hash support (migration path):
+    //   1. Try saltedHash (new format): SHA-256(username:tms:password)
+    //   2. Fall back to legacy hash: SHA-256(password)
+    // On legacy match, log the new saltedHash so admin can upgrade config.js.
+    const saltedInput = await sha256Salted(u, p);
+    let user = USERS.find(x => x.username === u && x.saltedHash && x.saltedHash === saltedInput);
+    let usedLegacy = false;
+    if (!user) {
+      user = USERS.find(x => x.username === u && x.hash === inputHash);
+      if (user) usedLegacy = true;
+    }
     if (user) {
+      if (usedLegacy) {
+        console.info(
+          '[SECURITY] User "%s" authenticated with legacy hash. ' +
+          'Add this line to the USERS array to enable per-user salting:\n' +
+          '  saltedHash: "%s"',
+          u, saltedInput
+        );
+      }
       const session = {
         name: user.name,
         role: user.role,
