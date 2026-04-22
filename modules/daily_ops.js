@@ -225,13 +225,14 @@ function _opsDraw() {
       </div>` : ''}
     </div>` : '';
 
+  const _opsI = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   document.getElementById('content').innerHTML=`
-    <div class="page-header" style="margin-bottom:12px">
-      <div><div class="page-title">Daily Ops Plan</div>
+    <div class="page-header" style="margin-bottom:var(--space-4)">
+      <div><div class="page-title">${_opsI('list_checks', 22)} Daily Ops Plan</div>
         <div class="page-sub">${fD(tgt)} · ${total} orders</div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" onclick="_opsPrint()">Print</button>
-        <button class="btn btn-ghost" onclick="renderDailyOps()">Refresh</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Refresh</button>
       </div>
     </div>
     <div class="ops-toolbar">

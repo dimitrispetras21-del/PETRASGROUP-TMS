@@ -32,7 +32,7 @@ let _rampAutoRefresh = null;
 
 async function renderDailyRamp() {
   document.getElementById('topbarTitle').textContent = 'Daily Ramp Board';
-  document.getElementById('content').innerHTML = showLoading('Φόρτωση ράμπας…');
+  document.getElementById('content').innerHTML = showLoading('Loading ramp board…');
   try { await _rampLoad(); _rampDraw(); }
   catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
   // Auto-refresh every 2 minutes while on this page (disable after 3 consecutive failures)
@@ -367,15 +367,16 @@ function _rampDraw() {
   // Combined timeline (all records sorted by time)
   const allSorted=[...recs].sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
 
+  const _i = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   document.getElementById('content').innerHTML=`
-    <div class="page-header" style="margin-bottom:12px">
-      <div><div class="page-title">Daily Ramp Board</div>
+    <div class="page-header" style="margin-bottom:var(--space-4)">
+      <div><div class="page-title">${_i('package', 22)} Daily Ramp Board</div>
         <div class="page-sub">Vermion Fresh · ${fD(RAMP.date)}</div></div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="_rampAddNew('Παραλαβή')">+ Inbound</button>
-        <button class="btn btn-ghost" onclick="_rampAddNew('Φόρτωση')">+ Outbound</button>
-        <button class="btn btn-ghost" onclick="_rampPrint()">Print</button>
-        <button class="btn btn-ghost" onclick="renderDailyRamp()">Refresh</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Παραλαβή')">${_i('plus')} Inbound</button>
+        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Φόρτωση')">${_i('plus')} Outbound</button>
+        <button class="btn btn-ghost btn-sm" onclick="_rampPrint()">${_i('file_text')} Print</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderDailyRamp()">${_i('refresh')} Refresh</button>
       </div>
     </div>
     <div class="ramp-toolbar">
@@ -383,38 +384,41 @@ function _rampDraw() {
       <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Tomorrow</button>
       <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
     </div>
-    <div class="ramp-toolbar" style="margin-top:6px;gap:8px;flex-wrap:wrap">
-      <input class="search-input" style="max-width:200px;height:32px;font-size:12px" placeholder="Search client / goods / location..." value="${_rampFilters._q||''}" oninput="_rampSearch(this.value)">
-      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('type',this.value)">
+    <div class="entity-toolbar-v2" style="margin-top:var(--space-2);margin-bottom:var(--space-4)">
+      <div class="entity-search-wrap">
+        ${_i('search')}
+        <input class="entity-search-input" placeholder="Search client / goods / location..." value="${_rampFilters._q||''}" oninput="_rampSearch(this.value)">
+      </div>
+      <select class="svc-filter" onchange="_rampFilterBy('type',this.value)">
         <option value="">Type: All</option>
         <option value="Παραλαβή"${_rampFilters.type==='Παραλαβή'?' selected':''}>↓ Inbound</option>
         <option value="Φόρτωση"${_rampFilters.type==='Φόρτωση'?' selected':''}>↑ Outbound</option>
       </select>
-      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('status',this.value)">
+      <select class="svc-filter" onchange="_rampFilterBy('status',this.value)">
         <option value="">Status: All</option>
         <option value="Planned"${_rampFilters.status==='Planned'?' selected':''}>Planned</option>
         <option value="Done"${_rampFilters.status==='Done'?' selected':''}>Done</option>
       </select>
-      <select class="filter-select" style="height:32px;font-size:12px" onchange="_rampFilterBy('cat',this.value)">
+      <select class="svc-filter" onchange="_rampFilterBy('cat',this.value)">
         <option value="">Category: All</option>
-        <option value="VF"${_rampFilters.cat==='VF'?' selected':''}>VF</option>
-        <option value="VS"${_rampFilters.cat==='VS'?' selected':''}>VS</option>
-        <option value="VS+G"${_rampFilters.cat==='VS+G'?' selected':''}>VS+G</option>
+        <option value="VF"${_rampFilters.cat==='VF'?' selected':''}>VF (Vermion Fresh)</option>
+        <option value="VS"${_rampFilters.cat==='VS'?' selected':''}>VS (Veroia Switch)</option>
+        <option value="VS+G"${_rampFilters.cat==='VS+G'?' selected':''}>VS + Groupage</option>
         <option value="Direct"${_rampFilters.cat==='Direct'?' selected':''}>Direct</option>
       </select>
-      <span style="font-size:12px;color:#64748B;padding:4px 0" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''} ops</span>
+      <span class="entity-count-chip" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''}</span>
     </div>
     <div class="ramp-kpis">
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Inbound Today</div>
-        <div><span class="ramp-kpi-val" style="color:#059669">+${inPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Outbound Today</div>
-        <div><span class="ramp-kpi-val" style="color:#0EA5E9">-${outPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Net Today</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'#059669':'#EF4444'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Stock Total</div>
-        <div><span class="ramp-kpi-val" style="color:#D97706">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">Progress</div>
-        <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'#10B981':'#0284C7':'#F1F5F9'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Inbound Today</div>
+        <div><span class="ramp-kpi-val" style="color:var(--success)">+${inPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Outbound Today</div>
+        <div><span class="ramp-kpi-val" style="color:var(--accent)">-${outPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Net Today</div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Stock Total</div>
+        <div><span class="ramp-kpi-val" style="color:var(--warning)">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Progress</div>
+        <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
     </div>
 
     <div class="ramp-pair">
@@ -432,13 +436,13 @@ function _rampDraw() {
       </div>
     </div>
 
-    <div class="ramp-sec-hd timeline"><span>🕐 Timeline — All Operations</span><span style="opacity:.5">${allSorted.length}</span></div>
+    <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:6px">${_i('clock', 14)} Timeline — All Operations</span><span style="opacity:.5">${allSorted.length}</span></div>
     <table class="ramp-t"><thead><tr>
       <th>Time</th><th>Type</th><th>Client</th><th>Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Status</th>
     </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
 
     ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
-      <div class="ramp-sec-hd" style="background:#92400E"><span>⏩ Postponed from today</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
+      <div class="ramp-sec-hd" style="background:#92400E"><span style="display:inline-flex;align-items:center;gap:6px">${_i('chevron_right', 14)} Postponed from today</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
       <table class="ramp-t"><thead><tr>
         <th>#</th><th>Type</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Moved to</th><th>Actions</th>
       </tr></thead><tbody>${RAMP.postponed.map((r,i)=>{
@@ -458,7 +462,7 @@ function _rampDraw() {
     </div>`:''}
 
     <div style="margin-top:16px">
-      <div class="ramp-sec-hd stock"><span>📦 Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
+      <div class="ramp-sec-hd stock"><span style="display:inline-flex;align-items:center;gap:6px">${_i('package', 14)} Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
       <table class="ramp-t"><thead><tr><th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th></tr></thead>
       <tbody>${Object.keys(sbc).length?Object.keys(sbc).sort().map((cl,i)=>{
         const d=sbc[cl],dates=d.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort(),

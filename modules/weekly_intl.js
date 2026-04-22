@@ -325,7 +325,7 @@ function _wiPaint(){
 
   // Command Center actions
   const actions=[];
-  const _ico = n => (typeof icon === 'function') ? icon(n, 14) : '';
+  const _ico = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   if(pending>0) actions.push({icon:_ico('file_text'),sev:'warn',text:`${pending} export${pending>1?'s':''} χωρίς ανάθεση`});
   if(unmatched>0) actions.push({icon:_ico('package'),sev:'warn',text:`${unmatched} import${unmatched>1?'s':''} χωρίς match σε export`});
   const missingTruck=expRows.filter(r=>r.saved && !r.truckId && !r.partnerId).length;
@@ -368,34 +368,37 @@ function _wiPaint(){
     })():''}
 
     <!-- Search/filter bar -->
-    <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:6px">
-      <input id="wi-search" type="text" placeholder="🔍 Search client / truck / driver / location..." oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px">
-      <select onchange="WINTL.filterStatus=this.value;_wiApplyFilter()" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
+      <div class="entity-search-wrap">
+        ${_ico('search')}
+        <input id="wi-search" class="entity-search-input" type="text" placeholder="Search client / truck / driver / location..." oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}">
+      </div>
+      <select class="svc-filter" onchange="WINTL.filterStatus=this.value;_wiApplyFilter()">
         <option value="">All statuses</option>
         <option value="pending" ${WINTL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
         <option value="assigned" ${WINTL.filterStatus==='assigned'?'selected':''}>Assigned</option>
         <option value="unmatched" ${WINTL.filterStatus==='unmatched'?'selected':''}>Unmatched imports</option>
       </select>
-      ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">Clear</button>`:''}
+      ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">${_ico('x', 12)} Clear</button>`:''}
     </div>
 
-    <div class="page-header" style="margin-bottom:12px">
+    <div class="page-header" style="margin-bottom:var(--space-3)">
       <div>
         <div class="page-title">Weekly International</div>
-        <div class="page-sub" style="display:flex;gap:14px;flex-wrap:wrap;margin-top:4px;font-size:12px">
-          <span>Week ${week} · ${_wiWeekRange(week)}</span>
-          <span style="color:var(--success)">${expN} exports</span>
-          <span style="color:var(--warning)">${impN} imports</span>
-          <span style="color:var(--success)">${assigned} assigned</span>
-          <span style="color:#E05252">· ${pending} pending</span>
-          <span style="color:var(--text-dim)">${matched} matched · ${unmatched} free</span>
+        <div class="page-sub" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:4px;align-items:center;font-size:12px">
+          <span style="color:var(--text-mid)">Week ${week} · ${_wiWeekRange(week)}</span>
+          <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${expN} exports</span>
+          <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} imports</span>
+          <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} assigned</span>
+          ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} pending</span>`:''}
+          <span style="color:var(--text-dim);font-size:11px">${matched} matched · ${unmatched} free</span>
         </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center">
-        ${unmatched>0?`<button class="btn btn-primary" style="padding:5px 12px;font-size:11px" onclick="_wiAutoMatch()">⚡ Auto-Match (${unmatched})</button>`:''}
-        <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiPrintWeek()">Print Week</button>
-        <button class="btn btn-ghost" style="padding:5px 10px" onclick="renderWeeklyIntl()">Refresh</button>
-        <button class="btn btn-ghost" style="padding:5px 10px" onclick="_wiExportCSV()">Export CSV</button>
+      <div style="display:flex;gap:var(--space-2);align-items:center">
+        ${unmatched>0?`<button class="btn btn-primary btn-sm" onclick="_wiAutoMatch()">${_ico('zap', 14)} Auto-Match (${unmatched})</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Print</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Export CSV</button>
       </div>
     </div>
 

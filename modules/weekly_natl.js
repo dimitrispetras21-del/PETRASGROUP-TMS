@@ -208,6 +208,7 @@ function _wnWeekSidebarItems(currentWeek) {
 
 function _wnPaint() {
   const { rows, week, data } = WNATL;
+  const _wnI = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   const nsRows = rows.filter(r => r.type==='northsouth');
   const snRows = rows.filter(r => r.type==='southnorth');
   const assigned = nsRows.filter(r => r.saved).length;
@@ -265,29 +266,32 @@ function _wnPaint() {
       })():''}
 
       <!-- Search/filter bar -->
-      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;padding:8px 12px;background:#F8FAFC;border:1px solid var(--border);border-radius:6px">
-        <input id="wn-search" type="text" placeholder="🔍 Search client / truck / driver..." oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}" style="flex:1;min-width:240px;padding:6px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px">
-        <select onchange="WNATL.filterStatus=this.value;_wnApplyFilter()" style="padding:6px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
-          <option value="">All</option>
+      <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
+        <div class="entity-search-wrap">
+          ${_wnI('search')}
+          <input id="wn-search" class="entity-search-input" type="text" placeholder="Search client / truck / driver..." oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
+        </div>
+        <select class="svc-filter" onchange="WNATL.filterStatus=this.value;_wnApplyFilter()">
+          <option value="">All statuses</option>
           <option value="pending" ${WNATL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
           <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Assigned</option>
         </select>
-        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost" style="padding:4px 10px;font-size:11px" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">Clear</button>`:''}
+        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">${_wnI('x', 12)} Clear</button>`:''}
       </div>
 
-      <div class="page-header" style="margin-bottom:12px">
+      <div class="page-header" style="margin-bottom:var(--space-3)">
         <div>
           <div class="page-title">Weekly National</div>
-          <div class="page-sub">
-            Εβδομάδα ${week} · ${weekRange}
-            <span style="margin-left:12px;color:var(--text)">${nsRows.length} κάθοδος</span>
-            <span style="margin-left:8px;color:rgba(14,165,233,0.9)">${snRows.length} άνοδος</span>
-            <span style="margin-left:8px;color:var(--success)">${assigned} ανατεθειμένα</span>
-            <span style="margin-left:4px;color:#E05252">· ${pending} εκκρεμή</span>
+          <div class="page-sub" style="display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-top:4px">
+            <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${weekRange}</span>
+            <span class="entity-count-chip" style="background:rgba(100,116,139,0.12);color:var(--text);border-color:transparent">${nsRows.length} κάθοδος</span>
+            <span class="entity-count-chip" style="background:rgba(14,165,233,0.12);color:var(--accent);border-color:transparent">${snRows.length} άνοδος</span>
+            <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${assigned} ανατεθειμένα</span>
+            ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} εκκρεμή</span>`:''}
           </div>
         </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-ghost" onclick="renderWeeklyNatl()">Refresh</button>
+        <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-secondary btn-sm" onclick="renderWeeklyNatl()">${_wnI('refresh')} Refresh</button>
         </div>
       </div>
 
