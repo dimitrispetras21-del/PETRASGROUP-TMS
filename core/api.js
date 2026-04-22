@@ -977,10 +977,18 @@ async function atRestoreFromTrash(trashIndex) {
  */
 function _validateFields(records, expectedFields, context) {
   if (!records.length || !expectedFields.length) return;
-  const actualFields = Object.keys(records[0].fields || {});
-  const missing = expectedFields.filter(f => !actualFields.includes(f));
+  // Airtable omits boolean checkbox fields when they are unchecked/false.
+  // So checking only records[0] produces false positives — scan ALL records
+  // and consider a field "present" if it appears in at least one.
+  const actualFields = new Set();
+  for (const r of records) {
+    const f = r.fields;
+    if (!f) continue;
+    for (const key in f) actualFields.add(key);
+  }
+  const missing = expectedFields.filter(f => !actualFields.has(f));
   if (missing.length > 0) {
-    const msg = `Missing fields in ${context}: ${missing.join(', ')}`;
+    const msg = `Missing fields in ${context}: ${missing.join(', ')} (checked ${records.length} records)`;
     console.warn('[TMS]', msg);
     if (typeof logError === 'function') logError(new Error(msg), 'field_validation');
   }

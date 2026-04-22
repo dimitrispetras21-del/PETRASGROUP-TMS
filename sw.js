@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v32-planning-v2';
+const SW_VERSION = 'tms-sw-v33-validator-fix';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
