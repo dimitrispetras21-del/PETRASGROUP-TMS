@@ -135,6 +135,28 @@ function toggleSidebar() {
   localStorage.setItem('tms_sidebar_collapsed', isCollapsed ? 'true' : 'false');
 }
 
+// Mobile off-canvas drawer — toggled by hamburger in topbar.
+// Adds/removes 'mobile-nav-open' class on body to drive CSS slide-in animation.
+function toggleMobileNav() {
+  const open = document.body.classList.toggle('mobile-nav-open');
+  const btn = document.querySelector('.mobile-nav-toggle');
+  if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  // Lock body scroll when drawer open
+  document.body.style.overflow = open ? 'hidden' : '';
+}
+function closeMobileNav() {
+  if (!document.body.classList.contains('mobile-nav-open')) return;
+  document.body.classList.remove('mobile-nav-open');
+  const btn = document.querySelector('.mobile-nav-toggle');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+}
+// Expose for inline onclick handlers
+if (typeof window !== 'undefined') {
+  window.toggleMobileNav = toggleMobileNav;
+  window.closeMobileNav = closeMobileNav;
+}
+
 function restoreSidebar() {
   // One-time migration: clear stale collapsed flag from before the
   // navigate-auto-collapse fix, so users don't stay stuck closed forever.
@@ -172,6 +194,11 @@ function navigate(page) {
   }
   currentPage = page;
   localStorage.setItem('tms_page', page);
+
+  // Auto-close mobile drawer after navigation so the user sees the new page.
+  if (window.matchMedia('(max-width: 768px)').matches) {
+    closeMobileNav();
+  }
 
   // Auto-collapse sidebar ONLY on mobile (≤768px) — never on desktop.
   // Previously auto-collapsed on every navigate AND persisted, which made the
@@ -212,10 +239,12 @@ function navigate(page) {
   }
 
   const c = document.getElementById('content');
-  // Reset content styles (some pages override these)
+  // Reset content styles (some pages override these — e.g. weekly_pickups iframe)
   c.style.padding = '';
   c.style.overflow = '';
   c.style.background = '';
+  c.style.height = '';
+  c.style.minHeight = '';
 
   switch (page) {
     // Planning
@@ -226,11 +255,15 @@ function navigate(page) {
       document.getElementById('topbarTitle').textContent = 'National Pick Ups';
       c.style.padding = '0';
       c.style.overflow = 'hidden';
+      // Make the parent .content div fill the viewport so the iframe has room to grow.
+      // Mobile fix: previously the iframe collapsed to 150px because content height was 0.
+      c.style.height = 'calc(100vh - 56px)';
+      c.style.minHeight = '500px';
       // C3 fix: sandbox the iframe to limit its access to the parent DOM/storage.
       // allow-scripts: iframe runs JS; allow-forms: can submit forms (drag-drop saves);
       // allow-same-origin: only allowed because we fully control the source (same account);
       // allow-popups: needed for print preview; clipboard-write kept for copy actions.
-      c.innerHTML = '<iframe src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write"></iframe>';
+      c.innerHTML = '<iframe class="embed" src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write"></iframe>';
       break;
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;

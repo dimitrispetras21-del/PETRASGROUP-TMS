@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1776807442">
+<link rel="stylesheet" href="assets/style.css?v=1776865432">
 </head>
 <body>
 
@@ -32,11 +32,21 @@
 
 </nav>
 
+<!-- Mobile drawer backdrop — fades in when sidebar is open on mobile -->
+<div class="mobile-nav-backdrop" id="mobileNavBackdrop" onclick="closeMobileNav()" aria-hidden="true"></div>
+
 <!-- ═══ MAIN ══════════════════════════════════ -->
 <div class="main">
 
   <!-- Topbar -->
   <div class="topbar" role="banner">
+    <button class="mobile-nav-toggle" onclick="toggleMobileNav()" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <line x1="3" y1="12" x2="21" y2="12"/>
+        <line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
     <div class="topbar-title" id="topbarTitle">Dashboard</div>
     <div class="topbar-breadcrumb" id="topbarBreadcrumb"></div>
     <div class="topbar-right">
@@ -104,7 +114,7 @@
 <script src="core/form-helpers.js?v=1775026933"></script>
 <script src="core/stops-helpers.js?v=1776286034"></script>
 <script src="core/pa-helpers.js?v=1776323985"></script>
-<script src="core/router.js?v=1776847744"></script>
+<script src="core/router.js?v=1776865432"></script>
 <script src="core/icons.js?v=1776807442"></script>
 <script src="core/command-palette.js?v=1776708938"></script>
 <script src="core/metrics.js?v=1776545154"></script>
