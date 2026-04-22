@@ -152,15 +152,26 @@ const ENTITY_CONFIG = {
         { val: 'true',  label: 'Active' },
         { val: 'false', label: 'Inactive' },
       ]},
+      { field: '_compliance', label: 'Compliance', type: 'select', options: [
+        { val: '', label: 'All' },
+        { val: 'expired',  label: 'Has Expired' },
+        { val: 'expiring', label: 'Expiring <30d' },
+        { val: 'ok',       label: 'All OK' },
+      ]},
     ],
     columns: [
       { field: 'License Plate',       label: 'Plate', primary: true },
       { field: 'Brand',               label: 'Brand' },
       { field: 'Model',               label: 'Model' },
-      { field: 'Year',                label: 'Year' },
+      { field: 'Year',                label: 'Year', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
-      { field: 'Fuel Tank Truck Lt',  label: 'Tank Lt' },
-      { field: 'Gross Vehicle Weight kg', label: 'GVW kg' },
+      { field: 'Fuel Tank Truck Lt',  label: 'Tank Lt', type: 'number' },
+      { field: 'Gross Vehicle Weight kg', label: 'GVW kg', type: 'number' },
+      { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
+        { field: 'KTEO Expiry',     label: 'KT' },
+        { field: 'KEK Expiry',      label: 'KK' },
+        { field: 'Insurance Expiry', label: 'INS' },
+      ]},
       { field: 'Active',              label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -199,16 +210,27 @@ const ENTITY_CONFIG = {
         { val: 'true',  label: 'Active' },
         { val: 'false', label: 'Inactive' },
       ]},
+      { field: '_compliance', label: 'Compliance', type: 'select', options: [
+        { val: '', label: 'All' },
+        { val: 'expired',  label: 'Has Expired' },
+        { val: 'expiring', label: 'Expiring <30d' },
+        { val: 'ok',       label: 'All OK' },
+      ]},
     ],
     columns: [
       { field: 'License Plate',           label: 'Plate',  primary: true },
       { field: 'Brand',                   label: 'Brand' },
       { field: 'Model',                   label: 'Model' },
-      { field: 'Year',                    label: 'Year' },
+      { field: 'Year',                    label: 'Year', type: 'number' },
       { field: 'Trailer Type',            label: 'Type' },
       { field: 'Refrigeration Brand',     label: 'Reefer' },
-      { field: 'Fuel Tank Refrigeration Lt', label: 'Reefer Tank Lt' },
-      { field: 'Pallet Capacity',         label: 'Pallets' },
+      { field: '_tempRange',              label: 'Temp °C', type: 'temp_range' },
+      { field: 'Pallet Capacity',         label: 'Pal', type: 'number' },
+      { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
+        { field: 'KTEO Expiry',     label: 'KT' },
+        { field: 'FRC Expiry',      label: 'FRC' },
+        { field: 'Insurance Expiry', label: 'INS' },
+      ]},
       { field: 'Active',                  label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -251,10 +273,12 @@ const ENTITY_CONFIG = {
     ],
     columns: [
       { field: 'Name',           label: 'Name',      primary: true },
-      { field: 'City',           label: 'City' },
+      { field: 'City',           label: 'City', type: 'city' },
       { field: 'Specialty',      label: 'Specialty' },
-      { field: 'Contact Person', label: 'Contact' },
       { field: 'Phone',          label: 'Phone' },
+      { field: '_serviceCount',  label: 'Services', type: 'number' },
+      { field: '_totalSpend',    label: 'Spend',    type: 'currency' },
+      { field: '_lastUsed',      label: 'Last Used', type: 'date_rel' },
       { field: 'Active',         label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -322,7 +346,7 @@ async function renderEntity(entityKey) {
       </button>` : ''}
     </div>
 
-    ${(entityKey === 'partners' || entityKey === 'clients') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:var(--space-4)"></div>` : ''}
+    ${(entityKey === 'partners' || entityKey === 'clients' || entityKey === 'workshops') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:var(--space-4)"></div>` : ''}
 
     <div class="entity-layout">
       <div class="entity-list-panel">
@@ -355,8 +379,86 @@ async function renderEntity(entityKey) {
       <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
     </div>`;
 
-  if (entityKey === 'partners') _renderPartnersStatsStrip(records);
-  if (entityKey === 'clients')  _renderClientsStatsStrip(records);
+  if (entityKey === 'partners')  _renderPartnersStatsStrip(records);
+  if (entityKey === 'clients')   _renderClientsStatsStrip(records);
+  if (entityKey === 'workshops') _renderWorkshopsStatsStrip(records);
+}
+
+// ── Workshops stats strip ─────────────────────────
+async function _renderWorkshopsStatsStrip(workshops) {
+  const el = document.getElementById('workshops_stats_strip');
+  if (!el) return;
+  try {
+    const history = await atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Total Cost','Date'] }, true).catch(() => []);
+    const activeWs = workshops.filter(w => w.fields['Active']).length;
+    const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
+    const yyyymm = new Date().toISOString().slice(0, 7);
+    const monthSpend = history
+      .filter(r => (r.fields['Date'] || '').startsWith(yyyymm))
+      .reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
+
+    // Top workshop by total spend
+    const byWs = {};
+    for (const r of history) {
+      const wid = (r.fields['Workshop'] || [])[0];
+      if (!wid) continue;
+      const cost = parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0;
+      byWs[wid] = (byWs[wid] || 0) + cost;
+    }
+    const wsNameById = {};
+    for (const w of workshops) wsNameById[w.id] = w.fields['Name'] || '—';
+    const top3 = Object.entries(byWs)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([wid, total]) => ({ name: wsNameById[wid] || 'Unknown', total }));
+
+    // Enrich workshop records with service count + total spend for column display
+    const serviceCountByWs = {};
+    const lastUsedByWs = {};
+    for (const r of history) {
+      const wid = (r.fields['Workshop'] || [])[0];
+      if (!wid) continue;
+      serviceCountByWs[wid] = (serviceCountByWs[wid] || 0) + 1;
+      const d = r.fields['Date'];
+      if (d && (!lastUsedByWs[wid] || d > lastUsedByWs[wid])) lastUsedByWs[wid] = d;
+    }
+    // Attach enrichment to in-memory records so column rendering can use them
+    for (const w of workshops) {
+      w.fields['_serviceCount'] = serviceCountByWs[w.id] || 0;
+      w.fields['_totalSpend'] = byWs[w.id] || 0;
+      w.fields['_lastUsed'] = lastUsedByWs[w.id] || '';
+    }
+    // Re-render table to show enriched columns
+    const tableEl = document.getElementById('workshops_table');
+    if (tableEl) tableEl.innerHTML = buildEntityTable('workshops', workshops);
+
+    const card = (label, val, color) => `
+      <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;min-width:140px">
+        <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color || 'var(--text)'};margin-top:4px;font-variant-numeric:tabular-nums">${val}</div>
+      </div>`;
+    const topHTML = top3.length
+      ? `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;flex:1;min-width:260px">
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;font-weight:600;margin-bottom:6px">Top 3 Workshops (All Time)</div>
+          ${top3.map((p, i) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
+              <span style="color:var(--text)"><strong style="color:var(--accent)">#${i+1}</strong> ${escapeHtml(p.name)}</span>
+              <span style="color:var(--text);font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
+            </div>`).join('')}
+        </div>`
+      : '';
+
+    el.innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        ${card('Active Workshops', activeWs)}
+        ${card('Services (All Time)', history.length.toLocaleString(), 'var(--accent)')}
+        ${card('Total Spend', '€' + Math.round(totalSpend).toLocaleString(), 'var(--text)')}
+        ${card('This Month', '€' + Math.round(monthSpend).toLocaleString(), monthSpend > 0 ? 'var(--warning)' : 'var(--text-dim)')}
+        ${topHTML}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+  }
 }
 
 // ── Partners top stats strip ──────────────────────
@@ -549,6 +651,44 @@ function buildEntityRow(entityKey, r, cols) {
     if (col.type === 'expiry' && val) {
       return `<td>${expiryLabel(val)}</td>`;
     }
+    if (col.type === 'compliance') {
+      // Show KT/KK/INS or KT/FRC/INS mini-blocks based on multiple expiry fields
+      const blocks = (col.fields || []).map(fc => {
+        const d = f[fc.field];
+        if (!d) return `<span class="md-comp-block none">${fc.label}</span>`;
+        const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+        const cls = days < 0 ? 'expired' : days < 30 ? 'warn' : 'ok';
+        return `<span class="md-comp-block ${cls}" title="${fc.label} · ${d}${days < 0 ? ' (expired ' + Math.abs(days) + 'd ago)' : ' (' + days + 'd left)'}">${fc.label}</span>`;
+      }).join('');
+      return `<td style="white-space:nowrap"><div style="display:inline-flex;gap:3px">${blocks}</div></td>`;
+    }
+    if (col.type === 'temp_range') {
+      // Display min/max temp range compactly
+      const min = f['Temp Range Min °C'];
+      const max = f['Temp Range Max °C'];
+      if (min == null && max == null) return '<td style="color:var(--text-dim)">—</td>';
+      return `<td style="white-space:nowrap;font-family:'DM Sans',monospace;font-size:11px;color:var(--text-mid)">${min != null ? min : '?'}°/${max != null ? max : '?'}°</td>`;
+    }
+    if (col.type === 'city') {
+      // City with map pin icon prefix
+      if (!val) return '<td style="color:var(--text-dim)">—</td>';
+      const pin = (typeof icon === 'function') ? icon('map_pin', 12) : '';
+      return `<td><span style="display:inline-flex;align-items:center;gap:4px;color:var(--text-mid)">${pin}${val}</span></td>`;
+    }
+    if (col.type === 'currency') {
+      if (val == null || val === 0) return '<td style="color:var(--text-dim);font-variant-numeric:tabular-nums">€0</td>';
+      return `<td style="font-variant-numeric:tabular-nums;font-weight:600">€${Math.round(val).toLocaleString()}</td>`;
+    }
+    if (col.type === 'date_rel') {
+      if (!val) return '<td style="color:var(--text-dim);font-size:11px">Never</td>';
+      const days = Math.floor((Date.now() - new Date(val).getTime()) / 86400000);
+      const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 30 ? `${days}d ago` : days < 365 ? `${Math.round(days/30)}mo ago` : `${Math.round(days/365)}y ago`;
+      const color = days < 30 ? 'var(--success)' : days < 90 ? 'var(--text-mid)' : 'var(--text-dim)';
+      return `<td style="color:${color};font-size:11px;white-space:nowrap" title="${val}">${label}</td>`;
+    }
+    if (col.type === 'number' && val != null) {
+      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${val}</td>`;
+    }
     if (col.primary) return `<td><strong style="color:var(--text)">${val || '—'}</strong></td>`;
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
@@ -588,7 +728,23 @@ function applyEntityFilters(entityKey) {
     ));
   }
   for (const [field, { val, type }] of Object.entries(st.filters)) {
-    if (type === 'bool') {
+    if (field === '_compliance') {
+      // Compliance filter: check expiry dates from the compliance column config
+      const complianceCol = cfg.columns.find(c => c.type === 'compliance');
+      if (!complianceCol) continue;
+      recs = recs.filter(r => {
+        const statuses = complianceCol.fields.map(fc => {
+          const d = r.fields[fc.field];
+          if (!d) return 'none';
+          const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+          return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
+        });
+        if (val === 'expired')  return statuses.includes('expired');
+        if (val === 'expiring') return statuses.includes('expiring') && !statuses.includes('expired');
+        if (val === 'ok')       return statuses.every(s => s === 'ok' || s === 'none');
+        return true;
+      });
+    } else if (type === 'bool') {
       const boolVal = val === 'true';
       recs = recs.filter(r => !!r.fields[field] === boolVal);
     } else {

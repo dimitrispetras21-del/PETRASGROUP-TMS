@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v30-errlog-v2';
+const SW_VERSION = 'tms-sw-v31-fleet-v2';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

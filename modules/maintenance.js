@@ -809,6 +809,9 @@ async function _renderHistory(vType) {
   }
 }
 
+// History UI state per vType
+const _historyFilter = { trucks: {}, trailers: {} };
+
 function _historyPaint(vType) {
   const vehicles = vType === 'trucks' ? MAINT.trucks : MAINT.trailers;
   const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
@@ -818,6 +821,7 @@ function _historyPaint(vType) {
     if (first) _historyVehicle[vType] = first.fields['License Plate'] || '';
   }
   const selected = _historyVehicle[vType];
+  const state = _historyFilter[vType];
 
   const vehicleOpts = vehicles
     .filter(v => v.fields['Active'])
@@ -827,76 +831,286 @@ function _historyPaint(vType) {
       return `<option value="${p}"${selected===p?' selected':''}>${p} — ${v.fields['Brand']||''} ${v.fields['Model']||''}</option>`;
     }).join('');
 
-  // Filter history for selected vehicle
-  const records = selected
+  // All records for selected vehicle (for stats)
+  const allRecs = selected
     ? MAINT.history
         .filter(r => r.fields['Vehicle Plate'] === selected && r.fields['Vehicle Type'] === vTypeLabel)
         .sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
     : [];
 
-  // Stats
+  // Available years + types for filters
+  const years = [...new Set(allRecs.map(r => (r.fields['Date']||'').slice(0, 4)).filter(Boolean))].sort().reverse();
+  const types = [...new Set(allRecs.map(r => r.fields['Type']).filter(Boolean))].sort();
+
+  // Apply filters
+  let records = allRecs;
+  if (state.year)  records = records.filter(r => (r.fields['Date']||'').startsWith(state.year));
+  if (state.type)  records = records.filter(r => r.fields['Type'] === state.type);
+  if (state.q) {
+    const q = state.q.toLowerCase();
+    records = records.filter(r => {
+      const f = r.fields;
+      return String(f['Description']||'').toLowerCase().includes(q)
+          || String(f['Type']||'').toLowerCase().includes(q)
+          || _wsName(f['Workshop']).toLowerCase().includes(q);
+    });
+  }
+
+  // Stats (based on filtered set)
   const year = new Date().getFullYear();
-  const ytdRecs = records.filter(r => (r.fields['Date']||'').startsWith(String(year)));
-  const totalCostYTD = ytdRecs.reduce((s, r) => s + (r.fields['Cost']||0), 0);
+  const ytdRecs = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year)));
+  const prevYearRecs = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year - 1)));
+  const totalCostYTD = ytdRecs.reduce((s, r) => s + (parseFloat(r.fields['Cost'])||0), 0);
+  const totalCostPrev = prevYearRecs.reduce((s, r) => s + (parseFloat(r.fields['Cost'])||0), 0);
   const avgCost = ytdRecs.length ? totalCostYTD / ytdRecs.length : 0;
-  const lastService = records[0]?.fields['Date'] || '—';
+  const lastService = allRecs[0]?.fields['Date'] || '—';
+
+  // Monthly cost for last 12 months (for sparkline)
+  const now = new Date();
+  const monthlyBuckets = {};
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    monthlyBuckets[d.toISOString().slice(0, 7)] = 0;
+  }
+  allRecs.forEach(r => {
+    const mKey = (r.fields['Date']||'').slice(0, 7);
+    if (mKey in monthlyBuckets) {
+      monthlyBuckets[mKey] += parseFloat(r.fields['Cost'])||0;
+    }
+  });
+  const monthlyValues = Object.values(monthlyBuckets);
+
+  // Type breakdown
+  const byType = {};
+  ytdRecs.forEach(r => {
+    const t = r.fields['Type'] || 'Other';
+    if (!byType[t]) byType[t] = { count: 0, cost: 0 };
+    byType[t].count++;
+    byType[t].cost += parseFloat(r.fields['Cost'])||0;
+  });
+  const typeEntries = Object.entries(byType).sort((a, b) => b[1].cost - a[1].cost);
+  const maxTypeCost = typeEntries.length ? typeEntries[0][1].cost : 0;
+
+  // Top workshops (by cost)
+  const byWs = {};
+  allRecs.forEach(r => {
+    const wsName = _wsName(r.fields['Workshop']);
+    if (!wsName || wsName === '—') return;
+    if (!byWs[wsName]) byWs[wsName] = 0;
+    byWs[wsName] += parseFloat(r.fields['Cost'])||0;
+  });
+  const topWs = Object.entries(byWs).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxWsCost = topWs.length ? topWs[0][1] : 0;
+
+  // MoM delta for cost
+  const costDelta = totalCostPrev > 0
+    ? Math.round(((totalCostYTD - totalCostPrev) / totalCostPrev) * 100)
+    : null;
 
   // Vehicle info
   const vRec = selected ? vehicles.find(v => v.fields['License Plate'] === selected) : null;
   const vf = vRec?.fields || {};
 
-  const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
+  const _i = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
+
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-3)">
-      <div><div class="page-title">${vType === 'trucks' ? 'Trucks' : 'Trailers'} History</div>
-        <div class="page-sub">Service & maintenance records per vehicle</div></div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} New Record</button>
-        <button class="btn btn-secondary btn-sm" onclick="MAINT.history=[];_renderHistory('${vType}')">${_i('refresh')} Refresh</button>
+    <div class="dash-wrap">
+      <div class="dash-header">
+        <div>
+          <div class="dash-greeting">${_i(vType === 'trucks' ? 'truck' : 'truck', 22)} ${vType === 'trucks' ? 'Trucks' : 'Trailers'} History</div>
+          <div class="dash-date">Service & maintenance records per vehicle${selected && vRec ? ` · ${vf['License Plate']||''} — ${vf['Brand']||''} ${vf['Model']||''}` : ''}</div>
+        </div>
+        <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} New Record</button>
+          <button class="btn btn-ghost btn-sm" onclick="_historyExport('${vType}')">${_i('file_text')} Export CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="MAINT.history=[];_renderHistory('${vType}')">${_i('refresh')} Refresh</button>
+        </div>
       </div>
-    </div>
 
-    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
-      <select class="svc-filter" style="min-width:340px" onchange="_historyVehicle['${vType}']=this.value;_historyPaint('${vType}')">
-        <option value="">Select ${vTypeLabel}…</option>
-        ${vehicleOpts}
-      </select>
-    </div>
-
-    ${selected && vRec ? `
-    <div class="mv-card">
-      <div><div class="mv-plate">${vf['License Plate']||''}</div>
-        <div class="mv-info">${vf['Brand']||''} ${vf['Model']||''} · ${vf['Year']||''}</div></div>
-      <div style="display:flex;gap:16px;margin-left:auto">
-        <div><div class="mk-kpi-lbl">Cost YTD</div><div style="font-weight:700;font-size:16px">${_fmtCost(totalCostYTD)}</div></div>
-        <div><div class="mk-kpi-lbl">Services YTD</div><div style="font-weight:700;font-size:16px">${ytdRecs.length}</div></div>
-        <div><div class="mk-kpi-lbl">Avg Cost</div><div style="font-weight:700;font-size:16px">${_fmtCost(avgCost)}</div></div>
-        <div><div class="mk-kpi-lbl">Last Service</div><div style="font-weight:700;font-size:16px">${_fmtDate(lastService)}</div></div>
+      <!-- Vehicle + Filter toolbar -->
+      <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
+        <select class="svc-filter" style="min-width:280px" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
+          <option value="">Select ${vTypeLabel}…</option>
+          ${vehicleOpts}
+        </select>
+        ${selected ? `
+          <div class="entity-search-wrap" style="min-width:200px">
+            ${_i('search')}
+            <input class="entity-search-input" placeholder="Search description / type / workshop…" value="${escapeHtml(state.q || '')}"
+              oninput="_historyFilter['${vType}'].q=this.value;_historyPaint('${vType}')">
+          </div>
+          <select class="svc-filter" onchange="_historyFilter['${vType}'].year=this.value;_historyPaint('${vType}')">
+            <option value="">Year: All</option>
+            ${years.map(y => `<option value="${y}"${state.year===y?' selected':''}>${y}</option>`).join('')}
+          </select>
+          <select class="svc-filter" onchange="_historyFilter['${vType}'].type=this.value;_historyPaint('${vType}')">
+            <option value="">Type: All</option>
+            ${types.map(t => `<option value="${escapeHtml(t)}"${state.type===t?' selected':''}>${escapeHtml(t)}</option>`).join('')}
+          </select>
+          <span class="entity-count-chip">${records.length}</span>
+        ` : ''}
       </div>
-    </div>` : ''}
 
-    ${selected ? `
-    <table class="mt">
-      <thead><tr>
-        <th>#</th><th>Date</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
-      </tr></thead>
-      <tbody>${records.length ? records.map((r, i) => {
-        const f = r.fields;
-        const statusCls = f['Status']==='Completed'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
-        return `<tr onclick="_svcOpenForm('${r.id}')">
-          <td class="rn">${i+1}</td>
-          <td>${_fmtDate(f['Date'])}</td>
-          <td>${f['Type']||'—'}</td>
-          <td>${_wsName(f['Workshop'])}</td>
-          <td style="max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${(f['Description']||'').substring(0,80)}</td>
-          <td class="r">${_fmtCost(f['Cost'])}</td>
-          <td>${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
-          <td><span class="exp-badge ${statusCls}">${f['Status']||'—'}</span></td>
-        </tr>`;
-      }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:30px">No records for this vehicle</td></tr>'}</tbody>
-    </table>` : '<div style="text-align:center;color:var(--text-dim);padding:60px">Select a vehicle to view history</div>'}
+      ${!selected ? `
+        <div class="dash-card">
+          <div class="dash-card-body">
+            <div class="dash-empty" style="padding:var(--space-12) var(--space-4)">
+              ${_i('truck', 32)}
+              <div>Select a ${vType === 'trucks' ? 'truck' : 'trailer'} to view its history</div>
+            </div>
+          </div>
+        </div>` : `
+
+      <!-- KPI Bar (4 stats) -->
+      <div class="dash-kpi-bar" style="grid-template-columns:repeat(4,1fr)">
+        <div class="dash-kpi">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#38BDF8,transparent)"></div>
+          <div class="dash-kpi-label">${_i('coins', 11)} Cost YTD</div>
+          <div class="dash-kpi-value dash-val-accent">${_fmtCost(totalCostYTD)}${costDelta !== null ? `<span class="ceo-delta ${costDelta > 0 ? 'up-bad' : costDelta < 0 ? 'down' : 'flat'}" style="margin-left:8px">${_i(costDelta > 0 ? 'trending_up' : costDelta < 0 ? 'trending_down' : 'minus', 10)}${costDelta >= 0 ? '+' : ''}${costDelta}%</span>` : ''}</div>
+          <div class="dash-kpi-sub">${year} vs ${year-1}${totalCostPrev ? ` (€${Math.round(totalCostPrev).toLocaleString()})` : ''}</div>
+        </div>
+        <div class="dash-kpi">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#34D399,transparent)"></div>
+          <div class="dash-kpi-label">${_i('list_checks', 11)} Services YTD</div>
+          <div class="dash-kpi-value dash-val-success">${ytdRecs.length}</div>
+          <div class="dash-kpi-sub">${allRecs.length} total all-time</div>
+        </div>
+        <div class="dash-kpi">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
+          <div class="dash-kpi-label">${_i('activity', 11)} Avg Cost</div>
+          <div class="dash-kpi-value dash-val-warning">${_fmtCost(avgCost)}</div>
+          <div class="dash-kpi-sub">per service YTD</div>
+        </div>
+        <div class="dash-kpi">
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#38BDF8,transparent)"></div>
+          <div class="dash-kpi-label">${_i('clock', 11)} Last Service</div>
+          <div class="dash-kpi-value dash-val-accent" style="font-size:22px">${_fmtDate(lastService)}</div>
+          <div class="dash-kpi-sub">${lastService !== '—' ? _elRelTime ? _elRelTime(lastService) : '' : 'no services yet'}</div>
+        </div>
+      </div>
+
+      <!-- Secondary row: sparkline + type breakdown + top workshops -->
+      <div class="dash-grid-main" style="margin-bottom:var(--space-4)">
+        <div class="dash-left">
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <div class="dash-card-title">${_i('trending_up', 12)} COST TREND · LAST 12 MONTHS</div>
+              <span class="dash-card-meta">monthly</span>
+            </div>
+            <div class="dash-card-body">
+              ${monthlyValues.some(v => v > 0)
+                ? `<div style="height:60px">${_mdSpark(monthlyValues, '#38BDF8', 600)}</div>`
+                : `<div class="dash-empty" style="padding:var(--space-6) 0">${_i('activity', 24)}<div>No cost data yet</div></div>`}
+            </div>
+          </div>
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <div class="dash-card-title">${_i('tool', 12)} SERVICE TYPE BREAKDOWN · ${year}</div>
+              <span class="dash-card-meta">${typeEntries.length} types</span>
+            </div>
+            <div class="dash-card-body">
+              ${typeEntries.length ? `<div style="display:flex;flex-direction:column;gap:6px">
+                ${typeEntries.slice(0, 6).map(([t, stats]) => `
+                  <div style="display:flex;align-items:center;gap:8px;font-size:11px">
+                    <span style="width:120px;color:var(--dc-text);font-weight:600">${escapeHtml(t)}</span>
+                    <div style="flex:1;height:14px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">
+                      <div style="height:100%;width:${maxTypeCost ? (stats.cost/maxTypeCost*100) : 0}%;background:linear-gradient(90deg,#38BDF8,#7DD3FC);border-radius:4px;transition:width 0.6s"></div>
+                    </div>
+                    <span style="width:36px;text-align:right;color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${stats.count}×</span>
+                    <span style="width:64px;text-align:right;color:var(--dc-text);font-variant-numeric:tabular-nums;font-weight:700">${_fmtCost(stats.cost)}</span>
+                  </div>`).join('')}
+              </div>` : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('tool', 24)}<div>No services in ${year}</div></div>`}
+            </div>
+          </div>
+        </div>
+        <div class="dash-right">
+          <div class="dash-card">
+            <div class="dash-card-header">
+              <div class="dash-card-title">${_i('award', 12)} TOP WORKSHOPS</div>
+              <span class="dash-card-meta">all-time</span>
+            </div>
+            <div class="dash-card-body">
+              ${topWs.length ? topWs.map(([name, cost], i) => `
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--dc-card-border);font-size:11px">
+                  <span style="width:16px;color:var(--dc-accent);font-weight:700">#${i+1}</span>
+                  <span style="flex:1;color:var(--dc-text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
+                  <span style="color:var(--dc-text);font-weight:700;font-variant-numeric:tabular-nums">${_fmtCost(cost)}</span>
+                </div>`).join('') : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('building', 20)}<div>No workshops logged</div></div>`}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Records Table -->
+      <div class="dash-card">
+        <div class="dash-card-header">
+          <div class="dash-card-title">${_i('file_text', 12)} SERVICE RECORDS</div>
+          <span class="dash-card-meta">${records.length} ${allRecs.length !== records.length ? `of ${allRecs.length}` : ''}</span>
+        </div>
+        <div class="dash-card-body flush">
+          ${records.length ? `<table class="md-fleet-table">
+            <thead><tr>
+              <th style="width:36px">#</th>
+              <th style="width:90px">Date</th>
+              <th style="width:120px">Type</th>
+              <th>Workshop</th>
+              <th>Description</th>
+              <th style="text-align:right;width:90px">Cost €</th>
+              <th style="text-align:right;width:110px">Odometer</th>
+              <th style="width:110px;text-align:center">Status</th>
+            </tr></thead>
+            <tbody>${records.map((r, i) => {
+              const f = r.fields;
+              const statusCls = f['Status']==='Completed' ? 'green' : f['Status']==='Scheduled' ? 'amber' : 'red';
+              return `<tr onclick="_svcOpenForm('${r.id}')">
+                <td style="color:var(--dc-text-dim);font-variant-numeric:tabular-nums">${i+1}</td>
+                <td style="color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${_fmtDate(f['Date'])}</td>
+                <td style="font-weight:500">${escapeHtml(f['Type']||'—')}</td>
+                <td style="color:var(--dc-text-mid)">${escapeHtml(_wsName(f['Workshop']))}</td>
+                <td style="max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dc-text-dim);font-size:11px" title="${escapeHtml(f['Description']||'')}">${escapeHtml((f['Description']||'').substring(0, 100))}</td>
+                <td class="mono" style="text-align:right;font-weight:700;color:var(--dc-text)">${_fmtCost(f['Cost'])}</td>
+                <td style="text-align:right;color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
+                <td style="text-align:center"><span class="dash-aging-pill ${statusCls}">${f['Status']||'—'}</span></td>
+              </tr>`;
+            }).join('')}</tbody>
+          </table>` : `<div style="padding:var(--space-6)"><div class="dash-empty">${_i('file_text', 28)}<div>No records${allRecs.length ? ' matching filters' : ' for this vehicle yet'}</div></div></div>`}
+        </div>
+      </div>
+      `}
+    </div>
     <div id="mf-container"></div>`;
 }
+
+// Export history to CSV
+function _historyExport(vType) {
+  const selected = _historyVehicle[vType];
+  if (!selected) { if (typeof toast === 'function') toast('Select a vehicle first', 'error'); return; }
+  const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
+  const recs = MAINT.history
+    .filter(r => r.fields['Vehicle Plate'] === selected && r.fields['Vehicle Type'] === vTypeLabel)
+    .sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
+  if (!recs.length) { if (typeof toast === 'function') toast('No records to export'); return; }
+  const rows = [['Date','Type','Workshop','Description','Cost','Odometer km','Status']];
+  recs.forEach(r => {
+    const f = r.fields;
+    rows.push([
+      f['Date']||'', f['Type']||'', _wsName(f['Workshop']),
+      f['Description']||'', f['Cost']||0, f['Odometer km']||'', f['Status']||''
+    ]);
+  });
+  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${vType}-history-${selected.replace(/\s+/g,'_')}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  if (typeof toast === 'function') toast('CSV exported');
+}
+
+// Expose globally
+window._historyExport = _historyExport;
+window._historyFilter = _historyFilter;
 
 function _svcOpenFormForVehicle(vType) {
   const selected = _historyVehicle[vType];
