@@ -1331,6 +1331,13 @@ async function submitIntlOrder(recId) {
         _vErrors.push('Delivery date cannot be before loading date');
       }
     }
+    // Crash-test fix: reject negative pallet counts on any stop
+    for (let i = 1; i <= 10; i++) {
+      const lPal = parseFloat(document.getElementById('pal_l_'+i)?.value);
+      const uPal = parseFloat(document.getElementById('pal_u_'+i)?.value);
+      if (Number.isFinite(lPal) && lPal < 0) { _vErrors.push(`Loading ${i}: pallets cannot be negative`); break; }
+      if (Number.isFinite(uPal) && uPal < 0) { _vErrors.push(`Delivery ${i}: pallets cannot be negative`); break; }
+    }
 
     if (_vErrors.length) {
       showErrorToast(_vErrors.join(' | '), 'warn', 8000);

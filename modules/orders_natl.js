@@ -525,6 +525,13 @@ async function submitNatlOrder(recId) {
         _vErrors.push('Delivery date cannot be before loading date');
       }
     }
+    // Crash-test fix: reject negative pallet counts (previously silently saved)
+    if (fields['Total Pallets'] != null && fields['Total Pallets'] < 0) {
+      _vErrors.push('Pallet count cannot be negative');
+    }
+    if (fields['Pallets'] != null && fields['Pallets'] < 0) {
+      _vErrors.push('Pallet count cannot be negative');
+    }
 
     if (_vErrors.length) {
       showErrorToast(_vErrors.join(' | '), 'warn', 8000);

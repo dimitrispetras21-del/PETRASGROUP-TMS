@@ -40,6 +40,13 @@ async function renderDailyRamp() {
   let _rampFailCount = 0;
   _rampAutoRefresh = setInterval(async () => {
     if (currentPage !== 'daily_ramp') { clearInterval(_rampAutoRefresh); return; }
+    // Crash-test fix: skip refresh if user is actively editing an input/select/textarea.
+    // Previous behavior: auto-refresh wiped in-flight edits (time/client/pallets)
+    // without warning, causing data loss.
+    const activeTag = (document.activeElement?.tagName || '').toLowerCase();
+    if (['input','select','textarea'].includes(activeTag)) {
+      return;  // skip this tick, retry in 2 min
+    }
     try { await _rampLoad(); _rampDraw(); _rampFailCount = 0; }
     catch(e) {
       _rampFailCount++;

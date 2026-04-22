@@ -9,6 +9,7 @@
   // ── State ───────────────────────────────────────────────────
   let _period = 'month';   // week | month | quarter | ytd
   let _timer  = null;
+  let _loadId = 0;  // Crash-test fix: guard against stale async overwrites on rapid period clicks
   const _ic   = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
 
   // ── Entry point ─────────────────────────────────────────────
@@ -80,6 +81,9 @@
 
   // ── Data loader (fetches current + previous period for deltas) ──
   async function _loadAll() {
+    // Crash-test fix: increment _loadId at start; discard response if user
+    // switched period mid-fetch (prevents stale data overwrite on rapid clicks).
+    const myLoadId = ++_loadId;
     const { start, end } = _getPeriodRange(_period);
     const { start: prevStart, end: prevEnd } = _getPeriodRange(_period, -1);
     const s = _iso(start), e = _iso(end);
@@ -101,6 +105,9 @@
         atGet(TABLES.ORDERS, `AND(IS_BEFORE({Delivery DateTime},'${plus48}'),{Status}!='Delivered',{Status}!='Cancelled',{Status}!='')`),
         atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime},'${sparkS}')`),
       ]);
+
+      // Discard stale load: user switched period before this one completed.
+      if (myLoadId !== _loadId) return;
 
       const deliveredOrders = allOrders.filter(r => r.fields['Status'] === 'Delivered');
       const prevDelivered   = prevOrders.filter(r => r.fields['Status'] === 'Delivered');
@@ -561,17 +568,28 @@
 
   window._ceoSetRevTarget = function() {
     const current = _getRevTarget();
-    const raw = prompt('Μηνιαίος Στόχος Εσόδων (€):', current || '');
+    const raw = prompt('Μηνιαίος Στόχος Εσόδων (€) — π.χ. 50000 (όχι "50k"):', current || '');
     if (raw === null) return;
-    const v = parseFloat(raw.replace(/[^0-9.]/g, ''));
-    if (!isNaN(v) && v > 0) {
+    // Crash-test fix: user input "50k€" previously stripped to "50" (wrong × 1000).
+    // Now we detect suffixes and warn instead of silently misinterpreting.
+    const trimmed = raw.trim();
+    if (/[kκ]/i.test(trimmed) || /[mμ]/i.test(trimmed)) {
+      if (typeof toast === 'function') toast('Γράψε τον αριθμό χωρίς "k"/"m" (π.χ. 50000)', 'warn');
+      return;
+    }
+    const v = parseFloat(trimmed.replace(/[^0-9.]/g, ''));
+    if (!isNaN(v) && v > 0 && v < 100000000) {  // cap at €100M sanity
       localStorage.setItem('ceo_rev_target', v);
       _loadAll();
+    } else if (!isNaN(v) && v >= 100000000) {
+      if (typeof toast === 'function') toast('Στόχος πολύ υψηλός — επιβεβαίωσε', 'warn');
     }
   };
 
   window._ceoSaveAnxiety = function() {
-    const v = parseInt(document.getElementById('anxiety-input').value, 10) || 0;
+    // Crash-test fix: clamp to 0..99 range (HTML max="99" is hint only, not enforced).
+    const raw = parseInt(document.getElementById('anxiety-input').value, 10);
+    const v = Math.max(0, Math.min(99, isNaN(raw) ? 0 : raw));
     const wk = _getWeekNum(new Date());
     const yr = new Date().getFullYear();
     localStorage.setItem(`ceo_anxiety_${yr}_W${wk}`, v);

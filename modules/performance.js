@@ -665,28 +665,45 @@ function _perfDraw() {
 
 /* ── GOALS MANAGEMENT ─────────────────────────────────────── */
 function _perfGoalsKey() {
-  return `perf_goals_${user?.name?.replace(/\s/g,'_')||'default'}`;
+  // Crash-test fix: sanitize all non-alphanumeric chars (was only spaces).
+  // Prevents localStorage key collisions for names with "/", "!", "." etc.
+  return `perf_goals_${(user?.name || 'default').replace(/[^a-zA-Z0-9]/g, '_')}`;
 }
 function _perfGetGoals() {
-  return JSON.parse(localStorage.getItem(_perfGoalsKey()) || '[]');
+  try { return JSON.parse(localStorage.getItem(_perfGoalsKey()) || '[]'); }
+  catch { return []; }
 }
 function _perfSaveGoals(goals) {
-  localStorage.setItem(_perfGoalsKey(), JSON.stringify(goals));
+  try { localStorage.setItem(_perfGoalsKey(), JSON.stringify(goals)); }
+  catch (e) {
+    if (typeof logError === 'function') logError(e, 'perf goals save (quota?)');
+    if (typeof toast === 'function') toast('Error saving goal — storage full?', 'error');
+  }
 }
 function _perfAddGoal() {
   const input = document.getElementById('perf-goal-input');
   if (!input || !input.value.trim()) return;
   const goals = _perfGetGoals();
-  goals.push({ text: input.value.trim(), done: false, created: localToday() });
+  // Crash-test fix: cap goals at 50 to prevent unbounded localStorage growth.
+  if (goals.length >= 50) {
+    if (typeof toast === 'function') toast('Max 50 goals — delete some first', 'warn');
+    return;
+  }
+  goals.push({ text: input.value.trim().slice(0, 200), done: false, created: localToday() });
   _perfSaveGoals(goals);
   renderPerformance();
 }
 function _perfToggleGoal(i) {
   const goals = _perfGetGoals();
-  if (goals[i]) { goals[i].done = !goals[i].done; _perfSaveGoals(goals); }
+  // Crash-test fix: bounds check (splice on invalid index silently does nothing, but
+  // we want to detect + warn on bad input rather than silent no-op).
+  if (!Number.isInteger(i) || i < 0 || i >= goals.length) return;
+  goals[i].done = !goals[i].done;
+  _perfSaveGoals(goals);
 }
 function _perfRemoveGoal(i) {
   const goals = _perfGetGoals();
+  if (!Number.isInteger(i) || i < 0 || i >= goals.length) return;
   goals.splice(i, 1);
   _perfSaveGoals(goals);
   renderPerformance();

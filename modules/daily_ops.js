@@ -396,7 +396,18 @@ function _opsRow(rec,num,type,isToday) {
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
+// Crash-test fix: per-checkbox debounce lock to prevent out-of-order writes
+// when user rapid-clicks (e.g., 5 toggles in 1 sec). Without this, parallel
+// atPatch calls could resolve in wrong order, leaving UI state desynced from DB.
+const _opsTogLock = new Map();
 async function _opsTog(id,fld,v){
+  const lockKey = `${id}:${fld}`;
+  if (_opsTogLock.get(lockKey)) {
+    // Already a write in flight — queue the latest value, coalesce
+    _opsTogLock.set(lockKey, { queued: v });
+    return;
+  }
+  _opsTogLock.set(lockKey, true);
   try{
     await atSafePatch(TABLES.ORDERS,id,{[fld]:v});
     const r=OPS.intl.find(x=>x.id===id);
@@ -430,6 +441,15 @@ async function _opsTog(id,fld,v){
     }
     _opsDraw();
   }catch(e){toast('Error','danger');}
+  finally {
+    // Drain any queued value that arrived during the write
+    const entry = _opsTogLock.get(lockKey);
+    _opsTogLock.delete(lockKey);
+    if (entry && typeof entry === 'object' && 'queued' in entry && entry.queued !== v) {
+      // Re-run with the latest queued value
+      _opsTog(id, fld, entry.queued);
+    }
+  }
 }
 async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 // Single Status field — unified lifecycle (Pending/Assigned/In Transit/Delivered/Invoiced/Cancelled)
