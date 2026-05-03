@@ -138,7 +138,8 @@ function _renderIntlLayout(c) {
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Scan</button>
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">${_i('plus')} New Order</button>` : ''}
-        <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('file_text')} Export CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('download')} CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Print</button>
       </div>
     </div>
     <div class="entity-layout">
@@ -1890,6 +1891,79 @@ function _intlExportCSV() {
   toast('CSV exported');
 }
 
+// Print-friendly view of the currently filtered orders.
+// Opens a new tab with a clean A4 layout — user can save as PDF via browser print dialog.
+function _intlPrint() {
+  const recs = INTL_ORDERS.filtered || [];
+  if (!recs.length) { toast('No records to print', 'error'); return; }
+  const today = localToday();
+  const rowsHTML = recs.map(r => {
+    const f = r.fields;
+    const dirCls = (f['Direction']||'').toLowerCase() === 'export' ? 'dir-exp' : 'dir-imp';
+    const status = f['Status'] || 'Pending';
+    const stCls = ['Delivered','Invoiced'].includes(status) ? 'st-ok'
+                : status === 'In Transit' ? 'st-mid'
+                : status === 'Cancelled' ? 'st-bad' : 'st-pending';
+    return `<tr>
+      <td>${f['Order Number']||''}</td>
+      <td>${f['Week Number']||''}</td>
+      <td><span class="dir ${dirCls}">${f['Direction']||''}</span></td>
+      <td>${escapeHtml(_clientName(f)||'')}</td>
+      <td>${escapeHtml(_cleanSummary(f['Loading Summary']))}</td>
+      <td>${escapeHtml(_cleanSummary(f['Delivery Summary']))}</td>
+      <td>${(f['Loading DateTime']||'').substring(0,10)}</td>
+      <td>${(f['Delivery DateTime']||'').substring(0,10)}</td>
+      <td class="r">${f['Total Pallets']||0}</td>
+      <td><span class="st ${stCls}">${status}</span></td>
+      <td class="r">${f['Price'] ? '€'+Number(f['Price']).toLocaleString() : '—'}</td>
+    </tr>`;
+  }).join('');
+  const html = `<!DOCTYPE html><html><head>
+    <title>International Orders — ${today}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:'DM Sans',sans-serif;color:#0F172A;padding:20px;font-size:11px}
+      h1{font-family:'Syne',sans-serif;font-size:22px;color:#0B1929;margin-bottom:4px}
+      .sub{color:#64748B;font-size:11px;margin-bottom:18px}
+      table{width:100%;border-collapse:collapse;font-size:10px}
+      thead th{background:#0B1929;color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
+      tbody td{padding:6px;border-bottom:1px solid #E2E8F0}
+      .r{text-align:right}
+      .dir{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
+      .dir-exp{background:#DBEAFE;color:#1E40AF}
+      .dir-imp{background:#FEF3C7;color:#92400E}
+      .st{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600}
+      .st-ok{background:#D1FAE5;color:#064E3B}
+      .st-mid{background:#DBEAFE;color:#1E40AF}
+      .st-bad{background:#FEE2E2;color:#7F1D1D}
+      .st-pending{background:#F1F5F9;color:#475569}
+      .footer{margin-top:14px;font-size:9px;color:#64748B;display:flex;justify-content:space-between}
+      @media print { body { padding: 0 } @page { size: A4 landscape; margin: 1cm } }
+    </style>
+  </head><body>
+    <h1>International Orders</h1>
+    <div class="sub">${recs.length} orders · ${today} · Petras Group TMS</div>
+    <table>
+      <thead><tr>
+        <th>Order#</th><th>Week</th><th>Direction</th><th>Client</th>
+        <th>Loading</th><th>Delivery</th><th>Load Date</th><th>Del Date</th>
+        <th class="r">Pallets</th><th>Status</th><th class="r">Price</th>
+      </tr></thead>
+      <tbody>${rowsHTML}</tbody>
+    </table>
+    <div class="footer">
+      <span>Printed ${new Date().toLocaleString('el-GR')}</span>
+      <span>Petras Group · Cold Chain Logistics</span>
+    </div>
+    <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
+  </body></html>`;
+  const w = window.open('', '_blank');
+  if (!w) { toast('Pop-up blocked — allow pop-ups for this site', 'warn'); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 // Expose functions used from onclick/onchange/oninput/onblur handlers
 window.renderOrdersIntl = renderOrdersIntl;
 window.openIntlScan = openIntlScan;
@@ -1903,6 +1977,7 @@ window.intlSearch = intlSearch;
 window.intlFilter = intlFilter;
 window.intlPeriodChange = intlPeriodChange;
 window._intlExportCSV = _intlExportCSV;
+window._intlPrint = _intlPrint;
 window.openPalletUpload = openPalletUpload;
 window.closePalletUpload = closePalletUpload;
 window.submitIntlOrder = submitIntlOrder;

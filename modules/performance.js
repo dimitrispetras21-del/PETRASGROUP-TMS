@@ -5,7 +5,12 @@
 (function() {
 'use strict';
 
-const PERF = { orders: [], natLoads: [], trucks: [], drivers: [], maint: [] };
+const PERF = {
+  orders: [], natLoads: [], trucks: [], drivers: [], maint: [],
+  // Period selector — week offset (0 = current week, -1 = last week, etc).
+  // Default to current week. User can switch via dropdown in header.
+  weekOffset: 0,
+};
 
 // Per-person KPI definitions based on org chart
 const PERF_KPIS_BY_USER = {
@@ -157,9 +162,12 @@ function _perfHaversine(lat1, lon1, lat2, lon2) {
 
 /* ── COMPUTE KPIs ─────────────────────────────────────────── */
 function _perfCompute() {
-  const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+  const curWn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+  // Apply user-selected week offset (0=current, -1=last week, etc).
+  const wn = curWn + (PERF.weekOffset || 0);
   const orders = PERF.orders;
-  const weekOrders = orders.filter(r => r.fields['Week Number'] == wn);
+  // Numeric comparison (Week Number is a formula field returning a number)
+  const weekOrders = orders.filter(r => Number(r.fields['Week Number']) === Number(wn));
   const activeTrucks = PERF.trucks.filter(t => t.fields['Active']).length;
 
   // On-Time %
@@ -435,7 +443,9 @@ function _perfDraw() {
   const role = typeof ROLE !== 'undefined' ? ROLE : 'owner';
   const userName = typeof user !== 'undefined' ? (user.name || 'User') : 'User';
   const uname = typeof user !== 'undefined' ? (user.username || '') : '';
-  const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+  const curWn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
+  // Effective week (current + user offset)
+  const wn = curWn + (PERF.weekOffset || 0);
   const kpiDefs = PERF_KPIS_BY_USER[uname] || PERF_KPIS[role] || PERF_KPIS.owner;
   const vals = _perfCompute();
   const trends = _perfTrends();
@@ -598,12 +608,24 @@ function _perfDraw() {
       <div class="perf-header">
         <div>
           <div class="perf-name">${escapeHtml(userName)}</div>
-          <div class="perf-role">${escapeHtml(roleLabels[uname] || roleLabelsFallback[role] || role)} · Εβδομάδα ${wn}</div>
+          <div class="perf-role">${escapeHtml(roleLabels[uname] || roleLabelsFallback[role] || role)} · Εβδομάδα ${wn}${PERF.weekOffset === 0 ? ' (τρέχουσα)' : PERF.weekOffset === -1 ? ' (περασμένη)' : ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:var(--space-3);flex-wrap:wrap">
-          <div class="perf-live">
+          <!-- Week selector — lets user view past 8 weeks of performance -->
+          <div style="display:flex;align-items:center;gap:6px">
+            <button class="btn btn-ghost btn-sm" onclick="_perfShiftWeek(-1)" title="Προηγούμενη εβδομάδα" style="padding:0 8px">‹</button>
+            <select class="filter-select" onchange="_perfSetWeek(this.value)" style="height:32px;font-size:12px">
+              ${[0,-1,-2,-3,-4,-5,-6,-7].map(off => {
+                const w = curWn + off;
+                const lbl = off === 0 ? `W${w} τρέχουσα` : off === -1 ? `W${w} περασμένη` : `W${w}`;
+                return `<option value="${off}" ${PERF.weekOffset===off?'selected':''}>${lbl}</option>`;
+              }).join('')}
+            </select>
+            <button class="btn btn-ghost btn-sm" onclick="_perfShiftWeek(1)" title="Επόμενη εβδομάδα" style="padding:0 8px" ${PERF.weekOffset >= 0 ? 'disabled' : ''}>›</button>
+          </div>
+          <div class="perf-live" style="${PERF.weekOffset !== 0 ? 'opacity:0.4' : ''}">
             <span class="perf-live-dot"></span>
-            LIVE
+            ${PERF.weekOffset === 0 ? 'LIVE' : 'PAST'}
           </div>
           <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${_i('refresh', 14)} Refresh</button>
           <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${_i('file_text', 14)} Export CSV</button>
@@ -742,12 +764,30 @@ function _perfRemoveGoal(i) {
   renderPerformance();
 }
 
+// Week navigation — re-draws using cached PERF data (no re-fetch needed)
+function _perfSetWeek(offset) {
+  const off = parseInt(offset, 10);
+  if (isNaN(off) || off > 0) return;  // future weeks blocked
+  if (off < -8) return;  // limit to 8 weeks back
+  PERF.weekOffset = off;
+  _perfDraw();
+}
+function _perfShiftWeek(delta) {
+  const next = (PERF.weekOffset || 0) + delta;
+  if (next > 0) return;       // can't go to future
+  if (next < -8) return;      // can't go further than 8 weeks back
+  PERF.weekOffset = next;
+  _perfDraw();
+}
+
 // Expose functions used from onclick handlers
 window.renderPerformance = renderPerformance;
 window._perfRemoveGoal = _perfRemoveGoal;
 window._perfAddGoal = _perfAddGoal;
 window._perfToggleGoal = _perfToggleGoal;
 window._perfExportCSV = _perfExportCSV;
+window._perfSetWeek = _perfSetWeek;
+window._perfShiftWeek = _perfShiftWeek;
 
 function _perfExportCSV() {
   const orders = PERF.orders;
