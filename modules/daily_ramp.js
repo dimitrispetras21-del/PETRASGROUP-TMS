@@ -400,6 +400,7 @@ function _rampDraw() {
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Παραλαβή')">${_i('plus')} Inbound</button>
         <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Φόρτωση')">${_i('plus')} Outbound</button>
+        <button class="btn btn-ghost btn-sm" onclick="_rampExportCSV()">${_i('download')} Export CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_rampPrint()">${_i('file_text')} Print</button>
         <button class="btn btn-secondary btn-sm" onclick="renderDailyRamp()">${_i('refresh')} Refresh</button>
       </div>
@@ -780,6 +781,43 @@ async function _rampSaveNew(type){
   }catch(e){toast('Error: '+e.message,'danger');}
 }
 
+// ── CSV Export — exports the current view (records + stock for the date) ──
+function _rampExportCSV() {
+  try {
+    const rows = [['Type','Time','Status','Client','Goods','Pallets','Temp','Loading Points','Delivery Points','Truck','Driver','Postponed To','Notes']];
+    const records = (RAMP.records || []);
+    records.forEach(r => {
+      const f = r.fields;
+      const time = (f['Time']||'').includes('T') ? f['Time'].split('T')[1].substring(0,5) : (f['Time']||'');
+      rows.push([
+        f['Type']||'',
+        time,
+        f['Status']||'',
+        _rStripMarkers(_rResolveClientStr(f['Supplier/Client']||'')),
+        f['Goods']||'',
+        f['Pallets']||'',
+        f['Temperature']||f['Temperature °C']||'',
+        _rStripMarkers(f['Loading Points']||''),
+        _rStripMarkers(f['Delivery Points']||''),
+        _rTruck(f),
+        _rDriver(f),
+        f['Postponed To']||'',
+        (f['Notes']||'').replace(/STOP:rec[A-Za-z0-9]+/g,'').trim(),
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `ramp_${RAMP.date||localToday()}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast('CSV exported');
+  } catch(e) {
+    console.error('[ramp] export CSV failed:', e);
+    toast('Export failed: '+(e.message||'error'),'danger');
+  }
+}
+
 function _rampPrint() {
   const content = document.getElementById('content').innerHTML;
   const win = window.open('','_blank');
@@ -829,6 +867,7 @@ function _rampFilterBy(k,v){if(!v)delete _rampFilters[k];else _rampFilters[k]=v;
 window.renderDailyRamp = renderDailyRamp;
 window._rampAddNew = _rampAddNew;
 window._rampPrint = _rampPrint;
+window._rampExportCSV = _rampExportCSV;
 window._rampSD = _rampSD;
 window._rampSearch = _rampSearch;
 window._rampFilterBy = _rampFilterBy;

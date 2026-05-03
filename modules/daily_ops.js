@@ -6,7 +6,11 @@
 (function() {
 'use strict';
 
-const OPS = { date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[] };
+const OPS = {
+  date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[],
+  // Filters: search text, direction, status
+  filters: { q:'', direction:'', status:'' },
+};
 
 const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
@@ -89,15 +93,46 @@ function _opsCats() {
   const tmrw=localTomorrow();
   const tgt=OPS.date==='tomorrow'?tmrw:today;
   const c={el:[],ed:[],il:[],id:[]};
+  // Apply user filters: text search, direction, status
+  const q = (OPS.filters?.q||'').trim().toLowerCase();
+  const dirFilter = (OPS.filters?.direction||'').toLowerCase();
+  const statusFilter = OPS.filters?.status||'';
   for (const r of OPS.intl) {
-    const dir=(r.fields['Direction']||'').trim().toLowerCase();
+    const f=r.fields;
+    const dir=(f['Direction']||'').trim().toLowerCase();
     const isImp=dir==='import'||dir==='↓ import';
-    const isL=_DM(r.fields['Loading DateTime'],tgt);
-    const isD=_DM(r.fields['Delivery DateTime'],tgt);
+
+    // Direction filter
+    if (dirFilter === 'import' && !isImp) continue;
+    if (dirFilter === 'export' && isImp) continue;
+
+    // Status filter (exact match)
+    if (statusFilter && (f['Status']||'') !== statusFilter) continue;
+
+    // Text search across client, truck, driver, location summaries
+    if (q) {
+      const clientName = _C(f) || '';
+      const truckName = _T(f) || '';
+      const driverName = _D(f) || '';
+      const loadLoc = _L(_opsStopLoc(r.id, 'Loading')) || f['Loading Points'] || '';
+      const delLoc  = _L(_opsStopLoc(r.id, 'Unloading')) || f['Delivery Points'] || '';
+      const haystack = `${clientName} ${truckName} ${driverName} ${loadLoc} ${delLoc}`.toLowerCase();
+      if (!haystack.includes(q)) continue;
+    }
+
+    const isL=_DM(f['Loading DateTime'],tgt);
+    const isD=_DM(f['Delivery DateTime'],tgt);
     if(isImp){if(isL)c.il.push(r);if(isD)c.id.push(r);}
     else     {if(isL)c.el.push(r);if(isD)c.ed.push(r);}
   }
   return c;
+}
+
+// Update filter and re-draw — bound to onclick/oninput in toolbar
+function _opsSetFilter(field, val) {
+  if (!OPS.filters) OPS.filters = {};
+  OPS.filters[field] = val;
+  _opsDraw();
 }
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
@@ -235,9 +270,28 @@ function _opsDraw() {
         <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Refresh</button>
       </div>
     </div>
-    <div class="ops-toolbar">
+    <div class="ops-toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
       <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">Today</button>
       <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">Tomorrow</button>
+      <input type="text" class="filter-select" placeholder="Search client / truck / driver / location…"
+        value="${OPS.filters?.q||''}"
+        oninput="_opsSetFilter('q', this.value)"
+        style="flex:1;min-width:200px;padding:0 12px;height:36px;border-radius:6px;border:1px solid var(--border);font-size:13px">
+      <select class="filter-select" onchange="_opsSetFilter('direction', this.value)" style="height:36px">
+        <option value="">All Directions</option>
+        <option value="export" ${OPS.filters?.direction==='export'?'selected':''}>Export</option>
+        <option value="import" ${OPS.filters?.direction==='import'?'selected':''}>Import</option>
+      </select>
+      <select class="filter-select" onchange="_opsSetFilter('status', this.value)" style="height:36px">
+        <option value="">All Statuses</option>
+        <option value="Pending"    ${OPS.filters?.status==='Pending'?'selected':''}>Pending</option>
+        <option value="Assigned"   ${OPS.filters?.status==='Assigned'?'selected':''}>Assigned</option>
+        <option value="In Transit" ${OPS.filters?.status==='In Transit'?'selected':''}>In Transit</option>
+        <option value="Delivered"  ${OPS.filters?.status==='Delivered'?'selected':''}>Delivered</option>
+      </select>
+      ${(OPS.filters?.q||OPS.filters?.direction||OPS.filters?.status) ? `
+        <button class="btn btn-ghost btn-sm" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()" style="height:36px">Clear</button>
+      ` : ''}
     </div>
     ${cmdCenterH}
     <div class="ops-kpis">
@@ -532,4 +586,5 @@ window._opsStat = _opsStat;
 window._opsDel = _opsDel;
 window._opsPost = _opsPost;
 window._opsOvAct = _opsOvAct;
+window._opsSetFilter = _opsSetFilter;
 })();

@@ -291,6 +291,7 @@ function _wnPaint() {
           </div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="_wnExportCSV()">${_wnI('download')} Export CSV</button>
           <button class="btn btn-secondary btn-sm" onclick="renderWeeklyNatl()">${_wnI('refresh')} Refresh</button>
         </div>
       </div>
@@ -1118,6 +1119,47 @@ function _wnSplit(rowId) {
 }
 
 /* ── PRINT ───────────────────────────────────────────────────────── */
+// CSV export for the current week — includes both directions
+function _wnExportCSV() {
+  try {
+    const rows = [['Type','Order #','Loading Date','Delivery Date','Loading Points','Delivery Points','Pallets','Truck','Trailer','Driver','Partner','Partner Plates','Partner Rate','Status']];
+    const allOrders = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])];
+    const orderById = {};
+    allOrders.forEach(o => { orderById[o.id] = o; });
+    WNATL.rows.forEach(r => {
+      const ord = orderById[r.orderId];
+      if (!ord) return;
+      const f = ord.fields || {};
+      rows.push([
+        r.type === 'northsouth' ? 'ΚΑΘΟΔΟΣ' : 'ΑΝΟΔΟΣ',
+        f['Order Number'] || ord.id,
+        f['Loading DateTime'] || '',
+        f['Delivery DateTime'] || '',
+        f['Loading Points'] || '',
+        f['Delivery Points'] || '',
+        f['Total Pallets'] || f['Pallets'] || '',
+        r.truckLabel || '',
+        r.trailerLabel || '',
+        r.driverLabel || '',
+        r.partnerLabel || '',
+        r.partnerPlates || '',
+        r.partnerRate || '',
+        r.saved ? 'Assigned' : 'Pending',
+      ]);
+    });
+    const csv = rows.map(r => r.map(c => `"${String(c==null?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `weekly_national_W${WNATL.week}.csv`;
+    a.click(); URL.revokeObjectURL(url);
+    toast('CSV exported');
+  } catch(e) {
+    console.error('[weekly_natl] export CSV failed:', e);
+    toast('Export failed: '+(e.message||'error'),'danger');
+  }
+}
+
 function _wnPrint(rowId, leg) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const orderId = leg==='northsouth' ? row.orderIds[0] : row.matchedId;
@@ -1136,6 +1178,7 @@ window._wnSaveFromPopover = _wnSaveFromPopover;
 window._wnClear = _wnClear;
 window._wnPrint = _wnPrint;
 window._wnPrintSn = _wnPrintSn;
+window._wnExportCSV = _wnExportCSV;
 window._wnUnmatch = _wnUnmatch;
 window._wnCtxClose = _wnCtxClose;
 window._wnCtx = _wnCtx;
