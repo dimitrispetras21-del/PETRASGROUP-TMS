@@ -105,11 +105,14 @@ async function renderPerformance() {
 async function _perfLoad() {
   const [orders, natLoads, trucks, maint] = await Promise.all([
     atGetAll(TABLES.ORDERS, {
+      // Note: 'Loading Points' / 'Delivery Points' removed — they don't exist as
+      // Airtable fields and cause UNKNOWN_FIELD_NAME 422. The fallback below
+      // (_load = ... || f['Loading Points']) silently handles their absence.
       fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
                'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
                'Assigned At','Actual Delivery Date',
-               'Loading Summary','Delivery Summary','Loading Points','Delivery Points']
+               'Loading Summary','Delivery Summary']
     }, true),
     atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver',
