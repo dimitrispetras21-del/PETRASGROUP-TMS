@@ -1829,6 +1829,7 @@ Output schema:
 {
   "client_name": "company that issued the order",
   "client_id":   "Airtable rec id from search_clients tool, or null",
+  "reference":   "transport / order / reference number (e.g. '6100080385', 'PO-3813', 'ZTM-001'). Look for: 'Transport number:', 'Order #:', 'Reference:', 'PO:', 'Reference No.', 'Auftragsnr.', 'Αρ. Παραγγελίας'. Return the numeric or alphanumeric value only (no labels). null if not found.",
   "goods": "comma-separated product descriptions (deduplicated)",
   "gross_weight_kg": number or null,
   "pallets": total pallet count across all loading stops,
@@ -1838,6 +1839,7 @@ Output schema:
   "confidence": "HIGH | MEDIUM | LOW",
   "field_confidence": {
     "client_name": 0.0-1.0,
+    "reference": 0.0-1.0,
     "pallets": 0.0-1.0,
     "loading_stops": 0.0-1.0,
     "delivery_stops": 0.0-1.0,
@@ -1990,6 +1992,7 @@ async function _scanPreview(data) {
         </span>
       </div>
       ${row('Client',   escapeHtml(clientLabel||data.client_name), !!clientId)}
+      ${data.reference ? row('Reference', escapeHtml(String(data.reference)), true) : ''}
       ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
       ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
       ${row('Load Date',  escapeHtml(data.loading_date),  true)}
@@ -2023,6 +2026,7 @@ async function _scanOpenStored() {
 async function _scanOpen(matched, data) {
   const f = {};
   if (matched.clientId) f['Client'] = [matched.clientId];
+  if (data.reference)   f['Reference'] = String(data.reference);
   if (data.goods)       f['Goods']  = data.goods;
   if (data.gross_weight_kg) f['Gross Weight kg'] = data.gross_weight_kg;
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }

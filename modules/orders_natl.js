@@ -1135,7 +1135,8 @@ Return ONLY valid JSON — no markdown, no explanation.
 
 Output schema:
 {
-  "name": "order reference / number from document",
+  "name": "order reference / number from document (e.g. 'NO-2026-001')",
+  "reference": "transport reference / Δελτίο Αποστολής number / order #. Look for: 'Αρ. Δελτίου', 'Α/Α', 'No.', 'Reference', 'Αρ. Παραγγελίας'. Numeric/alphanumeric value only. null if not found.",
   "client_name": "company that issued or paid for the transport",
   "direction": "South→North if delivering northwards (e.g. Athens→Thessaloniki, Patra→Veroia), North→South if going south",
   "type": "Direct | Groupage | Cross-dock",
@@ -1309,6 +1310,7 @@ async function _natlScanPreview(data) {
         <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
       </div>
       ${row('Order Name', escapeHtml(data.name||''), fc.client_name)}
+      ${data.reference ? row('Reference', escapeHtml(String(data.reference)), fc.reference != null ? fc.reference : 0.85) : ''}
       ${row('Client',  escapeHtml(clientLabel||data.client_name), fc.client_name)}
       ${row('Direction', data.direction||'', null)}
       ${row('Type',      data.type||'', null)}
@@ -1337,6 +1339,8 @@ async function _natlScanOpenForm() {
   if (!r) return;
   const f = {};
   if (r.matched.clientId) f['Client'] = [r.matched.clientId];
+  if (r.data.name)        f['Name'] = r.data.name;
+  if (r.data.reference)   f['Reference'] = String(r.data.reference);
   if (r.data.direction)   f['Direction'] = r.data.direction;
   if (r.data.type)        f['Type'] = r.data.type;
   if (r.data.goods)       f['Goods'] = r.data.goods;
