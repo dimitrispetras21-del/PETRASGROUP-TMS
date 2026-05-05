@@ -558,6 +558,32 @@ async function submitNatlOrder(recId) {
       savedNatlId = created.id;
     }
 
+    // ── Active learning: persist scan correction (Phase 3) ──
+    try {
+      if (window._natlScanResult && typeof scanSaveCorrection === 'function') {
+        const r = window._natlScanResult;
+        const corrected = {
+          name: fields['Name'] || '',
+          client_id: (fields['Client']||[])[0] || null,
+          direction: fields['Direction'] || '',
+          type: fields['Type'] || '',
+          pallets: fields['Pallets'] ?? null,
+          loading_date:  fields['Loading DateTime']  || '',
+          delivery_date: fields['Delivery DateTime'] || '',
+          pickup_locations:   (r.matched?.pickups || []).map(s => ({ location_name: s._locLabel || s.location_name, location_id: s._locId || null, city: s.city, pallets: s.pallets })),
+          delivery_locations: (r.matched?.deliveries || []).map(s => ({ location_name: s._locLabel || s.location_name, location_id: s._locId || null, city: s.city })),
+        };
+        scanSaveCorrection(
+          'DELIVERY_NOTE',
+          window._natlScanFile?.name || '',
+          r.data,
+          corrected,
+          (fields['Client']||[])[0] || null
+        );
+        delete window._natlScanResult;
+      }
+    } catch (e) { console.warn('[natl_scan] save correction skipped:', e.message); }
+
     // ── Save ORDER_STOPS for national order ──
     try {
       const _natStops = [];
@@ -1099,6 +1125,10 @@ async function _natlScanExtract() {
       ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
+    // Reference data injection (Phase 2.3)
+    const refData = (typeof scanGetReferenceData === 'function') ? scanGetReferenceData(50, 80) : { clients: [], locations: [] };
+    const refBlock = (typeof scanBuildReferenceBlock === 'function') ? scanBuildReferenceBlock(refData) : '';
+
     const sysPrompt = `You are a logistics document parser for Petras Group's NATIONAL Greek transport operations.
 Extract data from Greek delivery notes (Δελτίο Αποστολής), national transport orders, or domestic CMR variants.
 Return ONLY valid JSON — no markdown, no explanation.
@@ -1142,22 +1172,42 @@ GREEK NATIONAL CONTEXT:
 - Direction "North→South" (ΚΑΘΟΔΟΣ): Veroia/Thessaloniki → Athens/Patra
 - "Groupage" = multiple suppliers consolidated; "Direct" = single supplier
 - field_confidence: 1.0 = clearly read, 0.4 = barely legible
-- Sum pickup pallets must equal total pallets`;
+- Sum pickup pallets must equal total pallets` + refBlock + `
+
+You have access to two tools:
+- search_clients(query)        → look up canonical client name + id
+- search_locations(query, city, country) → look up canonical location name + id
+
+USE THESE TOOLS for the client and every pickup/delivery location.
+Set client_id and location_id fields when tools return a confident match (>0.85).`;
 
     const messages = [];
-    const examples = scanGetTrainingExamples('DELIVERY_NOTE', 3);
+    const examples = (typeof scanGetTrainingExamples === 'function') ? scanGetTrainingExamples('DELIVERY_NOTE', 3) : [];
     examples.forEach(ex => {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
-    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract national order data. JSON only.' }] });
+    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract national order data. Use search_clients and search_locations tools. JSON only when done.' }] });
 
-    const data = await scanCallAnthropic({
-      model: SCAN_MODEL,
-      max_tokens: SCAN_MAX_TOKENS,
-      system: sysPrompt,
-      messages,
-    });
+    // DELIVERY_NOTE → Sonnet (per tier map). Use tool-use loop with fallback.
+    const natlModel = (typeof scanModelForType === 'function') ? scanModelForType('DELIVERY_NOTE') : SCAN_MODEL;
+    let data;
+    try {
+      data = await scanExtractWithTools({
+        model: natlModel,
+        max_tokens: SCAN_MAX_TOKENS,
+        system: sysPrompt,
+        messages,
+      });
+    } catch (toolErr) {
+      console.warn('[natl_scan] tool-use loop failed, falling back:', toolErr.message);
+      data = await scanCallAnthropic({
+        model: natlModel,
+        max_tokens: SCAN_MAX_TOKENS,
+        system: sysPrompt,
+        messages,
+      });
+    }
 
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
     const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
@@ -1175,21 +1225,45 @@ async function _natlScanPreview(data) {
   const btn = document.getElementById('btnNatlScanGo');
   if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
 
-  // Match client
+  // Match client — prefer AI-supplied client_id (from tool use), then fuzzy fallback
   let clientId = '', clientLabel = '';
-  if (data.client_name) {
-    try {
-      const matches = await atGetAll(TABLES.CLIENTS, {
-        filterByFormula: `OR(SEARCH(LOWER("${(data.client_name||'').replace(/"/g,'')}"),LOWER({Company Name})))`,
-        fields: ['Company Name'], maxRecords: 5,
-      }, false);
-      if (matches.length) { clientId = matches[0].id; clientLabel = matches[0].fields['Company Name']; }
-    } catch(e) { console.warn('[natl_scan] client match failed:', e.message); }
+  const allClients = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
+  if (data.client_id) {
+    const direct = allClients.find(c => c.id === data.client_id);
+    if (direct) { clientId = direct.id; clientLabel = direct.fields?.['Company Name'] || ''; }
+  }
+  if (!clientId && data.client_name) {
+    if (typeof scanFuzzyMatch === 'function' && allClients.length) {
+      const list = allClients.map(c => ({ id: c.id, label: c.fields?.['Company Name'] || '' })).filter(c => c.label);
+      const best = scanFuzzyMatch(data.client_name, list, { threshold: 0.6, limit: 1 })[0];
+      if (best) { clientId = best.id; clientLabel = best.label; }
+    } else {
+      try {
+        const matches = await atGetAll(TABLES.CLIENTS, {
+          filterByFormula: `OR(SEARCH(LOWER("${(data.client_name||'').replace(/"/g,'')}"),LOWER({Company Name})))`,
+          fields: ['Company Name'], maxRecords: 5,
+        }, false);
+        if (matches.length) { clientId = matches[0].id; clientLabel = matches[0].fields['Company Name']; }
+      } catch(e) { console.warn('[natl_scan] client match failed:', e.message); }
+    }
   }
 
-  // Match locations using ref data (already loaded)
+  // Match locations — prefer AI-supplied location_id, then fuzzy match using ref data
   const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
+  const locList = allLocs.map(l => ({
+    id: l.id,
+    label: [(l.fields?.['Name']||''), (l.fields?.['City']||''), (l.fields?.['Country']||'')].filter(Boolean).join(' · '),
+  })).filter(l => l.label);
   const _matchLoc = s => {
+    if (s.location_id) {
+      const direct = allLocs.find(l => l.id === s.location_id);
+      if (direct) return direct;
+    }
+    if (typeof scanFuzzyMatch === 'function' && locList.length) {
+      const composite = [s.location_name, s.city_gr, s.city].filter(Boolean).join(' ');
+      const best = scanFuzzyMatch(composite, locList, { threshold: 0.55, limit: 1 })[0];
+      if (best) return allLocs.find(l => l.id === best.id);
+    }
     const nm = (s.location_name || '').toLowerCase();
     const cg = (s.city_gr || '').toLowerCase();
     const ct = (s.city || '').toLowerCase();

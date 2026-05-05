@@ -1423,6 +1423,41 @@ async function submitIntlOrder(recId) {
 
     invalidateCache(TABLES.ORDERS);
 
+    // ── Active learning: persist scan correction (Phase 3) ──
+    // If this submission was prefilled from a scan, save the user-corrected
+    // values as a few-shot example for future scans of the same doc type.
+    try {
+      if (window._scanResult && typeof scanSaveCorrection === 'function') {
+        const r = window._scanResult;
+        const corrected = {
+          client_name: fields['Client'] ? '(matched)' : (r.data?.client_name || ''),
+          client_id: (fields['Client']||[])[0] || null,
+          goods: fields['Goods'] || '',
+          pallets: fields['Total Pallets'] ?? r.data?.pallets ?? null,
+          temperature_c: fields['Temperature °C'] ?? null,
+          direction: fields['Direction'] || '',
+          loading_stops: (r.data?.loading_stops || []).map(s => ({
+            location_name: s.location_name || s._locLabel || '',
+            location_id: s._locId || s.location_id || null,
+            city: s.city, country: s.country, date: s.date, pallets: s.pallets,
+          })),
+          delivery_stops: (r.data?.delivery_stops || []).map(s => ({
+            location_name: s.location_name || s._locLabel || '',
+            location_id: s._locId || s.location_id || null,
+            city: s.city, country: s.country, date: s.date, pallets: s.pallets,
+          })),
+        };
+        scanSaveCorrection(
+          r.data?._docType || 'UNKNOWN',
+          window._scanUploadedFile?.name || '',
+          r.data,
+          corrected,
+          (fields['Client']||[])[0] || null
+        );
+        delete window._scanResult;  // one-shot
+      }
+    } catch (e) { console.warn('[scan] save correction skipped:', e.message); }
+
     // Sync Veroia Switch → NAT_LOADS (direct, no intermediate NAT_ORDERS)
     const savedOrderId = recId || result.id;
 
@@ -1704,17 +1739,28 @@ async function _scanExtract() {
     const model = scanModelForType(docType);
     const modelLabel = scanModelLabel(model);
 
-    // 4. Extraction with type-specialised prompt + few-shot examples
+    // 4. Extraction with type-specialised prompt + few-shot examples + tool use
     setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>',
       `AI αναλύει ${docType.toLowerCase().replace('_',' ')} με ${modelLabel}…`);
     const cb = pre.mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
-    const sysPrompt = _intlBuildSystemPrompt(docType);
+    // Build system prompt with type-specialised rules + reference data injection (Phase 2.3)
+    const refData = scanGetReferenceData(50, 80);
+    const refBlock = scanBuildReferenceBlock(refData);
+    const sysPrompt = _intlBuildSystemPrompt(docType) + refBlock + `
+
+You have access to two tools:
+- search_clients(query)        → look up canonical client name + id
+- search_locations(query, city, country) → look up canonical location name + id
+
+USE THESE TOOLS for every client and every loading/delivery stop.
+Set client_id and location_id fields in the JSON output when tools return a confident match (>0.85).`;
+
     const messages = [];
 
-    // Few-shot examples (last 3 successful extractions of same type)
+    // Few-shot examples (last 3 successful extractions of same type) — Phase 3.2
     const examples = scanGetTrainingExamples(docType, 3);
     examples.forEach(ex => {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
@@ -1722,14 +1768,26 @@ async function _scanExtract() {
     });
 
     // Actual document
-    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract all order data from this document. Output JSON only.' }] });
+    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract all order data from this document. Use search_clients and search_locations tools to find canonical refs. Output JSON only when done.' }] });
 
-    const data = await scanCallAnthropic({
-      model,
-      max_tokens: SCAN_MAX_TOKENS,
-      system: sysPrompt,
-      messages,
-    });
+    // Tool-use extraction loop (Phase 4) — falls back to plain call on errors
+    let data;
+    try {
+      data = await scanExtractWithTools({
+        model,
+        max_tokens: SCAN_MAX_TOKENS,
+        system: sysPrompt,
+        messages,
+      });
+    } catch (toolErr) {
+      console.warn('[scan] tool-use loop failed, falling back to plain extraction:', toolErr.message);
+      data = await scanCallAnthropic({
+        model,
+        max_tokens: SCAN_MAX_TOKENS,
+        system: sysPrompt,
+        messages,
+      });
+    }
 
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
     const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
@@ -1753,6 +1811,7 @@ Return ONLY valid JSON — no markdown, no explanation.
 Output schema:
 {
   "client_name": "company that issued the order",
+  "client_id":   "Airtable rec id from search_clients tool, or null",
   "goods": "comma-separated product descriptions (deduplicated)",
   "gross_weight_kg": number or null,
   "pallets": total pallet count across all loading stops,
@@ -1770,6 +1829,7 @@ Output schema:
   "notes": "special instructions, trailer requirements",
   "loading_stops": [{
     "location_name": "supplier/warehouse name",
+    "location_id":   "Airtable rec id from search_locations tool, or null",
     "city": "city in Latin script",
     "city_gr": "city in Greek if Greek",
     "country": "country",
@@ -1778,6 +1838,7 @@ Output schema:
   }],
   "delivery_stops": [{
     "location_name": "consignee name",
+    "location_id":   "Airtable rec id from search_locations tool, or null",
     "city": "city in Latin",
     "city_gr": "Greek if applicable",
     "country": "country",
@@ -1828,16 +1889,38 @@ async function _scanPreview(data) {
   const btn = document.getElementById('btnScanGo');
   if (btn) { btn.disabled=false; btn.innerHTML='🤖 &nbsp;Extract & Fill Form'; }
 
-  // Try to match client
-  let clientId='', clientLabel='';
-  if (data.client_name) {
-    const r = await _searchClients(data.client_name);
-    if (r.length) { clientId=r[0].id; clientLabel=r[0].label; }
+  // Try to match client — prefer AI-supplied client_id (from tool use), then fuzzy fallback
+  let clientId = '', clientLabel = '';
+  if (data.client_id && typeof getRefClients === 'function') {
+    const rec = (getRefClients() || []).find(c => c.id === data.client_id);
+    if (rec) { clientId = rec.id; clientLabel = rec.fields?.['Company Name'] || ''; }
   }
-  // Match loading stops — try location_name first, then city fallback
+  if (!clientId && data.client_name) {
+    // Fuzzy fallback (handles model not using tool, or unknown names)
+    if (typeof scanFuzzyMatch === 'function' && typeof getRefClients === 'function') {
+      const list = (getRefClients() || []).map(c => ({ id: c.id, label: c.fields?.['Company Name'] || '' })).filter(c => c.label);
+      const best = scanFuzzyMatch(data.client_name, list, { threshold: 0.6, limit: 1 })[0];
+      if (best) { clientId = best.id; clientLabel = best.label; }
+    } else {
+      const r = await _searchClients(data.client_name);
+      if (r.length) { clientId = r[0].id; clientLabel = r[0].label; }
+    }
+  }
+
+  // Match loading stops — prefer AI-supplied location_id, then fuzzy fallback
   const loadStops = (data.loading_stops||[]);
   if (!loadStops.length && data.loading_city) loadStops.push({location_name:'',city:data.loading_city,country:data.loading_country||'',date:data.loading_date,pallets:data.pallets});
   const _locMatch = s => {
+    if (s.location_id) {
+      const direct = _fhLocationsArr.find(l => l.id === s.location_id);
+      if (direct) return direct;
+    }
+    // Try fuzzy first if available
+    if (typeof scanFuzzyMatch === 'function') {
+      const composite = [s.location_name, s.city_gr, s.city, s.country].filter(Boolean).join(' ');
+      const best = scanFuzzyMatch(composite, _fhLocationsArr, { threshold: 0.55, limit: 1 })[0];
+      if (best) return _fhLocationsArr.find(l => l.id === best.id);
+    }
     const nm = (s.location_name||'').toLowerCase();
     const ct = (s.city||'').toLowerCase();
     const cg = (s.city_gr||'').toLowerCase();

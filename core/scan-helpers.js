@@ -300,39 +300,426 @@ async function scanDetectDocType(base64, mediaType) {
 }
 
 // ─── Few-shot training store ────────────────────────────────────
+// Two-tier persistence:
+//   1. Airtable `_SCAN_TRAINING` table  — shared across all users (canonical)
+//   2. localStorage cache               — fast read, also fallback if table absent
+//
+// Airtable schema expected (create manually if not exists):
+//   - Doc Type (single select: CMR/CARRIER_ORDER/PALLET_SHEET/DELIVERY_NOTE/UNKNOWN)
+//   - Summary (text)
+//   - Client (linked to CLIENTS, optional)
+//   - AI Output (long text — JSON of original AI response)
+//   - Corrected (long text — JSON of user-corrected final values)
+//   - Created (date, auto-populated)
+//
+// If the table doesn't exist, all reads/writes degrade gracefully to localStorage.
+const SCAN_TRAINING_TABLE = 'tbl_SCAN_TRAINING';  // overridable via TABLES.SCAN_TRAINING
+
 /**
- * Save a (input, corrected output) pair for future few-shot prompting.
- * Stored in localStorage; in v2 should move to Airtable _SCAN_TRAINING table.
- *
+ * Save a correction. Writes to localStorage immediately + tries Airtable async.
  * @param {string} docType
- * @param {string} userInputSummary  short hint about file (filename, size)
+ * @param {string} userInputSummary  filename / hint
  * @param {Object} aiOutput          original AI extraction
  * @param {Object} correctedOutput   user-corrected final values
+ * @param {string} [clientId]        optional matched client id for client-aware few-shot
  */
-function scanSaveCorrection(docType, userInputSummary, aiOutput, correctedOutput) {
+function scanSaveCorrection(docType, userInputSummary, aiOutput, correctedOutput, clientId) {
+  // 1. localStorage write — synchronous, never fails
   try {
     const list = JSON.parse(localStorage.getItem(SCAN_TRAINING_KEY) || '[]');
     list.unshift({
       ts: Date.now(),
       docType,
       summary: userInputSummary,
+      clientId: clientId || null,
       ai: aiOutput,
       corrected: correctedOutput,
     });
     if (list.length > SCAN_TRAINING_MAX) list.length = SCAN_TRAINING_MAX;
     localStorage.setItem(SCAN_TRAINING_KEY, JSON.stringify(list));
-  } catch (e) { console.warn('[scan] save correction failed:', e.message); }
+  } catch (e) { console.warn('[scan] save correction (local) failed:', e.message); }
+
+  // 2. Airtable write — async, best-effort
+  const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
+  if (tableId && typeof atCreate === 'function') {
+    const fields = {
+      'Doc Type': docType,
+      'Summary': userInputSummary || '',
+      'AI Output':   JSON.stringify(aiOutput).slice(0, 50000),
+      'Corrected':   JSON.stringify(correctedOutput).slice(0, 50000),
+    };
+    if (clientId) fields['Client'] = [clientId];
+    atCreate(tableId, fields).catch(e => {
+      console.warn('[scan] save correction (airtable) failed:', e.message);
+    });
+  }
 }
 
 /**
- * Get up to N most-recent successful corrections for a given doc type.
- * Used to construct few-shot examples in the extraction prompt.
+ * Get up to N relevant examples for few-shot prompting.
+ * Smart selection prioritises examples from the SAME client when possible.
+ *
+ * @param {string} docType
+ * @param {number} [limit=3]
+ * @param {string} [hintClientId]  if provided, prefer examples from this client
+ * @returns {Array} corrections sorted by relevance
  */
-function scanGetTrainingExamples(docType, limit = 3) {
+function scanGetTrainingExamples(docType, limit = 3, hintClientId = null) {
   try {
-    const list = JSON.parse(localStorage.getItem(SCAN_TRAINING_KEY) || '[]');
-    return list.filter(e => e.docType === docType).slice(0, limit);
+    let list = JSON.parse(localStorage.getItem(SCAN_TRAINING_KEY) || '[]');
+    list = list.filter(e => e.docType === docType);
+    if (!list.length) return [];
+
+    // Client-aware ranking:
+    //   1. Same client: most-recent first (huge boost)
+    //   2. Other clients: most-recent first
+    if (hintClientId) {
+      const sameClient = list.filter(e => e.clientId === hintClientId);
+      const otherClient = list.filter(e => e.clientId !== hintClientId);
+      list = [...sameClient, ...otherClient];
+    }
+    return list.slice(0, limit);
   } catch { return []; }
+}
+
+/**
+ * On app boot, hydrate localStorage cache from the canonical Airtable
+ * _SCAN_TRAINING table. Best-effort — fails silently if table missing.
+ */
+async function scanHydrateTrainingCache() {
+  const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
+  if (!tableId || typeof atGetAll !== 'function') return;
+  try {
+    const recs = await atGetAll(tableId, {
+      maxRecords: SCAN_TRAINING_MAX,
+      sort: [{ field: 'Created', direction: 'desc' }],
+    }, false).catch(() => []);
+    if (!recs?.length) return;
+    const list = recs.map(r => {
+      const f = r.fields || {};
+      let ai = {}, corrected = {};
+      try { ai = JSON.parse(f['AI Output'] || '{}'); } catch {}
+      try { corrected = JSON.parse(f['Corrected'] || '{}'); } catch {}
+      return {
+        ts: new Date(f['Created'] || Date.now()).getTime(),
+        docType: f['Doc Type'] || 'UNKNOWN',
+        summary: f['Summary'] || '',
+        clientId: (f['Client'] || [])[0] || null,
+        ai, corrected,
+      };
+    });
+    localStorage.setItem(SCAN_TRAINING_KEY, JSON.stringify(list));
+    console.log('[scan] hydrated', list.length, 'training examples from Airtable');
+  } catch (e) {
+    console.warn('[scan] hydrate failed:', e.message);
+  }
+}
+
+// ─── Aliases dictionary — common abbreviations & misspellings ──
+// Edit/extend in core/scan-helpers.js. Used both at AI prompt-injection time
+// (to tell the model what to expect) AND client-side fuzzy matching.
+const SCAN_ALIASES = {
+  // Greek cities — common English/Greeklish forms users type
+  'ATH':         'Αθήνα',
+  'ATHENS':      'Αθήνα',
+  'ATHINA':      'Αθήνα',
+  'THESS':       'Θεσσαλονίκη',
+  'THESSALONIKI':'Θεσσαλονίκη',
+  'SKG':         'Θεσσαλονίκη',
+  'SALONIKA':    'Θεσσαλονίκη',
+  'ASPRO':       'Ασπρόπυργος',
+  'ASPROPYRGOS': 'Ασπρόπυργος',
+  'PATRA':       'Πάτρα',
+  'PATRAS':      'Πάτρα',
+  'NAFPAKTOS':   'Ναύπακτος',
+  'AGRINIO':     'Αγρίνιο',
+  'AGRINION':    'Αγρίνιο',
+  'KATERINI':    'Κατερίνη',
+  'KATARINI':    'Κατερίνη',
+  'NAUPLIO':     'Ναύπλιο',
+  'NAFPLIO':     'Ναύπλιο',
+  'VEROIA':      'Βέροια',
+  'VERIA':       'Βέροια',
+  'VELO':        'Βέλο',
+  'IRAKLEIO':    'Ηράκλειο',
+  'HERAKLION':   'Ηράκλειο',
+  // Country codes
+  'DE':          'Germany',
+  'IT':          'Italy',
+  'AT':          'Austria',
+  'SI':          'Slovenia',
+  'HR':          'Croatia',
+  'HU':          'Hungary',
+  'PL':          'Poland',
+  'CZ':          'Czech Republic',
+  'SK':          'Slovakia',
+  'RO':          'Romania',
+  'BG':          'Bulgaria',
+};
+
+/** Apply alias substitution to a string. Returns the canonical form. */
+function scanResolveAlias(s) {
+  if (!s) return s;
+  const upper = String(s).trim().toUpperCase();
+  return SCAN_ALIASES[upper] || s;
+}
+
+// ─── Fuzzy matching (lightweight Levenshtein, no external lib) ──
+function _scanLevenshtein(a, b) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  const m = a.length, n = b.length;
+  let prev = new Array(n + 1);
+  let curr = new Array(n + 1);
+  for (let j = 0; j <= n; j++) prev[j] = j;
+  for (let i = 1; i <= m; i++) {
+    curr[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      curr[j] = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, curr] = [curr, prev];
+  }
+  return prev[n];
+}
+
+/**
+ * Find the best match in `candidates` for `query`.
+ *
+ * Combined scoring:
+ *   - exact (case-insensitive) match → score 1.0
+ *   - substring match → score 0.85 to 0.95 (longer match = higher)
+ *   - Levenshtein normalized (0-1) where 1.0 = identical
+ *   - alias resolution applied first
+ *
+ * @param {string} query
+ * @param {Array<{id, label}>} candidates
+ * @param {Object} [opts] { threshold: 0.6, limit: 1 }
+ * @returns {Array<{id, label, score}>}  best matches sorted by score
+ */
+function scanFuzzyMatch(query, candidates, opts = {}) {
+  const threshold = opts.threshold ?? 0.6;
+  const limit = opts.limit ?? 1;
+  if (!query || !candidates?.length) return [];
+
+  // Apply alias substitution then normalise
+  const resolved = scanResolveAlias(query);
+  const q = String(resolved).trim().toLowerCase();
+  if (!q) return [];
+
+  const results = [];
+  for (const c of candidates) {
+    const label = (c.label || '').toLowerCase();
+    if (!label) continue;
+    let score = 0;
+    if (label === q) {
+      score = 1.0;
+    } else if (label.includes(q) && q.length >= 3) {
+      // Substring match — score weighted by query length / label length
+      score = 0.85 + 0.10 * Math.min(1, q.length / label.length);
+    } else if (q.includes(label) && label.length >= 3) {
+      score = 0.80 + 0.10 * Math.min(1, label.length / q.length);
+    } else {
+      // Token-level: split on spaces and try matching each token
+      const qTokens = q.split(/[\s\-,.]+/).filter(t => t.length >= 2);
+      const lTokens = label.split(/[\s\-,.]+/).filter(t => t.length >= 2);
+      let tokenHits = 0;
+      for (const qt of qTokens) {
+        if (lTokens.some(lt => lt === qt || (qt.length >= 4 && lt.includes(qt)) || (lt.length >= 4 && qt.includes(lt)))) {
+          tokenHits++;
+        }
+      }
+      if (tokenHits > 0) {
+        score = 0.5 + 0.3 * (tokenHits / Math.max(qTokens.length, 1));
+      } else {
+        // Levenshtein distance — only worth computing if labels short & similar length
+        if (Math.abs(label.length - q.length) <= Math.max(3, Math.floor(label.length * 0.3))) {
+          const dist = _scanLevenshtein(q, label);
+          const norm = 1 - dist / Math.max(q.length, label.length);
+          if (norm >= threshold) score = norm * 0.85;  // cap below substring matches
+        }
+      }
+    }
+    if (score >= threshold) {
+      results.push({ id: c.id, label: c.label, score });
+    }
+  }
+  results.sort((a, b) => b.score - a.score);
+  return results.slice(0, limit);
+}
+
+// ─── Reference data injection — adds known clients/locations to prompts ──
+/**
+ * Build a compact reference data block for the system prompt.
+ * Helps the AI return canonical names/IDs that already exist in our base.
+ *
+ * @param {Object} opts { clients: Array, locations: Array, maxClients: 50, maxLocs: 80 }
+ * @returns {string} formatted block ready to append to a system prompt
+ */
+function scanBuildReferenceBlock(opts = {}) {
+  const maxClients = opts.maxClients ?? 50;
+  const maxLocs = opts.maxLocs ?? 80;
+  const clients = (opts.clients || []).slice(0, maxClients);
+  const locations = (opts.locations || []).slice(0, maxLocs);
+  const lines = [];
+  if (clients.length) {
+    lines.push('\nKNOWN CLIENTS (' + clients.length + '):');
+    for (const c of clients) {
+      const name = c.fields?.['Company Name'] || c.label || '';
+      if (name) lines.push('- ' + name + ' [id:' + c.id + ']');
+    }
+  }
+  if (locations.length) {
+    lines.push('\nKNOWN LOCATIONS (' + locations.length + '):');
+    for (const l of locations) {
+      const f = l.fields || {};
+      const parts = [f['Name'] || l.label || '', f['City'] || '', f['Country'] || ''].filter(Boolean);
+      if (parts.length) lines.push('- ' + parts.join(' · ') + ' [id:' + l.id + ']');
+    }
+  }
+  if (lines.length) {
+    lines.push('\nMatching rules:');
+    lines.push('- When extracting a client/location that appears in the lists above, return its EXACT canonical name.');
+    lines.push('- Also return the matched record id in `client_id` / `location_id` fields when confident (>0.85).');
+    lines.push('- For unknown values, return the document text as-is — the system will offer manual selection.');
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Get top-N most-relevant clients/locations from preloaded reference data.
+ * Currently sorted alphabetically; future improvement: sort by recent usage.
+ */
+function scanGetReferenceData(maxClients = 50, maxLocs = 80) {
+  const allClients = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
+  const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
+
+  // Filter to active records only (where the field exists)
+  const activeClients = allClients.filter(c => c.fields?.['Active'] !== false);
+  const activeLocs = allLocs.filter(l => l.fields?.['Active'] !== false);
+
+  // Sort alphabetically by Company Name / Name
+  activeClients.sort((a, b) => (a.fields?.['Company Name'] || '').localeCompare(b.fields?.['Company Name'] || ''));
+  activeLocs.sort((a, b) => (a.fields?.['Name'] || '').localeCompare(b.fields?.['Name'] || ''));
+
+  return {
+    clients: activeClients.slice(0, maxClients),
+    locations: activeLocs.slice(0, maxLocs),
+  };
+}
+
+// ─── Tool use definitions (Phase 4) ─────────────────────────────
+// Lets the model query our reference data DURING extraction instead of being
+// limited to whatever we crammed into the system prompt. The model can ask
+// "find this client" / "find this location" mid-extraction and get fresh
+// candidates with IDs, then return canonical refs in the final JSON.
+//
+// This is more accurate than naive prompt-injection for two reasons:
+//   1. Model can search by partial / phonetic queries (not just substring)
+//   2. We don't blow the context with 200 entries — only return relevant ones
+//
+// Trade-off: each tool call = 1 extra API round-trip. Capped at 6 calls/scan.
+const SCAN_TOOLS = [
+  {
+    name: 'search_clients',
+    description: 'Search the Petras client database for a company name. Use this when extracting "client_name" — pass the exact text from the document. Returns up to 5 matches with their canonical name + record id + match score.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Company name as it appears in the document' },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'search_locations',
+    description: 'Search the Petras locations database for a warehouse / supplier / delivery point. Use this for every loading_stop or delivery_stop. Returns up to 5 matches with name + city + country + record id + match score.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Location name (warehouse / supplier name) from the document' },
+        city:  { type: 'string', description: 'City if known (helps disambiguation)' },
+        country: { type: 'string', description: 'Country code or name if known' },
+      },
+      required: ['query'],
+    },
+  },
+];
+
+/** Execute a tool call from the AI and return the result content. */
+async function _scanRunTool(name, input) {
+  if (name === 'search_clients') {
+    const all = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
+    const list = all
+      .filter(c => c.fields?.['Active'] !== false)
+      .map(c => ({ id: c.id, label: c.fields?.['Company Name'] || '' }))
+      .filter(c => c.label);
+    const matches = scanFuzzyMatch(input.query || '', list, { threshold: 0.5, limit: 5 });
+    return JSON.stringify(matches.length ? matches : { not_found: input.query });
+  }
+  if (name === 'search_locations') {
+    const all = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
+    const list = all.map(l => {
+      const f = l.fields || {};
+      const label = [f['Name'], f['City'], f['Country']].filter(Boolean).join(' · ');
+      return { id: l.id, label, name: f['Name'] || '', city: f['City'] || '', country: f['Country'] || '' };
+    }).filter(l => l.label);
+    // Composite query: name + city + country if provided
+    const composite = [input.query, input.city, input.country].filter(Boolean).join(' ');
+    const matches = scanFuzzyMatch(composite, list, { threshold: 0.5, limit: 5 });
+    // Decorate result with structured fields for AI clarity
+    const decorated = matches.map(m => {
+      const orig = list.find(l => l.id === m.id);
+      return { id: m.id, label: m.label, score: m.score, city: orig?.city || '', country: orig?.country || '' };
+    });
+    return JSON.stringify(decorated.length ? decorated : { not_found: composite });
+  }
+  return JSON.stringify({ error: 'unknown_tool: ' + name });
+}
+
+/**
+ * Drive a multi-turn extraction conversation with tool use.
+ * The AI may call search_clients / search_locations multiple times; we
+ * execute each tool, append the result, and continue until the model
+ * returns a final assistant message (no more tool_use blocks).
+ *
+ * @param {Object} basePayload {model, max_tokens, system, messages}
+ * @returns {Promise<Object>} the final assistant response containing JSON
+ */
+async function scanExtractWithTools(basePayload) {
+  const messages = basePayload.messages.slice();  // mutated locally
+  const MAX_TOOL_LOOPS = 6;
+
+  for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+    const data = await scanCallAnthropic({
+      ...basePayload,
+      messages,
+      tools: SCAN_TOOLS,
+    });
+
+    const toolUses = (data.content || []).filter(c => c.type === 'tool_use');
+    if (!toolUses.length) {
+      // No more tool calls — model has produced final output
+      return data;
+    }
+
+    // Append assistant turn (with tool_use blocks)
+    messages.push({ role: 'assistant', content: data.content });
+
+    // Execute each tool call and append the results
+    const toolResults = [];
+    for (const tu of toolUses) {
+      try {
+        const out = await _scanRunTool(tu.name, tu.input || {});
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: out });
+      } catch (e) {
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: e.message }), is_error: true });
+      }
+    }
+    messages.push({ role: 'user', content: toolResults });
+  }
+  throw new Error('Tool-use loop hit cap of ' + MAX_TOOL_LOOPS + ' — model not converging');
 }
 
 // ─── Confidence helper ──────────────────────────────────────────
@@ -362,4 +749,15 @@ if (typeof window !== 'undefined') {
   window.SCAN_MODEL_HAIKU = SCAN_MODEL_HAIKU;
   window.scanModelForType = scanModelForType;
   window.scanModelLabel = scanModelLabel;
+  // Phase 2: smart matching
+  window.scanResolveAlias = scanResolveAlias;
+  window.scanFuzzyMatch = scanFuzzyMatch;
+  window.scanBuildReferenceBlock = scanBuildReferenceBlock;
+  window.scanGetReferenceData = scanGetReferenceData;
+  window.SCAN_ALIASES = SCAN_ALIASES;
+  // Phase 3: active learning
+  window.scanHydrateTrainingCache = scanHydrateTrainingCache;
+  // Phase 4: tool use
+  window.SCAN_TOOLS = SCAN_TOOLS;
+  window.scanExtractWithTools = scanExtractWithTools;
 }

@@ -46,3 +46,5 @@ function can(section) {
 setTimeout(() => { if (typeof atPreload === 'function') atPreload(); }, 100);
 // Preload normalized reference data (single fetch per table, shared across modules)
 setTimeout(() => { if (typeof preloadReferenceData === 'function') preloadReferenceData(); }, 200);
+// Hydrate scan training cache from Airtable (best-effort, fails silently if table missing)
+setTimeout(() => { if (typeof scanHydrateTrainingCache === 'function') scanHydrateTrainingCache(); }, 1500);

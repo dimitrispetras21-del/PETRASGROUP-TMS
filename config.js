@@ -49,6 +49,11 @@ const TABLES = {
   RAMP_EVENTS:   'tbllHu40WSq4yWg5S',
   PARTNER_ASSIGN:'tblUhgqnmiam5MGNK',
   METRICS_SNAPSHOTS: 'tblakFiR37kf4uQXy',
+  // SCAN_TRAINING: optional. Create the table manually in Airtable with these
+  // fields (Doc Type single-select, Summary text, Client linked to CLIENTS,
+  // AI Output long text, Corrected long text, Created date) and paste its
+  // table id below. Leave blank to use localStorage-only mode.
+  SCAN_TRAINING: '',
 };
 
 // ── Airtable field name constants ──────────────────────────────────────
