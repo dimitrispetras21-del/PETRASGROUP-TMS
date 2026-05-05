@@ -1187,7 +1187,10 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
-    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract national order data. Use search_clients and search_locations tools. JSON only when done.' }] });
+    messages.push({ role: 'user', content: [cb, { type: 'text', text:
+      'Extract national order data. Use search_clients and search_locations tools.\n\n' +
+      'CRITICAL: Final message = ONLY the JSON object. No preamble, no markdown, no commentary. Start with `{` end with `}`.'
+    }] });
 
     // DELIVERY_NOTE → Sonnet (per tier map). Use tool-use loop with fallback.
     const natlModel = (typeof scanModelForType === 'function') ? scanModelForType('DELIVERY_NOTE') : SCAN_MODEL;
@@ -1210,7 +1213,9 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
     }
 
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const parsed = (typeof scanExtractJSON === 'function')
+      ? scanExtractJSON(raw)
+      : JSON.parse(raw.replace(/```json|```/g, '').trim());
     parsed._docType = 'DELIVERY_NOTE';
     await _natlScanPreview(parsed);
   } catch (e) {

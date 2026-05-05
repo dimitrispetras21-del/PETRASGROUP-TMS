@@ -236,7 +236,13 @@ async function scanCallAnthropic(payload, opts = {}) {
       clearTimeout(to);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        const msg = body.error?.message || `API error ${res.status}`;
+        let msg = body.error?.message || `API error ${res.status}`;
+        // Friendlier messages for common errors
+        if (res.status === 429 || msg.includes('rate limit')) {
+          msg = 'Rate limit reached — περιμένετε 60s και ξαναπροσπαθήστε. (Tip: μειώστε scans συγχρόνως)';
+        } else if (res.status === 529) {
+          msg = 'Anthropic API overloaded — προσπαθήστε ξανά σε λίγο.';
+        }
         // Don't retry 4xx (except 429)
         if (res.status >= 400 && res.status < 500 && res.status !== 429) {
           throw new Error(msg);
@@ -684,26 +690,80 @@ async function _scanRunTool(name, input) {
  * execute each tool, append the result, and continue until the model
  * returns a final assistant message (no more tool_use blocks).
  *
+ * After tool calls, we drop the tools array and explicitly ask for JSON-only
+ * output to prevent the model from emitting "Now I have everything..." preamble.
+ *
  * @param {Object} basePayload {model, max_tokens, system, messages}
  * @returns {Promise<Object>} the final assistant response containing JSON
  */
 async function scanExtractWithTools(basePayload) {
-  const messages = basePayload.messages.slice();  // mutated locally
-  const MAX_TOOL_LOOPS = 6;
+  // Rate-limit defence: cache the heavy stuff (image + system prompt) so each
+  // round-trip in the tool loop only pays for new tokens.
+  const cachedSystem = (typeof basePayload.system === 'string')
+    ? [{ type: 'text', text: basePayload.system, cache_control: { type: 'ephemeral' } }]
+    : basePayload.system;
+  // Add cache_control to the FIRST user message containing the image — the AI
+  // will reuse the cached image across tool-use loops within ~5 minutes.
+  const messages = basePayload.messages.map((m, idx) => {
+    if (idx === 0 && Array.isArray(m.content)) {
+      const lastIdx = m.content.length - 1;
+      const newContent = m.content.map((c, i) => {
+        if (i === lastIdx && c.type === 'text') {
+          return { ...c, cache_control: { type: 'ephemeral' } };
+        }
+        return c;
+      });
+      return { ...m, content: newContent };
+    }
+    return m;
+  });
+  const MAX_TOOL_LOOPS = 4;  // reduced from 6 to bound rate-limit exposure
+  let usedTools = false;
 
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
     const data = await scanCallAnthropic({
       ...basePayload,
+      system: cachedSystem,
       messages,
       tools: SCAN_TOOLS,
     });
 
     const toolUses = (data.content || []).filter(c => c.type === 'tool_use');
     if (!toolUses.length) {
-      // No more tool calls — model has produced final output
+      // Model finished. If it used tools at some point, do a final clean-up
+      // call WITHOUT tools, asking for JSON-only output. This prevents the
+      // "Now I have everything..." preamble that breaks JSON.parse.
+      if (usedTools) {
+        const textBlock = (data.content || []).find(c => c.type === 'text');
+        const possibleText = textBlock?.text || '';
+        // If the response is already pure JSON, skip the cleanup call
+        try {
+          scanExtractJSON(possibleText);
+          return data;  // already valid JSON
+        } catch {
+          // Falls through to clean-up call
+        }
+        // Append the assistant's commentary, then ask for JSON-only.
+        // Use Haiku for this clean-up call — it's cheap, fast, and only needs
+        // to reformat existing text. Saves Opus rate-limit budget.
+        messages.push({ role: 'assistant', content: data.content });
+        messages.push({
+          role: 'user',
+          content: [{ type: 'text', text: 'Now output the final extraction as JSON ONLY. No preamble, no commentary, no markdown fences. Start with `{` and end with `}`.' }]
+        });
+        const cleanData = await scanCallAnthropic({
+          ...basePayload,
+          model: SCAN_MODEL_HAIKU,  // override — cheap reformat call
+          system: cachedSystem,
+          messages,
+          // No tools on this call — model can only emit text
+        });
+        return cleanData;
+      }
       return data;
     }
 
+    usedTools = true;
     // Append assistant turn (with tool_use blocks)
     messages.push({ role: 'assistant', content: data.content });
 
@@ -720,6 +780,76 @@ async function scanExtractWithTools(basePayload) {
     messages.push({ role: 'user', content: toolResults });
   }
   throw new Error('Tool-use loop hit cap of ' + MAX_TOOL_LOOPS + ' — model not converging');
+}
+
+// ─── Robust JSON extraction from AI response ────────────────────
+/**
+ * Parse AI text that should contain JSON, but may have:
+ *   - markdown code fences (```json ... ```)
+ *   - conversational preamble ("Here's the data...", "Now I have...", etc)
+ *   - trailing commentary
+ *   - smart quotes / non-standard whitespace
+ *
+ * Strategy:
+ *   1. Strip code fences and trim
+ *   2. Try direct parse
+ *   3. Find first balanced {...} block and parse that
+ *   4. Throw informative error with first 200 chars of input
+ *
+ * @param {string} text  raw text from AI response
+ * @returns {Object} parsed JSON object
+ */
+function scanExtractJSON(text) {
+  if (!text || typeof text !== 'string') {
+    throw new Error('scanExtractJSON: empty or non-string input');
+  }
+  // Step 1: strip fences and normalise whitespace
+  let cleaned = text
+    .replace(/```json/gi, '')
+    .replace(/```/g, '')
+    .replace(/“|”/g, '"')   // smart quotes → straight
+    .replace(/‘|’/g, "'")
+    .trim();
+
+  // Step 2: direct parse
+  try { return JSON.parse(cleaned); } catch {}
+
+  // Step 3: find first balanced {...}
+  const start = cleaned.indexOf('{');
+  if (start < 0) {
+    throw new Error('No JSON object found in AI response. Raw: ' + cleaned.slice(0, 200));
+  }
+  // Walk forward tracking depth, ignoring chars inside strings
+  let depth = 0;
+  let inStr = false;
+  let escape = false;
+  let end = -1;
+  for (let i = start; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+    if (escape) { escape = false; continue; }
+    if (inStr) {
+      if (ch === '\\') escape = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end < 0) {
+    // Fallback: just take from { to last }
+    end = cleaned.lastIndexOf('}');
+    if (end < start) throw new Error('Unbalanced JSON in AI response');
+  }
+  const jsonStr = cleaned.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    throw new Error('JSON parse failed: ' + e.message + ' — first 300 chars: ' + jsonStr.slice(0, 300));
+  }
 }
 
 // ─── Confidence helper ──────────────────────────────────────────
@@ -742,6 +872,7 @@ if (typeof window !== 'undefined') {
   window.scanSaveCorrection = scanSaveCorrection;
   window.scanGetTrainingExamples = scanGetTrainingExamples;
   window.scanConfidenceClass = scanConfidenceClass;
+  window.scanExtractJSON = scanExtractJSON;
   window.SCAN_MODEL = SCAN_MODEL;
   window.SCAN_MAX_TOKENS = SCAN_MAX_TOKENS;
   window.SCAN_MODEL_OPUS = SCAN_MODEL_OPUS;

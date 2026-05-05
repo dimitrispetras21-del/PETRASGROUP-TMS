@@ -382,7 +382,9 @@ KEY RULES:
         })();
 
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const parsed = (typeof scanExtractJSON === 'function')
+      ? scanExtractJSON(raw)
+      : JSON.parse(raw.replace(/```json|```/g, '').trim());
     parsed._docType = 'PALLET_SHEET';
 
     status.style.display = 'none';

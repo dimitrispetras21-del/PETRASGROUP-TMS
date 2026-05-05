@@ -1767,8 +1767,15 @@ Set client_id and location_id fields in the JSON output when tools return a conf
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
 
-    // Actual document
-    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract all order data from this document. Use search_clients and search_locations tools to find canonical refs. Output JSON only when done.' }] });
+    // Actual document — explicit JSON-only instruction prevents conversational preamble
+    messages.push({ role: 'user', content: [cb, { type: 'text', text:
+      'Extract all order data from this document. Use search_clients and search_locations tools to find canonical refs.\n\n' +
+      'CRITICAL: When you have all the data, your FINAL message must contain ONLY the JSON object.\n' +
+      '- No "Here\'s the data" or "Now I have..." preamble\n' +
+      '- No markdown code fences\n' +
+      '- No commentary after the JSON\n' +
+      '- Start with `{` and end with `}` — nothing else.'
+    }] });
 
     // Tool-use extraction loop (Phase 4) — falls back to plain call on errors
     let data;
@@ -1789,8 +1796,11 @@ Set client_id and location_id fields in the JSON output when tools return a conf
       });
     }
 
+    // Extract JSON robustly — handles tool-use preamble like "Now I have..."
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
-    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    const parsed = (typeof scanExtractJSON === 'function')
+      ? scanExtractJSON(raw)
+      : JSON.parse(raw.replace(/```json|```/g, '').trim());
     parsed._docType = docType;  // remember for save-correction later
     parsed._model = model;      // which model handled this scan
     parsed._modelLabel = modelLabel;
