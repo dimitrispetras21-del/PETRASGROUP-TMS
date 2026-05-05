@@ -553,7 +553,7 @@ function openIntlEdit(recId) {
   if (rec) _openModal(recId, rec.fields);
 }
 
-async function _openModal(recId, f, _clientLabelOverride) {
+async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   const isEdit = !!recId;
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
@@ -563,8 +563,15 @@ async function _openModal(recId, f, _clientLabelOverride) {
   if (isEdit) {
     try { _orderStops = await stopsLoad(recId, F.STOP_PARENT_ORDER); } catch(e) { console.warn('stopsLoad:', e); }
   }
-  const _loadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
-  const _unloadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+  let _loadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+  let _unloadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+
+  // Scan prefill: if creating a new order from a scan, use the scan-derived stops
+  // (synthesized into the same shape as ORDER_STOPS records).
+  if (!isEdit && _scanPrefill) {
+    if (_scanPrefill.loadStops?.length)   _loadStops   = _scanPrefill.loadStops;
+    if (_scanPrefill.unloadStops?.length) _unloadStops = _scanPrefill.unloadStops;
+  }
 
   // Count filled stops from ORDER_STOPS
   let cntL = Math.max(1, _loadStops.length);
@@ -2021,33 +2028,47 @@ async function _scanOpen(matched, data) {
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;
   if (data.price_eur)   f['Price'] = data.price_eur;
+  // Default Type for international orders (if AI didn't say otherwise)
+  if (!f['Type']) f['Type'] = 'International';
 
-  // Loading stops
+  // Build synthetic stops in ORDER_STOPS shape so the form's stop renderer
+  // picks them up via the new _scanPrefill path in _openModal.
   const ls = matched.loadStops || [];
-  ls.forEach((s,i) => {
-    const n = i+1;
-    if (s._locId) f[n===1?'Loading Location 1':`Loading Location ${n}`] = [s._locId];
-    if (s.pallets!=null) f[n===1?'Loading Pallets 1':`Loading Pallets ${n}`] = s.pallets;
-    if (s.date) f[n===1?'Loading DateTime':`Loading DateTime ${n}`] = s.date;
-  });
-  // First loading date fallback
-  if (!ls.length && data.loading_date) f['Loading DateTime'] = data.loading_date;
-
-  // Delivery stops
   const ds = matched.delStops || [];
-  ds.forEach((s,i) => {
-    const n = i+1;
-    if (s._locId) f[n===1?'Unloading Location 1':`Unloading Location ${n}`] = [s._locId];
-    if (s.date) f[n===1?'Delivery DateTime':`Unloading DateTime ${n}`] = s.date;
+  const loadStops = ls.map((s, i) => ({
+    fields: {
+      [F.STOP_NUMBER]:   i + 1,
+      [F.STOP_TYPE]:     'Loading',
+      [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
+      [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : 0,
+      [F.STOP_DATETIME]: s.date || data.loading_date || '',
+    },
+  }));
+  const unloadStops = ds.map((s, i) => {
+    // For deliveries, sum up loading pallets if no per-stop pallets specified
+    const totalLoadingPallets = ls.reduce((sum, x) => sum + (x.pallets || 0), 0) || data.pallets || 0;
+    return {
+      fields: {
+        [F.STOP_NUMBER]:   i + 1,
+        [F.STOP_TYPE]:     'Unloading',
+        [F.STOP_LOCATION]: s._locId ? [s._locId] : null,
+        [F.STOP_PALLETS]:  s.pallets != null ? s.pallets : (ds.length === 1 ? totalLoadingPallets : 0),
+        [F.STOP_DATETIME]: s.date || data.delivery_date || '',
+      },
+    };
   });
+
+  // Date fallbacks for legacy form fields (in case scan returned no stops)
+  if (!ls.length && data.loading_date)  f['Loading DateTime']  = data.loading_date;
   if (!ds.length && data.delivery_date) f['Delivery DateTime'] = data.delivery_date;
 
-  // Register matched locations in _locationsMap so _locSelect can show label
-  const ls2 = matched.loadStops||[], ds2 = matched.delStops||[];
-  [...ls2,...ds2].forEach(s=>{ if(s._locId && s._locLabel) _fhLocationsMap[s._locId]=s._locLabel; });
+  // Register matched locations + client in maps so autocomplete shows the label
+  [...ls, ...ds].forEach(s => { if (s._locId && s._locLabel) _fhLocationsMap[s._locId] = s._locLabel; });
   if (matched.clientId && matched.clientLabel) _fhClientsMap[matched.clientId] = matched.clientLabel;
+
   closeModal();
-  await _openModal(null, f, matched.clientLabel);
+  // Pass scan-derived stops via 4th arg so _openModal can render them
+  await _openModal(null, f, matched.clientLabel, { loadStops, unloadStops });
 }
 
 function _intlExportCSV() {
