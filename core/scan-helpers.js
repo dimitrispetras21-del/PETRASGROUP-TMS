@@ -9,7 +9,44 @@
 // ═══════════════════════════════════════════════════════════════
 'use strict';
 
-const SCAN_MODEL = 'claude-sonnet-4-20250514';   // unified across all scans
+// ─── Tiered model selection ─────────────────────────────────────
+// Different document types get different models — quality where it matters,
+// cost-efficient where it doesn't.
+//
+//   Opus 4.6   → multi-stop / complex / unknown (max accuracy, ~$0.12/scan)
+//   Sonnet 4   → simple Greek delivery notes + pallet sheets (~$0.024/scan)
+//   Haiku 4    → only doc-type classification (~$0.005/scan)
+//
+// For typical Petras volume (~100 scans/month), tiered cost ≈ $6/mo
+// vs $12 Opus-only or $2.40 Sonnet-only — small price for noticeable
+// accuracy gain on the docs that actually matter (carrier orders, CMRs).
+const SCAN_MODEL_OPUS   = 'claude-opus-4-6';
+const SCAN_MODEL_SONNET = 'claude-sonnet-4-20250514';
+const SCAN_MODEL_HAIKU  = 'claude-haiku-4-20250514';
+
+const SCAN_MODELS_BY_TYPE = {
+  CARRIER_ORDER: SCAN_MODEL_OPUS,    // multi-stop, complex tables
+  CMR:           SCAN_MODEL_OPUS,    // 24 fields, small text
+  DELIVERY_NOTE: SCAN_MODEL_SONNET,  // simple Greek format
+  PALLET_SHEET:  SCAN_MODEL_SONNET,  // numerical, low complexity
+  UNKNOWN:       SCAN_MODEL_OPUS,    // default to quality
+};
+
+/** Returns the right model for a given document type. */
+function scanModelForType(docType) {
+  return SCAN_MODELS_BY_TYPE[docType] || SCAN_MODEL_OPUS;
+}
+
+/** Friendly label for UI display. */
+function scanModelLabel(model) {
+  if (model === SCAN_MODEL_OPUS)   return 'Opus (high accuracy)';
+  if (model === SCAN_MODEL_SONNET) return 'Sonnet (balanced)';
+  if (model === SCAN_MODEL_HAIKU)  return 'Haiku (fast)';
+  return model;
+}
+
+// Backwards-compat alias for code that still references SCAN_MODEL
+const SCAN_MODEL = SCAN_MODEL_SONNET;
 const SCAN_MAX_TOKENS = 4000;                     // bumped from 1000 (was cutting multi-stop)
 const SCAN_TIMEOUT_MS = 60000;                    // 60s per call
 const SCAN_MAX_RETRIES = 2;                       // total 3 attempts
@@ -236,7 +273,7 @@ async function scanDetectDocType(base64, mediaType) {
     : { type: 'image',    source: { type: 'base64', media_type: mediaType, data: base64 } };
   try {
     const data = await scanCallAnthropic({
-      model: 'claude-haiku-4-20250514',  // cheapest model for classification
+      model: SCAN_MODEL_HAIKU,           // cheapest model — classification is simple
       max_tokens: 20,
       messages: [{
         role: 'user',
@@ -320,4 +357,9 @@ if (typeof window !== 'undefined') {
   window.scanConfidenceClass = scanConfidenceClass;
   window.SCAN_MODEL = SCAN_MODEL;
   window.SCAN_MAX_TOKENS = SCAN_MAX_TOKENS;
+  window.SCAN_MODEL_OPUS = SCAN_MODEL_OPUS;
+  window.SCAN_MODEL_SONNET = SCAN_MODEL_SONNET;
+  window.SCAN_MODEL_HAIKU = SCAN_MODEL_HAIKU;
+  window.scanModelForType = scanModelForType;
+  window.scanModelLabel = scanModelLabel;
 }

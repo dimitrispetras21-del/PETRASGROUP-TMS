@@ -354,9 +354,14 @@ KEY RULES:
 - Signatures: any visible mark in signature box → true
 - Numbers handwritten with cross-outs: lower confidence to 0.6`;
 
+    // PALLET_SHEET → Sonnet tier (numerical data, low complexity, ~$0.024/scan).
+    const palletModel = (typeof scanModelForType === 'function')
+      ? scanModelForType('PALLET_SHEET')
+      : (typeof SCAN_MODEL !== 'undefined' ? SCAN_MODEL : 'claude-sonnet-4-20250514');
+
     const data = (typeof scanCallAnthropic === 'function')
       ? await scanCallAnthropic({
-          model: (typeof SCAN_MODEL !== 'undefined' ? SCAN_MODEL : 'claude-sonnet-4-20250514'),
+          model: palletModel,
           max_tokens: (typeof SCAN_MAX_TOKENS !== 'undefined' ? SCAN_MAX_TOKENS : 4000),
           system: sysPrompt,
           messages,

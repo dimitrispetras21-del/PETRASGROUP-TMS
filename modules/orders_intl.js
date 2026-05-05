@@ -1700,8 +1700,13 @@ async function _scanExtract() {
     setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Αναγνώριση τύπου εγγράφου…');
     const docType = await scanDetectDocType(pre.base64, pre.mediaType);
 
-    // 3. Extraction with type-specialised prompt + few-shot examples
-    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', `AI αναλύει το ${docType.toLowerCase().replace('_',' ')}…`);
+    // 3. Tiered model selection: Opus για complex docs, Sonnet για simple
+    const model = scanModelForType(docType);
+    const modelLabel = scanModelLabel(model);
+
+    // 4. Extraction with type-specialised prompt + few-shot examples
+    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>',
+      `AI αναλύει ${docType.toLowerCase().replace('_',' ')} με ${modelLabel}…`);
     const cb = pre.mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
@@ -1720,7 +1725,7 @@ async function _scanExtract() {
     messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract all order data from this document. Output JSON only.' }] });
 
     const data = await scanCallAnthropic({
-      model: SCAN_MODEL,
+      model,
       max_tokens: SCAN_MAX_TOKENS,
       system: sysPrompt,
       messages,
@@ -1729,6 +1734,8 @@ async function _scanExtract() {
     const raw = data.content.find(c => c.type === 'text')?.text || '{}';
     const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
     parsed._docType = docType;  // remember for save-correction later
+    parsed._model = model;      // which model handled this scan
+    parsed._modelLabel = modelLabel;
     await _scanPreview(parsed);
 
   } catch (e) {
@@ -1873,9 +1880,14 @@ async function _scanPreview(data) {
   st.style.display='block';
   st.innerHTML = `
     <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:4px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span class="detail-section-title" style="margin:0">AI Extraction</span>
-        <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:8px;flex-wrap:wrap">
+        <span class="detail-section-title" style="margin:0">AI Extraction
+          ${data._docType && data._docType !== 'UNKNOWN' ? `<span class="scan-doc-type-badge">${data._docType.replace('_',' ')}</span>` : ''}
+        </span>
+        <span style="display:flex;align-items:center;gap:8px">
+          ${data._modelLabel ? `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(data._modelLabel)}</span>` : ''}
+          <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
+        </span>
       </div>
       ${row('Client',   escapeHtml(clientLabel||data.client_name), !!clientId)}
       ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
