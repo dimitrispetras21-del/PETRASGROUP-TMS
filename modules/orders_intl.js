@@ -1604,8 +1604,14 @@ function openIntlScan() {
       <div style="font-size:30px;margin-bottom:8px;opacity:0.35">📎</div>
       <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Drag & drop ή κλικ για upload</div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
+        onclick="event.stopPropagation();document.getElementById('scanCamera').click()">
+        📷 &nbsp;Λήψη με κάμερα
+      </button>
     </div>
     <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none"
+      onchange="_scanHandleFile(this.files[0])">
+    <input type="file" id="scanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_scanHandleFile(this.files[0])">
 
     <div id="scanStatus" style="display:none;margin-top:14px"></div>`,
@@ -1622,8 +1628,21 @@ function _scanDrop(e) {
   _scanHandleFile(e.dataTransfer.files[0]);
 }
 
-function _scanHandleFile(file) {
+async function _scanHandleFile(file) {
   if (!file) return;
+
+  // Pre-flight validation
+  const MAX_SIZE = 10 * 1024 * 1024;  // 10MB
+  if (file.size > MAX_SIZE) {
+    toast(`File too large (${(file.size/1024/1024).toFixed(1)}MB) — max 10MB`, 'error');
+    return;
+  }
+  const okType = file.type.startsWith('image/') || file.type === 'application/pdf';
+  if (!okType) {
+    toast('Only JPG / PNG / PDF supported', 'error');
+    return;
+  }
+
   window._scanUploadedFile = file;
   const btn = document.getElementById('btnScanGo');
   if (btn) btn.disabled = false;
@@ -1634,18 +1653,24 @@ function _scanHandleFile(file) {
     <div style="font-size:13px;font-weight:500;color:var(--success)">${escapeHtml(file.name)}</div>
     <div style="font-size:12px;color:var(--text-dim);margin-top:3px">${(file.size/1024).toFixed(0)} KB — κλικ για αλλαγή</div>`;
 
-  if (file.type.startsWith('image/')) {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const st = document.getElementById('scanStatus');
-      if (st) {
-        st.style.display = 'block';
-        st.innerHTML = `<img src="${e.target.result}"
-          style="max-width:100%;max-height:180px;border-radius:8px;
-                 border:1px solid var(--border);display:block;margin:0 auto">`;
-      }
-    };
-    reader.readAsDataURL(file);
+  // Show preview — image inline, PDF first page via pdf.js
+  const st = document.getElementById('scanStatus');
+  if (!st) return;
+  st.style.display = 'block';
+  st.innerHTML = `<div class="scan-preview-doc"><span style="color:var(--text-dim);font-size:12px">Loading preview…</span></div>`;
+  try {
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      st.innerHTML = `<div class="scan-preview-doc"><img src="${url}" alt="preview"></div>`;
+    } else if (file.type === 'application/pdf' && typeof scanRenderPDFPreview === 'function') {
+      const dataUrl = await scanRenderPDFPreview(file);
+      st.innerHTML = dataUrl
+        ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
+        : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}<span class="scan-preview-meta">preview unavailable</span></div>`;
+    }
+  } catch(e) {
+    console.warn('[scan] preview failed:', e.message);
+    st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`;
   }
 }
 
@@ -1654,95 +1679,141 @@ async function _scanExtract() {
   if (!file) return;
   const st  = document.getElementById('scanStatus');
   const btn = document.getElementById('btnScanGo');
+  const setStatus = (icon, text, kind = 'info') => {
+    if (!st) return;
+    const bg = kind === 'error' ? 'var(--danger-bg)' : 'var(--bg)';
+    const color = kind === 'error' ? 'var(--danger)' : 'var(--text-mid)';
+    const border = kind === 'error' ? 'rgba(220,38,38,0.2)' : 'var(--border)';
+    st.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:${bg};border-radius:8px;border:1px solid ${border};font-size:13px;color:${color}">${icon}${text}</div>`;
+  };
   if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block"></span> &nbsp;Analyzing...'; }
-  st.style.display = 'block';
-  st.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--bg);border-radius:8px;border:1px solid var(--border);font-size:13px;color:var(--text-mid)"><span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>AI αναλύει το document...</div>`;
+  setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
-    const b64 = await new Promise((res,rej) => {
-      const r = new FileReader();
-      r.onload  = () => res(r.result.split(',')[1]);
-      r.onerror = () => rej(new Error('File read error'));
-      r.readAsDataURL(file);
+    // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
+    const pre = await scanPreprocessFile(file);
+    if (pre.wasPreprocessed) {
+      console.log('[scan] preprocessed: original=' + (file.size/1024).toFixed(0) + 'KB → ' + (pre.blob.size/1024).toFixed(0) + 'KB');
+    }
+
+    // 2. Document type detection (Haiku, fast + cheap)
+    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Αναγνώριση τύπου εγγράφου…');
+    const docType = await scanDetectDocType(pre.base64, pre.mediaType);
+
+    // 3. Extraction with type-specialised prompt + few-shot examples
+    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', `AI αναλύει το ${docType.toLowerCase().replace('_',' ')}…`);
+    const cb = pre.mediaType === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
+
+    const sysPrompt = _intlBuildSystemPrompt(docType);
+    const messages = [];
+
+    // Few-shot examples (last 3 successful extractions of same type)
+    const examples = scanGetTrainingExamples(docType, 3);
+    examples.forEach(ex => {
+      messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
+      messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
 
-    const isPDF = file.type === 'application/pdf';
-    const cb = isPDF
-      ? { type:'document', source:{ type:'base64', media_type:'application/pdf', data:b64 } }
-      : { type:'image',    source:{ type:'base64', media_type:file.type, data:b64 } };
+    // Actual document
+    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract all order data from this document. Output JSON only.' }] });
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'x-api-key': ANTH_KEY,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body: JSON.stringify({
-        model:'claude-opus-4-6',
-        max_tokens:1000,
-        system:`You are a logistics document parser for an international transport company (Greece ↔ Central/Eastern Europe).
-Extract order data from CMR waybills, Carrier Orders, delivery orders, or transport documents.
-Return ONLY valid JSON — no markdown, no explanation, no extra text.
+    const data = await scanCallAnthropic({
+      model: SCAN_MODEL,
+      max_tokens: SCAN_MAX_TOKENS,
+      system: sysPrompt,
+      messages,
+    });
+
+    const raw = data.content.find(c => c.type === 'text')?.text || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    parsed._docType = docType;  // remember for save-correction later
+    await _scanPreview(parsed);
+
+  } catch (e) {
+    setStatus('❌ ', e.message || 'Extraction failed', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
+    if (typeof logError === 'function') logError(e, 'intl_scan_extract');
+  }
+}
+
+// ─── System prompt builder — adapts to document type ──────────────
+function _intlBuildSystemPrompt(docType) {
+  const baseSchema = `You are a logistics document parser for Petras Group (Greek transport company, EU operations).
+Return ONLY valid JSON — no markdown, no explanation.
 
 Output schema:
 {
-  "client_name": "company that issued the order (e.g. OGL Food Trade)",
-  "goods": "comma-separated list of all product descriptions",
-  "gross_weight_kg": total gross weight as number or null,
-  "pallets": total pallet count across all loading stops as number,
-  "temperature_c": required transport temperature as number or null,
-  "direction": "Export if loading in Greece, Import if loading outside Greece",
-  "price_eur": freight cost or order price as number or null,
-  "confidence": "HIGH or MEDIUM or LOW",
-  "notes": "any special instructions, trailer requirements, etc.",
-  "loading_stops": [
-    {
-      "location_name": "the SUPPLIER/WAREHOUSE name as it appears in the document (e.g. IRINOUPOLI SÜD, ANGELAKIS - NAFPAKTOS, LEVENTOGIANNIS - ARGOS)",
-      "city": "city name in English/Latin",
-      "city_gr": "city name in Greek (e.g. Ασπρόπυργος, Ναύπακτος, Ναύπλιο, Αγρίνιο, Βέλο, Κατερίνη)",
-      "country": "country name",
-      "date": "YYYY-MM-DD",
-      "pallets": number of pallets loaded at this stop
-    }
-  ],
-  "delivery_stops": [
-    {
-      "location_name": "the COMPANY/WAREHOUSE name as it appears (e.g. LIDL SLOVENIJA D.O.O. K.D.)",
-      "city": "city name in English/Latin",
-      "city_gr": "city name in Greek if applicable",
-      "country": "country name",
-      "date": "YYYY-MM-DD",
-      "pallets": null
-    }
-  ]
+  "client_name": "company that issued the order",
+  "goods": "comma-separated product descriptions (deduplicated)",
+  "gross_weight_kg": number or null,
+  "pallets": total pallet count across all loading stops,
+  "temperature_c": number or null,
+  "direction": "Export | Import",
+  "price_eur": number or null,
+  "confidence": "HIGH | MEDIUM | LOW",
+  "field_confidence": {
+    "client_name": 0.0-1.0,
+    "pallets": 0.0-1.0,
+    "loading_stops": 0.0-1.0,
+    "delivery_stops": 0.0-1.0,
+    "dates": 0.0-1.0
+  },
+  "notes": "special instructions, trailer requirements",
+  "loading_stops": [{
+    "location_name": "supplier/warehouse name",
+    "city": "city in Latin script",
+    "city_gr": "city in Greek if Greek",
+    "country": "country",
+    "date": "YYYY-MM-DD",
+    "pallets": number
+  }],
+  "delivery_stops": [{
+    "location_name": "consignee name",
+    "city": "city in Latin",
+    "city_gr": "Greek if applicable",
+    "country": "country",
+    "date": "YYYY-MM-DD",
+    "pallets": null
+  }]
 }
 
-CRITICAL RULES for OGL/Fruitservice Carrier Orders:
-- The table has numbered rows. Each section = one stop.
-- "Supplier" column contains the warehouse/supplier name — use this as location_name
-- PAL column = pallet count per product line — SUM all PAL values per loading stop
-- Each distinct Supplier group = one loading_stop object
-- Unloading stops (↓) = delivery_stops
-- client_name = the company at the top of the document (e.g. "OGL Food Trade Lebensmittelvertrieb GmbH")
-- direction: if all loading addresses are in Greece → Export
-- goods: list all distinct product descriptions (deduplicated)`,
-        messages:[{role:'user', content:[cb, {type:'text',text:'Extract all order data from this transport document.'}]}]
-      })
-    });
+GLOBAL RULES:
+- direction: if ALL loading addresses are in Greece → Export. If loading abroad → Import.
+- Greek cities common: Ασπρόπυργος, Θεσσαλονίκη, Ναύπακτος, Ναύπλιο, Αγρίνιο, Βέλο, Κατερίνη, Πάτρα, Ηράκλειο
+- field_confidence: 1.0 = read clearly, 0.7 = readable but ambiguous, 0.4 = barely legible
+- Sum stop pallets must equal total pallets — if mismatch, lower confidence`;
 
-    const d = await res.json();
-    if (d.error) throw new Error(d.error.message);
-    const raw    = d.content.find(c=>c.type==='text')?.text||'{}';
-    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
-    await _scanPreview(parsed);
+  const typeSpecific = {
+    CARRIER_ORDER: `\n\nDOCUMENT TYPE: Carrier Order (e.g. OGL Food Trade, Fruitservice GmbH).
+- Each numbered table row group = one stop
+- "Supplier" column = location_name for loading stops
+- PAL column = sum per supplier group → loading_stop.pallets
+- Unloading rows (↓ marker) = delivery_stops
+- client_name = company name at top of document`,
 
-  } catch(e) {
-    st.innerHTML = `<div style="padding:12px 14px;background:var(--danger-bg);border:1px solid rgba(220,38,38,0.2);
-      border-radius:8px;font-size:13px;color:var(--danger)">❌ ${e.message}</div>`;
-    if (btn) { btn.disabled=false; btn.innerHTML='🤖 &nbsp;Extract & Fill Form'; }
-  }
+    CMR: `\n\nDOCUMENT TYPE: CMR Waybill (international standard).
+- Field 1 (Sender) = first loading_stop
+- Field 2 (Consignee) = first delivery_stop
+- Field 3 (Place of Delivery) = delivery city
+- Field 4 (Place of Taking) = loading city
+- Field 5 (Document attached) often references PO numbers
+- Field 11 (Statistical Number) often = goods code
+- Field 22 = sender signature, Field 23 = carrier, Field 24 = consignee
+- Multiple senders/consignees may be listed`,
+
+    DELIVERY_NOTE: `\n\nDOCUMENT TYPE: Greek Δελτίο Αποστολής.
+- "Αποστολέας" = sender (loading_stop)
+- "Παραλήπτης" = consignee (delivery_stop)
+- "Είδος" / "Περιγραφή" = goods
+- "Τεμάχια" or "Παλέτες" = pallets
+- direction is most likely Export (Greek-issued)`,
+
+    UNKNOWN: `\n\nDOCUMENT TYPE: Unknown — extract best-effort. Set confidence: LOW.`,
+  };
+
+  return baseSchema + (typeSpecific[docType] || typeSpecific.UNKNOWN);
 }
 
 async function _scanPreview(data) {

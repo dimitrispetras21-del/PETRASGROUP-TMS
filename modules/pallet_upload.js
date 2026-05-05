@@ -294,7 +294,7 @@ function _puClearFile() {
   document.getElementById('puFileInput').value = '';
 }
 
-/* ── AI Extraction ───────────────────────────── */
+/* ── AI Extraction (uses shared scan-helpers for preprocessing + retry) ── */
 async function _puExtractAI() {
   const btn = document.getElementById('puBtnExtract');
   const status = document.getElementById('puAiStatus');
@@ -304,35 +304,81 @@ async function _puExtractAI() {
   status.innerHTML = '<div class="spinner"></div><span>AI reading document...</span>';
 
   try {
-    const isPDF = PU.fileType === 'application/pdf';
-    const content = isPDF
+    // Build a File-like blob from cached base64 if needed, OR use the cached data directly.
+    // Existing PU code stores PU.fileB64 + PU.fileType; we adapt to scan-helpers schema.
+    const content = PU.fileType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: PU.fileB64 } }
-      : { type: 'image', source: { type: 'base64', media_type: PU.fileType, data: PU.fileB64 } };
+      : { type: 'image',    source: { type: 'base64', media_type: PU.fileType, data: PU.fileB64 } };
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTH_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'Extract pallet exchange data from logistics pallet sheets. Return ONLY valid JSON, no markdown. {"transport_number":"string or null","date":"YYYY-MM-DD or null","issuer_company":"string or null","carrier_company":"string or null","pallets_loaded":0,"pallets_returned":0,"pallet_type":"EUR/EPAL or null","driver_signed":false,"company_signed":false,"confidence":"HIGH or MEDIUM or LOW"} Empty fields=0.',
-        messages: [{ role: 'user', content: [content, { type: 'text', text: 'Extract all pallet data from this document.' }] }],
-      }),
+    // Few-shot from past pallet-sheet corrections (if any)
+    const examples = (typeof scanGetTrainingExamples === 'function')
+      ? scanGetTrainingExamples('PALLET_SHEET', 2) : [];
+    const messages = [];
+    examples.forEach(ex => {
+      messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract pallet data:' }] });
+      messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
+    messages.push({ role: 'user', content: [content, { type: 'text', text: 'Extract pallet exchange data from this document. JSON only.' }] });
 
-    if (!res.ok) {
-      const e = await res.json();
-      throw new Error(e.error?.message || 'API error ' + res.status);
-    }
+    const sysPrompt = `Extract pallet exchange / pallet ledger data from logistics documents (Greek δελτίο παλετών, EUR/EPAL exchange forms, transport pallet sheets).
+Return ONLY valid JSON, no markdown.
 
-    const d = await res.json();
-    const raw = d.content.find(c => c.type === 'text')?.text || '{}';
+Output schema:
+{
+  "transport_number": "transport / order reference number, or null",
+  "date": "YYYY-MM-DD",
+  "issuer_company": "name of the company issuing the document (often the supplier/loader)",
+  "carrier_company": "transport company executing the trip",
+  "pallets_loaded": integer (pallets given to truck — empty if not stated),
+  "pallets_returned": integer (empty pallets returned to supplier — 0 if none),
+  "pallet_type": "EUR | EPAL | EUROPALETA | OTHER | null",
+  "driver_signed": true | false,
+  "company_signed": true | false,
+  "confidence": "HIGH | MEDIUM | LOW",
+  "field_confidence": {
+    "transport_number": 0-1,
+    "date": 0-1,
+    "pallets_loaded": 0-1,
+    "pallets_returned": 0-1,
+    "issuer_company": 0-1
+  },
+  "notes": "any handwritten remarks, exception text"
+}
+
+KEY RULES:
+- Empty / unstated numeric fields → 0 (NOT null)
+- Greek pallet sheets often use "Παλέτες" (full) and "Άδειες" (empty)
+- "ΦΟΡΤΩΘΗΚΑΝ" / "Loaded" / "Pris" = pallets_loaded
+- "ΕΠΙΣΤΡΟΦΗ" / "Returned" / "Rendu" = pallets_returned
+- Greek date formats common: DD/MM/YYYY → convert to YYYY-MM-DD
+- Signatures: any visible mark in signature box → true
+- Numbers handwritten with cross-outs: lower confidence to 0.6`;
+
+    const data = (typeof scanCallAnthropic === 'function')
+      ? await scanCallAnthropic({
+          model: (typeof SCAN_MODEL !== 'undefined' ? SCAN_MODEL : 'claude-sonnet-4-20250514'),
+          max_tokens: (typeof SCAN_MAX_TOKENS !== 'undefined' ? SCAN_MAX_TOKENS : 4000),
+          system: sysPrompt,
+          messages,
+        })
+      : await (async () => {  // fallback if helpers not loaded
+          const res = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': ANTH_KEY,
+              'anthropic-version': '2023-06-01',
+              'anthropic-dangerous-direct-browser-access': 'true',
+            },
+            body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, system: sysPrompt, messages }),
+          });
+          if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'API error ' + res.status); }
+          return res.json();
+        })();
+
+    const raw = data.content.find(c => c.type === 'text')?.text || '{}';
     const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    parsed._docType = 'PALLET_SHEET';
 
     status.style.display = 'none';
     btn.disabled = false;
@@ -341,6 +387,7 @@ async function _puExtractAI() {
     status.className = 'pu-status error';
     status.innerHTML = '❌ Error: ' + e.message;
     btn.disabled = false;
+    if (typeof logError === 'function') logError(e, 'pallet_upload_extract');
   }
 }
 

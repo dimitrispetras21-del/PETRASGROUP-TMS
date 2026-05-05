@@ -71,7 +71,7 @@ function _renderNatlLayout(c) {
         <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} orders</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-secondary btn-sm" onclick="openNatlScan ? openNatlScan() : void 0">${_i('camera')} Scan</button>
+        <button class="btn btn-secondary btn-sm" onclick="openNatlScan()">${_i('camera')} Scan</button>
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} New Order</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_natlExportCSV()">${_i('download')} CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Print</button>
@@ -996,6 +996,316 @@ async function deleteNatlOrder(recId) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// SCAN FLOW — clone of orders_intl with national-specific schema
+// ═══════════════════════════════════════════════════════════════
+
+function openNatlScan() {
+  document.getElementById('modal').style.maxWidth = '520px';
+  openModal('Νέα National Order από Scan', `
+    <div style="text-align:center;padding:4px 0 20px">
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">
+        Upload εθνικού δελτίου — AI εξάγει pickup/delivery και προσυμπληρώνει τη φόρμα
+      </div>
+    </div>
+
+    <div id="natlScanDrop"
+      style="border:2px dashed var(--border-dark);border-radius:8px;padding:36px 20px;
+             text-align:center;cursor:pointer;background:var(--bg);transition:border-color 0.15s"
+      onclick="document.getElementById('natlScanFile').click()"
+      ondragover="event.preventDefault();document.getElementById('natlScanDrop').style.borderColor='var(--accent)'"
+      ondragleave="document.getElementById('natlScanDrop').style.borderColor='var(--border-dark)'"
+      ondrop="_natlScanDrop(event)">
+      <div style="font-size:30px;margin-bottom:8px;opacity:0.35">📎</div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Drag & drop ή κλικ για upload</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
+      <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
+        onclick="event.stopPropagation();document.getElementById('natlScanCamera').click()">
+        📷 &nbsp;Λήψη με κάμερα
+      </button>
+    </div>
+    <input type="file" id="natlScanFile" accept="image/*,application/pdf" style="display:none"
+      onchange="_natlScanHandleFile(this.files[0])">
+    <input type="file" id="natlScanCamera" accept="image/*" capture="environment" style="display:none"
+      onchange="_natlScanHandleFile(this.files[0])">
+
+    <div id="natlScanStatus" style="display:none;margin-top:14px"></div>`,
+
+  `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+   <button class="btn btn-success" id="btnNatlScanGo" onclick="_natlScanExtract()" disabled>
+     🤖 &nbsp;Extract & Fill Form
+   </button>`);
+}
+
+function _natlScanDrop(e) {
+  e.preventDefault();
+  document.getElementById('natlScanDrop').style.borderColor = 'var(--border-dark)';
+  _natlScanHandleFile(e.dataTransfer.files[0]);
+}
+
+async function _natlScanHandleFile(file) {
+  if (!file) return;
+  const MAX_SIZE = 10 * 1024 * 1024;
+  if (file.size > MAX_SIZE) { toast(`File too large (${(file.size/1024/1024).toFixed(1)}MB) — max 10MB`, 'error'); return; }
+  if (!file.type.startsWith('image/') && file.type !== 'application/pdf') { toast('Only JPG / PNG / PDF supported', 'error'); return; }
+
+  window._natlScanFile = file;
+  const btn = document.getElementById('btnNatlScanGo');
+  if (btn) btn.disabled = false;
+
+  const drop = document.getElementById('natlScanDrop');
+  if (drop) drop.innerHTML = `
+    <div style="font-size:24px;margin-bottom:6px">✅</div>
+    <div style="font-size:13px;font-weight:500;color:var(--success)">${escapeHtml(file.name)}</div>
+    <div style="font-size:12px;color:var(--text-dim);margin-top:3px">${(file.size/1024).toFixed(0)} KB — κλικ για αλλαγή</div>`;
+
+  const st = document.getElementById('natlScanStatus');
+  if (!st) return;
+  st.style.display = 'block';
+  st.innerHTML = `<div class="scan-preview-doc"><span style="color:var(--text-dim);font-size:12px">Loading preview…</span></div>`;
+  try {
+    if (file.type.startsWith('image/')) {
+      const url = URL.createObjectURL(file);
+      st.innerHTML = `<div class="scan-preview-doc"><img src="${url}" alt="preview"></div>`;
+    } else if (typeof scanRenderPDFPreview === 'function') {
+      const dataUrl = await scanRenderPDFPreview(file);
+      st.innerHTML = dataUrl
+        ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
+        : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}</div>`;
+    }
+  } catch(e) { st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`; }
+}
+
+async function _natlScanExtract() {
+  const file = window._natlScanFile;
+  if (!file) return;
+  const st = document.getElementById('natlScanStatus');
+  const btn = document.getElementById('btnNatlScanGo');
+  const setStatus = (icon, text, kind = 'info') => {
+    if (!st) return;
+    const bg = kind === 'error' ? 'var(--danger-bg)' : 'var(--bg)';
+    const color = kind === 'error' ? 'var(--danger)' : 'var(--text-mid)';
+    const border = kind === 'error' ? 'rgba(220,38,38,0.2)' : 'var(--border)';
+    st.innerHTML = `<div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:${bg};border-radius:8px;border:1px solid ${border};font-size:13px;color:${color}">${icon}${text}</div>`;
+  };
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner" style="width:14px;height:14px;display:inline-block"></span> &nbsp;Analyzing...'; }
+  setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
+
+  try {
+    const pre = await scanPreprocessFile(file);
+    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'AI αναλύει το εθνικό δελτίο…');
+
+    const cb = pre.mediaType === 'application/pdf'
+      ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
+      : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
+
+    const sysPrompt = `You are a logistics document parser for Petras Group's NATIONAL Greek transport operations.
+Extract data from Greek delivery notes (Δελτίο Αποστολής), national transport orders, or domestic CMR variants.
+Return ONLY valid JSON — no markdown, no explanation.
+
+Output schema:
+{
+  "name": "order reference / number from document",
+  "client_name": "company that issued or paid for the transport",
+  "direction": "South→North if delivering northwards (e.g. Athens→Thessaloniki, Patra→Veroia), North→South if going south",
+  "type": "Direct | Groupage | Cross-dock",
+  "goods": "comma-separated product list",
+  "pallets": total pallets count,
+  "temperature_c": number or null,
+  "price_eur": number or null,
+  "loading_date": "YYYY-MM-DD",
+  "delivery_date": "YYYY-MM-DD",
+  "confidence": "HIGH | MEDIUM | LOW",
+  "field_confidence": { "client_name": 0-1, "pallets": 0-1, "pickup_locations": 0-1, "delivery_locations": 0-1, "dates": 0-1 },
+  "pickup_locations": [{
+    "location_name": "supplier / pickup site name",
+    "city": "Greek city in Latin",
+    "city_gr": "Greek city in Greek script",
+    "pallets": number,
+    "date": "YYYY-MM-DD"
+  }],
+  "delivery_locations": [{
+    "location_name": "consignee name",
+    "city": "Greek city in Latin",
+    "city_gr": "Greek city in Greek",
+    "pallets": null,
+    "date": "YYYY-MM-DD"
+  }],
+  "notes": "special instructions"
+}
+
+GREEK NATIONAL CONTEXT:
+- All locations are in Greece. No customs.
+- Common Greek city pairs: Αθήνα↔Θεσσαλονίκη, Πάτρα↔Θεσσαλονίκη, Ηράκλειο→Athens, Veroia↔Athens
+- Veroia/Βέροια is a cross-dock hub — note if mentioned
+- Direction "South→North" (ΑΝΟΔΟΣ): Athens/Patra → Veroia/Thessaloniki
+- Direction "North→South" (ΚΑΘΟΔΟΣ): Veroia/Thessaloniki → Athens/Patra
+- "Groupage" = multiple suppliers consolidated; "Direct" = single supplier
+- field_confidence: 1.0 = clearly read, 0.4 = barely legible
+- Sum pickup pallets must equal total pallets`;
+
+    const messages = [];
+    const examples = scanGetTrainingExamples('DELIVERY_NOTE', 3);
+    examples.forEach(ex => {
+      messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
+      messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
+    });
+    messages.push({ role: 'user', content: [cb, { type: 'text', text: 'Extract national order data. JSON only.' }] });
+
+    const data = await scanCallAnthropic({
+      model: SCAN_MODEL,
+      max_tokens: SCAN_MAX_TOKENS,
+      system: sysPrompt,
+      messages,
+    });
+
+    const raw = data.content.find(c => c.type === 'text')?.text || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    parsed._docType = 'DELIVERY_NOTE';
+    await _natlScanPreview(parsed);
+  } catch (e) {
+    setStatus('❌ ', e.message || 'Extraction failed', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
+    if (typeof logError === 'function') logError(e, 'natl_scan_extract');
+  }
+}
+
+async function _natlScanPreview(data) {
+  const st = document.getElementById('natlScanStatus');
+  const btn = document.getElementById('btnNatlScanGo');
+  if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
+
+  // Match client
+  let clientId = '', clientLabel = '';
+  if (data.client_name) {
+    try {
+      const matches = await atGetAll(TABLES.CLIENTS, {
+        filterByFormula: `OR(SEARCH(LOWER("${(data.client_name||'').replace(/"/g,'')}"),LOWER({Company Name})))`,
+        fields: ['Company Name'], maxRecords: 5,
+      }, false);
+      if (matches.length) { clientId = matches[0].id; clientLabel = matches[0].fields['Company Name']; }
+    } catch(e) { console.warn('[natl_scan] client match failed:', e.message); }
+  }
+
+  // Match locations using ref data (already loaded)
+  const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
+  const _matchLoc = s => {
+    const nm = (s.location_name || '').toLowerCase();
+    const cg = (s.city_gr || '').toLowerCase();
+    const ct = (s.city || '').toLowerCase();
+    return allLocs.find(l => nm && (l.fields['Name']||'').toLowerCase().includes(nm))
+        || allLocs.find(l => cg && (l.fields['City']||'').toLowerCase().includes(cg))
+        || allLocs.find(l => ct && (l.fields['City']||'').toLowerCase().includes(ct));
+  };
+  const pickups = (data.pickup_locations || []).map(s => {
+    const m = _matchLoc(s);
+    return { ...s, _locId: m?m.id:'', _locLabel: m?(m.fields['Name']||m.fields['City']):s.location_name||s.city_gr||s.city };
+  });
+  const deliveries = (data.delivery_locations || []).map(s => {
+    const m = _matchLoc(s);
+    return { ...s, _locId: m?m.id:'', _locLabel: m?(m.fields['Name']||m.fields['City']):s.location_name||s.city_gr||s.city };
+  });
+
+  const conf = data.confidence || 'LOW';
+  const confC = conf === 'HIGH' ? 'var(--success)' : conf === 'MEDIUM' ? 'var(--warning)' : 'var(--danger)';
+  const fc = data.field_confidence || {};
+  const fcMark = score => {
+    if (score == null) return '';
+    return score >= 0.85 ? '<span style="color:var(--success)">✓</span>'
+         : score >= 0.6  ? '<span style="color:var(--warning)">~</span>'
+                         : '<span style="color:var(--danger)">⚠</span>';
+  };
+
+  const row = (label, val, score) => val ? `
+    <div class="detail-field">
+      <span class="detail-field-label">${label}</span>
+      <span class="detail-field-value" style="display:flex;align-items:center;gap:6px">${val} ${fcMark(score)}</span>
+    </div>` : '';
+
+  st.style.display = 'block';
+  st.innerHTML = `
+    <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px;margin-bottom:4px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <span class="detail-section-title" style="margin:0">AI Extraction</span>
+        <span style="font-size:11px;font-weight:600;letter-spacing:1px;color:${confC}">${conf}</span>
+      </div>
+      ${row('Order Name', escapeHtml(data.name||''), fc.client_name)}
+      ${row('Client',  escapeHtml(clientLabel||data.client_name), fc.client_name)}
+      ${row('Direction', data.direction||'', null)}
+      ${row('Type',      data.type||'', null)}
+      ${pickups.map((s,i)=>row(`Pickup ${pickups.length>1?i+1:''}`,    escapeHtml(s._locLabel), fc.pickup_locations)).join('')}
+      ${deliveries.map((s,i)=>row(`Delivery ${deliveries.length>1?i+1:''}`,escapeHtml(s._locLabel), fc.delivery_locations)).join('')}
+      ${row('Load Date', escapeHtml(data.loading_date||''), fc.dates)}
+      ${row('Del Date',  escapeHtml(data.delivery_date||''), fc.dates)}
+      ${row('Pallets',   data.pallets!=null?String(data.pallets):'', fc.pallets)}
+      ${row('Goods',     escapeHtml(data.goods||''), null)}
+      ${row('Temp',      data.temperature_c!=null?data.temperature_c+' °C':'', null)}
+      ${data.notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${escapeHtml(data.notes)}</div>` : ''}
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);text-align:center;padding-top:4px">
+      ✓ matched · ~ partial · ⚠ low confidence
+    </div>`;
+
+  window._natlScanResult = { data, matched: { clientId, clientLabel, pickups, deliveries } };
+  document.getElementById('modalFooter').innerHTML = `
+    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-ghost" onclick="openNatlScan()">↩ Rescan</button>
+    <button class="btn btn-success" onclick="_natlScanOpenForm()">Open Form →</button>`;
+}
+
+async function _natlScanOpenForm() {
+  const r = window._natlScanResult;
+  if (!r) return;
+  const f = {};
+  if (r.matched.clientId) f['Client'] = [r.matched.clientId];
+  if (r.data.direction)   f['Direction'] = r.data.direction;
+  if (r.data.type)        f['Type'] = r.data.type;
+  if (r.data.goods)       f['Goods'] = r.data.goods;
+  if (r.data.pallets)     f['Pallets'] = r.data.pallets;
+  if (r.data.temperature_c != null) f['Temperature °C'] = r.data.temperature_c;
+  if (r.data.price_eur)   f['Price'] = r.data.price_eur;
+  if (r.data.loading_date)  f['Loading DateTime']  = r.data.loading_date;
+  if (r.data.delivery_date) f['Delivery DateTime'] = r.data.delivery_date;
+
+  r.matched.pickups.forEach((s, i) => {
+    if (s._locId) f[`Pickup Location ${i+1}`] = [s._locId];
+    if (s.pallets != null) f[`Loading Pallets ${i+1}`] = s.pallets;
+  });
+  r.matched.deliveries.forEach((s, i) => {
+    if (s._locId) f[`Delivery Location ${i+1}`] = [s._locId];
+  });
+
+  // Stash for active learning — saved when user actually submits the form
+  window._natlScanPending = { docType: 'DELIVERY_NOTE', summary: window._natlScanFile?.name || '', ai: r.data };
+
+  closeModal();
+  if (typeof openNatlCreate === 'function') {
+    openNatlCreate();
+    // Pre-fill form fields after the modal renders
+    setTimeout(() => _natlPrefillFromScan(f), 100);
+  }
+}
+
+function _natlPrefillFromScan(fields) {
+  for (const [key, val] of Object.entries(fields)) {
+    const inputs = document.querySelectorAll(`[data-field="${key}"], [name="${key}"], #fld_${key.replace(/\s/g,'_')}`);
+    inputs.forEach(input => {
+      // Apply confidence tint class based on _natlScanResult.data.field_confidence
+      const fc = window._natlScanResult?.data?.field_confidence || {};
+      const fcKey = ({'Client':'client_name','Pallets':'pallets','Loading DateTime':'dates','Delivery DateTime':'dates'})[key];
+      if (fcKey && fc[fcKey] != null && typeof scanConfidenceClass === 'function') {
+        input.classList.add(scanConfidenceClass(fc[fcKey]));
+      }
+      if (Array.isArray(val)) {
+        // linked record — leave to form to handle, just store hint
+        input.dataset.scanFill = val[0];
+      } else {
+        input.value = val;
+      }
+    });
+  }
+}
+
 // Expose functions used from onclick/onchange handlers
 function _natlExportCSV() {
   const recs = NATL_ORDERS.filtered;
@@ -1100,6 +1410,11 @@ window.natlFilter = natlFilter;
 window.natlPeriodChange = natlPeriodChange;
 window._natlExportCSV = _natlExportCSV;
 window._natlPrint = _natlPrint;
+window.openNatlScan = openNatlScan;
+window._natlScanDrop = _natlScanDrop;
+window._natlScanHandleFile = _natlScanHandleFile;
+window._natlScanExtract = _natlScanExtract;
+window._natlScanOpenForm = _natlScanOpenForm;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
