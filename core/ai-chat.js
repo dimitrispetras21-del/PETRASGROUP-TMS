@@ -773,7 +773,21 @@ ${profile ? `- Ξεκίνα ΠΑΝΤΑ με 1-2 ΣΥΓΚΕΚΡΙΜΕΝΕΣ πα�
 - ${role === 'dispatcher' ? 'Δεν έχεις πρόσβαση σε κόστη/οικονομικά.' : ''}
 - ${role === 'accountant' ? 'Δεν μπορείς να δημιουργήσεις orders. Focus σε οικονομικά.' : ''}
 
-ΣΕΛΙΔΕΣ TMS: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers.`;
+ACTION CHIPS — ΓΡΗΓΟΡΕΣ ΕΝΕΡΓΕΙΕΣ ΣΤΗΝ ΑΠΑΝΤΗΣΗ:
+Όταν προτείνεις στον χρήστη να πάει σε σελίδα ή να ρωτήσει follow-up, μπορείς να ενσωματώσεις
+clickable chips με τη σύνταξη: [ACTION:label|js_call]
+Επιτρεπτά js_call (μόνο αυτά — οτιδήποτε άλλο θα αγνοηθεί):
+  - navigate('page_id')           → πάει στη σελίδα (page_id από τη λίστα παρακάτω)
+  - openCommandPalette()          → ανοίγει το ⌘K menu
+  - _aicSetInput('text')          → προγεμίζει το input με follow-up ερώτηση
+
+Παραδείγματα ΣΩΣΤΗΣ χρήσης:
+  "Έχεις 3 overdue παραδόσεις. [ACTION:Open Daily Ops|navigate('daily_ops')]"
+  "Δοκίμασε επίσης: [ACTION:Show me last week|_aicSetInput('Δείξε μου την προηγούμενη εβδομάδα')]"
+
+Χρησιμοποίησέ τα ΟΠΟΥ έχει νόημα να ξεκινήσει επόμενη ενέργεια — όχι σε κάθε μήνυμα.
+
+ΣΕΛΙΔΕΣ TMS: dashboard, weekly_intl, weekly_natl, weekly_pickups, daily_ramp, daily_ops, orders_intl, orders_natl, maint_req, maint_expiry, locations, clients, partners, trucks, trailers, drivers, performance, invoicing, pallet_ledger.`;
 }
 
 function _aicAllowedTools() {
@@ -904,8 +918,13 @@ async function _aicCallClaudeStream(messages, onTextDelta) {
 async function _aicSend() {
   const inp = document.getElementById('aic-input');
   const text = inp.value.trim();
-  if (!text || AiChat.isLoading) return;
+  const pending = (AiChat.pending || []).slice();
+  // Allow sending if either text OR pending attachments
+  if ((!text && !pending.length) || AiChat.isLoading) return;
   inp.value = '';
+  // Clear pending after capture
+  AiChat.pending = [];
+  _aicRenderPending();
 
   // Re-interview trigger
   if (text.includes('ξανα-γνώρισέ') || text.includes('ξαναγνωρισε') || text.includes('reset profile')) {
@@ -930,22 +949,49 @@ async function _aicSend() {
     return;
   }
 
-  // Add user message
-  AiChat.messages.push({ role: 'user', content: text });
+  // Add user message — text (for history) + attachments (for API)
+  AiChat.messages.push({
+    role: 'user',
+    content: text || (pending.length ? '(attachments)' : ''),
+    attachments: pending,
+  });
   _aicRenderMsgs();
   _aicSetLoading(true);
 
   try {
-    // Build API messages from history (string-only for safety)
-    let apiMsgs = AiChat.messages
-      .filter(m => typeof m.content === 'string')
-      .map(m => ({ role: m.role, content: m.content }));
+    // Build API messages from history.
+    // For the LATEST user message with attachments, build a multimodal content array.
+    // Older messages stay text-only.
+    const lastIdx = AiChat.messages.length - 1;
+    let apiMsgs = AiChat.messages.map((m, i) => {
+      if (i === lastIdx && m.role === 'user' && (m.attachments?.length)) {
+        const blocks = [];
+        for (const a of m.attachments) {
+          if (a.type === 'image') {
+            blocks.push({ type: 'image', source: { type: 'base64', media_type: a.mediaType, data: a.data } });
+          } else if (a.type === 'document') {
+            blocks.push({ type: 'document', source: { type: 'base64', media_type: a.mediaType, data: a.data } });
+          }
+        }
+        if (m.content && m.content !== '(attachments)') {
+          blocks.push({ type: 'text', text: m.content });
+        } else {
+          blocks.push({ type: 'text', text: 'Τι είναι αυτό; Εξήγησέ μου τι βλέπεις.' });
+        }
+        return { role: 'user', content: blocks };
+      }
+      return { role: m.role, content: typeof m.content === 'string' ? m.content : '' };
+    }).filter(m => m.role === 'assistant' ? m.content : true);  // drop empty assistant placeholders
 
     let maxLoops = 5;
+    // Track tools used across all rounds — attached to final assistant message
+    const allToolCalls = [];
+    let lastAsstIdx = -1;
     while (maxLoops-- > 0) {
       // Allocate a placeholder assistant message that the stream fills incrementally
       const idx = AiChat.messages.length;
       AiChat.messages.push({ role: 'assistant', content: '' });
+      lastAsstIdx = idx;
       _aicRenderMsgs();
 
       // STREAM this round-trip (text deltas appear progressively)
@@ -960,6 +1006,7 @@ async function _aicSend() {
       } else {
         // No text in this turn (pure tool_use) — drop the empty placeholder
         AiChat.messages.splice(idx, 1);
+        lastAsstIdx = -1;
       }
 
       // Done if model didn't call more tools
@@ -971,6 +1018,14 @@ async function _aicSend() {
       for (const tb of toolBlocks) {
         _aicShowToolBadge(tb.name);
         const result = await _aicExecTool(tb.name, tb.input);
+        // Track for source citations
+        allToolCalls.push({
+          name: tb.name,
+          input: tb.input,
+          resultCount: Array.isArray(result?.records) ? result.records.length
+                     : Array.isArray(result) ? result.length
+                     : (result?.success ? 1 : 0),
+        });
         toolResults.push({
           type: 'tool_result',
           tool_use_id: tb.id,
@@ -981,6 +1036,11 @@ async function _aicSend() {
       // Append assistant-with-tools turn + user tool_result turn for next API call
       apiMsgs.push({ role: 'assistant', content: response.content });
       apiMsgs.push({ role: 'user', content: toolResults });
+    }
+
+    // Attach tool-use citations to the final assistant message
+    if (allToolCalls.length && lastAsstIdx >= 0 && AiChat.messages[lastAsstIdx]) {
+      AiChat.messages[lastAsstIdx].tools = allToolCalls;
     }
   } catch(e) {
     if (e.name === 'AbortError') return;
@@ -1201,7 +1261,12 @@ function _aicInit() {
       <button class="aic-qbtn" onclick="_aicQuick('How do I use this page?')">Help</button>
     </div>
     <div class="aic-msgs" id="aic-msgs"></div>
+    <div class="aic-upload-pending" id="aic-pending" style="display:none"></div>
     <div class="aic-input-bar">
+      <button class="aic-upload-btn" onclick="document.getElementById('aic-file').click()" title="Attach image / PDF" aria-label="Attach">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <input type="file" id="aic-file" accept="image/*,application/pdf" style="display:none" onchange="_aicAttachFile(this.files[0]); this.value=''">
       <textarea class="aic-input" id="aic-input" rows="1" placeholder="Ask anything…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();_aicSend()}"></textarea>
       <button class="aic-send" id="aic-send-btn" onclick="_aicSend()" aria-label="Send">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -1290,9 +1355,21 @@ function _aicRenderMsgs() {
   if (!container) return;
   container.innerHTML = AiChat.messages.map(m => {
     if (m.role === 'user') {
-      return `<div class="aic-msg user">${_aicEscape(m.content)}</div>`;
+      // Render image attachments if present
+      let imgHtml = '';
+      if (Array.isArray(m.attachments) && m.attachments.length) {
+        imgHtml = '<div class="aic-attachments">' + m.attachments.map(a =>
+          a.type === 'image'
+            ? `<img src="data:${a.mediaType};base64,${a.data}" class="aic-att-img" alt="upload">`
+            : `<div class="aic-att-doc">📄 ${_aicEscape(a.name || 'document')}</div>`
+        ).join('') + '</div>';
+      }
+      return `<div class="aic-msg user">${imgHtml}${_aicEscape(m.content)}</div>`;
     } else {
-      return `<div class="aic-msg asst">${_aicEscape(m.content)}</div>`;
+      // Action chips + citations
+      const rendered = _aicRenderRich(m.content || '');
+      const cite = _aicRenderCitations(m.tools);
+      return `<div class="aic-msg asst">${rendered}${cite}</div>`;
     }
   }).join('');
   if (AiChat.isLoading) {
@@ -1301,9 +1378,129 @@ function _aicRenderMsgs() {
   container.scrollTop = container.scrollHeight;
 }
 
+// Render assistant text:
+//   - Escape HTML
+//   - Convert newlines to <br>
+//   - Detect [ACTION:label|onclick] markers and turn them into clickable chips
+//   - Detect bare URLs and make them clickable
+function _aicRenderRich(text) {
+  if (typeof text !== 'string') return '';
+  // Escape first
+  let out = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Action chips: [ACTION:label|js_expr]
+  // Sanitize js_expr — only allow whitelist of safe handlers (navigate, openModal, etc).
+  out = out.replace(/\[ACTION:([^|\]]+)\|([^\]]+)\]/g, (_, label, expr) => {
+    const safe = expr.trim();
+    // Only allow specific safe handler shapes: navigate('xxx'), _aicSend prefilled, openCommandPalette()
+    const isWhitelisted = /^(navigate|openCommandPalette|_aicSetInput)\([^)]*\)$/.test(safe);
+    if (!isWhitelisted) return label;
+    const safeLabel = label.trim().replace(/"/g, '&quot;');
+    return `<button class="aic-chip" onclick="${safe}">${safeLabel}</button>`;
+  });
+  // Newlines
+  out = out.replace(/\n/g, '<br>');
+  return out;
+}
+
+function _aicRenderCitations(tools) {
+  if (!Array.isArray(tools) || !tools.length) return '';
+  // Group by tool name + summarise
+  const summary = {};
+  tools.forEach(t => {
+    const key = t.name;
+    summary[key] = (summary[key] || 0) + (t.resultCount || 1);
+  });
+  const labelMap = {
+    read_orders: 'Orders',
+    read_fleet: 'Fleet',
+    read_page_context: 'Page',
+    save_profile: 'Profile',
+    set_reminder: 'Reminder',
+    update_record: 'Update',
+    create_work_order: 'Work Order',
+    navigate_to: 'Navigate',
+  };
+  const parts = Object.entries(summary).map(([k, n]) =>
+    `${labelMap[k] || k}${n > 1 ? '·' + n : ''}`
+  );
+  return `<div class="aic-citations">📎 ${parts.join(' · ')}</div>`;
+}
+
 function _aicEscape(text) {
   if (typeof text !== 'string') return '';
   return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+// Helper for chips: prefill input + send (lets AI suggest a follow-up question)
+function _aicSetInput(text) {
+  const inp = document.getElementById('aic-input');
+  if (inp) { inp.value = text; inp.focus(); }
+}
+
+// ─── Multimodal attachments ─────────────────────────────────────
+// Pending attachments accumulate in AiChat.pending and are sent with the next message.
+async function _aicAttachFile(file) {
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) { toast('File too large (max 10MB)', 'error'); return; }
+  const isImage = file.type.startsWith('image/');
+  const isPDF   = file.type === 'application/pdf';
+  if (!isImage && !isPDF) { toast('Only images / PDFs supported', 'error'); return; }
+
+  // Reuse scan-helpers preprocessing for images (auto-rotate + resize → smaller payload)
+  let processed;
+  try {
+    processed = (typeof scanPreprocessFile === 'function')
+      ? await scanPreprocessFile(file)
+      : await _aicSimplePreprocess(file);
+  } catch(e) {
+    console.warn('[aic] preprocess failed:', e.message);
+    processed = await _aicSimplePreprocess(file);
+  }
+
+  AiChat.pending = AiChat.pending || [];
+  AiChat.pending.push({
+    type: isPDF ? 'document' : 'image',
+    mediaType: processed.mediaType,
+    data: processed.base64,
+    name: file.name,
+    size: processed.blob?.size || file.size,
+  });
+  _aicRenderPending();
+}
+
+async function _aicSimplePreprocess(file) {
+  const data = await new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('read'));
+    r.readAsDataURL(file);
+  });
+  return { base64: data, mediaType: file.type, blob: file };
+}
+
+function _aicRenderPending() {
+  const el = document.getElementById('aic-pending');
+  if (!el) return;
+  const list = AiChat.pending || [];
+  if (!list.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  el.innerHTML = list.map((a, i) =>
+    `<span class="pill">${a.type === 'image' ? '🖼' : '📄'} ${(a.name||'').slice(0,30)} · ${(a.size/1024).toFixed(0)}KB
+      <button onclick="_aicRemovePending(${i})" aria-label="Remove">✕</button>
+    </span>`
+  ).join('');
+}
+
+function _aicRemovePending(idx) {
+  if (!AiChat.pending) return;
+  AiChat.pending.splice(idx, 1);
+  _aicRenderPending();
+}
+
+if (typeof window !== 'undefined') {
+  window._aicSetInput = _aicSetInput;
+  window._aicAttachFile = _aicAttachFile;
+  window._aicRemovePending = _aicRemovePending;
 }
 
 function _aicSetLoading(v) {

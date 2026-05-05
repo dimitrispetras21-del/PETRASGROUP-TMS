@@ -610,11 +610,26 @@ function _toggleNotifPanel() {
   const panel = document.getElementById('notifPanel');
   if (!panel) return;
   if (_notifOpen) {
+    // Lazy permission prompt — only when user actively engages with notifications.
+    // Avoids the annoying "this site wants to show notifications" on every page load.
+    _maybeRequestPushPermission();
     _refreshNotifs().then(() => { panel.style.display = 'block'; });
     setTimeout(() => document.addEventListener('click', _closeNotifOutside, { once: true }), 50);
   } else {
     panel.style.display = 'none';
   }
+}
+
+function _maybeRequestPushPermission() {
+  if (!('Notification' in window)) return;
+  // Already granted or denied — leave it
+  if (Notification.permission !== 'default') return;
+  // Don't pester — only ask once per session
+  if (sessionStorage.getItem('tms_notif_perm_asked')) return;
+  sessionStorage.setItem('tms_notif_perm_asked', '1');
+  Notification.requestPermission().then(p => {
+    if (p === 'granted') toast('Push notifications ενεργοποιήθηκαν', 'info');
+  });
 }
 
 function _closeNotifOutside(e) {
@@ -803,11 +818,52 @@ async function _refreshNotifs() {
 
   } catch(e) { console.warn('Notif refresh error:', e); }
 
-  // Sort by severity: danger > warn > info
+  // ── Smart grouping: collapse N items with same title prefix into one ──
+  // e.g. 5 separate "KTEO expires" notifications → "5 trucks need KTEO renewal"
+  // Group key = first 25 chars of title (covers truck/trailer/order template variants).
+  const groupable = ['warn', 'info'];  // never group critical "danger" items
+  const groupedMap = new Map();
+  const ungrouped = [];
+  items.forEach(it => {
+    if (!groupable.includes(it.type)) { ungrouped.push(it); return; }
+    const key = it.type + ':' + (it.title || '').slice(0, 25).toLowerCase();
+    if (!groupedMap.has(key)) groupedMap.set(key, []);
+    groupedMap.get(key).push(it);
+  });
+  const groupedItems = [];
+  groupedMap.forEach(arr => {
+    if (arr.length >= 3) {
+      // Consolidate 3+ items into one expandable group
+      groupedItems.push({
+        type: arr[0].type,
+        title: `${arr.length}× ${arr[0].title}`,
+        sub: `Tap to expand · ${arr.map(x => x.sub).filter(Boolean).slice(0,2).join(' · ').slice(0,60)}…`,
+        page: arr[0].page,
+        children: arr,
+        grouped: true,
+      });
+    } else {
+      // Less than 3 — keep individual
+      groupedItems.push(...arr);
+    }
+  });
+  // Re-sort: danger first, then groups by count desc, then individual warn, then info
   const sevOrder = { danger: 0, warn: 1, info: 2 };
-  items.sort((a, b) => (sevOrder[a.type]||3) - (sevOrder[b.type]||3));
+  const finalItems = [...ungrouped, ...groupedItems];
+  finalItems.sort((a, b) => {
+    const sa = sevOrder[a.type] ?? 3;
+    const sb = sevOrder[b.type] ?? 3;
+    if (sa !== sb) return sa - sb;
+    // Same severity: groups first (more impactful), then by item count
+    if (a.grouped && !b.grouped) return -1;
+    if (!a.grouped && b.grouped) return 1;
+    return (b.children?.length || 0) - (a.children?.length || 0);
+  });
 
-  _notifItems = items;
+  _notifItems = finalItems;
+  // Re-assign for render below (which still references `items`)
+  items.length = 0;
+  items.push(...finalItems);
 
   // Update dot (red = danger present, otherwise just visible)
   const dot = document.getElementById('notifDot');
@@ -815,6 +871,32 @@ async function _refreshNotifs() {
     dot.style.display = items.length ? 'block' : 'none';
     dot.style.background = items.some(i => i.type === 'danger') ? '#DC2626' : '#F59E0B';
   }
+
+  // ── Browser-native push for NEW critical notifications ──
+  // Fires even when the user is on another tab. Tracks last-shown signature
+  // in sessionStorage to avoid re-pinging on every refresh.
+  try {
+    const dangers = items.filter(i => i.type === 'danger');
+    if (dangers.length && 'Notification' in window && Notification.permission === 'granted') {
+      const sig = dangers.map(i => _notifKey(i)).sort().join('|');
+      const lastSig = sessionStorage.getItem('tms_notif_last_sig') || '';
+      if (sig !== lastSig) {
+        sessionStorage.setItem('tms_notif_last_sig', sig);
+        // Show browser notification (consolidated if more than one)
+        const top = dangers[0];
+        const title = dangers.length > 1
+          ? `Petras TMS — ${dangers.length} κρίσιμα`
+          : 'Petras TMS — Κρίσιμη ειδοποίηση';
+        const body = dangers.length > 1
+          ? `${top.title}\n+${dangers.length - 1} ακόμη — δες στο app`
+          : `${top.title}\n${top.sub || ''}`;
+        try {
+          const n = new Notification(title, { body, tag: 'tms-critical', icon: '/PETRASGROUP-TMS/logo.png' });
+          n.onclick = () => { window.focus(); if (top.page) navigate(top.page); n.close(); };
+        } catch(e) { /* notifications API can throw on unsupported platforms */ }
+      }
+    }
+  } catch(e) { console.warn('[notif] browser push failed:', e.message); }
 
   // Greeting line based on role/time of day
   const hr = new Date().getHours();
@@ -837,16 +919,69 @@ async function _refreshNotifs() {
         </div>
       </div>
       <div class="notif-list">
-        ${items.length ? items.slice(0, 15).map(n => `
-          <div class="notif-item" ${n.page ? `onclick="_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}')"` : ''}>
-            <div class="notif-icon ${n.type}">${n.type==='danger'?'!':n.type==='warn'?'!':'i'}</div>
-            <div class="notif-body">
-              <div class="notif-title">${n.title}</div>
-              <div class="notif-sub">${n.sub}</div>
-            </div>
-          </div>`).join('') : '<div class="notif-empty">Δεν υπαρχουν εκκρεμότητες · καλή δουλειά!</div>'}
+        ${items.length ? items.slice(0, 20).map((n, idx) => {
+          // Snoozed items (in-memory) — skip rendering
+          if (_notifSnoozed.has(_notifKey(n))) return '';
+
+          // Top-level notification card
+          const navClick = n.page
+            ? `_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}');event.stopPropagation();`
+            : '';
+          const expandClick = n.grouped
+            ? `event.stopPropagation();_notifToggleGroup(${idx});`
+            : '';
+          const onClick = n.grouped ? expandClick : navClick;
+          const expanded = !!_notifExpanded[idx];
+
+          return `
+            <div class="notif-item ${n.grouped ? 'grouped' : ''}" data-notif-idx="${idx}" ${onClick ? `onclick="${onClick}"` : ''}>
+              <div class="notif-icon ${n.type}">${n.type==='danger'?'!':n.type==='warn'?'!':'i'}</div>
+              <div class="notif-body">
+                <div class="notif-title">${n.title}${n.grouped ? ` <span style="opacity:0.5;font-size:10px">${expanded?'▾':'▸'}</span>` : ''}</div>
+                <div class="notif-sub">${n.sub}</div>
+                <div class="notif-actions" style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap" onclick="event.stopPropagation()">
+                  ${n.page ? `<button class="notif-btn notif-btn-primary" onclick="_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${n.page}')">Open</button>` : ''}
+                  <button class="notif-btn notif-btn-ghost" onclick="_notifSnooze(${idx})" title="Hide for this session">Snooze</button>
+                </div>
+                ${n.grouped && expanded ? `
+                  <div class="notif-children" style="margin-top:8px;border-left:2px solid var(--border);padding-left:8px">
+                    ${n.children.map(c => `
+                      <div class="notif-child" style="padding:4px 0;font-size:11.5px;cursor:${c.page?'pointer':'default'}"
+                        ${c.page ? `onclick="event.stopPropagation();_notifOpen=false;document.getElementById('notifPanel').style.display='none';navigate('${c.page}')"` : ''}>
+                        <div style="color:var(--text-mid);font-weight:500">${c.title}</div>
+                        <div style="color:var(--text-dim);font-size:10.5px">${c.sub}</div>
+                      </div>`).join('')}
+                  </div>` : ''}
+              </div>
+            </div>`;
+        }).join('') : '<div class="notif-empty">Δεν υπαρχουν εκκρεμότητες · καλή δουλειά!</div>'}
       </div>`;
   }
+}
+
+// ─── Per-session snooze + expand state ───────────────────────────
+const _notifSnoozed = new Set();   // keys of snoozed items (cleared on reload)
+const _notifExpanded = {};         // idx → bool (group expanded)
+
+function _notifKey(n) {
+  return (n.title || '') + '|' + (n.sub || '').slice(0, 50);
+}
+function _notifSnooze(idx) {
+  const n = _notifItems[idx];
+  if (!n) return;
+  _notifSnoozed.add(_notifKey(n));
+  _refreshNotifs();
+  toast('Hidden for this session');
+}
+function _notifToggleGroup(idx) {
+  _notifExpanded[idx] = !_notifExpanded[idx];
+  // Re-render panel only — don't re-fetch
+  const panel = document.getElementById('notifPanel');
+  if (panel && panel.style.display !== 'none') _refreshNotifs();
+}
+if (typeof window !== 'undefined') {
+  window._notifSnooze = _notifSnooze;
+  window._notifToggleGroup = _notifToggleGroup;
 }
 
 // Auto-refresh notifications every 5 min

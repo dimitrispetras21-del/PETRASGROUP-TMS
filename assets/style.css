@@ -5592,3 +5592,116 @@ button.sidebar-toggle {
   color: #0284C7;
   margin-left: 6px;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   NOTIFICATION ACTION CHIPS — small action buttons in panel cards
+═══════════════════════════════════════════════════════════════ */
+.notif-btn {
+  font: 600 11px 'DM Sans', sans-serif;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: filter 0.12s, background 0.12s;
+}
+.notif-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.notif-btn-primary:hover { filter: brightness(1.1); }
+.notif-btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border-color: var(--border);
+}
+.notif-btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
+.notif-item.grouped { background: rgba(2,132,199,0.04); }
+.notif-children .notif-child:hover { background: var(--bg-hover); border-radius: 4px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   ΝΑΚΗΣ — Action chips + Citations + Multimodal attachments
+═══════════════════════════════════════════════════════════════ */
+.aic-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
+  color: #fff;
+  font: 600 11px 'DM Sans', sans-serif;
+  border: none;
+  border-radius: 14px;
+  padding: 4px 10px;
+  margin: 4px 4px 0 0;
+  cursor: pointer;
+  transition: filter 0.12s, transform 0.05s;
+}
+.aic-chip:hover { filter: brightness(1.1); }
+.aic-chip:active { transform: translateY(1px); }
+.aic-chip::before { content: '↗'; font-size: 10px; opacity: 0.85; }
+
+.aic-citations {
+  margin-top: 8px;
+  font-size: 10.5px;
+  color: var(--text-dim);
+  font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0.2px;
+  border-top: 1px dashed rgba(0,0,0,0.08);
+  padding-top: 6px;
+}
+
+.aic-attachments {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.aic-att-img {
+  max-width: 120px;
+  max-height: 90px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.2);
+  object-fit: cover;
+}
+.aic-att-doc {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+/* Upload button in input row */
+.aic-upload-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: background 0.12s, color 0.12s;
+}
+.aic-upload-btn:hover { background: var(--bg-hover); color: var(--accent); }
+.aic-upload-pending {
+  display: flex;
+  gap: 4px;
+  margin: 4px 8px;
+  flex-wrap: wrap;
+}
+.aic-upload-pending .pill {
+  background: rgba(2,132,199,0.10);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.aic-upload-pending .pill button {
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: var(--accent); opacity: 0.6; font-size: 12px;
+}
