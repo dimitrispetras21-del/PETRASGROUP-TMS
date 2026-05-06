@@ -427,6 +427,12 @@ function selectIntlOrder(recId) {
         ${canEdit?`<div class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
         </div>`:''}
+        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        </div>`:''}
+        ${canEdit?`<div class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h10M5 4V2h6v2M6 7v5M10 7v5M4 4l1 10h6l1-10"/></svg>
+        </div>`:''}
         <div class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</div>
       </div>
     </div>
@@ -2165,7 +2171,146 @@ function _intlPrint() {
   w.document.close();
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CANCEL — soft cancellation. Sets Status='Cancelled', leaves all
+// linked records intact (so audit trail / pallet ledger / reports
+// remain visible). Use this for client-cancelled orders.
+// ═══════════════════════════════════════════════════════════════
+async function cancelIntlOrder(recId) {
+  if (!confirm('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  try {
+    await atPatch(TABLES.ORDERS, recId, { 'Status': 'Cancelled' });
+    invalidateCache(TABLES.ORDERS);
+    // Propagate Cancelled status to downstream NL records (so Weekly Natl etc reflect it)
+    try {
+      if (typeof syncOrderDownstream === 'function') {
+        await syncOrderDownstream(recId, { source: 'intl', changedFields: ['Status'] });
+      }
+    } catch(e) { console.warn('Cancel: downstream sync warning:', e.message); }
+    toast('Παραγγελία ακυρώθηκε', 'success');
+    document.getElementById('intlDetail')?.classList.add('hidden');
+    await renderOrdersIntl();
+  } catch(e) {
+    toast('Cancel failed: ' + e.message, 'danger');
+    if (typeof logError === 'function') logError(e, 'cancelIntlOrder ' + recId);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DELETE — hard cascade. Removes the ORDER record + ALL linked
+// downstream records (NL, GL, CL, RAMP, PALLET_LEDGER, ORDER_STOPS).
+// Use sparingly — for true mistakes / duplicates only.
+// ═══════════════════════════════════════════════════════════════
+async function deleteIntlOrder(recId) {
+  if (!confirm('🛑 ΔΙΑΓΡΑΦΗ International Order;\n\nΑυτό θα σβήσει ΚΑΙ:\n• Τα linked NAT_LOADS\n• GROUPAGE LINES + CONS_LOADS\n• RAMP records\n• PALLET LEDGER entries\n• ORDER_STOPS\n\nΗ ΕΝΕΡΓΕΙΑ ΔΕΝ ΑΝΑΙΡΕΙΤΑΙ.\n\nΕίσαι σίγουρος;')) return;
+
+  try {
+    toast('Διαγραφή παραγγελίας...', 'info');
+    let _delFail = 0;
+
+    // 1. Delete NAT_LOADS (Direct VS) linked to this ORDER
+    try {
+      const nls = await atGetAll(TABLES.NAT_LOADS, {
+        filterByFormula: `{Source Record}="${recId}"`,
+        fields: ['Name']
+      }, false);
+      for (const nl of nls) {
+        try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; console.warn('NL delete:', e); }
+      }
+      if (nls.length) _tmsLog(`Deleted ${nls.length} NAT_LOADS for ORDER ${recId}`);
+    } catch(e) { _delFail++; console.warn('NL cleanup error:', e); }
+
+    // 2. Delete GL lines + linked CL + CL-linked NL (cascade through groupage)
+    try {
+      const gls = await atGetAll(TABLES.GL_LINES, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Linked International Order},","))>0`,
+        fields: ['Status']
+      }, false);
+      for (const gl of gls) {
+        try {
+          const cls = await atGetAll(TABLES.CONS_LOADS, {
+            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+            fields: ['Name']
+          }, false);
+          for (const cl of cls) {
+            try {
+              const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
+                filterByFormula: `{Source Record}="${cl.id}"`,
+                fields: ['Name']
+              }, false);
+              for (const nl of nlsFromCL) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
+            } catch(e) { _delFail++; console.warn('NL-CL cleanup:', e); }
+            try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; console.warn('CL delete:', e); }
+          }
+        } catch(e) { _delFail++; console.warn('CL cleanup:', e); }
+        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('GL delete:', e); }
+      }
+      if (gls.length) _tmsLog(`Deleted ${gls.length} GL + linked CL/NL for ORDER ${recId}`);
+    } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
+
+    // 3. Delete RAMP records linked to this ORDER
+    try {
+      const ramps = await atGetAll(TABLES.RAMP, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Order},","))>0`,
+        fields: ['Name']
+      }, false);
+      for (const r of ramps) {
+        try { await atDelete(TABLES.RAMP, r.id); } catch(e) { _delFail++; console.warn('Ramp delete:', e); }
+      }
+      if (ramps.length) _tmsLog(`Deleted ${ramps.length} RAMP records for ORDER ${recId}`);
+    } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
+
+    // 4. Delete Pallet Ledger entries linked via ORDER_STOPS
+    try {
+      const intlStops = await stopsLoad(recId, F.STOP_PARENT_ORDER);
+      const stopIds = intlStops.map(s => s.id);
+      if (stopIds.length) {
+        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
+        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
+          const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(()=>[]);
+          for (const pl of pls) {
+            try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
+          }
+          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for ORDER ${recId}`);
+        }
+      }
+    } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
+
+    // 5. Delete ORDER_STOPS linked to this ORDER
+    try {
+      const intlStops = await stopsLoad(recId, F.STOP_PARENT_ORDER);
+      for (const s of intlStops) {
+        try { await atDelete(TABLES.ORDER_STOPS, s.id); } catch(e) { _delFail++; console.warn('Stop delete:', e); }
+      }
+      if (intlStops.length) _tmsLog(`Deleted ${intlStops.length} ORDER_STOPS for ORDER ${recId}`);
+    } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
+
+    // 6. Delete the ORDER itself (soft-delete to trash if available, else hard)
+    if (typeof atSoftDelete === 'function') {
+      await atSoftDelete(TABLES.ORDERS, recId);
+    } else {
+      await atDelete(TABLES.ORDERS, recId);
+    }
+
+    invalidateCache(TABLES.ORDERS);
+    invalidateCache(TABLES.NAT_LOADS);
+    invalidateCache(TABLES.GL_LINES);
+    invalidateCache(TABLES.CONS_LOADS);
+    invalidateCache(TABLES.RAMP);
+
+    toast(_delFail ? `Order deleted (${_delFail} linked records failed — δες error log)` : 'Order deleted', _delFail ? 'warn' : 'success');
+    if (_delFail && typeof logError === 'function') logError(new Error(`Cascade delete: ${_delFail} sub-deletes failed`), 'deleteIntlOrder ' + recId);
+    document.getElementById('intlDetail')?.classList.add('hidden');
+    await renderOrdersIntl();
+  } catch(e) {
+    toast('Delete failed: ' + e.message, 'danger');
+    if (typeof logError === 'function') logError(e, 'deleteIntlOrder ' + recId);
+  }
+}
+
 // Expose functions used from onclick/onchange/oninput/onblur handlers
+window.cancelIntlOrder = cancelIntlOrder;
+window.deleteIntlOrder = deleteIntlOrder;
 window.renderOrdersIntl = renderOrdersIntl;
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;

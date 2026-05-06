@@ -337,7 +337,10 @@ function selectNatlOrder(recId) {
         ${canEdit?`<div class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
         </div>
-        <div class="btn-icon" title="Delete" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
+        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
+        </div>`:''}
+        <div class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         </div>`:''}
         <div class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</div>
@@ -914,6 +917,29 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 
   } finally {
     _syncingNLs.delete(noId);
+  }
+}
+
+// ═══════════════════════════════════════════════
+// cancelNatlOrder — soft cancel: marks Status='Cancelled', leaves linked
+// records intact for audit/reporting. Use for client-cancelled orders.
+// ═══════════════════════════════════════════════
+async function cancelNatlOrder(recId) {
+  if (!confirm('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  try {
+    await atPatch(TABLES.NAT_ORDERS, recId, { 'Status': 'Cancelled' });
+    invalidateCache(TABLES.NAT_ORDERS);
+    try {
+      if (typeof syncOrderDownstream === 'function') {
+        await syncOrderDownstream(recId, { source: 'natl', changedFields: ['Status'] });
+      }
+    } catch(e) { console.warn('Cancel: downstream sync warning:', e.message); }
+    toast('Παραγγελία ακυρώθηκε', 'success');
+    document.getElementById('natlDetail')?.classList.add('hidden');
+    await renderOrdersNatl();
+  } catch(e) {
+    toast('Cancel failed: ' + e.message, 'danger');
+    if (typeof logError === 'function') logError(e, 'cancelNatlOrder ' + recId);
   }
 }
 
@@ -1500,6 +1526,7 @@ window._natlScanExtract = _natlScanExtract;
 window._natlScanOpenForm = _natlScanOpenForm;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
+window.cancelNatlOrder = cancelNatlOrder;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
 // Form dropdown handlers now in core/form-helpers.js
 // Legacy aliases for backward compat
