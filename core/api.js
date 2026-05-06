@@ -1008,9 +1008,16 @@ async function atRestoreFromTrash(trashIndex) {
  */
 function _validateFields(records, expectedFields, context) {
   if (!records.length || !expectedFields.length) return;
-  // Airtable omits boolean checkbox fields when they are unchecked/false.
-  // So checking only records[0] produces false positives — scan ALL records
-  // and consider a field "present" if it appears in at least one.
+  // Statistical-significance threshold — Airtable omits ANY field whose value
+  // is empty (boolean false, blank single-select, no linked record). With <5
+  // records the chance of a real field being absent from ALL of them is high
+  // enough that we'd raise false positives (e.g. brand-new draft with empty
+  // Status, or a date-filtered query returning a single record).
+  // The validator's job is catching field RENAMES — not transient empties —
+  // so we skip when the sample is too small.
+  const MIN_RECORDS_FOR_VALIDATION = 5;
+  if (records.length < MIN_RECORDS_FOR_VALIDATION) return;
+
   const actualFields = new Set();
   for (const r of records) {
     const f = r.fields;

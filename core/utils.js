@@ -294,6 +294,36 @@ function getErrorLog() {
   try { return JSON.parse(localStorage.getItem('tms_errors') || '[]'); } catch { return []; }
 }
 
+// Auto-purge stale entries older than N days. Runs once per session on load.
+// Stale entries are usually false positives from before a fix shipped — they
+// pollute the log and obscure new issues. Default 14-day window keeps recent
+// regressions visible while clearing the long tail.
+const _ERROR_LOG_RETENTION_DAYS = 14;
+let _errorPurgeRan = false;
+function _autoPurgeStaleErrors() {
+  if (_errorPurgeRan) return;
+  _errorPurgeRan = true;
+  try {
+    const list = JSON.parse(localStorage.getItem('tms_errors') || '[]');
+    if (!list.length) return;
+    const cutoff = Date.now() - _ERROR_LOG_RETENTION_DAYS * 86400000;
+    const fresh = list.filter(e => {
+      const t = new Date(e.ts || 0).getTime();
+      return isFinite(t) && t >= cutoff;
+    });
+    const purged = list.length - fresh.length;
+    if (purged > 0) {
+      localStorage.setItem('tms_errors', JSON.stringify(fresh));
+      // Also reset in-memory copy if it was hydrated
+      _errorLog.length = 0;
+      _errorLog.push(...fresh);
+      console.info(`[TMS] auto-purged ${purged} stale error log entries (>${_ERROR_LOG_RETENTION_DAYS}d)`);
+    }
+  } catch(e) { /* never let purge fail the app */ }
+}
+// Run shortly after boot, after auth confirms but before user opens Error Log
+setTimeout(_autoPurgeStaleErrors, 2500);
+
 // Error log UI state (filters)
 const _errLogState = { search: '', severity: '', user: '', ctx: '', range: 'all' };
 
