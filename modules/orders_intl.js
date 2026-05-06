@@ -1067,11 +1067,10 @@ async function _deleteGrpForIntl(orderId) {
       try {
         const cls = await atGetAll(TABLES.CONS_LOADS, {
           filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-          fields: ['Name']
         }, false);
         for (const cl of cls) {
           try {
-            const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`,fields:['Name']},false);
+            const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`},false);
             for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
           } catch(e) { logError(e, '_deleteGrpForIntl: delete NL'); }
           await atDelete(TABLES.CONS_LOADS, cl.id);
@@ -1409,7 +1408,7 @@ async function submitIntlOrder(recId) {
                 for (const cl of cls) {
                   try {
                     const nls = await atGetAll(TABLES.NAT_LOADS, {
-                      filterByFormula: `{Source Record}="${cl.id}"`, fields: ['Name']
+                      filterByFormula: `{Source Record}="${cl.id}"`,
                     }, false);
                     for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
                   } catch(e) { console.warn('auto-restore NL delete:', e); }
@@ -2210,9 +2209,10 @@ async function deleteIntlOrder(recId) {
 
     // 1. Delete NAT_LOADS (Direct VS) linked to this ORDER
     try {
+      // No fields[] constraint — atDelete only needs IDs which Airtable always returns.
+      // Specifying a field name that may not exist (Name) caused 422 errors on cascade.
       const nls = await atGetAll(TABLES.NAT_LOADS, {
         filterByFormula: `{Source Record}="${recId}"`,
-        fields: ['Name']
       }, false);
       for (const nl of nls) {
         try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; console.warn('NL delete:', e); }
@@ -2230,13 +2230,11 @@ async function deleteIntlOrder(recId) {
         try {
           const cls = await atGetAll(TABLES.CONS_LOADS, {
             filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-            fields: ['Name']
           }, false);
           for (const cl of cls) {
             try {
               const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
                 filterByFormula: `{Source Record}="${cl.id}"`,
-                fields: ['Name']
               }, false);
               for (const nl of nlsFromCL) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
             } catch(e) { _delFail++; console.warn('NL-CL cleanup:', e); }
@@ -2252,7 +2250,6 @@ async function deleteIntlOrder(recId) {
     try {
       const ramps = await atGetAll(TABLES.RAMP, {
         filterByFormula: `FIND("${recId}",ARRAYJOIN({Order},","))>0`,
-        fields: ['Name']
       }, false);
       for (const r of ramps) {
         try { await atDelete(TABLES.RAMP, r.id); } catch(e) { _delFail++; console.warn('Ramp delete:', e); }
@@ -2308,9 +2305,96 @@ async function deleteIntlOrder(recId) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CLEANUP ORPHAN GROUPAGE LINES — finds GL records whose linked
+// parent order no longer exists, plus their linked CL + NL +
+// PALLET LEDGER + RAMP records, and deletes the lot.
+//
+// Use this when you've manually deleted orders in Airtable (bypassing
+// the TMS cascade) and now see ghost lines in National Pick Ups.
+//
+// Run from console: cleanupOrphanGL()
+// ═══════════════════════════════════════════════════════════════
+async function cleanupOrphanGL() {
+  toast('Σαρώνω τα GROUPAGE LINES…', 'info');
+  let allGL, allIntl, allNatl;
+  try {
+    [allGL, allIntl, allNatl] = await Promise.all([
+      atGetAll(TABLES.GL_LINES, {}, false),
+      atGetAll(TABLES.ORDERS, { fields: ['Direction'] }, false),
+      atGetAll(TABLES.NAT_ORDERS, { fields: ['Direction'] }, false),
+    ]);
+  } catch(e) {
+    toast('Failed to scan: ' + e.message, 'danger');
+    return;
+  }
+
+  const validIds = new Set([...allIntl.map(r => r.id), ...allNatl.map(r => r.id)]);
+
+  // Find GL records whose every parent link points to a non-existent order
+  const orphans = allGL.filter(gl => {
+    const intlLinks = gl.fields['Linked International Order'] || [];
+    const natlLinks = gl.fields['Linked National Order'] || [];
+    const allLinks = [...intlLinks, ...natlLinks];
+    if (!allLinks.length) return true;  // GL with no parent at all → orphan
+    return !allLinks.some(id => validIds.has(id));  // none of the parents exist
+  });
+
+  if (!orphans.length) {
+    toast('Δεν βρέθηκαν orphans — όλα καθαρά', 'success');
+    return;
+  }
+
+  const ok = confirm(
+    `Βρέθηκαν ${orphans.length} orphan GROUPAGE LINES (parent order δεν υπάρχει).\n\n` +
+    `Θα διαγραφούν αυτά + τα linked CONS_LOADS + NAT_LOADS που εξαρτώνται.\n\n` +
+    `Συνέχεια;`
+  );
+  if (!ok) return;
+
+  let _delFail = 0;
+
+  for (const gl of orphans) {
+    try {
+      // Cascade through groupage: GL → CL → NL
+      try {
+        const cls = await atGetAll(TABLES.CONS_LOADS, {
+          filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+        }, false);
+        for (const cl of cls) {
+          try {
+            const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
+              filterByFormula: `{Source Record}="${cl.id}"`,
+            }, false);
+            for (const nl of nlsFromCL) {
+              try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; }
+            }
+          } catch(e) { _delFail++; }
+          try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; }
+        }
+      } catch(e) { _delFail++; }
+      // Delete the GL itself
+      try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('orphan GL delete:', e); }
+    } catch(e) { _delFail++; }
+  }
+
+  invalidateCache(TABLES.GL_LINES);
+  invalidateCache(TABLES.CONS_LOADS);
+  invalidateCache(TABLES.NAT_LOADS);
+
+  const msg = _delFail
+    ? `Καθαρίστηκαν ${orphans.length - _delFail} orphans (${_delFail} failed — δες error log)`
+    : `Καθαρίστηκαν ${orphans.length} orphan GROUPAGE LINES + linked records`;
+  toast(msg, _delFail ? 'warn' : 'success');
+  if (_delFail && typeof logError === 'function') {
+    logError(new Error(`cleanupOrphanGL: ${_delFail} sub-deletes failed`), 'cleanupOrphanGL');
+  }
+}
+
 // Expose functions used from onclick/onchange/oninput/onblur handlers
 window.cancelIntlOrder = cancelIntlOrder;
 window.deleteIntlOrder = deleteIntlOrder;
+window.cleanupOrphanGL = cleanupOrphanGL;
 window.renderOrdersIntl = renderOrdersIntl;
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;

@@ -614,7 +614,6 @@ async function submitNatlOrder(recId) {
           try {
             const cls = await atGetAll(TABLES.CONS_LOADS, {
               filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-              fields: ['Name']
             }, false);
             for (const cl of cls) {
               // Delete NL records from this CL
