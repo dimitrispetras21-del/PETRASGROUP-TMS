@@ -113,8 +113,10 @@ async function scanPreprocessFile(file) {
   const rotation = await _scanReadExifOrientation(file);
   const img = await _scanLoadImage(file);
 
-  // Compute output dims (max 2000px longest side, preserve aspect)
-  const MAX = 2000;
+  // Compute output dims (max 1600px longest side, preserve aspect).
+  // Was 2000 — dropped to 1600 for ~25% fewer image tokens with negligible
+  // accuracy loss on logistics docs (text remains legible).
+  const MAX = 1600;
   let { width, height } = img;
   if (rotation === 90 || rotation === 270) [width, height] = [height, width];
   const scale = Math.min(1, MAX / Math.max(width, height));
@@ -596,8 +598,12 @@ function scanBuildReferenceBlock(opts = {}) {
 /**
  * Get top-N most-relevant clients/locations from preloaded reference data.
  * Currently sorted alphabetically; future improvement: sort by recent usage.
+ *
+ * Defaults bumped from 50/80 → 150/250 for fast-mode (single-call, no tools).
+ * Trade-off: ~5-8K more tokens per call but eliminates multi-turn round-trips
+ * which save 10-15 seconds end-to-end.
  */
-function scanGetReferenceData(maxClients = 50, maxLocs = 80) {
+function scanGetReferenceData(maxClients = 150, maxLocs = 250) {
   const allClients = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
   const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
 
@@ -782,6 +788,49 @@ async function scanExtractWithTools(basePayload) {
   throw new Error('Tool-use loop hit cap of ' + MAX_TOOL_LOOPS + ' — model not converging');
 }
 
+/**
+ * FAST single-call extraction — no tool use, no doc-type pre-classification.
+ * Trade-offs:
+ *   + 4-8s end-to-end (vs 15-35s with tool-use)
+ *   + Anthropic prompt caching on system + image → cheap re-runs <5min
+ *   - Larger system prompt (all known clients/locations injected upfront)
+ *   - Slight accuracy drop on never-before-seen names (no fuzzy fallback in
+ *     model's scope — but client-side fuzzy still runs on the response)
+ *
+ * The model returns the JSON in one shot. Tools are NOT registered, so the
+ * model can't call search_*. Reference data is in the prompt — model picks
+ * canonical name + id from there.
+ *
+ * @param {Object} payload  { model, max_tokens, system, messages }
+ *   `system` should be a string OR array of blocks; we inject ref-block here.
+ * @returns {Promise<Object>}
+ */
+async function scanFastExtract(payload) {
+  // Build cached system block — wraps user-supplied system text in a cache_control envelope
+  const sys = (typeof payload.system === 'string')
+    ? [{ type: 'text', text: payload.system, cache_control: { type: 'ephemeral' } }]
+    : payload.system;
+
+  // Mark image / first text block as cached too (so retries within 5min skip image tokens)
+  const messages = payload.messages.map((m, idx) => {
+    if (idx === 0 && Array.isArray(m.content)) {
+      const lastIdx = m.content.length - 1;
+      const newContent = m.content.map((c, i) =>
+        (i === lastIdx && c.type === 'text') ? { ...c, cache_control: { type: 'ephemeral' } } : c
+      );
+      return { ...m, content: newContent };
+    }
+    return m;
+  });
+
+  return scanCallAnthropic({
+    ...payload,
+    system: sys,
+    messages,
+    // No tools[] → model can't call search_*. Single-shot extraction.
+  });
+}
+
 // ─── Robust JSON extraction from AI response ────────────────────
 /**
  * Parse AI text that should contain JSON, but may have:
@@ -891,4 +940,6 @@ if (typeof window !== 'undefined') {
   // Phase 4: tool use
   window.SCAN_TOOLS = SCAN_TOOLS;
   window.scanExtractWithTools = scanExtractWithTools;
+  // Fast mode (single-call, no tools)
+  window.scanFastExtract = scanFastExtract;
 }

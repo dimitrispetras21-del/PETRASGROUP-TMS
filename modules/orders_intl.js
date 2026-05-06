@@ -1737,42 +1737,45 @@ async function _scanExtract() {
   setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
-    // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
-    const pre = await scanPreprocessFile(file);
+    // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF) +
+    //    parallel fetch of reference data so we don't serialize unnecessarily.
+    const [pre, refData] = await Promise.all([
+      scanPreprocessFile(file),
+      Promise.resolve(scanGetReferenceData(150, 250)),  // sync but wrapped for symmetry
+    ]);
     if (pre.wasPreprocessed) {
       console.log('[scan] preprocessed: original=' + (file.size/1024).toFixed(0) + 'KB → ' + (pre.blob.size/1024).toFixed(0) + 'KB');
     }
 
-    // 2. Document type detection (Haiku, fast + cheap)
-    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Αναγνώριση τύπου εγγράφου…');
-    const docType = await scanDetectDocType(pre.base64, pre.mediaType);
+    // 2. SKIP doc-type detection by default — generic prompt handles all formats.
+    //    The Haiku call adds 2-3s for marginal benefit when the prompt is generic.
+    //    Doc-type stays UNKNOWN; fast mode treats all docs the same way.
+    const docType = 'UNKNOWN';
 
-    // 3. Tiered model selection: Opus για complex docs, Sonnet για simple
+    // 3. Tier model: Opus by default for unknown (max accuracy)
     const model = scanModelForType(docType);
     const modelLabel = scanModelLabel(model);
 
-    // 4. Extraction with type-specialised prompt + few-shot examples + tool use
+    // 4. Single-call FAST extraction — no tool-use round-trips.
+    //    All known clients + locations are injected in the system prompt;
+    //    the model returns canonical client_id / location_id directly.
     setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>',
-      `AI αναλύει ${docType.toLowerCase().replace('_',' ')} με ${modelLabel}…`);
+      `AI αναλύει το document με ${modelLabel}…`);
     const cb = pre.mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
-    // Build system prompt with type-specialised rules + reference data injection (Phase 2.3)
-    const refData = scanGetReferenceData(50, 80);
     const refBlock = scanBuildReferenceBlock(refData);
     const sysPrompt = _intlBuildSystemPrompt(docType) + refBlock + `
 
-You have access to two tools:
-- search_clients(query)        → look up canonical client name + id
-- search_locations(query, city, country) → look up canonical location name + id
-
-USE THESE TOOLS for every client and every loading/delivery stop.
-Set client_id and location_id fields in the JSON output when tools return a confident match (>0.85).`;
+CRITICAL — Match clients & locations using the KNOWN lists above:
+- For client_name: pick the EXACT canonical name from KNOWN CLIENTS, set client_id to its [id:rec...] value.
+- For each loading_stop / delivery_stop: pick canonical from KNOWN LOCATIONS, set location_id.
+- If no match (truly new supplier), leave location_id = null and provide best-guess location_name.`;
 
     const messages = [];
 
-    // Few-shot examples (last 3 successful extractions of same type) — Phase 3.2
+    // Few-shot examples — keep last 3 of any doc type (since we skip classification)
     const examples = scanGetTrainingExamples(docType, 3);
     examples.forEach(ex => {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
@@ -1781,25 +1784,22 @@ Set client_id and location_id fields in the JSON output when tools return a conf
 
     // Actual document — explicit JSON-only instruction prevents conversational preamble
     messages.push({ role: 'user', content: [cb, { type: 'text', text:
-      'Extract all order data from this document. Use search_clients and search_locations tools to find canonical refs.\n\n' +
-      'CRITICAL: When you have all the data, your FINAL message must contain ONLY the JSON object.\n' +
-      '- No "Here\'s the data" or "Now I have..." preamble\n' +
-      '- No markdown code fences\n' +
-      '- No commentary after the JSON\n' +
-      '- Start with `{` and end with `}` — nothing else.'
+      'Extract all order data from this document. Match clients/locations against the KNOWN lists in the system prompt.\n\n' +
+      'CRITICAL: Output ONLY the JSON object — no preamble, no markdown, no commentary.\n' +
+      'Start with `{` and end with `}`.'
     }] });
 
-    // Tool-use extraction loop (Phase 4) — falls back to plain call on errors
+    // FAST single-call extraction (no tool round-trips, prompt cached)
     let data;
     try {
-      data = await scanExtractWithTools({
+      data = await scanFastExtract({
         model,
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
       });
-    } catch (toolErr) {
-      console.warn('[scan] tool-use loop failed, falling back to plain extraction:', toolErr.message);
+    } catch (fastErr) {
+      console.warn('[scan] fast extract failed, falling back to plain extraction:', fastErr.message);
       data = await scanCallAnthropic({
         model,
         max_tokens: SCAN_MAX_TOKENS,

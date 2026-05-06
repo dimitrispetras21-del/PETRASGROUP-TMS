@@ -1162,7 +1162,7 @@ async function _natlScanExtract() {
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
     // Reference data injection (Phase 2.3)
-    const refData = (typeof scanGetReferenceData === 'function') ? scanGetReferenceData(50, 80) : { clients: [], locations: [] };
+    const refData = (typeof scanGetReferenceData === 'function') ? scanGetReferenceData(150, 250) : { clients: [], locations: [] };
     const refBlock = (typeof scanBuildReferenceBlock === 'function') ? scanBuildReferenceBlock(refData) : '';
 
     const sysPrompt = `You are a logistics document parser for Petras Group's NATIONAL Greek transport operations.
@@ -1211,12 +1211,10 @@ GREEK NATIONAL CONTEXT:
 - field_confidence: 1.0 = clearly read, 0.4 = barely legible
 - Sum pickup pallets must equal total pallets` + refBlock + `
 
-You have access to two tools:
-- search_clients(query)        → look up canonical client name + id
-- search_locations(query, city, country) → look up canonical location name + id
-
-USE THESE TOOLS for the client and every pickup/delivery location.
-Set client_id and location_id fields when tools return a confident match (>0.85).`;
+CRITICAL — Match clients & locations using the KNOWN lists above:
+- For client_name: pick the EXACT canonical name from KNOWN CLIENTS, set client_id to its [id:rec...] value.
+- For each pickup_location / delivery_location: pick canonical from KNOWN LOCATIONS, set location_id.
+- If no match (truly new supplier), leave location_id = null and provide best-guess location_name.`;
 
     const messages = [];
     const examples = (typeof scanGetTrainingExamples === 'function') ? scanGetTrainingExamples('DELIVERY_NOTE', 3) : [];
@@ -1225,22 +1223,22 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
     messages.push({ role: 'user', content: [cb, { type: 'text', text:
-      'Extract national order data. Use search_clients and search_locations tools.\n\n' +
-      'CRITICAL: Final message = ONLY the JSON object. No preamble, no markdown, no commentary. Start with `{` end with `}`.'
+      'Extract national order data. Match clients/locations against the KNOWN lists in the system prompt.\n\n' +
+      'CRITICAL: Output ONLY the JSON object — no preamble, no markdown, no commentary.\nStart with `{` end with `}`.'
     }] });
 
-    // DELIVERY_NOTE → Sonnet (per tier map). Use tool-use loop with fallback.
+    // DELIVERY_NOTE → Sonnet (per tier map). FAST single-call (no tool round-trips).
     const natlModel = (typeof scanModelForType === 'function') ? scanModelForType('DELIVERY_NOTE') : SCAN_MODEL;
     let data;
     try {
-      data = await scanExtractWithTools({
+      data = await scanFastExtract({
         model: natlModel,
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
       });
-    } catch (toolErr) {
-      console.warn('[natl_scan] tool-use loop failed, falling back:', toolErr.message);
+    } catch (fastErr) {
+      console.warn('[natl_scan] fast extract failed, falling back:', fastErr.message);
       data = await scanCallAnthropic({
         model: natlModel,
         max_tokens: SCAN_MAX_TOKENS,
