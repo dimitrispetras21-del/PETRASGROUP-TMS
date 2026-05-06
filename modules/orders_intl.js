@@ -690,6 +690,13 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       <button type="button" class="btn btn-ghost" id="btn_addU"
         style="font-size:12px;padding:5px 14px" onclick="_addStop('u')"
         ${cntU>=10?'style="display:none"':''}>+ Add Delivery Stop</button>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
+      <div class="form-field span-2">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" id="f_Notes" rows="3" placeholder="Special instructions, trailer requirements, contacts..." style="width:100%;resize:vertical;min-height:60px">${escapeHtml(f['Notes']||'')}</textarea>
+      </div>
     </div>`;
 
   const footer = `
@@ -1260,6 +1267,7 @@ async function submitIntlOrder(recId) {
     if (sv('f_Type'))      fields['Type']              = sv('f_Type');
     if (sv('f_Direction')) fields['Direction']         = sv('f_Direction');
     if (sv('f_Goods'))     fields['Goods']             = sv('f_Goods');
+    if (sv('f_Notes'))     fields['Notes']             = sv('f_Notes');
     if (sv('f_PalletType'))fields['Pallet Type']       = sv('f_PalletType');
     if (sv('f_ReeferMode'))fields['Refrigerator Mode'] = sv('f_ReeferMode');
     if (sv('f_Reference')) fields['Reference']         = sv('f_Reference');
@@ -1819,6 +1827,13 @@ Set client_id and location_id fields in the JSON output when tools return a conf
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
+        // Progress callback — surfaces tool-call activity to the UI so the
+        // wait feels purposeful instead of silent.
+        onProgress: (stage, detail) => {
+          if (stage === 'tools') {
+            setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', detail);
+          }
+        },
       });
     } catch (toolErr) {
       console.warn('[scan] tool-use loop failed, falling back to plain extraction:', toolErr.message);
@@ -2079,6 +2094,7 @@ async function _scanOpen(matched, data) {
   if (matched.clientId) f['Client'] = [matched.clientId];
   if (data.reference)   f['Reference'] = String(data.reference);
   if (data.goods)       f['Goods']  = data.goods;
+  if (data.notes)       f['Notes']  = String(data.notes);
   if (data.gross_weight_kg) f['Gross Weight kg'] = data.gross_weight_kg;
   if (data.temperature_c!=null) { f['Temperature °C'] = data.temperature_c; f['Refrigerator Mode'] = 'Continuous'; }
   if (data.direction)   f['Direction'] = data.direction;

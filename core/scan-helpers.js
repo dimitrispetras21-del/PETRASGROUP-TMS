@@ -724,6 +724,12 @@ async function scanExtractWithTools(basePayload) {
   const MAX_TOOL_LOOPS = 4;  // reduced from 6 to bound rate-limit exposure
   let usedTools = false;
 
+  // Per-session tool cache: same query → same result, no recompute.
+  // Saves time when the AI calls search_clients twice for similar queries
+  // (which happens on multi-stop docs with repeating supplier names).
+  const toolCache = new Map();
+  const onProgress = basePayload.onProgress;  // optional callback(stage, detail)
+
   for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
     const data = await scanCallAnthropic({
       ...basePayload,
@@ -771,16 +777,35 @@ async function scanExtractWithTools(basePayload) {
     // Append assistant turn (with tool_use blocks)
     messages.push({ role: 'assistant', content: data.content });
 
-    // Execute each tool call and append the results
-    const toolResults = [];
-    for (const tu of toolUses) {
-      try {
-        const out = await _scanRunTool(tu.name, tu.input || {});
-        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: out });
-      } catch (e) {
-        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: e.message }), is_error: true });
-      }
+    // Progress callback — show what's being searched
+    if (onProgress) {
+      const summary = toolUses.map(tu => {
+        if (tu.name === 'search_clients') return `client "${tu.input?.query?.slice(0,20) || '?'}"`;
+        if (tu.name === 'search_locations') return `location "${tu.input?.query?.slice(0,20) || '?'}"`;
+        return tu.name;
+      }).join(', ');
+      onProgress('tools', `Searching: ${summary}`);
     }
+
+    // Execute tools in PARALLEL within this turn (was sequential).
+    // Each tool already returns instantly from in-memory ref data, but the
+    // Promise.all coordination was previously serialised by the for-loop.
+    // Also: per-session result caching for repeated queries.
+    const toolResults = await Promise.all(toolUses.map(async (tu) => {
+      const cacheKey = tu.name + ':' + JSON.stringify(tu.input || {});
+      try {
+        let out;
+        if (toolCache.has(cacheKey)) {
+          out = toolCache.get(cacheKey);
+        } else {
+          out = await _scanRunTool(tu.name, tu.input || {});
+          toolCache.set(cacheKey, out);
+        }
+        return { type: 'tool_result', tool_use_id: tu.id, content: out };
+      } catch (e) {
+        return { type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify({ error: e.message }), is_error: true };
+      }
+    }));
     messages.push({ role: 'user', content: toolResults });
   }
   throw new Error('Tool-use loop hit cap of ' + MAX_TOOL_LOOPS + ' — model not converging');

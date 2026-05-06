@@ -1259,6 +1259,11 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
+        onProgress: (stage, detail) => {
+          if (stage === 'tools') {
+            setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', detail);
+          }
+        },
       });
     } catch (toolErr) {
       console.warn('[natl_scan] tool-use loop failed, falling back:', toolErr.message);
@@ -1424,6 +1429,7 @@ async function _natlScanOpenForm() {
   if (r.data.direction)   f['Direction'] = r.data.direction;
   if (r.data.type)        f['Type'] = r.data.type;
   if (r.data.goods)       f['Goods'] = r.data.goods;
+  if (r.data.notes)       f['Notes'] = String(r.data.notes);
   if (r.data.pallets)     f['Pallets'] = r.data.pallets;
   if (r.data.temperature_c != null) f['Temperature °C'] = r.data.temperature_c;
   if (r.data.price_eur)   f['Price'] = r.data.price_eur;
