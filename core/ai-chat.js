@@ -27,11 +27,42 @@ const AiChat = {
 };
 
 /* ── USER-SCOPED STORAGE KEYS ─────────────────────────────── */
+// Slug uses `username` (always Latin: dimitris/pantelis/...) instead of `name`
+// (which contains Greek chars and produced inconsistent keys after URL/JSON
+// roundtripping). Migrates legacy Greek-name keys on read.
 function _nakisUserSlug() {
-  const name = typeof user !== 'undefined' ? (user.name || 'default') : 'default';
-  return name.replace(/\s+/g, '_');
+  const u = typeof user !== 'undefined' ? user : {};
+  return (u.username || (u.name || 'default').replace(/\s+/g, '_').toLowerCase()).trim();
 }
-function _nakisProfileKey()  { return 'nakis_profile_' + _nakisUserSlug(); }
+
+// Migrate legacy localStorage keys built from user.name (Greek chars) → username slug.
+// Runs once per session — checks if a legacy key exists and copies it to the new key.
+let _nakisMigratedLegacy = false;
+function _nakisMaybeMigrateLegacy() {
+  if (_nakisMigratedLegacy) return;
+  _nakisMigratedLegacy = true;
+  try {
+    const u = typeof user !== 'undefined' ? user : {};
+    if (!u.name || !u.username) return;
+    const legacySlug = u.name.replace(/\s+/g, '_');
+    const newSlug = u.username.toLowerCase().trim();
+    if (legacySlug === newSlug) return;
+    // Migrate the 3 keys that are persistent (not the daily token key)
+    const keys = ['nakis_profile_', 'nakis_notifs_', 'aic_history_'];
+    for (const prefix of keys) {
+      const legacy = prefix + legacySlug;
+      const target = prefix + newSlug;
+      const legacyVal = localStorage.getItem(legacy);
+      if (legacyVal && !localStorage.getItem(target)) {
+        localStorage.setItem(target, legacyVal);
+        localStorage.removeItem(legacy);
+        console.log('[nakis] migrated', legacy, '→', target);
+      }
+    }
+  } catch(e) { console.warn('[nakis] migrate failed:', e.message); }
+}
+
+function _nakisProfileKey()  { _nakisMaybeMigrateLegacy(); return 'nakis_profile_' + _nakisUserSlug(); }
 function _nakisNotifsKey()   { return 'nakis_notifs_'  + _nakisUserSlug(); }
 function _nakisHistoryKey()  { return 'aic_history_'   + _nakisUserSlug(); }
 function _nakisTokensKey()   { return 'nakis_tokens_'  + _nakisUserSlug() + '_' + localToday(); }
@@ -256,6 +287,15 @@ function _aicPageContext() {
   transition:all var(--duration-fast, .15s) ease; }
 .aic-send:hover { background:var(--accent-hover, #0369A1); transform:scale(1.05); }
 .aic-send:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
+.aic-stop { width:36px; height:36px; border-radius:50%; border:none;
+  background:#DC2626; color:#fff; cursor:pointer; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .15s ease; animation:aic-pulse 1.6s ease-in-out infinite; }
+.aic-stop:hover { background:#B91C1C; transform:scale(1.05); }
+@keyframes aic-pulse {
+  0%,100% { box-shadow:0 0 0 0 rgba(220,38,38,0.5); }
+  50%     { box-shadow:0 0 0 6px rgba(220,38,38,0); }
+}
 
 /* Confirmation modal for destructive tools */
 .aic-confirm-overlay {
@@ -797,61 +837,158 @@ function _aicAllowedTools() {
 }
 
 /* ── CLAUDE API CALL (non-streaming, used inside tool loops) ── */
+// ─── Tiered model selection for chat ─────────────────────────
+// Default: Sonnet (balanced, ~$0.024 per turn).
+// Auto-upgrade to Opus when user message looks complex (>30 chars, contains
+// reasoning verbs like "ανάλυσε", "σύγκρινε", "βρες", "match").
+function _nakisPickModel(userText) {
+  if (!userText || typeof userText !== 'string') return 'claude-sonnet-4-20250514';
+  const t = userText.toLowerCase();
+  const complexHints = ['ανάλυσε', 'analyse', 'σύγκρινε', 'compare', 'match', 'optim', 'βελτιστ', 'εξήγησε γιατί', 'why', 'γιατί'];
+  if (t.length > 80 || complexHints.some(h => t.includes(h))) {
+    return 'claude-opus-4-6';
+  }
+  return 'claude-sonnet-4-20250514';
+}
+
+// Map raw API errors to friendly Greek messages.
+function _nakisFriendlyError(status, message) {
+  const m = (message || '').toLowerCase();
+  if (m.includes('credit balance') || m.includes('billing') || status === 402) {
+    return '⚠ Ο Νάκης είναι offline (credits εξαντλήθηκαν). Επικοινώνησε με τον admin.';
+  }
+  if (status === 401) {
+    return '⚠ Πρόβλημα authentication με Anthropic. Έλεγξε το API key.';
+  }
+  if (status === 429 || m.includes('rate limit')) {
+    return '⚠ Πολλά αιτήματα — περίμενε 60s και δοκίμασε ξανά.';
+  }
+  if (status === 529 || m.includes('overloaded')) {
+    return '⚠ Anthropic προσωρινά πλημμυρισμένο — δοκίμασε σε λίγο.';
+  }
+  if (status >= 500) {
+    return '⚠ Server error (' + status + ') — δοκίμασε ξανά σε λίγο.';
+  }
+  if (m.includes('aborted') || m.includes('abort')) {
+    return '⏹ Ακυρώθηκε.';
+  }
+  if (m.includes('timed out') || m.includes('timeout')) {
+    return '⚠ Πολύ αργή απόκριση — ακυρώθηκε. Δοκίμασε πιο σύντομη ερώτηση.';
+  }
+  return '⚠ Κάτι πήγε στραβά: ' + (message || 'unknown error');
+}
+
+const _NAKIS_TIMEOUT_MS = 60000;
+const _NAKIS_MAX_RETRIES = 2;
+const _NAKIS_MAX_TOKENS = 4096;  // bumped from 1024 — was cutting multi-record summaries
+
 async function _aicCallClaude(messages) {
-  AiChat.abortCtrl = new AbortController();
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    signal: AiChat.abortCtrl.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTH_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: _aicSystemPrompt(),
-      tools: _aicAllowedTools(),
-      messages: messages
-    })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
+  const lastUserText = messages.findLast?.(m => m.role === 'user')?.content;
+  const userText = typeof lastUserText === 'string' ? lastUserText : '';
+  const model = _nakisPickModel(userText);
+
+  let lastErr;
+  for (let attempt = 0; attempt <= _NAKIS_MAX_RETRIES; attempt++) {
+    AiChat.abortCtrl = new AbortController();
+    const timeoutId = setTimeout(() => AiChat.abortCtrl.abort('timeout'), _NAKIS_TIMEOUT_MS);
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        signal: AiChat.abortCtrl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTH_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: _NAKIS_MAX_TOKENS,
+          system: _aicSystemPrompt(),
+          tools: _aicAllowedTools(),
+          messages: messages
+        })
+      });
+      clearTimeout(timeoutId);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const rawMsg = err.error?.message || `API error ${res.status}`;
+        // Don't retry 4xx (except 429) — they won't fix themselves
+        if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+          throw new Error(_nakisFriendlyError(res.status, rawMsg));
+        }
+        lastErr = new Error(_nakisFriendlyError(res.status, rawMsg));
+      } else {
+        const json = await res.json();
+        if (json.usage) {
+          _nakisAddTokens((json.usage.input_tokens || 0) + (json.usage.output_tokens || 0));
+        }
+        return json;
+      }
+    } catch (e) {
+      clearTimeout(timeoutId);
+      if (e.name === 'AbortError') {
+        // User-aborted — don't retry, propagate
+        if (AiChat._userAborted) throw new Error('⏹ Ακυρώθηκε.');
+        lastErr = new Error(_nakisFriendlyError(0, 'timed out'));
+      } else if (!lastErr) {
+        lastErr = e;
+      }
+    }
+    // Exponential backoff between attempts
+    if (attempt < _NAKIS_MAX_RETRIES) {
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
   }
-  const json = await res.json();
-  // Track token usage for daily quota
-  if (json.usage) {
-    _nakisAddTokens((json.usage.input_tokens || 0) + (json.usage.output_tokens || 0));
-  }
-  return json;
+  throw lastErr || new Error('⚠ Κάτι πήγε στραβά μετά από retries.');
 }
 
 /* ── CLAUDE API STREAMING (used for the final user-visible response) ── */
 async function _aicCallClaudeStream(messages, onTextDelta) {
   AiChat.abortCtrl = new AbortController();
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    signal: AiChat.abortCtrl.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': ANTH_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: _aicSystemPrompt(),
-      tools: _aicAllowedTools(),
-      messages: messages,
-      stream: true
-    })
-  });
+  AiChat._userAborted = false;
+  const lastUserText = messages.findLast?.(m => m.role === 'user')?.content;
+  const userText = typeof lastUserText === 'string' ? lastUserText : '';
+  const model = _nakisPickModel(userText);
+
+  // Timeout — auto-abort after 60s. User can also abort via stop button.
+  const timeoutId = setTimeout(() => {
+    if (AiChat.abortCtrl && !AiChat._userAborted) AiChat.abortCtrl.abort('timeout');
+  }, _NAKIS_TIMEOUT_MS);
+
+  let res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: AiChat.abortCtrl.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTH_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: _NAKIS_MAX_TOKENS,
+        system: _aicSystemPrompt(),
+        tools: _aicAllowedTools(),
+        messages: messages,
+        stream: true
+      })
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') {
+      if (AiChat._userAborted) throw new Error('⏹ Ακυρώθηκε.');
+      throw new Error(_nakisFriendlyError(0, 'timed out'));
+    }
+    throw e;
+  }
   if (!res.ok) {
+    clearTimeout(timeoutId);
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `API error ${res.status}`);
+    const rawMsg = err.error?.message || `API error ${res.status}`;
+    throw new Error(_nakisFriendlyError(res.status, rawMsg));
   }
 
   const reader = res.body.getReader();
@@ -903,6 +1040,9 @@ async function _aicCallClaudeStream(messages, onTextDelta) {
     }
   }
 
+  // Stream completed normally — clear the auto-abort timeout
+  clearTimeout(timeoutId);
+
   // Build pseudo-response shape compatible with non-streaming flow
   const content = [];
   if (fullText) content.push({ type: 'text', text: fullText });
@@ -926,12 +1066,23 @@ async function _aicSend() {
   AiChat.pending = [];
   _aicRenderPending();
 
-  // Re-interview trigger
+  // Re-interview trigger — now requires explicit confirmation
   if (text.includes('ξανα-γνώρισέ') || text.includes('ξαναγνωρισε') || text.includes('reset profile')) {
+    const ok = confirm('⚠ Θες πραγματικά να σβήσω το προφίλ σου;\n\nΑυτό θα διαγράψει τα στοιχεία onboarding, το ιστορικό συνομιλίας και τις υπενθυμίσεις.\nΘα ξεκινήσει νέα συνέντευξη.\n\nΗ ενέργεια ΔΕΝ μπορεί να αναιρεθεί.');
+    if (!ok) {
+      // User cancelled — restore the input so they don't lose their text
+      inp.value = text;
+      return;
+    }
+    // Wipe ALL nakis state for this user — profile, notifs, history, daily tokens
     localStorage.removeItem(_nakisProfileKey());
+    localStorage.removeItem(_nakisNotifsKey());
+    localStorage.removeItem(_nakisHistoryKey());
+    localStorage.removeItem(_nakisTokensKey());
     AiChat.messages = [];
+    AiChat.suggestions = [];
     _aicRenderMsgs();
-    toast('Profile reset — starting interview');
+    toast('Προφίλ μηδενίστηκε — ξεκινάει νέα συνέντευξη');
     _aicToggle(); // close
     setTimeout(() => _aicToggle(), 300); // reopen → triggers interview
     return;
@@ -1271,6 +1422,9 @@ function _aicInit() {
       <button class="aic-send" id="aic-send-btn" onclick="_aicSend()" aria-label="Send">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
       </button>
+      <button class="aic-stop" id="aic-stop-btn" onclick="_aicAbort()" aria-label="Stop" style="display:none" title="Stop generating">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      </button>
     </div>`;
   document.body.appendChild(panel);
 
@@ -1497,16 +1651,31 @@ function _aicRemovePending(idx) {
   _aicRenderPending();
 }
 
+// User-initiated abort — pressed during a long-running call
+function _aicAbort() {
+  if (AiChat.abortCtrl) {
+    AiChat._userAborted = true;
+    AiChat.abortCtrl.abort('user');
+    toast('Ακυρώθηκε', 'info');
+  }
+}
+
 if (typeof window !== 'undefined') {
   window._aicSetInput = _aicSetInput;
   window._aicAttachFile = _aicAttachFile;
   window._aicRemovePending = _aicRemovePending;
+  window._aicAbort = _aicAbort;
 }
 
 function _aicSetLoading(v) {
   AiChat.isLoading = v;
   const btn = document.getElementById('aic-send-btn');
-  if (btn) btn.disabled = v;
+  const stopBtn = document.getElementById('aic-stop-btn');
+  if (btn) {
+    btn.disabled = v;
+    btn.style.display = v ? 'none' : '';
+  }
+  if (stopBtn) stopBtn.style.display = v ? '' : 'none';
   _aicRenderMsgs();
   _aicUpdateQuotaBadge();
 }
