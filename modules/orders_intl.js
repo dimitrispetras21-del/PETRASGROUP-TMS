@@ -2282,6 +2282,17 @@ async function deleteIntlOrder(recId) {
       if (intlStops.length) _tmsLog(`Deleted ${intlStops.length} ORDER_STOPS for ORDER ${recId}`);
     } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
 
+    // 5b. Delete PARTNER_ASSIGN records linked to this ORDER
+    try {
+      const pas = await atGetAll(TABLES.PARTNER_ASSIGN, {
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({${F.PA_ORDER}},","))>0`,
+      }, false);
+      for (const pa of pas) {
+        try { await atDelete(TABLES.PARTNER_ASSIGN, pa.id); } catch(e) { _delFail++; console.warn('PA delete:', e); }
+      }
+      if (pas.length) _tmsLog(`Deleted ${pas.length} PARTNER_ASSIGN for ORDER ${recId}`);
+    } catch(e) { _delFail++; console.warn('PA cleanup:', e); }
+
     // 6. Delete the ORDER itself (soft-delete to trash if available, else hard)
     if (typeof atSoftDelete === 'function') {
       await atSoftDelete(TABLES.ORDERS, recId);
@@ -2391,10 +2402,133 @@ async function cleanupOrphanGL() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════
+// CLEANUP ORPHANS (full sweep) — finds + deletes records whose
+// parent order/load no longer exists. Covers:
+//   • GROUPAGE_LINES + linked CONS_LOADS + NAT_LOADS
+//   • PARTNER_ASSIGN
+//   • RAMP records
+//   • NAT_LOADS (Direct VS) with no Source Record
+//
+// Run from console: cleanupOrphans()
+// ═══════════════════════════════════════════════════════════════
+async function cleanupOrphans() {
+  toast('Σαρώνω ολόκληρη τη βάση…', 'info');
+  let allGL, allPA, allRamp, allDirNL, allIntl, allNatl, allNL;
+  try {
+    [allGL, allPA, allRamp, allNL, allIntl, allNatl] = await Promise.all([
+      atGetAll(TABLES.GL_LINES, {}, false),
+      atGetAll(TABLES.PARTNER_ASSIGN, {}, false),
+      atGetAll(TABLES.RAMP, {}, false),
+      atGetAll(TABLES.NAT_LOADS, {}, false),
+      atGetAll(TABLES.ORDERS, { fields: ['Direction'] }, false),
+      atGetAll(TABLES.NAT_ORDERS, { fields: ['Direction'] }, false),
+    ]);
+  } catch(e) {
+    toast('Σάρωση απέτυχε: ' + e.message, 'danger');
+    return;
+  }
+
+  const validOrderIds = new Set([...allIntl.map(r => r.id), ...allNatl.map(r => r.id)]);
+  const validNLIds = new Set(allNL.map(r => r.id));
+
+  // Orphan GL: no parent order link OR all linked orders have been deleted
+  const orphGL = allGL.filter(gl => {
+    const links = [...(gl.fields['Linked International Order'] || []), ...(gl.fields['Linked National Order'] || [])];
+    if (!links.length) return true;
+    return !links.some(id => validOrderIds.has(id));
+  });
+
+  // Orphan PA: linked Order field set but record gone (skip if linked via Nat Load with valid NL)
+  const orphPA = allPA.filter(pa => {
+    const orderLinks = pa.fields[F.PA_ORDER] || [];
+    const nlLinks = pa.fields[F.PA_NAT_LOAD] || [];
+    if (!orderLinks.length && !nlLinks.length) return true;
+    const orderOk = orderLinks.some(id => validOrderIds.has(id));
+    const nlOk = nlLinks.some(id => validNLIds.has(id));
+    return !orderOk && !nlOk;
+  });
+
+  // Orphan RAMP: linked Order or National Order set but record gone
+  const orphRamp = allRamp.filter(r => {
+    const ordLinks = [...(r.fields['Order'] || []), ...(r.fields['National Order'] || [])];
+    if (!ordLinks.length) return false;  // standalone manual ramp entries are valid, not orphans
+    return !ordLinks.some(id => validOrderIds.has(id));
+  });
+
+  // Orphan NAT_LOADS (Direct VS) — Source Record points to deleted ORDER
+  const orphDirNL = allNL.filter(nl => {
+    const src = nl.fields['Source Record'];
+    if (!src) return false;  // groupage NLs don't have Source Record, skip
+    return !validOrderIds.has(src);
+  });
+
+  const total = orphGL.length + orphPA.length + orphRamp.length + orphDirNL.length;
+  if (!total) {
+    toast('Δεν βρέθηκαν orphans — όλα καθαρά', 'success');
+    return;
+  }
+
+  const breakdown =
+    `• ${orphGL.length} GROUPAGE LINES (+ linked CL/NL)\n` +
+    `• ${orphPA.length} PARTNER ASSIGNMENTS\n` +
+    `• ${orphRamp.length} RAMP records\n` +
+    `• ${orphDirNL.length} NAT_LOADS (Direct VS)`;
+
+  if (!confirm(`Βρέθηκαν ${total} orphan records:\n\n${breakdown}\n\nΣυνέχεια διαγραφής;`)) return;
+
+  let _delFail = 0;
+
+  // Delete GL chain
+  for (const gl of orphGL) {
+    try {
+      const cls = await atGetAll(TABLES.CONS_LOADS, {
+        filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
+      }, false);
+      for (const cl of cls) {
+        const clNLs = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: `{Source Record}="${cl.id}"` }, false);
+        for (const nl of clNLs) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
+        try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; }
+      }
+      try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; }
+    } catch(e) { _delFail++; }
+  }
+
+  // Delete PAs
+  for (const pa of orphPA) {
+    try { await atDelete(TABLES.PARTNER_ASSIGN, pa.id); } catch(e) { _delFail++; }
+  }
+
+  // Delete RAMP
+  for (const r of orphRamp) {
+    try { await atDelete(TABLES.RAMP, r.id); } catch(e) { _delFail++; }
+  }
+
+  // Delete Direct VS NLs
+  for (const nl of orphDirNL) {
+    try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; }
+  }
+
+  invalidateCache(TABLES.GL_LINES);
+  invalidateCache(TABLES.CONS_LOADS);
+  invalidateCache(TABLES.NAT_LOADS);
+  invalidateCache(TABLES.PARTNER_ASSIGN);
+  invalidateCache(TABLES.RAMP);
+
+  const msg = _delFail
+    ? `Καθαρίστηκαν ${total - _delFail} orphans (${_delFail} failed)`
+    : `Καθαρίστηκαν ${total} orphan records επιτυχώς`;
+  toast(msg, _delFail ? 'warn' : 'success');
+  if (_delFail && typeof logError === 'function') {
+    logError(new Error(`cleanupOrphans: ${_delFail} sub-deletes failed`), 'cleanupOrphans');
+  }
+}
+
 // Expose functions used from onclick/onchange/oninput/onblur handlers
 window.cancelIntlOrder = cancelIntlOrder;
 window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
+window.cleanupOrphans = cleanupOrphans;
 window.renderOrdersIntl = renderOrdersIntl;
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;

@@ -1030,6 +1030,17 @@ async function deleteNatlOrder(recId) {
       if (natStops.length) _tmsLog(`Deleted ${natStops.length} ORDER_STOPS for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('ORDER_STOPS cleanup:', e); }
 
+    // 4b. Delete PARTNER_ASSIGN records linked to this NO (via Nat Load field — also Order in case national orders use that)
+    try {
+      const pas = await atGetAll(TABLES.PARTNER_ASSIGN, {
+        filterByFormula: `OR(FIND("${recId}",ARRAYJOIN({${F.PA_ORDER}},",")) > 0, FIND("${recId}",ARRAYJOIN({${F.PA_NAT_LOAD}},",")) > 0)`,
+      }, false);
+      for (const pa of pas) {
+        try { await atDelete(TABLES.PARTNER_ASSIGN, pa.id); } catch(e) { _delFail++; console.warn('PA delete:', e); }
+      }
+      if (pas.length) _tmsLog(`Deleted ${pas.length} PARTNER_ASSIGN for NO ${recId}`);
+    } catch(e) { _delFail++; console.warn('PA cleanup:', e); }
+
     // 5. Delete the NAT_ORDER itself (soft delete — saved to trash)
     await atSoftDelete(TABLES.NAT_ORDERS, recId);
 
