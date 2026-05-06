@@ -547,7 +547,28 @@ async function submitNatlOrder(recId) {
       const patchRes = await atSafePatch(TABLES.NAT_ORDERS, recId, fields);
       if (patchRes?.conflict) { toast('Record modified by another user — reload and try again','warn'); return; }
     } else {
-      // Duplicate check: same client + same loading date
+      // ── Duplicate check by Reference (strong signal — same transport doc) ──
+      if (fields['Reference'] && typeof findDuplicateOrders === 'function') {
+        const refDupes = await findDuplicateOrders(fields['Reference'], TABLES.NAT_ORDERS);
+        if (refDupes.length) {
+          const list = refDupes.map(d => {
+            const f = d.fields;
+            return `• ${f['Name'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
+          }).join('\n');
+          const ok = confirm(
+            `⚠ Πιθανό duplicate\n\n` +
+            `Υπάρχουν ${refDupes.length} National Orders με Reference "${fields['Reference']}":\n\n` +
+            `${list}\n\n` +
+            `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+          );
+          if (!ok) {
+            if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+            throw new Error('v');
+          }
+        }
+      }
+
+      // ── Soft duplicate check: same client + same loading date ──
       if (clientId && fields['Loading DateTime']) {
         const dupFilter = `AND(FIND("${clientId}",ARRAYJOIN({Client},","))>0,IS_SAME({Loading DateTime},'${fields['Loading DateTime']}','day'))`;
         const dups = await atGetAll(TABLES.NAT_ORDERS, { filterByFormula: dupFilter, fields:['Name'], maxRecords:1 }, false).catch(()=>[]);
@@ -1162,7 +1183,7 @@ async function _natlScanExtract() {
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
     // Reference data injection (Phase 2.3)
-    const refData = (typeof scanGetReferenceData === 'function') ? scanGetReferenceData(150, 250) : { clients: [], locations: [] };
+    const refData = (typeof scanGetReferenceData === 'function') ? scanGetReferenceData(50, 80) : { clients: [], locations: [] };
     const refBlock = (typeof scanBuildReferenceBlock === 'function') ? scanBuildReferenceBlock(refData) : '';
 
     const sysPrompt = `You are a logistics document parser for Petras Group's NATIONAL Greek transport operations.
@@ -1211,10 +1232,12 @@ GREEK NATIONAL CONTEXT:
 - field_confidence: 1.0 = clearly read, 0.4 = barely legible
 - Sum pickup pallets must equal total pallets` + refBlock + `
 
-CRITICAL — Match clients & locations using the KNOWN lists above:
-- For client_name: pick the EXACT canonical name from KNOWN CLIENTS, set client_id to its [id:rec...] value.
-- For each pickup_location / delivery_location: pick canonical from KNOWN LOCATIONS, set location_id.
-- If no match (truly new supplier), leave location_id = null and provide best-guess location_name.`;
+You have access to two tools:
+- search_clients(query)        → look up canonical client name + id
+- search_locations(query, city, country) → look up canonical location name + id
+
+USE THESE TOOLS for the client and every pickup/delivery location.
+Set client_id and location_id fields when tools return a confident match (>0.85).`;
 
     const messages = [];
     const examples = (typeof scanGetTrainingExamples === 'function') ? scanGetTrainingExamples('DELIVERY_NOTE', 3) : [];
@@ -1223,22 +1246,22 @@ CRITICAL — Match clients & locations using the KNOWN lists above:
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
     });
     messages.push({ role: 'user', content: [cb, { type: 'text', text:
-      'Extract national order data. Match clients/locations against the KNOWN lists in the system prompt.\n\n' +
-      'CRITICAL: Output ONLY the JSON object — no preamble, no markdown, no commentary.\nStart with `{` end with `}`.'
+      'Extract national order data. Use search_clients and search_locations tools.\n\n' +
+      'CRITICAL: Final message = ONLY the JSON object. No preamble, no markdown, no commentary. Start with `{` end with `}`.'
     }] });
 
-    // DELIVERY_NOTE → Sonnet (per tier map). FAST single-call (no tool round-trips).
+    // DELIVERY_NOTE → Sonnet (per tier map). Use tool-use loop with fallback.
     const natlModel = (typeof scanModelForType === 'function') ? scanModelForType('DELIVERY_NOTE') : SCAN_MODEL;
     let data;
     try {
-      data = await scanFastExtract({
+      data = await scanExtractWithTools({
         model: natlModel,
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
       });
-    } catch (fastErr) {
-      console.warn('[natl_scan] fast extract failed, falling back:', fastErr.message);
+    } catch (toolErr) {
+      console.warn('[natl_scan] tool-use loop failed, falling back:', toolErr.message);
       data = await scanCallAnthropic({
         model: natlModel,
         max_tokens: SCAN_MAX_TOKENS,
@@ -1366,6 +1389,29 @@ async function _natlScanPreview(data) {
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-ghost" onclick="openNatlScan()">↩ Rescan</button>
     <button class="btn btn-success" onclick="_natlScanOpenForm()">Open Form →</button>`;
+
+  // Duplicate detection — fire-and-forget. Insert warning if Reference matches existing.
+  if (data.reference && typeof findDuplicateOrders === 'function') {
+    findDuplicateOrders(data.reference, TABLES.NAT_ORDERS).then(dupes => {
+      if (!dupes.length) return;
+      const dupListHtml = dupes.map(d => {
+        const f = d.fields;
+        const loadDate = (f['Loading DateTime']||'').substring(0,10);
+        const name = f['Name'] || d.id.slice(-6);
+        return `<li style="margin:4px 0">
+          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersNatl().then(()=>setTimeout(()=>selectNatlOrder('${d.id}'),300))"
+             style="color:#92400E;text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
+          <span style="color:#78350F;font-size:11px"> · ${loadDate||'no date'}</span>
+        </li>`;
+      }).join('');
+      st.insertAdjacentHTML('afterbegin', `
+        <div style="background:#FEF3C7;border:1px solid #FBBF24;border-left:3px solid #D97706;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+          <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
+          <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
+          <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
+        </div>`);
+    });
+  }
 }
 
 async function _natlScanOpenForm() {

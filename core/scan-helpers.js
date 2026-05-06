@@ -113,10 +113,8 @@ async function scanPreprocessFile(file) {
   const rotation = await _scanReadExifOrientation(file);
   const img = await _scanLoadImage(file);
 
-  // Compute output dims (max 1600px longest side, preserve aspect).
-  // Was 2000 — dropped to 1600 for ~25% fewer image tokens with negligible
-  // accuracy loss on logistics docs (text remains legible).
-  const MAX = 1600;
+  // Compute output dims (max 2000px longest side, preserve aspect)
+  const MAX = 2000;
   let { width, height } = img;
   if (rotation === 90 || rotation === 270) [width, height] = [height, width];
   const scale = Math.min(1, MAX / Math.max(width, height));

@@ -109,3 +109,40 @@ function resolveClientStr(str) {
     return c ? (c.fields['Company Name'] || '—') : String(trimmed).substring(0, 15);
   }).join(' / '));
 }
+
+
+// ─── Duplicate-order detection ───────────────────────────────
+/**
+ * Find existing ORDERS / NAT_ORDERS that match a given Reference (Transport
+ * number, Δελτίο number, etc). Returns up to 5 candidates with key fields
+ * for the UI to show in a confirmation dialog.
+ *
+ * Matching: case-insensitive exact match on the Reference field.
+ * Skips records with empty Reference (no false positives).
+ *
+ * @param {string} reference        the reference / transport number to look up
+ * @param {string} tableId          TABLES.ORDERS or TABLES.NAT_ORDERS
+ * @param {string} [excludeRecId]   skip this record id (for edit flows)
+ * @returns {Promise<Array>}        matching records (max 5), or [] on no match / error
+ */
+async function findDuplicateOrders(reference, tableId, excludeRecId) {
+  if (!reference || typeof reference !== 'string' || !reference.trim()) return [];
+  if (!tableId || typeof atGetAll !== 'function') return [];
+  const ref = String(reference).trim().replace(/"/g, '\\"');
+  // Airtable: Reference might have whitespace, trim before compare. LOWER for case-insensitive.
+  const filter = `LOWER(TRIM({Reference}))="${ref.toLowerCase()}"`;
+  try {
+    const recs = await atGetAll(tableId, {
+      filterByFormula: filter,
+      maxRecords: 5,
+    }, false);
+    return excludeRecId ? recs.filter(r => r.id !== excludeRecId) : recs;
+  } catch (e) {
+    console.warn('[duplicate-check] query failed:', e.message);
+    return [];
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.findDuplicateOrders = findDuplicateOrders;
+}

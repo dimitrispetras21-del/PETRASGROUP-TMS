@@ -1426,6 +1426,28 @@ async function submitIntlOrder(recId) {
     }
     // ────────────────────────────────────────────────────────────
 
+    // Duplicate guard — only on CREATE (not edit) AND only if Reference is set.
+    // Asks the user to confirm before saving a duplicate.
+    if (!recId && fields['Reference'] && typeof findDuplicateOrders === 'function') {
+      const dupes = await findDuplicateOrders(fields['Reference'], TABLES.ORDERS);
+      if (dupes.length) {
+        const list = dupes.map(d => {
+          const f = d.fields;
+          return `• ${f['Order Number'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
+        }).join('\n');
+        const ok = confirm(
+          `⚠ Πιθανό duplicate\n\n` +
+          `Υπάρχουν ${dupes.length} παραγγελίες με Reference "${fields['Reference']}":\n\n` +
+          `${list}\n\n` +
+          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+        );
+        if (!ok) {
+          if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+          return;
+        }
+      }
+    }
+
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
@@ -1737,45 +1759,42 @@ async function _scanExtract() {
   setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Προετοιμασία αρχείου…');
 
   try {
-    // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF) +
-    //    parallel fetch of reference data so we don't serialize unnecessarily.
-    const [pre, refData] = await Promise.all([
-      scanPreprocessFile(file),
-      Promise.resolve(scanGetReferenceData(150, 250)),  // sync but wrapped for symmetry
-    ]);
+    // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
+    const pre = await scanPreprocessFile(file);
     if (pre.wasPreprocessed) {
       console.log('[scan] preprocessed: original=' + (file.size/1024).toFixed(0) + 'KB → ' + (pre.blob.size/1024).toFixed(0) + 'KB');
     }
 
-    // 2. SKIP doc-type detection by default — generic prompt handles all formats.
-    //    The Haiku call adds 2-3s for marginal benefit when the prompt is generic.
-    //    Doc-type stays UNKNOWN; fast mode treats all docs the same way.
-    const docType = 'UNKNOWN';
+    // 2. Document type detection (Haiku, fast + cheap)
+    setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', 'Αναγνώριση τύπου εγγράφου…');
+    const docType = await scanDetectDocType(pre.base64, pre.mediaType);
 
-    // 3. Tier model: Opus by default for unknown (max accuracy)
+    // 3. Tiered model selection: Opus για complex docs, Sonnet για simple
     const model = scanModelForType(docType);
     const modelLabel = scanModelLabel(model);
 
-    // 4. Single-call FAST extraction — no tool-use round-trips.
-    //    All known clients + locations are injected in the system prompt;
-    //    the model returns canonical client_id / location_id directly.
+    // 4. Extraction with type-specialised prompt + few-shot examples + tool use
     setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>',
-      `AI αναλύει το document με ${modelLabel}…`);
+      `AI αναλύει ${docType.toLowerCase().replace('_',' ')} με ${modelLabel}…`);
     const cb = pre.mediaType === 'application/pdf'
       ? { type: 'document', source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } }
       : { type: 'image',    source: { type: 'base64', media_type: pre.mediaType, data: pre.base64 } };
 
+    // Build system prompt with type-specialised rules + reference data injection (Phase 2.3)
+    const refData = scanGetReferenceData(50, 80);
     const refBlock = scanBuildReferenceBlock(refData);
     const sysPrompt = _intlBuildSystemPrompt(docType) + refBlock + `
 
-CRITICAL — Match clients & locations using the KNOWN lists above:
-- For client_name: pick the EXACT canonical name from KNOWN CLIENTS, set client_id to its [id:rec...] value.
-- For each loading_stop / delivery_stop: pick canonical from KNOWN LOCATIONS, set location_id.
-- If no match (truly new supplier), leave location_id = null and provide best-guess location_name.`;
+You have access to two tools:
+- search_clients(query)        → look up canonical client name + id
+- search_locations(query, city, country) → look up canonical location name + id
+
+USE THESE TOOLS for every client and every loading/delivery stop.
+Set client_id and location_id fields in the JSON output when tools return a confident match (>0.85).`;
 
     const messages = [];
 
-    // Few-shot examples — keep last 3 of any doc type (since we skip classification)
+    // Few-shot examples (last 3 successful extractions of same type) — Phase 3.2
     const examples = scanGetTrainingExamples(docType, 3);
     examples.forEach(ex => {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
@@ -1784,22 +1803,25 @@ CRITICAL — Match clients & locations using the KNOWN lists above:
 
     // Actual document — explicit JSON-only instruction prevents conversational preamble
     messages.push({ role: 'user', content: [cb, { type: 'text', text:
-      'Extract all order data from this document. Match clients/locations against the KNOWN lists in the system prompt.\n\n' +
-      'CRITICAL: Output ONLY the JSON object — no preamble, no markdown, no commentary.\n' +
-      'Start with `{` and end with `}`.'
+      'Extract all order data from this document. Use search_clients and search_locations tools to find canonical refs.\n\n' +
+      'CRITICAL: When you have all the data, your FINAL message must contain ONLY the JSON object.\n' +
+      '- No "Here\'s the data" or "Now I have..." preamble\n' +
+      '- No markdown code fences\n' +
+      '- No commentary after the JSON\n' +
+      '- Start with `{` and end with `}` — nothing else.'
     }] });
 
-    // FAST single-call extraction (no tool round-trips, prompt cached)
+    // Tool-use extraction loop (Phase 4) — falls back to plain call on errors
     let data;
     try {
-      data = await scanFastExtract({
+      data = await scanExtractWithTools({
         model,
         max_tokens: SCAN_MAX_TOKENS,
         system: sysPrompt,
         messages,
       });
-    } catch (fastErr) {
-      console.warn('[scan] fast extract failed, falling back to plain extraction:', fastErr.message);
+    } catch (toolErr) {
+      console.warn('[scan] tool-use loop failed, falling back to plain extraction:', toolErr.message);
       data = await scanCallAnthropic({
         model,
         max_tokens: SCAN_MAX_TOKENS,
@@ -2021,6 +2043,30 @@ async function _scanPreview(data) {
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-ghost" onclick="openIntlScan()">↩ Rescan</button>
     <button class="btn btn-success" onclick="_scanOpenStored()">Open Form →</button>`;
+
+  // Duplicate detection — fire-and-forget. If we find an existing order with
+  // the same Reference, prepend a warning banner with link to open it.
+  if (data.reference && typeof findDuplicateOrders === 'function') {
+    findDuplicateOrders(data.reference, TABLES.ORDERS).then(dupes => {
+      if (!dupes.length) return;
+      const dupListHtml = dupes.map(d => {
+        const f = d.fields;
+        const loadDate = (f['Loading DateTime']||'').substring(0,10);
+        const orderNo = f['Order Number'] || d.id.slice(-6);
+        return `<li style="margin:4px 0">
+          <a href="#" onclick="event.preventDefault();closeModal();renderOrdersIntl().then(()=>setTimeout(()=>selectIntlOrder('${d.id}'),300))"
+             style="color:#92400E;text-decoration:underline;font-weight:600">Order ${escapeHtml(String(orderNo))}</a>
+          <span style="color:#78350F;font-size:11px"> · ${loadDate||'no date'} · ${escapeHtml(_clientName(f)||'—')}</span>
+        </li>`;
+      }).join('');
+      st.insertAdjacentHTML('afterbegin', `
+        <div style="background:#FEF3C7;border:1px solid #FBBF24;border-left:3px solid #D97706;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+          <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
+          <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
+          <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
+        </div>`);
+    });
+  }
 }
 
 async function _scanOpenStored() {
