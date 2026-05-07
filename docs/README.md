@@ -36,7 +36,15 @@ If you have **2 hours**:
 5. [`SCHEMA.md`](./SCHEMA.md) — Airtable tables + field naming gotchas
 6. [`DEBUGGING.md`](./DEBUGGING.md) — console commands you'll want to know
 7. [`PERFORMANCE.md`](./PERFORMANCE.md) — known bottlenecks
-8. [`CHANGELOG_ANNOTATED.md`](./CHANGELOG_ANNOTATED.md) — recent commits with "why"
+8. [`SECURITY.md`](./SECURITY.md) — threat model + known gaps
+9. [`TESTING.md`](./TESTING.md) — canonical flows to verify
+10. [`CHANGELOG_ANNOTATED.md`](./CHANGELOG_ANNOTATED.md) — recent commits with "why"
+
+When you find issues:
+→ Drop a Markdown file in [`audit-findings/`](./audit-findings/) — see template in TESTING.md.
+
+For owner reference (provisioning access):
+→ [`AUDIT_ACCESS.md`](./AUDIT_ACCESS.md) — checklist of what to provision + how.
 
 ---
 
