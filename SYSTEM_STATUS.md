@@ -1,5 +1,39 @@
 # PETRAS GROUP — SYSTEM STATUS
-_Last updated: 2026-03-18 (Session 15)_
+_Last updated: 2026-05-08 (Session 22)_
+
+---
+
+## ⚠️ Current operational state (May 2026)
+
+**Production**: live, used daily. App at https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/app.html
+
+**Audit in progress**: senior dev team auditing from `main` branch. **Hands
+off existing code** until user signals audit is complete. New work goes on
+isolated feature branches only. Reference: [`docs/AUDIT_ACCESS.md`](docs/AUDIT_ACCESS.md).
+
+**Most recent commits**:
+- `3d12da0` — Full audit pack delivered (/docs/ folder)
+- `5d9e9ed` — Parallel scan tools + tool-result cache + Notes field
+- `6fdef33` — Reverted FAST scan mode (kept duplicate detection)
+
+**Cumulative work this month**: 60+ commits across crash-test fixes, mobile
+optimization, visual consistency, scan v2/v3, agentic Νάκης, production
+polish, cancel/delete on orders.
+
+**Current open work** (next session pickup):
+- Trip Costs module — scope locked, schema proposed, awaiting user
+  confirmation on 3 decisions. See
+  [project memory: session_22_trip_costs_handoff.md](file:///Users/dimitrispetras/.claude/projects/-Users-dimitrispetras-PETRASGROUP-TMS/memory/session_22_trip_costs_handoff.md).
+
+**Operational pain points**:
+- Anthropic API credits deplete periodically (no automated alert)
+- ~1090 test records in Airtable polluting KPIs
+- API tokens still in browser source (Cloudflare Worker proxy ready, not deployed)
+
+**Branch strategy during audit**:
+- `main` = audit-team-visible production
+- `feature/costs-module` (not yet created) = next dev work
+- No merges to main until audit complete
 
 ---
 
