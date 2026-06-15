@@ -1090,7 +1090,7 @@ async function _wnUnassign(rowId) {
   _wnPaint();
 }
 
-function _wnSplit(rowId) {
+async function _wnSplit(rowId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row || row.orderIds.length <= 1) return;
   const [first, ...rest] = row.orderIds;
@@ -1104,17 +1104,30 @@ function _wnSplit(rowId) {
       partnerPlates:'',partnerRate:'',saved:false,
     });
   });
-  _wnPaint(); toast('Διαχωρίστηκε');
+  _wnPaint();
   const allIds = [first, ...rest];
-  // Use safe patch + central sync; Groupage ID clear unlinks these orders from GRP chain
-  for (const id of allIds) {
+  // Audit fix (N-1): await the back-patches and only confirm success once they
+  // resolve. Previously these were fired without await, so the user saw "split
+  // done" even when a Groupage ID clear silently failed, leaving a stale link
+  // on NAT_ORDERS. allSettled so one failure does not abort the other clears.
+  // Use safe patch + central sync; Groupage ID clear unlinks these orders from GRP chain.
+  const results = await Promise.allSettled(allIds.map(id =>
     atSafePatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' })
       .then(() => {
         if (typeof syncOrderDownstream === 'function') {
           return syncOrderDownstream(id, { source: 'natl', changedFields: ['Groupage ID'], skipPA: true, skipRamp: true });
         }
       })
-      .catch(e => { console.warn('Groupage clear:', e); if (typeof logError === 'function') logError(e, '_wnSplit groupage clear'); });
+  ));
+  const failed = results.filter(r => r.status === 'rejected');
+  if (failed.length) {
+    failed.forEach(r => {
+      console.warn('Groupage clear:', r.reason);
+      if (typeof logError === 'function') logError(r.reason, '_wnSplit groupage clear');
+    });
+    if (typeof showErrorToast === 'function') showErrorToast(`Διαχωρισμός: ${failed.length}/${allIds.length} ενημερώσεις απέτυχαν — ανανεώστε`, 'error');
+  } else {
+    toast('Διαχωρίστηκε');
   }
 }
 
