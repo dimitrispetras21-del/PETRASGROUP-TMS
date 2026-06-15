@@ -842,13 +842,15 @@ function _aicAllowedTools() {
 // Auto-upgrade to Opus when user message looks complex (>30 chars, contains
 // reasoning verbs like "ανάλυσε", "σύγκρινε", "βρες", "match").
 function _nakisPickModel(userText) {
-  if (!userText || typeof userText !== 'string') return 'claude-sonnet-4-20250514';
+  // Model IDs centralised in config.js (MODELS). Was hardcoded to the now-retired
+  // 'claude-sonnet-4-20250514' (retired 2026-06-15) for the default path.
+  if (!userText || typeof userText !== 'string') return MODELS.SONNET;
   const t = userText.toLowerCase();
   const complexHints = ['ανάλυσε', 'analyse', 'σύγκρινε', 'compare', 'match', 'optim', 'βελτιστ', 'εξήγησε γιατί', 'why', 'γιατί'];
   if (t.length > 80 || complexHints.some(h => t.includes(h))) {
-    return 'claude-opus-4-6';
+    return MODELS.OPUS;
   }
-  return 'claude-sonnet-4-20250514';
+  return MODELS.SONNET;
 }
 
 // Map raw API errors to friendly Greek messages.

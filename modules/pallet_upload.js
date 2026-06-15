@@ -357,7 +357,7 @@ KEY RULES:
     // PALLET_SHEET → Sonnet tier (numerical data, low complexity, ~$0.024/scan).
     const palletModel = (typeof scanModelForType === 'function')
       ? scanModelForType('PALLET_SHEET')
-      : (typeof SCAN_MODEL !== 'undefined' ? SCAN_MODEL : 'claude-sonnet-4-20250514');
+      : (typeof SCAN_MODEL !== 'undefined' ? SCAN_MODEL : MODELS.SONNET); // was retired claude-sonnet-4-20250514
 
     const data = (typeof scanCallAnthropic === 'function')
       ? await scanCallAnthropic({
@@ -375,7 +375,7 @@ KEY RULES:
               'anthropic-version': '2023-06-01',
               'anthropic-dangerous-direct-browser-access': 'true',
             },
-            body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4000, system: sysPrompt, messages }),
+            body: JSON.stringify({ model: MODELS.SONNET, max_tokens: 4000, system: sysPrompt, messages }), // was retired claude-sonnet-4-20250514
           });
           if (!res.ok) { const e = await res.json(); throw new Error(e.error?.message || 'API error ' + res.status); }
           return res.json();
