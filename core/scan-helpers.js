@@ -20,9 +20,12 @@
 // For typical Petras volume (~100 scans/month), tiered cost ≈ $6/mo
 // vs $12 Opus-only or $2.40 Sonnet-only — small price for noticeable
 // accuracy gain on the docs that actually matter (carrier orders, CMRs).
-const SCAN_MODEL_OPUS   = 'claude-opus-4-6';
-const SCAN_MODEL_SONNET = 'claude-sonnet-4-20250514';
-const SCAN_MODEL_HAIKU  = 'claude-haiku-4-20250514';
+// Model IDs centralised in config.js (MODELS). Was: Sonnet/Haiku hardcoded
+// to 'claude-sonnet-4-20250514' (retired 2026-06-15) and 'claude-haiku-4-20250514'
+// (never a valid ID, returned 400 and fell back to UNKNOWN).
+const SCAN_MODEL_OPUS   = MODELS.OPUS;
+const SCAN_MODEL_SONNET = MODELS.SONNET;
+const SCAN_MODEL_HAIKU  = MODELS.HAIKU;
 
 const SCAN_MODELS_BY_TYPE = {
   CARRIER_ORDER: SCAN_MODEL_OPUS,    // multi-stop, complex tables

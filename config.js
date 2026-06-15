@@ -56,6 +56,19 @@ const TABLES = {
   SCAN_TRAINING: '',
 };
 
+// ── Claude model IDs ───────────────────────────────────────────────────
+// Single source of truth for every Anthropic API call (scan, AI chat, pallet
+// OCR). Centralised here so a model deprecation is a one-line change, not a
+// grep across core/ + modules/. Verify against the live deprecation list
+// before changing: https://platform.claude.com/docs/en/docs/about-claude/model-deprecations
+// History: claude-sonnet-4-20250514 retired 2026-06-15 → claude-sonnet-4-6.
+//          claude-haiku-4-20250514 was never a valid ID → claude-haiku-4-5-20251001.
+const MODELS = {
+  OPUS:   'claude-opus-4-6',           // active (retirement not before 2026-02-05)
+  SONNET: 'claude-sonnet-4-6',         // active replacement for the retired Sonnet 4
+  HAIKU:  'claude-haiku-4-5-20251001', // active Haiku 4.5
+};
+
 // ── Airtable field name constants ──────────────────────────────────────
 // Single source of truth. Modules should migrate to F.XXX over time.
 // Fields with unusual naming are marked with comments.
