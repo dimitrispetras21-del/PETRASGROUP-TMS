@@ -252,12 +252,12 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
     td.innerHTML = '<span style="color:var(--accent);font-size:11px">Saving…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
-      await atPatch(tableId, recId, { [fieldName]: newVal });
+      await atSafePatch(tableId, recId, { [fieldName]: newVal });
       const rec = (vType === 'Truck' ? MAINT.trucks : MAINT.trailers).find(v=>v.id===recId);
       if (rec) rec.fields[fieldName] = newVal;
       _expiryPaint();
     } catch(err) {
-      alert('Save failed: ' + err.message);
+      showErrorToast('Save failed: ' + err.message);
       _expiryPaint();
     }
   };
@@ -297,10 +297,10 @@ async function _expInsurerEdit(e, recId, vType) {
     td.innerHTML = '<span style="color:var(--accent);font-size:10px">Saving…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
-      await atPatch(tableId, recId, { 'Insurance Partner': newVal });
+      await atSafePatch(tableId, recId, { 'Insurance Partner': newVal });
       if (rec) rec.fields['Insurance Partner'] = newVal;
       _expiryPaint();
-    } catch(err) { alert('Save failed: ' + err.message); _expiryPaint(); }
+    } catch(err) { showErrorToast('Save failed: ' + err.message); _expiryPaint(); }
   };
   inp.addEventListener('blur', save);
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp.blur(); if (ev.key === 'Escape') _expiryPaint(); });
@@ -782,7 +782,7 @@ async function _svcSave(editId) {
 
   try {
     if (editId) {
-      await atPatch(TABLES.MAINT_HISTORY, editId, fields);
+      await atSafePatch(TABLES.MAINT_HISTORY, editId, fields);
       toast('Record updated ✓');
     } else {
       await atCreate(TABLES.MAINT_HISTORY, fields);
@@ -1877,11 +1877,11 @@ async function _mreqDismissExpiry(plate, docType, desc) {
 
 async function _mreqQuickStatus(recId, newStatus) {
   try {
-    await atPatch(TABLES.MAINT_REQ, recId, { Status: newStatus });
+    await atSafePatch(TABLES.MAINT_REQ, recId, { Status: newStatus });
     const rec = MREQ.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
     _mreqPaint();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { showErrorToast('Error: ' + e.message); }
 }
 
 function _mreqOpenForm(editId) {
@@ -1971,7 +1971,7 @@ async function _mreqSave(editId) {
 
   try {
     if (editId) {
-      await atPatch(TABLES.MAINT_REQ, editId, fields);
+      await atSafePatch(TABLES.MAINT_REQ, editId, fields);
       const rec = MREQ.data.find(r => r.id === editId);
       if (rec) Object.assign(rec.fields, fields);
     } else {
