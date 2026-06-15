@@ -649,12 +649,14 @@ async function submitNatlOrder(recId) {
             }
           } catch(e) { console.warn('CL cleanup:', e); }
         }
-        // Delete GL lines
+        // FIXME(audit): GL_LINES must never be hard-deleted — only set Status='Unassigned'.
+        // Hard-delete breaks the ORDERS→GL_LINES→CONS_LOADS history chain permanently.
+        // See .reference/ANALYSIS_WEAK_SPOTS_OPPORTUNITIES.md and orders_natl.js findings.
         for (const r of staleGL) {
-          try { await atDelete(TABLES.GL_LINES, r.id); }
-          catch(e) { console.warn('GL delete:', e); }
+          try { await atSafePatch(TABLES.GL_LINES, r.id, { Status: 'Unassigned' }); }
+          catch(e) { console.warn('GL unassign:', e); }
         }
-        if (staleGL.length) _tmsLog(`Deleted ${staleGL.length} GL + linked CL/NL`);
+        if (staleGL.length) _tmsLog(`Unassigned ${staleGL.length} stale GL lines`);
         invalidateCache(TABLES.GL_LINES);
         invalidateCache(TABLES.NAT_LOADS);
       } catch(e) { console.warn('GL cleanup error:', e); }
@@ -797,11 +799,12 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
     }
   });
 
-  // Delete stale GL lines (locId no longer in NO)
+  // FIXME(audit): GL_LINES must never be hard-deleted — only set Status='Unassigned'.
+  // See .reference/ANALYSIS_WEAK_SPOTS_OPPORTUNITIES.md and orders_natl.js findings.
   for (const [locId, rec] of Object.entries(existMap)) {
     if (rec.fields.Status !== 'Assigned') {
-      try { await atDelete(TABLES.GL_LINES, rec.id); }
-      catch(e) { console.warn('GL stale delete:', e); }
+      try { await atSafePatch(TABLES.GL_LINES, rec.id, { Status: 'Unassigned' }); }
+      catch(e) { console.warn('GL stale unassign:', e); }
     }
   }
 
@@ -1010,9 +1013,11 @@ async function deleteNatlOrder(recId) {
             try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; console.warn('CL delete:', e); }
           }
         } catch(e) { _delFail++; console.warn('CL cleanup:', e); }
-        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('GL delete:', e); }
+        // FIXME(audit): GL_LINES must never be hard-deleted — only set Status='Unassigned'.
+        // See .reference/ANALYSIS_WEAK_SPOTS_OPPORTUNITIES.md and orders_natl.js findings.
+        try { await atSafePatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); } catch(e) { _delFail++; console.warn('GL unassign:', e); }
       }
-      if (gls.length) _tmsLog(`Deleted ${gls.length} GL + linked CL/NL for NO ${recId}`);
+      if (gls.length) _tmsLog(`Unassigned ${gls.length} GL lines for NO ${recId} (CL/NL deleted)`);
     } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
 
     // 3. Delete RAMP records linked to this NO (field is 'National Order', NOT 'Source Order')
