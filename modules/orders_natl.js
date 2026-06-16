@@ -689,7 +689,9 @@ async function submitNatlOrder(recId) {
     await renderOrdersNatl();
 
   } catch(e) {
-    if(e.message!=='v') alert('Error: '+e.message);
+    // 'v' is the validation sentinel thrown after a blocking validation message;
+    // that path already told the user, so skip to avoid double-reporting.
+    if(e.message!=='v') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
     if(btn) { btn.textContent=recId?'Save Changes':'Submit'; btn.disabled=false; }
   }
 }
