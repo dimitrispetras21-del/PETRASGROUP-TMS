@@ -435,7 +435,7 @@ async function _plSaveForm(recId) {
     document.getElementById('plFormOverlay').remove();
     invalidateCache(tbl);
     renderPalletLedger();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { reportError('Σφάλμα αποθήκευσης εγγραφής παλετών', e); }
 }
 
 /* ── CSV Export ─────────────────────────────── */
@@ -467,7 +467,7 @@ async function _plDelete(id) {
     await atSoftDelete(tbl, id);
     invalidateCache(tbl);
     renderPalletLedger();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { reportError('Σφάλμα διαγραφής εγγραφής παλετών', e); }
 }
 
 // Expose

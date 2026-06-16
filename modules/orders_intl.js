@@ -960,13 +960,13 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // Don't overwrite Status if it was changed by dispatcher
     delete nlFields['Status'];
     const upd = await atPatch(TABLES.NAT_LOADS, existingNL[0].id, nlFields);
-    if (upd?.error) alert('NAT_LOADS UPDATE ERROR: ' + JSON.stringify(upd.error));
+    if (upd?.error) reportError('Σφάλμα ενημέρωσης NAT_LOADS — δοκιμάστε ξανά', upd.error);
     else nlId = existingNL[0].id;
     _tmsLog('NAT_LOADS updated:', nlId);
   } else {
     const cre = await atCreate(TABLES.NAT_LOADS, nlFields);
     if (cre?.error) {
-      alert('NAT_LOADS CREATE ERROR: ' + JSON.stringify(cre.error) + '\n\nFields: ' + JSON.stringify(nlFields));
+      reportError('Σφάλμα δημιουργίας NAT_LOADS — δοκιμάστε ξανά', { error: cre.error, fields: nlFields });
     } else {
       nlId = cre.id;
       _createdIds.push({ table: TABLES.NAT_LOADS, id: cre.id });
@@ -1531,7 +1531,9 @@ async function submitIntlOrder(recId) {
     await renderOrdersIntl();
 
   } catch(e) {
-    if (e.message !== 'validation') alert('Error saving: ' + e.message);
+    // 'validation' is the sentinel thrown after a blocking validation alert (line ~1259);
+    // that path already messaged the user, so don't double-report.
+    if (e.message !== 'validation') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
     if (btn) { btn.textContent = recId ? 'Save Changes' : 'Submit'; btn.disabled = false; }
   }
 }

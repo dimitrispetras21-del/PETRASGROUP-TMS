@@ -34,7 +34,7 @@ async function openPalletUpload(orderId) {
   try {
     PU.order = await _puFetchRecord(TABLES.ORDERS, orderId);
   } catch (e) {
-    alert('Error loading order: ' + e.message);
+    reportError('Σφάλμα φόρτωσης παραγγελίας', e);
     return;
   }
   const f = PU.order.fields;
@@ -585,7 +585,7 @@ async function _puSave() {
       setTimeout(closePalletUpload, 2000);
     }
   } catch (e) {
-    alert('Error saving: ' + e.message);
+    reportError('Σφάλμα αποθήκευσης παλετών', e);
   }
 }
 
