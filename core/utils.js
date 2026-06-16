@@ -67,6 +67,34 @@ function showErrorToast(message, type = 'error', durationMs = 5000) {
 }
 
 /**
+ * Report an error to the user without leaking internals.
+ *
+ * Splits a failure into two audiences: the user sees a short, non-technical
+ * toast; the full technical detail (raw Airtable errors, stack messages, field
+ * payloads) goes only to the gated _tmsLog, so it is hidden in production and
+ * visible to a dispatcher with DevTools only after they flip TMS_DEBUG on.
+ *
+ * Replaces the old pattern of `alert('Error: ' + e.message)` / dumping
+ * JSON.stringify(error) straight onto the screen.
+ * See .reference/audit__code-review-session1.md (O-1: raw errors shown to users).
+ *
+ * @param {string} userMessage - Short, non-technical text shown in the toast (Greek or English to match the surrounding UI)
+ * @param {*} [detail] - Full technical detail (Error, response object, etc.); logged via _tmsLog, never shown to the user
+ * @param {'error'|'warn'|'info'} [type='error'] - Toast colour
+ */
+function reportError(userMessage, detail, type = 'error') {
+  // Toast is the only thing the user sees. Guarded because utils.js loads
+  // before modules, but callers elsewhere follow the same typeof convention.
+  if (typeof showErrorToast === 'function') showErrorToast(userMessage, type);
+  // Full detail goes to the gated logger only: invisible in prod, available
+  // on demand. Never put `detail` in the toast.
+  if (detail !== undefined && typeof _tmsLog === 'function') {
+    _tmsLog('[reportError]', userMessage, detail);
+  }
+}
+if (typeof window !== 'undefined') window.reportError = reportError;
+
+/**
  * Escape HTML special characters to prevent XSS
  * @param {string|null|undefined} str - Raw string
  * @returns {string} Escaped string safe for innerHTML

@@ -1159,6 +1159,6 @@ async function saveEntityRecord(entityKey, recId) {
     await renderEntity(entityKey);
   } catch(e) {
     if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
-    alert('Error: ' + e.message);
+    reportError('Σφάλμα αποθήκευσης εγγραφής', e);
   }
 }

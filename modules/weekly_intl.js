@@ -1446,9 +1446,8 @@ async function _wiSaveFromPopover(rowId){
   }
   if(errors.length){
     if(btn){btn.disabled=false;if(spin)spin.style.display='none';}
-    const msg='SAVE ERROR: '+errors[0];
-    console.error(msg);
-    alert(msg);
+    // Full error list goes to the gated log; user sees a short message only.
+    reportError('Σφάλμα αποθήκευσης αντιστοίχισης — δοκιμάστε ξανά', errors);
     return;
   }
   _wiClosePopover();

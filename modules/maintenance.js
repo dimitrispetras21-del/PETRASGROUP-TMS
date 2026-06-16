@@ -1872,7 +1872,7 @@ async function _mreqDismissExpiry(plate, docType, desc) {
     const created = await atCreate(TABLES.MAINT_REQ, fields);
     MREQ.data.push(created);
     _mreqPaint();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { reportError('Σφάλμα δημιουργίας αιτήματος συντήρησης', e); }
 }
 
 async function _mreqQuickStatus(recId, newStatus) {
@@ -1980,7 +1980,7 @@ async function _mreqSave(editId) {
     }
     document.getElementById('mreq-form-container').innerHTML = '';
     _mreqPaint();
-  } catch(e) { alert('Save failed: ' + e.message); }
+  } catch(e) { reportError('Αποτυχία αποθήκευσης αιτήματος συντήρησης', e); }
 }
 
 async function _mreqDelete(recId) {
@@ -1990,5 +1990,5 @@ async function _mreqDelete(recId) {
     MREQ.data = MREQ.data.filter(r => r.id !== recId);
     document.getElementById('mreq-form-container').innerHTML = '';
     _mreqPaint();
-  } catch(e) { alert('Delete failed: ' + e.message); }
+  } catch(e) { reportError('Αποτυχία διαγραφής αιτήματος συντήρησης', e); }
 }
