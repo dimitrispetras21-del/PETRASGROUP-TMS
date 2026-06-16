@@ -1772,7 +1772,11 @@ async function _scanExtract() {
     // 1. Preprocess (auto-rotate + resize for images, pass-through for PDF)
     const pre = await scanPreprocessFile(file);
     if (pre.wasPreprocessed) {
-      console.log('[scan] preprocessed: original=' + (file.size/1024).toFixed(0) + 'KB → ' + (pre.blob.size/1024).toFixed(0) + 'KB');
+      // Fires on every scan; route through the gated logger so it stays out of
+      // the production console (visible only when TMS_DEBUG is on). The other
+      // console.log calls in the codebase are low-frequency lifecycle logs or
+      // the gated logger itself, so this is the only per-operation offender.
+      _tmsLog('[scan] preprocessed: original=' + (file.size/1024).toFixed(0) + 'KB → ' + (pre.blob.size/1024).toFixed(0) + 'KB');
     }
 
     // 2. Document type detection (Haiku, fast + cheap)
