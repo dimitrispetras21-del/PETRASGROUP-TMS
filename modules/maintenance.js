@@ -101,6 +101,13 @@ async function _maintLoad(forceHistory = false) {
     MAINT._loaded = true;
   }
   if (forceHistory || !MAINT.history.length) {
+    // TODO(audit): intentionally loads FULL history, not date-filtered. The module
+    // needs every record for correctness: last-service-per-vehicle (recentSvc),
+    // next-service-due, and the full records view. A date cutoff would hide a
+    // vehicle whose last service predates the window and break those calcs. When
+    // this table grows large, the right fix is pagination or a last-N-per-vehicle
+    // query, NOT a date filter. (The ceo_dashboard MAINT_HISTORY load IS date-filtered,
+    // because there it only feeds period cost aggregates.)
     MAINT.history = await atGetAll(TABLES.MAINT_HISTORY, { fields: MAINT_HISTORY_FIELDS }, false);
   }
 }
@@ -1872,7 +1879,7 @@ async function _mreqDismissExpiry(plate, docType, desc) {
     const created = await atCreate(TABLES.MAINT_REQ, fields);
     MREQ.data.push(created);
     _mreqPaint();
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) { reportError('Σφάλμα δημιουργίας αιτήματος συντήρησης', e); }
 }
 
 async function _mreqQuickStatus(recId, newStatus) {
@@ -1980,7 +1987,7 @@ async function _mreqSave(editId) {
     }
     document.getElementById('mreq-form-container').innerHTML = '';
     _mreqPaint();
-  } catch(e) { alert('Save failed: ' + e.message); }
+  } catch(e) { reportError('Αποτυχία αποθήκευσης αιτήματος συντήρησης', e); }
 }
 
 async function _mreqDelete(recId) {
@@ -1990,5 +1997,5 @@ async function _mreqDelete(recId) {
     MREQ.data = MREQ.data.filter(r => r.id !== recId);
     document.getElementById('mreq-form-container').innerHTML = '';
     _mreqPaint();
-  } catch(e) { alert('Delete failed: ' + e.message); }
+  } catch(e) { reportError('Αποτυχία διαγραφής αιτήματος συντήρησης', e); }
 }
