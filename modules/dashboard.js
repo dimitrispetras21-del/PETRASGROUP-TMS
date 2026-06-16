@@ -22,7 +22,10 @@ async function renderDashboard() {
     const trailers = getRefTrailers();
     const [orders, natLoads] = await Promise.all([
       atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
-      atGet(TABLES.NAT_LOADS),
+      // Same 30-day window as ORDERS above: NAT_LOADS was loading the whole table
+      // unfiltered, which grows unbounded as national loads accumulate. 'Loading
+      // DateTime' is the dashboard's existing date axis (no field-name trap here).
+      atGet(TABLES.NAT_LOADS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
     ]);
 
     // Batch fetch ORDER_STOPS for deadheading calc
