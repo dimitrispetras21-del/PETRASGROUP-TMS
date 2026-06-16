@@ -101,6 +101,13 @@ async function _maintLoad(forceHistory = false) {
     MAINT._loaded = true;
   }
   if (forceHistory || !MAINT.history.length) {
+    // TODO(audit): intentionally loads FULL history, not date-filtered. The module
+    // needs every record for correctness: last-service-per-vehicle (recentSvc),
+    // next-service-due, and the full records view. A date cutoff would hide a
+    // vehicle whose last service predates the window and break those calcs. When
+    // this table grows large, the right fix is pagination or a last-N-per-vehicle
+    // query, NOT a date filter. (The ceo_dashboard MAINT_HISTORY load IS date-filtered,
+    // because there it only feeds period cost aggregates.)
     MAINT.history = await atGetAll(TABLES.MAINT_HISTORY, { fields: MAINT_HISTORY_FIELDS }, false);
   }
 }

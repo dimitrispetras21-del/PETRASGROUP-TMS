@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v37-wnsplit-await';
+const SW_VERSION = 'tms-sw-v38-period-filters';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

@@ -101,7 +101,12 @@
         atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${ps}'),IS_BEFORE({Loading DateTime},'${pe}'))`).catch(() => []),
         atGet(TABLES.DRIVERS, `{Active}=1`),
         atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Trip Start Date},'${s}'),IS_BEFORE({Trip Start Date},'${e}'))`).catch(() => []),
-        atGet(TABLES.MAINT_HISTORY).catch(() => []),
+        // Scope to the selected period [s,e], same as the ORDERS/TRIP_COSTS queries above.
+        // This was loading the whole MAINT_HISTORY table, which both grows unbounded and
+        // made _calcMaintCost sum lifetime cost while displaying it as the period's
+        // maintenance KPI. Field is 'Date' (no whitespace trap). FIXME(audit): maintenance.js
+        // still loads full history on purpose (needs last-service-per-vehicle), see note there.
+        atGet(TABLES.MAINT_HISTORY, `AND(IS_AFTER({Date},'${s}'),IS_BEFORE({Date},'${e}'))`).catch(() => []),
         atGet(TABLES.ORDERS, `AND(IS_BEFORE({Delivery DateTime},'${plus48}'),{Status}!='Delivered',{Status}!='Cancelled',{Status}!='')`),
         atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime},'${sparkS}')`),
       ]);
