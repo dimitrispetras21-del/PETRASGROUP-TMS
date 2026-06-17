@@ -1557,7 +1557,7 @@ async function toggleIntlInvoiced(recId, current) {
     // Re-render table only (no full reload)
     _applyIntlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
-  } catch(e) { toast('Error: ' + e.message, 'danger'); }
+  } catch(e) { reportError('Σφάλμα ενημέρωσης τιμολόγησης', e); }
 }
 
 // ─── Status Change ─────────────────────────────
@@ -1575,7 +1575,7 @@ async function _intlChangeStatus(recId, newStatus) {
     _applyIntlFilters();
     selectIntlOrder(recId);
     toast(`Status → ${newStatus} ✓`);
-  } catch(e) { toast('Error: ' + e.message, 'danger'); }
+  } catch(e) { reportError('Σφάλμα αλλαγής status', e); }
 }
 
 // ─── Invoice Block — check PE sheets ─────────
@@ -2258,7 +2258,9 @@ async function cancelIntlOrder(recId) {
     document.getElementById('intlDetail')?.classList.add('hidden');
     await renderOrdersIntl();
   } catch(e) {
-    toast('Cancel failed: ' + e.message, 'danger');
+    // User sees a clean message; full error goes to the persistent error log
+    // (with call-site + recId context), not dumped raw into the toast.
+    reportError('Η ακύρωση απέτυχε — δοκιμάστε ξανά');
     if (typeof logError === 'function') logError(e, 'cancelIntlOrder ' + recId);
   }
 }
@@ -2379,7 +2381,8 @@ async function deleteIntlOrder(recId) {
     document.getElementById('intlDetail')?.classList.add('hidden');
     await renderOrdersIntl();
   } catch(e) {
-    toast('Delete failed: ' + e.message, 'danger');
+    // Clean user message; raw error to the persistent log, not the toast.
+    reportError('Η διαγραφή απέτυχε — δοκιμάστε ξανά');
     if (typeof logError === 'function') logError(e, 'deleteIntlOrder ' + recId);
   }
 }
@@ -2404,7 +2407,7 @@ async function cleanupOrphanGL() {
       atGetAll(TABLES.NAT_ORDERS, { fields: ['Direction'] }, false),
     ]);
   } catch(e) {
-    toast('Failed to scan: ' + e.message, 'danger');
+    reportError('Η σάρωση GROUPAGE LINES απέτυχε', e);
     return;
   }
 
@@ -2493,7 +2496,7 @@ async function cleanupOrphans() {
       atGetAll(TABLES.NAT_ORDERS, { fields: ['Direction'] }, false),
     ]);
   } catch(e) {
-    toast('Σάρωση απέτυχε: ' + e.message, 'danger');
+    reportError('Η σάρωση απέτυχε', e);
     return;
   }
 

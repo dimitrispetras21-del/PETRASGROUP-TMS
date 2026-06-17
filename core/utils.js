@@ -190,6 +190,33 @@ function debounce(fn, ms = 250) {
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
 }
 
+/**
+ * Great-circle distance between two lat/lng points, in kilometres (Haversine).
+ *
+ * Canonical implementation. Four identical private copies (_dashHaversine,
+ * _perfHaversine, _wiHaversine, metrics._haversine) drifted across the codebase;
+ * this is the single source so a future tweak (e.g. Earth radius, rounding) only
+ * happens once. See .reference/audit__code-review-session1.md (distance formula
+ * duplicated in multiple files).
+ *
+ * Returns 0 on any missing coordinate, callers treat 0 as "no distance" rather
+ * than guarding every call site (matches the old metrics._haversine behaviour).
+ *
+ * @param {number} lat1 @param {number} lon1 - First point
+ * @param {number} lat2 @param {number} lon2 - Second point
+ * @returns {number} Distance in km (unrounded)
+ */
+function haversineKm(lat1, lon1, lat2, lon2) {
+  if (lat1 == null || lat2 == null || lon1 == null || lon2 == null) return 0;
+  const R = 6371; // Earth mean radius, km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+if (typeof window !== 'undefined') window.haversineKm = haversineKm;
+
 // Extract first ID from linked-record field (handles all Airtable formats)
 function getLinkId(v) {
   if (!v) return null;
