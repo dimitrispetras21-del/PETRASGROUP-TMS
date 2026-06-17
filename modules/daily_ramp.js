@@ -286,11 +286,22 @@ async function _rampAutoSync() {
 
   // ── Create new RAMP records ──
   if (toCreate.length) {
+    let _rampSyncFailed = 0;
     for (let i = 0; i < toCreate.length; i += 10) {
       const batch = toCreate.slice(i, i+10);
-      await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => console.error('Ramp sync error:', e))));
+      // A failed create here used to vanish to console only: the ramp board
+      // would silently miss a stop with no trace. Route to the persistent log
+      // so a recurring sync failure is visible in the Error Log, not just live.
+      await Promise.all(batch.map(fields => atCreate(TABLES.RAMP, fields).catch(e => {
+        _rampSyncFailed++;
+        if (typeof logError === 'function') logError(e, '_rampAutoSync: create RAMP record');
+        else console.error('Ramp sync error:', e);
+      })));
     }
-    _tmsLog(`Ramp auto-sync: created ${toCreate.length} records from ORDER_STOPS`);
+    _tmsLog(`Ramp auto-sync: created ${toCreate.length - _rampSyncFailed}/${toCreate.length} records from ORDER_STOPS`);
+    if (_rampSyncFailed && typeof showErrorToast === 'function') {
+      showErrorToast(`Ramp sync: ${_rampSyncFailed} εγγραφές απέτυχαν — δες Error Log`, 'warn');
+    }
   }
 }
 

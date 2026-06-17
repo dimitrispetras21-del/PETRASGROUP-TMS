@@ -1048,7 +1048,13 @@ async function _wiSaveImportMatch(rowId,impId){
       await renderWeeklyIntl();
       return;
     }
-  } catch(e) { console.warn('Import lock check failed, proceeding:', e.message); }
+  } catch(e) {
+    // Best-effort lock check: if it fails we deliberately proceed (the real
+    // conflict guard is the optimistic-lock on save). Track it so a pattern of
+    // lock-check failures is visible, but do NOT block the match.
+    if (typeof logError === 'function') logError(e, '_wiSaveImportMatch: import lock check (proceeding)');
+    else console.warn('Import lock check failed, proceeding:', e.message);
+  }
 
   // Lock check: verify export doesn't already have a matched import on server
   try {
@@ -1060,7 +1066,11 @@ async function _wiSaveImportMatch(rowId,impId){
       await renderWeeklyIntl();
       return;
     }
-  } catch(e) { console.warn('Export lock check failed, proceeding:', e.message); }
+  } catch(e) {
+    // Same best-effort policy as the import lock check above: track, don't block.
+    if (typeof logError === 'function') logError(e, '_wiSaveImportMatch: export lock check (proceeding)');
+    else console.warn('Export lock check failed, proceeding:', e.message);
+  }
 
   // Optimistic UI update
   const oldImp=row.importId;
@@ -1158,7 +1168,10 @@ async function _wiAutoMatch() {
   if (allStopIds.length) {
     try {
       const chunks = [];
-      for (let i = 0; i < allStopIds.length; i += 100) chunks.push(allStopIds.slice(i, i + 100));
+      // 90 per chunk, matching the sibling batch loop above (the other OR() builder
+      // uses 90). Airtable's OR() formula has a practical length ceiling; 90 stays
+      // safely under it. Keep both batchers on the same number.
+      for (let i = 0; i < allStopIds.length; i += 90) chunks.push(allStopIds.slice(i, i + 90));
       const allStops = [];
       for (const chunk of chunks) {
         const f = `OR(${chunk.map(id => `RECORD_ID()="${id}"`).join(',')})`;
@@ -1472,7 +1485,15 @@ async function _wiSaveFromPopover(rowId){
       if (recs.length > 0 && typeof _syncVeroiaSwitch === 'function')
         await _syncVeroiaSwitch(oid, recs[0].fields);
     }
-  } catch(e) { console.warn('VS sync (weekly):', e.message); }
+  } catch(e) {
+    // The order save already succeeded; only the downstream VS→NAT_LOADS sync
+    // failed. This used to be swallowed to console, so national planning data
+    // could silently drift from assignment data with no signal. Tell the user
+    // (their save stuck, but national needs a retry) and log it. We do NOT roll
+    // back the save here.
+    reportError('Η αποθήκευση έγινε, αλλά ο συγχρονισμός με National απέτυχε — άνοιξε ξανά και αποθήκευσε', e);
+    if (typeof logError === 'function') logError(e, '_wiSaveFromPopover: VS→NAT_LOADS sync (post-save)');
+  }
 
   await renderWeeklyIntl();
 }
