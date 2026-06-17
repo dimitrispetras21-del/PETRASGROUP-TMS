@@ -154,14 +154,7 @@ async function _perfLoad() {
   }
 }
 
-// Haversine distance in km between two lat/lng pairs
-function _perfHaversine(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2-lat1)*Math.PI/180;
-  const dLon = (lon2-lon1)*Math.PI/180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
+// Distance via canonical haversineKm (core/utils.js); local copy removed.
 
 /* ── COMPUTE KPIs ─────────────────────────────────────────── */
 function _perfCompute() {
@@ -244,7 +237,7 @@ function _perfCompute() {
     const expLocId = expUnloads.length ? (expUnloads[0].fields[F.STOP_LOCATION] || [])[0] : null;
     const impLocId = impLoads.length ? (impLoads[0].fields[F.STOP_LOCATION] || [])[0] : null;
     if (expLocId && impLocId && PERF.locCoords[expLocId] && PERF.locCoords[impLocId]) {
-      deadKmList.push(Math.round(_perfHaversine(
+      deadKmList.push(Math.round(haversineKm(
         PERF.locCoords[expLocId].lat, PERF.locCoords[expLocId].lng,
         PERF.locCoords[impLocId].lat, PERF.locCoords[impLocId].lng
       )));

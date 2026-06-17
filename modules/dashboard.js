@@ -88,11 +88,7 @@ async function renderDashboard() {
       const lat = l.fields['Latitude'], lng = l.fields['Longitude'];
       if (lat && lng) locCoords[l.id] = { lat: +lat, lng: +lng };
     });
-    function _dashHaversine(lat1,lon1,lat2,lon2) {
-      const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
-      const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
-      return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-    }
+    // Distance via canonical haversineKm (core/utils.js); local copy removed.
     const weekExports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Export' && r.fields['Truck']);
     const weekImports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Import' && r.fields['Truck']);
     const deadKmList = [];
@@ -112,7 +108,7 @@ async function renderDashboard() {
         .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
       if (impLoads.length) impLocId = (impLoads[0].fields[F.STOP_LOCATION] || [])[0] || null;
       if (expLocId && impLocId && locCoords[expLocId] && locCoords[impLocId]) {
-        const d = _dashHaversine(locCoords[expLocId].lat, locCoords[expLocId].lng, locCoords[impLocId].lat, locCoords[impLocId].lng);
+        const d = haversineKm(locCoords[expLocId].lat, locCoords[expLocId].lng, locCoords[impLocId].lat, locCoords[impLocId].lng);
         deadKmList.push(Math.round(d));
       }
     });
@@ -220,7 +216,7 @@ async function renderDashboard() {
         const el = expUn.length ? (expUn[0].fields[F.STOP_LOCATION]||[])[0] : null;
         const il = impLd.length ? (impLd[0].fields[F.STOP_LOCATION]||[])[0] : null;
         if (el && il && locCoords[el] && locCoords[il]) {
-          list.push(_dashHaversine(locCoords[el].lat, locCoords[el].lng, locCoords[il].lat, locCoords[il].lng));
+          list.push(haversineKm(locCoords[el].lat, locCoords[el].lng, locCoords[il].lat, locCoords[il].lng));
         }
       });
       return list.length ? Math.round(list.reduce((s,v)=>s+v,0)/list.length) : 0;

@@ -1135,14 +1135,7 @@ async function _wiRemoveImport(rowId){
 }
 
 /* ── AUTO-MATCH ALGORITHM ─────────────────────────────────────────── */
-// Haversine distance in km between two lat/lng points
-function _wiHaversine(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-}
+// Distance via canonical haversineKm (core/utils.js); local copy removed.
 
 async function _wiAutoMatch() {
   const {data, rows} = WINTL;
@@ -1224,7 +1217,7 @@ async function _wiAutoMatch() {
       // DISTANCE: export delivery → import loading (max 70 points — primary factor)
       const impLoadLoc = _getCoordsEx(imp.id, imf, 'Loading');
       if (expDelLoc && impLoadLoc) {
-        dist = _wiHaversine(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
+        dist = haversineKm(expDelLoc.lat, expDelLoc.lng, impLoadLoc.lat, impLoadLoc.lng);
         if (dist <= 50)       score += 70;  // <50km = same city
         else if (dist <= 150) score += 55;  // <150km = nearby
         else if (dist <= 300) score += 40;  // <300km = same region
