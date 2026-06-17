@@ -30,6 +30,66 @@ function closeModal() {
   if (_modalPrevFocus) { try { _modalPrevFocus.focus(); } catch(_) {} _modalPrevFocus = null; }
 }
 
+/**
+ * Styled confirmation dialog, Promise-based drop-in for native confirm().
+ *
+ * Replaces `if (!confirm(msg)) return;` with
+ * `if (!(await confirmAction(msg))) return;` so call sites keep their existing
+ * control flow (one line, no split into show/do functions). Resolves true on
+ * confirm, false on cancel, Escape, or overlay click (dismiss = cancel, matching
+ * native confirm semantics). Reuses openModal so styling/focus-trap come for free.
+ *
+ * NOTE: not a replacement for the native blocking confirm on irreversible
+ * cascade deletes, those are intentionally left as native confirm() (a hard
+ * blocking dialog is safer for destructive, non-undoable actions).
+ *
+ * @param {string} message - Plain text shown to the user (Greek or English)
+ * @param {Object} [opts]
+ * @param {string} [opts.title='Επιβεβαίωση'] - Dialog title
+ * @param {string} [opts.confirmLabel='ΟΚ'] - Confirm button text
+ * @param {string} [opts.cancelLabel='Ακύρωση'] - Cancel button text
+ * @param {boolean} [opts.danger=false] - Style confirm button as destructive
+ * @returns {Promise<boolean>}
+ */
+function confirmAction(message, opts = {}) {
+  const {
+    title = 'Επιβεβαίωση',
+    confirmLabel = 'ΟΚ',
+    cancelLabel = 'Ακύρωση',
+    danger = false,
+  } = opts;
+  return new Promise(resolve => {
+    let settled = false;
+    const overlay = document.getElementById('modalOverlay');
+
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      mo.disconnect();
+      closeModal();
+      resolve(val);
+    };
+
+    // Dismiss via Escape / overlay-click both just strip the .open class via
+    // closeModal(); watch for that and treat it as cancel.
+    const mo = new MutationObserver(() => {
+      if (!overlay.classList.contains('open')) finish(false);
+    });
+
+    // Preserve newlines from the old confirm() strings.
+    const bodyHTML = `<div style="color:var(--text-mid);font-size:14px;line-height:1.7;white-space:pre-line">${escapeHtml(message)}</div>`;
+    const footerHTML =
+      `<button class="btn btn-ghost" id="_cfaCancel">${escapeHtml(cancelLabel)}</button>`
+      + `<button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="_cfaOk">${escapeHtml(confirmLabel)}</button>`;
+
+    openModal(title, bodyHTML, footerHTML);
+    mo.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+    document.getElementById('_cfaOk').onclick = () => finish(true);
+    document.getElementById('_cfaCancel').onclick = () => finish(false);
+  });
+}
+if (typeof window !== 'undefined') window.confirmAction = confirmAction;
+
 function initModal() {
   document.getElementById('modalOverlay').addEventListener('click', e => {
     if (e.target === document.getElementById('modalOverlay')) closeModal();

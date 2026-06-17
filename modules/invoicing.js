@@ -586,7 +586,7 @@ function _invToggleAll(checked) {
 async function _invBatchInvoice() {
   const ids = [...document.querySelectorAll('.inv-cb:checked')].map(cb => cb.dataset.id);
   if (!ids.length) return;
-  if (!confirm(`Mark ${ids.length} orders as Invoiced?\n(Auto-generated invoice numbers, today's date)`)) return;
+  if (!(await confirmAction(`Σήμανση ${ids.length} orders ως Invoiced;\n(Αυτόματη αρίθμηση τιμολογίων, σημερινή ημερομηνία)`, { confirmLabel: 'Τιμολόγηση' }))) return;
 
   // H4 fix: track failures in detail + show detailed report instead of silent fail count.
   let ok = 0;

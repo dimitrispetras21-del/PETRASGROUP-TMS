@@ -378,7 +378,7 @@ function _opsRow(rec,num,type,isToday) {
   const amtInp=(fld,v)=>`<input class="tinp" type="number" step="1" value="${v||''}" placeholder="0" style="width:60px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
   // Action buttons with confirmation
-  const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="if(confirm('${label}?'))${action}">${label}</button>`;
+  const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="confirmAction('${label};').then(ok=>{if(ok)${action}})">${label}</button>`;
   const loadBtn = _btn('btn-primary','In Transit',`_opsStat('${id}','In Transit')`);
   const postBtn = _btn('btn-ghost','Postponed',`_opsPost('${id}')`);
   const delBtn = _btn('btn-success','Delivered',`_opsDel('${id}','On Time')`);
@@ -478,7 +478,7 @@ async function _opsTog(id,fld,v){
       // All loading checks done + status is Assigned/Pending → suggest "In Transit"
       if(loadChecks.includes(fld) && (status==='Assigned'||status==='Pending'||status==='')) {
         const allLoaded=loadChecks.every(c=>f[c]);
-        if(allLoaded && confirm('Ολα τα loading checks ✓ — Αλλαγή σε "In Transit";')) {
+        if(allLoaded && await confirmAction('Ολα τα loading checks ✓ — Αλλαγή σε "In Transit";', { confirmLabel: 'Αλλαγή' })) {
           await _opsStat(id,'In Transit');
           return;
         }
@@ -487,7 +487,7 @@ async function _opsTog(id,fld,v){
       // All delivery checks done + status is In Transit → suggest "Delivered"
       if(delChecks.includes(fld) && status==='In Transit') {
         const allDel=delChecks.every(c=>f[c]);
-        if(allDel && confirm('Ολα τα delivery checks ✓ — Αλλαγή σε "Delivered (On Time)";')) {
+        if(allDel && await confirmAction('Ολα τα delivery checks ✓ — Αλλαγή σε "Delivered (On Time)";', { confirmLabel: 'Αλλαγή' })) {
           await _opsDel(id,'On Time');
           return;
         }

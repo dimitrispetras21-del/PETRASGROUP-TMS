@@ -804,7 +804,7 @@ async function _svcSave(editId) {
 }
 
 async function _svcDelete(id) {
-  if (!confirm('Delete this service record?')) return;
+  if (!(await confirmAction('Διαγραφή αυτής της εγγραφής service;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
   try {
     await atSoftDelete(TABLES.MAINT_HISTORY, id);
     toast('Deleted');
@@ -1991,7 +1991,7 @@ async function _mreqSave(editId) {
 }
 
 async function _mreqDelete(recId) {
-  if (!confirm('Delete this work order?')) return;
+  if (!(await confirmAction('Διαγραφή αυτού του work order;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
   try {
     await atSoftDelete(TABLES.MAINT_REQ, recId);
     MREQ.data = MREQ.data.filter(r => r.id !== recId);
