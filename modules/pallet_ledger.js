@@ -461,7 +461,7 @@ function _plExportCSV() {
 
 /* ── Delete ──────────────────────────────────── */
 async function _plDelete(id) {
-  if (!confirm('Delete this pallet record?')) return;
+  if (!(await confirmAction('Διαγραφή αυτής της εγγραφής pallet;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
   const tbl = _plActiveTable();
   try {
     await atSoftDelete(tbl, id);

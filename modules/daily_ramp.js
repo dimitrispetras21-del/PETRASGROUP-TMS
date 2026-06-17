@@ -494,7 +494,7 @@ function _rampDraw() {
           <td>${escapeHtml(f['Temperature']||'')}</td>
           <td>${escapeHtml(f['Pallets']||'')}</td>
           <td>${movedTo}</td>
-          <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="if(confirm('Restore to today?'))_rampRestore('${r.id}')">Restore</button></td>
+          <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Restore</button></td>
         </tr>`;}).join('')}</tbody></table>
     </div>`:''}
 
@@ -526,7 +526,7 @@ function _rRow(rec,num,tOpts) {
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
   const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Done</span>'
-    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Mark as ${isIn?'Done':'Loaded'}?'))_rampDone('${id}','${isIn}')">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="if(confirm('Postpone?'))_rampPostpone('${id}')">Postpone</button>`;
+    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Σήμανση ως ${isIn?'Done':'Loaded'};').then(ok=>{if(ok)_rampDone('${id}','${isIn}')})">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Αναβολή;').then(ok=>{if(ok)_rampPostpone('${id}')})">Postpone</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
   const notes = f['Notes']||'';

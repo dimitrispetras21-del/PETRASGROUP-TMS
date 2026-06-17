@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v42-error-visibility';
+const SW_VERSION = 'tms-sw-v43-styled-confirm';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

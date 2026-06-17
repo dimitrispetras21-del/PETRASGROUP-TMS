@@ -1275,7 +1275,7 @@ async function _wiAutoMatch() {
     `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (${s.dist < 9999 ? Math.round(s.dist)+'km' : '?'} · score ${s.score})`
   ).join('\n');
 
-  if (!confirm(`Auto-Match βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`)) return;
+  if (!(await confirmAction(`Auto-Match βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`, { title: 'Auto-Match', confirmLabel: 'Εφαρμογή' }))) return;
 
   // Apply all matches
   for (const s of suggestions) {
@@ -1609,7 +1609,7 @@ async function _wiSave(rowId){
 
 async function _wiClear(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  if(!confirm('Clear assignment?')) return;
+  if(!(await confirmAction('Καθαρισμός ανάθεσης;', { confirmLabel: 'Καθαρισμός' }))) return;
   const allOrderIds=[...row.orderIds];
   if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
   const errors=[];

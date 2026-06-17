@@ -1018,7 +1018,7 @@ function _wnCtxSn(e, rowId, snId) {
 async function _wnUnassignSn(rowId, snId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
-  if (!confirm('Αφαίρεση ανάθεσης;')) return;
+  if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
 
   const fields = {
     'Truck': [], 'Trailer': [], 'Driver': [],
@@ -1051,7 +1051,7 @@ async function _wnUnassignSn(rowId, snId) {
 async function _wnUnassign(rowId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
-  if (!confirm('Αφαίρεση ανάθεσης;')) return;
+  if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
 
   const fields = {
     'Truck': [], 'Trailer': [], 'Driver': [],
