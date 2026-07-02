@@ -96,9 +96,11 @@
 
 <!-- ═══ SCRIPTS — load order matters ══════════ -->
 <!-- 0. Sentry error monitoring (activates only if TMS_SENTRY_DSN is set in config.js) -->
+<!-- Integrity hash re-verified 2026-07-02 against the served CDN file; the old
+     hash never matched, so browsers silently blocked the SDK on every load. -->
 <script
   src="https://browser.sentry-cdn.com/7.120.0/bundle.min.js"
-  integrity="sha384-9H+yrCxjP6G7THKurr4BK0uNabLVlnC2HeEu/qxx0m1xFNLmaIYl4lvE6cHQ3bPe"
+  integrity="sha384-IDUZ4TLzLVVJBrAVtnp+7wFfhZCU12V7TY5aTUOF2fYY2U1+uajA2SItOGQudpYE"
   crossorigin="anonymous"
   defer></script>
 <!-- 1. Config (credentials, table IDs, role matrix) -->
