@@ -711,7 +711,7 @@ async function toggleNatlInvoiced(recId, current) {
     }
     _applyNatlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
-  } catch(e) { toast('Error: '+e.message, 'danger'); }
+  } catch(e) { reportError('Σφάλμα ενημέρωσης τιμολόγησης', e); }
 }
 
 // ═══════════════════════════════════════════════
@@ -963,7 +963,7 @@ async function cancelNatlOrder(recId) {
     document.getElementById('natlDetail')?.classList.add('hidden');
     await renderOrdersNatl();
   } catch(e) {
-    toast('Cancel failed: ' + e.message, 'danger');
+    reportError('Η ακύρωση απέτυχε, δοκιμάστε ξανά');
     if (typeof logError === 'function') logError(e, 'cancelNatlOrder ' + recId);
   }
 }
@@ -1082,7 +1082,7 @@ async function deleteNatlOrder(recId) {
     if (_delFail && typeof logError === 'function') logError(new Error(`Cascade delete: ${_delFail} sub-deletes failed`), 'deleteNatlOrder ' + recId);
     await renderOrdersNatl();
   } catch(e) {
-    toast('Delete failed: ' + e.message, 'danger');
+    reportError('Η διαγραφή απέτυχε, δοκιμάστε ξανά', e);
   }
 }
 

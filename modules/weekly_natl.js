@@ -1169,7 +1169,7 @@ function _wnExportCSV() {
     toast('CSV exported');
   } catch(e) {
     console.error('[weekly_natl] export CSV failed:', e);
-    toast('Export failed: '+(e.message||'error'),'danger');
+    reportError('Export failed', e);
   }
 }
 

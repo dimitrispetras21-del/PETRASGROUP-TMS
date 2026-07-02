@@ -437,7 +437,7 @@ async function _locSave() {
     _locApplyFilters();
     toast(LOC.editingId ? 'Location updated ✓' : 'Location created ✓', 'success');
   } catch (e) {
-    toast('Error: ' + e.message, 'danger');
+    reportError('Save failed', e);
     if (btn) { btn.textContent = 'Save Location'; btn.disabled = false; }
   }
 }
@@ -482,7 +482,7 @@ async function _locDoDelete(id) {
     _locRenderOverview();
     _locApplyFilters();
     toast('Location deleted', 'success');
-  } catch (e) { toast('Delete failed: ' + e.message, 'danger'); }
+  } catch (e) { reportError('Delete failed', e); }
 }
 
 // ── Fetch ───────────────────────────────────────

@@ -799,7 +799,7 @@ async function _svcSave(editId) {
     MAINT.history = [];
     renderServiceRecords();
   } catch(e) {
-    toast('Error: ' + e.message, 'danger');
+    reportError('Save failed', e);
   }
 }
 
@@ -1888,7 +1888,7 @@ async function _mreqQuickStatus(recId, newStatus) {
     const rec = MREQ.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
     _mreqPaint();
-  } catch(e) { showErrorToast('Error: ' + e.message); }
+  } catch(e) { reportError('Status update failed', e); }
 }
 
 function _mreqOpenForm(editId) {

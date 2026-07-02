@@ -1522,7 +1522,7 @@ async function submitIntlOrder(recId) {
       toast('National load synced ✓');
     } catch(e) {
       console.error('VS sync error:', e);
-      toast('Sync error: '+e.message, 'warn');
+      reportError('Ο συγχρονισμός εθνικού φορτίου απέτυχε', e, 'warn');
     }
 
     document.getElementById('modal').style.maxWidth = '';

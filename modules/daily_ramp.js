@@ -622,7 +622,7 @@ async function _rampSvF(id,fld,v){
   } catch(e) {
     console.error('[ramp] _rampSvF failed for', fld, e && e.message);
     if (typeof logError === 'function') logError(e, `ramp_sv_${fld}`);
-    toast('Error: '+(e.message||'save failed'),'danger');
+    reportError('Save failed');
   }
 }
 async function _rampSvTime(id,v){
@@ -641,7 +641,7 @@ async function _rampSvTime(id,v){
   } catch(e) {
     console.error('[ramp] _rampSvTime failed:', e && e.message);
     if (typeof logError === 'function') logError(e, 'ramp_sv_time');
-    toast('Error: '+(e.message||'time save failed'),'danger');
+    reportError('Time save failed');
   }
 }
 
@@ -712,7 +712,7 @@ async function _rampRestore(id){
   } catch(e) {
     console.error('[ramp] _rampRestore failed for', id, e && e.message);
     if (typeof logError === 'function') logError(e, 'ramp_restore');
-    toast('Error: '+(e.message||'restore failed'),'danger');
+    reportError('Restore failed');
   }
 }
 async function _rampPostpone(id){
@@ -741,7 +741,7 @@ async function _rampPostpone(id){
   } catch(e) {
     console.error('[ramp] _rampPostpone failed for', id, e && e.message);
     if (typeof logError === 'function') logError(e, 'ramp_postpone');
-    toast('Error: '+(e.message||'postpone failed'),'danger');
+    reportError('Postpone failed');
   }
 }
 
@@ -789,7 +789,7 @@ async function _rampSaveNew(type){
   try{const res=await atCreate(TABLES.RAMP,fields);
     if(res?.error)throw new Error(res.error.message);
     invalidateCache(TABLES.RAMP);closeModal();toast('Added ✓');renderDailyRamp();
-  }catch(e){toast('Error: '+e.message,'danger');}
+  }catch(e){reportError('Add failed', e);}
 }
 
 // ── CSV Export — exports the current view (records + stock for the date) ──
@@ -825,7 +825,7 @@ function _rampExportCSV() {
     toast('CSV exported');
   } catch(e) {
     console.error('[ramp] export CSV failed:', e);
-    toast('Export failed: '+(e.message||'error'),'danger');
+    reportError('Export failed', e);
   }
 }
 
