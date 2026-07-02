@@ -38,7 +38,9 @@ test.describe('TMS smoke tests', () => {
     const critical = errors.filter(e =>
       !e.includes('presence') &&
       !e.includes('favicon') &&
-      !e.includes('Sentry')  // Sentry noise when no DSN configured
+      // Case-insensitive: SRI-block errors cite the lowercase sentry-cdn URL,
+      // which the old 'Sentry' check missed. CDN/SDK state is not app code.
+      !/sentry/i.test(e)
     );
     expect(critical, 'Critical console errors: ' + critical.join('\n')).toHaveLength(0);
   });
