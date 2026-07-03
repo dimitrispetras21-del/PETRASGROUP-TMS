@@ -96,9 +96,11 @@
 
 <!-- ═══ SCRIPTS — load order matters ══════════ -->
 <!-- 0. Sentry error monitoring (activates only if TMS_SENTRY_DSN is set in config.js) -->
+<!-- Integrity hash re-verified 2026-07-02 against the served CDN file; the old
+     hash never matched, so browsers silently blocked the SDK on every load. -->
 <script
   src="https://browser.sentry-cdn.com/7.120.0/bundle.min.js"
-  integrity="sha384-9H+yrCxjP6G7THKurr4BK0uNabLVlnC2HeEu/qxx0m1xFNLmaIYl4lvE6cHQ3bPe"
+  integrity="sha384-IDUZ4TLzLVVJBrAVtnp+7wFfhZCU12V7TY5aTUOF2fYY2U1+uajA2SItOGQudpYE"
   crossorigin="anonymous"
   defer></script>
 <!-- 1. Config (credentials, table IDs, role matrix) -->
@@ -106,7 +108,7 @@
 <!-- 2. Core: constants → auth → api → utils → ui → entity → router -->
 <script src="core/constants.js?v=1776320633"></script>
 <script src="core/auth.js?v=1778010357"></script>
-<script src="core/api.js?v=1778052819"></script>
+<script src="core/api.js?v=1782987935"></script>
 <script src="core/utils.js?v=1781680505"></script>
 <script src="core/ui.js?v=1781689111"></script>
 <script src="core/entity.js?v=1781604390"></script>
@@ -125,20 +127,20 @@
 <!-- 3. Modules -->
 <script src="modules/dashboard.js?v=1781680505"></script>
 <script src="modules/weekly_intl.js?v=1781689111"></script>
-<script src="modules/weekly_natl.js?v=1781689111"></script>
-  <script src="modules/daily_ramp.js?v=1781689111"></script>
-  <script src="modules/maintenance.js?v=1781689111"></script>
-  <script src="modules/orders_intl.js?v=1781680505"></script>
-<script src="modules/orders_natl.js?v=1781604390"></script>
+<script src="modules/weekly_natl.js?v=1782987935"></script>
+  <script src="modules/daily_ramp.js?v=1782987935"></script>
+  <script src="modules/maintenance.js?v=1782987935"></script>
+  <script src="modules/orders_intl.js?v=1782987935"></script>
+<script src="modules/orders_natl.js?v=1782987935"></script>
 
-<script src="modules/locations.js?v=1774985956"></script>
+<script src="modules/locations.js?v=1782987935"></script>
 <script src="modules/daily_ops.js?v=1781689111"></script>
 <script src="modules/pallet_upload.js?v=1781604390"></script>
 <script src="modules/pallet_ledger.js?v=1781689111"></script>
-<script src="modules/invoicing.js?v=1781689111"></script>
+<script src="modules/invoicing.js?v=1782987935"></script>
 <script src="modules/performance.js?v=1781680505"></script>
 <script src="modules/ceo_dashboard.js?v=1781606021"></script>
-<script src="modules/metrics_audit.js?v=1776545154"></script>
+<script src="modules/metrics_audit.js?v=1782987935"></script>
 
 <!-- 4. Global error handlers + Init -->
 <script>

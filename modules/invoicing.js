@@ -567,7 +567,7 @@ async function _invMarkInvoiced(recId) {
     _applyInvFilters();
     _renderInvDetail();
   } catch (e) {
-    toast('Αποτυχία: ' + e.message, 'error');
+    reportError('Η έκδοση τιμολογίου απέτυχε', e);
   }
 }
 

@@ -50,7 +50,10 @@ async function renderMetricsAudit() {
     AUDIT.loadedAt = new Date();
     _auditDraw();
   } catch(e) {
-    c.innerHTML = `<div style="padding:40px;color:var(--danger)">Error: ${e.message}</div>`;
+    // Static message only: e.message can carry Airtable internals (field names,
+    // record IDs) and would land in innerHTML unescaped. Detail goes to the gated log.
+    c.innerHTML = `<div style="padding:40px;color:var(--danger)">Failed to load audit data</div>`;
+    if (typeof logError === 'function') logError(e, 'metrics_audit load');
   } finally {
     AUDIT.fetching = false;
   }

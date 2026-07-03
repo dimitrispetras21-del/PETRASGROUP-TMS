@@ -927,7 +927,8 @@ async function undoLastAction() {
     // Trigger page re-render if router supports it
     if (typeof currentPage !== 'undefined' && typeof navigate === 'function') navigate(currentPage);
   } catch(e) {
-    if (typeof showErrorToast === 'function') showErrorToast('Undo failed: ' + e.message, 'error');
+    // typeof guard: api.js loads before utils.js, where reportError is defined.
+    if (typeof reportError === 'function') reportError('Undo failed');
     if (typeof logError === 'function') logError(e, 'undoLastAction');
   }
 }
@@ -993,7 +994,7 @@ async function atRestoreFromTrash(trashIndex) {
     return restored;
   } catch(e) {
     if (typeof logError === 'function') logError(e, 'atRestoreFromTrash');
-    if (typeof showErrorToast === 'function') showErrorToast('Restore failed: ' + e.message, 'error');
+    if (typeof reportError === 'function') reportError('Restore failed');
     return null;
   }
 }
