@@ -915,9 +915,20 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // Sync GL lines anchored to auto-created NAT_ORDER
     try {
       await _syncGrpFromIntl(orderId, fields);
+      // Flag only set on SUCCESS: _syncGroupageLines now rethrows on failure
+      // (it used to swallow, so this line ran even when GL sync had failed).
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
     }
-    catch(e) { logError(e, 'intl GRP sync (VS+GRP)'); }
+    catch(e) {
+      // Surface to the user (was gated-log only, invisible in prod) and mark
+      // the parent NOT created so the state is truthful and prompts a re-save.
+      // Retry is safe: _syncGroupageLines adopts existing GLs by location
+      // (existMap), so a partial create heals on the next save.
+      if (typeof reportError === 'function') reportError('Ο συγχρονισμός groupage απέτυχε, αποθήκευσε ξανά την παραγγελία', e, 'warn');
+      logError(e, 'intl GRP sync (VS+GRP)');
+      try { await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false}); }
+      catch(e2) { logError(e2, 'intl GRP sync: reset National Order Created'); }
+    }
     invalidateCache(TABLES.NAT_LOADS);
     return; // finally block still runs (_syncingOrders.delete)
   }
@@ -1297,7 +1308,21 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
         await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned', Pallets:0});
       }
     }
-  } catch(e) { console.error('_syncGroupageLines:', e); if (typeof logError === 'function') logError(e, '_syncGroupageLines'); if (typeof toast === 'function') toast('Σφάλμα sync groupage lines', 'error'); }
+  } catch(e) {
+    // Rethrow so the caller can act on the failure. This catch used to swallow
+    // (log + toast, no rethrow), which meant the GRP-ON path in _syncVeroiaSwitch
+    // could not tell success from failure and set 'National Order Created': true
+    // on the parent order even when GL sync had failed, planner then shows a
+    // "synced" order with missing/partial GL lines. User messaging is now owned
+    // by the caller (single live call site: _syncGrpFromIntl).
+    // NOTE: deliberately NO delete-based rollback here. GL records are NEVER
+    // deleted (see CLAUDE.md sync-chain rules), and a partial create is benign:
+    // leftover GLs sit at Status='Unassigned' and the next save adopts them via
+    // existMap (idempotent retry).
+    console.error('_syncGroupageLines:', e);
+    if (typeof logError === 'function') logError(e, '_syncGroupageLines');
+    throw e;
+  }
 }
 
 
