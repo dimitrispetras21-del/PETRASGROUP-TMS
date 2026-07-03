@@ -29,7 +29,7 @@ async function renderDailyOps() {
   document.getElementById('topbarTitle').textContent = 'Daily Ops Plan';
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
   try { await _opsLoad(); _opsDraw(); }
-  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
+  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`; console.error(e); }
 }
 
 async function _opsLoad() {

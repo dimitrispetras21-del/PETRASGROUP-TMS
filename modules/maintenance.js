@@ -188,7 +188,7 @@ async function renderExpiryAlerts() {
     await _maintLoad();
     _expiryPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
     console.error(e);
   }
 }
@@ -547,7 +547,7 @@ async function renderServiceRecords() {
     await _maintLoad(true);
     _svcPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
     console.error(e);
   }
 }
@@ -830,7 +830,7 @@ async function _renderHistory(vType) {
     await _maintLoad(true);
     _historyPaint(vType);
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
     console.error(e);
   }
 }
@@ -1639,7 +1639,7 @@ async function renderMaintDash() {
 
   } catch(e) {
     console.error('Maintenance Dashboard error:', e);
-    c.innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    c.innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
   }
 }
 
@@ -1668,7 +1668,8 @@ async function renderMaintRequests() {
     if (!MAINT._loaded) await _maintLoad();
     _mreqPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Error: ${e.message}</div>`;
+    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
+    if (typeof logError === 'function') logError(e, 'maintenance requests load');
   }
 }
 

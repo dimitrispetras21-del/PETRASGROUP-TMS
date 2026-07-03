@@ -34,7 +34,7 @@ async function renderDailyRamp() {
   document.getElementById('topbarTitle').textContent = 'Daily Ramp Board';
   document.getElementById('content').innerHTML = showLoading('Loading ramp board…');
   try { await _rampLoad(); _rampDraw(); }
-  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`; console.error(e); }
+  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`; console.error(e); }
   // Auto-refresh every 2 minutes while on this page (disable after 3 consecutive failures)
   clearInterval(_rampAutoRefresh);
   let _rampFailCount = 0;

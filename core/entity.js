@@ -465,7 +465,8 @@ async function _renderWorkshopsStatsStrip(workshops) {
         ${topHTML}
       </div>`;
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats unavailable</div>`;
+    if (typeof logError === 'function') logError(e, 'entity stats widget');
   }
 }
 
@@ -529,7 +530,8 @@ async function _renderPartnersStatsStrip(partners) {
         ${topHTML}
       </div>`;
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats unavailable</div>`;
+    if (typeof logError === 'function') logError(e, 'entity stats widget');
   }
 }
 
@@ -593,7 +595,8 @@ async function _renderClientsStatsStrip(clients) {
         ${topHTML}
       </div>`;
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats error: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats unavailable</div>`;
+    if (typeof logError === 'function') logError(e, 'entity stats widget');
   }
 }
 
@@ -912,7 +915,8 @@ async function _loadEntityHistory(type, recId, name) {
         </tr>`).join('')}${orders.length>30?`<tr><td colspan="5" style="padding:6px;text-align:center;color:var(--text-dim)">+${orders.length-30} more</td></tr>`:''}</tbody>
       </table>`;
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Error: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Failed to load orders list</div>`;
+    if (typeof logError === 'function') logError(e, 'entity orders table');
   }
 }
 

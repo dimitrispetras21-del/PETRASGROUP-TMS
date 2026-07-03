@@ -157,7 +157,7 @@ async function renderInvoicing() {
     _renderInvLayout(c);
     _applyInvFilters();
   } catch (e) {
-    c.innerHTML = showError(e.message);
+    c.innerHTML = showError('Failed to load invoicing');
     console.error('Invoicing:', e);
   }
 }
