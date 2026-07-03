@@ -1,0 +1,92 @@
+# E2E smoke suite (audit Fix 1.6 / plan item N4).
+#
+# Runs the render-sweep smoke tests on every PR and on every push to main.
+# The checkout is served locally and pointed at a READ-ONLY Airtable token:
+# never run these tests against the production write token, some pages
+# create records on render (daily_ramp auto-sync), so a CI run with the
+# write token would insert real RAMP records on every workflow run.
+#
+# Requires the AIRTABLE_READONLY_PAT repository secret (a scoped read-only
+# Airtable PAT for the production base). Until a repo admin adds it, the
+# job skips with a warning instead of failing.
+#
+# Deliberately runs ONLY tests/e2e/smoke.spec.js. The vs-scenarios suite is
+# data-dependent (needs specific orders present) and flakes on empty views;
+# add it here only after it is hardened against missing data.
+
+name: E2E smoke
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    # Same-repo PRs and direct pushes only. Fork PRs get no secrets, so the
+    # token swap below could never work for them anyway.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      AIRTABLE_READONLY_PAT: ${{ secrets.AIRTABLE_READONLY_PAT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gate on the read-only token secret
+        id: gate
+        run: |
+          if [ -z "$AIRTABLE_READONLY_PAT" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::AIRTABLE_READONLY_PAT secret is not set, smoke suite skipped. A repo admin must add it (Settings > Secrets and variables > Actions) with a READ-ONLY Airtable PAT for the TMS base."
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.present == 'true'
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies and browser
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Point the app at the read-only token
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          sed -i "s|const AT_TOKEN = '[^']*'|const AT_TOKEN = '${AIRTABLE_READONLY_PAT}'|" config.js
+          # Fail loudly if the swap did not take: running against the
+          # committed write token must never happen in CI.
+          if ! grep -q "$AIRTABLE_READONLY_PAT" config.js; then
+            echo "Token swap failed, aborting before any test runs." >&2
+            exit 1
+          fi
+
+      - name: Serve the checkout
+        if: steps.gate.outputs.present == 'true'
+        run: |
+          python3 -m http.server 8088 --bind 127.0.0.1 &
+          for i in $(seq 1 10); do
+            curl -sf -o /dev/null http://127.0.0.1:8088/app.html && break
+            sleep 1
+          done
+
+      - name: Run smoke suite
+        if: steps.gate.outputs.present == 'true'
+        run: PW_BASE_URL=http://127.0.0.1:8088/ npx playwright test tests/e2e/smoke.spec.js
+
+      - name: Upload report on failure
+        uses: actions/upload-artifact@v4
+        if: failure() && steps.gate.outputs.present == 'true'
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14
