@@ -313,7 +313,9 @@ async function _atFetch(tableId, paramStr = '') {
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Airtable error';
       if (typeof logError === 'function') logError(new Error(errMsg), '_atFetch');
-      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+      // Static toast only: errMsg carries raw Airtable detail (field names, IDs).
+      // The full message already went to the gated log via logError above.
+      if (typeof showErrorToast === 'function') showErrorToast('Failed to load data', 'error');
       throw new Error(errMsg);
     }
     records = records.concat(data.records || []);
@@ -443,7 +445,7 @@ async function atPatch(tableId, recId, fields) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
   }
   // Track for undo
@@ -477,7 +479,7 @@ async function atCreate(tableId, fields) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atCreate(${tableId})`);
-    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
   }
   // Track for undo (skip if inside cascade)
@@ -510,7 +512,7 @@ async function atDelete(tableId, recId) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atDelete(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Delete failed', 'error');
     throw new Error(errMsg);
   }
   invalidateCache(tableId);
@@ -533,7 +535,7 @@ async function atGetOne(tableId, recId) {
   if (data.error) {
     const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
     if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
-    if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+    if (typeof showErrorToast === 'function') showErrorToast('Failed to load record', 'error');
     throw new Error(errMsg);
   }
   return data;
@@ -562,7 +564,7 @@ async function atCreateBatch(tableId, recordsArr) {
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
       if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId})`);
-      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+      if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
       throw new Error(errMsg);
     }
     if (data.records) {
@@ -603,7 +605,7 @@ async function atPatchBatch(tableId, recordsArr) {
     if (data.error) {
       const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
       if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId})`);
-      if (typeof showErrorToast === 'function') showErrorToast(errMsg, 'error');
+      if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
       throw new Error(errMsg);
     }
     if (data.records) {

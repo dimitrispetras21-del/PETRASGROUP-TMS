@@ -30,7 +30,8 @@ async function renderLocations() {
     _locBuildFilterOptions();
     _locApplyFilters();
   } catch (e) {
-    c.innerHTML = showError('Failed to load locations: ' + e.message);
+    c.innerHTML = showError('Failed to load locations');
+    if (typeof logError === 'function') logError(e, 'renderLocations load');
   }
 }
 

@@ -58,7 +58,10 @@ async function renderOrdersNatl() {
 
     _renderNatlLayout(c);
     _applyNatlFilters();
-  } catch(e) { c.innerHTML = showError(e.message); }
+  } catch(e) {
+    c.innerHTML = showError('Failed to load national orders');
+    if (typeof logError === 'function') logError(e, 'renderOrdersNatl load');
+  }
 }
 
 function _renderNatlLayout(c) {

@@ -87,7 +87,7 @@ async function renderWeeklyNatl() {
     _wnPaint();
   } catch(e) {
     if (loadId !== _wnLoadId) return; // stale error, ignore
-    content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα: ${e.message}</div>`;
+    content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`;
     console.error('renderWeeklyNatl:', e);
   }
 }

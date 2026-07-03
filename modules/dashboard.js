@@ -623,7 +623,7 @@ async function renderDashboard() {
 
   } catch (e) {
     console.error('Dashboard error:', e);
-    c.innerHTML = showError(e.message);
+    c.innerHTML = showError('Failed to load dashboard');
   }
 }
 

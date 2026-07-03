@@ -392,7 +392,7 @@ KEY RULES:
     _puShowConfirm(parsed);
   } catch (e) {
     status.className = 'pu-status error';
-    status.innerHTML = '❌ Error: ' + e.message;
+    status.innerHTML = '❌ Extraction failed';
     btn.disabled = false;
     if (typeof logError === 'function') logError(e, 'pallet_upload_extract');
   }

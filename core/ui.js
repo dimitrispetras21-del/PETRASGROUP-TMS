@@ -204,7 +204,10 @@ function showLoading(msg = 'Loading...') {
 }
 
 function showError(msg) {
-  return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Error</h3><p style="color:var(--text-dim);font-size:13px">${msg}</p></div>`;
+  // escapeHtml: msg historically carried raw e.message (Airtable field names,
+  // record IDs) straight into innerHTML. Callers now pass static text, but the
+  // escape stays as the safety net for any future caller that forgets.
+  return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Error</h3><p style="color:var(--text-dim);font-size:13px">${escapeHtml(msg)}</p></div>`;
 }
 
 // A4: Empty states with subtle illustrations — legacy string-based signature

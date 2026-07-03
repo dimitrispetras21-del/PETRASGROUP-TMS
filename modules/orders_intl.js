@@ -123,7 +123,10 @@ async function renderOrdersIntl() {
     await fhBatchResolveClients(clientIds);
     _renderIntlLayout(c);
     _applyIntlFilters();
-  } catch(e) { c.innerHTML = showError(e.message); }
+  } catch(e) {
+    c.innerHTML = showError('Failed to load international orders');
+    if (typeof logError === 'function') logError(e, 'renderOrdersIntl load');
+  }
 }
 
 function _renderIntlLayout(c) {
