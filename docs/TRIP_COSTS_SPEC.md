@@ -285,11 +285,19 @@ role enforcement).
    build time.
 7. ✅ **km source** = manual now; MyGeotab GPS later.
 
+8. ✅ **Spedition** (locked 2026-07-05, verified on a real invoice) = **very
+   rare and small — deferred, define in the future**. Real May-2026 invoice
+   from Trivium Szeged Kft. (HU customs agent): 3 customs clearances × €20 =
+   €60/month, reverse charge, billed to VERMION FRESH. v1: keep the
+   `spedition_cost` field, **manual entry** when it occurs — no allocation
+   pipeline. Future-proofing note: the accompanying "Specifikáció" sheet DOES
+   carry per-line detail (date + truck/trailer plates, e.g. `IAZ8302/P61335` +
+   customs ref + amount), so shape-A auto-allocation is possible later if
+   volume ever grows.
+
 ### Still open
-- **Spedition monthly invoice granularity** — per-trip lines (auto-allocate) or
-  lump total (manual tagging of which trips had spedition)? Verify on a real
-  invoice. (Monthly cycle + 2 companies confirmed.)
 - **Accommodation (Διαμονή)** sourcing — manual per-trip assumed; confirm.
+- **Exact € value of X** (VS transfer price) — a settings value; set at build time.
 - **VAT recovery** — the business doc notes an unmodelled VAT-refund benefit on
   some expenses. Out of scope for margin v1; flag for a future finance view.
 

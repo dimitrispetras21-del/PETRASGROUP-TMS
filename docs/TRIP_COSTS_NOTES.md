@@ -190,8 +190,10 @@ DADI/DKV scan → FUEL LEDGER (raw: truck·date·liters·cost·chamber) ← sing
 1. ✓ **Standard amount X** (VS transfer price): **standard fixed € amount**,
    single settings value (exact € set at build time).
 2. ✓ **One `round_trips` table** with `scope` field — confirmed ONE.
-3. ❓ **Spedition monthly invoice**: monthly cycle confirmed; granularity
-   (per-trip lines vs lump → manual tagging) still to verify on a real invoice.
+3. ✓ **Spedition monthly invoice**: verified on real invoice (Trivium Szeged
+   Kft., May 2026 — 3 × €20 customs clearances). Very rare/small → **deferred**;
+   manual entry in v1. The Specifikáció sheet has per-line plate+date detail,
+   so auto-allocation is possible later. (SPEC §10.1 item 8.)
 4. ✓ **AdBlue**: two sources — bulk purchase invoice by the company (own stock)
    + road top-ups paid with the DKV card (→ DKV lines, shape-A auto-allocate).
    ❓ **Accommodation (#8)** sourcing still open (manual per-trip assumed).
