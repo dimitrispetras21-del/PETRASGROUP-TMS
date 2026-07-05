@@ -217,6 +217,11 @@ system-sourced.
 
 ## 8. UI module spec (`trip_costs.js` / new-stack equivalent)
 
+> **Page name (owner-confirmed 2026-07-05): "TRIP PnL"** — use this in all UI
+> copy instead of "Trip Costs". Approved visual mockup:
+> `docs/design/trip_pnl_mockup.html` (design spec:
+> `docs/superpowers/specs/2026-07-05-trip-pnl-design.md`).
+
 Split-view, consistent with the Orders pages:
 
 - **KPI bar:** Total costs (period), Total revenue, **Net margin %**,

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "kronos-dashboard",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "4188", "--directory", "/Users/dimitrispetras/petras-kronos/dashboard"],
+      "port": 4188
+    },
+    {
+      "name": "tms-static",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8765", "--directory", "/Users/dimitrispetras/PETRASGROUP-TMS"],
+      "port": 8765
+    }
+  ]
+}

@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIP PnL — Design Mockup · Petras Group TMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* ============ TMS design system (replicated for standalone mockup) ============ */
+:root{
+  --accent:#0284C7; --accent-h:#0369A1; --accent-lt:#38BDF8;
+  --navy:#0B1929; --navy-2:#0C2D5C; --bg:#F4F6F9; --card:#FFFFFF;
+  --ink:#0F172A; --muted:#64748B; --line:#E2E8F0;
+  --loss:#7F1D1D; --loss-lt:#FEE2E2; --warn:#B45309; --warn-lt:#FEF3C7;
+  --ok:#166534; --ok-lt:#DCFCE7; --partner:#14532D;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);font-size:14px}
+h1,h2,h3,.syne{font-family:'Syne',sans-serif}
+
+/* ---------- header ---------- */
+.topbar{background:var(--navy);color:#fff;padding:14px 28px;display:flex;align-items:center;gap:28px}
+.topbar h1{font-size:20px;font-weight:800;letter-spacing:.5px}
+.topbar h1 span{color:var(--accent-lt)}
+.tabs{display:flex;gap:6px}
+.tab{padding:8px 18px;border-radius:8px;color:#94A3B8;cursor:pointer;font-weight:500;border:1px solid transparent}
+.tab.active{background:var(--accent);color:#fff}
+.tab:not(.active):hover{border-color:#334155;color:#CBD5E1}
+.spacer{flex:1}
+.period{display:flex;gap:4px;background:#12233B;border-radius:8px;padding:3px}
+.period button{background:none;border:none;color:#94A3B8;padding:6px 14px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:13px}
+.period button.active{background:var(--navy-2);color:#fff}
+.mock-badge{position:fixed;bottom:14px;right:14px;background:var(--navy);color:var(--accent-lt);font-size:11px;padding:6px 12px;border-radius:20px;opacity:.85;z-index:99}
+
+.wrap{max-width:1280px;margin:0 auto;padding:22px 28px 60px}
+
+/* ---------- KPI band ---------- */
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:6px}
+.kpi .val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
+.kpi .sub{font-size:11px;color:var(--muted);margin-top:3px}
+.kpi.hero{background:var(--navy);border-color:var(--navy)}
+.kpi.hero .lbl{color:#7DA6CE}.kpi.hero .val{color:#fff}.kpi.hero .sub{color:#7DA6CE}
+.kpi.alert .val{color:#B91C1C}
+
+/* ---------- toolbar ---------- */
+.toolbar{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.toolbar label{font-size:12px;color:var(--muted);font-weight:500}
+select.groupby{font-family:inherit;font-size:13px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;min-width:170px}
+.hint{font-size:12px;color:var(--muted)}
+
+/* ---------- table ---------- */
+.tbl{width:100%;background:var(--card);border:1px solid var(--line);border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden}
+.tbl th{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);background:#F8FAFC;cursor:default}
+.tbl td{padding:11px 14px;border-bottom:1px solid var(--line);font-size:13px}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr{cursor:pointer}
+.tbl tbody tr:hover{background:#F0F9FF}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.pill{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700}
+.pill.red{background:var(--loss);color:#fff}
+.pill.amber{background:var(--warn-lt);color:var(--warn)}
+.pill.green{background:var(--ok-lt);color:var(--ok)}
+.chip{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:500}
+.chip.owned{background:var(--navy-2);color:#fff}
+.chip.partner{background:var(--partner);color:#fff}
+.chip.natl{background:#E0F2FE;color:#075985;border:1px solid #BAE6FD}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px}
+.badge.prov{background:var(--warn-lt);color:var(--warn)}
+.badge.full{background:var(--ok-lt);color:var(--ok)}
+.mono{font-variant-numeric:tabular-nums}
+
+/* ---------- drill-down panel ---------- */
+.overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);opacity:0;pointer-events:none;transition:.2s;z-index:10}
+.overlay.open{opacity:1;pointer-events:auto}
+.panel{position:fixed;top:0;right:-520px;width:520px;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(11,25,41,.25);transition:right .25s;z-index:11;overflow-y:auto}
+.panel.open{right:0}
+.panel .phead{background:var(--navy);color:#fff;padding:18px 22px}
+.panel .phead h2{font-size:17px;margin-bottom:4px}
+.panel .phead .meta{font-size:12px;color:#94A3B8}
+.panel .close{float:right;background:none;border:none;color:#94A3B8;font-size:20px;cursor:pointer}
+.psec{padding:16px 22px;border-bottom:1px solid var(--line)}
+.psec h3{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);margin-bottom:10px}
+.crow{display:flex;align-items:center;gap:10px;margin-bottom:7px;font-size:13px}
+.crow .cl{width:130px;color:var(--ink)}
+.crow .bar{flex:1;height:8px;background:#F1F5F9;border-radius:4px;overflow:hidden}
+.crow .bar i{display:block;height:100%;background:var(--accent);border-radius:4px}
+.crow .cv{width:80px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.revline{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}
+.revline .who{color:var(--muted)}
+.totrow{display:flex;justify-content:space-between;font-weight:700;font-size:14px;padding-top:8px;border-top:1px dashed var(--line)}
+.alloc{font-size:12px;border:1px solid #BAE6FD;background:#F0F9FF;padding:7px 10px;border-radius:6px;margin-bottom:6px;display:flex;justify-content:space-between}
+.alloc .src{color:var(--accent-h);font-weight:500}
+.pnl-big{font-family:'Syne',sans-serif;font-size:26px;font-weight:800}
+
+/* ---------- Mode B ---------- */
+.stepper{display:flex;gap:0;margin-bottom:22px}
+.step{flex:1;text-align:center;padding:12px;background:var(--card);border:1px solid var(--line);position:relative;color:var(--muted);font-weight:500}
+.step:first-child{border-radius:12px 0 0 12px}
+.step:last-child{border-radius:0 12px 12px 0}
+.step.active{background:var(--navy);color:#fff;border-color:var(--navy)}
+.step.done{background:#E0F2FE;color:#075985}
+.step .n{display:inline-flex;width:22px;height:22px;border-radius:50%;background:#E2E8F0;color:var(--muted);align-items:center;justify-content:center;font-size:12px;font-weight:700;margin-right:8px}
+.step.active .n{background:var(--accent);color:#fff}
+.step.done .n{background:#0284C7;color:#fff}
+.bcard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:16px}
+.dropzone{border:2px dashed #BAE6FD;border-radius:12px;padding:34px;text-align:center;color:var(--muted);background:#F8FCFF;margin-bottom:16px}
+.dropzone .big{font-size:15px;color:var(--ink);font-weight:500;margin-bottom:4px}
+.srcbtns{display:flex;gap:12px;justify-content:center;margin-top:14px}
+.btn{font-family:inherit;font-size:13px;font-weight:500;padding:9px 18px;border-radius:8px;cursor:pointer;border:1px solid var(--accent);background:#fff;color:var(--accent)}
+.btn.primary{background:linear-gradient(135deg,var(--navy-2),var(--accent));color:#fff;border:none}
+.btn:hover{filter:brightness(1.05)}
+.recon{display:flex;align-items:center;gap:14px;background:var(--ok-lt);border:1px solid #86EFAC;color:var(--ok);border-radius:10px;padding:11px 16px;font-weight:500;margin:14px 0}
+.recon .eq{font-variant-numeric:tabular-nums}
+.unalloc{background:var(--warn-lt);border:1px solid #FDE68A;border-radius:10px;padding:14px 16px}
+.unalloc h4{color:var(--warn);font-size:13px;margin-bottom:8px}
+.unalloc .u{display:flex;justify-content:space-between;font-size:13px;padding:6px 0;border-bottom:1px dashed #FDE68A}
+.unalloc .u:last-child{border-bottom:none}
+.unalloc select{font-family:inherit;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid #FDE68A;background:#fff}
+.allocgrp{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;overflow:hidden}
+.allocgrp .g{background:#F8FAFC;padding:9px 14px;font-weight:700;font-size:13px;display:flex;justify-content:space-between}
+.allocgrp .l{display:flex;justify-content:space-between;padding:7px 14px;font-size:12.5px;border-top:1px solid var(--line);color:#334155}
+.hide{display:none}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>TRIP <span>PnL</span></h1>
+  <div class="tabs">
+    <div class="tab active" id="tabA" onclick="showMode('A')">Κερδοφορία</div>
+    <div class="tab" id="tabB" onclick="showMode('B')">Καταχώρηση Κόστους</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="period">
+    <button>Εβδομάδα</button><button class="active">Μήνας</button><button>Custom</button>
+  </div>
+</div>
+<div class="mock-badge">DESIGN MOCKUP · fake data · 2026-07-05</div>
+
+<!-- ================= MODE A : Κερδοφορία ================= -->
+<div class="wrap" id="modeA">
+  <div class="kpis" id="kpis"></div>
+
+  <div class="toolbar">
+    <label>Ομαδοποίηση:</label>
+    <select class="groupby" id="groupby" onchange="renderList()">
+      <option value="trip">Δρομολόγια</option>
+      <option value="truck">Ανά Φορτηγό / Partner</option>
+      <option value="client">Ανά Πελάτη</option>
+      <option value="lane">Ανά Lane</option>
+      <option disabled>Ανά Οδηγό (v2)</option>
+      <option disabled>Ανά Εβδομάδα (v2)</option>
+      <option disabled>Owned vs Partner (v2)</option>
+      <option disabled>Ανά Brand (v2)</option>
+    </select>
+    <span class="hint" id="listhint"></span>
+  </div>
+
+  <table class="tbl" id="listtbl"></table>
+</div>
+
+<!-- drill-down -->
+<div class="overlay" id="overlay" onclick="closePanel()"></div>
+<div class="panel" id="panel"></div>
+
+<!-- ================= MODE B : Καταχώρηση Κόστους ================= -->
+<div class="wrap hide" id="modeB">
+  <div class="stepper">
+    <div class="step" id="st1"><span class="n">1</span>Scan / Upload</div>
+    <div class="step" id="st2"><span class="n">2</span>Προεπισκόπηση &amp; Έγκριση</div>
+    <div class="step" id="st3"><span class="n">3</span>Αυτόματη Κατανομή</div>
+  </div>
+
+  <!-- step 1 -->
+  <div class="bcard" id="b1">
+    <div class="dropzone">
+      <div class="big">Σύρε εδώ τιμολόγιο (PDF / φωτογραφία)</div>
+      ή διάλεξε πηγή για demo:
+      <div class="srcbtns">
+        <button class="btn primary" onclick="loadInvoice()">DKV — 15ήμερο (machine-readable)</button>
+        <button class="btn" onclick="loadInvoice()">DADI — εβδομαδιαίο (scan → AI OCR)</button>
+      </div>
+    </div>
+    <span class="hint">Το DKV parsάρεται αυτόματα· το DADI περνά από το scan pipeline (Νάκης) με έλεγχο πριν την καταχώρηση.</span>
+  </div>
+
+  <!-- step 2 -->
+  <div class="bcard hide" id="b2">
+    <h3 class="syne" style="margin-bottom:12px">DKV Τιμολόγιο #26-15834 · VERMION FRESH · 01–15.06.2026 · Σύνολο <span class="mono">€3.418,60</span></h3>
+    <table class="tbl">
+      <thead><tr><th>Πινακίδα</th><th>Ημ/νία</th><th>Κατηγορία</th><th>Περιγραφή</th><th class="num">Ποσό</th><th>Trip match</th></tr></thead>
+      <tbody id="invlines"></tbody>
+    </table>
+    <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn" onclick="stepTo(1)">Πίσω</button>
+      <button class="btn primary" onclick="stepTo(3)">✓ Επιβεβαίωση &amp; Κατανομή</button>
+    </div>
+  </div>
+
+  <!-- step 3 -->
+  <div class="bcard hide" id="b3">
+    <div class="recon">✓ Συμφωνία: <span class="eq">€3.161,40 κατανεμημένα + €257,20 ακατανέμητα = €3.418,60 σύνολο τιμολογίου</span></div>
+    <div id="allocout"></div>
+    <div class="unalloc">
+      <h4>⏳ Ακατανέμητα — χρειάζονται έλεγχο (2)</h4>
+      <div class="u"><span>IAB2103 · 09.06 · Καύσιμα · ημέρα χωρίς ενεργό trip</span><span><span class="mono">€212,40</span> &nbsp;<select><option>Ανάθεση σε trip…</option><option>RT-2624 (IAB2103)</option><option>Εκτός trip (πάγιο)</option></select></span></div>
+      <div class="u"><span>OB-4471-XP · 11.06 · Διόδια HU · άγνωστη πινακίδα (alias;)</span><span><span class="mono">€44,80</span> &nbsp;<select><option>Ανάθεση σε trip…</option><option>Προσθήκη alias πινακίδας</option></select></span></div>
+    </div>
+    <div style="margin-top:14px;text-align:right"><button class="btn primary" onclick="showMode('A')">Ολοκλήρωση → Κερδοφορία</button></div>
+  </div>
+</div>
+
+<script>
+// ================= fake dataset — every UI state represented =================
+const T = [
+ {id:'RT-2618',type:'OWNED',scope:'INTL',truck:'IAZ8302',driver:'Γ. Τζήκας',lane:'GR→DE',s:'01.06',e:'07.06',km:4980,
+  rev:[{who:'VERMION FRESH → EDEKA (export)',amt:3350},{who:'FRUCHTHOF München → GR (import)',amt:2750}],
+  cost:{'Καύσιμα':1740,'Διόδια':710,'DKV κάρτα':160,'Οδηγός':450,'Έξοδα Μ':180,'AdBlue':60,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':90},complete:true,
+  alloc:[{src:'DKV #26-15834',txt:'Διόδια AT/DE · 4 γραμμές',amt:512},{src:'DKV #26-15834',txt:'Καύσιμα Shell Villach 02.06',amt:684},{src:'DADI εβδ.23',txt:'Πλήρωση Veroia 01.06',amt:1056}]},
+ {id:'RT-2619',type:'OWNED',scope:'INTL',truck:'IAB1096',driver:'Σ. Μήτκας',lane:'GR→NL',s:'02.06',e:'09.06',km:5630,
+  rev:[{who:'ΑΓΡΟΚΤΗΜΑ ΒΕΡΜΙΟΥ → Bakker NL (export)',amt:3600},{who:'— κενή επιστροφή (solo leg)',amt:0}],
+  cost:{'Καύσιμα':1980,'Διόδια':820,'DKV κάρτα':140,'Οδηγός':480,'Έξοδα Μ':160,'AdBlue':70,'Ferry/Τρένα':0,'Πρόστιμα':150,'Λοιπά':60},complete:true,alloc:[
+  {src:'DKV #26-15834',txt:'Διόδια BE/NL/DE · 6 γραμμές',amt:604},{src:'DADI εβδ.23',txt:'Πλήρωση Veroia 02.06',amt:1180}]},
+ {id:'RT-2620',type:'PARTNER',scope:'INTL',truck:null,partner:'TRANSKAM Ltd',lane:'GR→IT',s:'03.06',e:'06.06',km:2410,
+  rev:[{who:'KOLIOS SA → Milano CEDI (export)',amt:2400}],
+  cost:{'Partner rate (export)':2200},complete:true,alloc:[]},
+ {id:'RT-2621',type:'OWNED',scope:'INTL',truck:'IAB2103',driver:'Ν. Σιδηρόπουλος',lane:'GR→AT',s:'05.06',e:'11.06',km:3890,
+  rev:[{who:'VERMION FRESH → SPAR Wien (export)',amt:2950},{who:'AGRANA → Θεσ/νίκη (import)',amt:2300}],
+  cost:{'Καύσιμα':1420,'Διόδια':590,'DKV κάρτα':120,'Οδηγός':430,'Έξοδα Μ':140,'AdBlue':55,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':40},complete:false,alloc:[
+  {src:'DKV #26-15834',txt:'Διόδια HU/AT · 5 γραμμές',amt:433}]},
+ {id:'RT-2622',type:'OWNED',scope:'INTL',truck:'IAZ4445',driver:'Δ. Καραγιάννης',lane:'GR→IT',s:'08.06',e:'13.06',km:3120,
+  rev:[{who:'ΟΠΩΡΟΚΗΠΕΥΤΙΚΑ ΝΑΟΥΣΑ → Verona (export)',amt:2680},{who:'Conserve Italia → GR (import)',amt:2150}],
+  cost:{'Καύσιμα':1310,'Διόδια':480,'DKV κάρτα':110,'Οδηγός':420,'Έξοδα Μ':150,'AdBlue':50,'Ferry/Τρένα':360,'Πρόστιμα':0,'Λοιπά':70},complete:true,alloc:[
+  {src:'DKV #26-15834',txt:'Διόδια IT/SI · 3 γραμμές',amt:365},{src:'Standalone',txt:'Ferry Igoumenitsa–Ancona 08.06',amt:360}]},
+ {id:'RT-2623',type:'PARTNER',scope:'INTL',truck:null,partner:'BALKAN TRANS OOD',lane:'GR→DE',s:'09.06',e:'14.06',km:4820,
+  rev:[{who:'KOLIOS SA → REWE Köln (export)',amt:2450}],
+  cost:{'Partner rate (export)':2550},complete:true,alloc:[]},
+ {id:'RT-2624',type:'OWNED',scope:'INTL',truck:'IAB2103',driver:'Ν. Σιδηρόπουλος',lane:'GR→DE',s:'12.06',e:'18.06',km:5050,
+  rev:[{who:'VERMION FRESH → Lidl Neckarsulm (export)',amt:3400},{who:'BayWa → GR (import)',amt:2680}],
+  cost:{'Καύσιμα':1790,'Διόδια':740,'DKV κάρτα':150,'Οδηγός':455,'Έξοδα Μ':170,'AdBlue':65,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':55},complete:false,alloc:[
+  {src:'DKV #26-15834',txt:'Διόδια AT/DE · 5 γραμμές',amt:498}]},
+ {id:'RT-2625',type:'OWNED',scope:'INTL',truck:'IAZ8302',driver:'Γ. Τζήκας',lane:'GR→NL',s:'15.06',e:'21.06',km:5590,
+  rev:[{who:'ΑΓΡΟΚΤΗΜΑ ΒΕΡΜΙΟΥ → Greenery NL (export)',amt:3550},{who:'FloraHolland → GR (import)',amt:2820}],
+  cost:{'Καύσιμα':1930,'Διόδια':810,'DKV κάρτα':145,'Οδηγός':470,'Έξοδα Μ':175,'AdBlue':70,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':80},complete:true,alloc:[
+  {src:'DKV #26-15834',txt:'Διόδια BE/NL/DE · 7 γραμμές',amt:622},{src:'DADI εβδ.25',txt:'Πλήρωση Veroia 15.06',amt:1122}]},
+ {id:'RT-2626',type:'OWNED',scope:'NATL',truck:'ΝΗΒ7212',driver:'Χ. Μπόλης',lane:'ΑΝΟΔΟΣ (VS)',s:'01.06',e:'02.06',km:410,
+  rev:[{who:'Internal transfer X — VS feeder (Σκύδρα→Βέροια)',amt:350}],
+  cost:{'Καύσιμα':125,'Διόδια':18,'DKV κάρτα':0,'Οδηγός':70,'Έξοδα Μ':15,'AdBlue':8,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':10},complete:true,alloc:[
+  {src:'DADI εβδ.23',txt:'Πλήρωση Veroia 01.06',amt:125}]},
+ {id:'RT-2627',type:'OWNED',scope:'NATL',truck:'ΝΗΒ7212',driver:'Χ. Μπόλης',lane:'ΚΑΘΟΔΟΣ (VS)',s:'20.06',e:'21.06',km:640,
+  rev:[{who:'Internal transfer X — VS διανομή (Βέροια→Αθήνα)',amt:350}],
+  cost:{'Καύσιμα':210,'Διόδια':95,'DKV κάρτα':0,'Οδηγός':75,'Έξοδα Μ':20,'AdBlue':10,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':5},complete:true,alloc:[]},
+ {id:'RT-2628',type:'OWNED',scope:'INTL',truck:'IAB1096',driver:'Σ. Μήτκας',lane:'GR→DE',s:'19.06',e:'25.06',km:4910,
+  rev:[{who:'VERMION FRESH → EDEKA (export)',amt:3300},{who:'Landgard → GR (import)',amt:2710}],
+  cost:{'Καύσιμα':1700,'Διόδια':705,'DKV κάρτα':155,'Οδηγός':450,'Έξοδα Μ':165,'AdBlue':60,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':45},complete:true,alloc:[
+  {src:'DKV #26-15901',txt:'Διόδια AT/DE · 4 γραμμές',amt:505}]},
+ {id:'RT-2629',type:'OWNED',scope:'INTL',truck:'IAZ4445',driver:'Δ. Καραγιάννης',lane:'GR→AT',s:'22.06',e:'27.06',km:3860,
+  rev:[{who:'ΟΠΩΡΟΚΗΠΕΥΤΙΚΑ ΝΑΟΥΣΑ → BILLA Wien (export)',amt:2900},{who:'— κενή επιστροφή (solo leg)',amt:0}],
+  cost:{'Καύσιμα':1450,'Διόδια':585,'DKV κάρτα':115,'Οδηγός':430,'Έξοδα Μ':145,'AdBlue':55,'Ferry/Τρένα':0,'Πρόστιμα':0,'Λοιπά':35},complete:false,alloc:[]}
+];
+
+const fmt = n => '€'+n.toLocaleString('el-GR');
+const sum = o => Object.values(o).reduce((a,b)=>a+b,0);
+T.forEach(t=>{t.revenue=t.rev.reduce((a,r)=>a+r.amt,0);t.costs=sum(t.cost);t.net=t.revenue-t.costs;
+  t.margin=t.revenue? Math.round(t.net/t.revenue*1000)/10 : -100;});
+
+function pill(m){const c=m<0?'red':(m<10?'amber':'green');return `<span class="pill ${c}">${m>0?'+':''}${m.toFixed(1)}%</span>`}
+function chip(t){if(t.scope==='NATL')return '<span class="chip natl">ΕΘΝΙΚΟ</span>';
+  return t.type==='PARTNER'?`<span class="chip partner">${t.partner}</span>`:`<span class="chip owned">${t.truck}</span>`}
+function badge(t){return t.complete?'<span class="badge full">Πλήρες</span>':'<span class="badge prov">Προσωρινό</span>'}
+
+/* ---------- KPI band ---------- */
+function renderKPIs(){
+  const rev=T.reduce((a,t)=>a+t.revenue,0), cost=T.reduce((a,t)=>a+t.costs,0);
+  const net=rev-cost, m=(net/rev*100).toFixed(1);
+  const losses=T.filter(t=>t.net<0).length;
+  const km=T.reduce((a,t)=>a+t.km,0);
+  const compl=Math.round(T.filter(t=>t.complete).length/T.length*100);
+  document.getElementById('kpis').innerHTML=`
+   <div class="kpi"><div class="lbl">Έσοδα Ιουνίου</div><div class="val">${fmt(rev)}</div><div class="sub">${T.length} round trips</div></div>
+   <div class="kpi"><div class="lbl">Κόστη</div><div class="val">${fmt(cost)}</div><div class="sub">όλες οι κατηγορίες</div></div>
+   <div class="kpi hero"><div class="lbl">Καθαρό Margin</div><div class="val">${m}%</div><div class="sub">${fmt(net)} καθαρό</div></div>
+   <div class="kpi alert"><div class="lbl">Ζημιογόνα trips</div><div class="val">${losses}</div><div class="sub">θέλουν εξέταση</div></div>
+   <div class="kpi"><div class="lbl">Μέσο κόστος / km</div><div class="val">€${(cost/km).toFixed(2)}</div><div class="sub">${km.toLocaleString('el-GR')} km σύνολο</div></div>
+   <div class="kpi"><div class="lbl">Cost-complete</div><div class="val">${compl}%</div><div class="sub">${T.filter(t=>!t.complete).length} προσωρινά</div></div>`;
+}
+
+/* ---------- list (group-by pivots) ---------- */
+function renderList(){
+  const g=document.getElementById('groupby').value, tbl=document.getElementById('listtbl');
+  if(g==='trip'){
+    document.getElementById('listhint').textContent='Ταξινόμηση: χειρότερο margin πρώτα · κλικ σε γραμμή για ανάλυση';
+    const rows=[...T].sort((a,b)=>a.margin-b.margin).map((t,)=>`
+     <tr onclick="openPanel('${t.id}')"><td class="mono">${t.s}–${t.e}</td><td>${chip(t)}</td><td>${t.lane}</td>
+     <td class="num">${fmt(t.revenue)}</td><td class="num">${fmt(t.costs)}</td><td class="num" style="font-weight:700;color:${t.net<0?'#B91C1C':'#166534'}">${fmt(t.net)}</td>
+     <td style="text-align:center">${pill(t.margin)}</td><td>${badge(t)}</td></tr>`).join('');
+    tbl.innerHTML=`<thead><tr><th>Ημ/νίες</th><th>Φορτηγό / Partner</th><th>Lane</th><th class="num">Έσοδα</th><th class="num">Κόστος</th><th class="num">Καθαρό</th><th style="text-align:center">Margin</th><th>Κόστη</th></tr></thead><tbody>${rows}</tbody>`;
+    return;
+  }
+  const keyFn = g==='truck' ? t=>(t.type==='PARTNER'?t.partner:t.truck)
+             : g==='lane' ? t=>t.lane
+             : t=>t.rev[0].who.split('→')[0].trim().replace(' (export)','');
+  const m={};
+  T.forEach(t=>{const k=keyFn(t);(m[k]=m[k]||{n:0,rev:0,cost:0}).n++;m[k].rev+=t.revenue;m[k].cost+=t.costs});
+  document.getElementById('listhint').textContent='Συγκεντρωτικά στην περίοδο · χειρότερο margin πρώτα';
+  const rows=Object.entries(m).map(([k,v])=>({k,...v,net:v.rev-v.cost,mg:v.rev?(v.rev-v.cost)/v.rev*100:-100}))
+   .sort((a,b)=>a.mg-b.mg).map(r=>`
+   <tr><td style="font-weight:500">${r.k}</td><td class="num">${r.n}</td><td class="num">${fmt(r.rev)}</td><td class="num">${fmt(r.cost)}</td>
+   <td class="num" style="font-weight:700;color:${r.net<0?'#B91C1C':'#166534'}">${fmt(r.net)}</td><td style="text-align:center">${pill(Math.round(r.mg*10)/10)}</td></tr>`).join('');
+  const h=g==='truck'?'Φορτηγό / Partner':(g==='lane'?'Lane':'Πελάτης');
+  tbl.innerHTML=`<thead><tr><th>${h}</th><th class="num">Trips</th><th class="num">Έσοδα</th><th class="num">Κόστη</th><th class="num">Καθαρό</th><th style="text-align:center">Margin</th></tr></thead><tbody>${rows}</tbody>`;
+}
+
+/* ---------- drill-down ---------- */
+function openPanel(id){
+  const t=T.find(x=>x.id===id), max=Math.max(...Object.values(t.cost));
+  const costRows=Object.entries(t.cost).filter(([,v])=>v>0).map(([k,v])=>`
+   <div class="crow"><span class="cl">${k}</span><span class="bar"><i style="width:${Math.round(v/max*100)}%"></i></span><span class="cv">${fmt(v)}</span></div>`).join('');
+  const revRows=t.rev.map(r=>`<div class="revline"><span class="who">${r.who}</span><span class="mono" style="font-weight:500">${fmt(r.amt)}</span></div>`).join('');
+  const allocRows=t.alloc.length? t.alloc.map(a=>`<div class="alloc"><span><span class="src">${a.src}</span> — ${a.txt}</span><span class="mono">${fmt(a.amt)}</span></div>`).join('')
+    : '<span class="hint">— καμία αυτόματη κατανομή (manual κόστη μόνο)</span>';
+  document.getElementById('panel').innerHTML=`
+   <div class="phead"><button class="close" onclick="closePanel()">✕</button>
+     <h2 class="syne">${t.id} · ${t.lane}</h2>
+     <div class="meta">${t.type==='PARTNER'?('Partner: '+t.partner):(t.truck+' · '+t.driver)} &nbsp;·&nbsp; ${t.s}–${t.e}.2026 &nbsp;·&nbsp; ${t.km.toLocaleString('el-GR')} km &nbsp;·&nbsp; ${t.complete?'κόστη πλήρη':'κόστη προσωρινά'}</div></div>
+   <div class="psec" style="display:flex;justify-content:space-between;align-items:center">
+     <div><div class="hint">Καθαρό αποτέλεσμα</div><div class="pnl-big" style="color:${t.net<0?'#B91C1C':'#166534'}">${fmt(t.net)}</div></div>
+     <div style="text-align:right"><div class="hint">Margin</div>${pill(t.margin)}</div></div>
+   <div class="psec"><h3>Έσοδα (auto από Orders — read only)</h3>${revRows}
+     <div class="totrow"><span>Σύνολο εσόδων</span><span>${fmt(t.revenue)}</span></div></div>
+   <div class="psec"><h3>Κόστη ανά κατηγορία</h3>${costRows}
+     <div class="totrow"><span>Σύνολο κόστους</span><span>${fmt(t.costs)}</span></div></div>
+   <div class="psec"><h3>Κατανεμημένες γραμμές τιμολογίων (audit)</h3>${allocRows}</div>`;
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('panel').classList.add('open');
+}
+function closePanel(){document.getElementById('overlay').classList.remove('open');document.getElementById('panel').classList.remove('open')}
+
+/* ---------- mode switch ---------- */
+function showMode(m){
+  document.getElementById('tabA').classList.toggle('active',m==='A');
+  document.getElementById('tabB').classList.toggle('active',m==='B');
+  document.getElementById('modeA').classList.toggle('hide',m!=='A');
+  document.getElementById('modeB').classList.toggle('hide',m!=='B');
+  if(m==='B')stepTo(1); else closePanel();
+}
+
+/* ---------- Mode B ---------- */
+const INV=[
+ ['IAZ8302','02.06','Καύσιμα','Shell Villach · 512 L · km 481.220','€684,00','RT-2618 ✓'],
+ ['IAZ8302','03.06','Διόδια AT','ASFINAG A10 · 2 διελεύσεις','€96,40','RT-2618 ✓'],
+ ['IAB1096','04.06','Διόδια DE','Toll Collect A8 München','€188,20','RT-2619 ✓'],
+ ['IAB1096','05.06','AdBlue','Aral Stuttgart · 18 L','€24,60','RT-2619 ✓'],
+ ['IAB2103','06.06','Διόδια HU','HU-GO M1 · 3 τμήματα','€74,10','RT-2621 ✓'],
+ ['IAZ4445','09.06','Διόδια SI','DarsGo A1','€52,30','RT-2622 ✓'],
+ ['IAB2103','09.06','Καύσιμα','OMV Kecskemét · 160 L','€212,40','— καμία (idle) ⚠'],
+ ['OB-4471-XP','11.06','Διόδια HU','HU-GO M5','€44,80','— άγνωστη πινακίδα ⚠'],
+ ['IAB2103','13.06','Διόδια AT','ASFINAG A1','€81,50','RT-2624 ✓'],
+ ['IAZ8302','16.06','Καύσιμα','Shell Graz · 498 L · km 486.180','€663,90','RT-2625 ✓']];
+function loadInvoice(){
+  document.getElementById('invlines').innerHTML=INV.map(l=>`<tr style="cursor:default"><td class="mono">${l[0]}</td><td class="mono">${l[1]}</td><td>${l[2]}</td><td style="color:#64748B">${l[3]}</td><td class="num mono">${l[4]}</td><td>${l[5].includes('⚠')?'<span class="badge prov">'+l[5]+'</span>':'<span class="badge full">'+l[5]+'</span>'}</td></tr>`).join('');
+  stepTo(2);
+}
+function stepTo(n){
+  [1,2,3].forEach(i=>{
+    document.getElementById('b'+i).classList.toggle('hide',i!==n);
+    const s=document.getElementById('st'+i);
+    s.className='step'+(i===n?' active':(i<n?' done':''));
+  });
+  if(n===3)renderAlloc();
+}
+function renderAlloc(){
+  const groups={'RT-2618 · IAZ8302 · GR→DE':[['Καύσιμα Shell Villach 02.06','€684,00'],['Διόδια AT 03.06','€96,40']],
+    'RT-2619 · IAB1096 · GR→NL':[['Διόδια DE 04.06','€188,20'],['AdBlue 05.06','€24,60']],
+    'RT-2621 · IAB2103 · GR→AT':[['Διόδια HU 06.06','€74,10']],
+    'RT-2622 · IAZ4445 · GR→IT':[['Διόδια SI 09.06','€52,30']],
+    'RT-2624 · IAB2103 · GR→DE':[['Διόδια AT 13.06','€81,50']],
+    'RT-2625 · IAZ8302 · GR→NL':[['Καύσιμα Shell Graz 16.06','€663,90']]};
+  document.getElementById('allocout').innerHTML=Object.entries(groups).map(([g,ls])=>`
+   <div class="allocgrp"><div class="g"><span>${g}</span><span class="mono">${ls.length} γραμμές</span></div>
+   ${ls.map(l=>`<div class="l"><span>${l[0]}</span><span class="mono">${l[1]}</span></div>`).join('')}</div>`).join('');
+}
+
+renderKPIs();renderList();
+</script>
+</body>
+</html>
