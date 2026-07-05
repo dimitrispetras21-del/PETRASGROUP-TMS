@@ -196,7 +196,8 @@ DADI/DKV scan → FUEL LEDGER (raw: truck·date·liters·cost·chamber) ← sing
    so auto-allocation is possible later. (SPEC §10.1 item 8.)
 4. ✓ **AdBlue**: two sources — bulk purchase invoice by the company (own stock)
    + road top-ups paid with the DKV card (→ DKV lines, shape-A auto-allocate).
-   ❓ **Accommodation (#8)** sourcing still open (manual per-trip assumed).
+   ✓ **Accommodation (#8)**: very rare — manual entry when it occurs
+   (locked 2026-07-05, SPEC §10.1 item 9).
 5. ✓ **Partner rates** — auto from order's `Partner Rate`.
 6. ✓ **DADI/DKV invoice granularity** — dated per-vehicle lines (verified on
    real invoices, SPEC §11) → deterministic per-trip allocation.

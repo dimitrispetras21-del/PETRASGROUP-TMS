@@ -295,11 +295,18 @@ role enforcement).
    customs ref + amount), so shape-A auto-allocation is possible later if
    volume ever grows.
 
+9. ✅ **Accommodation (Διαμονή)** (locked 2026-07-05) = **very rare** —
+   `accommodation` field stays, **manual entry** when it occurs; no pipeline.
+10. ✅ **Exact € value of X** (VS transfer price) = **deferred to build time** —
+    the mechanism is locked (standard fixed €, single settings value, item 1);
+    only the number is set later.
+
 ### Still open
-- **Accommodation (Διαμονή)** sourcing — manual per-trip assumed; confirm.
-- **Exact € value of X** (VS transfer price) — a settings value; set at build time.
 - **VAT recovery** — the business doc notes an unmodelled VAT-refund benefit on
   some expenses. Out of scope for margin v1; flag for a future finance view.
+
+**→ With that, every modelling decision is locked. The spec is complete and
+ready to hand to the implementation team (Stage-2 Postgres build).**
 
 ---
 
