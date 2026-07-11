@@ -357,8 +357,18 @@ confirmed build direction. Answers below respond to
    matches the partner's invoice (reconciliation step). PnL is computed on
    agreed price, not on the invoice.
 
-**Still open after 2026-07-11:** historical cut-over policy (backfill vs fresh
-start) and the COSTS menu IA for v1 — owner asked for clarification; pending.
+8. ✅ **Historical cut-over (Q6):** **clean start** — PnL only for trips from
+   go-live day onward. No backfill, no retroactive cost entry; trends build
+   forward from day one.
+9. ✅ **COSTS menu IA, v1 (Q9):** one parent category **COSTS** with four pages:
+   **TRIP PnL** (per-trip profitability, natl + intl) · **Καταχώρηση Κόστους**
+   (Αλεξία's capture page: OCR upload + manual) · **Partner PnL** (agreed price
+   + Ειρήνη reconciliation) · **Κατανάλωση** (consumption/anomalies, feeds from
+   the shared fuel ledger). Fleet-maintenance costs: recommendation on the
+   table — reuse the existing Maintenance module (service records already carry
+   Cost/Odometer/Invoice per vehicle) and add a **bridge** (12-month maintenance
+   € ÷ km → calibrated per-km wear rate for Shape D, and later Tier-2 fixed
+   allocation) instead of a fifth capture page; pending owner ack.
 
 ---
 
