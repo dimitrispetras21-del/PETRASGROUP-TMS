@@ -125,3 +125,10 @@ Q9 δομή μενού COSTS. Επεξηγούνται ξανά στο chat.
 ---
 
 _Επόμενες εγγραφές: προσθέτονται από κάτω με ημερομηνία._
+
+## 2026-07-11 (στ) — UI/UX audit ολόκληρου του app
+
+- Deliverables: PRODUCT.md (impeccable context) · docs/design/UI_UX_AUDIT_2026-07-11.md
+  (score 9/20, P1: contrast 2.5:1 / ARIA / token bypass 102 hex) · docs/design/ui_v3_example.html
+  (ΠΡΙΝ/ΜΕΤΑ toggle, Παραγγελίες). ΚΑΜΙΑ αλλαγή στο app (freeze μέχρι Valuedriven v2).
+- Απόφαση: το v3 προτείνεται είτε ως post-v2 φάση είτε ως requirements προς Valuedriven.

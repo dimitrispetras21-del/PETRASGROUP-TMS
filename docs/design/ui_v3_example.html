@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TMS Design System v3 — Παράδειγμα ΠΡΙΝ/ΜΕΤΑ</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══ Shared shell ═══ */
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'DM Sans',sans-serif; background:#F4F6F9; color:#0F172A; }
+.shell { display:grid; grid-template-columns:228px 1fr; min-height:100vh; }
+.side { background:#0B1929; color:#C4CFDB; padding:18px 0; }
+.side .logo { font-family:'Syne',sans-serif; font-weight:800; color:#fff; font-size:16px; padding:0 18px 18px; letter-spacing:.5px; }
+.side a { display:block; padding:9px 18px; color:#C4CFDB; text-decoration:none; font-size:13px; }
+.side a.on { background:#122238; color:#fff; }
+.main { padding:0; }
+.topbar { height:52px; background:#fff; border-bottom:1px solid rgba(0,0,0,.08); display:flex; align-items:center; gap:14px; padding:0 22px; position:sticky; top:0; z-index:200; }
+.topbar h1 { font-family:'Syne',sans-serif; font-size:17px; font-weight:700; }
+.content { padding:20px 22px; max-width:1200px; }
+
+/* Before/After switch */
+.switch { margin-left:auto; display:flex; gap:0; border:1px solid rgba(0,0,0,.14); border-radius:8px; overflow:hidden; }
+.switch button { border:0; background:#fff; padding:7px 16px; font:600 12px 'DM Sans'; cursor:pointer; color:#475569; }
+.switch button.act { background:#0284C7; color:#fff; }
+.note { font-size:12px; color:#475569; background:rgba(2,132,199,.08); border:1px solid rgba(2,132,199,.25); border-radius:8px; padding:8px 12px; margin-bottom:16px; }
+
+.kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:18px; }
+.tblwrap { background:#fff; border:1px solid rgba(0,0,0,.08); border-radius:10px; overflow:auto; }
+table { width:100%; border-collapse:collapse; font-size:13px; }
+th { text-align:left; padding:8px 12px; border-bottom:1px solid rgba(0,0,0,.08); }
+td { padding:8px 12px; border-bottom:1px solid rgba(0,0,0,.05); }
+tr:last-child td { border-bottom:0; }
+
+/* ═══ ΠΡΙΝ (v2 — αναπαράγει τα σημερινά προβλήματα) ═══ */
+body.v2 .kpi { background:#0F172A; border-radius:10px; padding:13px 16px; border-left:4px solid #0284c7; }   /* side-stripe tell */
+body.v2 .kpi .l { font-size:11px; color:#9CA3AF; margin-bottom:4px; }
+body.v2 .kpi .v { font-family:'Syne'; font-size:21px; font-weight:700; color:#F1F5F9; }
+body.v2 .muted { color:#9CA3AF; }                                                                             /* contrast fail 2.5:1 */
+body.v2 th { font-size:10px; text-transform:uppercase; letter-spacing:.8px; color:#9CA3AF; background:#F0F5FA; }
+body.v2 .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:10.5px; font-weight:700; }
+body.v2 .p-ok  { background:#10b981; color:#fff; }      /* ad-hoc hex, όχι tokens */
+body.v2 .p-mid { background:#f59e0b; color:#fff; }
+body.v2 .p-bad { background:#f87171; color:#fff; }
+body.v2 .rowact { background:none; border:0; color:#0284c7; cursor:pointer; font-size:12px; }
+body.v2 .rowact:focus { outline:none; }                                                                       /* χωρίς focus ring */
+
+/* ═══ ΜΕΤΑ (v3 — προτεινόμενο σύστημα) ═══ */
+:root {
+  --v3-accent:#0284C7; --v3-accent-h:#0369A1;
+  --v3-text:#0F172A; --v3-mid:#475569; --v3-dim:#64748B;             /* dim: 4.8:1 σε λευκό */
+  --v3-ok:#059669; --v3-ok-bg:rgba(5,150,105,.10);
+  --v3-warn:#B45309; --v3-warn-bg:rgba(217,119,6,.12);
+  --v3-bad:#B91C1C; --v3-bad-bg:rgba(220,38,38,.10);
+  --v3-border:rgba(0,0,0,.08);
+  /* z-scale: dropdown 100 / sticky 200 / backdrop 300 / modal 400 / toast 500 / tooltip 600 */
+}
+body.v3 .kpi { background:#fff; border:1px solid var(--v3-border); border-radius:10px; padding:13px 16px; }
+body.v3 .kpi.hot { background:#0F172A; border-color:#0F172A; }
+body.v3 .kpi .l { font-size:12px; font-weight:500; color:var(--v3-dim); margin-bottom:4px; }
+body.v3 .kpi.hot .l { color:#94A3B8; }                               /* σε σκούρο φόντο: 5.1:1 ΟΚ */
+body.v3 .kpi .v { font-family:'Syne'; font-size:21px; font-weight:700; color:var(--v3-text); }
+body.v3 .kpi.hot .v { color:#F1F5F9; }
+body.v3 .muted { color:var(--v3-dim); }
+body.v3 th { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.6px; color:var(--v3-mid); background:#F8FAFC; }
+body.v3 .pill { display:inline-block; padding:3px 10px; border-radius:99px; font-size:11px; font-weight:700; border:1px solid transparent; }
+body.v3 .p-ok  { background:var(--v3-ok-bg);  color:var(--v3-ok);  border-color:rgba(5,150,105,.3); }
+body.v3 .p-mid { background:var(--v3-warn-bg); color:var(--v3-warn); border-color:rgba(217,119,6,.3); }
+body.v3 .p-bad { background:var(--v3-bad-bg); color:var(--v3-bad); border-color:rgba(220,38,38,.3); }
+body.v3 .rowact { background:none; border:1px solid transparent; color:var(--v3-accent); cursor:pointer; font:600 12px 'DM Sans'; padding:4px 8px; border-radius:6px; }
+body.v3 .rowact:hover { background:rgba(2,132,199,.08); }
+body.v3 .rowact:focus-visible { outline:2px solid var(--v3-accent); outline-offset:1px; }
+body.v3 tr:hover td { background:#F8FAFC; }
+@media (prefers-reduced-motion: no-preference) {
+  body.v3 .rowact { transition:background .15s ease-out; }
+}
+</style>
+</head>
+<body class="v3">
+<div class="shell">
+  <nav class="side">
+    <div class="logo">PETRAS TMS</div>
+    <a href="#">Dashboard</a>
+    <a href="#" class="on">Παραγγελίες Διεθνών</a>
+    <a href="#">Weekly International</a>
+    <a href="#">Weekly National</a>
+    <a href="#">TRIP PnL</a>
+    <a href="#">Συντήρηση</a>
+  </nav>
+  <main class="main">
+    <div class="topbar">
+      <h1>Παραγγελίες Διεθνών</h1>
+      <div class="switch" role="group" aria-label="Σύγκριση σχεδίασης">
+        <button id="b2" onclick="setV('v2')">ΠΡΙΝ (σημερινό)</button>
+        <button id="b3" class="act" onclick="setV('v3')">ΜΕΤΑ (v3)</button>
+      </div>
+    </div>
+    <div class="content">
+      <p class="note" id="note"></p>
+      <div class="kpis">
+        <div class="kpi hot"><div class="l">Ενεργές παραγγελίες</div><div class="v">47</div></div>
+        <div class="kpi"><div class="l">Εβδομάδα 28</div><div class="v">18</div></div>
+        <div class="kpi"><div class="l">Χωρίς ανάθεση</div><div class="v">5</div></div>
+        <div class="kpi"><div class="l">Μ.Ο. τιμή (€)</div><div class="v">2.340</div></div>
+      </div>
+      <div class="tblwrap">
+        <table>
+          <thead><tr><th>Παραγγελία</th><th>Πελάτης</th><th>Lane</th><th>Εβδ.</th><th>Τιμή €</th><th>Κατάσταση</th><th></th></tr></thead>
+          <tbody>
+            <tr><td>ORD-2841</td><td>Vermion Fresh</td><td>GR→DE</td><td class="muted">28</td><td>2.650</td><td><span class="pill p-ok">Ανατέθηκε</span></td><td><button class="rowact">Άνοιγμα</button></td></tr>
+            <tr><td>ORD-2842</td><td>AgroHellas</td><td>GR→NL</td><td class="muted">28</td><td>2.890</td><td><span class="pill p-mid">Σε αναμονή</span></td><td><button class="rowact">Άνοιγμα</button></td></tr>
+            <tr><td>ORD-2843</td><td>FreshLine SA</td><td>GR→IT</td><td class="muted">28</td><td>1.980</td><td><span class="pill p-bad">Χωρίς ανάθεση</span></td><td><button class="rowact">Άνοιγμα</button></td></tr>
+            <tr><td>ORD-2844</td><td>Makridis Bros</td><td>GR→AT</td><td class="muted">29</td><td>2.140</td><td><span class="pill p-ok">Ανατέθηκε</span></td><td><button class="rowact">Άνοιγμα</button></td></tr>
+            <tr><td>ORD-2845</td><td>Vermion Fresh</td><td>DE→GR</td><td class="muted">29</td><td>2.410</td><td><span class="pill p-mid">Σε αναμονή</span></td><td><button class="rowact">Άνοιγμα</button></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+const NOTES = {
+  v2: 'ΠΡΙΝ: side-stripe στις κάρτες, γκρι κείμενο 2.5:1 (δυσανάγνωστο), γεμάτα χρωματιστά pills που φωνάζουν, «σύνδεσμοι» χωρίς focus/πληκτρολόγιο.',
+  v3: 'ΜΕΤΑ: καθαρές κάρτες με μία σκούρα «hot», dim κείμενο 4.8:1 (ΑΑ), pills με tint+περίγραμμα (ήρεμα, ίδια σημασιολογία), πραγματικά buttons με focus ring — δοκίμασε Tab.',
+};
+function setV(v){
+  document.body.className = v;
+  document.getElementById('b2').classList.toggle('act', v==='v2');
+  document.getElementById('b3').classList.toggle('act', v==='v3');
+  document.getElementById('note').textContent = NOTES[v];
+}
+setV('v3');
+</script>
+</body>
+</html>
