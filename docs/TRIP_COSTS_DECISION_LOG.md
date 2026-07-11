@@ -147,3 +147,14 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
   Intl/Natl, Invoicing, CEO Dashboard, TRUCKS) · βάση: KNOWN_ISSUES S1-S3/A1-A7.
 - Απόφαση: καθολικοί κίνδυνοι σε ενιαία ενότητα (όχι επανάληψη ανά σελίδα)·
   entity/maintenance sub-pages ομαδοποιήθηκαν ανά module.
+
+## 2026-07-11 (θ) — Deep pre-mortems ανά σελίδα (23 αρχεία, docs/premortems/)
+
+- Ένα βαθύ PM ανά σελίδα, με ανάγνωση κώδικα + line refs. Index: docs/premortems/README.md.
+- Αποφάσεις ομαδοποίησης: entity σελίδες σε ένα αρχείο με per-page ενότητες
+  (πλην TRUCKS — δικό του λόγω PnL βαρύτητας)· maintenance histories μαζί·
+  admin (settings/trash/error_log) μαζί. Payroll = προληπτικό PM (placeholder).
+- Νέα ενεργά ευρήματα πέρα από τα γνωστά: unmatch/clear χωρίς conflict check
+  (weekly intl+natl), client-side αρίθμηση τιμολογίων, δημόσιο assign URL (200
+  χωρίς auth, επιβεβαιωμένο), performance page δείχνει margins σε μη-owner,
+  ελληνικά ομόγλυφα στις πινακίδες ως κίνδυνος allocation.
