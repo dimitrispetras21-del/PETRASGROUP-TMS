@@ -693,68 +693,73 @@ function _svcOpenForm(editId) {
   document.getElementById('mf-container').innerHTML = `
     <div class="mf-overlay" onclick="if(event.target===this)this.remove()">
       <div class="mf-modal" role="dialog" aria-modal="true">
-        <div class="mf-head"><span>${editId ? 'Edit' : 'New'} Service Record</span>
+        <div class="mf-head"><span>${editId ? 'Επεξεργασία' : 'Νέο'} Service</span>
           <button class="btn btn-ghost" style="padding:4px 8px" onclick="this.closest('.mf-overlay').remove()">✕</button></div>
         <div class="mf-body">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+            <input type="file" id="mf-scanfile" accept="image/*,application/pdf" style="display:none" onchange="_svcScanInvoice(this)">
+            <button class="btn btn-scan" type="button" onclick="document.getElementById('mf-scanfile').click()">📄 Σκανάρισμα τιμολογίου (AI)</button>
+            <span id="mf-scanstatus" style="font-size:12px;color:var(--text-dim)"></span>
+          </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Vehicle</label>
+            <div class="mf-field"><label>Όχημα</label>
               <select id="mf-vehicle" onchange="_svcVehicleChange(this)">
-                <option value="">Select vehicle…</option>
-                ${allVehicles.map(v => `<option value="${v.plate}|${v.type}"${vPlate===v.plate?' selected':''}>${v.plate} (${v.type})</option>`).join('')}
+                <option value="">Επιλογή οχήματος…</option>
+                ${allVehicles.map(v => `<option value="${v.plate}|${v.type}"${vPlate===v.plate?' selected':''}>${v.plate} (${v.type==='Truck'?'Φορτηγό':'Τρέιλερ'})</option>`).join('')}
               </select>
             </div>
-            <div class="mf-field"><label>Date</label>
+            <div class="mf-field"><label>Ημερομηνία</label>
               <input type="date" id="mf-date" value="${f['Date']?toLocalDate(f['Date']):localToday()}">
             </div>
           </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Type</label>
+            <div class="mf-field"><label>Τύπος</label>
               <select id="mf-type">
-                ${['Service','Repair','Inspection','Tyre Change','Accident','Other'].map(t => `<option${f['Type']===t?' selected':''}>${t}</option>`).join('')}
+                ${[['Service','Service'],['Repair','Επισκευή'],['Inspection','Έλεγχος'],['Tyre Change','Αλλαγή Ελαστικών'],['Accident','Ατύχημα'],['Other','Άλλο']].map(([v,l]) => `<option value="${v}"${f['Type']===v?' selected':''}>${l}</option>`).join('')}
               </select>
             </div>
-            <div class="mf-field"><label>Workshop</label>
+            <div class="mf-field"><label>Συνεργείο</label>
               <select id="mf-workshop"><option value="">—</option>${wsOpts}</select>
             </div>
           </div>
-          <div class="mf-field"><label>Description</label>
+          <div class="mf-field"><label>Περιγραφή</label>
             <textarea id="mf-desc" rows="2">${f['Description']||''}</textarea>
           </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Cost €</label>
+            <div class="mf-field"><label>Κόστος €</label>
               <input type="number" id="mf-cost" step="0.01" value="${f['Cost']||''}">
             </div>
-            <div class="mf-field"><label>Odometer km</label>
+            <div class="mf-field"><label>Χιλιόμετρα (οδόμετρο)</label>
               <input type="number" id="mf-odo" value="${f['Odometer km']||''}">
             </div>
-            <div class="mf-field"><label>Invoice #</label>
+            <div class="mf-field"><label>Αρ. Τιμολογίου</label>
               <input type="text" id="mf-inv" value="${f['Invoice Number']||''}">
             </div>
           </div>
-          <div class="mf-field"><label>Parts</label>
+          <div class="mf-field"><label>Ανταλλακτικά</label>
             <textarea id="mf-parts" rows="2">${f['Parts']||''}</textarea>
           </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Next Service Date</label>
+            <div class="mf-field"><label>Επόμενο Service (ημ/νία)</label>
               <input type="date" id="mf-nextdate" value="${f['Next Service Date']||''}">
             </div>
-            <div class="mf-field"><label>Next Service km</label>
+            <div class="mf-field"><label>Επόμενο Service (km)</label>
               <input type="number" id="mf-nextkm" value="${f['Next Service km']||''}">
             </div>
-            <div class="mf-field"><label>Status</label>
+            <div class="mf-field"><label>Κατάσταση</label>
               <select id="mf-status">
-                ${['Completed','Scheduled','In Progress'].map(s => `<option${f['Status']===s?' selected':''}>${s}</option>`).join('')}
+                ${[['Completed','Ολοκληρώθηκε'],['Scheduled','Προγραμματισμένο'],['In Progress','Σε εξέλιξη']].map(([v,l]) => `<option value="${v}"${f['Status']===v?' selected':''}>${l}</option>`).join('')}
               </select>
             </div>
           </div>
-          <div class="mf-field"><label>Notes</label>
+          <div class="mf-field"><label>Σημειώσεις</label>
             <textarea id="mf-notes" rows="2">${f['Notes']||''}</textarea>
           </div>
         </div>
         <div class="mf-foot">
-          ${editId ? `<button class="btn btn-ghost" style="margin-right:auto;color:var(--danger)" onclick="_svcDelete('${editId}')">Delete</button>` : ''}
-          <button class="btn btn-ghost" onclick="this.closest('.mf-overlay').remove()">Cancel</button>
-          <button class="btn btn-new-order" onclick="_svcSave('${editId||''}')">Save</button>
+          ${editId ? `<button class="btn btn-ghost" style="margin-right:auto;color:var(--danger)" onclick="_svcDelete('${editId}')">Διαγραφή</button>` : ''}
+          <button class="btn btn-ghost" onclick="this.closest('.mf-overlay').remove()">Άκυρο</button>
+          <button class="btn btn-new-order" onclick="_svcSave('${editId||''}')">Αποθήκευση</button>
         </div>
       </div>
     </div>`;
@@ -764,10 +769,79 @@ function _svcVehicleChange(sel) {
   // Auto-fill vehicle type from selection
 }
 
+/* ── AI invoice scan → prefill form (verify-before-commit: user reviews, then saves) ── */
+async function _svcScanInvoice(input) {
+  const file = input.files && input.files[0];
+  input.value = '';
+  if (!file) return;
+  const st = document.getElementById('mf-scanstatus');
+  st.textContent = '⏳ Ανάγνωση τιμολογίου…';
+  try {
+    const pre = await scanPreprocessFile(file);
+    const src = { type: 'base64', media_type: pre.mediaType, data: pre.base64 };
+    const block = pre.mediaType === 'application/pdf'
+      ? { type: 'document', source: src }
+      : { type: 'image', source: src };
+    const data = await scanCallAnthropic({
+      model: SCAN_MODEL_SONNET,
+      max_tokens: 1000,
+      system: 'You extract data from vehicle service/workshop invoices (Greek or English). Return ONLY JSON: {"date":"YYYY-MM-DD"|null,"cost":number|null,"invoice_number":string|null,"plate":string|null,"odometer_km":number|null,"description":string|null,"parts":string|null,"workshop_name":string|null}. cost = total invoice amount including VAT. plate = vehicle license plate if printed on the invoice. Greek dates DD/MM/YYYY convert to YYYY-MM-DD. description = short summary of the work performed. Unknown fields = null.',
+      messages: [{ role: 'user', content: [block, { type: 'text', text: 'Extract the service invoice data as JSON.' }] }],
+    });
+    const raw = data.content.find(c => c.type === 'text')?.text || '{}';
+    const j = (typeof scanExtractJSON === 'function')
+      ? scanExtractJSON(raw)
+      : JSON.parse(raw.replace(/```json|```/g, '').trim());
+
+    // Fill only fields the user hasn't typed yet
+    const setIfEmpty = (id, val) => {
+      const el = document.getElementById(id);
+      if (el && val != null && val !== '' && !el.value) el.value = val;
+    };
+    setIfEmpty('mf-date', j.date);
+    setIfEmpty('mf-cost', j.cost);
+    setIfEmpty('mf-inv', j.invoice_number);
+    setIfEmpty('mf-odo', j.odometer_km);
+    setIfEmpty('mf-desc', j.description);
+    setIfEmpty('mf-parts', j.parts);
+    if (j.plate) {
+      const norm = s => String(s).replace(/[\s\-]/g, '').toUpperCase();
+      const sel = document.getElementById('mf-vehicle');
+      if (sel && !sel.value) {
+        const hit = [...sel.options].find(o => o.value && norm(o.value.split('|')[0]) === norm(j.plate));
+        if (hit) sel.value = hit.value;
+      }
+    }
+    if (j.workshop_name) {
+      const ws = document.getElementById('mf-workshop');
+      if (ws && !ws.value) {
+        const q = String(j.workshop_name).toLowerCase().trim();
+        const hit = [...ws.options].find(o => o.value &&
+          (o.text.toLowerCase().includes(q) || q.includes(o.text.toLowerCase())));
+        if (hit) ws.value = hit.value;
+      }
+    }
+    st.textContent = '✓ Συμπληρώθηκε — ελέγξτε τα πεδία πριν την αποθήκευση';
+  } catch (e) {
+    st.textContent = '❌ Αποτυχία ανάγνωσης — συμπληρώστε χειροκίνητα';
+    if (typeof logError === 'function') logError(e, 'maint_invoice_scan');
+  }
+}
+
 async function _svcSave(editId) {
   const vSel = document.getElementById('mf-vehicle').value;
   const [plate, vType] = vSel ? vSel.split('|') : ['',''];
-  if (!plate) { toast('Select a vehicle', 'danger'); return; }
+  if (!plate) { toast('Επιλέξτε όχημα', 'danger'); return; }
+
+  // Completed records must carry Cost + Odometer km — they feed the per-km
+  // wear-rate calibration (TRIP_COSTS_SPEC §10.2 item 10)
+  const stVal   = document.getElementById('mf-status').value;
+  const costRaw = document.getElementById('mf-cost').value.trim();
+  const odoRaw  = document.getElementById('mf-odo').value.trim();
+  if (stVal === 'Completed' && (costRaw === '' || odoRaw === '')) {
+    toast('Για Ολοκληρωμένο service απαιτούνται Κόστος και Χιλιόμετρα', 'danger');
+    return;
+  }
 
   const fields = {
     'Vehicle Plate': plate,
@@ -790,10 +864,10 @@ async function _svcSave(editId) {
   try {
     if (editId) {
       await atSafePatch(TABLES.MAINT_HISTORY, editId, fields);
-      toast('Record updated ✓');
+      toast('Η εγγραφή ενημερώθηκε ✓');
     } else {
       await atCreate(TABLES.MAINT_HISTORY, fields);
-      toast('Record created ✓');
+      toast('Η εγγραφή δημιουργήθηκε ✓');
     }
     document.querySelector('.mf-overlay')?.remove();
     MAINT.history = [];
