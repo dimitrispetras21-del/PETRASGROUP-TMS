@@ -100,4 +100,28 @@ Q9 δομή μενού COSTS. Επεξηγούνται ξανά στο chat.
 
 ---
 
+## 2026-07-11 (ε) — Maintenance UX fixes + AI invoice scan (build στο τωρινό TMS)
+
+Υλοποιήθηκαν τα 3 εγκεκριμένα fixes + OCR (commit dd347eb TMS, 1a28de5 assign):
+ελληνικά labels φόρμας · Cost+km υποχρεωτικά σε Completed · deprecation banner
+στο legacy trip_costs.html · «Σκανάρισμα τιμολογίου (AI)» στη φόρμα service.
+
+**Αποφάσεις όπου οι οδηγίες δεν κάλυπταν:**
+1. Τα Airtable select values (Type/Status) έμειναν αγγλικά μέσω value attrs —
+   μόνο τα display labels ελληνικά (αλλιώς σπάνε τα υπάρχοντα records/επιλογές).
+2. Validation: blocking (όχι απλή προειδοποίηση) μόνο όταν Status=Completed·
+   Scheduled/In Progress σώζονται χωρίς κόστος (δεν υπάρχει ακόμα τιμολόγιο).
+3. OCR: Sonnet tier (απλό έγγραφο, ~$0.024/scan)· prefill ΜΟΝΟ κενών πεδίων
+   (δεν πατάει ό,τι έγραψε ο χρήστης)· πινακίδα → normalize match στο select·
+   συνεργείο → fuzzy contains στο όνομα· verify-before-commit: η φόρμα είναι
+   το preview, τίποτα δεν σώζεται χωρίς «Αποθήκευση». Κόστος OCR = συνολικό
+   ποσό ΜΕ ΦΠΑ (κανόνας §10.2 item 5, worst case).
+4. Impeccable hook findings (side-tab borders, layout animation, em-dashes):
+   προϋπάρχοντα, μέρος του καθιερωμένου TMS design — δεν αγγίχτηκαν.
+5. Verification: node --check OK + pattern parity με pallet_upload· πλήρες
+   in-browser test με πραγματικό τιμολόγιο εκκρεμεί (χρειάζεται live Airtable
+   session) — να γίνει από Δημήτρη/Θοδωρή με ένα αληθινό παραστατικό.
+
+---
+
 _Επόμενες εγγραφές: προσθέτονται από κάτω με ημερομηνία._
