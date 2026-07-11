@@ -368,7 +368,19 @@ confirmed build direction. Answers below respond to
    table — reuse the existing Maintenance module (service records already carry
    Cost/Odometer/Invoice per vehicle) and add a **bridge** (12-month maintenance
    € ÷ km → calibrated per-km wear rate for Shape D, and later Tier-2 fixed
-   allocation) instead of a fifth capture page; pending owner ack.
+   allocation) instead of a fifth capture page — locked as item 10.
+10. ✅ **Fleet-maintenance bridge (locked 2026-07-11):** NO fifth COSTS page.
+    The existing Maintenance module is the capture point (service records
+    already carry Cost / Odometer km / Invoice Number per vehicle). Build the
+    bridge instead: **calibrated per-km wear rate** = Σ(maintenance costs,
+    trailing 12 months) ÷ Σ(km, same period), per truck (fleet average as
+    fallback for new/low-data trucks) → feeds Shape D (tires/wear) in Trip PnL
+    instead of a hand-set settings value; later the same data feeds Tier-2
+    `fixed_cost_allocation` (insurance/KTEO expiries already tracked there).
+
+**→ All pre-mortem issues resolved. Spec fully locked as of 2026-07-11;
+remaining opens are process-only (Αλεξία's weekly capture ritual, mockup
+walkthrough with her before build).**
 
 ---
 

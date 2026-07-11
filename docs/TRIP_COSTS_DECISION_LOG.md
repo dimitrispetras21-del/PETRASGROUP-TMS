@@ -90,4 +90,14 @@ Q9 δομή μενού COSTS. Επεξηγούνται ξανά στο chat.
 
 ---
 
+## 2026-07-11 (δ) — Item 10 κλειδώθηκε· pre-mortem ΚΛΕΙΣΤΟ
+
+- Owner ενέκρινε τη maintenance-bridge πρόταση → SPEC §10.2 item 10
+  (calibrated €/km από Maintenance records, όχι 5η σελίδα).
+- **Όλα τα ζητήματα του pre-mortem λύθηκαν** — μένουν μόνο process items
+  (ritual Αλεξίας, walkthrough mockup). Το spec ξανά 100% locked.
+- Ζητήθηκε UX review όλων των costs/maintenance επιφανειών → chat 2026-07-11.
+
+---
+
 _Επόμενες εγγραφές: προσθέτονται από κάτω με ημερομηνία._
