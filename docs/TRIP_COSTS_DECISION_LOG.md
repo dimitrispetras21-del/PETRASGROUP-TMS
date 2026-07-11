@@ -47,4 +47,33 @@ _Ζητήθηκε από τον owner 2026-07-11: «Κράτα ένα notes file
 
 ---
 
+## 2026-07-11 (β) — Direction doc ελήφθη + απαντήσεις owner στο pre-mortem
+
+**Ελήφθη το Valuedriven proposal** (`Proposal_Petras_TMS_Valuedriven.pdf`,
+26/05/2026): Node proxy + Supabase Postgres για operational tables· reference
+tables (TRUCKS/PARTNERS/DRIVERS/CLIENTS/LOCATIONS) **μένουν Airtable**· Costs
+module ρητά **Phase 2+** (εκτός v2)· GPS Phase 2+. 63–79h, 4–6 εβδομάδες.
+
+**Απαντήσεις owner** → κλειδώθηκαν στο SPEC **§10.2** (νέα ενότητα):
+Trip PnL auto-create όταν ολοκληρωθεί το round trip + auto-sync σε αλλαγές ·
+κλείσιμο trip με MyGeotab geofence (έδρα-zone υπάρχει ήδη) · όλη η καταχώρηση
+από Αλεξία (DKV upload+OCR / manual) · ΦΠΑ: ποσά net, αλλά τιμολόγια με ΦΠΑ
+καταχωρούνται ολόκληρα ως έξοδο (worst case) · **X: import €650 / export €850**
+(ΔΥΟ τιμές — supersedes το «single value» του §10.1) · εθνικό σκέλος σε agreed
+price, ταυτοποίηση agreed vs invoice από **Ειρήνη** (νέο πρόσωπο στο process).
+
+**Αποφάσεις μου όπου οι οδηγίες δεν κάλυπταν:**
+1. Το «ΛΕΓ» στην απάντηση ερμηνεύτηκε ως «leg» (σκέλος δρομολογίου).
+2. Το geofence-κλείσιμο σημειώθηκε ως κατεύθυνση + interim manual close μέχρι
+   να έρθει το GPS (Phase 2+ κατά το proposal) — αλλιώς κανένα trip δεν κλείνει.
+3. Οι απαντήσεις γράφτηκαν ως ΝΕΑ ενότητα §10.2 στο SPEC (όχι in-place edits
+   στα §10/§10.1) ώστε να φαίνεται η χρονολογική εξέλιξη των αποφάσεων.
+4. Σημειώθηκε build note: allocation engine → πινακίδες από Airtable reference
+   DB μέσω API (συνέπεια του split operational/reference του proposal).
+
+**Εκκρεμούν από τον owner (ζήτησε διευκρίνιση):** Q6 ιστορικό/backfill ·
+Q9 δομή μενού COSTS. Επεξηγούνται ξανά στο chat.
+
+---
+
 _Επόμενες εγγραφές: προσθέτονται από κάτω με ημερομηνία._

@@ -313,6 +313,53 @@ role enforcement).
 **→ With that, every modelling decision is locked. The spec is complete and
 ready to hand to the implementation team (Stage-2 Postgres build).**
 
+### 10.2 Decisions locked (owner-confirmed 2026-07-11 — pre-mortem review)
+
+_Context: the Valuedriven "Petras TMS v2" proposal (26/05/2026) is now the
+confirmed build direction. Answers below respond to
+`PreMortem-COSTS-2026-07-11.md`._
+
+1. ✅ **Build platform & sequencing (Valuedriven proposal):** Node.js API proxy
+   + Supabase PostgreSQL for operational tables (ORDERS, NATIONAL ORDERS,
+   GROUPAGE LINES, CONSOLIDATED LOADS, Audit Log). **Reference tables (CLIENTS,
+   PARTNERS, DRIVERS, TRUCKS, LOCATIONS) remain in Airtable.** The Costs &
+   invoicing module is **explicitly out of v2 scope — Phase 2 or later**, built
+   on the new foundation after cutover. GPS (MyGeotab) also Phase 2+.
+   ⚠️ Build note: the allocation engine keys on truck plates, which live in the
+   Airtable **reference** DB — plate lookups must go through the API layer.
+2. ✅ **Trip PnL record creation (lifecycle trigger):** order entered → placed →
+   drivers assigned → once the **full round trip exists (import + export)**, a
+   Trip PnL log is **auto-created**. Any later change to orders or assignments
+   **must propagate automatically** to the Trip PnL record (this is the
+   sync-surface requirement both audits flagged — now an explicit owner
+   requirement, resolves pre-mortem T1 creation half).
+3. ✅ **Trip closure:** no manual process defined/desired. Direction: **MyGeotab
+   geofence** — an HQ zone is already configured; the truck entering the zone
+   closes the trip. Since GPS is Phase 2+, an **interim manual close** (by
+   dispatcher) is required until then (resolves T1 closure half + T2 actual
+   end-date, when GPS lands).
+4. ✅ **Cost-entry owner:** ALL expense entry is done by **Αλεξία** — DKV 15-day
+   invoice via document upload + OCR recognition; everything else manual typed
+   amounts (confirms §11.6 with a single named owner; T3 process cadence still
+   to be defined with her).
+5. ✅ **VAT / amount rule (resolves T5):** TMS amounts are **net (ex-VAT)** by
+   convention. If an uploaded invoice carries VAT, the system books the **full
+   VAT-inclusive amount as cost** — worst-case principle: recovery is never
+   assumed ("από τη στιγμή που το πληρώνουμε, δεν είμαστε σίγουροι ότι θα το
+   εισπράξουμε πίσω"). VAT recovery stays a future finance view.
+6. ✅ **VS transfer price X — exact values (supersedes §10.1 item 1 "single
+   value"):** TWO settings values. **Import leg (Veroia → southern Greece) =
+   €650. Export leg = €850.** The amount is deducted from the international
+   order's total price: the international trip shows price − X; the national
+   round trip's revenue = X.
+7. ✅ **National leg / partner reconciliation:** the national leg is computed at
+   the leg's **agreed price**; **Ειρήνη** then verifies that the agreed amount
+   matches the partner's invoice (reconciliation step). PnL is computed on
+   agreed price, not on the invoice.
+
+**Still open after 2026-07-11:** historical cut-over policy (backfill vs fresh
+start) and the COSTS menu IA for v1 — owner asked for clarification; pending.
+
 ---
 
 ## 11. Data sourcing & cost allocation (the core of the infrastructure)
