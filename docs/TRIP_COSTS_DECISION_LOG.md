@@ -132,3 +132,11 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
   (score 9/20, P1: contrast 2.5:1 / ARIA / token bypass 102 hex) · docs/design/ui_v3_example.html
   (ΠΡΙΝ/ΜΕΤΑ toggle, Παραγγελίες). ΚΑΜΙΑ αλλαγή στο app (freeze μέχρι Valuedriven v2).
 - Απόφαση: το v3 προτείνεται είτε ως post-v2 φάση είτε ως requirements προς Valuedriven.
+
+## 2026-07-11 (ζ) — Ρόλοι: τελικά αποτελέσματα owner-only
+
+- Owner: «θέλω να έχω πρόσβαση στα τελικά αποτελέσματα μόνο εγώ» → SPEC §10.2
+  item 11 (supersedes §8 Roles: το «Read = Owner + Management» καταργήθηκε).
+- Ερμηνεία μου: «τελικά αποτελέσματα» = computed PnL (margins, net profit,
+  analytics σελίδες)· η Αλεξία κρατά την ΚΑΤΑΧΩΡΗΣΗ (inputs) και η Ειρήνη την
+  ταυτοποίηση agreed↔invoice χωρίς margins. Enforcement σε RLS επίπεδο (T8).

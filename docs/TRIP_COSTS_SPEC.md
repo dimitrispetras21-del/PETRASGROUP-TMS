@@ -378,6 +378,14 @@ confirmed build direction. Answers below respond to
     instead of a hand-set settings value; later the same data feeds Tier-2
     `fixed_cost_allocation` (insurance/KTEO expiries already tracked there).
 
+11. ✅ **Roles — final results are OWNER-ONLY (locked 2026-07-11; supersedes
+    §8 "Roles"):** the computed PnL outputs (net profit, margins, TRIP PnL /
+    Partner PnL analytics pages, CEO-dashboard loss panels) are visible to
+    the **Owner only**. Αλεξία keeps cost-ENTRY access (Καταχώρηση Κόστους —
+    inputs, not results); Ειρήνη keeps the agreed-vs-invoice reconciliation
+    view (amount matching, no margins); Management/dispatchers see nothing.
+    Enforce at the database layer (RLS), not just in the UI (pre-mortem T8).
+
 **→ All pre-mortem issues resolved. Spec fully locked as of 2026-07-11;
 remaining opens are process-only (Αλεξία's weekly capture ritual, mockup
 walkthrough with her before build).**
