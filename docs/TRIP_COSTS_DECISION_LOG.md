@@ -140,3 +140,10 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
 - Ερμηνεία μου: «τελικά αποτελέσματα» = computed PnL (margins, net profit,
   analytics σελίδες)· η Αλεξία κρατά την ΚΑΤΑΧΩΡΗΣΗ (inputs) και η Ειρήνη την
   ταυτοποίηση agreed↔invoice χωρίς margins. Enforcement σε RLS επίπεδο (T8).
+
+## 2026-07-11 (η) — Pre-mortem ανά σελίδα (28 σελίδες router)
+
+- docs/PreMortem-PAGES-2026-07-11.md: 7 σελίδες 🔴 (Weekly Intl/Natl, Orders
+  Intl/Natl, Invoicing, CEO Dashboard, TRUCKS) · βάση: KNOWN_ISSUES S1-S3/A1-A7.
+- Απόφαση: καθολικοί κίνδυνοι σε ενιαία ενότητα (όχι επανάληψη ανά σελίδα)·
+  entity/maintenance sub-pages ομαδοποιήθηκαν ανά module.
