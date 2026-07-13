@@ -367,13 +367,12 @@ KEY RULES:
           messages,
         })
       : await (async () => {  // fallback if helpers not loaded
-          const res = await fetch('https://api.anthropic.com/v1/messages', {
+          // Fix 1.D: Worker AI route (JWT auth); Anthropic key is server-side only.
+          const res = await fetch(AI_PROXY_URL, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'x-api-key': ANTH_KEY,
-              'anthropic-version': '2023-06-01',
-              'anthropic-dangerous-direct-browser-access': 'true',
+              'Authorization': 'Bearer ' + (localStorage.getItem('tms_jwt') || ''),
             },
             body: JSON.stringify({ model: MODELS.SONNET, max_tokens: 4000, system: sysPrompt, messages }), // was retired claude-sonnet-4-20250514
           });

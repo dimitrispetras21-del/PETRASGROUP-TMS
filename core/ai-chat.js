@@ -894,14 +894,14 @@ async function _aicCallClaude(messages) {
     AiChat.abortCtrl = new AbortController();
     const timeoutId = setTimeout(() => AiChat.abortCtrl.abort('timeout'), _NAKIS_TIMEOUT_MS);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // Fix 1.D: goes through the Worker AI route (JWT auth); the Anthropic key
+      // lives server-side only. The Worker sets x-api-key + anthropic-version.
+      const res = await fetch(AI_PROXY_URL, {
         method: 'POST',
         signal: AiChat.abortCtrl.signal,
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': ANTH_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
+          'Authorization': 'Bearer ' + (localStorage.getItem('tms_jwt') || '')
         },
         body: JSON.stringify({
           model,
@@ -960,14 +960,13 @@ async function _aicCallClaudeStream(messages, onTextDelta) {
 
   let res;
   try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
+    // Fix 1.D: Worker AI route; SSE stream passes through the Worker untouched.
+    res = await fetch(AI_PROXY_URL, {
       method: 'POST',
       signal: AiChat.abortCtrl.signal,
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTH_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
+        'Authorization': 'Bearer ' + (localStorage.getItem('tms_jwt') || '')
       },
       body: JSON.stringify({
         model,

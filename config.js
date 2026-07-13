@@ -25,13 +25,12 @@ const TMS_SENTRY_DSN = '';
 // If USE_PROXY is ever set back to false, the app WILL break — that is intentional:
 // there is no client-side Airtable credential by design now.
 
-// ── Anthropic key: STILL client-side (AI route not built yet — Fix 1.D) ──
-// TODO(audit): move behind a Worker /v1/ai route and remove this, same as the PAT.
-// Until then the AI tools (scan, chat, pallet OCR) call Anthropic directly with
-// this key. This key is rotated on rotation day too; the exposed value is dead.
+// ── Anthropic key: REMOVED from the browser (Fix 1.D, 2026-07-13) ──
+// The AI tools (scan, chat, pallet OCR) now POST to the Worker's /v1/ai/messages
+// route with the user's JWT; the Worker holds the real key (env.ANTHROPIC_KEY)
+// and talks to api.anthropic.com server-side. Same pattern as the Airtable PAT.
 // See .ai-notes/2026-07-13-rotation-day-runbook.md step 4.
-const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+
-                 'zG3klf7diFSUiNY056CRFBAeUZ1H_dZwDfhVbf7IRD3HQ-_nYO3gAA';
+const AI_PROXY_URL = PROXY_URL + '/v1/ai/messages';
 
 const TABLES = {
   TRIPS:         'tblgoyV26PBc6L9uE',

@@ -225,13 +225,12 @@ async function scanCallAnthropic(payload, opts = {}) {
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // Fix 1.D: Worker AI route (JWT auth); Anthropic key is server-side only.
+      const res = await fetch(AI_PROXY_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': ANTH_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
+          'Authorization': 'Bearer ' + (localStorage.getItem('tms_jwt') || ''),
         },
         body: JSON.stringify(payload),
         signal: opts.signal || ctrl.signal,

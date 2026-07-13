@@ -320,6 +320,14 @@ function badges(f){
 
 async function loadAll(){
   if(!orderId){document.getElementById('loading').innerHTML='<span style="color:#DC2626">Missing orderId</span>';return;}
+  // Cold-open guard (S-1 cutover): this page reads through the Worker with the
+  // app's JWT. No JWT = every fetch would 401 into a blank page; say why instead.
+  if(!localStorage.getItem('tms_jwt')){
+    document.getElementById('loading').innerHTML=
+      '<span style="color:#DC2626">Δεν υπάρχει ενεργή σύνδεση. Ανοίξτε την εφαρμογή TMS, συνδεθείτε, και ξαναπατήστε Print από εκεί.<br>'+
+      'Not logged in — open the TMS app, log in, then use Print from there.</span>';
+    return;
+  }
   try{
     var[orderR,partners,trucks,trailers,drivers,locs]=await Promise.all([
       atGet(T_ORDERS,orderId),

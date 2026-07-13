@@ -216,12 +216,13 @@ export default {
       }
     }
 
-    // ── Only allow /v0/ paths (Airtable REST API) ─
-    if (!url.pathname.startsWith('/v0/')) {
-      return jsonError('Invalid path. Expected /v0/{baseId}/{tableId} or /auth/login', 400, origin);
+    // ── Only allow /v0/ (Airtable) and /v1/ai/messages (Anthropic, Fix 1.D) ─
+    const isAiRoute = url.pathname === '/v1/ai/messages' && request.method === 'POST';
+    if (!url.pathname.startsWith('/v0/') && !isAiRoute) {
+      return jsonError('Invalid path. Expected /v0/{baseId}/{tableId}, /v1/ai/messages or /auth/login', 400, origin);
     }
 
-    // ── JWT authentication for /v0/* routes ──────
+    // ── JWT authentication (both Airtable and AI routes) ──────
     if (!env.JWT_SECRET) {
       return jsonError('Server misconfigured: missing JWT_SECRET', 500, origin);
     }
@@ -235,6 +236,41 @@ export default {
     const claims = await jwtVerify(token, env.JWT_SECRET);
     if (!claims) {
       return jsonError('Invalid or expired token', 401, origin);
+    }
+
+    // ── AI proxy route (Fix 1.D): browser never sees the Anthropic key ──
+    // Deliberately OUTSIDE the Airtable concurrency queue: a streaming chat
+    // response can stay open for minutes and would starve the 4 Airtable slots.
+    // Anthropic enforces its own rate limits; 429s pass through to the client,
+    // which already has friendly handling for them (scan-helpers.js).
+    if (isAiRoute) {
+      if (!env.ANTHROPIC_KEY) {
+        return jsonError('Server misconfigured: missing ANTHROPIC_KEY secret', 500, origin);
+      }
+      try {
+        const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': env.ANTHROPIC_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          // Buffered, not streamed: pallet OCR payloads are a few MB of base64,
+          // well within Worker memory, and buffering keeps the fetch simple.
+          body: await request.text(),
+        });
+        // Pass the response body through UNTOUCHED. This preserves SSE streaming
+        // for the ai-chat stream:true call as well as plain JSON responses.
+        return new Response(aiResp.body, {
+          status: aiResp.status,
+          headers: {
+            ...cors,
+            'Content-Type': aiResp.headers.get('Content-Type') || 'application/json',
+          },
+        });
+      } catch (err) {
+        return jsonError('AI proxy error: ' + err.message, 502, origin);
+      }
     }
 
     // Check secret is configured

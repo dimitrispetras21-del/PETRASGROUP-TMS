@@ -21,6 +21,10 @@ wrangler secret put JWT_SECRET
 # Paste a strong random string (32+ chars), e.g.:
 #   openssl rand -hex 32
 
+wrangler secret put ANTHROPIC_KEY
+# Paste the Anthropic API key (Fix 1.D: the browser AI tools call the Worker's
+# /v1/ai/messages route; only the Worker talks to api.anthropic.com).
+
 # 4. Deploy
 wrangler deploy
 ```
@@ -60,6 +64,7 @@ Once confirmed working, remove `AT_TOKEN` from `config.js`.
 | `GET /health` | None | Health check, active/queued counts |
 | `POST /auth/login` | None | Login, returns JWT |
 | `* /v0/*` | JWT | Proxied Airtable API calls |
+| `POST /v1/ai/messages` | JWT | Proxied Anthropic Messages API call (Fix 1.D); body passed through, streaming supported |
 
 ## How it works
 
