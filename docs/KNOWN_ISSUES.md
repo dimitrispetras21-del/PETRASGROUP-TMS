@@ -1,13 +1,13 @@
 # Known Issues & Incomplete Areas
 
-Honest catalogue. The auditor will find these anyway — better they know
+Honest catalogue. The auditor will find these anyway, better they know
 upfront so they can focus on the unknown unknowns.
 
 Severity:
-- 🔴 **CRITICAL** — security risk or data-loss potential. Fix before scaling.
-- 🟠 **HIGH** — silent misbehavior or major UX. Fix soon.
-- 🟡 **MEDIUM** — known limitation, monitor.
-- 🟢 **LOW** — cosmetic or "by design" trade-off.
+- 🔴 **CRITICAL**, security risk or data-loss potential. Fix before scaling.
+- 🟠 **HIGH**, silent misbehavior or major UX. Fix soon.
+- 🟡 **MEDIUM**, known limitation, monitor.
+- 🟢 **LOW**, cosmetic or "by design" trade-off.
 
 ---
 
@@ -16,13 +16,13 @@ Severity:
 ### S1. API tokens exposed in browser
 **File**: `config.js` lines 14-16
 ```js
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a216...';
-const ANTH_KEY = 'sk-ant-api03-HG90hAxac0K9...';
+const AT_TOKEN = 'pat...';       // write-scoped Airtable PAT (redacted)
+const ANTH_KEY = 'sk-ant-api03-...'; // Anthropic key (redacted)
 ```
 Anyone with DevTools access reads the Airtable PAT and the Anthropic API key.
 Both have full read/write scope. A Cloudflare Worker proxy is **already
 written** in `/worker/` (CORS-locked, JWT-authed) but **not yet deployed**.
-The flag `USE_PROXY = false` in config.js — flipping to `true` activates the
+The flag `USE_PROXY = false` in config.js, flipping to `true` activates the
 already-wired proxy path in `core/api.js`.
 
 **Fix path**: deploy worker + flip flag. ~30 minutes once Cloudflare account
@@ -60,21 +60,21 @@ exists: `cleanupOrphans()` in console (covers GL + CL + NL + PA + RAMP).
 
 ### A2. localStorage quota will hit eventually
 Per-user, per-browser data being stored:
-- `tms_errors` — error log, capped at 200 (auto-purged after 14d as of d6e0765)
-- `tms_audit` — audit log of mutations, capped at 200
-- `aic_history_<user>` — chat history, **uncapped**
-- `nakis_profile_<user>` — interview profile
-- `nakis_notifs_<user>` — Νάκης reminders
-- `tms_scan_training` — capped at 30 corrections
-- `tms_user`, `tms_jwt`, `tms_page`, `tms_sidebar_*` — small
+- `tms_errors`, error log, capped at 200 (auto-purged after 14d as of d6e0765)
+- `tms_audit`, audit log of mutations, capped at 200
+- `aic_history_<user>`, chat history, **uncapped**
+- `nakis_profile_<user>`, interview profile
+- `nakis_notifs_<user>`, Νάκης reminders
+- `tms_scan_training`, capped at 30 corrections
+- `tms_user`, `tms_jwt`, `tms_page`, `tms_sidebar_*`, small
 - Reference data caches (clients, partners, locations, drivers, trucks, trailers) ~30 min TTL
 
-A power user crossing 5–10 MB will start seeing silent write failures.
+A power user crossing 5 - 10 MB will start seeing silent write failures.
 Chat history is the biggest unbounded growth vector.
 
 **Fix**: cap chat history at last N messages or last X days.
 
-### A3. Concurrent edits — partial protection only
+### A3. Concurrent edits, partial protection only
 `atSafePatch` (api.js:799) does a server-version check before patching and
 returns `{conflict: true}` on detected race. **But only some forms use it**;
 many places still call `atPatch` directly. Audit `grep -n "atPatch\b"` for
@@ -96,7 +96,7 @@ solves this by JWT-authing every request server-side.
 ### A5. Anthropic credit balance can deplete silently
 When credits run out, all scans + Νάκης stop working. The error path now
 maps the API's "credit balance too low" to a friendly Greek toast (commit
-a7c68e2) — but there's no proactive monitoring of remaining credits.
+a7c68e2), but there's no proactive monitoring of remaining credits.
 
 **Fix**: a periodic ping to a free-tier Sonnet endpoint + alert when 402
 returns + a "credits low" banner. ~1 hour.
@@ -106,7 +106,7 @@ returns + a "credits low" banner. ~1 hour.
 inconsistently used across modules. Some `atDelete` calls in cascade chains
 go straight to hard delete (e.g. NL/CL/RAMP cascades).
 
-### A7. `cleanupOrphans()` runs from console only — no UI
+### A7. `cleanupOrphans()` runs from console only, no UI
 A senior dev or owner needs to know to open DevTools + type the function
 name. Hidden from regular dispatchers (good) but no admin dashboard hook.
 
@@ -115,9 +115,9 @@ name. Hidden from regular dispatchers (good) but no admin dashboard hook.
 ## 🟡 Medium
 
 ### M1. Field-naming traps in Airtable
-- `Adress` (single 'd') in PARTNERS + CLIENTS — typo from initial setup, kept
-- `Veroia Switch` — no trailing space (a previous bug fixed by removing one)
-- `Week Number` — formula field, NOT writable (don't include in PATCH bodies)
+- `Adress` (single 'd') in PARTNERS + CLIENTS, typo from initial setup, kept
+- `Veroia Switch`, no trailing space (a previous bug fixed by removing one)
+- `Week Number`, formula field, NOT writable (don't include in PATCH bodies)
 - `Direction` field has THREE different value sets:
   - ORDERS: `Export` / `Import`
   - NAT_ORDERS: `North→South` / `South→North` (with arrow chars)
@@ -141,7 +141,7 @@ Uses `window.open()` + `window.print()` + auto-trigger. Works in Chrome/Edge.
 Safari iOS partially. Old browsers (IE11, no concern) totally broken.
 
 ### M5. No Sentry or external error tracking
-SDK is loaded (commit 64d11d3), `logError()` forwards to it — but the DSN
+SDK is loaded (commit 64d11d3), `logError()` forwards to it, but the DSN
 in `config.js` is empty. Errors live in localStorage only. After 14 days
 they auto-purge (commit d6e0765). No alerting.
 
@@ -157,8 +157,8 @@ don't have a dedicated UI; if they were to use TMS at all, it'd be the
 desktop UI shrunk. Not a regression, just a gap.
 
 ### M8. Tests are skeletal
-- `tests/test-runner.html` — 3 unit test files, not run in CI
-- `tests/e2e/` — 2 Playwright files (smoke + VS scenarios), require Node
+- `tests/test-runner.html`, 3 unit test files, not run in CI
+- `tests/e2e/`, 2 Playwright files (smoke + VS scenarios), require Node
   installed locally. Not in CI.
 
 ---
@@ -168,11 +168,11 @@ desktop UI shrunk. Not a regression, just a gap.
 - **Inline `style=""` everywhere**. The codebase predates the design-token
   layer (`tms-stat-card`, `tms-pill` etc.). New code uses tokens; old code
   still has inline. Refactor opportunity, not a bug.
-- **No virtual scrolling** for entity tables — they cap at 500 rows
+- **No virtual scrolling** for entity tables, they cap at 500 rows
   rendered (commit 7d7a3df) with a footer warning. Acceptable for current
   data volume (~400 partners, ~200 clients). Will need fixing at 1000+.
 - **No bundler.** Each module is its own `<script>` tag. Network waterfall
-  is acceptable on 4G/5G; on slow 3G, cold load is 8–12s.
+  is acceptable on 4G/5G; on slow 3G, cold load is 8 - 12s.
 - **DPS Logistics dual-brand UI** (per CLAUDE.md) is partially implemented.
 - **The error log + audit log are per-user (localStorage)**, not centralised.
   Owner can't see other users' errors without DevTools-walking each browser.
@@ -201,4 +201,4 @@ desktop UI shrunk. Not a regression, just a gap.
 Add to this file under the appropriate severity. Or open a PR. Or just
 write a Markdown note and dump it in `docs/audit-findings/`. We'll triage.
 
-The team has been honest about what's broken — please be the same.
+The team has been honest about what's broken, please be the same.

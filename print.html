@@ -153,7 +153,12 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 <div id="doc"></div>
 
 <script>
-const AT_TOKEN='patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+// Airtable token REMOVED (S-1 remediation, 2026-07-13). This page now reads
+// through the Cloudflare Worker with the logged-in user's JWT, same as core/api.js.
+// The Worker holds the real PAT server-side. See .ai-notes/2026-07-13-rotation-day-runbook.md.
+// NOTE: print.html is usually opened from the app (JWT present in localStorage).
+// If opened cold with no tms_jwt, the Worker returns 401 — verify this path on cutover.
+const PROXY_URL='https://tms-api-proxy.petrasgroup.workers.dev';
 const AT_BASE='appElT5CQV6JQvym8';
 const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_TRUCKS='tblEAPExIAjiA3asD',T_TRAILERS='tblDcrqRJXzPrtYLm',
@@ -187,17 +192,22 @@ function fmtDT(s){
 }
 function eur(v){if(!v&&v!==0)return'—';return parseFloat(v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2})+' EUR';}
 
+// Proxy-mode auth: send the logged-in user's JWT; the Worker swaps it for the PAT.
+function atAuthHeader(){
+  var jwt=localStorage.getItem('tms_jwt');
+  return jwt?{Authorization:'Bearer '+jwt}:{};
+}
 async function atFetch(table,qs){
   var records=[],offset='';
   do{
-    var url='https://api.airtable.com/v0/'+AT_BASE+'/'+table+'?pageSize=100'+(qs||'')+(offset?'&offset='+offset:'');
-    var d=await(await fetch(url,{headers:{Authorization:'Bearer '+AT_TOKEN}})).json();
+    var url=PROXY_URL+'/v0/'+AT_BASE+'/'+table+'?pageSize=100'+(qs||'')+(offset?'&offset='+offset:'');
+    var d=await(await fetch(url,{headers:atAuthHeader()})).json();
     records=records.concat(d.records||[]);offset=d.offset||'';
   }while(offset);return records;
 }
 async function atGet(table,id){
-  return(await(await fetch('https://api.airtable.com/v0/'+AT_BASE+'/'+table+'/'+id,
-    {headers:{Authorization:'Bearer '+AT_TOKEN}})).json());
+  return(await(await fetch(PROXY_URL+'/v0/'+AT_BASE+'/'+table+'/'+id,
+    {headers:atAuthHeader()})).json());
 }
 
 function resolveLoc(locField){

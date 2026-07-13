@@ -1,4 +1,4 @@
-# PETRAS GROUP TMS — Claude Code Context
+# PETRAS GROUP TMS, Claude Code Context
 
 ## PRIME DIRECTIVE
 Ask before making performance, caching, architecture, or infrastructure changes.
@@ -14,10 +14,10 @@ After every file change: bump its `?v=TIMESTAMP` in app.html + git add/commit/pu
   - Live: `https://dimitrispetras21-del.github.io/petras-assign/`
 
 ## Credentials
-Store in `.env.local` — never commit. Ask Dimitris for values.
-- Airtable PAT: `patpPJXnFYnxdgoK3.*`
+Store in `.env.local`, never commit. Ask Dimitris for values.
+- Airtable PAT: `pat…` (write-scoped; rotated 2026-07-13; lives only as a Worker secret now)
 - Airtable Base ID: `appElT5CQV6JQvym8`
-- GitHub Token: `ghp_S98IhpFBSDxt*`
+- GitHub Token: `ghp_…`
 
 ---
 
@@ -74,7 +74,7 @@ petras-assign/
 
 ## Architecture Rules (CRITICAL)
 
-### Sync Chain — never break
+### Sync Chain, never break
 ```
 ORDERS (Veroia Switch=ON) → NATIONAL ORDERS (auto-created)
   ↓ National Groupage=ON
@@ -85,7 +85,7 @@ CONSOLIDATED LOADS (1 per truck)
 Weekly National ΑΝΟΔΟΣ column
 ```
 
-### GL Records — NEVER deleted
+### GL Records, NEVER deleted
 - On restore: set Status='Unassigned' only
 - On Groupage OFF: set Status='Unassigned' only  
 - Only CONSOLIDATED LOADS records get deleted on restore
@@ -98,7 +98,7 @@ fields['Driver'] = [{id: 'recABC123'}] // ❌ INVALID_RECORD_ID
 
 // Filter for linked record
 filterByFormula = `FIND("recXXX", ARRAYJOIN({Linked Order}, ","))>0`
-// NOT SEARCH() — unreliable
+// NOT SEARCH(), unreliable
 
 // Checkbox filter
 filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
@@ -107,7 +107,7 @@ filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
 'North→South' (ΚΑΘΟΔΟΣ), 'South→North' (ΑΝΟΔΟΣ)
 
 // Direction field in CONSOLIDATED LOADS: Greek
-'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ'  — NOT English
+'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ' , NOT English
 
 // Field name traps (verified via Airtable Meta API 2026-04-18):
 'Week Number'   ← NO space, formula field, NOT writable
@@ -145,7 +145,7 @@ filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
 - Daily Ramp Board
 - Fuel Import, Pallet Upload (standalone apps)
 
-### Critical — Next to build 🔴
+### Critical, Next to build 🔴
 - Trip Costs / P&L entry (trip_costs.js)
 - Fuel Receipts management UI (fuels.js)
 - P&L Dashboard (pnl.js)
@@ -159,7 +159,7 @@ filterByFormula = `{National Groupage}=1`  // use 1 not TRUE()
 ---
 
 ## Key Business Concepts
-- **Veroia Switch**: Internal cross-docking at Vermion/Veroia — NEVER tell clients
+- **Veroia Switch**: Internal cross-docking at Vermion/Veroia, NEVER tell clients
 - **Wednesday Cutoff**: Export orders accepted until Wed for weekend delivery
 - **ΑΝΟΔΟΣ** = South→North (suppliers → Veroia), **ΚΑΘΟΔΟΣ** = North→South
 - **Proactive Pulse**: 3-stage client comms (Mission Start / Pre-Alert / Fresh-Check Close)
@@ -174,9 +174,9 @@ User (Dimitris) communicates in Greek. Respond in Greek for discussion, English 
 ## Current Build Status (March 2026)
 
 ### Live ✅
-- Weekly International — full assignment, groupage, drag-drop, remove import
-- Weekly National — ΚΑΘΟΔΟΣ / ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ + CONSOLIDATED LOADS display
-- National Pick Ups — embedded as iframe (national_consolidation.html)
+- Weekly International, full assignment, groupage, drag-drop, remove import
+- Weekly National, ΚΑΘΟΔΟΣ / ΑΝΑΘΕΣΗ / ΑΝΟΔΟΣ + CONSOLIDATED LOADS display
+- National Pick Ups, embedded as iframe (national_consolidation.html)
 - International Orders CRUD
 - National Orders CRUD (Pickup/Delivery/Client columns working)
 - Locations manager
@@ -188,7 +188,7 @@ User (Dimitris) communicates in Greek. Respond in Greek for discussion, English 
 - Veroia Switch sync chain (ORDERS → NO → GL, never-delete GL rule)
 - localStorage cache (30min for stable tables)
 
-### Critical — Next to build
+### Critical, Next to build
 - Trip Costs P&L entry (trip_costs.js)
 - Fuel receipts UI in TMS (fuels.js)
 - P&L dashboard (pnl.js)

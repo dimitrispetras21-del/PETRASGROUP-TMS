@@ -288,7 +288,13 @@ function _apiHeaders(method) {
     const jwt = localStorage.getItem('tms_jwt');
     if (jwt) h['Authorization'] = 'Bearer ' + jwt;
   } else {
-    // Direct mode: send Airtable token directly
+    // Direct mode: DEAD PATH since the S-1 remediation (2026-07-13). AT_TOKEN was
+    // removed from config.js, so there is no client-side Airtable credential.
+    // If USE_PROXY is flipped back to false, fail loudly instead of throwing a
+    // bare ReferenceError on the removed const.
+    if (typeof AT_TOKEN === 'undefined') {
+      throw new Error('Direct Airtable mode is disabled: AT_TOKEN was removed for security. Set USE_PROXY=true.');
+    }
     h['Authorization'] = 'Bearer ' + AT_TOKEN;
   }
   if (method !== 'GET' && method !== 'DELETE') {

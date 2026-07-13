@@ -5,9 +5,11 @@
 const AT_BASE  = 'appElT5CQV6JQvym8';
 
 // ── API Mode ──
-// Set USE_PROXY = true after deploying the Cloudflare Worker
-// Then the AT_TOKEN is no longer needed in the browser
-const USE_PROXY  = false;
+// Proxy mode: all Airtable traffic goes through the Cloudflare Worker, which
+// holds the write PAT as a server-side secret (env.AIRTABLE_TOKEN). The browser
+// never sees an Airtable token. See .ai-notes/2026-07-13-rotation-day-runbook.md.
+// Flipped true on rotation day (S-1 remediation) — the raw AT_TOKEN below was removed.
+const USE_PROXY  = true;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
 // ── Sentry DSN (error monitoring) ──
@@ -16,8 +18,18 @@ const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 // Get a DSN at https://sentry.io (free tier: 5k errors/month).
 const TMS_SENTRY_DSN = '';
 
-// Direct mode (fallback) — REMOVE these after proxy is live
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+// ── Airtable token: REMOVED from the browser (S-1 remediation, 2026-07-13) ──
+// The write PAT now lives only as a Cloudflare Worker secret (env.AIRTABLE_TOKEN).
+// With USE_PROXY=true, core/api.js sends the user's JWT and the Worker swaps it
+// for the real PAT server-side. Nothing here needs AT_TOKEN anymore.
+// If USE_PROXY is ever set back to false, the app WILL break — that is intentional:
+// there is no client-side Airtable credential by design now.
+
+// ── Anthropic key: STILL client-side (AI route not built yet — Fix 1.D) ──
+// TODO(audit): move behind a Worker /v1/ai route and remove this, same as the PAT.
+// Until then the AI tools (scan, chat, pallet OCR) call Anthropic directly with
+// this key. This key is rotated on rotation day too; the exposed value is dead.
+// See .ai-notes/2026-07-13-rotation-day-runbook.md step 4.
 const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+
                  'zG3klf7diFSUiNY056CRFBAeUZ1H_dZwDfhVbf7IRD3HQ-_nYO3gAA';
 
