@@ -286,12 +286,12 @@ const F = {
 // Single source of truth for client-side auth (index.html references this).
 // NOTE: worker/index.js (Cloudflare Worker) has its own copy — keep in sync manually.
 const USERS = [
-  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
-  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
-  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
-  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
-  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
-  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+  { username: 'dimitris',   hash: '9f0ed2c68d6bc81d92dc15d0d4759223db5f596e1a687ce9e5c0017b7da8cb85', role: 'owner',      name: 'Dimitris Petras' },
+  { username: 'pantelis',   hash: 'bcc9e4d2c4ed2564ad8277876393b815ded43cfe15fadb9b22f3223f7f842271', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
+  { username: 'sotiris',    hash: '164009a07c161d8ad67cb949d751f5097a8bfa558230b9aeefe521851d1209bf', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
+  { username: 'thodoris',   hash: 'f08f0ac8eb0b89aaef2dcc904cafc21b00e1f8f5c5f271703e0b649ffeea69fe', role: 'management', name: 'Thodoris Vainas' },
+  { username: 'eirini',     hash: '5c9954dd6574c7f5f91c07739df100f9f8526846b0bc07518364a66a393ce7fb', role: 'accountant', name: 'Eirini Papazoi' },
+  { username: 'kelesmitos', hash: '0eaeebea099831a5ca606ff11c8015300ceee85b508f49efbebb188fa1b62d0e', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
 ];
 
 // Role permission matrix
