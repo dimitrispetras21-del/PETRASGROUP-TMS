@@ -309,6 +309,11 @@
 
 <script>
 // ── API Mode (must match config.js) ──
+// ⚠️ CUTOVER: this is a SECOND, independent copy of USE_PROXY/PROXY_URL. The
+// login page does not load config.js, so flipping only config.js leaves login
+// in direct mode. Both copies must change together at cutover. (The proxy-login
+// path below is now contract-correct against the Stage 2 backend: it sends
+// plaintext and reads data.user; see doLogin's proxy branch.)
 const USE_PROXY  = false;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
@@ -344,33 +349,53 @@ function showError(msg) {
   setTimeout(() => err.style.display = 'none', 3000);
 }
 
+// Read the `exp` claim (seconds since epoch) out of a JWT, as ms, or null.
+// Used to expire the local session in step with the token the backend issued,
+// instead of guessing. Best-effort: a malformed token falls back to SESSION_TTL.
+function _jwtExpiryMs(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 async function doLogin() {
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
   const inputHash = await sha256(p);
 
   if (USE_PROXY) {
-    // ── Proxy mode: authenticate via Cloudflare Worker ──
+    // ── Proxy mode: authenticate via the Cloudflare Worker (Stage 2 backend) ──
+    // The Worker verifies the password with bcrypt INSIDE Postgres (verify_login),
+    // so we send the plaintext over HTTPS, NOT a client-side hash. The old
+    // SHA-256 `passwordHash` was for direct client-side comparison (the else
+    // branch below); the new backend deliberately replaced that scheme, so
+    // sending a hash here fails with "Username and password required".
     try {
       const res = await fetch(`${PROXY_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u, passwordHash: inputHash }),
+        body: JSON.stringify({ username: u, password: p }),
       });
       const data = await res.json();
       if (!res.ok) {
         showError(data.error || 'Login failed');
         return;
       }
-      // Store JWT token
+      // Store JWT token.
       localStorage.setItem('tms_jwt', data.token);
-      // Store session (same shape as client-side auth)
+      // The Worker returns { token, user: { username, role, name } }, so the
+      // profile fields live under `data.user`, not at the top level. Session
+      // expiry follows the JWT's own `exp` (falling back to SESSION_TTL).
+      const profile = data.user || {};
       const session = {
-        name: data.name,
-        role: data.role,
-        username: data.username,
+        name: profile.name,
+        role: profile.role,
+        username: profile.username,
         loginAt: Date.now(),
-        expiresAt: data.expiresAt,
+        expiresAt: _jwtExpiryMs(data.token) || (Date.now() + SESSION_TTL),
       };
       localStorage.setItem('tms_user', JSON.stringify(session));
       window.location.href = 'app.html';
