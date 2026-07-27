@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v46-demo-users-sentry';
+const SW_VERSION = 'tms-sw-v47-audit-trail';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

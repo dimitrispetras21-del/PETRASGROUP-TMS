@@ -53,6 +53,9 @@ const NAV = [
     { id: 'metrics_audit', label: 'Metrics Audit', icon: 'bar_chart' },
     { id: 'trash',         label: 'Trash',         icon: 'trash' },
     { id: 'error_log',     label: 'Error Log',     icon: 'alert_triangle' },
+    // Distinct from Metrics Audit (data-consistency checks) and Error Log (JS
+    // errors): this is who-changed-what, read from the server-side trail.
+    { id: 'audit_trail',   label: 'Audit Trail',   icon: 'clock' },
   ]},
 ];
 
@@ -313,6 +316,12 @@ function navigate(page) {
     case 'metrics_audit':
       if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
       renderMetricsAudit();
+      break;
+    case 'audit_trail':
+      // No can() gate here on purpose: the trail spans every table, so it is
+      // not expressible in the per-section PERMS model. The module checks the
+      // role itself, and the SERVER is the real boundary (owner + management).
+      renderAuditTrail();
       break;
     default:
       c.innerHTML = showComingSoon(label);
