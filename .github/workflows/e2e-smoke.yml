@@ -7,8 +7,17 @@
 # write token would insert real RAMP records on every workflow run.
 #
 # Requires the AIRTABLE_READONLY_PAT repository secret (a scoped read-only
-# Airtable PAT for the production base). Until a repo admin adds it, the
-# job skips with a warning instead of failing.
+# Airtable PAT for the production base). Until a repo admin adds it, the job
+# FAILS LOUDLY rather than skipping green.
+#
+# Why it fails instead of skipping (changed 2026-07-27): the original version
+# emitted a ::warning:: and skipped every real step, so the job reported SUCCESS
+# having run no tests. Warnings do not surface on the PR checks list, so the only
+# visible signal was a green tick. It stayed that way from ~2026-07-11 until
+# 2026-07-27, and "the e2e suite runs on every PR" was recorded as done on the
+# strength of it. A run that verifies nothing must never look identical to a run
+# that verifies everything: an unconfigured pipeline is a broken pipeline, and the
+# 7-11 second runtimes were the only clue anything was wrong.
 #
 # Deliberately runs ONLY tests/e2e/smoke.spec.js. The vs-scenarios suite is
 # data-dependent (needs specific orders present) and flakes on empty views;
@@ -37,15 +46,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Gate on the read-only token secret
+      # Fails the job when unconfigured. Do NOT soften this back to a warning:
+      # a green tick that ran nothing is worse than a red one, because it gets
+      # trusted. See the header note for what that cost us.
+      - name: Require the read-only token secret
         id: gate
         run: |
           if [ -z "$AIRTABLE_READONLY_PAT" ]; then
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::AIRTABLE_READONLY_PAT secret is not set, smoke suite skipped. A repo admin must add it (Settings > Secrets and variables > Actions) with a READ-ONLY Airtable PAT for the TMS base."
-          else
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "::error::AIRTABLE_READONLY_PAT secret is not set, so the smoke suite cannot run. This job FAILS rather than passing green, because a run that verifies nothing must not look like a run that verifies everything. A repo admin must add it (Settings > Secrets and variables > Actions) with a READ-ONLY Airtable PAT for the TMS base."
+            {
+              echo "### E2E smoke could not run"
+              echo ""
+              echo "\`AIRTABLE_READONLY_PAT\` is not set on this repository, so **no tests were executed**."
+              echo ""
+              echo "Add it under Settings > Secrets and variables > Actions, using a **read-only** Airtable PAT."
+              echo "The write token must never be used here: some pages create records on render."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         if: steps.gate.outputs.present == 'true'
