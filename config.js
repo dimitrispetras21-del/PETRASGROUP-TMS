@@ -11,9 +11,23 @@ const USE_PROXY  = false;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
 // ── Sentry DSN (error monitoring) ──
-// Leave empty to disable. When set, all errors logged via logError() are
-// forwarded to Sentry in addition to the local error log.
-// Get a DSN at https://sentry.io (free tier: 5k errors/month).
+// ⚠️ EMPTY = THE APP HAS NO PRODUCTION ERROR REPORTING. Every error goes to the
+// browser console and a 200-entry localStorage log, both of which nobody is
+// watching. Filling this in is the single change that turns "nobody knew it
+// broke" into "we were told". Free tier covers this app's volume many times over.
+//
+// Get a DSN at https://sentry.io, then paste it here. Nothing else is needed:
+// both init paths (app.html's primary one and core/utils.js's fallback for the
+// login/print pages) read THIS value, and logError() forwards automatically.
+//
+// Wiring note (fixed 2026-07-27): core/utils.js used to read a different name,
+// `window.SENTRY_DSN`, which was never set anywhere, so that path was dead even
+// when this value was filled in. Both now read TMS_SENTRY_DSN. If you add a
+// third place that needs the DSN, read it from here rather than introducing
+// another name; that mismatch is exactly what silently disabled reporting.
+//
+// Remember to bump this file's ?v= tag in app.html AND SW_VERSION in sw.js when
+// you set it, or cached clients will keep the empty value and stay dark.
 const TMS_SENTRY_DSN = '';
 
 // Direct mode (fallback) — REMOVE these after proxy is live
