@@ -325,6 +325,28 @@ const USERS = [
   { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
   { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
   { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+
+  // ── Demo accounts, one per role (added 2026-07-27) ──────────────────────
+  // Present so any role can be demonstrated or tested without borrowing a real
+  // person's login. They share one password, and they MUST be listed here as
+  // well as in the backend `users` table: the two rosters are independent, and
+  // `auth.js _authRoleTampered()` logs out any username missing from THIS array
+  // even after a valid backend login (finding F-E3). Seeded backend-side by
+  // petras-tms-backend/ops/seed-demo-users.sh.
+  //
+  // `demo_warehouse` is the only warehouse account that exists: no real person
+  // holds that role (confirmed 2026-07-27), so it is the only way to exercise
+  // the warehouse deny path, which is the half of RBAC worth proving.
+  //
+  // NOT a sandbox: these carry the real permissions of their role against real
+  // data. Do not publish the password or reuse it. To rotate, change
+  // TMS_PW_DEMO, re-run the seed script against both environments, and update
+  // the shared hash below.
+  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
+  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
+  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
+  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
+  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
 ];
 
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
