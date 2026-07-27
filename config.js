@@ -289,4 +289,12 @@ const PERMS = {
   dispatcher: { planning:'full', orders:'full',  clients:'full', maintenance:'view', drivers:'view', costs:'none',  settings:'none', performance:'view',  ceo_dashboard:'none' },
   management: { planning:'view', orders:'view',  clients:'full', maintenance:'full', drivers:'full', costs:'view',  settings:'full', performance:'view',  ceo_dashboard:'none' },
   accountant: { planning:'view', orders:'view',  clients:'full', maintenance:'view', drivers:'full', costs:'full',  settings:'none', performance:'view',  ceo_dashboard:'none' },
+  // Warehouse was missing here until 2026-07-27 while existing in the backend
+  // RBAC matrix, so `can()` fell through to its 'none' default and a warehouse
+  // login saw an entirely empty app. Fails safe, but useless for demonstrating
+  // the role. Mirrors src/middleware/rbac.js `warehouse`: read-only on the
+  // order/load tables it needs to load and unload, and no costs or settings
+  // at all (a cost table is exactly what warehouse must not see).
+  // Keep these two in step: the UI hides, the backend enforces.
+  warehouse:  { planning:'view', orders:'view',  clients:'none', maintenance:'none', drivers:'none', costs:'none',  settings:'none', performance:'none', ceo_dashboard:'none' },
 };
