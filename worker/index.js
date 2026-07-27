@@ -22,6 +22,19 @@ const USERS = [
   { username: 'thodoris',   hash: 'f08f0ac8eb0b89aaef2dcc904cafc21b00e1f8f5c5f271703e0b649ffeea69fe', role: 'management', name: 'Thodoris Vainas' },
   { username: 'eirini',     hash: '5c9954dd6574c7f5f91c07739df100f9f8526846b0bc07518364a66a393ce7fb', role: 'accountant', name: 'Eirini Papazoi' },
   { username: 'kelesmitos', hash: '0eaeebea099831a5ca606ff11c8015300ceee85b508f49efbebb188fa1b62d0e', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+
+  // ── Demo accounts, one per role (added 2026-07-27) ──────────────────────
+  // Must mirror index.html's USERS array. Three rosters have to agree for a
+  // login to work in proxy mode: index.html (the login page's own copy),
+  // config.js (the app's copy), and this one (the Worker's). A user missing
+  // from any of them fails somewhere in the chain, which is exactly how five
+  // of six real people would have been locked out at cutover (finding F-E3).
+  // Shared password, held only in the gitignored ops .env as TMS_PW_DEMO.
+  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
+  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
+  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
+  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
+  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
 ];
 
 // ── Concurrency queue ────────────────────────────

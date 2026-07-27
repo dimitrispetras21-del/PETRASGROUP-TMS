@@ -309,17 +309,44 @@
 
 <script>
 // ── API Mode (must match config.js) ──
+// ⚠️ CUTOVER: this is a SECOND, independent copy of USE_PROXY/PROXY_URL. The
+// login page does not load config.js, so flipping only config.js leaves login
+// in direct mode. Both copies must change together at cutover. (The proxy-login
+// path below is now contract-correct against the Stage 2 backend: it sends
+// plaintext and reads data.user; see doLogin's proxy branch.)
 const USE_PROXY  = false;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
 // Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [
-  { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
-  { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
-  { username: 'sotiris',    hash: 'a5b2ee26884135591d0c8213b30802060d379074e151c08d8bc07757aea77ead', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
-  { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
-  { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
-  { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+  { username: 'dimitris',   hash: '9f0ed2c68d6bc81d92dc15d0d4759223db5f596e1a687ce9e5c0017b7da8cb85', role: 'owner',      name: 'Dimitris Petras' },
+  { username: 'pantelis',   hash: 'bcc9e4d2c4ed2564ad8277876393b815ded43cfe15fadb9b22f3223f7f842271', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
+  { username: 'sotiris',    hash: '164009a07c161d8ad67cb949d751f5097a8bfa558230b9aeefe521851d1209bf', role: 'dispatcher', name: 'Sotiris Koulouriotis' },
+  { username: 'thodoris',   hash: 'f08f0ac8eb0b89aaef2dcc904cafc21b00e1f8f5c5f271703e0b649ffeea69fe', role: 'management', name: 'Thodoris Vainas' },
+  { username: 'eirini',     hash: '5c9954dd6574c7f5f91c07739df100f9f8526846b0bc07518364a66a393ce7fb', role: 'accountant', name: 'Eirini Papazoi' },
+  { username: 'kelesmitos', hash: '0eaeebea099831a5ca606ff11c8015300ceee85b508f49efbebb188fa1b62d0e', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+
+  // ── Demo accounts, one per role (added 2026-07-27) ──────────────────────
+  // Present so any role can be demonstrated or tested without borrowing a real
+  // person's login. They share one password, and they MUST be listed here as
+  // well as in the backend `users` table: the two rosters are independent, and
+  // `auth.js _authRoleTampered()` logs out any username missing from THIS array
+  // even after a valid backend login (finding F-E3). Seeded backend-side by
+  // petras-tms-backend/ops/seed-demo-users.sh.
+  //
+  // `demo_warehouse` is the only warehouse account that exists: no real person
+  // holds that role (confirmed 2026-07-27), so it is the only way to exercise
+  // the warehouse deny path, which is the half of RBAC worth proving.
+  //
+  // NOT a sandbox: these carry the real permissions of their role against real
+  // data. Do not publish the password or reuse it. To rotate, change
+  // TMS_PW_DEMO, re-run the seed script against both environments, and update
+  // the shared hash below.
+  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
+  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
+  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
+  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
+  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
 ];
 
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
@@ -344,33 +371,53 @@ function showError(msg) {
   setTimeout(() => err.style.display = 'none', 3000);
 }
 
+// Read the `exp` claim (seconds since epoch) out of a JWT, as ms, or null.
+// Used to expire the local session in step with the token the backend issued,
+// instead of guessing. Best-effort: a malformed token falls back to SESSION_TTL.
+function _jwtExpiryMs(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 async function doLogin() {
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
   const inputHash = await sha256(p);
 
   if (USE_PROXY) {
-    // ── Proxy mode: authenticate via Cloudflare Worker ──
+    // ── Proxy mode: authenticate via the Cloudflare Worker (Stage 2 backend) ──
+    // The Worker verifies the password with bcrypt INSIDE Postgres (verify_login),
+    // so we send the plaintext over HTTPS, NOT a client-side hash. The old
+    // SHA-256 `passwordHash` was for direct client-side comparison (the else
+    // branch below); the new backend deliberately replaced that scheme, so
+    // sending a hash here fails with "Username and password required".
     try {
       const res = await fetch(`${PROXY_URL}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: u, passwordHash: inputHash }),
+        body: JSON.stringify({ username: u, password: p }),
       });
       const data = await res.json();
       if (!res.ok) {
         showError(data.error || 'Login failed');
         return;
       }
-      // Store JWT token
+      // Store JWT token.
       localStorage.setItem('tms_jwt', data.token);
-      // Store session (same shape as client-side auth)
+      // The Worker returns { token, user: { username, role, name } }, so the
+      // profile fields live under `data.user`, not at the top level. Session
+      // expiry follows the JWT's own `exp` (falling back to SESSION_TTL).
+      const profile = data.user || {};
       const session = {
-        name: data.name,
-        role: data.role,
-        username: data.username,
+        name: profile.name,
+        role: profile.role,
+        username: profile.username,
         loginAt: Date.now(),
-        expiresAt: data.expiresAt,
+        expiresAt: _jwtExpiryMs(data.token) || (Date.now() + SESSION_TTL),
       };
       localStorage.setItem('tms_user', JSON.stringify(session));
       window.location.href = 'app.html';

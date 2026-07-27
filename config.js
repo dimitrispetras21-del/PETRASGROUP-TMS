@@ -13,9 +13,23 @@ const USE_PROXY  = true;
 const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
 
 // ── Sentry DSN (error monitoring) ──
-// Leave empty to disable. When set, all errors logged via logError() are
-// forwarded to Sentry in addition to the local error log.
-// Get a DSN at https://sentry.io (free tier: 5k errors/month).
+// ⚠️ EMPTY = THE APP HAS NO PRODUCTION ERROR REPORTING. Every error goes to the
+// browser console and a 200-entry localStorage log, both of which nobody is
+// watching. Filling this in is the single change that turns "nobody knew it
+// broke" into "we were told". Free tier covers this app's volume many times over.
+//
+// Get a DSN at https://sentry.io, then paste it here. Nothing else is needed:
+// both init paths (app.html's primary one and core/utils.js's fallback for the
+// login/print pages) read THIS value, and logError() forwards automatically.
+//
+// Wiring note (fixed 2026-07-27): core/utils.js used to read a different name,
+// `window.SENTRY_DSN`, which was never set anywhere, so that path was dead even
+// when this value was filled in. Both now read TMS_SENTRY_DSN. If you add a
+// third place that needs the DSN, read it from here rather than introducing
+// another name; that mismatch is exactly what silently disabled reporting.
+//
+// Remember to bump this file's ?v= tag in app.html AND SW_VERSION in sw.js when
+// you set it, or cached clients will keep the empty value and stay dark.
 const TMS_SENTRY_DSN = '';
 
 // ── Airtable token: REMOVED from the browser (S-1 remediation, 2026-07-13) ──
@@ -300,4 +314,12 @@ const PERMS = {
   dispatcher: { planning:'full', orders:'full',  clients:'full', maintenance:'view', drivers:'view', costs:'none',  settings:'none', performance:'view',  ceo_dashboard:'none' },
   management: { planning:'view', orders:'view',  clients:'full', maintenance:'full', drivers:'full', costs:'view',  settings:'full', performance:'view',  ceo_dashboard:'none' },
   accountant: { planning:'view', orders:'view',  clients:'full', maintenance:'view', drivers:'full', costs:'full',  settings:'none', performance:'view',  ceo_dashboard:'none' },
+  // Warehouse was missing here until 2026-07-27 while existing in the backend
+  // RBAC matrix, so `can()` fell through to its 'none' default and a warehouse
+  // login saw an entirely empty app. Fails safe, but useless for demonstrating
+  // the role. Mirrors src/middleware/rbac.js `warehouse`: read-only on the
+  // order/load tables it needs to load and unload, and no costs or settings
+  // at all (a cost table is exactly what warehouse must not see).
+  // Keep these two in step: the UI hides, the backend enforces.
+  warehouse:  { planning:'view', orders:'view',  clients:'none', maintenance:'none', drivers:'none', costs:'none',  settings:'none', performance:'none', ceo_dashboard:'none' },
 };

@@ -325,21 +325,51 @@ function logError(error, context = '') {
   } catch(_) {}
 }
 
-// Sentry: lazy-loaded. To enable: set window.SENTRY_DSN in config.js, then call _initSentry()
+// ── Sentry fallback loader ──────────────────────────────────────────────────
+// FIXED 2026-07-27. This used to read `window.SENTRY_DSN`, a name that is set
+// NOWHERE in the codebase, while the real config value is `TMS_SENTRY_DSN`
+// (config.js) and the primary init lives in app.html. So this whole path was
+// permanently dead: even after someone filled in the real DSN, error forwarding
+// from here would have stayed dark, and `getErrorLog`'s `sentryOn` badge would
+// have kept reporting "off". A one-word name mismatch silently disabled the
+// only production error reporting the app has.
+//
+// It now reads the SAME value as app.html, via _sentryDsn(). Two independent
+// sources of truth for one setting is what created the bug; there is now one.
+//
+// This remains a FALLBACK. app.html loads Sentry from a <script> tag and inits
+// it on page load, which is the primary path and the one that carries the
+// release tag and beforeSend filtering. This loader only matters for entry
+// points that do not go through app.html (index.html, print.html), so an error
+// on the login screen is still reported. If app.html already initialised
+// Sentry, `window.Sentry` exists and this returns immediately.
+function _sentryDsn() {
+  // config.js declares `const TMS_SENTRY_DSN`, which is not a window property,
+  // so read it via typeof rather than window.* (that was part of the original
+  // confusion). Falls back to window.SENTRY_DSN so any existing deployment
+  // that set the old name keeps working.
+  try {
+    if (typeof TMS_SENTRY_DSN === 'string' && TMS_SENTRY_DSN) return TMS_SENTRY_DSN;
+  } catch(_) {}
+  return (typeof window !== 'undefined' && window.SENTRY_DSN) || '';
+}
+
 function _initSentry() {
-  if (window.Sentry || !window.SENTRY_DSN) return;
+  if (window.Sentry || !_sentryDsn()) return;
   const s = document.createElement('script');
   s.src = 'https://browser.sentry-cdn.com/7.99.0/bundle.min.js';
   s.crossOrigin = 'anonymous';
   s.onload = () => {
     try {
-      window.Sentry.init({ dsn: window.SENTRY_DSN, tracesSampleRate: 0.1, environment: location.hostname.includes('github.io') ? 'production' : 'dev' });
+      window.Sentry.init({ dsn: _sentryDsn(), tracesSampleRate: 0.1, environment: location.hostname.includes('github.io') ? 'production' : 'dev' });
     } catch(e) { console.warn('Sentry init failed:', e); }
   };
   document.head.appendChild(s);
 }
-// Auto-init if DSN configured
-if (typeof window !== 'undefined' && window.SENTRY_DSN) _initSentry();
+// Auto-init if a DSN is configured. No-op while the DSN is empty, which is the
+// current state: setting it in config.js is all that is needed to switch error
+// reporting on (see TODO 'Sentry DSN').
+if (typeof window !== 'undefined' && _sentryDsn()) _initSentry();
 
 /**
  * Get the persisted error log
@@ -533,7 +563,10 @@ function renderErrorLog() {
 
   // Unique users for filter dropdown
   const users = [...new Set(all.map(e => e.user).filter(Boolean))];
-  const sentryOn = !!(window.Sentry && window.SENTRY_DSN);
+  // Was `window.SENTRY_DSN`, the dead name (see _sentryDsn above), so this badge
+  // reported "off" even when Sentry was live. `window.Sentry` existing is the
+  // real signal: it means some path initialised successfully, whichever one.
+  const sentryOn = !!(window.Sentry && typeof window.Sentry.captureException === 'function');
   const _ic = (name, size) => (typeof icon === 'function') ? icon(name, size || 14) : '';
 
   const rows = filtered.map((e, idx) => {
