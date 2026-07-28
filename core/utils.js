@@ -323,6 +323,57 @@ function logError(error, context = '') {
       });
     }
   } catch(_) {}
+  // Forward to the backend error store (POST /app-errors) — see _postAppError
+  _postAppError(entry);
+}
+
+// ── Backend error forwarding (added post-C2, 2026-07-28) ───────────────────
+// Lands every logError() in the Postgres `app_errors` table via the Worker, so
+// errors are visible to owner/management instead of dying in this browser's
+// localStorage. Design constraints, all deliberate:
+//   - MUST NEVER throw or recurse: a failure to report an error must not call
+//     logError again (infinite loop) or break the calling code path. Every
+//     failure mode is swallowed silently.
+//   - Session-capped: an error firing in a render loop would otherwise POST
+//     hundreds of identical rows. After the cap, reports stay local-only.
+//   - Works logged-out: the login page carries no JWT and its errors are the
+//     most valuable kind (the F-E2 login-contract bug lived there). The
+//     backend accepts tokenless reports; a token, when present, attributes.
+//   - typeof guards, not window.*: USE_PROXY/PROXY_URL are `const` in
+//     config.js (and inline in index.html), so they are not window properties.
+//     Same trap _sentryDsn() documents for TMS_SENTRY_DSN.
+let _appErrorsPosted = 0;
+const MAX_APP_ERROR_POSTS = 20; // per page load
+
+function _postAppError(entry) {
+  try {
+    if (typeof USE_PROXY === 'undefined' || !USE_PROXY) return;      // direct-Airtable mode: no backend to send to
+    if (typeof PROXY_URL !== 'string' || !PROXY_URL) return;
+    if (_appErrorsPosted >= MAX_APP_ERROR_POSTS) return;
+    _appErrorsPosted++;
+
+    const headers = { 'Content-Type': 'application/json' };
+    try {
+      const jwt = localStorage.getItem('tms_jwt');
+      if (jwt) headers['Authorization'] = `Bearer ${jwt}`;
+    } catch(_) {}
+
+    fetch(`${PROXY_URL}/app-errors`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        message: `${entry.ctx ? entry.ctx + ': ' : ''}${entry.msg}`.slice(0, 2000),
+        stack: entry.stack || undefined,
+        page: (function() { try { return location.href; } catch(_) { return undefined; } })(),
+        user_agent: (function() { try { return navigator.userAgent; } catch(_) { return undefined; } })(),
+        // sw_version deliberately not sent: no page-visible source for it exists
+        // today, and reading a made-up localStorage key would be the same dead-
+        // name bug class as the old window.SENTRY_DSN. Nullable server-side.
+      }),
+      // keepalive lets a report survive page unload (e.g. an error during navigation)
+      keepalive: true,
+    }).catch(function(){ /* reporting must never cascade */ });
+  } catch(_) { /* reporting must never cascade */ }
 }
 
 // ── Sentry fallback loader ──────────────────────────────────────────────────
