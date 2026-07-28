@@ -296,8 +296,15 @@ const F = {
 };
 
 // ── User accounts (SHA-256 hashed passwords) ──
-// Single source of truth for client-side auth (index.html references this).
-// NOTE: worker/index.js (Cloudflare Worker) has its own copy — keep in sync manually.
+// ⚠️ THREE independent rosters exist and must stay in sync MANUALLY:
+//   1. THIS array (loaded by app.html; auth.js _authRoleTampered checks it),
+//   2. index.html's own USERS copy (the login page does NOT load config.js),
+//   3. the backend `users` table (what actually authenticates in proxy mode).
+// The old comment here called this the "single source of truth", which it never
+// was, and that lie caused a real bug: the demo_* accounts were added to
+// index.html and the backend but NOT here, so app.html's tamper guard bounced
+// every demo login back to the login screen (found 2026-07-28 by walking the
+// live post-C2 app; the roster-mismatch class F-E3, third occurrence).
 const USERS = [
   { username: 'dimitris',   hash: 'b7e480feeff4e9f28cde7b5f10c8b46d4e81eac0f44fc91d9b6ca20648dc75ca', role: 'owner',      name: 'Dimitris Petras' },
   { username: 'pantelis',   hash: 'fa1db14f60e798c8f3c582586fd7d4c70cf8431249ffc7787befa93e6dbfd215', role: 'dispatcher', name: 'Pantelis Tsanaktsidis' },
@@ -305,6 +312,15 @@ const USERS = [
   { username: 'thodoris',   hash: '699d7aab30ff342aa3656f63b1b72b6fcfa83ca26fa75313ec89a4b7d5fc0c10', role: 'management', name: 'Thodoris Vainas' },
   { username: 'eirini',     hash: '172f322617cd908a2cefceab73f655b875f9f4c55cbc37d129f9072aee57512a', role: 'accountant', name: 'Eirini Papazoi' },
   { username: 'kelesmitos', hash: '00ad77798c78b32aecb433e682eabecae8338ed965dafebb4d31a697974a892a', role: 'dispatcher', name: 'Dimitris Kelesmitos' },
+  // Demo accounts, one per role, mirroring index.html + the backend seed
+  // (ops/seed-demo-users.sh). Hashes are the shared TMS_PW_DEMO in SHA-256
+  // form; used only by direct-mode fallback, the tamper guard needs the
+  // username+role pair either way.
+  { username: 'demo_owner',      hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'owner',      name: 'Demo Owner' },
+  { username: 'demo_management', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'management', name: 'Demo Management' },
+  { username: 'demo_accountant', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'accountant', name: 'Demo Accountant' },
+  { username: 'demo_dispatcher', hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'dispatcher', name: 'Demo Dispatcher' },
+  { username: 'demo_warehouse',  hash: '5e92d9e6a898eeaaceb1b5b6f39f22cf694706da227ebb98577a5613f6445c43', role: 'warehouse',  name: 'Demo Warehouse' },
 ];
 
 // Role permission matrix

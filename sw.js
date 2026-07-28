@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v50-strip-literals';
+const SW_VERSION = 'tms-sw-v51-demo-roster';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
