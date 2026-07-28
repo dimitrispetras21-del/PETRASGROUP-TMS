@@ -29,7 +29,12 @@ test.describe('post-C2 live sidebar walk', () => {
       if (r.url().includes('api.airtable.com')) airtableCalls.push(r.url());
     });
     page.on('response', (r) => {
-      if (r.url().includes('workers.dev') && r.status() >= 500) {
+      // 5xx = backend broken. 422 = a filter the translator rejected, which is
+      // how Weekly International died live on 2026-07-28 while this walk was
+      // "green": it only asserted no-5xx, so unsupported-filter pages rendered
+      // an error toast the walk never saw. 401/403 stay allowed (role denials
+      // are legitimate); 422 on a data fetch never is.
+      if (r.url().includes('workers.dev') && (r.status() >= 500 || r.status() === 422)) {
         serverErrors.push(`${r.status()} ${r.request().method()} ${r.url()}`);
       }
     });
