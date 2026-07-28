@@ -15,7 +15,7 @@ wrangler login
 # 3. Set secrets
 cd worker/
 wrangler secret put AIRTABLE_TOKEN
-# Paste: patpPJXnFYnxdgoK3.a2162b09fbb2...
+# Paste: patXXXX-REDACTED.a2162b09fbb2...
 
 wrangler secret put JWT_SECRET
 # Paste a strong random string (32+ chars), e.g.:

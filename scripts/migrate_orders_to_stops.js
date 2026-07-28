@@ -9,7 +9,10 @@
  *   - Creates ORDER_STOPS records with proper links
  */
 
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+// Token REMOVED from source (S-1 remediation, 2026-07-13). One-shot migration
+// script: pass the PAT via env, never hardcode. e.g. AT_TOKEN=pat... node scripts/migrate_orders_to_stops.js
+const AT_TOKEN = process.env.AT_TOKEN;
+if (!AT_TOKEN) throw new Error('Set AT_TOKEN env var (a scoped Airtable PAT) before running this migration.');
 const AT_BASE  = 'appElT5CQV6JQvym8';
 
 const T_ORDERS     = 'tblgHlNmLBH3JTdIM';

@@ -16,7 +16,7 @@ Severity:
 ### S1. API tokens exposed in browser
 **File**: `config.js` lines 14-16
 ```js
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a216...';
+const AT_TOKEN = 'patXXXX-REDACTED.a216...';
 const ANTH_KEY = 'sk-ant-api03-HG90hAxac0K9...';
 ```
 Anyone with DevTools access reads the Airtable PAT and the Anthropic API key.
