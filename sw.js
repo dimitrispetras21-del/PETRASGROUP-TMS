@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v47-audit-trail';
+const SW_VERSION = 'tms-sw-v48-c2-cutover';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

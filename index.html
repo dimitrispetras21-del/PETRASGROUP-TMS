@@ -314,8 +314,9 @@
 // in direct mode. Both copies must change together at cutover. (The proxy-login
 // path below is now contract-correct against the Stage 2 backend: it sends
 // plaintext and reads data.user; see doLogin's proxy branch.)
-const USE_PROXY  = false;
-const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
+// C2 CUTOVER 2026-07-28: flipped together with config.js, pointing at Worker 2.
+const USE_PROXY  = true;
+const PROXY_URL  = 'https://petras-tms-backend-staging.petrasgroup.workers.dev';
 
 // Passwords stored as SHA-256 hashes only — never plaintext in source
 const USERS = [

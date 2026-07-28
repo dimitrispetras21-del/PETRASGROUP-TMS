@@ -5,10 +5,15 @@
 const AT_BASE  = 'appElT5CQV6JQvym8';
 
 // ── API Mode ──
-// Set USE_PROXY = true after deploying the Cloudflare Worker
-// Then the AT_TOKEN is no longer needed in the browser
-const USE_PROXY  = false;
-const PROXY_URL  = 'https://tms-api-proxy.petrasgroup.workers.dev';
+// C2 CUTOVER 2026-07-28: USE_PROXY=true and PROXY_URL now points at Worker 2
+// (petras-tms-backend, the Stage 2 Supabase backend), NOT the old Worker 1
+// Airtable pass-through. The browser no longer talks to Airtable at all.
+// ⚠️ index.html carries an independent copy of these two lines (the login page
+// does not load config.js); both copies MUST stay in lockstep (F-E4).
+// Rollback: set both copies back to false + bump SW_VERSION (see
+// .reference/ops__c2-cutover-runbook.md in the ops repo).
+const USE_PROXY  = true;
+const PROXY_URL  = 'https://petras-tms-backend-staging.petrasgroup.workers.dev';
 
 // ── Sentry DSN (error monitoring) ──
 // ⚠️ EMPTY = THE APP HAS NO PRODUCTION ERROR REPORTING. Every error goes to the
