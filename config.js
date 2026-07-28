@@ -35,10 +35,15 @@ const PROXY_URL  = 'https://petras-tms-backend-staging.petrasgroup.workers.dev';
 // you set it, or cached clients will keep the empty value and stay dark.
 const TMS_SENTRY_DSN = '';
 
-// Direct mode (fallback) — REMOVE these after proxy is live
-const AT_TOKEN = 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
-const ANTH_KEY  = 'sk-ant-api03-HG90hAxac0K9lx2mdS6fFKID6XMAICWl4FSbXeVM9'+
-                 'zG3klf7diFSUiNY056CRFBAeUZ1H_dZwDfhVbf7IRD3HQ-_nYO3gAA';
+// Direct mode credentials: STRIPPED 2026-07-28 (post-C2). The app talks only to
+// the Worker now, so no browser code needs a raw key. The consts stay declared
+// (empty) so direct-mode code paths parse; direct mode itself is rollback-only.
+// A rollback needing a live token restores it from a secure channel, NEVER by
+// reverting this commit: the old PAT is scheduled for revocation and the old
+// Anthropic key is already revoked (2026-07-21). Local browsing uses the
+// gitignored config.local.js override with a READ-ONLY token, as before.
+const AT_TOKEN = '';
+const ANTH_KEY = '';
 
 const TABLES = {
   TRIPS:         'tblgoyV26PBc6L9uE',

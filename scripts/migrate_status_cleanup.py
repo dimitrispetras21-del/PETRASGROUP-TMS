@@ -20,10 +20,10 @@ import urllib.request
 import urllib.parse
 import urllib.error
 
-AT_TOKEN = os.environ.get(
-    'AT_TOKEN',
-    'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08'
-)
+# Token REMOVED from source (S-1 remediation, 2026-07-13). Pass via env, never hardcode.
+AT_TOKEN = os.environ.get('AT_TOKEN')
+if not AT_TOKEN:
+    raise SystemExit('Set AT_TOKEN env var (a scoped Airtable PAT) before running this migration.')
 AT_BASE = 'appElT5CQV6JQvym8'
 
 T_ORDERS = 'tblgHlNmLBH3JTdIM'

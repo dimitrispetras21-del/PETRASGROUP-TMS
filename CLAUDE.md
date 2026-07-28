@@ -15,7 +15,7 @@ After every file change: bump its `?v=TIMESTAMP` in app.html + git add/commit/pu
 
 ## Credentials
 Store in `.env.local` — never commit. Ask Dimitris for values.
-- Airtable PAT: `patpPJXnFYnxdgoK3.*`
+- Airtable PAT: `patXXXX-REDACTED.*`
 - Airtable Base ID: `appElT5CQV6JQvym8`
 - GitHub Token: `ghp_S98IhpFBSDxt*`
 

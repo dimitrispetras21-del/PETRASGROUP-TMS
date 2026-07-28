@@ -12,8 +12,9 @@
  * IDEMPOTENT: safe to re-run.
  */
 
-const AT_TOKEN = process.env.AT_TOKEN
-  || 'patpPJXnFYnxdgoK3.a2162b09fbb214628114ff2ce68bb5a7b30aea2061b14f9562a1ab222585cf08';
+// Token REMOVED from source (S-1 remediation, 2026-07-13). Pass via env, never hardcode.
+const AT_TOKEN = process.env.AT_TOKEN;
+if (!AT_TOKEN) throw new Error('Set AT_TOKEN env var (a scoped Airtable PAT) before running this migration.');
 const AT_BASE  = 'appElT5CQV6JQvym8';
 
 const T_ORDERS = 'tblgHlNmLBH3JTdIM';
