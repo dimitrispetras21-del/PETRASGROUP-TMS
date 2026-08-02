@@ -15,6 +15,7 @@ const PL = {
   orders: [],         // combined INTL + NAT orders with Pallet Exchange=ON
   stopsByOrder: {},   // { orderId: [stop records] }
   filters: { from: '', to: '', direction: '', _q: '', tab: 'suppliers' }, // tab=suppliers|partners
+  loadFailed: [],     // human-readable names of sources that failed to load (see safeFetch)
 };
 
 /* ── Main render ─────────────────────────────── */
@@ -23,23 +24,39 @@ async function renderPalletLedger() {
   c.style.padding = ''; c.style.overflow = '';
   c.innerHTML = '<div style="text-align:center;padding:60px;color:#94A3B8">Loading Pallet Ledger...</div>';
 
+  // safeFetch, not `.catch(() => [])`: this is a financial reconciliation with
+  // suppliers and partners, so a silently-empty ledger reads as "nothing owed"
+  // and a silently-empty order list reads as "no orders take pallets". Both are
+  // wrong answers presented as fact. The pallet balance on the invoicing screen
+  // had exactly this bug last week (fixed in PR #29), from a different cause.
+  // See core/utils.js safeFetch().
   const [supRecs, partRecs, partners, locations, clients, intlOrders, natOrders] = await Promise.all([
-    atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, {
+    safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, {
       fields: ['Date','Direction','Pallets','Pallet Type','Order Stop','Loading Supplier',
                'AI Extracted','Verified','Notes'],
       sort: [{ field: 'Date', direction: 'desc' }],
-    }).catch(() => []),
-    atGetAll(TABLES.PALLET_LEDGER_PARTNERS, {
+    }), 'pallet ledger: suppliers'),
+    safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_PARTNERS, {
       fields: ['Date','Direction','Pallets','Pallet Type','Order Stop','Partner',
                'AI Extracted','Verified','Notes'],
       sort: [{ field: 'Date', direction: 'desc' }],
-    }).catch(() => []),
+    }), 'pallet ledger: partners'),
     preloadReferenceData().then(() => getRefPartners()),
     preloadReferenceData().then(() => getRefLocations()),
     preloadReferenceData().then(() => getRefClients()),
-    atGetAll(TABLES.ORDERS, { fields: ['Order Number','Client','Loading DateTime','Pallet Exchange','Veroia Switch','Direction'] }, true).catch(() => []),
-    atGetAll(TABLES.NAT_ORDERS, { fields: ['Name','Client','Loading DateTime','Pallet Exchange'] }, true).catch(() => []),
+    safeFetch(() => atGetAll(TABLES.ORDERS, { fields: ['Order Number','Client','Loading DateTime','Pallet Exchange','Veroia Switch','Direction'] }, true), 'pallet ledger: ORDERS'),
+    safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Name','Client','Loading DateTime','Pallet Exchange'] }, true), 'pallet ledger: NAT_ORDERS'),
   ]);
+
+  // A failed ledger fetch must not render as an empty (i.e. balanced) ledger,
+  // and a failed order fetch must not render as "no orders accept pallets",
+  // which would look like a data-entry dead end with no explanation.
+  PL.loadFailed = [
+    didFail(supRecs)   && 'Pallet Ledger (Suppliers)',
+    didFail(partRecs)  && 'Pallet Ledger (Partners)',
+    didFail(intlOrders) && 'Orders',
+    didFail(natOrders)  && 'National Orders',
+  ].filter(Boolean);
 
   PL.supplierRecs = supRecs;
   PL.partnerRecs  = partRecs;
@@ -147,7 +164,20 @@ function _plRender() {
   const filtered = _plFiltered();
   const tab = PL.filters.tab;
 
+  // Empty on a healthy load, so nothing below changes in the normal case.
+  // When a source failed, say so ABOVE the balance cards: a balance of "0 pal"
+  // computed from a failed fetch is indistinguishable from a settled account,
+  // and this page is a financial reconciliation.
+  const plFailBanner = (PL.loadFailed || []).length ? `
+  <div style="background:#FEF3C7;border:1px solid #F59E0B;border-left:4px solid #D97706;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
+    <b>⚠ This ledger is incomplete.</b>
+    Could not load: <b>${PL.loadFailed.map(escapeHtml).join(', ')}</b>.
+    Balances and the order list below are <b>not reliable</b> until this loads.
+    Reload to retry; the failure has been reported.
+  </div>` : '';
+
   c.innerHTML = `
+  ${plFailBanner}
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <div>
       <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Pallet Ledger</h2>

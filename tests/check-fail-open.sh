@@ -27,11 +27,17 @@
 #   decision. So this ratchets: the count may fall, never rise. Lower BASELINE
 #   as sites are converted.
 #
-#   Progress: 32 at introduction; 20 after modules/metrics_audit.js (13 sites)
-#   was converted, that page being the worst offender AND the one where silent
-#   failure hurts most, since its stated purpose is verifying other pages'
-#   numbers. Remaining clusters worth taking next: modules/ceo_dashboard.js (3),
-#   modules/pallet_ledger.js (2), core/order-sync.js (1 of its 6 is a fetch).
+#   Progress: 32 at introduction; 20 after modules/metrics_audit.js (13 sites),
+#   the worst offender AND the page where silent failure hurts most since its
+#   stated purpose is verifying other pages' numbers; then 17 after
+#   modules/pallet_ledger.js (financial reconciliation, a silent empty reads as
+#   a settled account) and the orders_natl.js duplicate guard (same defect class
+#   as PR #28's international guard, which sat silently disabled for a month).
+#
+#   Remaining, roughly in descending value: the four "Pallets" fetches inside
+#   order write paths (orders_intl.js x2, orders_natl.js, core/order-sync.js),
+#   which feed computed pallet totals; modules/ceo_dashboard.js (3);
+#   modules/invoicing.js (2); then the assorted single sites.
 #
 # WHY NOT ESLINT
 #   ESLint is not a dependency here and .eslintrc.json is legacy-format (v10
@@ -47,8 +53,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Ratchet. Lower this as sites are converted to safeFetch; never raise it.
-# 2026-08-02: 32 measured, then 20 after metrics_audit.js (13 sites) converted.
-BASELINE=20
+# 2026-08-02: 32 measured -> 20 (metrics_audit.js) -> 17 (pallet_ledger.js,
+# orders_natl.js duplicate guard).
+BASELINE=17
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v53-metrics-audit-safefetch';
+const SW_VERSION = 'tms-sw-v54-safefetch-ledger-natl';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
