@@ -22,14 +22,16 @@
 #             if (didFail(rows)) { showUnavailable(); return; }
 #
 # WHY A BASELINE INSTEAD OF ZERO
-#   32 pre-existing data-fetch sites are grandfathered. Converting them all in
-#   one PR would be a huge untestable diff across every module; each wants its
-#   own "what should the UI say instead" decision. So this ratchets: the count
-#   may fall, never rise. Lower BASELINE as sites are converted.
+#   Converting every site in one PR would be a huge untestable diff across every
+#   module, and each site wants its own "what should the UI say instead"
+#   decision. So this ratchets: the count may fall, never rise. Lower BASELINE
+#   as sites are converted.
 #
-#   The worst offender is modules/metrics_audit.js, where 12 consecutive
-#   fetches each fail open, so a single unreachable table quietly shifts every
-#   figure on the metrics page. Good first conversion target.
+#   Progress: 32 at introduction; 20 after modules/metrics_audit.js (13 sites)
+#   was converted, that page being the worst offender AND the one where silent
+#   failure hurts most, since its stated purpose is verifying other pages'
+#   numbers. Remaining clusters worth taking next: modules/ceo_dashboard.js (3),
+#   modules/pallet_ledger.js (2), core/order-sync.js (1 of its 6 is a fetch).
 #
 # WHY NOT ESLINT
 #   ESLint is not a dependency here and .eslintrc.json is legacy-format (v10
@@ -45,8 +47,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # Ratchet. Lower this as sites are converted to safeFetch; never raise it.
-# Measured on 2026-08-02 against core/ + modules/.
-BASELINE=32
+# 2026-08-02: 32 measured, then 20 after metrics_audit.js (13 sites) converted.
+BASELINE=20
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:
