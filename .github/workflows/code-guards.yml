@@ -1,9 +1,16 @@
 # Static code guards, no secrets and no network.
 #
-# Deliberately SEPARATE from e2e-smoke.yml. That workflow is gated on the
-# AIRTABLE_READONLY_PAT secret and currently fails for want of it, so a check
-# added there would never actually run. These guards need nothing but a
-# checkout, so they must not share its fate.
+# This is the ONLY workflow in the repo, and that is deliberate. It was created
+# separate from the old e2e-smoke.yml because that workflow was gated on an
+# unset secret and failed on every run, so a check added there would never have
+# executed. e2e-smoke.yml was then removed entirely (2026-08-02) once it turned
+# out to be obsolete post-cutover, and the split proved its worth: these guards
+# ran green throughout.
+#
+# Keep it dependency-free. The value here is that it CANNOT be blocked by a
+# missing secret, an expired token, or a backend being down: a checkout is all
+# it needs. Anything requiring credentials belongs in its own workflow, so its
+# failures never mask these.
 #
 # Runtime is a couple of seconds; there is no reason for it not to run on
 # every PR.
