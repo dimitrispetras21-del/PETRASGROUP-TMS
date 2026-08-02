@@ -34,10 +34,16 @@
 #   a settled account) and the orders_natl.js duplicate guard (same defect class
 #   as PR #28's international guard, which sat silently disabled for a month).
 #
-#   Remaining, roughly in descending value: the four "Pallets" fetches inside
-#   order write paths (orders_intl.js x2, orders_natl.js, core/order-sync.js),
-#   which feed computed pallet totals; modules/ceo_dashboard.js (3);
-#   modules/invoicing.js (2); then the assorted single sites.
+#   Then 14 after the three cascade-cleanup ledger loads (orders_intl.js x2,
+#   core/order-sync.js). Those turned out NOT to be computed totals as the field
+#   name suggests: each is the LOAD half of a cascade DELETE, so swallowing the
+#   error orphans pallet ledger rows against deleted stops while the cleanup
+#   reports success. Worth reading the surrounding code before assuming what a
+#   site does.
+#
+#   Remaining, roughly in descending value: modules/ceo_dashboard.js (3, whole
+#   KPI panels read as zero); modules/invoicing.js (2); core/utils.js (2, the
+#   role-gated dashboard tiles); then assorted single sites.
 #
 # WHY NOT ESLINT
 #   ESLint is not a dependency here and .eslintrc.json is legacy-format (v10
@@ -54,8 +60,8 @@ cd "$(dirname "$0")/.."
 
 # Ratchet. Lower this as sites are converted to safeFetch; never raise it.
 # 2026-08-02: 32 measured -> 20 (metrics_audit.js) -> 17 (pallet_ledger.js,
-# orders_natl.js duplicate guard).
-BASELINE=17
+# orders_natl.js duplicate guard) -> 14 (the 3 cascade-cleanup ledger loads).
+BASELINE=14
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:
