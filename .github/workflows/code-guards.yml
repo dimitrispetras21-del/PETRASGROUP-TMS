@@ -1,0 +1,35 @@
+# Static code guards, no secrets and no network.
+#
+# Deliberately SEPARATE from e2e-smoke.yml. That workflow is gated on the
+# AIRTABLE_READONLY_PAT secret and currently fails for want of it, so a check
+# added there would never actually run. These guards need nothing but a
+# checkout, so they must not share its fate.
+#
+# Runtime is a couple of seconds; there is no reason for it not to run on
+# every PR.
+
+name: Code guards
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: guards-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fail-open:
+    name: No new silent-failure fallbacks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Ratchet check: the number of data fetches that swallow their error into
+      # an empty default may fall, never rise. This pattern caused four
+      # production incidents in the week of 2026-07-29; see the script header
+      # and core/utils.js safeFetch().
+      - name: Check fail-open data fetches
+        run: bash tests/check-fail-open.sh
