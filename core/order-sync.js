@@ -195,9 +195,25 @@ const _orderSync = (function() {
     const stopIds = stops.map(s => s.id);
     const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
 
-    // Cleanup from both ledger tables
+    // Cleanup from both ledger tables.
+    // safeFetch, not `.catch(() => [])`: this is the LOAD half of a cascade
+    // DELETE, so a swallowed error means "found nothing to clean up" and the
+    // pallet ledger rows for this order survive as orphans pointing at stops
+    // that are gone. Silent orphaning of financial records is the same
+    // consequence class as F1 (.ai-notes/2026-07-03-sync-chain-edge-cases.md),
+    // and it is invisible precisely because the cleanup reports success.
     for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-      const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(() => []);
+      const pls = await safeFetch(
+        () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
+        `order-sync: pallet ledger cleanup (${tbl})`
+      );
+      // Report and skip rather than pretend the table was clean. The caller
+      // continues with the rest of the cascade; only this table is left alone,
+      // and the failure is now visible in /app-errors instead of nowhere.
+      if (didFail(pls)) {
+        reportError('Ο καθαρισμός του Pallet Ledger απέτυχε. Ελέγξτε για ορφανές εγγραφές.');
+        continue;
+      }
       for (const pl of pls) {
         try { await atDelete(tbl, pl.id); }
         catch(e) { console.warn('[order-sync] PL delete:', e); }

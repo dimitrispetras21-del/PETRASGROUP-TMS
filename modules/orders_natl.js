@@ -572,10 +572,36 @@ async function submitNatlOrder(recId) {
       }
 
       // ── Soft duplicate check: same client + same loading date ──
+      // safeFetch, not `.catch(() => [])`: this is a DUPLICATE GUARD, so a
+      // swallowed error makes it answer "no duplicates" to every check while
+      // looking like it ran. That is exactly the defect fixed in PR #28 for the
+      // international guard (`findDuplicateOrders`), which sat silently disabled
+      // from the C2 cutover until 2026-07-29. Same shape, different module.
+      //
+      // Verified live 2026-08-02: this filter returns HTTP 200 against the
+      // facade and FIND+ARRAYJOIN matches linked record ids correctly on the
+      // new backend. (Learning #7's "FIND+ARRAYJOIN does not work" described
+      // AIRTABLE, which the facade replaced; it does not apply post-cutover.)
+      // So the guard works today, and the fail-open is latent risk, not a live
+      // defect. NAT_ORDERS holds 0 records, so it has never been exercised.
       if (clientId && fields['Loading DateTime']) {
         const dupFilter = `AND(FIND("${clientId}",ARRAYJOIN({Client},","))>0,IS_SAME({Loading DateTime},'${fields['Loading DateTime']}','day'))`;
-        const dups = await atGetAll(TABLES.NAT_ORDERS, { filterByFormula: dupFilter, fields:['Name'], maxRecords:1 }, false).catch(()=>[]);
-        if (dups.length) {
+        const dups = await safeFetch(
+          () => atGetAll(TABLES.NAT_ORDERS, { filterByFormula: dupFilter, fields:['Name'], maxRecords:1 }, false),
+          'national order: duplicate guard'
+        );
+        // A guard that could not run must not silently pass. Tell the user the
+        // check did not happen and let them decide, rather than implying a
+        // clean result. Deliberately does NOT block the save: this guard is
+        // "soft" by design (it only warns on a real hit), and hard-failing a
+        // save because a check errored would be a worse trade for a dispatcher
+        // mid-entry.
+        if (didFail(dups)) {
+          if (!confirm('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;')) {
+            if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+            throw new Error('v');
+          }
+        } else if (dups.length) {
           if (!confirm('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;')) {
             throw new Error('v');
           }

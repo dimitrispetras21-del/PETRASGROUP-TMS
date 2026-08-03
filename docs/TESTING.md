@@ -1,4 +1,4 @@
-# Testing — Canonical Flows
+# Testing, Canonical Flows
 
 Critical user journeys that should pass after any meaningful change.
 The audit team can use these as a baseline to validate each module
@@ -15,7 +15,7 @@ These are the most critical because they exercise the entire sync chain.
 Run each after any change to: `orders_intl.js`, `core/order-sync.js`,
 `core/api.js`, `modules/weekly_natl.js`, `modules/daily_ramp.js`.
 
-### Scenario 1 — Export VS (single supplier, no groupage)
+### Scenario 1, Export VS (single supplier, no groupage)
 
 **Setup**: Create a new International order:
 - Direction: Export
@@ -34,7 +34,7 @@ Run each after any change to: `orders_intl.js`, `core/order-sync.js`,
 - ✅ Daily Ramp Board (date 2026-05-13): inbound entry "ASPROPYRGOS → VERMION FRESH"
 - ✅ Weekly National (W19): row appears in **ΑΝΟΔΟΣ column**
 
-### Scenario 2 — Import VS
+### Scenario 2, Import VS
 
 **Setup**: International order:
 - Direction: Import
@@ -51,7 +51,7 @@ Run each after any change to: `orders_intl.js`, `core/order-sync.js`,
 - ✅ Daily Ramp (2026-05-13): outbound entry "VERMION FRESH → PATRA"
 - ✅ Weekly National: row in **ΚΑΘΟΔΟΣ column**
 
-### Scenario 3 — VS turned OFF (cleanup)
+### Scenario 3, VS turned OFF (cleanup)
 
 **Setup**: Take the order from Scenario 1. Open Edit. Turn Veroia Switch OFF.
 
@@ -61,7 +61,7 @@ Run each after any change to: `orders_intl.js`, `core/order-sync.js`,
 - ✅ Weekly National row DISAPPEARS
 - ✅ ORDER itself stays (just no longer triggers VS sync)
 
-### Scenario 4 — National Groupage (multi-supplier consolidation)
+### Scenario 4, National Groupage (multi-supplier consolidation)
 
 **Setup**: Create a National order:
 - Type: Groupage
@@ -76,7 +76,7 @@ Run each after any change to: `orders_intl.js`, `core/order-sync.js`,
 - ✅ Drag a line into "Νέο Φορτηγό" → CONS_LOAD created, GL Status='Assigned'
 - ✅ Daily Ramp (2026-05-12): inbound for that supplier with Ramp Category='VS+G'
 
-### Scenario 5 — Delete with full cascade
+### Scenario 5, Delete with full cascade
 
 **Setup**: Take the order from Scenario 4. From the order detail panel,
 click 🗑 (red trash icon).
@@ -97,7 +97,7 @@ click 🗑 (red trash icon).
 - [ ] Create order via "+ New Order" with all required fields
 - [ ] Edit order: change Status, save, verify timeline updated
 - [ ] Cancel order (Status → Cancelled, records preserved)
-- [ ] Delete order (cascade fires — verify all linked records gone)
+- [ ] Delete order (cascade fires, verify all linked records gone)
 - [ ] Search by client name, by reference, by status
 - [ ] Filter by direction, status, week
 - [ ] Export to CSV
@@ -110,7 +110,7 @@ click 🗑 (red trash icon).
 - [ ] AI extracts: client, supplier list, locations, pallets
 - [ ] Preview shows: ✓ checkmarks for matched fields
 - [ ] **If duplicate Reference exists**: warning banner with link to existing
-- [ ] Click "Open Form →" — form pre-filled with all stops, dates, pallets
+- [ ] Click "Open Form →", form pre-filled with all stops, dates, pallets
 - [ ] Submit → ORDER + ORDER_STOPS created
 - [ ] Re-scan same PDF: duplicate warning fires; on confirm, second order created
 
@@ -140,7 +140,7 @@ click 🗑 (red trash icon).
 ### Daily Ops Plan
 
 - [ ] Today / Tomorrow toggle works
-- [ ] Filters: search text, direction, status — apply live
+- [ ] Filters: search text, direction, status, apply live
 - [ ] Header subtitle shows: "X orders" + "Y overdue" inline
 - [ ] Overdue banner expands on click
 - [ ] Mark order as Done → ORDER status updates
@@ -189,7 +189,7 @@ click 🗑 (red trash icon).
 | Pallet count = 0 | division logic in pallet ledger |
 | Date in different formats (DD/MM vs YYYY-MM-DD) | scan extraction, day-comparison filters |
 | Single-supplier "groupage" (1 pickup) | should NOT create groupage line (Direct path) |
-| User's clock is 1 day off | Week Number formula uses server time; UI uses local — investigate |
+| User's clock is 1 day off | Week Number formula uses server time; UI uses local - investigate |
 | Empty Reference | duplicate detection should skip (no false positives) |
 | Reference with special chars (e.g. `/`, `"`) | duplicate query escapes these |
 
@@ -198,16 +198,38 @@ click 🗑 (red trash icon).
 ## 🧪 Existing automated tests
 
 ### Unit (`tests/`)
-- `test-business.js` — business rule unit tests
-- `test-utils.js` — utility function tests
-- `test-vs-sync.js` — VS sync chain tests
+- `test-business.js`, business rule unit tests
+- `test-utils.js`, utility function tests
+- `test-vs-sync.js`, VS sync chain tests
 - Open `tests/test-runner.html` in a browser to run
 
 ### E2E (`tests/e2e/`)
-- `smoke.spec.js` — page-by-page smoke (no [object Object], no STOP:rec leaks)
-- `vs-scenarios.spec.js` — read-only VS chain verification
-- Run: `npm install && npm run e2e:install && npm run e2e`
-- Requires Node — not currently in CI
+
+**Current, post-C2 cutover.** These run against the live system and log in
+through the real form, so they exercise the Worker + Postgres path the app
+actually uses:
+- `post-c2-walk.spec.js`, clicks every sidebar item; fails on ANY 422 and on
+  any direct-Airtable call. Read-only.
+- `vs-scenarios-live.spec.js`, the five Veroia order-flow scenarios end to end.
+  Self-cleaning. Needs `PW_TMS_USER` / `PW_TMS_PASS` / `PW_OWNER_USER` /
+  `PW_OWNER_PASS` (passwords are in the ops repo `.env`).
+
+**Legacy, pre-cutover.** Kept because they still run locally, but they assume
+the app talks straight to Airtable and fake auth via a `tms_user` localStorage
+entry. Post-cutover the Worker requires a JWT, so their backend calls 401:
+- `smoke.spec.js`, page-by-page smoke (no [object Object], no STOP:rec leaks)
+- `vs-scenarios.spec.js`, read-only VS chain verification
+
+Run: `npm install && npm run e2e:install && npm run e2e`
+
+**CI:** `.github/workflows/code-guards.yml` runs the static guards (no secrets,
+no network). The E2E suites are **not** in CI. The old `e2e-smoke.yml` was
+removed on 2026-08-02: it patched a read-only Airtable PAT into `AT_TOKEN`, a
+variable the app stopped reading at the cutover (`USE_PROXY=true`), and the
+suite it ran cannot authenticate against the Worker. It had never passed a
+single run. Putting the live suites in CI is possible but needs the Worker's
+CORS allowlist to accept the CI origin, today it accepts the production origin
+only, which is why the specs above target it directly.
 
 ---
 

@@ -376,6 +376,108 @@ function _postAppError(entry) {
   } catch(_) { /* reporting must never cascade */ }
 }
 
+// ── Fail-open guard: safeFetch ──────────────────────────────────────────────
+// Added 2026-08-02 after FOUR production incidents in one week shared a single
+// shape: a data fetch rejected, `.catch(() => [])` swallowed it, and the empty
+// default rendered as a fact. The user saw a confident wrong answer instead of
+// an error, and nothing reached /app-errors, so the failure was invisible from
+// both ends.
+//
+// The four (all fixed, all found by reading code rather than by a report):
+//   - the duplicate-order guard answered "no duplicates" to every check
+//   - pallet balances displayed "0" for every client
+//   - national invoicing discarded invoice numbers while reporting success
+//   - the daily backup exited before reaching its credential
+// See SESSION.md 2026-07-29 and .reference/audit__code-review-session1.md.
+//
+// What this fixes, and what it deliberately does NOT: the empty default is
+// often the RIGHT rendering choice (a dashboard tile with no data should not
+// blow up the page). The defect is not the fallback, it is that the fallback is
+// indistinguishable from a genuine empty result. So safeFetch keeps failing
+// soft, and adds the two things the bare `.catch` threw away:
+//   1. the failure is reported (logError → /app-errors → Sentry), so it is
+//      visible to whoever is on call instead of dying in the browser;
+//   2. the returned empty is TAGGED via a non-enumerable `__failed` flag, so a
+//      caller that cares can tell "no rows" from "could not load" and render
+//      "could not load" instead of "0".
+//
+// The flag is non-enumerable on purpose: `JSON.stringify`, `Object.keys`,
+// spread and `for...in` never see it, so passing the array on to existing
+// render code is byte-for-byte identical to today's behaviour. Nothing breaks
+// by adopting it; call sites opt in to the extra signal one at a time.
+//
+// NOT for: fire-and-forget writes, `res.json().catch(() => ({}))` on an error
+// body, or Service Worker cache fallbacks. Those swallow deliberately and have
+// nothing to report. This is for READS whose empty result reaches the screen.
+
+/**
+ * Mark a fallback value as "this is a failure, not a real empty result".
+ * Non-enumerable so the value stays indistinguishable to serialisation,
+ * spread and key enumeration, and distinguishable only to code that asks.
+ * @param {*} value - The fallback (array, object, ...)
+ * @param {Error|*} error - The underlying failure, for callers that want it
+ * @returns {*} The same value, tagged
+ */
+function _markFailed(value, error) {
+  try {
+    Object.defineProperty(value, '__failed', {
+      value: true, enumerable: false, writable: false, configurable: true,
+    });
+    Object.defineProperty(value, '__error', {
+      value: error, enumerable: false, writable: false, configurable: true,
+    });
+  } catch (_) { /* frozen or primitive: tagging is best-effort, never fatal */ }
+  return value;
+}
+
+/**
+ * Did this value come back from a failed fetch rather than a genuine empty?
+ *
+ * Use at any call site that renders a count, a total or a balance, so an
+ * unreachable backend reads as "could not load" instead of a confident zero:
+ *
+ *   const rows = await safeFetch(() => atGetAll(TABLES.X, {}), 'pallet balance');
+ *   if (didFail(rows)) { showUnavailable(); return; }
+ *   render(rows.length);
+ *
+ * @param {*} value - A value previously returned by safeFetch
+ * @returns {boolean} true if the fetch failed and this is a fallback
+ */
+function didFail(value) {
+  return !!(value && value.__failed === true);
+}
+
+/**
+ * Run a data fetch that must not break the page, without hiding its failure.
+ *
+ * Drop-in replacement for the `.catch(() => [])` pattern:
+ *   BEFORE: const rows = await atGetAll(TABLES.X, opts).catch(() => []);
+ *   AFTER:  const rows = await safeFetch(() => atGetAll(TABLES.X, opts), 'X list');
+ *
+ * @param {() => Promise<*>} fetchFn - Thunk performing the fetch (not a bare promise, so nothing is started before we can catch it)
+ * @param {string} context - Short label naming the call site; becomes the /app-errors context, so make it greppable ('pallet balance', not 'fetch')
+ * @param {*} [fallback=[]] - Value to return on failure; tagged via _markFailed
+ * @returns {Promise<*>} The fetched value, or the tagged fallback
+ */
+async function safeFetch(fetchFn, context, fallback = []) {
+  try {
+    return await fetchFn();
+  } catch (error) {
+    // logError is the single funnel to localStorage + Sentry + /app-errors.
+    // Guarded: utils.js load order means a very early caller could beat it.
+    try {
+      if (typeof logError === 'function') logError(error, `safeFetch: ${context}`);
+      else console.error(`[TMS] safeFetch(${context}) failed:`, error);
+    } catch (_) { /* reporting must never cascade — see _postAppError */ }
+    return _markFailed(fallback, error);
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.safeFetch = safeFetch;
+  window.didFail = didFail;
+}
+
 // ── Sentry fallback loader ──────────────────────────────────────────────────
 // FIXED 2026-07-27. This used to read `window.SENTRY_DSN`, a name that is set
 // NOWHERE in the codebase, while the real config value is `TMS_SENTRY_DSN`

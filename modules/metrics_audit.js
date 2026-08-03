@@ -11,6 +11,35 @@ const AUDIT = {
   results: null,
   loadedAt: null,
   fetching: false,
+  // Source keys whose fetch failed on the last load (see safeFetch/didFail).
+  // Drives the "figures below may be wrong" banner in _auditDraw.
+  failedSources: [],
+};
+
+// Which source table each metric category reads, so a failed fetch can name the
+// figures it actually affects instead of vaguely warning about the whole page.
+// Derived by reading _runAllMetrics; keep in sync when a category gains a source.
+// NOTE(audit): natLoads, drivers, partners, locations and clients are fetched
+// but never read by any metric. Left alone deliberately (removing fetches is a
+// behaviour change, not part of the fail-open work), but they are dead weight
+// on every page load and worth dropping in a follow-up.
+const AUDIT_CATEGORY_SOURCES = {
+  op:    ['orders', 'ramp'],
+  perf:  ['orders'],
+  fin:   ['orders', 'natOrders'],
+  fleet: ['trucks', 'trailers', 'maintReq'],
+  hr:    ['orders'],
+  inv:   ['ramp', 'plSup', 'plPart'],
+  biz:   ['orders', 'natOrders'],
+};
+
+// Human-facing names for the banner; the internal keys are not obvious to a user.
+const AUDIT_SOURCE_LABELS = {
+  orders: 'Orders', natOrders: 'National Orders', natLoads: 'National Loads',
+  trucks: 'Trucks', trailers: 'Trailers', drivers: 'Drivers', partners: 'Partners',
+  locations: 'Locations', clients: 'Clients', ramp: 'Ramp Plan',
+  maintReq: 'Maintenance Requests', plSup: 'Pallet Ledger (Suppliers)',
+  plPart: 'Pallet Ledger (Partners)',
 };
 
 async function renderMetricsAudit() {
@@ -23,30 +52,46 @@ async function renderMetricsAudit() {
   AUDIT.fetching = true;
 
   try {
-    // Fetch all source data in parallel (uses cache where available)
+    // Fetch all source data in parallel (uses cache where available).
+    //
+    // Every fetch goes through safeFetch rather than `.catch(() => [])`. This
+    // page is the one place that matters most: its whole purpose is to VERIFY
+    // accuracy by comparing figures against other pages, so a source table
+    // that silently returns [] produces a confidently wrong number on the very
+    // screen you would use to catch a wrong number. With 13 sources, one
+    // unreachable table used to shift an unknown subset of the metrics below
+    // with no indication which. safeFetch reports the failure to /app-errors
+    // and tags the empty so _runAllMetrics can mark what is unreliable.
+    // See core/utils.js safeFetch() and SESSION.md learning #105.
     const [orders, natOrders, natLoads, trucks, trailers, drivers, partners,
            locations, clients, ramp, maintReq, plSup, plPart] = await Promise.all([
-      atGetAll(TABLES.ORDERS, { fields: [
+      safeFetch(() => atGetAll(TABLES.ORDERS, { fields: [
         'Order Number','Direction','Status','Invoiced','Price','Loading DateTime','Delivery DateTime',
         'Truck','Partner','Trailer','Driver','Total Pallets','Week Number',
         'Delivery Performance','Pallet Exchange','Pallet Sheet 1 Uploaded','Pallet Sheet 2 Uploaded',
         'Veroia Switch','Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'
-      ]}, true).catch(() => []),
-      atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true).catch(() => []),
-      atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true).catch(() => []),
-      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true).catch(() => []),
-      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true).catch(() => []),
-      atGetAll(TABLES.DRIVERS, { fields: ['Full Name','Active'] }, true).catch(() => []),
-      atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] }, true).catch(() => []),
-      atGetAll(TABLES.LOCATIONS, { fields: ['Name','City'] }, true).catch(() => []),
-      atGetAll(TABLES.CLIENTS, { fields: ['Company Name'] }, true).catch(() => []),
-      atGetAll(TABLES.RAMP, { fields: ['Type','Status','Pallets','Plan Date','Stock Status'] }, false).catch(() => []),
-      atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
-      atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, { fields: ['Direction','Pallets','Loading Supplier'] }, false).catch(() => []),
-      atGetAll(TABLES.PALLET_LEDGER_PARTNERS, { fields: ['Direction','Pallets','Partner'] }, false).catch(() => []),
+      ]}, true), 'metrics audit: ORDERS'),
+      safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true), 'metrics audit: NAT_ORDERS'),
+      safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true), 'metrics audit: NAT_LOADS'),
+      safeFetch(() => atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true), 'metrics audit: TRUCKS'),
+      safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true), 'metrics audit: TRAILERS'),
+      safeFetch(() => atGetAll(TABLES.DRIVERS, { fields: ['Full Name','Active'] }, true), 'metrics audit: DRIVERS'),
+      safeFetch(() => atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] }, true), 'metrics audit: PARTNERS'),
+      safeFetch(() => atGetAll(TABLES.LOCATIONS, { fields: ['Name','City'] }, true), 'metrics audit: LOCATIONS'),
+      safeFetch(() => atGetAll(TABLES.CLIENTS, { fields: ['Company Name'] }, true), 'metrics audit: CLIENTS'),
+      safeFetch(() => atGetAll(TABLES.RAMP, { fields: ['Type','Status','Pallets','Plan Date','Stock Status'] }, false), 'metrics audit: RAMP'),
+      safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'metrics audit: MAINT_REQ'),
+      safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, { fields: ['Direction','Pallets','Loading Supplier'] }, false), 'metrics audit: PALLET_LEDGER_SUPPLIERS'),
+      safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_PARTNERS, { fields: ['Direction','Pallets','Partner'] }, false), 'metrics audit: PALLET_LEDGER_PARTNERS'),
     ]);
 
-    AUDIT.results = _runAllMetrics({ orders, natOrders, natLoads, trucks, trailers, drivers, partners, locations, clients, ramp, maintReq, plSup, plPart });
+    const sources = { orders, natOrders, natLoads, trucks, trailers, drivers, partners, locations, clients, ramp, maintReq, plSup, plPart };
+    // Which sources failed to load, by the name _runAllMetrics uses for them.
+    // Empty on a healthy load, so the banner and the per-row warnings below
+    // cost nothing in the normal case.
+    AUDIT.failedSources = Object.keys(sources).filter(k => typeof didFail === 'function' && didFail(sources[k]));
+
+    AUDIT.results = _runAllMetrics(sources);
     AUDIT.loadedAt = new Date();
     _auditDraw();
   } catch(e) {
@@ -245,12 +290,37 @@ function _auditDraw() {
     biz: { name: '🏢 BUSINESS', color: '#1E40AF' },
   };
 
+  // Sources that failed to load on this run. On a healthy load this is empty
+  // and everything below behaves exactly as before.
+  const failed = AUDIT.failedSources || [];
+  const failedLabels = failed.map(k => AUDIT_SOURCE_LABELS[k] || k);
+
+  // Page-level banner. The point is to stop a reader trusting a number that was
+  // computed from nothing: before this, an unreachable table just produced
+  // zeroes that looked like real zeroes on the page meant to verify accuracy.
+  const failBanner = failed.length ? `
+    <div style="background:#FEF3C7;border:1px solid #F59E0B;border-left:4px solid #D97706;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
+      <b>⚠ Some figures below may be wrong.</b>
+      ${failedLabels.length} source ${failedLabels.length === 1 ? 'table' : 'tables'} could not be loaded:
+      <b>${failedLabels.map(escapeHtml).join(', ')}</b>.
+      Metrics computed from ${failedLabels.length === 1 ? 'it' : 'them'} are shown as
+      <b>unavailable</b> rather than zero. Reload to retry; the failure has been reported.
+    </div>` : '';
+
   const catHTML = cat => {
     const label = catLabels[cat] || { name: cat, color: '#6B7280' };
     const items = byCategory[cat] || [];
+    // Does this category read any source that failed? If so its numbers are
+    // not trustworthy, and saying so beats printing a confident zero.
+    const catFailed = (AUDIT_CATEGORY_SOURCES[cat] || []).filter(s => failed.includes(s));
+    const catWarn = catFailed.length ? `
+      <div style="font-size:11px;color:#B45309;margin:-6px 0 10px;font-weight:600">
+        ⚠ Unreliable: ${catFailed.map(s => escapeHtml(AUDIT_SOURCE_LABELS[s] || s)).join(', ')} could not be loaded
+      </div>` : '';
     return `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
       <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:${label.color};margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid ${label.color}33">${label.name}</div>
+      ${catWarn}
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
           <th style="text-align:left;padding:6px 8px;width:40%">Metric</th>
@@ -260,12 +330,21 @@ function _auditDraw() {
         </tr></thead>
         <tbody>
           ${items.map(r => {
-            const hasWarn = (r.diag||[]).length > 0 || String(r.value).includes('ERR');
+            const hasWarn = (r.diag||[]).length > 0 || String(r.value).includes('ERR') || catFailed.length > 0;
+            // A metric whose source did not load is displayed as "—" with an
+            // explanation, never as the 0 the computation produced from an
+            // empty array. That substitution is the whole point of this page's
+            // conversion: on the accuracy-checking screen, a wrong number is
+            // worse than a missing one.
+            const value = catFailed.length ? '<span style="color:#B45309" title="Source data could not be loaded">—</span>' : r.value;
+            const note = catFailed.length
+              ? `<span style="color:#B45309">Unavailable: source data could not be loaded</span>`
+              : `${r.note || ''}${r.diag && r.diag.length ? '<br><span style="color:#D97706">⚠ '+r.diag.join(' · ')+'</span>' : ''}`;
             return `<tr style="border-bottom:1px solid var(--border);${hasWarn?'background:#FEF3C7':''}">
               <td style="padding:8px;font-weight:600">${r.label}</td>
               <td style="padding:8px;color:var(--text-dim);font-family:monospace;font-size:11px">${r.key}</td>
-              <td style="padding:8px;text-align:right;font-weight:700;font-family:'Syne',sans-serif;font-size:15px">${r.value}</td>
-              <td style="padding:8px;color:var(--text-dim);font-size:11px">${r.note || ''}${r.diag && r.diag.length ? '<br><span style="color:#D97706">⚠ '+r.diag.join(' · ')+'</span>' : ''}</td>
+              <td style="padding:8px;text-align:right;font-weight:700;font-family:'Syne',sans-serif;font-size:15px">${value}</td>
+              <td style="padding:8px;color:var(--text-dim);font-size:11px">${note}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -287,6 +366,8 @@ function _auditDraw() {
     </div>
   </div>
 
+  ${failBanner}
+
   <div style="background:#DBEAFE;border:1px solid #3B82F6;color:#1E40AF;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:13px">
     <b>💡 Πώς να το χρησιμοποιήσεις:</b> Άνοιξε αυτή τη σελίδα σε 1 tab και το Dashboard/Invoicing/Ops σε άλλο tab.
     Σύγκρινε κάθε νούμερο. Αν κάπου διαφέρει, πες μου ποιο είναι το σωστό.
@@ -305,6 +386,14 @@ function _auditDraw() {
 function _auditExportJSON() {
   const out = {
     loadedAt: AUDIT.loadedAt?.toISOString(),
+    // Carried into the export deliberately: this JSON gets pasted into
+    // messages as evidence, and a figure computed from a table that failed to
+    // load must not travel as a bare number with no indication it is unsound.
+    // Omitted entirely on a healthy load so normal exports are unchanged.
+    ...((AUDIT.failedSources || []).length ? {
+      warning: 'INCOMPLETE: some source tables could not be loaded; metrics derived from them are not reliable.',
+      failedSources: AUDIT.failedSources,
+    } : {}),
     metrics: AUDIT.results,
   };
   navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
