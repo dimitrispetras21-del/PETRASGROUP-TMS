@@ -60,10 +60,20 @@ async function fhBatchResolveClients(ids) {
     const batch = unresolvedIds.slice(i, i + 10);
     const f = `OR(${batch.map(id => `RECORD_ID()="${id}"`).join(',')})`;
     batches.push(
-      atGetAll(TABLES.CLIENTS, { filterByFormula: f, fields: ['Company Name'] }, false).catch(() => [])
+      // safeFetch: a failed batch leaves those ids unresolved, and the caller
+      // falls back to displaying the raw record id ("recAbc123...") as if it
+      // were a company name. That is not a wrong number, so it stays soft, but
+      // it was previously invisible: nothing reached /app-errors, so a partly
+      // broken CLIENTS read looked like odd data rather than a fetch failure.
+      safeFetch(
+        () => atGetAll(TABLES.CLIENTS, { filterByFormula: f, fields: ['Company Name'] }, false),
+        'form-helpers: resolve client names'
+      )
     );
   }
   const results = await Promise.all(batches);
+  // didFail results are tagged empty arrays, so flat() handles them without a
+  // guard; the ids simply stay unresolved, exactly as before this change.
   results.flat().forEach(r => { _fhClientsMap[r.id] = r.fields['Company Name'] || r.id; });
 }
 

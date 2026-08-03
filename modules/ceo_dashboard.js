@@ -98,15 +98,32 @@
     try {
       const [allOrders, prevOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.all([
         atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${s}'),IS_BEFORE({Loading DateTime},'${e}'))`),
-        atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${ps}'),IS_BEFORE({Loading DateTime},'${pe}'))`).catch(() => []),
+        // The three secondary fetches use safeFetch, NOT a bare `.catch(() => [])`.
+        // Failing them soft is deliberate and stays: the four primary fetches
+        // (allOrders, activeDrivers, highRiskOrders, sparkOrders) still throw into
+        // the outer catch, which shows "Σφάλμα φόρτωσης" with a retry, and one
+        // missing comparison table must not blank the whole dashboard.
+        //
+        // What was missing is that a failure was indistinguishable from real data:
+        // prevOrders feeds every period-over-period arrow, tripCosts feeds the
+        // loss-making-trips figure, and maintHistory feeds the maintenance-cost
+        // KPI, so a swallowed error renders as a confident 0 on a management
+        // screen. Now the failure is reported and the timestamp line names which
+        // source is missing. See core/utils.js safeFetch().
+        //
+        // TRIP_COSTS is expected to fail today: the table is in the unmigrated
+        // trip/costing cluster and 404s (verified live 2026-08-03). That is
+        // exactly why naming the failed source matters, otherwise the loss-trips
+        // KPI silently reads 0 and looks like good news.
+        safeFetch(() => atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${ps}'),IS_BEFORE({Loading DateTime},'${pe}'))`), 'CEO dashboard: previous period'),
         atGet(TABLES.DRIVERS, `{Active}=1`),
-        atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Trip Start Date},'${s}'),IS_BEFORE({Trip Start Date},'${e}'))`).catch(() => []),
+        safeFetch(() => atGet(TABLES.TRIP_COSTS, `AND(IS_AFTER({Trip Start Date},'${s}'),IS_BEFORE({Trip Start Date},'${e}'))`), 'CEO dashboard: trip costs'),
         // Scope to the selected period [s,e], same as the ORDERS/TRIP_COSTS queries above.
         // This was loading the whole MAINT_HISTORY table, which both grows unbounded and
         // made _calcMaintCost sum lifetime cost while displaying it as the period's
         // maintenance KPI. Field is 'Date' (no whitespace trap). FIXME(audit): maintenance.js
         // still loads full history on purpose (needs last-service-per-vehicle), see note there.
-        atGet(TABLES.MAINT_HISTORY, `AND(IS_AFTER({Date},'${s}'),IS_BEFORE({Date},'${e}'))`).catch(() => []),
+        safeFetch(() => atGet(TABLES.MAINT_HISTORY, `AND(IS_AFTER({Date},'${s}'),IS_BEFORE({Date},'${e}'))`), 'CEO dashboard: maintenance history'),
         atGet(TABLES.ORDERS, `AND(IS_BEFORE({Delivery DateTime},'${plus48}'),{Status}!='Delivered',{Status}!='Cancelled',{Status}!='')`),
         atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime},'${sparkS}')`),
       ]);
@@ -119,7 +136,25 @@
 
       _renderAll({ allOrders, deliveredOrders, prevOrders, prevDelivered, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders });
 
-      if (updEl) updEl.textContent = 'Updated ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
+      // Name any secondary source that failed, on the timestamp line rather than
+      // as a page banner: the dashboard is still usable and its primary numbers
+      // are still correct, so this qualifies a few KPIs rather than condemning
+      // the page. Empty on a healthy load, so nothing changes in the normal case.
+      const _failed = [
+        didFail(prevOrders)   && 'σύγκριση περιόδου',
+        didFail(tripCosts)    && 'κόστος δρομολογίων',
+        didFail(maintHistory) && 'συντήρηση',
+      ].filter(Boolean);
+
+      if (updEl) {
+        updEl.textContent = 'Updated ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
+        if (_failed.length) {
+          updEl.textContent += ` · ⚠ δεν φόρτωσε: ${_failed.join(', ')}`;
+          updEl.style.color = '#B45309';
+        } else {
+          updEl.style.color = '';
+        }
+      }
     } catch (err) {
       if (typeof logError === 'function') logError(err, 'CEO Dashboard loadAll');
       const c = document.getElementById('content');
