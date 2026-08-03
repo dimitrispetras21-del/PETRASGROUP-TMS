@@ -164,3 +164,20 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
 - 2026-08-03: Full audit μετά το C2 cutover → docs/AUDIT-2026-08-03.md (4 παράλληλοι auditors). Σκορ 9/28. P0: petras-assign PAT δημόσιο+ανενεργή ανάκληση / iframe split-brain από 28/7 / κανένα Supabase backup / Sentry DSN κενό. Worker 2 source μη διαθέσιμο για επαλήθευση RBAC.
 
 - 2026-08-03: UI/UX design audit #2 → docs/design/UI_UX_AUDIT_2026-08-03.md. Live περιήγηση ως owner + μετρήσεις. 11/20 (από 9/20): IA/command palette μεγάλη βελτίωση, αλλά side-stripes 5→30, z-index 8→19, a11y αμετάβλητο, 7 Coming Soon, ανάμεικτη γλώσσα (weekly_intl 7 ελλ./37 αγγλ.). Οι 3 sub-auditors κόπηκαν από όριο δαπάνης — μετρήσεις έγιναν απευθείας.
+
+## 2026-08-03 (β) — Design/UX batch 1 (branch design/ux-batch-1)
+
+- Υλοποιήθηκαν τα 4 πρώτα items του UI_UX_AUDIT_2026-08-03: contrast token AA,
+  απόκρυψη 3 unbuilt nav items, scroll-anchoring + aria στο sidebar, ελληνικό
+  Weekly International (7→41 ελληνικά strings).
+- Αποφάσεις όπου οι οδηγίες δεν κάλυπταν:
+  1. Δουλειά σε branch + PR (όχι απευθείας main) γιατί η Valuedriven κάνει merge
+     παράλληλα — αποφυγή σύγκρουσης.
+  2. --text-dim άλλαξε ΜΟΝΟ για light surfaces· προστέθηκαν --text-dim-on-dark
+     και --text-disabled ώστε να μη χαλάσουν σκούρα πάνελ/disabled states.
+  3. Τα unbuilt items κρύβονται με flag (NAV_SHOW_UNBUILT) αντί για διαγραφή —
+     τα routes δουλεύουν ακόμα για bookmarks, το ξεκλείδωμα είναι μία λέξη.
+  4. Ελληνικά ΜΟΝΟ σε display text· οι τιμές Airtable (Assigned κ.λπ.) άθικτες
+     (ίδιος κανόνας με το maintenance form του Ιουλίου).
+  5. Επαλήθευση: node --check + harness που εκτελεί renderNav() με stubs.
+     ΔΕΝ έγινε live έλεγχος — δεν υπάρχει demo κωδικός για τοπικό login.
