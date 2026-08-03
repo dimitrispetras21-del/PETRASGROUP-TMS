@@ -158,3 +158,5 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
   (weekly intl+natl), client-side αρίθμηση τιμολογίων, δημόσιο assign URL (200
   χωρίς auth, επιβεβαιωμένο), performance page δείχνει margins σε μη-owner,
   ελληνικά ομόγλυφα στις πινακίδες ως κίνδυνος allocation.
+
+- 2026-07-11: Προστέθηκε docs/premortems/ALL_ISSUES.md — master register 78 issues από όλα τα pre-mortems, ανά χρόνο δράσης (Άμεσα/Ξεπάγωμα/Stage1/Stage2/Phase2/v3) + τα 11 κλειδωμένα.
