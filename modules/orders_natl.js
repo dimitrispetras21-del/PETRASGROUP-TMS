@@ -1069,7 +1069,19 @@ async function deleteNatlOrder(recId) {
       if (stopIds.length) {
         const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
         for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-          const pls = await atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false).catch(()=>[]);
+          // safeFetch: the LOAD half of a cascade DELETE. Swallowed, it reads as
+          // "nothing to clean up" and leaves pallet ledger rows orphaned against
+          // deleted stops, while the cleanup logs success. Same class as F1.
+          // Fourth site of this shape; the other three (orders_intl x2,
+          // order-sync) were converted in PR #26, this one sits in the national
+          // delete path and was missed because it is in a different function.
+          const pls = await safeFetch(
+            () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
+            `national order delete: pallet ledger cleanup (${tbl})`
+          );
+          // Counted into _delFail so the caller's existing partial-failure
+          // summary reports it, rather than silently omitting this table.
+          if (didFail(pls)) { _delFail++; continue; }
           for (const pl of pls) {
             try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
           }

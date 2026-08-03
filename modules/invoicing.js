@@ -890,7 +890,26 @@ async function _invFetchPalletBalance(clientId, mountId) {
   if (!clientId) return;
   try {
     const ff = `FIND("${clientId}", ARRAYJOIN({Client Account}, ","))>0`;
-    const recs = await atGetAll(TABLES.PALLET_LEDGER, { fields: ['Direction','Pallets','Date'], filterByFormula: ff }, false).catch(()=>[]);
+    // PALLET_LEDGER_SUPPLIERS, not the deprecated TABLES.PALLET_LEDGER alias.
+    // Same table id either way (config.js:69-70), so this is a no-op today, but
+    // the alias is due to be deleted and a name-based sweep would miss this call
+    // site because it never mentions SUPPLIERS.
+    //
+    // safeFetch, not `.catch(() => [])`: this is a financial balance shown to
+    // whoever is invoicing. A swallowed error made it render "0 (zero)", which
+    // reads as a settled account rather than an error. That symptom was fixed
+    // backend-side in PR #29 (the links were unmapped, so the filter 422'd), but
+    // the fail-open that TURNED the failure into a confident zero was left here.
+    const recs = await safeFetch(
+      () => atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, { fields: ['Direction','Pallets','Date'], filterByFormula: ff }, false),
+      'invoicing: client pallet balance'
+    );
+    if (didFail(recs)) {
+      const t = document.getElementById(mountId);
+      // Deliberately NOT "0": an unknown balance must not read as a settled one.
+      if (t) t.innerHTML = '<span style="color:#F59E0B;font-size:10px">δεν φόρτωσε</span>';
+      return;
+    }
     let inP = 0, outP = 0;
     recs.forEach(r => {
       const d = (r.fields['Direction']||'').toLowerCase();
