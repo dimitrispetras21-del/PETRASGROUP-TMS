@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v56-safefetch-natl-invoicing';
+const SW_VERSION = 'tms-sw-v57-safefetch-ceo';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

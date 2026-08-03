@@ -61,8 +61,9 @@ cd "$(dirname "$0")/.."
 # Ratchet. Lower this as sites are converted to safeFetch; never raise it.
 # 2026-08-02: 32 measured -> 20 (metrics_audit.js) -> 17 (pallet_ledger.js,
 # orders_natl.js duplicate guard) -> 14 (the 3 cascade-cleanup ledger loads)
-# -> 12 (the 4th cascade-cleanup site + the invoicing pallet balance).
-BASELINE=12
+# -> 12 (the 4th cascade-cleanup site + the invoicing pallet balance)
+# -> 9 (ceo_dashboard's 3 secondary sources).
+BASELINE=9
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:
