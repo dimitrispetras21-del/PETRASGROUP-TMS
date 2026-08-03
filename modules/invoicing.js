@@ -6,7 +6,7 @@
 // Naming prefix 'INV' / '_inv' prevents collision with other modules.
 'use strict';
 
-const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', dir: 'desc' } };
+const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', dir: 'desc' }, natlFailed: false };
 const _invFilters = { tab: 'ready', type: '', weekFrom: '', weekTo: '', client: '' };
 
 // ─── Helpers ─────────────────────────────────────
@@ -136,10 +136,25 @@ async function renderInvoicing() {
   try {
     await preloadReferenceData();
     const formula = `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1)`;
+    // Note the asymmetry that made this worth fixing: the international fetch
+    // throws (so a failure surfaces through the outer catch), while the national
+    // one swallowed its error and returned []. Same page, same importance, but a
+    // backend problem on NAT_ORDERS silently produced a shorter invoicing list
+    // rather than an error, and nothing distinguishes "no national orders ready
+    // to invoice" from "we could not load them". Dropping invoiceable work off
+    // an invoicing screen is a billing problem, not a display one.
     const [intlRecs, natlRecs] = await Promise.all([
       atGet(TABLES.ORDERS, formula, false),
-      atGet(TABLES.NAT_ORDERS, `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1)`, false).catch(() => []),
+      safeFetch(
+        () => atGet(TABLES.NAT_ORDERS, `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1)`, false),
+        'invoicing: national orders list'
+      ),
     ]);
+
+    // Kept soft on purpose: international orders are the bulk of this list, so
+    // blanking the page over a missing national half would be a worse trade.
+    // The banner below is what makes the shortfall visible instead of silent.
+    INV.natlFailed = didFail(natlRecs);
 
     intlRecs.forEach(r => { r._type = 'intl'; });
     natlRecs.forEach(r => { r._type = 'natl'; });
@@ -169,7 +184,7 @@ function _renderInvLayout(c) {
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Invoicing</div>
-        <div class="page-sub" id="invSub">${INV.data.length} orders</div>
+        <div class="page-sub" id="invSub">${INV.data.length} orders${INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : ''}</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="_invShowOutstandingModal()">${_i('users')} Outstanding by Client</button>
@@ -360,8 +375,16 @@ function _applyInvFilters() {
   _renderInvHead();
   _renderInvTable();
 
+  // Re-append the incomplete-list warning: this line runs on every filter change
+  // and would otherwise wipe the notice set at render time, so the shortfall
+  // would silently disappear the moment anyone touched a tab or filter.
+  // innerHTML (not textContent) because the warning carries markup; the counts
+  // interpolated here are numbers, not user input.
   const sub = document.getElementById('invSub');
-  if (sub) sub.textContent = `${list.length} of ${INV.data.length} orders`;
+  if (sub) {
+    sub.innerHTML = `${list.length} of ${INV.data.length} orders`
+      + (INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : '');
+  }
 }
 
 function _invSortVal(rec, col) {
