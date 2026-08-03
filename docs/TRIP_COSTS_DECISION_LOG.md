@@ -162,3 +162,5 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
 - 2026-07-11: Προστέθηκε docs/premortems/ALL_ISSUES.md — master register 78 issues από όλα τα pre-mortems, ανά χρόνο δράσης (Άμεσα/Ξεπάγωμα/Stage1/Stage2/Phase2/v3) + τα 11 κλειδωμένα.
 
 - 2026-08-03: Full audit μετά το C2 cutover → docs/AUDIT-2026-08-03.md (4 παράλληλοι auditors). Σκορ 9/28. P0: petras-assign PAT δημόσιο+ανενεργή ανάκληση / iframe split-brain από 28/7 / κανένα Supabase backup / Sentry DSN κενό. Worker 2 source μη διαθέσιμο για επαλήθευση RBAC.
+
+- 2026-08-03: UI/UX design audit #2 → docs/design/UI_UX_AUDIT_2026-08-03.md. Live περιήγηση ως owner + μετρήσεις. 11/20 (από 9/20): IA/command palette μεγάλη βελτίωση, αλλά side-stripes 5→30, z-index 8→19, a11y αμετάβλητο, 7 Coming Soon, ανάμεικτη γλώσσα (weekly_intl 7 ελλ./37 αγγλ.). Οι 3 sub-auditors κόπηκαν από όριο δαπάνης — μετρήσεις έγιναν απευθείας.
