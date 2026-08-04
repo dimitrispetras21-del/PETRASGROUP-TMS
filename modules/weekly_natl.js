@@ -329,14 +329,23 @@ function _wnPaint() {
 
   // Async: fill "vs last week" + "on-time streak" widgets
   if (total > 0) {
+    // safeFetch: these feed the "vs last week" and "on-time streak" widgets.
+    // The old fallbacks were {total:0,assigned:0} and {currentWeekPct:0,
+    // streakWeeks:0}, which render as a REAL comparison: "0 last week" makes
+    // this week look like a record, and a 0% on-time streak looks like a
+    // collapse in service. Both are plausible numbers, so nothing on screen
+    // hinted the fetch had failed. Staying soft is right (these are secondary
+    // widgets on a planning board), but a failure must not masquerade as data.
     Promise.all([
-      fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true).catch(()=>({total:0,assigned:0})),
-      fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(()=>({currentWeekPct:0,streakWeeks:0})),
+      safeFetch(() => fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true), 'weekly natl: previous week stats', {total:0,assigned:0}),
+      safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly natl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
     ]).then(([prev, ot]) => {
       const el1 = document.getElementById('wn-cc-vswk');
-      if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
+      // Hide the widget rather than show a fabricated comparison. An absent
+      // widget reads as "not available"; a 0 reads as a fact.
+      if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
       const el2 = document.getElementById('wn-cc-ontime');
-      if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+      if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
     }).catch(e => console.warn('CC async widgets (natl):', e));
   }
 }
