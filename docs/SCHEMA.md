@@ -1,6 +1,16 @@
-# Airtable Schema Reference
+# Schema Reference
 
-Base ID: `appElT5CQV6JQvym8`. Source of truth for table IDs is [`config.js`](../config.js)
+> ⚠️ **STALE NAMING (updated 2026-08-04): the database is SUPABASE/Postgres since
+> the C2 cutover (2026-07-28)** — project `gatejgbpyodlepkvqkgf`, accessed via
+> Worker 2 (petras-tms-backend). The "table IDs" below are logical keys the
+> Worker translates to Postgres tables (e.g. TRUCKS → `trucks`). The actual
+> Postgres columns are FEWER than the UI fields in entity.js — verified 4-8-2026:
+> `trucks`(license_plate, brand, model, active, kteo_expiry, kek_expiry,
+> insurance_expiry, insurance_partner, notes), `trailers`(license_plate, active,
+> kteo_expiry, insurance_expiry, frc_expiry, notes). Everything else lives in
+> structured `notes` lines — see docs/data-cleanup/FLEET-IMPORT-REPORT-2026-08-04.md.
+
+Base ID: `appElT5CQV6JQvym8` (logical, pre-cutover). Source of truth for table IDs is [`config.js`](../config.js)
 lines 18–53. This doc explains **what each table holds** and **how they
 link**, plus the field-naming traps that have bitten us.
 
