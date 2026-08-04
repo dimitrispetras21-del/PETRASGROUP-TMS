@@ -658,6 +658,64 @@ function _entitySortRecords(entityKey, recs) {
   });
 }
 
+/**
+ * Empty state for the entity tables, distinguishing two situations the old
+ * copy collapsed into one.
+ *
+ * It used to always say "Try adjusting filters or create a new X". On Workshops
+ * — 0 records in the database, no filter active — that sent the user off to
+ * fiddle with filters that were not the cause, and hid the real message: the
+ * table is empty, and 66 work orders have nowhere to be assigned. An empty
+ * result after filtering and an empty table are different problems with
+ * different next steps.
+ *
+ * One change, six pages (clients, partners, workshops, trucks, trailers,
+ * drivers). See docs/design/DEEP_AUDIT_2026-08-04/workshops.md WS-2.
+ *
+ * @param {string} entityKey
+ * @param {Object} cfg - ENTITY_CONFIG entry
+ * @returns {string} HTML
+ */
+function _entityEmptyState(entityKey, cfg) {
+  const st = _entityState[entityKey] || {};
+  const totalUnfiltered = (st.records || []).length;
+  const isFiltered = totalUnfiltered > 0;
+  const illustration = (entityKey === 'trucks' || entityKey === 'trailers') ? 'truck'
+    : isFiltered ? 'search' : 'inbox';
+
+  if (typeof showEmpty !== 'function') {
+    return `<div style="text-align:center;padding:40px;color:var(--text-dim)">${
+      isFiltered ? 'Καμία εγγραφή με αυτά τα φίλτρα' : 'Δεν υπάρχει καμία εγγραφή ακόμη'}</div>`;
+  }
+
+  if (isFiltered) {
+    return showEmpty({
+      illustration,
+      title: 'Καμία εγγραφή με αυτά τα φίλτρα',
+      description: `Υπάρχουν ${totalUnfiltered} συνολικά — δοκίμασε να καθαρίσεις την αναζήτηση ή τα φίλτρα.`,
+      action: { label: 'Καθαρισμός φίλτρων', onClick: `clearEntityFilters('${entityKey}')` },
+    });
+  }
+  return showEmpty({
+    illustration,
+    title: 'Δεν υπάρχει καμία εγγραφή ακόμη',
+    description: 'Ο πίνακας είναι κενός — δεν φταίνε τα φίλτρα.',
+    action: { label: `+ ${cfg.labelSingle}`, onClick: `openEntityCreate('${entityKey}')` },
+  });
+}
+
+/**
+ * Reset search + filters for an entity page. Re-renders through renderEntity so
+ * the visible controls are rebuilt from state (line 326 resets q and filters);
+ * resetting state alone would leave the inputs showing values that no longer
+ * apply. atGet is cached, so this does not necessarily hit the network.
+ * Called from the filtered empty state — see _entityEmptyState above.
+ * @param {string} entityKey
+ */
+function clearEntityFilters(entityKey) {
+  renderEntity(entityKey);
+}
+
 function buildEntityTable(entityKey, records) {
   const cfg = ENTITY_CONFIG[entityKey];
   const cols = cfg.columns;
@@ -677,11 +735,7 @@ function buildEntityTable(entityKey, records) {
     <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
       ${sortedRecs.length === 0
-        ? `<tr><td colspan="${cols.length+1}" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
-            illustration: entityKey === 'trucks' ? 'truck' : entityKey === 'trailers' ? 'truck' : 'inbox',
-            title: `No ${cfg.label.toLowerCase()} found`,
-            description: `Try adjusting filters or create a new ${cfg.labelSingle.toLowerCase()}`,
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No records found</div>'}</td></tr>`
+        ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
         : rowsToRender.map(r => buildEntityRow(entityKey, r, cols)).join('')
       }
       ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
