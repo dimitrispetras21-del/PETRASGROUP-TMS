@@ -207,7 +207,7 @@ function showError(msg) {
   // escapeHtml: msg historically carried raw e.message (Airtable field names,
   // record IDs) straight into innerHTML. Callers now pass static text, but the
   // escape stays as the safety net for any future caller that forgets.
-  return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Error</h3><p style="color:var(--text-dim);font-size:13px">${escapeHtml(msg)}</p></div>`;
+  return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Κάτι πήγε στραβά</h3><p style="color:var(--text-dim);font-size:13px">${escapeHtml(msg)}</p></div>`;
 }
 
 // A4: Empty states with subtle illustrations — legacy string-based signature
@@ -228,8 +228,8 @@ function showAccessDenied() {
     <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1"/></svg>
     </div>
-    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Access Restricted</h3>
-    <p style="color:var(--text-dim);font-size:12px">You don't have permission to view this section.</p>
+    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Δεν έχεις πρόσβαση</h3>
+    <p style="color:var(--text-dim);font-size:12px">Αυτή η ενότητα δεν είναι διαθέσιμη για τον ρόλο σου.</p>
   </div>`;
 }
 
@@ -239,7 +239,7 @@ function showComingSoon(label) {
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284C7" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
     </div>
     <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${label}</h3>
-    <p style="color:var(--text-dim);font-size:12px">This module is under development</p>
+    <p style="color:var(--text-dim);font-size:12px">Δεν έχει υλοποιηθεί ακόμη</p>
   </div>`;
 }
 
@@ -249,7 +249,10 @@ function toast(msg, type = 'success') {
   if (!el) {
     el = document.createElement('div');
     el.id = 'toast';
-    el.style.cssText = `position:fixed;bottom:24px;right:24px;padding:12px 20px;border-radius:8px;
+    // bottom:88px, not 24px — the AI-chat launcher (.aic-btn, core/ai-chat.js
+    // line ~203) is 52px tall at bottom:24px/right:24px, so a toast at 24px
+    // landed on top of it. See docs/design/DEEP_AUDIT_2026-08-04/shell.md SH-5.
+    el.style.cssText = `position:fixed;bottom:88px;right:24px;padding:12px 20px;border-radius:8px;
       font-size:13px;font-weight:500;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.15);
       transform:translateY(20px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;
       display:flex;align-items:center;gap:8px`;

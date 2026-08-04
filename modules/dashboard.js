@@ -347,10 +347,20 @@ async function renderDashboard() {
     const scoreColor = weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
 
     // Alert banner
+    // Each alert carries its own destination: the banner is the fastest route to
+    // the list it warns about, so it has to be actionable, not decorative. Two
+    // alerts render as two buttons instead of one joined string, so each keeps
+    // its own target. See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-2.
     const redAlerts = [];
-    if (highRisk.length > 0) redAlerts.push(`${highRisk.length} παραγγελίες χωρίς φορτηγό — παράδοση σε 48ω`);
+    if (highRisk.length > 0) redAlerts.push({
+      text: `${highRisk.length} παραγγελίες χωρίς φορτηγό — παράδοση σε 48ω`,
+      page: 'weekly_intl',
+    });
     const expiredDocs = fleetAlerts.filter(a => a.expired);
-    if (expiredDocs.length > 0) redAlerts.push(`${expiredDocs.length} ληγμένα έγγραφα στόλου`);
+    if (expiredDocs.length > 0) redAlerts.push({
+      text: `${expiredDocs.length} ληγμένα έγγραφα στόλου`,
+      page: 'maint_expiry',
+    });
 
     const greeting = now.getHours() < 12 ? 'Καλημέρα' : now.getHours() < 18 ? 'Καλό απόγευμα' : 'Καλό βράδυ';
     const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
@@ -374,10 +384,13 @@ async function renderDashboard() {
         </div>
 
         <!-- Alert Banner -->
-        ${redAlerts.length ? `<div class="dash-alert-banner">
+        ${redAlerts.map(a => `<button type="button" class="dash-alert-banner"
+            onclick="navigate('${a.page}')"
+            aria-label="${escapeHtml(a.text)} — άνοιγμα λίστας">
           <div class="dash-alert-icon">${_i('alert_triangle', 16)}</div>
-          <div class="dash-alert-text">${redAlerts.join(' · ')}</div>
-        </div>` : ''}
+          <div class="dash-alert-text">${escapeHtml(a.text)}</div>
+          <span class="dash-alert-go">${_i('chevron_right', 16)}</span>
+        </button>`).join('')}
 
         <!-- KPI Bar -->
         <div class="dash-kpi-bar">

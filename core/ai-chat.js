@@ -1391,6 +1391,10 @@ function _aicInit() {
   const btn = document.createElement('button');
   btn.className = 'aic-btn';
   btn.id = 'aic-toggle';
+  // The button's only content is an SVG, so without these it announces as a
+  // bare "button". See docs/design/DEEP_AUDIT_2026-08-04/shell.md SH-4.
+  btn.setAttribute('aria-label', 'Άνοιγμα βοηθού Νάκη');
+  btn.title = 'Νάκης — βοηθός';
   btn.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg><span class="aic-dot"></span>`;
   btn.onclick = () => _aicToggle();
   document.body.appendChild(btn);
