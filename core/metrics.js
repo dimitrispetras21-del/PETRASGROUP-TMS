@@ -18,11 +18,17 @@ const metrics = (function() {
     if (period.daysBack) { const from = _daysAgo(period.daysBack); if (d < from) return false; }
     return true;
   }
+  // Delegates to the one week-number implementation (core/utils.js
+  // isoWeekNumber). This used to be a second, Sunday-start WEEKNUM formula that
+  // disagreed with utils.js by a day-of-week-dependent offset — which is how
+  // the same app showed week 31 and week 32 on the same day. Measured against
+  // 124 ORDERS records, ISO matches the stored `Week Number` 111/124 vs 99/124
+  // for this old formula. See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-1.
   function _weekOf(dateStr) {
     if (!dateStr) return null;
     const d = new Date(dateStr);
-    const y = d.getFullYear(), j = new Date(y,0,1);
-    return Math.ceil(((d-j)/86400000 + j.getDay() + 1) / 7);
+    if (isNaN(d.getTime())) return null;
+    return isoWeekNumber(d);
   }
 
   // ── Utilities ──────────────────────────────────────────

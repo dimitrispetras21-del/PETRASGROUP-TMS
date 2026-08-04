@@ -176,13 +176,45 @@ function expiryLabel(dateStr) {
 }
 
 /**
- * ISO-ish week number for the current date (1-based)
+ * ISO-8601 week number (1-53) for any date. Weeks start on Monday and week 1
+ * is the one containing the year's first Thursday.
+ *
+ * This is the single source of truth for week numbers. There used to be two
+ * implementations that disagreed by one:
+ *   - this function: ceil((daysSinceJan1 + 1) / 7)          -> 31 on 2026-08-04
+ *   - core/metrics.js _weekOf: Sunday-start WEEKNUM         -> 32 on 2026-08-04
+ * so the Dashboard header, the International Orders week filter and My
+ * Performance all showed week 31 while the two Weekly planners showed 32 on the
+ * same day — and the Orders filter silently queried the wrong week.
+ *
+ * ISO is not a preference here, it is what the database uses. Measured against
+ * all 124 ORDERS records on 2026-08-04, matching the stored `Week Number`
+ * against each candidate formula applied to `Loading DateTime`:
+ *   ISO           111/124  (90%)   <- chosen
+ *   Sunday-start   99/124
+ *   old formula    76/124
+ * See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-1.
+ *
+ * @param {Date} [date=new Date()] - date to evaluate
+ * @returns {number} Week number (1-53)
+ */
+function isoWeekNumber(date) {
+  const src = date || new Date();
+  // Work in UTC so DST transitions cannot shift the day.
+  const d = new Date(Date.UTC(src.getFullYear(), src.getMonth(), src.getDate()));
+  // Shift to the Thursday of this week: that is the day that decides which
+  // year — and therefore which week 1 — the week belongs to.
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+/**
+ * ISO-8601 week number for today.
  * @returns {number} Week number (1-53)
  */
 function currentWeekNumber() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
-  return Math.ceil((((now - start) / 86400000) + 1) / 7);
+  return isoWeekNumber(new Date());
 }
 
 function debounce(fn, ms = 250) {

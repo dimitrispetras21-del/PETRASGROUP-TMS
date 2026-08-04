@@ -104,3 +104,30 @@ assertEqual(expiryClass(''), '', 'expiryClass: empty returns empty');
 assertEqual(expiryClass('2099-12-31'), 'expiry-ok', 'expiryClass: far future is ok');
 // Past date should be alert
 assertEqual(expiryClass('2020-01-01'), 'expiry-alert', 'expiryClass: past date is alert');
+
+// ── isoWeekNumber / currentWeekNumber ──
+// Locked because two disagreeing implementations (utils.js naive vs
+// metrics.js Sunday-start) once made the same app show week 31 and 32 on the
+// same day. ISO was chosen by measurement: it matches the stored `Week Number`
+// on 111/124 ORDERS records vs 99/124 (Sunday-start) and 76/124 (old formula).
+// See docs/design/DEEP_AUDIT_2026-08-04/dashboard.md D-1.
+section('isoWeekNumber');
+
+assert(typeof isoWeekNumber === 'function', 'isoWeekNumber exists');
+
+// The bug that started this: 4 Aug 2026 read as week 31, ISO says 32.
+assertEqual(isoWeekNumber(new Date(2026, 7, 4)), 32, 'isoWeekNumber: 2026-08-04 is week 32');
+
+// 1 Jan 2026 is a Thursday, so it belongs to week 1 of 2026.
+assertEqual(isoWeekNumber(new Date(2026, 0, 1)), 1, 'isoWeekNumber: 2026-01-01 (Thu) is week 1');
+
+// 1 Jan 2027 is a Friday, so that week's Thursday is still in 2026 -> week 53.
+assertEqual(isoWeekNumber(new Date(2027, 0, 1)), 53, 'isoWeekNumber: 2027-01-01 (Fri) is week 53 of 2026');
+
+// Monday starts a new week; the Sunday before it belongs to the previous one.
+assertEqual(isoWeekNumber(new Date(2026, 7, 2)), 31, 'isoWeekNumber: Sun 2026-08-02 is week 31');
+assertEqual(isoWeekNumber(new Date(2026, 7, 3)), 32, 'isoWeekNumber: Mon 2026-08-03 is week 32');
+
+// currentWeekNumber must be exactly isoWeekNumber(today) — one implementation.
+assertEqual(currentWeekNumber(), isoWeekNumber(new Date()),
+  'currentWeekNumber: delegates to isoWeekNumber');
