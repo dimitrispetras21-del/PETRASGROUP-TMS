@@ -1,6 +1,6 @@
 # Σημείωμα συνέχειας — καταγραφή στόλου
 
-_Κατάσταση 2026-08-03. Η επόμενη συνεδρία συνεχίζει ΑΠΟ ΕΔΩ._
+_Κατάσταση 2026-08-04. Η επόμενη συνεδρία συνεχίζει ΑΠΟ ΕΔΩ._
 
 ## Τι κάνουμε
 Καταγραφή στοιχείων & εγγράφων για κάθε όχημα, από τους φακέλους Google Drive
@@ -20,24 +20,17 @@ _Κατάσταση 2026-08-03. Η επόμενη συνεδρία συνεχί�
 - **CB8427XT → CB3584BO** (μετονομασία, owner 3/8/2026).
 - Οι λήξεις στο TMS είναι μπαγιάτικες, όχι πραγματικές — τα έγγραφα ανανεώθηκαν.
 
-## ✅ Ολοκληρωμένα (17)
+## ✅ Ολοκληρωμένα (27)
 Ελλάδα: IAZ8302 · IAB4162 · IAB2106 · IAB2107 · IAB2108 · IAB2109 · IAB4166 ·
 IAZ4445 · IAZ5561 · IAZ5562 · IAB1096 · NXA9647 · NXA9624 · IAZ7245 · IAZ7244 ·
-IAB2103 — Βουλγαρία: CB1286KE
+IAB2103 — Βουλγαρία (ΟΛΑ, 4-8-2026): CB1286KE · CB1284KE · CB4612PE · CB8214OB ·
+CB0138HO · CB0142HO · CB3584BO · CB5284TP · CB5871TT · CB0229PB · CB8425XT
 
-## ⏳ Υπόλοιπα — folder IDs έτοιμα
+**🔴 Νέα ευρήματα 4-8-2026 (βλ. FLEET-DOCS):** CB0229PB ΚΤΕΟ έληξε 2-6-2026 ·
+DECLARATIONS όλων των ΒΓ λήγουν 4-5/8/2026 (πλην CB8214OB) · CB8214OB πράσινη
+λήγει 9-8-2026. Παλιός φάκελος «CB 8427 XT» ασφαλής για αρχειοθέτηση.
 
-**Βουλγαρία (10):**
-- CB1284KE `1y9SWVA_fMk3ggnQliJY9v7589ncik50Z`
-- CB4612PE `1W-xxdVN_Jg5-JSj75jusrWSahDRrXgLk`
-- CB8214OB `1VR6zhyI1LO0V-2vpiswbOcA-UeJGF8xR`
-- CB0138HO `13tfvXnAbBpDzOoMzaRSad9ud0X3HiFJj`
-- CB0142HO `1jltbz5n8vFStGThL324KPTiklEBnV5ZF`
-- CB3584BO `1AN8KXGr-D_DYJC2IRx4aVVreNCJAeQXX` (+ παλιός «CB 8427 XT» `1Hd8PbzI5O6Ua63iE305DJC16QRAs6CCQ`)
-- CB5284TP `1HV4SwVb12JmRw2515-kbLSBkEgY43Bdb`
-- CB5871TT `1HW1HUlkXLWuo5lBwDYo8j7KQmwg51fJx`
-- CB0229PB `1I1IgNOyunwgow2z72V3Qk8ftko6efmlL`
-- CB8425XT `1HylWLb7HXREh1TAYhWIqbUK-FwvFQbrL`
+## ⏳ Υπόλοιπα
 
 **Θάλαμοι (~20):** ρίζα `1-vuWsm6d7On7FOQpAI7DjERnbncUCT_T` — **δεν έχει
 απαριθμηθεί ακόμα**· πρώτο βήμα: λίστα υποφακέλων. Πινακίδες τύπου `Ρ 11983`
