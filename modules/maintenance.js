@@ -357,7 +357,12 @@ function _expiryPaint() {
   const actions = [];
   if (expiredTrucks + expiredTrailers > 0) actions.push({
     icon: (typeof icon === 'function') ? icon('alert_circle', 14) : '',
-    sev: 'crit', text: `${expiredTrucks + expiredTrailers} documents expired — urgent renewal needed`
+    // These are VEHICLES with at least one expired document, not documents.
+    // Calling them "documents" is why this page said 45 while the Maintenance
+    // Dashboard said 57 (which really is the document count) and the main
+    // Dashboard said 37 — three numbers for what read as one thing.
+    // See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-1.
+    sev: 'crit', text: `${expiredTrucks + expiredTrailers} οχήματα με ληγμένο έγγραφο — άμεση ανανέωση`
   });
   if (expiring30Trucks + expiring30Trailers > 0) actions.push({
     icon: (typeof icon === 'function') ? icon('clock', 14) : '',
@@ -394,9 +399,9 @@ function _expiryPaint() {
       <div class="exp-kpi exp-kpi-danger">
         <div class="exp-kpi-ico">${_i('alert_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Expired</div>
+          <div class="exp-kpi-lbl">Οχήματα με ληγμένο</div>
           <div class="exp-kpi-val">${expiredTrucks + expiredTrailers}</div>
-          <div class="exp-kpi-sub">${expiredTrucks} trucks · ${expiredTrailers} trailers</div>
+          <div class="exp-kpi-sub">${expiredTrucks} φορτηγά · ${expiredTrailers} ρυμούλκες</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-warning">
@@ -418,9 +423,16 @@ function _expiryPaint() {
       <div class="exp-kpi exp-kpi-compliance">
         <div class="exp-kpi-ico">${_i('target')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Compliance</div>
+          <div class="exp-kpi-lbl">Συμμόρφωση</div>
           <div class="exp-kpi-val" style="color:${complianceColor}">${compliancePct}%</div>
           <div class="exp-kpi-bar"><div class="exp-kpi-bar-fill" style="width:${compliancePct}%;background:${complianceColor}"></div></div>
+          <!-- The fraction was missing, so "30%" sat next to a "Valid 13" card
+               and the two looked contradictory: compliance counts the 6
+               expiring-soon vehicles as still compliant, the Valid card does
+               not. Showing the numerator makes the difference visible instead
+               of leaving the user to guess which number to trust.
+               See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-2. -->
+          <div class="exp-kpi-sub">${truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers}/${truckRows.length + trailerRows.length} χωρίς ληγμένο έγγραφο</div>
         </div>
       </div>
     </div>
@@ -1395,6 +1407,12 @@ async function renderMaintDash() {
     const kteoExpired = expiredRows.filter(r => r.docType === 'KTEO').length;
     const kekExpired = expiredRows.filter(r => r.docType === 'KEK').length;
     const insExpired = expiredRows.filter(r => r.docType === 'Insurance').length;
+    // FRC (the cold-chain certificate, trailers only — see TRAILER_EXPIRY_FIELDS)
+    // had no card, so the three cards summed to 53 while the banner above them
+    // said 57. Four expired FRCs were simply invisible on this page — on a
+    // cold-chain fleet, the one certificate you cannot be caught without.
+    // See docs/design/DEEP_AUDIT_2026-08-04/maint_dash.md MD-1.
+    const frcExpired = expiredRows.filter(r => r.docType === 'FRC').length;
 
     // Compliance: vehicles with no expired docs
     const truckRowsAll = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
@@ -1479,6 +1497,12 @@ async function renderMaintDash() {
             <div class="dash-kpi-label">${_ic('file_check', 11)} KEK Expired</div>
             <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
             <div class="dash-kpi-sub">trucks only</div>
+          </div>
+          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-label">${_ic('droplet', 11)} FRC Expired</div>
+            <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
+            <div class="dash-kpi-sub">trailers only</div>
           </div>
           <div class="dash-kpi" onclick="navigate('maint_expiry')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'#10B981'},transparent)"></div>
