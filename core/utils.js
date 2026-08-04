@@ -974,8 +974,14 @@ async function _refreshNotifs() {
       atGet(TABLES.ORDERS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true),
-      (isChiefOps) ? atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime'] }, true).catch(()=>[]) : Promise.resolve([]),
-      (isChiefOps || isEquip) ? atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(()=>[]) : Promise.resolve([]),
+      // These two are ROLE-GATED, so an empty array already means "this user
+      // does not get this tile" (the Promise.resolve([]) branch). A swallowed
+      // fetch error produced the SAME empty array, so a broken read was
+      // indistinguishable from a permission boundary, and the tile just did not
+      // appear. safeFetch's tag separates the two cases without changing what
+      // the not-entitled branch returns.
+      (isChiefOps) ? safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Direction','Status','Delivery DateTime'] }, true), 'dashboard alerts: national loads') : Promise.resolve([]),
+      (isChiefOps || isEquip) ? safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'dashboard alerts: maintenance requests') : Promise.resolve([]),
     ];
     const [orders, trucks, trailers, natLoads, maint] = await Promise.all(promises);
 
@@ -1117,6 +1123,25 @@ async function _refreshNotifs() {
         const f = r.fields;
         items.push({ type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
           sub: escapeHtml(`${f['Order Number']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
+      });
+    }
+
+    // ── 6b. SOURCE FAILURES — surface a broken alert source as an alert ──
+    // Without this, a failed NAT_LOADS or MAINT_REQ read simply produced fewer
+    // notifications, which is the worst outcome for a notification system: the
+    // user cannot tell "nothing needs attention" from "we could not check".
+    // Deliberately one combined item rather than one per source, so a backend
+    // outage does not itself become notification spam.
+    const _failedSources = [
+      didFail(natLoads) && 'εθνικά φορτία',
+      didFail(maint)    && 'αιτήματα συντήρησης',
+    ].filter(Boolean);
+    if (_failedSources.length) {
+      items.push({
+        type: 'warn',
+        title: 'Έλεγχος ειδοποιήσεων ελλιπής',
+        sub: escapeHtml(`Δεν φορτώθηκαν: ${_failedSources.join(', ')}`),
+        page: null,
       });
     }
 

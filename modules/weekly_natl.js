@@ -328,24 +328,29 @@ function _wnPaint() {
   window._wnDragging = null;
 
   // Async: fill "vs last week" + "on-time streak" widgets.
-  // Same latent bug as weekly_intl.js: wrapped in `if (total > 0)`, so on an
-  // empty week the two placeholders stayed on "loading…" permanently. It never
-  // surfaced only because this page also hides the whole Command Center when
-  // the week is empty — one load with data away from being visible.
-  // See docs/design/DEEP_AUDIT_2026-08-04/weekly_natl.md WN-2.
+  //
+  // Two fixes combined — #28 and the 2026-08-04 audit found different halves of
+  // the same problem. Kept identical to weekly_intl.js on purpose: these are
+  // twin pages and their failure semantics must not drift apart again.
+  //
+  // 1. FAILURE (#28): each source is isolated with safeFetch, and a failed one
+  //    HIDES its widget rather than showing a fabricated comparison. An absent
+  //    widget reads as "not available"; a 0 reads as a fact — and "0 last week"
+  //    makes this week look like a record.
+  //
+  // 2. EMPTY WEEK (audit WN-2): this block sat inside `if (total > 0)`, so on an
+  //    empty week both placeholders stayed on "loading…" permanently. It never
+  //    surfaced only because this page also hides the whole Command Center when
+  //    the week is empty — one load with data away from being visible.
   Promise.all([
-    fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true).catch(()=>({total:0,assigned:0})),
-    fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(()=>({currentWeekPct:0,streakWeeks:0})),
+    safeFetch(() => fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true), 'weekly natl: previous week stats', {total:0,assigned:0}),
+    safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly natl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
   ]).then(([prev, ot]) => {
     const el1 = document.getElementById('wn-cc-vswk');
-    if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
+    if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
     const el2 = document.getElementById('wn-cc-ontime');
-    if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
-  }).catch(e => {
-    console.warn('CC async widgets (natl):', e);
-    _ccFallback('wn-cc-vswk', 'VS LAST WEEK');
-    _ccFallback('wn-cc-ontime', 'ON-TIME');
-  });
+    if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+  }).catch(e => console.warn('CC async widgets (natl):', e));
 }
 
 /* ── ALL ROWS — grouped by date, N→S + S→N per day ─────────────── */

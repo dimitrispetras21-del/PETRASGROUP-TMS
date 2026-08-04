@@ -41,9 +41,22 @@
 #   reports success. Worth reading the surrounding code before assuming what a
 #   site does.
 #
-#   Remaining, roughly in descending value: modules/ceo_dashboard.js (3, whole
-#   KPI panels read as zero); modules/invoicing.js (2); core/utils.js (2, the
-#   role-gated dashboard tiles); then assorted single sites.
+#   Then 3, after ceo_dashboard (3 secondary KPI sources), invoicing (the
+#   national-orders list + the pallet balance), form-helpers (client names),
+#   core/utils.js (the role-gated notification sources, where an empty array
+#   ALREADY meant "not entitled", so a failure was indistinguishable from a
+#   permission boundary) and weekly_natl (the vs-last-week and on-time-streak
+#   widgets, whose 0 fallbacks rendered as a record week and a service collapse).
+#
+#   Then 0. The last three were NOT merely cosmetic after all:
+#   command-center feeds the vs-last-week widget (it now RETHROWS so the caller
+#   can hide the widget instead of receiving a believable zero), entity totals
+#   maintenance SPEND, and performance quietly shifts on-time percentages when a
+#   source is missing. Worth noting: "low value" was an assumption from the file
+#   names, and reading them changed the call.
+#
+#   BASELINE IS NOW 0. Every fail-open data fetch is converted. Keep it at 0:
+#   any new one is a regression, not a backlog item.
 #
 # WHY NOT ESLINT
 #   ESLint is not a dependency here and .eslintrc.json is legacy-format (v10
@@ -63,8 +76,10 @@ cd "$(dirname "$0")/.."
 # orders_natl.js duplicate guard) -> 14 (the 3 cascade-cleanup ledger loads)
 # -> 12 (the 4th cascade-cleanup site + the invoicing pallet balance)
 # -> 9 (ceo_dashboard's 3 secondary sources)
-# -> 7 (invoicing's national-orders list + client-name resolution).
-BASELINE=7
+# -> 7 (invoicing's national-orders list + client-name resolution)
+# -> 3 (the notification alert sources + weekly-natl comparison widgets)
+# -> 0 (command-center, entity, performance, weekly_intl). CLASS CLOSED.
+BASELINE=0
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:

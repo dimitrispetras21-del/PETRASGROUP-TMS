@@ -151,11 +151,26 @@ async function fetchPreviousWeekStats(week, tableId, useDateRange = false) {
     } else {
       filter = `{Week Number}=${prevWeek}`;
     }
-    const recs = await atGetAll(tableId, { filterByFormula: filter, fields: ['Truck','Partner','Status'] }, false).catch(() => []);
+    // safeFetch, and the failure is RE-THROWN rather than absorbed here. This
+    // function is the source behind the "vs last week" widget, whose callers
+    // (weekly_natl, weekly_intl) now use safeFetch themselves and hide the
+    // widget when it fails. Returning {total:0,assigned:0} on a broken fetch
+    // would defeat that: the caller would receive a plausible zero, decide the
+    // data is real, and render "0 last week" as a record week. Failing loudly
+    // to the caller is what lets the caller stay honest.
+    const recs = await safeFetch(
+      () => atGetAll(tableId, { filterByFormula: filter, fields: ['Truck','Partner','Status'] }, false),
+      'command-center: previous week stats'
+    );
+    if (didFail(recs)) throw new Error('previous-week stats unavailable');
     const total = recs.length;
     const assigned = recs.filter(r => (r.fields['Truck']||[]).length || (r.fields['Partner']||[]).length).length;
     return { total, assigned };
-  } catch(e) { return { total: 0, assigned: 0 }; }
+  } catch(e) {
+    // Deliberately rethrow instead of the old {total:0,assigned:0}. See above:
+    // a zero here becomes a confident comparison two layers up.
+    throw e;
+  }
 }
 
 /**
@@ -197,27 +212,15 @@ async function fetchOnTimeStreak(tableId, currentWeek, lookbackWeeks = 8) {
   } catch(e) { return { currentWeekPct: 0, streakWeeks: 0 }; }
 }
 
-/**
- * Replace a still-pending Command Center placeholder with an honest "no data"
- * state. Called when the widget fetches fail outright — a card that cannot be
- * filled must stop claiming it is loading.
- * See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-1.
- * @param {string} id - placeholder element id (e.g. 'wi-cc-vswk')
- * @param {string} label - the card's eyebrow label, kept verbatim
- */
-function _ccFallback(id, label) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.outerHTML =
-    `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-       <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${label}</div>
-       <div style="font-size:11px;opacity:0.5">δεν φόρτωσε</div>
-     </div>`;
-}
+// A `_ccFallback()` helper briefly lived here, rendering "δεν φόρτωσε" into a
+// failed widget's placeholder. It was removed when this branch merged #28,
+// which had already settled the same question the other way: a failed widget is
+// HIDDEN (see the didFail() branches in weekly_intl/weekly_natl). Both are
+// defensible; keeping both would leave two conventions for one situation, and
+// #28's reasoning is documented and deliberate. One convention wins.
 
 // Expose globally for module use
 if (typeof window !== 'undefined') {
-  window._ccFallback = _ccFallback;
   window.buildCommandCenterHTML = buildCommandCenterHTML;
   window.widgetFleet = widgetFleet;
   window.widgetEmptyLegs = widgetEmptyLegs;

@@ -436,25 +436,30 @@ function _wiPaint(){
   window._wiDragging=null;
 
   // Async: fill "vs last week" + "on-time streak" widgets after initial render.
-  // This used to be wrapped in `if (total > 0)`, so an empty week left both
-  // placeholders reading "loading…" forever — a loading state for a request
-  // that was never going to be made (measured: 0 network calls in 8s).
-  // The rule: no visible "loading…" may outlive the render.
-  // See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-1.
+  //
+  // Two fixes combined here — #28 and the 2026-08-04 audit found different
+  // halves of the same problem:
+  //
+  // 1. FAILURE (#28): each source is isolated with safeFetch, and a failed one
+  //    HIDES its widget instead of rendering a zero. Hiding beats a zero:
+  //    "0 last week" renders as a record week and a 0% streak renders as a
+  //    service collapse, both plausible enough to be believed.
+  //
+  // 2. EMPTY WEEK (audit WI-1): this block sat inside `if (total > 0)`, so a
+  //    week with no orders left both placeholders reading "loading…" forever —
+  //    a loading state for a request that was never going to be made (measured:
+  //    0 network calls in 8s). The guard is gone: on an empty week the fetches
+  //    run and the widgets show real zeros, which is a fact rather than a
+  //    fabrication. Either way, no visible "loading…" outlives the render.
   Promise.all([
-    fetchPreviousWeekStats(week, TABLES.ORDERS).catch(() => ({ total: 0, assigned: 0 })),
-    fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(() => ({ currentWeekPct: 0, streakWeeks: 0 })),
+    safeFetch(() => fetchPreviousWeekStats(week, TABLES.ORDERS), 'weekly intl: previous week stats', {total:0,assigned:0}),
+    safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly intl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
   ]).then(([prev, ot]) => {
     const el1 = document.getElementById('wi-cc-vswk');
-    if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned + matched, prev.assigned);
+    if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
     const el2 = document.getElementById('wi-cc-ontime');
-    if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
-  }).catch(e => {
-    // Even on total failure the placeholders must resolve to something honest.
-    console.warn('CC async widgets:', e);
-    _ccFallback('wi-cc-vswk', 'VS LAST WEEK');
-    _ccFallback('wi-cc-ontime', 'ON-TIME');
-  });
+    if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+  }).catch(e => console.warn('CC async widgets:', e));
 }
 
 
