@@ -367,9 +367,17 @@ async function sha256Salted(username, password) {
 
 function showError(msg) {
   const err = document.getElementById('errMsg');
-  err.textContent = msg || 'Incorrect username or password';
+  err.textContent = msg || 'Λάθος όνομα χρήστη ή κωδικός';
   err.style.display = 'block';
-  setTimeout(() => err.style.display = 'none', 3000);
+  // No auto-hide. It used to disappear after 3s, so anyone looking at the
+  // keyboard while pressing Enter never learned why the login failed and just
+  // repeated the same mistake. It clears on the next keystroke instead.
+  // See docs/design/DEEP_AUDIT_2026-08-04/login.md LG-1.
+}
+
+function clearError() {
+  const err = document.getElementById('errMsg');
+  if (err) err.style.display = 'none';
 }
 
 // Read the `exp` claim (seconds since epoch) out of a JWT, as ms, or null.
@@ -384,9 +392,32 @@ function _jwtExpiryMs(token) {
   }
 }
 
+// Re-entry guard: the button gave no feedback during `await fetch`, and the
+// global Enter handler fired from anywhere on the page, so a slow network
+// produced 4-5 POSTs to /auth/login from one impatient user.
+// See docs/design/DEEP_AUDIT_2026-08-04/login.md LG-3, LG-5.
+let _loginBusy = false;
+
 async function doLogin() {
+  if (_loginBusy) return;
+  const btn = document.querySelector('.btn-login');
   const u = document.getElementById('username').value.trim().toLowerCase();
   const p = document.getElementById('password').value;
+
+  if (!u || !p) { showError('Συμπλήρωσε όνομα χρήστη και κωδικό'); return; }
+
+  _loginBusy = true;
+  const btnLabel = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Σύνδεση…'; }
+  try {
+    await _doLoginInner(u, p);
+  } finally {
+    _loginBusy = false;
+    if (btn) { btn.disabled = false; btn.textContent = btnLabel; }
+  }
+}
+
+async function _doLoginInner(u, p) {
   const inputHash = await sha256(p);
 
   if (USE_PROXY) {
@@ -404,7 +435,11 @@ async function doLogin() {
       });
       const data = await res.json();
       if (!res.ok) {
-        showError(data.error || 'Login failed');
+        // 401 is a genuinely wrong credential; anything else is the server
+        // failing, which is not the user's fault and shouldn't read like it.
+        showError(res.status === 401
+          ? 'Λάθος όνομα χρήστη ή κωδικός'
+          : `Ο διακομιστής δεν απάντησε σωστά (σφάλμα ${res.status}) — δοκίμασε ξανά σε λίγο`);
         return;
       }
       // Store JWT token.
@@ -423,7 +458,9 @@ async function doLogin() {
       localStorage.setItem('tms_user', JSON.stringify(session));
       window.location.href = 'app.html';
     } catch (e) {
-      showError('Connection error — try again');
+      showError(navigator.onLine
+        ? 'Δεν ήταν δυνατή η σύνδεση με το σύστημα — δοκίμασε ξανά'
+        : 'Δεν υπάρχει σύνδεση στο internet');
     }
   } else {
     // ── Direct mode: client-side hash comparison ──
@@ -462,7 +499,19 @@ async function doLogin() {
   }
 }
 
-document.addEventListener('keydown', e => { if(e.key === 'Enter') doLogin(); });
+// Enter submits only from the form fields. It used to fire from anywhere on the
+// page, so any stray Enter sent a login request. See login.md LG-5.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  if (!e.target.closest('#username, #password, .btn-login')) return;
+  doLogin();
+});
+
+// Clear the (now persistent) error as soon as the user corrects their input.
+['username', 'password'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('input', clearError);
+});
 
 // Check existing session: auto-login if valid, expire if stale
 const existing = JSON.parse(localStorage.getItem('tms_user') || 'null');

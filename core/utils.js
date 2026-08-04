@@ -719,7 +719,13 @@ function renderErrorLog() {
   // Was `window.SENTRY_DSN`, the dead name (see _sentryDsn above), so this badge
   // reported "off" even when Sentry was live. `window.Sentry` existing is the
   // real signal: it means some path initialised successfully, whichever one.
-  const sentryOn = !!(window.Sentry && typeof window.Sentry.captureException === 'function');
+  // ...and then it checked only that `window.Sentry` exists. But the SDK is
+  // loaded unconditionally, so the badge said "ON" with an empty DSN — claiming
+  // central reporting while every error stayed in this one browser. Both the
+  // SDK *and* a DSN are required for the claim to be true.
+  // See docs/design/DEEP_AUDIT_2026-08-04/admin.md AD-1.
+  const _dsn = (typeof TMS_SENTRY_DSN === 'string') ? TMS_SENTRY_DSN.trim() : '';
+  const sentryOn = !!(_dsn && window.Sentry && typeof window.Sentry.captureException === 'function');
   const _ic = (name, size) => (typeof icon === 'function') ? icon(name, size || 14) : '';
 
   const rows = filtered.map((e, idx) => {
@@ -740,7 +746,9 @@ function renderErrorLog() {
       <div class="dash-header">
         <div>
           <div class="dash-greeting">${_ic('alert_triangle', 22)} Error Log</div>
-          <div class="dash-date">${all.length} entries total · ${filtered.length} shown · Sentry ${sentryOn ? 'ON' : 'OFF'}</div>
+          <div class="dash-date">${all.length} καταγραφές · ${filtered.length} σε προβολή · ${sentryOn
+            ? 'Κεντρική καταγραφή: <strong style="color:var(--dc-ok)">ΕΝΕΡΓΗ</strong>'
+            : 'Κεντρική καταγραφή: <strong style="color:var(--dc-warn)">ΑΝΕΝΕΡΓΗ</strong> — τα σφάλματα μένουν μόνο σε αυτόν τον browser'}</div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
           <button class="btn btn-ghost btn-sm" onclick="_errLogExport('json')">${_ic('file_text', 14)} JSON</button>
