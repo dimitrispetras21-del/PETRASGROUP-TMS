@@ -27,7 +27,13 @@ function _invRoute(rec) {
 }
 
 function _invOrderNo(rec) {
-  return rec.fields['Order Number'] || rec.fields['National Order ID'] || rec.id.slice(-6);
+  // Never fall back to the record id. `rec.id.slice(-6)` produced strings like
+  // "Ta1Azv" in the order-number column — an internal id that matches nothing
+  // outside the system: not the CMR, not the client's email, not the accounting
+  // software. For whoever is doing the invoicing that is worse than an admitted
+  // gap, because it looks like a real number.
+  // See docs/design/DEEP_AUDIT_2026-08-04/invoicing.md IN-2.
+  return rec.fields['Order Number'] || rec.fields['National Order ID'] || '(χωρίς αριθμό)';
 }
 
 function _invPallets(rec) {

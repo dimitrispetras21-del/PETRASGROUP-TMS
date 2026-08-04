@@ -305,7 +305,9 @@ function _locRenderTable() {
       </td>
       <td onclick="event.stopPropagation()" style="text-align:right;padding-right:14px">
         <button class="loc-act-btn" onclick="_locOpenEdit('${r.id}')" title="Edit">✏️</button>
-        <button class="loc-act-btn del" onclick="_locConfirmDelete('${r.id}','${_locEsc(f.Name||'').replace(/'/g,"\\'")}') " title="Delete">🗑️</button>
+        ${r.id === F.VEROIA_LOC
+          ? '<span class="loc-act-btn" title="Κλειδωμένο — κλειδί της αλυσίδας Veroia Switch" style="cursor:default;opacity:0.5">🔒</span>'
+          : `<button class="loc-act-btn del" onclick="_locConfirmDelete('${r.id}','${_locEsc(f.Name||'').replace(/'/g,"\\'")}') " title="Delete">🗑️</button>`}
       </td>
     </tr>`;
   }).join('');
@@ -475,6 +477,16 @@ function _locConfirmDelete(id, name) {
 }
 
 async function _locDoDelete(id) {
+  // The Veroia cross-dock is not an ordinary location: the whole Veroia Switch
+  // chain (ORDERS -> NAT_ORDERS -> GL -> CL -> RAMP) resolves through this one
+  // record id. Deleting it was a single click that breaks national planning,
+  // and nothing in the UI said so.
+  // See docs/design/DEEP_AUDIT_2026-08-04/locations.md LO-4.
+  if (id === F.VEROIA_LOC) {
+    closeModal();
+    toast('Το Veroia Cross-Dock δεν διαγράφεται — είναι κλειδί της αλυσίδας Veroia Switch', 'danger');
+    return;
+  }
   closeModal();
   try {
     const data = await atSoftDelete(TABLES.LOCATIONS, id);
