@@ -23,7 +23,20 @@
     c.innerHTML = _shellHTML();
     _bindPeriodButtons();
     await _loadAll();
-    _timer = setInterval(_loadAll, 10 * 60 * 1000);
+    // Guarded like dashboard.js:628-635 and daily_ramp.js:42. Without this the
+    // timer kept firing after the user left, and _loadAll wrote into a #content
+    // that now belonged to another page — which is exactly the
+    // "Cannot set properties of null (setting 'textContent')" entry the Error
+    // Log recorded with context "CEO Dashboard loadAll" while the user was on
+    // the performance page. See docs/design/DEEP_AUDIT_2026-08-04/ceo_dashboard.md CE-2.
+    _timer = setInterval(() => {
+      if (typeof currentPage !== 'undefined' && currentPage === 'ceo_dashboard') {
+        _loadAll();
+      } else {
+        clearInterval(_timer);
+        _timer = null;
+      }
+    }, 10 * 60 * 1000);
   }
 
   // ── Period helpers ───────────────────────────────────────────

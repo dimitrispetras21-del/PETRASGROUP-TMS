@@ -435,18 +435,26 @@ function _wiPaint(){
   `;
   window._wiDragging=null;
 
-  // Async: fill "vs last week" + "on-time streak" widgets after initial render
-  if (total > 0) {
-    Promise.all([
-      fetchPreviousWeekStats(week, TABLES.ORDERS),
-      fetchOnTimeStreak(TABLES.ORDERS, week, 8),
-    ]).then(([prev, ot]) => {
-      const el1 = document.getElementById('wi-cc-vswk');
-      if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
-      const el2 = document.getElementById('wi-cc-ontime');
-      if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
-    }).catch(e => console.warn('CC async widgets:', e));
-  }
+  // Async: fill "vs last week" + "on-time streak" widgets after initial render.
+  // This used to be wrapped in `if (total > 0)`, so an empty week left both
+  // placeholders reading "loading…" forever — a loading state for a request
+  // that was never going to be made (measured: 0 network calls in 8s).
+  // The rule: no visible "loading…" may outlive the render.
+  // See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-1.
+  Promise.all([
+    fetchPreviousWeekStats(week, TABLES.ORDERS).catch(() => ({ total: 0, assigned: 0 })),
+    fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(() => ({ currentWeekPct: 0, streakWeeks: 0 })),
+  ]).then(([prev, ot]) => {
+    const el1 = document.getElementById('wi-cc-vswk');
+    if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned + matched, prev.assigned);
+    const el2 = document.getElementById('wi-cc-ontime');
+    if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+  }).catch(e => {
+    // Even on total failure the placeholders must resolve to something honest.
+    console.warn('CC async widgets:', e);
+    _ccFallback('wi-cc-vswk', 'VS LAST WEEK');
+    _ccFallback('wi-cc-ontime', 'ON-TIME');
+  });
 }
 
 

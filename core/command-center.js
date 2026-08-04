@@ -197,8 +197,27 @@ async function fetchOnTimeStreak(tableId, currentWeek, lookbackWeeks = 8) {
   } catch(e) { return { currentWeekPct: 0, streakWeeks: 0 }; }
 }
 
+/**
+ * Replace a still-pending Command Center placeholder with an honest "no data"
+ * state. Called when the widget fetches fail outright — a card that cannot be
+ * filled must stop claiming it is loading.
+ * See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-1.
+ * @param {string} id - placeholder element id (e.g. 'wi-cc-vswk')
+ * @param {string} label - the card's eyebrow label, kept verbatim
+ */
+function _ccFallback(id, label) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.outerHTML =
+    `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
+       <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${label}</div>
+       <div style="font-size:11px;opacity:0.5">δεν φόρτωσε</div>
+     </div>`;
+}
+
 // Expose globally for module use
 if (typeof window !== 'undefined') {
+  window._ccFallback = _ccFallback;
   window.buildCommandCenterHTML = buildCommandCenterHTML;
   window.widgetFleet = widgetFleet;
   window.widgetEmptyLegs = widgetEmptyLegs;

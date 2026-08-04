@@ -327,18 +327,25 @@ function _wnPaint() {
 
   window._wnDragging = null;
 
-  // Async: fill "vs last week" + "on-time streak" widgets
-  if (total > 0) {
-    Promise.all([
-      fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true).catch(()=>({total:0,assigned:0})),
-      fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(()=>({currentWeekPct:0,streakWeeks:0})),
-    ]).then(([prev, ot]) => {
-      const el1 = document.getElementById('wn-cc-vswk');
-      if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
-      const el2 = document.getElementById('wn-cc-ontime');
-      if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
-    }).catch(e => console.warn('CC async widgets (natl):', e));
-  }
+  // Async: fill "vs last week" + "on-time streak" widgets.
+  // Same latent bug as weekly_intl.js: wrapped in `if (total > 0)`, so on an
+  // empty week the two placeholders stayed on "loading…" permanently. It never
+  // surfaced only because this page also hides the whole Command Center when
+  // the week is empty — one load with data away from being visible.
+  // See docs/design/DEEP_AUDIT_2026-08-04/weekly_natl.md WN-2.
+  Promise.all([
+    fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true).catch(()=>({total:0,assigned:0})),
+    fetchOnTimeStreak(TABLES.ORDERS, week, 8).catch(()=>({currentWeekPct:0,streakWeeks:0})),
+  ]).then(([prev, ot]) => {
+    const el1 = document.getElementById('wn-cc-vswk');
+    if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
+    const el2 = document.getElementById('wn-cc-ontime');
+    if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+  }).catch(e => {
+    console.warn('CC async widgets (natl):', e);
+    _ccFallback('wn-cc-vswk', 'VS LAST WEEK');
+    _ccFallback('wn-cc-ontime', 'ON-TIME');
+  });
 }
 
 /* ── ALL ROWS — grouped by date, N→S + S→N per day ─────────────── */
