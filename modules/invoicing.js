@@ -289,6 +289,21 @@ function _renderInvKPI() {
   const readyTotal = ready.reduce((s, r) => s + (_invPrice(r) || 0), 0);
   const invTotal   = invoiced.reduce((s, r) => s + (_invPrice(r) || 0), 0);
 
+  // Report the tab and card counts. These deliberately sum to MORE than total:
+  // "Overdue" is an age filter over the same delivered-not-invoiced orders that
+  // Ready and Blocked already contain, so an order 40 days old with its sheets
+  // in order is counted in both Ready and Overdue. The audit states that rather
+  // than reporting it as an arithmetic fault.
+  // See docs/design/DEEP_AUDIT_2026-08-04/invoicing.md.
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('invoicing', {
+    total: INV.data.length,
+    ready: ready.length,
+    overdue: overdue.length,
+    blocked: blocked.length,
+    invoiced: invoiced.length,
+    outstanding: outstandingRecs.length,
+  });
+
   const el = document.getElementById('invKPI');
   if (!el) return;
 

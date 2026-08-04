@@ -353,6 +353,18 @@ function _expiryPaint() {
     : Math.round(((truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers) / Math.max(1, (truckRows.length + trailerRows.length))) * 100);
   const complianceColor = compliancePct >= 90 ? '#10B981' : compliancePct >= 70 ? '#F59E0B' : '#EF4444';
 
+  // Report the figures this page shows. The key names say what is being
+  // counted, because that is the whole confusion this page sat at the centre
+  // of: expiredVehicles here vs expiredDocRows on the Maintenance Dashboard.
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('maint_expiry', {
+    expiredVehicles: expiredTrucks + expiredTrailers,
+    expiringVehicles30d: expiring30Trucks + expiring30Trailers,
+    validVehicles: validTrucks + validTrailers,
+    totalVehicles: truckRows.length + trailerRows.length,
+    compliantVehicles: truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers,
+    compliancePct,
+  });
+
   // Command Center for expiry status
   const actions = [];
   if (expiredTrucks + expiredTrailers > 0) actions.push({
@@ -1456,6 +1468,21 @@ async function renderMaintDash() {
 
     // Alert banner
     const totalExpired = expiredRows.length;
+
+    // Report the figures this page shows. expiredDocRows is the DOCUMENT count
+    // (one row per expired certificate) — deliberately a different key from
+    // maint_expiry's expiredVehicles, so the audit compares like with like and
+    // can state why the two legitimately differ.
+    if (typeof reportPageMetrics === 'function') reportPageMetrics('maint_dash', {
+      expiredDocRows: totalExpired,
+      kteoExpired, kekExpired, frcExpired, insExpired,
+      expiredVehicles: totalExpiredVehicles,
+      totalFleet,
+      activeTrucks: activeTrucks.length,
+      activeTrailers: activeTrailers.length,
+      compliantVehicles: totalFleet - totalExpiredVehicles,
+      compliancePct,
+    });
 
     // ═══ RENDER ═══
     c.innerHTML = `

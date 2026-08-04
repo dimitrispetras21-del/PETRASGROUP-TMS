@@ -459,6 +459,26 @@ function _perfDraw() {
   const trends = _perfTrends();
   const _i = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
 
+  // Report both weekly scores this page renders side by side. They come from
+  // two different formulas: the KPI card and the ring use metrics.weeklyScore()
+  // (_perfCompute), while the trend bars use a local formula in _perfTrends()
+  // that swaps compliance for an empty-legs term and hardcodes 50 for dead km.
+  // That is why the card reads 44/100 next to a bar reading 33/100 for the same
+  // week. Reported as two keys so the audit can show them as one row.
+  // See docs/design/DEEP_AUDIT_2026-08-04/performance.md.
+  const _trendNow = trends.length ? trends[trends.length - 1] : null;
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('performance', {
+    weekNumber: wn,
+    weeklyScore: vals.weekly_score,
+    weeklyScoreTrend: _trendNow ? _trendNow.score : -1,
+    // _perfTrends() reads currentWeekNumber() directly and ignores the week
+    // picker, so this can differ from weekNumber whenever the user steps back.
+    weekNumberTrend: _trendNow ? _trendNow.week : -1,
+    onTimePct: vals.on_time,
+    fleetUsagePct: vals.fleet_usage,
+    expiredDocs: vals.expired_docs,
+  });
+
   const roleLabels = {
     dimitris: 'Founder — Approval & Strategy',
     kelesmitos: 'Master Planner — Chief Dispatcher',

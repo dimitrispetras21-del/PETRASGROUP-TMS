@@ -325,6 +325,20 @@ async function renderEntity(entityKey) {
 
   _entityState[entityKey] = { records, filtered: records, selected: null, q: '', filters: {} };
 
+  // Report the row count for every master-data page in one place. This is where
+  // "36 trucks" comes from, while the Dashboard and Maintenance both say 27 —
+  // they count only Active. Nothing on screen says so, which is why the audit
+  // read it as a third fleet total. Reporting both numbers lets the audit state
+  // the reason instead of flagging a fault.
+  // See docs/design/DEEP_AUDIT_2026-08-04/trucks.md TR-3.
+  if (typeof reportPageMetrics === 'function') {
+    const hasActive = records.some(r => 'Active' in (r.fields || {}));
+    reportPageMetrics(entityKey, Object.assign(
+      { total: records.length },
+      hasActive ? { active: records.filter(r => r.fields['Active']).length } : {}
+    ));
+  }
+
   // Build dynamic filter options
   const dynamicOpts = {};
   for (const fi of cfg.filters) {

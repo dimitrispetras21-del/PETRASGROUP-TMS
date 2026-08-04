@@ -381,6 +381,17 @@ function _applyIntlFilters() {
   const n = recs.length + ' orders';
   document.getElementById('intlCount').textContent = n;
   document.getElementById('intlSub').textContent   = n;
+
+  // The week the filter is actually querying. This is the figure that silently
+  // pulled the wrong week before Wave 1 unified it on isoWeekNumber(): the
+  // header said one week and the query used another, with nothing on screen to
+  // show the mismatch. Reported so the audit keeps watching it.
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('orders_intl', {
+    weekNumberDefault: typeof currentWeekNumber === 'function' ? currentWeekNumber() : -1,
+    weekFilter: _intlFilters['_week'] ? Number(_intlFilters['_week']) : -1,
+    total: INTL_ORDERS.data.length,
+    shown: recs.length,
+  });
 }
 
 // ─── Detail Panel ───────────────────────────────

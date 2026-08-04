@@ -323,6 +323,24 @@ function _wiPaint(){
   const total=expRows.length+impRows.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
+  // Report what this planner shows. weekNumber is the week the user is looking
+  // at; weekNumberDefault is what _wiCurrentWeek() calls "today". That helper is
+  // a THIRD week formula (Sunday-start WEEKNUM), separate from the canonical
+  // isoWeekNumber() the Dashboard, Orders and Performance were unified on. The
+  // two agree today and will not agree on every date — reporting both is how
+  // the audit catches the next 31-vs-32 before a person does.
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_intl', {
+    weekNumber: week,
+    weekNumberDefault: _wiCurrentWeek(),
+    exports: expN,
+    imports: impN,
+    assigned,
+    pending,
+    matched,
+    unmatched,
+    completionPct: pct,
+  });
+
   // Command Center actions
   const actions=[];
   const _ico = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';

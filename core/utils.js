@@ -217,6 +217,78 @@ function currentWeekNumber() {
   return isoWeekNumber(new Date());
 }
 
+// -- Page metric reporting (cross-check channel) --------------
+// The week-number split above was found by a human noticing two screens
+// disagreeing. Four more disagreements were found the same way in the same
+// audit. modules/metrics_audit.js caught none of them, because it only ever
+// checked core/metrics.js — and every one of those figures is computed inside
+// a module.
+//
+// This is the channel that closes that gap: a page reports the numbers it PUT
+// ON SCREEN, and the audit page compares them. Strictly one-way — nothing here
+// is ever read back by a page, so a wrong report can mislead a reader of the
+// audit screen but can never change what the app does.
+// See docs/design/DEEP_AUDIT_2026-08-04/metrics_audit.md MA-1.
+
+const TMS_PAGE_METRICS_KEY = 'tms_page_metrics';
+
+if (typeof window !== 'undefined') window.__tmsMetrics = window.__tmsMetrics || {};
+
+/**
+ * Record the KPI values a page just rendered, for cross-page comparison.
+ *
+ * Report the figures as displayed — after any rounding, after any slice or cap.
+ * A value the audit cannot see on screen is worthless for finding the next
+ * 31-vs-32.
+ *
+ * @param {string} page - route id, e.g. 'maint_expiry'
+ * @param {Object} values - flat map of {key: number|string}
+ */
+function reportPageMetrics(page, values) {
+  try {
+    if (!page || !values || typeof values !== 'object') return;
+    const clean = {};
+    for (const k of Object.keys(values)) {
+      const v = values[k];
+      // Numbers and short strings only. undefined/null/NaN are dropped rather
+      // than stored: "not reported" is an honest row on the audit screen,
+      // "compared against undefined" is a fake one.
+      if (typeof v === 'number' && Number.isFinite(v)) clean[k] = v;
+      else if (typeof v === 'string' && v.length <= 120) clean[k] = v;
+    }
+    if (!Object.keys(clean).length) return;
+    window.__tmsMetrics[page] = { at: new Date().toISOString(), values: clean };
+    // Persisted to sessionStorage because every render replaces #content: by
+    // the time the user opens the audit page, the Dashboard's numbers are long
+    // gone from memory. sessionStorage holds exactly the figures seen during
+    // this session and dies with the tab, so a stale reading can never be
+    // presented as a current one — the audit shows each entry's age.
+    sessionStorage.setItem(TMS_PAGE_METRICS_KEY, JSON.stringify(window.__tmsMetrics));
+  } catch (_) {
+    // Diagnostics must never take a page down with them.
+  }
+}
+
+/**
+ * All page-reported metrics from this session, newest reading per page.
+ * @returns {Object} {page: {at, values}}
+ */
+function readPageMetrics() {
+  let stored = {};
+  try {
+    const raw = sessionStorage.getItem(TMS_PAGE_METRICS_KEY);
+    if (raw) stored = JSON.parse(raw) || {};
+  } catch (_) { stored = {}; }
+  // In-memory wins: it is this session's live render, the stored copy may
+  // predate a reload.
+  return Object.assign({}, stored, (typeof window !== 'undefined' ? window.__tmsMetrics : {}));
+}
+
+if (typeof window !== 'undefined') {
+  window.reportPageMetrics = reportPageMetrics;
+  window.readPageMetrics = readPageMetrics;
+}
+
 function debounce(fn, ms = 250) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
