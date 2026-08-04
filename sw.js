@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v59-safefetch-notifs-weekly';
+const SW_VERSION = 'tms-sw-v60-safefetch-class-closed';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [

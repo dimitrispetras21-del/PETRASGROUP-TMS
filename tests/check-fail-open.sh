@@ -48,9 +48,15 @@
 #   permission boundary) and weekly_natl (the vs-last-week and on-time-streak
 #   widgets, whose 0 fallbacks rendered as a record week and a service collapse).
 #
-#   Remaining 3: core/command-center.js, core/entity.js, modules/performance.js.
-#   All secondary panels where a silent empty is closer to cosmetic than to a
-#   wrong business number, which is why they are last rather than first.
+#   Then 0. The last three were NOT merely cosmetic after all:
+#   command-center feeds the vs-last-week widget (it now RETHROWS so the caller
+#   can hide the widget instead of receiving a believable zero), entity totals
+#   maintenance SPEND, and performance quietly shifts on-time percentages when a
+#   source is missing. Worth noting: "low value" was an assumption from the file
+#   names, and reading them changed the call.
+#
+#   BASELINE IS NOW 0. Every fail-open data fetch is converted. Keep it at 0:
+#   any new one is a regression, not a backlog item.
 #
 # WHY NOT ESLINT
 #   ESLint is not a dependency here and .eslintrc.json is legacy-format (v10
@@ -71,8 +77,9 @@ cd "$(dirname "$0")/.."
 # -> 12 (the 4th cascade-cleanup site + the invoicing pallet balance)
 # -> 9 (ceo_dashboard's 3 secondary sources)
 # -> 7 (invoicing's national-orders list + client-name resolution)
-# -> 3 (the notification alert sources + weekly-natl comparison widgets).
-BASELINE=3
+# -> 3 (the notification alert sources + weekly-natl comparison widgets)
+# -> 0 (command-center, entity, performance, weekly_intl). CLASS CLOSED.
+BASELINE=0
 
 # Data-fetch fallbacks only. Deliberately NOT matched, these swallow on purpose
 # and have nothing to report:

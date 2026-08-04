@@ -151,11 +151,26 @@ async function fetchPreviousWeekStats(week, tableId, useDateRange = false) {
     } else {
       filter = `{Week Number}=${prevWeek}`;
     }
-    const recs = await atGetAll(tableId, { filterByFormula: filter, fields: ['Truck','Partner','Status'] }, false).catch(() => []);
+    // safeFetch, and the failure is RE-THROWN rather than absorbed here. This
+    // function is the source behind the "vs last week" widget, whose callers
+    // (weekly_natl, weekly_intl) now use safeFetch themselves and hide the
+    // widget when it fails. Returning {total:0,assigned:0} on a broken fetch
+    // would defeat that: the caller would receive a plausible zero, decide the
+    // data is real, and render "0 last week" as a record week. Failing loudly
+    // to the caller is what lets the caller stay honest.
+    const recs = await safeFetch(
+      () => atGetAll(tableId, { filterByFormula: filter, fields: ['Truck','Partner','Status'] }, false),
+      'command-center: previous week stats'
+    );
+    if (didFail(recs)) throw new Error('previous-week stats unavailable');
     const total = recs.length;
     const assigned = recs.filter(r => (r.fields['Truck']||[]).length || (r.fields['Partner']||[]).length).length;
     return { total, assigned };
-  } catch(e) { return { total: 0, assigned: 0 }; }
+  } catch(e) {
+    // Deliberately rethrow instead of the old {total:0,assigned:0}. See above:
+    // a zero here becomes a confident comparison two layers up.
+    throw e;
+  }
 }
 
 /**
