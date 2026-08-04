@@ -437,14 +437,20 @@ function _wiPaint(){
 
   // Async: fill "vs last week" + "on-time streak" widgets after initial render
   if (total > 0) {
+    // Mirrors weekly_natl. Previously both of these were unguarded, so the
+    // Promise.all rejected as a pair: one failing source silently removed BOTH
+    // widgets, and the only trace was a console.warn nobody reads. Now each is
+    // isolated, so a failure hides only its own widget and is reported.
+    // Hiding beats a zero here: "0 last week" renders as a record week and a 0%
+    // streak renders as a service collapse, both plausible enough to be believed.
     Promise.all([
-      fetchPreviousWeekStats(week, TABLES.ORDERS),
-      fetchOnTimeStreak(TABLES.ORDERS, week, 8),
+      safeFetch(() => fetchPreviousWeekStats(week, TABLES.ORDERS), 'weekly intl: previous week stats', {total:0,assigned:0}),
+      safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly intl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
     ]).then(([prev, ot]) => {
       const el1 = document.getElementById('wi-cc-vswk');
-      if (el1) el1.outerHTML = widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
+      if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
       const el2 = document.getElementById('wi-cc-ontime');
-      if (el2) el2.outerHTML = widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
+      if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
     }).catch(e => console.warn('CC async widgets:', e));
   }
 }

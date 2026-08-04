@@ -114,13 +114,25 @@ async function _perfLoad() {
                'Assigned At','Actual Delivery Date',
                'Loading Summary','Delivery Summary']
     }, true),
-    atGetAll(TABLES.NAT_LOADS, {
+    // safeFetch on both. This page computes performance metrics, so a missing
+    // source does not blank a number, it QUIETLY SHIFTS one: fewer national
+    // loads means a different on-time percentage, and missing maintenance
+    // requests means a lower workload figure. Nothing looks broken, the answers
+    // are just wrong. Kept soft (international orders carry most of this page)
+    // with the shortfall named instead.
+    safeFetch(() => atGetAll(TABLES.NAT_LOADS, {
       fields: ['Direction','Status','Loading DateTime','Delivery DateTime','Truck','Driver',
                'Actual Delivery Date']
-    }, true).catch(() => []),
+    }, true), 'performance: national loads'),
     preloadReferenceData().then(() => getRefTrucks()),
-    atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true).catch(() => []),
+    safeFetch(() => atGetAll(TABLES.MAINT_REQ, { fields: ['Status','Priority','Date Reported'] }, true), 'performance: maintenance requests'),
   ]);
+
+  // Named so the metrics below are read as partial rather than as fact.
+  PERF.failedSources = [
+    didFail(natLoads) && 'εθνικά φορτία',
+    didFail(maint)    && 'αιτήματα συντήρησης',
+  ].filter(Boolean);
   PERF.orders = orders || [];
   PERF.natLoads = natLoads || [];
   PERF.trucks = trucks || [];

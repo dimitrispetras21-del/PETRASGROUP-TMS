@@ -394,7 +394,19 @@ async function _renderWorkshopsStatsStrip(workshops) {
   try {
     // C1 fix: removed 'Total Cost' from fields[] — it's not in MAINT_HISTORY schema (422 error).
     // Code below still reads r.fields['Total Cost'] as a safety fallback in case it's added later.
-    const history = await atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Date'] }, true).catch(() => []);
+    // safeFetch: this feeds the workshops stats strip, which totals SPEND. A
+    // swallowed error rendered "€0 total, €0 this month" for every workshop,
+    // which is a plausible figure and therefore believable, rather than an
+    // obvious failure. Same shape as the pallet balance fixed in an earlier
+    // batch: a money number must not report an unknown as a zero.
+    const history = await safeFetch(
+      () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Date'] }, true),
+      'workshops: maintenance history'
+    );
+    if (didFail(history)) {
+      el.innerHTML = '<div style="padding:8px 0;color:#B45309;font-size:12px">⚠ Τα στοιχεία συντήρησης δεν φόρτωσαν, τα σύνολα δεν εμφανίζονται.</div>';
+      return;
+    }
     const activeWs = workshops.filter(w => w.fields['Active']).length;
     const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
     const yyyymm = new Date().toISOString().slice(0, 7);
