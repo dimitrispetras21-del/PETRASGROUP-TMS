@@ -326,6 +326,9 @@ function _renderIntlTable(records) {
     const active = [];
     if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
     if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
+    // Το select κατάστασης γράφει στο κλειδί '_status' (intlFilter('_status',…)),
+    // όχι 'Status'. Ο live έλεγχος έδειξε ότι η πρώτη γραφή το έχανε.
+    if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
     if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
     if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
     if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
@@ -381,12 +384,14 @@ function intlPeriodChange(v) { _intlPeriod = v; _oiVS.lastStart = -1; _oiVS.last
 /** Καθαρίζει κάθε φίλτρο της λίστας και επαναφέρει το χρονικό εύρος. OI-4. */
 function _intlClearFilters() {
   Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
-  _intlPeriod = 'all';
-  const bar = document.querySelector('.entity-toolbar-v2');
-  if (bar) bar.querySelectorAll('select').forEach(sel => { sel.value = ''; });
-  const q = document.querySelector('.entity-search-input');
-  if (q) q.value = '';
-  _applyIntlFilters();
+  _oiPage = 1;
+  // Widening the period needs a REFETCH, not a re-filter: _applyIntlFilters()
+  // only narrows INTL_ORDERS.data, which was fetched for the old window. And a
+  // full re-render rebuilds the toolbar, so every <select> returns to its
+  // default — the first version poked .entity-toolbar-v2 selects that are not
+  // in that container, so the dropdowns kept showing filters no longer applied.
+  // Both caught by the live check on 5/8.
+  intlPeriodChange('all');
 }
 
 function _applyIntlFilters() {
