@@ -333,9 +333,9 @@ function _renderInvKPI() {
   const el = document.getElementById('invKPI');
   if (!el) return;
 
-  const cardStyle = `background:#0F172A;border:1px solid #1E293B;border-radius:10px;padding:16px 18px`;
-  const labelStyle = `font-size:11px;color:#94A3B8;font-family:'DM Sans',sans-serif;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px`;
-  const valueStyle = `font-size:22px;font-weight:700;color:#F1F5F9;font-family:'Syne',sans-serif`;
+  const cardStyle = `background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;padding:16px 18px`;
+  const labelStyle = `font-size:11px;color:var(--panel-dim);font-family:'DM Sans',sans-serif;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px`;
+  const valueStyle = `font-size:22px;font-weight:700;color:var(--panel-text);font-family:'Syne',sans-serif`;
   const deltaStyle = `font-size:11px;color:var(--text-dim);margin-top:4px;font-family:'DM Sans',sans-serif`;
 
   el.innerHTML = `
@@ -548,9 +548,9 @@ function _renderInvDetail() {
     const today = localToday();
     invoiceBlock = `
       <div style="margin-top:14px;padding:12px;background:#1E293B;border-radius:8px;border:1px solid #334155">
-        <div style="font-size:11px;color:#94A3B8;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Έκδοση Τιμολογίου</div>
-        <input id="invNumInput" value="${nextNum}" style="width:100%;padding:8px;border-radius:6px;background:#0F172A;border:1px solid #334155;color:#F1F5F9;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px" placeholder="Invoice Number">
-        <input id="invDateInput" type="date" value="${today}" style="width:100%;padding:8px;border-radius:6px;background:#0F172A;border:1px solid #334155;color:#F1F5F9;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px">
+        <div style="font-size:11px;color:var(--panel-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Έκδοση Τιμολογίου</div>
+        <input id="invNumInput" value="${nextNum}" style="width:100%;padding:8px;border-radius:6px;background:var(--panel);border:1px solid #334155;color:var(--panel-text);font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px" placeholder="Invoice Number">
+        <input id="invDateInput" type="date" value="${today}" style="width:100%;padding:8px;border-radius:6px;background:var(--panel);border:1px solid #334155;color:var(--panel-text);font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px">
         <button onclick="_invMarkInvoiced('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
           border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;
           transition:background 0.15s"
@@ -563,25 +563,25 @@ function _renderInvDetail() {
     invoiceBlock = `
       <div style="margin-top:14px;padding:12px;background:#064E3B22;border-radius:8px;border:1px solid #064E3B">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:11px;color:#94A3B8;text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο</span>
+          <span style="font-size:11px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο</span>
           <span style="font-size:11px;font-weight:600;color:#6EE7B7">Invoiced</span>
         </div>
-        <div style="font-size:13px;color:#F1F5F9;font-weight:600">${escapeHtml(num)}</div>
-        <div style="font-size:11px;color:#94A3B8;margin-top:2px">${escapeHtml(date)}</div>
+        <div style="font-size:13px;color:var(--panel-text);font-weight:600">${escapeHtml(num)}</div>
+        <div style="font-size:11px;color:var(--panel-dim);margin-top:2px">${escapeHtml(date)}</div>
       </div>`;
   }
 
   const row = (label, val) => `
     <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1E293B">
-      <span style="color:#94A3B8;font-size:12px">${label}</span>
-      <span style="color:#F1F5F9;font-size:13px;font-weight:500;text-align:right;max-width:200px;overflow:hidden;text-overflow:ellipsis">${val}</span>
+      <span style="color:var(--panel-dim);font-size:12px">${label}</span>
+      <span style="color:var(--panel-text);font-size:13px;font-weight:500;text-align:right;max-width:200px;overflow:hidden;text-overflow:ellipsis">${val}</span>
     </div>`;
 
   panel.style.display = 'block';
   panel.innerHTML = `
-    <div style="background:#0F172A;border:1px solid #1E293B;border-radius:10px;padding:20px;position:sticky;top:16px;max-height:calc(100vh - 40px);overflow-y:auto">
+    <div style="background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;padding:20px;position:sticky;top:16px;max-height:calc(100vh - 40px);overflow-y:auto">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:#F1F5F9">${escapeHtml(_invOrderNo(rec))}</span>
+        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--panel-text)">${escapeHtml(_invOrderNo(rec))}</span>
         <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
           background:${rec._type === 'intl' ? '#0C2D5C' : '#14532D'};
           color:${rec._type === 'intl' ? '#38BDF8' : '#4ADE80'}">${rec._type === 'intl' ? 'INTL' : 'NATL'}</span>
@@ -597,7 +597,7 @@ function _renderInvDetail() {
       ${rec._type === 'intl' && _invPERequired(rec) ? row('PE Sheets', _invPESheetsOK(rec) ? 'Uploaded' : 'Missing') : ''}
       ${row('Status', f['Status'] || '—')}
       ${row('Direction', f['Direction'] || '—')}
-      ${row('Pallet Balance', `<span id="invPalBal_${rec.id}" style="color:#94A3B8">…</span>`)}
+      ${row('Pallet Balance', `<span id="invPalBal_${rec.id}" style="color:var(--panel-dim)">…</span>`)}
       ${invoiceBlock}
     </div>
   `;
@@ -818,17 +818,17 @@ function _invExportPDF() {
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px}
       .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0B1929;padding-bottom:12px;margin-bottom:16px}
-      .hdr h1{font-size:18px;font-weight:700;color:#0B1929}
+      .hdr h1{font-size:18px;font-weight:700;color:var(--navy-mid)}
       .hdr .meta{font-size:11px;color:#555;text-align:right}
       .stats{display:flex;gap:24px;margin-bottom:14px;padding:10px;background:#F5F7FA;border-radius:6px}
       .stat{font-size:11px}
-      .stat b{display:block;font-size:14px;color:#0B1929}
+      .stat b{display:block;font-size:14px;color:var(--navy-mid)}
       table{width:100%;border-collapse:collapse;font-size:10px}
-      thead th{background:#0B1929;color:#fff;padding:6px 8px;text-align:left;font-weight:600}
+      thead th{background:var(--navy-mid);color:#fff;padding:6px 8px;text-align:left;font-weight:600}
       tbody td{padding:5px 8px;border-bottom:1px solid #E5E7EB}
       tbody tr:nth-child(even){background:#FAFAFA}
       tfoot td{padding:8px;font-weight:700;background:#F5F7FA;border-top:2px solid #0B1929}
-      .pbar{position:fixed;top:0;left:0;right:0;background:#0B1929;color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center}
+      .pbar{position:fixed;top:0;left:0;right:0;background:var(--navy-mid);color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center}
       .pbar button{background:var(--accent);color:#fff;border:none;padding:6px 18px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
       .pbar button:hover{background:#0369A1}
       .body-wrap{margin-top:50px}
@@ -929,22 +929,22 @@ function _invShowClientHistory(clientName) {
 
   openModal(`Ιστορικό — ${clientName}`, `
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-      <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
-        <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Σύνολο</div>
-        <div style="font-size:18px;font-weight:700;color:#F1F5F9">${orders.length}</div>
+      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
+        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Σύνολο</div>
+        <div style="font-size:18px;font-weight:700;color:var(--panel-text)">${orders.length}</div>
       </div>
-      <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
-        <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Invoiced</div>
+      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
+        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Invoiced</div>
         <div style="font-size:18px;font-weight:700;color:#10B981">${invoicedCount}</div>
       </div>
-      <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
-        <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Pending</div>
+      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
+        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Pending</div>
         <div style="font-size:18px;font-weight:700;color:#F59E0B">${pendingCount}</div>
         <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${_fmtEuro(pendingTotal)}</div>
       </div>
-      <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
-        <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Total Revenue</div>
-        <div style="font-size:18px;font-weight:700;color:#F1F5F9">${_fmtEuro(totalPrice)}</div>
+      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
+        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Total Revenue</div>
+        <div style="font-size:18px;font-weight:700;color:var(--panel-text)">${_fmtEuro(totalPrice)}</div>
       </div>
     </div>
     <div style="max-height:50vh;overflow-y:auto">
@@ -997,7 +997,7 @@ async function _invFetchPalletBalance(clientId, mountId) {
     const color = balance > 0 ? '#10B981' : balance < 0 ? '#F59E0B' : '#94A3B8';
     const sign = balance > 0 ? '+' : '';
     const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(zero)';
-    target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:#94A3B8;font-size:10px">${label}</span><span style="color:var(--text-dim);font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;
+    target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--panel-dim);font-size:10px">${label}</span><span style="color:var(--text-dim);font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;
   } catch(e) {
     const target = document.getElementById(mountId);
     if (target) target.textContent = '—';
