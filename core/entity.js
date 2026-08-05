@@ -230,6 +230,7 @@ const ENTITY_CONFIG = {
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
         { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker','Ρυμούλκα'] },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',      label: 'ΚΤΕΟ έως',     type: 'date' },
@@ -239,7 +240,7 @@ const ENTITY_CONFIG = {
       ]},
     ],
     detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Trailer Type'] },
+      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Trailer Type','Tare Weight kg'] },
       { title: 'Έγγραφα',   fields: ['KTEO Expiry','FRC Expiry','Insurance Expiry','Notes'] },
     ],
   },
