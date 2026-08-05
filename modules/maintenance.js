@@ -200,7 +200,6 @@ function _expiryBuildRows() {
 // PAGE 1: EXPIRY ALERTS — Airtable-style layout
 // ═════════════════════════════════════════════════════════════════
 async function renderExpiryAlerts() {
-  document.getElementById('topbarTitle').textContent = 'Expiry Alerts';
   document.getElementById('content').innerHTML = showLoading('Loading certificates…');
   try {
     await _maintLoad();
@@ -617,7 +616,6 @@ function _expiryPrint() {
 let _svcFilters = { vehicle: '', type: '', status: '' };
 
 async function renderServiceRecords() {
-  document.getElementById('topbarTitle').textContent = 'Service Records';
   document.getElementById('content').innerHTML = showLoading('Loading service records…');
   try {
     await _maintLoad(true);
@@ -974,7 +972,6 @@ async function renderTrailersHistory() { await _renderHistory('trailers'); }
 
 async function _renderHistory(vType) {
   const title = vType === 'trucks' ? 'Trucks History' : 'Trailers History';
-  document.getElementById('topbarTitle').textContent = title;
   document.getElementById('content').innerHTML = showLoading('Loading history…');
   try {
     await _maintLoad(true);
@@ -1446,7 +1443,6 @@ function _mdDelta(curr, prev, lowerIsBetter) {
 }
 
 async function renderMaintDash() {
-  document.getElementById('topbarTitle').textContent = 'Maintenance Dashboard';
   const c = document.getElementById('content');
   c.innerHTML = _maintDashSkeleton();
   const _ic = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
@@ -1844,7 +1840,6 @@ async function _mreqLoad(force) {
 }
 
 async function renderMaintRequests() {
-  document.getElementById('topbarTitle').textContent = 'Work Orders';
   document.getElementById('content').innerHTML = showLoading('Loading work orders…');
   try {
     await _mreqLoad();

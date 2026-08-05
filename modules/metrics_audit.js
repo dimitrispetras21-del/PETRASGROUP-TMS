@@ -279,7 +279,6 @@ function _auditCrossCompute() {
 
 async function renderMetricsAudit() {
   const c = document.getElementById('content');
-  document.getElementById('topbarTitle').textContent = 'Metrics Audit';
   c.style.padding = '';
   c.innerHTML = `<div style="text-align:center;padding:60px;color:#94A3B8">Loading audit data...</div>`;
 

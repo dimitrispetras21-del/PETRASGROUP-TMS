@@ -71,7 +71,6 @@ const PERF_KPIS = {
 /* ── ENTRY ────────────────────────────────────────────────── */
 async function renderPerformance() {
   const c = document.getElementById('content');
-  document.getElementById('topbarTitle').textContent = 'My Performance';
   c.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Loading performance data…</div>`;
 

@@ -261,7 +261,6 @@ function navigate(page) {
     case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    renderWeeklyNatl();       break;
     case 'weekly_pickups':
-      document.getElementById('topbarTitle').textContent = 'National Pick Ups';
       c.style.padding = '0';
       c.style.overflow = 'hidden';
       // Make the parent .content div fill the viewport so the iframe has room to grow.

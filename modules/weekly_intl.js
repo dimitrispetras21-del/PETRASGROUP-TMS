@@ -163,7 +163,6 @@ async function renderWeeklyIntl(){
   WINTL._seq = 0;
   const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
-  document.getElementById('topbarTitle').textContent=`Weekly International — Week ${WINTL.week}`;
   document.getElementById('content').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:center;
                 gap:10px;height:160px;color:var(--text-dim);font-size:13px">

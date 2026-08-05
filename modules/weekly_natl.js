@@ -76,7 +76,6 @@ function _wnWeekStart(w) {
 let _wnLoadId = 0; // prevents stale renders from rapid week switching
 async function renderWeeklyNatl() {
   const loadId = ++_wnLoadId;
-  document.getElementById('topbarTitle').textContent = `Weekly National — Week ${WNATL.week}`;
   const content = document.getElementById('content');
   content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;

@@ -31,7 +31,6 @@ const RAMP_FIELDS = [
 let _rampAutoRefresh = null;
 
 async function renderDailyRamp() {
-  document.getElementById('topbarTitle').textContent = 'Daily Ramp Board';
   document.getElementById('content').innerHTML = showLoading('Loading ramp board…');
   try { await _rampLoad(); _rampDraw(); }
   catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`; console.error(e); }
