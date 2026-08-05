@@ -281,7 +281,7 @@ function _wnPaint() {
       <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
         <div class="entity-search-wrap">
           ${_wnI('search')}
-          <input id="wn-search" class="entity-search-input" type="text" placeholder="Search client / truck / driver..." oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
+          <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού…" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
         </div>
         <select class="svc-filter" onchange="WNATL.filterStatus=this.value;_wnApplyFilter()">
           <option value="">All statuses</option>
