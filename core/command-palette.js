@@ -85,10 +85,15 @@
           <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Search pages or actions…" value="${CMD.query.replace(/"/g,'&quot;')}" autocomplete="off" autofocus>
           <span class="cmdk-esc">ESC</span>
         </div>
-        <div class="cmdk-list" id="cmdk-list">
-          ${filtered.length === 0 ? `<div class="cmdk-empty">No matches</div>` :
+        <!-- SH-7: τα role="option" ήταν ορφανά — χωρίς γονέα role="listbox" ο
+             αναγνώστης οθόνης δεν ανακοινώνει «N αποτελέσματα, επιλογή 1 από N».
+             aria-selected σε ΚΑΘΕ στοιχείο, όχι μόνο κλάση 'selected'. -->
+        <div class="cmdk-list" id="cmdk-list" role="listbox" aria-label="Αποτελέσματα"
+             aria-activedescendant="${filtered.length ? 'cmdk-opt-' + CMD.selectedIdx : ''}">
+          ${filtered.length === 0 ? `<div class="cmdk-empty">Κανένα αποτέλεσμα</div>` :
             filtered.map((it, i) => `
-              <div class="cmdk-item ${i === CMD.selectedIdx ? 'selected' : ''}" data-idx="${i}" role="option">
+              <div class="cmdk-item ${i === CMD.selectedIdx ? 'selected' : ''}" data-idx="${i}"
+                   id="cmdk-opt-${i}" role="option" aria-selected="${i === CMD.selectedIdx}">
                 <span class="cmdk-ico">${ico(it.icon || 'file_text')}</span>
                 <span class="cmdk-title">${it.title}</span>
                 ${it.section ? `<span class="cmdk-section">${it.section}</span>` : `<span class="cmdk-section">${it.type === 'action' ? 'Action' : ''}</span>`}
