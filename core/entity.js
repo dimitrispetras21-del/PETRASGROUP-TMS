@@ -165,8 +165,7 @@ const ENTITY_CONFIG = {
       { field: 'Model',               label: 'Model' },
       { field: 'Year',                label: 'Year', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
-      { field: 'Fuel Tank Truck Lt',  label: 'Tank Lt', type: 'number' },
-      { field: 'Gross Vehicle Weight kg', label: 'GVW kg', type: 'number' },
+      { field: 'Tare Weight kg',      label: 'Απόβαρο kg', type: 'number' },
       { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
         { field: 'KTEO Expiry',     label: 'KT' },
         { field: 'KEK Expiry',      label: 'KK' },
@@ -175,25 +174,25 @@ const ENTITY_CONFIG = {
       { field: 'Active',              label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Identity', fields: [
-        { f: 'License Plate', label: 'License Plate', req: true },
-        { f: 'Brand',         label: 'Brand' },
-        { f: 'Model',         label: 'Model' },
-        { f: 'Year',          label: 'Year', type: 'number' },
-        { f: 'Fuel Type',     label: 'Fuel Type', type: 'select', options: ['Diesel','LNG','CNG','HVO'] },
-        { f: 'Euro Standard', label: 'Euro',      type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
+      { section: 'Ταυτότητα', fields: [
+        { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'Brand',         label: 'Μάρκα' },
+        { f: 'Model',         label: 'Μοντέλο' },
+        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
+        { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
-      { section: 'Technical', fields: [
-        { f: 'Fuel Tank Truck Lt',      label: 'Tank Capacity (lt)',  type: 'number' },
-        { f: 'Horsepower HP',           label: 'Horsepower (HP)',     type: 'number' },
-        { f: 'Gross Vehicle Weight kg', label: 'GVW (kg)',            type: 'number' },
-        { f: 'Insurance Partner',       label: 'Insurer' },
-        { f: 'Notes',                   label: 'Notes',              type: 'textarea' },
+      { section: 'Έγγραφα', fields: [
+        { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',     type: 'date' },
+        { f: 'KEK Expiry',        label: 'ΚΕΚ έως',      type: 'date' },
+        { f: 'Insurance Expiry',  label: 'Ασφάλεια έως', type: 'date' },
+        { f: 'Insurance Partner', label: 'Ασφαλιστής' },
+        { f: 'Notes',             label: 'Σημειώσεις',   type: 'textarea' },
       ]},
     ],
     detailSections: [
-      { title: 'Identity',     fields: ['License Plate','Brand','Model','Year','Fuel Type','Euro Standard'] },
-      { title: 'Technical',    fields: ['Fuel Tank Truck Lt','Horsepower HP','Gross Vehicle Weight kg','Payload Capacity kg','Insurance Partner'] },
+      { title: 'Ταυτότητα', fields: ['License Plate','Brand','Model','Year','Euro Standard','Tare Weight kg'] },
+      { title: 'Έγγραφα',   fields: ['KTEO Expiry','KEK Expiry','Insurance Expiry','Insurance Partner','Notes'] },
     ],
   },
 
@@ -202,7 +201,7 @@ const ENTITY_CONFIG = {
     label: 'Trailers',
     labelSingle: 'Trailer',
     perm: 'maintenance',
-    searchFields: ['License Plate', 'Brand', 'Model', 'Refrigeration Brand'],
+    searchFields: ['License Plate', 'Brand', 'Model', 'Trailer Type'],
     filters: [
       { field: 'Trailer Type', label: 'Type',   type: 'dynamic' },
       { field: 'Active',       label: 'Status', type: 'bool', options: [
@@ -223,7 +222,6 @@ const ENTITY_CONFIG = {
       { field: 'Model',                   label: 'Model' },
       { field: 'Year',                    label: 'Year', type: 'number' },
       { field: 'Trailer Type',            label: 'Type' },
-      { field: 'Refrigeration Brand',     label: 'Reefer' },
       { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
         { field: 'KTEO Expiry',     label: 'KT' },
         { field: 'FRC Expiry',      label: 'FRC' },
@@ -232,23 +230,23 @@ const ENTITY_CONFIG = {
       { field: 'Active',                  label: 'Status', type: 'active' },
     ],
     formFields: [
-      { section: 'Identity', fields: [
-        { f: 'License Plate', label: 'License Plate', req: true },
-        { f: 'Brand',         label: 'Brand' },
-        { f: 'Model',         label: 'Model' },
-        { f: 'Year',          label: 'Year',          type: 'number' },
-        { f: 'Trailer Type',  label: 'Type',          type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker'] },
+      { section: 'Ταυτότητα', fields: [
+        { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'Brand',         label: 'Μάρκα' },
+        { f: 'Model',         label: 'Μοντέλο' },
+        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
+        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker','Ρυμούλκα'] },
       ]},
-      { section: 'Refrigeration', fields: [
-        { f: 'Refrigeration Brand',        label: 'Reefer Brand' },
-        { f: 'Refrigeration Model',        label: 'Reefer Model' },
-        { f: 'Fuel Tank Refrigeration Lt', label: 'Reefer Tank (lt)', type: 'number' },
-        { f: 'Notes',                      label: 'Notes',            type: 'textarea' },
+      { section: 'Έγγραφα', fields: [
+        { f: 'KTEO Expiry',      label: 'ΚΤΕΟ έως',     type: 'date' },
+        { f: 'FRC Expiry',       label: 'ATP/FRC έως',  type: 'date' },
+        { f: 'Insurance Expiry', label: 'Ασφάλεια έως', type: 'date' },
+        { f: 'Notes',            label: 'Σημειώσεις',   type: 'textarea' },
       ]},
     ],
     detailSections: [
-      { title: 'Identity',       fields: ['License Plate','Brand','Model','Year','Trailer Type'] },
-      { title: 'Refrigeration',  fields: ['Refrigeration Brand','Refrigeration Model','Fuel Tank Refrigeration Lt'] },
+      { title: 'Ταυτότητα', fields: ['License Plate','Brand','Model','Year','Trailer Type'] },
+      { title: 'Έγγραφα',   fields: ['KTEO Expiry','FRC Expiry','Insurance Expiry','Notes'] },
     ],
   },
 
