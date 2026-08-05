@@ -292,6 +292,9 @@ body {
   display: flex;
   align-items: center;
   gap: 11px;
+  /* 44px ελάχιστο ύψος αφής: το μενού χρησιμοποιείται και από tablet στην
+     αποθήκη. Ήταν ~33px (8px padding + 17px γραμμή). Φάση 2, ενότητα Ε. */
+  min-height: 44px;
   padding: 8px 12px;
   cursor: pointer;
   white-space: nowrap;
