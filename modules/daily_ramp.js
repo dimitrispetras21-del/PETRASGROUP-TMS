@@ -448,13 +448,13 @@ function _rampDraw() {
       <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--success)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-ok)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:var(--accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--panel-ok)':'var(--panel-bad)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
-        <div><span class="ramp-kpi-val" style="color:var(--warning)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+        <div><span class="ramp-kpi-val" style="color:var(--panel-warn)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
     </div>
 
     <div class="ramp-pair">
