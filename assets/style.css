@@ -2229,7 +2229,20 @@ tbody tr:hover { background: var(--bg-hover); }
 
 /* 2-col grid */
 .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
-@media(max-width:1000px) { .ramp-pair { grid-template-columns:1fr; } }
+/* Tablet: the ramp board is the one screen with a real tablet use case — a
+   warehouse worker, gloves on, at the dock. Two 9-column tables side by side
+   do not fit. Below 1100px they stack, and the two least-urgent columns
+   (Εμπόρευμα, Φορτηγό) drop out, leaving 7 that fit.
+   SCREEN ONLY, deliberately: _rampPrint() copies #content innerHTML into a new
+   window, so a print-wide rule here would silently drop the columns from the
+   printout. Export CSV is unaffected — it reads RAMP.records, not the DOM.
+   See docs/design/DEEP_AUDIT_2026-08-04/daily_ramp.md DR-2 / Π2. */
+@media screen and (max-width:1100px) {
+  .ramp-pair { grid-template-columns:1fr; }
+  .ramp-col-2nd { display:none; }
+}
+/* DR-6: «Πρόοδος» is the question of the day — it sat last, in the corner. */
+.ramp-kpi-primary { flex:2 1 260px; }
 
 /* sections */
 .ramp-sec-hd { padding:8px 14px; border-radius:10px 10px 0 0;
