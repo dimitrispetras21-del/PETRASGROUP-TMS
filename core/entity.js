@@ -744,7 +744,11 @@ function buildEntityTable(entityKey, records) {
   const sortedRecs = _entitySortRecords(entityKey, records);
   const ths = cols.map((c, i) => {
     const arrow = s.col===i ? (s.dir===1?' <span style="color:var(--accent)">▲</span>':s.dir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
-    return `<th style="cursor:pointer;user-select:none" onclick="entitySortToggle('${entityKey}',${i})">${c.label}${arrow}</th>`;
+    // Sorting was mouse-only; aria-sort also tells a screen reader the state.
+    const ariaSort = s.col===i ? (s.dir===1?'ascending':s.dir===2?'descending':'none') : 'none';
+    return `<th style="cursor:pointer;user-select:none" aria-sort="${ariaSort}" tabindex="0" role="button"
+      onclick="entitySortToggle('${entityKey}',${i})"
+      onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
   }).join('');
   // Render cap: 500 rows max to keep DOM responsive. Previously was a silent 200 cap
   // which hid entries in growing tables (clients/partners > 200). Now we render up to
@@ -816,13 +820,19 @@ function buildEntityRow(entityKey, r, cols) {
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
 
-  return `<tr onclick="selectEntity('${entityKey}','${r.id}')" id="row_${r.id}">${cells}
+  // The whole row selects a record, so it must be reachable without a mouse.
+  // role+tabindex rather than a <button> wrapper because a <tr> cannot contain
+  // one without breaking the table. One change, six master-data pages.
+  // See docs/design/DEEP_AUDIT_2026-08-04/clients.md CL-4 / trucks.md TR-6.
+  return `<tr onclick="selectEntity('${entityKey}','${r.id}')" id="row_${r.id}"
+    tabindex="0" role="button" aria-label="Άνοιγμα εγγραφής"
+    onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectEntity('${entityKey}','${r.id}')}">${cells}
     <td style="width:32px">
-      <div class="btn-icon" onclick="event.stopPropagation();openEntityEdit('${entityKey}','${r.id}')">
+      <button type="button" class="btn-icon" aria-label="Επεξεργασία" onclick="event.stopPropagation();openEntityEdit('${entityKey}','${r.id}')">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M11 2l3 3-9 9H2v-3l9-9z"/>
         </svg>
-      </div>
+      </button>
     </td>
   </tr>`;
 }
