@@ -336,12 +336,12 @@ function _renderInvKPI() {
   const cardStyle = `background:#0F172A;border:1px solid #1E293B;border-radius:10px;padding:16px 18px`;
   const labelStyle = `font-size:11px;color:#94A3B8;font-family:'DM Sans',sans-serif;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px`;
   const valueStyle = `font-size:22px;font-weight:700;color:#F1F5F9;font-family:'Syne',sans-serif`;
-  const deltaStyle = `font-size:11px;color:#64748B;margin-top:4px;font-family:'DM Sans',sans-serif`;
+  const deltaStyle = `font-size:11px;color:var(--text-dim);margin-top:4px;font-family:'DM Sans',sans-serif`;
 
   el.innerHTML = `
     <div style="${cardStyle}">
       <div style="${labelStyle}">ΕΤΟΙΜΕΣ ΠΡΟΣ ΤΙΜΟΛΟΓΗΣΗ</div>
-      <div style="${valueStyle};color:#0284C7">${ready.length}</div>
+      <div style="${valueStyle};color:var(--accent)">${ready.length}</div>
       <div style="${deltaStyle}">${_fmtEuro(readyTotal)}</div>
     </div>
     <div style="${cardStyle};${overdue.length ? 'border-color:#7F1D1D' : ''}">
@@ -454,7 +454,7 @@ function _renderInvTable() {
   if (!tbody) return;
 
   if (!INV.filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#64748B;padding:32px">No orders match current filters</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:32px">No orders match current filters</td></tr>`;
     return;
   }
 
@@ -480,7 +480,7 @@ function _renderInvTable() {
       ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C2D5C;color:#38BDF8">INTL</span>'
       : '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#14532D;color:#4ADE80">NATL</span>';
 
-    const peIcon = r._type !== 'intl' ? '<span style="color:#64748B">—</span>'
+    const peIcon = r._type !== 'intl' ? '<span style="color:var(--text-dim)">—</span>'
       : _invPESheetsOK(r)
         ? '<span style="color:#10B981;font-weight:700">&#10003;</span>'
         : '<span style="color:#F59E0B;font-weight:700">&#10007;</span>';
@@ -541,7 +541,7 @@ function _renderInvDetail() {
   let invoiceBlock = '';
   if (isBlocked) {
     invoiceBlock = `<button disabled style="width:100%;padding:10px;border-radius:8px;border:1px solid #334155;
-      background:#1E293B;color:#64748B;font-size:13px;font-weight:600;cursor:not-allowed;margin-top:12px">
+      background:#1E293B;color:var(--text-dim);font-size:13px;font-weight:600;cursor:not-allowed;margin-top:12px">
       PE Sheets Missing — Cannot Invoice</button>`;
   } else if (!isInvoiced && canInvoice) {
     const nextNum = _invNextNumber();
@@ -552,7 +552,7 @@ function _renderInvDetail() {
         <input id="invNumInput" value="${nextNum}" style="width:100%;padding:8px;border-radius:6px;background:#0F172A;border:1px solid #334155;color:#F1F5F9;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px" placeholder="Invoice Number">
         <input id="invDateInput" type="date" value="${today}" style="width:100%;padding:8px;border-radius:6px;background:#0F172A;border:1px solid #334155;color:#F1F5F9;font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px">
         <button onclick="_invMarkInvoiced('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
-          border:none;background:#0284C7;color:#fff;font-size:13px;font-weight:600;cursor:pointer;
+          border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;
           transition:background 0.15s"
           onmouseenter="this.style.background='#0369A1'" onmouseleave="this.style.background='#0284C7'">
           Mark as Invoiced</button>
@@ -740,7 +740,7 @@ function _invShowOutstandingModal() {
         <thead>
           <tr><th>Client</th><th style="text-align:right">Orders</th><th style="text-align:right">Total</th><th style="text-align:center">Oldest</th></tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:30px;color:#64748B">Δεν υπάρχουν εκκρεμότητες</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-dim)">Δεν υπάρχουν εκκρεμότητες</td></tr>'}</tbody>
         ${rows ? `<tfoot><tr style="border-top:2px solid #334155"><td colspan="2" style="font-weight:700">TOTAL</td><td style="text-align:right;font-weight:700;color:#F59E0B">${_fmtEuro(grandTotal)}</td><td></td></tr></tfoot>` : ''}
       </table>
     </div>
@@ -829,7 +829,7 @@ function _invExportPDF() {
       tbody tr:nth-child(even){background:#FAFAFA}
       tfoot td{padding:8px;font-weight:700;background:#F5F7FA;border-top:2px solid #0B1929}
       .pbar{position:fixed;top:0;left:0;right:0;background:#0B1929;color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center}
-      .pbar button{background:#0284C7;color:#fff;border:none;padding:6px 18px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
+      .pbar button{background:var(--accent);color:#fff;border:none;padding:6px 18px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
       .pbar button:hover{background:#0369A1}
       .body-wrap{margin-top:50px}
       @media print {
@@ -940,7 +940,7 @@ function _invShowClientHistory(clientName) {
       <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
         <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Pending</div>
         <div style="font-size:18px;font-weight:700;color:#F59E0B">${pendingCount}</div>
-        <div style="font-size:10px;color:#64748B;margin-top:2px">${_fmtEuro(pendingTotal)}</div>
+        <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${_fmtEuro(pendingTotal)}</div>
       </div>
       <div style="padding:10px;background:#0F172A;border-radius:6px;border:1px solid #1E293B">
         <div style="font-size:10px;color:#94A3B8;text-transform:uppercase">Total Revenue</div>
@@ -997,7 +997,7 @@ async function _invFetchPalletBalance(clientId, mountId) {
     const color = balance > 0 ? '#10B981' : balance < 0 ? '#F59E0B' : '#94A3B8';
     const sign = balance > 0 ? '+' : '';
     const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(zero)';
-    target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:#94A3B8;font-size:10px">${label}</span><span style="color:#64748B;font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;
+    target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:#94A3B8;font-size:10px">${label}</span><span style="color:var(--text-dim);font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;
   } catch(e) {
     const target = document.getElementById(mountId);
     if (target) target.textContent = '—';
