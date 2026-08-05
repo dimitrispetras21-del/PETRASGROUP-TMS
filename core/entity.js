@@ -144,7 +144,7 @@ const ENTITY_CONFIG = {
     label: 'Trucks',
     labelSingle: 'Truck',
     perm: 'maintenance',
-    searchFields: ['License Plate', 'Brand', 'Model', 'Insurance Partner'],
+    searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     filters: [
       { field: 'Brand',  label: 'Brand',  type: 'dynamic' },
       { field: 'Active', label: 'Status', type: 'bool', options: [
@@ -171,6 +171,7 @@ const ENTITY_CONFIG = {
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
@@ -186,7 +187,7 @@ const ENTITY_CONFIG = {
       ]},
     ],
     detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','Brand','Model','Year','Euro Standard','Tare Weight kg'] },
+      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Euro Standard','Tare Weight kg'] },
       { title: 'Έγγραφα',   fields: ['KTEO Expiry','KEK Expiry','Insurance Expiry','Insurance Partner','Notes'] },
     ],
   },
@@ -196,7 +197,7 @@ const ENTITY_CONFIG = {
     label: 'Trailers',
     labelSingle: 'Trailer',
     perm: 'maintenance',
-    searchFields: ['License Plate', 'Brand', 'Model', 'Trailer Type'],
+    searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
     filters: [
       { field: 'Trailer Type', label: 'Type',   type: 'dynamic' },
       { field: 'Active',       label: 'Status', type: 'bool', options: [
@@ -222,6 +223,7 @@ const ENTITY_CONFIG = {
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
+        { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
@@ -235,7 +237,7 @@ const ENTITY_CONFIG = {
       ]},
     ],
     detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','Brand','Model','Year','Trailer Type'] },
+      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Trailer Type'] },
       { title: 'Έγγραφα',   fields: ['KTEO Expiry','FRC Expiry','Insurance Expiry','Notes'] },
     ],
   },
