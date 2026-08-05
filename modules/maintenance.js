@@ -27,6 +27,24 @@ const MAINT_HISTORY_FIELDS = [
   'Next Service km','Invoice Number','Notes','Status',
 ];
 
+// Maintenance categories — derived from 1,152 real service events (2024-2026).
+// Owner-approved 2026-08-05, see docs/data-cleanup/MAINT-HISTORY-ANALYSIS-2026-08-05.md §6.1.
+// Values are stable keys stored in maint_history.type; labels are display-only.
+// Ordered by cost share, with the two catch-alls last.
+const MAINT_TYPES = [
+  ['Service',    'Προγραμματισμένο σέρβις'],
+  ['Tyres',      'Ελαστικά'],
+  ['Brakes',     'Φρένα & ανάρτηση'],
+  ['Reefer',     'Ψύξη (θάλαμος)'],
+  ['Engine',     'Κινητήρας & μετάδοση'],
+  ['Electrical', 'Ηλεκτρικά & φωτισμός'],
+  ['Body',       'Αμάξωμα & υπερκατασκευή'],
+  ['Inspection', 'Έλεγχοι & συμμόρφωση'],
+  ['Accident',   'Ζημιά / ατύχημα'],
+  ['Other',      'Λοιπά'],
+];
+const MAINT_TYPE_LABEL = Object.fromEntries(MAINT_TYPES);
+
 /* ── CSS ─────────────────────────────────────────────────────── */
 (function(){
   if (document.getElementById('maint-css')) return;
@@ -764,7 +782,7 @@ function _svcOpenForm(editId) {
           <div class="mf-row">
             <div class="mf-field"><label>Τύπος</label>
               <select id="mf-type">
-                ${[['Service','Service'],['Repair','Επισκευή'],['Inspection','Έλεγχος'],['Tyre Change','Αλλαγή Ελαστικών'],['Accident','Ατύχημα'],['Other','Άλλο']].map(([v,l]) => `<option value="${v}"${f['Type']===v?' selected':''}>${l}</option>`).join('')}
+                ${MAINT_TYPES.map(([v,l]) => `<option value="${v}"${f['Type']===v?' selected':''}>${l}</option>`).join('')}
               </select>
             </div>
             <div class="mf-field"><label>Συνεργείο</label>
