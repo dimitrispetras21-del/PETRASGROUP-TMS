@@ -166,11 +166,6 @@ const ENTITY_CONFIG = {
       { field: 'Year',                label: 'Year', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
       { field: 'Tare Weight kg',      label: 'Απόβαρο kg', type: 'number' },
-      { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
-        { field: 'KTEO Expiry',     label: 'KT' },
-        { field: 'KEK Expiry',      label: 'KK' },
-        { field: 'Insurance Expiry', label: 'INS' },
-      ]},
       { field: 'Active',              label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -222,11 +217,6 @@ const ENTITY_CONFIG = {
       { field: 'Model',                   label: 'Model' },
       { field: 'Year',                    label: 'Year', type: 'number' },
       { field: 'Trailer Type',            label: 'Type' },
-      { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
-        { field: 'KTEO Expiry',     label: 'KT' },
-        { field: 'FRC Expiry',      label: 'FRC' },
-        { field: 'Insurance Expiry', label: 'INS' },
-      ]},
       { field: 'Active',                  label: 'Status', type: 'active' },
     ],
     formFields: [
