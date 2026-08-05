@@ -230,10 +230,10 @@ function _expCell(doc, recId, fieldName, vType) {
   const dateStr = parts[2]+'/'+parts[1]+'/'+parts[0].slice(2);
   let color, daysStr;
   if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'ημ. ληγμένο'; }
-  else if (d <= 7)  { color = '#EF4444'; daysStr = d + 'd'; }
-  else if (d <= 30) { color = '#F59E0B'; daysStr = d + 'd'; }
-  else if (d <= 90) { color = '#0284C7'; daysStr = d + 'd'; }
-  else              { color = '#10B981'; daysStr = d + 'd'; }
+  else if (d <= 7)  { color = '#EF4444'; daysStr = d + ' ημ.'; }
+  else if (d <= 30) { color = '#F59E0B'; daysStr = d + ' ημ.'; }
+  else if (d <= 90) { color = '#0284C7'; daysStr = d + ' ημ.'; }
+  else              { color = '#10B981'; daysStr = d + ' ημ.'; }
   return `<td class="c" style="${cursor}" ${editAttr}>
     <span style="font-size:12px;color:#CBD5E1">${dateStr}</span>
     <span style="font-size:11px;font-weight:600;color:${color};margin-left:4px">${daysStr}</span>
