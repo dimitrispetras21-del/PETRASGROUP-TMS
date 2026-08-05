@@ -310,6 +310,33 @@ P55494 `1m1p-PE1iI_pf65vOmOKEUucAU7ZQYPqw` · P59498 `1XXHRUNUvfPI_TRInd23isnJOp
 P59524 `1Z7zIghIG7KTZP6wfZr_EwEK66koUzOTm` · P61334 `1fFcS2BIm4TakQQYc62ACVORVqj0ICrq5` ·
 P67294 `18omqw4M093RmRYFjIEbw9wJomSco03Ip` · P41754 `1dIa0G6Eoy2yx2X4Mof6Fkmb0KmE6hrRl`
 
+### ✅✅ ΑΠΟΒΑΡΑ + MODEL ΘΑΛΑΜΩΝ ΣΥΜΠΛΗΡΩΘΗΚΑΝ (6-8-2026)
+Με τη μέθοδο click-to-100% διαβάστηκαν τα 8 απόβαρα που έλειπαν από την πρώτη
+φάση (το πεδίο (G) ήταν εκτός κάδρου με το παλιό zoom):
+
+| Πινακίδα | Μάρκα / Μοντέλο | Απόβαρο | Σημείωση |
+|---|---|---|---|
+| P11983 | LAMBERET LVFS3 | 8.250 | VIN διορθώθηκε |
+| P42596 | LAMBERET LVFS3 | 8.150 | — |
+| P47331 | LAMBERET LVFS3F | 8.120 | VIN διορθώθηκε |
+| P50063 | CHEREAU CSD3 | 8.730 | — |
+| P50711 | LAMBERET LVFS3 | **10.470** | το βαρύτερο του στόλου |
+| P53802 | LECITRAILER **3E** | 9.220 | +model |
+| P59483 | CHEREAU **CSD3** | 9.510 | +model |
+| P66542 | LAMBERET LVFS3 | 9.800 | — |
+
+🔴 **ΕΠΙΒΕΒΑΙΩΘΗΚΕ ΤΟ VM9 → VM3.** Η βάση είχε `VM9LVFS3EV1R055534` (P11983) και
+`VM9LVFS3F31R069911` (P47331)· οι άδειες σε 100% zoom λένε καθαρά **`VM3…`**.
+Και τα δύο διορθώθηκαν. **Κανένα LAMBERET δεν έχει πρόθεμα VM9.**
+
+**ΘΑΛΑΜΟΙ ΕΝΕΡΓΟΙ (37): brand 37/37 ✓ · model 37/37 ✓ · year 37/37 ✓ ·
+trailer_type 37/37 ✓ · απόβαρο 37/37 ✓ · VIN 32/37**
+
+Μένουν **5 VIN**: P40069 · P49559 · P59482 · P61335 · P67294
+(τα 3 τελευταία διαβάστηκαν αλλά δεν ξεχώριζαν `0` από `O` — δεν μαντεύτηκαν).
+File IDs έτοιμα: P40069 `1g0iZTZF4Vb3zj6ZIeUSHsoYEsihA-nFi` ·
+P59482 `1cwfgSQGBmYq-Fi4KDq0stNm4U2bhJMPE`
+
 ### 📌 ΤΙ ΜΕΝΕΙ ΣΤΟΝ ΣΤΟΛΟ (μετά τις 5-8-2026)
 1. **Τράκτορες:** IAB1096 · IAB2103 (year/euro/απόβαρο — οι φάκελοί τους δεν
    έχουν αρχείο με τίτλο «Άδεια», θέλουν listing ολόκληρου φακέλου) +
