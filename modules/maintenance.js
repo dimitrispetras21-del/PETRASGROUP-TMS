@@ -1907,11 +1907,11 @@ function _mreqPaint() {
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
-        <div class="page-title">Work Orders</div>
-        <div class="page-sub">Daily maintenance requests</div>
+        <div class="page-title">Εντολές Εργασίας</div>
+        <div class="page-sub">Καθημερινά αιτήματα συντήρησης</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} New Request</button>
+        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} Νέα εντολή</button>
         <button class="btn btn-ghost btn-sm" onclick="MREQ._loaded=false;renderMaintRequests()">${_i('refresh')} Refresh</button>
       </div>
     </div>
@@ -1929,71 +1929,60 @@ function _mreqPaint() {
       <div class="exp-kpi exp-kpi-danger">
         <div class="exp-kpi-ico">${_i('alert_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">SOS</div>
+          <div class="exp-kpi-lbl">ΕΠΕΙΓΟΝ</div>
           <div class="exp-kpi-val">${sos}</div>
-          <div class="exp-kpi-sub">urgent</div>
+          <div class="exp-kpi-sub">άμεσα</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-warning">
         <div class="exp-kpi-ico">${_i('clock')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Pending</div>
+          <div class="exp-kpi-lbl">ΕΚΚΡΕΜΕΙ</div>
           <div class="exp-kpi-val">${pending}</div>
-          <div class="exp-kpi-sub">not started</div>
+          <div class="exp-kpi-sub">δεν ξεκίνησε</div>
         </div>
       </div>
       <div class="exp-kpi" style="color:var(--accent)">
         <div class="exp-kpi-ico">${_i('refresh')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">In Progress</div>
+          <div class="exp-kpi-lbl">ΣΕ ΕΞΕΛΙΞΗ</div>
           <div class="exp-kpi-val">${inProg}</div>
-          <div class="exp-kpi-sub">active</div>
+          <div class="exp-kpi-sub">ενεργές</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-success">
         <div class="exp-kpi-ico">${_i('check_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Completed</div>
+          <div class="exp-kpi-lbl">ΟΛΟΚΛΗΡΩΜΕΝΕΣ</div>
           <div class="exp-kpi-val">${done.length}</div>
-          <div class="exp-kpi-sub">done</div>
+          <div class="exp-kpi-sub">έγιναν</div>
         </div>
       </div>
     </div>
 
     <div class="exp-tab-bar">
       <div class="exp-tab-group">
-        ${tabBtn('active', 'Active', active.length, 'warning')}
-        ${tabBtn('done', 'Completed', done.length, 'success')}
-        ${tabBtn('all', 'All', all.length)}
+        ${tabBtn('active', 'Ενεργές', active.length, 'warning')}
+        ${tabBtn('done', 'Ολοκληρωμένες', done.length, 'success')}
+        ${tabBtn('all', 'Όλες', all.length)}
       </div>
     </div>
 
+    <!-- ΕΝΟΤΗΤΑ 1: πραγματικές, χειροκίνητες εντολές -->
     <div class="exp-section">
       <div class="exp-section-hdr">
         <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('checklist')}</div>
         <div>
-          <div class="exp-section-title">${_mreqTab === 'active' ? 'Active Orders' : _mreqTab === 'done' ? 'Completed Orders' : 'All Orders'}</div>
-          <div class="exp-section-sub">${filtered.length} shown${expiryAlerts.length ? ' · ' + expiryAlerts.length + ' auto-detected from expiry' : ''}</div>
+          <div class="exp-section-title">${_mreqTab === 'active' ? 'ΕΝΤΟΛΕΣ ΕΡΓΑΣΙΑΣ' : _mreqTab === 'done' ? 'ΟΛΟΚΛΗΡΩΜΕΝΕΣ ΕΝΤΟΛΕΣ' : 'ΟΛΕΣ ΟΙ ΕΝΤΟΛΕΣ'} (${filtered.length})</div>
+          <div class="exp-section-sub">Κάνε κλικ σε γραμμή για ενημέρωση</div>
         </div>
       </div>
       <div class="exp-table-wrap">
         <table class="mt">
           <thead><tr>
-            <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:100px" class="c">Actions</th>
+            <th>#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜΕΡΟΜΗΝΙΑ</th><th>ΣΥΝΕΡΓΕΙΟ</th><th>ΣΗΜΕΙΩΣΕΙΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
           </tr></thead>
-          <tbody>${expiryAlerts.length ? expiryAlerts.map((ea, i) => `<tr style="background:rgba(146,64,14,0.06)">
-          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">AUTO</span></td>
-          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
-          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+'d OVERDUE':ea.days+'d left'}</span></td>
-          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">EXPIRED</span>':'<span class="exp-badge exp-warning">EXPIRING</span>'}</td>
-          <td class="c"><span class="exp-badge" style="background:#92400E;color:#FEF3C7">AUTO</span></td>
-          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
-          <td style="font-size:12px">${ea.vType}</td>
-          <td style="font-size:11px">Expiry ≤14d</td>
-          <td class="c" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Done</button>
-          </td>
-        </tr>`).join('') : ''}${expiryAlerts.length && filtered.length ? '<tr><td colspan="9" style="padding:4px;background:var(--border);font-size:0"></td></tr>' : ''}${filtered.length ? filtered.map((r, i) => {
+          <tbody>${filtered.length ? filtered.map((r, i) => {
         const f = r.fields;
         return `<tr style="${f['Priority']==='SOS'?'background:rgba(127,29,29,0.06)':''}" onclick="_mreqOpenForm('${r.id}')">
           <td class="rn">${i+1}</td>
@@ -2005,18 +1994,54 @@ function _mreqPaint() {
           <td style="font-size:12px">${f['Workshop']||'—'}</td>
           <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
           <td class="c" onclick="event.stopPropagation()">
-            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Done</button>` : ''}
+            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
           </td>
         </tr>`;
-      }).join('') : (expiryAlerts.length ? '' : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+      }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
             illustration: 'truck',
-            title: _mreqTab === 'done' ? 'No completed orders yet' : 'No active work orders',
-            description: _mreqTab === 'done' ? 'Completed maintenance will appear here' : 'Create a work order or check Expiry Alerts for auto-detected issues',
-            action: _mreqTab !== 'done' ? { label: 'New Request', onClick: '_mreqOpenForm()' } : null
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No work orders</div>'}</td></tr>`)}</tbody>
+            title: _mreqTab === 'done' ? 'Καμία ολοκληρωμένη εντολή ακόμη' : 'Καμία ενεργή εντολή εργασίας',
+            description: _mreqTab === 'done' ? 'Οι ολοκληρωμένες συντηρήσεις θα εμφανίζονται εδώ' : 'Δημιούργησε εντολή, ή δες τις λήξεις εγγράφων παρακάτω',
+            action: _mreqTab !== 'done' ? { label: 'Νέα εντολή', onClick: '_mreqOpenForm()' } : null
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία εντολή εργασίας</div>'}</td></tr>`}</tbody>
         </table>
       </div>
     </div>
+
+    <!-- ΕΝΟΤΗΤΑ 2: αυτόματα από λήξεις. Συμπτυγμένη, όριο 10.
+         Δεν είναι εντολές εργασίας — είναι η ίδια πληροφορία με το Expiry
+         Alerts. Έδιναν 3.913px ύψος για 1 πραγματική εντολή, και 64 κουμπιά
+         «Done» που έκλειναν κάτι που δεν άνοιξε ποτέ κανείς.
+         maint_req.md MR-1/MR-3/MR-4/MR-6. -->
+    ${expiryAlerts.length ? `<details class="exp-section" style="padding:0">
+      <summary style="cursor:pointer;list-style:none;padding:var(--space-4);display:flex;align-items:center;gap:var(--space-3)">
+        <div class="exp-section-badge" style="background:var(--warning-bg);color:var(--warning)">${_i('alert_triangle')}</div>
+        <div style="flex:1">
+          <div class="exp-section-title">ΑΠΟ ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ (${expiryAlerts.length})</div>
+          <div class="exp-section-sub">Δεν είναι εντολές εργασίας — προέρχονται από τα έγγραφα του στόλου</div>
+        </div>
+        <span class="dash-card-link" onclick="event.preventDefault();event.stopPropagation();_expiryGoto('expired')">Άνοιγμα στις Λήξεις Εγγράφων ${_i('chevron_right')}</span>
+      </summary>
+      <div class="exp-table-wrap">
+        <table class="mt">
+          <thead><tr>
+            <th style="width:60px"></th><th>ΠΙΝΑΚΙΔΑ</th><th>ΕΓΓΡΑΦΟ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜ. ΛΗΞΗΣ</th><th>ΤΥΠΟΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
+          </tr></thead>
+          <tbody>${expiryAlerts.slice(0, 10).map(ea => `<tr style="background:rgba(146,64,14,0.06)">
+          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">ΑΥΤΟΜ.</span></td>
+          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
+          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+' ημ. ληγμένο':'λήγει σε '+ea.days+' ημ.'}</span></td>
+          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">ΛΗΓΜΕΝΟ</span>':'<span class="exp-badge exp-warning">ΛΗΓΕΙ</span>'}</td>
+          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
+          <td style="font-size:12px">${ea.vType}</td>
+          <td class="c" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Ανανεώθηκε</button>
+          </td>
+        </tr>`).join('')}</tbody>
+        </table>
+        ${expiryAlerts.length > 10 ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:10px 0;background:none;border:0;font:inherit;cursor:pointer"
+          onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων ${_i('chevron_right')}</button>` : ''}
+      </div>
+    </details>` : ''}
     <div id="mreq-form-container"></div>`;
 }
 
