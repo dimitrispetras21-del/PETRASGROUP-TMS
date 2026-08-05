@@ -320,10 +320,17 @@ function navigate(page) {
       renderTrashViewer();
       break;
     case 'error_log':
+      // AD-3: αυτό ήταν το ΜΟΝΟ route του Admin χωρίς gate, ανάμεσα σε
+      // settings/trash/metrics_audit που όλα ελέγχουν. Το Error Log δείχνει
+      // stack traces, ονόματα πεδίων και περιεχόμενο αιτημάτων.
+      if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
       renderErrorLog();
       break;
     case 'metrics_audit':
-      if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
+      // MA-4: ήταν σε can('settings'), που το έχει ΚΑΙ το management — ενώ η
+      // απόφαση ήταν owner-only. Δείχνει κάθε μέτρηση της επιχείρησης, τζίρο
+      // και ανοιχτά υπόλοιπα, μαζί.
+      if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
       renderMetricsAudit();
       break;
     case 'audit_trail':

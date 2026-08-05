@@ -116,7 +116,7 @@ const ENTITY_CONFIG = {
       { field: 'Full Name',      label: 'Driver', primary: true },
       { field: 'Phone',          label: 'Phone' },
       { field: 'Type',           label: 'Type' },
-      { field: 'Salary Base',    label: 'Salary' },
+      { field: 'Salary Base',    label: 'Salary', perm: 'full' },   // DV-3: μισθοδοσία — μόνο με δικαίωμα εγγραφής
       { field: 'License Number', label: 'License No.' },
       { field: 'License Expiry', label: 'License Expiry', type: 'expiry' },
       { field: 'Active',         label: 'Status', type: 'active' },
@@ -336,7 +336,16 @@ async function renderEntity(entityKey) {
   const dynamicOpts = {};
   for (const fi of cfg.filters) {
     if (fi.type === 'dynamic') {
-      dynamicOpts[fi.field] = [...new Set(records.map(r => r.fields[fi.field]).filter(Boolean))].sort();
+      // CL-1/PA-1: το φίλτρο χώρας πρόσφερε GR · GREECE · ΕΛΛΑΔΑ ως τρεις
+      // ΞΕΧΩΡΙΣΤΕΣ επιλογές, οπότε όποιος διάλεγε «GR» έχανε σιωπηλά τους
+      // άλλους δύο. Οι επιλογές ομαδοποιούνται πλέον στην κανονική μορφή· η
+      // τιμή της εγγραφής μένει ανέγγιχτη.
+      const _isCountry = /country|χωρα|χώρα/i.test(fi.field) || /country/i.test(fi.label || '');
+      dynamicOpts[fi.field] = [...new Set(records
+        .map(r => _isCountry && typeof normalizeCountry === 'function'
+          ? normalizeCountry(r.fields[fi.field]) : r.fields[fi.field])
+        .filter(Boolean))].sort();
+      if (_isCountry) dynamicOpts['__norm__' + fi.field] = true;
     }
   }
 
@@ -636,7 +645,11 @@ function _entitySortRecords(entityKey, recs) {
   const s = _entitySort[entityKey];
   if (!s || s.col === null || s.dir === 0) return recs;
   const cfg = ENTITY_CONFIG[entityKey];
-  const col = cfg.columns[s.col];
+  // ΠΡΕΠΕΙ να είναι η ΙΔΙΑ λίστα με αυτήν που παρήγαγε τις κεφαλίδες: ο δείκτης
+  // ταξινόμησης έρχεται από τη θέση στη ΦΙΛΤΡΑΡΙΣΜΕΝΗ λίστα, οπότε αν εδώ
+  // διαβαζόταν η πλήρης cfg.columns, μια κρυμμένη στήλη θα μετατόπιζε τους
+  // δείκτες και θα ταξινομούσε ΑΛΛΗ στήλη από αυτήν που πάτησε ο χρήστης.
+  const col = _entityVisibleCols(cfg)[s.col];
   if (!col) return recs;
   const dir = s.dir === 1 ? 1 : -1;
   // H13 fix: explicit handlers for new column types so sorting matches display order
@@ -735,9 +748,39 @@ function clearEntityFilters(entityKey) {
   renderEntity(entityKey);
 }
 
+/**
+ * Οι στήλες που επιτρέπεται να δει ο τρέχων ρόλος.
+ * Μια στήλη με perm:'full' κρύβεται όταν το δικαίωμα του τμήματος είναι μόνο
+ * ανάγνωση — DV-3: ο dispatcher (drivers:'view') έβλεπε τον ΜΙΣΘΟ κάθε οδηγού.
+ * CLIENT-SIDE ΜΟΝΟ: το πεδίο εξακολουθεί να επιστρέφεται από το backend.
+ * @param {Object} cfg - ENTITY_CONFIG entry
+ * @returns {Array} ορατές στήλες
+ */
+function _entityVisibleCols(cfg) {
+  return cfg.columns.filter(c => !c.perm || can(cfg.perm) === c.perm);
+}
+
 function buildEntityTable(entityKey, records) {
   const cfg = ENTITY_CONFIG[entityKey];
-  const cols = cfg.columns;
+  // TR-2/TL-3: δύο πινακίδες που κανονικοποιούνται στην ΙΔΙΑ τιμή είναι σχεδόν
+  // σίγουρα η ίδια εγγραφή δύο φορές — ΙΑΒ 1099 και IAB1099. Σημαίνονται ώστε
+  // να τις δει άνθρωπος. ΔΕΝ ενώνονται και ΔΕΝ γράφεται τίποτα: η πινακίδα
+  // είναι κλειδί σύνδεσης, και μια αυτόματη συγχώνευση θα έσπαγε linked records.
+  const _plateField = (cfg.columns.find(c => /plate|πινακ/i.test(c.field || '')) || {}).field;
+  const _dupPlates = new Set();
+  if (_plateField && typeof normalizePlate === 'function') {
+    const seen = new Map();
+    records.forEach(r => {
+      const n = normalizePlate(r.fields[_plateField]);
+      if (!n) return;
+      if (seen.has(n)) _dupPlates.add(n); else seen.set(n, r.id);
+    });
+  }
+  // DV-3: ο dispatcher έχει drivers:'view' και έβλεπε τη στήλη ΜΙΣΘΟΣ όλων των
+  // οδηγών. Οι στήλες με perm:'full' κρύβονται όταν το δικαίωμα είναι μόνο
+  // ανάγνωση. CLIENT-SIDE ΜΟΝΟ — δεν αντικαθιστά server RBAC, το πεδίο
+  // εξακολουθεί να έρχεται στην απόκριση.
+  const cols = _entityVisibleCols(cfg);
   const s = _entitySort[entityKey] || { col: null, dir: 0 };
   const sortedRecs = _entitySortRecords(entityKey, records);
   const ths = cols.map((c, i) => {
@@ -818,7 +861,13 @@ function buildEntityRow(entityKey, r, cols) {
     if (col.type === 'number' && val != null) {
       return `<td style="font-variant-numeric:tabular-nums;text-align:right">${val}</td>`;
     }
-    if (col.primary) return `<td><strong style="color:var(--text)">${val || '—'}</strong></td>`;
+    if (col.primary) {
+      const dup = _plateField && col.field === _plateField && typeof normalizePlate === 'function'
+        && _dupPlates.has(normalizePlate(val));
+      return `<td><strong style="color:var(--text)">${val || '—'}</strong>${dup
+        ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap">⚠ διπλότυπο;</span>'
+        : ''}</td>`;
+    }
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
 
@@ -858,11 +907,26 @@ function applyEntityFilters(entityKey) {
   let recs  = st.records;
 
   if (st.q) {
-    recs = recs.filter(r => cfg.searchFields.some(sf =>
-      String(r.fields[sf] || '').toLowerCase().includes(st.q)
-    ));
+    // TR-2/TL-3: οι πινακίδες έχουν ανάμεικτα ελληνικά/λατινικά ομόγλυφα
+    // (ΙΑΖ8302 με ελληνικό γιώτα δίπλα σε IAZ7245 με λατινικό I) και άλλοτε
+    // με κενό, άλλοτε χωρίς. Είναι οπτικά ταυτόσημα και δεν βρίσκονταν ΠΟΤΕ
+    // μεταξύ τους. Η αναζήτηση δοκιμάζει και την κανονική μορφή· η αρχική
+    // αναζήτηση υποστρώματος παραμένει, ώστε να μη χαθεί κανένα αποτέλεσμα.
+    const qPlate = (typeof normalizePlate === 'function') ? normalizePlate(st.q) : '';
+    recs = recs.filter(r => cfg.searchFields.some(sf => {
+      const raw = String(r.fields[sf] || '');
+      if (raw.toLowerCase().includes(st.q)) return true;
+      return !!qPlate && typeof normalizePlate === 'function'
+        && normalizePlate(raw).includes(qPlate);
+    }));
   }
   for (const [field, { val, type }] of Object.entries(st.filters)) {
+    // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
+    // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
+    if (/country|χωρα|χώρα/i.test(field) && typeof normalizeCountry === 'function') {
+      recs = recs.filter(r => normalizeCountry(r.fields[field]) === normalizeCountry(val));
+      continue;
+    }
     if (field === '_compliance') {
       // Compliance filter: check expiry dates from the compliance column config
       const complianceCol = cfg.columns.find(c => c.type === 'compliance');
