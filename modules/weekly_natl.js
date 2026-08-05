@@ -267,8 +267,8 @@ function _wnPaint() {
         const widgets = [
           widgetFleet(data.trucks || [], assignedTruckIds),
           widgetEmptyLegs(Math.max(0,nsCount-snCount), Math.max(0,snCount-nsCount), diff ? `${diff} unbalanced` : ''),
-          `<div id="wn-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 VS LAST WEEK</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-          `<div id="wn-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">⏱ ON-TIME</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+          `<div id="wn-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+          `<div id="wn-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
         ];
         return buildCommandCenterHTML({
           title: `COMMAND CENTER · W${week}`,

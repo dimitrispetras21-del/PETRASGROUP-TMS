@@ -556,7 +556,7 @@ function _renderInvDetail() {
           background:${rec._type === 'intl' ? '#0C2D5C' : '#14532D'};
           color:${rec._type === 'intl' ? '#38BDF8' : '#4ADE80'}">${rec._type === 'intl' ? 'INTL' : 'NATL'}</span>
       </div>
-      ${days != null ? `<div style="margin-bottom:10px;padding:6px 10px;background:${bucket.color}22;border-radius:6px;border:1px solid ${bucket.color}55"><span style="font-size:11px;color:${bucket.color};font-weight:600">⏱ ${days} μέρες από την παράδοση</span></div>` : ''}
+      ${days != null ? `<div style="margin-bottom:10px;padding:6px 10px;background:${bucket.color}22;border-radius:6px;border:1px solid ${bucket.color}55"><span style="font-size:11px;color:${bucket.color};font-weight:600">${(typeof icon==='function')?icon('clock',12):''} ${days} μέρες από την παράδοση</span></div>` : ''}
       ${row('Client', escapeHtml(_invClientName(rec)))}
       ${row('Route', escapeHtml(_invRoute(rec)))}
       ${row('Week', _invWeek(rec))}
