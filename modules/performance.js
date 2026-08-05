@@ -567,7 +567,11 @@ function _perfDraw() {
   };
   function _wowDelta(kpiId, curr, lowerBetter) {
     const prev = kpiDeltaSrc[kpiId];
-    if (prev == null || prev === 0 || isNaN(prev)) return '';
+    // Το -1 σημαίνει «άγνωστο», όχι «μηδέν»: σύγκριση μαζί του παρήγαγε
+    // «-2400%» στην κάρτα του σκορ μόλις οι εβδομάδες χωρίς δείγμα σταμάτησαν
+    // να ψευδο-βαθμολογούνται. Δεν υπάρχει ποσοστιαία μεταβολή από το άγνωστο.
+    if (prev == null || prev === 0 || prev < 0 || isNaN(prev)) return '';
+    if (curr < 0) return '';
     const diff = curr - prev;
     const pct = Math.round(diff / prev * 100);
     if (pct === 0) return `<span class="perf-delta flat">${_i('minus', 10)}0%</span>`;
