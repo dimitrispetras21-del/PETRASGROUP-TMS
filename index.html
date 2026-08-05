@@ -291,18 +291,22 @@
     <div class="form-title">Welcome</div>
     <div class="form-sub">Sign in to access the system</div>
 
-    <div class="field-group">
-      <label>Username</label>
-      <input type="text" id="username" placeholder="Enter username" autocomplete="username">
-    </div>
+    <!-- LG-7: a real <form> — native Enter-to-submit, password managers and
+         screen readers finally see this as a login form. doLogin() unchanged. -->
+    <form onsubmit="doLogin(); return false;">
+      <div class="field-group">
+        <label for="username">Username</label>
+        <input type="text" id="username" placeholder="Enter username" autocomplete="username">
+      </div>
 
-    <div class="field-group">
-      <label>Password</label>
-      <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
-    </div>
+      <div class="field-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
 
-    <button class="btn-login" onclick="doLogin()">Sign In →</button>
-    <div class="error-msg" id="errMsg">Incorrect username or password</div>
+      <button type="submit" class="btn-login">Sign In →</button>
+      <div class="error-msg" id="errMsg">Incorrect username or password</div>
+    </form>
     <div class="form-version">v1.0 · Petras Group TMS · 2026</div>
   </div>
 </div>
@@ -499,13 +503,9 @@ async function _doLoginInner(u, p) {
   }
 }
 
-// Enter submits only from the form fields. It used to fire from anywhere on the
-// page, so any stray Enter sent a login request. See login.md LG-5.
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  if (!e.target.closest('#username, #password, .btn-login')) return;
-  doLogin();
-});
+// LG-5 history: a keydown listener used to gate Enter to the login fields.
+// With a real <form> (LG-7) the browser does this natively — and keeping the
+// listener would double-fire doLogin() on Enter. Removed.
 
 // Clear the (now persistent) error as soon as the user corrects their input.
 ['username', 'password'].forEach(id => {

@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v61-safefetch-plus-wave1';
+const SW_VERSION = 'tms-sw-v62-login-form';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
