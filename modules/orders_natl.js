@@ -245,7 +245,7 @@ function _onOnScroll() {
 
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
-  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
+  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία δεν ταιριάζει στα φίλτρα</div>`; return; }
 
   const sortedRecs = _natlSortRecords(records);
   _onVS.sortedRecs = sortedRecs;
@@ -307,7 +307,7 @@ function _applyNatlFilters() {
   });
   NATL_ORDERS.filtered = recs;
   _renderNatlTable(recs);
-  const n = recs.length + ' orders';
+  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('natlCount').textContent = n;
   document.getElementById('natlSub').textContent   = n;
 }

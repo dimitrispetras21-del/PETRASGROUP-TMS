@@ -417,7 +417,7 @@ function _applyIntlFilters() {
   }
   INTL_ORDERS.filtered = recs;
   _renderIntlTable(recs);
-  const n = recs.length + ' orders';
+  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('intlCount').textContent = n;
   document.getElementById('intlSub').textContent   = n;
 
@@ -531,7 +531,7 @@ function selectIntlOrder(recId) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="font-weight:600;font-size:11px;color:var(--accent)">PALLET SHEETS</span>
             <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">
-              Upload Sheet
+              Δελτίο Παλετών
             </button>
           </div>
           <div style="display:flex;gap:12px;font-size:11px">
@@ -560,7 +560,7 @@ function selectIntlOrder(recId) {
       <div class="detail-section">
         <div class="detail-section-title">Pallet Exchange</div>
         <button class="btn btn-scan" onclick="openPalletUpload('${recId}')" style="width:100%;margin-bottom:8px">
-          Upload Pallet Sheet
+          Δελτίο Παλετών — Upload
         </button>
         <div style="display:flex;gap:8px">
           ${_chk('Sheet 1', f['Pallet Sheet 1 Uploaded'])}
