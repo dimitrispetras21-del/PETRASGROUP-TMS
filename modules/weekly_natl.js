@@ -325,10 +325,12 @@ function _wnPaint() {
         </div>
       </div>
       <div id="wn-rows">
-        ${rows.length ? _wnAllRowsHTML() : `<div class="empty-state" style="padding:60px;text-align:center">
-          <div style="font-size:40px;margin-bottom:12px;opacity:0.3">&#9744;</div>
-          <p style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px">Δεν υπάρχουν εθνικά φορτία W${week}</p>
-          <p style="font-size:12px;color:var(--text-dim)">Δημιούργησε National Orders ή ενεργοποίησε Veroia Switch σε International Orders</p></div>`}
+        ${rows.length ? _wnAllRowsHTML() : (typeof showEmpty === 'function' ? showEmpty({
+          illustration: 'truck',
+          title: `Δεν υπάρχουν εθνικά φορτία για την εβδομάδα ${week}`,
+          description: 'Δημιούργησε εθνική παραγγελία, ή ενεργοποίησε τον διακόπτη Βέροιας σε μια διεθνή παραγγελία.',
+          action: { label: 'Άνοιγμα Εθνικών Παραγγελιών', onClick: "navigate('orders_natl')" }
+        }) : '<div class="empty-state" style="padding:60px;text-align:center">Δεν υπάρχουν εθνικά φορτία</div>')}
       </div>
     </div>
 

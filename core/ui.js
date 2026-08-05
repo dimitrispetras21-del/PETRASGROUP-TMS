@@ -185,15 +185,15 @@ const _EMPTY_SVG = {
 };
 
 // ── Loading Skeletons ────────────────────────────
-function showLoading(msg = 'Loading...') {
+function showLoading(msg = 'Φόρτωση…') {
   return `<div style="padding:24px">
     <div style="display:flex;gap:14px;margin-bottom:24px">
-      ${[1,2,3,4].map(() => `<div style="flex:1;height:70px;background:#0F172A;border:1px solid #1E293B;border-radius:10px;overflow:hidden;position:relative">
-        <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.03),transparent);animation:sk-shimmer 1.5s infinite"></div>
+      ${[1,2,3,4].map(() => `<div style="flex:1;height:70px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative">
+        <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.03),transparent);animation:sk-shimmer 1.5s infinite"></div>
       </div>`).join('')}
     </div>
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
-      <div style="height:36px;background:#F0F5FA;border-bottom:1px solid var(--border)"></div>
+      <div style="height:36px;background:var(--bg-subtle,#F0F5FA);border-bottom:1px solid var(--border)"></div>
       ${[1,2,3,4,5,6].map(() => `<div style="height:40px;border-bottom:1px solid var(--border);position:relative;overflow:hidden">
         <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.02),transparent);animation:sk-shimmer 1.5s infinite"></div>
       </div>`).join('')}
