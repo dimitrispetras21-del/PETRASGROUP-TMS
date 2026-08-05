@@ -924,24 +924,24 @@ function renderErrorLog() {
 
       <!-- KPI Bar (3 severity counts) -->
       <div class="dash-kpi-bar" style="grid-template-columns:repeat(3,1fr)">
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
           <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Critical</div>
           <div class="dash-kpi-value ${counts.critical ? 'dash-val-danger' : 'dash-val-muted'}">${counts.critical}</div>
           <div class="dash-kpi-sub">errors + exceptions</div>
-        </div>
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
+        </button>
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
           <div class="dash-kpi-label">${_ic('clock', 11)} Warning</div>
           <div class="dash-kpi-value ${counts.warning ? 'dash-val-warning' : 'dash-val-muted'}">${counts.warning}</div>
           <div class="dash-kpi-sub">auth, network, 4xx</div>
-        </div>
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
+        </button>
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
           <div class="dash-kpi-label">${_ic('info', 11)} Info</div>
           <div class="dash-kpi-value ${counts.info ? 'dash-val-success' : 'dash-val-muted'}">${counts.info}</div>
           <div class="dash-kpi-sub">aborts, expected</div>
-        </div>
+        </button>
       </div>
 
       <!-- Filters -->

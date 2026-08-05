@@ -983,15 +983,15 @@ function selectEntity(entityKey, recId) {
     <div class="detail-header">
       <div class="detail-title">${title}</div>
       <div class="detail-actions">
-        ${canEdit ? `<div class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
+        ${canEdit ? `<button type="button" class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M11 2l3 3-9 9H2v-3l9-9z"/>
           </svg>
-        </div>
+        </button>
         <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">
           ${f['Active'] ? '● Active' : '○ Inactive'}
         </button>` : ''}
-        <div class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</div>
+        <button type="button" class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">
