@@ -2673,6 +2673,7 @@ window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
 window.cleanupOrphans = cleanupOrphans;
 window.renderOrdersIntl = renderOrdersIntl;
+window._intlClearFilters = _intlClearFilters;   // OI-4 — πρέπει να είναι ΜΕΣΑ στο IIFE
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;
 window.openIntlEdit = openIntlEdit;
@@ -2707,4 +2708,3 @@ Object.defineProperty(window, '_oiPage', {
   configurable: true
 });
 })();
-window._intlClearFilters = _intlClearFilters;
