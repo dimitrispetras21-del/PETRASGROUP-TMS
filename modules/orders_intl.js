@@ -320,7 +320,30 @@ function _oiOnScroll() {
 
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
-  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία με αυτά τα φίλτρα</div>`; return; }
+  if (!records.length) {
+    // OI-4: «Καμία παραγγελία» χωρίς να λέει ΠΟΙΑ φίλτρα κρύβουν τις 124
+    // εγγραφές είναι αδιέξοδο. Τώρα ονομάζει τα ενεργά και προσφέρει έξοδο.
+    const active = [];
+    if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
+    if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
+    if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
+    if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
+    if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
+    if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
+    else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
+    const hasFilters = active.length > 0;
+    wrap.innerHTML = (typeof showEmpty === 'function') ? showEmpty({
+      illustration: 'order',
+      title: hasFilters ? 'Καμία παραγγελία με αυτά τα φίλτρα' : 'Καμία διεθνής παραγγελία',
+      description: hasFilters
+        ? `Ενεργά: ${active.join(' · ')}. Από ${INTL_ORDERS.data.length} συνολικά.`
+        : 'Μόλις καταχωρηθεί η πρώτη παραγγελία, θα εμφανιστεί εδώ.',
+      action: hasFilters
+        ? { label: 'Καθαρισμός φίλτρων', onClick: '_intlClearFilters()' }
+        : { label: '+ Νέα παραγγελία', onClick: 'openIntlCreate()' },
+    }) : `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία με αυτά τα φίλτρα</div>`;
+    return;
+  }
   const sortedRecs = _intlSortRecords(records);
   _oiVS.sortedRecs = sortedRecs;
   _oiVS.lastStart = -1;
@@ -354,6 +377,17 @@ function _renderIntlTable(records) {
 function intlSearch(q) { _intlFilters._q = q.toLowerCase().trim(); _oiPage = 1; _applyIntlFilters(); }
 function intlFilter(k,v) { if(!v) delete _intlFilters[k]; else _intlFilters[k]=v; _oiPage = 1; _applyIntlFilters(); }
 function intlPeriodChange(v) { _intlPeriod = v; _oiVS.lastStart = -1; _oiVS.lastEnd = -1; renderOrdersIntl(); }
+
+/** Καθαρίζει κάθε φίλτρο της λίστας και επαναφέρει το χρονικό εύρος. OI-4. */
+function _intlClearFilters() {
+  Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
+  _intlPeriod = 'all';
+  const bar = document.querySelector('.entity-toolbar-v2');
+  if (bar) bar.querySelectorAll('select').forEach(sel => { sel.value = ''; });
+  const q = document.querySelector('.entity-search-input');
+  if (q) q.value = '';
+  _applyIntlFilters();
+}
 
 function _applyIntlFilters() {
   let recs = INTL_ORDERS.data;
@@ -2668,3 +2702,4 @@ Object.defineProperty(window, '_oiPage', {
   configurable: true
 });
 })();
+window._intlClearFilters = _intlClearFilters;

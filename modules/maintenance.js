@@ -712,10 +712,10 @@ function _svcPaint() {
             </tr>`;
           }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
             illustration: 'order',
-            title: 'No service records yet',
-            description: 'Track maintenance, repairs, and inspections for your fleet vehicles here.',
-            action: { label: 'Create first record', onClick: '_svcOpenForm()' }
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No service records found</div>'}</td></tr>`}</tbody>
+            title: 'Καμία καταγραφή συντήρησης ακόμη',
+            description: 'Εδώ καταγράφονται συντηρήσεις, επισκευές και έλεγχοι των οχημάτων του στόλου.',
+            action: { label: 'Νέα καταγραφή', onClick: '_svcOpenForm()' }
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία καταγραφή συντήρησης</div>'}</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -1185,7 +1185,7 @@ function _historyPaint(vType) {
                   <span style="width:16px;color:var(--dc-accent);font-weight:700">#${i+1}</span>
                   <span style="flex:1;color:var(--dc-text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
                   <span style="color:var(--dc-text);font-weight:700;font-variant-numeric:tabular-nums">${_fmtCost(cost)}</span>
-                </div>`).join('') : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('building', 20)}<div>No workshops logged</div></div>`}
+                </div>`).join('') : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('building', 20)}<div>Κανένα συνεργείο καταχωρημένο</div></div>`}
             </div>
           </div>
         </div>
@@ -1690,7 +1690,7 @@ async function renderMaintDash() {
                       <td class="mono" style="text-align:right;color:var(--dc-text)">${_fmtCost(f['Cost'])}</td>
                     </tr>`; }).join('')}
                   </tbody>
-                </table>` : `<div style="padding:var(--space-4)"><div class="dash-empty">${_ic('file_text', 24)}<div>No service records yet</div></div></div>`}
+                </table>` : `<div style="padding:var(--space-4)"><div class="dash-empty">${_ic('file_text', 24)}<div>Καμία καταγραφή συντήρησης ακόμη</div></div></div>`}
               </div>
             </div>
 
