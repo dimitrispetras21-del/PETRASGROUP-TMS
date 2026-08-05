@@ -172,7 +172,7 @@ function _opsDraw() {
   if (isToday && total) {
     const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
     // Overdue unhandled
-    if (OPS.overdue.length) actions.push({icon:_i('alert_circle'), sev:'crit', text:`${OPS.overdue.length} overdue deliveries awaiting confirmation`, scrollTo:'ovL'});
+    if (OPS.overdue.length) actions.push({icon:_i('alert_circle'), sev:'crit', text:`${OPS.overdue.length} εκκρεμείς παραδόσεις awaiting confirmation`, scrollTo:'ovL'});
 
     // Loadings without truck/driver assigned
     const noAssign = loadsAll.filter(r => !_T(r.fields) || !_D(r.fields)).filter(r=>(r.fields['Status']||'')!=='Delivered' && (r.fields['Status']||'')!=='In Transit');
@@ -198,9 +198,9 @@ function _opsDraw() {
 
     // All good
     if (!actions.length && total > 0) {
-      if (nDel === total) actions.push({icon:_i('party'), sev:'ok', text:'All orders delivered — day complete!'});
-      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:_i('check_circle'), sev:'ok', text:'All loadings done — waiting on deliveries'});
-      else actions.push({icon:_i('check'), sev:'ok', text:'No pending actions — all under control'});
+      if (nDel === total) actions.push({icon:_i('party'), sev:'ok', text:'Όλες οι παραγγελίες παραδόθηκαν — η μέρα έκλεισε!'});
+      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:_i('check_circle'), sev:'ok', text:'Όλες οι φορτώσεις έγιναν — αναμονή on deliveries'});
+      else actions.push({icon:_i('check'), sev:'ok', text:'Καμία εκκρεμής ενέργεια — όλα υπό έλεγχο'});
     }
   }
 
@@ -268,7 +268,7 @@ function _opsDraw() {
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div><div class="page-title">${_opsI('list_checks', 22)} Daily Ops Plan</div>
-        <div class="page-sub">${fD(tgt)} · ${total} orders${isToday && OPS.overdue.length ? ` · <span style="color:#DC2626;font-weight:600">${OPS.overdue.length} overdue</span>` : ''}</div></div>
+        <div class="page-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${OPS.date==='today'?'σήμερα':'αύριο'}${isToday && OPS.overdue.length ? ` · <span style="color:#DC2626;font-weight:600">${OPS.overdue.length} εκκρεμείς από προηγούμενες ημέρες</span>` : ''}</div></div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
         <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Ανανέωση</button>
@@ -300,15 +300,15 @@ function _opsDraw() {
     ${cmdCenterH}
     <div class="ops-kpis">
       <div class="ops-kpi"><div class="ops-kpi-label">Σε αναμονή</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#F1F5F9">${total?nPend:'—'}</span></div></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${total?'var(--panel-text)':'var(--panel-dim)'}">${total?nPend:'—'}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Φορτώσεις</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0284C7">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${loadsAll.length?'var(--panel-accent)':'var(--panel-dim)'}">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:#0284C7"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Παραδόσεις</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${delsAll.length?'var(--panel-ok)':'var(--panel-dim)'}">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${delsAll.length?Math.round(delsDone/delsAll.length*100):0}%;background:var(--success)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Λίστα ελέγχου</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
+        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${tC?'var(--panel-ok)':'var(--panel-dim)'}">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
     </div>
     ${ovH}
