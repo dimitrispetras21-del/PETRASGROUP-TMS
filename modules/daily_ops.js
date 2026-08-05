@@ -209,14 +209,19 @@ function _opsDraw() {
   let ovH='';
   if(isToday&&OPS.overdue.length){
     ovH=`<div class="ops-alert">
-      <div class="ops-alert-hdr" onclick="const l=document.getElementById('ovL');l.style.display=l.style.display==='flex'?'none':'flex';this.querySelector('.ops-alert-tog').textContent=l.style.display==='flex'?'▲ Απόκρυψη':'▼ Εμφάνιση'">
+      <button type="button" class="ops-alert-hdr" aria-expanded="false" aria-controls="ovL"
+        style="width:100%;background:none;border:0;font:inherit;color:inherit;cursor:pointer;text-align:left"
+        onclick="_opsToggleOverdue(this)">
         <div class="ops-alert-txt">⚠ ${OPS.overdue.length} παραγγελίες με εκκρεμή παράδοση</div>
         <div class="ops-alert-tog">▼ Εμφάνιση</div>
-      </div>
+      </button>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
           <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
-          <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Παραδόθηκε</button>
+          <!-- ΠΡΟΣΟΧΗ: το δεύτερο όρισμα είναι ΥΠΟΧΡΕΩΤΙΚΟ εδώ. Η υπογραφή είναι
+               _opsOvAct(id, perf='Delayed'), οπότε η κλήση χωρίς αυτό κατέγραφε
+               ΚΑΘΥΣΤΕΡΗΣΗ ενώ το κουμπί έλεγε «Παραδόθηκε». Βλ. commit. -->
+          <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}','On Time')">Παραδόθηκε</button>
           <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Καθυστέρησε</button>
         </div>`;}).join('')}</div></div>`;
   }
@@ -345,6 +350,18 @@ function _opsSortTime(rec, type) {
   const src = (type === 'el' || type === 'il') ? f['Loading DateTime'] : f['Delivery DateTime'];
   if (src && String(src).includes('T')) return String(src).split('T')[1].slice(0,5);
   return 'ZZ';   // no time yet -> sorts last, never dropped
+}
+
+/** DO-8: το toggle ήταν inline χειραγώγηση DOM μέσα σε <div onclick> — μη
+ *  προσβάσιμο και με την κατάσταση να ζει στο style attribute. */
+function _opsToggleOverdue(btn) {
+  const l = document.getElementById('ovL');
+  if (!l) return;
+  const willOpen = l.style.display !== 'flex';
+  l.style.display = willOpen ? 'flex' : 'none';
+  btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
+  const tog = btn.querySelector('.ops-alert-tog');
+  if (tog) tog.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση';
 }
 
 function _opsUnifiedSection(cats, isToday) {
@@ -563,7 +580,7 @@ async function _opsOvAct(id,perf='Delayed'){const d=localToday();
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
       .catch(e => console.warn('[ops overdue sync]', e));
   }
-  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast('✓');_opsDraw();}catch(e){toast('Error','danger');}}
+  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Error','danger');}}
 
 // Expose functions used from onclick/onchange handlers
 window.renderDailyOps = renderDailyOps;
@@ -577,3 +594,4 @@ window._opsPost = _opsPost;
 window._opsOvAct = _opsOvAct;
 window._opsSetFilter = _opsSetFilter;
 })();
+window._opsToggleOverdue = _opsToggleOverdue;
