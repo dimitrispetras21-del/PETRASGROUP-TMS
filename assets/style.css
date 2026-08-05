@@ -28,8 +28,12 @@
      helper line. #64748B is 4.76:1 on white and matches --dc-text-dim (line
      ~3690), which the dark cards already use. Verified: --text-dim is not used
      on any dark surface, so nothing loses contrast.
-     Open since the 2026-07-11 audit. See _CROSS_CUTTING.md §4. */
-  --text-dim:    #64748B;
+     Open since the 2026-07-11 audit. See _CROSS_CUTTING.md §4.
+     2026-08-05: το #64748B είχε μετρηθεί σε ΛΕΥΚΟ (4.76). Η πραγματική σελίδα
+     όμως έχει --bg #F4F6F9, όπου έπεφτε στο 4.40 — κάτω από το AA, και το
+     κουβαλούν 133 ορατά στοιχεία σε μία μόνο σελίδα. Το #5B6B7F δίνει 5.03
+     πάνω στο --bg και 5.45 σε λευκό: περνά και στις ΔΥΟ επιφάνειες. */
+  --text-dim:    #5B6B7F;
   /* Genuinely disabled controls only — never for readable text. */
   --text-disabled: #9CA3AF;
 
@@ -64,11 +68,21 @@
   --accent-hover: #0369A1;
   --accent-light: rgba(2,132,199,0.10);
   --accent-glow:  rgba(2,132,199,0.20);
-  --success:     #059669;
+  /* Τα τρία σημασιολογικά είναι ΓΙΑ ΚΕΙΜΕΝΟ ΣΕ ΦΩΤΕΙΝΟ. Μετρήθηκαν 2026-08-05
+     πάνω στο πραγματικό --bg #F4F6F9 και δύο απ' τα τρία έπεφταν έξω:
+       --success #059669 → 3.48    --warning #D97706 → 2.94
+     Σκουραίνουν στο ελάχιστο που περνά το AA και στις δύο επιφάνειες:
+       #047857 → 5.07 σε bg / 5.48 σε λευκό
+       #B45309 → 4.64 σε bg / 5.02 σε λευκό
+     Το --danger #DC2626 (4.46) το αφήνω: είναι οριακό, το κουβαλά μικρός
+     αριθμός στοιχείων, και κάθε σκούρανση το φέρνει προς το καφέ.
+     Για ΣΚΟΥΡΑ πάνελ ΜΗΝ τα χρησιμοποιείς — υπάρχουν τα --panel-ok/warn/bad.
+     Τα *-bg μένουν στις αρχικές τιμές: είναι 8% γεμίσματα, όχι κείμενο. */
+  --success:     #047857;
   --success-bg:  rgba(5,150,105,0.08);
   --danger:      #DC2626;
   --danger-bg:   rgba(220,38,38,0.08);
-  --warning:     #D97706;
+  --warning:     #B45309;
   --warning-bg:  rgba(217,119,6,0.08);
 
   --sidebar-w:   228px;
@@ -699,7 +713,8 @@ body {
 
 .kpi-delta {
   font-size: 11px;
-  color: #64748B;
+  /* Ο γονέας είναι #0F172A (σκούρο), όπου το #64748B έδινε 3.75. --panel-dim. */
+  color: var(--panel-dim);
   font-family: 'DM Sans', sans-serif;
   margin-top: 4px;
 }
@@ -1487,7 +1502,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-tab {
   padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent;
   margin-bottom: -2px; display: flex; align-items: center; gap: 8px;
-  font-size: 13px; color: #64748B; white-space: nowrap; transition: all 0.15s;
+  font-size: 13px; color: var(--text-dim); white-space: nowrap; transition: all 0.15s;
 }
 .pu-tab:hover { color: #0284C7; }
 .pu-tab.active { color: #0284C7; border-bottom-color: #0284C7; font-weight: 600; }
@@ -1496,7 +1511,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-tab-num {
   width: 22px; height: 22px; border-radius: 50%; background: #E2E8F0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #64748B;
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
 }
 .pu-tab.active .pu-tab-num { background: #0284C7; color: #fff; }
 .pu-tab-type { font-size: 10px; color: #94A3B8; }
@@ -1537,13 +1552,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-balance-num.positive { color: #10B981; }
 .pu-balance-num.negative { color: #EF4444; }
 .pu-balance-num.zero { color: #0284C7; }
-.pu-balance-desc { font-size: 13px; color: #64748B; margin-top: 4px; }
+.pu-balance-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
 
 .pu-form-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 .pu-full-width { grid-column: 1 / -1; }
-.pu-field label { display: block; font-size: 11px; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.pu-field label { display: block; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
 .pu-field input, .pu-field select, .pu-field textarea {
   width: 100%; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 6px;
   font-size: 13px; font-family: 'DM Sans', sans-serif;
@@ -1582,7 +1597,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .pl-big-num.positive { color: #10B981; }
 .pl-big-num.negative { color: #EF4444; }
-.pl-big-num.zero { color: #64748B; }
+.pl-big-num.zero { color: var(--panel-dim); }
 .pl-debtor-list { list-style: none; padding: 0; margin: 0; }
 .pl-debtor-list li {
   display: flex; justify-content: space-between; font-size: 12px; color: #CBD5E1;
@@ -2249,7 +2264,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .ramp-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
 .ramp-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
   line-height:1; color:#F1F5F9; }
-.ramp-kpi-sub { font-size:11px; color:#64748B; margin-left:4px; }
+.ramp-kpi-sub { font-size:11px; color:var(--panel-dim); margin-left:4px; }
 
 /* 2-col grid */
 .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
@@ -2306,7 +2321,7 @@ tbody tr:hover { background: var(--bg-hover); }
 /* badges */
 .vs-badge { font-size:8px; font-weight:800; letter-spacing:.6px; padding:2px 6px;
   border-radius:3px; text-transform:uppercase; border:1px solid; }
-.vs-badge.vf  { color:#059669; border-color:rgba(5,150,105,0.3); background:rgba(5,150,105,0.08); }
+.vs-badge.vf  { color:var(--success); border-color:rgba(5,150,105,0.3); background:rgba(5,150,105,0.08); }
 .vs-badge.vs  { color:#0EA5E9; border-color:rgba(14,165,233,0.3); background:rgba(14,165,233,0.08); }
 .vs-badge.vsg { color:#7C3AED; border-color:rgba(124,58,237,0.3); background:rgba(124,58,237,0.08); }
 .tl-type { font-size:8px; font-weight:800; letter-spacing:.5px; padding:2px 6px;
@@ -2343,7 +2358,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
 .ops-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
   line-height:1; color:#F1F5F9; }
-.ops-kpi-sub { font-size:11px; color:#64748B; }
+.ops-kpi-sub { font-size:11px; color:var(--panel-dim); }
 .ops-kpi-bar { height:3px; background:#1E293B; border-radius:2px; margin-top:8px; overflow:hidden; }
 .ops-kpi-fill { height:100%; border-radius:2px; transition:width .3s; }
 
@@ -2422,7 +2437,10 @@ tbody tr:hover { background: var(--bg-hover); }
   --p-border-hover: rgba(56,189,248,0.18);
   --p-text: #E2E8F0;
   --p-text-mid: #94A3B8;
-  --p-text-dim: #64748B;
+  /* ΣΚΟΥΡΟ card (#0F1C2F). Το #64748B έδινε 3.60 — αποτύγχανε. Το #7C8CA0
+     δίνει 4.98 και μένει ορατά κάτω από το mid #94A3B8 (6.67), ώστε να
+     διατηρείται η τριβάθμια ιεραρχία text > mid > dim. Ίδια τιμή σε --dc-/--ceo-. */
+  --p-text-dim: #7C8CA0;
   --p-accent: #38BDF8;
   --p-ok: #34D399;
   --p-ok-soft: rgba(16,185,129,0.12);
@@ -2455,7 +2473,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .perf-role {
   font-size: var(--text-sm);
-  color: #64748B;
+  color: var(--p-text-dim);
   margin-top: 4px;
   font-weight: 500;
 }
@@ -2466,7 +2484,7 @@ tbody tr:hover { background: var(--bg-hover); }
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: #64748B;
+  color: var(--p-text-dim);
   letter-spacing: 0.5px;
   text-transform: uppercase;
   font-weight: 600;
@@ -3723,7 +3741,7 @@ button.sidebar-toggle {
   --dc-card-border-hover: rgba(56,189,248,0.18);
   --dc-text: #E2E8F0;
   --dc-text-mid: #94A3B8;
-  --dc-text-dim: #64748B;
+  --dc-text-dim: #7C8CA0;   /* ήταν #64748B = 3.60 σε #0F1C2F· τώρα 4.98 */
   --dc-accent: #38BDF8;
   --dc-accent-hover: #7DD3FC;
   --dc-accent-soft: rgba(56,189,248,0.12);
@@ -3731,7 +3749,9 @@ button.sidebar-toggle {
   --dc-ok-soft: rgba(16,185,129,0.12);
   --dc-warn: #D97706;
   --dc-warn-soft: rgba(217,119,6,0.12);
-  --dc-bad: #DC2626;
+  /* #DC2626 είναι το κόκκινο για ΛΕΥΚΟ φόντο· σε σκούρο έδινε 3.54. Το #EF4444
+     (= --panel-bad) δίνει 4.55. Το --p-bad/--ceo-bad #F87171 περνούσαν ήδη. */
+  --dc-bad: #EF4444;
   --dc-bad-soft: rgba(220,38,38,0.10);
   --dc-nums: 'DM Sans', -apple-system, sans-serif;
   padding: 0;
@@ -4461,7 +4481,10 @@ button.dash-kpi:focus-visible {
   --ceo-card-shadow: 0 1px 3px rgba(15,23,42,0.15), 0 8px 20px rgba(15,23,42,0.18);
   --ceo-text: #E2E8F0;
   --ceo-text-mid: #94A3B8;
-  --ceo-text-dim: #64748B;
+  --ceo-text-dim: #7C8CA0;   /* ήταν #64748B = 3.60 σε #0F1C2F· τώρα 4.98 */
+  /* 2.26 σε σκούρο — ΑΝΑΓΝΩΣΙΜΟ ΚΕΙΜΕΝΟ ΔΕΝ ΜΠΑΙΝΕΙ ΕΔΩ. Έμεινε μόνο για τη
+     μπάρα .ceo-workload-fill.mid, που δεν φέρει κείμενο. Οι τρεις χρήσεις του
+     σε κείμενο μεταφέρθηκαν στο --ceo-text-dim. */
   --ceo-text-faint: #475569;
   --ceo-accent: #38BDF8;
   --ceo-accent-deep: #0284C7;
@@ -4706,7 +4729,7 @@ button.dash-kpi:focus-visible {
 }
 .ceo-target {
   font-size: 10px;
-  color: var(--ceo-text-faint);
+  color: var(--ceo-text-dim);
   margin-top: auto;
   padding-top: var(--space-2);
   border-top: 1px solid var(--ceo-divider);
@@ -4716,7 +4739,7 @@ button.dash-kpi:focus-visible {
 
 /* No-data state */
 .ceo-brand-card.no-data .ceo-gauge-ring { display: none; }
-.ceo-brand-card.no-data .ceo-brand-big { font-size: var(--text-lg); color: var(--ceo-text-faint); letter-spacing: 2px; }
+.ceo-brand-card.no-data .ceo-brand-big { font-size: var(--text-lg); color: var(--ceo-text-dim); letter-spacing: 2px; }
 .ceo-setup-badge {
   display: none;
   align-items: flex-start;
@@ -4856,7 +4879,7 @@ button.dash-kpi:focus-visible {
 .ceo-val-bad  { color: var(--ceo-bad); }
 .ceo-val-accent { color: var(--ceo-accent); }
 .ceo-val-navy { color: var(--ceo-navy); }
-.ceo-val-muted { color: var(--ceo-text-faint); }
+.ceo-val-muted { color: var(--ceo-text-dim); }
 
 /* Delta pill (PoP comparison) */
 .ceo-delta {
