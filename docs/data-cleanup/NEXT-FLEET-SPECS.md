@@ -81,8 +81,43 @@ URLs που επαναλαμβάνονται σε κάθε επόμενη κλή
 | IAB2108 | SCANIA S660 | 2024 | 6 | 9.387 |
 | IAB2109 | VOLVO FH | 2024 | 6 | 8.528 |
 
-**ΚΑΤΑΣΤΑΣΗ ΒΑΣΗΣ ΜΕΤΑ (trucks 36):** year 19 · euro 18 · απόβαρο 11 · model 30
-**ΥΠΟΛΟΙΠΑ:** 17 χωρίς έτος, 18 χωρίς euro, 25 χωρίς απόβαρο · **trailers: δεν ξεκίνησαν**
+**ΘΑΛΑΜΟΙ — πρώτοι 3 (ίδια μέθοδος, zoom `[545,415,925,640]`):**
+
+| Πινακίδα | Μάρκα / Μοντέλο | Έτος | Απόβαρο | VIN |
+|---|---|---|---|---|
+| P11983 | LAMBERET LVFS3 | 1997 | — | VM9LVFS3EV1R055534 |
+| P40069 | SCHMITZ-GOTHA SKO 24 | 2005 | 9.050 | — |
+| P47331 | LAMBERET LVFS3F | 2003 | — | VM9LVFS3F31R069911 |
+
+⚠️ Στους θαλάμους το (G) απόβαρο είναι συχνά **κομμένο** στη δεξιά άκρη του zoom —
+θέλει δεύτερο zoom πιο δεξιά όταν χρειάζεται.
+
+**ΚΑΤΑΣΤΑΣΗ ΒΑΣΗΣ (5-8-2026 τέλος συνεδρίας):**
+- trucks 36: year 19 · euro 18 · απόβαρο 11 · model 30 · **VIN 13**
+- trailers 40: brand 4 · model 3 · year 7 · VIN 2 · απόβαρο 1 · **type 40 ✓**
+
+**ΥΠΟΛΟΙΠΑ:** 17 τράκτορες + 37 θάλαμοι θέλουν άδεια.
+
+## ⚠️ ΕΚΚΡΕΜΕΙ DEPLOY WORKER (5-8-2026)
+Οι στήλες `model`, `vin`, `tare_weight_kg` **υπάρχουν στη βάση των trailers και
+έχουν δεδομένα**, αλλά ΛΕΙΠΟΥΝ από το mapping του Worker 2 → δεν φαίνονται στο UI.
+Σωστό μπλοκ TRAILERS (`tblDcrqRJXzPrtYLm`):
+```js
+    fields: {
+      "License Plate": "license_plate",
+      Active: "active",
+      "KTEO Expiry": "kteo_expiry",
+      "Insurance Expiry": "insurance_expiry",
+      "FRC Expiry": "frc_expiry",
+      "Brand": "brand",
+      "Model": "model",
+      "Year": "year",
+      "Trailer Type": "trailer_type",
+      "VIN": "vin",
+      "Tare Weight kg": "tare_weight_kg",
+      Notes: "notes"
+    }
+```
 
 ### Παλαιότερη πρόταση (υπερκεράστηκε)
 Άνοιγμα κάθε PDF στο Chrome (ο owner είναι ήδη συνδεδεμένος στο Drive) →
