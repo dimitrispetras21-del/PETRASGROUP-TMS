@@ -332,19 +332,30 @@ async function renderDashboard() {
 
     // Weekly Score
     const assignmentRate = orders.length ? Math.round(orders.filter(r => r.fields['Truck'] && (Array.isArray(r.fields['Truck']) ? r.fields['Truck'].length > 0 : true) && r.fields['Week Number'] == wn).length / Math.max(orders.filter(r => r.fields['Week Number'] == wn).length, 1) * 100) : 0;
-    const complianceOk = trucks.filter(t => {
-      if (!t.fields['Active']) return false;
-      const kteo = (t.fields['KTEO Expiry'] || '').substring(0, 10);
-      const kek = (t.fields['KEK Expiry'] || '').substring(0, 10);
-      const ins = (t.fields['Insurance Expiry'] || '').substring(0, 10);
-      return (!kteo || kteo > today) && (!kek || kek > today) && (!ins || ins > today);
-    }).length;
-    const complianceRate = activeTrucks ? Math.round(complianceOk / activeTrucks * 100) : 100;
+    // MA-7: το Dashboard έκανε ΔΙΚΟ ΤΟΥ έλεγχο ημερομηνιών με `> today`, ενώ η
+    // metrics.compliancePct() χρησιμοποιεί `>= today`. Ένα έγγραφο που λήγει
+    // ΣΗΜΕΡΑ μετρούσε άκυρο εδώ και έγκυρο εκεί — 11% έναντι 15% για τον ίδιο
+    // στόλο, στην ίδια στιγμή. Μία πηγή.
+    const complianceRate = (typeof metrics !== 'undefined' && metrics.compliancePct)
+      ? metrics.compliancePct(trucks).pct
+      : (activeTrucks ? Math.round(trucks.filter(t => t.fields['Active']).length / activeTrucks * 100) : 100);
     const deadKmScore = avgDeadKm < 0 ? -1 : avgDeadKm <= 50 ? 100 : avgDeadKm <= 150 ? Math.round(100 - (avgDeadKm - 50)) : Math.max(0, Math.round(50 - (avgDeadKm - 150) * 0.33));
     const safeDeadKm = deadKmScore >= 0 ? deadKmScore : 100;
-    const safeOnTime = totalDelivered > 0 ? onTimePct : -1;
-    const weeklyScore = Math.round(assignmentRate * 0.30 + (safeOnTime >= 0 ? safeOnTime : 80) * 0.30 + complianceRate * 0.25 + safeDeadKm * 0.15);
-    const scoreColor = weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
+    // MA-8 + PF-2: ένας τύπος για το εβδομαδιαίο σκορ, ο κανονικός.
+    // Και ΚΑΝΕΝΑ fallback: αν δεν υπάρχει καμία παράδοση με καταγεγραμμένη
+    // επίδοση, το σκορ ΔΕΝ υπολογίζεται. Το παλιό «βάλε 80» κατασκεύαζε το 30%
+    // του σκορ από το τίποτα, και ήταν ο λόγος που τρία σημεία έδειχναν 42, 44
+    // και 15 για το ίδιο πράγμα.
+    const onTimeKnown = totalDelivered > 0;
+    const weeklyScore = (onTimeKnown && typeof metrics !== 'undefined' && metrics.weeklyScore)
+      ? metrics.weeklyScore({
+          assignment_rate: assignmentRate,
+          on_time: onTimePct,
+          compliance: complianceRate,
+          dead_km_score: safeDeadKm,
+        }).score
+      : -1;
+    const scoreColor = weeklyScore < 0 ? 'var(--text-dim)' : weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
 
     // Alert banner
     // Each alert carries its own destination: the banner is the fastest route to
@@ -374,7 +385,7 @@ async function renderDashboard() {
       activeTrucks,
       trucksInUse: trucksInUse.size,
       compliancePct: complianceRate,
-      weeklyScore,
+      weeklyScore,   // -1 = δεν υπολογίζεται (καμία καταγεγραμμένη επίδοση)
       onTimePct: totalDelivered > 0 ? onTimePct : -1,
     });
 
@@ -623,8 +634,8 @@ async function renderDashboard() {
                 <span class="dash-card-meta">W${wn}</span>
               </div>
               <div class="dash-card-body dash-score-wrap">
-                <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${Math.round(weeklyScore * 3.6)}deg">
-                  <div class="dash-score-num" style="color:${scoreColor}">${weeklyScore}</div>
+                <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${weeklyScore < 0 ? 0 : Math.round(weeklyScore * 3.6)}deg">
+                  <div class="dash-score-num" style="color:${weeklyScore < 0 ? 'var(--text-dim)' : scoreColor}" title="${weeklyScore < 0 ? 'Καμία παράδοση με καταγεγραμμένη επίδοση — το σκορ δεν υπολογίζεται' : ''}">${weeklyScore < 0 ? '—' : weeklyScore}</div>
                 </div>
                 <div class="dash-score-label">συνολική απόδοση</div>
                 ${_dashScoreBar('Ανάθεση', assignmentRate, '#38BDF8')}

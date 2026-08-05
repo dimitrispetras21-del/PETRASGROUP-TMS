@@ -402,19 +402,28 @@ function _perfCompute() {
   // Canonical weights 30/30/25/15 per METRICS.md:
   //   assignment_rate (plan_complete) / on_time / compliance (service_adherence) /
   //   dead_km_score (derived from dead_km with same mapping as Dashboard).
-  const _ontimeForScore = on_time >= 0 ? on_time : 80; // default matches Dashboard fallback
+  // PF-2: το fallback 80 έφυγε. Κατασκεύαζε το 30% του σκορ όταν δεν υπήρχε
+  // ΚΑΜΙΑ καταγεγραμμένη επίδοση παράδοσης — δηλαδή έδινε καλό βαθμό για
+  // δεδομένα που δεν υπάρχουν, και ήταν ο λόγος που η κάρτα έλεγε 44 ενώ το
+  // γράφημα δίπλα της έλεγε 15. Χωρίς δείγμα, το σκορ ΔΕΝ υπολογίζεται.
+  const _ontimeKnown = on_time >= 0;
   const _deadKmScore = dead_km < 0 ? 100
     : dead_km <= 50 ? 100
     : dead_km <= 150 ? Math.round(100 - (dead_km - 50))
     : Math.max(0, Math.round(50 - (dead_km - 150) * 0.33));
-  const weekly_score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+  // Η συμμόρφωση έρχεται από την ΙΔΙΑ πηγή με το Dashboard και με το γράφημα
+  // τάσης: metrics.compliancePct(). Το service_adherence παραμένει δικός του
+  // δείκτης (τήρηση προγράμματος συντήρησης) — άλλο μέγεθος, δεν μπαίνει εδώ.
+  const _complianceForScore = (typeof metrics !== 'undefined' && metrics.compliancePct && PERF.trucks)
+    ? metrics.compliancePct(PERF.trucks).pct : 0;
+  const weekly_score = (_ontimeKnown && typeof metrics !== 'undefined' && metrics.weeklyScore)
     ? metrics.weeklyScore({
         assignment_rate: plan_complete,
-        on_time: _ontimeForScore,
-        compliance: service_adherence,
+        on_time,
+        compliance: _complianceForScore,
         dead_km_score: _deadKmScore,
       }).score
-    : Math.round(plan_complete * 0.30 + _ontimeForScore * 0.30 + service_adherence * 0.25 + _deadKmScore * 0.15);
+    : -1;
 
   return {
     on_time, on_time_sample, dead_km, fleet_usage, plan_complete, assign_speed,
@@ -456,14 +465,16 @@ function _perfTrends() {
     // για το dead km. Τώρα καλεί την ίδια metrics.weeklyScore() με την κάρτα.
     // Η συμμόρφωση είναι ιδιότητα ΣΤΟΛΟΥ, όχι εβδομάδας, οπότε είναι η ίδια σε
     // όλες τις στήλες του γραφήματος — αυτό είναι σωστό, όχι σφάλμα.
-    const score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+    // Ίδια αρχή με την κάρτα: εβδομάδα χωρίς καταγεγραμμένη επίδοση δεν
+    // βαθμολογείται. Το -1 αποδίδεται ως «—» στη λωρίδα.
+    const score = (withPerf.length && typeof metrics !== 'undefined' && metrics.weeklyScore)
       ? metrics.weeklyScore({
           assignment_rate: assignPct,
           on_time: otPct,
           compliance: _compliancePct,
           dead_km_score: _deadKmScoreShared,
         }).score
-      : Math.round(assignPct * 0.30 + otPct * 0.30 + (100 - emptyPct) * 0.25 + 50 * 0.15);
+      : -1;
     trends.push({ week: w, score, assignPct, emptyPct, otPct, orders: exports.length });
   }
   return trends;
@@ -597,13 +608,16 @@ function _perfDraw() {
 
   // Trend bars (overall weekly score last 4 weeks)
   const trendHTML = trends.map(t => {
-    const color = t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
+    // -1 = εβδομάδα χωρίς καμία καταγεγραμμένη επίδοση παράδοσης. Μηδενική
+    // μπάρα και «—», όχι 0/100: το μηδέν διαβάζεται ως καταστροφική επίδοση.
+    const unknown = t.score < 0;
+    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
     return `<div class="perf-trend-row">
       <div class="perf-trend-wk">W${t.week}</div>
       <div class="perf-trend-bar">
-        <div class="perf-trend-fill" style="width:${t.score}%;background:${color}">${t.score}</div>
+        <div class="perf-trend-fill" style="width:${unknown ? 0 : t.score}%;background:${color}">${unknown ? '' : t.score}</div>
       </div>
-      <div class="perf-trend-val" style="color:${color}">${t.score}/100</div>
+      <div class="perf-trend-val" style="color:${color}" title="${unknown ? 'Καμία παράδοση με καταγεγραμμένη επίδοση αυτή την εβδομάδα' : ''}">${unknown ? '—' : t.score + '/100'}</div>
     </div>`;
   }).join('');
 
