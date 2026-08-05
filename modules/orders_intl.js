@@ -135,7 +135,7 @@ function _renderIntlLayout(c) {
   c.innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
-        <div class="page-title">International Orders</div>
+        <div class="page-title">Διεθνείς Παραγγελίες</div>
         <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} orders</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
@@ -150,36 +150,36 @@ function _renderIntlLayout(c) {
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
             ${_i('search')}
-            <input class="entity-search-input" placeholder="Search client / location / goods..."
+            <input class="entity-search-input" placeholder="Αναζήτηση πελάτη / τοποθεσίας / εμπορεύματος…"
               oninput="intlSearch(this.value)">
           </div>
           <select class="svc-filter" onchange="intlFilter('Direction',this.value)">
-            <option value="">Direction: All</option>
-            <option value="Export">↑ Export</option>
-            <option value="Import">↓ Import</option>
+            <option value="">Κατεύθυνση: Όλες</option>
+            <option value="Export">↑ Εξαγωγή</option>
+            <option value="Import">↓ Εισαγωγή</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('_status',this.value)">
-            <option value="">Status: All</option>
-            <option value="Pending">Pending</option>
-            <option value="Assigned">Assigned</option>
-            <option value="In Transit">In Transit</option>
-            <option value="Delivered">Delivered</option>
-            <option value="Invoiced">Invoiced</option>
-            <option value="Cancelled">Cancelled</option>
+            <option value="">Κατάσταση: Όλες</option>
+            <option value="Pending">Σε αναμονή</option>
+            <option value="Assigned">Ανατεθειμένη</option>
+            <option value="In Transit">Σε μεταφορά</option>
+            <option value="Delivered">Παραδόθηκε</option>
+            <option value="Invoiced">Τιμολογήθηκε</option>
+            <option value="Cancelled">Ακυρώθηκε</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('Brand',this.value)">
-            <option value="">Brand: All</option>
+            <option value="">Μάρκα: Όλες</option>
             <option value="Petras Group">Petras Group</option>
             <option value="DPS">DPS</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('_week',this.value)">
-            <option value="">Week: All</option>
+            <option value="">Εβδομάδα: Όλες</option>
             ${_buildWeekOpts()}
           </select>
           <select class="svc-filter" onchange="intlPeriodChange(this.value)">
-            <option value="60" ${_intlPeriod==='60'?'selected':''}>Last 60 days</option>
-            <option value="180" ${_intlPeriod==='180'?'selected':''}>Last 6 months</option>
-            <option value="all" ${_intlPeriod==='all'?'selected':''}>All time</option>
+            <option value="60" ${_intlPeriod==='60'?'selected':''}>Τελευταίες 60 ημέρες</option>
+            <option value="180" ${_intlPeriod==='180'?'selected':''}>Τελευταίοι 6 μήνες</option>
+            <option value="all" ${_intlPeriod==='all'?'selected':''}>Όλα</option>
           </select>
           <span class="entity-count-chip" id="intlCount">${INTL_ORDERS.data.length}</span>
         </div>
@@ -200,18 +200,18 @@ function _buildWeekOpts() {
 
 // ─── Sort helpers ────────────────────────────────
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'Order No',  type: 'text',   w: '200px', get: (f) => f['Order Number']||'' },
+  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡΑΓΓΕΛΙΑΣ',  type: 'text',   w: '200px', get: (f) => f['Order Number']||'' },
   { key: 'flags',    label: '',           type: 'text',   w: '80px',  get: () => '', nosort: true },
-  { key: 'week',     label: 'Week',      type: 'number', w: '55px',  get: (f) => f['Week Number']||0 },
-  { key: 'dir',      label: 'Dir',       type: 'text',   w: '75px',  get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'Client',    type: 'text',   w: '140px', get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'Loading',   type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'Delivery',  type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
-  { key: 'loadDate', label: 'Load Date', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'Del Date',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'PAL',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
-  { key: 'status',   label: 'Status',    type: 'text',   w: '80px',  get: (f) => f['Status']||'Pending' },
-  { key: 'inv',      label: 'INV',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
+  { key: 'week',     label: 'ΕΒΔ.',      type: 'number', w: '55px',  get: (f) => f['Week Number']||0 },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: '75px',  get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   w: '140px', get: (f) => _clientName(f) },
+  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',   type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',  type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
+  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
+  { key: 'status',   label: 'ΚΑΤΑΣΤΑΣΗ',    type: 'text',   w: '80px',  get: (f) => f['Status']||'Pending' },
+  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
 ];
 
 function _intlSortToggle(key) {
@@ -320,7 +320,7 @@ function _oiOnScroll() {
 
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
-  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
+  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία με αυτά τα φίλτρα</div>`; return; }
   const sortedRecs = _intlSortRecords(records);
   _oiVS.sortedRecs = sortedRecs;
   _oiVS.lastStart = -1;
