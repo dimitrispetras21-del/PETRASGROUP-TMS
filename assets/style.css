@@ -3479,34 +3479,27 @@ button.sidebar-toggle {
   position: relative;
   overflow: hidden;
 }
-.exp-kpi::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: currentColor;
-  opacity: 0.8;
-}
+/* Εδώ ήταν λωρίδα 3px σε ψευδοστοιχείο. Ο φορέας της σοβαρότητας γίνεται το
+   εικονίδιο που ΗΔΗ υπάρχει αριστερά — απλώς δεν φαινόταν (δες παρακάτω). */
 .exp-kpi:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 .exp-kpi-danger  { color: var(--danger); }
 .exp-kpi-warning { color: var(--warning); }
 .exp-kpi-success { color: var(--success); }
 .exp-kpi-compliance { color: var(--accent); }
+/* Το opacity:0.1 έμπαινε στο ΔΟΧΕΙΟ, άρα έσβηνε και το εικονίδιο μέσα του —
+   γι' αυτό οι κύκλοι φαίνονταν άδειοι. Κάποιος το πάλεψε με «opacity: 10»
+   (άκυρη τιμή, στρογγυλοποιείται στο 1) και brightness(0.6). Τώρα η διαφάνεια
+   μπαίνει ΜΟΝΟ στο γέμισμα, οπότε το εικονίδιο δείχνει το πλήρες χρώμα
+   σοβαρότητας και αναλαμβάνει τον ρόλο που είχε η λωρίδα. */
 .exp-kpi-ico {
   flex-shrink: 0;
   width: 44px; height: 44px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
   border-radius: var(--radius-full);
-  opacity: 0.1;
   position: relative;
 }
-.exp-kpi-ico svg {
-  color: currentColor;
-  opacity: 10;  /* icons render fully on the solid bg */
-  position: absolute;
-}
-.exp-kpi-ico > svg { opacity: 1; filter: brightness(0.6); }
+.exp-kpi-ico svg { color: currentColor; opacity: 1; position: absolute; }
 .exp-kpi-body { flex: 1; min-width: 0; color: var(--text); }
 .exp-kpi-lbl {
   font-size: var(--text-xs);
