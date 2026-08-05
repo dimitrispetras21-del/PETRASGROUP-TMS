@@ -82,6 +82,11 @@
   --success-bg:  rgba(5,150,105,0.08);
   --danger:      #DC2626;
   --danger-bg:   rgba(220,38,38,0.08);
+  /* Το #DC2626 δίνει 4.46 σε καθαρό --bg, αλλά μόλις 4.28 όταν κάθεται πάνω
+     στο ίδιο του το 8% γέμισμα (--danger-bg) — δηλαδή ακριβώς εκεί που
+     χρησιμοποιείται πιο συχνά. Το #B91C1C δίνει 5.73 εκεί. Μόνο για ΚΕΙΜΕΝΟ
+     πάνω σε κόκκινη απόχρωση σε ΦΩΤΕΙΝΟ· σε σκούρο θέλει --panel-bad. */
+  --danger-strong: #B91C1C;
   --warning:     #B45309;
   --warning-bg:  rgba(217,119,6,0.08);
 
@@ -527,10 +532,13 @@ body {
   color: var(--silver-dim);
 }
 
-.role-badge.owner     { background: rgba(240,165,0,0.15);  color: #F0A500; }
-.role-badge.dispatcher{ background: rgba(46,196,160,0.15); color: #2EC4A0; }
-.role-badge.management{ background: rgba(100,150,220,0.15);color: #7AAEE8; }
-.role-badge.accountant{ background: rgba(184,196,208,0.12);color: var(--silver); }
+/* Το κείμενο είχε ΤΟ ΙΔΙΟ χρώμα με το 15% γέμισμά του: 1.87 / 1.96 / 2.07 —
+   πρακτικά αόρατο στη λευκή μπάρα. Κρατάμε την ίδια απόχρωση, σκουραίνουμε
+   μόνο το κείμενο ώστε να διαβάζεται: 5.33 / 5.71 / 5.89. */
+.role-badge.owner     { background: rgba(240,165,0,0.15);  color: #8A5A00; }
+.role-badge.dispatcher{ background: rgba(46,196,160,0.15); color: #0F6B57; }
+.role-badge.management{ background: rgba(100,150,220,0.15);color: #2C5F96; }
+.role-badge.accountant{ background: rgba(184,196,208,0.12);color: #475569; } /* --silver έδινε 1.48 */
 
 .btn-logout {
   padding: 6px 14px;
@@ -719,8 +727,11 @@ body {
   margin-top: 4px;
 }
 
-.kpi-delta.up   { color: var(--success); }
-.kpi-delta.down { color: var(--danger); }
+/* Ο γονέας .kpi-card είναι #0F172A. Τα --success/--danger είναι τα ΦΩΤΕΙΝΩΝ
+   επιφανειών (τώρα ακόμη σκουρότερα), οπότε εδώ έπεφταν κάτω απ' το AA:
+   #047857→2.19, #DC2626→3.70. Τα --panel-* είναι τα αντίστοιχα του σκούρου. */
+.kpi-delta.up   { color: var(--panel-ok); }
+.kpi-delta.down { color: var(--panel-bad); }
 
 /* Buttons */
 /* ═══ Button System v2 ═══ */
@@ -3749,9 +3760,13 @@ button.sidebar-toggle {
   --dc-ok-soft: rgba(16,185,129,0.12);
   --dc-warn: #D97706;
   --dc-warn-soft: rgba(217,119,6,0.12);
-  /* #DC2626 είναι το κόκκινο για ΛΕΥΚΟ φόντο· σε σκούρο έδινε 3.54. Το #EF4444
-     (= --panel-bad) δίνει 4.55. Το --p-bad/--ceo-bad #F87171 περνούσαν ήδη. */
-  --dc-bad: #EF4444;
+  /* ΜΟΝΟ για κείμενο πάνω στις ΣΚΟΥΡΕΣ κάρτες KPI του dashboard (#0F1C2F),
+     συχνά με 10% κόκκινο από πάνω. Εκεί: #DC2626→3.37, #EF4444→4.33, και τα
+     δύο κόβονται· το #F87171 δίνει 5.88 — ίδια τιμή με --p-bad/--ceo-bad,
+     δηλαδή ενιαίο κόκκινο-σε-σκούρο και στα τρία συστήματα καρτών.
+     Η ΦΩΤΕΙΝΗ μπάρα .dash-alert-* ΔΕΝ το χρησιμοποιεί πια — πήγε σε
+     --danger-strong. Ήταν το λάθος που την είχε ρίξει στο 2.99. */
+  --dc-bad: #F87171;
   --dc-bad-soft: rgba(220,38,38,0.10);
   --dc-nums: 'DM Sans', -apple-system, sans-serif;
   padding: 0;
@@ -3828,7 +3843,8 @@ button.sidebar-toggle {
 .dash-alert-banner {
   background: var(--dc-bad-soft);
   border: 1px solid rgba(220,38,38,0.18);
-  border-left: 3px solid var(--dc-bad);
+  /* Σε ΦΩΤΕΙΝΗ μπάρα — κρατά το --danger, όχι το κόκκινο-για-σκούρο. */
+  border-left: 3px solid var(--danger);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -3850,7 +3866,7 @@ button.sidebar-toggle {
 .dash-alert-go {
   margin-left: auto;
   display: flex;
-  color: var(--dc-bad);
+  color: var(--danger-strong);
   opacity: 0.7;
   transition: transform var(--duration-fast) var(--ease-out);
 }
@@ -3865,11 +3881,11 @@ button.sidebar-toggle {
   background: rgba(220,38,38,0.12);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  color: var(--dc-bad);
+  color: var(--danger-strong);
 }
 .dash-alert-text {
   font-size: var(--text-sm);
-  color: var(--dc-bad);
+  color: var(--danger-strong);
   font-weight: 600;
   line-height: 1.4;
 }
