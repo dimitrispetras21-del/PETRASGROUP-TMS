@@ -226,7 +226,7 @@ function _expCell(doc, recId, fieldName, vType) {
   const parts = toLocalDate(doc.date).split('-');
   const dateStr = parts[2]+'/'+parts[1];
   let color, daysStr;
-  if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'd overdue'; }
+  if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'ημ. ληγμένο'; }
   else if (d <= 7)  { color = '#EF4444'; daysStr = d + 'd'; }
   else if (d <= 30) { color = '#F59E0B'; daysStr = d + 'd'; }
   else if (d <= 90) { color = '#0284C7'; daysStr = d + 'd'; }
@@ -378,29 +378,29 @@ function _expiryPaint() {
   });
   if (expiring30Trucks + expiring30Trailers > 0) actions.push({
     icon: (typeof icon === 'function') ? icon('clock', 14) : '',
-    sev: 'warn', text: `${expiring30Trucks + expiring30Trailers} expiring within 30 days`
+    sev: 'warn', text: `${expiring30Trucks + expiring30Trailers} λήγουν εντός 30 ημερών`
   });
   if (!actions.length) actions.push({
     icon: (typeof icon === 'function') ? icon('check_circle', 14) : '',
-    sev: 'ok', text: 'All fleet documents are valid'
+    sev: 'ok', text: 'Όλα τα έγγραφα του στόλου σε ισχύ'
   });
 
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
-        <div class="page-title">Expiry Alerts</div>
-        <div class="page-sub">Fleet document compliance overview</div>
+        <div class="page-title">Λήξεις Εγγράφων</div>
+        <div class="page-sub">Επισκόπηση συμμόρφωσης εγγράφων στόλου</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-ghost btn-sm" onclick="_expiryExportCSV()">${_i('file_text')} Export CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_expiryPrint()">${_i('file_text')} Print</button>
-        <button class="btn btn-ghost btn-sm" onclick="MAINT._loaded=false;renderExpiryAlerts()">${_i('refresh')} Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="_expiryExportCSV()">${_i('file_text')} Εξαγωγή CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="_expiryPrint()">${_i('file_text')} Εκτύπωση</button>
+        <button class="btn btn-ghost btn-sm" onclick="MAINT._loaded=false;renderExpiryAlerts()">${_i('refresh')} Ανανέωση</button>
       </div>
     </div>
 
     <!-- Command Center banner -->
     ${(typeof buildCommandCenterHTML === 'function') ? buildCommandCenterHTML({
-      title: 'FLEET COMPLIANCE',
+      title: 'ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ',
       pct: compliancePct,
       actions,
       widgets: [],
@@ -419,17 +419,17 @@ function _expiryPaint() {
       <div class="exp-kpi exp-kpi-warning">
         <div class="exp-kpi-ico">${_i('clock')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Expiring ≤30d</div>
+          <div class="exp-kpi-lbl">Λήγουν ≤30 ημ.</div>
           <div class="exp-kpi-val">${expiring30Trucks + expiring30Trailers}</div>
-          <div class="exp-kpi-sub">Needs planning</div>
+          <div class="exp-kpi-sub">Χρειάζονται προγραμματισμό</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-success">
         <div class="exp-kpi-ico">${_i('check_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Valid</div>
+          <div class="exp-kpi-lbl">Σε ισχύ</div>
           <div class="exp-kpi-val">${validTrucks + validTrailers}</div>
-          <div class="exp-kpi-sub">${validTrucks} trucks · ${validTrailers} trailers</div>
+          <div class="exp-kpi-sub">${validTrucks} φορτηγά · ${validTrailers} ρυμούλκες</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-compliance">
@@ -452,14 +452,14 @@ function _expiryPaint() {
     <!-- Tabs v2 -->
     <div class="exp-tab-bar">
       <div class="exp-tab-group">
-        ${tabBtn('all', 'All', truckRows.length + trailerRows.length)}
-        ${tabBtn('expired', 'Expired', expiredTrucks + expiredTrailers, 'danger')}
-        ${tabBtn('expiring30', 'Expiring ≤30d', expiring30Trucks + expiring30Trailers, 'warning')}
-        ${tabBtn('valid', 'Valid', validTrucks + validTrailers, 'success')}
+        ${tabBtn('all', 'Όλα', truckRows.length + trailerRows.length)}
+        ${tabBtn('expired', 'Ληγμένα', expiredTrucks + expiredTrailers, 'danger')}
+        ${tabBtn('expiring30', 'Λήγουν ≤30 ημ.', expiring30Trucks + expiring30Trailers, 'warning')}
+        ${tabBtn('valid', 'Σε ισχύ', validTrucks + validTrailers, 'success')}
       </div>
       <div class="exp-search-wrap">
         ${_i('search')}
-        <input class="exp-search-input" placeholder="Search plate or brand..." value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
+        <input class="exp-search-input" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
       </div>
     </div>
 
@@ -468,16 +468,16 @@ function _expiryPaint() {
       <div class="exp-section-hdr">
         <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('truck')}</div>
         <div>
-          <div class="exp-section-title">Trucks</div>
-          <div class="exp-section-sub">${fTrucks.length} of ${truckRows.length} shown</div>
+          <div class="exp-section-title">Φορτηγά</div>
+          <div class="exp-section-sub">${fTrucks.length} από ${truckRows.length}</div>
         </div>
       </div>
       <div class="exp-table-wrap">
         <table class="mt">
           <thead><tr>
-            <th style="width:30px">#</th><th>Plate</th><th>Brand</th>
+            <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
             ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
-            <th>Insurer</th>
+            <th>ΑΣΦΑΛΙΣΤΗΣ</th>
           </tr></thead>
           <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
             <td class="rn">${i+1}</td>
@@ -485,7 +485,7 @@ function _expiryPaint() {
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
             ${r.docs.map(d => _expCell(d, r.id, d.field, 'Truck')).join('')}
             <td style="font-size:var(--text-xs);color:var(--text-mid);cursor:pointer" onclick="_expInsurerEdit(event,'${r.id}','Truck')">${r.insurer || '<span style=&quot;color:var(--text-dim)&quot;>—</span>'}</td>
-          </tr>`).join('') : `<tr><td colspan="${4 + TRUCK_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">No trucks in this category</td></tr>`}</tbody>
+          </tr>`).join('') : `<tr><td colspan="${4 + TRUCK_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">Κανένα φορτηγό σε αυτή την κατηγορία</td></tr>`}</tbody>
         </table>
       </div>
     </div>
@@ -495,14 +495,14 @@ function _expiryPaint() {
       <div class="exp-section-hdr">
         <div class="exp-section-badge" style="background:rgba(124,58,237,0.12);color:#7C3AED">${_i('package')}</div>
         <div>
-          <div class="exp-section-title">Trailers</div>
-          <div class="exp-section-sub">${fTrailers.length} of ${trailerRows.length} shown</div>
+          <div class="exp-section-title">Ρυμούλκες</div>
+          <div class="exp-section-sub">${fTrailers.length} από ${trailerRows.length}</div>
         </div>
       </div>
       <div class="exp-table-wrap">
         <table class="mt">
           <thead><tr>
-            <th style="width:30px">#</th><th>Plate</th><th>Brand</th>
+            <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
             ${TRAILER_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
           </tr></thead>
           <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
@@ -510,7 +510,7 @@ function _expiryPaint() {
             <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
             ${r.docs.map(d => _expCell(d, r.id, d.field, 'Trailer')).join('')}
-          </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">No trailers in this category</td></tr>`}</tbody>
+          </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">Καμία ρυμούλκα σε αυτή την κατηγορία</td></tr>`}</tbody>
         </table>
       </div>
     </div>`;
