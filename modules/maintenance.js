@@ -224,7 +224,10 @@ function _expCell(doc, recId, fieldName, vType) {
   if (!doc.date) return `<td class="c" style="color:#475569;${cursor}" ${editAttr}><span style="font-size:11px">—</span></td>`;
   const d = _daysUntil(doc.date);
   const parts = toLocalDate(doc.date).split('-');
-  const dateStr = parts[2]+'/'+parts[1];
+  // With documents 852 days overdue, "17/02" is ambiguous by years. The year is
+  // the difference between "renew it this month" and "this vehicle has been
+  // illegal since 2024". See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-3.
+  const dateStr = parts[2]+'/'+parts[1]+'/'+parts[0].slice(2);
   let color, daysStr;
   if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'ημ. ληγμένο'; }
   else if (d <= 7)  { color = '#EF4444'; daysStr = d + 'd'; }
@@ -1591,7 +1594,7 @@ async function renderMaintDash() {
                 <div class="dash-card-body">
                   ${overdueList.length ? overdueList.map(r => {
                     const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '—';
+                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) + '/' + r.date.substring(2,4) : '—';
                     return `<div class="md-exp-row">
                       <div class="md-exp-plate">${r.plate}</div>
                       <div class="md-exp-doc">${r.docType} · ${r.vType}</div>
@@ -1613,7 +1616,7 @@ async function renderMaintDash() {
                 <div class="dash-card-body">
                   ${soonList.length ? soonList.map(r => {
                     const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) : '—';
+                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) + '/' + r.date.substring(2,4) : '—';
                     return `<div class="md-exp-row">
                       <div class="md-exp-plate">${r.plate}</div>
                       <div class="md-exp-doc">${r.docType} · ${r.vType}</div>

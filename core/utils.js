@@ -170,8 +170,8 @@ function expiryLabel(dateStr) {
   if (!dateStr) return '—';
   const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
   const base = formatDate(dateStr);
-  if (days < 0)  return `<span class="expiry-alert">${base} (expired)</span>`;
-  if (days < 30) return `<span class="expiry-warn">${base} (${days}d)</span>`;
+  if (days < 0)  return `<span class="expiry-alert">${base} (ληγμένο)</span>`;
+  if (days < 30) return `<span class="expiry-warn">${base} (${days} ημ.)</span>`;
   return `<span class="expiry-ok">${base}</span>`;
 }
 

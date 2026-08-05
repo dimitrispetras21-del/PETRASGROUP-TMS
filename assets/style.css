@@ -5771,3 +5771,12 @@ button.dash-kpi:focus-visible {
   background: none; border: none; cursor: pointer; padding: 0;
   color: var(--accent); opacity: 0.6; font-size: 12px;
 }
+
+/* Keyboard focus must be visible wherever a click does something. Rows and sort
+   headers in the entity engine are now reachable by Tab; .btn-icon became a real
+   <button>. No new colour — reuses --accent (πάγωμα 0.6).
+   Φάση 2, ενότητα Ε. */
+button.btn-icon { appearance:none; border:0; background:none; font:inherit; color:inherit; cursor:pointer; }
+tr[role="button"]:focus-visible,
+th[role="button"]:focus-visible,
+button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
