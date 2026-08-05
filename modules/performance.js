@@ -468,7 +468,11 @@ function _perfDraw() {
   // See docs/design/DEEP_AUDIT_2026-08-04/performance.md.
   const _trendNow = trends.length ? trends[trends.length - 1] : null;
   if (typeof reportPageMetrics === 'function') reportPageMetrics('performance', {
+    // wn follows the week picker, so it is not comparable across pages.
+    // weekNumberDefault is this page's idea of "today" — that is the figure
+    // worth cross-checking.
     weekNumber: wn,
+    weekNumberDefault: curWn,
     weeklyScore: vals.weekly_score,
     weeklyScoreTrend: _trendNow ? _trendNow.score : -1,
     // _perfTrends() reads currentWeekNumber() directly and ignores the week
