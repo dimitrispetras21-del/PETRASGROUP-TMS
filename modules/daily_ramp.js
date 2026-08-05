@@ -463,20 +463,20 @@ function _rampDraw() {
         <div class="ramp-sec-hd inbound"><span>↓ ΕΙΣΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${inb.length}</span></div>
         <table class="ramp-t"><thead><tr>
           <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος φόρτωσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
-        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία άφιξη</td></tr>'}</tbody></table>
+        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία άφιξη σήμερα',description:'Πρόσθεσε άφιξη από το κουμπί + Άφιξη, ή άλλαξε ημερομηνία.',action:{label:'+ Άφιξη',onClick:"_rampAddNew('Παραλαβή')"}}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία άφιξη σήμερα</div>'}</td></tr>`}</tbody></table>
       </div>
       <div>
         <div class="ramp-sec-hd outbound"><span>↑ ΕΞΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${out.length}</span></div>
         <table class="ramp-t"><thead><tr>
           <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος παράδοσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
-        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία αναχώρηση</td></tr>'}</tbody></table>
+        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία αναχώρηση σήμερα',description:'Πρόσθεσε αναχώρηση από το κουμπί + Αναχώρηση, ή άλλαξε ημερομηνία.',action:{label:'+ Αναχώρηση',onClick:"_rampAddNew('Φόρτωση')"}}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία αναχώρηση σήμερα</div>'}</td></tr>`}</tbody></table>
       </div>
     </div>
 
     <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:6px">${_i('clock', 14)} ΧΡΟΝΟΔΙΑΓΡΑΜΜΑ — ΟΛΕΣ ΟΙ ΚΙΝΗΣΕΙΣ</span><span style="opacity:.5">${allSorted.length}</span></div>
     <table class="ramp-t"><thead><tr>
       <th>Ώρα</th><th>Τύπος</th><th>Πελάτης</th><th>Τόπος</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Οδηγός</th><th>Κατάσταση</th>
-    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">Καμία κίνηση σήμερα</td></tr>'}</tbody></table>
+    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):`<tr><td colspan="10" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία κίνηση σήμερα',description:'Μόλις καταχωρηθεί άφιξη ή αναχώρηση, θα εμφανιστεί εδώ με τη σειρά της ώρας.'}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία κίνηση σήμερα</div>'}</td></tr>`}</tbody></table>
 
     ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
       <div class="ramp-sec-hd" style="background:#92400E"><span style="display:inline-flex;align-items:center;gap:6px">${_i('chevron_right', 14)} ΑΝΑΒΛΗΘΗΚΑΝ ΑΠΟ ΣΗΜΕΡΑ</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
@@ -506,7 +506,7 @@ function _rampDraw() {
           oldest=dates[0]||'',days=oldest?Math.floor((Date.now()-new Date(oldest).getTime())/864e5):0,
           dc=days<=1?'fresh':days<=3?'aging':'old';
         return`<tr><td class="rn">${i+1}</td><td class="stock-client">${escapeHtml(cl)}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
-      }).join(''):'<tr class="ramp-empty"><td colspan="5">Η αποθήκη είναι άδεια</td></tr>'}</tbody></table>
+      }).join(''):`<tr><td colspan="5" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Η αποθήκη είναι άδεια',description:'Δεν υπάρχει απόθεμα σε παλέτες αυτή τη στιγμή.'}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Η αποθήκη είναι άδεια</div>'}</td></tr>`}</tbody></table>
     </div>`;
 }
 
