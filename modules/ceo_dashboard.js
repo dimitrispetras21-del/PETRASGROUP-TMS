@@ -108,8 +108,21 @@
     const updEl = document.getElementById('ceo-updated');
     if (updEl) updEl.textContent = 'Φόρτωση...';
 
+    // CE-1: there was no upper bound on this load. A fetch that never settles —
+    // a hung Worker, a request that neither resolves nor rejects — left
+    // Promise.all pending forever, so the page sat on «Φόρτωση...» with the three
+    // brand promises blank and no error, indefinitely. On the ONE screen the
+    // owner opens. A timeout turns "silently stuck" into "failed, try again".
+    // 15s is deliberately generous: seven queries over a full period, on a slow
+    // connection, legitimately take several seconds.
+    const CEO_LOAD_TIMEOUT_MS = 15000;
+    let _timeoutHandle = null;
+    const _timeout = new Promise((_, reject) => {
+      _timeoutHandle = setTimeout(() => reject(new Error('CEO_LOAD_TIMEOUT')), CEO_LOAD_TIMEOUT_MS);
+    });
+
     try {
-      const [allOrders, prevOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.all([
+      const [allOrders, prevOrders, activeDrivers, tripCosts, maintHistory, highRiskOrders, sparkOrders] = await Promise.race([_timeout, Promise.all([
         atGet(TABLES.ORDERS, `AND(IS_AFTER({Loading DateTime},'${s}'),IS_BEFORE({Loading DateTime},'${e}'))`),
         // The three secondary fetches use safeFetch, NOT a bare `.catch(() => [])`.
         // Failing them soft is deliberate and stays: the four primary fetches
@@ -139,7 +152,7 @@
         safeFetch(() => atGet(TABLES.MAINT_HISTORY, `AND(IS_AFTER({Date},'${s}'),IS_BEFORE({Date},'${e}'))`), 'CEO dashboard: maintenance history'),
         atGet(TABLES.ORDERS, `AND(IS_BEFORE({Delivery DateTime},'${plus48}'),{Status}!='Delivered',{Status}!='Cancelled',{Status}!='')`),
         atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime},'${sparkS}')`),
-      ]);
+      ])]);
 
       // Discard stale load: user switched period before this one completed.
       if (myLoadId !== _loadId) return;
@@ -169,9 +182,24 @@
         }
       }
     } catch (err) {
+      // A timeout is reported like any other failure — it IS one. Naming it
+      // separately matters because "δεν απάντησε" and "γύρισε σφάλμα" send the
+      // reader to different places: the first to the connection, the second to
+      // the data.
+      const isTimeout = err && err.message === 'CEO_LOAD_TIMEOUT';
       if (typeof logError === 'function') logError(err, 'CEO Dashboard loadAll');
       const c = document.getElementById('content');
-      if (c) c.innerHTML = `<div style="padding:40px;text-align:center;color:#DC2626">Σφάλμα φόρτωσης. <button onclick="renderCEODashboard()" style="margin-left:12px;padding:8px 16px;background:#0284C7;color:#fff;border:none;border-radius:6px;cursor:pointer">Ανανέωση</button></div>`;
+      if (c) c.innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger)">
+        <div style="font-weight:600;margin-bottom:6px">${isTimeout ? 'Δεν φόρτωσε μέσα σε 15 δευτερόλεπτα' : 'Σφάλμα φόρτωσης'}</div>
+        <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">${isTimeout
+          ? 'Ο διακομιστής δεν απάντησε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.'
+          : 'Κάτι πήγε στραβά κατά τη φόρτωση των δεδομένων.'}</div>
+        <button onclick="renderCEODashboard()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer">Δοκίμασε ξανά</button>
+      </div>`;
+    } finally {
+      // Always clear, on both paths: a live timer would fire after a successful
+      // render and reject into nothing, and it keeps the page alive after exit.
+      if (_timeoutHandle) clearTimeout(_timeoutHandle);
     }
   }
 
