@@ -2,6 +2,25 @@
    PETRAS GROUP TMS — GLOBAL STYLES
 ═══════════════════════════════════════════════ */
 
+/* ───────────────────────────────────────────────
+   ΚΛΙΜΑΚΑ RESPONSIVE — ΤΡΙΑ ΚΑΤΩΦΛΙΑ, ΟΧΙ ΤΕΣΣΕΡΑ
+
+   1200px  ασύμμετρες διατάξεις «κύριο + πλαϊνό» (1fr 320px) στοιβάζονται
+   1024px  tablet: η πλαϊνή μπάρα γίνεται εικονίδια, τα δίστηλα γίνονται ένα
+    768px  κινητό: συρτάρι εκτός καμβά, μία στήλη, στόχοι αφής 44px
+
+   Ήταν πέντε (768/900/1024/1100/1200). Το 900 και το 1100 δεν εξέφραζαν
+   συσκευή — ήταν το πλάτος όπου έτυχε να στριμωχτεί ένα συγκεκριμένο grid.
+
+   ΠΡΙΝ ΠΡΟΣΘΕΣΕΙΣ ΤΕΤΑΡΤΟ: αν το πρόβλημα είναι «πόσες στήλες χωράνε»,
+   δεν θέλει κατώφλι — θέλει
+     grid-template-columns: repeat(auto-fit, minmax(min(100%, Npx), 1fr));
+   που προσαρμόζεται συνεχώς. Κατώφλι χρειάζονται μόνο οι ΑΛΛΑΓΕΣ ΔΟΜΗΣ:
+   ασύμμετρα grid, απόκρυψη στήλης, μετατροπή μπάρας σε συρτάρι.
+   Το min(100%, …) είναι απαραίτητο — χωρίς αυτό το grid υπερχειλίζει σε
+   δοχείο στενότερο από το minmax.
+─────────────────────────────────────────────── */
+
 /* ═══════════════════════════════════════════════
    RESET & VARIABLES
 ═══════════════════════════════════════════════ */
@@ -2287,7 +2306,9 @@ tbody tr:hover { background: var(--bg-hover); }
    window, so a print-wide rule here would silently drop the columns from the
    printout. Export CSV is unaffected — it reads RAMP.records, not the DOM.
    See docs/design/DEEP_AUDIT_2026-08-04/daily_ramp.md DR-2 / Π2. */
-@media screen and (max-width:1100px) {
+/* screen-only επίτηδες: η _rampPrint() αντιγράφει το DOM, οπότε το print δεν
+   πρέπει να κρύψει τη 2η στήλη. 1100 → 1024 (κλίμακα τριών κατωφλίων). */
+@media screen and (max-width:1024px) {
   .ramp-pair { grid-template-columns:1fr; }
   .ramp-col-2nd { display:none; }
 }
@@ -2513,11 +2534,13 @@ tbody tr:hover { background: var(--bg-hover); }
 /* ── KPI Bar ──────────────────────────────────────────── */
 .perf-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Βλ. .dash-kpi-bar — καταργεί το κατώφλι των 900px, το μοναδικό σημείο
+     όπου εμφανιζόταν αυτός ο αριθμός σε όλο το φύλλο. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-5);
 }
-@media (max-width: 900px) { .perf-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+/* Το κατώφλι των 900px καταργήθηκε — το .perf-kpi-grid χρησιμοποιεί auto-fit. */
 
 .perf-kpi {
   background: var(--p-card);
@@ -2640,7 +2663,9 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .perf-left  { display: flex; flex-direction: column; gap: var(--space-4); }
 .perf-right { display: flex; flex-direction: column; gap: var(--space-3); }
-@media (max-width: 1100px) { .perf-grid { grid-template-columns: 1fr; } }
+/* 1100 → 1024: το .perf-grid είναι ασύμμετρο (1fr 320px), δεν λύνεται με
+   auto-fit· χρειάζεται κατώφλι, αλλά το παίρνει από την κλίμακα των τριών. */
+@media (max-width: 1024px) { .perf-grid { grid-template-columns: 1fr; } }
 
 /* ── Weekly Trend bars ────────────────────────────────── */
 .perf-trend-row {
@@ -3888,7 +3913,11 @@ button.sidebar-toggle {
 /* ── KPI Bar ──────────────────────────────────────────── */
 .dash-kpi-bar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Πέντε ισομεγέθεις κάρτες: δεν χρειάζονται breakpoint. Το auto-fit αλλάζει
+     πλήθος στηλών συνεχώς — 5→4→3→2→1 όπου χωράει — αντί για δύο σκαλοπάτια
+     στα 1200/768 που άφηναν ενδιάμεσα πλάτη με στριμωγμένες ή τεντωμένες
+     κάρτες. Το min(100%,…) αποτρέπει υπερχείλιση σε πολύ στενό δοχείο. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-5);
 }
@@ -4467,11 +4496,11 @@ button.dash-kpi:focus-visible {
 
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 1200px) {
-  .dash-kpi-bar { grid-template-columns: repeat(3, 1fr); }
+  /* Το .dash-kpi-bar έφυγε από εδώ — έγινε auto-fit. Μένει μόνο το ασύμμετρο. */
   .dash-grid-main { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
-  .dash-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+  /* Το .dash-kpi-bar έφυγε από εδώ — έγινε auto-fit. */
   .dash-kpi-value { font-size: 24px; }
   .dash-ops-grid { grid-template-columns: 1fr; }
   .dash-header { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
@@ -4630,7 +4659,8 @@ button.dash-kpi:focus-visible {
 /* ── Brand Promise Cards ───────────────────────────────── */
 .ceo-brand-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Βλ. .dash-kpi-bar. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
@@ -5148,8 +5178,8 @@ button.dash-kpi:focus-visible {
 }
 
 /* ── Responsive ───────────────────────────────────────── */
-@media (max-width: 1100px) {
-  .ceo-brand-row { grid-template-columns: 1fr; }
+/* Το .ceo-brand-row έφυγε από εδώ — έγινε auto-fit. 1100 → 1024. */
+@media (max-width: 1024px) {
   .ceo-quadrants { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
