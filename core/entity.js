@@ -420,7 +420,10 @@ async function _renderWorkshopsStatsStrip(workshops) {
     }
     const activeWs = workshops.filter(w => w.fields['Active']).length;
     const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-    const yyyymm = new Date().toISOString().slice(0, 7);
+    // CL-3: toISOString() is UTC — before 02:00/03:00 local on the 1st of the
+    // month it still returns LAST month, so «THIS MONTH» went silently wrong.
+    // toLocalDate() (utils) formats in local time; slice keeps YYYY-MM.
+    const yyyymm = toLocalDate(new Date()).slice(0, 7);
     const monthSpend = history
       .filter(r => (r.fields['Date'] || '').startsWith(yyyymm))
       .reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
@@ -507,7 +510,7 @@ async function _renderPartnersStatsStrip(partners) {
 
     // This-month spend
     const now = new Date();
-    const yyyymm = now.toISOString().slice(0,7);
+    const yyyymm = toLocalDate(now).slice(0, 7); // CL-3: local month, not UTC
     const monthSpend = allPA
       .filter(r => (r.fields[F.PA_ASSIGN_DATE]||'').startsWith(yyyymm))
       .reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0), 0);
@@ -572,7 +575,7 @@ async function _renderClientsStatsStrip(clients) {
     const activeClients = clients.filter(c => c.fields['Active']).length;
     const activeOrders  = all.filter(r => !['Delivered','Invoiced','Cancelled'].includes(r.fields['Status']||'')).length;
 
-    const yyyymm = new Date().toISOString().slice(0,7);
+    const yyyymm = toLocalDate(new Date()).slice(0, 7); // CL-3: local month, not UTC
     const monthRev = all
       .filter(r => (r.fields['Loading DateTime']||'').startsWith(yyyymm))
       .reduce((s,r)=>s+(parseFloat(r.fields['Price'])||0), 0);
@@ -1005,8 +1008,13 @@ function selectEntity(entityKey, recId) {
             let displayVal = val;
             if (typeof val === 'boolean') displayVal = val ? 'Yes' : 'No';
             if (field.includes('Expiry') || field.includes('Date')) displayVal = expiryLabel(val);
+            // PA-5: the raw DB field name leaked to the UI — «Adress» (the
+            // PARTNERS/CLIENTS typo) was shown verbatim. The form already
+            // defines a display label per field; reuse it here. The DB field
+            // name itself must NOT change — records and filters depend on it.
+            const lbl = (cfg.formFields || []).flatMap(s2 => s2.fields).find(x => x.f === field)?.label || field;
             return `<div class="detail-field">
-              <span class="detail-field-label">${field}</span>
+              <span class="detail-field-label">${lbl}</span>
               <span class="detail-field-value">${displayVal}</span>
             </div>`;
           }).join('')}
