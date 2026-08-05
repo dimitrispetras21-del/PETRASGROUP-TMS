@@ -215,8 +215,8 @@ function showError(msg) {
 // is defined above (line ~61) and handles illustration/title/description/action.
 function showEmptyLegacy(msg = 'No records found', sub = '') {
   return `<div class="empty-state" style="padding:60px 20px;text-align:center">
-    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#475569" stroke-width="1.5"><path d="M9 5H2v14h20V5h-7"/><path d="M9 5l3-3 3 3"/><path d="M12 2v10"/></svg>
+    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:color-mix(in srgb, var(--text-dim) 12%, transparent);display:flex;align-items:center;justify-content:center">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="stroke:var(--text-dim)" stroke-width="1.5"><path d="M9 5H2v14h20V5h-7"/><path d="M9 5l3-3 3 3"/><path d="M12 2v10"/></svg>
     </div>
     <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${msg}</h3>
     ${sub ? `<p style="color:var(--text-dim);font-size:12px">${sub}</p>` : ''}
@@ -225,8 +225,8 @@ function showEmptyLegacy(msg = 'No records found', sub = '') {
 
 function showAccessDenied() {
   return `<div class="empty-state" style="padding:60px 20px;text-align:center">
-    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1"/></svg>
+    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--danger-bg);display:flex;align-items:center;justify-content:center">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="stroke:var(--danger)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1"/></svg>
     </div>
     <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Δεν έχεις πρόσβαση</h3>
     <p style="color:var(--text-dim);font-size:12px">Αυτή η ενότητα δεν είναι διαθέσιμη για τον ρόλο σου.</p>
