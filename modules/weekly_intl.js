@@ -445,7 +445,7 @@ function _wiPaint(){
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
           ↑ ΕΞΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${expN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
+          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
         </div>
         <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
           ΑΝΑΘΕΣΗ
@@ -453,7 +453,7 @@ function _wiPaint(){
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
           ↓ ΕΙΣΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${impN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
+          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
         </div>
       </div>
       <div id="wi-rows">

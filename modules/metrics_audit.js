@@ -619,13 +619,13 @@ function _auditDraw() {
   });
 
   const catLabels = {
-    op: { name: '🎯 OPERATIONAL', color: '#0284C7' },
-    perf: { name: '📊 PERFORMANCE', color: '#10B981' },
-    fin: { name: '💰 FINANCIAL', color: '#F59E0B' },
-    fleet: { name: '🚛 FLEET', color: '#8B5CF6' },
-    hr: { name: '👥 HR', color: '#EC4899' },
-    inv: { name: '📦 INVENTORY', color: '#06B6D4' },
-    biz: { name: '🏢 BUSINESS', color: '#1E40AF' },
+    op: { name: 'ΛΕΙΤΟΥΡΓΙΚΕΣ', ic: 'target', color: '#0284C7' },
+    perf: { name: 'ΑΠΟΔΟΣΗ', ic: 'bar_chart', color: '#10B981' },
+    fin: { name: 'ΟΙΚΟΝΟΜΙΚΕΣ', ic: 'euro', color: '#F59E0B' },
+    fleet: { name: 'ΣΤΟΛΟΣ', ic: 'truck', color: '#8B5CF6' },
+    hr: { name: 'ΟΜΑΔΑ', ic: 'users', color: '#EC4899' },
+    inv: { name: 'ΑΠΟΘΕΜΑ', ic: 'package', color: '#06B6D4' },
+    biz: { name: 'ΕΠΙΧΕΙΡΗΣΗ', ic: 'building', color: '#1E40AF' },
   };
 
   // Sources that failed to load on this run. On a healthy load this is empty
@@ -663,7 +663,7 @@ function _auditDraw() {
       </div>` : '';
     return `
     <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:${label.color};margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid ${label.color}33">${label.name}</div>
+      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:${label.color};margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid ${label.color}33">${(typeof icon==='function'&&label.ic)?icon(label.ic,12):''} ${label.name}</div>
       ${catWarn}
       <table style="width:100%;border-collapse:collapse;font-size:13px">
         <thead><tr style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
@@ -726,7 +726,7 @@ function _auditDraw() {
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost" onclick="_auditExportJSON()">Copy JSON</button>
-      <button class="btn btn-new-order" onclick="renderMetricsAudit()">🔄 Ανανέωση</button>
+      <button class="btn btn-new-order" onclick="renderMetricsAudit()">${(typeof icon==='function')?icon('refresh',12):''} Ανανέωση</button>
     </div>
   </div>
 
@@ -742,7 +742,7 @@ function _auditDraw() {
   </div>
 
   <div style="background:#DBEAFE;border:1px solid #3B82F6;color:#1E40AF;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:13px">
-    <b>💡 Πώς να το χρησιμοποιήσεις:</b> άνοιξε τις σελίδες που σε ενδιαφέρουν (Dashboard, Συντήρηση, Τιμολόγηση…)
+    <b>Πώς να το χρησιμοποιήσεις:</b> άνοιξε τις σελίδες που σε ενδιαφέρουν (Dashboard, Συντήρηση, Τιμολόγηση…)
     και γύρνα εδώ. Κάθε σελίδα καταγράφει τα νούμερα που έδειξε, και ο πίνακας «Διασταυρώσεις» τα συγκρίνει
     αυτόματα. <b>Κόκκινη γραμμή</b> = δύο σελίδες διαφωνούν χωρίς εξήγηση. <b>Πορτοκαλί</b> = η διαφορά είναι
     σωστή και γράφει από πού προκύπτει.
