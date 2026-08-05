@@ -384,8 +384,8 @@ function _wiPaint(){
       const widgets = [
         widgetFleet(data.trucks || [], assignedTruckIds),
         widgetEmptyLegs(emptyLegs.soloExp, emptyLegs.soloImp),
-        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">⏱ ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
       ];
       // When week has no orders, provide a single informational action so the strip isn't empty.
       const ccActions = total > 0 ? actions : [{icon:_ico('info'), sev:'ok', text:'Καμία παραγγελία για αυτή την εβδομάδα ακόμη'}];
