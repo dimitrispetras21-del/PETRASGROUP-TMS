@@ -24,7 +24,7 @@ const NAV = [
   ]},
   { section: 'Drivers', perm: 'drivers', items: [
     { id: 'drivers', label: 'Drivers',        icon: 'user' },
-    { id: 'payroll', label: 'Driver Payroll', icon: 'coins' },
+    { id: 'payroll', label: 'Driver Payroll', icon: 'coins', soon: true },
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
     { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
@@ -42,7 +42,7 @@ const NAV = [
   { section: 'Finance', perm: 'orders', items: [
     { id: 'invoicing',     label: 'Invoicing',     icon: 'file_check' },
     { id: 'pallet_ledger', label: 'Pallet Ledger', icon: 'package' },
-    { id: 'costs',         label: 'Costs (soon)',  icon: 'coins' },
+    { id: 'costs',         label: 'Costs',         icon: 'coins', soon: true },
   ]},
   { section: 'Insights', perm: 'ceo_dashboard', items: [
     { id: 'ceo_dashboard', label: 'CEO Dashboard',  icon: 'award' },
@@ -107,6 +107,9 @@ function renderNav() {
             + ' id="nav_' + item.id + '">'
             + '<div class="nav-icon">' + _navIcon(item.icon) + '</div>'
             + '<span class="nav-label">' + item.label + '</span>'
+            // PR-1/CO-4: unbuilt pages get a pill, not "(soon)" baked into the
+            // label — one convention, visually distinct from working entries.
+            + (item.soon ? '<span style="font-size:9px;color:var(--text-dim);border:1px solid var(--border-mid);border-radius:8px;padding:1px 6px;margin-left:6px;flex-shrink:0">σύντομα</span>' : '')
             + '</div>';
     }
     html += '</div>';
@@ -296,7 +299,13 @@ function navigate(page) {
     case 'trailers':       renderEntity('trailers');      break;
     // Drivers
     case 'drivers':        renderEntity('drivers');       break;
-    case 'payroll':        c.innerHTML = showComingSoon('Μισθοδοσία Οδηγών', {
+    // PR-3: ίδιο gate με settings/trash/error_log. Σήμερα η σελίδα είναι
+    // placeholder, αλλά όταν χτιστεί θα δείχνει μισθούς — το gate μπαίνει
+    // ΠΡΙΝ υπάρξει κάτι να διαρρεύσει, όχι μετά. Ο dispatcher έχει
+    // drivers:'view' και χάνει την πρόσβαση — σκόπιμο (βλ. payroll.md PR-3).
+    case 'payroll':
+      if (can('drivers') !== 'full') { c.innerHTML = showAccessDenied(); break; }
+      c.innerHTML = showComingSoon('Μισθοδοσία Οδηγών', {
       icon: 'coins',
       today: 'Η μισθοδοσία υπολογίζεται εκτός συστήματος. Τα δεδομένα ανά δρομολόγιο υπάρχουν ήδη στις Παραγγελίες (οδηγός, ημερομηνίες, παλέτες).',
       eta: 'Προαπαιτεί την αλυσίδα κόστους: χωρίς κόστος ανά δρομολόγιο, η αμοιβή δεν μπορεί να διασταυρωθεί. Μετά τη σύνδεση εντολής εργασίας → εγγραφής κόστους (MR-2).',
