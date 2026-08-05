@@ -374,8 +374,8 @@ function _wiPaint(){
       const widgets = [
         widgetFleet(data.trucks || [], assignedTruckIds),
         widgetEmptyLegs(emptyLegs.soloExp, emptyLegs.soloImp),
-        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 VS LAST WEEK</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">⏱ ON-TIME</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">⏱ ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
       ];
       // When week has no orders, provide a single informational action so the strip isn't empty.
       const ccActions = total > 0 ? actions : [{icon:_ico('info'), sev:'ok', text:'Καμία παραγγελία για αυτή την εβδομάδα ακόμη'}];
@@ -391,34 +391,34 @@ function _wiPaint(){
     <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
       <div class="entity-search-wrap">
         ${_ico('search')}
-        <input id="wi-search" class="entity-search-input" type="text" placeholder="Search client / truck / driver / location..." oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}">
+        <input id="wi-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…" oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}">
       </div>
       <select class="svc-filter" onchange="WINTL.filterStatus=this.value;_wiApplyFilter()">
-        <option value="">All statuses</option>
-        <option value="pending" ${WINTL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
-        <option value="assigned" ${WINTL.filterStatus==='assigned'?'selected':''}>Assigned</option>
-        <option value="unmatched" ${WINTL.filterStatus==='unmatched'?'selected':''}>Unmatched imports</option>
+        <option value="">Όλες οι καταστάσεις</option>
+        <option value="pending" ${WINTL.filterStatus==='pending'?'selected':''}>Χωρίς ανάθεση</option>
+        <option value="assigned" ${WINTL.filterStatus==='assigned'?'selected':''}>Ανατεθειμένα</option>
+        <option value="unmatched" ${WINTL.filterStatus==='unmatched'?'selected':''}>Εισαγωγές χωρίς ταίριασμα</option>
       </select>
-      ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">${_ico('x', 12)} Clear</button>`:''}
+      ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">${_ico('x', 12)} Καθαρισμός</button>`:''}
     </div>
 
     <div class="page-header" style="margin-bottom:var(--space-3)">
       <div>
         <div class="page-title">Weekly International</div>
         <div class="page-sub" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:4px;align-items:center;font-size:12px">
-          <span style="color:var(--text-mid)">Week ${week} · ${_wiWeekRange(week)}</span>
-          <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${expN} exports</span>
-          <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} imports</span>
-          <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} assigned</span>
-          ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} pending</span>`:''}
-          <span style="color:var(--text-dim);font-size:11px">${matched} matched · ${unmatched} free</span>
+          <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${_wiWeekRange(week)}</span>
+          <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${expN} εξαγωγές</span>
+          <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} εισαγωγές</span>
+          <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} ανατεθειμένα</span>
+          ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} χωρίς ανάθεση</span>`:''}
+          <span style="color:var(--text-dim);font-size:11px">${matched} ταιριασμένα · ${unmatched} ελεύθερα</span>
         </div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
-        ${unmatched>0?`<button class="btn btn-primary btn-sm" onclick="_wiAutoMatch()">${_ico('zap', 14)} Auto-Match (${unmatched})</button>`:''}
-        <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Print</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Refresh</button>
-        <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Export CSV</button>
+        ${unmatched>0?`<button class="btn btn-primary btn-sm" onclick="_wiAutoMatch()">${_ico('zap', 14)} Αυτόματο ταίριασμα (${unmatched})</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Εκτύπωση</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Ανανέωση</button>
+        <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Εξαγωγή CSV</button>
       </div>
     </div>
 
@@ -426,23 +426,23 @@ function _wiPaint(){
       <div class="wi-head" style="background:#B8C4D0">
         <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
-          ↑ EXPORT
+          ↑ ΕΞΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${expN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">right-click to group</span>
+          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
         </div>
         <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
-          ASSIGNMENT
+          ΑΝΑΘΕΣΗ
         </div>
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
-          ↓ IMPORT
+          ↓ ΕΙΣΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${impN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">drag to match</span>
+          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
         </div>
       </div>
       <div id="wi-rows">
         ${rows.length?_wiAllRowsHTML():`
           <div class="empty-state" style="padding:60px">
-            <p>No international exports for week ${week}</p>
+            <p>Καμία εξαγωγή για την εβδομάδα ${week}</p>
           </div>`}
       </div>
     </div>
