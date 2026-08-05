@@ -276,14 +276,15 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
 }
 
-// Row left-border color based on worst expiry
-function _expRowColor(worst) {
-  if (worst === null) return 'transparent';
-  if (worst < 0)  return '#EF4444';
-  if (worst <= 7) return '#EF4444';
-  if (worst <= 30) return '#F59E0B';
-  if (worst <= 90) return '#0284C7';
-  return '#10B981';
+// Row tint based on worst expiry. Replaces a 3px coloured left border.
+// Only the two urgent bands get a tint: on a dense table most rows are fine,
+// so colouring all five levels made the urgent ones harder to spot, not easier.
+// Blue/green were reassurance nobody scans for. Severity is also in each cell.
+function _expRowTint(worst) {
+  if (worst === null) return '';
+  if (worst <= 7)  return 'background:rgba(220,38,38,0.06)';   // ληγμένο ή <1 εβδ.
+  if (worst <= 30) return 'background:rgba(180,83,9,0.06)';    // μέσα στον μήνα
+  return '';
 }
 
 // Inline text editor for Insurer field
@@ -504,7 +505,7 @@ function _expiryPaint() {
             ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
             <th>ΑΣΦΑΛΙΣΤΗΣ</th>
           </tr></thead>
-          <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
+          <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
             <td class="rn">${i+1}</td>
             <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
@@ -530,7 +531,7 @@ function _expiryPaint() {
             <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
             ${TRAILER_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
           </tr></thead>
-          <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
+          <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
             <td class="rn">${i+1}</td>
             <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
@@ -1919,7 +1920,7 @@ function _mreqPaint() {
       </div>
     </div>
 
-    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-left:4px solid var(--danger);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
+    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
       <div style="width:36px;height:36px;border-radius:var(--radius-full);background:var(--danger);color:#fff;display:inline-flex;align-items:center;justify-content:center">${_i('alert_circle',18)}</div>
       <div style="flex:1">
         <div style="color:var(--danger);font-size:var(--text-sm);font-weight:700">${sos} SOS work order${sos>1?'s':''} — immediate attention required</div>

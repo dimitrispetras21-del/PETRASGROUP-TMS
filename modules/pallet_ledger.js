@@ -169,7 +169,7 @@ function _plRender() {
   // computed from a failed fetch is indistinguishable from a settled account,
   // and this page is a financial reconciliation.
   const plFailBanner = (PL.loadFailed || []).length ? `
-  <div style="background:#FEF3C7;border:1px solid #F59E0B;border-left:4px solid #D97706;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
+  <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
     <b>⚠ This ledger is incomplete.</b>
     Could not load: <b>${PL.loadFailed.map(escapeHtml).join(', ')}</b>.
     Balances and the order list below are <b>not reliable</b> until this loads.

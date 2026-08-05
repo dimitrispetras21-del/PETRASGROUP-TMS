@@ -2299,10 +2299,10 @@ tbody tr:hover { background: var(--bg-hover); }
   font-family:'Syne',sans-serif; font-size:10px; font-weight:800;
   letter-spacing:1.5px; text-transform:uppercase; background:#0B1929; color:#C4CFDB;
   display:flex; justify-content:space-between; align-items:center; }
-.ramp-sec-hd.inbound  { border-left:3px solid var(--accent); }
-.ramp-sec-hd.outbound { border-left:3px solid var(--accent); }
-.ramp-sec-hd.timeline { border-left:3px solid var(--accent); }
-.ramp-sec-hd.stock    { border-left:3px solid var(--warning); }
+/* Οι τέσσερις λωρίδες αφαιρέθηκαν. Οι τρεις πρώτες είχαν ΤΟ ΙΔΙΟ χρώμα, άρα
+   δεν ξεχώριζαν τίποτα· η κεφαλίδα λέει ήδη τι είναι, με σκούρο φόντο, Syne
+   κεφαλαία και αραίωση 1.5px. Το .stock κρατά τη διάκρισή του από το χρώμα
+   του αριθμού του, όχι από διακοσμητική μπάρα. */
 
 /* table */
 .ramp-t { width:100%; border-collapse:collapse; background:var(--bg-card);
@@ -2399,10 +2399,12 @@ tbody tr:hover { background: var(--bg-hover); }
   letter-spacing:1.5px; text-transform:uppercase;
   display:flex; justify-content:space-between; align-items:center;
 }
-.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
+/* Και οι τέσσερις λωρίδες ήταν var(--accent) — μηδενική πληροφορία, καθαρή
+   διακόσμηση. Έμεινε το σκούρο φόντο που ήδη οριοθετεί την ενότητα. */
+.ops-sec-hd.el,
+.ops-sec-hd.ed,
+.ops-sec-hd.il,
+.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; }
 
 /* table */
 .ops-t { width:100%; border-collapse:collapse; background:var(--bg-card);
@@ -3842,9 +3844,9 @@ button.sidebar-toggle {
 /* ── Alert Banner ─────────────────────────────────────── */
 .dash-alert-banner {
   background: var(--dc-bad-soft);
-  border: 1px solid rgba(220,38,38,0.18);
-  /* Σε ΦΩΤΕΙΝΗ μπάρα — κρατά το --danger, όχι το κόκκινο-για-σκούρο. */
-  border-left: 3px solid var(--danger);
+  /* Είχε ΚΑΙ γέμισμα ΚΑΙ πλήρες περίγραμμα ΚΑΙ λωρίδα 3px αριστερά. Η λωρίδα
+     έφυγε· το περίγραμμα δυναμώνει λίγο ώστε η μπάρα να μη χάσει παρουσία. */
+  border: 1px solid rgba(220,38,38,0.28);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -4598,16 +4600,18 @@ button.dash-kpi:focus-visible {
   text-transform: uppercase;
   color: var(--ceo-accent);
   margin: 0 0 var(--space-3);
-  padding-left: var(--space-3);
-  border-left: 3px solid var(--ceo-accent);
+  /* Η λωρίδα 3px και το padding που την αντιστάθμιζε αφαιρέθηκαν: η ετικέτα
+     ξεχωρίζει ήδη από χρώμα, βάρος 700 και αραίωση 2px — και τώρα
+     ευθυγραμμίζεται με το περιεχόμενο από κάτω της αντί να μετατοπίζεται. */
   display: flex; align-items: center; gap: var(--space-2);
 }
 
 /* ── Loss Trips Banner (conditional, CRITICAL) ─────────── */
 .ceo-loss-banner {
   background: linear-gradient(135deg, rgba(220,38,38,0.04), rgba(220,38,38,0.08));
-  border: 1px solid rgba(220,38,38,0.15);
-  border-left: 4px solid var(--ceo-bad);
+  /* Η λωρίδα 4px έφυγε· το περίγραμμα δυναμώνει για να κρατήσει τη σοβαρότητα
+     αυτής της μπάρας — είναι η κρίσιμη ειδοποίηση ζημιογόνων δρομολογίων. */
+  border: 1px solid rgba(220,38,38,0.30);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -5633,8 +5637,8 @@ button.dash-kpi:focus-visible {
   align-items: flex-start;
   gap: 12px;
   background: #FEF2F2;
-  border: 1px solid #FECACA;
-  border-left: 3px solid #DC2626;
+  /* Η λωρίδα 3px έφυγε· το πλήρες περίγραμμα σκουραίνει από #FECACA. */
+  border: 1px solid #F5A9A9;
   color: #7F1D1D;
   padding: 14px 16px;
   border-radius: 8px;
@@ -5679,9 +5683,14 @@ button.dash-kpi:focus-visible {
    SCAN CONFIDENCE TINTS — applied to AI-prefilled form fields
    so users instantly see which values they should double-check.
 ═══════════════════════════════════════════════════════════════ */
-.scan-conf-high  { border-left: 3px solid #059669 !important; }
-.scan-conf-med   { border-left: 3px solid #D97706 !important; background: rgba(217,119,6,0.04) !important; }
-.scan-conf-low   { border-left: 3px solid #DC2626 !important; background: rgba(220,38,38,0.04) !important; }
+/* Εδώ το χρώμα ΜΕΤΑΦΕΡΕΙ πληροφορία, οπότε δεν σβήνεται — αλλάζει φορέα.
+   Εφαρμόζονται σε πεδία φόρμας, που έχουν ήδη περίγραμμα: η λωρίδα γίνεται
+   ΠΛΗΡΕΣ χρωματιστό περίγραμμα + απόχρωση, δηλαδή ο ίδιος κώδικας χρώματος
+   περιμετρικά αντί για μπάρα στη μία πλευρά. Το «high» αποκτά κι αυτό
+   απόχρωση, ώστε τα τρία επίπεδα να διαβάζονται ως μία κλίμακα. */
+.scan-conf-high  { border: 1px solid var(--success) !important; background: rgba(4,120,87,0.05) !important; }
+.scan-conf-med   { border: 1px solid var(--warning) !important; background: rgba(180,83,9,0.06) !important; }
+.scan-conf-low   { border: 1px solid var(--danger)  !important; background: rgba(220,38,38,0.06) !important; }
 
 .scan-preview-doc {
   background: var(--bg);

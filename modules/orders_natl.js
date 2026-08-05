@@ -1458,7 +1458,7 @@ async function _natlScanPreview(data) {
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:#FEF3C7;border:1px solid #FBBF24;border-left:3px solid #D97706;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        <div style="background:#FEF3C7;border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
           <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
           <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
