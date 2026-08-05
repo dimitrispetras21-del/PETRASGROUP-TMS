@@ -3841,6 +3841,23 @@ button.sidebar-toggle {
   box-shadow: 0 8px 20px rgba(15,23,42,0.18);
 }
 .dash-kpi:active { transform: translateY(0); }
+/* A KPI that navigates is a button, not a div — the Maintenance Dashboard KPIs
+   now land on the exact rows they counted. This neutralises the UA button
+   styling so the six cards look identical to before; only the semantics and
+   keyboard access change. No new colour, size or z-index (πάγωμα 0.6).
+   See docs/design/DEEP_AUDIT_2026-08-04/maint_dash.md MD-2. */
+button.dash-kpi {
+  appearance: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  width: 100%;
+  display: block;
+}
+button.dash-kpi:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .dash-kpi-glow {
   position: absolute; top: 0; left: 0; right: 0;
   height: 2px; opacity: 0.7;

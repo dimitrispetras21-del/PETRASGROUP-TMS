@@ -314,12 +314,31 @@ async function _expInsurerEdit(e, recId, vType) {
 }
 
 let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
+// Document type to narrow by ('KTEO'|'KEK'|'FRC'|'Insurance'|''), so the
+// Maintenance Dashboard KPIs can land on the exact rows they counted instead
+// of dumping the reader on an unfiltered list of 64 vehicles.
+// See docs/design/DEEP_AUDIT_2026-08-04/maint_dash.md MD-2 / Π2.
+let _expiryDocType = '';
 let _expirySearch = '';
+/**
+ * Open Expiry Alerts pre-filtered. Called from the Maintenance Dashboard KPIs.
+ * @param {string} tab - 'all'|'expired'|'expiring30'|'valid'
+ * @param {string} [docType] - 'KTEO'|'KEK'|'FRC'|'Insurance'
+ */
+function _expiryGoto(tab, docType) {
+  _expiryTab = tab || 'all';
+  _expiryDocType = docType || '';
+  _expirySearch = '';
+  navigate('maint_expiry');
+}
+
 function _expiryFilterRows(rows) {
   let out = rows;
   if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
   if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
   if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+  // Keeps only vehicles whose THAT document is expired — matches what the KPI counted.
+  if (_expiryDocType) out = out.filter(r => r.docs.some(d => d.label === _expiryDocType && d.days !== null && d.days < 0));
   if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
   return out;
 }
@@ -457,6 +476,9 @@ function _expiryPaint() {
         ${tabBtn('expiring30', 'Λήγουν ≤30 ημ.', expiring30Trucks + expiring30Trailers, 'warning')}
         ${tabBtn('valid', 'Σε ισχύ', validTrucks + validTrailers, 'success')}
       </div>
+      ${_expiryDocType ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_expiryDocType='';_expiryPaint()"
+        style="background:var(--accent-light);color:var(--accent);font-weight:700">
+        Μόνο ${escapeHtml(_expiryDocType)} · καθαρισμός ✕</button>` : ''}
       <div class="exp-search-wrap">
         ${_i('search')}
         <input class="exp-search-input" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
@@ -1234,6 +1256,7 @@ function _historyExport(vType) {
 }
 
 // Expose globally
+window._expiryGoto = _expiryGoto;   // used by the Maintenance Dashboard KPI buttons
 window._historyExport = _historyExport;
 window._historyFilter = _historyFilter;
 
@@ -1491,65 +1514,65 @@ async function renderMaintDash() {
         <!-- Header -->
         <div class="dash-header">
           <div>
-            <div class="dash-greeting">Maintenance Dashboard</div>
-            <div class="dash-date">Petras Group Fleet · ${dateStr}</div>
+            <div class="dash-greeting">Επισκόπηση Στόλου</div>
+            <div class="dash-date">Στόλος Petras Group · ${dateStr}</div>
           </div>
           <div class="dash-live">
             <span class="dash-live-dot"></span>
-            LIVE — refresh every 5'
+            LIVE — ανανέωση κάθε 5'
           </div>
         </div>
 
         <!-- Alert Banner -->
         ${totalExpired > 0 ? `<div class="dash-alert-banner">
           <div class="dash-alert-icon">${_ic('alert_triangle', 16)}</div>
-          <div class="dash-alert-text">${totalExpired} expired document${totalExpired > 1 ? 's' : ''} require${totalExpired === 1 ? 's' : ''} immediate attention</div>
+          <div class="dash-alert-text">${totalExpired} ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</div>
         </div>` : ''}
 
         <!-- KPI Bar (6 cards) -->
         <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
-            <div class="dash-kpi-label">${_ic('truck', 11)} Total Fleet</div>
+            <div class="dash-kpi-label">${_ic('truck', 11)} ΣΥΝΟΛΟ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
-            <div class="dash-kpi-sub">${activeTrucks.length} trucks · ${activeTrailers.length} trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">${activeTrucks.length} φορτηγά · ${activeTrailers.length} ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KTEO')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} KTEO Expired</div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΤΕΟ</div>
             <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
-            <div class="dash-kpi-sub">trucks + trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KEK')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} KEK Expired</div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΕΚ</div>
             <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
-            <div class="dash-kpi-sub">trucks only</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">μόνο φορτηγά</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','FRC')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('droplet', 11)} FRC Expired</div>
+            <div class="dash-kpi-label">${_ic('droplet', 11)} ΛΗΓΜΕΝΑ FRC</div>
             <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
-            <div class="dash-kpi-sub">trailers only</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">μόνο ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','Insurance')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('shield', 11)} Insurance Expired</div>
+            <div class="dash-kpi-label">${_ic('shield', 11)} ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</div>
             <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
-            <div class="dash-kpi-sub">trucks + trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expiring30')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('clock', 11)} Expiring &lt;30d</div>
+            <div class="dash-kpi-label">${_ic('clock', 11)} ΛΗΓΟΥΝ &lt;30 ΗΜ.</div>
             <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
-            <div class="dash-kpi-sub">all document types</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">όλοι οι τύποι εγγράφων</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('award', 11)} Fleet Compliance</div>
+            <div class="dash-kpi-label">${_ic('award', 11)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value" style="color:${scoreColor}">${compliancePct}%</div>
-            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} compliant</div>
-          </div>
+            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} χωρίς ληγμένο</div>
+          </button>
         </div>
 
         <!-- Main Grid -->
@@ -1562,8 +1585,8 @@ async function renderMaintDash() {
               <!-- OVERDUE -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} OVERDUE</div>
-                  <span class="dash-card-link" onclick="navigate('maint_expiry')">Expiry Alerts ${_ic('chevron_right', 12)}</span>
+                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} ΣΕ ΚΑΘΥΣΤΕΡΗΣΗ</div>
+                  <span class="dash-card-link" onclick="_expiryGoto('expired')">Λήξεις Εγγράφων ${_ic('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
                   ${overdueList.length ? overdueList.map(r => {
@@ -1575,15 +1598,17 @@ async function renderMaintDash() {
                       <div class="md-exp-date">${dateDisp}</div>
                       <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>No overdue documents</div></div>`}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Κανένα έγγραφο σε καθυστέρηση</div></div>`}
+                  ${expiredRows.length > overdueList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
+                    onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiredRows.length - overdueList.length} ${_ic('chevron_right', 12)}</button>` : ''}
                 </div>
               </div>
 
               <!-- EXPIRING SOON -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">${_ic('clock', 12)} EXPIRING SOON</div>
-                  <span class="dash-card-meta">within 60 days</span>
+                  <div class="dash-card-title">${_ic('clock', 12)} ΛΗΓΟΥΝ ΣΥΝΤΟΜΑ</div>
+                  <span class="dash-card-meta">εντός 60 ημερών</span>
                 </div>
                 <div class="dash-card-body">
                   ${soonList.length ? soonList.map(r => {
@@ -1595,7 +1620,9 @@ async function renderMaintDash() {
                       <div class="md-exp-date">${dateDisp}</div>
                       <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Nothing expiring soon</div></div>`}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Τίποτα δεν λήγει σύντομα</div></div>`}
+                  ${expiring60Rows.length > soonList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
+                    onclick="_expiryGoto('expiring30')">Δες και τα άλλα ${expiring60Rows.length - soonList.length} ${_ic('chevron_right', 12)}</button>` : ''}
                 </div>
               </div>
             </div>
