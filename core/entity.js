@@ -166,6 +166,7 @@ const ENTITY_CONFIG = {
       { field: 'Year',                label: 'Year', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
       { field: 'Tare Weight kg',      label: 'Απόβαρο kg', type: 'number' },
+      { field: 'VIN',                 label: 'VIN' },
       { field: 'Active',              label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -218,6 +219,7 @@ const ENTITY_CONFIG = {
       { field: 'Model',                   label: 'Model' },
       { field: 'Year',                    label: 'Year', type: 'number' },
       { field: 'Trailer Type',            label: 'Type' },
+      { field: 'VIN',                     label: 'VIN' },
       { field: 'Active',                  label: 'Status', type: 'active' },
     ],
     formFields: [
@@ -807,8 +809,12 @@ function buildEntityRow(entityKey, r, cols) {
       const color = days < 30 ? 'var(--success)' : days < 90 ? 'var(--text-mid)' : 'var(--text-dim)';
       return `<td style="color:${color};font-size:11px;white-space:nowrap" title="${val}">${label}</td>`;
     }
-    if (col.type === 'number' && val != null) {
-      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${val}</td>`;
+    // Empty numerics used to fall through to the generic (left-aligned) cell below,
+    // so a column mixed right-aligned digits with left-aligned em-dashes and read as
+    // broken. Keep the whole numeric column on one axis, filled or not.
+    if (col.type === 'number') {
+      const shown = val != null && val !== '' ? val : '—';
+      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}</td>`;
     }
     if (col.primary) return `<td><strong style="color:var(--text)">${val || '—'}</strong></td>`;
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
