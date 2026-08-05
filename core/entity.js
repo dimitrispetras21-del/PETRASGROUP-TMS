@@ -744,7 +744,11 @@ function buildEntityTable(entityKey, records) {
     const arrow = s.col===i ? (s.dir===1?' <span style="color:var(--accent)">▲</span>':s.dir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
     // Sorting was mouse-only; aria-sort also tells a screen reader the state.
     const ariaSort = s.col===i ? (s.dir===1?'ascending':s.dir===2?'descending':'none') : 'none';
-    return `<th style="cursor:pointer;user-select:none" aria-sort="${ariaSort}" tabindex="0" role="button"
+    // Numeric cells render right-aligned (see the 'number' branch in the cell
+    // renderer); the header did not, so every numeric column read as misaligned —
+    // header hugging the left edge, values far right. Match the cell alignment.
+    const alignRight = c.type === 'number' || c.type === 'currency';
+    return `<th style="cursor:pointer;user-select:none${alignRight?';text-align:right':''}" aria-sort="${ariaSort}" tabindex="0" role="button"
       onclick="entitySortToggle('${entityKey}',${i})"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
   }).join('');
