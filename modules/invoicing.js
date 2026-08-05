@@ -240,12 +240,22 @@ function _renderInvLayout(c) {
 
 // ─── Tabs ────────────────────────────────────────
 function _renderInvTabs() {
+  // IN-1: οι καρτέλες αθροίζουν πλέον στο σύνολο.
+  // Ήταν Ready 36 + Overdue 97 + Blocked 61 = 194, σε σύνολο 97 — και το
+  // «Overdue» ισούταν με ΟΛΟΚΛΗΡΟ το σύνολο, άρα δεν πληροφορούσε καθόλου.
+  // Αιτία: το «καθυστερημένη» ΔΕΝ είναι κατηγορία, είναι ηλικία· κόβει
+  // εγκάρσια τις Ready και Blocked. Τώρα οι τρεις κατηγορίες είναι αμοιβαία
+  // αποκλειστικές (Τιμολογημένη → Μπλοκαρισμένη → Έτοιμη) και η καθυστέρηση
+  // είναι badge στη γραμμή + ξεχωριστό φίλτρο, οπτικά διαχωρισμένο.
+  const _nReady = INV.data.filter(_invIsReady).length;
+  const _nBlocked = INV.data.filter(_invIsBlocked).length;
+  const _nInvoiced = INV.data.filter(_invIsInvoiced).length;
+  const _nOverdue = INV.data.filter(_invIsOverdue).length;
   const tabs = [
-    { key: 'ready',    label: 'Έτοιμες',    count: INV.data.filter(_invIsReady).length },
-    { key: 'overdue',  label: 'Καθυστερημένες',  count: INV.data.filter(_invIsOverdue).length },
-    { key: 'blocked',  label: 'Μπλοκαρισμένες',  count: INV.data.filter(_invIsBlocked).length },
-    { key: 'invoiced', label: 'Τιμολογημένες', count: INV.data.filter(_invIsInvoiced).length },
-    { key: 'all',      label: 'Όλες',      count: INV.data.length },
+    { key: 'ready',    label: 'Έτοιμες',       count: _nReady },
+    { key: 'blocked',  label: 'Μπλοκαρισμένες', count: _nBlocked },
+    { key: 'invoiced', label: 'Τιμολογημένες',  count: _nInvoiced },
+    { key: 'all',      label: 'Όλες',           count: INV.data.length },
   ];
   const el = document.getElementById('invTabs');
   if (!el) return;
@@ -263,6 +273,22 @@ function _renderInvTabs() {
         ${t.label} <span style="font-weight:400;opacity:0.7">(${t.count})</span>
       </button>`;
   }).join('');
+
+  // Γραμμή ελέγχου: η αριθμητική φαίνεται, δεν την εμπιστεύεσαι στα τυφλά.
+  // Αν κάποτε πάψει να κλείνει, το ✗ το λέει αμέσως αντί να το ανακαλύψει
+  // κάποιος σε audit μήνες μετά.
+  const _sum = _nReady + _nBlocked + _nInvoiced;
+  const _ok = _sum === INV.data.length;
+  el.insertAdjacentHTML('beforeend', `
+    <div style="width:100%;padding:6px 0 0;font-size:11px;color:var(--text-dim);font-family:'DM Sans',sans-serif">
+      ${_nReady} + ${_nBlocked} + ${_nInvoiced} = ${_sum}
+      <span style="color:${_ok ? 'var(--success)' : 'var(--danger)'};font-weight:700">${_ok ? '✓' : '✗ δεν κλείνει με ' + INV.data.length}</span>
+      <span style="margin-left:14px">·</span>
+      <button type="button" onclick="_invSetTab('overdue')"
+        style="background:none;border:0;font:inherit;cursor:pointer;color:${_nOverdue ? 'var(--danger)' : 'var(--text-dim)'};text-decoration:underline;padding:0 0 0 6px">
+        ${_nOverdue} καθυστερημένες (>30 ημ.)</button>
+      <span style="opacity:.7"> — ηλικία, όχι κατηγορία· κόβει εγκάρσια τις παραπάνω</span>
+    </div>`);
 }
 
 function _invSetTab(key)            { _invFilters.tab = key; _applyInvFilters(); }
@@ -445,6 +471,10 @@ function _renderInvTable() {
     const f = r.fields;
     const sel = INV.selectedId === r.id ? 'background:#1E293B;' : '';
     const overdueRow = _invIsOverdue(r) ? 'background:#3F1212;' : '';
+    // IN-1: η καθυστέρηση φεύγει από τις καρτέλες και γίνεται σήμανση γραμμής.
+    const overdueBadge = _invIsOverdue(r)
+      ? '<span title="Παραδόθηκε πριν από πάνω από 30 ημέρες" style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:var(--danger-bg);color:var(--danger)">ΚΑΘΥΣΤΕΡΗΜΕΝΗ</span>'
+      : '';
 
     const typeBadge = r._type === 'intl'
       ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C2D5C;color:#38BDF8">INTL</span>'
@@ -479,7 +509,7 @@ function _renderInvTable() {
       <td style="text-align:right">${_invPallets(r)}</td>
       <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
       <td style="text-align:center">${peIcon}</td>
-      <td>${statusBadge}</td>
+      <td>${statusBadge}${overdueBadge}</td>
     </tr>`;
   }).join('');
 }

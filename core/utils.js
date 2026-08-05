@@ -289,6 +289,67 @@ if (typeof window !== 'undefined') {
   window.readPageMetrics = readPageMetrics;
 }
 
+// -- Display normalisation (CL-1/PA-1, TR-2/TL-3) ------------
+// Both of these normalise FOR THE SCREEN ONLY. Nothing here is ever written
+// back: the country strings come from free-text entry across years, and the
+// plates are the join key for linked records — rewriting either would break
+// records that currently work.
+
+/**
+ * Canonical country code for grouping and filtering.
+ * The clients filter offered `GR · GREECE · ΕΛΛΑΔΑ` as three separate options,
+ * so whoever picked "GR" silently lost the other two. Partners had `GREECE`
+ * and `Greece` — visually identical in a dropdown.
+ * Unrecognised input is returned UNCHANGED: losing a country is worse than
+ * showing an odd one. See docs/design/DEEP_AUDIT_2026-08-04/clients.md CL-1.
+ * @param {string} v
+ * @returns {string} canonical code, or the original trimmed value
+ */
+const _COUNTRY_MAP = {
+  gr:'GR', grc:'GR', greece:'GR', ελλαδα:'GR', 'ελλάδα':'GR', hellas:'GR', gre:'GR',
+  bg:'BG', bgr:'BG', bulgaria:'BG', βουλγαρια:'BG', 'βουλγαρία':'BG',
+  ro:'RO', rou:'RO', romania:'RO', ρουμανια:'RO', 'ρουμανία':'RO',
+  de:'DE', deu:'DE', germany:'DE', deutschland:'DE', γερμανια:'DE', 'γερμανία':'DE',
+  it:'IT', ita:'IT', italy:'IT', italia:'IT', ιταλια:'IT', 'ιταλία':'IT',
+  hu:'HU', hun:'HU', hungary:'HU', ουγγαρια:'HU', 'ουγγαρία':'HU',
+  at:'AT', aut:'AT', austria:'AT', nl:'NL', nld:'NL', netherlands:'NL', holland:'NL',
+  pl:'PL', pol:'PL', poland:'PL', cz:'CZ', cze:'CZ', 'czech republic':'CZ', czechia:'CZ',
+  es:'ES', esp:'ES', spain:'ES', fr:'FR', fra:'FR', france:'FR',
+  be:'BE', bel:'BE', belgium:'BE', sk:'SK', svk:'SK', slovakia:'SK',
+  si:'SI', svn:'SI', slovenia:'SI', hr:'HR', hrv:'HR', croatia:'HR',
+};
+function normalizeCountry(v) {
+  if (v == null) return '';
+  const raw = String(v).trim();
+  if (!raw) return '';
+  return _COUNTRY_MAP[raw.toLowerCase()] || raw;
+}
+
+/**
+ * Comparable form of a licence plate, for SEARCH and duplicate detection only.
+ * Plates are entered with Greek and Latin homoglyphs mixed (`ΙΑΖ8302` with a
+ * Greek iota vs `IAZ7245` with a Latin I) and with or without a space. They
+ * look identical on screen and never match each other in a search.
+ * NEVER write this back to the database — the plate is the join key for linked
+ * records. See docs/design/DEEP_AUDIT_2026-08-04/trucks.md TR-2.
+ * @param {string} v
+ * @returns {string} uppercase, Latin-mapped, no separators
+ */
+const _PLATE_HOMOGLYPHS = {
+  'Α':'A','Β':'B','Ε':'E','Ζ':'Z','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N',
+  'Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X',
+};
+function normalizePlate(v) {
+  if (v == null) return '';
+  return String(v).toUpperCase().replace(/[\s\-._]/g, '')
+    .split('').map(ch => _PLATE_HOMOGLYPHS[ch] || ch).join('');
+}
+
+if (typeof window !== 'undefined') {
+  window.normalizeCountry = normalizeCountry;
+  window.normalizePlate = normalizePlate;
+}
+
 function debounce(fn, ms = 250) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };

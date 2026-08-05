@@ -233,13 +233,37 @@ function showAccessDenied() {
   </div>`;
 }
 
-function showComingSoon(label) {
-  return `<div class="empty-state" style="padding:60px 20px;text-align:center">
-    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:#0F172A;display:flex;align-items:center;justify-content:center">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0284C7" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-    </div>
-    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${label}</h3>
-    <p style="color:var(--text-dim);font-size:12px">Δεν έχει υλοποιηθεί ακόμη</p>
+/**
+ * Placeholder για σελίδα που δεν έχει υλοποιηθεί.
+ *
+ * PR-2/CO-3: το μήνυμα ήταν «This module is under development» — αγγλικό, ίδιο
+ * σε επτά σελίδες, και δεν απαντούσε σε καμία από τις δύο ερωτήσεις που έχει
+ * όποιος φτάνει εδώ: «πώς το κάνω σήμερα;» και «πότε θα υπάρχει;». Ο χρήστης
+ * έφευγε χωρίς να ξέρει αν πρέπει να περιμένει ή να βρει άλλον δρόμο.
+ *
+ * @param {string} label - όνομα σελίδας
+ * @param {Object} [opts]
+ * @param {string} [opts.icon]  - όνομα από core/icons.js
+ * @param {string} [opts.today] - πώς γίνεται η δουλειά ΣΗΜΕΡΑ (η σημαντικότερη πληροφορία)
+ * @param {string} [opts.eta]   - τι μπλοκάρει και πότε αναμένεται
+ * @param {{label:string,onClick:string}} [opts.action] - εναλλακτική διαδρομή
+ */
+function showComingSoon(label, opts) {
+  const o = opts || {};
+  const ico = (typeof icon === 'function' && o.icon) ? icon(o.icon, 28) : `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>`;
+  return `<div class="empty-state" style="padding:60px 20px;text-align:center;max-width:520px;margin:0 auto">
+    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;color:var(--accent)">${ico}</div>
+    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${escapeHtml(label)}</h3>
+    <p style="color:var(--text-dim);font-size:12px;margin-bottom:${o.today || o.eta ? '18px' : '0'}">Δεν έχει υλοποιηθεί ακόμη</p>
+    ${o.today ? `<div style="text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:4px">Πώς γίνεται σήμερα</div>
+      <div style="font-size:13px;color:var(--text)">${o.today}</div>
+    </div>` : ''}
+    ${o.eta ? `<div style="text-align:left;background:var(--warning-bg);border:1px solid var(--warning);border-radius:8px;padding:12px 14px">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--warning);margin-bottom:4px">Τι λείπει</div>
+      <div style="font-size:13px;color:var(--text)">${o.eta}</div>
+    </div>` : ''}
+    ${o.action ? `<button type="button" class="btn btn-primary" style="margin-top:16px" onclick="${o.action.onClick}">${escapeHtml(o.action.label)}</button>` : ''}
   </div>`;
 }
 

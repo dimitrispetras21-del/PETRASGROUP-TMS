@@ -3870,6 +3870,10 @@ button.dash-kpi {
   width: 100%;
   display: block;
 }
+button.dash-cmdk-hint {
+  appearance: none; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+}
+button.dash-cmdk-hint:focus-visible,
 button.dash-kpi:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

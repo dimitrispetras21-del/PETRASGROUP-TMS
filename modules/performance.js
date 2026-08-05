@@ -181,7 +181,12 @@ function _perfCompute() {
   // On-Time %
   const withPerf = orders.filter(r => r.fields['Delivery Performance']);
   const onTime = withPerf.filter(r => r.fields['Delivery Performance'] === 'On Time').length;
-  const on_time = withPerf.length ? Math.round(onTime / withPerf.length * 100) : 0;
+  // PF-3: όταν ΚΑΝΕΝΑ φορτίο δεν έχει καταγεγραμμένη επίδοση, αυτό επέστρεφε 0
+  // — που διαβάζεται «καμία εμπρόθεσμη παράδοση», δηλαδή καταστροφή. Το
+  // Dashboard, με τα ίδια δεδομένα, έδειχνε «N/A». Δύο σελίδες, ίδιο μέγεθος,
+  // αντίθετο μήνυμα. Το -1 σημαίνει «δεν ξέρουμε» και αποδίδεται ως «—».
+  const on_time = withPerf.length ? Math.round(onTime / withPerf.length * 100) : -1;
+  const on_time_sample = withPerf.length;
 
   // Empty Legs % (this week)
   const weekExports = weekOrders.filter(r => r.fields['Direction'] === 'Export' && r.fields['Truck']);
@@ -412,7 +417,7 @@ function _perfCompute() {
     : Math.round(plan_complete * 0.30 + _ontimeForScore * 0.30 + service_adherence * 0.25 + _deadKmScore * 0.15);
 
   return {
-    on_time, dead_km, fleet_usage, plan_complete, assign_speed,
+    on_time, on_time_sample, dead_km, fleet_usage, plan_complete, assign_speed,
     natl_on_time, invoiced_pct, cmr_collected, cmr_archived, weekly_score,
     sub_cost_pct, client_updates, response_time,
     expired_docs, work_orders, downtime_hrs, service_adherence,
@@ -427,6 +432,11 @@ function _perfCompute() {
 function _perfTrends() {
   const wn = typeof currentWeekNumber === 'function' ? currentWeekNumber() : 0;
   const trends = [];
+  // Ίδιες είσοδοι με την κάρτα KPI (_perfCompute), ώστε τα δύο νούμερα να μη
+  // μπορούν να αποκλίνουν ξανά.
+  const _compliancePct = (typeof metrics !== 'undefined' && metrics.compliancePct && PERF.trucks)
+    ? metrics.compliancePct(PERF.trucks).pct : 100;
+  const _deadKmScoreShared = 75;   // ίδια εκτίμηση με το biz.weekly_score του metrics_audit
   for (let w = wn - 3; w <= wn; w++) {
     if (w < 1) continue;
     const weekOrders = PERF.orders.filter(r => r.fields['Week Number'] == w);
@@ -440,7 +450,20 @@ function _perfTrends() {
     const emptyPct = assigned ? Math.round(noReturn / assigned * 100) : 0;
     const otPct = withPerf.length ? Math.round(onTime / withPerf.length * 100) : 0;
 
-    const score = Math.round(assignPct * 0.30 + otPct * 0.30 + (100 - emptyPct) * 0.25 + 50 * 0.15);
+    // PF-2: αυτή η γραμμή ήταν ΔΕΥΤΕΡΟΣ τύπος σκορ, 300px μακριά από τον πρώτο.
+    // Το γράφημα έδειχνε 33/100 δίπλα σε κάρτα KPI που έδειχνε 44/100 — για την
+    // ΙΔΙΑ εβδομάδα. Αντικαθιστούσε τη συμμόρφωση με empty legs και κάρφωνε 50
+    // για το dead km. Τώρα καλεί την ίδια metrics.weeklyScore() με την κάρτα.
+    // Η συμμόρφωση είναι ιδιότητα ΣΤΟΛΟΥ, όχι εβδομάδας, οπότε είναι η ίδια σε
+    // όλες τις στήλες του γραφήματος — αυτό είναι σωστό, όχι σφάλμα.
+    const score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+      ? metrics.weeklyScore({
+          assignment_rate: assignPct,
+          on_time: otPct,
+          compliance: _compliancePct,
+          dead_km_score: _deadKmScoreShared,
+        }).score
+      : Math.round(assignPct * 0.30 + otPct * 0.30 + (100 - emptyPct) * 0.25 + 50 * 0.15);
     trends.push({ week: w, score, assignPct, emptyPct, otPct, orders: exports.length });
   }
   return trends;
@@ -548,7 +571,10 @@ function _perfDraw() {
   // KPI cards — with Lucide icon + WoW delta
   const kpiCards = kpiDefs.map(kpi => {
     const raw = vals[kpi.id] ?? 0;
-    const val = typeof raw === 'number' ? raw : 0;
+    // PF-3: -1 σημαίνει «δεν υπάρχει δείγμα», όχι μηδέν. Αποδίδεται «—» ώστε
+    // να μη διαβάζεται ως καταστροφική επίδοση, και δεν βάφεται κόκκινο.
+    const unknown = raw === -1;
+    const val = (typeof raw === 'number' && !unknown) ? raw : 0;
     const pct = kpi.target ? Math.min(Math.round((kpi.invert ? (kpi.target / Math.max(val, 0.1)) : (val / kpi.target)) * 100), 120) : 0;
     const valCls = kpi.invert
       ? (val <= kpi.target ? 'perf-val-ok' : val <= kpi.target * 1.5 ? 'perf-val-warn' : 'perf-val-bad')
@@ -561,7 +587,9 @@ function _perfDraw() {
     return `<div class="perf-kpi">
       <div class="perf-kpi-glow" style="background:linear-gradient(90deg,${glowColor},transparent)"></div>
       <div class="perf-kpi-label">${_i(iconName, 11)} ${kpi.label}</div>
-      <div class="perf-kpi-val ${valCls}">${val}${kpi.unit}${_wowDelta(kpi.id, val, !!kpi.invert)}</div>
+      <div class="perf-kpi-val ${unknown ? '' : valCls}">${unknown
+        ? `<span title="Καμία παράδοση με καταγεγραμμένη επίδοση" style="color:var(--text-dim)">—</span>`
+        : `${val}${kpi.unit}${_wowDelta(kpi.id, val, !!kpi.invert)}`}</div>
       <div class="perf-kpi-target">Target: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
       <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div></div>
     </div>`;
