@@ -800,14 +800,20 @@ function buildEntityTable(entityKey, records) {
     <tbody>
       ${sortedRecs.length === 0
         ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
-        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols)).join('')
+        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
       }
       ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
     </tbody>
   </table>`;
 }
 
-function buildEntityRow(entityKey, r, cols) {
+/**
+ * @param {string} [plateField] - όνομα πεδίου πινακίδας, από buildEntityTable
+ * @param {Set<string>} [dupPlates] - κανονικοποιημένες πινακίδες που εμφανίζονται >1 φορά
+ *   ΠΡΕΠΕΙ να περνιούνται ως ορίσματα: υπολογίζονται μία φορά ανά πίνακα στη
+ *   buildEntityTable, που είναι ΑΛΛΗ εμβέλεια από αυτήν εδώ.
+ */
+function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
   const f = r.fields;
   const cells = cols.map(col => {
     const val = f[col.field];
@@ -860,8 +866,8 @@ function buildEntityRow(entityKey, r, cols) {
       return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}</td>`;
     }
     if (col.primary) {
-      const dup = _plateField && col.field === _plateField && typeof normalizePlate === 'function'
-        && _dupPlates.has(normalizePlate(val));
+      const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
+        && dupPlates && dupPlates.has(normalizePlate(val));
       return `<td><strong style="color:var(--text)">${val || '—'}</strong>${dup
         ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap">⚠ διπλότυπο;</span>'
         : ''}</td>`;
