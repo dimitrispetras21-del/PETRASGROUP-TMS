@@ -406,82 +406,82 @@ function _rampDraw() {
   const _i = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div><div class="page-title">${_i('package', 22)} Daily Ramp Board</div>
+      <div><div class="page-title">${_i('package', 22)} Πίνακας Ράμπας</div>
         <div class="page-sub">Vermion Fresh · ${fD(RAMP.date)}</div></div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Παραλαβή')">${_i('plus')} Inbound</button>
-        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Φόρτωση')">${_i('plus')} Outbound</button>
-        <button class="btn btn-ghost btn-sm" onclick="_rampExportCSV()">${_i('download')} Export CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_rampPrint()">${_i('file_text')} Print</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderDailyRamp()">${_i('refresh')} Refresh</button>
+        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Παραλαβή')">${_i('plus')} Άφιξη</button>
+        <button class="btn btn-primary btn-sm" onclick="_rampAddNew('Φόρτωση')">${_i('plus')} Αναχώρηση</button>
+        <button class="btn btn-ghost btn-sm" onclick="_rampExportCSV()">${_i('download')} Εξαγωγή CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="_rampPrint()">${_i('file_text')} Εκτύπωση</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderDailyRamp()">${_i('refresh')} Ανανέωση</button>
       </div>
     </div>
     <div class="ramp-toolbar">
-      <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSD('${today}')">Today</button>
-      <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Tomorrow</button>
+      <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSD('${today}')">Σήμερα</button>
+      <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Αύριο</button>
       <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
     </div>
     <div class="entity-toolbar-v2" style="margin-top:var(--space-2);margin-bottom:var(--space-4)">
       <div class="entity-search-wrap">
         ${_i('search')}
-        <input class="entity-search-input" placeholder="Search client / goods / location..." value="${_rampFilters._q||''}" oninput="_rampSearch(this.value)">
+        <input class="entity-search-input" placeholder="Αναζήτηση πελάτη / εμπορεύματος / τόπου…" value="${_rampFilters._q||''}" oninput="_rampSearch(this.value)">
       </div>
       <select class="svc-filter" onchange="_rampFilterBy('type',this.value)">
-        <option value="">Type: All</option>
-        <option value="Παραλαβή"${_rampFilters.type==='Παραλαβή'?' selected':''}>↓ Inbound</option>
-        <option value="Φόρτωση"${_rampFilters.type==='Φόρτωση'?' selected':''}>↑ Outbound</option>
+        <option value="">Τύπος: Όλα</option>
+        <option value="Παραλαβή"${_rampFilters.type==='Παραλαβή'?' selected':''}>↓ Εισερχόμενα</option>
+        <option value="Φόρτωση"${_rampFilters.type==='Φόρτωση'?' selected':''}>↑ Εξερχόμενα</option>
       </select>
       <select class="svc-filter" onchange="_rampFilterBy('status',this.value)">
-        <option value="">Status: All</option>
-        <option value="Planned"${_rampFilters.status==='Planned'?' selected':''}>Planned</option>
-        <option value="Done"${_rampFilters.status==='Done'?' selected':''}>Done</option>
+        <option value="">Κατάσταση: Όλες</option>
+        <option value="Planned"${_rampFilters.status==='Planned'?' selected':''}>Προγραμματισμένο</option>
+        <option value="Done"${_rampFilters.status==='Done'?' selected':''}>Ολοκληρωμένο</option>
       </select>
       <select class="svc-filter" onchange="_rampFilterBy('cat',this.value)">
-        <option value="">Category: All</option>
+        <option value="">Κατηγορία: Όλες</option>
         <option value="VF"${_rampFilters.cat==='VF'?' selected':''}>VF (Vermion Fresh)</option>
         <option value="VS"${_rampFilters.cat==='VS'?' selected':''}>VS (Veroia Switch)</option>
         <option value="VS+G"${_rampFilters.cat==='VS+G'?' selected':''}>VS + Groupage</option>
-        <option value="Direct"${_rampFilters.cat==='Direct'?' selected':''}>Direct</option>
+        <option value="Direct"${_rampFilters.cat==='Direct'?' selected':''}>Απευθείας</option>
       </select>
       <span class="entity-count-chip" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''}</span>
     </div>
     <div class="ramp-kpis">
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Inbound Today</div>
-        <div><span class="ramp-kpi-val" style="color:var(--success)">+${inPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Outbound Today</div>
-        <div><span class="ramp-kpi-val" style="color:var(--accent)">-${outPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Net Today</div>
-        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Stock Total</div>
-        <div><span class="ramp-kpi-val" style="color:var(--warning)">${stockPal}</span><span class="ramp-kpi-sub">pal</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Progress</div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
+        <div><span class="ramp-kpi-val" style="color:var(--success)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
+        <div><span class="ramp-kpi-val" style="color:var(--accent)">-${outPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('activity', 11)} Καθαρό σήμερα</div>
+        <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
+        <div><span class="ramp-kpi-val" style="color:var(--warning)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
+      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
         <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
     </div>
 
     <div class="ramp-pair">
       <div>
-        <div class="ramp-sec-hd inbound"><span>↓ Inbound</span><span style="opacity:.5">${inb.length}</span></div>
+        <div class="ramp-sec-hd inbound"><span>↓ ΕΙΣΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${inb.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Time</th><th>Client</th><th>Loading Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Actions</th>
-        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No inbound</td></tr>'}</tbody></table>
+          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος φόρτωσης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Ενέργειες</th>
+        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία άφιξη</td></tr>'}</tbody></table>
       </div>
       <div>
-        <div class="ramp-sec-hd outbound"><span>↑ Outbound</span><span style="opacity:.5">${out.length}</span></div>
+        <div class="ramp-sec-hd outbound"><span>↑ ΕΞΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${out.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Time</th><th>Client</th><th>Delivery Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Actions</th>
-        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">No outbound</td></tr>'}</tbody></table>
+          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος παράδοσης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Ενέργειες</th>
+        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία αναχώρηση</td></tr>'}</tbody></table>
       </div>
     </div>
 
-    <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:6px">${_i('clock', 14)} Timeline — All Operations</span><span style="opacity:.5">${allSorted.length}</span></div>
+    <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:6px">${_i('clock', 14)} ΧΡΟΝΟΔΙΑΓΡΑΜΜΑ — ΟΛΕΣ ΟΙ ΚΙΝΗΣΕΙΣ</span><span style="opacity:.5">${allSorted.length}</span></div>
     <table class="ramp-t"><thead><tr>
-      <th>Time</th><th>Type</th><th>Client</th><th>Location</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Truck</th><th>Driver</th><th>Status</th>
-    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">No operations today</td></tr>'}</tbody></table>
+      <th>Ώρα</th><th>Τύπος</th><th>Πελάτης</th><th>Τόπος</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Οδηγός</th><th>Κατάσταση</th>
+    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):'<tr class="ramp-empty"><td colspan="10">Καμία κίνηση σήμερα</td></tr>'}</tbody></table>
 
     ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
-      <div class="ramp-sec-hd" style="background:#92400E"><span style="display:inline-flex;align-items:center;gap:6px">${_i('chevron_right', 14)} Postponed from today</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
+      <div class="ramp-sec-hd" style="background:#92400E"><span style="display:inline-flex;align-items:center;gap:6px">${_i('chevron_right', 14)} ΑΝΑΒΛΗΘΗΚΑΝ ΑΠΟ ΣΗΜΕΡΑ</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
       <table class="ramp-t"><thead><tr>
-        <th>#</th><th>Type</th><th>Client</th><th>Goods</th><th>Temp</th><th>Pallets</th><th>Moved to</th><th>Actions</th>
+        <th>#</th><th>Τύπος</th><th>Πελάτης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Μεταφέρθηκε στις</th><th>Ενέργειες</th>
       </tr></thead><tbody>${RAMP.postponed.map((r,i)=>{
         const f=r.fields;
         const isIn=f['Type']==='Παραλαβή';
@@ -494,19 +494,19 @@ function _rampDraw() {
           <td>${escapeHtml(f['Temperature']||'')}</td>
           <td>${escapeHtml(f['Pallets']||'')}</td>
           <td>${movedTo}</td>
-          <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Restore</button></td>
+          <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
         </tr>`;}).join('')}</tbody></table>
     </div>`:''}
 
     <div style="margin-top:16px">
-      <div class="ramp-sec-hd stock"><span style="display:inline-flex;align-items:center;gap:6px">${_i('package', 14)} Stock — In Warehouse</span><span style="opacity:.5">${stockPal} pal</span></div>
-      <table class="ramp-t"><thead><tr><th>#</th><th>Client</th><th>Pallets</th><th>Received</th><th>Days</th></tr></thead>
+      <div class="ramp-sec-hd stock"><span style="display:inline-flex;align-items:center;gap:6px">${_i('package', 14)} ΑΠΟΘΕΜΑ ΣΤΗΝ ΑΠΟΘΗΚΗ</span><span style="opacity:.5">${stockPal} παλ.</span></div>
+      <table class="ramp-t"><thead><tr><th>#</th><th>Πελάτης</th><th>Παλέτες</th><th>Παρελήφθη</th><th>Ημέρες</th></tr></thead>
       <tbody>${Object.keys(sbc).length?Object.keys(sbc).sort().map((cl,i)=>{
         const d=sbc[cl],dates=d.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort(),
           oldest=dates[0]||'',days=oldest?Math.floor((Date.now()-new Date(oldest).getTime())/864e5):0,
           dc=days<=1?'fresh':days<=3?'aging':'old';
         return`<tr><td class="rn">${i+1}</td><td class="stock-client">${escapeHtml(cl)}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
-      }).join(''):'<tr class="ramp-empty"><td colspan="5">Warehouse empty</td></tr>'}</tbody></table>
+      }).join(''):'<tr class="ramp-empty"><td colspan="5">Η αποθήκη είναι άδεια</td></tr>'}</tbody></table>
     </div>`;
 }
 
@@ -525,8 +525,10 @@ function _rRow(rec,num,tOpts) {
   const isIn=f['Type']==='Παραλαβή';
 
   const timeSel=`<select class="tinp" onchange="_rampSvTime('${id}',this.value)"><option value="">--:--</option>${tOpts.map(t=>`<option value="${t}"${time===t?' selected':''}>${t}</option>`).join('')}</select>`;
-  const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Done</span>'
-    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Σήμανση ως ${isIn?'Done':'Loaded'};').then(ok=>{if(ok)_rampDone('${id}','${isIn}')})">${isIn?'Done':'Loaded'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Αναβολή;').then(ok=>{if(ok)_rampPostpone('${id}')})">Postpone</button>`;
+  // Labels only. _rampDone() sets Status='Done' itself (γρ. 649) — these words
+  // never reach the database, so translating them is safe.
+  const acts=isDone?'<span style="color:var(--success);font-size:11px">✓ Ολοκληρώθηκε</span>'
+    :`<button class="btn btn-success" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Σήμανση ως ${isIn?'Παρελήφθη':'Φορτώθηκε'};').then(ok=>{if(ok)_rampDone('${id}','${isIn}')})">${isIn?'Παρελήφθη':'Φορτώθηκε'}</button> <button class="btn btn-ghost" style="padding:4px 12px;font-size:11px" onclick="confirmAction('Αναβολή;').then(ok=>{if(ok)_rampPostpone('${id}')})">Αναβολή</button>`;
 
   // CL sub-rows: parse Notes for supplier breakdown
   const notes = f['Notes']||'';
@@ -586,10 +588,11 @@ function _rTlRow(rec) {
   const status=f['Status']||'Planned';
   const isDone=status==='Done';
   const isIn=f['Type']==='Παραλαβή';
-  const typeBadge=isIn?'<span class="tl-type in">IN</span>':'<span class="tl-type out">OUT</span>';
-  const statusTxt=isDone?'<span style="color:var(--success)">✓ Done</span>'
-    :f['Postponed To']?'<span style="color:var(--warning)">Postponed</span>'
-    :'<span style="color:var(--text-dim)">Planned</span>';
+  const typeBadge=isIn?'<span class="tl-type in">ΕΙΣ</span>':'<span class="tl-type out">ΕΞ</span>';
+  // Display only — `status` above keeps the raw 'Planned'/'Done' value.
+  const statusTxt=isDone?'<span style="color:var(--success)">✓ Ολοκληρώθηκε</span>'
+    :f['Postponed To']?'<span style="color:var(--warning)">Αναβλήθηκε</span>'
+    :'<span style="color:var(--text-dim)">Προγραμματισμένο</span>';
 
   const tlLoc = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
   return`<tr class="${isDone?'done':''}">
@@ -750,27 +753,27 @@ function _rampAddNew(type){
   const drOpts=RAMP.drivers.map(d=>`<option value="${d.id}">${d.lb}</option>`).join('');
   const catOpts=['Vermion Fresh','VS Simple','VS + Groupage','Other'].map(c=>`<option value="${c}">${c}</option>`).join('');
 
-  openModal(`New ${type==='Παραλαβή'?'Inbound':'Outbound'}`,`
+  openModal(`Νέα ${type==='Παραλαβή'?'άφιξη':'αναχώρηση'}`,`
     <div class="form-grid">
-      <div class="form-field"><label class="form-label">Time</label>
+      <div class="form-field"><label class="form-label">Ώρα</label>
         <input class="form-input" id="nr_time" type="text" placeholder="08:00" style="max-width:100px"></div>
-      <div class="form-field"><label class="form-label">Category</label>
+      <div class="form-field"><label class="form-label">Κατηγορία</label>
         <select class="form-select" id="nr_cat">${catOpts}</select></div>
-      <div class="form-field"><label class="form-label">Client</label>
+      <div class="form-field"><label class="form-label">Πελάτης</label>
         <input class="form-input" id="nr_client" type="text"></div>
-      <div class="form-field"><label class="form-label">Goods</label>
+      <div class="form-field"><label class="form-label">Εμπόρευμα</label>
         <input class="form-input" id="nr_goods" type="text"></div>
-      <div class="form-field"><label class="form-label">Temperature °C</label>
-        <input class="form-input" id="nr_temp" type="text" placeholder="e.g. 2"></div>
-      <div class="form-field"><label class="form-label">Pallets</label>
+      <div class="form-field"><label class="form-label">Θερμοκρασία °C</label>
+        <input class="form-input" id="nr_temp" type="text" placeholder="π.χ. 2"></div>
+      <div class="form-field"><label class="form-label">Παλέτες</label>
         <input class="form-input" id="nr_pal" type="number" min="0"></div>
-      <div class="form-field"><label class="form-label">Truck</label>
+      <div class="form-field"><label class="form-label">Φορτηγό</label>
         <select class="form-select" id="nr_truck"><option value="">—</option>${trOpts}</select></div>
-      <div class="form-field"><label class="form-label">Driver</label>
+      <div class="form-field"><label class="form-label">Οδηγός</label>
         <select class="form-select" id="nr_driver"><option value="">—</option>${drOpts}</select></div>
     </div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Save</button>`);
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-primary" onclick="_rampSaveNew('${type}')">Αποθήκευση</button>`);
 }
 
 async function _rampSaveNew(type){
@@ -832,7 +835,7 @@ function _rampExportCSV() {
 function _rampPrint() {
   const content = document.getElementById('content').innerHTML;
   const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><title>Daily Ramp Board — Vermion Fresh</title>
+  win.document.write(`<!DOCTYPE html><html><head><title>Πίνακας Ράμπας — Vermion Fresh</title>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
       * { box-sizing:border-box; margin:0; padding:0; }
