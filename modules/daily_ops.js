@@ -209,15 +209,15 @@ function _opsDraw() {
   let ovH='';
   if(isToday&&OPS.overdue.length){
     ovH=`<div class="ops-alert">
-      <div class="ops-alert-hdr" onclick="const l=document.getElementById('ovL');l.style.display=l.style.display==='flex'?'none':'flex';this.querySelector('.ops-alert-tog').textContent=l.style.display==='flex'?'▲ Hide':'▼ Show'">
-        <div class="ops-alert-txt">⚠ ${OPS.overdue.length} orders with pending delivery</div>
-        <div class="ops-alert-tog">▼ Show</div>
+      <div class="ops-alert-hdr" onclick="const l=document.getElementById('ovL');l.style.display=l.style.display==='flex'?'none':'flex';this.querySelector('.ops-alert-tog').textContent=l.style.display==='flex'?'▲ Απόκρυψη':'▼ Εμφάνιση'">
+        <div class="ops-alert-txt">⚠ ${OPS.overdue.length} παραγγελίες με εκκρεμή παράδοση</div>
+        <div class="ops-alert-tog">▼ Εμφάνιση</div>
       </div>
       <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
         return `<div class="ops-alert-row">
           <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
-          <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Delivered</button>
-          <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Delayed</button>
+          <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}')">Παραδόθηκε</button>
+          <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Καθυστέρησε</button>
         </div>`;}).join('')}</div></div>`;
   }
 
@@ -242,14 +242,14 @@ function _opsDraw() {
           </div>
           <div>
             <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px">COMMAND CENTER</div>
-            <div style="font-size:12px;opacity:0.7;margin-top:2px">${nDel}/${total} delivered · ${nLoad} in transit · ${nPend} pending</div>
+            <div style="font-size:12px;opacity:0.7;margin-top:2px">${nDel}/${total} παραδόθηκαν · ${nLoad} σε μεταφορά · ${nPend} σε αναμονή</div>
           </div>
         </div>
         <div style="text-align:right">
           <div style="display:flex;gap:16px;font-size:11px">
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">EXPORT</div><div style="font-weight:700;font-size:14px">${expAll.length?Math.round(expDone/expAll.length*100):0}%</div></div>
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">IMPORT</div><div style="font-weight:700;font-size:14px">${impAll.length?Math.round(impDone/impAll.length*100):0}%</div></div>
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">CHECKLIST</div><div style="font-weight:700;font-size:14px">${tC?Math.round(dC/tC*100):0}%</div></div>
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΕΞΑΓΩΓΗ</div><div style="font-weight:700;font-size:14px">${expAll.length?Math.round(expDone/expAll.length*100):0}%</div></div>
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΕΙΣΑΓΩΓΗ</div><div style="font-weight:700;font-size:14px">${impAll.length?Math.round(impDone/impAll.length*100):0}%</div></div>
+            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΛΙΣΤΑ ΕΛΕΓΧΟΥ</div><div style="font-weight:700;font-size:14px">${tC?Math.round(dC/tC*100):0}%</div></div>
           </div>
         </div>
       </div>
@@ -267,52 +267,52 @@ function _opsDraw() {
         <div class="page-sub">${fD(tgt)} · ${total} orders${isToday && OPS.overdue.length ? ` · <span style="color:#DC2626;font-weight:600">${OPS.overdue.length} overdue</span>` : ''}</div></div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Refresh</button>
+        <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Ανανέωση</button>
       </div>
     </div>
     <div class="ops-toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
-      <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">Today</button>
-      <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">Tomorrow</button>
-      <input type="text" class="filter-select" placeholder="Search client / truck / driver / location…"
+      <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">ΣΗΜΕΡΑ</button>
+      <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">ΑΥΡΙΟ</button>
+      <input type="text" class="filter-select" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…"
         value="${OPS.filters?.q||''}"
         oninput="_opsSetFilter('q', this.value)"
         style="flex:1;min-width:200px;padding:0 12px;height:36px;border-radius:6px;border:1px solid var(--border);font-size:13px">
       <select class="filter-select" onchange="_opsSetFilter('direction', this.value)" style="height:36px">
-        <option value="">All Directions</option>
-        <option value="export" ${OPS.filters?.direction==='export'?'selected':''}>Export</option>
-        <option value="import" ${OPS.filters?.direction==='import'?'selected':''}>Import</option>
+        <option value="">Όλες οι κατευθύνσεις</option>
+        <option value="export" ${OPS.filters?.direction==='export'?'selected':''}>Εξαγωγή</option>
+        <option value="import" ${OPS.filters?.direction==='import'?'selected':''}>Εισαγωγή</option>
       </select>
       <select class="filter-select" onchange="_opsSetFilter('status', this.value)" style="height:36px">
-        <option value="">All Statuses</option>
-        <option value="Pending"    ${OPS.filters?.status==='Pending'?'selected':''}>Pending</option>
-        <option value="Assigned"   ${OPS.filters?.status==='Assigned'?'selected':''}>Assigned</option>
-        <option value="In Transit" ${OPS.filters?.status==='In Transit'?'selected':''}>In Transit</option>
-        <option value="Delivered"  ${OPS.filters?.status==='Delivered'?'selected':''}>Delivered</option>
+        <option value="">Όλες οι καταστάσεις</option>
+        <option value="Pending"    ${OPS.filters?.status==='Pending'?'selected':''}>Σε αναμονή</option>
+        <option value="Assigned"   ${OPS.filters?.status==='Assigned'?'selected':''}>Ανατεθειμένο</option>
+        <option value="In Transit" ${OPS.filters?.status==='In Transit'?'selected':''}>Σε μεταφορά</option>
+        <option value="Delivered"  ${OPS.filters?.status==='Delivered'?'selected':''}>Παραδόθηκε</option>
       </select>
       ${(OPS.filters?.q||OPS.filters?.direction||OPS.filters?.status) ? `
-        <button class="btn btn-ghost btn-sm" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()" style="height:36px">Clear</button>
+        <button class="btn btn-ghost btn-sm" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()" style="height:36px">Καθαρισμός</button>
       ` : ''}
     </div>
     ${cmdCenterH}
     <div class="ops-kpis">
-      <div class="ops-kpi"><div class="ops-kpi-label">Pending</div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Σε αναμονή</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#F1F5F9">${total?nPend:'—'}</span></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Loadings</div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Φορτώσεις</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:#0284C7">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:#0284C7"></div></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Deliveries</div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Παραδόσεις</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${delsAll.length?Math.round(delsDone/delsAll.length*100):0}%;background:var(--success)"></div></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Checklist</div>
+      <div class="ops-kpi"><div class="ops-kpi-label">Λίστα ελέγχου</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:var(--success)">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
     </div>
     ${ovH}
     <div class="ops-sections">
-      ${_opsSec('el','↑ Export Loadings',cats.el,isToday)}
-      ${_opsSec('ed','↓ Export Deliveries',cats.ed,isToday)}
-      ${_opsSec('il','↑ Import Loadings',cats.il,isToday)}
-      ${_opsSec('id','↓ Import Deliveries',cats.id,isToday)}
+      ${_opsSec('el','↑ ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday)}
+      ${_opsSec('ed','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday)}
+      ${_opsSec('il','↑ ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday)}
+      ${_opsSec('id','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday)}
     </div>`;
 }
 
@@ -321,21 +321,21 @@ function _opsSec(type,label,items,isToday) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
   let cols='';
   if(isToday && isL && isExp)
-    cols='<th>#</th><th>Client</th><th>Loading</th><th>Truck</th><th>Driver</th><th class="c">Temp</th><th>Pallets</th><th class="c">Docs</th><th>Advance €</th><th class="c">2nd Card</th><th>Actions</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΘΕΡΜ.</th><th>ΠΑΛΕΤΕΣ</th><th class="c">ΕΓΓΡΑΦΑ</th><th>ΠΡΟΚΑΤΑΒΟΛΗ €</th><th class="c">2Η ΚΑΡΤΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
   else if(isToday && isL && !isExp)
-    cols='<th>#</th><th>Client</th><th>Loading</th><th>Truck</th><th>Driver</th><th class="c">CMR Photo</th><th class="c">Temp</th><th>Time</th><th>Actions</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΘΕΡΜ.</th><th>ΩΡΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
   else if(isToday && !isL)
-    cols='<th>#</th><th>Client</th><th>Delivery</th><th>Truck</th><th>Driver</th><th>ETA</th><th class="c">CMR Photo</th><th class="c">Client Update</th><th>Actions</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΕΝΗΜΕΡΩΣΗ ΠΕΛΑΤΗ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
   else if(!isToday && isL && isExp)
-    cols='<th>#</th><th>Client</th><th>Loading</th><th>Truck</th><th>Driver</th><th class="c">Driver Notified</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th>';
   else if(!isToday && isL && !isExp)
-    cols='<th>#</th><th>Client</th><th>Loading</th><th>Truck</th><th>Driver</th><th class="c">Driver Notified</th><th>Time</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th><th>ΩΡΑ</th>';
   else
-    cols='<th>#</th><th>Client</th><th>Delivery</th><th>Truck</th><th>Driver</th><th>ETA</th>';
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th>';
 
   const rows=items.length
     ? items.map((r,i)=>_opsRow(r,i+1,type,isToday)).join('')
-    : '<tr class="ops-empty"><td colspan="20">No orders</td></tr>';
+    : '<tr class="ops-empty"><td colspan="20">Καμία παραγγελία</td></tr>';
 
   return `<div>
     <div class="ops-sec-hd ${type}"><span>${label}</span><span style="opacity:.5">${items.length}</span></div>

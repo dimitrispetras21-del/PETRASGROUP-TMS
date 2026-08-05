@@ -70,7 +70,7 @@ function _renderNatlLayout(c) {
   c.innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
-        <div class="page-title">National Orders</div>
+        <div class="page-title">Εθνικές Παραγγελίες</div>
         <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} orders</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
@@ -85,39 +85,39 @@ function _renderNatlLayout(c) {
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
             ${_i('search')}
-            <input class="entity-search-input" placeholder="Search client / location / goods..."
+            <input class="entity-search-input" placeholder="Αναζήτηση πελάτη / τοποθεσίας / εμπορεύματος…"
               oninput="natlSearch(this.value)">
           </div>
           <select class="svc-filter" onchange="natlFilter('Direction',this.value)">
-            <option value="">Direction: All</option>
-            <option value="North→South">↓ North→South</option>
-            <option value="South→North">↑ South→North</option>
+            <option value="">Κατεύθυνση: Όλες</option>
+            <option value="North→South">↓ ΚΑΘΟΔΟΣ (Βορράς→Νότος)</option>
+            <option value="South→North">↑ ΑΝΟΔΟΣ (Νότος→Βορράς)</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('Type',this.value)">
-            <option value="">Type: All</option>
-            <option value="Independent">Independent</option>
+            <option value="">Τύπος: Όλοι</option>
+            <option value="Independent">Ανεξάρτητη</option>
             <option value="Veroia Switch">Veroia Switch</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('Status',this.value)">
-            <option value="">Status: All</option>
-            <option value="Pending">Pending</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="In Transit">In Transit</option>
-            <option value="Delivered">Delivered</option>
+            <option value="">Κατάσταση: Όλες</option>
+            <option value="Pending">Σε αναμονή</option>
+            <option value="Confirmed">Επιβεβαιωμένη</option>
+            <option value="In Transit">Σε μεταφορά</option>
+            <option value="Delivered">Παραδόθηκε</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('_trip',this.value)">
-            <option value="">Trip: All</option>
-            <option value="unassigned">Unassigned</option>
-            <option value="assigned">Assigned</option>
+            <option value="">Δρομολόγιο: Όλα</option>
+            <option value="unassigned">Χωρίς δρομολόγιο</option>
+            <option value="assigned">Με δρομολόγιο</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('_groupage',this.value)">
-            <option value="">Groupage: All</option>
-            <option value="1">Groupage only</option>
+            <option value="">Ομαδοποίηση: Όλες</option>
+            <option value="1">Μόνο ομαδοποιημένες</option>
           </select>
           <select class="svc-filter" onchange="natlPeriodChange(this.value)">
-            <option value="60" ${_natlPeriod==='60'?'selected':''}>Last 60 days</option>
-            <option value="180" ${_natlPeriod==='180'?'selected':''}>Last 6 months</option>
-            <option value="all" ${_natlPeriod==='all'?'selected':''}>All time</option>
+            <option value="60" ${_natlPeriod==='60'?'selected':''}>Τελευταίες 60 ημέρες</option>
+            <option value="180" ${_natlPeriod==='180'?'selected':''}>Τελευταίοι 6 μήνες</option>
+            <option value="all" ${_natlPeriod==='all'?'selected':''}>Όλα</option>
           </select>
           <span class="entity-count-chip" id="natlCount">${NATL_ORDERS.data.length}</span>
         </div>
@@ -129,16 +129,16 @@ function _renderNatlLayout(c) {
 
 // ─── Sort helpers ────────────────────────────────
 const _natlColDefs = [
-  { key: 'name',     label: 'Name',      type: 'text',   get: (f) => f['Name']||'' },
-  { key: 'dir',      label: 'Dir',       type: 'text',   get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'Client',    type: 'text',   get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
-  { key: 'pickup',   label: 'Pickup',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
-  { key: 'delivery', label: 'Delivery',  type: 'text',   get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
-  { key: 'loadDate', label: 'Load Date', type: 'date',   get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'Del Date',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'PAL',       type: 'number', get: (f) => f['Pallets']||0 },
-  { key: 'trip',     label: 'Trip',      type: 'text',   get: (f) => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending' },
-  { key: 'inv',      label: 'INV',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
+  { key: 'name',     label: 'ΟΝΟΜΑ',      type: 'text',   get: (f) => f['Name']||'' },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
+  { key: 'pickup',   label: 'ΠΑΡΑΛΑΒΗ',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
+  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',  type: 'text',   get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
+  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', get: (f) => f['Pallets']||0 },
+  { key: 'trip',     label: 'ΔΡΟΜΟΛΟΓΙΟ',      type: 'text',   get: (f) => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
 ];
 
 function _natlSortToggle(key) {

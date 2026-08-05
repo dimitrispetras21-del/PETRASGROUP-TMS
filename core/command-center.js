@@ -54,10 +54,10 @@ function widgetFleet(trucks, assignedIds) {
   const barCol = pct > 85 ? '#DC2626' : pct > 60 ? '#10B981' : '#F59E0B';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🚛 FLEET UTIL</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🚛 ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
       <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif">${busy}</span>
-      <span style="font-size:11px;opacity:0.6">/ ${total} busy · ${pct}%</span>
+      <span style="font-size:11px;opacity:0.6">/ ${total} σε χρήση · ${pct}%</span>
     </div>
     <div style="width:100%;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${barCol}"></div></div>
   </div>`;
@@ -70,10 +70,10 @@ function widgetEmptyLegs(soloExp, soloImp, suggestion) {
   const total = soloExp + soloImp;
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🔗 EMPTY LEGS</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🔗 ΚΕΝΑ ΔΡΟΜΟΛΟΓΙΑ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
       <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${total?'#F59E0B':'#10B981'}">${total}</span>
-      <span style="font-size:11px;opacity:0.6">${soloExp} exp · ${soloImp} imp</span>
+      <span style="font-size:11px;opacity:0.6">${soloExp} εξαγ. · ${soloImp} εισαγ.</span>
     </div>
     ${suggestion ? `<div style="font-size:10px;opacity:0.7;margin-top:3px">${suggestion}</div>` : ''}
   </div>`;
@@ -89,10 +89,10 @@ function widgetVsLastWeek(curOrders, prevOrders, curAssigned, prevAssigned) {
   const col = d => d > 0 ? '#10B981' : d < 0 ? '#EF4444' : '#94A3B8';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 VS LAST WEEK</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div>
     <div style="display:flex;gap:10px;font-size:11px">
-      <div><div style="opacity:0.6;font-size:9px">Orders</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curOrders}</span> <span style="color:${col(deltaOrders)}">${arrow(deltaOrders)}${Math.abs(deltaOrders)}</span></div></div>
-      <div><div style="opacity:0.6;font-size:9px">Assigned</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curAssigned}</span> <span style="color:${col(deltaAssigned)}">${arrow(deltaAssigned)}${Math.abs(deltaAssigned)}%</span></div></div>
+      <div><div style="opacity:0.6;font-size:9px">Παραγγελίες</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curOrders}</span> <span style="color:${col(deltaOrders)}">${arrow(deltaOrders)}${Math.abs(deltaOrders)}</span></div></div>
+      <div><div style="opacity:0.6;font-size:9px">Ανατεθειμένα</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curAssigned}</span> <span style="color:${col(deltaAssigned)}">${arrow(deltaAssigned)}${Math.abs(deltaAssigned)}%</span></div></div>
     </div>
   </div>`;
 }
@@ -105,12 +105,12 @@ function widgetOnTimeStreak(currentWeekPct, streakWeeks) {
   const col = currentWeekPct >= 90 ? '#10B981' : currentWeekPct >= 75 ? '#F59E0B' : '#EF4444';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${fire} ON-TIME</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${fire} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
       <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${col}">${currentWeekPct}%</span>
-      <span style="font-size:11px;opacity:0.6">this week</span>
+      <span style="font-size:11px;opacity:0.6">αυτή την εβδομάδα</span>
     </div>
-    <div style="font-size:10px;opacity:0.7;margin-top:3px">${streakWeeks ? `${streakWeeks} week${streakWeeks>1?'s':''} streak ≥90%` : 'Below 90% target'}</div>
+    <div style="font-size:10px;opacity:0.7;margin-top:3px">${streakWeeks ? `${streakWeeks} ${streakWeeks>1?'εβδομάδες':'εβδομάδα'} σερί ≥90%` : 'Κάτω από τον στόχο 90%'}</div>
   </div>`;
 }
 

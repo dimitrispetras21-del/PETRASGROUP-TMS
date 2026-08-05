@@ -362,6 +362,22 @@ async function renderDashboard() {
       page: 'maint_expiry',
     });
 
+    // Report what this page is about to put on screen, so the Metrics Audit can
+    // compare it against the other pages showing the same idea. Read-only.
+    // Note expiredFleetDocs: it counts DOCUMENTS, and for trailers it reads
+    // ATP+Insurance while Maintenance reads KTEO+FRC+Insurance — so the two are
+    // expected to differ. The audit declares that instead of calling it a fault.
+    if (typeof reportPageMetrics === 'function') reportPageMetrics('dashboard', {
+      weekNumber: wn,
+      expiredFleetDocs: expiredDocs.length,
+      fleetAlerts30d: fleetAlerts.length,
+      activeTrucks,
+      trucksInUse: trucksInUse.size,
+      compliancePct: complianceRate,
+      weeklyScore,
+      onTimePct: totalDelivered > 0 ? onTimePct : -1,
+    });
+
     const greeting = now.getHours() < 12 ? 'Καλημέρα' : now.getHours() < 18 ? 'Καλό απόγευμα' : 'Καλό βράδυ';
     const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
 

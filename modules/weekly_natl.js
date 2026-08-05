@@ -216,6 +216,19 @@ function _wnPaint() {
   const total = nsRows.length + snRows.length;
   const pct = total ? Math.round(assigned / total * 100) : 0;
 
+  // Same reporting contract as weekly_intl: weekNumberDefault comes from
+  // _wnCurrentWeek(), the Sunday-start formula this planner still carries, so
+  // the audit can see it drift from canonical isoWeekNumber().
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_natl', {
+    weekNumber: week,
+    weekNumberDefault: _wnCurrentWeek(),
+    kathodos: nsRows.length,
+    anodos: snRows.length,
+    assigned,
+    pending,
+    completionPct: pct,
+  });
+
   // Command Center actions
   const actions=[];
   const _ico = n => (typeof icon === 'function') ? icon(n, 14) : '';
