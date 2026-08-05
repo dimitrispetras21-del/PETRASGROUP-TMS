@@ -285,9 +285,15 @@ function _wiBuildRows(){
 /* ── PAINT ─────────────────────────────────────────────────────────── */
 
 /* ── WEEK SIDEBAR (INTL) ──────────────────────────────── */
+// WI-7: the strip listed 21 weeks (−8..+12) and scrolled horizontally, so the
+// current week was rarely where you looked. Now ±3 around the selected week,
+// with explicit ‹ › steps and a «Σήμερα» reset — the three moves anyone
+// actually makes. See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-7.
 function _wiWeekSidebarItems(currentWeek) {
-  let html = '';
-  for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
+  const today = _wiCurrentWeek();
+  const step = (d) => `<button type="button" onclick="WINTL.week=${currentWeek + d};renderWeeklyIntl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,#0B1929);color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
+  let html = step(-1);
+  for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
     if (w < 1 || w > 52) continue;
     const isActive = w === currentWeek;
     const wS   = _wiWeekStart(w);
@@ -307,6 +313,10 @@ function _wiWeekSidebarItems(currentWeek) {
       <div>W${w}</div>
       <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
     </div>`;
+  }
+  html += step(1);
+  if (currentWeek !== today) {
+    html += `<button type="button" onclick="WINTL.week=${today};renderWeeklyIntl()" style="flex-shrink:0;margin-left:8px;padding:6px 12px;cursor:pointer;border-radius:8px;background:var(--accent-light);color:var(--accent);border:1px solid transparent;font-family:'Syne',sans-serif;font-size:12px;font-weight:700">Σήμερα · W${today}</button>`;
   }
   return html;
 }
@@ -379,12 +389,19 @@ function _wiPaint(){
       ];
       // When week has no orders, provide a single informational action so the strip isn't empty.
       const ccActions = total > 0 ? actions : [{icon:_ico('info'), sev:'ok', text:'Καμία παραγγελία για αυτή την εβδομάδα ακόμη'}];
-      return buildCommandCenterHTML({
-        title: `COMMAND CENTER · W${week}`,
-        pct,
-        actions: ccActions,
-        widgets,
-      });
+      // WI-4: three titles and four repetitions of the week number pushed the
+      // table below the fold. The Command Center now collapses to one 44px
+      // summary line, and remembers the choice — a dispatcher who wants the
+      // table first should not have to close it every morning.
+      const open = localStorage.getItem('tms_cc_open') !== '0';
+      return `<details ${open ? 'open' : ''} ontoggle="localStorage.setItem('tms_cc_open', this.open ? '1' : '0')" style="margin-bottom:var(--space-3)">
+        <summary style="cursor:pointer;list-style:none;height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--navy-mid,#0B1929);color:#C4CFDB;border-radius:8px;font-size:12px">
+          <span style="font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px">COMMAND CENTER · W${week}</span>
+          <span style="opacity:.7">${expN} εξαγ · ${impN} εισαγ · ${pct}% ολοκληρωμένο</span>
+          <span style="margin-left:auto;opacity:.5">▾</span>
+        </summary>
+        ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
+      </details>`;
     })()}
 
     <!-- Search/filter bar -->
@@ -428,7 +445,7 @@ function _wiPaint(){
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
           ↑ ΕΞΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${expN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
+          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
         </div>
         <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
           ΑΝΑΘΕΣΗ
@@ -436,7 +453,7 @@ function _wiPaint(){
         <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
           ↓ ΕΙΣΑΓΩΓΗ
           <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${impN}</span>
-          <span style="font-weight:400;font-size:8px;opacity:0.45;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
+          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
         </div>
       </div>
       <div id="wi-rows">

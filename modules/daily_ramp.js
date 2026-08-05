@@ -446,6 +446,8 @@ function _rampDraw() {
       <span class="entity-count-chip" id="rampFilterCount">${recs.length}${recs.length!==RAMP.records.length?' / '+RAMP.records.length:''}</span>
     </div>
     <div class="ramp-kpis">
+      <div class="ramp-kpi ramp-kpi-primary"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
+        <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_down_left', 11)} Εισερχόμενα σήμερα</div>
         <div><span class="ramp-kpi-val" style="color:var(--success)">+${inPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('arrow_up_right', 11)} Εξερχόμενα σήμερα</div>
@@ -454,21 +456,19 @@ function _rampDraw() {
         <div><span class="ramp-kpi-val" style="color:${net>=0?'var(--success)':'var(--danger)'}">${net>=0?'+':''}${net}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
       <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('package', 11)} Σύνολο αποθέματος</div>
         <div><span class="ramp-kpi-val" style="color:var(--warning)">${stockPal}</span><span class="ramp-kpi-sub">παλ.</span></div></div>
-      <div class="ramp-kpi"><div class="ramp-kpi-lbl">${_i('check_circle', 11)} Πρόοδος</div>
-        <div><span class="ramp-kpi-val" style="color:${total?Math.round(done/total*100)>=80?'var(--success)':'var(--accent)':'var(--text-dim)'}">${total?Math.round(done/total*100):0}%</span><span class="ramp-kpi-sub">${done}/${total}</span></div></div>
     </div>
 
     <div class="ramp-pair">
       <div>
         <div class="ramp-sec-hd inbound"><span>↓ ΕΙΣΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${inb.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος φόρτωσης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Ενέργειες</th>
+          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος φόρτωσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
         </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία άφιξη</td></tr>'}</tbody></table>
       </div>
       <div>
         <div class="ramp-sec-hd outbound"><span>↑ ΕΞΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${out.length}</span></div>
         <table class="ramp-t"><thead><tr>
-          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος παράδοσης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Ενέργειες</th>
+          <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος παράδοσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
         </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):'<tr class="ramp-empty"><td colspan="9">Καμία αναχώρηση</td></tr>'}</tbody></table>
       </div>
     </div>
@@ -565,10 +565,10 @@ function _rRow(rec,num,tOpts) {
       <td></td><td></td>
       <td style="padding-left:18px">↳ ${escapeHtml(s.client)}</td>
       <td>${escapeHtml(s.loc)}</td>
-      <td>${escapeHtml(s.ref)}</td>
+      <td class="ramp-col-2nd">${escapeHtml(s.ref)}</td>
       <td>${escapeHtml(s.temp)}</td>
       <td>${typeof s.pal==='number' ? s.pal+' pal' : escapeHtml(s.pal)}</td>
-      <td></td><td></td></tr>`).join('');
+      <td class="ramp-col-2nd"></td><td></td></tr>`).join('');
   }
 
   const locField = escapeHtml(_rStripMarkers(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||'')));
@@ -577,9 +577,9 @@ function _rRow(rec,num,tOpts) {
     <td class="rn">${num}</td><td>${timeSel}</td>
     <td class="trn" title="${clientDisplay}">${clientDisplay}</td>
     <td class="trn" title="${locField}">${locField||'—'}</td>
-    <td class="trn" title="${goods}">${goods}</td>
+    <td class="trn ramp-col-2nd" title="${goods}">${goods}</td>
     <td>${temp?temp+'°C':''}</td><td>${pal}</td>
-    <td>${truck||'—'}</td><td>${acts}</td></tr>${subHtml}`;
+    <td class="ramp-col-2nd">${truck||'—'}</td><td>${acts}</td></tr>${subHtml}`;
 }
 
 /* ── TIMELINE ROW ─────────────────────────────────────────────── */

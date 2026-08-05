@@ -224,8 +224,6 @@ const ENTITY_CONFIG = {
       { field: 'Year',                    label: 'Year', type: 'number' },
       { field: 'Trailer Type',            label: 'Type' },
       { field: 'Refrigeration Brand',     label: 'Reefer' },
-      { field: '_tempRange',              label: 'Temp °C', type: 'temp_range' },
-      { field: 'Pallet Capacity',         label: 'Pal', type: 'number' },
       { field: '_compliance', label: 'Docs', type: 'compliance', fields: [
         { field: 'KTEO Expiry',     label: 'KT' },
         { field: 'FRC Expiry',      label: 'FRC' },
@@ -240,20 +238,17 @@ const ENTITY_CONFIG = {
         { f: 'Model',         label: 'Model' },
         { f: 'Year',          label: 'Year',          type: 'number' },
         { f: 'Trailer Type',  label: 'Type',          type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker'] },
-        { f: 'Pallet Capacity', label: 'Pallet Capacity', type: 'number' },
       ]},
       { section: 'Refrigeration', fields: [
         { f: 'Refrigeration Brand',        label: 'Reefer Brand' },
         { f: 'Refrigeration Model',        label: 'Reefer Model' },
-        { f: 'Temp Range Min °C',          label: 'Min Temp (°C)', type: 'number' },
-        { f: 'Temp Range Max °C',          label: 'Max Temp (°C)', type: 'number' },
         { f: 'Fuel Tank Refrigeration Lt', label: 'Reefer Tank (lt)', type: 'number' },
         { f: 'Notes',                      label: 'Notes',            type: 'textarea' },
       ]},
     ],
     detailSections: [
-      { title: 'Identity',       fields: ['License Plate','Brand','Model','Year','Trailer Type','Pallet Capacity'] },
-      { title: 'Refrigeration',  fields: ['Refrigeration Brand','Refrigeration Model','Temp Range Min °C','Temp Range Max °C','Fuel Tank Refrigeration Lt'] },
+      { title: 'Identity',       fields: ['License Plate','Brand','Model','Year','Trailer Type'] },
+      { title: 'Refrigeration',  fields: ['Refrigeration Brand','Refrigeration Model','Fuel Tank Refrigeration Lt'] },
     ],
   },
 

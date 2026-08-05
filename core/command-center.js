@@ -3,6 +3,11 @@
 // Reusable across Ops / Weekly INTL / Weekly NATL / Dashboard
 // ═══════════════════════════════════════════════════════════
 
+// Emoji were a third icon system on top of Lucide SVG and the icons.js set.
+// One source of truth: core/icons.js. Falls back to nothing if not loaded.
+// See docs/design/DEEP_AUDIT_2026-08-04/metrics_audit.md MA-5.
+function _ccIcon(n) { return (typeof icon === 'function') ? icon(n, 11) : ''; }
+
 /**
  * Build the main Command Center HTML.
  * @param {Object} cfg
@@ -54,7 +59,7 @@ function widgetFleet(trucks, assignedIds) {
   const barCol = pct > 85 ? '#DC2626' : pct > 60 ? '#10B981' : '#F59E0B';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🚛 ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('truck')} ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
       <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif">${busy}</span>
       <span style="font-size:11px;opacity:0.6">/ ${total} σε χρήση · ${pct}%</span>
@@ -70,7 +75,7 @@ function widgetEmptyLegs(soloExp, soloImp, suggestion) {
   const total = soloExp + soloImp;
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">🔗 ΚΕΝΑ ΔΡΟΜΟΛΟΓΙΑ</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('route')} ΚΕΝΑ ΔΡΟΜΟΛΟΓΙΑ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
       <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${total?'#F59E0B':'#10B981'}">${total}</span>
       <span style="font-size:11px;opacity:0.6">${soloExp} εξαγ. · ${soloImp} εισαγ.</span>
@@ -89,7 +94,7 @@ function widgetVsLastWeek(curOrders, prevOrders, curAssigned, prevAssigned) {
   const col = d => d > 0 ? '#10B981' : d < 0 ? '#EF4444' : '#94A3B8';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
-    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">📊 ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div>
+    <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('bar_chart')} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div>
     <div style="display:flex;gap:10px;font-size:11px">
       <div><div style="opacity:0.6;font-size:9px">Παραγγελίες</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curOrders}</span> <span style="color:${col(deltaOrders)}">${arrow(deltaOrders)}${Math.abs(deltaOrders)}</span></div></div>
       <div><div style="opacity:0.6;font-size:9px">Ανατεθειμένα</div><div><span style="font-size:14px;font-weight:700;font-family:'Syne',sans-serif">${curAssigned}</span> <span style="color:${col(deltaAssigned)}">${arrow(deltaAssigned)}${Math.abs(deltaAssigned)}%</span></div></div>

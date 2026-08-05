@@ -314,12 +314,31 @@ async function _expInsurerEdit(e, recId, vType) {
 }
 
 let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
+// Document type to narrow by ('KTEO'|'KEK'|'FRC'|'Insurance'|''), so the
+// Maintenance Dashboard KPIs can land on the exact rows they counted instead
+// of dumping the reader on an unfiltered list of 64 vehicles.
+// See docs/design/DEEP_AUDIT_2026-08-04/maint_dash.md MD-2 / Π2.
+let _expiryDocType = '';
 let _expirySearch = '';
+/**
+ * Open Expiry Alerts pre-filtered. Called from the Maintenance Dashboard KPIs.
+ * @param {string} tab - 'all'|'expired'|'expiring30'|'valid'
+ * @param {string} [docType] - 'KTEO'|'KEK'|'FRC'|'Insurance'
+ */
+function _expiryGoto(tab, docType) {
+  _expiryTab = tab || 'all';
+  _expiryDocType = docType || '';
+  _expirySearch = '';
+  navigate('maint_expiry');
+}
+
 function _expiryFilterRows(rows) {
   let out = rows;
   if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
   if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
   if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+  // Keeps only vehicles whose THAT document is expired — matches what the KPI counted.
+  if (_expiryDocType) out = out.filter(r => r.docs.some(d => d.label === _expiryDocType && d.days !== null && d.days < 0));
   if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
   return out;
 }
@@ -457,6 +476,9 @@ function _expiryPaint() {
         ${tabBtn('expiring30', 'Λήγουν ≤30 ημ.', expiring30Trucks + expiring30Trailers, 'warning')}
         ${tabBtn('valid', 'Σε ισχύ', validTrucks + validTrailers, 'success')}
       </div>
+      ${_expiryDocType ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_expiryDocType='';_expiryPaint()"
+        style="background:var(--accent-light);color:var(--accent);font-weight:700">
+        Μόνο ${escapeHtml(_expiryDocType)} · καθαρισμός ✕</button>` : ''}
       <div class="exp-search-wrap">
         ${_i('search')}
         <input class="exp-search-input" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
@@ -1234,6 +1256,7 @@ function _historyExport(vType) {
 }
 
 // Expose globally
+window._expiryGoto = _expiryGoto;   // used by the Maintenance Dashboard KPI buttons
 window._historyExport = _historyExport;
 window._historyFilter = _historyFilter;
 
@@ -1491,65 +1514,65 @@ async function renderMaintDash() {
         <!-- Header -->
         <div class="dash-header">
           <div>
-            <div class="dash-greeting">Maintenance Dashboard</div>
-            <div class="dash-date">Petras Group Fleet · ${dateStr}</div>
+            <div class="dash-greeting">Επισκόπηση Στόλου</div>
+            <div class="dash-date">Στόλος Petras Group · ${dateStr}</div>
           </div>
           <div class="dash-live">
             <span class="dash-live-dot"></span>
-            LIVE — refresh every 5'
+            LIVE — ανανέωση κάθε 5'
           </div>
         </div>
 
         <!-- Alert Banner -->
         ${totalExpired > 0 ? `<div class="dash-alert-banner">
           <div class="dash-alert-icon">${_ic('alert_triangle', 16)}</div>
-          <div class="dash-alert-text">${totalExpired} expired document${totalExpired > 1 ? 's' : ''} require${totalExpired === 1 ? 's' : ''} immediate attention</div>
+          <div class="dash-alert-text">${totalExpired} ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</div>
         </div>` : ''}
 
         <!-- KPI Bar (6 cards) -->
         <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
-            <div class="dash-kpi-label">${_ic('truck', 11)} Total Fleet</div>
+            <div class="dash-kpi-label">${_ic('truck', 11)} ΣΥΝΟΛΟ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
-            <div class="dash-kpi-sub">${activeTrucks.length} trucks · ${activeTrailers.length} trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">${activeTrucks.length} φορτηγά · ${activeTrailers.length} ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KTEO')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} KTEO Expired</div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΤΕΟ</div>
             <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
-            <div class="dash-kpi-sub">trucks + trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KEK')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} KEK Expired</div>
+            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΕΚ</div>
             <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
-            <div class="dash-kpi-sub">trucks only</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">μόνο φορτηγά</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','FRC')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'#DC2626':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('droplet', 11)} FRC Expired</div>
+            <div class="dash-kpi-label">${_ic('droplet', 11)} ΛΗΓΜΕΝΑ FRC</div>
             <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
-            <div class="dash-kpi-sub">trailers only</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">μόνο ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','Insurance')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('shield', 11)} Insurance Expired</div>
+            <div class="dash-kpi-label">${_ic('shield', 11)} ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</div>
             <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
-            <div class="dash-kpi-sub">trucks + trailers</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('expiring30')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'#10B981'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('clock', 11)} Expiring &lt;30d</div>
+            <div class="dash-kpi-label">${_ic('clock', 11)} ΛΗΓΟΥΝ &lt;30 ΗΜ.</div>
             <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
-            <div class="dash-kpi-sub">all document types</div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('maint_expiry')">
+            <div class="dash-kpi-sub">όλοι οι τύποι εγγράφων</div>
+          </button>
+          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('award', 11)} Fleet Compliance</div>
+            <div class="dash-kpi-label">${_ic('award', 11)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value" style="color:${scoreColor}">${compliancePct}%</div>
-            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} compliant</div>
-          </div>
+            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} χωρίς ληγμένο</div>
+          </button>
         </div>
 
         <!-- Main Grid -->
@@ -1562,8 +1585,8 @@ async function renderMaintDash() {
               <!-- OVERDUE -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} OVERDUE</div>
-                  <span class="dash-card-link" onclick="navigate('maint_expiry')">Expiry Alerts ${_ic('chevron_right', 12)}</span>
+                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} ΣΕ ΚΑΘΥΣΤΕΡΗΣΗ</div>
+                  <span class="dash-card-link" onclick="_expiryGoto('expired')">Λήξεις Εγγράφων ${_ic('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
                   ${overdueList.length ? overdueList.map(r => {
@@ -1575,15 +1598,17 @@ async function renderMaintDash() {
                       <div class="md-exp-date">${dateDisp}</div>
                       <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>No overdue documents</div></div>`}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Κανένα έγγραφο σε καθυστέρηση</div></div>`}
+                  ${expiredRows.length > overdueList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
+                    onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiredRows.length - overdueList.length} ${_ic('chevron_right', 12)}</button>` : ''}
                 </div>
               </div>
 
               <!-- EXPIRING SOON -->
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">${_ic('clock', 12)} EXPIRING SOON</div>
-                  <span class="dash-card-meta">within 60 days</span>
+                  <div class="dash-card-title">${_ic('clock', 12)} ΛΗΓΟΥΝ ΣΥΝΤΟΜΑ</div>
+                  <span class="dash-card-meta">εντός 60 ημερών</span>
                 </div>
                 <div class="dash-card-body">
                   ${soonList.length ? soonList.map(r => {
@@ -1595,7 +1620,9 @@ async function renderMaintDash() {
                       <div class="md-exp-date">${dateDisp}</div>
                       <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
                     </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Nothing expiring soon</div></div>`}
+                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Τίποτα δεν λήγει σύντομα</div></div>`}
+                  ${expiring60Rows.length > soonList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
+                    onclick="_expiryGoto('expiring30')">Δες και τα άλλα ${expiring60Rows.length - soonList.length} ${_ic('chevron_right', 12)}</button>` : ''}
                 </div>
               </div>
             </div>
@@ -1880,11 +1907,11 @@ function _mreqPaint() {
   document.getElementById('content').innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
-        <div class="page-title">Work Orders</div>
-        <div class="page-sub">Daily maintenance requests</div>
+        <div class="page-title">Εντολές Εργασίας</div>
+        <div class="page-sub">Καθημερινά αιτήματα συντήρησης</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} New Request</button>
+        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} Νέα εντολή</button>
         <button class="btn btn-ghost btn-sm" onclick="MREQ._loaded=false;renderMaintRequests()">${_i('refresh')} Refresh</button>
       </div>
     </div>
@@ -1902,71 +1929,60 @@ function _mreqPaint() {
       <div class="exp-kpi exp-kpi-danger">
         <div class="exp-kpi-ico">${_i('alert_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">SOS</div>
+          <div class="exp-kpi-lbl">ΕΠΕΙΓΟΝ</div>
           <div class="exp-kpi-val">${sos}</div>
-          <div class="exp-kpi-sub">urgent</div>
+          <div class="exp-kpi-sub">άμεσα</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-warning">
         <div class="exp-kpi-ico">${_i('clock')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Pending</div>
+          <div class="exp-kpi-lbl">ΕΚΚΡΕΜΕΙ</div>
           <div class="exp-kpi-val">${pending}</div>
-          <div class="exp-kpi-sub">not started</div>
+          <div class="exp-kpi-sub">δεν ξεκίνησε</div>
         </div>
       </div>
       <div class="exp-kpi" style="color:var(--accent)">
         <div class="exp-kpi-ico">${_i('refresh')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">In Progress</div>
+          <div class="exp-kpi-lbl">ΣΕ ΕΞΕΛΙΞΗ</div>
           <div class="exp-kpi-val">${inProg}</div>
-          <div class="exp-kpi-sub">active</div>
+          <div class="exp-kpi-sub">ενεργές</div>
         </div>
       </div>
       <div class="exp-kpi exp-kpi-success">
         <div class="exp-kpi-ico">${_i('check_circle')}</div>
         <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Completed</div>
+          <div class="exp-kpi-lbl">ΟΛΟΚΛΗΡΩΜΕΝΕΣ</div>
           <div class="exp-kpi-val">${done.length}</div>
-          <div class="exp-kpi-sub">done</div>
+          <div class="exp-kpi-sub">έγιναν</div>
         </div>
       </div>
     </div>
 
     <div class="exp-tab-bar">
       <div class="exp-tab-group">
-        ${tabBtn('active', 'Active', active.length, 'warning')}
-        ${tabBtn('done', 'Completed', done.length, 'success')}
-        ${tabBtn('all', 'All', all.length)}
+        ${tabBtn('active', 'Ενεργές', active.length, 'warning')}
+        ${tabBtn('done', 'Ολοκληρωμένες', done.length, 'success')}
+        ${tabBtn('all', 'Όλες', all.length)}
       </div>
     </div>
 
+    <!-- ΕΝΟΤΗΤΑ 1: πραγματικές, χειροκίνητες εντολές -->
     <div class="exp-section">
       <div class="exp-section-hdr">
         <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('checklist')}</div>
         <div>
-          <div class="exp-section-title">${_mreqTab === 'active' ? 'Active Orders' : _mreqTab === 'done' ? 'Completed Orders' : 'All Orders'}</div>
-          <div class="exp-section-sub">${filtered.length} shown${expiryAlerts.length ? ' · ' + expiryAlerts.length + ' auto-detected from expiry' : ''}</div>
+          <div class="exp-section-title">${_mreqTab === 'active' ? 'ΕΝΤΟΛΕΣ ΕΡΓΑΣΙΑΣ' : _mreqTab === 'done' ? 'ΟΛΟΚΛΗΡΩΜΕΝΕΣ ΕΝΤΟΛΕΣ' : 'ΟΛΕΣ ΟΙ ΕΝΤΟΛΕΣ'} (${filtered.length})</div>
+          <div class="exp-section-sub">Κάνε κλικ σε γραμμή για ενημέρωση</div>
         </div>
       </div>
       <div class="exp-table-wrap">
         <table class="mt">
           <thead><tr>
-            <th>#</th><th>Plate</th><th>Description</th><th class="c">Priority</th><th class="c">Status</th><th>Date</th><th>Workshop</th><th>Notes</th><th style="width:100px" class="c">Actions</th>
+            <th>#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜΕΡΟΜΗΝΙΑ</th><th>ΣΥΝΕΡΓΕΙΟ</th><th>ΣΗΜΕΙΩΣΕΙΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
           </tr></thead>
-          <tbody>${expiryAlerts.length ? expiryAlerts.map((ea, i) => `<tr style="background:rgba(146,64,14,0.06)">
-          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">AUTO</span></td>
-          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
-          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+'d OVERDUE':ea.days+'d left'}</span></td>
-          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">EXPIRED</span>':'<span class="exp-badge exp-warning">EXPIRING</span>'}</td>
-          <td class="c"><span class="exp-badge" style="background:#92400E;color:#FEF3C7">AUTO</span></td>
-          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
-          <td style="font-size:12px">${ea.vType}</td>
-          <td style="font-size:11px">Expiry ≤14d</td>
-          <td class="c" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Done</button>
-          </td>
-        </tr>`).join('') : ''}${expiryAlerts.length && filtered.length ? '<tr><td colspan="9" style="padding:4px;background:var(--border);font-size:0"></td></tr>' : ''}${filtered.length ? filtered.map((r, i) => {
+          <tbody>${filtered.length ? filtered.map((r, i) => {
         const f = r.fields;
         return `<tr style="${f['Priority']==='SOS'?'background:rgba(127,29,29,0.06)':''}" onclick="_mreqOpenForm('${r.id}')">
           <td class="rn">${i+1}</td>
@@ -1978,18 +1994,54 @@ function _mreqPaint() {
           <td style="font-size:12px">${f['Workshop']||'—'}</td>
           <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
           <td class="c" onclick="event.stopPropagation()">
-            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Done</button>` : ''}
+            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
           </td>
         </tr>`;
-      }).join('') : (expiryAlerts.length ? '' : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+      }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
             illustration: 'truck',
-            title: _mreqTab === 'done' ? 'No completed orders yet' : 'No active work orders',
-            description: _mreqTab === 'done' ? 'Completed maintenance will appear here' : 'Create a work order or check Expiry Alerts for auto-detected issues',
-            action: _mreqTab !== 'done' ? { label: 'New Request', onClick: '_mreqOpenForm()' } : null
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">No work orders</div>'}</td></tr>`)}</tbody>
+            title: _mreqTab === 'done' ? 'Καμία ολοκληρωμένη εντολή ακόμη' : 'Καμία ενεργή εντολή εργασίας',
+            description: _mreqTab === 'done' ? 'Οι ολοκληρωμένες συντηρήσεις θα εμφανίζονται εδώ' : 'Δημιούργησε εντολή, ή δες τις λήξεις εγγράφων παρακάτω',
+            action: _mreqTab !== 'done' ? { label: 'Νέα εντολή', onClick: '_mreqOpenForm()' } : null
+          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία εντολή εργασίας</div>'}</td></tr>`}</tbody>
         </table>
       </div>
     </div>
+
+    <!-- ΕΝΟΤΗΤΑ 2: αυτόματα από λήξεις. Συμπτυγμένη, όριο 10.
+         Δεν είναι εντολές εργασίας — είναι η ίδια πληροφορία με το Expiry
+         Alerts. Έδιναν 3.913px ύψος για 1 πραγματική εντολή, και 64 κουμπιά
+         «Done» που έκλειναν κάτι που δεν άνοιξε ποτέ κανείς.
+         maint_req.md MR-1/MR-3/MR-4/MR-6. -->
+    ${expiryAlerts.length ? `<details class="exp-section" style="padding:0">
+      <summary style="cursor:pointer;list-style:none;padding:var(--space-4);display:flex;align-items:center;gap:var(--space-3)">
+        <div class="exp-section-badge" style="background:var(--warning-bg);color:var(--warning)">${_i('alert_triangle')}</div>
+        <div style="flex:1">
+          <div class="exp-section-title">ΑΠΟ ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ (${expiryAlerts.length})</div>
+          <div class="exp-section-sub">Δεν είναι εντολές εργασίας — προέρχονται από τα έγγραφα του στόλου</div>
+        </div>
+        <span class="dash-card-link" onclick="event.preventDefault();event.stopPropagation();_expiryGoto('expired')">Άνοιγμα στις Λήξεις Εγγράφων ${_i('chevron_right')}</span>
+      </summary>
+      <div class="exp-table-wrap">
+        <table class="mt">
+          <thead><tr>
+            <th style="width:60px"></th><th>ΠΙΝΑΚΙΔΑ</th><th>ΕΓΓΡΑΦΟ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜ. ΛΗΞΗΣ</th><th>ΤΥΠΟΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
+          </tr></thead>
+          <tbody>${expiryAlerts.slice(0, 10).map(ea => `<tr style="background:rgba(146,64,14,0.06)">
+          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">ΑΥΤΟΜ.</span></td>
+          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
+          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+' ημ. ληγμένο':'λήγει σε '+ea.days+' ημ.'}</span></td>
+          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">ΛΗΓΜΕΝΟ</span>':'<span class="exp-badge exp-warning">ΛΗΓΕΙ</span>'}</td>
+          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
+          <td style="font-size:12px">${ea.vType}</td>
+          <td class="c" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Ανανεώθηκε</button>
+          </td>
+        </tr>`).join('')}</tbody>
+        </table>
+        ${expiryAlerts.length > 10 ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:10px 0;background:none;border:0;font:inherit;cursor:pointer"
+          onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων ${_i('chevron_right')}</button>` : ''}
+      </div>
+    </details>` : ''}
     <div id="mreq-form-container"></div>`;
 }
 
