@@ -337,16 +337,16 @@ function selectNatlOrder(recId) {
         </div>
       </div>
       <div class="detail-actions">
-        ${canEdit?`<div class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
+        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </div>
-        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
+        </button>
+        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </div>`:''}
-        <div class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
+        </button>`:''}
+        <button type="button" class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-        </div>`:''}
-        <div class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</div>
+        </button>`:''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">

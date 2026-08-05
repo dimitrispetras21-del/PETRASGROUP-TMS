@@ -477,16 +477,16 @@ function selectIntlOrder(recId) {
         </div>
       </div>
       <div class="detail-actions">
-        ${canEdit?`<div class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
+        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </div>`:''}
-        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
+        </button>`:''}
+        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </div>`:''}
-        ${canEdit?`<div class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
+        </button>`:''}
+        ${canEdit?`<button type="button" class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h10M5 4V2h6v2M6 7v5M10 7v5M4 4l1 10h6l1-10"/></svg>
-        </div>`:''}
-        <div class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</div>
+        </button>`:''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">
