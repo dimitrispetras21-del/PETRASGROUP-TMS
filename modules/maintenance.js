@@ -276,14 +276,22 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
 }
 
-// Row tint based on worst expiry. Replaces a 3px coloured left border.
-// Only the two urgent bands get a tint: on a dense table most rows are fine,
-// so colouring all five levels made the urgent ones harder to spot, not easier.
-// Blue/green were reassurance nobody scans for. Severity is also in each cell.
-function _expRowTint(worst) {
-  if (worst === null) return '';
-  if (worst <= 7)  return 'background:rgba(220,38,38,0.06)';   // ληγμένο ή <1 εβδ.
-  if (worst <= 30) return 'background:rgba(180,83,9,0.06)';    // μέσα στον μήνα
+// Row-level severity encoding was removed, not just restyled.
+//
+// It started as a 3px coloured left border (the banned side-stripe), so the
+// first attempt converted it to a row tint. Measured against live data that
+// failed too: 44 of 64 rows came back red, 4 amber, 16 clean. When 69% of a
+// table is alarm-red it reads as "everything is on fire", not "look here
+// first" — the encoding stops discriminating exactly when it matters most.
+//
+// Each cell already carries its own expiry colour and its own «ληγμένο» /
+// «N ημ.» label, which is strictly more precise: it says WHICH document and
+// HOW overdue, not merely that something in this row is wrong. A vehicle in
+// good standing is legible by having no coloured cells at all.
+//
+// Kept as a no-op so the two call sites stay explicit about the decision
+// rather than silently losing an attribute.
+function _expRowTint(_worst) {
   return '';
 }
 
