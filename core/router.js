@@ -27,7 +27,7 @@ const NAV = [
     { id: 'payroll', label: 'Driver Payroll', icon: 'coins' },
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
-    { id: 'maint_dash',   label: 'Dashboard',       icon: 'layout_grid' },
+    { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
     { id: 'maint_req',    label: 'Work Orders',     icon: 'list_checks' },
     { id: 'maint_expiry', label: 'Expiry Alerts',   icon: 'alert_triangle' },
     { id: 'maint_svc',    label: 'Service Records', icon: 'tool' },
@@ -229,11 +229,17 @@ function navigate(page) {
     }
   }
 
-  let label = page, section = '';
+  // A route that is not in NAV used to fall through with `label = page`, so the
+  // topbar and the coming-soon body both showed the raw route id — "costs_dash"
+  // as a page title. Reachable through ?page=, ⌘K, or a stale bookmark.
+  // The id is still worth showing, but as evidence, not as a name.
+  // See docs/design/DEEP_AUDIT_2026-08-04/print.md PP-2.
+  let label = '', section = '', known = false;
   for (const g of NAV) {
     const item = g.items.find(i => i.id === page);
-    if (item) { label = item.label; section = g.section; break; }
+    if (item) { label = item.label; section = g.section; known = true; break; }
   }
+  if (!known) label = 'Άγνωστη σελίδα';
   const topbar = document.getElementById('topbarTitle');
   if (section && section !== label) {
     topbar.innerHTML = `<span style="color:var(--text-dim);font-weight:400">${section}</span> <span style="color:var(--text-dim);margin:0 4px;font-weight:300">/</span> ${label}`;
@@ -293,10 +299,13 @@ function navigate(page) {
     case 'drivers':        renderEntity('drivers');       break;
     case 'payroll':        c.innerHTML = showComingSoon('Driver Payroll');        break;
     // Costs
-    case 'costs_dash':     c.innerHTML = showComingSoon('Costs Dashboard');       break;
-    case 'fuel':           c.innerHTML = showComingSoon('Fuels');                 break;
+    // Not in NAV — reachable only via ?page= or a stale bookmark. See
+    // docs/design/DEEP_AUDIT_2026-08-04/costs.md CO-1. Blocked on the
+    // TRIP_COSTS table, which does not exist in the backend yet (CO-2).
+    case 'costs_dash':     c.innerHTML = showComingSoon('Πίνακας Κόστους — δεν έχει υλοποιηθεί'); break;
+    case 'fuel':           c.innerHTML = showComingSoon('Καύσιμα — δεν έχει υλοποιηθεί');         break;
     case 'costs':          c.innerHTML = showComingSoon('Costs');                 break;
-    case 'pl':             c.innerHTML = showComingSoon('P&Ls');                  break;
+    case 'pl':             c.innerHTML = showComingSoon('Κερδοφορία — δεν έχει υλοποιηθεί');      break;
     // CEO
     case 'ceo_dashboard':  renderCEODashboard();                                  break;
     // HR
@@ -324,7 +333,14 @@ function navigate(page) {
       renderAuditTrail();
       break;
     default:
-      c.innerHTML = showComingSoon(label);
+      // Unknown route: say so, and show the id as EVIDENCE rather than as a
+      // title. Before this, "costs_dash" appeared as the page heading and read
+      // like a half-built feature instead of a bad link. See print.md PP-2.
+      c.innerHTML = known
+        ? showComingSoon(label)
+        : showComingSoon(label) + `<div style="text-align:center;color:var(--text-dim);font-size:12px;margin-top:-28px">
+            Ζητήθηκε: <code>${escapeHtml(String(page))}</code> — ο σύνδεσμος είναι λάθος ή η σελίδα καταργήθηκε.
+          </div>`;
   }
 
   // Inject footer after page renders (delay for async renderers)

@@ -938,12 +938,13 @@ const _historyFilter = { trucks: {}, trailers: {} };
 
 function _historyPaint(vType) {
   const vehicles = vType === 'trucks' ? MAINT.trucks : MAINT.trailers;
-  const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
-  // Auto-select first active vehicle if nothing selected
-  if (!_historyVehicle[vType]) {
-    const first = vehicles.filter(v => v.fields['Active']).sort((a,b) => (a.fields['License Plate']||'').localeCompare(b.fields['License Plate']||''))[0];
-    if (first) _historyVehicle[vType] = first.fields['License Plate'] || '';
-  }
+  const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';   // DB value in 'Vehicle Type'
+  const vTypeGr    = vType === 'trucks' ? 'φορτηγό' : 'ρυμούλκα'; // display only
+  // No auto-selection. The first active plate used to be selected silently, so
+  // the page opened on CB0138HO with a full title and an empty history — and
+  // an empty history for the wrong vehicle reads exactly like an empty history
+  // for the right one. Nothing is selected until someone selects it.
+  // See docs/design/DEEP_AUDIT_2026-08-04/maint_trucks.md MT-4 / Π3.
   const selected = _historyVehicle[vType];
   const state = _historyFilter[vType];
 
@@ -1054,7 +1055,7 @@ function _historyPaint(vType) {
       <!-- Vehicle + Filter toolbar -->
       <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
         <select class="svc-filter" style="min-width:280px" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
-          <option value="">Select ${vTypeLabel}…</option>
+          <option value="">Επίλεξε ${vTypeGr}…</option>
           ${vehicleOpts}
         </select>
         ${selected ? `
@@ -1080,7 +1081,7 @@ function _historyPaint(vType) {
           <div class="dash-card-body">
             <div class="dash-empty" style="padding:var(--space-12) var(--space-4)">
               ${_i('truck', 32)}
-              <div>Select a ${vType === 'trucks' ? 'truck' : 'trailer'} to view its history</div>
+              <div>Επίλεξε ${vTypeGr} για να δεις το ιστορικό του</div>
             </div>
           </div>
         </div>` : `
