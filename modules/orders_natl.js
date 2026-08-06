@@ -558,11 +558,12 @@ async function submitNatlOrder(recId) {
             const f = d.fields;
             return `• ${f['Name'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
           }).join('\n');
-          const ok = confirm(
-            `⚠ Πιθανό duplicate\n\n` +
+          const ok = await confirmAction(
+            `Πιθανό duplicate\n\n` +
             `Υπάρχουν ${refDupes.length} National Orders με Reference "${fields['Reference']}":\n\n` +
             `${list}\n\n` +
-            `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+            `Συνέχεια αποθήκευσης ως νέα παραγγελία;`,
+            { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
           );
           if (!ok) {
             if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
@@ -597,12 +598,12 @@ async function submitNatlOrder(recId) {
         // save because a check errored would be a worse trade for a dispatcher
         // mid-entry.
         if (didFail(dups)) {
-          if (!confirm('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;')) {
+          if (!(await confirmAction('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;', { confirmLabel: 'Συνέχεια' }))) {
             if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
             throw new Error('v');
           }
         } else if (dups.length) {
-          if (!confirm('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;')) {
+          if (!(await confirmAction('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;', { confirmLabel: 'Δημιουργία' }))) {
             throw new Error('v');
           }
         }
@@ -979,7 +980,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 // records intact for audit/reporting. Use for client-cancelled orders.
 // ═══════════════════════════════════════════════
 async function cancelNatlOrder(recId) {
-  if (!confirm('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  if (!(await confirmAction('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
   try {
     await atPatch(TABLES.NAT_ORDERS, recId, { 'Status': 'Cancelled' });
     invalidateCache(TABLES.NAT_ORDERS);

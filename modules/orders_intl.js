@@ -1359,7 +1359,8 @@ async function submitIntlOrder(recId) {
       if (txt2 && !id2) unmatchedLocs.push(`Delivery Location ${i}: "${txt2}"`);
     }
     if (unmatchedLocs.length) {
-      alert('⚠ Αδύνατη υποβολή — οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.');
+      // OI-5: app modal αντί για native alert — ίδιο κείμενο, ίδια ροή.
+      await confirmAction('Οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.', { title: 'Αδύνατη υποβολή', confirmLabel: 'ΟΚ' });
       if (btn) { btn.textContent = recId ? 'Update Order' : 'Submit'; btn.disabled = false; }
       throw new Error('validation');
     }
@@ -1500,11 +1501,12 @@ async function submitIntlOrder(recId) {
           return links.some(l => (l?.id||l) === recId) && r.fields.Status === 'Assigned';
         });
         if (assignedGLs.length > 0) {
-            const ok = confirm(
-              `⚠️ Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
+            const ok = await confirmAction(
+              `Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
               `Αν αποθηκεύσεις αλλαγές, το φορτίο θα διαλυθεί αυτόματα\n` +
               `ώστε να ξαναφτιαχτεί με τα νέα δεδομένα.\n\n` +
-              `Θέλεις να συνεχίσεις;`
+              `Θέλεις να συνεχίσεις;`,
+              { title: 'Groupage φορτίο', confirmLabel: 'Συνέχεια', danger: true }
             );
             if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
 
@@ -1546,11 +1548,12 @@ async function submitIntlOrder(recId) {
           const f = d.fields;
           return `• ${f['Order Number'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
         }).join('\n');
-        const ok = confirm(
-          `⚠ Πιθανό duplicate\n\n` +
+        const ok = await confirmAction(
+          `Πιθανό duplicate\n\n` +
           `Υπάρχουν ${dupes.length} παραγγελίες με Reference "${fields['Reference']}":\n\n` +
           `${list}\n\n` +
-          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`,
+          { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
         );
         if (!ok) {
           if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
@@ -2294,7 +2297,7 @@ function _intlPrint() {
 // remain visible). Use this for client-cancelled orders.
 // ═══════════════════════════════════════════════════════════════
 async function cancelIntlOrder(recId) {
-  if (!confirm('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  if (!(await confirmAction('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
   try {
     await atPatch(TABLES.ORDERS, recId, { 'Status': 'Cancelled' });
     invalidateCache(TABLES.ORDERS);
@@ -2655,6 +2658,24 @@ async function cleanupOrphans() {
 }
 
 // Expose functions used from onclick/onchange/oninput/onblur handlers
+// SW-6: the in-app pallet modal (modules/pallet_upload.js) saves sheet flags
+// on the order, but the detail panel kept showing stale data — the dead
+// iframe-close that used to refresh never ran. Single public hook: refetch
+// one order into the store and repaint. Called by closePalletUpload().
+async function _intlRefreshOrder(orderId) {
+  try {
+    const fresh = await atGetOne(TABLES.ORDERS, orderId);
+    if (fresh && fresh.fields) {
+      const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
+      if (idx >= 0) INTL_ORDERS.data[idx] = fresh;
+    }
+    invalidateCache(TABLES.ORDERS);
+    _applyIntlFilters();
+    if (INTL_ORDERS.selectedId === orderId) selectIntlOrder(orderId);
+  } catch (e) { logError(e, 'orders_intl refresh after pallet save'); }
+}
+window._intlRefreshOrder = _intlRefreshOrder;
+
 window.cancelIntlOrder = cancelIntlOrder;
 window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
