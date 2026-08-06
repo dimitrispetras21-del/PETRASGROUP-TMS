@@ -3,371 +3,215 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Weekly International v2 — Πρωτότυπο «Καθολικό»</title>
+<title>Weekly International v2.1 — «Καθολικό» · 34 σειρές demo</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════════════
-   WEEKLY v2 — «Το Καθολικό της Εβδομάδας» (δοκιμαστικό, mock δεδομένα)
-   Αρχές (από audit + WEEKLY PLAN xlsx + owner 8/8):
-   · Μία γραμμή = ένας γύρος (ΕΞΑΓΩΓΗ | ΑΝΑΘΕΣΗ | ΕΙΣΑΓΩΓΗ) — μένει.
-   · Αραιό σαν το Excel: τα κενά ΜΙΛΟΥΝ, καμία inline σήμανση default.
-   · Χρώμα ΜΟΝΟ όπου σημαίνει: τα 3 pills + μία μπλε υπογραφή (Cold Chain).
-   · Εβδομάδες ως καρτέλες φύλλων (sheet tabs) — το νοητό μοντέλο τους.
-   · «Επιστροφές οδηγών» δεξιά, όπως η στήλη του Excel.
-   · Ό,τι έξτρα: πίσω από «Λεπτομέρειες» ή μέσα στο popover.
+   WEEKLY v2.1 — «Καθολικό», έκδοση Excel-πυκνότητας (mock, 34 σειρές)
+   Owner 8/8: «δουλεύουμε με Excel, εξοικειωμένοι· άνετοι με 30-50 σειρές·
+   το πρόβλημα του Excel είναι η αυτοματοποίηση — οι αυτόματες αναθέσεις».
+   → Μονόγραμμες σειρές 32px (≈20 ορατές/οθόνη), sticky ημέρες στο scroll,
+   → ✨ ΑΥΤΟΜΑΤΗ ΠΡΟΤΑΣΗ πάνω στο κόκκινο pill: αποδοχή με ΕΝΑ κλικ.
    ═══════════════════════════════════════════════════════════════════ */
 :root{
-  --navy:#0B1929; --navy-deep:#080F1A; --accent:#0284C7; --accent-soft:rgba(2,132,199,.09);
-  --bg:#F4F6F9; --sheet:#FFFFFF; --ink:#0F172A; --mid:#475569; --dim:#94A3B8;
+  --navy:#0B1929; --accent:#0284C7; --accent-soft:rgba(2,132,199,.09);
+  --bg:#F4F6F9; --sheet:#fff; --ink:#0F172A; --mid:#475569; --dim:#94A3B8;
   --hair:#E7EBF0; --hair-strong:#D6DDE6;
-  --own:#0C2D5C; --partner:#065F46; --un:#B42318; --un-bg:#FEF3F2;
-  --ok:#067647; --warn:#B54708;
-  --f-display:'Syne',sans-serif; --f-body:'DM Sans',sans-serif;
+  --own:#0C2D5C; --partner:#065F46; --un:#B42318; --un-bg:#FEF3F2; --ok:#067647; --warn:#B54708;
+  --fd:'Syne',sans-serif; --fb:'DM Sans',sans-serif;
 }
 *{margin:0;padding:0;box-sizing:border-box}
-html{scrollbar-gutter:stable}
-body{font-family:var(--f-body);background:var(--bg);color:var(--ink);font-size:13px;line-height:1.45;
-     -webkit-font-smoothing:antialiased}
+body{font-family:var(--fb);background:var(--bg);color:var(--ink);font-size:12.5px;-webkit-font-smoothing:antialiased}
 button{font:inherit;background:none;border:none;cursor:pointer;color:inherit}
 
-/* ── ΚΟΡΥΦΗ: μία γραμμή, sticky, σαν ράχη καθολικού ── */
-.masthead{position:sticky;top:0;z-index:40;background:var(--sheet);border-bottom:1px solid var(--hair-strong)}
-.mast-in{max-width:1560px;margin:0 auto;padding:0 28px;height:58px;display:flex;align-items:center;gap:22px}
-.brand{font-family:var(--f-display);font-weight:800;font-size:15px;letter-spacing:.4px;color:var(--navy);white-space:nowrap}
+/* ── Κορυφή: μία sticky γραμμή ── */
+.mast{position:sticky;top:0;z-index:50;background:var(--sheet);border-bottom:1px solid var(--hair-strong)}
+.mi{max-width:1600px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:18px}
+.brand{font-family:var(--fd);font-weight:800;font-size:14px;color:var(--navy);white-space:nowrap}
 .brand em{font-style:normal;color:var(--dim);font-weight:600}
-
-/* Εβδομάδες = καρτέλες φύλλων (κλείσιμο ματιού στο Excel τους) */
-.sheettabs{display:flex;align-items:flex-end;gap:2px;height:58px;padding-top:16px}
-.stab{font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.4px;color:var(--mid);
-      padding:9px 15px 10px;border:1px solid transparent;border-bottom:none;border-radius:9px 9px 0 0;
-      position:relative;top:1px;transition:color .12s,background .12s}
+.tabs{display:flex;align-items:flex-end;gap:2px;height:54px;padding-top:14px}
+.stab{font-family:var(--fd);font-weight:700;font-size:11.5px;color:var(--mid);padding:8px 13px 9px;
+      border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;position:relative;top:1px}
 .stab:hover{color:var(--ink);background:var(--accent-soft)}
-.stab small{display:block;font-family:var(--f-body);font-weight:500;font-size:9px;color:var(--dim);letter-spacing:0;margin-top:1px}
 .stab.on{background:var(--bg);border-color:var(--hair-strong);color:var(--navy)}
 .stab.on::after{content:'';position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
-.stab-step{align-self:center;color:var(--dim);font-size:15px;padding:6px 8px;border-radius:7px}
-.stab-step:hover{background:var(--accent-soft);color:var(--accent)}
+.step{align-self:center;color:var(--dim);padding:5px 7px;border-radius:6px}
+.step:hover{background:var(--accent-soft);color:var(--accent)}
+.phase{font-size:9px;font-weight:800;letter-spacing:1.1px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:2px 9px;align-self:center;white-space:nowrap}
 
-.phase{font-size:9.5px;font-weight:800;letter-spacing:1.2px;color:var(--accent);
-       border:1px solid currentColor;border-radius:999px;padding:3px 10px;align-self:center;white-space:nowrap}
+.tally{margin-left:auto;display:flex;align-items:center;gap:14px;white-space:nowrap}
+.t{font-size:11.5px;color:var(--mid)} .t b{font-family:var(--fd);font-size:13px;color:var(--ink)}
+.t.alert,.t.alert b{color:var(--un)} .t.alert{cursor:pointer;border-bottom:1px dashed rgba(180,35,24,.5)}
+.sugbtn{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--accent);
+        background:var(--accent-soft);border-radius:999px;padding:5px 12px}
+.sugbtn:hover{background:var(--accent);color:#fff}
+.acts{display:flex;gap:2px;border-left:1px solid var(--hair);padding-left:10px}
+.ab{font-size:11.5px;font-weight:600;color:var(--mid);padding:6px 9px;border-radius:6px}
+.ab:hover{color:var(--navy);background:var(--accent-soft)} .ab.on{color:var(--accent)}
 
-/* Σύνοψη ως ΚΕΙΜΕΝΟ, όχι κάρτες */
-.tally{margin-left:auto;display:flex;align-items:center;gap:18px;white-space:nowrap}
-.tally .t{font-size:12px;color:var(--mid)}
-.tally .t b{font-family:var(--f-display);font-size:14px;color:var(--ink);font-weight:700}
-.tally .t.alert{color:var(--un)} .tally .t.alert b{color:var(--un)}
-.tally .t.alert{cursor:pointer;border-bottom:1px dashed rgba(180,35,24,.5)}
-.actions{display:flex;gap:2px;border-left:1px solid var(--hair);padding-left:14px}
-.abtn{font-size:12px;font-weight:600;color:var(--mid);padding:7px 10px;border-radius:7px;transition:.12s}
-.abtn:hover{color:var(--navy);background:var(--accent-soft)}
-.abtn.on{color:var(--accent)}
-
-/* ── ΣΩΜΑ: φύλλο + πλαϊνή στήλη επιστροφών ── */
-.wrap{max-width:1560px;margin:18px auto 60px;padding:0 28px;display:grid;grid-template-columns:1fr 196px;gap:22px;align-items:start}
-.sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:12px;overflow:hidden;
+/* ── Σώμα ── */
+.wrap{max-width:1600px;margin:14px auto 60px;padding:0 24px;display:grid;grid-template-columns:1fr 186px;gap:18px;align-items:start}
+.sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:10px;
        box-shadow:0 1px 2px rgba(11,25,41,.04),0 12px 34px -18px rgba(11,25,41,.12)}
 
-/* Κεφαλίδες στηλών — letterspaced, ουδέτερες */
-.cols{display:grid;grid-template-columns:44px 1fr 236px 1fr;border-bottom:1px solid var(--hair-strong);background:var(--sheet)}
-.cols .c{font-family:var(--f-display);font-size:10px;font-weight:800;letter-spacing:2.2px;color:var(--mid);
-         padding:11px 14px;display:flex;align-items:center;gap:8px}
-.cols .c .n{font-family:var(--f-body);font-weight:700;font-size:10px;color:var(--sheet);background:var(--navy);
-            border-radius:999px;min-width:20px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px;letter-spacing:0}
-.cols .hint{margin-left:auto;color:var(--dim);cursor:help;font-family:var(--f-body);font-weight:600;letter-spacing:0;font-size:11px;border:1px solid var(--hair);border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center}
+.cols{position:sticky;top:54px;z-index:30;display:grid;grid-template-columns:40px 1fr 210px 1fr;
+      background:var(--sheet);border-bottom:1px solid var(--hair-strong);border-radius:10px 10px 0 0}
+.cols .c{font-family:var(--fd);font-size:9.5px;font-weight:800;letter-spacing:2px;color:var(--mid);
+         padding:9px 12px;display:flex;align-items:center;gap:7px}
+.cols .n{font-family:var(--fb);font-weight:700;font-size:9.5px;color:#fff;background:var(--navy);border-radius:999px;
+         min-width:19px;height:15px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;letter-spacing:0}
+.cols .hint{margin-left:auto;color:var(--dim);cursor:help;font-size:10px;border:1px solid var(--hair);border-radius:50%;
+            width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-weight:600;letter-spacing:0}
 
-/* Ημέρα = τυπογραφικός τίτλος, όχι μαύρη μπάρα */
-.day{display:flex;align-items:baseline;gap:10px;padding:16px 14px 7px;border-bottom:1px solid var(--hair)}
-.day .d{font-family:var(--f-display);font-weight:800;font-size:12px;letter-spacing:1.6px;color:var(--navy)}
-.day .k{font-size:10.5px;color:var(--dim)}
+.day{position:sticky;top:87px;z-index:20;display:flex;align-items:baseline;gap:9px;padding:8px 12px 6px;
+     background:var(--sheet);border-bottom:1px solid var(--hair)}
+.day .d{font-family:var(--fd);font-weight:800;font-size:11px;letter-spacing:1.4px;color:var(--navy)}
+.day .k{font-size:10px;color:var(--dim)}
 .day.today{box-shadow:inset 3px 0 0 var(--accent)}
-.day.today .now{font-size:9px;font-weight:800;letter-spacing:1.5px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:1px 8px;margin-left:2px}
+.day .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:0 7px}
 
-/* Γραμμή γύρου */
-.row{display:grid;grid-template-columns:44px 1fr 236px 1fr;border-bottom:1px solid var(--hair);
-     min-height:54px;align-items:center;position:relative;background:var(--sheet);
-     animation:reveal .5s cubic-bezier(.2,.7,.3,1) both}
-.row:hover{background:#FAFCFE}
-@keyframes reveal{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-.num{font-size:11px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
-.leg{padding:8px 14px;min-width:0}
-.route{font-size:12.5px;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.route .to{font-weight:700}
-.route .sep{color:var(--dim);margin:0 6px}
-.sub{margin-top:2px;font-size:10.5px;color:var(--dim);display:flex;gap:10px;align-items:center;font-variant-numeric:tabular-nums}
-.sub .mono{letter-spacing:.2px}
-.tag{font-size:8.5px;font-weight:800;letter-spacing:.6px;color:var(--mid);border:1px solid var(--hair-strong);border-radius:4px;padding:0 5px}
+/* Συμπαγής μονόγραμμη σειρά — 32px: 30-50 σειρές = 1.5-2.5 οθόνες */
+.row{display:grid;grid-template-columns:40px 1fr 210px 1fr;border-bottom:1px solid var(--hair);
+     height:32px;align-items:center;background:var(--sheet)}
+.row:hover{background:#F7FAFD}
+.num{font-size:10px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
+.num.imp{color:var(--accent);font-weight:700}
+.leg{padding:0 12px;min-width:0;display:flex;align-items:baseline;gap:9px;overflow:hidden}
+.route{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.route .to{font-weight:700} .route .sep{color:var(--dim);margin:0 5px}
+.meta{font-size:10px;color:var(--dim);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;display:flex;gap:7px;align-items:baseline}
+.tag{font-size:8px;font-weight:800;letter-spacing:.5px;color:var(--mid);border:1px solid var(--hair-strong);border-radius:3px;padding:0 4px}
 .tag.risk{color:var(--un);border-color:rgba(180,35,24,.35)}
-/* κρυφά default — «Λεπτομέρειες» τα δείχνει */
-.xtra{display:none;font-size:9px;font-weight:700;letter-spacing:.4px;border-radius:4px;padding:1px 6px}
-body.details .xtra{display:inline-block}
+.xtra{display:none;font-size:8.5px;font-weight:700;border-radius:3px;padding:0 5px}
+body.details .xtra{display:inline}
 .xtra.cross{color:var(--accent);background:var(--accent-soft)}
 .xtra.late{color:var(--un);background:var(--un-bg)}
+.leg.void{color:var(--hair-strong);justify-content:center;font-size:13px;user-select:none}
 
-/* Το κενό μιλά: import-only γραμμή έχει αληθινά άδεια εξαγωγή */
-.leg.void{color:var(--hair-strong);font-size:14px;text-align:center;user-select:none}
-
-/* Pills ανάθεσης — ο σημασιολογικός πυρήνας, ευγενικός αλλά καθαρός */
-.assign{padding:8px 10px;display:flex;align-items:center;justify-content:center;gap:6px}
-.pill{width:100%;max-width:212px;border-radius:8px;padding:6px 12px;text-align:center;line-height:1.25;
-      transition:transform .12s, box-shadow .12s}
-.pill .a{font-weight:700;font-size:11.5px;color:#fff;letter-spacing:.2px}
-.pill .b{font-size:10px;color:rgba(255,255,255,.72)}
+/* Pills slim 24px */
+.assign{padding:0 8px;display:flex;justify-content:center}
+.pill{width:100%;max-width:196px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+      gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden}
+.pill small{font-weight:500;color:rgba(255,255,255,.7);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
 .pill.own{background:var(--own)} .pill.par{background:var(--partner)}
-.pill.un{background:transparent;border:1.5px dashed rgba(180,35,24,.55);cursor:pointer}
-.pill.un .a{color:var(--un);font-weight:700}
-.pill.un .b{color:rgba(180,35,24,.65)}
-.pill.un:hover{background:var(--un-bg);transform:translateY(-1px)}
-.pill.own:hover,.pill.par:hover{box-shadow:0 4px 14px -6px rgba(11,25,41,.5);transform:translateY(-1px);cursor:pointer}
+.pill.own:hover,.pill.par:hover{cursor:pointer;box-shadow:0 3px 10px -4px rgba(11,25,41,.5)}
+/* ✨ Η ΑΥΤΟΜΑΤΗ ΠΡΟΤΑΣΗ: το κενό pill ΔΕΝ είναι αδιέξοδο — προτείνει. */
+.pill.sug{background:transparent;border:1.5px dashed rgba(180,35,24,.5);color:var(--un);cursor:pointer;position:relative}
+.pill.sug .s{font-size:10px;font-weight:700;color:var(--accent);overflow:hidden;text-overflow:ellipsis}
+.pill.sug .go{flex-shrink:0;background:var(--accent);color:#fff;border-radius:5px;font-size:10px;font-weight:800;
+              padding:2px 7px;line-height:1}
+.pill.sug .go:hover{background:var(--ok)}
+.pill.sug:hover{background:var(--un-bg)}
+.pill.un{background:transparent;border:1.5px dashed rgba(180,35,24,.5)}
+.pill.un b{color:var(--un);font-size:10.5px}
+.grp-b{font-family:var(--fd);font-size:8.5px;font-weight:700;background:var(--navy);color:#fff;border-radius:999px;padding:1px 6px;cursor:pointer;flex-shrink:0}
+.grp-b:hover{background:var(--accent)}
 
-/* Groupage: αγκύλη που δένει τις γραμμές — δηλώνει, δεν φωνάζει */
-.grp .num{position:relative}
-.grp .num::before{content:'';position:absolute;left:9px;top:-27px;bottom:-27px;width:7px;
-      border-left:2px solid var(--navy);border-top:2px solid var(--navy);border-bottom:2px solid var(--navy);border-radius:4px 0 0 4px}
-.grp.first .num::before{top:8px} .grp.last .num::before{bottom:8px}
-.gbadge{position:absolute;left:-1px;top:50%;transform:translate(-50%,-50%);background:var(--navy);color:#fff;
-        font-family:var(--f-display);font-weight:700;font-size:9px;border-radius:999px;padding:2px 7px;white-space:nowrap;cursor:pointer}
-.gbadge:hover{background:var(--accent)}
+/* ── Επιστροφές (η στήλη του Excel) ── */
+.rt{position:sticky;top:70px}
+.rt h3{font-family:var(--fd);font-size:9.5px;font-weight:800;letter-spacing:1.8px;color:var(--mid);margin:2px 2px 8px}
+.rc{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:8px;padding:5px 10px;margin-bottom:5px;
+    display:flex;align-items:baseline;gap:8px}
+.rc b{font-size:11px} .rc span{font-size:10px;color:var(--mid);margin-left:auto;white-space:nowrap}
+.rc.free{border-style:dashed} .rc.free span{color:var(--ok);font-weight:600}
+.rnote{font-size:9px;color:var(--dim);margin-top:8px;line-height:1.5}
 
-/* ── Πλαϊνή στήλη: Επιστροφές οδηγών (η στήλη του Excel) ── */
-.returns{position:sticky;top:76px}
-.returns h3{font-family:var(--f-display);font-size:10px;font-weight:800;letter-spacing:2px;color:var(--mid);margin:2px 2px 10px}
-.rlist{display:flex;flex-direction:column;gap:6px}
-.rcard{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:9px;padding:7px 11px;
-       display:flex;align-items:baseline;gap:8px;animation:reveal .5s .25s both}
-.rcard b{font-size:11.5px;color:var(--ink);font-weight:700}
-.rcard span{font-size:10.5px;color:var(--mid);margin-left:auto;white-space:nowrap}
-.rcard.free{border-style:dashed} .rcard.free span{color:var(--ok);font-weight:600}
-.rnote{font-size:9.5px;color:var(--dim);margin-top:10px;line-height:1.5;padding:0 2px}
-
-/* ── Popover ανάθεσης (mock) ── */
+/* ── Popover (mock) ── */
 .pop{position:fixed;inset:0;background:rgba(11,25,41,.28);backdrop-filter:blur(2px);display:none;z-index:60}
 .pop.on{display:flex;align-items:center;justify-content:center}
-.card{width:560px;max-width:92vw;background:var(--sheet);border-radius:14px;border:1px solid var(--hair-strong);
-      box-shadow:0 30px 80px -20px rgba(8,15,26,.45);animation:popin .18s cubic-bezier(.22,.9,.24,1)}
+.card{width:560px;max-width:92vw;background:var(--sheet);border-radius:13px;border:1px solid var(--hair-strong);
+      box-shadow:0 30px 80px -20px rgba(8,15,26,.45);animation:popin .16s cubic-bezier(.22,.9,.24,1)}
 @keyframes popin{from{opacity:0;transform:scale(.97) translateY(6px)}}
-.card h4{font-family:var(--f-display);font-size:13px;font-weight:800;color:var(--navy);letter-spacing:.3px}
-.card .hd{padding:16px 20px 12px;border-bottom:1px solid var(--hair);display:flex;align-items:baseline;gap:10px}
-.card .hd .r{font-size:11px;color:var(--mid)}
-.card .hd button{margin-left:auto;color:var(--dim);font-size:16px}
-.card .bd{padding:14px 20px 6px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
-.f label{display:block;font-size:9px;font-weight:800;letter-spacing:1.2px;color:var(--dim);margin-bottom:4px}
-.f input{width:100%;border:1px solid var(--hair-strong);border-radius:7px;padding:7px 9px;font:inherit;font-size:12px}
+.card .hd{padding:14px 18px 11px;border-bottom:1px solid var(--hair);display:flex;align-items:baseline;gap:10px}
+.card h4{font-family:var(--fd);font-size:12.5px;font-weight:800;color:var(--navy)}
+.card .r{font-size:11px;color:var(--mid)} .card .hd button{margin-left:auto;color:var(--dim);font-size:15px}
+.card .bd{padding:12px 18px 4px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
+.f label{display:block;font-size:8.5px;font-weight:800;letter-spacing:1.1px;color:var(--dim);margin-bottom:3px}
+.f input{width:100%;border:1px solid var(--hair-strong);border-radius:6px;padding:6px 8px;font:inherit;font-size:11.5px}
 .f input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
-.avail{grid-column:1/-1;border:1px solid var(--hair);border-radius:8px;max-height:96px;overflow:auto}
-.av{display:flex;gap:8px;align-items:baseline;padding:6px 10px;border-bottom:1px solid var(--hair);font-size:12px;cursor:pointer}
-.av:hover{background:var(--accent-soft)} .av:last-child{border-bottom:none}
-.av small{color:var(--warn);font-size:10px;margin-left:auto}
-.av.free small{color:var(--ok)}
-.lane{grid-column:1/-1;background:var(--bg);border-radius:8px;padding:8px 12px;font-size:11px;color:var(--mid);display:flex;gap:12px;flex-wrap:wrap;align-items:baseline}
-.lane b{color:var(--ink)} .lane .li{white-space:nowrap}
-.card .ft{padding:12px 20px 16px;display:flex;gap:8px;justify-content:flex-end}
-.btn{border-radius:8px;padding:8px 16px;font-weight:700;font-size:12px}
+.avail{grid-column:1/-1;border:1px solid var(--hair);border-radius:7px;max-height:88px;overflow:auto}
+.av{display:flex;gap:8px;align-items:baseline;padding:5px 9px;border-bottom:1px solid var(--hair);font-size:11.5px;cursor:pointer}
+.av:hover{background:var(--accent-soft)} .av:last-child{border:none}
+.av small{margin-left:auto;font-size:9.5px;color:var(--warn)} .av.free small{color:var(--ok)}
+.lane{grid-column:1/-1;background:var(--bg);border-radius:7px;padding:7px 11px;font-size:10.5px;color:var(--mid);display:flex;gap:11px;flex-wrap:wrap}
+.lane b{color:var(--ink)}
+.card .ft{padding:10px 18px 14px;display:flex;gap:8px;justify-content:flex-end}
+.btn{border-radius:7px;padding:7px 14px;font-weight:700;font-size:11.5px}
 .btn.ghost{color:var(--mid)} .btn.ghost:hover{background:var(--bg)}
 .btn.go{background:var(--navy);color:#fff} .btn.go:hover{background:var(--accent)}
 
-/* Υποσέλιδο πρωτοτύπου */
-.protonote{max-width:1560px;margin:0 auto;padding:0 28px 40px;font-size:10.5px;color:var(--dim)}
-
-@media (max-width:1280px){
-  .wrap{grid-template-columns:1fr}
-  .returns{position:static}
-  .rlist{flex-direction:row;flex-wrap:wrap}
-  .rcard span{margin-left:8px}
-}
+.note{max-width:1600px;margin:0 auto;padding:0 24px 40px;font-size:10px;color:var(--dim)}
+@media (max-width:1240px){.wrap{grid-template-columns:1fr}.rt{position:static;display:flex;gap:6px;flex-wrap:wrap}.rt h3{width:100%}}
 </style>
 </head>
 <body>
 
-<header class="masthead">
-  <div class="mast-in">
-    <div class="brand">PETRAS <em>· Weekly International</em></div>
-    <nav class="sheettabs" aria-label="Εβδομάδες">
-      <button class="stab-step" title="Προηγούμενη">‹</button>
-      <button class="stab">W31<small>27/7–2/8</small></button>
-      <button class="stab">W32<small>3–9/8</small></button>
-      <button class="stab on">W33<small>10–16/8</small></button>
-      <button class="stab">W34<small>17–23/8</small></button>
-      <button class="stab-step" title="Επόμενη">›</button>
-    </nav>
-    <span class="phase">ΧΤΙΖΕΤΑΙ</span>
-    <div class="tally">
-      <span class="t"><b>11</b> εξαγωγές</span>
-      <span class="t"><b>7</b> εισαγωγές</span>
-      <span class="t"><b>8</b> ταιριασμένα</span>
-      <span class="t alert" title="Μετάβαση στην πρώτη εκκρεμή"><b>2</b> εκκρεμή</span>
-      <div class="actions">
-        <button class="abtn" id="det" onclick="document.body.classList.toggle('details');this.classList.toggle('on')">Λεπτομέρειες</button>
-        <button class="abtn">Εκτύπωση</button>
-        <button class="abtn">CSV</button>
-        <button class="abtn">↻</button>
-      </div>
+<header class="mast"><div class="mi">
+  <div class="brand">PETRAS <em>· Weekly International</em></div>
+  <nav class="tabs">
+    <button class="step">‹</button>
+    <button class="stab">W31</button><button class="stab">W32</button>
+    <button class="stab on">W33</button><button class="stab">W34</button>
+    <button class="step">›</button>
+  </nav>
+  <span class="phase">ΧΤΙΖΕΤΑΙ</span>
+  <div class="tally">
+    <button class="sugbtn" title="Προτάσεις ανάθεσης από διαθεσιμότητα, επιστροφές και ιστορικό — αποδοχή με ✓">✨ 4 προτάσεις</button>
+    <span class="t"><b id="c-exp">0</b> εξαγ</span>
+    <span class="t"><b id="c-imp">0</b> εισαγ</span>
+    <span class="t alert"><b id="c-pend">0</b> εκκρεμή</span>
+    <div class="acts">
+      <button class="ab" onclick="document.body.classList.toggle('details');this.classList.toggle('on')">Λεπτομέρειες</button>
+      <button class="ab">Εκτύπωση</button><button class="ab">CSV</button><button class="ab">↻</button>
     </div>
   </div>
-</header>
+</div></header>
 
 <div class="wrap">
-  <main class="sheet" aria-label="Πλάνο εβδομάδας">
+  <main class="sheet">
     <div class="cols">
       <div class="c"></div>
-      <div class="c">ΕΞΑΓΩΓΗ <span class="n">11</span> <span class="hint" title="Δεξί κλικ σε γραμμή: ομαδοποίηση">ⓘ</span></div>
+      <div class="c">ΕΞΑΓΩΓΗ <span class="n" id="n-exp"></span><span class="hint" title="Δεξί κλικ: ομαδοποίηση">ⓘ</span></div>
       <div class="c" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
-      <div class="c">ΕΙΣΑΓΩΓΗ <span class="n">7</span> <span class="hint" title="Σύρε εισαγωγή πάνω σε εξαγωγή για ταίριασμα">ⓘ</span></div>
+      <div class="c">ΕΙΣΑΓΩΓΗ <span class="n" id="n-imp"></span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
     </div>
-
-    <!-- ═════════ ΔΕΥΤΕΡΑ ═════════ -->
-    <div class="day today"><span class="d">ΔΕΥΤΕΡΑ 10/8</span><span class="now">ΣΗΜΕΡΑ</span><span class="k">3 εξαγωγές · 2 εισαγωγές</span></div>
-
-    <div class="row" style="animation-delay:.03s">
-      <div class="num">1</div>
-      <div class="leg">
-        <div class="route">Αγρόκτημα Βέρμιο, Νάουσα <span class="sep">→</span> <span class="to">Fruchthof München, DE</span></div>
-        <div class="sub"><span class="mono">10/8 → 12/8</span><span>33 pal</span><span class="tag">PE</span></div>
-      </div>
-      <div class="assign"><div class="pill own"><div class="a">ΝΙΚ-4821 · Ρ-3310</div><div class="b">Παπαδόπουλος</div></div></div>
-      <div class="leg">
-        <div class="route">IFCO Wels, AT <span class="sep">→</span> <span class="to">Vermion Fresh, Βέροια</span></div>
-        <div class="sub"><span class="mono">13/8 → 14/8</span><span>29 pal</span><span class="xtra cross">↤ φορτώνει W34</span></div>
-      </div>
-    </div>
-
-    <div class="row" style="animation-delay:.06s">
-      <div class="num">2</div>
-      <div class="leg">
-        <div class="route">Οπωρώνες Πέλλας ΑΕ <span class="sep">→</span> <span class="to">Grossmarkt Wien, AT</span></div>
-        <div class="sub"><span class="mono">10/8 → 12/8</span><span>32 pal</span><span class="tag risk">RISK</span><span class="xtra late">⚠ φόρτωση χωρίς ανάθεση</span></div>
-      </div>
-      <div class="assign"><button class="pill un" onclick="pop(1)"><div class="a">Ανάθεσε</div><div class="b">φόρτωση σήμερα</div></button></div>
-      <div class="leg void">—</div>
-    </div>
-
-    <div class="row" style="animation-delay:.09s">
-      <div class="num">3</div>
-      <div class="leg">
-        <div class="route">ΨΥΓΕΙΑ ΗΜΑΘΙΑΣ <span class="sep">→</span> <span class="to">Rungis Market, FR</span></div>
-        <div class="sub"><span class="mono">10/8 → 13/8</span><span>30 pal</span><span class="tag">VS</span></div>
-      </div>
-      <div class="assign"><div class="pill par"><div class="a">TransBalkan Ltd</div><div class="b">2.950 € · ΤΒ-8842</div></div></div>
-      <div class="leg">
-        <div class="route">Perpignan St-Charles, FR <span class="sep">→</span> <span class="to">Αθήνα ΟΚΑΑ</span></div>
-        <div class="sub"><span class="mono">14/8 → 16/8</span><span>33 pal</span></div>
-      </div>
-    </div>
-
-    <!-- import-only: το κενό μιλά -->
-    <div class="row" style="animation-delay:.12s">
-      <div class="num" style="color:var(--accent);font-weight:700">I1</div>
-      <div class="leg void">—</div>
-      <div class="assign"><button class="pill un" onclick="pop(2)"><div class="a">Ανάθεσε</div><div class="b">εισαγωγή · χωρίς όχημα</div></button></div>
-      <div class="leg">
-        <div class="route">Bologna CAAB, IT <span class="sep">→</span> <span class="to">Θεσσαλονίκη</span></div>
-        <div class="sub"><span class="mono">11/8 → 13/8</span><span>26 pal</span></div>
-      </div>
-    </div>
-
-    <!-- ═════════ ΤΡΙΤΗ ═════════ -->
-    <div class="day"><span class="d">ΤΡΙΤΗ 11/8</span><span class="k">4 εξαγωγές · 1 εισαγωγή</span></div>
-
-    <!-- groupage: αγκύλη δένει 2 γραμμές -->
-    <div class="row grp first" style="animation-delay:.15s">
-      <div class="num">4<span class="gbadge" title="Εκτύπωση ομάδας — ένα πακέτο">×2 ⎙</span></div>
-      <div class="leg">
-        <div class="route">Συν. Βερμίου, Κοπανός <span class="sep">→</span> <span class="to">Hamburg Grossmarkt, DE</span></div>
-        <div class="sub"><span class="mono">11/8 → 13/8</span><span>18 pal</span><span class="tag">GRP</span></div>
-      </div>
-      <div class="assign"><div class="pill own"><div class="a">ΝΙΚ-1177 · Ρ-2205</div><div class="b">Καραγιάννης</div></div></div>
-      <div class="leg">
-        <div class="route">Venlo Fresh Park, NL <span class="sep">→</span> <span class="to">Vermion Fresh, Βέροια</span></div>
-        <div class="sub"><span class="mono">14/8 → 16/8</span><span>31 pal</span></div>
-      </div>
-    </div>
-    <div class="row grp last" style="animation-delay:.18s">
-      <div class="num">5</div>
-      <div class="leg">
-        <div class="route">Φάρμα Ολύμπου <span class="sep">→</span> <span class="to">Hamburg Grossmarkt, DE</span></div>
-        <div class="sub"><span class="mono">11/8 → 13/8</span><span>14 pal</span><span class="tag">GRP</span></div>
-      </div>
-      <div class="assign"><div class="pill own" style="opacity:.45"><div class="a">— μαζί με #4 —</div></div></div>
-      <div class="leg void">—</div>
-    </div>
-
-    <div class="row" style="animation-delay:.21s">
-      <div class="num">6</div>
-      <div class="leg">
-        <div class="route">Κήποι Έδεσσας ΑΕ <span class="sep">→</span> <span class="to">Praha Lipence, CZ</span></div>
-        <div class="sub"><span class="mono">11/8 → 13/8</span><span>33 pal</span></div>
-      </div>
-      <div class="assign"><div class="pill par"><div class="a">Nord Freight OÜ</div><div class="b">3.100 € · NF-204</div></div></div>
-      <div class="leg">
-        <div class="route">Brno Modřice, CZ <span class="sep">→</span> <span class="to">Λάρισα</span></div>
-        <div class="sub"><span class="mono">14/8 → 16/8</span><span>30 pal</span></div>
-      </div>
-    </div>
-
-    <!-- ═════════ ΠΕΜΠΤΗ ═════════ -->
-    <div class="day"><span class="d">ΠΕΜΠΤΗ 13/8</span><span class="k">2 εξαγωγές · 2 εισαγωγές</span></div>
-
-    <div class="row" style="animation-delay:.24s">
-      <div class="num">7</div>
-      <div class="leg">
-        <div class="route">Vermion Fresh, Βέροια <span class="sep">→</span> <span class="to">Lidl Zentrale Ost, DE</span></div>
-        <div class="sub"><span class="mono">13/8 → 15/8</span><span>33 pal</span><span class="tag">VS</span><span class="tag">PE</span></div>
-      </div>
-      <div class="assign"><div class="pill own"><div class="a">ΝΙΚ-9034 · Ρ-4471</div><div class="b">Δημητρίου</div></div></div>
-      <div class="leg">
-        <div class="route">Gemüsering Stuttgart, DE <span class="sep">→</span> <span class="to">Vermion Fresh, Βέροια</span></div>
-        <div class="sub"><span class="mono">15/8 → 17/8</span><span>32 pal</span><span class="xtra cross">↦ παραδίδει W34</span></div>
-      </div>
-    </div>
-
-    <div class="row" style="animation-delay:.27s">
-      <div class="num" style="color:var(--accent);font-weight:700">I2</div>
-      <div class="leg void">—</div>
-      <div class="assign"><div class="pill par"><div class="a">AdriaCargo doo</div><div class="b">1.850 € · AC-19</div></div></div>
-      <div class="leg">
-        <div class="route">Koper Port, SI <span class="sep">→</span> <span class="to">Ιωάννινα</span></div>
-        <div class="sub"><span class="mono">13/8 → 14/8</span><span>24 pal</span></div>
-      </div>
-    </div>
-
+    <div id="rows"></div>
   </main>
 
-  <!-- ── Η στήλη του Excel: Επιστροφές ── -->
-  <aside class="returns" aria-label="Επιστροφές οδηγών">
+  <aside class="rt">
     <h3>ΕΠΙΣΤΡΟΦΕΣ</h3>
-    <div class="rlist">
-      <div class="rcard free"><b>Αντωνίου</b><span>ελεύθερος</span></div>
-      <div class="rcard"><b>Παπαδόπουλος</b><span>Πέμ 14/8 · Βέροια</span></div>
-      <div class="rcard"><b>Καραγιάννης</b><span>Σάβ 16/8 · Βέροια</span></div>
-      <div class="rcard"><b>Δημητρίου</b><span>Κυρ 17/8 · Βέροια</span></div>
-      <div class="rcard"><b>Στεργίου</b><span>Κυρ 17/8 · Λάρισα</span></div>
-    </div>
-    <p class="rnote">Υπολογίζεται από τις αναθέσεις της εβδομάδας — καμία καταχώρηση. Ίδια λογική με τη δεξιά στήλη του WEEKLY PLAN.</p>
+    <div class="rc free"><b>Αντωνίου</b><span>ελεύθερος</span></div>
+    <div class="rc free"><b>Λαζαρίδης</b><span>ελεύθερος</span></div>
+    <div class="rc"><b>Παπαδόπουλος</b><span>Τετ 12/8 · Βέροια</span></div>
+    <div class="rc"><b>Καραγιάννης</b><span>Πέμ 13/8 · Βέροια</span></div>
+    <div class="rc"><b>Δημητρίου</b><span>Παρ 14/8 · Λάρισα</span></div>
+    <div class="rc"><b>Νικολάου</b><span>Σάβ 15/8 · Βέροια</span></div>
+    <div class="rc"><b>Στεργίου</b><span>Κυρ 16/8 · Βέροια</span></div>
+    <p class="rnote">Από τις αναθέσεις της εβδομάδας — σαν τη δεξιά στήλη του WEEKLY PLAN. Οι «ελεύθεροι» τροφοδοτούν τις ✨ προτάσεις.</p>
   </aside>
 </div>
 
-<p class="protonote">Δοκιμαστικό πρωτότυπο v2 «Καθολικό» · mock δεδομένα (κανένας πραγματικός πελάτης) · καμία σύνδεση με τη βάση ·
-πάτησε <b>Λεπτομέρειες</b> για τα κρυφά chips, <b>Ανάθεσε</b> για το popover, hover στα ⓘ για τις οδηγίες ροών.</p>
+<p class="note">Πρωτότυπο v2.1 · mock 34 σειρές (στόχος άνεσης 30-50) · σειρά 32px ≈ 20 ορατές ανά οθόνη · sticky ημέρες στο scroll ·
+<b>✨ πρόταση</b>: πάτα το ✓ σε ένα κόκκινο pill και γίνεται ανάθεση με ΕΝΑ κλικ (αυτό που δεν κάνει το Excel) · «Λεπτομέρειες» = τα κρυφά chips · κλικ σε pill = popover.</p>
 
-<!-- ── Popover ανάθεσης (mock) ── -->
 <div class="pop" id="pop" onclick="if(event.target===this)this.classList.remove('on')">
   <div class="card">
-    <div class="hd"><h4>Ανάθεση</h4><span class="r" id="popr">Οπωρώνες Πέλλας → Grossmarkt Wien</span><button onclick="document.getElementById('pop').classList.remove('on')">✕</button></div>
+    <div class="hd"><h4>Ανάθεση</h4><span class="r" id="popr"></span><button onclick="pop.classList.remove('on')">✕</button></div>
     <div class="bd">
-      <div class="f"><label>ΦΟΡΤΗΓΟ</label><input placeholder="Πινακίδα…" value=""></div>
+      <div class="f"><label>ΦΟΡΤΗΓΟ</label><input placeholder="Πινακίδα…"></div>
       <div class="f"><label>ΤΡΕΪΛΕΡ</label><input placeholder="Πινακίδα…"></div>
       <div class="f"><label>ΟΔΗΓΟΣ</label><input placeholder="Όνομα…"></div>
       <div class="avail">
         <div class="av free"><b>ΝΙΚ-2216</b> · Αντωνίου <small>ελεύθερο όλη την εβδομάδα</small></div>
-        <div class="av"><b>ΝΙΚ-4821</b> · Παπαδόπουλος <small>δεσμ. Δευ–Πέμ · Βέροια Πέμ</small></div>
-        <div class="av"><b>ΝΙΚ-1177</b> · Καραγιάννης <small>δεσμ. Τρί–Σάβ · Hamburg</small></div>
+        <div class="av free"><b>ΝΙΚ-3390</b> · Λαζαρίδης <small>ελεύθερο από Τετ</small></div>
+        <div class="av"><b>ΝΙΚ-4821</b> · Παπαδόπουλος <small>δεσμ. Δευ-Τετ · Βέροια Τετ</small></div>
+        <div class="av"><b>ΝΙΚ-1177</b> · Καραγιάννης <small>δεσμ. Τρί-Πέμ · Hamburg</small></div>
       </div>
       <div class="f" style="grid-column:1/2"><label>ΣΥΝΕΡΓΑΤΗΣ</label><input placeholder="Εταιρεία…"></div>
       <div class="f"><label>ΠΙΝΑΚΙΔΕΣ</label><input placeholder="π.χ. ΤΒ-8842"></div>
       <div class="f"><label>ΚΟΜΙΣΤΡΟ €</label><input placeholder="0.00"></div>
-      <div class="lane"><b>Ιστορικό γραμμής GR → AT:</b>
-        <span class="li">W31 · <b>2.900 €</b> · TransBalkan</span>
-        <span class="li">W29 · <b>2.850 €</b> · Nord Freight</span>
-        <span class="li">W27 · <b>3.050 €</b> · TransBalkan</span>
+      <div class="lane"><b>Ιστορικό γραμμής GR → DE:</b>
+        <span>W31 · <b>3.800 €</b> · TransBalkan</span><span>W29 · <b>3.750 €</b> · Nord Freight</span><span>W27 · <b>3.600 €</b> · TransBalkan</span>
       </div>
     </div>
     <div class="ft"><button class="btn ghost">Ακύρωση</button><button class="btn go">Αποθήκευση</button></div>
@@ -375,13 +219,77 @@ body.details .xtra{display:inline-block}
 </div>
 
 <script>
-// Mock μόνο: άνοιγμα popover με σωστό υπότιτλο ανά γραμμή.
-function pop(which){
-  document.getElementById('popr').textContent = which===2
-    ? 'Bologna CAAB → Θεσσαλονίκη (εισαγωγή)'
-    : 'Οπωρώνες Πέλλας → Grossmarkt Wien';
+/* Mock generator — 34 σειρές σε 6 μέρες, όλα τα είδη γραμμών. */
+const F=['Αγρόκτημα Βέρμιο, Νάουσα','Οπωρώνες Πέλλας ΑΕ','ΨΥΓΕΙΑ ΗΜΑΘΙΑΣ','Συν. Βερμίου, Κοπανός','Φάρμα Ολύμπου','Κήποι Έδεσσας ΑΕ','Vermion Fresh, Βέροια','Αγρός Πιερίας','Θερμοκήπια Δράμας','Γη Σερρών ΑΕ'];
+const T=['Fruchthof München, DE','Grossmarkt Wien, AT','Rungis Market, FR','Hamburg Grossmarkt, DE','Praha Lipence, CZ','Lidl Zentrale Ost, DE','Rotterdam Fresh, NL','Metro Torino, IT','Warszawa Bronisze, PL'];
+const IF=['IFCO Wels, AT','Perpignan St-Charles, FR','Venlo Fresh Park, NL','Brno Modřice, CZ','Bologna CAAB, IT','Koper Port, SI','Stuttgart Gemüsering, DE','Stare Zadybie, PL'];
+const IT=['Vermion Fresh, Βέροια','Αθήνα ΟΚΑΑ','Θεσσαλονίκη','Λάρισα','Ιωάννινα'];
+const OWN=[['ΝΙΚ-4821 · Ρ-3310','Παπαδόπουλος'],['ΝΙΚ-1177 · Ρ-2205','Καραγιάννης'],['ΝΙΚ-9034 · Ρ-4471','Δημητρίου'],['ΝΙΚ-5512 · Ρ-1180','Νικολάου'],['ΝΙΚ-7703 · Ρ-9932','Στεργίου']];
+const PAR=[['TransBalkan Ltd','2.950 €'],['Nord Freight OÜ','3.100 €'],['AdriaCargo doo','1.850 €'],['Balt Trans UAB','3.400 €']];
+const SUG=[['ΝΙΚ-2216','Αντωνίου'],['ΝΙΚ-3390','Λαζαρίδης']];
+const DAYS=[
+ {d:'ΔΕΥΤΕΡΑ 10/8',today:true, rows:['own','sug','par','own','imp-par','grpA','grpB']},
+ {d:'ΤΡΙΤΗ 11/8',   rows:['own','par','sug','own','imp-sug','own']},
+ {d:'ΤΕΤΑΡΤΗ 12/8', rows:['par','own','own','imp-par','own','par']},
+ {d:'ΠΕΜΠΤΗ 13/8',  rows:['own','sug','par','own','imp-own','grpA','grpB']},
+ {d:'ΠΑΡΑΣΚΕΥΗ 14/8',rows:['own','par','own','sug']},
+ {d:'ΣΑΒΒΑΤΟ 15/8', rows:['par','own','imp-par']},
+];
+let n=0, iN=0, exp=0, imp=0, pend=0, sugI=0;
+const R=a=>a[Math.floor((n*7+iN*3)%a.length)];
+function pillHTML(kind,idx){
+  if(kind==='own'){const o=OWN[idx%OWN.length];return `<div class="pill own" onclick="openPop(this)" title="Κλικ: αλλαγή">${o[0]} <small>${o[1]}</small></div>`;}
+  if(kind==='par'){const p=PAR[idx%PAR.length];return `<div class="pill par" onclick="openPop(this)">${p[0]} <small>${p[1]}</small></div>`;}
+  if(kind==='sug'){const s=SUG[(sugI++)%SUG.length];pend++;
+    return `<div class="pill sug" onclick="openPop(this)" title="Κλικ: πλήρης ανάθεση">
+      <span class="s">✨ ${s[0]} · ${s[1]}</span><button class="go" title="Αποδοχή πρότασης — ανάθεση με ένα κλικ"
+      onclick="event.stopPropagation();accept(this,'${s[0]}','${s[1]}')">✓</button></div>`;}
+  pend++;return `<div class="pill un" onclick="openPop(this)"><b>Ανάθεσε</b></div>`;
+}
+function rowHTML(kind){
+  n++;
+  const isImp=kind.startsWith('imp');
+  const grp=kind==='grpA'?'A':kind==='grpB'?'B':null;
+  const pKind=isImp?kind.split('-')[1]:(kind==='sug'?'sug':grp==='B'?'ghost':kind.startsWith('grp')?'own':kind);
+  const load=(9+n%6)+'/8', del=(11+n%6)+'/8', pal=(24+n%10);
+  let expCell,impCell,numCell;
+  if(isImp){ iN++; imp++;
+    numCell=`<div class="num imp">I${iN}</div>`;
+    expCell=`<div class="leg void">—</div>`;
+    impCell=`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">${R(IT)}</span></span><span class="meta">${load}→${del} · ${pal}p</span></div>`;
+  }else{ exp++;
+    numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Εκτύπωση ομάδας — ένα πακέτο">×2⎙</span>`:''}</div>`;
+    const tags=(n%5===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'')+(n%6===0?'<span class="tag">VS</span>':'');
+    const x=(n%7===0?'<span class="xtra cross">↤ φορτώνει W34</span>':'')+(kind==='sug'&&n%3===0?'<span class="xtra late">⚠ φόρτωση σήμερα</span>':'');
+    expCell=`<div class="leg"><span class="route">${R(F)}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':R(T)}</span></span><span class="meta">${load}→${del} · ${pal}p ${tags}${x}</span></div>`;
+    impCell=(n%3===0&&!grp)?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh, Βέροια</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`:`<div class="leg void">—</div>`;
+  }
+  const pill=pKind==='ghost'
+    ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
+    :pillHTML(pKind,n);
+  return `<div class="row">${numCell}${expCell}<div class="assign">${pill}</div>${impCell}</div>`;
+}
+let html='';
+for(const day of DAYS){
+  html+=`<div class="day${day.today?' today':''}"><span class="d">${day.d}</span>${day.today?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${day.rows.length} γραμμές</span></div>`;
+  for(const k of day.rows) html+=rowHTML(k);
+}
+document.getElementById('rows').innerHTML=html;
+document.getElementById('c-exp').textContent=exp; document.getElementById('n-exp').textContent=exp;
+document.getElementById('c-imp').textContent=imp; document.getElementById('n-imp').textContent=imp;
+document.getElementById('c-pend').textContent=pend;
+
+/* ✨ Αποδοχή πρότασης: το κόκκινο γίνεται navy επιτόπου — «αυτόματη ανάθεση» με ένα κλικ. */
+function accept(btn,plate,driver){
+  const pill=btn.closest('.pill');
+  pill.outerHTML=`<div class="pill own" style="animation:popin .25s cubic-bezier(.22,.9,.24,1)">${plate} · Ρ-2201 <small>${driver}</small></div>`;
+  const c=document.getElementById('c-pend'); c.textContent=Math.max(0,+c.textContent-1);
+}
+function openPop(el){
+  document.getElementById('popr').textContent=el.closest('.row').querySelector('.route')?.textContent?.slice(0,52)||'Εισαγωγή';
   document.getElementById('pop').classList.add('on');
 }
+window.accept=accept; window.openPop=openPop;
 </script>
 </body>
 </html>
