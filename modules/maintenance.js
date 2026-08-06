@@ -1349,10 +1349,17 @@ function _maintExpiryStatus(dateStr) {
 }
 
 function _maintDaysPill(days, status) {
-  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:var(--text-dim)">N/A</span>';
+  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:var(--text-dim)">—</span>';
   const cls = status === 'expired' ? 'red' : status === 'expiring' ? 'amber' : 'green';
-  const label = status === 'expired' ? days + 'd late' : days + 'd';
-  return `<span class="dash-aging-pill ${cls}">${label}</span>`;
+  // MD-4: «852d late» — a document two years gone rendered exactly like one
+  // ten days gone, and in English. Ancient overdues now escalate in wording
+  // (months/years), so the reader sees «2 χρ.» instead of doing division.
+  let label;
+  if (status !== 'expired') label = days + ' ημ.';
+  else if (days >= 365) label = (days/365).toFixed(days >= 730 ? 0 : 1).replace('.', ',') + ' χρ. ληγμένο';
+  else if (days >= 60)  label = Math.round(days/30) + ' μήνες ληγμένο';
+  else                  label = days + ' ημ. ληγμένο';
+  return `<span class="dash-aging-pill ${cls}"${status==='expired'&&days>=60?' style="font-weight:700"':''}>${label}</span>`;
 }
 
 function _maintCompBlock(dateStr, label) {
