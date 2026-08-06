@@ -88,7 +88,7 @@ const MAINT_TYPE_LABEL = Object.fromEntries(MAINT_TYPES);
 .exp-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.3px; }
 .exp-overdue { background:#7F1D1D; color:#FEE2E2; }
 .exp-critical { background:#991B1B; color:#FEE2E2; }
-.exp-warning { background:#92400E; color:#FEF3C7; }
+.exp-warning { background:#92400E; color:var(--warning-soft); }
 .exp-upcoming { background:#78350F; color:#FDE68A; }
 .exp-ok { background:#065F46; color:#D1FAE5; }
 .exp-none { background:#374151; color:var(--text-disabled); }
@@ -282,9 +282,9 @@ function _expCell(doc, recId, fieldName, vType) {
   let color, daysStr;
   if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'ημ. ληγμένο'; }
   else if (d <= 7)  { color = '#EF4444'; daysStr = d + ' ημ.'; }
-  else if (d <= 30) { color = '#F59E0B'; daysStr = d + ' ημ.'; }
-  else if (d <= 90) { color = '#0284C7'; daysStr = d + ' ημ.'; }
-  else              { color = '#10B981'; daysStr = d + ' ημ.'; }
+  else if (d <= 30) { color = 'var(--panel-warn)'; daysStr = d + ' ημ.'; }
+  else if (d <= 90) { color = 'var(--accent)'; daysStr = d + ' ημ.'; }
+  else              { color = 'var(--panel-ok)'; daysStr = d + ' ημ.'; }
   return `<td class="c" style="${cursor}" ${editAttr}>
     <span style="font-size:12px;color:#CBD5E1">${dateStr}</span>
     <span style="font-size:11px;font-weight:600;color:${color};margin-left:4px">${daysStr}</span>
@@ -435,7 +435,7 @@ function _expiryPaint() {
   const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
   const compliancePct = (expiredTrucks + expiredTrailers) === 0 ? 100
     : Math.round(((truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers) / Math.max(1, (truckRows.length + trailerRows.length))) * 100);
-  const complianceColor = compliancePct >= 90 ? '#10B981' : compliancePct >= 70 ? '#F59E0B' : '#EF4444';
+  const complianceColor = compliancePct >= 90 ? 'var(--panel-ok)' : compliancePct >= 70 ? 'var(--panel-warn)' : '#EF4444';
 
   // Report the figures this page shows. The key names say what is being
   // counted, because that is the whole confusion this page sat at the centre
@@ -631,15 +631,15 @@ function _expiryPrint() {
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
       *{box-sizing:border-box;margin:0;padding:0} body{font-family:'DM Sans',sans-serif;padding:20px;color:#0F172A;font-size:12px}
-      .page-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700} .page-sub{font-size:11px;color:var(--text-mid);margin-bottom:12px}
+      .page-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700} .page-sub{font-size:11px;color:#475569;margin-bottom:12px}
       .mk-kpis{display:flex;gap:10px;margin-bottom:14px} .mk-kpi{border:1px solid #ddd;border-left:3px solid #0EA5E9;border-radius:6px;padding:10px 14px;flex:1}
-      .mk-kpi-lbl{font-size:9px;font-weight:600;color:var(--text-disabled);text-transform:uppercase;letter-spacing:1px} .mk-kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
-      table{width:100%;border-collapse:collapse;border:1px solid #ddd} thead th{padding:6px 8px;font-size:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text-disabled);background:#F0F5FA;border-bottom:1px solid #ddd;text-align:left}
+      .mk-kpi-lbl{font-size:9px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:1px} .mk-kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
+      table{width:100%;border-collapse:collapse;border:1px solid #ddd} thead th{padding:6px 8px;font-size:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#9CA3AF;background:#F0F5FA;border-bottom:1px solid #ddd;text-align:left}
       tbody td{padding:6px 8px;font-size:11px;border-bottom:1px solid #eee}
       .exp-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
       .exp-overdue{background:#7F1D1D;color:#FEE2E2} .exp-critical{background:#991B1B;color:#FEE2E2} .exp-warning{background:#92400E;color:#FEF3C7}
-      .exp-upcoming{background:#78350F;color:#FDE68A} .exp-ok{background:#065F46;color:#D1FAE5} .exp-none{background:#374151;color:var(--text-disabled)}
-      .btn,select{display:none!important} .rn{font-family:'Syne',sans-serif;font-weight:700;color:var(--text-disabled)}
+      .exp-upcoming{background:#78350F;color:#FDE68A} .exp-ok{background:#065F46;color:#D1FAE5} .exp-none{background:#374151;color:#9CA3AF}
+      .btn,select{display:none!important} .rn{font-family:'Syne',sans-serif;font-weight:700;color:#9CA3AF}
       @media print{body{padding:10px}}
     </style></head><body>${content}</body></html>`);
   win.document.close();
@@ -1188,25 +1188,25 @@ function _historyPaint(vType) {
       <!-- KPI Bar (4 stats) -->
       <div class="dash-kpi-bar" style="grid-template-columns:repeat(4,1fr)">
         <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#38BDF8,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-accent),transparent)"></div>
           <div class="dash-kpi-label">${_i('coins', 11)} Cost YTD</div>
           <div class="dash-kpi-value dash-val-accent">${_fmtCost(totalCostYTD)}${costDelta !== null ? `<span class="ceo-delta ${costDelta > 0 ? 'up-bad' : costDelta < 0 ? 'down' : 'flat'}" style="margin-left:8px">${_i(costDelta > 0 ? 'trending_up' : costDelta < 0 ? 'trending_down' : 'minus', 10)}${costDelta >= 0 ? '+' : ''}${costDelta}%</span>` : ''}</div>
           <div class="dash-kpi-sub">${year} vs ${year-1}${totalCostPrev ? ` (€${Math.round(totalCostPrev).toLocaleString()})` : ''}</div>
         </div>
         <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#34D399,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-ok-hi),transparent)"></div>
           <div class="dash-kpi-label">${_i('list_checks', 11)} Services YTD</div>
           <div class="dash-kpi-value dash-val-success">${ytdRecs.length}</div>
           <div class="dash-kpi-sub">${allRecs.length} total all-time</div>
         </div>
         <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#F59E0B,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-warn),transparent)"></div>
           <div class="dash-kpi-label">${_i('activity', 11)} Avg Cost</div>
           <div class="dash-kpi-value dash-val-warning">${_fmtCost(avgCost)}</div>
           <div class="dash-kpi-sub">per service YTD</div>
         </div>
         <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#38BDF8,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-accent),transparent)"></div>
           <div class="dash-kpi-label">${_i('clock', 11)} Last Service</div>
           <div class="dash-kpi-value dash-val-accent" style="font-size:22px">${_fmtDate(lastService)}</div>
           <div class="dash-kpi-sub">${lastService !== '—' ? _elRelTime ? _elRelTime(lastService) : '' : 'no services yet'}</div>
@@ -1223,7 +1223,7 @@ function _historyPaint(vType) {
             </div>
             <div class="dash-card-body">
               ${monthlyValues.some(v => v > 0)
-                ? `<div style="height:60px">${_mdSpark(monthlyValues, '#38BDF8', 600)}</div>`
+                ? `<div style="height:60px">${_mdSpark(monthlyValues, 'var(--panel-accent)', 600)}</div>`
                 : `<div class="dash-empty" style="padding:var(--space-6) 0">${_i('activity', 24)}<div>No cost data yet</div></div>`}
             </div>
           </div>
@@ -1238,7 +1238,7 @@ function _historyPaint(vType) {
                   <div style="display:flex;align-items:center;gap:8px;font-size:11px">
                     <span style="width:120px;color:var(--dc-text);font-weight:600">${escapeHtml(t)}</span>
                     <div style="flex:1;height:14px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">
-                      <div style="height:100%;width:${maxTypeCost ? (stats.cost/maxTypeCost*100) : 0}%;background:linear-gradient(90deg,#38BDF8,#7DD3FC);border-radius:4px;transition:width 0.6s"></div>
+                      <div style="height:100%;width:${maxTypeCost ? (stats.cost/maxTypeCost*100) : 0}%;background:linear-gradient(90deg,var(--panel-accent),#7DD3FC);border-radius:4px;transition:width 0.6s"></div>
                     </div>
                     <span style="width:36px;text-align:right;color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${stats.count}×</span>
                     <span style="width:64px;text-align:right;color:var(--dc-text);font-variant-numeric:tabular-nums;font-weight:700">${_fmtCost(stats.cost)}</span>
@@ -1394,8 +1394,8 @@ function _maintExpiryStatus(dateStr) {
   const exp = new Date(dateStr);
   const days = Math.floor((exp - now) / 86400000);
   if (days < 0) return { status: 'expired', days: Math.abs(days), color: '#EF4444' };
-  if (days <= 30) return { status: 'expiring', days, color: '#F59E0B' };
-  return { status: 'ok', days, color: '#10B981' };
+  if (days <= 30) return { status: 'expiring', days, color: 'var(--panel-warn)' };
+  return { status: 'ok', days, color: 'var(--panel-ok)' };
 }
 
 function _maintDaysPill(days, status) {
@@ -1539,7 +1539,7 @@ async function renderMaintDash() {
     const allVehicleRows = [...truckRowsAll, ...trailerRowsAll];
     const totalExpiredVehicles = allVehicleRows.filter(r => r.worst !== null && r.worst < 0).length;
     const compliancePct = totalFleet ? Math.round((totalFleet - totalExpiredVehicles) / totalFleet * 100) : 100;
-    const scoreColor = compliancePct >= 90 ? '#34D399' : compliancePct >= 70 ? '#F59E0B' : '#F87171';
+    const scoreColor = compliancePct >= 90 ? 'var(--panel-ok-hi)' : compliancePct >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
 
     // Overdue list
     const overdueList = expiredRows.slice(0, 10);
@@ -1621,37 +1621,37 @@ async function renderMaintDash() {
         <!-- KPI Bar (6 cards) -->
         <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
           <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
             <div class="dash-kpi-label">${_ic('truck', 11)} ΣΥΝΟΛΟ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
             <div class="dash-kpi-sub">${activeTrucks.length} φορτηγά · ${activeTrailers.length} ρυμούλκες</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KTEO')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΤΕΟ</div>
             <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
             <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KEK')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΕΚ</div>
             <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
             <div class="dash-kpi-sub">μόνο φορτηγά</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','FRC')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'#DC2626':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('droplet', 11)} ΛΗΓΜΕΝΑ FRC</div>
             <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
             <div class="dash-kpi-sub">μόνο ρυμούλκες</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','Insurance')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('shield', 11)} ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</div>
             <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
             <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expiring30')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'#10B981'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('clock', 11)} ΛΗΓΟΥΝ &lt;30 ΗΜ.</div>
             <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
             <div class="dash-kpi-sub">όλοι οι τύποι εγγράφων</div>
@@ -1847,7 +1847,7 @@ async function renderMaintDash() {
                 <div class="md-cost-sub">${currentSvcCount} service${currentSvcCount !== 1 ? 's' : ''}${prevSvcCount ? ` · ${_mdDelta(currentSvcCount, prevSvcCount, true).replace('<span class="ceo-delta', '<span class="ceo-delta" style="margin-left:4px;padding:0 4px;font-size:9px"')}` : ''}</div>
                 <div class="md-cost-spark-wrap">
                   <span class="md-cost-spark-label">6μ trend</span>
-                  ${_mdSpark(monthlyCosts.map(m => m.cost), '#38BDF8', 140)}
+                  ${_mdSpark(monthlyCosts.map(m => m.cost), 'var(--panel-accent)', 140)}
                 </div>
                 <div class="md-cost-breakdown">
                   ${monthlyCosts.map(m => `<div class="md-cost-month-row">
@@ -1922,7 +1922,7 @@ function _mreqPrioBadge(p) {
 function _mreqStatusBadge(s) {
   if (s === 'Done') return '<span class="exp-badge exp-ok">DONE</span>';
   if (s === 'In Progress') return '<span class="exp-badge" style="background:#1E40AF;color:#DBEAFE">IN PROGRESS</span>';
-  return '<span class="exp-badge" style="background:#92400E;color:#FEF3C7">PENDING</span>';
+  return '<span class="exp-badge" style="background:#92400E;color:var(--warning-soft)">PENDING</span>';
 }
 
 // Build auto-generated expiry work orders (≤14 days)
@@ -2119,7 +2119,7 @@ function _mreqPaint() {
           <tbody>${expiryAlerts.slice(0, 10).map(ea => `<tr style="background:rgba(146,64,14,0.06)">
           <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">ΑΥΤΟΜ.</span></td>
           <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
-          <td>${ea.doc} — <span style="color:${ea.days<0?'#DC2626':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+' ημ. ληγμένο':'λήγει σε '+ea.days+' ημ.'}</span></td>
+          <td>${ea.doc} — <span style="color:${ea.days<0?'var(--danger)':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+' ημ. ληγμένο':'λήγει σε '+ea.days+' ημ.'}</span></td>
           <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">ΛΗΓΜΕΝΟ</span>':'<span class="exp-badge exp-warning">ΛΗΓΕΙ</span>'}</td>
           <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
           <td style="font-size:12px">${ea.vType}</td>

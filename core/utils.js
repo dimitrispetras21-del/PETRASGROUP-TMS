@@ -808,7 +808,7 @@ function _errLogClear() {
       </div>
       <div class="aic-confirm-body">
         <div>Θα διαγραφούν <strong>${_errorLog.length}</strong> error entries.</div>
-        <div style="margin-top:8px;color:#94A3B8;font-size:11px">Μπορείς να κάνεις Export πρώτα (JSON/CSV) αν θέλεις να κρατήσεις backup.</div>
+        <div style="margin-top:8px;color:var(--panel-dim);font-size:11px">Μπορείς να κάνεις Export πρώτα (JSON/CSV) αν θέλεις να κρατήσεις backup.</div>
       </div>
       <div class="aic-confirm-foot">
         <button class="aic-confirm-cancel">Ακύρωση</button>
@@ -899,7 +899,7 @@ function renderErrorLog() {
     return `<tr onclick="_errLogShowStack(${origIdx})" style="cursor:pointer">
       <td style="white-space:nowrap">${_elSeverityPill(e.severity)}</td>
       <td style="white-space:nowrap;font-family:'DM Sans',monospace;font-size:11px;color:var(--dc-text-dim)" title="${e.ts ? new Date(e.ts).toLocaleString('el-GR') : ''}">${_elRelTime(e.ts)}</td>
-      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500">${escapeHtml((e.msg || '').substring(0, 140))}${(e.count && e.count > 1) ? `<span style="margin-left:6px;padding:1px 6px;background:rgba(56,189,248,0.12);color:#38BDF8;border-radius:3px;font-size:10px;font-weight:700;font-family:'DM Sans',monospace">×${e.count}</span>` : ''}</td>
+      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500">${escapeHtml((e.msg || '').substring(0, 140))}${(e.count && e.count > 1) ? `<span style="margin-left:6px;padding:1px 6px;background:rgba(56,189,248,0.12);color:var(--panel-accent);border-radius:3px;font-size:10px;font-weight:700;font-family:'DM Sans',monospace">×${e.count}</span>` : ''}</td>
       <td style="color:var(--dc-text-mid)">${escapeHtml(e.ctx || '—')}</td>
       <td style="color:var(--dc-text-mid)">${escapeHtml(e.user || '—')}</td>
       <td style="color:var(--dc-text-dim);font-size:11px">${escapeHtml(e.page || '—')}</td>
@@ -925,7 +925,7 @@ function renderErrorLog() {
       <!-- KPI Bar (3 severity counts) -->
       <div class="dash-kpi-bar" style="grid-template-columns:repeat(3,1fr)">
         <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--danger),transparent)"></div>
           <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Critical</div>
           <div class="dash-kpi-value ${counts.critical ? 'dash-val-danger' : 'dash-val-muted'}">${counts.critical}</div>
           <div class="dash-kpi-sub">errors + exceptions</div>
@@ -937,7 +937,7 @@ function renderErrorLog() {
           <div class="dash-kpi-sub">auth, network, 4xx</div>
         </button>
         <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-ok),transparent)"></div>
           <div class="dash-kpi-label">${_ic('info', 11)} Info</div>
           <div class="dash-kpi-value ${counts.info ? 'dash-val-success' : 'dash-val-muted'}">${counts.info}</div>
           <div class="dash-kpi-sub">aborts, expected</div>
@@ -1338,7 +1338,7 @@ async function _refreshNotifs() {
   const dot = document.getElementById('notifDot');
   if (dot) {
     dot.style.display = items.length ? 'block' : 'none';
-    dot.style.background = items.some(i => i.type === 'danger') ? '#DC2626' : '#F59E0B';
+    dot.style.background = items.some(i => i.type === 'danger') ? 'var(--danger)' : 'var(--panel-warn)';
   }
 
   // ── Browser-native push for NEW critical notifications ──
@@ -1478,14 +1478,14 @@ function renderTrashViewer() {
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
         <div>
           <h2 style="margin:0;font-family:'Syne',sans-serif;font-size:22px;color:var(--text-primary,#e2e8f0);">Trash</h2>
-          <p style="margin:4px 0 0;color:var(--text-dim,#94a3b8);font-size:13px;">${trash.length} deleted record(s) — last 50 kept in browser storage</p>
+          <p style="margin:4px 0 0;color:var(--text-dim,var(--panel-dim));font-size:13px;">${trash.length} deleted record(s) — last 50 kept in browser storage</p>
         </div>
         ${trash.length ? `<button onclick="_clearAllTrash()" style="background:#7F1D1D;color:#fca5a5;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;">Clear All Trash</button>` : ''}
       </div>`;
 
   if (!trash.length) {
     html += `
-      <div style="text-align:center;padding:60px 20px;color:var(--text-dim,#94a3b8);">
+      <div style="text-align:center;padding:60px 20px;color:var(--text-dim,var(--panel-dim));">
         <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.4;margin-bottom:16px;"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>
         <p style="font-size:15px;">Ο κάδος είναι άδειος</p>
         <p style="font-size:12px;margin-top:4px;">Οι διαγραμμένες εγγραφές εμφανίζονται εδώ για επαναφορά (τελευταίες 50, σε αυτόν τον browser)</p>
@@ -1504,10 +1504,10 @@ function renderTrashViewer() {
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
               <span style="background:#1e3a5f;color:#93c5fd;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${escapeHtml(tableName)}</span>
-              <span style="color:var(--text-dim,#94a3b8);font-size:11px;">${escapeHtml(item.id)}</span>
+              <span style="color:var(--text-dim,var(--panel-dim));font-size:11px;">${escapeHtml(item.id)}</span>
             </div>
             <div style="color:var(--text-primary,#e2e8f0);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(preview)}</div>
-            <div style="color:var(--text-dim,#94a3b8);font-size:11px;margin-top:4px;">Deleted ${escapeHtml(timeAgo)} by ${escapeHtml(item.deletedBy || 'unknown')}</div>
+            <div style="color:var(--text-dim,var(--panel-dim));font-size:11px;margin-top:4px;">Deleted ${escapeHtml(timeAgo)} by ${escapeHtml(item.deletedBy || 'unknown')}</div>
           </div>
           <button onclick="_restoreTrashItem(${idx})" style="background:#0c4a1a;color:#86efac;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;white-space:nowrap;">Restore</button>
         </div>`;

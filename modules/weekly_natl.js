@@ -185,7 +185,7 @@ function _wnWeekSidebarItems(currentWeek) {
   // selected week + ‹ › steppers + a «Σήμερα» chip when away — same pattern,
   // same look, natl state.
   const today = _wnCurrentWeek();
-  const step = (d) => `<button type="button" onclick="WNATL.week=${currentWeek + d};renderWeeklyNatl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,#0B1929);color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
+  const step = (d) => `<button type="button" onclick="WNATL.week=${currentWeek + d};renderWeeklyNatl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,var(--navy-mid));color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
   let html = step(-1);
   for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
     if (w < 1 || w > 52) continue;
@@ -193,7 +193,7 @@ function _wnWeekSidebarItems(currentWeek) {
     const wS   = _wnWeekStart(w);
     const wE   = new Date(wS); wE.setDate(wS.getDate() + 6);
     const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
-    const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,#0B1929)';
+    const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,var(--navy-mid))';
     const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
     const fw   = isActive ? '700' : '500';
     html += `<button type="button" onclick="WNATL.week=${w};renderWeeklyNatl()" style="appearance:none;

@@ -485,7 +485,7 @@ function _rampDraw() {
         const f=r.fields;
         const isIn=f['Type']==='Παραλαβή';
         const movedTo=f['Plan Date']?f['Plan Date'].substring(5).replace('-','/'):'—';
-        return`<tr style="background:#FEF3C7;opacity:.8">
+        return`<tr style="background:var(--warning-soft);opacity:.8">
           <td class="rn">${i+1}</td>
           <td>${isIn?'<span style="color:#059669">↓ IN</span>':'<span style="color:#0EA5E9">↑ OUT</span>'}</td>
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>

@@ -96,6 +96,14 @@
   --panel-bad:    #EF4444;
   --panel-accent: #38BDF8;
 
+  /* Φ9: προωθήσεις από scoped (.perf-wrap/.dash-wrap/.ceo-wrap) στο :root —
+     εκτός wrapper η scoped μεταβλητή ΔΕΝ υπάρχει και το χρώμα σπάει σιωπηλά.
+     -hi = φωτεινότερη εκδοχή για ΣΚΟΥΡΕΣ κάρτες (τα --p-*/--dc-*/--ceo-*
+     μένουν ως aliases ίδιας τιμής). --warning-soft = το κίτρινο callout bg. */
+  --panel-ok-hi:  #34D399;
+  --panel-bad-hi: #F87171;
+  --warning-soft: #FEF3C7;
+
   --panel:        #0F172A;
   --panel-border: #1E293B;
   --panel-text:   #F1F5F9;

@@ -360,7 +360,7 @@ function _renderIntlTable(records) {
   _oiVS.lastEnd = -1;
 
   const ths = _intlColDefs.map(c => {
-    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:#0284C7">▲</span>':_intlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:var(--accent)">▲</span>':_intlSortDir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
     const click = c.nosort ? '' : ` onclick="_intlSortToggle('${c.key}')"`;
     const cursor = c.nosort ? 'default' : 'pointer';
     return `<th style="cursor:${cursor};user-select:none;width:${c.w};min-width:${c.w};max-width:${c.w}"${click}>${c.label}${arrow}</th>`;
@@ -384,7 +384,7 @@ function _renderIntlTable(records) {
       <table style="table-layout:fixed;width:100%"><tbody></tbody></table>
       <div id="oiBottomSpacer" style="height:${totalH}px"></div>
     </div>
-    <div style="padding:8px 16px;color:#94A3B8;font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+    <div style="padding:8px 16px;color:var(--panel-dim);font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
 
   const scroller = document.getElementById('oiVScroll');
   scroller.addEventListener('scroll', _oiOnScroll, { passive: true });
@@ -498,7 +498,7 @@ function selectIntlOrder(recId) {
         ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
         </button>`:''}
-        ${canEdit?`<button type="button" class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
+        ${canEdit?`<button type="button" class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:var(--danger)">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h10M5 4V2h6v2M6 7v5M10 7v5M4 4l1 10h6l1-10"/></svg>
         </button>`:''}
         <button type="button" class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</button>
@@ -521,11 +521,11 @@ function selectIntlOrder(recId) {
             const currentIdx = statuses.indexOf(f['Status']||'Pending');
             const done = i <= currentIdx;
             const active = i === currentIdx;
-            const col = done ? '#0284C7' : '#1E293B';
+            const col = done ? 'var(--accent)' : '#1E293B';
             return `<div style="display:flex;align-items:center;gap:0">
               <div style="width:${active?'10':'8'}px;height:${active?'10':'8'}px;border-radius:50%;background:${done?col:'transparent'};border:2px solid ${col};flex-shrink:0${active?';box-shadow:0 0 0 3px rgba(2,132,199,0.2)':''}"></div>
-              <div style="font-size:9px;color:${done?'#0284C7':'#475569'};font-weight:${active?'700':'400'};margin:0 2px;white-space:nowrap">${st}</div>
-              ${i<arr.length-1?`<div style="width:12px;height:2px;background:${i<currentIdx?'#0284C7':'#1E293B'};flex-shrink:0"></div>`:''}
+              <div style="font-size:9px;color:${done?'var(--accent)':'#475569'};font-weight:${active?'700':'400'};margin:0 2px;white-space:nowrap">${st}</div>
+              ${i<arr.length-1?`<div style="width:12px;height:2px;background:${i<currentIdx?'var(--accent)':'#1E293B'};flex-shrink:0"></div>`:''}
             </div>`;
           }).join('')}
         </div>
@@ -582,7 +582,7 @@ function selectIntlOrder(recId) {
           ${f['Veroia Switch'] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
         </div>
         <div style="margin-top:6px">
-          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color:#0284C7">View Ledger Records →</a>
+          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color:var(--accent)">View Ledger Records →</a>
         </div>
       </div>` : ''}
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
@@ -2134,7 +2134,7 @@ async function _scanPreview(data) {
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:#FEF3C7;border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        <div style="background:var(--warning-soft);border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
           <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
           <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
@@ -2251,15 +2251,15 @@ function _intlPrint() {
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:'DM Sans',sans-serif;color:#0F172A;padding:20px;font-size:11px}
-      h1{font-family:'Syne',sans-serif;font-size:22px;color:#0B1929;margin-bottom:4px}
+      h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--navy-mid);margin-bottom:4px}
       .sub{color:#64748B;font-size:11px;margin-bottom:18px}
       table{width:100%;border-collapse:collapse;font-size:10px}
-      thead th{background:#0B1929;color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
+      thead th{background:var(--navy-mid);color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
       tbody td{padding:6px;border-bottom:1px solid #E2E8F0}
       .r{text-align:right}
       .dir{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
       .dir-exp{background:#DBEAFE;color:#1E40AF}
-      .dir-imp{background:#FEF3C7;color:#92400E}
+      .dir-imp{background:var(--warning-soft);color:#92400E}
       .st{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600}
       .st-ok{background:#D1FAE5;color:#064E3B}
       .st-mid{background:#DBEAFE;color:#1E40AF}

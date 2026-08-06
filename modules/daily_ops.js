@@ -226,10 +226,10 @@ function _opsDraw() {
   }
 
   // Command Center HTML
-  const sevColor = s => s==='crit'?'#DC2626':s==='warn'?'#D97706':s==='ok'?'#059669':'#0284C7';
-  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'#FEF3C7':s==='ok'?'#D1FAE5':'#DBEAFE';
+  const sevColor = s => s==='crit'?'var(--danger)':s==='warn'?'#D97706':s==='ok'?'#059669':'var(--accent)';
+  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'var(--warning-soft)':s==='ok'?'#D1FAE5':'#DBEAFE';
   const cmdCenterH = (isToday && total) ? `
-    <div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:16px 20px;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+    <div style="background:linear-gradient(135deg,var(--navy-mid),#1E3A8A);color:#fff;padding:16px 20px;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:14px">
           <!-- Circular completion ring -->
@@ -268,7 +268,7 @@ function _opsDraw() {
   document.getElementById('content').innerHTML=`
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div><div class="page-title">${_opsI('list_checks', 22)} Daily Ops Plan</div>
-        <div class="page-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${OPS.date==='today'?'σήμερα':'αύριο'}${isToday && OPS.overdue.length ? ` · <span style="color:#DC2626;font-weight:600">${OPS.overdue.length} εκκρεμείς από προηγούμενες ημέρες</span>` : ''}</div></div>
+        <div class="page-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${OPS.date==='today'?'σήμερα':'αύριο'}${isToday && OPS.overdue.length ? ` · <span style="color:var(--danger);font-weight:600">${OPS.overdue.length} εκκρεμείς από προηγούμενες ημέρες</span>` : ''}</div></div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
         <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Ανανέωση</button>
@@ -303,7 +303,7 @@ function _opsDraw() {
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${total?'var(--panel-text)':'var(--panel-dim)'}">${total?nPend:'—'}</span></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Φορτώσεις</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${loadsAll.length?'var(--panel-accent)':'var(--panel-dim)'}">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
-        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:#0284C7"></div></div></div>
+        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:var(--accent)"></div></div></div>
       <div class="ops-kpi"><div class="ops-kpi-label">Παραδόσεις</div>
         <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${delsAll.length?'var(--panel-ok)':'var(--panel-dim)'}">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
         <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${delsAll.length?Math.round(delsDone/delsAll.length*100):0}%;background:var(--success)"></div></div></div>

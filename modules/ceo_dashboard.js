@@ -255,7 +255,7 @@
     const anxietyRing = document.querySelector('.ceo-brand-card.anxiety .ceo-gauge-ring');
     if (anxietyRing) {
       const clamped = Math.min(anxiety.value, 10);
-      const col = anxiety.value === 0 ? '#34D399' : anxiety.value <= 3 ? '#F59E0B' : '#F87171';
+      const col = anxiety.value === 0 ? 'var(--panel-ok-hi)' : anxiety.value <= 3 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
       anxietyRing.style.setProperty('--g-color', col);
       anxietyRing.style.setProperty('--g-deg', clamped * 36 + 'deg');
       el('brand-anxiety-val').style.color = col;
@@ -315,7 +315,7 @@
       el('strat-deadkm-val').className = 'ceo-kpi-num ' + (deadKM.pct < 15 ? 'ceo-val-ok' : deadKM.pct < 25 ? 'ceo-val-warn' : 'ceo-val-bad');
       el('strat-deadkm-sub').innerHTML = `${_pctShort(deadKM.pct)} του συνόλου — ${_km(deadKM.totalLoaded)} loaded${deadKM.isEstimate ? ` <span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--ceo-warn-soft);color:var(--ceo-warn);font-weight:700;letter-spacing:.3px;margin-left:4px">ESTIMATE</span>` : ''}`;
       el('strat-deadkm-bar').style.width = Math.min(deadKM.pct, 100) + '%';
-      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? '#34D399' : deadKM.pct < 25 ? '#F59E0B' : '#F87171';
+      el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? 'var(--panel-ok-hi)' : deadKM.pct < 25 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
       // Sparkline (inline SVG, no Chart.js)
       const weeklyDead = _computeWeeklyDeadKM(data.sparkOrders);
       el('strat-deadkm-spark').innerHTML = _ceoSpark(weeklyDead.map(d => d.value), '#D97706', 64);
@@ -359,7 +359,7 @@
     el('exec-ontime-sub').textContent = `4-εβδ. μέσος: ${_weekAvg(weeklyOnTime)}%`;
     // Inline sparkline
     el('exec-ontime-spark').innerHTML = speed.hasData && weeklyOnTime.length
-      ? _ceoSpark(weeklyOnTime.map(w => w.value), '#0284C7', 64)
+      ? _ceoSpark(weeklyOnTime.map(w => w.value), 'var(--accent)', 64)
       : '';
 
     el('exec-risk-val').textContent = data.highRiskOrders.length;
@@ -784,7 +784,7 @@
 
   // ── Helpers ────────────────────────────────────────────────
   function _colorScoreHex(value, target) {
-    return value >= target ? '#34D399' : value >= target * 0.97 ? '#F59E0B' : '#F87171';
+    return value >= target ? 'var(--panel-ok-hi)' : value >= target * 0.97 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
   }
   function _cssScoreClass(value, target) {
     return value >= target ? 'ceo-val-ok' : value >= target * 0.97 ? 'ceo-val-warn' : 'ceo-val-bad';
@@ -853,7 +853,7 @@
         <div><div class="ceo-brand-label">Brand Promise 1</div><div class="ceo-brand-name">Speed Score — Faster to Shelf</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#38BDF8;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:var(--panel-accent);--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-speed-val">—</div>
           </div>
@@ -873,7 +873,7 @@
         <div><div class="ceo-brand-label">Brand Promise 2</div><div class="ceo-brand-name">Quality Score — Verified Freshness</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#34D399;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:var(--panel-ok-hi);--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-quality-val">—</div>
           </div>

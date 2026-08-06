@@ -19,8 +19,8 @@ function _ccIcon(n) { return (typeof icon === 'function') ? icon(n, 11) : ''; }
  */
 function buildCommandCenterHTML(cfg) {
   const { title, pct = 0, actions = [], widgets = [] } = cfg;
-  const sevColor = s => s==='crit'?'#DC2626':s==='warn'?'#D97706':s==='ok'?'#059669':'#0284C7';
-  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'#FEF3C7':s==='ok'?'#D1FAE5':'#DBEAFE';
+  const sevColor = s => s==='crit'?'var(--danger)':s==='warn'?'#D97706':s==='ok'?'#059669':'var(--accent)';
+  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'var(--warning-soft)':s==='ok'?'#D1FAE5':'#DBEAFE';
 
   const actionsHTML = actions.map(a => `
     <span style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;${a.scrollTo?'cursor:pointer':''}" ${a.scrollTo?`onclick="document.getElementById('${a.scrollTo}')?.scrollIntoView({behavior:'smooth',block:'center'})"`:''}>
@@ -28,7 +28,7 @@ function buildCommandCenterHTML(cfg) {
     </span>`).join('');
 
   return `
-  <div style="background:linear-gradient(135deg,#0B1929,#1E3A8A);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px">
+  <div style="background:linear-gradient(135deg,var(--navy-mid),#1E3A8A);color:#fff;padding:14px 18px;border-radius:10px;margin-bottom:12px">
     <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
       <div style="position:relative;width:56px;height:56px;flex-shrink:0">
         <svg width="56" height="56" viewBox="0 0 56 56" style="transform:rotate(-90deg)">
@@ -56,7 +56,7 @@ function widgetFleet(trucks, assignedIds) {
   const total = trucks.length;
   const busy = [...assignedIds].filter(id => trucks.find(t => t.id === id)).length;
   const pct = total ? Math.round(busy / total * 100) : 0;
-  const barCol = pct > 85 ? '#DC2626' : pct > 60 ? '#10B981' : '#F59E0B';
+  const barCol = pct > 85 ? 'var(--danger)' : pct > 60 ? 'var(--panel-ok)' : 'var(--panel-warn)';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('truck')} ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
@@ -77,7 +77,7 @@ function widgetEmptyLegs(soloExp, soloImp, suggestion) {
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('route')} ΚΕΝΑ ΔΡΟΜΟΛΟΓΙΑ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
-      <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${total?'#F59E0B':'#10B981'}">${total}</span>
+      <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${total?'var(--panel-warn)':'var(--panel-ok)'}">${total}</span>
       <span style="font-size:11px;opacity:0.6">${soloExp} εξαγ. · ${soloImp} εισαγ.</span>
     </div>
     ${suggestion ? `<div style="font-size:10px;opacity:0.7;margin-top:3px">${suggestion}</div>` : ''}
@@ -91,7 +91,7 @@ function widgetVsLastWeek(curOrders, prevOrders, curAssigned, prevAssigned) {
   const deltaOrders = curOrders - prevOrders;
   const deltaAssigned = prevAssigned ? Math.round((curAssigned - prevAssigned) / prevAssigned * 100) : 0;
   const arrow = d => d > 0 ? '↑' : d < 0 ? '↓' : '→';
-  const col = d => d > 0 ? '#10B981' : d < 0 ? '#EF4444' : '#94A3B8';
+  const col = d => d > 0 ? 'var(--panel-ok)' : d < 0 ? '#EF4444' : 'var(--panel-dim)';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('bar_chart')} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div>
@@ -107,7 +107,7 @@ function widgetVsLastWeek(curOrders, prevOrders, curAssigned, prevAssigned) {
  */
 function widgetOnTimeStreak(currentWeekPct, streakWeeks) {
   const fire = streakWeeks >= 3 ? '🔥' : streakWeeks >= 1 ? '✨' : '';
-  const col = currentWeekPct >= 90 ? '#10B981' : currentWeekPct >= 75 ? '#F59E0B' : '#EF4444';
+  const col = currentWeekPct >= 90 ? 'var(--panel-ok)' : currentWeekPct >= 75 ? 'var(--panel-warn)' : '#EF4444';
   return `
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${fire} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>

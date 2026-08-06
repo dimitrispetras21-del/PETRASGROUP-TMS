@@ -594,8 +594,8 @@ function _perfDraw() {
       ? (val <= kpi.target ? 'perf-val-ok' : val <= kpi.target * 1.5 ? 'perf-val-warn' : 'perf-val-bad')
       : (val >= kpi.target ? 'perf-val-ok' : val >= kpi.target * 0.7 ? 'perf-val-warn' : 'perf-val-bad');
     const barColor = kpi.invert
-      ? (val <= kpi.target ? '#34D399' : val <= kpi.target * 1.5 ? '#F59E0B' : '#F87171')
-      : (val >= kpi.target ? '#34D399' : val >= kpi.target * 0.7 ? '#F59E0B' : '#F87171');
+      ? (val <= kpi.target ? 'var(--panel-ok-hi)' : val <= kpi.target * 1.5 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)')
+      : (val >= kpi.target ? 'var(--panel-ok-hi)' : val >= kpi.target * 0.7 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)');
     const glowColor = barColor;
     const iconName = kpiIconMap[kpi.id] || 'activity';
     return `<div class="perf-kpi">
@@ -614,7 +614,7 @@ function _perfDraw() {
     // -1 = εβδομάδα χωρίς καμία καταγεγραμμένη επίδοση παράδοσης. Μηδενική
     // μπάρα και «—», όχι 0/100: το μηδέν διαβάζεται ως καταστροφική επίδοση.
     const unknown = t.score < 0;
-    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
+    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? 'var(--panel-ok-hi)' : t.score >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
     return `<div class="perf-trend-row">
       <div class="perf-trend-wk">W${t.week}</div>
       <div class="perf-trend-bar">
@@ -652,7 +652,7 @@ function _perfDraw() {
   }).join('');
 
   // Conic score ring — weekly score
-  const scoreColor = vals.weekly_score >= 85 ? '#34D399' : vals.weekly_score >= 70 ? '#F59E0B' : '#F87171';
+  const scoreColor = vals.weekly_score >= 85 ? 'var(--panel-ok-hi)' : vals.weekly_score >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
   const scoreDeg = Math.min(vals.weekly_score, 100) * 3.6;
 
   // Executive Briefing (was Nakis Feedback)
@@ -754,7 +754,7 @@ function _perfDraw() {
               <div class="perf-score-bars">
                 ${kpiDefs.map(kpi => {
                   const v = vals[kpi.id] ?? 0;
-                  const c = kpi.invert ? (v <= kpi.target ? '#34D399' : '#F87171') : (v >= kpi.target ? '#34D399' : '#F87171');
+                  const c = kpi.invert ? (v <= kpi.target ? 'var(--panel-ok-hi)' : 'var(--panel-bad-hi)') : (v >= kpi.target ? 'var(--panel-ok-hi)' : 'var(--panel-bad-hi)');
                   const pctFill = Math.min(kpi.invert ? (kpi.target / Math.max(v, 1) * 100) : (v / kpi.target * 100), 100);
                   return `<div class="perf-score-bar-row">
                     <span class="perf-score-bar-lbl">${kpi.label.split(' ').slice(0,2).join(' ')}</span>

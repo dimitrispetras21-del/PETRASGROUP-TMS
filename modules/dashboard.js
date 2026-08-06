@@ -355,7 +355,7 @@ async function renderDashboard() {
           dead_km_score: safeDeadKm,
         }).score
       : -1;
-    const scoreColor = weeklyScore < 0 ? 'var(--text-dim)' : weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
+    const scoreColor = weeklyScore < 0 ? 'var(--text-dim)' : weeklyScore > 85 ? 'var(--panel-ok)' : weeklyScore >= 70 ? 'var(--panel-warn)' : '#EF4444';
 
     // Alert banner
     // Each alert carries its own destination: the banner is the fastest route to
@@ -424,12 +424,12 @@ async function renderDashboard() {
         <!-- KPI Bar -->
         <div class="dash-kpi-bar">
           <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--danger),transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_up_right', 11)} Export χωρίς Ανάθεση</div>
             <div class="dash-kpi-value dash-val-danger">${unassignedExport}${_dashDelta(unExpDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές</div></div>
-              ${_dashSpark(unassignedExpTrend, '#F87171')}
+              ${_dashSpark(unassignedExpTrend, 'var(--panel-bad-hi)')}
             </div>
           </button>
           <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
@@ -442,30 +442,30 @@ async function renderDashboard() {
             </div>
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
             <div class="dash-kpi-label">${_i('truck', 11)} Αξιοποίηση Στόλου</div>
             <div class="dash-kpi-value dash-val-accent">${utilPct}%${_dashDelta(utilDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div></div>
-              ${_dashSpark(utilTrend, '#38BDF8')}
+              ${_dashSpark(utilTrend, 'var(--panel-accent)')}
             </div>
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'#10B981':avgDeadKm<=150?'#D97706':'#DC2626') : '#475569'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'var(--panel-ok)':avgDeadKm<=150?'#D97706':'var(--danger)') : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('route', 11)} Νεκρά Χιλιόμετρα</div>
             <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `μ.ό. ${deadKmList.length} ζεύγη · έως ${maxDeadKm}km` : 'κανένα ζεύγος διαδρομών'}</div></div>
-              ${_dashSpark(deadKmTrend, '#F59E0B')}
+              ${_dashSpark(deadKmTrend, 'var(--panel-warn)')}
             </div>
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('orders_intl')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? '#10B981' : '#475569'},transparent)"></div>
+            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? 'var(--panel-ok)' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('check_circle', 11)} On-Time Παράδοση</div>
             <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}${_dashDelta(onTimeDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} εμπρόθεσμες` : 'κανένα δεδομένο'}</div></div>
-              ${_dashSpark(onTimeTrend, '#34D399')}
+              ${_dashSpark(onTimeTrend, 'var(--panel-ok-hi)')}
             </div>
           </button>
         </div>
@@ -509,30 +509,30 @@ async function renderDashboard() {
                 <div class="dash-util-row">
                   <div class="dash-util-label">W${wn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${Math.min(avgCurrent,100)}%;background:linear-gradient(90deg,${avgCurrent>=80?'#059669,#34D399':avgCurrent>=50?'#0284C7,#38BDF8':'#DC2626,#F87171'})"></div>
+                    <div class="dash-util-fill" style="width:${Math.min(avgCurrent,100)}%;background:linear-gradient(90deg,${avgCurrent>=80?'#059669,var(--panel-ok-hi)':avgCurrent>=50?'var(--accent),var(--panel-accent)':'var(--danger),var(--panel-bad-hi)'})"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${avgCurrent>=80?'#34D399':avgCurrent>=50?'#38BDF8':'#F87171'}">${avgCurrent}%</div>
+                  <div class="dash-util-pct" style="color:${avgCurrent>=80?'var(--panel-ok-hi)':avgCurrent>=50?'var(--panel-accent)':'var(--panel-bad-hi)'}">${avgCurrent}%</div>
                 </div>
                 <div class="dash-util-row">
                   <div class="dash-util-label">W${nextWn}</div>
                   <div class="dash-util-bar">
-                    <div class="dash-util-fill" style="width:${Math.min(avgNext,100)}%;background:linear-gradient(90deg,${avgNext>=80?'#059669,#34D399':avgNext>=50?'#1E3A8A,#3B82F6':'#DC2626,#F87171'})"></div>
+                    <div class="dash-util-fill" style="width:${Math.min(avgNext,100)}%;background:linear-gradient(90deg,${avgNext>=80?'#059669,var(--panel-ok-hi)':avgNext>=50?'#1E3A8A,#3B82F6':'var(--danger),var(--panel-bad-hi)'})"></div>
                   </div>
-                  <div class="dash-util-pct" style="color:${avgNext>=80?'#34D399':avgNext>=50?'#3B82F6':'#F87171'}">${avgNext}%</div>
+                  <div class="dash-util-pct" style="color:${avgNext>=80?'var(--panel-ok-hi)':avgNext>=50?'#3B82F6':'var(--panel-bad-hi)'}">${avgNext}%</div>
                 </div>
                 ${topTrucks.length ? `<div class="dash-util-divider">
                   <div class="dash-util-mini-label">W${wn} PER TRUCK</div>
                   ${topTrucks.slice(0, 6).map(t => `<div class="dash-util-mini-row">
                     <span class="dash-util-mini-plate">${t.plate}</span>
                     <div class="dash-util-mini-bar">
-                      <div class="dash-util-mini-fill" style="width:${Math.min(t.rate,100)}%;background:${t.rate>=80?'#34D399':t.rate>=50?'#38BDF8':'#F87171'}"></div>
+                      <div class="dash-util-mini-fill" style="width:${Math.min(t.rate,100)}%;background:${t.rate>=80?'var(--panel-ok-hi)':t.rate>=50?'var(--panel-accent)':'var(--panel-bad-hi)'}"></div>
                     </div>
-                    <span class="dash-util-mini-pct" style="color:${t.rate>=80?'#34D399':t.rate>=50?'#38BDF8':'#F87171'}">${t.rate}%</span>
+                    <span class="dash-util-mini-pct" style="color:${t.rate>=80?'var(--panel-ok-hi)':t.rate>=50?'var(--panel-accent)':'var(--panel-bad-hi)'}">${t.rate}%</span>
                     <span class="dash-util-mini-days">${t.days}d</span>
                   </div>`).join('')}
                 </div>` : ''}
                 ${idleTrucks.length ? `<div class="dash-util-divider">
-                  <div class="dash-util-mini-label" style="color:#F87171">${_i('pause_circle', 10)} ΑΔΡΑΝΗ W${wn}</div>
+                  <div class="dash-util-mini-label" style="color:var(--panel-bad-hi)">${_i('pause_circle', 10)} ΑΔΡΑΝΗ W${wn}</div>
                   <div class="dash-idle-pills">${idlePlates.map(p =>
                     `<span class="dash-idle-pill">${p}</span>`
                   ).join('')}</div>
@@ -640,10 +640,10 @@ async function renderDashboard() {
                   <div class="dash-score-num" style="color:${weeklyScore < 0 ? 'var(--text-dim)' : scoreColor}" title="${weeklyScore < 0 ? 'Καμία παράδοση με καταγεγραμμένη επίδοση — το σκορ δεν υπολογίζεται' : ''}">${weeklyScore < 0 ? '—' : weeklyScore}</div>
                 </div>
                 <div class="dash-score-label">συνολική απόδοση</div>
-                ${_dashScoreBar('Ανάθεση', assignmentRate, '#38BDF8')}
-                ${_dashScoreBar('On-Time', totalDelivered > 0 ? onTimePct : 0, '#34D399')}
+                ${_dashScoreBar('Ανάθεση', assignmentRate, 'var(--panel-accent)')}
+                ${_dashScoreBar('On-Time', totalDelivered > 0 ? onTimePct : 0, 'var(--panel-ok-hi)')}
                 ${_dashScoreBar('Compliance', complianceRate, '#3B82F6')}
-                ${_dashScoreBar('Dead KM', deadKmScore >= 0 ? deadKmScore : 100, '#F59E0B')}
+                ${_dashScoreBar('Dead KM', deadKmScore >= 0 ? deadKmScore : 100, 'var(--panel-warn)')}
               </div>
             </div>
 
@@ -676,7 +676,7 @@ function _dashOpsRow(d, type) {
     d.status === 'Delivered' ? 'var(--dc-ok)' :
     d.status === 'In Transit' ? '#3B82F6' :
     d.status === 'Assigned' ? 'var(--dc-accent)' :
-    '#F59E0B';
+    'var(--panel-warn)';
   const dayCls = d.day === 'Σήμερα' ? 'today' : 'tmrw';
   return `<div class="dash-ops-row" onclick="navigate('orders_intl')">
     <div class="dash-status-dot" style="background:${dotColor}"></div>

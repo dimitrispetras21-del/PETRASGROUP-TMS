@@ -22,7 +22,7 @@ const PL = {
 async function renderPalletLedger() {
   const c = document.getElementById('content');
   c.style.padding = ''; c.style.overflow = '';
-  c.innerHTML = '<div style="text-align:center;padding:60px;color:#94A3B8">Loading Pallet Ledger...</div>';
+  c.innerHTML = '<div style="text-align:center;padding:60px;color:var(--panel-dim)">Loading Pallet Ledger...</div>';
 
   // safeFetch, not `.catch(() => [])`: this is a financial reconciliation with
   // suppliers and partners, so a silently-empty ledger reads as "nothing owed"
@@ -169,7 +169,7 @@ function _plRender() {
   // computed from a failed fetch is indistinguishable from a settled account,
   // and this page is a financial reconciliation.
   const plFailBanner = (PL.loadFailed || []).length ? `
-  <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
+  <div style="background:var(--warning-soft);border:1px solid var(--panel-warn);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
     <b>⚠ This ledger is incomplete.</b>
     Could not load: <b>${PL.loadFailed.map(escapeHtml).join(', ')}</b>.
     Balances and the order list below are <b>not reliable</b> until this loads.
@@ -181,7 +181,7 @@ function _plRender() {
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <div>
       <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Pallet Ledger</h2>
-      <div style="font-size:13px;color:#94A3B8;margin-top:4px">${PL.supplierRecs.length} supplier · ${PL.partnerRecs.length} partner entries</div>
+      <div style="font-size:13px;color:var(--panel-dim);margin-top:4px">${PL.supplierRecs.length} supplier · ${PL.partnerRecs.length} partner entries</div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost" onclick="_plExportCSV()">Export CSV</button>
@@ -200,35 +200,35 @@ function _plRender() {
     </div>
     <div class="pl-balance-card">
       <h4>Top Supplier Debtors</h4>
-      ${bal.topSup.length ? `<ul class="pl-debtor-list">${bal.topSup.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:#94A3B8">No debtors</div>'}
+      ${bal.topSup.length ? `<ul class="pl-debtor-list">${bal.topSup.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">No debtors</div>'}
     </div>
     <div class="pl-balance-card">
       <h4>Top Partner Debtors</h4>
-      ${bal.topPart.length ? `<ul class="pl-debtor-list">${bal.topPart.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:#94A3B8">No debtors</div>'}
+      ${bal.topPart.length ? `<ul class="pl-debtor-list">${bal.topPart.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">No debtors</div>'}
     </div>
   </div>
 
   <!-- Tabs -->
   <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px">
-    <button onclick="PL.filters.tab='suppliers';_plRender()" style="background:${tab==='suppliers'?'var(--accent,#0284C7)':'transparent'};color:${tab==='suppliers'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Suppliers (${PL.supplierRecs.length})</button>
-    <button onclick="PL.filters.tab='partners';_plRender()" style="background:${tab==='partners'?'var(--accent,#0284C7)':'transparent'};color:${tab==='partners'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Partners (${PL.partnerRecs.length})</button>
+    <button onclick="PL.filters.tab='suppliers';_plRender()" style="background:${tab==='suppliers'?'var(--accent,var(--accent))':'transparent'};color:${tab==='suppliers'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Suppliers (${PL.supplierRecs.length})</button>
+    <button onclick="PL.filters.tab='partners';_plRender()" style="background:${tab==='partners'?'var(--accent,var(--accent))':'transparent'};color:${tab==='partners'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Partners (${PL.partnerRecs.length})</button>
   </div>
 
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:end">
     <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">Search</label>
+      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Search</label>
       <input type="text" value="${PL.filters._q||''}" oninput="PL.filters._q=this.value.toLowerCase().trim();_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px;width:180px" placeholder="name / notes...">
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">From</label>
+      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">From</label>
       <input type="date" value="${PL.filters.from}" onchange="PL.filters.from=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">To</label>
+      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">To</label>
       <input type="date" value="${PL.filters.to}" onchange="PL.filters.to=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
     </div>
     <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:#94A3B8;text-transform:uppercase">Direction</label>
+      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Direction</label>
       <select onchange="PL.filters.direction=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
         <option value="">All</option>
         <option value="OUT" ${PL.filters.direction==='OUT'?'selected':''}>OUT</option>
@@ -246,10 +246,10 @@ function _plRender() {
       </tr>
     </thead>
     <tbody>
-      ${filtered.length===0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94A3B8">No records</td></tr>` :
+      ${filtered.length===0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--panel-dim)">No records</td></tr>` :
        filtered.map(r => {
         const f = r.fields;
-        const dirClass = f['Direction']==='OUT' ? 'color:#10B981' : 'color:#EF4444';
+        const dirClass = f['Direction']==='OUT' ? 'color:var(--panel-ok)' : 'color:#EF4444';
         const name = tab==='partners'
           ? _plPartnerName(Array.isArray(f['Partner']) ? f['Partner'][0] : null)
           : _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
@@ -343,7 +343,7 @@ function _plOpenForm(recId) {
             <label>Notes</label>
             <textarea id="plf_notes" rows="2">${f['Notes']||''}</textarea>
           </div>
-          <div class="pu-field pu-full-width" id="plf_warning" style="display:none;padding:8px;background:#FEF3C7;color:#92400E;font-size:12px;border-radius:4px"></div>
+          <div class="pu-field pu-full-width" id="plf_warning" style="display:none;padding:8px;background:var(--warning-soft);color:#92400E;font-size:12px;border-radius:4px"></div>
         </div>
         <div class="pu-actions">
           <button class="btn" onclick="document.getElementById('plFormOverlay').remove()">Cancel</button>

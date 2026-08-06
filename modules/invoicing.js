@@ -103,10 +103,10 @@ function _invDaysSinceDelivery(rec) {
 
 function _invAgingBucket(days) {
   if (days == null) return { key: 'na',   label: '—',     color: '#64748B' };
-  if (days <= 7)    return { key: '0-7',  label: '0-7μ',  color: '#10B981' };
+  if (days <= 7)    return { key: '0-7',  label: '0-7μ',  color: 'var(--panel-ok)' };
   if (days <= 14)   return { key: '7-14', label: '7-14μ', color: '#7DD3FC' };
-  if (days <= 30)   return { key: '14-30',label: '14-30μ',color: '#F59E0B' };
-  return                    { key: '>30', label: `${days}μ`, color: '#DC2626' };
+  if (days <= 30)   return { key: '14-30',label: '14-30μ',color: 'var(--panel-warn)' };
+  return                    { key: '>30', label: `${days}μ`, color: 'var(--danger)' };
 }
 
 function _invIsOverdue(rec) {
@@ -264,13 +264,13 @@ function _renderInvTabs() {
   el.innerHTML = tabs.map(t => {
     const isActive = _invFilters.tab === t.key;
     const isOverdue = t.key === 'overdue' && t.count > 0;
-    const color = isActive ? '#0284C7' : (isOverdue ? '#DC2626' : '#94A3B8');
+    const color = isActive ? 'var(--accent)' : (isOverdue ? 'var(--danger)' : 'var(--panel-dim)');
     return `
       <button onclick="_invSetTab('${t.key}')"
         style="padding:8px 18px;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;
         border:none;cursor:pointer;background:none;
         color:${color};
-        border-bottom:2px solid ${isActive ? '#0284C7' : 'transparent'};
+        border-bottom:2px solid ${isActive ? 'var(--accent)' : 'transparent'};
         margin-bottom:-2px">
         ${t.label} <span style="font-weight:400;opacity:0.7">(${t.count})</span>
       </button>`;
@@ -348,17 +348,17 @@ function _renderInvKPI() {
     </div>
     <div style="${cardStyle};${overdue.length ? 'border-color:#7F1D1D' : ''}">
       <div style="${labelStyle}">ΚΑΘΥΣΤΕΡΗΜΕΝΕΣ (>30 ημ.)</div>
-      <div style="${valueStyle};color:${overdue.length ? '#DC2626' : '#10B981'}">${overdue.length}</div>
+      <div style="${valueStyle};color:${overdue.length ? 'var(--danger)' : 'var(--panel-ok)'}">${overdue.length}</div>
       <div style="${deltaStyle}">${overdue.length ? 'Άμεση ενέργεια' : 'Όλα ΟΚ'}</div>
     </div>
     <div style="${cardStyle}">
       <div style="${labelStyle}">ΜΠΛΟΚΑΡΙΣΜΕΝΕΣ — λείπουν δελτία παλετών</div>
-      <div style="${valueStyle};color:#F59E0B">${blocked.length}</div>
+      <div style="${valueStyle};color:var(--panel-warn)">${blocked.length}</div>
       <div style="${deltaStyle}">Αναμονή δελτίων παλετών</div>
     </div>
     <div style="${cardStyle}">
       <div style="${labelStyle}">ΤΙΜΟΛΟΓΗΜΕΝΕΣ</div>
-      <div style="${valueStyle};color:#10B981">${invoiced.length}</div>
+      <div style="${valueStyle};color:var(--panel-ok)">${invoiced.length}</div>
       <div style="${deltaStyle}">${_fmtEuro(invTotal)}</div>
     </div>
     <div style="${cardStyle};cursor:pointer" onclick="_invShowOutstandingModal()" title="Δες ανά πελάτη">
@@ -479,13 +479,13 @@ function _renderInvTable() {
       : '';
 
     const typeBadge = r._type === 'intl'
-      ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C2D5C;color:#38BDF8">INTL</span>'
+      ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C2D5C;color:var(--panel-accent)">INTL</span>'
       : '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#14532D;color:#4ADE80">NATL</span>';
 
     const peIcon = r._type !== 'intl' ? '<span style="color:var(--text-dim)">—</span>'
       : _invPESheetsOK(r)
-        ? '<span style="color:#10B981;font-weight:700">&#10003;</span>'
-        : '<span style="color:#F59E0B;font-weight:700">&#10007;</span>';
+        ? '<span style="color:var(--panel-ok);font-weight:700">&#10003;</span>'
+        : '<span style="color:var(--panel-warn);font-weight:700">&#10007;</span>';
 
     let statusBadge;
     if (_invIsInvoiced(r)) {
@@ -556,7 +556,7 @@ function _renderInvDetail() {
         <button onclick="_invMarkInvoiced('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
           border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;
           transition:background 0.15s"
-          onmouseenter="this.style.background='#0369A1'" onmouseleave="this.style.background='#0284C7'">
+          onmouseenter="this.style.background='#0369A1'" onmouseleave="this.style.background='var(--accent)'">
           Mark as Invoiced</button>
       </div>`;
   } else if (isInvoiced) {
@@ -586,7 +586,7 @@ function _renderInvDetail() {
         <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--panel-text)">${escapeHtml(_invOrderNo(rec))}</span>
         <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
           background:${rec._type === 'intl' ? '#0C2D5C' : '#14532D'};
-          color:${rec._type === 'intl' ? '#38BDF8' : '#4ADE80'}">${rec._type === 'intl' ? 'INTL' : 'NATL'}</span>
+          color:${rec._type === 'intl' ? 'var(--panel-accent)' : '#4ADE80'}">${rec._type === 'intl' ? 'INTL' : 'NATL'}</span>
       </div>
       ${days != null ? `<div style="margin-bottom:10px;padding:6px 10px;background:${bucket.color}22;border-radius:6px;border:1px solid ${bucket.color}55"><span style="font-size:11px;color:${bucket.color};font-weight:600">${(typeof icon==='function')?icon('clock',12):''} ${days} μέρες από την παράδοση</span></div>` : ''}
       ${row('Client', escapeHtml(_invClientName(rec)))}
@@ -743,7 +743,7 @@ function _invShowOutstandingModal() {
           <tr><th>Client</th><th style="text-align:right">Orders</th><th style="text-align:right">Total</th><th style="text-align:center">Oldest</th></tr>
         </thead>
         <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-dim)">Δεν υπάρχουν εκκρεμότητες</td></tr>'}</tbody>
-        ${rows ? `<tfoot><tr style="border-top:2px solid #334155"><td colspan="2" style="font-weight:700">TOTAL</td><td style="text-align:right;font-weight:700;color:#F59E0B">${_fmtEuro(grandTotal)}</td><td></td></tr></tfoot>` : ''}
+        ${rows ? `<tfoot><tr style="border-top:2px solid #334155"><td colspan="2" style="font-weight:700">TOTAL</td><td style="text-align:right;font-weight:700;color:var(--panel-warn)">${_fmtEuro(grandTotal)}</td><td></td></tr></tfoot>` : ''}
       </table>
     </div>
   `);
@@ -819,7 +819,7 @@ function _invExportPDF() {
     <style>
       *{margin:0;padding:0;box-sizing:border-box}
       body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px}
-      .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #0B1929;padding-bottom:12px;margin-bottom:16px}
+      .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--navy-mid);padding-bottom:12px;margin-bottom:16px}
       .hdr h1{font-size:18px;font-weight:700;color:var(--navy-mid)}
       .hdr .meta{font-size:11px;color:#555;text-align:right}
       .stats{display:flex;gap:24px;margin-bottom:14px;padding:10px;background:#F5F7FA;border-radius:6px}
@@ -829,7 +829,7 @@ function _invExportPDF() {
       thead th{background:var(--navy-mid);color:#fff;padding:6px 8px;text-align:left;font-weight:600}
       tbody td{padding:5px 8px;border-bottom:1px solid #E5E7EB}
       tbody tr:nth-child(even){background:#FAFAFA}
-      tfoot td{padding:8px;font-weight:700;background:#F5F7FA;border-top:2px solid #0B1929}
+      tfoot td{padding:8px;font-weight:700;background:#F5F7FA;border-top:2px solid var(--navy-mid)}
       .pbar{position:fixed;top:0;left:0;right:0;background:var(--navy-mid);color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center}
       .pbar button{background:var(--accent);color:#fff;border:none;padding:6px 18px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
       .pbar button:hover{background:#0369A1}
@@ -937,11 +937,11 @@ function _invShowClientHistory(clientName) {
       </div>
       <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
         <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Invoiced</div>
-        <div style="font-size:18px;font-weight:700;color:#10B981">${invoicedCount}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--panel-ok)">${invoicedCount}</div>
       </div>
       <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
         <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Pending</div>
-        <div style="font-size:18px;font-weight:700;color:#F59E0B">${pendingCount}</div>
+        <div style="font-size:18px;font-weight:700;color:var(--panel-warn)">${pendingCount}</div>
         <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${_fmtEuro(pendingTotal)}</div>
       </div>
       <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
@@ -983,7 +983,7 @@ async function _invFetchPalletBalance(clientId, mountId) {
     if (didFail(recs)) {
       const t = document.getElementById(mountId);
       // Deliberately NOT "0": an unknown balance must not read as a settled one.
-      if (t) t.innerHTML = '<span style="color:#F59E0B;font-size:10px">δεν φόρτωσε</span>';
+      if (t) t.innerHTML = '<span style="color:var(--panel-warn);font-size:10px">δεν φόρτωσε</span>';
       return;
     }
     let inP = 0, outP = 0;
@@ -996,7 +996,7 @@ async function _invFetchPalletBalance(clientId, mountId) {
     const balance = inP - outP;
     const target = document.getElementById(mountId);
     if (!target) return;
-    const color = balance > 0 ? '#10B981' : balance < 0 ? '#F59E0B' : '#94A3B8';
+    const color = balance > 0 ? 'var(--panel-ok)' : balance < 0 ? 'var(--panel-warn)' : 'var(--panel-dim)';
     const sign = balance > 0 ? '+' : '';
     const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(zero)';
     target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--panel-dim);font-size:10px">${label}</span><span style="color:var(--text-dim);font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;

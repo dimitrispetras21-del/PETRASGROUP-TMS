@@ -253,7 +253,7 @@ function _renderNatlTable(records) {
   _onVS.lastEnd = -1;
 
   const ths = _natlColDefs.map(c => {
-    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:#0284C7">▲</span>':_natlSortDir===2?' <span style="color:#0284C7">▼</span>':'') : '';
+    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:var(--accent)">▲</span>':_natlSortDir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
 
@@ -267,7 +267,7 @@ function _renderNatlTable(records) {
       <table><tbody></tbody></table>
       <div id="onBottomSpacer" style="height:${totalH}px"></div>
     </div>
-    <div style="padding:8px 16px;color:#94A3B8;font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+    <div style="padding:8px 16px;color:var(--panel-dim);font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
 
   const scroller = document.getElementById('onVScroll');
   scroller.addEventListener('scroll', _onOnScroll, { passive: true });
@@ -343,7 +343,7 @@ function selectNatlOrder(recId) {
         ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
         </button>`:''}
-        <button type="button" class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
+        <button type="button" class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:var(--danger)">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
         </button>`:''}
         <button type="button" class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</button>
@@ -1459,7 +1459,7 @@ async function _natlScanPreview(data) {
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:#FEF3C7;border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        <div style="background:var(--warning-soft);border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
           <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
           <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
@@ -1578,15 +1578,15 @@ function _natlPrint() {
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:'DM Sans',sans-serif;color:#0F172A;padding:20px;font-size:11px}
-      h1{font-family:'Syne',sans-serif;font-size:22px;color:#0B1929;margin-bottom:4px}
+      h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--navy-mid);margin-bottom:4px}
       .sub{color:#64748B;font-size:11px;margin-bottom:18px}
       table{width:100%;border-collapse:collapse;font-size:10px}
-      thead th{background:#0B1929;color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
+      thead th{background:var(--navy-mid);color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
       tbody td{padding:6px;border-bottom:1px solid #E2E8F0}
       .r{text-align:right}
       .dir{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;white-space:nowrap}
       .dir-exp{background:#DBEAFE;color:#1E40AF}
-      .dir-imp{background:#FEF3C7;color:#92400E}
+      .dir-imp{background:var(--warning-soft);color:#92400E}
       .st{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600}
       .st-ok{background:#D1FAE5;color:#064E3B}
       .st-pending{background:#F1F5F9;color:#475569}

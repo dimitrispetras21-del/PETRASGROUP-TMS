@@ -282,7 +282,7 @@ function toast(msg, type = 'success') {
       display:flex;align-items:center;gap:8px`;
     document.body.appendChild(el);
   }
-  const colors = { success: '#059669', danger: '#DC2626', info: '#3B82F6', warn: '#D97706' };
+  const colors = { success: '#059669', danger: 'var(--danger)', info: '#3B82F6', warn: '#D97706' };
   const icons = {
     success: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><path d="M4 10l4 4 8-8"/></svg>',
     danger: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>',

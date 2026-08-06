@@ -280,7 +280,7 @@ function _auditCrossCompute() {
 async function renderMetricsAudit() {
   const c = document.getElementById('content');
   c.style.padding = '';
-  c.innerHTML = `<div style="text-align:center;padding:60px;color:#94A3B8">Loading audit data...</div>`;
+  c.innerHTML = `<div style="text-align:center;padding:60px;color:var(--panel-dim)">Loading audit data...</div>`;
 
   if (AUDIT.fetching) return;
   AUDIT.fetching = true;
@@ -618,9 +618,9 @@ function _auditDraw() {
   });
 
   const catLabels = {
-    op: { name: 'ΛΕΙΤΟΥΡΓΙΚΕΣ', ic: 'target', color: '#0284C7' },
-    perf: { name: 'ΑΠΟΔΟΣΗ', ic: 'bar_chart', color: '#10B981' },
-    fin: { name: 'ΟΙΚΟΝΟΜΙΚΕΣ', ic: 'euro', color: '#F59E0B' },
+    op: { name: 'ΛΕΙΤΟΥΡΓΙΚΕΣ', ic: 'target', color: 'var(--accent)' },
+    perf: { name: 'ΑΠΟΔΟΣΗ', ic: 'bar_chart', color: 'var(--panel-ok)' },
+    fin: { name: 'ΟΙΚΟΝΟΜΙΚΕΣ', ic: 'euro', color: 'var(--panel-warn)' },
     fleet: { name: 'ΣΤΟΛΟΣ', ic: 'truck', color: '#8B5CF6' },
     hr: { name: 'ΟΜΑΔΑ', ic: 'users', color: '#EC4899' },
     inv: { name: 'ΑΠΟΘΕΜΑ', ic: 'package', color: '#06B6D4' },
@@ -636,7 +636,7 @@ function _auditDraw() {
   // computed from nothing: before this, an unreachable table just produced
   // zeroes that looked like real zeroes on the page meant to verify accuracy.
   const failBanner = failed.length ? `
-    <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
+    <div style="background:var(--warning-soft);border:1px solid var(--panel-warn);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
       <b>⚠ Some figures below may be wrong.</b>
       ${failedLabels.length} source ${failedLabels.length === 1 ? 'table' : 'tables'} could not be loaded:
       <b>${failedLabels.map(escapeHtml).join(', ')}</b>.
@@ -683,7 +683,7 @@ function _auditDraw() {
             const note = catFailed.length
               ? `<span style="color:#B45309">Unavailable: source data could not be loaded</span>`
               : `${r.note || ''}${r.diag && r.diag.length ? '<br><span style="color:#D97706">⚠ '+r.diag.join(' · ')+'</span>' : ''}`;
-            return `<tr style="border-bottom:1px solid var(--border);${hasWarn?'background:#FEF3C7':''}">
+            return `<tr style="border-bottom:1px solid var(--border);${hasWarn?'background:var(--warning-soft)':''}">
               <td style="padding:8px;font-weight:600">${r.label}</td>
               <td style="padding:8px;color:var(--text-dim);font-family:monospace;font-size:11px">${r.key}</td>
               <td style="padding:8px;text-align:right;font-weight:700;font-family:'Syne',sans-serif;font-size:15px">${value}</td>
