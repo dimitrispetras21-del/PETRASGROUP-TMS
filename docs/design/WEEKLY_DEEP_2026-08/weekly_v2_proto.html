@@ -96,6 +96,12 @@ body.details .xtra{display:inline}
 .xtra.cross{color:var(--accent);background:var(--accent-soft)}
 .xtra.late{color:var(--un);background:var(--un-bg)}
 .leg.void{color:var(--hair-strong);justify-content:center;font-size:13px;user-select:none}
+/* ΤΑ ΚΕΝΑ (owner: «για αρχή οι dispatchers πρέπει να ξέρουν ποια είναι τα
+   κενά»): own φορτηγό χωρίς φορτίο επιστροφής = εργάσιμο κενό, όχι διακόσμηση.
+   Κλικ → φωτίζει τα αδιάθετα imports που μπορούν να το γεμίσουν. */
+.gapx{font-size:9.5px;font-weight:700;color:var(--accent);border:1.5px dashed rgba(2,132,199,.45);
+      border-radius:6px;padding:3px 10px;background:transparent;white-space:nowrap}
+.gapx:hover{background:var(--accent-soft)}
 /* Ματαίωση (owner): ορατή-διαγραμμένη, δεν εξαφανίζεται. */
 .row.cxl{opacity:.5}
 .row.cxl .route,.row.cxl .meta,.row.cxl .feed{text-decoration:line-through}
@@ -177,6 +183,7 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
     <span class="t"><b id="c-exp">0</b> εξαγ</span>
     <span class="t"><b id="c-imp">0</b> εισαγ</span>
     <span class="t alert"><b id="c-pend">0</b> εκκρεμή</span>
+    <span class="t" style="color:var(--accent);cursor:pointer" onclick="hl()" title="Own φορτηγά χωρίς φορτίο επιστροφής — κλικ: δείξε τα αδιάθετα imports"><b id="c-gap" style="color:var(--accent)">0</b> κενά γυρισμού</span>
     <div class="acts">
       <button class="ab" onclick="document.body.classList.toggle('details');this.classList.toggle('on')">Λεπτομέρειες</button>
       <button class="ab">Εκτύπωση</button><button class="ab">CSV</button><button class="ab">↻</button>
@@ -258,7 +265,7 @@ const DAYS=[
  {d:'ΠΑΡΑΣΚΕΥΗ 14/8',rows:['own','par','own','sug']},
  {d:'ΣΑΒΒΑΤΟ 15/8', rows:['par','own','imp-par']},
 ];
-let n=0, iN=0, exp=0, imp=0, pend=0, sugI=0;
+let n=0, iN=0, exp=0, imp=0, pend=0, sugI=0, gaps=0;
 const R=a=>a[Math.floor((n*7+iN*3)%a.length)];
 function pillHTML(kind,idx){
   if(kind==='own'){const o=OWN[idx%OWN.length];return `<div class="pill own" onclick="openPop(this)" title="Κλικ: αλλαγή">${o[0]} <small>${o[1]}</small></div>`;}
@@ -291,7 +298,11 @@ function rowHTML(kind){
     const x=(n%7===0?'<span class="xtra cross">↤ φορτώνει W34</span>':'')+(kind==='sug'&&n%3===0?'<span class="xtra late">⚠ φόρτωση σήμερα</span>':'');
     const from=vsExp?'Vermion Fresh Cross-Dock <span style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;vertical-align:middle">VS</span>':R(F);
     expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':R(T)}</span></span><span class="meta">${load}→${del} · ${pal}p ${tags}${x}</span></div>`;
-    impCell=(n%3===0&&!grp)?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`:`<div class="leg void">—</div>`;
+    impCell=(n%3===0&&!grp)
+      ?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`
+      :(pKind==='par'||cancelled
+        ?`<div class="leg void">—</div>`
+        :(gaps++,`<div class="leg" style="justify-content:center"><button class="gapx" title="ΚΕΝΟ ΓΥΡΙΣΜΟΥ: το φορτηγό ξεφορτώνει ${del} χωρίς φορτίο επιστροφής — κλικ: δείξε τα αδιάθετα imports" onclick="hl()">⭘ γυρνά άδειο ${del} · βρες επιστροφή</button></div>`));
   }
   const pill=pKind==='ghost'
     ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
@@ -315,6 +326,17 @@ document.getElementById('rows').innerHTML=html;
 document.getElementById('c-exp').textContent=exp; document.getElementById('n-exp').textContent=exp;
 document.getElementById('c-imp').textContent=imp; document.getElementById('n-imp').textContent=imp;
 document.getElementById('c-pend').textContent=pend;
+document.getElementById('c-gap').textContent=gaps;
+
+/* ΤΑ ΚΕΝΑ: κλικ σε κενό γυρισμού (ή στον μετρητή) → φωτίζει και κεντράρει
+   τα αδιάθετα imports που μπορούν να το γεμίσουν — «σωστή συμπλήρωση». */
+function hl(){
+  const imps=[...document.querySelectorAll('.num.imp')].map(e=>e.closest('.row'));
+  imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-soft)';
+    setTimeout(()=>{r.style.background='';},1800);});
+  if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
+}
+window.hl=hl;
 
 /* ✨ Αποδοχή πρότασης: το κόκκινο γίνεται navy επιτόπου — «αυτόματη ανάθεση» με ένα κλικ. */
 function accept(btn,plate,driver){
