@@ -28,6 +28,15 @@
 // instead of a 403; the SERVER is the real boundary, this is presentation.
 const AUDIT_UI_ROLES = ['owner', 'management'];
 
+// AT-7: κλικ στο record id → το trail φιλτράρει στο ιστορικό ΤΟΥ record.
+function _auditFilterRecord(id) {
+  const inp = document.getElementById('afRecord');
+  if (inp) inp.value = id;
+  _auditFilters.record_id = id;
+  document.getElementById('afApply')?.click();
+}
+window._auditFilterRecord = _auditFilterRecord;
+
 let _auditFilters = { record_id: '', table: '', actor: '', action: '', since: '', until: '' };
 let _auditEntries = [];
 let _auditLoading = false;
@@ -137,7 +146,7 @@ function _auditRow(e, idx) {
       <td>${_auditVal(e.actor)}<div class="txt-dim">${_auditVal(e.role)}</div></td>
       <td><span class="badge ${actionCls}">${_auditVal(e.action)}</span></td>
       <td>${_auditVal(e.table_name)}</td>
-      <td class="mono">${_auditVal(e.record_id)}</td>
+      <td class="mono">${e.record_id ? `<button type="button" style="appearance:none;border:0;background:none;font:inherit;color:var(--accent);cursor:pointer;padding:0" title="Ιστορικό αυτής της εγγραφής" onclick="_auditFilterRecord('${e.record_id}')">${_auditVal(e.record_id)}</button>` : '—'}</td>
       <td>${detail}</td>
     </tr>`;
 }

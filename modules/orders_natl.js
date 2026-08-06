@@ -99,14 +99,14 @@ function _renderNatlLayout(c) {
             <option value="Veroia Switch">Veroia Switch</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('Status',this.value)">
-            <option value="">Κατάσταση: Όλες</option>
+            <option value="">Κατάσταση παραγγελίας: Όλες</option>
             <option value="Pending">Σε αναμονή</option>
             <option value="Confirmed">Επιβεβαιωμένη</option>
             <option value="In Transit">Σε μεταφορά</option>
             <option value="Delivered">Παραδόθηκε</option>
           </select>
           <select class="svc-filter" onchange="natlFilter('_trip',this.value)">
-            <option value="">Δρομολόγιο: Όλα</option>
+            <option value="">Ανάθεση οχήματος: Όλες</option>
             <option value="unassigned">Χωρίς δρομολόγιο</option>
             <option value="assigned">Με δρομολόγιο</option>
           </select>

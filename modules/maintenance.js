@@ -476,6 +476,7 @@ function _expiryPaint() {
         <div class="page-sub">Επισκόπηση συμμόρφωσης εγγράφων στόλου</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
+        <button class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2: ιστορικό service">${_i('clock')} Ιστορικό Service</button>
         <button class="btn btn-ghost btn-sm" onclick="_expiryExportCSV()">${_i('file_text')} Εξαγωγή CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_expiryPrint()">${_i('file_text')} Εκτύπωση</button>
         <button class="btn btn-ghost btn-sm" onclick="MAINT._loaded=false;renderExpiryAlerts()">${_i('refresh')} Ανανέωση</button>
@@ -2002,6 +2003,7 @@ function _mreqPaint() {
       </div>
       <div style="display:flex;gap:var(--space-2)">
         <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} Νέα εντολή</button>
+        <button class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2">${_i('clock')} Ιστορικό Service</button>
         <button class="btn btn-ghost btn-sm" onclick="MREQ._loaded=false;renderMaintRequests()">${_i('refresh')} Refresh</button>
       </div>
     </div>

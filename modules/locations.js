@@ -77,7 +77,7 @@ function _locShell() {
       <div class="entity-toolbar" style="border-bottom:2px solid rgba(11,25,41,0.12)">
         <input class="search-input" id="locSearch" placeholder="Search name, city, address…" style="max-width:280px">
         <select class="filter-select" id="locCountryFilter">
-          <option value="">All Countries</option>
+          <option value="">Χώρα: Όλες</option>
         </select>
         <select class="filter-select" id="locTypeFilter">
           <option value="">All Types</option>
@@ -178,9 +178,9 @@ function _locRenderOverview() {
     { label: 'Σύνολο Τοποθεσιών',  value: total.toLocaleString(),     delta: '' },
     { label: 'Countries',        value: countries.length,           delta: '' },
     { label: 'Με Συντεταγμένες', value: withCoords.toLocaleString(),delta: `${Math.round(withCoords/total*100)}% coverage` },
-    { label: 'Ελλιπή Στοιχεία',     value: missing.toLocaleString(),   delta: 'Χωρίς χώρα ή πόλη' },
+    { label: 'Ελλιπή Στοιχεία',     value: missing.toLocaleString(),   delta: 'Χωρίς χώρα ή πόλη — κλικ για λίστα', click: "_locFilterByCountry('__missing')" },
   ].map(k => `
-    <div class="kpi-card" style="cursor:default">
+    <div class="kpi-card" ${k.click ? `style="cursor:pointer" role="button" tabindex="0" onclick="${k.click}" onkeydown="if(event.key==='Enter'){${k.click}}"` : 'style="cursor:default"'}>
       <div class="kpi-label">${k.label}</div>
       <div class="kpi-value">${k.value}</div>
       ${k.delta ? `<div class="kpi-delta">${k.delta}</div>` : ''}
@@ -228,6 +228,8 @@ function _locRenderOverview() {
 function _locBuildFilterOptions() {
   const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
   const cf = document.getElementById('locCountryFilter');
+  // LO-2: η κάρτα «Ελλιπή Στοιχεία» οδηγεί εδώ — μόνιμη επιλογή στο φίλτρο
+  { const o = document.createElement('option'); o.value = '__missing'; o.textContent = '— Ελλιπή στοιχεία'; cf.appendChild(o); }
   countries.forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; cf.appendChild(o); });
 
   const tf = document.getElementById('locTypeFilter');
@@ -253,7 +255,8 @@ function _locApplyFilters() {
 
   LOC.filtered = LOC.records.filter(r => {
     const f = r.fields;
-    if (country && f.Country !== country) return false;
+    if (country === '__missing') { if (f.Country && f.City) return false; }
+    else if (country && f.Country !== country) return false;
     if (type) {
       const t = (f.Type || '').toLowerCase();
       const isClient = type === 'client depot' && (t.startsWith('client') || t.startsWith('clinet'));

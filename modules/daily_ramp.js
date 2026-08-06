@@ -51,7 +51,11 @@ async function renderDailyRamp() {
     if (_rampInEditCooldown()) {
       return;
     }
-    try { await _rampLoad(); _rampDraw(); _rampFailCount = 0; }
+    try { await _rampLoad(); _rampDraw(); _rampFailCount = 0;
+      // DR-5: πες ΠΟΤΕ ανανεώθηκε — το auto-refresh ήταν αόρατο.
+      const ri=document.getElementById('rampRefreshInfo');
+      if(ri) ri.textContent='Ενημερώθηκε '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'});
+    }
     catch(e) {
       _rampFailCount++;
       console.warn('Ramp auto-refresh failed:', e);
@@ -418,6 +422,7 @@ function _rampDraw() {
     <div class="ramp-toolbar">
       <button class="ramp-day-btn ${RAMP.date===today?'active':''}" onclick="_rampSD('${today}')">Σήμερα</button>
       <button class="ramp-day-btn ${RAMP.date===tmrw?'active':''}" onclick="_rampSD('${tmrw}')">Αύριο</button>
+      <span id="rampRefreshInfo" style="font-size:11px;color:var(--text-dim);margin-left:8px" title="Αυτόματη ανανέωση κάθε 2′ — DR-5"></span>
       <input type="date" class="ramp-date-inp" value="${RAMP.date}" onchange="_rampSD(this.value)">
     </div>
     <div class="entity-toolbar-v2" style="margin-top:var(--space-2);margin-bottom:var(--space-4)">

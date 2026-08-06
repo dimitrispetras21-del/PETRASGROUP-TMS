@@ -40,7 +40,7 @@ async function _opsLoad() {
   }
   const today=localToday();
   const tmrw=localTomorrow();
-  const tgt=OPS.date==='tomorrow'?tmrw:today;
+  const tgt=OPS.date==='tomorrow'?tmrw:OPS.date==='today'?today:OPS.date; // DO-7: δέχεται και ISO ημερομηνία
   const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
   const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Status}='In Transit',{Status}='Assigned',{Status}='Pending',{Status}=''))`;
   const [intl,ov] = await Promise.all([
@@ -90,7 +90,7 @@ const _P=f=>f['Is Partner Trip']===true||f['Is Partner Trip']==='Yes';
 function _opsCats() {
   const today=localToday();
   const tmrw=localTomorrow();
-  const tgt=OPS.date==='tomorrow'?tmrw:today;
+  const tgt=OPS.date==='tomorrow'?tmrw:OPS.date==='today'?today:OPS.date; // DO-7: δέχεται και ISO ημερομηνία
   const c={el:[],ed:[],il:[],id:[]};
   // Apply user filters: text search, direction, status
   const q = (OPS.filters?.q||'').trim().toLowerCase();
@@ -277,6 +277,8 @@ function _opsDraw() {
     <div class="ops-toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
       <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">ΣΗΜΕΡΑ</button>
       <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">ΑΥΡΙΟ</button>
+      <input type="date" class="ops-day-btn" style="cursor:pointer" value="${tgt}" title="Άλλη ημερομηνία — DO-7"
+        onchange="OPS.date=this.value===localToday()?'today':this.value===localTomorrow()?'tomorrow':this.value;renderDailyOps()">
       <input type="text" class="filter-select" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…"
         value="${OPS.filters?.q||''}"
         oninput="_opsSetFilter('q', this.value)"
