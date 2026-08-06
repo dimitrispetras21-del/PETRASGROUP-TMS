@@ -647,7 +647,12 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 36px 80px;
+  /* D-8: the AI-chat FAB (52px, fixed bottom-right) sat ON the last card of
+     the right column — measured overlap with «ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ» on the
+     dashboard. 80px of bottom padding cleared nothing at full scroll; 148px
+     = FAB height + its offset + breathing room, so scrolled-to-end content
+     always clears it. */
+  padding: 32px 36px 148px;
   background: var(--bg);
   scrollbar-width: thin;
   scrollbar-color: #D1D5DB transparent;
