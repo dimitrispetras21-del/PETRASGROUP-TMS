@@ -1059,6 +1059,7 @@ function selectEntity(entityKey, recId) {
     <div class="detail-header">
       <div class="detail-title">${title}</div>
       <div class="detail-actions">
+        ${(entityKey === 'trucks' || entityKey === 'trailers') ? `<button type="button" class="btn btn-ghost btn-sm" title="Ιστορικό service αυτού του οχήματος" onclick="_openVehicleHistory('${entityKey}','${(f['License Plate']||'').replace(/'/g,"\\'")}')">Ιστορικό ›</button>` : ''}
         ${canEdit ? `<button type="button" class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M11 2l3 3-9 9H2v-3l9-9z"/>

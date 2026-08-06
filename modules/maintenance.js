@@ -1016,6 +1016,16 @@ async function _svcDelete(id) {
 // ═════════════════════════════════════════════════════════════════
 let _historyVehicle = { trucks: '', trailers: '' };
 
+// MT-2/ML-4: είσοδος από το detail του οχήματος (Trucks/Trailers) στο
+// ιστορικό ΤΟΥ, προεπιλεγμένο — η σελίδα ιστορικού παύει να είναι
+// «σελίδα-για-ένα-dropdown»: φτάνεις με το όχημα ήδη διαλεγμένο.
+function _openVehicleHistory(entityKey, plate) {
+  const vType = entityKey === 'trucks' ? 'trucks' : 'trailers';
+  if (plate) _historyVehicle[vType] = plate;
+  navigate(vType === 'trucks' ? 'maint_trucks' : 'maint_trailers');
+}
+window._openVehicleHistory = _openVehicleHistory;
+
 async function renderTrucksHistory()   { await _renderHistory('trucks'); }
 async function renderTrailersHistory() { await _renderHistory('trailers'); }
 
