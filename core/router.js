@@ -68,9 +68,12 @@ function _navIcon(name) {
 // Per-group collapsed state persistence
 function _navGroupKey(gi) { return `tms_nav_grp_${gi}_collapsed`; }
 function _navGroupIsCollapsed(gi) {
-  // Default: first group open, rest collapsed (only on first visit)
+  // SH-8: the comment always promised «first group open, rest collapsed» but
+  // the code returned false for everyone — 10 open groups, 32 items, on every
+  // first visit. The code now does what the comment says. Users who have
+  // toggled groups keep their stored choices untouched.
   const stored = localStorage.getItem(_navGroupKey(gi));
-  if (stored === null) return false; // default: all open
+  if (stored === null) return gi !== 0;
   return stored === '1';
 }
 function _navGroupSetCollapsed(gi, collapsed) {
@@ -93,7 +96,10 @@ function renderNav() {
 
   NAV.forEach((group, gi) => {
     if (can(group.perm) === 'none') return;
-    const collapsed = _navGroupIsCollapsed(gi);
+    // The group of the CURRENT page always renders open — a collapsed default
+    // must never hide where the user actually is.
+    const hasActive = group.items.some(it => it.id === currentPage);
+    const collapsed = !hasActive && _navGroupIsCollapsed(gi);
     const sid = 'navgrp_' + gi;
     html += '<div class="nav-section' + (collapsed ? ' collapsed-section' : '') + '" onclick="toggleNavSection(this,\'' + sid + '\',' + gi + ')">'
           + '<span>' + group.section + '</span>'
