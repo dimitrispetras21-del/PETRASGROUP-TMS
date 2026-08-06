@@ -202,3 +202,14 @@ Add to this file under the appropriate severity. Or open a PR. Or just
 write a Markdown note and dump it in `docs/audit-findings/`. We'll triage.
 
 The team has been honest about what's broken — please be the same.
+
+## M6 — Pages deploys: η αιτία ΔΕΝ ήταν το 98KB bundle (Φ11, 10/8/2026)
+Το bundle αφαιρέθηκε ως ύποπτο στις 13:29 χωρίς επιβεβαίωση. Τα logs του
+deploy job λένε την αλήθεια: **«Deployment cancelled»** — κάθε νέο push
+ακυρώνει το εν εξελίξει deployment του προηγούμενου. Με 2-3 παράλληλες
+συνεδρίες να σπρώχνουν κάθε λίγα λεπτά, κανένας κύκλος δεν προλαβαίνει.
+Το build βήμα ΠΕΤΥΧΑΙΝΕ πάντα· μόνο το deploy κοβόταν. Το bundle μπορεί
+να ξαναμπεί αν χρειαστεί — δεν ήταν αυτό.
+ΤΕΛΕΤΟΥΡΓΙΚΟ ΤΕΛΟΥΣ ΦΑΣΗΣ (μπήκε στη Φ11): πριν κλείσει οποιαδήποτε φάση,
+σύγκριση ΚΑΘΕ ?v= του main app.html με αυτό που σερβίρει το Pages —
+δύο commits είχαν ήδη μείνει αδημοσίευτα, το ένα διόρθωνε live 422.
