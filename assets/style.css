@@ -2106,6 +2106,26 @@ tbody tr:hover { background: var(--bg-hover); }
   color: #FEE2E2;
   font-weight:700; font-size:10px; letter-spacing:.3px;
 }
+/* Β.3-3 (Wave 1): import/ΑΝΟΔΟΣ χωρίς όχημα — dashed = non-color signal,
+   works for color-blind scanning too (VISUAL §Χρώμα). */
+.wi-card-un--imp { border-left-style: dashed; opacity: .92; }
+
+/* Π4 (Wave 1): row flash after a Command Center chip jump (_ccJump). */
+.cc-jump-flash { animation: ccJumpFlash 1.6s ease-out; }
+@keyframes ccJumpFlash {
+  0%, 45% { box-shadow: inset 0 0 0 999px var(--accent-glow); }
+  100%    { box-shadow: none; }
+}
+
+/* Π5γ (Wave 1): week phase badge — the page serves two jobs (build next /
+   run current) and now says which one you're looking at. */
+.wk-phase {
+  font-size: 10px; font-weight: 700; letter-spacing: .6px;
+  padding: 2px 8px; border-radius: 10px; white-space: nowrap;
+}
+.wk-phase--build  { background: var(--accent-light); color: var(--accent); }
+.wk-phase--live   { background: rgba(16,185,129,0.12); color: var(--success); }
+.wk-phase--closed { background: var(--bg-hover); color: var(--text-dim); }
 
 /* legacy compat */
 .pt { font-size:var(--text-xs); font-weight:700; white-space:nowrap; overflow:hidden;
