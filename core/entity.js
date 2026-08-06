@@ -647,8 +647,10 @@ function _entitySortRecords(entityKey, recs) {
     // group (sort() is stable). Only when the user hasn't chosen a column —
     // an explicit sort must keep meaning exactly what they clicked.
     if (entityKey === 'drivers') {
-      return [...recs].sort((a, b) =>
-        ((b.fields['Status'] === 'Active') ? 1 : 0) - ((a.fields['Status'] === 'Active') ? 1 : 0));
+      // The column is LABELLED «Status» but the field is the boolean 'Active'
+      // — the first version compared fields['Status'], which doesn't exist,
+      // so nothing sorted. Caught live on the dispatcher check (7/8).
+      return [...recs].sort((a, b) => (b.fields['Active'] ? 1 : 0) - (a.fields['Active'] ? 1 : 0));
     }
     return recs;
   }
