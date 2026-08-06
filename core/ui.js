@@ -277,7 +277,7 @@ function toast(msg, type = 'success') {
     // line ~203) is 52px tall at bottom:24px/right:24px, so a toast at 24px
     // landed on top of it. See docs/design/DEEP_AUDIT_2026-08-04/shell.md SH-5.
     el.style.cssText = `position:fixed;bottom:88px;right:24px;padding:12px 20px;border-radius:8px;
-      font-size:13px;font-weight:500;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,0.15);
+      font-size:13px;font-weight:500;z-index:var(--z-top);box-shadow:0 4px 16px rgba(0,0,0,0.15);
       transform:translateY(20px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;
       display:flex;align-items:center;gap:8px`;
     document.body.appendChild(el);

@@ -34,7 +34,7 @@ function showErrorToast(message, type = 'error', durationMs = 5000) {
     container = document.createElement('div');
     container.id = 'tms-toast-container';
     container.style.cssText =
-      'position:fixed;bottom:20px;right:20px;z-index:99999;display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;max-width:380px;';
+      'position:fixed;bottom:20px;right:20px;z-index:calc(var(--z-top) + 3);display:flex;flex-direction:column-reverse;gap:8px;pointer-events:none;max-width:380px;';
     document.body.appendChild(container);
   }
 

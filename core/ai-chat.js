@@ -200,7 +200,7 @@ function _aicPageContext() {
   const s = document.createElement('style'); s.id = 'ai-chat-css';
   s.textContent = `
 /* Floating launcher button */
-.aic-btn { position:fixed; bottom:24px; right:24px; z-index:950;
+.aic-btn { position:fixed; bottom:24px; right:24px; z-index:var(--z-float);
   width:52px; height:52px; border-radius:50%; border:none;
   background:var(--accent); color:#fff; cursor:pointer;
   box-shadow:0 4px 16px rgba(2,132,199,0.35);
@@ -213,7 +213,7 @@ function _aicPageContext() {
 .aic-btn.has-alerts .aic-dot { display:block; }
 
 /* Panel */
-.aic-panel { position:fixed; bottom:24px; right:24px; z-index:950;
+.aic-panel { position:fixed; bottom:24px; right:24px; z-index:var(--z-float);
   width:400px; height:600px; max-height:80vh;
   background:#0F1C2F; border-radius:var(--radius-lg, 12px);
   box-shadow:0 12px 48px rgba(15,23,42,0.4);
@@ -299,7 +299,7 @@ function _aicPageContext() {
 
 /* Confirmation modal for destructive tools */
 .aic-confirm-overlay {
-  position:fixed; inset:0; z-index:1000;
+  position:fixed; inset:0; z-index:calc(var(--z-float) + 1);
   background:rgba(0,0,0,0.55);
   display:flex; align-items:center; justify-content:center;
   padding:20px;

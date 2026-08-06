@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Petras Group TMS</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="assets/style.css?v=1786002868">
+<link rel="stylesheet" href="assets/style.css?v=1786003127">
 </head>
 <body>
 
@@ -109,8 +109,8 @@
 <script src="core/constants.js?v=1785855517"></script>
 <script src="core/auth.js?v=1785855517"></script>
 <script src="core/api.js?v=1785855517"></script>
-<script src="core/utils.js?v=1786001252"></script>
-<script src="core/ui.js?v=1785966491"></script>
+<script src="core/utils.js?v=1786003127"></script>
+<script src="core/ui.js?v=1786003127"></script>
 <script src="core/entity.js?v=1786001527"></script>
 <script src="core/data-helpers.js?v=1785855517"></script>
 <script src="core/form-helpers.js?v=1785855517"></script>
@@ -123,13 +123,13 @@
 <script src="core/metrics.js?v=1785855517"></script>
 <script src="core/order-sync.js?v=1785855517"></script>
 <script src="core/command-center.js?v=1785918373"></script>
-<script src="core/ai-chat.js?v=1785855517"></script>
+<script src="core/ai-chat.js?v=1786003127"></script>
 <!-- 3. Modules -->
 <script src="modules/dashboard.js?v=1785966556"></script>
 <script src="modules/weekly_intl.js?v=1786002868"></script>
 <script src="modules/weekly_natl.js?v=1786002868"></script>
   <script src="modules/daily_ramp.js?v=1785967390"></script>
-  <script src="modules/maintenance.js?v=1786003400"></script>
+  <script src="modules/maintenance.js?v=1786003127"></script>
   <script src="modules/orders_intl.js?v=1786000821"></script>
 <script src="modules/orders_natl.js?v=1786000821"></script>
 
@@ -237,7 +237,7 @@ if ('serviceWorker' in navigator) {
     if (!banner) {
       banner = document.createElement('div');
       banner.id = 'cacheAgeBanner';
-      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99998;background:#92400E;color:#fff;text-align:center;padding:6px 12px;font:12px/1.4 "DM Sans",sans-serif;transition:opacity .3s;';
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:calc(var(--z-top) + 2);background:#92400E;color:#fff;text-align:center;padding:6px 12px;font:12px/1.4 "DM Sans",sans-serif;transition:opacity .3s;';
       document.body.appendChild(banner);
     }
     const mins = Math.round(ageMs / 60000);

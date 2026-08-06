@@ -88,7 +88,7 @@ const MAINT_TYPE_LABEL = Object.fromEntries(MAINT_TYPES);
 .mv-info { font-size:12px; color:var(--text-dim); }
 
 /* form */
-.mf-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:9998; display:flex; align-items:center; justify-content:center; }
+.mf-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:calc(var(--z-overlay) + 100); display:flex; align-items:center; justify-content:center; }
 .mf-modal { background:var(--bg-card); border-radius:12px; padding:0; width:560px; max-height:85vh; overflow-y:auto;
   box-shadow:0 20px 60px rgba(0,0,0,0.3); }
 .mf-head { padding:16px 20px; border-bottom:1px solid var(--border); font-family:'Syne',sans-serif; font-size:14px; font-weight:700;
