@@ -378,7 +378,7 @@ async function renderEntity(entityKey) {
             } else if (fi.type === 'dynamic') {
               const opts = dynamicOpts[fi.field] || [];
               return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-                <option value="">${fi.label}: All</option>
+                <option value="">${fi.label}: Όλα</option>
                 ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
               </select>`;
             }
