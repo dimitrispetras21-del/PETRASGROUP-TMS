@@ -691,7 +691,7 @@ function _svcPaint() {
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Service Records</div>
-        <div class="page-sub">${MAINT.history.length} total · showing ${records.length}</div>
+        <div class="page-sub">${MAINT.history.length} συνολικά · εμφανίζονται ${records.length}</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
         <button class="btn btn-primary btn-sm" onclick="_svcOpenForm()">${_i('plus')} Νέα Εγγραφή</button>
