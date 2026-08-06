@@ -1589,8 +1589,11 @@ async function _wiFillLaneHist(rowId,row){
   if(!lane||!document.getElementById('wi-lane-'+rowId)) return;
   try{
     if(!WINTL._laneAll){ // one fetch per session, then in-memory
-      WINTL._laneAll=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Partner Rate}>0`,
-        fields:['Loading Summary','Delivery Summary','Partner Rate','Week Number','Partner','Direction']},false);
+      // Facade supports checkbox=1, NOT numeric `>` (422 measured live) —
+      // fetch partner trips and keep the rate check client-side.
+      WINTL._laneAll=(await atGetAll(TABLES.ORDERS,{filterByFormula:`{Is Partner Trip}=1`,
+        fields:['Loading Summary','Delivery Summary','Partner Rate','Week Number','Partner','Direction']},false))
+        .filter(r=>typeof r.fields['Partner Rate']==='number'&&r.fields['Partner Rate']>0);
     }
     const dir=o?.fields['Direction'];
     const hits=WINTL._laneAll

@@ -981,8 +981,10 @@ async function _wnFillLaneHist(rowId, row){
   if(!client||!document.getElementById('wn-lane-'+rowId)) return;
   try{
     if(!WNATL._laneAll){
-      WNATL._laneAll=await atGetAll(TABLES.NAT_LOADS,{filterByFormula:`{Partner Rate}>0`,
-        fields:['Client','Partner Rate','Loading DateTime','Partner']},false);
+      // Facade: checkbox=1 works, numeric `>` returns 422 — filter client-side.
+      WNATL._laneAll=(await atGetAll(TABLES.NAT_LOADS,{filterByFormula:`{Is Partner Trip}=1`,
+        fields:['Client','Partner Rate','Loading DateTime','Partner']},false))
+        .filter(r=>typeof r.fields['Partner Rate']==='number'&&r.fields['Partner Rate']>0);
     }
     const key=client.toUpperCase();
     const hits=WNATL._laneAll
