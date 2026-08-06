@@ -1683,70 +1683,17 @@ async function _checkPalletSheets(recId) {
   return true;
 }
 
-// ─── Pallet Sheet Upload Overlay ───────────────
-function openPalletUpload(orderId) {
-  // Create full-screen iframe overlay
-  let overlay = document.getElementById('palletUploadOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'palletUploadOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center';
-    overlay.innerHTML = `
-      <div style="position:relative;width:95vw;max-width:900px;height:90vh;background:var(--sidebar-bg);border-radius:12px;overflow:hidden">
-        <button onclick="closePalletUpload()" style="position:absolute;top:8px;right:12px;z-index:10;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center">✕</button>
-        <iframe id="palletUploadFrame" style="width:100%;height:100%;border:none;border-radius:12px" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write" src=""></iframe>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  const iframe = document.getElementById('palletUploadFrame');
-  iframe.src = `https://dimitrispetras21-del.github.io/petras-assign/pallet_upload_v2.html?id=${orderId}`;
-  overlay.style.display = 'flex';
-  // Listen for save messages
-  window._palletMsgHandler = async function(e) {
-    // C4 fix: verify origin to prevent malicious postMessage from unrelated sites
-    if (e.origin !== 'https://dimitrispetras21-del.github.io') return;
-    if (e.data?.type === 'pallet-saved') {
-      toast('Pallet sheet saved ✓');
-      // Refresh the specific order from Airtable to get updated sheet flags
-      try {
-        const freshRec = await atGetOne(TABLES.ORDERS, e.data.orderId || orderId);
-        if (freshRec.fields) {
-          // Update in-memory data
-          const idx = INTL_ORDERS.data.findIndex(r => r.id === (e.data.orderId || orderId));
-          if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
-        }
-      } catch(err) { console.warn('Refresh order err:', err); }
-      invalidateCache(TABLES.ORDERS);
-      _applyIntlFilters();
-      // Re-select to update detail panel
-      selectIntlOrder(e.data.orderId || orderId);
-    }
-  };
-  window.addEventListener('message', window._palletMsgHandler);
-}
-async function closePalletUpload() {
-  const overlay = document.getElementById('palletUploadOverlay');
-  if (overlay) overlay.style.display = 'none';
-  const orderId = INTL_ORDERS.selectedId;
-  document.getElementById('palletUploadFrame').src = '';
-  if (window._palletMsgHandler) {
-    window.removeEventListener('message', window._palletMsgHandler);
-    delete window._palletMsgHandler;
-  }
-  // Always refresh order on close (in case sheets were uploaded)
-  if (orderId) {
-    try {
-      const freshRec = await atGetOne(TABLES.ORDERS, orderId);
-      if (freshRec.fields) {
-        const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
-        if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
-      }
-    } catch(err) { logError(err, 'orders_intl refresh after pallet close'); }
-    _applyIntlFilters();
-    selectIntlOrder(orderId);
-  }
-}
-
+// ─── Pallet Sheet Upload ───────────────
+// SW-2: this module used to carry a SECOND openPalletUpload/closePalletUpload
+// pair (an iframe overlay to the petras-assign standalone). Both were dead:
+// modules/pallet_upload.js loads later in app.html and its top-level function
+// declarations rebind the globals, so the in-app modal always won. The pair
+// survived only through script order — reordering app.html would have swapped
+// implementations silently. Removed 2026-08-07 (verified live: the button on a
+// real order opens the in-app modal, zero errors). The buttons below keep
+// calling the global openPalletUpload(recId), now with a single owner.
+// Known gap carried over: after the in-app modal saves, the order detail is
+// not refreshed — the dead close() used to do that but never ran. See SW-6.
 
 // ═══════════════════════════════════════════════
 // SCAN ORDER — AI Pre-fill
@@ -2711,8 +2658,6 @@ window.intlFilter = intlFilter;
 window.intlPeriodChange = intlPeriodChange;
 window._intlExportCSV = _intlExportCSV;
 window._intlPrint = _intlPrint;
-window.openPalletUpload = openPalletUpload;
-window.closePalletUpload = closePalletUpload;
 window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
 window._scanExtract = _scanExtract;
