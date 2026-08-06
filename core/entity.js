@@ -641,7 +641,17 @@ function entitySortToggle(entityKey, colIdx) {
 
 function _entitySortRecords(entityKey, recs) {
   const s = _entitySort[entityKey];
-  if (!s || s.col === null || s.dir === 0) return recs;
+  if (!s || s.col === null || s.dir === 0) {
+    // DV-4: with no user sort, drivers came back in DB order and the first
+    // screen was mostly Inactive people. Active first; DB order within each
+    // group (sort() is stable). Only when the user hasn't chosen a column —
+    // an explicit sort must keep meaning exactly what they clicked.
+    if (entityKey === 'drivers') {
+      return [...recs].sort((a, b) =>
+        ((b.fields['Status'] === 'Active') ? 1 : 0) - ((a.fields['Status'] === 'Active') ? 1 : 0));
+    }
+    return recs;
+  }
   const cfg = ENTITY_CONFIG[entityKey];
   // ΠΡΕΠΕΙ να είναι η ΙΔΙΑ λίστα με αυτήν που παρήγαγε τις κεφαλίδες: ο δείκτης
   // ταξινόμησης έρχεται από τη θέση στη ΦΙΛΤΡΑΡΙΣΜΕΝΗ λίστα, οπότε αν εδώ
