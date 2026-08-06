@@ -367,7 +367,7 @@ async function renderEntity(entityKey) {
       </button>` : ''}
     </div>
 
-    ${(entityKey === 'partners' || entityKey === 'clients' || entityKey === 'workshops') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:var(--space-4)"></div>` : ''}
+    ${(entityKey === 'partners' || entityKey === 'clients' || entityKey === 'workshops' || entityKey === 'drivers' || entityKey === 'trucks' || entityKey === 'trailers') ? `<div id="${entityKey}_stats_strip" style="margin-bottom:var(--space-4)"></div>` : ''}
 
     <div class="entity-layout">
       <div class="entity-list-panel">
@@ -403,6 +403,44 @@ async function renderEntity(entityKey) {
   if (entityKey === 'partners')  _renderPartnersStatsStrip(records);
   if (entityKey === 'clients')   _renderClientsStatsStrip(records);
   if (entityKey === 'workshops') _renderWorkshopsStatsStrip(records);
+  // DV-5/TR-5/TL-5: ο στόλος είχε μηδέν KPI ενώ Clients/Partners είχαν τρία.
+  if (entityKey === 'drivers' || entityKey === 'trucks' || entityKey === 'trailers')
+    _renderFleetStatsStrip(entityKey, records);
+}
+
+// ── Fleet stats strips (DV-5, TR-5, TL-5) ─────────────────
+// Purely from the records already fetched for the table — no extra requests.
+// «Λήξεις» counts vehicles/drivers with at least one EXPIRED document, and
+// «<30 ημ.» those whose nearest expiry lands inside the next month.
+function _renderFleetStatsStrip(entityKey, records) {
+  const el = document.getElementById(entityKey + '_stats_strip');
+  if (!el) return;
+  const EXP = entityKey === 'drivers' ? ['License Expiry']
+            : entityKey === 'trucks'  ? ['KTEO Expiry','KEK Expiry','Insurance Expiry']
+            : ['KTEO Expiry','FRC Expiry','Insurance Expiry'];
+  const now = Date.now();
+  let expired = 0, soon = 0;
+  for (const r of records) {
+    const days = EXP.map(f => r.fields[f]).filter(Boolean)
+      .map(v => Math.floor((new Date(v).getTime() - now) / 86400000));
+    if (!days.length) continue;
+    if (days.some(d => d < 0)) expired++;
+    else if (days.some(d => d <= 30)) soon++;
+  }
+  const active = records.filter(r => r.fields['Active']).length;
+  const card = (label, val, color) => {
+    const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+    return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
+      <div class="tms-stat-label">${label}</div>
+      <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
+    </div>`;
+  };
+  el.innerHTML = `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:var(--space-4)">
+    ${card('Σύνολο', records.length)}
+    ${card(entityKey === 'drivers' ? 'Ενεργοί' : 'Ενεργά', active, active ? 'var(--panel-ok)' : 'var(--panel-dim)')}
+    ${card(entityKey === 'drivers' ? 'Ληγμένο δίπλωμα' : 'Με ληγμένο έγγραφο', expired, expired ? 'var(--panel-bad-hi)' : 'var(--panel-ok)')}
+    ${card('Λήγει <30 ημ.', soon, soon ? 'var(--panel-warn)' : 'var(--panel-dim)')}
+  </div>`;
 }
 
 // ── Workshops stats strip ─────────────────────────
