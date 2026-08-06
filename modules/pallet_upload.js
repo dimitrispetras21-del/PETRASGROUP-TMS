@@ -613,6 +613,10 @@ function _puBuildRecord(direction, pallets, counterpartyType, opts) {
 
 /* ── Close modal ─────────────────────────────── */
 function closePalletUpload() {
+  // SW-6: refresh the order in the intl page so the detail shows the new
+  // sheet flags. No-op if the intl page isn't loaded.
+  const _oid = PU.orderId;
+  if (_oid && typeof window._intlRefreshOrder === 'function') window._intlRefreshOrder(_oid);
   document.getElementById('puOverlay')?.remove();
   PU.orderId = null;
   PU.order = null;

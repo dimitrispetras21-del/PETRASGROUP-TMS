@@ -24,7 +24,7 @@ const NAV = [
   ]},
   { section: 'Drivers', perm: 'drivers', items: [
     { id: 'drivers', label: 'Drivers',        icon: 'user' },
-    { id: 'payroll', label: 'Driver Payroll', icon: 'coins' },
+    { id: 'payroll', label: 'Driver Payroll', icon: 'coins', soon: true },
   ]},
   { section: 'Maintenance', perm: 'maintenance', items: [
     { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
@@ -42,7 +42,7 @@ const NAV = [
   { section: 'Finance', perm: 'orders', items: [
     { id: 'invoicing',     label: 'Invoicing',     icon: 'file_check' },
     { id: 'pallet_ledger', label: 'Pallet Ledger', icon: 'package' },
-    { id: 'costs',         label: 'Costs (soon)',  icon: 'coins' },
+    { id: 'costs',         label: 'Costs',         icon: 'coins', soon: true },
   ]},
   { section: 'Insights', perm: 'ceo_dashboard', items: [
     { id: 'ceo_dashboard', label: 'CEO Dashboard',  icon: 'award' },
@@ -68,9 +68,12 @@ function _navIcon(name) {
 // Per-group collapsed state persistence
 function _navGroupKey(gi) { return `tms_nav_grp_${gi}_collapsed`; }
 function _navGroupIsCollapsed(gi) {
-  // Default: first group open, rest collapsed (only on first visit)
+  // SH-8: the comment always promised «first group open, rest collapsed» but
+  // the code returned false for everyone — 10 open groups, 32 items, on every
+  // first visit. The code now does what the comment says. Users who have
+  // toggled groups keep their stored choices untouched.
   const stored = localStorage.getItem(_navGroupKey(gi));
-  if (stored === null) return false; // default: all open
+  if (stored === null) return gi !== 0;
   return stored === '1';
 }
 function _navGroupSetCollapsed(gi, collapsed) {
@@ -93,7 +96,10 @@ function renderNav() {
 
   NAV.forEach((group, gi) => {
     if (can(group.perm) === 'none') return;
-    const collapsed = _navGroupIsCollapsed(gi);
+    // The group of the CURRENT page always renders open — a collapsed default
+    // must never hide where the user actually is.
+    const hasActive = group.items.some(it => it.id === currentPage);
+    const collapsed = !hasActive && _navGroupIsCollapsed(gi);
     const sid = 'navgrp_' + gi;
     html += '<div class="nav-section' + (collapsed ? ' collapsed-section' : '') + '" onclick="toggleNavSection(this,\'' + sid + '\',' + gi + ')">'
           + '<span>' + group.section + '</span>'
@@ -107,6 +113,9 @@ function renderNav() {
             + ' id="nav_' + item.id + '">'
             + '<div class="nav-icon">' + _navIcon(item.icon) + '</div>'
             + '<span class="nav-label">' + item.label + '</span>'
+            // PR-1/CO-4: unbuilt pages get a pill, not "(soon)" baked into the
+            // label — one convention, visually distinct from working entries.
+            + (item.soon ? '<span style="font-size:9px;color:var(--text-dim);border:1px solid var(--border-mid);border-radius:8px;padding:1px 6px;margin-left:6px;flex-shrink:0">σύντομα</span>' : '')
             + '</div>';
     }
     html += '</div>';
@@ -261,7 +270,6 @@ function navigate(page) {
     case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    renderWeeklyNatl();       break;
     case 'weekly_pickups':
-      document.getElementById('topbarTitle').textContent = 'National Pick Ups';
       c.style.padding = '0';
       c.style.overflow = 'hidden';
       // Make the parent .content div fill the viewport so the iframe has room to grow.
@@ -297,15 +305,41 @@ function navigate(page) {
     case 'trailers':       renderEntity('trailers');      break;
     // Drivers
     case 'drivers':        renderEntity('drivers');       break;
-    case 'payroll':        c.innerHTML = showComingSoon('Driver Payroll');        break;
+    // PR-3: ίδιο gate με settings/trash/error_log. Σήμερα η σελίδα είναι
+    // placeholder, αλλά όταν χτιστεί θα δείχνει μισθούς — το gate μπαίνει
+    // ΠΡΙΝ υπάρξει κάτι να διαρρεύσει, όχι μετά. Ο dispatcher έχει
+    // drivers:'view' και χάνει την πρόσβαση — σκόπιμο (βλ. payroll.md PR-3).
+    case 'payroll':
+      if (can('drivers') !== 'full') { c.innerHTML = showAccessDenied(); break; }
+      c.innerHTML = showComingSoon('Μισθοδοσία Οδηγών', {
+      icon: 'coins',
+      today: 'Η μισθοδοσία υπολογίζεται εκτός συστήματος. Τα δεδομένα ανά δρομολόγιο υπάρχουν ήδη στις Παραγγελίες (οδηγός, ημερομηνίες, παλέτες).',
+      eta: 'Προαπαιτεί την αλυσίδα κόστους: χωρίς κόστος ανά δρομολόγιο, η αμοιβή δεν μπορεί να διασταυρωθεί. Μετά τη σύνδεση εντολής εργασίας → εγγραφής κόστους (MR-2).',
+    });        break;
     // Costs
     // Not in NAV — reachable only via ?page= or a stale bookmark. See
     // docs/design/DEEP_AUDIT_2026-08-04/costs.md CO-1. Blocked on the
     // TRIP_COSTS table, which does not exist in the backend yet (CO-2).
-    case 'costs_dash':     c.innerHTML = showComingSoon('Πίνακας Κόστους — δεν έχει υλοποιηθεί'); break;
-    case 'fuel':           c.innerHTML = showComingSoon('Καύσιμα — δεν έχει υλοποιηθεί');         break;
-    case 'costs':          c.innerHTML = showComingSoon('Costs');                 break;
-    case 'pl':             c.innerHTML = showComingSoon('Κερδοφορία — δεν έχει υλοποιηθεί');      break;
+    case 'costs_dash':     c.innerHTML = showComingSoon('Πίνακας Κόστους', {
+      icon: 'bar_chart',
+      today: 'Δεν υπάρχει συγκεντρωτική εικόνα κόστους. Η σελίδα δεν εμφανίζεται στο μενού — φτάνεις εδώ από παλιό σύνδεσμο.',
+      eta: 'Εξαρτάται από τα Κόστη Δρομολογίων, που με τη σειρά τους περιμένουν τον πίνακα TRIP_COSTS.',
+    }); break;
+    case 'fuel':           c.innerHTML = showComingSoon('Καύσιμα', {
+      icon: 'droplet',
+      today: 'Οι αποδείξεις DADI και DKV εισάγονται από την αυτόνομη εφαρμογή Fuel Import.',
+      eta: 'Η ενσωμάτωση στο TMS δεν έχει προγραμματιστεί. Η σελίδα δεν εμφανίζεται στο μενού.',
+    });         break;
+    case 'costs':          c.innerHTML = showComingSoon('Κόστη Δρομολογίων', {
+      icon: 'coins',
+      today: 'Τα κόστη καταγράφονται σε λογιστικό φύλλο εκτός TMS. Καύσιμα και διόδια εισάγονται με το Fuel Import.',
+      eta: 'Ο πίνακας TRIP_COSTS δεν υπάρχει ακόμη στο backend — επιστρέφει 404 (CO-2). Δεν είναι θέμα οθόνης.',
+    });                 break;
+    case 'pl':             c.innerHTML = showComingSoon('Κερδοφορία', {
+      icon: 'trending_up',
+      today: 'Ο τζίρος φαίνεται στην Τιμολόγηση και στο CEO Dashboard. Το περιθώριο δεν υπολογίζεται πουθενά, γιατί λείπει η πλευρά του κόστους.',
+      eta: 'Χρειάζεται πρώτα τα Κόστη Δρομολογίων. Έσοδα χωρίς κόστη δεν είναι κερδοφορία.',
+    });      break;
     // CEO
     case 'ceo_dashboard':  renderCEODashboard();                                  break;
     // HR
@@ -313,17 +347,28 @@ function navigate(page) {
     // Settings
     case 'settings':
       if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
-      c.innerHTML = showComingSoon('Settings');
+      c.innerHTML = showComingSoon('Ρυθμίσεις', {
+        icon: 'settings',
+        today: 'Οι ρυθμίσεις αλλάζουν στο config.js και ανεβαίνουν με deploy. Χρήστες και ρόλοι ορίζονται εκεί.',
+        eta: 'Οθόνη ρυθμίσεων δεν έχει προγραμματιστεί. Οι αλλαγές ρόλων περνούν από τον owner.',
+      });
       break;
     case 'trash':
       if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
       renderTrashViewer();
       break;
     case 'error_log':
+      // AD-3: αυτό ήταν το ΜΟΝΟ route του Admin χωρίς gate, ανάμεσα σε
+      // settings/trash/metrics_audit που όλα ελέγχουν. Το Error Log δείχνει
+      // stack traces, ονόματα πεδίων και περιεχόμενο αιτημάτων.
+      if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
       renderErrorLog();
       break;
     case 'metrics_audit':
-      if (can('settings') !== 'full') { c.innerHTML = showAccessDenied(); break; }
+      // MA-4: ήταν σε can('settings'), που το έχει ΚΑΙ το management — ενώ η
+      // απόφαση ήταν owner-only. Δείχνει κάθε μέτρηση της επιχείρησης, τζίρο
+      // και ανοιχτά υπόλοιπα, μαζί.
+      if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
       renderMetricsAudit();
       break;
     case 'audit_trail':

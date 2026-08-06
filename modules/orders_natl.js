@@ -245,7 +245,7 @@ function _onOnScroll() {
 
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
-  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">No orders match filters</div>`; return; }
+  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία δεν ταιριάζει στα φίλτρα</div>`; return; }
 
   const sortedRecs = _natlSortRecords(records);
   _onVS.sortedRecs = sortedRecs;
@@ -307,7 +307,7 @@ function _applyNatlFilters() {
   });
   NATL_ORDERS.filtered = recs;
   _renderNatlTable(recs);
-  const n = recs.length + ' orders';
+  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('natlCount').textContent = n;
   document.getElementById('natlSub').textContent   = n;
 }
@@ -337,16 +337,16 @@ function selectNatlOrder(recId) {
         </div>
       </div>
       <div class="detail-actions">
-        ${canEdit?`<div class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
+        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </div>
-        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
+        </button>
+        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </div>`:''}
-        <div class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
+        </button>`:''}
+        <button type="button" class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:#DC2626">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-        </div>`:''}
-        <div class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</div>
+        </button>`:''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">
@@ -558,11 +558,12 @@ async function submitNatlOrder(recId) {
             const f = d.fields;
             return `• ${f['Name'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
           }).join('\n');
-          const ok = confirm(
-            `⚠ Πιθανό duplicate\n\n` +
+          const ok = await confirmAction(
+            `Πιθανό duplicate\n\n` +
             `Υπάρχουν ${refDupes.length} National Orders με Reference "${fields['Reference']}":\n\n` +
             `${list}\n\n` +
-            `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+            `Συνέχεια αποθήκευσης ως νέα παραγγελία;`,
+            { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
           );
           if (!ok) {
             if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
@@ -597,12 +598,12 @@ async function submitNatlOrder(recId) {
         // save because a check errored would be a worse trade for a dispatcher
         // mid-entry.
         if (didFail(dups)) {
-          if (!confirm('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;')) {
+          if (!(await confirmAction('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;', { confirmLabel: 'Συνέχεια' }))) {
             if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
             throw new Error('v');
           }
         } else if (dups.length) {
-          if (!confirm('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;')) {
+          if (!(await confirmAction('Υπάρχει ήδη order με ίδιο client + ημερομηνία. Δημιουργία duplicate;', { confirmLabel: 'Δημιουργία' }))) {
             throw new Error('v');
           }
         }
@@ -979,7 +980,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
 // records intact for audit/reporting. Use for client-cancelled orders.
 // ═══════════════════════════════════════════════
 async function cancelNatlOrder(recId) {
-  if (!confirm('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  if (!(await confirmAction('Ακύρωση αυτής της National Order;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
   try {
     await atPatch(TABLES.NAT_ORDERS, recId, { 'Status': 'Cancelled' });
     invalidateCache(TABLES.NAT_ORDERS);
@@ -1458,7 +1459,7 @@ async function _natlScanPreview(data) {
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:#FEF3C7;border:1px solid #FBBF24;border-left:3px solid #D97706;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        <div style="background:#FEF3C7;border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
           <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
           <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>

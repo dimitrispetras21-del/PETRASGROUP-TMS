@@ -289,6 +289,67 @@ if (typeof window !== 'undefined') {
   window.readPageMetrics = readPageMetrics;
 }
 
+// -- Display normalisation (CL-1/PA-1, TR-2/TL-3) ------------
+// Both of these normalise FOR THE SCREEN ONLY. Nothing here is ever written
+// back: the country strings come from free-text entry across years, and the
+// plates are the join key for linked records — rewriting either would break
+// records that currently work.
+
+/**
+ * Canonical country code for grouping and filtering.
+ * The clients filter offered `GR · GREECE · ΕΛΛΑΔΑ` as three separate options,
+ * so whoever picked "GR" silently lost the other two. Partners had `GREECE`
+ * and `Greece` — visually identical in a dropdown.
+ * Unrecognised input is returned UNCHANGED: losing a country is worse than
+ * showing an odd one. See docs/design/DEEP_AUDIT_2026-08-04/clients.md CL-1.
+ * @param {string} v
+ * @returns {string} canonical code, or the original trimmed value
+ */
+const _COUNTRY_MAP = {
+  gr:'GR', grc:'GR', greece:'GR', ελλαδα:'GR', 'ελλάδα':'GR', hellas:'GR', gre:'GR',
+  bg:'BG', bgr:'BG', bulgaria:'BG', βουλγαρια:'BG', 'βουλγαρία':'BG',
+  ro:'RO', rou:'RO', romania:'RO', ρουμανια:'RO', 'ρουμανία':'RO',
+  de:'DE', deu:'DE', germany:'DE', deutschland:'DE', γερμανια:'DE', 'γερμανία':'DE',
+  it:'IT', ita:'IT', italy:'IT', italia:'IT', ιταλια:'IT', 'ιταλία':'IT',
+  hu:'HU', hun:'HU', hungary:'HU', ουγγαρια:'HU', 'ουγγαρία':'HU',
+  at:'AT', aut:'AT', austria:'AT', nl:'NL', nld:'NL', netherlands:'NL', holland:'NL',
+  pl:'PL', pol:'PL', poland:'PL', cz:'CZ', cze:'CZ', 'czech republic':'CZ', czechia:'CZ',
+  es:'ES', esp:'ES', spain:'ES', fr:'FR', fra:'FR', france:'FR',
+  be:'BE', bel:'BE', belgium:'BE', sk:'SK', svk:'SK', slovakia:'SK',
+  si:'SI', svn:'SI', slovenia:'SI', hr:'HR', hrv:'HR', croatia:'HR',
+};
+function normalizeCountry(v) {
+  if (v == null) return '';
+  const raw = String(v).trim();
+  if (!raw) return '';
+  return _COUNTRY_MAP[raw.toLowerCase()] || raw;
+}
+
+/**
+ * Comparable form of a licence plate, for SEARCH and duplicate detection only.
+ * Plates are entered with Greek and Latin homoglyphs mixed (`ΙΑΖ8302` with a
+ * Greek iota vs `IAZ7245` with a Latin I) and with or without a space. They
+ * look identical on screen and never match each other in a search.
+ * NEVER write this back to the database — the plate is the join key for linked
+ * records. See docs/design/DEEP_AUDIT_2026-08-04/trucks.md TR-2.
+ * @param {string} v
+ * @returns {string} uppercase, Latin-mapped, no separators
+ */
+const _PLATE_HOMOGLYPHS = {
+  'Α':'A','Β':'B','Ε':'E','Ζ':'Z','Η':'H','Ι':'I','Κ':'K','Μ':'M','Ν':'N',
+  'Ο':'O','Ρ':'P','Τ':'T','Υ':'Y','Χ':'X',
+};
+function normalizePlate(v) {
+  if (v == null) return '';
+  return String(v).toUpperCase().replace(/[\s\-._]/g, '')
+    .split('').map(ch => _PLATE_HOMOGLYPHS[ch] || ch).join('');
+}
+
+if (typeof window !== 'undefined') {
+  window.normalizeCountry = normalizeCountry;
+  window.normalizePlate = normalizePlate;
+}
+
 function debounce(fn, ms = 250) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
@@ -863,24 +924,24 @@ function renderErrorLog() {
 
       <!-- KPI Bar (3 severity counts) -->
       <div class="dash-kpi-bar" style="grid-template-columns:repeat(3,1fr)">
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
           <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Critical</div>
           <div class="dash-kpi-value ${counts.critical ? 'dash-val-danger' : 'dash-val-muted'}">${counts.critical}</div>
           <div class="dash-kpi-sub">errors + exceptions</div>
-        </div>
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
+        </button>
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
           <div class="dash-kpi-label">${_ic('clock', 11)} Warning</div>
           <div class="dash-kpi-value ${counts.warning ? 'dash-val-warning' : 'dash-val-muted'}">${counts.warning}</div>
           <div class="dash-kpi-sub">auth, network, 4xx</div>
-        </div>
-        <div class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
+        </button>
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#10B981,transparent)"></div>
           <div class="dash-kpi-label">${_ic('info', 11)} Info</div>
           <div class="dash-kpi-value ${counts.info ? 'dash-val-success' : 'dash-val-muted'}">${counts.info}</div>
           <div class="dash-kpi-sub">aborts, expected</div>
-        </div>
+        </button>
       </div>
 
       <!-- Filters -->
@@ -1426,8 +1487,8 @@ function renderTrashViewer() {
     html += `
       <div style="text-align:center;padding:60px 20px;color:var(--text-dim,#94a3b8);">
         <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.4;margin-bottom:16px;"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>
-        <p style="font-size:15px;">Trash is empty</p>
-        <p style="font-size:12px;margin-top:4px;">Deleted records will appear here for recovery</p>
+        <p style="font-size:15px;">Ο κάδος είναι άδειος</p>
+        <p style="font-size:12px;margin-top:4px;">Οι διαγραμμένες εγγραφές εμφανίζονται εδώ για επαναφορά (τελευταίες 50, σε αυτόν τον browser)</p>
       </div>`;
   } else {
     html += `<div style="display:flex;flex-direction:column;gap:8px;">`;
@@ -1500,3 +1561,19 @@ function _clearAllTrash() {
   localStorage.setItem('tms_trash', '[]');
   renderTrashViewer();
 }
+
+// ── Shared print shell (WI-11) ──────────────────────────────
+// One window.open + fonts + print CSS for every «print the week» flow.
+// weekly_intl and weekly_natl both feed their own table HTML through here,
+// so the app has ONE print chrome instead of a fourth parallel one (OI-7).
+function _printWeekShell(title, innerHtml) {
+  const win = window.open('', '_blank');
+  if (!win) { if (typeof toast === 'function') toast('Ο browser μπλόκαρε το παράθυρο εκτύπωσης', 'danger'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style>
+  </head><body style="padding:20px">${innerHtml}</body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+window._printWeekShell = _printWeekShell;

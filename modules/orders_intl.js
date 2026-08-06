@@ -318,22 +318,29 @@ function _oiOnScroll() {
   });
 }
 
+// OI-6: one source of truth for «which filters are narrowing the list» —
+// shared by the empty state (OI-4) and the always-visible strip above the
+// table, so the two can never disagree.
+function _intlActiveFilters() {
+  const active = [];
+  if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
+  if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
+  if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
+  if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
+  if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
+  if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
+  if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
+  else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
+  return active;
+}
+
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
+  const activeF = _intlActiveFilters();
   if (!records.length) {
-    // OI-4: «Καμία παραγγελία» χωρίς να λέει ΠΟΙΑ φίλτρα κρύβουν τις 124
-    // εγγραφές είναι αδιέξοδο. Τώρα ονομάζει τα ενεργά και προσφέρει έξοδο.
-    const active = [];
-    if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
-    if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
-    // Το select κατάστασης γράφει στο κλειδί '_status' (intlFilter('_status',…)),
-    // όχι 'Status'. Ο live έλεγχος έδειξε ότι η πρώτη γραφή το έχανε.
-    if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
-    if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
-    if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
-    if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
-    if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
-    else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
+    // OI-4: the empty state names the filters hiding the data (list built once
+    // in _intlActiveFilters — see OI-6).
+    const active = activeF;
     const hasFilters = active.length > 0;
     wrap.innerHTML = (typeof showEmpty === 'function') ? showEmpty({
       illustration: 'order',
@@ -360,7 +367,15 @@ function _renderIntlTable(records) {
   }).join('');
 
   const totalH = sortedRecs.length * _OI_ROW_H;
-  wrap.innerHTML = `
+  // OI-6: with results SHOWING, active filters were invisible — the page could
+  // land on «0 orders» (or 21 of 124) with nothing saying why. Slim strip
+  // above the table names them and offers the existing clear action.
+  const filterStrip = activeF.length ? `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 16px;font-size:11px;color:var(--text-dim);border-bottom:1px solid var(--border)">
+      <span style="font-weight:600">Φίλτρα:</span> ${activeF.join(' · ')}
+      <button type="button" onclick="_intlClearFilters()" style="margin-left:auto;background:none;border:1px solid var(--border-mid);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text-mid);cursor:pointer">Καθαρισμός</button>
+    </div>` : '';
+  wrap.innerHTML = `${filterStrip}`+`
     <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
       <table style="table-layout:fixed;width:100%">
         <thead><tr>${ths}</tr></thead>
@@ -417,7 +432,7 @@ function _applyIntlFilters() {
   }
   INTL_ORDERS.filtered = recs;
   _renderIntlTable(recs);
-  const n = recs.length + ' orders';
+  const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('intlCount').textContent = n;
   document.getElementById('intlSub').textContent   = n;
 
@@ -477,16 +492,16 @@ function selectIntlOrder(recId) {
         </div>
       </div>
       <div class="detail-actions">
-        ${canEdit?`<div class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
+        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </div>`:''}
-        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<div class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
+        </button>`:''}
+        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </div>`:''}
-        ${canEdit?`<div class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
+        </button>`:''}
+        ${canEdit?`<button type="button" class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:#DC2626">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h10M5 4V2h6v2M6 7v5M10 7v5M4 4l1 10h6l1-10"/></svg>
-        </div>`:''}
-        <div class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</div>
+        </button>`:''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">
@@ -531,7 +546,7 @@ function selectIntlOrder(recId) {
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="font-weight:600;font-size:11px;color:var(--accent)">PALLET SHEETS</span>
             <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">
-              Upload Sheet
+              Δελτίο Παλετών
             </button>
           </div>
           <div style="display:flex;gap:12px;font-size:11px">
@@ -560,7 +575,7 @@ function selectIntlOrder(recId) {
       <div class="detail-section">
         <div class="detail-section-title">Pallet Exchange</div>
         <button class="btn btn-scan" onclick="openPalletUpload('${recId}')" style="width:100%;margin-bottom:8px">
-          Upload Pallet Sheet
+          Δελτίο Παλετών — Upload
         </button>
         <div style="display:flex;gap:8px">
           ${_chk('Sheet 1', f['Pallet Sheet 1 Uploaded'])}
@@ -915,9 +930,20 @@ async function _syncVeroiaSwitch(orderId, fields) {
     // Sync GL lines anchored to auto-created NAT_ORDER
     try {
       await _syncGrpFromIntl(orderId, fields);
+      // Flag only set on SUCCESS: _syncGroupageLines now rethrows on failure
+      // (it used to swallow, so this line ran even when GL sync had failed).
       await atPatch(TABLES.ORDERS, orderId, {'National Order Created': true});
     }
-    catch(e) { logError(e, 'intl GRP sync (VS+GRP)'); }
+    catch(e) {
+      // Surface to the user (was gated-log only, invisible in prod) and mark
+      // the parent NOT created so the state is truthful and prompts a re-save.
+      // Retry is safe: _syncGroupageLines adopts existing GLs by location
+      // (existMap), so a partial create heals on the next save.
+      if (typeof reportError === 'function') reportError('Ο συγχρονισμός groupage απέτυχε, αποθήκευσε ξανά την παραγγελία', e, 'warn');
+      logError(e, 'intl GRP sync (VS+GRP)');
+      try { await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false}); }
+      catch(e2) { logError(e2, 'intl GRP sync: reset National Order Created'); }
+    }
     invalidateCache(TABLES.NAT_LOADS);
     return; // finally block still runs (_syncingOrders.delete)
   }
@@ -1297,7 +1323,21 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
         await atPatch(TABLES.GL_LINES, r.id, {Status:'Unassigned', Pallets:0});
       }
     }
-  } catch(e) { console.error('_syncGroupageLines:', e); if (typeof logError === 'function') logError(e, '_syncGroupageLines'); if (typeof toast === 'function') toast('Σφάλμα sync groupage lines', 'error'); }
+  } catch(e) {
+    // Rethrow so the caller can act on the failure. This catch used to swallow
+    // (log + toast, no rethrow), which meant the GRP-ON path in _syncVeroiaSwitch
+    // could not tell success from failure and set 'National Order Created': true
+    // on the parent order even when GL sync had failed, planner then shows a
+    // "synced" order with missing/partial GL lines. User messaging is now owned
+    // by the caller (single live call site: _syncGrpFromIntl).
+    // NOTE: deliberately NO delete-based rollback here. GL records are NEVER
+    // deleted (see CLAUDE.md sync-chain rules), and a partial create is benign:
+    // leftover GLs sit at Status='Unassigned' and the next save adopts them via
+    // existMap (idempotent retry).
+    console.error('_syncGroupageLines:', e);
+    if (typeof logError === 'function') logError(e, '_syncGroupageLines');
+    throw e;
+  }
 }
 
 
@@ -1319,7 +1359,8 @@ async function submitIntlOrder(recId) {
       if (txt2 && !id2) unmatchedLocs.push(`Delivery Location ${i}: "${txt2}"`);
     }
     if (unmatchedLocs.length) {
-      alert('⚠ Αδύνατη υποβολή — οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.');
+      // OI-5: app modal αντί για native alert — ίδιο κείμενο, ίδια ροή.
+      await confirmAction('Οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.', { title: 'Αδύνατη υποβολή', confirmLabel: 'ΟΚ' });
       if (btn) { btn.textContent = recId ? 'Update Order' : 'Submit'; btn.disabled = false; }
       throw new Error('validation');
     }
@@ -1460,11 +1501,12 @@ async function submitIntlOrder(recId) {
           return links.some(l => (l?.id||l) === recId) && r.fields.Status === 'Assigned';
         });
         if (assignedGLs.length > 0) {
-            const ok = confirm(
-              `⚠️ Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
+            const ok = await confirmAction(
+              `Η παραγγελία αυτή έχει ήδη ενταχθεί σε groupage φορτίο.\n\n` +
               `Αν αποθηκεύσεις αλλαγές, το φορτίο θα διαλυθεί αυτόματα\n` +
               `ώστε να ξαναφτιαχτεί με τα νέα δεδομένα.\n\n` +
-              `Θέλεις να συνεχίσεις;`
+              `Θέλεις να συνεχίσεις;`,
+              { title: 'Groupage φορτίο', confirmLabel: 'Συνέχεια', danger: true }
             );
             if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
 
@@ -1506,11 +1548,12 @@ async function submitIntlOrder(recId) {
           const f = d.fields;
           return `• ${f['Order Number'] || d.id.slice(-6)} — ${(f['Loading DateTime']||'').substring(0,10) || 'no date'}`;
         }).join('\n');
-        const ok = confirm(
-          `⚠ Πιθανό duplicate\n\n` +
+        const ok = await confirmAction(
+          `Πιθανό duplicate\n\n` +
           `Υπάρχουν ${dupes.length} παραγγελίες με Reference "${fields['Reference']}":\n\n` +
           `${list}\n\n` +
-          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`
+          `Συνέχεια αποθήκευσης ως νέα παραγγελία;`,
+          { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
         );
         if (!ok) {
           if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
@@ -1658,70 +1701,17 @@ async function _checkPalletSheets(recId) {
   return true;
 }
 
-// ─── Pallet Sheet Upload Overlay ───────────────
-function openPalletUpload(orderId) {
-  // Create full-screen iframe overlay
-  let overlay = document.getElementById('palletUploadOverlay');
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'palletUploadOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center';
-    overlay.innerHTML = `
-      <div style="position:relative;width:95vw;max-width:900px;height:90vh;background:var(--sidebar-bg);border-radius:12px;overflow:hidden">
-        <button onclick="closePalletUpload()" style="position:absolute;top:8px;right:12px;z-index:10;background:rgba(255,255,255,0.15);border:none;color:white;font-size:20px;cursor:pointer;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center">✕</button>
-        <iframe id="palletUploadFrame" style="width:100%;height:100%;border:none;border-radius:12px" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write" src=""></iframe>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  const iframe = document.getElementById('palletUploadFrame');
-  iframe.src = `https://dimitrispetras21-del.github.io/petras-assign/pallet_upload_v2.html?id=${orderId}`;
-  overlay.style.display = 'flex';
-  // Listen for save messages
-  window._palletMsgHandler = async function(e) {
-    // C4 fix: verify origin to prevent malicious postMessage from unrelated sites
-    if (e.origin !== 'https://dimitrispetras21-del.github.io') return;
-    if (e.data?.type === 'pallet-saved') {
-      toast('Pallet sheet saved ✓');
-      // Refresh the specific order from Airtable to get updated sheet flags
-      try {
-        const freshRec = await atGetOne(TABLES.ORDERS, e.data.orderId || orderId);
-        if (freshRec.fields) {
-          // Update in-memory data
-          const idx = INTL_ORDERS.data.findIndex(r => r.id === (e.data.orderId || orderId));
-          if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
-        }
-      } catch(err) { console.warn('Refresh order err:', err); }
-      invalidateCache(TABLES.ORDERS);
-      _applyIntlFilters();
-      // Re-select to update detail panel
-      selectIntlOrder(e.data.orderId || orderId);
-    }
-  };
-  window.addEventListener('message', window._palletMsgHandler);
-}
-async function closePalletUpload() {
-  const overlay = document.getElementById('palletUploadOverlay');
-  if (overlay) overlay.style.display = 'none';
-  const orderId = INTL_ORDERS.selectedId;
-  document.getElementById('palletUploadFrame').src = '';
-  if (window._palletMsgHandler) {
-    window.removeEventListener('message', window._palletMsgHandler);
-    delete window._palletMsgHandler;
-  }
-  // Always refresh order on close (in case sheets were uploaded)
-  if (orderId) {
-    try {
-      const freshRec = await atGetOne(TABLES.ORDERS, orderId);
-      if (freshRec.fields) {
-        const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
-        if (idx >= 0) INTL_ORDERS.data[idx] = freshRec;
-      }
-    } catch(err) { logError(err, 'orders_intl refresh after pallet close'); }
-    _applyIntlFilters();
-    selectIntlOrder(orderId);
-  }
-}
-
+// ─── Pallet Sheet Upload ───────────────
+// SW-2: this module used to carry a SECOND openPalletUpload/closePalletUpload
+// pair (an iframe overlay to the petras-assign standalone). Both were dead:
+// modules/pallet_upload.js loads later in app.html and its top-level function
+// declarations rebind the globals, so the in-app modal always won. The pair
+// survived only through script order — reordering app.html would have swapped
+// implementations silently. Removed 2026-08-07 (verified live: the button on a
+// real order opens the in-app modal, zero errors). The buttons below keep
+// calling the global openPalletUpload(recId), now with a single owner.
+// Known gap carried over: after the in-app modal saves, the order detail is
+// not refreshed — the dead close() used to do that but never ran. See SW-6.
 
 // ═══════════════════════════════════════════════
 // SCAN ORDER — AI Pre-fill
@@ -2144,7 +2134,7 @@ async function _scanPreview(data) {
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:#FEF3C7;border:1px solid #FBBF24;border-left:3px solid #D97706;padding:10px 14px;border-radius:8px;margin-bottom:10px">
+        <div style="background:#FEF3C7;border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
           <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
           <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
@@ -2307,7 +2297,7 @@ function _intlPrint() {
 // remain visible). Use this for client-cancelled orders.
 // ═══════════════════════════════════════════════════════════════
 async function cancelIntlOrder(recId) {
-  if (!confirm('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.')) return;
+  if (!(await confirmAction('Ακύρωση αυτής της παραγγελίας;\n\nΘα μαρκαριστεί ως Cancelled αλλά τα linked records (NL/GL/CL/Ramp/Pallet Ledger) παραμένουν.\n\nΓια ολική διαγραφή χρησιμοποίησε το Delete.', { title: 'Ακύρωση παραγγελίας', confirmLabel: 'Ακύρωσέ την', danger: true }))) return;
   try {
     await atPatch(TABLES.ORDERS, recId, { 'Status': 'Cancelled' });
     invalidateCache(TABLES.ORDERS);
@@ -2668,6 +2658,24 @@ async function cleanupOrphans() {
 }
 
 // Expose functions used from onclick/onchange/oninput/onblur handlers
+// SW-6: the in-app pallet modal (modules/pallet_upload.js) saves sheet flags
+// on the order, but the detail panel kept showing stale data — the dead
+// iframe-close that used to refresh never ran. Single public hook: refetch
+// one order into the store and repaint. Called by closePalletUpload().
+async function _intlRefreshOrder(orderId) {
+  try {
+    const fresh = await atGetOne(TABLES.ORDERS, orderId);
+    if (fresh && fresh.fields) {
+      const idx = INTL_ORDERS.data.findIndex(r => r.id === orderId);
+      if (idx >= 0) INTL_ORDERS.data[idx] = fresh;
+    }
+    invalidateCache(TABLES.ORDERS);
+    _applyIntlFilters();
+    if (INTL_ORDERS.selectedId === orderId) selectIntlOrder(orderId);
+  } catch (e) { logError(e, 'orders_intl refresh after pallet save'); }
+}
+window._intlRefreshOrder = _intlRefreshOrder;
+
 window.cancelIntlOrder = cancelIntlOrder;
 window.deleteIntlOrder = deleteIntlOrder;
 window.cleanupOrphanGL = cleanupOrphanGL;
@@ -2686,8 +2694,6 @@ window.intlFilter = intlFilter;
 window.intlPeriodChange = intlPeriodChange;
 window._intlExportCSV = _intlExportCSV;
 window._intlPrint = _intlPrint;
-window.openPalletUpload = openPalletUpload;
-window.closePalletUpload = closePalletUpload;
 window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
 window._scanExtract = _scanExtract;

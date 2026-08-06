@@ -163,7 +163,6 @@ async function renderWeeklyIntl(){
   WINTL._seq = 0;
   const loadId = ++_wiLoadId;
   if(can('planning')==='none'){document.getElementById('content').innerHTML=showAccessDenied();return;}
-  document.getElementById('topbarTitle').textContent=`Weekly International — Week ${WINTL.week}`;
   document.getElementById('content').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:center;
                 gap:10px;height:160px;color:var(--text-dim);font-size:13px">
@@ -1792,13 +1791,8 @@ function _wiPrintWeek(){
     </tr>`;
   });
   html+='</tbody></table>';
-  const win=window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><title>Week ${WINTL.week} — Petras TMS</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style>
-  </head><body style="padding:20px">${html}</body></html>`);
-  win.document.close();
-  setTimeout(()=>win.print(),500);
+  // WI-11: shared shell (core/utils) — one print chrome for both weekly pages.
+  _printWeekShell(`Week ${WINTL.week} — Petras TMS`, html);
 }
 
 // Expose functions used from onclick/oninput/onfocus handlers

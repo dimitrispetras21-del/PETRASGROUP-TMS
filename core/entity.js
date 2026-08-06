@@ -13,34 +13,34 @@ const ENTITY_CONFIG = {
     perm: 'clients',
     searchFields: ['Company Name', 'City', 'Contact Person', 'VAT Number'],
     filters: [
-      { field: 'Country', label: 'Country', type: 'dynamic' },
-      { field: 'Active',  label: 'Status', type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
     ],
     columns: [
-      { field: 'Company Name',  label: 'Company',  primary: true },
-      { field: 'Country',       label: 'Country' },
-      { field: 'City',          label: 'City' },
-      { field: 'Contact Person',label: 'Contact' },
-      { field: 'Phone',         label: 'Phone' },
-      { field: 'Active',        label: 'Status', type: 'active' },
+      { field: 'Company Name',  label: 'Εταιρεία',  primary: true },
+      { field: 'Country',       label: 'Χώρα' },
+      { field: 'City',          label: 'Πόλη' },
+      { field: 'Contact Person',label: 'Επαφή' },
+      { field: 'Phone',         label: 'Τηλέφωνο' },
+      { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Details', fields: [
-        { f: 'Company Name', label: 'Company Name', req: true },
-        { f: 'VAT Number',   label: 'VAT No.' },
-        { f: 'Country',      label: 'Country' },
-        { f: 'City',         label: 'City' },
-        { f: 'Adress',       label: 'Address' },
+        { f: 'Company Name', label: 'Επωνυμία', req: true },
+        { f: 'VAT Number',   label: 'ΑΦΜ' },
+        { f: 'Country',      label: 'Χώρα' },
+        { f: 'City',         label: 'Πόλη' },
+        { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
       { section: 'Contact', fields: [
-        { f: 'Contact Person',      label: 'Contact Person' },
-        { f: 'Phone',               label: 'Phone' },
+        { f: 'Contact Person',      label: 'Υπεύθυνος επαφής' },
+        { f: 'Phone',               label: 'Τηλέφωνο' },
         { f: 'Email',               label: 'Email', type: 'email' },
-        { f: 'Payment Terms Days',  label: 'Payment Terms (days)', type: 'number' },
+        { f: 'Payment Terms Days',  label: 'Όροι πληρωμής (ημέρες)', type: 'number' },
       ]},
     ],
     detailSections: [
@@ -58,31 +58,31 @@ const ENTITY_CONFIG = {
     perm: 'clients',
     searchFields: ['Company Name', 'Contact Person', 'VAT Number'],
     filters: [
-      { field: 'Country', label: 'Country', type: 'dynamic' },
-      { field: 'Active',  label: 'Status', type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
     ],
     columns: [
-      { field: 'Company Name',  label: 'Company',  primary: true },
-      { field: 'Country',       label: 'Country' },
-      { field: 'Contact Person',label: 'Contact' },
-      { field: 'Phone',         label: 'Phone' },
+      { field: 'Company Name',  label: 'Εταιρεία',  primary: true },
+      { field: 'Country',       label: 'Χώρα' },
+      { field: 'Contact Person',label: 'Επαφή' },
+      { field: 'Phone',         label: 'Τηλέφωνο' },
       { field: 'Email',         label: 'Email' },
-      { field: 'Active',        label: 'Status', type: 'active' },
+      { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Details', fields: [
-        { f: 'Company Name', label: 'Company Name', req: true },
-        { f: 'VAT Number',   label: 'VAT No.' },
-        { f: 'Country',      label: 'Country' },
-        { f: 'Adress',       label: 'Address' },
+        { f: 'Company Name', label: 'Επωνυμία', req: true },
+        { f: 'VAT Number',   label: 'ΑΦΜ' },
+        { f: 'Country',      label: 'Χώρα' },
+        { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
       { section: 'Contact', fields: [
-        { f: 'Contact Person', label: 'Contact Person' },
-        { f: 'Phone',          label: 'Phone' },
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email', type: 'email' },
       ]},
     ],
@@ -101,36 +101,36 @@ const ENTITY_CONFIG = {
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
     filters: [
-      { field: 'Type', label: 'Type', type: 'select', options: [
-        { val: '', label: 'All' },
-        { val: 'Internal', label: 'Internal' },
-        { val: 'External', label: 'External' },
+      { field: 'Type', label: 'Τύπος', type: 'select', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'Internal', label: 'Εσωτερικός' },
+        { val: 'External', label: 'Εξωτερικός' },
       ]},
-      { field: 'Active', label: 'Status', type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Active', label: 'Κατάσταση', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
     ],
     columns: [
-      { field: 'Full Name',      label: 'Driver', primary: true },
-      { field: 'Phone',          label: 'Phone' },
-      { field: 'Type',           label: 'Type' },
-      { field: 'Salary Base',    label: 'Salary' },
-      { field: 'License Number', label: 'License No.' },
-      { field: 'License Expiry', label: 'License Expiry', type: 'expiry' },
-      { field: 'Active',         label: 'Status', type: 'active' },
+      { field: 'Full Name',      label: 'Οδηγός', primary: true },
+      { field: 'Phone',          label: 'Τηλέφωνο' },
+      { field: 'Type',           label: 'Τύπος' },
+      { field: 'Salary Base',    label: 'Μισθός', perm: 'full' },   // DV-3: μισθοδοσία — μόνο με δικαίωμα εγγραφής
+      { field: 'License Number', label: 'Αρ. διπλώματος' },
+      { field: 'License Expiry', label: 'Δίπλωμα έως', type: 'expiry' },
+      { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Details', fields: [
-        { f: 'Full Name',   label: 'Full Name', req: true },
-        { f: 'Phone',       label: 'Phone' },
-        { f: 'Type',        label: 'Type', type: 'select', options: ['Internal','External'] },
-        { f: 'Salary Base', label: 'Base Salary', type: 'number' },
+        { f: 'Full Name',   label: 'Ονοματεπώνυμο', req: true },
+        { f: 'Phone',       label: 'Τηλέφωνο' },
+        { f: 'Type',        label: 'Τύπος', type: 'select', options: ['Internal','External'] },
+        { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number' },
       ]},
       { section: 'Driving Licence', fields: [
-        { f: 'License Number', label: 'License No.' },
-        { f: 'License Expiry', label: 'Licence Expiry', type: 'date' },
+        { f: 'License Number', label: 'Αρ. διπλώματος' },
+        { f: 'License Expiry', label: 'Δίπλωμα έως', type: 'date' },
       ]},
     ],
     detailSections: [
@@ -146,28 +146,28 @@ const ENTITY_CONFIG = {
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     filters: [
-      { field: 'Brand',  label: 'Brand',  type: 'dynamic' },
-      { field: 'Active', label: 'Status', type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Brand',  label: 'Μάρκα',  type: 'dynamic' },
+      { field: 'Active', label: 'Κατάσταση', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
-      { field: '_compliance', label: 'Compliance', type: 'select', options: [
-        { val: '', label: 'All' },
-        { val: 'expired',  label: 'Has Expired' },
-        { val: 'expiring', label: 'Expiring <30d' },
-        { val: 'ok',       label: 'All OK' },
+      { field: '_compliance', label: 'Έγγραφα', type: 'select', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'expired',  label: 'Με ληγμένο' },
+        { val: 'expiring', label: 'Λήγει <30 ημ.' },
+        { val: 'ok',       label: 'Όλα εντάξει' },
       ]},
     ],
     columns: [
-      { field: 'License Plate',       label: 'Plate', primary: true },
-      { field: 'Brand',               label: 'Brand' },
-      { field: 'Model',               label: 'Model' },
-      { field: 'Year',                label: 'Year', type: 'number' },
+      { field: 'License Plate',       label: 'Πινακίδα', primary: true },
+      { field: 'Brand',               label: 'Μάρκα' },
+      { field: 'Model',               label: 'Μοντέλο' },
+      { field: 'Year',                label: 'Έτος', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
       { field: 'Tare Weight kg',      label: 'Απόβαρο kg', type: 'number' },
       { field: 'VIN',                 label: 'VIN' },
-      { field: 'Active',              label: 'Status', type: 'active' },
+      { field: 'Active',              label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Ταυτότητα', fields: [
@@ -200,27 +200,27 @@ const ENTITY_CONFIG = {
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
     filters: [
-      { field: 'Trailer Type', label: 'Type',   type: 'dynamic' },
-      { field: 'Active',       label: 'Status', type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic' },
+      { field: 'Active',       label: 'Κατάσταση', type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
-      { field: '_compliance', label: 'Compliance', type: 'select', options: [
-        { val: '', label: 'All' },
-        { val: 'expired',  label: 'Has Expired' },
-        { val: 'expiring', label: 'Expiring <30d' },
-        { val: 'ok',       label: 'All OK' },
+      { field: '_compliance', label: 'Έγγραφα', type: 'select', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'expired',  label: 'Με ληγμένο' },
+        { val: 'expiring', label: 'Λήγει <30 ημ.' },
+        { val: 'ok',       label: 'Όλα εντάξει' },
       ]},
     ],
     columns: [
-      { field: 'License Plate',           label: 'Plate',  primary: true },
-      { field: 'Brand',                   label: 'Brand' },
-      { field: 'Model',                   label: 'Model' },
-      { field: 'Year',                    label: 'Year', type: 'number' },
-      { field: 'Trailer Type',            label: 'Type' },
+      { field: 'License Plate',           label: 'Πινακίδα',  primary: true },
+      { field: 'Brand',                   label: 'Μάρκα' },
+      { field: 'Model',                   label: 'Μοντέλο' },
+      { field: 'Year',                    label: 'Έτος', type: 'number' },
+      { field: 'Trailer Type',            label: 'Τύπος' },
       { field: 'VIN',                     label: 'VIN' },
-      { field: 'Active',                  label: 'Status', type: 'active' },
+      { field: 'Active',                  label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Ταυτότητα', fields: [
@@ -252,40 +252,40 @@ const ENTITY_CONFIG = {
     perm: 'maintenance',
     searchFields: ['Name', 'City', 'Contact Person', 'Specialty'],
     filters: [
-      { field: 'Specialty', label: 'Specialty', type: 'dynamic' },
-      { field: 'Active',    label: 'Status',    type: 'bool', options: [
-        { val: '', label: 'All' },
-        { val: 'true',  label: 'Active' },
-        { val: 'false', label: 'Inactive' },
+      { field: 'Specialty', label: 'Ειδικότητα', type: 'dynamic' },
+      { field: 'Active',    label: 'Κατάσταση',    type: 'bool', options: [
+        { val: '', label: 'Όλα' },
+        { val: 'true',  label: 'Ενεργός' },
+        { val: 'false', label: 'Ανενεργός' },
       ]},
     ],
     columns: [
-      { field: 'Name',           label: 'Name',      primary: true },
-      { field: 'City',           label: 'City', type: 'city' },
-      { field: 'Specialty',      label: 'Specialty' },
-      { field: 'Phone',          label: 'Phone' },
-      { field: '_serviceCount',  label: 'Services', type: 'number' },
-      { field: '_totalSpend',    label: 'Spend',    type: 'currency' },
-      { field: '_lastUsed',      label: 'Last Used', type: 'date_rel' },
-      { field: 'Active',         label: 'Status', type: 'active' },
+      { field: 'Name',           label: 'Όνομα',      primary: true },
+      { field: 'City',           label: 'Πόλη', type: 'city' },
+      { field: 'Specialty',      label: 'Ειδικότητα' },
+      { field: 'Phone',          label: 'Τηλέφωνο' },
+      { field: '_serviceCount',  label: 'Εργασίες', type: 'number' },
+      { field: '_totalSpend',    label: 'Δαπάνη',    type: 'currency' },
+      { field: '_lastUsed',      label: 'Τελευταία χρήση', type: 'date_rel' },
+      { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
       { section: 'Details', fields: [
-        { f: 'Name',           label: 'Workshop Name', req: true },
-        { f: 'Specialty',      label: 'Specialty', type: 'select', options: ['General','Reefer','Tyres','Electrical','Body','Hydraulic'] },
-        { f: 'Phone',          label: 'Phone' },
+        { f: 'Name',           label: 'Επωνυμία', req: true },
+        { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['General','Reefer','Tyres','Electrical','Body','Hydraulic'] },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email' },
-        { f: 'Contact Person', label: 'Contact Person' },
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
       ]},
       { section: 'Location', fields: [
         // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). WORKSHOPS is
         // assumed to use correctly-spelled 'Address' per current Airtable schema.
         // If a 422 'Unknown field name: Address' appears for WORKSHOPS, change here.
-        { f: 'Address',        label: 'Address' },
-        { f: 'City',           label: 'City' },
+        { f: 'Address',        label: 'Διεύθυνση' },
+        { f: 'City',           label: 'Πόλη' },
       ]},
       { section: 'Notes', fields: [
-        { f: 'Notes',          label: 'Notes', type: 'textarea' },
+        { f: 'Notes',          label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
     detailSections: [
@@ -307,7 +307,7 @@ async function renderEntity(entityKey) {
   if (!cfg) return renderComingSoon(entityKey);
 
   const c = document.getElementById('content');
-  c.innerHTML = showLoading(`Loading ${cfg.label}...`);
+  c.innerHTML = showLoading();
 
   const records = await atGet(cfg.tableId);
 
@@ -331,7 +331,16 @@ async function renderEntity(entityKey) {
   const dynamicOpts = {};
   for (const fi of cfg.filters) {
     if (fi.type === 'dynamic') {
-      dynamicOpts[fi.field] = [...new Set(records.map(r => r.fields[fi.field]).filter(Boolean))].sort();
+      // CL-1/PA-1: το φίλτρο χώρας πρόσφερε GR · GREECE · ΕΛΛΑΔΑ ως τρεις
+      // ΞΕΧΩΡΙΣΤΕΣ επιλογές, οπότε όποιος διάλεγε «GR» έχανε σιωπηλά τους
+      // άλλους δύο. Οι επιλογές ομαδοποιούνται πλέον στην κανονική μορφή· η
+      // τιμή της εγγραφής μένει ανέγγιχτη.
+      const _isCountry = /country|χωρα|χώρα/i.test(fi.field) || /country/i.test(fi.label || '');
+      dynamicOpts[fi.field] = [...new Set(records
+        .map(r => _isCountry && typeof normalizeCountry === 'function'
+          ? normalizeCountry(r.fields[fi.field]) : r.fields[fi.field])
+        .filter(Boolean))].sort();
+      if (_isCountry) dynamicOpts['__norm__' + fi.field] = true;
     }
   }
 
@@ -342,12 +351,12 @@ async function renderEntity(entityKey) {
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">${cfg.label}</div>
-        <div class="page-sub" id="${entityKey}_sub">${records.length} records</div>
+        <div class="page-sub" id="${entityKey}_sub">${records.length} ${records.length===1?'εγγραφή':'εγγραφές'}</div>
       </div>
       ${canEdit ? `
       <button class="btn btn-primary btn-sm" onclick="openEntityCreate('${entityKey}')">
         ${_i('plus')}
-        New ${cfg.labelSingle}
+        Νέα εγγραφή
       </button>` : ''}
     </div>
 
@@ -358,7 +367,7 @@ async function renderEntity(entityKey) {
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
             ${_i('search')}
-            <input class="entity-search-input" placeholder="Search..."
+            <input class="entity-search-input" placeholder="Αναζήτηση…"
               oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
           </div>
           ${cfg.filters.map(fi => {
@@ -369,7 +378,7 @@ async function renderEntity(entityKey) {
             } else if (fi.type === 'dynamic') {
               const opts = dynamicOpts[fi.field] || [];
               return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-                <option value="">${fi.label}: All</option>
+                <option value="">${fi.label}: Όλα</option>
                 ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
               </select>`;
             }
@@ -411,7 +420,10 @@ async function _renderWorkshopsStatsStrip(workshops) {
     }
     const activeWs = workshops.filter(w => w.fields['Active']).length;
     const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-    const yyyymm = new Date().toISOString().slice(0, 7);
+    // CL-3: toISOString() is UTC — before 02:00/03:00 local on the 1st of the
+    // month it still returns LAST month, so «THIS MONTH» went silently wrong.
+    // toLocalDate() (utils) formats in local time; slice keeps YYYY-MM.
+    const yyyymm = toLocalDate(new Date()).slice(0, 7);
     const monthSpend = history
       .filter(r => (r.fields['Date'] || '').startsWith(yyyymm))
       .reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
@@ -498,7 +510,7 @@ async function _renderPartnersStatsStrip(partners) {
 
     // This-month spend
     const now = new Date();
-    const yyyymm = now.toISOString().slice(0,7);
+    const yyyymm = toLocalDate(now).slice(0, 7); // CL-3: local month, not UTC
     const monthSpend = allPA
       .filter(r => (r.fields[F.PA_ASSIGN_DATE]||'').startsWith(yyyymm))
       .reduce((s,r)=>s+(parseFloat(r.fields[F.PA_RATE])||0), 0);
@@ -563,7 +575,7 @@ async function _renderClientsStatsStrip(clients) {
     const activeClients = clients.filter(c => c.fields['Active']).length;
     const activeOrders  = all.filter(r => !['Delivered','Invoiced','Cancelled'].includes(r.fields['Status']||'')).length;
 
-    const yyyymm = new Date().toISOString().slice(0,7);
+    const yyyymm = toLocalDate(new Date()).slice(0, 7); // CL-3: local month, not UTC
     const monthRev = all
       .filter(r => (r.fields['Loading DateTime']||'').startsWith(yyyymm))
       .reduce((s,r)=>s+(parseFloat(r.fields['Price'])||0), 0);
@@ -629,9 +641,25 @@ function entitySortToggle(entityKey, colIdx) {
 
 function _entitySortRecords(entityKey, recs) {
   const s = _entitySort[entityKey];
-  if (!s || s.col === null || s.dir === 0) return recs;
+  if (!s || s.col === null || s.dir === 0) {
+    // DV-4: with no user sort, drivers came back in DB order and the first
+    // screen was mostly Inactive people. Active first; DB order within each
+    // group (sort() is stable). Only when the user hasn't chosen a column —
+    // an explicit sort must keep meaning exactly what they clicked.
+    if (entityKey === 'drivers') {
+      // The column is LABELLED «Status» but the field is the boolean 'Active'
+      // — the first version compared fields['Status'], which doesn't exist,
+      // so nothing sorted. Caught live on the dispatcher check (7/8).
+      return [...recs].sort((a, b) => (b.fields['Active'] ? 1 : 0) - (a.fields['Active'] ? 1 : 0));
+    }
+    return recs;
+  }
   const cfg = ENTITY_CONFIG[entityKey];
-  const col = cfg.columns[s.col];
+  // ΠΡΕΠΕΙ να είναι η ΙΔΙΑ λίστα με αυτήν που παρήγαγε τις κεφαλίδες: ο δείκτης
+  // ταξινόμησης έρχεται από τη θέση στη ΦΙΛΤΡΑΡΙΣΜΕΝΗ λίστα, οπότε αν εδώ
+  // διαβαζόταν η πλήρης cfg.columns, μια κρυμμένη στήλη θα μετατόπιζε τους
+  // δείκτες και θα ταξινομούσε ΑΛΛΗ στήλη από αυτήν που πάτησε ο χρήστης.
+  const col = _entityVisibleCols(cfg)[s.col];
   if (!col) return recs;
   const dir = s.dir === 1 ? 1 : -1;
   // H13 fix: explicit handlers for new column types so sorting matches display order
@@ -730,9 +758,39 @@ function clearEntityFilters(entityKey) {
   renderEntity(entityKey);
 }
 
+/**
+ * Οι στήλες που επιτρέπεται να δει ο τρέχων ρόλος.
+ * Μια στήλη με perm:'full' κρύβεται όταν το δικαίωμα του τμήματος είναι μόνο
+ * ανάγνωση — DV-3: ο dispatcher (drivers:'view') έβλεπε τον ΜΙΣΘΟ κάθε οδηγού.
+ * CLIENT-SIDE ΜΟΝΟ: το πεδίο εξακολουθεί να επιστρέφεται από το backend.
+ * @param {Object} cfg - ENTITY_CONFIG entry
+ * @returns {Array} ορατές στήλες
+ */
+function _entityVisibleCols(cfg) {
+  return cfg.columns.filter(c => !c.perm || can(cfg.perm) === c.perm);
+}
+
 function buildEntityTable(entityKey, records) {
   const cfg = ENTITY_CONFIG[entityKey];
-  const cols = cfg.columns;
+  // TR-2/TL-3: δύο πινακίδες που κανονικοποιούνται στην ΙΔΙΑ τιμή είναι σχεδόν
+  // σίγουρα η ίδια εγγραφή δύο φορές — ΙΑΒ 1099 και IAB1099. Σημαίνονται ώστε
+  // να τις δει άνθρωπος. ΔΕΝ ενώνονται και ΔΕΝ γράφεται τίποτα: η πινακίδα
+  // είναι κλειδί σύνδεσης, και μια αυτόματη συγχώνευση θα έσπαγε linked records.
+  const _plateField = (cfg.columns.find(c => /plate|πινακ/i.test(c.field || '')) || {}).field;
+  const _dupPlates = new Set();
+  if (_plateField && typeof normalizePlate === 'function') {
+    const seen = new Map();
+    records.forEach(r => {
+      const n = normalizePlate(r.fields[_plateField]);
+      if (!n) return;
+      if (seen.has(n)) _dupPlates.add(n); else seen.set(n, r.id);
+    });
+  }
+  // DV-3: ο dispatcher έχει drivers:'view' και έβλεπε τη στήλη ΜΙΣΘΟΣ όλων των
+  // οδηγών. Οι στήλες με perm:'full' κρύβονται όταν το δικαίωμα είναι μόνο
+  // ανάγνωση. CLIENT-SIDE ΜΟΝΟ — δεν αντικαθιστά server RBAC, το πεδίο
+  // εξακολουθεί να έρχεται στην απόκριση.
+  const cols = _entityVisibleCols(cfg);
   const s = _entitySort[entityKey] || { col: null, dir: 0 };
   const sortedRecs = _entitySortRecords(entityKey, records);
   const ths = cols.map((c, i) => {
@@ -758,14 +816,20 @@ function buildEntityTable(entityKey, records) {
     <tbody>
       ${sortedRecs.length === 0
         ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
-        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols)).join('')
+        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
       }
       ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
     </tbody>
   </table>`;
 }
 
-function buildEntityRow(entityKey, r, cols) {
+/**
+ * @param {string} [plateField] - όνομα πεδίου πινακίδας, από buildEntityTable
+ * @param {Set<string>} [dupPlates] - κανονικοποιημένες πινακίδες που εμφανίζονται >1 φορά
+ *   ΠΡΕΠΕΙ να περνιούνται ως ορίσματα: υπολογίζονται μία φορά ανά πίνακα στη
+ *   buildEntityTable, που είναι ΑΛΛΗ εμβέλεια από αυτήν εδώ.
+ */
+function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
   const f = r.fields;
   const cells = cols.map(col => {
     const val = f[col.field];
@@ -817,7 +881,13 @@ function buildEntityRow(entityKey, r, cols) {
       const shown = val != null && val !== '' ? val : '—';
       return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}</td>`;
     }
-    if (col.primary) return `<td><strong style="color:var(--text)">${val || '—'}</strong></td>`;
+    if (col.primary) {
+      const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
+        && dupPlates && dupPlates.has(normalizePlate(val));
+      return `<td><strong style="color:var(--text)">${val || '—'}</strong>${dup
+        ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap">⚠ διπλότυπο;</span>'
+        : ''}</td>`;
+    }
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
 
@@ -857,11 +927,26 @@ function applyEntityFilters(entityKey) {
   let recs  = st.records;
 
   if (st.q) {
-    recs = recs.filter(r => cfg.searchFields.some(sf =>
-      String(r.fields[sf] || '').toLowerCase().includes(st.q)
-    ));
+    // TR-2/TL-3: οι πινακίδες έχουν ανάμεικτα ελληνικά/λατινικά ομόγλυφα
+    // (ΙΑΖ8302 με ελληνικό γιώτα δίπλα σε IAZ7245 με λατινικό I) και άλλοτε
+    // με κενό, άλλοτε χωρίς. Είναι οπτικά ταυτόσημα και δεν βρίσκονταν ΠΟΤΕ
+    // μεταξύ τους. Η αναζήτηση δοκιμάζει και την κανονική μορφή· η αρχική
+    // αναζήτηση υποστρώματος παραμένει, ώστε να μη χαθεί κανένα αποτέλεσμα.
+    const qPlate = (typeof normalizePlate === 'function') ? normalizePlate(st.q) : '';
+    recs = recs.filter(r => cfg.searchFields.some(sf => {
+      const raw = String(r.fields[sf] || '');
+      if (raw.toLowerCase().includes(st.q)) return true;
+      return !!qPlate && typeof normalizePlate === 'function'
+        && normalizePlate(raw).includes(qPlate);
+    }));
   }
   for (const [field, { val, type }] of Object.entries(st.filters)) {
+    // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
+    // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
+    if (/country|χωρα|χώρα/i.test(field) && typeof normalizeCountry === 'function') {
+      recs = recs.filter(r => normalizeCountry(r.fields[field]) === normalizeCountry(val));
+      continue;
+    }
     if (field === '_compliance') {
       // Compliance filter: check expiry dates from the compliance column config
       const complianceCol = cfg.columns.find(c => c.type === 'compliance');
@@ -888,7 +973,7 @@ function applyEntityFilters(entityKey) {
 
   st.filtered = recs;
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
-  document.getElementById(entityKey + '_count').textContent = recs.length + ' records';
+  document.getElementById(entityKey + '_count').textContent = recs.length + (recs.length===1?' εγγραφή':' εγγραφές');
 }
 
 // ── Detail Panel ──────────────────────────────────
@@ -914,15 +999,15 @@ function selectEntity(entityKey, recId) {
     <div class="detail-header">
       <div class="detail-title">${title}</div>
       <div class="detail-actions">
-        ${canEdit ? `<div class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
+        ${canEdit ? `<button type="button" class="btn-icon" title="Edit" onclick="openEntityEdit('${entityKey}','${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
             <path d="M11 2l3 3-9 9H2v-3l9-9z"/>
           </svg>
-        </div>
+        </button>
         <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">
           ${f['Active'] ? '● Active' : '○ Inactive'}
         </button>` : ''}
-        <div class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</div>
+        <button type="button" class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</button>
       </div>
     </div>
     <div class="detail-body">
@@ -935,8 +1020,13 @@ function selectEntity(entityKey, recId) {
             let displayVal = val;
             if (typeof val === 'boolean') displayVal = val ? 'Yes' : 'No';
             if (field.includes('Expiry') || field.includes('Date')) displayVal = expiryLabel(val);
+            // PA-5: the raw DB field name leaked to the UI — «Adress» (the
+            // PARTNERS/CLIENTS typo) was shown verbatim. The form already
+            // defines a display label per field; reuse it here. The DB field
+            // name itself must NOT change — records and filters depend on it.
+            const lbl = (cfg.formFields || []).flatMap(s2 => s2.fields).find(x => x.f === field)?.label || field;
             return `<div class="detail-field">
-              <span class="detail-field-label">${field}</span>
+              <span class="detail-field-label">${lbl}</span>
               <span class="detail-field-value">${displayVal}</span>
             </div>`;
           }).join('')}

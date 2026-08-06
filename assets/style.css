@@ -2,6 +2,25 @@
    PETRAS GROUP TMS — GLOBAL STYLES
 ═══════════════════════════════════════════════ */
 
+/* ───────────────────────────────────────────────
+   ΚΛΙΜΑΚΑ RESPONSIVE — ΤΡΙΑ ΚΑΤΩΦΛΙΑ, ΟΧΙ ΤΕΣΣΕΡΑ
+
+   1200px  ασύμμετρες διατάξεις «κύριο + πλαϊνό» (1fr 320px) στοιβάζονται
+   1024px  tablet: η πλαϊνή μπάρα γίνεται εικονίδια, τα δίστηλα γίνονται ένα
+    768px  κινητό: συρτάρι εκτός καμβά, μία στήλη, στόχοι αφής 44px
+
+   Ήταν πέντε (768/900/1024/1100/1200). Το 900 και το 1100 δεν εξέφραζαν
+   συσκευή — ήταν το πλάτος όπου έτυχε να στριμωχτεί ένα συγκεκριμένο grid.
+
+   ΠΡΙΝ ΠΡΟΣΘΕΣΕΙΣ ΤΕΤΑΡΤΟ: αν το πρόβλημα είναι «πόσες στήλες χωράνε»,
+   δεν θέλει κατώφλι — θέλει
+     grid-template-columns: repeat(auto-fit, minmax(min(100%, Npx), 1fr));
+   που προσαρμόζεται συνεχώς. Κατώφλι χρειάζονται μόνο οι ΑΛΛΑΓΕΣ ΔΟΜΗΣ:
+   ασύμμετρα grid, απόκρυψη στήλης, μετατροπή μπάρας σε συρτάρι.
+   Το min(100%, …) είναι απαραίτητο — χωρίς αυτό το grid υπερχειλίζει σε
+   δοχείο στενότερο από το minmax.
+─────────────────────────────────────────────── */
+
 /* ═══════════════════════════════════════════════
    RESET & VARIABLES
 ═══════════════════════════════════════════════ */
@@ -28,8 +47,12 @@
      helper line. #64748B is 4.76:1 on white and matches --dc-text-dim (line
      ~3690), which the dark cards already use. Verified: --text-dim is not used
      on any dark surface, so nothing loses contrast.
-     Open since the 2026-07-11 audit. See _CROSS_CUTTING.md §4. */
-  --text-dim:    #64748B;
+     Open since the 2026-07-11 audit. See _CROSS_CUTTING.md §4.
+     2026-08-05: το #64748B είχε μετρηθεί σε ΛΕΥΚΟ (4.76). Η πραγματική σελίδα
+     όμως έχει --bg #F4F6F9, όπου έπεφτε στο 4.40 — κάτω από το AA, και το
+     κουβαλούν 133 ορατά στοιχεία σε μία μόνο σελίδα. Το #5B6B7F δίνει 5.03
+     πάνω στο --bg και 5.45 σε λευκό: περνά και στις ΔΥΟ επιφάνειες. */
+  --text-dim:    #5B6B7F;
   /* Genuinely disabled controls only — never for readable text. */
   --text-disabled: #9CA3AF;
 
@@ -39,15 +62,51 @@
   --border-dark: rgba(0,0,0,0.16);
 
   /* Accents — Cold Chain Blue */
+  /* Σκούρο πάνελ μέσα σε ΦΩΤΕΙΝΗ σελίδα — δεν είναι dark mode.
+     Τα ίδια τέσσερα χρώματα χρησιμοποιούνταν συνεπώς σε 9 αρχεία (85 φορές)
+     χωρίς όνομα: κάρτες KPI, command centers, λωρίδες εβδομάδων.
+     Ονομάζονται «panel» και όχι «surface-dark», γιατί περιγράφουν ΤΙ ΕΙΝΑΙ,
+     όχι μια θεματική πρόθεση που δεν υπάρχει.
+     ΠΡΟΣΟΧΗ: το --panel ισούται με το --text. Είναι ΣΥΜΠΤΩΣΗ ΤΙΜΗΣ, όχι
+     σχέση. Μη τα ενοποιήσεις — το ένα είναι φόντο, το άλλο γραμματοσειρά. */
+  /* Σημασιολογικά ΠΑΝΩ ΣΕ ΠΑΝΕΛ. Είναι φωτεινότερα από τα --success/--warning/
+     --danger επίτηδες: εκείνα είναι για κείμενο σε ΛΕΥΚΟ, αυτά για σκούρο.
+     Δεν είναι διπλότυπα — είναι το ίδιο νόημα σε άλλο υπόβαθρο.
+     Τα --dc-*/--p-*/--ceo-* παραμένουν ως page-scoped alias των ίδιων τιμών. */
+  --panel-ok:     #10B981;
+  --panel-warn:   #F59E0B;
+  --panel-bad:    #EF4444;
+  --panel-accent: #38BDF8;
+
+  --panel:        #0F172A;
+  --panel-border: #1E293B;
+  --panel-text:   #F1F5F9;
+  --panel-dim:    #94A3B8;
+
   --accent:       #0284C7;
   --accent-hover: #0369A1;
   --accent-light: rgba(2,132,199,0.10);
   --accent-glow:  rgba(2,132,199,0.20);
-  --success:     #059669;
+  /* Τα τρία σημασιολογικά είναι ΓΙΑ ΚΕΙΜΕΝΟ ΣΕ ΦΩΤΕΙΝΟ. Μετρήθηκαν 2026-08-05
+     πάνω στο πραγματικό --bg #F4F6F9 και δύο απ' τα τρία έπεφταν έξω:
+       --success #059669 → 3.48    --warning #D97706 → 2.94
+     Σκουραίνουν στο ελάχιστο που περνά το AA και στις δύο επιφάνειες:
+       #047857 → 5.07 σε bg / 5.48 σε λευκό
+       #B45309 → 4.64 σε bg / 5.02 σε λευκό
+     Το --danger #DC2626 (4.46) το αφήνω: είναι οριακό, το κουβαλά μικρός
+     αριθμός στοιχείων, και κάθε σκούρανση το φέρνει προς το καφέ.
+     Για ΣΚΟΥΡΑ πάνελ ΜΗΝ τα χρησιμοποιείς — υπάρχουν τα --panel-ok/warn/bad.
+     Τα *-bg μένουν στις αρχικές τιμές: είναι 8% γεμίσματα, όχι κείμενο. */
+  --success:     #047857;
   --success-bg:  rgba(5,150,105,0.08);
   --danger:      #DC2626;
   --danger-bg:   rgba(220,38,38,0.08);
-  --warning:     #D97706;
+  /* Το #DC2626 δίνει 4.46 σε καθαρό --bg, αλλά μόλις 4.28 όταν κάθεται πάνω
+     στο ίδιο του το 8% γέμισμα (--danger-bg) — δηλαδή ακριβώς εκεί που
+     χρησιμοποιείται πιο συχνά. Το #B91C1C δίνει 5.73 εκεί. Μόνο για ΚΕΙΜΕΝΟ
+     πάνω σε κόκκινη απόχρωση σε ΦΩΤΕΙΝΟ· σε σκούρο θέλει --panel-bad. */
+  --danger-strong: #B91C1C;
+  --warning:     #B45309;
   --warning-bg:  rgba(217,119,6,0.08);
 
   --sidebar-w:   228px;
@@ -492,10 +551,13 @@ body {
   color: var(--silver-dim);
 }
 
-.role-badge.owner     { background: rgba(240,165,0,0.15);  color: #F0A500; }
-.role-badge.dispatcher{ background: rgba(46,196,160,0.15); color: #2EC4A0; }
-.role-badge.management{ background: rgba(100,150,220,0.15);color: #7AAEE8; }
-.role-badge.accountant{ background: rgba(184,196,208,0.12);color: var(--silver); }
+/* Το κείμενο είχε ΤΟ ΙΔΙΟ χρώμα με το 15% γέμισμά του: 1.87 / 1.96 / 2.07 —
+   πρακτικά αόρατο στη λευκή μπάρα. Κρατάμε την ίδια απόχρωση, σκουραίνουμε
+   μόνο το κείμενο ώστε να διαβάζεται: 5.33 / 5.71 / 5.89. */
+.role-badge.owner     { background: rgba(240,165,0,0.15);  color: #8A5A00; }
+.role-badge.dispatcher{ background: rgba(46,196,160,0.15); color: #0F6B57; }
+.role-badge.management{ background: rgba(100,150,220,0.15);color: #2C5F96; }
+.role-badge.accountant{ background: rgba(184,196,208,0.12);color: #475569; } /* --silver έδινε 1.48 */
 
 .btn-logout {
   padding: 6px 14px;
@@ -585,7 +647,12 @@ body {
 .content {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 36px 80px;
+  /* D-8: the AI-chat FAB (52px, fixed bottom-right) sat ON the last card of
+     the right column — measured overlap with «ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ» on the
+     dashboard. 80px of bottom padding cleared nothing at full scroll; 148px
+     = FAB height + its offset + breathing room, so scrolled-to-end content
+     always clears it. */
+  padding: 32px 36px 148px;
   background: var(--bg);
   scrollbar-width: thin;
   scrollbar-color: #D1D5DB transparent;
@@ -678,13 +745,17 @@ body {
 
 .kpi-delta {
   font-size: 11px;
-  color: #64748B;
+  /* Ο γονέας είναι #0F172A (σκούρο), όπου το #64748B έδινε 3.75. --panel-dim. */
+  color: var(--panel-dim);
   font-family: 'DM Sans', sans-serif;
   margin-top: 4px;
 }
 
-.kpi-delta.up   { color: var(--success); }
-.kpi-delta.down { color: var(--danger); }
+/* Ο γονέας .kpi-card είναι #0F172A. Τα --success/--danger είναι τα ΦΩΤΕΙΝΩΝ
+   επιφανειών (τώρα ακόμη σκουρότερα), οπότε εδώ έπεφταν κάτω απ' το AA:
+   #047857→2.19, #DC2626→3.70. Τα --panel-* είναι τα αντίστοιχα του σκούρου. */
+.kpi-delta.up   { color: var(--panel-ok); }
+.kpi-delta.down { color: var(--panel-bad); }
 
 /* Buttons */
 /* ═══ Button System v2 ═══ */
@@ -843,6 +914,14 @@ thead th {
   white-space: nowrap;
   background: #F0F5FA;
 }
+
+/* IN-7: sticky κεφαλίδα για μακριούς πίνακες (invoicing: 2.819px). Δικός
+   της modifier γιατί το .table-wrap έχει overflow:hidden, που ΑΚΥΡΩΝΕΙ το
+   position:sticky (το κοντινότερο clip box γίνεται το «scrollport» του και
+   δεν κυλά ποτέ). Το th έχει ήδη συμπαγές φόντο ώστε να περνά πάνω από τις
+   γραμμές. z-index:2 = η υπάρχουσα βαθμίδα «κεφαλίδα πάνω από sticky κελί». */
+.table-wrap--sticky { overflow: visible; }
+.table-wrap--sticky thead th { position: sticky; top: 0; z-index: 2; }
 
 tbody td {
   padding: 13px 18px;
@@ -1466,7 +1545,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-tab {
   padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent;
   margin-bottom: -2px; display: flex; align-items: center; gap: 8px;
-  font-size: 13px; color: #64748B; white-space: nowrap; transition: all 0.15s;
+  font-size: 13px; color: var(--text-dim); white-space: nowrap; transition: all 0.15s;
 }
 .pu-tab:hover { color: #0284C7; }
 .pu-tab.active { color: #0284C7; border-bottom-color: #0284C7; font-weight: 600; }
@@ -1475,7 +1554,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-tab-num {
   width: 22px; height: 22px; border-radius: 50%; background: #E2E8F0;
   display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #64748B;
+  font-size: 11px; font-weight: 700; color: var(--text-dim);
 }
 .pu-tab.active .pu-tab-num { background: #0284C7; color: #fff; }
 .pu-tab-type { font-size: 10px; color: #94A3B8; }
@@ -1516,13 +1595,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-balance-num.positive { color: #10B981; }
 .pu-balance-num.negative { color: #EF4444; }
 .pu-balance-num.zero { color: #0284C7; }
-.pu-balance-desc { font-size: 13px; color: #64748B; margin-top: 4px; }
+.pu-balance-desc { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
 
 .pu-form-grid {
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 .pu-full-width { grid-column: 1 / -1; }
-.pu-field label { display: block; font-size: 11px; font-weight: 600; color: #64748B; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.pu-field label { display: block; font-size: 11px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
 .pu-field input, .pu-field select, .pu-field textarea {
   width: 100%; padding: 8px 10px; border: 1px solid #CBD5E1; border-radius: 6px;
   font-size: 13px; font-family: 'DM Sans', sans-serif;
@@ -1561,7 +1640,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .pl-big-num.positive { color: #10B981; }
 .pl-big-num.negative { color: #EF4444; }
-.pl-big-num.zero { color: #64748B; }
+.pl-big-num.zero { color: var(--panel-dim); }
 .pl-debtor-list { list-style: none; padding: 0; margin: 0; }
 .pl-debtor-list li {
   display: flex; justify-content: space-between; font-size: 12px; color: #CBD5E1;
@@ -2228,7 +2307,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .ramp-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
 .ramp-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
   line-height:1; color:#F1F5F9; }
-.ramp-kpi-sub { font-size:11px; color:#64748B; margin-left:4px; }
+.ramp-kpi-sub { font-size:11px; color:var(--panel-dim); margin-left:4px; }
 
 /* 2-col grid */
 .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
@@ -2240,7 +2319,9 @@ tbody tr:hover { background: var(--bg-hover); }
    window, so a print-wide rule here would silently drop the columns from the
    printout. Export CSV is unaffected — it reads RAMP.records, not the DOM.
    See docs/design/DEEP_AUDIT_2026-08-04/daily_ramp.md DR-2 / Π2. */
-@media screen and (max-width:1100px) {
+/* screen-only επίτηδες: η _rampPrint() αντιγράφει το DOM, οπότε το print δεν
+   πρέπει να κρύψει τη 2η στήλη. 1100 → 1024 (κλίμακα τριών κατωφλίων). */
+@media screen and (max-width:1024px) {
   .ramp-pair { grid-template-columns:1fr; }
   .ramp-col-2nd { display:none; }
 }
@@ -2252,10 +2333,10 @@ tbody tr:hover { background: var(--bg-hover); }
   font-family:'Syne',sans-serif; font-size:10px; font-weight:800;
   letter-spacing:1.5px; text-transform:uppercase; background:#0B1929; color:#C4CFDB;
   display:flex; justify-content:space-between; align-items:center; }
-.ramp-sec-hd.inbound  { border-left:3px solid var(--accent); }
-.ramp-sec-hd.outbound { border-left:3px solid var(--accent); }
-.ramp-sec-hd.timeline { border-left:3px solid var(--accent); }
-.ramp-sec-hd.stock    { border-left:3px solid var(--warning); }
+/* Οι τέσσερις λωρίδες αφαιρέθηκαν. Οι τρεις πρώτες είχαν ΤΟ ΙΔΙΟ χρώμα, άρα
+   δεν ξεχώριζαν τίποτα· η κεφαλίδα λέει ήδη τι είναι, με σκούρο φόντο, Syne
+   κεφαλαία και αραίωση 1.5px. Το .stock κρατά τη διάκρισή του από το χρώμα
+   του αριθμού του, όχι από διακοσμητική μπάρα. */
 
 /* table */
 .ramp-t { width:100%; border-collapse:collapse; background:var(--bg-card);
@@ -2285,7 +2366,7 @@ tbody tr:hover { background: var(--bg-hover); }
 /* badges */
 .vs-badge { font-size:8px; font-weight:800; letter-spacing:.6px; padding:2px 6px;
   border-radius:3px; text-transform:uppercase; border:1px solid; }
-.vs-badge.vf  { color:#059669; border-color:rgba(5,150,105,0.3); background:rgba(5,150,105,0.08); }
+.vs-badge.vf  { color:var(--success); border-color:rgba(5,150,105,0.3); background:rgba(5,150,105,0.08); }
 .vs-badge.vs  { color:#0EA5E9; border-color:rgba(14,165,233,0.3); background:rgba(14,165,233,0.08); }
 .vs-badge.vsg { color:#7C3AED; border-color:rgba(124,58,237,0.3); background:rgba(124,58,237,0.08); }
 .tl-type { font-size:8px; font-weight:800; letter-spacing:.5px; padding:2px 6px;
@@ -2322,7 +2403,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
 .ops-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700;
   line-height:1; color:#F1F5F9; }
-.ops-kpi-sub { font-size:11px; color:#64748B; }
+.ops-kpi-sub { font-size:11px; color:var(--panel-dim); }
 .ops-kpi-bar { height:3px; background:#1E293B; border-radius:2px; margin-top:8px; overflow:hidden; }
 .ops-kpi-fill { height:100%; border-radius:2px; transition:width .3s; }
 
@@ -2352,10 +2433,12 @@ tbody tr:hover { background: var(--bg-hover); }
   letter-spacing:1.5px; text-transform:uppercase;
   display:flex; justify-content:space-between; align-items:center;
 }
-.ops-sec-hd.el { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.ed { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.il { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
-.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; border-left:3px solid var(--accent); }
+/* Και οι τέσσερις λωρίδες ήταν var(--accent) — μηδενική πληροφορία, καθαρή
+   διακόσμηση. Έμεινε το σκούρο φόντο που ήδη οριοθετεί την ενότητα. */
+.ops-sec-hd.el,
+.ops-sec-hd.ed,
+.ops-sec-hd.il,
+.ops-sec-hd.id { background:#0B1929; color:#C4CFDB; }
 
 /* table */
 .ops-t { width:100%; border-collapse:collapse; background:var(--bg-card);
@@ -2401,7 +2484,10 @@ tbody tr:hover { background: var(--bg-hover); }
   --p-border-hover: rgba(56,189,248,0.18);
   --p-text: #E2E8F0;
   --p-text-mid: #94A3B8;
-  --p-text-dim: #64748B;
+  /* ΣΚΟΥΡΟ card (#0F1C2F). Το #64748B έδινε 3.60 — αποτύγχανε. Το #7C8CA0
+     δίνει 4.98 και μένει ορατά κάτω από το mid #94A3B8 (6.67), ώστε να
+     διατηρείται η τριβάθμια ιεραρχία text > mid > dim. Ίδια τιμή σε --dc-/--ceo-. */
+  --p-text-dim: #7C8CA0;
   --p-accent: #38BDF8;
   --p-ok: #34D399;
   --p-ok-soft: rgba(16,185,129,0.12);
@@ -2434,7 +2520,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .perf-role {
   font-size: var(--text-sm);
-  color: #64748B;
+  color: var(--p-text-dim);
   margin-top: 4px;
   font-weight: 500;
 }
@@ -2445,7 +2531,7 @@ tbody tr:hover { background: var(--bg-hover); }
   align-items: center;
   gap: 6px;
   font-size: 10px;
-  color: #64748B;
+  color: var(--p-text-dim);
   letter-spacing: 0.5px;
   text-transform: uppercase;
   font-weight: 600;
@@ -2461,11 +2547,13 @@ tbody tr:hover { background: var(--bg-hover); }
 /* ── KPI Bar ──────────────────────────────────────────── */
 .perf-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* Βλ. .dash-kpi-bar — καταργεί το κατώφλι των 900px, το μοναδικό σημείο
+     όπου εμφανιζόταν αυτός ο αριθμός σε όλο το φύλλο. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-5);
 }
-@media (max-width: 900px) { .perf-kpi-grid { grid-template-columns: repeat(2, 1fr); } }
+/* Το κατώφλι των 900px καταργήθηκε — το .perf-kpi-grid χρησιμοποιεί auto-fit. */
 
 .perf-kpi {
   background: var(--p-card);
@@ -2588,7 +2676,9 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .perf-left  { display: flex; flex-direction: column; gap: var(--space-4); }
 .perf-right { display: flex; flex-direction: column; gap: var(--space-3); }
-@media (max-width: 1100px) { .perf-grid { grid-template-columns: 1fr; } }
+/* 1100 → 1024: το .perf-grid είναι ασύμμετρο (1fr 320px), δεν λύνεται με
+   auto-fit· χρειάζεται κατώφλι, αλλά το παίρνει από την κλίμακα των τριών. */
+@media (max-width: 1024px) { .perf-grid { grid-template-columns: 1fr; } }
 
 /* ── Weekly Trend bars ────────────────────────────────── */
 .perf-trend-row {
@@ -3427,34 +3517,27 @@ button.sidebar-toggle {
   position: relative;
   overflow: hidden;
 }
-.exp-kpi::before {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: currentColor;
-  opacity: 0.8;
-}
+/* Εδώ ήταν λωρίδα 3px σε ψευδοστοιχείο. Ο φορέας της σοβαρότητας γίνεται το
+   εικονίδιο που ΗΔΗ υπάρχει αριστερά — απλώς δεν φαινόταν (δες παρακάτω). */
 .exp-kpi:hover { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 .exp-kpi-danger  { color: var(--danger); }
 .exp-kpi-warning { color: var(--warning); }
 .exp-kpi-success { color: var(--success); }
 .exp-kpi-compliance { color: var(--accent); }
+/* Το opacity:0.1 έμπαινε στο ΔΟΧΕΙΟ, άρα έσβηνε και το εικονίδιο μέσα του —
+   γι' αυτό οι κύκλοι φαίνονταν άδειοι. Κάποιος το πάλεψε με «opacity: 10»
+   (άκυρη τιμή, στρογγυλοποιείται στο 1) και brightness(0.6). Τώρα η διαφάνεια
+   μπαίνει ΜΟΝΟ στο γέμισμα, οπότε το εικονίδιο δείχνει το πλήρες χρώμα
+   σοβαρότητας και αναλαμβάνει τον ρόλο που είχε η λωρίδα. */
 .exp-kpi-ico {
   flex-shrink: 0;
   width: 44px; height: 44px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: currentColor;
+  background: color-mix(in srgb, currentColor 14%, transparent);
   border-radius: var(--radius-full);
-  opacity: 0.1;
   position: relative;
 }
-.exp-kpi-ico svg {
-  color: currentColor;
-  opacity: 10;  /* icons render fully on the solid bg */
-  position: absolute;
-}
-.exp-kpi-ico > svg { opacity: 1; filter: brightness(0.6); }
+.exp-kpi-ico svg { color: currentColor; opacity: 1; position: absolute; }
 .exp-kpi-body { flex: 1; min-width: 0; color: var(--text); }
 .exp-kpi-lbl {
   font-size: var(--text-xs);
@@ -3702,7 +3785,7 @@ button.sidebar-toggle {
   --dc-card-border-hover: rgba(56,189,248,0.18);
   --dc-text: #E2E8F0;
   --dc-text-mid: #94A3B8;
-  --dc-text-dim: #64748B;
+  --dc-text-dim: #7C8CA0;   /* ήταν #64748B = 3.60 σε #0F1C2F· τώρα 4.98 */
   --dc-accent: #38BDF8;
   --dc-accent-hover: #7DD3FC;
   --dc-accent-soft: rgba(56,189,248,0.12);
@@ -3710,7 +3793,13 @@ button.sidebar-toggle {
   --dc-ok-soft: rgba(16,185,129,0.12);
   --dc-warn: #D97706;
   --dc-warn-soft: rgba(217,119,6,0.12);
-  --dc-bad: #DC2626;
+  /* ΜΟΝΟ για κείμενο πάνω στις ΣΚΟΥΡΕΣ κάρτες KPI του dashboard (#0F1C2F),
+     συχνά με 10% κόκκινο από πάνω. Εκεί: #DC2626→3.37, #EF4444→4.33, και τα
+     δύο κόβονται· το #F87171 δίνει 5.88 — ίδια τιμή με --p-bad/--ceo-bad,
+     δηλαδή ενιαίο κόκκινο-σε-σκούρο και στα τρία συστήματα καρτών.
+     Η ΦΩΤΕΙΝΗ μπάρα .dash-alert-* ΔΕΝ το χρησιμοποιεί πια — πήγε σε
+     --danger-strong. Ήταν το λάθος που την είχε ρίξει στο 2.99. */
+  --dc-bad: #F87171;
   --dc-bad-soft: rgba(220,38,38,0.10);
   --dc-nums: 'DM Sans', -apple-system, sans-serif;
   padding: 0;
@@ -3786,8 +3875,9 @@ button.sidebar-toggle {
 /* ── Alert Banner ─────────────────────────────────────── */
 .dash-alert-banner {
   background: var(--dc-bad-soft);
-  border: 1px solid rgba(220,38,38,0.18);
-  border-left: 3px solid var(--dc-bad);
+  /* Είχε ΚΑΙ γέμισμα ΚΑΙ πλήρες περίγραμμα ΚΑΙ λωρίδα 3px αριστερά. Η λωρίδα
+     έφυγε· το περίγραμμα δυναμώνει λίγο ώστε η μπάρα να μη χάσει παρουσία. */
+  border: 1px solid rgba(220,38,38,0.28);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -3809,7 +3899,7 @@ button.sidebar-toggle {
 .dash-alert-go {
   margin-left: auto;
   display: flex;
-  color: var(--dc-bad);
+  color: var(--danger-strong);
   opacity: 0.7;
   transition: transform var(--duration-fast) var(--ease-out);
 }
@@ -3824,11 +3914,11 @@ button.sidebar-toggle {
   background: rgba(220,38,38,0.12);
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
-  color: var(--dc-bad);
+  color: var(--danger-strong);
 }
 .dash-alert-text {
   font-size: var(--text-sm);
-  color: var(--dc-bad);
+  color: var(--danger-strong);
   font-weight: 600;
   line-height: 1.4;
 }
@@ -3836,7 +3926,11 @@ button.sidebar-toggle {
 /* ── KPI Bar ──────────────────────────────────────────── */
 .dash-kpi-bar {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  /* Πέντε ισομεγέθεις κάρτες: δεν χρειάζονται breakpoint. Το auto-fit αλλάζει
+     πλήθος στηλών συνεχώς — 5→4→3→2→1 όπου χωράει — αντί για δύο σκαλοπάτια
+     στα 1200/768 που άφηναν ενδιάμεσα πλάτη με στριμωγμένες ή τεντωμένες
+     κάρτες. Το min(100%,…) αποτρέπει υπερχείλιση σε πολύ στενό δοχείο. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: var(--space-3);
   margin-bottom: var(--space-5);
 }
@@ -3870,6 +3964,12 @@ button.dash-kpi {
   width: 100%;
   display: block;
 }
+button.btn-icon,
+button.dash-cmdk-hint {
+  appearance: none; border: 0; background: none; font: inherit; color: inherit; cursor: pointer;
+}
+button.btn-icon:focus-visible,
+button.dash-cmdk-hint:focus-visible,
 button.dash-kpi:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -4409,11 +4509,11 @@ button.dash-kpi:focus-visible {
 
 /* ── Responsive ───────────────────────────────────────── */
 @media (max-width: 1200px) {
-  .dash-kpi-bar { grid-template-columns: repeat(3, 1fr); }
+  /* Το .dash-kpi-bar έφυγε από εδώ — έγινε auto-fit. Μένει μόνο το ασύμμετρο. */
   .dash-grid-main { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
-  .dash-kpi-bar { grid-template-columns: repeat(2, 1fr); }
+  /* Το .dash-kpi-bar έφυγε από εδώ — έγινε auto-fit. */
   .dash-kpi-value { font-size: 24px; }
   .dash-ops-grid { grid-template-columns: 1fr; }
   .dash-header { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
@@ -4434,7 +4534,10 @@ button.dash-kpi:focus-visible {
   --ceo-card-shadow: 0 1px 3px rgba(15,23,42,0.15), 0 8px 20px rgba(15,23,42,0.18);
   --ceo-text: #E2E8F0;
   --ceo-text-mid: #94A3B8;
-  --ceo-text-dim: #64748B;
+  --ceo-text-dim: #7C8CA0;   /* ήταν #64748B = 3.60 σε #0F1C2F· τώρα 4.98 */
+  /* 2.26 σε σκούρο — ΑΝΑΓΝΩΣΙΜΟ ΚΕΙΜΕΝΟ ΔΕΝ ΜΠΑΙΝΕΙ ΕΔΩ. Έμεινε μόνο για τη
+     μπάρα .ceo-workload-fill.mid, που δεν φέρει κείμενο. Οι τρεις χρήσεις του
+     σε κείμενο μεταφέρθηκαν στο --ceo-text-dim. */
   --ceo-text-faint: #475569;
   --ceo-accent: #38BDF8;
   --ceo-accent-deep: #0284C7;
@@ -4532,16 +4635,18 @@ button.dash-kpi:focus-visible {
   text-transform: uppercase;
   color: var(--ceo-accent);
   margin: 0 0 var(--space-3);
-  padding-left: var(--space-3);
-  border-left: 3px solid var(--ceo-accent);
+  /* Η λωρίδα 3px και το padding που την αντιστάθμιζε αφαιρέθηκαν: η ετικέτα
+     ξεχωρίζει ήδη από χρώμα, βάρος 700 και αραίωση 2px — και τώρα
+     ευθυγραμμίζεται με το περιεχόμενο από κάτω της αντί να μετατοπίζεται. */
   display: flex; align-items: center; gap: var(--space-2);
 }
 
 /* ── Loss Trips Banner (conditional, CRITICAL) ─────────── */
 .ceo-loss-banner {
   background: linear-gradient(135deg, rgba(220,38,38,0.04), rgba(220,38,38,0.08));
-  border: 1px solid rgba(220,38,38,0.15);
-  border-left: 4px solid var(--ceo-bad);
+  /* Η λωρίδα 4px έφυγε· το περίγραμμα δυναμώνει για να κρατήσει τη σοβαρότητα
+     αυτής της μπάρας — είναι η κρίσιμη ειδοποίηση ζημιογόνων δρομολογίων. */
+  border: 1px solid rgba(220,38,38,0.30);
   border-radius: var(--radius-md);
   padding: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
@@ -4567,7 +4672,8 @@ button.dash-kpi:focus-visible {
 /* ── Brand Promise Cards ───────────────────────────────── */
 .ceo-brand-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* Βλ. .dash-kpi-bar. */
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
@@ -4679,7 +4785,7 @@ button.dash-kpi:focus-visible {
 }
 .ceo-target {
   font-size: 10px;
-  color: var(--ceo-text-faint);
+  color: var(--ceo-text-dim);
   margin-top: auto;
   padding-top: var(--space-2);
   border-top: 1px solid var(--ceo-divider);
@@ -4689,7 +4795,7 @@ button.dash-kpi:focus-visible {
 
 /* No-data state */
 .ceo-brand-card.no-data .ceo-gauge-ring { display: none; }
-.ceo-brand-card.no-data .ceo-brand-big { font-size: var(--text-lg); color: var(--ceo-text-faint); letter-spacing: 2px; }
+.ceo-brand-card.no-data .ceo-brand-big { font-size: var(--text-lg); color: var(--ceo-text-dim); letter-spacing: 2px; }
 .ceo-setup-badge {
   display: none;
   align-items: flex-start;
@@ -4829,7 +4935,7 @@ button.dash-kpi:focus-visible {
 .ceo-val-bad  { color: var(--ceo-bad); }
 .ceo-val-accent { color: var(--ceo-accent); }
 .ceo-val-navy { color: var(--ceo-navy); }
-.ceo-val-muted { color: var(--ceo-text-faint); }
+.ceo-val-muted { color: var(--ceo-text-dim); }
 
 /* Delta pill (PoP comparison) */
 .ceo-delta {
@@ -5085,8 +5191,8 @@ button.dash-kpi:focus-visible {
 }
 
 /* ── Responsive ───────────────────────────────────────── */
-@media (max-width: 1100px) {
-  .ceo-brand-row { grid-template-columns: 1fr; }
+/* Το .ceo-brand-row έφυγε από εδώ — έγινε auto-fit. 1100 → 1024. */
+@media (max-width: 1024px) {
   .ceo-quadrants { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
@@ -5567,8 +5673,8 @@ button.dash-kpi:focus-visible {
   align-items: flex-start;
   gap: 12px;
   background: #FEF2F2;
-  border: 1px solid #FECACA;
-  border-left: 3px solid #DC2626;
+  /* Η λωρίδα 3px έφυγε· το πλήρες περίγραμμα σκουραίνει από #FECACA. */
+  border: 1px solid #F5A9A9;
   color: #7F1D1D;
   padding: 14px 16px;
   border-radius: 8px;
@@ -5613,9 +5719,14 @@ button.dash-kpi:focus-visible {
    SCAN CONFIDENCE TINTS — applied to AI-prefilled form fields
    so users instantly see which values they should double-check.
 ═══════════════════════════════════════════════════════════════ */
-.scan-conf-high  { border-left: 3px solid #059669 !important; }
-.scan-conf-med   { border-left: 3px solid #D97706 !important; background: rgba(217,119,6,0.04) !important; }
-.scan-conf-low   { border-left: 3px solid #DC2626 !important; background: rgba(220,38,38,0.04) !important; }
+/* Εδώ το χρώμα ΜΕΤΑΦΕΡΕΙ πληροφορία, οπότε δεν σβήνεται — αλλάζει φορέα.
+   Εφαρμόζονται σε πεδία φόρμας, που έχουν ήδη περίγραμμα: η λωρίδα γίνεται
+   ΠΛΗΡΕΣ χρωματιστό περίγραμμα + απόχρωση, δηλαδή ο ίδιος κώδικας χρώματος
+   περιμετρικά αντί για μπάρα στη μία πλευρά. Το «high» αποκτά κι αυτό
+   απόχρωση, ώστε τα τρία επίπεδα να διαβάζονται ως μία κλίμακα. */
+.scan-conf-high  { border: 1px solid var(--success) !important; background: rgba(4,120,87,0.05) !important; }
+.scan-conf-med   { border: 1px solid var(--warning) !important; background: rgba(180,83,9,0.06) !important; }
+.scan-conf-low   { border: 1px solid var(--danger)  !important; background: rgba(220,38,38,0.06) !important; }
 
 .scan-preview-doc {
   background: var(--bg);

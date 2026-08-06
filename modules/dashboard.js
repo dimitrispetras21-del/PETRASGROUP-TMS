@@ -332,19 +332,30 @@ async function renderDashboard() {
 
     // Weekly Score
     const assignmentRate = orders.length ? Math.round(orders.filter(r => r.fields['Truck'] && (Array.isArray(r.fields['Truck']) ? r.fields['Truck'].length > 0 : true) && r.fields['Week Number'] == wn).length / Math.max(orders.filter(r => r.fields['Week Number'] == wn).length, 1) * 100) : 0;
-    const complianceOk = trucks.filter(t => {
-      if (!t.fields['Active']) return false;
-      const kteo = (t.fields['KTEO Expiry'] || '').substring(0, 10);
-      const kek = (t.fields['KEK Expiry'] || '').substring(0, 10);
-      const ins = (t.fields['Insurance Expiry'] || '').substring(0, 10);
-      return (!kteo || kteo > today) && (!kek || kek > today) && (!ins || ins > today);
-    }).length;
-    const complianceRate = activeTrucks ? Math.round(complianceOk / activeTrucks * 100) : 100;
+    // MA-7: το Dashboard έκανε ΔΙΚΟ ΤΟΥ έλεγχο ημερομηνιών με `> today`, ενώ η
+    // metrics.compliancePct() χρησιμοποιεί `>= today`. Ένα έγγραφο που λήγει
+    // ΣΗΜΕΡΑ μετρούσε άκυρο εδώ και έγκυρο εκεί — 11% έναντι 15% για τον ίδιο
+    // στόλο, στην ίδια στιγμή. Μία πηγή.
+    const complianceRate = (typeof metrics !== 'undefined' && metrics.compliancePct)
+      ? metrics.compliancePct(trucks).pct
+      : (activeTrucks ? Math.round(trucks.filter(t => t.fields['Active']).length / activeTrucks * 100) : 100);
     const deadKmScore = avgDeadKm < 0 ? -1 : avgDeadKm <= 50 ? 100 : avgDeadKm <= 150 ? Math.round(100 - (avgDeadKm - 50)) : Math.max(0, Math.round(50 - (avgDeadKm - 150) * 0.33));
     const safeDeadKm = deadKmScore >= 0 ? deadKmScore : 100;
-    const safeOnTime = totalDelivered > 0 ? onTimePct : -1;
-    const weeklyScore = Math.round(assignmentRate * 0.30 + (safeOnTime >= 0 ? safeOnTime : 80) * 0.30 + complianceRate * 0.25 + safeDeadKm * 0.15);
-    const scoreColor = weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
+    // MA-8 + PF-2: ένας τύπος για το εβδομαδιαίο σκορ, ο κανονικός.
+    // Και ΚΑΝΕΝΑ fallback: αν δεν υπάρχει καμία παράδοση με καταγεγραμμένη
+    // επίδοση, το σκορ ΔΕΝ υπολογίζεται. Το παλιό «βάλε 80» κατασκεύαζε το 30%
+    // του σκορ από το τίποτα, και ήταν ο λόγος που τρία σημεία έδειχναν 42, 44
+    // και 15 για το ίδιο πράγμα.
+    const onTimeKnown = totalDelivered > 0;
+    const weeklyScore = (onTimeKnown && typeof metrics !== 'undefined' && metrics.weeklyScore)
+      ? metrics.weeklyScore({
+          assignment_rate: assignmentRate,
+          on_time: onTimePct,
+          compliance: complianceRate,
+          dead_km_score: safeDeadKm,
+        }).score
+      : -1;
+    const scoreColor = weeklyScore < 0 ? 'var(--text-dim)' : weeklyScore > 85 ? '#10B981' : weeklyScore >= 70 ? '#F59E0B' : '#EF4444';
 
     // Alert banner
     // Each alert carries its own destination: the banner is the fastest route to
@@ -374,7 +385,7 @@ async function renderDashboard() {
       activeTrucks,
       trucksInUse: trucksInUse.size,
       compliancePct: complianceRate,
-      weeklyScore,
+      weeklyScore,   // -1 = δεν υπολογίζεται (καμία καταγεγραμμένη επίδοση)
       onTimePct: totalDelivered > 0 ? onTimePct : -1,
     });
 
@@ -391,7 +402,7 @@ async function renderDashboard() {
             <div class="dash-date">${dateStr} — Εβδομάδα ${wn}</div>
           </div>
           <div style="display:flex;align-items:center;gap:var(--space-3)">
-            ${typeof openCommandPalette === 'function' ? `<div class="dash-cmdk-hint" onclick="openCommandPalette()">${_i('command', 12)} <kbd>⌘K</kbd> Γρήγορες ενέργειες</div>` : ''}
+            ${typeof openCommandPalette === 'function' ? `<button type="button" class="dash-cmdk-hint" onclick="openCommandPalette()">${_i('command', 12)} <kbd>⌘K</kbd> Γρήγορες ενέργειες</button>` : ''}
             <div class="dash-live">
               <span class="dash-live-dot"></span>
               LIVE — ανανέωση κάθε 5'
@@ -410,7 +421,7 @@ async function renderDashboard() {
 
         <!-- KPI Bar -->
         <div class="dash-kpi-bar">
-          <div class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
+          <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#DC2626,transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_up_right', 11)} Export χωρίς Ανάθεση</div>
             <div class="dash-kpi-value dash-val-danger">${unassignedExport}${_dashDelta(unExpDelta)}</div>
@@ -418,8 +429,8 @@ async function renderDashboard() {
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές</div></div>
               ${_dashSpark(unassignedExpTrend, '#F87171')}
             </div>
-          </div>
-          <div class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
+          </button>
+          <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_down_left', 11)} Import χωρίς Ανάθεση</div>
             <div class="dash-kpi-value dash-val-warning">${unassignedImport}${_dashDelta(unImpDelta)}</div>
@@ -427,8 +438,8 @@ async function renderDashboard() {
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εισαγωγές</div></div>
               ${_dashSpark(unassignedImpTrend, '#FBBF24')}
             </div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('weekly_intl')">
+          </button>
+          <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#0284C7,transparent)"></div>
             <div class="dash-kpi-label">${_i('truck', 11)} Αξιοποίηση Στόλου</div>
             <div class="dash-kpi-value dash-val-accent">${utilPct}%${_dashDelta(utilDelta)}</div>
@@ -436,25 +447,25 @@ async function renderDashboard() {
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div></div>
               ${_dashSpark(utilTrend, '#38BDF8')}
             </div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('weekly_intl')">
+          </button>
+          <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'#10B981':avgDeadKm<=150?'#D97706':'#DC2626') : '#475569'},transparent)"></div>
-            <div class="dash-kpi-label">${_i('route', 11)} Dead Kilometers</div>
+            <div class="dash-kpi-label">${_i('route', 11)} Νεκρά Χιλιόμετρα</div>
             <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
             <div class="dash-kpi-bottom">
-              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `avg ${deadKmList.length} pairs · max ${maxDeadKm}km` : 'no matched pairs'}</div></div>
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `μ.ό. ${deadKmList.length} ζεύγη · έως ${maxDeadKm}km` : 'κανένα ζεύγος διαδρομών'}</div></div>
               ${_dashSpark(deadKmTrend, '#F59E0B')}
             </div>
-          </div>
-          <div class="dash-kpi" onclick="navigate('orders_intl')">
+          </button>
+          <button type="button" class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? '#10B981' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('check_circle', 11)} On-Time Παράδοση</div>
             <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}${_dashDelta(onTimeDelta)}</div>
             <div class="dash-kpi-bottom">
-              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} on time` : 'κανένα δεδομένο'}</div></div>
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} εμπρόθεσμες` : 'κανένα δεδομένο'}</div></div>
               ${_dashSpark(onTimeTrend, '#34D399')}
             </div>
-          </div>
+          </button>
         </div>
 
         <!-- Main Grid -->
@@ -489,8 +500,8 @@ async function renderDashboard() {
             <!-- Fleet Usage Rate -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('activity', 12)} USAGE RATE ΣΤΟΛΟΥ</div>
-                <span class="dash-card-meta">W${wn} avg ${avgCurrent}% · W${nextWn} avg ${avgNext}%</span>
+                <div class="dash-card-title">${_i('activity', 12)} ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
+                <span class="dash-card-meta">W${wn} μ.ό. ${avgCurrent}% · W${nextWn} μ.ό. ${avgNext}%</span>
               </div>
               <div class="dash-card-body">
                 <div class="dash-util-row">
@@ -623,8 +634,8 @@ async function renderDashboard() {
                 <span class="dash-card-meta">W${wn}</span>
               </div>
               <div class="dash-card-body dash-score-wrap">
-                <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${Math.round(weeklyScore * 3.6)}deg">
-                  <div class="dash-score-num" style="color:${scoreColor}">${weeklyScore}</div>
+                <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${weeklyScore < 0 ? 0 : Math.round(weeklyScore * 3.6)}deg">
+                  <div class="dash-score-num" style="color:${weeklyScore < 0 ? 'var(--text-dim)' : scoreColor}" title="${weeklyScore < 0 ? 'Καμία παράδοση με καταγεγραμμένη επίδοση — το σκορ δεν υπολογίζεται' : ''}">${weeklyScore < 0 ? '—' : weeklyScore}</div>
                 </div>
                 <div class="dash-score-label">συνολική απόδοση</div>
                 ${_dashScoreBar('Ανάθεση', assignmentRate, '#38BDF8')}

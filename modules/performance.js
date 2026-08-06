@@ -16,21 +16,21 @@ const PERF = {
 const PERF_KPIS_BY_USER = {
   // Dimitris Petras — Founder: Approval & Strategy
   dimitris: [
-    { id: 'weekly_score',  label: 'Weekly Score',          unit: '/100', target: 85 },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',      unit: '%',  target: 80 },
-    { id: 'dead_km',       label: 'Dead Kilometers',       unit: 'km', target: 50, invert: true },
-    { id: 'on_time',       label: 'On-Time Delivery',      unit: '%',  target: 90 },
+    { id: 'weekly_score',  label: 'Εβδομαδιαίο Σκορ',          unit: '/100', target: 85 },
+    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',      unit: '%',  target: 80 },
+    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',       unit: 'km', target: 50, invert: true },
+    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',      unit: '%',  target: 90 },
   ],
   // Dimitris Kelesmitos — Master Planner: plan routes, assign trucks, find return loads
   kelesmitos: [
-    { id: 'plan_complete', label: 'Plan Completion',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
-    { id: 'dead_km',       label: 'Dead Kilometers',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',       unit: '%',  target: 80, desc: 'Working days vs available days' },
-    { id: 'sub_cost_pct',  label: 'Subcontractor Cost',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
+    { id: 'plan_complete', label: 'Ολοκλήρωση Πλάνου',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
+    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
+    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',       unit: '%',  target: 80, desc: 'Working days vs available days' },
+    { id: 'sub_cost_pct',  label: 'Κόστος Συνεργατών',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
   ],
   // Pantelis Tsanaktsidis — Control Tower: execution, tracking, client updates
   pantelis: [
-    { id: 'on_time',       label: 'On-Time Delivery',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
+    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
     { id: 'cmr_collected', label: 'CMR Same-Day',           unit: '%',  target: 95, desc: 'CMR collected within 24h of delivery' },
     { id: 'client_updates',label: 'Client Updates Sent',    unit: '%',  target: 100, desc: 'Zero Anxiety: Loaded/In Transit/Delivered updates' },
     { id: 'response_time', label: 'Response Time',          unit: 'h',  target: 2, invert: true, desc: 'Avg time to handle issues' },
@@ -71,7 +71,6 @@ const PERF_KPIS = {
 /* ── ENTRY ────────────────────────────────────────────────── */
 async function renderPerformance() {
   const c = document.getElementById('content');
-  document.getElementById('topbarTitle').textContent = 'My Performance';
   c.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
     <div class="spinner"></div> Loading performance data…</div>`;
 
@@ -402,19 +401,28 @@ function _perfCompute() {
   // Canonical weights 30/30/25/15 per METRICS.md:
   //   assignment_rate (plan_complete) / on_time / compliance (service_adherence) /
   //   dead_km_score (derived from dead_km with same mapping as Dashboard).
-  const _ontimeForScore = on_time >= 0 ? on_time : 80; // default matches Dashboard fallback
+  // PF-2: το fallback 80 έφυγε. Κατασκεύαζε το 30% του σκορ όταν δεν υπήρχε
+  // ΚΑΜΙΑ καταγεγραμμένη επίδοση παράδοσης — δηλαδή έδινε καλό βαθμό για
+  // δεδομένα που δεν υπάρχουν, και ήταν ο λόγος που η κάρτα έλεγε 44 ενώ το
+  // γράφημα δίπλα της έλεγε 15. Χωρίς δείγμα, το σκορ ΔΕΝ υπολογίζεται.
+  const _ontimeKnown = on_time >= 0;
   const _deadKmScore = dead_km < 0 ? 100
     : dead_km <= 50 ? 100
     : dead_km <= 150 ? Math.round(100 - (dead_km - 50))
     : Math.max(0, Math.round(50 - (dead_km - 150) * 0.33));
-  const weekly_score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+  // Η συμμόρφωση έρχεται από την ΙΔΙΑ πηγή με το Dashboard και με το γράφημα
+  // τάσης: metrics.compliancePct(). Το service_adherence παραμένει δικός του
+  // δείκτης (τήρηση προγράμματος συντήρησης) — άλλο μέγεθος, δεν μπαίνει εδώ.
+  const _complianceForScore = (typeof metrics !== 'undefined' && metrics.compliancePct && PERF.trucks)
+    ? metrics.compliancePct(PERF.trucks).pct : 0;
+  const weekly_score = (_ontimeKnown && typeof metrics !== 'undefined' && metrics.weeklyScore)
     ? metrics.weeklyScore({
         assignment_rate: plan_complete,
-        on_time: _ontimeForScore,
-        compliance: service_adherence,
+        on_time,
+        compliance: _complianceForScore,
         dead_km_score: _deadKmScore,
       }).score
-    : Math.round(plan_complete * 0.30 + _ontimeForScore * 0.30 + service_adherence * 0.25 + _deadKmScore * 0.15);
+    : -1;
 
   return {
     on_time, on_time_sample, dead_km, fleet_usage, plan_complete, assign_speed,
@@ -456,14 +464,16 @@ function _perfTrends() {
     // για το dead km. Τώρα καλεί την ίδια metrics.weeklyScore() με την κάρτα.
     // Η συμμόρφωση είναι ιδιότητα ΣΤΟΛΟΥ, όχι εβδομάδας, οπότε είναι η ίδια σε
     // όλες τις στήλες του γραφήματος — αυτό είναι σωστό, όχι σφάλμα.
-    const score = (typeof metrics !== 'undefined' && metrics.weeklyScore)
+    // Ίδια αρχή με την κάρτα: εβδομάδα χωρίς καταγεγραμμένη επίδοση δεν
+    // βαθμολογείται. Το -1 αποδίδεται ως «—» στη λωρίδα.
+    const score = (withPerf.length && typeof metrics !== 'undefined' && metrics.weeklyScore)
       ? metrics.weeklyScore({
           assignment_rate: assignPct,
           on_time: otPct,
           compliance: _compliancePct,
           dead_km_score: _deadKmScoreShared,
         }).score
-      : Math.round(assignPct * 0.30 + otPct * 0.30 + (100 - emptyPct) * 0.25 + 50 * 0.15);
+      : -1;
     trends.push({ week: w, score, assignPct, emptyPct, otPct, orders: exports.length });
   }
   return trends;
@@ -556,7 +566,11 @@ function _perfDraw() {
   };
   function _wowDelta(kpiId, curr, lowerBetter) {
     const prev = kpiDeltaSrc[kpiId];
-    if (prev == null || prev === 0 || isNaN(prev)) return '';
+    // Το -1 σημαίνει «άγνωστο», όχι «μηδέν»: σύγκριση μαζί του παρήγαγε
+    // «-2400%» στην κάρτα του σκορ μόλις οι εβδομάδες χωρίς δείγμα σταμάτησαν
+    // να ψευδο-βαθμολογούνται. Δεν υπάρχει ποσοστιαία μεταβολή από το άγνωστο.
+    if (prev == null || prev === 0 || prev < 0 || isNaN(prev)) return '';
+    if (curr < 0) return '';
     const diff = curr - prev;
     const pct = Math.round(diff / prev * 100);
     if (pct === 0) return `<span class="perf-delta flat">${_i('minus', 10)}0%</span>`;
@@ -597,13 +611,16 @@ function _perfDraw() {
 
   // Trend bars (overall weekly score last 4 weeks)
   const trendHTML = trends.map(t => {
-    const color = t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
+    // -1 = εβδομάδα χωρίς καμία καταγεγραμμένη επίδοση παράδοσης. Μηδενική
+    // μπάρα και «—», όχι 0/100: το μηδέν διαβάζεται ως καταστροφική επίδοση.
+    const unknown = t.score < 0;
+    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? '#34D399' : t.score >= 70 ? '#F59E0B' : '#F87171';
     return `<div class="perf-trend-row">
       <div class="perf-trend-wk">W${t.week}</div>
       <div class="perf-trend-bar">
-        <div class="perf-trend-fill" style="width:${t.score}%;background:${color}">${t.score}</div>
+        <div class="perf-trend-fill" style="width:${unknown ? 0 : t.score}%;background:${color}">${unknown ? '' : t.score}</div>
       </div>
-      <div class="perf-trend-val" style="color:${color}">${t.score}/100</div>
+      <div class="perf-trend-val" style="color:${color}" title="${unknown ? 'Καμία παράδοση με καταγεγραμμένη επίδοση αυτή την εβδομάδα' : ''}">${unknown ? '—' : t.score + '/100'}</div>
     </div>`;
   }).join('');
 
@@ -699,7 +716,7 @@ function _perfDraw() {
           <!-- Weekly Trend -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">${_i('activity', 12)} WEEKLY SCORE TREND</div>
+              <div class="perf-card-title">${_i('activity', 12)} ΤΑΣΗ ΕΒΔΟΜΑΔΙΑΙΟΥ ΣΚΟΡ</div>
               <span class="perf-card-meta">Last 4 weeks</span>
             </div>
             <div class="perf-card-body">

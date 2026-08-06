@@ -279,7 +279,6 @@ function _auditCrossCompute() {
 
 async function renderMetricsAudit() {
   const c = document.getElementById('content');
-  document.getElementById('topbarTitle').textContent = 'Metrics Audit';
   c.style.padding = '';
   c.innerHTML = `<div style="text-align:center;padding:60px;color:#94A3B8">Loading audit data...</div>`;
 
@@ -637,7 +636,7 @@ function _auditDraw() {
   // computed from nothing: before this, an unreachable table just produced
   // zeroes that looked like real zeroes on the page meant to verify accuracy.
   const failBanner = failed.length ? `
-    <div style="background:#FEF3C7;border:1px solid #F59E0B;border-left:4px solid #D97706;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
+    <div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
       <b>⚠ Some figures below may be wrong.</b>
       ${failedLabels.length} source ${failedLabels.length === 1 ? 'table' : 'tables'} could not be loaded:
       <b>${failedLabels.map(escapeHtml).join(', ')}</b>.

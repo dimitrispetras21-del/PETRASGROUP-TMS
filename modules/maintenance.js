@@ -61,14 +61,14 @@ const MAINT_TYPE_LABEL = Object.fromEntries(MAINT_TYPES);
 .exp-warning { background:#92400E; color:#FEF3C7; }
 .exp-upcoming { background:#78350F; color:#FDE68A; }
 .exp-ok { background:#065F46; color:#D1FAE5; }
-.exp-none { background:#374151; color:#9CA3AF; }
+.exp-none { background:#374151; color:var(--text-disabled); }
 
 /* KPI cards — dark navy */
 .mk-kpis { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-.mk-kpi { background:#0F172A; border:1px solid #1E293B;
+.mk-kpi { background:var(--panel); border:1px solid var(--panel-border);
   border-radius:10px; padding:14px 18px; flex:1; min-width:100px; }
-.mk-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
-.mk-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; line-height:1; color:#F1F5F9; }
+.mk-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:var(--panel-dim); font-family:'DM Sans',sans-serif; margin-bottom:4px; }
+.mk-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; line-height:1; color:var(--panel-text); }
 
 /* tables */
 .mt { width:100%; border-collapse:collapse; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
@@ -204,7 +204,6 @@ function _expiryBuildRows() {
 // PAGE 1: EXPIRY ALERTS — Airtable-style layout
 // ═════════════════════════════════════════════════════════════════
 async function renderExpiryAlerts() {
-  document.getElementById('topbarTitle').textContent = 'Expiry Alerts';
   document.getElementById('content').innerHTML = showLoading('Loading certificates…');
   try {
     await _maintLoad();
@@ -243,7 +242,7 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
 function _expCell(doc, recId, fieldName, vType) {
   const editAttr = recId ? `onclick="_expInlineEdit(event,'${recId}','${fieldName}','${vType}')"` : '';
   const cursor = recId ? 'cursor:pointer' : '';
-  if (!doc.date) return `<td class="c" style="color:#475569;${cursor}" ${editAttr}><span style="font-size:11px">—</span></td>`;
+  if (!doc.date) return `<td class="c" style="color:var(--text-mid);${cursor}" ${editAttr}><span style="font-size:11px">—</span></td>`;
   const d = _daysUntil(doc.date);
   const parts = toLocalDate(doc.date).split('-');
   // With documents 852 days overdue, "17/02" is ambiguous by years. The year is
@@ -298,14 +297,23 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
 }
 
-// Row left-border color based on worst expiry
-function _expRowColor(worst) {
-  if (worst === null) return 'transparent';
-  if (worst < 0)  return '#EF4444';
-  if (worst <= 7) return '#EF4444';
-  if (worst <= 30) return '#F59E0B';
-  if (worst <= 90) return '#0284C7';
-  return '#10B981';
+// Row-level severity encoding was removed, not just restyled.
+//
+// It started as a 3px coloured left border (the banned side-stripe), so the
+// first attempt converted it to a row tint. Measured against live data that
+// failed too: 44 of 64 rows came back red, 4 amber, 16 clean. When 69% of a
+// table is alarm-red it reads as "everything is on fire", not "look here
+// first" — the encoding stops discriminating exactly when it matters most.
+//
+// Each cell already carries its own expiry colour and its own «ληγμένο» /
+// «N ημ.» label, which is strictly more precise: it says WHICH document and
+// HOW overdue, not merely that something in this row is wrong. A vehicle in
+// good standing is legible by having no coloured cells at all.
+//
+// Kept as a no-op so the two call sites stay explicit about the decision
+// rather than silently losing an attribute.
+function _expRowTint(_worst) {
+  return '';
 }
 
 // Inline text editor for Insurer field
@@ -526,7 +534,7 @@ function _expiryPaint() {
             ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
             <th>ΑΣΦΑΛΙΣΤΗΣ</th>
           </tr></thead>
-          <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
+          <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
             <td class="rn">${i+1}</td>
             <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
@@ -552,7 +560,7 @@ function _expiryPaint() {
             <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
             ${TRAILER_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
           </tr></thead>
-          <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="border-left:3px solid ${_expRowColor(r.worst)}">
+          <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
             <td class="rn">${i+1}</td>
             <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
             <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
@@ -591,15 +599,15 @@ function _expiryPrint() {
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
       *{box-sizing:border-box;margin:0;padding:0} body{font-family:'DM Sans',sans-serif;padding:20px;color:#0F172A;font-size:12px}
-      .page-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700} .page-sub{font-size:11px;color:#475569;margin-bottom:12px}
+      .page-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700} .page-sub{font-size:11px;color:var(--text-mid);margin-bottom:12px}
       .mk-kpis{display:flex;gap:10px;margin-bottom:14px} .mk-kpi{border:1px solid #ddd;border-left:3px solid #0EA5E9;border-radius:6px;padding:10px 14px;flex:1}
-      .mk-kpi-lbl{font-size:9px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:1px} .mk-kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
-      table{width:100%;border-collapse:collapse;border:1px solid #ddd} thead th{padding:6px 8px;font-size:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#9CA3AF;background:#F0F5FA;border-bottom:1px solid #ddd;text-align:left}
+      .mk-kpi-lbl{font-size:9px;font-weight:600;color:var(--text-disabled);text-transform:uppercase;letter-spacing:1px} .mk-kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
+      table{width:100%;border-collapse:collapse;border:1px solid #ddd} thead th{padding:6px 8px;font-size:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text-disabled);background:#F0F5FA;border-bottom:1px solid #ddd;text-align:left}
       tbody td{padding:6px 8px;font-size:11px;border-bottom:1px solid #eee}
       .exp-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
       .exp-overdue{background:#7F1D1D;color:#FEE2E2} .exp-critical{background:#991B1B;color:#FEE2E2} .exp-warning{background:#92400E;color:#FEF3C7}
-      .exp-upcoming{background:#78350F;color:#FDE68A} .exp-ok{background:#065F46;color:#D1FAE5} .exp-none{background:#374151;color:#9CA3AF}
-      .btn,select{display:none!important} .rn{font-family:'Syne',sans-serif;font-weight:700;color:#9CA3AF}
+      .exp-upcoming{background:#78350F;color:#FDE68A} .exp-ok{background:#065F46;color:#D1FAE5} .exp-none{background:#374151;color:var(--text-disabled)}
+      .btn,select{display:none!important} .rn{font-family:'Syne',sans-serif;font-weight:700;color:var(--text-disabled)}
       @media print{body{padding:10px}}
     </style></head><body>${content}</body></html>`);
   win.document.close();
@@ -612,7 +620,6 @@ function _expiryPrint() {
 let _svcFilters = { vehicle: '', type: '', status: '' };
 
 async function renderServiceRecords() {
-  document.getElementById('topbarTitle').textContent = 'Service Records';
   document.getElementById('content').innerHTML = showLoading('Loading service records…');
   try {
     await _maintLoad(true);
@@ -979,7 +986,6 @@ async function renderTrailersHistory() { await _renderHistory('trailers'); }
 
 async function _renderHistory(vType) {
   const title = vType === 'trucks' ? 'Trucks History' : 'Trailers History';
-  document.getElementById('topbarTitle').textContent = title;
   document.getElementById('content').innerHTML = showLoading('Loading history…');
   try {
     await _maintLoad(true);
@@ -1357,10 +1363,17 @@ function _maintExpiryStatus(dateStr) {
 }
 
 function _maintDaysPill(days, status) {
-  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:#64748B">N/A</span>';
+  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:var(--text-dim)">—</span>';
   const cls = status === 'expired' ? 'red' : status === 'expiring' ? 'amber' : 'green';
-  const label = status === 'expired' ? days + 'd late' : days + 'd';
-  return `<span class="dash-aging-pill ${cls}">${label}</span>`;
+  // MD-4: «852d late» — a document two years gone rendered exactly like one
+  // ten days gone, and in English. Ancient overdues now escalate in wording
+  // (months/years), so the reader sees «2 χρ.» instead of doing division.
+  let label;
+  if (status !== 'expired') label = days + ' ημ.';
+  else if (days >= 365) label = (days/365).toFixed(days >= 730 ? 0 : 1).replace('.', ',') + ' χρ. ληγμένο';
+  else if (days >= 60)  label = Math.round(days/30) + ' μήνες ληγμένο';
+  else                  label = days + ' ημ. ληγμένο';
+  return `<span class="dash-aging-pill ${cls}"${status==='expired'&&days>=60?' style="font-weight:700"':''}>${label}</span>`;
 }
 
 function _maintCompBlock(dateStr, label) {
@@ -1451,7 +1464,6 @@ function _mdDelta(curr, prev, lowerIsBetter) {
 }
 
 async function renderMaintDash() {
-  document.getElementById('topbarTitle').textContent = 'Maintenance Dashboard';
   const c = document.getElementById('content');
   c.innerHTML = _maintDashSkeleton();
   const _ic = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
@@ -1849,7 +1861,6 @@ async function _mreqLoad(force) {
 }
 
 async function renderMaintRequests() {
-  document.getElementById('topbarTitle').textContent = 'Work Orders';
   document.getElementById('content').innerHTML = showLoading('Loading work orders…');
   try {
     await _mreqLoad();
@@ -1951,7 +1962,7 @@ function _mreqPaint() {
       </div>
     </div>
 
-    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-left:4px solid var(--danger);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
+    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
       <div style="width:36px;height:36px;border-radius:var(--radius-full);background:var(--danger);color:#fff;display:inline-flex;align-items:center;justify-content:center">${_i('alert_circle',18)}</div>
       <div style="flex:1">
         <div style="color:var(--danger);font-size:var(--text-sm);font-weight:700">${sos} SOS work order${sos>1?'s':''} — immediate attention required</div>
