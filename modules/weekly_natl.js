@@ -658,17 +658,9 @@ function _wnSnRowHTML(row, snNo) {
       <div class="wi-cn" title="Άνοδος ${snNo||''}">
         <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">A${snNo||''}</span>
       </div>
-      <!-- Β.3-1 (Wave 1, twin of intl): the ΚΑΘΟΔΟΣ cell of a standalone
-           ΑΝΟΔΟΣ row was an empty dark block — it now echoes the route dimmed
-           so the column reads as content, details stay on the right. -->
-      <div class="wi-ce" style="background:#172C45">
-        <div class="wi-route" style="opacity:.5">
-          <span style="color:rgba(196,207,219,.9)">${escapeHtml(fromStr)}</span>
-          <span class="sep" style="color:rgba(196,207,219,.45)">→</span>
-          <span style="color:rgba(196,207,219,.9);font-weight:700">${escapeHtml(toStr)}</span>
-        </div>
-        <div style="font-size:9px;color:rgba(196,207,219,.35);font-style:italic;margin-top:2px">άνοδος · στοιχεία στη στήλη ΑΝΟΔΟΣ →</div>
-      </div>
+      <!-- Β.3-1 ΑΝΑΙΡΕΘΗΚΕ (owner, 8/8 βράδυ — twin του intl revert):
+           το κενό κελί σηματοδοτεί «δεν υπάρχει σκέλος», όπως στο Excel. -->
+      <div class="wi-ce" style="background:#172C45"></div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <div style="width:30px;flex-shrink:0"></div>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">

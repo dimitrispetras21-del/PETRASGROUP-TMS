@@ -722,18 +722,10 @@ function _wiImpRowHTML(row,impNo){
       <div class="wi-cn" style="cursor:grab" title="Εισαγωγή ${impNo||''}">
         <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">I${impNo||''}</span>
       </div>
-      <!-- Β.3-1 (Wave 1): the EXPORT cell of an import row was a ~480px empty
-           navy block — the top-left of the fold read as a dead hole (VISUAL
-           §Ιεραρχία 2). It now echoes the import's route, dimmed, so the
-           column scans as content while the full details stay on the right. -->
-      <div class="wi-ce" style="background:var(--navy-mid)">
-        <div class="wi-route" style="opacity:.5">
-          <span style="color:rgba(196,207,219,.9)">${fromStr}</span>
-          <span class="sep" style="color:rgba(196,207,219,.45)">→</span>
-          <span style="color:rgba(196,207,219,.9);font-weight:700">${toStr}</span>
-        </div>
-        <div style="font-size:9px;color:rgba(196,207,219,.35);font-style:italic;margin-top:2px">εισαγωγή · στοιχεία στη στήλη ΕΙΣΑΓΩΓΗ →</div>
-      </div>
+      <!-- Β.3-1 ΑΝΑΙΡΕΘΗΚΕ (owner, 8/8 βράδυ): το γέμισμα της κενής EXPORT
+           κυψέλης διάβαζε ως θόρυβος — στο Excel τους τα κενά κελιά είναι
+           φυσιολογικά και σηματοδοτούν «δεν υπάρχει σκέλος». Μένει κενό. -->
+      <div class="wi-ce" style="background:var(--navy-mid)"></div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
