@@ -169,6 +169,11 @@ const DISPATCHER='Δ. Πέτρας';
 
 const params=new URLSearchParams(window.location.search);
 const orderId=params.get('orderId');
+// Wave 3 (Π1): ?orderIds=a,b,c → ΟΜΑΔΙΚΗ εκτύπωση — ένα έγγραφο ανά order,
+// διαδοχικά με page-break: ο οδηγός/συνεργάτης παίρνει ΕΝΑ πακέτο χαρτιών
+// για το groupage αντί για Ν ξεχωριστά παράθυρα (PN-4 pattern, 00 §2).
+const orderIdsCsv=params.get('orderIds');
+const orderIdList=(orderIdsCsv?orderIdsCsv.split(','):(orderId?[orderId]:[])).map(function(s){return s.trim();}).filter(Boolean);
 // Β.3-6: explicit sheet choice. ?sheet=partner|driver overrides the automatic
 // isPartner detection so the DISPATCHER chooses what a third party sees —
 // the sheet is no longer an accidental consequence of assignment state.
@@ -220,7 +225,8 @@ function resolveLoc(locField){
   var l=loc.fields,parts=[];
   if(l['Address'])parts.push(l['Address']);if(l['City'])parts.push(l['City']);
   if(l['State/province'])parts.push(l['State/province']);if(l['Country'])parts.push(l['Country']);
-  return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||''};
+  return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||'',
+    hours:l['Opening Hours']||'',days:l['Delivery Days']||''}; // Wave 3
 }
 
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
@@ -239,6 +245,10 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 Open in Maps ('+loc.lat+', '+loc.lng+')</a>';
   h+='<div class="stop-grid">';
   h+='<div class="stop-field"><b>Date &amp; Time of '+dtLabel+':</b><span>'+fmtDT(dt)+'</span></div>';
+  // Wave 3 — owner spec 00 §Β3: ώρες λειτουργίας + μέρες παράδοσης στο φύλλο
+  // οδηγού· render only when the LOCATIONS fields carry a value.
+  if(loc.hours)h+='<div class="stop-field"><b>Opening Hours:</b><span>'+loc.hours+'</span></div>';
+  if(loc.days)h+='<div class="stop-field"><b>Delivery Days:</b><span>'+loc.days+'</span></div>';
   if(showDetails){
     if(goods)h+='<div class="stop-field"><b>Goods:</b><span>'+goods+'</span></div>';
     h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
@@ -323,7 +333,7 @@ function badges(f){
 }
 
 async function loadAll(){
-  if(!orderId){
+  if(!orderIdList.length){
     // PN-1: ήταν σκέτο «Missing orderId» χωρίς εξήγηση/επιστροφή — άστυλο
     // αδιέξοδο για όποιον άνοιγε τη σελίδα από παλιό/σπασμένο σύνδεσμο.
     document.getElementById('loading').innerHTML=
@@ -342,31 +352,44 @@ async function loadAll(){
     return;
   }
   try{
-    var[orderR,partners,trucks,trailers,drivers,locs]=await Promise.all([
-      atGet(T_ORDERS,orderId),
+    // Wave 3: Opening Hours / Delivery Days (owner-approved LOCATIONS fields).
+    // Fallback without them until the Worker map + columns land — the sheet
+    // must never break because the backend is a step behind.
+    var LOC_BASE='&fields[]=Name&fields[]=Address&fields[]=City&fields[]=State/province&fields[]=Country&fields[]=Latitude&fields[]=Longitude';
+    var fetchLocs=function(){
+      return atFetch(T_LOCS,LOC_BASE+'&fields[]=Opening Hours&fields[]=Delivery Days')
+        .catch(function(){return atFetch(T_LOCS,LOC_BASE);});
+    };
+    var[partners,trucks,trailers,drivers,locs]=await Promise.all([
       atFetch(T_PARTNERS,'&fields[]=Company Name&fields[]=VAT Number&fields[]=Adress&fields[]=Email'),
       atFetch(T_TRUCKS,'&fields[]=License Plate&fields[]=Gross Vehicle Weight kg'),
       atFetch(T_TRAILERS,'&fields[]=License Plate&fields[]=Weight kg'),
       atFetch(T_DRIVERS,'&fields[]=Full Name'),
-      atFetch(T_LOCS,'&fields[]=Name&fields[]=Address&fields[]=City&fields[]=State/province&fields[]=Country&fields[]=Latitude&fields[]=Longitude'),
+      fetchLocs(),
     ]);
     allPartners=partners;allTrucks=trucks;allTrailers=trailers;
     allDrivers=drivers;allLocations=locs;
-    // Fetch ORDER_STOPS via reverse-link field
-    var stopIds=orderR.fields['ORDER STOPS']||[];
-    if(stopIds.length){
-      try{
-        var stopFilter='OR('+stopIds.map(function(id){return'RECORD_ID()="'+id+'"'}).join(',')+')';
-        orderStops=await atFetch(T_STOPS,'&filterByFormula='+encodeURIComponent(stopFilter));
-      }catch(e){console.warn('print: ORDER_STOPS fetch failed',e);}
+    // Wave 3 (Π1): one document per order, sequentially — single or group.
+    var htmlArr=[];
+    for(var oi=0;oi<orderIdList.length;oi++){
+      var orderR=await atGet(T_ORDERS,orderIdList[oi]);
+      orderStops=[];
+      var stopIds=orderR.fields['ORDER STOPS']||[];
+      if(stopIds.length){
+        try{
+          var stopFilter='OR('+stopIds.map(function(id){return'RECORD_ID()="'+id+'"'}).join(',')+')';
+          orderStops=await atFetch(T_STOPS,'&filterByFormula='+encodeURIComponent(stopFilter));
+        }catch(e){console.warn('print: ORDER_STOPS fetch failed',e);}
+      }
+      htmlArr.push(generatePDF(orderR, oi>0));
     }
-    generatePDF(orderR);
+    renderDocs(htmlArr);
   }catch(err){
     document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+err.message+'</span>';
   }
 }
 
-function generatePDF(orderRec){
+function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;
   var isExport=leg==='export';
   var legLabel=isExport?'Export':'Import';
@@ -402,7 +425,7 @@ function generatePDF(orderRec){
   var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
   var titleStr=(isPartner?'Partner Assignment Order':'Driver Order')+' — '+legLabel+' — W'+wk;
-  var pbarHTML='<div class="pbar"><div class="pbar-left">'+
+  var pbarHTML=bare?'':'<div class="pbar"><div class="pbar-left">'+
     '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
     '<div class="pbar-div"></div>'+
     '<span class="pbar-title">'+titleStr+'</span>'+
@@ -495,10 +518,20 @@ function generatePDF(orderRec){
     '</tr></table>';
   }
 
+  return html; // Wave 3: assembly + print moved to renderDocs (single & group)
+}
+
+// Wave 3 (Π1): assemble one or many documents. Group mode: page-break between
+// docs + «ΕΓΓΡΑΦΟ i/N» tag, so the driver/partner gets ONE paper packet.
+function renderDocs(htmlArr){
   document.getElementById('loading').style.display='none';
   var docEl=document.getElementById('doc');
   docEl.style.display='block';
-  docEl.innerHTML=html;
+  var N=htmlArr.length;
+  docEl.innerHTML=htmlArr.map(function(h,i){
+    var tag=N>1?'<div style="font-size:9px;font-weight:800;letter-spacing:1.2px;color:#6B7280;margin:0 0 8px">ΟΜΑΔΙΚΟ ΦΟΡΤΙΟ — ΕΓΓΡΑΦΟ '+(i+1)+' / '+N+'</div>':'';
+    return '<div class="p-doc" style="'+(i<N-1?'page-break-after:always;':'')+'">'+tag+h+'</div>';
+  }).join('');
   // &noprint=1: άνοιγμα για προεπισκόπηση/έλεγχο χωρίς διάλογο εκτύπωσης
   // (π.χ. λογιστήριο που απλώς διαβάζει, ή αυτοματοποιημένος έλεγχος).
   if(params.get('noprint')!=='1') setTimeout(()=>window.print(),700);

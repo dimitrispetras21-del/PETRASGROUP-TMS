@@ -948,6 +948,7 @@ function _wnOpenPopover(e, rowId) {
         </div>
       </div>
     </div>
+    <div id="wn-lane-${rowId}" class="wi-lane-hist"></div>
     <div class="wi-pop-footer">
       ${row.saved ? `<button class="wi-pop-cancel" onclick="_wnClear(${rowId}).then(()=>_wnClosePopover())">Εκκαθάριση</button>` : ''}
       <button class="wi-pop-cancel" onclick="_wnClosePopover()">Ακύρωση</button>
@@ -968,6 +969,34 @@ function _wnOpenPopover(e, rowId) {
   if (top < 10) top = 10;
   Object.assign(pop.style, { display:'block', left:`${Math.max(10,left)}px`, top:`${top}px` });
   setTimeout(() => document.addEventListener('click', _wnPopoverOutside, { capture:true }), 10);
+  _wnFillLaneHist(rowId, row); // Π3 (Wave 3) — async, hides itself when no data
+}
+
+// Π3 (Wave 3, natl): εθνική «γραμμή» ≈ ίδιος πελάτης (τα NAT_LOADS δεν έχουν
+// text summaries — ο Client είναι το σταθερό κλειδί). Τελευταία 3 κόμιστρα.
+async function _wnFillLaneHist(rowId, row){
+  const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
+  const o=all.find(x=>x.id===row.orderIds?.[0]);
+  const client=String(o?.fields?.['Client']||'').trim();
+  if(!client||!document.getElementById('wn-lane-'+rowId)) return;
+  try{
+    if(!WNATL._laneAll){
+      WNATL._laneAll=await atGetAll(TABLES.NAT_LOADS,{filterByFormula:`{Partner Rate}>0`,
+        fields:['Client','Partner Rate','Loading DateTime','Partner']},false);
+    }
+    const key=client.toUpperCase();
+    const hits=WNATL._laneAll
+      .filter(r=>String(r.fields['Client']||'').trim().toUpperCase()===key&&!row.orderIds.includes(r.id))
+      .sort((a,b)=>String(b.fields['Loading DateTime']||'').localeCompare(String(a.fields['Loading DateTime']||''))).slice(0,3);
+    const el=document.getElementById('wn-lane-'+rowId);
+    if(!el||!hits.length) return;
+    el.innerHTML='<span class="wi-lane-title">Ιστορικό πελάτη '+escapeHtml(client.slice(0,22))+':</span>'+hits.map(r=>{
+      const pid=(r.fields['Partner']||[])[0];
+      const pn=WNATL.data.partners.find(p=>p.id===pid)?.label||'—';
+      const d=(r.fields['Loading DateTime']||'').slice(5,10);
+      return `<span class="wi-lane-item">${d} · ${(r.fields['Partner Rate']||0).toLocaleString('el-GR')}€ · ${escapeHtml(String(pn).slice(0,18))}</span>`;
+    }).join('');
+  }catch(e){ console.warn('lane hist (natl):',e); }
 }
 
 function _wnOpenSnPopover(e, snId, rowId) {

@@ -246,6 +246,23 @@ function _wiBuildRows(){
     });
   }
 
+  // Π1 (Wave 3): rebuild persisted groups — export rows sharing a non-empty
+  // Group ID collapse back into one row after every reload.
+  {
+    const byGid={};
+    WINTL.rows.forEach(r=>{
+      if(r.type!=='export') return;
+      const gid=exports.find(e=>e.id===r.orderId)?.fields?.['Group ID'];
+      if(gid){(byGid[gid]=byGid[gid]||[]).push(r);}
+    });
+    Object.values(byGid).forEach(list=>{
+      if(list.length<2) return;
+      const [lead,...rest]=list;
+      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
+      WINTL.rows=WINTL.rows.filter(r=>!rest.includes(r));
+    });
+  }
+
   // ── IMPORT ROWS — sorted by loading date, always draggable ──
   const importsSorted=[...imports].sort((a,b)=>(
     (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||'')
@@ -884,7 +901,7 @@ function _wiRowHTML(row,i){
           <span class="from">${fromStr}</span>
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span>`:''}
+          ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span><button class="wi-side-btn" style="width:auto;padding:0 8px;font-size:9px;font-weight:800;letter-spacing:.3px" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙ ομάδα ×${exps.length}</button>`:''}
         </div>
         <div class="wi-sub">
           ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
@@ -1534,6 +1551,7 @@ function _wiOpenPopover(e,rowId){
         </div>
       </div>
     </div>
+    <div id="wi-lane-${rowId}" class="wi-lane-hist"></div>
     <div class="wi-pop-footer">
       ${row.saved?`<button class="wi-pop-cancel" onclick="event.stopPropagation();_wiClear(${rowId}).then(()=>_wiClosePopover())">Clear</button>`:''}
       <button class="wi-pop-cancel" onclick="_wiClosePopover()">Cancel</button>
@@ -1554,6 +1572,38 @@ function _wiOpenPopover(e,rowId){
   Object.assign(pop.style,{display:'block',left:`${Math.max(10,left)}px`,top:`${top}px`});
   pop.dataset.rowId=String(rowId);
   setTimeout(()=>document.addEventListener('click',_wiPopoverOutside,{capture:true}),10);
+  _wiFillLaneHist(rowId,row); // Π3 (Wave 3) — async, hides itself when no data
+}
+
+// Π3 (Wave 3): last 3 recorded rates on the SAME lane, under the rate field —
+// the live negotiation tool (00 §Β8). Lane = country→country from the
+// free-text summaries: deliberately coarse (04 risk: city-level is fragile).
+function _wiLaneOf(f){
+  const c=s=>String(s||'').split(',').pop().trim().slice(0,16).toUpperCase();
+  const a=c(f?.['Loading Summary']), b=c(f?.['Delivery Summary']);
+  return (a&&b)?a+' → '+b:null;
+}
+async function _wiFillLaneHist(rowId,row){
+  const o=WINTL.data.exports.find(x=>x.id===row.orderIds?.[0])||WINTL.data.imports.find(x=>x.id===row.orderId);
+  const lane=_wiLaneOf(o?.fields);
+  if(!lane||!document.getElementById('wi-lane-'+rowId)) return;
+  try{
+    if(!WINTL._laneAll){ // one fetch per session, then in-memory
+      WINTL._laneAll=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Partner Rate}>0`,
+        fields:['Loading Summary','Delivery Summary','Partner Rate','Week Number','Partner','Direction']},false);
+    }
+    const dir=o?.fields['Direction'];
+    const hits=WINTL._laneAll
+      .filter(r=>r.fields['Direction']===dir&&_wiLaneOf(r.fields)===lane&&!row.orderIds.includes(r.id))
+      .sort((a,b)=>(b.fields['Week Number']||0)-(a.fields['Week Number']||0)).slice(0,3);
+    const el=document.getElementById('wi-lane-'+rowId);
+    if(!el||!hits.length) return;
+    el.innerHTML='<span class="wi-lane-title">Ιστορικό γραμμής '+escapeHtml(lane)+':</span>'+hits.map(r=>{
+      const pid=(r.fields['Partner']||[])[0];
+      const pn=WINTL.data.partners.find(p=>p.id===pid)?.label||'—';
+      return `<span class="wi-lane-item">W${r.fields['Week Number']||'—'} · ${(r.fields['Partner Rate']||0).toLocaleString('el-GR')}€ · ${escapeHtml(String(pn).slice(0,18))}</span>`;
+    }).join('');
+  }catch(e){ console.warn('lane hist:',e); }
 }
 
 function _wiPopoverOutside(e){
@@ -1847,15 +1897,36 @@ function _wiCtx(e,rowId){
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
 
 /* ── GROUPAGE ──────────────────────────────────────────────────────── */
-function _wiMerge(rowId,otherId){
+// Π1 (Wave 3, owner choice Α): the group persists via a shared text
+// `Group ID` on ORDERS (same pattern as NAT_LOADS `Groupage ID`), rebuilt in
+// _wiBuildRows — «με την ανανέωση η σελίδα χαλάει» (00 §2) ends here.
+// UI-level grouping of ORDERS only: GL/CL and the never-delete rule untouched.
+async function _wiGroupPatch(orderIds, gid, rowId){
+  _wiSync('wi-sync-'+rowId,'pend', gid?'Αποθήκευση ομάδας…':'Διάλυση ομάδας…');
+  let failed=false;
+  for(const oid of orderIds){
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,oid,{'Group ID':gid});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+    }catch(err){ failed=true; console.warn('Group ID save:',err.message); }
+  }
+  _wiSync('wi-sync-'+rowId, failed?'err':'ok',
+    failed?'Η ομάδα ΔΕΝ αποθηκεύτηκε στη βάση (λείπει το πεδίο Group ID στον Worker/DB;) — θα χαθεί στην ανανέωση':'Η ομάδα αποθηκεύτηκε');
+  if(failed) toast('Η ομάδα δεν αποθηκεύτηκε στη βάση — θα ισχύει μόνο μέχρι την ανανέωση','warn');
+  return !failed;
+}
+async function _wiMerge(rowId,otherId){
   const row=WINTL.rows.find(r=>r.id===rowId),other=WINTL.rows.find(r=>r.id===otherId);
   if(!row||!other) return;
   other.orderIds.forEach(id=>{if(!row.orderIds.includes(id)) row.orderIds.push(id);});
   WINTL.rows=WINTL.rows.filter(r=>r.id!==otherId);
   _wiPaint();toast('Grouped');
+  const gid='GRP-'+String(row.orderIds[0]).slice(-8);
+  await _wiGroupPatch(row.orderIds, gid, row.id);
 }
-function _wiSplit(rowId){
+async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
+  const allIds=[...row.orderIds];
   const [first,...rest]=row.orderIds;row.orderIds=[first];
   rest.forEach(expId=>{
     const exp=WINTL.data.exports.find(r=>r.id===expId);
@@ -1867,6 +1938,14 @@ function _wiSplit(rowId){
     });
   });
   _wiPaint();toast('Split');
+  await _wiGroupPatch(allIds, '', row.id); // clear Group ID on all members
+}
+// Π1: one paper packet for the whole group (print.html ?orderIds=…).
+function _wiPrintGroup(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
+  const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  const sheet=row.partnerId?'partner':'driver';
+  window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=export&sheet=${sheet}`,'_blank');
 }
 
 /* ── NAVIGATION ────────────────────────────────────────────────────── */
@@ -1962,6 +2041,7 @@ window._wiDropOnPanel = _wiDropOnPanel;
 window._wiCtx = _wiCtx;
 window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
+window._wiPrintGroup = _wiPrintGroup;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wiPulseRow = _wiPulseRow;
