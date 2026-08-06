@@ -175,17 +175,17 @@ async function renderAuditTrail() {
   c.innerHTML = `
     <div class="page-header">
       <h2>Audit Trail</h2>
-      <div class="txt-dim">Who changed what, and when. Server-side and tamper-resistant.</div>
+      <div class="txt-dim">Ποιος άλλαξε τι, και πότε. Server-side και tamper-resistant.</div>
     </div>
     <div class="filters" id="auditFilters">
       <input id="afRecord" placeholder="Record ID (recXXXX…)" value="${_auditFilters.record_id}">
       <input id="afTable"  placeholder="Table (e.g. orders)"   value="${_auditFilters.table}">
       <input id="afActor"  placeholder="User"                  value="${_auditFilters.actor}">
       <select id="afAction">
-        <option value="">All actions</option>
-        <option value="create">Created</option>
-        <option value="update">Updated</option>
-        <option value="delete">Deleted</option>
+        <option value="">Όλες οι ενέργειες</option>
+        <option value="create">Δημιουργίες</option>
+        <option value="update">Ενημερώσεις</option>
+        <option value="delete">Διαγραφές</option>
       </select>
       <input id="afSince" type="date" value="${_auditFilters.since}">
       <input id="afUntil" type="date" value="${_auditFilters.until}">
@@ -243,7 +243,7 @@ async function _auditRenderBody() {
     <div class="table-wrap">
       <table class="data-table">
         <thead><tr>
-          <th>When</th><th>Who</th><th>Action</th><th>Table</th><th>Record</th><th>Change</th>
+          <th>Πότε</th><th>Ποιος</th><th>Ενέργεια</th><th>Πίνακας</th><th>Εγγραφή</th><th>Αλλαγή</th>
         </tr></thead>
         <tbody>${_auditEntries.map(_auditRow).join('')}</tbody>
       </table>

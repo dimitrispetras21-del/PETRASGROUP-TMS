@@ -16,21 +16,21 @@ const PERF = {
 const PERF_KPIS_BY_USER = {
   // Dimitris Petras — Founder: Approval & Strategy
   dimitris: [
-    { id: 'weekly_score',  label: 'Weekly Score',          unit: '/100', target: 85 },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',      unit: '%',  target: 80 },
-    { id: 'dead_km',       label: 'Dead Kilometers',       unit: 'km', target: 50, invert: true },
-    { id: 'on_time',       label: 'On-Time Delivery',      unit: '%',  target: 90 },
+    { id: 'weekly_score',  label: 'Εβδομαδιαίο Σκορ',          unit: '/100', target: 85 },
+    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',      unit: '%',  target: 80 },
+    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',       unit: 'km', target: 50, invert: true },
+    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',      unit: '%',  target: 90 },
   ],
   // Dimitris Kelesmitos — Master Planner: plan routes, assign trucks, find return loads
   kelesmitos: [
-    { id: 'plan_complete', label: 'Plan Completion',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
-    { id: 'dead_km',       label: 'Dead Kilometers',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
-    { id: 'fleet_usage',   label: 'Fleet Usage Rate',       unit: '%',  target: 80, desc: 'Working days vs available days' },
-    { id: 'sub_cost_pct',  label: 'Subcontractor Cost',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
+    { id: 'plan_complete', label: 'Ολοκλήρωση Πλάνου',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
+    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
+    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',       unit: '%',  target: 80, desc: 'Working days vs available days' },
+    { id: 'sub_cost_pct',  label: 'Κόστος Συνεργατών',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
   ],
   // Pantelis Tsanaktsidis — Control Tower: execution, tracking, client updates
   pantelis: [
-    { id: 'on_time',       label: 'On-Time Delivery',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
+    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
     { id: 'cmr_collected', label: 'CMR Same-Day',           unit: '%',  target: 95, desc: 'CMR collected within 24h of delivery' },
     { id: 'client_updates',label: 'Client Updates Sent',    unit: '%',  target: 100, desc: 'Zero Anxiety: Loaded/In Transit/Delivered updates' },
     { id: 'response_time', label: 'Response Time',          unit: 'h',  target: 2, invert: true, desc: 'Avg time to handle issues' },
@@ -716,7 +716,7 @@ function _perfDraw() {
           <!-- Weekly Trend -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">${_i('activity', 12)} WEEKLY SCORE TREND</div>
+              <div class="perf-card-title">${_i('activity', 12)} ΤΑΣΗ ΕΒΔΟΜΑΔΙΑΙΟΥ ΣΚΟΡ</div>
               <span class="perf-card-meta">Last 4 weeks</span>
             </div>
             <div class="perf-card-body">

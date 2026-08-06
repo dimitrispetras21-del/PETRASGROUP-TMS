@@ -1487,8 +1487,8 @@ function renderTrashViewer() {
     html += `
       <div style="text-align:center;padding:60px 20px;color:var(--text-dim,#94a3b8);">
         <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.4;margin-bottom:16px;"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>
-        <p style="font-size:15px;">Trash is empty</p>
-        <p style="font-size:12px;margin-top:4px;">Deleted records will appear here for recovery</p>
+        <p style="font-size:15px;">Ο κάδος είναι άδειος</p>
+        <p style="font-size:12px;margin-top:4px;">Οι διαγραμμένες εγγραφές εμφανίζονται εδώ για επαναφορά (τελευταίες 50, σε αυτόν τον browser)</p>
       </div>`;
   } else {
     html += `<div style="display:flex;flex-direction:column;gap:8px;">`;
