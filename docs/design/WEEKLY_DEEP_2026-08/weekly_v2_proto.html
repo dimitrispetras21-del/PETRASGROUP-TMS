@@ -99,6 +99,11 @@ body.details .xtra{display:inline}
 /* Ματαίωση (owner): ορατή-διαγραμμένη, δεν εξαφανίζεται. */
 .row.cxl{opacity:.5}
 .row.cxl .route,.row.cxl .meta,.row.cxl .feed{text-decoration:line-through}
+/* Ρόλος αποθήκης (owner 8/8): τα κόμιστρα συνεργατών ΔΕΝ φαίνονται —
+   ούτε στα pills ούτε στο ιστορικό γραμμής του popover. */
+body.wh .pill.par small{display:none}
+body.wh .lane{display:none}
+body.wh .f input[placeholder="0.00"]{visibility:hidden}
 
 /* Pills slim 24px */
 .assign{padding:0 8px;display:flex;justify-content:center}
@@ -175,6 +180,9 @@ body.details .xtra{display:inline}
     <div class="acts">
       <button class="ab" onclick="document.body.classList.toggle('details');this.classList.toggle('on')">Λεπτομέρειες</button>
       <button class="ab">Εκτύπωση</button><button class="ab">CSV</button><button class="ab">↻</button>
+      <!-- Demo ρόλου (owner 8/8: η αποθήκη ΔΕΝ βλέπει κόμιστρα) -->
+      <button class="ab" title="Demo: πώς βλέπει τη σελίδα κάθε ρόλος"
+        onclick="document.body.classList.toggle('wh');this.textContent=document.body.classList.contains('wh')?'👁 Αποθήκη':'👁 Dispatcher'">👁 Dispatcher</button>
     </div>
   </div>
 </div></header>
