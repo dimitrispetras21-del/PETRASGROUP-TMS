@@ -54,7 +54,9 @@ button{font:inherit;background:none;border:none;cursor:pointer;color:inherit}
 .sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:10px;
        box-shadow:0 1px 2px rgba(11,25,41,.04),0 12px 34px -18px rgba(11,25,41,.12)}
 
-.cols{position:sticky;top:54px;z-index:30;display:grid;grid-template-columns:40px 1fr 210px 1fr;
+/* v2.2 (owner): 5-στηλο — τα εσωτερικά σκέλη (προς/από Βέροια) ΕΜΦΑΝΙΖΟΝΤΑΙ
+   εδώ read-only· η επεξεργασία τους γίνεται ΜΟΝΟ στο Weekly National. */
+.cols{position:sticky;top:54px;z-index:30;display:grid;grid-template-columns:40px 132px 1fr 196px 1fr 132px;
       background:var(--sheet);border-bottom:1px solid var(--hair-strong);border-radius:10px 10px 0 0}
 .cols .c{font-family:var(--fd);font-size:9.5px;font-weight:800;letter-spacing:2px;color:var(--mid);
          padding:9px 12px;display:flex;align-items:center;gap:7px}
@@ -71,8 +73,15 @@ button{font:inherit;background:none;border:none;cursor:pointer;color:inherit}
 .day .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:0 7px}
 
 /* Συμπαγής μονόγραμμη σειρά — 32px: 30-50 σειρές = 1.5-2.5 οθόνες */
-.row{display:grid;grid-template-columns:40px 1fr 210px 1fr;border-bottom:1px solid var(--hair);
+.row{display:grid;grid-template-columns:40px 132px 1fr 196px 1fr 132px;border-bottom:1px solid var(--hair);
      height:32px;align-items:center;background:var(--sheet)}
+/* Εσωτερικό σκέλος (read-only εδώ): μουντό, με διακριτικό φόντο και VS σήμα */
+.feed{height:100%;display:flex;align-items:center;gap:5px;padding:0 9px;font-size:9.5px;color:var(--mid);
+      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#F8FAFB;cursor:default}
+.feed b{font-weight:700;color:var(--ink);font-size:9.5px}
+.feed.l{border-right:1px solid var(--hair)} .feed.r{border-left:1px solid var(--hair)}
+.feed.none{justify-content:center;color:var(--hair-strong);font-size:12px}
+.feed .vs{font-size:7.5px;font-weight:800;letter-spacing:.4px;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;flex-shrink:0}
 .row:hover{background:#F7FAFD}
 .num{font-size:10px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
 .num.imp{color:var(--accent);font-weight:700}
@@ -171,9 +180,11 @@ body.details .xtra{display:inline}
   <main class="sheet">
     <div class="cols">
       <div class="c"></div>
+      <div class="c" style="font-size:8.5px" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
       <div class="c">ΕΞΑΓΩΓΗ <span class="n" id="n-exp"></span><span class="hint" title="Δεξί κλικ: ομαδοποίηση">ⓘ</span></div>
       <div class="c" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
       <div class="c">ΕΙΣΑΓΩΓΗ <span class="n" id="n-imp"></span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
+      <div class="c" style="font-size:8.5px" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
     </div>
     <div id="rows"></div>
   </main>
@@ -267,7 +278,13 @@ function rowHTML(kind){
   const pill=pKind==='ghost'
     ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
     :pillHTML(pKind,n);
-  return `<div class="row">${numCell}${expCell}<div class="assign">${pill}</div>${impCell}</div>`;
+  // v2.2: εσωτερικά σκέλη — read-only εδώ, επεξεργασία ΜΟΝΟ στο Weekly National.
+  const FEED=[['ΙΒΧ-2210','Τάσος'],['ΙΒΕ-1105','Μάκης'],['ΚΗΒ-3342','Γιώργος'],['ΙΒΝ-7810','Σάκης']];
+  const isVS=!isImp&&n%2===0, impVS=(isImp||impCell.includes('Vermion'))&&n%2===1;
+  const fL=isVS?FEED[n%4]:null, fR=impVS?FEED[(n+2)%4]:null;
+  const feedL=fL?`<div class="feed l" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία στο Weekly National">${fL[0]} · ${fL[1]} <b>↑${load}</b> <span class="vs">VS</span></div>`:`<div class="feed l none">—</div>`;
+  const feedR=fR?`<div class="feed r" title="Εσωτερική διανομή από Βέροια — επεξεργασία στο Weekly National">${fR[0]} · ${fR[1]} <b>↓${del}</b> <span class="vs">VS</span></div>`:`<div class="feed r none">—</div>`;
+  return `<div class="row">${numCell}${feedL}${expCell}<div class="assign">${pill}</div>${impCell}${feedR}</div>`;
 }
 let html='';
 for(const day of DAYS){
