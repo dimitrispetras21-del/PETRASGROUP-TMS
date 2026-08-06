@@ -388,7 +388,7 @@ function _wiPaint(){
   else if(!actions.length && total>0) actions.push({icon:_ico('check'),sev:'ok',text:'No pending actions'});
 
   document.getElementById('content').innerHTML=`
-    <div style="display:block;width:100%">
+    <div class="${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
     <!-- Horizontal week bar -->
     <div id="wi-week-bar" style="
       display:flex;flex-direction:row;gap:4px;align-items:center;
@@ -438,6 +438,7 @@ function _wiPaint(){
         ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
       </details>`;
     })()}
+    ${_wiDriversPanel()}
 
     <!-- Search/filter bar -->
     <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
@@ -464,13 +465,14 @@ function _wiPaint(){
           <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} εισαγωγές</span>
           <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} ανατεθειμένα</span>
           ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} χωρίς ανάθεση</span>`:''}
-          ${impNoVehicle>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.06);color:var(--danger);border:1px dashed rgba(220,38,38,0.45)" title="Εισαγωγές χωρίς δικό τους όχημα — ξεχωριστός μετρητής από τα exports">${impNoVehicle} εισαγ. χωρίς όχημα</span>`:''}
+          ${impNoVehicle>0?`<span class="entity-count-chip wi-chip-impnv" style="background:rgba(220,38,38,0.06);color:var(--danger);border:1px dashed rgba(220,38,38,0.45)" title="Εισαγωγές χωρίς δικό τους όχημα — ξεχωριστός μετρητής από τα exports">${impNoVehicle} εισαγ. χωρίς όχημα</span>`:''}
           <span style="color:var(--text-dim);font-size:11px">${matched} ταιριασμένα · ${unmatched} ελεύθερα</span>
           <span id="wi-crossweek-in"></span>
         </div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         ${unmatched>0?`<button class="btn btn-ghost btn-sm" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες — σπάνια θα προτείνει ζεύγη" onclick="_wiAutoMatch()">${_ico('zap', 14)} Αυτόματο ταίριασμα (${unmatched})</button>`:''}
+        <button class="btn btn-ghost btn-sm" onclick="_wiToggleDetails()" title="Εναλλαγή των πρόσθετων ενδείξεων γραμμής (chips ορίων εβδομάδας, εκτέλεσης κ.λπ.)">${_ico('eye', 14)} Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
         <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Εκτύπωση</button>
         <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Ανανέωση</button>
         <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Εξαγωγή CSV</button>
@@ -760,6 +762,38 @@ function _wiBadges(f){
   if(veroia)                b.push('<span class="wi-badge wi-b-veroia">Veroia</span>');
 
   return b.join('');
+}
+
+/* ── QUIET VIEW + DRIVERS PANEL (owner, 8/8 βράδυ) ─────────────────── */
+// «Ήσυχη προβολή» default: the per-row chips of Waves 1-2 read as clutter next
+// to the team's sparse Excel — they now hide behind a «Λεπτομέρειες» toggle.
+// Silent nets stay always-on: sync ⚠ on failure, phase badge, ΣΗΜΕΡΑ, popover
+// history, group print. Shared key with weekly_natl (twin behaviour).
+function _wiQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; }
+function _wiToggleDetails(){ localStorage.setItem('tms_weekly_details', _wiQuietOn()?'1':'0'); renderWeeklyIntl(); }
+// Excel sidebar «οδηγός → μέρα επιστροφής» (cols 33-36 of WEEKLY PLAN),
+// computed from this week's assignments — no new data entry.
+function _wiDriversPanel(){
+  const ret={};
+  WINTL.rows.forEach(r=>{
+    if(!r.driverId) return;
+    const exp=WINTL.data.exports.find(x=>x.id===r.orderIds?.[0]);
+    const imp=r.importId?WINTL.data.imports.find(x=>x.id===r.importId):(r.type==='import'?WINTL.data.imports.find(x=>x.id===r.orderId):null);
+    const legF=(imp&&imp.fields)||(exp&&exp.fields);
+    if(!legF) return;
+    const end=legF['Delivery DateTime']||legF['Loading DateTime']; if(!end) return;
+    const cur=ret[r.driverId];
+    if(!cur||String(end)>String(cur.end)) ret[r.driverId]={label:r.driverLabel||'',end,
+      place:_wiClean(legF['Delivery Summary']||'').split(',')[0].slice(0,16)};
+  });
+  const list=Object.values(ret).filter(d=>d.label).sort((a,b)=>String(a.end).localeCompare(String(b.end)));
+  if(!list.length) return '';
+  const fmt=s=>{try{return new Date(s).toLocaleDateString('el-GR',{weekday:'short',day:'numeric',month:'numeric'});}catch{return '';}};
+  const open=localStorage.getItem('tms_drivers_panel')!=='0';
+  return `<details ${open?'open':''} ontoggle="localStorage.setItem('tms_drivers_panel',this.open?'1':'0')" class="wk-drivers">
+    <summary>Επιστροφές οδηγών · ${list.length}</summary>
+    <div class="wk-drivers-list">${list.map(d=>`<span class="wk-driver-chip"><b>${escapeHtml(d.label.trim().split(/\s+/)[0])}</b> · ${fmt(d.end)}${d.place?' · '+escapeHtml(d.place):''}</span>`).join('')}</div>
+  </details>`;
 }
 
 /* ── WAVE 2 HELPERS (T3/T4/T5/T1 — PREMORTEM) ─────────────────────── */
@@ -2045,6 +2079,7 @@ window._wiCtx = _wiCtx;
 window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
 window._wiPrintGroup = _wiPrintGroup;
+window._wiToggleDetails = _wiToggleDetails;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wiPulseRow = _wiPulseRow;

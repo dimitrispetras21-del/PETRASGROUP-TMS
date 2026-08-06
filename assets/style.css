@@ -2157,6 +2157,21 @@ tbody tr:hover { background: var(--bg-hover); }
 .wi-sdo-sub { font-size:10px; color:var(--warning); opacity:.95; margin-top:1px; }
 .wi-sdo--busy { border-left:2px solid var(--warning-soft); }
 
+/* Ήσυχη προβολή (owner 8/8): τα per-row chips των Κυμάτων 1-2 κρύβονται από
+   προεπιλογή — το Excel της ομάδας είναι αραιό και τα κενά σηματοδοτούν.
+   Το «Λεπτομέρειες» τα εμφανίζει· τα δίχτυα (sync ⚠, ΣΗΜΕΡΑ, φάση) μένουν. */
+.wi-quiet .wi-cross, .wi-quiet .wi-exec, .wi-quiet .wi-chip-impnv { display:none; }
+
+/* Πάνελ «Επιστροφές οδηγών» — η δεξιά στήλη του WEEKLY PLAN xlsx, υπολογισμένη
+   από τις αναθέσεις της εβδομάδας. Ήσυχα chips, καμία νέα καταχώρηση. */
+.wk-drivers { margin-bottom: var(--space-3); }
+.wk-drivers summary { cursor:pointer; list-style:none; font-size:11px; font-weight:700; letter-spacing:.4px; color:var(--text-dim); }
+.wk-drivers summary::after { content:' ▾'; opacity:.6; }
+.wk-drivers[open] summary::after { content:' ▴'; }
+.wk-drivers-list { display:flex; flex-wrap:wrap; gap:6px; padding-top:6px; }
+.wk-driver-chip { font-size:11px; color:var(--text-mid); background:var(--bg-card,#fff); border:1px solid var(--border); padding:2px 9px; border-radius:9px; white-space:nowrap; }
+.wk-driver-chip b { color:var(--text); font-weight:700; }
+
 /* Π3 (Wave 3): lane rate history strip inside the assignment popover. */
 .wi-lane-hist { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 14px 10px; }
 .wi-lane-hist:empty { display:none; }

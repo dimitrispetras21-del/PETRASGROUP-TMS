@@ -261,7 +261,7 @@ function _wnPaint() {
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
-    <div style="display:block;width:100%">
+    <div class="${_wnQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
     <!-- Horizontal week bar -->
     <div id="wn-week-bar" style="
       display:flex;flex-direction:row;gap:4px;align-items:center;
@@ -304,6 +304,7 @@ function _wnPaint() {
           ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
         </details>`;
       })()}
+      ${_wnDriversPanel()}
 
       <!-- Search/filter bar -->
       <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
@@ -335,6 +336,7 @@ function _wnPaint() {
           </div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="_wnToggleDetails()" title="Εναλλαγή των πρόσθετων ενδείξεων γραμμής">${_wnI('eye')} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
           <button class="btn btn-ghost btn-sm" onclick="_wnPrintWeek()">${_wnI('file_text')} Εκτύπωση</button>
           <button class="btn btn-ghost btn-sm" onclick="_wnExportCSV()">${_wnI('download')} Export CSV</button>
           <button class="btn btn-secondary btn-sm" onclick="renderWeeklyNatl()">${_wnI('refresh')} Refresh</button>
@@ -451,6 +453,30 @@ function _wnAllRowsHTML() {
   });
 
   return html;
+}
+
+/* ── QUIET VIEW + DRIVERS PANEL (owner 8/8 — twins of weekly_intl) ── */
+function _wnQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; }
+function _wnToggleDetails(){ localStorage.setItem('tms_weekly_details', _wnQuietOn()?'1':'0'); renderWeeklyNatl(); }
+function _wnDriversPanel(){
+  const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
+  const ret={};
+  WNATL.rows.forEach(r=>{
+    if(!r.driverId) return;
+    const o=all.find(x=>x.id===r.orderIds?.[0]); if(!o) return;
+    const end=o.fields['Delivery DateTime']||o.fields['Loading DateTime']; if(!end) return;
+    const cur=ret[r.driverId];
+    if(!cur||String(end)>String(cur.end)) ret[r.driverId]={label:r.driverLabel||'',end,
+      place:(_wnNlDeliverySummary(o.fields)||'').split('/')[0].slice(0,16)};
+  });
+  const list=Object.values(ret).filter(d=>d.label).sort((a,b)=>String(a.end).localeCompare(String(b.end)));
+  if(!list.length) return '';
+  const fmt=s=>{try{return new Date(s).toLocaleDateString('el-GR',{weekday:'short',day:'numeric',month:'numeric'});}catch{return '';}};
+  const open=localStorage.getItem('tms_drivers_panel')!=='0';
+  return `<details ${open?'open':''} ontoggle="localStorage.setItem('tms_drivers_panel',this.open?'1':'0')" class="wk-drivers">
+    <summary>Επιστροφές οδηγών · ${list.length}</summary>
+    <div class="wk-drivers-list">${list.map(d=>`<span class="wk-driver-chip"><b>${escapeHtml(d.label.trim().split(/\s+/)[0])}</b> · ${fmt(d.end)}${d.place?' · '+escapeHtml(d.place):''}</span>`).join('')}</div>
+  </details>`;
 }
 
 /* ── WAVE 2 HELPERS (T3/T4/T5/T1 — twins of weekly_intl) ─────────── */
@@ -1378,6 +1404,7 @@ window._wnSplit = _wnSplit;
 window._wnNavWeek = _wnNavWeek;
 window._wnApplyFilter = _wnApplyFilter;
 window._wnPulseRow = _wnPulseRow;
+window._wnToggleDetails = _wnToggleDetails;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
