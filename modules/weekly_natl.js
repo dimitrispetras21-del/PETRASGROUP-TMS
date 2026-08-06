@@ -180,8 +180,14 @@ function _wnBuildRows() {
 
 /* ── WEEK SIDEBAR ─────────────────────────────────────── */
 function _wnWeekSidebarItems(currentWeek) {
-  let html = '';
-  for (let w = currentWeek - 8; w <= currentWeek + 12; w++) {
+  // WN-8/WN-1: verbatim port of the intl strip (WI-4). The old loop rendered
+  // 21 weeks (cur-8..cur+12) and overflowed with no scroll cue; ±3 around the
+  // selected week + ‹ › steppers + a «Σήμερα» chip when away — same pattern,
+  // same look, natl state.
+  const today = _wnCurrentWeek();
+  const step = (d) => `<button type="button" onclick="WNATL.week=${currentWeek + d};renderWeeklyNatl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,#0B1929);color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
+  let html = step(-1);
+  for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
     if (w < 1 || w > 52) continue;
     const isActive = w === currentWeek;
     const wS   = _wnWeekStart(w);
@@ -201,6 +207,10 @@ function _wnWeekSidebarItems(currentWeek) {
       <div>W${w}</div>
       <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
     </div>`;
+  }
+  html += step(1);
+  if (currentWeek !== today) {
+    html += `<button type="button" onclick="WNATL.week=${today};renderWeeklyNatl()" style="flex-shrink:0;margin-left:8px;padding:6px 12px;cursor:pointer;border-radius:8px;background:var(--accent-light);color:var(--accent);border:1px solid transparent;font-family:'Syne',sans-serif;font-size:12px;font-weight:700">Σήμερα · W${today}</button>`;
   }
   return html;
 }
@@ -303,6 +313,7 @@ function _wnPaint() {
           </div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
+          <button class="btn btn-ghost btn-sm" onclick="_wnPrintWeek()">${_wnI('file_text')} Εκτύπωση</button>
           <button class="btn btn-ghost btn-sm" onclick="_wnExportCSV()">${_wnI('download')} Export CSV</button>
           <button class="btn btn-secondary btn-sm" onclick="renderWeeklyNatl()">${_wnI('refresh')} Refresh</button>
         </div>
@@ -1230,4 +1241,44 @@ window._wnSplit = _wnSplit;
 window._wnNavWeek = _wnNavWeek;
 window._wnApplyFilter = _wnApplyFilter;
 window._wnPulseRow = _wnPulseRow;
+
+
+// ── WN-3: print the week (warehouse works on paper) ─────────
+// Mirrors _wiPrintWeek: same shared shell (_printWeekShell, core/utils),
+// natl's own rows. ΚΑΘΟΔΟΣ and ΑΝΟΔΟΣ print as two sections in board order.
+function _wnPrintWeek(){
+  const secs=[['ΚΑΘΟΔΟΣ (Βορράς → Νότος)','northsouth'],['ΑΝΟΔΟΣ (Νότος → Βορράς)','southnorth']];
+  let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly National — W${WNATL.week}</h2>
+    <p style="font-size:12px;color:#666;margin-bottom:16px">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ</p>`;
+  for(const [secTitle,type] of secs){
+    const rows=WNATL.rows.filter(r=>r.type===type);
+    html+=`<h3 style="font-family:'Syne',sans-serif;font-size:13px;margin:14px 0 6px">${secTitle} — ${rows.length}</h3>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr style="background:#F0F5FA">
+          <th style="padding:6px;border:1px solid #ddd;text-align:left">#</th>
+          <th style="padding:6px;border:1px solid #ddd;text-align:left">Διαδρομή</th>
+          <th style="padding:6px;border:1px solid #ddd;text-align:left">Ημερομηνίες</th>
+          <th style="padding:6px;border:1px solid #ddd;text-align:center">Παλ.</th>
+          <th style="padding:6px;border:1px solid #ddd;text-align:left">Ανάθεση</th>
+        </tr></thead><tbody>`;
+    rows.forEach((row,i)=>{
+      const ord=WNATL.data[type].find(o=>o.id===row.orderId); if(!ord)return;
+      const f=ord.fields;
+      const from=(typeof _wnNlPickupSummary==='function'?_wnNlPickupSummary(f):'')||f['Name']||'—';
+      const to=(typeof _wnNlDeliverySummary==='function'?_wnNlDeliverySummary(f):'')||'—';
+      const assign=row.partnerLabel?`Συνεργάτης: ${row.partnerLabel}${row.partnerPlates?' ('+row.partnerPlates+')':''}`
+                  :(row.truckLabel?`Στόλος: ${row.truckLabel}${row.driverLabel?' · '+row.driverLabel:''}`:'Χωρίς ανάθεση');
+      html+=`<tr>
+        <td style="padding:4px 6px;border:1px solid #ddd">${i+1}</td>
+        <td style="padding:4px 6px;border:1px solid #ddd">${String(from).slice(0,34)} → ${String(to).slice(0,34)}</td>
+        <td style="padding:4px 6px;border:1px solid #ddd">${toLocalDate(f['Loading DateTime'])||'—'} → ${toLocalDate(f['Delivery DateTime'])||'—'}</td>
+        <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">${f['Total Pallets']||0}</td>
+        <td style="padding:4px 6px;border:1px solid #ddd">${assign}</td>
+      </tr>`;
+    });
+    html+='</tbody></table>';
+  }
+  _printWeekShell(`Week ${WNATL.week} — Weekly National — Petras TMS`, html);
+}
+window._wnPrintWeek = _wnPrintWeek;
 })();

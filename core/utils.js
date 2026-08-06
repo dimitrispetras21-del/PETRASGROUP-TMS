@@ -1561,3 +1561,19 @@ function _clearAllTrash() {
   localStorage.setItem('tms_trash', '[]');
   renderTrashViewer();
 }
+
+// ── Shared print shell (WI-11) ──────────────────────────────
+// One window.open + fonts + print CSS for every «print the week» flow.
+// weekly_intl and weekly_natl both feed their own table HTML through here,
+// so the app has ONE print chrome instead of a fourth parallel one (OI-7).
+function _printWeekShell(title, innerHtml) {
+  const win = window.open('', '_blank');
+  if (!win) { if (typeof toast === 'function') toast('Ο browser μπλόκαρε το παράθυρο εκτύπωσης', 'danger'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><title>${title}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>*{font-family:'DM Sans',sans-serif;color:#0F172A}@media print{@page{margin:10mm}}</style>
+  </head><body style="padding:20px">${innerHtml}</body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+window._printWeekShell = _printWeekShell;
