@@ -1579,9 +1579,14 @@ function _wiOpenPopover(e,rowId){
 // the live negotiation tool (00 §Β8). Lane = country→country from the
 // free-text summaries: deliberately coarse (04 risk: city-level is fragile).
 function _wiLaneOf(f){
-  const c=s=>String(s||'').split(',').pop().trim().slice(0,16).toUpperCase();
-  const a=c(f?.['Loading Summary']), b=c(f?.['Delivery Summary']);
-  return (a&&b)?a+' → '+b:null;
+  // Greek summaries often have no comma (plain supplier name) — the GR side is
+  // implicit. Lane = GR + the FOREIGN end's country (last comma token).
+  const cc=s=>{const p=String(s||'').split(','); if(p.length<2) return null;
+    const t=p.pop().trim().slice(0,16).toUpperCase(); return t||null;};
+  const dir=f?.['Direction'];
+  const far=dir==='Import'?cc(f?.['Loading Summary']):cc(f?.['Delivery Summary']);
+  if(!far) return null;
+  return dir==='Import'?far+' → GR':'GR → '+far;
 }
 async function _wiFillLaneHist(rowId,row){
   const o=WINTL.data.exports.find(x=>x.id===row.orderIds?.[0])||WINTL.data.imports.find(x=>x.id===row.orderId);
@@ -1589,10 +1594,10 @@ async function _wiFillLaneHist(rowId,row){
   if(!lane||!document.getElementById('wi-lane-'+rowId)) return;
   try{
     if(!WINTL._laneAll){ // one fetch per session, then in-memory
-      // Facade supports checkbox=1, NOT numeric `>` (422 measured live) —
-      // fetch partner trips and keep the rate check client-side.
-      WINTL._laneAll=(await atGetAll(TABLES.ORDERS,{filterByFormula:`{Is Partner Trip}=1`,
-        fields:['Loading Summary','Delivery Summary','Partner Rate','Week Number','Partner','Direction']},false))
+      // Facade quirks, both measured live: numeric `>` in formulas → 422, and
+      // DERIVED fields (Loading/Delivery Summary) come back EMPTY when named
+      // in fields[] — so filter by checkbox and fetch FULL records (25 rows).
+      WINTL._laneAll=(await atGetAll(TABLES.ORDERS,{filterByFormula:`{Is Partner Trip}=1`},false))
         .filter(r=>typeof r.fields['Partner Rate']==='number'&&r.fields['Partner Rate']>0);
     }
     const dir=o?.fields['Direction'];
