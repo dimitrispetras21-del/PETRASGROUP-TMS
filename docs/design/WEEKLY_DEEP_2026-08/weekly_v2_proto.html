@@ -3,156 +3,187 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Weekly International v2.1 — «Καθολικό» · 34 σειρές demo</title>
+<title>Weekly International v3 — «Καθολικό» polish</title>
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet">
 <style>
 /* ═══════════════════════════════════════════════════════════════════
-   WEEKLY v2.1 — «Καθολικό», έκδοση Excel-πυκνότητας (mock, 34 σειρές)
-   Owner 8/8: «δουλεύουμε με Excel, εξοικειωμένοι· άνετοι με 30-50 σειρές·
-   το πρόβλημα του Excel είναι η αυτοματοποίηση — οι αυτόματες αναθέσεις».
-   → Μονόγραμμες σειρές 32px (≈20 ορατές/οθόνη), sticky ημέρες στο scroll,
-   → ✨ ΑΥΤΟΜΑΤΗ ΠΡΟΤΑΣΗ πάνω στο κόκκινο pill: αποδοχή με ΕΝΑ κλικ.
+   WEEKLY v3 — polish pass (owner-approved 8 σημεία):
+   1 χωροδιάταξη: routes πρώτα, feeds 96px χωρίς «—»   2 συνεπές dataset
+   3 λογιστικός ρυθμός (tabular meta, ράγα αριθμών)     4 υλικό/βάθος
+   5 micro-interactions με νόημα                        6 καταστάσεις
+   7 responsive <1360 (feeds → inline chips)            8 dark mode
+   Όλα mock — κανένας πραγματικός πελάτης, καμία σύνδεση με βάση.
    ═══════════════════════════════════════════════════════════════════ */
 :root{
   --navy:#0B1929; --accent:#0284C7; --accent-soft:rgba(2,132,199,.09);
-  --bg:#F4F6F9; --sheet:#fff; --ink:#0F172A; --mid:#475569; --dim:#94A3B8;
+  --bg:#F4F6F9; --sheet:#FFFFFF; --sheet-alt:#FAFCFE;
+  --ink:#0F172A; --mid:#475569; --dim:#94A3B8;
   --hair:#E7EBF0; --hair-strong:#D6DDE6;
-  --own:#0C2D5C; --partner:#065F46; --un:#B42318; --un-bg:#FEF3F2; --ok:#067647; --warn:#B54708;
+  --own:#0C2D5C; --partner:#065F46; --un:#B42318; --un-bg:#FEF3F2; --un-bg-hover:#FDE8E6;
+  --ok:#067647; --warn:#B45309;
+  --shadow:0 1px 2px rgba(11,25,41,.05),0 16px 40px -22px rgba(11,25,41,.18);
   --fd:'Syne',sans-serif; --fb:'DM Sans',sans-serif;
 }
+html.dark{
+  --bg:#080F1A; --sheet:#0E1B2C; --sheet-alt:#101F32;
+  --ink:#E6EDF5; --mid:#9FB0C3; --dim:#5C6E82;
+  --hair:rgba(230,237,245,.08); --hair-strong:rgba(230,237,245,.15);
+  --own:#1E4A8F; --partner:#0B7A5C; --un:#F87168; --un-bg:rgba(248,113,104,.10); --un-bg-hover:rgba(248,113,104,.16);
+  --accent-soft:rgba(2,132,199,.16);
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 40px -22px rgba(0,0,0,.6);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:var(--fb);background:var(--bg);color:var(--ink);font-size:12.5px;-webkit-font-smoothing:antialiased}
+html{scrollbar-gutter:stable}
+body{font-family:var(--fb);background:var(--bg);color:var(--ink);font-size:12.5px;
+     -webkit-font-smoothing:antialiased;transition:background .25s}
 button{font:inherit;background:none;border:none;cursor:pointer;color:inherit}
 
-/* ── Κορυφή: μία sticky γραμμή ── */
+/* ── Κορυφή ── */
 .mast{position:sticky;top:0;z-index:50;background:var(--sheet);border-bottom:1px solid var(--hair-strong)}
-.mi{max-width:1600px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:18px}
-.brand{font-family:var(--fd);font-weight:800;font-size:14px;color:var(--navy);white-space:nowrap}
+.mi{max-width:1600px;margin:0 auto;padding:0 24px;height:54px;display:flex;align-items:center;gap:16px}
+.brand{font-family:var(--fd);font-weight:800;font-size:14px;color:var(--ink);white-space:nowrap}
 .brand em{font-style:normal;color:var(--dim);font-weight:600}
 .tabs{display:flex;align-items:flex-end;gap:2px;height:54px;padding-top:14px}
 .stab{font-family:var(--fd);font-weight:700;font-size:11.5px;color:var(--mid);padding:8px 13px 9px;
-      border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;position:relative;top:1px}
+      border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;position:relative;top:1px;transition:.15s}
 .stab:hover{color:var(--ink);background:var(--accent-soft)}
-.stab.on{background:var(--bg);border-color:var(--hair-strong);color:var(--navy)}
+.stab.on{background:var(--bg);border-color:var(--hair-strong);color:var(--ink)}
 .stab.on::after{content:'';position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
 .step{align-self:center;color:var(--dim);padding:5px 7px;border-radius:6px}
 .step:hover{background:var(--accent-soft);color:var(--accent)}
-.phase{font-size:9px;font-weight:800;letter-spacing:1.1px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:2px 9px;align-self:center;white-space:nowrap}
-
-.tally{margin-left:auto;display:flex;align-items:center;gap:14px;white-space:nowrap}
-.t{font-size:11.5px;color:var(--mid)} .t b{font-family:var(--fd);font-size:13px;color:var(--ink)}
+.phase{font-size:9px;font-weight:800;letter-spacing:1.1px;color:var(--accent);border:1px solid currentColor;
+       border-radius:999px;padding:2px 9px;align-self:center;white-space:nowrap}
+.tally{margin-left:auto;display:flex;align-items:center;gap:13px;white-space:nowrap}
+.t{font-size:11.5px;color:var(--mid)}
+.t b{font-family:var(--fd);font-size:13px;color:var(--ink);display:inline-block;transition:transform .2s}
+.t b.pop{transform:scale(1.35)}
 .t.alert,.t.alert b{color:var(--un)} .t.alert{cursor:pointer;border-bottom:1px dashed rgba(180,35,24,.5)}
+.t.gapt,.t.gapt b{color:var(--accent)} .t.gapt{cursor:pointer}
 .sugbtn{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--accent);
-        background:var(--accent-soft);border-radius:999px;padding:5px 12px}
+        background:var(--accent-soft);border-radius:999px;padding:5px 12px;transition:.15s}
 .sugbtn:hover{background:var(--accent);color:#fff}
 .acts{display:flex;gap:2px;border-left:1px solid var(--hair);padding-left:10px}
-.ab{font-size:11.5px;font-weight:600;color:var(--mid);padding:6px 9px;border-radius:6px}
-.ab:hover{color:var(--navy);background:var(--accent-soft)} .ab.on{color:var(--accent)}
+.ab{font-size:11.5px;font-weight:600;color:var(--mid);padding:6px 9px;border-radius:6px;transition:.12s}
+.ab:hover{color:var(--ink);background:var(--accent-soft)} .ab.on{color:var(--accent)}
 
 /* ── Σώμα ── */
-.wrap{max-width:1600px;margin:14px auto 60px;padding:0 24px;display:grid;grid-template-columns:1fr 186px;gap:18px;align-items:start}
-.sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:10px;
-       box-shadow:0 1px 2px rgba(11,25,41,.04),0 12px 34px -18px rgba(11,25,41,.12)}
+.wrap{max-width:1600px;margin:14px auto 40px;padding:0 24px;display:grid;grid-template-columns:1fr 184px;gap:18px;align-items:start}
+.sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
 
-/* v2.2 (owner): 5-στηλο — τα εσωτερικά σκέλη (προς/από Βέροια) ΕΜΦΑΝΙΖΟΝΤΑΙ
-   εδώ read-only· η επεξεργασία τους γίνεται ΜΟΝΟ στο Weekly National. */
-.cols{position:sticky;top:54px;z-index:30;display:grid;grid-template-columns:40px 132px 1fr 196px 1fr 132px;
-      background:var(--sheet);border-bottom:1px solid var(--hair-strong);border-radius:10px 10px 0 0}
-.cols .c{font-family:var(--fd);font-size:9.5px;font-weight:800;letter-spacing:2px;color:var(--mid);
-         padding:9px 12px;display:flex;align-items:center;gap:7px}
-.cols .n{font-family:var(--fb);font-weight:700;font-size:9.5px;color:#fff;background:var(--navy);border-radius:999px;
+/* Grid: ράγα | προς-Βέροια 96 | ΕΞΑΓΩΓΗ | ΑΝΑΘΕΣΗ 176 | ΕΙΣΑΓΩΓΗ | από-Βέροια 96 */
+.cols,.row{display:grid;grid-template-columns:44px 96px minmax(230px,1fr) 176px minmax(230px,1fr) 96px}
+.cols{position:sticky;top:54px;z-index:30;background:var(--sheet);border-bottom:1px solid var(--hair-strong)}
+.cols .c{font-family:var(--fd);font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--dim);
+         padding:10px 12px;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
+.cols .c.main{color:var(--mid)}
+.cols .n{font-family:var(--fb);font-weight:700;font-size:9.5px;color:var(--sheet);background:var(--navy);border-radius:999px;
          min-width:19px;height:15px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;letter-spacing:0}
+html.dark .cols .n{background:var(--accent);color:#fff}
 .cols .hint{margin-left:auto;color:var(--dim);cursor:help;font-size:10px;border:1px solid var(--hair);border-radius:50%;
-            width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-weight:600;letter-spacing:0}
+            width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;font-weight:600;letter-spacing:0;flex-shrink:0}
 
-.day{position:sticky;top:87px;z-index:20;display:flex;align-items:baseline;gap:9px;padding:8px 12px 6px;
-     background:var(--sheet);border-bottom:1px solid var(--hair)}
-.day .d{font-family:var(--fd);font-weight:800;font-size:11px;letter-spacing:1.4px;color:var(--navy)}
+/* Ημέρα: διπλό hairline· ΣΗΜΕΡΑ = accent υπογράμμιση */
+.day{position:sticky;top:88px;z-index:20;display:flex;align-items:baseline;gap:9px;padding:9px 12px 6px;
+     background:var(--sheet);border-top:1px solid var(--hair-strong);border-bottom:1px solid var(--hair);
+     box-shadow:0 1px 0 var(--hair)}
+.day .d{font-family:var(--fd);font-weight:800;font-size:11px;letter-spacing:1.4px;color:var(--ink)}
 .day .k{font-size:10px;color:var(--dim)}
-.day.today{box-shadow:inset 3px 0 0 var(--accent)}
+.day.today .d{color:var(--accent)}
+.day.today{box-shadow:0 1px 0 var(--hair), inset 0 -2px 0 var(--accent)}
 .day .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--accent);border:1px solid currentColor;border-radius:999px;padding:0 7px}
 
-/* Συμπαγής μονόγραμμη σειρά — 32px: 30-50 σειρές = 1.5-2.5 οθόνες */
-.row{display:grid;grid-template-columns:40px 132px 1fr 196px 1fr 132px;border-bottom:1px solid var(--hair);
-     height:32px;align-items:center;background:var(--sheet)}
-/* Εσωτερικό σκέλος (read-only εδώ): μουντό, με διακριτικό φόντο και VS σήμα */
-.feed{height:100%;display:flex;align-items:center;gap:5px;padding:0 9px;font-size:9.5px;color:var(--mid);
-      white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:#F8FAFB;cursor:default}
-.feed b{font-weight:700;color:var(--ink);font-size:9.5px}
-.feed.l{border-right:1px solid var(--hair)} .feed.r{border-left:1px solid var(--hair)}
-.feed.none{justify-content:center;color:var(--hair-strong);font-size:12px}
-.feed .vs{font-size:7.5px;font-weight:800;letter-spacing:.4px;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;flex-shrink:0}
-.row:hover{background:#F7FAFD}
-.num{font-size:10px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
+/* Γραμμή 34px — ζέβρωμα ανά ΜΕΡΑ (2%), ράγα αριθμών */
+.row{border-bottom:1px solid var(--hair);height:34px;align-items:center;background:var(--sheet);
+     animation:reveal .45s cubic-bezier(.2,.7,.3,1) both}
+.row.alt{background:var(--sheet-alt)}
+.row:hover{background:var(--accent-soft)}
+.row:hover .pill{transform:translateY(-1px);box-shadow:0 4px 12px -5px rgba(11,25,41,.45)}
+@keyframes reveal{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.num{font-size:10.5px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums;
+     border-right:1px solid var(--hair);align-self:stretch;display:flex;align-items:center;justify-content:center;gap:4px}
 .num.imp{color:var(--accent);font-weight:700}
-.leg{padding:0 12px;min-width:0;display:flex;align-items:baseline;gap:9px;overflow:hidden}
-.route{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+
+/* Route + σταθερή tabular meta δεξιά — ο «λογιστικός» ρυθμός */
+.leg{padding:0 12px;min-width:0;display:flex;align-items:baseline;gap:10px;overflow:hidden;align-self:stretch}
+.route{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1;line-height:34px}
 .route .to{font-weight:700} .route .sep{color:var(--dim);margin:0 5px}
-.meta{font-size:10px;color:var(--dim);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;display:flex;gap:7px;align-items:baseline}
-.tag{font-size:8px;font-weight:800;letter-spacing:.5px;color:var(--mid);border:1px solid var(--hair-strong);border-radius:3px;padding:0 4px}
-.tag.risk{color:var(--un);border-color:rgba(180,35,24,.35)}
+.vsb{font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:1px 4px;vertical-align:1px}
+html.dark .vsb{background:var(--accent)}
+.meta{font-size:10px;color:var(--dim);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;
+      width:126px;text-align:right;display:flex;gap:6px;justify-content:flex-end;align-items:baseline}
+.tag{font-size:7.5px;font-weight:800;letter-spacing:.5px;color:var(--mid);border:1px solid var(--hair-strong);border-radius:3px;padding:0 4px}
+.tag.risk{color:var(--un);border-color:rgba(180,35,24,.4)}
 .xtra{display:none;font-size:8.5px;font-weight:700;border-radius:3px;padding:0 5px}
 body.details .xtra{display:inline}
 .xtra.cross{color:var(--accent);background:var(--accent-soft)}
-.xtra.late{color:var(--un);background:var(--un-bg)}
-.leg.void{color:var(--hair-strong);justify-content:center;font-size:13px;user-select:none}
-/* ΤΑ ΚΕΝΑ (owner v2.8: «χρώμα, όχι λόγια»): κόκκινο πεδίο = κενό.
-   import-πεδίο κόκκινο → own φορτηγό γυρνά άδειο· ανάθεση κόκκινη → ορφανό
-   φορτίο. Κλικ στο κόκκινο import-πεδίο → φωτίζει τα αδιάθετα imports. */
+.leg.void{justify-content:center}
+/* ΚΕΝΟ ΓΥΡΙΣΜΟΥ: κόκκινο πεδίο, καθόλου λόγια (owner) */
 .leg.gap{background:var(--un-bg);cursor:pointer}
-.leg.gap:hover{background:#FDE8E6}
-/* Ματαίωση (owner): ορατή-διαγραμμένη, δεν εξαφανίζεται. */
+.leg.gap:hover{background:var(--un-bg-hover)}
+
+/* Feeds Βέροιας: 96px καρτελάκια — κενό = τελείως άδειο */
+.feed{height:100%;display:flex;align-items:center;padding:0 9px;font-size:9px;color:var(--mid);
+      white-space:nowrap;overflow:hidden;background:var(--sheet-alt);cursor:default;gap:4px}
+.feed b{font-weight:700;color:var(--ink);font-size:9px}
+.feed.l{border-right:1px solid var(--hair)} .feed.r{border-left:1px solid var(--hair)}
+.feed:empty{background:transparent}
+
+/* Pills — 24px */
+.assign{padding:0 8px;display:flex;justify-content:center;align-self:stretch;align-items:center}
+.pill{width:100%;max-width:160px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+      gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden;
+      transition:transform .15s,box-shadow .15s,background .2s}
+.pill small{font-weight:500;color:rgba(255,255,255,.72);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
+.pill.own{background:var(--own)} .pill.par{background:var(--partner)}
+.pill.own,.pill.par{cursor:pointer}
+.pill.sug{background:var(--un-bg);border:1.5px dashed rgba(180,35,24,.5);cursor:pointer}
+.pill.sug .s{font-size:9.5px;font-weight:700;color:var(--accent);overflow:hidden;text-overflow:ellipsis}
+.pill.sug .go{flex-shrink:0;background:var(--accent);color:#fff;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;line-height:1;transition:.15s}
+.pill.sug .go:hover{background:var(--ok);transform:scale(1.1)}
+.pill.un{background:var(--un-bg);border:1.5px dashed rgba(180,35,24,.5);cursor:pointer}
+.pill.accepted{animation:snap .35s cubic-bezier(.22,.9,.24,1)}
+@keyframes snap{0%{transform:scale(.94);box-shadow:0 0 0 6px rgba(6,118,71,.25)}100%{transform:scale(1);box-shadow:none}}
+.grp-b{font-family:var(--fd);font-size:8px;font-weight:700;background:var(--navy);color:#fff;border-radius:999px;padding:1px 5px;cursor:pointer;flex-shrink:0}
+html.dark .grp-b{background:var(--accent)}
+.grp-b:hover{background:var(--accent)}
 .row.cxl{opacity:.5}
 .row.cxl .route,.row.cxl .meta,.row.cxl .feed{text-decoration:line-through}
-/* Ρόλος αποθήκης (owner 8/8): τα κόμιστρα συνεργατών ΔΕΝ φαίνονται —
-   ούτε στα pills ούτε στο ιστορικό γραμμής του popover. */
-body.wh .pill.par small{display:none}
-body.wh .lane{display:none}
-body.wh .f input[placeholder="0.00"]{visibility:hidden}
 
-/* Pills slim 24px */
-.assign{padding:0 8px;display:flex;justify-content:center}
-.pill{width:100%;max-width:196px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
-      gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden}
-.pill small{font-weight:500;color:rgba(255,255,255,.7);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
-.pill.own{background:var(--own)} .pill.par{background:var(--partner)}
-.pill.own:hover,.pill.par:hover{cursor:pointer;box-shadow:0 3px 10px -4px rgba(11,25,41,.5)}
-/* ✨ Η ΑΥΤΟΜΑΤΗ ΠΡΟΤΑΣΗ: το κενό pill ΔΕΝ είναι αδιέξοδο — προτείνει. */
-.pill.sug{background:transparent;border:1.5px dashed rgba(180,35,24,.5);color:var(--un);cursor:pointer;position:relative}
-.pill.sug .s{font-size:10px;font-weight:700;color:var(--accent);overflow:hidden;text-overflow:ellipsis}
-.pill.sug .go{flex-shrink:0;background:var(--accent);color:#fff;border-radius:5px;font-size:10px;font-weight:800;
-              padding:2px 7px;line-height:1}
-.pill.sug .go:hover{background:var(--ok)}
-.pill.sug:hover{background:var(--un-bg)}
-.pill.un{background:var(--un-bg);border:1.5px dashed rgba(180,35,24,.5);cursor:pointer}
-.pill.un b{color:var(--un);font-size:10.5px}
-/* Δεξί κλικ σε import: μεταφορά σε προηγούμενη/επόμενη εβδομάδα (owner) */
-.cx{display:block;width:100%;text-align:left;font-size:11.5px;font-weight:600;padding:7px 11px;border-radius:6px;color:var(--ink)}
-.cx:hover{background:var(--accent-soft)}
-.grp-b{font-family:var(--fd);font-size:8.5px;font-weight:700;background:var(--navy);color:#fff;border-radius:999px;padding:1px 6px;cursor:pointer;flex-shrink:0}
-.grp-b:hover{background:var(--accent)}
-
-/* ── Επιστροφές (η στήλη του Excel) ── */
+/* ── ΟΔΗΓΟΙ · 561/2006 ── */
 .rt{position:sticky;top:70px}
 .rt h3{font-family:var(--fd);font-size:9.5px;font-weight:800;letter-spacing:1.8px;color:var(--mid);margin:2px 2px 8px}
 .rc{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:8px;padding:5px 10px;margin-bottom:5px;
-    display:flex;align-items:baseline;gap:8px}
+    display:flex;align-items:baseline;gap:8px;box-shadow:0 1px 2px rgba(11,25,41,.04)}
 .rc b{font-size:11px} .rc span{font-size:10px;color:var(--mid);margin-left:auto;white-space:nowrap}
 .rc.free{border-style:dashed} .rc.free span{color:var(--ok);font-weight:600}
 .rnote{font-size:9px;color:var(--dim);margin-top:8px;line-height:1.5}
 
-/* ── Popover (mock) ── */
-.pop{position:fixed;inset:0;background:rgba(11,25,41,.28);backdrop-filter:blur(2px);display:none;z-index:60}
+/* ── Καταστάσεις (demo) ── */
+.state-empty{padding:70px 20px;text-align:center}
+.state-empty .big{font-family:var(--fd);font-weight:800;font-size:15px;color:var(--ink);margin-bottom:6px}
+.state-empty p{font-size:12px;color:var(--mid);margin-bottom:14px}
+.state-empty button{background:var(--navy);color:#fff;border-radius:8px;padding:9px 18px;font-weight:700;font-size:12px}
+html.dark .state-empty button{background:var(--accent)}
+.skel{height:34px;border-bottom:1px solid var(--hair);position:relative;overflow:hidden}
+.skel::after{content:'';position:absolute;inset:6px 12px;border-radius:6px;
+  background:linear-gradient(90deg,var(--hair) 25%,var(--hair-strong) 50%,var(--hair) 75%);background-size:200% 100%;
+  animation:shim 1.2s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+.state-err{display:flex;align-items:center;gap:10px;padding:14px;background:var(--un-bg);border-bottom:1px solid var(--hair);font-size:12px;color:var(--un);font-weight:600}
+.state-err button{margin-left:auto;border:1px solid currentColor;border-radius:6px;padding:4px 12px;font-size:11px;font-weight:700}
+
+/* ── Popover / context / demo bar ── */
+.pop{position:fixed;inset:0;background:rgba(8,15,26,.35);backdrop-filter:blur(2px);display:none;z-index:60}
 .pop.on{display:flex;align-items:center;justify-content:center}
 .card{width:560px;max-width:92vw;background:var(--sheet);border-radius:13px;border:1px solid var(--hair-strong);
-      box-shadow:0 30px 80px -20px rgba(8,15,26,.45);animation:popin .16s cubic-bezier(.22,.9,.24,1)}
+      box-shadow:0 30px 80px -20px rgba(8,15,26,.55);animation:popin .16s cubic-bezier(.22,.9,.24,1)}
 @keyframes popin{from{opacity:0;transform:scale(.97) translateY(6px)}}
 .card .hd{padding:14px 18px 11px;border-bottom:1px solid var(--hair);display:flex;align-items:baseline;gap:10px}
-.card h4{font-family:var(--fd);font-size:12.5px;font-weight:800;color:var(--navy)}
+.card h4{font-family:var(--fd);font-size:12.5px;font-weight:800}
 .card .r{font-size:11px;color:var(--mid)} .card .hd button{margin-left:auto;color:var(--dim);font-size:15px}
 .card .bd{padding:12px 18px 4px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px}
 .f label{display:block;font-size:8.5px;font-weight:800;letter-spacing:1.1px;color:var(--dim);margin-bottom:3px}
-.f input{width:100%;border:1px solid var(--hair-strong);border-radius:6px;padding:6px 8px;font:inherit;font-size:11.5px}
+.f input{width:100%;border:1px solid var(--hair-strong);border-radius:6px;padding:6px 8px;font:inherit;font-size:11.5px;background:var(--sheet);color:var(--ink)}
 .f input:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
 .avail{grid-column:1/-1;border:1px solid var(--hair);border-radius:7px;max-height:88px;overflow:auto}
 .av{display:flex;gap:8px;align-items:baseline;padding:5px 9px;border-bottom:1px solid var(--hair);font-size:11.5px;cursor:pointer}
@@ -164,9 +195,27 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
 .btn{border-radius:7px;padding:7px 14px;font-weight:700;font-size:11.5px}
 .btn.ghost{color:var(--mid)} .btn.ghost:hover{background:var(--bg)}
 .btn.go{background:var(--navy);color:#fff} .btn.go:hover{background:var(--accent)}
+html.dark .btn.go{background:var(--accent)}
+.cx{display:block;width:100%;text-align:left;font-size:11.5px;font-weight:600;padding:7px 11px;border-radius:6px;color:var(--ink)}
+.cx:hover{background:var(--accent-soft)}
+.demo{max-width:1600px;margin:0 auto;padding:0 24px 36px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.demo span{font-size:10px;color:var(--dim);font-weight:700;letter-spacing:.8px}
+.db{font-size:10.5px;font-weight:700;color:var(--mid);border:1px solid var(--hair-strong);border-radius:999px;padding:4px 12px}
+.db:hover,.db.on{color:var(--accent);border-color:var(--accent)}
+body.wh .pill.par small{display:none}
+body.wh .lane{display:none}
+body.wh .f input[placeholder="0.00"]{visibility:hidden}
 
-.note{max-width:1600px;margin:0 auto;padding:0 24px 40px;font-size:10px;color:var(--dim)}
-@media (max-width:1240px){.wrap{grid-template-columns:1fr}.rt{position:static;display:flex;gap:6px;flex-wrap:wrap}.rt h3{width:100%}}
+/* ── Responsive <1360: feeds → inline chips ── */
+.vschip{display:none;font-size:8px;font-weight:700;color:var(--mid);border:1px solid var(--hair-strong);border-radius:3px;padding:0 4px;margin-left:6px}
+@media (max-width:1360px){
+  .cols,.row{grid-template-columns:44px minmax(220px,1fr) 176px minmax(220px,1fr)}
+  .feed,.cols .c.fc{display:none}
+  .vschip{display:inline}
+  .t span.lbl{display:none}
+  .wrap{grid-template-columns:1fr}
+  .rt{position:static;display:flex;gap:6px;flex-wrap:wrap} .rt h3{width:100%} .rt .rnote{display:none}
+}
 </style>
 </head>
 <body>
@@ -175,22 +224,22 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
   <div class="brand">PETRAS <em>· Weekly International</em></div>
   <nav class="tabs">
     <button class="step">‹</button>
-    <button class="stab">W31</button><button class="stab">W32</button>
-    <button class="stab on">W33</button><button class="stab">W34</button>
+    <button class="stab" onclick="slideWeek()">W31</button><button class="stab" onclick="slideWeek()">W32</button>
+    <button class="stab on">W33</button><button class="stab" onclick="slideWeek()">W34</button>
     <button class="step">›</button>
   </nav>
   <span class="phase">ΧΤΙΖΕΤΑΙ</span>
   <div class="tally">
-    <button class="sugbtn" title="Προτάσεις ανάθεσης από διαθεσιμότητα, επιστροφές και ιστορικό — αποδοχή με ✓">✨ 4 προτάσεις</button>
-    <span class="t"><b id="c-exp">0</b> εξαγ</span>
-    <span class="t"><b id="c-imp">0</b> εισαγ</span>
-    <span class="t alert"><b id="c-pend">0</b> εκκρεμή</span>
-    <span class="t" style="color:var(--accent);cursor:pointer" onclick="hl()" title="Own φορτηγά χωρίς φορτίο επιστροφής — κλικ: δείξε τα αδιάθετα imports"><b id="c-gap" style="color:var(--accent)">0</b> κενά γυρισμού</span>
+    <button class="sugbtn" onclick="flashSugs()" title="Προτάσεις από διαθεσιμότητα (κανόνας Χ+2) και επιστροφές — αποδοχή με ✓">✨ <b id="c-sug" style="color:inherit">0</b></button>
+    <span class="t"><b id="c-exp">0</b> <span class="lbl">εξαγ</span></span>
+    <span class="t"><b id="c-imp">0</b> <span class="lbl">εισαγ</span></span>
+    <span class="t alert" onclick="hlPend()"><b id="c-pend">0</b> <span class="lbl">εκκρεμή</span></span>
+    <span class="t gapt" onclick="hl()" title="Own φορτηγά χωρίς φορτίο επιστροφής"><b id="c-gap">0</b> <span class="lbl">κενά</span></span>
     <div class="acts">
       <button class="ab" onclick="document.body.classList.toggle('details');this.classList.toggle('on')">Λεπτομέρειες</button>
-      <button class="ab">Εκτύπωση</button><button class="ab">CSV</button><button class="ab">↻</button>
-      <!-- Demo ρόλου (owner 8/8: η αποθήκη ΔΕΝ βλέπει κόμιστρα) -->
-      <button class="ab" title="Demo: πώς βλέπει τη σελίδα κάθε ρόλος"
+      <button class="ab">Εκτύπωση</button><button class="ab">CSV</button>
+      <button class="ab" onclick="document.documentElement.classList.toggle('dark');this.textContent=document.documentElement.classList.contains('dark')?'☀':'🌙'" title="Εναλλαγή σκούρου θέματος">🌙</button>
+      <button class="ab" title="Demo ρόλων — η Αποθήκη δεν βλέπει κόμιστρα"
         onclick="document.body.classList.toggle('wh');this.textContent=document.body.classList.contains('wh')?'👁 Αποθήκη':'👁 Dispatcher'">👁 Dispatcher</button>
     </div>
   </div>
@@ -200,11 +249,11 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
   <main class="sheet">
     <div class="cols">
       <div class="c"></div>
-      <div class="c" style="font-size:8.5px" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
-      <div class="c">ΕΞΑΓΩΓΗ <span class="n" id="n-exp"></span><span class="hint" title="Δεξί κλικ: ομαδοποίηση">ⓘ</span></div>
-      <div class="c" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
-      <div class="c">ΕΙΣΑΓΩΓΗ <span class="n" id="n-imp"></span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
-      <div class="c" style="font-size:8.5px" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
+      <div class="c fc" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
+      <div class="c main">ΕΞΑΓΩΓΗ <span class="n" id="n-exp"></span><span class="hint" title="Δεξί κλικ: ομαδοποίηση groupage (βάση: το πρώτο-παραδιδόμενο)">ⓘ</span></div>
+      <div class="c main" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
+      <div class="c main">ΕΙΣΑΓΩΓΗ <span class="n" id="n-imp"></span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα · δεξί κλικ: μεταφορά εβδομάδας">ⓘ</span></div>
+      <div class="c fc" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
     </div>
     <div id="rows"></div>
   </main>
@@ -214,20 +263,24 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
     <div class="rc free"><b>Αντωνίου</b><span>διαθέσιμος</span></div>
     <div class="rc free"><b>Λαζαρίδης</b><span>διαθέσιμος</span></div>
     <div class="rc" title="Επέστρεψε Τετάρτη → διαθέσιμος Παρασκευή (Χ+2). ⚡ Κατ' εξαίρεση με μειωμένη: Πέμπτη (Χ+1)."><b>Παπαδόπουλος</b><span>ανάπ. → Παρ <em style="font-style:normal;color:var(--warn)">⚡Πέμ</em></span></div>
-    <div class="rc" title="Επιστρέφει Πέμπτη → διαθέσιμος Σάββατο. ⚡ εξαίρεση: Παρασκευή."><b>Καραγιάννης</b><span>δρομ. → Πέμ 13/8</span></div>
+    <div class="rc"><b>Καραγιάννης</b><span>δρομ. → Πέμ 13/8</span></div>
     <div class="rc"><b>Δημητρίου</b><span>δρομ. → Παρ 14/8</span></div>
     <div class="rc"><b>Νικολάου</b><span>δρομ. → Σάβ 15/8</span></div>
     <div class="rc"><b>Στεργίου</b><span>δρομ. → Κυρ 16/8</span></div>
-    <p class="rnote">Κανόνας ημερών (owner): <b>επιστροφή ημέρα Χ → ξαναφεύγει Χ+2</b> — μία πλήρης μέρα ανάπαυσης ενδιάμεσα (π.χ. Δευτέρα → Τετάρτη). Το <b style="color:var(--warn)">⚡Χ+1</b> μαρκάρει την κατ' εξαίρεση αναχώρηση με μειωμένη — πρόταση, ποτέ default. Οι ✨ προτάσεις σέβονται τον κανόνα.</p>
+    <p class="rnote">Κανόνας ημερών: <b>επιστροφή Χ → αναχώρηση Χ+2</b>. Το <b style="color:var(--warn)">⚡Χ+1</b> = κατ' εξαίρεση μειωμένη, ως πρόταση. Οι ✨ σέβονται τον κανόνα.</p>
   </aside>
 </div>
 
-<p class="note">Πρωτότυπο v2.8 · mock 34 σειρές · ημέρες <b>ΠΑΡΑΔΟΣΗΣ</b> · <b>χρώμα αντί για λόγια</b>:
-κόκκινο import-πεδίο = own φορτηγό γυρνά άδειο (κλικ → αδιάθετα imports) · κόκκινη διακεκομμένη ανάθεση = ορφανό φορτίο ·
-<b>δεξί κλικ σε import</b> = μεταφορά σε προηγούμενη/επόμενη εβδομάδα · groupage με βάση το πρώτο-παραδιδόμενο (hover στο ×2⎙) ·
-VS σταθμός Vermion Fresh Cross-Dock με πραγματικό τόπο στις άκρες · <b>✨ ✓</b> = ανάθεση με ένα κλικ · γραμμή 13 = ματαίωση.</p>
+<div class="demo">
+  <span>DEMO ΚΑΤΑΣΤΑΣΕΩΝ:</span>
+  <button class="db on" onclick="setState('normal',this)">Κανονική</button>
+  <button class="db" onclick="setState('empty',this)">Κενή εβδομάδα</button>
+  <button class="db" onclick="setState('loading',this)">Φόρτωση</button>
+  <button class="db" onclick="setState('error',this)">Σφάλμα</button>
+  <span style="margin-left:auto;font-weight:400;letter-spacing:0">v3 mock · κόκκινο πεδίο = κενό · δεξί κλικ σε I-γραμμή = μεταφορά εβδομάδας · 🌙 dark · 👁 ρόλοι</span>
+</div>
 
-<div id="ctx" style="display:none;position:fixed;z-index:70;background:var(--sheet);border:1px solid var(--hair-strong);border-radius:9px;box-shadow:0 12px 30px -10px rgba(8,15,26,.3);padding:4px;min-width:190px">
+<div id="ctx" style="display:none;position:fixed;z-index:70;background:var(--sheet);border:1px solid var(--hair-strong);border-radius:9px;box-shadow:0 12px 30px -10px rgba(8,15,26,.35);padding:4px;min-width:190px">
   <button class="cx">← Μεταφορά στην W32</button>
   <button class="cx">Μεταφορά στην W34 →</button>
 </div>
@@ -240,10 +293,10 @@ VS σταθμός Vermion Fresh Cross-Dock με πραγματικό τόπο σ
       <div class="f"><label>ΤΡΕΪΛΕΡ</label><input placeholder="Πινακίδα…"></div>
       <div class="f"><label>ΟΔΗΓΟΣ</label><input placeholder="Όνομα…"></div>
       <div class="avail">
-        <div class="av free"><b>ΝΙΚ-2216</b> · Αντωνίου <small>ελεύθερο όλη την εβδομάδα</small></div>
-        <div class="av free"><b>ΝΙΚ-3390</b> · Λαζαρίδης <small>ελεύθερο από Τετ</small></div>
-        <div class="av"><b>ΝΙΚ-4821</b> · Παπαδόπουλος <small>δεσμ. Δευ-Τετ · Βέροια Τετ</small></div>
-        <div class="av"><b>ΝΙΚ-1177</b> · Καραγιάννης <small>δεσμ. Τρί-Πέμ · Hamburg</small></div>
+        <div class="av free"><b>ΝΙΚ-2216</b> · Αντωνίου <small>διαθέσιμος (Χ+2 ✓)</small></div>
+        <div class="av free"><b>ΝΙΚ-3390</b> · Λαζαρίδης <small>διαθέσιμος (Χ+2 ✓)</small></div>
+        <div class="av"><b>ΝΙΚ-4821</b> · Παπαδόπουλος <small>ανάπαυση → Παρ · ⚡Πέμ</small></div>
+        <div class="av"><b>ΝΙΚ-1177</b> · Καραγιάννης <small>σε δρομολόγιο → Πέμ</small></div>
       </div>
       <div class="f" style="grid-column:1/2"><label>ΣΥΝΕΡΓΑΤΗΣ</label><input placeholder="Εταιρεία…"></div>
       <div class="f"><label>ΠΙΝΑΚΙΔΕΣ</label><input placeholder="π.χ. ΤΒ-8842"></div>
@@ -257,87 +310,114 @@ VS σταθμός Vermion Fresh Cross-Dock με πραγματικό τόπο σ
 </div>
 
 <script>
-/* Mock generator — 34 σειρές σε 6 μέρες, όλα τα είδη γραμμών. */
-const F=['Αγρόκτημα Βέρμιο, Νάουσα','Οπωρώνες Πέλλας ΑΕ','ΨΥΓΕΙΑ ΗΜΑΘΙΑΣ','Συν. Βερμίου, Κοπανός','Φάρμα Ολύμπου','Κήποι Έδεσσας ΑΕ','Vermion Fresh, Βέροια','Αγρός Πιερίας','Θερμοκήπια Δράμας','Γη Σερρών ΑΕ'];
-const T=['Fruchthof München, DE','Grossmarkt Wien, AT','Rungis Market, FR','Hamburg Grossmarkt, DE','Praha Lipence, CZ','Lidl Zentrale Ost, DE','Rotterdam Fresh, NL','Metro Torino, IT','Warszawa Bronisze, PL'];
-const IF=['IFCO Wels, AT','Perpignan St-Charles, FR','Venlo Fresh Park, NL','Brno Modřice, CZ','Bologna CAAB, IT','Koper Port, SI','Stuttgart Gemüsering, DE','Stare Zadybie, PL'];
-const IT=['Vermion Fresh, Βέροια','Αθήνα ΟΚΑΑ','Θεσσαλονίκη','Λάρισα','Ιωάννινα'];
-const OWN=[['ΝΙΚ-4821 · Ρ-3310','Παπαδόπουλος'],['ΝΙΚ-1177 · Ρ-2205','Καραγιάννης'],['ΝΙΚ-9034 · Ρ-4471','Δημητρίου'],['ΝΙΚ-5512 · Ρ-1180','Νικολάου'],['ΝΙΚ-7703 · Ρ-9932','Στεργίου']];
+/* ── v3 generator: ΣΥΝΕΠΕΣ dataset — όλα δεμένα στην ημέρα ΠΑΡΑΔΟΣΗΣ ── */
+const F=['Αγρόκτημα Βέρμιο, Νάουσα','Οπωρώνες Πέλλας ΑΕ','ΨΥΓΕΙΑ ΗΜΑΘΙΑΣ','Συν. Βερμίου, Κοπανός','Φάρμα Ολύμπου','Κήποι Έδεσσας ΑΕ','Αγρός Πιερίας','Θερμοκήπια Δράμας'];
+const T=['Fruchthof München, DE','Grossmarkt Wien, AT','Rungis Market, FR','Hamburg Grossmarkt, DE','Praha Lipence, CZ','Lidl Zentrale Ost, DE','Rotterdam Fresh, NL','Metro Torino, IT'];
+const IF=['IFCO Wels, AT','Perpignan St-Charles, FR','Venlo Fresh Park, NL','Brno Modřice, CZ','Bologna CAAB, IT','Koper Port, SI','Stuttgart Gemüsering, DE'];
+const IT_=['Αθήνα ΟΚΑΑ','Θεσσαλονίκη','Λάρισα','Ιωάννινα'];
+const OWN=[['ΝΙΚ-4821','Παπαδόπουλος'],['ΝΙΚ-1177','Καραγιάννης'],['ΝΙΚ-9034','Δημητρίου'],['ΝΙΚ-5512','Νικολάου'],['ΝΙΚ-7703','Στεργίου']];
 const PAR=[['TransBalkan Ltd','2.950 €'],['Nord Freight OÜ','3.100 €'],['AdriaCargo doo','1.850 €'],['Balt Trans UAB','3.400 €']];
 const SUG=[['ΝΙΚ-2216','Αντωνίου'],['ΝΙΚ-3390','Λαζαρίδης']];
+const FEED=['ΙΒΧ-2210','ΙΒΕ-1105','ΚΗΒ-3342','ΙΒΝ-7810'];
 const DAYS=[
- {d:'ΔΕΥΤΕΡΑ 10/8',today:true, rows:['own','sug','par','own','imp-par','grpA','grpB']},
- {d:'ΤΡΙΤΗ 11/8',   rows:['own','par','sug','own','imp-sug','own']},
- {d:'ΤΕΤΑΡΤΗ 12/8', rows:['par','own','own','imp-par','own','par']},
- {d:'ΠΕΜΠΤΗ 13/8',  rows:['own','sug','par','own','imp-own','grpA','grpB']},
- {d:'ΠΑΡΑΣΚΕΥΗ 14/8',rows:['own','par','own','sug']},
- {d:'ΣΑΒΒΑΤΟ 15/8', rows:['par','own','imp-par']},
+ {name:'ΔΕΥΤΕΡΑ',d:10,today:true, rows:['own','sug','par','own','imp-par','grpA','grpB']},
+ {name:'ΤΡΙΤΗ',d:11, rows:['own','par','sug','own','imp-sug','own']},
+ {name:'ΤΕΤΑΡΤΗ',d:12, rows:['par','own','own','imp-par','own','cxl']},
+ {name:'ΠΕΜΠΤΗ',d:13, rows:['own','sug','par','own','imp-own','grpA','grpB']},
+ {name:'ΠΑΡΑΣΚΕΥΗ',d:14, rows:['own','par','own','sug']},
+ {name:'ΣΑΒΒΑΤΟ',d:15, rows:['par','own','imp-par']},
 ];
-let n=0, iN=0, exp=0, imp=0, pend=0, sugI=0, gaps=0;
-const R=a=>a[Math.floor((n*7+iN*3)%a.length)];
+let n=0,iN=0,exp=0,imp=0,pend=0,sugN=0,gaps=0,sugI=0;
+const P=(a,k)=>a[k%a.length];
 function pillHTML(kind,idx){
-  if(kind==='own'){const o=OWN[idx%OWN.length];return `<div class="pill own" onclick="openPop(this)" title="Κλικ: αλλαγή">${o[0]} <small>${o[1]}</small></div>`;}
-  if(kind==='par'){const p=PAR[idx%PAR.length];return `<div class="pill par" onclick="openPop(this)">${p[0]} <small>${p[1]}</small></div>`;}
-  if(kind==='sug'){const s=SUG[(sugI++)%SUG.length];pend++;
-    return `<div class="pill sug" onclick="openPop(this)" title="Κλικ: πλήρης ανάθεση">
-      <span class="s">✨ ${s[0]} · ${s[1]}</span><button class="go" title="Αποδοχή πρότασης — ανάθεση με ένα κλικ"
-      onclick="event.stopPropagation();accept(this,'${s[0]}','${s[1]}')">✓</button></div>`;}
+  if(kind==='own'){const o=P(OWN,idx);return `<div class="pill own" onclick="openPop(this)" title="Κλικ: αλλαγή ανάθεσης">${o[0]} <small>${o[1]}</small></div>`;}
+  if(kind==='par'){const p=P(PAR,idx);return `<div class="pill par" onclick="openPop(this)">${p[0]} <small>${p[1]}</small></div>`;}
+  if(kind==='sug'){const s=SUG[(sugI++)%SUG.length];pend++;sugN++;
+    return `<div class="pill sug" onclick="openPop(this)" title="Πρόταση από διαθεσιμότητα (Χ+2) — ✓: αποδοχή με ένα κλικ">
+      <span class="s">✨ ${s[0]} ${s[1]}</span><button class="go" onclick="event.stopPropagation();accept(this,'${s[0]}','${s[1]}')">✓</button></div>`;}
   pend++;return `<div class="pill un" onclick="openPop(this)" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
 }
-function rowHTML(kind){
+function rowHTML(kind,day,alt){
   n++;
   const isImp=kind.startsWith('imp');
+  const cancelled=kind==='cxl';
   const grp=kind==='grpA'?'A':kind==='grpB'?'B':null;
-  const pKind=isImp?kind.split('-')[1]:(kind==='sug'?'sug':grp==='B'?'ghost':kind.startsWith('grp')?'own':kind);
-  const load=(9+n%6)+'/8', del=(11+n%6)+'/8', pal=(24+n%10);
-  let expCell,impCell,numCell;
-  // v2.3 (owner): στα VS το ΔΙΕΘΝΕΣ σκέλος «ανοίγει» με σταθμό το Vermion
-  // Fresh Cross-Dock — ο ΠΡΑΓΜΑΤΙΚΟΣ τόπος πάει στην ακριανή στήλη.
-  const vsExp=!isImp&&n%2===0, vsImp=isImp&&n%2===1;
-  const cancelled=(n===13); // δείγμα ματαίωσης: ορατή-διαγραμμένη (owner)
+  const pKind=isImp?kind.split('-')[1]:(kind==='sug'?'sug':grp==='B'?'ghost':cancelled?'un':kind.startsWith('grp')?'own':kind);
+  const del=day.d, load=day.d-2, pal=24+(n%9);
+  const vsExp=!isImp&&!cancelled&&n%2===0, vsImp=isImp&&n%2===1;
+  let numCell,expCell,impCell;
   if(isImp){ iN++; imp++;
     numCell=`<div class="num imp">I${iN}</div>`;
-    expCell=`<div class="leg void">—</div>`;
-    const impTo=vsImp?'<span class="to">Vermion Fresh Cross-Dock</span> <span class="vs" style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px">VS</span>':`<span class="to">${R(IT)}</span>`;
-    impCell=`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span>${impTo}</span><span class="meta">${load}→${del} · ${pal}p</span></div>`;
+    expCell=`<div class="leg void"></div>`;
+    const impTo=vsImp?`<span class="to">Vermion Fresh Cross-Dock</span> <span class="vsb">VS</span><span class="vschip">↓${P(IT_,n+1).split(' ')[0]}</span>`:`<span class="to">${P(IT_,n)}</span>`;
+    impCell=`<div class="leg"><span class="route">${P(IF,n)}<span class="sep">→</span>${impTo}</span><span class="meta">${del}/8→${del+2}/8 · ${pal}p</span></div>`;
   }else{ exp++;
-    numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Groupage — δεξί κλικ στις παραγγελίες τις συμπτύσσει· βάση της ομάδας: το φορτίο που παραδίδεται ΠΡΩΤΟ. ⎙ = εκτύπωση ενιαίου πακέτου">×2⎙</span>`:''}</div>`;
-    const tags=(n%5===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'');
-    const x=(n%7===0?'<span class="xtra cross">↤ φορτώνει W34</span>':'')+(kind==='sug'&&n%3===0?'<span class="xtra late">⚠ φόρτωση σήμερα</span>':'');
-    const from=vsExp?'Vermion Fresh Cross-Dock <span style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;vertical-align:middle">VS</span>':R(F);
-    expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':R(T)}</span></span><span class="meta">${load}→${del} · ${pal}p ${tags}${x}</span></div>`;
-    impCell=(n%3===0&&!grp)
-      ?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`
+    numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Groupage — δεξί κλικ συμπτύσσει· βάση: το πρώτο-παραδιδόμενο. ⎙ ενιαίο πακέτο">×2⎙</span>`:''}</div>`;
+    const tags=(n%6===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'');
+    const x=(n%7===0?'<span class="xtra cross">↤ φορτ. W34</span>':'');
+    const from=vsExp?`Vermion Fresh Cross-Dock <span class="vsb">VS</span><span class="vschip">↑${P(F,n).split(',')[0].slice(0,10)}</span>`:P(F,n);
+    expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':P(T,n)}</span></span><span class="meta">${load}/8→${del}/8 · ${pal}p ${tags}${x}</span></div>`;
+    impCell=(n%3===0&&!grp&&!cancelled)
+      ?`<div class="leg"><span class="route">${P(IF,n+2)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}/8→${del+2}/8 · ${pal-3}p</span></div>`
       :(pKind==='par'||cancelled
-        ?`<div class="leg void">—</div>`
-        :(gaps++,`<div class="leg gap void" title="Κενό γυρισμού — ξεφορτώνει ${del} χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports" onclick="hl()">—</div>`));
+        ?`<div class="leg void"></div>`
+        :(gaps++,`<div class="leg gap void" title="Κενό γυρισμού — ξεφορτώνει ${del}/8 χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports" onclick="hl()"></div>`));
   }
+  const fL=vsExp?P(FEED,n):null, fR=vsImp?P(FEED,n+2):null;
+  const feedL=fL?`<div class="feed l" title="Πραγματική φόρτωση: ${P(F,n).split(',')[0]} — επεξεργασία στο Weekly National"><b>${fL}</b> ↑${load-1}/8</div>`:`<div class="feed l"></div>`;
+  const feedR=fR?`<div class="feed r" title="Τελική διανομή: ${P(IT_,n+1)} — επεξεργασία στο Weekly National"><b>${fR}</b> ↓${del+3}/8</div>`:`<div class="feed r"></div>`;
   const pill=pKind==='ghost'
-    ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
+    ?`<div class="pill own" style="opacity:.4">— μαζί με #${exp-1} —</div>`
+    :cancelled?`<div class="pill un" style="border-style:solid"><b style="color:var(--un);font-size:9.5px;letter-spacing:.5px">ΜΑΤΑΙΩΘΗΚΕ</b></div>`
     :pillHTML(pKind,n);
-  // v2.3 (owner): οι ακριανές στήλες δείχνουν τον ΠΡΑΓΜΑΤΙΚΟ τόπο του VS —
-  // αριστερά ο προμηθευτής που ανεβάζει στη Βέροια, δεξιά ο τελικός
-  // παραλήπτης της διανομής. Read-only εδώ· επεξεργασία στο Weekly National.
-  const FEED=[['ΙΒΧ-2210','Τάσος'],['ΙΒΕ-1105','Μάκης'],['ΚΗΒ-3342','Γιώργος'],['ΙΒΝ-7810','Σάκης']];
-  const fL=vsExp?FEED[n%4]:null, fR=vsImp?FEED[(n+2)%4]:null;
-  const realFrom=R(F).split(',')[0], realTo=R(IT).split(',')[0];
-  const feedL=fL?`<div class="feed l" title="Πραγματικός τόπος φόρτωσης: ${realFrom} — εσωτερικό σκέλος προς Βέροια, επεξεργασία στο Weekly National"><b>${realFrom}</b> · ${fL[0]} ↑${load}</div>`:`<div class="feed l none">—</div>`;
-  const feedR=fR?`<div class="feed r" title="Πραγματικός τελικός προορισμός: ${realTo} — διανομή από Βέροια, επεξεργασία στο Weekly National"><b>${realTo}</b> · ${fR[0]} ↓${del}</div>`:`<div class="feed r none">—</div>`;
-  return `<div class="row${cancelled?' cxl':''}">${numCell}${feedL}${expCell}<div class="assign">${cancelled?'<div class="pill un" style="border-style:solid;opacity:.5"><b>ΜΑΤΑΙΩΘΗΚΕ</b></div>':pill}</div>${impCell}${feedR}</div>`;
+  return `<div class="row${alt?' alt':''}${cancelled?' cxl':''}" style="animation-delay:${Math.min(n*0.018,0.45)}s">${numCell}${feedL}${expCell}<div class="assign">${pill}</div>${impCell}${feedR}</div>`;
 }
-let html='';
-for(const day of DAYS){
-  html+=`<div class="day${day.today?' today':''}"><span class="d">${day.d}</span>${day.today?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${day.rows.length} γραμμές</span></div>`;
-  for(const k of day.rows) html+=rowHTML(k);
+function buildNormal(){
+  n=0;iN=0;exp=0;imp=0;pend=0;sugN=0;gaps=0;sugI=0;
+  let html='';
+  DAYS.forEach((day,di)=>{
+    html+=`<div class="day${day.today?' today':''}"><span class="d">${day.name} ${day.d}/8</span>${day.today?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${day.rows.length} γραμμές · παραδόσεις</span></div>`;
+    day.rows.forEach(k=>{html+=rowHTML(k,day,di%2===1);});
+  });
+  document.getElementById('rows').innerHTML=html;
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set('c-exp',exp);set('n-exp',exp);set('c-imp',imp);set('n-imp',imp);set('c-pend',pend);set('c-gap',gaps);set('c-sug',sugN);
 }
-document.getElementById('rows').innerHTML=html;
-document.getElementById('c-exp').textContent=exp; document.getElementById('n-exp').textContent=exp;
-document.getElementById('c-imp').textContent=imp; document.getElementById('n-imp').textContent=imp;
-document.getElementById('c-pend').textContent=pend;
-document.getElementById('c-gap').textContent=gaps;
+buildNormal();
 
-/* Δεξί κλικ σε import row → μεταφορά εβδομάδας (mock, owner v2.8). Ίδιο
-   pattern με το groupage των exports: το δεξί κλικ είναι το «εργαλείο». */
+/* Micro-interactions */
+function bump(id){const e=document.getElementById(id);if(!e)return;e.classList.add('pop');setTimeout(()=>e.classList.remove('pop'),220);}
+function accept(btn,plate,driver){
+  const pill=btn.closest('.pill');
+  const nw=document.createElement('div');
+  nw.className='pill own accepted'; nw.innerHTML=`${plate} <small>${driver}</small>`;
+  pill.replaceWith(nw);
+  const c=document.getElementById('c-pend'); c.textContent=Math.max(0,+c.textContent-1); bump('c-pend');
+  const s=document.getElementById('c-sug'); s.textContent=Math.max(0,+s.textContent-1); bump('c-sug');
+}
+function openPop(el){
+  document.getElementById('popr').textContent=(el.closest('.row').querySelector('.route')?.textContent||'Εισαγωγή').slice(0,52);
+  document.getElementById('pop').classList.add('on');
+}
+function hl(){
+  const imps=[...document.querySelectorAll('.num.imp')].map(e=>e.closest('.row'));
+  imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-soft)';setTimeout(()=>{r.style.background='';},1800);});
+  if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
+}
+function hlPend(){
+  const p=document.querySelector('.pill.un,.pill.sug'); if(!p)return;
+  const r=p.closest('.row'); r.scrollIntoView({behavior:'smooth',block:'center'});
+  r.style.transition='background .3s'; r.style.background='var(--un-bg)'; setTimeout(()=>r.style.background='',1600);
+}
+function flashSugs(){
+  document.querySelectorAll('.pill.sug').forEach(p=>{p.style.transition='box-shadow .3s';p.style.boxShadow='0 0 0 3px var(--accent-soft)';setTimeout(()=>p.style.boxShadow='',1600);});
+  const f=document.querySelector('.pill.sug'); f&&f.closest('.row').scrollIntoView({behavior:'smooth',block:'center'});
+}
+function slideWeek(){
+  const r=document.getElementById('rows');
+  r.style.transition='opacity .18s, transform .18s'; r.style.opacity='0'; r.style.transform='translateX(-14px)';
+  setTimeout(()=>{r.style.transition='opacity .22s, transform .22s'; r.style.opacity='1'; r.style.transform='none';},190);
+}
 document.getElementById('rows').addEventListener('contextmenu',e=>{
   const row=e.target.closest('.row'); if(!row||!row.querySelector('.num.imp')) return;
   e.preventDefault();
@@ -347,28 +427,15 @@ document.getElementById('rows').addEventListener('contextmenu',e=>{
   m.style.top=Math.min(e.clientY,innerHeight-90)+'px';
   setTimeout(()=>document.addEventListener('click',()=>m.style.display='none',{once:true}),10);
 });
-
-/* ΤΑ ΚΕΝΑ: κλικ σε κενό γυρισμού (ή στον μετρητή) → φωτίζει και κεντράρει
-   τα αδιάθετα imports που μπορούν να το γεμίσουν — «σωστή συμπλήρωση». */
-function hl(){
-  const imps=[...document.querySelectorAll('.num.imp')].map(e=>e.closest('.row'));
-  imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-soft)';
-    setTimeout(()=>{r.style.background='';},1800);});
-  if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
+function setState(s,btn){
+  document.querySelectorAll('.db').forEach(b=>b.classList.remove('on')); btn.classList.add('on');
+  const r=document.getElementById('rows');
+  if(s==='normal'){buildNormal();return;}
+  if(s==='empty'){r.innerHTML=`<div class="state-empty"><div class="big">Άδειο φύλλο — W33</div><p>Καμία διεθνής παραγγελία ακόμη. Οι νέες εμφανίζονται εδώ μόλις καταχωρηθούν.</p><button>+ Νέα παραγγελία</button></div>`;return;}
+  if(s==='loading'){r.innerHTML='<div class="skel"></div>'.repeat(7);return;}
+  r.innerHTML=`<div class="state-err">⚠ Δεν φόρτωσε το πλάνο — έλεγξε τη σύνδεση.<button onclick="setState('normal',document.querySelector('.db'))">Δοκίμασε ξανά</button></div>`;
 }
-window.hl=hl;
-
-/* ✨ Αποδοχή πρότασης: το κόκκινο γίνεται navy επιτόπου — «αυτόματη ανάθεση» με ένα κλικ. */
-function accept(btn,plate,driver){
-  const pill=btn.closest('.pill');
-  pill.outerHTML=`<div class="pill own" style="animation:popin .25s cubic-bezier(.22,.9,.24,1)">${plate} · Ρ-2201 <small>${driver}</small></div>`;
-  const c=document.getElementById('c-pend'); c.textContent=Math.max(0,+c.textContent-1);
-}
-function openPop(el){
-  document.getElementById('popr').textContent=el.closest('.row').querySelector('.route')?.textContent?.slice(0,52)||'Εισαγωγή';
-  document.getElementById('pop').classList.add('on');
-}
-window.accept=accept; window.openPop=openPop;
+window.accept=accept;window.openPop=openPop;window.hl=hl;window.hlPend=hlPend;window.flashSugs=flashSugs;window.setState=setState;window.slideWeek=slideWeek;
 </script>
 </body>
 </html>
