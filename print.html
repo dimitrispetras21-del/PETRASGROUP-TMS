@@ -382,6 +382,13 @@ function generatePDF(orderRec){
     var vl=resolveLoc(f['Veroia Cross-dock']);
     if(vl){VEROIA=vl.name;VADDR=vl.address;VLAT=vl.lat;VLNG=vl.lng;}
   }
+  // Orders that predate the Veroia Cross-dock link fall back to the canonical
+  // LOCATIONS record (recJucKOhC1zh4IP3 — see CLAUDE.md). Data-driven: prints
+  // whatever address the record carries; nothing is invented here.
+  if(!VADDR){
+    var vfb=resolveLoc(['recJucKOhC1zh4IP3']);
+    if(vfb){if(!f['Veroia Cross-dock']){VEROIA=vfb.name;}VADDR=vfb.address;VLAT=VLAT||vfb.lat;VLNG=VLNG||vfb.lng;}
+  }
   // Owner spec (Q2, 6/8): the partner sheet shows «απλά τη διεύθυνση» for the
   // Veroia stop — no CROSS-DOCK naming, no location name, no internal brand.
   // The card gets the ADDRESS as its title and nothing else.
