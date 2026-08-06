@@ -1599,6 +1599,9 @@ async function _wiFillLaneHist(rowId,row){
       // in fields[] — so filter by checkbox and fetch FULL records (25 rows).
       WINTL._laneAll=(await atGetAll(TABLES.ORDERS,{filterByFormula:`{Is Partner Trip}=1`},false))
         .filter(r=>typeof r.fields['Partner Rate']==='number'&&r.fields['Partner Rate']>0);
+      // Post-Supabase, summaries never arrive from the Worker — the main view
+      // builds them from ORDER_STOPS; do the same for the history set (once).
+      await _wiInjectStopSummaries(WINTL._laneAll);
     }
     const dir=o?.fields['Direction'];
     const hits=WINTL._laneAll
