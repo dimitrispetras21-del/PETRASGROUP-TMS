@@ -428,14 +428,18 @@ function _wnAllRowsHTML() {
   // Sort days chronologically
   const sortedKeys = Object.keys(dayMap).sort();
 
+  const todayKey=(typeof localToday==='function')?localToday():toLocalDate(new Date()); // T5
+
   sortedKeys.forEach(key => {
     const { lbl, ns, sn } = dayMap[key];
     const nsCount = ns.length;
     const snCount = sn.length;
+    const isToday = key===todayKey;
 
-    html += `<div class="wi-dsep">
+    html += `<div class="wi-dsep${isToday?' wi-dsep--today':''}">
       <span class="wi-dsep-lbl">Date</span>
       <span class="wi-dsep-date">${lbl}</span>
+      ${isToday?'<span class="wi-dsep-todaytag">ΣΗΜΕΡΑ</span>':''}
       ${nsCount ? `<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${nsCount} κάθοδος</span>` : ''}
       ${snCount ? `<span class="wi-dsep-n" style="color:rgba(14,165,233,0.65);margin-left:${nsCount?'4px':'2px'}">${snCount} άνοδος</span>` : ''}
       ${snCount ? `<span style="font-size:9px;color:rgba(196,207,219,0.22);margin-left:auto;font-style:italic">drag για σύνδεση</span>` : ''}
@@ -447,6 +451,45 @@ function _wnAllRowsHTML() {
   });
 
   return html;
+}
+
+/* ── WAVE 2 HELPERS (T3/T4/T5/T1 — twins of weekly_intl) ─────────── */
+function _wnExecChip(f, saved){
+  if(WNATL.week!==_wnCurrentWeek()||!f) return '';
+  const ld=f['Loading DateTime']; if(!ld) return '';
+  if(new Date(ld)>new Date()) return '';
+  const st=f['Status']||'';
+  if(!saved) return '<span class="wi-exec wi-exec--late" title="Η ώρα φόρτωσης πέρασε χωρίς ανάθεση">⚠ φόρτωση χωρίς ανάθεση</span>';
+  if(st==='Assigned'||st==='Pending') return '<span class="wi-exec wi-exec--stale" title="Η ώρα φόρτωσης πέρασε χωρίς εξέλιξη κατάστασης">⏱ πέρασε η φόρτωση · χωρίς εξέλιξη</span>';
+  return '';
+}
+// T4 twin: natl filters by LOADING week, so the cross-week blind spot is the
+// DELIVERY side — flag rows delivering in another week.
+function _wnWeekOf(dt){ if(!dt) return null; try{const d=new Date(dt),y=d.getFullYear(),j=new Date(y,0,1); return Math.ceil(((d-j)/864e5+j.getDay()+1)/7);}catch{return null;} }
+function _wnCrossChip(f){
+  const dw=_wnWeekOf(f?.['Delivery DateTime']);
+  if(dw==null||dw===WNATL.week) return '';
+  return `<span class="wi-cross" title="Η παράδοση πέφτει στη W${dw} — στην προβολή εκείνης της εβδομάδας η γραμμή δεν εμφανίζεται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)">↦ παραδίδει W${dw}</span>`;
+}
+function _wnSync(id, state, msg){
+  const el=document.getElementById(id); if(!el) return;
+  el.className='wi-sync'+(state?' wi-sync--'+state:'');
+  el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
+  el.title=msg||'';
+  if(state==='ok') setTimeout(()=>{ if(el.textContent==='✓'){el.textContent='';el.className='wi-sync';} },4000);
+}
+function _wnSameDayConflict(row){
+  const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
+  const myO=all.find(x=>x.id===row.orderIds?.[0]);
+  const myD=toLocalDate(myO?.fields['Loading DateTime']||''); if(!myD) return null;
+  for(const r of WNATL.rows){ if(r.id===row.id) continue;
+    if(!r.truckId&&!r.driverId) continue;
+    const o=all.find(x=>x.id===r.orderIds?.[0]);
+    if(toLocalDate(o?.fields['Loading DateTime']||'')!==myD) continue;
+    if(row.truckId&&r.truckId===row.truckId) return `Το φορτηγό ${row.truckLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
+    if(row.driverId&&r.driverId===row.driverId) return `Ο οδηγός ${row.driverLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
+  }
+  return null;
 }
 
 /* ── N→S ROW ─────────────────────────────────────────────────────── */
@@ -502,6 +545,7 @@ function _wnRowHTML(row, i) {
     <div class="wi-compact" style="cursor:default">
       <div class="wi-cn">
         <span class="wi-num">${i+1}</span>
+        <span class="wi-sync" id="wn-sync-${row.id}"></span>
       </div>
       <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
         <div class="wi-route">
@@ -517,6 +561,7 @@ function _wnRowHTML(row, i) {
           <span>${pals} pal</span>
           ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
           ${badges}
+          ${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}
         </div>
       </div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
@@ -793,13 +838,19 @@ async function _wnSaveMatch(rowId, snId) {
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
+  // T3 (Wave 2): optimistic paint above — the sync slot reports server truth.
+  _wnSync('wn-sync-'+rowId,'pend','Αποθήκευση σύνδεσης…');
   try {
     const r1 = await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': snId });
     if(r1?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
     const r2 = await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': row.orderIds[0] });
     if(r2?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyNatl(); return; }
+    _wnSync('wn-sync-'+rowId,'ok','Αποθηκεύτηκε');
     toast('Σύνδεση αποθηκεύτηκε ✓');
-  } catch(err) { toast('Σφάλμα σύνδεσης: '+err.message, 'warn'); }
+  } catch(err) {
+    _wnSync('wn-sync-'+rowId,'err','Η σύνδεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση');
+    toast('Σφάλμα σύνδεσης: '+err.message, 'warn');
+  }
 }
 
 async function _wnUnmatch(rowId, snId) {
@@ -810,11 +861,16 @@ async function _wnUnmatch(rowId, snId) {
     WNATL.rows.push(_wnBuildRow(snOrd, 'southnorth'));
   }
   _wnPaint();
+  _wnSync('wn-sync-'+rowId,'pend','Αφαίρεση σύνδεσης…'); // T3
   try {
     await atSafePatch(TABLES.NAT_LOADS, row.orderIds[0], { 'Matched Load': '' });
     await atSafePatch(TABLES.NAT_LOADS, snId, { 'Matched Load': '' });
+    _wnSync('wn-sync-'+rowId,'ok','Αφαιρέθηκε');
     toast('Σύνδεση αφαιρέθηκε');
-  } catch(err) { toast('Σφάλμα: '+err.message, 'warn'); }
+  } catch(err) {
+    _wnSync('wn-sync-'+rowId,'err','Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση');
+    toast('Σφάλμα: '+err.message, 'warn');
+  }
 }
 
 /* ── POPOVER ─────────────────────────────────────────────────────── */
@@ -823,12 +879,29 @@ function _wnOpenPopover(e, rowId) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const { trucks, trailers, drivers, partners } = WNATL.data;
 
+  // Π2 (Wave 2, twin of intl): weekly load per asset from in-memory rows.
+  const _busy={};
+  {
+    const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
+    WNATL.rows.forEach(r=>{
+      if(r.id===rowId) return;
+      const o=all.find(x=>x.id===r.orderIds?.[0]); if(!o) return;
+      const dt=o.fields['Loading DateTime'];
+      const entry={d:dt?toLocalDate(dt).slice(5):'', dest:(_wnNlDeliverySummary(o.fields)||o.fields['Client']||'').slice(0,18)};
+      if(r.truckId){(_busy[r.truckId]=_busy[r.truckId]||[]).push(entry);}
+      if(r.driverId){(_busy[r.driverId]=_busy[r.driverId]||[]).push(entry);}
+    });
+  }
+
   const mkDrop = (px, arr, selId, ph, wide) => {
     const uid  = `${px}_wn_${rowId}`;
     const sel  = arr.find(x => x.id===selId)?.label||'';
+    const showBusy=(px==='tk'||px==='dr');
     const opts = arr.map(x => {
       const l = (x.label||'').replace(/"/g,'&quot;');
-      return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
+      const b = showBusy?_busy[x.id]:null;
+      const sub = b&&b.length?`<div class="wi-sdo-sub">δεσμ. ${b.length}× · ${b[0].d} → ${escapeHtml(b[0].dest)}</div>`:'';
+      return `<div class="wi-sdo${sub?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${sub}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp${wide?' wi-pop-inp-wide':''} wi-sdi"
@@ -947,6 +1020,11 @@ async function _wnSaveFromPopover(rowId) {
   const isPartner = !!row.partnerId;
   if (!isPartner && !row.truckId) { toast('Επίλεξε Τράκτορα ή Συνεργάτη', 'warn'); return; }
   if (isPartner && !row.partnerRate) { toast('Το Κόμιστρο είναι υποχρεωτικό για Συνεργάτη', 'warn'); return; }
+  // T1 (Wave 2, twin): same-day double-booking → soft confirm.
+  if (!isPartner) {
+    const conflict=_wnSameDayConflict(row);
+    if (conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
+  }
 
   const btn  = document.getElementById(`wn-pop-btn-${rowId}`);
   const spin = document.getElementById(`wn-pop-spin-${rowId}`);

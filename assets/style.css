@@ -2127,6 +2127,25 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk-phase--live   { background: rgba(16,185,129,0.12); color: var(--success); }
 .wk-phase--closed { background: var(--bg-hover); color: var(--text-dim); }
 
+/* ── Wave 2 (T3/T4/T5/Π2) ─────────────────────────────────────────── */
+/* T3: per-row sync state under the row number. */
+.wi-sync { display:block; font-size:10px; line-height:1; margin-top:2px; min-height:10px; }
+.wi-sync--pend { color: var(--text-dim); }
+.wi-sync--ok   { color: var(--success); }
+.wi-sync--err  { color: var(--danger); font-weight:700; cursor:help; }
+/* T5: execution flags (current week) + today separator. */
+.wi-exec { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-left:6px; white-space:nowrap; }
+.wi-exec--late  { background: var(--danger-bg, rgba(220,38,38,0.12)); color: var(--danger); }
+.wi-exec--stale { background: var(--warning-soft); color: var(--warning); }
+.wi-dsep--today { box-shadow: inset 3px 0 0 var(--accent); }
+.wi-dsep-todaytag { background: var(--accent); color:#fff; font-size:9px; font-weight:800; letter-spacing:.8px; padding:1px 7px; border-radius:8px; margin-left:8px; }
+/* T4: cross-week visibility chip. */
+.wi-cross { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-left:6px; background: var(--accent-light); color: var(--accent); white-space:nowrap; cursor:help; }
+/* Π2: second line inside truck/driver dropdown options — where the asset is
+   already committed this week. 10px, no new column (density rule). */
+.wi-sdo-sub { font-size:10px; color:var(--warning); opacity:.95; margin-top:1px; }
+.wi-sdo--busy { border-left:2px solid var(--warning-soft); }
+
 /* legacy compat */
 .pt { font-size:var(--text-xs); font-weight:700; white-space:nowrap; overflow:hidden;
   text-overflow:ellipsis; max-width:200px; }

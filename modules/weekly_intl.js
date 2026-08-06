@@ -449,6 +449,7 @@ function _wiPaint(){
           ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} χωρίς ανάθεση</span>`:''}
           ${impNoVehicle>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.06);color:var(--danger);border:1px dashed rgba(220,38,38,0.45)" title="Εισαγωγές χωρίς δικό τους όχημα — ξεχωριστός μετρητής από τα exports">${impNoVehicle} εισαγ. χωρίς όχημα</span>`:''}
           <span style="color:var(--text-dim);font-size:11px">${matched} ταιριασμένα · ${unmatched} ελεύθερα</span>
+          <span id="wi-crossweek-in"></span>
         </div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
@@ -513,6 +514,22 @@ function _wiPaint(){
     const el1 = document.getElementById('wi-cc-vswk');
     if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
   }).catch(e => console.warn('CC async widgets:', e));
+
+  // T4 (Wave 2), the blind half: exports PLANNED in W+1 that LOAD inside this
+  // week — invisible here because exports filter by delivery week (PREMORTEM
+  // T4: «η φόρτωση χάνεται τη στιγμή που συμβαίνει»). Current week only, one
+  // filtered fetch; failure just leaves the chip empty.
+  if (week === _wiCurrentWeek()) {
+    const ws2=_wiWeekStart(week), we2=new Date(ws2); we2.setDate(ws2.getDate()+6);
+    const f2=`AND({Type}='International',{Direction}='Export',{Week Number}=${week+1},IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws2.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we2.getTime()+86400000))}'))`;
+    safeFetch(() => atGetAll(TABLES.ORDERS,{filterByFormula:f2,fields:['Loading Summary','Loading DateTime']},false), 'weekly intl: cross-week incoming', [])
+    .then(recs => {
+      const el=document.getElementById('wi-crossweek-in');
+      if(!el||didFail(recs)||!recs.length) return;
+      const names=recs.slice(0,3).map(r=>_wiClean(r.fields['Loading Summary']||'').slice(0,18)).filter(Boolean).join(' · ');
+      el.outerHTML=`<span class="entity-count-chip" style="background:var(--accent-light);color:var(--accent);border-color:transparent" title="Πλάνο W${week+1} με φόρτωση ΜΕΣΑ σε αυτή την εβδομάδα — δες τη W${week+1} για ανάθεση. ${names}">↦ ${recs.length} φορτών${recs.length>1?'ουν':'ει'} τώρα · πλάνο W${week+1}</span>`;
+    }).catch(e => console.warn('cross-week incoming:', e));
+  }
 }
 
 
@@ -546,14 +563,19 @@ function _wiAllRowsHTML(){
   // Sort groups by raw date
   const sorted=Object.values(groups).sort((a,b)=>a.rawDate.localeCompare(b.rawDate));
 
+  // T5 (Wave 2): mark TODAY's separator so the eye lands on «τώρα» first.
+  const todayKey=(typeof localToday==='function')?localToday():toLocalDate(new Date());
+
   sorted.forEach(grp=>{
     const expCount=grp.exps.length;
     const impCount=grp.imps.length;
+    const isToday=grp.rawDate===todayKey;
 
     // Separator — same dark navy style as before
-    html+=`<div class="wi-dsep">
+    html+=`<div class="wi-dsep${isToday?' wi-dsep--today':''}">
       <span class="wi-dsep-lbl">Date</span>
       <span class="wi-dsep-date">${grp.lbl}</span>
+      ${isToday?'<span class="wi-dsep-todaytag">ΣΗΜΕΡΑ</span>':''}
       ${expCount?`<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${expCount} exp</span>`:''}
       ${impCount?`<span class="wi-dsep-n" style="color:rgba(14,165,233,0.7);margin-left:2px">${impCount} imp</span>`:''}
     </div>`;
@@ -731,6 +753,50 @@ function _wiBadges(f){
   return b.join('');
 }
 
+/* ── WAVE 2 HELPERS (T3/T4/T5/T1 — PREMORTEM) ─────────────────────── */
+// T5: execution flags, CURRENT week only. A load whose time passed with no
+// assignment (or stuck on Assigned) turns visible in the morning — the
+// partner no-show stops hiding until the afternoon.
+function _wiExecChip(f, saved){
+  if(WINTL.week!==_wiCurrentWeek()||!f) return '';
+  const ld=f['Loading DateTime']; if(!ld) return '';
+  if(new Date(ld)>new Date()) return '';
+  const st=f['Status']||'';
+  if(!saved) return '<span class="wi-exec wi-exec--late" title="Η ώρα φόρτωσης πέρασε χωρίς ανάθεση">⚠ φόρτωση χωρίς ανάθεση</span>';
+  if(st==='Assigned') return '<span class="wi-exec wi-exec--stale" title="Η ώρα φόρτωσης πέρασε και η κατάσταση μένει Assigned — έλεγξε αν ξεκίνησε">⏱ πέρασε η φόρτωση · χωρίς εξέλιξη</span>';
+  return '';
+}
+// T4: exports live in their DELIVERY week — flag the ones loading in another
+// week, because in that week's view this line does NOT exist.
+function _wiWeekOf(dt){ if(!dt) return null; try{const d=new Date(dt),y=d.getFullYear(),j=new Date(y,0,1); return Math.ceil(((d-j)/864e5+j.getDay()+1)/7);}catch{return null;} }
+function _wiCrossChip(f){
+  const lw=_wiWeekOf(f?.['Loading DateTime']);
+  if(lw==null||lw===WINTL.week) return '';
+  return `<span class="wi-cross" title="Η φόρτωση πέφτει στη W${lw} — στην προβολή της W${lw} αυτή η γραμμή δεν εμφανίζεται (φίλτρο ανά εβδομάδα ΠΑΡΑΔΟΣΗΣ)">↤ φορτώνει W${lw}</span>`;
+}
+// T3: per-row sync state — what you see has (or has not) reached the server.
+function _wiSync(id, state, msg){
+  const el=document.getElementById(id); if(!el) return;
+  el.className='wi-sync'+(state?' wi-sync--'+state:'');
+  el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
+  el.title=msg||'';
+  if(state==='ok') setTimeout(()=>{ if(el.textContent==='✓'){el.textContent='';el.className='wi-sync';} },4000);
+}
+// T1: same-day double-booking guard. Reuse across DIFFERENT days is normal
+// fleet work (W21 had legit ×2) — only a same-day clash asks for a confirm.
+function _wiSameDayConflict(row){
+  const myO=WINTL.data.exports.find(x=>x.id===row.orderIds?.[0])||WINTL.data.imports.find(x=>x.id===row.orderId);
+  const myD=toLocalDate(myO?.fields['Loading DateTime']||''); if(!myD) return null;
+  for(const r of WINTL.rows){ if(r.id===row.id) continue;
+    if(!r.truckId&&!r.driverId) continue;
+    const o=WINTL.data.exports.find(x=>x.id===r.orderIds?.[0])||WINTL.data.imports.find(x=>x.id===r.orderId);
+    if(toLocalDate(o?.fields['Loading DateTime']||'')!==myD) continue;
+    if(row.truckId&&r.truckId===row.truckId) return `Το φορτηγό ${row.truckLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
+    if(row.driverId&&r.driverId===row.driverId) return `Ο οδηγός ${row.driverLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
+  }
+  return null;
+}
+
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
   const exps   =row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
@@ -811,6 +877,7 @@ function _wiRowHTML(row,i){
     <div class="wi-compact" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
       <div class="wi-cn">
         <span class="wi-num">${i+1}</span>
+        <span class="wi-sync" id="wi-sync-${row.id}"></span>
       </div>
       <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)" style="position:relative">
         <div class="wi-route">
@@ -825,6 +892,7 @@ function _wiRowHTML(row,i){
           ${pals?`<span>${pals} pal</span>`:''}
           ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(ref)}</span>`:''}
           ${_wiBadges(primary?.fields||{})}
+          ${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}
         </div>
       </div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
@@ -1171,6 +1239,12 @@ async function _wiSaveImportMatch(rowId,impId){
 
   _wiPaint();
 
+  // T3 (Wave 2): the optimistic paint above shows «matched» BEFORE the server
+  // write. The sync slot tells the truth per row: ⟳ writing → ✓ saved / ⚠
+  // failed (kept visible — this was PREMORTEM T3: UI said matched, DB didn't).
+  _wiSync('wi-sync-'+rowId,'pend','Αποθήκευση ταιριάσματος…');
+  let matchFailed=false;
+
   // Save to ALL export orders in group
   for(const orderId of row.orderIds){
     try{
@@ -1183,10 +1257,13 @@ async function _wiSaveImportMatch(rowId,impId){
           .catch(e => console.warn('[wi match sync]', e));
       }
     }catch(err){
+      matchFailed=true;
       console.error('Import match save failed:',err.message);
       toast('Import save failed: '+err.message.slice(0,50),'warn');
     }
   }
+  _wiSync('wi-sync-'+rowId, matchFailed?'err':'ok',
+    matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση':'Αποθηκεύτηκε');
 }
 
 async function _wiRemoveImport(rowId){
@@ -1201,6 +1278,7 @@ async function _wiRemoveImport(rowId){
   if(impRow) impRow.matchedTo=null;
 
   _wiPaint();
+  _wiSync('wi-sync-'+rowId,'pend','Αφαίρεση ταιριάσματος…'); // T3
 
   // Clear from ORDERS (patch export order)
   let ok=true;
@@ -1217,6 +1295,8 @@ async function _wiRemoveImport(rowId){
       ok=false;
     }
   }
+  _wiSync('wi-sync-'+rowId, ok?'ok':'err',
+    ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση'); // T3
   if(ok){
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
@@ -1375,12 +1455,29 @@ function _wiOpenPopover(e,rowId){
   const fromStr=_wiClean(primaryExp?.fields['Loading Summary']||'').slice(0,28);
   const toStr  =_wiClean(primaryExp?.fields['Delivery Summary']||'').slice(0,28);
 
+  // Π2 (Wave 2): weekly load per truck/driver, from rows ALREADY in memory —
+  // zero new fetches. The dropdown answers «πού είναι ήδη πιασμένο» inline,
+  // which today lives in phones/Excel/memory (00 §3, gap G1).
+  const _busy={};
+  WINTL.rows.forEach(r=>{
+    if(r.id===rowId) return;
+    const o=WINTL.data.exports.find(x=>x.id===r.orderIds?.[0])||WINTL.data.imports.find(x=>x.id===r.orderId);
+    if(!o) return;
+    const dt=o.fields['Loading DateTime'];
+    const entry={d:dt?toLocalDate(dt).slice(5):'', dest:_wiClean(o.fields['Delivery Summary']||o.fields['Loading Summary']||'').slice(0,18)};
+    if(r.truckId){(_busy[r.truckId]=_busy[r.truckId]||[]).push(entry);}
+    if(r.driverId){(_busy[r.driverId]=_busy[r.driverId]||[]).push(entry);}
+  });
+
   const mkDrop=(px,arr,selId,ph,wide)=>{
     const uid=`${px}_p_${rowId}`;
     const sel=arr.find(x=>x.id===selId)?.label||'';
+    const showBusy=(px==='tk'||px==='dr');
     const opts=arr.map(x=>{
       const l=(x.label||'').replace(/"/g,'&quot;');
-      return `<div class="wi-sdo" data-id="${x.id}" data-lbl="${l}">${l}</div>`;
+      const b=showBusy?_busy[x.id]:null;
+      const sub=b&&b.length?`<div class="wi-sdo-sub">δεσμ. ${b.length}× · ${b[0].d} → ${escapeHtml(b[0].dest)}</div>`:'';
+      return `<div class="wi-sdo${sub?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${sub}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
       <input type="text" class="wi-pop-inp${wide?' wi-pop-inp-wide':''} wi-sdi"
@@ -1496,6 +1593,12 @@ async function _wiSaveFromPopover(rowId){
   if(!isPartner&&!row.truckId){toast('Select Truck or Partner','warn');return;}
   if(isPartner&&!row.partnerRate){toast('Export Rate is required for Partner','warn');return;}
   if(isPartner&&row.importId&&!row.partnerRateImp){toast('Import Rate is required for Partner','warn');return;}
+  // T1 (Wave 2): same-day double-booking → soft confirm, never a hard block —
+  // the dispatcher may know better (split day, relay), but not silently.
+  if(!isPartner){
+    const conflict=_wiSameDayConflict(row);
+    if(conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
+  }
   const btn=document.getElementById(`wi-pop-btn-${rowId}`);
   const spin=document.getElementById(`wi-pop-spin-${rowId}`);
   if(btn){btn.disabled=true;if(spin)spin.style.display='block';}
