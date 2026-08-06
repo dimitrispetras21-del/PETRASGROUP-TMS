@@ -319,7 +319,16 @@ function badges(f){
 }
 
 async function loadAll(){
-  if(!orderId){document.getElementById('loading').innerHTML='<span style="color:#DC2626">Missing orderId</span>';return;}
+  if(!orderId){
+    // PN-1: ήταν σκέτο «Missing orderId» χωρίς εξήγηση/επιστροφή — άστυλο
+    // αδιέξοδο για όποιον άνοιγε τη σελίδα από παλιό/σπασμένο σύνδεσμο.
+    document.getElementById('loading').innerHTML=
+      '<div style="max-width:420px;margin:80px auto;text-align:center;font-family:\'DM Sans\',sans-serif">'
+      +'<div style="font-family:\'Syne\',sans-serif;font-size:18px;font-weight:700;margin-bottom:8px">Λείπει ο κωδικός παραγγελίας</div>'
+      +'<div style="font-size:13px;color:#475569;line-height:1.6">Αυτή η σελίδα εκτύπωσης ανοίγει από το κουμπί εγγράφων μιας παραγγελίας στο TMS — όχι απευθείας.</div>'
+      +'<a href="app.html" style="display:inline-block;margin-top:16px;padding:8px 18px;border:1px solid #CBD5E1;border-radius:8px;color:#0284C7;text-decoration:none;font-size:13px">Επιστροφή στο TMS</a>'
+      +'</div>';
+    return;}
   // Cold-open guard (S-1 cutover): this page reads through the Worker with the
   // app's JWT. No JWT = every fetch would 401 into a blank page; say why instead.
   if(!localStorage.getItem('tms_jwt')){
