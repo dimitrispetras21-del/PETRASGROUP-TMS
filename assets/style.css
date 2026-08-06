@@ -681,6 +681,10 @@ body {
      = FAB height + its offset + breathing room, so scrolled-to-end content
      always clears it. */
   padding: 32px 36px 148px;
+}
+/* PU-8: η σελίδα-iframe (weekly_pickups) γεμίζει ήδη ακριβώς το ύψος —
+   το D-8 padding εκεί απλώς δημιουργεί περιττό δεύτερο scroll. */
+.content:has(> iframe.embed) { padding: 0 0 0 0;
   background: var(--bg);
   scrollbar-width: thin;
   scrollbar-color: #D1D5DB transparent;
