@@ -395,7 +395,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var legLabel=isExport?'Export':'Import';
   var wk=f['Week Number']||f['Week Number']||'—';
   var rate=eur(f['Partner Rate']);
-  var orderNo=f['Order Number']||orderId.slice(-6).toUpperCase();
+  var orderNo=f['Order Number']||String(orderRec.id||orderId||'').slice(-6).toUpperCase(); // group-safe (Wave 3 fix)
   var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
 
   // Veroia
