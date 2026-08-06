@@ -1577,3 +1577,20 @@ function _printWeekShell(title, innerHtml) {
   setTimeout(() => win.print(), 500);
 }
 window._printWeekShell = _printWeekShell;
+
+// ── Β.3-6: explicit sheet choice for order printouts ────────
+// The partner sheet is a CHOICE, not a consequence of assignment state.
+// No partner on the row → straight to the driver sheet. Partner present →
+// the dispatcher picks which document leaves the building.
+function printOrderSheet(orderId, leg, hasPartner) {
+  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  const go = sheet => window.open(`${base}?orderId=${orderId}&leg=${leg}&sheet=${sheet}`, '_blank');
+  if (!hasPartner) { go('driver'); return; }
+  if (typeof openModal !== 'function') { go('partner'); return; }
+  openModal('Ποιο έντυπο;',
+    `<div style="color:var(--text-mid);font-size:14px;line-height:1.6">Η γραμμή έχει ανάθεση σε συνεργάτη. Το <b>Φύλλο Συνεργάτη</b> είναι καθαρό από εσωτερικές σημάνσεις — αυτό φεύγει με email.</div>`,
+    `<button class="btn btn-ghost" onclick="closeModal();window.__psGo('driver')">Φύλλο Οδηγού</button>
+     <button class="btn btn-primary" onclick="closeModal();window.__psGo('partner')">Φύλλο Συνεργάτη</button>`);
+  window.__psGo = go;
+}
+window.printOrderSheet = printOrderSheet;

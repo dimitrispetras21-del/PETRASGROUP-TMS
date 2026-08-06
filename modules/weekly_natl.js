@@ -873,8 +873,8 @@ function _wnOpenSnPopover(e, snId, rowId) {
 
 function _wnPrintSn(orderId) {
   if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
-  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  window.open(`${base}?orderId=${orderId}&leg=import`, '_blank');
+  const row = WNATL.rows.find(r => r.orderId===orderId || r.matchedId===orderId);
+  printOrderSheet(orderId, 'import', !!(row && row.partnerLabel));
 }
 
 function _wnPopoverOutside(e) {
@@ -1214,8 +1214,7 @@ function _wnPrint(rowId, leg) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const orderId = leg==='northsouth' ? row.orderIds[0] : row.matchedId;
   if (!orderId) { toast('Δεν υπάρχει εντολή για εκτύπωση','warn'); return; }
-  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  window.open(`${base}?orderId=${orderId}&leg=${leg==='northsouth'?'export':'import'}`, '_blank');
+  printOrderSheet(orderId, leg==='northsouth'?'export':'import', !!row.partnerLabel);
 }
 
 // Expose functions used from onclick/oninput/onfocus handlers

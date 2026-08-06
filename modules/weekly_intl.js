@@ -1059,8 +1059,8 @@ async function _wiUnmatch(impId){
 
 // Print import
 function _wiPrintImp(impId){
-  const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  window.open(`${base}?orderId=${impId}&leg=import`,'_blank');
+  // Import χωρίς δική του ανάθεση row εδώ — φύλλο οδηγού
+  printOrderSheet(impId, 'import', false);
 }
 
 // Drop on compact row import cell → auto-save
@@ -1737,8 +1737,8 @@ function _wiSplit(rowId){
 function _wiPrint(rowId, leg){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const orderId = leg==='export' ? row.orderIds[0] : (row.importId||row.orderIds[0]);
-  const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  window.open(`${base}?orderId=${orderId}&leg=${leg}`,'_blank');
+  // Β.3-6: ρητή επιλογή εντύπου όταν υπάρχει συνεργάτης (helper στο utils)
+  printOrderSheet(orderId, leg, !!row.partnerLabel);
 }
 
 function _wiToggleGroup(rowId){
