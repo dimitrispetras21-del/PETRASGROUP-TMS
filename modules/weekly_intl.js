@@ -826,7 +826,9 @@ function _wiRowHTML(row,i){
      <span class="wk3-meta">${impPals?impPals+'p':''} ${_wiBadges(imp.fields)}</span>
      <button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
     :'';
-  const gapCell=row.saved&&!hasPartner&&!imp;
+  // gap = ΔΕΝ έχει δηλωθεί import (row.importId) — όχι «δεν βρέθηκε το record
+  // στη φετινή εβδομάδα» (matched import άλλης εβδομάδας ≠ κενό γυρισμού)
+  const gapCell=row.saved&&!hasPartner&&!row.importId;
 
   const vsExp=!!primary?.fields['Veroia Switch'];
   return `
