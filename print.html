@@ -492,7 +492,9 @@ function generatePDF(orderRec){
   var docEl=document.getElementById('doc');
   docEl.style.display='block';
   docEl.innerHTML=html;
-  setTimeout(()=>window.print(),700);
+  // &noprint=1: άνοιγμα για προεπισκόπηση/έλεγχο χωρίς διάλογο εκτύπωσης
+  // (π.χ. λογιστήριο που απλώς διαβάζει, ή αυτοματοποιημένος έλεγχος).
+  if(params.get('noprint')!=='1') setTimeout(()=>window.print(),700);
 }
 
 loadAll();
