@@ -318,22 +318,29 @@ function _oiOnScroll() {
   });
 }
 
+// OI-6: one source of truth for «which filters are narrowing the list» —
+// shared by the empty state (OI-4) and the always-visible strip above the
+// table, so the two can never disagree.
+function _intlActiveFilters() {
+  const active = [];
+  if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
+  if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
+  if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
+  if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
+  if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
+  if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
+  if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
+  else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
+  return active;
+}
+
 function _renderIntlTable(records) {
   const wrap = document.getElementById('intlTable');
+  const activeF = _intlActiveFilters();
   if (!records.length) {
-    // OI-4: «Καμία παραγγελία» χωρίς να λέει ΠΟΙΑ φίλτρα κρύβουν τις 124
-    // εγγραφές είναι αδιέξοδο. Τώρα ονομάζει τα ενεργά και προσφέρει έξοδο.
-    const active = [];
-    if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
-    if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
-    // Το select κατάστασης γράφει στο κλειδί '_status' (intlFilter('_status',…)),
-    // όχι 'Status'. Ο live έλεγχος έδειξε ότι η πρώτη γραφή το έχανε.
-    if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
-    if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
-    if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
-    if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
-    if (_intlPeriod === '60')     active.push('τελευταίες 60 ημέρες');
-    else if (_intlPeriod === '180') active.push('τελευταίοι 6 μήνες');
+    // OI-4: the empty state names the filters hiding the data (list built once
+    // in _intlActiveFilters — see OI-6).
+    const active = activeF;
     const hasFilters = active.length > 0;
     wrap.innerHTML = (typeof showEmpty === 'function') ? showEmpty({
       illustration: 'order',
@@ -360,7 +367,15 @@ function _renderIntlTable(records) {
   }).join('');
 
   const totalH = sortedRecs.length * _OI_ROW_H;
-  wrap.innerHTML = `
+  // OI-6: with results SHOWING, active filters were invisible — the page could
+  // land on «0 orders» (or 21 of 124) with nothing saying why. Slim strip
+  // above the table names them and offers the existing clear action.
+  const filterStrip = activeF.length ? `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 16px;font-size:11px;color:var(--text-dim);border-bottom:1px solid var(--border)">
+      <span style="font-weight:600">Φίλτρα:</span> ${activeF.join(' · ')}
+      <button type="button" onclick="_intlClearFilters()" style="margin-left:auto;background:none;border:1px solid var(--border-mid);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text-mid);cursor:pointer">Καθαρισμός</button>
+    </div>` : '';
+  wrap.innerHTML = `${filterStrip}`+`
     <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
       <table style="table-layout:fixed;width:100%">
         <thead><tr>${ths}</tr></thead>
