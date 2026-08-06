@@ -2179,6 +2179,50 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk-driver-chip { font-size:var(--text-xs); color:var(--text-mid); background:var(--bg-card,#fff); border:1px solid var(--border); padding:2px 9px; border-radius:9px; white-space:nowrap; }
 .wk-driver-chip b { color:var(--text); font-weight:700; }
 
+/* ═══ WEEKLY v3 (BUILD Φάση Α) — scoped .wk3-*, ΔΕΝ αγγίζει τα κοινά wi-* ═══
+   Εγκεκριμένο πρωτότυπο v3.1: sheet tabs, tally μίας γραμμής, λογιστικός
+   ρυθμός. Ταυτότητα: navy #0B1929 tokens, Syne+DM Sans. */
+.wk3-mast{display:flex;align-items:center;gap:14px;background:var(--bg-card,#fff);
+  border:1px solid var(--border-mid);border-radius:10px;padding:0 14px;min-height:50px;
+  margin-bottom:10px;flex-wrap:wrap}
+.wk3-tabs{display:flex;align-items:flex-end;gap:2px;align-self:stretch;padding-top:10px}
+.wk3-tab{font-family:'Syne',sans-serif;font-weight:700;font-size:11.5px;color:var(--text-mid);
+  padding:7px 12px 8px;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;
+  position:relative;top:1px;transition:.15s;background:none;cursor:pointer}
+.wk3-tab:hover{color:var(--text);background:var(--accent-light)}
+.wk3-tab.on{background:var(--bg);border-color:var(--border-mid);color:var(--navy-mid,#0B1929)}
+.wk3-tab.on::after{content:'';position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
+.wk3-step{align-self:center;color:var(--text-dim);padding:4px 7px;border-radius:6px;cursor:pointer;background:none}
+.wk3-step:hover{background:var(--accent-light);color:var(--accent)}
+.wk3-tally{margin-left:auto;display:flex;align-items:center;gap:13px;white-space:nowrap;flex-wrap:wrap}
+.wk3-t{font-size:11.5px;color:var(--text-mid);background:none;border:none;padding:0}
+.wk3-t b{font-family:'Syne',sans-serif;font-size:13px;color:var(--text)}
+.wk3-t.alert,.wk3-t.alert b{color:var(--danger)}
+.wk3-t.alert{cursor:pointer;border-bottom:1px dashed rgba(220,38,38,.5)}
+.wk3-t.gap,.wk3-t.gap b{color:var(--accent)} .wk3-t.gap{cursor:pointer}
+.wk3-acts{display:flex;gap:2px;border-left:1px solid var(--border);padding-left:10px}
+.wk3-ab{font-size:11.5px;font-weight:600;color:var(--text-mid);padding:6px 9px;border-radius:6px;background:none;cursor:pointer;transition:.12s}
+.wk3-ab:hover{color:var(--text);background:var(--accent-light)}
+.wk3-sub{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.wk3-sub .entity-search-wrap{flex:0 1 340px}
+.wk3-range{font-size:11.5px;color:var(--text-dim);margin-left:auto;white-space:nowrap}
+/* Φάση Α2 — v3 «καθολικό» πάνω στα υπάρχοντα containers (scoped, τα wi-*
+   του National άθικτα): τυπογραφικές μέρες, λιτές κεφαλίδες, κόκκινα κενά. */
+.wk3 .wi-dsep{background:var(--bg-card,#fff) !important;border-top:1px solid var(--border-mid);border-bottom:1px solid var(--border)}
+.wk3 .wi-dsep-lbl{display:none}
+.wk3 .wi-dsep-date{font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--navy-mid,#0B1929)}
+.wk3 .wi-dsep--today{box-shadow:inset 3px 0 0 var(--accent), inset 0 -2px 0 var(--accent)}
+.wk3 .wi-dsep--today .wi-dsep-date{color:var(--accent)}
+.wk3 .wi-dsep .wi-dsep-n{color:var(--text-dim) !important}
+.wk3 .wi-head{background:var(--bg-card,#fff) !important;border-bottom:1px solid var(--border-mid)}
+.wk3 .wi-hc{color:var(--text-dim) !important;font-size:9.5px;letter-spacing:2px}
+.wk3 .wi-hc span[style*="background:#091828"]{background:var(--navy-mid,#0B1929) !important;color:#fff !important}
+.wk3-ld{font-weight:700;color:var(--text-mid);font-size:11px;margin-right:6px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.wk3-vsb{font-size:7.5px;font-weight:800;color:#fff;background:var(--navy-mid,#0B1929);border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:1px}
+.wk3-ci-empty{width:100%;height:100%;display:flex;align-items:center;margin:-6px -12px;padding:6px 12px;min-height:46px}
+.wk3-ci-gap{background:rgba(220,38,38,0.07);cursor:pointer}
+.wk3-ci-gap:hover{background:rgba(220,38,38,0.13)}
+
 /* Π3 (Wave 3): lane rate history strip inside the assignment popover. */
 .wi-lane-hist { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 14px 10px; }
 .wi-lane-hist:empty { display:none; }
