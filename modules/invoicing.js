@@ -226,7 +226,7 @@ function _renderInvLayout(c) {
 
     <div style="display:flex;gap:16px;align-items:flex-start">
       <div style="flex:1;min-width:0">
-        <div class="table-wrap">
+        <div class="table-wrap table-wrap--sticky">
           <table>
             <thead><tr id="invThead"></tr></thead>
             <tbody id="invBody"></tbody>

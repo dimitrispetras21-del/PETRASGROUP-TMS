@@ -910,6 +910,14 @@ thead th {
   background: #F0F5FA;
 }
 
+/* IN-7: sticky κεφαλίδα για μακριούς πίνακες (invoicing: 2.819px). Δικός
+   της modifier γιατί το .table-wrap έχει overflow:hidden, που ΑΚΥΡΩΝΕΙ το
+   position:sticky (το κοντινότερο clip box γίνεται το «scrollport» του και
+   δεν κυλά ποτέ). Το th έχει ήδη συμπαγές φόντο ώστε να περνά πάνω από τις
+   γραμμές. z-index:2 = η υπάρχουσα βαθμίδα «κεφαλίδα πάνω από sticky κελί». */
+.table-wrap--sticky { overflow: visible; }
+.table-wrap--sticky thead th { position: sticky; top: 0; z-index: 2; }
+
 tbody td {
   padding: 13px 18px;
   font-size: 13.5px;
