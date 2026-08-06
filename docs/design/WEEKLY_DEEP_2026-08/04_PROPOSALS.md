@@ -152,9 +152,29 @@ row · στάση φόρτωσης = «Veroia, Greece» — σκέτη διεύ�
 §Β2 · «Vermion» μόνο ως εταιρική επωνυμία (header/υπογραφή) · rate ορατό σε
 σκούρο (PN-3 fix live) · Date με ώρα · stop fields 13px · καμία τιμή πελάτη/
 περιθώριο · 983px ≈ μία A4 (φυσικό χαρτί εκκρεμεί — γραφείο).
-_Εκκρεμούν στο Κύμα 3 (⛔ αποφάσεις owner):_ Π1 πεδίο DB για groupage ·
-σχήμα LOCATIONS για ώρες λειτουργίας/μέρες παράδοσης · μετά: Π3 ιστορικό
-τιμών (υλοποίηση μαζί με Π1 στο feat/weekly-wave3).
+_Αποφάσεις owner (8/8 βράδυ):_ **Α** (Group ID text στα ORDERS) + **ΟΚ**
+στα 2 πεδία LOCATIONS.
+
+**Κύμα 3 — ΚΩΔΙΚΑΣ ΣΤΟ MAIN (merge `e5c13a2` + hotfixes `d001861`,
+`ca36774`).**
+- Π1: merge/split γράφουν κοινό `Group ID` (sync ⟳/✓/⚠), `_wiBuildRows`
+  ξαναχτίζει την ομάδα, κουμπί «⎙ ομάδα ×N» → print.html `?orderIds=` με
+  διαδοχικά έγγραφα/page-break. Ανθεκτικό όσο λείπει το πεδίο (ρητό ⚠).
+- Φύλλο Οδηγού: Opening Hours/Delivery Days στα stop cards όταν υπάρξουν
+  (fetch με fallback). natl groupage: καλύπτεται ήδη από CONS_LOADS.
+- Π3: ιστορικό 3 τελευταίων κομίστρων στο popover (intl: γραμμή χώρα→χώρα·
+  natl: ανά πελάτη). Live διόρθωση: ο facade ΔΕΝ δέχεται αριθμητικό «>»
+  (422, μετρημένο) → `{Is Partner Trip}=1` + client-side check (25 records
+  με rate επιβεβαιωμένα χειροκίνητα στο παραγωγικό).
+_Live επαληθεύτηκε:_ το group-print pipeline μέχρι που ανέδειξε bug
+(orderNo από null global — διορθώθηκε `ca36774`)· το lane fetch χειροκίνητα.
+_ΕΚΚΡΕΜΕΙ live μάτι (η ουρά Pages κόλλησε >20′ με πολλαπλά builds):_
+(α) ομαδική εκτύπωση 2 εγγράφων με το fix· (β) Π3 strip ορατό στο popover·
+(γ) regression single-order εκτύπωσης. Έλεγχος με:
+`print.html?orderIds=<a>,<b>&leg=export&sheet=driver&noprint=1`.
+_Backend βήματα (owner/backend session):_ `WAVE3_BACKEND.md` — DDL 3 στηλών
++ 3 γραμμές facade map· μετά από αυτά το groupage επιβιώνει το refresh
+χωρίς άλλη αλλαγή frontend. Follow-up: φόρμα Locations (2 πεδία).
 
 ## ΚΥΜΑ 3 — «Groupage οντότητα + έντυπα» _(θέλουν αποφάσεις owner)_
 Π1 (Group ID στη βάση + rebuild + ΕΝΙΑΙΑ εκτύπωση ομάδας — απόφαση πεδίου DB) ·
