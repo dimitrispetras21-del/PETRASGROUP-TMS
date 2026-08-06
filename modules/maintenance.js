@@ -376,6 +376,8 @@ function _expiryFilterRows(rows) {
   return out;
 }
 function _expiryPaint() {
+  // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
+  if (typeof currentPage !== 'undefined' && currentPage !== 'maint_expiry') return;
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
 
@@ -633,6 +635,8 @@ async function renderServiceRecords() {
 function _svcSetFilter(k, v) { _svcFilters[k] = v; _svcPaint(); }
 
 function _svcPaint() {
+  // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
+  if (typeof currentPage !== 'undefined' && currentPage !== 'maint_svc') return;
   let records = [...MAINT.history].sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
 
   // Apply filters
@@ -1101,6 +1105,8 @@ function _historyPaint(vType) {
 
   const _i = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
 
+  // SH-2/MA-3 guard: η σελίδα ιστορικού γράφει μετά από αργό fetch.
+  if (typeof currentPage !== 'undefined' && currentPage !== (vType === 'trucks' ? 'maint_trucks' : 'maint_trailers')) return;
   document.getElementById('content').innerHTML = `
     <div class="dash-wrap">
       <div class="dash-header">
@@ -1555,6 +1561,12 @@ async function renderMaintDash() {
       compliancePct,
     });
 
+    // SH-2/MA-3: the fetches above take seconds. If the user has navigated
+    // away meanwhile, writing here would paint THIS page under ANOTHER page's
+    // title — reproduced live 8/8 (topbar «Drivers», content «Επισκόπηση
+    // Στόλου»). currentPage is the router's source of truth.
+    if (typeof currentPage !== 'undefined' && currentPage !== 'maint_dash') return;
+
     // ═══ RENDER ═══
     c.innerHTML = `
       <div class="dash-wrap">
@@ -1919,6 +1931,8 @@ function _mreqExpiryAlerts() {
 }
 
 function _mreqPaint() {
+  // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
+  if (typeof currentPage !== 'undefined' && currentPage !== 'maint_req') return;
   // H8 fix: normalize Greek priority strings (NFC) to handle Unicode variants
   // H7 note: missing priority defaults to 'Κανονικό' (2) which is correct for sort
   const _normP = s => (s||'').normalize('NFC').trim();

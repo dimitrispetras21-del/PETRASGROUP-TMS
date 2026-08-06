@@ -185,6 +185,8 @@ async function renderInvoicing() {
 
 // ─── Layout ──────────────────────────────────────
 function _renderInvLayout(c) {
+  // SH-2/MA-3 guard
+  if (typeof currentPage !== 'undefined' && currentPage !== 'invoicing') return;
   const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
   c.innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">

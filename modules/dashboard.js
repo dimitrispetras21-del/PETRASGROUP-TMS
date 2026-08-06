@@ -393,6 +393,8 @@ async function renderDashboard() {
     const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
 
     // ═══ RENDER ═══
+    // SH-2/MA-3 guard: τα fetches του dashboard αργούν· μην γράψεις αν ο χρήστης έφυγε.
+    if (typeof currentPage !== 'undefined' && currentPage !== 'dashboard') return;
     c.innerHTML = `
       <div class="dash-wrap">
         <!-- Header -->
