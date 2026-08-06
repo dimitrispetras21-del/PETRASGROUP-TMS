@@ -47,8 +47,8 @@ function _locShell() {
 </div>
 
 <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
-  <div class="loc-tab active" data-tab="overview">Overview</div>
-  <div class="loc-tab" data-tab="list">All Locations</div>
+  <div class="loc-tab active" data-tab="overview">Επισκόπηση</div>
+  <div class="loc-tab" data-tab="list">Όλες οι Τοποθεσίες</div>
 </div>
 
 <!-- Overview Panel -->
@@ -57,13 +57,13 @@ function _locShell() {
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
     <div class="table-wrap" style="overflow:hidden">
       <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
-        By Country <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locCountryLabel"></span>
+        Ανά Χώρα <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locCountryLabel"></span>
       </div>
       <div id="locCountryBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
     </div>
     <div class="table-wrap" style="overflow:hidden">
       <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
-        By Category <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
+        Ανά Κατηγορία <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
       </div>
       <div id="locTypeBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
     </div>
@@ -172,13 +172,13 @@ function _locRenderOverview() {
   const missing = recs.filter(r => !r.Country || !r.City).length;
 
   document.getElementById('locSub').textContent =
-    `${total.toLocaleString()} locations · ${countries.length} countries · ${withCoords.toLocaleString()} with coordinates`;
+    `${total.toLocaleString()} locations · ${countries.length} χώρες · ${withCoords.toLocaleString()} with coordinates`;
 
   document.getElementById('locKpis').innerHTML = [
-    { label: 'Total Locations',  value: total.toLocaleString(),     delta: '' },
+    { label: 'Σύνολο Τοποθεσιών',  value: total.toLocaleString(),     delta: '' },
     { label: 'Countries',        value: countries.length,           delta: '' },
-    { label: 'With Coordinates', value: withCoords.toLocaleString(),delta: `${Math.round(withCoords/total*100)}% coverage` },
-    { label: 'Missing Data',     value: missing.toLocaleString(),   delta: 'No country or city' },
+    { label: 'Με Συντεταγμένες', value: withCoords.toLocaleString(),delta: `${Math.round(withCoords/total*100)}% coverage` },
+    { label: 'Ελλιπή Στοιχεία',     value: missing.toLocaleString(),   delta: 'Χωρίς χώρα ή πόλη' },
   ].map(k => `
     <div class="kpi-card" style="cursor:default">
       <div class="kpi-label">${k.label}</div>
@@ -191,7 +191,7 @@ function _locRenderOverview() {
   recs.forEach(r => { const k = r.Country || '— Unknown'; cCounts[k] = (cCounts[k]||0)+1; });
   const cSorted = Object.entries(cCounts).sort((a,b) => b[1]-a[1]).slice(0,18);
   const cMax = cSorted[0]?.[1] || 1;
-  document.getElementById('locCountryLabel').textContent = `${countries.length} countries`;
+  document.getElementById('locCountryLabel').textContent = `${countries.length} χώρες`;
   document.getElementById('locCountryBars').innerHTML =
     cSorted.map(([label, count]) => `
       <button type="button" class="loc-bar-row clickable" onclick="_locFilterByCountry('${label.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
@@ -199,7 +199,7 @@ function _locRenderOverview() {
         <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/cMax*100).toFixed(1)}%"></div></div>
         <div class="loc-bar-count">${count}</div>
       </button>`).join('') +
-    `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Click a country to filter list →</div>`;
+    `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Κλικ σε χώρα για φιλτράρισμα →</div>`;
 
   // Type bars — read-only
   const tCounts = {};

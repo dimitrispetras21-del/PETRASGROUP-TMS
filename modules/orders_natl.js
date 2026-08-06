@@ -399,19 +399,20 @@ async function _openNatlModal(recId, f) {
   // Resolve single client name for edit form (batch if not cached)
   if (clientId && !_fhClientsMap[clientId]) await _batchResolveClients([clientId]);
   const clientLabel = clientId ? (_fhClientsMap[clientId] || '') : '';
-  const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
+  // Value/label ΧΩΡΙΣΤΑ (παγίδα Φ1): το value είναι ΤΙΜΗ ΒΑΣΗΣ και δεν μεταφράζεται ποτέ.
+  const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
   const body = `
     <div class="form-grid">
       <div class="form-field">
         <label class="form-label">Direction *</label>
         <select class="form-select" id="nf_Direction"><option value="">— Select —</option>
-          ${opt(['North→South','South→North'],'Direction')}</select>
+          ${opt([['North→South','ΚΑΘΟΔΟΣ (Βορράς→Νότος)'],['South→North','ΑΝΟΔΟΣ (Νότος→Βορράς)']],'Direction')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Type</label>
         <select class="form-select" id="nf_Type"><option value="">— Select —</option>
-          ${opt(['Independent','Veroia Switch'],'Type')}</select>
+          ${opt([['Independent','Ανεξάρτητη'],['Veroia Switch','Veroia Switch']],'Type')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Client *</label>

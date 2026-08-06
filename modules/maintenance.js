@@ -694,7 +694,7 @@ function _svcPaint() {
         <div class="page-sub">${MAINT.history.length} total · showing ${records.length}</div>
       </div>
       <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-primary btn-sm" onclick="_svcOpenForm()">${_i('plus')} New Record</button>
+        <button class="btn btn-primary btn-sm" onclick="_svcOpenForm()">${_i('plus')} Νέα Εγγραφή</button>
         <button class="btn btn-ghost btn-sm" onclick="MAINT.history=[];renderServiceRecords()">${_i('refresh')} Refresh</button>
       </div>
     </div>
@@ -731,15 +731,15 @@ function _svcPaint() {
     <div class="exp-tab-bar">
       <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
         <select class="svc-filter" onchange="_svcSetFilter('vehicle',this.value)">
-          <option value="">All Vehicles</option>
+          <option value="">Όχημα: Όλα</option>
           ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
         </select>
         <select class="svc-filter" onchange="_svcSetFilter('type',this.value)">
-          <option value="">All Types</option>
+          <option value="">Τύπος: Όλοι</option>
           ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${t}</option>`).join('')}
         </select>
         <select class="svc-filter" onchange="_svcSetFilter('status',this.value)">
-          <option value="">All Statuses</option>
+          <option value="">Κατάσταση: Όλες</option>
           ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
       </div>
@@ -750,7 +750,7 @@ function _svcPaint() {
       <div class="exp-section-hdr">
         <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('clipboard')}</div>
         <div>
-          <div class="exp-section-title">All Services</div>
+          <div class="exp-section-title">Όλες οι Εργασίες</div>
           <div class="exp-section-sub">${records.length} records in view</div>
         </div>
       </div>
@@ -1019,7 +1019,7 @@ async function renderTrucksHistory()   { await _renderHistory('trucks'); }
 async function renderTrailersHistory() { await _renderHistory('trailers'); }
 
 async function _renderHistory(vType) {
-  const title = vType === 'trucks' ? 'Trucks History' : 'Trailers History';
+  const title = vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών';
   document.getElementById('content').innerHTML = showLoading('Loading history…');
   try {
     await _maintLoad(true);
@@ -1142,10 +1142,10 @@ function _historyPaint(vType) {
       <div class="dash-header">
         <div>
           <div class="dash-greeting">${_i(vType === 'trucks' ? 'truck' : 'truck', 22)} ${vType === 'trucks' ? 'Trucks' : 'Trailers'} History</div>
-          <div class="dash-date">Service & maintenance records per vehicle${selected && vRec ? ` · ${vf['License Plate']||''} — ${vf['Brand']||''} ${vf['Model']||''}` : ''}</div>
+          <div class="dash-date">Εγγραφές service & συντήρησης ανά όχημα${selected && vRec ? ` · ${vf['License Plate']||''} — ${vf['Brand']||''} ${vf['Model']||''}` : ''}</div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
-          <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} New Record</button>
+          <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} Νέα Εγγραφή</button>
           <button class="btn btn-ghost btn-sm" onclick="_historyExport('${vType}')">${_i('file_text')} Export CSV</button>
           <button class="btn btn-secondary btn-sm" onclick="MAINT.history=[];_renderHistory('${vType}')">${_i('refresh')} Refresh</button>
         </div>

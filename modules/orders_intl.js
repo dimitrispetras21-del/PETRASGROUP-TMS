@@ -673,7 +673,8 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
     return html;
   };
 
-  const opt = (arr, cur) => arr.map(o=>`<option value="${o}" ${f[cur]===o?'selected':''}>${o}</option>`).join('');
+  // Value/label ΧΩΡΙΣΤΑ (παγίδα Φ1): το value είναι ΤΙΜΗ ΒΑΣΗΣ και δεν μεταφράζεται ποτέ.
+  const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
   const body = `
     <div class="form-grid">
@@ -685,12 +686,12 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       <div class="form-field">
         <label class="form-label">Type *</label>
         <select class="form-select" id="f_Type"><option value="">— Select —</option>
-          ${opt(['International','National'],'Type')}</select>
+          ${opt([['International','Διεθνής'],['National','Εθνική']],'Type')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Direction *</label>
         <select class="form-select" id="f_Direction"><option value="">— Select —</option>
-          ${opt(['Export','Import'],'Direction')}</select>
+          ${opt([['Export','Εξαγωγή'],['Import','Εισαγωγή']],'Direction')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Client *</label>
@@ -719,7 +720,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
       <div class="form-field">
         <label class="form-label">Refrigerator Mode *</label>
         <select class="form-select" id="f_ReeferMode"><option value="">— Select —</option>
-          ${opt(['Continuous','Start-Stop','No temp'],'Refrigerator Mode')}</select>
+          ${opt([['Continuous','Συνεχής (Continuous)'],['Start-Stop','Start-Stop'],['No temp','Χωρίς ψύξη']],'Refrigerator Mode')}</select>
       </div>
       <div class="form-field">
         <label class="form-label">Pallet Type *</label>

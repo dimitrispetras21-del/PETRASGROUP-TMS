@@ -12,6 +12,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Client',
     perm: 'clients',
     searchFields: ['Company Name', 'City', 'Contact Person', 'VAT Number'],
+    searchHint: 'Αναζήτηση: εταιρεία, πόλη, επαφή, ΑΦΜ…',
     filters: [
       { field: 'Country', label: 'Χώρα', type: 'dynamic' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
@@ -57,6 +58,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Partner',
     perm: 'clients',
     searchFields: ['Company Name', 'Contact Person', 'VAT Number'],
+    searchHint: 'Αναζήτηση: εταιρεία, επαφή, ΑΦΜ…',
     filters: [
       { field: 'Country', label: 'Χώρα', type: 'dynamic' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
@@ -100,6 +102,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Driver',
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
+    searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
     filters: [
       { field: 'Type', label: 'Τύπος', type: 'select', options: [
         { val: '', label: 'Όλα' },
@@ -145,6 +148,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Truck',
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
+    searchHint: 'Αναζήτηση: πινακίδα, VIN, μάρκα…',
     filters: [
       { field: 'Brand',  label: 'Μάρκα',  type: 'dynamic' },
       { field: 'Active', label: 'Κατάσταση', type: 'bool', options: [
@@ -199,6 +203,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Trailer',
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
+    searchHint: 'Αναζήτηση: πινακίδα, VIN, τύπος…',
     filters: [
       { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic' },
       { field: 'Active',       label: 'Κατάσταση', type: 'bool', options: [
@@ -252,6 +257,7 @@ const ENTITY_CONFIG = {
     labelSingle: 'Workshop',
     perm: 'maintenance',
     searchFields: ['Name', 'City', 'Contact Person', 'Specialty'],
+    searchHint: 'Αναζήτηση: όνομα, πόλη, ειδικότητα…',
     filters: [
       { field: 'Specialty', label: 'Ειδικότητα', type: 'dynamic' },
       { field: 'Active',    label: 'Κατάσταση',    type: 'bool', options: [
@@ -368,7 +374,7 @@ async function renderEntity(entityKey) {
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
             ${_i('search')}
-            <input class="entity-search-input" placeholder="Αναζήτηση…"
+            <input class="entity-search-input" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
               oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
           </div>
           ${cfg.filters.map(fi => {
@@ -474,7 +480,7 @@ async function _renderWorkshopsStatsStrip(workshops) {
     };
     const topHTML = top3.length
       ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
-          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Workshops (All Time)</div>
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργεία (σύνολο)</div>
           ${top3.map((p, i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
               <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${escapeHtml(p.name)}</span>
@@ -485,10 +491,10 @@ async function _renderWorkshopsStatsStrip(workshops) {
 
     el.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${card('Active Workshops', activeWs)}
-        ${card('Services (All Time)', history.length.toLocaleString(), 'var(--accent)')}
-        ${card('Total Spend', '€' + Math.round(totalSpend).toLocaleString(), 'var(--text)')}
-        ${card('This Month', '€' + Math.round(monthSpend).toLocaleString(), monthSpend > 0 ? 'var(--warning)' : 'var(--text-dim)')}
+        ${card('Ενεργά Συνεργεία', activeWs)}
+        ${card('Εργασίες (σύνολο)', history.length.toLocaleString(), 'var(--accent)')}
+        ${card('Συνολική Δαπάνη', '€' + Math.round(totalSpend).toLocaleString(), 'var(--text)')}
+        ${card('Τρέχων Μήνας', '€' + Math.round(monthSpend).toLocaleString(), monthSpend > 0 ? 'var(--warning)' : 'var(--text-dim)')}
         ${topHTML}
       </div>`;
   } catch(e) {
@@ -540,7 +546,7 @@ async function _renderPartnersStatsStrip(partners) {
 
     const topHTML = top3.length
       ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
-          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Partners (All Time)</div>
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
               <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
@@ -551,9 +557,9 @@ async function _renderPartnersStatsStrip(partners) {
 
     el.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${card('Active Partners', activePartners)}
-        ${card('Active Assignments', activeAssign, activeAssign>0?'var(--accent)':'var(--text-dim)')}
-        ${card('This Month', '€'+Math.round(monthSpend).toLocaleString(), 'var(--success)')}
+        ${card('Ενεργοί Συνεργάτες', activePartners)}
+        ${card('Ενεργές Αναθέσεις', activeAssign, activeAssign>0?'var(--accent)':'var(--text-dim)')}
+        ${card('Τρέχων Μήνας', '€'+Math.round(monthSpend).toLocaleString(), 'var(--success)')}
         ${topHTML}
       </div>`;
   } catch(e) {
@@ -605,7 +611,7 @@ async function _renderClientsStatsStrip(clients) {
 
     const topHTML = top3.length
       ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
-          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Clients (All Time)</div>
+          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Πελάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
               <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
@@ -616,9 +622,9 @@ async function _renderClientsStatsStrip(clients) {
 
     el.innerHTML = `
       <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${card('Active Clients', activeClients)}
-        ${card('Active Orders', activeOrders, activeOrders>0?'var(--accent)':'var(--text-dim)')}
-        ${card('This Month', '€'+Math.round(monthRev).toLocaleString(), 'var(--success)')}
+        ${card('Ενεργοί Πελάτες', activeClients)}
+        ${card('Ανοιχτές Παραγγελίες', activeOrders, activeOrders>0?'var(--accent)':'var(--text-dim)')}
+        ${card('Τρέχων Μήνας', '€'+Math.round(monthRev).toLocaleString(), 'var(--success)')}
         ${topHTML}
       </div>`;
   } catch(e) {
@@ -1123,8 +1129,8 @@ function _renderPartnerAssignments(el, paRecs) {
 
   const metricsHTML = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
-      ${card('Total', total)}
-      ${card('Active', active, active>0?'var(--accent)':'var(--text-dim)')}
+      ${card('Σύνολο', total)}
+      ${card('Ενεργά', active, active>0?'var(--accent)':'var(--text-dim)')}
       ${card('Completed', completed, 'var(--success)')}
       ${card('Total Spent', '€'+Math.round(totalSpent).toLocaleString())}
       ${card('Avg Rate', '€'+Math.round(avgRate).toLocaleString())}
@@ -1197,8 +1203,8 @@ function _renderClientOrders(el, orders) {
 
   const metricsHTML = `
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">
-      ${card('Total', total)}
-      ${card('Active', active, active>0?'var(--accent)':'var(--text-dim)')}
+      ${card('Σύνολο', total)}
+      ${card('Ενεργά', active, active>0?'var(--accent)':'var(--text-dim)')}
       ${card('Delivered', delivered.length, 'var(--success)')}
       ${card('Revenue', '€'+Math.round(revenue).toLocaleString())}
       ${card('Avg Value', '€'+Math.round(avgValue).toLocaleString())}

@@ -181,30 +181,30 @@ function _plRender() {
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
     <div>
       <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Pallet Ledger</h2>
-      <div style="font-size:13px;color:var(--panel-dim);margin-top:4px">${PL.supplierRecs.length} supplier · ${PL.partnerRecs.length} partner entries</div>
+      <div style="font-size:13px;color:var(--panel-dim);margin-top:4px">${PL.supplierRecs.length} εγγραφές προμηθευτών · ${PL.partnerRecs.length} συνεργατών</div>
     </div>
     <div style="display:flex;gap:8px">
       <button class="btn btn-ghost" onclick="_plExportCSV()">Export CSV</button>
-      <button class="btn btn-new-order" onclick="_plOpenCreate()">+ New Entry</button>
+      <button class="btn btn-new-order" onclick="_plOpenCreate()">+ Νέα Εγγραφή</button>
     </div>
   </div>
 
   <div class="pl-balance-cards">
     <div class="pl-balance-card">
-      <h4>Suppliers Owe Us</h4>
+      <h4>Μας Χρωστούν Προμηθευτές</h4>
       <div class="pl-big-num ${bal.supTotal>0?'positive':bal.supTotal<0?'negative':'zero'}">${bal.supTotal>0?'+':''}${bal.supTotal} pal</div>
     </div>
     <div class="pl-balance-card">
-      <h4>Partners Owe Us</h4>
+      <h4>Μας Χρωστούν Συνεργάτες</h4>
       <div class="pl-big-num ${bal.partTotal>0?'positive':bal.partTotal<0?'negative':'zero'}">${bal.partTotal>0?'+':''}${bal.partTotal} pal</div>
     </div>
     <div class="pl-balance-card">
-      <h4>Top Supplier Debtors</h4>
-      ${bal.topSup.length ? `<ul class="pl-debtor-list">${bal.topSup.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">No debtors</div>'}
+      <h4>Μεγαλύτεροι Οφειλέτες — Προμηθευτές</h4>
+      ${bal.topSup.length ? `<ul class="pl-debtor-list">${bal.topSup.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">Κανένας οφειλέτης</div>'}
     </div>
     <div class="pl-balance-card">
-      <h4>Top Partner Debtors</h4>
-      ${bal.topPart.length ? `<ul class="pl-debtor-list">${bal.topPart.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">No debtors</div>'}
+      <h4>Μεγαλύτεροι Οφειλέτες — Συνεργάτες</h4>
+      ${bal.topPart.length ? `<ul class="pl-debtor-list">${bal.topPart.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">Κανένας οφειλέτης</div>'}
     </div>
   </div>
 
