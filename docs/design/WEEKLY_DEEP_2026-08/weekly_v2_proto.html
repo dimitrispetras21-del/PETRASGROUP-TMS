@@ -96,6 +96,9 @@ body.details .xtra{display:inline}
 .xtra.cross{color:var(--accent);background:var(--accent-soft)}
 .xtra.late{color:var(--un);background:var(--un-bg)}
 .leg.void{color:var(--hair-strong);justify-content:center;font-size:13px;user-select:none}
+/* Ματαίωση (owner): ορατή-διαγραμμένη, δεν εξαφανίζεται. */
+.row.cxl{opacity:.5}
+.row.cxl .route,.row.cxl .meta,.row.cxl .feed{text-decoration:line-through}
 
 /* Pills slim 24px */
 .assign{padding:0 8px;display:flex;justify-content:center}
@@ -202,8 +205,9 @@ body.details .xtra{display:inline}
   </aside>
 </div>
 
-<p class="note">Πρωτότυπο v2.1 · mock 34 σειρές (στόχος άνεσης 30-50) · σειρά 32px ≈ 20 ορατές ανά οθόνη · sticky ημέρες στο scroll ·
-<b>✨ πρόταση</b>: πάτα το ✓ σε ένα κόκκινο pill και γίνεται ανάθεση με ΕΝΑ κλικ (αυτό που δεν κάνει το Excel) · «Λεπτομέρειες» = τα κρυφά chips · κλικ σε pill = popover.</p>
+<p class="note">Πρωτότυπο v2.3 · mock 34 σειρές (στόχος 30-50) · οι ημέρες = ημέρες <b>ΠΑΡΑΔΟΣΗΣ</b> (απόφαση owner) ·
+VS: το διεθνές σκέλος δείχνει σταθμό <b>Vermion Fresh Cross-Dock</b> και οι ακριανές στήλες τον πραγματικό τόπο (read-only — επεξεργασία στο Weekly National) ·
+γραμμή 13 = δείγμα ματαίωσης (ορατή-διαγραμμένη) · <b>✨ ✓</b> = ανάθεση με ένα κλικ · «Λεπτομέρειες» = κρυφά chips · κλικ σε pill = popover.</p>
 
 <div class="pop" id="pop" onclick="if(event.target===this)this.classList.remove('on')">
   <div class="card">
@@ -264,27 +268,35 @@ function rowHTML(kind){
   const pKind=isImp?kind.split('-')[1]:(kind==='sug'?'sug':grp==='B'?'ghost':kind.startsWith('grp')?'own':kind);
   const load=(9+n%6)+'/8', del=(11+n%6)+'/8', pal=(24+n%10);
   let expCell,impCell,numCell;
+  // v2.3 (owner): στα VS το ΔΙΕΘΝΕΣ σκέλος «ανοίγει» με σταθμό το Vermion
+  // Fresh Cross-Dock — ο ΠΡΑΓΜΑΤΙΚΟΣ τόπος πάει στην ακριανή στήλη.
+  const vsExp=!isImp&&n%2===0, vsImp=isImp&&n%2===1;
+  const cancelled=(n===13); // δείγμα ματαίωσης: ορατή-διαγραμμένη (owner)
   if(isImp){ iN++; imp++;
     numCell=`<div class="num imp">I${iN}</div>`;
     expCell=`<div class="leg void">—</div>`;
-    impCell=`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">${R(IT)}</span></span><span class="meta">${load}→${del} · ${pal}p</span></div>`;
+    const impTo=vsImp?'<span class="to">Vermion Fresh Cross-Dock</span> <span class="vs" style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px">VS</span>':`<span class="to">${R(IT)}</span>`;
+    impCell=`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span>${impTo}</span><span class="meta">${load}→${del} · ${pal}p</span></div>`;
   }else{ exp++;
     numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Εκτύπωση ομάδας — ένα πακέτο">×2⎙</span>`:''}</div>`;
-    const tags=(n%5===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'')+(n%6===0?'<span class="tag">VS</span>':'');
+    const tags=(n%5===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'');
     const x=(n%7===0?'<span class="xtra cross">↤ φορτώνει W34</span>':'')+(kind==='sug'&&n%3===0?'<span class="xtra late">⚠ φόρτωση σήμερα</span>':'');
-    expCell=`<div class="leg"><span class="route">${R(F)}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':R(T)}</span></span><span class="meta">${load}→${del} · ${pal}p ${tags}${x}</span></div>`;
-    impCell=(n%3===0&&!grp)?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh, Βέροια</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`:`<div class="leg void">—</div>`;
+    const from=vsExp?'Vermion Fresh Cross-Dock <span style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;vertical-align:middle">VS</span>':R(F);
+    expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':R(T)}</span></span><span class="meta">${load}→${del} · ${pal}p ${tags}${x}</span></div>`;
+    impCell=(n%3===0&&!grp)?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`:`<div class="leg void">—</div>`;
   }
   const pill=pKind==='ghost'
     ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
     :pillHTML(pKind,n);
-  // v2.2: εσωτερικά σκέλη — read-only εδώ, επεξεργασία ΜΟΝΟ στο Weekly National.
+  // v2.3 (owner): οι ακριανές στήλες δείχνουν τον ΠΡΑΓΜΑΤΙΚΟ τόπο του VS —
+  // αριστερά ο προμηθευτής που ανεβάζει στη Βέροια, δεξιά ο τελικός
+  // παραλήπτης της διανομής. Read-only εδώ· επεξεργασία στο Weekly National.
   const FEED=[['ΙΒΧ-2210','Τάσος'],['ΙΒΕ-1105','Μάκης'],['ΚΗΒ-3342','Γιώργος'],['ΙΒΝ-7810','Σάκης']];
-  const isVS=!isImp&&n%2===0, impVS=(isImp||impCell.includes('Vermion'))&&n%2===1;
-  const fL=isVS?FEED[n%4]:null, fR=impVS?FEED[(n+2)%4]:null;
-  const feedL=fL?`<div class="feed l" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία στο Weekly National">${fL[0]} · ${fL[1]} <b>↑${load}</b> <span class="vs">VS</span></div>`:`<div class="feed l none">—</div>`;
-  const feedR=fR?`<div class="feed r" title="Εσωτερική διανομή από Βέροια — επεξεργασία στο Weekly National">${fR[0]} · ${fR[1]} <b>↓${del}</b> <span class="vs">VS</span></div>`:`<div class="feed r none">—</div>`;
-  return `<div class="row">${numCell}${feedL}${expCell}<div class="assign">${pill}</div>${impCell}${feedR}</div>`;
+  const fL=vsExp?FEED[n%4]:null, fR=vsImp?FEED[(n+2)%4]:null;
+  const realFrom=R(F).split(',')[0], realTo=R(IT).split(',')[0];
+  const feedL=fL?`<div class="feed l" title="Πραγματικός τόπος φόρτωσης: ${realFrom} — εσωτερικό σκέλος προς Βέροια, επεξεργασία στο Weekly National"><b>${realFrom}</b> · ${fL[0]} ↑${load}</div>`:`<div class="feed l none">—</div>`;
+  const feedR=fR?`<div class="feed r" title="Πραγματικός τελικός προορισμός: ${realTo} — διανομή από Βέροια, επεξεργασία στο Weekly National"><b>${realTo}</b> · ${fR[0]} ↓${del}</div>`:`<div class="feed r none">—</div>`;
+  return `<div class="row${cancelled?' cxl':''}">${numCell}${feedL}${expCell}<div class="assign">${cancelled?'<div class="pill un" style="border-style:solid;opacity:.5"><b>ΜΑΤΑΙΩΘΗΚΕ</b></div>':pill}</div>${impCell}${feedR}</div>`;
 }
 let html='';
 for(const day of DAYS){
