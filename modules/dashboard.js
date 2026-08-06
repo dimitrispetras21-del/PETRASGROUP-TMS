@@ -428,7 +428,7 @@ async function renderDashboard() {
             <div class="dash-kpi-label">${_i('arrow_up_right', 11)} Export χωρίς Ανάθεση</div>
             <div class="dash-kpi-value dash-val-danger">${unassignedExport}${_dashDelta(unExpDelta)}</div>
             <div class="dash-kpi-bottom">
-              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές</div></div>
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές W${wn}</div></div>
               ${_dashSpark(unassignedExpTrend, 'var(--panel-bad-hi)')}
             </div>
           </button>
@@ -437,7 +437,7 @@ async function renderDashboard() {
             <div class="dash-kpi-label">${_i('arrow_down_left', 11)} Import χωρίς Ανάθεση</div>
             <div class="dash-kpi-value dash-val-warning">${unassignedImport}${_dashDelta(unImpDelta)}</div>
             <div class="dash-kpi-bottom">
-              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εισαγωγές</div></div>
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εισαγωγές W${wn}</div></div>
               ${_dashSpark(unassignedImpTrend, '#FBBF24')}
             </div>
           </button>
@@ -479,7 +479,7 @@ async function renderDashboard() {
             <div class="dash-ops-grid">
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">${_i('arrow_up_right', 12)} ΑΝΑΧΩΡΗΣΕΙΣ</div>
+                  <div class="dash-card-title">${_i('arrow_up_right', 12)} Αναχωρήσεις</div>
                   <span class="dash-card-link" onclick="navigate('weekly_intl')">Εβδομαδιαίο ${_i('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
@@ -489,7 +489,7 @@ async function renderDashboard() {
               </div>
               <div class="dash-card">
                 <div class="dash-card-header">
-                  <div class="dash-card-title">${_i('package', 12)} ΠΑΡΑΔΟΣΕΙΣ</div>
+                  <div class="dash-card-title">${_i('package', 12)} Παραδόσεις</div>
                   <span class="dash-card-link" onclick="navigate('orders_intl')">Orders ${_i('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
@@ -502,7 +502,7 @@ async function renderDashboard() {
             <!-- Fleet Usage Rate -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('activity', 12)} ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
+                <div class="dash-card-title">${_i('activity', 12)} Αξιοποίηση στόλου</div>
                 <span class="dash-card-meta">W${wn} μ.ό. ${avgCurrent}% · W${nextWn} μ.ό. ${avgNext}%</span>
               </div>
               <div class="dash-card-body">
@@ -543,7 +543,7 @@ async function renderDashboard() {
             <!-- Unassigned Orders Aging -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('clock', 12)} ΑΝΑΜΟΝΗ ΑΝΑΘΕΣΗΣ — AGING</div>
+                <div class="dash-card-title">${_i('clock', 12)} Αναμονή ανάθεσης — aging</div>
                 <span class="dash-card-meta">${unassignedOrders.length} ανοιχτές</span>
               </div>
               <div class="dash-card-body flush">
@@ -579,7 +579,7 @@ async function renderDashboard() {
             <!-- HIGH RISK -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title is-danger">${_i('alert_triangle', 12)} ΥΨΗΛΟΣ ΚΙΝΔΥΝΟΣ</div>
+                <div class="dash-card-title is-danger">${_i('alert_triangle', 12)} Υψηλός κίνδυνος</div>
                 <span class="dash-card-link" onclick="window._dashNav={trip:'unassigned'};navigate('orders_intl')">Orders ${_i('chevron_right', 12)}</span>
               </div>
               <div class="dash-card-body">
@@ -600,7 +600,7 @@ async function renderDashboard() {
             <!-- FLEET ALERTS -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('shield', 12)} ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ</div>
+                <div class="dash-card-title">${_i('shield', 12)} Ειδοποιήσεις στόλου</div>
                 <span class="dash-card-link" onclick="navigate('expiry_alerts')">Expiry ${_i('chevron_right', 12)}</span>
               </div>
               <div class="dash-card-body">
@@ -615,7 +615,7 @@ async function renderDashboard() {
             <!-- COMPLIANCE -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('file_check', 12)} COMPLIANCE</div>
+                <div class="dash-card-title">${_i('file_check', 12)} Συμμόρφωση</div>
               </div>
               <div class="dash-card-body" style="padding:var(--space-2) var(--space-4)">
                 ${complianceTrucks.map(t => `<div class="dash-comp-row">
@@ -632,7 +632,7 @@ async function renderDashboard() {
             <!-- WEEKLY SCORE -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_i('award', 12)} ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
+                <div class="dash-card-title">${_i('award', 12)} Εβδομαδιαίο σκορ</div>
                 <span class="dash-card-meta">W${wn}</span>
               </div>
               <div class="dash-card-body dash-score-wrap">

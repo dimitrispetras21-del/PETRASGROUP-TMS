@@ -686,6 +686,13 @@ body {
   scrollbar-color: #D1D5DB transparent;
 }
 
+
+/* SH-3: στόχοι αφής ≥44px στο ΚΕΛΥΦΟΣ και σε desktop — topbar/sidebar chrome.
+   ΤΕΚΜΗΡΙΩΜΕΝΗ ΕΞΑΙΡΕΣΗ: τα .nav-item έχουν ήδη 44px· τα toolbar .btn-sm
+   ΜΕΣΑ στις σελίδες μένουν πυκνά συνειδητά — 32 γραμμές εργαλείων με 44px
+   ύψος θα διπλασίαζαν το ύψος κάθε toolbar για χρήστες με ποντίκι. */
+.notif-bell, .sidebar-cmdk, .sidebar-toggle, .btn-logout,
+.topbar button { min-height: 44px; min-width: 44px; }
 /* Footer — end of content marker */
 .page-footer {
   margin-top: 40px;
@@ -4120,11 +4127,13 @@ button.dash-kpi:focus-visible {
   border-bottom: 1px solid var(--dc-card-border);
 }
 .dash-card-title {
+  /* D-10: οι 8 uppercase-tracked «eyebrows» ανά οθόνη ήταν το κουραστικότερο
+     μοτίβο του dashboard. Sentence case, κανονική απόσταση — η ιεραρχία
+     κρατιέται από βάρος/μέγεθος, όχι από ΚΕΦΑΛΑΙΑ. */
   font-family: 'Syne', sans-serif;
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: 700;
-  letter-spacing: 0.8px;
-  text-transform: uppercase;
+  letter-spacing: 0.2px;
   color: var(--dc-text-mid);
   display: inline-flex; align-items: center; gap: 6px;
 }
@@ -5620,7 +5629,10 @@ button.dash-kpi:focus-visible {
   margin-bottom: 8px;
 }
 .tms-stat-card .tms-stat-value {
-  font: 700 24px/1.1 'Syne', sans-serif;
+  /* CL-8: ποσά/πλήθη σε DM Sans tabular — το Syne (display) έκανε το «€0»
+     να διαβάζεται ως σύμβολο· το Syne μένει για τίτλους. */
+  font: 700 24px/1.1 'DM Sans', sans-serif;
+  font-variant-numeric: tabular-nums;
   color: #fff;
 }
 .tms-stat-card .tms-stat-sub {

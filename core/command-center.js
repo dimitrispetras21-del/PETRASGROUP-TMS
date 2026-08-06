@@ -67,7 +67,7 @@ function widgetFleet(trucks, assignedIds) {
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('truck')} ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
-      <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif">${busy}</span>
+      <span style="font-size:18px;font-weight:700;font-variant-numeric:tabular-nums">${busy}</span>
       <span style="font-size:11px;opacity:0.6">/ ${total} σε χρήση · ${pct}%</span>
     </div>
     <div style="width:100%;height:3px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${barCol}"></div></div>
@@ -83,7 +83,7 @@ function widgetEmptyLegs(soloExp, soloImp, suggestion) {
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ccIcon('route')} ΚΕΝΑ ΔΡΟΜΟΛΟΓΙΑ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
-      <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${total?'var(--panel-warn)':'var(--panel-ok)'}">${total}</span>
+      <span style="font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:${total?'var(--panel-warn)':'var(--panel-ok)'}">${total}</span>
       <span style="font-size:11px;opacity:0.6">${soloExp} εξαγ. · ${soloImp} εισαγ.</span>
     </div>
     ${suggestion ? `<div style="font-size:10px;opacity:0.7;margin-top:3px">${suggestion}</div>` : ''}
@@ -118,7 +118,7 @@ function widgetOnTimeStreak(currentWeekPct, streakWeeks) {
   <div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px">
     <div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${fire} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>
     <div style="display:flex;align-items:baseline;gap:6px">
-      <span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;color:${col}">${currentWeekPct}%</span>
+      <span style="font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:${col}">${currentWeekPct}%</span>
       <span style="font-size:11px;opacity:0.6">αυτή την εβδομάδα</span>
     </div>
     <div style="font-size:10px;opacity:0.7;margin-top:3px">${streakWeeks ? `${streakWeeks} ${streakWeeks>1?'εβδομάδες':'εβδομάδα'} σερί ≥90%` : 'Κάτω από τον στόχο 90%'}</div>
