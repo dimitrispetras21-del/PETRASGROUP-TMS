@@ -329,6 +329,10 @@ function _wiPaint(){
   const pending=expRows.filter(r=>!r.saved).length;
   const matched=impRows.filter(r=>r.matchedTo).length;
   const unmatched=impRows.filter(r=>!r.matchedTo).length;
+  // Β.3-3 (Wave 1): imports without a vehicle get their OWN counter — the same
+  // red used to mean two different things and the header chip disagreed with
+  // what the eye counted (VISUAL §Χρώμα).
+  const impNoVehicle=impRows.filter(r=>!r.saved).length;
   const total=expRows.length+impRows.length;
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
@@ -353,12 +357,16 @@ function _wiPaint(){
   // Command Center actions
   const actions=[];
   const _ico = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
-  if(pending>0) actions.push({icon:_ico('file_text'),sev:'warn',text:`${pending} export${pending>1?'s':''} χωρίς ανάθεση`});
-  if(unmatched>0) actions.push({icon:_ico('package'),sev:'warn',text:`${unmatched} import${unmatched>1?'s':''} χωρίς match σε export`});
+  // Π4 (Wave 1): every pending-work chip carries scrollTo → the FIRST row that
+  // needs that action. _ccJump (command-center.js) scrolls + flashes it.
+  const _firstExp = (pred) => { const r = expRows.find(pred); return r ? 'wi-row-'+r.id : undefined; };
+  if(pending>0) actions.push({icon:_ico('file_text'),sev:'warn',text:`${pending} export${pending>1?'s':''} χωρίς ανάθεση`,scrollTo:_firstExp(r=>!r.saved)});
+  const _firstUnmatchedImp = impRows.find(r=>!r.matchedTo);
+  if(unmatched>0) actions.push({icon:_ico('package'),sev:'warn',text:`${unmatched} import${unmatched>1?'s':''} χωρίς match σε export`,scrollTo:_firstUnmatchedImp?'wi-imp-'+_firstUnmatchedImp.orderId:undefined});
   const missingTruck=expRows.filter(r=>r.saved && !r.truckId && !r.partnerId).length;
-  if(missingTruck>0) actions.push({icon:_ico('truck'),sev:'warn',text:`${missingTruck} assigned χωρίς truck/partner`});
+  if(missingTruck>0) actions.push({icon:_ico('truck'),sev:'warn',text:`${missingTruck} assigned χωρίς truck/partner`,scrollTo:_firstExp(r=>r.saved && !r.truckId && !r.partnerId)});
   const missingDriver=expRows.filter(r=>r.saved && r.truckId && !r.driverId && !r.partnerId).length;
-  if(missingDriver>0) actions.push({icon:_ico('user'),sev:'warn',text:`${missingDriver} με truck αλλά χωρίς driver`});
+  if(missingDriver>0) actions.push({icon:_ico('user'),sev:'warn',text:`${missingDriver} με truck αλλά χωρίς driver`,scrollTo:_firstExp(r=>r.saved && r.truckId && !r.driverId && !r.partnerId)});
   if(!actions.length && total>0 && pct===100) actions.push({icon:_ico('party'),sev:'ok',text:'Όλα assigned + matched για την εβδομάδα!'});
   else if(!actions.length && total>0) actions.push({icon:_ico('check'),sev:'ok',text:'No pending actions'});
 
@@ -379,12 +387,23 @@ function _wiPaint(){
       // Compute widgets synchronously
       const assignedTruckIds = new Set();
       rows.forEach(r => { if (r.truckId) assignedTruckIds.add(r.truckId); });
-      const emptyLegs = computeEmptyLegs(data.exports, data.imports);
+      // Π5α (Wave 1): real unmatched counts, not the country-prefix heuristic —
+      // measured on W20 the heuristic said 10 while reality was 36 (02 §3).
+      // soloExp = exports with no return import; soloImp = imports with no export.
+      const soloExp = expRows.filter(r => !r.importId).length;
       const widgets = [
         widgetFleet(data.trucks || [], assignedTruckIds),
-        widgetEmptyLegs(emptyLegs.soloExp, emptyLegs.soloImp),
+        widgetEmptyLegs(soloExp, unmatched),
         `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-        `<div id="wi-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+        // Π5β (Wave 1): the on-time widget is HIDDEN for current/past weeks —
+        // recorded on-time is 16% while the real figure is ~100% (owner, 00
+        // §Β7): the data lies downward, so showing it defames the team. It
+        // returns with Wave 2 when the «Παραδόθηκε» flow makes recording cheap.
+        // On a FUTURE week (still being built) execution hasn't started, so we
+        // say exactly that instead of a red 0%.
+        ...(week > _wiCurrentWeek() ? [
+          `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;opacity:.55">—</span><span style="font-size:11px;opacity:0.6">δεν έχει ξεκινήσει</span></div></div>`,
+        ] : []),
       ];
       // When week has no orders, provide a single informational action so the strip isn't empty.
       const ccActions = total > 0 ? actions : [{icon:_ico('info'), sev:'ok', text:'Καμία παραγγελία για αυτή την εβδομάδα ακόμη'}];
@@ -423,15 +442,17 @@ function _wiPaint(){
         <div class="page-title">Weekly International</div>
         <div class="page-sub" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:4px;align-items:center;font-size:12px">
           <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${_wiWeekRange(week)}</span>
+          ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wiCurrentWeek()):''}
           <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${expN} εξαγωγές</span>
           <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} εισαγωγές</span>
           <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} ανατεθειμένα</span>
           ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} χωρίς ανάθεση</span>`:''}
+          ${impNoVehicle>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.06);color:var(--danger);border:1px dashed rgba(220,38,38,0.45)" title="Εισαγωγές χωρίς δικό τους όχημα — ξεχωριστός μετρητής από τα exports">${impNoVehicle} εισαγ. χωρίς όχημα</span>`:''}
           <span style="color:var(--text-dim);font-size:11px">${matched} ταιριασμένα · ${unmatched} ελεύθερα</span>
         </div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
-        ${unmatched>0?`<button class="btn btn-primary btn-sm" onclick="_wiAutoMatch()">${_ico('zap', 14)} Αυτόματο ταίριασμα (${unmatched})</button>`:''}
+        ${unmatched>0?`<button class="btn btn-ghost btn-sm" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες — σπάνια θα προτείνει ζεύγη" onclick="_wiAutoMatch()">${_ico('zap', 14)} Αυτόματο ταίριασμα (${unmatched})</button>`:''}
         <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Εκτύπωση</button>
         <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Ανανέωση</button>
         <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Εξαγωγή CSV</button>
@@ -485,14 +506,12 @@ function _wiPaint(){
   //    0 network calls in 8s). The guard is gone: on an empty week the fetches
   //    run and the widgets show real zeros, which is a fact rather than a
   //    fabrication. Either way, no visible "loading…" outlives the render.
-  Promise.all([
-    safeFetch(() => fetchPreviousWeekStats(week, TABLES.ORDERS), 'weekly intl: previous week stats', {total:0,assigned:0}),
-    safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly intl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
-  ]).then(([prev, ot]) => {
+  // Π5β (Wave 1): fetchOnTimeStreak is no longer called — the widget is hidden
+  // (or static «δεν έχει ξεκινήσει» on future weeks) until recording is fixed.
+  safeFetch(() => fetchPreviousWeekStats(week, TABLES.ORDERS), 'weekly intl: previous week stats', {total:0,assigned:0})
+  .then(prev => {
     const el1 = document.getElementById('wi-cc-vswk');
     if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
-    const el2 = document.getElementById('wi-cc-ontime');
-    if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
   }).catch(e => console.warn('CC async widgets:', e));
 }
 
@@ -502,7 +521,7 @@ function _wiPaint(){
 function _wiAllRowsHTML(){
   const expRows=WINTL.rows.filter(r=>r.type==='export');
   const impRows=WINTL.rows.filter(r=>r.type==='import');
-  let html='',idx=0;
+  let html='',idx=0,impIdx=0;
 
   // Build date groups — key = raw date string (YYYY-MM-DD)
   // exports: keyed by delivery date, imports: keyed by loading date
@@ -542,8 +561,9 @@ function _wiAllRowsHTML(){
     // Export rows
     grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
 
-    // Only unmatched imports shown as rows
-    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row); });
+    // Only unmatched imports shown as rows — numbered I1… (Β.3-4) so «γραμμή
+    // I3» means something on the phone between two dispatchers.
+    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row,++impIdx); });
   });
 
   return html;
@@ -551,7 +571,7 @@ function _wiAllRowsHTML(){
 
 
 /* ── IMPORT ROW ──────────────────────────────────────────────────── */
-function _wiImpRowHTML(row){
+function _wiImpRowHTML(row,impNo){
   const {data}=WINTL;
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
@@ -616,7 +636,9 @@ function _wiImpRowHTML(row){
       </div></div>`;
     }
   } else {
-    impPill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
+    // Β.3-3: import-without-vehicle is NOT the same red as export-without-
+    // assignment — dashed border (non-color signal) + explicit prefix.
+    impPill=`<div class="wi-pill"><div class="wi-card wi-card-un wi-card-un--imp"><div class="wi-card-top">ΕΙΣ · χωρίς όχημα</div></div></div>`;
   }
 
   const matchCell=isMatched
@@ -658,10 +680,21 @@ function _wiImpRowHTML(row){
     draggable="true"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
     <div class="wi-compact" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-      <div class="wi-cn" style="cursor:grab">
-        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
+      <div class="wi-cn" style="cursor:grab" title="Εισαγωγή ${impNo||''}">
+        <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">I${impNo||''}</span>
       </div>
-      <div class="wi-ce" style="background:var(--navy-mid)"></div>
+      <!-- Β.3-1 (Wave 1): the EXPORT cell of an import row was a ~480px empty
+           navy block — the top-left of the fold read as a dead hole (VISUAL
+           §Ιεραρχία 2). It now echoes the import's route, dimmed, so the
+           column scans as content while the full details stay on the right. -->
+      <div class="wi-ce" style="background:var(--navy-mid)">
+        <div class="wi-route" style="opacity:.5">
+          <span style="color:rgba(196,207,219,.9)">${fromStr}</span>
+          <span class="sep" style="color:rgba(196,207,219,.45)">→</span>
+          <span style="color:rgba(196,207,219,.9);font-weight:700">${toStr}</span>
+        </div>
+        <div style="font-size:9px;color:rgba(196,207,219,.35);font-style:italic;margin-top:2px">εισαγωγή · στοιχεία στη στήλη ΕΙΣΑΓΩΓΗ →</div>
+      </div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
@@ -1763,7 +1796,7 @@ function _wiPrintWeek(){
   const rows=WINTL.rows.filter(r=>r.type==='export');
   const data=WINTL.data;
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly International — W${WINTL.week}</h2>
-    <p style="font-size:12px;color:#666;margin-bottom:16px">${rows.length} exports · ${data.imports.length} imports · Printed ${new Date().toLocaleString('en-GB')}</p>
+    <p style="font-size:12px;color:#666;margin-bottom:16px">${rows.length} exports · ${data.imports.length} imports · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px">
       <thead><tr style="background:#F0F5FA">
         <th style="padding:6px;border:1px solid #ddd;text-align:left">#</th>

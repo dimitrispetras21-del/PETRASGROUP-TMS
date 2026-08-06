@@ -43,6 +43,8 @@ function _wnApplyFilter() {
     if (show && fs) {
       if (fs === 'pending' && row.saved) show = false;
       else if (fs === 'assigned' && !row.saved) show = false;
+      // WN-1β: visible ΑΝΟΔΟΣ rows are the unmatched ones by construction
+      else if (fs === 'unmatched' && row.type !== 'southnorth') show = false;
     }
     el.style.display = show ? '' : 'none';
   });
@@ -241,11 +243,15 @@ function _wnPaint() {
   // Command Center actions
   const actions=[];
   const _ico = n => (typeof icon === 'function') ? icon(n, 14) : '';
-  if (pending > 0) actions.push({icon:_ico('file_text'), sev:'warn', text:`${pending} χωρίς ανάθεση`});
+  // Π4 (Wave 1): chips jump to the first row needing the action (twin of intl).
+  // ns rows render as #wn-row-<id>, standalone ΑΝΟΔΟΣ rows as #wn-sn-<orderId>.
+  const _rowElId = r => r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn-row-'+r.id;
+  const _firstRow = (pred) => { const r = rows.find(pred); return r ? _rowElId(r) : undefined; };
+  if (pending > 0) actions.push({icon:_ico('file_text'), sev:'warn', text:`${pending} χωρίς ανάθεση`, scrollTo:_firstRow(r=>r.type==='northsouth'&&!r.saved)});
   const missingTruck = rows.filter(r => r.saved && !r.truckId && !r.partnerId).length;
-  if (missingTruck > 0) actions.push({icon:_ico('truck'), sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`});
+  if (missingTruck > 0) actions.push({icon:_ico('truck'), sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`, scrollTo:_firstRow(r=>r.saved && !r.truckId && !r.partnerId)});
   const missingDriver = rows.filter(r => r.saved && r.truckId && !r.driverId && !r.partnerId).length;
-  if (missingDriver > 0) actions.push({icon:_ico('user'), sev:'warn', text:`${missingDriver} με truck χωρίς driver`});
+  if (missingDriver > 0) actions.push({icon:_ico('user'), sev:'warn', text:`${missingDriver} με truck χωρίς driver`, scrollTo:_firstRow(r=>r.saved && r.truckId && !r.driverId && !r.partnerId)});
   if (!actions.length && total > 0 && pct === 100) actions.push({icon:_ico('party'), sev:'ok', text:'Όλα assigned!'});
   else if (!actions.length && total > 0) actions.push({icon:_ico('check'), sev:'ok', text:'No pending actions'});
 
@@ -266,26 +272,38 @@ function _wnPaint() {
     </div>
     <div style="display:block;width:100%">
 
-      <!-- Command Center (universal component) -->
-      ${total>0?(()=>{
+      <!-- Command Center — WN-1 (Wave 1): always shown, collapsible, same
+           pattern and same localStorage key as the intl twin so the two pages
+           behave identically. -->
+      ${(()=>{
         const assignedTruckIds = new Set();
         rows.forEach(r => { if (r.truckId) assignedTruckIds.add(r.truckId); });
-        const nsCount = rows.filter(r=>r.type==='northsouth').length;
-        const snCount = rows.filter(r=>r.type==='southnorth').length;
-        const diff = Math.abs(nsCount - snCount);
+        // Π5α (Wave 1): real unmatched counts — ΚΑΘΟΔΟΣ rows with no matched
+        // ΑΝΟΔΟΣ, and every visible ΑΝΟΔΟΣ row (matched ones are absorbed
+        // into their pair). The old nsCount-snCount diff hid same-day pairs.
+        const nsUnmatched = rows.filter(r=>r.type==='northsouth' && !r.matchedId).length;
+        const snUnmatched = rows.filter(r=>r.type==='southnorth').length;
         const widgets = [
           widgetFleet(data.trucks || [], assignedTruckIds),
-          widgetEmptyLegs(Math.max(0,nsCount-snCount), Math.max(0,snCount-nsCount), diff ? `${diff} unbalanced` : ''),
+          widgetEmptyLegs(nsUnmatched, snUnmatched, ''),
           `<div id="wn-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-          `<div id="wn-cc-ontime" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
+          // Π5β (Wave 1): on-time hidden for current/past weeks (recording is
+          // broken — real ~100%, recorded 16%, 00 §Β7); static note on future.
+          ...(week > _wnCurrentWeek() ? [
+            `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;opacity:.55">—</span><span style="font-size:11px;opacity:0.6">δεν έχει ξεκινήσει</span></div></div>`,
+          ] : []),
         ];
-        return buildCommandCenterHTML({
-          title: `COMMAND CENTER · W${week}`,
-          pct,
-          actions,
-          widgets,
-        });
-      })():''}
+        const ccActions = total > 0 ? actions : [{icon:_wnI('info'), sev:'ok', text:'Κανένα εθνικό φορτίο για αυτή την εβδομάδα ακόμη'}];
+        const open = localStorage.getItem('tms_cc_open') !== '0';
+        return `<details ${open ? 'open' : ''} ontoggle="localStorage.setItem('tms_cc_open', this.open ? '1' : '0')" style="margin-bottom:var(--space-3)">
+          <summary style="cursor:pointer;list-style:none;height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--navy-mid);color:#C4CFDB;border-radius:8px;font-size:12px">
+            <span style="font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px">COMMAND CENTER · W${week}</span>
+            <span style="opacity:.7">${nsRows.length} κάθοδος · ${snRows.length} άνοδος · ${pct}% ολοκληρωμένο</span>
+            <span style="margin-left:auto;opacity:.5">▾</span>
+          </summary>
+          ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
+        </details>`;
+      })()}
 
       <!-- Search/filter bar -->
       <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
@@ -293,10 +311,13 @@ function _wnPaint() {
           ${_wnI('search')}
           <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού…" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
         </div>
+        <!-- WN-1β (Wave 1): «Χωρίς ταίριασμα» filter, twin of intl «unmatched».
+             Labels ελληνικά (WI-3 pattern) — values ΑΜΕΤΑΒΛΗΤΑ (_wnApplyFilter). -->
         <select class="svc-filter" onchange="WNATL.filterStatus=this.value;_wnApplyFilter()">
-          <option value="">All statuses</option>
-          <option value="pending" ${WNATL.filterStatus==='pending'?'selected':''}>Pending assignment</option>
-          <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Assigned</option>
+          <option value="">Όλες οι καταστάσεις</option>
+          <option value="pending" ${WNATL.filterStatus==='pending'?'selected':''}>Χωρίς ανάθεση</option>
+          <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Ανατεθειμένα</option>
+          <option value="unmatched" ${WNATL.filterStatus==='unmatched'?'selected':''}>Άνοδοι χωρίς ταίριασμα</option>
         </select>
         ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">${_wnI('x', 12)} Clear</button>`:''}
       </div>
@@ -306,6 +327,7 @@ function _wnPaint() {
           <div class="page-title">Weekly National</div>
           <div class="page-sub" style="display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-top:4px">
             <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${weekRange}</span>
+            ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
             <span class="entity-count-chip" style="background:rgba(100,116,139,0.12);color:var(--text);border-color:transparent">${nsRows.length} κάθοδος</span>
             <span class="entity-count-chip" style="background:rgba(14,165,233,0.12);color:var(--accent);border-color:transparent">${snRows.length} άνοδος</span>
             <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${assigned} ανατεθειμένα</span>
@@ -367,14 +389,12 @@ function _wnPaint() {
   //    empty week both placeholders stayed on "loading…" permanently. It never
   //    surfaced only because this page also hides the whole Command Center when
   //    the week is empty — one load with data away from being visible.
-  Promise.all([
-    safeFetch(() => fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true), 'weekly natl: previous week stats', {total:0,assigned:0}),
-    safeFetch(() => fetchOnTimeStreak(TABLES.ORDERS, week, 8), 'weekly natl: on-time streak', {currentWeekPct:0,streakWeeks:0}),
-  ]).then(([prev, ot]) => {
+  // Π5β (Wave 1): fetchOnTimeStreak dropped — twin of the intl change; the
+  // widget is hidden (or static «δεν έχει ξεκινήσει») until recording is fixed.
+  safeFetch(() => fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true), 'weekly natl: previous week stats', {total:0,assigned:0})
+  .then(prev => {
     const el1 = document.getElementById('wn-cc-vswk');
     if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
-    const el2 = document.getElementById('wn-cc-ontime');
-    if (el2) el2.outerHTML = didFail(ot) ? '' : widgetOnTimeStreak(ot.currentWeekPct, ot.streakWeeks);
   }).catch(e => console.warn('CC async widgets (natl):', e));
 }
 
@@ -383,7 +403,7 @@ function _wnAllRowsHTML() {
   const nsRows = WNATL.rows.filter(r => r.type==='northsouth');
   const snRows = WNATL.rows.filter(r => r.type==='southnorth');
   let html = '';
-  let idx = 0;
+  let idx = 0, snIdx = 0;
 
   // Build map: dateKey → { lbl, ns:[], sn:[] }
   const dayMap = {};
@@ -422,7 +442,8 @@ function _wnAllRowsHTML() {
     </div>`;
 
     ns.forEach(row => { html += _wnRowHTML(row, idx++); });
-    sn.forEach(row => { html += _wnSnRowHTML(row); });
+    // Β.3-4 (Wave 1): ΑΝΟΔΟΣ rows numbered A1… like the intl I1… imports.
+    sn.forEach(row => { html += _wnSnRowHTML(row, ++snIdx); });
   });
 
   return html;
@@ -554,7 +575,7 @@ function _wnDragCell(rowId) {
 }
 
 /* ── S→N standalone row ──────────────────────────────────────────── */
-function _wnSnRowHTML(row) {
+function _wnSnRowHTML(row, snNo) {
   const { data } = WNATL;
   const ord = data.southnorth.find(r => r.id===row.orderId);
   if (!ord) return '';
@@ -589,10 +610,20 @@ function _wnSnRowHTML(row) {
     ondragstart="_wnDragStart(event,'${ord.id}')"
     oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
     <div class="wi-compact" style="cursor:default">
-      <div class="wi-cn">
-        <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
+      <div class="wi-cn" title="Άνοδος ${snNo||''}">
+        <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">A${snNo||''}</span>
       </div>
-      <div class="wi-ce" style="background:#172C45"></div>
+      <!-- Β.3-1 (Wave 1, twin of intl): the ΚΑΘΟΔΟΣ cell of a standalone
+           ΑΝΟΔΟΣ row was an empty dark block — it now echoes the route dimmed
+           so the column reads as content, details stay on the right. -->
+      <div class="wi-ce" style="background:#172C45">
+        <div class="wi-route" style="opacity:.5">
+          <span style="color:rgba(196,207,219,.9)">${escapeHtml(fromStr)}</span>
+          <span class="sep" style="color:rgba(196,207,219,.45)">→</span>
+          <span style="color:rgba(196,207,219,.9);font-weight:700">${escapeHtml(toStr)}</span>
+        </div>
+        <div style="font-size:9px;color:rgba(196,207,219,.35);font-style:italic;margin-top:2px">άνοδος · στοιχεία στη στήλη ΑΝΟΔΟΣ →</div>
+      </div>
       <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <div style="width:30px;flex-shrink:0"></div>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
@@ -704,7 +735,13 @@ function _wnPill(row) {
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
   const isCL    = row.source === 'cl';
 
-  if (!row.saved) return `<div class="wi-pill">
+  // Β.3-3 (Wave 1): ΑΝΟΔΟΣ-without-vehicle is visually distinct (dashed) from
+  // ΚΑΘΟΔΟΣ-without-assignment — same red meant two different things.
+  if (!row.saved) return row.type === 'southnorth'
+    ? `<div class="wi-pill">
+    <div class="wi-card wi-card-un wi-card-un--imp"><div class="wi-card-top">ΑΝΟ · χωρίς όχημα</div></div>
+  </div>`
+    : `<div class="wi-pill">
     <div class="wi-card wi-card-un"><div class="wi-card-top">— Αδιάθετο</div></div>
   </div>`;
   if (partner) return `<div class="wi-pill">
@@ -1248,7 +1285,7 @@ window._wnPulseRow = _wnPulseRow;
 function _wnPrintWeek(){
   const secs=[['ΚΑΘΟΔΟΣ (Βορράς → Νότος)','northsouth'],['ΑΝΟΔΟΣ (Νότος → Βορράς)','southnorth']];
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly National — W${WNATL.week}</h2>
-    <p style="font-size:12px;color:#666;margin-bottom:16px">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ</p>`;
+    <p style="font-size:12px;color:#666;margin-bottom:16px">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>`;
   for(const [secTitle,type] of secs){
     const rows=WNATL.rows.filter(r=>r.type===type);
     html+=`<h3 style="font-family:'Syne',sans-serif;font-size:13px;margin:14px 0 6px">${secTitle} — ${rows.length}</h3>

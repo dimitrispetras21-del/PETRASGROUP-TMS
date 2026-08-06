@@ -22,8 +22,14 @@ function buildCommandCenterHTML(cfg) {
   const sevColor = s => s==='crit'?'var(--danger)':s==='warn'?'#D97706':s==='ok'?'#059669':'var(--accent)';
   const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'var(--warning-soft)':s==='ok'?'#D1FAE5':'#DBEAFE';
 
-  const actionsHTML = actions.map(a => `
-    <span style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;${a.scrollTo?'cursor:pointer':''}" ${a.scrollTo?`onclick="document.getElementById('${a.scrollTo}')?.scrollIntoView({behavior:'smooth',block:'center'})"`:''}>
+  // Π4 (Wave 1): a chip with scrollTo is a real button — it jumps to the first
+  // matching row and flashes it, instead of being a dead counter. Chips without
+  // a target stay plain spans.
+  const actionsHTML = actions.map(a => a.scrollTo
+    ? `<button type="button" style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;border:none;cursor:pointer;font-family:inherit" onclick="_ccJump('${a.scrollTo}')">
+      ${a.icon} ${a.text}
+    </button>`
+    : `<span style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600">
       ${a.icon} ${a.text}
     </span>`).join('');
 
@@ -119,22 +125,41 @@ function widgetOnTimeStreak(currentWeekPct, streakWeeks) {
   </div>`;
 }
 
-// ── Async data helpers ──────────────────────────────────────
+/**
+ * Π4 (Wave 1): jump to a row from a Command Center action chip.
+ * Scrolls the element into view and flashes it so the eye lands on the right
+ * line — a counter you can act on instead of just read.
+ */
+function _ccJump(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.remove('cc-jump-flash');
+  void el.offsetWidth; // restart the animation on repeated clicks
+  el.classList.add('cc-jump-flash');
+  setTimeout(() => el.classList.remove('cc-jump-flash'), 1700);
+}
 
 /**
- * Compute empty legs for the current week data (exports/imports mismatch).
+ * Π5γ (Wave 1): week phase badge. The page serves two different jobs —
+ * building NEXT week (Tue→Sat, per owner interview 00 §1) and correcting the
+ * CURRENT one — and the UI never said which one you're in.
  */
-function computeEmptyLegs(exports, imports) {
-  // Solo exports: no matching import within the week
-  // Heuristic: export delivers to country X → check if any import loads from same country X
-  const expRegions = exports.map(e => (e.fields['Delivery Summary']||'').split(',').pop().trim().slice(0,3).toUpperCase());
-  const impRegions = imports.map(i => (i.fields['Loading Summary']||'').split(',').pop().trim().slice(0,3).toUpperCase());
-  const impSet = new Set(impRegions.filter(Boolean));
-  const expSet = new Set(expRegions.filter(Boolean));
-  const soloExp = expRegions.filter(r => r && !impSet.has(r)).length;
-  const soloImp = impRegions.filter(r => r && !expSet.has(r)).length;
-  return { soloExp, soloImp };
+function weekPhaseBadge(week, today) {
+  const phase = week > today ? 'build' : week === today ? 'live' : 'closed';
+  const lbl = phase === 'build' ? 'ΧΤΙΖΕΤΑΙ' : phase === 'live' ? 'ΣΕ ΕΞΕΛΙΞΗ' : 'ΚΛΕΙΣΜΕΝΗ';
+  return `<span class="wk-phase wk-phase--${phase}" title="${
+    phase === 'build' ? 'Μελλοντική εβδομάδα — το πλάνο χτίζεται' :
+    phase === 'live' ? 'Τρέχουσα εβδομάδα — εκτελείται' :
+    'Περασμένη εβδομάδα — μόνο ανάγνωση/διορθώσεις'}">${lbl}</span>`;
 }
+
+// ── Async data helpers ──────────────────────────────────────
+
+// computeEmptyLegs() (country-prefix heuristic) was removed in Wave 1 — Π5α.
+// Measured against W20: it reported 10 "empty legs" when the real unmatched
+// count was 36 (02_BASELINE §3). Both weekly pages now pass their REAL
+// unmatched counts, which they already compute for the header chips.
 
 /**
  * Fetch previous week's order counts (async).
@@ -231,7 +256,8 @@ if (typeof window !== 'undefined') {
   window.widgetEmptyLegs = widgetEmptyLegs;
   window.widgetVsLastWeek = widgetVsLastWeek;
   window.widgetOnTimeStreak = widgetOnTimeStreak;
-  window.computeEmptyLegs = computeEmptyLegs;
+  window._ccJump = _ccJump;
+  window.weekPhaseBadge = weekPhaseBadge;
   window.fetchPreviousWeekStats = fetchPreviousWeekStats;
   window.fetchOnTimeStreak = fetchOnTimeStreak;
 }
