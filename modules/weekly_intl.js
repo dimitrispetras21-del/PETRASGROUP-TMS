@@ -377,7 +377,7 @@ function _wiPaint(){
   const firstPendingId=_firstExp(r=>!r.saved);
 
   document.getElementById('content').innerHTML=`
-    <div class="${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
+    <div class="wk3 ${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
     <!-- BUILD v3 Φάση Α: κεφαλή v3.1 — sheet tabs + tally μίας γραμμής.
          Αντικαθιστά week-bar, Command Center, page-header chips: η ίδια
          πληροφορία, ΜΙΑ φορά, κλικ = μετάβαση. -->
@@ -816,7 +816,8 @@ function _wiRowHTML(row,i){
       </div></div>`;
     }
   } else {
-    pill=`<div class="wi-pill"><div class="wi-card wi-card-un"><div class="wi-card-top">— Unassigned</div></div></div>`;
+    // v3 (owner: «χρώμα, όχι λόγια»): ορφανό = κενό κόκκινο dashed πεδίο.
+    pill=`<div class="wi-pill" title="Χωρίς ανάθεση — κλικ για ανάθεση"><div class="wi-card wi-card-un"><div class="wi-card-top">&nbsp;</div></div></div>`;
   }
 
   // Import preview — saved state shown (full details like export)
@@ -842,10 +843,8 @@ function _wiRowHTML(row,i){
         </div>
         <span style="font-size:9px;color:#0F172A;font-weight:600;opacity:0.5">↩ matched</span>
       </div>`
-    :`<div style="width:100%;height:100%;display:flex;align-items:center;
-  background:${row.saved&&!hasPartner?'#3B1111':'#172C45'};margin:-6px -12px;padding:6px 12px;min-height:46px;">
-  <span style="font-size:10px;color:${row.saved&&!hasPartner?'rgba(252,165,165,0.5)':'rgba(196,207,219,0.35)'};font-style:italic;letter-spacing:0.3px;">${row.saved&&!hasPartner?'⚠ needs import':'drag import here'}</span>
-</div>`;
+    :`<div class="wk3-ci-empty${row.saved&&!hasPartner?' wk3-ci-gap':''}"
+        ${row.saved&&!hasPartner?`title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports (ή σύρε import εδώ)" onclick="event.stopPropagation();_wk3Gaps()"`:`title="Σύρε εισαγωγή εδώ για ταίριασμα"`}></div>`;
 
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}">
@@ -856,14 +855,13 @@ function _wiRowHTML(row,i){
       </div>
       <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)" style="position:relative">
         <div class="wi-route">
-          <span class="from">${fromStr}</span>
+          ${loadDt!=='—'?`<span class="wk3-ld" title="Ημερομηνία φόρτωσης">${loadDt}</span>`:''}
+          <span class="from">${primary?.fields['Veroia Switch']?'Vermion Fresh Cross-Dock':fromStr}</span>${primary?.fields['Veroia Switch']?'<span class="wk3-vsb">VS</span>':''}
           <span class="sep">→</span>
           <span class="dest">${toStr}</span>
           ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span><button class="wi-side-btn" style="width:auto;padding:0 8px;font-size:9px;font-weight:800;letter-spacing:.3px" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙ ομάδα ×${exps.length}</button>`:''}
         </div>
         <div class="wi-sub">
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
           ${pals?`<span>${pals} pal</span>`:''}
           ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(ref)}</span>`:''}
           ${_wiBadges(primary?.fields||{})}
