@@ -96,10 +96,12 @@
   --panel-bad:    #EF4444;
   --panel-accent: #38BDF8;
 
-  /* Φ9: προωθήσεις από scoped (.perf-wrap/.dash-wrap/.ceo-wrap) στο :root —
+  /* Φ9: προωθήσεις από scoped (.perf-wrap, .dash-wrap, .ceo-wrap) στο :root —
      εκτός wrapper η scoped μεταβλητή ΔΕΝ υπάρχει και το χρώμα σπάει σιωπηλά.
-     -hi = φωτεινότερη εκδοχή για ΣΚΟΥΡΕΣ κάρτες (τα --p-*/--dc-*/--ceo-*
-     μένουν ως aliases ίδιας τιμής). --warning-soft = το κίτρινο callout bg. */
+     -hi = φωτεινότερη εκδοχή για ΣΚΟΥΡΕΣ κάρτες. Τα p-, dc-, ceo- prefixed
+     μένουν aliases ίδιας τιμής. ΠΡΟΣΟΧΗ: ποτέ αστερίσκος-πλάγια μέσα σε
+     σχόλιο CSS — κλείνει το σχόλιο πρόωρα και το error recovery τρώει την
+     ΕΠΟΜΕΝΗ δήλωση (έφαγε το --panel-ok-hi, πιάστηκε στον live έλεγχο). */
   --panel-ok-hi:  #34D399;
   --panel-bad-hi: #F87171;
   --warning-soft: #FEF3C7;
