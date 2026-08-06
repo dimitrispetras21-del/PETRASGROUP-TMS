@@ -404,7 +404,6 @@ function _wiPaint(){
         </div>
       </div>
     </div>
-    ${_wiDriversPanel()}
     <div class="wk3-sub">
       <div class="entity-search-wrap">
         ${_ico('search')}
@@ -420,29 +419,25 @@ function _wiPaint(){
       <span class="wk3-range">Weekly International · Εβδομάδα ${week} · ${_wiWeekRange(week)}</span>
     </div>
 
-    <div class="wi-wrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px);">
-      <div class="wi-head" style="background:#B8C4D0">
-        <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
-          ↑ ΕΞΑΓΩΓΗ
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${expN}</span>
-          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">δεξί κλικ για ομαδοποίηση</span>
+    <div class="wk3-wrap">
+      <main class="wk3-sheet">
+        <div class="wk3-cols">
+          <div class="c"></div>
+          <div class="c fc" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
+          <div class="c main">ΕΞΑΓΩΓΗ <span class="n">${expN}</span><span class="hint" title="Δεξί κλικ: ομαδοποίηση groupage (βάση: το πρώτο-παραδιδόμενο)">ⓘ</span></div>
+          <div class="c main" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
+          <div class="c main">ΕΙΣΑΓΩΓΗ <span class="n">${impN}</span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
+          <div class="c fc" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
         </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
-          ΑΝΑΘΕΣΗ
+        <div id="wi-rows">
+          ${rows.length?_wiAllRowsHTML():`
+            <div class="wk3-empty">
+              <div class="big">Άδειο φύλλο — W${week}</div>
+              <p>Καμία διεθνής παραγγελία ακόμη. Οι νέες εμφανίζονται εδώ μόλις καταχωρηθούν.</p>
+            </div>`}
         </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
-          ↓ ΕΙΣΑΓΩΓΗ
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${impN}</span>
-          <span style="font-weight:400;font-size:11px;opacity:0.7;letter-spacing:0.5px;text-transform:none">σύρε για ταίριασμα</span>
-        </div>
-      </div>
-      <div id="wi-rows">
-        ${rows.length?_wiAllRowsHTML():`
-          <div class="empty-state" style="padding:60px">
-            <p>Καμία εξαγωγή για την εβδομάδα ${week}</p>
-          </div>`}
-      </div>
+      </main>
+      <aside class="wk3-rt">${_wiDriversPanel()}</aside>
     </div>
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
@@ -521,26 +516,28 @@ function _wiAllRowsHTML(){
   // T5 (Wave 2): mark TODAY's separator so the eye lands on «τώρα» first.
   const todayKey=(typeof localToday==='function')?localToday():toLocalDate(new Date());
 
-  sorted.forEach(grp=>{
+  sorted.forEach((grp,di)=>{
     const expCount=grp.exps.length;
-    const impCount=grp.imps.length;
+    const impCount=grp.imps.filter(r=>!r.matchedTo).length;
     const isToday=grp.rawDate===todayKey;
+    const alt=di%2===1; // proto: ζέβρωμα ανά ΜΕΡΑ, όχι ανά γραμμή
 
-    // Separator — same dark navy style as before
-    html+=`<div class="wi-dsep${isToday?' wi-dsep--today':''}">
-      <span class="wi-dsep-lbl">Date</span>
-      <span class="wi-dsep-date">${grp.lbl}</span>
-      ${isToday?'<span class="wi-dsep-todaytag">ΣΗΜΕΡΑ</span>':''}
-      ${expCount?`<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${expCount} exp</span>`:''}
-      ${impCount?`<span class="wi-dsep-n" style="color:rgba(14,165,233,0.7);margin-left:2px">${impCount} imp</span>`:''}
+    // v3.1 proto day header — τυπογραφικός, ΣΗΜΕΡΑ = accent
+    let wd='';
+    try{ wd=new Date(grp.rawDate+'T12:00:00').toLocaleDateString('el-GR',{weekday:'long'}).toUpperCase(); }catch{}
+    const dm=grp.rawDate?`${+grp.rawDate.slice(8,10)}/${+grp.rawDate.slice(5,7)}`:'';
+    html+=`<div class="wk3-dayh${isToday?' today':''}">
+      <span class="d">${wd||grp.lbl}${dm?' '+dm:''}</span>
+      ${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}
+      <span class="k">${expCount?expCount+' εξαγ':''}${expCount&&impCount?' · ':''}${impCount?impCount+' εισαγ':''} · παραδόσεις</span>
     </div>`;
 
     // Export rows
-    grp.exps.forEach(row=>{ html+=_wiRowHTML(row,idx++); });
+    grp.exps.forEach(row=>{ row._alt=alt; html+=_wiRowHTML(row,idx++); });
 
     // Only unmatched imports shown as rows — numbered I1… (Β.3-4) so «γραμμή
     // I3» means something on the phone between two dispatchers.
-    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ html+=_wiImpRowHTML(row,++impIdx); });
+    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ row._alt=alt; html+=_wiImpRowHTML(row,++impIdx); });
   });
 
   return html;
@@ -599,86 +596,35 @@ function _wiImpRowHTML(row,impNo){
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wi-pill">
-        <div class="wi-card wi-card-bp">
-          <div class="wi-card-top">${escapeHtml(impPartner.slice(0,26))}${impPartner.length>26?'…':''}</div>
-          ${row.partnerPlates?`<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>`:''}
-        </div>
-      </div>`;
+      impPill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''} — κλικ: αλλαγή">${escapeHtml(impPartner.slice(0,24))}${row.partnerPlates?` <small>${escapeHtml(row.partnerPlates)}</small>`:''}</div>`;
     } else {
-      const impTruckLine=[impTruck,impTrailer].filter(Boolean).join(' · ');
-      impPill=`<div class="wi-pill"><div class="wi-card wi-card-ok">
-        <div class="wi-card-top">${escapeHtml(impTruckLine||'—')}</div>
-        ${impSurname?`<div class="wi-card-bot">${escapeHtml(row.driverLabel||'')}</div>`:''}
-      </div></div>`;
+      impPill=`<div class="wk3-pill own" title="${escapeHtml([impTruck,impTrailer].filter(Boolean).join(' · '))} — κλικ: αλλαγή">${escapeHtml(impTruck||'—')}${impSurname?` <small>${escapeHtml(impSurname)}</small>`:''}</div>`;
     }
   } else {
     // Β.3-3: import-without-vehicle is NOT the same red as export-without-
     // assignment — dashed border (non-color signal) + explicit prefix.
-    impPill=`<div class="wi-pill"><div class="wi-card wi-card-un wi-card-un--imp"><div class="wi-card-top">ΕΙΣ · χωρίς όχημα</div></div></div>`;
+    impPill=`<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση">ΕΙΣ · χωρίς όχημα</div>`;
   }
 
-  const matchCell=isMatched
-    ?`<div class="wi-ci-data">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-        </div>
-        <div class="wi-sub">
-          ${clientName?`<span style="font-weight:700">${clientName}</span><span class="wi-sub-div"></span>`:''}
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
-          ${pals?`<span>${pals} pal</span>`:''}
-          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef2)}</span>`:''}
-          ${_wiBadges(f)}
-        </div>
-        <span class="wi-ci-save">✓ matched → ${matchedExp||''}</span>
-      </div>`
-    :`<div class="wi-ci-data">
-        <div class="wi-route">
-          <span class="from">${fromStr}</span>
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-        </div>
-        <div class="wi-sub">
-          ${clientName?`<span style="font-weight:700">${clientName}</span><span class="wi-sub-div"></span>`:''}
-          ${loadDt!=='—'?`<span>${loadDt} → ${delDt}</span>`:''}
-          ${loadDt!=='—'&&pals?`<span class="wi-sub-div"></span>`:''}
-          ${pals?`<span>${pals} pal</span>`:''}
-          ${impRef2?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef2)}</span>`:''}
-          ${_wiBadges(f)}
-        </div>
-      </div>`;
-
+  // v3.1 proto: I-γραμμή = ίδια 34px δομή, ράγα Ι# accent, ΕΞΑΓΩΓΗ κενή
+  // (Β.3-1: κενό κελί = δεν υπάρχει σκέλος), draggable για ταίριασμα.
+  const impVS2=!!f['Veroia Switch'];
   return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
-    class="wi-row"
-    style="background:rgba(14,165,233,0.022);border-top:1px solid rgba(14,165,233,0.1)"
+    class="wk3-row impr${row._alt?' alt':''}"
     draggable="true"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wi-compact" ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-      <div class="wi-cn" style="cursor:grab" title="Εισαγωγή ${impNo||''}">
-        <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">I${impNo||''}</span>
-      </div>
-      <!-- Β.3-1 ΑΝΑΙΡΕΘΗΚΕ (owner, 8/8 βράδυ): το γέμισμα της κενής EXPORT
-           κυψέλης διάβαζε ως θόρυβος — στο Excel τους τα κενά κελιά είναι
-           φυσιολογικά και σηματοδοτούν «δεν υπάρχει σκέλος». Μένει κενό. -->
-      <div class="wi-ce" style="background:var(--navy-mid)"></div>
-      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
-        ${isMatched
-          ?`<button class="wi-side-btn" title="Remove match"
-                onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
-          :`<div style="width:30px;flex-shrink:0"></div>`}
-        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
-          ${impPill}
-        </div>
-        <button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrintImp('${imp.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-      </div>
-      <div class="wi-ci" style="cursor:grab;background:rgba(14,165,233,0.03)">
-        ${matchCell}
-      </div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}</div>
+    <div class="wk3-feed l"></div>
+    <div class="wk3-leg void"></div>
+    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
+      ${impPill}
+      <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">⎙</button>
     </div>
+    <div class="wk3-leg imp" style="cursor:grab">
+      <span class="wk3-route">${loadDt!=='—'?`<b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt}</b>`:''}${fromStr}<span class="wk3-sep">→</span><span class="to">${impVS2?'Vermion Fresh Cross-Dock':toStr}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
+      <span class="wk3-meta">${pals?pals+'p':''} ${impRef2?`<span class="wk3-ref" title="Reference">${escapeHtml(String(impRef2).slice(0,12))}</span>`:''}${_wiBadges(f)}</span>
+    </div>
+    <div class="wk3-feed r"></div>
   </div>`;
 }
 
@@ -749,7 +695,7 @@ async function _wk3Accept(rowId){
 }
 function _wk3FlashSugs(){
   const f=document.querySelector('.wk3-sug');
-  if(f){ f.closest('.wi-row')?.scrollIntoView({behavior:'smooth',block:'center'}); }
+  if(f){ f.closest('.wk3-row')?.scrollIntoView({behavior:'smooth',block:'center'}); }
   document.querySelectorAll('.wk3-sug').forEach(p=>{p.style.transition='box-shadow .3s';p.style.boxShadow='0 0 0 3px var(--accent-light)';setTimeout(()=>p.style.boxShadow='',1600);});
 }
 
@@ -762,18 +708,16 @@ function _wiDriversPanel(){
   const items=(WINTL.data.drivers||[]).map(d=>{
     const first=escapeHtml((d.label||'').trim().split(/\s+/)[0]);
     const b=byDriver[d.id];
-    if(!b) return {free:true,k:'0',html:`<span class="wk-driver-chip wk-driver-chip--free" title="Χωρίς ανάθεση αυτή την εβδομάδα"><b>${first}</b> · διαθέσιμος</span>`};
+    if(!b) return {free:true,k:'0',html:`<div class="rc free" title="Χωρίς ανάθεση αυτή την εβδομάδα"><b>${first}</b><span>διαθέσιμος</span></div>`};
     const avail=_wk3AddDays(b.end,2), red=_wk3AddDays(b.end,1);
     const onTrip=b.end>=today;
     const state=onTrip?`δρομ. → ${fmt(b.end)}${b.place?' · '+escapeHtml(b.place):''}`:`ανάπ. → ${fmt(avail)}`;
-    return {free:false,k:b.end,html:`<span class="wk-driver-chip" title="Επιστροφή ${fmt(b.end)} → διαθέσιμος ${fmt(avail)} (κανόνας Χ+2). ⚡ Κατ' εξαίρεση με μειωμένη: ${fmt(red)} (Χ+1) — αντιστάθμιση εντός 3 εβδομάδων."><b>${first}</b> · ${state}</span>`};
+    return {free:false,k:b.end,html:`<div class="rc" title="Επιστροφή ${fmt(b.end)} → διαθέσιμος ${fmt(avail)} (κανόνας Χ+2). ⚡ Κατ' εξαίρεση με μειωμένη: ${fmt(red)} (Χ+1)."><b>${first}</b><span>${state}</span></div>`};
   }).sort((a,b)=>(a.free===b.free)?String(a.k).localeCompare(String(b.k)):(a.free?-1:1));
   if(!items.length) return '';
-  const open=localStorage.getItem('tms_drivers_panel')!=='0';
-  return `<details ${open?'open':''} ontoggle="localStorage.setItem('tms_drivers_panel',this.open?'1':'0')" class="wk-drivers">
-    <summary>Οδηγοί · 561/2006 (Χ+2) · ${items.length}</summary>
-    <div class="wk-drivers-list">${items.map(i=>i.html).join('')}</div>
-  </details>`;
+  return `<h3>ΟΔΗΓΟΙ · 561/2006</h3>
+    ${items.map(i=>i.html).join('')}
+    <p class="rnote">Κανόνας ημερών: <b>επιστροφή Χ → αναχώρηση Χ+2</b>. Το <b style="color:var(--warn,#B45309)">⚡Χ+1</b> = κατ' εξαίρεση μειωμένη, ως πρόταση. Οι ✨ σέβονται τον κανόνα.</p>`;
 }
 
 /* ── WAVE 2 HELPERS (T3/T4/T5/T1 — PREMORTEM) ─────────────────────── */
@@ -847,21 +791,13 @@ function _wiRowHTML(row,i){
   const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
   const surname=driver?driver.trim().split(/\s+/)[0]:'';
 
+  // v3.1 proto pills — 24px, μία γραμμή (πινακίδα + επώνυμο / εταιρεία + πινακίδες)
   let pill;
   if(row.saved){
     if(partner){
-      pill=`<div class="wi-pill">
-        <div class="wi-card wi-card-bp">
-          <div class="wi-card-top">${escapeHtml(partner.slice(0,26))}${partner.length>26?'…':''}</div>
-          ${row.partnerPlates?`<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>`:''}
-        </div>
-      </div>`;
+      pill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner.slice(0,24))}${row.partnerPlates?` <small>${escapeHtml(row.partnerPlates)}</small>`:''}</div>`;
     } else {
-      const truckLine=[truck,trailer].filter(Boolean).join(' · ');
-      pill=`<div class="wi-pill"><div class="wi-card wi-card-ok">
-        <div class="wi-card-top">${escapeHtml(truckLine||'—')}</div>
-        ${surname?`<div class="wi-card-bot">${escapeHtml(row.driverLabel||'')}</div>`:''}
-      </div></div>`;
+      pill=`<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(truck||'—')}${surname?` <small>${escapeHtml(surname)}</small>`:''}</div>`;
     }
   } else {
     // v3 (owner: «χρώμα, όχι λόγια»): ορφανό = κενό κόκκινο dashed πεδίο.
@@ -869,82 +805,49 @@ function _wiRowHTML(row,i){
     // ✓ = αποδοχή μέσω του κανονικού save. Κλικ στο pill = κανονικό popover.
     const sug=_wk3Suggest(row);
     pill=sug
-      ?`<div class="wi-pill" title="✨ Πρόταση (πρώτα δικός στόλος, κανόνας Χ+2): ${escapeHtml(sug.truck.label)} · ${escapeHtml(sug.driver.label)}. Κλικ στο ✓ για αποδοχή, κλικ εδώ για άλλη επιλογή."><div class="wi-card wi-card-un wk3-sug"><div class="wi-card-top">✨ ${escapeHtml(sug.truck.label)} · ${escapeHtml((sug.driver.label||'').trim().split(/\s+/)[0])}</div></div></div><button class="wk3-go" title="Αποδοχή πρότασης" onclick="event.stopPropagation();_wk3Accept(${row.id})">✓</button>`
-      :`<div class="wi-pill" title="Χωρίς ανάθεση — κλικ για ανάθεση"><div class="wi-card wi-card-un"><div class="wi-card-top">&nbsp;</div></div></div>`;
+      ?`<div class="wk3-pill sug wk3-sug" title="✨ Πρόταση (πρώτα δικός στόλος, κανόνας Χ+2): ${escapeHtml(sug.truck.label)} · ${escapeHtml(sug.driver.label)}. Κλικ στο ✓ για αποδοχή, κλικ εδώ για άλλη επιλογή."><span class="s">✨ ${escapeHtml(sug.truck.label)} ${escapeHtml((sug.driver.label||'').trim().split(/\s+/)[0])}</span><button class="go" title="Αποδοχή πρότασης" onclick="event.stopPropagation();_wk3Accept(${row.id})">✓</button></div>`
+      :`<div class="wk3-pill un" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
   }
 
-  // Import preview — saved state shown (full details like export)
-  const impClientName=imp?_wiClean((imp.fields['Client Name']||imp.fields['Client Summary']||'').split(',')[0].trim()||''):'';
-  const impRef=imp?imp.fields['Reference']||'':'';
+  // Import side — v3.1: ld μπροστά, VS override στον προορισμό (προς Βέροια),
+  // meta μόνο παλέτες. Ορφανός own γύρος = κόκκινο πεδίο («χρώμα, όχι λόγια»).
   const impLoadDt=imp?_wiFmt(imp.fields['Loading DateTime']):'';
-  const impDelDt=imp?_wiFmt(imp.fields['Delivery DateTime']):'';
   const impPals=imp?imp.fields['Total Pallets']||0:0;
+  const impVS=!!imp?.fields['Veroia Switch'];
   const impPrev=imp
-    ?`<div class="wi-ci-data">
-        <div class="wi-route">
-          <span class="from">${_wiClean(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}</span>
-          <span class="sep">→</span>
-          <span class="dest">${_wiClean(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}</span>
-        </div>
-        <div class="wi-sub">
-          ${impClientName?`<span style="font-weight:700">${impClientName}</span><span class="wi-sub-div"></span>`:''}
-          ${impLoadDt!=='—'?`<span>${impLoadDt} → ${impDelDt}</span>`:''}
-          ${impLoadDt!=='—'&&impPals?`<span class="wi-sub-div"></span>`:''}
-          ${impPals?`<span>${impPals} pal</span>`:''}
-          ${impRef?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(impRef)}</span>`:''}
-          ${_wiBadges(imp.fields)}
-        </div>
-        <span style="font-size:9px;color:#0F172A;font-weight:600;opacity:0.5">↩ matched</span>
-      </div>`
-    :`<div class="wk3-ci-empty${row.saved&&!hasPartner?' wk3-ci-gap':''}"
-        ${row.saved&&!hasPartner?`title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports (ή σύρε import εδώ)" onclick="event.stopPropagation();_wk3Gaps()"`:`title="Σύρε εισαγωγή εδώ για ταίριασμα"`}></div>`;
+    ?`<span class="wk3-route">${impLoadDt!=='—'?`<b class="wk3-ld" title="Ημ. φόρτωσης εισαγωγής">${impLoadDt}</b>`:''}${_wiClean(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}<span class="wk3-sep">→</span><span class="to">${impVS?'Vermion Fresh Cross-Dock':_wiClean(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—')}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
+     <span class="wk3-meta">${impPals?impPals+'p':''} ${_wiBadges(imp.fields)}</span>
+     <button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
+    :'';
+  const gapCell=row.saved&&!hasPartner&&!imp;
 
+  const vsExp=!!primary?.fields['Veroia Switch'];
   return `
-  <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}">
-    <div class="wi-compact" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
-      <div class="wi-cn">
-        <span class="wi-num">${i+1}</span>
-        <span class="wi-sync" id="wi-sync-${row.id}"></span>
-      </div>
-      <div class="wi-ce" oncontextmenu="_wiCtx(event,${row.id},event)" style="position:relative">
-        <div class="wi-route">
-          ${loadDt!=='—'?`<span class="wk3-ld" title="Ημερομηνία φόρτωσης">${loadDt}</span>`:''}
-          <span class="from">${primary?.fields['Veroia Switch']?'Vermion Fresh Cross-Dock':fromStr}</span>${primary?.fields['Veroia Switch']?'<span class="wk3-vsb">VS</span>':''}
-          <span class="sep">→</span>
-          <span class="dest">${toStr}</span>
-          ${isGroup?`<span class="wi-gr" onclick="event.stopPropagation();_wiToggleGroup(${row.id})" style="cursor:pointer">×${exps.length} ▾</span><button class="wi-side-btn" style="width:auto;padding:0 8px;font-size:9px;font-weight:800;letter-spacing:.3px" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙ ομάδα ×${exps.length}</button>`:''}
-        </div>
-        <div class="wi-sub">
-          ${pals?`<span>${pals} pal</span>`:''}
-          ${ref?`<span class="wi-sub-div"></span><span style="color:var(--text-dim);font-style:italic">ref: ${escapeHtml(ref)}</span>`:''}
-          ${_wiBadges(primary?.fields||{})}
-          ${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}
-        </div>
-      </div>
-      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
-        <button class="wi-side-btn" title="Print Export"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'export')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-        <div style="width:240px;display:flex;align-items:center;justify-content:center;
-                    padding:4px 0;cursor:pointer">
-          ${pill}
-        </div>
-        ${row.importId
-          ?`<button class="wi-side-btn" title="Print Import"
-                onclick="event.stopPropagation();_wiPrint(${row.id},'import')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>`
-          :`<div style="width:30px;flex-shrink:0"></div>`}
-      </div>
-      <div class="wi-ci" id="wi-ci-${row.id}"
-           onclick="event.stopPropagation()"
-           ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
-           ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})"
-           style="position:relative">
-        ${impPrev}
-      </div>
-
+  <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row._alt?' alt':''}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_wiToggle(${row.id})}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
+    <div class="wk3-num">${i+1}${isGroup?`<span class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
+    <div class="wk3-feed l"></div>
+    <div class="wk3-leg" oncontextmenu="_wiCtx(event,${row.id},event)">
+      <span class="wk3-route">${loadDt!=='—'?`<b class="wk3-ld" title="Ημερομηνία φόρτωσης">${loadDt}</b>`:''}${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':fromStr}<span class="wk3-sep">→</span><span class="to">${toStr}</span></span>
+      <span class="wk3-meta">${pals?pals+'p':''} ${_wiBadges(primary?.fields||{})}${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
-    ${isOpen?_wiPanelHTML(row):''}
-  </div>`;
+    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
+      ${pill}
+      ${isGroup
+        ?`<button class="wk3-prt" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
+        :`<button class="wk3-prt" title="Εκτύπωση εντολής (export)" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
+      ${row.importId?`<button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+    </div>
+    <div class="wk3-leg imp${gapCell?' gap':''}${!imp&&!gapCell?' void':''}" id="wi-ci-${row.id}"
+         onclick="event.stopPropagation()${gapCell?';_wk3Gaps()':''}"
+         ${gapCell?`title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports (ή σύρε import εδώ)"`:!imp?`title="Σύρε εισαγωγή εδώ για ταίριασμα"`:''}
+         ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
+         ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
+         ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
+      ${impPrev}
+    </div>
+    <div class="wk3-feed r"></div>
+  </div>
+  ${isOpen?`<div class="wk3-prow" data-row-id="${row.id}">${_wiPanelHTML(row)}</div>`:''}`;
 }
 
 /* ── PANEL HTML ────────────────────────────────────────────────────── */
