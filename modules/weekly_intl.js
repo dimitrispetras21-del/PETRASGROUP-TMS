@@ -375,6 +375,9 @@ function _wiPaint(){
   // «Τα κενά» (owner): own γύροι που θα γυρίσουν άδειοι — χωρίς import.
   const gaps=expRows.filter(r=>r.saved && !r.partnerId && !r.importId).length;
   const firstPendingId=_firstExp(r=>!r.saved);
+  // Φάση Β: busy cache ανά paint (τα _wk3Suggest των rows το ξαναχρησιμοποιούν)
+  WINTL._busy=_wk3Busy();
+  const sugN=expRows.filter(r=>!r.saved&&_wk3Suggest(r)).length;
 
   document.getElementById('content').innerHTML=`
     <div class="wk3 ${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
@@ -390,6 +393,7 @@ function _wiPaint(){
         <span class="wk3-t" title="${matched} ταιριασμένα · ${unmatched} εισαγωγές χωρίς ταίριασμα"><b>${matched}</b>/${impN} ταιρ.</span>
         ${(pending+impNoVehicle)>0?`<button class="wk3-t alert" onclick="${firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()'}" title="Ορφανά — χωρίς ανάθεση (${pending} εξαγ + ${impNoVehicle} εισαγ). Κλικ: πήγαινε στο πρώτο"><b>${pending+impNoVehicle}</b> εκκρεμή</button>`:''}
         ${gaps>0?`<button class="wk3-t gap" onclick="_wk3Gaps()" title="Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports"><b>${gaps}</b> κενά</button>`:''}
+        ${sugN>0?`<button class="wk3-t sug" onclick="_wk3FlashSugs()" title="Ορφανά με διαθέσιμο ζεύγος δικού στόλου (κανόνας Χ+2) — κλικ: πήγαινε στο πρώτο"><b>✨ ${sugN}</b></button>`:''}
         <span id="wi-crossweek-in"></span>
         <div class="wk3-acts">
           ${unmatched>0?`<button class="wk3-ab" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες" onclick="_wiAutoMatch()">${_ico('zap',13)} Ταίριασμα</button>`:''}
@@ -705,26 +709,70 @@ function _wiQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; 
 function _wiToggleDetails(){ localStorage.setItem('tms_weekly_details', _wiQuietOn()?'1':'0'); renderWeeklyIntl(); }
 // Excel sidebar «οδηγός → μέρα επιστροφής» (cols 33-36 of WEEKLY PLAN),
 // computed from this week's assignments — no new data entry.
-function _wiDriversPanel(){
-  const ret={};
+/* ── BUILD v3 Φάση Β — διαθεσιμότητα κατά τον κανόνα ημερών του owner:
+   «επιστροφή ημέρα Χ → αναχώρηση Χ+2» (⚡Χ+1 = κατ' εξαίρεση μειωμένη,
+   ΠΟΤΕ default). Όλα από τα ήδη φορτωμένα rows — μηδέν νέα fetches. ── */
+function _wk3Busy(){
+  const byDriver={}, byTruck={};
   WINTL.rows.forEach(r=>{
-    if(!r.driverId) return;
     const exp=WINTL.data.exports.find(x=>x.id===r.orderIds?.[0]);
     const imp=r.importId?WINTL.data.imports.find(x=>x.id===r.importId):(r.type==='import'?WINTL.data.imports.find(x=>x.id===r.orderId):null);
-    const legF=(imp&&imp.fields)||(exp&&exp.fields);
-    if(!legF) return;
-    const end=legF['Delivery DateTime']||legF['Loading DateTime']; if(!end) return;
-    const cur=ret[r.driverId];
-    if(!cur||String(end)>String(cur.end)) ret[r.driverId]={label:r.driverLabel||'',end,
-      place:_wiClean(legF['Delivery Summary']||'').split(',')[0].slice(0,16)};
+    const legF=(imp&&imp.fields)||(exp&&exp.fields); if(!legF) return;
+    const end=toLocalDate(legF['Delivery DateTime']||legF['Loading DateTime']||''); if(!end) return;
+    const place=_wiClean(legF['Delivery Summary']||'').split(',')[0].slice(0,16);
+    const upd=(map,id)=>{ if(!id) return; const c=map[id]; if(!c||end>c.end) map[id]={end,place}; };
+    upd(byDriver,r.driverId); upd(byTruck,r.truckId);
   });
-  const list=Object.values(ret).filter(d=>d.label).sort((a,b)=>String(a.end).localeCompare(String(b.end)));
-  if(!list.length) return '';
-  const fmt=s=>{try{return new Date(s).toLocaleDateString('el-GR',{weekday:'short',day:'numeric',month:'numeric'});}catch{return '';}};
+  return {byDriver,byTruck};
+}
+function _wk3AddDays(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return toLocalDate(d); }
+// ✨ Πρόταση για ορφανό export: ΠΡΩΤΑ δικός στόλος (default — δεν ορίστηκε
+// αλλιώς): οδηγός διαθέσιμος κατά Χ+2 για την ημέρα φόρτωσης + ελεύθερο
+// φορτηγό. Συνεργάτης δεν προτείνεται αυτόματα — απόφαση dispatcher.
+function _wk3Suggest(row){
+  if(row.saved||row.type!=='export') return null;
+  const exp=WINTL.data.exports.find(x=>x.id===row.orderIds?.[0]); if(!exp) return null;
+  const loadD=toLocalDate(exp.fields['Loading DateTime']||''); if(!loadD) return null;
+  const {byDriver,byTruck}=WINTL._busy||_wk3Busy();
+  const drv=(WINTL.data.drivers||[]).find(d=>{ const b=byDriver[d.id]; return !b || _wk3AddDays(b.end,2)<=loadD; });
+  const trk=(WINTL.data.trucks||[]).find(t=>{ const b=byTruck[t.id]; return !b || b.end<loadD; });
+  return (drv&&trk)?{driver:drv,truck:trk}:null;
+}
+// Αποδοχή με ΕΝΑ κλικ — περνά από το ΚΑΝΟΝΙΚΟ μονοπάτι αποθήκευσης
+// (validations, T1 same-day confirm, optimistic locks, PA/VS sync).
+async function _wk3Accept(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const s=_wk3Suggest(row); if(!s){ toast('Δεν υπάρχει διαθέσιμη πρόταση','warn'); return; }
+  row.truckId=s.truck.id; row.truckLabel=s.truck.label;
+  row.driverId=s.driver.id; row.driverLabel=s.driver.label;
+  await _wiSaveFromPopover(rowId);
+}
+function _wk3FlashSugs(){
+  const f=document.querySelector('.wk3-sug');
+  if(f){ f.closest('.wi-row')?.scrollIntoView({behavior:'smooth',block:'center'}); }
+  document.querySelectorAll('.wk3-sug').forEach(p=>{p.style.transition='box-shadow .3s';p.style.boxShadow='0 0 0 3px var(--accent-light)';setTimeout(()=>p.style.boxShadow='',1600);});
+}
+
+// Πάνελ ΟΔΗΓΟΙ · 561/2006: τρεις καταστάσεις ανά οδηγό — σε δρομολόγιο →
+// ανάπαυση → διαθέσιμος. Οι διαθέσιμοι πρώτοι (τροφοδοτούν τις ✨).
+function _wiDriversPanel(){
+  const {byDriver}=WINTL._busy||_wk3Busy();
+  const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
+  const fmt=iso=>{try{return new Date(iso+'T12:00:00').toLocaleDateString('el-GR',{weekday:'short',day:'numeric',month:'numeric'});}catch{return iso;}};
+  const items=(WINTL.data.drivers||[]).map(d=>{
+    const first=escapeHtml((d.label||'').trim().split(/\s+/)[0]);
+    const b=byDriver[d.id];
+    if(!b) return {free:true,k:'0',html:`<span class="wk-driver-chip wk-driver-chip--free" title="Χωρίς ανάθεση αυτή την εβδομάδα"><b>${first}</b> · διαθέσιμος</span>`};
+    const avail=_wk3AddDays(b.end,2), red=_wk3AddDays(b.end,1);
+    const onTrip=b.end>=today;
+    const state=onTrip?`δρομ. → ${fmt(b.end)}${b.place?' · '+escapeHtml(b.place):''}`:`ανάπ. → ${fmt(avail)}`;
+    return {free:false,k:b.end,html:`<span class="wk-driver-chip" title="Επιστροφή ${fmt(b.end)} → διαθέσιμος ${fmt(avail)} (κανόνας Χ+2). ⚡ Κατ' εξαίρεση με μειωμένη: ${fmt(red)} (Χ+1) — αντιστάθμιση εντός 3 εβδομάδων."><b>${first}</b> · ${state}</span>`};
+  }).sort((a,b)=>(a.free===b.free)?String(a.k).localeCompare(String(b.k)):(a.free?-1:1));
+  if(!items.length) return '';
   const open=localStorage.getItem('tms_drivers_panel')!=='0';
   return `<details ${open?'open':''} ontoggle="localStorage.setItem('tms_drivers_panel',this.open?'1':'0')" class="wk-drivers">
-    <summary>Επιστροφές οδηγών · ${list.length}</summary>
-    <div class="wk-drivers-list">${list.map(d=>`<span class="wk-driver-chip"><b>${escapeHtml(d.label.trim().split(/\s+/)[0])}</b> · ${fmt(d.end)}${d.place?' · '+escapeHtml(d.place):''}</span>`).join('')}</div>
+    <summary>Οδηγοί · 561/2006 (Χ+2) · ${items.length}</summary>
+    <div class="wk-drivers-list">${items.map(i=>i.html).join('')}</div>
   </details>`;
 }
 
@@ -817,7 +865,12 @@ function _wiRowHTML(row,i){
     }
   } else {
     // v3 (owner: «χρώμα, όχι λόγια»): ορφανό = κενό κόκκινο dashed πεδίο.
-    pill=`<div class="wi-pill" title="Χωρίς ανάθεση — κλικ για ανάθεση"><div class="wi-card wi-card-un"><div class="wi-card-top">&nbsp;</div></div></div>`;
+    // Φάση Β: αν υπάρχει διαθέσιμο ζεύγος δικού στόλου (Χ+2) → ✨ πρόταση,
+    // ✓ = αποδοχή μέσω του κανονικού save. Κλικ στο pill = κανονικό popover.
+    const sug=_wk3Suggest(row);
+    pill=sug
+      ?`<div class="wi-pill" title="✨ Πρόταση (πρώτα δικός στόλος, κανόνας Χ+2): ${escapeHtml(sug.truck.label)} · ${escapeHtml(sug.driver.label)}. Κλικ στο ✓ για αποδοχή, κλικ εδώ για άλλη επιλογή."><div class="wi-card wi-card-un wk3-sug"><div class="wi-card-top">✨ ${escapeHtml(sug.truck.label)} · ${escapeHtml((sug.driver.label||'').trim().split(/\s+/)[0])}</div></div></div><button class="wk3-go" title="Αποδοχή πρότασης" onclick="event.stopPropagation();_wk3Accept(${row.id})">✓</button>`
+      :`<div class="wi-pill" title="Χωρίς ανάθεση — κλικ για ανάθεση"><div class="wi-card wi-card-un"><div class="wi-card-top">&nbsp;</div></div></div>`;
   }
 
   // Import preview — saved state shown (full details like export)
@@ -2015,6 +2068,8 @@ window._wiApplyFilter = _wiApplyFilter;
 window._wiPulseRow = _wiPulseRow;
 window._wk3Gaps = _wk3Gaps;
 window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
+window._wk3Accept = _wk3Accept;
+window._wk3FlashSugs = _wk3FlashSugs;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];

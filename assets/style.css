@@ -2222,6 +2222,14 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-ci-empty{width:100%;height:100%;display:flex;align-items:center;margin:-6px -12px;padding:6px 12px;min-height:46px}
 .wk3-ci-gap{background:rgba(220,38,38,0.07);cursor:pointer}
 .wk3-ci-gap:hover{background:rgba(220,38,38,0.13)}
+/* BUILD v3 Φάση Β: ✨ suggestion pill + one-click accept + drivers panel */
+.wk3-sug{border-style:dashed;border-color:var(--accent) !important;background:rgba(2,132,199,0.06) !important}
+.wk3-sug .wi-card-top{color:var(--accent) !important;font-weight:700}
+.wk3-go{flex-shrink:0;width:24px;height:24px;border-radius:6px;border:1.5px solid var(--accent);background:var(--accent);color:#fff;font-size:13px;font-weight:800;cursor:pointer;line-height:1;padding:0;margin-left:4px;transition:background .15s}
+.wk3-go:hover{background:var(--accent-hover,#0369A1)}
+.wk3-t.sug b{color:var(--accent)}
+.wk-driver-chip--free{border-style:dashed;color:var(--success,#15803D)}
+.wk-driver-chip--free b{color:var(--success,#15803D)}
 
 /* Π3 (Wave 3): lane rate history strip inside the assignment popover. */
 .wi-lane-hist { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 14px 10px; }
