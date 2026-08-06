@@ -25,6 +25,10 @@ const MAINT_HISTORY_FIELDS = [
   'Vehicle Plate','Vehicle Type','Date','Type','Description',
   'Workshop','Cost','Odometer km','Parts','Next Service Date',
   'Next Service km','Invoice Number','Notes','Status',
+  // Truck/Trailer are the real link to the vehicle; Vehicle Plate stays as a
+  // denormalized column for display and search only. Renaming a plate no longer
+  // orphans its history (supersedes the HANDOFF.md dual-update rule).
+  'Truck','Trailer',
 ];
 
 // Maintenance categories — derived from 1,152 real service events (2024-2026).
@@ -927,6 +931,16 @@ async function _svcSave(editId) {
   };
   const wsVal = document.getElementById('mf-workshop').value;
   if (wsVal) fields['Workshop'] = [wsVal];
+
+  // Link to the vehicle record itself. Vehicle Plate above is kept for display and
+  // search, but it is no longer what ties the record to a truck or trailer.
+  const vList = (vType === 'Truck' ? MAINT.trucks : MAINT.trailers) || [];
+  const vRec  = vList.find(v => v.fields['License Plate'] === plate);
+  if (!vRec) {
+    toast(`Το όχημα ${plate} δεν βρέθηκε στον στόλο`, 'danger');
+    return;
+  }
+  fields[vType === 'Truck' ? 'Truck' : 'Trailer'] = [vRec.id];
 
   try {
     if (editId) {
