@@ -168,10 +168,12 @@ _Αποφάσεις owner (8/8 βράδυ):_ **Α** (Group ID text στα ORDERS
   με rate επιβεβαιωμένα χειροκίνητα στο παραγωγικό).
 _Live επαληθεύτηκε:_ το group-print pipeline μέχρι που ανέδειξε bug
 (orderNo από null global — διορθώθηκε `ca36774`)· το lane fetch χειροκίνητα.
-_ΕΚΚΡΕΜΕΙ live μάτι (η ουρά Pages κόλλησε >20′ με πολλαπλά builds):_
-(α) ομαδική εκτύπωση 2 εγγράφων με το fix· (β) Π3 strip ορατό στο popover·
-(γ) regression single-order εκτύπωσης. Έλεγχος με:
-`print.html?orderIds=<a>,<b>&leg=export&sheet=driver&noprint=1`.
+_Live verify 8/8 απόγευμα — ΟΛΑ ✅:_ (α) ομαδική εκτύπωση: 2 έγγραφα,
+«ΕΓΓΡΑΦΟ 1/2 · 2/2», 1 toolbar, 1 page-break, μηδέν σφάλματα· (β) single
+regression: Partner Assignment Order σωστό (PAO-W21), καθαρό από CROSS-DOCK·
+(γ) Π3: «Ιστορικό γραμμής GR → GERMANY: W22 · 3.800€ · DPS LOGISTICS» ×3 —
+χρειάστηκαν 3 live διορθώσεις facade (422 στο `>`, derived κενά σε fields[],
+summaries μόνο μέσω ORDER_STOPS inject — όλες στο main).
 _Backend βήματα (owner/backend session):_ `WAVE3_BACKEND.md` — DDL 3 στηλών
 + 3 γραμμές facade map· μετά από αυτά το groupage επιβιώνει το refresh
 χωρίς άλλη αλλαγή frontend. Follow-up: φόρμα Locations (2 πεδία).
