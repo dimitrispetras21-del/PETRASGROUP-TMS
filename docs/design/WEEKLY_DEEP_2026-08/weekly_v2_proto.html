@@ -71,7 +71,7 @@ button{font:inherit;background:none;border:none;cursor:pointer;color:inherit}
 .sheet{background:var(--sheet);border:1px solid var(--hair-strong);border-radius:12px;box-shadow:var(--shadow);overflow:hidden}
 
 /* Grid: ράγα | προς-Βέροια 96 | ΕΞΑΓΩΓΗ | ΑΝΑΘΕΣΗ 176 | ΕΙΣΑΓΩΓΗ | από-Βέροια 96 */
-.cols,.row{display:grid;grid-template-columns:44px 96px minmax(230px,1fr) 176px minmax(230px,1fr) 96px}
+.cols,.row{display:grid;grid-template-columns:44px 150px minmax(210px,1fr) 196px minmax(210px,1fr) 150px}
 .cols{position:sticky;top:54px;z-index:30;background:var(--sheet);border-bottom:1px solid var(--hair-strong)}
 .cols .c{font-family:var(--fd);font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--dim);
          padding:10px 12px;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
@@ -109,8 +109,25 @@ html.dark .cols .n{background:var(--accent);color:#fff}
 .route .to{font-weight:700} .route .sep{color:var(--dim);margin:0 5px}
 .vsb{font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:1px 4px;vertical-align:1px}
 html.dark .vsb{background:var(--accent)}
+/* v3.1 (owner): η ΠΑΡΑΔΟΣΗ φεύγει από τη γραμμή — τη λέει η μέρα-ομάδα.
+   Η ημ. ΦΟΡΤΩΣΗΣ μπαίνει ΜΠΡΟΣΤΑ από τον τόπο (Excel-style: Date|Client). */
 .meta{font-size:10px;color:var(--dim);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;
-      width:126px;text-align:right;display:flex;gap:6px;justify-content:flex-end;align-items:baseline}
+      width:72px;text-align:right;display:flex;gap:6px;justify-content:flex-end;align-items:baseline}
+.ld{font-weight:700;color:var(--mid);font-size:10.5px;font-variant-numeric:tabular-nums;margin-right:4px}
+/* ⎙ εκτύπωση εντολής ανά γραμμή (οδηγός/συνεργάτης, export+import) */
+.prt{flex-shrink:0;color:var(--dim);font-size:13px;padding:2px 5px;border-radius:5px;line-height:1}
+.prt:hover{color:var(--accent);background:var(--accent-soft)}
+/* Sidebar — ένταξη στο Petras Group Design (navy #0B1929, active #38BDF8) */
+.sb{position:fixed;left:0;top:0;bottom:0;width:188px;background:#0B1929;z-index:55;padding:16px 0;overflow-y:auto}
+html.dark .sb{background:#080F1A}
+.sb .logo{font-family:var(--fd);font-weight:800;color:#fff;font-size:14px;padding:0 18px 12px;letter-spacing:.5px}
+.sb .logo span{color:#8B95A1}
+.sb .grp{font-size:8.5px;font-weight:800;letter-spacing:1.5px;color:rgba(196,207,219,.4);padding:12px 18px 5px}
+.sb a{display:block;font-size:12px;color:rgba(196,207,219,.75);padding:7px 18px;border-left:3px solid transparent;text-decoration:none}
+.sb a.on{color:#fff;border-left-color:#38BDF8;background:rgba(56,189,248,.08)}
+.sb a:hover{color:#fff}
+body{padding-left:188px}
+@media (max-width:1360px){.sb{display:none} body{padding-left:0}}
 .tag{font-size:7.5px;font-weight:800;letter-spacing:.5px;color:var(--mid);border:1px solid var(--hair-strong);border-radius:3px;padding:0 4px}
 .tag.risk{color:var(--un);border-color:rgba(180,35,24,.4)}
 .xtra{display:none;font-size:8.5px;font-weight:700;border-radius:3px;padding:0 5px}
@@ -219,6 +236,21 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
 </style>
 </head>
 <body>
+
+<nav class="sb" aria-label="TMS πλοήγηση (mock)">
+  <div class="logo">PETRAS<span> GROUP</span></div>
+  <div class="grp">PLANNING</div>
+  <a href="#">Dashboard</a>
+  <a href="#" class="on">Weekly International</a>
+  <a href="#">Weekly National</a>
+  <a href="#">National Pick Ups</a>
+  <div class="grp">DAILY OPS</div>
+  <a href="#">Daily Ops Plan</a>
+  <a href="#">Ramp Board</a>
+  <div class="grp">ORDERS</div>
+  <a href="#">International</a>
+  <a href="#">National</a>
+</nav>
 
 <header class="mast"><div class="mi">
   <div class="brand">PETRAS <em>· Weekly International</em></div>
@@ -346,31 +378,38 @@ function rowHTML(kind,day,alt){
   const del=day.d, load=day.d-2, pal=24+(n%9);
   const vsExp=!isImp&&!cancelled&&n%2===0, vsImp=isImp&&n%2===1;
   let numCell,expCell,impCell;
+  // v3.1 (owner): ημ. ΦΟΡΤΩΣΗΣ μπροστά από τον τόπο· παράδοση ΔΕΝ γράφεται
+  // (τη λέει η μέρα-ομάδα)· meta = μόνο παλέτες + σήματα.
   if(isImp){ iN++; imp++;
     numCell=`<div class="num imp">I${iN}</div>`;
     expCell=`<div class="leg void"></div>`;
     const impTo=vsImp?`<span class="to">Vermion Fresh Cross-Dock</span> <span class="vsb">VS</span><span class="vschip">↓${P(IT_,n+1).split(' ')[0]}</span>`:`<span class="to">${P(IT_,n)}</span>`;
-    impCell=`<div class="leg"><span class="route">${P(IF,n)}<span class="sep">→</span>${impTo}</span><span class="meta">${del}/8→${del+2}/8 · ${pal}p</span></div>`;
+    impCell=`<div class="leg"><span class="route"><b class="ld">${del}/8</b>${P(IF,n)}<span class="sep">→</span>${impTo}</span><span class="meta">${pal}p</span></div>`;
   }else{ exp++;
     numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Groupage — δεξί κλικ συμπτύσσει· βάση: το πρώτο-παραδιδόμενο. ⎙ ενιαίο πακέτο">×2⎙</span>`:''}</div>`;
     const tags=(n%6===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'');
     const x=(n%7===0?'<span class="xtra cross">↤ φορτ. W34</span>':'');
-    const from=vsExp?`Vermion Fresh Cross-Dock <span class="vsb">VS</span><span class="vschip">↑${P(F,n).split(',')[0].slice(0,10)}</span>`:P(F,n);
-    expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':P(T,n)}</span></span><span class="meta">${load}/8→${del}/8 · ${pal}p ${tags}${x}</span></div>`;
+    // VS: η ημερομηνία ΜΠΡΟΣΤΑ = φόρτωση ΑΠΟ το Cross-Dock (owner spec).
+    const from=vsExp?`<b class="ld">${load}/8</b>Vermion Fresh Cross-Dock <span class="vsb">VS</span><span class="vschip">↑${P(F,n).split(',')[0].slice(0,10)}</span>`:`<b class="ld">${load}/8</b>${P(F,n)}`;
+    expCell=`<div class="leg"><span class="route">${from}<span class="sep">→</span><span class="to">${grp?'Hamburg Grossmarkt, DE':P(T,n)}</span></span><span class="meta">${pal}p ${tags}${x}</span></div>`;
     impCell=(n%3===0&&!grp&&!cancelled)
-      ?`<div class="leg"><span class="route">${P(IF,n+2)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}/8→${del+2}/8 · ${pal-3}p</span></div>`
+      ?`<div class="leg"><span class="route"><b class="ld">${del}/8</b>${P(IF,n+2)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${pal-3}p</span></div>`
       :(pKind==='par'||cancelled
         ?`<div class="leg void"></div>`
         :(gaps++,`<div class="leg gap void" title="Κενό γυρισμού — ξεφορτώνει ${del}/8 χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports" onclick="hl()"></div>`));
   }
+  // Feeds v3.1 (owner): ΤΟΠΟΣ + ημ. φόρτωσης από τον αρχικό πελάτη (αριστερά)
+  // και τελικός τόπος + ημ. διανομής (δεξιά)· πινακίδα στο hover.
   const fL=vsExp?P(FEED,n):null, fR=vsImp?P(FEED,n+2):null;
-  const feedL=fL?`<div class="feed l" title="Πραγματική φόρτωση: ${P(F,n).split(',')[0]} — επεξεργασία στο Weekly National"><b>${fL}</b> ↑${load-1}/8</div>`:`<div class="feed l"></div>`;
-  const feedR=fR?`<div class="feed r" title="Τελική διανομή: ${P(IT_,n+1)} — επεξεργασία στο Weekly National"><b>${fR}</b> ↓${del+3}/8</div>`:`<div class="feed r"></div>`;
+  const feedL=fL?`<div class="feed l" title="Φόρτωση από αρχικό πελάτη ${load-1}/8 · όχημα ${fL} — επεξεργασία στο Weekly National"><b>${load-1}/8</b>&nbsp;${P(F,n).split(',')[0]}</div>`:`<div class="feed l"></div>`;
+  const feedR=fR?`<div class="feed r" title="Τελική διανομή ${del+3}/8 · όχημα ${fR} — επεξεργασία στο Weekly National"><b>${del+3}/8</b>&nbsp;${P(IT_,n+1)}</div>`:`<div class="feed r"></div>`;
   const pill=pKind==='ghost'
     ?`<div class="pill own" style="opacity:.4">— μαζί με #${exp-1} —</div>`
     :cancelled?`<div class="pill un" style="border-style:solid"><b style="color:var(--un);font-size:9.5px;letter-spacing:.5px">ΜΑΤΑΙΩΘΗΚΕ</b></div>`
     :pillHTML(pKind,n);
-  return `<div class="row${alt?' alt':''}${cancelled?' cxl':''}" style="animation-delay:${Math.min(n*0.018,0.45)}s">${numCell}${feedL}${expCell}<div class="assign">${pill}</div>${impCell}${feedR}</div>`;
+  // ⎙ εκτύπωση εντολής (οδηγός/συνεργάτης, export+import) — όχι σε ghost/cxl
+  const prt=(pKind==='ghost'||cancelled)?'':`<button class="prt" title="Εκτύπωση εντολής — φύλλο ${pKind==='par'?'Συνεργάτη':'Οδηγού'} (export & import)" onclick="event.stopPropagation()">⎙</button>`;
+  return `<div class="row${alt?' alt':''}${cancelled?' cxl':''}" style="animation-delay:${Math.min(n*0.018,0.45)}s">${numCell}${feedL}${expCell}<div class="assign">${pill}${prt}</div>${impCell}${feedR}</div>`;
 }
 function buildNormal(){
   n=0;iN=0;exp=0;imp=0;pend=0;sugN=0;gaps=0;sugI=0;
