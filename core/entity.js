@@ -165,7 +165,7 @@ const ENTITY_CONFIG = {
       { field: 'Model',               label: 'Μοντέλο' },
       { field: 'Year',                label: 'Έτος', type: 'number' },
       { field: 'Euro Standard',       label: 'Euro' },
-      { field: 'Tare Weight kg',      label: 'Απόβαρο kg', type: 'number' },
+      { field: 'Tare Weight kg',      label: 'Απόβαρο', type: 'number', unit: 'kg' },
       { field: 'VIN',                 label: 'VIN' },
       { field: 'Active',              label: 'Κατάσταση', type: 'active' },
     ],
@@ -177,7 +177,7 @@ const ENTITY_CONFIG = {
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
         { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
+        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',     type: 'date' },
@@ -220,6 +220,7 @@ const ENTITY_CONFIG = {
       { field: 'Year',                    label: 'Έτος', type: 'number' },
       { field: 'Trailer Type',            label: 'Τύπος' },
       { field: 'VIN',                     label: 'VIN' },
+      { field: 'Tare Weight kg',          label: 'Απόβαρο', type: 'number', unit: 'kg' },
       { field: 'Active',                  label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
@@ -230,7 +231,7 @@ const ENTITY_CONFIG = {
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
         { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker','Ρυμούλκα'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
+        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',      label: 'ΚΤΕΟ έως',     type: 'date' },
@@ -878,8 +879,12 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
     // so a column mixed right-aligned digits with left-aligned em-dashes and read as
     // broken. Keep the whole numeric column on one axis, filled or not.
     if (col.type === 'number') {
+      // Η μονάδα (π.χ. kg) μπαίνει δίπλα στον αριθμό, σε πιο σβηστό χρώμα ώστε
+      // η στήλη να διαβάζεται ως αριθμοί και όχι ως κείμενο (owner 6-8-2026).
+      const unit = col.unit && val != null && val !== ''
+        ? ` <span style="color:var(--text-dim);font-size:11px">${col.unit}</span>` : '';
       const shown = val != null && val !== '' ? val : '—';
-      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}</td>`;
+      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}${unit}</td>`;
     }
     if (col.primary) {
       const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
@@ -1024,7 +1029,9 @@ function selectEntity(entityKey, recId) {
             // PARTNERS/CLIENTS typo) was shown verbatim. The form already
             // defines a display label per field; reuse it here. The DB field
             // name itself must NOT change — records and filters depend on it.
-            const lbl = (cfg.formFields || []).flatMap(s2 => s2.fields).find(x => x.f === field)?.label || field;
+            const fdef = (cfg.formFields || []).flatMap(s2 => s2.fields).find(x => x.f === field);
+            const lbl = fdef?.label || field;
+            if (fdef?.unit) displayVal = `${displayVal} ${fdef.unit}`;
             return `<div class="detail-field">
               <span class="detail-field-label">${lbl}</span>
               <span class="detail-field-value">${displayVal}</span>
