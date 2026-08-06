@@ -96,12 +96,11 @@ body.details .xtra{display:inline}
 .xtra.cross{color:var(--accent);background:var(--accent-soft)}
 .xtra.late{color:var(--un);background:var(--un-bg)}
 .leg.void{color:var(--hair-strong);justify-content:center;font-size:13px;user-select:none}
-/* ΤΑ ΚΕΝΑ (owner: «για αρχή οι dispatchers πρέπει να ξέρουν ποια είναι τα
-   κενά»): own φορτηγό χωρίς φορτίο επιστροφής = εργάσιμο κενό, όχι διακόσμηση.
-   Κλικ → φωτίζει τα αδιάθετα imports που μπορούν να το γεμίσουν. */
-.gapx{font-size:9.5px;font-weight:700;color:var(--accent);border:1.5px dashed rgba(2,132,199,.45);
-      border-radius:6px;padding:3px 10px;background:transparent;white-space:nowrap}
-.gapx:hover{background:var(--accent-soft)}
+/* ΤΑ ΚΕΝΑ (owner v2.8: «χρώμα, όχι λόγια»): κόκκινο πεδίο = κενό.
+   import-πεδίο κόκκινο → own φορτηγό γυρνά άδειο· ανάθεση κόκκινη → ορφανό
+   φορτίο. Κλικ στο κόκκινο import-πεδίο → φωτίζει τα αδιάθετα imports. */
+.leg.gap{background:var(--un-bg);cursor:pointer}
+.leg.gap:hover{background:#FDE8E6}
 /* Ματαίωση (owner): ορατή-διαγραμμένη, δεν εξαφανίζεται. */
 .row.cxl{opacity:.5}
 .row.cxl .route,.row.cxl .meta,.row.cxl .feed{text-decoration:line-through}
@@ -125,8 +124,11 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
               padding:2px 7px;line-height:1}
 .pill.sug .go:hover{background:var(--ok)}
 .pill.sug:hover{background:var(--un-bg)}
-.pill.un{background:transparent;border:1.5px dashed rgba(180,35,24,.5)}
+.pill.un{background:var(--un-bg);border:1.5px dashed rgba(180,35,24,.5);cursor:pointer}
 .pill.un b{color:var(--un);font-size:10.5px}
+/* Δεξί κλικ σε import: μεταφορά σε προηγούμενη/επόμενη εβδομάδα (owner) */
+.cx{display:block;width:100%;text-align:left;font-size:11.5px;font-weight:600;padding:7px 11px;border-radius:6px;color:var(--ink)}
+.cx:hover{background:var(--accent-soft)}
 .grp-b{font-family:var(--fd);font-size:8.5px;font-weight:700;background:var(--navy);color:#fff;border-radius:999px;padding:1px 6px;cursor:pointer;flex-shrink:0}
 .grp-b:hover{background:var(--accent)}
 
@@ -220,9 +222,15 @@ body.wh .f input[placeholder="0.00"]{visibility:hidden}
   </aside>
 </div>
 
-<p class="note">Πρωτότυπο v2.3 · mock 34 σειρές (στόχος 30-50) · οι ημέρες = ημέρες <b>ΠΑΡΑΔΟΣΗΣ</b> (απόφαση owner) ·
-VS: το διεθνές σκέλος δείχνει σταθμό <b>Vermion Fresh Cross-Dock</b> και οι ακριανές στήλες τον πραγματικό τόπο (read-only — επεξεργασία στο Weekly National) ·
-γραμμή 13 = δείγμα ματαίωσης (ορατή-διαγραμμένη) · <b>✨ ✓</b> = ανάθεση με ένα κλικ · «Λεπτομέρειες» = κρυφά chips · κλικ σε pill = popover.</p>
+<p class="note">Πρωτότυπο v2.8 · mock 34 σειρές · ημέρες <b>ΠΑΡΑΔΟΣΗΣ</b> · <b>χρώμα αντί για λόγια</b>:
+κόκκινο import-πεδίο = own φορτηγό γυρνά άδειο (κλικ → αδιάθετα imports) · κόκκινη διακεκομμένη ανάθεση = ορφανό φορτίο ·
+<b>δεξί κλικ σε import</b> = μεταφορά σε προηγούμενη/επόμενη εβδομάδα · groupage με βάση το πρώτο-παραδιδόμενο (hover στο ×2⎙) ·
+VS σταθμός Vermion Fresh Cross-Dock με πραγματικό τόπο στις άκρες · <b>✨ ✓</b> = ανάθεση με ένα κλικ · γραμμή 13 = ματαίωση.</p>
+
+<div id="ctx" style="display:none;position:fixed;z-index:70;background:var(--sheet);border:1px solid var(--hair-strong);border-radius:9px;box-shadow:0 12px 30px -10px rgba(8,15,26,.3);padding:4px;min-width:190px">
+  <button class="cx">← Μεταφορά στην W32</button>
+  <button class="cx">Μεταφορά στην W34 →</button>
+</div>
 
 <div class="pop" id="pop" onclick="if(event.target===this)this.classList.remove('on')">
   <div class="card">
@@ -274,7 +282,7 @@ function pillHTML(kind,idx){
     return `<div class="pill sug" onclick="openPop(this)" title="Κλικ: πλήρης ανάθεση">
       <span class="s">✨ ${s[0]} · ${s[1]}</span><button class="go" title="Αποδοχή πρότασης — ανάθεση με ένα κλικ"
       onclick="event.stopPropagation();accept(this,'${s[0]}','${s[1]}')">✓</button></div>`;}
-  pend++;return `<div class="pill un" onclick="openPop(this)"><b>Ανάθεσε</b></div>`;
+  pend++;return `<div class="pill un" onclick="openPop(this)" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
 }
 function rowHTML(kind){
   n++;
@@ -293,7 +301,7 @@ function rowHTML(kind){
     const impTo=vsImp?'<span class="to">Vermion Fresh Cross-Dock</span> <span class="vs" style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px">VS</span>':`<span class="to">${R(IT)}</span>`;
     impCell=`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span>${impTo}</span><span class="meta">${load}→${del} · ${pal}p</span></div>`;
   }else{ exp++;
-    numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Εκτύπωση ομάδας — ένα πακέτο">×2⎙</span>`:''}</div>`;
+    numCell=`<div class="num">${exp}${grp==='A'?` <span class="grp-b" title="Groupage — δεξί κλικ στις παραγγελίες τις συμπτύσσει· βάση της ομάδας: το φορτίο που παραδίδεται ΠΡΩΤΟ. ⎙ = εκτύπωση ενιαίου πακέτου">×2⎙</span>`:''}</div>`;
     const tags=(n%5===0?'<span class="tag risk">RISK</span>':'')+(n%4===0?'<span class="tag">PE</span>':'')+(grp?'<span class="tag">GRP</span>':'');
     const x=(n%7===0?'<span class="xtra cross">↤ φορτώνει W34</span>':'')+(kind==='sug'&&n%3===0?'<span class="xtra late">⚠ φόρτωση σήμερα</span>':'');
     const from=vsExp?'Vermion Fresh Cross-Dock <span style="font-size:7.5px;font-weight:800;color:#fff;background:var(--navy);border-radius:3px;padding:0 4px;vertical-align:middle">VS</span>':R(F);
@@ -302,7 +310,7 @@ function rowHTML(kind){
       ?`<div class="leg"><span class="route">${R(IF)}<span class="sep">→</span><span class="to">Vermion Fresh Cross-Dock</span></span><span class="meta">${del}→${(13+n%6)}/8 · ${pal-3}p</span></div>`
       :(pKind==='par'||cancelled
         ?`<div class="leg void">—</div>`
-        :(gaps++,`<div class="leg" style="justify-content:center"><button class="gapx" title="ΚΕΝΟ ΓΥΡΙΣΜΟΥ: το φορτηγό ξεφορτώνει ${del} χωρίς φορτίο επιστροφής — κλικ: δείξε τα αδιάθετα imports" onclick="hl()">⭘ γυρνά άδειο ${del} · βρες επιστροφή</button></div>`));
+        :(gaps++,`<div class="leg gap void" title="Κενό γυρισμού — ξεφορτώνει ${del} χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports" onclick="hl()">—</div>`));
   }
   const pill=pKind==='ghost'
     ?`<div class="pill own" style="opacity:.4">— μαζί με την πάνω —</div>`
@@ -327,6 +335,18 @@ document.getElementById('c-exp').textContent=exp; document.getElementById('n-exp
 document.getElementById('c-imp').textContent=imp; document.getElementById('n-imp').textContent=imp;
 document.getElementById('c-pend').textContent=pend;
 document.getElementById('c-gap').textContent=gaps;
+
+/* Δεξί κλικ σε import row → μεταφορά εβδομάδας (mock, owner v2.8). Ίδιο
+   pattern με το groupage των exports: το δεξί κλικ είναι το «εργαλείο». */
+document.getElementById('rows').addEventListener('contextmenu',e=>{
+  const row=e.target.closest('.row'); if(!row||!row.querySelector('.num.imp')) return;
+  e.preventDefault();
+  const m=document.getElementById('ctx');
+  m.style.display='block';
+  m.style.left=Math.min(e.clientX,innerWidth-200)+'px';
+  m.style.top=Math.min(e.clientY,innerHeight-90)+'px';
+  setTimeout(()=>document.addEventListener('click',()=>m.style.display='none',{once:true}),10);
+});
 
 /* ΤΑ ΚΕΝΑ: κλικ σε κενό γυρισμού (ή στον μετρητή) → φωτίζει και κεντράρει
    τα αδιάθετα imports που μπορούν να το γεμίσουν — «σωστή συμπλήρωση». */
