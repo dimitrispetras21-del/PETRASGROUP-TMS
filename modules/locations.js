@@ -108,9 +108,10 @@ function _locShell() {
 .loc-tab { padding:10px 20px;font-size:13px;font-weight:500;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;display:inline-block; }
 .loc-tab:hover { color:var(--text); }
 .loc-tab.active { color:var(--navy-mid);border-bottom-color:var(--navy-mid);font-weight:600; }
-.loc-bar-row { display:flex;align-items:center;padding:7px 18px;gap:12px; }
+.loc-bar-row { appearance:none;border:0;background:none;font:inherit;color:inherit;width:100%;text-align:left;display:flex;align-items:center;padding:7px 18px;gap:12px; }
 .loc-bar-row.clickable { cursor:pointer;transition:background .1s; }
 .loc-bar-row.clickable:hover { background:var(--bg-hover); }
+.loc-bar-row.clickable:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .loc-bar-label { min-width:140px;max-width:180px;font-size:13px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 .loc-bar-track { flex:1;height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden; }
 .loc-bar-fill  { height:100%;background:var(--navy-mid);border-radius:3px;transition:width .5s ease; }
@@ -193,11 +194,11 @@ function _locRenderOverview() {
   document.getElementById('locCountryLabel').textContent = `${countries.length} countries`;
   document.getElementById('locCountryBars').innerHTML =
     cSorted.map(([label, count]) => `
-      <div class="loc-bar-row clickable" onclick="_locFilterByCountry('${label.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
+      <button type="button" class="loc-bar-row clickable" onclick="_locFilterByCountry('${label.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
         <div class="loc-bar-label" title="${_locEsc(label)}">${_locEsc(label)}</div>
         <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/cMax*100).toFixed(1)}%"></div></div>
         <div class="loc-bar-count">${count}</div>
-      </div>`).join('') +
+      </button>`).join('') +
     `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Click a country to filter list →</div>`;
 
   // Type bars — read-only
