@@ -773,6 +773,16 @@ function clearEntityFilters(entityKey) {
  * @param {Object} cfg - ENTITY_CONFIG entry
  * @returns {Array} ορατές στήλες
  */
+// DV-7: display-only τηλέφωνο — τα δεδομένα μένουν όπως γράφτηκαν.
+// «+30 693 683 0209» και «6936862513» εμφανίζονται ομοιόμορφα: +30 693 686 2513.
+function _fmtPhone(v) {
+  if (!v) return v;
+  const d = String(v).replace(/[^\d+]/g, '');
+  const ten = d.startsWith('+30') ? d.slice(3) : d.startsWith('0030') ? d.slice(4) : d.startsWith('30') && d.length === 12 ? d.slice(2) : d;
+  if (/^\d{10}$/.test(ten)) return '+30 ' + ten.slice(0,3) + ' ' + ten.slice(3,6) + ' ' + ten.slice(6);
+  return String(v);
+}
+
 function _entityVisibleCols(cfg) {
   return cfg.columns.filter(c => !c.perm || can(cfg.perm) === c.perm);
 }
@@ -899,6 +909,7 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
         ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap">⚠ διπλότυπο;</span>'
         : ''}</td>`;
     }
+    if (col.field === 'Phone' && val) return `<td style="font-variant-numeric:tabular-nums;white-space:nowrap">${_fmtPhone(val)}</td>`;
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
 

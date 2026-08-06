@@ -564,7 +564,7 @@ function _expiryPaint() {
           <thead><tr>
             <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
             ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
-            <th>ΑΣΦΑΛΙΣΤΗΣ</th>
+            <th style="width:120px;max-width:120px">ΑΣΦΑΛΙΣΤΗΣ</th>
           </tr></thead>
           <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
             <td class="rn">${i+1}</td>

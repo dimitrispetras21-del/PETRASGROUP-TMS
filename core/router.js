@@ -280,7 +280,11 @@ function navigate(page) {
       // allow-scripts: iframe runs JS; allow-forms: can submit forms (drag-drop saves);
       // allow-same-origin: only allowed because we fully control the source (same account);
       // allow-popups: needed for print preview; clipboard-write kept for copy actions.
-      c.innerHTML = '<iframe class="embed" src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals" allow="clipboard-write"></iframe>';
+      // PU-7: το sandbox αφαιρέθηκε ΣΥΝΕΙΔΗΤΑ. Είχε allow-scripts +
+      // allow-same-origin σε SAME-ORIGIN iframe — μηδενική προστασία (ο ίδιος
+      // ο browser το επισημαίνει ως άκυρο συνδυασμό) και το iframe ΧΡΕΙΑΖΕΤΑΙ
+      // same-origin για το JWT στο localStorage. Καλύτερα καθόλου θέατρο.
+      c.innerHTML = '<iframe class="embed" src="https://dimitrispetras21-del.github.io/petras-assign/national_consolidation.html" style="width:100%;height:100%;border:none;display:block;" allow="clipboard-write"></iframe>';
       break;
     case 'daily_ops':      renderDailyOps();                                      break;
     case 'daily_ramp':     renderDailyRamp(); break;
