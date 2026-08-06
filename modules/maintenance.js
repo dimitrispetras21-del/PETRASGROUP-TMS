@@ -21,6 +21,26 @@ const TRAILER_EXPIRY_FIELDS = [
   { field: 'Insurance Expiry',   label: 'Insurance' },
 ];
 
+/**
+ * Ποια έγγραφα ισχύουν πραγματικά για ΑΥΤΟ το όχημα.
+ *
+ * Το FRC είναι πιστοποιητικό ψυκτικού θαλάμου (ATP): οι κουρτίνες δεν το
+ * εκδίδουν ποτέ, οπότε το κενό πεδίο ΔΕΝ είναι έλλειψη. Μέχρι 6-8-2026 η σελίδα
+ * μετρούσε 7 κουρτίνες ως «λείπει έγγραφο» χωρίς λόγο.
+ *
+ * ⚠️ Ο έλεγχος ΔΕΝ είναι σκέτο `type === 'Reefer'`: το P55494 είναι
+ * καταχωρημένο ως «Ρυμούλκα» αλλά είναι ψυγείο με ληγμένο FRC — ένα φίλτρο
+ * βάσει τύπου θα έκρυβε πραγματικό συναγερμό. Κανόνας: αν υπάρχει ημερομηνία,
+ * παρακολουθείται ΠΑΝΤΑ· ο τύπος κρίνει μόνο το κενό πεδίο.
+ */
+function _expiryFieldsFor(f, fields) {
+  return fields.filter(ef => {
+    if (ef.field !== 'FRC Expiry') return true;
+    if (f[ef.field]) return true;
+    return String(f['Trailer Type'] || '').trim().toLowerCase() === 'reefer';
+  });
+}
+
 const MAINT_HISTORY_FIELDS = [
   'Vehicle Plate','Vehicle Type','Date','Type','Description',
   'Workshop','Cost','Odometer km','Parts','Next Service Date',
@@ -183,7 +203,7 @@ function _expiryBuildRows() {
     for (const v of vehicles) {
       const f = v.fields;
       if (!f['Active']) continue;
-      for (const ef of fields) {
+      for (const ef of _expiryFieldsFor(f, fields)) {
         const d = f[ef.field] || null;
         rows.push({ plate: f['License Plate']||'?', vType, docType: ef.label, date: d, days: _daysUntil(d), brand: f['Brand']||'' });
       }
@@ -220,7 +240,7 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
     .filter(v => v.fields['Active'])
     .map(v => {
       const f = v.fields;
-      const docs = expiryFields.map(ef => {
+      const docs = _expiryFieldsFor(f, expiryFields).map(ef => {
         const d = f[ef.field] || null;
         return { label: ef.label, field: ef.field, date: d, days: _daysUntil(d) };
       });
