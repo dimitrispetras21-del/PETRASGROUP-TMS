@@ -301,7 +301,7 @@ function _wiWeekSidebarItems(currentWeek) {
     const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,#0B1929)';
     const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
     const fw   = isActive ? '700' : '500';
-    html += `<div onclick="WINTL.week=${w};renderWeeklyIntl()" style="
+    html += `<button type="button" onclick="WINTL.week=${w};renderWeeklyIntl()" style="appearance:none;
       flex-shrink:0;padding:6px 14px;cursor:pointer;border-radius:8px;
       background:${bg};color:${col};
       font-family:'Syne',sans-serif;font-size:12px;font-weight:${fw};
@@ -311,7 +311,7 @@ function _wiWeekSidebarItems(currentWeek) {
        onmouseout="this.style.background='${bg}'">
       <div>W${w}</div>
       <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
-    </div>`;
+    </button>`;
   }
   html += step(1);
   if (currentWeek !== today) {
@@ -662,7 +662,7 @@ function _wiImpRowHTML(row){
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">IMP</span>
       </div>
       <div class="wi-ce" style="background:#0B1929"></div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
+      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
         ${isMatched
           ?`<button class="wi-side-btn" title="Remove match"
                 onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
@@ -775,7 +775,7 @@ function _wiRowHTML(row,i){
 
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}">
-    <div class="wi-compact" onclick="_wiToggle(${row.id})">
+    <div class="wi-compact" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
       <div class="wi-cn">
         <span class="wi-num">${i+1}</span>
       </div>
@@ -794,7 +794,7 @@ function _wiRowHTML(row,i){
           ${_wiBadges(primary?.fields||{})}
         </div>
       </div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
+      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
         <button class="wi-side-btn" title="Print Export"
                 onclick="event.stopPropagation();_wiPrint(${row.id},'export')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;

@@ -2265,6 +2265,9 @@ tbody tr:hover { background: var(--bg-hover); }
   border-radius:8px; box-shadow:0 8px 24px rgba(0,0,0,0.2);
   min-width:180px; overflow:hidden;
 }
+/* Δ2: τα context-menu items είναι πλέον <button> — reset ώστε η εμφάνιση
+   να μείνει ολόιδια με τα παλιά div. */
+button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; color:inherit; cursor:pointer; }
 .wi-ctx-item { display:block; width:100%; padding:8px 14px; text-align:left; font-size:12px;
   cursor:pointer; border:none; background:none; color:var(--text); }
 .wi-ctx-item:hover { background:var(--bg-hover); }

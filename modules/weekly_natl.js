@@ -196,7 +196,7 @@ function _wnWeekSidebarItems(currentWeek) {
     const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,#0B1929)';
     const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
     const fw   = isActive ? '700' : '500';
-    html += `<div onclick="WNATL.week=${w};renderWeeklyNatl()" style="
+    html += `<button type="button" onclick="WNATL.week=${w};renderWeeklyNatl()" style="appearance:none;
       flex-shrink:0;padding:6px 14px;cursor:pointer;border-radius:8px;
       background:${bg};color:${col};
       font-family:'Syne',sans-serif;font-size:12px;font-weight:${fw};
@@ -206,7 +206,7 @@ function _wnWeekSidebarItems(currentWeek) {
        onmouseout="this.style.background='${bg}'">
       <div>W${w}</div>
       <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
-    </div>`;
+    </button>`;
   }
   html += step(1);
   if (currentWeek !== today) {
@@ -498,7 +498,7 @@ function _wnRowHTML(row, i) {
           ${badges}
         </div>
       </div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
+      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
         <button class="wi-side-btn" title="Print"
                 onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
@@ -593,7 +593,7 @@ function _wnSnRowHTML(row) {
         <span style="font-size:7px;color:rgba(14,165,233,0.55);font-weight:800;letter-spacing:.5px">ΑΝΟ</span>
       </div>
       <div class="wi-ce" style="background:#172C45"></div>
-      <div class="wi-ca-wrap" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
+      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
         <div style="width:30px;flex-shrink:0"></div>
         <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
           ${pill}
@@ -1015,11 +1015,11 @@ function _wnCtx(e, rowId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   const ctx = document.getElementById('wn-ctx');
   const items = [];
-  items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</div>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</button>`);
   if (row?.saved)
-    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</div>`);
+    items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
-    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</div>`);
+    items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</button>`);
   ctx.innerHTML = items.join('');
   // Position — flip up if near bottom (fixed positioning uses clientX/Y)
   const menuH = items.length * 36 + 16;
@@ -1040,9 +1040,9 @@ function _wnCtxSn(e, rowId, snId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   const ctx = document.getElementById('wn-ctx');
   const items = [];
-  items.push(`<div class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</div>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</button>`);
   if (row?.saved)
-    items.push(`<div class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</div>`);
+    items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</button>`);
   ctx.innerHTML = items.join('');
   const menuH = items.length * 36 + 16;
   const spaceBelow = window.innerHeight - e.clientY;
