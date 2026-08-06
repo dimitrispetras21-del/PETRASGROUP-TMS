@@ -305,36 +305,33 @@ function _wiBuildRows(){
 // current week was rarely where you looked. Now ±3 around the selected week,
 // with explicit ‹ › steps and a «Σήμερα» reset — the three moves anyone
 // actually makes. See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-7.
-function _wiWeekSidebarItems(currentWeek) {
+// BUILD v3 Φάση Α: sheet tabs — το νοητικό μοντέλο του WEEKLY PLAN xlsx
+// (καρτέλες φύλλων), εγκεκριμένο πρωτότυπο v3.1. Ίδια λογική week±.
+function _wk3Tabs(currentWeek) {
   const today = _wiCurrentWeek();
-  const step = (d) => `<button type="button" onclick="WINTL.week=${currentWeek + d};renderWeeklyIntl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,var(--navy-mid));color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
+  const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
   let html = step(-1);
-  for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
-    if (w < 1 || w > 52) continue;
-    const isActive = w === currentWeek;
-    const wS   = _wiWeekStart(w);
-    const wE   = new Date(wS); wE.setDate(wS.getDate() + 6);
-    const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
-    const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,var(--navy-mid))';
-    const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
-    const fw   = isActive ? '700' : '500';
-    html += `<button type="button" onclick="WINTL.week=${w};renderWeeklyIntl()" style="appearance:none;
-      flex-shrink:0;padding:6px 14px;cursor:pointer;border-radius:8px;
-      background:${bg};color:${col};
-      font-family:'Syne',sans-serif;font-size:12px;font-weight:${fw};
-      transition:background .12s;white-space:nowrap;text-align:center;
-      border:1px solid ${isActive ? 'transparent' : 'rgba(196,207,219,.12)'};
-    " onmouseover="this.style.background='${isActive?'var(--accent,#0EA5E9)':'rgba(14,165,233,.15)'}'"
-       onmouseout="this.style.background='${bg}'">
-      <div>W${w}</div>
-      <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
-    </button>`;
+  for (let w = currentWeek - 2; w <= currentWeek + 2; w++) {
+    if (w < 1 || w > 53) continue;
+    const wS=_wiWeekStart(w), wE=new Date(wS); wE.setDate(wS.getDate()+6);
+    const fmt=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1);
+    html += `<button type="button" class="wk3-tab${w===currentWeek?' on':''}" onclick="WINTL.week=${w};renderWeeklyIntl()" title="${fmt(wS)}–${fmt(wE)}">W${w}</button>`;
   }
   html += step(1);
-  if (currentWeek !== today) {
-    html += `<button type="button" onclick="WINTL.week=${today};renderWeeklyIntl()" style="flex-shrink:0;margin-left:8px;padding:6px 12px;cursor:pointer;border-radius:8px;background:var(--accent-light);color:var(--accent);border:1px solid transparent;font-family:'Syne',sans-serif;font-size:12px;font-weight:700">Σήμερα · W${today}</button>`;
-  }
+  if (currentWeek !== today)
+    html += `<button type="button" class="wk3-tab" style="color:var(--accent)" onclick="WINTL.week=${today};renderWeeklyIntl()">Σήμερα</button>`;
   return html;
+}
+// «Τα κενά» (owner): own γύροι χωρίς φορτίο επιστροφής → δείξε τα αδιάθετα
+// imports που μπορούν να τα γεμίσουν (highlight + scroll).
+function _wk3Gaps(){
+  const imps=[...document.querySelectorAll('[id^="wi-imp-"]')];
+  imps.forEach(r=>{r.style.transition='background .3s';r.style.background='var(--accent-light)';setTimeout(()=>{r.style.background='';},1800);});
+  if(imps[0]) imps[0].scrollIntoView({behavior:'smooth',block:'center'});
+}
+function _wiJumpFirstUnassigned(){
+  const impRow=WINTL.rows.find(r=>r.type==='import'&&!r.saved);
+  if(impRow&&typeof _ccJump==='function') _ccJump('wi-imp-'+impRow.orderId);
 }
 
 function _wiPaint(){
@@ -371,77 +368,40 @@ function _wiPaint(){
     completionPct: pct,
   });
 
-  // Command Center actions
-  const actions=[];
+  // BUILD v3 Φάση Α: το Command Center αντικαταστάθηκε από το tally μίας
+  // γραμμής (v3.1) — τα ίδια νούμερα, μία φορά, κλικ = μετάβαση (Π4 πνεύμα).
   const _ico = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
-  // Π4 (Wave 1): every pending-work chip carries scrollTo → the FIRST row that
-  // needs that action. _ccJump (command-center.js) scrolls + flashes it.
   const _firstExp = (pred) => { const r = expRows.find(pred); return r ? 'wi-row-'+r.id : undefined; };
-  if(pending>0) actions.push({icon:_ico('file_text'),sev:'warn',text:`${pending} export${pending>1?'s':''} χωρίς ανάθεση`,scrollTo:_firstExp(r=>!r.saved)});
-  const _firstUnmatchedImp = impRows.find(r=>!r.matchedTo);
-  if(unmatched>0) actions.push({icon:_ico('package'),sev:'warn',text:`${unmatched} import${unmatched>1?'s':''} χωρίς match σε export`,scrollTo:_firstUnmatchedImp?'wi-imp-'+_firstUnmatchedImp.orderId:undefined});
-  const missingTruck=expRows.filter(r=>r.saved && !r.truckId && !r.partnerId).length;
-  if(missingTruck>0) actions.push({icon:_ico('truck'),sev:'warn',text:`${missingTruck} assigned χωρίς truck/partner`,scrollTo:_firstExp(r=>r.saved && !r.truckId && !r.partnerId)});
-  const missingDriver=expRows.filter(r=>r.saved && r.truckId && !r.driverId && !r.partnerId).length;
-  if(missingDriver>0) actions.push({icon:_ico('user'),sev:'warn',text:`${missingDriver} με truck αλλά χωρίς driver`,scrollTo:_firstExp(r=>r.saved && r.truckId && !r.driverId && !r.partnerId)});
-  if(!actions.length && total>0 && pct===100) actions.push({icon:_ico('party'),sev:'ok',text:'Όλα assigned + matched για την εβδομάδα!'});
-  else if(!actions.length && total>0) actions.push({icon:_ico('check'),sev:'ok',text:'No pending actions'});
+  // «Τα κενά» (owner): own γύροι που θα γυρίσουν άδειοι — χωρίς import.
+  const gaps=expRows.filter(r=>r.saved && !r.partnerId && !r.importId).length;
+  const firstPendingId=_firstExp(r=>!r.saved);
 
   document.getElementById('content').innerHTML=`
     <div class="${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
-    <!-- Horizontal week bar -->
-    <div id="wi-week-bar" style="
-      display:flex;flex-direction:row;gap:4px;align-items:center;
-      overflow-x:auto;padding:0 0 12px 0;
-      scrollbar-width:thin;width:100%;
-    ">
-      ${_wiWeekSidebarItems(week)}
+    <!-- BUILD v3 Φάση Α: κεφαλή v3.1 — sheet tabs + tally μίας γραμμής.
+         Αντικαθιστά week-bar, Command Center, page-header chips: η ίδια
+         πληροφορία, ΜΙΑ φορά, κλικ = μετάβαση. -->
+    <div class="wk3-mast">
+      <nav class="wk3-tabs" aria-label="Εβδομάδες">${_wk3Tabs(week)}</nav>
+      ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wiCurrentWeek()):''}
+      <div class="wk3-tally">
+        <span class="wk3-t"><b>${expN}</b> εξαγ</span>
+        <span class="wk3-t"><b>${impN}</b> εισαγ</span>
+        <span class="wk3-t" title="${matched} ταιριασμένα · ${unmatched} εισαγωγές χωρίς ταίριασμα"><b>${matched}</b>/${impN} ταιρ.</span>
+        ${(pending+impNoVehicle)>0?`<button class="wk3-t alert" onclick="${firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()'}" title="Ορφανά — χωρίς ανάθεση (${pending} εξαγ + ${impNoVehicle} εισαγ). Κλικ: πήγαινε στο πρώτο"><b>${pending+impNoVehicle}</b> εκκρεμή</button>`:''}
+        ${gaps>0?`<button class="wk3-t gap" onclick="_wk3Gaps()" title="Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports"><b>${gaps}</b> κενά</button>`:''}
+        <span id="wi-crossweek-in"></span>
+        <div class="wk3-acts">
+          ${unmatched>0?`<button class="wk3-ab" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες" onclick="_wiAutoMatch()">${_ico('zap',13)} Ταίριασμα</button>`:''}
+          <button class="wk3-ab" onclick="_wiToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (όρια εβδομάδας, εκτέλεση)">${_ico('eye',13)} Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
+          <button class="wk3-ab" onclick="_wiPrintWeek()">${_ico('file_text',13)} Εκτύπωση</button>
+          <button class="wk3-ab" onclick="_wiExportCSV()">CSV</button>
+          <button class="wk3-ab" onclick="renderWeeklyIntl()" title="Ανανέωση">${_ico('refresh',13)}</button>
+        </div>
+      </div>
     </div>
-    <div style="display:block;width:100%">
-
-    <!-- Command Center (universal component) — always shown for week consistency -->
-    ${(()=>{
-      // Compute widgets synchronously
-      const assignedTruckIds = new Set();
-      rows.forEach(r => { if (r.truckId) assignedTruckIds.add(r.truckId); });
-      // Π5α (Wave 1): real unmatched counts, not the country-prefix heuristic —
-      // measured on W20 the heuristic said 10 while reality was 36 (02 §3).
-      // soloExp = exports with no return import; soloImp = imports with no export.
-      const soloExp = expRows.filter(r => !r.importId).length;
-      const widgets = [
-        widgetFleet(data.trucks || [], assignedTruckIds),
-        widgetEmptyLegs(soloExp, unmatched),
-        `<div id="wi-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-        // Π5β (Wave 1): the on-time widget is HIDDEN for current/past weeks —
-        // recorded on-time is 16% while the real figure is ~100% (owner, 00
-        // §Β7): the data lies downward, so showing it defames the team. It
-        // returns with Wave 2 when the «Παραδόθηκε» flow makes recording cheap.
-        // On a FUTURE week (still being built) execution hasn't started, so we
-        // say exactly that instead of a red 0%.
-        ...(week > _wiCurrentWeek() ? [
-          `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_ico('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;opacity:.55">—</span><span style="font-size:11px;opacity:0.6">δεν έχει ξεκινήσει</span></div></div>`,
-        ] : []),
-      ];
-      // When week has no orders, provide a single informational action so the strip isn't empty.
-      const ccActions = total > 0 ? actions : [{icon:_ico('info'), sev:'ok', text:'Καμία παραγγελία για αυτή την εβδομάδα ακόμη'}];
-      // WI-4: three titles and four repetitions of the week number pushed the
-      // table below the fold. The Command Center now collapses to one 44px
-      // summary line, and remembers the choice — a dispatcher who wants the
-      // table first should not have to close it every morning.
-      const open = localStorage.getItem('tms_cc_open') !== '0';
-      return `<details ${open ? 'open' : ''} ontoggle="localStorage.setItem('tms_cc_open', this.open ? '1' : '0')" style="margin-bottom:var(--space-3)">
-        <summary style="cursor:pointer;list-style:none;height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--navy-mid,var(--navy-mid));color:#C4CFDB;border-radius:8px;font-size:12px">
-          <span style="font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px">COMMAND CENTER · W${week}</span>
-          <span style="opacity:.7">${expN} εξαγ · ${impN} εισαγ · ${pct}% ολοκληρωμένο</span>
-          <span style="margin-left:auto;opacity:.5">▾</span>
-        </summary>
-        ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
-      </details>`;
-    })()}
     ${_wiDriversPanel()}
-
-    <!-- Search/filter bar -->
-    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
+    <div class="wk3-sub">
       <div class="entity-search-wrap">
         ${_ico('search')}
         <input id="wi-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…" oninput="WINTL.filter=this.value.toLowerCase().trim();_wiApplyFilter()" value="${WINTL.filter||''}">
@@ -453,30 +413,7 @@ function _wiPaint(){
         <option value="unmatched" ${WINTL.filterStatus==='unmatched'?'selected':''}>Εισαγωγές χωρίς ταίριασμα</option>
       </select>
       ${WINTL.filter||WINTL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WINTL.filter='';WINTL.filterStatus='';document.getElementById('wi-search').value='';_wiApplyFilter()">${_ico('x', 12)} Καθαρισμός</button>`:''}
-    </div>
-
-    <div class="page-header" style="margin-bottom:var(--space-3)">
-      <div>
-        <div class="page-title">Weekly International</div>
-        <div class="page-sub" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-top:4px;align-items:center;font-size:12px">
-          <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${_wiWeekRange(week)}</span>
-          ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wiCurrentWeek()):''}
-          <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${expN} εξαγωγές</span>
-          <span class="entity-count-chip" style="background:rgba(245,158,11,0.12);color:var(--warning);border-color:transparent">${impN} εισαγωγές</span>
-          <span class="entity-count-chip" style="background:rgba(2,132,199,0.10);color:var(--accent);border-color:transparent">${assigned} ανατεθειμένα</span>
-          ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} χωρίς ανάθεση</span>`:''}
-          ${impNoVehicle>0?`<span class="entity-count-chip wi-chip-impnv" style="background:rgba(220,38,38,0.06);color:var(--danger);border:1px dashed rgba(220,38,38,0.45)" title="Εισαγωγές χωρίς δικό τους όχημα — ξεχωριστός μετρητής από τα exports">${impNoVehicle} εισαγ. χωρίς όχημα</span>`:''}
-          <span style="color:var(--text-dim);font-size:11px">${matched} ταιριασμένα · ${unmatched} ελεύθερα</span>
-          <span id="wi-crossweek-in"></span>
-        </div>
-      </div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
-        ${unmatched>0?`<button class="btn btn-ghost btn-sm" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες — σπάνια θα προτείνει ζεύγη" onclick="_wiAutoMatch()">${_ico('zap', 14)} Αυτόματο ταίριασμα (${unmatched})</button>`:''}
-        <button class="btn btn-ghost btn-sm" onclick="_wiToggleDetails()" title="Εναλλαγή των πρόσθετων ενδείξεων γραμμής (chips ορίων εβδομάδας, εκτέλεσης κ.λπ.)">${_ico('eye', 14)} Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
-        <button class="btn btn-ghost btn-sm" onclick="_wiPrintWeek()">${_ico('file_text', 14)} Εκτύπωση</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderWeeklyIntl()">${_ico('refresh', 14)} Ανανέωση</button>
-        <button class="btn btn-ghost btn-sm" onclick="_wiExportCSV()">${_ico('file_text', 14)} Εξαγωγή CSV</button>
-      </div>
+      <span class="wk3-range">Weekly International · Εβδομάδα ${week} · ${_wiWeekRange(week)}</span>
     </div>
 
     <div class="wi-wrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px);">
@@ -505,7 +442,6 @@ function _wiPaint(){
     </div>
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
-    </div><!-- /main -->
     </div><!-- /block wrapper -->
   `;
   window._wiDragging=null;
@@ -526,13 +462,9 @@ function _wiPaint(){
   //    0 network calls in 8s). The guard is gone: on an empty week the fetches
   //    run and the widgets show real zeros, which is a fact rather than a
   //    fabrication. Either way, no visible "loading…" outlives the render.
-  // Π5β (Wave 1): fetchOnTimeStreak is no longer called — the widget is hidden
-  // (or static «δεν έχει ξεκινήσει» on future weeks) until recording is fixed.
-  safeFetch(() => fetchPreviousWeekStats(week, TABLES.ORDERS), 'weekly intl: previous week stats', {total:0,assigned:0})
-  .then(prev => {
-    const el1 = document.getElementById('wi-cc-vswk');
-    if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned+matched, prev.assigned);
-  }).catch(e => console.warn('CC async widgets:', e));
+  // BUILD v3 Φάση Α: το «vs προηγούμενη» widget έφυγε μαζί με το Command
+  // Center (το v3.1 tally δεν το έχει — context, όχι απόφαση, 01 §χάρτης).
+  // fetchPreviousWeekStats μένει στο command-center.js για το Weekly National.
 
   // T4 (Wave 2), the blind half: exports PLANNED in W+1 that LOAD inside this
   // week — invisible here because exports filter by delivery week (PREMORTEM
@@ -2083,6 +2015,8 @@ window._wiToggleDetails = _wiToggleDetails;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wiPulseRow = _wiPulseRow;
+window._wk3Gaps = _wk3Gaps;
+window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
