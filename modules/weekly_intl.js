@@ -424,9 +424,9 @@ function _wiPaint(){
         <div class="wk3-cols">
           <div class="c"></div>
           <div class="c fc" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
-          <div class="c main">ΕΞΑΓΩΓΗ <span class="n">${expN}</span><span class="hint" title="Δεξί κλικ: ομαδοποίηση groupage (βάση: το πρώτο-παραδιδόμενο)">ⓘ</span></div>
-          <div class="c main" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
-          <div class="c main">ΕΙΣΑΓΩΓΗ <span class="n">${impN}</span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
+          <div class="c cm">ΕΞΑΓΩΓΗ <span class="n">${expN}</span><span class="hint" title="Δεξί κλικ: ομαδοποίηση groupage (βάση: το πρώτο-παραδιδόμενο)">ⓘ</span></div>
+          <div class="c cm" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
+          <div class="c cm">ΕΙΣΑΓΩΓΗ <span class="n">${impN}</span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
           <div class="c fc" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
         </div>
         <div id="wi-rows">
@@ -524,7 +524,8 @@ function _wiAllRowsHTML(){
 
     // v3.1 proto day header — τυπογραφικός, ΣΗΜΕΡΑ = accent
     let wd='';
-    try{ wd=new Date(grp.rawDate+'T12:00:00').toLocaleDateString('el-GR',{weekday:'long'}).toUpperCase(); }catch{}
+    // uppercase Greek drops the tonos (ΔΕΥΤΕΡΑ, not ΔΕΥΤΈΡΑ)
+    try{ wd=new Date(grp.rawDate+'T12:00:00').toLocaleDateString('el-GR',{weekday:'long'}).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }catch{}
     const dm=grp.rawDate?`${+grp.rawDate.slice(8,10)}/${+grp.rawDate.slice(5,7)}`:'';
     html+=`<div class="wk3-dayh${isToday?' today':''}">
       <span class="d">${wd||grp.lbl}${dm?' '+dm:''}</span>
