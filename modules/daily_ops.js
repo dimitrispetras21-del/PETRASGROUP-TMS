@@ -315,43 +315,25 @@ function _opsDraw() {
     </div>
     ${ovH}
     <div class="ops-sections">
-      ${_opsUnifiedSection(cats, isToday)}
+      ${_opsSec('el','↑ ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday)}
+      ${_opsSec('ed','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday)}
+      ${_opsSec('il','↑ ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday)}
+      ${_opsSec('id','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday)}
     </div>`;
 }
 
 
-/* ── ONE TABLE, FOUR KINDS OF ROW ──────────────────────────────────────
-   The page used to render four tables with near-identical headers: Export
-   Loadings, Export Deliveries, Import Loadings, Import Deliveries. 40+ header
-   cells for what a dispatcher reads as one question — "what happens today, in
-   what order". Now one table sorted by time, with the kind as a badge.
+/* ── FOUR SECTIONS ─────────────────────────────────────────────────────
+   Restored on the owner's instruction: Export Loadings, Export Deliveries,
+   Import Loadings, Import Deliveries, each with only the columns that apply to
+   it. The DEEP_AUDIT_2026-08-04 DO-2/DO-3 rewrite folded these into one
+   time-sorted table with a «ΕΛΕΓΧΟΙ» cell; the dispatchers read the day by
+   section, not by clock, so the sections are back.
 
-   The four tables had DIFFERENT columns, so this is a SUPERSET with empty
-   cells, never a lowest common denominator: nothing that was visible before is
-   gone. Pallets and the advance payment only ever applied to export loadings,
-   so those cells stay blank on the other three kinds — blank means "does not
-   apply here", which is exactly what four separate tables were expressing.
-
-   DO-3: the five checkbox columns (Docs Ready, Temp OK, CMR, Client Notified,
-   Driver Notified) collapse into ONE «ΕΛΕΓΧΟΙ» cell. They stay real
-   checkboxes — a read-only "3/5" would have silently removed the ability to
-   tick them off, which is most of what this page is for.
-   See docs/design/DEEP_AUDIT_2026-08-04/daily_ops.md DO-2 / DO-3. */
-const _OPS_KIND = {
-  el: { badge: '↑ΕΞΦ', title: 'Φόρτωση εξαγωγής',  color: 'var(--accent)'  },
-  ed: { badge: '↓ΕΞΠ', title: 'Παράδοση εξαγωγής', color: 'var(--success)' },
-  il: { badge: '↑ΕΙΦ', title: 'Φόρτωση εισαγωγής',  color: 'var(--warning)' },
-  id: { badge: '↓ΕΙΠ', title: 'Παράδοση εισαγωγής', color: 'var(--text-mid)' },
-};
-
-// Time used for ordering: the ETA the team set, else the planned datetime.
-function _opsSortTime(rec, type) {
-  const f = rec.fields;
-  if (f['ETA']) return String(f['ETA']).slice(0,5);
-  const src = (type === 'el' || type === 'il') ? f['Loading DateTime'] : f['Delivery DateTime'];
-  if (src && String(src).includes('T')) return String(src).split('T')[1].slice(0,5);
-  return 'ZZ';   // no time yet -> sorts last, never dropped
-}
+   What the unified table gained and this keeps: Greek button labels and status
+   badges, and «—» where a location is missing. The compact «Καμία παραγγελία»
+   row comes back with the sections — four illustrated empty states stacked on
+   one page is noise, not guidance. */
 
 /** DO-8: το toggle ήταν inline χειραγώγηση DOM μέσα σε <div onclick> — μη
  *  προσβάσιμο και με την κατάσταση να ζει στο style attribute. */
@@ -365,94 +347,129 @@ function _opsToggleOverdue(btn) {
   if (tog) tog.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση';
 }
 
-function _opsUnifiedSection(cats, isToday) {
-  const _opsI = (n,s) => (typeof icon === 'function') ? icon(n, s||14) : '';
-  const rows = ['el','ed','il','id']
-    .flatMap(k => cats[k].map(rec => ({ rec, kind: k, t: _opsSortTime(rec, k) })))
-    .sort((a,b) => a.t.localeCompare(b.t));
+function _opsSec(type,label,items,isToday) {
+  const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
+  let cols='';
+  if(isToday && isL && isExp)
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΘΕΡΜ.</th><th>ΠΑΛΕΤΕΣ</th><th class="c">ΕΓΓΡΑΦΑ</th><th>ΠΡΟΚΑΤΑΒΟΛΗ €</th><th class="c">2Η ΚΑΡΤΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
+  else if(isToday && isL && !isExp)
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΘΕΡΜ.</th><th>ΩΡΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
+  else if(isToday && !isL)
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΕΝΗΜΕΡΩΣΗ ΠΕΛΑΤΗ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
+  else if(!isToday && isL && isExp)
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
+  else if(!isToday && isL && !isExp)
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th><th>ΩΡΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
+  else
+    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
 
-  const head = isToday
-    ? '<th>#</th><th class="c">ΤΥΠΟΣ</th><th>ΩΡΑ</th><th>ΠΕΛΑΤΗΣ</th><th>ΤΟΠΟΣ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΠΑΛΕΤΕΣ</th><th class="c">ΕΛΕΓΧΟΙ</th><th class="c">ΠΡΟΚΑΤΑΒΟΛΗ €</th><th>ΕΝΕΡΓΕΙΕΣ</th>'
-    : '<th>#</th><th class="c">ΤΥΠΟΣ</th><th>ΩΡΑ</th><th>ΠΕΛΑΤΗΣ</th><th>ΤΟΠΟΣ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΛΕΓΧΟΙ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  const cols = isToday ? 11 : 9;
+  const rows=items.length
+    ? items.map((r,i)=>_opsRow(r,i+1,type,isToday)).join('')
+    : '<tr class="ops-empty"><td colspan="20">Καμία παραγγελία</td></tr>';
 
-  const body = rows.length
-    ? rows.map((r,i) => _opsUnifiedRow(r.rec, i+1, r.kind, isToday, r.t)).join('')
-    : `<tr><td colspan="${cols}" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
-        illustration: 'truck',
-        title: isToday ? 'Καμία κίνηση σήμερα' : 'Καμία κίνηση αύριο',
-        description: 'Οι φορτώσεις και οι παραδόσεις της ημέρας θα εμφανίζονται εδώ, ταξινομημένες κατά ώρα.',
-      }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία παραγγελία</div>'}</td></tr>`;
-
-  // Same wrapper the four sections used (.ops-sec-hd + .ops-t). The horizontal
-  // scroll is inline because 11 columns are wider than the old 9 — no new class,
-  // no new token.
   return `<div>
-    <div class="ops-sec-hd el"><span>${_opsI('list_checks',14)} ΚΙΝΗΣΕΙΣ ΤΗΣ ΗΜΕΡΑΣ</span><span style="opacity:.5">${rows.length}</span></div>
-    <div style="overflow-x:auto"><table class="ops-t"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    <div class="ops-sec-hd ${type}"><span>${label}</span><span style="opacity:.5">${items.length}</span></div>
+    <table class="ops-t"><thead><tr>${cols}</tr></thead><tbody>${rows}</tbody></table>
   </div>`;
 }
 
-function _opsUnifiedRow(rec, num, kind, isToday, tSort) {
-  const f = rec.fields, id = rec.id;
-  const isL = kind === 'el' || kind === 'il';
-  const isExp = kind === 'el' || kind === 'ed';
-  const k = _OPS_KIND[kind];
-  const client = _C(f);
-  const place = isL ? _L(_opsStopLoc(id,'Loading')) : _L(_opsStopLoc(id,'Unloading'));
-  const truck = _T(f), driver = _D(f), partner = _P(f);
-  const st = f['Status'] || '';
-  const isDone = st === 'Delivered', isInTransit = st === 'In Transit';
-  const isPostponed = !!f['Postponed To'] && !isDone && !isInTransit;
+/* ── ROW ──────────────────────────────────────────────────────── */
+function _opsRow(rec,num,type,isToday) {
+  const f=rec.fields, id=rec.id;
+  const client=_C(f);
+  const loadL=_L(_opsStopLoc(id,'Loading'));
+  const delivL=_L(_opsStopLoc(id,'Unloading'));
+  const truck=_T(f), driver=_D(f), partner=_P(f);
+  const pal=f['Total Pallets']||'';
+  const st=f['Status']||'';
+  const isDone=st==='Delivered';
+  const isInTransit=st==='In Transit';
+  const isPostponed=!!f['Postponed To']&&!isDone&&!isInTransit;
+  const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
 
-  const chk = (fld, lbl) => `<label title="${lbl}" style="display:inline-flex;align-items:center;gap:2px;font-size:10px;color:var(--text-dim)">
-    <input type="checkbox" ${f[fld]?'checked':''} onchange="_opsTog('${id}','${fld}',this.checked)">${lbl}</label>`;
-
-  // Only the checks that apply to this kind of row — same set the four tables showed.
-  const checks = [];
-  if (isToday && isL && isExp) { checks.push(['Temp OK','ΘΕΡΜ'], ['Docs Ready','ΕΓΓΡ']); if(!partner) checks.push(['Second Card','2Η']); }
-  else if (isToday && isL)     { checks.push(['CMR Photo Received','CMR'], ['Temp OK','ΘΕΡΜ']); }
-  else if (isToday)            { checks.push(['CMR Photo Received','CMR'], ['Client Notified','ΠΕΛ']); }
-  else                         { checks.push(['Driver Notified','ΟΔΗΓ']); }
-  const doneN = checks.filter(([fld]) => f[fld]).length;
-
-  const timeSelect = (fld,v) => {
-    const hrs=[];for(let h=0;h<24;h++)for(let m=0;m<60;m+=30){const t=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');hrs.push(t);}
-    return `<select class="tinp" onchange="_opsSvF('${id}','${fld}',this.value)"><option value="">--:--</option>${hrs.map(t=>`<option value="${t}"${v===t?' selected':''}>${t}</option>`).join('')}</select>`;
-  };
-  const amtInp = (fld,v) => `<input class="tinp" type="number" step="1" value="${v||''}" placeholder="0" style="width:60px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
-  const _btn = (cls,label,action) => `<button class="btn ${cls}" style="padding:4px 10px;font-size:11px" onclick="confirmAction('${label};').then(ok=>{if(ok)${action}})">${label}</button>`;
+  // Per-row checklist progress mini-bar. Tokens, not raw hex — Φάση 9 Α.
+  const _rowChks = isL ? ['Docs Ready','Temp OK','Driver Notified'] : ['CMR Photo Received','Client Notified'];
+  const _rowDone = _rowChks.filter(k => f[k]).length;
+  const _rowPct = Math.round(_rowDone/_rowChks.length*100);
+  const _rowBar = isDone ? ''
+    : `<div title="${_rowDone}/${_rowChks.length} έλεγχοι" style="width:24px;height:3px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="width:${_rowPct}%;height:100%;background:${_rowPct===100?'var(--success)':_rowPct>=50?'var(--accent)':'var(--warning)'};transition:width .3s"></div></div>`;
 
   const statusBadge = isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΣΕ ΜΕΤΑΦΟΡΑ</span>'
     : isPostponed ? '<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΑΝΑΒΛΗΘΗΚΕ</span>'
-    : isDone ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΠΑΡΑΔΟΘΗΚΕ ✓</span>' : null;
+    : isDone ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΠΑΡΑΔΟΘΗΚΕ ✓</span>'
+    : null;
 
-  let actions;
-  if (statusBadge) actions = statusBadge;
-  else if (!isToday) actions = _btn('btn-ghost','Αναβολή',`_opsPost('${id}')`);
-  else if (isL) actions = _btn('btn-primary','Σε μεταφορά',`_opsStat('${id}','In Transit')`) + ' ' + _btn('btn-ghost','Αναβολή',`_opsPost('${id}')`);
-  else actions = _btn('btn-success','Παραδόθηκε',`_opsDel('${id}','On Time')`) + ' ' + _btn('btn-danger','Καθυστέρησε',`_opsDel('${id}','Delayed')`);
+  const chk=(fld,v)=>`<input type="checkbox" ${v?'checked':''} onchange="_opsTog('${id}','${fld}',this.checked)">`;
+  const timeSelect=(fld,v)=>{
+    const hrs=[];for(let h=0;h<24;h++)for(let m=0;m<60;m+=30){const t=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');hrs.push(t);}
+    return `<select class="tinp" onchange="_opsSvF('${id}','${fld}',this.value)"><option value="">--:--</option>${hrs.map(t=>`<option value="${t}"${v===t?' selected':''}>${t}</option>`).join('')}</select>`;
+  };
+  const amtInp=(fld,v)=>`<input class="tinp" type="number" step="1" value="${v||''}" placeholder="0" style="width:60px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
-  // ΩΡΑ: editable ETA where the old tables had one, otherwise the planned time.
-  const hasEta = (isToday && (!isL || !isExp)) || (!isToday && isL && !isExp) || (!isToday && !isL);
-  const timeCell = hasEta ? timeSelect('ETA', f['ETA']) : `<span style="color:var(--text-dim)">${tSort==='ZZ'?'—':tSort}</span>`;
+  // Action buttons with confirmation
+  const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="confirmAction('${label};').then(ok=>{if(ok)${action}})">${label}</button>`;
+  const loadBtn = _btn('btn-primary','Σε μεταφορά',`_opsStat('${id}','In Transit')`);
+  const postBtn = _btn('btn-ghost','Αναβολή',`_opsPost('${id}')`);
+  const delBtn = _btn('btn-success','Παραδόθηκε',`_opsDel('${id}','On Time')`);
+  const delayBtn = _btn('btn-danger','Καθυστέρησε',`_opsDel('${id}','Delayed')`);
 
-  const palCell = (isToday && isL && isExp) ? (f['Total Pallets']||'') : '';
-  const advCell = (isToday && isL && isExp && !partner) ? amtInp('Advance Paid', f['Advance Paid']) : '';
-
-  return `<tr class="${isDone?'done':isInTransit?'transit':''}" style="${isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}">
-    <td class="rn">${num}</td>
-    <td class="c"><span title="${k.title}" style="color:${k.color};font-weight:700;font-size:10px;letter-spacing:.5px">${k.badge}</span></td>
-    <td>${timeCell}</td>
-    <td class="trn" title="${client}">${client}</td>
-    <td class="trn" title="${place}">${place||'—'}</td>
-    <td class="trn-s">${truck||'—'}</td>
-    <td class="trn-s">${driver||'—'}</td>
-    ${isToday?`<td class="c">${palCell}</td>`:''}
-    <td class="c" style="white-space:nowrap"><span style="font-size:10px;color:var(--text-dim);margin-right:4px">${doneN}/${checks.length}</span>${checks.map(([fld,lbl])=>chk(fld,lbl)).join(' ')}</td>
-    ${isToday?`<td class="c">${advCell}</td>`:''}
-    <td style="white-space:nowrap">${actions}</td>
-  </tr>`;
+  let cells='';
+  if(isToday && isL && isExp) {
+    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${loadBtn} ${postBtn}</td>`;
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${loadL}">${loadL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
+      <td>${pal}</td>
+      <td class="c">${chk('Docs Ready',f['Docs Ready'])}</td>
+      <td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>
+      <td class="c">${!partner?chk('Second Card',f['Second Card']):''}</td>
+      ${actionCol}`;
+  } else if(isToday && isL && !isExp) {
+    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${loadBtn} ${postBtn}</td>`;
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${loadL}">${loadL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
+      <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      ${actionCol}`;
+  } else if(isToday && !isL) {
+    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${delivL}">${delivL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
+      <td class="c">${chk('Client Notified',f['Client Notified'])}</td>
+      ${actionCol}`;
+  } else if(!isToday && isL && isExp) {
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${loadL}">${loadL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
+      <td>${postBtn}</td>`;
+  } else if(!isToday && isL && !isExp) {
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${loadL}">${loadL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      <td>${postBtn}</td>`;
+  } else {
+    cells=`<td class="rn">${num}${_rowBar}</td>
+      <td class="trn" title="${client}">${client}</td>
+      <td class="trn" title="${delivL}">${delivL||'—'}</td>
+      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
+      <td>${timeSelect('ETA',f['ETA'])}</td>
+      <td>${postBtn}</td>`;
+  }
+  return `<tr class="${isDone?'done':isInTransit?'transit':''}" style="${isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}">${cells}</tr>`;
 }
 
 
@@ -594,5 +611,8 @@ window._opsDel = _opsDel;
 window._opsPost = _opsPost;
 window._opsOvAct = _opsOvAct;
 window._opsSetFilter = _opsSetFilter;
-})();
+// Must stay INSIDE the IIFE: it sat after the closing `})();`, where the name is
+// out of scope, so this line threw a ReferenceError on every load and the ⚠
+// overdue banner's toggle was never wired up. Arrived with DO-8 (7ca4965).
 window._opsToggleOverdue = _opsToggleOverdue;
+})();
