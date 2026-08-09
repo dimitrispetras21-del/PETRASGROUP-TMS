@@ -654,7 +654,7 @@ function _wiImpRowHTML(row,impNo){
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
-      <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">⎙</button>
+      <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙</button>
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">
       <span class="wk3-route"><b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?_wk3D(delDt):''}</b><span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση')}${(f['Order Number']||impRef2)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(f['Order Number']||impRef2))}</span>`:''}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
@@ -1176,9 +1176,8 @@ async function _wiUnmatch(impId){
 }
 
 // Print import
-function _wiPrintImp(impId){
-  // Import χωρίς δική του ανάθεση row εδώ — φύλλο οδηγού
-  printOrderSheet(impId, 'import', false);
+function _wiPrintImp(impId, hasPartner){
+  printOrderSheet(impId, 'import', !!hasPartner);
 }
 
 // Drop on compact row import cell → auto-save
@@ -1964,7 +1963,7 @@ function _wiPrint(rowId, leg){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const orderId = leg==='export' ? row.orderIds[0] : (row.importId||row.orderIds[0]);
   // Β.3-6: ρητή επιλογή εντύπου όταν υπάρχει συνεργάτης (helper στο utils)
-  printOrderSheet(orderId, leg, !!row.partnerLabel);
+  printOrderSheet(orderId, leg, !!(row.partnerId||row.partnerLabel));
 }
 
 function _wiToggleGroup(rowId){

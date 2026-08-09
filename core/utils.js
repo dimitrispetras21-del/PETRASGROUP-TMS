@@ -1585,12 +1585,8 @@ window._printWeekShell = _printWeekShell;
 function printOrderSheet(orderId, leg, hasPartner) {
   const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   const go = sheet => window.open(`${base}?orderId=${orderId}&leg=${leg}&sheet=${sheet}`, '_blank');
-  if (!hasPartner) { go('driver'); return; }
-  if (typeof openModal !== 'function') { go('partner'); return; }
-  openModal('Ποιο έντυπο;',
-    `<div style="color:var(--text-mid);font-size:14px;line-height:1.6">Η γραμμή έχει ανάθεση σε συνεργάτη. Το <b>Φύλλο Συνεργάτη</b> είναι καθαρό από εσωτερικές σημάνσεις — αυτό φεύγει με email.</div>`,
-    `<button class="btn btn-ghost" onclick="closeModal();window.__psGo('driver')">Φύλλο Οδηγού</button>
-     <button class="btn btn-primary" onclick="closeModal();window.__psGo('partner')">Φύλλο Συνεργάτη</button>`);
-  window.__psGo = go;
+  // Owner (9/8): αυτόματη επιλογή — partner ανάθεση → Φύλλο Συνεργάτη,
+  // ιδιόκτητο → Φύλλο Οδηγού. Χωρίς διάλογο.
+  go(hasPartner ? 'partner' : 'driver');
 }
 window.printOrderSheet = printOrderSheet;
