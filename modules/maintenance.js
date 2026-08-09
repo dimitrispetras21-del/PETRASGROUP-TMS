@@ -1434,7 +1434,7 @@ function _maintCompBlock(dateStr, label) {
 function _maintMonthlyCost(history) {
   const byMonth = {};
   const now = new Date();
-  // Initialize last 6 months (even if 0)
+  // Initialize 6 μήνες (even if 0)
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     const key = d.toISOString().slice(0, 7); // YYYY-MM
@@ -1562,7 +1562,7 @@ async function renderMaintDash() {
       .sort((a,b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
       .slice(0, 8);
 
-    // Monthly cost breakdown (last 6 months, with MoM delta)
+    // Monthly cost breakdown (6 μήνες, with MoM delta)
     const monthlyCosts = _maintMonthlyCost(MAINT.history);
     const currentMonth = monthlyCosts[monthlyCosts.length - 1]?.cost || 0;
     const prevMonth = monthlyCosts[monthlyCosts.length - 2]?.cost || 0;
@@ -1619,15 +1619,21 @@ async function renderMaintDash() {
           </div>
           <div class="dash-live">
             <span class="dash-live-dot"></span>
-            LIVE — ανανέωση κάθε 5'
+            LIVE — ΑΝΑΝΕΩΣΗ ΚΑΘΕ 5'
           </div>
         </div>
 
         <!-- Alert Banner -->
-        ${totalExpired > 0 ? `<div class="dash-alert-banner">
-          <div class="dash-alert-icon">${_ic('alert_triangle', 16)}</div>
-          <div class="dash-alert-text">${totalExpired} ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</div>
-        </div>` : ''}
+        ${totalExpired > 0 ? `<button type="button" class="dash-burn-item burn-crit"
+          style="margin-bottom:var(--space-4)" onclick="_expiryGoto('expired')"
+          aria-label="${totalExpired} ληγμένα έγγραφα — άνοιγμα λίστας">
+          <span class="dash-burn-n">${totalExpired}</span>
+          <span class="dash-burn-txt">
+            <strong>Ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</strong>
+            <em>σε ${totalExpiredVehicles} ${totalExpiredVehicles === 1 ? 'όχημα' : 'οχήματα'} · φορτηγά + ρυμούλκες</em>
+          </span>
+          <span class="dash-burn-go">${_ic('chevron_right', 18)}</span>
+        </button>` : ''}
 
         <!-- KPI Bar (6 cards) -->
         <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
@@ -1635,43 +1641,43 @@ async function renderMaintDash() {
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
             <div class="dash-kpi-label">${_ic('truck', 11)} ΣΥΝΟΛΟ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
-            <div class="dash-kpi-sub">${activeTrucks.length} φορτηγά · ${activeTrailers.length} ρυμούλκες</div>
+            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>${activeTrucks.length} φορτηγά<span class="sep">·</span>${activeTrailers.length} ρυμούλκες<span class="sep">·</span>ενεργά</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KTEO')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΤΕΟ</div>
             <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
-            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>ληγμένα σήμερα</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KEK')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΕΚ</div>
             <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
-            <div class="dash-kpi-sub">μόνο φορτηγά</div>
+            <div class="dash-receipt"><b>TRUCKS</b><span class="sep">·</span>ληγμένα σήμερα<span class="sep">·</span>μόνο φορτηγά</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','FRC')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('droplet', 11)} ΛΗΓΜΕΝΑ FRC</div>
             <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
-            <div class="dash-kpi-sub">μόνο ρυμούλκες</div>
+            <div class="dash-receipt"><b>TRAILERS</b><span class="sep">·</span>ψυκτική βεβαίωση<span class="sep">·</span>μόνο ρυμούλκες</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','Insurance')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('shield', 11)} ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</div>
             <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
-            <div class="dash-kpi-sub">φορτηγά + ρυμούλκες</div>
+            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>ληγμένα σήμερα</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('expiring30')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'var(--panel-ok)'},transparent)"></div>
             <div class="dash-kpi-label">${_ic('clock', 11)} ΛΗΓΟΥΝ &lt;30 ΗΜ.</div>
             <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
-            <div class="dash-kpi-sub">όλοι οι τύποι εγγράφων</div>
+            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>παράθυρο 30 ημερών</div>
           </button>
           <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
             <div class="dash-kpi-label">${_ic('award', 11)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
             <div class="dash-kpi-value" style="color:${scoreColor}">${compliancePct}%</div>
-            <div class="dash-kpi-sub">${totalFleet - totalExpiredVehicles}/${totalFleet} χωρίς ληγμένο</div>
+            <div class="dash-receipt"><b>${totalFleet - totalExpiredVehicles}/${totalFleet}</b> χωρίς ληγμένο<span class="sep">·</span>φορτηγά + ρυμούλκες</div>
           </button>
         </div>
 
@@ -1730,17 +1736,17 @@ async function renderMaintDash() {
             <!-- Fleet Overview Table -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('truck', 12)} FLEET OVERVIEW · TRUCKS</div>
-                <span class="dash-card-meta">${activeTrucks.length} active</span>
+                <div class="dash-card-title">${_ic('truck', 12)} ΣΤΟΛΟΣ · ΦΟΡΤΗΓΑ</div>
+                <span class="dash-card-meta">${activeTrucks.length} ενεργά</span>
               </div>
               <div class="dash-card-body flush">
                 <table class="md-fleet-table">
                   <thead><tr>
-                    <th>Plate</th><th>Brand</th><th>Model</th>
+                    <th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th><th>ΜΟΝΤΕΛΟ</th>
                     <th style="text-align:center">KT</th>
                     <th style="text-align:center">KK</th>
                     <th style="text-align:center">INS</th>
-                    <th style="text-align:center">Status</th>
+                    <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
                   </tr></thead>
                   <tbody>
                     ${activeTrucks.map(t => {
@@ -1773,12 +1779,12 @@ async function renderMaintDash() {
             <!-- Recent Service -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('file_text', 12)} RECENT SERVICE</div>
-                <span class="dash-card-link" onclick="navigate('maint_svc')">Service History ${_ic('chevron_right', 12)}</span>
+                <div class="dash-card-title">${_ic('file_text', 12)} ΠΡΟΣΦΑΤΕΣ ΕΠΕΜΒΑΣΕΙΣ</div>
+                <span class="dash-card-link" onclick="navigate('maint_svc')">Ιστορικό ${_ic('chevron_right', 12)}</span>
               </div>
               <div class="dash-card-body flush">
                 ${recentSvc.length ? `<table class="md-svc-table">
-                  <thead><tr><th>Date</th><th>Plate</th><th>Type</th><th style="text-align:right">Cost</th></tr></thead>
+                  <thead><tr><th>ΗΜ/ΝΙΑ</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΤΥΠΟΣ</th><th style="text-align:right">ΚΟΣΤΟΣ</th></tr></thead>
                   <tbody>
                     ${recentSvc.map(r => { const f = r.fields; return `<tr>
                       <td style="color:var(--dc-text-dim)">${_fmtDate(f['Date'])}</td>
@@ -1799,21 +1805,21 @@ async function renderMaintDash() {
             <!-- Fleet Compliance Score Ring -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('award', 12)} FLEET COMPLIANCE</div>
+                <div class="dash-card-title">${_ic('award', 12)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
                 <span class="dash-card-meta">${totalFleet - totalExpiredVehicles}/${totalFleet}</span>
               </div>
               <div class="dash-card-body md-score-wrap">
                 <div class="md-score-ring" style="--md-score-color:${scoreColor};--md-score-deg:${Math.round(compliancePct * 3.6)}deg">
                   <div class="md-score-num" style="color:${scoreColor}">${compliancePct}%</div>
                 </div>
-                <div class="md-score-label">vehicles compliant</div>
+                <div class="md-score-label">οχήματα χωρίς ληγμένο</div>
               </div>
             </div>
 
             <!-- Compliance Snapshot (block grid) -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('file_check', 12)} COMPLIANCE SNAPSHOT</div>
+                <div class="dash-card-title">${_ic('file_check', 12)} ΑΝΑ ΟΧΗΜΑ</div>
               </div>
               <div class="dash-card-body" style="padding:var(--space-2) var(--space-4)">
                 <div class="md-comp-headers">
@@ -1849,8 +1855,8 @@ async function renderMaintDash() {
             <!-- Monthly Cost Summary (REAL DATA, replaces placeholder) -->
             <div class="dash-card">
               <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('coins', 12)} MONTHLY COST</div>
-                <span class="dash-card-meta">last 6 months</span>
+                <div class="dash-card-title">${_ic('coins', 12)} ΚΟΣΤΟΣ ΣΥΝΤΗΡΗΣΗΣ</div>
+                <span class="dash-card-meta">6 μήνες</span>
               </div>
               <div class="dash-card-body">
                 <div class="md-cost-label">Τρέχων μήνας</div>
