@@ -464,7 +464,7 @@ async function renderDashboard() {
         <div class="dash-kpi-bar">
           <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--danger),transparent)"></div>
-            <div class="dash-kpi-label">${_i('arrow_up_right', 11)} Export χωρίς Ανάθεση</div>
+            <div class="dash-kpi-label">${_i('arrow_up_right', 11)} ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</div>
             <div class="dash-kpi-value dash-val-danger">${unassignedExport}${_dashDelta(unExpDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εξαγωγές W${wn}</div></div>
@@ -474,7 +474,7 @@ async function renderDashboard() {
           </button>
           <button type="button" class="dash-kpi" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
-            <div class="dash-kpi-label">${_i('arrow_down_left', 11)} Import χωρίς Ανάθεση</div>
+            <div class="dash-kpi-label">${_i('arrow_down_left', 11)} ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</div>
             <div class="dash-kpi-value dash-val-warning">${unassignedImport}${_dashDelta(unImpDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">ανοιχτές εισαγωγές W${wn}</div></div>
@@ -484,7 +484,7 @@ async function renderDashboard() {
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
-            <div class="dash-kpi-label">${_i('truck', 11)} Αξιοποίηση Στόλου</div>
+            <div class="dash-kpi-label">${_i('truck', 11)} ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</div>
             <div class="dash-kpi-value dash-val-accent">${utilPct}%${_dashDelta(utilDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${trucksInUse.size}/${activeTrucks} φορτηγά W${wn}</div></div>
@@ -494,7 +494,7 @@ async function renderDashboard() {
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'var(--panel-ok)':avgDeadKm<=150?'#D97706':'var(--danger)') : '#475569'},transparent)"></div>
-            <div class="dash-kpi-label">${_i('route', 11)} Νεκρά Χιλιόμετρα</div>
+            <div class="dash-kpi-label">${_i('route', 11)} ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</div>
             <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `μ.ό. ${deadKmList.length} ζεύγη · έως ${maxDeadKm}km` : 'κανένα ζεύγος διαδρομών'}</div></div>
@@ -504,7 +504,7 @@ async function renderDashboard() {
           </button>
           <button type="button" class="dash-kpi" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? 'var(--panel-ok)' : '#475569'},transparent)"></div>
-            <div class="dash-kpi-label">${_i('check_circle', 11)} On-Time Παράδοση</div>
+            <div class="dash-kpi-label">${_i('check_circle', 11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>
             <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}${_dashDelta(onTimeDelta)}</div>
             <div class="dash-kpi-bottom">
               <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${totalDelivered > 0 ? `${onTimeCount}/${totalDelivered} εμπρόθεσμες` : 'κανένα δεδομένο'}</div></div>

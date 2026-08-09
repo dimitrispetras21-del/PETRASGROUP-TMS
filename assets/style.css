@@ -4282,7 +4282,13 @@ button.sidebar-toggle {
   margin-bottom: var(--space-5);
 }
 .dash-kpi {
-  background: var(--dc-card-bg);
+  /* Λεπτό πλέγμα 22px + διαγώνια βάθυνση: το «όργανο μέτρησης». Είναι η
+     οπτική υπογραφή που ξεχωρίζει μια ΜΕΤΡΗΣΗ από μια κάρτα λίστας — χωρίς
+     αυτό, η σκούρα κάρτα είναι απλώς σκούρη επιφάνεια. */
+  background:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 100% 22px,
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 22px 100%,
+    linear-gradient(160deg, #12263C, var(--dc-card-bg) 62%);
   /* Το όργανο μένει σκούρο, άρα το κείμενό του πρέπει να είναι ανοιχτό.
      Κληρονομούσε το σκούρο του φύλλου εργασίας — ό,τι παιδί δεν όριζε
      δικό του χρώμα γινόταν σκούρο πάνω σε navy, δηλαδή αόρατο. */
@@ -4296,10 +4302,16 @@ button.sidebar-toggle {
   overflow: hidden;
   min-height: 92px;
 }
+/* Βάθος οργάνου: το στοιχείο πρέπει να κάθεται ΠΑΝΩ στο φύλλο εργασίας,
+   όχι να είναι τρύπα μέσα του. Ακριβείς τιμές από το πρωτότυπο. */
+.dash-kpi,
+.dash-wrap .dash-burn .dash-kpi {
+  box-shadow: 0 2px 6px rgba(8,15,26,0.28), 0 12px 32px rgba(8,15,26,0.22);
+}
 .dash-kpi:hover {
   border-color: var(--dc-card-border-hover);
   transform: translateY(-2px);
-  box-shadow: 0 8px 20px rgba(15,23,42,0.18);
+  box-shadow: 0 4px 10px rgba(8,15,26,0.30), 0 18px 44px rgba(8,15,26,0.30);
 }
 .dash-kpi:active { transform: translateY(0); }
 /* A KPI that navigates is a button, not a div — the Maintenance Dashboard KPIs
