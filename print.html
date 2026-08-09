@@ -156,6 +156,73 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .stop-title{min-width:0}
 .pal-n{font-size:13px;font-weight:800;color:#0B1929}
 body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* ═══ v2.1 (εγκεκριμένο πρωτότυπο 9/8) ═══ */
+.hd2{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:14px;border-bottom:3px solid #0B1929;margin-bottom:14px}
+.doctag{text-align:right}
+.doctag .k{font-size:8.5px;font-weight:800;letter-spacing:1.6px;color:#94A3B8;text-transform:uppercase}
+.doctag .t{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:#0B1929;margin:2px 0}
+.doctag .s{font-size:10px;color:#475569}
+.doctag .ordno{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;background:#F4F6F9;border:1px solid #D6DDE6;border-radius:6px;padding:3px 10px;letter-spacing:.5px}
+.doctag .cxl{font-size:8.5px;color:#94A3B8;margin-top:4px}
+.vb{background:#0B1929;border-radius:10px;padding:12px 18px;display:flex;margin-bottom:12px}
+.vb .c{flex:1;border-right:1px solid rgba(255,255,255,.1);padding:0 16px}
+.vb .c:first-child{padding-left:0}.vb .c:last-child{border:none}
+.vb .k{font-size:7.5px;font-weight:800;letter-spacing:1.4px;color:rgba(196,207,219,.5);text-transform:uppercase;margin-bottom:3px}
+.vb .v{font-size:13.5px;font-weight:800;color:#fff;letter-spacing:.4px}
+.vb .v small{font-weight:500;color:rgba(255,255,255,.6);font-size:10px}
+.route2{display:flex;align-items:stretch;border:1.5px solid #0B1929;border-radius:10px;overflow:hidden;margin-bottom:12px}
+.route2 .side{flex:1;padding:11px 16px;min-width:0}
+.route2 .side.to{text-align:right;background:#F4F6F9}
+.route2 .k{font-size:7.5px;font-weight:800;letter-spacing:1.6px;color:#94A3B8;text-transform:uppercase}
+.route2 .n{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#0B1929;line-height:1.2;margin:2px 0}
+.route2 .d{font-size:11px;font-weight:800;color:#0284C7}
+.route2 .mid{display:flex;align-items:center;padding:0 6px;color:#0284C7;font-size:20px;font-weight:700}
+.cargo{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.chip{border:1px solid #D6DDE6;border-radius:9px;padding:7px 11px;background:#fff}
+.chip .k{font-size:7.5px;font-weight:800;letter-spacing:1.1px;color:#94A3B8;text-transform:uppercase;margin-bottom:2px}
+.chip .v{font-size:13px;font-weight:800;color:#0B1929}
+.chip .v small{font-size:9.5px;font-weight:600;color:#475569}
+.chip.temp .v{color:#0284C7}
+.chip.pe-yes{border-color:rgba(220,38,38,.5);background:#FEF6F5}.chip.pe-yes .v{color:#DC2626}
+.chip.pe-no .v{color:#067647}
+.chip.alert{border-color:rgba(220,38,38,.4);background:#FEF6F5}.chip.alert .v{color:#DC2626;font-size:11px}
+.tl{position:relative;margin:2px 0 14px;padding-left:30px}
+.tl::before{content:'';position:absolute;left:10px;top:14px;bottom:14px;width:2px;background:#D6DDE6}
+.stop{position:relative;background:#FAFBFC;border:1px solid #E7EBF0;border-radius:10px;padding:11px 15px;margin-bottom:9px;page-break-inside:avoid}
+.stop .num{position:absolute;left:-30px;top:11px;width:21px;height:21px;border-radius:50%;background:#0284C7;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px #fff}
+.stop.load .num{background:#0B1929}
+.stop .type{font-size:8px;font-weight:800;letter-spacing:1.2px;color:#fff;background:#0B1929;border-radius:3px;padding:2px 7px;text-transform:uppercase}
+.stop.unload .type{background:#0284C7}
+.stop .name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#0B1929;margin:5px 0 1px}
+.stop .addr{font-size:10px;color:#475569;line-height:1.55}
+.stop .addr a{color:#0284C7;text-decoration:none;font-weight:700}
+.stop .grid{display:grid;grid-template-columns:1fr 1fr;gap:2px 24px;margin-top:7px}
+.stop .f{display:flex;gap:8px;font-size:11.5px;padding:1.5px 0}
+.stop .f b{color:#475569;font-weight:600;min-width:118px;flex-shrink:0}
+.stop .f span{font-weight:700;color:#0F172A}
+.stop .f span.hot{color:#0284C7}
+.stop .f span.big{font-size:12.5px;font-weight:800}
+.stop-qr{float:right;width:74px;height:74px;margin:2px 0 6px 12px;border:1px solid #E7EBF0;border-radius:6px;padding:3px;background:#fff}
+.rate2{display:flex;justify-content:space-between;align-items:center;background:#F4F6F9;border:1.5px solid #0B1929;border-radius:10px;padding:11px 18px;margin-bottom:12px}
+.rate2 .amt{font-family:'Syne',sans-serif;font-size:22px;font-weight:800}
+.rate2 .k{font-size:8px;font-weight:800;letter-spacing:1.2px;color:#94A3B8;text-transform:uppercase;margin-bottom:2px}
+.rate2 .terms{text-align:right;font-size:11.5px;font-weight:700}
+.rate2 .terms small{font-size:9.5px;color:#475569;font-weight:600}
+.notes2{border:1px solid #EAD9B0;border-radius:8px;background:#FFFCF5;padding:9px 15px;font-size:11px;margin-bottom:12px}
+.notes2 b{text-transform:uppercase;font-size:8.5px;letter-spacing:1px;color:#B45309}
+.chk{display:flex;gap:16px;align-items:baseline;border:1px solid #D6DDE6;border-radius:8px;padding:9px 15px;font-size:11px;margin-bottom:12px;flex-wrap:wrap}
+.chk b{font-size:8.5px;font-weight:800;letter-spacing:1.2px;color:#0B1929;text-transform:uppercase}
+.chk span{color:#0F172A;font-weight:600}
+.contact2{display:flex;gap:18px;background:#F4F6F9;border-radius:8px;padding:8px 15px;font-size:10.5px;color:#475569;margin-bottom:12px;flex-wrap:wrap}
+.contact2 b{color:#0B1929}
+.sigs2{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid #0B1929;border-radius:8px;overflow:hidden;page-break-inside:avoid}
+.sigs2 .s{padding:11px 15px 7px;border-right:1.5px solid #0B1929}
+.sigs2 .s:last-child{border:none}
+.sigs2 .who{font-weight:800;font-size:11px;color:#0B1929}
+.sigs2 .role{font-size:8px;font-weight:800;letter-spacing:1px;color:#94A3B8;text-transform:uppercase;margin-bottom:34px}
+.sigs2 .line{border-top:1px solid #D6DDE6;font-size:9px;color:#94A3B8;text-align:center;padding:4px 0 2px}
+.pbar-btn.wa{background:#067647;margin-right:8px}
+.pbar-btn.wa:hover{background:#0A5C3C}
 @page{size:A4;margin:9mm}
 @media print{
   .pbar,.pbar-spacer{display:none}
@@ -183,6 +250,11 @@ const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_STOPS='tblaeY5QOHAS1gyE8';
 var orderStops=[];
 const DISPATCHER='Δ. Πέτρας';
+// Επικοινωνία στα φύλλα/WhatsApp — συμπλήρωσε τα τηλέφωνα (κενό = δεν τυπώνεται)
+const OFFICE_PHONE='';      // π.χ. '+30 23320 XXXXX'
+const EMERGENCY_PHONE='';   // π.χ. '+30 69X XXX XXXX'
+const OFFICE_EMAIL='dispo@petrasgroup.com';
+var _waArr=[]; // WhatsApp κείμενα (ένα ανά έγγραφο ομάδας)
 
 const params=new URLSearchParams(window.location.search);
 const orderId=params.get('orderId');
@@ -249,17 +321,29 @@ function resolveLoc(locField){
 // Redesign 9/8: γλωσσικό στρώμα ανά φύλλο — Συνεργάτης=EN, Οδηγός=GR.
 // Το LBL τίθεται στην αρχή του generatePDF, πριν χτιστούν οι κάρτες.
 var LBL=null;
-var LBL_EN={load:'LOAD',unload:'UNLOAD',dtLoad:'Date & Time of loading',dtDel:'Date & Time of delivery',
+var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order',
+  chk:'',office:'Dispo',emrg:'Emergency 24h',issued:'Issued',
+  load:'LOADING',unload:'DELIVERY',dtLoad:'Date & Time of loading',dtDel:'Date & Time of delivery',
   hours:'Opening Hours',days:'Delivery Days',goods:'Goods',pal:'Pallets',palU:'pallets',
   pe:'Pallet Exchange',gw:'Gross Weight',temp:'Temperature',refr:'Refrigerator',
   yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
   maps:'Open in Maps'};
-var LBL_GR={load:'ΦΟΡΤΩΣΗ',unload:'ΠΑΡΑΔΟΣΗ',dtLoad:'Ημ/νία & ώρα φόρτωσης',dtDel:'Ημ/νία & ώρα παράδοσης',
+var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προηγούμενη εντολή για το ίδιο order',
+  chk:'ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ',office:'Γραφείο κίνησης',emrg:'Έκτακτα 24h',issued:'Έκδοση',
+  load:'ΦΟΡΤΩΣΗ',unload:'ΠΑΡΑΔΟΣΗ',dtLoad:'Ημ/νία & ώρα φόρτωσης',dtDel:'Ημ/νία & ώρα παράδοσης',
   hours:'Ωράριο',days:'Ημέρες παράδοσης',goods:'Εμπόρευμα',pal:'Παλέτες',palU:'παλέτες',
   pe:'Ανταλλαγή παλετών',gw:'Μικτό βάρος',temp:'Θερμοκρασία',refr:'Ψυγείο',
   yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
   maps:'Άνοιγμα στους Χάρτες'};
 
+// v2.1: QR ανά σημείο (εγκεκριμένο #3) — εικόνα από api.qrserver.com με το
+// Maps link· αν δεν φορτώσει (offline/μπλοκ) κρύβεται, το link μένει τυπωμένο.
+function stopQR(lat,lng){
+  if(!lat||!lng) return '';
+  var u='https://maps.google.com/?q='+lat+','+lng;
+  return '<img class="stop-qr" alt="" onerror="this.style.display=\'none\'" src="https://api.qrserver.com/v1/create-qr-code/?size=148x148&margin=0&data='+encodeURIComponent(u)+'">';
+}
+var _stopSeq=0; // συνεχής αρίθμηση σημείων ανά έγγραφο (①②③…)
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
 function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr){
   var L=LBL||LBL_EN;
@@ -267,36 +351,31 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   if(dtLabel==='loading'){typeCls='load'; typeLbl=L.load;}
   else if(dtLabel==='delivery'){typeCls='unload'; typeLbl=L.unload;}
   else if(dtLabel==='crossdock'){typeCls='crossdock'; typeLbl='CROSS-DOCK';}
+  var seq=++_stopSeq;
+  var mapsUrl=(loc.lat&&loc.lng)?'https://maps.google.com/?q='+loc.lat+','+loc.lng:'';
 
-  var h='<div class="stop-card '+typeCls+'">';
-  h+='<div class="stop-name">';
-  h+='<span class="stop-n '+typeCls+'">'+num+'</span>';
-  if(typeLbl) h+='<span class="stop-badge '+typeCls+'">'+typeLbl+'</span>';
-  h+='<span class="stop-title">'+loc.name+'</span></div>';
-  if(loc.address)h+='<div class="stop-addr">'+loc.address+'</div>';
-  if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 '+L.maps+' ('+loc.lat+', '+loc.lng+')</a>';
-  h+='<div class="stop-grid">';
-  h+='<div class="stop-field"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+':</b><span>'+fmtDT(dt)+'</span></div>';
-  if(loc.hours)h+='<div class="stop-field"><b>'+L.hours+':</b><span>'+loc.hours+'</span></div>';
-  if(loc.days)h+='<div class="stop-field"><b>'+L.days+':</b><span>'+loc.days+'</span></div>';
-  // «33 EUR» διάβαζε σαν χρήμα — τώρα: «33 × EUR παλέτες»
-  var palLine='<div class="stop-field"><b>'+L.pal+':</b><span><b class="pal-n">'+(pals||'—')+'</b>&nbsp;× '+(palType||'EUR')+' '+L.palU+'</span></div>';
+  var h='<div class="stop '+typeCls+'">';
+  h+='<div class="num">'+seq+'</div>';
+  h+=stopQR(loc.lat,loc.lng);
+  h+='<span class="type">'+typeLbl+'</span>';
+  h+='<div class="name">'+loc.name+'</div>';
+  var addrBits=[];
+  if(loc.address)addrBits.push(loc.address);
+  if(mapsUrl)addrBits.push(L.coords+': '+loc.lat+', '+loc.lng+' · <a href="'+mapsUrl+'" target="_blank">📍 '+mapsUrl.replace('https://','')+'</a>');
+  if(addrBits.length)h+='<div class="addr">'+addrBits.join('<br>')+'</div>';
+  h+='<div class="grid">';
+  h+='<div class="f"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+'</b><span class="big">'+fmtDT(dt)+'</span></div>';
+  if(loc.hours)h+='<div class="f"><b>'+L.hours+'</b><span>'+loc.hours+'</span></div>';
+  if(loc.days)h+='<div class="f"><b>'+L.days+'</b><span>'+loc.days+'</span></div>';
+  h+='<div class="f"><b>'+L.pal+'</b><span>'+(pals||'—')+' × '+(palType||'EUR')+'</span></div>';
   if(showDetails){
-    if(goods)h+='<div class="stop-field"><b>'+L.goods+':</b><span>'+goods+'</span></div>';
-    h+=palLine;
-    h+='<div class="stop-field"><b>'+L.pe+':</b><span>'+(pe==='YES'?L.yes:pe==='NO'?L.no:pe)+'</span></div>';
-    if(gw)h+='<div class="stop-field"><b>'+L.gw+':</b><span>'+gw+' KG</span></div>';
-    if(temp!==''&&temp!=null){
-      var tNum=parseFloat(temp);
-      var tCls=!isNaN(tNum)&&tNum<=-10?'temp-frozen':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'temp-chilled':'temp-cold');
-      var tLbl=!isNaN(tNum)&&tNum<=-10?' (FROZEN)':'';
-      h+='<div class="stop-field"><b>'+L.temp+':</b><span class="'+tCls+'">'+temp+'°C'+tLbl+'</span></div>';
-    }
-    if(refr)h+='<div class="stop-field"><b>'+L.refr+':</b><span>'+refr+'</span></div>';
-  }else{
-    h+=palLine;
+    if(goods)h+='<div class="f"><b>'+L.goods+'</b><span>'+goods+'</span></div>';
+    h+='<div class="f"><b>'+L.pe+'</b><span class="'+(pe==='YES'?'hot':'')+'">'+(pe==='YES'?L.yes:pe==='NO'?L.no:pe)+'</span></div>';
+    if(gw)h+='<div class="f"><b>'+L.gw+'</b><span>'+gw+' KG</span></div>';
+    if(temp!==''&&temp!=null)h+='<div class="f"><b>'+L.temp+'</b><span class="hot">'+temp+'°C</span></div>';
+    if(refr)h+='<div class="f"><b>'+L.refr+'</b><span>'+refr+'</span></div>';
   }
-  h+='</div></div>';return h;
+  h+='</div><div style="clear:both"></div></div>';return h;
 }
 
 // Route strip: μεγάλο «Από → Προς» με ημερομηνίες — το πρώτο που διαβάζεται.
@@ -318,10 +397,10 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
     if(veroiaSwitch&&isExport&&ld) ld=new Date(new Date(ld).getTime()+86400000).toISOString();
     if(veroiaSwitch&&!isExport&&dd) dd=new Date(new Date(dd).getTime()-86400000).toISOString();
   }catch(e){}
-  return '<div class="route-strip">'+
-    '<div class="rs-side"><div class="rs-lbl">'+L.from+'</div><div class="rs-name">'+from+'</div><div class="rs-date">'+fmtDT(ld)+'</div></div>'+
-    '<div class="rs-arrow">→</div>'+
-    '<div class="rs-side" style="text-align:right"><div class="rs-lbl">'+L.to+'</div><div class="rs-name">'+to+'</div><div class="rs-date">'+fmtDT(dd)+'</div></div>'+
+  return '<div class="route2">'+
+    '<div class="side"><div class="k">'+L.from+'</div><div class="n">'+from+'</div><div class="d">'+fmtDT(ld)+'</div></div>'+
+    '<div class="mid">→</div>'+
+    '<div class="side to"><div class="k">'+L.to+'</div><div class="n">'+to+'</div><div class="d">'+fmtDT(dd)+'</div></div>'+
   '</div>';
 }
 
@@ -427,7 +506,7 @@ async function loadAll(){
     allPartners=partners;allTrucks=trucks;allTrailers=trailers;
     allDrivers=drivers;allLocations=locs;
     // Wave 3 (Π1): one document per order, sequentially — single or group.
-    var htmlArr=[];
+    var htmlArr=[]; _waArr=[];
     for(var oi=0;oi<orderIdList.length;oi++){
       var orderR=await atGet(T_ORDERS,orderIdList[oi]);
       orderStops=[];
@@ -446,6 +525,60 @@ async function loadAll(){
   }
 }
 
+// v2.1 (εγκεκριμένο): κείμενο WhatsApp ανά έγγραφο — GR οδηγός / EN partner.
+// Τα *αστεράκια* γίνονται bold μέσα στο WhatsApp.
+function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo){
+  var L=LBL, EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣'];
+  function t(x){x=String(x||'').split(',')[0].trim();return x;}
+  function fromStops(type){
+    return orderStops.filter(function(r){return r.fields['Stop Type']===type})
+      .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)})
+      .map(function(r){var lc=resolveLoc(r.fields['Location'])||{};
+        return {name:lc.name||'—',addr:lc.address||'',lat:lc.lat,lng:lc.lng,dt:r.fields['DateTime']||''};});
+  }
+  var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
+  var loads,dels;
+  try{
+    if(veroiaSwitch&&isExport){loads=[{name:VEROIA,addr:VADDR,lat:VLAT,lng:VLNG,dt:ld?new Date(new Date(ld).getTime()+86400000).toISOString():''}];}
+    else{loads=fromStops('Loading'); if(!loads.length)loads=[{name:t(f['Loading Summary'])||'—',addr:'',dt:ld}];}
+    if(veroiaSwitch&&!isExport){dels=[{name:VEROIA,addr:VADDR,lat:VLAT,lng:VLNG,dt:dd?new Date(new Date(dd).getTime()-86400000).toISOString():''}];}
+    else{dels=fromStops('Unloading'); if(!dels.length)dels=[{name:t(f['Delivery Summary'])||'—',addr:'',dt:dd}];}
+  }catch(e){loads=[{name:'—',dt:ld}];dels=[{name:'—',dt:dd}];}
+  loads.forEach(function(x){if(!x.dt)x.dt=ld;}); dels.forEach(function(x){if(!x.dt)x.dt=dd;});
+  var lines=[];
+  lines.push('🚛 *'+(isPartner?'ORDER':'ΕΝΤΟΛΗ')+' W'+wk+' · '+(isPartner?(isExport?'EXPORT':'IMPORT'):(isExport?'ΕΞΑΓΩΓΗ':'ΕΙΣΑΓΩΓΗ'))+' · '+orderNo+'*');
+  if(vehLine)lines.push('👤 '+vehLine);
+  lines.push('');
+  var seq=0;
+  var all=loads.map(function(x){return{x:x,lbl:L.load};}).concat(dels.map(function(x){return{x:x,lbl:L.unload};}));
+  all.forEach(function(o){
+    lines.push((EMO[seq++]||'▪️')+' *'+o.lbl+'* · '+fmtDT(o.x.dt));
+    lines.push(o.x.name);
+    if(o.x.addr)lines.push(o.x.addr);
+    if(o.x.lat&&o.x.lng)lines.push('📍 https://maps.google.com/?q='+o.x.lat+','+o.x.lng);
+    lines.push('');
+  });
+  var cargo=[];
+  if(f['Total Pallets'])cargo.push('*'+fv(f['Total Pallets'])+'× '+(fv(f['Pallet Type'])||'EUR')+'*');
+  if(fv(f['Goods']))cargo.push(fv(f['Goods']));
+  if(f['Temperature °C']!==''&&f['Temperature °C']!=null)cargo.push('🌡 *'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' '+f['Refrigerator Mode']:'')+'*');
+  if(cargo.length)lines.push('📦 '+cargo.join(' · '));
+  lines.push('🔁 *'+L.pe+': '+(f['Pallet Exchange']?L.yes:L.no)+'*');
+  if(refNo)lines.push((isPartner?'Ref':'Ref')+': '+refNo);
+  if(f['Notes'])lines.push('📝 '+f['Notes']);
+  var cb=[];
+  if(OFFICE_PHONE)cb.push(L.office+' '+OFFICE_PHONE);
+  if(EMERGENCY_PHONE)cb.push(L.emrg+' '+EMERGENCY_PHONE);
+  if(cb.length){lines.push('');lines.push('☎️ '+cb.join(' · '));}
+  return lines.join('\n').replace(/\n{3,}/g,'\n\n');
+}
+function copyWA(btn){
+  var txt=_waArr.join('\n\n————————\n\n');
+  navigator.clipboard.writeText(txt).then(function(){
+    var t0=btn.textContent;btn.textContent='✓ Αντιγράφηκε';
+    setTimeout(function(){btn.textContent=t0;},2200);
+  });
+}
 function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;
   var isExport=leg==='export';
@@ -455,6 +588,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var orderNo=f['Order Number']||String(orderRec.id||orderId||'').slice(-6).toUpperCase(); // group-safe (Wave 3 fix)
   var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
+  _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
   var legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
 
   // Veroia
@@ -484,11 +618,34 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
   var titleStr=isPartner?('Partner Assignment Order — '+legLabel+' — W'+wk):('Εντολή Οδηγού — '+legLabelGr+' — W'+wk);
+
+  // v2.1 chips φορτίου — PE πρώτης τάξης (εγκεκριμένο)
+  var peYes=!!f['Pallet Exchange'];
+  var chipsHTML='<div class="cargo">'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(fv(f['Total Pallets'])||'—')+' <small>× '+(fv(f['Pallet Type'])||'EUR')+'</small></div></div>'+
+    '<div class="chip '+(peYes?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(peYes?LBL.yes:LBL.no)+'</div></div>'+
+    ((f['Temperature °C']!==''&&f['Temperature °C']!=null)?'<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+f['Temperature °C']+'°C'+(f['Refrigerator Mode']?' <small>'+f['Refrigerator Mode']+'</small>':'')+'</div></div>':'')+
+    (fv(f['Goods'])?'<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+fv(f['Goods'])+'</div></div>':'')+
+    (f['Gross Weight kg']?'<div class="chip"><div class="k">'+LBL.gw+'</div><div class="v">'+f['Gross Weight kg']+' <small>KG</small></div></div>':'')+
+    (f['High Risk Flag']&&!isPartner?'<div class="chip alert"><div class="k">Σημάνσεις</div><div class="v">High Risk</div></div>':'')+
+    '</div>';
+
+  // Επικοινωνία (μόνο συμπληρωμένα)
+  var contactBits=[];
+  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+OFFICE_PHONE+'</span>');
+  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+EMERGENCY_PHONE+'</span>');
+  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+OFFICE_EMAIL+'</span>');
+  var contactHTML=contactBits.length?'<div class="contact2">'+contactBits.join('')+'</div>':'';
+
+  // Checklist οδηγού (εγκεκριμένο #2)
+  var chkHTML=isPartner?'':'<div class="chk"><b>'+LBL.chk+'</b>'+
+    '<span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Τρέιλερ καθαρό / προψυγμένο</span>'+
+    '<span>☐ Παλέτες μετρημένες</span><span>☐ CMR υπογεγραμμένο</span></div>';
   var pbarHTML=bare?'':'<div class="pbar"><div class="pbar-left">'+
     '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
     '<div class="pbar-div"></div>'+
     '<span class="pbar-title">'+titleStr+'</span>'+
-    '</div><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div>'+
+    '</div><div><button class="pbar-btn wa" onclick="copyWA(this)">📋 WhatsApp</button><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div></div>'+
     '<div class="pbar-spacer"></div>';
 
   var refNo=f['Reference']||'';
@@ -531,17 +688,18 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+orderNo+'</div>'+
     metaHTML+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
-    '<div class="price-bar">'+
-      '<div><div class="price-lbl">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+'</div></div>'+
-      '<div class="price-terms"><div class="price-lbl">Payment Terms</div><div class="val">30 days</div></div>'+
+    '<div class="rate2">'+
+      '<div><div class="k">Agreed Rate — '+legLabel+'</div><div class="amt">'+rate+'</div></div>'+
+      '<div class="terms"><div class="k">Payment</div>30 days after CMR<br><small>Original CMR + delivery note required</small></div>'+
     '</div>'+
-    '<div class="section-title load-section">'+LBL.loadSec+'</div>'+loadHTML+
-    '<div class="section-title unload-section">'+LBL.delSec+'</div>'+delHTML+
+    chipsHTML+
+    '<div class="tl">'+loadHTML+delHTML+'</div>'+
     notesHTML+
-    '<table class="sig-table"><tr>'+
-      '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '<td><div class="sig-name">'+(pf['Company Name']||'CARRIER')+'</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
-    '</tr></table>';
+    contactHTML+
+    '<div class="sigs2">'+
+      '<div class="s"><div class="who">PETRAS GROUP / VERMION FRESH SA</div><div class="role">Authorized Signatory</div><div class="line">Signature &amp; Date</div></div>'+
+      '<div class="s"><div class="who">'+(pf['Company Name']||'CARRIER')+'</div><div class="role">Authorized Signatory</div><div class="line">Signature &amp; Date</div></div>'+
+    '</div>';
   }else{
     var driver=allDrivers.find(r=>f['Driver']&&r.id===f['Driver'][0])||{};
     var truck=allTrucks.find(r=>f['Truck']&&r.id===f['Truck'][0])||{};
@@ -557,31 +715,41 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
         '<div class="brand-sub">International Road Transport Services</div>'+
         '<div class="co-info" style="text-align:left"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia<br>vermionfresh@petrasgroup.com</div>'+
       '</div>'+
-      '<div style="text-align:right">'+
-        '<div style="font-size:8.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#9CA3AF;margin-bottom:3px">Εντολή Οδηγού</div>'+
-        '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#0B1929">W'+wk+' — '+legLabelGr+'</div>'+
-        '<div style="font-size:10.5px;color:#6B7280;margin-top:2px">'+new Date().toLocaleDateString('el-GR')+' · '+DISPATCHER+'</div>'+
+      '<div class="doctag">'+
+        '<div class="k">Εντολή Οδηγού</div>'+
+        '<div class="t">W'+wk+' · '+legLabelGr+'</div>'+
+        '<div class="s">'+LBL.issued+' '+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+' · '+DISPATCHER+'</div>'+
+        '<div class="ordno">ORDER '+orderNo+(refNo?' · REF '+refNo:'')+'</div>'+
+        '<div class="cxl">'+LBL.cancel+'</div>'+
       '</div>'+
     '</div>'+
-    '<div class="driver-block">'+
-      '<div class="driver-block-row">'+
-        '<div class="db-item"><div class="lbl">Οδηγός</div><div class="val">'+(df['Full Name']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Φορτηγό</div><div class="val">'+(tf['License Plate']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Τρέιλερ</div><div class="val">'+(trf['License Plate']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Μικτό βάρος</div><div class="val">'+(totalW>0?totalW.toLocaleString('de-DE')+' KG':'—')+'</div></div>'+
-      '</div>'+
+    '<div class="vb">'+
+      '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
+      '<div class="c"><div class="k">Μικτό βάρος</div><div class="v">'+(totalW>0?totalW.toLocaleString('de-DE')+' <small>KG</small>':'—')+'</div></div>'+
     '</div>'+
-    metaHTML+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
-    '<div class="section-title load-section">'+LBL.loadSec+'</div>'+loadHTML+
-    '<div class="section-title unload-section">'+LBL.delSec+'</div>'+delHTML+
+    chipsHTML+
+    metaHTML+
+    '<div class="tl">'+loadHTML+delHTML+'</div>'+
     notesHTML+
-    '<table class="sig-table"><tr>'+
-      '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Υπογραφή &amp; Ημερομηνία</div></td>'+
-      '<td><div class="sig-name">'+(df['Full Name']||'—')+'</div><div class="sig-role">Οδηγός — Παραλαβή εντολής</div><div class="sig-line">Υπογραφή &amp; Ημερομηνία</div></td>'+
-    '</tr></table>';
+    chkHTML+
+    contactHTML+
+    '<div class="sigs2">'+
+      '<div class="s"><div class="who">VERMION FRESH SA / PETRAS GROUP</div><div class="role">Dispatcher</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+      '<div class="s"><div class="who">'+(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+    '</div>';
   }
 
+  // v2.1: WhatsApp κείμενο για αυτό το έγγραφο
+  try{
+    var vehLine=isPartner
+      ?[(allPartners.find(function(r){return f['Partner']&&r.id===f['Partner'][0];})||{fields:{}}).fields['Company Name'],f['Partner Truck Plates']].filter(Boolean).join(' · ')
+      :(function(){var d=allDrivers.find(function(r){return f['Driver']&&r.id===f['Driver'][0];}),tk=allTrucks.find(function(r){return f['Truck']&&r.id===f['Truck'][0];}),tr=allTrailers.find(function(r){return f['Trailer']&&r.id===f['Trailer'][0];});
+        return [(d&&d.fields['Full Name']),[(tk&&tk.fields['License Plate']),(tr&&tr.fields['License Plate'])].filter(Boolean).join(' / ')].filter(Boolean).join(' · ');})();
+    _waArr.push(waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo));
+  }catch(e){console.warn('waBuild:',e);}
   return html; // Wave 3: assembly + print moved to renderDocs (single & group)
 }
 
