@@ -2262,6 +2262,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-mstop{font-size:8px;font-weight:800;color:var(--accent);background:var(--accent-light);border-radius:999px;padding:1px 5px;cursor:help;vertical-align:1px;flex-shrink:0;margin-left:3px}
 .wk3-stopn{display:inline-flex;width:13px;height:13px;border-radius:50%;background:var(--accent);color:#fff;font-size:8.5px;font-weight:800;align-items:center;justify-content:center;margin:0 2px;vertical-align:1px;flex-shrink:0;cursor:help}
 .wk3-pal{width:34px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.wk3-flags{width:64px;display:inline-flex;gap:3px;justify-content:flex-end;align-items:center;flex-shrink:0}
 .wk3-leg.bgap.dh,.wk3-feed.bgap.dh{background:var(--accent-light) !important}
 /* RISK = σκέτο κόκκινο θαυμαστικό (owner 9/8) */
 .wk3 .wi-b-risk{background:none !important;border:none !important;color:#DC2626 !important;font-weight:900;font-size:12.5px;padding:0 2px}
