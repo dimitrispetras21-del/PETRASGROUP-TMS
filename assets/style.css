@@ -4200,6 +4200,22 @@ button.sidebar-toggle {
   --dc-bad: var(--danger-strong);
 }
 .dash-wrap .dash-card:hover { border-color: var(--border-mid); }
+/* Σκούρα ετικέτα τίτλου πάνω από λευκό σώμα: η κάρτα «φοράει» το χρώμα του
+   οργάνου στην κεφαλίδα της, οπότε οι δύο κόσμοι της σελίδας δένουν αντί να
+   στέκονται ο ένας δίπλα στον άλλο. Απόφαση owner, 11/8/2026. */
+.dash-wrap .dash-card > .dash-card-header {
+  background: var(--navy-mid, #0F2438);
+  border-bottom-color: rgba(255,255,255,0.08);
+  color: #F1F6FB;
+  --dc-text: #F1F6FB;
+  --dc-text-mid: #9DB2C8;
+  --dc-text-dim: #9DB2C8;
+  --dc-accent: var(--accent-hi, #38BDF8);
+}
+.dash-wrap .dash-card > .dash-card-header .dash-card-title { color: #F1F6FB; }
+.dash-wrap .dash-card > .dash-card-header .dash-card-title.is-danger { color: #F87171; }
+.dash-wrap .dash-card > .dash-card-header .dash-card-meta { color: #9DB2C8; }
+.dash-wrap .dash-card > .dash-card-header .dash-card-link { color: var(--accent-hi, #38BDF8); }
 /* Τα ημιδιαφανή λευκά γεμίσματα αντιστρέφονται σε ημιδιαφανές navy: ίδια
    λογική «ελαφρύ βύθισμα», σωστή φορά για ανοιχτή επιφάνεια. */
 .dash-wrap .dash-card .dash-util-bar,
