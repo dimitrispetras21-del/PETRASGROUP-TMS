@@ -645,7 +645,7 @@ function _wiImpRowHTML(row,impNo){
       <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">⎙</button>
     </div>
     <div class="wk3-leg imp" style="cursor:grab">
-      <span class="wk3-route">${loadDt!=='—'?`<b class="wk3-ld" title="Ημ. φόρτωσης">${_wk3D(loadDt)}</b>`:''}<span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση')}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
+      <span class="wk3-route"><b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση')}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
       <span class="wk3-meta">${pals?pals+'p':''} ${impRef2?`<span class="wk3-ref" title="Reference">${escapeHtml(String(impRef2).slice(0,12))}</span>`:''}${_wiBadges(f)}</span>
     </div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':''}">${impVS2?`<b>${delDt!=='—'?_wk3D(delDt):''}</b>&nbsp;${escapeHtml(_wk3Loc(toStr))}`:''}</div>
@@ -876,7 +876,7 @@ function _wiRowHTML(row,i){
   const impPals=imp?imp.fields['Total Pallets']||0:0;
   const impVS=!!imp?.fields['Veroia Switch'];
   const impPrev=imp
-    ?`<span class="wk3-route">${impLoadDt!=='—'?`<b class="wk3-ld" title="Ημ. φόρτωσης εισαγωγής">${_wk3D(impLoadDt)}</b>`:''}<span class="frm">${_wk3LocHTML(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS?'Vermion Fresh Cross-Dock':_wk3LocHTML(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Παράδοση')}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
+    ?`<span class="wk3-route"><b class="wk3-ld" title="Ημ. φόρτωσης εισαγωγής">${impLoadDt!=='—'?_wk3D(impLoadDt):''}</b><span class="frm">${_wk3LocHTML(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS?'Vermion Fresh Cross-Dock':_wk3LocHTML(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Παράδοση')}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
      <span class="wk3-meta">${impPals?impPals+'p':''} ${_wiBadges(imp.fields)}</span>
      <button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
     :'';
@@ -897,7 +897,7 @@ function _wiRowHTML(row,i){
     <div class="wk3-num">${i+1}${isGroup?`<span class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':''}">${feedL}</div>
     <div class="wk3-leg" oncontextmenu="_wiCtx(event,${row.id},event)">
-      <span class="wk3-route">${loadDt!=='—'?`<b class="wk3-ld" title="Ημερομηνία φόρτωσης">${_wk3D(loadDt)}</b>`:''}<span class="frm">${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση')}</span></span>
+      <span class="wk3-route"><b class="wk3-ld" title="Ημερομηνία φόρτωσης">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση')}</span></span>
       <span class="wk3-meta">${pals?pals+'p':''} ${_wiBadges(primary?.fields||{})}${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
