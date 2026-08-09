@@ -142,9 +142,26 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 .sig-line{border-top:1px solid #D1D5DB;padding-top:5px;
   font-size:9px;color:#9CA3AF;text-align:center}
 
+/* ── ROUTE STRIP (redesign 9/8 — «Claude design» pass) ── */
+.route-strip{display:flex;align-items:center;gap:16px;background:#F1F5F9;border:1px solid #CBD5E1;
+  border-radius:8px;padding:12px 18px;margin-bottom:16px}
+.rs-side{flex:1;min-width:0}
+.rs-lbl{font-size:7.5px;font-weight:800;letter-spacing:1.6px;color:#64748B;text-transform:uppercase;margin-bottom:2px}
+.rs-name{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:#0B1929;line-height:1.25}
+.rs-date{font-size:10.5px;color:#0284C7;font-weight:700;margin-top:2px;font-variant-numeric:tabular-nums}
+.rs-arrow{font-size:20px;color:#0284C7;flex-shrink:0;font-weight:700}
+.stop-n{display:inline-flex;width:18px;height:18px;border-radius:50%;background:#0284C7;color:#fff;
+  font-size:10px;font-weight:800;align-items:center;justify-content:center;flex-shrink:0}
+.stop-n.load{background:#0B1929}.stop-n.unload{background:#475569}.stop-n.crossdock{background:#0284C7}
+.stop-title{min-width:0}
+.pal-n{font-size:13px;font-weight:800;color:#0B1929}
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:9mm}
 @media print{
   .pbar,.pbar-spacer{display:none}
-  #doc{padding:20px 28px}
+  #doc{padding:6px 10px;max-width:none}
+  .stop-card{page-break-inside:avoid}
+  .sig-table{page-break-inside:avoid}
 }
 </style>
 </head>
@@ -229,43 +246,75 @@ function resolveLoc(locField){
     hours:l['Opening Hours']||'',days:l['Delivery Days']||''}; // Wave 3
 }
 
+// Redesign 9/8: γλωσσικό στρώμα ανά φύλλο — Συνεργάτης=EN, Οδηγός=GR.
+// Το LBL τίθεται στην αρχή του generatePDF, πριν χτιστούν οι κάρτες.
+var LBL=null;
+var LBL_EN={load:'LOAD',unload:'UNLOAD',dtLoad:'Date & Time of loading',dtDel:'Date & Time of delivery',
+  hours:'Opening Hours',days:'Delivery Days',goods:'Goods',pal:'Pallets',palU:'pallets',
+  pe:'Pallet Exchange',gw:'Gross Weight',temp:'Temperature',refr:'Refrigerator',
+  yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
+  maps:'Open in Maps'};
+var LBL_GR={load:'ΦΟΡΤΩΣΗ',unload:'ΠΑΡΑΔΟΣΗ',dtLoad:'Ημ/νία & ώρα φόρτωσης',dtDel:'Ημ/νία & ώρα παράδοσης',
+  hours:'Ωράριο',days:'Ημέρες παράδοσης',goods:'Εμπόρευμα',pal:'Παλέτες',palU:'παλέτες',
+  pe:'Ανταλλαγή παλετών',gw:'Μικτό βάρος',temp:'Θερμοκρασία',refr:'Ψυγείο',
+  yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
+  maps:'Άνοιγμα στους Χάρτες'};
+
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
 function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr){
-  // Derive type class + badge
+  var L=LBL||LBL_EN;
   var typeCls='', typeLbl='';
-  if(dtLabel==='loading'){typeCls='load'; typeLbl='LOAD';}
-  else if(dtLabel==='delivery'){typeCls='unload'; typeLbl='UNLOAD';}
-  else if(dtLabel==='crossdock'){typeCls='crossdock'; typeLbl='CROSSDOCK';}
+  if(dtLabel==='loading'){typeCls='load'; typeLbl=L.load;}
+  else if(dtLabel==='delivery'){typeCls='unload'; typeLbl=L.unload;}
+  else if(dtLabel==='crossdock'){typeCls='crossdock'; typeLbl='CROSS-DOCK';}
 
   var h='<div class="stop-card '+typeCls+'">';
   h+='<div class="stop-name">';
+  h+='<span class="stop-n '+typeCls+'">'+num+'</span>';
   if(typeLbl) h+='<span class="stop-badge '+typeCls+'">'+typeLbl+'</span>';
-  h+='#'+num+' · '+loc.name+'</div>';
+  h+='<span class="stop-title">'+loc.name+'</span></div>';
   if(loc.address)h+='<div class="stop-addr">'+loc.address+'</div>';
-  if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 Open in Maps ('+loc.lat+', '+loc.lng+')</a>';
+  if(loc.lat&&loc.lng)h+='<a class="stop-map" href="https://www.google.com/maps?q='+loc.lat+','+loc.lng+'" target="_blank">📍 '+L.maps+' ('+loc.lat+', '+loc.lng+')</a>';
   h+='<div class="stop-grid">';
-  h+='<div class="stop-field"><b>Date &amp; Time of '+dtLabel+':</b><span>'+fmtDT(dt)+'</span></div>';
-  // Wave 3 — owner spec 00 §Β3: ώρες λειτουργίας + μέρες παράδοσης στο φύλλο
-  // οδηγού· render only when the LOCATIONS fields carry a value.
-  if(loc.hours)h+='<div class="stop-field"><b>Opening Hours:</b><span>'+loc.hours+'</span></div>';
-  if(loc.days)h+='<div class="stop-field"><b>Delivery Days:</b><span>'+loc.days+'</span></div>';
+  h+='<div class="stop-field"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+':</b><span>'+fmtDT(dt)+'</span></div>';
+  if(loc.hours)h+='<div class="stop-field"><b>'+L.hours+':</b><span>'+loc.hours+'</span></div>';
+  if(loc.days)h+='<div class="stop-field"><b>'+L.days+':</b><span>'+loc.days+'</span></div>';
+  // «33 EUR» διάβαζε σαν χρήμα — τώρα: «33 × EUR παλέτες»
+  var palLine='<div class="stop-field"><b>'+L.pal+':</b><span><b class="pal-n">'+(pals||'—')+'</b>&nbsp;× '+(palType||'EUR')+' '+L.palU+'</span></div>';
   if(showDetails){
-    if(goods)h+='<div class="stop-field"><b>Goods:</b><span>'+goods+'</span></div>';
-    h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
-    h+='<div class="stop-field"><b>Pallet Exchange:</b><span>'+pe+'</span></div>';
-    if(gw)h+='<div class="stop-field"><b>Gross Weight:</b><span>'+gw+' KG</span></div>';
+    if(goods)h+='<div class="stop-field"><b>'+L.goods+':</b><span>'+goods+'</span></div>';
+    h+=palLine;
+    h+='<div class="stop-field"><b>'+L.pe+':</b><span>'+(pe==='YES'?L.yes:pe==='NO'?L.no:pe)+'</span></div>';
+    if(gw)h+='<div class="stop-field"><b>'+L.gw+':</b><span>'+gw+' KG</span></div>';
     if(temp!==''&&temp!=null){
-      // Navy-toned emphasis, no emoji
       var tNum=parseFloat(temp);
       var tCls=!isNaN(tNum)&&tNum<=-10?'temp-frozen':(!isNaN(tNum)&&tNum>=0&&tNum<=8?'temp-chilled':'temp-cold');
       var tLbl=!isNaN(tNum)&&tNum<=-10?' (FROZEN)':'';
-      h+='<div class="stop-field"><b>Temperature:</b><span class="'+tCls+'">'+temp+'°C'+tLbl+'</span></div>';
+      h+='<div class="stop-field"><b>'+L.temp+':</b><span class="'+tCls+'">'+temp+'°C'+tLbl+'</span></div>';
     }
-    if(refr)h+='<div class="stop-field"><b>Refrigerator:</b><span>'+refr+'</span></div>';
+    if(refr)h+='<div class="stop-field"><b>'+L.refr+':</b><span>'+refr+'</span></div>';
   }else{
-    h+='<div class="stop-field"><b>Pallet no:</b><span>'+(pals||'—')+' '+(palType||'EUR')+'</span></div>';
+    h+=palLine;
   }
   h+='</div></div>';return h;
+}
+
+// Route strip: μεγάλο «Από → Προς» με ημερομηνίες — το πρώτο που διαβάζεται.
+function routeStrip(f,isExport,veroiaSwitch,VEROIA){
+  var L=LBL||LBL_EN;
+  function t(x){x=String(x||'').split(',')[0].trim();return x||'—';}
+  var from=(veroiaSwitch&&isExport)?VEROIA:t(f['Loading Summary']);
+  var to=(veroiaSwitch&&!isExport)?VEROIA:t(f['Delivery Summary']);
+  var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
+  try{
+    if(veroiaSwitch&&isExport&&ld) ld=new Date(new Date(ld).getTime()+86400000).toISOString();
+    if(veroiaSwitch&&!isExport&&dd) dd=new Date(new Date(dd).getTime()-86400000).toISOString();
+  }catch(e){}
+  return '<div class="route-strip">'+
+    '<div class="rs-side"><div class="rs-lbl">'+L.from+'</div><div class="rs-name">'+from+'</div><div class="rs-date">'+fmtDT(ld)+'</div></div>'+
+    '<div class="rs-arrow">→</div>'+
+    '<div class="rs-side" style="text-align:right"><div class="rs-lbl">'+L.to+'</div><div class="rs-name">'+to+'</div><div class="rs-date">'+fmtDT(dd)+'</div></div>'+
+  '</div>';
 }
 
 function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
@@ -397,6 +446,8 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var rate=eur(f['Partner Rate']);
   var orderNo=f['Order Number']||String(orderRec.id||orderId||'').slice(-6).toUpperCase(); // group-safe (Wave 3 fix)
   var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
+  LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
+  var legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
 
   // Veroia
   var veroiaSwitch=!!(f['Veroia Switch']);
@@ -424,7 +475,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var urgent=/urgent|προσοχή|attention|critical|must|fragile|εύθραυστ|χειριστεί|χειρισμ|ασφαλ/i.test(rawNotes);
   var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
-  var titleStr=(isPartner?'Partner Assignment Order':'Driver Order')+' — '+legLabel+' — W'+wk;
+  var titleStr=isPartner?('Partner Assignment Order — '+legLabel+' — W'+wk):('Εντολή Οδηγού — '+legLabelGr+' — W'+wk);
   var pbarHTML=bare?'':'<div class="pbar"><div class="pbar-left">'+
     '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
     '<div class="pbar-div"></div>'+
@@ -433,14 +484,17 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="pbar-spacer"></div>';
 
   var refNo=f['Reference']||'';
+  var _m=isPartner
+    ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags'}
+    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις'};
   var metaHTML='<div class="meta">'+
-    '<div class="meta-item"><span class="meta-lbl">Date</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">Week</span><span class="meta-val">W'+wk+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">Category</span><span class="meta-val">'+legLabel+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">Dispatcher</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
-    '<div class="meta-item"><span class="meta-lbl">Order No</span><span class="meta-val">'+orderNo+'</span></div>'+
-    (refNo?'<div class="meta-item"><span class="meta-lbl">Reference</span><span class="meta-val">'+refNo+'</span></div>':'')+
-    (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">Flags</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.date+'</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.disp+'</span><span class="meta-val">'+DISPATCHER+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNo+'</span></div>'+
+    (refNo?'<div class="meta-item"><span class="meta-lbl">'+_m.ref+'</span><span class="meta-val">'+refNo+'</span></div>':'')+
+    (badgeHTML&&!isPartner?'<div class="meta-item"><span class="meta-lbl">'+_m.flags+'</span><span class="meta-val">'+badgeHTML+'</span></div>':'')+
     '</div>';
 
   var html='';
@@ -468,12 +522,13 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '</div>'+
     '<div class="doc-title">Partner Assignment Order — '+legLabel+' — PAO-W'+wk+'-'+orderNo+'</div>'+
     metaHTML+
+    routeStrip(f,isExport,veroiaSwitch,VEROIA)+
     '<div class="price-bar">'+
       '<div><div class="price-lbl">Agreed Rate — '+legLabel+'</div><div class="price-amount">'+rate+'</div></div>'+
       '<div class="price-terms"><div class="price-lbl">Payment Terms</div><div class="val">30 days</div></div>'+
     '</div>'+
-    '<div class="section-title load-section">Loading Place</div>'+loadHTML+
-    '<div class="section-title unload-section">Delivery Place</div>'+delHTML+
+    '<div class="section-title load-section">'+LBL.loadSec+'</div>'+loadHTML+
+    '<div class="section-title unload-section">'+LBL.delSec+'</div>'+delHTML+
     notesHTML+
     '<table class="sig-table"><tr>'+
       '<td><div class="sig-name">PETRAS GROUP / VERMION FRESH SA</div><div class="sig-role">Authorized Signatory</div><div class="sig-line">Signature &amp; Date</div></td>'+
@@ -495,26 +550,27 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
         '<div class="co-info" style="text-align:left"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia<br>vermionfresh@petrasgroup.com</div>'+
       '</div>'+
       '<div style="text-align:right">'+
-        '<div style="font-size:8.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#9CA3AF;margin-bottom:3px">Driver Order</div>'+
-        '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#0B1929">W'+wk+' — '+legLabel+'</div>'+
+        '<div style="font-size:8.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#9CA3AF;margin-bottom:3px">Εντολή Οδηγού</div>'+
+        '<div style="font-family:Syne,sans-serif;font-size:20px;font-weight:800;color:#0B1929">W'+wk+' — '+legLabelGr+'</div>'+
         '<div style="font-size:10.5px;color:#6B7280;margin-top:2px">'+new Date().toLocaleDateString('el-GR')+' · '+DISPATCHER+'</div>'+
       '</div>'+
     '</div>'+
     '<div class="driver-block">'+
       '<div class="driver-block-row">'+
-        '<div class="db-item"><div class="lbl">Driver</div><div class="val">'+(df['Full Name']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Truck</div><div class="val">'+(tf['License Plate']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Trailer</div><div class="val">'+(trf['License Plate']||'—')+'</div></div>'+
-        '<div class="db-item"><div class="lbl">Total Weight</div><div class="val">'+(totalW>0?totalW.toLocaleString('de-DE')+' KG':'—')+'</div></div>'+
+        '<div class="db-item"><div class="lbl">Οδηγός</div><div class="val">'+(df['Full Name']||'—')+'</div></div>'+
+        '<div class="db-item"><div class="lbl">Φορτηγό</div><div class="val">'+(tf['License Plate']||'—')+'</div></div>'+
+        '<div class="db-item"><div class="lbl">Τρέιλερ</div><div class="val">'+(trf['License Plate']||'—')+'</div></div>'+
+        '<div class="db-item"><div class="lbl">Μικτό βάρος</div><div class="val">'+(totalW>0?totalW.toLocaleString('de-DE')+' KG':'—')+'</div></div>'+
       '</div>'+
     '</div>'+
     metaHTML+
-    '<div class="section-title load-section">Loading Place</div>'+loadHTML+
-    '<div class="section-title unload-section">Delivery Place</div>'+delHTML+
+    routeStrip(f,isExport,veroiaSwitch,VEROIA)+
+    '<div class="section-title load-section">'+LBL.loadSec+'</div>'+loadHTML+
+    '<div class="section-title unload-section">'+LBL.delSec+'</div>'+delHTML+
     notesHTML+
     '<table class="sig-table"><tr>'+
-      '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Signature &amp; Date</div></td>'+
-      '<td><div class="sig-name">'+(df['Full Name']||'—')+'</div><div class="sig-role">Driver — Παραλαβή εντολής</div><div class="sig-line">Signature &amp; Date</div></td>'+
+      '<td><div class="sig-name">VERMION FRESH SA / PETRAS GROUP</div><div class="sig-role">Dispatcher</div><div class="sig-line">Υπογραφή &amp; Ημερομηνία</div></td>'+
+      '<td><div class="sig-name">'+(df['Full Name']||'—')+'</div><div class="sig-role">Οδηγός — Παραλαβή εντολής</div><div class="sig-line">Υπογραφή &amp; Ημερομηνία</div></td>'+
     '</tr></table>';
   }
 
