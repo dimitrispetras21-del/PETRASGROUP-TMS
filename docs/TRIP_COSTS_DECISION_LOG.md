@@ -161,6 +161,25 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
 
 - 2026-07-11: Προστέθηκε docs/premortems/ALL_ISSUES.md — master register 78 issues από όλα τα pre-mortems, ανά χρόνο δράσης (Άμεσα/Ξεπάγωμα/Stage1/Stage2/Phase2/v3) + τα 11 κλειδωμένα.
 
+## 2026-08-09 — Kickoff: ξεκινά το build των COSTS
+
+- Owner: «ΦΠΑ αναγράφεται χώρια. χτίζω εγώ.» + διευκρίνιση: **και τα δύο ορατά**.
+- → SPEC **§10.3** (νέα ενότητα): (1) build **in-house** στο live v2 stack, όχι
+  Valuedriven Phase 2· κανάλι = Claude γράφει SQL → owner το τρέχει στη Supabase
+  (pattern scan_examples)· ⚠️ όχι εξάρτηση από χειροκίνητα patches στο Worker 2
+  (σβήνονται στο επόμενο wrangler deploy — docs/worker/README.md).
+  (2) Κάθε γραμμή κόστους: **καθαρό + ΦΠΑ σε χωριστά πεδία**· το TRIP PnL δείχνει
+  ΔΥΟ margins — με ΦΠΑ (worst-case, primary) και χωρίς ΦΠΑ.
+- Ερμηνείες μου όπου οι οδηγίες δεν κάλυπταν:
+  1. «Χτίζω εγώ» = in-house build (owner + Claude), όχι νέο Valuedriven scope.
+  2. Το worst-case principle της 11/7 ΔΕΝ καταργείται — το margin ΜΕ ΦΠΑ μένει
+     το κύριο νούμερο· το ex-VAT μπαίνει ως δεύτερη γραμμή (απάντηση owner σε
+     AskUserQuestion με τις 3 επιλογές).
+- Εκκρεμεί πριν τον κώδικα: αρχιτεκτονικό σχέδιο (πού ζει το backend των Costs,
+  γέννηση round_trips από τα planners, allocation engine server-side, RLS
+  owner-only). Το spec παραμένει locked — η αρχιτεκτονική δεν ξανανοίγει
+  αποφάσεις μοντέλου.
+
 - 2026-08-03: Full audit μετά το C2 cutover → docs/AUDIT-2026-08-03.md (4 παράλληλοι auditors). Σκορ 9/28. P0: petras-assign PAT δημόσιο+ανενεργή ανάκληση / iframe split-brain από 28/7 / κανένα Supabase backup / Sentry DSN κενό. Worker 2 source μη διαθέσιμο για επαλήθευση RBAC.
 
 - 2026-08-03: UI/UX design audit #2 → docs/design/UI_UX_AUDIT_2026-08-03.md. Live περιήγηση ως owner + μετρήσεις. 11/20 (από 9/20): IA/command palette μεγάλη βελτίωση, αλλά side-stripes 5→30, z-index 8→19, a11y αμετάβλητο, 7 Coming Soon, ανάμεικτη γλώσσα (weekly_intl 7 ελλ./37 αγγλ.). Οι 3 sub-auditors κόπηκαν από όριο δαπάνης — μετρήσεις έγιναν απευθείας.

@@ -390,6 +390,25 @@ confirmed build direction. Answers below respond to
 remaining opens are process-only (Αλεξία's weekly capture ritual, mockup
 walkthrough with her before build).**
 
+### 10.3 Decisions locked (owner-confirmed 2026-08-09 — build kickoff)
+
+1. ✅ **Build ownership (supersedes the §10.2 item 1 sequencing):** the Costs
+   module is built **in-house (owner + Claude)** on the live v2 stack
+   (Supabase + Worker layer) — NOT handed to Valuedriven as a Phase-2
+   deliverable. The channel is already proven (scan_examples, Aug 2026):
+   Claude authors the SQL migrations → owner runs them in the Supabase SQL
+   editor; API surface via the Worker layer.
+   ⚠️ Coordination constraint: manual dashboard edits to Worker 2 are wiped by
+   the next `wrangler deploy` from the construction team's source
+   (docs/worker/README.md) — the Costs architecture must NOT depend on
+   hand-patched Worker 2 code.
+2. ✅ **VAT recorded separately — both margins visible (refines §10.2 item 5):**
+   every cost line stores **net amount + VAT amount as separate fields**.
+   TRIP PnL surfaces **two margin lines**: (a) margin with VAT included in
+   costs — the worst-case principle of 2026-07-11 stays the primary number —
+   and (b) ex-VAT margin. This also unlocks the future VAT-recovery finance
+   view without remodeling.
+
 ---
 
 ## 11. Data sourcing & cost allocation (the core of the infrastructure)
