@@ -491,11 +491,7 @@ async function loadAll(){
     // Wave 3: Opening Hours / Delivery Days (owner-approved LOCATIONS fields).
     // Fallback without them until the Worker map + columns land — the sheet
     // must never break because the backend is a step behind.
-    var LOC_BASE='&fields[]=Name&fields[]=Address&fields[]=City&fields[]=State/province&fields[]=Country&fields[]=Latitude&fields[]=Longitude';
-    var fetchLocs=function(){
-      return atFetch(T_LOCS,LOC_BASE+'&fields[]=Opening Hours&fields[]=Delivery Days')
-        .catch(function(){return atFetch(T_LOCS,LOC_BASE);});
-    };
+    var fetchLocs=function(){ return atFetch(T_LOCS,''); };
     var[partners,trucks,trailers,drivers,locs]=await Promise.all([
       atFetch(T_PARTNERS,'&fields[]=Company Name&fields[]=VAT Number&fields[]=Adress&fields[]=Email'),
       atFetch(T_TRUCKS,'&fields[]=License Plate&fields[]=Gross Vehicle Weight kg'),
@@ -707,7 +703,9 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     var df=driver.fields||{},tf=truck.fields||{},trf=trailer.fields||{};
     var truckW=parseFloat(tf['Gross Vehicle Weight kg']||tf['Weight kg']||0);
     var trailerW=parseFloat(trf['Weight kg']||trf['Gross Vehicle Weight kg']||0);
-    var totalW=truckW+trailerW;
+    // Owner (9/8): μικτό = απόβαρο φορτηγού + απόβαρο τρέιλερ + μικτό φορτίου
+    var cargoW=parseFloat(f['Gross Weight kg']||0);
+    var totalW=truckW+trailerW+cargoW;
     html=pbarHTML+
     '<div class="doc-header">'+
       '<div class="brand-wrap" style="text-align:left">'+
