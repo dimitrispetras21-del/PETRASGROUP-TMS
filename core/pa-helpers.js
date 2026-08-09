@@ -11,10 +11,10 @@
 async function _paFindExisting(parentType, parentId) {
   const fld = parentType === 'nat_load' ? F.PA_NAT_LOAD : F.PA_ORDER;
   const filterByFormula = `FIND('${parentId}', ARRAYJOIN({${fld}}, ','))`;
-  return atGetAll(TABLES.PARTNER_ASSIGN, {
-    filterByFormula,
-    fields: [F.PA_PARTNER, F.PA_ORDER, F.PA_NAT_LOAD, F.PA_STATUS, F.PA_RATE],
-  }, false);
+  // Facade quirk (μετρήθηκε 10/8): ρητό fields[] με μη-χαρτογραφημένο πεδίο
+  // (Nat Load — unwired μέχρι το TRIPS migration) → 422 σε ΚΑΘΕ save του
+  // order-sync. Full records: ο facade τα σερβίρει όλα χωρίς validation.
+  return atGetAll(TABLES.PARTNER_ASSIGN, { filterByFormula }, false);
 }
 
 /**
@@ -87,12 +87,6 @@ async function paSyncStatus({ parentType, parentId, status }) {
 async function paListByPartner(partnerId) {
   if (!partnerId) return [];
   const filterByFormula = `FIND('${partnerId}', ARRAYJOIN({${F.PA_PARTNER}}, ','))`;
-  return atGetAll(TABLES.PARTNER_ASSIGN, {
-    filterByFormula,
-    fields: [
-      F.PA_PARTNER, F.PA_ORDER, F.PA_NAT_LOAD, F.PA_STATUS, F.PA_RATE,
-      F.PA_ASSIGN_DATE, F.PA_NOTES, F.PA_PAYMENT_TERMS,
-      'Client Revenue', 'Gross Profit', 'Margin Percent',
-    ],
-  }, false);
+  // Ίδιο quirk με το _paFindExisting — full records αντί για fields[].
+  return atGetAll(TABLES.PARTNER_ASSIGN, { filterByFormula }, false);
 }
