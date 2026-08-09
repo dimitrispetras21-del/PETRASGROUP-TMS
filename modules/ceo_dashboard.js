@@ -16,7 +16,7 @@
   async function renderCEODashboard() {
     const c = document.getElementById('content');
     if (can('ceo_dashboard') !== 'full') {
-      c.innerHTML = '<div class="access-denied"><h2>Access Denied</h2><p>CEO Dashboard is restricted to the account owner.</p></div>';
+      c.innerHTML = '<div class="access-denied"><h2>Χωρίς πρόσβαση</h2><p>Το CEO Dashboard είναι μόνο για τον ιδιοκτήτη του λογαριασμού.</p></div>';
       return;
     }
     if (_timer) clearInterval(_timer);
@@ -106,11 +106,11 @@
     const sparkS = _iso(new Date(now.getTime() - 56 * 86400000));
 
     const updEl = document.getElementById('ceo-updated');
-    if (updEl) updEl.textContent = 'Φόρτωση...';
+    if (updEl) updEl.textContent = 'Φόρτωση…';
 
     // CE-1: there was no upper bound on this load. A fetch that never settles —
     // a hung Worker, a request that neither resolves nor rejects — left
-    // Promise.all pending forever, so the page sat on «Φόρτωση...» with the three
+    // Promise.all pending forever, so the page sat on «Φόρτωση…» with the three
     // brand promises blank and no error, indefinitely. On the ONE screen the
     // owner opens. A timeout turns "silently stuck" into "failed, try again".
     // 15s is deliberately generous: seven queries over a full period, on a slow
@@ -173,7 +173,7 @@
       ].filter(Boolean);
 
       if (updEl) {
-        updEl.textContent = 'Updated ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
+        updEl.textContent = 'Ενημερώθηκε ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
         if (_failed.length) {
           updEl.textContent += ` · ⚠ δεν φόρτωσε: ${_failed.join(', ')}`;
           updEl.style.color = '#B45309';
@@ -836,21 +836,21 @@
       <button class="ceo-period-btn${_period==='quarter'?' active':''}" data-period="quarter">Τρίμηνο</button>
       <button class="ceo-period-btn${_period==='ytd'?' active':''}"     data-period="ytd">YTD</button>
     </div>
-    <div id="ceo-updated">Φόρτωση...</div>
+    <div id="ceo-updated">Φόρτωση…</div>
   </div>
 
   <!-- Loss trips banner (conditional) -->
   <div id="ceo-loss-banner-wrap"></div>
 
   <!-- Brand Promises -->
-  <div class="ceo-section-label">${_ic('sparkles', 12)} Brand Promises — The 3 Numbers That Matter</div>
+  <div class="ceo-section-label">${_ic('sparkles', 12)} Οι τρεις υποσχέσεις μας</div>
   <div class="ceo-brand-row">
 
     <!-- Speed -->
     <div class="ceo-brand-card speed">
       <div class="ceo-brand-head">
         <div class="ceo-brand-icon">${_ic('zap', 18)}</div>
-        <div><div class="ceo-brand-label">Brand Promise 1</div><div class="ceo-brand-name">Speed Score — Faster to Shelf</div></div>
+        <div><div class="ceo-brand-label">ΥΠΟΣΧΕΣΗ 1</div><div class="ceo-brand-name">ΤΑΧΥΤΗΤΑ — στο ράφι πιο γρήγορα</div></div>
       </div>
       <div class="ceo-brand-body">
         <div class="ceo-gauge-ring" style="--g-color:var(--panel-accent);--g-deg:0deg">
@@ -870,7 +870,7 @@
     <div class="ceo-brand-card quality">
       <div class="ceo-brand-head">
         <div class="ceo-brand-icon">${_ic('check_circle', 18)}</div>
-        <div><div class="ceo-brand-label">Brand Promise 2</div><div class="ceo-brand-name">Quality Score — Verified Freshness</div></div>
+        <div><div class="ceo-brand-label">ΥΠΟΣΧΕΣΗ 2</div><div class="ceo-brand-name">ΠΟΙΟΤΗΤΑ — επιβεβαιωμένη φρεσκάδα</div></div>
       </div>
       <div class="ceo-brand-body">
         <div class="ceo-gauge-ring" style="--g-color:var(--panel-ok-hi);--g-deg:0deg">
@@ -890,7 +890,7 @@
     <div class="ceo-brand-card anxiety">
       <div class="ceo-brand-head">
         <div class="ceo-brand-icon">${_ic('shield', 18)}</div>
-        <div><div class="ceo-brand-label">Brand Promise 3</div><div class="ceo-brand-name">Anxiety Score — Zero Anxiety Service</div></div>
+        <div><div class="ceo-brand-label">ΥΠΟΣΧΕΣΗ 3</div><div class="ceo-brand-name">ΗΡΕΜΙΑ — μηδέν αγωνία πελάτη</div></div>
       </div>
       <div class="ceo-brand-body">
         <div class="ceo-gauge-ring" style="--g-color:#3B82F6;--g-deg:0deg">
@@ -910,21 +910,21 @@
   </div>
 
   <!-- Scaling Up Quadrants -->
-  <div class="ceo-section-label" style="margin-top:var(--space-5)">${_ic('target', 12)} Scaling Up Framework</div>
+  <div class="ceo-section-label" style="margin-top:var(--space-5)">${_ic('target', 12)} Scaling Up</div>
   <div class="ceo-quadrants">
 
     <!-- Q1: People -->
     <div class="ceo-quad quad-people">
       <div class="ceo-quad-title">
         <span class="ceo-quad-icon">${_ic('users', 12)}</span>
-        People — Ομάδα & Στόλος
+        ΑΝΘΡΩΠΟΙ — Ομάδα &amp; Στόλος
       </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="people-util-val">—</div>
-          <div class="ceo-kpi-label">Driver Utilization</div>
-          <div class="ceo-kpi-sub" id="people-util-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Αξιοποίηση οδηγών</div>
+          <div class="ceo-kpi-sub" id="people-util-sub">Φόρτωση…</div>
           <div class="ceo-bar-track"><div class="ceo-bar-fill" id="people-util-bar" style="width:0%"></div></div>
         </div>
         <div style="text-align:right">
@@ -937,8 +937,8 @@
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num sm" id="people-partner-val">—</div>
-          <div class="ceo-kpi-label">Partner Ratio</div>
-          <div class="ceo-kpi-sub" id="people-partner-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Δρομολόγια συνεργατών</div>
+          <div class="ceo-kpi-sub" id="people-partner-sub">Φόρτωση…</div>
           <div class="ceo-split-bar">
             <div class="ceo-split-seg owned" id="people-split-owned" style="width:0%"></div>
             <div class="ceo-split-seg partner" id="people-split-partner" style="width:0%"></div>
@@ -951,7 +951,7 @@
       </div>
 
       <div style="margin-top:var(--space-3)">
-        <div class="ceo-kpi-label">Workload Distribution</div>
+        <div class="ceo-kpi-label">Κατανομή φόρτου</div>
         <div id="people-workload"></div>
       </div>
     </div>
@@ -960,7 +960,7 @@
     <div class="ceo-quad quad-strategy">
       <div class="ceo-quad-title">
         <span class="ceo-quad-icon">${_ic('trending_up', 12)}</span>
-        Strategy — Ανάπτυξη & Θέση
+        ΣΤΡΑΤΗΓΙΚΗ — Ανάπτυξη &amp; Θέση
       </div>
 
       <div class="ceo-kpi-row">
@@ -969,8 +969,8 @@
             <div class="ceo-kpi-num" id="strat-revenue-val">—</div>
             <button style="background:none;border:none;cursor:pointer;color:var(--ceo-text-faint);padding:2px 6px;border-radius:var(--radius-sm);transition:color var(--duration-fast)" onmouseover="this.style.color='var(--ceo-accent)'" onmouseout="this.style.color='var(--ceo-text-faint)'" onclick="_ceoSetRevTarget()" title="Ορισμός στόχου">${_ic('edit', 12)}</button>
           </div>
-          <div class="ceo-kpi-label">Revenue vs Target</div>
-          <div class="ceo-kpi-sub" id="strat-revenue-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Έσοδα vs στόχος</div>
+          <div class="ceo-kpi-sub" id="strat-revenue-sub">Φόρτωση…</div>
           <div class="ceo-bar-track"><div class="ceo-bar-fill" id="strat-rev-bar" style="width:0%"></div></div>
         </div>
       </div>
@@ -978,8 +978,8 @@
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="strat-deadkm-val">—</div>
-          <div class="ceo-kpi-label">Dead KM — Νεκρά Χιλιόμετρα</div>
-          <div class="ceo-kpi-sub" id="strat-deadkm-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Κενά χιλιόμετρα</div>
+          <div class="ceo-kpi-sub" id="strat-deadkm-sub">Φόρτωση…</div>
           <div class="ceo-bar-track"><div class="ceo-bar-fill" id="strat-deadkm-bar" style="width:0%"></div></div>
           <div class="ceo-spark-wrap" style="padding:var(--space-1) var(--space-3)">
             <span class="ceo-spark-label">8 εβδ.</span>
@@ -991,7 +991,7 @@
       <div style="margin-top:var(--space-3)">
         <div class="ceo-kpi-label">Top 5 Πελάτες (Revenue)</div>
         <table class="ceo-mini-table">
-          <tbody id="strat-clients-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση...</td></tr></tbody>
+          <tbody id="strat-clients-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1000,14 +1000,14 @@
     <div class="ceo-quad quad-exec">
       <div class="ceo-quad-title">
         <span class="ceo-quad-icon">${_ic('activity', 12)}</span>
-        Execution — Επιχειρησιακή Απόδοση
+        ΕΚΤΕΛΕΣΗ — Επιχειρησιακή απόδοση
       </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="exec-ontime-val">—</div>
-          <div class="ceo-kpi-label">On-Time Delivery</div>
-          <div class="ceo-kpi-sub" id="exec-ontime-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Συνέπεια παράδοσης</div>
+          <div class="ceo-kpi-sub" id="exec-ontime-sub">Φόρτωση…</div>
           <div class="ceo-spark-wrap" style="padding:var(--space-1) var(--space-3)">
             <span class="ceo-spark-label">8 εβδ.</span>
             <div id="exec-ontime-spark" style="flex:1"></div>
@@ -1018,20 +1018,20 @@
       <div class="ceo-kpi-row">
         <div>
           <div class="ceo-kpi-num" id="exec-risk-val">—</div>
-          <div class="ceo-kpi-label">High Risk — Επόμενες 48h</div>
-          <div class="ceo-kpi-sub" id="exec-risk-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Κρίσιμα — επόμενες 48ω</div>
+          <div class="ceo-kpi-sub" id="exec-risk-sub">Φόρτωση…</div>
         </div>
       </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="exec-vs-val">—</div>
-          <div class="ceo-kpi-label">Veroia Switch Usage</div>
-          <div class="ceo-kpi-sub" id="exec-vs-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Χρήση Veroia Switch</div>
+          <div class="ceo-kpi-sub" id="exec-vs-sub">Φόρτωση…</div>
         </div>
         <div style="text-align:right">
           <div class="ceo-kpi-num sm" id="exec-assign-val">—</div>
-          <div class="ceo-kpi-label">Assigned</div>
+          <div class="ceo-kpi-label">Με ανάθεση</div>
           <div class="ceo-kpi-sub" id="exec-assign-sub"></div>
         </div>
       </div>
@@ -1041,14 +1041,14 @@
     <div class="ceo-quad quad-cash">
       <div class="ceo-quad-title">
         <span class="ceo-quad-icon">${_ic('coins', 12)}</span>
-        Cash — Χρηματοροές & Κόστος
+        ΤΑΜΕΙΟ — Χρηματοροές &amp; Κόστος
       </div>
 
       <div class="ceo-kpi-row">
         <div style="flex:1">
           <div class="ceo-kpi-num" id="cash-revenue-val">—</div>
-          <div class="ceo-kpi-label">Revenue (Delivered + Invoiced)</div>
-          <div class="ceo-kpi-sub" id="cash-revenue-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Έσοδα (παραδοθέντα + τιμολογημένα)</div>
+          <div class="ceo-kpi-sub" id="cash-revenue-sub">Φόρτωση…</div>
         </div>
       </div>
 
@@ -1056,7 +1056,7 @@
         <div style="flex:1">
           <div class="ceo-kpi-num" id="cash-uninv-val">—</div>
           <div class="ceo-kpi-label">Αδρανή Τιμολόγια</div>
-          <div class="ceo-kpi-sub" id="cash-uninv-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-sub" id="cash-uninv-sub">Φόρτωση…</div>
         </div>
         <div style="text-align:right">
           <div class="ceo-kpi-num sm" id="cash-maint-val">—</div>
@@ -1068,8 +1068,8 @@
       <div class="ceo-kpi-row">
         <div>
           <div class="ceo-kpi-num sm" id="cash-partner-val">—</div>
-          <div class="ceo-kpi-label">Partner Margin</div>
-          <div class="ceo-kpi-sub" id="cash-partner-sub">Φόρτωση...</div>
+          <div class="ceo-kpi-label">Περιθώριο συνεργατών</div>
+          <div class="ceo-kpi-sub" id="cash-partner-sub">Φόρτωση…</div>
         </div>
       </div>
 
@@ -1082,7 +1082,7 @@
             <th style="text-align:right">Κόστος</th>
             <th style="text-align:right">Ζημία</th>
           </tr></thead>
-          <tbody id="cash-loss-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση...</td></tr></tbody>
+          <tbody id="cash-loss-body"><tr><td colspan="4" style="color:var(--ceo-text-dim);text-align:center;padding:var(--space-4)">Φόρτωση…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1093,9 +1093,9 @@
   <div class="ceo-brief">
     <div class="ceo-brief-title">
       <span class="ceo-brief-title-icon">${_ic('brain', 14)}</span>
-      Executive Briefing — Σύνοψη Περιόδου
+      ΣΥΝΟΨΗ ΠΕΡΙΟΔΟΥ
     </div>
-    <div id="ceo-brief-body">Φόρτωση...</div>
+    <div id="ceo-brief-body">Φόρτωση…</div>
   </div>
 
 </div>`;

@@ -5291,14 +5291,50 @@ button.dash-kpi:focus-visible {
   gap: var(--space-4);
   margin-bottom: var(--space-5);
 }
-.ceo-quad {
-  background: var(--ceo-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-5);
-  border: 1px solid var(--ceo-card-border);
-  box-shadow: var(--ceo-card-shadow);
-  transition: box-shadow var(--duration-fast) var(--ease-out);
+/* ΟΡΓΑΝΑ & ΦΥΛΛΟ ΕΡΓΑΣΙΑΣ — τρίτη εφαρμογή του ίδιου κανόνα.
+   Τα brand promises είναι ΜΕΤΡΗΣΕΙΣ (μένουν σκούρα όργανα)· τα τεταρτημόρια
+   είναι ΛΙΣΤΕΣ (ανοίγουν, με navy ετικέτα τίτλου). */
+.ceo-wrap .ceo-brand-card {
+  background:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 100% 22px,
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 22px 100%,
+    linear-gradient(160deg, #12263C, var(--ceo-card) 62%);
+  box-shadow: 0 2px 6px rgba(8,15,26,0.28), 0 12px 32px rgba(8,15,26,0.22);
+  color: var(--ceo-text);
 }
+.ceo-quad {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(11,25,41,0.06), 0 4px 16px rgba(11,25,41,0.05);
+  transition: box-shadow var(--duration-fast) var(--ease-out);
+  --ceo-card: var(--bg-card);
+  --ceo-card-border: var(--border);
+  --ceo-text: var(--text);
+  --ceo-text-mid: var(--text-mid);
+  --ceo-text-dim: var(--text-dim);
+  --ceo-text-faint: var(--text-dim);
+  --ceo-accent: var(--accent);
+  --ceo-ok: var(--success);
+  --ceo-bad: var(--danger-strong);
+  --ceo-warn: #B45309;
+}
+.ceo-quad > .ceo-quad-title {
+  background: var(--navy-mid, #0F2438);
+  color: #F1F6FB;
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.ceo-quad > .ceo-quad-title .ceo-quad-icon { color: var(--accent-hi, #38BDF8); }
+.ceo-quad > *:not(.ceo-quad-title) { padding-left: var(--space-5); padding-right: var(--space-5); }
+.ceo-quad > *:last-child { padding-bottom: var(--space-5); }
+.ceo-quad .ceo-bar-track,
+.ceo-quad .ceo-workload-bar,
+.ceo-quad .ceo-client-mini-bar-track { background: rgba(11,25,41,0.07); }
 .ceo-quad:hover { box-shadow: 0 2px 6px rgba(15,23,42,0.05), 0 8px 16px rgba(15,23,42,0.05); }
 .ceo-quad-title {
   font-family: 'Syne', sans-serif;
