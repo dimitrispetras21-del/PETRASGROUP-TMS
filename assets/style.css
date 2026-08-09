@@ -4167,6 +4167,68 @@ button.sidebar-toggle {
   line-height: 1.4;
 }
 
+/* ── ΤΙ ΚΑΙΕΙ ─────────────────────────────────────────────
+   Η ζώνη ενεργειών πάνω από τα KPI. Ένα KPI λέει «πώς πάμε»· αυτά λένε
+   «τι πρέπει να κάνεις τώρα», και το καθένα είναι κουμπί με προορισμό.
+   Η ιεραρχία της σελίδας ήταν πέντε ισοβαρή νούμερα — ο χρήστης συνέθετε
+   μόνος του την προτεραιότητα κάθε πρωί.
+   Βλ. docs/design/DASHBOARDS_DEEP_2026-08/dashboards_v2_proto.html */
+.dash-burn {
+  display: grid;
+  grid-template-columns: 1fr 272px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  align-items: stretch;
+}
+.dash-burn-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.dash-burn-list .dash-burn-item { flex: 1; }
+.dash-burn-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; text-align: left; font: inherit; color: inherit;
+  cursor: pointer; appearance: none;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--duration-fast) var(--ease-out),
+              transform var(--duration-fast) var(--ease-out);
+}
+.dash-burn-item:hover { border-color: var(--border-strong); transform: translateX(2px); }
+.dash-burn-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dash-burn-n {
+  font-family: var(--dc-nums);
+  font-weight: 700; font-size: 27px; line-height: 1;
+  min-width: 52px; color: var(--burn-sev, var(--accent));
+}
+.dash-burn-txt { flex: 1; min-width: 0; }
+.dash-burn-txt strong { display: block; font-size: var(--text-sm); font-weight: 700; }
+.dash-burn-txt em {
+  display: block; font-style: normal;
+  font-size: var(--text-xs); color: var(--text-dim); margin-top: 2px;
+}
+.dash-burn-go { color: var(--text-dim); display: flex; flex-shrink: 0; }
+.dash-burn-item:hover .dash-burn-go { color: var(--burn-sev, var(--accent)); }
+.burn-crit { --burn-sev: var(--danger-strong); }
+.burn-warn { --burn-sev: #D97706; }
+.burn-info { --burn-sev: var(--accent); }
+@media (max-width: 1140px) { .dash-burn { grid-template-columns: 1fr; } }
+
+/* ── ΑΠΟΔΕΙΞΗ ────────────────────────────────────────────
+   Η γραμμή που κάνει ένα νούμερο ελέγξιμο: πηγή · εμβέλεια · δείγμα.
+   Όλη η ταλαιπωρία του έργου ήρθε από σελίδες που έδειχναν «το ίδιο»
+   μέγεθος με διαφορετικό ορισμό (on-time 30 ημερών εδώ, all-time αλλού).
+   Όταν η εμβέλεια είναι γραμμένη πάνω στην κάρτα, η διαφορά γίνεται
+   εξήγηση αντί για αντίφαση. */
+.dash-receipt {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 10px; line-height: 1.35;
+  color: var(--dc-text-dim);
+  border-top: 1px dashed rgba(255,255,255,0.09);
+  padding-top: 6px; margin-top: 6px;
+}
+.dash-receipt b { color: var(--dc-text-mid); font-weight: 500; }
+.dash-receipt .sep { opacity: 0.4; }
+
 /* ── KPI Bar ──────────────────────────────────────────── */
 .dash-kpi-bar {
   display: grid;
