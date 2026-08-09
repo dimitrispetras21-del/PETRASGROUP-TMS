@@ -142,10 +142,10 @@ async function renderDashboard() {
       const status = f['Status'] || 'Pending';
 
       if (loadDt === today || loadDt === tmrw) {
-        departures.push({ day: loadDt === today ? 'Σήμερα' : 'Αύριο', client: clientName, route, pallets, time: loadTime || '—', truck: truckPlate, status, id: r.id });
+        departures.push({ day: loadDt === today ? 'ΣΗΜΕΡΑ' : 'ΑΥΡΙΟ', client: clientName, route, pallets, time: loadTime || '—', truck: truckPlate, status, id: r.id });
       }
       if (delDt === today || delDt === tmrw) {
-        deliveries.push({ day: delDt === today ? 'Σήμερα' : 'Αύριο', client: clientName, route, pallets, time: delTime || '—', truck: truckPlate, status, id: r.id });
+        deliveries.push({ day: delDt === today ? 'ΣΗΜΕΡΑ' : 'ΑΥΡΙΟ', client: clientName, route, pallets, time: delTime || '—', truck: truckPlate, status, id: r.id });
       }
     });
     departures.sort((a, b) => a.day.localeCompare(b.day) || a.time.localeCompare(b.time));
@@ -358,7 +358,7 @@ async function renderDashboard() {
     // ενεργειών: αριθμός, τι είναι, ΑΠΟ ΠΟΥ προκύπτει, και προορισμός.
     // Το «τι πρέπει να κάνω» είχε το ίδιο βάρος με τα πέντε KPI, οπότε ο
     // χρήστης συνέθετε μόνος του την προτεραιότητα κάθε πρωί.
-    const _todayDepartures = departures.filter(d => d.day === 'Σήμερα');
+    const _todayDepartures = departures.filter(d => d.day === 'ΣΗΜΕΡΑ');
     const _todayNoTruck = _todayDepartures.filter(d => !d.truck).length;
     const burnItems = [];
     if (highRisk.length > 0) {
@@ -423,7 +423,7 @@ async function renderDashboard() {
             ${typeof openCommandPalette === 'function' ? `<button type="button" class="dash-cmdk-hint" onclick="openCommandPalette()">${_i('command', 12)} <kbd>⌘K</kbd> Γρήγορες ενέργειες</button>` : ''}
             <div class="dash-live">
               <span class="dash-live-dot"></span>
-              LIVE — ανανέωση κάθε 5'
+              LIVE — ΑΝΑΝΕΩΣΗ ΚΑΘΕ 5'
             </div>
           </div>
         </div>
@@ -448,7 +448,7 @@ async function renderDashboard() {
               <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${weeklyScore < 0 ? 0 : Math.round(weeklyScore * 3.6)}deg">
                 <div class="dash-score-num" style="color:${weeklyScore < 0 ? 'var(--text-dim)' : scoreColor}" title="${weeklyScore < 0 ? 'Καμία παράδοση με καταγεγραμμένη επίδοση — το σκορ δεν υπολογίζεται' : ''}">${weeklyScore < 0 ? '—' : weeklyScore}</div>
               </div>
-              <div class="dash-score-label">Βαθμός εβδομάδας · W${wn}</div>
+              <div class="dash-score-label">ΒΑΘΜΟΣ ΕΒΔΟΜΑΔΑΣ · W${wn}</div>
               ${_dashScoreBar('Ανάθεση', assignmentRate, 'var(--panel-accent)')}
               ${_dashScoreBar('Συνέπεια', totalDelivered > 0 ? onTimePct : 0, 'var(--panel-ok-hi)')}
               ${_dashScoreBar('Συμμόρφωση', complianceRate, '#3B82F6')}
@@ -565,7 +565,7 @@ async function renderDashboard() {
                   <div class="dash-util-pct" style="color:${avgNext>=80?'var(--panel-ok-hi)':avgNext>=50?'#3B82F6':'var(--panel-bad-hi)'}">${avgNext}%</div>
                 </div>
                 ${topTrucks.length ? `<div class="dash-util-divider">
-                  <div class="dash-util-mini-label">W${wn} PER TRUCK</div>
+                  <div class="dash-util-mini-label">ΑΝΑ ΦΟΡΤΗΓΟ · W${wn}</div>
                   ${topTrucks.slice(0, 6).map(t => `<div class="dash-util-mini-row">
                     <span class="dash-util-mini-plate">${t.plate}</span>
                     <div class="dash-util-mini-bar">
@@ -576,7 +576,7 @@ async function renderDashboard() {
                   </div>`).join('')}
                 </div>` : ''}
                 ${idleTrucks.length ? `<div class="dash-util-divider">
-                  <div class="dash-util-mini-label" style="color:var(--panel-bad-hi)">${_i('pause_circle', 10)} ΑΔΡΑΝΗ W${wn}</div>
+                  <div class="dash-util-mini-label" style="color:var(--panel-bad-hi)">${_i('pause_circle', 10)} ΑΔΡΑΝΗ · W${wn}</div>
                   <div class="dash-idle-pills">${idlePlates.map(p =>
                     `<span class="dash-idle-pill">${p}</span>`
                   ).join('')}</div>
@@ -593,11 +593,11 @@ async function renderDashboard() {
               <div class="dash-card-body flush">
                 ${agingRows.length ? `<table class="dash-aging-table">
                   <thead><tr>
-                    <th>Order</th>
-                    <th>Πελάτης / Δρομολόγιο</th>
-                    <th>Παράδοση</th>
+                    <th>ΦΟΡΤΙΟ</th>
+                    <th>ΠΕΛΑΤΗΣ / ΔΡΟΜΟΛΟΓΙΟ</th>
+                    <th>ΠΑΡΑΔΟΣΗ</th>
                     <th style="text-align:center">PAL</th>
-                    <th style="text-align:right">Aging</th>
+                    <th style="text-align:right">ΗΛΙΚΙΑ</th>
                   </tr></thead>
                   <tbody>
                     ${agingRows.map(r => `<tr onclick="navigate('orders_intl')">
@@ -665,7 +665,7 @@ function _dashOpsRow(d, type) {
     d.status === 'In Transit' ? '#3B82F6' :
     d.status === 'Assigned' ? 'var(--dc-accent)' :
     'var(--panel-warn)';
-  const dayCls = d.day === 'Σήμερα' ? 'today' : 'tmrw';
+  const dayCls = d.day === 'ΣΗΜΕΡΑ' ? 'today' : 'tmrw';
   return `<div class="dash-ops-row" onclick="navigate('orders_intl')">
     <div class="dash-status-dot" style="background:${dotColor}"></div>
     <span class="dash-day-tag ${dayCls}">${d.day}</span>
