@@ -1589,6 +1589,20 @@ async function submitIntlOrder(recId) {
       }
     }
 
+    // Φύλακας #5 (owner 10/8): νέο order με Reference που υπάρχει ήδη →
+    // soft confirm, όχι σιωπηλό διπλό. Μόνο σε δημιουργία, όχι σε edit.
+    if (!recId && fields['Reference']) {
+      try {
+        const esc = String(fields['Reference']).replace(/'/g, "\\'");
+        const dups = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Reference}='${esc}'` }, false);
+        if (dups && dups.length) {
+          const ok2 = await confirmAction(
+            `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${dups[0].fields?.['Order Number']||dups[0].id}). Σίγουρα να δημιουργηθεί δεύτερο;`,
+            { title: 'Πιθανό διπλό', confirmLabel: 'Δημιουργία ούτως ή άλλως', danger: true });
+          if (!ok2) { if (btn) { btn.textContent = 'Submit'; btn.disabled = false; } return; }
+        }
+      } catch (e) {}
+    }
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
@@ -2266,6 +2280,17 @@ async function _scanPreview(data) {
     </div>`;
 
   // Store result globally — avoids JSON encoding issues in onclick
+  // Λογικοί έλεγχοι (#5): ημερομηνίες/παλέτες/θερμοκρασία πριν το preview.
+  try {
+    const warns = [];
+    const _ld = data.loading_date ? new Date(data.loading_date) : null;
+    const _dd = data.delivery_date ? new Date(data.delivery_date) : null;
+    if (_ld && _dd && !isNaN(_ld) && !isNaN(_dd) && _dd < _ld) warns.push('Η παράδοση είναι ΠΡΙΝ τη φόρτωση — έλεγξε τις ημερομηνίες');
+    if (data.pallets && data.pallets > 33) warns.push(`Παλέτες ${data.pallets} > 33 (χωρητικότητα φορτηγού)`);
+    if (data.temperature_c != null && (data.temperature_c < -30 || data.temperature_c > 30)) warns.push(`Θερμοκρασία ${data.temperature_c}°C εκτός λογικού εύρους`);
+    if (warns.length && st) st.insertAdjacentHTML('afterbegin', warns.map(w =>
+      `<div style="padding:8px 12px;background:#FFFCF5;border:1px solid #EAD9B0;border-radius:8px;margin-bottom:6px;font-size:12.5px;color:#B45309;font-weight:600">⚠ ${w}</div>`).join(''));
+  } catch (e) {}
   // Φύλακας διπλοεγγραφών (#5, owner 10/8): ίδιο Reference ήδη στο σύστημα;
   try {
     if (data.reference) {
