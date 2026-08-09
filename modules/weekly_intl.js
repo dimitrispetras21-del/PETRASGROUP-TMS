@@ -1905,22 +1905,40 @@ async function _wiClear(rowId){
 }
 
 /* ── CONTEXT MENU ──────────────────────────────────────────────────── */
+// Owner (10/8): κανόνας groupage — δείξε ΜΟΝΟ συνδυασμούς με σύνολο ≤33
+// παλέτες (χωρητικότητα). «Δώρο άδωρο να εμφανίζει όλα τα φορτία».
+function _wiRowPals(row){
+  if(!row) return 0;
+  if(row.type==='import'){
+    const i=WINTL.data.imports.find(r=>r.id===row.orderId);
+    return +(i?.fields['Total Pallets']||0);
+  }
+  return (row.orderIds||[]).reduce((s,oid)=>{
+    const o=WINTL.data.exports.find(r=>r.id===oid);
+    return s+(+(o?.fields['Total Pallets']||0));
+  },0);
+}
 function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const isGroup=row.orderIds.length>1;
-  const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved);
+  const myPals=_wiRowPals(row);
+  const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
+    &&(myPals+_wiRowPals(r))<=33);
   const btn=(l,fn,d=false)=>
     `<button class="wi-ctx-i${d?' d':''}" onclick="${fn};_wiCtxClose()">${l}</button>`;
   let html='';
   if(others.length){
-    html+=`<div class="wi-ctx-h">Groupage</div>`;
+    html+=`<div class="wi-ctx-h">Groupage · χωράνε ≤33 παλ (τώρα ${myPals}p)</div>`;
     others.slice(0,6).forEach(o=>{
       const exp=WINTL.data.exports.find(r=>r.id===o.orderIds[0]);
-      const lbl=_wiClean(exp?.fields['Delivery Summary']||`Row ${o.id}`).slice(0,28);
-      html+=btn(`Group with: ${lbl}`,`_wiMerge(${rowId},${o.id})`);
+      const lbl=_wiClean(exp?.fields['Delivery Summary']||`Row ${o.id}`).slice(0,24);
+      const op=_wiRowPals(o);
+      html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiMerge(${rowId},${o.id})`);
     });
     html+=`<div class="wi-ctx-sep"></div>`;
+  }else if(row.type==='export'&&!row.saved){
+    html+=`<div class="wi-ctx-h">Groupage — καμία συμβατή (όριο 33 παλ, τώρα ${myPals}p)</div>`;
   }
   if(isGroup) html+=btn('Split groupage',`_wiSplit(${rowId})`);
   if(row.importId) html+=btn('Remove import',`_wiRemoveImport(${rowId})`);
@@ -1941,13 +1959,16 @@ function _wiImpCtx(e,rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const btn=(l,fn)=>`<button class="wi-ctx-i" onclick="${fn};_wiCtxClose()">${l}</button>`;
   let html='';
-  const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo);
+  const myPals=_wiRowPals(row);
+  const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
+    &&(myPals+_wiRowPals(r))<=33);
   if(others.length){
-    html+=`<div class="wi-ctx-h">Groupage εισαγωγών</div>`;
+    html+=`<div class="wi-ctx-h">Groupage εισαγωγών · ≤33 παλ (τώρα ${myPals}p)</div>`;
     others.slice(0,6).forEach(o=>{
       const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
-      const lbl=_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0].slice(0,26);
-      html+=btn(`Μαζί με: ${lbl}`,`_wiImpGroup(${rowId},${o.id})`);
+      const lbl=_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0].slice(0,22);
+      const op=_wiRowPals(o);
+      html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiImpGroup(${rowId},${o.id})`);
     });
     html+=`<div class="wi-ctx-sep"></div>`;
   }
