@@ -179,6 +179,13 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
   γέννηση round_trips από τα planners, allocation engine server-side, RLS
   owner-only). Το spec παραμένει locked — η αρχιτεκτονική δεν ξανανοίγει
   αποφάσεις μοντέλου.
+- **ΑΝΟΙΧΤΟ (owner 9/8: «δεν έχω αποφασίσει»):** πού ζει το backend των Costs.
+  Οι 3 επιλογές που τέθηκαν: (α) δικός μας Worker «petras-costs-backend»
+  (σύσταση Claude — μηδενική εμπλοκή με deploys satsilem), (β) επέκταση
+  Worker 2 μέσω construction team, (γ) frontend → Supabase απευθείας με RLS
+  (απαιτεί Supabase Auth). Η απόφαση ΔΕΝ μπλοκάρει το υπόλοιπο αρχιτεκτονικό
+  σχέδιο: schema/SQL, lifecycle round_trips, allocation algorithm και RLS
+  policies σχεδιάζονται ίδια και στις 3 — μόνο το transport layer αλλάζει.
 
 - 2026-08-03: Full audit μετά το C2 cutover → docs/AUDIT-2026-08-03.md (4 παράλληλοι auditors). Σκορ 9/28. P0: petras-assign PAT δημόσιο+ανενεργή ανάκληση / iframe split-brain από 28/7 / κανένα Supabase backup / Sentry DSN κενό. Worker 2 source μη διαθέσιμο για επαλήθευση RBAC.
 
