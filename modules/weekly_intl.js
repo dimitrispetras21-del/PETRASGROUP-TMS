@@ -599,14 +599,9 @@ function _wiAllRowsHTML(){
     grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ row._alt=alt; html+=_wiImpRowHTML(row,++impIdx); });
   });
 
-  // Cross-week (feedback dispatcher 19/5): αδιάθετες εισαγωγές των W±1 —
-  // σύρε τες πάνω σε export της τρέχουσας για ταίριασμα μεταξύ εβδομάδων.
-  const adjRows=impRows.filter(r=>r.adj&&!r.matchedTo);
-  if(adjRows.length){
-    html+=`<div class="wk3-dayh" style="background:#334155"><span class="d">ΓΕΙΤΟΝΙΚΕΣ ΕΒΔΟΜΑΔΕΣ</span><span class="k">${adjRows.length} εισαγ χωρίς ταίριασμα · σύρε πάνω σε εξαγωγή αυτής της εβδομάδας</span></div>`;
-    adjRows.forEach(row=>{ row._alt=false; html+=_wiImpRowHTML(row,++impIdx); });
-  }
-
+  // (Owner 10/8: η ενότητα «ΓΕΙΤΟΝΙΚΕΣ ΕΒΔΟΜΑΔΕΣ» αφαιρέθηκε — τη θέση της
+  // πήρε το δεξί κλικ → Μεταφορά εβδομάδας. Τα W±1 imports παραμένουν στη
+  // μνήμη για matched previews και για τον χάρτη διαθεσιμότητας.)
   return html;
 }
 
@@ -679,8 +674,9 @@ function _wiImpRowHTML(row,impNo){
   return `<div id="wi-imp-${imp.id}" data-row-id="${row.id}"
     class="wk3-row impr${row._alt?' alt':''}"
     draggable="true"
+    oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${row.adj&&row.adjW?`<span class="wk3-grpb" style="background:#475569" title="Εισαγωγή της W${row.adjW}">W${row.adjW}</span>`:''}</div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']))}">G</span>`:''}</div>
     <div class="wk3-feed l bgap" title="Χωρίς εθνικό σκέλος"></div>
     <div class="wk3-leg void${row.saved&&!impPartner?' gap':''}${(row.saved&&impPartner)||!row.saved?' bgap':''}"
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
@@ -1938,6 +1934,69 @@ function _wiCtx(e,rowId){
 }
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
 
+// Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
+// σε προηγούμενη/επόμενη εβδομάδα (μετακινεί τις ημερομηνίες ±7 ημέρες).
+function _wiImpCtx(e,rowId){
+  e.preventDefault();e.stopPropagation();
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const btn=(l,fn)=>`<button class="wi-ctx-i" onclick="${fn};_wiCtxClose()">${l}</button>`;
+  let html='';
+  const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo);
+  if(others.length){
+    html+=`<div class="wi-ctx-h">Groupage εισαγωγών</div>`;
+    others.slice(0,6).forEach(o=>{
+      const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
+      const lbl=_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0].slice(0,26);
+      html+=btn(`Μαζί με: ${lbl}`,`_wiImpGroup(${rowId},${o.id})`);
+    });
+    html+=`<div class="wi-ctx-sep"></div>`;
+  }
+  html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
+  html+=btn(`← Στην W${WINTL.week-1} (ημερομηνίες −7)`,`_wiImpShift(${rowId},-7)`);
+  html+=btn(`Στην W${WINTL.week+1} (ημερομηνίες +7) →`,`_wiImpShift(${rowId},7)`);
+  const ctx=document.getElementById('wi-ctx');
+  ctx.innerHTML=html;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-220)}px`});
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+async function _wiImpShift(rowId,days){
+  const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
+  const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
+  const w=WINTL.week+(days>0?1:-1);
+  const ok=await confirmAction(
+    `Η εισαγωγή θα μεταφερθεί στην W${w}: οι ημερομηνίες φόρτωσης και παράδοσης μετακινούνται ${days>0?'+7':'−7'} ημέρες.`,
+    {title:'Μεταφορά εβδομάδας',confirmLabel:'Μεταφορά'});
+  if(!ok) return;
+  const sh=s=>{ if(!s) return null; try{return new Date(new Date(s).getTime()+days*86400000).toISOString();}catch(e){return null;} };
+  const patch={};
+  const nl=sh(imp.fields['Loading DateTime']); if(nl) patch['Loading DateTime']=nl;
+  const nd=sh(imp.fields['Delivery DateTime']); if(nd) patch['Delivery DateTime']=nd;
+  if(!Object.keys(patch).length){ toast('Η εισαγωγή δεν έχει ημερομηνίες','warn'); return; }
+  try{
+    const res=await atPatch(TABLES.ORDERS,imp.id,patch);
+    if(res?.error) throw new Error(res.error.message||res.error.type);
+    toast(`Μεταφέρθηκε στην W${w} ✓`);
+    renderWeeklyIntl();
+  }catch(e){ reportError('Η μεταφορά απέτυχε',e); }
+}
+async function _wiImpGroup(rowId,otherRowId){
+  const a=WINTL.rows.find(r=>r.id===rowId), b=WINTL.rows.find(r=>r.id===otherRowId);
+  if(!a||!b) return;
+  const ai=WINTL.data.imports.find(r=>r.id===a.orderId), bi=WINTL.data.imports.find(r=>r.id===b.orderId);
+  if(!ai||!bi) return;
+  const gid=ai.fields['Group ID']||bi.fields['Group ID']||('GI-'+Date.now().toString(36).toUpperCase());
+  try{
+    for(const oid of [ai.id,bi.id]){
+      const res=await atSafePatch(TABLES.ORDERS,oid,{'Group ID':gid});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+    }
+    toast('Groupage εισαγωγών ✓');
+    renderWeeklyIntl();
+  }catch(e){ reportError('Το groupage απέτυχε',e); }
+}
+
 /* ── GROUPAGE ──────────────────────────────────────────────────────── */
 // Π1 (Wave 3, owner choice Α): the group persists via a shared text
 // `Group ID` on ORDERS (same pattern as NAT_LOADS `Groupage ID`), rebuilt in
@@ -2102,6 +2161,9 @@ document.addEventListener('dragover',function(e){
 });
 window._wk3FlashSugs = _wk3FlashSugs;
 window._wk3Edit = _wk3Edit;
+window._wiImpCtx = _wiImpCtx;
+window._wiImpShift = _wiImpShift;
+window._wiImpGroup = _wiImpGroup;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
