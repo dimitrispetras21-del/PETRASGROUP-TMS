@@ -16,45 +16,45 @@ const PERF = {
 const PERF_KPIS_BY_USER = {
   // Dimitris Petras — Founder: Approval & Strategy
   dimitris: [
-    { id: 'weekly_score',  label: 'Εβδομαδιαίο Σκορ',          unit: '/100', target: 85 },
-    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',      unit: '%',  target: 80 },
-    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',       unit: 'km', target: 50, invert: true },
-    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',      unit: '%',  target: 90 },
+    { id: 'weekly_score',  label: 'ΕΒΔΟΜΑΔΙΑΙΟ ΣΚΟΡ',          unit: '/100', target: 85 },
+    { id: 'fleet_usage',   label: 'ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ',      unit: '%',  target: 80 },
+    { id: 'dead_km',       label: 'ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ',       unit: 'km', target: 50, invert: true },
+    { id: 'on_time',       label: 'ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ',      unit: '%',  target: 90 },
   ],
   // Dimitris Kelesmitos — Master Planner: plan routes, assign trucks, find return loads
   kelesmitos: [
-    { id: 'plan_complete', label: 'Ολοκλήρωση Πλάνου',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
-    { id: 'dead_km',       label: 'Νεκρά Χιλιόμετρα',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
-    { id: 'fleet_usage',   label: 'Αξιοποίηση Στόλου',       unit: '%',  target: 80, desc: 'Working days vs available days' },
-    { id: 'sub_cost_pct',  label: 'Κόστος Συνεργατών',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
+    { id: 'plan_complete', label: 'ΟΛΟΚΛΗΡΩΣΗ ΠΛΑΝΟΥ',        unit: '%',  target: 100, desc: 'Exports assigned by Thursday' },
+    { id: 'dead_km',       label: 'ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ',        unit: 'km', target: 50, invert: true, desc: 'Export delivery to Import loading distance' },
+    { id: 'fleet_usage',   label: 'ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ',       unit: '%',  target: 80, desc: 'Working days vs available days' },
+    { id: 'sub_cost_pct',  label: 'ΚΟΣΤΟΣ ΣΥΝΕΡΓΑΤΩΝ',     unit: '%',  target: 30, invert: true, desc: 'Partner trips vs total trips' },
   ],
   // Pantelis Tsanaktsidis — Control Tower: execution, tracking, client updates
   pantelis: [
-    { id: 'on_time',       label: 'Εμπρόθεσμες Παραδόσεις',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
-    { id: 'cmr_collected', label: 'CMR Same-Day',           unit: '%',  target: 95, desc: 'CMR collected within 24h of delivery' },
-    { id: 'client_updates',label: 'Client Updates Sent',    unit: '%',  target: 100, desc: 'Zero Anxiety: Loaded/In Transit/Delivered updates' },
-    { id: 'response_time', label: 'Response Time',          unit: 'h',  target: 2, invert: true, desc: 'Avg time to handle issues' },
+    { id: 'on_time',       label: 'ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ',       unit: '%',  target: 90, desc: 'Deliveries on time vs total' },
+    { id: 'cmr_collected', label: 'CMR ΑΥΘΗΜΕΡΟΝ',           unit: '%',  target: 95, desc: 'CMR collected within 24h of delivery' },
+    { id: 'client_updates',label: 'ΕΝΗΜΕΡΩΣΕΙΣ ΠΕΛΑΤΗ',    unit: '%',  target: 100, desc: 'Zero Anxiety: Loaded/In Transit/Delivered updates' },
+    { id: 'response_time', label: 'ΧΡΟΝΟΣ ΑΠΟΚΡΙΣΗΣ',          unit: 'h',  target: 2, invert: true, desc: 'Avg time to handle issues' },
   ],
   // Sotiris Koulouriotis — Chief Ops: national transport, plan review, crisis management
   sotiris: [
-    { id: 'natl_on_time',  label: 'National On-Time',       unit: '%',  target: 90, desc: 'National deliveries on time' },
-    { id: 'plan_reviewed', label: 'Plan Review by Friday',  unit: '',   target: 1, desc: 'Weekly plan checked before submission' },
-    { id: 'crisis_count',  label: 'Crises Resolved',        unit: '',   target: 0, desc: 'Issues escalated and resolved this week' },
-    { id: 'natl_profit',   label: 'National Profitability',  unit: '%',  target: 15, desc: 'National routes margin' },
+    { id: 'natl_on_time',  label: 'ΣΥΝΕΠΕΙΑ ΕΘΝΙΚΩΝ',       unit: '%',  target: 90, desc: 'National deliveries on time' },
+    { id: 'plan_reviewed', label: 'ΕΛΕΓΧΟΣ ΠΛΑΝΟΥ',  unit: '',   target: 1, desc: 'Weekly plan checked before submission' },
+    { id: 'crisis_count',  label: 'ΚΡΙΣΕΙΣ ΠΟΥ ΛΥΘΗΚΑΝ',        unit: '',   target: 0, desc: 'Issues escalated and resolved this week' },
+    { id: 'natl_profit',   label: 'ΚΕΡΔΟΦΟΡΙΑ ΕΘΝΙΚΩΝ',  unit: '%',  target: 15, desc: 'National routes margin' },
   ],
   // Thodoris Vainas — Equipment Manager + HR: fleet maintenance, driver payroll
   thodoris: [
-    { id: 'expired_docs',  label: 'Expired Documents',      unit: '',   target: 0, invert: true, desc: 'KTEO/Insurance/ATP expired count' },
-    { id: 'work_orders',   label: 'Work Orders Resolved',   unit: '%',  target: 80, desc: 'Resolved vs total this week' },
-    { id: 'downtime_hrs',  label: 'Fleet Downtime',         unit: 'h',  target: 24, invert: true, desc: 'Total hours trucks out of service' },
-    { id: 'service_adherence', label: 'Service Schedule',   unit: '%',  target: 100, desc: 'Preventive maintenance on time' },
+    { id: 'expired_docs',  label: 'ΛΗΓΜΕΝΑ ΕΓΓΡΑΦΑ',      unit: '',   target: 0, invert: true, desc: 'KTEO/Insurance/ATP expired count' },
+    { id: 'work_orders',   label: 'ΕΝΤΟΛΕΣ ΠΟΥ ΕΚΛΕΙΣΑΝ',   unit: '%',  target: 80, desc: 'Resolved vs total this week' },
+    { id: 'downtime_hrs',  label: 'ΑΚΙΝΗΣΙΑ ΣΤΟΛΟΥ',         unit: 'h',  target: 24, invert: true, desc: 'Total hours trucks out of service' },
+    { id: 'service_adherence', label: 'ΠΡΟΓΡΑΜΜΑ ΣΥΝΤΗΡΗΣΗΣ',   unit: '%',  target: 100, desc: 'Preventive maintenance on time' },
   ],
   // Eirini Papazoi — Invoicing: invoices, CMR archive, pallet tracking
   eirini: [
-    { id: 'invoiced_pct',  label: 'Orders Invoiced',        unit: '%',  target: 100, desc: 'Delivered orders with invoice issued' },
-    { id: 'cmr_archived',  label: 'CMR Archived',           unit: '%',  target: 95, desc: 'CMR documents filed and archived' },
-    { id: 'outstanding',   label: 'Outstanding Balance',    unit: 'EUR',  target: 0, invert: true, desc: 'Unpaid client invoices total' },
-    { id: 'pallet_balance',label: 'Pallet Balance',         unit: '',   target: 0, desc: 'EUR-pallet net balance with partners' },
+    { id: 'invoiced_pct',  label: 'ΤΙΜΟΛΟΓΗΜΕΝΑ',        unit: '%',  target: 100, desc: 'Delivered orders with invoice issued' },
+    { id: 'cmr_archived',  label: 'CMR ΣΤΟ ΑΡΧΕΙΟ',           unit: '%',  target: 95, desc: 'CMR documents filed and archived' },
+    { id: 'outstanding',   label: 'ΑΝΕΞΟΦΛΗΤΑ',    unit: 'EUR',  target: 0, invert: true, desc: 'Unpaid client invoices total' },
+    { id: 'pallet_balance',label: 'ΙΣΟΖΥΓΙΟ ΠΑΛΕΤΩΝ',         unit: '',   target: 0, desc: 'EUR-pallet net balance with partners' },
   ],
 };
 
@@ -517,18 +517,18 @@ function _perfDraw() {
   });
 
   const roleLabels = {
-    dimitris: 'Founder — Approval & Strategy',
-    kelesmitos: 'Master Planner — Chief Dispatcher',
-    pantelis: 'Control Tower — Execution & Zero Anxiety',
-    sotiris: 'Chief Ops — National Transport & Oversight',
-    thodoris: 'Equipment Manager & HR Director',
-    eirini: 'Invoicing & Finance',
+    dimitris: 'Ιδρυτής — Έγκριση & Στρατηγική',
+    kelesmitos: 'Επικεφαλής Σχεδιασμού',
+    pantelis: 'Πύργος Ελέγχου — Εκτέλεση',
+    sotiris: 'Επιχειρήσεις — Εθνικές Μεταφορές',
+    thodoris: 'Εξοπλισμός & Ανθρώπινο Δυναμικό',
+    eirini: 'Τιμολόγηση & Οικονομικά',
   };
   const roleLabelsFallback = {
-    owner: 'Founder — Approval & Strategy',
-    dispatcher: 'Planner / Dispatcher',
-    management: 'Management',
-    accountant: 'Finance',
+    owner: 'Ιδρυτής — Έγκριση & Στρατηγική',
+    dispatcher: 'Σχεδιασμός / Ανάθεση',
+    management: 'Διοίκηση',
+    accountant: 'Οικονομικά',
   };
 
   // KPI → Lucide icon map (optional visual cue)

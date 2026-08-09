@@ -2549,7 +2549,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 .ramp-kpi { background:#0F172A; border:1px solid #1E293B;
   border-radius:var(--radius-lg); padding:14px 18px; flex:1; min-width:110px; }
 .ramp-kpi-lbl { font-size:var(--text-sm); font-weight:500; letter-spacing:.3px; color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
-.ramp-kpi-val { font-family:'Syne',sans-serif; font-size:var(--num-md); font-weight:700;
+.ramp-kpi-val { font-family:'DM Sans',-apple-system,sans-serif; font-size:var(--num-md); font-weight:700;
   line-height:1; color:#F1F5F9; }
 .ramp-kpi-sub { font-size:var(--text-xs); color:var(--panel-dim); margin-left:4px; }
 
@@ -2645,7 +2645,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 .ops-kpi-label { font-size:var(--text-sm); font-weight:500; letter-spacing:.3px;
   color:#94A3B8; font-family:'DM Sans',sans-serif; margin-bottom:4px; }
 .ops-kpi-row { display:flex; align-items:baseline; gap:5px; }
-.ops-kpi-val { font-family:'Syne',sans-serif; font-size:var(--num-md); font-weight:700;
+.ops-kpi-val { font-family:'DM Sans',-apple-system,sans-serif; font-size:var(--num-md); font-weight:700;
   line-height:1; color:#F1F5F9; }
 .ops-kpi-sub { font-size:var(--text-xs); color:var(--panel-dim); }
 .ops-kpi-bar { height:3px; background:#1E293B; border-radius:var(--radius-full); margin-top:8px; overflow:hidden; }
@@ -3079,7 +3079,8 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-family: 'Syne', sans-serif;
+  /* DM Sans tabular: το Syne έδινε δυσανάγνωστους αριθμούς (WI-9/CL-8). */
+  font-family: var(--p-nums);
   font-size: 40px;
   font-weight: 800;
   line-height: 1;
