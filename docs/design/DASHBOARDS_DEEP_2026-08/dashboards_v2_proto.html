@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="el" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TMS Dashboards v2 — πρωτότυπο σχεδίασης</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   TMS DASHBOARDS v2 — ΠΡΩΤΟΤΥΠΟ (στατικό· ενδεικτικά/συνθετικά νούμερα)
+   Αρχή σχεδίασης: ΟΡΓΑΝΑ & ΦΥΛΛΟ ΕΡΓΑΣΙΑΣ
+   · Οι ΜΕΤΡΗΣΕΙΣ ζουν σε σκούρα «όργανα» (navy + hairline grid).
+   · Οι ΛΙΣΤΕΣ / ΠΡΑΞΕΙΣ ζουν σε ανοιχτό «φύλλο εργασίας».
+   Σήμα κατατεθέν: κάθε νούμερο φέρει ΑΠΟΔΕΙΞΗ (πηγή · εμβέλεια · δείγμα).
+   ═══════════════════════════════════════════════════════════════ */
+
+:root{
+  --navy:#0B1929; --navy-deep:#080F1A; --navy-mid:#0F2438;
+  --accent:#0284C7; --accent-hi:#38BDF8; --accent-dim:#0369A1;
+  --ok:#059669; --ok-hi:#34D399;
+  --warn:#D97706; --warn-hi:#FBBF24;
+  --bad:#DC2626; --bad-hi:#F87171;
+
+  --bg:#F4F6F9; --bg-card:#FFFFFF; --bg-sunk:#EDF1F6;
+  --border:#DDE4EC; --border-hi:#C6D2E0;
+  --text:#0B1929; --text-mid:#42566B; --text-dim:#77889B;
+
+  --i-bg:#0B1929; --i-bg2:#0F2438; --i-line:rgba(255,255,255,.07);
+  --i-text:#F1F6FB; --i-mid:#9DB2C8; --i-dim:#64798F;
+
+  --r-sm:6px; --r-md:10px;
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --f-display:'Syne',ui-sans-serif,system-ui,sans-serif;
+  --f-body:'DM Sans',ui-sans-serif,system-ui,sans-serif;
+  --shadow:0 1px 2px rgba(11,25,41,.06),0 4px 16px rgba(11,25,41,.05);
+  --shadow-i:0 2px 6px rgba(8,15,26,.28),0 12px 32px rgba(8,15,26,.22);
+}
+[data-theme="dark"]{
+  --bg:#070D16; --bg-card:#0E1B2B; --bg-sunk:#0A1523;
+  --border:#1C3049; --border-hi:#27435F;
+  --text:#EAF1F8; --text-mid:#A6BACE; --text-dim:#70889F;
+  --i-bg:#0E1B2B; --i-bg2:#132538;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 20px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#070D16; --bg-card:#0E1B2B; --bg-sunk:#0A1523;
+    --border:#1C3049; --border-hi:#27435F;
+    --text:#EAF1F8; --text-mid:#A6BACE; --text-dim:#70889F;
+    --i-bg:#0E1B2B; --i-bg2:#132538;
+  }
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--f-body);background:var(--bg);color:var(--text);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;padding-bottom:64px}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+.shell{max-width:1440px;margin:0 auto;padding:0 var(--s5)}
+.topbar{position:sticky;top:0;z-index:50;background:var(--navy-deep);
+  border-bottom:1px solid rgba(255,255,255,.08)}
+.topbar-in{max-width:1440px;margin:0 auto;padding:0 var(--s5);
+  display:flex;align-items:center;gap:var(--s5);height:56px}
+.brand{font-family:var(--f-display);font-weight:800;font-size:15px;
+  letter-spacing:.06em;color:#fff;white-space:nowrap}
+.brand span{color:var(--accent-hi)}
+.tabs{display:flex;gap:2px;flex:1;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;border:0;background:none;font:inherit;cursor:pointer;
+  color:#8FA6BE;font-size:12.5px;font-weight:500;padding:8px 13px;
+  border-radius:var(--r-sm);white-space:nowrap;position:relative;transition:color .15s,background .15s}
+.tab:hover{color:#fff;background:rgba(255,255,255,.06)}
+.tab[aria-selected="true"]{color:#fff;background:rgba(2,132,199,.22)}
+.tab[aria-selected="true"]::after{content:"";position:absolute;left:13px;right:13px;bottom:-1px;
+  height:2px;background:var(--accent-hi);border-radius:2px 2px 0 0}
+.tab:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+.topbtn{appearance:none;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.05);
+  color:#C9DAEA;font:inherit;font-size:11.5px;font-weight:500;cursor:pointer;
+  padding:6px 11px;border-radius:var(--r-sm);white-space:nowrap;transition:.15s}
+.topbtn:hover{background:rgba(255,255,255,.12);color:#fff}
+.topbtn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.topbtn:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+
+.ctx{display:flex;align-items:baseline;gap:var(--s3);flex-wrap:wrap;padding:var(--s5) 0 var(--s4)}
+.ctx h1{font-family:var(--f-display);font-size:24px;font-weight:700;letter-spacing:-.01em}
+.ctx-sub{color:var(--text-mid);font-size:13px}
+.ctx-spacer{flex:1}
+.pill-live{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:700;
+  letter-spacing:.08em;color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent);
+  padding:4px 9px;border-radius:99px;border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.wk{font-family:var(--f-display);font-weight:700;font-size:12px;letter-spacing:.05em;
+  background:var(--bg-sunk);border:1px solid var(--border);color:var(--text-mid);
+  padding:4px 10px;border-radius:var(--r-sm)}
+.wk b{color:var(--text)}
+
+/* ── ΟΡΓΑΝΟ ── */
+.instr{background:
+    linear-gradient(var(--i-line) 1px,transparent 1px) 0 0/100% 22px,
+    linear-gradient(90deg,var(--i-line) 1px,transparent 1px) 0 0/22px 100%,
+    linear-gradient(160deg,var(--i-bg2),var(--i-bg) 62%);
+  border:1px solid rgba(255,255,255,.08);border-radius:var(--r-md);
+  color:var(--i-text);box-shadow:var(--shadow-i);position:relative;overflow:hidden}
+.instr::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;
+  background:linear-gradient(90deg,var(--acc,var(--accent)),transparent 72%)}
+.kpi{display:flex;flex-direction:column;gap:var(--s1);padding:13px 15px 12px;
+  text-align:left;font:inherit;cursor:pointer;appearance:none;width:100%;
+  transition:transform .16s cubic-bezier(.2,.7,.3,1),box-shadow .16s}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 4px 10px rgba(8,15,26,.3),0 18px 44px rgba(8,15,26,.3)}
+.kpi:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+.kpi-lbl{font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--i-mid)}
+.kpi-val{font-family:var(--f-body);font-weight:700;font-size:30px;line-height:1.05;
+  letter-spacing:-.02em;display:flex;align-items:baseline;gap:7px;font-variant-numeric:tabular-nums}
+.kpi-val small{font-size:15px;font-weight:500;color:var(--i-mid)}
+.v-ok{color:var(--ok-hi)} .v-warn{color:var(--warn-hi)} .v-bad{color:var(--bad-hi)}
+.v-acc{color:var(--accent-hi)} .v-none{color:var(--i-dim)}
+.receipt{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:10px;color:var(--i-dim);
+  margin-top:2px;border-top:1px dashed rgba(255,255,255,.09);padding-top:6px}
+.receipt b{color:var(--i-mid);font-weight:500}
+.receipt .sep{opacity:.4}
+.kpi-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:var(--s2)}
+.delta{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:var(--r-sm);
+  display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+.d-good{color:var(--ok-hi);background:rgba(5,150,105,.16)}
+.d-bad{color:var(--bad-hi);background:rgba(220,38,38,.16)}
+.d-flat{color:var(--i-dim);background:rgba(255,255,255,.06)}
+
+/* ── ΦΥΛΛΟ ΕΡΓΑΣΙΑΣ ── */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);
+  box-shadow:var(--shadow);overflow:hidden}
+.card-h{display:flex;align-items:center;gap:var(--s2);padding:11px var(--s4);
+  border-bottom:1px solid var(--border);flex-wrap:wrap}
+.card-t{font-family:var(--f-display);font-size:12px;font-weight:700;letter-spacing:.05em}
+.card-m{margin-left:auto;font-size:11px;color:var(--text-dim)}
+.card-b{padding:var(--s3) var(--s4)}
+.card-b.flush{padding:0}
+.link{appearance:none;background:none;border:0;font:inherit;font-size:11px;font-weight:700;
+  color:var(--accent);cursor:pointer;padding:2px 4px;border-radius:4px}
+.link:hover{background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.link:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+/* ── ΤΙ ΚΑΙΕΙ ── */
+.burn{display:grid;grid-template-columns:1fr 268px;gap:var(--s3);margin-bottom:var(--s3)}
+.burn-list{display:flex;flex-direction:column;gap:var(--s2)}
+.burn-list .burn-item{flex:1}
+.burn-item{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;
+  font:inherit;cursor:pointer;appearance:none;padding:12px var(--s4);background:var(--bg-card);
+  border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--shadow);
+  transition:.15s;color:var(--text)}
+.burn-item:hover{border-color:var(--border-hi);transform:translateX(2px)}
+.burn-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.burn-n{font-family:var(--f-body);font-weight:700;font-size:27px;line-height:1;
+  color:var(--sev);min-width:52px;font-variant-numeric:tabular-nums}
+.burn-txt{flex:1}
+.burn-txt strong{display:block;font-size:13.5px;font-weight:700}
+.burn-txt em{display:block;font-style:normal;font-size:11px;color:var(--text-dim);margin-top:2px}
+.burn-go{color:var(--text-dim);font-size:17px}
+.burn-item:hover .burn-go{color:var(--sev)}
+.sev-bad{--sev:var(--bad)} .sev-warn{--sev:var(--warn)} .sev-acc{--sev:var(--accent)}
+
+.score{padding:var(--s4);display:flex;flex-direction:column;align-items:center;gap:var(--s2)}
+.ring{width:104px;height:104px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:conic-gradient(var(--rc) var(--rd),rgba(255,255,255,.09) 0)}
+.ring::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--i-bg)}
+.ring-n{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-size:31px;
+  color:var(--rc);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ring-n small{font-size:13px;color:var(--i-dim);font-weight:500}
+.score-lbl{font-size:10.5px;letter-spacing:.07em;font-weight:700;color:var(--i-mid);text-align:center}
+.bars{width:100%;display:flex;flex-direction:column;gap:5px;margin-top:var(--s1)}
+.bar{display:grid;grid-template-columns:66px 1fr 40px;align-items:center;gap:var(--s2);font-size:10.5px}
+.bar-l{color:var(--i-mid)}
+.bar-t{height:5px;border-radius:3px;background:rgba(255,255,255,.09);overflow:hidden;display:block}
+.bar-f{display:block;height:100%;border-radius:3px;background:var(--bc,var(--accent-hi))}
+.bar-f.unknown{background:repeating-linear-gradient(90deg,var(--text-dim) 0 3px,transparent 3px 7px);
+  width:100%;opacity:.55}
+.bar-v{text-align:right;color:var(--i-text);font-weight:700;font-variant-numeric:tabular-nums}
+
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(186px,1fr));gap:var(--s3);margin-bottom:var(--s3)}
+.grid-main{display:grid;grid-template-columns:1fr 306px;gap:var(--s3);align-items:start}
+.col{display:flex;flex-direction:column;gap:var(--s3)}
+
+.chip{appearance:none;border:1px solid var(--border);background:var(--bg-sunk);font:inherit;
+  font-size:11px;font-weight:700;color:var(--text-mid);padding:4px 10px;border-radius:99px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chips{display:flex;gap:var(--s2);align-items:center;flex-wrap:wrap}
+
+.tl{position:relative;padding:var(--s2) var(--s4) var(--s4) 66px}
+.tl::before{content:"";position:absolute;left:56px;top:0;bottom:12px;width:1px;background:var(--border)}
+.tl-row{position:relative;display:flex;align-items:center;gap:var(--s3);padding:7px 0}
+.tl-time{position:absolute;left:-66px;width:44px;text-align:right;font-size:11px;font-weight:700;
+  color:var(--text-mid);font-variant-numeric:tabular-nums}
+.tl-row::before{content:"";position:absolute;left:-11px;width:9px;height:9px;border-radius:50%;
+  background:var(--bg-card);border:2px solid var(--st,var(--accent))}
+.tl-body{flex:1;min-width:0}
+.tl-cli{display:block;font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-rt{display:block;font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-meta{display:flex;align-items:center;gap:var(--s2);font-size:11px;color:var(--text-mid);white-space:nowrap}
+.plate{font-weight:700;font-size:10.5px;letter-spacing:.04em;background:var(--bg-sunk);
+  border:1px solid var(--border);padding:2px 6px;border-radius:4px;white-space:nowrap}
+.st-ok{--st:var(--ok)} .st-acc{--st:var(--accent)} .st-warn{--st:var(--warn)} .st-bad{--st:var(--bad)}
+
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-size:9.5px;letter-spacing:.07em;font-weight:700;color:var(--text-dim);
+  padding:8px var(--s4);border-bottom:1px solid var(--border);background:var(--bg-sunk)}
+td{padding:9px var(--s4);border-bottom:1px solid var(--border)}
+tbody tr:last-child td{border-bottom:0}
+tbody tr.clickable{cursor:pointer}
+tbody tr.clickable:hover{background:var(--bg-sunk)}
+.tag{font-size:10px;font-weight:700;padding:2px 7px;border-radius:99px;
+  display:inline-flex;gap:4px;align-items:center;white-space:nowrap}
+.t-bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 13%,transparent)}
+.t-warn{color:var(--warn);background:color-mix(in srgb,var(--warn) 15%,transparent)}
+.t-ok{color:var(--ok);background:color-mix(in srgb,var(--ok) 13%,transparent)}
+
+.unknown-badge{font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--i-dim);
+  border:1px dashed rgba(255,255,255,.22);padding:1px 6px;border-radius:4px;white-space:nowrap}
+.empty{display:flex;flex-direction:column;align-items:center;gap:var(--s2);
+  padding:var(--s5) var(--s4);color:var(--text-dim);text-align:center;font-size:12.5px}
+
+/* ── CEO ── */
+.promises{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s3);margin-bottom:var(--s3)}
+.promise{padding:var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
+.promise-h{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--s2)}
+.promise-name{font-family:var(--f-display);font-size:13px;font-weight:700;letter-spacing:.02em}
+.promise-sub{font-size:10.5px;color:var(--i-dim);margin-top:1px}
+.promise-tgt{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--i-mid);
+  border:1px solid rgba(255,255,255,.14);padding:3px 8px;border-radius:99px;white-space:nowrap}
+.promise-body{display:flex;align-items:center;gap:var(--s4);flex-wrap:wrap}
+.promise-big{font-family:var(--f-body);font-weight:700;font-size:46px;line-height:1;
+  letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.spark{display:block;width:100%;height:34px}
+.spark-wrap{display:flex;align-items:center;gap:var(--s2);
+  border-top:1px dashed rgba(255,255,255,.09);padding-top:var(--s2)}
+.spark-lbl{font-size:9.5px;color:var(--i-dim);letter-spacing:.05em;white-space:nowrap}
+.manual{display:flex;align-items:center;gap:var(--s2);background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.1);border-radius:var(--r-sm);padding:7px 9px}
+.manual label{font-size:10.5px;color:var(--i-mid);white-space:nowrap}
+.manual input{width:56px;background:rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.16);
+  color:var(--i-text);font:inherit;font-size:13px;font-weight:700;padding:4px 7px;
+  border-radius:5px;text-align:center}
+.manual button{appearance:none;border:0;background:var(--accent);color:#fff;font:inherit;
+  font-size:11px;font-weight:700;padding:5px 11px;border-radius:5px;cursor:pointer}
+.quads{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s3);align-items:start}
+.quad{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--r-md);
+  box-shadow:var(--shadow);overflow:hidden}
+.quad-h{display:flex;align-items:center;gap:var(--s2);padding:10px var(--s4);width:100%;
+  border:0;border-bottom:1px solid var(--border);background:none;cursor:pointer;
+  font:inherit;color:var(--text);text-align:left;flex-wrap:wrap}
+.quad-h .card-t{flex:1}
+.quad-b{padding:var(--s3) var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
+.quad[data-open="false"] .quad-b{display:none}
+.quad[data-open="false"] .quad-h{border-bottom:0}
+.quad-arrow{transition:transform .18s;color:var(--text-dim);font-size:11px}
+.quad[data-open="false"] .quad-arrow{transform:rotate(-90deg)}
+.mini{display:flex;align-items:baseline;gap:var(--s2);flex-wrap:wrap}
+.mini-n{font-family:var(--f-body);font-weight:700;font-size:22px;
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.mini-l{font-size:11px;color:var(--text-mid)}
+.mini-r{margin-left:auto;font-size:11px;color:var(--text-dim)}
+.track{height:6px;border-radius:3px;background:var(--bg-sunk);overflow:hidden;display:block}
+.track i{display:block;height:100%;border-radius:3px;background:var(--accent)}
+.split{display:flex;height:8px;border-radius:4px;overflow:hidden;gap:2px}
+.split i{display:block;height:100%}
+.legend{display:flex;gap:var(--s3);font-size:10.5px;color:var(--text-dim);margin-top:5px}
+.legend b{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.wl{display:flex;flex-direction:column;gap:5px}
+.wl-row{display:grid;grid-template-columns:74px 1fr 30px;align-items:center;gap:var(--s2);font-size:11.5px}
+.wl-b{height:7px;background:var(--bg-sunk);border-radius:4px;overflow:hidden;display:block}
+.wl-b i{display:block;height:100%;border-radius:4px;background:var(--accent)}
+.wl-b i.max{background:var(--warn)} .wl-b i.min{background:var(--text-dim)}
+.est{font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--warn);
+  background:color-mix(in srgb,var(--warn) 15%,transparent);padding:1px 5px;border-radius:3px;
+  border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}
+.src-line{font-size:10px;color:var(--text-dim);margin-top:6px;
+  border-top:1px dashed var(--border);padding-top:5px}
+.src-line b{color:var(--text-mid);font-weight:500}
+
+/* ── AUDIT ── */
+.verdict{display:flex;align-items:center;gap:var(--s4);padding:var(--s4) var(--s5);
+  border-radius:var(--r-md);margin-bottom:var(--s3);border:1px solid;flex-wrap:wrap;
+  background:color-mix(in srgb,var(--bad) 9%,var(--bg-card));
+  border-color:color-mix(in srgb,var(--bad) 35%,transparent)}
+.verdict-n{font-family:var(--f-body);font-weight:700;font-size:38px;line-height:1;
+  font-variant-numeric:tabular-nums;color:var(--bad)}
+.verdict-t strong{display:block;font-size:14px}
+.verdict-t span{font-size:11.5px;color:var(--text-mid)}
+.diff{margin-bottom:var(--s3)}
+.diff-h{display:flex;align-items:center;gap:var(--s3);padding:11px var(--s4);
+  border-bottom:1px solid var(--border);flex-wrap:wrap}
+.diff-name{font-family:var(--f-display);font-size:13px;font-weight:700}
+.diff-why{width:100%;font-size:11px;color:var(--text-dim)}
+.diff-row{display:grid;grid-template-columns:1fr 92px 128px;align-items:center;gap:var(--s3);
+  padding:9px var(--s4);border-left:3px solid transparent}
+.diff-row.fault{background:color-mix(in srgb,var(--bad) 7%,transparent);border-left-color:var(--bad)}
+.diff-row.declared{background:color-mix(in srgb,var(--warn) 7%,transparent);border-left-color:var(--warn)}
+.diff-row.base{border-left-color:var(--border-hi)}
+.diff-pg strong{font-size:12.5px;font-weight:700;display:block}
+.diff-pg code{font-size:10px;color:var(--text-dim);font-family:ui-monospace,monospace}
+.diff-val{text-align:right;font-family:var(--f-body);font-weight:700;font-size:17px;
+  font-variant-numeric:tabular-nums}
+.diff-tag{font-size:11px;font-weight:700;text-align:right}
+.diff-note{grid-column:1/-1;font-size:11px;color:var(--text-mid);padding-top:4px}
+.canon{display:flex;align-items:center;gap:var(--s2);padding:8px var(--s4);flex-wrap:wrap;
+  background:var(--bg-sunk);border-bottom:1px solid var(--border);font-size:11.5px;color:var(--text-mid)}
+.canon b{font-family:var(--f-body);font-weight:700;font-size:15px;color:var(--text);
+  font-variant-numeric:tabular-nums}
+.searchbar{display:flex;gap:var(--s2);align-items:center;margin:var(--s4) 0 var(--s3);flex-wrap:wrap}
+.searchbar input{flex:1;min-width:200px;padding:9px 13px;border:1px solid var(--border);
+  border-radius:var(--r-sm);font:inherit;font-size:13px;background:var(--bg-card);color:var(--text)}
+.searchbar input:focus{outline:2px solid var(--accent);outline-offset:-1px;border-color:var(--accent)}
+
+.note{display:none;font-size:11px;line-height:1.5;color:var(--accent-dim);
+  background:color-mix(in srgb,var(--accent) 8%,transparent);
+  border:1px dashed color-mix(in srgb,var(--accent) 40%,transparent);
+  border-radius:var(--r-sm);padding:7px 10px;margin:var(--s2) 0}
+[data-theme="dark"] .note{color:var(--accent-hi)}
+body.notes .note{display:block}
+
+.panel{display:none;padding-bottom:var(--s6)}
+.panel.on{display:block;animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.sec-lbl{font-family:var(--f-display);font-size:11px;font-weight:700;letter-spacing:.09em;
+  color:var(--text-dim);margin:var(--s4) 0 var(--s2);display:flex;align-items:center;gap:var(--s2)}
+.sec-lbl::after{content:"";flex:1;height:1px;background:var(--border)}
+
+/* ── COMMAND CENTER ── */
+.cc{padding:var(--s4)}
+.cc-top{display:flex;align-items:center;gap:var(--s5);flex-wrap:wrap}
+.cc-donut{width:74px;height:74px;flex-shrink:0;position:relative;display:grid;place-items:center;
+  border-radius:50%;background:conic-gradient(var(--ok-hi) var(--rd),rgba(255,255,255,.1) 0)}
+.cc-donut::after{content:"";position:absolute;inset:8px;border-radius:50%;background:var(--i-bg)}
+.cc-donut b{position:relative;z-index:1;font-family:var(--f-body);font-weight:700;font-size:17px;
+  font-variant-numeric:tabular-nums}
+.cc-title{font-family:var(--f-display);font-size:12px;font-weight:700;letter-spacing:.07em;color:var(--i-mid)}
+.cc-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:var(--s2)}
+.cc-chip{appearance:none;border:1px solid;font:inherit;font-size:11px;font-weight:700;cursor:pointer;
+  padding:5px 10px;border-radius:var(--r-sm);transition:.15s}
+.cc-chip:hover{transform:translateY(-1px)}
+.cc-chip.crit{background:rgba(220,38,38,.16);color:var(--bad-hi);border-color:rgba(220,38,38,.4)}
+.cc-chip.warn{background:rgba(217,119,6,.16);color:var(--warn-hi);border-color:rgba(217,119,6,.4)}
+.cc-chip.info{background:rgba(2,132,199,.16);color:var(--accent-hi);border-color:rgba(2,132,199,.4)}
+.cc-phase{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.07em;padding:4px 10px;
+  border-radius:99px;background:rgba(2,132,199,.18);color:var(--accent-hi);border:1px solid rgba(2,132,199,.4)}
+.cc-widgets{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:var(--s2);
+  margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid rgba(255,255,255,.09)}
+.cc-w{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);
+  border-radius:var(--r-sm);padding:10px 12px}
+.cc-w-l{font-size:9.5px;letter-spacing:.06em;color:var(--i-dim);margin-bottom:4px;font-weight:700}
+.cc-w-v{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.cc-w-v b{font-family:var(--f-body);font-weight:700;font-size:20px;font-variant-numeric:tabular-nums}
+.cc-w-v span{font-size:10.5px;color:var(--i-mid)}
+.cc-w-r{font-size:9.5px;color:var(--i-dim);margin-top:5px;
+  border-top:1px dashed rgba(255,255,255,.09);padding-top:5px}
+
+@media (max-width:1366px){
+  .shell,.topbar-in{padding:0 var(--s4)}
+  .grid-main{grid-template-columns:1fr 278px}
+  .kpi-val{font-size:27px}
+  .promise-big{font-size:39px}
+}
+@media (max-width:1140px){
+  .grid-main,.burn,.promises,.quads{grid-template-columns:1fr}
+  .col-side{display:grid;grid-template-columns:repeat(auto-fit,minmax(258px,1fr));gap:var(--s3)}
+}
+@media (max-width:720px){
+  .ctx h1{font-size:20px}
+  .diff-row{grid-template-columns:1fr 78px;row-gap:4px}
+  .diff-tag{grid-column:2}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand">PETRAS<span>·</span>TMS</div>
+    <nav class="tabs" role="tablist" aria-label="Σελίδες">
+      <button class="tab" role="tab" aria-selected="true"  data-p="dash">Dashboard</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="ceo">CEO</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="perf">Απόδοση</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="fleet">Στόλος</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="audit">Έλεγχος Μετρήσεων</button>
+      <button class="tab" role="tab" aria-selected="false" data-p="cc">Command Center</button>
+    </nav>
+    <button class="topbtn" id="notesBtn" aria-pressed="false">Τι άλλαξε</button>
+    <button class="topbtn" id="themeBtn">Σκούρο</button>
+  </div>
+</div>
+
+<div class="shell">
+
+<!-- ═══ 1. DASHBOARD ═══ -->
+<section class="panel on" id="p-dash" role="tabpanel">
+  <div class="ctx">
+    <h1>Καλημέρα, Δημήτρη</h1>
+    <div class="ctx-sub">Κυριακή 9 Αυγούστου</div>
+    <span class="wk">ISO <b>W32</b></span>
+    <div class="ctx-spacer"></div>
+    <span class="pill-live"><span class="dot"></span>LIVE · 5′</span>
+  </div>
+
+  <div class="note"><b>Ιεραρχία:</b> πρώτο στο μάτι είναι <b>τι πρέπει να κάνεις</b>, όχι πέντε ισοβαρή KPI.
+  Τα «τι καίει» είναι κουμπιά με προορισμό· το σκορ δεξιά είναι κρίση, όχι ενέργεια.
+  Ο αριθμός εβδομάδας φέρει ρητά την ένδειξη <b>ISO</b> — μία πηγή, δηλωμένη.</div>
+
+  <div class="burn">
+    <div class="burn-list">
+      <button class="burn-item sev-bad">
+        <span class="burn-n num">4</span>
+        <span class="burn-txt"><strong>Παραγγελίες χωρίς φορτηγό — παράδοση σε 48 ώρες</strong>
+        <em>ORDERS · ανοιχτές, χωρίς Truck και χωρίς Partner · η πρώτη λήγει 11/08 08:00</em></span>
+        <span class="burn-go">›</span>
+      </button>
+      <button class="burn-item sev-warn">
+        <span class="burn-n num">57</span>
+        <span class="burn-txt"><strong>Ληγμένα έγγραφα στόλου</strong>
+        <em>Φορτηγά + ρυμούλκες · ΚΤΕΟ 24 · ΚΕΚ 18 · Ασφάλειες 11 · FRC 4</em></span>
+        <span class="burn-go">›</span>
+      </button>
+      <button class="burn-item sev-acc">
+        <span class="burn-n num">9</span>
+        <span class="burn-txt"><strong>Φορτώσεις σήμερα — 3 χωρίς οδηγό</strong>
+        <em>ORDERS · Loading DateTime = σήμερα · πρώτη 06:30</em></span>
+        <span class="burn-go">›</span>
+      </button>
+    </div>
+
+    <div class="instr score" style="--acc:var(--warn)">
+      <div class="ring" style="--rc:var(--warn-hi);--rd:255deg"><div class="ring-n num">71<small>/100</small></div></div>
+      <div class="score-lbl">ΒΑΘΜΟΣ ΕΒΔΟΜΑΔΑΣ · W32</div>
+      <div class="bars">
+        <div class="bar"><span class="bar-l">Ανάθεση</span><span class="bar-t"><i class="bar-f" style="width:82%;--bc:var(--accent-hi)"></i></span><span class="bar-v num">82%</span></div>
+        <div class="bar"><span class="bar-l">Συνέπεια</span><span class="bar-t"><i class="bar-f" style="width:88%;--bc:var(--ok-hi)"></i></span><span class="bar-v num">88%</span></div>
+        <div class="bar"><span class="bar-l">Συμμόρφωση</span><span class="bar-t"><i class="bar-f" style="width:30%;--bc:var(--bad-hi)"></i></span><span class="bar-v num">30%</span></div>
+        <div class="bar"><span class="bar-l">Κενά χλμ</span><span class="bar-t"><i class="bar-f" style="width:74%;--bc:var(--warn-hi)"></i></span><span class="bar-v num">74%</span></div>
+      </div>
+      <div class="receipt" style="width:100%"><b>metrics.weeklyScore()</b><span class="sep">·</span>βάρη 30/30/25/15<span class="sep">·</span>δείγμα 34 παραδόσεις</div>
+    </div>
+  </div>
+
+  <div class="note"><b>Κάθε νούμερο φέρει απόδειξη:</b> η διακεκομμένη γραμμή κάτω από κάθε KPI λέει
+  <b>πηγή · εμβέλεια · δείγμα</b>. Δύο σελίδες δεν μπορούν πια να δείχνουν «το ίδιο» νούμερο χωρίς να
+  φαίνεται ότι μετρούν άλλο πράγμα — εδώ ο χρήστης βλέπει ότι η συνέπεια είναι <b>30 ημερών</b>, όχι «όλα».</div>
+
+  <div class="kpi-row">
+    <button class="instr kpi" style="--acc:var(--bad)">
+      <span class="kpi-lbl">ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-val v-bad num">7<span class="delta d-good">▼ 22%</span></span>
+      <span class="kpi-foot">
+        <span class="receipt"><b>ORDERS</b><span class="sep">·</span>W32<span class="sep">·</span>χωρίς Truck &amp; Partner</span>
+        <svg class="spark" style="width:56px;height:22px" viewBox="0 0 56 22" aria-hidden="true"><polyline points="2,6 13,9 24,7 35,13 46,15 54,17" fill="none" stroke="#F87171" stroke-width="1.6" stroke-linecap="round"/><circle cx="54" cy="17" r="1.8" fill="#F87171"/></svg>
+      </span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-val v-warn num">3<span class="delta d-flat">— 0%</span></span>
+      <span class="kpi-foot">
+        <span class="receipt"><b>ORDERS</b><span class="sep">·</span>W32<span class="sep">·</span>χωρίς Truck &amp; Partner</span>
+        <svg class="spark" style="width:56px;height:22px" viewBox="0 0 56 22" aria-hidden="true"><polyline points="2,12 13,10 24,13 35,11 46,12 54,12" fill="none" stroke="#FBBF24" stroke-width="1.6" stroke-linecap="round"/><circle cx="54" cy="12" r="1.8" fill="#FBBF24"/></svg>
+      </span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--accent)">
+      <span class="kpi-lbl">ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</span>
+      <span class="kpi-val v-acc num">22<small>/27</small><span class="delta d-good">▲ 8%</span></span>
+      <span class="kpi-foot">
+        <span class="receipt"><b>ORDERS × TRUCKS</b><span class="sep">·</span>W32 ISO<span class="sep">·</span>5 ακίνητα</span>
+        <svg class="spark" style="width:56px;height:22px" viewBox="0 0 56 22" aria-hidden="true"><polyline points="2,15 13,13 24,14 35,9 46,8 54,6" fill="none" stroke="#38BDF8" stroke-width="1.6" stroke-linecap="round"/><circle cx="54" cy="6" r="1.8" fill="#38BDF8"/></svg>
+      </span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</span>
+      <span class="kpi-val v-warn num">118<small>km</small><span class="delta d-bad">▲ 14%</span></span>
+      <span class="kpi-foot">
+        <span class="receipt"><b>ORDER_STOPS</b><span class="sep">·</span>μ.ό. 11 ζευγών<span class="sep">·</span>έως 340km</span>
+        <svg class="spark" style="width:56px;height:22px" viewBox="0 0 56 22" aria-hidden="true"><polyline points="2,16 13,14 24,12 35,13 46,9 54,7" fill="none" stroke="#FBBF24" stroke-width="1.6" stroke-linecap="round"/><circle cx="54" cy="7" r="1.8" fill="#FBBF24"/></svg>
+      </span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--ok)">
+      <span class="kpi-lbl">ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</span>
+      <span class="kpi-val v-ok num">88<small>%</small><span class="delta d-good">▲ 3%</span></span>
+      <span class="kpi-foot">
+        <span class="receipt"><b>ORDERS</b><span class="sep">·</span>30 ημέρες<span class="sep">·</span>30/34 εμπρόθεσμες</span>
+        <svg class="spark" style="width:56px;height:22px" viewBox="0 0 56 22" aria-hidden="true"><polyline points="2,10 13,12 24,8 35,9 46,6 54,5" fill="none" stroke="#34D399" stroke-width="1.6" stroke-linecap="round"/><circle cx="54" cy="5" r="1.8" fill="#34D399"/></svg>
+      </span>
+    </button>
+  </div>
+
+  <div class="grid-main">
+    <div class="col">
+      <div class="note"><b>Μία χρονογραμμή αντί για δύο λίστες.</b> Αναχωρήσεις και παραδόσεις μοιράζονται
+      έναν άξονα ώρας: ο dispatcher βλέπει τη μέρα, όχι δύο στήλες που πρέπει να συνδυάσει στο μυαλό του.</div>
+
+      <div class="card">
+        <div class="card-h">
+          <span class="card-t">Η ΜΕΡΑ</span>
+          <div class="chips" style="margin-left:var(--s3)">
+            <button class="chip" aria-pressed="true">Σήμερα</button>
+            <button class="chip" aria-pressed="false">Αύριο</button>
+          </div>
+          <span class="card-m">9 φορτώσεις · 6 παραδόσεις</span>
+        </div>
+        <div class="tl">
+          <div class="tl-row st-ok">
+            <span class="tl-time num">06:30</span>
+            <span class="tl-body"><span class="tl-cli">Φόρτωση · ΚΡΙ ΚΡΙ Α.Ε.</span><span class="tl-rt">Σέρρες → Milano, IT</span></span>
+            <span class="tl-meta"><span class="plate">ΝΒΤ 4471</span><span class="num">33p</span></span>
+          </div>
+          <div class="tl-row st-acc">
+            <span class="tl-time num">08:00</span>
+            <span class="tl-body"><span class="tl-cli">Παράδοση · Barilla SpA</span><span class="tl-rt">Parma, IT</span></span>
+            <span class="tl-meta"><span class="plate">ΙΚΑ 8820</span><span class="num">24p</span></span>
+          </div>
+          <div class="tl-row st-bad">
+            <span class="tl-time num">10:15</span>
+            <span class="tl-body"><span class="tl-cli">Φόρτωση · ΜΕΒΓΑΛ</span><span class="tl-rt">Κουφάλια → Wien, AT</span></span>
+            <span class="tl-meta"><span class="tag t-bad">χωρίς οδηγό</span><span class="num">28p</span></span>
+          </div>
+          <div class="tl-row st-warn">
+            <span class="tl-time num">13:45</span>
+            <span class="tl-body"><span class="tl-cli">Παράδοση · Rewe Group</span><span class="tl-rt">München, DE</span></span>
+            <span class="tl-meta"><span class="plate">ΝΒΤ 3390</span><span class="tag t-warn">+2ω εκτίμηση</span></span>
+          </div>
+          <div class="tl-row st-ok">
+            <span class="tl-time num">16:00</span>
+            <span class="tl-body"><span class="tl-cli">Φόρτωση · ΤΡΙΚΚΗ</span><span class="tl-rt">Τρίκαλα → Βέροια X-Dock</span></span>
+            <span class="tl-meta"><span class="plate">ΚΗΥ 1204</span><span class="num">18p</span></span>
+          </div>
+          <div class="tl-row st-acc">
+            <span class="tl-time num">19:30</span>
+            <span class="tl-body"><span class="tl-cli">Φόρτωση · ΟΛΥΜΠΟΣ</span><span class="tl-rt">Λάρισα → Zagreb, HR</span></span>
+            <span class="tl-meta"><span class="plate">ΙΚΑ 5567</span><span class="num">31p</span></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h">
+          <span class="card-t">ΑΝΑΜΟΝΗ ΑΝΑΘΕΣΗΣ</span>
+          <span class="card-m">10 ανοιχτές · κατά ηλικία</span>
+          <button class="link" style="margin-left:var(--s3)">Όλες ›</button>
+        </div>
+        <div class="card-b flush">
+          <table>
+            <thead><tr><th>Order</th><th>Πελάτης / Δρομολόγιο</th><th>Παράδοση</th><th style="text-align:center">PAL</th><th style="text-align:right">Ηλικία</th></tr></thead>
+            <tbody>
+              <tr class="clickable"><td><b>EXP 2841</b></td><td>ΜΕΒΓΑΛ<br><span style="color:var(--text-dim);font-size:11px">Κουφάλια → Wien, AT</span></td><td class="num">11/08</td><td style="text-align:center" class="num">28</td><td style="text-align:right"><span class="tag t-bad">4 ημ.</span></td></tr>
+              <tr class="clickable"><td><b>EXP 2838</b></td><td>ΚΡΙ ΚΡΙ Α.Ε.<br><span style="color:var(--text-dim);font-size:11px">Σέρρες → Praha, CZ</span></td><td class="num">12/08</td><td style="text-align:center" class="num">33</td><td style="text-align:right"><span class="tag t-bad">3 ημ.</span></td></tr>
+              <tr class="clickable"><td><b>IMP 1192</b></td><td>Ferrero Deutschland<br><span style="color:var(--text-dim);font-size:11px">Stadtallendorf → Βέροια</span></td><td class="num">13/08</td><td style="text-align:center" class="num">22</td><td style="text-align:right"><span class="tag t-warn">31 ώ.</span></td></tr>
+              <tr class="clickable"><td><b>EXP 2845</b></td><td>ΟΛΥΜΠΟΣ<br><span style="color:var(--text-dim);font-size:11px">Λάρισα → Sofia, BG</span></td><td class="num">13/08</td><td style="text-align:center" class="num">19</td><td style="text-align:right"><span class="tag t-ok">6 ώ.</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col col-side">
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΑΚΙΝΗΤΑ ΦΟΡΤΗΓΑ</span><span class="card-m">W32</span></div>
+        <div class="card-b">
+          <div class="note" style="margin-top:0"><b>Ήταν «Αξιοποίηση Στόλου» δύο φορές</b> στην ίδια οθόνη, με δύο
+          διαφορετικούς τύπους. Τώρα το KPI λέει <b>πόσα</b>, η κάρτα λέει <b>ποια</b> — και ο τίτλος δεν επαναλαμβάνεται.</div>
+          <div class="wl">
+            <div class="wl-row"><span class="plate">ΚΗΥ 3382</span><span class="wl-b"><i class="min" style="width:2%"></i></span><span class="num" style="text-align:right;color:var(--text-dim)">0δ</span></div>
+            <div class="wl-row"><span class="plate">ΝΒΤ 7714</span><span class="wl-b"><i class="min" style="width:2%"></i></span><span class="num" style="text-align:right;color:var(--text-dim)">0δ</span></div>
+            <div class="wl-row"><span class="plate">ΙΚΑ 2298</span><span class="wl-b"><i style="width:20%"></i></span><span class="num" style="text-align:right">1δ</span></div>
+            <div class="wl-row"><span class="plate">ΚΗΥ 5510</span><span class="wl-b"><i style="width:20%"></i></span><span class="num" style="text-align:right">1δ</span></div>
+            <div class="wl-row"><span class="plate">ΝΒΤ 1043</span><span class="wl-b"><i style="width:40%"></i></span><span class="num" style="text-align:right">2δ</span></div>
+          </div>
+          <button class="link" style="margin-top:var(--s3)">Βρες τους φορτίο στο Weekly ›</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ</span><button class="link" style="margin-left:auto">Όλες ›</button></div>
+        <div class="card-b flush">
+          <table>
+            <tbody>
+              <tr class="clickable"><td><span class="plate">ΕΜΡ 4199</span></td><td style="color:var(--text-mid)">ΚΤΕΟ</td><td style="text-align:right"><span class="tag t-bad">2,3 χρ. ληγμένο</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΙΚΑ 8820</span></td><td style="color:var(--text-mid)">Ασφάλεια</td><td style="text-align:right"><span class="tag t-bad">5 μήνες</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΝΒΤ 3390</span></td><td style="color:var(--text-mid)">ΚΕΚ</td><td style="text-align:right"><span class="tag t-warn">σε 8 ημ.</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΤΡΛ 2201</span></td><td style="color:var(--text-mid)">FRC</td><td style="text-align:right"><span class="tag t-warn">σε 14 ημ.</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 2. CEO ═══ -->
+<section class="panel" id="p-ceo" role="tabpanel">
+  <div class="ctx">
+    <h1>Η επιχείρηση</h1>
+    <div class="ctx-sub">Scaling Up · Άνθρωποι · Στρατηγική · Εκτέλεση · Ταμείο</div>
+    <div class="ctx-spacer"></div>
+    <div class="chips">
+      <button class="chip" aria-pressed="false">Εβδομάδα</button>
+      <button class="chip" aria-pressed="true">Μήνας</button>
+      <button class="chip" aria-pressed="false">Τρίμηνο</button>
+      <button class="chip" aria-pressed="false">YTD</button>
+    </div>
+  </div>
+
+  <div class="note"><b>Η κατάσταση πριν τη μεθοδολογία.</b> Ο τίτλος ήταν το όνομα του framework· τώρα
+  είναι «Η επιχείρηση» και το Scaling Up γίνεται υπότιτλος. Τα τρία νούμερα που δηλώνεις σημαντικότερα
+  παίρνουν το πάνω τρίτο της οθόνης — <b>με τάση 8 εβδομάδων</b>, που έλειπε. Τα τεταρτημόρια
+  συμπτύσσονται (κλικ στην κεφαλίδα): η εβδομαδιαία ματιά χωρά σε μία οθόνη αντί για τρεις.</div>
+
+  <div class="promises">
+    <div class="instr promise" style="--acc:var(--ok)">
+      <div class="promise-h">
+        <div><div class="promise-name">ΤΑΧΥΤΗΤΑ</div><div class="promise-sub">στο ράφι πιο γρήγορα</div></div>
+        <span class="promise-tgt">στόχος ≥98%</span>
+      </div>
+      <div class="promise-body">
+        <span class="promise-big v-warn num">94,1<small style="font-size:22px">%</small></span>
+        <span class="delta d-good">▲ 2,4%</span>
+      </div>
+      <div class="receipt"><b>ORDERS</b><span class="sep">·</span>Αύγ 2026<span class="sep">·</span>48/51 με Actual Delivery Date</div>
+      <div class="spark-wrap">
+        <span class="spark-lbl">8 εβδ.</span>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="Τάση ταχύτητας">
+          <defs><linearGradient id="g1" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stop-color="#34D399" stop-opacity=".3"/><stop offset="100%" stop-color="#34D399" stop-opacity="0"/></linearGradient></defs>
+          <polygon points="2,32 2,22 30,25 58,18 86,20 114,13 142,15 170,9 198,7 198,32" fill="url(#g1)"/>
+          <polyline points="2,22 30,25 58,18 86,20 114,13 142,15 170,9 198,7" fill="none" stroke="#34D399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="198" cy="7" r="2.6" fill="#34D399"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="instr promise" style="--acc:var(--accent)">
+      <div class="promise-h">
+        <div><div class="promise-name">ΠΟΙΟΤΗΤΑ</div><div class="promise-sub">επιβεβαιωμένη φρεσκάδα</div></div>
+        <span class="promise-tgt">στόχος 100%</span>
+      </div>
+      <div class="promise-body">
+        <span class="promise-big v-none num">—</span>
+        <span class="unknown-badge">ΧΩΡΙΣ ΔΕΙΓΜΑ</span>
+      </div>
+      <div class="receipt"><b>ORDERS.Temp Graph Sent</b><span class="sep">·</span>το πεδίο δεν έχει συμπληρωθεί σε καμία παράδοση</div>
+      <div class="spark-wrap">
+        <span class="spark-lbl">8 εβδ.</span>
+        <svg class="spark" viewBox="0 0 200 34" preserveAspectRatio="none" aria-label="Χωρίς δεδομένα">
+          <line x1="2" y1="17" x2="198" y2="17" stroke="#64798F" stroke-width="2" stroke-dasharray="4 6" stroke-linecap="round" opacity=".55"/>
+        </svg>
+      </div>
+    </div>
+
+    <div class="instr promise" style="--acc:var(--warn)">
+      <div class="promise-h">
+        <div><div class="promise-name">ΗΡΕΜΙΑ</div><div class="promise-sub">μηδέν αγωνία πελάτη</div></div>
+        <span class="promise-tgt">στόχος 0 / εβδ.</span>
+      </div>
+      <div class="promise-body">
+        <span class="promise-big v-warn num">3</span>
+        <span style="font-size:12px;color:var(--i-mid);line-height:1.3">κλήσεις<br>ανησυχίας</span>
+      </div>
+      <div class="receipt"><b>χειροκίνητη καταχώρηση</b><span class="sep">·</span>W32<span class="sep">·</span>τελευταία: W31 = 5</div>
+      <div class="manual">
+        <label for="anx">Αυτή την εβδ.</label>
+        <input id="anx" type="number" value="3" min="0" max="99" class="num">
+        <button>Ενημέρωση</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec-lbl">SCALING UP</div>
+
+  <div class="quads">
+    <div class="quad" data-open="true">
+      <button class="quad-h"><span class="quad-arrow">▾</span><span class="card-t">ΑΝΘΡΩΠΟΙ</span><span class="card-m">14 οδηγοί · 3 διαθέσιμοι</span></button>
+      <div class="quad-b">
+        <div>
+          <div class="mini"><span class="mini-n" style="color:var(--accent)">78,6%</span><span class="mini-l">αξιοποίηση οδηγών</span><span class="mini-r num">11/14 σε δράση</span></div>
+          <span class="track" style="margin-top:6px"><i style="width:78.6%"></i></span>
+        </div>
+        <div>
+          <div class="mini"><span class="mini-n" style="color:var(--warn)">34%</span><span class="mini-l">δρομολόγια συνεργατών</span><span class="mini-r num">17 partner · 33 δικά μας</span></div>
+          <div class="split" style="margin-top:6px"><i style="width:66%;background:var(--accent)"></i><i style="width:34%;background:var(--warn)"></i></div>
+          <div class="legend"><span><b style="background:var(--accent)"></b>Ιδιόκτητα</span><span><b style="background:var(--warn)"></b>Συνεργάτες</span></div>
+        </div>
+        <div>
+          <div class="mini-l" style="margin-bottom:6px">Κατανομή φόρτου</div>
+          <div class="wl">
+            <div class="wl-row"><span>Γιώργος</span><span class="wl-b"><i class="max" style="width:100%"></i></span><span class="num" style="text-align:right">9</span></div>
+            <div class="wl-row"><span>Νίκος</span><span class="wl-b"><i style="width:78%"></i></span><span class="num" style="text-align:right">7</span></div>
+            <div class="wl-row"><span>Θανάσης</span><span class="wl-b"><i style="width:56%"></i></span><span class="num" style="text-align:right">5</span></div>
+            <div class="wl-row"><span>Κώστας</span><span class="wl-b"><i class="min" style="width:22%"></i></span><span class="num" style="text-align:right">2</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="quad" data-open="true">
+      <button class="quad-h"><span class="quad-arrow">▾</span><span class="card-t">ΣΤΡΑΤΗΓΙΚΗ</span><span class="card-m">έσοδα vs στόχος</span></button>
+      <div class="quad-b">
+        <div>
+          <div class="mini"><span class="mini-n" style="color:var(--ok)">€ 58.420</span><span class="delta d-good" style="margin-left:6px;color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent)">▲ 11%</span></div>
+          <div class="mini-l" style="margin-top:2px">117% του στόχου των € 50.000</div>
+          <span class="track" style="margin-top:6px"><i style="width:100%;background:var(--ok)"></i></span>
+          <div class="src-line"><b>ORDERS.Net Price</b> · Αύγ 2026 · 51 φορτία</div>
+        </div>
+        <div>
+          <div class="mini"><span class="mini-n" style="color:var(--warn)">18,4%</span><span class="mini-l">νεκρά χιλιόμετρα</span><span class="mini-r"><span class="est">ΕΚΤΙΜΗΣΗ</span></span></div>
+          <span class="track" style="margin-top:6px"><i style="width:18.4%;background:var(--warn)"></i></span>
+          <div class="note" style="margin-bottom:0"><b>Ρητή ένδειξη εκτίμησης.</b> Όταν λείπουν πεδία χιλιομέτρων,
+          το νούμερο προκύπτει από παραδοχή (50 km ανά ταιριασμένο, 600 ανά αταίριαστο). Το badge δεν είναι
+          διακόσμηση — προειδοποιεί ότι μετράει <b>υπόθεση</b>, όχι διαδρομή.</div>
+        </div>
+        <div>
+          <div class="mini-l" style="margin-bottom:6px">Top 5 πελάτες</div>
+          <table style="font-size:12px">
+            <tbody>
+              <tr><td style="padding:5px 0;border:0"><b>ΚΡΙ ΚΡΙ Α.Ε.</b></td><td style="text-align:right;color:var(--ok);padding:5px 0;border:0" class="num">€ 14.900</td><td style="width:70px;padding:5px 0 5px 8px;border:0"><span class="track"><i style="width:100%"></i></span></td><td style="text-align:right;width:36px;padding:5px 0;border:0" class="num">26%</td></tr>
+              <tr><td style="padding:5px 0;border:0"><b>ΜΕΒΓΑΛ</b></td><td style="text-align:right;color:var(--ok);padding:5px 0;border:0" class="num">€ 11.200</td><td style="padding:5px 0 5px 8px;border:0"><span class="track"><i style="width:75%"></i></span></td><td style="text-align:right;padding:5px 0;border:0" class="num">19%</td></tr>
+              <tr><td style="padding:5px 0;border:0"><b>ΟΛΥΜΠΟΣ</b></td><td style="text-align:right;color:var(--ok);padding:5px 0;border:0" class="num">€ 8.640</td><td style="padding:5px 0 5px 8px;border:0"><span class="track"><i style="width:58%"></i></span></td><td style="text-align:right;padding:5px 0;border:0" class="num">15%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="quad" data-open="false">
+      <button class="quad-h"><span class="quad-arrow">▾</span><span class="card-t">ΕΚΤΕΛΕΣΗ</span><span class="card-m">συνέπεια 94,1% · 4 κρίσιμες · VS 62%</span></button>
+      <div class="quad-b">
+        <div class="mini"><span class="mini-n" style="color:var(--ok)">62%</span><span class="mini-l">χρήση Veroia Switch σε εξαγωγές</span></div>
+        <div class="mini"><span class="mini-n" style="color:var(--accent)">86%</span><span class="mini-l">φορτία με ανατεθειμένο φορτηγό</span></div>
+      </div>
+    </div>
+
+    <div class="quad" data-open="false">
+      <button class="quad-h"><span class="quad-arrow">▾</span><span class="card-t">ΤΑΜΕΙΟ</span><span class="card-m">€ 58.420 · 9 ατιμολόγητα · συντήρηση € 12.380</span></button>
+      <div class="quad-b">
+        <div class="mini"><span class="mini-n" style="color:var(--warn)">9</span><span class="mini-l">παραδοθέντα χωρίς τιμολόγιο</span><span class="mini-r num">€ 9.840 αδρανούν</span></div>
+        <div class="note" style="margin-bottom:0"><b>Ζημιογόνες διαδρομές:</b> ο πίνακας εξαρτάται από τον
+        <b>TRIP_COSTS</b>, που σήμερα επιστρέφει 404. Αντί για κενό πίνακα που διαβάζεται «καμία ζημιά»,
+        η κατάσταση δηλώνεται ρητά.</div>
+        <div class="empty">
+          <span class="unknown-badge" style="color:var(--text-dim);border-color:var(--border)">ΠΗΓΗ ΜΗ ΔΙΑΘΕΣΙΜΗ</span>
+          <div>Ο πίνακας κόστους δρομολογίων δεν απαντά.<br>Δεν σημαίνει «καμία ζημιογόνος διαδρομή».</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 3. ΑΠΟΔΟΣΗ ═══ -->
+<section class="panel" id="p-perf" role="tabpanel">
+  <div class="ctx">
+    <h1>Δημήτρης Πέτρας</h1>
+    <div class="ctx-sub">Ιδρυτής — Έγκριση &amp; Στρατηγική</div>
+    <div class="ctx-spacer"></div>
+    <div class="chips">
+      <button class="chip" aria-pressed="true">W32 τρέχουσα</button>
+      <button class="chip" aria-pressed="false">W31</button>
+      <button class="chip" aria-pressed="false">W30</button>
+      <button class="chip" aria-pressed="false">‹ πίσω</button>
+    </div>
+  </div>
+
+  <div class="note"><b>Ο κανόνας «χωρίς δείγμα, παύλα» ρητά ορατός.</b> Ένα KPI χωρίς μετρήσεις δεν βάφεται
+  κόκκινο — δηλώνει <b>ΧΩΡΙΣ ΔΕΙΓΜΑ</b> και η μπάρα του γίνεται διακεκομμένη. Το κόκκινο κρατιέται για
+  πραγματική αποτυχία· αλλιώς η σελίδα εκπαιδεύει τον χρήστη να την αγνοεί.</div>
+
+  <div class="kpi-row">
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΕΒΔΟΜΑΔΙΑΙΟ ΣΚΟΡ</span>
+      <span class="kpi-val v-warn num">71<small>/100</small><span class="delta d-good">▲ 6%</span></span>
+      <span class="receipt"><b>metrics.weeklyScore()</b><span class="sep">·</span>W32<span class="sep">·</span>στόχος ≥85</span>
+      <span class="bar-t" style="margin-top:6px"><i class="bar-f" style="width:71%;--bc:var(--warn-hi)"></i></span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--accent)">
+      <span class="kpi-lbl">ΦΟΡΤΟΣ ΣΤΟΛΟΥ</span>
+      <span class="kpi-val v-warn num">64<small>%</small><span class="delta d-bad">▼ 5%</span></span>
+      <span class="receipt"><b>ORDERS × TRUCKS</b><span class="sep">·</span>ημέρες δρομολογίου<span class="sep">·</span>στόχος ≥80%</span>
+      <span class="bar-t" style="margin-top:6px"><i class="bar-f" style="width:64%;--bc:var(--warn-hi)"></i></span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</span>
+      <span class="kpi-val v-warn num">118<small>km</small></span>
+      <span class="receipt"><b>ORDER_STOPS</b><span class="sep">·</span>μ.ό. 11 ζευγών<span class="sep">·</span>στόχος ≤50km</span>
+      <span class="bar-t" style="margin-top:6px"><i class="bar-f" style="width:42%;--bc:var(--warn-hi)"></i></span>
+    </button>
+
+    <button class="instr kpi" style="--acc:var(--ok)">
+      <span class="kpi-lbl">ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</span>
+      <span class="kpi-val v-ok num">88<small>%</small><span class="delta d-good">▲ 3%</span></span>
+      <span class="receipt"><b>ORDERS</b><span class="sep">·</span>30 ημέρες<span class="sep">·</span>30/34<span class="sep">·</span>στόχος ≥90%</span>
+      <span class="bar-t" style="margin-top:6px"><i class="bar-f" style="width:97%;--bc:var(--ok-hi)"></i></span>
+    </button>
+  </div>
+
+  <div class="grid-main">
+    <div class="col">
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΤΑΣΗ ΕΒΔΟΜΑΔΙΑΙΟΥ ΣΚΟΡ</span><span class="card-m">τελευταίες 6 εβδομάδες</span></div>
+        <div class="card-b">
+          <div class="bars" style="gap:9px">
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text-mid)">W27</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f unknown"></i></span><span class="bar-v" style="color:var(--text-dim);font-size:9.5px">χωρίς δείγμα</span></div>
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text-mid)">W28</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f" style="width:58%;background:var(--bad)"></i></span><span class="bar-v num" style="color:var(--text)">58</span></div>
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text-mid)">W29</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f" style="width:63%;background:var(--bad)"></i></span><span class="bar-v num" style="color:var(--text)">63</span></div>
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text-mid)">W30</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f" style="width:69%;background:var(--warn)"></i></span><span class="bar-v num" style="color:var(--text)">69</span></div>
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text-mid)">W31</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f" style="width:67%;background:var(--warn)"></i></span><span class="bar-v num" style="color:var(--text)">67</span></div>
+            <div class="bar" style="grid-template-columns:44px 1fr 76px"><span class="bar-l" style="color:var(--text);font-weight:700">W32</span><span class="bar-t" style="background:var(--bg-sunk)"><i class="bar-f" style="width:71%;background:var(--warn)"></i></span><span class="bar-v num" style="color:var(--text);font-weight:700">71</span></div>
+          </div>
+          <div class="note" style="margin-bottom:0"><b>Ίδιος υπολογισμός με την κάρτα.</b> Το γράφημα και το KPI
+          καλούν την ίδια συνάρτηση με τις ίδιες εισόδους — δεν μπορούν να αποκλίνουν. Οι εβδομάδες χωρίς
+          καταγεγραμμένη επίδοση σχεδιάζονται <b>διακεκομμένες</b>, όχι μηδέν.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΠΡΟΣΦΑΤΕΣ ΠΑΡΑΔΟΣΕΙΣ</span><span class="card-m">εκπρόθεσμες πρώτα</span></div>
+        <div class="card-b flush">
+          <table>
+            <thead><tr><th>Ημ/νία</th><th>Δρομολόγιο</th><th style="text-align:center">PAL</th><th style="text-align:right">Επίδοση</th></tr></thead>
+            <tbody>
+              <tr><td class="num">07/08</td><td><b>Λάρισα → München</b></td><td style="text-align:center" class="num">31</td><td style="text-align:right"><span class="tag t-bad">+1 ημέρα</span></td></tr>
+              <tr><td class="num">06/08</td><td><b>Σέρρες → Milano</b></td><td style="text-align:center" class="num">33</td><td style="text-align:right"><span class="tag t-warn">+3 ώρες</span></td></tr>
+              <tr><td class="num">06/08</td><td><b>Βέροια → Wien</b></td><td style="text-align:center" class="num">28</td><td style="text-align:right"><span class="tag t-ok">εγκαίρως</span></td></tr>
+              <tr><td class="num">05/08</td><td><b>Κουφάλια → Zagreb</b></td><td style="text-align:center" class="num">24</td><td style="text-align:right"><span class="tag t-ok">εγκαίρως</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col col-side">
+      <div class="instr score" style="--acc:var(--warn)">
+        <div class="ring" style="--rc:var(--warn-hi);--rd:255deg"><div class="ring-n num">71<small>/100</small></div></div>
+        <div class="score-lbl">W32 · ΣΤΟΧΟΣ ≥85</div>
+        <div class="receipt" style="width:100%;justify-content:center"><b>ίδια πηγή με την κάρτα KPI</b></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΣΤΟΧΟΙ ΕΒΔΟΜΑΔΑΣ</span><span class="card-m">1/3</span></div>
+        <div class="card-b">
+          <div style="display:flex;flex-direction:column;gap:9px;font-size:12.5px">
+            <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" checked><span style="text-decoration:line-through;color:var(--text-dim)">Κλείσιμο ΚΤΕΟ ΕΜΡ 4199</span></label>
+            <label style="display:flex;gap:8px;align-items:center"><input type="checkbox"><span>Ανάθεση όλων των εξαγωγών ως Πέμπτη</span></label>
+            <label style="display:flex;gap:8px;align-items:center"><input type="checkbox"><span>Κενά χλμ κάτω από 80km</span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 4. ΣΤΟΛΟΣ ═══ -->
+<section class="panel" id="p-fleet" role="tabpanel">
+  <div class="ctx">
+    <h1>Επισκόπηση στόλου</h1>
+    <div class="ctx-sub">64 οχήματα · 27 φορτηγά + 37 ρυμούλκες</div>
+    <div class="ctx-spacer"></div>
+    <span class="pill-live"><span class="dot"></span>LIVE · 5′</span>
+  </div>
+
+  <div class="note"><b>Το χειρότερο νούμερο πρώτο — και κλικαμπλ.</b> Το banner ήταν αδιέξοδο
+  <code>&lt;div&gt;</code>· γίνεται κουμπί. Οι 7 κάρτες σε πλέγμα <b>auto-fit</b> — στα 1366 και στα 1024
+  δεν σπάει σειρά. Και η συμμόρφωση δηλώνει τι μετράει: <b>φορτηγά + ρυμούλκες</b>, γι' αυτό διαφέρει
+  από το Dashboard.</div>
+
+  <button class="burn-item sev-bad" style="width:100%;margin-bottom:var(--s3)">
+    <span class="burn-n num">57</span>
+    <span class="burn-txt"><strong>Ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</strong>
+    <em>σε 45 οχήματα · το παλαιότερο ληγμένο εδώ και 2,3 χρόνια</em></span>
+    <span class="burn-go">›</span>
+  </button>
+
+  <div class="kpi-row">
+    <button class="instr kpi" style="--acc:var(--accent)">
+      <span class="kpi-lbl">ΣΥΝΟΛΟ ΣΤΟΛΟΥ</span>
+      <span class="kpi-val v-acc num">64</span>
+      <span class="receipt">27 φορτηγά<span class="sep">·</span>37 ρυμούλκες<span class="sep">·</span><b>ενεργά</b></span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--bad)">
+      <span class="kpi-lbl">ΛΗΓΜΕΝΑ ΚΤΕΟ</span>
+      <span class="kpi-val v-bad num">24</span>
+      <span class="receipt">φορτηγά + ρυμούλκες</span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--bad)">
+      <span class="kpi-lbl">ΛΗΓΜΕΝΑ ΚΕΚ</span>
+      <span class="kpi-val v-bad num">18</span>
+      <span class="receipt">μόνο φορτηγά</span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--bad)">
+      <span class="kpi-lbl">ΛΗΓΜΕΝΑ FRC</span>
+      <span class="kpi-val v-bad num">4</span>
+      <span class="receipt">μόνο ρυμούλκες<span class="sep">·</span>ψυκτική βεβαίωση</span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</span>
+      <span class="kpi-val v-warn num">11</span>
+      <span class="receipt">φορτηγά + ρυμούλκες</span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--warn)">
+      <span class="kpi-lbl">ΛΗΓΟΥΝ &lt;30 ΗΜ.</span>
+      <span class="kpi-val v-warn num">13</span>
+      <span class="receipt">όλοι οι τύποι εγγράφων</span>
+    </button>
+    <button class="instr kpi" style="--acc:var(--bad)">
+      <span class="kpi-lbl">ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</span>
+      <span class="kpi-val v-bad num">30<small>%</small><span class="delta d-good">▲ 4%</span></span>
+      <span class="receipt"><b>19/64</b> χωρίς ληγμένο<span class="sep">·</span>φορτηγά + ρυμούλκες</span>
+    </button>
+  </div>
+
+  <div class="grid-main">
+    <div class="col">
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΣΕ ΚΑΘΥΣΤΕΡΗΣΗ</span><span class="card-m">10 χειρότερα από 57</span><button class="link" style="margin-left:var(--s3)">Δες και τα άλλα 47 ›</button></div>
+        <div class="card-b flush">
+          <table>
+            <thead><tr><th>Πινακίδα</th><th>Έγγραφο</th><th>Έληξε</th><th style="text-align:right">Καθυστέρηση</th></tr></thead>
+            <tbody>
+              <tr class="clickable"><td><span class="plate">ΕΜΡ 4199</span></td><td>ΚΤΕΟ · Ρυμούλκα</td><td class="num">05/04/24</td><td style="text-align:right"><span class="tag t-bad">2,3 χρ.</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΤΡΛ 7788</span></td><td>FRC · Ρυμούλκα</td><td class="num">18/11/25</td><td style="text-align:right"><span class="tag t-bad">9 μήνες</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΙΚΑ 8820</span></td><td>Ασφάλεια · Φορτηγό</td><td class="num">02/03/26</td><td style="text-align:right"><span class="tag t-bad">5 μήνες</span></td></tr>
+              <tr class="clickable"><td><span class="plate">ΚΗΥ 3382</span></td><td>ΚΕΚ · Φορτηγό</td><td class="num">21/06/26</td><td style="text-align:right"><span class="tag t-bad">49 ημ.</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="note"><b>Ξεχωριστή γραμμή για τα «πιθανώς εκτός κυκλοφορίας».</b> Ένα όχημα με έγγραφο
+      ληγμένο πάνω από έναν χρόνο πιθανότατα δεν κυκλοφορεί — και μολύνει κάθε ποσοστό συμμόρφωσης.
+      Η επιβεβαίωση μένει <b>ρητή ενέργεια χρήστη</b>, γιατί αλλιώς το ποσοστό βελτιώνεται τεχνητά.</div>
+
+      <div class="card" style="border-color:color-mix(in srgb,var(--warn) 40%,var(--border))">
+        <div class="card-b" style="display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap">
+          <span class="mini-n" style="color:var(--warn)">14</span>
+          <span style="flex:1;min-width:200px"><b>οχήματα πιθανώς εκτός κυκλοφορίας</b><br>
+          <span style="font-size:11.5px;color:var(--text-dim)">έγγραφο ληγμένο &gt;365 ημέρες · μετρούν σήμερα στον παρονομαστή της συμμόρφωσης</span></span>
+          <button class="link">Επιβεβαίωση ›</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="col col-side">
+      <div class="instr score" style="--acc:var(--bad)">
+        <div class="ring" style="--rc:var(--bad-hi);--rd:108deg"><div class="ring-n num">30<small>%</small></div></div>
+        <div class="score-lbl">ΣΥΜΜΟΡΦΩΣΗ · 19/64</div>
+        <div class="spark-wrap" style="width:100%">
+          <span class="spark-lbl">8 εβδ.</span>
+          <svg class="spark" viewBox="0 0 130 30" preserveAspectRatio="none">
+            <polyline points="2,24 20,23 38,25 56,21 74,20 92,17 110,16 128,13" fill="none" stroke="#F87171" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="128" cy="13" r="2.4" fill="#F87171"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><span class="card-t">ΚΟΣΤΟΣ ΣΥΝΤΗΡΗΣΗΣ</span><span class="card-m">6 μήνες</span></div>
+        <div class="card-b">
+          <div class="mini"><span class="mini-n">€ 12.380</span><span class="delta" style="margin-left:6px;color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)">▲ 18%</span></div>
+          <div class="mini-l" style="margin-top:2px">Αύγουστος · 11 επεμβάσεις</div>
+          <div class="wl" style="margin-top:var(--s3)">
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span>Μαρ</span><span class="wl-b"><i style="width:52%"></i></span><span class="num" style="text-align:right">8,1κ</span></div>
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span>Απρ</span><span class="wl-b"><i style="width:71%"></i></span><span class="num" style="text-align:right">11,2κ</span></div>
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span>Μαϊ</span><span class="wl-b"><i style="width:44%"></i></span><span class="num" style="text-align:right">6,9κ</span></div>
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span>Ιουν</span><span class="wl-b"><i style="width:66%"></i></span><span class="num" style="text-align:right">10,4κ</span></div>
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span>Ιουλ</span><span class="wl-b"><i style="width:67%"></i></span><span class="num" style="text-align:right">10,5κ</span></div>
+            <div class="wl-row" style="grid-template-columns:34px 1fr 58px"><span style="font-weight:700">Αυγ</span><span class="wl-b"><i class="max" style="width:79%"></i></span><span class="num" style="text-align:right;font-weight:700">12,4κ</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 5. ΕΛΕΓΧΟΣ ΜΕΤΡΗΣΕΩΝ ═══ -->
+<section class="panel" id="p-audit" role="tabpanel">
+  <div class="ctx">
+    <h1>Έλεγχος μετρήσεων</h1>
+    <div class="ctx-sub">38 κανονικές μετρήσεις · 12 διασταυρώσεις · 6 σελίδες έχουν αναφέρει</div>
+    <div class="ctx-spacer"></div>
+    <div class="chips"><button class="chip">Αντιγραφή JSON</button><button class="chip">Ανανέωση</button></div>
+  </div>
+
+  <div class="note"><b>Αναγνώσιμο από κάποιον που δεν το έχτισε.</b> Πρώτα η ετυμηγορία σε μία πρόταση,
+  μετά κάθε διαφορά ως <b>σύγκριση σελίδων</b> με τη βάση σημειωμένη. Κόκκινο και πορτοκαλί δεν
+  διακρίνονται μόνο από χρώμα: <b>αριστερή μπάρα + ετικέτα κειμένου</b> («ανεξήγητη» / «δηλωμένη») —
+  διαβάζεται και με αχρωματοψία.</div>
+
+  <div class="verdict">
+    <span class="verdict-n num">2</span>
+    <span class="verdict-t"><strong>ανεξήγητες διαφορές μεταξύ σελίδων</strong>
+    <span>Άλλες 5 διαφορές είναι <b>δηλωμένες</b> — μετρούν σκόπιμα διαφορετικό πράγμα και γράφουν γιατί.</span></span>
+    <span style="margin-left:auto;text-align:right;font-size:11px;color:var(--text-dim)">τελευταία ανάγνωση<br>12:43:27</span>
+  </div>
+
+  <div class="searchbar">
+    <input type="search" placeholder="Αναζήτηση μέτρησης, σελίδας ή κλειδιού…">
+    <button class="chip" aria-pressed="true">Διαφορές</button>
+    <button class="chip" aria-pressed="false">Όλες</button>
+    <button class="chip" aria-pressed="false">Λειτουργικές</button>
+    <button class="chip" aria-pressed="false">Στόλος</button>
+  </div>
+
+  <div class="card diff">
+    <div class="diff-h">
+      <span class="diff-name">Συνέπεια παράδοσης (on-time %)</span>
+      <span class="tag t-bad">1 ανεξήγητη</span>
+      <span class="diff-why">Τρεις σελίδες δείχνουν «on-time» με τρία διαφορετικά παράθυρα χρόνου. Καμία δεν το γράφει.</span>
+    </div>
+    <div class="canon">Κανονική τιμή: <b>88%</b> <span>· metrics.onTimePct() — 30 ημέρες</span></div>
+    <div>
+      <div class="diff-row base">
+        <span class="diff-pg"><strong>Dashboard</strong><code>dashboard.onTimePct</code></span>
+        <span class="diff-val">88%</span>
+        <span class="diff-tag" style="color:var(--text-dim)">βάση σύγκρισης</span>
+      </div>
+      <div class="diff-row fault">
+        <span class="diff-pg"><strong>Απόδοση — κάρτα KPI</strong><code>performance.onTimePct</code></span>
+        <span class="diff-val" style="color:var(--bad)">73%</span>
+        <span class="diff-tag" style="color:var(--bad)">−15 · ανεξήγητη</span>
+        <span class="diff-note">▍Η Απόδοση μετρά <b>όλο το ιστορικό</b>, το Dashboard <b>30 ημέρες</b>. Καμία από τις δύο δεν δηλώνει το παράθυρό της.</span>
+      </div>
+      <div class="diff-row declared">
+        <span class="diff-pg"><strong>CEO — Ταχύτητα</strong><code>ceo.speedScore</code></span>
+        <span class="diff-val" style="color:var(--warn)">94,1%</span>
+        <span class="diff-tag" style="color:var(--warn)">+6 · δηλωμένη</span>
+        <span class="diff-note">▍Μετρά την <b>επιλεγμένη περίοδο</b> (Αύγουστο) και προτιμά το <b>Actual Delivery Date</b> — άλλο μέγεθος, όχι διαφωνία.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card diff">
+    <div class="diff-h">
+      <span class="diff-name">Νεκρά χιλιόμετρα</span>
+      <span class="tag t-bad">1 ανεξήγητη</span>
+      <span class="diff-why">Τρεις μέθοδοι υπολογισμού, δύο μονάδες μέτρησης — και η κανονική συνάρτηση επιστρέφει πάντα 0.</span>
+    </div>
+    <div class="canon" style="color:var(--bad)">Καμία κανονική τιμή: το <code style="font-family:ui-monospace,monospace">metrics.deadKmForPeriod()</code> είναι ημιτελές και δεν υπολογίζει αποστάσεις.</div>
+    <div>
+      <div class="diff-row base">
+        <span class="diff-pg"><strong>Dashboard</strong><code>dashboard.deadKmAvg</code></span>
+        <span class="diff-val">118 km</span>
+        <span class="diff-tag" style="color:var(--text-dim)">βάση σύγκρισης</span>
+      </div>
+      <div class="diff-row base">
+        <span class="diff-pg"><strong>Απόδοση</strong><code>performance.deadKm</code></span>
+        <span class="diff-val">118 km</span>
+        <span class="diff-tag" style="color:var(--ok)">✓ ίδιο</span>
+      </div>
+      <div class="diff-row fault">
+        <span class="diff-pg"><strong>CEO — Στρατηγική</strong><code>ceo.deadKmPct</code></span>
+        <span class="diff-val" style="color:var(--bad)">18,4%</span>
+        <span class="diff-tag" style="color:var(--bad)">ασύγκριτο</span>
+        <span class="diff-note">▍Ποσοστό επί συνολικών χιλιομέτρων, από <b>παραδοχή</b> (50/600 km) — όχι μέσος όρος διαδρομής. Δύο μεγέθη με το ίδιο όνομα.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card diff">
+    <div class="diff-h">
+      <span class="diff-name">Ληγμένα έγγραφα στόλου</span>
+      <span class="tag t-warn">3 δηλωμένες</span>
+      <span class="diff-why">Οι σελίδες μετρούν σκόπιμα διαφορετικά πράγματα — και τώρα το γράφουν.</span>
+    </div>
+    <div class="canon">Βάση: <b>57</b> <span>· Στόλος — έγγραφα, φορτηγά + ρυμούλκες</span></div>
+    <div>
+      <div class="diff-row base">
+        <span class="diff-pg"><strong>Στόλος</strong><code>fleet.expiredDocs</code></span>
+        <span class="diff-val">57</span>
+        <span class="diff-tag" style="color:var(--text-dim)">βάση σύγκρισης</span>
+      </div>
+      <div class="diff-row declared">
+        <span class="diff-pg"><strong>Dashboard</strong><code>dashboard.expiredFleetDocs</code></span>
+        <span class="diff-val" style="color:var(--warn)">53</span>
+        <span class="diff-tag" style="color:var(--warn)">−4 · δηλωμένη</span>
+        <span class="diff-note">▍Για ρυμούλκες διαβάζει <b>ATP + Ασφάλεια</b>· ο Στόλος διαβάζει <b>ΚΤΕΟ + FRC + Ασφάλεια</b>. Τα 4 FRC λείπουν εδώ.</span>
+      </div>
+      <div class="diff-row declared">
+        <span class="diff-pg"><strong>Λήξεις εγγράφων</strong><code>expiry.expiredVehicles</code></span>
+        <span class="diff-val" style="color:var(--warn)">45</span>
+        <span class="diff-tag" style="color:var(--warn)">−12 · δηλωμένη</span>
+        <span class="diff-note">▍Μετρά <b>ΟΧΗΜΑΤΑ</b> με ≥1 ληγμένο έγγραφο, όχι έγγραφα. Άλλο μέγεθος.</span>
+      </div>
+      <div class="diff-row declared">
+        <span class="diff-pg"><strong>Απόδοση — Θοδωρής</strong><code>performance.expiredDocs</code></span>
+        <span class="diff-val" style="color:var(--warn)">31</span>
+        <span class="diff-tag" style="color:var(--warn)">−26 · δηλωμένη</span>
+        <span class="diff-note">▍Μόνο <b>φορτηγά</b> — ο προσωπικός δείκτης του υπεύθυνου εξοπλισμού δεν περιλαμβάνει ρυμούλκες.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card diff">
+    <div class="diff-h">
+      <span class="diff-name">Αριθμός εβδομάδας</span>
+      <span class="tag t-ok">✓ καμία διαφορά</span>
+      <span class="diff-why">Το 31-vs-32 της 4/8. Ενοποιήθηκε — αυτή η γραμμή το κρατά ενοποιημένο.</span>
+    </div>
+    <div class="canon">Κανονική τιμή: <b>32</b> <span>· isoWeekNumber() — core/utils.js</span></div>
+    <div>
+      <div class="diff-row"><span class="diff-pg"><strong>Dashboard</strong><code>dashboard.weekNumber</code></span><span class="diff-val">32</span><span class="diff-tag" style="color:var(--ok)">✓ ίδιο</span></div>
+      <div class="diff-row"><span class="diff-pg"><strong>Απόδοση</strong><code>performance.weekNumberDefault</code></span><span class="diff-val">32</span><span class="diff-tag" style="color:var(--ok)">✓ ίδιο</span></div>
+      <div class="diff-row declared"><span class="diff-pg"><strong>Weekly International</strong><code>weekly_intl.weekNumberDefault</code></span><span class="diff-val" style="color:var(--warn)">32</span><span class="diff-tag" style="color:var(--warn)">δηλωμένη πηγή</span><span class="diff-note">▍Δικός του τύπος (Sunday-start) — συμφωνεί σήμερα, μπορεί να αποκλίνει στα όρια του έτους.</span></div>
+      <div class="diff-row"><span class="diff-pg"><strong>CEO Dashboard</strong><code>ceo.weekNumber</code></span><span class="diff-val">32</span><span class="diff-tag" style="color:var(--ok)">✓ ίδιο</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ 6. COMMAND CENTER ═══ -->
+<section class="panel" id="p-cc" role="tabpanel">
+  <div class="ctx">
+    <h1>Command Center</h1>
+    <div class="ctx-sub">η λωρίδα μέσα στα δύο Weekly — ίδια και στα δύο (κανόνας δίδυμων)</div>
+  </div>
+
+  <div class="note"><b>Ίδια γλώσσα αποδείξεων.</b> Τα widgets αποκτούν τη γραμμή προέλευσης των KPI:
+  η «Αξιοποίηση στόλου» εδώ και στο Dashboard μετρούσαν με <b>διαφορετικό τύπο εβδομάδας</b> — τώρα η
+  εμβέλεια είναι γραμμένη πάνω στο widget, οπότε η διαφορά είναι ορατή αντί για μυστήριο.</div>
+
+  <div class="instr cc">
+    <div class="cc-top">
+      <div class="cc-donut" style="--rd:266deg"><b class="num">74%</b></div>
+      <div style="flex:1;min-width:220px">
+        <div class="cc-title">COMMAND CENTER · W33</div>
+        <div class="cc-chips">
+          <button class="cc-chip crit">▲ 7 χωρίς ανάθεση</button>
+          <button class="cc-chip warn">◆ 12 χωρίς ταίριασμα</button>
+          <button class="cc-chip info">● 3 με φορτηγό χωρίς οδηγό</button>
+          <button class="cc-chip warn">◆ 2 ομάδες GRP</button>
+        </div>
+      </div>
+      <span class="cc-phase">ΧΤΙΖΕΤΑΙ</span>
+    </div>
+    <div class="cc-widgets">
+      <div class="cc-w">
+        <div class="cc-w-l">ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</div>
+        <div class="cc-w-v"><b class="num">18</b><span>/ 27 · 67%</span></div>
+        <span class="track" style="margin-top:5px;background:rgba(255,255,255,.1)"><i style="width:67%;background:var(--warn-hi)"></i></span>
+        <div class="cc-w-r">ORDERS × TRUCKS · W33 (Sunday-start)</div>
+      </div>
+      <div class="cc-w">
+        <div class="cc-w-l">ΧΩΡΙΣ ΕΠΙΣΤΡΟΦΗ</div>
+        <div class="cc-w-v"><b class="num v-warn">12</b><span>9 εξαγ. · 3 εισαγ.</span></div>
+        <div class="cc-w-r">πραγματικά αταίριαστα της εβδομάδας</div>
+      </div>
+      <div class="cc-w">
+        <div class="cc-w-l">ΣΕ ΣΧΕΣΗ ΜΕ W32</div>
+        <div class="cc-w-v"><b class="num">51</b><span>φορτία</span><span class="delta d-good">▲ 6</span></div>
+        <div class="cc-w-r">ανατεθειμένα 38 · ▲ 9%</div>
+      </div>
+      <div class="cc-w">
+        <div class="cc-w-l">ΩΡΑ ΕΝΗΜΕΡΩΣΗΣ</div>
+        <div class="cc-w-v"><b style="font-size:15px">12:41</b><span>πριν 2′</span></div>
+        <div class="cc-w-r">3 χρήστες στη σελίδα τώρα</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note" style="margin-top:var(--s4)"><b>Τι έφυγε:</b> το widget «Συνέπεια παράδοσης» — σε εβδομάδα
+  που <b>χτίζεται</b> είναι εξ ορισμού κενό και δείχνει κόκκινο χωρίς να φταίει κανείς. Η συνέπεια ανήκει
+  στη φάση εκτέλεσης, δηλαδή στο Dashboard και στην Απόδοση.</div>
+</section>
+
+</div>
+
+<script>
+const tabs=[...document.querySelectorAll('.tab')];
+tabs.forEach(t=>t.addEventListener('click',()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+t.dataset.p).classList.add('on');
+  window.scrollTo({top:0,behavior:'smooth'});
+}));
+document.querySelector('.tabs').addEventListener('keydown',e=>{
+  const i=tabs.indexOf(document.activeElement); if(i<0)return;
+  if(e.key==='ArrowRight'){tabs[(i+1)%tabs.length].focus();e.preventDefault();}
+  if(e.key==='ArrowLeft'){tabs[(i-1+tabs.length)%tabs.length].focus();e.preventDefault();}
+});
+const tb=document.getElementById('themeBtn');
+tb.addEventListener('click',()=>{
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.setAttribute('data-theme',dark?'light':'dark');
+  tb.textContent=dark?'Σκούρο':'Φωτεινό';
+});
+const nb=document.getElementById('notesBtn');
+nb.addEventListener('click',()=>{
+  nb.setAttribute('aria-pressed',document.body.classList.toggle('notes'));
+});
+document.querySelectorAll('.quad-h').forEach(h=>h.addEventListener('click',()=>{
+  const q=h.parentElement; q.dataset.open=q.dataset.open==='true'?'false':'true';
+}));
+document.querySelectorAll('.chips, .searchbar').forEach(g=>{
+  g.addEventListener('click',e=>{
+    const c=e.target.closest('.chip'); if(!c)return;
+    [...g.querySelectorAll('.chip')].forEach(x=>x.setAttribute('aria-pressed',x===c));
+  });
+});
+</script>
+</body>
+</html>
