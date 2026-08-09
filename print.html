@@ -302,9 +302,17 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
 // Route strip: μεγάλο «Από → Προς» με ημερομηνίες — το πρώτο που διαβάζεται.
 function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var L=LBL||LBL_EN;
-  function t(x){x=String(x||'').split(',')[0].trim();return x||'—';}
-  var from=(veroiaSwitch&&isExport)?VEROIA:t(f['Loading Summary']);
-  var to=(veroiaSwitch&&!isExport)?VEROIA:t(f['Delivery Summary']);
+  function t(x){x=String(x||'').split(',')[0].trim();return x;}
+  // Fallback στα ORDER_STOPS όταν τα Summaries λείπουν (stops-based orders)
+  function stopName(type,last){
+    var st=orderStops.filter(function(r){return r.fields['Stop Type']===type})
+      .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+    if(!st.length) return '';
+    var loc=resolveLoc(st[last?st.length-1:0].fields['Location']);
+    return loc?loc.name:'';
+  }
+  var from=(veroiaSwitch&&isExport)?VEROIA:(t(f['Loading Summary'])||stopName('Loading',false)||'—');
+  var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||'—');
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
   try{
     if(veroiaSwitch&&isExport&&ld) ld=new Date(new Date(ld).getTime()+86400000).toISOString();
