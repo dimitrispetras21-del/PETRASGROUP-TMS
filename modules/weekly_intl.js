@@ -631,7 +631,7 @@ function _wiImpRowHTML(row,impNo){
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''} — κλικ: αλλαγή">${escapeHtml(impPartner.slice(0,24))}${row.partnerPlates?` <small>${escapeHtml(row.partnerPlates)}</small>`:''}</div>`;
+      impPill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή">${escapeHtml(impPartner.slice(0,22))}${(row.partnerPlates||impSurname)?` <small>${escapeHtml([row.partnerPlates,impSurname].filter(Boolean).join(' '))}</small>`:''}</div>`;
     } else {
       impPill=`<div class="wk3-pill own" title="${escapeHtml([impTruck,impTrailer].filter(Boolean).join(' · '))} — κλικ: αλλαγή">${escapeHtml([impTruck,impTrailer].filter(Boolean).join('·')||'—')}${impSurname?` <small>${escapeHtml(impSurname)}</small>`:''}</div>`;
     }
@@ -873,7 +873,7 @@ function _wiRowHTML(row,i){
   let pill;
   if(row.saved){
     if(partner){
-      pill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner.slice(0,24))}${row.partnerPlates?` <small>${escapeHtml(row.partnerPlates)}</small>`:''}</div>`;
+      pill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner.slice(0,22))}${(row.partnerPlates||surname)?` <small>${escapeHtml([row.partnerPlates,surname].filter(Boolean).join(' '))}</small>`:''}</div>`;
     } else {
       pill=`<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml([truck,trailer].filter(Boolean).join('·')||'—')}${surname?` <small>${escapeHtml(surname)}</small>`:''}</div>`;
     }
