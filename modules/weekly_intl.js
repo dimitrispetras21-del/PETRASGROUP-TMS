@@ -294,6 +294,12 @@ function _wiBuildRows(){
     });
   }
 
+  // ── ΡΟΤΑ (owner 10/8): orders με Rotation ID = σκέλη προώθησης — δεν
+  // εμφανίζονται ως δικές τους γραμμές, κρέμονται κάτω από τον γονέα («⤷»).
+  // Μπαίνουν ΚΑΝΟΝΙΚΑ στο rows[] ώστε διαθεσιμότητα οδηγών/οχημάτων και
+  // επιστροφές να μετρούν από το ΤΕΛΕΥΤΑΙΟ σκέλος.
+  // (σημείωση: τρέχει στο τέλος του _wiBuildRows — δες κάτω)
+
   // ── IMPORT ROWS — sorted by loading date, always draggable ──
   const importsSorted=[...imports].sort((a,b)=>(
     (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||'')
@@ -332,6 +338,17 @@ function _wiBuildRows(){
       saved:!!(truckId||partnerId),
     });
   }
+
+  // Ρότα: σημείωσε τα σκέλη + ομαδοποίησέ τα ανά γονέα, με σειρά φόρτωσης
+  WINTL._legs={};
+  const _ordOf=r=>WINTL.data.exports.find(x=>x.id===(r.orderIds?.[0]||r.orderId))||WINTL.data.imports.find(x=>x.id===(r.orderIds?.[0]||r.orderId));
+  WINTL.rows.forEach(r=>{
+    const o=_ordOf(r);
+    const rot=o?.fields?.['Rotation ID'];
+    if(rot){ r.legOf=rot; (WINTL._legs[rot]=WINTL._legs[rot]||[]).push(r); }
+  });
+  Object.values(WINTL._legs).forEach(a=>a.sort((x,y)=>
+    String(_ordOf(x)?.fields?.['Loading DateTime']||'').localeCompare(String(_ordOf(y)?.fields?.['Loading DateTime']||''))));
 }
 
 /* ── PAINT ─────────────────────────────────────────────────────────── */
@@ -373,9 +390,9 @@ function _wiJumpFirstUnassigned(){
 
 function _wiPaint(){
   const {rows,week,data,ui}=WINTL;
-  const expRows=rows.filter(r=>r.type==='export');
-  const impRows=rows.filter(r=>r.type==='import'&&!r.adj); // γειτονικά εκτός tally
-  const expN=data.exports.length, impN=impRows.length;
+  const expRows=rows.filter(r=>r.type==='export'&&!r.legOf);
+  const impRows=rows.filter(r=>r.type==='import'&&!r.adj&&!r.legOf);
+  const expN=expRows.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
   const matched=impRows.filter(r=>r.matchedTo).length;
@@ -544,8 +561,8 @@ function _wiPaint(){
 
 /* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
-  const expRows=WINTL.rows.filter(r=>r.type==='export');
-  const impRows=WINTL.rows.filter(r=>r.type==='import');
+  const expRows=WINTL.rows.filter(r=>r.type==='export'&&!r.legOf);
+  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf);
   let html='',idx=0,impIdx=0;
 
   // Build date groups — key = raw date string (YYYY-MM-DD)
@@ -603,12 +620,17 @@ function _wiAllRowsHTML(){
       const fb=WINTL.data.imports.find(x=>x.id===b.orderId)?.fields||{};
       return _cKey(fa).localeCompare(_cKey(fb),'el')||((fa['Veroia Switch']?1:0)-(fb['Veroia Switch']?1:0));
     });
-    // Export rows
-    grp.exps.forEach(row=>{ row._alt=alt; html+=_wiRowHTML(row,idx++); });
+    // Export rows (+ σκέλη ρότας του export ΚΑΙ της ταιριασμένης εισαγωγής του)
+    grp.exps.forEach(row=>{ row._alt=alt; html+=_wiRowHTML(row,idx++);
+      const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
+      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+    });
 
     // Only unmatched imports shown as rows — numbered I1… (Β.3-4) so «γραμμή
     // I3» means something on the phone between two dispatchers.
-    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ row._alt=alt; html+=_wiImpRowHTML(row,++impIdx); });
+    grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ row._alt=alt; html+=_wiImpRowHTML(row,++impIdx);
+      (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+    });
   });
 
   // (Owner 10/8: η ενότητα «ΓΕΙΤΟΝΙΚΕΣ ΕΒΔΟΜΑΔΕΣ» αφαιρέθηκε — τη θέση της
@@ -701,6 +723,26 @@ function _wiImpRowHTML(row,impNo){
       <span class="wk3-meta"><span class="wk3-pal">${pals?pals+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span></span>
     </div>
     <div class="wk3-feed r${impVS2?'':' bgap'}" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${impVS2?`<b>${delDt!=='—'?_wk3D(delDt):''}</b>&nbsp;${_wk3LocHTML(toStr,'Παράδοση',f._stopsD)}`:''}</div>
+  </div>`;
+}
+
+// Γραμμή σκέλους ρότας: «⤷ φόρτωση → παράδοση» ενιαία, κλικ = φόρμα,
+// δεξί κλικ = αποσύνδεση. Assignment δεν έχει — κληρονομεί του γονέα.
+function _wiLegRowHTML(legRow){
+  const o=WINTL.data.exports.find(x=>x.id===(legRow.orderIds?.[0]||legRow.orderId))||WINTL.data.imports.find(x=>x.id===(legRow.orderIds?.[0]||legRow.orderId));
+  if(!o) return '';
+  const f=o.fields||{};
+  const ld=_wiFmt(f['Loading DateTime']), dd=_wiFmt(f['Delivery DateTime']);
+  const dir=(f['Direction']==='Import')?'import':'export';
+  return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: αποσύνδεση"
+      onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
+    <div class="wk3-num" style="color:var(--accent);font-weight:800">⤷</div>
+    <div class="wk3-feed l bgap"></div>
+    <div class="wk3-leg" style="grid-column:3/6;cursor:pointer">
+      <span class="wk3-route"><b class="wk3-ld">${ld!=='—'?_wk3D(ld):''}</b><span class="frm">${_wk3LocHTML(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld">${dd!=='—'?_wk3D(dd):''}</b><span class="to">${_wk3LocHTML(f['Delivery Summary']||'—','Παράδοση',f._stopsD)}${(f['Order Number']||f['Reference'])?`<span class="wk3-ordn">${escapeHtml(String(f['Order Number']||f['Reference']))}</span>`:''}</span></span>
+      <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button></span>
+    </div>
+    <div class="wk3-feed r bgap"></div>
   </div>`;
 }
 
@@ -1953,6 +1995,12 @@ function _wiCtx(e,rowId){
   }else if(row.type==='export'&&!row.saved){
     html+=`<div class="wi-ctx-h">Groupage — καμία συμβατή (όριο 33 παλ, τώρα ${myPals}p)</div>`;
   }
+  const rc=_wiRotCands(row);
+  if(rc.length){
+    html+=`<div class="wi-ctx-h">⤷ Σκέλος προώθησης (ρότα)</div>`;
+    rc.forEach(c2=>{ html+=btn(`⤷ ${c2.lbl}`,`_wiRotAdd(${rowId},'${c2.oid}')`); });
+    html+=`<div class="wi-ctx-sep"></div>`;
+  }
   if(isGroup) html+=btn('Split groupage',`_wiSplit(${rowId})`);
   if(row.importId) html+=btn('Remove import',`_wiRemoveImport(${rowId})`);
   if(row.saved) html+=btn('Clear assignment',`_wiClear(${rowId})`);
@@ -1964,6 +2012,56 @@ function _wiCtx(e,rowId){
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
+
+// Ρότα: υποψήφια σκέλη για γονέα-order — διεθνή, χωρίς δική τους ρότα,
+// όχι ο ίδιος/η ταιριασμένη του εισαγωγή, φόρτωση από τη φόρτωση του γονέα
+// και μετά. Επιστρέφει [{oid,lbl}].
+function _wiRotCands(parentRow){
+  const pOid=parentRow.type==='import'?parentRow.orderId:parentRow.orderIds?.[0];
+  const po=WINTL.data.exports.find(x=>x.id===pOid)||WINTL.data.imports.find(x=>x.id===pOid);
+  if(!po) return [];
+  const pLoad=String(po.fields['Loading DateTime']||'');
+  const out=[];
+  for(const r of WINTL.rows){
+    if(r.id===parentRow.id||r.legOf||r.adj) continue;
+    const oid=r.type==='import'?r.orderId:r.orderIds?.[0];
+    if(!oid||oid===pOid||oid===parentRow.importId) continue;
+    const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
+    if(!o||o.fields['Rotation ID']) continue;
+    if(String(o.fields['Loading DateTime']||'')<pLoad) continue;
+    const lbl=`${_wk3D(_wiFmt(o.fields['Loading DateTime']))} ${_wk3Loc(o.fields['Loading Summary']||'—')} → ${_wk3Loc(o.fields['Delivery Summary']||'—')}`.slice(0,40);
+    out.push({oid,lbl});
+    if(out.length>=6) break;
+  }
+  return out;
+}
+async function _wiRotAdd(parentRowId, legOid){
+  const pr=WINTL.rows.find(r=>r.id===parentRowId); if(!pr) return;
+  const pOid=pr.type==='import'?pr.orderId:pr.orderIds?.[0];
+  const patch={'Rotation ID':pOid};
+  // Το σκέλος κληρονομεί όχημα/οδηγό του γονέα (ίδιο φορτηγό συνεχίζει)
+  if(pr.truckId)   patch['Truck']=[pr.truckId];
+  if(pr.trailerId) patch['Trailer']=[pr.trailerId];
+  if(pr.driverId)  patch['Driver']=[pr.driverId];
+  try{
+    const res=await atSafePatch(TABLES.ORDERS,legOid,patch);
+    if(res?.error) throw new Error(res.error.message||res.error.type);
+    toast('⤷ Σκέλος συνδέθηκε στη ρότα ✓');
+    renderWeeklyIntl();
+  }catch(e){ reportError('Η σύνδεση σκέλους απέτυχε',e); }
+}
+async function _wiRotUnlink(e,legOid){
+  e.preventDefault(); e.stopPropagation();
+  const ok=await confirmAction('Αποσύνδεση του σκέλους από τη ρότα; (Η ανάθεση οχήματος μένει ως έχει.)',
+    {title:'Ρότα',confirmLabel:'Αποσύνδεση'});
+  if(!ok) return;
+  try{
+    const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
+    if(res?.error) throw new Error(res.error.message||res.error.type);
+    toast('Σκέλος αποσυνδέθηκε ✓');
+    renderWeeklyIntl();
+  }catch(err){ reportError('Η αποσύνδεση απέτυχε',err); }
+}
 
 // Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
 // σε προηγούμενη/επόμενη εβδομάδα (μετακινεί τις ημερομηνίες ±7 ημέρες).
@@ -1983,6 +2081,12 @@ function _wiImpCtx(e,rowId){
       const op=_wiRowPals(o);
       html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiImpGroup(${rowId},${o.id})`);
     });
+    html+=`<div class="wi-ctx-sep"></div>`;
+  }
+  const rc2=_wiRotCands(row);
+  if(rc2.length){
+    html+=`<div class="wi-ctx-h">⤷ Σκέλος προώθησης (ρότα)</div>`;
+    rc2.forEach(c2=>{ html+=btn(`⤷ ${c2.lbl}`,`_wiRotAdd(${rowId},'${c2.oid}')`); });
     html+=`<div class="wi-ctx-sep"></div>`;
   }
   html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
@@ -2196,6 +2300,8 @@ document.addEventListener('dragover',function(e){
 window._wk3FlashSugs = _wk3FlashSugs;
 window._wk3Edit = _wk3Edit;
 window._wiImpCtx = _wiImpCtx;
+window._wiRotAdd = _wiRotAdd;
+window._wiRotUnlink = _wiRotUnlink;
 window._wiImpShift = _wiImpShift;
 window._wiImpGroup = _wiImpGroup;
 
