@@ -10,11 +10,11 @@
 
 async function _paFindExisting(parentType, parentId) {
   const fld = parentType === 'nat_load' ? F.PA_NAT_LOAD : F.PA_ORDER;
-  const filterByFormula = `FIND('${parentId}', ARRAYJOIN({${fld}}, ','))`;
-  // Facade quirk (μετρήθηκε 10/8): ρητό fields[] με μη-χαρτογραφημένο πεδίο
-  // (Nat Load — unwired μέχρι το TRIPS migration) → 422 σε ΚΑΘΕ save του
-  // order-sync. Full records: ο facade τα σερβίρει όλα χωρίς validation.
-  return atGetAll(TABLES.PARTNER_ASSIGN, { filterByFormula }, false);
+  // Facade (μετρήθηκε 10/8): το FIND/ARRAYJOIN ΔΕΝ υποστηρίζεται σε αυτόν
+  // τον πίνακα («Unsupported query for this table», 422 σε κάθε save μέσω
+  // order-sync). Ο πίνακας είναι μικρός (~28 rows): φέρε όλα, φίλτραρε εδώ.
+  const all = await atGetAll(TABLES.PARTNER_ASSIGN, {}, false);
+  return (all || []).filter(r => Array.isArray(r.fields[fld]) && r.fields[fld].includes(parentId));
 }
 
 /**
@@ -86,7 +86,8 @@ async function paSyncStatus({ parentType, parentId, status }) {
  */
 async function paListByPartner(partnerId) {
   if (!partnerId) return [];
-  const filterByFormula = `FIND('${partnerId}', ARRAYJOIN({${F.PA_PARTNER}}, ','))`;
-  // Ίδιο quirk με το _paFindExisting — full records αντί για fields[].
-  return atGetAll(TABLES.PARTNER_ASSIGN, { filterByFormula }, false);
+  // Ίδιο με _paFindExisting: χωρίς server-side filter (unsupported) —
+  // όλα τα (~28) records και φίλτρο εδώ.
+  const all = await atGetAll(TABLES.PARTNER_ASSIGN, {}, false);
+  return (all || []).filter(r => Array.isArray(r.fields[F.PA_PARTNER]) && r.fields[F.PA_PARTNER].includes(partnerId));
 }
