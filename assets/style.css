@@ -4184,6 +4184,10 @@ button.sidebar-toggle {
 .dash-wrap .dash-card {
   background: var(--bg-card);
   border-color: var(--border);
+  /* ΚΡΙΣΙΜΟ: υπάρχει κανόνας «.dash-card, .aic-panel, … { color: #fff }»
+     γραμμένος όταν ΟΛΕΣ οι κάρτες ήταν σκούρες. Χωρίς αυτή τη γραμμή, η
+     ανοιχτή κάρτα κρατά ΛΕΥΚΟ κείμενο και δείχνει εντελώς κενή. */
+  color: var(--text);
   box-shadow: 0 1px 2px rgba(11,25,41,0.06), 0 4px 16px rgba(11,25,41,0.05);
   --dc-card-bg: var(--bg-card);
   --dc-card-bg-hover: var(--bg-hover);
@@ -4279,6 +4283,10 @@ button.sidebar-toggle {
 }
 .dash-kpi {
   background: var(--dc-card-bg);
+  /* Το όργανο μένει σκούρο, άρα το κείμενό του πρέπει να είναι ανοιχτό.
+     Κληρονομούσε το σκούρο του φύλλου εργασίας — ό,τι παιδί δεν όριζε
+     δικό του χρώμα γινόταν σκούρο πάνω σε navy, δηλαδή αόρατο. */
+  color: var(--dc-text);
   border: 1px solid var(--dc-card-border);
   border-radius: var(--radius-md);
   padding: var(--space-4) var(--space-4) var(--space-3);
