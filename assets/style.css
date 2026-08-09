@@ -2255,6 +2255,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-leg.gap{background:rgba(220,38,38,.06);cursor:pointer}
 .wk3-leg.gap:hover{background:rgba(220,38,38,.12)}
 .wk3-leg.dh{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-light)}
+/* Owner (9/8): partner με ανάθεση, χωρίς απέναντι σκέλος → «μαύρο» (navy) πεδίο */
+.wk3-leg.bgap{background:var(--navy-mid,#0B1929)}
+.wk3-leg.bgap:hover{background:#13253A}
+/* πολλαπλά σημεία φόρτωσης/παράδοσης — ×N με αριθμημένο tooltip */
+.wk3-mstop{font-size:8px;font-weight:800;color:var(--accent);background:var(--accent-light);border-radius:999px;padding:1px 5px;cursor:help;vertical-align:1px;flex-shrink:0;margin-left:3px}
+/* RISK = σκέτο κόκκινο θαυμαστικό (owner 9/8) */
+.wk3 .wi-b-risk{background:none !important;border:none !important;color:#DC2626 !important;font-weight:900;font-size:12.5px;padding:0 2px}
 .wk3-unm{flex-shrink:0;color:var(--text-dim);font-size:11px;padding:2px 6px;border-radius:5px;background:none;border:none;cursor:pointer}
 .wk3-unm:hover{color:var(--danger);background:rgba(220,38,38,.08)}
 .wk3-feed{height:100%;display:flex;align-items:center;padding:0 9px;font-size:9px;color:var(--text-mid);
