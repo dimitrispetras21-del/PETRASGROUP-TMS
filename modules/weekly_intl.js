@@ -74,16 +74,23 @@ function _wiPulseRow(rowId) {
 
 /* ── CSS moved to assets/style.css ── */
 /* ── UTILS ─────────────────────────────────────────────────────────── */
-// Week number matching Airtable WEEKNUM (Sunday-start)
-function _wiCurrentWeek(){
-  const d=new Date(),y=d.getFullYear(),j=new Date(y,0,1);
+// Owner (10/8, feedback dispatcher): η εβδομάδα προβολής ξεκινά ΣΑΒΒΑΤΟ και
+// κλείνει Παρασκευή (εξοικείωση από το Excel). Display-level μόνο: κρατάμε
+// την αρίθμηση WEEKNUM, μετατοπίζουμε το όριο μία μέρα νωρίτερα — μια
+// ημερομηνία ανήκει στη νέα εβδομάδα Ν αν η (ημερομηνία+1μέρα) ανήκε στην
+// παλιά (Κυριακή-start). Τα αποθηκευμένα δεδομένα/VS dates δεν αλλάζουν.
+function _wiWeekNumOf(d){
+  const y=d.getFullYear(),j=new Date(y,0,1);
   return Math.ceil(((d-j)/86400000+j.getDay()+1)/7);
 }
-// Week start (Sunday) for a given week number — matches Airtable WEEKNUM
+function _wiCurrentWeek(){
+  return _wiWeekNumOf(new Date(Date.now()+86400000));
+}
+// Week start για εβδομάδα w — πλέον ΣΑΒΒΑΤΟ (Κυριακή παλιάς αρίθμησης −1μέρα)
 function _wiWeekStart(w){
   const y=new Date().getFullYear(),jan1=new Date(y,0,1);
   const firstSun=new Date(jan1); firstSun.setDate(jan1.getDate()-jan1.getDay());
-  const ws=new Date(firstSun); ws.setDate(firstSun.getDate()+(w-1)*7);
+  const ws=new Date(firstSun); ws.setDate(firstSun.getDate()+(w-1)*7-1); // Σάββατο
   return ws;
 }
 function _wiWeekRange(w){
@@ -174,12 +181,19 @@ async function renderWeeklyIntl(){
     const ws=_wiWeekStart(WINTL.week);
     const we=new Date(ws); we.setDate(ws.getDate()+6);
     const wsFmt=toLocalDate(ws), weFmt=toLocalDate(we);
-    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}'))`;
+    WINTL._range={ws:wsFmt,we:weFmt};
+    // Cross-week (feedback dispatcher 19/5): φόρτωσε imports ±1 εβδομάδα ώστε
+    // export της W να ταιριάζει με import της W±1 — τα γειτονικά αδιάθετα
+    // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
+    const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))`;
 
-    const [,,expOrders,impOrders] = await Promise.all([
+    let [,,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
       Promise.resolve(), // placeholder to keep destructuring aligned
-      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',{Week Number}=${WINTL.week})`},false),
+      // Σαβ–Παρ (display): date-range αντί {Week Number} — υπερσύνολο με OR
+      // στα δύο dates, ακριβές κόψιμο client-side ώστε να μη χαθεί καμία
+      // εγγραφή χωρίς Delivery DateTime.
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}')),AND(IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}'))))`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
@@ -191,6 +205,11 @@ async function renderWeeklyIntl(){
     // ── Inject Loading/Delivery Summary from ORDER_STOPS for new orders ──
     await _wiInjectStopSummaries([...expOrders, ...impOrders]);
 
+    // Ακριβές όριο εβδομάδας (Σαβ–Παρ) στην effective ημερομηνία (Delivery ή Loading)
+    expOrders = expOrders.filter(r=>{
+      const eff=toLocalDate(r.fields['Delivery DateTime']||r.fields['Loading DateTime']||'');
+      return eff>=wsFmt && eff<=weFmt;
+    });
     WINTL.data.exports = expOrders
       .sort((a,b)=>(
         (a.fields['Delivery DateTime']||a.fields['Loading DateTime']||'')
@@ -278,7 +297,12 @@ function _wiBuildRows(){
     const partnerId=(f['Partner']||[])[0]||'';
     const impTrailerId=(f['Trailer']||[])[0]||'';
     const impDriverId =(f['Driver'] ||[])[0]||'';
+    // Cross-week: import εκτός τρέχουσας Σαβ–Παρ = «γειτονικό» — δική του
+    // ενότητα στο τέλος, εκτός tally/ομάδων ημερών.
+    const _ld=toLocalDate(f['Loading DateTime']||'');
+    const _adj=!!(WINTL._range&&_ld&&(_ld<WINTL._range.ws||_ld>WINTL._range.we));
     WINTL.rows.push({
+      adj:_adj, adjW:_adj?_wiWeekOf(f['Loading DateTime']):null,
       id:          ++WINTL._seq,
       type:        'import',
       orderId:     imp.id,
@@ -338,8 +362,8 @@ function _wiJumpFirstUnassigned(){
 function _wiPaint(){
   const {rows,week,data,ui}=WINTL;
   const expRows=rows.filter(r=>r.type==='export');
-  const impRows=rows.filter(r=>r.type==='import');
-  const expN=data.exports.length, impN=data.imports.length;
+  const impRows=rows.filter(r=>r.type==='import'&&!r.adj); // γειτονικά εκτός tally
+  const expN=data.exports.length, impN=impRows.length;
   const assigned=expRows.filter(r=>r.saved).length;
   const pending=expRows.filter(r=>!r.saved).length;
   const matched=impRows.filter(r=>r.matchedTo).length;
@@ -524,7 +548,7 @@ function _wiAllRowsHTML(){
     groups[raw].exps.push(row);
   });
 
-  impRows.forEach(row=>{
+  impRows.filter(r=>!r.adj).forEach(row=>{
     const imp=WINTL.data.imports.find(r=>r.id===row.orderId);
     const raw=toLocalDate(imp?.fields['Loading DateTime']||'');
     const lbl=raw?_wiFmtFull(imp?.fields['Loading DateTime']||''):'—';
@@ -574,6 +598,14 @@ function _wiAllRowsHTML(){
     // I3» means something on the phone between two dispatchers.
     grp.imps.filter(r=>!r.matchedTo).forEach(row=>{ row._alt=alt; html+=_wiImpRowHTML(row,++impIdx); });
   });
+
+  // Cross-week (feedback dispatcher 19/5): αδιάθετες εισαγωγές των W±1 —
+  // σύρε τες πάνω σε export της τρέχουσας για ταίριασμα μεταξύ εβδομάδων.
+  const adjRows=impRows.filter(r=>r.adj&&!r.matchedTo);
+  if(adjRows.length){
+    html+=`<div class="wk3-dayh" style="background:#334155"><span class="d">ΓΕΙΤΟΝΙΚΕΣ ΕΒΔΟΜΑΔΕΣ</span><span class="k">${adjRows.length} εισαγ χωρίς ταίριασμα · σύρε πάνω σε εξαγωγή αυτής της εβδομάδας</span></div>`;
+    adjRows.forEach(row=>{ row._alt=false; html+=_wiImpRowHTML(row,++impIdx); });
+  }
 
   return html;
 }
@@ -648,7 +680,7 @@ function _wiImpRowHTML(row,impNo){
     class="wk3-row impr${row._alt?' alt':''}"
     draggable="true"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}</div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${row.adj&&row.adjW?`<span class="wk3-grpb" style="background:#475569" title="Εισαγωγή της W${row.adjW}">W${row.adjW}</span>`:''}</div>
     <div class="wk3-feed l bgap" title="Χωρίς εθνικό σκέλος"></div>
     <div class="wk3-leg void${row.saved&&!impPartner?' gap':''}${(row.saved&&impPartner)||!row.saved?' bgap':''}"
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
@@ -813,7 +845,7 @@ function _wiExecChip(f, saved){
 }
 // T4: exports live in their DELIVERY week — flag the ones loading in another
 // week, because in that week's view this line does NOT exist.
-function _wiWeekOf(dt){ if(!dt) return null; try{const d=new Date(dt),y=d.getFullYear(),j=new Date(y,0,1); return Math.ceil(((d-j)/864e5+j.getDay()+1)/7);}catch{return null;} }
+function _wiWeekOf(dt){ if(!dt) return null; try{return _wiWeekNumOf(new Date(new Date(dt).getTime()+86400000));}catch{return null;} }
 function _wiCrossChip(f){
   const lw=_wiWeekOf(f?.['Loading DateTime']);
   if(lw==null||lw===WINTL.week) return '';
@@ -2059,6 +2091,15 @@ window._wiPulseRow = _wiPulseRow;
 window._wk3Gaps = _wk3Gaps;
 window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
 window._wk3Accept = _wk3Accept;
+// Feedback dispatcher (19/5): drag import προς μέρα εκτός οθόνης απαιτούσε
+// zoom-out — τώρα το φύλλο κυλάει μόνο του όταν το drag πλησιάζει τις άκρες.
+document.addEventListener('dragover',function(e){
+  if(!window._wiDragging) return;
+  const sh=document.querySelector('.wk3-sheet'); if(!sh) return;
+  const r=sh.getBoundingClientRect();
+  if(e.clientY<r.top+70) sh.scrollTop-=16;
+  else if(e.clientY>r.bottom-70) sh.scrollTop+=16;
+});
 window._wk3FlashSugs = _wk3FlashSugs;
 window._wk3Edit = _wk3Edit;
 

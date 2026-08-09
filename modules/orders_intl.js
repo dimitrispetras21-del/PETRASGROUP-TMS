@@ -627,6 +627,30 @@ function openIntlEdit(recId) {
   if (rec) _openModal(recId, rec.fields);
 }
 
+// Feedback dispatcher (19/5): επαναλαμβανόμενες φορτώσεις ίδιου πελάτη
+// (LABIDINO Δευ/Τετ/Παρ) → νέα φόρμα προσυμπληρωμένη από υπάρχον order.
+// Καθαρίζονται τα ανά-δρομολόγιο πεδία (αναθέσεις, αριθμοί, status).
+async function duplicateIntlOrder(recId) {
+  let f = INTL_ORDERS.data.find(r=>r.id===recId)?.fields;
+  if (!f && window.WINTL) {
+    const w = (WINTL.data.exports||[]).find(r=>r.id===recId) || (WINTL.data.imports||[]).find(r=>r.id===recId);
+    f = w && w.fields;
+  }
+  if (!f) { toast('Δεν βρέθηκε η παραγγελία', 'warn'); return; }
+  const skip = new Set(['Order Number','Week Number','ORDER STOPS','Status','Truck','Trailer','Driver',
+    'Partner','Is Partner Trip','Partner Rate','Partner Truck Plates','Matched Import ID',
+    'NATIONAL ORDERS','Group ID','Created','Last Modified']);
+  const copy = {};
+  for (const k of Object.keys(f)) if (!skip.has(k)) copy[k] = f[k];
+  let stopsPre = null;
+  try {
+    const st = await stopsLoad(recId, F.STOP_PARENT_ORDER);
+    if (st.length) stopsPre = st.map(s => ({ fields: { ...s.fields } }));
+  } catch(e) {}
+  closeModal();
+  await _openModal(null, copy, null, stopsPre);
+}
+
 async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   const isEdit = !!recId;
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
@@ -769,6 +793,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
     </div>`;
 
   const footer = `
+    ${isEdit?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">⧉ Διπλασιασμός</button>`:''}
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">
       ${isEdit?'Save Changes':'Submit'}
@@ -2692,6 +2717,7 @@ window.openIntlCreate = openIntlCreate;
 window.openIntlEdit = openIntlEdit;
 // Weekly v3: άνοιγμα φόρμας με fields από τον καλούντα (το weekly έχει δικά του records)
 window.openIntlEditWith = (recId, fields) => _openModal(recId, fields||{});
+window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
 window.toggleIntlInvoiced = toggleIntlInvoiced;
 window._intlSortToggle = _intlSortToggle;

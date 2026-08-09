@@ -91,9 +91,10 @@ function confirmAction(message, opts = {}) {
 if (typeof window !== 'undefined') window.confirmAction = confirmAction;
 
 function initModal() {
-  document.getElementById('modalOverlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('modalOverlay')) closeModal();
-  });
+  // Feedback dispatcher (19/5): κλικ έξω από τη φόρμα έκλεινε το modal και
+  // χάνονταν τα μισογραμμένα στοιχεία. Το backdrop ΔΕΝ κλείνει πια — μόνο
+  // ✕ / Cancel / Escape.
+
   // Trap focus inside modal + Escape to close
   document.addEventListener('keydown', e => {
     const overlay = document.getElementById('modalOverlay');
