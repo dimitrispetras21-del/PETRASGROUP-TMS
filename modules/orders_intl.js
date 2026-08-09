@@ -1765,6 +1765,7 @@ async function _checkPalletSheets(recId) {
 // ═══════════════════════════════════════════════
 
 function openIntlScan() {
+  if (typeof scanSyncTrainingFromServer === 'function') scanSyncTrainingFromServer();
   document.getElementById('modal').style.maxWidth = '520px';
   openModal('New Order from Scan', `
     <div style="text-align:center;padding:4px 0 20px">

@@ -351,13 +351,12 @@ function scanSaveCorrection(docType, userInputSummary, aiOutput, correctedOutput
   // 2. Airtable write — async, best-effort
   const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
   if (tableId && typeof atCreate === 'function') {
+    // Schema scan_examples (10/8): doc_type / client_id (text) / corrected (jsonb)
     const fields = {
       'Doc Type': docType,
-      'Summary': userInputSummary || '',
-      'AI Output':   JSON.stringify(aiOutput).slice(0, 50000),
-      'Corrected':   JSON.stringify(correctedOutput).slice(0, 50000),
+      'Corrected': JSON.stringify(correctedOutput).slice(0, 50000),
     };
-    if (clientId) fields['Client'] = [clientId];
+    if (clientId) fields['Client ID'] = clientId;
     atCreate(tableId, fields).catch(e => {
       console.warn('[scan] save correction (airtable) failed:', e.message);
     });
@@ -373,6 +372,40 @@ function scanSaveCorrection(docType, userInputSummary, aiOutput, correctedOutput
  * @param {string} [hintClientId]  if provided, prefer examples from this client
  * @returns {Array} corrections sorted by relevance
  */
+// Κοινή μάθηση (owner 10/8): τα παραδείγματα ζουν στη Supabase — κάθε
+// browser συγχρονίζει στο άνοιγμα του σκαν, ώστε οι διορθώσεις του ενός
+// dispatcher να διδάσκουν τα σκαν όλων. Merge στο localStorage (dedupe _srv).
+let _scanSynced = false;
+async function scanSyncTrainingFromServer() {
+  if (_scanSynced) return; _scanSynced = true;
+  const tableId = (typeof TABLES !== 'undefined' && TABLES.SCAN_TRAINING) || null;
+  if (!tableId || typeof atGetAll !== 'function') return;
+  try {
+    const recs = await atGetAll(tableId, {}, false);
+    if (!recs || !recs.length) return;
+    let list = [];
+    try { list = JSON.parse(localStorage.getItem(SCAN_TRAINING_KEY) || '[]'); } catch (e) {}
+    const seen = new Set(list.map(e => e._srv).filter(Boolean));
+    let added = 0;
+    for (const r of recs) {
+      if (seen.has(r.id)) continue;
+      let corrected = r.fields['Corrected'];
+      if (typeof corrected === 'string') { try { corrected = JSON.parse(corrected); } catch (e) { continue; } }
+      if (!corrected) continue;
+      list.push({ ts: Date.parse(r.fields['Created At'] || '') || 0, _srv: r.id,
+        docType: r.fields['Doc Type'] || 'UNKNOWN', clientId: r.fields['Client ID'] || null,
+        summary: '', ai: null, corrected });
+      added++;
+    }
+    if (added) {
+      list.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+      if (list.length > SCAN_TRAINING_MAX * 3) list.length = SCAN_TRAINING_MAX * 3;
+      localStorage.setItem(SCAN_TRAINING_KEY, JSON.stringify(list));
+    }
+  } catch (e) { console.warn('[scan] training sync failed:', e.message); }
+}
+if (typeof window !== 'undefined') window.scanSyncTrainingFromServer = scanSyncTrainingFromServer;
+
 function scanGetTrainingExamples(docType, limit = 3, hintClientId = null) {
   try {
     let list = JSON.parse(localStorage.getItem(SCAN_TRAINING_KEY) || '[]');
