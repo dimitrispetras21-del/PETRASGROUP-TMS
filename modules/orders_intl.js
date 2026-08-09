@@ -1893,8 +1893,20 @@ Set client_id and location_id fields in the JSON output when tools return a conf
 
     const messages = [];
 
-    // Few-shot examples (last 3 successful extractions of same type) — Phase 3.2
-    const examples = scanGetTrainingExamples(docType, 3);
+    // Template memory (#2, owner 10/8): μάντεψε τον αποστολέα από το όνομα
+    // αρχείου (π.χ. «lidl_order_4711.pdf») — τα διορθωμένα παραδείγματα του
+    // ΙΔΙΟΥ πελάτη μπαίνουν πρώτα στο few-shot (το store το υποστήριζε ήδη).
+    let hintClientId = null;
+    try {
+      const fn = (file.name || '').toLowerCase();
+      const cl = (typeof getRefClients === 'function' ? getRefClients() : []) || [];
+      const hit = cl.find(c => {
+        const n = (c.fields?.['Company Name'] || '').toLowerCase();
+        return n.split(/[^a-zα-ωά-ώ0-9]+/i).filter(w => w.length >= 4).some(w => fn.includes(w));
+      });
+      if (hit) hintClientId = hit.id;
+    } catch (e) {}
+    const examples = scanGetTrainingExamples(docType, 3, hintClientId);
     examples.forEach(ex => {
       messages.push({ role: 'user', content: [{ type: 'text', text: 'Extract:' }] });
       messages.push({ role: 'assistant', content: [{ type: 'text', text: JSON.stringify(ex.corrected) }] });
@@ -1944,6 +1956,34 @@ Set client_id and location_id fields in the JSON output when tools return a conf
     parsed._docType = docType;  // remember for save-correction later
     parsed._model = model;      // which model handled this scan
     parsed._modelLabel = modelLabel;
+
+    // Ποιοτική πύλη (owner 10/8): «κάναμε πιο γρήγορο και χάλασε η ακρίβεια» —
+    // το tiering έστελνε σύνθετα έγγραφα σε Sonnet όταν ο ταξινομητής έπεφτε
+    // έξω. Αν λείπουν βασικά πεδία και ΔΕΝ έτρεξε ήδη Opus: μία αυτόματη
+    // επανάληψη με το κορυφαίο μοντέλο, κρατάμε το καλύτερο αποτέλεσμα.
+    if (model !== SCAN_MODEL_OPUS && _scanWeak(parsed)) {
+      setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>',
+        'Χαμηλή πληρότητα από το γρήγορο μοντέλο — επανάληψη με Opus (high accuracy)…');
+      try {
+        let d2;
+        try {
+          d2 = await scanExtractWithTools({ model: SCAN_MODEL_OPUS, max_tokens: SCAN_MAX_TOKENS,
+            system: sysPrompt, messages,
+            onProgress: (st2, det) => { if (st2 === 'tools') setStatus('<span class="spinner" style="width:16px;height:16px;flex-shrink:0"></span>', det); } });
+        } catch (e2) {
+          d2 = await scanCallAnthropic({ model: SCAN_MODEL_OPUS, max_tokens: SCAN_MAX_TOKENS, system: sysPrompt, messages });
+        }
+        const raw2 = d2.content.find(c => c.type === 'text')?.text || '{}';
+        const p2 = (typeof scanExtractJSON === 'function')
+          ? scanExtractJSON(raw2)
+          : JSON.parse(raw2.replace(/```json|```/g, '').trim());
+        if (_scanScore(p2) > _scanScore(parsed)) {
+          p2._docType = docType; p2._model = SCAN_MODEL_OPUS;
+          p2._modelLabel = 'Opus (auto-escalated)'; p2._escalated = true;
+          return p2;
+        }
+      } catch (e3) { console.warn('[scan] escalation failed:', e3.message); }
+    }
     return parsed;
 
   } catch (e) {
@@ -1953,6 +1993,17 @@ Set client_id and location_id fields in the JSON output when tools return a conf
     return null;
   }
 }
+
+// Πληρότητα εξαγωγής: πελάτης, φόρτωση, παράδοση, φορτίο — 0..4.
+function _scanScore(d) {
+  if (!d) return 0; let sc = 0;
+  if (d.client_id || d.client_name) sc++;
+  if ((d.loading_stops && d.loading_stops.length) || d.loading_city || d.loading_date) sc++;
+  if ((d.delivery_stops && d.delivery_stops.length) || (d.unloading_stops && d.unloading_stops.length) || d.delivery_city || d.delivery_date) sc++;
+  if (d.pallets || d.goods || d.reference) sc++;
+  return sc;
+}
+function _scanWeak(d) { return _scanScore(d) < 3; }
 
 // ═══ BATCH SCAN (owner 10/8): «η Lidl στέλνει 10 orders» — πολλαπλά αρχεία,
 // διαδοχικό σκανάρισμα, μετά φόρμα-φόρμα: Save → ανοίγει το επόμενο. ═══
@@ -2215,6 +2266,19 @@ async function _scanPreview(data) {
     </div>`;
 
   // Store result globally — avoids JSON encoding issues in onclick
+  // Φύλακας διπλοεγγραφών (#5, owner 10/8): ίδιο Reference ήδη στο σύστημα;
+  try {
+    if (data.reference) {
+      const esc = String(data.reference).replace(/'/g, "\\'");
+      const dups = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Reference}='${esc}'` }, false);
+      if (dups && dups.length) {
+        data._dupRef = dups[0].id;
+        if (st) st.insertAdjacentHTML('afterbegin',
+          `<div style="padding:9px 12px;background:#FEF3F2;border:1px solid rgba(220,38,38,.35);border-radius:8px;margin-bottom:8px;font-size:12.5px;color:#B42318;font-weight:600">⚠ Υπάρχει ήδη order με Reference «${String(data.reference)}» — πιθανό διπλό, έλεγξε πριν την αποθήκευση.</div>`);
+        toast(`⚠ Το Reference «${data.reference}» υπάρχει ήδη — πιθανό διπλό`, 'warn');
+      }
+    }
+  } catch (e) {}
   window._scanResult = { matched: {clientId,clientLabel,loadLocId,loadLocLabel,delLocId,delLocLabel,loadStops,delStops}, data };
 
   // Update footer
