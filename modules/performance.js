@@ -72,7 +72,7 @@ const PERF_KPIS = {
 async function renderPerformance() {
   const c = document.getElementById('content');
   c.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
-    <div class="spinner"></div> Loading performance data…</div>`;
+    <div class="spinner"></div> Φόρτωση δεδομένων απόδοσης…</div>`;
 
   try {
     await _perfLoad();
@@ -83,8 +83,8 @@ async function renderPerformance() {
     c.innerHTML = `
       <div class="tms-page-header">
         <div class="tms-page-titles">
-          <h1 class="tms-page-title">My Performance</h1>
-          <div class="tms-page-sub">Personal KPIs and goals</div>
+          <h1 class="tms-page-title">Η Απόδοσή μου</h1>
+          <div class="tms-page-sub">Προσωπικοί δείκτες και στόχοι</div>
         </div>
       </div>
       <div class="tms-error-banner" role="alert">
@@ -604,7 +604,7 @@ function _perfDraw() {
       <div class="perf-kpi-val ${unknown ? '' : valCls}">${unknown
         ? `<span title="Καμία παράδοση με καταγεγραμμένη επίδοση" style="color:var(--text-dim)">—</span>`
         : `${val}${kpi.unit}${_wowDelta(kpi.id, val, !!kpi.invert)}`}</div>
-      <div class="perf-kpi-target">Target: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
+      <div class="perf-kpi-target">Στόχος: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
       <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div></div>
     </div>`;
   }).join('');
@@ -634,8 +634,8 @@ function _perfDraw() {
     const f = r.fields;
     const perf = f['Delivery Performance'];
     const pill = perf === 'On Time'
-      ? '<span class="perf-pill perf-pill-ok">On Time</span>'
-      : '<span class="perf-pill perf-pill-bad">Delayed</span>';
+      ? '<span class="perf-pill perf-pill-ok">Εγκαίρως</span>'
+      : '<span class="perf-pill perf-pill-bad">Εκπρόθεσμη</span>';
     // Fallback chain: Summary (formula) → Points (lookup) → '?'
     const _loadRaw = f['Loading Summary'] || f['Loading Points'] || '';
     const _delRaw  = f['Delivery Summary'] || f['Delivery Points'] || '';
@@ -717,10 +717,10 @@ function _perfDraw() {
           <div class="perf-card">
             <div class="perf-card-head">
               <div class="perf-card-title">${_i('activity', 12)} ΤΑΣΗ ΕΒΔΟΜΑΔΙΑΙΟΥ ΣΚΟΡ</div>
-              <span class="perf-card-meta">Last 4 weeks</span>
+              <span class="perf-card-meta">τελευταίες 4 εβδομάδες</span>
             </div>
             <div class="perf-card-body">
-              ${trendHTML || '<div style="color:var(--p-text-dim);font-size:12px;padding:var(--space-3) 0">No trend data yet</div>'}
+              ${trendHTML || '<div style="color:var(--p-text-dim);font-size:12px;padding:var(--space-3) 0">Χωρίς δεδομένα τάσης</div>'}
             </div>
           </div>
 
@@ -728,12 +728,12 @@ function _perfDraw() {
           <div class="perf-card">
             <div class="perf-card-head">
               <div class="perf-card-title">${_i('truck', 12)} ΠΡΟΣΦΑΤΕΣ ΠΑΡΑΔΟΣΕΙΣ</div>
-              <span class="perf-card-meta">${delivered.length} orders</span>
+              <span class="perf-card-meta">${delivered.length} παραδόσεις</span>
             </div>
             <div class="perf-card-body flush">
               <table class="perf-activity">
-                <thead><tr><th>Date</th><th>Route</th><th>Pal</th><th>Performance</th></tr></thead>
-                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--p-text-dim);padding:var(--space-5)">No delivered orders yet</td></tr>'}</tbody>
+                <thead><tr><th>ΗΜ/ΝΙΑ</th><th>ΔΡΟΜΟΛΟΓΙΟ</th><th>PAL</th><th>ΕΠΙΔΟΣΗ</th></tr></thead>
+                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--p-text-dim);padding:var(--space-5)">Καμία παράδοση ακόμη</td></tr>'}</tbody>
               </table>
             </div>
           </div>
@@ -743,14 +743,14 @@ function _perfDraw() {
           <!-- Weekly Score Conic Ring -->
           <div class="perf-card">
             <div class="perf-card-head">
-              <div class="perf-card-title">${_i('award', 12)} ΕΒΔΟΜΑΔΙΑΙΟ SCORE</div>
+              <div class="perf-card-title">${_i('award', 12)} ΕΒΔΟΜΑΔΙΑΙΟ ΣΚΟΡ</div>
               <span class="perf-card-meta">W${wn}</span>
             </div>
             <div class="perf-card-body perf-score-wrap">
               <div class="perf-score-ring" style="--perf-score-color:${scoreColor};--perf-score-deg:${scoreDeg}deg">
                 <div class="perf-score-num" style="color:${scoreColor}">${vals.weekly_score}</div>
               </div>
-              <div class="perf-score-label">συνολική απόδοση</div>
+              <div class="perf-score-label">ΣΥΝΟΛΙΚΗ ΑΠΟΔΟΣΗ</div>
               <div class="perf-score-bars">
                 ${kpiDefs.map(kpi => {
                   const v = vals[kpi.id] ?? 0;
@@ -771,7 +771,7 @@ function _perfDraw() {
           <!-- Executive Briefing (was Nakis) -->
           <div class="perf-brief">
             <div class="perf-brief-title">
-              ${_i('brain', 12)} EXECUTIVE BRIEFING · W${wn}
+              ${_i('brain', 12)} ΣΥΝΟΨΗ · W${wn}
             </div>
             <div class="perf-brief-body">
               ${feedback}

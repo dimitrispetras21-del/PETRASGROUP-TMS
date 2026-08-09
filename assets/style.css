@@ -2800,7 +2800,14 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 /* Το κατώφλι των 900px καταργήθηκε — το .perf-kpi-grid χρησιμοποιεί auto-fit. */
 
 .perf-kpi {
-  background: var(--p-card);
+  /* Όργανο: πλέγμα 22px + διαγώνια βάθυνση + σκιά. Ίδιες τιμές με το
+     .dash-kpi, ώστε ένα KPI να δείχνει ίδιο σε όποια σελίδα κι αν στέκεται. */
+  background:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 100% 22px,
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px) 0 0 / 22px 100%,
+    linear-gradient(160deg, #12263C, var(--p-card) 62%);
+  color: var(--p-text);
+  box-shadow: 0 2px 6px rgba(8,15,26,0.28), 0 12px 32px rgba(8,15,26,0.22);
   border: 1px solid var(--p-border);
   border-radius: var(--radius-md);
   padding: var(--space-4);
@@ -2887,6 +2894,40 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
   overflow: hidden;
   transition: border-color var(--duration-fast) var(--ease-out);
 }
+/* ΟΡΓΑΝΑ & ΦΥΛΛΟ ΕΡΓΑΣΙΑΣ — ίδιος κανόνας με το Dashboard.
+   Οι κάρτες λιστών ανοίγουν, τα KPI μένουν σκούρα όργανα, και η κεφαλίδα
+   κάθε κάρτας φοράει το navy. Τα --p-* tokens επαναορίζονται στο scope,
+   ώστε τα παιδιά να προσαρμόζονται χωρίς να ξαναγραφτούν. */
+.perf-wrap .perf-card {
+  background: var(--bg-card);
+  border-color: var(--border);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(11,25,41,0.06), 0 4px 16px rgba(11,25,41,0.05);
+  --p-card: var(--bg-card);
+  --p-card-hover: var(--bg-hover);
+  --p-border: var(--border);
+  --p-text: var(--text);
+  --p-text-mid: var(--text-mid);
+  --p-text-dim: var(--text-dim);
+  --p-accent: var(--accent);
+  --p-ok: var(--success);
+  --p-bad: var(--danger-strong);
+  --p-warn: #B45309;
+}
+.perf-wrap .perf-card:hover { border-color: var(--border-mid); }
+.perf-wrap .perf-card > .perf-card-head {
+  background: var(--navy-mid, #0F2438);
+  border-bottom-color: rgba(255,255,255,0.08);
+  color: #F1F6FB;
+  --p-text: #F1F6FB;
+  --p-text-mid: #9DB2C8;
+  --p-text-dim: #9DB2C8;
+}
+.perf-wrap .perf-card > .perf-card-head .perf-card-title { color: #F1F6FB; }
+.perf-wrap .perf-card > .perf-card-head .perf-card-meta { color: #9DB2C8; }
+/* Τα ημιδιαφανή ΛΕΥΚΑ γεμίσματα αντιστρέφονται για ανοιχτή επιφάνεια. */
+.perf-wrap .perf-card .perf-trend-bar,
+.perf-wrap .perf-card .perf-score-bar-track { background: rgba(11,25,41,0.07); }
 .perf-card:hover { border-color: rgba(255,255,255,0.1); }
 .perf-card-head {
   display: flex;
