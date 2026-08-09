@@ -794,6 +794,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
 
   const footer = `
     ${isEdit?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">⧉ Διπλασιασμός</button>`:''}
+    ${(!isEdit&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">
       ${isEdit?'Save Changes':'Submit'}
@@ -1665,6 +1666,8 @@ async function submitIntlOrder(recId) {
     if (typeof currentPage!=='undefined' && currentPage==='weekly_intl' && typeof renderWeeklyIntl==='function') { renderWeeklyIntl(); }
     else if (typeof currentPage!=='undefined' && currentPage==='weekly_natl' && typeof renderWeeklyNatl==='function') { renderWeeklyNatl(); }
     else await renderOrdersIntl();
+    // Batch scan: Save → αμέσως η επόμενη φόρμα της ουράς
+    if (window._scanQueue && (window._scanQueue.length || window._scanQueueTotal > 1)) { setTimeout(() => _scanQueueNext(), 250); }
 
   } catch(e) {
     // 'validation' is the sentinel thrown after a blocking validation alert (line ~1259);
@@ -1765,14 +1768,14 @@ function openIntlScan() {
       ondrop="_scanDrop(event)">
       <div style="font-size:30px;margin-bottom:8px;opacity:0.35">📎</div>
       <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Drag & drop ή κλικ για upload</div>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
+      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB · έως 10 αρχεία μαζί (π.χ. 10 orders Lidl)</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
         onclick="event.stopPropagation();document.getElementById('scanCamera').click()">
         📷 &nbsp;Λήψη με κάμερα
       </button>
     </div>
-    <input type="file" id="scanFile" accept="image/*,application/pdf" style="display:none"
-      onchange="_scanHandleFile(this.files[0])">
+    <input type="file" id="scanFile" accept="image/*,application/pdf" multiple style="display:none"
+      onchange="_scanHandleFiles(this.files)">
     <input type="file" id="scanCamera" accept="image/*" capture="environment" style="display:none"
       onchange="_scanHandleFile(this.files[0])">
 
@@ -1787,7 +1790,7 @@ function openIntlScan() {
 function _scanDrop(e) {
   e.preventDefault();
   document.getElementById('scanDrop').style.borderColor = 'var(--border-dark)';
-  _scanHandleFile(e.dataTransfer.files[0]);
+  _scanHandleFiles(e.dataTransfer.files);
 }
 
 async function _scanHandleFile(file) {
@@ -1836,9 +1839,8 @@ async function _scanHandleFile(file) {
   }
 }
 
-async function _scanExtract() {
-  const file = window._scanUploadedFile;
-  if (!file) return;
+async function _scanExtractCore(file) {
+  if (!file) return null;
   const st  = document.getElementById('scanStatus');
   const btn = document.getElementById('btnScanGo');
   const setStatus = (icon, text, kind = 'info') => {
@@ -1942,13 +1944,86 @@ Set client_id and location_id fields in the JSON output when tools return a conf
     parsed._docType = docType;  // remember for save-correction later
     parsed._model = model;      // which model handled this scan
     parsed._modelLabel = modelLabel;
-    await _scanPreview(parsed);
+    return parsed;
 
   } catch (e) {
     setStatus('❌ ', e.message || 'Extraction failed', 'error');
     if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
     if (typeof logError === 'function') logError(e, 'intl_scan_extract');
+    return null;
   }
+}
+
+// ═══ BATCH SCAN (owner 10/8): «η Lidl στέλνει 10 orders» — πολλαπλά αρχεία,
+// διαδοχικό σκανάρισμα, μετά φόρμα-φόρμα: Save → ανοίγει το επόμενο. ═══
+function _scanHandleFiles(fileList) {
+  const files = [...(fileList || [])].filter(f => {
+    if (f.size > 10*1024*1024) { toast(`${f.name}: >10MB — παραλείπεται`, 'warn'); return false; }
+    const ok = f.type.startsWith('image/') || f.type === 'application/pdf';
+    if (!ok) toast(`${f.name}: μη υποστηριζόμενος τύπος`, 'warn');
+    return ok;
+  }).slice(0, 10);
+  if (!files.length) return;
+  window._scanFiles = files;
+  window._scanUploadedFile = files[0]; // συμβατότητα με single ροή
+  const btn = document.getElementById('btnScanGo');
+  if (btn) { btn.disabled = false;
+    btn.innerHTML = files.length > 1 ? `🤖 &nbsp;Σκανάρισμα ${files.length} αρχείων` : '🤖 &nbsp;Extract & Fill Form'; }
+  const drop = document.getElementById('scanDrop');
+  if (drop) drop.innerHTML = `<div style="font-size:26px;margin-bottom:6px">📄${files.length>1?'📄':''}</div>
+    <div style="font-size:13px;font-weight:600">${files.length===1?files[0].name:files.length+' αρχεία επιλεγμένα'}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:3px">${files.map(f=>f.name).slice(0,4).join(' · ')}${files.length>4?' · …':''}</div>`;
+}
+
+async function _scanExtract() {
+  const files = (window._scanFiles && window._scanFiles.length)
+    ? window._scanFiles
+    : (window._scanUploadedFile ? [window._scanUploadedFile] : []);
+  if (!files.length) return;
+  if (files.length === 1) {
+    const parsed = await _scanExtractCore(files[0]);
+    if (parsed) await _scanPreview(parsed);
+    return;
+  }
+  // BATCH: σειριακό σκανάρισμα — το _scanPreview κάνει το matching και
+  // αφήνει το αποτέλεσμα στο window._scanResult, το μαζεύουμε στην ουρά.
+  window._scanQueue = []; window._scanQueueTotal = files.length; window._scanQueueDone = 0;
+  const st = document.getElementById('scanStatus');
+  for (let i = 0; i < files.length; i++) {
+    if (st) { st.style.display='block';
+      st.insertAdjacentHTML('afterbegin', `<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:6px">Αρχείο ${i+1}/${files.length}: ${files[i].name}</div>`); }
+    try {
+      window._scanResult = null;
+      const parsed = await _scanExtractCore(files[i]);
+      if (parsed) { await _scanPreview(parsed);
+        if (window._scanResult) window._scanQueue.push({ ...window._scanResult, _fileName: files[i].name }); }
+    } catch(e) { console.warn('[batch scan]', files[i].name, e.message); }
+  }
+  const n = window._scanQueue.length;
+  if (!n) { toast('Κανένα αρχείο δεν σκαναρίστηκε επιτυχώς', 'error'); return; }
+  if (st) st.insertAdjacentHTML('afterbegin',
+    `<div style="padding:10px 12px;background:var(--accent-light,#E0F2FE);border-radius:8px;margin-bottom:8px;font-size:13px;font-weight:600">
+      ✓ Έτοιμα ${n}/${files.length} — οι φόρμες θα ανοίξουν μία-μία· Save → επόμενη.
+      <button class="btn btn-success btn-sm" style="margin-left:10px" onclick="_scanQueueNext()">Άνοιγμα 1ης φόρμας →</button>
+    </div>`);
+  const btn = document.getElementById('btnScanGo'); if (btn) btn.style.display='none';
+}
+
+async function _scanQueueNext() {
+  const q = window._scanQueue || [];
+  if (!q.length) {
+    if (window._scanQueueTotal > 1) toast(`Ολοκληρώθηκαν και τα ${window._scanQueueDone}/${window._scanQueueTotal} σκαν ✓`, 'success');
+    window._scanQueueTotal = 0; window._scanQueueDone = 0;
+    return;
+  }
+  const item = q.shift();
+  window._scanQueueDone = (window._scanQueueDone || 0) + 1;
+  await _scanOpen(item.matched, item.data);
+  setTimeout(() => {
+    const t = document.getElementById('modalTitle');
+    if (t && window._scanQueueTotal > 1)
+      t.textContent += ` — Σκαν ${window._scanQueueDone}/${window._scanQueueTotal}${item._fileName ? ' · ' + item._fileName : ''}`;
+  }, 80);
 }
 
 // ─── System prompt builder — adapts to document type ──────────────
@@ -2731,6 +2806,8 @@ window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
 window._scanExtract = _scanExtract;
 window._scanOpenStored = _scanOpenStored;
+window._scanHandleFiles = _scanHandleFiles;
+window._scanQueueNext = _scanQueueNext;
 window._scanDrop = _scanDrop;
 window._scanHandleFile = _scanHandleFile;
 // Form dropdown handlers now in core/form-helpers.js (fhLocDrop, fhClientDrop, etc.)
