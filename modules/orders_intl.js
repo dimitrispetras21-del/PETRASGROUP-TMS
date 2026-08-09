@@ -1635,7 +1635,11 @@ async function submitIntlOrder(recId) {
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
     toast(recId ? 'Order updated ✓' : 'Order created ✓');
-    await renderOrdersIntl();
+    // Weekly v3: το modal ανοίγει και από το Weekly International — το repaint
+    // πρέπει να σεβαστεί τη σελίδα που είναι ανοιχτή, όχι να τη hijack-άρει.
+    if (typeof currentPage!=='undefined' && currentPage==='weekly_intl' && typeof renderWeeklyIntl==='function') { renderWeeklyIntl(); }
+    else if (typeof currentPage!=='undefined' && currentPage==='weekly_natl' && typeof renderWeeklyNatl==='function') { renderWeeklyNatl(); }
+    else await renderOrdersIntl();
 
   } catch(e) {
     // 'validation' is the sentinel thrown after a blocking validation alert (line ~1259);
@@ -2686,6 +2690,8 @@ window._intlClearFilters = _intlClearFilters;   // OI-4 — πρέπει να ε
 window.openIntlScan = openIntlScan;
 window.openIntlCreate = openIntlCreate;
 window.openIntlEdit = openIntlEdit;
+// Weekly v3: άνοιγμα φόρμας με fields από τον καλούντα (το weekly έχει δικά του records)
+window.openIntlEditWith = (recId, fields) => _openModal(recId, fields||{});
 window.selectIntlOrder = selectIntlOrder;
 window.toggleIntlInvoiced = toggleIntlInvoiced;
 window._intlSortToggle = _intlSortToggle;

@@ -2213,7 +2213,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-sheet{background:var(--bg-card,#fff);border:1px solid var(--border-mid);border-radius:12px;
   box-shadow:0 1px 2px rgba(11,25,41,.05),0 16px 40px -22px rgba(11,25,41,.18);
   overflow:auto;max-height:calc(100vh - 210px)}
-.wk3-cols,.wk3-row{display:grid;grid-template-columns:44px 192px minmax(200px,1fr) 196px minmax(200px,1fr) 192px}
+.wk3-cols,.wk3-row{display:grid;grid-template-columns:44px 232px minmax(190px,1fr) 196px minmax(190px,1fr) 232px}
 .wk3-cols{position:sticky;top:0;z-index:30;background:var(--bg-card,#fff);border-bottom:1px solid var(--border-mid)}
 .wk3-cols .c{font-family:'Syne',sans-serif;font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--text-dim);
   padding:10px 12px;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden}
@@ -2260,6 +2260,9 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-leg.bgap:hover{background:#13253A}
 /* πολλαπλά σημεία φόρτωσης/παράδοσης — ×N με αριθμημένο tooltip */
 .wk3-mstop{font-size:8px;font-weight:800;color:var(--accent);background:var(--accent-light);border-radius:999px;padding:1px 5px;cursor:help;vertical-align:1px;flex-shrink:0;margin-left:3px}
+.wk3-stopn{display:inline-flex;width:13px;height:13px;border-radius:50%;background:var(--accent);color:#fff;font-size:8.5px;font-weight:800;align-items:center;justify-content:center;margin:0 2px;vertical-align:1px;flex-shrink:0;cursor:help}
+.wk3-pal{width:34px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
+.wk3-leg.bgap.dh,.wk3-feed.bgap.dh{background:var(--accent-light) !important}
 /* RISK = σκέτο κόκκινο θαυμαστικό (owner 9/8) */
 .wk3 .wi-b-risk{background:none !important;border:none !important;color:#DC2626 !important;font-weight:900;font-size:12.5px;padding:0 2px}
 .wk3-unm{flex-shrink:0;color:var(--text-dim);font-size:11px;padding:2px 6px;border-radius:5px;background:none;border:none;cursor:pointer}
@@ -2272,7 +2275,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-feed.bgap{background:var(--navy-mid,#0B1929) !important}
 .wk3-ordn{font-size:9px;font-weight:500;color:var(--text-dim);font-style:italic;margin-left:6px}
 .wk3-assign{padding:0 8px;display:flex;justify-content:center;align-self:stretch;align-items:center;gap:2px;cursor:pointer}
-.wk3-pill{width:100%;max-width:178px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+.wk3-pill{width:100%;max-width:100%;min-width:0;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;
   gap:6px;font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden;
   transition:transform .15s,box-shadow .15s,background .2s}
 .wk3-pill small{font-weight:500;color:rgba(255,255,255,.72);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}

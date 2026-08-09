@@ -555,6 +555,18 @@ function _wiAllRowsHTML(){
       <span class="k">${expCount?expCount+' εξαγ':''}${expCount&&impCount?' · ':''}${impCount?impCount+' εισαγ':''}</span>
     </div>`;
 
+    // Owner (9/8): ταξινόμηση ανά πελάτη και μετά Veroia Switch
+    const _cKey=(f)=>String(f?.['Client Name']||f?.['Client Summary']||'').toUpperCase();
+    grp.exps.sort((a,b)=>{
+      const fa=WINTL.data.exports.find(x=>x.id===a.orderIds[0])?.fields||{};
+      const fb=WINTL.data.exports.find(x=>x.id===b.orderIds[0])?.fields||{};
+      return _cKey(fa).localeCompare(_cKey(fb),'el')||((fa['Veroia Switch']?1:0)-(fb['Veroia Switch']?1:0));
+    });
+    grp.imps.sort((a,b)=>{
+      const fa=WINTL.data.imports.find(x=>x.id===a.orderId)?.fields||{};
+      const fb=WINTL.data.imports.find(x=>x.id===b.orderId)?.fields||{};
+      return _cKey(fa).localeCompare(_cKey(fb),'el')||((fa['Veroia Switch']?1:0)-(fb['Veroia Switch']?1:0));
+    });
     // Export rows
     grp.exps.forEach(row=>{ row._alt=alt; html+=_wiRowHTML(row,idx++); });
 
@@ -637,18 +649,18 @@ function _wiImpRowHTML(row,impNo){
     draggable="true"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
     <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}</div>
-    <div class="wk3-feed l${row.saved&&impPartner?' bgap':''}" ${row.saved&&impPartner?'title="Ανατεθειμένο σε συνεργάτη"':''}></div>
-    <div class="wk3-leg void${row.saved&&!impPartner?' gap':''}${row.saved&&impPartner?' bgap':''}"
+    <div class="wk3-feed l bgap" title="Χωρίς εθνικό σκέλος"></div>
+    <div class="wk3-leg void${row.saved&&!impPartner?' gap':''}${(row.saved&&impPartner)||!row.saved?' bgap':''}"
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
       <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}')">⎙</button>
     </div>
-    <div class="wk3-leg imp" style="cursor:grab">
+    <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">
       <span class="wk3-route"><b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση')}${(f['Order Number']||impRef2)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(f['Order Number']||impRef2))}</span>`:''}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
-      <span class="wk3-meta">${pals?pals+'p':''} ${_wiBadges(f)}</span>
+      <span class="wk3-meta"><span class="wk3-pal">${pals?pals+'p':''}</span>${_wiBadges(f)}</span>
     </div>
-    <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':''}">${impVS2?`<b>${delDt!=='—'?_wk3D(delDt):''}</b>&nbsp;${escapeHtml(_wk3Loc(toStr))}`:''}</div>
+    <div class="wk3-feed r${impVS2?'':' bgap'}" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${impVS2?`<b>${delDt!=='—'?_wk3D(delDt):''}</b>&nbsp;${escapeHtml(_wk3Loc(toStr))}`:''}</div>
   </div>`;
 }
 
@@ -721,10 +733,15 @@ function _wk3Loc(str){ const L=_wk3Locs(str); return L.length?L[0]:_wiClean(str|
 function _wk3LocHTML(str,label){
   const L=_wk3Locs(str);
   if(!L.length) return escapeHtml(_wiClean(str||'—'));
-  const first=escapeHtml(L[0]);
-  if(L.length<2) return first;
+  if(L.length<2) return escapeHtml(L[0]);
+  // Owner (9/8): ο dispatcher βλέπει ΟΛΟΥΣ τους προορισμούς — ①A ②B ③C
   const tip=escapeHtml(L.map((x,i)=>`${i+1}. ${label} ${x}`).join('\n'));
-  return `${first} <span class="wk3-mstop" title="${tip}">×${L.length}</span>`;
+  return L.map((x,i)=>`<span class="wk3-stopn" title="${tip}">${i+1}</span>${escapeHtml(x)}`).join(' ');
+}
+function _wk3Edit(orderId){
+  if(!orderId) return;
+  const rec=WINTL.data.exports.find(r=>r.id===orderId)||WINTL.data.imports.find(r=>r.id===orderId);
+  if(rec&&typeof openIntlEditWith==='function') openIntlEditWith(orderId, rec.fields);
 }
 function _wk3D(s){return String(s).replace(/^0/,'').replace(/\/0/,'/');}
 function _wk3AddDays(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+days); return toLocalDate(d); }
@@ -877,7 +894,7 @@ function _wiRowHTML(row,i){
   const impVS=!!imp?.fields['Veroia Switch'];
   const impPrev=imp
     ?`<span class="wk3-route"><b class="wk3-ld" title="Ημ. φόρτωσης εισαγωγής">${impLoadDt!=='—'?_wk3D(impLoadDt):''}</b><span class="frm">${_wk3LocHTML(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${impVS?'Vermion Fresh Cross-Dock':_wk3LocHTML(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Παράδοση')}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
-     <span class="wk3-meta">${impPals?impPals+'p':''} ${_wiBadges(imp.fields)}</span>
+     <span class="wk3-meta"><span class="wk3-pal">${impPals?impPals+'p':''}</span>${_wiBadges(imp.fields)}</span>
      <button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
     :'';
   // gap = ΔΕΝ έχει δηλωθεί import (row.importId) — όχι «δεν βρέθηκε το record
@@ -895,10 +912,10 @@ function _wiRowHTML(row,i){
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row._alt?' alt':''}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_wiToggle(${row.id})}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
     <div class="wk3-num">${i+1}${isGroup?`<span class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
-    <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':''}">${feedL}</div>
-    <div class="wk3-leg" oncontextmenu="_wiCtx(event,${row.id},event)">
+    <div class="wk3-feed l${!vsExp?' bgap':''}" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}</div>
+    <div class="wk3-leg" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας" oncontextmenu="_wiCtx(event,${row.id},event)" onclick="event.stopPropagation();_wk3Edit('${primary?.id||''}')">
       <span class="wk3-route"><b class="wk3-ld" title="Ημερομηνία φόρτωσης">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση')}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση')}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>
-      <span class="wk3-meta">${pals?pals+'p':''} ${_wiBadges(primary?.fields||{})}${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
+      <span class="wk3-meta"><span class="wk3-pal">${pals?pals+'p':''}</span>${_wiBadges(primary?.fields||{})}${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
       ${isGroup
@@ -907,15 +924,16 @@ function _wiRowHTML(row,i){
       ${pill}
       ${row.importId?`<button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>
-    <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}${!imp&&!gapCell&&!parCell?' void':''}" id="wi-ci-${row.id}"
-         onclick="event.stopPropagation()${gapCell?';_wk3Gaps()':''}"
+    <div class="wk3-leg imp${gapCell?' gap':''}${!imp&&!gapCell&&(parCell||!row.saved)?' bgap':''}${!imp&&!gapCell&&!parCell&&row.saved?' void':''}" id="wi-ci-${row.id}"
+         ${imp?'style="cursor:pointer"':''}
+         onclick="event.stopPropagation();${gapCell?`_wk3Gaps()`:imp?`_wk3Edit('${row.importId}')`:``}"
          ${gapCell?`title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports (ή σύρε import εδώ)"`:parCell?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"`:!imp?`title="Σύρε εισαγωγή εδώ για ταίριασμα"`:''}
          ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
          ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">
       ${impPrev}
     </div>
-    <div class="wk3-feed r${parCell?' bgap':''}" title="${feedR?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':parCell?'Ανατεθειμένο σε συνεργάτη':''}">${feedR}</div>
+    <div class="wk3-feed r${feedR?'':' bgap'}" title="${feedR?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}</div>
   </div>
   ${isOpen?`<div class="wk3-prow" data-row-id="${row.id}">${_wiPanelHTML(row)}</div>`:''}`;
 }
@@ -2043,6 +2061,7 @@ window._wk3Gaps = _wk3Gaps;
 window._wiJumpFirstUnassigned = _wiJumpFirstUnassigned;
 window._wk3Accept = _wk3Accept;
 window._wk3FlashSugs = _wk3FlashSugs;
+window._wk3Edit = _wk3Edit;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
