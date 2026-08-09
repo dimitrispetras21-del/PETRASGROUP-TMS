@@ -396,6 +396,14 @@ function _locFormHTML(f) {
     <input id="locF_type" class="form-input" list="locTDL" placeholder="e.g. Client Depot" value="${_locEsc(f.Type||'')}">
   </div>
   <div class="form-field">
+    <label class="form-label">Ωράριο (Opening Hours)</label>
+    <input id="locF_hours" class="form-input" placeholder="π.χ. 06:00–14:00" value="${_locEsc(f['Opening Hours']||'')}">
+  </div>
+  <div class="form-field">
+    <label class="form-label">Ημέρες παράδοσης</label>
+    <input id="locF_days" class="form-input" placeholder="π.χ. Δευ–Παρ" value="${_locEsc(f['Delivery Days']||'')}">
+  </div>
+  <div class="form-field">
     <label class="form-label">Latitude</label>
     <input id="locF_lat" class="form-input" type="number" step="any" placeholder="40.5211" value="${f.Latitude != null ? f.Latitude : ''}">
   </div>
@@ -425,6 +433,10 @@ async function _locSave() {
   if (type)       fields.Type      = type;
   if (!isNaN(lat)) fields.Latitude  = lat;
   if (!isNaN(lon)) fields.Longitude = lon;
+  const hours = document.getElementById('locF_hours')?.value.trim();
+  const days  = document.getElementById('locF_days')?.value.trim();
+  if (hours) fields['Opening Hours'] = hours;
+  if (days)  fields['Delivery Days'] = days;
 
   const btn = document.getElementById('locSaveBtn');
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
