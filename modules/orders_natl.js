@@ -566,65 +566,96 @@ function openNatlGroupage() {
   _grpRender();
 }
 
-function _grpAddRow(){ _grpRows.push({ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }); _grpRender(); }
-function _grpDelRow(i){ if(_grpRows.length>1) _grpRows.splice(i,1); _grpRender(); }
-function _grpSet(i,k,v){ _grpRows[i][k]=v; _grpRender(); }
+let _grpSeq = 0;
+
+/* Μία ΚΑΡΤΑ ανά στάση, όχι στριμωγμένη γραμμή 7 στηλών.
+   Πελάτης και τοποθεσία χρησιμοποιούν ΤΑ ΙΔΙΑ αναζητήσιμα πεδία με την
+   κανονική φόρμα (_clientSelect / _locSelect): γράφεις 2 χαρακτήρες και
+   ψάχνει. Οι τιμές ζουν στα κρυφά lv_<id> και διαβάζονται στην υποβολή. */
+function _grpRowHTML(uid) {
+  return `<div class="grp-row" id="grpr_${uid}"
+      style="border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:10px">
+      <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+uid, '', '')}</div>
+      <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη)</span></label>
+        <input class="form-input" type="number" id="grpv${uid}" oninput="_grpPreview()"></div>
+      <button type="button" title="Αφαίρεση" onclick="_grpDelRow(${uid})"
+        style="height:38px;border:none;background:none;color:var(--text-dim);font-size:17px;cursor:pointer">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) 110px 150px minmax(0,1.4fr);gap:12px;align-items:end">
+      <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('grpl'+uid, '')}</div>
+      <div><label class="form-label">Παλέτες</label>
+        <input class="form-input" type="number" id="grpp${uid}" oninput="_grpPreview()"></div>
+      <div><label class="form-label">Ημερομηνία</label>
+        <input class="form-input" type="date" id="grpd${uid}"></div>
+      <div><label class="form-label">Σημείωση</label>
+        <input class="form-input" id="grpn${uid}" placeholder="π.χ. παράδοση πρωί"></div>
+    </div>
+  </div>`;
+}
+
+// Προσθήκη/αφαίρεση ΧΩΡΙΣ πλήρη επανασχεδίαση: ένα re-render θα έσβηνε ό,τι
+// έχει ήδη πληκτρολογηθεί στα πεδία αναζήτησης των άλλων γραμμών.
+function _grpAddRow() {
+  const c = document.getElementById('gf_rows'); if (!c) return;
+  const uid = ++_grpSeq; _grpRows.push(uid);
+  c.insertAdjacentHTML('beforeend', _grpRowHTML(uid));
+  _grpPreview();
+}
+function _grpDelRow(uid) {
+  if (_grpRows.length <= 1) return;
+  const el = document.getElementById('grpr_'+uid); if (el) el.remove();
+  _grpRows = _grpRows.filter(x => x !== uid);
+  _grpPreview();
+}
+function _grpSet() { _grpPreview(); }   // συμβατότητα με παλιά onchange
 
 function _grpRender() {
-  const locs = window._grpLocs || [];
-  const clients = (getRefClients?.()||[]).map(r => ({ id:r.id, label:r.fields?.['Company Name']||r.id }));
-  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
+  const c = document.getElementById('gf_rows'); if (!c) return;
+  if (!_grpRows.length || typeof _grpRows[0] !== 'number') _grpRows = [++_grpSeq];
+  c.innerHTML = _grpRows.map(_grpRowHTML).join('');
+  _grpPreview();
+}
 
-  document.getElementById('gf_rows').innerHTML = _grpRows.map((r,i) => `
-    <div style="display:grid;grid-template-columns:1fr 1fr 90px 130px 1fr 90px 28px;gap:8px;margin-bottom:8px;align-items:end">
-      <div><label class="form-label" style="font-size:11px">Πελάτης${i===0?' *':''}</label>
-        <select class="form-select" onchange="_grpSet(${i},'clientId',this.value)"><option value="">—</option>${opt(clients,r.clientId)}</select></div>
-      <div><label class="form-label" style="font-size:11px">Τοποθεσία${i===0?' *':''}</label>
-        <select class="form-select" onchange="_grpSet(${i},'locId',this.value)"><option value="">—</option>${opt(locs,r.locId)}</select></div>
-      <div><label class="form-label" style="font-size:11px">Παλέτες</label>
-        <input class="form-input" type="number" value="${r.pallets}" onchange="_grpSet(${i},'pallets',this.value)"></div>
-      <div><label class="form-label" style="font-size:11px">Ημερομηνία</label>
-        <input class="form-input" type="date" value="${r.date}" onchange="_grpSet(${i},'date',this.value)"></div>
-      <div><label class="form-label" style="font-size:11px">Σημείωση</label>
-        <input class="form-input" value="${escapeHtml(r.note)}" onchange="_grpSet(${i},'note',this.value)"></div>
-      <div><label class="form-label" style="font-size:11px">Αξία €</label>
-        <input class="form-input" type="number" value="${r.price}" onchange="_grpSet(${i},'price',this.value)"
-          title="Μπαίνει ΑΝΑ ΠΕΛΑΤΗ — αρκεί σε μία γραμμή του"></div>
-      <button type="button" onclick="_grpDelRow(${i})" style="height:38px;border:none;background:none;color:var(--text-dim);font-size:15px;cursor:pointer">×</button>
-    </div>`).join('');
+// Διαβάζει ΑΠΟ ΤΟ DOM — τα αναζητήσιμα πεδία γράφουν στα κρυφά lv_<id>,
+// όχι σε δικό μας μοντέλο.
+function _grpGroups() {
+  const clients = (getRefClients?.()||[]);
+  const by = {}; const order = [];
+  _grpRows.forEach(uid => {
+    const g = id => document.getElementById(id)?.value?.trim() || '';
+    const cid = g('lv_grpc'+uid), lid = g('lv_grpl'+uid);
+    if (!cid || !lid) return;
+    if (!by[cid]) {
+      by[cid] = { clientId:cid,
+        clientLabel: clients.find(c=>c.id===cid)?.fields?.['Company Name']
+                  || document.getElementById('ls_grpc'+uid)?.value || '',
+        price:'', stops:[] };
+      order.push(cid);
+    }
+    const pr = g('grpv'+uid); if (pr && !by[cid].price) by[cid].price = pr;
+    by[cid].stops.push({ locId:lid, pallets:parseFloat(g('grpp'+uid))||0,
+                         date:g('grpd'+uid), note:g('grpn'+uid) });
+  });
+  return order.map(k => by[k]);
+}
 
-  // Προεπισκόπηση: τι ΑΚΡΙΒΩΣ θα δημιουργηθεί, πριν το κλικ
+// Ενημερώνει ΜΟΝΟ την προεπισκόπηση — ποτέ τις γραμμές.
+function _grpPreview() {
+  const box = document.getElementById('gf_preview'); if (!box) return;
   const g = _grpGroups();
-  const tot = _grpRows.reduce((s,r)=>s+(parseFloat(r.pallets)||0),0);
+  const tot = g.reduce((s,x)=>s+x.stops.reduce((a,y)=>a+(y.pallets||0),0),0);
   const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:#B45309' : 'color:var(--text-mid)');
-  document.getElementById('gf_preview').innerHTML = !g.length ? '' : `
+  box.innerHTML = !g.length ? '' : `
     <div style="border:1px dashed rgba(2,132,199,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
       <div style="font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:7px">
         ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
       ${g.map(x=>`<div style="font-size:11.5px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}
       ${tot>33?'<div style="margin-top:7px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
     </div>`;
-
-  const btn=document.getElementById('gf_submit');
-  if(btn) btn.textContent = g.length ? `Καταχώρηση ${g.length} ${g.length===1?'παραγγελίας':'παραγγελιών'}` : 'Καταχώρηση';
-}
-
-// Ομαδοποίηση γραμμών σε παραγγελίες: μία ανά πελάτη (Δ12)
-function _grpGroups() {
-  const clients = (getRefClients?.()||[]);
-  const by = {}; const order = [];
-  _grpRows.forEach(r => {
-    if (!r.clientId || !r.locId) return;
-    if (!by[r.clientId]) {
-      by[r.clientId] = { clientId:r.clientId,
-        clientLabel: clients.find(c=>c.id===r.clientId)?.fields?.['Company Name'] || '',
-        price:'', stops:[] };
-      order.push(r.clientId);
-    }
-    if (r.price && !by[r.clientId].price) by[r.clientId].price = r.price;
-    by[r.clientId].stops.push({ locId:r.locId, pallets:parseFloat(r.pallets)||0, date:r.date||'', note:r.note||'' });
-  });
-  return order.map(k => by[k]);
+  const btn = document.getElementById('natlBtnSubmit');
+  if (btn && btn.getAttribute('onclick')==='_grpSubmit()')
+    btn.textContent = g.length ? `Καταχώρηση ${g.length} ${g.length===1?'παραγγελίας':'παραγγελιών'}` : 'Καταχώρηση';
 }
 
 async function _grpSubmit() {
@@ -1978,6 +2009,7 @@ window.openNatlGroupage = openNatlGroupage;
 window._grpAddRow = _grpAddRow;
 window._grpDelRow = _grpDelRow;
 window._grpSet    = _grpSet;
+window._grpPreview = _grpPreview;
 window._grpSubmit = _grpSubmit;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
 // Form dropdown handlers now in core/form-helpers.js
