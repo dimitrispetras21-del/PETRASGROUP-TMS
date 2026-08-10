@@ -75,15 +75,39 @@ function _invIsInvoiced(rec) {
   return st === 'Invoiced' || !!rec.fields['Invoiced'];
 }
 
+// Φ0 (Α7 · Δ19) — «παραδόθηκε» ΥΠΟΛΟΓΙΖΕΤΑΙ για τα εθνικά, δεν γράφεται.
+//
+// Καμία διαδρομή του κώδικα δεν φέρνει μια NAT_ORDER σε Status='Delivered':
+// το μόνο σημείο που γράφει το πεδίο είναι weekly_natl.js:1120 → 'Assigned'.
+// Το 'Delivered' γράφεται μόνο σε TABLES.ORDERS (daily_ops.js:573, :626), άρα
+// μόνο στα διεθνή. Αποτέλεσμα: οι εθνικές παραγγελίες δεν εμφανίζονταν ΠΟΤΕ
+// στη λίστα τιμολόγησης — χαμένος τζίρος, σιωπηλά.
+//
+// Ο owner επέλεξε υπολογισμό αντί για εγγραφή: το Status δεν ισχυρίζεται
+// γεγονός που κανείς δεν επιβεβαίωσε, τίποτα δεν τρέχει προγραμματισμένα, και
+// αν μια παράδοση μετατεθεί δεν έχει γραφτεί ψέμα στη βάση.
+//
+// Ισχύει ΜΟΝΟ για _type==='natl'. Τα διεθνή έχουν κανονικό lifecycle και
+// μένουν άθικτα.
+function _invIsDelivered(rec) {
+  if (rec.fields['Status'] === 'Delivered') return true;
+  if (rec._type !== 'natl') return false;
+  if (rec.fields['Status'] === 'Cancelled') return false;
+  const dt = _invDeliveredAt(rec);
+  if (!dt) return false;
+  const t = new Date(dt).getTime();
+  return !isNaN(t) && t < Date.now();
+}
+
 function _invIsReady(rec) {
   if (_invIsInvoiced(rec)) return false;
-  if (rec.fields['Status'] !== 'Delivered') return false;
+  if (!_invIsDelivered(rec)) return false;
   return _invPESheetsOK(rec);
 }
 
 function _invIsBlocked(rec) {
   if (_invIsInvoiced(rec)) return false;
-  if (rec.fields['Status'] !== 'Delivered') return false;
+  if (!_invIsDelivered(rec)) return false;
   return _invPERequired(rec) && !_invPESheetsOK(rec);
 }
 
@@ -111,7 +135,7 @@ function _invAgingBucket(days) {
 
 function _invIsOverdue(rec) {
   if (_invIsInvoiced(rec)) return false;
-  if (rec.fields['Status'] !== 'Delivered') return false;
+  if (!_invIsDelivered(rec)) return false;
   const d = _invDaysSinceDelivery(rec);
   return d != null && d > 30;
 }
@@ -151,8 +175,13 @@ async function renderInvoicing() {
     // an invoicing screen is a billing problem, not a display one.
     const [intlRecs, natlRecs] = await Promise.all([
       atGet(TABLES.ORDERS, formula, false),
+      // Φ0 (Α7 · Δ19): το εθνικό φίλτρο δέχεται ΕΠΙΠΛΕΟΝ όσες έχουν περασμένη
+      // ημερομηνία παράδοσης και δεν είναι ακυρωμένες. Χωρίς αυτό καμία εθνική
+      // δεν έφτανε ποτέ εδώ (κανείς δεν γράφει Status='Delivered' στα NAT_ORDERS).
+      // Το διεθνές fetch από πάνω μένει με το αρχικό `formula` — τα διεθνή έχουν
+      // κανονικό lifecycle μέσω daily_ops.js και δεν το χρειάζονται.
       safeFetch(
-        () => atGet(TABLES.NAT_ORDERS, `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1)`, false),
+        () => atGet(TABLES.NAT_ORDERS, `OR({Status}="Delivered",{Status}="Invoiced",{Invoiced}=1,AND(IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date())}'),{Status}!="Cancelled"))`, false),
         'invoicing: national orders list'
       ),
     ]);
@@ -310,7 +339,9 @@ function _renderInvKPI() {
   const overdue  = INV.data.filter(_invIsOverdue);
 
   // Outstanding = delivered orders not yet invoiced (waiting to issue invoice)
-  const outstandingRecs = INV.data.filter(r => r.fields['Status'] === 'Delivered' && !_invIsInvoiced(r));
+  // Φ0: ίδιος ορισμός «delivered» με τα tabs — αλλιώς το KPI θα έλεγε άλλο
+  // νούμερο από τη λίστα που βρίσκεται από κάτω του.
+  const outstandingRecs = INV.data.filter(r => _invIsDelivered(r) && !_invIsInvoiced(r));
   const outstandingTotal = outstandingRecs.reduce((s,r) => s + (_invPrice(r)||0), 0);
   const outstandingClients = new Set(outstandingRecs.map(r => Array.isArray(r.fields['Client']) ? r.fields['Client'][0] : null).filter(Boolean));
 
@@ -712,8 +743,10 @@ async function _invBatchInvoice() {
 // ─── Outstanding by Client modal ─────────────────
 function _invShowOutstandingModal() {
   // Group by client — show ONLY delivered orders not yet invoiced
+  // Φ0: ίδιος ορισμός με το KPI από πάνω· αλλιώς το κλικ στο νούμερο ανοίγει
+  // λίστα με λιγότερες γραμμές από όσες λέει το ίδιο το νούμερο.
   const byClient = {};
-  INV.data.filter(r => r.fields['Status'] === 'Delivered' && !_invIsInvoiced(r)).forEach(r => {
+  INV.data.filter(r => _invIsDelivered(r) && !_invIsInvoiced(r)).forEach(r => {
     const name = _invClientName(r);
     if (!byClient[name]) byClient[name] = { total: 0, count: 0, oldest: 0 };
     byClient[name].total += _invPrice(r) || 0;
