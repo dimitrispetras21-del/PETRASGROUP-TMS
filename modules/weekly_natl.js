@@ -185,40 +185,20 @@ function _wnBuildRows() {
 
 /* ── PAINT ───────────────────────────────────────────────────────── */
 
-/* ── WEEK SIDEBAR ─────────────────────────────────────── */
-function _wnWeekSidebarItems(currentWeek) {
-  // WN-8/WN-1: verbatim port of the intl strip (WI-4). The old loop rendered
-  // 21 weeks (cur-8..cur+12) and overflowed with no scroll cue; ±3 around the
-  // selected week + ‹ › steppers + a «Σήμερα» chip when away — same pattern,
-  // same look, natl state.
+/* ── Φέτα 1β: sheet tabs, δίδυμο του _wk3Tabs του intl ────────────── */
+function _wnTabs(cur) {
   const today = _wnCurrentWeek();
-  const step = (d) => `<button type="button" onclick="WNATL.week=${currentWeek + d};renderWeeklyNatl()" title="${d < 0 ? 'Προηγούμενη' : 'Επόμενη'} εβδομάδα" style="flex-shrink:0;padding:6px 10px;cursor:pointer;border-radius:8px;background:var(--navy-mid,var(--navy-mid));color:rgba(196,207,219,.7);border:1px solid rgba(196,207,219,.12);font:inherit;font-size:14px;line-height:1">${d < 0 ? '‹' : '›'}</button>`;
+  const step = d => `<button type="button" class="wk3-step" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα" onclick="WNATL.week=${cur+d};renderWeeklyNatl()">${d<0?'‹':'›'}</button>`;
+  const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
   let html = step(-1);
-  for (let w = currentWeek - 3; w <= currentWeek + 3; w++) {
-    if (w < 1 || w > 52) continue;
-    const isActive = w === currentWeek;
-    const wS   = _wnWeekStart(w);
-    const wE   = new Date(wS); wE.setDate(wS.getDate() + 6);
-    const fmt  = d => String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0');
-    const bg   = isActive ? 'var(--accent,#0EA5E9)' : 'var(--navy-mid,var(--navy-mid))';
-    const col  = isActive ? '#fff' : 'rgba(196,207,219,.7)';
-    const fw   = isActive ? '700' : '500';
-    html += `<button type="button" onclick="WNATL.week=${w};renderWeeklyNatl()" style="appearance:none;
-      flex-shrink:0;padding:6px 14px;cursor:pointer;border-radius:8px;
-      background:${bg};color:${col};
-      font-family:'Syne',sans-serif;font-size:12px;font-weight:${fw};
-      transition:background .12s;white-space:nowrap;text-align:center;
-      border:1px solid ${isActive ? 'transparent' : 'rgba(196,207,219,.12)'};
-    " onmouseover="this.style.background='${isActive?'var(--accent,#0EA5E9)':'rgba(14,165,233,.15)'}'"
-       onmouseout="this.style.background='${bg}'">
-      <div>W${w}</div>
-      <div style="font-size:9px;opacity:.7;font-family:'DM Sans',sans-serif;margin-top:1px">${fmt(wS)}–${fmt(wE)}</div>
-    </button>`;
+  for (let w = cur-3; w <= cur+3; w++) {
+    if (w < 1 || w > 53) continue;
+    const wS = _wnWeekStart(w), wE = new Date(wS); wE.setDate(wS.getDate()+6);
+    html += `<button type="button" class="wk3-tab${w===cur?' on':''}" title="${fmt(wS)}–${fmt(wE)}" onclick="WNATL.week=${w};renderWeeklyNatl()">W${w}</button>`;
   }
   html += step(1);
-  if (currentWeek !== today) {
-    html += `<button type="button" onclick="WNATL.week=${today};renderWeeklyNatl()" style="flex-shrink:0;margin-left:8px;padding:6px 12px;cursor:pointer;border-radius:8px;background:var(--accent-light);color:var(--accent);border:1px solid transparent;font-family:'Syne',sans-serif;font-size:12px;font-weight:700">Σήμερα · W${today}</button>`;
-  }
+  if (cur !== today)
+    html += `<button type="button" class="wk3-tab" style="color:var(--accent)" onclick="WNATL.week=${today};renderWeeklyNatl()">Σήμερα</button>`;
   return html;
 }
 
@@ -266,14 +246,25 @@ function _wnPaint() {
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
 
   document.getElementById('content').innerHTML = `
-    <div class="${_wnQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
-    <!-- Horizontal week bar -->
-    <div id="wn-week-bar" style="
-      display:flex;flex-direction:row;gap:4px;align-items:center;
-      overflow-x:auto;padding:0 0 12px 0;
-      scrollbar-width:thin;width:100%;
-    ">
-      ${_wnWeekSidebarItems(week)}
+    <div class="wn3 wk3 ${_wnQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
+    <!-- Φέτα 1β: κεφαλή v3 — sheet tabs + tally μίας γραμμής, ίδια με το intl.
+         Αντικαθιστά τη λωρίδα εβδομάδας και το page-header: η ίδια πληροφορία,
+         ΜΙΑ φορά, κλικ = μετάβαση. -->
+    <div class="wk3-mast">
+      <nav class="wk3-tabs" aria-label="Εβδομάδες">${_wnTabs(week)}</nav>
+      ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
+      <div class="wk3-tally">
+        <span class="wk3-t"><b>${nsRows.length}</b> κάθοδος</span>
+        <span class="wk3-t"><b>${snRows.length}</b> άνοδος</span>
+        <span class="wk3-t" title="${assigned} από ${total} με ανάθεση"><b>${assigned}</b>/${total} ανατεθ.</span>
+        ${pending>0?`<button class="wk3-t alert" title="Κάθοδοι χωρίς ανάθεση — κλικ: πήγαινε στην πρώτη" onclick="${(()=>{const id=_firstRow(r=>r.type==='northsouth'&&!r.saved);return id?`_ccJump('${id}')`:'';})()}"><b>${pending}</b> εκκρεμή</button>`:''}
+        <div class="wk3-acts">
+          <button class="wk3-ab" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής">${_wnI('eye',13)} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
+          <button class="wk3-ab" onclick="_wnPrintWeek()">${_wnI('file_text',13)} Εκτύπωση</button>
+          <button class="wk3-ab" onclick="_wnExportCSV()">CSV</button>
+          <button class="wk3-ab" onclick="renderWeeklyNatl()" title="Ανανέωση">${_wnI('refresh',13)}</button>
+        </div>
+      </div>
     </div>
     <div style="display:block;width:100%">
 
@@ -309,10 +300,9 @@ function _wnPaint() {
           ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
         </details>`;
       })()}
-      ${_wnDriversPanel()}
 
-      <!-- Search/filter bar -->
-      <div class="entity-toolbar-v2" style="margin-bottom:var(--space-3)">
+      <!-- Search/filter bar — wk3-sub, twin του intl -->
+      <div class="wk3-sub">
         <div class="entity-search-wrap">
           ${_wnI('search')}
           <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού…" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
@@ -325,52 +315,28 @@ function _wnPaint() {
           <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Ανατεθειμένα</option>
           <option value="unmatched" ${WNATL.filterStatus==='unmatched'?'selected':''}>Άνοδοι χωρίς ταίριασμα</option>
         </select>
-        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">${_wnI('x', 12)} Clear</button>`:''}
+        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">${_wnI('x', 12)} Καθαρισμός</button>`:''}
+        <span class="wk3-range">Weekly National · Εβδομάδα ${week} · ${weekRange}</span>
       </div>
 
-      <div class="page-header" style="margin-bottom:var(--space-3)">
-        <div>
-          <div class="page-title">Weekly National</div>
-          <div class="page-sub" style="display:flex;gap:var(--space-2);flex-wrap:wrap;align-items:center;margin-top:4px">
-            <span style="color:var(--text-mid)">Εβδομάδα ${week} · ${weekRange}</span>
-            ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
-            <span class="entity-count-chip" style="background:rgba(100,116,139,0.12);color:var(--text);border-color:transparent">${nsRows.length} κάθοδος</span>
-            <span class="entity-count-chip" style="background:rgba(14,165,233,0.12);color:var(--accent);border-color:transparent">${snRows.length} άνοδος</span>
-            <span class="entity-count-chip" style="background:rgba(16,185,129,0.12);color:var(--success);border-color:transparent">${assigned} ανατεθειμένα</span>
-            ${pending>0?`<span class="entity-count-chip" style="background:rgba(220,38,38,0.10);color:var(--danger);border-color:transparent">${pending} εκκρεμή</span>`:''}
-          </div>
+    <div class="wk3-wrap">
+      <main class="wk3-sheet">
+        <div class="wk3-cols">
+          <div class="c"></div>
+          <div class="c cm">ΚΑΘΟΔΟΣ <span class="n">${nsRows.length}</span></div>
+          <div class="c cm" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
+          <div class="c cm">ΑΝΟΔΟΣ <span class="n">${snRows.length}</span><span class="hint" title="Σύρε μια άνοδο πάνω σε κάθοδο για ταίριασμα σε round trip">ⓘ</span></div>
         </div>
-        <div style="display:flex;gap:var(--space-2);align-items:center">
-          <button class="btn btn-ghost btn-sm" onclick="_wnToggleDetails()" title="Εναλλαγή των πρόσθετων ενδείξεων γραμμής">${_wnI('eye')} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
-          <button class="btn btn-ghost btn-sm" onclick="_wnPrintWeek()">${_wnI('file_text')} Εκτύπωση</button>
-          <button class="btn btn-ghost btn-sm" onclick="_wnExportCSV()">${_wnI('download')} Export CSV</button>
-          <button class="btn btn-secondary btn-sm" onclick="renderWeeklyNatl()">${_wnI('refresh')} Refresh</button>
+        <div id="wn-rows">
+          ${rows.length ? _wnAllRowsHTML() : (typeof showEmpty === 'function' ? showEmpty({
+            illustration: 'truck',
+            title: `Δεν υπάρχουν εθνικά φορτία για την εβδομάδα ${week}`,
+            description: 'Δημιούργησε εθνική παραγγελία, ή ενεργοποίησε τον διακόπτη Βέροιας σε μια διεθνή παραγγελία.',
+            action: { label: 'Άνοιγμα Εθνικών Παραγγελιών', onClick: "navigate('orders_natl')" }
+          }) : '<div class="wk3-empty"><div class="big">Άδειο φύλλο — W'+week+'</div><p>Καμία εθνική κίνηση ακόμη.</p></div>')}
         </div>
-      </div>
-
-    <div class="wi-wrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 180px);">
-      <div class="wi-head" style="background:#B8C4D0">
-        <div class="wi-hc" style="text-align:center;color:#091828;border-right:1px solid rgba(9,24,40,0.12)">#</div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12);display:flex;align-items:center;justify-content:center;gap:8px">
-          ↓ ΚΑΘΟΔΟΣ
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${nsRows.length}</span>
-        </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;opacity:0.5;letter-spacing:1.8px;border-right:1px solid rgba(9,24,40,0.12)">
-          ΑΝΑΘΕΣΗ
-        </div>
-        <div class="wi-hc" style="text-align:center;color:#091828;font-weight:800;letter-spacing:1.8px;display:flex;align-items:center;justify-content:center;gap:8px">
-          ↑ ΑΝΟΔΟΣ
-          <span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;background:#091828;color:#B8C4D0;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:0">${snRows.length}</span>
-        </div>
-      </div>
-      <div id="wn-rows">
-        ${rows.length ? _wnAllRowsHTML() : (typeof showEmpty === 'function' ? showEmpty({
-          illustration: 'truck',
-          title: `Δεν υπάρχουν εθνικά φορτία για την εβδομάδα ${week}`,
-          description: 'Δημιούργησε εθνική παραγγελία, ή ενεργοποίησε τον διακόπτη Βέροιας σε μια διεθνή παραγγελία.',
-          action: { label: 'Άνοιγμα Εθνικών Παραγγελιών', onClick: "navigate('orders_natl')" }
-        }) : '<div class="empty-state" style="padding:60px;text-align:center">Δεν υπάρχουν εθνικά φορτία</div>')}
-      </div>
+      </main>
+      <aside class="wk3-rt">${_wnDriversPanel()}</aside>
     </div>
 
     <div id="wn-ctx"></div>
@@ -600,49 +566,40 @@ function _wnRowHTML(row, i) {
   const badges = _wnBadges(f);
 
   const clBg = isCL ? 'background:rgba(13,148,136,0.04);' : '';
+  // Φέτα 1β: grid wk3-row (4 στήλες) αντί για wi-row/wi-compact.
+  // ΟΛΟΙ οι handlers μεταφέρθηκαν αυτούσιοι: dragstart, δεξί κλικ (_wnCtx),
+  // popover ανάθεσης, print, και το drop target της ανόδου.
   return `
-  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wi-row ${sCls}"
+  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row"
     style="${clBg}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
-    <div class="wi-compact" style="cursor:default">
-      <div class="wi-cn">
-        <span class="wi-num">${i+1}</span>
-        <span class="wi-sync" id="wn-sync-${row.id}"></span>
-      </div>
-      <div class="wi-ce" oncontextmenu="_wnCtx(event,${row.id})" style="position:relative">
-        <div class="wi-route">
-          <span class="from">${escapeHtml(fromStr)}</span>
-          <span class="sep">→</span>
-          <span class="dest">${escapeHtml(toStr)}</span>
-          ${isGroup ? `<span class="wi-gr">×${ords.length}</span>` : ''}
-        </div>
-        <div class="wi-sub">
-          ${clientLabel ? `<span style="color:var(--text-mid)">${escapeHtml(clientLabel)}</span><span class="wi-sub-div"></span>` : ''}
-          <span>${loadDt} → ${delDt}</span>
-          <span class="wi-sub-div"></span>
-          <span>${pals} pal</span>
-          ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
-          ${badges}
-          ${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}
-        </div>
-      </div>
-      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
-        <button class="wi-side-btn" title="Print"
-                onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
-          ${pill}
-        </div>
-        <div style="width:30px;flex-shrink:0"></div>
-      </div>
-      <div class="wi-ci" id="wn-ci-${row.id}"
-           onclick="event.stopPropagation()"
-           ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
-           ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
-           ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})"
-           style="position:relative">
-        ${snCell}
-      </div>
+    <div class="wk3-num">${i+1}<span class="wi-sync" id="wn-sync-${row.id}"></span></div>
+    <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">
+      <span class="wk3-route">
+        <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
+        <span class="frm">${escapeHtml(fromStr)}</span>
+        <span class="wk3-sep">→</span>
+        <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
+        <span class="to">${escapeHtml(toStr)}</span>
+        ${isGroup?' <span class="wk3-vsb">VS</span>':''}
+      </span>
+      <span class="wk3-meta">
+        <span class="wk3-pal">${pals?pals+'p':''}</span>
+        <span class="wk3-flags">${badges}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>
+      </span>
+    </div>
+    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
+      ${pill}
+      <button class="wk3-prt" title="Εκτύπωση εντολής"
+              onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
+    </div>
+    <div class="wk3-leg${sn?'':' void'}" id="wn-ci-${row.id}"
+         onclick="event.stopPropagation()"
+         ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
+         ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
+         ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})">
+      ${snCell}
     </div>
   </div>`;
 }
@@ -657,29 +614,27 @@ function _wnSnInlineCell(snRec, rowId) {
     ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
     : (_wnNlDeliverySummary(f) || clientLabel || '—');
   const loadDt   = _wnFmt(f['Loading DateTime']);
+  const delDt    = _wnFmt(f['Delivery DateTime']);
   const pals     = f['Total Pallets']||0;
-  return `<div class="wi-ci-data">
-    <div style="display:flex;align-items:center;gap:0;min-width:0">
-      <span class="wi-ci-from" style="color:rgba(14,165,233,0.85)">${escapeHtml(fromStr)}</span>
-      <span class="wi-ci-sep">→</span>
-      <span class="wi-ci-dest" style="color:rgba(14,165,233,0.85)">${escapeHtml(toStr)}</span>
-      <span style="font-size:8px;color:rgba(14,165,233,0.5);margin-left:6px;cursor:pointer"
-            onclick="_wnUnmatch(${rowId},'${snRec.id}')">✕</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:5px">
-      <span class="wi-ci-s">${loadDt} · ${pals} pal</span>
-      ${_wnBadges(f)}
-    </div>
-    <span style="font-size:9px;color:rgba(14,165,233,0.45)">↩ matched</span>
-  </div>`;
+  // Φέτα 1β: ίδια τυπογραφία διαδρομής με το αριστερό σκέλος (wk3-route)
+  return `<span class="wk3-route">
+      <b class="wk3-ld" title="Ημ. φόρτωσης ανόδου">${loadDt||''}</b>
+      <span class="frm">${escapeHtml(fromStr)}</span>
+      <span class="wk3-sep">→</span>
+      <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
+      <span class="to">${escapeHtml(toStr)}</span>
+    </span>
+    <span class="wk3-meta">
+      <span class="wk3-pal">${pals?pals+'p':''}</span>
+      <span class="wk3-flags">${_wnBadges(f)}</span>
+    </span>
+    <button class="wk3-unm" title="Αφαίρεση ταιριάσματος"
+            onclick="event.stopPropagation();_wnUnmatch(${rowId},'${snRec.id}')">✕</button>`;
 }
 
 /* ── Drag-here cell ───────────────────────────────────────────────── */
 function _wnDragCell(rowId) {
-  return `<div style="width:100%;height:100%;display:flex;align-items:center;
-      background:#172C45;margin:-4px -12px;padding:4px 12px;min-height:36px;">
-    <span style="font-size:10px;color:rgba(196,207,219,0.25);font-style:italic">drag άνοδος εδώ</span>
-  </div>`;
+  return `<span style="font-size:10px;color:rgba(196,207,219,0.30);font-style:italic">σύρε άνοδο εδώ</span>`;
 }
 
 /* ── S→N standalone row ──────────────────────────────────────────── */
@@ -711,43 +666,34 @@ function _wnSnRowHTML(row, snNo) {
   let sClsSN = 's-default';
 
   const clBgSN = isCLsn ? 'background:rgba(13,148,136,0.04);' : '';
+  // Φέτα 1β: grid wk3-row. Το ΑΡΙΣΤΕΡΟ κελί μένει κενό/σκούρο — «δεν υπάρχει
+  // σκέλος καθόδου», όπως το Χ του Excel (owner, 8/8). Handlers αυτούσιοι.
   return `<div id="wn-sn-${ord.id}"
-    class="wi-row ${sClsSN}"
-    style="${clBgSN}"
+    class="wk3-row"
+    style="${clBgSN}cursor:grab"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')"
     oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
-    <div class="wi-compact" style="cursor:default">
-      <div class="wi-cn" title="Άνοδος ${snNo||''}">
-        <span class="wi-num" style="font-size:11px;color:rgba(14,165,233,0.85)">A${snNo||''}</span>
-      </div>
-      <!-- Β.3-1 ΑΝΑΙΡΕΘΗΚΕ (owner, 8/8 βράδυ — twin του intl revert):
-           το κενό κελί σηματοδοτεί «δεν υπάρχει σκέλος», όπως στο Excel. -->
-      <div class="wi-ce" style="background:#172C45"></div>
-      <div class="wi-ca-wrap" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
-        <div style="width:30px;flex-shrink:0"></div>
-        <div style="width:240px;display:flex;align-items:center;justify-content:center;padding:4px 0;cursor:pointer">
-          ${pill}
-        </div>
-        <button class="wi-side-btn" title="Print"
-          onclick="event.stopPropagation();_wnPrintSn('${ord.id}')"><svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="10" height="6" rx="1"/><path d="M5 13H3a1 1 0 01-1-1V8a1 1 0 011-1h14a1 1 0 011 1v4a1 1 0 01-1 1h-2"/><path d="M5 7V3h10v4"/></svg></button>
-      </div>
-      <div class="wi-ci" style="cursor:grab">
-        <div class="wi-ci-data">
-          <div style="display:flex;align-items:center;gap:0;min-width:0">
-            <span class="wi-ci-from" style="font-weight:700">${escapeHtml(fromStr)}</span>
-            <span class="wi-ci-sep">→</span>
-            <span class="wi-ci-dest" style="font-weight:700">${escapeHtml(toStr)}</span>
-          </div>
-          <div class="wi-sub">
-            ${clientLabel ? `<span style="color:var(--text-mid)">${escapeHtml(clientLabel)}</span><span class="wi-sub-div"></span>` : ''}
-            <span>${loadDt} → ${delDt} · ${pals} pal</span>
-            ${f['Source Type']==='Groupage' ? '<span class="wi-badge wi-b-veroia" style="margin-left:6px">VEROIA</span>' : ''}
-            ${badges}
-          </div>
-          <div style="font-size:9px;color:rgba(14,165,233,0.3);margin-top:2px;font-style:italic">↕ drag για σύνδεση</div>
-        </div>
-      </div>
+    <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}</div>
+    <div class="wk3-leg void"></div>
+    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
+      ${pill}
+      <button class="wk3-prt" title="Εκτύπωση εντολής"
+        onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">⎙</button>
+    </div>
+    <div class="wk3-leg">
+      <span class="wk3-route">
+        <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
+        <span class="frm">${escapeHtml(fromStr)}</span>
+        <span class="wk3-sep">→</span>
+        <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
+        <span class="to">${escapeHtml(toStr)}</span>
+        ${isGroupage?' <span class="wk3-vsb">VS</span>':''}
+      </span>
+      <span class="wk3-meta">
+        <span class="wk3-pal">${pals?pals+'p':''}</span>
+        <span class="wk3-flags">${badges}</span>
+      </span>
     </div>
   </div>`;
 }
@@ -837,26 +783,15 @@ function _wnPill(row) {
 
   // Β.3-3 (Wave 1): ΑΝΟΔΟΣ-without-vehicle is visually distinct (dashed) from
   // ΚΑΘΟΔΟΣ-without-assignment — same red meant two different things.
+  // Φέτα 1β: wk3-pill 24px μίας γραμμής (πινακίδα + επώνυμο), όπως το intl.
+  // Β.3-3 διατηρείται: ΑΝΟΔΟΣ χωρίς όχημα (dashed, unimp) ≠ ΚΑΘΟΔΟΣ χωρίς
+  // ανάθεση (κόκκινο κενό) — το ίδιο κόκκινο σήμαινε δύο διαφορετικά πράγματα.
+  const surname = driver ? driver.trim().split(/\s+/)[0] : '';
   if (!row.saved) return row.type === 'southnorth'
-    ? `<div class="wi-pill">
-    <div class="wi-card wi-card-un wi-card-un--imp"><div class="wi-card-top">ΑΝΟ · χωρίς όχημα</div></div>
-  </div>`
-    : `<div class="wi-pill">
-    <div class="wi-card wi-card-un"><div class="wi-card-top">— Αδιάθετο</div></div>
-  </div>`;
-  if (partner) return `<div class="wi-pill">
-    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-bp'}">
-      <div class="wi-card-top">${escapeHtml(partner.slice(0,26))}${partner.length>26?'…':''}</div>
-      ${row.partnerPlates ? `<div class="wi-card-bot">${escapeHtml(row.partnerPlates)}</div>` : ''}
-    </div>
-  </div>`;
-  const vehicleLine = truck && trailer ? `${truck} · ${trailer}` : (truck || trailer || '—');
-  return `<div class="wi-pill">
-    <div class="wi-card ${isCL ? 'wi-card-cl' : 'wi-card-ok'}">
-      <div class="wi-card-top">${escapeHtml(vehicleLine)}</div>
-      ${driver ? `<div class="wi-card-bot">${escapeHtml(driver)}</div>` : ''}
-    </div>
-  </div>`;
+    ? `<div class="wk3-pill unimp" title="Άνοδος χωρίς όχημα — κλικ για ανάθεση">ΑΝΟ · χωρίς όχημα</div>`
+    : `<div class="wk3-pill un" title="Αδιάθετο — κλικ για ανάθεση"></div>`;
+  if (partner) return `<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner.slice(0,22))}${(row.partnerPlates||surname)?` <small>${escapeHtml([row.partnerPlates,surname].filter(Boolean).join(' '))}</small>`:''}</div>`;
+  return `<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml([truck,trailer].filter(Boolean).join('·')||'—')}${surname?` <small>${escapeHtml(surname)}</small>`:''}</div>`;
 }
 
 function _wnNavWeek(d) {
@@ -1075,7 +1010,9 @@ function _wnPrintSn(orderId) {
 
 function _wnPopoverOutside(e) {
   const pop = document.getElementById('wn-popover');
-  if (pop && !pop.contains(e.target) && !e.target.closest('.wi-ca-wrap')) _wnClosePopover();
+  // Φέτα 1β: το κελί ανάθεσης είναι πλέον .wk3-assign (ήταν .wi-ca-wrap).
+  // Χωρίς αυτό, το κλικ που ΑΝΟΙΓΕΙ το popover θα το έκλεινε αμέσως.
+  if (pop && !pop.contains(e.target) && !e.target.closest('.wk3-assign')) _wnClosePopover();
 }
 
 function _wnClosePopover() {
