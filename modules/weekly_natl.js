@@ -843,7 +843,7 @@ function _wnRowHTML(row, i) {
         <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
+        <span class="to">${_wnStopsHTML(f,'Delivery')||escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
         ${grpBtn}
       </span>
       <span class="wk3-meta">
@@ -1050,6 +1050,24 @@ function _wnLocName(locId) {
 }
 
 // NL location summaries using _locMap
+/* Αριθμημένα σημεία με μπλε κύκλους — ίδιο .wk3-stopn με το International.
+   Επιστρέφει HTML, οπότε η escape γίνεται ΑΝΑ ΟΝΟΜΑ εδώ μέσα. */
+function _wnStopsHTML(f, kind) {
+  const seen = [], names = [];
+  for (let i = 1; i <= 10; i++) {
+    const arr = f[`${kind} Location ${i}`];
+    if (!arr?.length) continue;
+    const id = arr[0]?.id || arr[0];
+    if (!id || seen.indexOf(id) !== -1) continue;
+    seen.push(id);
+    const nm = (WNATL.data._locMap?.[id] || _wnLocName(id) || '').split(',')[0].trim();
+    if (nm && names.indexOf(nm) === -1) names.push(nm);
+  }
+  if (!names.length) return '';
+  if (names.length === 1) return escapeHtml(names[0]);
+  return names.map((n,i) => `<span class="wk3-stopn" title="Σημείο ${i+1}">${i+1}</span>${escapeHtml(n)}`).join(' ');
+}
+
 function _wnNlPickupSummary(f) {
   // owner 10/8: ίδια τοποθεσία δύο φορές = ΜΙΑ στάση για τον οδηγό.
   // Η αφαίρεση διπλών αφορά ΜΟΝΟ την εμφάνιση — οι εγγραφές (GL, ORDER_STOPS)
