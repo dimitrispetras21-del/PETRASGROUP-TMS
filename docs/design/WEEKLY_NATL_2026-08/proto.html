@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Weekly National v3 — prototype · W31/2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#080F1A; --navy-mid:#0B1929; --navy-deep:#0C2D5C; --navy-light:#122238;
+  --bg:#F4F6F9; --bg-card:#fff;
+  --text:#0F1A28; --text-mid:#3A4A5E; --text-dim:#5B6B7F;
+  --border:rgba(0,0,0,.06); --border-mid:rgba(0,0,0,.10);
+  --accent:#0284C7; --accent-light:rgba(2,132,199,.10);
+  --danger:#DC2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);padding:16px 20px 60px;-webkit-font-smoothing:antialiased}
+
+.wk3-mast{display:flex;align-items:center;gap:14px;background:var(--bg-card);border:1px solid var(--border-mid);
+  border-radius:10px;padding:0 14px;min-height:50px;margin-bottom:10px;flex-wrap:wrap}
+.wk3-tabs{display:flex;align-items:flex-end;gap:2px;align-self:stretch;padding-top:10px}
+.wk3-tab{font-family:'Syne',sans-serif;font-weight:700;font-size:11.5px;color:var(--text-mid);padding:7px 12px 8px;
+  border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;position:relative;top:1px;background:none;cursor:pointer}
+.wk3-tab.on{background:var(--bg);border-color:var(--border-mid);color:var(--navy-mid)}
+.wk3-tab.on::after{content:'';position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
+.wk3-tally{margin-left:auto;display:flex;align-items:center;gap:13px;white-space:nowrap;flex-wrap:wrap}
+.wk3-t{font-family:inherit;font-size:11.5px;color:var(--text-mid);background:none;border:none;padding:0}
+.wk3-t b{font-family:'Syne',sans-serif;font-size:13px;color:var(--text)}
+.wk3-t.alert,.wk3-t.alert b{color:var(--danger)}
+.wk3-t.alert{cursor:pointer;border-bottom:1px dashed rgba(220,38,38,.5)}
+.wk3-t.queue,.wk3-t.queue b{color:var(--accent)}
+.wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5)}
+.wk3-acts{display:flex;gap:2px;border-left:1px solid var(--border);padding-left:10px}
+.wk3-ab{font-family:'DM Sans',sans-serif;font-size:11.5px;font-weight:600;color:var(--text-mid);padding:6px 9px;
+  border-radius:6px;background:none;border:none;cursor:pointer}
+.wk3-ab:hover{color:var(--text);background:var(--accent-light)}
+.wk3-sub{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.wk3-sub input{font-family:inherit;font-size:12px;padding:7px 11px;border:1px solid var(--border-mid);border-radius:7px;width:340px;background:#fff}
+.wk3-sub select{font-family:inherit;font-size:12px;padding:7px 9px;border:1px solid var(--border-mid);border-radius:7px;background:#fff;color:var(--text-mid)}
+.wk3-range{font-size:11.5px;color:var(--text-dim);margin-left:auto}
+
+.wk3-sheet{background:var(--bg-card);border:1px solid var(--border-mid);border-radius:12px;
+  box-shadow:0 1px 2px rgba(11,25,41,.05),0 16px 40px -22px rgba(11,25,41,.18);overflow:hidden;margin-bottom:18px}
+.sec-h{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border-mid);background:#fff}
+.sec-h .t{font-family:'Syne',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;color:var(--navy-mid)}
+.sec-h .s{font-size:10.5px;color:var(--text-dim)}
+.sec-h .add{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--accent);background:var(--accent-light);
+  border:none;border-radius:6px;padding:5px 11px;cursor:pointer}
+
+.gcols,.grow{display:grid;grid-template-columns:40px minmax(180px,1fr) 224px minmax(180px,1fr)}
+.gcols{background:#fff;border-bottom:1px solid var(--border-mid)}
+.gcols .c{font-family:'Syne',sans-serif;font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--text-dim);
+  padding:9px 12px;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.gcols .c.cm{color:var(--text-mid)}
+.gcols .n{font-family:'DM Sans',sans-serif;font-weight:700;font-size:9.5px;color:#fff;background:var(--navy-mid);
+  border-radius:999px;min-width:19px;height:15px;display:inline-flex;align-items:center;justify-content:center;padding:0 5px;letter-spacing:0}
+
+.wk3-dayh{display:flex;align-items:baseline;gap:9px;padding:8px 12px 6px;background:var(--navy-mid);border-bottom:1px solid var(--border)}
+.wk3-dayh .d{font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1.4px;color:#fff}
+.wk3-dayh .k{font-size:10px;color:rgba(196,207,219,.65)}
+.wk3-dayh .now{margin-left:auto;font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:#38BDF8;
+  border:1px solid currentColor;border-radius:999px;padding:0 7px}
+.dayempty{padding:9px 14px;font-size:11px;color:var(--text-dim);background:#FBFCFD;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px}
+.dayempty .plus{margin-left:auto;font-family:inherit;font-size:10px;font-weight:700;color:var(--accent);
+  background:none;border:1px dashed rgba(2,132,199,.4);border-radius:6px;padding:3px 10px;cursor:pointer}
+
+.grow{border-bottom:1px solid var(--border);min-height:36px;align-items:center;background:#fff}
+.grow:hover{background:var(--accent-light)}
+.wk3-num{font-size:10.5px;color:var(--text-dim);text-align:center;font-variant-numeric:tabular-nums;
+  border-right:1px solid var(--border);align-self:stretch;display:flex;align-items:center;justify-content:center}
+.leg{padding:5px 12px;min-width:0;display:flex;flex-direction:column;gap:2px;align-self:stretch;justify-content:center}
+.leg.void{align-items:center;justify-content:center;color:var(--text-dim);font-size:13px}
+.rt{font-size:12px;display:flex;align-items:baseline;gap:6px;min-width:0}
+.rt .ld{font-weight:700;color:var(--text-mid);font-size:10.5px;font-variant-numeric:tabular-nums;flex-shrink:0}
+.rt .frm{color:var(--text-mid);flex-shrink:0;max-width:36%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rt .sep{color:var(--text-dim);flex-shrink:0}
+.rt .to{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hh{font-size:9px;font-weight:800;color:#fff;background:var(--navy-deep);border-radius:3px;padding:1px 5px;
+  font-variant-numeric:tabular-nums;flex-shrink:0}
+.sub{font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.pal{font-weight:600;font-variant-numeric:tabular-nums}
+
+.grp{font-family:inherit;font-size:9px;font-weight:800;letter-spacing:.3px;color:#fff;background:var(--navy-mid);
+  border:none;border-radius:4px;padding:1px 6px;cursor:pointer;flex-shrink:0;display:inline-flex;align-items:center;gap:4px}
+.grp:hover{background:var(--accent)}
+.grp .cv{display:inline-block;transition:transform .12s}
+.grp.open .cv{transform:rotate(90deg)}
+.grpdet{display:none;margin-top:3px;border-left:2px solid var(--accent-light);padding-left:8px}
+.grpdet.open{display:block}
+.st{display:flex;align-items:baseline;gap:7px;font-size:10.5px;color:var(--text-mid);padding:1px 0}
+.st .p{font-weight:700;font-variant-numeric:tabular-nums;color:var(--navy-deep);min-width:30px;text-align:right}
+.st .o{font-size:9px;color:var(--text-dim);font-style:italic}
+.cap{font-size:9px;font-weight:700;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.cap.full{color:#B45309}
+
+.chip{font-family:inherit;font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;cursor:pointer;border:none}
+.chip.up{background:var(--accent-light);color:var(--accent)}
+.chip.down{background:rgba(6,95,70,.10);color:#065F46}
+.chip.need{background:rgba(220,38,38,.10);color:#B91C1C;border:1px dashed rgba(220,38,38,.45)}
+
+.asg{padding:0 8px;display:flex;justify-content:center;align-items:center;align-self:stretch}
+.pill{width:100%;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;gap:6px;
+  font-size:10.5px;font-weight:700;color:#fff;padding:0 10px;white-space:nowrap;overflow:hidden;cursor:pointer}
+.pill small{font-weight:500;color:rgba(255,255,255,.72);font-size:9.5px;overflow:hidden;text-overflow:ellipsis}
+.pill.own{background:var(--navy-deep)}
+.pill.par{background:#065F46}
+.pill.un{background:rgba(220,38,38,.07);border:1.5px dashed rgba(180,35,24,.5)}
+
+.lrow{border-bottom:1px solid var(--border);background:#fff;display:grid;grid-template-columns:40px 190px 1fr}
+.lrow:hover{background:var(--accent-light)}
+.lhead{padding:8px 10px;display:flex;flex-direction:column;gap:2px;justify-content:center;border-right:1px solid var(--border)}
+.lhead .nm{font-size:12px;font-weight:700}
+.lhead .pl{font-size:9.5px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.moves{padding:5px 12px;display:flex;flex-direction:column;gap:3px;justify-content:center;align-items:flex-start}
+.mv{display:flex;align-items:baseline;gap:7px;font-size:11.5px;min-width:0;max-width:100%}
+.mv .i{width:13px;height:13px;border-radius:50%;background:var(--bg);color:var(--text-dim);font-size:8.5px;font-weight:800;
+  display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--border-mid);align-self:center}
+.mv .txt{color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.mv .txt b{color:var(--text);font-weight:700}
+.mvadd{font-family:inherit;font-size:9.5px;font-weight:700;color:var(--text-dim);background:none;border:1px dashed var(--border-mid);
+  border-radius:5px;padding:2px 8px;cursor:pointer;margin-top:2px}
+.mvadd:hover{color:var(--accent);border-color:rgba(2,132,199,.4)}
+
+.legend{background:#fff;border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;font-size:11px;color:var(--text-mid);line-height:2}
+.legend h4{font-family:'Syne',sans-serif;font-size:10px;font-weight:800;letter-spacing:1.6px;color:var(--navy-mid);margin-bottom:7px}
+.legend .k{display:inline-flex;align-items:center;gap:6px;margin-right:18px}
+</style>
+</head>
+<body>
+
+<div class="wk3-mast">
+  <nav class="wk3-tabs">
+    <button class="wk3-tab">W29</button>
+    <button class="wk3-tab">W30</button>
+    <button class="wk3-tab on">W31</button>
+    <button class="wk3-tab">W32</button>
+    <button class="wk3-tab">W33</button>
+  </nav>
+  <div class="wk3-tally">
+    <span class="wk3-t"><b id="tNat">0</b> εθνικά</span>
+    <span class="wk3-t"><b id="tLoc">0</b> τοπικές κινήσεις</span>
+    <span class="wk3-t"><b id="tPair">0</b> round trip</span>
+    <button class="wk3-t alert"><b id="tPend">0</b> χωρίς ανάθεση</button>
+    <button class="wk3-t alert"><b id="tNeed">0</b> ακάλυπτα κομμάτια</button>
+    <button class="wk3-t queue" title="Γραμμές groupage που περιμένουν στο National Pick Ups — κλικ: άνοιγμα της σελίδας"><b>14</b> στην ουρά Pick Ups ↗</button>
+    <div class="wk3-acts">
+      <button class="wk3-ab">Λεπτομέρειες</button>
+      <button class="wk3-ab">Εκτύπωση</button>
+      <button class="wk3-ab">CSV</button>
+    </div>
+  </div>
+</div>
+
+<div class="wk3-sub">
+  <input type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…">
+  <select><option>Όλες οι καταστάσεις</option><option>Χωρίς ανάθεση</option><option>Ακάλυπτα κομμάτια</option></select>
+  <span class="wk3-range">Weekly National · Εβδομάδα 31 · 26/07 – 01/08</span>
+</div>
+
+<div class="wk3-sheet">
+  <div class="sec-h">
+    <span class="t">ΕΘΝΙΚΑ ΔΡΟΜΟΛΟΓΙΑ</span>
+    <span class="s">Βόρεια ↔ Νότια Ελλάδα · round trip ανά όχημα</span>
+  </div>
+  <div class="gcols">
+    <div class="c"></div>
+    <div class="c cm">ΚΑΘΟΔΟΣ <span class="n" id="cN1">0</span></div>
+    <div class="c cm" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
+    <div class="c cm">ΑΝΟΔΟΣ <span class="n" id="cN2">0</span></div>
+  </div>
+  <div id="natBody"></div>
+</div>
+
+<div class="wk3-sheet">
+  <div class="sec-h">
+    <span class="t">ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ</span>
+    <span class="s">Οδηγός × ημέρα · οι κινήσεις της ημέρας</span>
+    <button class="add">+ Τοπικό</button>
+  </div>
+  <div id="locBody"></div>
+</div>
+
+<div class="legend">
+  <h4>ΥΠΟΜΝΗΜΑ</h4>
+  <span class="k"><span class="pill own" style="width:80px;height:20px;font-size:9px">ΙΔΙΟΣ ΣΤΟΛΟΣ</span></span>
+  <span class="k"><span class="pill par" style="width:80px;height:20px;font-size:9px">ΣΥΝΕΡΓΑΤΗΣ</span></span>
+  <span class="k"><span class="pill un" style="width:60px;height:20px"></span> χωρίς ανάθεση</span>
+  <span class="k"><span class="hh">10:00</span> καρφωμένο ραντεβού</span>
+  <span class="k"><span class="grp"><span class="cv">▸</span>5 · 31p</span> πολλαπλοί πελάτες — κλικ για ανάλυση</span>
+  <br>
+  <span class="k"><span class="chip up">εξυπηρετεί ▸</span> η κίνηση καλύπτει άλλο δρομολόγιο</span>
+  <span class="k"><span class="chip down">καλύπτεται τοπικά</span> το σκέλος το κάνει τοπικός οδηγός</span>
+  <span class="k"><span class="chip need">χρειάζεται τοπικό</span> δηλωμένη ανάγκη, χωρίς οδηγό ακόμη</span>
+  <span class="k"><b>—</b> δεν υπάρχει σκέλος (το «Χ» του Excel)</span>
+</div>
+
+<script>
+const NAT=[
+ {day:'ΚΥΡΙΑΚΗ',date:'26/07',rows:[
+  {k:{ld:'26/07',frm:'Άγιος Γεώργιος',dd:'27/07',to:'Κρέατα Ζαβέρδα'},
+   a:{t:'own',p:'CB142HO·Ρ59487',d:'Τουραντζίδης Λ.'},
+   n:{ld:'27/07',frm:'Καραμπέλας · Ελληνικά Φρούτα',dd:'28/07',to:'Άη Γιώργης',pal:'20 ΙΦΚΟ',
+      chip:{c:'down',x:'καλύπτεται τοπικά · Δούμος Τρι'}}},
+  {k:{ld:'26/07',frm:'Άγιος Γεώργιος',dd:'27/07',to:'Φίτος 1'},
+   a:{t:'own',p:'CB1284KE·Ε9180ΕΕ',d:'Παπαθεοχαρίδης Β.'},
+   n:{ld:'27/07',frm:'ΒΙΣ ΑΕ ΒΙΠΕ Βόλου',dd:'28/07',to:'Άη Γιώργης'}},
+  {k:{ld:'26/07',frm:'Άγιος Γεώργιος',dd:'27/07',to:'Φίτος 2 — αγορά πρακτορεία',pal:'30p'},
+   a:{t:'par',p:'Μωυσιάδης',d:'συνεργαζόμενος'},
+   n:null},
+  {k:{ld:'26/07',frm:'Άγιος Γεώργιος',dd:'27/07',to:'Κρικέτος κατάψυξη',
+      chip:{c:'up',x:'εξυπηρετεί ▸ Αναστασίου · διεθνές'}},
+   a:{t:'par',p:'Ζαβέρδα',d:'Ε1483ΜΑ Σπύρος'},
+   n:{ld:'27/07',frm:'Ιωαννίδης πρακτορείο',dd:'28/07',to:'Θεσσαλονίκη'}}
+ ]},
+ {day:'ΔΕΥΤΕΡΑ',date:'27/07',rows:[
+  {k:{ld:'27/07',frm:'Άγιος Γεώργιος',dd:'28/07',to:'Lidl Αττ. Μαρκόπουλο',
+      chip:{c:'up',x:'εξυπηρετεί ▸ Αντωνιάδης · διεθνές'}},
+   a:{t:'own',p:'ΙΑΖ4445·Ε9267ΕΕ',d:'Καρκάλης Ι.'},
+   n:{ld:'28/07',frm:'Ένωση Μακεδονίας',dd:'29/07',to:'Μασούτης Καβαλάρι'}},
+  {k:{ld:'27/07',frm:'Φίτος',dd:'28/07',to:'Αττική',
+      stops:[{n:'ΑΝΕΔΗΚ',p:9},{n:'Αγορά',p:7},{n:'Κουνάδη',p:6},{n:'Ηλιάδη',p:5},{n:'Σπανάκος',p:4}]},
+   a:{t:'own',p:'ΙΑΒ2103·Ε3006ΕΕ',d:'Χρυσουλίδης Μ.'},
+   n:{ld:'28/07',frm:'Αττική',dd:'29/07',to:'Βέροια — Σκύδρα',
+      stops:[{n:'Χαλβατζής',p:8,o:'ΙΦΚΟ'},{n:'Νέα Σταρ',p:8,o:'ΙΦΚΟ'},{n:'Φίτος επιστροφή',p:7,o:'4 Σιάμπης χρεών · 3 ΑΣΝ όχι'}]}},
+  {k:{ld:'27/07',frm:'Άγιος Γεώργιος',dd:'28/07',to:'Οινόφυτα',
+      stops:[{n:'Σκλαβενίτης',p:24},{n:'ΑΒ Βασιλόπουλος',p:3}]},
+   a:{t:'own',p:'ΙΑΖ5561·Ε5811ΕΕ',d:'Πάπης Γ.'},
+   n:{ld:'28/07',frm:'Καρούλια',dd:'29/07',to:'Πρακτορείο Δελατόλα Θεσ/κη'}}
+ ]},
+ {day:'ΤΡΙΤΗ',date:'28/07',rows:[
+  {k:{ld:'28/07',frm:'Άγιος Γεώργιος',dd:'29/07',to:'Οινόφυτα',
+      stops:[{n:'Σκλαβενίτης',p:20,o:'Πέτρας · Κομέξ · Ράχη'},{n:'ΑΒ Οινόφυτα',p:3}]},
+   a:{t:'own',p:'ΙΑΒ4166',d:'Βαϊνάλης Κ.'},
+   n:{ld:'29/07',frm:'Ιωαννίδης πρακτορείο',dd:'30/07',to:'Θεσσαλονίκη'}},
+  {k:{ld:'28/07',frm:'Φίτος',dd:'29/07',to:'Αττική',
+      stops:[{n:'ACN',p:31},{n:'Οινόφυτα Μέγαρο',p:1}]},
+   a:{t:'own',p:'ΙΑΒ2107',d:'Σιδηρόπουλος Γ.'},
+   n:{ld:'29/07',frm:'ΒΙΣ ΑΕ ΒΙΠΕ Βόλου',dd:'30/07',to:'Άη Γιώργης'}},
+  {k:{ld:'28/07',frm:'Άγιος Γεώργιος',dd:'29/07',to:'Κρικέτος κατάψυξη',
+      chip:{c:'up',x:'εξυπηρετεί ▸ Ιωσηφίδης · διεθνές'}},
+   a:{t:'par',p:'Ζαβέρδα',d:'Ε1483ΜΑ Σπύρος'},
+   n:{ld:'29/07',frm:'Πασχάλης Μεγακλής',dd:'30/07',to:'SM Νάουσα',pal:'24p'}}
+ ]},
+ {day:'ΤΕΤΑΡΤΗ',date:'29/07',rows:[
+  {k:{ld:'29/07',frm:'Άγιος Γεώργιος',dd:'30/07',to:'Lidl Αττ. Μαρκόπουλο',hh:'10:00'},
+   a:{t:'own',p:'CB142HO·E9160EE',d:'Τουραντζίδης Λ.'},
+   n:{ld:'30/07',frm:'ELBISCO',dd:'31/07',to:'Θεσσαλονίκη'}},
+  {k:{ld:'29/07',frm:'Κασάπης πρακτορείο Θεσ/κη',dd:'30/07',to:'Πάτρα ξηρό'},
+   a:{t:'own',p:'ΙΑΖ5561·Ε5811ΕΕ',d:'Πάπης Γ.'},
+   n:{ld:'30/07',frm:'OGL Agrofrut καρπούζια',dd:'31/07',to:'Άη Γιώργης',pal:'28p'}},
+  {k:{ld:'29/07',frm:'Άγιος Γεώργιος',dd:'30/07',to:'Φίτος 1'},
+   a:{t:'own',p:'ΙΑΖ4445·Ε59487',d:'Καρκάλης Ι.'},
+   n:{ld:'30/07',frm:'Σκλαβενίτης → Τσιχλακίδης',dd:'31/07',to:'Θεσσαλονίκη',pal:'495p'}},
+  {k:{ld:'29/07',frm:'Κοπανός',dd:'30/07',to:'IFCO για Άργος',
+      chip:{c:'up',x:'εξυπηρετεί ▸ Ντράγκαν · διεθνές'}},
+   a:{t:'par',p:'Μποντάιντης',d:'συνεργαζόμενος'},
+   n:null}
+ ]},
+ {day:'ΠΕΜΠΤΗ',date:'30/07',rows:[
+  {k:{ld:'30/07',frm:'Άγιος Γεώργιος',dd:'30/07',to:'Lidl Τρίκαλα',hh:'07:00'},
+   a:{t:'own',p:'NXA9624·Ρ67301',d:'Σαρηγιάννης / Τουραντζίδης Μ.'},
+   n:{ld:'30/07',frm:'ΒΙΣ ΑΕ',dd:'31/07',to:'Άη Γιώργης · Αλιάκμων'}},
+  {k:{ld:'30/07',frm:'Άγιος Γεώργιος',dd:'31/07',to:'ΑΒ · Αντζουλάτος',
+      chip:{c:'need',x:'χρειάζεται τοπικό'}},
+   a:{t:'own',p:'CB5284TP·Ρ59483',d:'Μπάνας'},
+   n:{ld:'31/07',frm:'Παπαδοπούλου (GLS Γεράκης)',dd:'01/08',to:'Μασούτης Καβαλάρι'}},
+  {k:{ld:'30/07',frm:'Άγιος Γεώργιος',dd:'31/07',to:'Σκλαβενίτης',
+      stops:[{n:'Σκλαβενίτης Πέτρας',p:28},{n:'Σκλαβενίτης Κομέξ',p:4}]},
+   a:{t:'own',p:'ΙΑΒ2107',d:'Σιδηρόπουλος Γ.'},
+   n:{ld:'31/07',frm:'Παπαδοπούλου (GLS Γεράκης)',dd:'03/08',to:'Σίνδος'}}
+ ]},
+ {day:'ΠΑΡΑΣΚΕΥΗ',date:'31/07',rows:[
+  {k:{ld:'31/07',frm:'Άγιος Γεώργιος',dd:'01/08',to:'IFCO Ασπρόπυργος',pal:'5p'},
+   a:{t:'par',p:'Μποντάιντης',d:'συνεργαζόμενος'},
+   n:null}
+ ]},
+ {day:'ΣΑΒΒΑΤΟ',date:'01/08',rows:[
+  {k:{ld:'01/08',frm:'Άγιος Γεώργιος',dd:'02/08',to:'Αττική',
+      stops:[{n:'Σκλαβενίτης Πέτρας',p:16},{n:'Μαλεφιτζάκης',p:7},{n:'Σιάμπης',p:6}]},
+   a:{t:'own',p:'CB1284KE·E9180EE',d:'Παπαθεοχαρίδης'},
+   n:{ld:'02/08',frm:'OGL Lidl Geofruit',dd:'03/08',to:'Άγιος Γεώργιος'}},
+  {k:{ld:'01/08',frm:'Άγιος Γεώργιος',dd:'02/08',to:'Λαχαναγορά Αθήνα · Ασπρόπυργος'},
+   a:{t:'own',p:'IAB2107',d:'Σιδηρόπουλος Γ.'},
+   n:{ld:'02/08',frm:'ΦΑΓΕ',hh:'23:00',dd:'03/08',to:'Μασούτης Καβαλάρι'}},
+  {k:null,
+   a:{t:'par',p:'Κασάπης',d:'συνεργαζόμενος'},
+   n:{ld:'02/08',frm:'OGL Lidl Agrofrut',dd:'03/08',to:'Άγιος Γεώργιος'}}
+ ]}
+];
+
+const LOC=[
+ {day:'ΚΥΡΙΑΚΗ',date:'26/07',rows:[]},
+ {day:'ΔΕΥΤΕΡΑ',date:'27/07',rows:[
+  {d:'Δούμος Δ.',p:'CB3002',mv:[
+   {f:'Αθήνα',t:'Σίνδος',n:'Lidl · φορτίο Δελατόλα'},
+   {f:'Θεσσαλονίκη',t:'Αλεξάνδρεια',n:'2 κιβώτια Άλμη'}]},
+  {d:'Γαλλής Γρ.',p:'CB4612',mv:[
+   {f:'Άγιος Γεώργιος',t:'GTL',chip:{c:'up',x:'εξυπηρετεί ▸ Μπάμπαλος · διεθνές'}}]},
+  {d:'Τουραντζίδης Μάκης',p:'ΝΧΑ9624',mv:[
+   {f:'Άγιος Γεώργιος',t:'Νέα Μουδανιά',n:'Καραμολέγκος · φορτίο Γεράκης GLS'}]}
+ ]},
+ {day:'ΤΡΙΤΗ',date:'28/07',rows:[
+  {d:'Δούμος Δ.',p:'CB0138HO·P47331',mv:[
+   {f:'Άγιος Γεώργιος',t:'μοίρασμα IFCO',chip:{c:'up',x:'εξυπηρετεί ▸ Τουραντζίδης Λ. · εθνικό'}},
+   {f:'Αλιάκμων',t:'Κοπανός',n:'επιστροφή IFCO'}]}
+ ]},
+ {day:'ΤΕΤΑΡΤΗ',date:'29/07',rows:[]},
+ {day:'ΠΕΜΠΤΗ',date:'30/07',rows:[]},
+ {day:'ΠΑΡΑΣΚΕΥΗ',date:'31/07',rows:[]},
+ {day:'ΣΑΒΒΑΤΟ',date:'01/08',rows:[]}
+];
+
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const chipHTML=c=>c?'<button class="chip '+c.c+'">'+esc(c.x)+'</button>':'';
+
+function tg(id){
+  const d=document.getElementById(id), b=document.getElementById(id+'b');
+  d.classList.toggle('open'); b.classList.toggle('open');
+}
+
+let _gid=0;
+function legHTML(l){
+  if(!l) return '<div class="leg void">—</div>';
+  const S=l.stops||[];
+  let grpBtn='',det='';
+  if(S.length>1){
+    const id='g'+(++_gid);
+    const tot=S.reduce(function(s,x){return s+x.p;},0);
+    grpBtn=' <button class="grp" id="'+id+'b" onclick="tg(\''+id+'\')"><span class="cv">▸</span>'
+      +S.length+' · '+tot+'p</button>';
+    det='<div class="grpdet" id="'+id+'">'+S.map(function(x){
+      return '<div class="st"><span class="p">'+x.p+'p</span><span>'+esc(x.n)+'</span>'
+        +(x.o?'<span class="o">'+esc(x.o)+'</span>':'')+'</div>';
+    }).join('')+'<div class="st"><span class="p '+(tot>=30?'cap full':'cap')+'">'+tot+'/33</span>'
+      +'<span class="o">γέμισμα φορτηγού</span></div></div>';
+  }
+  const sub=[l.pal?'<span class="pal">'+esc(l.pal)+'</span>':'',chipHTML(l.chip)].filter(Boolean).join('');
+  return '<div class="leg"><div class="rt">'
+    +'<span class="ld">'+esc(l.ld)+'</span><span class="frm">'+esc(l.frm)+'</span>'
+    +'<span class="sep">→</span><span class="ld">'+esc(l.dd)+'</span><span class="to">'+esc(l.to)+'</span>'
+    +(l.hh?'<span class="hh">'+esc(l.hh)+'</span>':'')+grpBtn
+    +'</div>'+(sub?'<div class="sub">'+sub+'</div>':'')+det+'</div>';
+}
+
+let n=0,pend=0,need=0,pair=0,k1=0,k2=0;
+document.getElementById('natBody').innerHTML=NAT.map(function(day){
+  const head='<div class="wk3-dayh"><span class="d">'+day.day+'</span><span class="k">'+day.date+' · '
+    +day.rows.length+' δρομολόγια</span>'+(day.date==='29/07'?'<span class="now">ΣΗΜΕΡΑ</span>':'')+'</div>';
+  if(!day.rows.length) return head+'<div class="dayempty">Καμία κίνηση<button class="plus">+ Δρομολόγιο</button></div>';
+  return head+day.rows.map(function(r){
+    n++; if(r.k)k1++; if(r.n)k2++; if(r.k&&r.n)pair++;
+    if(r.k&&r.k.chip&&r.k.chip.c==='need')need++;
+    if(r.n&&r.n.chip&&r.n.chip.c==='need')need++;
+    let pill;
+    if(r.a){pill='<div class="pill '+(r.a.t==='par'?'par':'own')+'">'+esc(r.a.p)+' <small>'+esc(r.a.d)+'</small></div>';}
+    else{pend++;pill='<div class="pill un"></div>';}
+    return '<div class="grow"><div class="wk3-num">'+n+'</div>'+legHTML(r.k)
+      +'<div class="asg">'+pill+'</div>'+legHTML(r.n)+'</div>';
+  }).join('');
+}).join('');
+
+let ln=0;
+document.getElementById('locBody').innerHTML=LOC.map(function(day){
+  const cnt=day.rows.reduce(function(s,r){return s+r.mv.length;},0);
+  const head='<div class="wk3-dayh"><span class="d">'+day.day+'</span><span class="k">'+day.date
+    +(day.rows.length?' · '+day.rows.length+' οδηγοί · '+cnt+' κινήσεις':'')+'</span>'
+    +(day.date==='29/07'?'<span class="now">ΣΗΜΕΡΑ</span>':'')+'</div>';
+  if(!day.rows.length) return head+'<div class="dayempty">Καμία τοπική κίνηση<button class="plus">+ Τοπικό</button></div>';
+  return head+day.rows.map(function(r){
+    ln++;
+    const mvs=r.mv.map(function(m,i){
+      if(m.chip&&m.chip.c==='need')need++;
+      return '<div class="mv"><span class="i">'+(i+1)+'</span><span class="txt">'+esc(m.f)+' → <b>'+esc(m.t)+'</b>'
+        +(m.n?' · '+esc(m.n):'')+'</span>'+(m.hh?'<span class="hh">'+esc(m.hh)+'</span>':'')+chipHTML(m.chip)+'</div>';
+    }).join('');
+    return '<div class="lrow"><div class="wk3-num">'+ln+'</div>'
+      +'<div class="lhead"><span class="nm">'+esc(r.d)+'</span><span class="pl">'+esc(r.p)+'</span></div>'
+      +'<div class="moves">'+mvs+'<button class="mvadd">+ κίνηση</button></div></div>';
+  }).join('');
+}).join('');
+
+const locMoves=LOC.reduce(function(s,d){return s+d.rows.reduce(function(x,r){return x+r.mv.length;},0);},0);
+document.getElementById('tNat').textContent=n;
+document.getElementById('tLoc').textContent=locMoves;
+document.getElementById('tPair').textContent=pair;
+document.getElementById('tPend').textContent=pend;
+document.getElementById('tNeed').textContent=need;
+document.getElementById('cN1').textContent=k1;
+document.getElementById('cN2').textContent=k2;
+</script>
+</body>
+</html>

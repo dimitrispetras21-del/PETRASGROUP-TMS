@@ -10,6 +10,9 @@ name = "petras-tms-backend-staging"
 account_id = "9dff78339915e968e5becaa9b1efff43"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
+# Το app καλεί το *.workers.dev URL (config.js PROXY_URL) — ρητά true ώστε
+# κανένα deploy να μην το απενεργοποιήσει.
+workers_dev = true
 
 # Non-secret vars — πιστή αντιγραφή των τρεχόντων bindings (CF API, 10/8).
 # Το wrangler deploy τα ξαναγράφει· αν προστεθεί var στο dashboard χωρίς να

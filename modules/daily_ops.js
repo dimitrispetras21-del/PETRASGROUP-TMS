@@ -18,6 +18,7 @@ const OPS_FIELDS = [
   'ORDER STOPS',
   'Delivery Performance','Ops Notes','Postponed To',
   'Actual Delivery Date','ETA','CMR Photo Received','Client Notified',
+  'Veroia Switch','VS CD Date',
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
   'Truck','Trailer','Driver','Is Partner Trip','Partner',
 ];
@@ -41,12 +42,27 @@ async function _opsLoad() {
   const today=localToday();
   const tmrw=localTomorrow();
   const tgt=OPS.date==='tomorrow'?tmrw:OPS.date==='today'?today:OPS.date; // DO-7: δέχεται και ISO ημερομηνία
-  const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
+  // VS (owner 10/8): το διεθνές σκέλος εμφανίζεται τη μέρα του Cross-Dock
+  // (VS CD Date, αλλιώς Loading+1) — φέρε και τα χθεσινά-Loading VS.
+  const prev=toLocalDate(new Date(new Date(tgt).getTime()-86400000));
+  const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'),IS_SAME({VS CD Date},'${tgt}','day'),AND({Veroia Switch}=1,IS_SAME({Loading DateTime},'${prev}','day')))`;
+  const dayFOld=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
   const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Status}='In Transit',{Status}='Assigned',{Status}='Pending',{Status}=''))`;
-  const [intl,ov] = await Promise.all([
-    atGetAll(TABLES.ORDERS,{filterByFormula:dayF,fields:OPS_FIELDS},false),
-    OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
-  ]);
+  let intl, ov;
+  try{
+    [intl,ov] = await Promise.all([
+      atGetAll(TABLES.ORDERS,{filterByFormula:dayF,fields:OPS_FIELDS},false),
+      OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
+    ]);
+  }catch(e){
+    // Πριν το worker deploy του VS CD Date το νέο φίλτρο μπορεί να απορριφθεί —
+    // πέφτουμε στο παλιό, η σελίδα δεν σπάει ποτέ.
+    console.warn('[ops] VS dayF fallback:', e.message);
+    [intl,ov] = await Promise.all([
+      atGetAll(TABLES.ORDERS,{filterByFormula:dayFOld,fields:OPS_FIELDS},false),
+      OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
+    ]);
+  }
   OPS.intl=intl;
   const ids=new Set(intl.map(r=>r.id));
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
@@ -119,7 +135,16 @@ function _opsCats() {
       if (!haystack.includes(q)) continue;
     }
 
-    const isL=_DM(f['Loading DateTime'],tgt);
+    // VS export: effective ημέρα φόρτωσης = μέρα Cross-Dock (VS CD Date ή +1)
+    const _effL=(ff)=>{
+      if(ff['Veroia Switch']&&ff['Direction']==='Export'){
+        if(ff['VS CD Date']) return String(ff['VS CD Date']);
+        const l=ff['Loading DateTime'];
+        if(l){ try{ return toLocalDate(new Date(new Date(l).getTime()+86400000)); }catch(e){} }
+      }
+      return ff['Loading DateTime'];
+    };
+    const isL=_DM(_effL(f),tgt);
     const isD=_DM(f['Delivery DateTime'],tgt);
     if(isImp){if(isL)c.il.push(r);if(isD)c.id.push(r);}
     else     {if(isL)c.el.push(r);if(isD)c.ed.push(r);}
@@ -532,8 +557,14 @@ async function _opsTog(id,fld,v){
 async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 // Single Status field — unified lifecycle (Pending/Assigned/In Transit/Delivered/Invoiced/Cancelled)
 async function _opsStat(id,st){try{
-  await atSafePatch(TABLES.ORDERS,id,{'Status':st});
-  const r=OPS.intl.find(x=>x.id===id);if(r)r.fields['Status']=st;
+  const r0=OPS.intl.find(x=>x.id===id);
+  const patch={'Status':st};
+  // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
+  if(st==='In Transit'&&r0?.fields['Veroia Switch']&&r0?.fields['Direction']==='Export'&&!r0?.fields['VS CD Date']){
+    patch['VS CD Date']=localToday();
+  }
+  await atSafePatch(TABLES.ORDERS,id,patch);
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']=st;if(patch['VS CD Date'])r.fields['VS CD Date']=patch['VS CD Date'];}
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { console.warn('PA status sync:', e.message); }

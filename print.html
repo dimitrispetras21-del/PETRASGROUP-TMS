@@ -394,8 +394,9 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||'—');
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
   try{
-    if(veroiaSwitch&&isExport&&ld) ld=new Date(new Date(ld).getTime()+86400000).toISOString();
-    if(veroiaSwitch&&!isExport&&dd) dd=new Date(new Date(dd).getTime()-86400000).toISOString();
+    var vcd=f['VS CD Date']?String(f['VS CD Date']):null;
+    if(veroiaSwitch&&isExport) ld=vcd||(ld?new Date(new Date(ld).getTime()+86400000).toISOString():ld);
+    if(veroiaSwitch&&!isExport) dd=vcd||(dd?new Date(new Date(dd).getTime()-86400000).toISOString():dd);
   }catch(e){}
   return '<div class="route2">'+
     '<div class="side"><div class="k">'+L.from+'</div><div class="n">'+from+'</div><div class="d">'+fmtDT(ld)+'</div></div>'+
@@ -407,7 +408,7 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
 function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Loading DateTime']||'';
   if(veroiaSwitch&&isExport){
-    var vDt=dt?new Date(new Date(dt).getTime()+86400000).toISOString():'';
+    var vDt=f['VS CD Date']?String(f['VS CD Date']):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
@@ -436,7 +437,7 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
 function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Delivery DateTime']||'';
   if(veroiaSwitch&&!isExport){
-    var vDt=dt?new Date(new Date(dt).getTime()-86400000).toISOString():'';
+    var vDt=f['VS CD Date']?String(f['VS CD Date']):(dt?new Date(new Date(dt).getTime()-86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'delivery',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
   }

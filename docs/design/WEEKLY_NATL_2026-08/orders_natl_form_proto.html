@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>National Orders — φόρμα · prototype</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Αντιγραφή από assets/style.css — modal, form-grid, form-field, form-label,
+   form-input/select/textarea, detail-section-title, btn. Καμία απόκλιση. */
+:root{
+  --navy-mid:#0B1929; --navy-deep:#0C2D5C;
+  --bg:#F4F6F9; --bg-card:#fff;
+  --text:#0F1A28; --text-mid:#3A4A5E; --text-dim:#5B6B7F;
+  --border:rgba(0,0,0,.06); --border-mid:rgba(0,0,0,.10); --border-dark:rgba(0,0,0,.16);
+  --accent:#0284C7; --accent-light:rgba(2,132,199,.10); --accent-glow:rgba(2,132,199,.20);
+  --success:#059669; --danger:#DC2626; --warn:#B45309;
+  --radius:8px; --radius-md:8px; --radius-lg:14px;
+  --space-2:8px; --space-3:12px; --space-4:16px;
+  --text-xs:11px; --text-sm:13px; --text-body:13px; --text-md:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);
+  padding:26px 20px 60px;display:flex;justify-content:center;-webkit-font-smoothing:antialiased}
+
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);
+  width:760px;max-width:96vw;box-shadow:0 24px 60px rgba(0,0,0,.18),0 0 0 1px rgba(0,0,0,.05)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;
+  border-bottom:1px solid var(--border)}
+.modal-title{font-family:'Syne',sans-serif;font-size:var(--text-md);font-weight:700;letter-spacing:-.2px}
+.modal-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+  border-radius:var(--radius);cursor:pointer;color:var(--text-dim);font-size:18px}
+.modal-close:hover{background:var(--bg);color:var(--text)}
+.modal-body{padding:24px}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;align-items:center;padding:16px 24px;
+  border-top:1px solid var(--border)}
+
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.form-field{display:flex;flex-direction:column;gap:6px}
+.form-field.span-2{grid-column:span 2}
+.form-label{font-size:var(--text-xs);font-weight:500;color:var(--text-mid)}
+.form-input,.form-select,.form-textarea{background:#fff;border:1px solid var(--border-dark);
+  border-radius:var(--radius-md);padding:9px 13px;font-family:'DM Sans',sans-serif;
+  font-size:var(--text-body);color:var(--text);outline:none;width:100%;
+  transition:border-color .15s,box-shadow .15s}
+.form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);
+  box-shadow:0 0 0 3px var(--accent-glow)}
+.form-select{cursor:pointer}
+.form-textarea{resize:vertical;min-height:60px}
+.form-input:disabled{background:var(--bg);color:var(--text-mid)}
+
+.detail-section-title{font-size:9px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+  color:var(--text-dim);margin-bottom:8px}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);
+  padding:0 var(--space-4);height:36px;border-radius:var(--radius);font-family:'DM Sans',sans-serif;
+  font-size:var(--text-sm);font-weight:600;cursor:pointer;border:1px solid transparent;letter-spacing:.1px}
+.btn-success{background:var(--success);border-color:var(--success);color:#fff}
+.btn-ghost{background:transparent;border-color:var(--border-mid);color:var(--text-mid)}
+.btn-ghost:hover{background:var(--accent-light);border-color:rgba(2,132,199,.25);color:var(--accent)}
+
+/* ── ΜΟΝΟ αυτά είναι νέα ─────────────────────────────────────────────── */
+/* γραμμή στάσης: το 1fr 100px 130px των διεθνών + στήλη σημείωσης */
+.stoprow{display:grid;grid-template-columns:1fr 100px 130px 1fr 28px;gap:8px;
+  margin-bottom:10px;align-items:end}
+.stoprow .rm{height:38px;border:none;background:none;color:var(--text-dim);font-size:15px;
+  cursor:pointer;border-radius:var(--radius)}
+.stoprow .rm:hover{color:var(--danger);background:rgba(220,38,38,.08)}
+.mode-row{display:flex;gap:12px;margin:16px 0;flex-wrap:wrap;align-items:stretch}
+.modeopt{flex:1;min-width:260px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;
+  border:1px solid var(--border-mid);border-radius:var(--radius);padding:11px 13px;background:#fff;
+  transition:border-color .15s,background .15s}
+.modeopt:hover{border-color:rgba(2,132,199,.35);background:var(--accent-light)}
+.modeopt.on{border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px var(--accent-glow)}
+.modeopt input{width:15px;height:15px;margin-top:2px;flex-shrink:0}
+.modeopt span{display:flex;flex-direction:column;gap:2px}
+.modeopt b{font-size:13px;font-weight:600;color:var(--text)}
+.modeopt em{font-style:normal;font-size:11px;color:var(--text-dim);line-height:1.45}
+.modeopt.on b{color:var(--accent)}
+.grpbox{border:1px solid var(--border-mid);border-radius:10px;margin-bottom:12px;overflow:hidden}
+.grpbox > .hd{display:flex;align-items:flex-end;gap:12px;padding:10px 12px;background:var(--bg);
+  border-bottom:1px solid var(--border)}
+.grpbox > .hd .f{display:flex;flex-direction:column;gap:6px}
+.grpbox > .hd .f.cl{flex:1;max-width:280px}
+.grpbox > .hd .rm{height:38px;border:none;background:none;color:var(--text-dim);font-size:15px;
+  cursor:pointer;border-radius:var(--radius)}
+.grpbox > .bd{padding:12px 12px 4px}
+.tally{display:flex;align-items:center;gap:14px;margin-top:16px;padding:10px 12px;
+  background:var(--bg);border-radius:var(--radius);flex-wrap:wrap}
+.tally .k{font-size:11px;color:var(--text-dim)}
+.tally .v{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.tally .v.warn{color:var(--warn)} .tally .v.over{color:var(--danger)}
+.tally .ok{font-size:11px;font-weight:700;color:var(--success)}
+.tally .bad{font-size:11px;font-weight:700;color:var(--danger)}
+.willmake{margin-top:16px;border:1px dashed rgba(2,132,199,.35);background:var(--accent-light);
+  border-radius:var(--radius);padding:12px 14px}
+.willmake .h{font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:8px}
+.willmake ol{list-style:none;display:flex;flex-direction:column;gap:4px}
+.willmake li{font-size:11.5px;color:var(--text-mid)}
+.willmake li b{color:var(--text)}
+.willmake li .d{display:block;font-size:10.5px;color:var(--text-dim);padding-left:14px}
+.foot-note{margin-right:auto;font-size:11px;color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<div class="modal">
+  <div class="modal-header">
+    <span class="modal-title">New National Order</span>
+    <span class="modal-close">×</span>
+  </div>
+
+  <div class="modal-body">
+
+    <div class="form-grid">
+      <div class="form-field">
+        <label class="form-label">Direction *</label>
+        <select class="form-select" id="dir" onchange="render()">
+          <option value="ns">ΚΑΘΟΔΟΣ (Βορράς→Νότος)</option>
+          <option value="sn">ΑΝΟΔΟΣ (Νότος→Βορράς)</option>
+        </select>
+      </div>
+      <div class="form-field" id="fClient">
+        <label class="form-label">Client *</label>
+        <select class="form-select" id="client"></select>
+      </div>
+      <div class="form-field" id="fPrice">
+        <label class="form-label">Price (€)</label>
+        <input class="form-input" type="number" id="price" value="540" oninput="render()">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Goods</label>
+        <input class="form-input" type="text" value="Fresh Produce" placeholder="e.g. Fresh Produce">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Pallets</label>
+        <input class="form-input" type="number" id="palTotal" disabled title="Άθροισμα των στάσεων">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Temperature °C</label>
+        <input class="form-input" type="number" value="2">
+      </div>
+      <div class="form-field" style="padding-top:24px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" checked style="width:15px;height:15px"> Pallet Exchange</label>
+      </div>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border)">
+      <div class="detail-section-title">Order Type</div>
+      <div class="mode-row" style="margin:0">
+        <label class="modeopt" id="optSimple">
+          <input type="radio" name="omode" value="0" onchange="setMode(0)">
+          <span><b>Απλή παραγγελία</b><em>Ένας πελάτης, όσα σημεία χρειαστεί — 1 order</em></span>
+        </label>
+        <label class="modeopt on" id="optGrp">
+          <input type="radio" name="omode" value="1" checked onchange="setMode(1)">
+          <span><b>National Groupage</b><em>Πολλοί πελάτες στο ίδιο φορτηγό — 1 order ανά πελάτη</em></span>
+        </label>
+      </div>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border)">
+      <div class="detail-section-title" id="tLoad">Loading Stops</div>
+      <div id="stops_l"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px"
+        onclick="addStop('l')">+ Add Loading Stop</button>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
+      <div class="detail-section-title" id="tDel">Delivery Stops</div>
+      <div id="stops_u"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px"
+        id="btnAddU" onclick="addStop('u')">+ Add Delivery Stop</button>
+    </div>
+
+    <div class="tally">
+      <span class="k">Pallets</span><span class="v" id="tvPal">0 / 33</span>
+      <span class="k" id="tvLeft"></span>
+      <span id="tvBal"></span>
+      <span class="k" style="margin-left:auto" id="tvStops"></span>
+    </div>
+
+    <div class="willmake">
+      <div class="h" id="wmH">1 order will be created</div>
+      <ol id="wmList"></ol>
+      <div style="margin-top:9px;font-size:11px;color:var(--warn);font-weight:600;display:none" id="wmWarn"></div>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
+      <div class="form-field span-2">
+        <label class="form-label">Notes</label>
+        <textarea class="form-textarea" rows="3"
+          placeholder="Special instructions, trailer requirements, contacts..."></textarea>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="modal-footer">
+    <span class="foot-note" id="footNote"></span>
+    <button class="btn btn-ghost">Cancel</button>
+    <button class="btn btn-success" id="btnSubmit">Submit</button>
+  </div>
+</div>
+
+<script>
+var CLIENTS=['Σκλαβενίτης','ΑΒ Βασιλόπουλος','ΑΝΕΔΗΚ Κρητικός','Μασούτης','Lidl Hellas',
+  'Αγορά','Κουνάδη','Ηλιάδη','Σπανάκος','Χαλβατζής','Νέα Σταρ','Κρικέτος'];
+var LOCS=['Φίτος — Σκύδρα','Άγιος Γεώργιος','Κοπανός','Αλιάκμων','Βέροια Cross-Dock',
+  'Ασπρόπυργος — Πέτρας','Οινόφυτα — Κομέξ','Μαρκόπουλο — Ράχη','Οινόφυτα','Λαχαναγορά Αθήνα',
+  'Ασπρόπυργος','Άργος','Πάτρα','Θεσσαλονίκη'];
+var MAX=10;
+
+var stopsL=[{l:'Φίτος — Σκύδρα',p:31,d:'2026-07-27',n:''}];
+var stopsU=[{l:'Ασπρόπυργος',p:31,d:'2026-07-28',n:''}];
+var groups=[
+ {c:'Σκλαβενίτης',v:960,s:[
+   {l:'Ασπρόπυργος — Πέτρας',p:8,d:'2026-07-28',n:''},
+   {l:'Οινόφυτα — Κομέξ',p:6,d:'2026-07-28',n:''},
+   {l:'Μαρκόπουλο — Ράχη',p:6,d:'2026-07-28',n:'παράδοση πρωί'}]},
+ {c:'ΑΒ Βασιλόπουλος',v:180,s:[{l:'Οινόφυτα',p:3,d:'2026-07-28',n:''}]},
+ {c:'ΑΝΕΔΗΚ Κρητικός',v:430,s:[
+   {l:'Ασπρόπυργος',p:5,d:'2026-07-28',n:''},
+   {l:'Λαχαναγορά Αθήνα',p:3,d:'2026-07-29',n:'επόμενη μέρα'}]}
+];
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function sel(a,c){return a.map(function(o){return '<option'+(o===c?' selected':'')+'>'+esc(o)+'</option>';}).join('');}
+function sum(a){return a.reduce(function(x,s){return x+s.p;},0);}
+var mode=1;
+function grp(){return mode===1;}
+function setMode(m){
+  mode=m;
+  var s=document.getElementById('optSimple'), g=document.getElementById('optGrp');
+  s.className='modeopt'+(m?'':' on');
+  g.className='modeopt'+(m?' on':'');
+  s.querySelector('input').checked=!m;
+  g.querySelector('input').checked=!!m;
+  render();
+}
+
+/* γραμμή στάσης — ίδια δομή με _stopRow() των διεθνών: ετικέτα πάνω από κάθε πεδίο */
+function stopRow(label,i,s,fn,canDel){
+  var req=i===0?' *':'';
+  return '<div class="stoprow">'
+   +'<div><label class="form-label" style="font-size:11px">'+label+' Location '+(i+1)+req+'</label>'
+   +'<select class="form-select" onchange="'+fn+'('+i+',\'l\',this.value)">'+sel(LOCS,s.l)+'</select></div>'
+   +'<div><label class="form-label" style="font-size:11px">Pallets'+req+'</label>'
+   +'<input class="form-input" type="number" min="0" value="'+s.p+'" onchange="'+fn+'('+i+',\'p\',this.value)"></div>'
+   +'<div><label class="form-label" style="font-size:11px">Date'+req+'</label>'
+   +'<input class="form-input" type="date" value="'+s.d+'" onchange="'+fn+'('+i+',\'d\',this.value)"></div>'
+   +'<div><label class="form-label" style="font-size:11px">Note</label>'
+   +'<input class="form-input" value="'+esc(s.n)+'" placeholder="—" onchange="'+fn+'('+i+',\'n\',this.value)"></div>'
+   +(canDel?'<button class="rm" title="Remove" onclick="'+fn+'Del('+i+')">×</button>':'<span></span>')
+   +'</div>';
+}
+
+function updL(i,k,v){stopsL[i][k]=(k==='p')?(parseFloat(v)||0):v;render();}
+function updLDel(i){stopsL.splice(i,1);render();}
+function updU(i,k,v){stopsU[i][k]=(k==='p')?(parseFloat(v)||0):v;render();}
+function updUDel(i){stopsU.splice(i,1);render();}
+function addStop(t){
+  if(t==='u'&&grp()){addGroup();return;}
+  var a=t==='l'?stopsL:stopsU;
+  if(a.length>=MAX){alert('Maximum '+MAX+' stops per side.');return;}
+  a.push({l:LOCS[0],p:0,d:a[a.length-1].d,n:''});render();
+}
+function addGroup(){
+  var n=groups.reduce(function(s,g){return s+g.s.length;},0);
+  if(n>=MAX){alert('Maximum '+MAX+' stops per side.');return;}
+  groups.push({c:CLIENTS[0],v:0,s:[{l:LOCS[5],p:0,d:stopsL[0].d,n:''}]});render();
+}
+function delGroup(i){groups.splice(i,1);render();}
+function addGStop(i){
+  var n=groups.reduce(function(s,g){return s+g.s.length;},0);
+  if(n>=MAX){alert('Maximum '+MAX+' stops per side.');return;}
+  groups[i].s.push({l:LOCS[5],p:0,d:stopsL[0].d,n:''});render();
+}
+function updG(i,k,v){groups[i][k]=(k==='v')?(parseFloat(v)||0):v;render();}
+function gFn(i){return 'window._g'+i;}
+
+function render(){
+  var down=document.getElementById('dir').value==='ns';
+  var G=grp();
+  var lLabel=down?'Loading':'Loading', uLabel='Delivery';
+
+  document.getElementById('tLoad').textContent=down?'Loading Stops':'Loading Stops (ανά πελάτη)';
+  document.getElementById('tDel').textContent=G?'Delivery Stops — ανά πελάτη':'Delivery Stops';
+  document.getElementById('fClient').style.display=G?'none':'';
+  document.getElementById('fPrice').style.display=G?'none':'';
+  if(!document.getElementById('client').options.length)
+    document.getElementById('client').innerHTML=sel(CLIENTS,'Σκλαβενίτης');
+
+  document.getElementById('stops_l').innerHTML=
+    stopsL.map(function(s,i){return stopRow('Loading',i,s,'updL',stopsL.length>1);}).join('');
+
+  var tl=sum(stopsL), tu=0, nStops=0, orders=1, val=0;
+
+  if(!G){
+    document.getElementById('stops_u').innerHTML=
+      stopsU.map(function(s,i){return stopRow('Delivery',i,s,'updU',stopsU.length>1);}).join('');
+    tu=sum(stopsU); nStops=stopsU.length; orders=1;
+    val=parseFloat(document.getElementById('price').value)||0;
+    document.getElementById('btnAddU').textContent='+ Add Delivery Stop';
+  } else {
+    document.getElementById('stops_u').innerHTML=groups.map(function(g,i){
+      window['_g'+i]=function(j,k,v){groups[i].s[j][k]=(k==='p')?(parseFloat(v)||0):v;render();};
+      window['_g'+i+'Del']=function(j){groups[i].s.splice(j,1);
+        if(!groups[i].s.length)groups.splice(i,1);render();};
+      var rows=g.s.map(function(s,j){
+        return stopRow('Delivery',j,s,'_g'+i,true);}).join('');
+      return '<div class="grpbox"><div class="hd">'
+        +'<div class="f cl"><label class="form-label">Client *</label>'
+        +'<select class="form-select" onchange="updG('+i+',\'c\',this.value)">'+sel(CLIENTS,g.c)+'</select></div>'
+        +'<div class="f" style="width:120px"><label class="form-label">Price (€)</label>'
+        +'<input class="form-input" type="number" value="'+g.v+'" onchange="updG('+i+',\'v\',this.value)"></div>'
+        +'<div class="f" style="width:90px"><label class="form-label">Pallets</label>'
+        +'<input class="form-input" type="number" value="'+sum(g.s)+'" disabled></div>'
+        +'<button class="rm" title="Remove client" onclick="delGroup('+i+')">×</button></div>'
+        +'<div class="bd">'+rows
+        +'<button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-bottom:10px" '
+        +'onclick="addGStop('+i+')">+ Add Stop</button></div></div>';
+    }).join('');
+    tu=groups.reduce(function(s,g){return s+sum(g.s);},0);
+    nStops=groups.reduce(function(s,g){return s+g.s.length;},0);
+    orders=groups.length;
+    val=groups.reduce(function(s,g){return s+g.v;},0);
+    document.getElementById('btnAddU').textContent='+ Add Client';
+  }
+
+  document.getElementById('palTotal').value=tu;
+
+  var cls=tu>33?'over':(tu>=30?'warn':'');
+  var v=document.getElementById('tvPal'); v.textContent=tu+' / 33'; v.className='v '+cls;
+  document.getElementById('tvLeft').textContent=
+    tu>33?('υπέρβαση '+(tu-33)):(tu===33?'γεμάτο':('μένουν '+(33-tu)));
+  document.getElementById('tvBal').innerHTML=(tl===tu)
+    ? '<span class="ok">loading = delivery ✓</span>'
+    : '<span class="bad">loading '+tl+' ≠ delivery '+tu+'</span>';
+  document.getElementById('tvStops').textContent=stopsL.length+' loading · '+nStops+'/'+MAX+' delivery';
+
+  document.getElementById('wmH').textContent=orders===1
+    ? '1 order will be created' : orders+' orders will be created';
+  document.getElementById('wmList').innerHTML=(!G)
+    ? '<li><b>'+esc(document.getElementById('client').value)+'</b> · '+tu+'p'
+      +(val?' · '+val.toLocaleString('el-GR')+' €':'')
+      +'<span class="d">'+esc(stopsU.map(function(s){return s.l+' '+s.p+'p';}).join(' · '))+'</span></li>'
+    : groups.map(function(g){
+        return '<li><b>'+esc(g.c)+'</b> · '+g.s.length+' stops · '+sum(g.s)+'p'
+          +(g.v?' · '+g.v.toLocaleString('el-GR')+' €':'')
+          +'<span class="d">'+esc(g.s.map(function(s){return s.l+' '+s.p+'p';}).join(' · '))+'</span></li>';
+      }).join('');
+
+  var w=[], wl=document.getElementById('wmWarn');
+  if(tu>33) w.push('Ξεπερνά τις 33 παλέτες.');
+  if(tl!==tu) w.push('Οι παλέτες φόρτωσης δεν ισούνται με τις παλέτες παράδοσης.');
+  if(nStops>=MAX) w.push('Φτάσαμε το όριο των '+MAX+' σημείων.');
+  if(w.length){wl.style.display='';wl.textContent=w.join(' ');}else{wl.style.display='none';}
+
+  document.getElementById('footNote').textContent=
+    orders+(orders===1?' order':' orders')+' · '+tu+' pallets · '+val.toLocaleString('el-GR')+' €';
+  document.getElementById('btnSubmit').textContent=orders===1?'Submit':'Submit '+orders+' orders';
+}
+
+render();
+</script>
+</body>
+</html>

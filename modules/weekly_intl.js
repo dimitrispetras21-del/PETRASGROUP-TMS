@@ -724,7 +724,9 @@ function _wiImpRowHTML(row,impNo){
       <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙</button>
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">
-      <span class="wk3-route"><b class="wk3-ld${stR.loaded?' done':''}" title="Ημ. φόρτωσης${stR.loaded?' — φορτώθηκε ✓':''}">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld${stR.delivered?' done':''}${stR.late?' late':''}" title="Ημ. παράδοσης${stR.delivered?' — παραδόθηκε ✓':''}${stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':''}">${delDt!=='—'?_wk3D(delDt):''}</b><span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση',f._stopsD)}${(f['Order Number']||impRef2)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(f['Order Number']||impRef2))}</span>`:''}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
+      <span class="wk3-route"><b class="wk3-ld${stR.loaded?' done':''}" style="cursor:pointer" title="Ημ. φόρτωσης${stR.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${imp.id}','Loading DateTime','${f['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span>${(()=>{ if(impVS2){ const v=_wk3VsCd(f,'imp');
+      return `<b class="wk3-ld${stR.delivered?' done':''}${stR.late?' late':''}${v.est?' estd':''}" style="cursor:pointer" title="${v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock — κλικ για αλλαγή'}" onclick="_wk3PickDate(event,'${imp.id}','VS CD Date','${v.iso}')">${v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):''}</b>`; }
+    return `<b class="wk3-ld${stR.delivered?' done':''}${stR.late?' late':''}" style="cursor:pointer" title="Ημ. παράδοσης${stR.delivered?' — παραδόθηκε ✓':''}${stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${imp.id}','Delivery DateTime','${f['Delivery DateTime']||''}')">${delDt!=='—'?_wk3D(delDt):''}</b>`; })()}<span class="to">${impVS2?'Vermion Fresh Cross-Dock':_wk3LocHTML(toStr,'Παράδοση',f._stopsD)}${(f['Order Number']||impRef2)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(f['Order Number']||impRef2))}</span>`:''}</span>${impVS2?' <span class="wk3-vsb">VS</span>':''}</span>
       <span class="wk3-meta"><span class="wk3-pal">${pals?pals+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span></span>
     </div>
     <div class="wk3-feed r${impVS2?'':' bgap'}" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${impVS2?`<b>${delDt!=='—'?_wk3D(delDt):''}</b>&nbsp;${_wk3LocHTML(toStr,'Παράδοση',f._stopsD)}`:''}</div>
@@ -833,6 +835,48 @@ function _wk3Edit(orderId){
 }
 // Πρόοδος φορτίου (demo εγκεκριμένο 10/8, χωρίς τελείες): πράσινη ημ/νία ✓
 // όταν το βήμα ολοκληρωθεί, πορτοκαλί «!» όταν καθυστέρησε.
+// Υβριδική ημερομηνία VS (owner 10/8): πραγματική = 'VS CD Date', αλλιώς
+// εκτίμηση Loading+1 (export) / Delivery−1 (import), εμφανώς «≈».
+function _wk3VsCd(f,dir){
+  const real=f?.['VS CD Date'];
+  if(real) return {iso:String(real).slice(0,10),est:false};
+  const base=dir==='imp'?f?.['Delivery DateTime']:f?.['Loading DateTime'];
+  if(!base) return {iso:'',est:true};
+  try{ return {iso:toLocalDate(new Date(new Date(base).getTime()+(dir==='imp'?-1:1)*86400000)),est:true}; }
+  catch(e){ return {iso:'',est:true}; }
+}
+// Όλες οι ημερομηνίες του Weekly κλικαμπλ (owner 10/8): κλικ → calendar →
+// PATCH στο order. Datetime πεδία κρατούν την ώρα τους· το VS CD Date είναι
+// σκέτη ημερομηνία.
+function _wk3PickDate(ev,orderId,field,curIso){
+  ev.stopPropagation(); ev.preventDefault();
+  if(!orderId) return;
+  const inp=document.createElement('input'); inp.type='date';
+  inp.value=String(curIso||'').slice(0,10);
+  Object.assign(inp.style,{position:'fixed',left:Math.min(ev.clientX,window.innerWidth-180)+'px',top:(ev.clientY+8)+'px',zIndex:9999,opacity:0.01,width:'2px',height:'2px'});
+  document.body.appendChild(inp);
+  let doneFlag=false;
+  inp.onchange=async ()=>{
+    if(doneFlag) return; doneFlag=true;
+    const nd=inp.value; inp.remove(); if(!nd) return;
+    try{
+      let val=nd;
+      if(field!=='VS CD Date'){
+        const o=curIso?new Date(curIso):new Date(nd+'T08:00:00');
+        const [y,m,d]=nd.split('-');
+        o.setFullYear(+y,+m-1,+d);
+        val=o.toISOString();
+      }
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{[field]:val});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      toast('Ημερομηνία ενημερώθηκε ✓');
+      renderWeeklyIntl();
+    }catch(e){ reportError('Η αλλαγή ημερομηνίας απέτυχε',e); }
+  };
+  inp.onblur=()=>setTimeout(()=>{ if(!doneFlag) inp.remove(); },300);
+  inp.focus();
+  try{ inp.showPicker(); }catch(e){}
+}
 function _wk3StFlags(f){
   const st=f?.['Status']||'';
   return { loaded:['In Transit','Delivered','Invoiced'].includes(st),
@@ -992,7 +1036,9 @@ function _wiRowHTML(row,i){
   const impPals=imp?imp.fields['Total Pallets']||0:0;
   const impVS=!!imp?.fields['Veroia Switch'];
   const impPrev=imp
-    ?`<span class="wk3-route"><b class="wk3-ld${stI.loaded?' done':''}" title="Ημ. φόρτωσης εισαγωγής${stI.loaded?' — φορτώθηκε ✓':''}">${impLoadDt!=='—'?_wk3D(impLoadDt):''}</b><span class="frm">${_wk3LocHTML(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Φόρτωση',imp.fields._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld${stI.delivered?' done':''}${stI.late?' late':''}" title="Ημ. παράδοσης${stI.delivered?' — παραδόθηκε ✓':''}${stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':''}">${impDelDt2!=='—'?_wk3D(impDelDt2):''}</b><span class="to">${impVS?'Vermion Fresh Cross-Dock':_wk3LocHTML(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Παράδοση',imp.fields._stopsD)}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
+    ?`<span class="wk3-route"><b class="wk3-ld${stI.loaded?' done':''}" style="cursor:pointer" title="Ημ. φόρτωσης εισαγωγής${stI.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${imp?.id}','Loading DateTime','${imp?.fields['Loading DateTime']||''}')">${impLoadDt!=='—'?_wk3D(impLoadDt):''}</b><span class="frm">${_wk3LocHTML(imp.fields['Loading Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Φόρτωση',imp.fields._stopsL)}</span><span class="wk3-sep">→</span>${(()=>{ if(impVS){ const v=_wk3VsCd(imp?.fields,'imp');
+      return `<b class="wk3-ld${stI.delivered?' done':''}${stI.late?' late':''}${v.est?' estd':''}" style="cursor:pointer" title="${v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock — κλικ για αλλαγή'}" onclick="_wk3PickDate(event,'${imp?.id}','VS CD Date','${v.iso}')">${v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):''}</b>`; }
+    return `<b class="wk3-ld${stI.delivered?' done':''}${stI.late?' late':''}" style="cursor:pointer" title="Ημ. παράδοσης${stI.delivered?' — παραδόθηκε ✓':''}${stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${imp?.id}','Delivery DateTime','${imp?.fields['Delivery DateTime']||''}')">${impDelDt2!=='—'?_wk3D(impDelDt2):''}</b>`; })()}<span class="to">${impVS?'Vermion Fresh Cross-Dock':_wk3LocHTML(imp.fields['Delivery Summary']||imp.fields['Client Name']||imp.fields['Client Summary']||'—','Παράδοση',imp.fields._stopsD)}</span>${impVS?' <span class="wk3-vsb">VS</span>':''}</span>
      <span class="wk3-meta"><span class="wk3-pal">${impPals?impPals+'p':''}</span><span class="wk3-flags">${_wiBadges(imp.fields)}</span></span>
      <button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">✕</button>`
     :'';
@@ -1012,7 +1058,9 @@ function _wiRowHTML(row,i){
     <div class="wk3-num">${i+1}${isGroup?`<span class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l${!vsExp?' bgap':''}" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}</div>
     <div class="wk3-leg" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας" oncontextmenu="_wiCtx(event,${row.id},event)" onclick="event.stopPropagation();_wk3Edit('${primary?.id||''}')">
-      <span class="wk3-route"><b class="wk3-ld${stF.loaded?' done':''}" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''}">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση',primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση',primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>
+      <span class="wk3-route">${(()=>{ if(vsExp){ const v=_wk3VsCd(primary?.fields,'exp');
+      return `<b class="wk3-ld${stF.loaded?' done':''}${v.est?' estd':''}" style="cursor:pointer" title="${v.est?'Εκτίμηση (Loading+1) — κλικ για πραγματική ημερομηνία CD':'Ημ. φόρτωσης από Cross-Dock — κλικ για αλλαγή'}" onclick="_wk3PickDate(event,'${primary?.id}','VS CD Date','${v.iso}')">${v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):''}</b>`; }
+    return `<b class="wk3-ld${stF.loaded?' done':''}" style="cursor:pointer" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${primary?.id}','Loading DateTime','${primary?.fields['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b>`; })()}<span class="frm">${vsExp?'Vermion Fresh Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση',primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση',primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>
       <span class="wk3-meta"><span class="wk3-pal">${pals?pals+'p':''}</span><span class="wk3-flags">${_wiBadges(primary?.fields||{})}</span>${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
@@ -2317,6 +2365,7 @@ window._wk3Edit = _wk3Edit;
 window._wiImpCtx = _wiImpCtx;
 window._wiRotAdd = _wiRotAdd;
 window._wiRotUnlink = _wiRotUnlink;
+window._wk3PickDate = _wk3PickDate;
 window._wiImpShift = _wiImpShift;
 window._wiImpGroup = _wiImpGroup;
 
