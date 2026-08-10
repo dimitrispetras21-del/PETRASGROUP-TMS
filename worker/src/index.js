@@ -2756,6 +2756,26 @@ async function handlePallets(request, url, origin, env) {
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
     }
+    // ---- GET /pallets/balances/clients/:id (drill-down ανά σημείο) ----
+    // ΠΡΙΝ το γενικό branch: εδώ recId="clients" και seg[3]=<client id>.
+    if (resource === "balances" && method === "GET" && recId === "clients" && seg[3]) {
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("client_id", `eq.${seg[3]}`);
+      params.set("order", "balance.asc");
+      const { rows } = await dbSelectRaw(env, "pl_v_client_locations", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /pallets/balances?type=clients|partners ----
+    if (resource === "balances" && method === "GET" && !recId) {
+      const type = url.searchParams.get("type") === "partners" ? "partners" : "clients";
+      const view = type === "partners" ? "pl_v_balance_partners" : "pl_v_balance_clients";
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order", "balance.asc");
+      const { rows } = await dbSelectRaw(env, view, params);
+      return jsonOk({ type, records: rows }, origin, env);
+    }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`PALLETS ${method} ${url.pathname}`, e.message);
