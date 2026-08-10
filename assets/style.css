@@ -2350,6 +2350,44 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-stops .ld{font-size:10.5px;color:var(--text-dim);font-style:italic}
 .wn3 .wk3-grpb{margin-left:6px}
 
+/* ── Φέτα 5 (Δ1/Δ7): ενότητα ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ ──────────────────────
+   Ίδιο φύλλο, ίδιες ημέρες με τα εθνικά. Η γραμμή όμως είναι ΟΔΗΓΟΣ ×
+   ΗΜΕΡΑ με τις κινήσεις μέσα — όχι μία γραμμή ανά κίνηση. */
+.wn3-loc{margin-top:14px}
+.wn3-sech{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border-mid);background:#fff}
+.wn3-sech .t{font-family:'Syne',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;color:var(--navy-mid,#0B1929)}
+.wn3-sech .s{font-size:10.5px;color:var(--text-dim)}
+.wn3-add{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--accent);
+  background:var(--accent-light);border:none;border-radius:6px;padding:4px 11px;cursor:pointer}
+.wn3-add:hover{background:rgba(2,132,199,.18)}
+.wn3-lempty{padding:9px 14px;font-size:11px;color:var(--text-dim);background:var(--bg);border-bottom:1px solid var(--border)}
+.wn3-lrow{display:grid;grid-template-columns:44px 200px minmax(0,1fr);border-bottom:1px solid var(--border);background:#fff}
+.wn3-lrow:hover{background:var(--accent-light)}
+.wn3-lhead{padding:8px 10px;display:flex;flex-direction:column;gap:2px;justify-content:center;border-right:1px solid var(--border)}
+.wn3-lhead .nm{font-size:12px;font-weight:700}
+.wn3-lhead .pl{font-size:9.5px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.wn3-lmoves{padding:6px 12px;display:flex;flex-direction:column;gap:3px;justify-content:center;align-items:flex-start;min-width:0}
+.wn3-lmoves .mv{display:flex;align-items:center;gap:7px;font-size:11.5px;min-width:0;max-width:100%}
+.wn3-lmoves .mv .i{width:14px;height:14px;border-radius:50%;background:var(--bg);color:var(--text-dim);font-size:8.5px;
+  font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--border-mid)}
+.wn3-lmoves .mv .txt{color:var(--text-mid);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.wn3-lmoves .mv .txt b{color:var(--text);font-weight:700}
+.wn3-lmoves .mv .pl{font-size:10px;font-weight:700;color:var(--navy-deep,#0C2D5C);font-variant-numeric:tabular-nums;flex-shrink:0}
+.wn3-lmoves .mv .rm{width:20px;height:20px;border:none;background:none;color:var(--text-dim);font-size:13px;
+  cursor:pointer;border-radius:5px;flex-shrink:0;opacity:0}
+.wn3-lrow:hover .mv .rm{opacity:.7}
+.wn3-lmoves .mv .rm:hover{color:var(--danger);background:rgba(220,38,38,.08);opacity:1}
+.wn3-addst{font-family:inherit;font-size:9.5px;font-weight:700;color:var(--text-dim);background:none;
+  border:1px dashed var(--border-mid);border-radius:5px;padding:2px 8px;cursor:pointer;margin-top:2px}
+.wn3-addst:hover{color:var(--accent);border-color:rgba(2,132,199,.4)}
+/* chips σύνδεσης — και οι δύο κατευθύνσεις (Δ6) */
+.wn3-chip{font-family:inherit;font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;
+  border:none;flex-shrink:0}
+.wn3-chip.up{background:var(--accent-light);color:var(--accent);cursor:pointer}
+.wn3-chip.down{background:rgba(5,150,105,.12);color:#065F46}
+.wn3-pnote{font-size:11px;color:var(--accent);background:var(--accent-light);border-radius:6px;
+  padding:8px 11px;margin-bottom:14px}
+
 /* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
 .wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
 .wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}

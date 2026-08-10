@@ -101,7 +101,7 @@ async function _wnLoadAll() {
   const filter = `AND(IS_AFTER({Loading DateTime},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${fmt(new Date(wEnd.getTime()+86400000))}'))`;
 
   // Ref data (cached) + orders in parallel
-  const [, all] = await Promise.all([
+  const [, all, locals] = await Promise.all([
     preloadReferenceData(),
     atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter, fields: [
       'Direction','Loading DateTime','Delivery DateTime','Truck','Trailer','Driver','Partner',
@@ -119,6 +119,14 @@ async function _wnLoadAll() {
       // ΚΑΙ τον χάρτη του Worker· χωρίς αυτά το αίτημα γυρίζει 422.
       'Loading Appointment','Delivery Appointment',
     ] }, false),
+
+    // Δ1/Δ7 — τοπικές κινήσεις της εβδομάδας. Ξεχωριστός πίνακας (Δ18):
+    // δεν έχουν κατεύθυνση βορρά-νότου και συχνά ούτε πελάτη ούτε παραγγελία.
+    // safeFetch: αν ο πίνακας/Worker δεν είναι έτοιμος, η ενότητα μένει κενή
+    // αντί να ρίξει ΟΛΗ τη σελίδα μαζί με τα εθνικά.
+    safeFetch(() => atGetAll(TABLES.LOCAL_MOVES, {
+      filterByFormula: `AND(IS_AFTER({Date},'${fmt(new Date(wStart.getTime()-86400000))}'),IS_BEFORE({Date},'${fmt(new Date(wEnd.getTime()+86400000))}'))`,
+    }, false), 'weekly natl: local moves', []),
   ]);
 
   // Map assets from ref data
@@ -138,6 +146,14 @@ async function _wnLoadAll() {
     .filter(r => r.fields['Direction'] === 'South→North')
     .sort((a,b) => (a.fields['Loading DateTime']||'').localeCompare(b.fields['Loading DateTime']||''));
   WNATL.data.clLoads = [];
+
+  // Τοπικές κινήσεις: ταξινομημένες ανά μέρα και σειρά μέσα στη μέρα (Δ7).
+  // didFail => η ενότητα εμφανίζεται κενή, τα εθνικά δεν επηρεάζονται.
+  WNATL.data.locals = (typeof didFail === 'function' && didFail(locals)) ? []
+    : (locals || []).slice().sort((a,b) => {
+        const d = String(a.fields?.['Date']||'').localeCompare(String(b.fields?.['Date']||''));
+        return d || ((a.fields?.['Sequence']||0) - (b.fields?.['Sequence']||0));
+      });
 
   // Build location map — use already-fetched locs instead of extra API calls
   WNATL.data._locMap = {};
@@ -207,6 +223,9 @@ function _wnTabs(cur) {
 }
 
 function _wnPaint() {
+  // Δ6: χάρτης «ποιο εθνικό φορτίο καλύπτεται από ποια τοπική κίνηση».
+  // Μία φορά ανά paint — τον διαβάζει κάθε εθνική γραμμή.
+  WNATL._locByParent = _wnLocalsByParent();
   const { rows, week, data } = WNATL;
   const _wnI = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
   const nsRows = rows.filter(r => r.type==='northsouth');
@@ -343,6 +362,16 @@ function _wnPaint() {
       </main>
     </div>
 
+    <!-- Δ1: δεύτερη ενότητα, ίδιο πλάτος και ίδιες ημέρες με τα εθνικά -->
+    <div class="wk3-sheet wn3-loc">
+      <div class="wn3-sech">
+        <span class="t">ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ</span>
+        <span class="s">Οδηγός × ημέρα · οι κινήσεις της ημέρας</span>
+        <button class="wn3-add" onclick="_wnAddLocal('${toLocalDate(_wnWeekStart(week))}')">+ Τοπικό</button>
+      </div>
+      <div id="wn-locals">${_wnLocalsHTML()}</div>
+    </div>
+
     <div id="wn-ctx"></div>
     <div id="wn-popover"></div>
     </div><!-- /main content -->
@@ -463,6 +492,226 @@ function _wnAllRowsHTML() {
   });
 
   return html;
+}
+
+/* ═══ ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ (Δ1/Δ6/Δ7/Δ8) ═══════════════════════════════
+   Γραμμή = ΟΔΗΓΟΣ × ΗΜΕΡΑ, με τις κινήσεις του από κάτω. Είναι η απόφαση
+   που παίρνει ο dispatcher: «ποιον στέλνω Δευτέρα και τι θα κάνει».     */
+
+// id από linked field (array ή σκέτο)
+function _fid(v) {
+  if (!v) return '';
+  if (Array.isArray(v)) return v.length ? (v[0]?.id || v[0]) : '';
+  return v.id || v;
+}
+
+// Χάρτης: NAT_LOAD id -> οι τοπικές κινήσεις που το εξυπηρετούν.
+// Τον χτίζουμε ΜΙΑ φορά ανά paint — τον χρειάζεται κάθε εθνική γραμμή για
+// το chip «καλύπτεται τοπικά» (Δ6, η ανάποδη κατεύθυνση).
+function _wnLocalsByParent() {
+  const map = {};
+  (WNATL.data.locals || []).forEach(m => {
+    const pid = _fid(m.fields?.['Parent Nat Load']);
+    if (pid) (map[pid] = map[pid] || []).push(m);
+  });
+  return map;
+}
+
+function _wnDriverName(m) {
+  const f = m.fields || {};
+  const d = WNATL.data.drivers.find(x => x.id === _fid(f['Driver']));
+  if (d) return d.label;
+  const p = WNATL.data.partners.find(x => x.id === _fid(f['Partner']));
+  return p ? p.label : '—';
+}
+function _wnTruckPlate(m) {
+  const f = m.fields || {};
+  const t = WNATL.data.trucks.find(x => x.id === _fid(f['Truck']));
+  const r = WNATL.data.trailers.find(x => x.id === _fid(f['Trailer']));
+  return [t?.label, r?.label].filter(Boolean).join(' · ');
+}
+function _wnLocLbl(id) { return WNATL.data._locMap?.[id] || _wnLocName(id) || '—'; }
+
+// Chip «καλύπτεται τοπικά» πάνω στο ΕΘΝΙΚΟ σκέλος (Δ6, η ανάποδη κατεύθυνση).
+// Το ζητούμενο ήταν να μη χάνεται ποτέ η σχέση: όποιος κοιτάει το φορτίο
+// βλέπει ότι κάποιος τοπικός το καλύπτει, χωρίς να ψάχνει.
+function _wnCoveredChip(row) {
+  const ms = (WNATL._locByParent || {})[row.orderId];
+  if (!ms || !ms.length) return '';
+  const who = _wnDriverName(ms[0]).trim().split(/\s+/)[0];
+  const d = new Date(toLocalDate(ms[0].fields?.['Date'])+'T12:00:00');
+  const day = isNaN(d.getTime()) ? '' : ' ' + d.toLocaleDateString('el-GR',{weekday:'short'});
+  return `<span class="wn3-chip down" title="Το σκέλος καλύπτεται από τοπικό οδηγό${ms.length>1?` (${ms.length} κινήσεις)`:''}">καλύπτεται τοπικά · ${escapeHtml(who)}${day}</span>`;
+}
+
+// Chip «εξυπηρετεί ▸ …» πάνω στην τοπική κίνηση (Δ6, η μία κατεύθυνση)
+function _wnServesChip(m) {
+  const f = m.fields || {};
+  const nl = _fid(f['Parent Nat Load']);
+  if (nl) {
+    const all = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])];
+    const rec = all.find(r => r.id === nl);
+    const row = WNATL.rows.find(r => r.orderId === nl);
+    const who = row?.driverLabel?.trim().split(/\s+/)[0]
+             || row?.partnerLabel || rec?.fields?.['Client'] || 'εθνικό';
+    return `<button class="wn3-chip up" title="Εξυπηρετεί εθνικό φορτίο — κλικ: πήγαινε εκεί"
+             onclick="event.stopPropagation();_ccJump('wn-row-${row?row.id:''}')">εξυπηρετεί ▸ ${escapeHtml(who)}</button>`;
+  }
+  if (_fid(f['Parent Order']))
+    return `<span class="wn3-chip up" title="Εξυπηρετεί διεθνές δρομολόγιο">εξυπηρετεί ▸ διεθνές</span>`;
+  return '';
+}
+
+function _wnLocalsHTML() {
+  const { week } = WNATL;
+  const list = WNATL.data.locals || [];
+
+  const byDay = {};
+  list.forEach(m => {
+    const k = toLocalDate(m.fields?.['Date']) || 'zzz';
+    (byDay[k] = byDay[k] || []).push(m);
+  });
+
+  const wS = _wnWeekStart(week);
+  const keys = [];
+  for (let i = 0; i < 7; i++) { const d = new Date(wS); d.setDate(wS.getDate()+i); keys.push(toLocalDate(d)); }
+  Object.keys(byDay).sort().forEach(k => { if (keys.indexOf(k) === -1) keys.push(k); });
+
+  const todayKey = (typeof localToday==='function') ? localToday() : toLocalDate(new Date());
+  let html = '', n = 0;
+
+  keys.forEach(key => {
+    const moves = byDay[key] || [];
+    const lbl = _wnDayLabel(key);
+    const isToday = key === todayKey;
+
+    // ομαδοποίηση ανά οδηγό — η γραμμή είναι ο οδηγός, όχι η κίνηση (Δ7)
+    const byDrv = {}; const order = [];
+    moves.forEach(m => {
+      const k = _fid(m.fields?.['Driver']) || ('p:'+_fid(m.fields?.['Partner'])) || 'x';
+      if (!byDrv[k]) { byDrv[k] = []; order.push(k); }
+      byDrv[k].push(m);
+    });
+
+    html += `<div class="wk3-dayh${isToday?' today':''}">
+      <span class="d">${lbl.name}</span>
+      <span class="k">${lbl.date}${moves.length?` · ${order.length} οδηγοί · ${moves.length} κινήσεις`:''}</span>
+      ${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}
+      <button class="wn3-add" onclick="_wnAddLocal('${key}')" title="Νέα τοπική κίνηση αυτή τη μέρα">+ Τοπικό</button>
+    </div>`;
+
+    if (!moves.length) {
+      html += `<div class="wn3-lempty">Καμία τοπική κίνηση</div>`;
+      return;
+    }
+
+    order.forEach(dk => {
+      const ms = byDrv[dk]; n++;
+      const first = ms[0];
+      const rows = ms.map((m, i) => {
+        const f = m.fields || {};
+        const from = _wnLocLbl(_fid(f['From Location']));
+        const to   = _wnLocLbl(_fid(f['To Location']));
+        const tm   = f['Time From'] ? `<span class="wk3-hh">${escapeHtml(f['Time From'])}</span>` : '';
+        const pal  = f['Pallets'] != null ? `<span class="pl">${f['Pallets']}p</span>` : '';
+        return `<div class="mv"><span class="i">${i+1}</span>
+          <span class="txt">${escapeHtml(from)} → <b>${escapeHtml(to)}</b>${f['Description']?' · '+escapeHtml(f['Description']):''}</span>
+          ${tm}${pal}${_wnServesChip(m)}
+          <button class="rm" title="Διαγραφή κίνησης" onclick="_wnDelLocal('${m.id}')">×</button></div>`;
+      }).join('');
+      html += `<div class="wn3-lrow">
+        <div class="wk3-num">${n}</div>
+        <div class="wn3-lhead"><span class="nm">${escapeHtml(_wnDriverName(first))}</span>
+          <span class="pl">${escapeHtml(_wnTruckPlate(first))}</span></div>
+        <div class="wn3-lmoves">${rows}
+          <button class="wn3-addst" onclick="_wnAddLocal('${key}','', '${_fid(first.fields?.['Driver'])}')">+ κίνηση</button>
+        </div></div>`;
+    });
+  });
+
+  return html;
+}
+
+/* ── Δημιουργία τοπικής κίνησης (Δ8, και οι δύο δρόμοι) ───────────── */
+// dateISO: η μέρα. parentNlId: όταν γεννιέται από «σπάσιμο» εθνικού σκέλους.
+function _wnAddLocal(dateISO, parentNlId, driverId) {
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
+  const locs = (WNATL.data.locations||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
+  const parentNote = parentNlId
+    ? `<div class="wn3-pnote">Θα συνδεθεί με το εθνικό φορτίο — θα φαίνεται και από τις δύο πλευρές.</div>` : '';
+
+  openModal('Νέα τοπική κίνηση', `
+    ${parentNote}
+    <div class="form-grid">
+      <div class="form-field"><label class="form-label">Ημερομηνία *</label>
+        <input class="form-input" type="date" id="lm_date" value="${dateISO||''}"></div>
+      <div class="form-field"><label class="form-label">Οδηγός *</label>
+        <select class="form-select" id="lm_driver"><option value="">— Επιλογή —</option>${opt(WNATL.data.drivers, driverId||'')}</select></div>
+      <div class="form-field"><label class="form-label">Όχημα</label>
+        <select class="form-select" id="lm_truck"><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
+      <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
+        <input class="form-input" id="lm_time" placeholder="π.χ. 11:00"></div>
+      <div class="form-field"><label class="form-label">Από *</label>
+        <select class="form-select" id="lm_from"><option value="">— Επιλογή —</option>${opt(locs,'')}</select></div>
+      <div class="form-field"><label class="form-label">Προς *</label>
+        <select class="form-select" id="lm_to"><option value="">— Επιλογή —</option>${opt(locs,'')}</select></div>
+      <div class="form-field"><label class="form-label">Παλέτες</label>
+        <input class="form-input" type="number" id="lm_pal"></div>
+      <div class="form-field"><label class="form-label">Περιγραφή</label>
+        <input class="form-input" id="lm_desc" placeholder="π.χ. 2 κιβώτια Άλμη"></div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-success" id="lm_submit" onclick="_wnSaveLocal('${parentNlId||''}')">Καταχώρηση</button>`);
+}
+
+async function _wnSaveLocal(parentNlId) {
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const date = v('lm_date'), driver = v('lm_driver'), from = v('lm_from'), to = v('lm_to');
+  if (!date || !driver || !from || !to) { toast('Ημερομηνία, οδηγός, από και προς είναι υποχρεωτικά', 'warn'); return; }
+  const time = v('lm_time');
+  if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) { toast('Ώρα σε μορφή ΩΩ:ΛΛ', 'warn'); return; }
+
+  // Σειρά μέσα στη μέρα του οδηγού: συνέχεια της υπάρχουσας (Δ7).
+  const same = (WNATL.data.locals||[]).filter(m =>
+    toLocalDate(m.fields?.['Date'])===date && _fid(m.fields?.['Driver'])===driver);
+  const seq = same.reduce((mx,m)=>Math.max(mx, m.fields?.['Sequence']||0), 0) + 1;
+
+  const fields = {
+    'Date': date, 'Sequence': seq, 'Driver': [driver],
+    'From Location': [from], 'To Location': [to], 'Status': 'Pending',
+  };
+  const truck = v('lm_truck'); if (truck) fields['Truck'] = [truck];
+  if (time) fields['Time From'] = time;
+  const pal = v('lm_pal'); if (pal) fields['Pallets'] = parseFloat(pal);
+  const desc = v('lm_desc'); if (desc) fields['Description'] = desc;
+  if (parentNlId) fields['Parent Nat Load'] = [parentNlId];
+
+  const btn = document.getElementById('lm_submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
+  try {
+    await atCreate(TABLES.LOCAL_MOVES, fields);
+    invalidateCache(TABLES.LOCAL_MOVES);
+    closeModal();
+    toast('Η τοπική κίνηση καταχωρήθηκε', 'success');
+    renderWeeklyNatl();
+  } catch (e) {
+    console.error('_wnSaveLocal:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Καταχώρηση'; }
+    toast('Η κίνηση δεν αποθηκεύτηκε', 'error');
+  }
+}
+
+async function _wnDelLocal(id) {
+  if (!(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή', confirmLabel:'Διαγραφή' }))) return;
+  try {
+    await atDelete(TABLES.LOCAL_MOVES, id);
+    invalidateCache(TABLES.LOCAL_MOVES);
+    toast('Διαγράφηκε', 'success');
+    renderWeeklyNatl();
+  } catch (e) {
+    console.error('_wnDelLocal:', e);
+    toast('Η διαγραφή απέτυχε', 'error');
+  }
 }
 
 // «ΚΥΡΙΑΚΗ» + «26/07» — η τυπογραφία ημέρας του wk3 (.wk3-dayh .d / .k)
@@ -592,7 +841,7 @@ function _wnRowHTML(row, i) {
       </span>
       <span class="wk3-meta">
         <span class="wk3-pal">${pals?pals+'p':''}</span>
-        <span class="wk3-flags">${badges}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>
+        <span class="wk3-flags">${_wnCoveredChip(row)}${badges}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>
       </span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
@@ -1524,6 +1773,10 @@ window._wnToggleDetails = _wnToggleDetails;
 // το κλικ θα έριχνε ReferenceError (το module είναι σε IIFE).
 window._wnToggleStops = _wnToggleStops;
 window._wnSetAppt = _wnSetAppt;
+// Φέτα 5 — τοπικές κινήσεις (inline onclick, module σε IIFE)
+window._wnAddLocal  = _wnAddLocal;
+window._wnSaveLocal = _wnSaveLocal;
+window._wnDelLocal  = _wnDelLocal;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
