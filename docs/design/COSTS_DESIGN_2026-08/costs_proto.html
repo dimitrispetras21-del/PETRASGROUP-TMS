@@ -93,6 +93,10 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
 .seg button{background:none;border:none;font-family:inherit;font-size:var(--text-sm);font-weight:500;color:var(--text-dim);padding:6px 13px;border-radius:var(--radius);cursor:pointer}
 .seg button.active{background:var(--accent);color:#fff}
 .hint{font-size:var(--text-sm);color:var(--text-dim)}
+.vchip{font-family:inherit;font-size:var(--text-sm);font-weight:600;padding:6px 14px;border-radius:var(--radius-full);border:1px solid var(--border-mid);background:#fff;color:var(--text-mid);cursor:pointer;transition:all .15s var(--ease-out)}
+.vchip:hover{border-color:var(--accent);color:var(--accent-hover)}
+.vchip.active{background:#0C2D5C;color:#fff;border-color:#0C2D5C}
+.vchip.partners.active{background:#14532D;border-color:#14532D}
 
 /* ─────────── tables ─────────── */
 .tbl{width:100%;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);border-collapse:separate;border-spacing:0;overflow:hidden;box-shadow:var(--shadow-sm)}
@@ -203,6 +207,12 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
 .gpsnote{margin-top:14px;font-size:var(--text-sm);color:var(--text-dim);background:var(--bg-card);border:1px dashed var(--border-mid);border-radius:var(--radius-md);padding:10px 14px}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--navy);color:#fff;padding:11px 22px;border-radius:var(--radius-md);font-size:var(--text-body);transition:transform .3s var(--ease-out);z-index:9999}
 .toast.show{transform:translateX(-50%) translateY(0)}
+.rtmodal{position:fixed;top:50%;left:50%;width:580px;max-width:94vw;background:#fff;border-radius:var(--radius-lg);box-shadow:var(--shadow-md);z-index:9200;transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:all .22s var(--ease-out);overflow:hidden}
+.rtmodal.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+.rtmodal .mhead{background:var(--navy);color:#fff;padding:15px 20px;font-family:'Syne',sans-serif;font-weight:700;font-size:var(--text-md);display:flex;justify-content:space-between;align-items:center}
+.rtmodal .mhead button{background:none;border:none;color:#94A3B8;font-size:18px;cursor:pointer}
+.rtmodal .mbody{padding:18px 20px}
+.rtnote{font-size:var(--text-xs);color:var(--text-dim);background:var(--accent-light);border-radius:var(--radius);padding:8px 12px;margin-top:12px}
 .hide{display:none}
 @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.fgrid{grid-template-columns:1fr 1fr}}
 </style>
@@ -226,7 +236,7 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <div class="nav-item dim"><span class="nav-icon">🚚</span>Φορτηγά</div>
     <div class="nav-item dim"><span class="nav-icon">🔧</span>Συντήρηση</div>
   </nav>
-  <div class="sb-foot">DESIGN PROTOTYPE · v1 · 09.08.2026</div>
+  <div class="sb-foot">DESIGN PROTOTYPE · v2 · 10.08.2026</div>
 </aside>
 
 <!-- ═════════ CONTENT ═════════ -->
@@ -244,6 +254,8 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
 
   <div class="kpi-grid" id="kpis"></div>
 
+  <div class="toolbar" id="vehbar"></div>
+
   <div class="toolbar">
     <div class="seg" id="scopeseg">
       <button class="active" data-s="ALL" onclick="setScope('ALL')">Όλα</button>
@@ -254,6 +266,7 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <select id="groupby" onchange="renderList()">
       <option value="trip">Δρομολόγια</option>
       <option value="truck">Ανά Φορτηγό / Partner</option>
+      <option value="driver">Ανά Οδηγό</option>
       <option value="client">Ανά Πελάτη</option>
       <option value="lane">Ανά Lane</option>
       <option value="week">Ανά Εβδομάδα</option>
@@ -325,8 +338,9 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <div class="bcard">
       <h3 class="syne">Νέο κόστος (χειροκίνητο) — Shapes B &amp; C</h3>
       <div class="fgrid">
-        <div class="field"><label>Round Trip</label>
-          <select><option>RT-2621 · IAB2103 · GR→AT · 05–11.06</option><option>RT-2624 · IAB2103 · GR→DE · 12–18.06</option><option>RT-2626 · ΝΗΒ7212 · ΑΝΟΔΟΣ VS · 01–02.06</option></select></div>
+        <div class="field"><label>Round Trip — κέντρο κόστους</label>
+          <div style="display:flex;gap:8px"><select style="flex:1"><option>RT-2621 · IAB2103 · GR→AT · 05–11.06</option><option>RT-2624 · IAB2103 · GR→DE · 12–18.06</option><option>RT-2626 · ΝΗΒ7212 · ΑΝΟΔΟΣ VS · 01–02.06</option></select>
+          <button class="btn" style="white-space:nowrap" onclick="openRT()">+ Νέο</button></div></div>
         <div class="field"><label>Κατηγορία</label>
           <select><option>Οδηγός (αμοιβή trip)</option><option>Έξοδα Μ</option><option>Ferry / Τρένα</option><option>Πρόστιμα</option><option>Spedition</option><option>Διαμονή</option><option>Λοιπά</option></select></div>
         <div class="field"><label>Ημ/νία</label><input type="date" value="2026-06-08"></div>
@@ -358,33 +372,28 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
 <section class="page" id="pg-partner">
   <div class="page-header">
     <div>
-      <h1 class="page-title">Partner PnL <span class="rolechip eirini">✓ Ειρήνη · ταυτοποίηση</span></h1>
-      <div class="page-sub">Συμφωνηθείσα τιμή ↔ τιμολόγιο partner · το PnL υπολογίζεται στη συμφωνηθείσα, όχι στο τιμολόγιο</div>
+      <h1 class="page-title">Partner PnL <span class="rolechip owner">🔒 Owner only</span></h1>
+      <div class="page-sub">Κερδοφορία αναθέσεων σε partners στη συμφωνηθείσα τιμή · παλέτες που δεν επεστράφησαν μετρούν ως ζημιά</div>
     </div>
     <div class="period"><button>Εβδομάδα</button><button class="active">Ιούνιος 2026</button></div>
   </div>
 
-  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
-    <div class="kpi-card"><div class="kpi-label">Εκκρεμή τιμολόγια</div><div class="kpi-value">3</div><div class="kpi-delta">περιμένουν παραλαβή</div></div>
-    <div class="kpi-card"><div class="kpi-label">Αποκλίσεις</div><div class="kpi-value bad">1</div><div class="kpi-delta">θέλει επικοινωνία με partner</div></div>
-    <div class="kpi-card"><div class="kpi-label">Συμφωνηθέντα (μήνας)</div><div class="kpi-value">€11.250</div><div class="kpi-delta">6 αναθέσεις partner</div></div>
-    <div class="kpi-card"><div class="kpi-label">Ταυτοποιημένα</div><div class="kpi-value ok">2/6</div><div class="kpi-delta">agreed = invoice ✓</div></div>
-  </div>
+  <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)" id="pkpis"></div>
 
   <div class="bcard">
-    <h3 class="syne">Ταυτοποίηση agreed ↔ invoice</h3>
+    <h3 class="syne">Αναθέσεις partner — PnL ανά φορτίο</h3>
     <table class="tbl">
-      <thead><tr><th>Ημ/νία</th><th>Partner</th><th>Φορτίο</th><th class="tr-num">Συμφωνηθέν</th><th class="tr-num">Τιμολόγιο</th><th class="tr-num">Δ</th><th>Κατάσταση</th><th></th></tr></thead>
-      <tbody id="rectbl"></tbody>
+      <thead><tr><th>Ημ/νία</th><th>Partner</th><th>Φορτίο</th><th class="tr-num">Έσοδα</th><th class="tr-num">Κόστος (agreed)</th><th>Παλέτες</th><th class="tr-num">Καθαρό</th><th style="text-align:center">Margin</th></tr></thead>
+      <tbody id="ptbl"></tbody>
     </table>
-    <div class="hint" style="margin-top:10px">Η Ειρήνη βλέπει μόνο αυτή την ενότητα — χωρίς margins ή αποτελέσματα.</div>
+    <div class="hint" style="margin-top:10px">Ο έλεγχος «τιμολόγησε το συμφωνηθέν;» γίνεται εκτός TMS (δεν είναι ERP) — εδώ το PnL υπολογίζεται πάντα στη συμφωνηθείσα τιμή. Αξία παλέτας: <b>€12</b> (setting) · τα στοιχεία ανταλλαγής έρχονται από το Pallet Ledger.</div>
   </div>
 
   <div class="lockcard">
-    <div class="lockhead">📊 Κερδοφορία ανά Partner <span class="rolechip owner">🔒 Owner only</span></div>
+    <div class="lockhead">📊 Συγκεντρωτικά ανά Partner</div>
     <div class="lockbody">
       <table class="tbl">
-        <thead><tr><th>Partner</th><th class="tr-num">Αναθέσεις</th><th class="tr-num">Έσοδα (orders)</th><th class="tr-num">Κόστος (agreed)</th><th class="tr-num">Καθαρό</th><th style="text-align:center">Margin</th><th class="tr-num">€/km ισοδ.</th></tr></thead>
+        <thead><tr><th>Partner</th><th class="tr-num">Αναθέσεις</th><th class="tr-num">Έσοδα</th><th class="tr-num">Κόστος</th><th class="tr-num">Ζημιά παλετών</th><th class="tr-num">Καθαρό</th><th style="text-align:center">Margin</th><th class="tr-num">€/km ισοδ.</th></tr></thead>
         <tbody id="ppnl"></tbody>
       </table>
       <div class="hint" style="padding:10px 14px">Σύγκριση με μέσο κόστος ιδιόκτητου στόλου <b>€1,04/km</b> → make-vs-buy ανά lane.</div>
@@ -402,6 +411,9 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <div class="period"><button>Εβδομάδα</button><button class="active">Ιούνιος 2026</button></div>
   </div>
 
+  <div class="tabs2" id="fueltabs"></div>
+
+  <div id="fuel-all">
   <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)">
     <div class="kpi-card"><div class="kpi-label">Μέση κατανάλωση στόλου</div><div class="kpi-value">32,4 <span style="font-size:13px;font-weight:500">L/100km</span></div><div class="kpi-delta up">−0,8 vs Μάιος</div></div>
     <div class="kpi-card"><div class="kpi-label">Ανωμαλίες</div><div class="kpi-value bad">2</div><div class="kpi-delta">απόκλιση &gt; 12% από baseline</div></div>
@@ -419,13 +431,50 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <tbody id="fueltbl"></tbody>
   </table>
   <div class="gpsnote">📡 Τα km είναι χειροκίνητα (από τα trips). Με τη σύνδεση <b>MyGeotab GPS</b> (Phase 2) γίνονται αυτόματα και το anomaly detection αποκτά πραγματική ακρίβεια.</div>
+  </div>
+
+  <!-- per-vehicle tab -->
+  <div id="fuel-veh" class="hide">
+    <div class="kpi-grid" style="grid-template-columns:repeat(4,1fr)" id="fvkpis"></div>
+    <div class="bcard">
+      <h3 class="syne" id="fvtitle"></h3>
+      <table class="tbl">
+        <thead><tr><th>Ημ/νία</th><th>Πηγή</th><th>Σταθμός</th><th class="tr-num">Λίτρα</th><th class="tr-num">km ένδειξη</th><th class="tr-num">Κόστος</th><th></th></tr></thead>
+        <tbody id="fvtbl"></tbody>
+      </table>
+    </div>
+  </div>
 </section>
 
 </main>
 
 <div class="overlay" id="overlay" onclick="closePanel()"></div>
 <div class="panel" id="panel"></div>
-<div class="mock-badge">DESIGN PROTOTYPE · fake data · 09.08.2026</div>
+
+<!-- RT creation modal (κέντρο κόστους) -->
+<div class="overlay" id="rtoverlay" onclick="closeRT()"></div>
+<div class="rtmodal" id="rtmodal">
+  <div class="mhead">Νέο Round Trip — κέντρο κόστους <button onclick="closeRT()">✕</button></div>
+  <div class="mbody">
+    <div class="fgrid" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Scope</label><select><option>Διεθνές</option><option>Εθνικό</option></select></div>
+      <div class="field"><label>Τύπος</label><select><option>Ιδιόκτητο</option><option>Partner</option></select></div>
+      <div class="field"><label>Φορτηγό</label><select><option>IAZ8302</option><option>IAB1096</option><option>IAB2103</option><option>IAZ4445</option><option>ΝΗΒ7212</option></select></div>
+      <div class="field"><label>Οδηγός</label><select><option>Γ. Τζήκας</option><option>Σ. Μήτκας</option><option>Ν. Σιδηρόπουλος</option></select></div>
+      <div class="field"><label>Έναρξη (φόρτωση export)</label><input type="date" value="2026-06-24"></div>
+      <div class="field"><label>Λήξη (παράδοση import)</label><input type="date" value="2026-06-29"></div>
+      <div class="field"><label>Export order(s)</label><select><option>ORD-4471 · VERMION FRESH → EDEKA</option><option>ORD-4488 · ΝΑΟΥΣΑ → Verona</option></select></div>
+      <div class="field"><label>Import order(s)</label><select><option>ORD-4493 · BayWa → GR</option><option>— κενή επιστροφή (solo)</option></select></div>
+    </div>
+    <div class="rtnote">Κανονικά τα round trips δημιουργούνται <b>αυτόματα από τα Weekly planners</b> μόλις κλείσει το ζευγάρι export+import. Εδώ γίνεται χειροκίνητη δημιουργία/διόρθωση — το παράθυρο ημερομηνιών είναι το κλειδί της αυτόματης κατανομής κόστους (πινακίδα + ημερομηνία).</div>
+    <div class="formfoot">
+      <button class="btn" onclick="closeRT()">Άκυρο</button>
+      <button class="btn primary" onclick="closeRT();toast('Δημιουργήθηκε RT-2630 · IAZ8302 · 24–29.06')">Δημιουργία Round Trip</button>
+    </div>
+  </div>
+</div>
+
+<div class="mock-badge">DESIGN PROTOTYPE v2 · fake data · 10.08.2026</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -489,8 +538,16 @@ T.forEach(t=>{
   t.pX=t.revenue-t.net;     t.mX=t.revenue?Math.round(t.pX/t.revenue*1000)/10:-100;
 });
 
-let SCOPE='ALL';
-const vis=()=>T.filter(t=>SCOPE==='ALL'||t.scope===SCOPE);
+let SCOPE='ALL', VEH='ALL';
+const vis=()=>T.filter(t=>(SCOPE==='ALL'||t.scope===SCOPE)&&(VEH==='ALL'||(VEH==='PARTNERS'?t.type==='PARTNER':t.truck===VEH)));
+function renderVehBar(){
+  const trucks=[...new Set(T.filter(t=>t.truck).map(t=>t.truck))];
+  document.getElementById('vehbar').innerHTML='<label>Όχημα:</label>'+
+   `<button class="vchip${VEH==='ALL'?' active':''}" onclick="setVeh('ALL')">Όλος ο στόλος</button>`+
+   trucks.map(v=>`<button class="vchip${VEH===v?' active':''}" onclick="setVeh('${v}')">${v}</button>`).join('')+
+   `<button class="vchip partners${VEH==='PARTNERS'?' active':''}" onclick="setVeh('PARTNERS')">Partners</button>`;
+}
+function setVeh(v){VEH=v;renderVehBar();renderKPIs();renderList()}
 function pill(m){const c=m<0?'red':(m<10?'amber':'green');return `<span class="pill ${c}">${m>0?'+':''}${m.toFixed(1)}%</span>`}
 function chip(t){if(t.scope==='NATL'&&t.type==='PARTNER')return `<span class="chip partner">${t.partner}</span> <span class="chip natl">ΕΘΝΙΚΟ</span>`;
   if(t.scope==='NATL')return `<span class="chip owned">${t.truck}</span> <span class="chip natl">ΕΘΝΙΚΟ</span>`;
@@ -628,30 +685,45 @@ function mCalc(){
   document.getElementById('mtot').value='€'+(n+v).toLocaleString('el-GR',{minimumFractionDigits:2,maximumFractionDigits:2});
 }
 
-/* partner page */
-const REC=[
- {d:'06.06',p:'TRANSKAM Ltd',load:'RT-2620 · GR→IT export',agreed:2200,inv:2200,st:'match'},
- {d:'14.06',p:'BALKAN TRANS OOD',load:'RT-2623 · GR→DE export',agreed:2550,inv:2550,st:'match'},
- {d:'14.06',p:'ΜΕΤΑΦΟΡΙΚΗ ΗΜΑΘΙΑΣ',load:'RT-2628 · ΚΑΘΟΔΟΣ VS',agreed:480,inv:595,st:'diff'},
- {d:'18.06',p:'TRANSKAM Ltd',load:'GR→IT export (εβδ.25)',agreed:2250,inv:null,st:'pend'},
- {d:'21.06',p:'BALKAN TRANS OOD',load:'GR→DE export (εβδ.25)',agreed:2600,inv:null,st:'pend'},
- {d:'26.06',p:'ΜΕΤΑΦΟΡΙΚΗ ΗΜΑΘΙΑΣ',load:'ΚΑΘΟΔΟΣ VS (εβδ.26)',agreed:490,inv:null,st:'pend'}];
-function renderRec(){
-  document.getElementById('rectbl').innerHTML=REC.map(r=>{
-    const delta=r.inv==null?'—':fmt(r.inv-r.agreed);
-    const st=r.st==='match'?'<span class="badge full">✓ Ταυτίζεται</span>':r.st==='diff'?'<span class="badge diff">⚠ Απόκλιση</span>':'<span class="badge pend">⏳ Αναμονή τιμολογίου</span>';
-    const act=r.st==='diff'?'<button class="btn" style="height:28px" onclick="toast(\'Σημειώθηκε για επικοινωνία με partner\')">Επικοινωνία</button>':'';
-    return `<tr><td class="mono">${r.d}</td><td style="font-weight:500">${r.p}</td><td style="color:var(--text-mid)">${r.load}</td>
-     <td class="tr-num mono">${fmt(r.agreed)}</td><td class="tr-num mono">${r.inv==null?'—':fmt(r.inv)}</td>
-     <td class="tr-num mono" style="color:${r.inv&&r.inv!==r.agreed?'var(--danger-strong)':'var(--text-dim)'}">${delta}</td><td>${st}</td><td>${act}</td></tr>`}).join('');
-  const pp={};
-  T.filter(t=>t.type==='PARTNER').forEach(t=>{(pp[t.partner]=pp[t.partner]||{n:0,rev:0,cost:0,km:0}).n++;pp[t.partner].rev+=t.revenue;pp[t.partner].cost+=t.gross;pp[t.partner].km+=t.km});
-  document.getElementById('ppnl').innerHTML=Object.entries(pp).map(([k,v])=>{
-    const p=v.rev-v.cost,m=v.rev?p/v.rev*100:0;
-    return `<tr><td style="font-weight:500">${k}</td><td class="tr-num mono">${v.n}</td><td class="tr-num mono">${fmt(v.rev)}</td><td class="tr-num mono">${fmt(v.cost)}</td>
-    <td class="tr-num mono" style="font-weight:700;color:${p<0?'var(--danger-strong)':'var(--success)'}">${fmt(p)}</td>
-    <td style="text-align:center">${pill(Math.round(m*10)/10)}</td><td class="tr-num mono">€${(v.cost/v.km).toFixed(2)}</td></tr>`}).join('');
+/* partner page — PnL στη συμφωνηθείσα τιμή + ζημιά παλετών */
+const PALLET_EUR=12;
+const PT=[
+ {d:'06.06',p:'TRANSKAM Ltd',load:'RT-2620 · GR→IT export',km:2410,rev:2400,cost:2200,pal:{ex:true,out:33,ret:33}},
+ {d:'14.06',p:'BALKAN TRANS OOD',load:'RT-2623 · GR→DE export',km:4820,rev:2450,cost:2550,pal:{ex:true,out:33,ret:22}},
+ {d:'14.06',p:'ΜΕΤΑΦΟΡΙΚΗ ΗΜΑΘΙΑΣ',load:'RT-2628 · ΚΑΘΟΔΟΣ VS',km:580,rev:650,cost:595,pal:{ex:false}},
+ {d:'20.06',p:'TRANSKAM Ltd',load:'GR→IT export (εβδ.25)',km:2410,rev:2500,cost:2250,pal:{ex:true,out:26,ret:26}},
+ {d:'26.06',p:'ΜΕΤΑΦΟΡΙΚΗ ΗΜΑΘΙΑΣ',load:'ΚΑΘΟΔΟΣ VS (εβδ.26)',km:610,rev:650,cost:490,pal:{ex:true,out:12,ret:6}}];
+PT.forEach(a=>{a.palLoss=a.pal.ex?(a.pal.out-a.pal.ret)*PALLET_EUR:0;a.net=a.rev-a.cost-a.palLoss;a.m=a.rev?a.net/a.rev*100:0});
+function palBadge(a){
+  if(!a.pal.ex)return '<span class="badge pend">— χωρίς ανταλλαγή</span>';
+  if(a.palLoss>0)return `<span class="badge diff">⚠ −${fmt(a.palLoss)} (${a.pal.out-a.pal.ret} παλ.)</span>`;
+  return `<span class="badge full">✓ ${a.pal.ret}/${a.pal.out}</span>`;
 }
+function renderPartner(){
+  const rev=PT.reduce((s,a)=>s+a.rev,0),cost=PT.reduce((s,a)=>s+a.cost,0),pl=PT.reduce((s,a)=>s+a.palLoss,0);
+  const net=rev-cost-pl,m=rev?net/rev*100:0,losses=PT.filter(a=>a.net<0).length;
+  const palPend=PT.filter(a=>a.palLoss>0).reduce((s,a)=>s+(a.pal.out-a.pal.ret),0);
+  document.getElementById('pkpis').innerHTML=`
+   <div class="kpi-card"><div class="kpi-label">Κόστος partners</div><div class="kpi-value">${fmt(cost)}</div><div class="kpi-delta">${PT.length} αναθέσεις</div></div>
+   <div class="kpi-card hero"><div class="kpi-label">Καθαρό αποτέλεσμα</div><div class="kpi-value ${net<0?'bad':'accent'}">${fmt(net)}</div><div class="kpi-delta">margin <b>${m.toFixed(1)}%</b> στη συμφωνηθείσα</div></div>
+   <div class="kpi-card"><div class="kpi-label">Ζημιά παλετών</div><div class="kpi-value ${pl?'bad':'ok'}">−${fmt(pl)}</div><div class="kpi-delta">${palPend} παλέτες δεν επεστράφησαν</div></div>
+   <div class="kpi-card"><div class="kpi-label">Ζημιογόνες αναθέσεις</div><div class="kpi-value ${losses?'bad':'ok'}">${losses}</div><div class="kpi-delta">από ${PT.length} συνολικά</div></div>`;
+  document.getElementById('ptbl').innerHTML=[...PT].sort((a,b)=>a.m-b.m).map(a=>`
+   <tr><td class="mono">${a.d}</td><td style="font-weight:500">${a.p}</td><td style="color:var(--text-mid)">${a.load}</td>
+   <td class="tr-num mono">${fmt(a.rev)}</td><td class="tr-num mono">${fmt(a.cost)}</td><td>${palBadge(a)}</td>
+   <td class="tr-num mono" style="font-weight:700;color:${a.net<0?'var(--danger-strong)':'var(--success)'}">${fmt(a.net)}</td>
+   <td style="text-align:center">${pill(Math.round(a.m*10)/10)}</td></tr>`).join('');
+  const pp={};
+  PT.forEach(a=>{(pp[a.p]=pp[a.p]||{n:0,rev:0,cost:0,pl:0,km:0}).n++;pp[a.p].rev+=a.rev;pp[a.p].cost+=a.cost;pp[a.p].pl+=a.palLoss;pp[a.p].km+=a.km});
+  document.getElementById('ppnl').innerHTML=Object.entries(pp).map(([k,v])=>{
+    const p=v.rev-v.cost-v.pl,mm=v.rev?p/v.rev*100:0;
+    return `<tr><td style="font-weight:500">${k}</td><td class="tr-num mono">${v.n}</td><td class="tr-num mono">${fmt(v.rev)}</td><td class="tr-num mono">${fmt(v.cost)}</td>
+    <td class="tr-num mono" style="color:${v.pl?'var(--danger-strong)':'var(--text-dim)'}">${v.pl?'−'+fmt(v.pl):'—'}</td>
+    <td class="tr-num mono" style="font-weight:700;color:${p<0?'var(--danger-strong)':'var(--success)'}">${fmt(p)}</td>
+    <td style="text-align:center">${pill(Math.round(mm*10)/10)}</td><td class="tr-num mono">€${(v.cost/v.km).toFixed(2)}</td></tr>`}).join('');
+}
+function openRT(){document.getElementById('rtoverlay').classList.add('open');document.getElementById('rtmodal').classList.add('open')}
+function closeRT(){document.getElementById('rtoverlay').classList.remove('open');document.getElementById('rtmodal').classList.remove('open')}
 
 /* fuel page */
 const FUEL=[
@@ -673,9 +745,52 @@ function renderFuel(){
      <td>${bad?'<span class="badge diff">⚠ Ανωμαλία</span>':warn?'<span class="badge prov">Παρακολούθηση</span>':'<span class="badge full">OK</span>'}</td></tr>`}).join('');
 }
 
+/* per-vehicle fuel tab */
+const REFUELS=[
+ {t:'IAZ8302',d:'01.06',src:'DADI',st:'Veroia',l:512,km:480708,eur:640},
+ {t:'IAZ8302',d:'02.06',src:'DKV',st:'Shell Villach',l:512,km:481220,eur:684},
+ {t:'IAZ8302',d:'16.06',src:'DKV',st:'Shell Graz',l:498,km:486180,eur:664},
+ {t:'IAZ8302',d:'21.06',src:'DADI',st:'Veroia',l:470,km:487400,eur:590},
+ {t:'IAB1096',d:'02.06',src:'DADI',st:'Veroia',l:590,km:512300,eur:738},
+ {t:'IAB1096',d:'08.06',src:'DKV',st:'Total Antwerpen',l:486,km:514080,eur:652},
+ {t:'IAB1096',d:'19.06',src:'DADI',st:'Veroia',l:604,km:517450,eur:756},
+ {t:'IAB2103',d:'06.06',src:'DADI',st:'Veroia',l:520,km:389200,eur:650},
+ {t:'IAB2103',d:'09.06',src:'DKV',st:'OMV Kecskemét',l:160,km:390640,eur:212,warn:'ημέρα χωρίς trip'},
+ {t:'IAB2103',d:'14.06',src:'DADI',st:'Veroia',l:585,km:391900,eur:731},
+ {t:'IAZ4445',d:'08.06',src:'DADI',st:'Veroia',l:540,km:274500,eur:675},
+ {t:'IAZ4445',d:'23.06',src:'DKV',st:'Eni Verona',l:410,km:277600,eur:558},
+ {t:'ΝΗΒ7212',d:'01.06',src:'DADI',st:'Veroia',l:210,km:98400,eur:262},
+ {t:'ΝΗΒ7212',d:'09.06',src:'DADI',st:'Veroia',l:210,km:98400,eur:262,warn:'χωρίς trip · ίδια ένδειξη km'},
+ {t:'ΝΗΒ7212',d:'20.06',src:'DADI',st:'Veroia',l:125,km:99450,eur:156}];
+let FTAB='ALL';
+function renderFuelTabs(){
+  document.getElementById('fueltabs').innerHTML=
+   `<div class="tab2${FTAB==='ALL'?' active':''}" onclick="fuelTab('ALL')">Σύνολο στόλου</div>`+
+   FUEL.map(f=>`<div class="tab2${FTAB===f.truck?' active':''}" onclick="fuelTab('${f.truck}')">${f.truck}</div>`).join('');
+}
+function fuelTab(v){FTAB=v;renderFuelTabs();
+  document.getElementById('fuel-all').classList.toggle('hide',v!=='ALL');
+  document.getElementById('fuel-veh').classList.toggle('hide',v==='ALL');
+  if(v!=='ALL')renderFuelVeh(v);
+}
+function renderFuelVeh(v){
+  const f=FUEL.find(x=>x.truck===v), rows=REFUELS.filter(r=>r.t===v);
+  const l100=f.l/f.km*100, dev=(l100-f.base)/f.base*100, eur=rows.reduce((s,r)=>s+r.eur,0);
+  document.getElementById('fvkpis').innerHTML=`
+   <div class="kpi-card hero"><div class="kpi-label">L/100km</div><div class="kpi-value ${dev>12?'bad':'ok'}">${l100.toFixed(1)}</div><div class="kpi-delta">baseline ${f.base.toFixed(1)} · <b>${dev>0?'+':''}${dev.toFixed(1)}%</b></div></div>
+   <div class="kpi-card"><div class="kpi-label">Λίτρα (μήνας)</div><div class="kpi-value">${f.l.toLocaleString('el-GR')} L</div><div class="kpi-delta">${rows.length} πληρώσεις</div></div>
+   <div class="kpi-card"><div class="kpi-label">km περιόδου</div><div class="kpi-value">${f.km.toLocaleString('el-GR')}</div><div class="kpi-delta">οδηγός: ${f.drv}</div></div>
+   <div class="kpi-card"><div class="kpi-label">Κόστος καυσίμων</div><div class="kpi-value">${fmt(eur)}</div><div class="kpi-delta">DADI + DKV</div></div>`;
+  document.getElementById('fvtitle').textContent='Πληρώσεις '+v+' · Ιούνιος 2026';
+  document.getElementById('fvtbl').innerHTML=rows.map(r=>`
+   <tr><td class="mono">${r.d}</td><td><span class="badge ${r.src==='DKV'?'pend':'full'}">${r.src}</span></td><td>${r.st}</td>
+   <td class="tr-num mono">${r.l} L</td><td class="tr-num mono">${r.km.toLocaleString('el-GR')}</td><td class="tr-num mono">${fmt(r.eur)}</td>
+   <td>${r.warn?'<span class="badge diff">⚠ '+r.warn+'</span>':''}</td></tr>`).join('');
+}
+
 function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
 
-renderKPIs();renderList();renderRec();renderFuel();
+renderVehBar();renderKPIs();renderList();renderPartner();renderFuel();renderFuelTabs();
 </script>
 </body>
 </html>
