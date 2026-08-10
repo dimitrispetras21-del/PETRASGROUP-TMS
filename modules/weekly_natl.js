@@ -809,14 +809,15 @@ function _wnRowHTML(row, i) {
   // Το πλήθος και το σύνολο τα ξέρουμε ήδη από τη γραμμή — καμία επιπλέον
   // κλήση. Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί το σήμα, γιατί
   // ζει στα ORDER_STOPS και δεν αξίζει να κατεβαίνει για όλη την εβδομάδα.
-  const _delIds = [];
+  const _delNames = [];
   for (let k = 1; k <= 10; k++) {
     const arr = f[`Delivery Location ${k}`];
     if (!arr?.length) continue;
     const id = arr[0]?.id || arr[0];
-    if (id && _delIds.indexOf(id) === -1) _delIds.push(id);
+    const nm = (WNATL.data._locMap?.[id] || _wnLocName(id) || '').split(',')[0].trim();
+    if (nm && _delNames.indexOf(nm) === -1) _delNames.push(nm);
   }
-  const _nDel = _delIds.length;
+  const _nDel = _delNames.length;
   const grpBtn = _nDel > 1
     ? `<button class="wk3-grpb" id="wn-grpb-${row.id}" data-n="${_nDel}" data-p="${pals}"
         title="${_nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
@@ -1060,8 +1061,13 @@ function _wnNlPickupSummary(f) {
     const locId = arr[0]?.id || arr[0];
     if (!locId || seen.indexOf(locId) !== -1) continue;
     seen.push(locId);
+    // ΚΑΙ με βάση το όνομα: το ίδιο σημείο υπάρχει συχνά ως ΔΥΟ εγγραφές στο
+    // LOCATIONS (greeklish/ELOT διπλότυπα). Διαφορετικό id, ίδιος τόπος —
+    // ο οδηγός σταματά μία φορά.
     const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
-    if (name) locs.push(name.split(',')[0]);
+    const short = name ? name.split(',')[0].trim() : '';
+    if (!short || locs.indexOf(short) !== -1) continue;
+    locs.push(short);
   }
   return locs.join(' / ') || '';
 }
@@ -1077,8 +1083,13 @@ function _wnNlDeliverySummary(f) {
     const locId = arr[0]?.id || arr[0];
     if (!locId || seen.indexOf(locId) !== -1) continue;
     seen.push(locId);
+    // ΚΑΙ με βάση το όνομα: το ίδιο σημείο υπάρχει συχνά ως ΔΥΟ εγγραφές στο
+    // LOCATIONS (greeklish/ELOT διπλότυπα). Διαφορετικό id, ίδιος τόπος —
+    // ο οδηγός σταματά μία φορά.
     const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
-    if (name) locs.push(name.split(',')[0]);
+    const short = name ? name.split(',')[0].trim() : '';
+    if (!short || locs.indexOf(short) !== -1) continue;
+    locs.push(short);
   }
   return locs.join(' / ') || '';
 }
