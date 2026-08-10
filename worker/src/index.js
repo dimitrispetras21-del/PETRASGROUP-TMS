@@ -2706,6 +2706,9 @@ async function handlePallets(request, url, origin, env) {
       if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
       const m = cur.rows[0];
       if (m.status !== "pending") return jsonError("Only pending movements can be confirmed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
       const err = plValidate(m);
       if (err) return jsonError(err, 400, origin, env);
       const needsSheet = m.event_type !== "DELIVERY" && m.event_type !== "ADJUSTMENT";
@@ -2726,6 +2729,7 @@ async function handlePallets(request, url, origin, env) {
     // ---- POST /pallets/movements/:id/reverse  {reason, replacement?} ----
     // Αντιλογισμός: η αρχική → 'reversed' (εκτός υπολοίπου, μένει στο ιστορικό).
     // Προαιρετικό body.replacement = νέα σωστή εγγραφή (pending) με reversal_of.
+    // Το replacement επικυρώνεται ΠΡΙΝ αλλάξει η αρχική — αλλιώς μένει μερική κατάσταση.
     if (action === "reverse" && method === "POST" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !body.reason || !String(body.reason).trim()) {
@@ -2735,23 +2739,29 @@ async function handlePallets(request, url, origin, env) {
       if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
       const m = cur.rows[0];
       if (m.status !== "confirmed") return jsonError("Only confirmed movements can be reversed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      let replacementRow = null;
+      if (body.replacement && typeof body.replacement === "object") {
+        replacementRow = ctPick(body.replacement, PL_FIELDS);
+        replacementRow.taken = replacementRow.taken ?? 0;
+        replacementRow.given = replacementRow.given ?? 0;
+        replacementRow.reversal_of = m.id;
+        replacementRow.created_by = caller.sub;
+        const err = plValidate(replacementRow);
+        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
+        if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+        }
+      }
       const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
         status: "reversed",
         reason: String(body.reason).trim()
       });
       let replacement = null;
-      if (body.replacement && typeof body.replacement === "object") {
-        const row = ctPick(body.replacement, PL_FIELDS);
-        row.taken = row.taken ?? 0;
-        row.given = row.given ?? 0;
-        row.reversal_of = m.id;
-        row.created_by = caller.sub;
-        const err = plValidate(row);
-        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
-        if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
-          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
-        }
-        replacement = await dbInsert(env, "pl_movements", row);
+      if (replacementRow) {
+        replacement = await dbInsert(env, "pl_movements", replacementRow);
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);

@@ -87,7 +87,10 @@ create index pl_mov_cons    on pl_movements (cons_load_id)  where cons_load_id  
 alter table pl_movements enable row level security;
 
 -- 5.2 Views — υπόλοιπα ΜΟΝΟ από confirmed, τα pending χωριστή στήλη
-create or replace view pl_v_balance_clients as
+-- security_invoker=true: τα plain views τρέχουν με δικαιώματα owner και
+-- παρακάμπτουν το RLS του pl_movements — χωρίς αυτό, το view θα έβλεπε
+-- τα πάντα ανεξαρτήτως caller.
+create or replace view pl_v_balance_clients with (security_invoker = true) as
 select
   c.id           as client_id,
   c.company_name as client_name,
@@ -97,7 +100,7 @@ from clients c
 join pl_movements m on m.client_id = c.id
 group by c.id, c.company_name;
 
-create or replace view pl_v_balance_partners as
+create or replace view pl_v_balance_partners with (security_invoker = true) as
 select
   p.id           as partner_id,
   p.company_name as partner_name,
@@ -107,7 +110,7 @@ from partners p
 join pl_movements m on m.partner_id = p.id
 group by p.id, p.company_name;
 
-create or replace view pl_v_client_locations as
+create or replace view pl_v_client_locations with (security_invoker = true) as
 select
   m.client_id,
   m.location_id,
@@ -401,6 +404,9 @@ git push
       if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
       const m = cur.rows[0];
       if (m.status !== "pending") return jsonError("Only pending movements can be confirmed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
       const err = plValidate(m);
       if (err) return jsonError(err, 400, origin, env);
       const needsSheet = m.event_type !== "DELIVERY" && m.event_type !== "ADJUSTMENT";
@@ -421,6 +427,7 @@ git push
     // ---- POST /pallets/movements/:id/reverse  {reason, replacement?} ----
     // Αντιλογισμός: η αρχική → 'reversed' (εκτός υπολοίπου, μένει στο ιστορικό).
     // Προαιρετικό body.replacement = νέα σωστή εγγραφή (pending) με reversal_of.
+    // Το replacement επικυρώνεται ΠΡΙΝ αλλάξει η αρχική — αλλιώς μένει μερική κατάσταση.
     if (action === "reverse" && method === "POST" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !body.reason || !String(body.reason).trim()) {
@@ -430,23 +437,29 @@ git push
       if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
       const m = cur.rows[0];
       if (m.status !== "confirmed") return jsonError("Only confirmed movements can be reversed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      let replacementRow = null;
+      if (body.replacement && typeof body.replacement === "object") {
+        replacementRow = ctPick(body.replacement, PL_FIELDS);
+        replacementRow.taken = replacementRow.taken ?? 0;
+        replacementRow.given = replacementRow.given ?? 0;
+        replacementRow.reversal_of = m.id;
+        replacementRow.created_by = caller.sub;
+        const err = plValidate(replacementRow);
+        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
+        if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+        }
+      }
       const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
         status: "reversed",
         reason: String(body.reason).trim()
       });
       let replacement = null;
-      if (body.replacement && typeof body.replacement === "object") {
-        const row = ctPick(body.replacement, PL_FIELDS);
-        row.taken = row.taken ?? 0;
-        row.given = row.given ?? 0;
-        row.reversal_of = m.id;
-        row.created_by = caller.sub;
-        const err = plValidate(row);
-        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
-        if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
-          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
-        }
-        replacement = await dbInsert(env, "pl_movements", row);
+      if (replacementRow) {
+        replacement = await dbInsert(env, "pl_movements", replacementRow);
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
@@ -578,6 +591,11 @@ Expected: `{"records":[]}`. Μετά πλήρης κύκλος:
 5. `POST /pallets/movements/<id>/reverse` με `{"reason":"δοκιμή Φ1"}` → 200, status reversed.
 6. `GET /pallets/balances` → balance 0 ✓.
 7. `DELETE` στο ίδιο id → 409 (reversed δεν σβήνεται) ✓.
+8. `POST /pallets/movements` με string ποσότητες (`"taken":"5"`) → 400.
+9. Seed pending + confirmed κίνηση ίδιου πελάτη → `GET /pallets/balances`: balance ΜΟΝΟ από confirmed, pending_count σωστό.
+10. `GET /pallets/balances/clients/<id χωρίς κινήσεις>` → `{"records":[]}`, όχι error.
+11. `GET /pallets/balances?type=Partners` (κεφαλαίο) → πέφτει σε clients (case-sensitive — σημείωση για Φ3 UI).
+12. `POST /pallets/movements/<id>/reverse` με άκυρο replacement → 400 ΚΑΙ η αρχική παραμένει confirmed (έλεγχος σειράς επικύρωσης).
 
 - [ ] **Step 5: Ενημέρωση docs**
 

@@ -49,7 +49,10 @@ create index pl_mov_cons    on pl_movements (cons_load_id)  where cons_load_id  
 alter table pl_movements enable row level security;
 
 -- 5.2 Views — υπόλοιπα ΜΟΝΟ από confirmed, τα pending χωριστή στήλη
-create or replace view pl_v_balance_clients as
+-- security_invoker=true: τα plain views τρέχουν με δικαιώματα owner και
+-- παρακάμπτουν το RLS του pl_movements — χωρίς αυτό, το view θα έβλεπε
+-- τα πάντα ανεξαρτήτως caller.
+create or replace view pl_v_balance_clients with (security_invoker = true) as
 select
   c.id           as client_id,
   c.company_name as client_name,
@@ -59,7 +62,7 @@ from clients c
 join pl_movements m on m.client_id = c.id
 group by c.id, c.company_name;
 
-create or replace view pl_v_balance_partners as
+create or replace view pl_v_balance_partners with (security_invoker = true) as
 select
   p.id           as partner_id,
   p.company_name as partner_name,
@@ -69,7 +72,7 @@ from partners p
 join pl_movements m on m.partner_id = p.id
 group by p.id, p.company_name;
 
-create or replace view pl_v_client_locations as
+create or replace view pl_v_client_locations with (security_invoker = true) as
 select
   m.client_id,
   m.location_id,
@@ -80,3 +83,16 @@ from pl_movements m
 left join locations l on l.id = m.location_id
 where m.client_id is not null
 group by m.client_id, m.location_id, l.name;
+
+-- ============================================================
+-- ΕΛΕΓΧΟΣ (τρέξε μετά — περιμένεις όλα χωρίς error, 0 rows παντού):
+--   select code,status from pl_movements limit 5;
+--   select * from pl_v_balance_clients limit 5;
+--   select * from pl_v_balance_partners limit 5;
+--   select * from pl_v_client_locations limit 5;
+-- ============================================================
+
+-- 003_rollback (ΜΟΝΟ αν χρειαστεί να ξανατρέξει από την αρχή):
+-- drop view if exists pl_v_client_locations, pl_v_balance_partners, pl_v_balance_clients;
+-- drop table if exists pl_movements cascade;
+-- drop sequence if exists pl_code_seq;
