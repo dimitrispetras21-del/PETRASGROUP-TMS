@@ -449,6 +449,9 @@ var PERMISSIONS = {
     // managed with their parent order, not independently removed).
     national_loads: ["GET", "POST", "PATCH", "DELETE"],
     order_stops: ["GET", "POST", "PATCH"],
+    // Τοπικές κινήσεις — ίδια κυριότητα με τα national_loads: ο dispatcher
+    // τις δημιουργεί και τις σβήνει από το Weekly National.
+    local_moves: ["GET", "POST", "PATCH", "DELETE"],
     // planning:'full' -> dispatchers own the ramp board (daily_ramp.js). DELETE
     // is the facade soft-delete. Auto-sync creates ramp rows on board render
     // (#38) via this same POST grant.
@@ -488,6 +491,7 @@ var PERMISSIONS = {
     national_orders: ["GET"],
     consolidated_loads: ["GET"],
     national_loads: ["GET"],
+    local_moves: ["GET"],
     groupage_lines: ["GET"],
     order_stops: ["GET"],
     // warehouse needs the stop list to load/unload
@@ -1372,6 +1376,12 @@ var TABLES = {
       "Temperature C": "temperature_c",
       "Loading DateTime": "loading_datetime",
       "Delivery DateTime": "delivery_datetime",
+      // Ώρα ραντεβού ανά σκέλος (HH:MM, text). ΞΕΧΩΡΙΣΤΑ από τα datetime:
+      // ένα ραντεβού είναι απόφαση που καταγράφηκε ρητά, όχι η ώρα που
+      // τυχαίνει να έχει μέσα του ένα timestamp.
+      // Απαιτεί db/migrations/2026-08-10_nl_appointments.sql
+      "Loading Appointment": "loading_appointment",
+      "Delivery Appointment": "delivery_appointment",
       "Actual Delivery Date": "actual_delivery_date",
       Reference: "reference",
       "Matched Load": "matched_load",
@@ -1431,6 +1441,43 @@ var TABLES = {
     }
   },
   // ══════════════════════════════════════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCAL MOVES: local_moves. Τοπικές κινήσεις — η ενότητα ΤΟΠΙΚΑ ΔΡΟΜΟΛΟΓΙΑ
+  // του Weekly National. ΔΕΝ έχει Airtable προέλευση: γεννήθηκε κατευθείαν στη
+  // Supabase (db/migrations/2026-08-10_local_moves.sql), γι' αυτό το κλειδί
+  // είναι το ίδιο το pg name και όχι tbl*.
+  //
+  // Χωριστά από τα national_loads επίτηδες: μια τοπική κίνηση δεν έχει
+  // κατεύθυνση βορρά-νότου (Θεσσαλονίκη -> Αλεξάνδρεια δεν είναι ούτε το ένα
+  // ούτε το άλλο) και συχνά ούτε πελάτη ούτε παραγγελία.
+  //
+  // ΔΥΟ nullable γονείς, CHECK «ποτέ και τα δύο» στη βάση — ίδιος κανόνας με
+  // τον πολυμορφικό γονέα των national_loads. Και οι δύο NULL = αυτοτελής.
+  // ══════════════════════════════════════════════════════════════════════════
+  local_moves: {
+    name: "LOCAL MOVES",
+    pg: "local_moves",
+    fields: {
+      Date: "move_date",
+      Sequence: "sequence",
+      Description: "description",
+      Pallets: "pallets",
+      "Time From": "time_from",
+      "Time To": "time_to",
+      Status: "status",
+      Notes: "notes"
+    },
+    links: {
+      Driver: { column: "driver_id", table: "drivers" },
+      Truck: { column: "truck_id", table: "trucks" },
+      Trailer: { column: "trailer_id", table: "trailers" },
+      Partner: { column: "partner_id", table: "partners" },
+      "From Location": { column: "from_location_id", table: "locations" },
+      "To Location": { column: "to_location_id", table: "locations" },
+      "Parent Nat Load": { column: "parent_nat_load_id", table: "national_loads" },
+      "Parent Order": { column: "parent_order_id", table: "orders" }
+    }
+  },
   // PARTNER ASSIGNMENTS: tblUhgqnmiam5MGNK. Wave 4 (commercial), schema 0018.
   // 28 live rows. The subcontracting record: what we pay a partner for an order,
   // and the margin against what the client pays.

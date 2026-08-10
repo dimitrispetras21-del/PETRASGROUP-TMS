@@ -66,6 +66,10 @@ const TABLES = {
   MAINT_HISTORY: 'tbllPbPPd6N3zEZF1',
   MAINT_REQ:     'tbl3vhUmzKDWhJynR',
   NAT_LOADS:     'tblVW42cZnfC47gTb',
+  // Τοπικές κινήσεις — γεννήθηκε στη Supabase, χωρίς Airtable προέλευση,
+  // γι' αυτό το id είναι το pg name. Χάρτης: worker/src/index.js
+  // Απαιτεί db/migrations/2026-08-10_local_moves.sql
+  LOCAL_MOVES:   'local_moves',
   PALLET_LEDGER: 'tblAAH3N1bIcBRPXi',           // DEPRECATED alias
   PALLET_LEDGER_SUPPLIERS: 'tblAAH3N1bIcBRPXi', // renamed from PALLET LEDGER
   PALLET_LEDGER_PARTNERS:  'tblAUixdjwpgnJ1hK', // new: partner exchanges only
