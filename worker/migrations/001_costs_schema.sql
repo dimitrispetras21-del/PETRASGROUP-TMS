@@ -36,7 +36,9 @@ create table ct_round_trips (
   date_end   date,
   status     text not null default 'planned'
              check (status in ('planned','in_progress','closed','complete','cancelled')),
-  closed_at  timestamptz,                 -- πότε έκλεισε (χειροκίνητα τώρα, geofence Phase 2)
+  closed_at  timestamptz,                 -- κλείσιμο = γεγονός δεδομένων (owner 10/8):
+                                          -- direct → παράδοση import (actual_delivery_date)·
+                                          -- VS → άφιξη Βέροια (cross_dock_date)· manual = fallback
   total_km   integer,                     -- manual τώρα, MyGeotab Phase 2
   source     text not null default 'planner' check (source in ('planner','manual')),
   created_by text not null,

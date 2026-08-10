@@ -175,8 +175,11 @@ create view ct_v_partner_pnl as ...;
 ```
 planned ──(ημ/νία έναρξης ή 1η κατανομή)──▶ in_progress
    │                                            │
-   │                              (χειροκίνητο κλείσιμο dispatcher·
-   │                               MyGeotab geofence Phase 2)
+   │            (ΓΕΓΟΝΟΣ ΔΕΔΟΜΕΝΩΝ — owner 10/8: παράδοση του import
+   │             φορτίου· direct → actual_delivery_date· VS → άφιξη
+   │             Βέροια (cross_dock_date)· solo → παράδοση export.
+   │             Manual close = fallback διόρθωσης· geofence Phase 2 =
+   │             αυτοματοποίηση του ίδιου γεγονότος)
    │                                            ▼
 cancelled ◀──(ακύρωση — ΜΟΝΟ αν 0 γραμμές)   closed
                                                 │
