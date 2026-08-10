@@ -1,0 +1,7 @@
+name = "tms-api-proxy"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Secrets (set via wrangler CLI, never committed):
+#   wrangler secret put AIRTABLE_TOKEN
+#   wrangler secret put JWT_SECRET

@@ -1,7 +1,24 @@
-name = "tms-api-proxy"
-main = "index.js"
-compatibility_date = "2024-01-01"
+# Worker 2 — petras-tms-backend (Φ0 υιοθεσία 2026-08-10)
+# Source of truth: ΑΥΤΟ το repo. Deploys ΜΟΝΟ με `wrangler deploy` από εδώ —
+# ποτέ ξανά από τον dashboard editor (πηγή του split-brain, docs/worker/README.md).
+#
+# ΠΡΟΣΟΧΗ: το όνομα λέει "staging" αλλά ΕΙΝΑΙ το production backend —
+# το app το καλεί ευθέως (config.js: PROXY_URL). Ιστορικό ονόματος, μην
+# το αλλάξεις: αλλαγή name = νέος Worker χωρίς τα secrets.
 
-# Secrets (set via wrangler CLI, never committed):
-#   wrangler secret put AIRTABLE_TOKEN
-#   wrangler secret put JWT_SECRET
+name = "petras-tms-backend-staging"
+account_id = "9dff78339915e968e5becaa9b1efff43"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# Non-secret vars — πιστή αντιγραφή των τρεχόντων bindings (CF API, 10/8).
+# Το wrangler deploy τα ξαναγράφει· αν προστεθεί var στο dashboard χωρίς να
+# μπει εδώ, θα χαθεί στο επόμενο deploy.
+[vars]
+ALLOWED_ORIGIN = "https://dimitrispetras21-del.github.io"
+SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
+
+# Secrets (ΔΕΝ γράφονται εδώ — ζουν στο Cloudflare και επιβιώνουν των deploys):
+#   JWT_SECRET
+#   SUPABASE_SERVICE_KEY
+# Αν χρειαστεί αλλαγή: `wrangler secret put <NAME>` από αυτόν τον φάκελο.

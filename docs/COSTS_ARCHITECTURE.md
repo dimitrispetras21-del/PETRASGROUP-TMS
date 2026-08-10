@@ -89,8 +89,8 @@ create table ct_rt_legs (
   id          bigint generated always as identity primary key,
   rt_id       bigint not null references ct_round_trips(id) on delete cascade,
   direction   text not null check (direction in ('EXPORT','IMPORT','ANODOS','KATHODOS')),
-  order_id    bigint references orders(id),      -- INTL
-  nat_load_id bigint references nat_loads(id),   -- NATL
+  order_id    bigint references orders(id),           -- INTL
+  nat_load_id bigint references national_loads(id),   -- NATL (πίνακας: national_loads, ΟΧΙ nat_loads — επιβεβαιωμένο από TABLE_MAP 10/8)
   constraint one_source check ((order_id is null) <> (nat_load_id is null))
 );
 create unique index on ct_rt_legs(order_id)    where order_id    is not null;  -- 1 order → 1 RT
@@ -277,10 +277,15 @@ Clean start (locked): κανένα backfill — PnL μετράει από το g
 ## 8. Ανοιχτά πριν τη Φ1
 
 1. ~~Backend home~~ → ✅ αποφασίστηκε 10/8 (§1: Worker 2, δική μας κυριότητα).
-2. **Φ0 — υιοθεσία Worker 2**: κατέβασμα deployed scripts (staging +
-   production) με το CF API, wrangler setup, no-op deploy. Χρειάζεται μόνο
-   την CF πρόσβαση του owner (dashboard ή API token).
-3. FKs προς `trucks/drivers/partners/orders/nat_loads`: να επιβεβαιωθούν τα
-   πραγματικά PK types στη Supabase (το σχέδιο υποθέτει bigint identity — αν
-   είναι text/uuid, αλλάζουν μόνο οι δηλώσεις FK, τίποτα άλλο). Ένα SELECT
-   στο information_schema στη Φ0 το κλείνει.
+2. **Φ0 — υιοθεσία Worker 2**: ✅ ΕΓΙΝΕ 10/8 (εκτός από το deploy):
+   deployed script κατέβηκε από CF API → `worker/src/index.js` (2386 γραμμές,
+   περιλαμβάνει τα dash edits 8-9/8: scan_examples, LOCATIONS Wave-3,
+   TRUCKS/TRAILERS fields) + `worker/wrangler.toml` με τα πραγματικά bindings
+   (ALLOWED_ORIGIN, SUPABASE_URL· secrets μένουν στο CF). Δεν υπάρχει
+   ξεχωριστό production Worker — το `petras-tms-backend-staging` ΕΙΝΑΙ το
+   production (config.js PROXY_URL). Εκκρεμεί ΜΟΝΟ το no-op deploy
+   επιβεβαίωσης (με έγκριση owner — αγγίζει το live backend).
+3. ~~PK types~~ → ✅ επιβεβαιώθηκαν 10/8 μέσω PostgREST OpenAPI:
+   trucks/drivers/partners/orders = **bigint** (όπως υποθέτει το σχέδιο)·
+   τα national tables λέγονται `national_orders` / `national_loads` στην
+   Postgres (τα FKs του §2.3 διορθώθηκαν).

@@ -1,69 +1,34 @@
-# TMS API Proxy — Cloudflare Worker
+# Worker 2 — petras-tms-backend (source of truth από 10-8-2026)
 
-Proxies Airtable API requests so the PAT stays server-side.
-Includes JWT authentication — browser must log in to get a token before making API calls.
+**Φ0 «Υιοθεσία» (COSTS_ARCHITECTURE §1):** η συνεργασία με satsilem/
+Valuedriven ολοκληρώθηκε· ο Worker πέρασε σε δική μας κυριότητα. Το
+`src/index.js` είναι το ΑΚΡΙΒΕΣ deployed script όπως κατέβηκε από το CF API
+στις 10-8-2026 (μετά τα dashboard edits της 8-9/8: scan_examples permissions,
+LOCATIONS Wave-3 πεδία, TRUCKS/TRAILERS identity fields — όλα πλέον μόνιμα
+στο source).
 
-## Deploy
+## Κανόνες
 
-```bash
-# 1. Install Wrangler CLI
-npm install -g wrangler
+1. **Κάθε αλλαγή: εδώ → `wrangler deploy`. Ποτέ dashboard editor.**
+   (Ό,τι μπαίνει από το dashboard χάνεται στο επόμενο deploy — αυτό ήταν το
+   split-brain που τεκμηριώνει το docs/worker/README.md.)
+2. Το `src/index.js` είναι esbuild bundle ενός αρχείου — δουλεύουμε
+   κατευθείαν πάνω του (όπως έκανε και το dashboard). Αν μελλοντικά σπάσει
+   σε modules, το bundle βήμα μπαίνει τότε.
+3. Secrets (`JWT_SECRET`, `SUPABASE_SERVICE_KEY`) ζουν ΜΟΝΟ στο Cloudflare —
+   επιβιώνουν των deploys, δεν αντιγράφονται πουθενά.
+4. Deploy: `cd worker && CLOUDFLARE_API_TOKEN=$CF_API_TOKEN npx wrangler deploy`
+   (το CF_API_TOKEN από το `.env.local` της ρίζας).
 
-# 2. Log in to Cloudflare
-wrangler login
+## Περιεχόμενα
 
-# 3. Set secrets
-cd worker/
-wrangler secret put AIRTABLE_TOKEN
-# Paste: patXXXX-REDACTED.a2162b09fbb2...
+- `src/index.js` — Worker 2 (auth JWT, PERMISSIONS, facade, audit, AI routes)
+- `wrangler.toml` — config + non-secret vars (πιστά στα τρέχοντα bindings)
+- `archive/worker1/` — ο παλιός Worker 1 (tms-api-proxy, Airtable εποχή)
+- `archive/raw-multipart/` — τα ωμά CF API downloads της 10/8 (απόδειξη
+  προέλευσης· το καθαρό JS είναι το src/index.js)
 
-wrangler secret put JWT_SECRET
-# Paste a strong random string (32+ chars), e.g.:
-#   openssl rand -hex 32
+## Σχέση με docs/worker/
 
-# 4. Deploy
-wrangler deploy
-```
-
-The worker will be live at `https://tms-api-proxy.<your-subdomain>.workers.dev`.
-
-## Enable in TMS
-
-Edit `config.js`:
-
-```js
-const USE_PROXY = true;
-const PROXY_URL = 'https://tms-api-proxy.<your-subdomain>.workers.dev';
-```
-
-Once confirmed working, remove `AT_TOKEN` from `config.js`.
-
-## Auth Flow
-
-1. **Login**: Browser POSTs `{ username, passwordHash }` to `/auth/login`
-   - `passwordHash` is the SHA-256 hex hash of the plaintext password (hashed client-side)
-   - Worker validates against hardcoded user list (same users as `index.html`)
-   - Returns a signed JWT token (HS256, 8h expiry) + user info
-
-2. **API Calls**: Browser sends `Authorization: Bearer <jwt>` on all `/v0/*` requests
-   - Worker validates JWT signature and expiry
-   - Adds `X-User-Role` and `X-User-Name` headers to the Airtable request (for future server-side permission checks)
-   - Swaps the JWT for the real Airtable PAT before forwarding
-
-3. **Token Expiry**: JWT expires after 8 hours (matches session TTL)
-   - On 401 response, the client clears session and redirects to login
-
-## Endpoints
-
-| Endpoint | Auth | Description |
-|---|---|---|
-| `GET /health` | None | Health check, active/queued counts |
-| `POST /auth/login` | None | Login, returns JWT |
-| `* /v0/*` | JWT | Proxied Airtable API calls |
-
-## How it works
-
-- Browser sends `GET /v0/{baseId}/{tableId}?params` to the worker with JWT
-- Worker validates JWT, then adds `Authorization: Bearer <airtable-pat>` and forwards to `api.airtable.com`
-- CORS locked to `https://dimitrispetras21-del.github.io`
-- Server-side rate limiting: max 4 concurrent requests to Airtable, overflow queued (max 20 queued, then 429)
+Το `docs/worker/petras-tms-backend-staging-2026-08-05.js` παραμένει ως
+ιστορικό snapshot της 5/8. Από 10/8 η ζωντανή αναφορά είναι ΕΔΩ.
