@@ -42,7 +42,7 @@ const NAV = [
   { section: 'Finance', perm: 'orders', items: [
     { id: 'invoicing',     label: 'Invoicing',     icon: 'file_check' },
     { id: 'pallet_ledger', label: 'Pallet Ledger', icon: 'package' },
-    { id: 'costs',         label: 'Costs',         icon: 'coins', soon: true },
+    { id: 'costs',         label: 'TRIP PnL',      icon: 'coins', role: 'owner' },
   ]},
   { section: 'Insights', perm: 'ceo_dashboard', items: [
     { id: 'ceo_dashboard', label: 'CEO Dashboard',  icon: 'award' },
@@ -107,6 +107,8 @@ function renderNav() {
           + '</div>';
     html += '<div class="nav-group-items' + (collapsed ? ' collapsed-items' : '') + '" id="' + sid + '">';
     for (const item of group.items) {
+      // Per-item role gate (e.g. TRIP PnL: owner-only — spec §10.2.11)
+      if (item.role && typeof ROLE !== 'undefined' && ROLE !== item.role) continue;
       html += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
             + '" onclick="navigate(\'' + item.id + '\')"'
             + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'
@@ -334,11 +336,7 @@ function navigate(page) {
       today: 'Οι αποδείξεις DADI και DKV εισάγονται από την αυτόνομη εφαρμογή Fuel Import.',
       eta: 'Η ενσωμάτωση στο TMS δεν έχει προγραμματιστεί. Η σελίδα δεν εμφανίζεται στο μενού.',
     });         break;
-    case 'costs':          c.innerHTML = showComingSoon('Κόστη Δρομολογίων', {
-      icon: 'coins',
-      today: 'Τα κόστη καταγράφονται σε λογιστικό φύλλο εκτός TMS. Καύσιμα και διόδια εισάγονται με το Fuel Import.',
-      eta: 'Ο πίνακας TRIP_COSTS δεν υπάρχει ακόμη στο backend — επιστρέφει 404 (CO-2). Δεν είναι θέμα οθόνης.',
-    });                 break;
+    case 'costs':          renderTripPnl();                                   break;
     case 'pl':             c.innerHTML = showComingSoon('Κερδοφορία', {
       icon: 'trending_up',
       today: 'Ο τζίρος φαίνεται στην Τιμολόγηση και στο CEO Dashboard. Το περιθώριο δεν υπολογίζεται πουθενά, γιατί λείπει η πλευρά του κόστους.',

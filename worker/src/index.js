@@ -2378,9 +2378,9 @@ var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 // RT create/close/list · manual cost lines (net+VAT) · PnL read (OWNER ONLY)
 var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "driver_pay", "cash_m", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
 var COSTS_PERMS = {
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"] },
-  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"] },
-  dispatcher: { rt: ["GET", "POST", "PATCH"] },
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"], lookups: ["GET"] },
+  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"] },
+  dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
   management: {},
   warehouse: {}
 };
@@ -2425,6 +2425,16 @@ async function handleCosts(request, url, origin, env) {
     return jsonError("Forbidden", 403, origin, env);
   }
   try {
+    // ---- GET /costs/lookups  (ids + labels για dropdowns/ονόματα) ----
+    if (resource === "lookups" && method === "GET") {
+      const [trucks, trailers, drivers, partners] = await Promise.all([
+        dbSelect(env, "trucks", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "trailers", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "drivers", { select: "id,full_name,active", order: "full_name.asc", limit: 300 }),
+        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 500 })
+      ]);
+      return jsonOk({ trucks, trailers, drivers, partners }, origin, env);
+    }
     // ---- GET /costs/settings ----
     if (resource === "settings" && method === "GET") {
       const rows = await dbSelect(env, "ct_settings", { select: "key,value,updated_at", order: "key.asc" });
