@@ -443,6 +443,9 @@ git push
         row.created_by = caller.sub;
         const err = plValidate(row);
         if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
+        if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+        }
         replacement = await dbInsert(env, "pl_movements", row);
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
