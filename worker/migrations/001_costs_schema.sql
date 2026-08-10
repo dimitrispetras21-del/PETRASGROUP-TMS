@@ -29,12 +29,14 @@ create table ct_round_trips (
   scope      text not null check (scope in ('INTL','NATL')),
   trip_type  text not null check (trip_type in ('OWNED','PARTNER')),
   truck_id   bigint references trucks(id),
+  trailer_id bigint references trailers(id),  -- το ξέρουν οι planners· χρειάζεται για reefer fuel + trailer wear αργότερα
   driver_id  bigint references drivers(id),
   partner_id bigint references partners(id),
   date_start date not null,               -- allocation window: ΤΟ κλειδί του engine
   date_end   date,
   status     text not null default 'planned'
              check (status in ('planned','in_progress','closed','complete','cancelled')),
+  closed_at  timestamptz,                 -- πότε έκλεισε (χειροκίνητα τώρα, geofence Phase 2)
   total_km   integer,                     -- manual τώρα, MyGeotab Phase 2
   source     text not null default 'planner' check (source in ('planner','manual')),
   created_by text not null,
@@ -80,8 +82,12 @@ create table ct_cost_lines (
   doc_id      bigint references ct_cost_docs(id) on delete cascade,  -- null = Shape C (χειροκίνητο)
   rt_id       bigint references ct_round_trips(id),                  -- null = ακατανέμητο
   category    text not null check (category in
-              ('fuel','tolls','dkv','adblue','driver_pay','cash_m','spedition',
-               'accommodation','ferry_train','fines','partner_rate','other')),
+              ('fuel','reefer_fuel','tolls','dkv','adblue','driver_pay','cash_m',
+               'spedition','accommodation','ferry_train','fines','partner_rate',
+               'fixed_alloc','other')),
+              -- reefer_fuel: ψυγείο χωριστά από κίνηση (spec §5 — και ώστε η
+              -- κατανάλωση L/100km να μη μολύνεται)· fixed_alloc: Tier-2 πάγια
+              -- (spec §10 item 3 — παρόν από τώρα, 0 χρήση σε v1)
   toll_country char(2),
   net         numeric(10,2) not null default 0,  -- ΦΠΑ ΧΩΡΙΣΤΑ (locked §10.3)
   vat         numeric(10,2) not null default 0,
