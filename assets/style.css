@@ -2324,6 +2324,11 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-sld{font-size:10.5px;color:var(--text-mid);font-variant-numeric:tabular-nums;font-weight:700}
 .wk3-sld.diff{color:var(--accent);font-weight:800}
 .wk3-stopn.ln{background:var(--navy-mid,#0B1929)}
+/* Ταξινόμηση σημείων (10/8): εθνικά subs μέσα στα feeds — στοίβαξη σε στήλη */
+.wk3-fcol{display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%;padding:2px 0}
+.wk3-fline{display:flex;align-items:center;gap:4px;min-width:0}
+.wk3-feed .wk3-stopline{padding-left:14px;font-size:10px;line-height:1.6}
+.wk3-feed .wk3-sld{font-size:9.5px}
 /* Owner 10/8: flags μόνο PE στο weekly — RISK/GRP κρύβονται (μένουν σε φόρμα/φύλλα) */
 .wk3 .wi-b-risk,.wk3 .wi-b-grpg{display:none}
 /* compact tags μέσα στο meta — υπάρχοντα wi-badge/wi-cross/wi-exec */
