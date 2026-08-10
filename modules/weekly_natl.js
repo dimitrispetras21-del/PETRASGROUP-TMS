@@ -405,52 +405,73 @@ function _wnPaint() {
   }).catch(e => console.warn('CC async widgets (natl):', e));
 }
 
-/* ── ALL ROWS — grouped by date, N→S + S→N per day ─────────────── */
+/* ── ALL ROWS — μία ημέρα ανά ΠΡΩΤΗ ΦΟΡΤΩΣΗ, κενές μέρες ορατές ──── */
+//
+// Φέτα 1α (SPEC Δ2). Δύο αλλαγές στη λογική της ημέρας:
+//
+// 1. ΕΝΑ κλειδί, όχι δύο. Πριν, η ΚΑΘΟΔΟΣ ομαδοποιούνταν κατά ημερομηνία
+//    ΠΑΡΑΔΟΣΗΣ και η ΑΝΟΔΟΣ κατά ημερομηνία ΦΟΡΤΩΣΗΣ — δηλαδή τα δύο σκέλη
+//    του ΙΔΙΟΥ round trip έπεφταν σε διαφορετικές μέρες. Στο Excel η γραμμή
+//    ανήκει στη μέρα που ξεκινά το φορτηγό.
+//
+// 2. Και οι 7 μέρες εμφανίζονται ΠΑΝΤΑ. Η κενή μέρα είναι πληροφορία
+//    («η Τετάρτη δεν έχει τίποτα — γιατί;»), όχι απουσία.
 function _wnAllRowsHTML() {
+  const { week } = WNATL;
   const nsRows = WNATL.rows.filter(r => r.type==='northsouth');
   const snRows = WNATL.rows.filter(r => r.type==='southnorth');
-  let html = '';
   let idx = 0, snIdx = 0;
 
-  // Build map: dateKey → { lbl, ns:[], sn:[] }
+  const _ord = row => (row.type==='southnorth')
+    ? WNATL.data.southnorth.find(r => r.id===row.orderId)
+    : WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
+
+  // Πρώτη φόρτωση· fallback στην παράδοση μόνο αν λείπει εντελώς η φόρτωση.
+  const _key = row => {
+    const f = _ord(row)?.fields || {};
+    return toLocalDate(f['Loading DateTime'] || f['Delivery DateTime'] || '') || 'zzz';
+  };
+
   const dayMap = {};
+  const put = (row, bucket) => {
+    const k = _key(row);
+    if (!dayMap[k]) dayMap[k] = { ns:[], sn:[] };
+    dayMap[k][bucket].push(row);
+  };
+  nsRows.forEach(r => put(r, 'ns'));
+  snRows.forEach(r => put(r, 'sn'));
 
-  nsRows.forEach(row => {
-    const ord = WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
-    const key = toLocalDate(ord?.fields['Delivery DateTime']) || 'zzz';
-    const lbl = _wnFmtFull(ord?.fields['Delivery DateTime']||null) || '—';
-    if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
-    dayMap[key].ns.push(row);
-  });
+  // Οι 7 μέρες της εβδομάδας με τη σειρά, μετά ό,τι έπεσε εκτός (π.χ. 'zzz').
+  const wS = _wnWeekStart(week);
+  const keys = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(wS); d.setDate(wS.getDate() + i);
+    keys.push(toLocalDate(d));
+  }
+  Object.keys(dayMap).sort().forEach(k => { if (keys.indexOf(k) === -1) keys.push(k); });
 
-  snRows.forEach(row => {
-    const ord = WNATL.data.southnorth.find(r => r.id===row.orderId);
-    const dtRaw = ord?.fields['Loading DateTime'] || '';
-    const key = toLocalDate(dtRaw) || 'zzz';
-    const lbl = _wnFmtFull(dtRaw||null) || '—';
-    if (!dayMap[key]) dayMap[key] = { lbl, ns:[], sn:[] };
-    dayMap[key].sn.push(row);
-  });
+  const todayKey = (typeof localToday==='function') ? localToday() : toLocalDate(new Date());
+  let html = '';
 
-  // Sort days chronologically
-  const sortedKeys = Object.keys(dayMap).sort();
+  keys.forEach(key => {
+    const { ns, sn } = dayMap[key] || { ns:[], sn:[] };
+    const isToday = key === todayKey;
+    const lbl = _wnDayLabel(key);
+    const counts = (ns.length || sn.length)
+      ? `${lbl.date} · ${ns.length} κάθοδος · ${sn.length} άνοδος`
+      : lbl.date;
 
-  const todayKey=(typeof localToday==='function')?localToday():toLocalDate(new Date()); // T5
-
-  sortedKeys.forEach(key => {
-    const { lbl, ns, sn } = dayMap[key];
-    const nsCount = ns.length;
-    const snCount = sn.length;
-    const isToday = key===todayKey;
-
-    html += `<div class="wi-dsep${isToday?' wi-dsep--today':''}">
-      <span class="wi-dsep-lbl">Date</span>
-      <span class="wi-dsep-date">${lbl}</span>
-      ${isToday?'<span class="wi-dsep-todaytag">ΣΗΜΕΡΑ</span>':''}
-      ${nsCount ? `<span class="wi-dsep-n" style="color:rgba(196,207,219,0.55)">${nsCount} κάθοδος</span>` : ''}
-      ${snCount ? `<span class="wi-dsep-n" style="color:rgba(14,165,233,0.65);margin-left:${nsCount?'4px':'2px'}">${snCount} άνοδος</span>` : ''}
-      ${snCount ? `<span style="font-size:9px;color:rgba(196,207,219,0.22);margin-left:auto;font-style:italic">drag για σύνδεση</span>` : ''}
+    html += `<div class="wk3-dayh${isToday?' today':''}">
+      <span class="d">${lbl.name}</span>
+      <span class="k">${counts}</span>
+      ${isToday?'<span class="now" style="margin-left:auto">ΣΗΜΕΡΑ</span>':''}
     </div>`;
+
+    if (!ns.length && !sn.length) {
+      html += `<div style="padding:9px 14px;font-size:11px;color:var(--text-dim);
+        background:var(--bg);border-bottom:1px solid var(--border)">Καμία κίνηση</div>`;
+      return;
+    }
 
     ns.forEach(row => { html += _wnRowHTML(row, idx++); });
     // Β.3-4 (Wave 1): ΑΝΟΔΟΣ rows numbered A1… like the intl I1… imports.
@@ -458,6 +479,17 @@ function _wnAllRowsHTML() {
   });
 
   return html;
+}
+
+// «ΚΥΡΙΑΚΗ» + «26/07» — η τυπογραφία ημέρας του wk3 (.wk3-dayh .d / .k)
+function _wnDayLabel(key) {
+  if (!key || key === 'zzz') return { name:'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ', date:'—' };
+  const d = new Date(key + 'T12:00:00');
+  if (isNaN(d.getTime())) return { name:'—', date:key };
+  return {
+    name: d.toLocaleDateString('el-GR', { weekday:'long' }).toUpperCase(),
+    date: String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0'),
+  };
 }
 
 /* ── QUIET VIEW + DRIVERS PANEL (owner 8/8 — twins of weekly_intl) ── */
