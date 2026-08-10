@@ -2388,19 +2388,6 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-pnote{font-size:11px;color:var(--accent);background:var(--accent-light);border-radius:6px;
   padding:8px 11px;margin-bottom:14px}
 
-/* Δ17 — επιλογή Order Type μέσα στη φόρμα εθνικών: δύο κάρτες, όχι
-   checkbox. Ένα checkbox διαβάζεται ως ιδιότητα· εδώ είναι δύο δρόμοι με
-   διαφορετικό αποτέλεσμα (1 order vs 1 order ανά πελάτη). */
-.nf-mode{flex:1;min-width:250px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;
-  border:1px solid var(--border-mid);border-radius:var(--radius);padding:11px 13px;background:#fff}
-.nf-mode:hover{border-color:rgba(2,132,199,.35);background:var(--accent-light)}
-.nf-mode.on{border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px var(--accent-glow)}
-.nf-mode input{width:15px;height:15px;margin-top:2px;flex-shrink:0}
-.nf-mode span{display:flex;flex-direction:column;gap:2px}
-.nf-mode b{font-size:13px;font-weight:600;color:var(--text)}
-.nf-mode em{font-style:normal;font-size:11px;color:var(--text-dim);line-height:1.45}
-.nf-mode.on b{color:var(--accent)}
-
 /* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
 .wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
 .wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}
