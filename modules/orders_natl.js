@@ -76,7 +76,6 @@ function _renderNatlLayout(c) {
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openNatlScan()">${_i('camera')} Scan</button>
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} New Order</button>` : ''}
-        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openNatlGroupage()" title="Μία καταχώρηση, πολλοί πελάτες — μία παραγγελία ανά πελάτη, ένα φορτηγό">${_i('plus')} Groupage</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_natlExportCSV()">${_i('download')} CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Print</button>
       </div>
@@ -525,53 +524,38 @@ async function _natlWriteGroupageChain(common, groups) {
  * «ποιος πελάτης, πόσα σημεία».
  */
 let _grpRows = [];
-
-function openNatlGroupage() {
-  _grpRows = [{ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }];
-  const locs = (getRefLocations()||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
-  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
-  window._grpLocs = locs;
-
-  openModal('Νέα Εθνική Παραγγελία — Groupage', `
-    <div class="form-grid">
-      <div class="form-field"><label class="form-label">Direction *</label>
-        <select class="form-select" id="gf_dir">
-          <option value="North→South">ΚΑΘΟΔΟΣ (Βορράς→Νότος)</option>
-          <option value="South→North">ΑΝΟΔΟΣ (Νότος→Βορράς)</option>
-        </select></div>
-      <div class="form-field"><label class="form-label">Σημείο φόρτωσης *</label>
-        <select class="form-select" id="gf_from"><option value="">— Επιλογή —</option>${opt(locs,'')}</select></div>
-      <div class="form-field"><label class="form-label">Ημ. φόρτωσης *</label>
-        <input class="form-input" type="date" id="gf_load"></div>
-      <div class="form-field"><label class="form-label">Ημ. παράδοσης *</label>
-        <input class="form-input" type="date" id="gf_del"></div>
-      <div class="form-field"><label class="form-label">Goods</label>
-        <input class="form-input" id="gf_goods" value="Fresh Produce"></div>
-      <div class="form-field"><label class="form-label">Temperature °C</label>
-        <input class="form-input" type="number" id="gf_temp" value="2"></div>
-    </div>
-
-    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:18px">
-      <div class="detail-section-title">Παραδόσεις — μία γραμμή ανά σημείο</div>
-      <div id="gf_rows"></div>
-      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px;margin-top:8px"
-        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
-    </div>
-
-    <div id="gf_preview" style="margin-top:16px"></div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
-     <button class="btn btn-success" id="gf_submit" onclick="_grpSubmit()">Καταχώρηση</button>`);
-
-  document.getElementById('modal').style.maxWidth = '860px';
-  _grpRender();
+/* Δ17 — εναλλαγή Απλή / Groupage μέσα στην ΙΔΙΑ φόρμα.
+   Το κρυφό nf_Groupage μένει συγχρονισμένο: το διαβάζει το submitNatlOrder
+   αυτούσιο, οπότε η απλή διαδρομή δεν αγγίχτηκε καθόλου. */
+let _natlEditingId = null;
+function _natlMode(m) {
+  const cb = document.getElementById('nf_Groupage'); if (cb) cb.checked = !!m;
+  const m0 = document.getElementById('nf_m0'), m1 = document.getElementById('nf_m1');
+  if (m0) { m0.className = 'nf-mode' + (m ? '' : ' on'); const r=m0.querySelector('input'); if(r) r.checked = !m; }
+  if (m1) { m1.className = 'nf-mode' + (m ? ' on' : ''); const r=m1.querySelector('input'); if(r) r.checked = !!m; }
+  const simple = document.getElementById('nf_simple'), grp = document.getElementById('nf_grp');
+  if (simple) simple.style.display = m ? 'none' : '';
+  if (grp)    grp.style.display    = m ? '' : 'none';
+  const btn = document.getElementById('natlBtnSubmit');
+  if (btn) {
+    btn.setAttribute('onclick', m ? '_grpSubmit()' : `submitNatlOrder('${_natlEditingId||''}')`);
+    btn.textContent = m ? 'Καταχώρηση' : (_natlEditingId ? 'Save Changes' : 'Submit');
+  }
+  if (m) {
+    if (!_grpRows.length) _grpRows = [{ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }];
+    _grpRender();
+  }
 }
+
+
+// openNatlGroupage αφαιρέθηκε: το groupage ζει ΜΕΣΑ στη φόρμα (Δ17).
 
 function _grpAddRow(){ _grpRows.push({ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }); _grpRender(); }
 function _grpDelRow(i){ if(_grpRows.length>1) _grpRows.splice(i,1); _grpRender(); }
 function _grpSet(i,k,v){ _grpRows[i][k]=v; _grpRender(); }
 
 function _grpRender() {
-  const locs = window._grpLocs || [];
+  const locs = (getRefLocations()||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
   const clients = (getRefClients?.()||[]).map(r => ({ id:r.id, label:r.fields?.['Company Name']||r.id }));
   const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
 
@@ -605,8 +589,9 @@ function _grpRender() {
       ${tot>33?'<div style="margin-top:7px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
     </div>`;
 
-  const btn=document.getElementById('gf_submit');
-  if(btn) btn.textContent = g.length ? `Καταχώρηση ${g.length} ${g.length===1?'παραγγελίας':'παραγγελιών'}` : 'Καταχώρηση';
+  const btn=document.getElementById('natlBtnSubmit');
+  if(btn && btn.getAttribute('onclick')==='_grpSubmit()')
+    btn.textContent = g.length ? `Καταχώρηση ${g.length} ${g.length===1?'παραγγελίας':'παραγγελιών'}` : 'Καταχώρηση';
 }
 
 // Ομαδοποίηση γραμμών σε παραγγελίες: μία ανά πελάτη (Δ12)
@@ -629,11 +614,13 @@ function _grpGroups() {
 
 async function _grpSubmit() {
   const v = id => document.getElementById(id)?.value?.trim() || '';
+  const _fromId = v('lv_npickup');
   const common = {
-    direction: v('gf_dir'), fromLocId: v('gf_from'),
-    fromLabel: (window._grpLocs||[]).find(l=>l.id===v('gf_from'))?.label || '',
-    loadDate: v('gf_load'), delDate: v('gf_del'),
-    goods: v('gf_goods'), temp: v('gf_temp'),
+    direction: v('nf_Direction') || DIR.NORTH_SOUTH,
+    fromLocId: _fromId,
+    fromLabel: (getRefLocations()||[]).find(l=>l.id===_fromId)?.fields?.Name || '',
+    loadDate: v('nf_LoadDate'), delDate: v('nf_DelDate'),
+    goods: v('nf_Goods'), temp: v('nf_Temp'),
   };
   const groups = _grpGroups();
   if (!common.fromLocId || !common.loadDate || !common.delDate) { toast('Σημείο φόρτωσης και οι δύο ημερομηνίες είναι υποχρεωτικά','warn'); return; }
@@ -641,7 +628,7 @@ async function _grpSubmit() {
   const nStops = groups.reduce((s,g)=>s+g.stops.length,0);
   if (nStops > 10) { toast('Όριο 10 σημείων παράδοσης ανά φορτίο','warn'); return; }
 
-  const btn = document.getElementById('gf_submit');
+  const btn = document.getElementById('natlBtnSubmit');
   if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
   try {
     const res = await _natlWriteGroupageChain(common, groups);
@@ -649,7 +636,8 @@ async function _grpSubmit() {
       .forEach(t => { try { invalidateCache(t); } catch(_){} });
     closeModal();
     toast(`${res.orders.length} παραγγελίες · ${res.gls.length} γραμμές · 1 φορτίο`, 'success');
-    if (typeof renderOrdersNatl === 'function') renderOrdersNatl();
+    if (typeof renderNatlOrders === 'function') renderNatlOrders();
+    else if (typeof renderOrdersNatl === 'function') renderOrdersNatl();
   } catch (e) {
     console.error('_grpSubmit:', e);
     if (btn) { btn.disabled = false; btn.textContent = 'Καταχώρηση'; }
@@ -685,11 +673,6 @@ async function _openNatlModal(recId, f) {
           ${opt([['North→South','ΚΑΘΟΔΟΣ (Βορράς→Νότος)'],['South→North','ΑΝΟΔΟΣ (Νότος→Βορράς)']],'Direction')}</select>
       </div>
       <div class="form-field">
-        <label class="form-label">Type</label>
-        <select class="form-select" id="nf_Type"><option value="">— Select —</option>
-          ${opt([['Independent','Ανεξάρτητη'],['Veroia Switch','Veroia Switch']],'Type')}</select>
-      </div>
-      <div class="form-field">
         <label class="form-label">Client *</label>
         ${_clientSelect('nclient', clientId, clientLabel)}
       </div>
@@ -715,13 +698,27 @@ async function _openNatlModal(recId, f) {
           Pallet Exchange</label>
       </div>
     </div>
-    <div style="display:flex;gap:24px;margin:16px 0;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="nf_Groupage" ${f['National Groupage']?'checked':''} style="width:15px;height:15px">
-        National Groupage</label>
+    <input type="checkbox" id="nf_Groupage" ${f['National Groupage']?'checked':''} style="display:none">
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
+      <div class="detail-section-title">Order Type</div>
+      <div style="display:flex;gap:12px;margin:0;flex-wrap:wrap">
+        <label class="nf-mode ${f['National Groupage']?'':'on'}" id="nf_m0" onclick="_natlMode(0)">
+          <input type="radio" name="nfmode" ${f['National Groupage']?'':'checked'}>
+          <span><b>Απλή παραγγελία</b><em>Ένας πελάτης — 1 order</em></span></label>
+        <label class="nf-mode ${f['National Groupage']?'on':''}" id="nf_m1" onclick="_natlMode(1)">
+          <input type="radio" name="nfmode" ${f['National Groupage']?'checked':''}>
+          <span><b>Groupage</b><em>Πολλοί πελάτες στο ίδιο φορτηγό — 1 order ανά πελάτη</em></span></label>
+      </div>
     </div>
 
-    <div style="padding-top:16px;border-top:1px solid var(--border)">
+    <div id="nf_grp" style="display:none;padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
+      <div class="detail-section-title">Παραδόσεις — μία γραμμή ανά σημείο</div>
+      <div id="gf_rows"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px;margin-top:8px"
+        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
+      <div id="gf_preview" style="margin-top:14px"></div>
+    </div>
+    <div id="nf_simple" style="padding-top:16px;border-top:1px solid var(--border)">
       <div class="detail-section-title" style="margin-bottom:12px">Route</div>
       <div class="form-grid">
         <div class="form-field">
@@ -756,8 +753,11 @@ async function _openNatlModal(recId, f) {
       ${isEdit?'Save Changes':'Submit'}
     </button>`;
 
-  document.getElementById('modal').style.maxWidth = '680px';
+  document.getElementById('modal').style.maxWidth = '860px';
   openModal(isEdit ? 'Edit National Order' : 'New National Order', body, footer);
+  _natlEditingId = recId || null;
+  _grpRows = [];
+  _natlMode(f['National Groupage'] ? 1 : 0);
 }
 
 // ─── Submit ─────────────────────────────────────
@@ -1974,11 +1974,11 @@ window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
 window.cancelNatlOrder = cancelNatlOrder;
 // Φ3β — groupage: όλα καλούνται από inline onclick, module σε IIFE
-window.openNatlGroupage = openNatlGroupage;
 window._grpAddRow = _grpAddRow;
 window._grpDelRow = _grpDelRow;
 window._grpSet    = _grpSet;
 window._grpSubmit = _grpSubmit;
+window._natlMode  = _natlMode;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
 // Form dropdown handlers now in core/form-helpers.js
 // Legacy aliases for backward compat
