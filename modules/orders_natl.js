@@ -76,6 +76,7 @@ function _renderNatlLayout(c) {
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openNatlScan()">${_i('camera')} Scan</button>
         ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} New Order</button>` : ''}
+        ${canEdit ? `<button class="btn btn-secondary btn-sm" onclick="openNatlGroupage()" title="Μία καταχώρηση, πολλοί πελάτες — μία παραγγελία ανά πελάτη, ένα φορτηγό">${_i('plus')} Groupage</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_natlExportCSV()">${_i('download')} CSV</button>
         <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Print</button>
       </div>
@@ -382,6 +383,280 @@ function selectNatlOrder(recId) {
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
         <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${escapeHtml(f['Notes'])}</div></div>`:''}
     </div>`;
+}
+
+/* ═══ Φ3β — GROUPAGE: μία καταχώρηση, πολλοί πελάτες (Γ1) ═════════════
+ *
+ * Γράφει ΟΛΟΚΛΗΡΗ την αλυσίδα, με αυστηρή σειρά:
+ *
+ *   1. NAT_ORDERS  xN   ένα ανά πελάτη, με το δικό του Price
+ *   2. GROUPAGE_LINES xM  ένα ανά στάση, δεμένο στην παραγγελία του
+ *   3. CONSOLIDATED_LOAD x1  το φορτηγό
+ *   4. PATCH GL -> Linked Consolidated Load
+ *   5. NAT_LOAD x1  Source Consolidated Load -> το CL
+ *   6. ORDER_STOPS ανά παραγγελία, με παλέτες ΑΝΑ ΣΤΑΣΗ
+ *
+ * ΓΙΑΤΙ ΓΡΑΦΟΥΜΕ ΕΜΕΙΣ ΤΟ NAT_LOAD (εύρημα 10/8): κανένα σημείο αυτού του
+ * repo δεν δημιουργεί NL από CL — η εφαρμογή μόνο διαβάζει Source Type=
+ * 'Groupage'. Τη δημιουργία την κάνει το petras-assign, που δεν αγγίζουμε
+ * (Δ11). Χωρίς αυτό το βήμα το φορτίο δεν θα εμφανιζόταν ΠΟΤΕ στο εβδομαδιαίο.
+ *
+ * ΠΑΓΙΔΑ Ο1: το `Groupage ID` είναι derived στα GL (ο Worker το εξαιρεί
+ * επίτηδες) και κανονικό πεδίο στα CL. Γράφεται ΜΟΝΟ στο CL.
+ *
+ * Η υπάρχουσα φόρμα ενός πελάτη ΔΕΝ αγγίζεται. Αυτό είναι νέα, πρόσθετη
+ * διαδρομή: αν σπάσει, η κανονική καταχώρηση δεν επηρεάζεται.
+ */
+async function _natlWriteGroupageChain(common, groups) {
+  const created = { orders: [], gls: [], cl: null, nl: null };
+  const grpId = 'G-' + Date.now().toString(36).toUpperCase();
+
+  // 1. NAT_ORDERS — ένα ανά πελάτη
+  for (const g of groups) {
+    const totalPal = g.stops.reduce((s, x) => s + (x.pallets || 0), 0);
+    const f = {
+      'Direction': common.direction,
+      'Client': [g.clientId],
+      'Goods': common.goods || '',
+      'Pallets': totalPal,
+      'Loading DateTime': common.loadDate,
+      'Delivery DateTime': g.stops[0]?.date || common.delDate,
+      'National Groupage': true,
+      'Status': 'Pending',
+      'Pickup Location 1': [common.fromLocId],
+    };
+    if (common.temp != null && common.temp !== '') f['Temperature °C'] = parseFloat(common.temp);
+    if (g.price) f['Price'] = parseFloat(g.price);
+    g.stops.forEach((s, i) => { if (i < 10) f[`Delivery Location ${i+1}`] = [s.locId]; });
+    const rec = await atCreate(TABLES.NAT_ORDERS, f);
+    created.orders.push({ id: rec.id, group: g });
+
+    // 6. ORDER_STOPS — παλέτες ΑΝΑ ΣΤΑΣΗ (Α1: ποτέ το σύνολο σε καθεμία)
+    const stops = [{ stopNumber: 1, stopType: 'Loading', locationId: common.fromLocId,
+                     pallets: totalPal, dateTime: common.loadDate, clientId: g.clientId }];
+    g.stops.forEach((s, i) => stops.push({ stopNumber: i+1, stopType: 'Unloading',
+      locationId: s.locId, pallets: s.pallets || 0, dateTime: s.date || common.delDate,
+      clientId: g.clientId, notes: s.note || null }));
+    try { await stopsSave(rec.id, stops, F.STOP_PARENT_NAT); }
+    catch(e) { console.warn('groupage: ORDER_STOPS', e); }
+  }
+
+  // 2. GROUPAGE_LINES — ένα ανά στάση, δεμένο στην παραγγελία του
+  for (const o of created.orders) {
+    for (const s of o.group.stops) {
+      const gl = await atCreate(TABLES.GL_LINES, {
+        'Direction': common.direction,
+        'Pallets': s.pallets || 0,
+        'Loading Date': (common.loadDate||'').slice(0,10) || null,
+        'Delivery Date': (s.date || common.delDate || '').slice(0,10) || null,
+        'Status': 'Assigned',
+        'Goods': common.goods || '',
+        'Loading Location': [common.fromLocId],
+        'Delivery Location': [s.locId],
+        'Linked National Order': [o.id],
+        // ΟΧΙ Groupage ID εδώ — derived στα GL (Ο1)
+      });
+      created.gls.push(gl.id);
+    }
+  }
+
+  // 3. CONSOLIDATED_LOAD — το φορτηγό
+  const allStops = groups.flatMap(g => g.stops);
+  const totalPallets = allStops.reduce((s, x) => s + (x.pallets || 0), 0);
+  const clFields = {
+    'Name': `${common.fromLabel} — ${(common.loadDate||'').slice(0,10)}`,
+    'Date': (common.loadDate||'').slice(0,10) || null,
+    'Direction': common.direction === 'South→North' ? DIR.ANODOS : DIR.KATHODOS,
+    'Status': 'Pending',
+    'Total Pallets': totalPallets,
+    'Goods': common.goods || '',
+    'Loading DateTime': common.loadDate || null,
+    'Delivery DateTime': common.delDate || null,
+    'Is Groupage': true,
+    'Groupage ID': grpId,
+    'Loading Location 1': [common.fromLocId],
+  };
+  if (common.temp != null && common.temp !== '') clFields['Temperature C'] = parseFloat(common.temp);
+  allStops.forEach((s, i) => {
+    if (i >= 10) return;
+    clFields[`Delivery Location ${i+1}`] = [s.locId];
+    clFields[`Pallets ${i+1}`] = s.pallets || 0;
+  });
+  const cl = await atCreate(TABLES.CONS_LOADS, clFields);
+  created.cl = cl.id;
+
+  // 4. Δέσε τα GL στο CL — τώρα υπάρχει και από τις δύο πλευρές ίχνος
+  for (const glId of created.gls) {
+    try { await atPatch(TABLES.GL_LINES, glId, { 'Linked Consolidated Load': [cl.id] }); }
+    catch(e) { console.warn('groupage: GL->CL link', e); }
+  }
+
+  // 5. NAT_LOAD — η γραμμή που θα δει ο dispatcher στο εβδομαδιαίο
+  const nlFields = {
+    'Name': clFields['Name'],
+    'Direction': common.direction,
+    'Source Type': 'Groupage',
+    'Source Consolidated Load': [cl.id],
+    'Client': groups.length === 1 ? (groups[0].clientLabel||'')
+            : `${groups[0].clientLabel||''} +${groups.length-1}`,
+    'Goods': common.goods || '',
+    'Total Pallets': totalPallets,
+    'Loading DateTime': common.loadDate || null,
+    'Delivery DateTime': common.delDate || null,
+    'Status': 'Pending',
+    'Pickup Location 1': [common.fromLocId],
+  };
+  if (common.temp != null && common.temp !== '') nlFields['Temperature C'] = parseFloat(common.temp);
+  allStops.forEach((s, i) => { if (i < 10) nlFields[`Delivery Location ${i+1}`] = [s.locId]; });
+  const nl = await atCreate(TABLES.NAT_LOADS, nlFields);
+  created.nl = nl.id;
+
+  return created;
+}
+
+/* ── Φόρμα groupage ───────────────────────────────────────────────────
+ * Μία γραμμή ανά ΣΤΑΣΗ, με στήλη πελάτη. Η ομαδοποίηση σε παραγγελίες
+ * γίνεται στην υποβολή: όσοι πελάτες, τόσες παραγγελίες.
+ *
+ * Το εγκεκριμένο prototype έχει φωλιασμένα κουτιά ανά πελάτη. Εδώ η ίδια
+ * πληροφορία μπαίνει σε επίπεδο πίνακα με στήλη «Πελάτης» — παράγει
+ * ΑΚΡΙΒΩΣ τα ίδια δεδομένα με πολύ λιγότερο κώδικα, και η προεπισκόπηση
+ * από κάτω δείχνει την ομαδοποίηση όσο γράφεις, ώστε να μη χαθεί η εικόνα
+ * «ποιος πελάτης, πόσα σημεία».
+ */
+let _grpRows = [];
+
+function openNatlGroupage() {
+  _grpRows = [{ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }];
+  const locs = (getRefLocations()||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
+  window._grpLocs = locs;
+
+  openModal('Νέα Εθνική Παραγγελία — Groupage', `
+    <div class="form-grid">
+      <div class="form-field"><label class="form-label">Direction *</label>
+        <select class="form-select" id="gf_dir">
+          <option value="North→South">ΚΑΘΟΔΟΣ (Βορράς→Νότος)</option>
+          <option value="South→North">ΑΝΟΔΟΣ (Νότος→Βορράς)</option>
+        </select></div>
+      <div class="form-field"><label class="form-label">Σημείο φόρτωσης *</label>
+        <select class="form-select" id="gf_from"><option value="">— Επιλογή —</option>${opt(locs,'')}</select></div>
+      <div class="form-field"><label class="form-label">Ημ. φόρτωσης *</label>
+        <input class="form-input" type="date" id="gf_load"></div>
+      <div class="form-field"><label class="form-label">Ημ. παράδοσης *</label>
+        <input class="form-input" type="date" id="gf_del"></div>
+      <div class="form-field"><label class="form-label">Goods</label>
+        <input class="form-input" id="gf_goods" value="Fresh Produce"></div>
+      <div class="form-field"><label class="form-label">Temperature °C</label>
+        <input class="form-input" type="number" id="gf_temp" value="2"></div>
+    </div>
+
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:18px">
+      <div class="detail-section-title">Παραδόσεις — μία γραμμή ανά σημείο</div>
+      <div id="gf_rows"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px;margin-top:8px"
+        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
+    </div>
+
+    <div id="gf_preview" style="margin-top:16px"></div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-success" id="gf_submit" onclick="_grpSubmit()">Καταχώρηση</button>`);
+
+  document.getElementById('modal').style.maxWidth = '860px';
+  _grpRender();
+}
+
+function _grpAddRow(){ _grpRows.push({ clientId:'', locId:'', pallets:'', date:'', note:'', price:'' }); _grpRender(); }
+function _grpDelRow(i){ if(_grpRows.length>1) _grpRows.splice(i,1); _grpRender(); }
+function _grpSet(i,k,v){ _grpRows[i][k]=v; _grpRender(); }
+
+function _grpRender() {
+  const locs = window._grpLocs || [];
+  const clients = (getRefClients?.()||[]).map(r => ({ id:r.id, label:r.fields?.['Company Name']||r.id }));
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
+
+  document.getElementById('gf_rows').innerHTML = _grpRows.map((r,i) => `
+    <div style="display:grid;grid-template-columns:1fr 1fr 90px 130px 1fr 90px 28px;gap:8px;margin-bottom:8px;align-items:end">
+      <div><label class="form-label" style="font-size:11px">Πελάτης${i===0?' *':''}</label>
+        <select class="form-select" onchange="_grpSet(${i},'clientId',this.value)"><option value="">—</option>${opt(clients,r.clientId)}</select></div>
+      <div><label class="form-label" style="font-size:11px">Τοποθεσία${i===0?' *':''}</label>
+        <select class="form-select" onchange="_grpSet(${i},'locId',this.value)"><option value="">—</option>${opt(locs,r.locId)}</select></div>
+      <div><label class="form-label" style="font-size:11px">Παλέτες</label>
+        <input class="form-input" type="number" value="${r.pallets}" onchange="_grpSet(${i},'pallets',this.value)"></div>
+      <div><label class="form-label" style="font-size:11px">Ημερομηνία</label>
+        <input class="form-input" type="date" value="${r.date}" onchange="_grpSet(${i},'date',this.value)"></div>
+      <div><label class="form-label" style="font-size:11px">Σημείωση</label>
+        <input class="form-input" value="${escapeHtml(r.note)}" onchange="_grpSet(${i},'note',this.value)"></div>
+      <div><label class="form-label" style="font-size:11px">Αξία €</label>
+        <input class="form-input" type="number" value="${r.price}" onchange="_grpSet(${i},'price',this.value)"
+          title="Μπαίνει ΑΝΑ ΠΕΛΑΤΗ — αρκεί σε μία γραμμή του"></div>
+      <button type="button" onclick="_grpDelRow(${i})" style="height:38px;border:none;background:none;color:var(--text-dim);font-size:15px;cursor:pointer">×</button>
+    </div>`).join('');
+
+  // Προεπισκόπηση: τι ΑΚΡΙΒΩΣ θα δημιουργηθεί, πριν το κλικ
+  const g = _grpGroups();
+  const tot = _grpRows.reduce((s,r)=>s+(parseFloat(r.pallets)||0),0);
+  const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:#B45309' : 'color:var(--text-mid)');
+  document.getElementById('gf_preview').innerHTML = !g.length ? '' : `
+    <div style="border:1px dashed rgba(2,132,199,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
+      <div style="font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:7px">
+        ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
+      ${g.map(x=>`<div style="font-size:11.5px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}
+      ${tot>33?'<div style="margin-top:7px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
+    </div>`;
+
+  const btn=document.getElementById('gf_submit');
+  if(btn) btn.textContent = g.length ? `Καταχώρηση ${g.length} ${g.length===1?'παραγγελίας':'παραγγελιών'}` : 'Καταχώρηση';
+}
+
+// Ομαδοποίηση γραμμών σε παραγγελίες: μία ανά πελάτη (Δ12)
+function _grpGroups() {
+  const clients = (getRefClients?.()||[]);
+  const by = {}; const order = [];
+  _grpRows.forEach(r => {
+    if (!r.clientId || !r.locId) return;
+    if (!by[r.clientId]) {
+      by[r.clientId] = { clientId:r.clientId,
+        clientLabel: clients.find(c=>c.id===r.clientId)?.fields?.['Company Name'] || '',
+        price:'', stops:[] };
+      order.push(r.clientId);
+    }
+    if (r.price && !by[r.clientId].price) by[r.clientId].price = r.price;
+    by[r.clientId].stops.push({ locId:r.locId, pallets:parseFloat(r.pallets)||0, date:r.date||'', note:r.note||'' });
+  });
+  return order.map(k => by[k]);
+}
+
+async function _grpSubmit() {
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const common = {
+    direction: v('gf_dir'), fromLocId: v('gf_from'),
+    fromLabel: (window._grpLocs||[]).find(l=>l.id===v('gf_from'))?.label || '',
+    loadDate: v('gf_load'), delDate: v('gf_del'),
+    goods: v('gf_goods'), temp: v('gf_temp'),
+  };
+  const groups = _grpGroups();
+  if (!common.fromLocId || !common.loadDate || !common.delDate) { toast('Σημείο φόρτωσης και οι δύο ημερομηνίες είναι υποχρεωτικά','warn'); return; }
+  if (!groups.length) { toast('Χρειάζεται τουλάχιστον μία γραμμή με πελάτη και τοποθεσία','warn'); return; }
+  const nStops = groups.reduce((s,g)=>s+g.stops.length,0);
+  if (nStops > 10) { toast('Όριο 10 σημείων παράδοσης ανά φορτίο','warn'); return; }
+
+  const btn = document.getElementById('gf_submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
+  try {
+    const res = await _natlWriteGroupageChain(common, groups);
+    [TABLES.NAT_ORDERS, TABLES.GL_LINES, TABLES.CONS_LOADS, TABLES.NAT_LOADS]
+      .forEach(t => { try { invalidateCache(t); } catch(_){} });
+    closeModal();
+    toast(`${res.orders.length} παραγγελίες · ${res.gls.length} γραμμές · 1 φορτίο`, 'success');
+    if (typeof renderOrdersNatl === 'function') renderOrdersNatl();
+  } catch (e) {
+    console.error('_grpSubmit:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Καταχώρηση'; }
+    // Δεν κρύβουμε το μισοτελειωμένο: ο owner πρέπει να ξέρει ότι μπορεί να
+    // έμειναν εγγραφές πίσω, ώστε να τρέξει τον έλεγχο ορφανών.
+    toast('Η καταχώρηση απέτυχε — έλεγξε για ημιτελές φορτίο στα CONSOLIDATED LOADS', 'error');
+  }
 }
 
 // ─── Modal ──────────────────────────────────────
@@ -1698,6 +1973,12 @@ window._natlScanOpenForm = _natlScanOpenForm;
 window.submitNatlOrder = submitNatlOrder;
 window.deleteNatlOrder = deleteNatlOrder;
 window.cancelNatlOrder = cancelNatlOrder;
+// Φ3β — groupage: όλα καλούνται από inline onclick, module σε IIFE
+window.openNatlGroupage = openNatlGroupage;
+window._grpAddRow = _grpAddRow;
+window._grpDelRow = _grpDelRow;
+window._grpSet    = _grpSet;
+window._grpSubmit = _grpSubmit;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
 // Form dropdown handlers now in core/form-helpers.js
 // Legacy aliases for backward compat
