@@ -2555,6 +2555,72 @@ async function handleCosts(request, url, origin, env) {
 }
 __name(handleCosts, "handleCosts");
 
+// src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
+// Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
+// taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
+var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF", "RETURN_OUT", "RETURN_IN", "ADJUSTMENT"];
+var PL_PERMS = {
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], balances: ["GET"], lookups: ["GET"] },
+  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], balances: ["GET"], lookups: ["GET"] },
+  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], balances: ["GET"], lookups: ["GET"] },
+  accountant: { movements: ["GET"], balances: ["GET"], lookups: ["GET"] },
+  management: { balances: ["GET"] }
+};
+function plCan(role, resource, method) {
+  const r = PL_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+async function handlePallets(request, url, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  const seg = url.pathname.split("/").filter(Boolean);
+  // /pallets/movements            → resource=movements
+  // /pallets/movements/:id        → recId
+  // /pallets/movements/:id/confirm|reverse → action (δικό του permission resource)
+  const action = seg[3] || null;
+  const resource = action === "confirm" || action === "reverse" ? action : seg[1] || "";
+  const recId = seg[2] || null;
+  const method = request.method;
+  if (!plCan(caller.role, resource, method)) {
+    return jsonError("Forbidden", 403, origin, env);
+  }
+  try {
+    // ---- GET /pallets/lookups (dropdowns: πελάτες, partners, τοποθεσίες) ----
+    if (resource === "lookups" && method === "GET") {
+      const [clients, partners, locations] = await Promise.all([
+        dbSelect(env, "clients", { select: "id,company_name,active", order: "company_name.asc", limit: 500 }),
+        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 500 }),
+        dbSelect(env, "locations", { select: "id,name", order: "name.asc", limit: 1e3 })
+      ]);
+      return jsonOk({ clients, partners, locations }, origin, env);
+    }
+    // ---- GET /pallets/movements?status=&counterparty_type=&client_id=&partner_id=&event_type=&from=&to=&order_stop_id=&cons_load_id= ----
+    if (resource === "movements" && method === "GET" && !recId) {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order", "movement_date.desc,id.desc");
+      params.set("limit", "300");
+      if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
+      if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
+      if (q.get("client_id")) params.append("client_id", `eq.${q.get("client_id")}`);
+      if (q.get("partner_id")) params.append("partner_id", `eq.${q.get("partner_id")}`);
+      if (q.get("event_type")) params.append("event_type", `eq.${q.get("event_type")}`);
+      if (q.get("order_stop_id")) params.append("order_stop_id", `eq.${q.get("order_stop_id")}`);
+      if (q.get("cons_load_id")) params.append("cons_load_id", `eq.${q.get("cons_load_id")}`);
+      if (q.get("from")) params.append("movement_date", `gte.${q.get("from")}`);
+      if (q.get("to")) params.append("movement_date", `lte.${q.get("to")}`);
+      const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    return jsonError("Not found", 404, origin, env);
+  } catch (e) {
+    console.error(`PALLETS ${method} ${url.pathname}`, e.message);
+    return jsonError("Pallets request failed", 500, origin, env);
+  }
+}
+__name(handlePallets, "handlePallets");
+
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
   async fetch(request, env) {
@@ -2593,6 +2659,9 @@ var index_default = {
     }
     if (url.pathname.startsWith("/costs/")) {
       return handleCosts(request, url, origin, env);
+    }
+    if (url.pathname.startsWith("/pallets/")) {
+      return handlePallets(request, url, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {
