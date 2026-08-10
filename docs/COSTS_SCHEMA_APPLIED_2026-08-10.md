@@ -39,8 +39,13 @@ fixed_alloc, other) · toll_country · net* / vat* ΧΩΡΙΣΤΑ · line_date �
 plate_raw · truck_id · km_reading · liters · station ·
 alloc_status* allocated/unallocated/review · note · created_by* · created_at*`
 
-### ct_plate_aliases — πινακίδες (2 στήλες)
-`alias* PK (normalized) · truck_id* → trucks`
+### ct_plate_aliases — πινακίδες (3 στήλες · migration 002)
+`alias* PK (normalized) · truck_id → trucks · trailer_id → trailers`
+Ακριβώς ένα από τα δύο (xor constraint) — τα reefer τιμολόγια γράφουν
+πινακίδα τρέιλερ και ο engine ταιριάζει και μέσω trailer_id του RT.
+
+_Migration 002 (10/8, μετά το column audit): + `ct_round_trips.notes` +
+trailer aliases. Εκτελεσμένο & επιβεβαιωμένο._
 
 ## Views (5) — υπολογισμοί, τίποτα αποθηκευμένο
 
