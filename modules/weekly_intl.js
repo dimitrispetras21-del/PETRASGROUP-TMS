@@ -870,7 +870,7 @@ function _wk3MoreStops(str,arr,kind){
     // Owner 10/8: ημερομηνία ΜΟΝΟ όταν διαφέρει από το 1ο σημείο· τα
     // υπο-σημεία παράδοσης παίρνουν «→» μπροστά για καθαρή ανάγνωση.
     const dtxt=diff?_wk3D(_wiFmt(st.dt)):'';
-    return `<div class="wk3-stopline">${kind==='del'?'<span class="wk3-sep" style="margin:0 2px 0 0">→</span>':''}<span class="wk3-stopn${kind==='load'?' ln':''}">${i+2}</span>${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
+    return `<div class="wk3-stopline${kind==='del'?' dl':''}">${kind==='del'?'<span class="wk3-sep" style="margin:0 2px 0 0">→</span>':''}<span class="wk3-stopn${kind==='load'?' ln':''}">${i+2}</span>${dtxt?`<b class="wk3-sld diff" title="Διαφορετική ημέρα από το 1ο σημείο">${dtxt}</b>`:''}<span class="wk3-sln">${escapeHtml(st.n)}</span></div>`;
   }).join('');
 }
 function _wk3Edit(orderId){

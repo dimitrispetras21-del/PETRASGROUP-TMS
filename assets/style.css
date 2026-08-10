@@ -2322,6 +2322,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;padding:0 0 3px}
 .wk3-lcol .wk3-route{flex:0 0 auto}
 .wk3-stopline{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.7;padding-left:40px;min-width:0}
+.wk3-lcol .wk3-stopline.dl{padding-left:calc(40px + 41%)}
 .wk3-stopline .wk3-sln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .wk3-sld{font-size:10.5px;color:var(--text-mid);font-variant-numeric:tabular-nums;font-weight:700}
 .wk3-sld.diff{color:var(--accent);font-weight:800}
@@ -2329,7 +2330,7 @@ tbody tr:hover { background: var(--bg-hover); }
 /* Ταξινόμηση σημείων (10/8): εθνικά subs μέσα στα feeds — στοίβαξη σε στήλη */
 .wk3-fcol{display:flex;flex-direction:column;justify-content:flex-start;min-width:0;width:100%;padding:0 0 3px}
 .wk3-fline{display:flex;align-items:center;gap:4px;min-width:0;height:34px}
-.wk3-feed .wk3-stopline{padding-left:13px;font-size:10px;line-height:1.6}
+.wk3-feed .wk3-stopline{padding-left:32px;font-size:10px;line-height:1.6}
 .wk3-feed .wk3-sld{font-size:9.5px}
 /* Owner 10/8: flags μόνο PE στο weekly — RISK/GRP κρύβονται (μένουν σε φόρμα/φύλλα) */
 .wk3 .wi-b-risk,.wk3 .wi-b-grpg{display:none}
