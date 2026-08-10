@@ -2336,6 +2336,20 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3 .wk3-dayh{top:34px}
 /* Φέτα 3 (Δ10): το δεξί πάνελ έφυγε — το φύλλο παίρνει όλο το πλάτος */
 .wn3 .wk3-wrap{grid-template-columns:1fr}
+/* Φέτα 4 (Δ9): ανάλυση groupage — ανοίγει με κλικ κάτω από τη γραμμή.
+   Συμπτυγμένη = σταθερό ύψος σε όλη την εβδομάδα· η ανάλυση φορτώνεται
+   μόνο όταν τη ζητήσεις. */
+.wn3-stops{background:var(--bg);border-bottom:1px solid var(--border);padding:7px 14px 8px 58px}
+.wn3-stops .st{display:flex;align-items:baseline;gap:9px;font-size:11px;color:var(--text-mid);padding:1px 0}
+.wn3-stops .st .p{font-weight:700;font-variant-numeric:tabular-nums;color:var(--navy-deep,#0C2D5C);min-width:36px;text-align:right}
+.wn3-stops .st .o{font-size:10px;color:var(--text-dim);font-style:italic}
+.wn3-stops .tot{margin-top:4px;padding-top:4px;border-top:1px solid var(--border)}
+.wn3-stops .tot .p{color:var(--text-mid)}
+.wn3-stops .tot.full .p{color:#B45309}
+.wn3-stops .tot.over .p{color:var(--danger)}
+.wn3-stops .ld{font-size:10.5px;color:var(--text-dim);font-style:italic}
+.wn3 .wk3-grpb{margin-left:6px}
+
 /* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
 .wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
 .wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}

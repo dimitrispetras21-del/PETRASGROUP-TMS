@@ -552,6 +552,18 @@ function _wnRowHTML(row, i) {
   const isOneWay = !sn && row.saved && isPartner;
   const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay);
 
+  // Φέτα 4 (Δ9): πολυστάσιο φορτίο → συμπτυγμένο σήμα «▸ N · Xp».
+  // Το πλήθος και το σύνολο τα ξέρουμε ήδη από τη γραμμή — καμία επιπλέον
+  // κλήση. Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί το σήμα, γιατί
+  // ζει στα ORDER_STOPS και δεν αξίζει να κατεβαίνει για όλη την εβδομάδα.
+  let _nDel = 0;
+  for (let k = 1; k <= 10; k++) if ((f[`Delivery Location ${k}`]||[]).length) _nDel++;
+  const grpBtn = _nDel > 1
+    ? `<button class="wk3-grpb" id="wn-grpb-${row.id}" data-n="${_nDel}" data-p="${pals}"
+        title="${_nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
+        onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${_nDel} · ${pals}p</button>`
+    : '';
+
   // Badges
   const badges = _wnBadges(f);
 
@@ -572,7 +584,7 @@ function _wnRowHTML(row, i) {
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
         <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
-        ${isGroup?' <span class="wk3-vsb">VS</span>':''}
+        ${isGroup?' <span class="wk3-vsb">VS</span>':''}${grpBtn}
       </span>
       <span class="wk3-meta">
         <span class="wk3-pal">${pals?pals+'p':''}</span>
@@ -591,7 +603,61 @@ function _wnRowHTML(row, i) {
          ondrop="event.stopPropagation();_wnDropOnRow(event,${row.id})">
       ${snCell}
     </div>
-  </div>`;
+  </div>
+  ${_nDel > 1 ? `<div class="wn3-stops" id="wn-stops-${row.id}" style="display:none"></div>` : ''}`;
+}
+
+/* ── Φέτα 4 (Δ9): ανάλυση groupage, lazy ──────────────────────────── */
+async function _wnToggleStops(rowId, nlId) {
+  const box = document.getElementById('wn-stops-'+rowId);
+  const btn = document.getElementById('wn-grpb-'+rowId);
+  if (!box || !btn) return;
+  const n = btn.dataset.n, p = btn.dataset.p;
+
+  if (box.style.display !== 'none') {           // κλείσιμο
+    box.style.display = 'none';
+    btn.textContent = `▸ ${n} · ${p}p`;
+    return;
+  }
+  box.style.display = '';
+  btn.textContent = `▾ ${n} · ${p}p`;
+  if (box.dataset.loaded === '1') return;
+
+  box.innerHTML = '<span class="ld">φόρτωση στάσεων…</span>';
+  try {
+    const stops = await stopsLoad(nlId, F.STOP_PARENT_NL);
+    const dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
+    if (!dels.length) { box.innerHTML = '<span class="ld">δεν βρέθηκαν καταγεγραμμένες στάσεις</span>'; box.dataset.loaded='1'; return; }
+
+    let sum = 0, missing = 0;
+    const lines = dels.map(s => {
+      const raw = s.fields[F.STOP_LOCATION];
+      const lid = Array.isArray(raw) ? (raw[0]?.id || raw[0]) : (raw?.id || raw);
+      const nm  = WNATL.data._locMap?.[lid] || _wnLocName(lid) || '—';
+      const pal = s.fields[F.STOP_PALLETS];
+      if (pal == null) missing++; else sum += pal;
+      const note = s.fields['Notes'] || '';
+      return `<div class="st"><span class="p">${pal!=null?pal+'p':'—'}</span>`
+           + `<span>${escapeHtml(nm)}</span>`
+           + (note?`<span class="o">${escapeHtml(note)}</span>`:'')
+           + `</div>`;
+    }).join('');
+
+    // Το «—» σε μια στάση σημαίνει ότι οι παλέτες της δεν καταγράφηκαν ποτέ
+    // (Α1 fallback). Το λέμε ρητά αντί να παρουσιάσουμε μερικό άθροισμα ως
+    // πλήρες — αλλιώς το γέμισμα φαίνεται μικρότερο απ' ό,τι είναι.
+    const cls = sum > 33 ? ' over' : (sum >= 30 ? ' full' : '');
+    const tot = `<div class="st tot${cls}"><span class="p">${sum}/33</span>`
+              + `<span>γέμισμα φορτηγού</span>`
+              + (missing?`<span class="o">${missing} στάσ${missing===1?'η':'εις'} χωρίς καταγεγραμμένες παλέτες</span>`:'')
+              + `</div>`;
+
+    box.innerHTML = lines + tot;
+    box.dataset.loaded = '1';
+  } catch(e) {
+    console.warn('_wnToggleStops:', e);
+    box.innerHTML = '<span class="ld">δεν φορτώθηκαν οι στάσεις</span>';
+  }
 }
 
 /* ── Matched S→N cell (right column when linked) ─────────────────── */
@@ -1394,6 +1460,9 @@ window._wnNavWeek = _wnNavWeek;
 window._wnApplyFilter = _wnApplyFilter;
 window._wnPulseRow = _wnPulseRow;
 window._wnToggleDetails = _wnToggleDetails;
+// Φέτα 4: καλείται από inline onclick του σήματος groupage — χωρίς αυτό
+// το κλικ θα έριχνε ReferenceError (το module είναι σε IIFE).
+window._wnToggleStops = _wnToggleStops;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
