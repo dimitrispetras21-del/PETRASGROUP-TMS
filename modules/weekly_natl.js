@@ -774,7 +774,7 @@ function _wnRowHTML(row, i) {
   let fromStr, toStr;
   if (isGroup) {
     fromStr = _wnNlPickupSummary(f) || f['Name'] || '—';
-    toStr   = 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK';
+    toStr   = _wnNlDeliverySummary(f) || 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK';
   } else {
     fromStr = _wnNlPickupSummary(f) || '—';
     toStr   = _wnNlDeliverySummary(f) || f['Client'] || '—';
@@ -880,7 +880,26 @@ async function _wnToggleStops(rowId, nlId) {
   try {
     const stops = await stopsLoad(nlId, F.STOP_PARENT_NL);
     const dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
-    if (!dels.length) { box.innerHTML = '<span class="ld">δεν βρέθηκαν καταγεγραμμένες στάσεις</span>'; box.dataset.loaded='1'; return; }
+    if (!dels.length) {
+      // Fallback: τα Delivery Location 1..10 του ίδιου του φορτίου. Δεν
+      // κουβαλούν παλέτες ανά σημείο — γι' αυτό το λέμε ρητά αντί να
+      // δείξουμε μηδενικά που θα διαβάζονταν ως γεγονός.
+      const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nlId);
+      const ff = rec?.fields || {};
+      const names = [];
+      for (let k = 1; k <= 10; k++) {
+        const arr = ff[`Delivery Location ${k}`];
+        if (!arr?.length) continue;
+        const lid = arr[0]?.id || arr[0];
+        names.push(WNATL.data._locMap?.[lid] || _wnLocName(lid) || '—');
+      }
+      box.innerHTML = names.length
+        ? names.map(nm => `<div class="st"><span class="p">—</span><span>${escapeHtml(nm)}</span></div>`).join('')
+          + `<div class="st"><span class="p">${ff['Total Pallets']||0}p</span><span>σύνολο φορτίου</span>`
+          + `<span class="o">οι παλέτες ανά σημείο δεν έχουν καταγραφεί</span></div>`
+        : '<span class="ld">δεν βρέθηκαν σημεία παράδοσης</span>';
+      box.dataset.loaded='1'; return;
+    }
 
     let sum = 0, missing = 0;
     const lines = dels.map(s => {
@@ -919,9 +938,7 @@ function _wnSnInlineCell(snRec, rowId) {
   const clientLabel = f['Client'] || '';
   const isGroupage = f['Source Type'] === 'Groupage';
   const fromStr  = _wnNlPickupSummary(f) || '—';
-  const toStr    = isGroupage
-    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-    : (_wnNlDeliverySummary(f) || clientLabel || '—');
+  const toStr    = _wnNlDeliverySummary(f) || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : clientLabel) || '—';
   const loadDt   = _wnFmt(f['Loading DateTime']);
   const delDt    = _wnFmt(f['Delivery DateTime']);
   const pals     = f['Total Pallets']||0;
@@ -962,9 +979,7 @@ function _wnSnRowHTML(row, snNo) {
   const fromStr     = isGroupage
     ? (_wnNlPickupSummary(f) || f['Name'] || '—')
     : (_wnNlPickupSummary(f) || '—');
-  const toStr = isGroupage
-    ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK'
-    : (_wnNlDeliverySummary(f) || clientLabel || '—');
+  const toStr = _wnNlDeliverySummary(f) || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : clientLabel) || '—';
   const pals        = f['Total Pallets']||0;
   const loadDt      = _wnFmt(f['Loading DateTime']);
   const delDt       = _wnFmt(f['Delivery DateTime']);
