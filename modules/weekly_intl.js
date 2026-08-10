@@ -533,7 +533,6 @@ function _wiPaint(){
             </div>`}
         </div>
       </main>
-      <aside class="wk3-rt">${_wiDriversPanel()}</aside>
     </div>
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
