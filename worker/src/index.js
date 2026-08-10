@@ -2676,6 +2676,9 @@ async function handlePallets(request, url, origin, env) {
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
       if (err) return jsonError(err, 400, origin, env);
+      if (merged.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
       const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
       return jsonOk({ record: updated }, origin, env);
