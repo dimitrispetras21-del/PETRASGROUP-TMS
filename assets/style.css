@@ -2229,7 +2229,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-dayh.today .d{color:#38BDF8}
 .wk3-dayh.today{box-shadow:inset 0 -2px 0 #38BDF8}
 .wk3-dayh .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:#38BDF8;border:1px solid currentColor;border-radius:999px;padding:0 7px}
-.wk3-row{border-bottom:1px solid var(--border);min-height:34px;align-items:center;background:var(--bg-card,#fff)}
+.wk3-row{border-bottom:1px solid var(--border);min-height:34px;align-items:stretch;background:var(--bg-card,#fff)}
 .wk3-row.alt{background:var(--bg,#FAFCFE)}
 .wk3-row:hover{background:var(--accent-light)}
 .wk3-row:hover .wk3-pill{transform:translateY(-1px);box-shadow:0 4px 12px -5px rgba(11,25,41,.45)}
@@ -2238,7 +2238,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-num.imp{color:var(--accent);font-weight:700}
 .wk3-grpb{font-family:'Syne',sans-serif;font-size:8px;font-weight:700;background:var(--navy-mid,#0B1929);color:#fff;border-radius:999px;padding:1px 5px;cursor:pointer;flex-shrink:0;border:none}
 .wk3-grpb:hover{background:var(--accent)}
-.wk3-leg{padding:0 12px;min-width:0;display:flex;align-items:center;gap:10px;overflow:hidden;align-self:stretch}
+.wk3-leg{padding:0 12px;min-width:0;display:flex;align-items:flex-start;gap:10px;overflow:hidden;align-self:stretch}
 .wk3-route{font-size:12px;white-space:nowrap;overflow:hidden;min-width:0;flex:1;display:flex;align-items:center;height:34px}
 .wk3-route .frm{overflow:hidden;text-overflow:ellipsis;flex:0 0 41%;min-width:0}
 .wk3-route .to{font-weight:700;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
@@ -2247,7 +2247,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3 .wi-b-veroia{display:none} /* το VS στο route το λέει ήδη — όχι διπλό σήμα */
 .wk3-sep{color:var(--text-dim);margin:0 5px}
 .wk3-meta{font-size:10px;color:var(--text-dim);white-space:nowrap;flex-shrink:0;font-variant-numeric:tabular-nums;
-  display:flex;gap:6px;justify-content:flex-end;align-items:center;margin-left:auto;min-width:96px}
+  display:flex;gap:6px;justify-content:flex-end;align-items:center;margin-left:auto;min-width:96px;height:34px}
 .wk3-ld{font-weight:700;color:var(--text-mid);font-size:10.5px;font-variant-numeric:tabular-nums;margin-right:6px}
 .wk3-vsb{font-size:7.5px;font-weight:800;color:#fff;background:var(--navy-mid,#0B1929);border-radius:3px;padding:1px 4px;vertical-align:1px}
 .wk3-ref{font-style:italic}
@@ -2285,7 +2285,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3 .wi-b-risk{background:none !important;border:none !important;color:#DC2626 !important;font-weight:900;font-size:12.5px;padding:0 2px}
 .wk3-unm{flex-shrink:0;color:var(--text-dim);font-size:11px;padding:2px 6px;border-radius:5px;background:none;border:none;cursor:pointer}
 .wk3-unm:hover{color:var(--danger);background:rgba(220,38,38,.08)}
-.wk3-feed{height:100%;display:flex;align-items:center;padding:0 9px;font-size:10px;color:var(--text-mid);
+.wk3-feed{height:100%;display:flex;align-items:flex-start;padding:0 9px;font-size:10px;color:var(--text-mid);
   white-space:nowrap;overflow:hidden;background:var(--bg,#FAFCFE);gap:4px}
 .wk3-feed.l{border-right:1px solid var(--border)} .wk3-feed.r{border-left:1px solid var(--border)}
 .wk3-feed b{font-weight:800;color:var(--text-mid);font-size:9px;flex-shrink:0;width:28px;text-align:right;font-variant-numeric:tabular-nums}
@@ -2319,7 +2319,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-rt .rc.free{border-style:dashed} .wk3-rt .rc.free span{color:#067647;font-weight:600}
 .wk3-rt .rnote{font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.5}
 /* Πολλαπλά σημεία (10/8): δίπλωμα σε γραμμές από κάτω, ημερομηνία ανά σημείο */
-.wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:2px 0}
+.wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;padding:0 0 3px}
 .wk3-lcol .wk3-route{flex:0 0 auto}
 .wk3-stopline{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.7;padding-left:40px;min-width:0}
 .wk3-stopline .wk3-sln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
@@ -2327,9 +2327,9 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-sld.diff{color:var(--accent);font-weight:800}
 .wk3-stopn.ln{background:var(--navy-mid,#0B1929)}
 /* Ταξινόμηση σημείων (10/8): εθνικά subs μέσα στα feeds — στοίβαξη σε στήλη */
-.wk3-fcol{display:flex;flex-direction:column;justify-content:center;min-width:0;width:100%;padding:2px 0}
-.wk3-fline{display:flex;align-items:center;gap:4px;min-width:0}
-.wk3-feed .wk3-stopline{padding-left:14px;font-size:10px;line-height:1.6}
+.wk3-fcol{display:flex;flex-direction:column;justify-content:flex-start;min-width:0;width:100%;padding:0 0 3px}
+.wk3-fline{display:flex;align-items:center;gap:4px;min-width:0;height:34px}
+.wk3-feed .wk3-stopline{padding-left:13px;font-size:10px;line-height:1.6}
 .wk3-feed .wk3-sld{font-size:9.5px}
 /* Owner 10/8: flags μόνο PE στο weekly — RISK/GRP κρύβονται (μένουν σε φόρμα/φύλλα) */
 .wk3 .wi-b-risk,.wk3 .wi-b-grpg{display:none}
