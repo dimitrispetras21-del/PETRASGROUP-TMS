@@ -283,8 +283,13 @@ Clean start (locked): κανένα backfill — PnL μετράει από το g
    TRUCKS/TRAILERS fields) + `worker/wrangler.toml` με τα πραγματικά bindings
    (ALLOWED_ORIGIN, SUPABASE_URL· secrets μένουν στο CF). Δεν υπάρχει
    ξεχωριστό production Worker — το `petras-tms-backend-staging` ΕΙΝΑΙ το
-   production (config.js PROXY_URL). Εκκρεμεί ΜΟΝΟ το no-op deploy
-   επιβεβαίωσης (με έγκριση owner — αγγίζει το live backend).
+   production (config.js PROXY_URL). **Φ0 ΟΛΟΚΛΗΡΩΘΗΚΕ 10/8**: ο owner
+   έτρεξε το wrangler deploy (version 06:21 UTC) + smoke test ✓
+   (GET /api/locations→401 Unauthorized, POST /auth/login λάθος creds→401
+   Invalid credentials ⇒ routing/JWT/Supabase/secrets άθικτα). Σημείωση: το
+   wrangler ξαναπερνά το src/index.js από esbuild, οπότε το deployed artifact
+   διαφέρει ΤΕΧΝΙΚΑ από το source (~2KB wrapper) — λειτουργικά ταυτόσημο· το
+   repo είναι πλέον η μόνη αυθεντική πηγή.
 3. ~~PK types~~ → ✅ επιβεβαιώθηκαν 10/8 μέσω PostgREST OpenAPI:
    trucks/drivers/partners/orders = **bigint** (όπως υποθέτει το σχέδιο)·
    τα national tables λέγονται `national_orders` / `national_loads` στην
