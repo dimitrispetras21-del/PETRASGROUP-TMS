@@ -2570,6 +2570,22 @@ function plCan(role, resource, method) {
   const r = PL_PERMS[role];
   return !!(r && r[resource] && r[resource].includes(method));
 }
+var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+function plValidate(row) {
+  if (!row.movement_date) return "movement_date required";
+  if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
+  if (row.counterparty_type === "CLIENT") {
+    if (!row.client_id || row.partner_id) return "CLIENT movement needs client_id only";
+  } else if (row.counterparty_type === "PARTNER") {
+    if (!row.partner_id || row.client_id) return "PARTNER movement needs partner_id only";
+  } else return "counterparty_type must be CLIENT or PARTNER";
+  const taken = row.taken ?? 0, given = row.given ?? 0;
+  if (!Number.isInteger(taken) || taken < 0 || !Number.isInteger(given) || given < 0) {
+    return "taken/given must be non-negative integers";
+  }
+  if (row.event_type === "ADJUSTMENT" && !row.reason) return "ADJUSTMENT requires reason";
+  return null;
+}
 async function handlePallets(request, url, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
@@ -2612,6 +2628,72 @@ async function handlePallets(request, url, origin, env) {
       if (q.get("to")) params.append("movement_date", `lte.${q.get("to")}`);
       const { rows } = await dbSelectRaw(env, "pl_movements", params);
       return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
+    // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
+    // (μόνο ρόλοι με perm confirm) — για την αυτόματη DELIVERY της Φ2.
+    if (resource === "movements" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const row = ctPick(body, PL_FIELDS);
+      row.taken = row.taken ?? 0;
+      row.given = row.given ?? 0;
+      const err = plValidate(row);
+      if (err) return jsonError(err, 400, origin, env);
+      if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      row.created_by = caller.sub;
+      if (body.confirm === true) {
+        if (!plCan(caller.role, "confirm", "POST")) return jsonError("Forbidden", 403, origin, env);
+        // Ίδιοι έλεγχοι με το /confirm — το direct confirm ΔΕΝ παρακάμπτει την πύλη δελτίου.
+        const needsSheet = row.event_type !== "DELIVERY" && row.event_type !== "ADJUSTMENT";
+        if (needsSheet && !row.sheet_source) {
+          return jsonError("Δελτίο παλετών required (sheet_source) before confirm", 400, origin, env);
+        }
+        if (row.taken + row.given === 0 && row.event_type !== "ADJUSTMENT") {
+          return jsonError("taken + given must be > 0", 400, origin, env);
+        }
+        row.status = "confirmed";
+        row.confirmed_by = caller.sub;
+        row.confirmed_at = new Date().toISOString();
+      }
+      const created = await dbInsert(env, "pl_movements", row);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
+      return jsonOk({ record: created }, origin, env, 201);
+    }
+    // ---- PATCH /pallets/movements/:id (ΜΟΝΟ pending) ----
+    if (resource === "movements" && method === "PATCH" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const before = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      if (before.rows[0].status !== "pending") {
+        return jsonError("Only pending movements can be edited — use reverse for confirmed", 409, origin, env);
+      }
+      const patch = ctPick(body, PL_FIELDS);
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      const merged = { ...before.rows[0], ...patch };
+      const err = plValidate(merged);
+      if (err) return jsonError(err, 400, origin, env);
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- DELETE /pallets/movements/:id (ΜΟΝΟ pending — δεν μέτρησε ποτέ) ----
+    if (resource === "movements" && method === "DELETE" && recId) {
+      const before = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      if (before.rows[0].status !== "pending") {
+        return jsonError("Confirmed movements are never deleted — use reverse", 409, origin, env);
+      }
+      const res = await fetch(`${env.SUPABASE_URL}/rest/v1/pl_movements?id=eq.${encodeURIComponent(recId)}`, {
+        method: "DELETE",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+      });
+      if (!res.ok) return jsonError("Delete failed", 500, origin, env);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "pl_movements", recordId: String(recId), before: before.rows[0] });
+      return jsonOk({ deleted: true }, origin, env);
     }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
