@@ -2698,6 +2698,61 @@ async function handlePallets(request, url, origin, env) {
       await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "pl_movements", recordId: String(recId), before: before.rows[0] });
       return jsonOk({ deleted: true }, origin, env);
     }
+    // ---- POST /pallets/movements/:id/confirm ----
+    // Πύλη δελτίου (spec §4): κάθε χειροκίνητο event θέλει sheet_source.
+    // Εξαιρέσεις: DELIVERY (αυτόματη net 0) και ADJUSTMENT (θέλει reason).
+    if (action === "confirm" && method === "POST" && recId) {
+      const cur = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
+      const m = cur.rows[0];
+      if (m.status !== "pending") return jsonError("Only pending movements can be confirmed", 409, origin, env);
+      const err = plValidate(m);
+      if (err) return jsonError(err, 400, origin, env);
+      const needsSheet = m.event_type !== "DELIVERY" && m.event_type !== "ADJUSTMENT";
+      if (needsSheet && !m.sheet_source) {
+        return jsonError("Δελτίο παλετών required (sheet_source) before confirm", 400, origin, env);
+      }
+      if (m.taken + m.given === 0 && m.event_type !== "ADJUSTMENT") {
+        return jsonError("taken + given must be > 0", 400, origin, env);
+      }
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
+        status: "confirmed",
+        confirmed_by: caller.sub,
+        confirmed_at: new Date().toISOString()
+      });
+      await audit(env, { actor: caller.sub, role: caller.role, action: "confirm", table: "pl_movements", recordId: String(recId), before: m, after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- POST /pallets/movements/:id/reverse  {reason, replacement?} ----
+    // Αντιλογισμός: η αρχική → 'reversed' (εκτός υπολοίπου, μένει στο ιστορικό).
+    // Προαιρετικό body.replacement = νέα σωστή εγγραφή (pending) με reversal_of.
+    if (action === "reverse" && method === "POST" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.reason || !String(body.reason).trim()) {
+        return jsonError("reason required for reverse", 400, origin, env);
+      }
+      const cur = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
+      const m = cur.rows[0];
+      if (m.status !== "confirmed") return jsonError("Only confirmed movements can be reversed", 409, origin, env);
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
+        status: "reversed",
+        reason: String(body.reason).trim()
+      });
+      let replacement = null;
+      if (body.replacement && typeof body.replacement === "object") {
+        const row = ctPick(body.replacement, PL_FIELDS);
+        row.taken = row.taken ?? 0;
+        row.given = row.given ?? 0;
+        row.reversal_of = m.id;
+        row.created_by = caller.sub;
+        const err = plValidate(row);
+        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
+        replacement = await dbInsert(env, "pl_movements", row);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
+      return jsonOk({ record: updated, replacement }, origin, env);
+    }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`PALLETS ${method} ${url.pathname}`, e.message);
