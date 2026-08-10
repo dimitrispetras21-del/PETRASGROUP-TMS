@@ -2316,6 +2316,16 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-rt .rc b{font-size:11px} .wk3-rt .rc span{font-size:10px;color:var(--text-mid);margin-left:auto;white-space:nowrap}
 .wk3-rt .rc.free{border-style:dashed} .wk3-rt .rc.free span{color:#067647;font-weight:600}
 .wk3-rt .rnote{font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.5}
+/* Πολλαπλά σημεία (10/8): δίπλωμα σε γραμμές από κάτω, ημερομηνία ανά σημείο */
+.wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;padding:2px 0}
+.wk3-lcol .wk3-route{flex:0 0 auto}
+.wk3-stopline{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.7;padding-left:40px;min-width:0}
+.wk3-stopline .wk3-sln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.wk3-sld{font-size:10.5px;color:var(--text-mid);font-variant-numeric:tabular-nums;font-weight:700}
+.wk3-sld.diff{color:var(--accent);font-weight:800}
+.wk3-stopn.ln{background:var(--navy-mid,#0B1929)}
+/* Owner 10/8: flags μόνο PE στο weekly — RISK/GRP κρύβονται (μένουν σε φόρμα/φύλλα) */
+.wk3 .wi-b-risk,.wk3 .wi-b-grpg{display:none}
 /* compact tags μέσα στο meta — υπάρχοντα wi-badge/wi-cross/wi-exec */
 .wk3 .wi-badge{font-size:7.5px;padding:0 4px;border-radius:3px}
 .wk3 .wi-cross,.wk3 .wi-exec{font-size:8.5px}
