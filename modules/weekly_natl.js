@@ -258,6 +258,7 @@ function _wnPaint() {
         <span class="wk3-t"><b>${snRows.length}</b> άνοδος</span>
         <span class="wk3-t" title="${assigned} από ${total} με ανάθεση"><b>${assigned}</b>/${total} ανατεθ.</span>
         ${pending>0?`<button class="wk3-t alert" title="Κάθοδοι χωρίς ανάθεση — κλικ: πήγαινε στην πρώτη" onclick="${(()=>{const id=_firstRow(r=>r.type==='northsouth'&&!r.saved);return id?`_ccJump('${id}')`:'';})()}"><b>${pending}</b> εκκρεμή</button>`:''}
+        <span id="wn-pickups-q"></span>
         <div class="wk3-acts">
           <button class="wk3-ab" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής">${_wnI('eye',13)} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
           <button class="wk3-ab" onclick="_wnPrintWeek()">${_wnI('file_text',13)} Εκτύπωση</button>
@@ -336,7 +337,6 @@ function _wnPaint() {
           }) : '<div class="wk3-empty"><div class="big">Άδειο φύλλο — W'+week+'</div><p>Καμία εθνική κίνηση ακόμη.</p></div>')}
         </div>
       </main>
-      <aside class="wk3-rt">${_wnDriversPanel()}</aside>
     </div>
 
     <div id="wn-ctx"></div>
@@ -369,6 +369,20 @@ function _wnPaint() {
     const el1 = document.getElementById('wn-cc-vswk');
     if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
   }).catch(e => console.warn('CC async widgets (natl):', e));
+
+  // Φέτα 3 (Δ11): η ουρά του National Pick Ups. Τον χειμώνα εκεί κάθονται
+  // δεκάδες γραμμές groupage που περιμένουν να γίνουν φορτηγό — και το
+  // εβδομαδιαίο δεν τις έβλεπε καθόλου. Μόνο μέτρημα: το petras-assign δεν
+  // αγγίζεται. Αν αποτύχει ή είναι μηδέν, ο μετρητής απλώς δεν εμφανίζεται —
+  // ένα «0 στην ουρά» που στην πραγματικότητα είναι σφάλμα δικτύου θα ήταν
+  // χειρότερο από το τίποτα.
+  safeFetch(() => atGetAll(TABLES.GL_LINES, { filterByFormula: `{Status}="Unassigned"`, fields: ['Status'] }, false),
+            'weekly natl: pick ups queue', [])
+  .then(gl => {
+    const el = document.getElementById('wn-pickups-q');
+    if (!el || didFail(gl) || !gl.length) return;
+    el.outerHTML = `<button class="wk3-t queue" title="Γραμμές groupage που περιμένουν ανάθεση στο National Pick Ups — κλικ: άνοιγμα της σελίδας" onclick="navigate('weekly_pickups')"><b>${gl.length}</b> στην ουρά Pick Ups ↗</button>`;
+  }).catch(e => console.warn('pick ups queue (natl):', e));
 }
 
 /* ── ALL ROWS — μία ημέρα ανά ΠΡΩΤΗ ΦΟΡΤΩΣΗ, κενές μέρες ορατές ──── */
@@ -461,26 +475,9 @@ function _wnDayLabel(key) {
 /* ── QUIET VIEW + DRIVERS PANEL (owner 8/8 — twins of weekly_intl) ── */
 function _wnQuietOn(){ return localStorage.getItem('tms_weekly_details')!=='1'; }
 function _wnToggleDetails(){ localStorage.setItem('tms_weekly_details', _wnQuietOn()?'1':'0'); renderWeeklyNatl(); }
-function _wnDriversPanel(){
-  const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
-  const ret={};
-  WNATL.rows.forEach(r=>{
-    if(!r.driverId) return;
-    const o=all.find(x=>x.id===r.orderIds?.[0]); if(!o) return;
-    const end=o.fields['Delivery DateTime']||o.fields['Loading DateTime']; if(!end) return;
-    const cur=ret[r.driverId];
-    if(!cur||String(end)>String(cur.end)) ret[r.driverId]={label:r.driverLabel||'',end,
-      place:(_wnNlDeliverySummary(o.fields)||'').split('/')[0].slice(0,16)};
-  });
-  const list=Object.values(ret).filter(d=>d.label).sort((a,b)=>String(a.end).localeCompare(String(b.end)));
-  if(!list.length) return '';
-  const fmt=s=>{try{return new Date(s).toLocaleDateString('el-GR',{weekday:'short',day:'numeric',month:'numeric'});}catch{return '';}};
-  const open=localStorage.getItem('tms_drivers_panel')!=='0';
-  return `<details ${open?'open':''} ontoggle="localStorage.setItem('tms_drivers_panel',this.open?'1':'0')" class="wk-drivers">
-    <summary>Επιστροφές οδηγών · ${list.length}</summary>
-    <div class="wk-drivers-list">${list.map(d=>`<span class="wk-driver-chip"><b>${escapeHtml(d.label.trim().split(/\s+/)[0])}</b> · ${fmt(d.end)}${d.place?' · '+escapeHtml(d.place):''}</span>`).join('')}</div>
-  </details>`;
-}
+// Φέτα 3 (Δ10): το πάνελ «Επιστροφές οδηγών» αφαιρέθηκε (owner 10/8).
+// Ήταν συμπέρασμα από τις αναθέσεις, όχι καταγεγραμμένο γεγονός· η
+// πραγματική κατάσταση οδηγών (ανάπαυση/άδεια) μένει εκτός σελίδας (Δ4).
 
 /* ── WAVE 2 HELPERS (T3/T4/T5/T1 — twins of weekly_intl) ─────────── */
 function _wnExecChip(f, saved){
@@ -506,19 +503,6 @@ function _wnSync(id, state, msg){
   el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
   el.title=msg||'';
   if(state==='ok') setTimeout(()=>{ if(el.textContent==='✓'){el.textContent='';el.className='wi-sync';} },4000);
-}
-function _wnSameDayConflict(row){
-  const all=[...(WNATL.data.northsouth||[]),...(WNATL.data.southnorth||[])];
-  const myO=all.find(x=>x.id===row.orderIds?.[0]);
-  const myD=toLocalDate(myO?.fields['Loading DateTime']||''); if(!myD) return null;
-  for(const r of WNATL.rows){ if(r.id===row.id) continue;
-    if(!r.truckId&&!r.driverId) continue;
-    const o=all.find(x=>x.id===r.orderIds?.[0]);
-    if(toLocalDate(o?.fields['Loading DateTime']||'')!==myD) continue;
-    if(row.truckId&&r.truckId===row.truckId) return `Το φορτηγό ${row.truckLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
-    if(row.driverId&&r.driverId===row.driverId) return `Ο οδηγός ${row.driverLabel||''} έχει ήδη φόρτωση την ίδια μέρα (${myD.slice(5)}).`;
-  }
-  return null;
 }
 
 /* ── N→S ROW ─────────────────────────────────────────────────────── */
@@ -1075,11 +1059,10 @@ async function _wnSaveFromPopover(rowId) {
   const isPartner = !!row.partnerId;
   if (!isPartner && !row.truckId) { toast('Επίλεξε Τράκτορα ή Συνεργάτη', 'warn'); return; }
   if (isPartner && !row.partnerRate) { toast('Το Κόμιστρο είναι υποχρεωτικό για Συνεργάτη', 'warn'); return; }
-  // T1 (Wave 2, twin): same-day double-booking → soft confirm.
-  if (!isPartner) {
-    const conflict=_wnSameDayConflict(row);
-    if (conflict && !(await confirmAction(conflict+'\n\nΣυνέχεια με την ανάθεση;',{title:'Πιθανή διπλή δέσμευση',confirmLabel:'Συνέχεια'}))) return;
-  }
+  // Φέτα 3 (Δ10): ο φύλακας διπλής κράτησης αφαιρέθηκε με απόφαση του owner
+  // (10/8). Ο εθνικός σχεδιασμός γίνεται ημερησίως και με μικρούς όγκους —
+  // το να βάλει κανείς τον ίδιο οδηγό δύο φορές στην ίδια μέρα δεν συμβαίνει
+  // στην πράξη, και το confirm κόστιζε ένα κλικ σε ΚΑΘΕ ανάθεση.
 
   const btn  = document.getElementById(`wn-pop-btn-${rowId}`);
   const spin = document.getElementById(`wn-pop-spin-${rowId}`);

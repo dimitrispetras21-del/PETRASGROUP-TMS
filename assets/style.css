@@ -2334,6 +2334,11 @@ tbody tr:hover { background: var(--bg-hover); }
    # | ΚΑΘΟΔΟΣ | ΑΝΑΘΕΣΗ | ΑΝΟΔΟΣ. Τα υπόλοιπα κληρονομούνται από τα wk3-*. */
 .wn3 .wk3-cols,.wn3 .wk3-row{grid-template-columns:44px minmax(200px,1fr) 208px minmax(200px,1fr)}
 .wn3 .wk3-dayh{top:34px}
+/* Φέτα 3 (Δ10): το δεξί πάνελ έφυγε — το φύλλο παίρνει όλο το πλάτος */
+.wn3 .wk3-wrap{grid-template-columns:1fr}
+/* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
+.wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
+.wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}
 /* drop target για το drag-ταίριασμα ανόδου σε κάθοδο */
 .wn3 .wk3-leg.dh{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-light)}
 /* κενό σκέλος ανόδου = σκούρο πεδίο, όπως το bgap του intl */
