@@ -114,6 +114,10 @@ async function _wnLoadAll() {
       'Pickup Location 6','Pickup Location 7','Pickup Location 8','Pickup Location 9','Pickup Location 10',
       'Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4','Delivery Location 5',
       'Delivery Location 6','Delivery Location 7','Delivery Location 8','Delivery Location 9','Delivery Location 10',
+      // Ώρα ραντεβού ανά σκέλος — ορίζεται ρητά με δεξί κλικ, ΔΕΝ εξάγεται
+      // από τα datetime. Απαιτεί το migration 2026-08-10_nl_appointments.sql
+      // ΚΑΙ τον χάρτη του Worker· χωρίς αυτά το αίτημα γυρίζει 422.
+      'Loading Appointment','Delivery Appointment',
     ] }, false),
   ]);
 
@@ -1244,6 +1248,17 @@ function _wnCtx(e, rowId) {
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</button>`);
+
+  // Δ5 (owner 10/8): το ραντεβού μπαίνει ΜΕ ΠΡΟΘΕΣΗ, από εδώ — δεν εξάγεται
+  // αυτόματα από την ώρα του datetime. Δείχνουμε την τρέχουσα τιμή στο ίδιο
+  // το κουμπί ώστε να φαίνεται τι θα αλλάξει πριν το πατήσεις.
+  const _rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])]
+                 .find(r => r.id === row?.orderId);
+  const _aL = _rec?.fields?.['Loading Appointment'] || '';
+  const _aU = _rec?.fields?.['Delivery Appointment'] || '';
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnSetAppt(${rowId},'l')">Ώρα φόρτωσης${_aL?' · '+escapeHtml(_aL):''}</button>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnSetAppt(${rowId},'u')">Ώρα παράδοσης${_aU?' · '+escapeHtml(_aU):''}</button>`);
+
   ctx.innerHTML = items.join('');
   // Position — flip up if near bottom (fixed positioning uses clientX/Y)
   const menuH = items.length * 36 + 16;
@@ -1252,6 +1267,46 @@ function _wnCtx(e, rowId) {
   const left = Math.min(e.clientX, window.innerWidth - 200);
   Object.assign(ctx.style, { display:'block', left:`${left}px`, top:`${Math.max(10, top)}px` });
   setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
+}
+
+/* ── Δ5: ορισμός ώρας ραντεβού ανά σκέλος ─────────────────────────── */
+async function _wnSetAppt(rowId, leg) {
+  const row = WNATL.rows.find(r => r.id === rowId);
+  if (!row) return;
+  const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])]
+                .find(r => r.id === row.orderId);
+  if (!rec) return;
+
+  const fld  = leg === 'l' ? 'Loading Appointment' : 'Delivery Appointment';
+  const what = leg === 'l' ? 'φόρτωσης' : 'παράδοσης';
+  const cur  = rec.fields[fld] || '';
+
+  const raw = prompt(`Ώρα ραντεβού ${what} (ΩΩ:ΛΛ).\nΆφησέ το κενό για να αφαιρεθεί.`, cur);
+  if (raw === null) return;                       // Άκυρο — καμία αλλαγή
+  const val = raw.trim();
+
+  // Ίδιος έλεγχος με το CHECK της βάσης. Καλύτερα να το πιάσουμε εδώ παρά να
+  // γυρίσει 400 από τη Supabase με μήνυμα που δεν λέει τίποτα στον χρήστη.
+  if (val && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(val)) {
+    toast('Μορφή ΩΩ:ΛΛ — π.χ. 10:00 ή 23:30', 'warn');
+    return;
+  }
+  if (val === cur) return;                        // τίποτα δεν άλλαξε
+
+  _wnSync('wn-sync-'+rowId, 'pend', 'Αποθήκευση…');
+  try {
+    await atSafePatch(TABLES.NAT_LOADS, rec.id, { [fld]: val || null });
+    // Τοπική ενημέρωση ώστε να μη χρειαστεί ξαναφόρτωση όλης της εβδομάδας.
+    if (val) rec.fields[fld] = val; else delete rec.fields[fld];
+    invalidateCache(TABLES.NAT_LOADS);
+    _wnSync('wn-sync-'+rowId, 'ok', 'Αποθηκεύτηκε');
+    _wnPaint();
+    _wnPulseRow(rowId);
+  } catch (e) {
+    console.error('_wnSetAppt:', e);
+    _wnSync('wn-sync-'+rowId, 'err', 'Απέτυχε');
+    toast('Η ώρα δεν αποθηκεύτηκε', 'error');
+  }
 }
 
 function _wnCtxClose() {
@@ -1468,6 +1523,7 @@ window._wnToggleDetails = _wnToggleDetails;
 // Φέτα 4: καλείται από inline onclick του σήματος groupage — χωρίς αυτό
 // το κλικ θα έριχνε ReferenceError (το module είναι σε IIFE).
 window._wnToggleStops = _wnToggleStops;
+window._wnSetAppt = _wnSetAppt;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
