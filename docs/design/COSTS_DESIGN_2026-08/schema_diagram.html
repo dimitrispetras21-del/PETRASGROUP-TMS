@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>COSTS — Αρχιτεκτονικό Γράφημα · Petras TMS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--accent:#0284C7;--navy:#0B1929;--panel:#0F172A;--bg:#F4F6F9;--ink:#0F172A;
+--mid:#475569;--dim:#5B6B7F;--line:#E2E8F0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--ink);padding:28px 32px 60px;font-size:14px}
+h1{font-family:'Syne',sans-serif;font-size:24px;letter-spacing:-.3px}
+.sub{color:var(--dim);font-size:13px;margin:4px 0 24px}
+figure{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px;margin-bottom:26px;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+figcaption{font-size:13px;color:var(--mid);margin-top:12px;line-height:1.5;border-top:1px dashed var(--line);padding-top:10px}
+figcaption b{color:var(--ink)}
+svg{max-width:100%;height:auto;font-family:'DM Sans',sans-serif}
+.legend{display:flex;gap:22px;font-size:12px;color:var(--dim);margin-bottom:14px;flex-wrap:wrap}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:14px;height:14px;border-radius:3px;display:inline-block}
+</style>
+</head>
+<body>
+
+<h1>COSTS — Πίνακες &amp; Συνδέσεις</h1>
+<div class="sub">Migration 001 σε μία εικόνα · 2026-08-10 · για review πριν τρέξει το SQL</div>
+
+<div class="legend">
+  <span><i class="sw" style="background:#fff;border:1.5px solid #94A3B8"></i> Υπάρχοντες πίνακες (δεν αλλάζουν — μόνο FK αναφορές)</span>
+  <span><i class="sw" style="background:#E0F2FE;border:2px solid #0284C7"></i> Νέοι πίνακες ct_*</span>
+  <span><i class="sw" style="background:#0F172A"></i> Views (υπολογισμοί — τίποτα δεν αποθηκεύεται)</span>
+  <span style="color:#0284C7;font-weight:700">— μπλε βέλος = ο μηχανισμός κατανομής</span>
+</div>
+
+<figure>
+<svg viewBox="0 0 1240 760" role="img" aria-label="Διάγραμμα πινάκων: τα ct_ tables στο κέντρο, οι υπάρχοντες πίνακες αριστερά, τα views δεξιά, με βέλη για κάθε foreign key">
+<defs>
+<marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker>
+<marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#0284C7"/></marker>
+</defs>
+
+<!-- zone headers -->
+<text x="20"  y="46" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">ΥΠΑΡΧΟΝΤΕΣ</text>
+<text x="360" y="46" font-size="11" font-weight="700" letter-spacing="1.5" fill="#0284C7">ΝΕΟΙ ΠΙΝΑΚΕΣ ct_*</text>
+<text x="960" y="46" font-size="11" font-weight="700" letter-spacing="1.5" fill="#0F172A">VIEWS — ΥΠΟΛΟΓΙΣΜΟΙ</text>
+
+<!-- existing tables -->
+<g font-size="12">
+<rect x="20" y="90" width="240" height="112" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="110" font-weight="700">orders</text>
+<text x="32" y="130" fill="#475569">price · direction</text>
+<text x="32" y="148" fill="#475569">veroia_switch</text>
+<text x="32" y="166" fill="#475569">loading / delivery dates</text>
+<text x="32" y="184" fill="#475569">truck_id · partner_id</text>
+
+<rect x="20" y="226" width="240" height="94" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="246" font-weight="700">national_loads</text>
+<text x="32" y="266" fill="#475569">direction (ΑΝΟΔΟΣ/ΚΑΘΟΔΟΣ)</text>
+<text x="32" y="284" fill="#475569">source_type · source_order_id</text>
+<text x="32" y="302" fill="#475569">truck_id · partner_id</text>
+
+<rect x="20" y="344" width="240" height="58" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="364" font-weight="700">trucks</text>
+<text x="32" y="384" fill="#475569">license_plate</text>
+
+<rect x="20" y="424" width="240" height="40" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="449" font-weight="700">drivers</text>
+
+<rect x="20" y="486" width="240" height="40" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="511" font-weight="700">partners</text>
+
+<rect x="20" y="560" width="240" height="76" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="580" font-weight="700">maint_history</text>
+<text x="32" y="600" fill="#475569">cost · service_date</text>
+<text x="32" y="618" fill="#475569">truck_id · odometer_km</text>
+
+<rect x="20" y="660" width="240" height="46" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="32" y="680" font-weight="700" fill="#64748B">pallet_ledger_partners</text>
+<text x="32" y="698" fill="#94A3B8">→ Partner PnL (Φ5)</text>
+</g>
+
+<!-- new ct_ tables — col A -->
+<g font-size="12">
+<rect x="360" y="90" width="250" height="96" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="372" y="110" font-weight="700">ct_rt_legs</text>
+<text x="372" y="130" fill="#475569">rt_id · direction</text>
+<text x="372" y="148" fill="#475569">order_id (1 order = 1 RT)</text>
+<text x="372" y="166" fill="#475569">nat_load_id (1 load = 1 RT)</text>
+
+<text x="372" y="224" font-size="11" fill="#0369A1">Weekly planners auto-create · + χειροκίνητο modal</text>
+<rect x="360" y="232" width="250" height="160" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.5"/>
+<text x="372" y="254" font-weight="800" font-family="Syne">ct_round_trips</text>
+<text x="372" y="276" fill="#475569">code RT-1001 · scope INTL/NATL</text>
+<text x="372" y="294" fill="#475569">trip_type OWNED/PARTNER</text>
+<text x="372" y="312" fill="#475569">truck · driver · partner</text>
+<text x="372" y="330" font-weight="700" fill="#0369A1">date_start → date_end ★</text>
+<text x="372" y="348" fill="#475569">status: planned→…→complete</text>
+<text x="372" y="366" fill="#475569">total_km (manual → GPS)</text>
+<text x="372" y="384" fill="#94A3B8" font-size="11">★ το παράθυρο = κλειδί κατανομής</text>
+
+<rect x="360" y="430" width="250" height="58" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="372" y="450" font-weight="700">ct_plate_aliases</text>
+<text x="372" y="470" fill="#475569">alias (π.χ. OB4471XP) → truck_id</text>
+</g>
+
+<!-- new ct_ tables — col B -->
+<g font-size="12">
+<text x="662" y="82" font-size="11" fill="#0369A1">Αλεξία: scan DKV/DADI + χειροκίνητα</text>
+<rect x="650" y="90" width="250" height="94" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="662" y="110" font-weight="700">ct_cost_docs</text>
+<text x="662" y="130" fill="#475569">source: DKV/DADI/STANDALONE</text>
+<text x="662" y="148" fill="#475569">total_gross (reconciliation)</text>
+<text x="662" y="166" fill="#475569">status: draft → confirmed</text>
+
+<rect x="650" y="226" width="250" height="150" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="662" y="246" font-weight="700">ct_cost_lines</text>
+<text x="662" y="266" fill="#475569">doc_id (null = χειροκίνητο)</text>
+<text x="662" y="284" fill="#475569">rt_id (null = ακατανέμητο)</text>
+<text x="662" y="302" fill="#475569">category · toll_country</text>
+<text x="662" y="320" font-weight="700" fill="#0369A1">net + vat ΧΩΡΙΣΤΑ</text>
+<text x="662" y="338" fill="#475569">line_date · plate_raw</text>
+<text x="662" y="356" fill="#475569">liters · km_reading (= fuel ledger)</text>
+
+<rect x="650" y="416" width="250" height="128" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="1.5"/>
+<text x="662" y="436" font-weight="700">ct_settings</text>
+<text x="662" y="456" fill="#475569">x_export 850 · x_import 650</text>
+<text x="662" y="474" fill="#475569">pallet_eur 12</text>
+<text x="662" y="492" fill="#475569">vat_default 0.24</text>
+<text x="662" y="510" fill="#475569">wear_fallback 0.082 €/km</text>
+<text x="662" y="530" fill="#94A3B8" font-size="11">owner-only</text>
+</g>
+
+<!-- views -->
+<g font-size="12">
+<rect x="960" y="90" width="260" height="58" rx="8" fill="#0F172A"/>
+<text x="972" y="110" font-weight="700" fill="#F1F5F9">ct_v_wear_rate</text>
+<text x="972" y="130" fill="#94A3B8">€/km ανά truck · 12μηνο ÷ km</text>
+
+<rect x="960" y="190" width="260" height="76" rx="8" fill="#0F172A"/>
+<text x="972" y="210" font-weight="700" fill="#F1F5F9">ct_v_rt_costs</text>
+<text x="972" y="230" fill="#94A3B8">Σ net + φθορά (€/km × total_km)</text>
+<text x="972" y="248" fill="#94A3B8">Σ ΦΠΑ χωριστά</text>
+
+<rect x="960" y="308" width="260" height="76" rx="8" fill="#0F172A"/>
+<text x="972" y="328" font-weight="700" fill="#F1F5F9">ct_v_rt_revenue</text>
+<text x="972" y="348" fill="#94A3B8">διεθνές VS: price − X</text>
+<text x="972" y="366" fill="#94A3B8">εθνικό VS feeder: + X</text>
+
+<rect x="960" y="428" width="260" height="96" rx="8" fill="#0F172A" stroke="#38BDF8" stroke-width="2"/>
+<text x="972" y="450" font-weight="800" fill="#F1F5F9" font-family="Syne">ct_v_rt_pnl 🔒</text>
+<text x="972" y="472" fill="#7DD3FC" font-weight="700">margin ΜΕ ΦΠΑ (worst case)</text>
+<text x="972" y="490" fill="#94A3B8">margin χωρίς ΦΠΑ</text>
+<text x="972" y="508" fill="#94A3B8">owner-only · ανά round trip</text>
+
+<rect x="960" y="566" width="260" height="58" rx="8" fill="#0F172A"/>
+<text x="972" y="586" font-weight="700" fill="#F1F5F9">ct_v_consumption</text>
+<text x="972" y="606" fill="#94A3B8">λίτρα + km ανά truck / μήνα</text>
+</g>
+
+<!-- edges -->
+<g stroke="#64748B" stroke-width="1.3" fill="none">
+<path d="M360,138 L262,138" marker-end="url(#ar)"/>
+<path d="M360,162 L300,162 L300,258 L262,258" marker-end="url(#ar)"/>
+<path d="M485,186 L485,230" marker-end="url(#ar)"/>
+<path d="M360,300 L310,300 L310,372 L262,372" marker-end="url(#ar)"/>
+<path d="M360,322 L322,322 L322,444 L262,444" marker-end="url(#ar)"/>
+<path d="M360,344 L334,344 L334,506 L262,506" marker-end="url(#ar)"/>
+<path d="M775,226 L775,186" marker-end="url(#ar)"/>
+<path d="M662,338 L630,338 L630,452 L614,452" marker-end="url(#ar)"/>
+<path d="M360,458 L290,458 L290,406" marker-end="url(#ar)"/>
+<path d="M262,598 L285,598 L285,732 L935,732 L935,120 L956,120" marker-end="url(#ar)"/>
+<path d="M262,100 L286,100 L286,68 L920,68 L920,336 L956,336" marker-end="url(#ar)"/>
+<path d="M902,470 L928,470 L928,358 L956,358" marker-end="url(#ar)"/>
+<path d="M1090,148 L1090,186" marker-end="url(#ar)"/>
+<path d="M1000,266 L1000,286 L948,286 L948,470 L956,470" marker-end="url(#ar)"/>
+<path d="M1090,384 L1090,424" marker-end="url(#ar)"/>
+</g>
+<!-- the allocation edge — the mechanism -->
+<path d="M650,286 L622,286 L622,312 L614,312" stroke="#0284C7" stroke-width="2.5" fill="none" marker-end="url(#arA)"/>
+
+<!-- edge labels -->
+<g font-size="10.5" fill="#64748B">
+<text x="268" y="132">order_id</text>
+<text x="305" y="200">nat_load_id</text>
+<text x="490" y="212">rt_id</text>
+<text x="268" y="366">truck_id</text>
+<text x="780" y="206">doc_id</text>
+<text x="540" y="418">plate_raw → alias → truck</text>
+<text x="300" y="748">Σ 12μηνο κόστος ÷ Σ km</text>
+<text x="300" y="62">price</text>
+<text x="855" y="490">X 850/650</text>
+<text x="1098" y="172">€/km × km</text>
+<text x="1098" y="410">τροφοδοτούν το PnL</text>
+</g>
+<text x="632" y="264" font-size="10.5" font-weight="700" fill="#0284C7" text-anchor="end">κατανομή: πινακίδα +</text>
+<text x="632" y="278" font-size="10.5" font-weight="700" fill="#0284C7" text-anchor="end">ημ/νία ∈ παράθυρο</text>
+</svg>
+<figcaption><b>Σχήμα 1 — Οι πίνακες και τα δεσίματά τους.</b> Το <b>ct_round_trips</b> είναι το κέντρο κόστους: δένει με τον στόλο (trucks/drivers/partners) και, μέσω των <b>ct_rt_legs</b>, με τα υπάρχοντα orders / national_loads — τα έσοδα διαβάζονται πάντα με JOIN από το price, ποτέ δεν αντιγράφονται. Οι γραμμές κόστους (<b>ct_cost_lines</b>, καθαρό+ΦΠΑ χωριστά) φτάνουν στο σωστό trip με το μπλε βέλος: πινακίδα + ημερομηνία μέσα στο παράθυρο του trip. Δεξιά, τα views υπολογίζουν φθορά, έσοδα (με το VS ±X), κόστη και το owner-only PnL με τα δύο margins — κανένα νούμερο δεν αποθηκεύεται. Οι υπάρχοντες πίνακες ΔΕΝ τροποποιούνται.</figcaption>
+</figure>
+
+<figure>
+<svg viewBox="0 0 1240 300" role="img" aria-label="Ροή: ο planner δημιουργεί το round trip, το τιμολόγιο κατανέμεται πάνω του με πινακίδα και ημερομηνία, το order δίνει το έσοδο μείον Χ, και το PnL βγάζει δύο margins">
+<defs>
+<marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#64748B"/></marker>
+<marker id="ar2A" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#0284C7"/></marker>
+</defs>
+<g font-size="12">
+<rect x="20" y="110" width="180" height="70" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="110" y="140" text-anchor="middle" font-weight="700">Weekly planners</text>
+<text x="110" y="160" text-anchor="middle" fill="#475569">Intl + Natl</text>
+
+<rect x="20" y="20" width="330" height="60" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="42" font-weight="700">Order: VERMION → EDEKA (VS export)</text>
+<text x="32" y="62" fill="#475569">price €3.350 − X €850 → έσοδο €2.500</text>
+
+<rect x="440" y="20" width="250" height="60" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5" stroke-dasharray="4 3"/>
+<text x="452" y="42" font-weight="700" fill="#64748B">Εθνικό RT (feeder ΑΝΟΔΟΣ)</text>
+<text x="452" y="62" fill="#475569">έσοδο = X €850 (internal transfer)</text>
+
+<rect x="440" y="110" width="250" height="90" rx="8" fill="#E0F2FE" stroke="#0284C7" stroke-width="2.5"/>
+<text x="565" y="136" text-anchor="middle" font-weight="800" font-family="Syne">Round Trip RT-2618</text>
+<text x="565" y="158" text-anchor="middle" fill="#475569">IAZ8302 · 01.06 → 07.06</text>
+<text x="565" y="178" text-anchor="middle" fill="#475569">+ φθορά auto: 4.980 km × €/km</text>
+
+<rect x="20" y="224" width="330" height="62" rx="8" fill="#fff" stroke="#94A3B8" stroke-width="1.5"/>
+<text x="32" y="246" font-weight="700">DKV γραμμή (Αλεξία · confirmed)</text>
+<text x="32" y="266" fill="#475569">IAZ8302 · 03.06 · Διόδια AT · €96,40</text>
+
+<rect x="940" y="110" width="280" height="90" rx="8" fill="#0F172A" stroke="#38BDF8" stroke-width="2"/>
+<text x="1080" y="136" text-anchor="middle" font-weight="800" fill="#F1F5F9" font-family="Syne">TRIP PnL 🔒</text>
+<text x="1080" y="160" text-anchor="middle" fill="#7DD3FC" font-weight="700">21,9% ΜΕ ΦΠΑ (worst case)</text>
+<text x="1080" y="180" text-anchor="middle" fill="#94A3B8">27,7% χωρίς ΦΠΑ · προσωρινό→πλήρες</text>
+</g>
+<g stroke="#64748B" stroke-width="1.3" fill="none">
+<path d="M200,145 L436,145" marker-end="url(#ar2)"/>
+<path d="M350,50 L500,50 L530,106" marker-end="url(#ar2)"/>
+<path d="M690,155 L936,155" marker-end="url(#ar2)"/>
+</g>
+<path d="M350,252 L565,252 L565,204" stroke="#0284C7" stroke-width="2.5" fill="none" marker-end="url(#ar2A)"/>
+<g font-size="11" fill="#64748B">
+<text x="230" y="136">δημιουργούν (auto ή modal)</text>
+<text x="380" y="42">έσοδο leg</text>
+<text x="740" y="146">revenue − κόστη − ΦΠΑ</text>
+</g>
+<text x="580" y="270" font-size="11" font-weight="700" fill="#0284C7">κατανομή: IAZ8302 + 03.06 ∈ 01–07.06 · αταίριαστη; → ακατανέμητα, ποτέ σιωπηλά</text>
+</svg>
+<figcaption><b>Σχήμα 2 — Ο μηχανισμός σε ένα παράδειγμα.</b> Ο planner γεννά το round trip με το παράθυρό του· το order δίνει το έσοδο (στο VS: price − X στο διεθνές, + X στο εθνικό feeder — το άθροισμα διατηρείται)· η γραμμή του τιμολογίου προσγειώνεται στο σωστό trip επειδή η πινακίδα και η ημερομηνία της πέφτουν μέσα στο παράθυρο· και το PnL βγάζει τα δύο margins. Ό,τι δεν ταιριάξει πάει στα ακατανέμητα για έλεγχο.</figcaption>
+</figure>
+
+</body>
+</html>
