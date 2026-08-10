@@ -580,10 +580,10 @@ function _wnRowHTML(row, i) {
     <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">
       <span class="wk3-route">
         <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
+        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
+        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
         ${isGroup?' <span class="wk3-vsb">VS</span>':''}${grpBtn}
       </span>
       <span class="wk3-meta">
@@ -675,10 +675,10 @@ function _wnSnInlineCell(snRec, rowId) {
   // Φέτα 1β: ίδια τυπογραφία διαδρομής με το αριστερό σκέλος (wk3-route)
   return `<span class="wk3-route">
       <b class="wk3-ld" title="Ημ. φόρτωσης ανόδου">${loadDt||''}</b>
-      <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
+      <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
       <span class="wk3-sep">→</span>
       <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-      <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
+      <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
     </span>
     <span class="wk3-meta">
       <span class="wk3-pal">${pals?pals+'p':''}</span>
@@ -742,10 +742,10 @@ function _wnSnRowHTML(row, snNo) {
     <div class="wk3-leg">
       <span class="wk3-route">
         <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
+        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
+        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
         ${isGroupage?' <span class="wk3-vsb">VS</span>':''}
       </span>
       <span class="wk3-meta">
@@ -819,17 +819,22 @@ function _wnFmt(s) {
 // θα φανεί. Το «Masoutis 24.00-06.00» του Excel γράφεται 24.00, δηλαδή
 // μεσάνυχτα — αν καταχωρηθεί έτσι, χάνεται. Προτιμότερο από το να δείχνουμε
 // «00:00» σε κάθε γραμμή που απλώς δεν έχει ώρα.
-function _wnTime(s) {
-  if (!s) return '';
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return '';
-  const h = d.getHours(), m = d.getMinutes();
-  if (!h && !m) return '';
-  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
-}
-function _wnHH(s) {
-  const t = _wnTime(s);
-  return t ? `<span class="wk3-hh" title="Καρφωμένο ραντεβού">${t}</span>` : '';
+// _wnTime αφαιρέθηκε μαζί με το αυτόματο σήμα — το ραντεβού δεν εξάγεται
+// πλέον από το DateTime.
+
+// ΔΙΟΡΘΩΣΗ owner (10/8): το σήμα ώρας ΔΕΝ βγαίνει πλέον αυτόματα από το
+// DateTime. Ένα ραντεβού είναι ΑΠΟΦΑΣΗ, όχι παρενέργεια του ότι η εγγραφή
+// τυχαίνει να έχει ώρα μέσα της — και εμφανιζόταν παντού χωρίς να το έχει
+// ζητήσει κανείς.
+//
+// Θα ξαναζωντανέψει διαβάζοντας το ΝΕΟ πεδίο «Loading/Delivery Appointment»
+// (db/migrations/2026-08-10_nl_appointments.sql), που ορίζεται ρητά με δεξί
+// κλικ. Μέχρι να περάσει το migration ΚΑΙ ο χάρτης του Worker, το πεδίο δεν
+// ζητείται καθόλου: αίτημα για ανύπαρκτο πεδίο γυρίζει 422 και ρίχνει όλη
+// τη σελίδα.
+function _wnHH(appt) {
+  if (!appt) return '';
+  return `<span class="wk3-hh" title="Ώρα ραντεβού">${escapeHtml(String(appt))}</span>`;
 }
 
 function _wnFmtFull(s) {
