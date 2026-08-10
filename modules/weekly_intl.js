@@ -471,7 +471,7 @@ function _wiPaint(){
         <span id="wi-crossweek-in"></span>
         <div class="wk3-acts">
           ${unmatched>0?`<button class="wk3-ab" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες" onclick="_wiAutoMatch()">${_ico('zap',13)} Ταίριασμα</button>`:''}
-          <button class="wk3-ab" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Παραγγελία</button>
+          <button class="btn btn-primary btn-sm" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">${_ico('plus',13)} New Order</button>
           <button class="wk3-ab" onclick="_wiToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (όρια εβδομάδας, εκτέλεση)">${_ico('eye',13)} Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
           <button class="wk3-ab" onclick="_wiPrintWeek()">${_ico('file_text',13)} Εκτύπωση</button>
           <button class="wk3-ab" onclick="_wiExportCSV()">CSV</button>

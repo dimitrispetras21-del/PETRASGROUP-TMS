@@ -299,7 +299,7 @@ function _wnPaint() {
         ${pending>0?`<button class="wk3-t alert" title="Κάθοδοι χωρίς ανάθεση — κλικ: πήγαινε στην πρώτη" onclick="${(()=>{const id=_firstRow(r=>r.type==='northsouth'&&!r.saved);return id?`_ccJump('${id}')`:'';})()}"><b>${pending}</b> εκκρεμή</button>`:''}
         <span id="wn-pickups-q"></span>
         <div class="wk3-acts">
-          <button class="wk3-ab" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Παραγγελία</button>
+          <button class="btn btn-primary btn-sm" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">${_wnI('plus',13)} New Order</button>
           <button class="wk3-ab" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής">${_wnI('eye',13)} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
           <button class="wk3-ab" onclick="_wnPrintWeek()">${_wnI('file_text',13)} Εκτύπωση</button>
           <button class="wk3-ab" onclick="_wnExportCSV()">CSV</button>
