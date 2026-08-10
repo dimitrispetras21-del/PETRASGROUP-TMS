@@ -560,7 +560,13 @@ function _wnRowHTML(row, i) {
   const pill = _wnPill(row);
 
   // Matched S→N preview (right column)
-  const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(row.id);
+  // Φέτα 2: δύο ΔΙΑΦΟΡΕΤΙΚΑ κενά, όχι ένα.
+  //   «δεν υπάρχει σκέλος» — συνεργάτης με ανάθεση, μονή διαδρομή. Το Χ του
+  //   Excel. Δεν καλεί σε drag· δείχνει —, γιατί δεν λείπει τίποτα.
+  //   «δεν ταιριάχτηκε ακόμη» — όλα τα υπόλοιπα. Καλεί σε drag.
+  // Η σύμβαση είναι ήδη του σπιτιού: .wk3-leg.bgap στο intl (owner, 9/8).
+  const isOneWay = !sn && row.saved && isPartner;
+  const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay);
 
   // Badges
   const badges = _wnBadges(f);
@@ -578,10 +584,10 @@ function _wnRowHTML(row, i) {
     <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">
       <span class="wk3-route">
         <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>
+        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>
+        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
         ${isGroup?' <span class="wk3-vsb">VS</span>':''}
       </span>
       <span class="wk3-meta">
@@ -594,7 +600,7 @@ function _wnRowHTML(row, i) {
       <button class="wk3-prt" title="Εκτύπωση εντολής"
               onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
     </div>
-    <div class="wk3-leg${sn?'':' void'}" id="wn-ci-${row.id}"
+    <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}" id="wn-ci-${row.id}"
          onclick="event.stopPropagation()"
          ondragover="event.preventDefault();document.getElementById('wn-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wn-ci-${row.id}').classList.remove('dh')"
@@ -619,10 +625,10 @@ function _wnSnInlineCell(snRec, rowId) {
   // Φέτα 1β: ίδια τυπογραφία διαδρομής με το αριστερό σκέλος (wk3-route)
   return `<span class="wk3-route">
       <b class="wk3-ld" title="Ημ. φόρτωσης ανόδου">${loadDt||''}</b>
-      <span class="frm">${escapeHtml(fromStr)}</span>
+      <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
       <span class="wk3-sep">→</span>
       <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-      <span class="to">${escapeHtml(toStr)}</span>
+      <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
     </span>
     <span class="wk3-meta">
       <span class="wk3-pal">${pals?pals+'p':''}</span>
@@ -632,9 +638,11 @@ function _wnSnInlineCell(snRec, rowId) {
             onclick="event.stopPropagation();_wnUnmatch(${rowId},'${snRec.id}')">✕</button>`;
 }
 
-/* ── Drag-here cell ───────────────────────────────────────────────── */
-function _wnDragCell(rowId) {
-  return `<span style="font-size:10px;color:rgba(196,207,219,0.30);font-style:italic">σύρε άνοδο εδώ</span>`;
+/* ── Κενό σκέλος ανόδου — δύο διαφορετικά νοήματα (Φέτα 2) ───────── */
+function _wnDragCell(isOneWay) {
+  return isOneWay
+    ? `<span class="nolg" title="Μονή διαδρομή — δεν υπάρχει σκέλος ανόδου">—</span>`
+    : `<span style="font-size:10px;color:rgba(196,207,219,0.30);font-style:italic">σύρε άνοδο εδώ</span>`;
 }
 
 /* ── S→N standalone row ──────────────────────────────────────────── */
@@ -684,10 +692,10 @@ function _wnSnRowHTML(row, snNo) {
     <div class="wk3-leg">
       <span class="wk3-route">
         <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>
+        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading DateTime'])}
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>
+        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery DateTime'])}
         ${isGroupage?' <span class="wk3-vsb">VS</span>':''}
       </span>
       <span class="wk3-meta">
@@ -748,6 +756,30 @@ function _wnFmt(s) {
   if (!s) return '—';
   try { const p=toLocalDate(s).split('-'); return `${p[2]}/${p[1]}`; }
   catch { return s; }
+}
+
+/* ── Φέτα 2 (Δ5): ώρα ΜΟΝΟ όπου υπάρχει ραντεβού ─────────────────── */
+//
+// Στο Excel οι ώρες ζουν μέσα στο κείμενο: «LIDL ΑΤΤ (ΠΑΡΑΔΟΣΗ ΣΤΙΣ 10.00)»,
+// «ΦΑΓΕ 23.00». Δεν τις έχουν όλες οι γραμμές — οι περισσότερες είναι απλώς
+// «εκείνη τη μέρα». Μια καταχώρηση χωρίς ώρα αποθηκεύεται 00:00, οπότε το
+// μεσάνυχτα είναι το σήμα «δεν δόθηκε ώρα» και δεν εμφανίζεται.
+//
+// Συνέπεια που αξίζει να ξέρουμε: πραγματικό ραντεβού ακριβώς στις 00:00 δεν
+// θα φανεί. Το «Masoutis 24.00-06.00» του Excel γράφεται 24.00, δηλαδή
+// μεσάνυχτα — αν καταχωρηθεί έτσι, χάνεται. Προτιμότερο από το να δείχνουμε
+// «00:00» σε κάθε γραμμή που απλώς δεν έχει ώρα.
+function _wnTime(s) {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return '';
+  const h = d.getHours(), m = d.getMinutes();
+  if (!h && !m) return '';
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+}
+function _wnHH(s) {
+  const t = _wnTime(s);
+  return t ? `<span class="wk3-hh" title="Καρφωμένο ραντεβού">${t}</span>` : '';
 }
 
 function _wnFmtFull(s) {
