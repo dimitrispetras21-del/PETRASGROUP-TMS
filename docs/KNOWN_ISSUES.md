@@ -165,6 +165,35 @@ desktop UI shrunk. Not a regression, just a gap.
 
 ## 🟢 Low / by design
 
+### C1. Deploy φαίνεται «να μην έγινε» — CDN cache του GitHub Pages
+**Πού**: παντού· εμφανίζεται μετά από κάθε push.
+
+Το GitHub Pages σερβίρει μέσω CDN που κρατά την παλιά έκδοση για λίγα λεπτά.
+Το `?v=TIMESTAMP` στο `app.html` σπάει το cache του **αρχείου**, αλλά αν το
+ίδιο το `app.html` έρθει από το CDN cache, ο browser ζητά την **παλιά** τιμή
+`?v=` — οπότε δεν αλλάζει τίποτα, όσα refresh κι αν κάνεις.
+
+**Το σύμπτωμα είναι ύπουλο**: η σελίδα δουλεύει κανονικά, απλώς με τον παλιό
+κώδικα. Μοιάζει ακριβώς σαν να απέτυχε η αλλαγή. Στις 10/08 χάθηκε αρκετή ώρα
+ψάχνοντας «δύο κουμπιά» και «διπλά σημεία» που είχαν ήδη διορθωθεί.
+
+**Πριν υποθέσεις ότι έσπασε ο κώδικας:**
+1. Ανώνυμο παράθυρο (`Cmd+Shift+N`) — παρακάμπτει το τοπικό cache.
+2. Έλεγξε τι σερβίρεται **πραγματικά**:
+   ```bash
+   curl -s "https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/app.html" | grep "orders_natl.js?v="
+   ```
+   Αν η τιμή `?v=` διαφέρει από το repo, είναι cache — όχι σφάλμα.
+3. Σύγκρινε το δημοσιευμένο με το τοπικό:
+   ```bash
+   git show origin/main:modules/<αρχείο>.js | grep "<το ύποπτο>"
+   ```
+
+**Γιατί δεν το «διορθώνουμε»**: είναι συμπεριφορά του GitHub Pages, όχι δικός
+μας κώδικας. Η λύση θα ήταν custom domain με δικούς μας cache headers.
+Καταγράφεται για να μη διαγιγνώσκεται ξανά ως σφάλμα εφαρμογής.
+
+
 - **Inline `style=""` everywhere**. The codebase predates the design-token
   layer (`tms-stat-card`, `tms-pill` etc.). New code uses tokens; old code
   still has inline. Refactor opportunity, not a bug.
