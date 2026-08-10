@@ -107,8 +107,13 @@ async function _wnLoadAll() {
       'Direction','Loading DateTime','Delivery DateTime','Truck','Trailer','Driver','Partner',
       'Client','Total Pallets','Goods','Status','Source Type','Source Record','Matched Load',
       'Is Partner Trip','Partner Truck Plates','Partner Rate',
+      // Φ1 (Α3): ζητούσε 1..5 ενώ ο renderer κάνει loop 1..10 (_wnNlPickupSummary /
+      // _wnNlDeliverySummary) και ο Worker σερβίρει 1..10. Φορτίο με 6+ σημεία
+      // εμφανιζόταν κομμένο ΣΙΩΠΗΛΑ — καμία ένδειξη ότι λείπουν στάσεις.
       'Pickup Location 1','Pickup Location 2','Pickup Location 3','Pickup Location 4','Pickup Location 5',
+      'Pickup Location 6','Pickup Location 7','Pickup Location 8','Pickup Location 9','Pickup Location 10',
       'Delivery Location 1','Delivery Location 2','Delivery Location 3','Delivery Location 4','Delivery Location 5',
+      'Delivery Location 6','Delivery Location 7','Delivery Location 8','Delivery Location 9','Delivery Location 10',
     ] }, false),
   ]);
 
