@@ -12,26 +12,38 @@ _v1 · 2026-08-10 · συντάκτης: Claude · βασίζεται στο κ�
   (Cloudflare) — όλα τα tables στη Supabase από το cutover 28/7.
 - **Κανάλι build (locked §10.3)**: Claude γράφει SQL migrations → ο owner τα
   τρέχει στο Supabase SQL editor. Κώδικας API στο δικό μας repo.
-- **⚠ Constraint**: ΟΧΙ εξάρτηση από χειροκίνητα patches στο Worker 2 — τα
-  σβήνει το επόμενο `wrangler deploy` του satsilem (docs/worker/README.md).
+- **Κυριότητα Worker 2 (owner, 10/8 βράδυ)**: η συνεργασία με satsilem /
+  Valuedriven ΟΛΟΚΛΗΡΩΘΗΚΕ — παρέδωσε το v2 foundation και έκλεισε. Το
+  Worker 2 περνά σε δική μας κυριότητα: source of truth γίνεται το repo μας,
+  τα deploys γίνονται από εμάς με wrangler. Το split-brain ρίσκο του
+  docs/worker/README.md παύει να υφίσταται μόλις ολοκληρωθεί η υιοθεσία (Φ0).
 - **Auth σήμερα (από snapshot Worker 2)**: custom JWT (username+role claims,
   JWT_SECRET), ρόλοι `owner / management / accountant / dispatcher /
   warehouse`, `can(role, table, method)` PERMISSIONS map, Worker → PostgREST
   με `SUPABASE_SERVICE_KEY`, audit log σε κάθε mutation. Οι dispatchers
   αποκλείονται ρητά από cost/P&L tables (σενάριο R-04).
 
-## 1. Backend home — ΑΝΟΙΧΤΟ (δεν μπλοκάρει τα υπόλοιπα)
+## 1. Backend home — ✅ ΑΠΟΦΑΣΙΣΤΗΚΕ (owner, 2026-08-10)
 
-| Επιλογή | Υπέρ | Κατά |
-|---|---|---|
-| **A. Δικός μας Worker `petras-costs-backend`** (σύσταση) | Πλήρης έλεγχος deploy (wrangler από το repo μας)· μηδενική εμπλοκή με satsilem· ίδιο JWT secret ⇒ ίδια sessions | Δεύτερο service (ένα ακόμη URL/secret set) |
-| B. Επέκταση Worker 2 μέσω satsilem | Ένα ενιαίο API | Κάθε αλλαγή περνά από τρίτο· δικός τους ρυθμός deploy |
-| Γ. Frontend → Supabase απευθείας + RLS | Χωρίς Worker | Απαιτεί Supabase Auth/JWT ανά χρήστη — αλλαγή του auth όλης της εφαρμογής |
+**Επέκταση του Worker 2, με δική μας κυριότητα.** Ο satsilem παραδόθηκε το
+project και η συνεργασία έκλεισε· το ζητούμενο ήταν να χτίσει την
+αρχιτεκτονική — **πατάμε πάνω σε αυτή**: ίδιο Worker, ίδιο JWT/auth, ίδιο
+PERMISSIONS pattern, ίδιο facade + audit. Τα Costs endpoints (§4, §6)
+μπαίνουν ως νέα routes στον ΙΔΙΟ κώδικα. Ένα API, ένα deploy, καμία αλλαγή
+στο auth.
 
-**Κοινό και στις 3**: όλο το §2 (schema), §3 (lifecycle), §4 (allocation),
-§6 (ροές) σχεδιάζονται ίδια. Μόνο το transport layer αλλάζει. Η επιλογή Α
-επαναχρησιμοποιεί το JWT του Worker 2: ο Costs Worker επαληθεύει το ΙΔΙΟ
-token (ίδιο JWT_SECRET ως CF secret) ⇒ ο χρήστης δεν ξανακάνει login.
+**Προαπαιτούμενο — Φ0 «Υιοθεσία Worker 2»:**
+1. Κατέβασμα του ΤΡΕΧΟΝΤΟΣ deployed script με το CF API (εντολή στο
+   docs/worker/README.md) — και για staging (`petras-tms-backend-staging`)
+   και για το production Worker.
+2. Το script μπαίνει στο repo μας ως source (`worker/src/`) + `wrangler.toml`·
+   τα secrets (JWT_SECRET, SUPABASE_SERVICE_KEY) ΜΕΝΟΥΝ στο Cloudflare — δεν
+   αντιγράφονται πουθενά.
+3. Πρώτο no-op deploy από εμάς (wrangler) + smoke test (login, ένα GET) ⇒
+   επιβεβαίωση κυριότητας. Από εδώ και πέρα ΚΑΘΕ αλλαγή: repo → wrangler,
+   ποτέ dashboard editor (αυτό ήταν η πηγή του split-brain).
+4. Ευκαιρία: τα χειροκίνητα TABLE_MAP fields του 5/8 (TRUCKS/TRAILERS —
+   docs/worker/README.md) περνούν επιτέλους στο source μόνιμα.
 
 ## 2. Data model (SQL — Supabase)
 
@@ -253,7 +265,8 @@ TRIP PnL / Partner PnL / Κατανάλωση ──GET views──▶ read-only
 
 | Φάση | Παραδοτέο | Εξαρτήσεις |
 |---|---|---|
-| **Φ1** | SQL migration 001 (schema §2) · endpoints RT create/close/list · χειροκίνητη καταχώρηση (Shape C) · TRIP PnL read (views) | απόφαση backend home |
+| **Φ0** | Υιοθεσία Worker 2 (§1): source στο repo + wrangler.toml + no-op deploy + smoke test · μόνιμη ενσωμάτωση των χειροκίνητων TABLE_MAP fields | CF πρόσβαση (την έχει ο owner) |
+| **Φ1** | SQL migration 001 (schema §2) · routes RT create/close/list στο Worker · χειροκίνητη καταχώρηση (Shape C) · TRIP PnL read (views) | Φ0 |
 | **Φ2** | Planners auto-create RT (weekly_intl/natl integration) · sync rules §3 | Φ1 |
 | **Φ3** | DKV parser (machine PDF) · allocation engine · reconciliation · review bucket UI | Φ1 |
 | **Φ4** | DADI μέσω scan pipeline (OCR + verify) | Φ3 |
@@ -263,9 +276,11 @@ Clean start (locked): κανένα backfill — PnL μετράει από το g
 
 ## 8. Ανοιχτά πριν τη Φ1
 
-1. **Backend home** (§1) — η μόνη απόφαση που μπλοκάρει κώδικα.
-2. Επιβεβαίωση με satsilem ότι το πρόθεμα `ct_` δεν συγκρούεται με δικά τους
-   σχέδια (ένα μήνυμα, όχι dependency).
+1. ~~Backend home~~ → ✅ αποφασίστηκε 10/8 (§1: Worker 2, δική μας κυριότητα).
+2. **Φ0 — υιοθεσία Worker 2**: κατέβασμα deployed scripts (staging +
+   production) με το CF API, wrangler setup, no-op deploy. Χρειάζεται μόνο
+   την CF πρόσβαση του owner (dashboard ή API token).
 3. FKs προς `trucks/drivers/partners/orders/nat_loads`: να επιβεβαιωθούν τα
    πραγματικά PK types στη Supabase (το σχέδιο υποθέτει bigint identity — αν
-   είναι text/uuid, αλλάζουν μόνο οι δηλώσεις FK, τίποτα άλλο).
+   είναι text/uuid, αλλάζουν μόνο οι δηλώσεις FK, τίποτα άλλο). Ένα SELECT
+   στο information_schema στη Φ0 το κλείνει.

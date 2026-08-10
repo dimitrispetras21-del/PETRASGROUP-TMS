@@ -193,8 +193,17 @@ _Επόμενες εγγραφές: προσθέτονται από κάτω μ�
 **Ίδια μέρα, αργότερα:** demo v3 (φθορά auto, DADI OCR flow, κλείσιμο trip,
 Ρυθμίσεις, CSV) + συντάχθηκε το **αρχιτεκτονικό σχέδιο**
 → `docs/COSTS_ARCHITECTURE.md` (schema ct_*, lifecycle, allocation engine,
-ρόλοι, φάσεις Φ1–Φ5)· ανοιχτά πριν τη Φ1: backend home, ok πρόθεμα ct_ από
-satsilem, επιβεβαίωση PK types στη Supabase.
+ρόλοι, φάσεις Φ1–Φ5).
+
+**Backend home — ΚΛΕΙΔΩΣΕ (owner, 10/8 βράδυ):** «ο satsilem ετοίμασε ένα
+project, διόρθωσε αρχιτεκτονικά ζητήματα και τελείωσε... το θέμα ήταν να
+χτίσει την αρχιτεκτονική, άρα πρέπει να πατήσουμε πάνω σε αυτά που έχτισε».
+⇒ Η συνεργασία με satsilem/Valuedriven ολοκληρώθηκε. Τα Costs χτίζονται ΩΣ
+ΕΠΕΚΤΑΣΗ ΤΟΥ WORKER 2 (ίδιο auth/PERMISSIONS/facade/audit), με **μεταφορά
+κυριότητας σε εμάς**: Φ0 = υιοθεσία (deployed script → repo source →
+wrangler deploys από εμάς· τέλος τα dashboard edits). Καταργείται η ιδέα
+ξεχωριστού petras-costs-backend Worker και το «μήνυμα στον satsilem» για το
+ct_ πρόθεμα.
 
 ## 2026-08-09 — Kickoff: ξεκινά το build των COSTS
 
