@@ -779,11 +779,36 @@ async function _syncGroupageLinesFromNO(noId, noFields) {
   // We now distribute the remainder to the first N stops so the sum always equals totalPal.
   const totalPal = noFields['Pallets'] || 0;
   const palPerLoc = {};
+
+  // ── Φ3α (SPEC ανοιχτό #3): οι ΚΑΤΑΓΕΓΡΑΜΜΕΝΕΣ παλέτες προηγούνται ──────
+  //
+  // Ο μερισμός από κάτω μοιράζει το σύνολο ισόποσα στα σημεία. Είναι εικασία:
+  // «31 παλέτες σε 3 σημεία» γίνεται 11+10+10 ακόμη κι όταν η αλήθεια είναι
+  // 20+8+3. Το αποτέλεσμα φεύγει στα GROUPAGE LINES, από εκεί στο Pick Ups,
+  // και ο άνθρωπος που φορτώνει βλέπει λάθος νούμερα.
+  //
+  // Η φόρμα γράφει ήδη τις πραγματικές παλέτες κάθε στάσης στα ORDER_STOPS.
+  // Αυτές είναι η αλήθεια — τις διαβάζουμε πρώτα.
+  const _stopPal = {};
+  try {
+    const _noStops = await stopsLoad(noId, F.STOP_PARENT_NAT);
+    (_noStops || []).forEach(s => {
+      if (s.fields?.[F.STOP_TYPE] !== 'Loading') return;
+      const lid = _lid((s.fields?.[F.STOP_LOCATION]||[])[0]) || _lid(s.fields?.[F.STOP_LOCATION]);
+      const p = s.fields?.[F.STOP_PALLETS];
+      if (lid && p != null) _stopPal[lid] = p;
+    });
+  } catch(e) { console.warn('GL: ανάγνωση ORDER_STOPS απέτυχε, πέφτω σε μερισμό', e); }
+
+  // Ο μερισμός μένει ΜΟΝΟ ως έσχατο δίχτυ, για παραγγελίες που γράφτηκαν
+  // πριν καταγράφονται παλέτες ανά στάση. Δεν τον αφαιρώ: το GL.Pallets
+  // τροφοδοτεί τον σχεδιαστή του Pick Ups, και ένα κενό εκεί θα του έσπαγε
+  // τη λογική — σε αντίθεση με τα ORDER_STOPS, όπου το κενό είναι ορατό.
   const base = pickupLocs.length > 0 ? Math.floor(totalPal / pickupLocs.length) : totalPal;
   const remainder = pickupLocs.length > 0 ? (totalPal - base * pickupLocs.length) : 0;
   pickupLocs.forEach((locId, i) => {
+    if (_stopPal[locId] != null) { palPerLoc[locId] = _stopPal[locId]; return; }
     const explicit = noFields[`Loading Pallets ${i+1}`] || noFields['Loading Pallets'] || 0;
-    // Explicit field wins; otherwise base + 1 for the first `remainder` stops
     palPerLoc[locId] = explicit || (base + (i < remainder ? 1 : 0));
   });
 
