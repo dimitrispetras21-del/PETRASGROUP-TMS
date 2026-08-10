@@ -451,7 +451,7 @@ function _wiPaint(){
   const sugN=expRows.filter(r=>!r.saved&&_wk3Suggest(r)).length;
 
   document.getElementById('content').innerHTML=`
-    <div class="wk3 ${_wiQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
+    <div class="wk3 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}" style="display:block;width:100%">
     <!-- BUILD v3 Φάση Α: κεφαλή v3.1 — sheet tabs + tally μίας γραμμής.
          Αντικαθιστά week-bar, Command Center, page-header chips: η ίδια
          πληροφορία, ΜΙΑ φορά, κλικ = μετάβαση. -->
@@ -520,11 +520,11 @@ function _wiPaint(){
       <main class="wk3-sheet">
         <div class="wk3-cols">
           <div class="c"></div>
-          <div class="c fc" title="Εσωτερικό σκέλος προς Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΠΡΟΣ ΒΕΡΟΙΑ</div>
+          <div class="c fc" style="cursor:pointer" title="Εθνικό σκέλος προς Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης" onclick="_wk3FeedTog('fl')"><span class="fc-ch">◂</span> ΠΡΟΣ ΒΕΡΟΙΑ</div>
           <div class="c cm">ΕΞΑΓΩΓΗ <span class="n">${expN}</span><span class="hint" title="Δεξί κλικ: ομαδοποίηση groupage (βάση: το πρώτο-παραδιδόμενο)">ⓘ</span></div>
           <div class="c cm" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
           <div class="c cm">ΕΙΣΑΓΩΓΗ <span class="n">${impN}</span><span class="hint" title="Σύρε εισαγωγή σε εξαγωγή για ταίριασμα">ⓘ</span></div>
-          <div class="c fc" title="Εσωτερική διανομή από Βέροια — επεξεργασία ΜΟΝΟ στο Weekly National">ΑΠΟ ΒΕΡΟΙΑ</div>
+          <div class="c fc" style="cursor:pointer" title="Εθνική διανομή από Βέροια — κλικ: άνοιγμα/κλείσιμο στήλης" onclick="_wk3FeedTog('fr')">ΑΠΟ ΒΕΡΟΙΑ <span class="fc-ch">▸</span></div>
         </div>
         <div id="wi-rows">
           ${rows.length?_wiAllRowsHTML():`
@@ -2433,6 +2433,14 @@ window._wiImpCtx = _wiImpCtx;
 window._wiRotAdd = _wiRotAdd;
 window._wiRotUnlink = _wiRotUnlink;
 window._wk3PickDate = _wk3PickDate;
+// Αναδιπλούμενα εθνικά πάνελ (owner 10/8) — ανεξάρτητα, με μνήμη ανά χρήστη
+function _wk3FeedTog(side){
+  const k='tms_wk3_'+side, off=localStorage.getItem(k)!=='0';
+  localStorage.setItem(k, off?'0':'1');
+  const el=document.querySelector('.wk3');
+  if(el) el.classList.toggle(side==='fl'?'fl-off':'fr-off', off);
+}
+window._wk3FeedTog = _wk3FeedTog;
 window._wiImpShift = _wiImpShift;
 window._wiImpGroup = _wiImpGroup;
 
