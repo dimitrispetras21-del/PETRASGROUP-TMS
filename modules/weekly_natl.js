@@ -809,8 +809,14 @@ function _wnRowHTML(row, i) {
   // Το πλήθος και το σύνολο τα ξέρουμε ήδη από τη γραμμή — καμία επιπλέον
   // κλήση. Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί το σήμα, γιατί
   // ζει στα ORDER_STOPS και δεν αξίζει να κατεβαίνει για όλη την εβδομάδα.
-  let _nDel = 0;
-  for (let k = 1; k <= 10; k++) if ((f[`Delivery Location ${k}`]||[]).length) _nDel++;
+  const _delIds = [];
+  for (let k = 1; k <= 10; k++) {
+    const arr = f[`Delivery Location ${k}`];
+    if (!arr?.length) continue;
+    const id = arr[0]?.id || arr[0];
+    if (id && _delIds.indexOf(id) === -1) _delIds.push(id);
+  }
+  const _nDel = _delIds.length;
   const grpBtn = _nDel > 1
     ? `<button class="wk3-grpb" id="wn-grpb-${row.id}" data-n="${_nDel}" data-p="${pals}"
         title="${_nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
@@ -886,11 +892,13 @@ async function _wnToggleStops(rowId, nlId) {
       // δείξουμε μηδενικά που θα διαβάζονταν ως γεγονός.
       const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nlId);
       const ff = rec?.fields || {};
-      const names = [];
+      const names = [], seenL = [];
       for (let k = 1; k <= 10; k++) {
         const arr = ff[`Delivery Location ${k}`];
         if (!arr?.length) continue;
         const lid = arr[0]?.id || arr[0];
+        if (!lid || seenL.indexOf(lid) !== -1) continue;
+        seenL.push(lid);
         names.push(WNATL.data._locMap?.[lid] || _wnLocName(lid) || '—');
       }
       box.innerHTML = names.length
@@ -1042,11 +1050,16 @@ function _wnLocName(locId) {
 
 // NL location summaries using _locMap
 function _wnNlPickupSummary(f) {
-  const locs = [];
+  // owner 10/8: ίδια τοποθεσία δύο φορές = ΜΙΑ στάση για τον οδηγό.
+  // Η αφαίρεση διπλών αφορά ΜΟΝΟ την εμφάνιση — οι εγγραφές (GL, ORDER_STOPS)
+  // μένουν χωριστές, γιατί εμπορικά είναι δύο διαφορετικές παραδόσεις.
+  const seen = [], locs = [];
   for (let i = 1; i <= 10; i++) {
     const arr = f[`Pickup Location ${i}`];
     if (!arr?.length) continue;
     const locId = arr[0]?.id || arr[0];
+    if (!locId || seen.indexOf(locId) !== -1) continue;
+    seen.push(locId);
     const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
     if (name) locs.push(name.split(',')[0]);
   }
@@ -1054,11 +1067,16 @@ function _wnNlPickupSummary(f) {
 }
 
 function _wnNlDeliverySummary(f) {
-  const locs = [];
+  // owner 10/8: ίδια τοποθεσία δύο φορές = ΜΙΑ στάση για τον οδηγό.
+  // Η αφαίρεση διπλών αφορά ΜΟΝΟ την εμφάνιση — οι εγγραφές (GL, ORDER_STOPS)
+  // μένουν χωριστές, γιατί εμπορικά είναι δύο διαφορετικές παραδόσεις.
+  const seen = [], locs = [];
   for (let i = 1; i <= 10; i++) {
     const arr = f[`Delivery Location ${i}`];
     if (!arr?.length) continue;
     const locId = arr[0]?.id || arr[0];
+    if (!locId || seen.indexOf(locId) !== -1) continue;
+    seen.push(locId);
     const name = WNATL.data._locMap?.[locId] || _wnLocName(locId);
     if (name) locs.push(name.split(',')[0]);
   }
