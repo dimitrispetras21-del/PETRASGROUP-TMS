@@ -955,14 +955,50 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
     const _temp  = noFields['Temperature °C'] ?? null;
     const _ref   = noFields['Reference'] || null;
 
+    // ── Φ2 (Α1): παλέτες ΑΝΑ ΣΤΑΣΗ, όχι το σύνολο σε κάθε στάση ──────────
+    //
+    // Πριν: `pallets: _pals` έγραφε το ΣΥΝΟΛΟ της παραγγελίας σε ΚΑΘΕ στάση.
+    // Παραγγελία 20p σε 3 σημεία έγραφε 20+20+20 = 60p στα ORDER_STOPS, και
+    // κάθε τι που τα αθροίζει έβλεπε τριπλάσιο φορτίο.
+    //
+    // Δεν είναι συστημικό: τα διεθνή το κάνουν ήδη σωστά (orders_intl.js:1435,
+    // :1442 γράφουν parseFloat(pal) ανά στάση). Τα εθνικά έμειναν πίσω.
+    //
+    // Πηγή αλήθειας = τα ORDER_STOPS της ΙΔΙΑΣ της παραγγελίας, όπου η φόρμα
+    // έχει ήδη γράψει τις παλέτες κάθε σημείου.
+    const _byStop = {};
+    try {
+      const _noStops = await stopsLoad(noId, F.STOP_PARENT_NAT);
+      (_noStops || []).forEach(s => {
+        const t = s.fields?.[F.STOP_TYPE], n = s.fields?.[F.STOP_NUMBER], p = s.fields?.[F.STOP_PALLETS];
+        if (t && p != null) _byStop[t + '#' + (n || 0)] = p;
+      });
+    } catch(e) { console.warn('Α1: ανάγνωση ORDER_STOPS της NO απέτυχε', e); }
+
+    let _nLoad = 0, _nUnload = 0;
+    for (let i = 1; i <= 10; i++) {
+      if (_lid(noFields[`Pickup Location ${i}`]))   _nLoad++;
+      if (_lid(noFields[`Delivery Location ${i}`])) _nUnload++;
+    }
+
+    // ΜΙΑ στάση → το σύνολο είναι όντως της στάσης.
+    // ΠΟΛΛΕΣ χωρίς αναλυτικά δεδομένα → null (κενό), ΠΟΤΕ το σύνολο σε
+    // καθεμία: το λάθος νούμερο είναι χειρότερο από το κανένα, γιατί
+    // αθροίζεται σιωπηλά σε πολλαπλάσιο φορτίο.
+    const _palFor = (type, i, count) => {
+      const v = _byStop[type + '#' + i];
+      if (v != null) return v;
+      return count === 1 ? _pals : null;
+    };
+
     for (let i = 1; i <= 10; i++) {
       const pId = _lid(noFields[`Pickup Location ${i}`]);
       if (pId) _nlStops.push({ stopNumber: i, stopType: 'Loading', locationId: pId,
-        pallets: _pals, dateTime: noFields['Loading DateTime'] || null,
+        pallets: _palFor('Loading', i, _nLoad), dateTime: noFields['Loading DateTime'] || null,
         clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
       const dId = _lid(noFields[`Delivery Location ${i}`]);
       if (dId) _nlStops.push({ stopNumber: i, stopType: 'Unloading', locationId: dId,
-        pallets: _pals, dateTime: noFields['Delivery DateTime'] || null,
+        pallets: _palFor('Unloading', i, _nUnload), dateTime: noFields['Delivery DateTime'] || null,
         clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
     }
     if (_nlStops.length) {
