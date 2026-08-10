@@ -814,7 +814,7 @@ function _wnRowHTML(row, i) {
   const grpBtn = _nDel > 1
     ? `<button class="wk3-grpb" id="wn-grpb-${row.id}" data-n="${_nDel}" data-p="${pals}"
         title="${_nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
-        onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${_nDel} · ${pals}p</button>`
+        onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${_nDel} σημεία</button>`
     : '';
 
   // Badges
@@ -837,7 +837,7 @@ function _wnRowHTML(row, i) {
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
         <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
-        ${isGroup?' <span class="wk3-vsb">VS</span>':''}${grpBtn}
+        ${grpBtn}
       </span>
       <span class="wk3-meta">
         <span class="wk3-pal">${pals?pals+'p':''}</span>
@@ -869,11 +869,11 @@ async function _wnToggleStops(rowId, nlId) {
 
   if (box.style.display !== 'none') {           // κλείσιμο
     box.style.display = 'none';
-    btn.textContent = `▸ ${n} · ${p}p`;
+    btn.textContent = `▸ ${n} σημεία`;
     return;
   }
   box.style.display = '';
-  btn.textContent = `▾ ${n} · ${p}p`;
+  btn.textContent = `▾ ${n} σημεία`;
   if (box.dataset.loaded === '1') return;
 
   box.innerHTML = '<span class="ld">φόρτωση στάσεων…</span>';
@@ -999,7 +999,7 @@ function _wnSnRowHTML(row, snNo) {
         <span class="wk3-sep">→</span>
         <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
         <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
-        ${isGroupage?' <span class="wk3-vsb">VS</span>':''}
+        
       </span>
       <span class="wk3-meta">
         <span class="wk3-pal">${pals?pals+'p':''}</span>
