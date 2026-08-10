@@ -360,6 +360,22 @@ function _wiBuildRows(){
 // actually makes. See docs/design/DEEP_AUDIT_2026-08-04/weekly_intl.md WI-7.
 // BUILD v3 Φάση Α: sheet tabs — το νοητικό μοντέλο του WEEKLY PLAN xlsx
 // (καρτέλες φύλλων), εγκεκριμένο πρωτότυπο v3.1. Ίδια λογική week±.
+/* Νέα παραγγελία ΧΩΡΙΣ έξοδο από το εβδομαδιαίο (owner 10/08).
+   Μετά το κλείσιμο της φόρμας ξαναζωγραφίζουμε: αλλιώς η νέα παραγγελία δεν
+   εμφανίζεται και ο χρήστης νομίζει ότι χάθηκε. Ο observer πιάνει και τους δύο
+   τρόπους απόκρυψης (style ή class) — αν δεν πυροδοτηθεί, το χειρότερο είναι
+   να μην ανανεωθεί, όπως θα γινόταν και χωρίς αυτόν. */
+function _wiNewOrder() {
+  openIntlCreate();
+  const ov = document.getElementById('modalOverlay');
+  if (!ov) return;
+  const visible = () => ov.style.display !== 'none' && !ov.hidden;
+  const obs = new MutationObserver(() => {
+    if (!visible()) { obs.disconnect(); renderWeeklyIntl(); }
+  });
+  obs.observe(ov, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+}
+
 function _wk3Tabs(currentWeek) {
   const today = _wiCurrentWeek();
   const step = d => `<button type="button" class="wk3-step" onclick="WINTL.week=${currentWeek+d};renderWeeklyIntl()" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα">${d<0?'‹':'›'}</button>`;
@@ -455,6 +471,7 @@ function _wiPaint(){
         <span id="wi-crossweek-in"></span>
         <div class="wk3-acts">
           ${unmatched>0?`<button class="wk3-ab" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες" onclick="_wiAutoMatch()">${_ico('zap',13)} Ταίριασμα</button>`:''}
+          <button class="wk3-ab" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Παραγγελία</button>
           <button class="wk3-ab" onclick="_wiToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (όρια εβδομάδας, εκτέλεση)">${_ico('eye',13)} Λεπτομέρειες${_wiQuietOn()?'':' ✓'}</button>
           <button class="wk3-ab" onclick="_wiPrintWeek()">${_ico('file_text',13)} Εκτύπωση</button>
           <button class="wk3-ab" onclick="_wiExportCSV()">CSV</button>
@@ -2345,6 +2362,8 @@ window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
 window._wiPrintGroup = _wiPrintGroup;
 window._wiToggleDetails = _wiToggleDetails;
+// Νέα παραγγελία από το εβδομαδιαίο — inline onclick, module σε IIFE
+window._wiNewOrder = _wiNewOrder;
 window._wiExportCSV = _wiExportCSV;
 window._wiApplyFilter = _wiApplyFilter;
 window._wiPulseRow = _wiPulseRow;

@@ -206,6 +206,22 @@ function _wnBuildRows() {
 /* ── PAINT ───────────────────────────────────────────────────────── */
 
 /* ── Φέτα 1β: sheet tabs, δίδυμο του _wk3Tabs του intl ────────────── */
+/* Νέα παραγγελία ΧΩΡΙΣ έξοδο από το εβδομαδιαίο (owner 10/08).
+   Μετά το κλείσιμο της φόρμας ξαναζωγραφίζουμε: αλλιώς η νέα παραγγελία δεν
+   εμφανίζεται και ο χρήστης νομίζει ότι χάθηκε. Ο observer πιάνει και τους δύο
+   τρόπους απόκρυψης (style ή class) — αν δεν πυροδοτηθεί, το χειρότερο είναι
+   να μην ανανεωθεί, όπως θα γινόταν και χωρίς αυτόν. */
+function _wnNewOrder() {
+  openNatlCreate();
+  const ov = document.getElementById('modalOverlay');
+  if (!ov) return;
+  const visible = () => ov.style.display !== 'none' && !ov.hidden;
+  const obs = new MutationObserver(() => {
+    if (!visible()) { obs.disconnect(); renderWeeklyNatl(); }
+  });
+  obs.observe(ov, { attributes: true, attributeFilter: ['style', 'class', 'hidden'] });
+}
+
 function _wnTabs(cur) {
   const today = _wnCurrentWeek();
   const step = d => `<button type="button" class="wk3-step" title="${d<0?'Προηγούμενη':'Επόμενη'} εβδομάδα" onclick="WNATL.week=${cur+d};renderWeeklyNatl()">${d<0?'‹':'›'}</button>`;
@@ -283,6 +299,7 @@ function _wnPaint() {
         ${pending>0?`<button class="wk3-t alert" title="Κάθοδοι χωρίς ανάθεση — κλικ: πήγαινε στην πρώτη" onclick="${(()=>{const id=_firstRow(r=>r.type==='northsouth'&&!r.saved);return id?`_ccJump('${id}')`:'';})()}"><b>${pending}</b> εκκρεμή</button>`:''}
         <span id="wn-pickups-q"></span>
         <div class="wk3-acts">
+          <button class="wk3-ab" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Παραγγελία</button>
           <button class="wk3-ab" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής">${_wnI('eye',13)} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
           <button class="wk3-ab" onclick="_wnPrintWeek()">${_wnI('file_text',13)} Εκτύπωση</button>
           <button class="wk3-ab" onclick="_wnExportCSV()">CSV</button>
@@ -1835,6 +1852,7 @@ window._wnToggleDetails = _wnToggleDetails;
 // το κλικ θα έριχνε ReferenceError (το module είναι σε IIFE).
 window._wnToggleStops = _wnToggleStops;
 window._wnSetAppt = _wnSetAppt;
+window._wnNewOrder = _wnNewOrder;
 // Φέτα 5 — τοπικές κινήσεις (inline onclick, module σε IIFE)
 window._wnAddLocal  = _wnAddLocal;
 window._wnSaveLocal = _wnSaveLocal;
