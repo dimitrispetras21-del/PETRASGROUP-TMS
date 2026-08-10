@@ -213,6 +213,7 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
 .rtmodal .mhead button{background:none;border:none;color:#94A3B8;font-size:18px;cursor:pointer}
 .rtmodal .mbody{padding:18px 20px}
 .rtnote{font-size:var(--text-xs);color:var(--text-dim);background:var(--accent-light);border-radius:var(--radius);padding:8px 12px;margin-top:12px}
+.ocr{background:#FEF3C7;border-bottom:2px dotted var(--warning);padding:0 3px;border-radius:3px;cursor:text}
 .hide{display:none}
 @media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(3,1fr)}.fgrid{grid-template-columns:1fr 1fr}}
 </style>
@@ -236,7 +237,7 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
     <div class="nav-item dim"><span class="nav-icon">🚚</span>Φορτηγά</div>
     <div class="nav-item dim"><span class="nav-icon">🔧</span>Συντήρηση</div>
   </nav>
-  <div class="sb-foot">DESIGN PROTOTYPE · v2 · 10.08.2026</div>
+  <div class="sb-foot">DESIGN PROTOTYPE · v3 · 10.08.2026</div>
 </aside>
 
 <!-- ═════════ CONTENT ═════════ -->
@@ -249,7 +250,10 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
       <h1 class="page-title">TRIP PnL <span class="rolechip owner">🔒 Owner only</span></h1>
       <div class="page-sub">Κερδοφορία ανά round trip — εθνικά + διεθνή · έσοδα auto από Orders · κόστη από Καταχώρηση</div>
     </div>
-    <div class="period"><button>Εβδομάδα</button><button class="active">Ιούνιος 2026</button><button>Custom</button></div>
+    <div style="display:flex;gap:10px;align-items:center">
+      <button class="btn" onclick="openSet()">⚙ Ρυθμίσεις</button>
+      <div class="period"><button>Εβδομάδα</button><button class="active">Ιούνιος 2026</button><button>Custom</button></div>
+    </div>
   </div>
 
   <div class="kpi-grid" id="kpis"></div>
@@ -272,6 +276,8 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
       <option value="week">Ανά Εβδομάδα</option>
     </select>
     <span class="hint" id="listhint"></span>
+    <span style="flex:1"></span>
+    <button class="btn" onclick="toast('Εξαγωγή CSV (demo)')">⬇ Εξαγωγή CSV</button>
   </div>
 
   <table class="tbl" id="listtbl"></table>
@@ -304,18 +310,19 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
         <div class="big">Σύρε εδώ τιμολόγιο (PDF / φωτογραφία)</div>
         ή διάλεξε πηγή για demo:
         <div class="srcbtns">
-          <button class="btn primary" onclick="loadInvoice()">DKV — 15ήμερο (machine-readable)</button>
-          <button class="btn" onclick="loadInvoice()">DADI — εβδομαδιαίο (scan → AI OCR)</button>
+          <button class="btn primary" onclick="loadInvoice('DKV')">DKV — 15ήμερο (machine-readable)</button>
+          <button class="btn" onclick="loadInvoice('DADI')">DADI — εβδομαδιαίο (scan → AI OCR)</button>
         </div>
       </div>
       <span class="hint">Το DKV parsάρεται αυτόματα · το DADI περνά από το scan pipeline με έλεγχο πριν την καταχώρηση. Τίποτα δεν σώζεται χωρίς έγκριση (verify-before-commit).</span>
     </div>
     <div class="bcard hide" id="b2">
-      <h3 class="syne">DKV Τιμολόγιο #26-15834 · VERMION FRESH · 01–15.06.2026 · Σύνολο <span class="mono">€3.418,60</span></h3>
+      <h3 class="syne" id="invtitle"></h3>
       <table class="tbl">
         <thead><tr><th>Πινακίδα</th><th>Ημ/νία</th><th>Κατηγορία</th><th>Περιγραφή</th><th class="tr-num">Καθαρό</th><th class="tr-num">ΦΠΑ</th><th class="tr-num">Σύνολο</th><th>Trip match</th></tr></thead>
         <tbody id="invlines"></tbody>
       </table>
+      <div class="hint" id="invnote" style="margin-top:10px"></div>
       <div class="formfoot">
         <button class="btn" onclick="stepTo(1)">Πίσω</button>
         <button class="btn primary" onclick="stepTo(3)">✓ Επιβεβαίωση &amp; Κατανομή</button>
@@ -474,7 +481,24 @@ select:focus,input:focus{outline:2px solid rgba(2,132,199,0.35);outline-offset:0
   </div>
 </div>
 
-<div class="mock-badge">DESIGN PROTOTYPE v2 · fake data · 10.08.2026</div>
+<!-- Settings modal (owner-only) -->
+<div class="overlay" id="setoverlay" onclick="closeSet()"></div>
+<div class="rtmodal" id="setmodal">
+  <div class="mhead">⚙ Ρυθμίσεις COSTS <button onclick="closeSet()">✕</button></div>
+  <div class="mbody">
+    <table class="tbl"><tbody>
+      <tr><td>X — VS transfer (export leg)</td><td class="tr-num mono" style="font-weight:700">€850</td></tr>
+      <tr><td>X — VS transfer (import leg)</td><td class="tr-num mono" style="font-weight:700">€650</td></tr>
+      <tr><td>Αξία παλέτας EUR</td><td class="tr-num mono" style="font-weight:700">€12</td></tr>
+      <tr><td>Φθορά €/km <span class="badge pend">auto</span> — maintenance bridge (Σ κόστη 12μήνου ÷ Σ km)</td><td class="tr-num mono" style="font-weight:700">€0,082</td></tr>
+      <tr><td>Προεπιλογή ΦΠΑ χειροκίνητης καταχώρησης</td><td class="tr-num mono" style="font-weight:700">24%</td></tr>
+    </tbody></table>
+    <div class="rtnote">Owner-only. Η φθορά υπολογίζεται ανά φορτηγό από το Maintenance module· εδώ φαίνεται ο μέσος όρος στόλου. Fallback για νέα φορτηγά: μέσος στόλου.</div>
+    <div class="formfoot"><button class="btn primary" onclick="closeSet()">OK</button></div>
+  </div>
+</div>
+
+<div class="mock-badge">DESIGN PROTOTYPE v3 · fake data · 10.08.2026</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -523,15 +547,17 @@ const T = [
  {id:'RT-2628',type:'PARTNER',scope:'NATL',partner:'ΜΕΤΑΦΟΡΙΚΗ ΗΜΑΘΙΑΣ',client:'— εσωτερικό',lane:'ΚΑΘΟΔΟΣ (VS)',s:'13.06',e:'14.06',week:24,km:580,complete:true,
   rev:[{who:'Internal transfer X — VS import διανομή (Βέροια→Πάτρα)',amt:X.imp,vs:'X import'}],
   cost:{'Partner rate (agreed)':[480,115]},alloc:[]},
- {id:'RT-2629',type:'OWNED',scope:'INTL',truck:'IAZ4445',driver:'Δ. Καραγιάννης',client:'ΟΠΩΡ/ΚΑ ΝΑΟΥΣΑ',lane:'GR→AT',s:'22.06',e:'27.06',week:26,km:3860,complete:false,
+ {id:'RT-2629',type:'OWNED',scope:'INTL',truck:'IAZ4445',driver:'Δ. Καραγιάννης',client:'ΟΠΩΡ/ΚΑ ΝΑΟΥΣΑ',lane:'GR→AT',s:'22.06',e:'27.06',week:26,km:3860,complete:false,open:true,
   rev:[{who:'ΟΠΩΡΟΚΗΠΕΥΤΙΚΑ ΝΑΟΥΣΑ → BILLA Wien (export)',amt:2900},{who:'— κενή επιστροφή (solo leg)',amt:0}],
   cost:{'Καύσιμα':[1450,188],'Διόδια':[585,0],'DKV κάρτα':[115,0],'Οδηγός':[430,0],'Έξοδα Μ':[145,0],'AdBlue':[55,13]},alloc:[]}
 ];
 
 const fmt=n=>'€'+Math.round(n).toLocaleString('el-GR');
+const WEAR_EUR_KM=0.082; // maintenance bridge: 12-month maintenance € / km (fleet avg)
 T.forEach(t=>{
   t.revenue=t.rev.reduce((a,r)=>a+r.amt,0);
-  t.net =Object.values(t.cost).reduce((a,c)=>a+c[0],0);
+  t.wearC=t.type==='OWNED'?Math.round(t.km*WEAR_EUR_KM):0;
+  t.net =Object.values(t.cost).reduce((a,c)=>a+c[0],0)+t.wearC;
   t.vat =Object.values(t.cost).reduce((a,c)=>a+c[1],0);
   t.gross=t.net+t.vat;
   t.pW=t.revenue-t.gross;   t.mW=t.revenue?Math.round(t.pW/t.revenue*1000)/10:-100;
@@ -552,7 +578,8 @@ function pill(m){const c=m<0?'red':(m<10?'amber':'green');return `<span class="p
 function chip(t){if(t.scope==='NATL'&&t.type==='PARTNER')return `<span class="chip partner">${t.partner}</span> <span class="chip natl">ΕΘΝΙΚΟ</span>`;
   if(t.scope==='NATL')return `<span class="chip owned">${t.truck}</span> <span class="chip natl">ΕΘΝΙΚΟ</span>`;
   return t.type==='PARTNER'?`<span class="chip partner">${t.partner}</span>`:`<span class="chip owned">${t.truck}</span>`}
-function badge(t){return t.complete?'<span class="badge full">Πλήρες</span>':'<span class="badge prov">Προσωρινό</span>'}
+function badge(t){if(t.open)return '<span class="badge pend">Σε εξέλιξη</span>';
+  return t.complete?'<span class="badge full">Πλήρες</span>':'<span class="badge prov">Προσωρινό</span>'}
 
 /* KPI band — two margins, worst-case primary */
 function renderKPIs(){
@@ -605,17 +632,21 @@ function setScope(s){SCOPE=s;
 
 /* drill-down */
 function openPanel(id){
-  const t=T.find(x=>x.id===id), max=Math.max(...Object.values(t.cost).map(c=>c[0]+c[1]));
-  const costRows=Object.entries(t.cost).filter(([,c])=>c[0]+c[1]>0).map(([k,c])=>`
+  const t=T.find(x=>x.id===id), max=Math.max(...Object.values(t.cost).map(c=>c[0]+c[1]),t.wearC||0);
+  let costRows=Object.entries(t.cost).filter(([,c])=>c[0]+c[1]>0).map(([k,c])=>`
    <div class="crow"><span class="cl">${k}</span><span class="bar"><i style="width:${Math.round((c[0]+c[1])/max*100)}%"></i></span>
    <span class="cv mono">${fmt(c[0]+c[1])}</span><span class="cvat mono">${c[1]?'ΦΠΑ '+fmt(c[1]):'—'}</span></div>`).join('');
+  if(t.wearC)costRows+=`<div class="crow"><span class="cl">Φθορά <span class="badge pend" style="font-size:10px">auto</span></span>
+   <span class="bar"><i style="width:${Math.round(t.wearC/max*100)}%;background:#64748B"></i></span>
+   <span class="cv mono">${fmt(t.wearC)}</span><span class="cvat mono">€${WEAR_EUR_KM.toFixed(3).replace('.',',')}/km</span></div>`;
   const revRows=t.rev.map(r=>`<div class="revline"><span class="who">${r.who}${r.vs?`<span class="vs">${r.vs}</span>`:''}</span><span class="mono" style="font-weight:500">${fmt(r.amt)}</span></div>`).join('');
   const allocRows=t.alloc.length?t.alloc.map(a=>`<div class="alloc"><span><span class="src">${a.src}</span> — ${a.txt}</span><span class="mono">${fmt(a.amt)}</span></div>`).join('')
     :'<span class="hint">— καμία αυτόματη κατανομή (manual κόστη μόνο)</span>';
   document.getElementById('panel').innerHTML=`
    <div class="phead"><button class="close" onclick="closePanel()">✕</button>
      <h2 class="syne">${t.id} · ${t.lane}</h2>
-     <div class="meta">${t.type==='PARTNER'?('Partner: '+t.partner):(t.truck+' · '+t.driver)} · ${t.s}–${t.e}.2026 · ${t.km.toLocaleString('el-GR')} km · ${t.complete?'κόστη πλήρη':'κόστη προσωρινά'}</div></div>
+     <div class="meta">${t.type==='PARTNER'?('Partner: '+t.partner):(t.truck+' · '+t.driver)} · ${t.s}–${t.e}.2026 · ${t.km.toLocaleString('el-GR')} km · ${t.open?'σε εξέλιξη':(t.complete?'κόστη πλήρη':'κόστη προσωρινά')}</div>
+     ${t.open?'<button class="btn" style="margin-top:10px;height:30px" onclick="toast(\'Το trip έκλεισε — αναμονή τελικών κοστών (DKV/DADI)\')">🏁 Κλείσιμο trip — χειροκίνητο (geofence: Phase 2)</button>':''}</div>
    <div class="psec"><div class="duo">
      <div class="m primary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v" style="color:${t.pW<0?'var(--panel-bad)':'var(--panel-ok)'}">${fmt(t.pW)}</div><div class="s">margin ${t.mW.toFixed(1)}%</div></div>
      <div class="m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v" style="color:${t.pX<0?'var(--danger-strong)':'var(--success)'}">${fmt(t.pX)}</div><div class="s">margin ${t.mX.toFixed(1)}% · ΦΠΑ ${fmt(t.vat)}</div></div>
@@ -657,8 +688,21 @@ const INV=[
  ['OB-4471-XP','11.06','Διόδια HU','HU-GO M5','€44,80','€0,00','€44,80','— άγνωστη πινακίδα ⚠'],
  ['IAB2103','13.06','Διόδια AT','ASFINAG A1','€81,50','€0,00','€81,50','RT-2624 ✓'],
  ['IAZ8302','16.06','Καύσιμα','Shell Graz · 498 L · km 486.180','€663,90','€0,00','€663,90','RT-2625 ✓']];
-function loadInvoice(){
-  document.getElementById('invlines').innerHTML=INV.map(l=>`<tr><td class="mono">${l[0]}</td><td class="mono">${l[1]}</td><td>${l[2]}</td><td style="color:var(--text-dim)">${l[3]}</td><td class="tr-num mono">${l[4]}</td><td class="tr-num mono" style="color:var(--text-dim)">${l[5]}</td><td class="tr-num mono">${l[6]}</td><td>${l[7].includes('⚠')?'<span class="badge prov">'+l[7]+'</span>':'<span class="badge full">'+l[7]+'</span>'}</td></tr>`).join('');
+const INV_DADI=[
+ ['IAZ8302','01.06','Καύσιμα','Веroia АД · 512 L · км 480.708','€516,13','€123,87','€640,00','RT-2618 ✓'],
+ ['IAB1096','02.06','Καύσιμα','Веroia АД · <span class="ocr">590 L</span> · км 512.300','€595,16','€142,84','€738,00','RT-2619 ✓'],
+ ['IAB2103','06.06','Καύσιμα','Веroia АД · 520 L · <span class="ocr">км 389.2ΟΟ</span>','€524,19','€125,81','€650,00','RT-2621 ✓'],
+ ['ΝΗΒ7212','01.06','Καύσιμα','Веroia АД · 210 L · км 98.400','€211,29','€50,71','€262,00','RT-2626 ✓'],
+ ['IAZ4445','08.06','Καύσιμα','Веroia АД · <span class="ocr">540 L</span> · км 274.500','€544,35','€130,65','€675,00','RT-2622 ✓']];
+function loadInvoice(src){
+  const isD=src==='DADI', rows=isD?INV_DADI:INV;
+  document.getElementById('invtitle').innerHTML=isD
+    ?'DADI εβδ.23 · EUROFRESH EOOD · σκαναρισμένο → AI OCR · Σύνολο <span class="mono">€2.965,00</span>'
+    :'DKV Τιμολόγιο #26-15834 · VERMION FRESH · 01–15.06.2026 · Σύνολο <span class="mono">€3.418,60</span>';
+  document.getElementById('invnote').innerHTML=isD
+    ?'⚠ Bulgarian scan χωρίς text layer — τα <span class="ocr">κίτρινα πεδία</span> έχουν χαμηλή βεβαιότητα OCR· κλικ για διόρθωση πριν την έγκριση. Τίποτα δεν καταχωρείται χωρίς επιβεβαίωση.'
+    :'Machine-readable PDF — αυτόματο parsing χωρίς OCR· έλεγξε μόνο τα ⚠ trip matches.';
+  document.getElementById('invlines').innerHTML=rows.map(l=>`<tr><td class="mono">${l[0]}</td><td class="mono">${l[1]}</td><td>${l[2]}</td><td style="color:var(--text-dim)">${l[3]}</td><td class="tr-num mono">${l[4]}</td><td class="tr-num mono" style="color:var(--text-dim)">${l[5]}</td><td class="tr-num mono">${l[6]}</td><td>${l[7].includes('⚠')?'<span class="badge prov">'+l[7]+'</span>':'<span class="badge full">'+l[7]+'</span>'}</td></tr>`).join('');
   stepTo(2);
 }
 function stepTo(n){
@@ -724,6 +768,8 @@ function renderPartner(){
 }
 function openRT(){document.getElementById('rtoverlay').classList.add('open');document.getElementById('rtmodal').classList.add('open')}
 function closeRT(){document.getElementById('rtoverlay').classList.remove('open');document.getElementById('rtmodal').classList.remove('open')}
+function openSet(){document.getElementById('setoverlay').classList.add('open');document.getElementById('setmodal').classList.add('open')}
+function closeSet(){document.getElementById('setoverlay').classList.remove('open');document.getElementById('setmodal').classList.remove('open')}
 
 /* fuel page */
 const FUEL=[
