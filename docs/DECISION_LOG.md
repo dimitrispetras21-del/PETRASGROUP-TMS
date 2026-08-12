@@ -159,3 +159,17 @@ CONSOLIDATED LOAD και από εκεί το NAT_LOAD.
 **Απόδειξη**: `ilike` επιβεβαιωμένα case-insensitive στα ελληνικά (`ΑΦΟΙ` και `αφοι` → ίδια 20 αποτελέσματα, live 12/8). Deployed worker version e35b7547.
 **Παγίδα**: το κρυφό πεδίο μηδενίζεται σε κάθε πληκτρολόγηση — χωρίς αυτό, ο χρήστης σβήνει το όνομα και υποβάλλει τον προηγούμενο πελάτη. Η επιλογή γίνεται σε `onmousedown`, όχι `onclick`: το blur του input προλαβαίνει το click.
 **Ποιος**: owner (επιλογή typeahead έναντι active-filter, 12/8).
+
+## 2026-08-12 — Καθαρό ξεκίνημα: οριστική διαγραφή παραγγελιών
+**Επιλογή**: Hard delete με SQL στη Supabase (`db/migrations/2026-08-12_wipe_orders.sql`) σε 10 πίνακες κατά σειρά FK, σε ένα transaction. Backup πρώτα σε `backups/2026-08-12_pre-wipe` (νέο `scripts/backup_supabase.js`).
+**Εναλλακτικές**: (α) το κανονικό DELETE της εφαρμογής — απορρίφθηκε: είναι soft (`deleted_at`) και η `delete_order_cascade` ΔΕΝ σβήνει `groupage_lines`, τα γυρίζει σε `Unassigned`· μετά τη διαγραφή των 151 παραγγελιών θα έμεναν 48 ορφανές γραμμές στην ουρά του National Pick Ups και ~600 εγγραφές στη βάση, δηλαδή όχι «από την αρχή»· (β) διαγραφή μόνο `orders` + `national_orders` — αδύνατη, τα FK είναι `ON DELETE RESTRICT`.
+**Απόδειξη**: `service_role` γυρίζει **403 σε DELETE** και στους 10 πίνακες μέσω PostgREST (μετρημένο), άρα ο SQL editor ήταν ο μόνος δρόμος. Μετά την εκτέλεση, ανεξάρτητη μέτρηση από το REST API: orders 151→0, national_orders 4→0, order_stops 616→0, groupage_lines 51→0, consolidated_loads 4→0, national_loads 50→0, cons_load_source_orders 2→0. Άθικτα: clients 1.921, partners 431, locations 1.164, ramp 28.
+**Παγίδα**: έφυγαν μαζί 27 `partner_assignments` και 2 εκκρεμείς κινήσεις παλετών (`pl_movements`, δημιουργία 12/8) — κρέμονταν με FK από τις παραγγελίες. Ο κανόνας never-delete των GL **δεν καταργείται**: ισχύει για τη λειτουργία της εφαρμογής, όχι για εφάπαξ διοικητικό μηδενισμό με backup.
+**Ποιος**: owner (ρητή επιλογή «Οριστική διαγραφή» αφού είδε τα μεγέθη, 12/8).
+
+## 2026-08-12 — National Pick Ups: owner-only
+**Επιλογή**: `role:'owner'` στο NAV item + guard στο `case 'weekly_pickups'` του `navigate()` + φίλτρο ρόλου στο ⌘K + απόκρυψη του μετρητή ουράς στο Weekly National.
+**Εναλλακτικές**: μόνο απόκρυψη από το sidebar — απορρίφθηκε: το `?page=weekly_pickups`, ένα bookmark και το ⌘K την έφταναν ούτως ή άλλως.
+**Απόδειξη**: harness σε `vm` πάνω στα πραγματικά `core/router.js` + `core/command-palette.js` — ορατή σε owner, κρυφή σε dispatcher/management/accountant/warehouse, με τα υπόλοιπα items ανέπαφα. Live: με `ROLE='dispatcher'` η σελίδα δίνει «Δεν έχεις πρόσβαση».
+**Παγίδα**: το gate είναι **μόνο front end**. Το `petras-assign/national_consolidation.html` σερβίρεται από άλλο repo με δικό του JWT — όποιος ξέρει το URL το ανοίγει. Πραγματικό κλείδωμα θέλει RBAC στον Worker. Το ⌘K αγνοούσε το `item.role` από την αρχή, άρα διαφήμιζε και το TRIP PnL σε όλους — διορθώθηκε εδώ.
+**Ποιος**: owner (12/8, «για αρχή»).
