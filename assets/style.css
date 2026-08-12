@@ -4412,10 +4412,15 @@ button.sidebar-toggle {
   grid-template-columns: 1fr 272px;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
-  align-items: stretch;
+  align-items: start;
 }
-.dash-burn-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.dash-burn-list .dash-burn-item { flex: 1; }
+.dash-burn-list {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  /* ΟΧΙ flex:1 στα παιδιά: με ΕΝΑ στοιχείο τεντωνόταν σε όλο το ύψος του
+     σκορ και άφηνε μια τεράστια λευκή πλάκα στην κορυφή της σελίδας.
+     Το ύψος το δίνει το περιεχόμενο. */
+  align-content: flex-start;
+}
 .dash-burn-item {
   display: flex; align-items: center; gap: var(--space-3);
   width: 100%; text-align: left; font: inherit; color: inherit;
