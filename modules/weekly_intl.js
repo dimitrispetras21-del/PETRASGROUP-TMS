@@ -468,7 +468,6 @@ function _wiPaint(){
           const delivN=[...expRows,...impRows].filter(r=>['Delivered','Invoiced'].includes(_st(r)['Status'])).length;
           const lateN=[...expRows,...impRows].filter(r=>_st(r)['Delivery Performance']==='Delayed').length;
           return `${delivN?`<span class="wk3-t okg" title="Παραδομένα φορτία"><b>${delivN}</b> παραδομένα ✓</span>`:''}${lateN?`<span class="wk3-t warn2" title="Καθυστερημένες παραδόσεις"><b>${lateN}</b> καθυστ.</span>`:''}`;})()}
-        ${sugN>0?`<button class="wk3-t sug" onclick="_wk3FlashSugs()" title="Ορφανά με διαθέσιμο ζεύγος δικού στόλου (κανόνας Χ+2) — κλικ: πήγαινε στο πρώτο"><b>✨ ${sugN}</b></button>`:''}
         <span id="wi-crossweek-in"></span>
         <div class="wk3-acts">
           ${unmatched>0?`<button class="wk3-ab" title="Περιορισμένο: χωρίς συντεταγμένες τοποθεσιών (LO-1) σκοράρει μόνο με ημερομηνίες" onclick="_wiAutoMatch()">${_ico('zap',13)} Ταίριασμα</button>`:''}
@@ -1116,12 +1115,9 @@ function _wiRowHTML(row,i){
     }
   } else {
     // v3 (owner: «χρώμα, όχι λόγια»): ορφανό = κενό κόκκινο dashed πεδίο.
-    // Φάση Β: αν υπάρχει διαθέσιμο ζεύγος δικού στόλου (Χ+2) → ✨ πρόταση,
-    // ✓ = αποδοχή μέσω του κανονικού save. Κλικ στο pill = κανονικό popover.
-    const sug=_wk3Suggest(row);
-    pill=sug
-      ?`<div class="wk3-pill sug wk3-sug" title="✨ Πρόταση (πρώτα δικός στόλος, κανόνας Χ+2): ${escapeHtml(sug.truck.label)} · ${escapeHtml(sug.driver.label)}. Κλικ στο ✓ για αποδοχή, κλικ εδώ για άλλη επιλογή."><span class="s">✨ ${escapeHtml(sug.truck.label)} ${escapeHtml((sug.driver.label||'').trim().split(/\s+/)[0])}</span><button class="go" title="Αποδοχή πρότασης" onclick="event.stopPropagation();_wk3Accept(${row.id})">✓</button></div>`
-      :`<div class="wk3-pill un" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
+    // Η ✨ πρόταση στόλου αφαιρέθηκε (owner 12/8: «δεν μου αρέσει») — το
+    // popover ανάθεσης παραμένει ο μόνος δρόμος.
+    pill=`<div class="wk3-pill un" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
   }
 
   // Import side — v3.1: ld μπροστά, VS override στον προορισμό (προς Βέροια),
