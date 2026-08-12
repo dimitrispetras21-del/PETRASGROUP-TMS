@@ -1084,7 +1084,9 @@ function _wiRowHTML(row,i){
   // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
   // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
   // η συντομογραφία 3+ και το ίδια-μέρα-δίπλα να δουλέψουν με την υπάρχουσα λογική.
-  const _gm1=(e,key,sumKey)=>({ n:(e.fields[key]?.[0]?.n)||_wiClean(String(e.fields[sumKey]||e.fields['Client Name']||'—').split(',').slice(0,2).join(',')),
+  // Fallback ΧΩΡΙΣ escapeHtml — το _wk3LocHTML κάνει το δικό του escape στα
+  // items του arr, οπότε _wiClean εδώ θα έδινε διπλό («&quot;» ως κείμενο).
+  const _gm1=(e,key,sumKey)=>({ n:(e.fields[key]?.[0]?.n)||String(e.fields[sumKey]||e.fields['Client Name']||'—').split(',').slice(0,2).join(',').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim(),
     dt:e.fields[sumKey==='Loading Summary'?'Loading DateTime':'Delivery DateTime'] });
   const gL=isGroup?exps.map(e=>_gm1(e,'_stopsL','Loading Summary')):null;
   const gD=isGroup?exps.map(e=>_gm1(e,'_stopsD','Delivery Summary')):null;
