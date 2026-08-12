@@ -1,514 +1,295 @@
 // ═══════════════════════════════════════════════════════════
-// MODULE — PALLET LEDGER (2-table model)
-// Suppliers ledger + Partners ledger. Each entry linked to ORDER_STOP.
-// Rule: unloading stops never create entries. Partners only on INTL leg.
+// MODULE — ΙΣΟΖΥΓΙΟ ΠΑΛΕΤΩΝ (Φ2 minimal: εκκρεμείς + διορθώσεις + νέα κίνηση)
+// Πηγή: /pallets/* (Worker). Το πλήρες Ισοζύγιο (υπόλοιπα/drill-down) = Φ3.
 // ═══════════════════════════════════════════════════════════
-// Module state uses 'PL' / '_pl' prefix to avoid global collisions.
 'use strict';
 
-const PL = {
-  supplierRecs: [],   // entries from PALLET_LEDGER_SUPPLIERS
-  partnerRecs:  [],   // entries from PALLET_LEDGER_PARTNERS
-  partners: [],
-  locations: [],
-  clients: [],
-  orders: [],         // combined INTL + NAT orders with Pallet Exchange=ON
-  stopsByOrder: {},   // { orderId: [stop records] }
-  filters: { from: '', to: '', direction: '', _q: '', tab: 'suppliers' }, // tab=suppliers|partners
-  loadFailed: [],     // human-readable names of sources that failed to load (see safeFetch)
-};
+// q/from/to: το παλιό pallet_ledger page είχε φίλτρα + CSV — δεν τα χάνουμε
+// (η λογίστρια τα χρησιμοποιεί καθημερινά· αφαίρεσή τους = οπισθοδρόμηση).
+const PLV = { movements: [], lookups: null, tab: 'pending', busy: false, q: '', from: '', to: '' };
 
-/* ── Main render ─────────────────────────────── */
 async function renderPalletLedger() {
   const c = document.getElementById('content');
   c.style.padding = ''; c.style.overflow = '';
-  c.innerHTML = '<div style="text-align:center;padding:60px;color:var(--panel-dim)">Loading Pallet Ledger...</div>';
-
-  // safeFetch, not `.catch(() => [])`: this is a financial reconciliation with
-  // suppliers and partners, so a silently-empty ledger reads as "nothing owed"
-  // and a silently-empty order list reads as "no orders take pallets". Both are
-  // wrong answers presented as fact. The pallet balance on the invoicing screen
-  // had exactly this bug last week (fixed in PR #29), from a different cause.
-  // See core/utils.js safeFetch().
-  const [supRecs, partRecs, partners, locations, clients, intlOrders, natOrders] = await Promise.all([
-    safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, {
-      fields: ['Date','Direction','Pallets','Pallet Type','Order Stop','Loading Supplier',
-               'AI Extracted','Verified','Notes'],
-      sort: [{ field: 'Date', direction: 'desc' }],
-    }), 'pallet ledger: suppliers'),
-    safeFetch(() => atGetAll(TABLES.PALLET_LEDGER_PARTNERS, {
-      fields: ['Date','Direction','Pallets','Pallet Type','Order Stop','Partner',
-               'AI Extracted','Verified','Notes'],
-      sort: [{ field: 'Date', direction: 'desc' }],
-    }), 'pallet ledger: partners'),
-    preloadReferenceData().then(() => getRefPartners()),
-    preloadReferenceData().then(() => getRefLocations()),
-    preloadReferenceData().then(() => getRefClients()),
-    safeFetch(() => atGetAll(TABLES.ORDERS, { fields: ['Order Number','Client','Loading DateTime','Pallet Exchange','Veroia Switch','Direction'] }, true), 'pallet ledger: ORDERS'),
-    safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Name','Client','Loading DateTime','Pallet Exchange'] }, true), 'pallet ledger: NAT_ORDERS'),
-  ]);
-
-  // A failed ledger fetch must not render as an empty (i.e. balanced) ledger,
-  // and a failed order fetch must not render as "no orders accept pallets",
-  // which would look like a data-entry dead end with no explanation.
-  PL.loadFailed = [
-    didFail(supRecs)   && 'Pallet Ledger (Suppliers)',
-    didFail(partRecs)  && 'Pallet Ledger (Partners)',
-    didFail(intlOrders) && 'Orders',
-    didFail(natOrders)  && 'National Orders',
-  ].filter(Boolean);
-
-  PL.supplierRecs = supRecs;
-  PL.partnerRecs  = partRecs;
-  PL.partners     = partners;
-  PL.locations    = locations;
-  PL.clients      = clients;
-  PL.orders = [
-    ...intlOrders.filter(r => r.fields['Pallet Exchange']).map(r => ({
-      id: r.id, type: 'intl',
-      isVS: !!r.fields['Veroia Switch'],
-      direction: r.fields['Direction'],
-      label: `INTL ${r.fields['Order Number']||r.id.slice(-5)} — ${(r.fields['Loading DateTime']||'').slice(0,10)}`
-    })),
-    ...natOrders.filter(r => r.fields['Pallet Exchange']).map(r => ({
-      id: r.id, type: 'nat', isVS: false,
-      label: `NAT ${r.fields['Name']||r.id.slice(-5)} — ${(r.fields['Loading DateTime']||'').slice(0,10)}`
-    })),
-  ].sort((a,b) => a.label.localeCompare(b.label));
-
-  _plRender();
-}
-
-/* ── Load stops for an order (lazy, cached) ─ */
-async function _plLoadStopsForOrder(orderId, orderType) {
-  if (PL.stopsByOrder[orderId]) return PL.stopsByOrder[orderId];
+  c.innerHTML = '<div style="text-align:center;padding:60px;color:var(--panel-dim)">Φόρτωση κινήσεων παλετών...</div>';
   try {
-    const parentField = orderType === 'intl' ? F.STOP_PARENT_ORDER : F.STOP_PARENT_NAT;
-    const stops = await atGetAll(TABLES.ORDER_STOPS, {
-      filterByFormula: `FIND("${orderId}",ARRAYJOIN({${parentField}},","))>0`,
-      fields: [F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_DATETIME, F.STOP_PALLETS]
-    }, false);
-    stops.sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
-    PL.stopsByOrder[orderId] = stops;
-    return stops;
-  } catch(e) { console.warn('stops load failed:', e); return []; }
-}
-
-/* ── Helpers ──────────────────────────────────── */
-function _plLocName(id) {
-  const loc = PL.locations.find(l => l.id === id);
-  return loc ? (loc.fields['Name'] || loc.fields['City'] || id) : (id?.substring(0,8) || '—');
-}
-function _plPartnerName(id) {
-  const p = PL.partners.find(p => p.id === id);
-  return p ? (p.fields['Company Name'] || id) : (id?.substring(0,8) || '—');
-}
-
-/* ── Balances ─────────────────────────────────── */
-function _plBalances() {
-  const supBal = {}, partBal = {};
-  for (const r of PL.supplierRecs) {
-    const f = r.fields;
-    const sign = f['Direction'] === 'OUT' ? 1 : -1;
-    const lid = Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null;
-    if (lid) supBal[lid] = (supBal[lid] || 0) + sign * (f['Pallets']||0);
+    const [mv, lk] = await Promise.all([
+      plFetch('/pallets/movements'),
+      PLV.lookups ? Promise.resolve(PLV.lookups) : plFetch('/pallets/lookups')
+    ]);
+    PLV.movements = mv.records || [];
+    PLV.lookups = lk;
+  } catch (e) {
+    c.innerHTML = `<div style="padding:40px;color:var(--danger)">Σφάλμα φόρτωσης: ${e.message}</div>`;
+    return;
   }
-  for (const r of PL.partnerRecs) {
-    const f = r.fields;
-    const sign = f['Direction'] === 'OUT' ? 1 : -1;
-    const pid = Array.isArray(f['Partner']) ? f['Partner'][0] : null;
-    if (pid) partBal[pid] = (partBal[pid] || 0) + sign * (f['Pallets']||0);
+  _plvDraw();
+}
+
+function _plvName(m) {
+  if (m.counterparty_type === 'CLIENT') {
+    const cl = (PLV.lookups.clients || []).find(x => x.id === m.client_id);
+    return cl ? cl.company_name : ('Πελάτης #' + m.client_id);
   }
-  const supTotal = Object.values(supBal).reduce((a,b)=>a+b,0);
-  const partTotal = Object.values(partBal).reduce((a,b)=>a+b,0);
-  const topSup = Object.entries(supBal).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,5)
-    .map(([id,v])=>({name:_plLocName(id),amount:v}));
-  const topPart = Object.entries(partBal).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,5)
-    .map(([id,v])=>({name:_plPartnerName(id),amount:v}));
-  return { supTotal, partTotal, topSup, topPart };
+  const p = (PLV.lookups.partners || []).find(x => x.id === m.partner_id);
+  return p ? p.company_name : ('Partner #' + m.partner_id);
+}
+function _plvLoc(m) {
+  const l = (PLV.lookups.locations || []).find(x => x.id === m.location_id);
+  return l ? l.name : '';
+}
+const PLV_EVENT_GR = {
+  LOADING: 'Φόρτωση', DELIVERY: 'Παράδοση', PARTNER_PICKUP: 'Παραλαβή από partner',
+  PARTNER_DROPOFF: 'Παράδοση από partner', RETURN_OUT: 'Επιστροφή αδειών',
+  RETURN_IN: 'Παραλαβή αδειών', ADJUSTMENT: 'Τακτοποίηση'
+};
+
+function _plvRows() {
+  let rows;
+  if (PLV.tab === 'pending') rows = PLV.movements.filter(m => m.status === 'pending');
+  else if (PLV.tab === 'noreturn') rows = PLV.movements.filter(m =>
+    m.status === 'confirmed' && m.event_type === 'DELIVERY' && m.given > m.taken);
+  else rows = PLV.movements.filter(m => m.status !== 'reversed');
+  if (PLV.from) rows = rows.filter(m => m.movement_date >= PLV.from);
+  if (PLV.to)   rows = rows.filter(m => m.movement_date <= PLV.to);
+  const q = PLV.q.trim().toLowerCase();
+  if (q) rows = rows.filter(m =>
+    (m.code + ' ' + _plvName(m) + ' ' + _plvLoc(m) + ' ' + (m.notes || '')).toLowerCase().includes(q));
+  return rows;
 }
 
-/* ── Active records (by tab) ──────────────────── */
-function _plActive() {
-  return PL.filters.tab === 'partners' ? PL.partnerRecs : PL.supplierRecs;
-}
-function _plActiveTable() {
-  return PL.filters.tab === 'partners' ? TABLES.PALLET_LEDGER_PARTNERS : TABLES.PALLET_LEDGER_SUPPLIERS;
+function plvFilter(key, val) { PLV[key] = val; _plvDraw(); }
+
+function plvExportCSV() {
+  const rows = _plvRows();
+  if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
+  const head = ['Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
+  const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const body = rows.map(m => [m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
+    _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
+  // BOM: χωρίς αυτό το Excel δείχνει τα ελληνικά ως μουτζούρες
+  const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV εξήχθη ✓');
 }
 
-/* ── Filter ───────────────────────────────────── */
-function _plFiltered() {
-  const { from, to, direction, _q } = PL.filters;
-  return _plActive().filter(r => {
-    const f = r.fields;
-    if (_q) {
-      const q = _q.toLowerCase();
-      const nameLookup = PL.filters.tab === 'partners'
-        ? _plPartnerName(Array.isArray(f['Partner']) ? f['Partner'][0] : null)
-        : _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
-      if (!nameLookup.toLowerCase().includes(q)
-        && !(f['Notes']||'').toLowerCase().includes(q)
-        && !(f['Pallet Type']||'').toLowerCase().includes(q)) return false;
-    }
-    if (from && (f['Date']||'') < from) return false;
-    if (to   && (f['Date']||'') > to)   return false;
-    if (direction && f['Direction'] !== direction) return false;
-    return true;
-  });
-}
-
-/* ── Render ───────────────────────────────────── */
-function _plRender() {
+function _plvDraw() {
   const c = document.getElementById('content');
-  const bal = _plBalances();
-  const filtered = _plFiltered();
-  const tab = PL.filters.tab;
-
-  // Empty on a healthy load, so nothing below changes in the normal case.
-  // When a source failed, say so ABOVE the balance cards: a balance of "0 pal"
-  // computed from a failed fetch is indistinguishable from a settled account,
-  // and this page is a financial reconciliation.
-  const plFailBanner = (PL.loadFailed || []).length ? `
-  <div style="background:var(--warning-soft);border:1px solid var(--panel-warn);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px;color:#78350F">
-    <b>⚠ This ledger is incomplete.</b>
-    Could not load: <b>${PL.loadFailed.map(escapeHtml).join(', ')}</b>.
-    Balances and the order list below are <b>not reliable</b> until this loads.
-    Reload to retry; the failure has been reported.
-  </div>` : '';
-
+  const pend = PLV.movements.filter(m => m.status === 'pending').length;
+  const rows = _plvRows();
   c.innerHTML = `
-  ${plFailBanner}
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-    <div>
-      <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Pallet Ledger</h2>
-      <div style="font-size:13px;color:var(--panel-dim);margin-top:4px">${PL.supplierRecs.length} εγγραφές προμηθευτών · ${PL.partnerRecs.length} συνεργατών</div>
+  <div style="padding:20px;max-width:1100px">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+      <h1 style="font-family:Syne;font-size:22px;margin:0">Ισοζύγιο Παλετών</h1>
+      <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-ghost" onclick="_plExportCSV()">Export CSV</button>
-      <button class="btn btn-new-order" onclick="_plOpenCreate()">+ Νέα Εγγραφή</button>
+    <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap">
+      ${[['pending', 'Εκκρεμείς (' + pend + ')'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις']].map(([id, lbl]) =>
+        `<button onclick="plvTab('${id}')" style="padding:8px 16px;border-radius:20px;border:1px solid var(--accent);cursor:pointer;font-size:13px;${PLV.tab === id ? 'background:var(--accent);color:#fff' : 'background:transparent;color:var(--accent)'}">${lbl}</button>`).join('')}
     </div>
-  </div>
-
-  <div class="pl-balance-cards">
-    <div class="pl-balance-card">
-      <h4>Μας Χρωστούν Προμηθευτές</h4>
-      <div class="pl-big-num ${bal.supTotal>0?'positive':bal.supTotal<0?'negative':'zero'}">${bal.supTotal>0?'+':''}${bal.supTotal} pal</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <input id="plvQ" placeholder="Αναζήτηση (κωδικός, όνομα, σημείο)" value="${PLV.q}" oninput="plvFilter('q',this.value)" style="flex:1 1 220px;padding:8px 12px;font-size:13px">
+      <label style="font-size:12px;color:var(--panel-dim)">Από <input type="date" value="${PLV.from}" onchange="plvFilter('from',this.value)" style="padding:6px;font-size:13px"></label>
+      <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>
+      <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
-    <div class="pl-balance-card">
-      <h4>Μας Χρωστούν Συνεργάτες</h4>
-      <div class="pl-big-num ${bal.partTotal>0?'positive':bal.partTotal<0?'negative':'zero'}">${bal.partTotal>0?'+':''}${bal.partTotal} pal</div>
-    </div>
-    <div class="pl-balance-card">
-      <h4>Μεγαλύτεροι Οφειλέτες — Προμηθευτές</h4>
-      ${bal.topSup.length ? `<ul class="pl-debtor-list">${bal.topSup.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">Κανένας οφειλέτης</div>'}
-    </div>
-    <div class="pl-balance-card">
-      <h4>Μεγαλύτεροι Οφειλέτες — Συνεργάτες</h4>
-      ${bal.topPart.length ? `<ul class="pl-debtor-list">${bal.topPart.map(d=>`<li><span>${d.name}</span><span class="pl-debtor-amt">+${d.amount}</span></li>`).join('')}</ul>` : '<div style="font-size:12px;color:var(--panel-dim)">Κανένας οφειλέτης</div>'}
-    </div>
-  </div>
-
-  <!-- Tabs -->
-  <div style="display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:12px">
-    <button onclick="PL.filters.tab='suppliers';_plRender()" style="background:${tab==='suppliers'?'var(--accent,var(--accent))':'transparent'};color:${tab==='suppliers'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Suppliers (${PL.supplierRecs.length})</button>
-    <button onclick="PL.filters.tab='partners';_plRender()" style="background:${tab==='partners'?'var(--accent,var(--accent))':'transparent'};color:${tab==='partners'?'#fff':'var(--text)'};border:none;padding:8px 16px;font:600 13px DM Sans;cursor:pointer;border-radius:6px 6px 0 0">Partners (${PL.partnerRecs.length})</button>
-  </div>
-
-  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;align-items:end">
-    <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Search</label>
-      <input type="text" value="${PL.filters._q||''}" oninput="PL.filters._q=this.value.toLowerCase().trim();_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px;width:180px" placeholder="name / notes...">
-    </div>
-    <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">From</label>
-      <input type="date" value="${PL.filters.from}" onchange="PL.filters.from=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
-    </div>
-    <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">To</label>
-      <input type="date" value="${PL.filters.to}" onchange="PL.filters.to=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
-    </div>
-    <div style="display:flex;flex-direction:column;gap:2px">
-      <label style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Direction</label>
-      <select onchange="PL.filters.direction=this.value;_plRender()" style="padding:6px 8px;border:1px solid #CBD5E1;border-radius:4px;font-size:12px">
-        <option value="">All</option>
-        <option value="OUT" ${PL.filters.direction==='OUT'?'selected':''}>OUT</option>
-        <option value="IN"  ${PL.filters.direction==='IN' ?'selected':''}>IN</option>
-      </select>
-    </div>
-    <div style="font-size:12px;color:#64748B;padding:8px">${filtered.length} records</div>
-  </div>
-
-  <table class="entity-table" style="width:100%">
-    <thead>
-      <tr>
-        <th>Date</th><th>Dir</th><th>Pallets</th><th>${tab==='partners'?'Partner':'Supplier'}</th>
-        <th>Stop</th><th>Verified</th><th>Actions</th>
+    <div style="overflow-x:auto">
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <tr style="text-align:left;color:var(--panel-dim)">
+        <th style="padding:8px">Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th>
+        <th>Σημείο</th><th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th>
+        <th>Κατάσταση</th><th></th>
       </tr>
-    </thead>
-    <tbody>
-      ${filtered.length===0 ? `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--panel-dim)">No records</td></tr>` :
-       filtered.map(r => {
-        const f = r.fields;
-        const dirClass = f['Direction']==='OUT' ? 'color:var(--panel-ok)' : 'color:#EF4444';
-        const name = tab==='partners'
-          ? _plPartnerName(Array.isArray(f['Partner']) ? f['Partner'][0] : null)
-          : _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
-        const stopLabel = (Array.isArray(f['Order Stop']) && f['Order Stop'][0]) ? f['Order Stop'][0].slice(-6) : '—';
-        return `<tr onclick="_plEdit('${r.id}')" style="cursor:pointer">
-          <td>${f['Date']||'—'}</td>
-          <td><span style="${dirClass};font-weight:700;font-size:12px">${f['Direction']||'—'}</span></td>
-          <td style="font-weight:600">${f['Pallets']||0}</td>
-          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</td>
-          <td style="font-size:11px;color:#64748B">${stopLabel}</td>
-          <td>${f['Verified']?'✓':''}</td>
-          <td>
-            <button class="btn btn-sm" onclick="event.stopPropagation();_plEdit('${r.id}')" style="font-size:11px;padding:2px 8px">Edit</button>
-            <button class="btn btn-sm" onclick="event.stopPropagation();_plDelete('${r.id}')" style="font-size:11px;padding:2px 8px;color:#EF4444">Del</button>
-          </td>
-        </tr>`;
-      }).join('')}
-    </tbody>
-  </table>`;
+      ${rows.map(m => `
+      <tr style="border-top:1px solid var(--line,#e2e8f0)">
+        <td style="padding:8px">${m.code}</td>
+        <td>${m.movement_date}</td>
+        <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
+        <td>${_plvName(m)}</td>
+        <td>${_plvLoc(m)}</td>
+        <td style="text-align:right">${m.taken}</td>
+        <td style="text-align:right">${m.given}</td>
+        <td>${m.status === 'pending' ? '<span style="color:#92400E;font-weight:600">εκκρεμής</span>' : m.status === 'confirmed' ? '<span style="color:var(--accent)">οριστική</span>' : 'αντιλογισμένη'}</td>
+        <td style="white-space:nowrap">
+          ${m.status === 'pending' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvOpenConfirm(${m.id})">Επιβεβαίωση</button>` : ''}
+          ${m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>` : ''}
+          ${m.sheet_url ? `<a href="#" onclick="plvViewSheet('${m.sheet_url.replace(/'/g, '')}');return false" style="margin-left:6px;font-size:12px">δελτίο</a>` : ''}
+        </td>
+      </tr>`).join('') || '<tr><td colspan="9" style="padding:30px;text-align:center;color:var(--panel-dim)">Καμία κίνηση εδώ</td></tr>'}
+    </table>
+    </div>
+  </div>
+  <div id="plvModal"></div>`;
 }
 
-/* ── Create / Edit modal ─────────────────────── */
-function _plOpenCreate() { _plOpenForm(null); }
-function _plEdit(id) { _plOpenForm(id); }
+function plvTab(t) { PLV.tab = t; _plvDraw(); }
 
-function _plOpenForm(recId) {
-  const tab = PL.filters.tab;
-  const rec = recId ? _plActive().find(r => r.id === recId) : null;
-  const f = rec?.fields || {};
-  const selOrderStop = Array.isArray(f['Order Stop']) ? f['Order Stop'][0] : null;
-
-  const orderOpts = PL.orders.map(o =>
-    `<option value="${o.id}" data-type="${o.type}" data-vs="${o.isVS||false}" data-dir="${o.direction||''}">${o.label}${o.isVS?' [VS]':''}</option>`
-  ).join('');
-
-  const partnerOpts = PL.partners.sort((a,b)=>(a.fields['Company Name']||'').localeCompare(b.fields['Company Name']||''))
-    .map(p => {
-      const sel = Array.isArray(f['Partner']) && f['Partner'][0]===p.id ? 'selected' : '';
-      return `<option value="${p.id}" ${sel}>${p.fields['Company Name']||p.id}</option>`;
-    }).join('');
-
-  const html = `
-  <div class="pu-overlay" id="plFormOverlay" onclick="if(event.target===this)document.getElementById('plFormOverlay').remove()">
-    <div class="pu-modal" style="width:540px">
-      <div class="pu-header">
-        <h2>${recId?'Edit':'New'} ${tab==='partners'?'Partner':'Supplier'} Entry</h2>
-        <button class="pu-close" onclick="document.getElementById('plFormOverlay').remove()">&times;</button>
-      </div>
-      <div class="pu-body">
-        <div class="pu-form-grid">
-          <div class="pu-field pu-full-width">
-            <label>Order (required — pick first to load stops)</label>
-            <select id="plf_order" onchange="_plOnOrderChange()">
-              <option value="">— pick order —</option>${orderOpts}
-            </select>
-          </div>
-          <div class="pu-field pu-full-width">
-            <label>Stop (required)</label>
-            <select id="plf_stop" disabled><option value="">— pick order first —</option></select>
-          </div>
-          <div class="pu-field">
-            <label>Direction</label>
-            <select id="plf_dir">
-              <option value="OUT" ${f['Direction']==='OUT'?'selected':''}>OUT (we gave)</option>
-              <option value="IN"  ${f['Direction']==='IN' ?'selected':''}>IN (we received)</option>
-            </select>
-          </div>
-          <div class="pu-field">
-            <label>Pallets</label>
-            <input type="number" id="plf_pals" value="${f['Pallets']||0}" min="0">
-          </div>
-          <div class="pu-field">
-            <label>Pallet Type</label>
-            <select id="plf_ptype">
-              ${['EUR/EPAL','CHEP','LPR','Other'].map(t => `<option value="${t}" ${f['Pallet Type']===t?'selected':''}>${t}</option>`).join('')}
-            </select>
-          </div>
-          ${tab==='partners' ? `
-          <div class="pu-field">
-            <label>Partner (required)</label>
-            <select id="plf_partner"><option value="">—</option>${partnerOpts}</select>
-          </div>` : ''}
-          <div class="pu-field">
-            <label>Verified</label>
-            <select id="plf_verified">
-              <option value="false" ${!f['Verified']?'selected':''}>No</option>
-              <option value="true"  ${f['Verified']?'selected':''}>Yes</option>
-            </select>
-          </div>
-          <div class="pu-field pu-full-width">
-            <label>Notes</label>
-            <textarea id="plf_notes" rows="2">${f['Notes']||''}</textarea>
-          </div>
-          <div class="pu-field pu-full-width" id="plf_warning" style="display:none;padding:8px;background:var(--warning-soft);color:#92400E;font-size:12px;border-radius:4px"></div>
-        </div>
-        <div class="pu-actions">
-          <button class="btn" onclick="document.getElementById('plFormOverlay').remove()">Cancel</button>
-          <button class="btn btn-new-order" onclick="_plSaveForm('${recId||''}')">${recId?'Update':'Create'}</button>
-        </div>
+/* ── Modal επιβεβαίωσης εκκρεμούς ── */
+function plvOpenConfirm(id) {
+  const m = PLV.movements.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('plvModal').innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(440px,92vw)">
+      <h3 style="font-family:Syne;margin:0 0 6px">Επιβεβαίωση — ${m.code}</h3>
+      <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">${PLV_EVENT_GR[m.event_type]} · ${_plvName(m)}</div>
+      <label style="font-size:13px">Πήραμε (παλέτες)<input id="plvTaken" type="number" min="0" value="${m.taken}" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <label style="font-size:13px">Δώσαμε (παλέτες)<input id="plvGiven" type="number" min="0" value="${m.given}" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <label style="font-size:13px">Δελτίο (φωτο/PDF — προαιρετικό)<input id="plvFile" type="file" accept="image/*,.pdf" style="width:100%;margin:4px 0 14px"></label>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-scan" onclick="plvCloseModal()">Άκυρο</button>
+        <button class="btn-new-order" onclick="plvDoConfirm(${m.id})">Επιβεβαίωση κίνησης</button>
       </div>
     </div>
   </div>`;
-
-  document.getElementById('plFormOverlay')?.remove();
-  document.body.insertAdjacentHTML('beforeend', html);
-
-  // Pre-populate if editing
-  if (recId && selOrderStop) {
-    // Find which order this stop belongs to (async — load all stops)
-    (async () => {
-      for (const o of PL.orders) {
-        const stops = await _plLoadStopsForOrder(o.id, o.type);
-        if (stops.find(s => s.id === selOrderStop)) {
-          document.getElementById('plf_order').value = o.id;
-          await _plOnOrderChange();
-          document.getElementById('plf_stop').value = selOrderStop;
-          _plValidateSelection();
-          break;
-        }
-      }
-    })();
-  }
 }
+function plvCloseModal() { document.getElementById('plvModal').innerHTML = ''; }
 
-async function _plOnOrderChange() {
-  const sel = document.getElementById('plf_order');
-  const orderId = sel.value;
-  const stopSel = document.getElementById('plf_stop');
-  if (!orderId) {
-    stopSel.innerHTML = '<option value="">— pick order first —</option>';
-    stopSel.disabled = true;
-    return;
-  }
-  const opt = sel.selectedOptions[0];
-  const orderType = opt.dataset.type;
-  stopSel.innerHTML = '<option value="">loading...</option>';
-  stopSel.disabled = true;
-  const stops = await _plLoadStopsForOrder(orderId, orderType);
-  // ONLY Loading stops + Cross-dock stops (unloadings don't create entries)
-  const valid = stops.filter(s => ['Loading','Cross-dock'].includes(s.fields[F.STOP_TYPE]));
-  if (!valid.length) {
-    stopSel.innerHTML = '<option value="">no eligible stops (only Loading/Cross-dock count)</option>';
-    return;
-  }
-  stopSel.innerHTML = '<option value="">— pick stop —</option>' + valid.map(s => {
-    const locId = (s.fields[F.STOP_LOCATION]||[])[0];
-    const locName = _plLocName(locId);
-    const n = s.fields[F.STOP_NUMBER] || '?';
-    const t = s.fields[F.STOP_TYPE];
-    return `<option value="${s.id}" data-loc="${locId}" data-type="${t}" data-date="${(s.fields[F.STOP_DATETIME]||'').slice(0,10)}">${t} #${n} — ${locName}</option>`;
-  }).join('');
-  stopSel.disabled = false;
-  stopSel.onchange = _plValidateSelection;
-}
-
-function _plValidateSelection() {
-  const warn = document.getElementById('plf_warning');
-  if (!warn) return;
-  const tab = PL.filters.tab;
-  const orderSel = document.getElementById('plf_order');
-  const stopSel = document.getElementById('plf_stop');
-  const opt = orderSel.selectedOptions[0];
-  const stopOpt = stopSel.selectedOptions[0];
-  if (!opt || !stopOpt || !stopOpt.value) { warn.style.display = 'none'; return; }
-  const stopType = stopOpt.dataset.type;
-  const isVS = opt.dataset.vs === 'true';
-  const orderType = opt.dataset.type;
-  const isIntlLeg = (orderType === 'intl' && !isVS); // pure INTL
-
-  const msgs = [];
-  if (tab === 'partners') {
-    // Partner entries: only on INTL leg (non-VS INTL loadings) OR crossdocks
-    if (stopType === 'Loading' && !isIntlLeg) {
-      msgs.push('⚠️ Partner entries μόνο σε INTL leg loadings (non-VS). Τα national legs δεν έχουν partner exchange.');
-    }
-  }
-  warn.textContent = msgs.join(' ');
-  warn.style.display = msgs.length ? 'block' : 'none';
-}
-
-async function _plSaveForm(recId) {
-  const tab = PL.filters.tab;
-  const orderSel = document.getElementById('plf_order');
-  const stopSel  = document.getElementById('plf_stop');
-  const stopId = stopSel.value;
-  if (!stopId) { alert('Pick an Order and a Stop first.'); return; }
-  const stopOpt = stopSel.selectedOptions[0];
-  const locId = stopOpt.dataset.loc;
-  const stopDate = stopOpt.dataset.date;
-
-  const fields = {
-    'Date': stopDate || localToday(),
-    'Direction': document.getElementById('plf_dir').value,
-    'Pallets': parseInt(document.getElementById('plf_pals').value) || 0,
-    'Pallet Type': document.getElementById('plf_ptype').value,
-    'Order Stop': [stopId],
-    'Verified': document.getElementById('plf_verified').value === 'true',
-    'Notes': document.getElementById('plf_notes').value,
-  };
-
-  if (tab === 'partners') {
-    const pid = document.getElementById('plf_partner').value;
-    if (!pid) { alert('Pick a Partner.'); return; }
-    fields['Partner'] = [pid];
-  } else {
-    if (locId) fields['Loading Supplier'] = [locId];
-  }
-
-  const tbl = _plActiveTable();
-  try {
-    if (recId) await atPatch(tbl, recId, fields);
-    else       await atCreate(tbl, fields);
-    document.getElementById('plFormOverlay').remove();
-    invalidateCache(tbl);
-    renderPalletLedger();
-  } catch(e) { reportError('Σφάλμα αποθήκευσης εγγραφής παλετών', e); }
-}
-
-/* ── CSV Export ─────────────────────────────── */
-function _plExportCSV() {
-  const recs = _plFiltered();
-  if (!recs.length) { toast('No records to export', 'error'); return; }
-  const tab = PL.filters.tab;
-  const counterHeader = tab === 'partners' ? 'Partner' : 'Supplier';
-  const rows = [['Date','Direction','Pallets','Pallet Type', counterHeader, 'Stop Ref','Verified','Notes']];
-  recs.forEach(r => { const f = r.fields;
-    const name = tab === 'partners'
-      ? _plPartnerName(Array.isArray(f['Partner']) ? f['Partner'][0] : null)
-      : _plLocName(Array.isArray(f['Loading Supplier']) ? f['Loading Supplier'][0] : null);
-    const stopId = (Array.isArray(f['Order Stop']) ? f['Order Stop'][0] : '') || '';
-    rows.push([f['Date']||'', f['Direction']||'', f['Pallets']||0, f['Pallet Type']||'', name, stopId, f['Verified']?'Yes':'No', f['Notes']||'']);
+async function _plvUploadIfAny() {
+  const fi = document.getElementById('plvFile');
+  if (!fi || !fi.files || !fi.files[0]) return null;
+  const file = fi.files[0];
+  const b64 = await new Promise((ok, err) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1]);
+    r.onerror = err; r.readAsDataURL(file);
   });
-  const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
-  a.download = `pallet_ledger_${tab}_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  toast('CSV exported');
+  const res = await plFetch('/pallets/sheets', { method: 'POST', body: { filename: file.name, content_base64: b64 } });
+  return res.path;
 }
 
-/* ── Delete ──────────────────────────────────── */
-async function _plDelete(id) {
-  if (!(await confirmAction('Διαγραφή αυτής της εγγραφής pallet;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
-  const tbl = _plActiveTable();
+async function plvDoConfirm(id) {
+  if (PLV.busy) return; PLV.busy = true;
   try {
-    await atSoftDelete(tbl, id);
-    invalidateCache(tbl);
-    renderPalletLedger();
-  } catch(e) { reportError('Σφάλμα διαγραφής εγγραφής παλετών', e); }
+    const taken = parseInt(document.getElementById('plvTaken').value, 10) || 0;
+    const given = parseInt(document.getElementById('plvGiven').value, 10) || 0;
+    const path = await _plvUploadIfAny();
+    const patch = { taken, given, sheet_source: path ? 'UPLOAD' : 'MANUAL' };
+    if (path) patch.sheet_url = path;
+    await plFetch('/pallets/movements/' + id, { method: 'PATCH', body: patch });
+    await plFetch('/pallets/movements/' + id + '/confirm', { method: 'POST' });
+    toast('Κίνηση επιβεβαιώθηκε ✓');
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) { showErrorToast('Αποτυχία επιβεβαίωσης: ' + e.message, 'error'); }
+  finally { PLV.busy = false; }
 }
 
-// Expose
+/* ── Διόρθωση ανταλλαγής (σενάριο Lidl): reverse + σωστό replacement ── */
+function plvFixDelivery(id) {
+  const m = PLV.movements.find(x => x.id === id);
+  if (!m) return;
+  document.getElementById('plvModal').innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(440px,92vw)">
+      <h3 style="font-family:Syne;margin:0 0 6px">Διόρθωση ανταλλαγής — ${m.code}</h3>
+      <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">Δώσαμε ${m.given} γεμάτες. Πόσες άδειες πήραμε ΠΡΑΓΜΑΤΙΚΑ;</div>
+      <label style="font-size:13px">Πήραμε (πραγματικά)<input id="plvRealTaken" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <label style="font-size:13px">Σημείωση (τι έγινε)<input id="plvFixNote" type="text" placeholder="π.χ. Lidl — δεν είχαν άδειες" style="width:100%;padding:10px;margin:4px 0 14px"></label>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-scan" onclick="plvCloseModal()">Άκυρο</button>
+        <button class="btn-new-order" onclick="plvDoFix(${m.id})">Καταχώρηση διόρθωσης</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function plvDoFix(id) {
+  if (PLV.busy) return; PLV.busy = true;
+  try {
+    const m = PLV.movements.find(x => x.id === id);
+    const realTaken = parseInt(document.getElementById('plvRealTaken').value, 10) || 0;
+    const note = document.getElementById('plvFixNote').value || '';
+    const res = await plFetch('/pallets/movements/' + id + '/reverse', { method: 'POST', body: {
+      reason: 'Διόρθωση ανταλλαγής παράδοσης' + (note ? ' — ' + note : ''),
+      replacement: {
+        movement_date: m.movement_date, counterparty_type: m.counterparty_type,
+        client_id: m.client_id, partner_id: m.partner_id, location_id: m.location_id,
+        event_type: 'DELIVERY', taken: realTaken, given: m.given,
+        order_stop_id: m.order_stop_id, order_id: m.order_id, notes: note
+      }
+    }});
+    if (res.replacement) await plFetch('/pallets/movements/' + res.replacement.id + '/confirm', { method: 'POST' });
+    toast('Διόρθωση καταχωρήθηκε ✓');
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) { showErrorToast('Αποτυχία διόρθωσης: ' + e.message, 'error'); }
+  finally { PLV.busy = false; }
+}
+
+/* ── Νέα χειροκίνητη κίνηση ── */
+function plvNewMovement() {
+  const cls = (PLV.lookups.clients || []).map(c => `<option value="C:${c.id}">${c.company_name}</option>`).join('');
+  const prs = (PLV.lookups.partners || []).map(p => `<option value="P:${p.id}">${p.company_name}</option>`).join('');
+  const locs = (PLV.lookups.locations || []).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  document.getElementById('plvModal').innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(460px,92vw);max-height:90vh;overflow:auto">
+      <h3 style="font-family:Syne;margin:0 0 14px">Νέα κίνηση παλετών</h3>
+      <label style="font-size:13px">Είδος<select id="plvNmType" style="width:100%;padding:10px;margin:4px 0 12px">
+        <option value="RETURN_OUT">Επιστροφή αδειών (δίνουμε)</option>
+        <option value="RETURN_IN">Παραλαβή αδειών (παίρνουμε)</option>
+        <option value="PARTNER_PICKUP">Partner πήρε από εμάς</option>
+        <option value="PARTNER_DROPOFF">Partner μάς έφερε</option>
+        <option value="ADJUSTMENT">Τακτοποίηση/διαγραφή οφειλής (μόνο owner)</option>
+      </select></label>
+      <label style="font-size:13px">Αιτιολογία (υποχρεωτική για τακτοποίηση)<input id="plvNmReason" type="text" style="width:100%;padding:10px;margin:4px 0 12px"></label>
+      <label style="font-size:13px">Αντισυμβαλλόμενος<select id="plvNmParty" style="width:100%;padding:10px;margin:4px 0 12px">
+        <optgroup label="Πελάτες">${cls}</optgroup><optgroup label="Partners">${prs}</optgroup>
+      </select></label>
+      <label style="font-size:13px">Σημείο (προαιρετικό)<select id="plvNmLoc" style="width:100%;padding:10px;margin:4px 0 12px"><option value="">—</option>${locs}</select></label>
+      <label style="font-size:13px">Ημερομηνία<input id="plvNmDate" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:10px;margin:4px 0 12px"></label>
+      <div style="display:flex;gap:10px">
+        <label style="font-size:13px;flex:1">Πήραμε<input id="plvNmTaken" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px"></label>
+        <label style="font-size:13px;flex:1">Δώσαμε<input id="plvNmGiven" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px"></label>
+      </div>
+      <label style="font-size:13px">Δελτίο (φωτο/PDF — προαιρετικό)<input id="plvFile" type="file" accept="image/*,.pdf" style="width:100%;margin:4px 0 6px"></label>
+      <label style="font-size:13px">Σημείωση<input id="plvNmNote" type="text" style="width:100%;padding:10px;margin:4px 0 14px"></label>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn-scan" onclick="plvCloseModal()">Άκυρο</button>
+        <button class="btn-new-order" onclick="plvDoCreate()">Καταχώρηση + Επιβεβαίωση</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function plvDoCreate() {
+  if (PLV.busy) return; PLV.busy = true;
+  try {
+    const [kind, pid] = document.getElementById('plvNmParty').value.split(':');
+    const path = await _plvUploadIfAny();
+    const body = {
+      movement_date: document.getElementById('plvNmDate').value,
+      counterparty_type: kind === 'C' ? 'CLIENT' : 'PARTNER',
+      event_type: document.getElementById('plvNmType').value,
+      taken: parseInt(document.getElementById('plvNmTaken').value, 10) || 0,
+      given: parseInt(document.getElementById('plvNmGiven').value, 10) || 0,
+      notes: document.getElementById('plvNmNote').value || null,
+      reason: (document.getElementById('plvNmReason') || {}).value || null,
+      sheet_source: path ? 'UPLOAD' : 'MANUAL',
+      confirm: true
+    };
+    if (kind === 'C') body.client_id = parseInt(pid, 10); else body.partner_id = parseInt(pid, 10);
+    const loc = document.getElementById('plvNmLoc').value;
+    if (loc) body.location_id = parseInt(loc, 10);
+    if (path) body.sheet_url = path;
+    await plFetch('/pallets/movements', { method: 'POST', body });
+    toast('Κίνηση καταχωρήθηκε ✓');
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) { showErrorToast('Αποτυχία: ' + e.message, 'error'); }
+  finally { PLV.busy = false; }
+}
+
+async function plvViewSheet(path) {
+  try {
+    const r = await plFetch('/pallets/sheets?path=' + encodeURIComponent(path));
+    window.open(r.url, '_blank');
+  } catch (e) { showErrorToast('Δεν άνοιξε το δελτίο: ' + e.message, 'error'); }
+}
+
 window.renderPalletLedger = renderPalletLedger;
-window.PL = PL;
-window._plRender = _plRender;
-window._plOpenCreate = _plOpenCreate;
-window._plEdit = _plEdit;
-window._plDelete = _plDelete;
-window._plOpenForm = _plOpenForm;
-window._plSaveForm = _plSaveForm;
-window._plOnOrderChange = _plOnOrderChange;
-window._plValidateSelection = _plValidateSelection;
-window._plExportCSV = _plExportCSV;
+window.plvTab = plvTab; window.plvOpenConfirm = plvOpenConfirm; window.plvCloseModal = plvCloseModal;
+window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix;
+window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
+window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV;
