@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v62-login-form';
+const SW_VERSION = 'tms-sw-v63-pickups-owner-only';
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
