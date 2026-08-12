@@ -165,12 +165,17 @@ __name(plResolveRefs, "plResolveRefs");
       catch (e) { return jsonError(e.message, 400, origin, env); }
 ```
 
-Στο PATCH branch, ΠΡΙΝ το `const merged = ...` πρόσθεσε το αντίστοιχο:
+Στο PATCH branch, ΑΜΕΣΩΣ μετά το `const patch = ctPick(body, PL_FIELDS);` και ΠΡΙΝ το έλεγχο "Nothing to update", πρόσθεσε:
 
 ```js
+      // Ο resolver ΠΡΙΝ τον έλεγχο κενού: body με μόνο *_rec refs (π.χ.
+      // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
       try { Object.assign(patch, await plResolveRefs(env, body)); }
       catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
 ```
+
+(Το `const merged = ...` έρχεται ΜΕΤΑ αυτό.)
 
 Στο reverse branch, μέσα στο `if (body.replacement ...)`, μετά το ctPick:
 

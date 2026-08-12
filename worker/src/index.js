@@ -2708,9 +2708,11 @@ async function handlePallets(request, url, origin, env) {
         return jsonError("Only pending movements can be edited — use reverse for confirmed", 409, origin, env);
       }
       const patch = ctPick(body, PL_FIELDS);
-      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      // Ο resolver ΠΡΙΝ τον έλεγχο κενού: body με μόνο *_rec refs (π.χ.
+      // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
       try { Object.assign(patch, await plResolveRefs(env, body)); }
       catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
       if (err) return jsonError(err, 400, origin, env);
