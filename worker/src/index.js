@@ -2560,17 +2560,17 @@ __name(handleCosts, "handleCosts");
 // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
 var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF", "RETURN_OUT", "RETURN_IN", "ADJUSTMENT"];
 var PL_PERMS = {
-  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], balances: ["GET"], lookups: ["GET"] },
-  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], balances: ["GET"], lookups: ["GET"] },
-  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], balances: ["GET"], lookups: ["GET"] },
-  accountant: { movements: ["GET"], balances: ["GET"], lookups: ["GET"] },
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  accountant: { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   management: { balances: ["GET"] }
 };
 function plCan(role, resource, method) {
   const r = PL_PERMS[role];
   return !!(r && r[resource] && r[resource].includes(method));
 }
-var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
 function plValidate(row) {
   if (!row.movement_date) return "movement_date required";
   if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
@@ -2586,6 +2586,28 @@ function plValidate(row) {
   if (row.event_type === "ADJUSTMENT" && !row.reason) return "ADJUSTMENT requires reason";
   return null;
 }
+// Το facade μιλάει legacy ids (recXXX)· το pl_movements θέλει pg bigint.
+// Ο resolver είναι το ΜΟΝΟ σημείο μετάφρασης — το frontend στέλνει *_rec.
+var PL_REF_MAP = {
+  client_rec: { table: "clients", col: "client_id" },
+  partner_rec: { table: "partners", col: "partner_id" },
+  location_rec: { table: "locations", col: "location_id" },
+  order_stop_rec: { table: "order_stops", col: "order_stop_id" },
+  cons_load_rec: { table: "consolidated_loads", col: "cons_load_id" },
+  order_rec: { table: "orders", col: "order_id" }
+};
+async function plResolveRefs(env, body) {
+  const out = {};
+  for (const [refKey, { table, col }] of Object.entries(PL_REF_MAP)) {
+    const legacy = body[refKey];
+    if (!legacy) continue;
+    const { rows } = await dbSelectRaw(env, table, new URLSearchParams({ legacy_id: `eq.${legacy}`, select: "id" }));
+    if (!rows.length) throw new Error(`Unknown ${refKey}: ${legacy}`);
+    out[col] = rows[0].id;
+  }
+  return out;
+}
+__name(plResolveRefs, "plResolveRefs");
 async function handlePallets(request, url, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
@@ -2626,6 +2648,18 @@ async function handlePallets(request, url, origin, env) {
       if (q.get("cons_load_id")) params.append("cons_load_id", `eq.${q.get("cons_load_id")}`);
       if (q.get("from")) params.append("movement_date", `gte.${q.get("from")}`);
       if (q.get("to")) params.append("movement_date", `lte.${q.get("to")}`);
+      if (q.get("order_stop_rec")) {
+        try {
+          const r = await plResolveRefs(env, { order_stop_rec: q.get("order_stop_rec") });
+          params.append("order_stop_id", `eq.${r.order_stop_id}`);
+        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+      }
+      if (q.get("order_rec")) {
+        try {
+          const r = await plResolveRefs(env, { order_rec: q.get("order_rec") });
+          params.append("order_id", `eq.${r.order_id}`);
+        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+      }
       const { rows } = await dbSelectRaw(env, "pl_movements", params);
       return jsonOk({ records: rows }, origin, env);
     }
@@ -2638,6 +2672,8 @@ async function handlePallets(request, url, origin, env) {
       const row = ctPick(body, PL_FIELDS);
       row.taken = row.taken ?? 0;
       row.given = row.given ?? 0;
+      try { Object.assign(row, await plResolveRefs(env, body)); }
+      catch (e) { return jsonError(e.message, 400, origin, env); }
       const err = plValidate(row);
       if (err) return jsonError(err, 400, origin, env);
       if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
@@ -2673,6 +2709,8 @@ async function handlePallets(request, url, origin, env) {
       }
       const patch = ctPick(body, PL_FIELDS);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      try { Object.assign(patch, await plResolveRefs(env, body)); }
+      catch (e) { return jsonError(e.message, 400, origin, env); }
       const merged = { ...before.rows[0], ...patch };
       const err = plValidate(merged);
       if (err) return jsonError(err, 400, origin, env);
@@ -2745,6 +2783,8 @@ async function handlePallets(request, url, origin, env) {
       let replacementRow = null;
       if (body.replacement && typeof body.replacement === "object") {
         replacementRow = ctPick(body.replacement, PL_FIELDS);
+        try { Object.assign(replacementRow, await plResolveRefs(env, body.replacement)); }
+        catch (e) { return jsonError(e.message, 400, origin, env); }
         replacementRow.taken = replacementRow.taken ?? 0;
         replacementRow.given = replacementRow.given ?? 0;
         replacementRow.reversal_of = m.id;
