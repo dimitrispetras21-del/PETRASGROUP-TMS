@@ -2378,7 +2378,7 @@ var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 // RT create/close/list · manual cost lines (net+VAT) · PnL read (OWNER ONLY)
 var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "driver_pay", "cash_m", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
 var COSTS_PERMS = {
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"], lookups: ["GET"] },
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"] },
   accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"] },
   dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
   management: {},
@@ -2547,6 +2547,15 @@ async function handleCosts(request, url, origin, env) {
       const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
       return jsonOk({ records: rows }, origin, env);
     }
+    // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
+    // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
+    if (resource === "pallet-gate" && method === "GET") {
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("limit", "500");
+      const { rows } = await dbSelectRaw(env, "ct_v_rt_pallet_gate", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`COSTS ${method} ${url.pathname}`, e.message);
@@ -2564,8 +2573,11 @@ var PL_PERMS = {
   dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   accountant: { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
-  management: { balances: ["GET"] }
+  management: { balances: ["GET"], gate: ["GET"] }
 };
+// Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
+// τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
+for (const r of ["owner", "dispatcher", "warehouse", "accountant"]) PL_PERMS[r].gate = ["GET"];
 function plCan(role, resource, method) {
   const r = PL_PERMS[role];
   return !!(r && r[resource] && r[resource].includes(method));
@@ -2823,6 +2835,19 @@ async function handlePallets(request, url, origin, env) {
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
+    }
+    // ---- GET /pallets/gate?order_recs=recA,recB — «έχουν δελτία;» ανά παραγγελία ----
+    // Το invoicing ρωτάει για ΟΛΗ τη λίστα με μία κλήση· μία κλήση ανά order θα
+    // έκανε τη σελίδα αργή όσο μεγαλώνει το ανεξόφλητο.
+    if (resource === "gate" && method === "GET") {
+      const recs = (url.searchParams.get("order_recs") || "").split(",")
+        .map((s) => s.trim()).filter((s) => /^rec[A-Za-z0-9]+$/.test(s)).slice(0, 300);
+      if (!recs.length) return jsonOk({ records: [] }, origin, env);
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order_rec", `in.(${recs.join(",")})`);
+      const { rows } = await dbSelectRaw(env, "pl_v_order_gate", params);
+      return jsonOk({ records: rows }, origin, env);
     }
     // ---- GET /pallets/balances/clients/:id (drill-down ανά σημείο) ----
     // ΠΡΙΝ το γενικό branch: εδώ recId="clients" και seg[3]=<client id>.
