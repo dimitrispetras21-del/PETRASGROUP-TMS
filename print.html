@@ -249,11 +249,13 @@ const T_ORDERS='tblgHlNmLBH3JTdIM',T_PARTNERS='tblLHl5m8bqONfhWv',
       T_DRIVERS='tbl7UGmYhc2Y82pPs',T_LOCS='tblxu8DRfTQOFRCzS',
       T_STOPS='tblaeY5QOHAS1gyE8';
 var orderStops=[];
-const DISPATCHER='Δ. Πέτρας';
+// Ονοματεπώνυμο του χρήστη που εκτυπώνει (owner 12/8) — ίδιο origin, οπότε
+// διαβάζεται το tms_user του app· fallback στον owner αν λείπει.
+const DISPATCHER=(function(){try{return JSON.parse(localStorage.getItem('tms_user')||'{}').name||'Δ. Πέτρας';}catch(e){return 'Δ. Πέτρας';}})();
 // Επικοινωνία στα φύλλα/WhatsApp — συμπλήρωσε τα τηλέφωνα (κενό = δεν τυπώνεται)
 const OFFICE_PHONE='';      // π.χ. '+30 23320 XXXXX'
 const EMERGENCY_PHONE='';   // π.χ. '+30 69X XXX XXXX'
-const OFFICE_EMAIL='dispo@petrasgroup.com';
+const OFFICE_EMAIL='vermionfresh@petrasgroup.com';  // owner 12/8
 var _waArr=[]; // WhatsApp κείμενα (ένα ανά έγγραφο ομάδας)
 
 const params=new URLSearchParams(window.location.search);
