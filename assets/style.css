@@ -2330,6 +2330,11 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;padding:0 0 3px}
 .wk3-lcol .wk3-route{flex:0 0 auto}
 .wk3-stopline{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.7;padding-left:40px;min-width:0}
+/* GRP μέλη (owner 12/8): αναδίπλωση στο ×N badge, ένα line ανά order */
+.wk3-gm{cursor:pointer;color:var(--text-mid,#475569)}
+.wk3-gm:hover{color:var(--accent,#0284C7)}
+.wk3-gmn{display:inline-block;flex-shrink:0;width:13px;height:13px;border-radius:50%;background:#0F172A;color:#fff;font-size:8.5px;font-weight:800;text-align:center;line-height:13px}
+.wk3-leg.grp{background:rgba(109,40,217,.05)}
 .wk3-lcol .wk3-stopline.dl{padding-left:calc(40px + 41%)}
 .wk3-abbr{cursor:pointer;border-bottom:1px dotted var(--accent)}
 .wk3-xfold{display:none}

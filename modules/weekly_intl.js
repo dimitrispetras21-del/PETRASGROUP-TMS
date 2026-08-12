@@ -736,7 +736,7 @@ function _wiImpRowHTML(row,impNo){
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']))}">G</span>`:''}</div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">G</span>`:''}</div>
     <div class="wk3-feed l bgap" title="Χωρίς εθνικό σκέλος"></div>
     <div class="wk3-leg void${row.saved&&!impPartner?' gap':''}${(row.saved&&impPartner)||!row.saved?' bgap':''}"
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
@@ -1047,9 +1047,24 @@ function _wiSameDayConflict(row){
   return null;
 }
 
+// GRP σειρά παράδοσης (owner 12/8): ζει ΜΕΣΑ στο Group ID ως «GRP-xxx|recA,recB»
+// ώστε να μη χρειαστεί νέα στήλη/worker deploy — το collapse δουλεύει με απλή
+// ισότητα του string, άρα το κοινό suffix δεν το σπάει. Χωρίς suffix, η σειρά
+// πέφτει σε ημερομηνία παράδοσης.
+function _wiGrpOrder(exps){
+  if(exps.length<2) return exps;
+  const gid=String(exps.find(e=>e.fields['Group ID'])?.fields['Group ID']||'');
+  const seq=(gid.split('|')[1]||'').split(',').filter(Boolean);
+  if(seq.length){
+    const pos=id=>{const k=seq.indexOf(id);return k<0?99:k;};
+    return [...exps].sort((a,b)=>pos(a.id)-pos(b.id));
+  }
+  return [...exps].sort((a,b)=>String(a.fields['Delivery DateTime']||'').localeCompare(String(b.fields['Delivery DateTime']||'')));
+}
+
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
-  const exps   =row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
+  const exps   =_wiGrpOrder(row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean));
   const imp    =row.importId?data.imports.find(r=>r.id===row.importId):null;
   const isOpen =ui.openRow===row.id;
   const isGroup=exps.length>1;
@@ -1122,10 +1137,13 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row._alt?' alt':''}${stF.delivered&&!stF.late?' wk3-done':''}" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();_wiToggle(${row.id})}" role="button" tabindex="0" onclick="_wiToggle(${row.id})">
     <div class="wk3-num">${i+1}${isGroup?`<span class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l${!vsExp?' bgap':''}" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}</div>
-    <div class="wk3-leg" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας" oncontextmenu="_wiCtx(event,${row.id},event)" onclick="event.stopPropagation();_wk3Edit('${primary?.id||''}')">
+    <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας':'Κλικ: άνοιγμα φόρμας παραγγελίας'}" oncontextmenu="_wiCtx(event,${row.id},event)" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${primary?.id||''}')`}">
       <div class="wk3-lcol"><span class="wk3-route">${(()=>{ if(vsExp){ const v=_wk3VsCd(primary?.fields,'exp');
       return `<b class="wk3-ld${stF.loaded?' done':''}${v.est?' estd':''}" style="cursor:pointer" title="${v.est?'Εκτίμηση (Loading+1) — κλικ για πραγματική ημερομηνία CD':'Ημ. φόρτωσης από Cross-Dock — κλικ για αλλαγή'}" onclick="_wk3PickDate(event,'${primary?.id}','VS CD Date','${v.iso}')">${v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):''}</b>`; }
-    return `<b class="wk3-ld${stF.loaded?' done':''}" style="cursor:pointer" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${primary?.id}','Loading DateTime','${primary?.fields['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b>`; })()}<span class="frm">${vsExp?'Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση',primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση',primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>${vsExp?'':_wk3MoreStops(fromStr,primary?.fields._stopsL,'load')}${_wk3MoreStops(toStr,primary?.fields._stopsD,'del')}</div>
+    return `<b class="wk3-ld${stF.loaded?' done':''}" style="cursor:pointer" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${primary?.id}','Loading DateTime','${primary?.fields['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b>`; })()}<span class="frm">${vsExp?'Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση',primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση',primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>${vsExp?'':_wk3MoreStops(fromStr,primary?.fields._stopsL,'load')}${_wk3MoreStops(toStr,primary?.fields._stopsD,'del')}${(isGroup&&ui.openGroup===row.id)?exps.map((m,k)=>{const mf=m.fields;
+        const ml=mf['Loading DateTime']?_wk3D(_wiFmt(mf['Loading DateTime']))+' ':'';
+        const md=mf['Delivery DateTime']?_wk3D(_wiFmt(mf['Delivery DateTime']))+' ':'';
+        return `<div class="wk3-stopline wk3-gm" title="Κλικ: φόρμα παραγγελίας" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><b>${escapeHtml(_wiClean(mf['Client Name']||mf['Client Summary']||''))}</b> · ${ml}${escapeHtml(_wiClean(mf['Loading Summary']||'—'))} <span class="wk3-sep">→</span> ${md}${escapeHtml(_wiClean(mf['Delivery Summary']||'—'))}${mf['Total Pallets']?` · <b>${mf['Total Pallets']}p</b>`:''}</div>`;}).join(''):''}</div>
       <span class="wk3-meta"><span class="wk3-palpe">${pals?pals+'p':''}${_wiBadges(primary?.fields||{})}</span>${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
@@ -2323,6 +2341,92 @@ function _wiPrintGroup(rowId){
   window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=export&sheet=${sheet}`,'_blank');
 }
 
+/* ── ΚΑΡΤΕΛΑ ΡΟΤΑΣ (owner 12/8, εγκεκριμένο πρωτότυπο grp_trip_proto) ──
+   Κλικ σε γραμμή GRP: αντί για φόρμα (ποιου order;) ανοίγει πάνελ με τα μέλη
+   της ομάδας — Επεξεργασία ανά order + σειρά παράδοσης με ↑↓. Η σειρά
+   αποθηκεύεται στο suffix του Group ID (βλ. _wiGrpOrder). */
+function _wiRota(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const exps=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean));
+  if(exps.length<2){ _wk3Edit(row.orderIds[0]); return; }
+  window._wiRotaState={rowId, ids:exps.map(e=>e.id)};
+  _wiRotaRender();
+}
+function _wiRotaRender(){
+  const st=window._wiRotaState; if(!st) return;
+  const row=WINTL.rows.find(r=>r.id===st.rowId); if(!row) return;
+  const exps=st.ids.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
+  const pals=exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0);
+  const asn=row.partnerLabel?row.partnerLabel+(row.partnerPlates?' · '+row.partnerPlates:'')
+    :(row.truckLabel?row.truckLabel+(row.driverLabel?' · '+row.driverLabel:''):'Αδιάθετο');
+  const cardRow=(e)=>{const f=e.fields;
+    return `<div style="border:1px solid var(--border,#D6DDE6);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
+      <div><div style="font-weight:800;font-size:12.5px">${escapeHtml(_wiClean(f['Client Name']||f['Client Summary']||'—'))}</div>
+        <div style="font-size:11px;color:#475569;margin-top:2px">${f['Reference']?`Ref <b>${escapeHtml(String(f['Reference']))}</b> · `:''}<b>${f['Total Pallets']||0} παλ</b> · ${escapeHtml(_wiClean(f['Loading Summary']||'—'))} → ${escapeHtml(_wiClean(f['Delivery Summary']||'—'))}</div></div>
+      <button style="font-size:10.5px;font-weight:800;color:#0284C7;border:1px solid #0284C7;background:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;white-space:nowrap" onclick="_wiRotaClose();_wk3Edit('${e.id}')">Επεξεργασία</button>
+    </div>`;};
+  const seqRow=(e,k)=>{const f=e.fields;
+    return `<div style="display:grid;grid-template-columns:24px 1fr auto 52px;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #E7EBF0;background:#fff">
+      <span style="width:17px;height:17px;border-radius:50%;background:#0F172A;color:#fff;font-size:9.5px;font-weight:800;text-align:center;line-height:17px">${k+1}</span>
+      <span style="font-weight:700;font-size:12px">${escapeHtml(_wiClean(f['Delivery Summary']||'—'))}<small style="display:block;font-weight:500;color:#475569;font-size:10.5px">${f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):''} · ${escapeHtml(_wiClean(f['Client Name']||f['Client Summary']||''))}</small></span>
+      <span></span>
+      <span style="display:flex;gap:3px;justify-content:flex-end">
+        <button ${k===0?'disabled style="opacity:.3;width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px"':'style="width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px;color:#475569;cursor:pointer"'} onclick="_wiRotaMv(${k},-1)">↑</button>
+        <button ${k===exps.length-1?'disabled style="opacity:.3;width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px"':'style="width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px;color:#475569;cursor:pointer"'} onclick="_wiRotaMv(${k},1)">↓</button>
+      </span>
+    </div>`;};
+  let ov=document.getElementById('wiRotaOv');
+  if(!ov){ ov=document.createElement('div'); ov.id='wiRotaOv'; document.body.appendChild(ov); }
+  ov.innerHTML=`
+    <div style="position:fixed;inset:0;background:rgba(11,25,41,.45);z-index:8000" onclick="_wiRotaClose()"></div>
+    <div style="position:fixed;top:0;right:0;width:480px;max-width:94vw;height:100vh;background:#fff;z-index:8001;box-shadow:-12px 0 40px rgba(11,25,41,.25);display:flex;flex-direction:column">
+      <div style="background:#0B1929;color:#fff;padding:14px 18px">
+        <button style="float:right;background:none;border:none;color:#fff;font-size:20px;cursor:pointer" onclick="_wiRotaClose()">×</button>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">Καρτέλα Ρότας — GRP ×${exps.length}</div>
+        <div style="font-size:11px;color:rgba(196,207,219,.8);margin-top:3px">${exps.length} παραγγελίες · ${pals} παλέτες · ${escapeHtml(asn)}</div>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:14px 18px">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:1.2px;color:#0B1929;text-transform:uppercase;margin-bottom:8px">Παραγγελίες του group</div>
+        ${exps.map(cardRow).join('')}
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:1.2px;color:#0B1929;text-transform:uppercase;margin:14px 0 8px">Σειρά παράδοσης <span style="font-weight:500;color:#94A3B8;text-transform:none;letter-spacing:0">— βελάκια ↑↓</span></div>
+        <div style="border:1px solid #D6DDE6;border-radius:10px;overflow:hidden">${exps.map(seqRow).join('')}</div>
+        <div style="font-size:10.5px;color:#94A3B8;margin-top:6px;line-height:1.5">Η σειρά καθορίζει την αρίθμηση στο Weekly και τη διαδρομή στο φύλλο οδηγού.</div>
+      </div>
+      <div style="border-top:1px solid #E7EBF0;padding:12px 18px;display:flex;gap:10px;justify-content:flex-end">
+        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#fff;color:#475569;border:1px solid #D6DDE6" onclick="_wiRotaClose()">Κλείσιμο</button>
+        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#0284C7;color:#fff;border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
+      </div>
+    </div>`;
+}
+function _wiRotaMv(i,d){
+  const st=window._wiRotaState; if(!st) return;
+  const j=i+d; if(j<0||j>=st.ids.length) return;
+  [st.ids[i],st.ids[j]]=[st.ids[j],st.ids[i]];
+  _wiRotaRender();
+}
+async function _wiRotaSave(){
+  const st=window._wiRotaState; if(!st) return;
+  const exps=st.ids.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
+  if(exps.length<2){ _wiRotaClose(); return; }
+  const base=String(exps.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
+    ||('GRP-'+String(st.ids[0]).slice(-8));
+  const gid=base+'|'+st.ids.join(',');
+  // Γράφεται σε ΟΛΑ τα μέλη: το collapse στηρίζεται σε ισότητα του Group ID —
+  // μερική αποτυχία θα έσπαγε την ομάδα στην ανανέωση, γι' αυτό το μήνυμα.
+  let failed=false;
+  for(const e of exps){
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,e.id,{'Group ID':gid});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      e.fields['Group ID']=gid;
+    }catch(err){ failed=true; console.warn('Rota seq save:',err.message); }
+  }
+  toast(failed?'Η σειρά δεν αποθηκεύτηκε πλήρως — δοκίμασε ξανά':'Η σειρά αποθηκεύτηκε ✓', failed?'warn':undefined);
+  _wiRotaClose();
+  _wiRepaintRow(st.rowId);
+}
+function _wiRotaClose(){ document.getElementById('wiRotaOv')?.remove(); window._wiRotaState=null; }
+
 /* ── NAVIGATION ────────────────────────────────────────────────────── */
 function _wiPrint(rowId, leg){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
@@ -2392,6 +2496,10 @@ window._wiAutoMatch = _wiAutoMatch;
 window._wiPrintWeek = _wiPrintWeek;
 window._wiToggle = _wiToggle;
 window._wiToggleGroup = _wiToggleGroup;
+window._wiRota = _wiRota;
+window._wiRotaMv = _wiRotaMv;
+window._wiRotaSave = _wiRotaSave;
+window._wiRotaClose = _wiRotaClose;
 window._wiOpenPopover = _wiOpenPopover;
 window._wiOpenImpPopover = _wiOpenImpPopover;
 window._wiClosePopover = _wiClosePopover;
