@@ -466,6 +466,10 @@ async function _locSave() {
     closeModal();
     _locRenderOverview();
     _locApplyFilters();
+    // Ο χάρτης χτίζεται μία φορά και κρατά δικό του αντίγραφο των σημείων: χωρίς
+    // αυτό, αλλαγή συντεταγμένων έδειχνε πράσινο toast ενώ η καρφίτσα έμενε στο
+    // παλιό σημείο μέχρι reload — ο χρήστης θα νόμιζε ότι έσωσε λάθος.
+    if (typeof _lmapRefresh === 'function') _lmapRefresh();
     toast(LOC.editingId ? 'Location updated ✓' : 'Location created ✓', 'success');
   } catch (e) {
     reportError('Save failed', e);

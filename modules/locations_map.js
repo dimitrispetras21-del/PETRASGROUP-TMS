@@ -197,6 +197,24 @@ async function _lmapOpen() {
   }
 }
 
+// Καλείται από το _locSave() του locations.js μετά από επιτυχή εγγραφή.
+// Ο χάρτης κρατά δικό του αντίγραφο (LMAP.pts) φτιαγμένο από τα LOC.records:
+// χωρίς ρητό ξαναχτίσιμο, μια αλλαγή συντεταγμένων άφηνε την καρφίτσα στο παλιό
+// σημείο ενώ η λίστα και το toast έδειχναν επιτυχία. Δεν αγγίζουμε το view του
+// χρήστη (κέντρο/zoom) — μόνο τα σημεία.
+function _lmapRefresh() {
+  if (!LMAP.built || !LMAP.map) return;   // δεν έχει ανοίξει ποτέ η καρτέλα
+  const sel = LMAP.S.sel;
+  _lmapBuildPoints();
+  _lmapDraw();
+  // Αν το ανοιχτό panel αφορά σημείο που άλλαξε, δείξε τις νέες τιμές· αν
+  // διαγράφηκε, κλείσε το αντί να δείχνει εγγραφή που δεν υπάρχει πια.
+  if (sel) {
+    const p = LMAP.pts.find(x => x.id === sel);
+    if (p) { LMAP.S.sel = sel; _lmapDetail(p); } else _lmapCloseDetail();
+  }
+}
+
 function _lmapEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"]/g,
     c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
