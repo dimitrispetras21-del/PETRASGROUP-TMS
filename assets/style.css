@@ -6522,23 +6522,14 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   box-shadow: 0 0 9px var(--kpi-dot, var(--accent-hi));
 }
 
-/* Κλιμακωτή είσοδος: η σελίδα ζωντανεύει αντί να εμφανίζεται.
-   Τα delays μπαίνουν inline από το dashboard.js ανά κάρτα.
+/* ΑΦΑΙΡΕΘΗΚΕ: κλιμακωτή είσοδος με opacity.
+   Δοκιμάστηκε δύο φορές και απέτυχε και τις δύο. Όποια μορφή κι αν πάρει,
+   η αφετηρία είναι opacity:0 — και όταν το animation δεν προχωρά (background
+   tab, throttling, fill-mode που κρατά το `from`), ΕΝΝΕΑ ΣΤΑ ΕΝΝΕΑ στοιχεία
+   της σελίδας μένουν αόρατα. Μετρήθηκε ζωντανά 12/8.
 
-   ΚΡΙΣΙΜΟ: η αφετηρία (opacity:0) ζει ΜΕΣΑ στο keyframe, ΟΧΙ στον κανόνα.
-   Με opacity:0 στον κανόνα, ένα animation που δεν τρέχει ποτέ — background
-   tab, throttling, browser που το μπλοκάρει — άφηνε τη ΜΙΣΗ ΣΕΛΙΔΑ αόρατη.
-   Με fill-mode:both η αφετηρία ισχύει μόνο όσο υπάρχει animation· χωρίς
-   αυτό, το στοιχείο είναι απλώς ορατό. Μια κίνηση δεν επιτρέπεται να
-   κρύβει περιεχόμενο όταν αποτυγχάνει. */
-.dash-home .dash-rise {
-  animation: dash-rise 0.62s cubic-bezier(0.2,0.75,0.3,1) both;
-}
-@keyframes dash-rise {
-  from { opacity: 0; transform: translateY(14px); }
-  to   { opacity: 1; transform: none; }
-}
+   Η κεντρική σελίδα δεν ρισκάρει την ορατότητά της για ένα εφέ εισόδου.
+   Ό,τι κρατήθηκε από την κατεύθυνση Β είναι ΑΣΦΑΛΕΣ ως προς την αποτυχία:
+   οι αριθμοί γράφουν πρώτα την τιμή τους και μετά κινούνται, και η κουκκίδα
+   κατάστασης είναι στατική. */
 
-@media (prefers-reduced-motion: reduce) {
-  .dash-home .dash-rise { animation: none; opacity: 1; transform: none; }
-}

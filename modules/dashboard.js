@@ -431,7 +431,7 @@ async function renderDashboard() {
         <!-- ΤΙ ΚΑΙΕΙ + Βαθμός εβδομάδας -->
         ${burnItems.length ? `<div class="dash-burn">
           <div class="dash-burn-list">
-            ${burnItems.map((b, i) => `<button type="button" class="dash-burn-item burn-${b.sev} dash-rise" style="animation-delay:${0.05 + i * 0.07}s"
+            ${burnItems.map((b, i) => `<button type="button" class="dash-burn-item burn-${b.sev}" 
                 onclick="navigate('${b.page}')"
                 aria-label="${escapeHtml(b.title)} — άνοιγμα λίστας">
               <span class="dash-burn-n"><span data-count="${b.n}">0</span></span>
@@ -442,7 +442,7 @@ async function renderDashboard() {
               <span class="dash-burn-go">${_i('chevron_right', 18)}</span>
             </button>`).join('')}
           </div>
-          <div class="dash-kpi dash-rise" style="cursor:default;min-height:0;animation-delay:.26s">
+          <div class="dash-kpi" style="cursor:default;min-height:0;">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
             <div class="dash-card-body dash-score-wrap" style="padding:0">
               <div class="dash-score-ring" style="--score-color:${scoreColor};--score-deg:${weeklyScore < 0 ? 0 : Math.round(weeklyScore * 3.6)}deg">
@@ -462,7 +462,7 @@ async function renderDashboard() {
 
         <!-- KPI Bar -->
         <div class="dash-kpi-bar">
-          <button type="button" class="dash-kpi dash-rise" style="animation-delay:0.34s;--kpi-dot:var(--danger)" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
+          <button type="button" class="dash-kpi" style="--kpi-dot:var(--danger)" onclick="window._dashNav={dir:'Export',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--danger),transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_up_right', 11)} ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</div>
             <div class="dash-kpi-value dash-val-danger"><span data-count="${unassignedExport}">0</span>${_dashDelta(unExpDelta)}</div>
@@ -472,7 +472,7 @@ async function renderDashboard() {
             </div>
             <div class="dash-receipt"><b>ORDERS</b><span class="sep">·</span>30 ημέρες<span class="sep">·</span>χωρίς φορτηγό</div>
           </button>
-          <button type="button" class="dash-kpi dash-rise" style="animation-delay:0.40s;--kpi-dot:#D97706" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
+          <button type="button" class="dash-kpi" style="--kpi-dot:#D97706" onclick="window._dashNav={dir:'Import',trip:'unassigned'};navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
             <div class="dash-kpi-label">${_i('arrow_down_left', 11)} ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</div>
             <div class="dash-kpi-value dash-val-warning"><span data-count="${unassignedImport}">0</span>${_dashDelta(unImpDelta)}</div>
@@ -482,7 +482,7 @@ async function renderDashboard() {
             </div>
             <div class="dash-receipt"><b>ORDERS</b><span class="sep">·</span>30 ημέρες<span class="sep">·</span>χωρίς φορτηγό</div>
           </button>
-          <button type="button" class="dash-kpi dash-rise" style="animation-delay:0.46s;--kpi-dot:var(--accent-hi)" onclick="navigate('weekly_intl')">
+          <button type="button" class="dash-kpi" style="--kpi-dot:var(--accent-hi)" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
             <div class="dash-kpi-label">${_i('truck', 11)} ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</div>
             <div class="dash-kpi-value dash-val-accent"><span data-count="${utilPct}">0</span>%${_dashDelta(utilDelta)}</div>
@@ -492,7 +492,7 @@ async function renderDashboard() {
             </div>
             <div class="dash-receipt"><b>ORDERS × TRUCKS</b><span class="sep">·</span>W${wn} ISO<span class="sep">·</span>φορτηγά με ανάθεση</div>
           </button>
-          <button type="button" class="dash-kpi dash-rise" style="animation-delay:0.52s;--kpi-dot:var(--panel-warn)" onclick="navigate('weekly_intl')">
+          <button type="button" class="dash-kpi" style="--kpi-dot:var(--panel-warn)" onclick="navigate('weekly_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${avgDeadKm>=0 ? (avgDeadKm<=50?'var(--panel-ok)':avgDeadKm<=150?'#D97706':'var(--danger)') : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('route', 11)} ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</div>
             <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
@@ -502,7 +502,7 @@ async function renderDashboard() {
             </div>
             <div class="dash-receipt"><b>ORDER_STOPS</b><span class="sep">·</span>W${wn}<span class="sep">·</span>${avgDeadKm>=0 ? `${deadKmList.length} ${deadKmList.length===1?'ζεύγος':'ζεύγη'} εξαγωγή→εισαγωγή` : 'χωρίς δείγμα'}</div>
           </button>
-          <button type="button" class="dash-kpi dash-rise" style="animation-delay:0.58s;--kpi-dot:var(--panel-ok-hi)" onclick="navigate('orders_intl')">
+          <button type="button" class="dash-kpi" style="--kpi-dot:var(--panel-ok-hi)" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? 'var(--panel-ok)' : '#475569'},transparent)"></div>
             <div class="dash-kpi-label">${_i('check_circle', 11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div>
             <div class="dash-kpi-value ${totalDelivered > 0 ? 'dash-val-success' : 'dash-val-muted'}">${totalDelivered > 0 ? onTimePct + '%' : 'N/A'}${_dashDelta(onTimeDelta)}</div>
