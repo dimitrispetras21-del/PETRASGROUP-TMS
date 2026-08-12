@@ -560,6 +560,58 @@ function _natlMode(m) {
    Πελάτης και τοποθεσία χρησιμοποιούν ΤΑ ΙΔΙΑ αναζητήσιμα πεδία με την
    κανονική φόρμα (_clientSelect / _locSelect): γράφεις 2 χαρακτήρες και
    ψάχνει. Οι τιμές ζουν στα κρυφά lv_<id> και διαβάζονται στην υποβολή. */
+// ─── Απλό φορτίο: σημεία παράδοσης ──────────────────────────────────────
+// Και τα κανονικά φορτία έχουν πολλαπλά σημεία με διαφορετικές παλέτες το
+// καθένα (owner 12/08). Ένα συνολικό «Pallets» στην κορυφή δεν μπορούσε να το
+// εκφράσει — ίδια ρίζα με το Α1, όπου το σύνολο γραφόταν αυτούσιο σε κάθε
+// στάση. Το σύνολο υπολογίζεται πλέον από τα σημεία, δεν δηλώνεται.
+let _simRows = [], _simSeq = 0;
+
+function _simRowHTML(uid, pre) {
+  pre = pre || {};
+  return `<div class="grp-row" id="simr_${uid}"
+      style="border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) 62px 150px minmax(0,1.2fr) 34px;gap:12px;align-items:end">
+      <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('nsl'+uid, pre.loc||'')}</div>
+      <div><label class="form-label">Παλέτες</label>
+        <input class="form-input" type="number" id="simp${uid}" min="0" max="99" step="1"
+          value="${pre.pal||''}" style="text-align:right"
+          oninput="if(this.value.length>2)this.value=this.value.slice(0,2)"></div>
+      <div><label class="form-label">Ημερομηνία</label>
+        <input class="form-input" type="date" id="simd${uid}" value="${pre.date||''}"></div>
+      <div><label class="form-label">Σημείωση</label>
+        <input class="form-input" id="simn${uid}" value="${escapeHtml(pre.note||'')}" placeholder="π.χ. παράδοση πρωί"></div>
+      <button type="button" title="Αφαίρεση" onclick="_simDelRow(${uid})"
+        style="height:38px;border:1px solid var(--border-mid);background:#fff;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-dim)">×</button>
+    </div>
+  </div>`;
+}
+
+// Προσθήκη με insertAdjacentHTML, ΟΧΙ ξαναζωγράφισμα όλων: το re-render θα
+// έσβηνε ό,τι πληκτρολογείται στην αναζήτηση τοποθεσίας των άλλων καρτών.
+function _simAddRow(pre) {
+  if (_simRows.length >= 10) return;   // Α6: το schema έχει 10 θέσεις παράδοσης
+  const uid = ++_simSeq; _simRows.push(uid);
+  document.getElementById('sf_rows')?.insertAdjacentHTML('beforeend', _simRowHTML(uid, pre));
+}
+
+function _simDelRow(uid) {
+  if (_simRows.length <= 1) return;    // πάντα μένει τουλάχιστον ένα σημείο
+  _simRows = _simRows.filter(x => x !== uid);
+  document.getElementById('simr_' + uid)?.remove();
+}
+
+// Διαβάζει τα σημεία με τη σειρά εμφάνισης· κάρτα χωρίς τοποθεσία αγνοείται.
+function _simRead() {
+  const g = id => document.getElementById(id)?.value || '';
+  return _simRows.map(uid => ({
+    locId: document.getElementById('lv_nsl' + uid)?.value || '',
+    pal:   parseInt(g('simp' + uid), 10) || 0,
+    date:  g('simd' + uid),
+    note:  g('simn' + uid)
+  })).filter(s => s.locId);
+}
+
 function _grpRowHTML(uid) {
   return `<div class="grp-row" id="grpr_${uid}"
       style="border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
@@ -723,10 +775,6 @@ async function _openNatlModal(recId, f) {
         <input class="form-input" type="text" id="nf_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="e.g. Fresh Produce">
       </div>
       <div class="form-field">
-        <label class="form-label">Pallets</label>
-        <input class="form-input" type="number" id="nf_Pallets" value="${f['Pallets']||''}">
-      </div>
-      <div class="form-field">
         <label class="form-label">Temperature °C</label>
         <input class="form-input" type="number" id="nf_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
@@ -758,7 +806,7 @@ async function _openNatlModal(recId, f) {
       <div id="gf_preview" style="margin-top:14px"></div>
     </div>
     <div id="nf_simple" style="padding-top:16px;border-top:1px solid var(--border)">
-      <div class="detail-section-title" style="margin-bottom:12px">Route</div>
+      <div class="detail-section-title" style="margin-bottom:12px">Φόρτωση</div>
       <div class="form-grid">
         <div class="form-field">
           <label class="form-label">Pickup Location *</label>
@@ -769,16 +817,11 @@ async function _openNatlModal(recId, f) {
           <input class="form-input" type="date" id="nf_LoadDate"
             value="${f['Loading DateTime']?toLocalDate(f['Loading DateTime']):''}">
         </div>
-        <div class="form-field">
-          <label class="form-label">Delivery Location *</label>
-          ${_locSelect('ndelivery', delivId)}
-        </div>
-        <div class="form-field">
-          <label class="form-label">Delivery Date *</label>
-          <input class="form-input" type="date" id="nf_DelDate"
-            value="${f['Delivery DateTime']?toLocalDate(f['Delivery DateTime']):''}">
-        </div>
       </div>
+      <div class="detail-section-title" style="margin:16px 0 12px">Παραδόσεις — μία κάρτα ανά σημείο</div>
+      <div id="sf_rows"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 14px;margin-top:8px"
+        onclick="_simAddRow()">+ Προσθήκη σημείου</button>
     </div>
 
     <div style="margin-top:16px">
@@ -795,6 +838,23 @@ async function _openNatlModal(recId, f) {
   document.getElementById('modal').style.maxWidth = '680px';
   openModal(isEdit ? 'Edit National Order' : 'New National Order', body, footer);
   if (!isEdit) { _grpRows = []; _natlMode(0); }
+
+  // Προσυμπλήρωση των σημείων παράδοσης από τις 10 θέσεις του schema.
+  _simRows = []; _simSeq = 0;
+  const _pre = [];
+  for (let i = 1; i <= 10; i++) {
+    const lid = (f[`Delivery Location ${i}`] || [])[0];
+    if (lid) _pre.push({ loc: lid });
+  }
+  if (!_pre.length && delivId) _pre.push({ loc: delivId });   // παλιό μονό πεδίο
+  if (_pre.length) {
+    _pre[0].date = f['Delivery DateTime'] ? toLocalDate(f['Delivery DateTime']) : '';
+    // Οι παλέτες ανά στάση ζουν στα ORDER_STOPS, που δεν φορτώνονται στη φόρμα.
+    // Με ΕΝΑ σημείο το σύνολο ΕΙΝΑΙ η στάση, οπότε προσυμπληρώνεται με ασφάλεια·
+    // με πολλά θα ήταν εικασία, άρα μένουν κενά και το σύνολο δεν πειράζεται.
+    if (_pre.length === 1 && f['Pallets']) _pre[0].pal = f['Pallets'];
+  }
+  (_pre.length ? _pre : [{}]).forEach(p => _simAddRow(p));
 }
 
 // ─── Submit ─────────────────────────────────────
@@ -813,22 +873,37 @@ async function submitNatlOrder(recId) {
     if(sv('nf_Goods'))     fields['Goods']           = sv('nf_Goods');
     if(sv('nf_Notes'))     fields['Notes']           = sv('nf_Notes');
     if(sv('nf_LoadDate'))  fields['Loading DateTime']  = sv('nf_LoadDate');
-    if(sv('nf_DelDate'))   fields['Delivery DateTime'] = sv('nf_DelDate');
+
+    // Τα σημεία παράδοσης είναι πλέον κάρτες: η ημερομηνία και το σύνολο
+    // παλετών της παραγγελίας προκύπτουν ΑΠΟ αυτά, δεν δηλώνονται χωριστά.
+    const _stops = _simRead();
+    const _delDate = (_stops.find(s => s.date) || {}).date || '';
+    if (_delDate) fields['Delivery DateTime'] = _delDate;
 
     const price  = nv('nf_Price');   if(price!=null)  fields['Price']          = price;
-    const pallets= nv('nf_Pallets'); if(pallets!=null) fields['Pallets']        = pallets;
     const temp   = nv('nf_Temp');    if(temp!=null)    fields['Temperature °C'] = temp;
+
+    // Γράφεται μόνο αν όντως δηλώθηκαν παλέτες. Σε επεξεργασία παραγγελίας με
+    // πολλά σημεία οι κάρτες ανοίγουν κενές (τα ανά-στάση νούμερα ζουν στα
+    // ORDER_STOPS), οπότε ένα άθροισμα 0 θα έσβηνε το υπάρχον σύνολο.
+    const pallets = _stops.reduce((a, s) => a + s.pal, 0);
+    if (pallets > 0) fields['Pallets'] = pallets;
 
     fields['Pallet Exchange']  = ck('nf_PalletExch');
     fields['National Groupage']= ck('nf_Groupage');
 
     const clientId  = document.getElementById('lv_nclient')?.value;
     const pickupId  = document.getElementById('lv_npickup')?.value;
-    const delivId   = document.getElementById('lv_ndelivery')?.value;
+    const delivId   = _stops.length ? _stops[0].locId : '';
 
     if(clientId)  fields['Client']              = [clientId];
     if(pickupId)  fields['Pickup Location 1']  = [pickupId];
-    if(delivId)   fields['Delivery Location 1']= [delivId];
+    // Οι θέσεις που περίσσεψαν καθαρίζονται ρητά με κενό πίνακα — ο Worker το
+    // μεταφράζει σε NULL (index.js:1845). Χωρίς αυτό, αφαίρεση σημείου σε
+    // επεξεργασία θα άφηνε το παλιό σημείο να ζει στη βάση.
+    for (let i = 1; i <= 10; i++) {
+      fields[`Delivery Location ${i}`] = _stops[i-1] ? [_stops[i-1].locId] : [];
+    }
 
     // Validation
     const _vErrors = [];
@@ -956,7 +1031,13 @@ async function submitNatlOrder(recId) {
       const _natStops = [];
       const _sRef = fields['Reference'] || null, _sGoods = fields['Goods'] || null, _sTemp = fields['Temperature °C'] ?? null;
       if (pickupId) _natStops.push({ stopNumber: 1, stopType: 'Loading', locationId: pickupId, pallets: pallets || 0, dateTime: fields['Loading DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
-      if (delivId)  _natStops.push({ stopNumber: 1, stopType: 'Unloading', locationId: delivId, pallets: pallets || 0, dateTime: fields['Delivery DateTime'] || null, clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp });
+      // Α1: κάθε στάση παίρνει ΤΙΣ ΔΙΚΕΣ ΤΗΣ παλέτες. Πριν γραφόταν το σύνολο
+      // αυτούσιο σε κάθε στάση, που έδειχνε π.χ. 20/20/20 αντί για 8/6/6.
+      _stops.forEach((s, i) => _natStops.push({ stopNumber: i + 1, stopType: 'Unloading',
+        locationId: s.locId, pallets: s.pal || 0,
+        dateTime: s.date || fields['Delivery DateTime'] || null,
+        clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp,
+        notes: s.note || null }));
       if (_natStops.length) await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT);
     } catch(e) { console.warn('NAT ORDER_STOPS save:', e); }
 
@@ -2017,6 +2098,9 @@ window._grpSet    = _grpSet;
 window._grpPreview = _grpPreview;
 window._grpSubmit = _grpSubmit;
 window._natlMode  = _natlMode;
+// Τα inline onclick δεν βλέπουν μέσα στο IIFE — χωρίς αυτά, σιωπηλό ReferenceError.
+window._simAddRow = _simAddRow;
+window._simDelRow = _simDelRow;
 // Natl-specific form dropdown helpers (self-contained, not shared with orders_intl)
 // Form dropdown handlers now in core/form-helpers.js
 // Legacy aliases for backward compat
