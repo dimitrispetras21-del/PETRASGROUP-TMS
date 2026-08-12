@@ -874,7 +874,9 @@ function _wk3LocHTML(str,label,arr){
   const circ=i=>`<span class="wk3-stopn${kind==='load'?' ln':''}">${i+1}</span>`;
   if(L.length===1) return escapeHtml(L[0].n);
   if(same.length===1) return `${circ(0)}${escapeHtml(same[0].n)}`;
-  if(same.length===2) return same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ');
+  // Έως 3 σημεία με πλήρη ονόματα (owner 12/8: «δύσκολο να διαβάσει ποια είναι
+  // τα σημεία») — η γραμμή πλέον απλώνει ως τις παλέτες. Συντομογραφία μόνο 4+.
+  if(same.length<=3) return same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ');
   const tip=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
   const ab=same.map((x,i)=>`${circ(i)}${escapeHtml(x.n.split(',')[0].slice(0,5))}…`).join(' ');
   return `<span class="wk3-abbr" title="${same.length} σημεία — κλικ για πλήρη ονόματα&#10;${tip}" onclick="event.stopPropagation();const c=this.closest('.wk3-lcol')||this.closest('.wk3-fcol');const f=c&&c.querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">${ab}</span>`;
