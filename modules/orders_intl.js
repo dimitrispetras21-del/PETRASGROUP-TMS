@@ -2038,17 +2038,17 @@ function _scanHandleFiles(fileList) {
   // Bug 10/8: «πρόσθετα 1-1 και το αντικαθιστούσε» — τώρα ΣΩΡΕΥΟΝΤΑΙ
   const prev = window._scanFiles || [];
   const seen = new Set(prev.map(f => f.name + ':' + f.size));
-  files = [...prev, ...files.filter(f => !seen.has(f.name + ':' + f.size))].slice(0, 10);
-  window._scanFiles = files;
-  window._scanUploadedFile = files[0]; // συμβατότητα με single ροή
+  const merged = [...prev, ...files.filter(f => !seen.has(f.name + ':' + f.size))].slice(0, 10);
+  window._scanFiles = merged;
+  window._scanUploadedFile = merged[0]; // συμβατότητα με single ροή
   const fi = document.getElementById('scanFile'); if (fi) fi.value = ''; // ξαναδιάλεξε και ίδιο αρχείο
   const btn = document.getElementById('btnScanGo');
   if (btn) { btn.disabled = false;
-    btn.innerHTML = files.length > 1 ? `🤖 &nbsp;Σκανάρισμα ${files.length} αρχείων` : '🤖 &nbsp;Extract & Fill Form'; }
+    btn.innerHTML = merged.length > 1 ? `🤖 &nbsp;Σκανάρισμα ${merged.length} αρχείων` : '🤖 &nbsp;Extract & Fill Form'; }
   const drop = document.getElementById('scanDrop');
   if (drop) drop.innerHTML = `<div style="font-size:26px;margin-bottom:6px">📄${files.length>1?'📄':''}</div>
-    <div style="font-size:13px;font-weight:600">${files.length===1?files[0].name:files.length+' αρχεία επιλεγμένα'}</div>
-    <div style="font-size:11px;color:var(--text-dim);margin-top:3px">${files.map(f=>f.name).slice(0,4).join(' · ')}${files.length>4?' · …':''}</div>`;
+    <div style="font-size:13px;font-weight:600">${merged.length===1?merged[0].name:merged.length+' αρχεία επιλεγμένα'}</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-top:3px">${merged.map(f=>f.name).slice(0,4).join(' · ')}${merged.length>4?' · …':''}</div>`;
 }
 
 async function _scanExtract() {
