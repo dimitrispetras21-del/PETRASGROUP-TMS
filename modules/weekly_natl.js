@@ -902,14 +902,46 @@ async function _wnToggleStops(rowId, nlId) {
 
   box.innerHTML = '<span class="ld">φόρτωση στάσεων…</span>';
   try {
-    const stops = await stopsLoad(nlId, F.STOP_PARENT_NL);
-    const dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
+    let stops = await stopsLoad(nlId, F.STOP_PARENT_NL);
+    let dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
+
+    const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nlId);
+    const ff = rec?.fields || {};
+
+    // Οι στάσεις γράφονται στην ΠΑΡΑΓΓΕΛΙΑ (STOP_PARENT_NAT), όχι στο φορτίο.
+    // Ψάχνοντας μόνο με γονέα το φορτίο δεν βρίσκονταν ΠΟΤΕ, και το πάνελ
+    // έπεφτε πάντα στο fallback χωρίς παλέτες — αυτό ήταν το «δεν βρέθηκαν
+    // καταγεγραμμένες στάσεις» (owner 12/08). Το `Source Record` δείχνει την
+    // παραγγελία (Direct/VS) ή το CL (Groupage).
+    if (!dels.length && ff['Source Record']) {
+      const src = ff['Source Record'];
+      try {
+        if (ff['Source Type'] === 'Groupage') {
+          // Στο groupage οι στάσεις ζουν στις εθνικές παραγγελίες του CL· ο
+          // δρόμος προς αυτές είναι τα GROUPAGE LINES. Φιλτράρισμα στη JS,
+          // όπως και αλλού στο repo: τα formula πάνω σε linked records είναι
+          // αναξιόπιστα (orders_intl.js:1178).
+          const gls = await atGetAll(TABLES.GL_LINES,
+            { fields: ['Linked Consolidated Load', 'Linked National Order'] }, false);
+          const _id = v => Array.isArray(v) ? (v[0]?.id || v[0]) : (v?.id || v);
+          const noIds = [...new Set((gls||[])
+            .filter(g => _id(g.fields?.['Linked Consolidated Load']) === src)
+            .map(g => _id(g.fields?.['Linked National Order']))
+            .filter(Boolean))];
+          const sets = await Promise.all(
+            noIds.map(id => stopsLoad(id, F.STOP_PARENT_NAT).catch(() => [])));
+          stops = sets.flat();
+        } else {
+          stops = await stopsLoad(src, F.STOP_PARENT_NAT);
+        }
+        dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
+      } catch(e) { console.warn('στάσεις από την πηγή:', e); }
+    }
+
     if (!dels.length) {
       // Fallback: τα Delivery Location 1..10 του ίδιου του φορτίου. Δεν
       // κουβαλούν παλέτες ανά σημείο — γι' αυτό το λέμε ρητά αντί να
       // δείξουμε μηδενικά που θα διαβάζονταν ως γεγονός.
-      const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nlId);
-      const ff = rec?.fields || {};
       const names = [], seenL = [];
       for (let k = 1; k <= 10; k++) {
         const arr = ff[`Delivery Location ${k}`];
