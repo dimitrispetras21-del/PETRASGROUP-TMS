@@ -32,16 +32,22 @@ async function renderPalletLedger() {
   _plvDraw();
 }
 
+// Το όνομα έρχεται embedded από το /pallets/movements (PostgREST join) — τα
+// lookups μένουν ΜΟΝΟ ως fallback, γιατί κόβονται στα 1000 (db-max-rows) και
+// άφηναν όσους πελάτες έπεφταν αλφαβητικά μετά το όριο ως «Πελάτης #1314» (12/8).
 function _plvName(m) {
   if (m.counterparty_type === 'CLIENT') {
-    const cl = (PLV.lookups.clients || []).find(x => x.id === m.client_id);
+    if (m.clients && m.clients.company_name) return m.clients.company_name;
+    const cl = ((PLV.lookups && PLV.lookups.clients) || []).find(x => x.id === m.client_id);
     return cl ? cl.company_name : ('Πελάτης #' + m.client_id);
   }
-  const p = (PLV.lookups.partners || []).find(x => x.id === m.partner_id);
+  if (m.partners && m.partners.company_name) return m.partners.company_name;
+  const p = ((PLV.lookups && PLV.lookups.partners) || []).find(x => x.id === m.partner_id);
   return p ? p.company_name : ('Partner #' + m.partner_id);
 }
 function _plvLoc(m) {
-  const l = (PLV.lookups.locations || []).find(x => x.id === m.location_id);
+  if (m.locations && m.locations.name) return m.locations.name;
+  const l = ((PLV.lookups && PLV.lookups.locations) || []).find(x => x.id === m.location_id);
   return l ? l.name : '';
 }
 const PLV_EVENT_GR = {

@@ -145,3 +145,10 @@ CONSOLIDATED LOAD και από εκεί το NAT_LOAD.
 **Απόδειξη**: το collapse βασίζεται σε ισότητα string του Group ID, άρα το κοινό suffix δεν το σπάει (verified live W33). Fallback χωρίς suffix: ταξινόμηση κατά Delivery DateTime.
 **Παγίδα**: κάθε εμφάνιση του Group ID σε UI θέλει `.split('|')[0]`. Το `_wiMerge` γράφει σκέτο gid → η σειρά επανέρχεται στην default μέχρι νέο save.
 **Ποιος**: owner (εγκεκριμένο πρωτότυπο grp_trip_proto, 12/8).
+
+## 2026-08-12 — Παλέτες: τα ονόματα έρχονται embedded, όχι από τα lookups
+**Επιλογή**: Το `GET /pallets/movements` γυρίζει `select=*,clients(company_name),partners(company_name),locations(name)` (PostgREST embedding). Οι `_plvName/_plvLoc` διαβάζουν πρώτα το embedded όνομα και πέφτουν στα `/pallets/lookups` μόνο ως fallback.
+**Εναλλακτικές**: (α) ανέβασμα του limit στα lookups (500→5000, commit 43f7652) — δεν αρκεί: η PostgREST κόβει στα 1000 από `db-max-rows`, όριο του server, όχι του query· (β) δεύτερο round-trip ανά σελίδα για ανάλυση ονομάτων — περιττό, το join το κάνει η βάση δωρεάν.
+**Απόδειξη**: live GET στη Supabase γύρισε 200 με `clients:{company_name}` / `locations:{name}` και `partners:null` σε κίνηση CLIENT. Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed. Deployed worker version 5c72d2f5.
+**Παγίδα**: τα lookups εξακολουθούν να τροφοδοτούν τα dropdown της «Νέα κίνηση» — εκεί το όριο των 1000 ΠΑΡΑΜΕΝΕΙ ανοιχτό (πελάτες μετά το όριο δεν επιλέγονται). Θέλει φίλτρο `active=true` ή typeahead· δεν αποφασίστηκε.
+**Ποιος**: owner (αναφορά «Πελάτης #1314» στο ημερολόγιο, 12/8).

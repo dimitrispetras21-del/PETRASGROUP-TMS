@@ -2640,7 +2640,13 @@ async function handlePallets(request, url, origin, env) {
     if (resource === "movements" && method === "GET" && !recId) {
       const q = url.searchParams;
       const params = new URLSearchParams();
-      params.set("select", "*");
+      // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
+      // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
+      // πελάτες είναι περισσότεροι — όσοι έπεφταν αλφαβητικά μετά το όριο
+      // εμφανίζονταν ως «Πελάτης #1314» (12/8). Με το embedding το όνομα έρχεται
+      // μαζί με την κίνηση και η λίστα παύει να εξαρτάται από το όριο.
+      // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
+      params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
       params.set("order", "movement_date.desc,id.desc");
       params.set("limit", "300");
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
