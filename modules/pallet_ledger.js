@@ -403,11 +403,14 @@ function plvNewMovement() {
   PLV_AC.rows = {};
   document.getElementById('plvModal').innerHTML = `
   <style>
+    /* --panel-text, ΟΧΙ κληρονομιά: το --panel (#0F172A) τυχαίνει να έχει την
+       ίδια τιμή με το --text, οπότε χωρίς ρητό χρώμα η λίστα βγαίνει σκούρο
+       πάνω σε σκούρο — κενά κουτιά (πιάστηκε live 12/8, βλ. style.css:88). */
     .plv-ac{position:absolute;left:0;right:0;top:44px;z-index:20;background:var(--panel,#fff);
-      border:1px solid var(--line,#e2e8f0);border-radius:8px;max-height:210px;overflow:auto;
-      box-shadow:0 8px 24px rgba(11,25,41,.16)}
+      color:var(--panel-text,#0F172A);border:1px solid var(--panel-border,#e2e8f0);
+      border-radius:8px;max-height:210px;overflow:auto;box-shadow:0 8px 24px rgba(11,25,41,.16)}
     .plv-ac>div{padding:9px 12px;font-size:13px;cursor:pointer}
-    .plv-ac>div:hover{background:var(--bg,#F4F6F9)}
+    .plv-ac>div:hover{background:var(--panel-border,#F4F6F9)}
   </style>
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
     <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(460px,92vw);max-height:90vh;overflow:auto">
