@@ -256,6 +256,7 @@ const DISPATCHER=(function(){try{return JSON.parse(localStorage.getItem('tms_use
 const OFFICE_PHONE='';      // π.χ. '+30 23320 XXXXX'
 const EMERGENCY_PHONE='';   // π.χ. '+30 69X XXX XXXX'
 const OFFICE_EMAIL='vermionfresh@petrasgroup.com';  // owner 12/8
+const INVOICE_EMAIL='invoice@petrasgroup.com';          // owner 12/8
 var _waArr=[]; // WhatsApp κείμενα (ένα ανά έγγραφο ομάδας)
 
 const params=new URLSearchParams(window.location.search);
@@ -634,6 +635,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+OFFICE_PHONE+'</span>');
   if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+EMERGENCY_PHONE+'</span>');
   if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+OFFICE_EMAIL+'</span>');
+  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+INVOICE_EMAIL+'</span>');
   var contactHTML=contactBits.length?'<div class="contact2">'+contactBits.join('')+'</div>':'';
 
   // Checklist οδηγού (εγκεκριμένο #2)
