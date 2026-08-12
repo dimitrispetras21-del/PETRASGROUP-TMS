@@ -1,0 +1,32 @@
+-- ════════════════════════════════════════════════════════════════════════════
+-- GRANT DELETE ON clients TO service_role — ξεκλείδωμα διαγραφής πελατών
+-- (owner 12/8/2026, αφού είδε τις διπλοεγγραφές ΑΦΜ)
+--
+-- ΓΙΑΤΙ ΧΡΕΙΑΣΤΗΚΕ: ο πίνακας γεννήθηκε χωρίς DELETE για τον service_role.
+-- Ο Worker επιτρέπει DELETE στους clients για owner/management/dispatcher
+-- (worker/src/index.js:381,424,477), αλλά η Postgres το απέρριπτε με
+-- 42501 permission denied. Δηλαδή το επίπεδο δικαιωμάτων της εφαρμογής έλεγε
+-- «ναι» και η βάση «όχι» — κάθε κουμπί διαγραφής πελάτη γύριζε 403 από την
+-- πρώτη μέρα, όπως ακριβώς είχε συμβεί με τις κινήσεις παλετών.
+--
+-- ΔΕΝ αγγίζουμε τους υπόλοιπους 30 πίνακες που έχουν το ίδιο κενό (μετρημένο,
+-- βλ. DECISION_LOG 12/8) — ο owner ζήτησε ΜΟΝΟ τους πελάτες. Το ξεκλείδωμα
+-- των άλλων είναι ξεχωριστή απόφαση: μερικοί (national_orders, order_stops,
+-- groupage_lines) προστατεύονται σκόπιμα από τον κανόνα never-delete.
+--
+-- Το RLS ΔΕΝ επηρεάζεται: ο service_role το παρακάμπτει ούτως ή άλλως. Αυτό
+-- εδώ είναι table privilege, όχι policy.
+-- ════════════════════════════════════════════════════════════════════════════
+
+GRANT DELETE ON public.clients TO service_role;
+
+-- ── Τι εκτελέστηκε ΜΕΤΑ το grant, μέσω PostgREST (όχι εδώ) ──────────────────
+-- Διαγραφή 3 διπλοεγγραφών, όλες με 0 αναφορές σε orders/national_orders/
+-- consolidated_loads/order_stops/pallet_ledger_suppliers/pl_movements/
+-- scan_examples (μετρημένο πριν από κάθε DELETE):
+--   DELETE clients 1225  "OGL FOOD TRADE"        vat DE12942868   → HTTP 200
+--   DELETE clients 1763  "O.G.L FOOD TRADE GMBH" vat "DE 1294286" → HTTP 200
+--   DELETE clients 393   "MAZZONI SPA"           vat "ΙΤ 0005360" → HTTP 200
+--   PATCH  clients 837   vat 129428682 → DE129428682              → HTTP 200
+-- Ο επιζών 837 κράτησε ακέραιο το ιστορικό του: orders 7, order_stops 25,
+-- pl_movements 7 (μετρημένα ΜΕΤΑ τις διαγραφές).
