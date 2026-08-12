@@ -2368,7 +2368,7 @@ function _wiRotaRender(){
   const seqRow=(e,k)=>{const f=e.fields;
     return `<div style="display:grid;grid-template-columns:24px 1fr auto 52px;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #E7EBF0;background:#fff">
       <span style="width:17px;height:17px;border-radius:50%;background:#0F172A;color:#fff;font-size:9.5px;font-weight:800;text-align:center;line-height:17px">${k+1}</span>
-      <span style="font-weight:700;font-size:12px">${(_wiClean(f['Delivery Summary']||'—'))}<small style="display:block;font-weight:500;color:#475569;font-size:10.5px">${f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):''} · ${(_wiClean(f['Client Name']||f['Client Summary']||''))}</small></span>
+      <span style="font-weight:700;font-size:12px">${(_wiClean(f['Delivery Summary']||'—'))}<small style="display:block;font-weight:500;color:#475569;font-size:10.5px">${[f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):'', (_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'').split(',')[0]))].filter(Boolean).join(' · ')}</small></span>
       <span></span>
       <span style="display:flex;gap:3px;justify-content:flex-end">
         <button ${k===0?'disabled style="opacity:.3;width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px"':'style="width:22px;height:22px;border:1px solid #D6DDE6;background:#fff;border-radius:5px;color:#475569;cursor:pointer"'} onclick="_wiRotaMv(${k},-1)">↑</button>
