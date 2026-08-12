@@ -55,8 +55,68 @@ ADJUSTMENT owner-only σε ΟΛΑ τα write paths.
 Η δοκιμαστική κίνηση PM-1001 μένει στο ιστορικό ως reversed («δοκιμή Φ1 -
 καθαρισμός») — μηδενική επίδραση στα υπόλοιπα.
 
-## Εκκρεμότητες μετά τη Φ1
+---
 
-- **Φ2**: feeders (Loading→pending, Delivery→auto confirmed, Partner→pending) + χειροκίνητη φόρμα.
-- **Φ3**: UI Ισοζυγίου. **Φ4**: gates Invoiced + Partner PnL. **Φ5**: pallet_upload AI → movements.
-- Follow-up chip: `security_invoker` retrofit στα ct_* views του 001 (ίδιο RLS θέμα, πλουσιότερα δεδομένα).
+# Φ2 — Τροφοδότες (εφαρμόστηκε 2026-08-12)
+
+Spec: `docs/PALLETS_F2_FEEDERS.md` · Πλάνο: `docs/superpowers/plans/2026-08-12-pallets-f2-feeders.md`
+
+## Βάση
+
+- **Migration 004** ✅ — στήλη `pl_movements.order_id` (+ partial index)· τα FKs
+  `order_stop_id` / `cons_load_id` / `order_id` έγιναν **ON DELETE SET NULL**
+  ώστε το ιστορικό να επιβιώνει της διαγραφής παραγγελίας· private bucket
+  `pallet-sheets`. Επαλήθευση: `confdeltype='n'` και στα τρία (τα υπόλοιπα `a`).
+- **Migration 005** ✅ — `grant delete on pl_movements to service_role`.
+  **Εύρημα παραγωγής:** ο service_role είχε INSERT/SELECT/UPDATE αλλά ΟΧΙ
+  DELETE, οπότε κάθε διαγραφή κίνησης γύριζε 403. Το smoke της Φ1 δεν το
+  έπιασε γιατί είχε δοκιμάσει μόνο την ΑΠΑΓΟΡΕΥΣΗ διαγραφής (409 σε confirmed).
+
+## Worker (version 56a467d2)
+
+- `PL_PERMS.accountant` διευρύνθηκε: movements GET/POST/PATCH + confirm +
+  reverse + sheets (η Αλεξία έχει αναλάβει τις παλέτες). ΟΧΙ delete/ADJUSTMENT.
+- `plResolveRefs` — μοναδικό σημείο μετάφρασης legacy `recXXX` → pg bigint
+  (`*_rec` keys). GET φίλτρα `order_stop_rec` / `order_rec`.
+- `/pallets/sheets` — POST upload (base64 → Storage, Content-Type από την
+  κατάληξη) + GET signed URL 1 ώρας. Το `path` επικυρώνεται με regex ώστε
+  να μην μπορεί να υπογραφεί αρχείο εκτός του bucket.
+- Το DELETE επιστρέφει πλέον τον κωδικό της PostgREST στο μήνυμα σφάλματος.
+
+## Frontend
+
+- **`core/pallet-feed.js`** (νέο) — όλοι οι feeders: `plOnOrderSaved`,
+  `plOnDelivered`, `plOnIntlPartnerAssigned`, `plOnExchangeOff`,
+  `plOnOrderDeleted`. Idempotent (έλεγχος ανά στάση + σάρωση ορφανών),
+  μη-μπλοκάροντες (αποτυχία → toast, η παραγγελία σώζεται κανονικά).
+- **Hooks**: orders_intl (save + cascade delete), orders_natl (save + delete),
+  daily_ops (Delivered ×2 — εκεί γράφεται το status, όχι στον stepper),
+  weekly_intl (ανάθεση export **και import** + καθαρισμός ανάθεσης),
+  order-sync (PE toggle). Αφαιρέθηκε ο νεκρός κώδικας PALLET_LEDGER (4 σημεία
+  + `cleanupPLorphans`).
+- **`modules/pallet_ledger.js`** ξαναγράφτηκε (514→292 γραμμές): Εκκρεμείς /
+  Χωρίς πλήρη επιστροφή / Όλες, φίλτρα + Export CSV (διατηρήθηκαν από την
+  παλιά σελίδα), modal επιβεβαίωσης με upload δελτίου, «Διόρθωση ανταλλαγής»
+  (σενάριο Lidl), φόρμα «Νέα κίνηση». Ίδιο route/entry `renderPalletLedger`.
+
+## Επαλήθευση live (2026-08-12)
+
+Feeders (API): 2 εκκρεμείς από 2 στάσεις φόρτωσης με σωστές ποσότητες ✓ ·
+cross-dock/παράδοσης αγνοήθηκαν ✓ · idempotency ✓ · σάρωση ορφανών ✓ ·
+partner feeder σε μη-partner παραγγελία δεν γράφει τίποτα ✓ · PE off καθαρίζει ✓.
+
+Φόρμα παραγγελιών (browser, κανόνας CLAUDE.md): η φόρμα ανοίγει με 25 πεδία
+χωρίς σφάλματα ✓ · validation δουλεύει ✓ · **νέα παραγγελία → PM-1005 pending
+taken=33 αυτόματα** ✓ · re-save χωρίς διπλό ✓ · διαγραφή → η κίνηση
+καθαρίστηκε, κανένα ορφανό ✓.
+
+UI Ισοζυγίου: αποδίδει σωστά, καρτέλες/φίλτρα/CSV λειτουργούν, φόρμα «Νέα
+κίνηση» στέλνει σωστό payload (dry-run με παγίδευση αιτήματος) ✓.
+
+## Εκκρεμότητες μετά τη Φ2
+
+- **Φ3**: πλήρες Ισοζύγιο (υπόλοιπα ανά πελάτη/partner, drill-down ανά σημείο).
+- **Φ4**: gates Invoiced + Partner PnL. **Φ5**: pallet_upload AI → κινήσεις.
+- Τα **εθνικά δεν έχουν μετάβαση σε Delivered** στο UI — μέχρι να αποκτήσουν,
+  οι εθνικές παραδόσεις καταχωρούνται από τη φόρμα «Νέα κίνηση».
+- Follow-up chip: `security_invoker` retrofit στα ct_* views του 001.
