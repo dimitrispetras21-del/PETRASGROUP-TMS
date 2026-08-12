@@ -49,6 +49,7 @@ function _locShell() {
 <div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
   <div class="loc-tab active" data-tab="overview">Επισκόπηση</div>
   <div class="loc-tab" data-tab="list">Όλες οι Τοποθεσίες</div>
+  <div class="loc-tab" data-tab="map">Χάρτης</div>
 </div>
 
 <!-- Overview Panel -->
@@ -104,6 +105,11 @@ function _locShell() {
   </div>
 </div>
 
+<!-- Map Panel — γεμίζει από το locations_map.js με το πρώτο κλικ στην καρτέλα -->
+<div id="locPanel-map" class="loc-panel" style="display:none">
+  <div id="locMapHost" style="height:calc(100vh - 265px);border-top:3px solid var(--navy-mid)"></div>
+</div>
+
 <style>
 .loc-tab { padding:10px 20px;font-size:13px;font-weight:500;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;display:inline-block; }
 .loc-tab:hover { color:var(--text); }
@@ -147,6 +153,12 @@ function _locBindEvents() {
       t.classList.add('active');
       document.querySelectorAll('.loc-panel').forEach(p => p.style.display = 'none');
       document.getElementById('locPanel-' + t.dataset.tab).style.display = 'block';
+      // Ο χάρτης χτίζεται με το πρώτο άνοιγμα της καρτέλας, όχι με τη σελίδα:
+      // το Leaflet (54 KB) και το fetch των συνεργείων δεν χρεώνονται σε όποιον
+      // δεν ανοίξει ποτέ τον χάρτη. Στα επόμενα ανοίγματα το _lmapOpen κάνει
+      // invalidateSize, γιατί όσο το panel ήταν display:none το Leaflet
+      // μετρούσε μηδενικό ύψος και ο χάρτης θα έμενε γκρι.
+      if (t.dataset.tab === 'map' && typeof _lmapOpen === 'function') _lmapOpen();
     });
   });
   document.getElementById('locSearch').addEventListener('input', () => { LOC.page = 1; _locApplyFilters(); });

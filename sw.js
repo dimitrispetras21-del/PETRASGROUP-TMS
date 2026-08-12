@@ -7,7 +7,12 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = 'tms-sw-v63-pickups-owner-only';
+const SW_VERSION = 'tms-sw-v64-locations-map';
+
+// Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
+// install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
+// καρτέλας «Χάρτης». Ο κανόνας 3 παρακάτω (network-first) το cachάρει μόνο του
+// μετά το πρώτο άνοιγμα του χάρτη — άρα δουλεύει offline από εκεί και πέρα.
 
 // ── App shell files to pre-cache on install ──────────────
 const APP_SHELL = [
