@@ -2578,6 +2578,7 @@ var PL_PERMS = {
 // Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
 // τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
 for (const r of ["owner", "dispatcher", "warehouse", "accountant"]) PL_PERMS[r].gate = ["GET"];
+PL_PERMS.owner.override = ["POST"];   // η παράκαμψη τιμολόγησης είναι ΜΟΝΟ του owner
 function plCan(role, resource, method) {
   const r = PL_PERMS[role];
   return !!(r && r[resource] && r[resource].includes(method));
@@ -2835,6 +2836,22 @@ async function handlePallets(request, url, origin, env) {
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
       return jsonOk({ record: updated, replacement }, origin, env);
+    }
+    // ---- POST /pallets/override {order_rec, reason} — τιμολόγηση χωρίς δελτίο ----
+    // Ο owner μπορεί να ξεκλειδώσει (π.χ. χάθηκε το χαρτί), αλλά ΠΟΤΕ σιωπηλά:
+    // η αιτιολογία μπαίνει στο ημερολόγιο ελέγχου ώστε σε έξι μήνες να
+    // απαντιέται «ποιος το άφησε να περάσει και γιατί».
+    if (resource === "override" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.order_rec || !String(body.reason || "").trim()) {
+        return jsonError("order_rec + reason required", 400, origin, env);
+      }
+      await audit(env, {
+        actor: caller.sub, role: caller.role, action: "invoice_override",
+        table: "orders", recordId: String(body.order_rec),
+        after: { reason: String(body.reason).trim() }
+      });
+      return jsonOk({ recorded: true }, origin, env);
     }
     // ---- GET /pallets/gate?order_recs=recA,recB — «έχουν δελτία;» ανά παραγγελία ----
     // Το invoicing ρωτάει για ΟΛΗ τη λίστα με μία κλήση· μία κλήση ανά order θα
