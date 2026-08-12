@@ -113,6 +113,9 @@ function _wiFmtFull(s){
   }catch{return s;}
 }
 function _wiClean(s){return escapeHtml((s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim());}
+// ΩΜΗ εκδοχή για ό,τι περνάει σε _wk3LocHTML/_wk3MoreStops — εκείνα κάνουν το
+// escape στο render· διπλό escape εμφάνιζε «&quot;» σε ονόματα με εισαγωγικά.
+function _wiRaw(s){return (s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim();}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
 
 // Batch fetch ORDER_STOPS and inject Loading/Delivery Summary into records missing them
@@ -233,6 +236,17 @@ async function renderWeeklyIntl(){
     if (loadId !== _wiLoadId) return;
     _wiBuildRows();
     _wiPaint();
+    // Self-heal (owner 12/8): ανάθεση σε συνεργάτη που γράφτηκε ΜΕΤΑ το γέμισμα
+    // της 30' cache των άλλων χρηστών ⇒ άγνωστο id ⇒ έδειχνε «—». Μία ανανέωση
+    // PARTNERS χωρίς cache και repaint — μόνο όταν όντως λείπει κάποιο id.
+    if (WINTL.rows.some(r=>r.partnerId&&!WINTL.data.partners.find(p=>p.id===r.partnerId)) && !WINTL._pRefreshed){
+      WINTL._pRefreshed = true;
+      atGetAll(TABLES.PARTNERS,{fields:['Company Name']},false).then(ps=>{
+        if(!ps?.length) return;
+        WINTL.data.partners = ps.map(r=>({id:r.id,label:r.fields['Company Name']||r.id}));
+        _wiPaint();
+      }).catch(e=>console.warn('[wi] partners refresh:',e.message));
+    }
   }catch(err){
     if (loadId !== _wiLoadId) return;
     document.getElementById('content').innerHTML=`
@@ -670,8 +684,8 @@ function _wiImpRowHTML(row,impNo){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
-  const fromStr=_wiClean(f['Loading Summary']||f['Client Name']||f['Client Summary']||'—');
-  const toStr  =_wiClean(f['Delivery Summary']||f['Client Name']||f['Client Summary']||'—');
+  const fromStr=_wiRaw(f['Loading Summary']||f['Client Name']||f['Client Summary']||'—');
+  const toStr  =_wiRaw(f['Delivery Summary']||f['Client Name']||f['Client Summary']||'—');
   const clientName=_wiClean((f['Client Name']||f['Client Summary']||'').split(',')[0].trim()||'');
   const pals   =f['Total Pallets']||0;
   const loadDt =_wiFmt(f['Loading DateTime']);
@@ -1080,8 +1094,8 @@ function _wiRowHTML(row,i){
   const hasPartner=!!(row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label);
   let sCls='s-default';
 
-  const fromStr=primary?_wiClean(primary.fields['Loading Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
-  const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
+  const fromStr=primary?_wiRaw(primary.fields['Loading Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
+  const toStr  =primary?_wiRaw(primary.fields['Delivery Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
   // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
   // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
   // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
@@ -1104,7 +1118,9 @@ function _wiRowHTML(row,i){
   const truck  =row.truckLabel  ||data.trucks.find(t=>t.id===row.truckId)?.label||'';
   const trailer=row.trailerLabel||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
   const driver =row.driverLabel ||data.drivers.find(d=>d.id===row.driverId)?.label||'';
-  const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||'';
+  // Fallback «Συνεργάτης» (owner 12/8): νέος partner που δεν είναι ακόμη στην
+  // 30' cache των άλλων χρηστών εμφανιζόταν ως navy «—» αντί για πράσινο pill.
+  const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'Συνεργάτης':'');
   const surname=driver?driver.trim().split(/\s+/)[0]:'';
 
   // v3.1 proto pills — 24px, μία γραμμή (πινακίδα + επώνυμο / εταιρεία + πινακίδες)
