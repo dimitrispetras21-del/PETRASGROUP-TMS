@@ -774,7 +774,7 @@ function _wiLegRowHTML(legRow){
       onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
     <div class="wk3-num" style="color:var(--accent);font-weight:800">⤷</div>
     <div class="wk3-feed l bgap"></div>
-    ${dir==='import'?`<div style="grid-column:3/5"></div>${legCell}`:`${legCell}<div></div><div class="wk3-leg imp void"></div>`}
+    ${dir==='import'?`<div class="wk3-leg bgap" style="grid-column:3/5"></div>${legCell}`:`${legCell}<div></div><div class="wk3-leg imp bgap"></div>`}
     <div class="wk3-feed r bgap"></div>
   </div>`;
 }
