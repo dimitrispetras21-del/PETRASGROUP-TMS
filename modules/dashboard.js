@@ -669,7 +669,12 @@ function _dashCountUp() {
   document.querySelectorAll('.dash-home [data-count]').forEach(el => {
     const to = parseInt(el.dataset.count, 10);
     if (!Number.isFinite(to)) { el.textContent = el.dataset.count; return; }
-    if (reduce || to === 0) { el.textContent = to; return; }
+    // Η ΤΕΛΙΚΗ τιμή γράφεται ΠΡΩΤΑ. Αν το requestAnimationFrame δεν τρέξει
+    // ποτέ (καρτέλα σε background, throttling, σφάλμα), ο αριθμός μένει
+    // ΣΩΣΤΟΣ αντί για ψεύτικο 0 — μια κίνηση δεν επιτρέπεται να παράγει
+    // λάθος νούμερο σε σελίδα που παίρνει αποφάσεις.
+    el.textContent = to;
+    if (reduce || to === 0) return;
     const dur = 680, t0 = performance.now();
     const step = now => {
       const k = Math.min(1, (now - t0) / dur);

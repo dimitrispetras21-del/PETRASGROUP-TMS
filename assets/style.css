@@ -6537,9 +6537,14 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   border: 1px solid rgba(255,255,255,0.09);
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 18px 44px rgba(0,0,0,0.40);
-  color: var(--dc-text);
   position: relative;
   overflow: hidden;
+  /* Τα tokens ΞΑΝΑ σε ανοιχτές τιμές: το block των ανοιχτών καρτών πιο πάνω
+     τα είχε γυρίσει σε σκούρα, και η γυάλινη επιφάνεια εδώ είναι πάλι navy.
+     Χωρίς αυτό, σκούρο κείμενο πάνω σε σκούρο γυαλί. */
+  --dc-text: #EAF2FA; --dc-text-mid: #9DB2C8; --dc-text-dim: #7C8CA0;
+  --dc-card-bg: rgba(11,25,41,0.60); --dc-card-border: rgba(255,255,255,0.09);
+  color: var(--dc-text);
 }
 .dash-home .dash-kpi::after,
 .dash-home .dash-card::after {
