@@ -762,10 +762,11 @@ function _wiLegRowHTML(legRow){
   const f=o.fields||{};
   const ld=_wiFmt(f['Loading DateTime']), dd=_wiFmt(f['Delivery DateTime']);
   const dir=(f['Direction']==='Import')?'import':'export';
-  // Σωστή στήλη ανά κατεύθυνση (owner 12/8): σκέλος εξαγωγής → μέχρι το
-  // assignment (3/5), όχι πάνω στο πεδίο εισαγωγής· σκέλος εισαγωγής → μόνο
-  // στη στήλη εισαγωγών (5/6), όχι πάνω στο πεδίο εξαγωγής.
-  const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/5'};cursor:pointer">
+  // Σωστή στήλη ανά κατεύθυνση (owner 12/8): σκέλος εξαγωγής → ΜΟΝΟ τη στήλη
+  // διαδρομής (3/4) ώστε ημερομηνίες/σημεία να ευθυγραμμίζονται με τον γονέα —
+  // το 3/5 τέντωνε το περιεχόμενο με κενό στη μέση και τα κουμπιά κατέληγαν
+  // κάτω από το assignment. Σκέλος εισαγωγής → μόνο στήλη εισαγωγών (5/6).
+  const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/4'};cursor:pointer">
       <span class="wk3-route"><b class="wk3-ld">${ld!=='—'?_wk3D(ld):''}</b><span class="frm">${_wk3LocHTML(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld">${dd!=='—'?_wk3D(dd):''}</b><span class="to">${_wk3LocHTML(f['Delivery Summary']||'—','Παράδοση',f._stopsD)}${(f['Order Number']||f['Reference'])?`<span class="wk3-ordn">${escapeHtml(String(f['Order Number']||f['Reference']))}</span>`:''}</span></span>
       <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button><button class="wk3-prt" title="Ακύρωση πρόωθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯</button></span>
     </div>`;
@@ -773,7 +774,7 @@ function _wiLegRowHTML(legRow){
       onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
     <div class="wk3-num" style="color:var(--accent);font-weight:800">⤷</div>
     <div class="wk3-feed l bgap"></div>
-    ${dir==='import'?`<div style="grid-column:3/5"></div>${legCell}`:`${legCell}<div class="wk3-leg imp void"></div>`}
+    ${dir==='import'?`<div style="grid-column:3/5"></div>${legCell}`:`${legCell}<div></div><div class="wk3-leg imp void"></div>`}
     <div class="wk3-feed r bgap"></div>
   </div>`;
 }
