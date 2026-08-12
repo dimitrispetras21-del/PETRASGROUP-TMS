@@ -345,10 +345,13 @@ async function plvDoFix(id) {
    Το select δεν χωρούσε 1.921 πελάτες — και δεν τους έδειχνε ποτέ όλους ούτως
    ή άλλως: η PostgREST κόβει στα 1000 και το active=true αφήνει 1.821 (12/8).
    Ο χρήστης πληκτρολογεί, ο server γυρίζει 20. */
-const PLV_AC = { rows: {}, timer: null };
+// Timer ΑΝΑ πεδίο, όχι κοινό: με κοινό, όποιος πληκτρολογούσε στον
+// αντισυμβαλλόμενο και περνούσε στο σημείο μέσα σε 250ms ακύρωνε την πρώτη
+// αναζήτηση και έμενε με άδεια λίστα δίπλα σε γεμάτο πεδίο.
+const PLV_AC = { rows: {}, timers: {} };
 
 function plvAcSearch(field, type) {
-  clearTimeout(PLV_AC.timer);
+  clearTimeout(PLV_AC.timers[field]);
   const inp = document.getElementById('plvAcQ_' + field);
   const hid = document.getElementById(field);
   const box = document.getElementById('plvAcList_' + field);
@@ -357,7 +360,7 @@ function plvAcSearch(field, type) {
   hid.value = '';
   const q = inp.value.trim();
   if (q.length < 2) { box.style.display = 'none'; return; }
-  PLV_AC.timer = setTimeout(async () => {
+  PLV_AC.timers[field] = setTimeout(async () => {
     let rows;
     try {
       const r = await plFetch('/pallets/lookups/search?type=' + type + '&q=' + encodeURIComponent(q));
