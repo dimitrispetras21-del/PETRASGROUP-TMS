@@ -1765,6 +1765,10 @@ async function _checkPalletSheets(recId) {
 // ═══════════════════════════════════════════════
 
 function openIntlScan() {
+  // Reset (bug 10/8): τα _scanFiles κρατούσαν τα αρχεία της ΠΡΟΗΓΟΥΜΕΝΗΣ
+  // χρήσης — το κουμπί «σκάναρε» τα παλιά ή τίποτα. Κάθε άνοιγμα = καθαρό.
+  window._scanFiles = []; window._scanUploadedFile = null;
+  window._scanQueue = []; window._scanQueueTotal = 0; window._scanQueueDone = 0;
   if (typeof scanSyncTrainingFromServer === 'function') scanSyncTrainingFromServer();
   document.getElementById('modal').style.maxWidth = '520px';
   openModal('New Order from Scan', `
@@ -1824,6 +1828,7 @@ async function _scanHandleFile(file) {
   }
 
   window._scanUploadedFile = file;
+  window._scanFiles = [...(window._scanFiles||[]), file].slice(0, 10);
   const btn = document.getElementById('btnScanGo');
   if (btn) btn.disabled = false;
 
@@ -2030,8 +2035,13 @@ function _scanHandleFiles(fileList) {
     return ok;
   }).slice(0, 10);
   if (!files.length) return;
+  // Bug 10/8: «πρόσθετα 1-1 και το αντικαθιστούσε» — τώρα ΣΩΡΕΥΟΝΤΑΙ
+  const prev = window._scanFiles || [];
+  const seen = new Set(prev.map(f => f.name + ':' + f.size));
+  files = [...prev, ...files.filter(f => !seen.has(f.name + ':' + f.size))].slice(0, 10);
   window._scanFiles = files;
   window._scanUploadedFile = files[0]; // συμβατότητα με single ροή
+  const fi = document.getElementById('scanFile'); if (fi) fi.value = ''; // ξαναδιάλεξε και ίδιο αρχείο
   const btn = document.getElementById('btnScanGo');
   if (btn) { btn.disabled = false;
     btn.innerHTML = files.length > 1 ? `🤖 &nbsp;Σκανάρισμα ${files.length} αρχείων` : '🤖 &nbsp;Extract & Fill Form'; }
