@@ -2248,9 +2248,10 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-grpb:hover{background:var(--accent)}
 .wk3-leg{padding:0 12px;min-width:0;display:flex;align-items:flex-start;gap:10px;overflow:hidden;align-self:stretch}
 .wk3-route{font-size:12px;white-space:nowrap;overflow:hidden;min-width:0;flex:1;display:flex;align-items:center;height:34px}
-/* Ο τόπος φόρτωσης παίρνει ΟΣΟ χρειάζεται (max 41%) — το σταθερό 41% άφηνε
-   κενό και στρίμωχνε τα σημεία παράδοσης (owner 12/8, W34 #12: 3× Lidl) */
-.wk3-route .frm{overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;max-width:41%;min-width:0}
+/* ΣΤΑΘΕΡΟ 41% (owner 12/8: «βελάκι κάτω από βελάκι») — η στοίχιση των στηλών
+   φόρτωση/βέλος/παράδοση μεταξύ των γραμμών προηγείται· το έξτρα πλάτος για τα
+   σημεία έρχεται από το width:100% του route (ως τις παλέτες), όχι από εδώ. */
+.wk3-route .frm{overflow:hidden;text-overflow:ellipsis;flex:0 0 41%;min-width:0}
 .wk3-route .to{font-weight:700;flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .wk3-route .wk3-sep{flex-shrink:0;width:16px;text-align:center;margin:0}
 .wk3-route .wk3-ld{flex-shrink:0;width:32px;text-align:right;margin-right:8px}
@@ -2330,7 +2331,9 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-rt .rnote{font-size:9px;color:var(--text-dim);margin-top:8px;line-height:1.5}
 /* Πολλαπλά σημεία (10/8): δίπλωμα σε γραμμές από κάτω, ημερομηνία ανά σημείο */
 .wk3-lcol{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:flex-start;padding:0 0 3px}
-.wk3-lcol .wk3-route{flex:0 0 auto}
+/* Το route γεμίζει ΟΛΟ το πλάτος της στήλης ως τις παλέτες (owner 12/8) —
+   έτσι το .to (παραδόσεις) απλώνει, ενώ το 41% του .frm κρατά τη στοίχιση. */
+.wk3-lcol .wk3-route{flex:0 0 auto;width:100%}
 .wk3-stopline{display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.7;padding-left:40px;min-width:0}
 /* GRP μέλη (owner 12/8): αναδίπλωση στο ×N badge, ένα line ανά order.
    Grid ώστε φορτώσεις/βέλη/παραδόσεις να στοιχίζονται μεταξύ των μελών. */

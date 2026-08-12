@@ -843,7 +843,9 @@ const _WK3CC={'GREECE':'GR','ΕΛΛΑΔΑ':'GR','GERMANY':'DE','DEUTSCHLAND':'DE
 // «Τίτλος, CC, Πόλη, Τίτλος2, CC2, Πόλη2…» — σπάμε σε τμήματα: κάθε τμήμα
 // κλείνει στο CC και το αμέσως επόμενο token (πόλη) πετιέται.
 function _wk3Locs(str){
-  const s=_wiClean(str||''); if(!s||s==='—') return [];
+  // ΩΜΟ trim (όχι _wiClean/escape): οι καταναλωτές κάνουν escapeHtml στο render —
+  // το διπλό escape εμφάνιζε «&quot;» σε τίτλους με εισαγωγικά (W34 #12).
+  const s=_wiRaw(str||''); if(!s||s==='—') return [];
   const parts=s.split(',').map(t=>t.trim()).filter(Boolean);
   const segs=[]; let cur=[];
   for(const p of parts){
@@ -857,7 +859,7 @@ function _wk3Locs(str){
   if(cur.length&&!segs.length) segs.push(cur[0]);
   return segs;
 }
-function _wk3Loc(str){ const L=_wk3Locs(str); return L.length?L[0]:_wiClean(str||''); }
+function _wk3Loc(str){ const L=_wk3Locs(str); return L.length?L[0]:_wiRaw(str||''); }
 // Route κείμενο: 1ο σημείο + διακριτικό ×N με αριθμημένη λίστα στο tooltip
 // Πολλαπλά σημεία (owner 10/8): «όλες οι πληροφορίες να αναγράφονται» — το
 // 1ο σημείο μένει στη γραμμή, τα υπόλοιπα ΔΙΠΛΩΝΟΥΝ από κάτω με τη δική
