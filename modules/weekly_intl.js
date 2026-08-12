@@ -891,8 +891,12 @@ function _wk3LocHTML(str,label,arr){
   if(L.length===1) return escapeHtml(L[0].n);
   if(same.length===1) return `${circ(0)}${escapeHtml(same[0].n)}`;
   // Έως 3 σημεία με πλήρη ονόματα (owner 12/8: «δύσκολο να διαβάσει ποια είναι
-  // τα σημεία») — η γραμμή πλέον απλώνει ως τις παλέτες. Συντομογραφία μόνο 4+.
-  if(same.length<=3) return same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ');
+  // τα σημεία») — η γραμμή απλώνει ως τις παλέτες· αν πάλι δεν χωρά και κοπεί
+  // με «…», το hover δείχνει την πλήρη αριθμημένη λίστα. Συντομογραφία μόνο 4+.
+  if(same.length<=3){
+    const tip3=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
+    return `<span title="${tip3}">${same.map((x,i)=>`${circ(i)}${escapeHtml(x.n)}`).join(' ')}</span>`;
+  }
   const tip=escapeHtml(same.map((x,i)=>`${i+1}. ${x.n}`).join('\n'));
   const ab=same.map((x,i)=>`${circ(i)}${escapeHtml(x.n.split(',')[0].slice(0,5))}…`).join(' ');
   return `<span class="wk3-abbr" title="${same.length} σημεία — κλικ για πλήρη ονόματα&#10;${tip}" onclick="event.stopPropagation();const c=this.closest('.wk3-lcol')||this.closest('.wk3-fcol');const f=c&&c.querySelector('.wk3-xfold');if(f)f.classList.toggle('open')">${ab}</span>`;
