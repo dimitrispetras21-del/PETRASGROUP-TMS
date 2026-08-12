@@ -603,7 +603,7 @@ git push
 
 **Interfaces:**
 - Consumes: `plFetch` (Task 4), endpoints Φ1/Φ2 (`/pallets/movements`, `/confirm`, `/reverse`, `/sheets`, `/lookups`), `toast`, `showErrorToast`, router entry `renderPalletLedger` (ΔΕΝ αλλάζει όνομα — το καλεί το router.js:300).
-- Produces: σελίδα με 3 προβολές (Εκκρεμείς / Χωρίς πλήρη επιστροφή / Όλες), modal επιβεβαίωσης με δελτίο+upload, «Διόρθωση ανταλλαγής» σε DELIVERY, φόρμα «Νέα κίνηση». Ελληνικά labels. Λειτουργικό σε tablet.
+- Produces: σελίδα με 3 προβολές (Εκκρεμείς / Χωρίς πλήρη επιστροφή / Όλες), φίλτρα (αναζήτηση + από/έως) και Export CSV — **feature parity με το παλιό page που αντικαθίσταται**, modal επιβεβαίωσης με δελτίο+upload, «Διόρθωση ανταλλαγής» σε DELIVERY, φόρμα «Νέα κίνηση». Ελληνικά labels. Λειτουργικό σε tablet. Το όνομα `renderPalletLedger` ΔΕΝ αλλάζει (router.js:300 + link orders_intl.js:585).
 
 - [ ] **Step 1: Γράψε το νέο αρχείο**
 
@@ -616,7 +616,9 @@ git push
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
-const PLV = { movements: [], lookups: null, tab: 'pending', busy: false };
+// q/from/to: το παλιό pallet_ledger page είχε φίλτρα + CSV — δεν τα χάνουμε
+// (η λογίστρια τα χρησιμοποιεί καθημερινά· αφαίρεσή τους = οπισθοδρόμηση).
+const PLV = { movements: [], lookups: null, tab: 'pending', busy: false, q: '', from: '', to: '' };
 
 async function renderPalletLedger() {
   const c = document.getElementById('content');
@@ -655,10 +657,35 @@ const PLV_EVENT_GR = {
 };
 
 function _plvRows() {
-  if (PLV.tab === 'pending') return PLV.movements.filter(m => m.status === 'pending');
-  if (PLV.tab === 'noreturn') return PLV.movements.filter(m =>
+  let rows;
+  if (PLV.tab === 'pending') rows = PLV.movements.filter(m => m.status === 'pending');
+  else if (PLV.tab === 'noreturn') rows = PLV.movements.filter(m =>
     m.status === 'confirmed' && m.event_type === 'DELIVERY' && m.given > m.taken);
-  return PLV.movements.filter(m => m.status !== 'reversed');
+  else rows = PLV.movements.filter(m => m.status !== 'reversed');
+  if (PLV.from) rows = rows.filter(m => m.movement_date >= PLV.from);
+  if (PLV.to)   rows = rows.filter(m => m.movement_date <= PLV.to);
+  const q = PLV.q.trim().toLowerCase();
+  if (q) rows = rows.filter(m =>
+    (m.code + ' ' + _plvName(m) + ' ' + _plvLoc(m) + ' ' + (m.notes || '')).toLowerCase().includes(q));
+  return rows;
+}
+
+function plvFilter(key, val) { PLV[key] = val; _plvDraw(); }
+
+function plvExportCSV() {
+  const rows = _plvRows();
+  if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
+  const head = ['Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
+  const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const body = rows.map(m => [m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
+    _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
+  // BOM: χωρίς αυτό το Excel δείχνει τα ελληνικά ως μουτζούρες
+  const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('CSV εξήχθη ✓');
 }
 
 function _plvDraw() {
@@ -674,6 +701,12 @@ function _plvDraw() {
     <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap">
       ${[['pending', 'Εκκρεμείς (' + pend + ')'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις']].map(([id, lbl]) =>
         `<button onclick="plvTab('${id}')" style="padding:8px 16px;border-radius:20px;border:1px solid var(--accent);cursor:pointer;font-size:13px;${PLV.tab === id ? 'background:var(--accent);color:#fff' : 'background:transparent;color:var(--accent)'}">${lbl}</button>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      <input id="plvQ" placeholder="Αναζήτηση (κωδικός, όνομα, σημείο)" value="${PLV.q}" oninput="plvFilter('q',this.value)" style="flex:1 1 220px;padding:8px 12px;font-size:13px">
+      <label style="font-size:12px;color:var(--panel-dim)">Από <input type="date" value="${PLV.from}" onchange="plvFilter('from',this.value)" style="padding:6px;font-size:13px"></label>
+      <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>
+      <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
     <div style="overflow-x:auto">
     <table style="width:100%;border-collapse:collapse;font-size:13px">
@@ -871,6 +904,7 @@ window.renderPalletLedger = renderPalletLedger;
 window.plvTab = plvTab; window.plvOpenConfirm = plvOpenConfirm; window.plvCloseModal = plvCloseModal;
 window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix;
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
+window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV;
 ```
 
 Σημείωση: το UI στέλνει pg ids (`client_id` κ.λπ. από τα lookups) — ΔΕΝ χρειάζεται *_rec refs. Το «Νέα κίνηση» κάνει direct confirm (η Αλεξία καταχωρεί τετελεσμένα γεγονότα με δελτίο μπροστά της).
@@ -887,7 +921,9 @@ Run: `node --check modules/pallet_ledger.js` → exit 0.
 1. Οι 3 καρτέλες αλλάζουν χωρίς errors.
 2. «Νέα κίνηση»: RETURN_IN από partner 5 παλέτες MANUAL → εμφανίζεται στην «Όλες», οριστική.
 3. Σε όποια pending υπάρχει: «Επιβεβαίωση» → πεδία προσυμπληρωμένα → Άκυρο.
-4. Κονσόλα καθαρή.
+4. Φίλτρα: πληκτρολόγησε μέρος ονόματος → η λίστα φιλτράρεται· βάλε «Από» αυριανή ημερομηνία → 0 γραμμές· καθάρισέ το.
+5. Export CSV → κατεβαίνει αρχείο· άνοιξέ το και επιβεβαίωσε ότι τα ελληνικά εμφανίζονται σωστά (BOM).
+6. Κονσόλα καθαρή.
 (Η δοκιμαστική RETURN_IN αντιλογίζεται μετά από owner/dispatcher με reason «δοκιμή Φ2».)
 
 - [ ] **Step 5: Commit + push**
