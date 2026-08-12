@@ -93,8 +93,8 @@ const TABLES = {
 // History: claude-sonnet-4-20250514 retired 2026-06-15 → claude-sonnet-4-6.
 //          claude-haiku-4-20250514 was never a valid ID → claude-haiku-4-5-20251001.
 const MODELS = {
-  OPUS:   'claude-opus-4-6',           // active (retirement not before 2026-02-05)
-  SONNET: 'claude-sonnet-4-6',         // active replacement for the retired Sonnet 4
+  OPUS:   'claude-opus-5',             // Claude 5 — στη λίστα ALLOWED_MODELS του Worker
+  SONNET: 'claude-sonnet-5',           // Claude 5
   HAIKU:  'claude-haiku-4-5-20251001', // active Haiku 4.5
 };
 

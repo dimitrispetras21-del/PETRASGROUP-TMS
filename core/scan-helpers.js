@@ -225,13 +225,13 @@ async function scanCallAnthropic(payload, opts = {}) {
     const ctrl = new AbortController();
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      // S-1/11-8: το κλειδί ζει ΜΟΝΟ στον Worker — όλες οι AI κλήσεις του
+      // σκαν περνούν από το /v1/ai/messages proxy με το JWT του χρήστη.
+      const res = await fetch(PROXY_URL + '/v1/ai/messages', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': ANTH_KEY,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
+          'Authorization': 'Bearer ' + (localStorage.getItem('tms_jwt') || ''),
         },
         body: JSON.stringify(payload),
         signal: opts.signal || ctrl.signal,
