@@ -10,7 +10,11 @@ const CT_CATEGORY_LABELS = {
   partner_rate: 'Partner rate', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
 };
 
-const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 'trip', openRt: null };
+const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 'trip', openRt: null,
+  // Φ4 partner pallet gate (docs/PALLETS_ARCHITECTURE.md §4.2): rt_id → gate record from /costs/pallet-gate.
+  palletGate: {}, palletGateFailed: false,
+  // Owner can reveal a gated row's hidden PnL numbers one row at a time — page is owner-only already.
+  revealed: new Set() };
 
 async function ctFetch(path, opts = {}) {
   const jwt = localStorage.getItem('tms_jwt');
@@ -95,12 +99,20 @@ async function ctReload() {
   const list = document.getElementById('ctList');
   if (list) list.innerHTML = '<div class="ct-empty">Φόρτωση…</div>';
   try {
-    const [pnl, rts, lookups] = await Promise.all([
-      ctFetch('/costs/pnl'), ctFetch('/costs/rt'), _ct.lookups ? Promise.resolve({ cached: true }) : ctFetch('/costs/lookups')
+    // Φ4: pallet-gate failure must NOT take down the whole PnL page — a
+    // missing auxiliary "is the sheet in?" signal is far less bad than the
+    // owner losing the entire PnL list because one extra endpoint 404'd
+    // (the gate views were only just added — 007_pallets_gates.sql — and may
+    // not be live in every environment yet). .catch() isolates it from the
+    // Promise.all so /costs/pnl and /costs/rt still load normally.
+    const [pnl, rts, lookups, palletGate] = await Promise.all([
+      ctFetch('/costs/pnl'), ctFetch('/costs/rt'), _ct.lookups ? Promise.resolve({ cached: true }) : ctFetch('/costs/lookups'),
+      ctFetch('/costs/pallet-gate').catch(e => { console.warn('[costs] pallet-gate failed', e.message); _ct.palletGateFailed = true; return { records: [] }; })
     ]);
     _ct.pnl = pnl.records || [];
     _ct.rts = {}; (rts.records || []).forEach(r => { _ct.rts[r.id] = r; });
     if (!lookups.cached) _ct.lookups = lookups;
+    _ct.palletGate = {}; (palletGate.records || []).forEach(g => { _ct.palletGate[g.rt_id] = g; });
     ctRenderKPIs(); ctRenderVehBar(); ctRenderList();
   } catch (e) {
     if (list) list.innerHTML = `<div class="ct-empty">⚠ Σφάλμα φόρτωσης: ${ctEsc(e.message)}</div>`;
@@ -147,6 +159,21 @@ function ctSetScope(s) {
   ctRenderKPIs(); ctRenderList();
 }
 
+// Φ4: banner (real gate: N partner trips waiting on a sheet) + a quieter
+// note (gate endpoint unreachable — never a lock, just missing info) shown
+// above whichever list layout is active.
+function ctPalletGateNotice(V) {
+  const gatedCount = V.filter(t => t.trip_type === 'PARTNER' && _ct.palletGate[t.id] && _ct.palletGate[t.id].sheets_ok === false).length;
+  const banner = gatedCount
+    ? `<div style="background:#FEF3C7;color:#B45309;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;font-weight:600">
+        🔒 ${gatedCount} ${gatedCount === 1 ? 'διαδρομή partner περιμένει' : 'διαδρομές partner περιμένουν'} δελτίο παλετών</div>`
+    : '';
+  const failNote = _ct.palletGateFailed
+    ? `<div class="ct-note" style="margin-bottom:10px">Ο έλεγχος δελτίων παλετών δεν φόρτωσε — τα PnL εμφανίζονται κανονικά, χωρίς αυτόν τον έλεγχο.</div>`
+    : '';
+  return banner + failNote;
+}
+
 function ctRenderList() {
   const V = ctVisible(), el = document.getElementById('ctList');
   if (!V.length) {
@@ -154,20 +181,38 @@ function ctRenderList() {
       <span style="font-size:12px">Θα δημιουργούνται αυτόματα από τα Weekly planners (Φ2) — ή φτιάξε ένα τώρα με «+ Νέο Round Trip».</span></div>`;
     return;
   }
+  const notice = ctPalletGateNotice(V);
   if (_ct.group === 'trip') {
-    const rows = [...V].sort((a, b) => (a.margin_worst_pct ?? 999) - (b.margin_worst_pct ?? 999)).map(t => `
+    const rows = [...V].sort((a, b) => (a.margin_worst_pct ?? 999) - (b.margin_worst_pct ?? 999)).map(t => {
+      // Φ4 (docs/PALLETS_ARCHITECTURE.md §4.2): partner PnL with a missing
+      // pallet sheet is incomplete — lost pallets are a real cost that isn't
+      // in these numbers yet — so profit/margin are hidden behind a lock
+      // until either the sheet lands or the owner explicitly reveals them.
+      const gate = _ct.palletGate[t.id];
+      const gated = t.trip_type === 'PARTNER' && gate && gate.sheets_ok === false;
+      const revealed = _ct.revealed.has(t.id);
+      const lockTitle = gate ? `Λείπει δελτίο παλετών σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — το PnL είναι ελλιπές (οι χαμένες παλέτες είναι κόστος)` : '';
+      const lockTd = `<td class="ct-num" onclick="event.stopPropagation();ctRevealRow(${t.id})" style="cursor:pointer;color:#B45309;font-weight:600" title="${ctEsc(lockTitle)}">🔒 δελτίο</td>`;
+      const profitTd = (gated && !revealed) ? lockTd
+        : `<td class="ct-num ct-mono" style="font-weight:700;color:${Number(t.profit_worst) < 0 ? '#B91C1C' : '#047857'}">${ctEur(t.profit_worst)}</td>`;
+      const marginTd = (gated && !revealed) ? lockTd
+        : `<td style="text-align:center">${ctPill(t.margin_worst_pct)}</td>`;
+      const exVatTd = (gated && !revealed) ? lockTd
+        : `<td class="ct-num ct-mono" style="color:var(--text-dim)">${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'}</td>`;
+      return `
       <tr onclick="ctOpenPanel(${t.id})">
         <td class="ct-mono">${ctEsc(t.code)}</td>
         <td class="ct-mono">${ctEsc(t.date_start)}${t.date_end ? '→' + ctEsc(t.date_end) : ''}</td>
         <td>${ctChip(t)}</td>
         <td class="ct-num ct-mono">${ctEur(t.revenue)}</td>
         <td class="ct-num ct-mono">${ctEur(t.cost_gross)}</td>
-        <td class="ct-num ct-mono" style="font-weight:700;color:${Number(t.profit_worst) < 0 ? '#B91C1C' : '#047857'}">${ctEur(t.profit_worst)}</td>
-        <td style="text-align:center">${ctPill(t.margin_worst_pct)}</td>
-        <td class="ct-num ct-mono" style="color:var(--text-dim)">${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'}</td>
+        ${profitTd}
+        ${marginTd}
+        ${exVatTd}
         <td>${ctStatusBadge(t)}</td>
-      </tr>`).join('');
-    el.innerHTML = `<table class="ct-tbl"><thead><tr><th>Κωδ.</th><th>Ημ/νίες</th><th>Φορτηγό / Partner</th>
+      </tr>`;
+    }).join('');
+    el.innerHTML = notice + `<table class="ct-tbl"><thead><tr><th>Κωδ.</th><th>Ημ/νίες</th><th>Φορτηγό / Partner</th>
       <th class="ct-num">Έσοδα</th><th class="ct-num">Κόστος</th><th class="ct-num">Καθαρό</th>
       <th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th><th>Κατάσταση</th></tr></thead><tbody>${rows}</tbody></table>
       <div style="font-size:12px;color:var(--text-dim);margin-top:8px">Χειρότερο margin πρώτα · κλικ σε γραμμή για ανάλυση</div>`;
@@ -186,8 +231,16 @@ function ctRenderList() {
     <td style="text-align:center">${ctPill(r.mg != null ? Math.round(r.mg * 10) / 10 : null)}</td>
     <td class="ct-num ct-mono" style="color:var(--text-dim)">${r.mx != null ? r.mx.toFixed(1) + '%' : '—'}</td></tr>`).join('');
   const h = _ct.group === 'truck' ? 'Φορτηγό / Partner' : _ct.group === 'driver' ? 'Οδηγός' : 'Εβδομάδα';
-  el.innerHTML = `<table class="ct-tbl"><thead><tr><th>${h}</th><th class="ct-num">Trips</th><th class="ct-num">Έσοδα</th>
+  el.innerHTML = notice + `<table class="ct-tbl"><thead><tr><th>${h}</th><th class="ct-num">Trips</th><th class="ct-num">Έσοδα</th>
     <th class="ct-num">Κόστη</th><th class="ct-num">Καθαρό</th><th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Φ4: toggle-reveal for a single gated row's hidden PnL numbers (owner-only
+// page already, so revealing on request is safe — the gate should warn, not
+// blind the one person who needs the number).
+function ctRevealRow(id) {
+  if (_ct.revealed.has(id)) _ct.revealed.delete(id); else _ct.revealed.add(id);
+  ctRenderList();
 }
 
 // ── drill-down ───────────────────────────────────────────────────
@@ -221,6 +274,8 @@ async function ctOpenPanel(id) {
       <h2>${ctEsc(t.code)} · ${t.scope === 'NATL' ? 'Εθνικό' : 'Διεθνές'}</h2>
       <div class="ct-pmeta">${t.trip_type === 'PARTNER' ? 'Partner: ' + ctEsc(ctPartnerName(t.partner_id)) : ctEsc(ctTruckName(t.truck_id)) + (ctDriverName(t.driver_id) ? ' · ' + ctEsc(ctDriverName(t.driver_id)) : '')}
        · ${ctEsc(t.date_start)}${t.date_end ? ' → ' + ctEsc(t.date_end) : ''} · ${t.total_km ? t.total_km.toLocaleString('el-GR') + ' km' : 'χωρίς km'}</div>
+      ${(t.trip_type === 'PARTNER' && _ct.palletGate[t.id] && _ct.palletGate[t.id].sheets_ok === false) ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(251,191,36,.15);border-radius:6px;color:#FCD34D;font-size:12px;font-weight:600">
+        🔒 Λείπει δελτίο παλετών σε ${_ct.palletGate[t.id].legs_needing_sheet - _ct.palletGate[t.id].legs_with_sheet} από ${_ct.palletGate[t.id].legs_needing_sheet} σκέλη — το PnL είναι ελλιπές</div>` : ''}
       ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:10px;background:#fff" onclick="ctCloseRt(${t.id})">🏁 Κλείσιμο trip (χειροκίνητο fallback)</button>` : ''}</div>
     <div class="ct-psec"><div class="ct-duo">
       <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v" style="color:${Number(t.profit_worst) < 0 ? '#F87171' : '#34D399'}">${ctEur(t.profit_worst)}</div><div class="s">margin ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>

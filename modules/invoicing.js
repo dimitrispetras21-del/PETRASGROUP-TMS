@@ -6,7 +6,11 @@
 // Naming prefix 'INV' / '_inv' prevents collision with other modules.
 'use strict';
 
-const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', dir: 'desc' }, natlFailed: false };
+const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', dir: 'desc' }, natlFailed: false,
+  // Φ4 pallet gate (docs/PALLETS_ARCHITECTURE.md §4.1): order_rec → gate record from /pallets/gate.
+  gate: {}, gateFailed: false,
+  // Φ4 client balances (/pallets/balances?type=clients), keyed by lowercased trimmed client name — see _invLoadBalances.
+  balances: null };
 const _invFilters = { tab: 'ready', type: '', weekFrom: '', weekTo: '', client: '' };
 
 // ─── Helpers ─────────────────────────────────────
@@ -15,6 +19,15 @@ function _invClientName(rec) {
   const id = Array.isArray(f['Client']) ? f['Client'][0] : null;
   if (id) return getClientName(id);
   return f['Client Summary'] || f['Client Name'] || '—';
+}
+
+// Raw (un-escaped) client company name, for name-matching against the
+// Postgres pallet balances view — see _invLoadBalances for why this can't
+// just reuse _invClientName (which runs the value through escapeHtml).
+function _invRawClientName(clientId) {
+  if (!clientId) return '';
+  const c = getRefClients().find(r => r.id === clientId);
+  return c ? String(c.fields['Company Name'] || '').trim() : '';
 }
 
 function _invRoute(rec) {
@@ -62,12 +75,32 @@ function _invWeek(rec) { return rec.fields['Week Number'] || '—'; }
 
 function _invPERequired(rec) { return !!rec.fields['Pallet Exchange']; }
 
-function _invPESheetsOK(rec) {
+// Φ4 gate (docs/PALLETS_ARCHITECTURE.md §4.1): the pre-Φ4 per-stop field check.
+// Kept as a named fallback — NOT dead code — for when /pallets/gate is
+// unreachable (migrations 006/007 not yet applied to Supabase as of 12/8;
+// see INV.gateFailed below). Without this fallback, a gate outage would
+// block 100% of pallet-exchange invoicing fleet-wide instead of just
+// losing the extra precision the gate adds.
+function _invPESheetsOKPerStop(rec) {
   if (!rec.fields['Pallet Exchange']) return true;
   if (rec._type === 'intl') {
     return !!(rec.fields['Pallet Sheet 1 Uploaded'] && rec.fields['Pallet Sheet 2 Uploaded']);
   }
   return true;
+}
+
+// Φ4 gate — source of truth is now /pallets/gate (INV.gate), not the old
+// per-order-record fields. If the gate call failed outright, we do NOT
+// invent an answer either way: we fall back to the old per-stop check
+// (_invPESheetsOKPerStop) so invoicing keeps working exactly as before,
+// and a visible banner (INV.gateFailed) tells whoever is invoicing that
+// the extra cross-stop check isn't active right now.
+function _invPESheetsOK(rec) {
+  if (!_invPERequired(rec)) return true;
+  if (INV.gateFailed) return _invPESheetsOKPerStop(rec);
+  const g = INV.gate[rec.id];
+  if (!g) return true; // absent from /pallets/gate = no loading stops = nothing to gate
+  return g.sheets_ok === true;
 }
 
 function _invIsInvoiced(rec) {
@@ -159,6 +192,55 @@ function _invNextNumber() {
   return prefix + String(max + 1).padStart(4, '0');
 }
 
+// ─── Φ4 — pallet gate + balances loaders ──────────
+// One call for the whole page (chunked at 300 recs, the worker's cap) rather
+// than one call per row — the same reasoning as the natl-orders fetch above:
+// this list can run into the hundreds, and per-row calls would make the page
+// crawl as unpaid work piles up.
+async function _invLoadGate() {
+  INV.gate = {};
+  INV.gateFailed = false;
+  const ids = INV.data
+    .filter(r => r._type === 'intl' && _invPERequired(r) && !_invIsInvoiced(r))
+    .map(r => r.id);
+  if (!ids.length) return;
+  try {
+    for (let i = 0; i < ids.length; i += 300) {
+      const chunk = ids.slice(i, i + 300);
+      const res = await plFetch('/pallets/gate?order_recs=' + chunk.join(','));
+      (res.records || []).forEach(g => { INV.gate[g.order_rec] = g; });
+    }
+  } catch (e) {
+    console.error('Invoicing: /pallets/gate failed', e);
+    INV.gate = {};
+    INV.gateFailed = true; // _invPESheetsOK falls back to the old per-stop check
+  }
+}
+
+// Balances come from Postgres (pl_v_balance_clients), keyed by client_id —
+// but invoicing still speaks the legacy Airtable recXXX id. There is no
+// mapping table exposed to the frontend, so we match by company name
+// instead (lowercased + trimmed). Weakness, stated plainly: this breaks
+// silently if a client's name differs even slightly between Airtable
+// ("Company Name") and Postgres ("client_name") — trailing whitespace,
+// casing, a rename applied on one side only, or two different clients that
+// happen to share a display name. It is a best-effort match, not an ID join.
+async function _invLoadBalances() {
+  INV.balances = null;
+  try {
+    const res = await plFetch('/pallets/balances?type=clients');
+    const map = {};
+    (res.records || []).forEach(r => {
+      const key = String(r.client_name || '').trim().toLowerCase();
+      if (key) map[key] = r;
+    });
+    INV.balances = map;
+  } catch (e) {
+    console.error('Invoicing: /pallets/balances failed', e);
+    INV.balances = null; // stays null → _invFetchPalletBalance shows "δεν φόρτωσε", never 0
+  }
+}
+
 // ─── Main ────────────────────────────────────────
 async function renderInvoicing() {
   const c = document.getElementById('content');
@@ -204,6 +286,11 @@ async function renderInvoicing() {
     _invFilters.client = '';
     INV.sort = { col: 'aging', dir: 'desc' };
 
+    // Φ4: pallet gate + client balances, fetched once up front so the first
+    // table render already reflects them. Both helpers catch internally and
+    // never throw — a Supabase/Worker hiccup here must not blank this page.
+    await Promise.all([_invLoadGate(), _invLoadBalances()]);
+
     _renderInvLayout(c);
     _applyInvFilters();
   } catch (e) {
@@ -221,7 +308,7 @@ function _renderInvLayout(c) {
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Τιμολόγηση</div>
-        <div class="page-sub" id="invSub">${INV.data.length} παραγγελίες${INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : ''}</div>
+        <div class="page-sub" id="invSub">${INV.data.length} παραγγελίες${INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : ''}${INV.gateFailed ? ' <span style="color:#B45309">· ⚠ ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά στάση</span>' : ''}</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="_invShowOutstandingModal()">${_i('users')} Υπόλοιπα ανά πελάτη</button>
@@ -463,7 +550,8 @@ function _applyInvFilters() {
   const sub = document.getElementById('invSub');
   if (sub) {
     sub.innerHTML = `${list.length} από ${INV.data.length} παραγγελίες`
-      + (INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : '');
+      + (INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : '')
+      + (INV.gateFailed ? ' <span style="color:#B45309">· ⚠ ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά στάση</span>' : '');
   }
 }
 
@@ -573,9 +661,25 @@ function _renderInvDetail() {
   // Invoice block — different rendering depending on state
   let invoiceBlock = '';
   if (isBlocked) {
+    // Φ4: say exactly which loading stops are missing a sheet, not just "missing".
+    // g is undefined when the gate call failed and we fell back to the old
+    // per-stop check (_invPESheetsOKPerStop) — that check has no stop counts,
+    // so we fall back to a generic message rather than inventing numbers.
+    const g = INV.gate[rec.id];
+    const missingMsg = g
+      ? `Λείπει δελτίο σε ${(g.loading_stops || 0) - (g.covered_stops || 0)} από ${g.loading_stops || 0} φορτώσεις — δεν τιμολογείται`
+      : 'Λείπει δελτίο παλετών — δεν τιμολογείται';
     invoiceBlock = `<button disabled style="width:100%;padding:10px;border-radius:8px;border:1px solid #334155;
       background:#1E293B;color:var(--text-dim);font-size:13px;font-weight:600;cursor:not-allowed;margin-top:12px">
-      PE Sheets Missing — Cannot Invoice</button>`;
+      ${escapeHtml(missingMsg)}</button>`;
+    // Owner-only override (docs/PALLETS_ARCHITECTURE.md §4.1): recorded via
+    // POST /pallets/override BEFORE the invoice write, so there is always an
+    // audit trail explaining who unblocked this order and why — never silent.
+    if (typeof ROLE !== 'undefined' && ROLE === 'owner') {
+      invoiceBlock += `<button onclick="_invOverrideInvoice('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
+        border:1px solid #B45309;background:#78350F22;color:#FCD34D;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
+        ⚠ Τιμολόγηση με παράκαμψη</button>`;
+    }
   } else if (!isInvoiced && canInvoice) {
     const nextNum = _invNextNumber();
     const today = localToday();
@@ -641,11 +745,28 @@ function _renderInvDetail() {
 }
 
 // ─── Invoice Action ──────────────────────────────
+// Shared write: both the normal path and the owner-override path end up
+// here so there is exactly one place that touches ORDERS/NAT_ORDERS for
+// invoicing. The caller decides whether the sheets check applies.
+async function _invWriteInvoice(rec, invNumber, invDate) {
+  const table = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+  const fields = {
+    'Status': 'Invoiced',
+    'Invoiced': true,
+    'Invoice Number': invNumber,
+    'Invoice Date': invDate,
+  };
+  await atPatch(table, rec.id, fields);
+  invalidateCache(table);
+  Object.assign(rec.fields, fields);
+  return fields;
+}
+
 async function _invMarkInvoiced(recId) {
   const rec = INV.data.find(r => r.id === recId);
   if (!rec) return;
 
-  if (rec._type === 'intl' && _invPERequired(rec) && !_invPESheetsOK(rec)) {
+  if (!_invPESheetsOK(rec)) {
     toast('Cannot invoice — pallet exchange sheets are missing', 'error');
     return;
   }
@@ -657,24 +778,41 @@ async function _invMarkInvoiced(recId) {
 
   if (!invNumber) { toast('Συμπλήρωσε Invoice Number', 'error'); return; }
 
-  const table = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
   try {
-    const fields = {
-      'Status': 'Invoiced',
-      'Invoiced': true,
-      'Invoice Number': invNumber,
-      'Invoice Date': invDate,
-    };
-    await atPatch(table, recId, fields);
-    invalidateCache(table);
-
-    Object.assign(rec.fields, fields);
-
+    await _invWriteInvoice(rec, invNumber, invDate);
     toast(`Τιμολόγιο ${invNumber} εκδόθηκε`);
     _applyInvFilters();
     _renderInvDetail();
   } catch (e) {
     reportError('Η έκδοση τιμολογίου απέτυχε', e);
+  }
+}
+
+// ─── Owner override (Φ4, docs/PALLETS_ARCHITECTURE.md §4.1) ──────────────
+// Skips ONLY the sheets check — everything else about issuing the invoice
+// is identical to _invMarkInvoiced (same shared write). The override call
+// is made BEFORE the invoice write and is not undone if the write later
+// fails, by design: it is an audit entry ("who decided to skip the check
+// and why"), not a transactional lock — recording an override that was
+// then not used is harmless, silently invoicing without a recorded reason
+// is not.
+async function _invOverrideInvoice(recId) {
+  const rec = INV.data.find(r => r.id === recId);
+  if (!rec) return;
+
+  const reason = prompt('Αιτιολογία παράκαμψης τιμολόγησης χωρίς δελτίο παλετών (υποχρεωτικό):');
+  if (!reason || !reason.trim()) { toast('Η παράκαμψη χρειάζεται αιτιολογία', 'error'); return; }
+
+  try {
+    await plFetch('/pallets/override', { method: 'POST', body: { order_rec: rec.id, reason: reason.trim() } });
+    const invNumber = _invNextNumber();
+    const invDate = localToday();
+    await _invWriteInvoice(rec, invNumber, invDate);
+    toast(`Τιμολόγιο ${invNumber} εκδόθηκε με παράκαμψη`, 'warn');
+    _applyInvFilters();
+    _renderInvDetail();
+  } catch (e) {
+    reportError('Η παράκαμψη τιμολόγησης απέτυχε', e);
   }
 }
 
@@ -697,11 +835,17 @@ async function _invBatchInvoice() {
 
   // H4 fix: track failures in detail + show detailed report instead of silent fail count.
   let ok = 0;
+  let skipped = 0; // Φ4: re-checked below despite the checkbox being disabled for blocked rows — see comment on the check.
   const failures = []; // [{id, msg, client}]
   const today = localToday();
   for (const id of ids) {
     const rec = INV.data.find(r => r.id === id);
     if (!rec) continue;
+    // Φ4: the checkbox is already disabled for blocked orders (_renderInvTable),
+    // but batch invoicing must not just trust that UI state — re-checking here
+    // closes the gap where gate data changed between render and click, or a
+    // future caller stops going through the checkbox at all.
+    if (!_invPESheetsOK(rec)) { skipped++; continue; }
     try {
       const tbl = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
       const num = _invNextNumber();
@@ -722,10 +866,12 @@ async function _invBatchInvoice() {
   }
   invalidateCache(TABLES.ORDERS);
   invalidateCache(TABLES.NAT_ORDERS);
+  const skippedWord = skipped === 1 ? 'παραλείφθηκε' : 'παραλείφθηκαν';
+  const skippedTxt = skipped ? ` · ${skipped} ${skippedWord} (λείπει δελτίο)` : '';
   if (failures.length) {
     // Show detailed failure report via modal so user knows exactly which orders to retry
     const body = `
-      <p style="margin-bottom:var(--space-3)">Τιμολογήθηκαν <strong style="color:var(--success)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>:</p>
+      <p style="margin-bottom:var(--space-3)">Τιμολογήθηκαν <strong style="color:var(--success)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>${skipped ? `, Παραλείφθηκαν <strong style="color:var(--panel-warn)">${skipped}</strong> (λείπει δελτίο παλετών)` : ''}:</p>
       <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:var(--space-2)">
         ${failures.map(f => `<div style="padding:6px;border-bottom:1px solid var(--border);font-size:12px">
           <strong>${escapeHtml(f.client || f.id)}</strong><br>
@@ -733,9 +879,9 @@ async function _invBatchInvoice() {
         </div>`).join('')}
       </div>`;
     if (typeof openModal === 'function') openModal('Batch Invoice Report', body);
-    else toast(`${ok} τιμολόγια εκδόθηκαν, ${failures.length} απέτυχαν`, 'warn');
+    else toast(`${ok} τιμολόγια εκδόθηκαν, ${failures.length} απέτυχαν${skippedTxt}`, 'warn');
   } else {
-    toast(`${ok} τιμολόγια εκδόθηκαν`, 'success');
+    toast(`${ok} τιμολογήθηκαν${skippedTxt}`, skipped ? 'warn' : 'success');
   }
   _applyInvFilters();
 }
@@ -994,47 +1140,40 @@ function _invShowClientHistory(clientName) {
   `);
 }
 
-// ─── Pallet Balance for client ──────────────────────
-async function _invFetchPalletBalance(clientId, mountId) {
-  if (!clientId) return;
-  try {
-    const ff = `FIND("${clientId}", ARRAYJOIN({Client Account}, ","))>0`;
-    // PALLET_LEDGER_SUPPLIERS, not the deprecated TABLES.PALLET_LEDGER alias.
-    // Same table id either way (config.js:69-70), so this is a no-op today, but
-    // the alias is due to be deleted and a name-based sweep would miss this call
-    // site because it never mentions SUPPLIERS.
-    //
-    // safeFetch, not `.catch(() => [])`: this is a financial balance shown to
-    // whoever is invoicing. A swallowed error made it render "0 (zero)", which
-    // reads as a settled account rather than an error. That symptom was fixed
-    // backend-side in PR #29 (the links were unmapped, so the filter 422'd), but
-    // the fail-open that TURNED the failure into a confident zero was left here.
-    const recs = await safeFetch(
-      () => atGetAll(TABLES.PALLET_LEDGER_SUPPLIERS, { fields: ['Direction','Pallets','Date'], filterByFormula: ff }, false),
-      'invoicing: client pallet balance'
-    );
-    if (didFail(recs)) {
-      const t = document.getElementById(mountId);
-      // Deliberately NOT "0": an unknown balance must not read as a settled one.
-      if (t) t.innerHTML = '<span style="color:var(--panel-warn);font-size:10px">δεν φόρτωσε</span>';
-      return;
-    }
-    let inP = 0, outP = 0;
-    recs.forEach(r => {
-      const d = (r.fields['Direction']||'').toLowerCase();
-      const p = +r.fields['Pallets'] || 0;
-      if (d === 'loading' || d === 'in')       inP += p;
-      else if (d === 'unloading' || d === 'out') outP += p;
-    });
-    const balance = inP - outP;
-    const target = document.getElementById(mountId);
-    if (!target) return;
-    const color = balance > 0 ? 'var(--panel-ok)' : balance < 0 ? 'var(--panel-warn)' : 'var(--panel-dim)';
-    const sign = balance > 0 ? '+' : '';
-    const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(zero)';
-    target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--panel-dim);font-size:10px">${label}</span><span style="color:var(--text-dim);font-size:10px;margin-left:6px">in:${inP} · out:${outP}</span>`;
-  } catch(e) {
-    const target = document.getElementById(mountId);
-    if (target) target.textContent = '—';
+// ─── Pallet Balance for client (Φ4) ──────────────────
+// Φ4 fix: this used to read TABLES.PALLET_LEDGER_SUPPLIERS, which has been
+// deprecated and empty since the Supabase pallets migration (docs/
+// PALLETS_ARCHITECTURE.md §5) — every client silently showed balance 0,
+// i.e. "settled", which was simply false on a screen people invoice from.
+// Source of truth is now Postgres via /pallets/balances (INV.balances,
+// loaded once per page in _invLoadBalances and matched here by client name
+// — see that function's comment for the matching weakness).
+function _invFetchPalletBalance(clientId, mountId) {
+  const target = document.getElementById(mountId);
+  if (!target) return;
+  if (!clientId) { target.textContent = '—'; return; }
+
+  if (INV.balances === null) {
+    // Deliberately NOT "0": an unknown balance must not read as a settled one.
+    target.innerHTML = '<span style="color:var(--panel-warn);font-size:10px">δεν φόρτωσε</span>';
+    return;
   }
+
+  const key = _invRawClientName(clientId).toLowerCase();
+  const rec = key ? INV.balances[key] : null;
+  if (!rec) {
+    // Absent from the view = no pl_movements row for this client at all yet
+    // (genuinely "no history") OR the name didn't match (see matching
+    // weakness above) — those two cases are indistinguishable from here,
+    // so this is deliberately NOT shown as "0" either.
+    target.innerHTML = '<span style="color:var(--panel-dim);font-size:10px">χωρίς κινήσεις</span>';
+    return;
+  }
+
+  const balance = Number(rec.balance) || 0;
+  const color = balance > 0 ? 'var(--panel-ok)' : balance < 0 ? 'var(--panel-warn)' : 'var(--panel-dim)';
+  const sign = balance > 0 ? '+' : '';
+  const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(μηδέν)';
+  const pending = rec.pending_count ? `<span style="color:var(--panel-warn);font-size:10px;margin-left:6px">· ${rec.pending_count} εκκρεμή</span>` : '';
+  target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--panel-dim);font-size:10px">${label}</span>${pending}`;
 }
