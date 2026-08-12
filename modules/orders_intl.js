@@ -904,30 +904,6 @@ async function _syncVeroiaSwitch(orderId, fields) {
       for (const rp of intlRamps) await atDelete(TABLES.RAMP, rp.id);
     } catch(e) { console.warn('RAMP intl cleanup:', e); }
 
-    // 3b. Delete Pallet Ledger entries linked via ORDER_STOPS (SUPPLIERS + PARTNERS)
-    try {
-      const intlStops = await stopsLoad(orderId, F.STOP_PARENT_ORDER);
-      const stopIds = intlStops.map(s => s.id);
-      if (stopIds.length) {
-        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
-        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-          // safeFetch: the LOAD half of a cascade DELETE. Swallowed, it reads as
-          // "nothing to clean up" and leaves pallet ledger rows orphaned against
-          // deleted stops, while the cleanup logs success. Same class as F1.
-          const pls = await safeFetch(
-            () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
-            `intl order cleanup: pallet ledger (${tbl})`
-          );
-          if (didFail(pls)) {
-            reportError('Ο καθαρισμός του Pallet Ledger απέτυχε. Ελέγξτε για ορφανές εγγραφές.');
-            continue;
-          }
-          for (const pl of pls) { try { await atDelete(tbl, pl.id); } catch(e) { console.warn('PL delete:', e); } }
-          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for INTL ${orderId}`);
-        }
-      }
-    } catch(e) { console.warn('Pallet Ledger intl cleanup:', e); }
-
     // 4. Reset flag on parent order
     await atPatch(TABLES.ORDERS, orderId, {'National Order Created': false});
     invalidateCache(TABLES.NAT_ORDERS);
@@ -1648,6 +1624,9 @@ async function submitIntlOrder(recId) {
     if (_formStops.length) {
       await stopsSave(savedOrderId, _formStops, F.STOP_PARENT_ORDER);
     }
+
+    // Παλέτες Φ2: εκκρεμείς LOADING ανά στάση (idempotent, μη-μπλοκάρον)
+    if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedOrderId, 'intl');
 
     try {
       toast('Syncing VS national load...', 'info');
@@ -2579,30 +2558,8 @@ async function deleteIntlOrder(recId) {
       if (ramps.length) _tmsLog(`Deleted ${ramps.length} RAMP records for ORDER ${recId}`);
     } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
 
-    // 4. Delete Pallet Ledger entries linked via ORDER_STOPS
-    try {
-      const intlStops = await stopsLoad(recId, F.STOP_PARENT_ORDER);
-      const stopIds = intlStops.map(s => s.id);
-      if (stopIds.length) {
-        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
-        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-          // safeFetch: the LOAD half of a cascade DELETE. Swallowed, it reads as
-          // "nothing to clean up" and leaves pallet ledger rows orphaned against
-          // deleted stops, while the cleanup logs success. Same class as F1.
-          const pls = await safeFetch(
-            () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
-            `order delete: pallet ledger cleanup (${tbl})`
-          );
-          // Counted into _delFail so the caller's existing partial-failure
-          // summary reports it, rather than silently omitting this table.
-          if (didFail(pls)) { _delFail++; continue; }
-          for (const pl of pls) {
-            try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
-          }
-          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for ORDER ${recId}`);
-        }
-      }
-    } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
+    // Παλέτες Φ2: pending φεύγουν, confirmed μένουν (ιστορικό)
+    if (typeof plOnOrderDeleted === 'function') await plOnOrderDeleted(recId, 'intl');
 
     // 5. Delete ORDER_STOPS linked to this ORDER
     try {

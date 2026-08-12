@@ -571,6 +571,7 @@ async function _opsStat(id,st){try{
   toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
   try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  if (typeof plOnDelivered === 'function') plOnDelivered(id);
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { console.warn('PA status sync:', e.message); }
@@ -624,6 +625,7 @@ function _opsPrint() {
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
   try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  if (typeof plOnDelivered === 'function') plOnDelivered(id);
   // Central sync — propagate status to partner assignments
   if (typeof syncOrderDownstream === 'function') {
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })

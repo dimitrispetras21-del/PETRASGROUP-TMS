@@ -1043,6 +1043,7 @@ async function submitNatlOrder(recId) {
         clientId: clientId || null, ref: _sRef, goods: _sGoods, temp: _sTemp,
         notes: s.note || null }));
       if (_natStops.length) await stopsSave(savedNatlId, _natStops, F.STOP_PARENT_NAT);
+      if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedNatlId, 'natl');
     } catch(e) { console.warn('NAT ORDER_STOPS save:', e); }
 
     // ── Sync GROUPAGE LINES ──────────────────────────────────
@@ -1522,33 +1523,7 @@ async function deleteNatlOrder(recId) {
       }
     } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
 
-    // 3b. Delete Pallet Ledger entries linked via ORDER_STOPS (both SUPPLIERS + PARTNERS tables)
-    try {
-      const natStops = await stopsLoad(recId, F.STOP_PARENT_NAT);
-      const stopIds = natStops.map(s => s.id);
-      if (stopIds.length) {
-        const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
-        for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-          // safeFetch: the LOAD half of a cascade DELETE. Swallowed, it reads as
-          // "nothing to clean up" and leaves pallet ledger rows orphaned against
-          // deleted stops, while the cleanup logs success. Same class as F1.
-          // Fourth site of this shape; the other three (orders_intl x2,
-          // order-sync) were converted in PR #26, this one sits in the national
-          // delete path and was missed because it is in a different function.
-          const pls = await safeFetch(
-            () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
-            `national order delete: pallet ledger cleanup (${tbl})`
-          );
-          // Counted into _delFail so the caller's existing partial-failure
-          // summary reports it, rather than silently omitting this table.
-          if (didFail(pls)) { _delFail++; continue; }
-          for (const pl of pls) {
-            try { await atDelete(tbl, pl.id); } catch(e) { _delFail++; console.warn('PL delete:', e); }
-          }
-          if (pls.length) _tmsLog(`Deleted ${pls.length} PL entries from ${tbl} for NO ${recId}`);
-        }
-      }
-    } catch(e) { _delFail++; console.warn('Pallet Ledger cleanup:', e); }
+    if (typeof plOnOrderDeleted === 'function') await plOnOrderDeleted(recId, 'natl');
 
     // 4. Delete ORDER_STOPS linked to this NO
     try {

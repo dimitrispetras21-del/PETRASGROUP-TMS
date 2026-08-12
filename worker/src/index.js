@@ -2734,7 +2734,13 @@ async function handlePallets(request, url, origin, env) {
         method: "DELETE",
         headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
       });
-      if (!res.ok) return jsonError("Delete failed", 500, origin, env);
+      if (!res.ok) {
+        // Σκέτο «Delete failed» έκρυβε την αιτία και κόστισε έναν κύκλο debug:
+        // ο κωδικός της PostgREST φτάνει πλέον στον caller και στα logs.
+        const detail = await res.text().catch(() => "");
+        console.error("PALLETS delete", res.status, detail.slice(0, 200));
+        return jsonError(`Delete failed (${res.status})`, 500, origin, env);
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "pl_movements", recordId: String(recId), before: before.rows[0] });
       return jsonOk({ deleted: true }, origin, env);
     }

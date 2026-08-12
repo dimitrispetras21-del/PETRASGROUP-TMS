@@ -83,10 +83,10 @@ const _orderSync = (function() {
       });
     }
 
-    // 5. Pallet Ledger orphan cleanup if Pallet Exchange toggled OFF
+    // 5. Παλέτες Φ2: PE toggle → sync εκκρεμών (ON: δημιουργία, OFF: καθαρισμός pending)
     if (!skipPL && changedFields.includes('Pallet Exchange')) {
-      await run('PL orphan cleanup', async () => {
-        await cleanupPLorphans(orderId, source);
+      await run('PL feed sync', async () => {
+        if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(orderId, source);
       });
     }
 
@@ -173,56 +173,6 @@ const _orderSync = (function() {
   }
 
   /**
-   * Clean up Pallet Ledger entries that are orphaned because
-   * Pallet Exchange was toggled OFF on the source order.
-   */
-  async function cleanupPLorphans(orderId, source) {
-    const tableId = source === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
-    const rec = await atGetOne(tableId, orderId).catch(e => {
-      console.warn('[order-sync] PL cleanup fetch failed:', e && e.message);
-      return null;
-    });
-    if (!rec || rec.fields['Pallet Exchange']) return; // Only cleanup if PE is OFF
-
-    // Find all stops for this order
-    const parentField = source === 'intl' ? 'Parent Order' : 'Parent Nat Order';
-    const stops = await atGetAll(TABLES.ORDER_STOPS, {
-      filterByFormula: `FIND("${orderId}",ARRAYJOIN({${parentField}},","))>0`,
-      fields: ['Stop Number']
-    }, false).catch(() => []);
-    if (!stops.length) return;
-
-    const stopIds = stops.map(s => s.id);
-    const stopFilter = `OR(${stopIds.map(id => `FIND("${id}",ARRAYJOIN({Order Stop},","))>0`).join(',')})`;
-
-    // Cleanup from both ledger tables.
-    // safeFetch, not `.catch(() => [])`: this is the LOAD half of a cascade
-    // DELETE, so a swallowed error means "found nothing to clean up" and the
-    // pallet ledger rows for this order survive as orphans pointing at stops
-    // that are gone. Silent orphaning of financial records is the same
-    // consequence class as F1 (.ai-notes/2026-07-03-sync-chain-edge-cases.md),
-    // and it is invisible precisely because the cleanup reports success.
-    for (const tbl of [TABLES.PALLET_LEDGER_SUPPLIERS, TABLES.PALLET_LEDGER_PARTNERS]) {
-      const pls = await safeFetch(
-        () => atGetAll(tbl, { filterByFormula: stopFilter, fields: ['Pallets'] }, false),
-        `order-sync: pallet ledger cleanup (${tbl})`
-      );
-      // Report and skip rather than pretend the table was clean. The caller
-      // continues with the rest of the cascade; only this table is left alone,
-      // and the failure is now visible in /app-errors instead of nowhere.
-      if (didFail(pls)) {
-        reportError('Ο καθαρισμός του Pallet Ledger απέτυχε. Ελέγξτε για ορφανές εγγραφές.');
-        continue;
-      }
-      for (const pl of pls) {
-        try { await atDelete(tbl, pl.id); }
-        catch(e) { console.warn('[order-sync] PL delete:', e); }
-      }
-      if (pls.length) console.log(`[order-sync] Deleted ${pls.length} PL entries (PE=OFF) from ${tbl}`);
-    }
-  }
-
-  /**
    * Convenience: patch a source order AND trigger downstream sync.
    * Drop-in replacement for atPatch when the caller wants automatic sync.
    */
@@ -240,12 +190,11 @@ const _orderSync = (function() {
     return result;
   }
 
-  return { syncOrderDownstream, syncGLtoCLtoNL, cleanupPLorphans, patchWithSync };
+  return { syncOrderDownstream, syncGLtoCLtoNL, patchWithSync };
 })();
 
 if (typeof window !== 'undefined') {
   window.syncOrderDownstream = _orderSync.syncOrderDownstream;
   window.syncGLtoCLtoNL = _orderSync.syncGLtoCLtoNL;
-  window.cleanupPLorphans = _orderSync.cleanupPLorphans;
   window.patchWithSync = _orderSync.patchWithSync;
 }

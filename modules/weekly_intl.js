@@ -1895,6 +1895,7 @@ async function _wiSaveFromPopover(rowId){
       const res=await atSafePatch(TABLES.ORDERS,orderId,expFields);
       if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+      if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){errors.push(err.message);}
   }
   if(row.importId && !row.orderIds.includes(row.importId)){
@@ -1902,6 +1903,9 @@ async function _wiSaveFromPopover(rowId){
       const res=await atSafePatch(TABLES.ORDERS,row.importId,impFields);
       if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+      // Το σκέλος εισαγωγής είναι ΑΚΡΙΒΩΣ η περίπτωση PARTNER_DROPOFF (ο partner
+      // μάς φέρνει φορτίο): χωρίς αυτό το κάλεσμα καταγραφόταν μόνο η μισή ροή.
+      if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(row.importId);
     }catch(err){errors.push(err.message);}
   }
   if(errors.length){
@@ -2038,6 +2042,7 @@ async function _wiSave(rowId){
       const res=await atSafePatch(TABLES.ORDERS,orderId,fields);
       if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
+      if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){ errors.push(err.message); }
   }
 
@@ -2074,6 +2079,9 @@ async function _wiClear(rowId){
         'Is Partner Trip':false,'Partner Truck Plates':'',
       });
       if(res?.error) throw new Error(res.error.message||res.error.type);
+      // Χωρίς ανάθεση δεν υπάρχει ανταλλαγή: ο feeder σβήνει την εκκρεμή κίνηση
+      // partner (τις οριστικές δεν τις αγγίζει — είναι ιστορικό).
+      if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){ errors.push(err.message); }
   }
   if(errors.length){toast('Clear failed: '+errors[0].slice(0,50),'warn');return;}
