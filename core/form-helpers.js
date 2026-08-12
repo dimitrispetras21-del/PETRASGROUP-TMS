@@ -120,7 +120,7 @@ function fhLocSelect(id, currentId, locDropFn) {
   return `<div style="position:relative">
     <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(label)}"
       placeholder="Search location..."
-      oninput="${fn}('${id}',this.value)"
+      oninput="if(!this.value.trim())document.getElementById('lv_${id}').value='';${fn}('${id}',this.value)"
       onfocus="${fn}('${id}',this.value)"
       onblur="fhHideDrop('ls_${id}_d')">
     <input type="hidden" id="lv_${id}" value="${currentId || ''}">
@@ -140,7 +140,7 @@ function fhClientSelect(id, currentId, currentLabel, clientDropFn) {
   return `<div style="position:relative">
     <input class="form-input" id="ls_${id}" autocomplete="off" value="${escapeHtml(currentLabel || '')}"
       placeholder="Type 2+ chars to search..."
-      oninput="${fn}('${id}',this.value)"
+      oninput="if(!this.value.trim())document.getElementById('lv_${id}').value='';${fn}('${id}',this.value)"
       onblur="fhHideDrop('ls_${id}_d')">
     <input type="hidden" id="lv_${id}" value="${currentId || ''}">
     <div id="ls_${id}_d" class="linked-drop" style="display:none"></div>

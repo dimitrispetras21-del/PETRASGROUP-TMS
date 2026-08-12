@@ -604,7 +604,13 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 function _stopRow(type, i, locId, palVal, dtVal) {
   const label = type==='l' ? 'Loading' : 'Unloading';
   const req   = i===1 ? ' *' : '';
-  return `<div id="stoprow_${type}_${i}" style="display:grid;grid-template-columns:1fr 100px 130px;gap:8px;margin-bottom:10px;align-items:end">
+  // ✕ μόνο στα i>1 (owner 12/8): το πρώτο σημείο είναι υποχρεωτικό — αν δεν
+  // το θες, αλλάζεις την τιμή του, δεν το σβήνεις. Ο spacer κρατά τη στοίχιση.
+  const rm = i > 1
+    ? `<button type="button" title="Αφαίρεση σημείου" onclick="_removeStop('${type}',${i})"
+        style="height:38px;border:none;background:none;color:var(--text-dim);font-size:17px;cursor:pointer;padding:0">×</button>`
+    : '<div></div>';
+  return `<div id="stoprow_${type}_${i}" style="display:grid;grid-template-columns:1fr 100px 130px 24px;gap:8px;margin-bottom:10px;align-items:end">
     <div>
       <label class="form-label" style="font-size:11px">${label} Location ${i}${req}</label>
       ${_locSelect(type+'_'+i, locId)}
@@ -617,6 +623,7 @@ function _stopRow(type, i, locId, palVal, dtVal) {
       <label class="form-label" style="font-size:11px">Date${req}</label>
       <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal||''}">
     </div>
+    ${rm}
   </div>`;
 }
 
@@ -809,6 +816,16 @@ function _addStop(type) {
   div.innerHTML = _stopRow(type, next, '', '', '');
   wrap.appendChild(div.firstElementChild);
   if (next >= 10) document.getElementById('btn_add'+(type==='l'?'L':'U')).style.display='none';
+}
+
+// Owner 12/8: «αν κατά λάθος προσθέσω ένα έξτρα, δεν υπάρχει επιλογή να το
+// ακυρώσω». Ο μετρητής _sCnt ΔΕΝ μειώνεται: οι δείκτες είναι μοναδικοί ανά
+// φόρμα, αλλιώς νέο add θα ξαναχρησιμοποιούσε δείκτη σβησμένης γραμμής και
+// θα μάζευε ορφανές τιμές. Το submit προσπερνά τα κενά και επαναριθμεί.
+function _removeStop(type, i) {
+  document.getElementById(`stoprow_${type}_${i}`)?.remove();
+  const btn = document.getElementById('btn_add'+(type==='l'?'L':'U'));
+  if (btn) btn.style.display = '';
 }
 
 // ─── Submit ─────────────────────────────────────
@@ -1396,20 +1413,23 @@ async function submitIntlOrder(recId) {
     const _stopGoods = sv('f_Goods');
     const _stopTemp  = sv('f_Temp');
 
+    // Όλα τα 1..10 ελέγχονται και επαναριθμούνται (owner 12/8): η αφαίρεση
+    // ενδιάμεσης γραμμής (✕) αφήνει κενό δείκτη — ένα break εδώ θα ΕΧΑΝΕ
+    // σιωπηλά όλα τα σημεία μετά το κενό.
     const _formStops = [];
+    let _seqL = 0;
     for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_l_'+i)?.value;
       const pal   = document.getElementById('pal_l_'+i)?.value;
       const dt    = document.getElementById('dt_l_'+i)?.value;
-      if (!locId && !pal && !dt) { if (i > 1) break; continue; }
-      if (locId) _formStops.push({ stopNumber: i, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      if (locId) _formStops.push({ stopNumber: ++_seqL, stopType: 'Loading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
+    let _seqU = 0;
     for (let i = 1; i <= 10; i++) {
       const locId = document.getElementById('lv_u_'+i)?.value;
       const pal   = document.getElementById('pal_u_'+i)?.value;
       const dt    = document.getElementById('dt_u_'+i)?.value;
-      if (!locId && !pal && !dt) { if (i > 1) break; continue; }
-      if (locId) _formStops.push({ stopNumber: i, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
+      if (locId) _formStops.push({ stopNumber: ++_seqU, stopType: 'Unloading', locationId: locId, pallets: parseFloat(pal) || 0, dateTime: dt || null, clientId: clientId || null, ref: _stopRef || null, goods: _stopGoods || null, temp: _stopTemp ? parseFloat(_stopTemp) : null });
     }
 
     // Auto-create Cross-dock stop for Veroia Switch orders
