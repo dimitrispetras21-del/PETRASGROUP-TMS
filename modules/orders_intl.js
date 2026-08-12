@@ -652,6 +652,9 @@ async function duplicateIntlOrder(recId) {
 }
 
 async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
+  // Bug 11/8: από το Weekly η φόρμα άνοιγε ΠΡΙΝ φορτωθούν οι τοποθεσίες
+  // (το init της σελίδας Orders δεν έχει τρέξει) → η αναζήτηση έδειχνε κενά.
+  try { await fhLoadLocations(); } catch(e) { console.warn('locations preload:', e.message); }
   const isEdit = !!recId;
   const clientId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const clientLabel = _clientLabelOverride || (clientId ? (await _resolveClientName(clientId)) : '');
@@ -702,16 +705,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
 
   const body = `
     <div class="form-grid">
-      <div class="form-field span-2">
-        <label class="form-label">Brand</label>
-        <select class="form-select" id="f_Brand"><option value="">— Select —</option>
-          ${opt(['Petras Group','DPS'],'Brand')}</select>
-      </div>
-      <div class="form-field">
-        <label class="form-label">Type *</label>
-        <select class="form-select" id="f_Type"><option value="">— Select —</option>
-          ${opt([['International','Διεθνής'],['National','Εθνική']],'Type')}</select>
-      </div>
+      <!-- Owner 11/8: Brand/Type αφαιρέθηκαν — δεδομένα Petras Group / International -->
       <div class="form-field">
         <label class="form-label">Direction *</label>
         <select class="form-select" id="f_Direction"><option value="">— Select —</option>
@@ -1394,8 +1388,8 @@ async function submitIntlOrder(recId) {
 
     // Strings
     const sv = id => document.getElementById(id)?.value?.trim()||'';
-    if (sv('f_Brand'))     fields['Brand']             = sv('f_Brand');
-    if (sv('f_Type'))      fields['Type']              = sv('f_Type');
+    // Brand/Type σταθερά (owner 11/8) — μόνο σε δημιουργία, τα edit δεν πειράζονται
+    if (!recId) { fields['Brand'] = 'Petras Group'; fields['Type'] = 'International'; }
     if (sv('f_Direction')) fields['Direction']         = sv('f_Direction');
     if (sv('f_Goods'))     fields['Goods']             = sv('f_Goods');
     if (sv('f_Notes'))     fields['Notes']             = sv('f_Notes');
