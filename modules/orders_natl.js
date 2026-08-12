@@ -570,10 +570,12 @@ function _grpRowHTML(uid) {
       <button type="button" title="Αφαίρεση" onclick="_grpDelRow(${uid})"
         style="height:38px;border:none;background:none;color:var(--text-dim);font-size:17px;cursor:pointer">×</button>
     </div>
-    <div style="display:grid;grid-template-columns:minmax(0,2fr) 110px 150px minmax(0,1.4fr);gap:12px;align-items:end">
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) 72px 150px minmax(0,1.2fr);gap:12px;align-items:end">
       <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('grpl'+uid, '')}</div>
       <div><label class="form-label">Παλέτες</label>
-        <input class="form-input" type="number" id="grpp${uid}" oninput="_grpPreview()"></div>
+        <input class="form-input" type="number" id="grpp${uid}" min="0" max="99" step="1"
+          style="text-align:right"
+          oninput="if(this.value.length>2)this.value=this.value.slice(0,2);_grpPreview()"></div>
       <div><label class="form-label">Ημερομηνία</label>
         <input class="form-input" type="date" id="grpd${uid}"></div>
       <div><label class="form-label">Σημείωση</label>
