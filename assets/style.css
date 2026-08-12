@@ -6505,80 +6505,15 @@ th[role="button"]:focus-visible,
 button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 
 /* ═══════════════════════════════════════════════════════════════
-   ΑΡΧΙΚΗ — ΚΑΤΕΥΘΥΝΣΗ Β: ΑΤΜΟΣΦΑΙΡΑ ΨΥΧΡΗΣ ΑΛΥΣΙΔΑΣ
-   Το brand λέγεται Cold Chain και το χρώμα Cold Chain Blue, αλλά η σελίδα
-   δεν το έδειχνε πουθενά. Εδώ αλλάζει το ΥΛΙΚΟ, όχι η δομή: παγωμένο γυαλί
-   αντί για επίπεδες κάρτες, ψυχρό φως που πέφτει από πάνω, πάχνη στην ακμή.
+   ΑΡΧΙΚΗ — ΚΙΝΗΣΗ ΚΑΙ ΕΝΔΕΙΞΕΙΣ
+   Από την κατεύθυνση Β κρατιέται ΜΟΝΟ ό,τι δεν αγγίζει επιφάνειες:
+   η κλιμακωτή είσοδος, οι αριθμοί που μετρούν, η φωτεινή κουκκίδα.
 
-   ΕΜΒΕΛΕΙΑ: μόνο .dash-home (η αρχική). Το .dash-wrap το μοιράζεται και η
-   σελίδα Στόλου — χωρίς τη δεύτερη κλάση θα παρασυρόταν κι εκείνη.
-   Απόφαση owner 12/8/2026, πρωτότυπο hero_directions.html κατεύθυνση Β.
+   Το γυαλί και το σκούρο φόντο ΑΦΑΙΡΕΘΗΚΑΝ (owner 12/8): το γκρι φόντο
+   είναι κοινό με τις υπόλοιπες σελίδες, και το γυαλί σκέπαζε το ΠΛΕΓΜΑ
+   των οργάνων — που ήταν το στοιχείο που άξιζε. Τα όργανα κρατούν το
+   πλέγμα τους από τον κανόνα .dash-kpi.
    ═══════════════════════════════════════════════════════════════ */
-.content:has(.dash-home) {
-  background:
-    radial-gradient(1200px 500px at 50% -180px, rgba(2,132,199,0.20), transparent 70%),
-    radial-gradient(800px 400px at 85% 0, rgba(56,189,248,0.09), transparent 65%),
-    #060C15;
-  background-attachment: fixed;
-}
-.dash-home { --dc-text: #EAF2FA; --dc-text-mid: #9DB2C8; --dc-text-dim: #7C8CA0; color: var(--dc-text); }
-.dash-home .dash-greeting { color: #EAF2FA; }
-.dash-home .dash-date { color: #9DB2C8; }
-
-/* Παγωμένο γυαλί: μία επιφάνεια για ΟΛΑ — όργανα, κάρτες, ζώνη ενεργειών.
-   Το blur πάνω από το ψυχρό φως δίνει το βάθος· η ::after είναι η πάχνη. */
-.dash-home .dash-kpi,
-.dash-home .dash-card,
-.dash-home .dash-burn-item {
-  background:
-    linear-gradient(158deg, rgba(255,255,255,0.055), rgba(255,255,255,0.018) 55%),
-    rgba(11,25,41,0.60);
-  backdrop-filter: blur(12px) saturate(115%);
-  border: 1px solid rgba(255,255,255,0.09);
-  border-radius: 14px;
-  box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 18px 44px rgba(0,0,0,0.40);
-  position: relative;
-  overflow: hidden;
-  /* Τα tokens ΞΑΝΑ σε ανοιχτές τιμές: το block των ανοιχτών καρτών πιο πάνω
-     τα είχε γυρίσει σε σκούρα, και η γυάλινη επιφάνεια εδώ είναι πάλι navy.
-     Χωρίς αυτό, σκούρο κείμενο πάνω σε σκούρο γυαλί. */
-  --dc-text: #EAF2FA; --dc-text-mid: #9DB2C8; --dc-text-dim: #7C8CA0;
-  --dc-card-bg: rgba(11,25,41,0.60); --dc-card-border: rgba(255,255,255,0.09);
-  color: var(--dc-text);
-}
-.dash-home .dash-kpi::after,
-.dash-home .dash-card::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  background: radial-gradient(120% 60% at 50% -20%, rgba(125,211,252,0.14), transparent 60%);
-}
-.dash-home .dash-kpi:hover,
-.dash-home .dash-burn-item:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 1px 0 rgba(255,255,255,0.07) inset, 0 26px 56px rgba(0,0,0,0.50);
-  border-color: rgba(56,189,248,0.28);
-}
-/* Η κεφαλίδα κάρτας παύει να είναι συμπαγής πλάκα: μέσα στο γυαλί αρκεί
-   μια πιο σκούρα ζώνη με τη γραμμή διαχωρισμού. */
-.dash-home .dash-card > .dash-card-header {
-  background: rgba(6,12,21,0.34);
-  border-bottom-color: rgba(255,255,255,0.09);
-  color: #EAF2FA;
-  --dc-text: #EAF2FA; --dc-text-mid: #9DB2C8; --dc-text-dim: #9DB2C8;
-}
-.dash-home .dash-card > .dash-card-header .dash-card-title { color: #EAF2FA; }
-.dash-home .dash-burn-txt strong { color: #EAF2FA; }
-.dash-home .dash-burn-txt em,
-.dash-home .dash-burn-go { color: #7C8CA0; }
-/* Τα γεμίσματα ξαναγίνονται λευκά-ημιδιαφανή: η επιφάνεια είναι πάλι σκούρα */
-.dash-home .dash-card .dash-util-bar,
-.dash-home .dash-card .dash-util-mini-bar { background: rgba(255,255,255,0.07); }
-.dash-home .dash-card .dash-aging-table th { background: rgba(255,255,255,0.03); }
-.dash-home .dash-card .dash-idle-pill { background: rgba(255,255,255,0.05); }
-.dash-home .dash-card .dash-day-tag.tmrw { background: rgba(255,255,255,0.08); color: #9DB2C8; }
-.dash-home .dash-card tbody tr.clickable:hover,
-.dash-home .dash-ops-row:hover { background: rgba(255,255,255,0.05); }
-.dash-home .dash-aging-table td,
-.dash-home .dash-card td { border-bottom-color: rgba(255,255,255,0.07); }
 
 /* Φωτεινή κουκκίδα κατάστασης στο label — η ένδειξη ψυγείου */
 .dash-home .dash-kpi-label::before {
@@ -6595,13 +6530,6 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 }
 @keyframes dash-rise { to { opacity: 1; transform: none; } }
 
-/* Αδύναμο μηχάνημα ή προτίμηση χρήστη: το γυαλί υποχωρεί σε συμπαγές navy,
-   ώστε η αποθήκη σε φθηνό tablet να μη σέρνεται. */
-@supports not (backdrop-filter: blur(4px)) {
-  .dash-home .dash-kpi, .dash-home .dash-card, .dash-home .dash-burn-item {
-    background: #0F1C2F;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .dash-home .dash-rise { animation: none; opacity: 1; transform: none; }
 }
