@@ -2090,6 +2090,11 @@ async function _scanQueueNext() {
   }
   const item = q.shift();
   window._scanQueueDone = (window._scanQueueDone || 0) + 1;
+  // Το save-correction (submitIntlOrder) διαβάζει window._scanResult — μετά το
+  // batch loop αυτό κρατούσε το ΤΕΛΕΥΤΑΙΟ αρχείο, οπότε οι διορθώσεις της
+  // φόρμας i ζευγάρωναν με τα raw δεδομένα του αρχείου Ν και δηλητηρίαζαν το
+  // κοινό training store (owner 12/8). Δείχνει πάντα το ΤΡΕΧΟΝ item.
+  window._scanResult = { matched: item.matched, data: item.data };
   await _scanOpen(item.matched, item.data);
   setTimeout(() => {
     const t = document.getElementById('modalTitle');
