@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="el" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Αρχική — τρεις κατευθύνσεις</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════════════════════
+   ΤΡΕΙΣ ΚΑΤΕΥΘΥΝΣΕΙΣ ΓΙΑ ΤΗΝ ΑΡΧΙΚΗ — πρωτότυπο σχεδίασης
+   Ταυτότητα: navy #0B1929 · Cold Chain Blue #0284C7
+   Syne (display) + DM Sans (κείμενο & αριθμοί, tabular)
+   Καμία βιβλιοθήκη· ο χάρτης είναι inline SVG από πραγματικές
+   συντεταγμένες, όπως ήδη τις έχει το LOCATIONS.
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  --navy:#0B1929; --navy-deep:#060C15; --navy-mid:#0F2438;
+  --accent:#0284C7; --accent-hi:#38BDF8; --ice:#7DD3FC;
+  --ok:#059669; --ok-hi:#34D399;
+  --warn:#D97706; --warn-hi:#FBBF24;
+  --bad:#DC2626; --bad-hi:#F87171;
+  --text:#EAF2FA; --text-mid:#9DB2C8; --text-dim:#64798F;
+  --line:rgba(255,255,255,.07);
+  --f-d:'Syne',ui-sans-serif,system-ui,sans-serif;
+  --f-b:'DM Sans',ui-sans-serif,system-ui,sans-serif;
+  --s1:4px;--s2:8px;--s3:12px;--s4:16px;--s5:24px;--s6:36px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:var(--f-b);background:var(--navy-deep);color:var(--text);
+  font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;
+  /* Ψυχρό φως που πέφτει από πάνω — ατμόσφαιρα ψυκτικού θαλάμου */
+  background-image:
+    radial-gradient(1200px 500px at 50% -180px, rgba(2,132,199,.20), transparent 70%),
+    radial-gradient(800px 400px at 85% 0, rgba(56,189,248,.09), transparent 65%);
+  background-attachment:fixed;
+  padding-bottom:60px;
+}
+.num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+
+.bar{position:sticky;top:0;z-index:60;background:rgba(6,12,21,.82);
+  backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+.bar-in{max-width:1400px;margin:0 auto;padding:0 var(--s5);height:56px;
+  display:flex;align-items:center;gap:var(--s5)}
+.brand{font-family:var(--f-d);font-weight:800;font-size:14px;letter-spacing:.08em;white-space:nowrap}
+.brand i{font-style:normal;color:var(--accent-hi)}
+.tabs{display:flex;gap:3px;flex:1;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{appearance:none;border:0;background:none;font:inherit;cursor:pointer;color:var(--text-mid);
+  font-size:12.5px;font-weight:500;padding:8px 14px;border-radius:7px;position:relative;
+  transition:.15s;white-space:nowrap}
+.tab:hover{color:#fff;background:rgba(255,255,255,.05)}
+.tab[aria-selected=true]{color:#fff;background:rgba(2,132,199,.2)}
+.tab[aria-selected=true]::after{content:"";position:absolute;left:14px;right:14px;bottom:-1px;
+  height:2px;background:var(--accent-hi);border-radius:2px 2px 0 0}
+.tab:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+.wrap{max-width:1400px;margin:0 auto;padding:0 var(--s5)}
+.panel{display:none} .panel.on{display:block}
+
+.head{display:flex;align-items:flex-end;gap:var(--s4);flex-wrap:wrap;padding:var(--s5) 0 var(--s4)}
+.head h1{font-family:var(--f-d);font-size:26px;font-weight:700;letter-spacing:-.015em}
+.head .sub{color:var(--text-mid);font-size:13px}
+.sp{flex:1}
+.live{display:inline-flex;align-items:center;gap:7px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+  color:var(--ok-hi);background:rgba(5,150,105,.13);padding:5px 11px;border-radius:99px;
+  border:1px solid rgba(5,150,105,.3)}
+.pulse{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2.6s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)}70%{box-shadow:0 0 0 7px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+
+/* ── παγωμένο γυαλί ── */
+.glass{
+  background:linear-gradient(158deg,rgba(255,255,255,.055),rgba(255,255,255,.018) 55%),
+             rgba(11,25,41,.6);
+  backdrop-filter:blur(12px) saturate(115%);
+  border:1px solid rgba(255,255,255,.09);border-radius:14px;position:relative;overflow:hidden;
+  box-shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 18px 44px rgba(0,0,0,.4);
+}
+/* πάχνη: λεπτή λάμψη στην πάνω ακμή, σαν υγρασία σε ψυχρό τζάμι */
+.glass::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(120% 60% at 50% -20%,rgba(125,211,252,.14),transparent 60%)}
+
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(178px,1fr));gap:var(--s3)}
+.kpi{padding:14px 16px 13px;cursor:pointer;text-align:left;font:inherit;color:inherit;
+  appearance:none;width:100%;transition:transform .18s cubic-bezier(.2,.7,.3,1),box-shadow .18s}
+.kpi:hover{transform:translateY(-3px);box-shadow:0 1px 0 rgba(255,255,255,.07) inset,0 26px 56px rgba(0,0,0,.5)}
+.kpi:focus-visible{outline:2px solid var(--accent-hi);outline-offset:2px}
+.kpi-l{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);
+  display:flex;align-items:center;gap:6px;margin-bottom:7px}
+.kpi-l b{width:5px;height:5px;border-radius:50%;background:var(--c,var(--accent-hi));flex:none;
+  box-shadow:0 0 9px var(--c,var(--accent-hi))}
+.kpi-v{font-weight:700;font-size:32px;line-height:1;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:6px;color:var(--c,var(--text))}
+.kpi-v small{font-size:15px;font-weight:500;color:var(--text-mid)}
+.kpi-r{font-size:9.5px;color:var(--text-dim);margin-top:9px;padding-top:7px;
+  border-top:1px dashed rgba(255,255,255,.1);display:flex;gap:5px;flex-wrap:wrap}
+.kpi-r b{color:var(--text-mid);font-weight:500}
+.c-bad{--c:var(--bad-hi)} .c-warn{--c:var(--warn-hi)} .c-ok{--c:var(--ok-hi)} .c-acc{--c:var(--accent-hi)}
+
+.rise{opacity:0;transform:translateY(14px);animation:rise .62s cubic-bezier(.2,.75,.3,1) forwards}
+@keyframes rise{to{opacity:1;transform:none}}
+
+/* ══════════ Α. ΧΑΡΤΗΣ-ΗΡΩΑΣ ══════════ */
+.hero{padding:0;margin-bottom:var(--s4);display:grid;grid-template-columns:1fr 300px}
+.map-side{position:relative;min-height:392px}
+.map{display:block;width:100%;height:100%;min-height:392px}
+.route{fill:none;stroke-width:1.4;stroke-linecap:round;opacity:.75}
+.route.live{stroke:var(--accent-hi);stroke-dasharray:5 7;animation:flow 2.4s linear infinite}
+.route.idle{stroke:rgba(255,255,255,.14);stroke-dasharray:2 6}
+@keyframes flow{to{stroke-dashoffset:-24}}
+.node{fill:var(--ice)}
+.node.hub{fill:var(--accent-hi)}
+.hub-ring{fill:none;stroke:var(--accent-hi);opacity:.5;animation:ring 3s ease-out infinite}
+@keyframes ring{0%{r:7;opacity:.55}100%{r:26;opacity:0}}
+.truck{fill:#fff;filter:drop-shadow(0 0 6px rgba(56,189,248,.9))}
+.truck.late{fill:var(--bad-hi);filter:drop-shadow(0 0 7px rgba(248,113,113,.95))}
+.city{font-size:8.5px;fill:var(--text-mid);font-family:var(--f-b);letter-spacing:.03em}
+.city.hub{fill:#fff;font-weight:700;font-size:10px}
+.map-legend{position:absolute;left:16px;bottom:14px;display:flex;gap:14px;font-size:10px;
+  color:var(--text-dim);flex-wrap:wrap}
+.map-legend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.map-title{position:absolute;left:18px;top:16px}
+.map-title .t{font-family:var(--f-d);font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--text-mid)}
+.map-title .n{font-weight:700;font-size:34px;letter-spacing:-.03em;line-height:1.05;font-variant-numeric:tabular-nums}
+.map-title .n small{font-size:14px;color:var(--text-mid);font-weight:500}
+.hero-side{border-left:1px solid var(--line);padding:var(--s4);display:flex;flex-direction:column;gap:var(--s3)}
+.side-t{font-family:var(--f-d);font-size:10.5px;font-weight:700;letter-spacing:.1em;color:var(--text-dim)}
+.act{display:flex;align-items:center;gap:11px;width:100%;text-align:left;font:inherit;color:inherit;
+  appearance:none;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;padding:10px 12px;cursor:pointer;transition:.15s}
+.act:hover{background:rgba(255,255,255,.08);transform:translateX(3px)}
+.act-n{font-weight:700;font-size:21px;line-height:1;color:var(--c);min-width:30px;font-variant-numeric:tabular-nums}
+.act-t{flex:1;font-size:12px;font-weight:600;line-height:1.3}
+.act-t em{display:block;font-style:normal;font-size:10px;color:var(--text-dim);font-weight:400;margin-top:2px}
+.act-g{color:var(--text-dim);font-size:15px}
+.ring-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:var(--s2);
+  margin-top:auto;border-top:1px solid var(--line)}
+.ring{width:96px;height:96px;border-radius:50%;display:grid;place-items:center;position:relative;
+  background:conic-gradient(var(--rc) var(--rd),rgba(255,255,255,.08) 0);margin-top:var(--s3)}
+.ring::after{content:"";position:absolute;inset:9px;border-radius:50%;background:var(--navy)}
+.ring b{position:relative;z-index:1;font-weight:700;font-size:29px;color:var(--rc);
+  font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.ring b small{font-size:12px;color:var(--text-dim);font-weight:500}
+
+/* ══════════ Γ. ΛΩΡΙΔΑ ΧΡΟΝΟΥ ══════════ */
+.tl{padding:var(--s4) var(--s5) var(--s5)}
+.tl-grid{display:grid;grid-template-columns:88px 1fr;gap:0 var(--s3)}
+.tl-days{display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--line);
+  padding-bottom:7px;margin-bottom:10px}
+.tl-days span{font-size:10px;font-weight:700;letter-spacing:.07em;color:var(--text-dim);text-align:center}
+.tl-days span.now{color:var(--accent-hi)}
+.tl-plate{font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--text-mid);
+  padding:6px 0;display:flex;align-items:center;gap:6px}
+.tl-plate i{width:5px;height:5px;border-radius:50%;background:var(--ok-hi);flex:none}
+.tl-plate.idle{color:var(--text-dim)} .tl-plate.idle i{background:var(--bad-hi)}
+.tl-track{position:relative;height:30px;margin:2px 0;border-radius:7px;
+  background:repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 calc(100%/7 - 1px),
+    transparent calc(100%/7 - 1px) calc(100%/7))}
+.load{position:absolute;top:4px;bottom:4px;border-radius:6px;display:flex;align-items:center;
+  padding:0 9px;font-size:10.5px;font-weight:700;color:#04121F;white-space:nowrap;overflow:hidden;
+  cursor:pointer;transition:.15s;transform-origin:left center}
+.load:hover{filter:brightness(1.12);transform:scaleY(1.14)}
+.load.exp{background:linear-gradient(100deg,var(--ice),var(--accent-hi))}
+.load.imp{background:linear-gradient(100deg,var(--ok-hi),#10B981)}
+.load.part{background:linear-gradient(100deg,var(--warn-hi),var(--warn));color:#1A0F00}
+.load.gap{background:repeating-linear-gradient(45deg,rgba(248,113,113,.16) 0 6px,transparent 6px 12px);
+  border:1px dashed rgba(248,113,113,.4);color:var(--bad-hi);font-weight:600}
+.now-line{position:absolute;top:-6px;bottom:-6px;width:2px;background:var(--accent-hi);
+  box-shadow:0 0 12px var(--accent-hi);z-index:3;border-radius:2px}
+.tl-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:10.5px;color:var(--text-dim);
+  margin-top:var(--s4);padding-top:var(--s3);border-top:1px solid var(--line)}
+.tl-legend i{display:inline-block;width:16px;height:8px;border-radius:3px;margin-right:6px}
+
+.note{font-size:11.5px;line-height:1.55;color:var(--ice);background:rgba(2,132,199,.09);
+  border:1px dashed rgba(2,132,199,.35);border-radius:9px;padding:9px 12px;margin:var(--s4) 0}
+.note b{font-weight:700}
+
+@media (max-width:1150px){
+  .hero{grid-template-columns:1fr}
+  .hero-side{border-left:0;border-top:1px solid var(--line)}
+}
+@media (max-width:760px){
+  .tl-grid{grid-template-columns:64px 1fr}
+  .head h1{font-size:21px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="bar-in">
+  <div class="brand">PETRAS<i>·</i>TMS</div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true"  data-p="map">Α · Χάρτης-ήρωας</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="atmo">Β · Ατμόσφαιρα &amp; κίνηση</button>
+    <button class="tab" role="tab" aria-selected="false" data-p="time">Γ · Λωρίδα χρόνου</button>
+  </nav>
+</div></div>
+
+<div class="wrap">
+
+<!-- ══════════ Α ══════════ -->
+<section class="panel on" id="p-map" role="tabpanel">
+  <div class="head">
+    <div><h1>Καλημέρα, Δημήτρη</h1>
+    <div class="sub">Τετάρτη 12 Αυγούστου · εβδομάδα 33</div></div>
+    <div class="sp"></div>
+    <span class="live"><span class="pulse"></span>ΖΩΝΤΑΝΑ</span>
+  </div>
+
+  <div class="glass hero rise" style="animation-delay:.05s">
+    <div class="map-side">
+      <div class="map-title">
+        <div class="t">Ο ΣΤΟΛΟΣ ΤΩΡΑ</div>
+        <div class="n num"><span data-count="18">0</span><small>/27 σε δρόμο</small></div>
+      </div>
+      <svg class="map" viewBox="0 0 720 400" preserveAspectRatio="xMidYMid meet" aria-label="Χάρτης στόλου">
+        <defs>
+          <radialGradient id="glow"><stop offset="0%" stop-color="#38BDF8" stop-opacity=".35"/>
+            <stop offset="100%" stop-color="#38BDF8" stop-opacity="0"/></radialGradient>
+        </defs>
+        <circle cx="378" cy="300" r="120" fill="url(#glow)"/>
+        <g id="routes"></g><g id="nodes"></g><g id="trucks"></g>
+      </svg>
+      <div class="map-legend">
+        <span><i style="background:#38BDF8"></i>σε κίνηση</span>
+        <span><i style="background:#F87171"></i>σε καθυστέρηση</span>
+        <span><i style="background:rgba(255,255,255,.2)"></i>ανενεργή γραμμή</span>
+      </div>
+    </div>
+
+    <div class="hero-side">
+      <div class="side-t">ΤΙ ΚΑΙΕΙ</div>
+      <button class="act" style="--c:var(--bad-hi)"><span class="act-n num">4</span>
+        <span class="act-t">Χωρίς φορτηγό σε 48ω<em>η πρώτη λήγει αύριο 08:00</em></span>
+        <span class="act-g">›</span></button>
+      <button class="act" style="--c:var(--warn-hi)"><span class="act-n num">6</span>
+        <span class="act-t">Ληγμένα έγγραφα<em>σε 6 οχήματα</em></span>
+        <span class="act-g">›</span></button>
+      <button class="act" style="--c:var(--accent-hi)"><span class="act-n num">9</span>
+        <span class="act-t">Φορτώσεις σήμερα<em>πρώτη 06:30</em></span>
+        <span class="act-g">›</span></button>
+      <div class="ring-wrap">
+        <div class="ring" style="--rc:var(--warn-hi);--rd:256deg"><b class="num">71<small>/100</small></b></div>
+        <div class="side-t" style="margin-top:6px">ΒΑΘΜΟΣ ΕΒΔΟΜΑΔΑΣ</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="kpis">
+    <button class="glass kpi c-bad rise" style="animation-delay:.16s">
+      <span class="kpi-l"><b></b>ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-v num"><span data-count="7">0</span></span>
+      <span class="kpi-r"><b>ORDERS</b>·W33·χωρίς Truck &amp; Partner</span></button>
+    <button class="glass kpi c-warn rise" style="animation-delay:.22s">
+      <span class="kpi-l"><b></b>ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-v num"><span data-count="3">0</span></span>
+      <span class="kpi-r"><b>ORDERS</b>·W33·χωρίς Truck &amp; Partner</span></button>
+    <button class="glass kpi c-acc rise" style="animation-delay:.28s">
+      <span class="kpi-l"><b></b>ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</span>
+      <span class="kpi-v num"><span data-count="18">0</span><small>/27</small></span>
+      <span class="kpi-r"><b>ORDERS × TRUCKS</b>·W33 ISO·9 ακίνητα</span></button>
+    <button class="glass kpi c-warn rise" style="animation-delay:.34s">
+      <span class="kpi-l"><b></b>ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</span>
+      <span class="kpi-v num"><span data-count="118">0</span><small>km</small></span>
+      <span class="kpi-r"><b>ORDER_STOPS</b>·μ.ό. 11 ζευγών</span></button>
+    <button class="glass kpi c-ok rise" style="animation-delay:.40s">
+      <span class="kpi-l"><b></b>ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</span>
+      <span class="kpi-v num"><span data-count="88">0</span><small>%</small></span>
+      <span class="kpi-r"><b>ORDERS</b>·30 ημέρες·30/34</span></button>
+  </div>
+
+  <div class="note"><b>Γιατί αυτό:</b> ο χάρτης δεν είναι διακόσμηση — απαντά στο «πού είναι ο στόλος
+  μου τώρα», ερώτηση που καμία σελίδα δεν απαντά σήμερα. Χτίζεται από τα <b>Latitude/Longitude</b>
+  που ήδη υπάρχουν στο LOCATIONS (τα χρησιμοποιεί ο υπολογισμός κενών χιλιομέτρων).
+  Καμία βιβλιοθήκη χάρτη, κανένα εξωτερικό API: inline SVG με προβολή Mercator.</div>
+</section>
+
+<!-- ══════════ Β ══════════ -->
+<section class="panel" id="p-atmo" role="tabpanel">
+  <div class="head">
+    <div><h1>Καλημέρα, Δημήτρη</h1>
+    <div class="sub">Τετάρτη 12 Αυγούστου · εβδομάδα 33</div></div>
+    <div class="sp"></div>
+    <span class="live"><span class="pulse"></span>ΖΩΝΤΑΝΑ</span>
+  </div>
+
+  <div class="note" style="margin-top:0"><b>Ίδια δομή με σήμερα — αλλάζει το υλικό.</b>
+  Παγωμένο γυαλί αντί για επίπεδες κάρτες, ψυχρό φως από πάνω, πάχνη στην ακμή κάθε επιφάνειας,
+  και οι αριθμοί <b>μετρούν προς τα πάνω</b> όταν φορτώνει η σελίδα. Το brand λέγεται Cold Chain —
+  η σελίδα αρχίζει να το δείχνει. Κανένα νέο δεδομένο, καμία νέα διάταξη.</div>
+
+  <div class="kpis" style="margin-bottom:var(--s4)">
+    <button class="glass kpi c-bad rise" style="animation-delay:.05s">
+      <span class="kpi-l"><b></b>ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-v num"><span data-count="7">0</span></span>
+      <span class="kpi-r"><b>ORDERS</b>·W33·χωρίς Truck &amp; Partner</span></button>
+    <button class="glass kpi c-warn rise" style="animation-delay:.11s">
+      <span class="kpi-l"><b></b>ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ</span>
+      <span class="kpi-v num"><span data-count="3">0</span></span>
+      <span class="kpi-r"><b>ORDERS</b>·W33</span></button>
+    <button class="glass kpi c-acc rise" style="animation-delay:.17s">
+      <span class="kpi-l"><b></b>ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ</span>
+      <span class="kpi-v num"><span data-count="18">0</span><small>/27</small></span>
+      <span class="kpi-r"><b>ORDERS × TRUCKS</b>·W33 ISO</span></button>
+    <button class="glass kpi c-warn rise" style="animation-delay:.23s">
+      <span class="kpi-l"><b></b>ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</span>
+      <span class="kpi-v num"><span data-count="118">0</span><small>km</small></span>
+      <span class="kpi-r"><b>ORDER_STOPS</b>·μ.ό. 11 ζευγών</span></button>
+    <button class="glass kpi c-ok rise" style="animation-delay:.29s">
+      <span class="kpi-l"><b></b>ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</span>
+      <span class="kpi-v num"><span data-count="88">0</span><small>%</small></span>
+      <span class="kpi-r"><b>ORDERS</b>·30 ημέρες·30/34</span></button>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 300px;gap:var(--s3);align-items:start">
+    <div class="glass rise" style="animation-delay:.35s;padding:var(--s4) var(--s5) var(--s5)">
+      <div class="side-t" style="margin-bottom:var(--s3)">Η ΜΕΡΑ</div>
+      <div style="display:flex;flex-direction:column;gap:11px">
+        <div style="display:flex;align-items:center;gap:13px">
+          <span class="num" style="font-size:12px;font-weight:700;color:var(--text-mid);width:42px">06:30</span>
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--ok-hi);flex:none;box-shadow:0 0 8px var(--ok-hi)"></span>
+          <span style="flex:1"><b style="font-size:13px">Φόρτωση · ΚΡΙ ΚΡΙ Α.Ε.</b>
+          <em style="display:block;font-style:normal;font-size:11px;color:var(--text-dim)">Σέρρες → Milano, IT</em></span>
+          <span style="font-size:11px;color:var(--text-mid)" class="num">33p</span></div>
+        <div style="display:flex;align-items:center;gap:13px">
+          <span class="num" style="font-size:12px;font-weight:700;color:var(--text-mid);width:42px">10:15</span>
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--bad-hi);flex:none;box-shadow:0 0 8px var(--bad-hi)"></span>
+          <span style="flex:1"><b style="font-size:13px">Φόρτωση · ΜΕΒΓΑΛ</b>
+          <em style="display:block;font-style:normal;font-size:11px;color:var(--text-dim)">Κουφάλια → Wien, AT</em></span>
+          <span style="font-size:10px;font-weight:700;color:var(--bad-hi);background:rgba(220,38,38,.15);padding:2px 7px;border-radius:99px">χωρίς οδηγό</span></div>
+        <div style="display:flex;align-items:center;gap:13px">
+          <span class="num" style="font-size:12px;font-weight:700;color:var(--text-mid);width:42px">16:00</span>
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--accent-hi);flex:none;box-shadow:0 0 8px var(--accent-hi)"></span>
+          <span style="flex:1"><b style="font-size:13px">Φόρτωση · ΟΛΥΜΠΟΣ</b>
+          <em style="display:block;font-style:normal;font-size:11px;color:var(--text-dim)">Λάρισα → Zagreb, HR</em></span>
+          <span style="font-size:11px;color:var(--text-mid)" class="num">31p</span></div>
+      </div>
+    </div>
+    <div class="glass rise" style="animation-delay:.42s;padding:var(--s4);display:flex;flex-direction:column;align-items:center">
+      <div class="side-t">ΒΑΘΜΟΣ ΕΒΔΟΜΑΔΑΣ</div>
+      <div class="ring" style="--rc:var(--warn-hi);--rd:256deg"><b class="num">71<small>/100</small></b></div>
+      <div style="font-size:9.5px;color:var(--text-dim);margin-top:var(--s3);text-align:center;
+        border-top:1px dashed rgba(255,255,255,.1);padding-top:8px;width:100%">
+        <b style="color:var(--text-mid);font-weight:500">metrics.weeklyScore()</b> · δείγμα 34</div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ Γ ══════════ -->
+<section class="panel" id="p-time" role="tabpanel">
+  <div class="head">
+    <div><h1>Η εβδομάδα με μια ματιά</h1>
+    <div class="sub">W33 · Δευτέρα 10 → Κυριακή 16 Αυγούστου</div></div>
+    <div class="sp"></div>
+    <span class="live"><span class="pulse"></span>ΖΩΝΤΑΝΑ</span>
+  </div>
+
+  <div class="glass tl rise">
+    <div class="tl-grid">
+      <div></div>
+      <div class="tl-days"><span>ΔΕΥ</span><span>ΤΡΙ</span><span class="now">ΤΕΤ</span>
+        <span>ΠΕΜ</span><span>ΠΑΡ</span><span>ΣΑΒ</span><span>ΚΥΡ</span></div>
+      <div id="tlrows" style="display:contents"></div>
+    </div>
+    <div class="tl-legend">
+      <span><i style="background:linear-gradient(100deg,#7DD3FC,#38BDF8)"></i>εξαγωγή</span>
+      <span><i style="background:linear-gradient(100deg,#34D399,#10B981)"></i>εισαγωγή</span>
+      <span><i style="background:linear-gradient(100deg,#FBBF24,#D97706)"></i>συνεργάτης</span>
+      <span><i style="border:1px dashed rgba(248,113,113,.5);background:rgba(248,113,113,.12)"></i>κενό — φορτηγό χωρίς δουλειά</span>
+    </div>
+  </div>
+
+  <div class="note"><b>Γιατί αυτό:</b> σήμερα η αξιοποίηση του στόλου λέγεται με ποσοστό («40%»).
+  Εδώ τα κενά <b>φαίνονται ως κενά</b> — ο dispatcher βλέπει ότι το ΙΑΒ 2109 κάθεται Πέμπτη-Παρασκευή
+  και ξέρει τι να κάνει, χωρίς να διαβάσει κανέναν αριθμό. Ίδια δεδομένα, μορφή που οδηγεί σε πράξη.</div>
+</section>
+
+</div>
+
+<script>
+const tabs=[...document.querySelectorAll('.tab')];
+tabs.forEach(t=>t.addEventListener('click',()=>{
+  tabs.forEach(x=>x.setAttribute('aria-selected',x===t));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.getElementById('p-'+t.dataset.p).classList.add('on');
+  replay(); window.scrollTo({top:0,behavior:'smooth'});
+}));
+
+/* ── ΧΑΡΤΗΣ: προβολή Mercator από πραγματικές συντεταγμένες ── */
+const CITIES=[
+  {n:'Βέροια',la:40.52,lo:22.20,hub:1},{n:'Θεσσαλονίκη',la:40.64,lo:22.94},
+  {n:'Σέρρες',la:41.09,lo:23.55},{n:'Λάρισα',la:39.64,lo:22.42},
+  {n:'Sofia',la:42.70,lo:23.32},{n:'Zagreb',la:45.81,lo:15.98},
+  {n:'Wien',la:48.21,lo:16.37},{n:'Budapest',la:47.50,lo:19.04},
+  {n:'München',la:48.14,lo:11.58},{n:'Milano',la:45.46,lo:9.19},
+  {n:'Parma',la:44.80,lo:10.33},{n:'Praha',la:50.08,lo:14.44},
+  {n:'Frankfurt',la:50.11,lo:8.68},
+];
+const merc=la=>Math.log(Math.tan(Math.PI/4+la*Math.PI/360));
+const LO=[6.5,27.5], LA=[merc(38.5),merc(52.5)];
+const X=lo=>40+(lo-LO[0])/(LO[1]-LO[0])*640;
+const Y=la=>360-(merc(la)-LA[0])/(LA[1]-LA[0])*330;
+const ROUTES=[[0,9,'live'],[0,8,'live'],[0,6,'live'],[0,11,'idle'],[0,5,'live'],
+              [0,4,'idle'],[0,12,'idle'],[2,9,'live'],[3,5,'live'],[0,7,'idle']];
+const TRUCKS=[{r:0,t:.62},{r:1,t:.34},{r:2,t:.78,late:1},{r:4,t:.45},{r:7,t:.2},{r:8,t:.55}];
+function drawMap(){
+  const R=document.getElementById('routes'),N=document.getElementById('nodes'),T=document.getElementById('trucks');
+  if(!R||R.childNodes.length)return;
+  const path=(a,b)=>{const x1=X(a.lo),y1=Y(a.la),x2=X(b.lo),y2=Y(b.la);
+    const mx=(x1+x2)/2,my=(y1+y2)/2-Math.abs(x2-x1)*.18-16;
+    return {d:`M${x1} ${y1} Q${mx} ${my} ${x2} ${y2}`,x1,y1,x2,y2,mx,my};};
+  ROUTES.forEach(([i,j,k])=>R.insertAdjacentHTML('beforeend',
+    `<path class="route ${k}" d="${path(CITIES[i],CITIES[j]).d}"/>`));
+  CITIES.forEach(c=>{const x=X(c.lo),y=Y(c.la);
+    if(c.hub)N.insertAdjacentHTML('beforeend',`<circle class="hub-ring" cx="${x}" cy="${y}" r="7"/>`);
+    N.insertAdjacentHTML('beforeend',
+      `<circle class="node${c.hub?' hub':''}" cx="${x}" cy="${y}" r="${c.hub?5:3}"/>
+       <text class="city${c.hub?' hub':''}" x="${x+8}" y="${y+3.5}">${c.n}</text>`);});
+  TRUCKS.forEach(t=>{const [i,j]=ROUTES[t.r],p=path(CITIES[i],CITIES[j]),u=t.t,iv=1-u;
+    const x=iv*iv*p.x1+2*iv*u*p.mx+u*u*p.x2, y=iv*iv*p.y1+2*iv*u*p.my+u*u*p.y2;
+    T.insertAdjacentHTML('beforeend',
+      `<rect class="truck${t.late?' late':''}" x="${x-4}" y="${y-3}" width="8" height="6" rx="1.6"/>`);});
+}
+
+/* ── αριθμοί που μετρούν ── */
+function countUp(){
+  document.querySelectorAll('.panel.on [data-count]').forEach(el=>{
+    const to=+el.dataset.count,dur=680,t0=performance.now();
+    const step=now=>{const k=Math.min(1,(now-t0)/dur);
+      el.textContent=Math.round(to*(1-Math.pow(1-k,3)));
+      if(k<1)requestAnimationFrame(step);};
+    requestAnimationFrame(step);});
+}
+function replay(){
+  document.querySelectorAll('.panel.on .rise').forEach(e=>{
+    e.style.animation='none'; void e.offsetWidth; e.style.animation='';});
+  countUp();
+}
+
+/* ── λωρίδα χρόνου ── */
+const FLEET=[
+  {p:'ΝΒΤ 4471',loads:[[0,2.2,'exp','Milano'],[2.6,2.1,'imp','Parma']]},
+  {p:'ΙΚΑ 8820',loads:[[.4,1.6,'exp','Wien'],[2.3,1.4,'imp','Budapest'],[4.2,2.3,'exp','Praha']]},
+  {p:'ΚΗΥ 3382',loads:[[0,1.2,'exp','Sofia'],[1.5,1.1,'imp','Sofia'],[3,3.6,'exp','München']]},
+  {p:'ΙΑΒ 2109',loads:[[0,1.9,'exp','Zagreb'],[3.1,2.0,'gap','κενό 2 ημέρες'],[5.4,1.5,'imp','Zagreb']]},
+  {p:'ΙΑΖ 5562',loads:[[.8,2.4,'part','συνεργάτης · Frankfurt'],[3.6,2.2,'exp','Milano']]},
+  {p:'ΝΒΤ 7714',loads:[[0,7,'gap','ακίνητο όλη την εβδομάδα']]},
+  {p:'ΚΗΥ 5510',loads:[[1.1,2.7,'exp','Praha'],[4.3,2.4,'imp','München']]},
+];
+function drawTL(){
+  const host=document.getElementById('tlrows'); if(!host||host.childNodes.length)return;
+  FLEET.forEach((f,ri)=>{
+    const idle=f.loads.every(l=>l[2]==='gap');
+    const bars=f.loads.map(([s,w,k,label])=>
+      `<div class="load ${k}" style="left:${s/7*100}%;width:calc(${w/7*100}% - 3px)"
+        title="${label}">${w>1.1?label:''}</div>`).join('');
+    host.insertAdjacentHTML('beforeend',
+      `<div class="tl-plate${idle?' idle':''}"><i></i>${f.p}</div>
+       <div class="tl-track">${bars}${ri===0?'<div class="now-line" style="left:35.7%"></div>':''}</div>`);
+  });
+}
+
+drawMap(); drawTL(); countUp();
+</script>
+</body>
+</html>
