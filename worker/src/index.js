@@ -2625,10 +2625,14 @@ async function handlePallets(request, url, origin, env) {
   try {
     // ---- GET /pallets/lookups (dropdowns: πελάτες, partners, τοποθεσίες) ----
     if (resource === "lookups" && method === "GET") {
+      // Τα όρια ΔΕΝ είναι διακοσμητικά: με 500 πελάτες κόβονταν όσοι είναι
+      // αλφαβητικά μετά το μισό — εμφανίζονταν ως «Πελάτης #1314» στο ημερολόγιο
+      // και ΔΕΝ επιλέγονταν καθόλου στη «Νέα κίνηση» (12/8). Το payload είναι
+      // μόνο id+όνομα, οπότε το ανεβασμένο όριο δεν κοστίζει ουσιαστικά.
       const [clients, partners, locations] = await Promise.all([
-        dbSelect(env, "clients", { select: "id,company_name,active", order: "company_name.asc", limit: 500 }),
-        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 500 }),
-        dbSelect(env, "locations", { select: "id,name", order: "name.asc", limit: 1e3 })
+        dbSelect(env, "clients", { select: "id,company_name,active", order: "company_name.asc", limit: 5e3 }),
+        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 5e3 }),
+        dbSelect(env, "locations", { select: "id,name", order: "name.asc", limit: 5e3 })
       ]);
       return jsonOk({ clients, partners, locations }, origin, env);
     }
