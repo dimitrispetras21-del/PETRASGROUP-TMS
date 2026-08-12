@@ -195,6 +195,32 @@ function atGetAuditLog() {
   catch { return []; }
 }
 
+// ── Error-shape reader ────────────────────────────
+/**
+ * Read the human message out of an API error payload, whichever backend answered.
+ *
+ * Two shapes reach this client and only one was ever handled:
+ *   Airtable  →  {"error": {"type": "...", "message": "..."}}
+ *   Worker 2  →  {"error": "Unsupported query for this table"}   (jsonError, worker/src/index.js)
+ *
+ * Every call site read `error.message || error.type`, which is `undefined` on a
+ * string, so since the Supabase migration EVERY backend message was thrown away
+ * and replaced by the generic fallback. The Error Log for 4–12/8 holds 253
+ * entries of "Validation error (422)" / "Unknown Airtable error" with no way to
+ * tell a broken filter from a missing permission. Verified live 12/8: those 422s
+ * were "Unsupported query for this table" and the failed stop deletes were 403
+ * "Forbidden" — neither text ever reached the log or the user.
+ *
+ * @param {*} err - the `error` value from a parsed JSON body (string | object | undefined)
+ * @param {string} fallback - used only when the payload carries no usable text
+ * @returns {string}
+ */
+function _atErrMsg(err, fallback) {
+  if (typeof err === 'string' && err.trim()) return err;
+  if (err && typeof err === 'object') return err.message || err.type || fallback;
+  return fallback;
+}
+
 // ── Retry wrapper (exponential backoff) ───────────
 /**
  * Wraps fetch with an AbortController timeout so network calls don't hang forever.
@@ -229,7 +255,7 @@ async function _atRetry(fn, retries = 3) {
       }
       if (res.status === 400 || res.status === 422) {
         const errData = await res.json().catch(() => ({}));
-        const rawMsg = (errData.error && (errData.error.message || errData.error.type)) || `Validation error (${res.status})`;
+        const rawMsg = _atErrMsg(errData.error, `Validation error (${res.status})`);
         // Airtable returns both `type` (e.g. UNKNOWN_FIELD_NAME) and `message`
         // (e.g. "Unknown field name: 'Total Cost'"). Match against BOTH so
         // English messages also get friendly Greek translations.
@@ -246,7 +272,14 @@ async function _atRetry(fn, retries = 3) {
           : rawMsg;
         if (typeof logError === 'function') logError(new Error(mapped), `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
-        throw new Error(mapped);
+        // Deterministic: the same body will be rejected identically on every
+        // attempt, so this throw must escape the retry loop, not feed it. It fell
+        // into the shared catch below, which retried — turning 63 real failures
+        // (Error Log 4–12/8) into 190 log entries and firing THREE red toasts per
+        // failure. The flag is read in the catch; nothing else consumes it.
+        const _e = new Error(mapped);
+        _e._noRetry = true;
+        throw _e;
       }
       if (res.status >= 500 && i < retries - 1) {
         if (typeof showErrorToast === 'function') {
@@ -261,6 +294,9 @@ async function _atRetry(fn, retries = 3) {
       }
       return res;
     } catch (e) {
+      // Already logged and toasted at the 400/422 branch above — rethrowing here
+      // untouched keeps the caller's error identical while skipping the retries.
+      if (e && e._noRetry) throw e;
       if (i === retries - 1) {
         if (typeof logError === 'function') logError(e, 'API retry exhausted');
         if (typeof showErrorToast === 'function') {
@@ -311,7 +347,7 @@ async function _atFetch(tableId, paramStr = '') {
     }));
     const data = await res.json();
     if (data.error) {
-      const errMsg = data.error.message || data.error.type || 'Airtable error';
+      const errMsg = _atErrMsg(data.error, 'Airtable error');
       if (typeof logError === 'function') logError(new Error(errMsg), '_atFetch');
       // Static toast only: errMsg carries raw Airtable detail (field names, IDs).
       // The full message already went to the gated log via logError above.
@@ -443,7 +479,7 @@ async function atPatch(tableId, recId, fields) {
   })));
   const data = await res.json();
   if (data.error) {
-    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atPatch(${tableId}, ${recId})`);
     if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
@@ -477,7 +513,7 @@ async function atCreate(tableId, fields) {
   })));
   const data = await res.json();
   if (data.error) {
-    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atCreate(${tableId})`);
     if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
     throw new Error(errMsg);
@@ -510,7 +546,7 @@ async function atDelete(tableId, recId) {
   })));
   const data = await res.json();
   if (data.error) {
-    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atDelete(${tableId}, ${recId})`);
     if (typeof showErrorToast === 'function') showErrorToast('Delete failed', 'error');
     throw new Error(errMsg);
@@ -533,7 +569,7 @@ async function atGetOne(tableId, recId) {
   )));
   const data = await res.json();
   if (data.error) {
-    const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+    const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
     if (typeof logError === 'function') logError(new Error(errMsg), `atGetOne(${tableId}, ${recId})`);
     if (typeof showErrorToast === 'function') showErrorToast('Failed to load record', 'error');
     throw new Error(errMsg);
@@ -562,7 +598,7 @@ async function atCreateBatch(tableId, recordsArr) {
     )));
     const data = await res.json();
     if (data.error) {
-      const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+      const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
       if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId})`);
       if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
       throw new Error(errMsg);
@@ -570,7 +606,7 @@ async function atCreateBatch(tableId, recordsArr) {
     if (data.records) {
       const errors = data.records.filter(r => r.error);
       if (errors.length) {
-        const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
+        const errMsg = errors.map(e => _atErrMsg(e.error, 'Unknown error')).join('; ');
         if (typeof logError === 'function') logError(new Error(errMsg), `atCreateBatch(${tableId}) partial`);
         if (typeof showErrorToast === 'function') showErrorToast(`Batch partial error: ${errMsg}`, 'warn');
       }
@@ -603,7 +639,7 @@ async function atPatchBatch(tableId, recordsArr) {
     )));
     const data = await res.json();
     if (data.error) {
-      const errMsg = data.error.message || data.error.type || 'Unknown Airtable error';
+      const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');
       if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId})`);
       if (typeof showErrorToast === 'function') showErrorToast('Save failed', 'error');
       throw new Error(errMsg);
@@ -611,7 +647,7 @@ async function atPatchBatch(tableId, recordsArr) {
     if (data.records) {
       const errors = data.records.filter(r => r.error);
       if (errors.length) {
-        const errMsg = errors.map(e => e.error.message || e.error.type).join('; ');
+        const errMsg = errors.map(e => _atErrMsg(e.error, 'Unknown error')).join('; ');
         if (typeof logError === 'function') logError(new Error(errMsg), `atPatchBatch(${tableId}) partial`);
         if (typeof showErrorToast === 'function') showErrorToast(`Batch partial error: ${errMsg}`, 'warn');
       }
