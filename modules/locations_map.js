@@ -276,7 +276,11 @@ function _lmapRender(host) {
 
   LMAP.map = L.map('lmapMap', { zoomControl: false }).setView([48, 14], 5);
   L.control.zoom({ position: 'bottomright' }).addTo(LMAP.map);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  // CARTO Voyager (owner 12/8, μετά από οπτική σύγκριση 6 υποβάθρων): κρατά την
+  // καθαρότητα του Light ώστε τα χρώματα των κατηγοριών να μένουν το πιο έντονο
+  // στην οθόνη, αλλά με χρώμα σε δρόμους και πράσινο ώστε να αναγνωρίζεται η
+  // περιοχή με μια ματιά. Το {r} δίνει @2x tiles σε οθόνες retina.
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
     { attribution: '© OpenStreetMap · © CARTO', maxZoom: 19, subdomains: 'abcd' }).addTo(LMAP.map);
 
   LMAP.pinLayer = L.layerGroup();
