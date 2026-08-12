@@ -6,7 +6,7 @@
 
 // q/from/to: το παλιό pallet_ledger page είχε φίλτρα + CSV — δεν τα χάνουμε
 // (η λογίστρια τα χρησιμοποιεί καθημερινά· αφαίρεσή τους = οπισθοδρόμηση).
-const PLV = { movements: [], lookups: null, tab: 'pending', busy: false, q: '', from: '', to: '' };
+const PLV = { movements: [], lookups: null, balances: { clients: null, partners: null }, tab: 'pending', busy: false, q: '', from: '', to: '' };
 
 async function renderPalletLedger() {
   const c = document.getElementById('content');
@@ -19,6 +19,12 @@ async function renderPalletLedger() {
     ]);
     PLV.movements = mv.records || [];
     PLV.lookups = lk;
+    const [bc, bp] = await Promise.all([
+      plFetch('/pallets/balances?type=clients'),
+      plFetch('/pallets/balances?type=partners')
+    ]);
+    PLV.balances.clients = bc.records || [];
+    PLV.balances.partners = bp.records || [];
   } catch (e) {
     c.innerHTML = `<div style="padding:40px;color:var(--danger)">Σφάλμα φόρτωσης: ${e.message}</div>`;
     return;
@@ -61,41 +67,103 @@ function _plvRows() {
 function plvFilter(key, val) { PLV[key] = val; _plvDraw(); }
 
 function plvExportCSV() {
-  const rows = _plvRows();
-  if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
-  const head = ['Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
   const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const body = rows.map(m => [m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
-    _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
+  const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
+  let head, body, fname;
+  if (isBalanceTab) {
+    const rows = (PLV.balances[PLV.tab] || []).filter(b => b.balance !== 0 || b.pending_count > 0);
+    if (!rows.length) { toast('Κανένα υπόλοιπο για εξαγωγή', 'error'); return; }
+    const nameKey = PLV.tab === 'clients' ? 'client_name' : 'partner_name';
+    const idKey = PLV.tab === 'clients' ? 'client_id' : 'partner_id';
+    head = ['Αντισυμβαλλόμενος', 'Υπόλοιπο', 'Ανοιχτό από', 'Ημέρες', 'Εκκρεμείς'];
+    body = rows.map(b => {
+      const days = b.open_since ? Math.floor((Date.now() - new Date(b.open_since + 'T00:00:00').getTime()) / 86400000) : '';
+      return [b[nameKey] || ('#' + b[idKey]), b.balance, b.open_since || '', days, b.pending_count || 0].map(esc).join(',');
+    });
+    fname = 'ypoloipa-' + PLV.tab + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  } else {
+    const rows = _plvRows();
+    if (!rows.length) { toast('Καμία κίνηση για εξαγωγή', 'error'); return; }
+    head = ['Κωδικός', 'Ημερομηνία', 'Είδος', 'Αντισυμβαλλόμενος', 'Σημείο', 'Πήραμε', 'Δώσαμε', 'Καθαρό', 'Κατάσταση', 'Σημείωση'];
+    body = rows.map(m => [m.code, m.movement_date, PLV_EVENT_GR[m.event_type] || m.event_type,
+      _plvName(m), _plvLoc(m), m.taken, m.given, m.given - m.taken, m.status, m.notes || ''].map(esc).join(','));
+    fname = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  }
   // BOM: χωρίς αυτό το Excel δείχνει τα ελληνικά ως μουτζούρες
   const blob = new Blob(['﻿' + [head.map(esc).join(','), ...body].join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'paletes-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.download = fname;
   a.click(); URL.revokeObjectURL(a.href);
   toast('CSV εξήχθη ✓');
+}
+
+function _plvOverview() {
+  const all = [...(PLV.balances.clients || []), ...(PLV.balances.partners || [])];
+  const owed = all.filter(b => b.balance > 0).reduce((s, b) => s + b.balance, 0);
+  const owe  = all.filter(b => b.balance < 0).reduce((s, b) => s - b.balance, 0);
+  const net = owed - owe;
+  const box = (lbl, val, col) => `<div style="flex:1 1 150px;background:var(--panel,#fff);border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:12px 16px">
+    <div style="font-size:11px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:.04em">${lbl}</div>
+    <div style="font-family:Syne;font-size:22px;font-weight:700;color:${col}">${val} pal</div></div>`;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0">
+    ${box('Μας οφείλουν', owed, '#15803D')}
+    ${box('Οφείλουμε', owe, '#B91C1C')}
+    ${box('Καθαρό', (net > 0 ? '+' : '') + net, net >= 0 ? 'var(--accent)' : '#B91C1C')}
+  </div>`;
+}
+
+function _plvDays(d) {
+  if (!d) return '';
+  const days = Math.floor((Date.now() - new Date(d + 'T00:00:00').getTime()) / 86400000);
+  return days <= 0 ? 'σήμερα' : days + ' ημ.';
+}
+
+function _plvBalanceTable(kind) {
+  const rows = (PLV.balances[kind] || [])
+    .filter(b => b.balance !== 0 || b.pending_count > 0)
+    .sort((a, b) => b.balance - a.balance); // πρώτα όποιος μας χρωστάει τα περισσότερα
+  if (!rows.length) return '<div style="padding:30px;text-align:center;color:var(--panel-dim)">Κανένα ανοιχτό υπόλοιπο</div>';
+  const idKey = kind === 'clients' ? 'client_id' : 'partner_id';
+  const nameKey = kind === 'clients' ? 'client_name' : 'partner_name';
+  return `<div style="overflow-x:auto"><table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
+    <tr style="text-align:left;color:var(--panel-dim)">
+      <th>${kind === 'clients' ? 'Πελάτης' : 'Συνεργάτης'}</th>
+      <th style="text-align:right">Υπόλοιπο</th><th>Ανοιχτό από</th>
+      <th style="text-align:right">Εκκρεμείς</th><th></th></tr>
+    ${rows.map(b => `<tr style="border-top:1px solid var(--line,#e2e8f0);cursor:pointer" onclick="plvDrill('${kind}',${b[idKey]})">
+      <td>${b[nameKey] || ('#' + b[idKey])}</td>
+      <td style="text-align:right;font-weight:700;color:${b.balance > 0 ? '#15803D' : b.balance < 0 ? '#B91C1C' : 'inherit'}">${b.balance > 0 ? '+' : ''}${b.balance}</td>
+      <td>${_plvDays(b.open_since)}</td>
+      <td style="text-align:right">${b.pending_count || ''}</td>
+      <td style="color:var(--accent);font-size:12px">ανάλυση →</td></tr>`).join('')}
+  </table></div>`;
 }
 
 function _plvDraw() {
   const c = document.getElementById('content');
   const pend = PLV.movements.filter(m => m.status === 'pending').length;
-  const rows = _plvRows();
+  const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
+  const rows = isBalanceTab ? [] : _plvRows();
   c.innerHTML = `
   <div style="padding:20px;max-width:1100px">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <h1 style="font-family:Syne;font-size:22px;margin:0">Ισοζύγιο Παλετών</h1>
       <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>
     </div>
+    ${_plvOverview()}
     <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap">
-      ${[['pending', 'Εκκρεμείς (' + pend + ')'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις']].map(([id, lbl]) =>
+      ${[['pending', 'Εκκρεμείς (' + pend + ')'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις'], ['clients', 'Πελάτες'], ['partners', 'Συνεργάτες']].map(([id, lbl]) =>
         `<button onclick="plvTab('${id}')" style="padding:8px 16px;border-radius:20px;border:1px solid var(--accent);cursor:pointer;font-size:13px;${PLV.tab === id ? 'background:var(--accent);color:#fff' : 'background:transparent;color:var(--accent)'}">${lbl}</button>`).join('')}
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+      ${isBalanceTab ? '' : `
       <input id="plvQ" placeholder="Αναζήτηση (κωδικός, όνομα, σημείο)" value="${PLV.q}" oninput="plvFilter('q',this.value)" style="flex:1 1 220px;padding:8px 12px;font-size:13px">
       <label style="font-size:12px;color:var(--panel-dim)">Από <input type="date" value="${PLV.from}" onchange="plvFilter('from',this.value)" style="padding:6px;font-size:13px"></label>
-      <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>
+      <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>`}
       <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
+    ${isBalanceTab ? _plvBalanceTable(PLV.tab) : `
     <div style="overflow-x:auto">
     <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
     <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
@@ -121,12 +189,60 @@ function _plvDraw() {
         </td>
       </tr>`).join('') || '<tr><td colspan="9" style="padding:30px;text-align:center;color:var(--panel-dim)">Καμία κίνηση εδώ</td></tr>'}
     </table>
-    </div>
+    </div>`}
   </div>
   <div id="plvModal"></div>`;
 }
 
 function plvTab(t) { PLV.tab = t; _plvDraw(); }
+
+/* ── Ανάλυση υπολοίπου (drill-down): ανά σημείο + ιστορικό ── */
+async function plvDrill(kind, id) {
+  const nameKey = kind === 'clients' ? 'client_name' : 'partner_name';
+  const idKey = kind === 'clients' ? 'client_id' : 'partner_id';
+  const row = (PLV.balances[kind] || []).find(b => b[idKey] === id);
+  const el = document.getElementById('plvModal');
+  el.innerHTML = '<div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000"><div style="background:var(--panel,#fff);border-radius:12px;padding:24px">Φόρτωση...</div></div>';
+  try {
+    const q = kind === 'clients' ? 'client_id=' + id : 'partner_id=' + id;
+    const [hist, locs] = await Promise.all([
+      plFetch('/pallets/movements?' + q),
+      kind === 'clients' ? plFetch('/pallets/balances/clients/' + id) : Promise.resolve({ records: [] })
+    ]);
+    const moves = (hist.records || []).filter(m => m.status !== 'reversed');
+    const locRows = (locs.records || []).filter(l => l.balance !== 0);
+    el.innerHTML = `
+    <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+      <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(720px,94vw);max-height:88vh;overflow:auto">
+        <h3 style="font-family:Syne;margin:0 0 4px">${row ? row[nameKey] : ''}</h3>
+        <div style="font-size:13px;color:var(--panel-dim);margin-bottom:16px">
+          Υπόλοιπο <b style="color:${row && row.balance > 0 ? '#15803D' : '#B91C1C'}">${row ? (row.balance > 0 ? '+' : '') + row.balance : '—'} pal</b>
+          ${row && row.open_since ? ' · ανοιχτό ' + _plvDays(row.open_since) : ''}</div>
+        ${locRows.length ? `<div style="font-size:12px;font-weight:700;color:var(--panel-dim);margin-bottom:6px">ΑΝΑ ΣΗΜΕΙΟ</div>
+        <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
+          ${locRows.map(l => `<tr style="border-top:1px solid var(--line,#e2e8f0)"><td>${l.location_name || '—'}</td>
+          <td style="text-align:right;font-weight:700;color:${l.balance > 0 ? '#15803D' : '#B91C1C'}">${l.balance > 0 ? '+' : ''}${l.balance}</td></tr>`).join('')}
+        </table>` : ''}
+        <div style="font-size:12px;font-weight:700;color:var(--panel-dim);margin-bottom:6px">ΙΣΤΟΡΙΚΟ</div>
+        <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
+          <tr style="text-align:left;color:var(--panel-dim)"><th>Ημ/νία</th><th>Είδος</th><th>Σημείο</th>
+            <th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th><th>Κατάσταση</th></tr>
+          ${moves.map(m => `<tr style="border-top:1px solid var(--line,#e2e8f0)">
+            <td>${m.movement_date}</td><td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
+            <td>${_plvLoc(m)}</td><td style="text-align:right">${m.taken}</td>
+            <td style="text-align:right">${m.given}</td>
+            <td>${m.status === 'pending' ? 'εκκρεμής' : 'οριστική'}</td></tr>`).join('') ||
+            '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--panel-dim)">Καμία κίνηση</td></tr>'}
+        </table>
+        <div style="display:flex;justify-content:flex-end;margin-top:16px">
+          <button class="btn-scan" onclick="plvCloseModal()">Κλείσιμο</button></div>
+      </div>
+    </div>`;
+  } catch (e) {
+    el.innerHTML = '';
+    showErrorToast('Αποτυχία ανάλυσης: ' + e.message, 'error');
+  }
+}
 
 /* ── Modal επιβεβαίωσης εκκρεμούς ── */
 function plvOpenConfirm(id) {
@@ -294,3 +410,4 @@ window.plvTab = plvTab; window.plvOpenConfirm = plvOpenConfirm; window.plvCloseM
 window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix;
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
 window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV;
+window.plvDrill = plvDrill;
