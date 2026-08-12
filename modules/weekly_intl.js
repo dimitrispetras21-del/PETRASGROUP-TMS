@@ -762,14 +762,18 @@ function _wiLegRowHTML(legRow){
   const f=o.fields||{};
   const ld=_wiFmt(f['Loading DateTime']), dd=_wiFmt(f['Delivery DateTime']);
   const dir=(f['Direction']==='Import')?'import':'export';
+  // Σωστή στήλη ανά κατεύθυνση (owner 12/8): σκέλος εξαγωγής → μέχρι το
+  // assignment (3/5), όχι πάνω στο πεδίο εισαγωγής· σκέλος εισαγωγής → μόνο
+  // στη στήλη εισαγωγών (5/6), όχι πάνω στο πεδίο εξαγωγής.
+  const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/5'};cursor:pointer">
+      <span class="wk3-route"><b class="wk3-ld">${ld!=='—'?_wk3D(ld):''}</b><span class="frm">${_wk3LocHTML(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld">${dd!=='—'?_wk3D(dd):''}</b><span class="to">${_wk3LocHTML(f['Delivery Summary']||'—','Παράδοση',f._stopsD)}${(f['Order Number']||f['Reference'])?`<span class="wk3-ordn">${escapeHtml(String(f['Order Number']||f['Reference']))}</span>`:''}</span></span>
+      <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button><button class="wk3-prt" title="Ακύρωση πρόωθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯</button></span>
+    </div>`;
   return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: αποσύνδεση"
       onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
     <div class="wk3-num" style="color:var(--accent);font-weight:800">⤷</div>
     <div class="wk3-feed l bgap"></div>
-    <div class="wk3-leg" style="grid-column:3/6;cursor:pointer">
-      <span class="wk3-route"><b class="wk3-ld">${ld!=='—'?_wk3D(ld):''}</b><span class="frm">${_wk3LocHTML(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld">${dd!=='—'?_wk3D(dd):''}</b><span class="to">${_wk3LocHTML(f['Delivery Summary']||'—','Παράδοση',f._stopsD)}${(f['Order Number']||f['Reference'])?`<span class="wk3-ordn">${escapeHtml(String(f['Order Number']||f['Reference']))}</span>`:''}</span></span>
-      <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button></span>
-    </div>
+    ${dir==='import'?`<div style="grid-column:3/5"></div>${legCell}`:`${legCell}<div class="wk3-leg imp void"></div>`}
     <div class="wk3-feed r bgap"></div>
   </div>`;
 }
@@ -2393,6 +2397,7 @@ function _wiRotaRender(){
         <div style="font-size:10.5px;color:#94A3B8;margin-top:6px;line-height:1.5">Η σειρά καθορίζει την αρίθμηση στο Weekly και τη διαδρομή στο φύλλο οδηγού.</div>
       </div>
       <div style="border-top:1px solid #E7EBF0;padding:12px 18px;display:flex;gap:10px;justify-content:flex-end">
+        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 14px;cursor:pointer;background:#fff;color:#B91C1C;border:1px solid rgba(185,28,28,.4);margin-right:auto" onclick="_wiRotaSplit()">Διάλυση ομάδας</button>
         <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#fff;color:#475569;border:1px solid #D6DDE6" onclick="_wiRotaClose()">Κλείσιμο</button>
         <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#0284C7;color:#fff;border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
       </div>
@@ -2426,6 +2431,20 @@ async function _wiRotaSave(){
   _wiRepaintRow(st.rowId);
 }
 function _wiRotaClose(){ document.getElementById('wiRotaOv')?.remove(); window._wiRotaState=null; }
+
+// Owner 12/8: «δεν υπάρχει κουμπί ακύρωσης του groupage» — ορατή διάλυση από
+// την καρτέλα. Το _wiSplit καθαρίζει το Group ID σε ΟΛΑ τα μέλη στη βάση
+// (πλέον μόνιμο μετά το view fix), οπότε τα φορτία ξαναγίνονται απλές γραμμές
+// και μετά από refresh. GL/CL δεν αγγίζονται — UI-level ομαδοποίηση μόνο.
+async function _wiRotaSplit(){
+  const st=window._wiRotaState; if(!st) return;
+  const ok=await confirmAction('Διάλυση της ομάδας; Τα φορτία επιστρέφουν ως ανεξάρτητες γραμμές. (Η ανάθεση μένει στην πρώτη γραμμή — οι υπόλοιπες θέλουν δική τους.)',
+    {title:'Groupage', confirmLabel:'Διάλυση'});
+  if(!ok) return;
+  const rid=st.rowId;
+  _wiRotaClose();
+  await _wiSplit(rid);
+}
 
 /* ── NAVIGATION ────────────────────────────────────────────────────── */
 function _wiPrint(rowId, leg){
@@ -2500,6 +2519,7 @@ window._wiRota = _wiRota;
 window._wiRotaMv = _wiRotaMv;
 window._wiRotaSave = _wiRotaSave;
 window._wiRotaClose = _wiRotaClose;
+window._wiRotaSplit = _wiRotaSplit;
 window._wiOpenPopover = _wiOpenPopover;
 window._wiOpenImpPopover = _wiOpenImpPopover;
 window._wiClosePopover = _wiClosePopover;
