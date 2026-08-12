@@ -241,10 +241,15 @@ git push
       catch { return jsonError("Invalid base64", 400, origin, env); }
       if (bytes.length > 8 * 1024 * 1024) return jsonError("File too large (max 8MB)", 400, origin, env);
       const safeName = String(body.filename).replace(/[^A-Za-z0-9._-]/g, "_").slice(-80);
+      const ext = safeName.split(".").pop().toLowerCase();
+      const ctype = ext === "pdf" ? "application/pdf"
+        : ext === "png" ? "image/png"
+        : (ext === "jpg" || ext === "jpeg") ? "image/jpeg"
+        : "application/octet-stream";
       const path = `${Date.now()}-${safeName}`;
       const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/pallet-sheets/${path}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/octet-stream" },
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": ctype },
         body: bytes
       });
       if (!up.ok) {
@@ -259,9 +264,13 @@ git push
     if (resource === "sheets" && method === "GET") {
       const p = url.searchParams.get("path");
       if (!p) return jsonError("path required", 400, origin, env);
-      const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/pallet-sheets/${encodeURIComponent(p).replace(/%2F/g, "/")}`, {
+      // Το path έρχεται από τον client. Δεχόμαστε ΜΟΝΟ τη μορφή που παράγει το
+      // POST (<timestamp>-<safe όνομα>): ένα "../<άλλο bucket>/<αρχείο>" θα
+      // κανονικοποιούνταν από το fetch και θα υπέγραφε αρχείο ΕΚΤΟΣ pallet-sheets.
+      if (!/^\d+-[A-Za-z0-9._-]+$/.test(p)) return jsonError("Invalid path", 400, origin, env);
+      const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/pallet-sheets/${p}`, {
         method: "POST",
-        headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
         body: JSON.stringify({ expiresIn: 3600 })
       });
       if (!sg.ok) return jsonError("Sign failed", 500, origin, env);
