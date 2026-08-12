@@ -1464,10 +1464,13 @@ async function submitIntlOrder(recId) {
     const _unloadStops = _formStops.filter(s => s.stopType === 'Unloading').sort((a,b) => a.stopNumber - b.stopNumber);
     for (let i = 0; i < 10; i++) {
       const ls = _loadStops[i];
-      fields[`Loading Location ${i+1}`]   = ls?.locationId ? [ls.locationId] : null;
+      // Άδειασμα linked θέσης = ΚΕΝΟΣ ΠΙΝΑΚΑΣ, όχι null — ο Worker μεταφράζει
+      // το [] σε NULL (ίδιο pattern με natl). Με null το PATCH έσκαγε 422 όταν
+      // αφαιρούνταν stop από υπάρχουσα παραγγελία (owner 12/8, «εμφανίστηκε error»).
+      fields[`Loading Location ${i+1}`]   = ls?.locationId ? [ls.locationId] : [];
       fields[`Loading Pallets ${i+1}`]    = ls?.pallets || null;
       const us = _unloadStops[i];
-      fields[`Unloading Location ${i+1}`] = us?.locationId ? [us.locationId] : null;
+      fields[`Unloading Location ${i+1}`] = us?.locationId ? [us.locationId] : [];
       fields[`Unloading Pallets ${i+1}`]  = us?.pallets || null;
     }
 

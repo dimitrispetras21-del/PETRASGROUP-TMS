@@ -1080,6 +1080,16 @@ function _wiRowHTML(row,i){
 
   const fromStr=primary?_wiClean(primary.fields['Loading Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
   const toStr  =primary?_wiClean(primary.fields['Delivery Summary']||primary.fields['Client Name']||primary.fields['Client Summary']||'—'):'—';
+  // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
+  // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
+  // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
+  // η συντομογραφία 3+ και το ίδια-μέρα-δίπλα να δουλέψουν με την υπάρχουσα λογική.
+  const _gm1=(e,key,sumKey)=>({ n:(e.fields[key]?.[0]?.n)||_wiClean(String(e.fields[sumKey]||e.fields['Client Name']||'—').split(',').slice(0,2).join(',')),
+    dt:e.fields[sumKey==='Loading Summary'?'Loading DateTime':'Delivery DateTime'] });
+  const gL=isGroup?exps.map(e=>_gm1(e,'_stopsL','Loading Summary')):null;
+  const gD=isGroup?exps.map(e=>_gm1(e,'_stopsD','Delivery Summary')):null;
+  const gLs=gL?gL.map(x=>x.n).join(', '):'';
+  const gDs=gD?gD.map(x=>x.n).join(', '):'';
   const pals   =isGroup?exps.reduce((s,r)=>s+(r.fields['Total Pallets']||0),0):
                         (primary?.fields['Total Pallets']||0);
   const loadDt =_wiFmt(primary?.fields['Loading DateTime']);
@@ -1144,10 +1154,10 @@ function _wiRowHTML(row,i){
     <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας':'Κλικ: άνοιγμα φόρμας παραγγελίας'}" oncontextmenu="_wiCtx(event,${row.id},event)" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${primary?.id||''}')`}">
       <div class="wk3-lcol"><span class="wk3-route">${(()=>{ if(vsExp){ const v=_wk3VsCd(primary?.fields,'exp');
       return `<b class="wk3-ld${stF.loaded?' done':''}${v.est?' estd':''}" style="cursor:pointer" title="${v.est?'Εκτίμηση (Loading+1) — κλικ για πραγματική ημερομηνία CD':'Ημ. φόρτωσης από Cross-Dock — κλικ για αλλαγή'}" onclick="_wk3PickDate(event,'${primary?.id}','VS CD Date','${v.iso}')">${v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):''}</b>`; }
-    return `<b class="wk3-ld${stF.loaded?' done':''}" style="cursor:pointer" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${primary?.id}','Loading DateTime','${primary?.fields['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b>`; })()}<span class="frm">${vsExp?'Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(fromStr,'Φόρτωση',isGroup?null:primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(toStr,'Παράδοση',isGroup?null:primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>${(vsExp||isGroup)?'':_wk3MoreStops(fromStr,primary?.fields._stopsL,'load')}${isGroup?'':_wk3MoreStops(toStr,primary?.fields._stopsD,'del')}${(isGroup&&ui.openGroup===row.id)?exps.map((m,k)=>{const mf=m.fields;
-        const ml=mf['Loading DateTime']?_wk3D(_wiFmt(mf['Loading DateTime']))+' ':'';
-        const md=mf['Delivery DateTime']?_wk3D(_wiFmt(mf['Delivery DateTime']))+' ':'';
-        return `<div class="wk3-stopline wk3-gm" title="Κλικ: φόρμα παραγγελίας" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><b>${(_wiClean(mf['Client Name']||mf['Client Summary']||''))}</b> · ${ml}${(_wiClean(mf['Loading Summary']||'—'))} <span class="wk3-sep">→</span> ${md}${(_wiClean(mf['Delivery Summary']||'—'))}${mf['Total Pallets']?` · <b>${mf['Total Pallets']}p</b>`:''}</div>`;}).join(''):''}</div>
+    return `<b class="wk3-ld${stF.loaded?' done':''}" style="cursor:pointer" title="Ημερομηνία φόρτωσης${stF.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${primary?.id}','Loading DateTime','${primary?.fields['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b>`; })()}<span class="frm">${vsExp?'Cross-Dock <span class="wk3-vsb">VS</span>':_wk3LocHTML(isGroup?gLs:fromStr,'Φόρτωση',isGroup?gL:primary?.fields._stopsL)}</span><span class="wk3-sep">→</span><span class="to">${_wk3LocHTML(isGroup?gDs:toStr,'Παράδοση',isGroup?gD:primary?.fields._stopsD)}${stF.late?'<span class="wk3-late" title="Καθυστέρησε">!</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''}${(primary?.fields['Order Number']||ref)?`<span class="wk3-ordn" title="Order">${escapeHtml(String(primary?.fields['Order Number']||ref))}</span>`:''}</span></span>${vsExp?'':_wk3MoreStops(isGroup?gLs:fromStr,isGroup?gL:primary?.fields._stopsL,'load')}${_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:primary?.fields._stopsD,'del')}${(isGroup&&ui.openGroup===row.id)?exps.map((m,k)=>{const mf=m.fields;
+        const ml=mf['Loading DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Loading DateTime']))}</b> `:'';
+        const md=mf['Delivery DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Delivery DateTime']))}</b> `:'';
+        return `<div class="wk3-stopline wk3-gm" title="Κλικ: φόρμα παραγγελίας" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><span class="wk3-gmc">${ml}${(_wiClean(mf['Loading Summary']||mf['Client Name']||'—'))}</span><span class="wk3-sep">→</span><span class="wk3-gmc">${md}${(_wiClean(mf['Delivery Summary']||'—'))}</span><span class="wk3-gmp">${mf['Total Pallets']?mf['Total Pallets']+'p':''}</span></div>`;}).join(''):''}</div>
       <span class="wk3-meta"><span class="wk3-palpe">${pals?pals+'p':''}${_wiBadges(primary?.fields||{})}</span>${_wiCrossChip(primary?.fields)}${_wiExecChip(primary?.fields,row.saved)}</span>
     </div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
