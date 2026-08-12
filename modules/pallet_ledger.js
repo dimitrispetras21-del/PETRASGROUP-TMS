@@ -97,7 +97,8 @@ function _plvDraw() {
       <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
     <div style="overflow-x:auto">
-    <table style="width:100%;border-collapse:collapse;font-size:13px">
+    <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
+    <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
       <tr style="text-align:left;color:var(--panel-dim)">
         <th style="padding:8px">Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th>
         <th>Σημείο</th><th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th>
