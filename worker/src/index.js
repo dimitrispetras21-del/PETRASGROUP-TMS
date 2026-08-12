@@ -2828,6 +2828,45 @@ async function handlePallets(request, url, origin, env) {
       const { rows } = await dbSelectRaw(env, view, params);
       return jsonOk({ type, records: rows }, origin, env);
     }
+    // ---- POST /pallets/sheets  {filename, content_base64} → Storage ----
+    // Ο browser ΔΕΝ μιλάει στο Storage — μόνο μέσω εδώ (service key).
+    if (resource === "sheets" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.filename || !body.content_base64) {
+        return jsonError("filename + content_base64 required", 400, origin, env);
+      }
+      let bytes;
+      try { bytes = Uint8Array.from(atob(body.content_base64), (c) => c.charCodeAt(0)); }
+      catch { return jsonError("Invalid base64", 400, origin, env); }
+      if (bytes.length > 8 * 1024 * 1024) return jsonError("File too large (max 8MB)", 400, origin, env);
+      const safeName = String(body.filename).replace(/[^A-Za-z0-9._-]/g, "_").slice(-80);
+      const path = `${Date.now()}-${safeName}`;
+      const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/pallet-sheets/${path}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/octet-stream" },
+        body: bytes
+      });
+      if (!up.ok) {
+        const d = await up.text().catch(() => "");
+        console.error("PALLETS sheet upload", up.status, d.slice(0, 200));
+        return jsonError("Upload failed", 500, origin, env);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "upload", table: "pallet-sheets", recordId: path });
+      return jsonOk({ path }, origin, env, 201);
+    }
+    // ---- GET /pallets/sheets?path=  → signed URL (1 ώρα) ----
+    if (resource === "sheets" && method === "GET") {
+      const p = url.searchParams.get("path");
+      if (!p) return jsonError("path required", 400, origin, env);
+      const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/pallet-sheets/${encodeURIComponent(p).replace(/%2F/g, "/")}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!sg.ok) return jsonError("Sign failed", 500, origin, env);
+      const data = await sg.json();
+      return jsonOk({ url: `${env.SUPABASE_URL}/storage/v1${data.signedURL}` }, origin, env);
+    }
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`PALLETS ${method} ${url.pathname}`, e.message);
