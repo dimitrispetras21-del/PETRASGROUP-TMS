@@ -6541,3 +6541,18 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
    οι αριθμοί γράφουν πρώτα την τιμή τους και μετά κινούνται, και η κουκκίδα
    κατάστασης είναι στατική. */
 
+
+/* Οι κάρτες της ημέρας δείχνουν ΟΛΕΣ τις γραμμές, όχι τις 6 πρώτες.
+   Το slice(0,6) έκοβε σιωπηλά: με 16 παραδόσεις φαίνονταν 6, και το
+   υποσέλιδο έγραφε «Προβολή όλων (16)» δίπλα σε 6 ορατές γραμμές — ο
+   χρήστης δεν είχε τρόπο να ξέρει τι δεν βλέπει. Το ύψος το κρατά
+   εσωτερικό scroll αντί για κόψιμο δεδομένων. Owner 12/8/2026. */
+.dash-home .dash-ops-grid .dash-card-body {
+  max-height: 340px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.dash-home .dash-ops-grid .dash-card-body::-webkit-scrollbar { width: 8px; }
+.dash-home .dash-ops-grid .dash-card-body::-webkit-scrollbar-thumb {
+  background: rgba(11,25,41,0.18); border-radius: 4px;
+}

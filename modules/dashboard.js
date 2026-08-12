@@ -524,21 +524,23 @@ async function renderDashboard() {
               <div class="dash-card">
                 <div class="dash-card-header">
                   <div class="dash-card-title">${_i('arrow_up_right', 12)} Αναχωρήσεις</div>
+                  <span class="dash-card-meta">${departures.length}</span>
                   <span class="dash-card-link" onclick="navigate('weekly_intl')">Εβδομαδιαίο ${_i('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
-                  ${departures.length ? departures.slice(0, 6).map(d => _dashOpsRow(d, 'depart')).join('') : _dashEmpty('truck', 'Δεν υπάρχουν αναχωρήσεις σήμερα/αύριο')}
-                  ${departures.length > 6 ? `<div style="text-align:center;padding:var(--space-2) 0 0"><span class="dash-card-link" onclick="navigate('weekly_intl')">Προβολή όλων (${departures.length}) ${_i('chevron_right', 12)}</span></div>` : ''}
+                  ${departures.length ? departures.map(d => _dashOpsRow(d, 'depart')).join('') : _dashEmpty('truck', 'Δεν υπάρχουν αναχωρήσεις σήμερα/αύριο')}
+                  
                 </div>
               </div>
               <div class="dash-card">
                 <div class="dash-card-header">
                   <div class="dash-card-title">${_i('package', 12)} Παραδόσεις</div>
+                  <span class="dash-card-meta">${deliveries.length}</span>
                   <span class="dash-card-link" onclick="navigate('orders_intl')">Orders ${_i('chevron_right', 12)}</span>
                 </div>
                 <div class="dash-card-body">
-                  ${deliveries.length ? deliveries.slice(0, 6).map(d => _dashOpsRow(d, 'deliver')).join('') : _dashEmpty('package', 'Δεν υπάρχουν παραδόσεις σήμερα/αύριο')}
-                  ${deliveries.length > 6 ? `<div style="text-align:center;padding:var(--space-2) 0 0"><span class="dash-card-link" onclick="navigate('orders_intl')">Προβολή όλων (${deliveries.length}) ${_i('chevron_right', 12)}</span></div>` : ''}
+                  ${deliveries.length ? deliveries.map(d => _dashOpsRow(d, 'deliver')).join('') : _dashEmpty('package', 'Δεν υπάρχουν παραδόσεις σήμερα/αύριο')}
+                  
                 </div>
               </div>
             </div>

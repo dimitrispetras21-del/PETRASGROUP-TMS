@@ -20,6 +20,11 @@
       NAV.forEach(group => {
         if (typeof can === 'function' && can(group.perm) === 'none') return;
         group.items.forEach(item => {
+          // Το ⌘K αγνοούσε το per-item role gate του NAV: το «TRIP PnL» (και
+          // τώρα το «National Pick Ups») εμφανιζόταν εδώ σε όλους ενώ ήταν
+          // κρυμμένο από το μενού. Ένα κρυφό item που το ⌘K διαφημίζει δεν
+          // είναι κρυφό.
+          if (item.role && typeof ROLE !== 'undefined' && ROLE !== item.role) return;
           items.push({
             type: 'page',
             section: group.section,

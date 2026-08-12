@@ -426,6 +426,12 @@ function _wnPaint() {
   // αγγίζεται. Αν αποτύχει ή είναι μηδέν, ο μετρητής απλώς δεν εμφανίζεται —
   // ένα «0 στην ουρά» που στην πραγματικότητα είναι σφάλμα δικτύου θα ήταν
   // χειρότερο από το τίποτα.
+  // owner 12/8: το Pick Ups έγινε owner-only. Ο μετρητής είναι κουμπί προς
+  // εκείνη τη σελίδα — σε άλλον ρόλο θα οδηγούσε σε «δεν έχεις πρόσβαση».
+  if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') {
+    const q0 = document.getElementById('wn-pickups-q');
+    if (q0) q0.outerHTML = '';
+  } else
   safeFetch(() => atGetAll(TABLES.GL_LINES, { filterByFormula: `{Status}="Unassigned"`, fields: ['Status'] }, false),
             'weekly natl: pick ups queue', [])
   .then(gl => {

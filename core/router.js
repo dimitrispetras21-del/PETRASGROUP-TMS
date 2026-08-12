@@ -7,7 +7,11 @@ const NAV = [
     { id: 'dashboard',      label: 'Dashboard',           icon: 'layout_grid' },
     { id: 'weekly_intl',    label: 'Weekly International',icon: 'globe' },
     { id: 'weekly_natl',    label: 'Weekly National',     icon: 'home' },
-    { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'package' },
+    // owner-only (owner 12/8): η σελίδα ξαναχτίζεται μετά τον καθαρισμό
+    // δεδομένων και δεν τη δουλεύει κανείς άλλος στο μεταξύ. Το gate είναι
+    // ΜΟΝΟ front end — το petras-assign iframe κρατά δικό του JWT, οπότε όποιος
+    // ξέρει το URL το φτάνει απευθείας. Πραγματικό κλείδωμα θέλει RBAC στον Worker.
+    { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'package', role: 'owner' },
   ]},
   { section: 'Daily Ops', perm: 'planning', items: [
     { id: 'daily_ops',      label: 'Daily Ops Plan',      icon: 'list_checks' },
@@ -272,6 +276,9 @@ function navigate(page) {
     case 'weekly_intl':    renderWeeklyIntl(); break;
     case 'weekly_natl':    renderWeeklyNatl();       break;
     case 'weekly_pickups':
+      // Ίδιο gate με το NAV item: χωρίς αυτό, ?page=weekly_pickups ή ένα παλιό
+      // bookmark παρακάμπτει το κρυμμένο μενού.
+      if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') { c.innerHTML = showAccessDenied(); break; }
       c.style.padding = '0';
       c.style.overflow = 'hidden';
       // Make the parent .content div fill the viewport so the iframe has room to grow.
