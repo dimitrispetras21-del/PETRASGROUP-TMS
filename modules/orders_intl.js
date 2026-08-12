@@ -200,7 +200,7 @@ function _buildWeekOpts() {
 
 // ─── Sort helpers ────────────────────────────────
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡΑΓΓΕΛΙΑΣ',  type: 'text',   w: '200px', get: (f) => f['Order Number']||'' },
+  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡ.',  type: 'text',   w: '100px', get: (f) => f['Order Number']||'' },
   { key: 'flags',    label: '',           type: 'text',   w: '80px',  get: () => '', nosort: true },
   { key: 'week',     label: 'ΕΒΔ.',      type: 'number', w: '55px',  get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: '75px',  get: (f) => f['Direction']||'' },
@@ -210,6 +210,7 @@ const _intlColDefs = [
   { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
   { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
+  { key: 'price',    label: 'ΤΙΜΗ €',    type: 'number', w: '70px',  get: (f) => f['Price']||0 },
   { key: 'status',   label: 'ΚΑΤΑΣΤΑΣΗ',    type: 'text',   w: '80px',  get: (f) => f['Status']||'Pending' },
   { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
 ];
@@ -260,7 +261,7 @@ function _oiRowHtml(r) {
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
   const _cw = (w) => `style="width:${w};min-width:${w};max-width:${w};overflow:hidden;text-overflow:ellipsis;white-space:nowrap"`;
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
-    <td ${_cw('200px')}><strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
+    <td ${_cw('100px')}><strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
     <td ${_cw('80px')}>${flags}</td>
     <td ${_cw('55px')}>W${escapeHtml(f['Week Number']||'—')}</td>
     <td ${_cw('75px')}>${dirB}</td>
@@ -270,6 +271,7 @@ function _oiRowHtml(r) {
     <td ${_cw('75px')}>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
     <td ${_cw('75px')}>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
     <td ${_cw('45px')}>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
+    <td ${_cw('70px')}>${f['Price']?'€'+escapeHtml(String(f['Price'])):'—'}</td>
     <td ${_cw('80px')}>${stB}</td>
     <td ${_cw('45px')} onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
       title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
