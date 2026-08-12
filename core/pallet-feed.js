@@ -54,13 +54,14 @@ async function plOnOrderSaved(orderId, source) {
     if (!rec) return;
     if (!rec.fields['Pallet Exchange']) return plOnExchangeOff(orderId, source);
     const clientRec = _plClientRec(rec.fields);
+    const claimed = new Set();
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Loading') continue;
       const existing = await plFetch('/pallets/movements?order_stop_rec=' + encodeURIComponent(s.id));
       const cur = (existing.records || [])[0];
       const pallets = parseInt(s.fields[F.STOP_PALLETS], 10) || 0;
       if (!cur) {
-        await plFetch('/pallets/movements', { method: 'POST', body: {
+        const created = await plFetch('/pallets/movements', { method: 'POST', body: {
           movement_date: _plDate(s.fields[F.STOP_DATETIME]),
           counterparty_type: 'CLIENT',
           client_rec: clientRec,
@@ -69,10 +70,22 @@ async function plOnOrderSaved(orderId, source) {
           taken: pallets, given: 0,
           order_stop_rec: s.id, order_rec: orderId
         }});
-      } else if (cur.status === 'pending' && cur.taken !== pallets) {
-        await plFetch('/pallets/movements/' + cur.id, { method: 'PATCH', body: { taken: pallets } });
+        if (created && created.record) claimed.add(created.record.id);
+      } else {
+        claimed.add(cur.id);
+        if (cur.status === 'pending' && cur.taken !== pallets) {
+          await plFetch('/pallets/movements/' + cur.id, { method: 'PATCH', body: { taken: pallets } });
+        }
+        // confirmed: δεν αγγίζεται ποτέ από feeder
       }
-      // confirmed: δεν αγγίζεται ποτέ από feeder
+    }
+    // Στάση που διαγράφηκε από την παραγγελία αφήνει ορφανή εκκρεμή που δείχνει
+    // σε ανύπαρκτη στάση. Τη σβήνουμε εδώ — ΜΟΝΟ pending· οι confirmed είναι ιστορικό.
+    const all = await plFetch('/pallets/movements?order_rec=' + encodeURIComponent(orderId));
+    for (const m of (all.records || [])) {
+      if (m.status === 'pending' && m.event_type === 'LOADING' && !claimed.has(m.id)) {
+        await plFetch('/pallets/movements/' + m.id, { method: 'DELETE' });
+      }
     }
   });
 }
@@ -114,8 +127,14 @@ async function plOnIntlPartnerAssigned(orderId) {
     const evType = f['Direction'] === 'Import' ? 'PARTNER_DROPOFF' : 'PARTNER_PICKUP';
     // Υπάρχουσα partner-εγγραφή του order (μας αφορά ΜΟΝΟ pending)
     const existing = await plFetch('/pallets/movements?order_rec=' + encodeURIComponent(orderId));
-    const cur = (existing.records || []).find(m =>
-      (m.event_type === 'PARTNER_PICKUP' || m.event_type === 'PARTNER_DROPOFF') && m.status === 'pending');
+    const partnerMoves = (existing.records || []).filter(m =>
+      m.event_type === 'PARTNER_PICKUP' || m.event_type === 'PARTNER_DROPOFF');
+    // Αν η ανταλλαγή οριστικοποιήθηκε (η ράμπα έγραψε το δελτίο), ο feeder δεν
+    // ξαναγράφει τίποτα: μια δεύτερη αποθήκευση της παραγγελίας θα δημιουργούσε
+    // διπλή κίνηση δίπλα στην οριστική. Οποιαδήποτε αλλαγή από εδώ και πέρα
+    // γίνεται χειροκίνητα από το Ισοζύγιο (αντιλογισμός).
+    if (partnerMoves.some(m => m.status === 'confirmed')) return;
+    const cur = partnerMoves.find(m => m.status === 'pending');
     if (!eligible) {
       if (cur) await plFetch('/pallets/movements/' + cur.id, { method: 'DELETE' });
       return;
