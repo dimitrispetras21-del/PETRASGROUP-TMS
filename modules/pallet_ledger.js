@@ -208,7 +208,7 @@ async function plvDrill(kind, id) {
   const idKey = kind === 'clients' ? 'client_id' : 'partner_id';
   const row = (PLV.balances[kind] || []).find(b => b[idKey] === id);
   const el = document.getElementById('plvModal');
-  el.innerHTML = '<div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000"><div style="background:var(--panel,#fff);border-radius:12px;padding:24px">Φόρτωση...</div></div>';
+  el.innerHTML = '<div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000"><div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px">Φόρτωση...</div></div>';
   try {
     const q = kind === 'clients' ? 'client_id=' + id : 'partner_id=' + id;
     const [hist, locs] = await Promise.all([
@@ -219,7 +219,7 @@ async function plvDrill(kind, id) {
     const locRows = (locs.records || []).filter(l => l.balance !== 0);
     el.innerHTML = `
     <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
-      <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(720px,94vw);max-height:88vh;overflow:auto">
+      <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(720px,94vw);max-height:88vh;overflow:auto">
         <h3 style="font-family:Syne;margin:0 0 4px">${row ? row[nameKey] : ''}</h3>
         <div style="font-size:13px;color:var(--panel-dim);margin-bottom:16px">
           Υπόλοιπο <b style="color:${row && row.balance > 0 ? '#15803D' : '#B91C1C'}">${row ? (row.balance > 0 ? '+' : '') + row.balance : '—'} pal</b>
@@ -256,7 +256,7 @@ function plvOpenConfirm(id) {
   if (!m) return;
   document.getElementById('plvModal').innerHTML = `
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
-    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(440px,92vw)">
+    <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(440px,92vw)">
       <h3 style="font-family:Syne;margin:0 0 6px">Επιβεβαίωση — ${m.code}</h3>
       <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">${PLV_EVENT_GR[m.event_type]} · ${_plvName(m)}</div>
       <label style="font-size:13px">Πήραμε (παλέτες)<input id="plvTaken" type="number" min="0" value="${m.taken}" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
@@ -306,7 +306,7 @@ function plvFixDelivery(id) {
   if (!m) return;
   document.getElementById('plvModal').innerHTML = `
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
-    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(440px,92vw)">
+    <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(440px,92vw)">
       <h3 style="font-family:Syne;margin:0 0 6px">Διόρθωση ανταλλαγής — ${m.code}</h3>
       <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">Δώσαμε ${m.given} γεμάτες. Πόσες άδειες πήραμε ΠΡΑΓΜΑΤΙΚΑ;</div>
       <label style="font-size:13px">Πήραμε (πραγματικά)<input id="plvRealTaken" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
@@ -413,7 +413,9 @@ function plvNewMovement() {
     .plv-ac>div:hover{background:var(--panel-border,#F4F6F9)}
   </style>
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
-    <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(460px,92vw);max-height:90vh;overflow:auto">
+    <!-- color ρητά: το --panel (#0F172A) τυχαίνει να ισούται με το --text, οπότε
+         χωρίς αυτό οι ετικέτες βγαίνουν σκούρο σε σκούρο — αόρατες (style.css:88). -->
+    <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(460px,92vw);max-height:90vh;overflow:auto">
       <h3 style="font-family:Syne;margin:0 0 14px">Νέα κίνηση παλετών</h3>
       <label style="font-size:13px">Είδος<select id="plvNmType" style="width:100%;padding:10px;margin:4px 0 12px">
         <option value="RETURN_OUT">Επιστροφή αδειών (δίνουμε)</option>
