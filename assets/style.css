@@ -4520,7 +4520,10 @@ button.sidebar-toggle {
 button.dash-kpi {
   appearance: none;
   font: inherit;
-  color: inherit;
+  /* ΟΧΙ color:inherit — το KPI-κουμπί κληρονομούσε το ΣΚΟΥΡΟ κείμενο του
+     φύλλου εργασίας πάνω στο σκούρο όργανο. Δεν φαινόταν μόνο επειδή κάθε
+     παιδί όριζε δικό του χρώμα· το πρώτο που δεν θα όριζε, θα εξαφανιζόταν. */
+  color: var(--dc-text);
   text-align: left;
   width: 100%;
   display: block;
