@@ -152,3 +152,10 @@ CONSOLIDATED LOAD και από εκεί το NAT_LOAD.
 **Απόδειξη**: live GET στη Supabase γύρισε 200 με `clients:{company_name}` / `locations:{name}` και `partners:null` σε κίνηση CLIENT. Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed. Deployed worker version 5c72d2f5.
 **Παγίδα**: τα lookups εξακολουθούν να τροφοδοτούν τα dropdown της «Νέα κίνηση» — εκεί το όριο των 1000 ΠΑΡΑΜΕΝΕΙ ανοιχτό (πελάτες μετά το όριο δεν επιλέγονται). Θέλει φίλτρο `active=true` ή typeahead· δεν αποφασίστηκε.
 **Ποιος**: owner (αναφορά «Πελάτης #1314» στο ημερολόγιο, 12/8).
+
+## 2026-08-12 — Παλέτες: typeahead αντί για select στη «Νέα κίνηση»
+**Επιλογή**: Νέο `GET /pallets/lookups/search?type=party|clients|partners|locations&q=` (ilike + limit 20). Στη φόρμα, τα πεδία Αντισυμβαλλόμενος και Σημείο έγιναν typeahead (input + κρυφό id), με debounce 250ms και ελάχιστο 2 χαρακτήρες.
+**Εναλλακτικές**: (α) φίλτρο `active=true` — μετρήθηκε και ΔΕΝ αρκεί: 1.821 ενεργοί πελάτες από 1.921, πάλι πάνω από το όριο των 1000· οι τοποθεσίες (1.164) δεν έχουν καν στήλη `active`· (β) pagination με offset στα lookups — φέρνει μεν όλους, αλλά αφήνει select με ~1.900 options που η λογίστρια πρέπει να σκρολάρει, και μεγαλώνει το payload σε κάθε άνοιγμα σελίδας.
+**Απόδειξη**: `ilike` επιβεβαιωμένα case-insensitive στα ελληνικά (`ΑΦΟΙ` και `αφοι` → ίδια 20 αποτελέσματα, live 12/8). Deployed worker version e35b7547.
+**Παγίδα**: το κρυφό πεδίο μηδενίζεται σε κάθε πληκτρολόγηση — χωρίς αυτό, ο χρήστης σβήνει το όνομα και υποβάλλει τον προηγούμενο πελάτη. Η επιλογή γίνεται σε `onmousedown`, όχι `onclick`: το blur του input προλαβαίνει το click.
+**Ποιος**: owner (επιλογή typeahead έναντι active-filter, 12/8).

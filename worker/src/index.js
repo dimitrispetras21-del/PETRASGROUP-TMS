@@ -2636,6 +2636,43 @@ async function handlePallets(request, url, origin, env) {
     return jsonError("Forbidden", 403, origin, env);
   }
   try {
+    // ---- GET /pallets/lookups/search?type=party|clients|partners|locations&q= ----
+    // Το select της «Νέα κίνηση» δεν μπορεί να δείξει 1.921 πελάτες: η PostgREST
+    // κόβει στα 1000 (db-max-rows) και το active=true ΔΕΝ σώζει (1.821 ενεργοί,
+    // μετρημένο 12/8). Server-side αναζήτηση — η βάση γυρίζει 20 και το όριο
+    // παύει να αφορά τη φόρμα.
+    if (resource === "lookups" && method === "GET" && recId === "search") {
+      // Τα * και % είναι wildcards του ilike: αν περάσουν αυτούσια, ένα σκέτο
+      // «*» ζητά ξανά ολόκληρο τον πίνακα — δηλαδή πίσω στο ίδιο όριο.
+      const q = (url.searchParams.get("q") || "").replace(/[*%]/g, "").trim();
+      if (q.length < 2) return jsonOk({ records: [] }, origin, env);
+      const type = url.searchParams.get("type") || "party";
+      const plSearchOne = async (table, nameCol, kind) => {
+        const p = new URLSearchParams();
+        p.set("select", `id,${nameCol}`);
+        // ilike, όχι like: τα ονόματα είναι άλλοτε ΚΕΦΑΛΑΙΑ άλλοτε πεζά και ο
+        // χρήστης δεν ξέρει ποια εκδοχή κρατά η βάση.
+        p.set(nameCol, `ilike.*${q}*`);
+        p.set("order", `${nameCol}.asc`);
+        p.set("limit", "20");
+        const { rows } = await dbSelectRaw(env, table, p);
+        return rows.map((r) => ({ id: r.id, name: r[nameCol], kind }));
+      };
+      let records;
+      if (type === "locations") records = await plSearchOne("locations", "name", "L");
+      else if (type === "clients") records = await plSearchOne("clients", "company_name", "C");
+      else if (type === "partners") records = await plSearchOne("partners", "company_name", "P");
+      else {
+        // «party» = ένα πεδίο Αντισυμβαλλόμενος για πελάτες ΚΑΙ partners: ο
+        // χρήστης δεν πρέπει να διαλέγει είδος πριν ξέρει ποιον ψάχνει.
+        const [cs, ps] = await Promise.all([
+          plSearchOne("clients", "company_name", "C"),
+          plSearchOne("partners", "company_name", "P")
+        ]);
+        records = cs.concat(ps);
+      }
+      return jsonOk({ records }, origin, env);
+    }
     // ---- GET /pallets/lookups (dropdowns: πελάτες, partners, τοποθεσίες) ----
     if (resource === "lookups" && method === "GET") {
       // Τα όρια ΔΕΝ είναι διακοσμητικά: με 500 πελάτες κόβονταν όσοι είναι

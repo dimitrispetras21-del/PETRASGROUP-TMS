@@ -341,12 +341,71 @@ async function plvDoFix(id) {
   finally { PLV.busy = false; }
 }
 
+/* ── Typeahead αντισυμβαλλόμενου/σημείου ──
+   Το select δεν χωρούσε 1.921 πελάτες — και δεν τους έδειχνε ποτέ όλους ούτως
+   ή άλλως: η PostgREST κόβει στα 1000 και το active=true αφήνει 1.821 (12/8).
+   Ο χρήστης πληκτρολογεί, ο server γυρίζει 20. */
+const PLV_AC = { rows: {}, timer: null };
+
+function plvAcSearch(field, type) {
+  clearTimeout(PLV_AC.timer);
+  const inp = document.getElementById('plvAcQ_' + field);
+  const hid = document.getElementById(field);
+  const box = document.getElementById('plvAcList_' + field);
+  // Κάθε πληκτρολόγηση ακυρώνει την προηγούμενη επιλογή: αλλιώς ο χρήστης
+  // σβήνει το όνομα, βλέπει άδειο πεδίο και υποβάλλει τον παλιό πελάτη.
+  hid.value = '';
+  const q = inp.value.trim();
+  if (q.length < 2) { box.style.display = 'none'; return; }
+  PLV_AC.timer = setTimeout(async () => {
+    let rows;
+    try {
+      const r = await plFetch('/pallets/lookups/search?type=' + type + '&q=' + encodeURIComponent(q));
+      rows = r.records || [];
+    } catch (e) {
+      // Σιωπηλή άδεια λίστα θα διαβαζόταν ως «δεν υπάρχει τέτοιος πελάτης» και
+      // η λογίστρια θα άνοιγε διπλοεγγραφή.
+      box.innerHTML = '<div style="color:var(--danger,#B91C1C)">Σφάλμα αναζήτησης: ' + escapeHtml(e.message) + '</div>';
+      box.style.display = 'block';
+      return;
+    }
+    PLV_AC.rows[field] = rows;
+    box.innerHTML = rows.length
+      ? rows.map((r, i) => `<div onmousedown="plvAcPick('${field}',${i})">${escapeHtml(r.name || '')}` +
+          (r.kind === 'P' ? ' <span style="opacity:.55">· partner</span>' : '') + '</div>').join('')
+      : '<div style="opacity:.6">Καμία εγγραφή</div>';
+    box.style.display = 'block';
+  }, 250);
+}
+
+// onmousedown και όχι onclick: το blur του input προλαβαίνει το click και
+// κρύβει τη λίστα πριν καταγραφεί η επιλογή.
+function plvAcPick(field, idx) {
+  const r = (PLV_AC.rows[field] || [])[idx];
+  if (!r) return;
+  document.getElementById(field).value = r.kind === 'L' ? String(r.id) : r.kind + ':' + r.id;
+  document.getElementById('plvAcQ_' + field).value = r.name;
+  document.getElementById('plvAcList_' + field).style.display = 'none';
+}
+
+function plvAcBlur(field) {
+  setTimeout(() => {
+    const b = document.getElementById('plvAcList_' + field);
+    if (b) b.style.display = 'none';
+  }, 150);
+}
+
 /* ── Νέα χειροκίνητη κίνηση ── */
 function plvNewMovement() {
-  const cls = (PLV.lookups.clients || []).map(c => `<option value="C:${c.id}">${c.company_name}</option>`).join('');
-  const prs = (PLV.lookups.partners || []).map(p => `<option value="P:${p.id}">${p.company_name}</option>`).join('');
-  const locs = (PLV.lookups.locations || []).map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  PLV_AC.rows = {};
   document.getElementById('plvModal').innerHTML = `
+  <style>
+    .plv-ac{position:absolute;left:0;right:0;top:44px;z-index:20;background:var(--panel,#fff);
+      border:1px solid var(--line,#e2e8f0);border-radius:8px;max-height:210px;overflow:auto;
+      box-shadow:0 8px 24px rgba(11,25,41,.16)}
+    .plv-ac>div{padding:9px 12px;font-size:13px;cursor:pointer}
+    .plv-ac>div:hover{background:var(--bg,#F4F6F9)}
+  </style>
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
     <div style="background:var(--panel,#fff);border-radius:12px;padding:24px;width:min(460px,92vw);max-height:90vh;overflow:auto">
       <h3 style="font-family:Syne;margin:0 0 14px">Νέα κίνηση παλετών</h3>
@@ -358,10 +417,24 @@ function plvNewMovement() {
         <option value="ADJUSTMENT">Τακτοποίηση/διαγραφή οφειλής (μόνο owner)</option>
       </select></label>
       <label style="font-size:13px">Αιτιολογία (υποχρεωτική για τακτοποίηση)<input id="plvNmReason" type="text" style="width:100%;padding:10px;margin:4px 0 12px"></label>
-      <label style="font-size:13px">Αντισυμβαλλόμενος<select id="plvNmParty" style="width:100%;padding:10px;margin:4px 0 12px">
-        <optgroup label="Πελάτες">${cls}</optgroup><optgroup label="Partners">${prs}</optgroup>
-      </select></label>
-      <label style="font-size:13px">Σημείο (προαιρετικό)<select id="plvNmLoc" style="width:100%;padding:10px;margin:4px 0 12px"><option value="">—</option>${locs}</select></label>
+      <label style="font-size:13px">Αντισυμβαλλόμενος
+        <div style="position:relative">
+          <input id="plvAcQ_plvNmParty" type="text" autocomplete="off" placeholder="Πελάτης ή partner — 2+ γράμματα"
+            oninput="plvAcSearch('plvNmParty','party')" onblur="plvAcBlur('plvNmParty')"
+            style="width:100%;padding:10px;margin:4px 0 12px">
+          <input type="hidden" id="plvNmParty" value="">
+          <div class="plv-ac" id="plvAcList_plvNmParty" style="display:none"></div>
+        </div>
+      </label>
+      <label style="font-size:13px">Σημείο (προαιρετικό)
+        <div style="position:relative">
+          <input id="plvAcQ_plvNmLoc" type="text" autocomplete="off" placeholder="Τοποθεσία — 2+ γράμματα"
+            oninput="plvAcSearch('plvNmLoc','locations')" onblur="plvAcBlur('plvNmLoc')"
+            style="width:100%;padding:10px;margin:4px 0 12px">
+          <input type="hidden" id="plvNmLoc" value="">
+          <div class="plv-ac" id="plvAcList_plvNmLoc" style="display:none"></div>
+        </div>
+      </label>
       <label style="font-size:13px">Ημερομηνία<input id="plvNmDate" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:10px;margin:4px 0 12px"></label>
       <div style="display:flex;gap:10px">
         <label style="font-size:13px;flex:1">Πήραμε<input id="plvNmTaken" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px"></label>
@@ -380,7 +453,11 @@ function plvNewMovement() {
 async function plvDoCreate() {
   if (PLV.busy) return; PLV.busy = true;
   try {
-    const [kind, pid] = document.getElementById('plvNmParty').value.split(':');
+    // Με typeahead το πεδίο μένει κενό αν ο χρήστης πληκτρολόγησε χωρίς να
+    // διαλέξει. Χωρίς αυτόν τον έλεγχο θα έφτανε partner_id=NaN στον worker.
+    const partyVal = document.getElementById('plvNmParty').value;
+    if (!partyVal) { showErrorToast('Διάλεξε αντισυμβαλλόμενο από τη λίστα', 'error'); return; }
+    const [kind, pid] = partyVal.split(':');
     const path = await _plvUploadIfAny();
     const body = {
       movement_date: document.getElementById('plvNmDate').value,
@@ -417,3 +494,5 @@ window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; wind
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
 window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV;
 window.plvDrill = plvDrill;
+// Τα inline oninput/onmousedown/onblur του typeahead τρέχουν σε global scope.
+window.plvAcSearch = plvAcSearch; window.plvAcPick = plvAcPick; window.plvAcBlur = plvAcBlur;
