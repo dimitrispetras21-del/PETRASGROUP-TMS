@@ -2875,6 +2875,7 @@ window._intlExportCSV = _intlExportCSV;
 window._intlPrint = _intlPrint;
 window.submitIntlOrder = submitIntlOrder;
 window._addStop = _addStop;
+window._removeStop = _removeStop;
 window._scanExtract = _scanExtract;
 window._scanOpenStored = _scanOpenStored;
 window._scanHandleFiles = _scanHandleFiles;
