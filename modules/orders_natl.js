@@ -705,11 +705,15 @@ async function _grpSubmit() {
   const common = {
     direction: v('nf_Direction'), fromLocId: v('lv_npickup'),
     fromLabel: (getRefLocations()||[]).find(l => l.id === v('lv_npickup'))?.fields?.Name || '',
-    loadDate: v('nf_LoadDate'), delDate: v('nf_DelDate'),
+    loadDate: v('nf_LoadDate'), delDate: '',
     goods: v('nf_Goods'), temp: v('nf_Temp'),
   };
   const groups = _grpGroups();
-  if (!common.fromLocId || !common.loadDate || !common.delDate) { toast('Σημείο φόρτωσης και οι δύο ημερομηνίες είναι υποχρεωτικά','warn'); return; }
+  // Το πεδίο «Delivery Date» της κορυφής έφυγε μαζί με το «Pallets» (owner
+  // 12/08): η ημερομηνία παράδοσης του φορτίου είναι η πρώτη δηλωμένη των
+  // σημείων. Εφεδρεία η φόρτωση, ώστε CL/NL να μη μένουν χωρίς ημερομηνία.
+  common.delDate = groups.flatMap(g => g.stops).map(s => s.date).find(Boolean) || common.loadDate;
+  if (!common.fromLocId || !common.loadDate) { toast('Σημείο φόρτωσης και ημερομηνία φόρτωσης είναι υποχρεωτικά','warn'); return; }
   if (!groups.length) { toast('Χρειάζεται τουλάχιστον μία γραμμή με πελάτη και τοποθεσία','warn'); return; }
   const nStops = groups.reduce((s,g)=>s+g.stops.length,0);
   if (nStops > 10) { toast('Όριο 10 σημείων παράδοσης ανά φορτίο','warn'); return; }
@@ -910,9 +914,9 @@ async function submitNatlOrder(recId) {
     if(!fields['Direction'])          _vErrors.push('Direction is required');
     if(!clientId)                     _vErrors.push('Client is required');
     if(!pickupId)                     _vErrors.push('Pickup Location is required');
-    if(!delivId)                      _vErrors.push('Delivery Location is required');
+    if(!delivId)                      _vErrors.push('Χρειάζεται τουλάχιστον ένα σημείο παράδοσης');
     if(!fields['Loading DateTime'])   _vErrors.push('Loading Date is required');
-    if(!fields['Delivery DateTime'])  _vErrors.push('Delivery Date is required');
+    if(!fields['Delivery DateTime'])  _vErrors.push('Χρειάζεται ημερομηνία σε ένα τουλάχιστον σημείο');
 
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
