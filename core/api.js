@@ -762,10 +762,39 @@ async function preloadReferenceData() {
     REF_DATA.partners  = partners;
     REF_DATA._loaded   = true;
     REF_DATA._loading  = null;
+    _refDataRevalidate();
     return REF_DATA;
   });
 
   return REF_DATA._loading;
+}
+
+// Stale-while-revalidate (owner 12/8): το πρώτο paint σερβίρεται από το cache
+// (ταχύτητα ίδια), αλλά κάθε φόρτωμα κατεβάζει ΚΑΙ φρέσκα στο παρασκήνιο —
+// αλλιώς οι άλλοι χρήστες έβλεπαν νέους οδηγούς/ενεργά φορτηγά/συνεργάτες
+// έως και 4h αργότερα (TTL). ΗΠΙΑ προσγείωση: ενημερώνονται οι δομές στη
+// μνήμη, κανένα βίαιο repaint — τα φρέσκα φαίνονται στο επόμενο άνοιγμα.
+let _refRevalidated = false;
+function _refDataRevalidate() {
+  if (_refRevalidated) return;
+  _refRevalidated = true;
+  const T = typeof TABLES !== 'undefined' ? TABLES : {};
+  setTimeout(() => {
+    Promise.all([
+      atGetAll(T.TRUCKS,    { fields: _REF_FIELDS.trucks },    false),
+      atGetAll(T.DRIVERS,   { fields: _REF_FIELDS.drivers },   false),
+      atGetAll(T.TRAILERS,  { fields: _REF_FIELDS.trailers },  false),
+      atGetAll(T.LOCATIONS, { fields: _REF_FIELDS.locations }, false),
+      atGetAll(T.CLIENTS,   { fields: _REF_FIELDS.clients },   false),
+      atGetAll(T.PARTNERS,  { fields: _REF_FIELDS.partners },  false),
+    ]).then(([trucks, drivers, trailers, locations, clients, partners]) => {
+      REF_DATA.trucks = trucks; REF_DATA.drivers = drivers; REF_DATA.trailers = trailers;
+      REF_DATA.locations = locations; REF_DATA.clients = clients; REF_DATA.partners = partners;
+      // Τα search widgets τοποθεσιών κρατούν δικά τους arrays — φρεσκάρισμα
+      // επί τόπου (τα dropdowns διαβάζουν στο άνοιγμα, όχι snapshot).
+      if (typeof _fhRefreshLocations === 'function') _fhRefreshLocations(locations);
+    }).catch(e => console.warn('[refdata] revalidate:', e.message));
+  }, 1500);
 }
 
 // Convenience accessors — return cached arrays or empty arrays if not yet loaded

@@ -29,6 +29,24 @@ async function fhLoadLocations() {
   });
 }
 
+// SWR (owner 12/8): φρεσκάρισμα των shared arrays ΕΠΙ ΤΟΠΟΥ από το background
+// revalidate του api.js — νέες/μετονομασμένες τοποθεσίες χωρίς reload. In-place
+// (length=0, push) γιατί άλλα modules κρατούν αναφορά στο ίδιο array.
+function _fhRefreshLocations(locRecords) {
+  if (!Array.isArray(locRecords) || !locRecords.length || !_fhLocationsArr.length) return;
+  const sorted = locRecords
+    .map(r => ({
+      id: r.id,
+      label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ')
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+  _fhLocationsArr.length = 0;
+  sorted.forEach(l => {
+    _fhLocationsArr.push(l);
+    _fhLocationsMap[l.id] = l.label;
+  });
+}
+
 /**
  * Search clients by name (cached, debounced externally)
  */
