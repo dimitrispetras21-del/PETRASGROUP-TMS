@@ -1546,6 +1546,23 @@ async function _wiSaveImportMatch(rowId,impId){
   }
   _wiSync('wi-sync-'+rowId, matchFailed?'err':'ok',
     matchFailed?'Το ταίριασμα ΔΕΝ γράφτηκε στη βάση — ξαναπροσπάθησε ή κάνε Ανανέωση':'Αποθηκεύτηκε');
+
+  // Ταίριασμα σε ΗΔΗ ανατεθειμένο export (owner 13/8): το import αναλαμβάνεται
+  // από το ίδιο όχημα — κληρονομεί την ανάθεση στη βάση. Το κόμιστρο import
+  // (partner) μπαίνει αργότερα από το popover, δεν εφευρίσκεται εδώ.
+  if(!matchFailed && (row.truckId||row.partnerId)){
+    const inh=row.partnerId
+      ?{ 'Partner':[row.partnerId],'Is Partner Trip':true,
+         'Partner Truck Plates':row.partnerPlates||'',
+         'Status':'Assigned','Truck':[],'Trailer':[],'Driver':[] }
+      :{ 'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],
+         'Driver':row.driverId?[row.driverId]:[],
+         'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':'' };
+    try{
+      const ri=await atSafePatch(TABLES.ORDERS,impId,inh);
+      if(ri?.error) throw new Error(ri.error.message||ri.error.type);
+    }catch(err){ console.warn('[wi match] import assignment inherit:',err.message); }
+  }
 }
 
 async function _wiRemoveImport(rowId){
@@ -1580,6 +1597,15 @@ async function _wiRemoveImport(rowId){
   _wiSync('wi-sync-'+rowId, ok?'ok':'err',
     ok?'Αφαιρέθηκε':'Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση'); // T3
   if(ok){
+    // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
+    // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
+    try{
+      const rc=await atSafePatch(TABLES.ORDERS,impId,{
+        'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
+        'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
+      });
+      if(rc?.error) throw new Error(rc.error.message||rc.error.type);
+    }catch(err){ console.warn('[wi unmatch] import assignment clear:',err.message); }
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Import removed ✓');
@@ -2105,6 +2131,23 @@ async function _wiSave(rowId){
     if(btn){btn.disabled=false;btn.classList.remove('saving');}
     toast('Error: '+errors[0].slice(0,60),'warn');
     return;
+  }
+
+  // Η ανάθεση γράφεται ΚΑΙ στο ταιριασμένο import (owner 13/8): «αφού πρακτικά
+  // αυτός αναλαμβάνει την ανάθεση». Partner: το import παίρνει το ΔΙΚΟ του
+  // κόμιστρο (partnerRateImp). Το Clear ήδη καθάριζε και το import — τώρα
+  // υπάρχει συμμετρία σε save/αλλαγή/καθάρισμα/ξεταίριασμα.
+  if(row.importId){
+    const impFields=isPartner
+      ?{ 'Partner':[row.partnerId],'Is Partner Trip':true,
+         'Partner Truck Plates':row.partnerPlates||'',
+         'Partner Rate':row.partnerRateImp?parseFloat(row.partnerRateImp):null,
+         'Status':'Assigned','Truck':[],'Trailer':[],'Driver':[] }
+      :{ ...fields };
+    try{
+      const ri=await atSafePatch(TABLES.ORDERS,row.importId,impFields);
+      if(ri?.error) throw new Error(ri.error.message||ri.error.type);
+    }catch(err){ toast('Η ανάθεση δεν γράφτηκε στο import: '+err.message.slice(0,40),'warn'); }
   }
 
   // PARTNER ASSIGNMENT sync
