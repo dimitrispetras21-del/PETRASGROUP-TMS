@@ -89,29 +89,63 @@ async function renderDashboard() {
       if (lat && lng) locCoords[l.id] = { lat: +lat, lng: +lng };
     });
     // Distance via canonical haversineKm (core/utils.js); local copy removed.
+    //
+    // ΖΕΥΓΑΡΩΜΑ ΕΞΑΓΩΓΗΣ → ΕΠΙΣΤΡΟΦΗΣ. Είχε τρία λάθη που έδιναν μέσο όρο
+    // ενός ζεύγους ενώ υπήρχαν δεκάδες (owner 12/8/2026):
+    //   1. `imports.find(ίδιο φορτηγό)` έδινε σε ΚΑΘΕ εξαγωγή την ΠΡΩΤΗ
+    //      εισαγωγή του φορτηγού — τρεις εξαγωγές ταίριαζαν με την ίδια
+    //      επιστροφή, οι άλλες δύο δεν μετριόνταν ποτέ.
+    //   2. Καμία χρονική σειρά: επιστροφή που φόρτωσε ΠΡΙΝ την παράδοση
+    //      της εξαγωγής μετρούσε κανονικά.
+    //   3. Ζεύγος χωρίς συντεταγμένες έπεφτε ΣΙΩΠΗΛΑ. Το «μ.ό. N ζευγών»
+    //      μετρούσε μόνο όσα πέρασαν — με 1 στα 20, ο μέσος όρος ενός
+    //      δρομολογίου παρουσιαζόταν ως μέσος όρος του στόλου.
+    // Τώρα: κάθε επιστροφή καταναλώνεται ΜΙΑ φορά, επιλέγεται η πλησιέστερη
+    // ΜΕΤΑ την παράδοση, και όσα ζεύγη δεν μετρήθηκαν ΔΗΛΩΝΟΝΤΑΙ.
+    function _dashDeadKm(exps, imps) {
+      const firstStop = (id, type, last) => {
+        const st = (_dashStopsByOrder[id] || [])
+          .filter(x => x.fields[F.STOP_TYPE] === type)
+          .sort((a, b) => last
+            ? (b.fields[F.STOP_NUMBER] || 0) - (a.fields[F.STOP_NUMBER] || 0)
+            : (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
+        return st.length ? (st[0].fields[F.STOP_LOCATION] || [])[0] || null : null;
+      };
+      const used = new Set();
+      const list = [];
+      let paired = 0, noCoords = 0;
+      // Οι εξαγωγές κατά σειρά παράδοσης: η πρώτη που τελειώνει διαλέγει πρώτη.
+      [...exps].sort((a, b) => String(a.fields['Delivery DateTime'] || '')
+                      .localeCompare(String(b.fields['Delivery DateTime'] || '')))
+        .forEach(exp => {
+          const truck = getLinkId(exp.fields['Truck']);
+          if (!truck) return;
+          const doneAt = String(exp.fields['Delivery DateTime'] || '');
+          const cand = imps
+            .filter(i => !used.has(i.id) && getLinkId(i.fields['Truck']) === truck)
+            .filter(i => !doneAt || String(i.fields['Loading DateTime'] || '') >= doneAt)
+            .sort((a, b) => String(a.fields['Loading DateTime'] || '')
+                    .localeCompare(String(b.fields['Loading DateTime'] || '')))[0];
+          if (!cand) return;
+          used.add(cand.id);
+          paired++;
+          const a = firstStop(exp.id, 'Unloading', true);
+          const b = firstStop(cand.id, 'Loading', false);
+          if (a && b && locCoords[a] && locCoords[b]) {
+            list.push(Math.round(haversineKm(locCoords[a].lat, locCoords[a].lng,
+                                             locCoords[b].lat, locCoords[b].lng)));
+          } else {
+            noCoords++;   // ζεύγος υπάρχει, απόσταση άγνωστη — δηλώνεται
+          }
+        });
+      return { list, paired, noCoords };
+    }
     const weekExports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Export' && r.fields['Truck']);
     const weekImports = orders.filter(r => Number(r.fields['Week Number'])===Number(wn) && r.fields['Direction']==='Import' && r.fields['Truck']);
-    const deadKmList = [];
-    weekExports.forEach(exp => {
-      const expTruck = getLinkId(exp.fields['Truck']);
-      if (!expTruck) return;
-      const matchedImp = weekImports.find(imp => getLinkId(imp.fields['Truck']) === expTruck);
-      if (!matchedImp) return;
-      let expLocId = null;
-      const expUnloads = (_dashStopsByOrder[exp.id] || [])
-        .filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
-        .sort((a,b) => (b.fields[F.STOP_NUMBER]||0) - (a.fields[F.STOP_NUMBER]||0));
-      if (expUnloads.length) expLocId = (expUnloads[0].fields[F.STOP_LOCATION] || [])[0] || null;
-      let impLocId = null;
-      const impLoads = (_dashStopsByOrder[matchedImp.id] || [])
-        .filter(s => s.fields[F.STOP_TYPE] === 'Loading')
-        .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
-      if (impLoads.length) impLocId = (impLoads[0].fields[F.STOP_LOCATION] || [])[0] || null;
-      if (expLocId && impLocId && locCoords[expLocId] && locCoords[impLocId]) {
-        const d = haversineKm(locCoords[expLocId].lat, locCoords[expLocId].lng, locCoords[impLocId].lat, locCoords[impLocId].lng);
-        deadKmList.push(Math.round(d));
-      }
-    });
+    const _dk = _dashDeadKm(weekExports, weekImports);
+    const deadKmList = _dk.list;
+    const deadKmPaired = _dk.paired;
+    const deadKmNoCoords = _dk.noCoords;
     const avgDeadKm = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : -1;
     const maxDeadKm = deadKmList.length ? Math.max(...deadKmList) : 0;
 
@@ -202,24 +236,12 @@ async function renderDashboard() {
       return activeTrucks ? Math.round(used.size / activeTrucks * 100) : 0;
     });
     // Dead KM trend per week (using same haversine logic)
+    // Ίδιος αλγόριθμος με το KPI — όχι δεύτερο αντίγραφο που αποκλίνει.
     const deadKmTrend = trendWeeks.map(w => {
       const wExp = orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Export' && r.fields['Truck']);
       const wImp = orders.filter(r => r.fields['Week Number']==w && r.fields['Direction']==='Import' && r.fields['Truck']);
-      const list = [];
-      wExp.forEach(exp => {
-        const et = getLinkId(exp.fields['Truck']);
-        if (!et) return;
-        const mi = wImp.find(imp => getLinkId(imp.fields['Truck']) === et);
-        if (!mi) return;
-        const expUn = (_dashStopsByOrder[exp.id]||[]).filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b)=>(b.fields[F.STOP_NUMBER]||0)-(a.fields[F.STOP_NUMBER]||0));
-        const impLd = (_dashStopsByOrder[mi.id]||[]).filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
-        const el = expUn.length ? (expUn[0].fields[F.STOP_LOCATION]||[])[0] : null;
-        const il = impLd.length ? (impLd[0].fields[F.STOP_LOCATION]||[])[0] : null;
-        if (el && il && locCoords[el] && locCoords[il]) {
-          list.push(haversineKm(locCoords[el].lat, locCoords[el].lng, locCoords[il].lat, locCoords[il].lng));
-        }
-      });
-      return list.length ? Math.round(list.reduce((s,v)=>s+v,0)/list.length) : 0;
+      const l = _dashDeadKm(wExp, wImp).list;
+      return l.length ? Math.round(l.reduce((s,v)=>s+v,0)/l.length) : 0;
     });
     // On-time trend per week
     const onTimeTrend = trendWeeks.map(w => {
@@ -497,10 +519,10 @@ async function renderDashboard() {
             <div class="dash-kpi-label">${_i('route', 11)} ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ</div>
             <div class="dash-kpi-value ${avgDeadKm>=0 ? (avgDeadKm<=50?'dash-val-success':avgDeadKm<=150?'dash-val-warning':'dash-val-danger') : 'dash-val-muted'}">${avgDeadKm>=0 ? avgDeadKm+'km' : 'N/A'}${_dashDelta(deadKmDelta)}</div>
             <div class="dash-kpi-bottom">
-              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `μ.ό. ${deadKmList.length} ζεύγη · έως ${maxDeadKm}km` : 'κανένα ζεύγος διαδρομών'}</div></div>
+              <div class="dash-kpi-bottom-left"><div class="dash-kpi-sub">${avgDeadKm>=0 ? `μ.ό. ${deadKmList.length} ${deadKmList.length===1?'ζεύγους':'ζευγών'} · έως ${maxDeadKm}km` : (deadKmPaired ? `${deadKmPaired} ζεύγη χωρίς συντεταγμένες` : 'κανένα ζεύγος διαδρομών')}</div></div>
               ${_dashSpark(deadKmTrend, 'var(--panel-warn)')}
             </div>
-            <div class="dash-receipt"><b>ORDER_STOPS</b><span class="sep">·</span>W${wn}<span class="sep">·</span>${avgDeadKm>=0 ? `${deadKmList.length} ${deadKmList.length===1?'ζεύγος':'ζεύγη'} εξαγωγή→εισαγωγή` : 'χωρίς δείγμα'}</div>
+            <div class="dash-receipt"><b>ORDER_STOPS</b><span class="sep">·</span>W${wn}<span class="sep">·</span>${deadKmPaired ? `${deadKmList.length}/${deadKmPaired} ζεύγη μετρήθηκαν` : 'κανένα ζεύγος'}${deadKmNoCoords ? `<span class="sep">·</span>${deadKmNoCoords} χωρίς συντεταγμένες` : ''}</div>
           </button>
           <button type="button" class="dash-kpi" style="--kpi-dot:var(--panel-ok-hi)" onclick="navigate('orders_intl')">
             <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${totalDelivered > 0 ? 'var(--panel-ok)' : '#475569'},transparent)"></div>
