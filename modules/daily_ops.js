@@ -67,6 +67,28 @@ async function _opsLoad() {
   const ids=new Set(intl.map(r=>r.id));
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
 
+  // Κληρονομιά ανάθεσης ζεύγους (owner 13/8): σε ταιριασμένα ζεύγη η ανάθεση
+  // γράφεται ΜΟΝΟ στο export (Matched Import ID) — τα imports εμφανίζονταν
+  // «κενά» εδώ ενώ το Weekly τα έδειχνε ανατεθειμένα. Γεμίζουμε Truck/Driver/
+  // Trailer/Partner ΜΟΝΟ στη μνήμη για την προβολή· ΔΕΝ γράφεται στη βάση.
+  try{
+    const bareImps=[...intl,...OPS.overdue].filter(r=>{
+      const f=r.fields;
+      return f['Direction']==='Import' && !(f['Truck']||[]).length && !(f['Partner']||[]).length && !(f['Driver']||[]).length;
+    });
+    if(bareImps.length){
+      const ff=`OR(${bareImps.map(r=>`{Matched Import ID}='${r.id}'`).join(',')})`;
+      const exps=await atGetAll(TABLES.ORDERS,{filterByFormula:ff,fields:['Matched Import ID','Truck','Trailer','Driver','Partner','Is Partner Trip','Partner Truck Plates']},false);
+      const byImp={}; exps.forEach(e=>{ byImp[String(e.fields['Matched Import ID'])]=e.fields; });
+      bareImps.forEach(r=>{
+        const ef=byImp[r.id]; if(!ef) return;
+        ['Truck','Trailer','Driver','Partner','Is Partner Trip','Partner Truck Plates'].forEach(k=>{
+          if(ef[k]!=null && r.fields[k]==null) r.fields[k]=ef[k];
+        });
+      });
+    }
+  }catch(e){ console.warn('[ops] pair-assignment inherit:', e.message); }
+
   // Batch fetch ORDER_STOPS for location resolution
   const allRecs = [...intl, ...OPS.overdue];
   const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
