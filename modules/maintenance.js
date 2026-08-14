@@ -59,6 +59,9 @@ const MAINT_HISTORY_FIELDS = [
   // denormalized column for display and search only. Renaming a plate no longer
   // orphans its history (supersedes the HANDOFF.md dual-update rule).
   'Truck','Trailer',
+  // Needs Review σημαδεύει τις 91 εγγραφές του import με προβληματικό δεδομένο στην
+  // πηγή (ημερομηνία εκτός εύρους, χλμ βγαλμένα από κείμενο, γραμμή χωρίς κόστος).
+  'Needs Review',
 ];
 
 // Maintenance categories — derived from 1,152 real service events (2024-2026).
@@ -650,7 +653,7 @@ function _expiryPrint() {
 // ═════════════════════════════════════════════════════════════════
 // PAGE 2: SERVICE RECORDS
 // ═════════════════════════════════════════════════════════════════
-let _svcFilters = { vehicle: '', type: '', status: '' };
+let _svcFilters = { vehicle: '', type: '', status: '', year: '', workshop: '', review: '', q: '' };
 
 async function renderServiceRecords() {
   document.getElementById('content').innerHTML = showLoading('Loading service records…');
@@ -663,7 +666,22 @@ async function renderServiceRecords() {
   }
 }
 
-function _svcSetFilter(k, v) { _svcFilters[k] = v; _svcPaint(); }
+function _svcSetFilter(k, v) {
+  _svcFilters[k] = v;
+  _svcPaint();
+  // Το _svcPaint ξαναγράφει ΟΛΟ το #content, οπότε το πεδίο αναζήτησης χάνει την
+  // εστίαση σε κάθε πλήκτρο. Την επαναφέρουμε με τον δρομέα στο τέλος, αλλιώς η
+  // αναζήτηση είναι απλώς αδύνατη.
+  if (k === 'q') {
+    const el = document.getElementById('svc-q');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  }
+}
+
+function _svcClearFilters() {
+  Object.keys(_svcFilters).forEach(k => _svcFilters[k] = '');
+  _svcPaint();
+}
 
 function _svcPaint() {
   // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
@@ -674,6 +692,20 @@ function _svcPaint() {
   if (_svcFilters.vehicle) records = records.filter(r => r.fields['Vehicle Plate'] === _svcFilters.vehicle);
   if (_svcFilters.type)    records = records.filter(r => r.fields['Type'] === _svcFilters.type);
   if (_svcFilters.status)  records = records.filter(r => r.fields['Status'] === _svcFilters.status);
+  if (_svcFilters.year)    records = records.filter(r => (r.fields['Date']||'').startsWith(_svcFilters.year));
+  if (_svcFilters.workshop) records = records.filter(r => _wsName(r.fields['Workshop']) === _svcFilters.workshop);
+  if (_svcFilters.review)  records = records.filter(r => _svcFilters.review === 'yes' ? !!r.fields['Needs Review'] : !r.fields['Needs Review']);
+  if (_svcFilters.q) {
+    // Ένα πεδίο που ψάχνει παντού: με 1.091 εγγραφές το «θυμάμαι τι έγινε αλλά όχι πότε»
+    // είναι η συνηθισμένη περίπτωση, και τα dropdown δεν το καλύπτουν.
+    const q = _svcFilters.q.toLowerCase();
+    records = records.filter(r => {
+      const f = r.fields;
+      return [f['Vehicle Plate'], f['Description'], f['Parts'], f['Invoice Number'],
+              f['Notes'], _wsName(f['Workshop']), MAINT_TYPE_LABEL[f['Type']] || f['Type']]
+        .some(v => String(v || '').toLowerCase().includes(q));
+    });
+  }
 
   // KPI calculations
   const allRecs = MAINT.history;
@@ -684,6 +716,9 @@ function _svcPaint() {
   const types = [...new Set(allRecs.map(r => r.fields['Type']).filter(Boolean))].sort();
   const vehicles = [...new Set(allRecs.map(r => r.fields['Vehicle Plate']).filter(Boolean))].sort();
   const statuses = [...new Set(allRecs.map(r => r.fields['Status']).filter(Boolean))].sort();
+  const years = [...new Set(allRecs.map(r => (r.fields['Date']||'').slice(0,4)).filter(Boolean))].sort().reverse();
+  const workshops = [...new Set(allRecs.map(r => _wsName(r.fields['Workshop'])).filter(n => n && n !== '—'))].sort();
+  const reviewCount = allRecs.filter(r => r.fields['Needs Review']).length;
 
   const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
   const currentYear = new Date().getFullYear();
@@ -731,18 +766,35 @@ function _svcPaint() {
     <!-- Filter bar -->
     <div class="exp-tab-bar">
       <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
+        <input id="svc-q" class="svc-filter" style="min-width:260px" placeholder="Αναζήτηση: περιγραφή, ανταλλακτικό, τιμολόγιο, συνεργείο…"
+               value="${(_svcFilters.q||'').replace(/"/g,'&quot;')}" oninput="_svcSetFilter('q',this.value)">
         <select class="svc-filter" onchange="_svcSetFilter('vehicle',this.value)">
           <option value="">Όχημα: Όλα</option>
           ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
         </select>
         <select class="svc-filter" onchange="_svcSetFilter('type',this.value)">
           <option value="">Τύπος: Όλοι</option>
-          ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${t}</option>`).join('')}
+          ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${MAINT_TYPE_LABEL[t]||t}</option>`).join('')}
+        </select>
+        <select class="svc-filter" onchange="_svcSetFilter('workshop',this.value)">
+          <option value="">Συνεργείο: Όλα</option>
+          ${workshops.map(w => `<option value="${w}" ${_svcFilters.workshop===w?'selected':''}>${w}</option>`).join('')}
+        </select>
+        <select class="svc-filter" onchange="_svcSetFilter('year',this.value)">
+          <option value="">Έτος: Όλα</option>
+          ${years.map(y => `<option value="${y}" ${_svcFilters.year===y?'selected':''}>${y}</option>`).join('')}
         </select>
         <select class="svc-filter" onchange="_svcSetFilter('status',this.value)">
           <option value="">Κατάσταση: Όλες</option>
           ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
         </select>
+        <select class="svc-filter" onchange="_svcSetFilter('review',this.value)">
+          <option value="">Έλεγχος: Όλα</option>
+          <option value="yes" ${_svcFilters.review==='yes'?'selected':''}>Θέλουν έλεγχο (${reviewCount})</option>
+          <option value="no"  ${_svcFilters.review==='no' ?'selected':''}>Ελεγμένα</option>
+        </select>
+        ${Object.values(_svcFilters).some(Boolean)
+          ? `<button class="btn btn-ghost btn-sm" onclick="_svcClearFilters()">Καθαρισμός</button>` : ''}
       </div>
     </div>
 
@@ -767,7 +819,7 @@ function _svcPaint() {
               <td class="rn">${i+1}</td>
               <td style="font-size:var(--text-sm)">${_fmtDate(f['Date'])}</td>
               <td style="font-weight:700;font-size:var(--text-sm)">${f['Vehicle Plate']||'—'}</td>
-              <td style="font-size:var(--text-sm)">${f['Type']||'—'}</td>
+              <td style="font-size:var(--text-sm)">${MAINT_TYPE_LABEL[f['Type']]||f['Type']||'—'}</td>
               <td style="font-size:var(--text-xs);color:var(--text-mid)">${_wsName(f['Workshop'])}</td>
               <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-xs)">${(f['Description']||'').substring(0,80)}</td>
               <td class="r" style="font-size:var(--text-sm);font-variant-numeric:tabular-nums">${_fmtCost(f['Cost'])}</td>

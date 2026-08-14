@@ -256,10 +256,15 @@ const ENTITY_CONFIG = {
     label: 'Workshops',
     labelSingle: 'Workshop',
     perm: 'maintenance',
-    searchFields: ['Name', 'City', 'Contact Person', 'Specialty'],
-    searchHint: 'Αναζήτηση: όνομα, πόλη, ειδικότητα…',
+    // Aliases/Notes είναι αναζητήσιμα επίτηδες: το import της 6-8-2026 έγραψε εκεί τις
+    // 107 παλιές γραφές του Excel («ΣΑΡΑΚΑΚΗ», «SOULIS»…), οπότε αναζήτηση με το όνομα
+    // που θυμάται ο χρήστης βρίσκει το συνεργείο ακόμη κι αν καταχωρήθηκε αλλιώς.
+    searchFields: ['Name', 'City', 'Contact Person', 'Specialty', 'Aliases', 'Notes', 'Phone', 'VAT Number'],
+    searchHint: 'Αναζήτηση: όνομα, παλιά γραφή, πόλη, ειδικότητα, ΑΦΜ, τηλέφωνο…',
     filters: [
       { field: 'Specialty', label: 'Ειδικότητα', type: 'dynamic' },
+      { field: 'Country',   label: 'Χώρα',       type: 'dynamic' },
+      { field: 'City',      label: 'Πόλη',       type: 'dynamic' },
       { field: 'Active',    label: 'Κατάσταση',    type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -279,7 +284,10 @@ const ENTITY_CONFIG = {
     formFields: [
       { section: 'Details', fields: [
         { f: 'Name',           label: 'Επωνυμία', req: true },
-        { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['General','Reefer','Tyres','Electrical','Body','Hydraulic'] },
+        // Ίδιες ακριβώς τιμές με όσες έγραψε το import — αλλιώς κάθε επεξεργασία
+        // συνεργείου θα δημιουργούσε νέα, παράλληλη ειδικότητα και το φίλτρο θα
+        // γέμιζε διπλές κατηγορίες (αγγλικές από τη φόρμα, ελληνικές από τα δεδομένα).
+        { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['Σέρβις','Ελαστικά','Φρένα/ανάρτηση','Ψύξη','Κινητήρας','Ηλεκτρικά','Αμάξωμα','Πέταλο/κοτσαδούρα','Έλεγχοι'] },
         { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email' },
         { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
