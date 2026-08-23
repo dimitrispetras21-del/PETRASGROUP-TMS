@@ -1,5 +1,33 @@
 # Worker 2 — petras-tms-backend (source of truth από 10-8-2026)
 
+> ## ⚠️ ΣΥΜΦΙΛΙΩΣΗ 23-8-2026 — διάβασε πριν κάνεις deploy
+>
+> Το split-brain **ξανασυνέβη** μετά τις 10/8: έγιναν dashboard edits (13/8 και
+> 14/8) που δεν επέστρεψαν εδώ, ενώ ταυτόχρονα προστέθηκε εδώ κώδικας που δεν
+> έγινε ποτέ deploy. Το `src/index.js` είχε αποκλίνει και προς τις **δύο**
+> κατευθύνσεις.
+>
+> **Διορθώθηκε 23/8:** το `src/index.js` είναι ξανά το ΑΚΡΙΒΕΣ deployed script
+> (κατέβηκε από το CF API 23-8-2026· ωμό multipart στο `archive/raw-multipart/`).
+> Ένα `wrangler deploy` από εδώ είναι πλέον **αποδεδειγμένα no-op**.
+>
+> **Τι επέστρεψε από την παραγωγή** (χανόταν σε κάθε deploy από το repo):
+> - `order_stops: [...,"DELETE"]` για dispatcher — χωρίς αυτό οι dispatchers δεν
+>   σβήνουν στάσεις (403· είχε συμβεί 13/8 05:50-07:51)
+> - `"VS CD Date": "vs_cd_date"` στα ORDERS
+> - 4 πεδία WORKSHOPS: `Country`, `Aliases`, `"VAT Number"→tax_id`,
+>   `"Legal Name"→legal_name` — χωρίς αυτά σπάει η αναζήτηση με παλιά γραφή
+>
+> **Τι παρκάρισε** (υπήρχε μόνο εδώ, ποτέ σε παραγωγή) — branch
+> **`parked/worker-costs-pallets`**, τίποτα δεν χάθηκε:
+> - `/costs/*` και `/pallets/*` (8 συναρτήσεις, ~604 γραμμές)
+> - ο πίνακας `local_moves` (config + δικαιώματα)
+> - `"Loading Appointment"` / `"Delivery Appointment"` στα NATIONAL LOADS
+>
+> Επιστρέφουν **συνειδητά και με δοκιμή**, ως δικό τους βήμα — όχι κατά λάθος με
+> ένα deploy. Προσοχή στο `/pallets/`: η τιμολόγηση σήμερα βασίζεται στο ότι
+> εκείνο το endpoint γυρίζει 404 και πέφτει στον ανά-παραγγελία έλεγχο.
+
 **Φ0 «Υιοθεσία» (COSTS_ARCHITECTURE §1):** η συνεργασία με satsilem/
 Valuedriven ολοκληρώθηκε· ο Worker πέρασε σε δική μας κυριότητα. Το
 `src/index.js` είναι το ΑΚΡΙΒΕΣ deployed script όπως κατέβηκε από το CF API
