@@ -523,6 +523,53 @@ async function audit(env, entry) {
 }
 __name(audit, "audit");
 
+// src/middleware/unknown-fields.js
+// Phase 1 of the silent-drop fix (owner 24/8): every field label the facade
+// DROPS is recorded to facade_unknown_fields (via the log_unknown_field RPC)
+// so the real fix-list emerges from production traffic instead of guesswork.
+// Behaviour is unchanged — the same label that fell yesterday falls today,
+// it just leaves a trace. A logging failure must never affect the user's
+// request: everything is wrapped, and the RPC runs via ctx.waitUntil, never
+// awaited on the request path.
+var UNKNOWN_LOG_DEDUPE_MS = 6e4;
+var UNKNOWN_LOG_MAX_PER_REQUEST = 20;
+var UNKNOWN_LOG_MAX_KEYS = 500;
+var _unknownLogSeen = /* @__PURE__ */ new Map();
+function logUnknownFields(env, ctx, base, labels) {
+  try {
+    if (!labels || labels.length === 0) return;
+    // Flood guard, layer 1: per-isolate, the same (table, kind, label) is
+    // sent at most once a minute. Layer 2 is the DB upsert itself, which
+    // collapses repeats into one row per day (see migration 008).
+    const now = Date.now();
+    const fresh = [];
+    for (const label of labels.slice(0, UNKNOWN_LOG_MAX_PER_REQUEST)) {
+      const key = `${base.table}|${base.kind}|${label}`;
+      const last = _unknownLogSeen.get(key);
+      if (last && now - last < UNKNOWN_LOG_DEDUPE_MS) continue;
+      _unknownLogSeen.set(key, now);
+      fresh.push(String(label));
+    }
+    if (_unknownLogSeen.size > UNKNOWN_LOG_MAX_KEYS) _unknownLogSeen.clear();
+    if (fresh.length === 0) return;
+    const work = Promise.all(
+      fresh.map((label) => dbRpc(env, "log_unknown_field", {
+        p_table: base.table,
+        p_label: label,
+        p_kind: base.kind,
+        p_method: base.method || "",
+        p_role: base.role || "",
+        p_actor: base.actor || "",
+        p_path: base.path || null
+      }))
+    ).catch((e) => console.error("UNKNOWN-FIELD LOG FAILED", base.table, e.message));
+    if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(work);
+  } catch (e) {
+    console.error("UNKNOWN-FIELD LOG FAILED", e.message);
+  }
+}
+__name(logUnknownFields, "logUnknownFields");
+
 // src/routes/data.js
 async function handleGetLocations(request, origin, env) {
   const caller = await getCaller(request, env);
@@ -1877,7 +1924,7 @@ function toAirtableRecord(row, colToLabel) {
   return { id: row.legacy_id, fields };
 }
 __name(toAirtableRecord, "toAirtableRecord");
-async function handleFacadeGet(request, tableId, origin, env) {
+async function handleFacadeGet(request, tableId, origin, env, ctx) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
   const cfg = tableConfig(tableId);
@@ -1895,10 +1942,24 @@ async function handleFacadeGet(request, tableId, origin, env) {
   if (requestedLabels.length) {
     const cols = ["legacy_id"];
     if (cfg.links || cfg.reverseLinks) cols.push("id");
+    // reverseLinks labels are NOT unknown: they are resolved for every GET
+    // further down regardless of fields[], so requesting them still works.
+    const unknownRead = [];
     for (const label of requestedLabels) {
       const col = cfg.fields[label] || (cfg.computed || {})[label];
       if (col) cols.push(col);
       else if (cfg.links && cfg.links[label]) cols.push(cfg.links[label].column);
+      else if (!(cfg.reverseLinks && cfg.reverseLinks[label])) unknownRead.push(label);
+    }
+    if (unknownRead.length) {
+      logUnknownFields(env, ctx, {
+        table: cfg.pg,
+        kind: "read",
+        method: "GET",
+        role: caller.role,
+        actor: caller.sub,
+        path: url.pathname
+      }, unknownRead);
     }
     params.set("select", cols.join(","));
   } else {
@@ -1912,17 +1973,42 @@ async function handleFacadeGet(request, tableId, origin, env) {
     } catch (e) {
       if (e instanceof UnsupportedFilter) {
         console.warn(`[facade] unsupported filter on ${cfg.name}: ${e.message}`);
+        // The 422 is the only loud path, but frontends catch it and fall back
+        // silently (daily_ops dayFOld) — so it gets recorded too. If the
+        // message is not the unknown-field shape, log the raw reason: an
+        // unsupported grammar term is equally a frontend-map mismatch.
+        const m = /^Unknown field in filter: (.+)$/.exec(e.message);
+        logUnknownFields(env, ctx, {
+          table: cfg.pg,
+          kind: "filter",
+          method: "GET",
+          role: caller.role,
+          actor: caller.sub,
+          path: url.pathname
+        }, [m ? m[1] : e.message.slice(0, 200)]);
         return jsonError("Unsupported query for this table", 422, origin, env);
       }
       throw e;
     }
   }
   const orderParts = [];
+  const unknownSort = [];
   for (let i = 0; q.has(`sort[${i}][field]`); i++) {
     const label = q.get(`sort[${i}][field]`);
     const dir = q.get(`sort[${i}][direction]`) === "desc" ? "desc" : "asc";
     const col = cfg.fields[label];
     if (col) orderParts.push(`${col}.${dir}`);
+    else unknownSort.push(label);
+  }
+  if (unknownSort.length) {
+    logUnknownFields(env, ctx, {
+      table: cfg.pg,
+      kind: "sort",
+      method: "GET",
+      role: caller.role,
+      actor: caller.sub,
+      path: url.pathname
+    }, unknownSort);
   }
   if (orderParts.length) params.set("order", orderParts.join(","));
   const pageSize = Math.min(parseInt(q.get("pageSize"), 10) || MAX_PAGE, MAX_PAGE);
@@ -2028,6 +2114,20 @@ async function buildWriteRow(cfg, fields, origin, env) {
     }
   }
   const row = fieldsToColumns(cfg, fields);
+  // Phase 1 silent-drop logging: name every label fieldsToColumns just
+  // dropped, so the caller can record it. links/linkAliases are handled by
+  // resolveLinksOnWrite below, so they are NOT drops. Computed labels ARE
+  // listed: they are read-only, so a frontend writing one is a bug worth
+  // surfacing, not a supported path.
+  const dropped = [];
+  if (fields && typeof fields === "object") {
+    for (const label of Object.keys(fields)) {
+      if (cfg.fields[label] || (cfg.aliases || {})[label]) continue;
+      if (cfg.links && cfg.links[label]) continue;
+      if (cfg.linkAliases && cfg.linkAliases[label]) continue;
+      dropped.push(label);
+    }
+  }
   if (cfg.links) {
     let fkColumns, unknownLinks;
     try {
@@ -2038,11 +2138,11 @@ async function buildWriteRow(cfg, fields, origin, env) {
     }
     if (unknownLinks.length) {
       console.warn(`[facade] ${cfg.name} unknown links: ${unknownLinks.map((u) => `${u.label}=${u.recid}`).join(", ")}`);
-      return { error: jsonError("Unknown linked record in request", 400, origin, env) };
+      return { error: jsonError("Unknown linked record in request", 400, origin, env), dropped };
     }
     Object.assign(row, fkColumns);
   }
-  return { row };
+  return { row, dropped };
 }
 __name(buildWriteRow, "buildWriteRow");
 async function shapeOneWithLinks(row, cfg, env) {
@@ -2077,7 +2177,7 @@ async function shapeOneWithLinks(row, cfg, env) {
   return record;
 }
 __name(shapeOneWithLinks, "shapeOneWithLinks");
-async function handleFacadeCreate(request, tableId, origin, env) {
+async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "POST", origin, env);
   if (res) return res;
   let body;
@@ -2087,9 +2187,19 @@ async function handleFacadeCreate(request, tableId, origin, env) {
     return jsonError("Invalid request", 400, origin, env);
   }
   if (Array.isArray(body.records)) {
-    return facadeBatchCreate(body.records, cfg, caller, origin, env);
+    return facadeBatchCreate(body.records, cfg, caller, origin, env, ctx);
   }
-  const { row, error } = await buildWriteRow(cfg, body.fields, origin, env);
+  const { row, error, dropped } = await buildWriteRow(cfg, body.fields, origin, env);
+  // Logged even when the request then fails loudly (400/link errors): the
+  // dropped names are the evidence either way.
+  logUnknownFields(env, ctx, {
+    table: cfg.pg,
+    kind: "write",
+    method: "POST",
+    role: caller.role,
+    actor: caller.sub,
+    path: new URL(request.url).pathname
+  }, dropped);
   if (error) return error;
   if (Object.keys(row).length === 0) {
     return jsonError("No writable fields in request", 400, origin, env);
@@ -2114,12 +2224,20 @@ async function handleFacadeCreate(request, tableId, origin, env) {
   return jsonOk(record, origin, env, 201);
 }
 __name(handleFacadeCreate, "handleFacadeCreate");
-async function facadeBatchCreate(entries, cfg, caller, origin, env) {
+async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
   if (entries.length === 0) return jsonError("Empty records array", 400, origin, env);
   if (entries.length > 10) return jsonError("Batch too large (max 10 records)", 422, origin, env);
   const rows = [];
   for (const entry of entries) {
-    const { row, error } = await buildWriteRow(cfg, entry?.fields, origin, env);
+    const { row, error, dropped } = await buildWriteRow(cfg, entry?.fields, origin, env);
+    logUnknownFields(env, ctx, {
+      table: cfg.pg,
+      kind: "write",
+      method: "POST",
+      role: caller.role,
+      actor: caller.sub,
+      path: null
+    }, dropped);
     if (error) return error;
     if (Object.keys(row).length === 0) {
       return jsonError("No writable fields in request", 400, origin, env);
@@ -2149,7 +2267,7 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env) {
   return jsonOk({ records }, origin, env);
 }
 __name(facadeBatchCreate, "facadeBatchCreate");
-async function handleFacadeBatchUpdate(request, tableId, origin, env) {
+async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
   let body;
@@ -2166,7 +2284,15 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env) {
   const patches = [];
   for (const entry of body.records) {
     if (!entry?.id) return jsonError("Each batch record needs an id", 400, origin, env);
-    const { row: patch, error } = await buildWriteRow(cfg, entry.fields, origin, env);
+    const { row: patch, error, dropped } = await buildWriteRow(cfg, entry.fields, origin, env);
+    logUnknownFields(env, ctx, {
+      table: cfg.pg,
+      kind: "write",
+      method: "PATCH",
+      role: caller.role,
+      actor: caller.sub,
+      path: new URL(request.url).pathname
+    }, dropped);
     if (error) return error;
     if (Object.keys(patch).length === 0) {
       return jsonError("No writable fields in request", 400, origin, env);
@@ -2239,7 +2365,7 @@ async function handleFacadeGetOne(request, tableId, recId, origin, env) {
   return jsonOk(record, origin, env);
 }
 __name(handleFacadeGetOne, "handleFacadeGetOne");
-async function handleFacadeUpdate(request, tableId, recId, origin, env) {
+async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
   let body;
@@ -2248,7 +2374,18 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env) {
   } catch {
     return jsonError("Invalid request", 400, origin, env);
   }
-  const { row: patch, error } = await buildWriteRow(cfg, body.fields, origin, env);
+  const { row: patch, error, dropped } = await buildWriteRow(cfg, body.fields, origin, env);
+  // This is the deadliest shape of the bug: one good field + one wrong field
+  // = 200 OK with the wrong one gone (daily_ops VS orders lost dates this
+  // way for weeks). The trace below is what finally makes it visible.
+  logUnknownFields(env, ctx, {
+    table: cfg.pg,
+    kind: "write",
+    method: "PATCH",
+    role: caller.role,
+    actor: caller.sub,
+    path: new URL(request.url).pathname
+  }, dropped);
   if (error) return error;
   if (Object.keys(patch).length === 0) {
     return jsonError("No writable fields in request", 400, origin, env);
@@ -2337,7 +2474,10 @@ __name(handleOrderCascadeDelete, "handleOrderCascadeDelete");
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
-  async fetch(request, env) {
+  // ctx was never declared here — the runtime always passes it. It carries
+  // waitUntil, which the unknown-field logger needs so its RPC survives the
+  // response without ever blocking it.
+  async fetch(request, env, ctx) {
     const origin = request.headers.get("Origin") || "";
     const cors = corsHeaders(origin, env);
     const url = new URL(request.url);
@@ -2376,12 +2516,12 @@ var index_default = {
       const tableId = facadeMatch[1];
       const recId = facadeMatch[2] || null;
       if (!recId) {
-        if (request.method === "GET") return handleFacadeGet(request, tableId, origin, env);
-        if (request.method === "POST") return handleFacadeCreate(request, tableId, origin, env);
-        if (request.method === "PATCH") return handleFacadeBatchUpdate(request, tableId, origin, env);
+        if (request.method === "GET") return handleFacadeGet(request, tableId, origin, env, ctx);
+        if (request.method === "POST") return handleFacadeCreate(request, tableId, origin, env, ctx);
+        if (request.method === "PATCH") return handleFacadeBatchUpdate(request, tableId, origin, env, ctx);
       } else {
         if (request.method === "GET") return handleFacadeGetOne(request, tableId, recId, origin, env);
-        if (request.method === "PATCH") return handleFacadeUpdate(request, tableId, recId, origin, env);
+        if (request.method === "PATCH") return handleFacadeUpdate(request, tableId, recId, origin, env, ctx);
         if (request.method === "DELETE") {
           if (tableId === ORDERS_TABLE_ID) return handleOrderCascadeDelete(request, tableId, recId, origin, env);
           return handleFacadeDelete(request, tableId, recId, origin, env);
