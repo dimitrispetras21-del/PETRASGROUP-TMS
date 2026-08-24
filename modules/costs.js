@@ -514,6 +514,24 @@ function ctCardHtml(t) {
     ? `<div class="ct-locknote">🔒 Λείπει δελτίο παλετών σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — οι χαμένες παλέτες είναι κόστος που δεν φαίνεται ακόμη εδώ</div>` : '';
   const partnerNote = t.trip_type === 'PARTNER'
     ? `<div class="ct-leg" style="color:var(--text-dim);font-size:12px">κόμιστρο συνεργάτη — καύσιμα/διόδια/οδηγός είναι δικά του κόστη, όχι ελλιπή δικά μας</div>` : '';
+  // Τα σκέλη δείχνουν τιμές παραγγελιών· το έσοδο trip αφαιρεί το εσωτερικό
+  // VS κόμιστρο (view ct_v_rt_revenue). Χωρίς αυτή τη γραμμή, «2.700+3.100
+  // αλλά έσοδα 5.150» διαβάζεται ως λάθος. Η διαφορά ΥΠΟΛΟΓΙΖΕΤΑΙ, δεν
+  // αντιγράφεται η σταθερά (αρχή 3) — και αν δεν εξηγείται από VS, το λέμε.
+  let vsNote = '';
+  if (_ct.orderByPg) {
+    const legsSum = legs.reduce((a, l) => {
+      const o = l.order_id != null && _ct.orderByPg[l.order_id];
+      return a + (o && o.fields['Price'] != null && o.fields['Price'] !== '' ? Number(o.fields['Price']) : 0);
+    }, 0);
+    const diff = Math.round(legsSum - Number(t.revenue || 0));
+    if (diff > 0) {
+      const hasVs = legs.some(l => { const o = l.order_id != null && _ct.orderByPg[l.order_id]; return o && o.fields['Veroia Switch']; });
+      vsNote = hasVs
+        ? `<div class="ct-leg" style="color:var(--text-dim);font-size:12px">⇄ Veroia Switch: −${ctEur(diff)} εσωτερική μεταφορά (δεν είναι έσοδο πελάτη) → έσοδο trip ${ctEur(t.revenue)}</div>`
+        : `<div class="ct-leg" style="color:#B45309;font-size:12px">⚠ οι τιμές των σκελών αθροίζουν ${ctEur(legsSum)} αλλά το έσοδο trip είναι ${ctEur(t.revenue)} — ανεξήγητη διαφορά ${ctEur(diff)}</div>`;
+    }
+  }
   const why = ci.complete && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">⚠ ${ctWhyText(t, lines)}</div>` : '';
   return `<div class="ct-card" id="ctCard${t.id}" onclick="ctOpenPanel(${t.id})">
     <div class="ct-ctop">
@@ -525,7 +543,7 @@ function ctCardHtml(t) {
       </div>
       ${ctCardNums(t, ci)}
     </div>
-    <div class="ct-clegs">${legs.map(ctLegLine).join('')}${returnLine}${partnerNote}</div>
+    <div class="ct-clegs">${legs.map(ctLegLine).join('')}${returnLine}${vsNote}${partnerNote}</div>
     ${lockLine}
     <div class="ct-cladder">${ctLadderHtml(t, ci, lines)}</div>
     ${why}
