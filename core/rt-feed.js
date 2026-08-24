@@ -124,12 +124,19 @@ async function rtOnOrderSaved(orderId) {
         date_start: dStart, date_end: dEnd,
         truck_id: partnerTrip ? null : ids.truck_id, trailer_id: partnerTrip ? null : ids.trailer_id,
         driver_id: partnerTrip ? null : ids.driver_id, partner_id: partnerTrip ? ids.partner_id : null,
-        legs: [{ direction: 'export', order_id: pgX }].concat(pgI != null ? [{ direction: 'import', order_id: pgI }] : [])
+        legs: [{ direction: 'EXPORT', order_id: pgX }].concat(pgI != null ? [{ direction: 'IMPORT', order_id: pgI }] : [])
       };
       if (body.trip_type === 'OWNED' && !body.truck_id) { _rtWarn('P&L: δεν βρέθηκε το φορτηγό στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
       if (body.trip_type === 'PARTNER' && !body.partner_id) { _rtWarn('P&L: δεν βρέθηκε ο συνεργάτης στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
       const res = await plFetch('/costs/rt', { method: 'POST', body });
       rtRef = res.record;
+      // Αυτο-ίαση: ο Worker δεν είναι transactional — αν τα legs δεν γράφτηκαν,
+      // το RT είναι ορφανό (δεν θα ξαναβρεθεί ποτέ) και ακυρώνεται ΕΔΩ, φωναχτά.
+      if (rtRef && (res.legs || []).length < body.legs.length) {
+        await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'cancelled' } });
+        _rtWarn('P&L: το ' + rtRef.code + ' δημιουργήθηκε χωρίς σκέλη και ακυρώθηκε — δες μετρητή συμφωνίας');
+        return;
+      }
       // Singleton κόμιστρο partner στη γέννηση — αλλιώς «κόστη ελλιπή» για πάντα.
       if (partnerTrip && parseFloat(f['Partner Rate'])) {
         await plFetch('/costs/lines', { method: 'POST', body: {
