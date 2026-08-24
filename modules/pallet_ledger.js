@@ -58,6 +58,23 @@ function _plvFmtDate(d) {
   return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : d;
 }
 
+// Status ως pill παντού (λίστα/καρτέλα/πάνελ) — το σκέτο κείμενο δεν σαρωνόταν
+// με το μάτι σε 40 γραμμές.
+function _plvPill(status) {
+  if (status === 'pending') return '<span class="plv-pill plv-pill-pending">εκκρεμής</span>';
+  if (status === 'confirmed') return '<span class="plv-pill plv-pill-ok">οριστική</span>';
+  return '<span class="plv-pill plv-pill-rev">αντιλογισμένη</span>';
+}
+
+// Κατεύθυνση ποσότητας με μία ματιά: ↓ παλέτες μπήκαν σε εμάς (πράσινο),
+// ↑ έφυγαν από εμάς· το μηδέν αχνό ώστε να μη μαγνητίζει το μάτι.
+function _plvQty(n, dir) {
+  const v = n || 0;
+  const arrow = dir === 'in' ? '↓' : '↑';
+  if (!v) return `<span style="opacity:.35">${arrow} 0</span>`;
+  return `<span style="color:${dir === 'in' ? '#15803D' : '#B91C1C'};font-weight:600">${arrow} ${v}</span>`;
+}
+
 const PLV_EVENT_GR = {
   LOADING: 'Φόρτωση', DELIVERY: 'Παράδοση', PARTNER_PICKUP: 'Παραλαβή από partner',
   PARTNER_DROPOFF: 'Παράδοση από partner', RETURN_OUT: 'Επιστροφή αδειών',
@@ -190,7 +207,13 @@ function _plvDraw() {
     </div>
     <!-- Το style εδώ, ΟΧΙ μέσα στον πίνακα κινήσεων: τα tabs ισοζυγίου το
          έχαναν και οι επικεφαλίδες κολλούσαν («ΥπόλοιποΑνοιχτό από», 25/8). -->
-    <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
+    <style>
+      .plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}
+      .plv-pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:11.5px;font-weight:600;white-space:nowrap}
+      .plv-pill-pending{background:#FEF3C7;color:#92400E}
+      .plv-pill-ok{background:#DCFCE7;color:#15803D}
+      .plv-pill-rev{background:#E2E8F0;color:#475569}
+    </style>
     <div id="plvTbl">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvTableHtml(rows)}</div>
   </div>
   <div id="plvModal"></div>`;
@@ -214,9 +237,9 @@ function _plvTableHtml(rows) {
         <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
         <td>${_plvName(m)}</td>
         <td>${_plvLoc(m)}</td>
-        <td style="text-align:right">${m.taken}</td>
-        <td style="text-align:right">${m.given}</td>
-        <td>${m.status === 'pending' ? '<span style="color:#92400E;font-weight:600">εκκρεμής</span>' : m.status === 'confirmed' ? '<span style="color:var(--accent)">οριστική</span>' : 'αντιλογισμένη'}</td>
+        <td style="text-align:right">${_plvQty(m.taken, 'in')}</td>
+        <td style="text-align:right">${_plvQty(m.given, 'out')}</td>
+        <td>${_plvPill(m.status)}</td>
         <td style="white-space:nowrap">
           ${m.status === 'pending' ? (m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT'
             // 0/0 δεν παίρνει ενεργή «Επιβεβαίωση» — ο Worker την απορρίπτει
@@ -267,9 +290,9 @@ async function plvDrill(kind, id) {
             <th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th><th>Κατάσταση</th></tr>
           ${moves.map(m => `<tr style="border-top:1px solid var(--line,#e2e8f0)">
             <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td><td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
-            <td>${_plvLoc(m)}</td><td style="text-align:right">${m.taken}</td>
-            <td style="text-align:right">${m.given}</td>
-            <td>${m.status === 'pending' ? 'εκκρεμής' : 'οριστική'}</td></tr>`).join('') ||
+            <td>${_plvLoc(m)}</td><td style="text-align:right">${_plvQty(m.taken, 'in')}</td>
+            <td style="text-align:right">${_plvQty(m.given, 'out')}</td>
+            <td>${_plvPill(m.status)}</td></tr>`).join('') ||
             '<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--panel-dim)">Καμία κίνηση</td></tr>'}
         </table>
         <div style="display:flex;justify-content:flex-end;margin-top:16px">
