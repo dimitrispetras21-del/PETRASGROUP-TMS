@@ -179,6 +179,10 @@ function ctErrorCard() {
 async function ctEnrich() {
   _ct.orderByPg = null; _ct.pgByRec = {}; _ct.ordersAll = null; _ct.enrichFail = false;
   try {
+    // Χωρίς αυτό, σε σκληρό reload οι κάρτες ζωγραφίζονται ΠΡΙΝ γεμίσει το
+    // cache τοποθεσιών και κάθε προορισμός βγαίνει «—» (race, μετρήθηκε 24/8).
+    // Το preloadReferenceData είναι deduped — αν έχει ήδη τρέξει, είναι no-op.
+    if (typeof preloadReferenceData === 'function') await preloadReferenceData();
     const orders = await atGetAll(TABLES.ORDERS, {}, true);
     const byRec = {}; orders.forEach(o => { byRec[o.id] = o; });
     const recs = Object.keys(byRec);
