@@ -1105,8 +1105,8 @@ async function _refreshNotifs() {
     // Fetch base data + extras only for users that need them
     const promises = [
       atGet(TABLES.ORDERS),
-      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true),
-      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true),
+      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active', ...TRUCK_EXPIRY_FIELDS] }, true),
+      atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_FIELDS] }, true),
       // These two are ROLE-GATED, so an empty array already means "this user
       // does not get this tile" (the Promise.resolve([]) branch). A swallowed
       // fetch error produced the SAME empty array, so a broken read was
@@ -1236,8 +1236,8 @@ async function _refreshNotifs() {
           });
         });
       };
-      checkDocs(trucks, 'License Plate', ['KTEO Expiry','KEK Expiry','Insurance Expiry']);
-      checkDocs(trailers, 'License Plate', ['ATP Expiry','Insurance Expiry']);
+      checkDocs(trucks, 'License Plate', TRUCK_EXPIRY_FIELDS);
+      checkDocs(trailers, 'License Plate', TRAILER_EXPIRY_FIELDS);
     }
 
     // ── 6. EIRINI / ACCOUNTANT — Invoicing ──

@@ -451,7 +451,7 @@ function _runAllMetrics(d) {
 
     const trailAlerts = metrics.expiryAlertsTrailers(d.trailers, { daysAhead: 30 });
     add('fleet', 'fleet.expiry_trailers', 'Trailers with Expiring Docs (30d)',
-      `${trailAlerts.total} trailers`, `ATP: ${trailAlerts.atp.length}, Insurance: ${trailAlerts.insurance.length}`);
+      `${trailAlerts.total} trailers`, `KTEO: ${trailAlerts.kteo.length}, FRC: ${trailAlerts.frc.length}, Insurance: ${trailAlerts.insurance.length}`);
 
     const comp = metrics.compliancePct(d.trucks);
     add('fleet', 'fleet.compliance', 'Compliance % (all docs valid)', comp.pct + '%', `${comp.valid}/${comp.total} active trucks`);

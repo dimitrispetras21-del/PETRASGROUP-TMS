@@ -355,15 +355,19 @@ const metrics = (function() {
     return { kteo, kek, insurance, total: new Set([...kteo, ...kek, ...insurance].map(t=>t.id)).size };
   }
 
+  // kteo/frc/insurance — το 'ATP Expiry' δεν υπάρχει στον χάρτη (βλ.
+  // TRAILER_EXPIRY_FIELDS στο constants.js) και το ΚΤΕΟ έλειπε εντελώς:
+  // ληγμένα έγγραφα ρυμουλκών δεν εμφανίζονταν πουθενά (audit 26/8).
   function expiryAlertsTrailers(trailers, opts = {}) {
     const { daysAhead = 30 } = opts;
     const cutoff = _daysAgo(-daysAhead);
-    const atp = [], insurance = [];
+    const kteo = [], frc = [], insurance = [];
     trailers.forEach(t => {
-      const a = _toISO(t.fields['ATP Expiry']); if (a && a <= cutoff) atp.push(t);
+      const k = _toISO(t.fields['KTEO Expiry']); if (k && k <= cutoff) kteo.push(t);
+      const f = _toISO(t.fields['FRC Expiry']); if (f && f <= cutoff) frc.push(t);
       const i = _toISO(t.fields['Insurance Expiry']); if (i && i <= cutoff) insurance.push(t);
     });
-    return { atp, insurance, total: new Set([...atp, ...insurance].map(t=>t.id)).size };
+    return { kteo, frc, insurance, total: new Set([...kteo, ...frc, ...insurance].map(t=>t.id)).size };
   }
 
   function compliancePct(trucks) {

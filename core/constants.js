@@ -90,6 +90,15 @@ const MAINT_STATUS = {
   DONE:        'Done',
 };
 
+// -- Λήξεις εγγράφων ανά τύπο οχήματος (χάρτης Worker, επαληθευμένο 26/8) -----
+// Το 'ATP Expiry' ΔΕΝ υπάρχει στον χάρτη: ATP είναι η κατηγορία πιστοποιητικού,
+// FRC η βαθμίδα που κρατάμε (στήλη frc_expiry — μόνο TRAILERS). Μία κοινή
+// λίστα ανά τύπο, ώστε κανένα σημείο να μην ξεχνά έγγραφο: το ΚΤΕΟ των
+// ρυμουλκών έλειπε από δύο σημεία και ρυμούλκα με ληγμένο FRC 3 μήνες
+// κυκλοφορούσε αόρατη από κάθε ταμπλό.
+const TRUCK_EXPIRY_FIELDS   = ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'];
+const TRAILER_EXPIRY_FIELDS = ['KTEO Expiry', 'FRC Expiry', 'Insurance Expiry'];
+
 // -- Badge CSS class map (status -> class) -----
 const STATUS_BADGE = {
   'Pending':    'badge-yellow',
