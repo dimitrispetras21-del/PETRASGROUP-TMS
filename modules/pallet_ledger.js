@@ -70,7 +70,16 @@ function _plvRows() {
   return rows;
 }
 
-function plvFilter(key, val) { PLV[key] = val; _plvDraw(); }
+// Μερικό render, ΟΧΙ _plvDraw(): το πλήρες innerHTML ξαναχτίζει και το input
+// της αναζήτησης, που χάνει το focus σε ΚΑΘΕ πλήκτρο — ο χρήστης έγραφε «elita»
+// και έμενε μόνο το «e» (εύρημα audit 25/8). Ενημερώνεται μόνο ο πίνακας.
+function plvFilter(key, val) {
+  PLV[key] = val;
+  const el = document.getElementById('plvTbl');
+  const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
+  if (el && !isBalanceTab) el.innerHTML = _plvTableHtml(_plvRows());
+  else _plvDraw();
+}
 
 function plvExportCSV() {
   const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
@@ -169,7 +178,15 @@ function _plvDraw() {
       <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>`}
       <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
-    ${isBalanceTab ? _plvBalanceTable(PLV.tab) : `
+    <div id="plvTbl">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvTableHtml(rows)}</div>
+  </div>
+  <div id="plvModal"></div>`;
+}
+
+// Ο πίνακας κινήσεων σε δική του συνάρτηση ώστε το plvFilter να τον ξαναχτίζει
+// ΧΩΡΙΣ να αγγίζει τα φίλτρα (βλ. σχόλιο στο plvFilter — focus).
+function _plvTableHtml(rows) {
+  return `
     <div style="overflow-x:auto">
     <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
     <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
@@ -195,9 +212,7 @@ function _plvDraw() {
         </td>
       </tr>`).join('') || '<tr><td colspan="9" style="padding:30px;text-align:center;color:var(--panel-dim)">Καμία κίνηση εδώ</td></tr>'}
     </table>
-    </div>`}
-  </div>
-  <div id="plvModal"></div>`;
+    </div>`;
 }
 
 function plvTab(t) { PLV.tab = t; _plvDraw(); }
