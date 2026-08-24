@@ -6,7 +6,11 @@
 
 // q/from/to: το παλιό pallet_ledger page είχε φίλτρα + CSV — δεν τα χάνουμε
 // (η λογίστρια τα χρησιμοποιεί καθημερινά· αφαίρεσή τους = οπισθοδρόμηση).
-const PLV = { movements: [], lookups: null, balances: { clients: null, partners: null }, tab: 'pending', busy: false, q: '', from: '', to: '' };
+const PLV = { movements: [], lookups: null, balances: { clients: null, partners: null }, tab: 'pending', busy: false, q: '', from: '', to: '',
+  // Redesign 27/8: ομαδοποίηση (client|location|none), κατάσταση διπλώματος ανά
+  // ομάδα (κρατιέται όσο ο χρήστης μένει στη σελίδα), cache παραγγελιών ανά
+  // pg id για τις πλούσιες γραμμές, και σημαία αποτυχίας εμπλουτισμού.
+  groupBy: 'client', open: {}, orderById: null, enrichFail: false };
 
 async function renderPalletLedger() {
   const c = document.getElementById('content');
@@ -114,7 +118,7 @@ function plvFilter(key, val) {
   const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
   if (el && !isBalanceTab) {
     const rows = _plvRows();
-    el.innerHTML = _plvTableHtml(rows);
+    el.innerHTML = _plvListHtml(rows);
     const cnt = document.getElementById('plvCount');
     if (cnt) cnt.textContent = rows.length + ' από ' + _plvTabTotal();
     const x = document.getElementById('plvQClear');
@@ -217,7 +221,7 @@ function _plvDraw() {
   const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
   const rows = isBalanceTab ? [] : _plvRows();
   c.innerHTML = `
-  <div style="padding:20px 24px;max-width:1100px;margin:0 auto">
+  <div style="padding:20px 24px;max-width:1280px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <h1 style="font-family:Syne;font-size:22px;margin:0">Ισοζύγιο Παλετών</h1>
       <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>
@@ -238,6 +242,13 @@ function _plvDraw() {
       <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>`}
       <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
+    ${isBalanceTab ? '' : `
+    <div style="display:flex;gap:6px;align-items:center;font-size:12px;color:var(--panel-dim);margin:-4px 0 10px;flex-wrap:wrap">
+      Ομαδοποίηση:
+      ${[['client', 'Ανά πελάτη'], ['location', 'Ανά σημείο'], ['none', 'Χωρίς']].map(([v, l]) =>
+        `<button onclick="plvGroupBy('${v}')" style="padding:4px 12px;border-radius:14px;font-size:12px;cursor:pointer;border:1px solid ${PLV.groupBy === v ? 'var(--accent)' : 'var(--line,#CBD5E1)'};${PLV.groupBy === v ? 'background:var(--accent);color:#fff' : 'background:transparent;color:var(--panel-dim)'}">${l}</button>`).join('')}
+      ${PLV.enrichFail ? '<span style="color:#92400E;margin-left:8px" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}
+    </div>`}
     <!-- Το style εδώ, ΟΧΙ μέσα στον πίνακα κινήσεων: τα tabs ισοζυγίου το
          έχαναν και οι επικεφαλίδες κολλούσαν («ΥπόλοιποΑνοιχτό από», 25/8). -->
     <style>
@@ -248,52 +259,198 @@ function _plvDraw() {
       .plv-pill-rev{background:#E2E8F0;color:#475569}
       .plv-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
       .plv-card:hover{border-color:var(--accent,#0284C7);box-shadow:0 2px 10px rgba(2,132,199,.18)}
+      /* Ιεραρχία με τυπογραφία + διακριτικό φόντο, όχι πλαίσια: Syne στον
+         πελάτη, αχνό υπο-επίπεδο σημείου, DM Sans στις κινήσεις. */
+      .plv-ghead{display:flex;align-items:center;gap:6px;background:rgba(2,132,199,.06);border-radius:8px;padding:8px 12px;margin:12px 0 2px;cursor:pointer;user-select:none}
+      .plv-ghead:hover{background:rgba(2,132,199,.11)}
+      .plv-gname{font-family:Syne;font-size:14.5px;font-weight:700}
+      .plv-gsum{margin-left:auto;font-size:12px;color:var(--panel-dim);white-space:nowrap}
+      .plv-gsub{font-size:12px;font-weight:600;color:var(--panel-dim);padding:8px 12px 2px 30px}
     </style>
-    <div id="plvTbl">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvTableHtml(rows)}</div>
+    <div id="plvTbl">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvListHtml(rows)}</div>
   </div>
   <div id="plvModal"></div>`;
 }
 
-// Ο πίνακας κινήσεων σε δική του συνάρτηση ώστε το plvFilter να τον ξαναχτίζει
-// ΧΩΡΙΣ να αγγίζει τα φίλτρα (βλ. σχόλιο στο plvFilter — focus).
+/* ── Redesign 27/8: ιεραρχία πελάτης → σημείο → κινήσεις ──
+   Τα δεδομένα ΕΧΟΥΝ φυσική ιεραρχία· ο επίπεδος πίνακας επαναλάμβανε τον
+   πελάτη σε κάθε γραμμή. Ομαδοποίηση με σύνολα ανά επίπεδο, δίπλωμα, και
+   διακόπτης Ανά πελάτη / Ανά σημείο / Χωρίς. */
+
+// Στοιχεία παραγγελίας ανά γραμμή (Reference/μεταφορικό) — γεμίζουν από το
+// _plvEnrich (§2)· μέχρι τότε κενά, ΟΧΙ «—» παντού.
+function _plvRowExtras(m) {
+  const o = (PLV.orderById || {})[m.order_id];
+  if (!o) return { ref: '', carrier: '' };
+  const f = o.fields;
+  let carrier = '';
+  if (f['Is Partner Trip']) {
+    const pid = getLinkedId(f['Partner']);
+    const p = pid ? getRefPartners().find(x => x.id === pid) : null;
+    carrier = ((p && p.fields['Company Name']) || 'Partner')
+      + (f['Partner Truck Plates'] ? ' · ' + f['Partner Truck Plates'] : '');
+  } else {
+    carrier = getTruckPlate(getLinkedId(f['Truck'])) || '';
+  }
+  return { ref: f['Reference'] || '', carrier };
+}
+
+function _plvMovementRow(m, grouped) {
+  const x = _plvRowExtras(m);
+  return `
+      <tr style="border-top:1px solid var(--line,#e2e8f0);cursor:pointer" title="Λεπτομέρειες κίνησης" onclick="if(!event.target.closest('button,a'))plvOpenPanel(${m.id})">
+        <td style="white-space:nowrap">${m.code}</td>
+        <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td>
+        <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
+        ${grouped ? '' : `<td>${_plvName(m)}</td><td>${_plvLoc(m)}</td>`}
+        <td style="text-align:right">${_plvQty(m.taken, 'in')}</td>
+        <td style="text-align:right">${_plvQty(m.given, 'out')}</td>
+        <td style="font-size:12px;white-space:nowrap">${x.ref ? escapeHtml(x.ref) : ''}</td>
+        <td style="font-size:12px">${x.carrier ? escapeHtml(x.carrier) : ''}</td>
+        <td style="text-align:center">${m.sheet_url ? `<a href="#" title="Προβολή δελτίου" onclick="plvViewSheet('${String(m.sheet_url).replace(/'/g, '')}');return false" style="text-decoration:none">📎</a>` : ''}</td>
+        <td>${_plvPill(m.status)}</td>
+        <td style="white-space:nowrap">
+          ${m.status === 'pending' ? (m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT'
+            // 0/0 δεν παίρνει ενεργή «Επιβεβαίωση» — ο Worker την απορρίπτει
+            // (taken+given>0)· το modal είναι ο μόνος δρόμος διόρθωσης.
+            ? `<button class="btn-scan" style="padding:4px 12px;border-color:#92400E;color:#92400E" title="Μηδενικές ποσότητες — χρειάζεται διόρθωση πριν την επιβεβαίωση" onclick="plvOpenConfirm(${m.id})">Διόρθωση ποσοτήτων</button>`
+            : `<button class="btn-scan" style="padding:4px 12px" onclick="plvOpenConfirm(${m.id})">Επιβεβαίωση</button>`) : ''}
+          ${m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>` : ''}
+        </td>
+      </tr>`;
+}
+
+const _PLV_EMPTY = (cols) => `<tr><td colspan="${cols}" style="padding:44px;text-align:center;color:var(--panel-dim)">
+        ${typeof icon === 'function' ? icon('package', 28) : ''}
+        <div style="margin:10px 0 4px;font-weight:600;color:var(--panel-text,#0F172A)">Καμία κίνηση εδώ</div>
+        <div style="font-size:12px">Δοκίμασε άλλο tab ή καθάρισε αναζήτηση/ημερομηνίες.</div>
+        <button class="btn-new-order" style="margin-top:14px" onclick="plvNewMovement()">+ Νέα κίνηση</button>
+      </td></tr>`;
+
+const _PLV_HEAD_G = `<tr style="text-align:left;color:var(--panel-dim)">
+        <th>Κωδ.</th><th>Ημ/νία</th><th>Είδος</th>
+        <th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th>
+        <th>Reference</th><th>Μεταφορικό</th><th title="Δελτίο">📎</th><th>Κατάσταση</th><th></th></tr>`;
+// Ίδια πλάτη σε ΟΛΑ τα τμήματα ώστε οι στήλες να ευθυγραμμίζονται μεταξύ ομάδων.
+const _PLV_COLS_G = `<colgroup><col style="width:8%"><col style="width:7%"><col style="width:9%"><col style="width:6%"><col style="width:6%"><col style="width:11%"><col style="width:16%"><col style="width:4%"><col style="width:11%"><col style="width:22%"></colgroup>`;
+
 function _plvTableHtml(rows) {
   return `
     <div style="overflow-x:auto">
     <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
       <tr style="text-align:left;color:var(--panel-dim)">
-        <th style="padding:8px">Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th>
-        <th>Σημείο</th><th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th>
-        <th>Κατάσταση</th><th></th>
+        <th>Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th><th>Σημείο</th>
+        <th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th>
+        <th>Reference</th><th>Μεταφορικό</th><th title="Δελτίο">📎</th><th>Κατάσταση</th><th></th>
       </tr>
-      ${rows.map(m => `
-      <tr style="border-top:1px solid var(--line,#e2e8f0);cursor:pointer" title="Λεπτομέρειες κίνησης" onclick="if(!event.target.closest('button,a'))plvOpenPanel(${m.id})">
-        <td style="padding:8px">${m.code}</td>
-        <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td>
-        <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
-        <td>${_plvName(m)}</td>
-        <td>${_plvLoc(m)}</td>
-        <td style="text-align:right">${_plvQty(m.taken, 'in')}</td>
-        <td style="text-align:right">${_plvQty(m.given, 'out')}</td>
-        <td>${_plvPill(m.status)}</td>
-        <td style="white-space:nowrap">
-          ${m.status === 'pending' ? (m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT'
-            // 0/0 δεν παίρνει ενεργή «Επιβεβαίωση» — ο Worker την απορρίπτει
-            // (taken+given>0) και ο χρήστης θα έτρωγε σφάλμα για πάντα. Το κουμπί
-            // μένει ΚΛΙΚΑΡΙΣΤΟ ως «Διόρθωση»: το modal είναι ο μόνος τρόπος να
-            // μπουν σωστές ποσότητες — αν κλείδωνε, η κίνηση δεν διορθωνόταν ποτέ.
-            ? `<button class="btn-scan" style="padding:4px 12px;border-color:#92400E;color:#92400E" title="Μηδενικές ποσότητες — χρειάζεται διόρθωση πριν την επιβεβαίωση" onclick="plvOpenConfirm(${m.id})">Διόρθωση ποσοτήτων</button>`
-            : `<button class="btn-scan" style="padding:4px 12px" onclick="plvOpenConfirm(${m.id})">Επιβεβαίωση</button>`) : ''}
-          ${m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>` : ''}
-          ${m.sheet_url ? `<a href="#" onclick="plvViewSheet('${m.sheet_url.replace(/'/g, '')}');return false" style="margin-left:6px;font-size:12px">δελτίο</a>` : ''}
-        </td>
-      </tr>`).join('') || `<tr><td colspan="9" style="padding:44px;text-align:center;color:var(--panel-dim)">
-        ${typeof icon === 'function' ? icon('package', 28) : ''}
-        <div style="margin:10px 0 4px;font-weight:600;color:var(--panel-text,#0F172A)">Καμία κίνηση εδώ</div>
-        <div style="font-size:12px">Δοκίμασε άλλο tab ή καθάρισε αναζήτηση/ημερομηνίες.</div>
-        <button class="btn-new-order" style="margin-top:14px" onclick="plvNewMovement()">+ Νέα κίνηση</button>
-      </td></tr>`}
+      ${rows.map(m => _plvMovementRow(m, false)).join('') || _PLV_EMPTY(12)}
     </table>
     </div>`;
+}
+
+// Ομάδες από τις ΦΙΛΤΡΑΡΙΣΜΕΝΕΣ γραμμές: πελάτες πρώτα (κατά πλήθος), μετά
+// «Συνεργάτες» (υπο-ομάδα ανά partner) και «Χωρίς αντισυμβαλλόμενο» — πάντα
+// ορατές στο τέλος, ποτέ κρυμμένες.
+function _plvBuildGroups(rows) {
+  const mode = PLV.groupBy;
+  const tops = new Map();
+  rows.forEach(m => {
+    let t, s;
+    if (mode === 'location') {
+      t = { k: 'L' + (m.location_id || 0), label: _plvLoc(m) || 'Χωρίς σημείο', order: m.location_id ? 0 : 1 };
+      s = { k: 'c' + (m.counterparty_type || '') + (m.client_id || m.partner_id || 0), label: _plvName(m) };
+    } else if (m.counterparty_type === 'CLIENT' && m.client_id) {
+      t = { k: 'C' + m.client_id, label: _plvName(m), order: 0 };
+      s = { k: 'l' + (m.location_id || 0), label: _plvLoc(m) || 'Χωρίς σημείο' };
+    } else if (m.counterparty_type === 'PARTNER') {
+      t = { k: '_PARTNERS', label: 'Συνεργάτες', order: 1 };
+      s = { k: 'p' + (m.partner_id || 0), label: _plvName(m) };
+    } else {
+      t = { k: '_NONE', label: 'Χωρίς αντισυμβαλλόμενο', order: 2 };
+      s = { k: 'x', label: '—' };
+    }
+    if (!tops.has(t.k)) tops.set(t.k, { key: t.k, label: t.label, order: t.order, subs: new Map(), count: 0, tk: 0, gv: 0 });
+    const T = tops.get(t.k);
+    T.count++; T.tk += m.taken || 0; T.gv += m.given || 0;
+    if (!T.subs.has(s.k)) T.subs.set(s.k, { key: s.k, label: s.label, rows: [], tk: 0, gv: 0 });
+    const S = T.subs.get(s.k);
+    S.rows.push(m); S.tk += m.taken || 0; S.gv += m.given || 0;
+  });
+  return Array.from(tops.values())
+    .sort((a, b) => a.order - b.order || b.count - a.count || String(a.label).localeCompare(b.label))
+    .map(T => ({ ...T, subs: Array.from(T.subs.values()).sort((a, b) => b.rows.length - a.rows.length) }));
+}
+
+// Υπόλοιπο πελάτη από ΟΛΕΣ τις φορτωμένες κινήσεις του (όχι τις φιλτραρισμένες)
+// — ίδιος τύπος με το pl_v_balance_clients: Σ(given−taken) ΜΟΝΟ confirmed.
+function _plvClientBal(clientId) {
+  let s = 0;
+  PLV.movements.forEach(m => {
+    if (m.client_id === clientId && m.counterparty_type === 'CLIENT' && m.status === 'confirmed') s += (m.given || 0) - (m.taken || 0);
+  });
+  return s;
+}
+
+// Δίπλωμα: προεπιλογή κλειστά εκτός αν ομάδες ≤3· ενεργή αναζήτηση = όλα
+// ανοιχτά (οι ομάδες χωρίς αποτέλεσμα λείπουν ήδη — χτίζονται από τα rows).
+function _plvIsOpen(key, groupsLen) {
+  if (PLV.q) return true;
+  if (PLV.open[key] !== undefined) return PLV.open[key];
+  return groupsLen <= 3;
+}
+
+function plvToggleGroup(key) {
+  const groups = _plvBuildGroups(_plvRows());
+  PLV.open[key] = !_plvIsOpen(key, groups.length);
+  const el = document.getElementById('plvTbl');
+  if (el) el.innerHTML = _plvListHtml(_plvRows());
+}
+
+function plvGroupBy(mode) {
+  PLV.groupBy = mode;
+  PLV.open = {}; // νέα δομή, νέες προεπιλογές διπλώματος
+  _plvDraw();
+}
+
+function _plvListHtml(rows) {
+  if (PLV.groupBy === 'none' || !rows.length) return _plvTableHtml(rows);
+  const groups = _plvBuildGroups(rows);
+  const arrow = (o) => `<span style="display:inline-block;width:14px;color:var(--panel-dim)">${o ? '▾' : '▸'}</span>`;
+  let html = '<div>';
+  groups.forEach(T => {
+    const o = _plvIsOpen(T.key, groups.length);
+    let balHtml = '';
+    if (T.key[0] === 'C') {
+      const cid = parseInt(T.key.slice(1), 10);
+      const bal = _plvClientBal(cid);
+      const vb = (PLV.balances.clients || []).find(b => b.client_id === cid);
+      // Αν το τοπικό άθροισμα αποκλίνει από την όψη, το ⚠ το ΔΕΙΧΝΕΙ αντί να
+      // διαλέξει σιωπηλά πλευρά (αρχή 1) — δύο πηγές αλήθειας = καμία.
+      const mismatch = vb && vb.balance !== bal;
+      balHtml = ` · υπόλοιπο <b style="color:${bal > 0 ? '#15803D' : bal < 0 ? '#B91C1C' : 'inherit'}">${bal > 0 ? '+' : ''}${bal}</b>${mismatch ? ` <span title="Απόκλιση από την όψη pl_v_balance_clients: όψη=${vb.balance}, υπολογισμένο=${bal}" style="color:#B91C1C;cursor:help">⚠</span>` : ''}`;
+    }
+    html += `<div class="plv-ghead" onclick="plvToggleGroup('${T.key}')">${arrow(o)}<span class="plv-gname">${T.label}</span>
+      <span class="plv-gsum">${T.count} ${T.count === 1 ? 'κίνηση' : 'κινήσεις'} · <span style="color:#15803D">↓ ${T.tk}</span> · <span style="color:#B91C1C">↑ ${T.gv}</span>${balHtml}</span></div>`;
+    if (o) {
+      T.subs.forEach(S => {
+        html += `<div class="plv-gsub">${S.label}<span style="font-weight:400;color:var(--panel-dim)"> — ${S.rows.length} · <span style="color:#15803D">↓ ${S.tk}</span> · <span style="color:#B91C1C">↑ ${S.gv}</span></span></div>
+        <div style="overflow-x:auto"><table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed">${_PLV_COLS_G}
+          ${S.rows.map(m => _plvMovementRow(m, true)).join('')}
+        </table></div>`;
+      });
+    }
+  });
+  return html + '</div>';
+}
+
+// Ισοπεδωμένη σειρά εμφάνισης — Η ουρά του wizard: περιλαμβάνει ΚΑΙ τις
+// κινήσεις κλειστών ομάδων (δεν εξαφανίζονται επειδή δεν φαίνονται).
+function _plvFlatRows() {
+  const rows = _plvRows();
+  if (PLV.groupBy === 'none') return rows;
+  const out = [];
+  _plvBuildGroups(rows).forEach(T => T.subs.forEach(S => S.rows.forEach(m => out.push(m))));
+  return out;
 }
 
 function plvTab(t) { PLV.tab = t; _plvDraw(); }
@@ -399,7 +556,9 @@ function plvOpenConfirm(id, inWiz) {
   // της στην επόμενη pending. Κάθε κίνηση κρατά τον ΔΙΚΟ της κύκλο δελτίου —
   // δεν υπάρχει μαζική επιβεβαίωση: η πύλη έμεινε αυστηρή (owner 24/8).
   if (!inWiz && m.status === 'pending') {
-    PLV.wizQueue = _plvRows().filter(x => x.status === 'pending').map(x => x.id);
+    // Ισοπεδωμένη ΣΕΙΡΑ ΕΜΦΑΝΙΣΗΣ των ομάδων — και οι κλειστές ομάδες μέσα:
+    // η ουρά δεν χάνει κινήσεις επειδή δεν φαίνονται (§5 redesign).
+    PLV.wizQueue = _plvFlatRows().filter(x => x.status === 'pending').map(x => x.id);
   }
   const q = m.status === 'pending' ? (PLV.wizQueue || []) : [];
   const pos = q.indexOf(id);
@@ -792,6 +951,7 @@ window.plvOpenPanel = plvOpenPanel; window.plvPanelDelete = plvPanelDelete; wind
 window.plvWizClose = plvWizClose; window.plvWizAdvance = plvWizAdvance;
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
 window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV; window.plvClearQ = plvClearQ;
+window.plvGroupBy = plvGroupBy; window.plvToggleGroup = plvToggleGroup;
 window.plvDrill = plvDrill; window.plvStmtCSV = plvStmtCSV; window._plvDraw = _plvDraw;
 // Τα inline oninput/onmousedown/onblur του typeahead τρέχουν σε global scope.
 window.plvAcSearch = plvAcSearch; window.plvAcPick = plvAcPick; window.plvAcBlur = plvAcBlur;
