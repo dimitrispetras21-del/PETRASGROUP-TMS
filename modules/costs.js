@@ -226,7 +226,7 @@ function ctRenderList() {
         <div style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--text-dim);margin-bottom:6px">Τι θα τη γεμίσει</div>
         <div style="padding:3px 0">1&nbsp;&nbsp;Δημιουργία round trip — χειροκίνητα τώρα («+ Νέο Round Trip»), αυτόματα από το Weekly στο επόμενο βήμα</div>
         <div style="padding:3px 0">2&nbsp;&nbsp;Καταχώρηση κοστών — DADI/DKV με σάρωση, τρίτα πρατήρια χειροκίνητα</div>
-        <div style="padding:3px 0">3&nbsp;&nbsp;Με το κλείσιμο, η γραμμή παίρνει θέση πάνω ή κάτω από το 0 €</div>
+        <div style="padding:3px 0">3&nbsp;&nbsp;Με το κλείσιμο, η γραμμή κατατάσσεται στα κερδοφόρα ή στα ζημιογόνα</div>
       </div>
       <button class="ct-btn ct-primary" style="margin-top:18px" onclick="ctOpenRtModal()">+ Νέο Round Trip — ξεκίνα τον πιλότο</button>
     </div>`;
