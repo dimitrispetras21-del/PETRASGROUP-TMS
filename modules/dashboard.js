@@ -650,8 +650,12 @@ async function renderDashboard() {
                 <div class="dash-card-title">${_i('shield', 12)} Ειδοποιήσεις στόλου</div>
                 <span class="dash-card-link" onclick="navigate('expiry_alerts')">Expiry ${_i('chevron_right', 12)}</span>
               </div>
-              <div class="dash-card-body">
-                ${fleetAlerts.length ? fleetAlerts.slice(0, 6).map(a => `<div class="dash-fleet-row">
+              <!-- ΟΛΗ η λίστα με scroll, όχι slice(0,6): με 23 ληγμένα έγγραφα το
+                   top-6 έκρυβε π.χ. FRC ληγμένο 3 μήνες πίσω από παλαιότερα ΚΤΕΟ —
+                   τυχαία φέτα της αλήθειας (εύρημα 26/8, ίδιο σκεπτικό με την
+                   αφαιρεμένη κάρτα Συμμόρφωσης παραπάνω). -->
+              <div class="dash-card-body" style="max-height:300px;overflow-y:auto">
+                ${fleetAlerts.length ? `<div style="font-size:11px;color:var(--panel-dim);padding:0 0 6px">${fleetAlerts.filter(a => a.expired).length} ληγμένα · ${fleetAlerts.length} συνολικά (30ημ)</div>` + fleetAlerts.map(a => `<div class="dash-fleet-row">
                   <div class="dash-fleet-plate">${a.plate}</div>
                   <div class="dash-fleet-doc">${a.label}</div>
                   <div class="dash-fleet-days ${a.expired ? 'expired' : a.days < 14 ? 'warn' : 'ok'}">${a.expired ? 'ΛΗΓΜΕΝΟ' : a.days + 'μ'}</div>
