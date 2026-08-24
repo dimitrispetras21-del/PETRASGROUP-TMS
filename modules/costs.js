@@ -149,7 +149,7 @@ function ctCostInfo(t) {
   return { n, complete: n > 0 };
 }
 function ctIncompletePill(n) {
-  return `<span class="ct-pill ct-amber" title="Το περιθώριο κρύβεται μέχρι να καταχωρηθούν κόστη — αλλιώς θα διάβαζες 100% σαν κέρδος">κόστη ελλιπή${n ? '' : ' · 0 γραμμές'}</span>`;
+  return `<span class="ct-pill ct-amber" title="Το περιθώριο κρύβεται μέχρι να καταχωρηθούν κόστη — αλλιώς το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος">κόστη ελλιπή${n ? '' : ' · 0 γραμμές'}</span>`;
 }
 
 function ctVisible() {
@@ -316,7 +316,7 @@ function ctRenderList() {
         <td class="ct-mono">${ctEsc(t.date_start)}${t.date_end ? '→' + ctEsc(t.date_end) : ''}</td>
         <td>${ctChip(t)}</td>
         <td class="ct-num ct-mono">${ctEur(t.revenue)}</td>
-        <td class="ct-num ct-mono">${ctEur(t.cost_gross)}</td>
+        <td class="ct-num ct-mono"${ci.complete ? '' : ' style="color:var(--text-dim)" title="Κανένα κόστος καταχωρημένο — όχι μηδενικό"'}>${ci.complete ? ctEur(t.cost_gross) : '—'}</td>
         ${midTds}
         <td>${ctStatusBadge(t)}</td>
         <td class="ct-addtd"><button class="ct-addbtn" title="Καταχώρηση κόστους" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+</button></td>
@@ -370,7 +370,7 @@ function ctDetailRow(t) {
   const ci = ctCostInfo(t);
   let inner;
   if (!ci.complete) {
-    inner = `<div class="ct-dwhy">Καμία γραμμή κόστους καταχωρημένη — το καθαρό/margin κρύβεται μέχρι την πρώτη, αλλιώς θα διάβαζες «100% κέρδος» που δεν υπάρχει.</div>
+    inner = `<div class="ct-dwhy">Καμία γραμμή κόστους καταχωρημένη — το καθαρό/margin κρύβεται μέχρι την πρώτη, αλλιώς το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος.</div>
       <button class="ct-btn" style="margin-left:10px;vertical-align:bottom" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Καταχώρηση κόστους</button>`;
   } else {
     const cats = {};
@@ -454,7 +454,7 @@ async function ctOpenPanel(id) {
   if (wear > 0.5) costRows += `<div class="ct-crow"><span class="ct-cl">Φθορά <span class="ct-badge ct-b-pend" style="font-size:10px">auto</span></span>
     <span class="ct-bar"><i style="width:${Math.round(wear / maxV * 100)}%;background:#64748B"></i></span>
     <span class="ct-cv ct-mono">${ctEur(wear)}</span><span class="ct-cvat ct-mono">€/km × km</span></div>`;
-  if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-dim)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από κάτω.</div>';
+  if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-dim)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από τη φόρμα πιο πάνω.</div>';
   if (t.trip_type === 'PARTNER') costRows += `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-dim)">Καύσιμα/διόδια/οδηγός δεν καταγράφονται εδώ — είναι κόστη του συνεργάτη, όχι ελλιπή δικά μας. Το δικό μας κόστος είναι το κόμιστρο.</span><span></span></div>`;
   const catOpts = Object.entries(CT_CATEGORY_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   panel.innerHTML = `
@@ -467,7 +467,7 @@ async function ctOpenPanel(id) {
       ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:10px;background:#fff" onclick="ctCloseRt(${t.id})">🏁 Κλείσιμο trip (χειροκίνητο fallback)</button>` : ''}</div>
     ${!ctCostInfo(t).complete ? `<div class="ct-psec"><div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px">
       <div style="font-weight:700;color:#B45309;font-size:13px">⚠ Κόστη ελλιπή — καμία γραμμή κόστους ακόμη</div>
-      <div style="font-size:12px;color:#B45309;margin-top:4px">Το καθαρό/margin δεν υπολογίζεται — με μηδέν κόστη θα διάβαζες «100% κέρδος» που δεν υπάρχει. Καταχώρησε τα κόστη ακριβώς από κάτω.</div>
+      <div style="font-size:12px;color:#B45309;margin-top:4px">Το καθαρό/margin δεν υπολογίζεται — το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος που δεν υπάρχει. Καταχώρησε τα κόστη ακριβώς από κάτω.</div>
     </div></div>` : `<div class="ct-psec"><div class="ct-duo">
       <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v" style="color:${Number(t.profit_worst) < 0 ? '#F87171' : '#34D399'}">${ctEur(t.profit_worst)}</div><div class="s">margin ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
       <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v" style="color:${Number(t.profit_ex_vat) < 0 ? '#B91C1C' : '#047857'}">${ctEur(t.profit_ex_vat)}</div><div class="s">margin ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
