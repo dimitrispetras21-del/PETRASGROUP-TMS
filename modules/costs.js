@@ -338,7 +338,10 @@ async function ctRecon() {
     const orders = await atGet(TABLES.ORDERS);
     const expected = orders.filter(r => {
       const f = r.fields;
-      return (f['Status'] === 'Delivered' || f['Status'] === 'In Transit') &&
+      // Κλειδωμένο (owner 24/8): ιστορικό ΧΩΡΙΣ backfill — ο μετρητής κοιτά
+      // μόνο ό,τι φορτώθηκε από την ενεργοποίηση του feeder και μετά.
+      return (f['Loading DateTime'] || '') >= '2026-08-24' &&
+        (f['Status'] === 'Delivered' || f['Status'] === 'In Transit') &&
         f['Direction'] !== 'Import' &&
         (getLinkedId(f['Truck']) || (f['Is Partner Trip'] && getLinkedId(f['Partner'])));
     });
