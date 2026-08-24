@@ -44,9 +44,20 @@ function ctChip(t) {
   if (t.trip_type === 'PARTNER') return `<span class="ct-chip ct-partner">${ctEsc(ctPartnerName(t.partner_id))}</span>` + natl;
   return `<span class="ct-chip ct-owned">${ctEsc(ctTruckName(t.truck_id))}</span>` + natl;
 }
+// Λεξιλόγιο κατάστασης (owner review 24/8) — δύο ανεξάρτητα σήματα: η ΕΚΤΕΛΕΣΗ
+// εδώ, τα ΚΟΣΤΗ στο pill «κόστη ελλιπή». Ο feeder γεννά RT μόνο όταν η μεταφορά
+// όντως εκτελείται, άρα planned + legs = «Σε εξέλιξη», όχι «Σχεδιασμένο» (αυτό
+// μένει για χειροκίνητα RT χωρίς δεμένα φορτία). closed ≠ complete (κλειδωμένο
+// 24/8: το κλεισμένο δέχεται κόστη) — το «Ολοκληρώθηκε» μιλά για τη μεταφορά
+// (πνεύμα Delivered του ενιαίου λεξιλογίου), το «Οριστικό» για τα λογιστικά.
 function ctStatusBadge(t) {
-  const map = { planned: ['Σχεδιασμένο', 'ct-b-pend'], in_progress: ['Σε εξέλιξη', 'ct-b-pend'], closed: ['Προσωρινό', 'ct-b-prov'], complete: ['Πλήρες', 'ct-b-full'] };
-  const [lbl, cls] = map[t.status] || [t.status, 'ct-b-pend'];
+  const legs = ((_ct.rts[t.id] || {}).ct_rt_legs || []).length;
+  const [lbl, cls] =
+    t.status === 'cancelled' ? ['Άκυρο', 'ct-b-canc'] :
+    t.status === 'complete' ? ['Οριστικό', 'ct-b-final'] :
+    t.status === 'closed' ? ['Ολοκληρώθηκε', 'ct-b-done'] :
+    (legs || t.status === 'in_progress') ? ['Σε εξέλιξη', 'ct-b-run'] :
+    ['Σχεδιασμένο', 'ct-b-pend'];
   return `<span class="ct-badge ${cls}">${lbl}</span>`;
 }
 
@@ -72,14 +83,13 @@ async function renderTripPnl() {
     </div>
     <div id="ctLede"></div>
     <div class="ct-stats" id="ctKpis"></div>
-    <div class="ct-toolbar" id="ctVehBar"></div>
     <div class="ct-toolbar" id="ctToolbar2">
       <div class="ct-seg" id="ctScopeSeg">
         <button data-s="ALL" class="active" onclick="ctSetScope('ALL')">Όλα</button>
         <button data-s="INTL" onclick="ctSetScope('INTL')">Διεθνή</button>
         <button data-s="NATL" onclick="ctSetScope('NATL')">Εθνικά</button>
       </div>
-      <label style="font-size:12px;color:var(--text-dim)">Ομαδοποίηση:</label>
+      <select id="ctVehSel" onchange="ctSetVeh(this.value)"><option value="ALL">Όλος ο στόλος</option></select>
       <select id="ctGroup" onchange="_ct.group=this.value;ctRenderList()">
         <option value="trip">Δρομολόγια</option>
         <option value="truck">Ανά Φορτηγό / Partner</option>
@@ -159,12 +169,11 @@ const ctSigned = n => (Number(n) < 0 ? '−' + ctEur(-n) : ctEur(n));
 function ctRenderSummary() {
   const lede = document.getElementById('ctLede');
   const k = document.getElementById('ctKpis');
-  const vb = document.getElementById('ctVehBar');
   const tb = document.getElementById('ctToolbar2');
   // Κενή βάση: η κενή κατάσταση (στο ctRenderList) είναι ΟΛΗ η σελίδα —
   // καμία κάρτα, κανένα «€0» που μοιάζει με μέτρηση.
-  if (!_ct.pnl.length) { lede.innerHTML = ''; k.innerHTML = ''; if (vb) vb.style.display = 'none'; if (tb) tb.style.display = 'none'; return; }
-  if (vb) vb.style.display = ''; if (tb) tb.style.display = '';
+  if (!_ct.pnl.length) { lede.innerHTML = ''; k.innerHTML = ''; if (tb) tb.style.display = 'none'; return; }
+  if (tb) tb.style.display = '';
   const V = ctVisible();
   const rev = V.reduce((a, t) => a + Number(t.revenue || 0), 0);
   const gross = V.reduce((a, t) => a + Number(t.cost_gross || 0), 0);
@@ -211,13 +220,15 @@ function ctRenderSummary() {
 function ctResetFilters() { _ct.veh = 'ALL'; ctSetScope('ALL'); const s = document.getElementById('ctVehSel'); if (s) s.value = 'ALL'; }
 function ctScrollList() { document.getElementById('ctList')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
+// Τα φίλτρα οχήματος έγιναν dropdown (owner review 24/8, σημείο 3): «τρεις
+// σειρές χειριστηρίων για δύο γραμμές δεδομένων» — τώρα μία σειρά.
 function ctRenderVehBar() {
+  const sel = document.getElementById('ctVehSel'); if (!sel) return;
   const trucks = [...new Set(_ct.pnl.filter(t => t.truck_id).map(t => t.truck_id))];
-  document.getElementById('ctVehBar').innerHTML =
-    '<label style="font-size:12px;color:var(--text-dim)">Όχημα:</label>' +
-    `<button class="ct-vchip${_ct.veh === 'ALL' ? ' active' : ''}" onclick="ctSetVeh('ALL')">Όλος ο στόλος</button>` +
-    trucks.map(id => `<button class="ct-vchip${_ct.veh === id ? ' active' : ''}" onclick="ctSetVeh(${id})">${ctEsc(ctTruckName(id))}</button>`).join('') +
-    `<button class="ct-vchip ct-vpartner${_ct.veh === 'PARTNERS' ? ' active' : ''}" onclick="ctSetVeh('PARTNERS')">Partners</button>`;
+  sel.innerHTML = '<option value="ALL">Όλος ο στόλος</option>' +
+    trucks.map(id => `<option value="${id}">${ctEsc(ctTruckName(id))}</option>`).join('') +
+    '<option value="PARTNERS">Partners</option>';
+  sel.value = String(_ct.veh);
 }
 function ctSetVeh(v) { _ct.veh = (v === 'ALL' || v === 'PARTNERS') ? v : Number(v); ctRenderSummary(); ctRenderVehBar(); ctRenderList(); }
 function ctSetScope(s) {
@@ -270,9 +281,12 @@ function ctRenderList() {
     // Γραμμή του νερού (εγκεκριμένο demo 24/8): πάνω ό,τι θέλει απόφαση —
     // ζημιογόνα ΚΑΙ όσα δεν έχουν κόστη (θέλουν καταχώρηση) — κάτω τα
     // κερδοφόρα με πλήρη κόστη. Αν το πάνω αδειάσει, αυτό είναι το μήνυμα.
+    // ΕΝΑΣ πίνακας, ΜΙΑ κεφαλίδα (owner review 24/8, σημείο 4): το νερό είναι
+    // γραμμή ΜΕΣΑ στον πίνακα, όχι δεύτερος πίνακας με δική του κεφαλίδα.
     const needsAction = V.filter(t => !ctCostInfo(t).complete || Number(t.profit_worst) < 0);
     const below = V.filter(t => ctCostInfo(t).complete && Number(t.profit_worst) >= 0);
-    const rowsOf = (list) => [...list].sort((a, b) => (a.margin_worst_pct ?? 999) - (b.margin_worst_pct ?? 999)).map(t => {
+    const bySeverity = list => [...list].sort((a, b) => (a.margin_worst_pct ?? 999) - (b.margin_worst_pct ?? 999));
+    const row = t => {
       // Φ4 (docs/PALLETS_ARCHITECTURE.md §4.2): partner PnL with a missing
       // pallet sheet is incomplete — lost pallets are a real cost that isn't
       // in these numbers yet — so profit/margin are hidden behind a lock
@@ -280,21 +294,22 @@ function ctRenderList() {
       const gate = _ct.palletGate[t.id];
       const gated = t.trip_type === 'PARTNER' && gate && gate.sheets_ok === false;
       const revealed = _ct.revealed.has(t.id);
-      const lockTitle = gate ? `Λείπει δελτίο παλετών σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — το PnL είναι ελλιπές (οι χαμένες παλέτες είναι κόστος)` : '';
-      const lockTd = `<td class="ct-num" onclick="event.stopPropagation();ctRevealRow(${t.id})" style="cursor:pointer;color:#B45309;font-weight:600" title="${ctEsc(lockTitle)}">🔒 δελτίο</td>`;
       // Πύλη cost-complete ΠΡΙΝ από το pallet-gate: χωρίς γραμμές κόστους το
       // «περιθώριο» θα ήταν 100% — δεν εμφανίζεται ΠΟΤΕ ως αριθμός.
       const ci = ctCostInfo(t);
-      const incompleteTd = `<td style="text-align:center" colspan="1">${ctIncompletePill(ci.n)}</td>`;
-      const profitTd = !ci.complete ? '<td class="ct-num ct-mono" style="color:#B45309">—</td>'
-        : (gated && !revealed) ? lockTd
-        : `<td class="ct-num ct-mono" style="font-weight:700;color:${Number(t.profit_worst) < 0 ? '#B91C1C' : '#047857'}">${Number(t.profit_worst) < 0 ? '(' + ctEur(-t.profit_worst).replace('€','') + ' €)' : ctEur(t.profit_worst)}</td>`;
-      const marginTd = !ci.complete ? incompleteTd
-        : (gated && !revealed) ? lockTd
-        : `<td style="text-align:center">${ctPill(t.margin_worst_pct)}</td>`;
-      const exVatTd = !ci.complete ? '<td class="ct-num ct-mono" style="color:#B45309">—</td>'
-        : (gated && !revealed) ? lockTd
-        : `<td class="ct-num ct-mono" style="color:var(--text-dim)">${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'}</td>`;
+      let midTds;
+      if (!ci.complete) {
+        // ΕΝΑ κελί για τα τρία νούμερα που δεν υπάρχουν ακόμη — όχι τρεις παύλες
+        midTds = `<td colspan="3" style="text-align:center">${ctIncompletePill(ci.n)}</td>`;
+      } else if (gated && !revealed) {
+        // ΕΝΑ 🔒 για τα τρία κρυμμένα νούμερα (owner review 24/8, σημείο 5)
+        const lockTitle = `Λείπει δελτίο παλετών σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — το PnL είναι ελλιπές (οι χαμένες παλέτες είναι κόστος)`;
+        midTds = `<td colspan="3" style="text-align:center;cursor:pointer;color:#B45309;font-weight:600" onclick="event.stopPropagation();ctRevealRow(${t.id})" title="${ctEsc(lockTitle)}">🔒 δελτίο παλετών</td>`;
+      } else {
+        midTds = `<td class="ct-num ct-mono" style="font-weight:700;color:${Number(t.profit_worst) < 0 ? '#B91C1C' : '#047857'}">${Number(t.profit_worst) < 0 ? '(' + ctEur(-t.profit_worst).replace('€', '') + ' €)' : ctEur(t.profit_worst)}</td>
+          <td style="text-align:center">${ctPill(t.margin_worst_pct)}</td>
+          <td class="ct-num ct-mono" style="color:var(--text-dim)">${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'}</td>`;
+      }
       return `
       <tr onclick="ctOpenPanel(${t.id})">
         <td class="ct-mono">${ctEsc(t.code)}</td>
@@ -302,23 +317,23 @@ function ctRenderList() {
         <td>${ctChip(t)}</td>
         <td class="ct-num ct-mono">${ctEur(t.revenue)}</td>
         <td class="ct-num ct-mono">${ctEur(t.cost_gross)}</td>
-        ${profitTd}
-        ${marginTd}
-        ${exVatTd}
+        ${midTds}
         <td>${ctStatusBadge(t)}</td>
       </tr>`;
-    }).join('');
+    };
+    const rowsTop = bySeverity(needsAction).map(t => row(t) + ctDetailRow(t)).join('');
+    const rowsBot = bySeverity(below).map(row).join('');
+    const wlineTr = needsAction.length && below.length
+      ? `<tr class="ct-wline-tr"><td colspan="9"><div class="ct-wline" style="margin:0;border-radius:0"><span>θέλουν απόφαση ↑</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κερδοφόρα ↓</span></div></td></tr>`
+      : '';
     const head = `<thead><tr><th>Κωδ.</th><th>Ημ/νίες</th><th>Φορτηγό / Partner</th>
       <th class="ct-num">Έσοδα</th><th class="ct-num">Κόστος</th><th class="ct-num">Καθαρό</th>
       <th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th><th>Κατάσταση</th></tr></thead>`;
-    const topHtml = needsAction.length
-      ? `<div class="ct-secttl" style="color:#B45309">Θέλουν απόφαση ή κόστη — ${needsAction.length}</div>
-         <table class="ct-tbl">${head}<tbody>${rowsOf(needsAction)}</tbody></table>`
-      : `<div class="ct-empty" style="padding:16px;font-size:13px">Τίποτα δεν θέλει απόφαση — κανένα ζημιογόνο, καμία εκκρεμότητα κοστών. Αυτό είναι το μήνυμα.</div>`;
-    const botHtml = below.length
-      ? `<div class="ct-wline"><span>θέλουν απόφαση ↑</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κερδοφόρα ↓</span></div>
-         <table class="ct-tbl">${head}<tbody>${rowsOf(below)}</tbody></table>` : '';
-    el.innerHTML = notice + topHtml + botHtml +
+    el.innerHTML = notice +
+      (needsAction.length
+        ? `<div class="ct-secttl" style="color:#B45309">Θέλουν απόφαση ή κόστη — ${needsAction.length}</div>`
+        : `<div class="ct-empty" style="padding:16px;font-size:13px;margin-bottom:10px">Τίποτα δεν θέλει απόφαση — κανένα ζημιογόνο, καμία εκκρεμότητα κοστών. Αυτό είναι το μήνυμα.</div>`) +
+      `<table class="ct-tbl">${head}<tbody>${rowsTop}${wlineTr}${rowsBot}</tbody></table>` +
       `<div style="font-size:12px;color:var(--text-dim);margin-top:8px">Χειρότερο margin πρώτα · κλικ σε γραμμή για ανάλυση · οι ζημιές σε παρένθεση</div>`;
     return;
   }
@@ -344,6 +359,29 @@ function ctRenderList() {
     (skipped ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:9px 13px;margin-bottom:10px;font-size:12.5px;color:#B45309">⚠ ${skipped} ${skipped === 1 ? 'δρομολόγιο' : 'δρομολόγια'} με ελλιπή κόστη ΔΕΝ μετρούν στα παρακάτω αθροίσματα.</div>` : '') +
     `<table class="ct-tbl"><thead><tr><th>${h}</th><th class="ct-num">Trips</th><th class="ct-num">Έσοδα</th>
     <th class="ct-num">Κόστη</th><th class="ct-num">Καθαρό</th><th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+// Σκάλα κόστους + «γιατί» ΜΕΣΑ στη λίστα, μόνο για τις γραμμές πάνω από τη
+// γραμμή του νερού (owner review 24/8, σημείο 6): είναι λίγες και είναι αυτές
+// που θέλουν προσοχή — το πλήρες βάθος μένει στο ανάπτυγμα.
+function ctDetailRow(t) {
+  const lines = (_ct.linesByRt && _ct.linesByRt[t.id]) || [];
+  const ci = ctCostInfo(t);
+  let inner;
+  if (!ci.complete) {
+    inner = `<div class="ct-dwhy">Καμία γραμμή κόστους καταχωρημένη — το καθαρό/margin κρύβεται μέχρι την πρώτη, αλλιώς θα διάβαζες «100% κέρδος» που δεν υπάρχει.</div>`;
+  } else {
+    const cats = {};
+    lines.forEach(l => { cats[l.category] = (cats[l.category] || 0) + Number(l.net || 0) + Number(l.vat || 0); });
+    const maxV = Math.max(1, ...Object.values(cats));
+    const ladder = Object.entries(cats).sort((a, b) => b[1] - a[1]).map(([cat, v]) => `
+      <div class="ct-dcat"><span class="n">${CT_CATEGORY_LABELS[cat] || cat}</span>
+      <span class="b"><i style="width:${Math.round(v / maxV * 100)}%"></i></span>
+      <span class="v ct-mono">${ctEur(v)}</span></div>`).join('');
+    const why = Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">⚠ ${ctWhyText(t, lines)}</div>` : '';
+    inner = `<div class="ct-dladder">${ladder}</div>${why}`;
+  }
+  return `<tr class="ct-dtr" onclick="ctOpenPanel(${t.id})"><td colspan="9">${inner}</td></tr>`;
 }
 
 // Φ4: toggle-reveal for a single gated row's hidden PnL numbers (owner-only
@@ -477,16 +515,19 @@ async function ctCloseRt(id) {
 
 // Η εξήγηση «γιατί» μιας ζημιάς, όπου βγαίνει από τα δεδομένα (demo §2):
 // χωρίς import = γύρισε άδειο· πρόστιμα ονομαστικά· αλλιώς το ποσό υπέρβασης.
-function ctWhyLine(t, lines) {
-  if (!(Number(t.profit_worst) < 0)) return '';
+// Κείμενο χωριστά από το περιτύλιγμα: το ίδιο «γιατί» ζει και στη λίστα
+// (ctDetailRow) και στο ανάπτυγμα (ctWhyLine).
+function ctWhyText(t, lines) {
   const legs = (_ct.rts[t.id] || {}).ct_rt_legs || [];
   const hasImport = legs.some(l => String(l.direction || '').toLowerCase().includes('imp'));
   const fines = (lines || []).filter(l => l.category === 'fines').reduce((a, l) => a + Number(l.net || 0) + Number(l.vat || 0), 0);
-  let why;
-  if (legs.length && !hasImport) why = `Χωρίς δεμένο import — γύρισε άδειο. Ένα return φορτίο ≥ ${ctEur(-t.profit_worst)} το γύριζε κερδοφόρο.`;
-  else if (fines > 0) why = `Πρόστιμα ${ctEur(fines)} — χωρίς αυτά το αποτέλεσμα θα ήταν ${ctEur(Number(t.profit_worst) + fines)}.`;
-  else why = `Τα κόστη ξεπερνούν τα έσοδα κατά ${ctEur(-t.profit_worst)}.`;
-  return `<div style="margin-top:10px;background:#FEF3C7;color:#92400E;border-radius:8px;padding:8px 12px;font-size:12.5px">⚠ ${why}</div>`;
+  if (legs.length && !hasImport) return `Χωρίς δεμένο import — γύρισε άδειο. Ένα return φορτίο ≥ ${ctEur(-t.profit_worst)} το γύριζε κερδοφόρο.`;
+  if (fines > 0) return `Πρόστιμα ${ctEur(fines)} — χωρίς αυτά το αποτέλεσμα θα ήταν ${ctEur(Number(t.profit_worst) + fines)}.`;
+  return `Τα κόστη ξεπερνούν τα έσοδα κατά ${ctEur(-t.profit_worst)}.`;
+}
+function ctWhyLine(t, lines) {
+  if (!(Number(t.profit_worst) < 0)) return '';
+  return `<div style="margin-top:10px;background:#FEF3C7;color:#92400E;border-radius:8px;padding:8px 12px;font-size:12.5px">⚠ ${ctWhyText(t, lines)}</div>`;
 }
 
 // ── manual RT modal ──────────────────────────────────────────────
@@ -593,9 +634,6 @@ function ctStyles() { return `<style>
 .ct-seg{display:flex;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;padding:3px;gap:2px}
 .ct-seg button{background:none;border:none;font-family:inherit;font-size:12px;font-weight:500;color:var(--text-dim);padding:6px 13px;border-radius:6px;cursor:pointer}
 .ct-seg button.active{background:var(--accent,#0284C7);color:#fff}
-.ct-vchip{font-family:inherit;font-size:12px;font-weight:600;padding:6px 14px;border-radius:9999px;border:1px solid rgba(0,0,0,.12);background:#fff;color:var(--text-mid);cursor:pointer}
-.ct-vchip.active{background:#0C2D5C;color:#fff;border-color:#0C2D5C}
-.ct-vchip.ct-vpartner.active{background:#14532D;border-color:#14532D}
 .ct-btn{display:inline-flex;align-items:center;gap:7px;padding:0 14px;height:34px;border-radius:6px;font-family:inherit;font-size:12px;font-weight:600;cursor:pointer;border:1px solid var(--accent,#0284C7);background:#fff;color:var(--accent,#0284C7)}
 .ct-btn.ct-primary{background:linear-gradient(135deg,#0C2D5C,var(--accent,#0284C7));color:#fff;border:none}
 .ct-tbl{width:100%;background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:12px;border-collapse:separate;border-spacing:0;overflow:hidden}
@@ -607,12 +645,24 @@ function ctStyles() { return `<style>
 .ct-red{background:#7F1D1D;color:#fff}.ct-amber{background:#FEF3C7;color:#B45309}.ct-green{background:#DCFCE7;color:#166534}.ct-dim{color:var(--text-dim)}
 .ct-chip{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:600}
 .ct-owned{background:#0C2D5C;color:#fff}.ct-partner{background:#14532D;color:#fff}.ct-natl{background:#E0F2FE;color:#075985;border:1px solid #BAE6FD}
-.ct-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500}
-.ct-b-prov{background:#FEF3C7;color:#B45309}.ct-b-full{background:#DCFCE7;color:#166534}.ct-b-pend{background:#E2E8F0;color:#475569}
+.ct-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap}
+.ct-b-pend{background:#E2E8F0;color:#475569}.ct-b-run{background:#E0F2FE;color:#075985}
+.ct-b-done{background:#DCFCE7;color:#166534}.ct-b-final{background:#166534;color:#fff}.ct-b-canc{background:#FEE2E2;color:#B91C1C}
 .ct-empty{background:#fff;border:1px dashed rgba(0,0,0,.15);border-radius:12px;padding:34px;text-align:center;color:var(--text-dim);font-size:14px}
 .ct-secttl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin:14px 0 8px}
 .ct-wline{display:flex;align-items:center;gap:10px;background:rgba(2,132,199,.06);border-radius:8px;padding:8px 14px;margin:16px 0 10px;font-size:12px;color:var(--accent,#0284C7);font-weight:600}
 .ct-wline .r{flex:1;border-top:2px solid var(--accent,#0284C7);opacity:.3}
+.ct-wline-tr td{padding:0;border-bottom:1px solid rgba(0,0,0,.06)}
+.ct-tbl tbody tr.ct-wline-tr,.ct-tbl tbody tr.ct-dtr{cursor:default}
+.ct-tbl tbody tr.ct-wline-tr:hover{background:transparent}
+.ct-dtr td{background:#F8FAFC;padding:8px 14px 10px 28px;border-bottom:1px solid rgba(0,0,0,.06);cursor:pointer}
+.ct-dladder{max-width:460px}
+.ct-dcat{display:flex;align-items:center;gap:9px;font-size:12px;padding:2px 0}
+.ct-dcat .n{width:118px;color:var(--text-dim)}
+.ct-dcat .b{flex:1;height:6px;background:#E8EEF5;border-radius:3px;overflow:hidden}
+.ct-dcat .b i{display:block;height:100%;background:var(--accent,#0284C7);border-radius:3px}
+.ct-dcat .v{width:72px;text-align:right;font-weight:500}
+.ct-dwhy{display:inline-block;font-size:12.5px;color:#92400E;background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:6px}
 .ct-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);opacity:0;pointer-events:none;transition:.2s;z-index:9000}
 .ct-overlay.open{opacity:1;pointer-events:auto}
 .ct-panel{position:fixed;top:0;right:-540px;width:540px;max-width:96vw;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(11,25,41,.25);transition:right .25s;z-index:9100;overflow-y:auto}
