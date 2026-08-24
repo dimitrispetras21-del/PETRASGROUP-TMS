@@ -1123,11 +1123,11 @@ async function _loadEntityHistory(type, recId, name) {
       // Client linked in ORDERS + NAT_ORDERS tables
       const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
       const [intl, natl] = await Promise.all([
-        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Direction','Loading Summary','Delivery Summary','Status','Total Pallets','Loading DateTime','Price','Delivery Performance'] }, false),
+        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Direction','Loading Location 1','Unloading Location 1','Status','Total Pallets','Loading DateTime','Price','Delivery Performance'] }, false),
         atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Direction','Pickup Location 1','Delivery Location 1','Status','Pallets','Loading DateTime','Price','Delivery Performance'] }, false),
       ]);
       orders = [
-        ...intl.map(r => ({ type:'INTL', dir:r.fields['Direction']||'—', route:`${(r.fields['Loading Summary']||'').slice(0,20)} → ${(r.fields['Delivery Summary']||'').slice(0,20)}`, status:r.fields['Status']||'—', pals:r.fields['Total Pallets']||0, date:(r.fields['Loading DateTime']||'').substring(0,10), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
+        ...intl.map(r => ({ type:'INTL', dir:r.fields['Direction']||'—', route:orderRoute(r.fields, 20)||'—', status:r.fields['Status']||'—', pals:r.fields['Total Pallets']||0, date:(r.fields['Loading DateTime']||'').substring(0,10), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
         ...natl.map(r => ({ type:'NATL', dir:r.fields['Direction']||'—', route:`${getLocationName(getLinkedId(r.fields['Pickup Location 1']))||'—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1']))||'—'}`, status:r.fields['Status']||'—', pals:r.fields['Pallets']||0, date:toLocalDate(r.fields['Loading DateTime']), price:parseFloat(r.fields['Price'])||0, perf:r.fields['Delivery Performance']||'' })),
       ];
       _renderClientOrders(el, orders);

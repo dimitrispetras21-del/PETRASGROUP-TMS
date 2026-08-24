@@ -111,7 +111,7 @@ async function _perfLoad() {
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
                'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
                'Assigned At','Actual Delivery Date',
-               'Loading Summary','Delivery Summary']
+               'Loading Location 1','Unloading Location 1']
     }, true),
     // safeFetch on both. This page computes performance metrics, so a missing
     // source does not blank a number, it QUIETLY SHIFTS one: fewer national
@@ -348,13 +348,13 @@ function _perfCompute() {
   // National profitability — margin from NAT_LOADS where both Revenue and Cost exist.
   // Previously hardcoded to 0.
   const natlWithFinancials = (PERF.natLoads || []).filter(r => {
-    const rev = parseFloat(r.fields['Revenue'] || r.fields['Net Price']) || 0;
+    const rev = parseFloat(r.fields['Price']) || 0;
     const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
     return rev > 0 && cost > 0;
   });
   const natl_profit = natlWithFinancials.length
     ? Math.round(natlWithFinancials.reduce((s, r) => {
-        const rev = parseFloat(r.fields['Revenue'] || r.fields['Net Price']) || 0;
+        const rev = parseFloat(r.fields['Price']) || 0;
         const cost = parseFloat(r.fields['Total Cost'] || r.fields['Cost']) || 0;
         return s + ((rev - cost) / rev * 100);
       }, 0) / natlWithFinancials.length)
@@ -373,10 +373,12 @@ function _perfCompute() {
     cmr_archived = deliveredForCmr.length ? Math.round(invoicedOrders2.length / deliveredForCmr.length * 100) : 0;
   }
 
-  // Outstanding balance (Eirini's KPI) — total Net Price of delivered-but-not-invoiced orders.
+  // Outstanding balance (Eirini's KPI) — total Price of delivered-but-not-invoiced
+  // orders. 'Price' by owner decision (23/8): 'Net Price' is deliberately
+  // unimplemented until the P&L phase and does not exist in the Worker map.
   // Previously hardcoded to 0.
   const outstandingOrders = orders.filter(r => r.fields['Status'] === 'Delivered');
-  const outstanding = Math.round(outstandingOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0));
+  const outstanding = Math.round(outstandingOrders.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0));
 
   // Pallet balance (Eirini's KPI) — sum of Net Pallets from PALLET_LEDGER if available.
   // Stored in localStorage as a manually-updated value if no data source is loaded.
@@ -636,9 +638,9 @@ function _perfDraw() {
     const pill = perf === 'On Time'
       ? '<span class="perf-pill perf-pill-ok">Εγκαίρως</span>'
       : '<span class="perf-pill perf-pill-bad">Εκπρόθεσμη</span>';
-    // Fallback chain: Summary (formula) → Points (lookup) → '?'
-    const _loadRaw = f['Loading Summary'] || f['Loading Points'] || '';
-    const _delRaw  = f['Delivery Summary'] || f['Delivery Points'] || '';
+    // Από τα links τοποθεσιών — τα Summary/Points ήταν φαντάσματα (26/8).
+    const _loadRaw = orderLoadName(f, 999) || '';
+    const _delRaw  = orderDelName(f, 999) || '';
     const _load = (Array.isArray(_loadRaw) ? _loadRaw.join(' / ') : _loadRaw).split('/')[0]?.trim().slice(0, 15) || '?';
     const _del  = (Array.isArray(_delRaw) ? _delRaw.join(' / ') : _delRaw).split('/')[0]?.trim().slice(0, 15) || '?';
     const route = `${escapeHtml(_load)} → ${escapeHtml(_del)}`;

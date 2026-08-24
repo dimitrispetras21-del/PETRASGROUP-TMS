@@ -205,8 +205,10 @@ const metrics = (function() {
   }
 
   function emptyLegs(exports, imports) {
-    const exp = exports.map(e => ((e.fields['Delivery Summary']||'').split(',').pop()||'').trim().slice(0,3).toUpperCase());
-    const imp = imports.map(i => ((i.fields['Loading Summary']||'').split(',').pop()||'').trim().slice(0,3).toUpperCase());
+    // Κωδικός χώρας από το link τοποθεσίας — το παλιό `.split(',').pop()` πάνω
+    // στα Summary φαντάσματα γύριζε πάντα '' και το KPI μετρούσε δομικά 0.
+    const exp = exports.map(e => orderLocCountry(e.fields, 'del'));
+    const imp = imports.map(i => orderLocCountry(i.fields, 'load'));
     const impSet = new Set(imp.filter(Boolean));
     const expSet = new Set(exp.filter(Boolean));
     const soloExp = exp.filter(r => r && !impSet.has(r)).length;

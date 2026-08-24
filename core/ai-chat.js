@@ -1317,7 +1317,7 @@ async function _aicRunObserver() {
         const in7d = toLocalDate(new Date(Date.now() + 7 * 864e5));
         const unassigned = await atGetAll(TABLES.ORDERS, {
           filterByFormula: `AND({Type}='International',{Truck}=BLANK(),IS_AFTER({Delivery DateTime},'${localToday()}'))`,
-          fields: ['Delivery Summary','Delivery DateTime','Direction']
+          fields: ['Unloading Location 1','Delivery DateTime','Direction']
         }, true);
 
         // CRITICAL: delivering in <48h
@@ -1325,7 +1325,7 @@ async function _aicRunObserver() {
         if (crit48.length) {
           alerts.push({ type:'unassigned_critical', severity:'critical',
             title:`${crit48.length} unassigned — delivery <48h!`,
-            detail: crit48.slice(0,3).map(r => (r.fields['Delivery Summary']||'').split('/')[0].trim().slice(0,20)).join(', '),
+            detail: crit48.slice(0,3).map(r => orderDelName(r.fields, 20)).join(', '),
             page:'weekly_intl' });
         }
 

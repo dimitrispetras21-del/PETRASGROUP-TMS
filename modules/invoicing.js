@@ -32,9 +32,9 @@ function _invRawClientName(clientId) {
 
 function _invRoute(rec) {
   if (rec._type === 'intl') {
-    const load = rec.fields['Loading Summary'] || '';
-    const del  = rec.fields['Delivery Summary'] || '';
-    return (load || '—') + ' → ' + (del || '—');
+    // Από τα links τοποθεσιών — τα Loading/Delivery Summary ήταν φαντάσματα
+    // του χάρτη (26/8) και η στήλη ΔΙΑΔΡΟΜΗ έβγαινε «— → —» σε κάθε γραμμή.
+    return orderRoute(rec.fields, 25) || '—';
   }
   return rec.fields['Goods'] || '—';
 }
@@ -46,7 +46,9 @@ function _invOrderNo(rec) {
   // software. For whoever is doing the invoicing that is worse than an admitted
   // gap, because it looks like a real number.
   // See docs/design/DEEP_AUDIT_2026-08-04/invoicing.md IN-2.
-  return rec.fields['Order Number'] || rec.fields['National Order ID'] || '(χωρίς αριθμό)';
+  // 'Reference', ΟΧΙ 'Order Number': το δεύτερο δεν υπάρχει στον χάρτη του
+  // Worker (CLAUDE.md, παγίδες ονομάτων) — έδειχνε «(χωρίς αριθμό)» παντού.
+  return rec.fields['Reference'] || rec.fields['National Order ID'] || '(χωρίς αριθμό)';
 }
 
 function _invPallets(rec) {

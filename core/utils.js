@@ -1126,7 +1126,7 @@ async function _refreshNotifs() {
       return noTruck && del && del <= in48h && del >= today && f['Status'] !== 'Delivered' && f['Status'] !== 'Cancelled';
     }).forEach(r => {
       const f = r.fields;
-      const route = `${(f['Loading Summary']||'').slice(0,20)} → ${(f['Delivery Summary']||'').slice(0,20)}`;
+      const route = orderRoute(f, 20);
       items.push({ type: 'danger', title: `${escapeHtml(f['Direction']||'Order')} χωρίς ανάθεση`, sub: escapeHtml(route), page: 'orders_intl' });
     });
 
@@ -1141,7 +1141,7 @@ async function _refreshNotifs() {
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
         items.push({ type: 'warn', title: 'Export χωρίς return load',
-          sub: escapeHtml(`${(f['Delivery Summary']||'').slice(0,30)} — βρες import`), page: 'weekly_intl' });
+          sub: escapeHtml(`${orderDelName(f, 30)} — βρες import`), page: 'weekly_intl' });
       });
     }
 
@@ -1156,7 +1156,7 @@ async function _refreshNotifs() {
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
         items.push({ type: 'warn', title: 'Οδηγός μη ενημερωμένος',
-          sub: escapeHtml(`Φόρτωση σήμερα: ${(f['Loading Summary']||'').slice(0,25)}`), page: 'daily_ops' });
+          sub: escapeHtml(`Φόρτωση σήμερα: ${orderLoadName(f, 25)}`), page: 'daily_ops' });
       });
 
       // Deliveries today, assigned, but Client Notified is false
@@ -1168,7 +1168,7 @@ async function _refreshNotifs() {
       }).slice(0, 5).forEach(r => {
         const f = r.fields;
         items.push({ type: 'warn', title: 'Πελάτης μη ενημερωμένος',
-          sub: escapeHtml(`Παράδοση σήμερα: ${(f['Delivery Summary']||'').slice(0,25)}`), page: 'daily_ops' });
+          sub: escapeHtml(`Παράδοση σήμερα: ${orderDelName(f, 25)}`), page: 'daily_ops' });
       });
 
       // Delivered last 3 days without CMR Photo
@@ -1255,7 +1255,7 @@ async function _refreshNotifs() {
       }).slice(0, 8).forEach(r => {
         const f = r.fields;
         items.push({ type: 'warn', title: 'Παραγγελία χωρίς τιμολόγιο',
-          sub: escapeHtml(`${f['Order Number']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
+          sub: escapeHtml(`${f['Reference']||''} — ${(f['Client Summary']||f['Client Name']||'').slice(0,25)}`), page: 'invoicing' });
       });
     }
 

@@ -171,7 +171,7 @@ async function renderDashboard() {
       const clientName = escapeHtml(clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—');
       const truckId = getLinkId(f['Truck']);
       const truckPlate = escapeHtml(truckId && truckMap[truckId] ? truckMap[truckId]['License Plate'] : '');
-      const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 20))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 20))}`;
+      const route = escapeHtml(orderRoute(f, 20));
       const pallets = f['Total Pallets'] || 0;
       const status = f['Status'] || 'Pending';
 
@@ -288,7 +288,7 @@ async function renderDashboard() {
       const f = r.fields;
       const clientId = getLinkId(f['Client']);
       const clientName = escapeHtml(clientId && clientMap[clientId] ? clientMap[clientId]['Company Name'] : (f['Client Name'] || f['Client Summary'] || '').split(',')[0].trim() || '—');
-      const route = `${escapeHtml((f['Loading Summary'] || '').slice(0, 18))} → ${escapeHtml((f['Delivery Summary'] || '').slice(0, 18))}`;
+      const route = escapeHtml(orderRoute(f, 18));
       const delDate = (f['Delivery DateTime'] || '').substring(0, 10);
       const pallets = f['Total Pallets'] || 0;
       const created = r.createdTime || '';

@@ -489,7 +489,7 @@
   }
 
   function _calcRevenue(allOrders) {
-    return allOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
+    return allOrders.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
   }
 
   function _calcDeadKM(allOrders) {
@@ -523,10 +523,10 @@
 
   function _calcTopClients(allOrders, n) {
     const map = {};
-    const total = allOrders.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
+    const total = allOrders.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
     allOrders.forEach(r => {
       const name = (Array.isArray(r.fields['Client Name']) ? r.fields['Client Name'][0] : r.fields['Client Name']) || 'Unknown';
-      const rev  = parseFloat(r.fields['Net Price']) || 0;
+      const rev  = parseFloat(r.fields['Price']) || 0;
       if (!map[name]) map[name] = 0;
       map[name] += rev;
     });
@@ -560,9 +560,9 @@
     // Previously also checked a separate Invoiced boolean field which may not exist
     // in Airtable — redundant check removed to avoid false positives.
     const delivered = allOrders.filter(r => ['Delivered','Invoiced'].includes(r.fields['Status']));
-    const deliveredRev = delivered.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
+    const deliveredRev = delivered.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
     const uninvoiced = allOrders.filter(r => r.fields['Status'] === 'Delivered');
-    const uninvoicedRev = uninvoiced.reduce((s, r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
+    const uninvoicedRev = uninvoiced.reduce((s, r) => s + (parseFloat(r.fields['Price']) || 0), 0);
     return { deliveredRev, uninvoicedCount: uninvoiced.length, uninvoicedRev };
   }
 
@@ -574,7 +574,7 @@
     const partnerOrders = allOrders.filter(r => {
       const p = r.fields['Partner']; return Array.isArray(p) ? p.length > 0 : !!p;
     });
-    const revenue = partnerOrders.reduce((s,r) => s + (parseFloat(r.fields['Net Price']) || 0), 0);
+    const revenue = partnerOrders.reduce((s,r) => s + (parseFloat(r.fields['Price']) || 0), 0);
     const cost    = partnerOrders.reduce((s,r) => s + (parseFloat(r.fields['Partner Rate']) || 0), 0);
     const partnerMargin = revenue > 0 ? (revenue - cost) / revenue * 100 : 0;
     return { partnerRevPct: 0, partnerMargin };
@@ -587,7 +587,9 @@
     return tripCosts
       .map(r => {
         const f = r.fields;
-        const revenue = parseFloat(f['Revenue']) || parseFloat(f['Net Price']) || parseFloat(f['Gross Revenue']) || 0;
+        // 'Price' μόνο: Revenue/Net Price/Gross Revenue δεν υπάρχουν στον χάρτη
+        // (owner 23/8 — Price μέχρι τη φάση P&L)· η αλυσίδα fallback γύριζε 0.
+        const revenue = parseFloat(f['Price']) || 0;
         const cost = parseFloat(f['Total Cost']) || parseFloat(f['Cost']) || 0;
         return {
           route: f['Route'] || f['Name'] || 'Unknown route',

@@ -143,6 +143,31 @@ async function findDuplicateOrders(reference, tableId, excludeRecId) {
   }
 }
 
+/* ── Route παραγγελίας από τα ΥΠΑΡΚΤΑ links τοποθεσιών (26/8) ──
+   Τα 'Loading Summary'/'Delivery Summary' ήταν formula-φαντάσματα του Airtable,
+   απόντα από τον χάρτη του Worker: το facade τα παρέλειπε σιωπηλά (μηχανισμός 2
+   του CLAUDE.md) και τα routes έβγαιναν «→» κενά — ημερολόγιο Φάσης 1: 21
+   χτυπήματα από 3 χρήστες. Χτίζονται πλέον από τα links Loading/Unloading
+   Location 1 μέσω του cache τοποθεσιών.
+   Επιστρέφουν ΑΝ-escaped κείμενο — το escapeHtml μπαίνει στο σημείο εμφάνισης. */
+function _plainLocName(id) {
+  if (!id) return '';
+  const l = getRefLocations().find(r => r.id === id);
+  return l ? String(l.fields['Name'] || l.fields['City'] || '') : '';
+}
+function orderLoadName(f, n = 25) { return _plainLocName(getLinkedId(f['Loading Location 1'])).slice(0, n); }
+function orderDelName(f, n = 25)  { return _plainLocName(getLinkedId(f['Unloading Location 1'])).slice(0, n); }
+function orderRoute(f, n = 20) {
+  const a = orderLoadName(f, n), b = orderDelName(f, n);
+  return (a || b) ? `${a || '—'} → ${b || '—'}` : '';
+}
+// Κωδικός χώρας σημείου (ταίριασμα empty legs) — από LOCATIONS.Country.
+function orderLocCountry(f, which) {
+  const label = which === 'load' ? 'Loading Location 1' : 'Unloading Location 1';
+  const l = getRefLocations().find(r => r.id === getLinkedId(f[label]));
+  return l ? String(l.fields['Country'] || '').trim().slice(0, 3).toUpperCase() : '';
+}
+
 if (typeof window !== 'undefined') {
   window.findDuplicateOrders = findDuplicateOrders;
 }
