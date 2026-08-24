@@ -87,6 +87,7 @@ const _orderSync = (function() {
     if (!skipPL && changedFields.includes('Pallet Exchange')) {
       await run('PL feed sync', async () => {
         if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(orderId, source);
+        if (source === 'intl' && typeof rtOnOrderSaved === 'function') await rtOnOrderSaved(orderId);
       });
     }
 

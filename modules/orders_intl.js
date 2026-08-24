@@ -1669,6 +1669,7 @@ async function submitIntlOrder(recId) {
 
     // Παλέτες Φ2: εκκρεμείς LOADING ανά στάση (idempotent, μη-μπλοκάρον)
     if (typeof plOnOrderSaved === 'function') await plOnOrderSaved(savedOrderId, 'intl');
+    if (typeof rtOnOrderSaved === 'function') await rtOnOrderSaved(savedOrderId);
 
     try {
       toast('Syncing VS national load...', 'info');
@@ -2606,6 +2607,7 @@ async function deleteIntlOrder(recId) {
     } catch(e) { _delFail++; console.warn('Ramp cleanup:', e); }
 
     // Παλέτες Φ2: pending φεύγουν, confirmed μένουν (ιστορικό)
+    if (typeof rtOnOrderDeleted === 'function') await rtOnOrderDeleted(recId);
     if (typeof plOnOrderDeleted === 'function') await plOnOrderDeleted(recId, 'intl');
 
     // 5. Delete ORDER_STOPS linked to this ORDER

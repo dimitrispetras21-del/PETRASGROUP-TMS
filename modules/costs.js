@@ -88,6 +88,7 @@ async function renderTripPnl() {
       <span style="flex:1"></span>
       <button class="ct-btn" onclick="ctReload()">↻ Ανανέωση</button>
     </div>
+    <div id="ctRecon"></div>
     <div id="ctList"></div>
     <div class="ct-overlay" id="ctOverlay" onclick="ctCloseAll()"></div>
     <div class="ct-panel" id="ctPanel"></div>
@@ -118,6 +119,7 @@ async function ctReload() {
     _ct.palletGate = {}; (palletGate.records || []).forEach(g => { _ct.palletGate[g.rt_id] = g; });
     _ct.linesByRt = {}; (lines.records || []).forEach(l => { if (l.rt_id) (_ct.linesByRt[l.rt_id] = _ct.linesByRt[l.rt_id] || []).push(l); });
     ctRenderKPIs(); ctRenderVehBar(); ctRenderList();
+    ctRecon();
   } catch (e) {
     // Ορατό σφάλμα με επανάληψη — ποτέ κενή/μισή σελίδα (αρχή 1).
     if (list) list.innerHTML = `<div class="ct-empty">⚠ Τα /costs/* δεν απάντησαν: <b>${ctEsc(e.message)}</b><br>
@@ -324,6 +326,39 @@ function ctRenderList() {
 function ctRevealRow(id) {
   if (_ct.revealed.has(id)) _ct.revealed.delete(id); else _ct.revealed.add(id);
   ctRenderList();
+}
+
+// ── Μετρητής συμφωνίας (εγκεκριμένος 24/8): «αν ο feeder σταματήσει, ποιος
+// θα το πει;» — η ίδια η σελίδα, στην επόμενη φόρτωση. Συγκρίνει εκτελεσμένες
+// διεθνείς παραγγελίες με ανάθεση ↔ σκέλη RT και ονομάζει όσες λείπουν.
+async function ctRecon() {
+  const el = document.getElementById('ctRecon');
+  if (!el) return;
+  try {
+    const orders = await atGet(TABLES.ORDERS);
+    const expected = orders.filter(r => {
+      const f = r.fields;
+      return (f['Status'] === 'Delivered' || f['Status'] === 'In Transit') &&
+        f['Direction'] !== 'Import' &&
+        (getLinkedId(f['Truck']) || (f['Is Partner Trip'] && getLinkedId(f['Partner'])));
+    });
+    const recs = expected.map(r => r.id);
+    const pg = {};
+    for (let i = 0; i < recs.length; i += 250) {
+      const g = await ctFetch('/pallets/gate?order_recs=' + recs.slice(i, i + 250).join(','));
+      (g.records || []).forEach(x => { pg[x.order_rec] = x.order_id; });
+    }
+    const legIds = new Set();
+    Object.values(_ct.rts).forEach(rt => (rt.ct_rt_legs || []).forEach(l => legIds.add(l.order_id)));
+    const missing = expected.filter(r => pg[r.id] != null && !legIds.has(pg[r.id]));
+    el.innerHTML = missing.length ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#B45309">
+      ⚠ <b>${missing.length} εκτελεσμέν${missing.length === 1 ? 'η παραγγελία' : 'ες παραγγελίες'} χωρίς round trip</b> — ο feeder δεν τις έπιασε.
+      Άνοιξε & ξανασώσε τη γραμμή στο Weekly, ή φτιάξε RT χειροκίνητα:
+      ${missing.slice(0, 5).map(r => ctEsc(r.fields['Reference'] || r.id)).join(' · ')}${missing.length > 5 ? ' · +' + (missing.length - 5) : ''}</div>` : '';
+  } catch (e) {
+    // Ο μετρητής δεν ρίχνει ποτέ τη σελίδα — αλλά δεν σιωπά κιόλας.
+    el.innerHTML = '<div class="ct-note" style="margin-bottom:10px">Ο μετρητής συμφωνίας δεν έτρεξε (' + ctEsc(e.message) + ') — τα RT εμφανίζονται κανονικά.</div>';
+  }
 }
 
 // ── drill-down ───────────────────────────────────────────────────
