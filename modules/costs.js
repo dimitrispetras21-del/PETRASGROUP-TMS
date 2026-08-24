@@ -41,15 +41,18 @@ function ctTruckName(id) { const t = (_ct.lookups?.trucks || []).find(x => x.id 
 function ctDriverName(id) { const d = (_ct.lookups?.drivers || []).find(x => x.id === id); return d ? d.full_name : ''; }
 function ctPartnerName(id) { const p = (_ct.lookups?.partners || []).find(x => x.id === id); return p ? p.company_name : (id ? '#' + id : '—'); }
 
+// Margin σαν κατάστιχο (owner 24/8, πέρασμα αφαίρεσης): σκέτο κείμενο με
+// πρόσημο, tabular, ουδέτερο — κόκκινο ΜΟΝΟ σε πραγματική ζημιά. Όχι pills.
 function ctPill(m) {
-  if (m == null) return '<span class="ct-pill ct-dim">—</span>';
-  const c = m < 0 ? 'ct-red' : (m < 10 ? 'ct-amber' : 'ct-green');
-  return `<span class="ct-pill ${c}">${m > 0 ? '+' : ''}${Number(m).toFixed(1)}%</span>`;
+  if (m == null) return '<span class="ct-mgn dim">—</span>';
+  return `<span class="ct-mgn${m < 0 ? ' neg' : ''} ct-mono">${m > 0 ? '+' : m < 0 ? '−' : ''}${Math.abs(Number(m)).toFixed(1)}%</span>`;
 }
+// Ετικέτες οχήματος/συνεργάτη: hairline περίγραμμα, όχι γεμάτο μπλοκ — η
+// διάκριση OWNED/PARTNER γίνεται με τη λέξη, όχι με χρώμα φόντου.
 function ctChip(t) {
-  const natl = t.scope === 'NATL' ? ' <span class="ct-chip ct-natl">ΕΘΝΙΚΟ</span>' : '';
-  if (t.trip_type === 'PARTNER') return `<span class="ct-chip ct-partner">${ctEsc(ctPartnerName(t.partner_id))}</span>` + natl;
-  return `<span class="ct-chip ct-owned">${ctEsc(ctTruckName(t.truck_id))}</span>` + natl;
+  const natl = t.scope === 'NATL' ? ' <span class="ct-tag">ΕΘΝΙΚΟ</span>' : '';
+  if (t.trip_type === 'PARTNER') return `<span class="ct-tag">PARTNER · ${ctEsc(ctPartnerName(t.partner_id))}</span>` + natl;
+  return `<span class="ct-tag">${ctEsc(ctTruckName(t.truck_id))}</span>` + natl;
 }
 // Λεξιλόγιο κατάστασης (owner review 24/8) — δύο ανεξάρτητα σήματα: η ΕΚΤΕΛΕΣΗ
 // εδώ, τα ΚΟΣΤΗ στο pill «κόστη ελλιπή». Ο feeder γεννά RT μόνο όταν η μεταφορά
@@ -74,17 +77,17 @@ async function renderTripPnl() {
   if (typeof ROLE !== 'undefined' && ROLE !== 'owner') {
     c.innerHTML = `<div class="page-header"><div><div class="page-title">TRIP PnL</div></div></div>
       <div style="background:#fff;border:1px solid rgba(0,0,0,.08);border-radius:12px;padding:40px;text-align:center;color:var(--text-dim)">
-      🔒 Η κερδοφορία ανά δρομολόγιο είναι ορατή μόνο στον ιδιοκτήτη.</div>`;
+      Η κερδοφορία ανά δρομολόγιο είναι ορατή μόνο στον ιδιοκτήτη.</div>`;
     return;
   }
   c.innerHTML = ctStyles() + `
     <div class="page-header">
       <div>
-        <div class="page-title">TRIP PnL <span class="ct-rolechip">🔒 Owner only</span></div>
+        <div class="page-title">TRIP PnL <span class="ct-rolechip">Owner only</span></div>
         <div class="page-sub">Κερδοφορία ανά round trip · έσοδα auto από φορτία · κόστη καθαρό + ΦΠΑ χωριστά</div>
       </div>
       <div style="display:flex;gap:10px;align-items:center">
-        <button class="ct-btn" onclick="ctOpenSettings()">⚙ Ρυθμίσεις</button>
+        <button class="ct-btn" onclick="ctOpenSettings()">Ρυθμίσεις</button>
         <button class="ct-btn ct-primary" onclick="ctOpenRtModal()">+ Νέο Round Trip</button>
       </div>
     </div>
@@ -104,7 +107,7 @@ async function renderTripPnl() {
         <option value="week">Ανά Εβδομάδα</option>
       </select>
       <span style="flex:1"></span>
-      <button class="ct-btn" onclick="ctReload()">↻ Ανανέωση</button>
+      <button class="ct-btn" onclick="ctReload()">Ανανέωση</button>
     </div>
     <div id="ctRecon"></div>
     <div id="ctList"></div>
@@ -167,9 +170,9 @@ async function ctReload() {
   }
 }
 function ctErrorCard() {
-  return `<div class="ct-empty">⚠ Τα /costs/* δεν απάντησαν: <b>${ctEsc(_ct.loadError)}</b><br>
+  return `<div class="ct-empty">Τα /costs/* δεν απάντησαν: <b>${ctEsc(_ct.loadError)}</b><br>
     <span style="font-size:12px">Τα νούμερα ΔΕΝ είναι μηδέν — απλώς δεν φορτώθηκαν.</span><br>
-    <button class="ct-btn" style="margin-top:12px" onclick="ctReload()">↻ Δοκίμασε ξανά</button></div>`;
+    <button class="ct-btn" style="margin-top:12px" onclick="ctReload()">Δοκίμασε ξανά</button></div>`;
 }
 
 // ── Εμπλουτισμός διαδρομής (v3): pg id → πλήρες ORDERS record ─────────────
@@ -217,7 +220,7 @@ function ctCostInfo(t) {
   return { n, complete: n > 0 };
 }
 function ctIncompletePill(n) {
-  return `<span class="ct-pill ct-amber" title="Το περιθώριο κρύβεται μέχρι να καταχωρηθούν κόστη — αλλιώς το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος">κόστη ελλιπή${n ? '' : ' · 0 γραμμές'}</span>`;
+  return `<span class="ct-flag" title="Το περιθώριο κρύβεται μέχρι να καταχωρηθούν κόστη — αλλιώς το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος">κόστη ελλιπή${n ? '' : ' · 0 γραμμές'}</span>`;
 }
 
 function ctVisible() {
@@ -266,20 +269,9 @@ function ctRenderSummary() {
     : allComplete
     ? `Καθαρό <b class="${rev - gross < 0 ? 'neg' : 'pos'}">${ctSigned(rev - gross)}</b> <span class="dim">(${rev ? ((rev - gross) / rev * 100).toFixed(1) + '%' : '—'})</span>`
     : `Καθαρό <b class="warn">—</b> <span class="dim">μη υπολογίσιμο όσο λείπουν κόστη</span>`;
-  // Convoy strip (demo v3 — «όλη η εβδομάδα με μια ματιά»): κάθε RT μια
-  // μπάρα, πλάτος ≈ έσοδα, χρώμα = κέρδος/ζημιά/χωρίς κόστη, ρίγες = σε
-  // εξέλιξη. Κλικ = μετάβαση στην κάρτα του.
-  const totRev = V.reduce((a, t) => a + Number(t.revenue || 0), 0) || 1;
-  const convoy = V.length ? `<div class="ct-convoy">${[...V].sort((a, b) => (a.date_start < b.date_start ? -1 : 1)).map(t => {
-    const ci = ctCostInfo(t);
-    const cls = !ci.complete ? 'inc' : Number(t.profit_worst) < 0 ? 'loss' : 'prof';
-    // Ίδιος κανόνας με το badge: planned ΧΩΡΙΣ legs = «Σχεδιασμένο», όχι ρίγες.
-    const legsN = ((_ct.rts[t.id] || {}).ct_rt_legs || []).length;
-    const run = (t.status === 'in_progress' || (t.status === 'planned' && legsN)) ? ' run' : '';
-    const w = Math.max(6, Math.round(Number(t.revenue || 0) / totRev * 100));
-    return `<span class="ct-cseg ${cls}${run}" style="flex:${w} 1 0" title="${ctEsc(t.code)} · έσοδα ${ctEur(t.revenue)}" onclick="ctScrollCard(${t.id})"></span>`;
-  }).join('')}</div>
-  <div class="ct-legend"><i class="d prof"></i>κέρδος <i class="d loss"></i>ζημιά <i class="d inc"></i>χωρίς κόστη <i class="d run"></i>σε εξέλιξη <span class="r">πλάτος ≈ έσοδα · κλικ = μετάβαση</span></div>` : '';
+  // Το convoy strip αφαιρέθηκε (owner 24/8, πέρασμα αφαίρεσης: οι ριγέ
+  // μπάρες διαβάζονταν «υπό κατασκευή») — τη σύνοψη-με-μια-ματιά τη δίνουν
+  // η πρόταση με τα ονομαστικά chips και η ενιαία λωρίδα στατιστικών.
   lede.innerHTML = `<div class="ct-lede">
     <div class="ct-lsent">
     <button class="ct-schip" onclick="ctResetFilters()">${V.length} δρομολόγι${V.length === 1 ? 'ο' : 'α'}</button>
@@ -291,17 +283,16 @@ function ctRenderSummary() {
       : `<span>όλα με πλήρη κόστη</span>`}
     ${losses.length ? `<span class="sep">·</span><span>${losses.length} ζημιογόν${losses.length === 1 ? 'ο' : 'α'}</span>` : ''}
     ${chipHtml}
-    <span class="sep">·</span> <span>${netPhrase}</span></div>
-    ${convoy}</div>`;
+    <span class="sep">·</span> <span>${netPhrase}</span></div></div>`;
   const netCell = allComplete
-    ? `<div class="v" style="color:${rev - gross < 0 ? '#B91C1C' : '#047857'}">${ctSigned(rev - gross)}</div>
+    ? `<div class="v"${rev - gross < 0 ? ' style="color:#B91C1C"' : ''}>${rev - gross < 0 ? '(' + ctEur(gross - rev).replace('€', '') + ' €)' : ctEur(rev - gross)}</div>
        <div class="s">margin ${rev ? ((rev - gross) / rev * 100).toFixed(1) + '%' : '—'} · χωρίς ΦΠΑ ${rev ? ((rev - net) / rev * 100).toFixed(1) + '%' : '—'}</div>`
     : `<div class="v warn">—</div><div class="s warn">κόστη ελλιπή σε ${incomplete.length} ${incomplete.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</div>`;
   const lastCell = _ct.linesFailed
-    ? `<div class="ct-stat"><div class="l warn">⚠ Κόστη</div><div class="v warn">;</div><div class="s warn">οι γραμμές δεν φόρτωσαν — άγνωστη πληρότητα</div></div>`
+    ? `<div class="ct-stat"><div class="l warn">Κόστη</div><div class="v warn">;</div><div class="s warn">οι γραμμές δεν φόρτωσαν — άγνωστη πληρότητα</div></div>`
     : incomplete.length
-    ? `<div class="ct-stat"><div class="l warn">⚠ Κόστη ελλιπή</div><div class="v warn">${incomplete.length} / ${V.length}</div><div class="s warn">το περιθώριο κρύβεται μέχρι να καταχωρηθούν</div></div>`
-    : `<div class="ct-stat"><div class="l">Ζημιογόνα</div><div class="v" style="color:${losses.length ? '#B91C1C' : '#047857'}">${losses.length}</div><div class="s">${losses.length ? 'θέλουν απόφαση' : 'κανένα — με πλήρη κόστη'}</div></div>`;
+    ? `<div class="ct-stat"><div class="l warn">Κόστη ελλιπή</div><div class="v warn">${incomplete.length} / ${V.length}</div><div class="s warn">το περιθώριο κρύβεται μέχρι να καταχωρηθούν</div></div>`
+    : `<div class="ct-stat"><div class="l">Ζημιογόνα</div><div class="v"${losses.length ? ' style="color:#B91C1C"' : ''}>${losses.length}</div><div class="s">${losses.length ? 'θέλουν απόφαση' : 'κανένα — με πλήρη κόστη'}</div></div>`;
   k.innerHTML = `
    <div class="ct-stat"><div class="l">Δρομολόγια</div><div class="v">${V.length}</div><div class="s">round trips στην τρέχουσα προβολή</div></div>
    <div class="ct-stat"><div class="l">Έσοδα</div><div class="v">${ctEur(rev)}</div><div class="s">auto από τα φορτία</div></div>
@@ -335,8 +326,7 @@ function ctSetScope(s) {
 function ctPalletGateNotice(V) {
   const gatedCount = V.filter(t => t.trip_type === 'PARTNER' && _ct.palletGate[t.id] && _ct.palletGate[t.id].sheets_ok === false).length;
   const banner = gatedCount
-    ? `<div style="background:#FEF3C7;color:#B45309;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;font-weight:600">
-        🔒 ${gatedCount} ${gatedCount === 1 ? 'διαδρομή partner περιμένει' : 'διαδρομές partner περιμένουν'} δελτίο παλετών</div>`
+    ? `<div class="ct-note ct-nwarn" style="font-weight:600">${icon('warning', 13)} Δελτίο παλετών: ${gatedCount} ${gatedCount === 1 ? 'διαδρομή partner το περιμένει' : 'διαδρομές partner το περιμένουν'}</div>`
     : '';
   const failNote = _ct.palletGateFailed
     ? `<div class="ct-note" style="margin-bottom:10px">Ο έλεγχος δελτίων παλετών δεν φόρτωσε — τα PnL εμφανίζονται κανονικά, χωρίς αυτόν τον έλεγχο.</div>`
@@ -373,10 +363,11 @@ function ctRenderList() {
   }
   // Ορατές προειδοποιήσεις αξιοπιστίας (review 24/8) — πριν από κάθε λίστα,
   // και στις ομαδοποιήσεις: αφορούν τα ίδια νούμερα.
+  const w = icon('warning', 13);
   const warnNotes =
-    (_ct.linesFailed ? `<div class="ct-note ct-nwarn">⚠ Οι γραμμές κόστους ΔΕΝ φόρτωσαν — η πληρότητα κοστών είναι <b>άγνωστη</b>, όχι μηδενική. Ό,τι δείχνει «κόστη;» παρακάτω μπορεί να έχει κανονικά κόστη. <button class="ct-btn" style="height:26px;padding:0 10px" onclick="ctReload()">↻ Ανανέωση</button></div>` : '') +
-    (_ct.linesCapped ? `<div class="ct-note ct-nwarn">⚠ Φορτώθηκαν μόνο οι 300 νεότερες γραμμές κόστους (όριο Worker) — παλαιότερα δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
-    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">⚠ Φορτώθηκαν μόνο τα 200 νεότερα round trips (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
+    (_ct.linesFailed ? `<div class="ct-note ct-nwarn">${w} Οι γραμμές κόστους ΔΕΝ φόρτωσαν — η πληρότητα κοστών είναι <b>άγνωστη</b>, όχι μηδενική. Ό,τι δείχνει «κόστη;» παρακάτω μπορεί να έχει κανονικά κόστη. <button class="ct-btn" style="height:26px;padding:0 10px" onclick="ctReload()">Ανανέωση</button></div>` : '') +
+    (_ct.linesCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο οι 300 νεότερες γραμμές κόστους (όριο Worker) — παλαιότερα δρομολόγια ίσως δείχνουν ψευδώς «χωρίς κόστη». Χρειάζεται σελιδοποίηση στο /costs (ουρά Worker).</div>` : '') +
+    (_ct.rtsCapped ? `<div class="ct-note ct-nwarn">${w} Φορτώθηκαν μόνο τα 200 νεότερα round trips (όριο Worker) — παλαιότερες κάρτες ίσως εμφανίζονται χωρίς σκέλη.</div>` : '');
   const notice = warnNotes + ctPalletGateNotice(V);
   if (_ct.group === 'trip') {
     // Γραμμή του νερού με ΚΑΡΤΕΣ (owner 24/8 v3: «το demo δεν ήταν πίνακας —
@@ -390,13 +381,13 @@ function ctRenderList() {
       .sort((a, b) => (a.margin_worst_pct ?? 999) - (b.margin_worst_pct ?? 999));
     // Αποτυχία εμπλουτισμού = ορατή σημείωση, όχι σιωπηλά γυμνές κάρτες.
     const enrichNote = _ct.enrichFail
-      ? `<div class="ct-note" style="margin-bottom:10px">⚠ Τα στοιχεία διαδρομής (πελάτες/προορισμοί) δεν φόρτωσαν — οι κάρτες δείχνουν μόνο ποσά. Δοκίμασε «↻ Ανανέωση».</div>` : '';
+      ? `<div class="ct-note ct-nwarn">${icon('warning', 13)} Τα στοιχεία διαδρομής (πελάτες/προορισμοί) δεν φόρτωσαν — οι κάρτες δείχνουν μόνο ποσά. Δοκίμασε «Ανανέωση».</div>` : '';
     el.innerHTML = notice + enrichNote +
       (needsAction.length
-        ? `<div class="ct-secttl" style="color:#B45309">Θέλουν απόφαση ή κόστη — ${needsAction.length}</div>` + needsAction.map(ctCardHtml).join('')
+        ? `<div class="ct-secttl">Θέλουν απόφαση ή κόστη — ${needsAction.length}</div>` + needsAction.map(ctCardHtml).join('')
         : `<div class="ct-empty" style="padding:16px;font-size:13px;margin-bottom:10px">Τίποτα δεν θέλει απόφαση — κανένα ζημιογόνο, καμία εκκρεμότητα κοστών. Αυτό είναι το μήνυμα.</div>`) +
       (needsAction.length && below.length
-        ? `<div class="ct-wline"><span>θέλουν απόφαση ↑</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κερδοφόρα ↓</span></div>` : '') +
+        ? `<div class="ct-wline"><span>πάνω: θέλουν απόφαση</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κάτω: κερδοφόρα</span></div>` : '') +
       below.map(ctCardHtml).join('') +
       `<div style="font-size:12px;color:var(--text-dim);margin-top:8px">κλικ σε κάρτα για το πλήρες ανάπτυγμα · οι ζημιές σε παρένθεση</div>`;
     return;
@@ -415,12 +406,12 @@ function ctRenderList() {
     .sort((a, b) => (a.mg ?? 999) - (b.mg ?? 999)).map(r => `
     <tr><td style="font-weight:600">${ctEsc(r.k)}</td><td class="ct-num ct-mono">${r.n}</td>
     <td class="ct-num ct-mono">${ctEur(r.rev)}</td><td class="ct-num ct-mono">${ctEur(r.gross)}</td>
-    <td class="ct-num ct-mono" style="font-weight:700;color:${r.p < 0 ? '#B91C1C' : '#047857'}">${ctEurP(r.p)}</td>
+    <td class="ct-num ct-mono" style="font-weight:700;${r.p < 0 ? 'color:#B91C1C' : ''}">${ctEurP(r.p)}</td>
     <td style="text-align:center">${ctPill(r.mg != null ? Math.round(r.mg * 10) / 10 : null)}</td>
     <td class="ct-num ct-mono" style="color:var(--text-dim)">${r.mx != null ? r.mx.toFixed(1) + '%' : '—'}</td></tr>`).join('');
   const h = _ct.group === 'truck' ? 'Φορτηγό / Partner' : _ct.group === 'driver' ? 'Οδηγός' : 'Εβδομάδα';
   el.innerHTML = notice +
-    (skipped ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:9px 13px;margin-bottom:10px;font-size:12.5px;color:#B45309">⚠ ${skipped} ${skipped === 1 ? 'δρομολόγιο' : 'δρομολόγια'} με ελλιπή κόστη ΔΕΝ μετρούν στα παρακάτω αθροίσματα.</div>` : '') +
+    (skipped ? `<div class="ct-note ct-nwarn">${icon('warning', 13)} ${skipped} ${skipped === 1 ? 'δρομολόγιο' : 'δρομολόγια'} με ελλιπή κόστη ΔΕΝ μετρούν στα παρακάτω αθροίσματα.</div>` : '') +
     `<table class="ct-tbl"><thead><tr><th>${h}</th><th class="ct-num">Trips</th><th class="ct-num">Έσοδα</th>
     <th class="ct-num">Κόστη</th><th class="ct-num">Καθαρό</th><th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -471,7 +462,7 @@ function ctLadderHtml(t, ci, lines) {
 function ctCardNums(t, ci) {
   // linesFailed: η πληρότητα είναι ΑΓΝΩΣΤΗ — ούτε margin ούτε ψευδές «ελλιπή».
   if (_ct.linesFailed) {
-    return `<div class="ct-cnum"><span class="ct-pill ct-amber">κόστη; — σφάλμα φόρτωσης</span>
+    return `<div class="ct-cnum"><span class="ct-flag">κόστη; — σφάλμα φόρτωσης</span>
       <div class="sub">έσοδα ${ctEur(t.revenue)}</div></div>`;
   }
   if (!ci.complete) {
@@ -511,7 +502,7 @@ function ctCardHtml(t) {
   // κρύβει πια το margin: προειδοποιεί ότι οι χαμένες παλέτες λείπουν από
   // τα νούμερα, χωρίς να τυφλώνει τον μόνο που τα χρειάζεται.
   const lockLine = gated
-    ? `<div class="ct-locknote">🔒 Λείπει δελτίο παλετών σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — οι χαμένες παλέτες είναι κόστος που δεν φαίνεται ακόμη εδώ</div>` : '';
+    ? `<div class="ct-locknote">${icon('warning', 13)} Δελτίο παλετών: λείπει σε ${gate.legs_needing_sheet - gate.legs_with_sheet} από ${gate.legs_needing_sheet} σκέλη — οι χαμένες παλέτες είναι κόστος που δεν φαίνεται ακόμη εδώ</div>` : '';
   const partnerNote = t.trip_type === 'PARTNER'
     ? `<div class="ct-leg" style="color:var(--text-dim);font-size:12px">κόμιστρο συνεργάτη — καύσιμα/διόδια/οδηγός είναι δικά του κόστη, όχι ελλιπή δικά μας</div>` : '';
   // Τα σκέλη δείχνουν τιμές παραγγελιών· το έσοδο trip αφαιρεί το εσωτερικό
@@ -528,11 +519,11 @@ function ctCardHtml(t) {
     if (diff > 0) {
       const hasVs = legs.some(l => { const o = l.order_id != null && _ct.orderByPg[l.order_id]; return o && o.fields['Veroia Switch']; });
       vsNote = hasVs
-        ? `<div class="ct-leg" style="color:var(--text-dim);font-size:12px">⇄ Veroia Switch: −${ctEur(diff)} εσωτερική μεταφορά (δεν είναι έσοδο πελάτη) → έσοδο trip ${ctEur(t.revenue)}</div>`
-        : `<div class="ct-leg" style="color:#B45309;font-size:12px">⚠ οι τιμές των σκελών αθροίζουν ${ctEur(legsSum)} αλλά το έσοδο trip είναι ${ctEur(t.revenue)} — ανεξήγητη διαφορά ${ctEur(diff)}</div>`;
+        ? `<div class="ct-leg" style="color:var(--text-dim);font-size:12px">Veroia Switch: −${ctEur(diff)} εσωτερική μεταφορά (δεν είναι έσοδο πελάτη), άρα έσοδο trip ${ctEur(t.revenue)}</div>`
+        : `<div class="ct-leg" style="color:#8A5A00;font-size:12px">${icon('warning', 12)} οι τιμές των σκελών αθροίζουν ${ctEur(legsSum)} αλλά το έσοδο trip είναι ${ctEur(t.revenue)} — ανεξήγητη διαφορά ${ctEur(diff)}</div>`;
     }
   }
-  const why = ci.complete && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">⚠ ${ctWhyText(t, lines)}</div>` : '';
+  const why = ci.complete && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>` : '';
   return `<div class="ct-card" id="ctCard${t.id}" onclick="ctOpenPanel(${t.id})">
     <div class="ct-ctop">
       <div class="ct-cid">
@@ -550,11 +541,6 @@ function ctCardHtml(t) {
   </div>`;
 }
 
-function ctScrollCard(id) {
-  const el = document.getElementById('ctCard' + id); if (!el) return;
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.classList.add('flash'); setTimeout(() => el.classList.remove('flash'), 1400);
-}
 
 // ── Μετρητής συμφωνίας (εγκεκριμένος 24/8): «αν ο feeder σταματήσει, ποιος
 // θα το πει;» — η ίδια η σελίδα, στην επόμενη φόρτωση. Συγκρίνει εκτελεσμένες
@@ -584,11 +570,11 @@ function ctRecon() {
   // ο μετρητής ΔΕΝ μπορεί να τις ελέγξει και το λέει — αλλιώς η σιωπή του θα
   // διαβαζόταν «όλα καλά» ακριβώς για τις πιο προβληματικές (review 24/8).
   const unbridged = expected.filter(r => _ct.pgByRec[r.id] == null);
-  let html = missing.length ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:13px;color:#B45309">
-    ⚠ <b>${missing.length} εκτελεσμέν${missing.length === 1 ? 'η παραγγελία' : 'ες παραγγελίες'} χωρίς round trip</b> — ο feeder δεν τις έπιασε.
+  let html = missing.length ? `<div class="ct-note ct-nwarn">
+    ${icon('warning', 13)} <b>${missing.length} εκτελεσμέν${missing.length === 1 ? 'η παραγγελία' : 'ες παραγγελίες'} χωρίς round trip</b> — ο feeder δεν τις έπιασε.
     Άνοιξε & ξανασώσε τη γραμμή στο Weekly, ή φτιάξε RT χειροκίνητα:
     ${missing.slice(0, 5).map(r => ctEsc(r.fields['Reference'] || r.id)).join(' · ')}${missing.length > 5 ? ' · +' + (missing.length - 5) : ''}</div>` : '';
-  if (unbridged.length) html += `<div class="ct-note ct-nwarn">⚠ ${unbridged.length} εκτελεσμέν${unbridged.length === 1 ? 'η παραγγελία είναι' : 'ες παραγγελίες είναι'} εκτός γέφυρας (χωρίς Loading stop) — ο μετρητής δεν μπορεί να ελέγξει αν έχουν RT:
+  if (unbridged.length) html += `<div class="ct-note ct-nwarn">${icon('warning', 13)} ${unbridged.length} εκτελεσμέν${unbridged.length === 1 ? 'η παραγγελία είναι' : 'ες παραγγελίες είναι'} εκτός γέφυρας (χωρίς Loading stop) — ο μετρητής δεν μπορεί να ελέγξει αν έχουν RT:
     ${unbridged.slice(0, 5).map(r => ctEsc(r.fields['Reference'] || r.id)).join(' · ')}${unbridged.length > 5 ? ' · +' + (unbridged.length - 5) : ''}</div>`;
   el.innerHTML = html;
 }
@@ -623,24 +609,24 @@ async function ctOpenPanel(id) {
   if (wear > 0.5) costRows += `<div class="ct-crow"><span class="ct-cl">Φθορά <span class="ct-badge ct-b-pend" style="font-size:10px">auto</span></span>
     <span class="ct-bar"><i style="width:${Math.round(wear / maxV * 100)}%;background:#64748B"></i></span>
     <span class="ct-cv ct-mono">${ctEur(wear)}</span><span class="ct-cvat ct-mono">€/km × km</span></div>`;
-  if (linesFetchFailed) costRows = `<div class="ct-note ct-nwarn">⚠ Οι γραμμές κόστους δεν φόρτωσαν — η ανάλυση ανά κατηγορία δεν είναι διαθέσιμη. Τα σύνολα από κάτω έρχονται από τη βάση.</div>`;
+  if (linesFetchFailed) costRows = `<div class="ct-note ct-nwarn">${icon('warning', 13)} Οι γραμμές κόστους δεν φόρτωσαν — η ανάλυση ανά κατηγορία δεν είναι διαθέσιμη. Τα σύνολα από κάτω έρχονται από τη βάση.</div>`;
   else if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-dim)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από τη φόρμα πιο πάνω.</div>';
   if (t.trip_type === 'PARTNER') costRows += `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-dim)">Καύσιμα/διόδια/οδηγός δεν καταγράφονται εδώ — είναι κόστη του συνεργάτη, όχι ελλιπή δικά μας. Το δικό μας κόστος είναι το κόμιστρο.</span><span></span></div>`;
   const catOpts = Object.entries(CT_CATEGORY_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   panel.innerHTML = `
-    <div class="ct-phead"><button class="ct-close" onclick="ctCloseAll()">✕</button>
+    <div class="ct-phead"><button class="ct-close" onclick="ctCloseAll()">&times;</button>
       <h2>${ctEsc(t.code)} · ${t.scope === 'NATL' ? 'Εθνικό' : 'Διεθνές'}</h2>
       <div class="ct-pmeta">${t.trip_type === 'PARTNER' ? 'Partner: ' + ctEsc(ctPartnerName(t.partner_id)) : ctEsc(ctTruckName(t.truck_id)) + (ctDriverName(t.driver_id) ? ' · ' + ctEsc(ctDriverName(t.driver_id)) : '')}
        · ${fmtDate(t.date_start)}${t.date_end ? ' → ' + fmtDate(t.date_end) : ''} · ${t.total_km ? t.total_km.toLocaleString('el-GR') + ' km' : 'χωρίς km'}</div>
-      ${(t.trip_type === 'PARTNER' && _ct.palletGate[t.id] && _ct.palletGate[t.id].sheets_ok === false) ? `<div style="margin-top:8px;padding:6px 10px;background:rgba(251,191,36,.15);border-radius:6px;color:#FCD34D;font-size:12px;font-weight:600">
-        🔒 Λείπει δελτίο παλετών σε ${_ct.palletGate[t.id].legs_needing_sheet - _ct.palletGate[t.id].legs_with_sheet} από ${_ct.palletGate[t.id].legs_needing_sheet} σκέλη — το PnL είναι ελλιπές</div>` : ''}
-      ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:10px;background:#fff" onclick="ctCloseRt(${t.id})">🏁 Κλείσιμο trip (χειροκίνητο fallback)</button>` : ''}</div>
+      ${(t.trip_type === 'PARTNER' && _ct.palletGate[t.id] && _ct.palletGate[t.id].sheets_ok === false) ? `<div style="margin-top:8px;padding:6px 10px;border:1px solid rgba(251,191,36,.4);border-radius:6px;color:#FCD34D;font-size:12px;font-weight:600">
+        Δελτίο παλετών: λείπει σε ${_ct.palletGate[t.id].legs_needing_sheet - _ct.palletGate[t.id].legs_with_sheet} από ${_ct.palletGate[t.id].legs_needing_sheet} σκέλη — το PnL είναι ελλιπές</div>` : ''}
+      ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:10px;background:#fff" onclick="ctCloseRt(${t.id})">Κλείσιμο trip — χειροκίνητο</button>` : ''}</div>
     ${!complete ? `<div class="ct-psec"><div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px">
-      <div style="font-weight:700;color:#B45309;font-size:13px">⚠ Κόστη ελλιπή — καμία γραμμή κόστους ακόμη</div>
+      <div style="font-weight:700;color:#8A5A00;font-size:13px">Κόστη ελλιπή — καμία γραμμή κόστους ακόμη</div>
       <div style="font-size:12px;color:#B45309;margin-top:4px">Το καθαρό/margin δεν υπολογίζεται — το άγραφο κόστος θα διαβαζόταν σαν καθαρό κέρδος που δεν υπάρχει. Καταχώρησε τα κόστη ακριβώς από κάτω.</div>
     </div></div>` : `<div class="ct-psec"><div class="ct-duo">
-      <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v ct-mono" style="color:${Number(t.profit_worst) < 0 ? '#F87171' : '#34D399'}">${ctEurP(t.profit_worst)}</div><div class="s">margin ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
-      <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v ct-mono" style="color:${Number(t.profit_ex_vat) < 0 ? '#B91C1C' : '#047857'}">${ctEurP(t.profit_ex_vat)}</div><div class="s">margin ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
+      <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v ct-mono" style="color:${Number(t.profit_worst) < 0 ? '#FCA5A5' : '#fff'}">${ctEurP(t.profit_worst)}</div><div class="s">margin ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
+      <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v ct-mono"${Number(t.profit_ex_vat) < 0 ? ' style="color:#B91C1C"' : ''}>${ctEurP(t.profit_ex_vat)}</div><div class="s">margin ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
     </div>${ctWhyLine(t, lines)}</div>`}
     <div class="ct-psec"><h3>+ Καταχώρηση κόστους (καθαρό + ΦΠΑ χωριστά)</h3>
       <div class="ct-qform">
@@ -654,7 +640,7 @@ async function ctOpenPanel(id) {
       <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div></div>
     <div class="ct-psec"><h3>Έσοδα (auto από τα legs)</h3>
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
-        ? `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-dim)">⇄ Εθνικό σκέλος VS — εσωτερική μεταφορά (x_export 850 / x_import 650), όχι έσοδο πελάτη</span><span class="ct-mono" style="color:var(--text-dim)">memo</span></div>`
+        ? `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-dim)">Εθνικό σκέλος VS — εσωτερική μεταφορά (x_export 850 / x_import 650), όχι έσοδο πελάτη</span><span class="ct-mono" style="color:var(--text-dim)">memo</span></div>`
         : `<div class="ct-lrow"><span>${String(l.direction || '').toUpperCase().includes('IMP') ? 'Import' : 'Export'} · διεθνές φορτίο #${l.order_id}</span><span></span></div>`).join('')}
       <div class="ct-totrow"><span>${(rt.ct_rt_legs || []).length || 0} συνδεδεμένα φορτία ${!(rt.ct_rt_legs || []).length ? '· <span style="color:#B45309">σύνδεση από planners στο επόμενο βήμα</span>' : ''}</span><span class="ct-mono">${ctEur(t.revenue)}</span></div></div>
     <div class="ct-psec"><h3>Κόστη ανά κατηγορία</h3>${costRows}
@@ -695,7 +681,7 @@ function ctOpenCostModal(id) {
   const m = document.getElementById('ctModal');
   m.classList.add('open');
   m.innerHTML = `
-    <div class="ct-mhead">Καταχώρηση κόστους — ${ctEsc(t.code)} <button class="ct-close" onclick="ctCloseAll()">✕</button></div>
+    <div class="ct-mhead">Καταχώρηση κόστους — ${ctEsc(t.code)} <button class="ct-close" onclick="ctCloseAll()">&times;</button></div>
     <div class="ct-mbody">
       <div class="ct-fgrid">
         <label>Κατηγορία<select id="ctMcat">${catOpts}</select></label>
@@ -746,7 +732,7 @@ function ctWhyText(t, lines) {
 }
 function ctWhyLine(t, lines) {
   if (!(Number(t.profit_worst) < 0)) return '';
-  return `<div style="margin-top:10px;background:#FEF3C7;color:#92400E;border-radius:8px;padding:8px 12px;font-size:12.5px">⚠ ${ctWhyText(t, lines)}</div>`;
+  return `<div class="ct-dwhy" style="display:block;margin-top:10px">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>`;
 }
 
 // ── manual RT modal ──────────────────────────────────────────────
@@ -758,7 +744,7 @@ function ctOpenRtModal() {
   const m = document.getElementById('ctModal');
   m.classList.add('open');
   m.innerHTML = `
-    <div class="ct-mhead">Νέο Round Trip — κέντρο κόστους <button class="ct-close" onclick="ctCloseAll()">✕</button></div>
+    <div class="ct-mhead">Νέο Round Trip — κέντρο κόστους <button class="ct-close" onclick="ctCloseAll()">&times;</button></div>
     <div class="ct-mbody">
       <div class="ct-fgrid">
         <label>Scope<select id="ctFscope"><option value="INTL">Διεθνές</option><option value="NATL">Εθνικό</option></select></label>
@@ -806,7 +792,7 @@ async function ctOpenSettings() {
   document.getElementById('ctOverlay').classList.add('open');
   const m = document.getElementById('ctModal');
   m.classList.add('open');
-  m.innerHTML = '<div class="ct-mhead">⚙ Ρυθμίσεις COSTS <button class="ct-close" onclick="ctCloseAll()">✕</button></div><div class="ct-mbody ct-empty">Φόρτωση…</div>';
+  m.innerHTML = '<div class="ct-mhead">Ρυθμίσεις COSTS <button class="ct-close" onclick="ctCloseAll()">&times;</button></div><div class="ct-mbody ct-empty">Φόρτωση…</div>';
   const labels = { x_export: 'X — VS transfer (export)', x_import: 'X — VS transfer (import)', pallet_eur: 'Αξία παλέτας EUR', vat_default: 'Προεπιλογή ΦΠΑ', wear_fallback_eur_km: 'Φθορά €/km (fallback)' };
   try {
     const s = await ctFetch('/costs/settings');
@@ -815,7 +801,7 @@ async function ctOpenSettings() {
       <input type="number" step="0.001" id="ctS_${r.key}" value="${r.value}">
       <button class="ct-btn" onclick="ctSaveSetting('${r.key}')">Αποθήκευση</button></div>`).join('') +
       '<div class="ct-note">Owner-only. Οι αλλαγές επηρεάζουν ΟΛΟΥΣ τους υπολογισμούς PnL άμεσα (τα views διαβάζουν live).</div>';
-  } catch (e) { m.querySelector('.ct-mbody').innerHTML = '⚠ ' + ctEsc(e.message); }
+  } catch (e) { m.querySelector('.ct-mbody').innerHTML = 'Σφάλμα: ' + ctEsc(e.message); }
 }
 async function ctSaveSetting(key) {
   try {
@@ -835,22 +821,12 @@ function ctStyles() { return `<style>
 .ct-rolechip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:9999px;background:var(--navy-mid,#0B1929);color:#38BDF8;border:1px solid rgba(56,189,248,.3);vertical-align:middle}
 .ct-lede{background:var(--navy-mid,#0B1929);color:#E2E8F0;border-radius:12px;padding:13px 18px;margin-bottom:10px;font-size:13.5px;font-weight:500;display:flex;flex-direction:column;gap:9px}
 .ct-lsent{display:flex;align-items:center;flex-wrap:wrap;gap:8px}
-.ct-lede .sep{color:#475569}.ct-lede .dim{color:#7DA6CE;font-size:12px}
-.ct-convoy{display:flex;gap:3px;height:22px}
-.ct-cseg{border-radius:4px;cursor:pointer;min-width:14px;opacity:.95}
-.ct-cseg:hover{opacity:1;outline:1px solid rgba(255,255,255,.55)}
-.ct-cseg.prof{background:#22C55E}.ct-cseg.loss{background:#DC2626}.ct-cseg.inc{background:#F59E0B}
-.ct-cseg.run{background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 5px,transparent 5px 11px)}
-.ct-legend{display:flex;align-items:center;gap:6px;font-size:11px;color:#94A3B8;flex-wrap:wrap}
-.ct-legend .d{width:9px;height:9px;border-radius:2px;display:inline-block}
-.ct-legend .d.prof{background:#22C55E}.ct-legend .d.loss{background:#DC2626}.ct-legend .d.inc{background:#F59E0B}
-.ct-legend .d.run{background:#64748B;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.5) 0 2px,transparent 2px 4px)}
-.ct-legend .r{margin-left:auto}
-.ct-lede b.pos{color:#4ADE80}.ct-lede b.neg{color:#F87171}.ct-lede b.warn{color:#FCD34D}
-.ct-schip{font-family:inherit;border:1px solid rgba(148,163,184,.35);background:rgba(148,163,184,.12);color:#E2E8F0;border-radius:9999px;padding:3px 12px;font-size:12px;font-weight:600;cursor:pointer}
-.ct-schip:hover{background:rgba(148,163,184,.22)}
-.ct-schip.warn{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.4);color:#FCD34D}
-.ct-schip.loss{background:rgba(248,113,113,.13);border-color:rgba(248,113,113,.4);color:#FCA5A5}
+.ct-lede .sep{color:#475569}.ct-lede .dim{color:#94A3B8;font-size:12px}
+.ct-lede b.pos{color:#fff}.ct-lede b.neg{color:#FCA5A5}.ct-lede b.warn{color:#E7C983}
+.ct-schip{font-family:inherit;border:1px solid rgba(226,232,240,.3);background:transparent;color:#E2E8F0;border-radius:9999px;padding:3px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.ct-schip:hover{border-color:rgba(226,232,240,.6)}
+.ct-schip.warn{border-color:rgba(231,201,131,.5);color:#E7C983}
+.ct-schip.loss{border-color:rgba(252,165,165,.5);color:#FCA5A5}
 .ct-schip.more{cursor:default;color:#94A3B8}
 .ct-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:rgba(0,0,0,.07);border:1px solid rgba(0,0,0,.07);border-radius:12px;overflow:hidden;margin-bottom:14px}
 .ct-stats:empty{display:none}
@@ -858,7 +834,7 @@ function ctStyles() { return `<style>
 .ct-stat .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);font-weight:600}
 .ct-stat .v{font-family:'Syne',sans-serif;font-size:21px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
 .ct-stat .s{font-size:11.5px;color:var(--text-dim);margin-top:2px}
-.ct-stat .warn{color:#B45309}
+.ct-stat .warn{color:#8A5A00}
 .ct-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .ct-toolbar select{font-family:inherit;font-size:13px;padding:7px 11px;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff}
 .ct-seg{display:flex;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;padding:3px;gap:2px}
@@ -871,13 +847,14 @@ function ctStyles() { return `<style>
 .ct-tbl td{padding:10px 13px;border-bottom:1px solid rgba(0,0,0,.06);font-size:13px}
 .ct-tbl tbody tr{cursor:pointer}.ct-tbl tbody tr:hover{background:#F0F9FF}.ct-tbl tr:last-child td{border-bottom:none}
 .ct-num{text-align:right}.ct-mono{font-variant-numeric:tabular-nums}
-.ct-pill{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:12px;font-weight:700}
-.ct-red{background:#7F1D1D;color:#fff}.ct-amber{background:#FEF3C7;color:#B45309}.ct-green{background:#DCFCE7;color:#166534}.ct-dim{color:var(--text-dim)}
-.ct-chip{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:600}
-.ct-owned{background:#0C2D5C;color:#fff}.ct-partner{background:#14532D;color:#fff}.ct-natl{background:#E0F2FE;color:#075985;border:1px solid #BAE6FD}
-.ct-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap}
-.ct-b-pend{background:#E2E8F0;color:#475569}.ct-b-run{background:#E0F2FE;color:#075985}
-.ct-b-done{background:#DCFCE7;color:#166534}.ct-b-final{background:#166534;color:#fff}.ct-b-canc{background:#FEE2E2;color:#B91C1C}
+.ct-mgn{font-size:12.5px;font-weight:600;color:var(--navy-mid,#0B1929)}
+.ct-mgn.neg{color:#B91C1C}.ct-mgn.dim{color:var(--text-dim)}
+.ct-flag{display:inline-block;padding:2px 10px;border-radius:9999px;font-size:12px;font-weight:600;border:1px solid #E6CE9E;color:#8A5A00;background:#fff}
+.ct-tag{display:inline-block;padding:2px 9px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid rgba(11,25,41,.2);color:var(--navy-mid,#0B1929);background:#fff;white-space:nowrap}
+.ct-badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:500;white-space:nowrap;border:1px solid rgba(11,25,41,.16);background:#fff;color:#475569}
+.ct-b-run{color:#0369A1;border-color:rgba(3,105,161,.35)}
+.ct-b-done{color:var(--navy-mid,#0B1929)}.ct-b-final{color:var(--navy-mid,#0B1929);font-weight:700}
+.ct-b-canc{color:#94A3B8}
 .ct-empty{background:#fff;border:1px dashed rgba(0,0,0,.15);border-radius:12px;padding:34px;text-align:center;color:var(--text-dim);font-size:14px}
 .ct-secttl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;margin:14px 0 8px}
 .ct-wline{display:flex;align-items:center;gap:10px;background:rgba(2,132,199,.06);border-radius:8px;padding:8px 14px;margin:16px 0 10px;font-size:12px;color:var(--accent,#0284C7);font-weight:600}
@@ -890,17 +867,16 @@ function ctStyles() { return `<style>
 .ct-cid .code{font-family:'Syne',sans-serif;font-weight:800;font-size:15px}
 .ct-cid .dates{font-size:12.5px;color:var(--text-dim)}
 .ct-cnum{text-align:right;flex-shrink:0}
-.ct-cnum .net{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;line-height:1.1;margin-bottom:3px}
-.ct-cnum .net.pos{color:#047857}.ct-cnum .net.neg{color:#B91C1C}
+.ct-cnum .net{font-size:16px;font-weight:700;line-height:1.15;margin-bottom:2px}
+.ct-cnum .net.pos{color:var(--navy-mid,#0B1929)}.ct-cnum .net.neg{color:#B91C1C}
 .ct-cnum .sub{font-size:11.5px;color:var(--text-dim);margin-top:3px}
 .ct-clegs{margin-top:9px;border-top:1px dashed rgba(0,0,0,.07);padding-top:8px}
 .ct-leg{font-size:13px;padding:2px 0}
 .ct-leg .arr{color:var(--text-dim)}
 .ct-leg .ret{color:var(--text-dim);font-size:12px}
 .ct-leg.ct-noret{color:#B45309}
-.dchip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:5px;vertical-align:1px}
-.dchip.exp{background:#E0F2FE;color:#075985}.dchip.imp{background:#DCFCE7;color:#166534}.dchip.vs{background:#F1F5F9;color:#475569}
-.ct-locknote{margin-top:8px;font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:6px;padding:6px 10px}
+.dchip{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.05em;padding:1px 7px;border-radius:5px;vertical-align:1px;border:1px solid rgba(11,25,41,.22);color:#334155;background:#fff}
+.ct-locknote{margin-top:8px;font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;border-radius:6px;padding:6px 10px}
 .ct-cladder{margin-top:9px;max-width:520px}
 .ct-dladder{max-width:460px}
 .ct-dcat{display:flex;align-items:center;gap:9px;font-size:12px;padding:2px 0}
@@ -908,7 +884,8 @@ function ctStyles() { return `<style>
 .ct-dcat .b{flex:1;height:6px;background:#E8EEF5;border-radius:3px;overflow:hidden}
 .ct-dcat .b i{display:block;height:100%;background:var(--accent,#0284C7);border-radius:3px}
 .ct-dcat .v{width:72px;text-align:right;font-weight:500}
-.ct-dwhy{display:inline-block;font-size:12.5px;color:#92400E;background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:6px}
+.ct-dwhy{display:inline-block;font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;border-radius:6px;padding:6px 10px;margin-top:6px}
+.ct-dwhy svg,.ct-locknote svg,.ct-nwarn svg{vertical-align:-2px;margin-right:2px}
 .ct-addbtn{width:24px;height:24px;border-radius:6px;border:1px solid rgba(2,132,199,.4);background:#fff;color:var(--accent,#0284C7);font-size:15px;font-weight:700;line-height:1;cursor:pointer}
 .ct-addbtn:hover{background:#F0F9FF}
 .ct-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);opacity:0;pointer-events:none;transition:.2s;z-index:9000}
@@ -945,7 +922,7 @@ function ctStyles() { return `<style>
 .ct-fgrid label{display:flex;flex-direction:column;gap:5px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;color:var(--text-dim)}
 .ct-fgrid input,.ct-fgrid select{font-family:inherit;font-size:13px;padding:8px 11px;border:1px solid rgba(0,0,0,.12);border-radius:8px}
 .ct-note{font-size:11px;color:var(--text-dim);background:rgba(2,132,199,.08);border-radius:6px;padding:8px 12px;margin-top:12px}
-.ct-note.ct-nwarn{font-size:12.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;margin:0 0 10px}
+.ct-note.ct-nwarn{font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;margin:0 0 10px}
 .ct-srow{display:grid;grid-template-columns:1fr 130px auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.08);font-size:13px}
 .ct-srow input{font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid rgba(0,0,0,.12);border-radius:6px;text-align:right}
 @media(max-width:768px){.ct-qform{grid-template-columns:1fr 1fr}.ct-fgrid{grid-template-columns:1fr}.ct-duo{grid-template-columns:1fr}.ct-ctop{flex-direction:column}.ct-cnum{text-align:left}}
