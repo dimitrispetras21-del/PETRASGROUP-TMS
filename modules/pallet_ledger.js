@@ -33,7 +33,38 @@ async function renderPalletLedger() {
     c.innerHTML = `<div style="padding:40px;color:var(--danger)">Σφάλμα φόρτωσης: ${e.message}</div>`;
     return;
   }
+  // Ο εμπλουτισμός ΕΚΤΟΣ του παραπάνω try: αποτυχία του δεν αδειάζει ποτέ τη
+  // σελίδα — οι γραμμές δείχνονται χωρίς τα πεδία παραγγελίας + ένδειξη ⚠.
+  await _plvEnrich();
   _plvDraw();
+}
+
+/* ── §2: πλούσιες γραμμές — Reference/φορτηγό/μεταφορέας/δελτίο ──
+   Η κίνηση κρατά order_id σε pg bigint, το facade μιλά recXXX. Η ΜΟΝΗ
+   υπάρχουσα γέφυρα pg-id ↔ rec χωρίς νέο endpoint είναι το /pallets/gate
+   (γυρίζει order_rec + order_id ανά παραγγελία): του στέλνουμε όλα τα recs
+   της (2λεπτο-cached) λίστας ORDERS σε παρτίδες των 250 — ΟΧΙ ένα αίτημα
+   ανά κίνηση, και κάτω από το όριο των 300 recs του Worker/1000 της
+   PostgREST. Πινακίδες/partners από το προφορτωμένο cache αναφοράς. */
+async function _plvEnrich() {
+  PLV.enrichFail = false;
+  try {
+    const orders = await atGetAll(TABLES.ORDERS, {}, true);
+    const byRec = {};
+    orders.forEach(o => { byRec[o.id] = o; });
+    const recs = Object.keys(byRec);
+    const idMap = {};
+    for (let i = 0; i < recs.length; i += 250) {
+      const g = await plFetch('/pallets/gate?order_recs=' + recs.slice(i, i + 250).join(','));
+      (g.records || []).forEach(r => { if (byRec[r.order_rec]) idMap[r.order_id] = byRec[r.order_rec]; });
+    }
+    PLV.orderById = idMap;
+  } catch (e) {
+    // Θόρυβος στο console + ⚠ στην οθόνη — ποτέ σιωπή, ποτέ κενή σελίδα.
+    console.warn('[pallet-ledger] enrichment failed:', e && e.message);
+    PLV.orderById = {};
+    PLV.enrichFail = true;
+  }
 }
 
 // Το όνομα έρχεται embedded από το /pallets/movements (PostgREST join) — τα
