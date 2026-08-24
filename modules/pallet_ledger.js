@@ -266,7 +266,7 @@ function _plvTableHtml(rows) {
         <th>Κατάσταση</th><th></th>
       </tr>
       ${rows.map(m => `
-      <tr style="border-top:1px solid var(--line,#e2e8f0)">
+      <tr style="border-top:1px solid var(--line,#e2e8f0);cursor:pointer" title="Λεπτομέρειες κίνησης" onclick="if(!event.target.closest('button,a'))plvOpenPanel(${m.id})">
         <td style="padding:8px">${m.code}</td>
         <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td>
         <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
@@ -464,6 +464,75 @@ async function plvDoConfirm(id) {
   // Σε αποτυχία: το μήνυμα του Worker εμφανίζεται, το modal ΜΕΝΕΙ στην
   // τρέχουσα κίνηση — ο wizard δεν προσπερνά ποτέ σιωπηλά (αρχή 1).
   finally { PLV.busy = false; }
+}
+
+/* ── Πλαϊνό πάνελ κίνησης (2.2): όλη η ταυτότητα σε ένα slide-in ── */
+function plvOpenPanel(id) {
+  const m = PLV.movements.find(x => x.id === id);
+  if (!m) return;
+  const row = (lbl, val) => `<div style="display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line,#eef2f7);font-size:13px">
+    <span style="color:var(--panel-dim);white-space:nowrap">${lbl}</span><span style="text-align:right">${val}</span></div>`;
+  // Η καταγωγή δείχνεται με τα pg ids που κουβαλά η κίνηση — αρκούν για
+  // αναζήτηση, χωρίς νέο endpoint (πεδίο εργασίας: μόνο front end).
+  const src = m.order_id
+    ? `Παραγγελία #${m.order_id}${m.order_stop_id ? ' · Στάση #' + m.order_stop_id : ''}`
+    : (m.cons_load_id ? 'Δρομολόγιο #' + m.cons_load_id : 'Χειροκίνητη');
+  const sheet = m.sheet_url
+    ? `<a href="#" onclick="plvViewSheet('${String(m.sheet_url).replace(/'/g, '')}');return false">Προβολή δελτίου</a>`
+    : (m.sheet_source === 'MANUAL' ? 'MANUAL (χωρίς αρχείο)' : '—');
+  const actions = m.status === 'pending' ? `
+      <button class="btn-new-order" style="width:100%;margin-bottom:8px" onclick="plvCloseModal();plvOpenConfirm(${m.id})">${m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT' ? 'Διόρθωση ποσοτήτων' : 'Επιβεβαίωση'}</button>
+      <button class="btn-scan" style="width:100%;border-color:#B91C1C;color:#B91C1C" onclick="plvPanelDelete(${m.id})">Διαγραφή εκκρεμούς</button>`
+    : m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `
+      <button class="btn-scan" style="width:100%" onclick="plvCloseModal();plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>`
+    : m.status === 'confirmed' ? `
+      <div style="font-size:12px;color:var(--panel-dim);margin-bottom:6px">Οι οριστικές δεν σβήνονται — μόνο αντιλογισμός, με αιτιολογία:</div>
+      <input id="plvRevReason" type="text" placeholder="Αιτιολογία αντιλογισμού" style="width:100%;padding:9px;margin-bottom:8px;font-size:13px">
+      <button class="btn-scan" style="width:100%" onclick="plvPanelReverse(${m.id})">Αντιλογισμός</button>`
+    : '';
+  document.getElementById('plvModal').innerHTML = `
+  <div style="position:fixed;inset:0;background:rgba(11,25,41,.35);z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+    <div style="position:absolute;top:0;right:0;bottom:0;width:min(400px,94vw);background:var(--panel,#fff);color:var(--panel-text,#0F172A);box-shadow:-12px 0 32px rgba(11,25,41,.25);padding:22px;overflow:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <h3 style="font-family:Syne;margin:0">${m.code}</h3>
+        <span style="cursor:pointer;font-size:22px;line-height:1;color:var(--panel-dim)" onclick="plvCloseModal()" title="Κλείσιμο (Esc)">×</span>
+      </div>
+      <div style="margin:8px 0 14px">${_plvPill(m.status)}</div>
+      ${row('Είδος', PLV_EVENT_GR[m.event_type] || m.event_type)}
+      ${row('Αντισυμβαλλόμενος', _plvName(m))}
+      ${row('Σημείο', _plvLoc(m) || '—')}
+      ${row('Ημερομηνία', _plvFmtDate(m.movement_date))}
+      ${row('Πήραμε', _plvQty(m.taken, 'in'))}
+      ${row('Δώσαμε', _plvQty(m.given, 'out'))}
+      ${row('Πηγή', src)}
+      ${row('Δελτίο', sheet)}
+      ${row('Δημιουργία', `${m.created_by || '—'}${m.created_at ? ' · ' + _plvFmtDate(m.created_at) : ''}`)}
+      ${m.confirmed_by ? row('Επιβεβαίωση', `${m.confirmed_by}${m.confirmed_at ? ' · ' + _plvFmtDate(m.confirmed_at) : ''}`) : ''}
+      ${m.reason ? row('Αιτιολογία', escapeHtml(m.reason)) : ''}
+      ${m.notes ? row('Σημείωση', escapeHtml(m.notes)) : ''}
+      <div style="margin-top:18px">${actions}</div>
+    </div>
+  </div>`;
+  document.addEventListener('keydown', _plvEsc);
+}
+
+async function plvPanelDelete(id) {
+  if (!confirm('Διαγραφή της εκκρεμούς κίνησης; Οι οριστικές δεν σβήνονται ποτέ.')) return;
+  try {
+    await plFetch('/pallets/movements/' + id, { method: 'DELETE' });
+    toast('Η εκκρεμής διαγράφηκε ✓');
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) { showErrorToast('Αποτυχία διαγραφής: ' + e.message, 'error'); }
+}
+
+async function plvPanelReverse(id) {
+  const reason = ((document.getElementById('plvRevReason') || {}).value || '').trim();
+  if (!reason) { showErrorToast('Γράψε αιτιολογία για τον αντιλογισμό', 'error'); return; }
+  try {
+    await plFetch('/pallets/movements/' + id + '/reverse', { method: 'POST', body: { reason } });
+    toast('Αντιλογίστηκε ✓');
+    plvCloseModal(); await renderPalletLedger();
+  } catch (e) { showErrorToast('Αποτυχία αντιλογισμού: ' + e.message, 'error'); }
 }
 
 /* ── Διόρθωση ανταλλαγής (σενάριο Lidl): reverse + σωστό replacement ── */
@@ -674,6 +743,8 @@ window.renderPalletLedger = renderPalletLedger;
 window.plvTab = plvTab; window.plvOpenConfirm = plvOpenConfirm; window.plvCloseModal = plvCloseModal;
 window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix;
 window.plvZeroCheck = plvZeroCheck;
+window.plvOpenPanel = plvOpenPanel; window.plvPanelDelete = plvPanelDelete; window.plvPanelReverse = plvPanelReverse;
+window.plvWizClose = plvWizClose; window.plvWizAdvance = plvWizAdvance;
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
 window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV; window.plvClearQ = plvClearQ;
 window.plvDrill = plvDrill;
