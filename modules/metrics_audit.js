@@ -90,7 +90,7 @@ const AUDIT_CROSS_CHECKS = [
     rows: [
       { page: 'maint_dash',   key: 'expiredDocRows',   label: 'Maintenance Dashboard', unit: 'έγγραφα' },
       { page: 'dashboard',    key: 'expiredFleetDocs', label: 'Dashboard', unit: 'έγγραφα',
-        note: 'για ρυμούλκες διαβάζει ATP+Insurance· το Maintenance διαβάζει KTEO+FRC+Insurance' },
+        note: 'ρυμούλκες: KTEO+FRC+Insurance (κοινή λίστα TRAILER_EXPIRY_FIELDS από 26/8)' },
       { page: 'maint_expiry', key: 'expiredVehicles',  label: 'Expiry Alerts', unit: 'οχήματα',
         declared: 'Μετρά ΟΧΗΜΑΤΑ με ≥1 ληγμένο έγγραφο — άλλο μέγεθος, όχι διαφωνία' },
     ],
@@ -308,7 +308,7 @@ async function renderMetricsAudit() {
       safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true), 'metrics audit: NAT_ORDERS'),
       safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true), 'metrics audit: NAT_LOADS'),
       safeFetch(() => atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true), 'metrics audit: TRUCKS'),
-      safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate','ATP Expiry','Insurance Expiry'] }, true), 'metrics audit: TRAILERS'),
+      safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_FIELDS] }, true), 'metrics audit: TRAILERS'),
       safeFetch(() => atGetAll(TABLES.DRIVERS, { fields: ['Full Name','Active'] }, true), 'metrics audit: DRIVERS'),
       safeFetch(() => atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] }, true), 'metrics audit: PARTNERS'),
       safeFetch(() => atGetAll(TABLES.LOCATIONS, { fields: ['Name','City'] }, true), 'metrics audit: LOCATIONS'),
