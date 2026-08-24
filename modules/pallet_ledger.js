@@ -195,27 +195,33 @@ function plvExportCSV() {
   toast('CSV εξήχθη ✓');
 }
 
+// §3 (27/8): οι κάρτες έπαψαν να είναι διακόσμηση — δείχνουν ΠΟΙΟΣ χρωστάει
+// (top-3, κλικ → καρτέλα) και πόσες εκκρεμείς έχουν ήδη δελτίο. Χαμηλότερες:
+// δεν δικαιούνται το πάνω τρίτο της οθόνης.
 function _plvOverview() {
-  const all = [...(PLV.balances.clients || []), ...(PLV.balances.partners || [])];
-  const owed = all.filter(b => b.balance > 0).reduce((s, b) => s + b.balance, 0);
-  const owe  = all.filter(b => b.balance < 0).reduce((s, b) => s - b.balance, 0);
-  const net = owed - owe;
-  // Τα υπόλοιπα μετρούν ΜΟΝΟ οριστικές — σωστό, αλλά σκέτο «0 pal» με δεκάδες
-  // εκκρεμείς διαβαζόταν ως «όλα εντάξει» (η UI εκδοχή του μηχανισμού 2:
-  // η απουσία μοιάζει με μηδέν). Η δεύτερη γραμμή κάνει το κενό να μιλάει.
-  const pend = PLV.movements.filter(m => m.status === 'pending').length;
-  // Το «+N σε εκκρεμότητα» είναι κουμπί προς το tab Εκκρεμείς — stopPropagation
-  // ώστε να μην ενεργοποιεί και το κλικ της κάρτας που το φιλοξενεί.
-  const pendNote = pend
-    ? `<div style="font-size:11px;color:#92400E;margin-top:4px;cursor:pointer;text-decoration:underline dotted" onclick="event.stopPropagation();plvTab('pending')">+${pend} σε εκκρεμότητα</div>`
-    : '';
-  const box = (lbl, val, col, go) => `<div class="${go ? 'plv-card' : ''}" ${go ? `onclick="plvTab('${go}')" title="Άνοιγμα: ${go === 'clients' ? 'Πελάτες' : 'Συνεργάτες'}"` : ''} style="flex:1 1 150px;background:var(--panel,#fff);border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:12px 16px">
-    <div style="font-size:11px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:.04em">${lbl}</div>
-    <div style="font-family:Syne;font-size:22px;font-weight:700;color:${col}">${val} pal</div>${pendNote}</div>`;
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0">
-    ${box('Μας οφείλουν', owed, '#15803D', 'clients')}
-    ${box('Οφείλουμε', owe, '#B91C1C', 'partners')}
-    ${box('Καθαρό', (net > 0 ? '+' : '') + net, net >= 0 ? 'var(--accent)' : '#B91C1C', '')}
+  const tag = (arr, kind, nameKey, idKey) => (arr || []).map(b => ({ kind, name: b[nameKey] || ('#' + b[idKey]), bid: b[idKey], balance: b.balance }));
+  const all = tag(PLV.balances.clients, 'clients', 'client_name', 'client_id')
+    .concat(tag(PLV.balances.partners, 'partners', 'partner_name', 'partner_id'));
+  const owedList = all.filter(b => b.balance > 0).sort((a, b) => b.balance - a.balance);
+  const oweList  = all.filter(b => b.balance < 0).sort((a, b) => a.balance - b.balance);
+  const owed = owedList.reduce((s, b) => s + b.balance, 0);
+  const owe  = -oweList.reduce((s, b) => s + b.balance, 0);
+  const pend = PLV.movements.filter(m => m.status === 'pending');
+  const withSheet = pend.filter(m => m.sheet_url).length;
+  const top3 = (list, sign) => list.length
+    ? list.slice(0, 3).map(b => `<div onclick="event.stopPropagation();plvDrill('${b.kind}',${b.bid})" title="Άνοιγμα καρτέλας" style="display:flex;justify-content:space-between;gap:8px;font-size:11.5px;margin-top:3px;cursor:pointer" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration=''">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${b.name}</span><b>${sign}${Math.abs(b.balance)}</b></div>`).join('')
+    : '<div style="font-size:11.5px;color:var(--panel-dim);margin-top:3px">κανείς</div>';
+  const card = (lbl, valHtml, bodyHtml, go, title) => `<div class="plv-card" onclick="plvTab('${go}')" title="${title}" style="flex:1 1 200px;background:var(--panel,#fff);border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:9px 14px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline">
+      <span style="font-size:10.5px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:.04em">${lbl}</span>
+      ${valHtml}
+    </div>${bodyHtml}</div>`;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0">
+    ${card('Μας οφείλουν', `<span style="font-family:Syne;font-size:18px;font-weight:700;color:#15803D">${owed} pal</span>`, top3(owedList, '+'), 'clients', 'Άνοιγμα: Πελάτες')}
+    ${card('Οφείλουμε', `<span style="font-family:Syne;font-size:18px;font-weight:700;color:#B91C1C">${owe} pal</span>`, top3(oweList, '−'), 'partners', 'Άνοιγμα: Συνεργάτες')}
+    ${card('Εκκρεμή', `<span style="font-family:Syne;font-size:18px;font-weight:700;color:#92400E">${pend.length}</span>`,
+      `<div style="font-size:11.5px;color:var(--panel-dim);margin-top:3px">${withSheet} με δελτίο · <b style="color:#92400E">${pend.length - withSheet} χωρίς</b></div>`, 'pending', 'Άνοιγμα: Εκκρεμείς')}
   </div>`;
 }
 
