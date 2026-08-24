@@ -2471,6 +2471,454 @@ async function handleOrderCascadeDelete(request, tableId, recId, origin, env) {
 __name(handleOrderCascadeDelete, "handleOrderCascadeDelete");
 
 // src/index.js
+// Shared PostgREST helpers, carried over from the parked branch together
+// with the pallets transfer (24/8/2026). ctDbPatch/ctPick are shared by
+// design: the future costs transfer must NOT redeclare them.
+async function ctDbPatch(env, table, filter, patch) {
+  const res = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?${filter}`, {
+    method: "PATCH",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(patch)
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`ctDbPatch ${table} ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const rows = await res.json();
+  return rows[0] || null;
+}
+function ctPick(body, fields) {
+  const row = {};
+  for (const f of fields) {
+    if (body[f] === void 0 || body[f] === null || body[f] === "") continue;
+    row[f] = typeof body[f] === "string" ? body[f].trim() : body[f];
+  }
+  return row;
+}
+
+// src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
+// Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
+// taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
+var PL_EVENT_TYPES = ["LOADING", "DELIVERY", "PARTNER_PICKUP", "PARTNER_DROPOFF", "RETURN_OUT", "RETURN_IN", "ADJUSTMENT"];
+var PL_PERMS = {
+  owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  accountant: { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
+  // source: management also reads the movements ledger (read-only).
+  // Parked had balances+gate only.
+  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"] }
+};
+// Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
+// τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
+for (const r of ["owner", "dispatcher", "warehouse", "accountant"]) PL_PERMS[r].gate = ["GET"];
+PL_PERMS.owner.override = ["POST"];   // η παράκαμψη τιμολόγησης είναι ΜΟΝΟ του owner
+function plCan(role, resource, method) {
+  const r = PL_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+var PL_FIELDS = ["movement_date", "counterparty_type", "client_id", "partner_id", "location_id", "event_type", "taken", "given", "order_stop_id", "cons_load_id", "order_id", "sheet_url", "sheet_source", "reversal_of", "reason", "notes"];
+function plValidate(row) {
+  if (!row.movement_date) return "movement_date required";
+  if (!PL_EVENT_TYPES.includes(row.event_type)) return "Unknown event_type";
+  if (row.counterparty_type === "CLIENT") {
+    if (!row.client_id || row.partner_id) return "CLIENT movement needs client_id only";
+  } else if (row.counterparty_type === "PARTNER") {
+    if (!row.partner_id || row.client_id) return "PARTNER movement needs partner_id only";
+  } else return "counterparty_type must be CLIENT or PARTNER";
+  const taken = row.taken ?? 0, given = row.given ?? 0;
+  if (!Number.isInteger(taken) || taken < 0 || !Number.isInteger(given) || given < 0) {
+    return "taken/given must be non-negative integers";
+  }
+  if (row.event_type === "ADJUSTMENT" && !row.reason) return "ADJUSTMENT requires reason";
+  return null;
+}
+// Το facade μιλάει legacy ids (recXXX)· το pl_movements θέλει pg bigint.
+// Ο resolver είναι το ΜΟΝΟ σημείο μετάφρασης — το frontend στέλνει *_rec.
+var PL_REF_MAP = {
+  client_rec: { table: "clients", col: "client_id" },
+  partner_rec: { table: "partners", col: "partner_id" },
+  location_rec: { table: "locations", col: "location_id" },
+  order_stop_rec: { table: "order_stops", col: "order_stop_id" },
+  cons_load_rec: { table: "consolidated_loads", col: "cons_load_id" },
+  order_rec: { table: "orders", col: "order_id" }
+};
+async function plResolveRefs(env, body) {
+  const out = {};
+  for (const [refKey, { table, col }] of Object.entries(PL_REF_MAP)) {
+    const legacy = body[refKey];
+    if (!legacy) continue;
+    const { rows } = await dbSelectRaw(env, table, new URLSearchParams({ legacy_id: `eq.${legacy}`, select: "id" }));
+    if (!rows.length) throw new Error(`Unknown ${refKey}: ${legacy}`);
+    out[col] = rows[0].id;
+  }
+  return out;
+}
+__name(plResolveRefs, "plResolveRefs");
+async function handlePallets(request, url, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  const seg = url.pathname.split("/").filter(Boolean);
+  // /pallets/movements            → resource=movements
+  // /pallets/movements/:id        → recId
+  // /pallets/movements/:id/confirm|reverse → action (δικό του permission resource)
+  const action = seg[3] || null;
+  const resource = action === "confirm" || action === "reverse" ? action : seg[1] || "";
+  const recId = seg[2] || null;
+  const method = request.method;
+  if (!plCan(caller.role, resource, method)) {
+    return jsonError("Forbidden", 403, origin, env);
+  }
+  try {
+    // ---- GET /pallets/lookups/search?type=party|clients|partners|locations&q= ----
+    // Το select της «Νέα κίνηση» δεν μπορεί να δείξει 1.921 πελάτες: η PostgREST
+    // κόβει στα 1000 (db-max-rows) και το active=true ΔΕΝ σώζει (1.821 ενεργοί,
+    // μετρημένο 12/8). Server-side αναζήτηση — η βάση γυρίζει 20 και το όριο
+    // παύει να αφορά τη φόρμα.
+    if (resource === "lookups" && method === "GET" && recId === "search") {
+      // Τα * και % είναι wildcards του ilike: αν περάσουν αυτούσια, ένα σκέτο
+      // «*» ζητά ξανά ολόκληρο τον πίνακα — δηλαδή πίσω στο ίδιο όριο.
+      const q = (url.searchParams.get("q") || "").replace(/[*%]/g, "").trim();
+      if (q.length < 2) return jsonOk({ records: [] }, origin, env);
+      const type = url.searchParams.get("type") || "party";
+      const plSearchOne = async (table, nameCol, kind) => {
+        const p = new URLSearchParams();
+        p.set("select", `id,${nameCol}`);
+        // ilike, όχι like: τα ονόματα είναι άλλοτε ΚΕΦΑΛΑΙΑ άλλοτε πεζά και ο
+        // χρήστης δεν ξέρει ποια εκδοχή κρατά η βάση.
+        p.set(nameCol, `ilike.*${q}*`);
+        p.set("order", `${nameCol}.asc`);
+        p.set("limit", "20");
+        const { rows } = await dbSelectRaw(env, table, p);
+        return rows.map((r) => ({ id: r.id, name: r[nameCol], kind }));
+      };
+      let records;
+      if (type === "locations") records = await plSearchOne("locations", "name", "L");
+      else if (type === "clients") records = await plSearchOne("clients", "company_name", "C");
+      else if (type === "partners") records = await plSearchOne("partners", "company_name", "P");
+      else {
+        // «party» = ένα πεδίο Αντισυμβαλλόμενος για πελάτες ΚΑΙ partners: ο
+        // χρήστης δεν πρέπει να διαλέγει είδος πριν ξέρει ποιον ψάχνει.
+        const [cs, ps] = await Promise.all([
+          plSearchOne("clients", "company_name", "C"),
+          plSearchOne("partners", "company_name", "P")
+        ]);
+        records = cs.concat(ps);
+      }
+      return jsonOk({ records }, origin, env);
+    }
+    // ---- GET /pallets/lookups (dropdowns: πελάτες, partners, τοποθεσίες) ----
+    if (resource === "lookups" && method === "GET") {
+      // Τα όρια ΔΕΝ είναι διακοσμητικά: με 500 πελάτες κόβονταν όσοι είναι
+      // αλφαβητικά μετά το μισό — εμφανίζονταν ως «Πελάτης #1314» στο ημερολόγιο
+      // και ΔΕΝ επιλέγονταν καθόλου στη «Νέα κίνηση» (12/8). Το payload είναι
+      // μόνο id+όνομα, οπότε το ανεβασμένο όριο δεν κοστίζει ουσιαστικά.
+      const [clients, partners, locations] = await Promise.all([
+        dbSelect(env, "clients", { select: "id,company_name,active", order: "company_name.asc", limit: 5e3 }),
+        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 5e3 }),
+        dbSelect(env, "locations", { select: "id,name", order: "name.asc", limit: 5e3 })
+      ]);
+      return jsonOk({ clients, partners, locations }, origin, env);
+    }
+    // ---- GET /pallets/movements?status=&counterparty_type=&client_id=&partner_id=&event_type=&from=&to=&order_stop_id=&cons_load_id= ----
+    if (resource === "movements" && method === "GET" && !recId) {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      // Embedded τα ονόματα αντί για σκέτο "*": το UI τα έλυνε μέσω
+      // /pallets/lookups, που η PostgREST κόβει στα 1000 (db-max-rows) ενώ οι
+      // πελάτες είναι περισσότεροι — όσοι έπεφταν αλφαβητικά μετά το όριο
+      // εμφανίζονταν ως «Πελάτης #1314» (12/8). Με το embedding το όνομα έρχεται
+      // μαζί με την κίνηση και η λίστα παύει να εξαρτάται από το όριο.
+      // Μονή FK ανά πίνακα (003_pallets_schema) → κανένα ambiguous embed.
+      params.set("select", "*,clients(company_name),partners(company_name),locations(name)");
+      params.set("order", "movement_date.desc,id.desc");
+      params.set("limit", "300");
+      if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
+      if (q.get("counterparty_type")) params.append("counterparty_type", `eq.${q.get("counterparty_type")}`);
+      if (q.get("client_id")) params.append("client_id", `eq.${q.get("client_id")}`);
+      if (q.get("partner_id")) params.append("partner_id", `eq.${q.get("partner_id")}`);
+      if (q.get("event_type")) params.append("event_type", `eq.${q.get("event_type")}`);
+      if (q.get("order_stop_id")) params.append("order_stop_id", `eq.${q.get("order_stop_id")}`);
+      if (q.get("cons_load_id")) params.append("cons_load_id", `eq.${q.get("cons_load_id")}`);
+      if (q.get("from")) params.append("movement_date", `gte.${q.get("from")}`);
+      if (q.get("to")) params.append("movement_date", `lte.${q.get("to")}`);
+      if (q.get("order_stop_rec")) {
+        try {
+          const r = await plResolveRefs(env, { order_stop_rec: q.get("order_stop_rec") });
+          params.append("order_stop_id", `eq.${r.order_stop_id}`);
+        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+      }
+      if (q.get("order_rec")) {
+        try {
+          const r = await plResolveRefs(env, { order_rec: q.get("order_rec") });
+          params.append("order_id", `eq.${r.order_id}`);
+        } catch (e) { return jsonOk({ records: [] }, origin, env); }
+      }
+      const { rows } = await dbSelectRaw(env, "pl_movements", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- POST /pallets/movements (χειροκίνητη κίνηση ή feeder Φ2) ----
+    // Default: pending. Με body.confirm===true γράφεται κατευθείαν confirmed
+    // (μόνο ρόλοι με perm confirm) — για την αυτόματη DELIVERY της Φ2.
+    if (resource === "movements" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const row = ctPick(body, PL_FIELDS);
+      row.taken = row.taken ?? 0;
+      row.given = row.given ?? 0;
+      try { Object.assign(row, await plResolveRefs(env, body)); }
+      catch (e) { return jsonError(e.message, 400, origin, env); }
+      const err = plValidate(row);
+      if (err) return jsonError(err, 400, origin, env);
+      if (row.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      row.created_by = caller.sub;
+      if (body.confirm === true) {
+        if (!plCan(caller.role, "confirm", "POST")) return jsonError("Forbidden", 403, origin, env);
+        // Ίδιοι έλεγχοι με το /confirm — το direct confirm ΔΕΝ παρακάμπτει την πύλη δελτίου.
+        const needsSheet = row.event_type !== "DELIVERY" && row.event_type !== "ADJUSTMENT";
+        if (needsSheet && !row.sheet_source) {
+          return jsonError("Δελτίο παλετών required (sheet_source) before confirm", 400, origin, env);
+        }
+        if (row.taken + row.given === 0 && row.event_type !== "ADJUSTMENT") {
+          return jsonError("taken + given must be > 0", 400, origin, env);
+        }
+        row.status = "confirmed";
+        row.confirmed_by = caller.sub;
+        row.confirmed_at = new Date().toISOString();
+      }
+      const created = await dbInsert(env, "pl_movements", row);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "pl_movements", recordId: String(created.id), after: created });
+      return jsonOk({ record: created }, origin, env, 201);
+    }
+    // ---- PATCH /pallets/movements/:id (ΜΟΝΟ pending) ----
+    if (resource === "movements" && method === "PATCH" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const before = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      if (before.rows[0].status !== "pending") {
+        return jsonError("Only pending movements can be edited — use reverse for confirmed", 409, origin, env);
+      }
+      const patch = ctPick(body, PL_FIELDS);
+      // Ο resolver ΠΡΙΝ τον έλεγχο κενού: body με μόνο *_rec refs (π.χ.
+      // επανασύνδεση σε άλλη στάση) δίνει κενό ctPick — θα απορριπτόταν λάθος.
+      try { Object.assign(patch, await plResolveRefs(env, body)); }
+      catch (e) { return jsonError(e.message, 400, origin, env); }
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      const merged = { ...before.rows[0], ...patch };
+      const err = plValidate(merged);
+      if (err) return jsonError(err, 400, origin, env);
+      if (merged.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, patch);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "pl_movements", recordId: String(recId), before: before.rows[0], after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- DELETE /pallets/movements/:id (ΜΟΝΟ pending — δεν μέτρησε ποτέ) ----
+    if (resource === "movements" && method === "DELETE" && recId) {
+      const before = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      if (before.rows[0].status !== "pending") {
+        return jsonError("Confirmed movements are never deleted — use reverse", 409, origin, env);
+      }
+      const res = await fetch(`${env.SUPABASE_URL}/rest/v1/pl_movements?id=eq.${encodeURIComponent(recId)}`, {
+        method: "DELETE",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+      });
+      if (!res.ok) {
+        // Σκέτο «Delete failed» έκρυβε την αιτία και κόστισε έναν κύκλο debug:
+        // ο κωδικός της PostgREST φτάνει πλέον στον caller και στα logs.
+        const detail = await res.text().catch(() => "");
+        console.error("PALLETS delete", res.status, detail.slice(0, 200));
+        return jsonError(`Delete failed (${res.status})`, 500, origin, env);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "pl_movements", recordId: String(recId), before: before.rows[0] });
+      return jsonOk({ deleted: true }, origin, env);
+    }
+    // ---- POST /pallets/movements/:id/confirm ----
+    // Πύλη δελτίου (spec §4): κάθε χειροκίνητο event θέλει sheet_source.
+    // Εξαιρέσεις: DELIVERY (αυτόματη net 0) και ADJUSTMENT (θέλει reason).
+    if (action === "confirm" && method === "POST" && recId) {
+      const cur = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
+      const m = cur.rows[0];
+      if (m.status !== "pending") return jsonError("Only pending movements can be confirmed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      const err = plValidate(m);
+      if (err) return jsonError(err, 400, origin, env);
+      const needsSheet = m.event_type !== "DELIVERY" && m.event_type !== "ADJUSTMENT";
+      if (needsSheet && !m.sheet_source) {
+        return jsonError("Δελτίο παλετών required (sheet_source) before confirm", 400, origin, env);
+      }
+      if (m.taken + m.given === 0 && m.event_type !== "ADJUSTMENT") {
+        return jsonError("taken + given must be > 0", 400, origin, env);
+      }
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
+        status: "confirmed",
+        confirmed_by: caller.sub,
+        confirmed_at: new Date().toISOString()
+      });
+      await audit(env, { actor: caller.sub, role: caller.role, action: "confirm", table: "pl_movements", recordId: String(recId), before: m, after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- POST /pallets/movements/:id/reverse  {reason, replacement?} ----
+    // Αντιλογισμός: η αρχική → 'reversed' (εκτός υπολοίπου, μένει στο ιστορικό).
+    // Προαιρετικό body.replacement = νέα σωστή εγγραφή (pending) με reversal_of.
+    // Το replacement επικυρώνεται ΠΡΙΝ αλλάξει η αρχική — αλλιώς μένει μερική κατάσταση.
+    if (action === "reverse" && method === "POST" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.reason || !String(body.reason).trim()) {
+        return jsonError("reason required for reverse", 400, origin, env);
+      }
+      const cur = await dbSelectRaw(env, "pl_movements", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!cur.rows.length) return jsonError("Not found", 404, origin, env);
+      const m = cur.rows[0];
+      if (m.status !== "confirmed") return jsonError("Only confirmed movements can be reversed", 409, origin, env);
+      if (m.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+        return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+      }
+      let replacementRow = null;
+      if (body.replacement && typeof body.replacement === "object") {
+        replacementRow = ctPick(body.replacement, PL_FIELDS);
+        try { Object.assign(replacementRow, await plResolveRefs(env, body.replacement)); }
+        catch (e) { return jsonError(e.message, 400, origin, env); }
+        replacementRow.taken = replacementRow.taken ?? 0;
+        replacementRow.given = replacementRow.given ?? 0;
+        replacementRow.reversal_of = m.id;
+        replacementRow.created_by = caller.sub;
+        const err = plValidate(replacementRow);
+        if (err) return jsonError(`replacement: ${err}`, 400, origin, env);
+        if (replacementRow.event_type === "ADJUSTMENT" && caller.role !== "owner") {
+          return jsonError("ADJUSTMENT is owner-only", 403, origin, env);
+        }
+      }
+      const updated = await ctDbPatch(env, "pl_movements", `id=eq.${encodeURIComponent(recId)}`, {
+        status: "reversed",
+        reason: String(body.reason).trim()
+      });
+      let replacement = null;
+      if (replacementRow) {
+        replacement = await dbInsert(env, "pl_movements", replacementRow);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "reverse", table: "pl_movements", recordId: String(recId), before: m, after: { ...updated, replacement_id: replacement ? replacement.id : null } });
+      return jsonOk({ record: updated, replacement }, origin, env);
+    }
+    // ---- POST /pallets/override {order_rec, reason} — τιμολόγηση χωρίς δελτίο ----
+    // Ο owner μπορεί να ξεκλειδώσει (π.χ. χάθηκε το χαρτί), αλλά ΠΟΤΕ σιωπηλά:
+    // η αιτιολογία μπαίνει στο ημερολόγιο ελέγχου ώστε σε έξι μήνες να
+    // απαντιέται «ποιος το άφησε να περάσει και γιατί».
+    if (resource === "override" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.order_rec || !String(body.reason || "").trim()) {
+        return jsonError("order_rec + reason required", 400, origin, env);
+      }
+      await audit(env, {
+        actor: caller.sub, role: caller.role, action: "invoice_override",
+        table: "orders", recordId: String(body.order_rec),
+        after: { reason: String(body.reason).trim() }
+      });
+      return jsonOk({ recorded: true }, origin, env);
+    }
+    // ---- GET /pallets/gate?order_recs=recA,recB — «έχουν δελτία;» ανά παραγγελία ----
+    // Το invoicing ρωτάει για ΟΛΗ τη λίστα με μία κλήση· μία κλήση ανά order θα
+    // έκανε τη σελίδα αργή όσο μεγαλώνει το ανεξόφλητο.
+    if (resource === "gate" && method === "GET") {
+      const recs = (url.searchParams.get("order_recs") || "").split(",")
+        .map((s) => s.trim()).filter((s) => /^rec[A-Za-z0-9]+$/.test(s)).slice(0, 300);
+      if (!recs.length) return jsonOk({ records: [] }, origin, env);
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order_rec", `in.(${recs.join(",")})`);
+      const { rows } = await dbSelectRaw(env, "pl_v_order_gate", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /pallets/balances/clients/:id (drill-down ανά σημείο) ----
+    // ΠΡΙΝ το γενικό branch: εδώ recId="clients" και seg[3]=<client id>.
+    if (resource === "balances" && method === "GET" && recId === "clients" && seg[3]) {
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("client_id", `eq.${seg[3]}`);
+      params.set("order", "balance.asc");
+      const { rows } = await dbSelectRaw(env, "pl_v_client_locations", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /pallets/balances?type=clients|partners ----
+    if (resource === "balances" && method === "GET" && !recId) {
+      const type = url.searchParams.get("type") === "partners" ? "partners" : "clients";
+      const view = type === "partners" ? "pl_v_balance_partners" : "pl_v_balance_clients";
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order", "balance.asc");
+      const { rows } = await dbSelectRaw(env, view, params);
+      return jsonOk({ type, records: rows }, origin, env);
+    }
+    // ---- POST /pallets/sheets  {filename, content_base64} → Storage ----
+    // Ο browser ΔΕΝ μιλάει στο Storage — μόνο μέσω εδώ (service key).
+    if (resource === "sheets" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.filename || !body.content_base64) {
+        return jsonError("filename + content_base64 required", 400, origin, env);
+      }
+      let bytes;
+      try { bytes = Uint8Array.from(atob(body.content_base64), (c) => c.charCodeAt(0)); }
+      catch { return jsonError("Invalid base64", 400, origin, env); }
+      if (bytes.length > 8 * 1024 * 1024) return jsonError("File too large (max 8MB)", 400, origin, env);
+      const safeName = String(body.filename).replace(/[^A-Za-z0-9._-]/g, "_").slice(-80);
+      const ext = safeName.split(".").pop().toLowerCase();
+      const ctype = ext === "pdf" ? "application/pdf"
+        : ext === "png" ? "image/png"
+        : (ext === "jpg" || ext === "jpeg") ? "image/jpeg"
+        : "application/octet-stream";
+      const path = `${Date.now()}-${safeName}`;
+      const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/pallet-sheets/${path}`, {
+        method: "POST",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": ctype },
+        body: bytes
+      });
+      if (!up.ok) {
+        const d = await up.text().catch(() => "");
+        console.error("PALLETS sheet upload", up.status, d.slice(0, 200));
+        return jsonError("Upload failed", 500, origin, env);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "upload", table: "pallet-sheets", recordId: path });
+      return jsonOk({ path }, origin, env, 201);
+    }
+    // ---- GET /pallets/sheets?path=  → signed URL (1 ώρα) ----
+    if (resource === "sheets" && method === "GET") {
+      const p = url.searchParams.get("path");
+      if (!p) return jsonError("path required", 400, origin, env);
+      // Το path έρχεται από τον client. Δεχόμαστε ΜΟΝΟ τη μορφή που παράγει το
+      // POST (<timestamp>-<safe όνομα>): ένα "../<άλλο bucket>/<αρχείο>" θα
+      // κανονικοποιούνταν από το fetch και θα υπέγραφε αρχείο ΕΚΤΟΣ pallet-sheets.
+      if (!/^\d+-[A-Za-z0-9._-]+$/.test(p)) return jsonError("Invalid path", 400, origin, env);
+      const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/pallet-sheets/${p}`, {
+        method: "POST",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresIn: 3600 })
+      });
+      if (!sg.ok) return jsonError("Sign failed", 500, origin, env);
+      const data = await sg.json();
+      return jsonOk({ url: `${env.SUPABASE_URL}/storage/v1${data.signedURL}` }, origin, env);
+    }
+    return jsonError("Not found", 404, origin, env);
+  } catch (e) {
+    console.error(`PALLETS ${method} ${url.pathname}`, e.message);
+    return jsonError("Pallets request failed", 500, origin, env);
+  }
+}
+__name(handlePallets, "handlePallets");
+
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
@@ -2510,6 +2958,9 @@ var index_default = {
     if (url.pathname === "/api/locations") {
       if (request.method === "GET") return handleGetLocations(request, origin, env);
       if (request.method === "POST") return handleCreateLocation(request, origin, env);
+    }
+    if (url.pathname.startsWith("/pallets/")) {
+      return handlePallets(request, url, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {
