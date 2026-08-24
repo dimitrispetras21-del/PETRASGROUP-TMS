@@ -2501,6 +2501,170 @@ function ctPick(body, fields) {
   return row;
 }
 
+// src/routes/costs.js — COSTS Φ1 (2026-08-10, COSTS_ARCHITECTURE §5/§6)
+// RT create/close/list · manual cost lines (net+VAT) · PnL read (OWNER ONLY)
+var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "driver_pay", "cash_m", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
+var COSTS_PERMS = {
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"] },
+  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"] },
+  dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
+  management: {},
+  warehouse: {}
+};
+function ctCan(role, resource, method) {
+  const r = COSTS_PERMS[role];
+  return !!(r && r[resource] && r[resource].includes(method));
+}
+async function handleCosts(request, url, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  const seg = url.pathname.split("/").filter(Boolean);
+  const resource = seg[1] || "";
+  const recId = seg[2] || null;
+  const method = request.method;
+  if (!ctCan(caller.role, resource, method)) {
+    return jsonError("Forbidden", 403, origin, env);
+  }
+  try {
+    // ---- GET /costs/lookups  (ids + labels για dropdowns/ονόματα) ----
+    if (resource === "lookups" && method === "GET") {
+      const [trucks, trailers, drivers, partners] = await Promise.all([
+        dbSelect(env, "trucks", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "trailers", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "drivers", { select: "id,full_name,active", order: "full_name.asc", limit: 300 }),
+        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 500 })
+      ]);
+      return jsonOk({ trucks, trailers, drivers, partners }, origin, env);
+    }
+    // ---- GET /costs/settings ----
+    if (resource === "settings" && method === "GET") {
+      const rows = await dbSelect(env, "ct_settings", { select: "key,value,updated_at", order: "key.asc" });
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- PATCH /costs/settings  {key, value} (owner) ----
+    if (resource === "settings" && method === "PATCH") {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.key || typeof body.value !== "number") {
+        return jsonError("key + numeric value required", 400, origin, env);
+      }
+      const before = await dbSelectRaw(env, "ct_settings", new URLSearchParams({ key: `eq.${body.key}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Unknown setting", 404, origin, env);
+      const updated = await ctDbPatch(env, "ct_settings", `key=eq.${encodeURIComponent(body.key)}`, { value: body.value, updated_at: (/* @__PURE__ */ new Date()).toISOString() });
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_settings", recordId: body.key, before: before.rows[0], after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- POST /costs/rt  (planners auto ή manual modal) ----
+    if (resource === "rt" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const row = ctPick(body, ["scope", "trip_type", "truck_id", "trailer_id", "driver_id", "partner_id", "date_start", "date_end", "total_km", "source"]);
+      if (!row.scope || !row.trip_type || !row.date_start) {
+        return jsonError("scope, trip_type, date_start required", 400, origin, env);
+      }
+      row.created_by = caller.sub;
+      const created = await dbInsert(env, "ct_round_trips", row);
+      const legs = Array.isArray(body.legs) ? body.legs : [];
+      const createdLegs = [];
+      for (const leg of legs.slice(0, 20)) {
+        const legRow = ctPick(leg, ["direction", "order_id", "nat_load_id"]);
+        if (!legRow.direction || legRow.order_id === void 0 && legRow.nat_load_id === void 0) continue;
+        legRow.rt_id = created.id;
+        createdLegs.push(await dbInsert(env, "ct_rt_legs", legRow));
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "ct_round_trips", recordId: String(created.id), after: { ...created, legs: createdLegs } });
+      return jsonOk({ record: created, legs: createdLegs }, origin, env, 201);
+    }
+    // ---- GET /costs/rt  (λίστα ΧΩΡΙΣ αποτελέσματα PnL) ----
+    if (resource === "rt" && method === "GET") {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id)");
+      params.set("order", "date_start.desc");
+      params.set("limit", "200");
+      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
+      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
+      if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
+      if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
+      const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- PATCH /costs/rt/:id  (κλείσιμο/διόρθωση — fallback του data event) ----
+    if (resource === "rt" && method === "PATCH" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      const patch = ctPick(body, ["status", "date_start", "date_end", "total_km", "truck_id", "trailer_id", "driver_id", "closed_at"]);
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      if (patch.status === "closed" && !patch.closed_at) patch.closed_at = (/* @__PURE__ */ new Date()).toISOString();
+      patch.updated_at = (/* @__PURE__ */ new Date()).toISOString();
+      const before = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      const updated = await ctDbPatch(env, "ct_round_trips", `id=eq.${encodeURIComponent(recId)}`, patch);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(recId), before: before.rows[0], after: updated });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- POST /costs/lines  (Shape B/C — net + VAT ΧΩΡΙΣΤΑ) ----
+    if (resource === "lines" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body) return jsonError("Invalid request", 400, origin, env);
+      if (!CT_CATEGORIES.includes(body.category)) {
+        return jsonError("Unknown category", 400, origin, env);
+      }
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "km_reading", "liters", "station", "note"]);
+      if (typeof row.net !== "number" && typeof row.vat !== "number") {
+        return jsonError("net or vat amount required", 400, origin, env);
+      }
+      row.alloc_status = row.rt_id ? "allocated" : "unallocated";
+      row.created_by = caller.sub;
+      const created = await dbInsert(env, "ct_cost_lines", row);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "ct_cost_lines", recordId: String(created.id), after: created });
+      return jsonOk({ record: created }, origin, env, 201);
+    }
+    // ---- GET /costs/lines?rt_id= | alloc_status= ----
+    if (resource === "lines" && method === "GET") {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order", "line_date.desc,id.desc");
+      params.set("limit", "300");
+      if (q.get("rt_id")) params.append("rt_id", `eq.${q.get("rt_id")}`);
+      if (q.get("alloc_status")) params.append("alloc_status", `eq.${q.get("alloc_status")}`);
+      let { rows } = await dbSelectRaw(env, "ct_cost_lines", params);
+      if (caller.role !== "owner") {
+        rows = rows.filter((r) => r.category !== "cash_m");
+      }
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
+    if (resource === "pnl" && method === "GET") {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("order", "margin_worst_pct.asc.nullsfirst");
+      params.set("limit", "300");
+      if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);
+      if (q.get("to")) params.append("date_start", `lte.${q.get("to")}`);
+      if (q.get("scope")) params.append("scope", `eq.${q.get("scope")}`);
+      if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
+      const { rows } = await dbSelectRaw(env, "ct_v_rt_pnl", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- GET /costs/pallet-gate — ποιες διαδρομές partner περιμένουν δελτίο ----
+    // Το PnL τους είναι ελλιπές όσο λείπει: οι χαμένες παλέτες είναι κόστος.
+    if (resource === "pallet-gate" && method === "GET") {
+      const params = new URLSearchParams();
+      params.set("select", "*");
+      params.set("limit", "500");
+      const { rows } = await dbSelectRaw(env, "ct_v_rt_pallet_gate", params);
+      return jsonOk({ records: rows }, origin, env);
+    }
+    return jsonError("Not found", 404, origin, env);
+  } catch (e) {
+    console.error(`COSTS ${method} ${url.pathname}`, e.message);
+    return jsonError("Costs request failed", 500, origin, env);
+  }
+}
+__name(handleCosts, "handleCosts");
+
 // src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
 // Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
 // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
@@ -2958,6 +3122,9 @@ var index_default = {
     if (url.pathname === "/api/locations") {
       if (request.method === "GET") return handleGetLocations(request, origin, env);
       if (request.method === "POST") return handleCreateLocation(request, origin, env);
+    }
+    if (url.pathname.startsWith("/costs/")) {
+      return handleCosts(request, url, origin, env);
     }
     if (url.pathname.startsWith("/pallets/")) {
       return handlePallets(request, url, origin, env);
