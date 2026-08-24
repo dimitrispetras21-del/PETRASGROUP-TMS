@@ -2505,7 +2505,9 @@ function ctPick(body, fields) {
 // RT create/close/list · manual cost lines (net+VAT) · PnL read (OWNER ONLY)
 var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "driver_pay", "cash_m", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
 var COSTS_PERMS = {
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"] },
+  // lines PATCH/DELETE: ΣΗΜΑΔΕΜΕΝΗ ΠΡΟΣΘΗΚΗ (owner 24/8) πάνω στην πιστή
+  // μεταφορά — μόνο owner, με υποχρεωτικό reason στο audit (βλ. handlers).
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"] },
   accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"] },
   dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
   management: {},
@@ -2633,6 +2635,42 @@ async function handleCosts(request, url, origin, env) {
         rows = rows.filter((r) => r.category !== "cash_m");
       }
       return jsonOk({ records: rows }, origin, env);
+    }
+    // ---- [ΣΗΜΑΔΕΜΕΝΗ ΠΡΟΣΘΗΚΗ 24/8, εγκεκριμένη από owner] ----
+    // PATCH/DELETE γραμμής κόστους — ΜΟΝΟ owner (COSTS_PERMS), reason
+    // ΥΠΟΧΡΕΩΤΙΚΟ στο audit: χωρίς αυτά, λάθος ποσό έμενε για πάντα· με
+    // αυτά, καμία διόρθωση/διαγραφή κόστους δεν γίνεται αόρατα. Ελαφρύτερο
+    // από τον αντιλογισμό των παλετών — η γραμμή κόστους δεν είναι φυσικό
+    // γεγονός, είναι καταχώρηση.
+    if (resource === "lines" && method === "PATCH" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "km_reading", "liters", "station", "note"]);
+      if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
+      if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
+      if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
+      const before = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { ...updated, reason: String(body.reason).trim() } });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    if (resource === "lines" && method === "DELETE" && recId) {
+      const body = await request.json().catch(() => null);
+      if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
+      const before = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      const res = await fetch(`${env.SUPABASE_URL}/rest/v1/ct_cost_lines?id=eq.${encodeURIComponent(recId)}`, {
+        method: "DELETE",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+      });
+      if (!res.ok) {
+        const d = await res.text().catch(() => "");
+        console.error("COSTS line delete", res.status, d.slice(0, 200));
+        return jsonError(`Delete failed (${res.status})`, 500, origin, env);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { reason: String(body.reason).trim() } });
+      return jsonOk({ deleted: true }, origin, env);
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {
