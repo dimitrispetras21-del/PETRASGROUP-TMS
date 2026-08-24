@@ -90,11 +90,10 @@ function plvExportCSV() {
     if (!rows.length) { toast('Κανένα υπόλοιπο για εξαγωγή', 'error'); return; }
     const nameKey = PLV.tab === 'clients' ? 'client_name' : 'partner_name';
     const idKey = PLV.tab === 'clients' ? 'client_id' : 'partner_id';
-    head = ['Αντισυμβαλλόμενος', 'Υπόλοιπο', 'Ανοιχτό από', 'Ημέρες', 'Εκκρεμείς'];
-    body = rows.map(b => {
-      const days = b.open_since ? Math.floor((Date.now() - new Date(b.open_since + 'T00:00:00').getTime()) / 86400000) : '';
-      return [b[nameKey] || ('#' + b[idKey]), b.balance, b.open_since || '', days, b.pending_count || 0].map(esc).join(',');
-    });
+    // Χωρίς «Ανοιχτό από»/«Ημέρες»: το pl_v_balance_clients δεν επιστρέφει
+    // open_since — η στήλη έβγαινε ΠΑΝΤΑ κενή και στο CSV (νεκρή στήλη, 25/8).
+    head = ['Αντισυμβαλλόμενος', 'Υπόλοιπο', 'Εκκρεμείς'];
+    body = rows.map(b => [b[nameKey] || ('#' + b[idKey]), b.balance, b.pending_count || 0].map(esc).join(','));
     fname = 'ypoloipa-' + PLV.tab + '-' + new Date().toISOString().slice(0, 10) + '.csv';
   } else {
     const rows = _plvRows();
@@ -135,12 +134,9 @@ function _plvOverview() {
   </div>`;
 }
 
-function _plvDays(d) {
-  if (!d) return '';
-  const days = Math.floor((Date.now() - new Date(d + 'T00:00:00').getTime()) / 86400000);
-  return days <= 0 ? 'σήμερα' : days + ' ημ.';
-}
-
+// «Ανοιχτό από» αφαιρέθηκε από πίνακα/CSV/drill (25/8): η όψη pl_v_balance_*
+// δεν έχει στήλη open_since — το πεδίο ήταν πάντα undefined και η στήλη πάντα
+// κενή (αρχή 8: νεκρή στήλη = ψέμα). Αν χρειαστεί, προστίθεται πρώτα στην όψη.
 function _plvBalanceTable(kind) {
   const rows = (PLV.balances[kind] || [])
     .filter(b => b.balance !== 0 || b.pending_count > 0)
@@ -151,12 +147,11 @@ function _plvBalanceTable(kind) {
   return `<div style="overflow-x:auto"><table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
     <tr style="text-align:left;color:var(--panel-dim)">
       <th>${kind === 'clients' ? 'Πελάτης' : 'Συνεργάτης'}</th>
-      <th style="text-align:right">Υπόλοιπο</th><th>Ανοιχτό από</th>
+      <th style="text-align:right">Υπόλοιπο</th>
       <th style="text-align:right">Εκκρεμείς</th><th></th></tr>
     ${rows.map(b => `<tr style="border-top:1px solid var(--line,#e2e8f0);cursor:pointer" onclick="plvDrill('${kind}',${b[idKey]})">
       <td>${b[nameKey] || ('#' + b[idKey])}</td>
       <td style="text-align:right;font-weight:700;color:${b.balance > 0 ? '#15803D' : b.balance < 0 ? '#B91C1C' : 'inherit'}">${b.balance > 0 ? '+' : ''}${b.balance}</td>
-      <td>${_plvDays(b.open_since)}</td>
       <td style="text-align:right">${b.pending_count || ''}</td>
       <td style="color:var(--accent);font-size:12px">ανάλυση →</td></tr>`).join('')}
   </table></div>`;
@@ -185,6 +180,9 @@ function _plvDraw() {
       <label style="font-size:12px;color:var(--panel-dim)">Έως <input type="date" value="${PLV.to}" onchange="plvFilter('to',this.value)" style="padding:6px;font-size:13px"></label>`}
       <button class="btn-scan" onclick="plvExportCSV()">Export CSV</button>
     </div>
+    <!-- Το style εδώ, ΟΧΙ μέσα στον πίνακα κινήσεων: τα tabs ισοζυγίου το
+         έχαναν και οι επικεφαλίδες κολλούσαν («ΥπόλοιποΑνοιχτό από», 25/8). -->
+    <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
     <div id="plvTbl">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvTableHtml(rows)}</div>
   </div>
   <div id="plvModal"></div>`;
@@ -195,7 +193,6 @@ function _plvDraw() {
 function _plvTableHtml(rows) {
   return `
     <div style="overflow-x:auto">
-    <style>.plv-tbl th,.plv-tbl td{padding:8px 12px}.plv-tbl th{white-space:nowrap}</style>
     <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px">
       <tr style="text-align:left;color:var(--panel-dim)">
         <th style="padding:8px">Κωδ.</th><th>Ημ/νία</th><th>Είδος</th><th>Αντισυμβαλλόμενος</th>
@@ -250,8 +247,7 @@ async function plvDrill(kind, id) {
       <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(720px,94vw);max-height:88vh;overflow:auto">
         <h3 style="font-family:Syne;margin:0 0 4px">${row ? row[nameKey] : ''}</h3>
         <div style="font-size:13px;color:var(--panel-dim);margin-bottom:16px">
-          Υπόλοιπο <b style="color:${row && row.balance > 0 ? '#15803D' : '#B91C1C'}">${row ? (row.balance > 0 ? '+' : '') + row.balance : '—'} pal</b>
-          ${row && row.open_since ? ' · ανοιχτό ' + _plvDays(row.open_since) : ''}</div>
+          Υπόλοιπο <b style="color:${row && row.balance > 0 ? '#15803D' : '#B91C1C'}">${row ? (row.balance > 0 ? '+' : '') + row.balance : '—'} pal</b></div>
         ${locRows.length ? `<div style="font-size:12px;font-weight:700;color:var(--panel-dim);margin-bottom:6px">ΑΝΑ ΣΗΜΕΙΟ</div>
         <table class="plv-tbl" style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px">
           ${locRows.map(l => `<tr style="border-top:1px solid var(--line,#e2e8f0)"><td>${l.location_name || '—'}</td>
