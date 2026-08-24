@@ -139,7 +139,11 @@ async function plOnIntlPartnerAssigned(orderId) {
       if (cur) await plFetch('/pallets/movements/' + cur.id, { method: 'DELETE' });
       return;
     }
-    const pallets = parseInt(f['Pallets'], 10) || 0;
+    // 'Total Pallets', ΟΧΙ 'Pallets': τα ORDERS δεν έχουν πεδίο 'Pallets' στον
+    // χάρτη του Worker (αυτό ανήκει σε RAMP/ledgers). Το facade παραλείπει το
+    // άγνωστο όνομα σιωπηλά → parseInt(undefined)||0 → κάθε partner κίνηση
+    // γεννιόταν 0/0 (εύρημα audit 25/8).
+    const pallets = parseInt(f['Total Pallets'], 10) || 0;
     const qty = { // PICKUP: δίνουμε γεμάτες· DROPOFF: παίρνουμε γεμάτες (spec §2)
       taken: evType === 'PARTNER_DROPOFF' ? pallets : 0,
       given: evType === 'PARTNER_PICKUP' ? pallets : 0
