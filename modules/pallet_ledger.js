@@ -490,7 +490,7 @@ function plvNewMovement() {
           <div class="plv-ac" id="plvAcList_plvNmLoc" style="display:none"></div>
         </div>
       </label>
-      <label style="font-size:13px">Ημερομηνία<input id="plvNmDate" type="date" value="${new Date().toISOString().slice(0, 10)}" style="width:100%;padding:10px;margin:4px 0 12px"></label>
+      <label style="font-size:13px">Ημερομηνία<input id="plvNmDate" type="date" value="${new Date().toISOString().slice(0, 10)}" min="2020-01-01" max="2030-12-31" style="width:100%;padding:10px;margin:4px 0 12px"></label>
       <div style="display:flex;gap:10px">
         <label style="font-size:13px;flex:1">Πήραμε<input id="plvNmTaken" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px"></label>
         <label style="font-size:13px;flex:1">Δώσαμε<input id="plvNmGiven" type="number" min="0" value="0" style="width:100%;padding:10px;margin:4px 0 12px"></label>
@@ -512,6 +512,14 @@ async function plvDoCreate() {
     // διαλέξει. Χωρίς αυτόν τον έλεγχο θα έφτανε partner_id=NaN στον worker.
     const partyVal = document.getElementById('plvNmParty').value;
     if (!partyVal) { showErrorToast('Διάλεξε αντισυμβαλλόμενο από τη λίστα', 'error'); return; }
+    // Η βάση δέχτηκε '0206-08-08' (πληκτρολογικό 0206 αντί 2026, PM-1034) — το
+    // min/max του input δεν πιάνει χειροκίνητη πληκτρολόγηση σε όλα τα browsers,
+    // οπότε ο έλεγχος γίνεται ρητά εδώ, με μήνυμα που δείχνει το λάθος έτος.
+    const md = document.getElementById('plvNmDate').value;
+    if (!md || md < '2020-01-01' || md > '2030-12-31') {
+      showErrorToast('Η ημερομηνία «' + (md || 'κενή') + '» είναι εκτός λογικού εύρους (2020–2030) — έλεγξε το έτος', 'error');
+      return;
+    }
     const [kind, pid] = partyVal.split(':');
     const path = await _plvUploadIfAny();
     const body = {
