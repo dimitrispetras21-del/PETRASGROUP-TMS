@@ -206,7 +206,13 @@ function _plvTableHtml(rows) {
         <td style="text-align:right">${m.given}</td>
         <td>${m.status === 'pending' ? '<span style="color:#92400E;font-weight:600">εκκρεμής</span>' : m.status === 'confirmed' ? '<span style="color:var(--accent)">οριστική</span>' : 'αντιλογισμένη'}</td>
         <td style="white-space:nowrap">
-          ${m.status === 'pending' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvOpenConfirm(${m.id})">Επιβεβαίωση</button>` : ''}
+          ${m.status === 'pending' ? (m.taken + m.given === 0 && m.event_type !== 'ADJUSTMENT'
+            // 0/0 δεν παίρνει ενεργή «Επιβεβαίωση» — ο Worker την απορρίπτει
+            // (taken+given>0) και ο χρήστης θα έτρωγε σφάλμα για πάντα. Το κουμπί
+            // μένει ΚΛΙΚΑΡΙΣΤΟ ως «Διόρθωση»: το modal είναι ο μόνος τρόπος να
+            // μπουν σωστές ποσότητες — αν κλείδωνε, η κίνηση δεν διορθωνόταν ποτέ.
+            ? `<button class="btn-scan" style="padding:4px 12px;border-color:#92400E;color:#92400E" title="Μηδενικές ποσότητες — χρειάζεται διόρθωση πριν την επιβεβαίωση" onclick="plvOpenConfirm(${m.id})">Διόρθωση ποσοτήτων</button>`
+            : `<button class="btn-scan" style="padding:4px 12px" onclick="plvOpenConfirm(${m.id})">Επιβεβαίωση</button>`) : ''}
           ${m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `<button class="btn-scan" style="padding:4px 12px" onclick="plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>` : ''}
           ${m.sheet_url ? `<a href="#" onclick="plvViewSheet('${m.sheet_url.replace(/'/g, '')}');return false" style="margin-left:6px;font-size:12px">δελτίο</a>` : ''}
         </td>
@@ -269,20 +275,39 @@ async function plvDrill(kind, id) {
 function plvOpenConfirm(id) {
   const m = PLV.movements.find(x => x.id === id);
   if (!m) return;
+  // Ο κανόνας του Worker (taken+given>0, εκτός ADJUSTMENT) εφαρμόζεται ΚΑΙ εδώ:
+  // η υποβολή κλειδώνει όσο 0/0 και εξηγεί, αντί να επιστρέφει 400 μετά (αρχή 1).
+  const needsQty = m.event_type !== 'ADJUSTMENT';
+  const zero = needsQty && m.taken + m.given === 0;
   document.getElementById('plvModal').innerHTML = `
   <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
     <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(440px,92vw)">
       <h3 style="font-family:Syne;margin:0 0 6px">Επιβεβαίωση — ${m.code}</h3>
       <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">${PLV_EVENT_GR[m.event_type]} · ${_plvName(m)}</div>
-      <label style="font-size:13px">Πήραμε (παλέτες)<input id="plvTaken" type="number" min="0" value="${m.taken}" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
-      <label style="font-size:13px">Δώσαμε (παλέτες)<input id="plvGiven" type="number" min="0" value="${m.given}" style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <label style="font-size:13px">Πήραμε (παλέτες)<input id="plvTaken" type="number" min="0" value="${m.taken}" ${needsQty ? 'oninput="plvZeroCheck()"' : ''} style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <label style="font-size:13px">Δώσαμε (παλέτες)<input id="plvGiven" type="number" min="0" value="${m.given}" ${needsQty ? 'oninput="plvZeroCheck()"' : ''} style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
+      <div id="plvZeroNote" style="display:${zero ? 'block' : 'none'};font-size:12px;color:#92400E;margin:0 0 12px">Μηδενικές ποσότητες — χρειάζεται διόρθωση: συμπλήρωσε πόσες παλέτες πήραμε ή δώσαμε για να ενεργοποιηθεί η επιβεβαίωση.</div>
       <label style="font-size:13px">Δελτίο (φωτο/PDF — προαιρετικό)<input id="plvFile" type="file" accept="image/*,.pdf" style="width:100%;margin:4px 0 14px"></label>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn-scan" onclick="plvCloseModal()">Άκυρο</button>
-        <button class="btn-new-order" onclick="plvDoConfirm(${m.id})">Επιβεβαίωση κίνησης</button>
+        <button id="plvConfirmGo" class="btn-new-order" ${zero ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''} onclick="plvDoConfirm(${m.id})">Επιβεβαίωση κίνησης</button>
       </div>
     </div>
   </div>`;
+}
+
+// Ζωντανή εναλλαγή του κλειδώματος: το κουμπί ανάβει μόλις μπει ποσότητα.
+function plvZeroCheck() {
+  const t = parseInt((document.getElementById('plvTaken') || {}).value, 10) || 0;
+  const g = parseInt((document.getElementById('plvGiven') || {}).value, 10) || 0;
+  const btn = document.getElementById('plvConfirmGo');
+  const note = document.getElementById('plvZeroNote');
+  if (!btn) return;
+  const zero = t + g === 0;
+  btn.disabled = zero;
+  btn.style.opacity = zero ? '.5' : '';
+  btn.style.cursor = zero ? 'not-allowed' : '';
+  if (note) note.style.display = zero ? 'block' : 'none';
 }
 function plvCloseModal() { document.getElementById('plvModal').innerHTML = ''; }
 
@@ -304,6 +329,13 @@ async function plvDoConfirm(id) {
   try {
     const taken = parseInt(document.getElementById('plvTaken').value, 10) || 0;
     const given = parseInt(document.getElementById('plvGiven').value, 10) || 0;
+    // Δίχτυ κάτω από το disabled κουμπί (π.χ. αν το DOM πειραχτεί): ο ίδιος
+    // κανόνας με τον Worker, με μήνυμα στα ελληνικά αντί για γυμνό 400.
+    const m = PLV.movements.find(x => x.id === id);
+    if (m && m.event_type !== 'ADJUSTMENT' && taken + given === 0) {
+      showErrorToast('Μηδενικές ποσότητες — συμπλήρωσε πόσες παλέτες πήραμε ή δώσαμε', 'error');
+      return;
+    }
     const path = await _plvUploadIfAny();
     const patch = { taken, given, sheet_source: path ? 'UPLOAD' : 'MANUAL' };
     if (path) patch.sheet_url = path;
@@ -514,6 +546,7 @@ async function plvViewSheet(path) {
 window.renderPalletLedger = renderPalletLedger;
 window.plvTab = plvTab; window.plvOpenConfirm = plvOpenConfirm; window.plvCloseModal = plvCloseModal;
 window.plvDoConfirm = plvDoConfirm; window.plvFixDelivery = plvFixDelivery; window.plvDoFix = plvDoFix;
+window.plvZeroCheck = plvZeroCheck;
 window.plvNewMovement = plvNewMovement; window.plvDoCreate = plvDoCreate; window.plvViewSheet = plvViewSheet;
 window.plvFilter = plvFilter; window.plvExportCSV = plvExportCSV;
 window.plvDrill = plvDrill;
