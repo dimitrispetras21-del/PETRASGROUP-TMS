@@ -50,6 +50,14 @@ function _plvLoc(m) {
   const l = ((PLV.lookups && PLV.lookups.locations) || []).find(x => x.id === m.location_id);
   return l ? l.name : '';
 }
+// Ελληνική εμφάνιση (17/08/26) ΜΟΝΟ στην οθόνη — το CSV μένει ISO ώστε το
+// Excel να ταξινομεί σωστά. Το nowrap στο κελί: το «2026-08-17» έσπαγε στη μέση.
+function _plvFmtDate(d) {
+  if (!d) return '';
+  const p = String(d).slice(0, 10).split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0].slice(2) : d;
+}
+
 const PLV_EVENT_GR = {
   LOADING: 'Φόρτωση', DELIVERY: 'Παράδοση', PARTNER_PICKUP: 'Παραλαβή από partner',
   PARTNER_DROPOFF: 'Παράδοση από partner', RETURN_OUT: 'Επιστροφή αδειών',
@@ -202,7 +210,7 @@ function _plvTableHtml(rows) {
       ${rows.map(m => `
       <tr style="border-top:1px solid var(--line,#e2e8f0)">
         <td style="padding:8px">${m.code}</td>
-        <td>${m.movement_date}</td>
+        <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td>
         <td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
         <td>${_plvName(m)}</td>
         <td>${_plvLoc(m)}</td>
@@ -258,7 +266,7 @@ async function plvDrill(kind, id) {
           <tr style="text-align:left;color:var(--panel-dim)"><th>Ημ/νία</th><th>Είδος</th><th>Σημείο</th>
             <th style="text-align:right">Πήραμε</th><th style="text-align:right">Δώσαμε</th><th>Κατάσταση</th></tr>
           ${moves.map(m => `<tr style="border-top:1px solid var(--line,#e2e8f0)">
-            <td>${m.movement_date}</td><td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
+            <td style="white-space:nowrap">${_plvFmtDate(m.movement_date)}</td><td>${PLV_EVENT_GR[m.event_type] || m.event_type}</td>
             <td>${_plvLoc(m)}</td><td style="text-align:right">${m.taken}</td>
             <td style="text-align:right">${m.given}</td>
             <td>${m.status === 'pending' ? 'εκκρεμής' : 'οριστική'}</td></tr>`).join('') ||
