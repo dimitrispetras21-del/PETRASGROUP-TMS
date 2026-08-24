@@ -118,9 +118,16 @@ function _plvOverview() {
   const owed = all.filter(b => b.balance > 0).reduce((s, b) => s + b.balance, 0);
   const owe  = all.filter(b => b.balance < 0).reduce((s, b) => s - b.balance, 0);
   const net = owed - owe;
+  // Τα υπόλοιπα μετρούν ΜΟΝΟ οριστικές — σωστό, αλλά σκέτο «0 pal» με δεκάδες
+  // εκκρεμείς διαβαζόταν ως «όλα εντάξει» (η UI εκδοχή του μηχανισμού 2:
+  // η απουσία μοιάζει με μηδέν). Η δεύτερη γραμμή κάνει το κενό να μιλάει.
+  const pend = PLV.movements.filter(m => m.status === 'pending').length;
+  const pendNote = pend
+    ? `<div style="font-size:11px;color:#92400E;margin-top:4px">+${pend} σε εκκρεμότητα</div>`
+    : '';
   const box = (lbl, val, col) => `<div style="flex:1 1 150px;background:var(--panel,#fff);border:1px solid var(--line,#e2e8f0);border-radius:10px;padding:12px 16px">
     <div style="font-size:11px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:.04em">${lbl}</div>
-    <div style="font-family:Syne;font-size:22px;font-weight:700;color:${col}">${val} pal</div></div>`;
+    <div style="font-family:Syne;font-size:22px;font-weight:700;color:${col}">${val} pal</div>${pendNote}</div>`;
   return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin:16px 0">
     ${box('Μας οφείλουν', owed, '#15803D')}
     ${box('Οφείλουμε', owe, '#B91C1C')}
