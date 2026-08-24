@@ -319,16 +319,17 @@ function ctRenderList() {
         <td class="ct-num ct-mono">${ctEur(t.cost_gross)}</td>
         ${midTds}
         <td>${ctStatusBadge(t)}</td>
+        <td class="ct-addtd"><button class="ct-addbtn" title="Καταχώρηση κόστους" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+</button></td>
       </tr>`;
     };
     const rowsTop = bySeverity(needsAction).map(t => row(t) + ctDetailRow(t)).join('');
     const rowsBot = bySeverity(below).map(row).join('');
     const wlineTr = needsAction.length && below.length
-      ? `<tr class="ct-wline-tr"><td colspan="9"><div class="ct-wline" style="margin:0;border-radius:0"><span>θέλουν απόφαση ↑</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κερδοφόρα ↓</span></div></td></tr>`
+      ? `<tr class="ct-wline-tr"><td colspan="10"><div class="ct-wline" style="margin:0;border-radius:0"><span>θέλουν απόφαση ↑</span><span class="r"></span><span class="ct-mono" style="font-weight:700">0 €</span><span class="r"></span><span>κερδοφόρα ↓</span></div></td></tr>`
       : '';
     const head = `<thead><tr><th>Κωδ.</th><th>Ημ/νίες</th><th>Φορτηγό / Partner</th>
       <th class="ct-num">Έσοδα</th><th class="ct-num">Κόστος</th><th class="ct-num">Καθαρό</th>
-      <th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th><th>Κατάσταση</th></tr></thead>`;
+      <th style="text-align:center">Margin (ΦΠΑ)</th><th class="ct-num">χωρίς ΦΠΑ</th><th>Κατάσταση</th><th></th></tr></thead>`;
     el.innerHTML = notice +
       (needsAction.length
         ? `<div class="ct-secttl" style="color:#B45309">Θέλουν απόφαση ή κόστη — ${needsAction.length}</div>`
@@ -369,7 +370,8 @@ function ctDetailRow(t) {
   const ci = ctCostInfo(t);
   let inner;
   if (!ci.complete) {
-    inner = `<div class="ct-dwhy">Καμία γραμμή κόστους καταχωρημένη — το καθαρό/margin κρύβεται μέχρι την πρώτη, αλλιώς θα διάβαζες «100% κέρδος» που δεν υπάρχει.</div>`;
+    inner = `<div class="ct-dwhy">Καμία γραμμή κόστους καταχωρημένη — το καθαρό/margin κρύβεται μέχρι την πρώτη, αλλιώς θα διάβαζες «100% κέρδος» που δεν υπάρχει.</div>
+      <button class="ct-btn" style="margin-left:10px;vertical-align:bottom" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Καταχώρηση κόστους</button>`;
   } else {
     const cats = {};
     lines.forEach(l => { cats[l.category] = (cats[l.category] || 0) + Number(l.net || 0) + Number(l.vat || 0); });
@@ -381,7 +383,7 @@ function ctDetailRow(t) {
     const why = Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">⚠ ${ctWhyText(t, lines)}</div>` : '';
     inner = `<div class="ct-dladder">${ladder}</div>${why}`;
   }
-  return `<tr class="ct-dtr" onclick="ctOpenPanel(${t.id})"><td colspan="9">${inner}</td></tr>`;
+  return `<tr class="ct-dtr" onclick="ctOpenPanel(${t.id})"><td colspan="10">${inner}</td></tr>`;
 }
 
 // Φ4: toggle-reveal for a single gated row's hidden PnL numbers (owner-only
@@ -465,11 +467,21 @@ async function ctOpenPanel(id) {
       ${t.status === 'planned' || t.status === 'in_progress' ? `<button class="ct-btn" style="margin-top:10px;background:#fff" onclick="ctCloseRt(${t.id})">🏁 Κλείσιμο trip (χειροκίνητο fallback)</button>` : ''}</div>
     ${!ctCostInfo(t).complete ? `<div class="ct-psec"><div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:12px 14px">
       <div style="font-weight:700;color:#B45309;font-size:13px">⚠ Κόστη ελλιπή — καμία γραμμή κόστους ακόμη</div>
-      <div style="font-size:12px;color:#B45309;margin-top:4px">Το καθαρό/margin δεν υπολογίζεται — με μηδέν κόστη θα διάβαζες «100% κέρδος» που δεν υπάρχει. Καταχώρησε τα κόστη από κάτω.</div>
+      <div style="font-size:12px;color:#B45309;margin-top:4px">Το καθαρό/margin δεν υπολογίζεται — με μηδέν κόστη θα διάβαζες «100% κέρδος» που δεν υπάρχει. Καταχώρησε τα κόστη ακριβώς από κάτω.</div>
     </div></div>` : `<div class="ct-psec"><div class="ct-duo">
       <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (worst case)</div><div class="v" style="color:${Number(t.profit_worst) < 0 ? '#F87171' : '#34D399'}">${ctEur(t.profit_worst)}</div><div class="s">margin ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
       <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v" style="color:${Number(t.profit_ex_vat) < 0 ? '#B91C1C' : '#047857'}">${ctEur(t.profit_ex_vat)}</div><div class="s">margin ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
     </div>${ctWhyLine(t, lines)}</div>`}
+    <div class="ct-psec"><h3>+ Καταχώρηση κόστους (καθαρό + ΦΠΑ χωριστά)</h3>
+      <div class="ct-qform">
+        <select id="ctQcat">${catOpts}</select>
+        <input type="number" id="ctQnet" placeholder="Καθαρό €" step="0.01">
+        <input type="number" id="ctQvat" placeholder="ΦΠΑ €" step="0.01">
+        <input type="date" id="ctQdate" value="${t.date_start}">
+        <input type="text" id="ctQnote" placeholder="Σημείωση / παραστατικό">
+        <button class="ct-btn ct-primary" onclick="ctQuickAdd(${t.id})">Αποθήκευση</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div></div>
     <div class="ct-psec"><h3>Έσοδα (auto από τα legs)</h3>
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
         ? `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-dim)">⇄ Εθνικό σκέλος VS — εσωτερική μεταφορά (x_export 850 / x_import 650), όχι έσοδο πελάτη</span><span class="ct-mono" style="color:var(--text-dim)">memo</span></div>`
@@ -479,19 +491,15 @@ async function ctOpenPanel(id) {
       <div class="ct-totrow ct-mini"><span>Καθαρό κόστος (+φθορά)</span><span class="ct-mono">${ctEur(t.cost_net)}</span></div>
       <div class="ct-totrow ct-mini"><span>ΦΠΑ</span><span class="ct-mono">${ctEur(t.cost_vat)}</span></div>
       <div class="ct-totrow"><span>Σύνολο κόστους</span><span class="ct-mono">${ctEur(t.cost_gross)}</span></div></div>
-    <div class="ct-psec"><h3>+ Γρήγορη καταχώρηση κόστους (καθαρό + ΦΠΑ χωριστά)</h3>
-      <div class="ct-qform">
-        <select id="ctQcat">${catOpts}</select>
-        <input type="number" id="ctQnet" placeholder="Καθαρό €" step="0.01">
-        <input type="number" id="ctQvat" placeholder="ΦΠΑ €" step="0.01">
-        <input type="date" id="ctQdate" value="${t.date_start}">
-        <input type="text" id="ctQnote" placeholder="Σημείωση / παραστατικό">
-        <button class="ct-btn ct-primary" onclick="ctQuickAdd(${t.id})">Αποθήκευση</button>
-      </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-top:6px">Tip: ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού. Πλήρης σελίδα Καταχώρησης με scan DKV/DADI: Φ3.</div></div>
     ${lines.length ? `<div class="ct-psec"><h3>Γραμμές (${lines.length})</h3>${lines.map(l => `
       <div class="ct-lrow"><span>${CT_CATEGORY_LABELS[l.category] || l.category}${l.note ? ' · <span style="color:var(--text-dim)">' + ctEsc(l.note) + '</span>' : ''}</span>
       <span class="ct-mono">${ctEur(l.net)}${Number(l.vat) ? ' <span style="color:var(--text-dim)">+' + ctEur(l.vat) + ' ΦΠΑ</span>' : ''}</span></div>`).join('')}</div>` : ''}`;
+}
+
+// Κοινός POST — τον μοιράζονται η φόρμα του ανάπτυγματος και το modal της
+// γραμμής, ώστε το σχήμα του αιτήματος να ζει σε ΕΝΑ σημείο (αρχή 3).
+async function ctPostCostLine(rtId, line) {
+  return ctFetch('/costs/lines', { method: 'POST', body: { rt_id: rtId, ...line } });
 }
 
 async function ctQuickAdd(rtId) {
@@ -499,11 +507,50 @@ async function ctQuickAdd(rtId) {
   const vat = parseFloat(document.getElementById('ctQvat').value) || 0;
   if (isNaN(net)) { alert('Βάλε καθαρό ποσό'); return; }
   try {
-    await ctFetch('/costs/lines', { method: 'POST', body: {
-      rt_id: rtId, category: document.getElementById('ctQcat').value,
+    await ctPostCostLine(rtId, { category: document.getElementById('ctQcat').value,
       net, vat, line_date: document.getElementById('ctQdate').value || null,
-      note: document.getElementById('ctQnote').value || null } });
+      note: document.getElementById('ctQnote').value || null });
     await ctReload(); ctOpenPanel(rtId);
+  } catch (e) { alert('Σφάλμα: ' + e.message); }
+}
+
+// Καταχώρηση κόστους από τη ΓΡΑΜΜΗ (owner review 24/8: «ο πιλότος είναι
+// αδύνατος» χωρίς αυτήν) — ίδια πεδία με τη φόρμα του ανάπτυγματος, χωρίς να
+// χρειάζεται να ανοίξει το πάνελ. Και τα ολοκληρωμένα RT δέχονται γραμμές
+// (closed ≠ complete, κλειδωμένο 24/8): τα τιμολόγια έρχονται εβδομάδες μετά.
+function ctOpenCostModal(id) {
+  const t = _ct.pnl.find(x => x.id === id); if (!t) return;
+  const catOpts = Object.entries(CT_CATEGORY_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  document.getElementById('ctOverlay').classList.add('open');
+  const m = document.getElementById('ctModal');
+  m.classList.add('open');
+  m.innerHTML = `
+    <div class="ct-mhead">Καταχώρηση κόστους — ${ctEsc(t.code)} <button class="ct-close" onclick="ctCloseAll()">✕</button></div>
+    <div class="ct-mbody">
+      <div class="ct-fgrid">
+        <label>Κατηγορία<select id="ctMcat">${catOpts}</select></label>
+        <label>Ημερομηνία<input type="date" id="ctMdate" value="${ctEsc(t.date_start)}"></label>
+        <label>Καθαρό €<input type="number" id="ctMnet" step="0.01" placeholder="π.χ. 320"></label>
+        <label>ΦΠΑ € (χωριστά)<input type="number" id="ctMvat" step="0.01" placeholder="0 για reverse charge"></label>
+        <label style="grid-column:1/-1">Σημείωση / παραστατικό<input type="text" id="ctMnote"></label>
+      </div>
+      <div class="ct-note">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:14px">
+        <button class="ct-btn" onclick="ctCloseAll()">Άκυρο</button>
+        <button class="ct-btn ct-primary" onclick="ctModalSaveCost(${t.id})">Αποθήκευση</button>
+      </div>
+    </div>`;
+  document.getElementById('ctMnet').focus();
+}
+async function ctModalSaveCost(rtId) {
+  const net = parseFloat(document.getElementById('ctMnet').value);
+  const vat = parseFloat(document.getElementById('ctMvat').value) || 0;
+  if (isNaN(net)) { alert('Βάλε καθαρό ποσό'); return; }
+  try {
+    await ctPostCostLine(rtId, { category: document.getElementById('ctMcat').value,
+      net, vat, line_date: document.getElementById('ctMdate').value || null,
+      note: document.getElementById('ctMnote').value || null });
+    ctCloseAll(); await ctReload();
   } catch (e) { alert('Σφάλμα: ' + e.message); }
 }
 
@@ -663,6 +710,9 @@ function ctStyles() { return `<style>
 .ct-dcat .b i{display:block;height:100%;background:var(--accent,#0284C7);border-radius:3px}
 .ct-dcat .v{width:72px;text-align:right;font-weight:500}
 .ct-dwhy{display:inline-block;font-size:12.5px;color:#92400E;background:#FEF3C7;border-radius:6px;padding:6px 10px;margin-top:6px}
+.ct-addtd{width:36px;text-align:center;padding:6px 8px}
+.ct-addbtn{width:24px;height:24px;border-radius:6px;border:1px solid rgba(2,132,199,.4);background:#fff;color:var(--accent,#0284C7);font-size:15px;font-weight:700;line-height:1;cursor:pointer}
+.ct-addbtn:hover{background:#F0F9FF}
 .ct-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);opacity:0;pointer-events:none;transition:.2s;z-index:9000}
 .ct-overlay.open{opacity:1;pointer-events:auto}
 .ct-panel{position:fixed;top:0;right:-540px;width:540px;max-width:96vw;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(11,25,41,.25);transition:right .25s;z-index:9100;overflow-y:auto}
