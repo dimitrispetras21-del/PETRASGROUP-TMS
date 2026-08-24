@@ -346,28 +346,60 @@ async function plvDrill(kind, id) {
 }
 
 /* ── Modal επιβεβαίωσης εκκρεμούς ── */
-function plvOpenConfirm(id) {
+function plvOpenConfirm(id, inWiz) {
   const m = PLV.movements.find(x => x.id === id);
   if (!m) return;
+  // Wizard ξεκαθαρίσματος (2.1): το άνοιγμα από τη λίστα χτίζει ουρά με την
+  // ΤΡΕΧΟΥΣΑ ταξινόμηση/φίλτρα, ώστε η επιτυχής επιβεβαίωση να προχωρά μόνη
+  // της στην επόμενη pending. Κάθε κίνηση κρατά τον ΔΙΚΟ της κύκλο δελτίου —
+  // δεν υπάρχει μαζική επιβεβαίωση: η πύλη έμεινε αυστηρή (owner 24/8).
+  if (!inWiz && m.status === 'pending') {
+    PLV.wizQueue = _plvRows().filter(x => x.status === 'pending').map(x => x.id);
+  }
+  const q = m.status === 'pending' ? (PLV.wizQueue || []) : [];
+  const pos = q.indexOf(id);
+  const counter = q.length > 1 && pos >= 0
+    ? ` <span style="font-size:12px;color:var(--panel-dim);font-weight:400">· ${pos + 1} από ${q.length}</span>` : '';
   // Ο κανόνας του Worker (taken+given>0, εκτός ADJUSTMENT) εφαρμόζεται ΚΑΙ εδώ:
   // η υποβολή κλειδώνει όσο 0/0 και εξηγεί, αντί να επιστρέφει 400 μετά (αρχή 1).
   const needsQty = m.event_type !== 'ADJUSTMENT';
   const zero = needsQty && m.taken + m.given === 0;
   document.getElementById('plvModal').innerHTML = `
-  <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvCloseModal()">
+  <div style="position:fixed;inset:0;background:rgba(11,25,41,.55);display:flex;align-items:center;justify-content:center;z-index:1000" onclick="if(event.target===this)plvWizClose()">
     <div style="background:var(--panel,#fff);color:var(--panel-text,#0F172A);border-radius:12px;padding:24px;width:min(440px,92vw)">
-      <h3 style="font-family:Syne;margin:0 0 6px">Επιβεβαίωση — ${m.code}</h3>
+      <h3 style="font-family:Syne;margin:0 0 6px">Επιβεβαίωση — ${m.code}${counter}</h3>
       <div style="font-size:13px;color:var(--panel-dim);margin-bottom:14px">${PLV_EVENT_GR[m.event_type]} · ${_plvName(m)}</div>
       <label style="font-size:13px">Πήραμε (παλέτες)<input id="plvTaken" type="number" min="0" value="${m.taken}" ${needsQty ? 'oninput="plvZeroCheck()"' : ''} style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
       <label style="font-size:13px">Δώσαμε (παλέτες)<input id="plvGiven" type="number" min="0" value="${m.given}" ${needsQty ? 'oninput="plvZeroCheck()"' : ''} style="width:100%;padding:10px;margin:4px 0 12px;font-size:16px"></label>
       <div id="plvZeroNote" style="display:${zero ? 'block' : 'none'};font-size:12px;color:#92400E;margin:0 0 12px">Μηδενικές ποσότητες — χρειάζεται διόρθωση: συμπλήρωσε πόσες παλέτες πήραμε ή δώσαμε για να ενεργοποιηθεί η επιβεβαίωση.</div>
       <label style="font-size:13px">Δελτίο (φωτο/PDF — προαιρετικό)<input id="plvFile" type="file" accept="image/*,.pdf" style="width:100%;margin:4px 0 14px"></label>
-      <div style="display:flex;gap:10px;justify-content:flex-end">
-        <button class="btn-scan" onclick="plvCloseModal()">Άκυρο</button>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+        <button class="btn-scan" onclick="plvWizClose()">Κλείσιμο</button>
+        ${q.length > 1 && pos >= 0 ? `<button class="btn-scan" onclick="plvWizAdvance(${m.id})" title="Προσπέρασε χωρίς επιβεβαίωση">Παράλειψη →</button>` : ''}
         <button id="plvConfirmGo" class="btn-new-order" ${zero ? 'disabled style="opacity:.5;cursor:not-allowed"' : ''} onclick="plvDoConfirm(${m.id})">Επιβεβαίωση κίνησης</button>
       </div>
     </div>
   </div>`;
+  document.addEventListener('keydown', _plvEsc);
+}
+
+// Escape κλείνει modal/πάνελ/wizard από παντού.
+function _plvEsc(e) { if (e.key === 'Escape') plvWizClose(); }
+function plvWizClose() { PLV.wizQueue = null; plvCloseModal(); }
+
+// Επόμενη pending της ουράς μετά την afterId — φρέσκια κατάσταση, όχι η
+// στιγμιαία: ό,τι επιβεβαιώθηκε/διαγράφηκε στο μεταξύ προσπερνιέται.
+function plvWizAdvance(afterId) {
+  const q = PLV.wizQueue || [];
+  const i = q.indexOf(afterId);
+  for (let k = i + 1; k < q.length; k++) {
+    const m = PLV.movements.find(x => x.id === q[k]);
+    if (m && m.status === 'pending') { plvOpenConfirm(q[k], true); return; }
+  }
+  PLV.wizQueue = null;
+  plvCloseModal();
+  toast('Τέλος της λίστας εκκρεμών ✓');
+  renderPalletLedger();
 }
 
 // Ζωντανή εναλλαγή του κλειδώματος: το κουμπί ανάβει μόλις μπει ποσότητα.
@@ -383,7 +415,10 @@ function plvZeroCheck() {
   btn.style.cursor = zero ? 'not-allowed' : '';
   if (note) note.style.display = zero ? 'block' : 'none';
 }
-function plvCloseModal() { document.getElementById('plvModal').innerHTML = ''; }
+function plvCloseModal() {
+  document.getElementById('plvModal').innerHTML = '';
+  document.removeEventListener('keydown', _plvEsc);
+}
 
 async function _plvUploadIfAny() {
   const fi = document.getElementById('plvFile');
@@ -416,8 +451,18 @@ async function plvDoConfirm(id) {
     await plFetch('/pallets/movements/' + id, { method: 'PATCH', body: patch });
     await plFetch('/pallets/movements/' + id + '/confirm', { method: 'POST' });
     toast('Κίνηση επιβεβαιώθηκε ✓');
-    plvCloseModal(); await renderPalletLedger();
+    if (PLV.wizQueue && PLV.wizQueue.length > 1) {
+      // Wizard: ελαφρύ refresh μόνο της λίστας και αμέσως η επόμενη — τα
+      // ισοζύγια ξαναφορτώνονται μία φορά, στο τέλος της ουράς.
+      const mv = await plFetch('/pallets/movements');
+      PLV.movements = mv.records || [];
+      plvWizAdvance(id);
+    } else {
+      plvCloseModal(); await renderPalletLedger();
+    }
   } catch (e) { showErrorToast('Αποτυχία επιβεβαίωσης: ' + e.message, 'error'); }
+  // Σε αποτυχία: το μήνυμα του Worker εμφανίζεται, το modal ΜΕΝΕΙ στην
+  // τρέχουσα κίνηση — ο wizard δεν προσπερνά ποτέ σιωπηλά (αρχή 1).
   finally { PLV.busy = false; }
 }
 
