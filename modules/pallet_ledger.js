@@ -171,7 +171,7 @@ function _plvDraw() {
   const isBalanceTab = PLV.tab === 'clients' || PLV.tab === 'partners';
   const rows = isBalanceTab ? [] : _plvRows();
   c.innerHTML = `
-  <div style="padding:20px;max-width:1100px">
+  <div style="padding:20px 24px;max-width:1100px;margin:0 auto">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
       <h1 style="font-family:Syne;font-size:22px;margin:0">Ισοζύγιο Παλετών</h1>
       <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>
