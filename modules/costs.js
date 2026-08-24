@@ -861,7 +861,6 @@ function ctStyles() { return `<style>
 .ct-wline .r{flex:1;border-top:2px solid var(--accent,#0284C7);opacity:.3}
 .ct-card{background:#fff;border:1px solid rgba(0,0,0,.06);border-radius:12px;padding:14px 18px 12px;margin-bottom:10px;cursor:pointer;transition:box-shadow .15s}
 .ct-card:hover{box-shadow:0 3px 14px rgba(11,25,41,.09)}
-.ct-card.flash{outline:2px solid #38BDF8;outline-offset:2px}
 .ct-ctop{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
 .ct-cid{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .ct-cid .code{font-family:'Syne',sans-serif;font-weight:800;font-size:15px}
