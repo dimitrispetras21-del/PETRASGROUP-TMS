@@ -70,7 +70,8 @@ async function renderTripPnl() {
         <button class="ct-btn ct-primary" onclick="ctOpenRtModal()">+ Νέο Round Trip</button>
       </div>
     </div>
-    <div class="kpi-grid" id="ctKpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr))"></div>
+    <div id="ctLede"></div>
+    <div class="ct-stats" id="ctKpis"></div>
     <div class="ct-toolbar" id="ctVehBar"></div>
     <div class="ct-toolbar" id="ctToolbar2">
       <div class="ct-seg" id="ctScopeSeg">
@@ -118,7 +119,7 @@ async function ctReload() {
     if (!lookups.cached) _ct.lookups = lookups;
     _ct.palletGate = {}; (palletGate.records || []).forEach(g => { _ct.palletGate[g.rt_id] = g; });
     _ct.linesByRt = {}; (lines.records || []).forEach(l => { if (l.rt_id) (_ct.linesByRt[l.rt_id] = _ct.linesByRt[l.rt_id] || []).push(l); });
-    ctRenderKPIs(); ctRenderVehBar(); ctRenderList();
+    ctRenderSummary(); ctRenderVehBar(); ctRenderList();
     ctRecon();
   } catch (e) {
     // Ορατό σφάλμα με επανάληψη — ποτέ κενή/μισή σελίδα (αρχή 1).
@@ -126,6 +127,7 @@ async function ctReload() {
       <span style="font-size:12px">Τα νούμερα ΔΕΝ είναι μηδέν — απλώς δεν φορτώθηκαν.</span><br>
       <button class="ct-btn" style="margin-top:12px" onclick="ctReload()">↻ Δοκίμασε ξανά</button></div>`;
     const k = document.getElementById('ctKpis'); if (k) k.innerHTML = '';
+    const ld = document.getElementById('ctLede'); if (ld) ld.innerHTML = '';
   }
 }
 
@@ -146,13 +148,22 @@ function ctVisible() {
     (_ct.veh === 'ALL' || (_ct.veh === 'PARTNERS' ? t.trip_type === 'PARTNER' : t.truck_id === _ct.veh)));
 }
 
-function ctRenderKPIs() {
+// Ποσό με πρόσημο για ρέον κείμενο: «−€620» αντί «€-620» (το ctEur αφήνει το
+// μείον του toLocaleString μετά το €, που διαβάζεται σαν τυπογραφικό λάθος).
+const ctSigned = n => (Number(n) < 0 ? '−' + ctEur(-n) : ctEur(n));
+
+// Ενιαίο μπλοκ σύνοψης (owner 24/8: «πέντε κάρτες, πέντε στυλ» ήταν το κύριο
+// σήμα «ερασιτεχνικό»): μία πρόταση-σύνοψη με πατήσιμα chips + ΜΙΑ λωρίδα με
+// κοινό φόντο και κοινή τυπογραφική κλίμακα. Το «κόστη ελλιπή» ξεχωρίζει με
+// χρώμα ΜΕΣΑ στο σύνολο, όχι με δικό του κουτί.
+function ctRenderSummary() {
+  const lede = document.getElementById('ctLede');
   const k = document.getElementById('ctKpis');
   const vb = document.getElementById('ctVehBar');
   const tb = document.getElementById('ctToolbar2');
   // Κενή βάση: η κενή κατάσταση (στο ctRenderList) είναι ΟΛΗ η σελίδα —
   // καμία κάρτα, κανένα «€0» που μοιάζει με μέτρηση.
-  if (!_ct.pnl.length) { k.innerHTML = ''; if (vb) vb.style.display = 'none'; if (tb) tb.style.display = 'none'; return; }
+  if (!_ct.pnl.length) { lede.innerHTML = ''; k.innerHTML = ''; if (vb) vb.style.display = 'none'; if (tb) tb.style.display = 'none'; return; }
   if (vb) vb.style.display = ''; if (tb) tb.style.display = '';
   const V = ctVisible();
   const rev = V.reduce((a, t) => a + Number(t.revenue || 0), 0);
@@ -160,30 +171,45 @@ function ctRenderKPIs() {
   const net = V.reduce((a, t) => a + Number(t.cost_net || 0), 0);
   const vat = gross - net;
   const incomplete = V.filter(t => !ctCostInfo(t).complete);
+  const losses = V.filter(t => ctCostInfo(t).complete && Number(t.profit_worst) < 0);
   const allComplete = V.length > 0 && incomplete.length === 0;
-  const losses = V.filter(t => ctCostInfo(t).complete && Number(t.profit_worst) < 0).length;
-  // Το ΚΥΡΙΟ μήνυμα όσο λείπουν κόστη είναι «κόστη ελλιπή», όχι το περιθώριο:
-  // margin/καθαρό εμφανίζονται ΜΟΝΟ όταν όλες οι ορατές γραμμές έχουν κόστη.
-  const marginCard = allComplete
-    ? `<div class="kpi-card" style="border-color:rgba(56,189,248,.35)"><div class="kpi-label">Καθαρό — worst case</div>
-        <div class="kpi-value" style="color:${rev - gross < 0 ? '#EF4444' : '#38BDF8'}">${ctEur(rev - gross)}</div>
-        <div class="kpi-delta">margin ${rev ? ((rev - gross) / rev * 100).toFixed(1) + '%' : '—'} · χωρίς ΦΠΑ ${rev ? ((rev - net) / rev * 100).toFixed(1) + '%' : '—'}</div></div>`
-    : `<div class="kpi-card" style="border-color:#FDE68A;background:#FFFBEB"><div class="kpi-label">Καθαρό / Margin</div>
-        <div class="kpi-value" style="color:#B45309">—</div>
-        <div class="kpi-delta" style="color:#B45309">μη υπολογίσιμο — κόστη ελλιπή σε ${incomplete.length} ${incomplete.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</div></div>`;
-  const incompleteCard = incomplete.length
-    ? `<div class="kpi-card" style="border-color:#FDE68A;background:#FFFBEB"><div class="kpi-label">⚠ Κόστη ελλιπή</div>
-        <div class="kpi-value" style="color:#B45309">${incomplete.length} / ${V.length}</div>
-        <div class="kpi-delta" style="color:#B45309">το περιθώριο κρύβεται μέχρι να καταχωρηθούν</div></div>`
-    : `<div class="kpi-card"><div class="kpi-label">Κόστη πλήρη</div><div class="kpi-value" style="color:#10B981">${V.length}/${V.length}</div><div class="kpi-delta">όλες οι γραμμές με καταχωρημένα κόστη</div></div>`;
+  // Πρόταση-σύνοψη (demo 24/8 — η ιδέα που ο owner ζήτησε πίσω): «Ν δρομολόγια
+  // · Μ θέλουν κόστη · Καθαρό X (Y%)», με ΟΝΟΜΑΣΤΙΚΑ chips για ό,τι θέλει
+  // προσοχή. Το Καθαρό υπακούει στην πύλη cost-complete: όσο λείπουν κόστη
+  // δεν εμφανίζεται νούμερο — το «100% κέρδος» δεν υπάρχει πουθενά.
+  const chips = [
+    ...incomplete.map(t => `<button class="ct-schip warn" onclick="ctOpenPanel(${t.id})">${ctEsc(t.code)} · χωρίς κόστη</button>`),
+    ...losses.map(t => `<button class="ct-schip loss" onclick="ctOpenPanel(${t.id})">${ctEsc(t.code)} ${ctSigned(t.profit_worst)}</button>`)
+  ];
+  const chipHtml = chips.slice(0, 4).join('') + (chips.length > 4 ? `<span class="ct-schip more">+${chips.length - 4}</span>` : '');
+  const netPhrase = allComplete
+    ? `Καθαρό <b class="${rev - gross < 0 ? 'neg' : 'pos'}">${ctSigned(rev - gross)}</b> <span class="dim">(${rev ? ((rev - gross) / rev * 100).toFixed(1) + '%' : '—'})</span>`
+    : `Καθαρό <b class="warn">—</b> <span class="dim">μη υπολογίσιμο όσο λείπουν κόστη</span>`;
+  lede.innerHTML = `<div class="ct-lede">
+    <button class="ct-schip" onclick="ctResetFilters()">${V.length} δρομολόγι${V.length === 1 ? 'ο' : 'α'}</button>
+    <span class="sep">·</span>
+    ${incomplete.length
+      ? `<button class="ct-schip warn" onclick="ctScrollList()">${incomplete.length} ${incomplete.length === 1 ? 'θέλει' : 'θέλουν'} κόστη</button>`
+      : `<span>όλα με πλήρη κόστη</span>`}
+    ${losses.length ? `<span class="sep">·</span><span>${losses.length} ζημιογόν${losses.length === 1 ? 'ο' : 'α'}</span>` : ''}
+    ${chipHtml}
+    <span class="sep">·</span> <span>${netPhrase}</span></div>`;
+  const netCell = allComplete
+    ? `<div class="v" style="color:${rev - gross < 0 ? '#B91C1C' : '#047857'}">${ctSigned(rev - gross)}</div>
+       <div class="s">margin ${rev ? ((rev - gross) / rev * 100).toFixed(1) + '%' : '—'} · χωρίς ΦΠΑ ${rev ? ((rev - net) / rev * 100).toFixed(1) + '%' : '—'}</div>`
+    : `<div class="v warn">—</div><div class="s warn">κόστη ελλιπή σε ${incomplete.length} ${incomplete.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</div>`;
+  const lastCell = incomplete.length
+    ? `<div class="ct-stat"><div class="l warn">⚠ Κόστη ελλιπή</div><div class="v warn">${incomplete.length} / ${V.length}</div><div class="s warn">το περιθώριο κρύβεται μέχρι να καταχωρηθούν</div></div>`
+    : `<div class="ct-stat"><div class="l">Ζημιογόνα</div><div class="v" style="color:${losses.length ? '#B91C1C' : '#047857'}">${losses.length}</div><div class="s">${losses.length ? 'θέλουν απόφαση' : 'κανένα — με πλήρη κόστη'}</div></div>`;
   k.innerHTML = `
-   ${incomplete.length ? incompleteCard : ''}
-   <div class="kpi-card"><div class="kpi-label">Έσοδα</div><div class="kpi-value">${ctEur(rev)}</div><div class="kpi-delta">${V.length} round trips</div></div>
-   <div class="kpi-card"><div class="kpi-label">Κόστη καταχωρημένα</div><div class="kpi-value">${ctEur(gross)}</div><div class="kpi-delta">εκ των οποίων ΦΠΑ <b style="color:#CBD5E1">${ctEur(vat)}</b></div></div>
-   ${marginCard}
-   <div class="kpi-card"><div class="kpi-label">Ζημιογόνα (με πλήρη κόστη)</div><div class="kpi-value" style="color:${losses ? '#EF4444' : '#10B981'}">${losses}</div><div class="kpi-delta">θέλουν απόφαση</div></div>
-   ${!incomplete.length ? incompleteCard : ''}`;
+   <div class="ct-stat"><div class="l">Δρομολόγια</div><div class="v">${V.length}</div><div class="s">round trips στην τρέχουσα προβολή</div></div>
+   <div class="ct-stat"><div class="l">Έσοδα</div><div class="v">${ctEur(rev)}</div><div class="s">auto από τα φορτία</div></div>
+   <div class="ct-stat"><div class="l">Κόστη καταχωρημένα</div><div class="v">${ctEur(gross)}</div><div class="s">εκ των οποίων ΦΠΑ ${ctEur(vat)}</div></div>
+   <div class="ct-stat"><div class="l">Καθαρό — worst case</div>${netCell}</div>
+   ${lastCell}`;
 }
+function ctResetFilters() { _ct.veh = 'ALL'; ctSetScope('ALL'); const s = document.getElementById('ctVehSel'); if (s) s.value = 'ALL'; }
+function ctScrollList() { document.getElementById('ctList')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
 function ctRenderVehBar() {
   const trucks = [...new Set(_ct.pnl.filter(t => t.truck_id).map(t => t.truck_id))];
@@ -193,11 +219,11 @@ function ctRenderVehBar() {
     trucks.map(id => `<button class="ct-vchip${_ct.veh === id ? ' active' : ''}" onclick="ctSetVeh(${id})">${ctEsc(ctTruckName(id))}</button>`).join('') +
     `<button class="ct-vchip ct-vpartner${_ct.veh === 'PARTNERS' ? ' active' : ''}" onclick="ctSetVeh('PARTNERS')">Partners</button>`;
 }
-function ctSetVeh(v) { _ct.veh = v; ctRenderKPIs(); ctRenderVehBar(); ctRenderList(); }
+function ctSetVeh(v) { _ct.veh = (v === 'ALL' || v === 'PARTNERS') ? v : Number(v); ctRenderSummary(); ctRenderVehBar(); ctRenderList(); }
 function ctSetScope(s) {
   _ct.scope = s;
   document.querySelectorAll('#ctScopeSeg button').forEach(b => b.classList.toggle('active', b.dataset.s === s));
-  ctRenderKPIs(); ctRenderList();
+  ctRenderSummary(); ctRenderList();
 }
 
 // Φ4: banner (real gate: N partner trips waiting on a sheet) + a quieter
@@ -547,6 +573,21 @@ function ctCloseAll() {
 // ── scoped styles (TMS tokens) ───────────────────────────────────
 function ctStyles() { return `<style>
 .ct-rolechip{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 10px;border-radius:9999px;background:var(--navy-mid,#0B1929);color:#38BDF8;border:1px solid rgba(56,189,248,.3);vertical-align:middle}
+.ct-lede{background:var(--navy-mid,#0B1929);color:#E2E8F0;border-radius:12px;padding:11px 18px;margin-bottom:10px;font-size:13.5px;font-weight:500;display:flex;align-items:center;flex-wrap:wrap;gap:8px}
+.ct-lede .sep{color:#475569}.ct-lede .dim{color:#7DA6CE;font-size:12px}
+.ct-lede b.pos{color:#4ADE80}.ct-lede b.neg{color:#F87171}.ct-lede b.warn{color:#FCD34D}
+.ct-schip{font-family:inherit;border:1px solid rgba(148,163,184,.35);background:rgba(148,163,184,.12);color:#E2E8F0;border-radius:9999px;padding:3px 12px;font-size:12px;font-weight:600;cursor:pointer}
+.ct-schip:hover{background:rgba(148,163,184,.22)}
+.ct-schip.warn{background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.4);color:#FCD34D}
+.ct-schip.loss{background:rgba(248,113,113,.13);border-color:rgba(248,113,113,.4);color:#FCA5A5}
+.ct-schip.more{cursor:default;color:#94A3B8}
+.ct-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:rgba(0,0,0,.07);border:1px solid rgba(0,0,0,.07);border-radius:12px;overflow:hidden;margin-bottom:14px}
+.ct-stats:empty{display:none}
+.ct-stat{background:#fff;padding:13px 17px}
+.ct-stat .l{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-dim);font-weight:600}
+.ct-stat .v{font-family:'Syne',sans-serif;font-size:21px;font-weight:800;margin-top:3px;font-variant-numeric:tabular-nums}
+.ct-stat .s{font-size:11.5px;color:var(--text-dim);margin-top:2px}
+.ct-stat .warn{color:#B45309}
 .ct-toolbar{display:flex;align-items:center;gap:12px;margin-bottom:12px;flex-wrap:wrap}
 .ct-toolbar select{font-family:inherit;font-size:13px;padding:7px 11px;border:1px solid rgba(0,0,0,.12);border-radius:8px;background:#fff}
 .ct-seg{display:flex;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:8px;padding:3px;gap:2px}
