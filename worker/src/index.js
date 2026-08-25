@@ -1,3 +1,7 @@
+// Browser Rendering (owner 25/8): bundled by wrangler from worker/node_modules —
+// run `npm install` in worker/ before deploying from a fresh clone.
+import puppeteer from "@cloudflare/puppeteer";
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -3132,6 +3136,56 @@ async function handlePallets(request, url, origin, env) {
 }
 __name(handlePallets, "handlePallets");
 
+// ─── /print/pdf — the PDF IS the print page (owner 25/8) ────────────────────
+// Renders the SAME print.html with Browser Rendering and returns page.pdf():
+// one source of truth for the document. The hand-built jsPDF layout was a
+// SECOND implementation of the same document and was removed (αρχή 3 + 8).
+// The caller's own JWT is injected into localStorage so the page loads as
+// that user — no privilege escalation, no service credentials in the page.
+async function handlePrintPdf(request, url, origin, env, ctx) {
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  if (!can(caller.role, "orders", "GET")) return jsonError("Forbidden", 403, origin, env);
+  if (!env.BROWSER) return jsonError("Browser Rendering not configured", 501, origin, env);
+  // Only the print page's own params pass through; the target origin is OURS
+  // (first ALLOWED_ORIGIN) — this endpoint never renders arbitrary URLs.
+  const qs = new URLSearchParams();
+  for (const k of ["orderId", "orderIds", "leg", "sheet"]) {
+    const v = url.searchParams.get(k);
+    if (v) qs.set(k, v);
+  }
+  if (!qs.get("orderId") && !qs.get("orderIds")) return jsonError("orderId or orderIds required", 400, origin, env);
+  qs.set("noprint", "1");
+  const base = (env.ALLOWED_ORIGIN || "").split(",")[0].trim();
+  const target = base + "/PETRASGROUP-TMS/print.html?" + qs.toString();
+  const jwt = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+  let browser;
+  try {
+    browser = await puppeteer.launch(env.BROWSER);
+    const page = await browser.newPage();
+    await page.evaluateOnNewDocument((t) => { localStorage.setItem("tms_jwt", t); }, jwt);
+    // networkidle0 also waits out the remote QR images (api.qrserver.com).
+    await page.goto(target, { waitUntil: "networkidle0", timeout: 25e3 });
+    await page.waitForSelector(".p-doc", { timeout: 15e3 });
+    const pdf = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "10mm", bottom: "10mm", left: "8mm", right: "8mm" }
+    });
+    return new Response(pdf, { status: 200, headers: {
+      ...corsHeaders(origin, env),
+      "Content-Type": "application/pdf",
+      "Content-Disposition": 'inline; filename="petras-doc.pdf"'
+    } });
+  } catch (e) {
+    console.error("PRINT PDF", e.message);
+    return jsonError("PDF render failed: " + e.message, 502, origin, env);
+  } finally {
+    if (browser) ctx.waitUntil(browser.close());
+  }
+}
+__name(handlePrintPdf, "handlePrintPdf");
+
 var FACADE_PATH = /^\/v0\/[^/]+\/([^/]+)(?:\/([^/]+))?\/?$/;
 var ORDERS_TABLE_ID = "tblgHlNmLBH3JTdIM";
 var index_default = {
@@ -3171,6 +3225,9 @@ var index_default = {
     if (url.pathname === "/api/locations") {
       if (request.method === "GET") return handleGetLocations(request, origin, env);
       if (request.method === "POST") return handleCreateLocation(request, origin, env);
+    }
+    if (url.pathname === "/print/pdf" && request.method === "GET") {
+      return handlePrintPdf(request, url, origin, env, ctx);
     }
     if (url.pathname.startsWith("/costs/")) {
       return handleCosts(request, url, origin, env);

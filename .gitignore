@@ -18,3 +18,5 @@ playwright/.cache/
 # Stage 2 E2E generated artifacts (never commit)
 config.staging.js
 app.staging.html
+.mcp.json
+docs/research/

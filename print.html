@@ -236,7 +236,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 <div id="loading"><div class="spin"></div>Loading…</div>
 <div id="doc"></div>
 
-<script src="core/share-helpers.js?v=1787683938"></script>
+<script src="core/share-helpers.js?v=1787685800"></script>
 <script>
 // Airtable token REMOVED (S-1 remediation, 2026-07-13). This page now reads
 // through the Cloudflare Worker with the logged-in user's JWT, same as core/api.js.
@@ -778,6 +778,8 @@ function renderDocs(htmlArr){
       title:window._shTitle||'PETRAS GROUP',
       fileName:window._shTitle||'petras-doc',
       getText:function(){return _waArr.join('\n\n————————\n\n');},
+      // Το PDF ΕΙΝΑΙ αυτή η σελίδα: ο Worker την αποδίδει με τα ΙΔΙΑ params.
+      pdfUrl:function(){return PROXY_URL+'/print/pdf'+location.search;},
       onPrint:function(){window.print();}
     });
   }

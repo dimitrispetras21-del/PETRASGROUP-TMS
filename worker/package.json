@@ -1,0 +1,8 @@
+{
+  "name": "petras-tms-worker",
+  "private": true,
+  "comment": "Μόνο για το bundling του @cloudflare/puppeteer από το wrangler — τρέξε `npm install` ΠΡΙΝ από κάθε deploy σε φρέσκο clone.",
+  "dependencies": {
+    "@cloudflare/puppeteer": "^1.0.4"
+  }
+}
