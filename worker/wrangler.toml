@@ -10,6 +10,9 @@ name = "petras-tms-backend-staging"
 account_id = "9dff78339915e968e5becaa9b1efff43"
 main = "src/index.js"
 compatibility_date = "2026-07-01"
+# nodejs_compat: απαιτείται από το @cloudflare/puppeteer (node:buffer).
+# Additive — ο υπόλοιπος κώδικας δεν χρησιμοποιεί node APIs.
+compatibility_flags = ["nodejs_compat"]
 # Το app καλεί το *.workers.dev URL (config.js PROXY_URL) — ρητά true ώστε
 # κανένα deploy να μην το απενεργοποιήσει.
 workers_dev = true
@@ -17,6 +20,15 @@ workers_dev = true
 # Non-secret vars — πιστή αντιγραφή των τρεχόντων bindings (CF API, 10/8).
 # Το wrangler deploy τα ξαναγράφει· αν προστεθεί var στο dashboard χωρίς να
 # μπει εδώ, θα χαθεί στο επόμενο deploy.
+# Browser Rendering (owner 25/8): το /print/pdf αποδίδει το ΙΔΙΟ print.html
+# και επιστρέφει PDF — μία πηγή αλήθειας για το έγγραφο. ΠΡΕΠΕΙ να είναι
+# ΠΑΝΩ από το [vars]: TOML — ό,τι ακολουθεί το [vars] γίνεται plain var
+# (συνέβη 25/8: το binding πέρασε ως env.browser var και το /print/pdf
+# γύρισε 501 «not configured» — πιάστηκε στο smoke, όχι από χρήστη).
+# @cloudflare/puppeteer: τρέξε `npm install` εδώ πριν από deploy σε φρέσκο clone.
+[browser]
+binding = "BROWSER"
+
 [vars]
 ALLOWED_ORIGIN = "https://dimitrispetras21-del.github.io"
 SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
@@ -26,8 +38,3 @@ SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
 #   SUPABASE_SERVICE_KEY
 # Αν χρειαστεί αλλαγή: `wrangler secret put <NAME>` από αυτόν τον φάκελο.
 
-# Browser Rendering (owner 25/8): το /print/pdf αποδίδει το ΙΔΙΟ print.html
-# και επιστρέφει PDF — μία πηγή αλήθειας για το έγγραφο, όχι δεύτερη διάταξη.
-# ΠΡΟΣΟΧΗ: το @cloudflare/puppeteer γίνεται bundle από το wrangler — τρέξε
-# `npm install` σε αυτόν τον φάκελο ΠΡΙΝ από deploy σε φρέσκο clone.
-browser = { binding = "BROWSER" }

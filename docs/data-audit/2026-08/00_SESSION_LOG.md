@@ -941,3 +941,42 @@ Payload κειμένου = το _waArr του copyWA (όχι δεύτερη εκ
 - Παρατήρηση δοκιμών: ο Chrome μπλοκάρει το 2ο+ αυτόματο download ανά
   σελίδα (browser policy, όχι δικό μας σφάλμα — με πραγματικό κλικ ανά
   φόρτωση σελίδας δουλεύει).
+
+---
+
+## 25/8/2026 (ζ) — Διόρθωση 2: το PDF ΕΙΝΑΙ η εκτύπωση (Browser Rendering)
+
+**Αρχιτεκτονική:** ο Worker αποκτά `/print/pdf` (@cloudflare/puppeteer,
+binding BROWSER) που αποδίδει το ΙΔΙΟ print.html με το JWT του καλούντα
+εγχυμένο (φορτώνει ως ο ίδιος χρήστης — καμία κλιμάκωση· params whitelisted,
+μόνο δικό μας origin). Η χειροποίητη διάταξη jsPDF ήταν ΔΕΥΤΕΡΗ υλοποίηση
+του εγγράφου — αφαιρέθηκε μαζί με 530KB vendor (αρχή 3+8). Το μενού/
+υποχώρηση/κείμενο _waArr μένουν· PDF επιλογές μόνο όπου δίνεται pdfUrl.
+Διαθεσιμότητα Browser Rendering επιβεβαιωμένη ΠΡΙΝ τον κώδικα (dashboard
+Browser Run ενεργό, χρήση 0).
+
+**Αποδείξεις:** `/print/pdf` live → 200 · application/pdf · **310KB** ·
+9,3s cold. Ο viewer έδειξε ΤΟ ΙΔΙΟ έγγραφο με την εκτύπωση: κεφαλίδα,
+meta, FROM→TO, chips, κάρτες στάσεων ΜΕ QR, checklist, footer, σελ.2
+υπογραφές — text-PDF από page.pdf(), όχι εικόνα. Smoke χωρίς JWT: 401.
+Bindings 6/6 (5+browser, secrets άθικτα), φρουρός **9/9** στο ξετυλιγμένο
+bundle (23.240 γρ. — το puppeteer μέσα).
+
+**Δύο παγίδες πιάστηκαν στο smoke, όχι από χρήστες:**
+1. TOML: binding γραμμένο ΚΑΤΩ από το [vars] γίνεται plain var — το
+   /print/pdf γύρισε 501 «not configured»· το [browser] μπήκε ΠΑΝΩ από το
+   [vars] με σχόλιο-φρουρό στο ίδιο το αρχείο.
+2. nodejs_compat flag απαραίτητο για το puppeteer (node:buffer) — το
+   πρώτο deploy απορρίφθηκε (validation 10021), προστέθηκε.
+
+**Συμβάν ασφάλειας — δικό μου λάθος, επανορθωμένο:** ένα `git add -A`
+πήρε δύο άσχετα τοπικά αρχεία (.mcp.json — χωρίς secrets, μόνο δημόσιο
+MCP URL· docs/research/OGL_PORTAL_AUDIT — λεπτομέρειες πελάτη!) στο
+δημόσιο repo. Εντός λεπτών: commit αφαίρεσης + .gitignore, τα αρχεία
+404 στο τρέχον main, τοπικά άθικτα. ΕΚΚΡΕΜΕΙ: το blob μένει στο ιστορικό
+commit (19825cf) — η πλήρης διαγραφή θέλει force push, τα guards σωστά
+τη μπλόκαραν χωρίς άνθρωπο: **απόφαση owner**.
+
+**Όρια δοκιμών (δηλωμένα):** ο Chrome μπλοκάρει επαναλαμβανόμενα
+auto-downloads ανά origin· το φύλλο κοινής χρήσης είναι native OS UI —
+δεν πιάνεται σε tab screenshot· τελικό βήμα: ένα άνοιγμα από iPhone.
