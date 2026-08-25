@@ -68,7 +68,7 @@ function _locShell() {
     </div>
     <div class="table-wrap" style="overflow:hidden">
       <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
-        Ανά Κατηγορία <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
+        Ανά Κίνηση <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
       </div>
       <div id="locTypeBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
     </div>
@@ -231,27 +231,45 @@ function _locRenderOverview() {
       </button>`).join('') +
     `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Κλικ σε χώρα για φιλτράρισμα →</div>`;
 
-  // Type bars — read-only
-  const tCounts = {};
-  recs.forEach(r => {
-    let t = (r.Type || '').trim();
-    if (!t) t = '— No Type';
-    else if (/^(CLIENT|CLINET|client)/i.test(t)) t = 'Client Location';
-    else if (/^PARTNER/i.test(t)) t = 'Partner Warehouse';
-    else if (/ΣΥΝΕΡΓΕΙ|^SERVICE/i.test(t)) t = 'Service / Workshop';
-    else if (/ΚΑΥΣΙΜ|ΠΕΤΡΕΛ|FUEL/i.test(t)) t = 'Fuel Station';
-    else if (/^NOTES/i.test(t)) t = 'Notes / Misc';
-    tCounts[t] = (tCounts[t]||0)+1;
-  });
-  const tSorted = Object.entries(tCounts).sort((a,b) => b[1]-a[1]).slice(0,14);
-  const tMax = tSorted[0]?.[1] || 1;
-  document.getElementById('locTypeLabel').textContent = `${Object.keys(tCounts).length} categories`;
-  document.getElementById('locTypeBars').innerHTML = tSorted.map(([label, count]) => `
-    <div class="loc-bar-row">
-      <div class="loc-bar-label" title="${_locEsc(label)}">${_locEsc(label)}</div>
-      <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/tMax*100).toFixed(1)}%;opacity:${label==='— No Type'?.3:1}"></div></div>
+  // «Ανά Κίνηση» (Ε, owner 25/8): οι «48 κατηγορίες» ήταν ονόματα πελατών σε
+  // λάθος πεδίο. Οι μπάρες τροφοδοτούνται από τον ΙΔΙΟ δείκτη με το φίλτρο
+  // της λίστας (αρχή 3) — μετρήσεις ΤΟΠΟΘΕΣΙΩΝ, όχι παραγγελιών.
+  document.getElementById('locTypeBars').innerHTML =
+    '<div style="padding:12px 18px;font-size:12px;color:var(--text-dim)">υπολογισμός κινήσεων…</div>';
+  _locRenderMoveBars();
+}
+
+async function _locRenderMoveBars() {
+  const el = document.getElementById('locTypeBars');
+  if (!LOC.moveIdx) { try { await _locBuildMoveIdx(); } catch (e) { /* handled in builder */ } }
+  if (!document.getElementById('locTypeBars')) return;
+  if (!LOC.moveIdx) {
+    el.innerHTML = '<div style="padding:12px 18px;font-size:12px;color:#8A5A00">Ο δείκτης κινήσεων δεν φόρτωσε — δοκίμασε ανανέωση.</div>';
+    return;
+  }
+  const cnt = { 'ΕΞΑΓΩΓΗ': 0, 'ΕΙΣΑΓΩΓΗ': 0, 'ΚΑΘΟΔΟΣ': 0, 'ΑΝΟΔΟΣ': 0 };
+  LOC.moveIdx.forEach(set => set.forEach(t => { cnt[t] = (cnt[t] || 0) + 1; }));
+  const none = LOC.records.length - LOC.moveIdx.size;
+  const max = Math.max(1, ...Object.values(cnt));
+  document.getElementById('locTypeLabel').textContent = `${LOC.moveIdx.size} τοποθεσίες με κίνηση`;
+  el.innerHTML = Object.entries(cnt).map(([label, count]) => `
+    <button type="button" class="loc-bar-row clickable" onclick="_locFilterByMove('${label}')">
+      <div class="loc-bar-label">${label}</div>
+      <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/max*100).toFixed(1)}%"></div></div>
       <div class="loc-bar-count">${count}</div>
-    </div>`).join('');
+    </button>`).join('') +
+    `<div class="loc-bar-row"><div class="loc-bar-label" style="color:var(--text-dim)">— καμία κίνηση καταγεγραμμένη</div>
+      <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(none/Math.max(none,max)*100).toFixed(1)}%;opacity:.25"></div></div>
+      <div class="loc-bar-count">${none}</div></div>` +
+    `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Κλικ σε κίνηση για φιλτράρισμα → · πηγή: στάσεις παραγγελιών</div>`;
+}
+
+function _locFilterByMove(t) {
+  document.querySelector('.loc-tab[data-tab="list"]')?.click();
+  const sel = document.getElementById('locMoveFilter');
+  if (sel) sel.value = t;
+  LOC.moveFilter = t; LOC.page = 1;
+  _locApplyFilters();
 }
 
 // ── Filter options ─────────────────────────────
@@ -409,7 +427,7 @@ function _locFormHTML(f) {
   const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
   return `
 <datalist id="locCDL">${countries.map(c => `<option value="${_locEsc(c)}">`).join('')}</datalist>
-<datalist id="locTDL">${['Client Depot','Veroia Hub','Budapest Hub','Partner Warehouse','Office','Service / Workshop','Fuel Station','Custom Point'].map(t => `<option value="${t}">`).join('')}</datalist>
+<datalist id="locTDL">${['Client Depot','Fuel Station','Partner Warehouse','ΣΥΝΕΡΓΕΙΟ','Custom Point','Veroia Hub','Πλυντήριο'].map(t => `<option value="${t}">`).join('')}</datalist>
 <div class="form-grid">
   <div class="form-field span-2">
     <label class="form-label">Name *</label>
@@ -447,6 +465,14 @@ function _locFormHTML(f) {
     <label class="form-label">Longitude</label>
     <input id="locF_lon" class="form-input" type="number" step="any" placeholder="22.2033" value="${f.Longitude != null ? f.Longitude : ''}">
   </div>
+  <div class="form-field">
+    <label class="form-label">Τηλέφωνο</label>
+    <input id="locF_phone" class="form-input" placeholder="π.χ. 210 558 4237" value="${_locEsc(f.Phone||'')}">
+  </div>
+  <div class="form-field">
+    <label class="form-label">Σημειώσεις</label>
+    <input id="locF_notes" class="form-input" placeholder="π.χ. χωρίς κλαρκ — τηλεφώνησε πριν" value="${_locEsc(f.Notes||'')}">
+  </div>
   <div class="form-field span-2">
     <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">Auto-fill coordinates from Name + City</button>
   </div>
@@ -473,6 +499,10 @@ async function _locSave() {
   const days  = document.getElementById('locF_days')?.value.trim();
   if (hours) fields['Opening Hours'] = hours;
   if (days)  fields['Delivery Days'] = days;
+  // Notes/Phone: στέλνονται ΠΑΝΤΑ (κενό = null) — το «στείλε μόνο αν γεμάτο»
+  // έκανε τιμή που καθαρίστηκε να μην ξαναγράφεται ποτέ (μοτίβο read-drop).
+  fields['Notes'] = document.getElementById('locF_notes')?.value.trim() || null;
+  fields['Phone'] = document.getElementById('locF_phone')?.value.trim() || null;
 
   const btn = document.getElementById('locSaveBtn');
   if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
@@ -562,7 +592,7 @@ async function _locFetchAll() {
     // cached record. Αποτέλεσμα: το input πάντα κενό ακόμη κι όταν η βάση είχε τιμή,
     // και το `if (hours)` του _locSave δεν ξανάστελνε ποτέ τίποτα (owner 25/8).
     fields: ['Name','Country','City','Address','Type','Latitude','Longitude',
-             'Opening Hours','Delivery Days']
+             'Opening Hours','Delivery Days','Notes','Phone']
   }, false);
 }
 
@@ -784,6 +814,8 @@ function _locCardHtml(rec, loadingBody) {
     ${row('Ωράριο', f['Opening Hours'] && _locEsc(f['Opening Hours']))}
     ${row('Ημέρες παράδοσης', f['Delivery Days'] && _locEsc(f['Delivery Days']))}
     ${row('Τύπος', f.Type && _locEsc(f.Type))}
+    ${row('Τηλέφωνο', f.Phone && _locEsc(f.Phone))}
+    ${row('Σημειώσεις', f.Notes && _locEsc(f.Notes))}
     ${row('Συντεταγμένες', maps)}
   </div>`;
   const agg = Object.values(_locGoodsAgg()).sort((a, b) => b.n - a.n);

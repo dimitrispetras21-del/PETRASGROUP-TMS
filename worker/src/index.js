@@ -713,7 +713,13 @@ var TABLES = {
       Longitude: "longitude",
       // Wave 3 (owner-approved, 8/8): driver-sheet fields
       "Opening Hours": "opening_hours",
-      "Delivery Days": "delivery_days"
+      "Delivery Days": "delivery_days",
+      // Ε migration (owner-approved 25/8): the free-text `type` was doing the
+      // job of four missing fields — these give notes/tags/phone real homes.
+      // Client tags stay DERIVED from orders (never stored — αρχή 3).
+      Notes: "notes",
+      Tags: "tags",
+      Phone: "phone"
     }
   },
   tblFWKAQVUzAM8mCE: {
