@@ -730,9 +730,9 @@ const _REF_FIELDS = {
   // Λήξεις από τις κοινές λίστες (constants.js, φορτώνεται πριν το api.js):
   // εδώ ΕΛΕΙΠΕ το 'FRC Expiry' των ρυμουλκών, οπότε το 4ωρο cache δεν το είχε
   // ποτέ και κανένα ταμπλό κατάντη δεν μπορούσε να το δείξει (26/8).
-  trucks:    ['License Plate', 'Active', ...TRUCK_EXPIRY_FIELDS],
+  trucks:    ['License Plate', 'Active', ...TRUCK_EXPIRY_NAMES],
   drivers:   ['Full Name', 'Active'],
-  trailers:  ['License Plate', 'Active', ...TRAILER_EXPIRY_FIELDS],
+  trailers:  ['License Plate', 'Active', ...TRAILER_EXPIRY_NAMES],
   locations: ['Name', 'City', 'Country', 'Latitude', 'Longitude'],
   clients:   ['Company Name'],
   partners:  ['Company Name', 'Adress', 'Country'],

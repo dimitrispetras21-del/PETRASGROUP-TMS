@@ -96,8 +96,22 @@ const MAINT_STATUS = {
 // λίστα ανά τύπο, ώστε κανένα σημείο να μην ξεχνά έγγραφο: το ΚΤΕΟ των
 // ρυμουλκών έλειπε από δύο σημεία και ρυμούλκα με ληγμένο FRC 3 μήνες
 // κυκλοφορούσε αόρατη από κάθε ταμπλό.
-const TRUCK_EXPIRY_FIELDS   = ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'];
-const TRAILER_EXPIRY_FIELDS = ['KTEO Expiry', 'FRC Expiry', 'Insurance Expiry'];
+// Object form ({field,label}) is the single definition: maintenance.js used to
+// declare its own identically-named const, which made the browser abort the whole
+// file with "Identifier already declared" — every maintenance page went blank
+// (25/8). Column-name-only consumers use the derived *_NAMES lists below.
+const TRUCK_EXPIRY_FIELDS = [
+  { field: 'KTEO Expiry',      label: 'KTEO' },
+  { field: 'KEK Expiry',       label: 'KEK' },
+  { field: 'Insurance Expiry', label: 'Insurance' },
+];
+const TRAILER_EXPIRY_FIELDS = [
+  { field: 'KTEO Expiry',      label: 'KTEO' },
+  { field: 'FRC Expiry',       label: 'FRC' },
+  { field: 'Insurance Expiry', label: 'Insurance' },
+];
+const TRUCK_EXPIRY_NAMES   = TRUCK_EXPIRY_FIELDS.map(e => e.field);
+const TRAILER_EXPIRY_NAMES = TRAILER_EXPIRY_FIELDS.map(e => e.field);
 
 // -- Badge CSS class map (status -> class) -----
 const STATUS_BADGE = {

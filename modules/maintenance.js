@@ -10,16 +10,7 @@ const MAINT = {
   _loaded: false,
 };
 
-const TRUCK_EXPIRY_FIELDS = [
-  { field: 'KTEO Expiry',        label: 'KTEO' },
-  { field: 'KEK Expiry',         label: 'KEK' },
-  { field: 'Insurance Expiry',   label: 'Insurance' },
-];
-const TRAILER_EXPIRY_FIELDS = [
-  { field: 'KTEO Expiry',        label: 'KTEO' },
-  { field: 'FRC Expiry',         label: 'FRC' },
-  { field: 'Insurance Expiry',   label: 'Insurance' },
-];
+// TRUCK_EXPIRY_FIELDS / TRAILER_EXPIRY_FIELDS come from core/constants.js.
 
 /**
  * Ποια έγγραφα ισχύουν πραγματικά για ΑΥΤΟ το όχημα.

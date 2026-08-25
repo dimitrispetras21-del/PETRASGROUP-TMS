@@ -308,7 +308,7 @@ async function renderMetricsAudit() {
       safeFetch(() => atGetAll(TABLES.NAT_ORDERS, { fields: ['Status','Invoiced','Price','Truck','Partner','Loading DateTime'] }, true), 'metrics audit: NAT_ORDERS'),
       safeFetch(() => atGetAll(TABLES.NAT_LOADS, { fields: ['Status','Truck','Partner','Loading DateTime','Direction'] }, true), 'metrics audit: NAT_LOADS'),
       safeFetch(() => atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active','KTEO Expiry','KEK Expiry','Insurance Expiry'] }, true), 'metrics audit: TRUCKS'),
-      safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_FIELDS] }, true), 'metrics audit: TRAILERS'),
+      safeFetch(() => atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_NAMES] }, true), 'metrics audit: TRAILERS'),
       safeFetch(() => atGetAll(TABLES.DRIVERS, { fields: ['Full Name','Active'] }, true), 'metrics audit: DRIVERS'),
       safeFetch(() => atGetAll(TABLES.PARTNERS, { fields: ['Company Name'] }, true), 'metrics audit: PARTNERS'),
       safeFetch(() => atGetAll(TABLES.LOCATIONS, { fields: ['Name','City'] }, true), 'metrics audit: LOCATIONS'),

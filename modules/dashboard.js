@@ -312,7 +312,7 @@ async function renderDashboard() {
     trucks.filter(t => t.fields['Active']).forEach(t => {
       const f = t.fields;
       const plate = escapeHtml(f['License Plate'] || '—');
-      TRUCK_EXPIRY_FIELDS.forEach(field => {
+      TRUCK_EXPIRY_NAMES.forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
         if (dt && dt <= alertThreshold) {
           const days = Math.ceil((new Date(dt) - now) / 864e5);
@@ -324,7 +324,7 @@ async function renderDashboard() {
     trailers.forEach(t => {
       const f = t.fields;
       const plate = escapeHtml(f['License Plate'] || '—');
-      TRAILER_EXPIRY_FIELDS.forEach(field => {
+      TRAILER_EXPIRY_NAMES.forEach(field => {
         const dt = (f[field] || '').substring(0, 10);
         if (dt && dt <= alertThreshold) {
           const days = Math.ceil((new Date(dt) - now) / 864e5);
