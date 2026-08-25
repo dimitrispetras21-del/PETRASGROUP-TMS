@@ -25,3 +25,9 @@ SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
 #   JWT_SECRET
 #   SUPABASE_SERVICE_KEY
 # Αν χρειαστεί αλλαγή: `wrangler secret put <NAME>` από αυτόν τον φάκελο.
+
+# Browser Rendering (owner 25/8): το /print/pdf αποδίδει το ΙΔΙΟ print.html
+# και επιστρέφει PDF — μία πηγή αλήθειας για το έγγραφο, όχι δεύτερη διάταξη.
+# ΠΡΟΣΟΧΗ: το @cloudflare/puppeteer γίνεται bundle από το wrangler — τρέξε
+# `npm install` σε αυτόν τον φάκελο ΠΡΙΝ από deploy σε φρέσκο clone.
+browser = { binding = "BROWSER" }

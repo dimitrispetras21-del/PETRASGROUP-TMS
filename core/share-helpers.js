@@ -5,16 +5,14 @@
 // Το φύλλο εφαρμογών (WhatsApp/Mail/AirDrop) το ανοίγει ΤΟ ΛΕΙΤΟΥΡΓΙΚΟ μέσω
 // navigator.share() — δεν το μιμούμαστε. ΕΝΑ εξάρτημα για όλες τις οθόνες:
 // οκτώ αντίγραφα του ίδιου μενού = οκτώ εκδοχές που αποκλίνουν (αρχή 3).
-// Το PDF είναι ΚΕΙΜΕΝΟ (jsPDF text API + DejaVu subset με ελληνικά), όχι
-// φωτογραφία html2canvas: ένα CMR που φτάνει θολό σε πελάτη είναι χειρότερο
-// από το να μη σταλεί. Αριστερό κλικ: μένει ό,τι έκανε πάντα — δεν το αγγίζουμε.
+// Το PDF ΕΙΝΑΙ η εκτύπωση (owner 25/8, Διόρθωση 2): παράγεται από τον Worker
+// (/print/pdf, Browser Rendering) που αποδίδει το ΙΔΙΟ print.html — μία πηγή
+// αλήθειας για το έγγραφο. Η χειροποίητη διάταξη jsPDF ήταν ΔΕΥΤΕΡΗ υλοποίηση
+// του ίδιου εγγράφου και αφαιρέθηκε (αρχή 3 + 8). Αριστερό κλικ: ανέγγιχτο.
 'use strict';
 
 (function () {
-  const VENDOR_JSPDF = 'assets/vendor/jspdf.umd.min.js';
-  const VENDOR_FONT = 'assets/vendor/pdf-font-el.js';
   let _menuEl = null;
-  let _pdfLibReady = null; // Promise — lazy: τα ~530KB φορτώνουν ΜΟΝΟ αν ζητηθεί PDF
 
   function _toast(msg, kind) {
     if (typeof toast === 'function') { toast(msg, kind || 'info'); return; }
@@ -29,62 +27,18 @@
     clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = 'none'; }, 4500);
   }
 
-  function _loadScript(src) {
-    return new Promise((ok, bad) => {
-      const s = document.createElement('script');
-      s.src = src; s.onload = ok;
-      s.onerror = () => bad(new Error('Δεν φορτώθηκε το ' + src));
-      document.head.appendChild(s);
-    });
-  }
 
-  function _ensurePdfLib() {
-    if (!_pdfLibReady) {
-      _pdfLibReady = Promise.all([
-        window.jspdf ? Promise.resolve() : _loadScript(VENDOR_JSPDF),
-        window.PDF_FONT_EL ? Promise.resolve() : _loadScript(VENDOR_FONT)
-      ]).catch(e => { _pdfLibReady = null; throw e; });
+  // Το PDF έρχεται από τον Worker — ο καλών δίνει pdfUrl() με τα ΙΔΙΑ params
+  // της σελίδας εκτύπωσης. Αποτυχία = μήνυμα με τον λόγο, ποτέ σιωπή.
+  async function _fetchPdfBlob(opts) {
+    const jwt = localStorage.getItem('tms_jwt');
+    const res = await fetch(opts.pdfUrl(), { headers: jwt ? { Authorization: 'Bearer ' + jwt } : {} });
+    if (!res.ok) {
+      let msg = 'HTTP ' + res.status;
+      try { msg = (await res.json()).error || msg; } catch (_) {}
+      throw new Error(msg);
     }
-    return _pdfLibReady;
-  }
-
-  // Emoji/WA-markdown έξω από το PDF: το DejaVu subset δεν έχει pictographs —
-  // θα έβγαζαν κενά κουτάκια δίπλα σε ονόματα πελατών. Τα '*' είναι σύνταξη
-  // WhatsApp (bold), όχι περιεχόμενο.
-  function _pdfSanitize(s) {
-    return String(s)
-      .replace(/\*(\S(?:[^*]*\S)?)\*/g, '$1')
-      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0E}\u{FE0F}\u{200D}]/gu, '')
-      .replace(/[ \t]{2,}/g, ' ');
-  }
-
-  async function _buildPdf(opts) {
-    await _ensurePdfLib();
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: 'mm', format: 'a4' });
-    const F = window.PDF_FONT_EL;
-    doc.addFileToVFS(F.file, F.b64);
-    doc.addFont(F.file, F.name, 'normal');
-    doc.setFont(F.name, 'normal');
-    const M = 14, W = 210 - 2 * M, H = 297 - M;
-    let y = M + 4;
-    doc.setFontSize(13);
-    doc.text(_pdfSanitize(opts.title || 'PETRAS GROUP'), M, y);
-    y += 4;
-    doc.setDrawColor(2, 132, 199); doc.setLineWidth(0.5);
-    doc.line(M, y, 210 - M, y);
-    y += 7;
-    doc.setFontSize(10);
-    const raw = _pdfSanitize(opts.getText());
-    for (const para of raw.split('\n')) {
-      const lines = para === '' ? [''] : doc.splitTextToSize(para, W);
-      for (const ln of lines) {
-        if (y > H - 6) { doc.addPage(); doc.setFont(F.name, 'normal'); doc.setFontSize(10); y = M + 4; }
-        doc.text(ln, M, y);
-        y += 5;
-      }
-    }
-    return doc;
+    return await res.blob();
   }
 
   function _fileName(opts) {
@@ -96,10 +50,10 @@
   function _isAbort(e) { return e && (e.name === 'AbortError' || e.name === 'NotAllowedError'); }
 
   async function _sharePdf(opts) {
-    let doc;
-    try { doc = await _buildPdf(opts); }
+    let blob;
+    try { blob = await _fetchPdfBlob(opts); }
     catch (e) { _toast('Το PDF δεν δημιουργήθηκε: ' + e.message, 'danger'); return; }
-    const file = new File([doc.output('blob')], _fileName(opts), { type: 'application/pdf' });
+    const file = new File([blob], _fileName(opts), { type: 'application/pdf' });
     // Αλυσίδα υποχώρησης — ό,τι δεν γίνεται, ακούγεται (αρχή 1):
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ title: opts.title, files: [file] }); }
@@ -113,7 +67,7 @@
       } catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
       return;
     }
-    doc.save(_fileName(opts));
+    _saveBlob(blob, _fileName(opts));
     _toast('Ο browser δεν έχει κοινή χρήση — το PDF κατέβηκε· στείλ’ το ως συνημμένο.');
   }
 
@@ -127,8 +81,15 @@
     _toast('Ο browser δεν έχει κοινή χρήση — το κείμενο αντιγράφηκε· επικόλλησέ το όπου θες.');
   }
 
+  function _saveBlob(blob, name) {
+    const u = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = u; a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(u), 4000);
+  }
+
   async function _downloadPdf(opts) {
-    try { (await _buildPdf(opts)).save(_fileName(opts)); }
+    try { _saveBlob(await _fetchPdfBlob(opts), _fileName(opts)); }
     catch (e) { _toast('Το PDF δεν δημιουργήθηκε: ' + e.message, 'danger'); }
   }
 
@@ -151,8 +112,10 @@
     _closeMenu();
     const items = [
       ['Εκτύπωση', () => (opts.onPrint ? opts.onPrint() : window.print())],
-      ['Λήψη PDF', () => _downloadPdf(opts)],
-      ['Κοινή χρήση PDF', () => _sharePdf(opts)],
+      ...(opts.pdfUrl ? [
+        ['Λήψη PDF', () => _downloadPdf(opts)],
+        ['Κοινή χρήση PDF', () => _sharePdf(opts)]
+      ] : []),
       ['Κοινή χρήση κειμένου', () => _shareText(opts)],
       ['Αντιγραφή κειμένου', () => _copyText(opts)]
     ];
@@ -179,7 +142,7 @@
     }, 0);
   }
 
-  // opts: { title, getText, fileName?, onPrint? }
+  // opts: { title, getText, fileName?, onPrint?, pdfUrl? } — χωρίς pdfUrl οι επιλογές PDF δεν εμφανίζονται
   function attachShareMenu(buttonEl, opts) {
     if (!buttonEl || buttonEl._shareMenuAttached) return;
     buttonEl._shareMenuAttached = true;
