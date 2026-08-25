@@ -1018,7 +1018,12 @@ var TABLES = {
     readView: "orders_with_derived",
     computed: {
       "Week Number": "week_number",
-      "Total Pallets": "total_pallets"
+      "Total Pallets": "total_pallets",
+      // The human-friendly order code IS the primary key (owner 25/8: no new
+      // column/sequence/backfill). Exposed read-only via computed — the write
+      // path never looks here, so the id cannot be PATCHed through the facade.
+      // Display convention: ORD-<id>. NOT chronological (insertion order).
+      "Order ID": "id"
     },
     // Reverse link (children listed on the parent, as Airtable's reverse field
     // does): the frontend's stopsLoad reads the parent's 'ORDER STOPS' then

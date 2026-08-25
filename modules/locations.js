@@ -13,6 +13,10 @@ const LOC = {
   pageSize: 50,
   editingId: null,
   loaded: false,
+  // Β (owner 25/8): φίλτρο 4 τύπων κίνησης — ο δείκτης χτίζεται lazily
+  // από order_stops+γονείς την πρώτη φορά που θα ζητηθεί.
+  moveFilter: '',
+  moveIdx: null,
 };
 
 // ── Entry point ────────────────────────────────
@@ -82,6 +86,13 @@ function _locShell() {
         </select>
         <select class="filter-select" id="locTypeFilter">
           <option value="">All Types</option>
+        </select>
+        <select class="filter-select" id="locMoveFilter" title="Τύπος κίνησης από το ιστορικό στάσεων — μετάφραση εμφάνισης, τίποτα δεν γράφεται">
+          <option value="">Κίνηση: Όλες</option>
+          <option>ΕΞΑΓΩΓΗ</option>
+          <option>ΕΙΣΑΓΩΓΗ</option>
+          <option>ΚΑΘΟΔΟΣ</option>
+          <option>ΑΝΟΔΟΣ</option>
         </select>
         <span class="entity-count" id="locCount"></span>
       </div>
@@ -165,6 +176,11 @@ function _locBindEvents() {
   });
   document.getElementById('locSearch').addEventListener('input', () => { LOC.page = 1; _locApplyFilters(); });
   document.getElementById('locCountryFilter').addEventListener('change', () => { LOC.page = 1; _locApplyFilters(); });
+  document.getElementById('locMoveFilter').addEventListener('change', async (e) => {
+    LOC.moveFilter = e.target.value; LOC.page = 1;
+    if (LOC.moveFilter && !LOC.moveIdx) await _locBuildMoveIdx();
+    _locApplyFilters();
+  });
   document.getElementById('locTypeFilter').addEventListener('change', () => { LOC.page = 1; _locApplyFilters(); });
   document.querySelectorAll('.loc-th[data-col]').forEach(th => {
     th.addEventListener('click', () => {
@@ -268,6 +284,12 @@ function _locApplyFilters() {
   const type    = (document.getElementById('locTypeFilter')?.value || '').toLowerCase();
 
   LOC.filtered = LOC.records.filter(r => {
+    if (LOC.moveFilter) {
+      // Δείκτης που απέτυχε να χτιστεί = ΚΑΝΕΝΑ φιλτράρισμα σιωπηλά — ο
+      // χειριστής το έμαθε με toast στο _locBuildMoveIdx και το φίλτρο μηδενίστηκε.
+      const set = LOC.moveIdx && LOC.moveIdx.get(r.id);
+      if (!set || !set.has(LOC.moveFilter)) return false;
+    }
     const f = r.fields;
     if (country === '__missing') { if (f.Country && f.City) return false; }
     else if (country && f.Country !== country) return false;
@@ -549,14 +571,15 @@ function _locEsc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Κάρτα τοποθεσίας (Βήμα 4, owner 25/8 — χωρίς migration) ─────────────
-// Κλικ σε γραμμή → πλαϊνό panel: Στοιχεία / Ιστορικό / Προϊόντα. Ο «ρόλος»
-// του σημείου ΔΕΝ είναι χειροκίνητη ταξινόμηση — είναι μέτρηση με ημερομηνίες
-// από τα order_stops (stop_type + γονιός στάσης). Μία φόρτωση πριν 3 μήνες
-// δεν κάνει το σημείο «σημείο φόρτωσης»· γι' αυτό δίπλα σε κάθε μέτρηση
-// γράφεται η τελευταία ημερομηνία. Το deleted_at φιλτράρεται από τον Worker
-// στη γενική ανάγνωση (index.js: deleted_at=is.null).
-const LOCC = { openId: null, tab: 'history', stops: null, orderById: {}, natById: {}, failed: false };
+// ── Κάρτα τοποθεσίας (Βήμα 4 v2, owner 25/8: «χωράνε και τα 3 σε μια
+// κάρτα και όχι 3 επιλογές») ────────────────────────────────────────────
+// ΜΙΑ στήλη χωρίς καρτέλες: ταυτότητα → στοιχεία → προϊόντα → ιστορικό.
+// Το ιστορικό είναι η μακριά ουρά — κάτω, όπου το scroll είναι φυσικό.
+// Οι 4 τύποι κίνησης (ΕΞΑΓΩΓΗ/ΕΙΣΑΓΩΓΗ/ΚΑΘΟΔΟΣ/ΑΝΟΔΟΣ) βγαίνουν από τον
+// γονιό κάθε στάσης — ΜΕΤΑΦΡΑΣΗ ΣΤΗΝ ΕΜΦΑΝΙΣΗ μόνο: η βάση κρατά
+// Export/Import και βελάκια (σύμβαση CLAUDE.md), τίποτα δεν ξαναγράφεται.
+// Μηδενικοί τύποι ΔΕΝ εμφανίζονται (το «Εθνικές 0×» ήταν θόρυβος).
+const LOCC = { openId: null, stops: null, orderById: {}, natById: {}, natOrdById: {}, pgByRec: {}, failed: false };
 
 function _locCardHost() {
   let ov = document.getElementById('loccOverlay');
@@ -575,23 +598,29 @@ function _locCardCss() { return `
 .locc-overlay.open{opacity:1;pointer-events:auto}
 .locc-panel{position:fixed;top:0;right:-560px;width:560px;max-width:96vw;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(11,25,41,.25);transition:right .25s;z-index:9100;overflow-y:auto}
 .locc-panel.open{right:0}
-.locc-head{background:var(--navy-mid,#0B1929);color:#fff;padding:18px 22px}
-.locc-head h2{font-family:'Syne',sans-serif;font-size:17px;margin:0 0 4px}
+.locc-head{background:var(--navy-mid,#0B1929);color:#fff;padding:16px 22px}
+.locc-head h2{font-family:'Syne',sans-serif;font-size:17px;margin:0 0 3px;padding-right:26px}
 .locc-meta{font-size:12px;color:#94A3B8}
-.locc-close{float:right;background:none;border:none;color:#94A3B8;font-size:18px;cursor:pointer}
-.locc-role{font-size:12.5px;color:#E2E8F0;margin-top:8px;line-height:1.5}
-.locc-tabs{display:flex;gap:0;border-bottom:1px solid rgba(0,0,0,.08);background:#F8FAFC}
-.locc-tab{font-size:12.5px;font-weight:600;color:var(--text-dim);padding:10px 16px;cursor:pointer;border-bottom:2px solid transparent}
-.locc-tab.active{color:var(--accent,#0284C7);border-bottom-color:var(--accent,#0284C7)}
-.locc-sec{padding:14px 22px}
-.locc-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:6px 0;border-bottom:1px dashed rgba(0,0,0,.06)}
+.locc-addr{font-size:12px;color:#CBD5E1;margin-top:2px}
+.locc-close{float:right;background:none;border:none;color:#94A3B8;font-size:18px;cursor:pointer;margin:-2px -6px 0 0}
+.locc-chips{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
+.locc-chip{display:inline-block;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.03em;border:1px solid rgba(226,232,240,.35);color:#E2E8F0}
+.locc-sect{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:13px 22px 5px;border-top:1px solid rgba(0,0,0,.06)}
+.locc-sect:first-of-type{border-top:none}
+.locc-sect .n{font-weight:500;letter-spacing:0;text-transform:none}
+.locc-rows{padding:0 22px 10px}
+.locc-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.05)}
+.locc-row:last-child{border-bottom:none}
 .locc-row .k{color:var(--text-dim);flex-shrink:0}
 .locc-row .v{text-align:right}
-.locc-hrow{display:grid;grid-template-columns:78px 86px 1fr 60px;gap:10px;font-size:12.5px;padding:7px 0;border-bottom:1px dashed rgba(0,0,0,.06);align-items:baseline}
-.locc-hrow .num{text-align:right;font-variant-numeric:tabular-nums}
-.locc-stype{display:inline-block;padding:1px 7px;border-radius:5px;font-size:10px;font-weight:700;letter-spacing:.05em;border:1px solid rgba(11,25,41,.22);color:#334155;background:#fff;white-space:nowrap}
-.locc-empty{font-size:13px;color:var(--text-dim);padding:18px 0}
-.locc-note{font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;border-radius:6px;padding:8px 12px;margin:10px 22px 0}
+.locc-h{padding:6px 0;border-bottom:1px dashed rgba(0,0,0,.05)}
+.locc-h:last-child{border-bottom:none}
+.locc-h1{display:grid;grid-template-columns:52px 92px 1fr 56px;gap:8px;font-size:12.5px;align-items:baseline}
+.locc-h1 .num{text-align:right;font-variant-numeric:tabular-nums}
+.locc-h2{font-size:11.5px;color:var(--text-dim);margin:2px 0 0 60px;font-variant-numeric:tabular-nums}
+.locc-stype{display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.05em;border:1px solid rgba(11,25,41,.22);color:#334155;background:#fff;white-space:nowrap}
+.locc-empty{font-size:13px;color:var(--text-dim);padding:14px 22px 18px}
+.locc-note{font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;border-radius:6px;padding:8px 12px;margin:12px 22px}
 `; }
 
 function _locCloseCard() {
@@ -600,108 +629,112 @@ function _locCloseCard() {
   LOCC.openId = null;
 }
 
+// Γέφυρα rec → αριθμητικό id παραγγελίας (ORD-231): το /pallets/gate είναι η
+// υπάρχουσα γέφυρα — κανένα νέο endpoint, παρτίδες ≤250 (Γ, owner 25/8:
+// «ο εύκολος κωδικός υπάρχει ήδη» = orders.id).
+async function _locGateIds(recs) {
+  const jwt = localStorage.getItem('tms_jwt');
+  for (let i = 0; i < recs.length; i += 250) {
+    const res = await fetch(PROXY_URL + '/pallets/gate?order_recs=' + recs.slice(i, i + 250).join(','), {
+      headers: jwt ? { Authorization: 'Bearer ' + jwt } : {}
+    });
+    if (!res.ok) return; // χωρίς ORD-κωδικούς η κάρτα στέκεται — δεν είναι λόγος αποτυχίας
+    const g = await res.json().catch(() => ({}));
+    (g.records || []).forEach(r => { LOCC.pgByRec[r.order_rec] = r.order_id; });
+  }
+}
+
 async function _locOpenCard(id) {
   const rec = LOC.records.find(r => r.id === id); if (!rec) return;
   const panel = _locCardHost();
   document.getElementById('loccOverlay').classList.add('open');
   panel.classList.add('open');
-  LOCC.openId = id; LOCC.tab = 'history'; LOCC.stops = null; LOCC.failed = false;
-  panel.innerHTML = _locCardShell(rec, '<div class="locc-empty">Φόρτωση ιστορικού…</div>');
+  LOCC.openId = id; LOCC.stops = null; LOCC.failed = false; LOCC.pgByRec = {};
+  panel.innerHTML = _locCardHtml(rec, '<div class="locc-empty">Φόρτωση ιστορικού…</div>');
   try {
-    // Το φίλτρο linked-record δουλεύει εδώ: το ORDER STOPS έχει links block
-    // στον Worker (Location) — δεν είναι η περίπτωση RAMP (422).
     const stops = await atGetAll(TABLES.ORDER_STOPS, {
       filterByFormula: `FIND("${id}", ARRAYJOIN({Location}, ","))>0`
     }, false);
-    // Εμπλουτισμός γονιών σε ΠΑΡΤΙΔΕΣ (όχι Ν+1): μία cached λίστα ORDERS,
-    // μία NATIONAL LOADS μόνο αν χρειάζεται.
-    const orderRecs = new Set(stops.map(s => getLinkedId(s.fields['Parent Order'])).filter(Boolean));
+    const orderRecs = [...new Set(stops.map(s => getLinkedId(s.fields['Parent Order'])).filter(Boolean))];
     LOCC.orderById = {};
-    if (orderRecs.size) {
-      (await atGet(TABLES.ORDERS)).forEach(o => { if (orderRecs.has(o.id)) LOCC.orderById[o.id] = o; });
+    if (orderRecs.length) {
+      (await atGet(TABLES.ORDERS)).forEach(o => { if (orderRecs.includes(o.id)) LOCC.orderById[o.id] = o; });
+      await _locGateIds(orderRecs);
     }
-    LOCC.natById = {};
+    LOCC.natById = {}; LOCC.natOrdById = {};
     if (stops.some(s => getLinkedId(s.fields['Parent Nat Load']))) {
       (await atGet(TABLES.NAT_LOADS)).forEach(n => { LOCC.natById[n.id] = n; });
     }
+    if (stops.some(s => getLinkedId(s.fields['Parent Nat Order']))) {
+      (await atGet(TABLES.NAT_ORDERS)).forEach(n => { LOCC.natOrdById[n.id] = n; });
+    }
     LOCC.stops = stops.sort((a, b) => String(b.fields['DateTime'] || '').localeCompare(String(a.fields['DateTime'] || '')));
   } catch (e) {
-    // Ορατή αποτυχία — ποτέ κενή καρτέλα που μοιάζει με «δεν υπάρχει τίποτα».
+    // Ορατή αποτυχία — ποτέ κενό που μοιάζει με «δεν υπάρχουν κινήσεις».
     LOCC.failed = true; LOCC.stops = []; LOCC.failError = e.message;
   }
-  if (LOCC.openId === id) panel.innerHTML = _locCardShell(rec, _locCardBody(rec));
+  if (LOCC.openId === id) panel.innerHTML = _locCardHtml(rec, null);
 }
 
-function _locCardTab(t) {
-  LOCC.tab = t;
-  const rec = LOC.records.find(r => r.id === LOCC.openId); if (!rec) return;
-  document.getElementById('loccPanel').innerHTML = _locCardShell(rec, _locCardBody(rec));
+// Οι 4 τύποι κίνησης μιας στάσης, από τον γονιό της (Β):
+// orders.Direction Export/Import → ΕΞΑΓΩΓΗ/ΕΙΣΑΓΩΓΗ ·
+// NL/NO Direction 'North→South'/'South→North' → ΚΑΘΟΔΟΣ/ΑΝΟΔΟΣ.
+function _locMoveFromParents(f, ordMap, natMap, natOrdMap) {
+  const o = ordMap[getLinkedId(f['Parent Order'])];
+  if (o) {
+    const d = o.fields['Direction'];
+    return d === 'Import' ? 'ΕΙΣΑΓΩΓΗ' : d === 'Export' ? 'ΕΞΑΓΩΓΗ' : null;
+  }
+  const nl = natMap[getLinkedId(f['Parent Nat Load'])] || natOrdMap[getLinkedId(f['Parent Nat Order'])];
+  if (nl) {
+    const d = String(nl.fields['Direction'] || '');
+    return d.includes('North→South') || d === 'ΚΑΘΟΔΟΣ' ? 'ΚΑΘΟΔΟΣ'
+         : d.includes('South→North') || d === 'ΑΝΟΔΟΣ' ? 'ΑΝΟΔΟΣ' : null;
+  }
+  return null;
+}
+function _locStopMoveType(s) { return _locMoveFromParents(s.fields, LOCC.orderById, LOCC.natById, LOCC.natOrdById); }
+
+// Δείκτης τοποθεσία → Set(τύπων κίνησης) για το φίλτρο της λίστας (Β):
+// ΟΛΕΣ οι στάσεις (267) + γονείς, σε 4 αιτήματα συνολικά — όχι ανά τοποθεσία.
+async function _locBuildMoveIdx() {
+  const count = document.getElementById('locCount');
+  if (count) count.textContent = 'υπολογισμός τύπων κίνησης…';
+  try {
+    const [stops, orders, nls, nos] = await Promise.all([
+      atGetAll(TABLES.ORDER_STOPS, {}, false),
+      atGet(TABLES.ORDERS),
+      atGet(TABLES.NAT_LOADS),
+      atGet(TABLES.NAT_ORDERS)
+    ]);
+    const om = {}, nm = {}, nom = {};
+    orders.forEach(o => { om[o.id] = o; });
+    nls.forEach(n => { nm[n.id] = n; });
+    nos.forEach(n => { nom[n.id] = n; });
+    const idx = new Map();
+    stops.forEach(s => {
+      const loc = getLinkedId(s.fields['Location']);
+      const t = _locMoveFromParents(s.fields, om, nm, nom);
+      if (!loc || !t) return;
+      if (!idx.has(loc)) idx.set(loc, new Set());
+      idx.get(loc).add(t);
+    });
+    LOC.moveIdx = idx;
+  } catch (e) {
+    // Ορατή αποτυχία: το φίλτρο μηδενίζεται — δεν φιλτράρει «σιωπηλά τίποτα».
+    LOC.moveFilter = '';
+    const sel = document.getElementById('locMoveFilter'); if (sel) sel.value = '';
+    if (typeof toast === 'function') toast('Ο δείκτης τύπων κίνησης δεν φόρτωσε: ' + e.message, 'error');
+  }
 }
 
-// Ο ρόλος από τα δεδομένα: μετρήσεις stop_type + γονιών, με τελευταία ημ/νία.
-function _locRoleLine() {
+function _locTypeChips() {
   if (!LOCC.stops || LOCC.failed || !LOCC.stops.length) return '';
   const by = {};
-  LOCC.stops.forEach(s => {
-    const t = s.fields['Stop Type'] || '—';
-    (by[t] = by[t] || { n: 0, last: '' }); by[t].n++;
-    const d = String(s.fields['DateTime'] || '');
-    if (d > by[t].last) by[t].last = d;
-  });
-  const lbl = { Loading: 'Φόρτωση', Unloading: 'Παράδοση', 'Cross-dock': 'Cross-dock' };
-  const types = Object.entries(by).map(([t, v]) =>
-    `${lbl[t] || t} ${v.n}×${v.last ? ' (τελ. ' + fmtDate(v.last) + ')' : ''}`).join(' · ');
-  let intl = 0, natl = 0;
-  LOCC.stops.forEach(s => {
-    if (getLinkedId(s.fields['Parent Order'])) intl++;
-    else if (getLinkedId(s.fields['Parent Nat Order']) || getLinkedId(s.fields['Parent Nat Load'])) natl++;
-  });
-  const mix = (intl || natl) ? ` — Διεθνείς ${intl}× · Εθνικές ${natl}×` : '';
-  return `<div class="locc-role">${types}${mix}</div>`;
-}
-
-function _locCardShell(rec, body) {
-  const f = rec.fields;
-  const n = LOCC.stops ? LOCC.stops.length : null;
-  const goodsN = LOCC.stops ? Object.keys(_locGoodsAgg()).length : null;
-  return `
-  <div class="locc-head"><button class="locc-close" onclick="_locCloseCard()">&times;</button>
-    <h2>${_locEsc(f.Name || '—')}</h2>
-    <div class="locc-meta">${_locEsc(f.City || '—')} · ${_locEsc(f.Country || '—')}${f.Address ? ' · ' + _locEsc(f.Address) : ''}</div>
-    ${_locRoleLine()}</div>
-  <div class="locc-tabs">
-    <div class="locc-tab${LOCC.tab === 'history' ? ' active' : ''}" onclick="_locCardTab('history')">Ιστορικό${n != null ? ' (' + n + ')' : ''}</div>
-    <div class="locc-tab${LOCC.tab === 'info' ? ' active' : ''}" onclick="_locCardTab('info')">Στοιχεία</div>
-    <div class="locc-tab${LOCC.tab === 'goods' ? ' active' : ''}" onclick="_locCardTab('goods')">Προϊόντα${goodsN ? ' (' + goodsN + ')' : ''}</div>
-  </div>
-  ${body}`;
-}
-
-function _locCardBody(rec) {
-  if (LOCC.failed) {
-    return `<div class="locc-note">Το ιστορικό δεν φόρτωσε (${_locEsc(LOCC.failError || 'σφάλμα')}) — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν κινήσεις.
-      <button class="btn" style="margin-left:8px" onclick="_locOpenCard('${rec.id}')">Δοκίμασε ξανά</button></div>`;
-  }
-  if (LOCC.tab === 'info') return _locCardInfo(rec);
-  if (LOCC.tab === 'goods') return _locCardGoods();
-  return _locCardHistory();
-}
-
-function _locCardInfo(rec) {
-  const f = rec.fields;
-  const miss = '<span style="color:var(--text-dim)">— δεν έχει καταχωρηθεί</span>';
-  const maps = (f.Latitude != null && f.Longitude != null)
-    ? `<a href="https://maps.google.com?q=${f.Latitude},${f.Longitude}" target="_blank">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)}</a>` : miss;
-  const row = (k, v) => `<div class="locc-row"><span class="k">${k}</span><span class="v">${v || miss}</span></div>`;
-  return `<div class="locc-sec">
-    ${row('Διεύθυνση', f.Address && _locEsc(f.Address))}
-    ${row('Πόλη', f.City && _locEsc(f.City))}
-    ${row('Χώρα', f.Country && _locEsc(f.Country))}
-    ${row('Συντεταγμένες', maps)}
-    ${row('Ωράριο', f['Opening Hours'] && _locEsc(f['Opening Hours']))}
-    ${row('Ημέρες παράδοσης', f['Delivery Days'] && _locEsc(f['Delivery Days']))}
-    ${row('Τύπος (ελεύθερο πεδίο)', f.Type && _locEsc(f.Type))}
-  </div>`;
+  LOCC.stops.forEach(s => { const t = _locStopMoveType(s); if (t) by[t] = (by[t] || 0) + 1; });
+  const order = ['ΕΞΑΓΩΓΗ', 'ΕΙΣΑΓΩΓΗ', 'ΚΑΘΟΔΟΣ', 'ΑΝΟΔΟΣ'];
+  const chips = order.filter(t => by[t]).map(t => `<span class="locc-chip">${t} ${by[t]}×</span>`);
+  return chips.length ? `<div class="locc-chips">${chips.join('')}</div>` : '';
 }
 
 function _locStopClient(s) {
@@ -718,55 +751,78 @@ function _locStopClient(s) {
   return '';
 }
 
-function _locCardHistory() {
-  if (!LOCC.stops.length) {
-    // Ρητό κενό (αρχή 1): 111/1.185 τοποθεσίες έχουν ιστορικό — οι υπόλοιπες
-    // ΔΕΝ πρέπει να μοιάζουν με σφάλμα.
-    return `<div class="locc-sec"><div class="locc-empty">Καμία κίνηση καταγεγραμμένη για αυτή την τοποθεσία.
-      Το ιστορικό ξεκινά με την πρώτη στάση παραγγελίας που θα τη δηλώσει σημείο φόρτωσης ή παράδοσης.</div></div>`;
-  }
-  const lbl = { Loading: 'ΦΟΡΤΩΣΗ', Unloading: 'ΠΑΡΑΔΟΣΗ', 'Cross-dock': 'CROSS-DOCK' };
-  const rows = LOCC.stops.map(s => {
-    const f = s.fields;
-    const o = LOCC.orderById[getLinkedId(f['Parent Order'])];
-    const nl = LOCC.natById[getLinkedId(f['Parent Nat Load'])];
-    const ref = (o && o.fields['Reference']) || f['Reference'] || (nl && nl.fields['Name']) || '—';
-    const client = _locStopClient(s);
-    const truckRec = o && getLinkedId(o.fields['Truck']);
-    const truck = truckRec ? (getRefTrucks().find(t => t.id === truckRec) || {}).fields : null;
-    const plate = truck ? (truck['License Plate'] || truck['Plate'] || '') : '';
-    const who = [client, plate].filter(Boolean).join(' · ');
-    return `<div class="locc-hrow">
-      <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${f['DateTime'] ? fmtDate(f['DateTime']) : '—'}</span>
-      <span><span class="locc-stype">${lbl[f['Stop Type']] || _locEsc(f['Stop Type'] || '—')}</span></span>
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_locEsc(ref)}${who ? ' · ' + _locEsc(who) : ''}">${_locEsc(ref)}${who ? ' <span style="color:var(--text-dim)">· ' + _locEsc(who) + '</span>' : ''}</span>
-      <span class="num">${f['Pallets'] != null ? f['Pallets'] + ' pal' : '—'}</span>
-    </div>`;
-  }).join('');
-  return `<div class="locc-sec">${rows}</div>`;
-}
-
 function _locGoodsAgg() {
   const agg = {};
   (LOCC.stops || []).forEach(s => {
     const g = String(s.fields['Goods'] || '').trim();
     if (!g) return;
     const k = g.toUpperCase();
-    (agg[k] = agg[k] || { name: g, n: 0, load: 0, unload: 0 });
-    agg[k].n++;
-    if (s.fields['Stop Type'] === 'Loading') agg[k].load++;
-    if (s.fields['Stop Type'] === 'Unloading') agg[k].unload++;
+    (agg[k] = agg[k] || { name: g, n: 0 }); agg[k].n++;
   });
   return agg;
 }
 
-function _locCardGoods() {
-  const agg = Object.values(_locGoodsAgg()).sort((a, b) => b.n - a.n);
-  if (!agg.length) {
-    return `<div class="locc-sec"><div class="locc-empty">Κανένα εμπόρευμα καταγεγραμμένο στις στάσεις αυτής της τοποθεσίας.
-      Συμπληρώνεται από το πεδίο «Εμπόρευμα» των στάσεων — όχι χειροκίνητα εδώ.</div></div>`;
+function _locCardHtml(rec, loadingBody) {
+  const f = rec.fields;
+  const miss = '<span style="color:var(--text-dim)">— δεν έχει καταχωρηθεί</span>';
+  const head = `
+  <div class="locc-head"><button class="locc-close" onclick="_locCloseCard()">&times;</button>
+    <h2>${_locEsc(f.Name || '—')}</h2>
+    <div class="locc-meta">${_locEsc(f.City || '—')} · ${_locEsc(f.Country || '—')}</div>
+    ${f.Address ? '<div class="locc-addr">' + _locEsc(f.Address) + '</div>' : ''}
+    ${_locTypeChips()}</div>`;
+  if (loadingBody != null) return head + loadingBody;
+  if (LOCC.failed) {
+    return head + `<div class="locc-note">Το ιστορικό δεν φόρτωσε (${_locEsc(LOCC.failError || 'σφάλμα')}) — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν κινήσεις.
+      <button class="btn" style="margin-left:8px" onclick="_locOpenCard('${rec.id}')">Δοκίμασε ξανά</button></div>`;
   }
-  const rows = agg.map(g => `<div class="locc-row"><span>${_locEsc(g.name)}</span>
-    <span class="v" style="color:var(--text-dim);font-variant-numeric:tabular-nums">${g.n}×${g.load ? ' · φορτώνεται ' + g.load + '×' : ''}${g.unload ? ' · παραδίδεται ' + g.unload + '×' : ''}</span></div>`).join('');
-  return `<div class="locc-sec">${rows}</div>`;
+  const maps = (f.Latitude != null && f.Longitude != null)
+    ? `${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} <a href="https://maps.google.com?q=${f.Latitude},${f.Longitude}" target="_blank" onclick="event.stopPropagation()">Χάρτης</a>`
+    : miss;
+  const row = (k, v) => `<div class="locc-row"><span class="k">${k}</span><span class="v">${v || miss}</span></div>`;
+  const info = `<div class="locc-sect">Στοιχεία</div><div class="locc-rows">
+    ${row('Ωράριο', f['Opening Hours'] && _locEsc(f['Opening Hours']))}
+    ${row('Ημέρες παράδοσης', f['Delivery Days'] && _locEsc(f['Delivery Days']))}
+    ${row('Τύπος', f.Type && _locEsc(f.Type))}
+    ${row('Συντεταγμένες', maps)}
+  </div>`;
+  const agg = Object.values(_locGoodsAgg()).sort((a, b) => b.n - a.n);
+  const goods = !LOCC.stops.length ? '' : `<div class="locc-sect">Προϊόντα</div><div class="locc-rows">
+    ${agg.length
+      ? agg.map(g => `<div class="locc-row"><span>${_locEsc(g.name)}</span><span class="v" style="color:var(--text-dim);font-variant-numeric:tabular-nums">${g.n}×</span></div>`).join('')
+      : '<div class="locc-row"><span style="color:var(--text-dim)">Κανένα εμπόρευμα καταγεγραμμένο στις στάσεις</span></div>'}
+  </div>`;
+  const history = LOCC.stops.length ? `
+    <div class="locc-sect">Ιστορικό <span class="n">· ${LOCC.stops.length} ${LOCC.stops.length === 1 ? 'κίνηση' : 'κινήσεις'}</span></div>
+    <div class="locc-rows">${LOCC.stops.map(_locHistRow).join('')}</div>`
+    : `<div class="locc-sect">Ιστορικό</div>
+       <div class="locc-empty">Καμία κίνηση καταγεγραμμένη για αυτή την τοποθεσία.
+       Το ιστορικό ξεκινά με την πρώτη στάση παραγγελίας που θα τη δηλώσει σημείο φόρτωσης ή παράδοσης.</div>`;
+  return head + info + goods + history;
+}
+
+// Ιστορικό σε ΔΥΟ γραμμές ανά κίνηση (owner 25/8) — αναφορά και πινακίδα
+// δεν κόβονται ποτέ: 1η ημ/νία·τύπος·πελάτης·παλέτες, 2η ORD-id·ref·πινακίδα.
+function _locHistRow(s) {
+  const f = s.fields;
+  const lbl = { Loading: 'ΦΟΡΤΩΣΗ', Unloading: 'ΠΑΡΑΔΟΣΗ', 'Cross-dock': 'CROSS-DOCK' };
+  const o = LOCC.orderById[getLinkedId(f['Parent Order'])];
+  const nl = LOCC.natById[getLinkedId(f['Parent Nat Load'])];
+  const client = _locStopClient(s) || (nl ? _locEsc(nl.fields['Client'] || '') : '');
+  const truckRec = o && getLinkedId(o.fields['Truck']);
+  const truck = truckRec ? (getRefTrucks().find(t => t.id === truckRec) || {}).fields : null;
+  const plate = truck ? (truck['License Plate'] || truck['Plate'] || '') : '';
+  const orec = o && o.id;
+  const ord = orec && LOCC.pgByRec[orec] ? 'ORD-' + LOCC.pgByRec[orec] : '';
+  const ref = (o && o.fields['Reference']) || f['Reference'] || (nl && nl.fields['Name']) || '';
+  const l2 = [ord, ref, plate].filter(Boolean).join(' · ');
+  return `<div class="locc-h">
+    <div class="locc-h1">
+      <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${f['DateTime'] ? fmtDateDM(f['DateTime']) + '/' + String(f['DateTime']).slice(2, 4) : '—'}</span>
+      <span><span class="locc-stype">${lbl[f['Stop Type']] || _locEsc(f['Stop Type'] || '—')}</span></span>
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${client}">${client || '—'}</span>
+      <span class="num">${f['Pallets'] != null ? f['Pallets'] + ' pal' : '—'}</span>
+    </div>
+    ${l2 ? '<div class="locc-h2">' + _locEsc(l2) + '</div>' : ''}
+  </div>`;
 }
