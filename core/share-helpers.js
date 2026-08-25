@@ -137,7 +137,10 @@
     catch (e) { _toast('Η αντιγραφή απέτυχε: ' + e.message, 'danger'); }
   }
 
-  function _closeMenu() {
+  function _closeMenu(e) {
+    // Μόνο αριστερό κλικ κλείνει το μενού: κάποια εργαλεία/συσκευές παράγουν
+    // click και για το δεξί — αυτό έκλεινε το μενού την ώρα που άνοιγε.
+    if (e && e.type === 'click' && e.button !== 0) return;
     if (_menuEl) { _menuEl.remove(); _menuEl = null; }
     document.removeEventListener('click', _closeMenu, true);
     document.removeEventListener('keydown', _escClose, true);
