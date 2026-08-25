@@ -236,6 +236,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 <div id="loading"><div class="spin"></div>Loading…</div>
 <div id="doc"></div>
 
+<script src="core/share-helpers.js?v=1787683484"></script>
 <script>
 // Airtable token REMOVED (S-1 remediation, 2026-07-13). This page now reads
 // through the Cloudflare Worker with the logged-in user's JWT, same as core/api.js.
@@ -618,6 +619,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
   var titleStr=isPartner?('Partner Assignment Order — '+legLabel+' — W'+wk):('Εντολή Οδηγού — '+legLabelGr+' — W'+wk);
+  window._shTitle=titleStr; // ορατό στο renderDocs για το μενού κοινής χρήσης (το titleStr είναι τοπικό εδώ)
 
   // v2.1 chips φορτίου — PE πρώτης τάξης (εγκεκριμένο)
   var peYes=!!f['Pallet Exchange'];
@@ -767,6 +769,18 @@ function renderDocs(htmlArr){
     var tag=N>1?'<div style="font-size:9px;font-weight:800;letter-spacing:1.2px;color:#6B7280;margin:0 0 8px">ΟΜΑΔΙΚΟ ΦΟΡΤΙΟ — ΕΓΓΡΑΦΟ '+(i+1)+' / '+N+'</div>':'';
     return '<div class="p-doc" style="'+(i<N-1?'page-break-after:always;':'')+'">'+tag+h+'</div>';
   }).join('');
+  // Μενού κοινής χρήσης (owner 25/8): δεξί κλικ / long-press στο κουμπί
+  // εκτύπωσης. Αριστερό κλικ = window.print(), όπως πάντα. Το payload
+  // κειμένου είναι το ΙΔΙΟ _waArr του copyWA — όχι δεύτερη εκδοχή (αρχή 3).
+  var shBtn=document.querySelector('.pbar-btn:not(.wa)');
+  if(shBtn&&window.attachShareMenu){
+    attachShareMenu(shBtn,{
+      title:window._shTitle||'PETRAS GROUP',
+      fileName:window._shTitle||'petras-doc',
+      getText:function(){return _waArr.join('\n\n————————\n\n');},
+      onPrint:function(){window.print();}
+    });
+  }
   // &noprint=1: άνοιγμα για προεπισκόπηση/έλεγχο χωρίς διάλογο εκτύπωσης
   // (π.χ. λογιστήριο που απλώς διαβάζει, ή αυτοματοποιημένος έλεγχος).
   if(params.get('noprint')!=='1') setTimeout(()=>window.print(),700);
