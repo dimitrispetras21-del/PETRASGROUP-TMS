@@ -111,6 +111,10 @@ async function _perfLoad() {
                'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
                'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
                'Assigned At','Actual Delivery Date',
+               // Χωρίς αυτά, το cmrFieldPresent (:285) ήταν ΠΑΝΤΑ false — ο Worker
+               // δεν επιστρέφει ό,τι δεν ζητηθεί — και το KPI έπεφτε σιωπηλά στο
+               // proxy «Delivery Performance ⇒ μαζεύτηκαν χαρτιά» (audit 25/8).
+               'CMR Photo Received','CMR Received',
                'Loading Location 1','Unloading Location 1']
     }, true),
     // safeFetch on both. This page computes performance metrics, so a missing

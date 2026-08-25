@@ -555,7 +555,10 @@ async function _renderPartnersStatsStrip(partners) {
   if (!el) return;
   try {
     const allPA = await atGetAll(TABLES.PARTNER_ASSIGN, {
-      fields: [F.PA_PARTNER, F.PA_STATUS, F.PA_RATE, F.PA_ASSIGN_DATE],
+      // Margin Percent / Client Revenue: διαβάζονται στα :1179 και :1210-1211 αλλά
+      // δεν ζητιούνταν — άρα μέσο περιθώριο και έσοδα έβγαιναν μόνιμα 0 (audit 25/8).
+      fields: [F.PA_PARTNER, F.PA_STATUS, F.PA_RATE, F.PA_ASSIGN_DATE,
+               'Margin Percent', 'Client Revenue'],
     }, false);
 
     const activePartners = partners.filter(p => p.fields['Active']).length;

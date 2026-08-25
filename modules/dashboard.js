@@ -321,7 +321,10 @@ async function renderDashboard() {
         }
       });
     });
-    trailers.forEach(t => {
+    // Ίδιο φίλτρο με τα φορτηγά: αποσυρμένη ρυμούλκα δεν παράγει ειδοποίηση λήξης.
+    // `!== false` (όχι truthy) ώστε ρυμούλκα με ασυμπλήρωτο Active να ΕΙΔΟΠΟΙΕΙ —
+    // σε στοιχεία ασφαλείας η αμφιβολία δείχνει, δεν κρύβει.
+    trailers.filter(t => t.fields['Active'] !== false).forEach(t => {
       const f = t.fields;
       const plate = escapeHtml(f['License Plate'] || '—');
       TRAILER_EXPIRY_NAMES.forEach(field => {

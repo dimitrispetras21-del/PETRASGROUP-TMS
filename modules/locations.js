@@ -533,7 +533,12 @@ async function _locDoDelete(id) {
 // ── Fetch ───────────────────────────────────────
 async function _locFetchAll() {
   return atGetAll(TABLES.LOCATIONS, {
-    fields: ['Name','Country','City','Address','Type','Latitude','Longitude']
+    // Opening Hours / Delivery Days: η φόρμα τα γράφει και ο Worker τα χαρτογραφεί,
+    // αλλά έλειπαν από ΕΔΩ — και το _locOpenEdit δίνει στη φόρμα αυτό ακριβώς το
+    // cached record. Αποτέλεσμα: το input πάντα κενό ακόμη κι όταν η βάση είχε τιμή,
+    // και το `if (hours)` του _locSave δεν ξανάστελνε ποτέ τίποτα (owner 25/8).
+    fields: ['Name','Country','City','Address','Type','Latitude','Longitude',
+             'Opening Hours','Delivery Days']
   }, false);
 }
 

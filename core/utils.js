@@ -1106,7 +1106,10 @@ async function _refreshNotifs() {
     const promises = [
       atGet(TABLES.ORDERS),
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Active', ...TRUCK_EXPIRY_NAMES] }, true),
-      atGetAll(TABLES.TRAILERS, { fields: ['License Plate', ...TRAILER_EXPIRY_NAMES] }, true),
+      // 'Active': έλειπε ενώ τα φορτηγά (από πάνω) το είχαν. Ο έλεγχος
+      // `t.fields['Active'] !== false` με undefined περνάει πάντα, οπότε
+      // αποσυρμένη ρυμούλκα ειδοποιούσε για ληγμένο ΚΤΕΟ για πάντα (audit 25/8).
+      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Active', ...TRAILER_EXPIRY_NAMES] }, true),
       // These two are ROLE-GATED, so an empty array already means "this user
       // does not get this tile" (the Promise.resolve([]) branch). A swallowed
       // fetch error produced the SAME empty array, so a broken read was

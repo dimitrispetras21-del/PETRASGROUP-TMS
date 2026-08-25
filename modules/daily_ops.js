@@ -462,7 +462,15 @@ function _opsRow(rec,num,type,isToday) {
 
   let cells='';
   if(isToday && isL && isExp) {
-    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${loadBtn} ${postBtn}</td>`;
+    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
+    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
+    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
+    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
+    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
+    // εκεί η δουλειά όντως έχει προχωρήσει.
+    const actionCol = isPostponed ? `<td>${statusBadge} ${loadBtn} ${postBtn}</td>`
+                    : statusBadge ? `<td>${statusBadge}</td>`
+                                  : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL||'—'}</td>
@@ -474,7 +482,15 @@ function _opsRow(rec,num,type,isToday) {
       <td class="c">${!partner?chk('Second Card',f['Second Card']):''}</td>
       ${actionCol}`;
   } else if(isToday && isL && !isExp) {
-    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${loadBtn} ${postBtn}</td>`;
+    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
+    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
+    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
+    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
+    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
+    // εκεί η δουλειά όντως έχει προχωρήσει.
+    const actionCol = isPostponed ? `<td>${statusBadge} ${loadBtn} ${postBtn}</td>`
+                    : statusBadge ? `<td>${statusBadge}</td>`
+                                  : `<td>${loadBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${loadL}">${loadL||'—'}</td>
@@ -484,7 +500,15 @@ function _opsRow(rec,num,type,isToday) {
       <td>${timeSelect('ETA',f['ETA'])}</td>
       ${actionCol}`;
   } else if(isToday && !isL) {
-    const actionCol = statusBadge ? `<td>${statusBadge}</td>` : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
+    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
+    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
+    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
+    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
+    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
+    // εκεί η δουλειά όντως έχει προχωρήσει.
+    const actionCol = isPostponed ? `<td>${statusBadge} ${delBtn} ${delayBtn} ${postBtn}</td>`
+                    : statusBadge ? `<td>${statusBadge}</td>`
+                                  : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL||'—'}</td>
@@ -585,16 +609,24 @@ async function _opsStat(id,st){try{
   if(st==='In Transit'&&r0?.fields['Veroia Switch']&&r0?.fields['Direction']==='Export'&&!r0?.fields['VS CD Date']){
     patch['VS CD Date']=localToday();
   }
+  // Η αναβολή τελειώνει μόλις το φορτίο κινηθεί — αλλιώς το σήμα επιβιώνει για πάντα,
+  // γιατί ΚΑΝΕΙΣ δεν καθάριζε ποτέ το πεδίο. Η πληροφορία ΔΕΝ χάνεται: κάθε PATCH
+  // γράφεται με before/after στο audit_log, άρα το «πότε και από ποιον» μένει εκεί.
+  if(r0?.fields['Postponed To']) patch['Postponed To']=null;
   await atSafePatch(TABLES.ORDERS,id,patch);
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']=st;if(patch['VS CD Date'])r.fields['VS CD Date']=patch['VS CD Date'];}
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']=st;if(patch['VS CD Date'])r.fields['VS CD Date']=patch['VS CD Date'];if('Postponed To' in patch)r.fields['Postponed To']=null;}
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { console.warn('PA status sync:', e.message); }
   toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
 async function _opsDel(id,perf){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  // Ίδιος λόγος με το _opsStat: παραδομένη παραγγελία δεν είναι «αναβεβλημένη».
+  const _r0=OPS.intl.find(x=>x.id===id);
+  const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
+  if(_r0?.fields['Postponed To']) _p['Postponed To']=null;
+  try{await atSafePatch(TABLES.ORDERS,id,_p);
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;}
+  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { console.warn('PA status sync:', e.message); }
   toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
@@ -646,7 +678,11 @@ function _opsPrint() {
 }
 
 async function _opsOvAct(id,perf='Delayed'){const d=localToday();
-  try{await atSafePatch(TABLES.ORDERS,id,{'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d});
+  // Ίδιο καθάρισμα με το _opsDel — η καθυστερημένη κλείνει κι αυτή τον κύκλο.
+  const _ov=OPS.overdue.find(x=>x.id===id);
+  const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
+  if(_ov?.fields['Postponed To']) _p['Postponed To']=null;
+  try{await atSafePatch(TABLES.ORDERS,id,_p);
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
   // Central sync — propagate status to partner assignments
   if (typeof syncOrderDownstream === 'function') {
