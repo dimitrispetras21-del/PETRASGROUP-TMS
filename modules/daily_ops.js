@@ -506,9 +506,10 @@ function _opsRow(rec,num,type,isToday) {
     // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
     // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
     // εκεί η δουλειά όντως έχει προχωρήσει.
-    const actionCol = isPostponed ? `<td>${statusBadge} ${delBtn} ${delayBtn} ${postBtn}</td>`
-                    : statusBadge ? `<td>${statusBadge}</td>`
-                                  : `<td>${delBtn} ${delayBtn} ${postBtn}</td>`;
+    const _pb=_opsPartialBadge(id);
+    const actionCol = isPostponed ? `<td>${_pb} ${statusBadge} ${delBtn} ${delayBtn} ${postBtn}</td>`
+                    : statusBadge ? `<td>${_pb} ${statusBadge}</td>`
+                                  : `<td>${_pb} ${delBtn} ${delayBtn} ${postBtn}</td>`;
     cells=`<td class="rn">${num}${_rowBar}</td>
       <td class="trn" title="${client}">${client}</td>
       <td class="trn" title="${delivL}">${delivL||'—'}</td>
@@ -602,7 +603,94 @@ async function _opsTog(id,fld,v){
 }
 async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
 // Single Status field — unified lifecycle (Pending/Assigned/In Transit/Delivered/Invoiced/Cancelled)
-async function _opsStat(id,st){try{
+// ── Επίδοση ΑΝΑ ΣΤΑΣΗ (owner 26/8) ──────────────────────────────────────
+// Η δήλωση είναι ανθρώπινη ανά σημείο· η παραγγελία δείχνει αναλογία και
+// γίνεται Delivered ΜΟΝΟ όταν δηλωθούν όλες οι παραδόσεις. Μία στάση = η
+// σημερινή ροή του ενός κλικ, ανέγγιχτη — το 81% δεν βλέπει καμία διαφορά.
+function _opsStopsOf(orderId, type){
+  return ((OPS._stopsByOrder||{})[orderId]||[])
+    .filter(s=>s.fields[F.STOP_TYPE]===type)
+    .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+}
+function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{}').name||'unknown'; }catch(_){ return 'unknown'; } }
+async function _opsMarkStop(stop, perf){
+  const patch={'Completed At': new Date().toISOString(), 'Completed By': _opsUser()};
+  if(perf) patch['Performance']=perf;
+  await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
+  Object.assign(stop.fields, patch);
+}
+function _opsPartialBadge(id){
+  const dels=_opsStopsOf(id,'Unloading');
+  if(dels.length<2) return '';
+  const n=dels.filter(s=>s.fields['Performance']).length;
+  if(!n||n===dels.length) return '';
+  return `<span style="display:inline-block;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid #E6CE9E;color:#8A5A00;background:#fff;white-space:nowrap" title="Μερική εκτέλεση — η παραγγελία μένει In Transit μέχρι να δηλωθούν όλες οι παραδόσεις">${n}/${dels.length} παραδόθηκαν</span>`;
+}
+function _opsPickerClose(){ document.getElementById('opsPickWrap')?.remove(); }
+function _opsStopPicker(id, type){
+  _opsPickerClose();
+  const stops=_opsStopsOf(id,type); if(!stops.length) return;
+  OPS._pickerStops=stops; OPS._pickerId=id; OPS._pickerType=type;
+  const isDel=type==='Unloading';
+  const locName=s=>{ const lid=(s.fields[F.STOP_LOCATION]||[])[0]; const l=getRefLocations().find(x=>x.id===lid); const n=l?String(l.fields['Name']||''):String(s.fields['Stop Label']||'Σημείο'); return escapeHtml(n.slice(0,36)); };
+  const rows=stops.map((s,i)=>{
+    const cur=s.fields['Performance']||'';
+    return `<div style="display:grid;grid-template-columns:22px 1fr auto auto auto;gap:10px;align-items:center;padding:8px 0;border-bottom:1px dashed rgba(0,0,0,.07);font-size:13px">
+      <span style="font-weight:700">${i+1}</span>
+      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${locName(s)}</span>
+      <label style="white-space:nowrap"><input type="radio" name="opsp${i}" value="On Time" ${cur==='On Time'?'checked':''}> Στην ώρα</label>
+      <label style="white-space:nowrap"><input type="radio" name="opsp${i}" value="Delayed" ${cur==='Delayed'?'checked':''}> Καθυστέρησε</label>
+      <label style="white-space:nowrap;color:var(--text-dim)"><input type="radio" name="opsp${i}" value="" ${!cur?'checked':''}> Δεν έγινε ακόμη</label>
+    </div>`;
+  }).join('');
+  const w=document.createElement('div'); w.id='opsPickWrap';
+  w.innerHTML=`<div onclick="_opsPickerClose()" style="position:fixed;inset:0;background:rgba(11,25,41,.45);z-index:9500"></div>
+    <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:560px;max-width:94vw;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(11,25,41,.3);z-index:9510">
+      <div style="background:var(--navy-mid,#0B1929);color:#fff;padding:13px 20px;font-family:'Syne',sans-serif;font-weight:700;font-size:15px;border-radius:12px 12px 0 0">${isDel?'Παράδοση ανά σημείο':'Φόρτωση ανά σημείο'}</div>
+      <div style="padding:6px 20px 4px">${rows}</div>
+      <div style="padding:6px 20px 4px;font-size:11.5px;color:var(--text-dim)">Η παραγγελία γίνεται ${isDel?'Delivered':'In Transit'} μόνο όταν δηλωθούν ΟΛΑ τα σημεία — αλλιώς μένει και φαίνεται η αναλογία.</div>
+      <div style="display:flex;justify-content:flex-end;gap:10px;padding:12px 20px 16px">
+        <button class="btn btn-ghost" onclick="_opsPickerClose()">Άκυρο</button>
+        <button class="btn btn-primary" onclick="_opsStopPickerSave()">Αποθήκευση</button>
+      </div>
+    </div>`;
+  document.body.appendChild(w);
+}
+async function _opsStopPickerSave(){
+  const stops=OPS._pickerStops||[], id=OPS._pickerId, type=OPS._pickerType;
+  for(let i=0;i<stops.length;i++){
+    const v=(document.querySelector(`input[name=opsp${i}]:checked`)||{}).value||'';
+    const cur=stops[i].fields['Performance']||'';
+    if(v && v!==cur){
+      try{ await _opsMarkStop(stops[i], v); }
+      catch(e){ toast('Σφάλμα στη στάση '+(i+1)+': '+e.message,'danger'); if(typeof logError==='function') logError(e,'daily-ops: stop performance'); return; }
+    }
+  }
+  _opsPickerClose();
+  const all=_opsStopsOf(id,type);
+  const doneN=all.filter(s=>s.fields['Performance']).length;
+  if(doneN===all.length && all.length){
+    // Καμία Delayed ⇒ On Time — η παραγγελία «στην ώρα της» σημαίνει πλέον
+    // ΟΛΕΣ οι στάσεις στην ώρα τους (τα ταμπλό γίνονται αυστηρότερα, όχι άλλα).
+    const agg=all.some(s=>s.fields['Performance']==='Delayed')?'Delayed':'On Time';
+    if(type==='Unloading'){
+      return OPS.overdue.some(r=>r.id===id) ? _opsOvActFinal(id,agg) : _opsDelFinal(id,agg);
+    }
+    return _opsStatFinal(id,'In Transit');
+  }
+  toast(`${doneN}/${all.length} ${type==='Unloading'?'παραδόθηκαν':'φορτώθηκαν'} — η παραγγελία μένει ${type==='Unloading'?'σε μεταφορά':'ως έχει'}`);
+  _opsDraw();
+}
+async function _opsStat(id,st){
+  if(st==='In Transit'){
+    const loads=_opsStopsOf(id,'Loading');
+    if(loads.length>1 && loads.some(x=>!x.fields['Performance'])){ _opsStopPicker(id,'Loading'); return; }
+    // Μία φόρτωση: το κλικ σφραγίζει και τη στάση (completed) — ροή αμετάβλητη.
+    if(loads.length===1) _opsMarkStop(loads[0], null).catch(e=>{ if(typeof logError==='function') logError(e,'daily-ops: single load stamp'); });
+  }
+  return _opsStatFinal(id,st);
+}
+async function _opsStatFinal(id,st){try{
   const r0=OPS.intl.find(x=>x.id===id);
   const patch={'Status':st};
   // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
@@ -619,7 +707,13 @@ async function _opsStat(id,st){try{
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { console.warn('PA status sync:', e.message); }
   toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
-async function _opsDel(id,perf){const d=localToday();
+async function _opsDel(id,perf){
+  const dels=_opsStopsOf(id,'Unloading');
+  if(dels.length>1){ _opsStopPicker(id,'Unloading'); return; }
+  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); } }
+  return _opsDelFinal(id,perf);
+}
+async function _opsDelFinal(id,perf){const d=localToday();
   // Ίδιος λόγος με το _opsStat: παραδομένη παραγγελία δεν είναι «αναβεβλημένη».
   const _r0=OPS.intl.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
@@ -677,7 +771,13 @@ function _opsPrint() {
   setTimeout(()=>{win.print();},400);
 }
 
-async function _opsOvAct(id,perf='Delayed'){const d=localToday();
+async function _opsOvAct(id,perf='Delayed'){
+  const dels=_opsStopsOf(id,'Unloading');
+  if(dels.length>1){ _opsStopPicker(id,'Unloading'); return; }
+  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); } }
+  return _opsOvActFinal(id,perf);
+}
+async function _opsOvActFinal(id,perf='Delayed'){const d=localToday();
   // Ίδιο καθάρισμα με το _opsDel — η καθυστερημένη κλείνει κι αυτή τον κύκλο.
   const _ov=OPS.overdue.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
@@ -706,4 +806,7 @@ window._opsSetFilter = _opsSetFilter;
 // out of scope, so this line threw a ReferenceError on every load and the ⚠
 // overdue banner's toggle was never wired up. Arrived with DO-8 (7ca4965).
 window._opsToggleOverdue = _opsToggleOverdue;
+window._opsStopPicker = _opsStopPicker;
+window._opsStopPickerSave = _opsStopPickerSave;
+window._opsPickerClose = _opsPickerClose;
 })();

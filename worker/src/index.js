@@ -1408,7 +1408,13 @@ var TABLES = {
       Notes: "notes",
       "Pallet Sheet OK": "pallet_sheet_ok",
       "Pallets Loaded": "pallets_loaded",
-      "Pallets Exchanged": "pallets_exchanged"
+      "Pallets Exchanged": "pallets_exchanged",
+      // Per-stop execution facts (owner 26/8): the order-level Status was
+      // claiming an event nobody confirmed per point. Declared by a human
+      // (CHECK 'On Time'/'Delayed'), never computed from dates.
+      "Completed At": "completed_at",
+      "Completed By": "completed_by",
+      Performance: "performance"
     },
     links: {
       Location: { column: "location_id", table: "locations" },
