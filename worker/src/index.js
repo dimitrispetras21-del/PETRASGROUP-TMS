@@ -3145,15 +3145,28 @@ __name(handlePallets, "handlePallets");
 // browser καθόλου. (3) ΜΙΑ απόδοση δίνει ΚΑΙ pdf ΚΑΙ κείμενο (_waArr) — το
 // format=text δεν ξανααποδίδει.
 async function getBrowserSession(env) {
-  try {
-    const sessions = await puppeteer.sessions(env.BROWSER);
-    for (const s of sessions) {
-      if (s.connectionId) continue;
-      try { return await puppeteer.connect(env.BROWSER, s.sessionId); }
-      catch (e) { /* η σύνοδος πέθανε στο μεταξύ — δοκίμασε την επόμενη */ }
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const sessions = await puppeteer.sessions(env.BROWSER);
+      for (const s of sessions) {
+        if (s.connectionId) continue;
+        try { return await puppeteer.connect(env.BROWSER, s.sessionId); }
+        catch (e) { /* η σύνοδος πέθανε/πιάστηκε στο μεταξύ — επόμενη */ }
+      }
+    } catch (e) { /* sessions() απέτυχε — πέφτουμε σε launch */ }
+    // keep_alive 30s (ΟΧΙ 120): στο free tier το όριο είναι 10 min browser
+    // time/ΗΜΕΡΑ και το idle keep_alive το καίει — 13 σύνοδοι × έως 2min idle
+    // εξάντλησαν το ημερήσιο όριο στις δοκιμές 26/8. Τα 30s καλύπτουν σειρά
+    // εκτυπώσεων (η σύνοδος επαναχρησιμοποιείται) χωρίς πληρωμή αδράνειας.
+    try { return await puppeteer.launch(env.BROWSER, { keep_alive: 3e4 }); }
+    catch (e) {
+      // 429 στο launch: η σύνοδος του προηγούμενου αιτήματος ελευθερώνεται
+      // σε κλάσματα δευτερολέπτου (το release είναι πλέον σύγχρονο) — ΜΙΚΡΗ
+      // αναμονή και ξανά connect, αντί να σκάσει στον χρήστη.
+      if (attempt === 3 || !/429|limit/i.test(String(e && e.message || e))) throw e;
+      await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
     }
-  } catch (e) { /* sessions() απέτυχε — πέφτουμε σε launch */ }
-  return puppeteer.launch(env.BROWSER, { keep_alive: 12e4 });
+  }
 }
 __name(getBrowserSession, "getBrowserSession");
 
@@ -3179,6 +3192,7 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
     const h = new Headers(hit.headers);
     for (const [k, v] of Object.entries(corsHeaders(origin, env))) if (v) h.set(k, v);
     h.set("X-Pdf-Cache", "hit");
+    h.set("Access-Control-Expose-Headers", "X-Pdf-Cache");
     return new Response(hit.body, { status: 200, headers: h });
   }
   qs.set("noprint", "1");
@@ -3208,12 +3222,17 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
         ...corsHeaders(origin, env),
         "Content-Type": wantText ? "text/plain; charset=utf-8" : "application/pdf",
         "Content-Disposition": wantText ? "inline" : 'inline; filename="petras-doc.pdf"',
-        "X-Pdf-Cache": "miss"
+        "X-Pdf-Cache": "miss",
+        "Access-Control-Expose-Headers": "X-Pdf-Cache"
       } });
     } finally {
-      // page ΚΛΕΙΝΕΙ, browser ΑΠΟΣΥΝΔΕΕΤΑΙ — ποτέ close(): η σύνοδος μένει
-      // ζωντανή (keep_alive) για το επόμενο αίτημα. Αυτό ΕΙΝΑΙ η 3.1.
-      ctx.waitUntil(page.close().then(() => browser.disconnect()).catch(() => {}));
+      // ΣΥΓΧΡΟΝΟ release (εύρημα δοκιμής 10-στη-σειρά): με waitUntil, το
+      // επόμενο σειριακό αίτημα έβρισκε τη σύνοδο ακόμη πιασμένη
+      // (connectionId) → launch → 429. Τα ~100-300ms του close/disconnect
+      // πριν την απάντηση είναι το αντίτιμο για το να βρει ο επόμενος τη
+      // σύνοδο ΕΛΕΥΘΕΡΗ. Ποτέ close() στον browser — μόνο disconnect.
+      try { await page.close(); } catch (e) {}
+      try { browser.disconnect(); } catch (e) {}
     }
   } catch (e) {
     console.error("PRINT PDF", e.message);
