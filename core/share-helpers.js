@@ -41,6 +41,15 @@
     return await res.blob();
   }
 
+  // Διόρθωση 3 (owner 26/8): το toast το βλέπει μόνο όποιος κοιτά — κάθε
+  // «η λειτουργία δεν έγινε» γράφεται ΚΑΙ στο app_errors (logError → Worker),
+  // με τον κωδικό HTTP μέσα στο μήνυμα. Στο print.html δεν υπάρχει logError —
+  // εκεί μένει το toast μόνο του (δηλωμένο όριο, όχι σιωπηλό).
+  function _fail(msg, ctx) {
+    _toast(msg, 'danger');
+    if (typeof logError === 'function') logError(new Error(msg), ctx);
+  }
+
   function _fileName(opts) {
     const base = (opts.fileName || opts.title || 'petras-doc')
       .replace(/[^\p{L}\p{N}\- ]/gu, '').trim().replace(/\s+/g, '-').slice(0, 60);
@@ -52,19 +61,19 @@
   async function _sharePdf(opts) {
     let blob;
     try { blob = await _fetchPdfBlob(opts); }
-    catch (e) { _toast('Το PDF δεν δημιουργήθηκε: ' + e.message, 'danger'); return; }
+    catch (e) { _fail('Το PDF δεν δημιουργήθηκε: ' + e.message, 'share-menu: pdf fetch'); return; }
     const file = new File([blob], _fileName(opts), { type: 'application/pdf' });
     // Αλυσίδα υποχώρησης — ό,τι δεν γίνεται, ακούγεται (αρχή 1):
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       try { await navigator.share({ title: opts.title, files: [file] }); }
-      catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
+      catch (e) { if (!_isAbort(e)) _fail('Η κοινή χρήση απέτυχε: ' + e.message, 'share-menu: share'); }
       return; // ακύρωση χρήστη = όχι σφάλμα, κανένα toast
     }
     if (navigator.share) {
       try {
         await navigator.share({ title: opts.title, text: await opts.getText() });
         _toast('Ο browser δεν μοιράζεται αρχεία — στάλθηκε το κείμενο. Το PDF: «Λήψη PDF».');
-      } catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
+      } catch (e) { if (!_isAbort(e)) _fail('Η κοινή χρήση απέτυχε: ' + e.message, 'share-menu: share'); }
       return;
     }
     _saveBlob(blob, _fileName(opts));
@@ -76,10 +85,10 @@
   async function _shareText(opts) {
     let text;
     try { text = await opts.getText(); }
-    catch (e) { _toast('Το κείμενο δεν φορτώθηκε: ' + e.message, 'danger'); return; }
+    catch (e) { _fail('Το κείμενο δεν φορτώθηκε: ' + e.message, 'share-menu: text fetch'); return; }
     if (navigator.share) {
       try { await navigator.share({ title: opts.title, text }); }
-      catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
+      catch (e) { if (!_isAbort(e)) _fail('Η κοινή χρήση απέτυχε: ' + e.message, 'share-menu: share'); }
       return;
     }
     await navigator.clipboard.writeText(text);
@@ -95,12 +104,12 @@
 
   async function _downloadPdf(opts) {
     try { _saveBlob(await _fetchPdfBlob(opts), _fileName(opts)); }
-    catch (e) { _toast('Το PDF δεν δημιουργήθηκε: ' + e.message, 'danger'); }
+    catch (e) { _fail('Το PDF δεν δημιουργήθηκε: ' + e.message, 'share-menu: pdf download'); }
   }
 
   async function _copyText(opts) {
     try { await navigator.clipboard.writeText(await opts.getText()); _toast('Αντιγράφηκε.'); }
-    catch (e) { _toast('Η αντιγραφή απέτυχε: ' + e.message, 'danger'); }
+    catch (e) { _fail('Η αντιγραφή απέτυχε: ' + e.message, 'share-menu: copy'); }
   }
 
   function _closeMenu(e) {

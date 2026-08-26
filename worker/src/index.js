@@ -3136,61 +3136,89 @@ async function handlePallets(request, url, origin, env) {
 }
 __name(handlePallets, "handlePallets");
 
-// ─── /print/pdf — the PDF IS the print page (owner 25/8) ────────────────────
-// Renders the SAME print.html with Browser Rendering and returns page.pdf():
-// one source of truth for the document. The hand-built jsPDF layout was a
-// SECOND implementation of the same document and was removed (αρχή 3 + 8).
-// The caller's own JWT is injected into localStorage so the page loads as
-// that user — no privilege escalation, no service credentials in the page.
+// ─── /print/pdf — the PDF IS the print page (owner 25/8, Διόρθωση 3 26/8) ──
+// Renders the SAME print.html with Browser Rendering: one source of truth.
+// Διόρθωση 3: (1) session reuse — ΟΧΙ launch ανά αίτημα: το BR κόβει τα νέα
+// στιγμιότυπα ανά λεπτό (429 με 2-3 εκτυπώσεις στη σειρά· η Weekly έχει 17)
+// και το launch ήταν και τα «9,3s» — πάγιο κόστος, όχι cold start. (2) cache
+// 60s με κλειδί το query — η δεύτερη εκτύπωση της ίδιας εντολής δεν ζητά
+// browser καθόλου. (3) ΜΙΑ απόδοση δίνει ΚΑΙ pdf ΚΑΙ κείμενο (_waArr) — το
+// format=text δεν ξανααποδίδει.
+async function getBrowserSession(env) {
+  try {
+    const sessions = await puppeteer.sessions(env.BROWSER);
+    for (const s of sessions) {
+      if (s.connectionId) continue;
+      try { return await puppeteer.connect(env.BROWSER, s.sessionId); }
+      catch (e) { /* η σύνοδος πέθανε στο μεταξύ — δοκίμασε την επόμενη */ }
+    }
+  } catch (e) { /* sessions() απέτυχε — πέφτουμε σε launch */ }
+  return puppeteer.launch(env.BROWSER, { keep_alive: 12e4 });
+}
+__name(getBrowserSession, "getBrowserSession");
+
 async function handlePrintPdf(request, url, origin, env, ctx) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
   if (!can(caller.role, "orders", "GET")) return jsonError("Forbidden", 403, origin, env);
   if (!env.BROWSER) return jsonError("Browser Rendering not configured", 501, origin, env);
-  // Only the print page's own params pass through; the target origin is OURS
-  // (first ALLOWED_ORIGIN) — this endpoint never renders arbitrary URLs.
   const qs = new URLSearchParams();
   for (const k of ["orderId", "orderIds", "leg", "sheet"]) {
     const v = url.searchParams.get(k);
     if (v) qs.set(k, v);
   }
   if (!qs.get("orderId") && !qs.get("orderIds")) return jsonError("orderId or orderIds required", 400, origin, env);
+  const wantText = url.searchParams.get("format") === "text";
+  // Cache ΜΕΤΑ το auth — δεν παρακάμπτει κανέναν έλεγχο. TTL 60s (απόφαση
+  // owner: «καλύτερα ένα λεπτό στασιμότητα παρά 429»).
+  const cache = caches.default;
+  const keyBase = "https://pdf-cache.petras-tms/" + qs.toString();
+  const cacheKey = new Request(keyBase + (wantText ? "&format=text" : ""));
+  const hit = await cache.match(cacheKey);
+  if (hit) {
+    const h = new Headers(hit.headers);
+    for (const [k, v] of Object.entries(corsHeaders(origin, env))) if (v) h.set(k, v);
+    h.set("X-Pdf-Cache", "hit");
+    return new Response(hit.body, { status: 200, headers: h });
+  }
   qs.set("noprint", "1");
   const base = (env.ALLOWED_ORIGIN || "").split(",")[0].trim();
   const target = base + "/PETRASGROUP-TMS/print.html?" + qs.toString();
   const jwt = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
   let browser;
   try {
-    browser = await puppeteer.launch(env.BROWSER);
+    browser = await getBrowserSession(env);
     const page = await browser.newPage();
-    await page.evaluateOnNewDocument((t) => { localStorage.setItem("tms_jwt", t); }, jwt);
-    // networkidle0 also waits out the remote QR images (api.qrserver.com).
-    await page.goto(target, { waitUntil: "networkidle0", timeout: 25e3 });
-    await page.waitForSelector(".p-doc", { timeout: 15e3 });
-    // format=text (Διόρθωση 1): το κείμενο WhatsApp από το ΙΔΙΟ αποδοσμένο
-    // print.html (_waArr) — ο παραγωγός μένει ένας, ποτέ δεύτερο χτίσιμο.
-    if (url.searchParams.get("format") === "text") {
+    try {
+      await page.evaluateOnNewDocument((t) => { localStorage.setItem("tms_jwt", t); }, jwt);
+      await page.goto(target, { waitUntil: "networkidle0", timeout: 25e3 });
+      await page.waitForSelector(".p-doc", { timeout: 15e3 });
       const txt = await page.evaluate(() => (window._waArr || []).join("\n\n\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n"));
-      return new Response(txt, { status: 200, headers: {
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "10mm", bottom: "10mm", left: "8mm", right: "8mm" }
+      });
+      const cc = "public, max-age=60";
+      ctx.waitUntil(cache.put(new Request(keyBase + "&format=text"),
+        new Response(txt, { headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": cc } })));
+      ctx.waitUntil(cache.put(new Request(keyBase),
+        new Response(pdf, { headers: { "Content-Type": "application/pdf", "Cache-Control": cc } })));
+      return new Response(wantText ? txt : pdf, { status: 200, headers: {
         ...corsHeaders(origin, env),
-        "Content-Type": "text/plain; charset=utf-8"
+        "Content-Type": wantText ? "text/plain; charset=utf-8" : "application/pdf",
+        "Content-Disposition": wantText ? "inline" : 'inline; filename="petras-doc.pdf"',
+        "X-Pdf-Cache": "miss"
       } });
+    } finally {
+      // page ΚΛΕΙΝΕΙ, browser ΑΠΟΣΥΝΔΕΕΤΑΙ — ποτέ close(): η σύνοδος μένει
+      // ζωντανή (keep_alive) για το επόμενο αίτημα. Αυτό ΕΙΝΑΙ η 3.1.
+      ctx.waitUntil(page.close().then(() => browser.disconnect()).catch(() => {}));
     }
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "10mm", bottom: "10mm", left: "8mm", right: "8mm" }
-    });
-    return new Response(pdf, { status: 200, headers: {
-      ...corsHeaders(origin, env),
-      "Content-Type": "application/pdf",
-      "Content-Disposition": 'inline; filename="petras-doc.pdf"'
-    } });
   } catch (e) {
     console.error("PRINT PDF", e.message);
+    try { if (browser) browser.disconnect(); } catch (_) {}
     return jsonError("PDF render failed: " + e.message, 502, origin, env);
-  } finally {
-    if (browser) ctx.waitUntil(browser.close());
   }
 }
 __name(handlePrintPdf, "handlePrintPdf");
