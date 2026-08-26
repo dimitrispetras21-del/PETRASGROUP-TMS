@@ -3167,6 +3167,15 @@ async function handlePrintPdf(request, url, origin, env, ctx) {
     // networkidle0 also waits out the remote QR images (api.qrserver.com).
     await page.goto(target, { waitUntil: "networkidle0", timeout: 25e3 });
     await page.waitForSelector(".p-doc", { timeout: 15e3 });
+    // format=text (Διόρθωση 1): το κείμενο WhatsApp από το ΙΔΙΟ αποδοσμένο
+    // print.html (_waArr) — ο παραγωγός μένει ένας, ποτέ δεύτερο χτίσιμο.
+    if (url.searchParams.get("format") === "text") {
+      const txt = await page.evaluate(() => (window._waArr || []).join("\n\n\u2014\u2014\u2014\u2014\u2014\u2014\u2014\u2014\n\n"));
+      return new Response(txt, { status: 200, headers: {
+        ...corsHeaders(origin, env),
+        "Content-Type": "text/plain; charset=utf-8"
+      } });
+    }
     const pdf = await page.pdf({
       format: "A4",
       printBackground: true,

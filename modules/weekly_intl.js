@@ -755,7 +755,7 @@ function _wiImpRowHTML(row,impNo){
          ${row.saved&&!impPartner?`title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()"`:row.saved&&impPartner?`title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"`:''}></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
-      <button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙</button>
+      <button class="wk3-prt" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙</button>
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">
       <div class="wk3-lcol"><span class="wk3-route"><b class="wk3-ld${stR.loaded?' done':''}" style="cursor:pointer" title="Ημ. φόρτωσης${stR.loaded?' — φορτώθηκε ✓':''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${imp.id}','Loading DateTime','${f['Loading DateTime']||''}')">${loadDt!=='—'?_wk3D(loadDt):''}</b><span class="frm">${_wk3LocHTML(fromStr,'Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span>${(()=>{ if(impVS2){ const v=_wk3VsCd(f,'imp');
@@ -781,7 +781,7 @@ function _wiLegRowHTML(legRow){
   // κάτω από το assignment. Σκέλος εισαγωγής → μόνο στήλη εισαγωγών (5/6).
   const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/4'};cursor:pointer">
       <span class="wk3-route"><b class="wk3-ld">${ld!=='—'?_wk3D(ld):''}</b><span class="frm">${_wk3LocHTML(f['Loading Summary']||f['Client Name']||'—','Φόρτωση',f._stopsL)}</span><span class="wk3-sep">→</span><b class="wk3-ld">${dd!=='—'?_wk3D(dd):''}</b><span class="to">${_wk3LocHTML(f['Delivery Summary']||'—','Παράδοση',f._stopsD)}${(f['Order Number']||f['Reference'])?`<span class="wk3-ordn">${escapeHtml(String(f['Order Number']||f['Reference']))}</span>`:''}</span></span>
-      <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button><button class="wk3-prt" title="Ακύρωση πρόωθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯</button></span>
+      <span class="wk3-meta"><span class="wk3-pal">${f['Total Pallets']?f['Total Pallets']+'p':''}</span><span class="wk3-flags">${_wiBadges(f)}</span><button class="wk3-prt" title="Εκτύπωση σκέλους — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(o.id,dir,!!(f['Partner']||[]).length)}" data-shtitle="Εντολή — W${WINTL.week}" onclick="event.stopPropagation();printOrderSheet('${o.id}','${dir}',${(f['Partner']||[]).length?'true':'false'})">⎙</button><button class="wk3-prt" title="Ακύρωση πρόωθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯</button></span>
     </div>`;
   return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: αποσύνδεση"
       onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
@@ -1186,9 +1186,9 @@ function _wiRowHTML(row,i){
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
       ${isGroup
         ?`<button class="wk3-prt" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
-        :`<button class="wk3-prt" title="Εκτύπωση εντολής (export)" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
+        :`<button class="wk3-prt" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Export — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
-      ${row.importId?`<button class="wk3-prt" title="Εκτύπωση εντολής (import)" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+      ${row.importId?`<button class="wk3-prt" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>
     <div class="wk3-leg imp${gapCell?' gap':''}${!imp&&!gapCell&&(parCell||!row.saved)?' bgap':''}${!imp&&!gapCell&&!parCell&&row.saved?' void':''}" id="wi-ci-${row.id}"
          ${imp?'style="cursor:pointer"':''}
@@ -2606,6 +2606,31 @@ window._wiRemoveImport = _wiRemoveImport;
 window._wiUnmatch = _wiUnmatch;
 window._wiPrint = _wiPrint;
 window._wiPrintImp = _wiPrintImp;
+
+// Διόρθωση 1 (owner 25/8): το μενού κοινής χρήσης ΣΤΟ εικονίδιο της γραμμής —
+// ένα βήμα, όχι μέσω preview. Delegated στο document: ο πίνακας ξαναχτίζεται
+// σε κάθε αλλαγή εβδομάδας και per-element listeners θα χάνονταν σιωπηλά.
+// Δεξί κλικ + long-press (ΟΧΙ διπλό: θα καθυστερούσε την εκτύπωση όλων κατά
+// ~250ms αναμονής δεύτερου κλικ). Αριστερό κλικ: preview, ανέγγιχτο.
+if (typeof shareMenuDelegate === 'function') {
+  shareMenuDelegate(document, '.wk3-prt[data-shq]', (el) => {
+    const q = el.dataset.shq;
+    return {
+      title: el.dataset.shtitle || 'PETRAS GROUP — Εντολή',
+      fileName: el.dataset.shtitle,
+      // Το περιεχόμενο έρχεται από το /print/pdf — ο ΙΔΙΟΣ παραγωγός με το
+      // preview (αρχή 3): PDF ως έχει, κείμενο με &format=text (_waArr).
+      pdfUrl: () => PROXY_URL + '/print/pdf?' + q,
+      getText: async () => {
+        const r = await fetch(PROXY_URL + '/print/pdf?' + q + '&format=text',
+          { headers: { Authorization: 'Bearer ' + localStorage.getItem('tms_jwt') } });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return await r.text();
+      },
+      onPrint: () => window.open('https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html?' + q, '_blank')
+    };
+  });
+}
 window._wiCtxClose = _wiCtxClose;
 window._wiField = _wiField;
 window._wiSdO = _wiSdO;

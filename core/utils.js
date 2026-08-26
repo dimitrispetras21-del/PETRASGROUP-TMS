@@ -1585,11 +1585,15 @@ window._printWeekShell = _printWeekShell;
 // The partner sheet is a CHOICE, not a consequence of assignment state.
 // No partner on the row → straight to the driver sheet. Partner present →
 // the dispatcher picks which document leaves the building.
+// ΕΝΑΣ χτίστης του query εκτύπωσης (Διόρθωση 1, owner 25/8): τον μοιράζονται
+// το preview ΚΑΙ το μενού κοινής χρήσης της γραμμής (data-shq) — δύο χτισίματα
+// θα απέκλιναν (αρχή 3). Owner (9/8): partner → Φύλλο Συνεργάτη, αλλιώς Οδηγού.
+function printSheetQuery(orderId, leg, hasPartner) {
+  return `orderId=${orderId}&leg=${leg}&sheet=${hasPartner ? 'partner' : 'driver'}`;
+}
 function printOrderSheet(orderId, leg, hasPartner) {
   const base = 'https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
-  const go = sheet => window.open(`${base}?orderId=${orderId}&leg=${leg}&sheet=${sheet}`, '_blank');
-  // Owner (9/8): αυτόματη επιλογή — partner ανάθεση → Φύλλο Συνεργάτη,
-  // ιδιόκτητο → Φύλλο Οδηγού. Χωρίς διάλογο.
-  go(hasPartner ? 'partner' : 'driver');
+  window.open(base + '?' + printSheetQuery(orderId, leg, hasPartner), '_blank');
 }
+window.printSheetQuery = printSheetQuery;
 window.printOrderSheet = printOrderSheet;

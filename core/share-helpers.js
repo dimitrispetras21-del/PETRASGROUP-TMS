@@ -62,7 +62,7 @@
     }
     if (navigator.share) {
       try {
-        await navigator.share({ title: opts.title, text: opts.getText() });
+        await navigator.share({ title: opts.title, text: await opts.getText() });
         _toast('Ο browser δεν μοιράζεται αρχεία — στάλθηκε το κείμενο. Το PDF: «Λήψη PDF».');
       } catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
       return;
@@ -71,13 +71,18 @@
     _toast('Ο browser δεν έχει κοινή χρήση — το PDF κατέβηκε· στείλ’ το ως συνημμένο.');
   }
 
+  // getText μπορεί να είναι και async (η λίστα το φέρνει από το /print/pdf
+  // &format=text — ίδιος παραγωγός με το preview, ένα αντίγραφο λογικής).
   async function _shareText(opts) {
+    let text;
+    try { text = await opts.getText(); }
+    catch (e) { _toast('Το κείμενο δεν φορτώθηκε: ' + e.message, 'danger'); return; }
     if (navigator.share) {
-      try { await navigator.share({ title: opts.title, text: opts.getText() }); }
+      try { await navigator.share({ title: opts.title, text }); }
       catch (e) { if (!_isAbort(e)) _toast('Η κοινή χρήση απέτυχε: ' + e.message, 'danger'); }
       return;
     }
-    await navigator.clipboard.writeText(opts.getText());
+    await navigator.clipboard.writeText(text);
     _toast('Ο browser δεν έχει κοινή χρήση — το κείμενο αντιγράφηκε· επικόλλησέ το όπου θες.');
   }
 
@@ -94,7 +99,7 @@
   }
 
   async function _copyText(opts) {
-    try { await navigator.clipboard.writeText(opts.getText()); _toast('Αντιγράφηκε.'); }
+    try { await navigator.clipboard.writeText(await opts.getText()); _toast('Αντιγράφηκε.'); }
     catch (e) { _toast('Η αντιγραφή απέτυχε: ' + e.message, 'danger'); }
   }
 
@@ -172,5 +177,40 @@
     }, true);
   }
 
+  // Delegated παραλλαγή (Διόρθωση 1, owner 25/8): ΕΝΑΣ ακροατής στον πρόγονο —
+  // οι πίνακες ξαναχτίζονται σε κάθε render και per-element listeners θα
+  // χάνονταν ΣΙΩΠΗΛΑ (αρχή 1). Το αριστερό κλικ δεν αγγίζεται πουθενά.
+  function shareMenuDelegate(rootEl, selector, optsFromEl) {
+    if (!rootEl || rootEl._shareDelegated) return;
+    rootEl._shareDelegated = true;
+    rootEl.addEventListener('contextmenu', (e) => {
+      const el = e.target.closest(selector);
+      if (!el) return;
+      const opts = optsFromEl(el);
+      if (!opts) return;
+      e.preventDefault(); e.stopPropagation();
+      _openMenu(e.clientX, e.clientY, opts);
+    });
+    let lpTimer = null, sx = 0, sy = 0;
+    rootEl.addEventListener('touchstart', (e) => {
+      const el = e.target.closest(selector); if (!el) return;
+      const t = e.touches[0]; sx = t.clientX; sy = t.clientY;
+      lpTimer = setTimeout(() => {
+        const opts = optsFromEl(el);
+        if (opts) { el._lpFired = true; _openMenu(sx, sy, opts); if (navigator.vibrate) navigator.vibrate(12); }
+      }, 550);
+    }, { passive: true });
+    rootEl.addEventListener('touchmove', (e) => {
+      const t = e.touches[0];
+      if (Math.hypot(t.clientX - sx, t.clientY - sy) > 10) clearTimeout(lpTimer);
+    }, { passive: true });
+    rootEl.addEventListener('touchend', () => clearTimeout(lpTimer));
+    rootEl.addEventListener('click', (e) => {
+      const el = e.target.closest(selector);
+      if (el && el._lpFired) { el._lpFired = false; e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+  }
+
   window.attachShareMenu = attachShareMenu;
+  window.shareMenuDelegate = shareMenuDelegate;
 })();
