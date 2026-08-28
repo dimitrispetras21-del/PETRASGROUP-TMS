@@ -1,0 +1,46 @@
+{
+  "entity": {
+    "hex": 13,
+    "truncate": 2
+  },
+  "maintenance": {
+    "hex": 52,
+    "truncate": 4
+  },
+  "locations": {
+    "hex": 43,
+    "truncate": 2
+  },
+  "pallets": {
+    "hex": 68,
+    "truncate": 1
+  },
+  "audit": {
+    "hex": 14,
+    "truncate": 0
+  },
+  "dashboard": {
+    "hex": 15,
+    "truncate": 0
+  },
+  "daily_ops": {
+    "hex": 30,
+    "truncate": 1
+  },
+  "weekly_intl": {
+    "hex": 56,
+    "truncate": 1
+  },
+  "weekly_natl": {
+    "hex": 14,
+    "truncate": 0
+  },
+  "orders_intl": {
+    "hex": 36,
+    "truncate": 1
+  },
+  "orders_natl": {
+    "hex": 23,
+    "truncate": 3
+  }
+}
