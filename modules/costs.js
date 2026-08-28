@@ -47,6 +47,9 @@ function ctPartnerName(id) { const p = (_ct.lookups?.partners || []).find(x => x
 function ctPill(m) {
   if (m == null) return '<span class="ct-mgn dim">—</span>';
   if (m < 0) return `<span class="ct-mgn neg ct-mono">−${Math.abs(Number(m)).toFixed(1)}%</span>`;
+  // 0% δεν είναι κέρδος — ουδέτερο, όχι πράσινο (υπάρχει live: RT-1005,
+  // κόμιστρο partner = έσοδο, break-even).
+  if (Number(m) === 0) return '<span class="ct-mgn ct-mono">0.0%</span>';
   return `<span class="ct-mbadge ct-mono">${Number(m).toFixed(1)}%</span>`;
 }
 // Ταυτότητα οχήματος στην κεφαλίδα (Figma 7:6): σκέτο κείμενο δίπλα στον
