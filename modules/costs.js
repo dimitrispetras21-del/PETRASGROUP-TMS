@@ -37,6 +37,22 @@ const ctEurP = n => (Number(n) < 0 ? '(' + ctEur(-n).replace('€', '') + ' €)
 const ctEur = n => '€' + Math.round(Number(n) || 0).toLocaleString('el-GR');
 const ctEsc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// Το rec-id δεν υπάρχει στη βάση: το κατασκευάζει ο Worker για να μοιάζει με το
+// Airtable API. Ο χρήστης δεν μπορεί να το αναζητήσει, να το γράψει, ούτε να το
+// δει σε κανένα χαρτί — ήταν οδηγία «φτιάξε RT για αυτό» χωρίς τρόπο να βρεθεί.
+// Μετρήθηκε 28/8: 2 από 4 εκτελεσμένες παραγγελίες ΔΕΝ έχουν Reference, άρα η
+// εφεδρεία δεν ήταν σπάνια περίπτωση — ήταν η μισή οθόνη. Πέφτουμε σε πελάτη +
+// ημερομηνία, που υπάρχουν και τα δύο και αναζητούνται στο Weekly.
+function ctOrderLabel(r) {
+  const f = r.fields || {};
+  const ref = String(f['Reference'] || '').trim();
+  if (ref && ref !== '-') return ctEsc(ref);
+  const who = typeof fhClientName === 'function' ? (fhClientName(f['Client']) || '') : '';
+  const day = String(f['Loading DateTime'] || '').slice(0, 10).split('-').reverse().join('/');
+  return ctEsc([who, day].filter(Boolean).join(' · ') || 'χωρίς κωδικό');
+}
+
+
 function ctTruckName(id) { const t = (_ct.lookups?.trucks || []).find(x => x.id === id); return t ? t.license_plate : (id ? '#' + id : '—'); }
 function ctDriverName(id) { const d = (_ct.lookups?.drivers || []).find(x => x.id === id); return d ? d.full_name : ''; }
 function ctPartnerName(id) { const p = (_ct.lookups?.partners || []).find(x => x.id === id); return p ? p.company_name : (id ? '#' + id : '—'); }
@@ -253,6 +269,12 @@ function ctRenderSummary() {
   // Έσοδα «σε αναμονή» = των δρομολογίων χωρίς κόστη: αυτό είναι το διακύβευμα,
   // όχι διακόσμηση — όσο μένουν ακοστολόγητα, το καθαρό τους είναι άγνωστο.
   const pendingRev = incomplete.reduce((a, t) => a + Number(t.revenue || 0), 0);
+  // Τα ΚΟΣΤΗ αθροίζουν μόνο όσα δρομολόγια έχουν καταχωρημένα κόστη, ενώ τα
+  // ΕΣΟΔΑ αθροίζουν όλα. Χωρίς το εύρος δίπλα στο ποσό, «€65.024 − €900» καλεί
+  // το μάτι να αφαιρέσει και να διαβάσει κέρδος €64.124 που δεν υπάρχει.
+  const withCosts = V.length - incomplete.length;
+  const costScope = allComplete ? '' :
+    `<span class="ct-eqq">${withCosts}/${V.length}</span>`;
   let title, stake = '', netVal, foot;
   if (_ct.linesFailed) {
     title = 'Οι γραμμές κόστους δεν φόρτωσαν — άγνωστη πληρότητα';
@@ -275,11 +297,11 @@ function ctRenderSummary() {
   lede.innerHTML = `<div class="ct-stake">
     <div class="ct-stop"><span class="t">${title}</span>${stake}</div>
     <div class="ct-eq">
-      <span class="ct-eqi"><span class="l">Εσοδα</span><b class="nv ct-mono">${ctEur(rev)}</b></span>
+      <span class="ct-eqi"><span class="l">Revenue</span><b class="nv ct-mono">${ctEur(rev)}</b></span>
       <span class="op">−</span>
-      <span class="ct-eqi"><span class="l">Κοστη</span><b class="nv ct-mono">${ctEur(gross)}</b></span>
+      <span class="ct-eqi"><span class="l">Costs</span><b class="nv ct-mono">${ctEur(gross)}</b>${costScope}</span>
       <span class="op">=</span>
-      <span class="ct-eqi"><span class="l">Καθαρο</span>${netVal}</span>
+      <span class="ct-eqi"><span class="l">Net</span>${netVal}</span>
     </div>
     <div class="ct-sfoot">${foot}</div></div>`;
 }
@@ -425,7 +447,7 @@ function ctCardNums(t, ci) {
     // Η πληρότητα είναι ΑΓΝΩΣΤΗ — ούτε margin ούτε ψευδές «χωρίς κόστη».
     note = `<span class="ct-eqnote">οι γραμμές κόστους δεν φόρτωσαν — πληρότητα άγνωστη</span>`;
   } else if (!ci.complete) {
-    right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Καταχώρηση κόστους</button>`;
+    right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Add costs</button>`;
   } else {
     const p = Number(t.profit_worst);
     costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
@@ -434,11 +456,11 @@ function ctCardNums(t, ci) {
   }
   return `<div class="ct-eqrow">
     <div class="ct-eq ct-eqsm">
-      <span class="ct-eqi"><span class="l">Εσοδα</span><b class="nv ct-mono">${ctEur(t.revenue)}</b></span>
+      <span class="ct-eqi"><span class="l">Revenue</span><b class="nv ct-mono">${ctEur(t.revenue)}</b></span>
       <span class="op">−</span>
-      <span class="ct-eqi"><span class="l">Κοστη</span>${costs}</span>
+      <span class="ct-eqi"><span class="l">Costs</span>${costs}</span>
       <span class="op">=</span>
-      <span class="ct-eqi"><span class="l">Καθαρο</span>${net}</span>
+      <span class="ct-eqi"><span class="l">Net</span>${net}</span>
       ${badge}${note}
     </div>${right}</div>`;
 }
@@ -541,9 +563,9 @@ function ctRecon() {
   let html = missing.length ? `<div class="ct-note ct-nwarn">
     ${icon('warning', 13)} <b>${missing.length} εκτελεσμέν${missing.length === 1 ? 'η παραγγελία' : 'ες παραγγελίες'} χωρίς round trip</b> — ο feeder δεν τις έπιασε.
     Άνοιξε & ξανασώσε τη γραμμή στο Weekly, ή φτιάξε RT χειροκίνητα:
-    ${missing.slice(0, 5).map(r => ctEsc(r.fields['Reference'] || r.id)).join(' · ')}${missing.length > 5 ? ' · +' + (missing.length - 5) : ''}</div>` : '';
+    ${missing.slice(0, 5).map(r => ctOrderLabel(r)).join(' · ')}${missing.length > 5 ? ' · +' + (missing.length - 5) : ''}</div>` : '';
   if (unbridged.length) html += `<div class="ct-note ct-nwarn">${icon('warning', 13)} ${unbridged.length} εκτελεσμέν${unbridged.length === 1 ? 'η παραγγελία είναι' : 'ες παραγγελίες είναι'} εκτός γέφυρας (χωρίς Loading stop) — ο μετρητής δεν μπορεί να ελέγξει αν έχουν RT:
-    ${unbridged.slice(0, 5).map(r => ctEsc(r.fields['Reference'] || r.id)).join(' · ')}${unbridged.length > 5 ? ' · +' + (unbridged.length - 5) : ''}</div>`;
+    ${unbridged.slice(0, 5).map(r => ctOrderLabel(r)).join(' · ')}${unbridged.length > 5 ? ' · +' + (unbridged.length - 5) : ''}</div>`;
   el.innerHTML = html;
 }
 
@@ -801,6 +823,7 @@ function ctStyles() { return `<style>
 .ct-eqi{display:inline-flex;align-items:baseline;gap:8px}
 .ct-eqi .l{font-size:13px;text-transform:uppercase;letter-spacing:.02em;color:var(--text-dim)}
 .ct-eqi .nv{font-size:20px;font-weight:700;color:var(--navy-mid,#0B1929)}
+.ct-eqq{font-size:11px;font-weight:600;color:var(--text-dim);opacity:.85}
 .ct-eqi .nv.dim{color:var(--text-dim)}
 .ct-eqi .nv.pos{color:var(--ct-ok)}.ct-eqi .nv.neg{color:var(--danger-strong,#B91C1C)}
 .ct-eq .op{font-size:18px;color:var(--text-dim)}

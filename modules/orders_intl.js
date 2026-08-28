@@ -1609,7 +1609,7 @@ async function submitIntlOrder(recId) {
         const dups = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Reference}='${esc}'` }, false);
         if (dups && dups.length) {
           const ok2 = await confirmAction(
-            `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${dups[0].fields?.['Order Number']||dups[0].id}). Σίγουρα να δημιουργηθεί δεύτερο;`,
+            `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${(() => { const d = String(dups[0].fields?.['Loading DateTime'] || '').slice(0, 10); return d ? 'φορτώνει ' + d.split('-').reverse().join('/') : 'χωρίς ημερομηνία φόρτωσης'; })()}). Σίγουρα να δημιουργηθεί δεύτερο;`,
             { title: 'Πιθανό διπλό', confirmLabel: 'Δημιουργία ούτως ή άλλως', danger: true });
           if (!ok2) { if (btn) { btn.textContent = 'Submit'; btn.disabled = false; } return; }
         }
