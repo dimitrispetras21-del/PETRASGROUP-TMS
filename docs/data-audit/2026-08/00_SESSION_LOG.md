@@ -1099,3 +1099,30 @@ audit_log. Dispatcher PATCH στο order_stops: υπήρχε ήδη στο PERMI
 ζωντανή βάση αποδείχθηκε χθες με τις ΙΔΙΕΣ _opsMarkStop/atSafePatch
 (ORD-160, self-cleaning). Εκκρεμεί το οπτικό πέρασμα του owner στη
 γραμμή 3 — 20 δευτερόλεπτα με ανοιχτό Chrome.
+
+---
+
+## 28/8/2026 — TRIP PnL κατά το Figma (design-to-code)
+
+Πρώτη οθόνη μέσω του κύκλου DESIGN.md → Figma (KO7l2AfucR3HJEDIg1Yptr,
+οθόνη 6:4, component 7:86 TripCard) → κώδικας. Το navy lede + 5-στηλο KPI
+strip έγιναν ΕΝΑ StakeBanner (διακύβευμα + εξίσωση ΕΣΟΔΑ − ΚΟΣΤΗ = ΚΑΘΑΡΟ)·
+το toolbar έγινε FilterRow· οι κάρτες πήραν τη δομή του component. Λίστα
+κατά έσοδα φθίνοντα — η «γραμμή του νερού» αποσύρθηκε, το διακύβευμα το
+λέει το banner. Ελληνικές ετικέτες, tabular-nums παντού, DM Sans +600/700
+(πραγματικά Bold, όχι faux). Χρώματα εκτός :root ορίστηκαν ΜΙΑ φορά ως
+scoped --ct-* tokens (θα ανέβουν στο style.css με το πέρασμα των 97 hex).
+
+Διατηρήθηκαν εκτός Figma τα δίχτυα αξιοπιστίας (αρχές 1/7): σφάλμα/κενό/
+caps/recon/pallet-gate/«γύρισε άδειο»/γιατί-ζημιάς/VS. Η σκάλα κόστους
+έφυγε από την κάρτα (το variant complete του Figma δεν την έχει) — ζει
+στο ανάπτυγμα. Εύρημα από τα ζωντανά δεδομένα: RT-1005 break-even ⇒ 0%
+margin παίρνει ΟΥΔΕΤΕΡΟ σήμα, όχι πράσινο badge.
+
+Αποδείξεις: jsdom smoke (banner/παύλες/sort/badge/κουμπιά ✓)· οπτική
+απόδειξη με τον DEPLOYED costs.js + πραγματικά δεδομένα Supabase
+(SELECT-only) σε τοπικό harness: «13 από 14 δρομολόγια χωρίς καταχωρημένο
+κόστος · €64.174 σε αναμονή» — ίδια νούμερα με το Figma mockup· και οι
+δύο καταστάσεις κάρτας ζωντανές (RT-1011 missing / RT-1005 complete).
+Code Connect (TripCard↔ctCardHtml): ΔΕΝ δηλώθηκε — απαιτεί Dev seat σε
+Figma Organization plan· το mapping ζει ως σχόλιο στο ctCardHtml.
