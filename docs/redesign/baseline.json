@@ -12,11 +12,11 @@
     "truncate": 2
   },
   "pallets": {
-    "hex": 68,
+    "hex": 67,
     "truncate": 1
   },
   "audit": {
-    "hex": 14,
+    "hex": 13,
     "truncate": 0
   },
   "dashboard": {
