@@ -66,6 +66,22 @@ function writeErrorBaseline(baseline) {
   fs.writeFileSync(ERR_FILE, JSON.stringify(sorted, null, 2) + '\n');
 }
 
+// WHY this exists: button/badge labels in this app embed LIVE operational
+// numbers — counts of expired compliance documents (ΚΤΕΟ/ΚΕΚ/insurance/FRC
+// cold-chain certificates), fleet compliance percentages, fleet sizes,
+// pending movement counts. Contracts are committed to docs/redesign/
+// contracts/ on a PUBLIC repo, and the plan's own constraint (§ "Μόνο
+// ονόματα πεδίων") says a contract holds FIELD NAMES only. Without this,
+// e.g. "22 ληγμένα έγγραφα" gets frozen into git history as a dated,
+// public statement about this company's fleet regulatory non-compliance.
+// Stripping digit runs keeps the structural label ("ληγμένα έγγραφα") while
+// the datum never reaches disk. Applied only to fields/actions — NOT to
+// `endpoints`, which are facade table ids (tblXXXXXXXXXXXXXX) that already
+// contain digits and are already public (CLAUDE.md's own facade ID table).
+function sanitize(s) {
+  return s.replace(/\d+/g, '').replace(/\s+/g, ' ').trim();
+}
+
 // A "field" is any column header or labelled value the screen presents.
 // An "action" is anything the user can click that changes state.
 async function readContract(page, unit, baseURL) {
@@ -90,11 +106,11 @@ async function readContract(page, unit, baseURL) {
     await page.waitForTimeout(2500);   // async data loads
 
     for (const t of await page.locator('th, [data-field], label').allTextContents()) {
-      const s = t.trim();
+      const s = sanitize(t);
       if (s) fields.add(s);
     }
     for (const t of await page.locator('button, [data-action]').allTextContents()) {
-      const s = t.trim();
+      const s = sanitize(t);
       if (s) actions.add(s);
     }
   }
@@ -125,6 +141,18 @@ for (const unit of UNITS) {
 
     if (CAPTURE) {
       fs.mkdirSync(DIR, { recursive: true });
+
+      // Guard against recurrence: sanitize() above should already have
+      // scrubbed every digit out of fields/actions, but a contract that
+      // would leak operational data must NEVER reach disk even if a future
+      // change to the scraping logic reintroduces a raw source. Fail loudly
+      // here rather than silently writing the leak — see engineering
+      // principle #1 in CLAUDE.md ("ό,τι δεν γίνεται, πρέπει να ακούγεται").
+      const leaked = [...now.fields, ...now.actions].filter(s => /\d/.test(s));
+      if (leaked.length) {
+        throw new Error(`${unit.unit}: contract would leak operational data — digit(s) found in fields/actions: ${leaked.join(' | ')}`);
+      }
+
       fs.writeFileSync(file, JSON.stringify(now, null, 2) + '\n');
 
       const baseline = readErrorBaseline();
