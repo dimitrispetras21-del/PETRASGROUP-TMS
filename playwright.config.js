@@ -27,5 +27,23 @@ module.exports = defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // tests/critics/*.test.js run under node:test, not here (no @playwright/test
+    // globals). Only contract.spec.js is a Playwright test, so this project is
+    // scoped to that one file — it must NOT pick up the node:test files by
+    // matching the whole directory.
+    {
+      name: 'critics',
+      testDir: './tests/critics',
+      testMatch: 'contract.spec.js',
+      // serviceWorkers:'block' is required, not cosmetic: sw.js registers and
+      // then makes its own fetches from the worker execution context, which
+      // page.routeFromHAR (page-scoped) cannot see. Those requests fall
+      // through to the LIVE backend, which 401s a fake session — the app's
+      // auth guard reads that as "logged out" and bounces to index.html,
+      // producing an app.html<->index.html loop that empties every contract.
+      // Confirmed by a probe: identical run, only this option differs,
+      // fixes 11/11 units getting stuck on "Loading...".
+      use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
+    },
   ],
 });

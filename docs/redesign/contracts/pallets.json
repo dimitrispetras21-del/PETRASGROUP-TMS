@@ -1,0 +1,39 @@
+{
+  "unit": "pallets",
+  "tier": 1,
+  "fields": [
+    "Έως",
+    "Από"
+  ],
+  "actions": [
+    "+ Νέα κίνηση",
+    "Briefing",
+    "Export CSV",
+    "Fleet",
+    "Help",
+    "Quick jump…⌘K",
+    "Sign out",
+    "Today",
+    "Unassigned",
+    "Undo",
+    "Όλες οι κινήσεις",
+    "Ανά πελάτη",
+    "Ανά σημείο",
+    "Εκκρεμείς (45)",
+    "Πελάτες",
+    "Συνεργάτες",
+    "Χωρίς",
+    "Χωρίς πλήρη επιστροφή",
+    "◀"
+  ],
+  "endpoints": [
+    "GET tbl3vhUmzKDWhJynR",
+    "GET tbl7UGmYhc2Y82pPs",
+    "GET tblDcrqRJXzPrtYLm",
+    "GET tblEAPExIAjiA3asD",
+    "GET tblFWKAQVUzAM8mCE",
+    "GET tblLHl5m8bqONfhWv",
+    "GET tblgHlNmLBH3JTdIM",
+    "GET tblxu8DRfTQOFRCzS"
+  ]
+}

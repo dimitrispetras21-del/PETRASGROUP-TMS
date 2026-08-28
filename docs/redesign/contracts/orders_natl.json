@@ -1,0 +1,42 @@
+{
+  "unit": "orders_natl",
+  "tier": 3,
+  "fields": [
+    "ΔΡΟΜΟΛΟΓΙΟ",
+    "ΗΜ. ΠΑΡΑΔΟΣΗΣ",
+    "ΗΜ. ΦΟΡΤΩΣΗΣ",
+    "ΚΑΤΕΥΘ.",
+    "ΟΝΟΜΑ",
+    "ΠΑΛ.",
+    "ΠΑΡΑΔΟΣΗ",
+    "ΠΑΡΑΛΑΒΗ",
+    "ΠΕΛΑΤΗΣ",
+    "ΤΙΜ."
+  ],
+  "actions": [
+    "Briefing",
+    "CSV",
+    "Fleet",
+    "Help",
+    "New Order",
+    "Print",
+    "Quick jump…⌘K",
+    "Scan",
+    "Sign out",
+    "Today",
+    "Unassigned",
+    "Undo",
+    "◀"
+  ],
+  "endpoints": [
+    "GET tbl3vhUmzKDWhJynR",
+    "GET tbl7UGmYhc2Y82pPs",
+    "GET tblDcrqRJXzPrtYLm",
+    "GET tblEAPExIAjiA3asD",
+    "GET tblFWKAQVUzAM8mCE",
+    "GET tblGHCCsTMqAy4KR2",
+    "GET tblLHl5m8bqONfhWv",
+    "GET tblgHlNmLBH3JTdIM",
+    "GET tblxu8DRfTQOFRCzS"
+  ]
+}

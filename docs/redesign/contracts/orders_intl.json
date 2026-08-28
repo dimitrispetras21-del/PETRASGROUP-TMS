@@ -1,0 +1,46 @@
+{
+  "unit": "orders_intl",
+  "tier": 3,
+  "fields": [
+    "ΑΝΑΘΕΣΗ",
+    "ΑΡ. ΠΑΡ.",
+    "ΕΒΔ.",
+    "ΗΜ. ΠΑΡΑΔΟΣΗΣ",
+    "ΗΜ. ΦΟΡΤΩΣΗΣ",
+    "ΚΑΤΑΣΤΑΣΗ",
+    "ΚΑΤΕΥΘ.",
+    "ΠΑΛ.",
+    "ΠΑΡΑΔΟΣΗ",
+    "ΠΕΛΑΤΗΣ",
+    "ΤΙΜ.",
+    "ΤΙΜΗ €",
+    "ΦΟΡΤΩΣΗ"
+  ],
+  "actions": [
+    "Briefing",
+    "CSV",
+    "Fleet",
+    "Help",
+    "New Order",
+    "Print",
+    "Quick jump…⌘K",
+    "Scan",
+    "Sign out",
+    "Today",
+    "Unassigned",
+    "Undo",
+    "Καθαρισμός",
+    "◀"
+  ],
+  "endpoints": [
+    "GET tbl3vhUmzKDWhJynR",
+    "GET tbl7UGmYhc2Y82pPs",
+    "GET tblDcrqRJXzPrtYLm",
+    "GET tblEAPExIAjiA3asD",
+    "GET tblFWKAQVUzAM8mCE",
+    "GET tblLHl5m8bqONfhWv",
+    "GET tblaeY5QOHAS1gyE8",
+    "GET tblgHlNmLBH3JTdIM",
+    "GET tblxu8DRfTQOFRCzS"
+  ]
+}
