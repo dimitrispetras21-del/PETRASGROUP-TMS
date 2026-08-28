@@ -198,6 +198,69 @@
   --duration-fast: 150ms;
   --duration-base: 250ms;
   --duration-slow: 400ms;
+
+  /* ═══ Σχεδιαστικό σύστημα Figma — προσθήκη 28/8/2026 ═══
+     Τα παρακάτω υπήρχαν ΜΟΝΟ στο Figma (αρχείο KO7l2AfucR3HJEDIg1Yptr) και
+     ήταν γραμμένα ως ωμά hex μέσα στα modules. Μπαίνουν εδώ ΠΡΟΣΘΕΤΙΚΑ:
+     καμία υπάρχουσα δήλωση δεν άλλαξε.
+
+     Ζητήθηκαν 32· 14 υπήρχαν ήδη με άλλο όνομα και δεν ξαναγράφτηκαν. Όπου η
+     σχέση είναι πραγματική μπαίνει alias· όπου η ίδια ΤΙΜΗ έχει άλλο ΡΟΛΟ
+     μπαίνει δικό της token — κατά την προειδοποίηση αυτού του αρχείου ότι
+     «--panel ισούται με --text» είναι σύμπτωση τιμής, όχι σχέση. */
+
+  /* Λευκό ως ΚΕΙΜΕΝΟ πάνω σε σκούρο. Ίδια τιμή με --bg-card αλλά άλλος ρόλος:
+     το ένα είναι επιφάνεια κάρτας, το άλλο γραμματοσειρά σε navy. Αν κάποτε η
+     κάρτα πάψει να είναι κατάλευκη, το κείμενο δεν πρέπει να την ακολουθήσει. */
+  --text-inverse: #FFFFFF;
+
+  /* Εναλλασσόμενη γραμμή πίνακα. Διαφορετικό από --bg-hover (#EEF2F6): εκείνο
+     είναι απόκριση σε δείκτη, αυτό είναι μόνιμη ζέβρα. */
+  --bg-row-alt: #F8FAFC;
+
+  /* Διαχωριστικό γραμμών πίνακα. Ίδια τιμή με --panel-text — ΣΥΜΠΤΩΣΗ. */
+  --border-row: #F1F5F9;
+
+  /* Κάρτες ανάθεσης (CLAUDE.md: navy ιδιόκτητος στόλος, σκούρο πράσινο
+     συνεργάτης, σκούρο κόκκινο χωρίς ανάθεση). Το own δείχνει στο --navy-mid:
+     είναι όντως το ίδιο navy, όχι σύμπτωση. */
+  --chip-own:        var(--navy-mid);
+  --chip-partner:    #166534;
+  --chip-unassigned: #7F1D1D;
+
+  /* Γραμμή κενής επιστροφής. Το γέμισμα είναι το υπάρχον --warning-soft. */
+  --row-empty-bg:     var(--warning-soft);
+  --row-empty-border: #D97706;
+  --row-empty-text:   #92400E;
+
+  /* Badges. Ζεύγη γέμισμα/κείμενο — μετρήθηκαν 28/8, όλα ≥4,5:1 μεταξύ τους. */
+  --badge-pe-bg:     #DBEAFE;
+  --badge-pe-text:   #1E40AF;
+  --badge-vs-bg:     #EDE9FE;
+  --badge-vs-text:   #6D28D9;
+  --badge-ok-bg:     #D1FAE5;
+  --badge-ok-text:   #065F46;
+  --badge-stop-bg:   #FEE2E2;
+  --badge-stop-text: #991B1B;
+
+  /* Κεφαλίδα ημέρας. Και τα τρία είναι πραγματικά aliases. */
+  --day-header-bg:         var(--border-row);
+  --day-header-today-bg:   var(--navy-mid);
+  --day-header-today-text: var(--text-inverse);
+
+  /* Κατάσταση φόρμας. Το error δείχνει στο --danger-strong, που το αρχείο έχει
+     ήδη μετρήσει (5,73:1 πάνω στο ίδιο του το γέμισμα). Το focus δείχνει στο
+     --accent και ΔΕΝ εισάγει δεύτερο μπλε: η διαφορά Figma/κώδικα στο accent
+     (#027BBD vs #0284C7) είναι ξεχωριστή απόφαση, βλ. DECISION_LOG 28/8. */
+  --border-focus:       var(--accent);
+  --border-error:       var(--danger-strong);
+  --text-error:         var(--danger-strong);
+  --status-in-progress: var(--accent);
+
+  /* Δύο βήματα κλίμακας που έλειπαν. Το --space-05 είναι το μοναδικό κάτω από
+     το --space-1· το --text-2xs κάτω από το --text-xs, για badges. */
+  --space-05: 2px;
+  --text-2xs: 10px;
 }
 
 /* Tabular figures for all numeric cells */

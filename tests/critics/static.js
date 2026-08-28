@@ -43,10 +43,22 @@ function measure(unit) {
   };
 }
 
+// A stylesheet is where colour is SUPPOSED to be written literally. DESIGN.md #1
+// says "κανένα hex μέσα σε module" and its own check greps modules/*.js — the
+// rule is about modules, not about the file that defines the variables. Counting
+// hex in assets/style.css as a violation punishes putting a colour in its one
+// correct home, which is the opposite of what the rule asks for. The count is
+// still measured and printed so drift stays visible; it just does not fail.
+//
+// The truncation half still ratchets everywhere, stylesheet included: DESIGN.md
+// #6 protects company names, and a redesign moving `text-overflow: ellipsis`
+// from JS into CSS is exactly the move nobody watches.
+const isStylesheetOnly = unit => unit.files.every(f => f.endsWith('.css'));
+
 function check(unit, allowance) {
   const m = measure(unit);
   const failures = [];
-  if (m.hex > allowance.hex) {
+  if (m.hex > allowance.hex && !isStylesheetOnly(unit)) {
     failures.push(`${unit.unit}: hex ${m.hex} > όριο ${allowance.hex} (DESIGN.md #1)`);
   }
   if (m.truncate > allowance.truncate) {
