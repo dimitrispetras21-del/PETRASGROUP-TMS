@@ -37,6 +37,18 @@ for (const f of failed) for (const msg of f.failures) console.log(`   ${msg}`);
 
 console.log(`\n${results.length - failed.length}/${results.length} μονάδες εντός ορίων`);
 
+// ── Δεσμός Figma ↔ κώδικα ────────────────────────────────────────────────
+//
+// Στέκει εδώ επειδή το Code Connect του Figma απαιτεί Organization/Enterprise
+// και ο λογαριασμός είναι Professional. Χωρίς αυτόν τον έλεγχο, η περιγραφή
+// κάθε component στο Figma είναι σχόλιο που σαπίζει σιωπηλά: μετονομάζεις μια
+// συνάρτηση και το Figma συνεχίζει να δείχνει σε αυτήν για μήνες.
+const fmap = require('./figma-map').check();
+for (const msg of fmap.failures) console.log(`✗ figma: ${msg}`);
+console.log(`${fmap.pass ? '✓' : '✗'} figma ↔ κώδικας: ${fmap.verified} συναρτήσεις επαληθεύτηκαν` +
+  (fmap.pending.length ? ` · ${fmap.pending.length} components χωρίς κώδικα ακόμα (${fmap.pending.join(', ')})` : ''));
+if (!fmap.pass) process.exitCode = 1;
+
 // ── Ζωντανοί κριτές (Playwright: contract #1/#6, semantics #2/#5) ─────────
 //
 // Ίδια διαδρομή κλήσης με το playwright.config.js: to project «critics»
