@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const UNITS = require('./units');
 const { preparePage, gotoPage } = require('./auth');
+const { guardWidening } = require('./ratchet');
 
 const DIR = 'docs/redesign/contracts';
 const CAPTURE = process.env.CAPTURE === '1';
@@ -124,7 +125,14 @@ async function readContract(page, unit, baseURL) {
   };
 }
 
-for (const unit of UNITS) {
+// A unit with no routes (today: 'styles', which is assets/style.css) has no
+// screen to drive, so there is nothing here to check — the static critics are
+// its whole coverage. Skipping it at declaration time is deliberate: declaring
+// a test that navigates to nothing would scrape an empty contract, and an
+// empty contract is exactly the artefact this file exists to make impossible.
+const LIVE_UNITS = UNITS.filter(u => u.routes.length > 0);
+
+for (const unit of LIVE_UNITS) {
   test(`contract: ${unit.unit}`, async ({ page, baseURL }) => {
     await preparePage(page, 'owner');
 
@@ -140,8 +148,6 @@ for (const unit of UNITS) {
     const signatures = [...new Set(stripRigNoise(errors).map(normalizeError))].sort();
 
     if (CAPTURE) {
-      fs.mkdirSync(DIR, { recursive: true });
-
       // Guard against recurrence: sanitize() above should already have
       // scrubbed every digit out of fields/actions, but a contract that
       // would leak operational data must NEVER reach disk even if a future
@@ -153,14 +159,27 @@ for (const unit of UNITS) {
         throw new Error(`${unit.unit}: contract would leak operational data — digit(s) found in fields/actions: ${leaked.join(' | ')}`);
       }
 
-      fs.writeFileSync(file, JSON.stringify(now, null, 2) + '\n');
-
-      const baseline = readErrorBaseline();
-      baseline[unit.unit] = signatures;
-      writeErrorBaseline(baseline);
-
+      // ORDER MATTERS, and it used to be wrong: the contract file was written
+      // BEFORE this assertion, so a unit whose screen never rendered still
+      // left a committed contract of zero fields behind — a file that then
+      // reads as "this screen legitimately has no fields" and makes critic #1
+      // a no-op for it forever. Nothing is written unless the screen actually
+      // rendered.
       expect(now.fields.length, `${unit.unit}: μηδέν πεδία — η οθόνη δεν φόρτωσε`)
         .toBeGreaterThan(0);
+
+      // A re-capture may record FEWER console errors, never new ones without
+      // an explicit flag — see ratchet.js.
+      const baseline = readErrorBaseline();
+      const knownBefore = new Set(baseline[unit.unit] || []);
+      guardWidening(`error-baseline.json / ${unit.unit}`,
+        signatures.filter(s => !knownBefore.has(s)).map(s => `ΝΕΟ σφάλμα κονσόλας: ${s}`));
+
+      fs.mkdirSync(DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(now, null, 2) + '\n');
+
+      baseline[unit.unit] = signatures;
+      writeErrorBaseline(baseline);
       return;
     }
 
@@ -174,15 +193,26 @@ for (const unit of UNITS) {
 
     const before = JSON.parse(fs.readFileSync(file, 'utf8'));
     const lost = before.fields.filter(f => !now.fields.includes(f));
+    // `actions` was captured and committed from the start but compared by
+    // nothing, so a redesign could delete every button on every screen and the
+    // contract critic would still pass. A lost action is a lost capability —
+    // the same class of loss as a lost field, judged the same way. Contracts
+    // written before this comparison existed may predate a button; that shows
+    // up as a normal tier-1 failure naming the action, which is the point.
+    const lostActions = before.actions.filter(a => !now.actions.includes(a));
 
     // Critic #1 — hard gate on tier 1, report-only on tier 3 (spec §6.1).
     if (unit.tier === 1) {
       expect(lost, `${unit.unit}: ΧΑΘΗΚΑΝ πεδία: ${lost.join(', ')}`).toHaveLength(0);
-    } else if (lost.length) {
+      expect(lostActions, `${unit.unit}: ΧΑΘΗΚΑΝ ενέργειες: ${lostActions.join(', ')}`).toHaveLength(0);
+    } else if (lost.length || lostActions.length) {
       const added = now.fields.filter(f => !before.fields.includes(f));
+      const addedActions = now.actions.filter(a => !before.actions.includes(a));
       console.log(`\n⚠ ${unit.unit} (tier 3) διαφορά συμβολαίου — θέλει έγκριση στη Φ6:`);
-      console.log(`  αφαιρέθηκαν: ${lost.join(', ') || '—'}`);
-      console.log(`  προστέθηκαν: ${added.join(', ') || '—'}`);
+      console.log(`  πεδία αφαιρέθηκαν: ${lost.join(', ') || '—'}`);
+      console.log(`  πεδία προστέθηκαν: ${added.join(', ') || '—'}`);
+      console.log(`  ενέργειες αφαιρέθηκαν: ${lostActions.join(', ') || '—'}`);
+      console.log(`  ενέργειες προστέθηκαν: ${addedActions.join(', ') || '—'}`);
     }
 
     const lostEp = before.endpoints.filter(e => !now.endpoints.includes(e));

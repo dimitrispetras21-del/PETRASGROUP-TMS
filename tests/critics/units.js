@@ -1,4 +1,4 @@
-// The 11 redesign units. A "unit" is one body of CODE, not one route:
+// The 12 redesign units. A "unit" is one body of CODE, not one route:
 // six master-data routes all render through renderEntity(), so core/entity.js
 // is ONE unit covering six screens (core/router.js:305-320). Treating them as
 // six would fan out six agents onto the same file — a hidden edge, not
@@ -16,6 +16,23 @@ module.exports = [
   { unit: 'locations',   tier: 1, routes: ['locations'],                                                          files: ['modules/locations.js', 'modules/locations_map.js'] },
   { unit: 'pallets',     tier: 1, routes: ['pallet_ledger'],                                                      files: ['modules/pallet_ledger.js', 'modules/pallet_upload.js'] },
   { unit: 'audit',       tier: 1, routes: ['audit_trail', 'metrics_audit'],                                       files: ['modules/audit_trail.js', 'modules/metrics_audit.js'] },
+
+  // The stylesheet is its own unit, and it has NO routes on purpose.
+  //
+  // WHY it must exist: critics #3/#4 read the unit `files` list, and every
+  // other unit lists only .js. assets/style.css holds ~427 hex literals and
+  // 27 truncation rules that no unit was counting. The normal, expected move
+  // in a redesign — lift colour and text-overflow out of the modules and into
+  // the stylesheet — would then drive every .js ratchet DOWN and read as
+  // progress, while raw hex and cut company names accumulate in the one file
+  // nothing watched. DESIGN.md #6 exists because dispatchers phone the
+  // companies whose names must not be cut; an ellipsis added here is exactly
+  // as harmful as one added in a module.
+  //
+  // WHY routes is empty: there is no screen that "is" the stylesheet, so the
+  // live critics (contract/semantics) have nothing to drive. They skip a
+  // unit with no routes — see the guard at the top of both spec files.
+  { unit: 'styles',      tier: 1, routes: [],                                                                     files: ['assets/style.css'] },
 
   // Tier 3 — the contract MAY change; the critic reports a diff for approval
   // instead of failing (spec §6.1).

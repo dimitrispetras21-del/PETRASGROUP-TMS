@@ -19,6 +19,10 @@
     "hex": 13,
     "truncate": 0
   },
+  "styles": {
+    "hex": 427,
+    "truncate": 27
+  },
   "dashboard": {
     "hex": 15,
     "truncate": 0

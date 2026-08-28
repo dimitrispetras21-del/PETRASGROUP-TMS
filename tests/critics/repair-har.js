@@ -59,14 +59,22 @@ function repair() {
   const before = har.log.entries.length;
   har.log.entries = har.log.entries.filter(e => !isBroken(e));
   const removed = before - har.log.entries.length;
-  // Guard, not decoration: this script was written against a recording with
-  // EXACTLY 5 broken entries (verified by hand, see task-5-report.md). If a
-  // future re-recording has a different count, that is new information this
-  // filter was never designed for — fail loudly instead of silently dropping
-  // an unknown number of entries.
-  if (removed !== 5) {
-    throw new Error(`repair-har: expected to remove 5 broken entries, found ${removed}`);
-  }
+  // Report the count, do NOT assert it.
+  //
+  // This used to be `if (removed !== 5) throw`, pinned to the one recording
+  // it was written against. That guard fired at MODULE LOAD of auth.js, which
+  // both spec files require at the top — so a re-recording with 4 or 6 broken
+  // entries did not fail one test, it made contract.spec.js and
+  // semantics.spec.js fail to LOAD, i.e. the whole live suite silently
+  // vanished. The recording has to be redone whenever the app's requests
+  // change, which the redesign guarantees, so that was a guaranteed
+  // self-inflicted outage of the critics.
+  //
+  // What is actually load-bearing is the SHAPE of a broken entry (isBroken
+  // above), not how many of them a given recording happens to contain. So the
+  // count is printed instead: a human re-recording sees the number move and
+  // can judge it, and the suite keeps running either way.
+  console.log(`repair-har: αφαιρέθηκαν ${removed} χαλασμένες εγγραφές από ${before} (${path.basename(SRC)})`);
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(har));
   return OUT;

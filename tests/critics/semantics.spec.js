@@ -17,6 +17,7 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const UNITS = require('./units');
 const { preparePage, gotoPage } = require('./auth');
+const { guardWidening } = require('./ratchet');
 
 const CAPTURE = process.env.CAPTURE === '1';
 const FILE = 'docs/redesign/semantics-baseline.json';
@@ -47,7 +48,35 @@ function writeBaseline(b) {
   fs.writeFileSync(FILE, JSON.stringify(sorted, null, 2) + '\n');
 }
 
-for (const unit of UNITS) {
+// PROOF OF RENDER — without this both critics below are vacuous.
+//
+// Both work by looking for something BAD: a forbidden P&L term in the body,
+// a cell reading "€0". A screen that never rendered — bounced to index.html,
+// crashed to its error boundary, still on "Loading..." — contains neither, so
+// both critics went GREEN on a blank page. That is the worst possible failure
+// mode for a critic: it reports safety precisely when it has checked nothing.
+//
+// So every route asserts it actually rendered before it is judged, mirroring
+// what contract.spec.js already does under CAPTURE (`μηδέν πεδία — η οθόνη δεν
+// φόρτωσε`). Two conditions, because they fail differently: #sidebar visible
+// means the app shell mounted and auth did not bounce us; non-empty #content
+// means the router actually painted a screen into it.
+async function assertRendered(page, unit, route) {
+  await expect(page.locator('#sidebar'),
+    `${unit.unit}/${route}: το κέλυφος δεν φόρτωσε — ο έλεγχος δεν είδε οθόνη`)
+    .toBeVisible({ timeout: 15000 });
+  const body = (await page.locator('#content').innerText()).trim();
+  expect(body.length,
+    `${unit.unit}/${route}: κενή οθόνη — ο έλεγχος θα περνούσε χωρίς να ελέγξει τίποτα`)
+    .toBeGreaterThan(0);
+  return body;
+}
+
+// Units with no routes (today: 'styles' = assets/style.css) have no screen to
+// drive; the static critics are their whole coverage. See contract.spec.js.
+const LIVE_UNITS = UNITS.filter(u => u.routes.length > 0);
+
+for (const unit of LIVE_UNITS) {
   test(`roles: ${unit.unit} hides P&L from dispatcher`, async ({ page, baseURL }) => {
     await preparePage(page, 'dispatcher');
     const baseline = readBaseline();
@@ -62,6 +91,7 @@ for (const unit of UNITS) {
       // bridge) instead.
       await gotoPage(page, route, baseURL);
       await page.waitForTimeout(2000);
+      await assertRendered(page, unit, route);
       const body = await page.locator('body').innerText();
 
       const found = FORBIDDEN_FOR_DISPATCHER.filter(term => body.includes(term));
@@ -74,6 +104,9 @@ for (const unit of UNITS) {
     }
 
     if (CAPTURE) {
+      // A re-capture may record FEWER leaks, never a new one without an
+      // explicit flag — see ratchet.js.
+      guardWidening(`semantics-baseline.json / pnlLeaks / ${unit.unit}`, newLeaks.map(l => `ΝΕΑ διαρροή P&L — ${l}`));
       baseline.pnlLeaks[unit.unit] = routeLeaks;
       writeBaseline(baseline);
       return;
@@ -94,6 +127,7 @@ for (const unit of UNITS) {
     for (const route of unit.routes) {
       await gotoPage(page, route, baseURL);
       await page.waitForTimeout(2500);   // async data loads
+      await assertRendered(page, unit, route);
 
       // DESIGN.md #3: a value that was never entered must render as a dash
       // or as "δεν έχει καταχωρηθεί" — never as 0 / 0% / €0. An unwritten
@@ -112,6 +146,11 @@ for (const unit of UNITS) {
     }
 
     if (CAPTURE) {
+      // Same ratchet: a re-capture may record FEWER zero-cells per route,
+      // never more without an explicit flag — see ratchet.js. `overLimit` is
+      // already exactly the list of routes whose count went UP.
+      guardWidening(`semantics-baseline.json / zeroSuspects / ${unit.unit}`,
+        overLimit.map(o => `ΠΕΡΙΣΣΟΤΕΡΑ κελιά «μηδέν αντί για κενό» — ${o}`));
       baseline.zeroSuspects[unit.unit] = routeCounts;
       writeBaseline(baseline);
       return;
