@@ -234,7 +234,7 @@ function _wnTabs(cur) {
   }
   html += step(1);
   if (cur !== today)
-    html += `<button type="button" class="wk3-tab" style="color:var(--accent)" onclick="WNATL.week=${today};renderWeeklyNatl()">Σήμερα</button>`;
+    html += `<button type="button" class="wk3-tab" style="color: var(--accent-text)" onclick="WNATL.week=${today};renderWeeklyNatl()">Σήμερα</button>`;
   return html;
 }
 

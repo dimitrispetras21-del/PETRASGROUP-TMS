@@ -463,7 +463,7 @@ function _renderInvKPI() {
   el.innerHTML = `
     <div style="${cardStyle}">
       <div style="${labelStyle}">ΕΤΟΙΜΕΣ ΠΡΟΣ ΤΙΜΟΛΟΓΗΣΗ</div>
-      <div style="${valueStyle};color:var(--accent)">${ready.length}</div>
+      <div style="${valueStyle};color: var(--accent-text)">${ready.length}</div>
       <div style="${deltaStyle}">${_fmtEuro(readyTotal)}</div>
     </div>
     <div style="${cardStyle};${overdue.length ? 'border-color:#7F1D1D' : ''}">

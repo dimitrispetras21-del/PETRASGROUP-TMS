@@ -860,7 +860,7 @@ function buildEntityTable(entityKey, records) {
   const s = _entitySort[entityKey] || { col: null, dir: 0 };
   const sortedRecs = _entitySortRecords(entityKey, records);
   const ths = cols.map((c, i) => {
-    const arrow = s.col===i ? (s.dir===1?' <span style="color:var(--accent)">▲</span>':s.dir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
+    const arrow = s.col===i ? (s.dir===1?' <span style="color: var(--accent-text)">▲</span>':s.dir===2?' <span style="color: var(--accent-text)">▼</span>':'') : '';
     // Sorting was mouse-only; aria-sort also tells a screen reader the state.
     const ariaSort = s.col===i ? (s.dir===1?'ascending':s.dir===2?'descending':'none') : 'none';
     // Numeric cells render right-aligned (see the 'number' branch in the cell

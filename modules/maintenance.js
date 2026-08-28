@@ -304,7 +304,7 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
 
   const save = async () => {
     const newVal = inp.value || null;
-    td.innerHTML = '<span style="color:var(--accent);font-size:11px">Saving…</span>';
+    td.innerHTML = '<span style="color: var(--accent-text);font-size:11px">Saving…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
       await atSafePatch(tableId, recId, { [fieldName]: newVal });
@@ -358,7 +358,7 @@ async function _expInsurerEdit(e, recId, vType) {
   inp.select();
   const save = async () => {
     const newVal = inp.value.trim() || null;
-    td.innerHTML = '<span style="color:var(--accent);font-size:10px">Saving…</span>';
+    td.innerHTML = '<span style="color: var(--accent-text);font-size:10px">Saving…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
       await atSafePatch(tableId, recId, { 'Insurance Partner': newVal });
@@ -537,7 +537,7 @@ function _expiryPaint() {
         ${tabBtn('valid', 'Σε ισχύ', validTrucks + validTrailers, 'success')}
       </div>
       ${_expiryDocType ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_expiryDocType='';_expiryPaint()"
-        style="background:var(--accent-light);color:var(--accent);font-weight:700">
+        style="background:var(--accent-light);color: var(--accent-text);font-weight:700">
         Μόνο ${escapeHtml(_expiryDocType)} · καθαρισμός ✕</button>` : ''}
       <div class="exp-search-wrap">
         ${_i('search')}
@@ -548,7 +548,7 @@ function _expiryPaint() {
     <!-- TRUCKS SECTION -->
     <div class="exp-section">
       <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('truck')}</div>
+        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('truck')}</div>
         <div>
           <div class="exp-section-title">Φορτηγά</div>
           <div class="exp-section-sub">${fTrucks.length} από ${truckRows.length}</div>
@@ -728,7 +728,7 @@ function _svcPaint() {
 
     <!-- KPI Cards v2 -->
     <div class="exp-kpis">
-      <div class="exp-kpi" style="color:var(--accent)">
+      <div class="exp-kpi" style="color: var(--accent-text)">
         <div class="exp-kpi-ico">${_i('trending_up')}</div>
         <div class="exp-kpi-body">
           <div class="exp-kpi-lbl">Cost YTD</div>
@@ -792,7 +792,7 @@ function _svcPaint() {
     <!-- Records table -->
     <div class="exp-section">
       <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('clipboard')}</div>
+        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('clipboard')}</div>
         <div>
           <div class="exp-section-title">Όλες οι Εργασίες</div>
           <div class="exp-section-sub">${records.length} records in view</div>
@@ -2093,7 +2093,7 @@ function _mreqPaint() {
           <div class="exp-kpi-sub">δεν ξεκίνησε</div>
         </div>
       </div>
-      <div class="exp-kpi" style="color:var(--accent)">
+      <div class="exp-kpi" style="color: var(--accent-text)">
         <div class="exp-kpi-ico">${_i('refresh')}</div>
         <div class="exp-kpi-body">
           <div class="exp-kpi-lbl">ΣΕ ΕΞΕΛΙΞΗ</div>
@@ -2122,7 +2122,7 @@ function _mreqPaint() {
     <!-- ΕΝΟΤΗΤΑ 1: πραγματικές, χειροκίνητες εντολές -->
     <div class="exp-section">
       <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color:var(--accent)">${_i('checklist')}</div>
+        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('checklist')}</div>
         <div>
           <div class="exp-section-title">${_mreqTab === 'active' ? 'ΕΝΤΟΛΕΣ ΕΡΓΑΣΙΑΣ' : _mreqTab === 'done' ? 'ΟΛΟΚΛΗΡΩΜΕΝΕΣ ΕΝΤΟΛΕΣ' : 'ΟΛΕΣ ΟΙ ΕΝΤΟΛΕΣ'} (${filtered.length})</div>
           <div class="exp-section-sub">Κάνε κλικ σε γραμμή για ενημέρωση</div>

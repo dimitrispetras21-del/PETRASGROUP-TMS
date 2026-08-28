@@ -404,7 +404,7 @@ function _wk3Tabs(currentWeek) {
   }
   html += step(1)+jump(4);
   if (currentWeek !== today)
-    html += `<button type="button" class="wk3-tab" style="color:var(--accent)" onclick="WINTL.week=${today};renderWeeklyIntl()">Σήμερα</button>`;
+    html += `<button type="button" class="wk3-tab" style="color: var(--accent-text)" onclick="WINTL.week=${today};renderWeeklyIntl()">Σήμερα</button>`;
   return html;
 }
 // «Τα κενά» (owner): own γύροι χωρίς φορτίο επιστροφής → δείξε τα αδιάθετα
@@ -586,7 +586,7 @@ function _wiPaint(){
       const el=document.getElementById('wi-crossweek-in');
       if(!el||didFail(recs)||!recs.length) return;
       const names=recs.slice(0,3).map(r=>_wiClean(r.fields['Loading Summary']||'').slice(0,18)).filter(Boolean).join(' · ');
-      el.outerHTML=`<span class="entity-count-chip" style="background:var(--accent-light);color:var(--accent);border-color:transparent" title="Πλάνο W${week+1} με φόρτωση ΜΕΣΑ σε αυτή την εβδομάδα — δες τη W${week+1} για ανάθεση. ${names}">↦ ${recs.length} φορτών${recs.length>1?'ουν':'ει'} τώρα · πλάνο W${week+1}</span>`;
+      el.outerHTML=`<span class="entity-count-chip" style="background:var(--accent-light);color: var(--accent-text);border-color:transparent" title="Πλάνο W${week+1} με φόρτωση ΜΕΣΑ σε αυτή την εβδομάδα — δες τη W${week+1} για ανάθεση. ${names}">↦ ${recs.length} φορτών${recs.length>1?'ουν':'ει'} τώρα · πλάνο W${week+1}</span>`;
     }).catch(e => console.warn('cross-week incoming:', e));
   }
 }
@@ -785,7 +785,7 @@ function _wiLegRowHTML(legRow){
     </div>`;
   return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: αποσύνδεση"
       onclick="_wk3Edit('${o.id}')" oncontextmenu="_wiRotUnlink(event,'${o.id}')">
-    <div class="wk3-num" style="color:var(--accent);font-weight:800">⤷</div>
+    <div class="wk3-num" style="color: var(--accent-text);font-weight:800">⤷</div>
     <div class="wk3-feed l bgap"></div>
     ${dir==='import'?`<div class="wk3-leg bgap" style="grid-column:3/5"></div>${legCell}`:`${legCell}<div></div><div class="wk3-leg imp bgap"></div>`}
     <div class="wk3-feed r bgap"></div>

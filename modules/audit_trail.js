@@ -146,7 +146,7 @@ function _auditRow(e, idx) {
       <td>${_auditVal(e.actor)}<div class="txt-dim">${_auditVal(e.role)}</div></td>
       <td><span class="badge ${actionCls}">${_auditVal(e.action)}</span></td>
       <td>${_auditVal(e.table_name)}</td>
-      <td class="mono">${e.record_id ? `<button type="button" style="appearance:none;border:0;background:none;font:inherit;color:var(--accent);cursor:pointer;padding:0" title="Ιστορικό αυτής της εγγραφής" onclick="_auditFilterRecord('${e.record_id}')">${_auditVal(e.record_id)}</button>` : '—'}</td>
+      <td class="mono">${e.record_id ? `<button type="button" style="appearance:none;border:0;background:none;font:inherit;color: var(--accent-text);cursor:pointer;padding:0" title="Ιστορικό αυτής της εγγραφής" onclick="_auditFilterRecord('${e.record_id}')">${_auditVal(e.record_id)}</button>` : '—'}</td>
       <td>${detail}</td>
     </tr>`;
 }

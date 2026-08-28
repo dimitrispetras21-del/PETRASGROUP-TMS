@@ -253,7 +253,7 @@ function showComingSoon(label, opts) {
   const o = opts || {};
   const ico = (typeof icon === 'function' && o.icon) ? icon(o.icon, 28) : `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>`;
   return `<div class="empty-state" style="padding:60px 20px;text-align:center;max-width:520px;margin:0 auto">
-    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;color:var(--accent)">${ico}</div>
+    <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;color: var(--accent-text)">${ico}</div>
     <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${escapeHtml(label)}</h3>
     <p style="color:var(--text-dim);font-size:12px;margin-bottom:${o.today || o.eta ? '18px' : '0'}">Δεν έχει υλοποιηθεί ακόμη</p>
     ${o.today ? `<div style="text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">

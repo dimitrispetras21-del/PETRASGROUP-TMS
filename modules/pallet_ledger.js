@@ -248,7 +248,7 @@ function _plvBalanceTable(kind) {
       <td>${b[nameKey] || ('#' + b[idKey])}</td>
       <td style="text-align:right;font-weight:700;color:${b.balance > 0 ? '#15803D' : b.balance < 0 ? '#B91C1C' : 'inherit'}">${b.balance > 0 ? '+' : ''}${b.balance}</td>
       <td style="text-align:right">${b.pending_count || ''}</td>
-      <td style="color:var(--accent);font-size:12px">ανάλυση →</td></tr>`).join('')}
+      <td style="color: var(--accent-text);font-size:12px">ανάλυση →</td></tr>`).join('')}
   </table></div>`;
 }
 
@@ -266,7 +266,7 @@ function _plvDraw() {
     ${_plvOverview()}
     <div style="display:flex;gap:8px;margin:16px 0;flex-wrap:wrap">
       ${[['pending', 'Εκκρεμείς (' + pend + ')'], ['noreturn', 'Χωρίς πλήρη επιστροφή'], ['all', 'Όλες οι κινήσεις'], ['clients', 'Πελάτες'], ['partners', 'Συνεργάτες']].map(([id, lbl]) =>
-        `<button onclick="plvTab('${id}')" style="padding:8px 16px;border-radius:20px;border:1px solid var(--accent);cursor:pointer;font-size:13px;${PLV.tab === id ? 'background:var(--accent);color:#fff' : 'background:transparent;color:var(--accent)'}">${lbl}</button>`).join('')}
+        `<button onclick="plvTab('${id}')" style="padding:8px 16px;border-radius:20px;border:1px solid var(--accent);cursor:pointer;font-size:13px;${PLV.tab === id ? 'background:var(--accent);color:#fff' : 'background:transparent;color: var(--accent-text)'}">${lbl}</button>`).join('')}
     </div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
       ${isBalanceTab ? '' : `

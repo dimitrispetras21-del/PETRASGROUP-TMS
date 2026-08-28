@@ -379,7 +379,7 @@ function _renderIntlTable(records) {
   _oiVS.lastEnd = -1;
 
   const ths = _intlColDefs.map(c => {
-    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color:var(--accent)">▲</span>':_intlSortDir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
+    const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color: var(--accent-text)">▲</span>':_intlSortDir===2?' <span style="color: var(--accent-text)">▼</span>':'') : '';
     const click = c.nosort ? '' : ` onclick="_intlSortToggle('${c.key}')"`;
     const cursor = c.nosort ? 'default' : 'pointer';
     return `<th style="cursor:${cursor};user-select:none;width:${c.w};min-width:${c.w};max-width:${c.w}"${click}>${c.label}${arrow}</th>`;
@@ -563,7 +563,7 @@ function selectIntlOrder(recId) {
         ${f['Pallet Exchange'] ? `
         <div style="margin:8px 0;padding:8px;background:rgba(2,123,189,0.08);border-radius:6px;border:1px solid rgba(2,123,189,0.15)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="font-weight:600;font-size:11px;color:var(--accent)">PALLET SHEETS</span>
+            <span style="font-weight:600;font-size:11px;color: var(--accent-text)">PALLET SHEETS</span>
             <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">
               Δελτίο Παλετών
             </button>
@@ -601,7 +601,7 @@ function selectIntlOrder(recId) {
           ${f['Veroia Switch'] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
         </div>
         <div style="margin-top:6px">
-          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color:var(--accent)">View Ledger Records →</a>
+          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color: var(--accent-text)">View Ledger Records →</a>
         </div>
       </div>` : ''}
       ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
@@ -2083,7 +2083,7 @@ async function _scanExtract() {
   const st = document.getElementById('scanStatus');
   for (let i = 0; i < files.length; i++) {
     if (st) { st.style.display='block';
-      st.insertAdjacentHTML('afterbegin', `<div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:6px">Αρχείο ${i+1}/${files.length}: ${files[i].name}</div>`); }
+      st.insertAdjacentHTML('afterbegin', `<div style="font-size:12px;font-weight:700;color: var(--accent-text);margin-bottom:6px">Αρχείο ${i+1}/${files.length}: ${files[i].name}</div>`); }
     try {
       window._scanResult = null;
       const parsed = await _scanExtractCore(files[i]);

@@ -758,7 +758,7 @@ function _auditDraw() {
       oninput="_auditSetQuery(this.value)" placeholder="Αναζήτηση μέτρησης ή κλειδιού…"
       style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">
     ${catTabs.map(t => `<button class="btn btn-ghost" onclick="_auditSetCat('${t.k}')"
-      style="font-size:11px;padding:6px 10px;${AUDIT.cat === t.k ? 'background:var(--accent-light);color:var(--accent);font-weight:700' : ''}">${t.name}</button>`).join('')}
+      style="font-size:11px;padding:6px 10px;${AUDIT.cat === t.k ? 'background:var(--accent-light);color: var(--accent-text);font-weight:700' : ''}">${t.name}</button>`).join('')}
   </div>
 
   ${shownCats.map(catHTML).join('') || `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;color:var(--text-dim);font-size:13px">Καμία μέτρηση δεν ταιριάζει με «${escapeHtml(AUDIT.q)}».</div>`}

@@ -113,6 +113,15 @@
 
   --accent:       #027BBD;
   --accent-hover: #0369A1;
+  /* Το accent ως ΚΕΙΜΕΝΟ, όχι ως γέμισμα. Το #027BBD περνάει σε λευκή κάρτα
+     (4,59) αλλά πέφτει στο 4,24 πάνω στο --bg #F4F6F9 — και οι σύνδεσμοι, τα
+     ενεργά tabs και τα chips κάθονται ακριβώς εκεί. Το #0369A1 δίνει 5,48 στο
+     --bg και 5,93 σε λευκό: περνά και στις δύο επιφάνειες.
+     Ίδια τιμή με το --accent-hover, ΣΥΜΠΤΩΣΗ όχι σχέση — το ένα είναι απόκριση
+     σε δείκτη, το άλλο χρώμα γραμματοσειράς. Δικός του ορισμός ώστε αν κάποτε
+     αλλάξει το hover, το κείμενο να μην το ακολουθήσει τυφλά. Ίδιο σκεπτικό με
+     τον διαχωρισμό --panel-ok/warn/bad από τα --success/warning/danger. */
+  --accent-text:  #0369A1;
   --accent-light: rgba(2,123,189,0.10);
   --accent-glow:  rgba(2,123,189,0.20);
   /* Τα τρία σημασιολογικά είναι ΓΙΑ ΚΕΙΜΕΝΟ ΣΕ ΦΩΤΕΙΝΟ. Μετρήθηκαν 2026-08-05
@@ -927,7 +936,7 @@ body {
   border-color: var(--border-mid);
   color: var(--text);
 }
-.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); background: var(--accent-light); }
 
 /* Ghost — transparent, subtle */
 .btn-ghost {
@@ -938,7 +947,7 @@ body {
 .btn-ghost:hover:not(:disabled) {
   background: var(--accent-light);
   border-color: rgba(2,123,189,0.25);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 /* Danger — red, subtle */
@@ -1102,7 +1111,7 @@ tbody tr:hover { background: var(--bg-hover); }
   width: 72px; height: 72px;
   border-radius: var(--radius-full);
   background: var(--bg-hover);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .empty-state h3 {
   font-size: var(--text-lg);
@@ -1605,7 +1614,7 @@ tbody tr:hover { background: var(--bg-hover); }
   font-family: 'DM Sans', sans-serif;
   font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   cursor: pointer;
   letter-spacing: 0.3px;
   transition: all .15s;
@@ -2203,7 +2212,7 @@ tbody tr:hover { background: var(--bg-hover); }
   font-size: 10px; font-weight: 700; letter-spacing: .6px;
   padding: 2px 8px; border-radius: 10px; white-space: nowrap;
 }
-.wk-phase--build  { background: var(--accent-light); color: var(--accent); }
+.wk-phase--build  { background: var(--accent-light); color: var(--accent-text); }
 .wk-phase--live   { background: rgba(16,185,129,0.12); color: var(--success); }
 .wk-phase--closed { background: var(--bg-hover); color: var(--text-dim); }
 
@@ -2220,7 +2229,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wi-dsep--today { box-shadow: inset 3px 0 0 var(--accent); }
 .wi-dsep-todaytag { background: var(--accent); color:#fff; font-size:9px; font-weight:800; letter-spacing:.8px; padding:1px 7px; border-radius:8px; margin-left:8px; }
 /* T4: cross-week visibility chip. */
-.wi-cross { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-left:6px; background: var(--accent-light); color: var(--accent); white-space:nowrap; cursor:help; }
+.wi-cross { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-left:6px; background: var(--accent-light); color: var(--accent-text); white-space:nowrap; cursor:help; }
 /* Π2: second line inside truck/driver dropdown options — where the asset is
    already committed this week. 10px, no new column (density rule). */
 .wi-sdo-sub { font-size:10px; color:var(--warning); opacity:.95; margin-top:1px; }
@@ -2255,13 +2264,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-tab.on{background:var(--bg);border-color:var(--border-mid);color:var(--navy-mid,#0B1929)}
 .wk3-tab.on::after{content:'';position:absolute;left:0;right:0;top:-1px;height:3px;background:var(--accent);border-radius:3px 3px 0 0}
 .wk3-step{align-self:center;color:var(--text-dim);padding:4px 7px;border-radius:6px;cursor:pointer;background:none}
-.wk3-step:hover{background:var(--accent-light);color:var(--accent)}
+.wk3-step:hover{background:var(--accent-light);color: var(--accent-text)}
 .wk3-tally{margin-left:auto;display:flex;align-items:center;gap:13px;white-space:nowrap;flex-wrap:wrap}
 .wk3-t{font-size:11.5px;color:var(--text-mid);background:none;border:none;padding:0}
 .wk3-t b{font-family:'Syne',sans-serif;font-size:13px;color:var(--text)}
 .wk3-t.alert,.wk3-t.alert b{color:var(--danger)}
 .wk3-t.alert{cursor:pointer;border-bottom:1px dashed rgba(220,38,38,.5)}
-.wk3-t.gap,.wk3-t.gap b{color:var(--accent)} .wk3-t.gap{cursor:pointer}
+.wk3-t.gap,.wk3-t.gap b{color: var(--accent-text)} .wk3-t.gap{cursor:pointer}
 .wk3-acts{display:flex;gap:2px;border-left:1px solid var(--border);padding-left:10px}
 .wk3-ab{font-size:11.5px;font-weight:600;color:var(--text-mid);padding:6px 9px;border-radius:6px;background:none;cursor:pointer;transition:.12s}
 .wk3-ab:hover{color:var(--text);background:var(--accent-light)}
@@ -2281,7 +2290,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-cols,.wk3-row{display:grid;grid-template-columns:44px var(--fL,272px) minmax(200px,1.5fr) 196px minmax(150px,1fr) var(--fR,272px)}
 .wk3.fl-off .wk3-feed.l>*, .wk3.fl-off .wk3-cols .c.fc:nth-child(2)>:not(.fc-ch){display:none}
 .wk3.fr-off .wk3-feed.r>*{display:none}
-.fc-ch{font-size:10px;color:var(--accent)}
+.fc-ch{font-size:10px;color: var(--accent-text)}
 .wk3.fl-off .wk3-feed.l{background:var(--bg,#FAFCFE)}
 .wk3.fr-off .wk3-feed.r{background:var(--bg,#FAFCFE)}
 .wk3-cols{position:sticky;top:0;z-index:30;background:var(--bg-card,#fff);border-bottom:1px solid var(--border-mid)}
@@ -2305,7 +2314,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-row:hover .wk3-pill{transform:translateY(-1px);box-shadow:0 4px 12px -5px rgba(11,25,41,.45)}
 .wk3-num{font-size:10.5px;color:var(--text-dim);text-align:center;font-variant-numeric:tabular-nums;
   border-right:1px solid var(--border);align-self:stretch;display:flex;align-items:center;justify-content:center;gap:4px}
-.wk3-num.imp{color:var(--accent);font-weight:700}
+.wk3-num.imp{color: var(--accent-text);font-weight:700}
 .wk3-grpb{font-family:'Syne',sans-serif;font-size:8px;font-weight:700;background:var(--navy-mid,#0B1929);color:#fff;border-radius:999px;padding:1px 5px;cursor:pointer;flex-shrink:0;border:none}
 .wk3-grpb:hover{background:var(--accent)}
 .wk3-leg{padding:0 12px;min-width:0;display:flex;align-items:flex-start;gap:10px;overflow:hidden;align-self:stretch}
@@ -2347,7 +2356,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-leg.bgap{background:var(--navy-mid,#0B1929)}
 .wk3-leg.bgap:hover{background:#13253A}
 /* πολλαπλά σημεία φόρτωσης/παράδοσης — ×N με αριθμημένο tooltip */
-.wk3-mstop{font-size:8px;font-weight:800;color:var(--accent);background:var(--accent-light);border-radius:999px;padding:1px 5px;cursor:help;vertical-align:1px;flex-shrink:0;margin-left:3px}
+.wk3-mstop{font-size:8px;font-weight:800;color: var(--accent-text);background:var(--accent-light);border-radius:999px;padding:1px 5px;cursor:help;vertical-align:1px;flex-shrink:0;margin-left:3px}
 .wk3-stopn{display:inline-flex;width:13px;height:13px;border-radius:50%;background:var(--accent);color:#fff;font-size:8.5px;font-weight:800;align-items:center;justify-content:center;margin:0 2px;vertical-align:1px;flex-shrink:0;cursor:help}
 .wk3-pal{width:34px;text-align:right;font-weight:600;font-variant-numeric:tabular-nums;flex-shrink:0}
 .wk3-flags{width:64px;display:inline-flex;gap:3px;justify-content:flex-end;align-items:center;flex-shrink:0}
@@ -2374,11 +2383,11 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-pill.un{background:rgba(220,38,38,.07);border:1.5px dashed rgba(180,35,24,.5)}
 .wk3-pill.unimp{background:transparent;border:1.5px dashed var(--border-mid);color:var(--text-mid);font-size:9px;font-weight:700}
 .wk3-pill.sug{background:rgba(220,38,38,.07);border:1.5px dashed rgba(180,35,24,.5)}
-.wk3-pill.sug .s{font-size:9.5px;font-weight:700;color:var(--accent);overflow:hidden;text-overflow:ellipsis}
+.wk3-pill.sug .s{font-size:9.5px;font-weight:700;color: var(--accent-text);overflow:hidden;text-overflow:ellipsis}
 .wk3-pill.sug .go{flex-shrink:0;background:var(--accent);color:#fff;border:none;border-radius:5px;font-size:10px;font-weight:800;padding:2px 7px;line-height:1;cursor:pointer;transition:.15s}
 .wk3-pill.sug .go:hover{background:#067647;transform:scale(1.1)}
 .wk3-prt{flex-shrink:0;color:var(--text-dim);font-size:13px;padding:2px 5px;border-radius:5px;line-height:1;background:none;border:none;cursor:pointer}
-.wk3-prt:hover{color:var(--accent);background:var(--accent-light)}
+.wk3-prt:hover{color: var(--accent-text);background:var(--accent-light)}
 .wk3-prt sup{font-size:7px}
 .wk3-prow{border-bottom:1px solid var(--border)}
 .wk3-empty{padding:70px 20px;text-align:center}
@@ -2411,7 +2420,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-xfold.open{display:block}
 .wk3-stopline .wk3-sln{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .wk3-sld{font-size:10.5px;color:var(--text-mid);font-variant-numeric:tabular-nums;font-weight:700}
-.wk3-sld.diff{color:var(--accent);font-weight:800}
+.wk3-sld.diff{color: var(--accent-text);font-weight:800}
 .wk3-stopn.ln{background:var(--navy-mid,#0B1929)}
 /* Ταξινόμηση σημείων (10/8): εθνικά subs μέσα στα feeds — στοίβαξη σε στήλη */
 .wk3-fcol{display:flex;flex-direction:column;justify-content:flex-start;min-width:0;width:100%;padding:0 0 3px}
@@ -2423,7 +2432,7 @@ tbody tr:hover { background: var(--bg-hover); }
 /* compact tags μέσα στο meta — υπάρχοντα wi-badge/wi-cross/wi-exec */
 .wk3 .wi-badge{font-size:7.5px;padding:0 4px;border-radius:3px}
 .wk3 .wi-cross,.wk3 .wi-exec{font-size:8.5px}
-.wk3-t.sug b{color:var(--accent)}
+.wk3-t.sug b{color: var(--accent-text)}
 @media (max-width:1360px){
   .wk3-cols,.wk3-row{grid-template-columns:44px minmax(220px,1fr) 176px minmax(220px,1fr)}
   .wk3-feed,.wk3-cols .c.fc{display:none}
@@ -2461,7 +2470,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-sech{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border-mid);background:#fff}
 .wn3-sech .t{font-family:'Syne',sans-serif;font-size:11px;font-weight:800;letter-spacing:2px;color:var(--navy-mid,#0B1929)}
 .wn3-sech .s{font-size:10.5px;color:var(--text-dim)}
-.wn3-add{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--accent);
+.wn3-add{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;color: var(--accent-text);
   background:var(--accent-light);border:none;border-radius:6px;padding:4px 11px;cursor:pointer}
 .wn3-add:hover{background:rgba(2,123,189,.18)}
 .wn3-lempty{padding:9px 14px;font-size:11px;color:var(--text-dim);background:var(--bg);border-bottom:1px solid var(--border)}
@@ -2483,13 +2492,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-lmoves .mv .rm:hover{color:var(--danger);background:rgba(220,38,38,.08);opacity:1}
 .wn3-addst{font-family:inherit;font-size:9.5px;font-weight:700;color:var(--text-dim);background:none;
   border:1px dashed var(--border-mid);border-radius:5px;padding:2px 8px;cursor:pointer;margin-top:2px}
-.wn3-addst:hover{color:var(--accent);border-color:rgba(2,123,189,.4)}
+.wn3-addst:hover{color: var(--accent-text);border-color:rgba(2,123,189,.4)}
 /* chips σύνδεσης — και οι δύο κατευθύνσεις (Δ6) */
 .wn3-chip{font-family:inherit;font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;
   border:none;flex-shrink:0}
-.wn3-chip.up{background:var(--accent-light);color:var(--accent);cursor:pointer}
+.wn3-chip.up{background:var(--accent-light);color: var(--accent-text);cursor:pointer}
 .wn3-chip.down{background:rgba(5,150,105,.12);color:#065F46}
-.wn3-pnote{font-size:11px;color:var(--accent);background:var(--accent-light);border-radius:6px;
+.wn3-pnote{font-size:11px;color: var(--accent-text);background:var(--accent-light);border-radius:6px;
   padding:8px 11px;margin-bottom:14px}
 
 /* Δ17 — επιλογή Order Type μέσα στη φόρμα εθνικών: δύο κάρτες, όχι checkbox.
@@ -2503,10 +2512,10 @@ tbody tr:hover { background: var(--bg-hover); }
 .nf-mode span{display:flex;flex-direction:column;gap:2px}
 .nf-mode b{font-size:13px;font-weight:600;color:var(--text)}
 .nf-mode em{font-style:normal;font-size:11px;color:var(--text-dim);line-height:1.45}
-.nf-mode.on b{color:var(--accent)}
+.nf-mode.on b{color: var(--accent-text)}
 
 /* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
-.wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
+.wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color: var(--accent-text)}
 .wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,123,189,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}
 /* drop target για το drag-ταίριασμα ανόδου σε κάθοδο */
 .wn3 .wk3-leg.dh{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-light)}
@@ -3822,7 +3831,7 @@ button.sidebar-toggle {
   transition: background var(--duration-fast) var(--ease-out);
 }
 .cmdk-item.selected { background: var(--accent-light); }
-.cmdk-item.selected .cmdk-title { color: var(--accent); }
+.cmdk-item.selected .cmdk-title { color: var(--accent-text); }
 .cmdk-ico {
   flex-shrink: 0;
   width: 28px; height: 28px;
@@ -3831,7 +3840,7 @@ button.sidebar-toggle {
   border-radius: var(--radius-sm);
   color: var(--text-mid);
 }
-.cmdk-item.selected .cmdk-ico { background: rgba(2,123,189,0.15); color: var(--accent); }
+.cmdk-item.selected .cmdk-ico { background: rgba(2,123,189,0.15); color: var(--accent-text); }
 .cmdk-title {
   flex: 1;
   font-size: var(--text-sm);
@@ -3872,7 +3881,7 @@ button.sidebar-toggle {
 .empty-state-illustration {
   width: 120px; height: 120px;
   margin: 0 auto var(--space-5);
-  color: var(--accent);
+  color: var(--accent-text);
   opacity: 0.7;
   animation: slide-up-fade var(--duration-slow) var(--ease-out);
 }
@@ -3886,14 +3895,14 @@ button.sidebar-toggle {
 .entity-table-wrap tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
 .entity-table-wrap tbody tr { transition: background var(--duration-fast) var(--ease-out); }
 .entity-table-wrap thead th[data-sortable] { cursor: pointer; position: sticky; top: 0; user-select: none; }
-.entity-table-wrap thead th[data-sortable]:hover { color: var(--accent); background: var(--accent-light); }
+.entity-table-wrap thead th[data-sortable]:hover { color: var(--accent-text); background: var(--accent-light); }
 .entity-table-wrap thead th .sort-indicator {
   margin-left: 4px;
   opacity: 0.4;
   font-size: 10px;
   transition: opacity var(--duration-fast) var(--ease-out);
 }
-.entity-table-wrap thead th.sorted .sort-indicator { opacity: 1; color: var(--accent); }
+.entity-table-wrap thead th.sorted .sort-indicator { opacity: 1; color: var(--accent-text); }
 
 /* Sticky first column for wide tables */
 .entity-table-wrap table.sticky-first th:first-child,
@@ -3963,7 +3972,7 @@ button.sidebar-toggle {
 }
 .notif-item.urgent .notif-item-icon { background: var(--danger-bg); color: var(--danger); }
 .notif-item.warning .notif-item-icon { background: var(--warning-bg); color: var(--warning); }
-.notif-item.info .notif-item-icon { background: var(--accent-light); color: var(--accent); }
+.notif-item.info .notif-item-icon { background: var(--accent-light); color: var(--accent-text); }
 .notif-item.success .notif-item-icon { background: var(--success-bg); color: var(--success); }
 .notif-item-body { flex: 1; min-width: 0; }
 .notif-item-title {
@@ -4019,7 +4028,7 @@ button.sidebar-toggle {
 .exp-kpi-danger  { color: var(--danger); }
 .exp-kpi-warning { color: var(--warning); }
 .exp-kpi-success { color: var(--success); }
-.exp-kpi-compliance { color: var(--accent); }
+.exp-kpi-compliance { color: var(--accent-text); }
 /* Το opacity:0.1 έμπαινε στο ΔΟΧΕΙΟ, άρα έσβηνε και το εικονίδιο μέσα του —
    γι' αυτό οι κύκλοι φαίνονταν άδειοι. Κάποιος το πάλεψε με «opacity: 10»
    (άκυρη τιμή, στρογγυλοποιείται στο 1) και brightness(0.6). Τώρα η διαφάνεια
@@ -4248,7 +4257,7 @@ button.sidebar-toggle {
 .entity-count-chip {
   margin-left: auto;
   background: var(--accent-light);
-  color: var(--accent);
+  color: var(--accent-text);
   padding: 4px 10px;
   border-radius: var(--radius-full);
   font-size: var(--text-xs);
@@ -4356,7 +4365,7 @@ button.sidebar-toggle {
 .dash-cmdk-hint:hover {
   background: rgba(56,189,248,0.08);
   border-color: rgba(56,189,248,0.25);
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .dash-cmdk-hint kbd {
   font-family: inherit;
@@ -6548,7 +6557,7 @@ button.dash-kpi:focus-visible {
   color: var(--text-dim);
   transition: background 0.12s, color 0.12s;
 }
-.aic-upload-btn:hover { background: var(--bg-hover); color: var(--accent); }
+.aic-upload-btn:hover { background: var(--bg-hover); color: var(--accent-text); }
 .aic-upload-pending {
   display: flex;
   gap: 4px;
@@ -6557,7 +6566,7 @@ button.dash-kpi:focus-visible {
 }
 .aic-upload-pending .pill {
   background: rgba(2,123,189,0.10);
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: var(--text-xs);
   padding: 3px 8px;
   border-radius: var(--radius-lg);
@@ -6567,7 +6576,7 @@ button.dash-kpi:focus-visible {
 }
 .aic-upload-pending .pill button {
   background: none; border: none; cursor: pointer; padding: 0;
-  color: var(--accent); opacity: 0.6; font-size: var(--text-sm);
+  color: var(--accent-text); opacity: 0.6; font-size: var(--text-sm);
 }
 
 /* Keyboard focus must be visible wherever a click does something. Rows and sort
@@ -6671,7 +6680,7 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .lmap-li .t{font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lmap-li .s{font-size:10.5px;color:var(--text-mid);margin-top:1px;white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
-.lmap-li .km{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--accent);
+.lmap-li .km{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color: var(--accent-text);
   font-variant-numeric:tabular-nums}
 .lmap-more,.lmap-empty{padding:12px 13px;font-size:11px;color:var(--text-dim);text-align:center}
 .lmap-chips{display:flex;gap:4px;flex-wrap:wrap;padding:9px 11px 5px}

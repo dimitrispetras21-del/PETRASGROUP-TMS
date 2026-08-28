@@ -253,7 +253,7 @@ function _renderNatlTable(records) {
   _onVS.lastEnd = -1;
 
   const ths = _natlColDefs.map(c => {
-    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color:var(--accent)">▲</span>':_natlSortDir===2?' <span style="color:var(--accent)">▼</span>':'') : '';
+    const arrow = _natlSortCol===c.key ? (_natlSortDir===1?' <span style="color: var(--accent-text)">▲</span>':_natlSortDir===2?' <span style="color: var(--accent-text)">▼</span>':'') : '';
     return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
 
@@ -690,7 +690,7 @@ function _grpPreview() {
   const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:#B45309' : 'color:var(--text-mid)');
   box.innerHTML = !g.length ? '' : `
     <div style="border:1px dashed rgba(2,123,189,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
-      <div style="font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:7px">
+      <div style="font-size:11.5px;font-weight:700;color: var(--accent-text);margin-bottom:7px">
         ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
       ${g.map(x=>`<div style="font-size:11.5px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}
       ${tot>33?'<div style="margin-top:7px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
