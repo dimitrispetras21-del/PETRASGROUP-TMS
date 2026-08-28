@@ -20,3 +20,9 @@ config.staging.js
 app.staging.html
 .mcp.json
 docs/research/
+
+# Redesign oracle — περιέχουν ΠΡΑΓΜΑΤΙΚΑ δεδομένα πελατών (επωνυμίες, τιμές).
+# Το repo είναι δημόσιο· αυτά μένουν τοπικά.
+# Βλ. docs/superpowers/plans/2026-08-28-redesign-oracle.md
+.har/
+docs/redesign/before/
