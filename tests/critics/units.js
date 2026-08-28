@@ -1,0 +1,28 @@
+// The 11 redesign units. A "unit" is one body of CODE, not one route:
+// six master-data routes all render through renderEntity(), so core/entity.js
+// is ONE unit covering six screens (core/router.js:305-320). Treating them as
+// six would fan out six agents onto the same file — a hidden edge, not
+// parallelism.
+//
+// Source of truth: docs/superpowers/specs/2026-08-28-app-redesign-graph-design.md §3.1
+// Excluded on purpose (§3.2): costs (already the reference), ceo_dashboard,
+// performance, invoicing (structurally broken — fix before polishing),
+// daily_ramp (owner 24/8: goes last).
+
+module.exports = [
+  // Tier 1 — the data contract is a HARD gate: no field may disappear.
+  { unit: 'entity',      tier: 1, routes: ['clients', 'partners', 'drivers', 'trucks', 'trailers', 'workshops'], files: ['core/entity.js'] },
+  { unit: 'maintenance', tier: 1, routes: ['maint_dash', 'maint_req', 'maint_expiry', 'maint_svc'],              files: ['modules/maintenance.js'] },
+  { unit: 'locations',   tier: 1, routes: ['locations'],                                                          files: ['modules/locations.js', 'modules/locations_map.js'] },
+  { unit: 'pallets',     tier: 1, routes: ['pallet_ledger'],                                                      files: ['modules/pallet_ledger.js', 'modules/pallet_upload.js'] },
+  { unit: 'audit',       tier: 1, routes: ['audit_trail', 'metrics_audit'],                                       files: ['modules/audit_trail.js', 'modules/metrics_audit.js'] },
+
+  // Tier 3 — the contract MAY change; the critic reports a diff for approval
+  // instead of failing (spec §6.1).
+  { unit: 'dashboard',   tier: 3, routes: ['dashboard'],    files: ['modules/dashboard.js'] },
+  { unit: 'daily_ops',   tier: 3, routes: ['daily_ops'],    files: ['modules/daily_ops.js'] },
+  { unit: 'weekly_intl', tier: 3, routes: ['weekly_intl'],  files: ['modules/weekly_intl.js'] },
+  { unit: 'weekly_natl', tier: 3, routes: ['weekly_natl'],  files: ['modules/weekly_natl.js'] },
+  { unit: 'orders_intl', tier: 3, routes: ['orders_intl'],  files: ['modules/orders_intl.js'] },
+  { unit: 'orders_natl', tier: 3, routes: ['orders_natl'],  files: ['modules/orders_natl.js'] },
+];
