@@ -28,13 +28,13 @@ module.exports = defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
     // tests/critics/*.test.js run under node:test, not here (no @playwright/test
-    // globals). Only contract.spec.js is a Playwright test, so this project is
-    // scoped to that one file — it must NOT pick up the node:test files by
+    // globals). Only *.spec.js are Playwright tests, so this project is
+    // scoped to those two files — it must NOT pick up the node:test files by
     // matching the whole directory.
     {
       name: 'critics',
       testDir: './tests/critics',
-      testMatch: 'contract.spec.js',
+      testMatch: ['contract.spec.js', 'semantics.spec.js'],
       // serviceWorkers:'block' is required, not cosmetic: sw.js registers and
       // then makes its own fetches from the worker execution context, which
       // page.routeFromHAR (page-scoped) cannot see. Those requests fall
@@ -45,12 +45,13 @@ module.exports = defineConfig({
       // fixes 11/11 units getting stuck on "Loading...".
       use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
       // Serial, not parallel: CAPTURE mode does a read-modify-write on the
-      // SHARED docs/redesign/error-baseline.json (each test merges its own
-      // unit's signatures into the same file). fullyParallel:true at the top
-      // level would let workers race that file and silently drop each
-      // other's writes — exactly the "silent failure" this project's own
-      // engineering principle #1 warns against. Each unit's own contract
-      // file has no such risk (one file per unit), but the shared baseline
+      // SHARED docs/redesign/error-baseline.json and semantics-baseline.json
+      // (each test merges its own unit's findings into the same file).
+      // fullyParallel:true at the top level would let workers race those
+      // files and silently drop each other's writes — exactly the "silent
+      // failure" this project's own engineering principle #1 warns against.
+      // Each unit's own contract file has no such risk (one file per unit),
+      // but the shared baseline
       // does, so the whole project runs serially.
       fullyParallel: false,
     },

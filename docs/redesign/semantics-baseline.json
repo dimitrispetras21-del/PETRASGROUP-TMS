@@ -1,0 +1,90 @@
+{
+  "pnlLeaks": {
+    "audit": {
+      "audit_trail": [],
+      "metrics_audit": []
+    },
+    "daily_ops": {
+      "daily_ops": []
+    },
+    "dashboard": {
+      "dashboard": []
+    },
+    "entity": {
+      "clients": [],
+      "drivers": [],
+      "partners": [],
+      "trailers": [],
+      "trucks": [],
+      "workshops": []
+    },
+    "locations": {
+      "locations": []
+    },
+    "maintenance": {
+      "maint_dash": [],
+      "maint_expiry": [],
+      "maint_req": [],
+      "maint_svc": []
+    },
+    "orders_intl": {
+      "orders_intl": []
+    },
+    "orders_natl": {
+      "orders_natl": []
+    },
+    "pallets": {
+      "pallet_ledger": []
+    },
+    "weekly_intl": {
+      "weekly_intl": []
+    },
+    "weekly_natl": {
+      "weekly_natl": []
+    }
+  },
+  "zeroSuspects": {
+    "audit": {
+      "audit_trail": 0,
+      "metrics_audit": 5
+    },
+    "daily_ops": {
+      "daily_ops": 0
+    },
+    "dashboard": {
+      "dashboard": 0
+    },
+    "entity": {
+      "clients": 0,
+      "drivers": 0,
+      "partners": 0,
+      "trailers": 0,
+      "trucks": 0,
+      "workshops": 4
+    },
+    "locations": {
+      "locations": 0
+    },
+    "maintenance": {
+      "maint_dash": 0,
+      "maint_expiry": 0,
+      "maint_req": 0,
+      "maint_svc": 14
+    },
+    "orders_intl": {
+      "orders_intl": 0
+    },
+    "orders_natl": {
+      "orders_natl": 0
+    },
+    "pallets": {
+      "pallet_ledger": 0
+    },
+    "weekly_intl": {
+      "weekly_intl": 0
+    },
+    "weekly_natl": {
+      "weekly_natl": 0
+    }
+  }
+}
