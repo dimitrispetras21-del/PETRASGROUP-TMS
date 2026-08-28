@@ -777,7 +777,7 @@ function _opsPrint() {
       td{padding:6px 10px;border-bottom:1px solid #E2E8F0;font-size:11px}
       .sec{background:#0B1929;color:#C4CFDB;padding:6px 12px;font-size:9px;
         font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border-radius:6px 6px 0 0;
-        border-left:3px solid #0284C7;margin-top:12px}
+        border-left:3px solid #027BBD;margin-top:12px}
       .ops-toolbar,.btn,.ops-alert,.ops-kpis{display:none!important}
       input,select,button{display:none}
       @media print{body{padding:10px}table{page-break-inside:auto}}

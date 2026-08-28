@@ -111,10 +111,10 @@
   --panel-text:   #F1F5F9;
   --panel-dim:    #94A3B8;
 
-  --accent:       #0284C7;
+  --accent:       #027BBD;
   --accent-hover: #0369A1;
-  --accent-light: rgba(2,132,199,0.10);
-  --accent-glow:  rgba(2,132,199,0.20);
+  --accent-light: rgba(2,123,189,0.10);
+  --accent-glow:  rgba(2,123,189,0.20);
   /* Τα τρία σημασιολογικά είναι ΓΙΑ ΚΕΙΜΕΝΟ ΣΕ ΦΩΤΕΙΝΟ. Μετρήθηκαν 2026-08-05
      πάνω στο πραγματικό --bg #F4F6F9 και δύο απ' τα τρία έπεφταν έξω:
        --success #059669 → 3.48    --warning #D97706 → 2.94
@@ -190,7 +190,7 @@
   --shadow:    0 4px 8px rgba(15,23,42,0.06), 0 2px 4px rgba(15,23,42,0.04);
   --shadow-md: 0 8px 16px rgba(15,23,42,0.08), 0 4px 6px rgba(15,23,42,0.04);
   --shadow-lg: 0 16px 32px rgba(15,23,42,0.10), 0 8px 12px rgba(15,23,42,0.06);
-  --shadow-focus: 0 0 0 3px rgba(2,132,199,0.25);
+  --shadow-focus: 0 0 0 3px rgba(2,123,189,0.25);
 
   /* ═══ Motion ═══ */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -250,8 +250,7 @@
 
   /* Κατάσταση φόρμας. Το error δείχνει στο --danger-strong, που το αρχείο έχει
      ήδη μετρήσει (5,73:1 πάνω στο ίδιο του το γέμισμα). Το focus δείχνει στο
-     --accent και ΔΕΝ εισάγει δεύτερο μπλε: η διαφορά Figma/κώδικα στο accent
-     (#027BBD vs #0284C7) είναι ξεχωριστή απόφαση, βλ. DECISION_LOG 28/8. */
+     --accent, οπότε ακολουθεί αυτόματα κάθε μελλοντική αλλαγή του. */
   --border-focus:       var(--accent);
   --border-error:       var(--danger-strong);
   --text-error:         var(--danger-strong);
@@ -584,7 +583,7 @@ body {
   height: var(--header-h);
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 0 0 rgba(2,132,199,0.10);
+  box-shadow: 0 1px 0 0 rgba(2,123,189,0.10);
   display: flex;
   align-items: center;
   padding: 0 28px;
@@ -734,7 +733,7 @@ body {
 }
 .notif-icon.danger { background: rgba(239,68,68,0.1); color: #EF4444; }
 .notif-icon.warn { background: rgba(245,158,11,0.1); color: #F59E0B; }
-.notif-icon.info { background: rgba(2,132,199,0.1); color: #0284C7; }
+.notif-icon.info { background: rgba(2,123,189,0.1); color: #027BBD; }
 .notif-body { flex: 1; min-width: 0; }
 .notif-title { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
 .notif-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
@@ -784,7 +783,7 @@ body {
   font-weight: 700;
   font-size: var(--text-sm);
   letter-spacing: 1px;
-  color: rgba(2,132,199,0.4);
+  color: rgba(2,123,189,0.4);
 }
 
 /* ═══════════════════════════════════════════════
@@ -833,7 +832,7 @@ body {
   padding: 16px 20px;
   transition: box-shadow 0.2s;
 }
-.kpi-card:hover { box-shadow: 0 4px 20px rgba(2,132,199,0.15); }
+.kpi-card:hover { box-shadow: 0 4px 20px rgba(2,123,189,0.15); }
 
 .kpi-label {
   font-size: var(--text-sm);
@@ -938,7 +937,7 @@ body {
 }
 .btn-ghost:hover:not(:disabled) {
   background: var(--accent-light);
-  border-color: rgba(2,132,199,0.25);
+  border-color: rgba(2,123,189,0.25);
   color: var(--accent);
 }
 
@@ -1442,8 +1441,8 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .entity-table-wrap tbody tr:last-child td { border-bottom: none; }
 .entity-table-wrap tbody tr:hover   { background: var(--bg-hover); }
-.entity-table-wrap tbody tr.selected { background: rgba(2,132,199,0.08); }
-.entity-table-wrap tbody tr.selected td { color: var(--text); border-color: rgba(2,132,199,0.12); }
+.entity-table-wrap tbody tr.selected { background: rgba(2,123,189,0.08); }
+.entity-table-wrap tbody tr.selected td { color: var(--text); border-color: rgba(2,123,189,0.12); }
 
 /* Detail panel */
 .detail-header {
@@ -1592,7 +1591,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .btn-new-order:hover {
   background: var(--accent);
-  border-color: rgba(2,132,199,0.40);
+  border-color: rgba(2,123,189,0.40);
   color: #fff;
 }
 .btn-scan {
@@ -1601,7 +1600,7 @@ tbody tr:hover { background: var(--bg-hover); }
   gap: 7px;
   padding: 8px 14px;
   background: transparent;
-  border: 1px solid rgba(2,132,199,0.30);
+  border: 1px solid rgba(2,123,189,0.30);
   border-radius: var(--radius-md);
   font-family: 'DM Sans', sans-serif;
   font-size: var(--text-sm);
@@ -1614,7 +1613,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .btn-scan:hover {
   background: var(--accent-light);
-  border-color: rgba(2,132,199,0.50);
+  border-color: rgba(2,123,189,0.50);
 }
 
 /* ═══════════════════════════════════════════════
@@ -1656,8 +1655,8 @@ tbody tr:hover { background: var(--bg-hover); }
   margin-bottom: -2px; display: flex; align-items: center; gap: 8px;
   font-size: var(--text-body); color: var(--text-dim); white-space: nowrap; transition: all 0.15s;
 }
-.pu-tab:hover { color: #0284C7; }
-.pu-tab.active { color: #0284C7; border-bottom-color: #0284C7; font-weight: 600; }
+.pu-tab:hover { color: #027BBD; }
+.pu-tab.active { color: #027BBD; border-bottom-color: #027BBD; font-weight: 600; }
 .pu-tab.done { color: #10B981; }
 .pu-tab.done .pu-tab-num { background: #10B981; color: #fff; }
 .pu-tab-num {
@@ -1665,7 +1664,7 @@ tbody tr:hover { background: var(--bg-hover); }
   display: flex; align-items: center; justify-content: center;
   font-size: var(--text-xs); font-weight: 700; color: var(--text-dim);
 }
-.pu-tab.active .pu-tab-num { background: #0284C7; color: #fff; }
+.pu-tab.active .pu-tab-num { background: #027BBD; color: #fff; }
 .pu-tab-type { font-size: 10px; color: #94A3B8; }
 
 .pu-body { padding: 24px; }
@@ -1675,7 +1674,7 @@ tbody tr:hover { background: var(--bg-hover); }
   text-align: center; cursor: pointer; transition: all 0.2s;
 }
 .pu-upload-zone:hover, .pu-upload-zone.drag-over {
-  border-color: #0284C7; background: rgba(2,132,199,0.04);
+  border-color: #027BBD; background: rgba(2,123,189,0.04);
 }
 .pu-upload-icon { font-size: 32px; margin-bottom: 8px; }
 .pu-upload-text { font-size: var(--text-base); color: #334155; font-weight: 500; }
@@ -1684,7 +1683,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .pu-file-preview {
   display: flex; align-items: center; gap: 8px; padding: 8px 12px;
   background: #F0F9FF; border-radius: var(--radius); margin-top: 12px;
-  font-size: var(--text-body); color: #0284C7;
+  font-size: var(--text-body); color: #027BBD;
 }
 .pu-file-preview .btn-sm { padding: 2px 8px; font-size: var(--text-sm); }
 
@@ -1694,7 +1693,7 @@ tbody tr:hover { background: var(--bg-hover); }
   display: flex; align-items: center; gap: 8px; padding: 12px;
   border-radius: var(--radius); margin-top: 12px; font-size: var(--text-body);
 }
-.pu-status.loading { background: #F0F9FF; color: #0284C7; }
+.pu-status.loading { background: #F0F9FF; color: #027BBD; }
 .pu-status.error { background: #FEF2F2; color: #DC2626; }
 
 .pu-balance-row { text-align: center; margin-bottom: 20px; }
@@ -1703,7 +1702,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 .pu-balance-num.positive { color: #10B981; }
 .pu-balance-num.negative { color: #EF4444; }
-.pu-balance-num.zero { color: #0284C7; }
+.pu-balance-num.zero { color: #027BBD; }
 .pu-balance-desc { font-size: var(--text-body); color: var(--text-dim); margin-top: 4px; }
 
 .pu-form-grid {
@@ -1716,7 +1715,7 @@ tbody tr:hover { background: var(--bg-hover); }
   font-size: var(--text-body); font-family: 'DM Sans', sans-serif;
 }
 .pu-field input:focus, .pu-field select:focus, .pu-field textarea:focus {
-  outline: none; border-color: #0284C7; box-shadow: 0 0 0 3px rgba(2,132,199,0.1);
+  outline: none; border-color: #027BBD; box-shadow: 0 0 0 3px rgba(2,123,189,0.1);
 }
 
 .pu-toggle-label {
@@ -2038,11 +2037,11 @@ tbody tr:hover { background: var(--bg-hover); }
 /* row */
 .wi-row { border-top:1px solid var(--border); display:flex; flex-direction:column; position:relative; }
 .wi-row::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; }
-.wi-row.s-ok::before          { background:#0284C7; }
+.wi-row.s-ok::before          { background:#027BBD; }
 .wi-row.s-partner::before     { background:#059669; }
 .wi-row.s-unassigned::before  { background:#EF4444; }
 .wi-row.s-overdue::before     { background:#EF4444; }
-.wi-row.s-ok          { background:rgba(2,132,199,0.02); }
+.wi-row.s-ok          { background:rgba(2,123,189,0.02); }
 .wi-row.s-partner     { background:rgba(5,150,105,0.02); }
 .wi-row.s-unassigned  { background:rgba(239,68,68,0.02); }
 .wi-row.s-overdue     { background:rgba(239,68,68,0.02); }
@@ -2401,7 +2400,7 @@ tbody tr:hover { background: var(--bg-hover); }
 /* GRP μέλη (owner 12/8): αναδίπλωση στο ×N badge, ένα line ανά order.
    Grid ώστε φορτώσεις/βέλη/παραδόσεις να στοιχίζονται μεταξύ των μελών. */
 .wk3-gm{display:grid;grid-template-columns:16px minmax(0,1.25fr) 14px minmax(0,1fr) auto;gap:6px;align-items:baseline;cursor:pointer;color:var(--text-mid,#475569)}
-.wk3-gm:hover{color:var(--accent,#0284C7)}
+.wk3-gm:hover{color:var(--accent,#027BBD)}
 .wk3-gmc{min-width:0}
 .wk3-gmp{font-weight:800;white-space:nowrap}
 .wk3-gmn{display:inline-block;flex-shrink:0;width:13px;height:13px;border-radius:50%;background:#0F172A;color:#fff;font-size:8.5px;font-weight:800;text-align:center;line-height:13px}
@@ -2464,7 +2463,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-sech .s{font-size:10.5px;color:var(--text-dim)}
 .wn3-add{margin-left:auto;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--accent);
   background:var(--accent-light);border:none;border-radius:6px;padding:4px 11px;cursor:pointer}
-.wn3-add:hover{background:rgba(2,132,199,.18)}
+.wn3-add:hover{background:rgba(2,123,189,.18)}
 .wn3-lempty{padding:9px 14px;font-size:11px;color:var(--text-dim);background:var(--bg);border-bottom:1px solid var(--border)}
 .wn3-lrow{display:grid;grid-template-columns:44px 200px minmax(0,1fr);border-bottom:1px solid var(--border);background:#fff}
 .wn3-lrow:hover{background:var(--accent-light)}
@@ -2484,7 +2483,7 @@ tbody tr:hover { background: var(--bg-hover); }
 .wn3-lmoves .mv .rm:hover{color:var(--danger);background:rgba(220,38,38,.08);opacity:1}
 .wn3-addst{font-family:inherit;font-size:9.5px;font-weight:700;color:var(--text-dim);background:none;
   border:1px dashed var(--border-mid);border-radius:5px;padding:2px 8px;cursor:pointer;margin-top:2px}
-.wn3-addst:hover{color:var(--accent);border-color:rgba(2,132,199,.4)}
+.wn3-addst:hover{color:var(--accent);border-color:rgba(2,123,189,.4)}
 /* chips σύνδεσης — και οι δύο κατευθύνσεις (Δ6) */
 .wn3-chip{font-family:inherit;font-size:9px;font-weight:700;border-radius:4px;padding:1px 6px;white-space:nowrap;
   border:none;flex-shrink:0}
@@ -2498,7 +2497,7 @@ tbody tr:hover { background: var(--bg-hover); }
    αποτέλεσμα (1 παραγγελία vs 1 ανά πελάτη). Εμφανίζεται ΜΟΝΟ σε δημιουργία. */
 .nf-mode{flex:1;min-width:250px;display:flex;align-items:flex-start;gap:10px;cursor:pointer;
   border:1px solid var(--border-mid);border-radius:var(--radius);padding:11px 13px;background:#fff}
-.nf-mode:hover{border-color:rgba(2,132,199,.35);background:var(--accent-light)}
+.nf-mode:hover{border-color:rgba(2,123,189,.35);background:var(--accent-light)}
 .nf-mode.on{border-color:var(--accent);background:var(--accent-light);box-shadow:0 0 0 2px var(--accent-glow)}
 .nf-mode input{width:15px;height:15px;margin-top:2px;flex-shrink:0}
 .nf-mode span{display:flex;flex-direction:column;gap:2px}
@@ -2508,7 +2507,7 @@ tbody tr:hover { background: var(--bg-hover); }
 
 /* Φέτα 3 (Δ11): μετρητής ουράς Pick Ups — μπλε, οδηγεί εκτός σελίδας */
 .wn3 .wk3-t.queue,.wn3 .wk3-t.queue b{color:var(--accent)}
-.wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,132,199,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}
+.wn3 .wk3-t.queue{cursor:pointer;border-bottom:1px dashed rgba(2,123,189,.5);background:none;border-top:none;border-left:none;border-right:none;font:inherit;padding:0}
 /* drop target για το drag-ταίριασμα ανόδου σε κάθοδο */
 .wn3 .wk3-leg.dh{outline:2px dashed var(--accent);outline-offset:-2px;background:var(--accent-light)}
 /* κενό σκέλος ανόδου = σκούρο πεδίο, όπως το bgap του intl */
@@ -2749,11 +2748,11 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
   cursor:pointer; font-family:'Syne',sans-serif; transition:all .15s; }
 .ramp-day-btn:hover { background:var(--bg-hover); }
 .ramp-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
-  box-shadow:0 2px 8px rgba(2,132,199,0.25); }
+  box-shadow:0 2px 8px rgba(2,123,189,0.25); }
 .ramp-date-inp { padding:6px 10px; font-size:var(--text-xs); border-radius:var(--radius-md);
   border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; }
-.ramp-date-inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
+.ramp-date-inp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,123,189,0.15); }
 
 /* KPIs — dark navy */
 .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -2810,7 +2809,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 .ramp-t select.tinp { padding:4px 6px; font-size:var(--text-xs); border:1px solid var(--border-mid);
   border-radius:var(--radius); background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; }
-.ramp-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
+.ramp-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,123,189,0.15); }
 .ramp-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
 
 /* sub-rows */
@@ -2847,7 +2846,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
   transition:all .15s; }
 .ops-day-btn:hover { background:var(--bg-hover); }
 .ops-day-btn.active { background:var(--accent); color:#fff; border-color:var(--accent);
-  box-shadow:0 2px 8px rgba(2,132,199,0.25); }
+  box-shadow:0 2px 8px rgba(2,123,189,0.25); }
 
 /* KPI cards — dark navy */
 .ops-kpis { display:flex; gap:10px; margin-bottom:14px; flex-wrap:wrap; }
@@ -2917,11 +2916,11 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 .ops-t select.tinp { padding:4px 6px; font-size:var(--text-xs); border:1px solid var(--border-mid);
   border-radius:var(--radius); background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; cursor:pointer; max-height:200px; }
-.ops-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
+.ops-t select.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,123,189,0.15); }
 .ops-t input.tinp { padding:4px 8px; font-size:var(--text-xs); border:1px solid var(--border-mid);
   border-radius:var(--radius); background:var(--bg-card); color:var(--text); outline:none;
   font-family:'DM Sans',sans-serif; width:60px; }
-.ops-t input.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,132,199,0.15); }
+.ops-t input.tinp:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,123,189,0.15); }
 .ops-empty td { text-align:center; color:var(--text-dim); font-style:italic; padding:20px !important; }
 
 /* ═══════════════════════════════════════════════
@@ -3647,7 +3646,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
   .wi-card-bot { color: #444 !important; opacity: 1 !important; }
 
   /* Status-specific left borders for print */
-  .wi-card-ok  { border-left-color: #0284C7 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .wi-card-ok  { border-left-color: #027BBD !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .wi-card-bp  { border-left-color: #059669 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .wi-card-cl  { border-left-color: #0D9488 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
   .wi-card-un  { border-left-color: #DC2626 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -3741,7 +3740,7 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 
 /* Focus indicators for keyboard navigation */
 :focus-visible {
-  outline: 2px solid var(--accent, #0284C7);
+  outline: 2px solid var(--accent, #027BBD);
   outline-offset: 2px;
 }
 .sidebar .nav-item:focus-visible { outline-color: #38BDF8; }
@@ -3832,7 +3831,7 @@ button.sidebar-toggle {
   border-radius: var(--radius-sm);
   color: var(--text-mid);
 }
-.cmdk-item.selected .cmdk-ico { background: rgba(2,132,199,0.15); color: var(--accent); }
+.cmdk-item.selected .cmdk-ico { background: rgba(2,123,189,0.15); color: var(--accent); }
 .cmdk-title {
   flex: 1;
   font-size: var(--text-sm);
@@ -5186,7 +5185,7 @@ button.dash-kpi:focus-visible {
      σε κείμενο μεταφέρθηκαν στο --ceo-text-dim. */
   --ceo-text-faint: #475569;
   --ceo-accent: #38BDF8;
-  --ceo-accent-deep: #0284C7;
+  --ceo-accent-deep: #027BBD;
   --ceo-accent-soft: rgba(56,189,248,0.12);
   --ceo-ok: #34D399;
   --ceo-ok-soft: rgba(16,185,129,0.15);
@@ -6254,7 +6253,7 @@ button.dash-kpi:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: linear-gradient(135deg, #0B1929 0%, #0284C7 100%);
+  background: linear-gradient(135deg, #0B1929 0%, #027BBD 100%);
   color: #fff;
   height: 36px;
   padding: 0 16px;
@@ -6264,7 +6263,7 @@ button.dash-kpi:focus-visible {
   letter-spacing: 0.2px;
   cursor: pointer;
   transition: filter 0.15s, transform 0.05s;
-  box-shadow: 0 1px 3px rgba(2, 132, 199, 0.18);
+  box-shadow: 0 1px 3px rgba(2, 123, 189, 0.18);
 }
 .tms-btn:hover, .btn-primary:hover, .btn-new-order:hover, .btn-new-entry:hover {
   filter: brightness(1.08);
@@ -6280,10 +6279,10 @@ button.dash-kpi:focus-visible {
   justify-content: center;
   gap: 8px;
   background: #fff;
-  color: #0284C7;
+  color: #027BBD;
   height: 36px;
   padding: 0 16px;
-  border: 1px solid #0284C7;
+  border: 1px solid #027BBD;
   border-radius: var(--radius-md);
   font: 600 13px/1 'DM Sans', sans-serif;
   letter-spacing: 0.2px;
@@ -6291,7 +6290,7 @@ button.dash-kpi:focus-visible {
   transition: background 0.15s;
 }
 .tms-btn-outline:hover, .btn-scan:hover {
-  background: rgba(2, 132, 199, 0.06);
+  background: rgba(2, 123, 189, 0.06);
 }
 
 /* ── C. Page header — consistent H1 + subtitle + actions row ── */
@@ -6453,8 +6452,8 @@ button.dash-kpi:focus-visible {
   font: 600 10px 'DM Sans', sans-serif;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background: rgba(2,132,199,0.10);
-  color: #0284C7;
+  background: rgba(2,123,189,0.10);
+  color: #027BBD;
   margin-left: 6px;
 }
 
@@ -6480,7 +6479,7 @@ button.dash-kpi:focus-visible {
   border-color: var(--border);
 }
 .notif-btn-ghost:hover { background: var(--bg-hover); color: var(--text); }
-.notif-item.grouped { background: rgba(2,132,199,0.04); }
+.notif-item.grouped { background: rgba(2,123,189,0.04); }
 .notif-children .notif-child:hover { background: var(--bg-hover); border-radius: var(--radius-sm); }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -6557,7 +6556,7 @@ button.dash-kpi:focus-visible {
   flex-wrap: wrap;
 }
 .aic-upload-pending .pill {
-  background: rgba(2,132,199,0.10);
+  background: rgba(2,123,189,0.10);
   color: var(--accent);
   font-size: var(--text-xs);
   padding: 3px 8px;

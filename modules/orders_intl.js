@@ -542,7 +542,7 @@ function selectIntlOrder(recId) {
             const active = i === currentIdx;
             const col = done ? 'var(--accent)' : '#1E293B';
             return `<div style="display:flex;align-items:center;gap:0">
-              <div style="width:${active?'10':'8'}px;height:${active?'10':'8'}px;border-radius:50%;background:${done?col:'transparent'};border:2px solid ${col};flex-shrink:0${active?';box-shadow:0 0 0 3px rgba(2,132,199,0.2)':''}"></div>
+              <div style="width:${active?'10':'8'}px;height:${active?'10':'8'}px;border-radius:50%;background:${done?col:'transparent'};border:2px solid ${col};flex-shrink:0${active?';box-shadow:0 0 0 3px rgba(2,123,189,0.2)':''}"></div>
               <div style="font-size:9px;color:${done?'var(--accent)':'#475569'};font-weight:${active?'700':'400'};margin:0 2px;white-space:nowrap">${st}</div>
               ${i<arr.length-1?`<div style="width:12px;height:2px;background:${i<currentIdx?'var(--accent)':'#1E293B'};flex-shrink:0"></div>`:''}
             </div>`;
@@ -561,7 +561,7 @@ function selectIntlOrder(recId) {
         ${_dF('Gross Weight', f['Gross Weight kg']?escapeHtml(f['Gross Weight kg'])+' kg':'—')}
         ${_dF('Pallet Exch.', f['Pallet Exchange']?'✓ Yes':'No')}
         ${f['Pallet Exchange'] ? `
-        <div style="margin:8px 0;padding:8px;background:rgba(2,132,199,0.08);border-radius:6px;border:1px solid rgba(2,132,199,0.15)">
+        <div style="margin:8px 0;padding:8px;background:rgba(2,123,189,0.08);border-radius:6px;border:1px solid rgba(2,123,189,0.15)">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
             <span style="font-weight:600;font-size:11px;color:var(--accent)">PALLET SHEETS</span>
             <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">

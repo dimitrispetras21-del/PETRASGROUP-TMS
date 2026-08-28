@@ -689,7 +689,7 @@ function _grpPreview() {
   const tot = g.reduce((s,x)=>s+x.stops.reduce((a,y)=>a+(y.pallets||0),0),0);
   const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:#B45309' : 'color:var(--text-mid)');
   box.innerHTML = !g.length ? '' : `
-    <div style="border:1px dashed rgba(2,132,199,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
+    <div style="border:1px dashed rgba(2,123,189,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
       <div style="font-size:11.5px;font-weight:700;color:var(--accent);margin-bottom:7px">
         ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
       ${g.map(x=>`<div style="font-size:11.5px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}

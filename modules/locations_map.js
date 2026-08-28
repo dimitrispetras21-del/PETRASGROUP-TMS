@@ -23,7 +23,7 @@ const LMAP = {
 };
 
 const LMAP_CATS = {
-  client:   { label: 'Πελάτες',               color: '#0284C7' },
+  client:   { label: 'Πελάτες',               color: '#027BBD' },
   hub:      { label: 'Αποθήκες / Cross-dock', color: '#7C3AED' },
   workshop: { label: 'Συνεργεία',             color: '#DC2626' },
   customs:  { label: 'Τελωνεία',              color: '#F59E0B' },
@@ -33,7 +33,7 @@ const LMAP_CATS = {
   unknown:  { label: 'Αταξινόμητα',           color: '#94A3B8' },
 };
 
-const LMAP_CLI_COLORS = ['#0284C7','#DC2626','#7C3AED','#F59E0B','#059669','#DB2777',
+const LMAP_CLI_COLORS = ['#027BBD','#DC2626','#7C3AED','#F59E0B','#059669','#DB2777',
   '#0891B2','#CA8A04','#4F46E5','#B91C1C','#15803D','#9333EA'];
 
 // ── Lazy load Leaflet ──────────────────────────
@@ -485,8 +485,8 @@ function _lmapSetCenter(la, lo) {
   S.center = [la, lo];
   if (LMAP.circle) LMAP.map.removeLayer(LMAP.circle);
   if (LMAP.cMark) LMAP.map.removeLayer(LMAP.cMark);
-  LMAP.circle = L.circle([la, lo], { radius: S.radiusKm * 1000, color: '#0284C7', weight: 2,
-    fillColor: '#0284C7', fillOpacity: 0.06, dashArray: '6 5' }).addTo(LMAP.map);
+  LMAP.circle = L.circle([la, lo], { radius: S.radiusKm * 1000, color: '#027BBD', weight: 2,
+    fillColor: '#027BBD', fillOpacity: 0.06, dashArray: '6 5' }).addTo(LMAP.map);
   LMAP.cMark = L.marker([la, lo], { icon: L.divIcon({ className: '', iconSize: [18, 18],
     iconAnchor: [9, 9], html: '<div class="lmap-ctr"><i></i><b></b></div>' }) }).addTo(LMAP.map);
   LMAP.map.fitBounds(LMAP.circle.getBounds(), { padding: [40, 40] });

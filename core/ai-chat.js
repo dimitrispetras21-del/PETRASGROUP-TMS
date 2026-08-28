@@ -203,7 +203,7 @@ function _aicPageContext() {
 .aic-btn { position:fixed; bottom:24px; right:24px; z-index:var(--z-float);
   width:52px; height:52px; border-radius:50%; border:none;
   background:var(--accent); color:#fff; cursor:pointer;
-  box-shadow:0 4px 16px rgba(2,132,199,0.35);
+  box-shadow:0 4px 16px rgba(2,123,189,0.35);
   display:flex; align-items:center; justify-content:center;
   transition:all var(--duration-base, .2s) var(--ease-out, ease); }
 .aic-btn:hover { background:var(--accent-hover, #0369A1); transform:scale(1.08); }

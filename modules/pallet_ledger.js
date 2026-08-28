@@ -295,11 +295,11 @@ function _plvDraw() {
       .plv-pill-ok{background:#DCFCE7;color:#15803D}
       .plv-pill-rev{background:#E2E8F0;color:#475569}
       .plv-card{cursor:pointer;transition:box-shadow .15s,border-color .15s}
-      .plv-card:hover{border-color:var(--accent,#0284C7);box-shadow:0 2px 10px rgba(2,132,199,.18)}
+      .plv-card:hover{border-color:var(--accent,#027BBD);box-shadow:0 2px 10px rgba(2,123,189,.18)}
       /* Ιεραρχία με τυπογραφία + διακριτικό φόντο, όχι πλαίσια: Syne στον
          πελάτη, αχνό υπο-επίπεδο σημείου, DM Sans στις κινήσεις. */
-      .plv-ghead{display:flex;align-items:center;gap:6px;background:rgba(2,132,199,.06);border-radius:8px;padding:8px 12px;margin:12px 0 2px;cursor:pointer;user-select:none}
-      .plv-ghead:hover{background:rgba(2,132,199,.11)}
+      .plv-ghead{display:flex;align-items:center;gap:6px;background:rgba(2,123,189,.06);border-radius:8px;padding:8px 12px;margin:12px 0 2px;cursor:pointer;user-select:none}
+      .plv-ghead:hover{background:rgba(2,123,189,.11)}
       .plv-gname{font-family:Syne;font-size:14.5px;font-weight:700}
       .plv-gsum{margin-left:auto;font-size:12px;color:var(--panel-dim);white-space:nowrap}
       .plv-gsub{font-size:12px;font-weight:600;color:var(--panel-dim);padding:8px 12px 2px 30px}

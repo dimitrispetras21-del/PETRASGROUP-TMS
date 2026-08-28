@@ -2443,7 +2443,7 @@ function _wiRotaRender(){
     return `<div style="border:1px solid var(--border,#D6DDE6);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
       <div><div style="font-weight:800;font-size:12.5px">${(_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'—').split(',')[0]))}</div>
         <div style="font-size:11px;color:#475569;margin-top:2px">${f['Reference']?`Ref <b>${escapeHtml(String(f['Reference']))}</b> · `:''}<b>${f['Total Pallets']||0} παλ</b> · ${(_wiClean(f['Loading Summary']||'—'))} → ${(_wiClean(f['Delivery Summary']||'—'))}</div></div>
-      <button style="font-size:10.5px;font-weight:800;color:#0284C7;border:1px solid #0284C7;background:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;white-space:nowrap" onclick="_wiRotaClose();_wk3Edit('${e.id}')">Επεξεργασία</button>
+      <button style="font-size:10.5px;font-weight:800;color:#027BBD;border:1px solid #027BBD;background:#fff;border-radius:7px;padding:5px 12px;cursor:pointer;white-space:nowrap" onclick="_wiRotaClose();_wk3Edit('${e.id}')">Επεξεργασία</button>
     </div>`;};
   const seqRow=(e,k)=>{const f=e.fields;
     return `<div style="display:grid;grid-template-columns:24px 1fr auto 52px;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid #E7EBF0;background:#fff">
@@ -2475,7 +2475,7 @@ function _wiRotaRender(){
       <div style="border-top:1px solid #E7EBF0;padding:12px 18px;display:flex;gap:10px;justify-content:flex-end">
         <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 14px;cursor:pointer;background:#fff;color:#B91C1C;border:1px solid rgba(185,28,28,.4);margin-right:auto" onclick="_wiRotaSplit()">Διάλυση ομάδας</button>
         <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#fff;color:#475569;border:1px solid #D6DDE6" onclick="_wiRotaClose()">Κλείσιμο</button>
-        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#0284C7;color:#fff;border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
+        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:#027BBD;color:#fff;border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
       </div>
     </div>`;
 }
