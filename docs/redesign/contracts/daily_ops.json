@@ -1,0 +1,50 @@
+{
+  "unit": "daily_ops",
+  "tier": 3,
+  "fields": [
+    "#",
+    "2Η ΚΑΡΤΑ",
+    "ΕΓΓΡΑΦΑ",
+    "ΕΚΤ. ΑΦΙΞΗ",
+    "ΕΝΕΡΓΕΙΕΣ",
+    "ΕΝΗΜΕΡΩΣΗ ΠΕΛΑΤΗ",
+    "ΘΕΡΜ.",
+    "ΟΔΗΓΟΣ",
+    "ΠΑΛΕΤΕΣ",
+    "ΠΑΡΑΔΟΣΗ",
+    "ΠΕΛΑΤΗΣ",
+    "ΠΡΟΚΑΤΑΒΟΛΗ €",
+    "ΦΟΡΤΗΓΟ",
+    "ΦΟΡΤΩΣΗ",
+    "ΦΩΤΟ CMR",
+    "ΩΡΑ"
+  ],
+  "actions": [
+    "Briefing",
+    "Fleet",
+    "Help",
+    "Print",
+    "Quick jump…⌘K",
+    "Sign out",
+    "Today",
+    "Unassigned",
+    "Undo",
+    "ΑΥΡΙΟ",
+    "Αναβολή",
+    "Ανανέωση",
+    "ΣΗΜΕΡΑ",
+    "Σε μεταφορά",
+    "◀"
+  ],
+  "endpoints": [
+    "GET tbl3vhUmzKDWhJynR",
+    "GET tbl7UGmYhc2Y82pPs",
+    "GET tblDcrqRJXzPrtYLm",
+    "GET tblEAPExIAjiA3asD",
+    "GET tblFWKAQVUzAM8mCE",
+    "GET tblLHl5m8bqONfhWv",
+    "GET tblaeY5QOHAS1gyE8",
+    "GET tblgHlNmLBH3JTdIM",
+    "GET tblxu8DRfTQOFRCzS"
+  ]
+}

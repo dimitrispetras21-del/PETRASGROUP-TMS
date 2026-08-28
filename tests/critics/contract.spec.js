@@ -13,6 +13,59 @@ const { preparePage, gotoPage } = require('./auth');
 const DIR = 'docs/redesign/contracts';
 const CAPTURE = process.env.CAPTURE === '1';
 
+// ── Critic #6 ratchet ────────────────────────────────────────────────────
+// WHY this exists: replaying a HAR is not the same runtime as a live
+// backend. Some console errors are baked into what got recorded regardless
+// of app correctness — e.g. weekly_natl hits /local_moves, which genuinely
+// 404s in PRODUCTION today (CLAUDE.md: "στο repo αλλά ΔΕΝ έχουν γίνει
+// deploy" — real behaviour, not a rig artifact); pallets and audit hit
+// endpoints (/pallets/gate, /app-errors) the recorded session never called,
+// so HAR replay's notFound:'abort' fails them the same way a genuinely
+// missing recording always does. Asserting zero console errors on top of
+// that would paint units red for reasons that have nothing to do with a
+// real regression in the unit's own code — and a suite that's always red
+// gets ignored, the exact failure mode that made docs/redesign/baseline.json
+// a ratchet instead of a hard zero for critics #3/#4. So #6 records what
+// was observed at CAPTURE time as a per-unit baseline (this file) and fails
+// only when a signature shows up that was NOT already there — a genuinely
+// NEW console error, which is the thing worth stopping on.
+const ERR_FILE = 'docs/redesign/error-baseline.json';
+
+// Console noise inherent to the test rig itself, not to any one unit — same
+// filter tests/e2e/smoke.spec.js already uses against the LIVE app.
+function stripRigNoise(errors) {
+  return errors.filter(e =>
+    !e.includes('presence') && !e.includes('favicon') && !/sentry/i.test(e));
+}
+
+// Collapse a raw error to a STABLE signature so the same underlying error
+// compares equal run after run: `?v=<timestamp>` cache-busts on every
+// deploy (CLAUDE.md's own ?v=TIMESTAMP convention), Airtable record ids
+// differ between HAR recordings, and week-relative ISO dates in filter URLs
+// (e.g. weekly_natl's local_moves query) shift with "today". Only the first
+// line is kept: a full stack trace's line/column numbers shift whenever
+// unrelated code in the same file changes, which would make the baseline
+// brittle for no benefit — the message line is what identifies the error.
+function normalizeError(raw) {
+  return raw
+    .split('\n')[0]
+    .replace(/\?v=\d+/g, '?v=X')
+    .replace(/\brec[A-Za-z0-9]{14,}\b/g, 'recXXXXX')
+    .replace(/\d{4}-\d{2}-\d{2}/g, 'YYYY-MM-DD')
+    .trim();
+}
+
+function readErrorBaseline() {
+  try { return JSON.parse(fs.readFileSync(ERR_FILE, 'utf8')); }
+  catch (e) { return {}; }
+}
+
+function writeErrorBaseline(baseline) {
+  const sorted = {};
+  for (const k of Object.keys(baseline).sort()) sorted[k] = baseline[k];
+  fs.writeFileSync(ERR_FILE, JSON.stringify(sorted, null, 2) + '\n');
+}
+
 // A "field" is any column header or labelled value the screen presents.
 // An "action" is anything the user can click that changes state.
 async function readContract(page, unit, baseURL) {
@@ -66,18 +119,29 @@ for (const unit of UNITS) {
     const now = await readContract(page, unit, baseURL);
     const file = path.join(DIR, `${unit.unit}.json`);
 
+    // Critic #6 signal — normalized + deduplicated so it's stable and
+    // comparable against docs/redesign/error-baseline.json either way.
+    const signatures = [...new Set(stripRigNoise(errors).map(normalizeError))].sort();
+
     if (CAPTURE) {
       fs.mkdirSync(DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify(now, null, 2) + '\n');
+
+      const baseline = readErrorBaseline();
+      baseline[unit.unit] = signatures;
+      writeErrorBaseline(baseline);
+
       expect(now.fields.length, `${unit.unit}: μηδέν πεδία — η οθόνη δεν φόρτωσε`)
         .toBeGreaterThan(0);
       return;
     }
 
-    // Critic #6 — same known-benign filter as tests/e2e/smoke.spec.js
-    const critical = errors.filter(e =>
-      !e.includes('presence') && !e.includes('favicon') && !/sentry/i.test(e));
-    expect(critical, `${unit.unit}: σφάλματα κονσόλας:\n${critical.join('\n')}`)
+    // Critic #6 — ratchet against the recorded baseline, not zero-tolerance.
+    // See the block above readErrorBaseline() for why.
+    const baseline = readErrorBaseline();
+    const known = new Set(baseline[unit.unit] || []);
+    const newErrors = signatures.filter(s => !known.has(s));
+    expect(newErrors, `${unit.unit}: ΝΕΑ σφάλματα κονσόλας (όχι στο baseline):\n${newErrors.join('\n')}`)
       .toHaveLength(0);
 
     const before = JSON.parse(fs.readFileSync(file, 'utf8'));

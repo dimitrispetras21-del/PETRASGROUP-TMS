@@ -44,6 +44,15 @@ module.exports = defineConfig({
       // Confirmed by a probe: identical run, only this option differs,
       // fixes 11/11 units getting stuck on "Loading...".
       use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
+      // Serial, not parallel: CAPTURE mode does a read-modify-write on the
+      // SHARED docs/redesign/error-baseline.json (each test merges its own
+      // unit's signatures into the same file). fullyParallel:true at the top
+      // level would let workers race that file and silently drop each
+      // other's writes — exactly the "silent failure" this project's own
+      // engineering principle #1 warns against. Each unit's own contract
+      // file has no such risk (one file per unit), but the shared baseline
+      // does, so the whole project runs serially.
+      fullyParallel: false,
     },
   ],
 });

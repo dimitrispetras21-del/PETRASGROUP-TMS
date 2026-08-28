@@ -1,0 +1,20 @@
+{
+  "audit": [
+    "Failed to load resource: net::ERR_FAILED",
+    "[TMS ERROR] auditTrail:fetch: Error: No session token. Sign in again."
+  ],
+  "daily_ops": [],
+  "dashboard": [],
+  "entity": [],
+  "locations": [],
+  "maintenance": [],
+  "orders_intl": [],
+  "orders_natl": [],
+  "pallets": [
+    "Failed to load resource: net::ERR_FAILED"
+  ],
+  "weekly_intl": [],
+  "weekly_natl": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

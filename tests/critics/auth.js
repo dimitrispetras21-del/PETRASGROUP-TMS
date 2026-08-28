@@ -11,8 +11,12 @@
 //   3. A cookie->localStorage bridge (see gotoPage below) so a critic can
 //      actually choose which screen renders.
 
-const path = require('path');
-const HAR = path.resolve('.har/tms.har');
+const { repair } = require('./repair-har');
+// Replay the REPAIRED copy, not the raw recording — see repair-har.js. Four
+// entries in tms.har never completed (status:-1); replaying them verbatim
+// feeds the app a corrupt response for a request that has a real, successful
+// duplicate later in the same recording. Task 5, job 2.
+const HAR = repair();
 
 async function preparePage(page, role = 'owner') {
   await page.addInitScript(r => {

@@ -1,0 +1,43 @@
+{
+  "unit": "dashboard",
+  "tier": 3,
+  "fields": [
+    "PAL",
+    "ΗΛΙΚΙΑ",
+    "ΠΑΡΑΔΟΣΗ",
+    "ΠΕΛΑΤΗΣ / ΔΡΟΜΟΛΟΓΙΟ",
+    "ΦΟΡΤΙΟ"
+  ],
+  "actions": [
+    "1\n              \n                Παραγγελίες χωρίς φορτηγό — παράδοση σε 48 ώρες\n                ORDERS · ανοιχτές, χωρίς Truck και χωρίς Partner · η πρώτη λήγει 30/08",
+    "22\n              \n                Ληγμένα έγγραφα στόλου\n                Φορτηγά + ρυμούλκες · σε 18 οχήματα",
+    "3\n              \n                Φορτώσεις σήμερα — 2 χωρίς φορτηγό\n                ORDERS · ημερομηνία φόρτωσης = σήμερα",
+    "Briefing",
+    "Fleet",
+    "Help",
+    "Quick jump…⌘K",
+    "Sign out",
+    "Today",
+    "Unassigned",
+    "Undo",
+    "ΕΙΣΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ\n            14+367%\n            \n              ανοιχτές εισαγωγές W35\n              \n    \n      \n        \n        \n      \n    \n    \n    \n    \n  \n            \n            ORDERS·30 ημέρες·χωρίς φορτηγό",
+    "ΕΞΑΓΩΓΕΣ ΧΩΡΙΣ ΑΝΑΘΕΣΗ\n            27+200%\n            \n              ανοιχτές εξαγωγές W35\n              \n    \n      \n        \n        \n      \n    \n    \n    \n    \n  \n            \n            ORDERS·30 ημέρες·χωρίς φορτηγό",
+    "ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ\n            27km-79%\n            \n              μ.ό. 1 ζεύγους · έως 27km\n              \n    \n      \n        \n        \n      \n    \n    \n    \n    \n  \n            \n            ORDER_STOPS·W35·1/1 ζεύγη μετρήθηκαν",
+    "ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ\n            100%0%\n            \n              86/86 εμπρόθεσμες\n              \n    \n      \n        \n        \n      \n    \n    \n    \n    \n  \n            \n            ORDERS·30 ημέρες·δείγμα 86",
+    "ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ\n            32%-26%\n            \n              9/28 φορτηγά W35\n              \n    \n      \n        \n        \n      \n    \n    \n    \n    \n  \n            \n            ORDERS × TRUCKS·W35 ISO·φορτηγά με ανάθεση",
+    "⌘K Γρήγορες ενέργειες",
+    "◀"
+  ],
+  "endpoints": [
+    "GET tbl3vhUmzKDWhJynR",
+    "GET tbl7UGmYhc2Y82pPs",
+    "GET tblDcrqRJXzPrtYLm",
+    "GET tblEAPExIAjiA3asD",
+    "GET tblFWKAQVUzAM8mCE",
+    "GET tblLHl5m8bqONfhWv",
+    "GET tblVW42cZnfC47gTb",
+    "GET tblaeY5QOHAS1gyE8",
+    "GET tblgHlNmLBH3JTdIM",
+    "GET tblxu8DRfTQOFRCzS"
+  ]
+}
