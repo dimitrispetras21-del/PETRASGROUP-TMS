@@ -269,6 +269,11 @@
      το --space-1· το --text-2xs κάτω από το --text-xs, για badges. */
   --space-05: 2px;
   --text-2xs: 10px;
+
+  /* Ζώνες κεφαλίδας πίνακα — DESIGN.md ΜΕΡΟΣ Β: αντικαθιστά τα σκόρπια
+     F1F5F9/F0F9FF. Ίδια τιμή με το φόντο που το thead είχε ήδη ως ωμό hex
+     (γρ. ~1421)· τώρα το χρώμα έχει όνομα και σπίτι (κανόνας #1). */
+  --surface-sunken: #F0F5FA;
 }
 
 /* Tabular figures for all numeric cells */
@@ -1452,6 +1457,98 @@ tbody tr:hover { background: var(--bg-hover); }
 .entity-table-wrap tbody tr:hover   { background: var(--bg-hover); }
 .entity-table-wrap tbody tr.selected { background: rgba(2,123,189,0.08); }
 .entity-table-wrap tbody tr.selected td { color: var(--text); border-color: rgba(2,123,189,0.12); }
+
+/* ═══ Entity v2 — Κύμα 1 (Figma truck-overview 103:290), πρώτα τα trucks ═══
+   Μία μπάρα: τίτλος + πλήθος + φίλτρα + αναζήτηση + κύρια ενέργεια. Το παλιό
+   page-header και το stats strip κόστιζαν δύο σειρές που ο κανόνας #5
+   (≥20 γραμμές ορατές σε 1080p) δεν αντέχει — spec 2026-08-29 §3. */
+.entity-layout.entity-v2 {
+  /* Χωρίς page-header από πάνω: μόνο το top padding του .content (32px) και
+     44px αναπνοή κάτω — ίδιο κάτω άκρο με τις παλιές οθόνες, ώστε το AI FAB
+     να μην κάθεται πάνω στην τελευταία γραμμή. */
+  height: calc(100vh - var(--header-h) - 76px);
+}
+.ev2-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-6);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--silver-light);
+  flex-shrink: 0;
+}
+.ev2-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.ev2-count {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  margin-right: var(--space-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.entity-v2 .svc-filter {
+  background: var(--bg);
+  border: 1px solid var(--silver-light);
+  border-radius: var(--radius);
+  padding: 6px var(--space-3);
+  font-family: 'DM Sans', sans-serif;
+  font-size: var(--text-sm);
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+}
+.ev2-search {
+  background: var(--bg);
+  border: 1px solid var(--silver-light);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  font-family: 'DM Sans', sans-serif;
+  font-size: var(--text-body);
+  color: var(--text);
+  width: 230px;
+  outline: none;
+}
+.ev2-search::placeholder { color: var(--text-dim); }
+.ev2-search:focus,
+.entity-v2 .svc-filter:focus { border-color: var(--border-focus); }
+.ev2-new { margin-left: auto; white-space: nowrap; }
+
+/* Πίνακας v2: γραμμή 40px, διαχωριστικό --border-row, κεφαλίδα 13px στο
+   --surface-sunken. ΚΑΜΙΑ κοπή (κανόνας #6): το γενικό tbody td κόβει με
+   ellipsis/max-width — εδώ αναιρείται και η στήλη παίρνει το πλάτος της. */
+.entity-v2 .entity-table-wrap thead th {
+  background: var(--surface-sunken);
+  font-size: var(--text-body);
+  letter-spacing: 0;
+  color: var(--text-mid);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--silver-light);
+}
+.entity-v2 .entity-table-wrap tbody td {
+  height: 40px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border-row);
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+}
+/* Το mock έχει καθαρές λευκές γραμμές — η ζέβρα του παλιού πίνακα φεύγει. */
+.entity-v2 .entity-table-wrap tbody tr:nth-child(even) td { background: transparent; }
+.entity-v2 .entity-table-wrap tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
+.entity-v2 .entity-table-wrap tbody tr.selected { background: var(--accent-light); }
+.entity-v2 .entity-table-wrap tbody tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+/* Badge κατάστασης κατά το mock: ζεύγος --badge-ok (μετρημένο ≥4,5:1). */
+.entity-v2 .badge-green { background: var(--badge-ok-bg); color: var(--badge-ok-text); }
 
 /* Detail panel */
 .detail-header {

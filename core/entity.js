@@ -146,6 +146,18 @@ const ENTITY_CONFIG = {
     tableId: TABLES.TRUCKS,
     label: 'Trucks',
     labelSingle: 'Truck',
+    // Wave 1 (Figma truck-overview 103:290): one header bar, no stats strip,
+    // 40px rows. Per-entity flag so the other five screens keep the old path
+    // until their own turn — one screen at a time (plan 2026-08-29 §3).
+    v2: true,
+    titleV2: 'Φορτηγά',
+    countNoun: ['όχημα', 'οχήματα'],
+    // «Ενεργό» (vehicle), not the generic Active/Inactive — DESIGN.md ΜΕΡΟΣ Ε:
+    // the screen speaks Greek; the boolean stays untouched in the DB.
+    activeLabels: ['Ενεργό', 'Ανενεργό'],
+    // The mock's default state is «Κατάσταση: Ενεργός» pre-selected: the working
+    // set is the active fleet, inactive is one click away on the same chip.
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, μάρκα…',
@@ -324,9 +336,27 @@ async function renderEntity(entityKey) {
   const c = document.getElementById('content');
   c.innerHTML = showLoading();
 
-  const records = await atGet(cfg.tableId);
+  let records;
+  try {
+    records = await atGet(cfg.tableId);
+  } catch (e) {
+    if (cfg.v2) {
+      // Rule #7 (DESIGN.md): a failed load must never look like an empty
+      // table or an eternal skeleton. Old-path screens keep their current
+      // behaviour until each one's own redesign step.
+      c.innerHTML = showError('Η φόρτωση απέτυχε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.');
+      if (typeof logError === 'function') logError(e, 'entity list load');
+      return;
+    }
+    throw e;
+  }
 
   _entityState[entityKey] = { records, filtered: records, selected: null, q: '', filters: {} };
+  if (cfg.v2 && cfg.defaultFilters) {
+    for (const df of cfg.defaultFilters) {
+      _entityState[entityKey].filters[df.field] = { val: df.val, type: df.type };
+    }
+  }
 
   // Report the row count for every master-data page in one place. This is where
   // "36 trucks" comes from, while the Dashboard and Maintenance both say 27 —
@@ -362,6 +392,60 @@ async function renderEntity(entityKey) {
   const canEdit = can(cfg.perm) === 'full';
 
   const _i = n => (typeof icon === 'function') ? icon(n, 16) : '';
+
+  // Shared by both layouts. The selected-attr matters only when defaultFilters
+  // pre-set state (v2); on the old path it is always empty, output unchanged.
+  const _sel = (fi, v) => {
+    const cur = _entityState[entityKey].filters[fi.field];
+    return cur && cur.val === v ? 'selected' : '';
+  };
+  const filtersHTML = cfg.filters.map(fi => {
+    if (fi.type === 'bool' || fi.type === 'select') {
+      return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
+        ${fi.options.map(o => `<option value="${o.val}" ${_sel(fi, o.val)}>${fi.label}: ${o.label}</option>`).join('')}
+      </select>`;
+    } else if (fi.type === 'dynamic') {
+      const opts = dynamicOpts[fi.field] || [];
+      return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
+        <option value="">${fi.label}: Όλα</option>
+        ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
+      </select>`;
+    }
+    return '';
+  }).join('');
+
+  if (cfg.v2) {
+    // Wave 1 layout (Figma truck-overview 103:290): title, count, filters,
+    // search and the primary action live in ONE bar inside the list panel.
+    // The old page-header + stats strip cost two rows that rule #5
+    // (≥20 rows visible at 1080p) cannot afford — spec 2026-08-29 §3.
+    // Expiries live in the record card, never in the list (spec §3); the
+    // Έγγραφα filter chip stays because it already exists.
+    c.innerHTML = `
+    <div class="entity-layout entity-v2">
+      <div class="entity-list-panel">
+        <div class="ev2-bar">
+          <span class="ev2-title">${cfg.titleV2 || cfg.label}</span>
+          <span class="ev2-count" id="${entityKey}_count"></span>
+          ${filtersHTML}
+          <input class="ev2-search" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
+            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
+          ${canEdit ? `
+          <button class="btn btn-primary btn-sm ev2-new" onclick="openEntityCreate('${entityKey}')">
+            ${_i('plus')}
+            Νέα εγγραφή
+          </button>` : ''}
+        </div>
+        <div class="entity-table-wrap" id="${entityKey}_table"></div>
+      </div>
+      <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
+    </div>`;
+    // One shared path renders table + count, so the default filters are
+    // applied exactly the way a user's own click would apply them.
+    applyEntityFilters(entityKey);
+    return;
+  }
+
   c.innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
@@ -385,20 +469,7 @@ async function renderEntity(entityKey) {
             <input class="entity-search-input" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
               oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
           </div>
-          ${cfg.filters.map(fi => {
-            if (fi.type === 'bool' || fi.type === 'select') {
-              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
-                ${fi.options.map(o => `<option value="${o.val}">${fi.label}: ${o.label}</option>`).join('')}
-              </select>`;
-            } else if (fi.type === 'dynamic') {
-              const opts = dynamicOpts[fi.field] || [];
-              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-                <option value="">${fi.label}: Όλα</option>
-                ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
-              </select>`;
-            }
-            return '';
-          }).join('')}
+          ${filtersHTML}
           <span class="entity-count-chip" id="${entityKey}_count">${records.length}</span>
         </div>
         <div class="entity-table-wrap" id="${entityKey}_table">
@@ -866,7 +937,10 @@ function buildEntityTable(entityKey, records) {
     // Numeric cells render right-aligned (see the 'number' branch in the cell
     // renderer); the header did not, so every numeric column read as misaligned —
     // header hugging the left edge, values far right. Match the cell alignment.
-    const alignRight = c.type === 'number' || c.type === 'currency';
+    // v2: right-aligned are ONLY variable-length quantities (unit columns) and
+    // money — Year is a fixed 4-digit label and stays left (spec 2026-08-29 §3).
+    const alignRight = cfg.v2 ? (c.type === 'currency' || !!c.unit)
+                              : (c.type === 'number' || c.type === 'currency');
     return `<th style="cursor:pointer;user-select:none${alignRight?';text-align:right':''}" aria-sort="${ariaSort}" tabindex="0" role="button"
       onclick="entitySortToggle('${entityKey}',${i})"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
@@ -897,10 +971,15 @@ function buildEntityTable(entityKey, records) {
  */
 function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
   const f = r.fields;
+  const cfg = ENTITY_CONFIG[entityKey];
   const cells = cols.map(col => {
     const val = f[col.field];
     if (col.type === 'active') {
-      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? 'Active' : 'Inactive'}</span></td>`;
+      // v2 speaks Greek on screen (DESIGN.md ΜΕΡΟΣ Ε); the stored boolean and
+      // the old screens' English badge stay as they are until their own turn.
+      const onL  = (cfg.v2 && cfg.activeLabels) ? cfg.activeLabels[0] : 'Active';
+      const offL = (cfg.v2 && cfg.activeLabels) ? cfg.activeLabels[1] : 'Inactive';
+      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? onL : offL}</span></td>`;
     }
     if (col.type === 'expiry' && val) {
       return `<td>${expiryLabel(val)}</td>`;
@@ -948,8 +1027,14 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
       // η στήλη να διαβάζεται ως αριθμοί και όχι ως κείμενο (owner 6-8-2026).
       const unit = col.unit && val != null && val !== ''
         ? ` <span style="color:var(--text-dim);font-size:11px">${col.unit}</span>` : '';
-      const shown = val != null && val !== '' ? val : '—';
-      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}${unit}</td>`;
+      // v2: thousands separator (7.420) — but only where a unit marks a
+      // measured quantity. Year is a label, not an amount: «2.021» is wrong.
+      const num = (cfg.v2 && col.unit && val != null && val !== '' && !isNaN(parseFloat(val)))
+        ? parseFloat(val).toLocaleString('el-GR') : val;
+      const shown = num != null && num !== '' ? num : '—';
+      // v2 alignment mirrors the header rule above: only unit quantities right.
+      const alignRight = cfg.v2 ? !!col.unit : true;
+      return `<td style="font-variant-numeric:tabular-nums${alignRight ? ';text-align:right' : ''}">${shown}${unit}</td>`;
     }
     if (col.primary) {
       const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
@@ -1043,8 +1128,10 @@ function applyEntityFilters(entityKey) {
   }
 
   st.filtered = recs;
+  const noun = cfg.countNoun || ['εγγραφή', 'εγγραφές'];
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
-  document.getElementById(entityKey + '_count').textContent = recs.length + (recs.length===1?' εγγραφή':' εγγραφές');
+  document.getElementById(entityKey + '_count').textContent =
+    recs.length + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
 }
 
 // ── Detail Panel ──────────────────────────────────
