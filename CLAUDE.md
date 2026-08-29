@@ -503,9 +503,14 @@ Clients / Partners / Drivers / Trucks / Trailers · Maintenance (συνεργε�
 γραφτεί ποτέ — ο `accountant` δεν έχει δικαίωμα εγγραφής στα `orders`) ·
 Pallet Ledger · CEO Dashboard / Performance (αρκετοί δείκτες δείχνουν δομικά 0)
 
-**Στο repo αλλά ΔΕΝ έχουν γίνει deploy** (→ 404 στην παραγωγή):
-`/costs/*` · `/pallets/*` · `local_moves`. Μην τα «ενεργοποιήσεις» με deploy από
-τον φάκελο — βλ. ΠΑΓΙΔΑ DEPLOY.
+**Deployed** — μετρήθηκε 29/8/2026 χωρίς token (401 = «υπάρχει», 404 = «δεν έχει
+γίνει deploy»): `/costs/rt` → **401**, `/costs/settings` → **401**. Οι διαδρομές
+`/costs/*` είναι **ζωντανές**. Η προηγούμενη γραμμή εδώ έλεγε ότι γυρίζουν 404·
+είχε μείνει πίσω και θα έκανε κάποιον να χτίσει παράκαμψη που δεν χρειάζεται.
+
+**Αμφίβολα, χρήζουν ίδιας μέτρησης πριν χρησιμοποιηθούν:** `/pallets/*` ·
+`local_moves`. Μην τα «ενεργοποιήσεις» με deploy από τον φάκελο — βλ. ΠΑΓΙΔΑ
+DEPLOY.
 
 **Επόμενα:** Trip Costs / P&L · Fuel Receipts UI · Driver Payroll ·
 MyGeotab GPS μέσω Make.com · Settings
