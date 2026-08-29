@@ -162,6 +162,7 @@ const ENTITY_CONFIG = {
     // a missing date says so — a truck with no recorded ΚΤΕΟ is exactly the
     // information that was found by audit months late (the ATP incident).
     cardSubtitle: ['Brand', 'Model'],
+    cardKm: true,   // trailers have no odometer — the section exists only here
     cardDocs: [
       { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
       { f: 'KEK Expiry',       label: 'ΚΕΚ' },
@@ -241,11 +242,42 @@ const ENTITY_CONFIG = {
     tableId: TABLES.TRAILERS,
     label: 'Trailers',
     labelSingle: 'Trailer',
+    // Wave 1, second entity (Figma trailers-overview 118:935, trailer-card
+    // 122:569, trailers-form 120:573). Same v2 engine as trucks; differences
+    // are config: type badge, no mileage section, no insurer.
+    v2: true,
+    titleV2: 'Ρυμούλκες',
+    countNoun: ['ρυμούλκα', 'ρυμούλκες'],
+    activeLabels: ['Ενεργό', 'Ανενεργό'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formNoun: 'ρυμούλκας',
+    cardSubtitle: ['Brand', 'Model'],
+    cardSubtitleExtra: 'Year',
+    // Display-only Greek for stored English values (ΜΕΡΟΣ Ε: η μετάφραση στην
+    // εμφάνιση, ποτέ με γράψιμο νέων τιμών). DB today: Reefer 32,
+    // Curtainsider 7, Ρυμούλκα 1 (μετρήθηκε 29/8). Emphasis on Reefer only —
+    // the cold chain is the business.
+    typeLabels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' },
+    cardTag: { f: 'Trailer Type', emphasize: ['Reefer'] },
+    cardDocs: [
+      { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
+      { f: 'FRC Expiry',       label: 'ATP/FRC' },
+      { f: 'Insurance Expiry', label: 'Ασφάλεια' },
+    ],
+    cardSpecs: [
+      { f: 'VIN',            label: 'VIN' },
+      { f: 'Tare Weight kg', label: 'Απόβαρο', unit: 'kg', num: true },
+      { f: 'Year',           label: 'Έτος 1ης ταξ.' },
+      { f: 'Notes',          label: 'Σημειώσεις' },
+    ],
+    validators: {
+      'Tare Weight kg': v => v !== '' && parseFloat(v) < 0 ? 'Το απόβαρο δεν μπορεί να είναι αρνητικό' : '',
+    },
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, τύπος…',
     filters: [
-      { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic' },
+      { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic', labels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' } },
       { field: 'Active',       label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -263,20 +295,27 @@ const ENTITY_CONFIG = {
       { field: 'Brand',                   label: 'Μάρκα' },
       { field: 'Model',                   label: 'Μοντέλο' },
       { field: 'Year',                    label: 'Έτος', type: 'number' },
-      { field: 'Trailer Type',            label: 'Τύπος' },
+      // Badge, not plain text (mock): Ψυγείο highlighted — the cold chain is
+      // what the dispatcher scans for. Stored value stays English.
+      { field: 'Trailer Type',            label: 'Τύπος', type: 'tag', emphasize: ['Reefer'] },
       { field: 'VIN',                     label: 'VIN' },
       { field: 'Tare Weight kg',          label: 'Απόβαρο', type: 'number', unit: 'kg' },
       { field: 'Active',                  label: 'Κατάσταση', type: 'active' },
     ],
+    // Regrouped per trailers-form 120:573 — same 10 fields, nothing lost.
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
-        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
-        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker','Ρυμούλκα'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
+        { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
+      ]},
+      { section: 'Τεχνικά', fields: [
+        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: [
+          { val: 'Reefer', label: 'Ψυγείο' }, { val: 'Curtainsider', label: 'Τέντα' },
+          'Box', 'Flatbed', 'Tanker', 'Ρυμούλκα'] },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',      label: 'ΚΤΕΟ έως',     type: 'date' },
@@ -285,10 +324,7 @@ const ENTITY_CONFIG = {
         { f: 'Notes',            label: 'Σημειώσεις',   type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Trailer Type','Tare Weight kg'] },
-      { title: 'Έγγραφα',   fields: ['KTEO Expiry','FRC Expiry','Insurance Expiry','Notes'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
   workshops: {
@@ -434,9 +470,11 @@ async function renderEntity(entityKey) {
       </select>`;
     } else if (fi.type === 'dynamic') {
       const opts = dynamicOpts[fi.field] || [];
+      // fi.labels: display-only Greek for stored English values (ΜΕΡΟΣ Ε).
+      // The option VALUE stays raw so filtering matches the records.
       return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
         <option value="">${fi.label}: Όλα</option>
-        ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
+        ${opts.map(o => `<option value="${o}">${(fi.labels && fi.labels[o]) || o}</option>`).join('')}
       </select>`;
     }
     return '';
@@ -1009,6 +1047,14 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
       const offL = (cfg.v2 && cfg.activeLabels) ? cfg.activeLabels[1] : 'Inactive';
       return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? onL : offL}</span></td>`;
     }
+    if (col.type === 'tag') {
+      // Pill with display-only Greek label; emphasis (cold-chain blue) only
+      // for the values the mock highlights. Stored value untouched.
+      if (!val) return '<td style="color:var(--text-dim)">—</td>';
+      const lbl = (cfg.typeLabels && cfg.typeLabels[val]) || val;
+      const hi = (col.emphasize || []).includes(val);
+      return `<td><span class="badge ${hi ? 'ev2-tag-hi' : 'badge-grey'}">${lbl}</span></td>`;
+    }
     if (col.type === 'expiry' && val) {
       return `<td>${expiryLabel(val)}</td>`;
     }
@@ -1282,8 +1328,14 @@ function _renderEntityCardV2(entityKey, rec, panel) {
   const canEdit = can(cfg.perm) === 'full';
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
   const title = f[primaryField] || recId.slice(-6);
-  const sub = (cfg.cardSubtitle || []).map(x => f[x]).filter(Boolean).join(' ');
+  const sub = (cfg.cardSubtitle || []).map(x => f[x]).filter(Boolean).join(' ')
+    + (cfg.cardSubtitleExtra && f[cfg.cardSubtitleExtra] ? ' · ' + f[cfg.cardSubtitleExtra] : '');
   const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
+  // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
+  const tagV = cfg.cardTag ? f[cfg.cardTag.f] : null;
+  const tagHTML = tagV
+    ? `<span class="badge ${(cfg.cardTag.emphasize || []).includes(tagV) ? 'ev2-tag-hi' : 'badge-grey'}">${_ecEsc((cfg.typeLabels && cfg.typeLabels[tagV]) || tagV)}</span>`
+    : '';
 
   const docsHTML = (cfg.cardDocs || []).map(d => {
     const s = _ecDocState(f[d.f]);
@@ -1315,6 +1367,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
         <div class="ecard-title-row">
           <span class="ecard-title">${_ecEsc(title)}</span>
           <span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>
+          ${tagHTML}
           <span id="ec_${recId}_svc"></span>
         </div>
         ${sub ? `<div class="ecard-sub">${_ecEsc(sub)}</div>` : ''}
@@ -1328,10 +1381,10 @@ function _renderEntityCardV2(entityKey, rec, panel) {
       </div>
     </div>
     <div class="detail-body ecard-body">
-      <div class="ecard-sec">
+      ${cfg.cardKm ? `<div class="ecard-sec">
         <div class="ecard-sec-title">Χιλιόμετρα</div>
         <div class="ecard-sec-body" id="ec_${recId}_km">Φόρτωση…</div>
-      </div>
+      </div>` : ''}
       <div class="ecard-sec">
         <div class="ecard-sec-title">Έγγραφα
           <button type="button" class="ecard-link" onclick="navigate('maint_expiry')">Διαχείριση →</button>
@@ -1433,18 +1486,24 @@ async function _loadEntityCardRT(entityKey, rec) {
     // /costs/rt carries NO money columns (worker: «λίστα ΧΩΡΙΣ αποτελέσματα
     // PnL») — safe for every role that can read it. The plate→numeric-id map
     // goes through /costs/lookups, same as modules/costs.js.
+    const isTrailer = entityKey === 'trailers';
     const lk = await ctFetch('/costs/lookups');
-    const t = (lk.trucks || []).find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
+    const t = ((isTrailer ? lk.trailers : lk.trucks) || [])
+      .find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
     let el = body();
     if (!el) return;
     if (!t) {
       el.innerHTML = `<div class="ecard-empty">Το όχημα δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
       return;
     }
-    const res = await ctFetch('/costs/rt?truck_id=' + t.id);
+    // The worker filters rt by truck_id only; for trailers we take the latest
+    // page and filter client-side on trailer_id (14 rows total today).
+    const res = await ctFetch(isTrailer ? '/costs/rt' : '/costs/rt?truck_id=' + t.id);
     el = body();
     if (!el) return;
-    const rts = (res.records || []).slice(0, 5);
+    let recsAll = res.records || [];
+    if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === t.id);
+    const rts = recsAll.slice(0, 5);
     // No route text yet: /costs/rt returns leg ids, not location names — the
     // mock's «Βέροια → Μιλάνο» needs joins this endpoint does not serve.
     // Shown instead: code, dates, km, status. Recorded in OBSERVATIONS.

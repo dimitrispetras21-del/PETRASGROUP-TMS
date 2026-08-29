@@ -1549,6 +1549,8 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 /* Badge κατάστασης κατά το mock: ζεύγος --badge-ok (μετρημένο ≥4,5:1). */
 .entity-v2 .badge-green { background: var(--badge-ok-bg); color: var(--badge-ok-text); }
+/* Έμφαση τύπου (Ψυγείο): το μπλε ζεύγος --badge-pe — cold chain, όχι accent. */
+.ev2-tag-hi { background: var(--badge-pe-bg); color: var(--badge-pe-text); }
 
 /* Καρτέλα εγγραφής v2 — το δεξί panel του truck-overview. Πλάτος κατά το mock
    (κάρτα 520 μείον σκιά)· το mobile override των 95% πιο κάτω ισχύει ως έχει. */
