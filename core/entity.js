@@ -437,7 +437,7 @@ function _renderFleetStatsStrip(entityKey, records) {
   }
   const active = records.filter(r => r.fields['Active']).length;
   const card = (label, val, color) => {
-    const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+    const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
     return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
       <div class="tms-stat-label">${label}</div>
       <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
@@ -468,7 +468,7 @@ async function _renderWorkshopsStatsStrip(workshops) {
       'workshops: maintenance history'
     );
     if (didFail(history)) {
-      el.innerHTML = '<div style="padding:8px 0;color:#B45309;font-size:12px">⚠ Τα στοιχεία συντήρησης δεν φόρτωσαν, τα σύνολα δεν εμφανίζονται.</div>';
+      el.innerHTML = '<div style="padding:8px 0;color:var(--warning);font-size:12px">⚠ Τα στοιχεία συντήρησης δεν φόρτωσαν, τα σύνολα δεν εμφανίζονται.</div>';
       return;
     }
     const activeWs = workshops.filter(w => w.fields['Active']).length;
@@ -518,7 +518,7 @@ async function _renderWorkshopsStatsStrip(workshops) {
 
     // Use unified .tms-stat-card (dark navy). Map black text-color to white so values stay readable.
     const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
       return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
         <div class="tms-stat-label">${label}</div>
         <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
@@ -529,8 +529,8 @@ async function _renderWorkshopsStatsStrip(workshops) {
           <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργεία (σύνολο)</div>
           ${top3.map((p, i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${escapeHtml(p.name)}</span>
-              <span style="color:#fff;font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${escapeHtml(p.name)}</span>
+              <span style="color:var(--text-inverse);font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -586,7 +586,7 @@ async function _renderPartnersStatsStrip(partners) {
       .map(([pid,total]) => ({ name: pNameById[pid]||'Unknown', total }));
 
     const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
       return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
         <div class="tms-stat-label">${label}</div>
         <div class="tms-stat-value" style="color:${valColor}">${val}</div>
@@ -598,8 +598,8 @@ async function _renderPartnersStatsStrip(partners) {
           <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
-              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text-inverse);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -651,7 +651,7 @@ async function _renderClientsStatsStrip(clients) {
       .map(([cid,total]) => ({ name: cNameById[cid]||'Unknown', total }));
 
     const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
       return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
         <div class="tms-stat-label">${label}</div>
         <div class="tms-stat-value" style="color:${valColor}">${val}</div>
@@ -663,8 +663,8 @@ async function _renderClientsStatsStrip(clients) {
           <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Πελάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
-              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text-inverse);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -884,7 +884,7 @@ function buildEntityTable(entityKey, records) {
         ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
         : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
       }
-      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
+      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:var(--row-empty-bg);color:var(--row-empty-text);font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
     </tbody>
   </table>`;
 }
