@@ -269,6 +269,11 @@
      το --space-1· το --text-2xs κάτω από το --text-xs, για badges. */
   --space-05: 2px;
   --text-2xs: 10px;
+
+  /* Ζώνες κεφαλίδας πίνακα — DESIGN.md ΜΕΡΟΣ Β: αντικαθιστά τα σκόρπια
+     F1F5F9/F0F9FF. Ίδια τιμή με το φόντο που το thead είχε ήδη ως ωμό hex
+     (γρ. ~1421)· τώρα το χρώμα έχει όνομα και σπίτι (κανόνας #1). */
+  --surface-sunken: #F0F5FA;
 }
 
 /* Tabular figures for all numeric cells */
@@ -1452,6 +1457,197 @@ tbody tr:hover { background: var(--bg-hover); }
 .entity-table-wrap tbody tr:hover   { background: var(--bg-hover); }
 .entity-table-wrap tbody tr.selected { background: rgba(2,123,189,0.08); }
 .entity-table-wrap tbody tr.selected td { color: var(--text); border-color: rgba(2,123,189,0.12); }
+
+/* ═══ Entity v2 — Κύμα 1 (Figma truck-overview 103:290), πρώτα τα trucks ═══
+   Μία μπάρα: τίτλος + πλήθος + φίλτρα + αναζήτηση + κύρια ενέργεια. Το παλιό
+   page-header και το stats strip κόστιζαν δύο σειρές που ο κανόνας #5
+   (≥20 γραμμές ορατές σε 1080p) δεν αντέχει — spec 2026-08-29 §3. */
+.entity-layout.entity-v2 {
+  /* Χωρίς page-header από πάνω: μόνο το top padding του .content (32px) και
+     44px αναπνοή κάτω — ίδιο κάτω άκρο με τις παλιές οθόνες, ώστε το AI FAB
+     να μην κάθεται πάνω στην τελευταία γραμμή. */
+  height: calc(100vh - var(--header-h) - 76px);
+}
+.ev2-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-6);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--silver-light);
+  flex-shrink: 0;
+}
+.ev2-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  color: var(--text);
+  white-space: nowrap;
+}
+.ev2-count {
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+  margin-right: var(--space-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.entity-v2 .svc-filter {
+  background: var(--bg);
+  border: 1px solid var(--silver-light);
+  border-radius: var(--radius);
+  padding: 6px var(--space-3);
+  font-family: 'DM Sans', sans-serif;
+  font-size: var(--text-sm);
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+}
+.ev2-search {
+  background: var(--bg);
+  border: 1px solid var(--silver-light);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+  font-family: 'DM Sans', sans-serif;
+  font-size: var(--text-body);
+  color: var(--text);
+  width: 230px;
+  outline: none;
+}
+.ev2-search::placeholder { color: var(--text-dim); }
+.ev2-search:focus,
+.entity-v2 .svc-filter:focus { border-color: var(--border-focus); }
+.ev2-new { margin-left: auto; white-space: nowrap; }
+
+/* Πίνακας v2: γραμμή 40px, διαχωριστικό --border-row, κεφαλίδα 13px στο
+   --surface-sunken. ΚΑΜΙΑ κοπή (κανόνας #6): το γενικό tbody td κόβει με
+   ellipsis/max-width — εδώ αναιρείται και η στήλη παίρνει το πλάτος της. */
+.entity-v2 .entity-table-wrap thead th {
+  background: var(--surface-sunken);
+  font-size: var(--text-body);
+  letter-spacing: 0;
+  color: var(--text-mid);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--silver-light);
+}
+.entity-v2 .entity-table-wrap tbody td {
+  height: 40px;
+  padding: 0 var(--space-4);
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border-row);
+  overflow: visible;
+  text-overflow: clip;
+  max-width: none;
+}
+/* Το mock έχει καθαρές λευκές γραμμές — η ζέβρα του παλιού πίνακα φεύγει. */
+.entity-v2 .entity-table-wrap tbody tr:nth-child(even) td { background: transparent; }
+.entity-v2 .entity-table-wrap tbody tr:nth-child(even):hover td { background: var(--bg-hover); }
+.entity-v2 .entity-table-wrap tbody tr.selected { background: var(--accent-light); }
+.entity-v2 .entity-table-wrap tbody tr.selected td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+/* Badge κατάστασης κατά το mock: ζεύγος --badge-ok (μετρημένο ≥4,5:1). */
+.entity-v2 .badge-green { background: var(--badge-ok-bg); color: var(--badge-ok-text); }
+/* Έμφαση τύπου (Ψυγείο): το μπλε ζεύγος --badge-pe — cold chain, όχι accent. */
+.ev2-tag-hi { background: var(--badge-pe-bg); color: var(--badge-pe-text); }
+
+/* Καρτέλα εγγραφής v2 — το δεξί panel του truck-overview. Πλάτος κατά το mock
+   (κάρτα 520 μείον σκιά)· το mobile override των 95% πιο κάτω ισχύει ως έχει. */
+.entity-v2 .entity-detail-panel { width: 480px; background: var(--bg-card); }
+.ecard-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--silver-light);
+}
+.ecard-title-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ecard-title {
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 28px; line-height: 32px; letter-spacing: .5px;
+  color: var(--text);
+}
+.ecard-sub { font-size: var(--text-body); color: var(--text-mid); margin-top: 2px; }
+.ecard-badge-svc { background: var(--badge-vs-bg); color: var(--badge-vs-text); }
+.ecard-body { padding: 0; }
+.ecard-sec { padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--border-row); }
+.ecard-sec-title {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--text-dim);
+  margin-bottom: var(--space-2);
+}
+.ecard-sec-body { font-size: var(--text-sm); color: var(--text-mid); }
+.ecard-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: var(--text-xs);
+  color: var(--accent-text); text-transform: none; letter-spacing: 0;
+}
+.ecard-link:hover { text-decoration: underline; }
+.ecard-km { display: flex; align-items: baseline; gap: var(--space-2); }
+.ecard-km-num { font-size: 28px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ecard-km-unit { font-size: var(--text-body); color: var(--text-mid); }
+.ecard-km-sub { font-size: var(--text-sm); color: var(--text-dim); margin-top: 2px; }
+.ecard-doc { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); }
+.ecard-dot { width: 8px; height: 8px; border-radius: var(--radius-full); flex-shrink: 0; }
+.ecard-dot.ok   { background: var(--success); }
+.ecard-dot.warn { background: var(--warning); }
+.ecard-dot.bad  { background: var(--danger); }
+.ecard-dot.none { background: var(--silver-light); }
+.ecard-doc-label { color: var(--text); min-width: 64px; font-weight: 500; }
+.ecard-doc-date  { color: var(--text-mid); font-variant-numeric: tabular-nums; }
+.ecard-doc-state { margin-left: auto; }
+.ecard-doc-state.ok   { color: var(--success); }
+.ecard-doc-state.warn { color: var(--warning); }
+.ecard-doc-state.bad  { color: var(--danger); }
+.ecard-doc-state.dim  { color: var(--text-dim); }
+.ecard-spec { display: flex; gap: var(--space-3); padding: 4px 0; font-size: var(--text-sm); }
+.ecard-spec-label { color: var(--text-dim); min-width: 110px; flex-shrink: 0; }
+/* break-word, όχι ellipsis: μακρύ VIN διπλώνει, δεν κόβεται (κανόνας #6). */
+.ecard-spec-val { color: var(--text); word-break: break-word; font-variant-numeric: tabular-nums; }
+.ecard-spec-val.dim, .ecard-spec .dim { color: var(--text-dim); }
+.ecard-row { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); border-bottom: 1px solid var(--border-row); }
+.ecard-row:last-child { border-bottom: none; }
+.ecard-row-code { color: var(--accent-text); font-weight: 600; min-width: 64px; }
+.ecard-row-date { color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ecard-row-main { color: var(--text-mid); flex: 1; }  /* διπλώνει, δεν κόβεται */
+.ecard-row-amt { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ecard-row-state { color: var(--text-dim); font-size: var(--text-xs); }
+.ecard-more { font-size: var(--text-xs); color: var(--text-dim); padding-top: 4px; }
+.ecard-empty { font-size: var(--text-sm); color: var(--text-dim); }
+.ecard-fail { font-size: var(--text-sm); color: var(--warning); }
+/* «Με ποια φορτηγά» (driver card): πινακίδα · πλήθος · σχετική μπάρα. Η μπάρα
+   επαναλαμβάνει το πλήθος οπτικά — το νούμερο είναι γραμμένο δίπλα (κανόνας #2). */
+.ecard-agg-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); }
+.ecard-agg-n { color: var(--text-mid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ecard-agg-bar { flex: 1; height: 6px; border-radius: var(--radius-full); background: var(--border-row); overflow: hidden; }
+.ecard-agg-bar > span { display: block; height: 100%; border-radius: var(--radius-full); background: var(--accent); }
+/* «Χρήση» (workshop card): τρεις δείκτες σε μία σειρά — πλήθος, δαπάνη,
+   τελευταία. Μεγάλα νούμερα, μικρές ετικέτες από κάτω. */
+.ecard-usage { display: flex; gap: var(--space-6); }
+.ecard-usage-item { display: flex; flex-direction: column; }
+.ecard-usage-num { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ecard-usage-lbl { font-size: var(--text-xs); color: var(--text-dim); }
+/* Νεκρό πεδίο φόρμας: σβηστό, με την αιτία από κάτω (.ef-hint). */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
+
+/* Φόρμα v2 (truck-form 119:345): inline σφάλμα κάτω από το πεδίο, σβηστό
+   κουμπί όσο υπάρχει σφάλμα, υποσημείωση που εξηγεί το γιατί. */
+.form-input.error, .form-select.error, .form-textarea.error {
+  border-color: var(--border-error);
+}
+.form-input.error:focus, .form-select.error:focus, .form-textarea.error:focus {
+  border-color: var(--border-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+.ef-err { font-size: var(--text-sm); color: var(--text-error); margin-top: 4px; min-height: 0; }
+.ef-err:empty { display: none; }
+.ef-hint { font-size: var(--text-sm); color: var(--text-dim); margin-top: 4px; }
+.ef-footnote { font-size: var(--text-sm); color: var(--text-dim); margin-right: auto; align-self: center; }
 
 /* Detail panel */
 .detail-header {

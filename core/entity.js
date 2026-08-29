@@ -10,11 +10,37 @@ const ENTITY_CONFIG = {
     tableId: TABLES.CLIENTS,
     label: 'Clients',
     labelSingle: 'Client',
+    // Wave 1, fifth entity (Figma clients-overview 118:309, client-card
+    // 122:636, clients-form 120:395). Carries TWO of the three dead fields
+    // (plan §2.1): contact_person and payment_terms_days — 0/1.920 written,
+    // the Worker map has no columns for them. Shown as designed: «—» in
+    // list/card, disabled with the reason in the form, skipped on save.
+    // The card shows VOLUME and FREQUENCY only — never revenue or margin
+    // (owner lock 23/8: the dispatcher has full access here).
+    v2: true,
+    titleV2: 'Πελάτες',
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος πελάτης', 'Επεξεργασία πελάτη'],
+    cardSubtitle: ['Country', 'City'],
+    cardSubtitleSep: ' · ',
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person',     label: 'Υπεύθυνος επαφής' },   // dead — renders «—»
+      { f: 'Phone',              label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',              label: 'Email' },
+      { f: 'Adress',             label: 'Διεύθυνση' },
+      { f: 'VAT Number',         label: 'ΑΦΜ' },
+      { f: 'Payment Terms Days', label: 'Όροι πληρωμής' },      // dead — renders «—»
+    ],
+    cardActivity: 'orders',
+    cardActivityTitle: 'Δραστηριότητα',
+    cardRecentTitle: 'Πρόσφατες παραγγελίες',
     perm: 'clients',
     searchFields: ['Company Name', 'City', 'Contact Person', 'VAT Number'],
     searchHint: 'Αναζήτηση: εταιρεία, πόλη, επαφή, ΑΦΜ…',
     filters: [
-      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -29,38 +55,58 @@ const ENTITY_CONFIG = {
       { field: 'Phone',         label: 'Τηλέφωνο' },
       { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
+    // Per clients-form 120:395: Στοιχεία εταιρείας / Επικοινωνία, with the
+    // two dead fields disabled + the reason spelled out.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
         { f: 'Country',      label: 'Χώρα' },
         { f: 'City',         label: 'Πόλη' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
-      { section: 'Contact', fields: [
-        { f: 'Contact Person',      label: 'Υπεύθυνος επαφής' },
-        { f: 'Phone',               label: 'Τηλέφωνο' },
-        { f: 'Email',               label: 'Email', type: 'email' },
-        { f: 'Payment Terms Days',  label: 'Όροι πληρωμής (ημέρες)', type: 'number' },
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+        { f: 'Payment Terms Days', label: 'Όροι πληρωμής (ημέρες)', type: 'number',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
       ]},
     ],
-    detailSections: [
-      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','City','Adress'] },
-      { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
-      { title: 'Commercial',      fields: ['Payment Terms Days','Pallet Balance'] },
-    ],
-    history: { type: 'client' },
+    // detailSections/history intentionally absent — the v2 card replaced them.
   },
 
   partners: {
     tableId: TABLES.PARTNERS,
     label: 'Partners',
     labelSingle: 'Partner',
+    // Wave 1, sixth entity (Figma partners-overview 118:622, partner-card
+    // 122:703, partners-form 120:463). One dead field: contact_person
+    // (0/214). The card shows assignment volume — the old panel's margin,
+    // revenue and rates do NOT return (owner lock 23/8; the mock has none).
+    v2: true,
+    titleV2: 'Συνεργάτες',
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος συνεργάτης', 'Επεξεργασία συνεργάτη'],
+    cardSubtitle: ['Country'],
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },   // dead — renders «—»
+      { f: 'Phone',          label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',          label: 'Email' },
+      { f: 'Adress',         label: 'Διεύθυνση' },
+      { f: 'VAT Number',     label: 'ΑΦΜ' },
+    ],
+    cardActivity: 'assignments',
+    cardActivityTitle: 'Αναθέσεις',
+    cardRecentTitle: 'Πρόσφατες αναθέσεις',
     perm: 'clients',
     searchFields: ['Company Name', 'Contact Person', 'VAT Number'],
     searchHint: 'Αναζήτηση: εταιρεία, επαφή, ΑΦΜ…',
     filters: [
-      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -76,30 +122,58 @@ const ENTITY_CONFIG = {
       { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
         { f: 'Country',      label: 'Χώρα' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
-      { section: 'Contact', fields: [
-        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
         { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email', type: 'email' },
       ]},
     ],
-    detailSections: [
-      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','Adress'] },
-      { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
-      { title: 'Statistics',      fields: ['Pallet Balance'] },
-    ],
-    history: { type: 'partner' },
+    // detailSections/history intentionally absent — the v2 card replaced them.
   },
 
   drivers: {
     tableId: TABLES.DRIVERS,
     label: 'Drivers',
     labelSingle: 'Driver',
+    // Wave 1, third entity (Figma driver-overview 116:300, drivers-form
+    // 120:521). Non-vehicle card: license instead of documents, the salary
+    // dead-field notice, round trips with the truck plate, and the per-truck
+    // aggregation. No mileage, no maintenance sections.
+    v2: true,
+    titleV2: 'Οδηγοί',
+    countNoun: ['οδηγός', 'οδηγοί'],
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος οδηγός', 'Επεξεργασία οδηγού'],
+    typeLabels: { Internal: 'Εσωτερικός', External: 'Εξωτερικός' },
+    cardSubtitle: ['Phone'],
+    cardTag: { f: 'Type', emphasize: ['Internal'] },
+    cardDocsTitle: 'Δίπλωμα',
+    cardDocsLink: false,   // maint_expiry tracks vehicles, not licences
+    cardDocs: [
+      // labelField: the row leads with the licence NUMBER (mock), the static
+      // label is only the fallback for a driver with no number recorded.
+      { f: 'License Expiry', label: 'Δίπλωμα', labelField: 'License Number' },
+    ],
+    // Salary: the FIRST of the three dead fields (plan §2.1) — 0/59 rows have
+    // a value because the Worker map has no salary column. Shown as designed:
+    // the truth, not a zero. perm 'full' = same visibility as the column
+    // (DV-3: dispatcher never sees payroll).
+    cardNotice: {
+      title: 'Μισθός', f: 'Salary Base', perm: 'full',
+      emptyText: 'Δεν έχει καταχωρηθεί',
+      helper: 'Το πεδίο δεν αποθηκεύεται ακόμη — εκκρεμεί στήλη στη βάση.',
+    },
+    cardRt: true,
+    cardRtShowTruck: true,
+    cardTruckAgg: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
     searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
@@ -118,34 +192,69 @@ const ENTITY_CONFIG = {
     columns: [
       { field: 'Full Name',      label: 'Οδηγός', primary: true },
       { field: 'Phone',          label: 'Τηλέφωνο' },
-      { field: 'Type',           label: 'Τύπος' },
+      { field: 'Type',           label: 'Τύπος', type: 'tag', emphasize: ['Internal'] },
       { field: 'Salary Base',    label: 'Μισθός', perm: 'full' },   // DV-3: μισθοδοσία — μόνο με δικαίωμα εγγραφής
       { field: 'License Number', label: 'Αρ. διπλώματος' },
       { field: 'License Expiry', label: 'Δίπλωμα έως', type: 'expiry' },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
+    // Per drivers-form 120:521 — same fields; Μισθός disabled with the reason
+    // spelled out. Disabled fields are also SKIPPED on save (see
+    // saveEntityRecord): the facade would silently drop the value and toast
+    // success — the trap this screen family exists to close.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία', fields: [
         { f: 'Full Name',   label: 'Ονοματεπώνυμο', req: true },
+        { f: 'Type',        label: 'Τύπος', type: 'select', options: [
+          { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
         { f: 'Phone',       label: 'Τηλέφωνο' },
-        { f: 'Type',        label: 'Τύπος', type: 'select', options: ['Internal','External'] },
-        { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number' },
+        { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
       ]},
-      { section: 'Driving Licence', fields: [
+      { section: 'Δίπλωμα', fields: [
         { f: 'License Number', label: 'Αρ. διπλώματος' },
         { f: 'License Expiry', label: 'Δίπλωμα έως', type: 'date' },
       ]},
     ],
-    detailSections: [
-      { title: 'Details',         fields: ['Full Name','Phone','Type','Salary Base'] },
-      { title: 'Driving Licence', fields: ['License Number','License Expiry'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
   trucks: {
     tableId: TABLES.TRUCKS,
     label: 'Trucks',
     labelSingle: 'Truck',
+    // Wave 1 (Figma truck-overview 103:290): one header bar, no stats strip,
+    // 40px rows. Per-entity flag so the other five screens keep the old path
+    // until their own turn — one screen at a time (plan 2026-08-29 §3).
+    v2: true,
+    titleV2: 'Φορτηγά',
+    countNoun: ['όχημα', 'οχήματα'],
+    // «Ενεργό» (vehicle), not the generic Active/Inactive — DESIGN.md ΜΕΡΟΣ Ε:
+    // the screen speaks Greek; the boolean stays untouched in the DB.
+    activeLabels: ['Ενεργό', 'Ανενεργό'],
+    // The mock's default state is «Κατάσταση: Ενεργός» pre-selected: the working
+    // set is the active fleet, inactive is one click away on the same chip.
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    // Record card (embedded in truck-overview 103:290). Docs render ALWAYS,
+    // a missing date says so — a truck with no recorded ΚΤΕΟ is exactly the
+    // information that was found by audit months late (the ATP incident).
+    cardSubtitle: ['Brand', 'Model'],
+    cardKm: true,    // trailers have no odometer — the section exists only here
+    cardMaint: true,
+    cardRt: true,
+    cardDocs: [
+      { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
+      { f: 'KEK Expiry',       label: 'ΚΕΚ' },
+      { f: 'Insurance Expiry', label: 'Ασφάλεια' },
+    ],
+    cardSpecs: [
+      { f: 'VIN',               label: 'VIN' },
+      { f: 'Euro Standard',     label: 'Euro' },
+      { f: 'Tare Weight kg',    label: 'Απόβαρο', unit: 'kg', num: true },
+      { f: 'Year',              label: 'Έτος 1ης ταξ.' },
+      { f: 'Insurance Partner', label: 'Ασφαλιστής' },
+      { f: 'Notes',             label: 'Σημειώσεις' },
+    ],
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, μάρκα…',
@@ -173,39 +282,83 @@ const ENTITY_CONFIG = {
       { field: 'VIN',                 label: 'VIN' },
       { field: 'Active',              label: 'Κατάσταση', type: 'active' },
     ],
+    // Regrouped per the truck-form mock (119:345): same 12 fields, nothing
+    // lost — Τεχνικά and Σημειώσεις split out of the two old sections.
+    formTitles: ['Νέο φορτηγό', 'Επεξεργασία φορτηγού'],
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
-        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
+        { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
+      ]},
+      { section: 'Τεχνικά', fields: [
         { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',     type: 'date' },
         { f: 'KEK Expiry',        label: 'ΚΕΚ έως',      type: 'date' },
         { f: 'Insurance Expiry',  label: 'Ασφάλεια έως', type: 'date' },
         { f: 'Insurance Partner', label: 'Ασφαλιστής' },
-        { f: 'Notes',             label: 'Σημειώσεις',   type: 'textarea' },
+      ]},
+      { section: 'Σημειώσεις', fields: [
+        { f: 'Notes', label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Euro Standard','Tare Weight kg'] },
-      { title: 'Έγγραφα',   fields: ['KTEO Expiry','KEK Expiry','Insurance Expiry','Insurance Partner','Notes'] },
-    ],
+    // Inline validation (v2 form): '' = ok, otherwise the message under the
+    // field. Only the rule the mock defines — nothing invented.
+    validators: {
+      'Tare Weight kg': v => v !== '' && parseFloat(v) < 0 ? 'Το απόβαρο δεν μπορεί να είναι αρνητικό' : '',
+    },
+    // detailSections intentionally absent: the v2 record card (cardDocs/
+    // cardSpecs above) replaced the old detail panel for trucks — a stale
+    // parallel list here would be a second source of truth.
   },
 
   trailers: {
     tableId: TABLES.TRAILERS,
     label: 'Trailers',
     labelSingle: 'Trailer',
+    // Wave 1, second entity (Figma trailers-overview 118:935, trailer-card
+    // 122:569, trailers-form 120:573). Same v2 engine as trucks; differences
+    // are config: type badge, no mileage section, no insurer.
+    v2: true,
+    titleV2: 'Ρυμούλκες',
+    countNoun: ['ρυμούλκα', 'ρυμούλκες'],
+    activeLabels: ['Ενεργό', 'Ανενεργό'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέα ρυμούλκα', 'Επεξεργασία ρυμούλκας'],
+    cardSubtitle: ['Brand', 'Model'],
+    cardSubtitleExtra: 'Year',
+    // Display-only Greek for stored English values (ΜΕΡΟΣ Ε: η μετάφραση στην
+    // εμφάνιση, ποτέ με γράψιμο νέων τιμών). DB today: Reefer 32,
+    // Curtainsider 7, Ρυμούλκα 1 (μετρήθηκε 29/8). Emphasis on Reefer only —
+    // the cold chain is the business.
+    typeLabels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' },
+    cardTag: { f: 'Trailer Type', emphasize: ['Reefer'] },
+    cardMaint: true,
+    cardRt: true,
+    cardDocs: [
+      { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
+      { f: 'FRC Expiry',       label: 'ATP/FRC' },
+      { f: 'Insurance Expiry', label: 'Ασφάλεια' },
+    ],
+    cardSpecs: [
+      { f: 'VIN',            label: 'VIN' },
+      { f: 'Tare Weight kg', label: 'Απόβαρο', unit: 'kg', num: true },
+      { f: 'Year',           label: 'Έτος 1ης ταξ.' },
+      { f: 'Notes',          label: 'Σημειώσεις' },
+    ],
+    validators: {
+      'Tare Weight kg': v => v !== '' && parseFloat(v) < 0 ? 'Το απόβαρο δεν μπορεί να είναι αρνητικό' : '',
+    },
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, τύπος…',
     filters: [
-      { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic' },
+      { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic', labels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' } },
       { field: 'Active',       label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -223,20 +376,27 @@ const ENTITY_CONFIG = {
       { field: 'Brand',                   label: 'Μάρκα' },
       { field: 'Model',                   label: 'Μοντέλο' },
       { field: 'Year',                    label: 'Έτος', type: 'number' },
-      { field: 'Trailer Type',            label: 'Τύπος' },
+      // Badge, not plain text (mock): Ψυγείο highlighted — the cold chain is
+      // what the dispatcher scans for. Stored value stays English.
+      { field: 'Trailer Type',            label: 'Τύπος', type: 'tag', emphasize: ['Reefer'] },
       { field: 'VIN',                     label: 'VIN' },
       { field: 'Tare Weight kg',          label: 'Απόβαρο', type: 'number', unit: 'kg' },
       { field: 'Active',                  label: 'Κατάσταση', type: 'active' },
     ],
+    // Regrouped per trailers-form 120:573 — same 10 fields, nothing lost.
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
-        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
-        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: ['Reefer','Curtainsider','Box','Flatbed','Tanker','Ρυμούλκα'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
+        { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
+      ]},
+      { section: 'Τεχνικά', fields: [
+        { f: 'Trailer Type',  label: 'Τύπος', type: 'select', options: [
+          { val: 'Reefer', label: 'Ψυγείο' }, { val: 'Curtainsider', label: 'Τέντα' },
+          'Box', 'Flatbed', 'Tanker', 'Ρυμούλκα'] },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',      label: 'ΚΤΕΟ έως',     type: 'date' },
@@ -245,16 +405,38 @@ const ENTITY_CONFIG = {
         { f: 'Notes',            label: 'Σημειώσεις',   type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Trailer Type','Tare Weight kg'] },
-      { title: 'Έγγραφα',   fields: ['KTEO Expiry','FRC Expiry','Insurance Expiry','Notes'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
   workshops: {
     tableId: TABLES.WORKSHOPS,
     label: 'Workshops',
     labelSingle: 'Workshop',
+    // Wave 1, fourth entity (Figma workshops-overview 118:1356, workshop-card
+    // 122:762, workshops-form 120:654). The list's Εργασίες/Δαπάνη/Τελευταία
+    // columns come from the maint_history enrichment — now a standalone step
+    // (_enrichWorkshopsV2), no longer welded to the old stats strip.
+    v2: true,
+    titleV2: 'Συνεργεία',
+    countNoun: ['συνεργείο', 'συνεργεία'],
+    // «Ενεργός» to match the wording the Κατάσταση filter always had here.
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέο συνεργείο', 'Επεξεργασία συνεργείου'],
+    cardSubtitle: ['City'],
+    // Specialty values are already Greek in the DB — lavender pill (mock).
+    cardTag: { f: 'Specialty', style: 'ecard-badge-svc' },
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+      { f: 'Phone',          label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',          label: 'Email' },
+      { f: 'Address',        label: 'Διεύθυνση' },
+    ],
+    cardUsage: true,
+    cardMaint: true,
+    cardMaintBy: 'workshop',
+    cardMaintTitle: 'Πρόσφατες εργασίες',
     perm: 'maintenance',
     // Aliases/Notes είναι αναζητήσιμα επίτηδες: το import της 6-8-2026 έγραψε εκεί τις
     // 107 παλιές γραφές του Excel («ΣΑΡΑΚΑΚΗ», «SOULIS»…), οπότε αναζήτηση με το όνομα
@@ -273,7 +455,9 @@ const ENTITY_CONFIG = {
     ],
     columns: [
       { field: 'Name',           label: 'Όνομα',      primary: true },
-      { field: 'City',           label: 'Πόλη', type: 'city' },
+      // Plain text, no pin (mock 118:1356) — the pin said nothing the word
+      // next to it did not.
+      { field: 'City',           label: 'Πόλη' },
       { field: 'Specialty',      label: 'Ειδικότητα' },
       { field: 'Phone',          label: 'Τηλέφωνο' },
       { field: '_serviceCount',  label: 'Εργασίες', type: 'number' },
@@ -281,32 +465,30 @@ const ENTITY_CONFIG = {
       { field: '_lastUsed',      label: 'Τελευταία χρήση', type: 'date_rel' },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
+    // Per workshops-form 120:654: Στοιχεία / Επικοινωνία / Διεύθυνση.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία', fields: [
         { f: 'Name',           label: 'Επωνυμία', req: true },
         // Ίδιες ακριβώς τιμές με όσες έγραψε το import — αλλιώς κάθε επεξεργασία
         // συνεργείου θα δημιουργούσε νέα, παράλληλη ειδικότητα και το φίλτρο θα
         // γέμιζε διπλές κατηγορίες (αγγλικές από τη φόρμα, ελληνικές από τα δεδομένα).
         { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['Σέρβις','Ελαστικά','Φρένα/ανάρτηση','Ψύξη','Κινητήρας','Ηλεκτρικά','Αμάξωμα','Πέταλο/κοτσαδούρα','Έλεγχοι'] },
-        { f: 'Phone',          label: 'Τηλέφωνο' },
-        { f: 'Email',          label: 'Email' },
-        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
       ]},
-      { section: 'Location', fields: [
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+      ]},
+      { section: 'Διεύθυνση', fields: [
         // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). WORKSHOPS is
         // assumed to use correctly-spelled 'Address' per current Airtable schema.
         // If a 422 'Unknown field name: Address' appears for WORKSHOPS, change here.
         { f: 'Address',        label: 'Διεύθυνση' },
         { f: 'City',           label: 'Πόλη' },
-      ]},
-      { section: 'Notes', fields: [
         { f: 'Notes',          label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Details',  fields: ['Name','Specialty','Phone','Email','Contact Person'] },
-      { title: 'Location', fields: ['Address','City'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
 };
@@ -324,9 +506,27 @@ async function renderEntity(entityKey) {
   const c = document.getElementById('content');
   c.innerHTML = showLoading();
 
-  const records = await atGet(cfg.tableId);
+  let records;
+  try {
+    records = await atGet(cfg.tableId);
+  } catch (e) {
+    if (cfg.v2) {
+      // Rule #7 (DESIGN.md): a failed load must never look like an empty
+      // table or an eternal skeleton. Old-path screens keep their current
+      // behaviour until each one's own redesign step.
+      c.innerHTML = showError('Η φόρτωση απέτυχε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.');
+      if (typeof logError === 'function') logError(e, 'entity list load');
+      return;
+    }
+    throw e;
+  }
 
   _entityState[entityKey] = { records, filtered: records, selected: null, q: '', filters: {} };
+  if (cfg.v2 && cfg.defaultFilters) {
+    for (const df of cfg.defaultFilters) {
+      _entityState[entityKey].filters[df.field] = { val: df.val, type: df.type };
+    }
+  }
 
   // Report the row count for every master-data page in one place. This is where
   // "36 trucks" comes from, while the Dashboard and Maintenance both say 27 —
@@ -362,6 +562,63 @@ async function renderEntity(entityKey) {
   const canEdit = can(cfg.perm) === 'full';
 
   const _i = n => (typeof icon === 'function') ? icon(n, 16) : '';
+
+  // Shared by both layouts. The selected-attr matters only when defaultFilters
+  // pre-set state (v2); on the old path it is always empty, output unchanged.
+  const _sel = (fi, v) => {
+    const cur = _entityState[entityKey].filters[fi.field];
+    return cur && cur.val === v ? 'selected' : '';
+  };
+  const filtersHTML = cfg.filters.map(fi => {
+    if (fi.type === 'bool' || fi.type === 'select') {
+      return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
+        ${fi.options.map(o => `<option value="${o.val}" ${_sel(fi, o.val)}>${fi.label}: ${o.label}</option>`).join('')}
+      </select>`;
+    } else if (fi.type === 'dynamic') {
+      const opts = dynamicOpts[fi.field] || [];
+      // fi.labels: display-only Greek for stored English values (ΜΕΡΟΣ Ε).
+      // The option VALUE stays raw so filtering matches the records.
+      return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
+        <option value="">${fi.label}: ${fi.allLabel || 'Όλα'}</option>
+        ${opts.map(o => `<option value="${o}">${(fi.labels && fi.labels[o]) || o}</option>`).join('')}
+      </select>`;
+    }
+    return '';
+  }).join('');
+
+  if (cfg.v2) {
+    // Wave 1 layout (Figma truck-overview 103:290): title, count, filters,
+    // search and the primary action live in ONE bar inside the list panel.
+    // The old page-header + stats strip cost two rows that rule #5
+    // (≥20 rows visible at 1080p) cannot afford — spec 2026-08-29 §3.
+    // Expiries live in the record card, never in the list (spec §3); the
+    // Έγγραφα filter chip stays because it already exists.
+    c.innerHTML = `
+    <div class="entity-layout entity-v2">
+      <div class="entity-list-panel">
+        <div class="ev2-bar">
+          <span class="ev2-title">${cfg.titleV2 || cfg.label}</span>
+          <span class="ev2-count" id="${entityKey}_count"></span>
+          ${filtersHTML}
+          <input class="ev2-search" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
+            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
+          ${canEdit ? `
+          <button class="btn btn-primary btn-sm ev2-new" onclick="openEntityCreate('${entityKey}')">
+            ${_i('plus')}
+            Νέα εγγραφή
+          </button>` : ''}
+        </div>
+        <div class="entity-table-wrap" id="${entityKey}_table"></div>
+      </div>
+      <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
+    </div>`;
+    // One shared path renders table + count, so the default filters are
+    // applied exactly the way a user's own click would apply them.
+    applyEntityFilters(entityKey);
+    if (entityKey === 'workshops') _enrichWorkshopsV2(entityKey, records);
+    return;
+  }
+
   c.innerHTML = `
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
@@ -385,20 +642,7 @@ async function renderEntity(entityKey) {
             <input class="entity-search-input" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
               oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
           </div>
-          ${cfg.filters.map(fi => {
-            if (fi.type === 'bool' || fi.type === 'select') {
-              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
-                ${fi.options.map(o => `<option value="${o.val}">${fi.label}: ${o.label}</option>`).join('')}
-              </select>`;
-            } else if (fi.type === 'dynamic') {
-              const opts = dynamicOpts[fi.field] || [];
-              return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-                <option value="">${fi.label}: Όλα</option>
-                ${opts.map(o => `<option value="${o}">${o}</option>`).join('')}
-              </select>`;
-            }
-            return '';
-          }).join('')}
+          ${filtersHTML}
           <span class="entity-count-chip" id="${entityKey}_count">${records.length}</span>
         </div>
         <div class="entity-table-wrap" id="${entityKey}_table">
@@ -410,7 +654,6 @@ async function renderEntity(entityKey) {
 
   if (entityKey === 'partners')  _renderPartnersStatsStrip(records);
   if (entityKey === 'clients')   _renderClientsStatsStrip(records);
-  if (entityKey === 'workshops') _renderWorkshopsStatsStrip(records);
   // DV-5/TR-5/TL-5: ο στόλος είχε μηδέν KPI ενώ Clients/Partners είχαν τρία.
   if (entityKey === 'drivers' || entityKey === 'trucks' || entityKey === 'trailers')
     _renderFleetStatsStrip(entityKey, records);
@@ -437,7 +680,7 @@ function _renderFleetStatsStrip(entityKey, records) {
   }
   const active = records.filter(r => r.fields['Active']).length;
   const card = (label, val, color) => {
-    const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+    const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
     return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
       <div class="tms-stat-label">${label}</div>
       <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
@@ -451,101 +694,45 @@ function _renderFleetStatsStrip(entityKey, records) {
   </div>`;
 }
 
-// ── Workshops stats strip ─────────────────────────
-async function _renderWorkshopsStatsStrip(workshops) {
-  const el = document.getElementById('workshops_stats_strip');
-  if (!el) return;
+// ── Workshops enrichment (v2) ───────────────────────────────────────────────
+// Εργασίες/Δαπάνη/Τελευταία χρήση are DERIVED list columns: one pass over
+// maint_history, attached to the in-memory records, one re-render. Extracted
+// from the old stats strip, which the v2 layout removed — the columns must
+// not die with the strip. Unused workshops stay UNSET on purpose: the columns
+// read «—», never 0/€0 — rule #3, and the fix for the 4 unknown-as-zero
+// workshop cells measured on 28/8.
+async function _enrichWorkshopsV2(entityKey, workshops) {
   try {
-    // C1 fix: removed 'Total Cost' from fields[] — it's not in MAINT_HISTORY schema (422 error).
-    // Code below still reads r.fields['Total Cost'] as a safety fallback in case it's added later.
-    // safeFetch: this feeds the workshops stats strip, which totals SPEND. A
-    // swallowed error rendered "€0 total, €0 this month" for every workshop,
-    // which is a plausible figure and therefore believable, rather than an
-    // obvious failure. Same shape as the pallet balance fixed in an earlier
-    // batch: a money number must not report an unknown as a zero.
     const history = await safeFetch(
-      () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Date'] }, true),
+      () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop', 'Cost', 'Date'] }, true),
       'workshops: maintenance history'
     );
-    if (didFail(history)) {
-      el.innerHTML = '<div style="padding:8px 0;color:#B45309;font-size:12px">⚠ Τα στοιχεία συντήρησης δεν φόρτωσαν, τα σύνολα δεν εμφανίζονται.</div>';
-      return;
-    }
-    const activeWs = workshops.filter(w => w.fields['Active']).length;
-    const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-    // CL-3: toISOString() is UTC — before 02:00/03:00 local on the 1st of the
-    // month it still returns LAST month, so «THIS MONTH» went silently wrong.
-    // toLocalDate() (utils) formats in local time; slice keeps YYYY-MM.
-    const yyyymm = toLocalDate(new Date()).slice(0, 7);
-    const monthSpend = history
-      .filter(r => (r.fields['Date'] || '').startsWith(yyyymm))
-      .reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-
-    // Top workshop by total spend
-    const byWs = {};
+    if (didFail(history)) throw new Error('maintenance history failed');
+    const count = {}, spend = {}, last = {};
     for (const r of history) {
       const wid = (r.fields['Workshop'] || [])[0];
       if (!wid) continue;
-      const cost = parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0;
-      byWs[wid] = (byWs[wid] || 0) + cost;
-    }
-    const wsNameById = {};
-    for (const w of workshops) wsNameById[w.id] = w.fields['Name'] || '—';
-    const top3 = Object.entries(byWs)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([wid, total]) => ({ name: wsNameById[wid] || 'Unknown', total }));
-
-    // Enrich workshop records with service count + total spend for column display
-    const serviceCountByWs = {};
-    const lastUsedByWs = {};
-    for (const r of history) {
-      const wid = (r.fields['Workshop'] || [])[0];
-      if (!wid) continue;
-      serviceCountByWs[wid] = (serviceCountByWs[wid] || 0) + 1;
+      count[wid] = (count[wid] || 0) + 1;
+      spend[wid] = (spend[wid] || 0) + (parseFloat(r.fields['Cost']) || 0);
       const d = r.fields['Date'];
-      if (d && (!lastUsedByWs[wid] || d > lastUsedByWs[wid])) lastUsedByWs[wid] = d;
+      if (d && (!last[wid] || d > last[wid])) last[wid] = d;
     }
-    // Attach enrichment to in-memory records so column rendering can use them
     for (const w of workshops) {
-      w.fields['_serviceCount'] = serviceCountByWs[w.id] || 0;
-      w.fields['_totalSpend'] = byWs[w.id] || 0;
-      w.fields['_lastUsed'] = lastUsedByWs[w.id] || '';
+      if (!count[w.id]) continue;   // never used → stays unset → «—»
+      w.fields['_serviceCount'] = count[w.id];
+      w.fields['_totalSpend'] = spend[w.id];
+      w.fields['_lastUsed'] = last[w.id] || '';
     }
-    // Re-render table to show enriched columns
-    const tableEl = document.getElementById('workshops_table');
-    if (tableEl) tableEl.innerHTML = buildEntityTable('workshops', workshops);
-
-    // Use unified .tms-stat-card (dark navy). Map black text-color to white so values stay readable.
-    const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
-      return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
-        <div class="tms-stat-label">${label}</div>
-        <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
-      </div>`;
-    };
-    const topHTML = top3.length
-      ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
-          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργεία (σύνολο)</div>
-          ${top3.map((p, i) => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${escapeHtml(p.name)}</span>
-              <span style="color:#fff;font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
-            </div>`).join('')}
-        </div>`
-      : '';
-
-    el.innerHTML = `
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${card('Ενεργά Συνεργεία', activeWs)}
-        ${card('Εργασίες (σύνολο)', history.length.toLocaleString(), 'var(--accent)')}
-        ${card('Συνολική Δαπάνη', '€' + Math.round(totalSpend).toLocaleString(), 'var(--text)')}
-        ${card('Τρέχων Μήνας', '€' + Math.round(monthSpend).toLocaleString(), monthSpend > 0 ? 'var(--warning)' : 'var(--text-dim)')}
-        ${topHTML}
-      </div>`;
-  } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats unavailable</div>`;
-    if (typeof logError === 'function') logError(e, 'entity stats widget');
+    applyEntityFilters(entityKey);
+  } catch (e) {
+    // Rule #7/#1: the three columns stay «—» AND the screen says why —
+    // a silent enrichment failure would read as «κανένα συνεργείο σε χρήση».
+    const bar = document.querySelector('.ev2-bar');
+    if (bar && !document.getElementById('ev2_enrich_warn')) {
+      bar.insertAdjacentHTML('beforeend',
+        '<span id="ev2_enrich_warn" class="ecard-fail">⚠ Εργασίες/Δαπάνη δεν φόρτωσαν</span>');
+    }
+    if (typeof logError === 'function') logError(e, 'workshops enrichment');
   }
 }
 
@@ -586,7 +773,7 @@ async function _renderPartnersStatsStrip(partners) {
       .map(([pid,total]) => ({ name: pNameById[pid]||'Unknown', total }));
 
     const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
       return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
         <div class="tms-stat-label">${label}</div>
         <div class="tms-stat-value" style="color:${valColor}">${val}</div>
@@ -598,8 +785,8 @@ async function _renderPartnersStatsStrip(partners) {
           <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
-              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text-inverse);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -651,7 +838,7 @@ async function _renderClientsStatsStrip(clients) {
       .map(([cid,total]) => ({ name: cNameById[cid]||'Unknown', total }));
 
     const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? '#fff' : color;
+      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
       return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
         <div class="tms-stat-label">${label}</div>
         <div class="tms-stat-value" style="color:${valColor}">${val}</div>
@@ -663,8 +850,8 @@ async function _renderClientsStatsStrip(clients) {
           <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Πελάτες (All Time)</div>
           ${top3.map((p,i) => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:#38BDF8">#${i+1}</strong> ${p.name}</span>
-              <span style="color:#fff;font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
+              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${p.name}</span>
+              <span style="color:var(--text-inverse);font-weight:700">€${Math.round(p.total).toLocaleString()}</span>
             </div>`).join('')}
         </div>`
       : '';
@@ -866,7 +1053,10 @@ function buildEntityTable(entityKey, records) {
     // Numeric cells render right-aligned (see the 'number' branch in the cell
     // renderer); the header did not, so every numeric column read as misaligned —
     // header hugging the left edge, values far right. Match the cell alignment.
-    const alignRight = c.type === 'number' || c.type === 'currency';
+    // v2: right-aligned are ONLY variable-length quantities (unit columns) and
+    // money — Year is a fixed 4-digit label and stays left (spec 2026-08-29 §3).
+    const alignRight = cfg.v2 ? (c.type === 'currency' || !!c.unit)
+                              : (c.type === 'number' || c.type === 'currency');
     return `<th style="cursor:pointer;user-select:none${alignRight?';text-align:right':''}" aria-sort="${ariaSort}" tabindex="0" role="button"
       onclick="entitySortToggle('${entityKey}',${i})"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
@@ -884,7 +1074,7 @@ function buildEntityTable(entityKey, records) {
         ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
         : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
       }
-      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:#FEF3C7;color:#92400E;font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
+      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:var(--row-empty-bg);color:var(--row-empty-text);font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
     </tbody>
   </table>`;
 }
@@ -897,10 +1087,23 @@ function buildEntityTable(entityKey, records) {
  */
 function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
   const f = r.fields;
+  const cfg = ENTITY_CONFIG[entityKey];
   const cells = cols.map(col => {
     const val = f[col.field];
     if (col.type === 'active') {
-      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? 'Active' : 'Inactive'}</span></td>`;
+      // v2 speaks Greek on screen (DESIGN.md ΜΕΡΟΣ Ε); the stored boolean and
+      // the old screens' English badge stay as they are until their own turn.
+      const onL  = (cfg.v2 && cfg.activeLabels) ? cfg.activeLabels[0] : 'Active';
+      const offL = (cfg.v2 && cfg.activeLabels) ? cfg.activeLabels[1] : 'Inactive';
+      return `<td><span class="badge ${val ? 'badge-green' : 'badge-grey'}">${val ? onL : offL}</span></td>`;
+    }
+    if (col.type === 'tag') {
+      // Pill with display-only Greek label; emphasis (cold-chain blue) only
+      // for the values the mock highlights. Stored value untouched.
+      if (!val) return '<td style="color:var(--text-dim)">—</td>';
+      const lbl = (cfg.typeLabels && cfg.typeLabels[val]) || val;
+      const hi = (col.emphasize || []).includes(val);
+      return `<td><span class="badge ${hi ? 'ev2-tag-hi' : 'badge-grey'}">${lbl}</span></td>`;
     }
     if (col.type === 'expiry' && val) {
       return `<td>${expiryLabel(val)}</td>`;
@@ -930,10 +1133,22 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
       return `<td><span style="display:inline-flex;align-items:center;gap:4px;color:var(--text-mid)">${pin}${val}</span></td>`;
     }
     if (col.type === 'currency') {
+      if (cfg.v2) {
+        // Enrichment leaves unused rows UNSET on purpose: unknown/none reads
+        // «—», never €0 (rule #3 — the workshops unknown-as-zero cells die here).
+        if (val == null || val === '') return '<td style="color:var(--text-dim);text-align:right;font-variant-numeric:tabular-nums">—</td>';
+        return `<td style="font-variant-numeric:tabular-nums;text-align:right;font-weight:600">€${Math.round(val).toLocaleString('el-GR')}</td>`;
+      }
       if (val == null || val === 0) return '<td style="color:var(--text-dim);font-variant-numeric:tabular-nums">€0</td>';
       return `<td style="font-variant-numeric:tabular-nums;font-weight:600">€${Math.round(val).toLocaleString()}</td>`;
     }
     if (col.type === 'date_rel') {
+      if (cfg.v2) {
+        // Absolute Greek date (mock 118:1356) — «3d ago» made the reader do
+        // the math the screen already knew.
+        if (!val) return '<td style="color:var(--text-dim)">—</td>';
+        return `<td style="white-space:nowrap;font-variant-numeric:tabular-nums">${_ecDate(val)}</td>`;
+      }
       if (!val) return '<td style="color:var(--text-dim);font-size:11px">Never</td>';
       const days = Math.floor((Date.now() - new Date(val).getTime()) / 86400000);
       const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 30 ? `${days}d ago` : days < 365 ? `${Math.round(days/30)}mo ago` : `${Math.round(days/365)}y ago`;
@@ -948,8 +1163,14 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
       // η στήλη να διαβάζεται ως αριθμοί και όχι ως κείμενο (owner 6-8-2026).
       const unit = col.unit && val != null && val !== ''
         ? ` <span style="color:var(--text-dim);font-size:11px">${col.unit}</span>` : '';
-      const shown = val != null && val !== '' ? val : '—';
-      return `<td style="font-variant-numeric:tabular-nums;text-align:right">${shown}${unit}</td>`;
+      // v2: thousands separator (7.420) — but only where a unit marks a
+      // measured quantity. Year is a label, not an amount: «2.021» is wrong.
+      const num = (cfg.v2 && col.unit && val != null && val !== '' && !isNaN(parseFloat(val)))
+        ? parseFloat(val).toLocaleString('el-GR') : val;
+      const shown = num != null && num !== '' ? num : '—';
+      // v2 alignment mirrors the header rule above: only unit quantities right.
+      const alignRight = cfg.v2 ? !!col.unit : true;
+      return `<td style="font-variant-numeric:tabular-nums${alignRight ? ';text-align:right' : ''}">${shown}${unit}</td>`;
     }
     if (col.primary) {
       const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
@@ -1043,8 +1264,10 @@ function applyEntityFilters(entityKey) {
   }
 
   st.filtered = recs;
+  const noun = cfg.countNoun || ['εγγραφή', 'εγγραφές'];
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
-  document.getElementById(entityKey + '_count').textContent = recs.length + (recs.length===1?' εγγραφή':' εγγραφές');
+  document.getElementById(entityKey + '_count').textContent =
+    recs.length.toLocaleString('el-GR') + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
 }
 
 // ── Detail Panel ──────────────────────────────────
@@ -1060,6 +1283,8 @@ function selectEntity(entityKey, recId) {
 
   const panel = document.getElementById(entityKey + '_detail');
   panel.classList.remove('hidden');
+
+  if (cfg.v2) { _renderEntityCardV2(entityKey, rec, panel); return; }
 
   const f = rec.fields;
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
@@ -1114,6 +1339,412 @@ function selectEntity(entityKey, recId) {
 
   // Load order history async
   if (cfg.history) _loadEntityHistory(cfg.history.type, recId, title);
+}
+
+// ── Record card v2 (Wave 1, Figma truck-overview 103:290) ──────────────────
+// Instant half: header, documents, specs — everything already on the record.
+// Async half: mileage, round trips, damages — each section fetches on its own
+// and each failure speaks for itself (rule #7): a dead backend section shows a
+// warning, never a blank. Section bodies carry the record id in their DOM ids,
+// so a response landing after the user selected ANOTHER record finds no
+// element and silently expires instead of painting stale data.
+
+function _ecEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function _ecDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return _ecEsc(d);
+  return dt.toLocaleDateString('el-GR', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/\./g, '');
+}
+
+function _ecRange(a, b) {
+  const da = a ? new Date(a) : null, db = b ? new Date(b) : null;
+  const fm = d => d.toLocaleDateString('el-GR', { day: '2-digit', month: 'short' }).replace(/\./g, '');
+  if (da && db) {
+    if (da.getMonth() === db.getMonth() && da.getFullYear() === db.getFullYear())
+      return String(da.getDate()).padStart(2, '0') + '–' + fm(db);
+    return fm(da) + ' – ' + fm(db);
+  }
+  return da ? fm(da) : db ? fm(db) : '—';
+}
+
+// Document line: the words carry the meaning, the color only repeats it
+// (rule #2). A missing date is said out loud — a truck with no recorded ΚΤΕΟ
+// is exactly what the audit found months late (rule #3: unknown is not fine).
+function _ecDocState(val) {
+  if (!val) return { dot: 'none', text: 'δεν έχει καταχωρηθεί', cls: 'dim', date: '—' };
+  const days = Math.ceil((new Date(val) - new Date()) / 86400000);
+  if (days < 0)   return { dot: 'bad',  text: `έληξε πριν ${Math.abs(days)} ${Math.abs(days) === 1 ? 'ημέρα' : 'ημέρες'}`, cls: 'bad',  date: _ecDate(val) };
+  if (days <= 30) return { dot: 'warn', text: `λήγει σε ${days} ${days === 1 ? 'ημέρα' : 'ημέρες'}`, cls: 'warn', date: _ecDate(val) };
+  return { dot: 'ok', text: 'εντάξει', cls: 'ok', date: _ecDate(val) };
+}
+
+const _ecPlate = s => (typeof normalizePlate === 'function')
+  ? normalizePlate(s) : String(s || '').toUpperCase().replace(/\s/g, '');
+
+function _renderEntityCardV2(entityKey, rec, panel) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const f = rec.fields;
+  const recId = rec.id;
+  const canEdit = can(cfg.perm) === 'full';
+  const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
+  const title = f[primaryField] || recId.slice(-6);
+  // Phones render formatted, same as the list column (DV-7).
+  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x]) : f[x]).filter(Boolean).join(cfg.cardSubtitleSep || ' ')
+    + (cfg.cardSubtitleExtra && f[cfg.cardSubtitleExtra] ? ' · ' + f[cfg.cardSubtitleExtra] : '');
+  const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
+  // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
+  const tagV = cfg.cardTag ? f[cfg.cardTag.f] : null;
+  const tagHTML = tagV
+    ? `<span class="badge ${cfg.cardTag.style || ((cfg.cardTag.emphasize || []).includes(tagV) ? 'ev2-tag-hi' : 'badge-grey')}">${_ecEsc((cfg.typeLabels && cfg.typeLabels[tagV]) || tagV)}</span>`
+    : '';
+
+  const docsHTML = (cfg.cardDocs || []).map(d => {
+    const s = _ecDocState(f[d.f]);
+    // labelField: the row can lead with a value from the record itself —
+    // the driver card shows the licence NUMBER, not a static word.
+    const lbl = d.labelField ? (f[d.labelField] || d.label) : d.label;
+    return `<div class="ecard-doc">
+      <span class="ecard-dot ${s.dot}"></span>
+      <span class="ecard-doc-label">${_ecEsc(lbl)}</span>
+      <span class="ecard-doc-date">${s.date}</span>
+      <span class="ecard-doc-state ${s.cls}">${s.text}</span>
+    </div>`;
+  }).join('');
+
+  const specsHTML = (cfg.cardSpecs || []).map(sp => {
+    let v = f[sp.f];
+    if (v == null || v === '')
+      return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val dim">—</span></div>`;
+    if (sp.num && !isNaN(parseFloat(v))) v = parseFloat(v).toLocaleString('el-GR');
+    if (sp.phone) v = _fmtPhone(v);
+    return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val">${_ecEsc(v)}${sp.unit ? ` <span class="dim">${sp.unit}</span>` : ''}</span></div>`;
+  }).join('');
+
+  // «όλα →» to TRIP PnL only for roles with full costs access — the page is
+  // not in anyone else's navigation, and a link into a screen you cannot use
+  // is noise, not access.
+  const rtLink = (typeof can === 'function' && can('costs') === 'full')
+    ? `<button type="button" class="ecard-link" onclick="navigate('costs')">όλα →</button>` : '';
+
+  panel.innerHTML = `
+    <div class="ecard-head">
+      <div class="ecard-head-main">
+        <div class="ecard-title-row">
+          <span class="ecard-title">${_ecEsc(title)}</span>
+          <span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>
+          ${tagHTML}
+          <span id="ec_${recId}_svc"></span>
+        </div>
+        ${sub ? `<div class="ecard-sub">${_ecEsc(sub)}</div>` : ''}
+      </div>
+      <div class="detail-actions">
+        ${canEdit ? `<button type="button" class="btn-icon" title="Επεξεργασία" onclick="openEntityEdit('${entityKey}','${recId}')">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
+        </button>
+        <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">${f['Active'] ? '● ' + onL : '○ ' + offL}</button>` : ''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</button>
+      </div>
+    </div>
+    <div class="detail-body ecard-body">
+      ${cfg.cardKm ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Χιλιόμετρα</div>
+        <div class="ecard-sec-body" id="ec_${recId}_km">Φόρτωση…</div>
+      </div>` : ''}
+      ${(cfg.cardDocs || []).length ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardDocsTitle || 'Έγγραφα'}
+          ${cfg.cardDocsLink === false ? '' : `<button type="button" class="ecard-link" onclick="navigate('maint_expiry')">Διαχείριση →</button>`}
+        </div>
+        ${docsHTML}
+      </div>` : ''}
+      ${cfg.cardNotice && (!cfg.cardNotice.perm || can(cfg.perm) === cfg.cardNotice.perm) ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardNotice.title}</div>
+        ${f[cfg.cardNotice.f] != null && f[cfg.cardNotice.f] !== ''
+          ? `<div class="ecard-spec-val">${_ecEsc(f[cfg.cardNotice.f])}</div>`
+          : `<div class="ecard-empty">${cfg.cardNotice.emptyText}</div>
+             ${cfg.cardNotice.helper ? `<div class="ecard-km-sub">${cfg.cardNotice.helper}</div>` : ''}`}
+      </div>` : ''}
+      ${(cfg.cardSpecs || []).length ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardSpecsTitle || 'Στοιχεία οχήματος'}</div>
+        ${specsHTML}
+      </div>` : ''}
+      ${cfg.cardUsage ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Χρήση</div>
+        <div class="ecard-usage">
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_serviceCount'] != null ? f['_serviceCount'] : '—'}</span><span class="ecard-usage-lbl">εργασίες</span></div>
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_totalSpend'] != null ? '€' + Math.round(f['_totalSpend']).toLocaleString('el-GR') : '—'}</span><span class="ecard-usage-lbl">δαπάνη</span></div>
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_lastUsed'] ? _ecDate(f['_lastUsed']) : '—'}</span><span class="ecard-usage-lbl">τελευταία</span></div>
+        </div>
+      </div>` : ''}
+      ${cfg.cardRt ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Round trips ${rtLink}</div>
+        <div class="ecard-sec-body" id="ec_${recId}_rt">Φόρτωση…</div>
+      </div>` : ''}
+      ${cfg.cardTruckAgg ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Με ποια φορτηγά</div>
+        <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
+      </div>` : ''}
+      ${cfg.cardActivity ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardActivityTitle || 'Δραστηριότητα'}</div>
+        <div class="ecard-sec-body" id="ec_${recId}_act">Φόρτωση…</div>
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardRecentTitle || 'Πρόσφατες'}
+          ${cfg.cardActivity === 'orders' ? `<button type="button" class="ecard-link" onclick="navigate('orders_intl')">όλες →</button>` : ''}
+        </div>
+        <div class="ecard-sec-body" id="ec_${recId}_recent">Φόρτωση…</div>
+      </div>` : ''}
+      ${cfg.cardMaint ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardMaintTitle || 'Ζημιές & επισκευές'}
+          ${cfg.cardMaintBy === 'workshop'
+            ? `<button type="button" class="ecard-link" onclick="navigate('maint_svc')">όλες →</button>`
+            : `<button type="button" class="ecard-link" onclick="_openVehicleHistory('${entityKey}','${String(f['License Plate'] || '').replace(/'/g, "\\'")}')">όλα →</button>`}
+        </div>
+        <div class="ecard-sec-body" id="ec_${recId}_mh">Φόρτωση…</div>
+      </div>` : ''}
+    </div>`;
+
+  if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
+  if (cfg.cardRt) _loadEntityCardRT(entityKey, rec);
+  if (cfg.cardActivity) _loadEntityCardActivity(entityKey, rec);
+}
+
+async function _loadEntityCardMaint(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const recId = rec.id;
+  const plate = String(rec.fields['License Plate'] || '');
+  const byWorkshop = cfg && cfg.cardMaintBy === 'workshop';
+  try {
+    const hist = await atGetAll(TABLES.MAINT_HISTORY, {
+      fields: ['Truck', 'Trailer', 'Workshop', 'Vehicle Plate', 'Date', 'Description', 'Type', 'Cost', 'Odometer km'],
+    }, true);
+    // Fetch ALL and filter client-side, like modules/maintenance.js does: the
+    // link field is authoritative, the plate string is the legacy fallback —
+    // and plates need normalizePlate (Greek/Latin homoglyphs, TR-2).
+    const linkField = byWorkshop ? 'Workshop' : (entityKey === 'trailers' ? 'Trailer' : 'Truck');
+    const mine = hist.filter(r =>
+      ((r.fields[linkField] || [])[0] === recId) ||
+      (!byWorkshop && !!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate))
+    ).sort((a, b) => String(b.fields['Date'] || '').localeCompare(String(a.fields['Date'] || '')));
+
+    const kmEl = document.getElementById(`ec_${recId}_km`);
+    if (kmEl) {
+      // Latest recorded odometer reading. NOT a live odometer: 72/1091 history
+      // rows carry a reading (measured 29/8), so absence is the common case
+      // and must say so instead of showing a stale-looking zero (rule #3).
+      // The mock's «επόμενο σέρβις» progress bar is NOT built: next_service_km
+      // is 0/1091 — unbacked design, recorded in OBSERVATIONS for the owner.
+      const withOdo = mine.filter(r => r.fields['Odometer km'] != null && r.fields['Odometer km'] !== '');
+      kmEl.innerHTML = withOdo.length
+        ? `<div class="ecard-km"><span class="ecard-km-num">${parseFloat(withOdo[0].fields['Odometer km']).toLocaleString('el-GR')}</span><span class="ecard-km-unit">χλμ</span></div>
+           <div class="ecard-km-sub">τελευταία ένδειξη σε σέρβις · ${_ecDate(withOdo[0].fields['Date'])}</div>`
+        : `<div class="ecard-empty">Δεν έχει καταχωρηθεί ένδειξη χιλιομέτρων.</div>`;
+    }
+
+    const mhEl = document.getElementById(`ec_${recId}_mh`);
+    if (mhEl) {
+      mhEl.innerHTML = mine.length
+        ? mine.slice(0, 3).map(r => {
+            const rf = r.fields;
+            const cost = rf['Cost'] != null && rf['Cost'] !== ''
+              ? '€' + Math.round(parseFloat(rf['Cost']) || 0).toLocaleString('el-GR') : '—';
+            // Workshop card leads with the amount (mock 122:762) and names the
+            // vehicle; vehicle cards lead with the date.
+            return byWorkshop
+              ? `<div class="ecard-row">
+                  <span class="ecard-row-code">${cost}</span>
+                  <span class="ecard-row-date">${_ecDate(rf['Date'])}</span>
+                  <span class="ecard-row-main">${_ecEsc([rf['Vehicle Plate'], rf['Description'] || rf['Type']].filter(Boolean).join(' — ') || '—')}</span>
+                </div>`
+              : `<div class="ecard-row">
+              <span class="ecard-row-date">${_ecDate(rf['Date'])}</span>
+              <span class="ecard-row-main">${_ecEsc(rf['Description'] || rf['Type'] || '—')}</span>
+              <span class="ecard-row-amt">${cost}</span>
+            </div>`;
+          }).join('') + (mine.length > 3 ? `<div class="ecard-more">+${mine.length - 3} ακόμη</div>` : '')
+        : `<div class="ecard-empty">Καμία εργασία καταγεγραμμένη ${byWorkshop ? 'για αυτό το συνεργείο' : 'για αυτό το όχημα'}.</div>`;
+    }
+  } catch (e) {
+    for (const suffix of ['km', 'mh']) {
+      const el = document.getElementById(`ec_${recId}_${suffix}`);
+      if (el) el.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό συντήρησης.</div>`;
+    }
+    if (typeof logError === 'function') logError(e, 'entity card: maint history');
+  }
+
+  // «ΣΕ ΣΕΡΒΙΣ»: an open In-Progress maintenance request on this plate.
+  // Supplementary — its failure is logged but must not take the card down.
+  try {
+    if (!plate) return;   // workshops: no plate, no «ΣΕ ΣΕΡΒΙΣ» badge to compute
+    const reqs = await atGetAll(TABLES.MAINT_REQ, { fields: ['Vehicle Plate', 'Status'] }, true);
+    const inSvc = reqs.some(r => r.fields['Status'] === 'In Progress'
+      && !!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate));
+    const el = document.getElementById(`ec_${recId}_svc`);
+    if (el && inSvc) el.innerHTML = `<span class="badge ecard-badge-svc">ΣΕ ΣΕΡΒΙΣ</span>`;
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'entity card: maint_req');
+  }
+}
+
+async function _loadEntityCardRT(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const recId = rec.id;
+  const plate = String(rec.fields['License Plate'] || '');
+  const body = () => document.getElementById(`ec_${recId}_rt`);
+  try {
+    if (typeof ctFetch !== 'function') throw new Error('ctFetch unavailable');
+    // /costs/rt carries NO money columns (worker: «λίστα ΧΩΡΙΣ αποτελέσματα
+    // PnL») — safe for every role that can read it. The plate→numeric-id map
+    // goes through /costs/lookups, same as modules/costs.js.
+    const isTrailer = entityKey === 'trailers';
+    const isDriver = entityKey === 'drivers';
+    const lk = await ctFetch('/costs/lookups');
+    const t = isDriver
+      ? (lk.drivers || []).find(x => String(x.full_name || '').trim().toLowerCase()
+          === String(rec.fields['Full Name'] || '').trim().toLowerCase())
+      : ((isTrailer ? lk.trailers : lk.trucks) || [])
+          .find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
+    let el = body();
+    if (!el) return;
+    if (!t) {
+      const noMatch = `<div class="ecard-empty">${isDriver ? 'Ο οδηγός' : 'Το όχημα'} δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
+      el.innerHTML = noMatch;
+      // The aggregation feeds off the same match — it must not stay «Φόρτωση…».
+      const aggE = document.getElementById(`ec_${recId}_agg`);
+      if (aggE) aggE.innerHTML = noMatch;
+      return;
+    }
+    // The worker filters rt by truck_id only; trailers and drivers take the
+    // latest page and filter client-side (14 rows total today).
+    const res = await ctFetch(isTrailer || isDriver ? '/costs/rt' : '/costs/rt?truck_id=' + t.id);
+    el = body();
+    if (!el) return;
+    let recsAll = res.records || [];
+    if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === t.id);
+    if (isDriver)  recsAll = recsAll.filter(r => r.driver_id === t.id);
+    const rts = recsAll.slice(0, 5);
+    const plateById = {};
+    for (const x of lk.trucks || []) plateById[x.id] = x.license_plate;
+    // No route text yet: /costs/rt returns leg ids, not location names — the
+    // mock's «Βέροια → Μιλάνο» needs joins this endpoint does not serve.
+    // Shown instead: code, dates, km, status/plate. Recorded in OBSERVATIONS.
+    el.innerHTML = rts.length
+      ? rts.map(rt => `<div class="ecard-row">
+          <span class="ecard-row-code">${_ecEsc(rt.code || ('RT-' + rt.id))}</span>
+          <span class="ecard-row-date">${_ecRange(rt.date_start, rt.date_end)}</span>
+          <span class="ecard-row-main">${rt.total_km != null ? parseFloat(rt.total_km).toLocaleString('el-GR') + ' χλμ' : '—'}</span>
+          <span class="ecard-row-state">${cfg && cfg.cardRtShowTruck
+            ? _ecEsc(plateById[rt.truck_id] || '—')
+            : (rt.status === 'closed' ? 'κλειστό' : rt.status === 'open' ? 'ανοιχτό' : _ecEsc(rt.status || ''))}</span>
+        </div>`).join('')
+      : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+
+    // «Με ποια φορτηγά» (driver card): per-truck round-trip counts from the
+    // SAME fetch — bars are relative to the driver's own busiest truck.
+    if (cfg && cfg.cardTruckAgg) {
+      const aggEl = document.getElementById(`ec_${recId}_agg`);
+      if (aggEl) {
+        const byTruck = {};
+        for (const r of recsAll) {
+          if (r.truck_id == null) continue;
+          byTruck[r.truck_id] = (byTruck[r.truck_id] || 0) + 1;
+        }
+        const rows = Object.entries(byTruck).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const max = rows.length ? rows[0][1] : 0;
+        aggEl.innerHTML = rows.length
+          ? rows.map(([tid, n]) => `<div class="ecard-agg-row">
+              <span class="ecard-row-code">${_ecEsc(plateById[tid] || ('#' + tid))}</span>
+              <span class="ecard-agg-n">${n} round trip${n === 1 ? '' : 's'}</span>
+              <span class="ecard-agg-bar"><span style="width:${Math.round(n / max * 100)}%"></span></span>
+            </div>`).join('')
+          : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+      }
+    }
+  } catch (e) {
+    // A 403 is an answer, not an outage — say which of the two it is. The
+    // aggregation feeds off the same fetch, so it fails alongside.
+    const msg = /forbidden|403/i.test(String(e && e.message))
+      ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στα δρομολόγια.</div>`
+      : `<div class="ecard-fail">⚠ Δεν φόρτωσαν τα δρομολόγια.</div>`;
+    const el = body();
+    if (el) el.innerHTML = msg;
+    const aggEl = document.getElementById(`ec_${recId}_agg`);
+    if (aggEl) aggEl.innerHTML = msg;
+    if (typeof logError === 'function') logError(e, 'entity card: round trips');
+  }
+}
+
+// ── Activity (clients: orders · partners: assignments) ─────────────────────
+// Volume and frequency ONLY — no prices, no margins, no rates: the dispatcher
+// has full access to these screens and never sees P&L (owner lock 23/8). The
+// fetches deliberately exclude every money field the old panel used to pull.
+async function _loadEntityCardActivity(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const recId = rec.id;
+  const actEl = () => document.getElementById(`ec_${recId}_act`);
+  const recEl = () => document.getElementById(`ec_${recId}_recent`);
+  const kpi = (n, l) => `<div class="ecard-usage-item"><span class="ecard-usage-num">${n}</span><span class="ecard-usage-lbl">${l}</span></div>`;
+  try {
+    let rows = [], k1, k2, k3;
+    if (cfg.cardActivity === 'orders') {
+      const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
+      const [intl, natl] = await Promise.all([
+        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Reference', 'Loading Location 1', 'Unloading Location 1', 'Loading DateTime'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Reference', 'Pickup Location 1', 'Delivery Location 1', 'Loading DateTime'] }, false),
+      ]);
+      const all = [
+        ...intl.map(r => ({ ref: r.fields['Reference'],
+          date: String(r.fields['Loading DateTime'] || '').slice(0, 10),
+          route: (typeof orderRoute === 'function' && orderRoute(r.fields, 24)) || '' })),
+        ...natl.map(r => ({ ref: r.fields['Reference'],
+          date: toLocalDate(r.fields['Loading DateTime']),
+          route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1'])) || '—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1'])) || '—'}` })),
+      ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      rows = all.slice(0, 3).map(o => ({ code: o.ref ? '#' + o.ref : '—', date: o.date, main: o.route || '—' }));
+      const total = all.length;
+      const lastD = total ? all[0].date : null;
+      // Lifetime monthly rate: total / months between first and last order
+      // (min one month) — the mock's «4,2 τον μήνα», computed honestly.
+      let perMonth = null;
+      if (total) {
+        const firstD = all[total - 1].date;
+        const months = Math.max(1, (new Date(lastD) - new Date(firstD)) / (30.44 * 86400000));
+        perMonth = (total / months).toLocaleString('el-GR', { maximumFractionDigits: 1 });
+      }
+      k1 = kpi(total, total === 1 ? 'παραγγελία' : 'παραγγελίες');
+      k2 = kpi(lastD ? _ecDate(lastD) : '—', 'τελευταία');
+      k3 = kpi(perMonth != null ? perMonth : '—', 'τον μήνα');
+    } else {
+      const pa = await paListByPartner(recId);
+      const activeN = pa.filter(r => ['Assigned', 'In Transit'].includes(r.fields[F.PA_STATUS] || '')).length;
+      const sorted = [...pa].sort((a, b) => String(b.fields[F.PA_ASSIGN_DATE] || '').localeCompare(String(a.fields[F.PA_ASSIGN_DATE] || '')));
+      rows = sorted.slice(0, 3).map(r => ({
+        code: (Array.isArray(r.fields[F.PA_ORDER]) && r.fields[F.PA_ORDER].length) ? 'INTL' : 'NAT',
+        date: String(r.fields[F.PA_ASSIGN_DATE] || '').slice(0, 10),
+        main: r.fields[F.PA_STATUS] || '—',
+      }));
+      k1 = kpi(pa.length, pa.length === 1 ? 'ανάθεση' : 'αναθέσεις');
+      k2 = kpi(sorted.length && sorted[0].fields[F.PA_ASSIGN_DATE]
+        ? _ecDate(String(sorted[0].fields[F.PA_ASSIGN_DATE]).slice(0, 10)) : '—', 'τελευταία');
+      k3 = kpi(activeN, activeN === 1 ? 'ενεργή' : 'ενεργές');
+    }
+    const a = actEl();
+    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}</div>`;
+    const rEl = recEl();
+    if (rEl) rEl.innerHTML = rows.length
+      ? rows.map(o => `<div class="ecard-row">
+          <span class="ecard-row-code">${_ecEsc(o.code)}</span>
+          <span class="ecard-row-date">${o.date ? _ecDate(o.date) : '—'}</span>
+          <span class="ecard-row-main">${_ecEsc(o.main)}</span>
+        </div>`).join('')
+      : `<div class="ecard-empty">${cfg.cardActivity === 'orders' ? 'Καμία παραγγελία καταγεγραμμένη.' : 'Καμία ανάθεση καταγεγραμμένη.'}</div>`;
+  } catch (e) {
+    for (const g of [actEl(), recEl()]) {
+      if (g) g.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό.</div>`;
+    }
+    if (typeof logError === 'function') logError(e, 'entity card: activity');
+  }
 }
 
 // ── Order History for Clients & Partners ─────────
@@ -1331,10 +1962,15 @@ function openEntityEdit(entityKey, recId) {
 function buildEntityModal(entityKey, recId, fields) {
   const cfg    = ENTITY_CONFIG[entityKey];
   const isEdit = !!recId;
+  const isV2   = !!cfg.v2;
   let bodyHTML = '<div class="form-grid cols-1" style="gap:0">';
 
   for (const sec of cfg.formFields) {
-    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.title}</div></div>`;
+    // sec.section, not sec.title: every ENTITY_CONFIG formFields entry keys
+    // its heading as `section`, and this line read `title` — so every modal
+    // of all six entities rendered «undefined» headings in production.
+    // Caught 29/8 by the form probe; nobody had reported it.
+    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.section || sec.title || ''}</div></div>`;
     bodyHTML += '<div class="form-grid">';
     for (const field of sec.fields) {
       const val = fields[field.f] ?? '';
@@ -1348,40 +1984,111 @@ function buildEntityModal(entityKey, recId, fields) {
               : `<option value="${o.val}" ${val===o.val?'selected':''}>${o.label}</option>`).join('')
           : '';
         input = `<select class="form-select" id="ef_${field.f.replace(/\s/g,'_')}">
-          <option value="">— Select —</option>${opts}</select>`;
+          <option value="">${isV2 ? '— Επιλογή —' : '— Select —'}</option>${opts}</select>`;
       } else if (field.type === 'date') {
         input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${val?val.split('T')[0]:''}">`;
       } else if (field.type === 'number') {
-        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="0">`;
+        // No «0» placeholder on dead fields: a grey 0 in a disabled box reads
+        // as a stored zero — exactly what rule #3 forbids.
+        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}"${field.disabled ? '' : ' placeholder="0"'}>`;
       } else if (field.type === 'email') {
         input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
       } else {
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
       }
+      // Dead fields (plan §2.1): disabled with the reason spelled out — the
+      // facade would accept the value, discard it, and toast success.
+      if (field.disabled) {
+        input = input.replace('<input ', '<input disabled ')
+                     .replace('<select ', '<select disabled ')
+                     .replace('<textarea ', '<textarea disabled ');
+      }
+      // v2: a message slot under every field — inline errors instead of the
+      // old alert(); «Προαιρετικό» hint on non-required textareas (mock).
+      const errSlot = isV2 ? `${field.disabled && field.disabledReason
+          ? `<div class="ef-hint">${field.disabledReason}</div>` : ''
+        }<div class="ef-err" id="eferr_ef_${field.f.replace(/\s/g,'_')}"></div>${
+        field.type === 'textarea' && !field.req ? '<div class="ef-hint">Προαιρετικό</div>' : ''}` : '';
       bodyHTML += `<div class="form-field ${field.type==='textarea'?'span-2':''}">
         <label class="form-label">${field.label}${field.req?' *':''}</label>
-        ${input}
+        ${input}${errSlot}
       </div>`;
     }
     bodyHTML += '</div>';
   }
   bodyHTML += '</div>';
 
-  const footerHTML = `
+  const footerHTML = isV2 ? `
+    <span class="ef-footnote" id="ef_note_${entityKey}" style="visibility:hidden">Τα πεδία με σφάλμα εμποδίζουν την αποθήκευση</span>
+    <button class="btn btn-ghost" onclick="closeModal()">Ακύρωση</button>
+    <button class="btn btn-primary" id="ef_save_${entityKey}" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
+      ${isEdit ? 'Αποθήκευση' : 'Δημιουργία'}
+    </button>` : `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-success" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
       ${isEdit ? 'Save Changes' : 'Create'}
     </button>`;
 
-  openModal(`${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`, bodyHTML, footerHTML);
+  // v2 titles come whole from config — genitive/nominative do not compose
+  // from one noun («Νέο φορτηγού» is broken Greek). The chip after the dash is
+  // the record's primary field, whatever the entity calls it.
+  const primaryF = (cfg.columns.find(c => c.primary) || {}).field;
+  const chip = isEdit && primaryF && fields[primaryF] ? ' — ' + fields[primaryF] : '';
+  const title = isV2
+    ? `${isEdit ? ((cfg.formTitles || [])[1] || 'Επεξεργασία') : ((cfg.formTitles || [])[0] || 'Νέα εγγραφή')}${chip}`
+    : `${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`;
+  openModal(title, bodyHTML, footerHTML);
+
+  if (isV2) {
+    // One delegated listener re-validates as the user types, so the message
+    // (and the disabled save) clears the moment the value becomes valid.
+    document.getElementById('modalBody').addEventListener('input', () => entityRevalidate(entityKey));
+  }
+}
+
+// v2 inline validation. Live pass (submit=false) runs only the cfg.validators
+// rules — an empty required field is not an error while the user is still
+// filling the form. The submit pass adds the required check. Returns true
+// when the form may be saved.
+function entityRevalidate(entityKey, submit = false) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  if (!cfg.v2) return true;
+  const rules = cfg.validators || {};
+  let errors = 0;
+  for (const sec of cfg.formFields) {
+    for (const field of sec.fields) {
+      if (field.disabled) continue;
+      const id = 'ef_' + field.f.replace(/\s/g, '_');
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const v = el.value.trim();
+      let msg = '';
+      if (submit && field.req && !v) msg = `Το πεδίο «${field.label}» είναι υποχρεωτικό`;
+      else if (rules[field.f]) msg = rules[field.f](v) || '';
+      el.classList.toggle('error', !!msg);
+      const errEl = document.getElementById('eferr_' + id);
+      if (errEl) errEl.textContent = msg;
+      if (msg) errors++;
+    }
+  }
+  const save = document.getElementById('ef_save_' + entityKey);
+  const note = document.getElementById('ef_note_' + entityKey);
+  if (save) save.disabled = errors > 0;
+  if (note) note.style.visibility = errors ? 'visible' : 'hidden';
+  return errors === 0;
 }
 
 async function saveEntityRecord(entityKey, recId) {
   const cfg    = ENTITY_CONFIG[entityKey];
-  const fields = {};
 
+  // v2: the full pass (validators + required) paints the messages inline and
+  // blocks the save — no alert() (mock truck-form: field errors block saving).
+  if (cfg.v2 && !entityRevalidate(entityKey, true)) return;
+
+  const fields = {};
   for (const sec of cfg.formFields) {
     for (const field of sec.fields) {
+      if (field.disabled) continue;   // dead field: never sent, never lied about
       const id = 'ef_' + field.f.replace(/\s/g, '_');
       const el = document.getElementById(id);
       if (!el) continue;
@@ -1392,14 +2099,16 @@ async function saveEntityRecord(entityKey, recId) {
     }
   }
 
-  const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
-  if (reqField && !fields[reqField.f]) {
-    alert(`Field "${reqField.label}" is required`);
-    return;
+  if (!cfg.v2) {
+    const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
+    if (reqField && !fields[reqField.f]) {
+      alert(`Field "${reqField.label}" is required`);
+      return;
+    }
   }
 
   const btn = document.activeElement;
-  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+  if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
     if (recId) {
@@ -1409,10 +2118,11 @@ async function saveEntityRecord(entityKey, recId) {
     }
     invalidateCache(cfg.tableId);
     closeModal();
-    toast(recId ? 'Record updated' : 'Record created');
+    toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
+                 : (recId ? 'Record updated' : 'Record created'));
     await renderEntity(entityKey);
   } catch(e) {
-    if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+    if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }
     reportError('Σφάλμα αποθήκευσης εγγραφής', e);
   }
 }
