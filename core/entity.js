@@ -1984,11 +1984,13 @@ function buildEntityModal(entityKey, recId, fields) {
               : `<option value="${o.val}" ${val===o.val?'selected':''}>${o.label}</option>`).join('')
           : '';
         input = `<select class="form-select" id="ef_${field.f.replace(/\s/g,'_')}">
-          <option value="">— Select —</option>${opts}</select>`;
+          <option value="">${isV2 ? '— Επιλογή —' : '— Select —'}</option>${opts}</select>`;
       } else if (field.type === 'date') {
         input = `<input class="form-input" type="date" id="ef_${field.f.replace(/\s/g,'_')}" value="${val?val.split('T')[0]:''}">`;
       } else if (field.type === 'number') {
-        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="0">`;
+        // No «0» placeholder on dead fields: a grey 0 in a disabled box reads
+        // as a stored zero — exactly what rule #3 forbids.
+        input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}"${field.disabled ? '' : ' placeholder="0"'}>`;
       } else if (field.type === 'email') {
         input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
       } else {
