@@ -1622,6 +1622,12 @@ tbody tr:hover { background: var(--bg-hover); }
 .ecard-agg-n { color: var(--text-mid); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ecard-agg-bar { flex: 1; height: 6px; border-radius: var(--radius-full); background: var(--border-row); overflow: hidden; }
 .ecard-agg-bar > span { display: block; height: 100%; border-radius: var(--radius-full); background: var(--accent); }
+/* «Χρήση» (workshop card): τρεις δείκτες σε μία σειρά — πλήθος, δαπάνη,
+   τελευταία. Μεγάλα νούμερα, μικρές ετικέτες από κάτω. */
+.ecard-usage { display: flex; gap: var(--space-6); }
+.ecard-usage-item { display: flex; flex-direction: column; }
+.ecard-usage-num { font-size: 20px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ecard-usage-lbl { font-size: var(--text-xs); color: var(--text-dim); }
 /* Νεκρό πεδίο φόρμας: σβηστό, με την αιτία από κάτω (.ef-hint). */
 .form-input:disabled, .form-select:disabled, .form-textarea:disabled {
   background: var(--surface-sunken);

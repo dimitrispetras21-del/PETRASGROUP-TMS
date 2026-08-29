@@ -129,6 +129,7 @@ const ENTITY_CONFIG = {
       emptyText: 'Δεν έχει καταχωρηθεί',
       helper: 'Το πεδίο δεν αποθηκεύεται ακόμη — εκκρεμεί στήλη στη βάση.',
     },
+    cardRt: true,
     cardRtShowTruck: true,
     cardTruckAgg: true,
     perm: 'drivers',
@@ -198,6 +199,7 @@ const ENTITY_CONFIG = {
     cardSubtitle: ['Brand', 'Model'],
     cardKm: true,    // trailers have no odometer — the section exists only here
     cardMaint: true,
+    cardRt: true,
     cardDocs: [
       { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
       { f: 'KEK Expiry',       label: 'ΚΕΚ' },
@@ -295,6 +297,7 @@ const ENTITY_CONFIG = {
     typeLabels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' },
     cardTag: { f: 'Trailer Type', emphasize: ['Reefer'] },
     cardMaint: true,
+    cardRt: true,
     cardDocs: [
       { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
       { f: 'FRC Expiry',       label: 'ATP/FRC' },
@@ -367,6 +370,31 @@ const ENTITY_CONFIG = {
     tableId: TABLES.WORKSHOPS,
     label: 'Workshops',
     labelSingle: 'Workshop',
+    // Wave 1, fourth entity (Figma workshops-overview 118:1356, workshop-card
+    // 122:762, workshops-form 120:654). The list's Εργασίες/Δαπάνη/Τελευταία
+    // columns come from the maint_history enrichment — now a standalone step
+    // (_enrichWorkshopsV2), no longer welded to the old stats strip.
+    v2: true,
+    titleV2: 'Συνεργεία',
+    countNoun: ['συνεργείο', 'συνεργεία'],
+    // «Ενεργός» to match the wording the Κατάσταση filter always had here.
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέο συνεργείο', 'Επεξεργασία συνεργείου'],
+    cardSubtitle: ['City'],
+    // Specialty values are already Greek in the DB — lavender pill (mock).
+    cardTag: { f: 'Specialty', style: 'ecard-badge-svc' },
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+      { f: 'Phone',          label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',          label: 'Email' },
+      { f: 'Address',        label: 'Διεύθυνση' },
+    ],
+    cardUsage: true,
+    cardMaint: true,
+    cardMaintBy: 'workshop',
+    cardMaintTitle: 'Πρόσφατες εργασίες',
     perm: 'maintenance',
     // Aliases/Notes είναι αναζητήσιμα επίτηδες: το import της 6-8-2026 έγραψε εκεί τις
     // 107 παλιές γραφές του Excel («ΣΑΡΑΚΑΚΗ», «SOULIS»…), οπότε αναζήτηση με το όνομα
@@ -385,7 +413,9 @@ const ENTITY_CONFIG = {
     ],
     columns: [
       { field: 'Name',           label: 'Όνομα',      primary: true },
-      { field: 'City',           label: 'Πόλη', type: 'city' },
+      // Plain text, no pin (mock 118:1356) — the pin said nothing the word
+      // next to it did not.
+      { field: 'City',           label: 'Πόλη' },
       { field: 'Specialty',      label: 'Ειδικότητα' },
       { field: 'Phone',          label: 'Τηλέφωνο' },
       { field: '_serviceCount',  label: 'Εργασίες', type: 'number' },
@@ -393,32 +423,30 @@ const ENTITY_CONFIG = {
       { field: '_lastUsed',      label: 'Τελευταία χρήση', type: 'date_rel' },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
+    // Per workshops-form 120:654: Στοιχεία / Επικοινωνία / Διεύθυνση.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία', fields: [
         { f: 'Name',           label: 'Επωνυμία', req: true },
         // Ίδιες ακριβώς τιμές με όσες έγραψε το import — αλλιώς κάθε επεξεργασία
         // συνεργείου θα δημιουργούσε νέα, παράλληλη ειδικότητα και το φίλτρο θα
         // γέμιζε διπλές κατηγορίες (αγγλικές από τη φόρμα, ελληνικές από τα δεδομένα).
         { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['Σέρβις','Ελαστικά','Φρένα/ανάρτηση','Ψύξη','Κινητήρας','Ηλεκτρικά','Αμάξωμα','Πέταλο/κοτσαδούρα','Έλεγχοι'] },
-        { f: 'Phone',          label: 'Τηλέφωνο' },
-        { f: 'Email',          label: 'Email' },
-        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
       ]},
-      { section: 'Location', fields: [
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+      ]},
+      { section: 'Διεύθυνση', fields: [
         // PARTNERS + CLIENTS use 'Adress' (typo, single 'd'). WORKSHOPS is
         // assumed to use correctly-spelled 'Address' per current Airtable schema.
         // If a 422 'Unknown field name: Address' appears for WORKSHOPS, change here.
         { f: 'Address',        label: 'Διεύθυνση' },
         { f: 'City',           label: 'Πόλη' },
-      ]},
-      { section: 'Notes', fields: [
         { f: 'Notes',          label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Details',  fields: ['Name','Specialty','Phone','Email','Contact Person'] },
-      { title: 'Location', fields: ['Address','City'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
 };
@@ -545,6 +573,7 @@ async function renderEntity(entityKey) {
     // One shared path renders table + count, so the default filters are
     // applied exactly the way a user's own click would apply them.
     applyEntityFilters(entityKey);
+    if (entityKey === 'workshops') _enrichWorkshopsV2(entityKey, records);
     return;
   }
 
@@ -583,7 +612,6 @@ async function renderEntity(entityKey) {
 
   if (entityKey === 'partners')  _renderPartnersStatsStrip(records);
   if (entityKey === 'clients')   _renderClientsStatsStrip(records);
-  if (entityKey === 'workshops') _renderWorkshopsStatsStrip(records);
   // DV-5/TR-5/TL-5: ο στόλος είχε μηδέν KPI ενώ Clients/Partners είχαν τρία.
   if (entityKey === 'drivers' || entityKey === 'trucks' || entityKey === 'trailers')
     _renderFleetStatsStrip(entityKey, records);
@@ -624,101 +652,45 @@ function _renderFleetStatsStrip(entityKey, records) {
   </div>`;
 }
 
-// ── Workshops stats strip ─────────────────────────
-async function _renderWorkshopsStatsStrip(workshops) {
-  const el = document.getElementById('workshops_stats_strip');
-  if (!el) return;
+// ── Workshops enrichment (v2) ───────────────────────────────────────────────
+// Εργασίες/Δαπάνη/Τελευταία χρήση are DERIVED list columns: one pass over
+// maint_history, attached to the in-memory records, one re-render. Extracted
+// from the old stats strip, which the v2 layout removed — the columns must
+// not die with the strip. Unused workshops stay UNSET on purpose: the columns
+// read «—», never 0/€0 — rule #3, and the fix for the 4 unknown-as-zero
+// workshop cells measured on 28/8.
+async function _enrichWorkshopsV2(entityKey, workshops) {
   try {
-    // C1 fix: removed 'Total Cost' from fields[] — it's not in MAINT_HISTORY schema (422 error).
-    // Code below still reads r.fields['Total Cost'] as a safety fallback in case it's added later.
-    // safeFetch: this feeds the workshops stats strip, which totals SPEND. A
-    // swallowed error rendered "€0 total, €0 this month" for every workshop,
-    // which is a plausible figure and therefore believable, rather than an
-    // obvious failure. Same shape as the pallet balance fixed in an earlier
-    // batch: a money number must not report an unknown as a zero.
     const history = await safeFetch(
-      () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop','Cost','Date'] }, true),
+      () => atGetAll(TABLES.MAINT_HISTORY, { fields: ['Workshop', 'Cost', 'Date'] }, true),
       'workshops: maintenance history'
     );
-    if (didFail(history)) {
-      el.innerHTML = '<div style="padding:8px 0;color:var(--warning);font-size:12px">⚠ Τα στοιχεία συντήρησης δεν φόρτωσαν, τα σύνολα δεν εμφανίζονται.</div>';
-      return;
-    }
-    const activeWs = workshops.filter(w => w.fields['Active']).length;
-    const totalSpend = history.reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-    // CL-3: toISOString() is UTC — before 02:00/03:00 local on the 1st of the
-    // month it still returns LAST month, so «THIS MONTH» went silently wrong.
-    // toLocalDate() (utils) formats in local time; slice keeps YYYY-MM.
-    const yyyymm = toLocalDate(new Date()).slice(0, 7);
-    const monthSpend = history
-      .filter(r => (r.fields['Date'] || '').startsWith(yyyymm))
-      .reduce((s, r) => s + (parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0), 0);
-
-    // Top workshop by total spend
-    const byWs = {};
+    if (didFail(history)) throw new Error('maintenance history failed');
+    const count = {}, spend = {}, last = {};
     for (const r of history) {
       const wid = (r.fields['Workshop'] || [])[0];
       if (!wid) continue;
-      const cost = parseFloat(r.fields['Cost']) || parseFloat(r.fields['Total Cost']) || 0;
-      byWs[wid] = (byWs[wid] || 0) + cost;
-    }
-    const wsNameById = {};
-    for (const w of workshops) wsNameById[w.id] = w.fields['Name'] || '—';
-    const top3 = Object.entries(byWs)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([wid, total]) => ({ name: wsNameById[wid] || 'Unknown', total }));
-
-    // Enrich workshop records with service count + total spend for column display
-    const serviceCountByWs = {};
-    const lastUsedByWs = {};
-    for (const r of history) {
-      const wid = (r.fields['Workshop'] || [])[0];
-      if (!wid) continue;
-      serviceCountByWs[wid] = (serviceCountByWs[wid] || 0) + 1;
+      count[wid] = (count[wid] || 0) + 1;
+      spend[wid] = (spend[wid] || 0) + (parseFloat(r.fields['Cost']) || 0);
       const d = r.fields['Date'];
-      if (d && (!lastUsedByWs[wid] || d > lastUsedByWs[wid])) lastUsedByWs[wid] = d;
+      if (d && (!last[wid] || d > last[wid])) last[wid] = d;
     }
-    // Attach enrichment to in-memory records so column rendering can use them
     for (const w of workshops) {
-      w.fields['_serviceCount'] = serviceCountByWs[w.id] || 0;
-      w.fields['_totalSpend'] = byWs[w.id] || 0;
-      w.fields['_lastUsed'] = lastUsedByWs[w.id] || '';
+      if (!count[w.id]) continue;   // never used → stays unset → «—»
+      w.fields['_serviceCount'] = count[w.id];
+      w.fields['_totalSpend'] = spend[w.id];
+      w.fields['_lastUsed'] = last[w.id] || '';
     }
-    // Re-render table to show enriched columns
-    const tableEl = document.getElementById('workshops_table');
-    if (tableEl) tableEl.innerHTML = buildEntityTable('workshops', workshops);
-
-    // Use unified .tms-stat-card (dark navy). Map black text-color to white so values stay readable.
-    const card = (label, val, color) => {
-      const valColor = (!color || color === 'var(--text)') ? 'var(--text-inverse)' : color;
-      return `<div class="tms-stat-card" style="min-width:140px;flex:0 0 auto">
-        <div class="tms-stat-label">${label}</div>
-        <div class="tms-stat-value" style="color:${valColor};font-variant-numeric:tabular-nums">${val}</div>
-      </div>`;
-    };
-    const topHTML = top3.length
-      ? `<div class="tms-stat-card" style="flex:1;min-width:260px">
-          <div class="tms-stat-label" style="margin-bottom:6px">Top 3 Συνεργεία (σύνολο)</div>
-          ${top3.map((p, i) => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:12px">
-              <span style="color:rgba(255,255,255,0.85)"><strong style="color:var(--panel-accent)">#${i+1}</strong> ${escapeHtml(p.name)}</span>
-              <span style="color:var(--text-inverse);font-weight:700;font-variant-numeric:tabular-nums">€${Math.round(p.total).toLocaleString()}</span>
-            </div>`).join('')}
-        </div>`
-      : '';
-
-    el.innerHTML = `
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${card('Ενεργά Συνεργεία', activeWs)}
-        ${card('Εργασίες (σύνολο)', history.length.toLocaleString(), 'var(--accent)')}
-        ${card('Συνολική Δαπάνη', '€' + Math.round(totalSpend).toLocaleString(), 'var(--text)')}
-        ${card('Τρέχων Μήνας', '€' + Math.round(monthSpend).toLocaleString(), monthSpend > 0 ? 'var(--warning)' : 'var(--text-dim)')}
-        ${topHTML}
-      </div>`;
-  } catch(e) {
-    el.innerHTML = `<div style="color:var(--danger);font-size:11px">Stats unavailable</div>`;
-    if (typeof logError === 'function') logError(e, 'entity stats widget');
+    applyEntityFilters(entityKey);
+  } catch (e) {
+    // Rule #7/#1: the three columns stay «—» AND the screen says why —
+    // a silent enrichment failure would read as «κανένα συνεργείο σε χρήση».
+    const bar = document.querySelector('.ev2-bar');
+    if (bar && !document.getElementById('ev2_enrich_warn')) {
+      bar.insertAdjacentHTML('beforeend',
+        '<span id="ev2_enrich_warn" class="ecard-fail">⚠ Εργασίες/Δαπάνη δεν φόρτωσαν</span>');
+    }
+    if (typeof logError === 'function') logError(e, 'workshops enrichment');
   }
 }
 
@@ -1119,10 +1091,22 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
       return `<td><span style="display:inline-flex;align-items:center;gap:4px;color:var(--text-mid)">${pin}${val}</span></td>`;
     }
     if (col.type === 'currency') {
+      if (cfg.v2) {
+        // Enrichment leaves unused rows UNSET on purpose: unknown/none reads
+        // «—», never €0 (rule #3 — the workshops unknown-as-zero cells die here).
+        if (val == null || val === '') return '<td style="color:var(--text-dim);text-align:right;font-variant-numeric:tabular-nums">—</td>';
+        return `<td style="font-variant-numeric:tabular-nums;text-align:right;font-weight:600">€${Math.round(val).toLocaleString('el-GR')}</td>`;
+      }
       if (val == null || val === 0) return '<td style="color:var(--text-dim);font-variant-numeric:tabular-nums">€0</td>';
       return `<td style="font-variant-numeric:tabular-nums;font-weight:600">€${Math.round(val).toLocaleString()}</td>`;
     }
     if (col.type === 'date_rel') {
+      if (cfg.v2) {
+        // Absolute Greek date (mock 118:1356) — «3d ago» made the reader do
+        // the math the screen already knew.
+        if (!val) return '<td style="color:var(--text-dim)">—</td>';
+        return `<td style="white-space:nowrap;font-variant-numeric:tabular-nums">${_ecDate(val)}</td>`;
+      }
       if (!val) return '<td style="color:var(--text-dim);font-size:11px">Never</td>';
       const days = Math.floor((Date.now() - new Date(val).getTime()) / 86400000);
       const label = days === 0 ? 'Today' : days === 1 ? 'Yesterday' : days < 30 ? `${days}d ago` : days < 365 ? `${Math.round(days/30)}mo ago` : `${Math.round(days/365)}y ago`;
@@ -1371,7 +1355,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
   // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
   const tagV = cfg.cardTag ? f[cfg.cardTag.f] : null;
   const tagHTML = tagV
-    ? `<span class="badge ${(cfg.cardTag.emphasize || []).includes(tagV) ? 'ev2-tag-hi' : 'badge-grey'}">${_ecEsc((cfg.typeLabels && cfg.typeLabels[tagV]) || tagV)}</span>`
+    ? `<span class="badge ${cfg.cardTag.style || ((cfg.cardTag.emphasize || []).includes(tagV) ? 'ev2-tag-hi' : 'badge-grey')}">${_ecEsc((cfg.typeLabels && cfg.typeLabels[tagV]) || tagV)}</span>`
     : '';
 
   const docsHTML = (cfg.cardDocs || []).map(d => {
@@ -1392,6 +1376,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
     if (v == null || v === '')
       return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val dim">—</span></div>`;
     if (sp.num && !isNaN(parseFloat(v))) v = parseFloat(v).toLocaleString('el-GR');
+    if (sp.phone) v = _fmtPhone(v);
     return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val">${_ecEsc(v)}${sp.unit ? ` <span class="dim">${sp.unit}</span>` : ''}</span></div>`;
   }).join('');
 
@@ -1439,43 +1424,55 @@ function _renderEntityCardV2(entityKey, rec, panel) {
              ${cfg.cardNotice.helper ? `<div class="ecard-km-sub">${cfg.cardNotice.helper}</div>` : ''}`}
       </div>` : ''}
       ${(cfg.cardSpecs || []).length ? `<div class="ecard-sec">
-        <div class="ecard-sec-title">Στοιχεία οχήματος</div>
+        <div class="ecard-sec-title">${cfg.cardSpecsTitle || 'Στοιχεία οχήματος'}</div>
         ${specsHTML}
       </div>` : ''}
-      <div class="ecard-sec">
+      ${cfg.cardUsage ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Χρήση</div>
+        <div class="ecard-usage">
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_serviceCount'] != null ? f['_serviceCount'] : '—'}</span><span class="ecard-usage-lbl">εργασίες</span></div>
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_totalSpend'] != null ? '€' + Math.round(f['_totalSpend']).toLocaleString('el-GR') : '—'}</span><span class="ecard-usage-lbl">δαπάνη</span></div>
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${f['_lastUsed'] ? _ecDate(f['_lastUsed']) : '—'}</span><span class="ecard-usage-lbl">τελευταία</span></div>
+        </div>
+      </div>` : ''}
+      ${cfg.cardRt ? `<div class="ecard-sec">
         <div class="ecard-sec-title">Round trips ${rtLink}</div>
         <div class="ecard-sec-body" id="ec_${recId}_rt">Φόρτωση…</div>
-      </div>
+      </div>` : ''}
       ${cfg.cardTruckAgg ? `<div class="ecard-sec">
         <div class="ecard-sec-title">Με ποια φορτηγά</div>
         <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
       </div>` : ''}
       ${cfg.cardMaint ? `<div class="ecard-sec">
-        <div class="ecard-sec-title">Ζημιές & επισκευές
-          <button type="button" class="ecard-link" onclick="_openVehicleHistory('${entityKey}','${String(f['License Plate'] || '').replace(/'/g, "\\'")}')">όλα →</button>
+        <div class="ecard-sec-title">${cfg.cardMaintTitle || 'Ζημιές & επισκευές'}
+          ${cfg.cardMaintBy === 'workshop'
+            ? `<button type="button" class="ecard-link" onclick="navigate('maint_svc')">όλες →</button>`
+            : `<button type="button" class="ecard-link" onclick="_openVehicleHistory('${entityKey}','${String(f['License Plate'] || '').replace(/'/g, "\\'")}')">όλα →</button>`}
         </div>
         <div class="ecard-sec-body" id="ec_${recId}_mh">Φόρτωση…</div>
       </div>` : ''}
     </div>`;
 
   if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
-  _loadEntityCardRT(entityKey, rec);
+  if (cfg.cardRt) _loadEntityCardRT(entityKey, rec);
 }
 
 async function _loadEntityCardMaint(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
   const recId = rec.id;
   const plate = String(rec.fields['License Plate'] || '');
+  const byWorkshop = cfg && cfg.cardMaintBy === 'workshop';
   try {
     const hist = await atGetAll(TABLES.MAINT_HISTORY, {
-      fields: ['Truck', 'Trailer', 'Vehicle Plate', 'Date', 'Description', 'Type', 'Cost', 'Odometer km'],
+      fields: ['Truck', 'Trailer', 'Workshop', 'Vehicle Plate', 'Date', 'Description', 'Type', 'Cost', 'Odometer km'],
     }, true);
     // Fetch ALL and filter client-side, like modules/maintenance.js does: the
     // link field is authoritative, the plate string is the legacy fallback —
     // and plates need normalizePlate (Greek/Latin homoglyphs, TR-2).
-    const linkField = entityKey === 'trailers' ? 'Trailer' : 'Truck';
+    const linkField = byWorkshop ? 'Workshop' : (entityKey === 'trailers' ? 'Trailer' : 'Truck');
     const mine = hist.filter(r =>
       ((r.fields[linkField] || [])[0] === recId) ||
-      (!!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate))
+      (!byWorkshop && !!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate))
     ).sort((a, b) => String(b.fields['Date'] || '').localeCompare(String(a.fields['Date'] || '')));
 
     const kmEl = document.getElementById(`ec_${recId}_km`);
@@ -1499,13 +1496,21 @@ async function _loadEntityCardMaint(entityKey, rec) {
             const rf = r.fields;
             const cost = rf['Cost'] != null && rf['Cost'] !== ''
               ? '€' + Math.round(parseFloat(rf['Cost']) || 0).toLocaleString('el-GR') : '—';
-            return `<div class="ecard-row">
+            // Workshop card leads with the amount (mock 122:762) and names the
+            // vehicle; vehicle cards lead with the date.
+            return byWorkshop
+              ? `<div class="ecard-row">
+                  <span class="ecard-row-code">${cost}</span>
+                  <span class="ecard-row-date">${_ecDate(rf['Date'])}</span>
+                  <span class="ecard-row-main">${_ecEsc([rf['Vehicle Plate'], rf['Description'] || rf['Type']].filter(Boolean).join(' — ') || '—')}</span>
+                </div>`
+              : `<div class="ecard-row">
               <span class="ecard-row-date">${_ecDate(rf['Date'])}</span>
               <span class="ecard-row-main">${_ecEsc(rf['Description'] || rf['Type'] || '—')}</span>
               <span class="ecard-row-amt">${cost}</span>
             </div>`;
           }).join('') + (mine.length > 3 ? `<div class="ecard-more">+${mine.length - 3} ακόμη</div>` : '')
-        : `<div class="ecard-empty">Καμία εργασία καταγεγραμμένη για αυτό το όχημα.</div>`;
+        : `<div class="ecard-empty">Καμία εργασία καταγεγραμμένη ${byWorkshop ? 'για αυτό το συνεργείο' : 'για αυτό το όχημα'}.</div>`;
     }
   } catch (e) {
     for (const suffix of ['km', 'mh']) {
@@ -1518,6 +1523,7 @@ async function _loadEntityCardMaint(entityKey, rec) {
   // «ΣΕ ΣΕΡΒΙΣ»: an open In-Progress maintenance request on this plate.
   // Supplementary — its failure is logged but must not take the card down.
   try {
+    if (!plate) return;   // workshops: no plate, no «ΣΕ ΣΕΡΒΙΣ» badge to compute
     const reqs = await atGetAll(TABLES.MAINT_REQ, { fields: ['Vehicle Plate', 'Status'] }, true);
     const inSvc = reqs.some(r => r.fields['Status'] === 'In Progress'
       && !!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate));
