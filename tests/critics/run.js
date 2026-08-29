@@ -126,10 +126,18 @@ function abort(msg) {
   process.exit(2);
 }
 
-// How many live tests MUST run: one contract test + two semantics tests per
-// unit that has routes. Units without routes (assets/style.css) declare no
+// How many live tests MUST run: one contract test + THREE semantics tests per
+// unit that has routes (P&L ρόλων · άγνωστο≠μηδέν · πλάτος). Units without routes (assets/style.css) declare no
 // live test at all — see the LIVE_UNITS filter in both spec files.
-const EXPECTED_LIVE = UNITS.filter(u => u.routes.length > 0).length * 3;
+//
+// Ο αριθμός ανά μονάδα είναι γραμμένος στο χέρι ΕΠΙΤΗΔΕΣ. Αν προέκυπτε από το
+// τι έτρεξε, ο φρουρός θα συμφωνούσε πάντα με τον εαυτό του και δεν θα
+// φρουρούσε τίποτα — ένας κριτής που έπαψε να δηλώνεται θα εξαφανιζόταν
+// αθόρυβα. Όποιος προσθέτει ή αφαιρεί κριτή ΠΡΕΠΕΙ να αλλάξει και αυτή τη
+// γραμμή· μέχρι τότε η σουίτα αρνείται να αναφέρει. Έπιασε ακριβώς αυτό στις
+// 29/8/2026, όταν προστέθηκε ο κριτής πλάτους: 44 έλεγχοι αντί για 33.
+const LIVE_TESTS_PER_UNIT = 4;   // contract · P&L ρόλων · άγνωστο≠μηδέν · πλάτος
+const EXPECTED_LIVE = UNITS.filter(u => u.routes.length > 0).length * LIVE_TESTS_PER_UNIT;
 
 function reportLive(jsonText) {
   let report;
@@ -166,7 +174,7 @@ function reportLive(jsonText) {
     abort('ΚΑΝΕΝΑΣ ζωντανός έλεγχος δεν έτρεξε. Πράσινο χωρίς ελέγχους είναι ψέμα, όχι επιτυχία.');
   }
   if (tests.length !== EXPECTED_LIVE) {
-    abort(`${tests.length} ζωντανοί έλεγχοι έτρεξαν αντί για ${EXPECTED_LIVE} (${UNITS.filter(u => u.routes.length > 0).length} μονάδες × 3).`);
+    abort(`${tests.length} ζωντανοί έλεγχοι έτρεξαν αντί για ${EXPECTED_LIVE} (${UNITS.filter(u => u.routes.length > 0).length} μονάδες × ${LIVE_TESTS_PER_UNIT}).`);
   }
   const knownGap = [];
   const regressions = [];

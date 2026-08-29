@@ -738,6 +738,13 @@ var TABLES = {
       "VAT Number": "vat_number",
       Email: "email",
       Phone: "phone",
+      // Μετρημένο 29/8/2026: οι ΣΤΗΛΕΣ ΥΠΑΡΧΟΥΝ στη βάση (contact_person text,
+      // payment_terms_days integer) — έλειπε μόνο η αντιστοίχιση εδώ. Η φόρμα
+      // τα δεχόταν, ο facade τα πετούσε σιωπηλά με 200 OK (παγίδα #1), και
+      // γράφτηκαν 0 από 1.920. Το «εκκρεμεί στήλη στη βάση» του spec ήταν
+      // ΛΑΘΟΣ — δεν χρειάστηκε migration.
+      "Contact Person": "contact_person",
+      "Payment Terms Days": "payment_terms_days",
       Active: "active"
     }
   },
@@ -751,6 +758,9 @@ var TABLES = {
       "VAT Number": "vat_number",
       Phone: "phone",
       Email: "email",
+      // Ίδια περίπτωση με τα CLIENTS: partners.contact_person υπάρχει ως text,
+      // έλειπε η αντιστοίχιση. 0 από 214 γραμμένα (μέτρηση 29/8/2026).
+      "Contact Person": "contact_person",
       Active: "active"
     }
   },

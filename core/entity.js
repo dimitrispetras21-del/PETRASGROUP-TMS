@@ -67,11 +67,21 @@ const ENTITY_CONFIG = {
       ]},
       { section: 'Επικοινωνία', fields: [
         { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
-          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+          // 29/8/2026: η στήλη ΥΠΑΡΧΕΙ (information_schema). Το εμπόδιο ήταν ο
+          // χάρτης του Worker, που πλέον έχει την αντιστοίχιση στο repo αλλά
+          // ΔΕΝ έχει γίνει deploy. Το πεδίο μένει κλειστό ώσπου να γίνει και
+          // να επαληθευτεί εγγραφή στον πίνακα — αλλιώς ο χρήστης πληκτρολογεί
+          // δεδομένα που ακόμη πετιούνται με «επιτυχία» (αρχή 7: δύο φάσεις).
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται ακόμη — εκκρεμεί deploy του Worker' },
         { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email', type: 'email' },
         { f: 'Payment Terms Days', label: 'Όροι πληρωμής (ημέρες)', type: 'number',
-          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+          // 29/8/2026: η στήλη ΥΠΑΡΧΕΙ (information_schema). Το εμπόδιο ήταν ο
+          // χάρτης του Worker, που πλέον έχει την αντιστοίχιση στο repo αλλά
+          // ΔΕΝ έχει γίνει deploy. Το πεδίο μένει κλειστό ώσπου να γίνει και
+          // να επαληθευτεί εγγραφή στον πίνακα — αλλιώς ο χρήστης πληκτρολογεί
+          // δεδομένα που ακόμη πετιούνται με «επιτυχία» (αρχή 7: δύο φάσεις).
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται ακόμη — εκκρεμεί deploy του Worker' },
       ]},
     ],
     // detailSections/history intentionally absent — the v2 card replaced them.
@@ -130,7 +140,12 @@ const ENTITY_CONFIG = {
       ]},
       { section: 'Επικοινωνία', fields: [
         { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
-          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+          // 29/8/2026: η στήλη ΥΠΑΡΧΕΙ (information_schema). Το εμπόδιο ήταν ο
+          // χάρτης του Worker, που πλέον έχει την αντιστοίχιση στο repo αλλά
+          // ΔΕΝ έχει γίνει deploy. Το πεδίο μένει κλειστό ώσπου να γίνει και
+          // να επαληθευτεί εγγραφή στον πίνακα — αλλιώς ο χρήστης πληκτρολογεί
+          // δεδομένα που ακόμη πετιούνται με «επιτυχία» (αρχή 7: δύο φάσεις).
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται ακόμη — εκκρεμεί deploy του Worker' },
         { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email', type: 'email' },
       ]},
@@ -209,7 +224,12 @@ const ENTITY_CONFIG = {
           { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
         { f: 'Phone',       label: 'Τηλέφωνο' },
         { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
-          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+          // 29/8/2026: η στήλη ΥΠΑΡΧΕΙ (information_schema). Το εμπόδιο ήταν ο
+          // χάρτης του Worker, που πλέον έχει την αντιστοίχιση στο repo αλλά
+          // ΔΕΝ έχει γίνει deploy. Το πεδίο μένει κλειστό ώσπου να γίνει και
+          // να επαληθευτεί εγγραφή στον πίνακα — αλλιώς ο χρήστης πληκτρολογεί
+          // δεδομένα που ακόμη πετιούνται με «επιτυχία» (αρχή 7: δύο φάσεις).
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται ακόμη — εκκρεμεί deploy του Worker' },
       ]},
       { section: 'Δίπλωμα', fields: [
         { f: 'License Number', label: 'Αρ. διπλώματος' },
@@ -249,7 +269,7 @@ const ENTITY_CONFIG = {
     ],
     cardSpecs: [
       { f: 'VIN',               label: 'VIN' },
-      { f: 'Euro Standard',     label: 'Euro' },
+      { f: 'Euro Standard',     label: 'Euro', stripPrefix: 'Euro ' },
       { f: 'Tare Weight kg',    label: 'Απόβαρο', unit: 'kg', num: true },
       { f: 'Year',              label: 'Έτος 1ης ταξ.' },
       { f: 'Insurance Partner', label: 'Ασφαλιστής' },
@@ -277,7 +297,7 @@ const ENTITY_CONFIG = {
       { field: 'Brand',               label: 'Μάρκα' },
       { field: 'Model',               label: 'Μοντέλο' },
       { field: 'Year',                label: 'Έτος', type: 'number' },
-      { field: 'Euro Standard',       label: 'Euro' },
+      { field: 'Euro Standard',       label: 'Euro', stripPrefix: 'Euro ' },
       { field: 'Tare Weight kg',      label: 'Απόβαρο', type: 'number', unit: 'kg' },
       { field: 'VIN',                 label: 'VIN' },
       { field: 'Active',              label: 'Κατάσταση', type: 'active' },
@@ -1172,7 +1192,14 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
   const f = r.fields;
   const cfg = ENTITY_CONFIG[entityKey];
   const cells = cols.map(col => {
-    const val = f[col.field];
+    // stripPrefix: ΜΟΝΟ εμφάνιση, ποτέ η αποθηκευμένη τιμή. Η στήλη «Euro»
+    // κρατά «Euro 6», οπότε η επικεφαλίδα και κάθε κελί έλεγαν τη λέξη δύο
+    // φορές — 28 περιττές επαναλήψεις σε μία οθόνη. Μετονομασία της ετικέτας
+    // αποκλείεται: το «Euro» είναι ένα από τα 24 πεδία του συμβολαίου (σκληρή
+    // πύλη, entity.json) και θα έριχνε τον κριτή #1.
+    const _raw = f[col.field];
+    const val = (col.stripPrefix && typeof _raw === 'string' && _raw.startsWith(col.stripPrefix))
+      ? _raw.slice(col.stripPrefix.length) : _raw;
     if (col.type === 'active') {
       // v2 speaks Greek on screen (DESIGN.md ΜΕΡΟΣ Ε); the stored boolean and
       // the old screens' English badge stay as they are until their own turn.
@@ -1502,6 +1529,12 @@ function _renderEntityCardV2(entityKey, rec, panel) {
       return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val dim">—</span></div>`;
     if (sp.num && !isNaN(parseFloat(v))) v = parseFloat(v).toLocaleString('el-GR');
     if (sp.phone) v = _fmtPhone(v);
+    // Μόνο εμφάνιση, ποτέ η αποθηκευμένη τιμή: το πεδίο κρατά «Euro 6» ενώ η
+    // ετικέτα λέει ήδη «Euro» — «Euro | Euro 6». Μετονομασία της ετικέτας δεν
+    // γίνεται: το «Euro» είναι ένα από τα 24 πεδία του συμβολαίου (σκληρή
+    // πύλη, entity.json) και θα έπεφτε ο κριτής #1.
+    if (sp.stripPrefix && typeof v === 'string' && v.startsWith(sp.stripPrefix))
+      v = v.slice(sp.stripPrefix.length);
     return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val">${_ecEsc(v)}${sp.unit ? ` <span class="dim">${sp.unit}</span>` : ''}</span></div>`;
   }).join('');
 
@@ -1654,10 +1687,19 @@ async function _loadEntityCardMaint(entityKey, rec) {
         : `<div class="ecard-empty">Καμία εργασία καταγεγραμμένη ${byWorkshop ? 'για αυτό το συνεργείο' : 'για αυτό το όχημα'}.</div>`;
     }
   } catch (e) {
-    for (const suffix of ['km', 'mh']) {
-      const el = document.getElementById(`ec_${recId}_${suffix}`);
-      if (el) el.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό συντήρησης.</div>`;
-    }
+    // ΜΙΑ αποτυχία → ΕΝΑ μήνυμα. Πριν (audit 29/8) η ίδια πρόταση γραφόταν
+    // και στις δύο ενότητες, και μαζί με το «δεν φόρτωσαν τα δρομολόγια» η
+    // καρτέλα φορτηγού έδειχνε ΤΡΙΑ προειδοποιητικά — από δύο αιτίες. Δεν
+    // ήταν πιο ειλικρινής, φαινόταν σπασμένη.
+    //
+    // Το μήνυμα μένει στο «mh» (ΖΗΜΙΕΣ & ΕΠΙΣΚΕΥΕΣ), που ΕΙΝΑΙ το ιστορικό
+    // συντήρησης. Τα ΧΙΛΙΟΜΕΤΡΑ είναι ΠΑΡΑΓΩΓΟ αυτού, οπότε παίρνουν «—»:
+    // κανόνας #3 (άγνωστο, όχι μηδέν) και κανόνας #1 τηρείται — η αποτυχία
+    // ακούγεται, μία φορά, στην ενότητα που της ανήκει.
+    const kmEl = document.getElementById(`ec_${recId}_km`);
+    if (kmEl) kmEl.innerHTML = `<div class="ecard-empty">—</div>`;
+    const mhFail = document.getElementById(`ec_${recId}_mh`);
+    if (mhFail) mhFail.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό συντήρησης.</div>`;
     if (typeof logError === 'function') logError(e, 'entity card: maint history');
   }
 

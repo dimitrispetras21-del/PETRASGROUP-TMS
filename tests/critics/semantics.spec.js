@@ -160,4 +160,48 @@ for (const unit of LIVE_UNITS) {
       `${unit.unit}: κελιά δείχνουν μηδέν αντί για «δεν καταχωρήθηκε», πάνω από το καταγεγραμμένο όριο (DESIGN.md #3):\n${overLimit.join('\n')}`
     ).toHaveLength(0);
   });
+
+  // ── Κριτής πλάτους ────────────────────────────────────────────────────────
+  // ΓΙΑΤΙ ΥΠΑΡΧΕΙ: στις 29/8/2026 ο πίνακας Πελατών χρειαζόταν 1411px, έπαιρνε
+  // 1138px και έκοβε ΟΛΟΚΛΗΡΗ τη στήλη ΚΑΤΑΣΤΑΣΗ — ενώ δίπλα του έμεναν 482px
+  // αχρησιμοποίητα (το κλειστό detail panel κρατούσε πλάτος· βλ. style.css,
+  // «ΜΗΝ αφαιρεθεί το .hidden»). Κανένας από τους έξι κριτές δεν το είδε: το
+  // συμβόλαιο μετράει ΑΝ υπάρχει η στήλη στο DOM, όχι αν ΦΑΙΝΕΤΑΙ. Η σουίτα
+  // ήταν κατάφωτη πράσινη πάνω από μια οθόνη με κρυμμένη στήλη.
+  //
+  // ΓΙΑΤΙ 1920×1080 ΡΗΤΑ: το playwright.config δίνει 1280×720 (Desktop Chrome),
+  // όπου η οριζόντια κύλιση είναι ΘΕΜΙΤΗ. Ο κανόνας #5 μιλάει για 1080p — σε
+  // στενότερη οθόνη ο έλεγχος θα έβγαζε ψευδείς συναγερμούς σε κάθε πίνακα.
+  test(`layout: ${unit.unit} χωρίς οριζόντια υπερχείλιση στα 1080p`, async ({ page, baseURL }) => {
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    await preparePage(page, 'owner');
+    const over = [];
+
+    for (const route of unit.routes) {
+      await gotoPage(page, route, baseURL);
+      await page.waitForTimeout(2500);
+      await assertRendered(page, unit, route);
+
+      // 2px ανοχή: στρογγυλοποιήσεις υποδιαιρέσεων pixel σε πίνακες με
+      // border-collapse δίνουν σταθερά διαφορές <1px που δεν είναι κοπή.
+      const found = await page.evaluate(() => {
+        const out = [];
+        for (const el of document.querySelectorAll('*')) {
+          const ox = getComputedStyle(el).overflowX;
+          if (ox !== 'auto' && ox !== 'scroll') continue;
+          const cut = el.scrollWidth - el.clientWidth;
+          if (cut > 2) out.push(`${el.tagName}.${(el.className || '').toString().trim().slice(0, 40)} −${cut}px`);
+        }
+        return out;
+      });
+      for (const f of found) over.push(`${route}: ${f}`);
+    }
+
+    // Απόλυτος κανόνας, ΟΧΙ καστάνια: σε αντίθεση με hex/κοπή/μηδενικά εδώ δεν
+    // υπάρχει καταγεγραμμένο χρέος — μετρήθηκε 29/8 και οι έξι οθόνες της
+    // μονάδας entity είναι στο 1618/1618. Ό,τι εμφανιστεί είναι ΝΕΟ.
+    expect(over,
+      `${unit.unit}: περιεχόμενο κομμένο οριζόντια στα 1920×1080 — ο χρήστης πρέπει να κυλήσει για να δει στήλες (DESIGN.md #5):\n${over.join('\n')}`
+    ).toHaveLength(0);
+  });
 }
