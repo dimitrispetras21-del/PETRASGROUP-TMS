@@ -100,6 +100,37 @@ const ENTITY_CONFIG = {
     tableId: TABLES.DRIVERS,
     label: 'Drivers',
     labelSingle: 'Driver',
+    // Wave 1, third entity (Figma driver-overview 116:300, drivers-form
+    // 120:521). Non-vehicle card: license instead of documents, the salary
+    // dead-field notice, round trips with the truck plate, and the per-truck
+    // aggregation. No mileage, no maintenance sections.
+    v2: true,
+    titleV2: 'Οδηγοί',
+    countNoun: ['οδηγός', 'οδηγοί'],
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος οδηγός', 'Επεξεργασία οδηγού'],
+    typeLabels: { Internal: 'Εσωτερικός', External: 'Εξωτερικός' },
+    cardSubtitle: ['Phone'],
+    cardTag: { f: 'Type', emphasize: ['Internal'] },
+    cardDocsTitle: 'Δίπλωμα',
+    cardDocsLink: false,   // maint_expiry tracks vehicles, not licences
+    cardDocs: [
+      // labelField: the row leads with the licence NUMBER (mock), the static
+      // label is only the fallback for a driver with no number recorded.
+      { f: 'License Expiry', label: 'Δίπλωμα', labelField: 'License Number' },
+    ],
+    // Salary: the FIRST of the three dead fields (plan §2.1) — 0/59 rows have
+    // a value because the Worker map has no salary column. Shown as designed:
+    // the truth, not a zero. perm 'full' = same visibility as the column
+    // (DV-3: dispatcher never sees payroll).
+    cardNotice: {
+      title: 'Μισθός', f: 'Salary Base', perm: 'full',
+      emptyText: 'Δεν έχει καταχωρηθεί',
+      helper: 'Το πεδίο δεν αποθηκεύεται ακόμη — εκκρεμεί στήλη στη βάση.',
+    },
+    cardRtShowTruck: true,
+    cardTruckAgg: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
     searchHint: 'Αναζήτηση: όνομα, αρ. διπλώματος…',
@@ -118,28 +149,31 @@ const ENTITY_CONFIG = {
     columns: [
       { field: 'Full Name',      label: 'Οδηγός', primary: true },
       { field: 'Phone',          label: 'Τηλέφωνο' },
-      { field: 'Type',           label: 'Τύπος' },
+      { field: 'Type',           label: 'Τύπος', type: 'tag', emphasize: ['Internal'] },
       { field: 'Salary Base',    label: 'Μισθός', perm: 'full' },   // DV-3: μισθοδοσία — μόνο με δικαίωμα εγγραφής
       { field: 'License Number', label: 'Αρ. διπλώματος' },
       { field: 'License Expiry', label: 'Δίπλωμα έως', type: 'expiry' },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
+    // Per drivers-form 120:521 — same fields; Μισθός disabled with the reason
+    // spelled out. Disabled fields are also SKIPPED on save (see
+    // saveEntityRecord): the facade would silently drop the value and toast
+    // success — the trap this screen family exists to close.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία', fields: [
         { f: 'Full Name',   label: 'Ονοματεπώνυμο', req: true },
+        { f: 'Type',        label: 'Τύπος', type: 'select', options: [
+          { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
         { f: 'Phone',       label: 'Τηλέφωνο' },
-        { f: 'Type',        label: 'Τύπος', type: 'select', options: ['Internal','External'] },
-        { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number' },
+        { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
       ]},
-      { section: 'Driving Licence', fields: [
+      { section: 'Δίπλωμα', fields: [
         { f: 'License Number', label: 'Αρ. διπλώματος' },
         { f: 'License Expiry', label: 'Δίπλωμα έως', type: 'date' },
       ]},
     ],
-    detailSections: [
-      { title: 'Details',         fields: ['Full Name','Phone','Type','Salary Base'] },
-      { title: 'Driving Licence', fields: ['License Number','License Expiry'] },
-    ],
+    // detailSections intentionally absent — the v2 card replaced the panel.
   },
 
   trucks: {
@@ -162,7 +196,8 @@ const ENTITY_CONFIG = {
     // a missing date says so — a truck with no recorded ΚΤΕΟ is exactly the
     // information that was found by audit months late (the ATP incident).
     cardSubtitle: ['Brand', 'Model'],
-    cardKm: true,   // trailers have no odometer — the section exists only here
+    cardKm: true,    // trailers have no odometer — the section exists only here
+    cardMaint: true,
     cardDocs: [
       { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
       { f: 'KEK Expiry',       label: 'ΚΕΚ' },
@@ -205,7 +240,7 @@ const ENTITY_CONFIG = {
     ],
     // Regrouped per the truck-form mock (119:345): same 12 fields, nothing
     // lost — Τεχνικά and Σημειώσεις split out of the two old sections.
-    formNoun: 'φορτηγού',
+    formTitles: ['Νέο φορτηγό', 'Επεξεργασία φορτηγού'],
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
@@ -250,7 +285,7 @@ const ENTITY_CONFIG = {
     countNoun: ['ρυμούλκα', 'ρυμούλκες'],
     activeLabels: ['Ενεργό', 'Ανενεργό'],
     defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
-    formNoun: 'ρυμούλκας',
+    formTitles: ['Νέα ρυμούλκα', 'Επεξεργασία ρυμούλκας'],
     cardSubtitle: ['Brand', 'Model'],
     cardSubtitleExtra: 'Year',
     // Display-only Greek for stored English values (ΜΕΡΟΣ Ε: η μετάφραση στην
@@ -259,6 +294,7 @@ const ENTITY_CONFIG = {
     // the cold chain is the business.
     typeLabels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' },
     cardTag: { f: 'Trailer Type', emphasize: ['Reefer'] },
+    cardMaint: true,
     cardDocs: [
       { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
       { f: 'FRC Expiry',       label: 'ATP/FRC' },
@@ -1328,7 +1364,8 @@ function _renderEntityCardV2(entityKey, rec, panel) {
   const canEdit = can(cfg.perm) === 'full';
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
   const title = f[primaryField] || recId.slice(-6);
-  const sub = (cfg.cardSubtitle || []).map(x => f[x]).filter(Boolean).join(' ')
+  // Phones render formatted, same as the list column (DV-7).
+  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x]) : f[x]).filter(Boolean).join(' ')
     + (cfg.cardSubtitleExtra && f[cfg.cardSubtitleExtra] ? ' · ' + f[cfg.cardSubtitleExtra] : '');
   const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
   // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
@@ -1339,9 +1376,12 @@ function _renderEntityCardV2(entityKey, rec, panel) {
 
   const docsHTML = (cfg.cardDocs || []).map(d => {
     const s = _ecDocState(f[d.f]);
+    // labelField: the row can lead with a value from the record itself —
+    // the driver card shows the licence NUMBER, not a static word.
+    const lbl = d.labelField ? (f[d.labelField] || d.label) : d.label;
     return `<div class="ecard-doc">
       <span class="ecard-dot ${s.dot}"></span>
-      <span class="ecard-doc-label">${d.label}</span>
+      <span class="ecard-doc-label">${_ecEsc(lbl)}</span>
       <span class="ecard-doc-date">${s.date}</span>
       <span class="ecard-doc-state ${s.cls}">${s.text}</span>
     </div>`;
@@ -1385,29 +1425,40 @@ function _renderEntityCardV2(entityKey, rec, panel) {
         <div class="ecard-sec-title">Χιλιόμετρα</div>
         <div class="ecard-sec-body" id="ec_${recId}_km">Φόρτωση…</div>
       </div>` : ''}
-      <div class="ecard-sec">
-        <div class="ecard-sec-title">Έγγραφα
-          <button type="button" class="ecard-link" onclick="navigate('maint_expiry')">Διαχείριση →</button>
+      ${(cfg.cardDocs || []).length ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardDocsTitle || 'Έγγραφα'}
+          ${cfg.cardDocsLink === false ? '' : `<button type="button" class="ecard-link" onclick="navigate('maint_expiry')">Διαχείριση →</button>`}
         </div>
         ${docsHTML}
-      </div>
-      <div class="ecard-sec">
+      </div>` : ''}
+      ${cfg.cardNotice && (!cfg.cardNotice.perm || can(cfg.perm) === cfg.cardNotice.perm) ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardNotice.title}</div>
+        ${f[cfg.cardNotice.f] != null && f[cfg.cardNotice.f] !== ''
+          ? `<div class="ecard-spec-val">${_ecEsc(f[cfg.cardNotice.f])}</div>`
+          : `<div class="ecard-empty">${cfg.cardNotice.emptyText}</div>
+             ${cfg.cardNotice.helper ? `<div class="ecard-km-sub">${cfg.cardNotice.helper}</div>` : ''}`}
+      </div>` : ''}
+      ${(cfg.cardSpecs || []).length ? `<div class="ecard-sec">
         <div class="ecard-sec-title">Στοιχεία οχήματος</div>
         ${specsHTML}
-      </div>
+      </div>` : ''}
       <div class="ecard-sec">
         <div class="ecard-sec-title">Round trips ${rtLink}</div>
         <div class="ecard-sec-body" id="ec_${recId}_rt">Φόρτωση…</div>
       </div>
-      <div class="ecard-sec">
+      ${cfg.cardTruckAgg ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">Με ποια φορτηγά</div>
+        <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
+      </div>` : ''}
+      ${cfg.cardMaint ? `<div class="ecard-sec">
         <div class="ecard-sec-title">Ζημιές & επισκευές
           <button type="button" class="ecard-link" onclick="_openVehicleHistory('${entityKey}','${String(f['License Plate'] || '').replace(/'/g, "\\'")}')">όλα →</button>
         </div>
         <div class="ecard-sec-body" id="ec_${recId}_mh">Φόρτωση…</div>
-      </div>
+      </div>` : ''}
     </div>`;
 
-  _loadEntityCardMaint(entityKey, rec);
+  if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
   _loadEntityCardRT(entityKey, rec);
 }
 
@@ -1478,6 +1529,7 @@ async function _loadEntityCardMaint(entityKey, rec) {
 }
 
 async function _loadEntityCardRT(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
   const recId = rec.id;
   const plate = String(rec.fields['License Plate'] || '');
   const body = () => document.getElementById(`ec_${recId}_rt`);
@@ -1487,42 +1539,79 @@ async function _loadEntityCardRT(entityKey, rec) {
     // PnL») — safe for every role that can read it. The plate→numeric-id map
     // goes through /costs/lookups, same as modules/costs.js.
     const isTrailer = entityKey === 'trailers';
+    const isDriver = entityKey === 'drivers';
     const lk = await ctFetch('/costs/lookups');
-    const t = ((isTrailer ? lk.trailers : lk.trucks) || [])
-      .find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
+    const t = isDriver
+      ? (lk.drivers || []).find(x => String(x.full_name || '').trim().toLowerCase()
+          === String(rec.fields['Full Name'] || '').trim().toLowerCase())
+      : ((isTrailer ? lk.trailers : lk.trucks) || [])
+          .find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
     let el = body();
     if (!el) return;
     if (!t) {
-      el.innerHTML = `<div class="ecard-empty">Το όχημα δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
+      const noMatch = `<div class="ecard-empty">${isDriver ? 'Ο οδηγός' : 'Το όχημα'} δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
+      el.innerHTML = noMatch;
+      // The aggregation feeds off the same match — it must not stay «Φόρτωση…».
+      const aggE = document.getElementById(`ec_${recId}_agg`);
+      if (aggE) aggE.innerHTML = noMatch;
       return;
     }
-    // The worker filters rt by truck_id only; for trailers we take the latest
-    // page and filter client-side on trailer_id (14 rows total today).
-    const res = await ctFetch(isTrailer ? '/costs/rt' : '/costs/rt?truck_id=' + t.id);
+    // The worker filters rt by truck_id only; trailers and drivers take the
+    // latest page and filter client-side (14 rows total today).
+    const res = await ctFetch(isTrailer || isDriver ? '/costs/rt' : '/costs/rt?truck_id=' + t.id);
     el = body();
     if (!el) return;
     let recsAll = res.records || [];
     if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === t.id);
+    if (isDriver)  recsAll = recsAll.filter(r => r.driver_id === t.id);
     const rts = recsAll.slice(0, 5);
+    const plateById = {};
+    for (const x of lk.trucks || []) plateById[x.id] = x.license_plate;
     // No route text yet: /costs/rt returns leg ids, not location names — the
     // mock's «Βέροια → Μιλάνο» needs joins this endpoint does not serve.
-    // Shown instead: code, dates, km, status. Recorded in OBSERVATIONS.
+    // Shown instead: code, dates, km, status/plate. Recorded in OBSERVATIONS.
     el.innerHTML = rts.length
       ? rts.map(rt => `<div class="ecard-row">
           <span class="ecard-row-code">${_ecEsc(rt.code || ('RT-' + rt.id))}</span>
           <span class="ecard-row-date">${_ecRange(rt.date_start, rt.date_end)}</span>
           <span class="ecard-row-main">${rt.total_km != null ? parseFloat(rt.total_km).toLocaleString('el-GR') + ' χλμ' : '—'}</span>
-          <span class="ecard-row-state">${rt.status === 'closed' ? 'κλειστό' : rt.status === 'open' ? 'ανοιχτό' : _ecEsc(rt.status || '')}</span>
+          <span class="ecard-row-state">${cfg && cfg.cardRtShowTruck
+            ? _ecEsc(plateById[rt.truck_id] || '—')
+            : (rt.status === 'closed' ? 'κλειστό' : rt.status === 'open' ? 'ανοιχτό' : _ecEsc(rt.status || ''))}</span>
         </div>`).join('')
       : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
-  } catch (e) {
-    const el = body();
-    if (el) {
-      // A 403 is an answer, not an outage — say which of the two it is.
-      el.innerHTML = /forbidden|403/i.test(String(e && e.message))
-        ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στα δρομολόγια.</div>`
-        : `<div class="ecard-fail">⚠ Δεν φόρτωσαν τα δρομολόγια.</div>`;
+
+    // «Με ποια φορτηγά» (driver card): per-truck round-trip counts from the
+    // SAME fetch — bars are relative to the driver's own busiest truck.
+    if (cfg && cfg.cardTruckAgg) {
+      const aggEl = document.getElementById(`ec_${recId}_agg`);
+      if (aggEl) {
+        const byTruck = {};
+        for (const r of recsAll) {
+          if (r.truck_id == null) continue;
+          byTruck[r.truck_id] = (byTruck[r.truck_id] || 0) + 1;
+        }
+        const rows = Object.entries(byTruck).sort((a, b) => b[1] - a[1]).slice(0, 5);
+        const max = rows.length ? rows[0][1] : 0;
+        aggEl.innerHTML = rows.length
+          ? rows.map(([tid, n]) => `<div class="ecard-agg-row">
+              <span class="ecard-row-code">${_ecEsc(plateById[tid] || ('#' + tid))}</span>
+              <span class="ecard-agg-n">${n} round trip${n === 1 ? '' : 's'}</span>
+              <span class="ecard-agg-bar"><span style="width:${Math.round(n / max * 100)}%"></span></span>
+            </div>`).join('')
+          : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+      }
     }
+  } catch (e) {
+    // A 403 is an answer, not an outage — say which of the two it is. The
+    // aggregation feeds off the same fetch, so it fails alongside.
+    const msg = /forbidden|403/i.test(String(e && e.message))
+      ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στα δρομολόγια.</div>`
+      : `<div class="ecard-fail">⚠ Δεν φόρτωσαν τα δρομολόγια.</div>`;
+    const el = body();
+    if (el) el.innerHTML = msg;
+    const aggEl = document.getElementById(`ec_${recId}_agg`);
+    if (aggEl) aggEl.innerHTML = msg;
     if (typeof logError === 'function') logError(e, 'entity card: round trips');
   }
 }
@@ -1774,9 +1863,18 @@ function buildEntityModal(entityKey, recId, fields) {
       } else {
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
       }
+      // Dead fields (plan §2.1): disabled with the reason spelled out — the
+      // facade would accept the value, discard it, and toast success.
+      if (field.disabled) {
+        input = input.replace('<input ', '<input disabled ')
+                     .replace('<select ', '<select disabled ')
+                     .replace('<textarea ', '<textarea disabled ');
+      }
       // v2: a message slot under every field — inline errors instead of the
       // old alert(); «Προαιρετικό» hint on non-required textareas (mock).
-      const errSlot = isV2 ? `<div class="ef-err" id="eferr_ef_${field.f.replace(/\s/g,'_')}"></div>${
+      const errSlot = isV2 ? `${field.disabled && field.disabledReason
+          ? `<div class="ef-hint">${field.disabledReason}</div>` : ''
+        }<div class="ef-err" id="eferr_ef_${field.f.replace(/\s/g,'_')}"></div>${
         field.type === 'textarea' && !field.req ? '<div class="ef-hint">Προαιρετικό</div>' : ''}` : '';
       bodyHTML += `<div class="form-field ${field.type==='textarea'?'span-2':''}">
         <label class="form-label">${field.label}${field.req?' *':''}</label>
@@ -1798,8 +1896,13 @@ function buildEntityModal(entityKey, recId, fields) {
       ${isEdit ? 'Save Changes' : 'Create'}
     </button>`;
 
+  // v2 titles come whole from config — genitive/nominative do not compose
+  // from one noun («Νέο φορτηγού» is broken Greek). The chip after the dash is
+  // the record's primary field, whatever the entity calls it.
+  const primaryF = (cfg.columns.find(c => c.primary) || {}).field;
+  const chip = isEdit && primaryF && fields[primaryF] ? ' — ' + fields[primaryF] : '';
   const title = isV2
-    ? `${isEdit ? 'Επεξεργασία' : 'Νέο'} ${cfg.formNoun || cfg.labelSingle}${isEdit && fields['License Plate'] ? ' — ' + fields['License Plate'] : ''}`
+    ? `${isEdit ? ((cfg.formTitles || [])[1] || 'Επεξεργασία') : ((cfg.formTitles || [])[0] || 'Νέα εγγραφή')}${chip}`
     : `${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`;
   openModal(title, bodyHTML, footerHTML);
 
@@ -1821,6 +1924,7 @@ function entityRevalidate(entityKey, submit = false) {
   let errors = 0;
   for (const sec of cfg.formFields) {
     for (const field of sec.fields) {
+      if (field.disabled) continue;
       const id = 'ef_' + field.f.replace(/\s/g, '_');
       const el = document.getElementById(id);
       if (!el) continue;
@@ -1851,6 +1955,7 @@ async function saveEntityRecord(entityKey, recId) {
   const fields = {};
   for (const sec of cfg.formFields) {
     for (const field of sec.fields) {
+      if (field.disabled) continue;   // dead field: never sent, never lied about
       const id = 'ef_' + field.f.replace(/\s/g, '_');
       const el = document.getElementById(id);
       if (!el) continue;

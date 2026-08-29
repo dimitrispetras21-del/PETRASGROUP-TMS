@@ -1616,6 +1616,18 @@ tbody tr:hover { background: var(--bg-hover); }
 .ecard-more { font-size: var(--text-xs); color: var(--text-dim); padding-top: 4px; }
 .ecard-empty { font-size: var(--text-sm); color: var(--text-dim); }
 .ecard-fail { font-size: var(--text-sm); color: var(--warning); }
+/* «Με ποια φορτηγά» (driver card): πινακίδα · πλήθος · σχετική μπάρα. Η μπάρα
+   επαναλαμβάνει το πλήθος οπτικά — το νούμερο είναι γραμμένο δίπλα (κανόνας #2). */
+.ecard-agg-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); }
+.ecard-agg-n { color: var(--text-mid); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ecard-agg-bar { flex: 1; height: 6px; border-radius: var(--radius-full); background: var(--border-row); overflow: hidden; }
+.ecard-agg-bar > span { display: block; height: 100%; border-radius: var(--radius-full); background: var(--accent); }
+/* Νεκρό πεδίο φόρμας: σβηστό, με την αιτία από κάτω (.ef-hint). */
+.form-input:disabled, .form-select:disabled, .form-textarea:disabled {
+  background: var(--surface-sunken);
+  color: var(--text-disabled);
+  cursor: not-allowed;
+}
 
 /* Φόρμα v2 (truck-form 119:345): inline σφάλμα κάτω από το πεδίο, σβηστό
    κουμπί όσο υπάρχει σφάλμα, υποσημείωση που εξηγεί το γιατί. */
