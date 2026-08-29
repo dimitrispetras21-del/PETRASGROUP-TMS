@@ -19,58 +19,65 @@ const { repair } = require('./repair-har');
 // duplicate later in the same recording. Task 5, job 2.
 const HAR = repair();
 
-// ── Date-agnostic replay for URLs that embed "today" ────────────────────────
-// Several requests carry a date computed at runtime: core/ai-chat.js:1319 puts
-// localToday() into IS_AFTER({Delivery DateTime},'…'), and the weekly screens
-// put week-window bounds into their filters. routeFromHAR matches URLs
-// verbatim, so each such entry stops matching the day (or week) after the
-// recording: the request aborts, the console logs "Failed to load resource:
-// net::ERR_FAILED", and critic #6 reads that as a NEW error on every unit
-// whose baseline recorded none. Measured 29/8: nine units red with zero code
-// changes, one day after the 28/8 recording — and because the #6 assertion
-// runs BEFORE the field comparison, the tier-1 contract gate never executed.
-// A suite that goes red on the calendar gets ignored (same argument as the
-// #6 ratchet above readErrorBaseline in contract.spec.js).
+// ── Backend replay: exact match → date-agnostic match → loud abort ──────────
+// Replaces routeFromHAR for the Worker host. Two reasons it cannot be the
+// stock matcher:
 //
-// routeFromHAR cannot fuzzy-match, so date-carrying URLs get their own route,
-// registered AFTER routeFromHAR so it wins (Playwright checks routes in
-// reverse registration order). It matches HAR entries with every YYYY-MM-DD
-// run collapsed, i.e. "the same request, asked on a different day", and
-// replays the recorded status/headers/body. Recorded headers matter: the
-// backend is cross-origin, and without the recorded Access-Control-Allow-*
-// headers the browser would block the fulfilled response. URLs with no date
-// are untouched, and a date-carrying URL with no normalized match still
-// aborts — unknown requests must keep failing loudly (notFound:'abort').
-const HAS_DATE = /\d{4}-\d{2}-\d{2}/;      // non-global: .test() on a /g regex is stateful
-const DATE_RE  = /\d{4}-\d{2}-\d{2}/g;     // dates are literal in URLs ([0-9-] is never %-encoded)
+// 1. Dates in URLs. core/ai-chat.js:1319 puts localToday() into
+//    IS_AFTER({Delivery DateTime},'…'), and the weekly screens put week-window
+//    bounds into their filters. routeFromHAR matches URLs verbatim, so those
+//    entries stop matching the day (or week) after the recording: the request
+//    aborts, the console logs "Failed to load resource: net::ERR_FAILED", and
+//    critic #6 reads that as a NEW error on every unit whose baseline recorded
+//    none. Measured 29/8: nine units red with zero code changes, one day after
+//    the 28/8 recording — and because the #6 assertion runs BEFORE the field
+//    comparison, the tier-1 contract gate never executed. A suite that goes
+//    red on the calendar gets ignored (same argument as the #6 ratchet above
+//    readErrorBaseline in contract.spec.js).
+//
+// 2. CORS against a local origin. The recorded responses carry
+//    Access-Control-Allow-Origin: https://dimitrispetras21-del.github.io.
+//    Replayed verbatim to a page served from 127.0.0.1 (PW_BASE_URL, the
+//    plan's own instruction for verifying LOCAL changes) the browser blocks
+//    every backend response — measured 29/8: the app never rendered locally.
+//    The replay therefore echoes the requesting page's Origin instead.
+//
+// Matching stays strict-first: an exact URL match wins over any fuzzy
+// candidate, so a same-day run can never be served a different recorded week
+// than the one it asked for. A request with no match still aborts — unknown
+// requests must keep failing loudly (the old notFound:'abort' semantics).
+const DATE_RE = /\d{4}-\d{2}-\d{2}/g;   // dates are literal in URLs ([0-9-] is never %-encoded)
+const BACKEND_HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 
-let _harByNormUrl = null;
+let _harIdx = null;
 function _harIndex() {
-  if (_harByNormUrl) return _harByNormUrl;
-  _harByNormUrl = new Map();
+  if (_harIdx) return _harIdx;
+  const exact = new Map();   // "METHOD url"      → entry (first recorded wins)
+  const fuzzy = new Map();   // "METHOD normUrl"  → [entries]
   for (const e of JSON.parse(fs.readFileSync(HAR, 'utf8')).log.entries) {
-    if (!HAS_DATE.test(e.request.url)) continue;
-    const key = e.request.method + ' ' + e.request.url.replace(DATE_RE, 'D');
-    if (!_harByNormUrl.has(key)) _harByNormUrl.set(key, []);
-    _harByNormUrl.get(key).push(e);
+    if (!e.request.url.includes(BACKEND_HOST)) continue;
+    const kExact = e.request.method + ' ' + e.request.url;
+    if (!exact.has(kExact)) exact.set(kExact, e);
+    const kFuzzy = e.request.method + ' ' + e.request.url.replace(DATE_RE, 'D');
+    if (!fuzzy.has(kFuzzy)) fuzzy.set(kFuzzy, []);
+    fuzzy.get(kFuzzy).push(e);
   }
-  return _harByNormUrl;
+  _harIdx = { exact, fuzzy };
+  return _harIdx;
 }
 
-async function _installDateAgnosticReplay(page) {
-  const idx = _harIndex();
-  await page.route(u => HAS_DATE.test(u.href), route => {
+async function _installBackendReplay(page) {
+  const { exact, fuzzy } = _harIndex();
+  await page.route(`**/${BACKEND_HOST}/**`, route => {
     const req = route.request();
-    const key = req.method() + ' ' + req.url().replace(DATE_RE, 'D');
-    const candidates = idx.get(key) || [];
-    // An exact URL match must win over any fuzzy candidate — otherwise a
-    // same-day run could be served a DIFFERENT recorded week than the one it
-    // asked for. Failing that, take the most recently-dated recording: for
-    // week windows it is the closest stand-in for "the current week".
-    let entry = candidates.find(e => e.request.url === req.url());
-    if (!entry && candidates.length) {
-      entry = candidates.reduce((a, b) =>
-        (a.request.url.match(DATE_RE) || []).join() >= (b.request.url.match(DATE_RE) || []).join() ? a : b);
+    let entry = exact.get(req.method() + ' ' + req.url());
+    if (!entry) {
+      const candidates = fuzzy.get(req.method() + ' ' + req.url().replace(DATE_RE, 'D')) || [];
+      // Most recently-dated recording: for week windows it is the closest
+      // stand-in for "the current week".
+      entry = candidates.length ? candidates.reduce((a, b) =>
+        (a.request.url.match(DATE_RE) || []).join() >= (b.request.url.match(DATE_RE) || []).join() ? a : b)
+        : null;
     }
     if (!entry) return route.abort();
     const c = entry.response.content || {};
@@ -82,6 +89,11 @@ async function _installDateAgnosticReplay(page) {
       // describe a body we are not sending.
       if (n === 'content-encoding' || n === 'content-length' || n === 'transfer-encoding') continue;
       headers[n] = h.value;
+    }
+    // Reason 2 above. Echoing (not '*') keeps allow-credentials responses valid.
+    const origin = req.headers()['origin'];
+    if (origin && headers['access-control-allow-origin']) {
+      headers['access-control-allow-origin'] = origin;
     }
     return route.fulfill({
       status: entry.response.status,
@@ -121,27 +133,20 @@ async function preparePage(page, role = 'owner') {
     if (m) localStorage.setItem('tms_page', decodeURIComponent(m[1]));
   });
 
-  // notFound:'abort' is deliberate: a request the HAR does not cover must FAIL
-  // loudly. Falling through to the live backend would make the critics depend
+  // Replay ONLY backend data calls, and abort what the recording does not
+  // cover — falling through to the live backend would make the critics depend
   // on production state and quietly non-deterministic.
-  // Replay ONLY backend data calls. Static assets (js/css/html) must load live.
   //
-  // This was '**/*' and it made the suite die on every deploy: app.html carries a
-  // ?v=TIMESTAMP cache-bust on all 41 asset URLs, so one `bump-versions.sh` makes
-  // every recorded URL unmatchable, notFound:'abort' kills the assets, no page
-  // renders, and nine contracts fail at once looking like a mass regression. The
-  // oracle broke exactly when it was needed — right after a release.
+  // Static assets (js/css/html) load LIVE on purpose. The scope was '**/*'
+  // once and it made the suite die on every deploy: app.html carries a
+  // ?v=TIMESTAMP cache-bust on all 41 asset URLs, so one `bump-versions.sh`
+  // made every recorded URL unmatchable and no page rendered. Loading them
+  // live means the code under test is genuinely the code at PW_BASE_URL —
+  // deployed Pages by default, the local working tree when overridden.
   //
-  // Data still comes from the frozen recording, so the checks stay deterministic;
-  // the code under test is now genuinely the deployed code rather than a replay.
-  await page.routeFromHAR(HAR, {
-    url: '**/petras-tms-backend-staging.petrasgroup.workers.dev/**',
-    notFound: 'abort',
-  });
-
-  // Registered AFTER routeFromHAR ON PURPOSE — later routes win, so the
-  // date-carrying URLs reach this layer instead of the verbatim matcher.
-  await _installDateAgnosticReplay(page);
+  // Not routeFromHAR: see _installBackendReplay for the two reasons
+  // (date-carrying URLs, CORS against a local origin).
+  await _installBackendReplay(page);
 }
 
 // Navigate to a given screen. NOT a plain page.goto(url) — see the bridge
