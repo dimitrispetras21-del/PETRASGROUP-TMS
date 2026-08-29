@@ -10,11 +10,37 @@ const ENTITY_CONFIG = {
     tableId: TABLES.CLIENTS,
     label: 'Clients',
     labelSingle: 'Client',
+    // Wave 1, fifth entity (Figma clients-overview 118:309, client-card
+    // 122:636, clients-form 120:395). Carries TWO of the three dead fields
+    // (plan §2.1): contact_person and payment_terms_days — 0/1.920 written,
+    // the Worker map has no columns for them. Shown as designed: «—» in
+    // list/card, disabled with the reason in the form, skipped on save.
+    // The card shows VOLUME and FREQUENCY only — never revenue or margin
+    // (owner lock 23/8: the dispatcher has full access here).
+    v2: true,
+    titleV2: 'Πελάτες',
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος πελάτης', 'Επεξεργασία πελάτη'],
+    cardSubtitle: ['Country', 'City'],
+    cardSubtitleSep: ' · ',
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person',     label: 'Υπεύθυνος επαφής' },   // dead — renders «—»
+      { f: 'Phone',              label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',              label: 'Email' },
+      { f: 'Adress',             label: 'Διεύθυνση' },
+      { f: 'VAT Number',         label: 'ΑΦΜ' },
+      { f: 'Payment Terms Days', label: 'Όροι πληρωμής' },      // dead — renders «—»
+    ],
+    cardActivity: 'orders',
+    cardActivityTitle: 'Δραστηριότητα',
+    cardRecentTitle: 'Πρόσφατες παραγγελίες',
     perm: 'clients',
     searchFields: ['Company Name', 'City', 'Contact Person', 'VAT Number'],
     searchHint: 'Αναζήτηση: εταιρεία, πόλη, επαφή, ΑΦΜ…',
     filters: [
-      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -29,38 +55,58 @@ const ENTITY_CONFIG = {
       { field: 'Phone',         label: 'Τηλέφωνο' },
       { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
+    // Per clients-form 120:395: Στοιχεία εταιρείας / Επικοινωνία, with the
+    // two dead fields disabled + the reason spelled out.
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
         { f: 'Country',      label: 'Χώρα' },
         { f: 'City',         label: 'Πόλη' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
-      { section: 'Contact', fields: [
-        { f: 'Contact Person',      label: 'Υπεύθυνος επαφής' },
-        { f: 'Phone',               label: 'Τηλέφωνο' },
-        { f: 'Email',               label: 'Email', type: 'email' },
-        { f: 'Payment Terms Days',  label: 'Όροι πληρωμής (ημέρες)', type: 'number' },
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
+        { f: 'Phone',          label: 'Τηλέφωνο' },
+        { f: 'Email',          label: 'Email', type: 'email' },
+        { f: 'Payment Terms Days', label: 'Όροι πληρωμής (ημέρες)', type: 'number',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
       ]},
     ],
-    detailSections: [
-      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','City','Adress'] },
-      { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
-      { title: 'Commercial',      fields: ['Payment Terms Days','Pallet Balance'] },
-    ],
-    history: { type: 'client' },
+    // detailSections/history intentionally absent — the v2 card replaced them.
   },
 
   partners: {
     tableId: TABLES.PARTNERS,
     label: 'Partners',
     labelSingle: 'Partner',
+    // Wave 1, sixth entity (Figma partners-overview 118:622, partner-card
+    // 122:703, partners-form 120:463). One dead field: contact_person
+    // (0/214). The card shows assignment volume — the old panel's margin,
+    // revenue and rates do NOT return (owner lock 23/8; the mock has none).
+    v2: true,
+    titleV2: 'Συνεργάτες',
+    activeLabels: ['Ενεργός', 'Ανενεργός'],
+    defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    formTitles: ['Νέος συνεργάτης', 'Επεξεργασία συνεργάτη'],
+    cardSubtitle: ['Country'],
+    cardSpecsTitle: 'Επικοινωνία',
+    cardSpecs: [
+      { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },   // dead — renders «—»
+      { f: 'Phone',          label: 'Τηλέφωνο', phone: true },
+      { f: 'Email',          label: 'Email' },
+      { f: 'Adress',         label: 'Διεύθυνση' },
+      { f: 'VAT Number',     label: 'ΑΦΜ' },
+    ],
+    cardActivity: 'assignments',
+    cardActivityTitle: 'Αναθέσεις',
+    cardRecentTitle: 'Πρόσφατες αναθέσεις',
     perm: 'clients',
     searchFields: ['Company Name', 'Contact Person', 'VAT Number'],
     searchHint: 'Αναζήτηση: εταιρεία, επαφή, ΑΦΜ…',
     filters: [
-      { field: 'Country', label: 'Χώρα', type: 'dynamic' },
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Active',  label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -76,24 +122,20 @@ const ENTITY_CONFIG = {
       { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
     formFields: [
-      { section: 'Details', fields: [
+      { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
         { f: 'Country',      label: 'Χώρα' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
-      { section: 'Contact', fields: [
-        { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
+      { section: 'Επικοινωνία', fields: [
+        { f: 'Contact Person', label: 'Υπεύθυνος επαφής',
+          disabled: true, disabledReason: 'Δεν αποθηκεύεται — εκκρεμεί στήλη στη βάση' },
         { f: 'Phone',          label: 'Τηλέφωνο' },
         { f: 'Email',          label: 'Email', type: 'email' },
       ]},
     ],
-    detailSections: [
-      { title: 'Company Details', fields: ['Company Name','VAT Number','Country','Adress'] },
-      { title: 'Contact',         fields: ['Contact Person','Phone','Email'] },
-      { title: 'Statistics',      fields: ['Pallet Balance'] },
-    ],
-    history: { type: 'partner' },
+    // detailSections/history intentionally absent — the v2 card replaced them.
   },
 
   drivers: {
@@ -537,7 +579,7 @@ async function renderEntity(entityKey) {
       // fi.labels: display-only Greek for stored English values (ΜΕΡΟΣ Ε).
       // The option VALUE stays raw so filtering matches the records.
       return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
-        <option value="">${fi.label}: Όλα</option>
+        <option value="">${fi.label}: ${fi.allLabel || 'Όλα'}</option>
         ${opts.map(o => `<option value="${o}">${(fi.labels && fi.labels[o]) || o}</option>`).join('')}
       </select>`;
     }
@@ -1225,7 +1267,7 @@ function applyEntityFilters(entityKey) {
   const noun = cfg.countNoun || ['εγγραφή', 'εγγραφές'];
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
   document.getElementById(entityKey + '_count').textContent =
-    recs.length + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
+    recs.length.toLocaleString('el-GR') + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
 }
 
 // ── Detail Panel ──────────────────────────────────
@@ -1349,7 +1391,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
   const title = f[primaryField] || recId.slice(-6);
   // Phones render formatted, same as the list column (DV-7).
-  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x]) : f[x]).filter(Boolean).join(' ')
+  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x]) : f[x]).filter(Boolean).join(cfg.cardSubtitleSep || ' ')
     + (cfg.cardSubtitleExtra && f[cfg.cardSubtitleExtra] ? ' · ' + f[cfg.cardSubtitleExtra] : '');
   const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
   // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
@@ -1443,6 +1485,16 @@ function _renderEntityCardV2(entityKey, rec, panel) {
         <div class="ecard-sec-title">Με ποια φορτηγά</div>
         <div class="ecard-sec-body" id="ec_${recId}_agg">Φόρτωση…</div>
       </div>` : ''}
+      ${cfg.cardActivity ? `<div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardActivityTitle || 'Δραστηριότητα'}</div>
+        <div class="ecard-sec-body" id="ec_${recId}_act">Φόρτωση…</div>
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">${cfg.cardRecentTitle || 'Πρόσφατες'}
+          ${cfg.cardActivity === 'orders' ? `<button type="button" class="ecard-link" onclick="navigate('orders_intl')">όλες →</button>` : ''}
+        </div>
+        <div class="ecard-sec-body" id="ec_${recId}_recent">Φόρτωση…</div>
+      </div>` : ''}
       ${cfg.cardMaint ? `<div class="ecard-sec">
         <div class="ecard-sec-title">${cfg.cardMaintTitle || 'Ζημιές & επισκευές'}
           ${cfg.cardMaintBy === 'workshop'
@@ -1455,6 +1507,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
 
   if (cfg.cardMaint) _loadEntityCardMaint(entityKey, rec);
   if (cfg.cardRt) _loadEntityCardRT(entityKey, rec);
+  if (cfg.cardActivity) _loadEntityCardActivity(entityKey, rec);
 }
 
 async function _loadEntityCardMaint(entityKey, rec) {
@@ -1619,6 +1672,78 @@ async function _loadEntityCardRT(entityKey, rec) {
     const aggEl = document.getElementById(`ec_${recId}_agg`);
     if (aggEl) aggEl.innerHTML = msg;
     if (typeof logError === 'function') logError(e, 'entity card: round trips');
+  }
+}
+
+// ── Activity (clients: orders · partners: assignments) ─────────────────────
+// Volume and frequency ONLY — no prices, no margins, no rates: the dispatcher
+// has full access to these screens and never sees P&L (owner lock 23/8). The
+// fetches deliberately exclude every money field the old panel used to pull.
+async function _loadEntityCardActivity(entityKey, rec) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const recId = rec.id;
+  const actEl = () => document.getElementById(`ec_${recId}_act`);
+  const recEl = () => document.getElementById(`ec_${recId}_recent`);
+  const kpi = (n, l) => `<div class="ecard-usage-item"><span class="ecard-usage-num">${n}</span><span class="ecard-usage-lbl">${l}</span></div>`;
+  try {
+    let rows = [], k1, k2, k3;
+    if (cfg.cardActivity === 'orders') {
+      const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
+      const [intl, natl] = await Promise.all([
+        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Reference', 'Loading Location 1', 'Unloading Location 1', 'Loading DateTime'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Reference', 'Pickup Location 1', 'Delivery Location 1', 'Loading DateTime'] }, false),
+      ]);
+      const all = [
+        ...intl.map(r => ({ ref: r.fields['Reference'],
+          date: String(r.fields['Loading DateTime'] || '').slice(0, 10),
+          route: (typeof orderRoute === 'function' && orderRoute(r.fields, 24)) || '' })),
+        ...natl.map(r => ({ ref: r.fields['Reference'],
+          date: toLocalDate(r.fields['Loading DateTime']),
+          route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1'])) || '—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1'])) || '—'}` })),
+      ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      rows = all.slice(0, 3).map(o => ({ code: o.ref ? '#' + o.ref : '—', date: o.date, main: o.route || '—' }));
+      const total = all.length;
+      const lastD = total ? all[0].date : null;
+      // Lifetime monthly rate: total / months between first and last order
+      // (min one month) — the mock's «4,2 τον μήνα», computed honestly.
+      let perMonth = null;
+      if (total) {
+        const firstD = all[total - 1].date;
+        const months = Math.max(1, (new Date(lastD) - new Date(firstD)) / (30.44 * 86400000));
+        perMonth = (total / months).toLocaleString('el-GR', { maximumFractionDigits: 1 });
+      }
+      k1 = kpi(total, total === 1 ? 'παραγγελία' : 'παραγγελίες');
+      k2 = kpi(lastD ? _ecDate(lastD) : '—', 'τελευταία');
+      k3 = kpi(perMonth != null ? perMonth : '—', 'τον μήνα');
+    } else {
+      const pa = await paListByPartner(recId);
+      const activeN = pa.filter(r => ['Assigned', 'In Transit'].includes(r.fields[F.PA_STATUS] || '')).length;
+      const sorted = [...pa].sort((a, b) => String(b.fields[F.PA_ASSIGN_DATE] || '').localeCompare(String(a.fields[F.PA_ASSIGN_DATE] || '')));
+      rows = sorted.slice(0, 3).map(r => ({
+        code: (Array.isArray(r.fields[F.PA_ORDER]) && r.fields[F.PA_ORDER].length) ? 'INTL' : 'NAT',
+        date: String(r.fields[F.PA_ASSIGN_DATE] || '').slice(0, 10),
+        main: r.fields[F.PA_STATUS] || '—',
+      }));
+      k1 = kpi(pa.length, pa.length === 1 ? 'ανάθεση' : 'αναθέσεις');
+      k2 = kpi(sorted.length && sorted[0].fields[F.PA_ASSIGN_DATE]
+        ? _ecDate(String(sorted[0].fields[F.PA_ASSIGN_DATE]).slice(0, 10)) : '—', 'τελευταία');
+      k3 = kpi(activeN, activeN === 1 ? 'ενεργή' : 'ενεργές');
+    }
+    const a = actEl();
+    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}</div>`;
+    const rEl = recEl();
+    if (rEl) rEl.innerHTML = rows.length
+      ? rows.map(o => `<div class="ecard-row">
+          <span class="ecard-row-code">${_ecEsc(o.code)}</span>
+          <span class="ecard-row-date">${o.date ? _ecDate(o.date) : '—'}</span>
+          <span class="ecard-row-main">${_ecEsc(o.main)}</span>
+        </div>`).join('')
+      : `<div class="ecard-empty">${cfg.cardActivity === 'orders' ? 'Καμία παραγγελία καταγεγραμμένη.' : 'Καμία ανάθεση καταγεγραμμένη.'}</div>`;
+  } catch (e) {
+    for (const g of [actEl(), recEl()]) {
+      if (g) g.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό.</div>`;
+    }
+    if (typeof logError === 'function') logError(e, 'entity card: activity');
   }
 }
 

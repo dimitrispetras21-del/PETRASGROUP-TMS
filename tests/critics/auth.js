@@ -49,15 +49,24 @@ const HAR = repair();
 const DATE_RE = /\d{4}-\d{2}-\d{2}/g;   // dates are literal in URLs ([0-9-] is never %-encoded)
 const BACKEND_HOST = 'petras-tms-backend-staging.petrasgroup.workers.dev';
 
+// The recording holds DUPLICATE entries for the same request, some with the
+// response body missing (0 bytes) — e.g. local_moves has both empty and
+// 47-byte 404s. Serving the empty twin makes res.json() throw a SyntaxError
+// the live app never produced (measured 29/8: a phantom NEW console error on
+// weekly_natl). An entry with a body therefore always beats an empty one.
+const _bodyLen = e => (((e.response || {}).content || {}).text || '').length;
+
 let _harIdx = null;
 function _harIndex() {
   if (_harIdx) return _harIdx;
-  const exact = new Map();   // "METHOD url"      → entry (first recorded wins)
+  const exact = new Map();   // "METHOD url"      → best entry (body beats empty)
   const fuzzy = new Map();   // "METHOD normUrl"  → [entries]
   for (const e of JSON.parse(fs.readFileSync(HAR, 'utf8')).log.entries) {
     if (!e.request.url.includes(BACKEND_HOST)) continue;
     const kExact = e.request.method + ' ' + e.request.url;
-    if (!exact.has(kExact)) exact.set(kExact, e);
+    if (!exact.has(kExact) || (_bodyLen(exact.get(kExact)) === 0 && _bodyLen(e) > 0)) {
+      exact.set(kExact, e);
+    }
     const kFuzzy = e.request.method + ' ' + e.request.url.replace(DATE_RE, 'D');
     if (!fuzzy.has(kFuzzy)) fuzzy.set(kFuzzy, []);
     fuzzy.get(kFuzzy).push(e);
@@ -75,9 +84,11 @@ async function _installBackendReplay(page) {
       const candidates = fuzzy.get(req.method() + ' ' + req.url().replace(DATE_RE, 'D')) || [];
       // Most recently-dated recording: for week windows it is the closest
       // stand-in for "the current week".
-      entry = candidates.length ? candidates.reduce((a, b) =>
-        (a.request.url.match(DATE_RE) || []).join() >= (b.request.url.match(DATE_RE) || []).join() ? a : b)
-        : null;
+      entry = candidates.length ? candidates.reduce((a, b) => {
+        const ab = _bodyLen(a) > 0, bb = _bodyLen(b) > 0;
+        if (ab !== bb) return ab ? a : b;   // a body always beats an empty twin
+        return (a.request.url.match(DATE_RE) || []).join() >= (b.request.url.match(DATE_RE) || []).join() ? a : b;
+      }) : null;
     }
     if (!entry) return route.abort();
     const c = entry.response.content || {};
