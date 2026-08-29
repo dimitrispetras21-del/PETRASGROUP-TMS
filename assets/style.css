@@ -1493,6 +1493,36 @@ tbody tr:hover { background: var(--bg-hover); }
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Μπάρα γενικών στατιστικών (owner 29/8/2026).
+   ΜΙΑ γραμμή 36px, όχι κάρτες: οι κάρτες `.tms-stat-card` είναι 64px και θα
+   κόστιζαν 2 γραμμές πίνακα. Ο κανόνας #5 θέλει ≥20 ορατές γραμμές στα 1080p
+   και μετά το φίλτρο-στην-κεφαλίδα δεν περισσεύει ύψος. Άδεια μπάρα δεν
+   καταλαμβάνει χώρο (:empty), ώστε μια οθόνη χωρίς στατιστικά να μη χάνει
+   γραμμή για ένα κενό πλαίσιο. */
+.ev2-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  padding: 0 var(--space-5);
+  height: 36px;
+  border-bottom: 1px solid var(--border-row);
+  background: var(--bg-row-alt);
+  flex: 0 0 auto;
+}
+.ev2-stats:empty { display: none; }
+.ev2-stat { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.ev2-stat-label {
+  font: 500 10px/1 'DM Sans', sans-serif;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: var(--text-dim);
+}
+.ev2-stat-value {
+  font: 700 14px/1 'DM Sans', sans-serif;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
 .entity-v2 .svc-filter {
   background: var(--bg);
   border: 1px solid var(--silver-light);
@@ -1555,6 +1585,13 @@ tbody tr:hover { background: var(--bg-hover); }
 /* Καρτέλα εγγραφής v2 — το δεξί panel του truck-overview. Πλάτος κατά το mock
    (κάρτα 520 μείον σκιά)· το mobile override των 95% πιο κάτω ισχύει ως έχει. */
 .entity-v2 .entity-detail-panel { width: 480px; background: var(--bg-card); }
+/* ΜΗΝ αφαιρεθεί το `.hidden` από τον επόμενο επιλογέα (audit 29/8/2026).
+   Ο κανόνας `.entity-detail-panel.hidden{width:0}` της γρ. 1380 έχει ΙΔΙΑ
+   ειδικότητα (0,2,0) με τον από πάνω και γράφεται ΠΡΙΝ — άρα έχανε, και το
+   κλειστό panel κρατούσε 482px σε καθεμία από τις έξι οθόνες. Μετρημένο:
+   ο πίνακας Πελατών χρειάζεται 1411px, έπαιρνε 1138px, έκοβε τη στήλη
+   ΚΑΤΑΣΤΑΣΗ — ενώ δίπλα του έμεναν 482px αχρησιμοποίητα. */
+.entity-v2 .entity-detail-panel.hidden { width: 0; border-left: none; }
 .ecard-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: var(--space-2);

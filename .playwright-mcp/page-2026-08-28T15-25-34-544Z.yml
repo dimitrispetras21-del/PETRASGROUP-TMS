@@ -1,0 +1,23 @@
+- generic [active] [ref=f1e1]:
+  - generic [ref=f1e2]:
+    - img "Petras Group" [ref=f1e4]
+    - img "Petras Group Truck" [ref=f1e6]
+    - generic [ref=f1e7]:
+      - heading "Transport Management System" [level=1] [ref=f1e8]: TransportManagementSystem
+      - paragraph [ref=f1e9]: Full management of international routes,fleet and costs for Petras Group.
+    - generic [ref=f1e10]: Petras Group · International Road Transport Services
+  - generic [ref=f1e12]:
+    - img "Petras Group" [ref=f1e14]
+    - generic [ref=f1e15]: Welcome
+    - generic [ref=f1e16]: Sign in to access the system
+    - generic [ref=f1e17]:
+      - generic [ref=f1e18]:
+        - generic [ref=f1e19]: Username
+        - textbox "Username" [ref=f1e20]:
+          - /placeholder: Enter username
+      - generic [ref=f1e21]:
+        - generic [ref=f1e22]: Password
+        - textbox "Password" [ref=f1e23]:
+          - /placeholder: ••••••••
+      - button "Sign In →" [ref=f1e24] [cursor=pointer]
+    - generic [ref=f1e25]: v1.0 · Petras Group TMS · 2026

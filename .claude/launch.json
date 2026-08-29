@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "demo-preview",
+      "name": "tms-local",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8765", "-d", "/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS/96b97436-3886-4b09-b08a-956a0fb2743d/scratchpad"],
-      "port": 8765
+      "runtimeArgs": ["-m", "http.server", "8788", "-d", "/Users/dimitrispetras/PETRASGROUP-TMS"],
+      "port": 8788
     }
   ]
 }

@@ -608,6 +608,7 @@ async function renderEntity(entityKey) {
             Νέα εγγραφή
           </button>` : ''}
         </div>
+        <div class="ev2-stats" id="${entityKey}_stats_strip"></div>
         <div class="entity-table-wrap" id="${entityKey}_table"></div>
       </div>
       <div class="entity-detail-panel hidden" id="${entityKey}_detail"></div>
@@ -615,6 +616,7 @@ async function renderEntity(entityKey) {
     // One shared path renders table + count, so the default filters are
     // applied exactly the way a user's own click would apply them.
     applyEntityFilters(entityKey);
+    _renderStatsBarV2(entityKey, records);
     if (entityKey === 'workshops') _enrichWorkshopsV2(entityKey, records);
     return;
   }
@@ -657,6 +659,84 @@ async function renderEntity(entityKey) {
   // DV-5/TR-5/TL-5: ο στόλος είχε μηδέν KPI ενώ Clients/Partners είχαν τρία.
   if (entityKey === 'drivers' || entityKey === 'trucks' || entityKey === 'trailers')
     _renderFleetStatsStrip(entityKey, records);
+}
+
+// ── Μπάρα γενικών στατιστικών, v2 (owner 29/8/2026) ────────────────────────
+// Η προηγούμενη μπάρα ΧΑΘΗΚΕ ΣΙΩΠΗΛΑ στη μετάβαση σε v2: το νέο layout έπαψε
+// να αποδίδει το <div id="..._stats_strip">, οι τρεις παλιές συναρτήσεις
+// ξεκινούν με `if (!el) return;`, και οι κλήσεις τους έμειναν ΜΕΤΑ το
+// `return` του v2 κλάδου. Και οι έξι οθόνες είναι v2 — άρα δεν έτρεχαν ποτέ.
+// Τίποτα δεν έσπασε, τίποτα δεν το είπε (αρχή 1). Μετρημένο 29/8/2026.
+//
+// ΚΑΝΟΝΑΣ ΠΕΡΙΕΧΟΜΕΝΟΥ: μόνο ό,τι υπολογίζεται από τα records που ο πίνακας
+// ήδη φόρτωσε. Καμία νέα κλήση. Οι παλιές strips Πελατών/Συνεργατών σάρωναν
+// ORDERS + NATIONAL ORDERS ολόκληρα σε κάθε φόρτωση σελίδας — αλλαγή
+// απόδοσης, που κατά την PRIME DIRECTIVE δεν μπαίνει χωρίς ρητή απόφαση.
+const _EXPIRY_FIELDS = {
+  drivers:  ['License Expiry'],
+  trucks:   ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'],
+  trailers: ['KTEO Expiry', 'FRC Expiry', 'Insurance Expiry'],
+};
+
+function _renderStatsBarV2(entityKey, records) {
+  const el = document.getElementById(entityKey + '_stats_strip');
+  if (!el) return;
+  // Ό,τι φέρει € κρύβεται από dispatcher/warehouse (costs:'none', config.js:334-345).
+  // Ίδια πύλη με τον σύνδεσμο TRIP PnL πιο κάτω — μία πηγή αλήθειας για τα ποσά.
+  const showMoney = typeof can === 'function' && can('costs') !== 'none';
+  const stat = (label, value, color) =>
+    `<span class="ev2-stat"><span class="ev2-stat-label">${label}</span>` +
+    `<span class="ev2-stat-value"${color ? ` style="color:${color}"` : ''}>${value}</span></span>`;
+
+  const active = records.filter(r => r.fields['Active']).length;
+  const out = [stat('Σύνολο', records.length)];
+
+  const EXP = _EXPIRY_FIELDS[entityKey];
+  if (EXP) {
+    const now = Date.now();
+    let expired = 0, soon = 0, unknown = 0;
+    for (const r of records) {
+      const days = EXP.map(f => r.fields[f]).filter(Boolean)
+        .map(v => Math.floor((new Date(v).getTime() - now) / 86400000));
+      // Κανόνας #3: «καμία ημερομηνία καταχωρημένη» ΔΕΝ είναι «όλα εντάξει».
+      // Μετριέται χωριστά, αλλιώς ένα όχημα χωρίς ΚΤΕΟ φαίνεται συμμορφούμενο.
+      if (!days.length) { unknown++; continue; }
+      if (days.some(d => d < 0)) expired++;
+      else if (days.some(d => d <= 30)) soon++;
+    }
+    out.push(stat(entityKey === 'drivers' ? 'Ενεργοί' : 'Ενεργά', active,
+      active ? 'var(--success)' : 'var(--text-dim)'));
+    out.push(stat(entityKey === 'drivers' ? 'Ληγμένο δίπλωμα' : 'Ληγμένο έγγραφο', expired,
+      expired ? 'var(--danger)' : 'var(--success)'));
+    out.push(stat('Λήγει <30 ημ.', soon, soon ? 'var(--warning)' : 'var(--text-dim)'));
+    if (unknown) out.push(stat('Χωρίς ημερομηνία', unknown, 'var(--text-mid)'));
+  } else if (entityKey === 'workshops') {
+    // Τα _serviceCount/_totalSpend έρχονται από το _enrichWorkshopsV2, που
+    // τρέχει ΜΕΤΑ. Ώσπου να έρθουν, οι δύο τελευταίες μετρήσεις λείπουν αντί
+    // να δείχνουν 0 — και η enrichment ξανακαλεί αυτή τη συνάρτηση.
+    const used = records.filter(r => r.fields['_serviceCount']).length;
+    out.push(stat('Ενεργά', active, active ? 'var(--success)' : 'var(--text-dim)'));
+    if (records.some(r => r.fields['_serviceCount'] != null)) {
+      out.push(stat('Σε χρήση', used, used ? 'var(--success)' : 'var(--text-dim)'));
+      const jobs = records.reduce((s, r) => s + (r.fields['_serviceCount'] || 0), 0);
+      out.push(stat('Εργασίες', jobs));
+      if (showMoney) {
+        const spend = records.reduce((s, r) => s + (r.fields['_totalSpend'] || 0), 0);
+        out.push(stat('Δαπάνη', '€' + Math.round(spend).toLocaleString('el-GR')));
+      }
+    }
+  } else {
+    // clients / partners — η δουλειά εδώ είναι «ποιον καλώ», οπότε μετριέται
+    // αυτό ακριβώς: πόσοι ΔΕΝ έχουν τηλέφωνο. Χώρες = πόσες διακριτές τιμές
+    // έχει το φίλτρο, που κάνει ορατή και την ασυνέπεια (GR/GREECE/ΕΛΛΑΔΑ).
+    const noPhone = records.filter(r => !r.fields['Phone']).length;
+    const countries = new Set(records.map(r => r.fields['Country']).filter(Boolean)).size;
+    out.push(stat('Ενεργοί', active, active ? 'var(--success)' : 'var(--text-dim)'));
+    out.push(stat('Χώρες', countries));
+    out.push(stat('Χωρίς τηλέφωνο', noPhone, noPhone ? 'var(--warning)' : 'var(--success)'));
+  }
+
+  el.innerHTML = out.join('');
 }
 
 // ── Fleet stats strips (DV-5, TR-5, TL-5) ─────────────────
@@ -724,6 +804,9 @@ async function _enrichWorkshopsV2(entityKey, workshops) {
       w.fields['_lastUsed'] = last[w.id] || '';
     }
     applyEntityFilters(entityKey);
+    // Η μπάρα αποδόθηκε πριν φτάσει το ιστορικό: τότε είχε μόνο Σύνολο/Ενεργά.
+    // Τώρα που υπάρχουν Εργασίες/Δαπάνη, ξανασχεδιάζεται με αυτά.
+    _renderStatsBarV2(entityKey, workshops);
   } catch (e) {
     // Rule #7/#1: the three columns stay «—» AND the screen says why —
     // a silent enrichment failure would read as «κανένα συνεργείο σε χρήση».
@@ -1433,7 +1516,12 @@ function _renderEntityCardV2(entityKey, rec, panel) {
       <div class="ecard-head-main">
         <div class="ecard-title-row">
           <span class="ecard-title">${_ecEsc(title)}</span>
-          <span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>
+          ${/* Το badge μπαίνει ΜΟΝΟ όταν δεν υπάρχει το κουμπί εναλλαγής.
+                Με canEdit εμφανίζονταν δύο δείκτες της ίδιας κατάστασης στις
+                δύο άκρες της κεφαλίδας (audit 29/8). Οι ρόλοι μόνο-ανάγνωσης
+                δεν έχουν κουμπί, οπότε εκεί το badge παραμένει η μόνη ένδειξη
+                και ΔΕΝ αφαιρείται. */''}
+          ${canEdit ? '' : `<span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>`}
           ${tagHTML}
           <span id="ec_${recId}_svc"></span>
         </div>
