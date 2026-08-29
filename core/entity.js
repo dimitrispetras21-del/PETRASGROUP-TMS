@@ -202,28 +202,39 @@ const ENTITY_CONFIG = {
       { field: 'VIN',                 label: 'VIN' },
       { field: 'Active',              label: 'Κατάσταση', type: 'active' },
     ],
+    // Regrouped per the truck-form mock (119:345): same 12 fields, nothing
+    // lost — Τεχνικά and Σημειώσεις split out of the two old sections.
+    formNoun: 'φορτηγού',
     formFields: [
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
-        { f: 'Year',          label: 'Έτος (1η ταξινόμηση)', type: 'number' },
+        { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
+      ]},
+      { section: 'Τεχνικά', fields: [
         { f: 'Euro Standard', label: 'Euro', type: 'select', options: ['Euro 3','Euro 4','Euro 5','Euro 6'] },
-        { f: 'Tare Weight kg', label: 'Απόβαρο', type: 'number', unit: 'kg' },
+        { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
         { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',     type: 'date' },
         { f: 'KEK Expiry',        label: 'ΚΕΚ έως',      type: 'date' },
         { f: 'Insurance Expiry',  label: 'Ασφάλεια έως', type: 'date' },
         { f: 'Insurance Partner', label: 'Ασφαλιστής' },
-        { f: 'Notes',             label: 'Σημειώσεις',   type: 'textarea' },
+      ]},
+      { section: 'Σημειώσεις', fields: [
+        { f: 'Notes', label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
-    detailSections: [
-      { title: 'Ταυτότητα', fields: ['License Plate','VIN','Brand','Model','Year','Euro Standard','Tare Weight kg'] },
-      { title: 'Έγγραφα',   fields: ['KTEO Expiry','KEK Expiry','Insurance Expiry','Insurance Partner','Notes'] },
-    ],
+    // Inline validation (v2 form): '' = ok, otherwise the message under the
+    // field. Only the rule the mock defines — nothing invented.
+    validators: {
+      'Tare Weight kg': v => v !== '' && parseFloat(v) < 0 ? 'Το απόβαρο δεν μπορεί να είναι αρνητικό' : '',
+    },
+    // detailSections intentionally absent: the v2 record card (cardDocs/
+    // cardSpecs above) replaced the old detail panel for trucks — a stale
+    // parallel list here would be a second source of truth.
   },
 
   trailers: {
@@ -1672,10 +1683,15 @@ function openEntityEdit(entityKey, recId) {
 function buildEntityModal(entityKey, recId, fields) {
   const cfg    = ENTITY_CONFIG[entityKey];
   const isEdit = !!recId;
+  const isV2   = !!cfg.v2;
   let bodyHTML = '<div class="form-grid cols-1" style="gap:0">';
 
   for (const sec of cfg.formFields) {
-    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.title}</div></div>`;
+    // sec.section, not sec.title: every ENTITY_CONFIG formFields entry keys
+    // its heading as `section`, and this line read `title` — so every modal
+    // of all six entities rendered «undefined» headings in production.
+    // Caught 29/8 by the form probe; nobody had reported it.
+    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.section || sec.title || ''}</div></div>`;
     bodyHTML += '<div class="form-grid">';
     for (const field of sec.fields) {
       const val = fields[field.f] ?? '';
@@ -1699,28 +1715,81 @@ function buildEntityModal(entityKey, recId, fields) {
       } else {
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
       }
+      // v2: a message slot under every field — inline errors instead of the
+      // old alert(); «Προαιρετικό» hint on non-required textareas (mock).
+      const errSlot = isV2 ? `<div class="ef-err" id="eferr_ef_${field.f.replace(/\s/g,'_')}"></div>${
+        field.type === 'textarea' && !field.req ? '<div class="ef-hint">Προαιρετικό</div>' : ''}` : '';
       bodyHTML += `<div class="form-field ${field.type==='textarea'?'span-2':''}">
         <label class="form-label">${field.label}${field.req?' *':''}</label>
-        ${input}
+        ${input}${errSlot}
       </div>`;
     }
     bodyHTML += '</div>';
   }
   bodyHTML += '</div>';
 
-  const footerHTML = `
+  const footerHTML = isV2 ? `
+    <span class="ef-footnote" id="ef_note_${entityKey}" style="visibility:hidden">Τα πεδία με σφάλμα εμποδίζουν την αποθήκευση</span>
+    <button class="btn btn-ghost" onclick="closeModal()">Ακύρωση</button>
+    <button class="btn btn-primary" id="ef_save_${entityKey}" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
+      ${isEdit ? 'Αποθήκευση' : 'Δημιουργία'}
+    </button>` : `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
     <button class="btn btn-success" onclick="saveEntityRecord('${entityKey}','${recId||''}')">
       ${isEdit ? 'Save Changes' : 'Create'}
     </button>`;
 
-  openModal(`${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`, bodyHTML, footerHTML);
+  const title = isV2
+    ? `${isEdit ? 'Επεξεργασία' : 'Νέο'} ${cfg.formNoun || cfg.labelSingle}${isEdit && fields['License Plate'] ? ' — ' + fields['License Plate'] : ''}`
+    : `${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`;
+  openModal(title, bodyHTML, footerHTML);
+
+  if (isV2) {
+    // One delegated listener re-validates as the user types, so the message
+    // (and the disabled save) clears the moment the value becomes valid.
+    document.getElementById('modalBody').addEventListener('input', () => entityRevalidate(entityKey));
+  }
+}
+
+// v2 inline validation. Live pass (submit=false) runs only the cfg.validators
+// rules — an empty required field is not an error while the user is still
+// filling the form. The submit pass adds the required check. Returns true
+// when the form may be saved.
+function entityRevalidate(entityKey, submit = false) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  if (!cfg.v2) return true;
+  const rules = cfg.validators || {};
+  let errors = 0;
+  for (const sec of cfg.formFields) {
+    for (const field of sec.fields) {
+      const id = 'ef_' + field.f.replace(/\s/g, '_');
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const v = el.value.trim();
+      let msg = '';
+      if (submit && field.req && !v) msg = `Το πεδίο «${field.label}» είναι υποχρεωτικό`;
+      else if (rules[field.f]) msg = rules[field.f](v) || '';
+      el.classList.toggle('error', !!msg);
+      const errEl = document.getElementById('eferr_' + id);
+      if (errEl) errEl.textContent = msg;
+      if (msg) errors++;
+    }
+  }
+  const save = document.getElementById('ef_save_' + entityKey);
+  const note = document.getElementById('ef_note_' + entityKey);
+  if (save) save.disabled = errors > 0;
+  if (note) note.style.visibility = errors ? 'visible' : 'hidden';
+  return errors === 0;
 }
 
 async function saveEntityRecord(entityKey, recId) {
   const cfg    = ENTITY_CONFIG[entityKey];
-  const fields = {};
 
+  // v2: the full pass (validators + required) paints the messages inline and
+  // blocks the save — no alert() (mock truck-form: field errors block saving).
+  if (cfg.v2 && !entityRevalidate(entityKey, true)) return;
+
+  const fields = {};
   for (const sec of cfg.formFields) {
     for (const field of sec.fields) {
       const id = 'ef_' + field.f.replace(/\s/g, '_');
@@ -1733,14 +1802,16 @@ async function saveEntityRecord(entityKey, recId) {
     }
   }
 
-  const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
-  if (reqField && !fields[reqField.f]) {
-    alert(`Field "${reqField.label}" is required`);
-    return;
+  if (!cfg.v2) {
+    const reqField = cfg.formFields.flatMap(s => s.fields).find(f => f.req);
+    if (reqField && !fields[reqField.f]) {
+      alert(`Field "${reqField.label}" is required`);
+      return;
+    }
   }
 
   const btn = document.activeElement;
-  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+  if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση…' : 'Saving...'; btn.disabled = true; }
 
   try {
     if (recId) {
@@ -1750,10 +1821,11 @@ async function saveEntityRecord(entityKey, recId) {
     }
     invalidateCache(cfg.tableId);
     closeModal();
-    toast(recId ? 'Record updated' : 'Record created');
+    toast(cfg.v2 ? (recId ? 'Η εγγραφή ενημερώθηκε' : 'Η εγγραφή δημιουργήθηκε')
+                 : (recId ? 'Record updated' : 'Record created'));
     await renderEntity(entityKey);
   } catch(e) {
-    if (btn) { btn.textContent = 'Save'; btn.disabled = false; }
+    if (btn) { btn.textContent = cfg.v2 ? 'Αποθήκευση' : 'Save'; btn.disabled = false; }
     reportError('Σφάλμα αποθήκευσης εγγραφής', e);
   }
 }

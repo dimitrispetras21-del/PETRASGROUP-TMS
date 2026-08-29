@@ -1615,6 +1615,20 @@ tbody tr:hover { background: var(--bg-hover); }
 .ecard-empty { font-size: var(--text-sm); color: var(--text-dim); }
 .ecard-fail { font-size: var(--text-sm); color: var(--warning); }
 
+/* Φόρμα v2 (truck-form 119:345): inline σφάλμα κάτω από το πεδίο, σβηστό
+   κουμπί όσο υπάρχει σφάλμα, υποσημείωση που εξηγεί το γιατί. */
+.form-input.error, .form-select.error, .form-textarea.error {
+  border-color: var(--border-error);
+}
+.form-input.error:focus, .form-select.error:focus, .form-textarea.error:focus {
+  border-color: var(--border-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.15);
+}
+.ef-err { font-size: var(--text-sm); color: var(--text-error); margin-top: 4px; min-height: 0; }
+.ef-err:empty { display: none; }
+.ef-hint { font-size: var(--text-sm); color: var(--text-dim); margin-top: 4px; }
+.ef-footnote { font-size: var(--text-sm); color: var(--text-dim); margin-right: auto; align-self: center; }
+
 /* Detail panel */
 .detail-header {
   display: flex;
