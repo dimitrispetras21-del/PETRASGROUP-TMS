@@ -1550,6 +1550,71 @@ tbody tr:hover { background: var(--bg-hover); }
 /* Badge κατάστασης κατά το mock: ζεύγος --badge-ok (μετρημένο ≥4,5:1). */
 .entity-v2 .badge-green { background: var(--badge-ok-bg); color: var(--badge-ok-text); }
 
+/* Καρτέλα εγγραφής v2 — το δεξί panel του truck-overview. Πλάτος κατά το mock
+   (κάρτα 520 μείον σκιά)· το mobile override των 95% πιο κάτω ισχύει ως έχει. */
+.entity-v2 .entity-detail-panel { width: 480px; background: var(--bg-card); }
+.ecard-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--silver-light);
+}
+.ecard-title-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ecard-title {
+  font-family: 'Syne', sans-serif; font-weight: 700;
+  font-size: 28px; line-height: 32px; letter-spacing: .5px;
+  color: var(--text);
+}
+.ecard-sub { font-size: var(--text-body); color: var(--text-mid); margin-top: 2px; }
+.ecard-badge-svc { background: var(--badge-vs-bg); color: var(--badge-vs-text); }
+.ecard-body { padding: 0; }
+.ecard-sec { padding: var(--space-3) var(--space-6); border-bottom: 1px solid var(--border-row); }
+.ecard-sec-title {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: .8px;
+  text-transform: uppercase; color: var(--text-dim);
+  margin-bottom: var(--space-2);
+}
+.ecard-sec-body { font-size: var(--text-sm); color: var(--text-mid); }
+.ecard-link {
+  background: none; border: none; padding: 0; cursor: pointer;
+  font-family: 'DM Sans', sans-serif; font-size: var(--text-xs);
+  color: var(--accent-text); text-transform: none; letter-spacing: 0;
+}
+.ecard-link:hover { text-decoration: underline; }
+.ecard-km { display: flex; align-items: baseline; gap: var(--space-2); }
+.ecard-km-num { font-size: 28px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.ecard-km-unit { font-size: var(--text-body); color: var(--text-mid); }
+.ecard-km-sub { font-size: var(--text-sm); color: var(--text-dim); margin-top: 2px; }
+.ecard-doc { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); }
+.ecard-dot { width: 8px; height: 8px; border-radius: var(--radius-full); flex-shrink: 0; }
+.ecard-dot.ok   { background: var(--success); }
+.ecard-dot.warn { background: var(--warning); }
+.ecard-dot.bad  { background: var(--danger); }
+.ecard-dot.none { background: var(--silver-light); }
+.ecard-doc-label { color: var(--text); min-width: 64px; font-weight: 500; }
+.ecard-doc-date  { color: var(--text-mid); font-variant-numeric: tabular-nums; }
+.ecard-doc-state { margin-left: auto; }
+.ecard-doc-state.ok   { color: var(--success); }
+.ecard-doc-state.warn { color: var(--warning); }
+.ecard-doc-state.bad  { color: var(--danger); }
+.ecard-doc-state.dim  { color: var(--text-dim); }
+.ecard-spec { display: flex; gap: var(--space-3); padding: 4px 0; font-size: var(--text-sm); }
+.ecard-spec-label { color: var(--text-dim); min-width: 110px; flex-shrink: 0; }
+/* break-word, όχι ellipsis: μακρύ VIN διπλώνει, δεν κόβεται (κανόνας #6). */
+.ecard-spec-val { color: var(--text); word-break: break-word; font-variant-numeric: tabular-nums; }
+.ecard-spec-val.dim, .ecard-spec .dim { color: var(--text-dim); }
+.ecard-row { display: flex; align-items: baseline; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); border-bottom: 1px solid var(--border-row); }
+.ecard-row:last-child { border-bottom: none; }
+.ecard-row-code { color: var(--accent-text); font-weight: 600; min-width: 64px; }
+.ecard-row-date { color: var(--text-dim); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ecard-row-main { color: var(--text-mid); flex: 1; }  /* διπλώνει, δεν κόβεται */
+.ecard-row-amt { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ecard-row-state { color: var(--text-dim); font-size: var(--text-xs); }
+.ecard-more { font-size: var(--text-xs); color: var(--text-dim); padding-top: 4px; }
+.ecard-empty { font-size: var(--text-sm); color: var(--text-dim); }
+.ecard-fail { font-size: var(--text-sm); color: var(--warning); }
+
 /* Detail panel */
 .detail-header {
   display: flex;

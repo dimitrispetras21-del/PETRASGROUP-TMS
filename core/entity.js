@@ -158,6 +158,23 @@ const ENTITY_CONFIG = {
     // The mock's default state is «Κατάσταση: Ενεργός» pre-selected: the working
     // set is the active fleet, inactive is one click away on the same chip.
     defaultFilters: [{ field: 'Active', val: 'true', type: 'bool' }],
+    // Record card (embedded in truck-overview 103:290). Docs render ALWAYS,
+    // a missing date says so — a truck with no recorded ΚΤΕΟ is exactly the
+    // information that was found by audit months late (the ATP incident).
+    cardSubtitle: ['Brand', 'Model'],
+    cardDocs: [
+      { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
+      { f: 'KEK Expiry',       label: 'ΚΕΚ' },
+      { f: 'Insurance Expiry', label: 'Ασφάλεια' },
+    ],
+    cardSpecs: [
+      { f: 'VIN',               label: 'VIN' },
+      { f: 'Euro Standard',     label: 'Euro' },
+      { f: 'Tare Weight kg',    label: 'Απόβαρο', unit: 'kg', num: true },
+      { f: 'Year',              label: 'Έτος 1ης ταξ.' },
+      { f: 'Insurance Partner', label: 'Ασφαλιστής' },
+      { f: 'Notes',             label: 'Σημειώσεις' },
+    ],
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, μάρκα…',
@@ -1148,6 +1165,8 @@ function selectEntity(entityKey, recId) {
   const panel = document.getElementById(entityKey + '_detail');
   panel.classList.remove('hidden');
 
+  if (cfg.v2) { _renderEntityCardV2(entityKey, rec, panel); return; }
+
   const f = rec.fields;
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
   const title = f[primaryField] || recId.slice(-6);
@@ -1201,6 +1220,241 @@ function selectEntity(entityKey, recId) {
 
   // Load order history async
   if (cfg.history) _loadEntityHistory(cfg.history.type, recId, title);
+}
+
+// ── Record card v2 (Wave 1, Figma truck-overview 103:290) ──────────────────
+// Instant half: header, documents, specs — everything already on the record.
+// Async half: mileage, round trips, damages — each section fetches on its own
+// and each failure speaks for itself (rule #7): a dead backend section shows a
+// warning, never a blank. Section bodies carry the record id in their DOM ids,
+// so a response landing after the user selected ANOTHER record finds no
+// element and silently expires instead of painting stale data.
+
+function _ecEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function _ecDate(d) {
+  if (!d) return '—';
+  const dt = new Date(d);
+  if (isNaN(dt)) return _ecEsc(d);
+  return dt.toLocaleDateString('el-GR', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/\./g, '');
+}
+
+function _ecRange(a, b) {
+  const da = a ? new Date(a) : null, db = b ? new Date(b) : null;
+  const fm = d => d.toLocaleDateString('el-GR', { day: '2-digit', month: 'short' }).replace(/\./g, '');
+  if (da && db) {
+    if (da.getMonth() === db.getMonth() && da.getFullYear() === db.getFullYear())
+      return String(da.getDate()).padStart(2, '0') + '–' + fm(db);
+    return fm(da) + ' – ' + fm(db);
+  }
+  return da ? fm(da) : db ? fm(db) : '—';
+}
+
+// Document line: the words carry the meaning, the color only repeats it
+// (rule #2). A missing date is said out loud — a truck with no recorded ΚΤΕΟ
+// is exactly what the audit found months late (rule #3: unknown is not fine).
+function _ecDocState(val) {
+  if (!val) return { dot: 'none', text: 'δεν έχει καταχωρηθεί', cls: 'dim', date: '—' };
+  const days = Math.ceil((new Date(val) - new Date()) / 86400000);
+  if (days < 0)   return { dot: 'bad',  text: `έληξε πριν ${Math.abs(days)} ${Math.abs(days) === 1 ? 'ημέρα' : 'ημέρες'}`, cls: 'bad',  date: _ecDate(val) };
+  if (days <= 30) return { dot: 'warn', text: `λήγει σε ${days} ${days === 1 ? 'ημέρα' : 'ημέρες'}`, cls: 'warn', date: _ecDate(val) };
+  return { dot: 'ok', text: 'εντάξει', cls: 'ok', date: _ecDate(val) };
+}
+
+const _ecPlate = s => (typeof normalizePlate === 'function')
+  ? normalizePlate(s) : String(s || '').toUpperCase().replace(/\s/g, '');
+
+function _renderEntityCardV2(entityKey, rec, panel) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const f = rec.fields;
+  const recId = rec.id;
+  const canEdit = can(cfg.perm) === 'full';
+  const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
+  const title = f[primaryField] || recId.slice(-6);
+  const sub = (cfg.cardSubtitle || []).map(x => f[x]).filter(Boolean).join(' ');
+  const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
+
+  const docsHTML = (cfg.cardDocs || []).map(d => {
+    const s = _ecDocState(f[d.f]);
+    return `<div class="ecard-doc">
+      <span class="ecard-dot ${s.dot}"></span>
+      <span class="ecard-doc-label">${d.label}</span>
+      <span class="ecard-doc-date">${s.date}</span>
+      <span class="ecard-doc-state ${s.cls}">${s.text}</span>
+    </div>`;
+  }).join('');
+
+  const specsHTML = (cfg.cardSpecs || []).map(sp => {
+    let v = f[sp.f];
+    if (v == null || v === '')
+      return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val dim">—</span></div>`;
+    if (sp.num && !isNaN(parseFloat(v))) v = parseFloat(v).toLocaleString('el-GR');
+    return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val">${_ecEsc(v)}${sp.unit ? ` <span class="dim">${sp.unit}</span>` : ''}</span></div>`;
+  }).join('');
+
+  // «όλα →» to TRIP PnL only for roles with full costs access — the page is
+  // not in anyone else's navigation, and a link into a screen you cannot use
+  // is noise, not access.
+  const rtLink = (typeof can === 'function' && can('costs') === 'full')
+    ? `<button type="button" class="ecard-link" onclick="navigate('costs')">όλα →</button>` : '';
+
+  panel.innerHTML = `
+    <div class="ecard-head">
+      <div class="ecard-head-main">
+        <div class="ecard-title-row">
+          <span class="ecard-title">${_ecEsc(title)}</span>
+          <span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>
+          <span id="ec_${recId}_svc"></span>
+        </div>
+        ${sub ? `<div class="ecard-sub">${_ecEsc(sub)}</div>` : ''}
+      </div>
+      <div class="detail-actions">
+        ${canEdit ? `<button type="button" class="btn-icon" title="Επεξεργασία" onclick="openEntityEdit('${entityKey}','${recId}')">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
+        </button>
+        <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">${f['Active'] ? '● ' + onL : '○ ' + offL}</button>` : ''}
+        <button type="button" class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</button>
+      </div>
+    </div>
+    <div class="detail-body ecard-body">
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">Χιλιόμετρα</div>
+        <div class="ecard-sec-body" id="ec_${recId}_km">Φόρτωση…</div>
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">Έγγραφα
+          <button type="button" class="ecard-link" onclick="navigate('maint_expiry')">Διαχείριση →</button>
+        </div>
+        ${docsHTML}
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">Στοιχεία οχήματος</div>
+        ${specsHTML}
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">Round trips ${rtLink}</div>
+        <div class="ecard-sec-body" id="ec_${recId}_rt">Φόρτωση…</div>
+      </div>
+      <div class="ecard-sec">
+        <div class="ecard-sec-title">Ζημιές & επισκευές
+          <button type="button" class="ecard-link" onclick="_openVehicleHistory('${entityKey}','${String(f['License Plate'] || '').replace(/'/g, "\\'")}')">όλα →</button>
+        </div>
+        <div class="ecard-sec-body" id="ec_${recId}_mh">Φόρτωση…</div>
+      </div>
+    </div>`;
+
+  _loadEntityCardMaint(entityKey, rec);
+  _loadEntityCardRT(entityKey, rec);
+}
+
+async function _loadEntityCardMaint(entityKey, rec) {
+  const recId = rec.id;
+  const plate = String(rec.fields['License Plate'] || '');
+  try {
+    const hist = await atGetAll(TABLES.MAINT_HISTORY, {
+      fields: ['Truck', 'Trailer', 'Vehicle Plate', 'Date', 'Description', 'Type', 'Cost', 'Odometer km'],
+    }, true);
+    // Fetch ALL and filter client-side, like modules/maintenance.js does: the
+    // link field is authoritative, the plate string is the legacy fallback —
+    // and plates need normalizePlate (Greek/Latin homoglyphs, TR-2).
+    const linkField = entityKey === 'trailers' ? 'Trailer' : 'Truck';
+    const mine = hist.filter(r =>
+      ((r.fields[linkField] || [])[0] === recId) ||
+      (!!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate))
+    ).sort((a, b) => String(b.fields['Date'] || '').localeCompare(String(a.fields['Date'] || '')));
+
+    const kmEl = document.getElementById(`ec_${recId}_km`);
+    if (kmEl) {
+      // Latest recorded odometer reading. NOT a live odometer: 72/1091 history
+      // rows carry a reading (measured 29/8), so absence is the common case
+      // and must say so instead of showing a stale-looking zero (rule #3).
+      // The mock's «επόμενο σέρβις» progress bar is NOT built: next_service_km
+      // is 0/1091 — unbacked design, recorded in OBSERVATIONS for the owner.
+      const withOdo = mine.filter(r => r.fields['Odometer km'] != null && r.fields['Odometer km'] !== '');
+      kmEl.innerHTML = withOdo.length
+        ? `<div class="ecard-km"><span class="ecard-km-num">${parseFloat(withOdo[0].fields['Odometer km']).toLocaleString('el-GR')}</span><span class="ecard-km-unit">χλμ</span></div>
+           <div class="ecard-km-sub">τελευταία ένδειξη σε σέρβις · ${_ecDate(withOdo[0].fields['Date'])}</div>`
+        : `<div class="ecard-empty">Δεν έχει καταχωρηθεί ένδειξη χιλιομέτρων.</div>`;
+    }
+
+    const mhEl = document.getElementById(`ec_${recId}_mh`);
+    if (mhEl) {
+      mhEl.innerHTML = mine.length
+        ? mine.slice(0, 3).map(r => {
+            const rf = r.fields;
+            const cost = rf['Cost'] != null && rf['Cost'] !== ''
+              ? '€' + Math.round(parseFloat(rf['Cost']) || 0).toLocaleString('el-GR') : '—';
+            return `<div class="ecard-row">
+              <span class="ecard-row-date">${_ecDate(rf['Date'])}</span>
+              <span class="ecard-row-main">${_ecEsc(rf['Description'] || rf['Type'] || '—')}</span>
+              <span class="ecard-row-amt">${cost}</span>
+            </div>`;
+          }).join('') + (mine.length > 3 ? `<div class="ecard-more">+${mine.length - 3} ακόμη</div>` : '')
+        : `<div class="ecard-empty">Καμία εργασία καταγεγραμμένη για αυτό το όχημα.</div>`;
+    }
+  } catch (e) {
+    for (const suffix of ['km', 'mh']) {
+      const el = document.getElementById(`ec_${recId}_${suffix}`);
+      if (el) el.innerHTML = `<div class="ecard-fail">⚠ Δεν φόρτωσε το ιστορικό συντήρησης.</div>`;
+    }
+    if (typeof logError === 'function') logError(e, 'entity card: maint history');
+  }
+
+  // «ΣΕ ΣΕΡΒΙΣ»: an open In-Progress maintenance request on this plate.
+  // Supplementary — its failure is logged but must not take the card down.
+  try {
+    const reqs = await atGetAll(TABLES.MAINT_REQ, { fields: ['Vehicle Plate', 'Status'] }, true);
+    const inSvc = reqs.some(r => r.fields['Status'] === 'In Progress'
+      && !!plate && _ecPlate(r.fields['Vehicle Plate']) === _ecPlate(plate));
+    const el = document.getElementById(`ec_${recId}_svc`);
+    if (el && inSvc) el.innerHTML = `<span class="badge ecard-badge-svc">ΣΕ ΣΕΡΒΙΣ</span>`;
+  } catch (e) {
+    if (typeof logError === 'function') logError(e, 'entity card: maint_req');
+  }
+}
+
+async function _loadEntityCardRT(entityKey, rec) {
+  const recId = rec.id;
+  const plate = String(rec.fields['License Plate'] || '');
+  const body = () => document.getElementById(`ec_${recId}_rt`);
+  try {
+    if (typeof ctFetch !== 'function') throw new Error('ctFetch unavailable');
+    // /costs/rt carries NO money columns (worker: «λίστα ΧΩΡΙΣ αποτελέσματα
+    // PnL») — safe for every role that can read it. The plate→numeric-id map
+    // goes through /costs/lookups, same as modules/costs.js.
+    const lk = await ctFetch('/costs/lookups');
+    const t = (lk.trucks || []).find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
+    let el = body();
+    if (!el) return;
+    if (!t) {
+      el.innerHTML = `<div class="ecard-empty">Το όχημα δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
+      return;
+    }
+    const res = await ctFetch('/costs/rt?truck_id=' + t.id);
+    el = body();
+    if (!el) return;
+    const rts = (res.records || []).slice(0, 5);
+    // No route text yet: /costs/rt returns leg ids, not location names — the
+    // mock's «Βέροια → Μιλάνο» needs joins this endpoint does not serve.
+    // Shown instead: code, dates, km, status. Recorded in OBSERVATIONS.
+    el.innerHTML = rts.length
+      ? rts.map(rt => `<div class="ecard-row">
+          <span class="ecard-row-code">${_ecEsc(rt.code || ('RT-' + rt.id))}</span>
+          <span class="ecard-row-date">${_ecRange(rt.date_start, rt.date_end)}</span>
+          <span class="ecard-row-main">${rt.total_km != null ? parseFloat(rt.total_km).toLocaleString('el-GR') + ' χλμ' : '—'}</span>
+          <span class="ecard-row-state">${rt.status === 'closed' ? 'κλειστό' : rt.status === 'open' ? 'ανοιχτό' : _ecEsc(rt.status || '')}</span>
+        </div>`).join('')
+      : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
+  } catch (e) {
+    const el = body();
+    if (el) {
+      // A 403 is an answer, not an outage — say which of the two it is.
+      el.innerHTML = /forbidden|403/i.test(String(e && e.message))
+        ? `<div class="ecard-empty">Ο ρόλος σου δεν έχει πρόσβαση στα δρομολόγια.</div>`
+        : `<div class="ecard-fail">⚠ Δεν φόρτωσαν τα δρομολόγια.</div>`;
+    }
+    if (typeof logError === 'function') logError(e, 'entity card: round trips');
+  }
 }
 
 // ── Order History for Clients & Partners ─────────
