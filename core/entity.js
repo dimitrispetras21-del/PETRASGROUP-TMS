@@ -172,6 +172,12 @@ const ENTITY_CONFIG = {
     cardTag: { f: 'Type', emphasize: ['Internal'] },
     cardDocsTitle: 'Δίπλωμα',
     cardDocsLink: false,   // maint_expiry tracks vehicles, not licences
+    cardActivity: 'orders',
+    cardActivityTitle: 'Παραδόσεις',
+    // Ο σύνδεσμος «Driver» υπάρχει στον χάρτη του Worker (ORDERS links).
+    // Το ποσοστό βγαίνει από τις ΠΑΡΑΓΓΕΛΙΕΣ, όχι από τα round trips: τα
+    // ct_round_trips έχουν 14 γραμμές για 99 orders μέχρι να γίνει η Φ2.
+    cardActivityLink: 'Driver',
     cardDocs: [
       // labelField: the row leads with the licence NUMBER (mock), the static
       // label is only the fallback for a driver with no number recorded.
@@ -1665,8 +1671,22 @@ async function _loadEntityCardMaint(entityKey, rec) {
 
     const mhEl = document.getElementById(`ec_${recId}_mh`);
     if (mhEl) {
+      // Σύνοψη ζημιών/επισκευών (owner 30/8): «εκτός από τις σημειώσεις ανά
+      // record να γράφουν και γενικά στατιστικά — σύνολο ζημιών».
+      // Το κόστος δείχνει «—» όταν ΚΑΜΙΑ εργασία δεν έχει καταχωρημένο ποσό:
+      // κανόνας #3 — «δεν κοστολογήθηκε» δεν είναι «κόστισε 0». Οι εργασίες
+      // ΧΩΡΙΣ ποσό μετριούνται χωριστά, ώστε ένα χαμηλό σύνολο να μη
+      // διαβάζεται ως «φθηνό όχημα» ενώ απλώς λείπουν τιμολόγια.
+      const costs = mine.map(r => r.fields['Cost']).filter(c => c != null && c !== '');
+      const totalCost = costs.reduce((s, c) => s + (parseFloat(c) || 0), 0);
+      const noCost = mine.length - costs.length;
+      const sumHTML = mine.length ? `<div class="ecard-usage">
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${mine.length}</span><span class="ecard-usage-lbl">${mine.length === 1 ? 'εργασία' : 'εργασίες'}</span></div>
+          <div class="ecard-usage-item"><span class="ecard-usage-num">${costs.length ? '€' + Math.round(totalCost).toLocaleString('el-GR') : '—'}</span><span class="ecard-usage-lbl">σύνολο</span></div>
+          ${noCost ? `<div class="ecard-usage-item"><span class="ecard-usage-num">${noCost}</span><span class="ecard-usage-lbl">χωρίς κόστος</span></div>` : ''}
+        </div>` : '';
       mhEl.innerHTML = mine.length
-        ? mine.slice(0, 3).map(r => {
+        ? sumHTML + mine.slice(0, 3).map(r => {
             const rf = r.fields;
             const cost = rf['Cost'] != null && rf['Cost'] !== ''
               ? '€' + Math.round(parseFloat(rf['Cost']) || 0).toLocaleString('el-GR') : '—';
@@ -1809,6 +1829,29 @@ async function _loadEntityCardRT(entityKey, rec) {
 // Volume and frequency ONLY — no prices, no margins, no rates: the dispatcher
 // has full access to these screens and never sees P&L (owner lock 23/8). The
 // fetches deliberately exclude every money field the old panel used to pull.
+// ── Επίδοση παράδοσης — ΕΝΑΣ ορισμός για όλες τις καρτέλες ─────────────────
+// ΟΡΙΣΜΟΣ (owner 30/8/2026): «στην ώρα του» είναι ό,τι ο dispatcher σήμανε
+// «Παραδόθηκε». Το κουμπί «Delay» γράφει 'Delayed'. Τελεία.
+//
+// ⛔ ΜΗΝ ΤΟ ΥΠΟΛΟΓΙΣΕΙΣ ΠΟΤΕ ΑΠΟ ΗΜΕΡΟΜΗΝΙΕΣ. Το actual_delivery_date
+// καταγράφει ΠΟΤΕ ΠΑΤΗΘΗΚΕ ΤΟ ΚΟΥΜΠΙ, όχι πότε παραδόθηκε το φορτίο: η ομάδα
+// δουλεύει 05:30-14:30, οπότε μια παράδοση Κυριακής σημαίνεται τη Δευτέρα.
+// Μετρημένο 30/8: 51 από 89 έχουν actual > planned και ΚΑΜΙΑ δεν είναι
+// αργοπορία. Ένας «έξυπνος» υπολογισμός από ημερομηνίες θα κατηγορούσε
+// οδηγούς για 51 αργοπορίες που δεν συνέβησαν ποτέ.
+//
+// Επιστρέφει null όταν καμία εγγραφή δεν έχει ένδειξη — κανόνας #3: «δεν
+// ξέρουμε» δεν γράφεται 0%.
+function _ecOnTime(perfValues) {
+  const judged = perfValues.filter(p => p === 'On Time' || p === 'Delayed');
+  if (!judged.length) return null;
+  const onTime = judged.filter(p => p === 'On Time').length;
+  // «unjudged» = όσες δεν κρίθηκαν ποτέ. Εμφανίζεται δίπλα στο ποσοστό, ώστε
+  // ένα 100% από 3 στις 40 να μη διαβάζεται σαν 100% από 40.
+  return { pct: Math.round(onTime * 100 / judged.length), judged: judged.length,
+           unjudged: perfValues.length - judged.length };
+}
+
 async function _loadEntityCardActivity(entityKey, rec) {
   const cfg = ENTITY_CONFIG[entityKey];
   const recId = rec.id;
@@ -1816,19 +1859,30 @@ async function _loadEntityCardActivity(entityKey, rec) {
   const recEl = () => document.getElementById(`ec_${recId}_recent`);
   const kpi = (n, l) => `<div class="ecard-usage-item"><span class="ecard-usage-num">${n}</span><span class="ecard-usage-lbl">${l}</span></div>`;
   try {
-    let rows = [], k1, k2, k3;
+    let rows = [], k1, k2, k3, k4 = '', k5 = '';
     if (cfg.cardActivity === 'orders') {
-      const filter = `FIND("${recId}", ARRAYJOIN({Client}, ","))>0`;
+      // Ο σύνδεσμος είναι παραμετρικός: πελάτης → {Client}, οδηγός → {Driver}.
+      // Έτσι ο ΟΡΙΣΜΟΣ της επίδοσης μένει ΕΝΑΣ (αρχή 3)· χωρίς αυτό η καρτέλα
+      // οδηγού θα χρειαζόταν δεύτερο, παράλληλο υπολογισμό.
+      const linkField = cfg.cardActivityLink || 'Client';
+      const filter = `FIND("${recId}", ARRAYJOIN({${linkField}}, ","))>0`;
       const [intl, natl] = await Promise.all([
-        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Reference', 'Loading Location 1', 'Unloading Location 1', 'Loading DateTime'] }, false),
-        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Reference', 'Pickup Location 1', 'Delivery Location 1', 'Loading DateTime'] }, false),
+        // «Delivery Performance» + «Price»: ο owner ζήτησε 30/8 ποσοστό
+        // παράδοσης και τζίρο ανά πελάτη. Μπαίνουν στο ΥΠΑΡΧΟΝ fetch —
+        // κανένα νέο αίτημα, καμία αλλαγή απόδοσης.
+        atGetAll(TABLES.ORDERS,     { filterByFormula: filter, fields: ['Reference', 'Loading Location 1', 'Unloading Location 1', 'Loading DateTime', 'Delivery Performance', 'Price'] }, false),
+        atGetAll(TABLES.NAT_ORDERS, { filterByFormula: filter, fields: ['Reference', 'Pickup Location 1', 'Delivery Location 1', 'Loading DateTime', 'Delivery Performance', 'Price'] }, false),
       ]);
       const all = [
         ...intl.map(r => ({ ref: r.fields['Reference'],
           date: String(r.fields['Loading DateTime'] || '').slice(0, 10),
+          perf: r.fields['Delivery Performance'] || '',
+          price: parseFloat(r.fields['Price']) || 0,
           route: (typeof orderRoute === 'function' && orderRoute(r.fields, 24)) || '' })),
         ...natl.map(r => ({ ref: r.fields['Reference'],
           date: toLocalDate(r.fields['Loading DateTime']),
+          perf: r.fields['Delivery Performance'] || '',
+          price: parseFloat(r.fields['Price']) || 0,
           route: `${getLocationName(getLinkedId(r.fields['Pickup Location 1'])) || '—'} → ${getLocationName(getLinkedId(r.fields['Delivery Location 1'])) || '—'}` })),
       ].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       rows = all.slice(0, 3).map(o => ({ code: o.ref ? '#' + o.ref : '—', date: o.date, main: o.route || '—' }));
@@ -1845,6 +1899,17 @@ async function _loadEntityCardActivity(entityKey, rec) {
       k1 = kpi(total, total === 1 ? 'παραγγελία' : 'παραγγελίες');
       k2 = kpi(lastD ? _ecDate(lastD) : '—', 'τελευταία');
       k3 = kpi(perMonth != null ? perMonth : '—', 'τον μήνα');
+      // Ποσοστό παράδοσης + τζίρος (owner 30/8). Το ποσοστό δείχνει ΠΑΝΤΑ σε
+      // πόσες παραγγελίες στηρίζεται: «100%» από 3 κρίσεις δεν είναι το ίδιο
+      // πράγμα με «100%» από 300, και χωρίς τον παρονομαστή διαβάζονται ίδια.
+      const ot = _ecOnTime(all.map(o => o.perf));
+      k4 = kpi(ot ? ot.pct + '%' : '—', ot ? `στην ώρα (${ot.judged})` : 'στην ώρα');
+      // Τζίρος ΜΟΝΟ για πελάτη: το ίδιο ποσό στην καρτέλα οδηγού θα διαβαζόταν
+      // ως αμοιβή του οδηγού, ενώ είναι έσοδο από τον πελάτη.
+      if (linkField === 'Client') {
+        const rev = all.reduce((s, o) => s + o.price, 0);
+        k5 = kpi(rev ? '€' + Math.round(rev).toLocaleString('el-GR') : '—', 'τζίρος');
+      }
     } else {
       const pa = await paListByPartner(recId);
       const activeN = pa.filter(r => ['Assigned', 'In Transit'].includes(r.fields[F.PA_STATUS] || '')).length;
@@ -1858,9 +1923,29 @@ async function _loadEntityCardActivity(entityKey, rec) {
       k2 = kpi(sorted.length && sorted[0].fields[F.PA_ASSIGN_DATE]
         ? _ecDate(String(sorted[0].fields[F.PA_ASSIGN_DATE]).slice(0, 10)) : '—', 'τελευταία');
       k3 = kpi(activeN, activeN === 1 ? 'ενεργή' : 'ενεργές');
+      // Τζίρος συνεργάτη = τι του πληρώσαμε. Δωρεάν: το paListByPartner ζητά
+      // ΟΛΑ τα πεδία ({}), οπότε το Rate έχει ήδη έρθει.
+      const paid = pa.reduce((s, r) => s + (parseFloat(r.fields[F.PA_RATE]) || 0), 0);
+      k5 = kpi(paid ? '€' + Math.round(paid).toLocaleString('el-GR') : '—', 'τζίρος');
+      // Ποσοστό παράδοσης: η επίδοση ζει στην ΠΑΡΑΓΓΕΛΙΑ, όχι στην ανάθεση.
+      // Χωριστό try ώστε μια αποτυχία εδώ να χάνει ΜΟΝΟ αυτό το νούμερο και
+      // όχι όλη την καρτέλα. Χωρίς filterByFormula: ο πίνακας έχει ~100
+      // γραμμές και είναι στην cache· ένα φίλτρο σε άγνωστο πεδίο θα γύριζε
+      // 422 (η μόνη διαδρομή του facade που κάνει θόρυβο).
+      try {
+        const linked = new Set(pa.flatMap(r => r.fields[F.PA_ORDER] || []));
+        if (linked.size) {
+          const ords = await atGetAll(TABLES.ORDERS, { fields: ['Delivery Performance'] }, false);
+          const ot = _ecOnTime(ords.filter(o => linked.has(o.id))
+            .map(o => o.fields['Delivery Performance'] || ''));
+          if (ot) k4 = kpi(ot.pct + '%', `στην ώρα (${ot.judged})`);
+        }
+      } catch (e) {
+        if (typeof logError === 'function') logError(e, 'partner card: on-time');
+      }
     }
     const a = actEl();
-    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}</div>`;
+    if (a) a.innerHTML = `<div class="ecard-usage">${k1}${k2}${k3}${k4}${k5}</div>`;
     const rEl = recEl();
     if (rEl) rEl.innerHTML = rows.length
       ? rows.map(o => `<div class="ecard-row">

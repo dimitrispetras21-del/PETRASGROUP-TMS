@@ -200,6 +200,13 @@
   --shadow-md: 0 8px 16px rgba(15,23,42,0.08), 0 4px 6px rgba(15,23,42,0.04);
   --shadow-lg: 0 16px 32px rgba(15,23,42,0.10), 0 8px 12px rgba(15,23,42,0.06);
   --shadow-focus: 0 0 0 3px rgba(2,123,189,0.25);
+  /* Δύο σκιές που δεν πέφτουν προς τα κάτω (owner 30/8 — «όπως τα roundtrips
+     στο P&L»). Οι παραπάνω είναι όλες κατακόρυφες· ένα συρτάρι που ανοίγει από
+     δεξιά χρειάζεται πλάγια, αλλιώς δεν διαβάζεται ως «από πάνω».
+     Ίδια βάση rgba(15,23,42) με την υπόλοιπη οικογένεια — το costs.js
+     χρησιμοποιεί ωμό rgba(11,25,41,·) και δεν αντιγράφεται αυτούσιο. */
+  --shadow-panel: -8px 0 30px rgba(15,23,42,0.14);
+  --shadow-lift:   0 3px 14px rgba(15,23,42,0.09);
 
   /* ═══ Motion ═══ */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -1591,7 +1598,30 @@ tbody tr:hover { background: var(--bg-hover); }
    κλειστό panel κρατούσε 482px σε καθεμία από τις έξι οθόνες. Μετρημένο:
    ο πίνακας Πελατών χρειάζεται 1411px, έπαιρνε 1138px, έκοβε τη στήλη
    ΚΑΤΑΣΤΑΣΗ — ενώ δίπλα του έμεναν 482px αχρησιμοποίητα. */
-.entity-v2 .entity-detail-panel.hidden { width: 0; border-left: none; }
+.entity-v2 .entity-detail-panel.hidden { width: 0; border-left: none; box-shadow: none; }
+/* Σκίαση ανοιχτής καρτέλας (owner 30/8: «όπως τα roundtrips στο P&L»).
+   Αντιγράφει το .ct-panel του modules/costs.js:892 σε token, όχι σε ωμό rgba.
+   Το position+z-index είναι ΑΠΑΡΑΙΤΗΤΑ: χωρίς αυτά τα δύο αδέλφια flex
+   ζωγραφίζονται κατά σειρά εγγράφου και η σκιά περνά ΚΑΤΩ από τη λίστα —
+   φαίνεται μόνο η άκρη της. Η σκιά πέφτει ΑΡΙΣΤΕΡΑ, δηλαδή ΜΕΣΑ στο
+   .entity-layout, οπότε το overflow:hidden του γονέα δεν την κόβει. */
+.entity-v2 .entity-detail-panel {
+  position: relative;
+  z-index: 1;
+  box-shadow: var(--shadow-panel);
+}
+/* «Σαν ένα πινακάκι που έχει κάποιου είδους motion» (owner 30/8) — το
+   .ct-card:hover του P&L. ΔΕΝ μπαίνει στις γραμμές του πίνακα: με
+   border-collapse:collapse το box-shadow σε <tr> δεν αποδίδεται αξιόπιστα.
+   Μπαίνει στα μπλοκ ΜΕΣΑ στην καρτέλα, που όντως είναι μικρά πινακάκια. */
+.ecard-usage-item, .ecard-row {
+  border-radius: var(--radius-sm);
+  transition: box-shadow .15s, background-color .15s;
+}
+.ecard-usage-item:hover, .ecard-row:hover {
+  box-shadow: var(--shadow-lift);
+  background: var(--bg-card);
+}
 .ecard-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: var(--space-2);
