@@ -12,7 +12,17 @@
 module.exports = [
   // Tier 1 — the data contract is a HARD gate: no field may disappear.
   { unit: 'entity',      tier: 1, routes: ['clients', 'partners', 'drivers', 'trucks', 'trailers', 'workshops'], files: ['core/entity.js'] },
-  { unit: 'maintenance', tier: 1, routes: ['maint_dash', 'maint_req', 'maint_expiry', 'maint_svc'],              files: ['modules/maintenance.js'] },
+  // maint_trucks/maint_trailers («Ιστορικό Φορτηγών/Ρυμουλκών») προστέθηκαν
+  // 30/8/2026. Ζούσαν στο ΙΔΙΟ modules/maintenance.js με τις άλλες τέσσερις,
+  // αλλά έλειπαν από αυτή τη λίστα — άρα κανένας ζωντανός κριτής δεν τις
+  // οδηγούσε: ούτε συμβόλαιο, ούτε ρόλοι, ούτε άγνωστο≠μηδέν, ούτε πλάτος.
+  // Κρυφή ακμή: ένα αρχείο, τέσσερις οθόνες ορατές στη σουίτα, δύο αόρατες —
+  // και θα άλλαζαν ΤΥΧΑΙΑ στο redesign του κύματος 2.
+  //
+  // Βρέθηκε συγκρίνοντας τα `case` του core/router.js με αυτό το αρχείο:
+  // 35 διαδρομές, 20 καλυμμένες. Η σύγκριση ΔΕΝ τρέχει αυτόματα — όποιος
+  // προσθέτει οθόνη στον router πρέπει να την κάνει με το χέρι.
+  { unit: 'maintenance', tier: 1, routes: ['maint_dash', 'maint_req', 'maint_expiry', 'maint_svc', 'maint_trucks', 'maint_trailers'], files: ['modules/maintenance.js'] },
   { unit: 'locations',   tier: 1, routes: ['locations'],                                                          files: ['modules/locations.js', 'modules/locations_map.js'] },
   { unit: 'pallets',     tier: 1, routes: ['pallet_ledger'],                                                      files: ['modules/pallet_ledger.js', 'modules/pallet_upload.js'] },
   { unit: 'audit',       tier: 1, routes: ['audit_trail', 'metrics_audit'],                                       files: ['modules/audit_trail.js', 'modules/metrics_audit.js'] },
