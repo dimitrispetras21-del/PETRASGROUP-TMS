@@ -269,8 +269,10 @@ function _plvBalanceTable(kind) {
   </div>`;
   const idKey = kind === 'clients' ? 'client_id' : 'partner_id';
   const nameKey = kind === 'clients' ? 'client_name' : 'partner_name';
-  // Η όψη γυρίζει pending_count 0 όταν δεν υπάρχει εκκρεμής — στο frame το
-  // «καμία» δείχνεται ως «—», ώστε το μάτι να πιάνει μόνο τις γραμμές με δουλειά.
+  // Η όψη γυρίζει pending_count 0 όταν δεν υπάρχει εκκρεμής: ΓΝΩΣΤΟ μηδέν,
+  // γράφεται «0» (owner 3/9) — το frame 214 το έδειχνε «—», αλλά η παύλα
+  // διαβάζεται ως «άγνωστο» (DESIGN.md #3 κόβει και προς τα εκεί). Αχνό,
+  // ώστε το μάτι να πιάνει μόνο τις γραμμές με δουλειά.
   return `<div style="overflow-x:auto"><table class="plv-tbl">
     <tr><th>${kind === 'clients' ? 'Πελάτης' : 'Συνεργάτης'}</th>
       <th class="plv-num">Υπόλοιπο</th>
@@ -280,7 +282,7 @@ function _plvBalanceTable(kind) {
       <td class="plv-num">${b.balance === 0
         ? '<span class="plv-dim">0 · ισοσκελισμένο</span>'
         : `<b class="${b.balance > 0 ? 'plv-in' : 'plv-out'}">${b.balance > 0 ? '+' : '−'}${Math.abs(b.balance)}</b> <span class="plv-dim">${b.balance > 0 ? 'μας χρωστά' : 'χρωστάμε'}</span>`}</td>
-      <td class="plv-num">${b.pending_count ? b.pending_count : '<span class="plv-dim">—</span>'}</td>
+      <td class="plv-num"><span class="${b.pending_count ? '' : 'plv-dim'}">${b.pending_count || 0}</span></td>
       <td style="color:var(--accent);font-size:var(--text-xs);text-align:right">ανάλυση →</td></tr>`).join('')}
   </table></div>`;
 }
