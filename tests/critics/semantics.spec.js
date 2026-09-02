@@ -69,6 +69,15 @@ async function assertRendered(page, unit, route) {
   expect(body.length,
     `${unit.unit}/${route}: κενή οθόνη — ο έλεγχος θα περνούσε χωρίς να ελέγξει τίποτα`)
     .toBeGreaterThan(0);
+  // Μη-κενό ΔΕΝ σημαίνει απέδωσε. Μετρήθηκε 3/9/2026: το audit_trail έδειχνε
+  // «No session token. Sign in again.» (207 bytes) και περνούσε ως «απέδωσε».
+  // Ένα μήνυμα αποτυχίας auth ΕΙΝΑΙ περιεχόμενο για το innerText — δεν είναι
+  // οθόνη. Οι δύο υπογραφές είναι αυτές που ο κώδικας όντως γράφει
+  // (audit_trail.js:60, core/api.js 401 path)· κάθε νέα προστίθεται ΜΕ την
+  // περίπτωση που την έφερε, όχι προληπτικά.
+  expect(/No session token|Sign in again/.test(body),
+    `${unit.unit}/${route}: η οθόνη έδειξε μήνυμα auth αντί για περιεχόμενο — ο έλεγχος δεν είδε οθόνη:\n${body.slice(0, 120)}`)
+    .toBe(false);
   return body;
 }
 
