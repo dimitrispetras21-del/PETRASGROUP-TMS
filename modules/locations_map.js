@@ -24,16 +24,17 @@ const LMAP = {
 
 // Χρώματα από tokens, όχι ωμά hex (DESIGN.md #1): εδώ μένουν ΟΝΟΜΑΤΑ
 // μεταβλητών του style.css, οι τιμές λύνονται σε runtime (_lmapVar) επειδή το
-// Leaflet γράφει SVG attributes που δεν καταλαβαίνουν var(). Πλησιέστερα
-// υπάρχοντα tokens: hub/wash δεν έχουν δικό τους — ζητήθηκαν --map-hub /
-// --map-wash και παλέτα --map-cli-1…12 στο παραδοτέο του κύματος 2.
+// Leaflet γράφει SVG attributes που δεν καταλαβαίνουν var(). Τα --map-* μπήκαν
+// στο :root στις 3/9/2026 (ολοκληρωτής, μετά το merge της μονάδας)· μέχρι
+// τότε hub/wash δανείζονταν --navy-mid/--accent-hover και η 12άδα πελατών
+// ξαναχρησιμοποιούσε 12 άσχετα tokens, μερικά σχεδόν ίδια μεταξύ τους.
 const LMAP_CATS = {
   client:   { label: 'Πελάτες',               v: '--accent' },
-  hub:      { label: 'Αποθήκες / Cross-dock', v: '--navy-mid' },
+  hub:      { label: 'Αποθήκες / Cross-dock', v: '--map-hub' },
   workshop: { label: 'Συνεργεία',             v: '--danger' },
   customs:  { label: 'Τελωνεία',              v: '--warning' },
   fuel:     { label: 'Καύσιμα',               v: '--success' },
-  wash:     { label: 'Πλυντήρια',             v: '--accent-hover' },
+  wash:     { label: 'Πλυντήρια',             v: '--map-wash' },
   partner:  { label: 'Συνεργάτες',            v: '--chip-partner' },
   unknown:  { label: 'Αταξινόμητα',           v: '--text-dim' },
 };
@@ -42,8 +43,10 @@ function _lmapVar(name) {
 }
 Object.keys(LMAP_CATS).forEach(k => Object.defineProperty(LMAP_CATS[k], 'color', { get() { return _lmapVar(this.v); } }));
 
-const LMAP_CLI_VARS = ['--accent','--danger','--navy-mid','--warning','--success','--chip-partner',
-  '--accent-hover','--danger-strong','--status-in-progress','--text-mid','--p-accent','--ceo-accent'];
+// Κατηγορική 12άδα «Χρώμα: πελάτης» — ένα token ανά θέση, ώστε δύο γειτονικοί
+// πελάτες να μη μοιράζονται ποτέ χρώμα (πριν: --danger και --danger-strong
+// ήταν σχεδόν ίδια).
+const LMAP_CLI_VARS = Array.from({ length: 12 }, (_, i) => `--map-cli-${i + 1}`);
 
 // ── Lazy load Leaflet ──────────────────────────
 // Τοπικά αρχεία, όχι CDN (owner 12/8): μπαίνουν στο service-worker cache όπως
