@@ -208,6 +208,30 @@
   --shadow-panel: -8px 0 30px rgba(15,23,42,0.14);
   --shadow-lift:   0 3px 14px rgba(15,23,42,0.09);
 
+  /* Χάρτης τοποθεσιών (κύμα 2, μονάδα locations, 3/9/2026). Δύο κατηγορίες
+     καρφιτσών χωρίς δικό τους token και μία κατηγορική 12άδα για «Χρώμα:
+     πελάτης». Ζουν εδώ και ΟΧΙ στο module: το Leaflet γράφει SVG attributes
+     που δεν καταλαβαίνουν var(), οπότε το modules/locations_map.js κρατά μόνο
+     ΟΝΟΜΑΤΑ (_lmapVar → getComputedStyle). Πριν, hub/wash δανείζονταν
+     --navy-mid/--accent-hover και η 12άδα ξαναχρησιμοποιούσε 12 άσχετα
+     tokens, μερικά σχεδόν ίδια — δύο πελάτες με το ίδιο χρώμα στον χάρτη.
+     Η 12άδα είναι ΚΑΤΗΓΟΡΙΚΗ (διακρίνει, δεν σημαίνει): χωρίς απαίτηση AA
+     κειμένου, μόνο διάκριση μεταξύ γειτονικών καρφιτσών. */
+  --map-hub:   #7C3AED;
+  --map-wash:  #0891B2;
+  --map-cli-1:  #027BBD;
+  --map-cli-2:  #DC2626;
+  --map-cli-3:  #7C3AED;
+  --map-cli-4:  #F59E0B;
+  --map-cli-5:  #059669;
+  --map-cli-6:  #DB2777;
+  --map-cli-7:  #0891B2;
+  --map-cli-8:  #CA8A04;
+  --map-cli-9:  #4F46E5;
+  --map-cli-10: #B91C1C;
+  --map-cli-11: #15803D;
+  --map-cli-12: #9333EA;
+
   /* ═══ Motion ═══ */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
