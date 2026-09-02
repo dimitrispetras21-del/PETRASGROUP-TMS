@@ -1,6 +1,5 @@
 {
   "audit": [
-    "Failed to load resource: net::ERR_FAILED",
     "[TMS ERROR] auditTrail:fetch: Error: No session token. Sign in again."
   ],
   "daily_ops": [],

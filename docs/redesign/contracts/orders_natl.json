@@ -19,10 +19,12 @@
     "Fleet",
     "Help",
     "New Order",
+    "Open",
     "Print",
     "Quick jump…⌘K",
     "Scan",
     "Sign out",
+    "Snooze",
     "Today",
     "Unassigned",
     "Undo",
@@ -36,6 +38,7 @@
     "GET tblFWKAQVUzAM8mCE",
     "GET tblGHCCsTMqAy4KR2",
     "GET tblLHl5m8bqONfhWv",
+    "GET tblVW42cZnfC47gTb",
     "GET tblgHlNmLBH3JTdIM",
     "GET tblxu8DRfTQOFRCzS"
   ]
