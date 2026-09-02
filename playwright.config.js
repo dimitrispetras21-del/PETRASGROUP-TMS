@@ -34,7 +34,11 @@ module.exports = defineConfig({
     {
       name: 'critics',
       testDir: './tests/critics',
-      testMatch: ['contract.spec.js', 'semantics.spec.js'],
+      // kanban.spec.js προστέθηκε 3/9/2026: ο κριτής των δύο kanban οθονών
+      // (weekly_intl/natl). Η λίστα είναι ΚΛΕΙΣΤΗ επίτηδες — units.test.js/
+      // static.test.js τρέχουν σε node:test, όχι εδώ. Νέος κριτής = νέα γραμμή
+      // εδώ ΚΑΙ στο EXPECTED_LIVE του run.js, αλλιώς δεν τρέχει ποτέ.
+      testMatch: ['contract.spec.js', 'semantics.spec.js', 'kanban.spec.js'],
       // serviceWorkers:'block' is required, not cosmetic: sw.js registers and
       // then makes its own fetches from the worker execution context, which
       // page.routeFromHAR (page-scoped) cannot see. Those requests fall

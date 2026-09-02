@@ -137,7 +137,11 @@ function abort(msg) {
 // γραμμή· μέχρι τότε η σουίτα αρνείται να αναφέρει. Έπιασε ακριβώς αυτό στις
 // 29/8/2026, όταν προστέθηκε ο κριτής πλάτους: 44 έλεγχοι αντί για 33.
 const LIVE_TESTS_PER_UNIT = 4;   // contract · P&L ρόλων · άγνωστο≠μηδέν · πλάτος
-const EXPECTED_LIVE = UNITS.filter(u => u.routes.length > 0).length * LIVE_TESTS_PER_UNIT;
+// + ο κριτής kanban (kanban.spec.js, 3/9/2026) — ΜΟΝΟ για τις δύο kanban
+// μονάδες, γι' αυτό δεν είναι ×5: ένας ψευδο-έλεγχος «skipped» σε 9 μονάδες
+// θα ήταν θόρυβος στην αναφορά. Ο αριθμός γραμμένος στο χέρι, όπως τα άλλα.
+const KANBAN_TESTS = 2;          // weekly_intl · weekly_natl
+const EXPECTED_LIVE = UNITS.filter(u => u.routes.length > 0).length * LIVE_TESTS_PER_UNIT + KANBAN_TESTS;
 
 function reportLive(jsonText) {
   let report;
