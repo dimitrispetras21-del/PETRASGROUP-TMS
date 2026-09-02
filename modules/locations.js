@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════
-// MODULE — LOCATIONS v2
+// MODULE — LOCATIONS v2 (κύμα 2, Figma w2-locations-overview 161:592)
 // ═══════════════════════════════════════════════
 // Module state uses 'LOC' / '_loc' prefix to avoid global collisions.
 'use strict';
@@ -17,12 +17,17 @@ const LOC = {
   // από order_stops+γονείς την πρώτη φορά που θα ζητηθεί.
   moveFilter: '',
   moveIdx: null,
+  // Το chip «N χωρίς συντεταγμένες» είναι φίλτρο, όχι διακόσμηση: η δουλειά
+  // της οθόνης ξεκινά από εκεί (σημείο χωρίς συντεταγμένες = καρφίτσα που
+  // λείπει από τον χάρτη και δρομολόγιο που δεν υπολογίζεται).
+  noCoords: false,
+  mapOpen: false,
 };
 
 // ── Entry point ────────────────────────────────
 async function renderLocations() {
   const c = document.getElementById('content');
-  c.innerHTML = showLoading('Loading locations…');
+  c.innerHTML = showLoading('Φόρτωση τοποθεσιών…');
   try {
     if (!LOC.loaded) {
       LOC.records = await _locFetchAll();
@@ -30,158 +35,133 @@ async function renderLocations() {
     }
     c.innerHTML = _locShell();
     _locBindEvents();
-    _locRenderOverview();
     _locBuildFilterOptions();
     _locApplyFilters();
   } catch (e) {
-    c.innerHTML = showError('Failed to load locations');
+    c.innerHTML = showError('Η φόρτωση των τοποθεσιών απέτυχε');
     if (typeof logError === 'function') logError(e, 'renderLocations load');
   }
 }
 
 // ── Shell ──────────────────────────────────────
+// Μία μπάρα (τίτλος + πλήθος + φίλτρα + chip + αναζήτηση + ενέργειες) πάνω
+// από τον πίνακα — ο σκελετός του κύματος 1 (.entity-v2), ώστε ο κανόνας #5
+// (≥20 γραμμές ορατές στα 1080p) να βγαίνει από το ίδιο CSS και όχι από νέο.
+// Η παλιά καρτέλα «Επισκόπηση» (KPI + μπάρες ανά χώρα/κίνηση) έφυγε: το
+// drill-down της γίνεται από τα φίλτρα Χώρα/Κίνηση της μπάρας, και η
+// «Ελλιπή στοιχεία» έγινε επιλογή του φίλτρου Χώρα. Ο χάρτης παραμένει
+// στην ίδια σελίδα (owner 12/8) — εναλλάσσεται με τον πίνακα από το κουμπί.
 function _locShell() {
   return `
-<div class="page-header">
-  <div>
-    <div class="page-title" style="border-bottom:2px solid var(--navy-mid);display:inline-block;padding-bottom:2px">Locations</div>
-    <div class="page-sub" id="locSub">—</div>
-  </div>
-  <button class="btn btn-primary" onclick="_locOpenCreate()">+ New Location</button>
-</div>
-
-<div style="display:flex;gap:0;margin-bottom:20px;border-bottom:2px solid var(--border)">
-  <div class="loc-tab active" data-tab="overview">Επισκόπηση</div>
-  <div class="loc-tab" data-tab="list">Όλες οι Τοποθεσίες</div>
-  <div class="loc-tab" data-tab="map">Χάρτης</div>
-</div>
-
-<!-- Overview Panel -->
-<div id="locPanel-overview" class="loc-panel">
-  <div class="kpi-grid" id="locKpis"></div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-    <div class="table-wrap" style="overflow:hidden">
-      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
-        Ανά Χώρα <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locCountryLabel"></span>
-      </div>
-      <div id="locCountryBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
+<div class="entity-layout entity-v2">
+  <div class="entity-list-panel" id="locListPanel">
+    <div class="ev2-bar">
+      <span class="ev2-title">Τοποθεσίες</span>
+      <span class="ev2-count" id="locCount"></span>
+      <select class="svc-filter" id="locCountryFilter">
+        <option value="">Χώρα: Όλες</option>
+      </select>
+      <select class="svc-filter" id="locTypeFilter">
+        <option value="">Τύπος: Όλοι</option>
+      </select>
+      <select class="svc-filter" id="locMoveFilter" title="Τύπος κίνησης από το ιστορικό στάσεων — μετάφραση εμφάνισης, τίποτα δεν γράφεται">
+        <option value="">Κίνηση: Όλες</option>
+        <option>ΕΞΑΓΩΓΗ</option>
+        <option>ΕΙΣΑΓΩΓΗ</option>
+        <option>ΚΑΘΟΔΟΣ</option>
+        <option>ΑΝΟΔΟΣ</option>
+      </select>
+      <button type="button" class="loc-chip" id="locNoCoords" aria-pressed="false"
+        title="Μόνο τοποθεσίες χωρίς συντεταγμένες — δεν εμφανίζονται στον χάρτη"></button>
+      <input class="ev2-search" id="locSearch" placeholder="Αναζήτηση ονόματος, πόλης, διεύθυνσης…">
+      <button type="button" class="btn btn-ghost btn-sm loc-map-btn" id="locMapBtn">Χάρτης</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_locOpenCreate()">+ Νέα τοποθεσία</button>
     </div>
-    <div class="table-wrap" style="overflow:hidden">
-      <div style="padding:12px 18px;font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--navy-mid);border-bottom:2px solid var(--navy-mid);display:flex;align-items:center;gap:8px;background:rgba(11,25,41,0.03)">
-        Ανά Κίνηση <span style="font-size:12px;font-weight:400;letter-spacing:0;color:var(--text-mid);text-transform:none" id="locTypeLabel"></span>
-      </div>
-      <div id="locTypeBars" style="overflow-y:auto;max-height:380px;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent"></div>
-    </div>
-  </div>
-</div>
 
-<!-- List Panel -->
-<div id="locPanel-list" class="loc-panel" style="display:none">
-  <div class="entity-layout" style="height:calc(100vh - 265px);border-top:3px solid var(--navy-mid)">
-    <div class="entity-list-panel">
-      <div class="entity-toolbar" style="border-bottom:2px solid rgba(11,25,41,0.12)">
-        <input class="search-input" id="locSearch" placeholder="Search name, city, address…" style="max-width:280px">
-        <select class="filter-select" id="locCountryFilter">
-          <option value="">Χώρα: Όλες</option>
-        </select>
-        <select class="filter-select" id="locTypeFilter">
-          <option value="">All Types</option>
-        </select>
-        <select class="filter-select" id="locMoveFilter" title="Τύπος κίνησης από το ιστορικό στάσεων — μετάφραση εμφάνισης, τίποτα δεν γράφεται">
-          <option value="">Κίνηση: Όλες</option>
-          <option>ΕΞΑΓΩΓΗ</option>
-          <option>ΕΙΣΑΓΩΓΗ</option>
-          <option>ΚΑΘΟΔΟΣ</option>
-          <option>ΑΝΟΔΟΣ</option>
-        </select>
-        <span class="entity-count" id="locCount"></span>
-      </div>
-      <div class="entity-table-wrap" id="locTableWrap">
-        <table id="locTable">
-          <thead>
-            <tr>
-              <th class="loc-th" data-col="Name" style="cursor:pointer;color:var(--navy-mid)">Name ↕</th>
-              <th class="loc-th" data-col="City" style="cursor:pointer;color:var(--navy-mid)">City ↕</th>
-              <th class="loc-th" data-col="Country" style="cursor:pointer;color:var(--navy-mid)">Country ↕</th>
-              <th class="loc-th">Type</th>
-              <th class="loc-th">Coordinates</th>
-              <th class="loc-th" style="width:80px"></th>
-            </tr>
-          </thead>
-          <tbody id="locTbody"></tbody>
-        </table>
-      </div>
-      <div id="locPager" style="display:flex;align-items:center;gap:6px;padding:12px 18px;border-top:1px solid var(--border);justify-content:flex-end;background:var(--bg-card);flex-shrink:0"></div>
+    <div class="entity-table-wrap" id="locTableWrap">
+      <table id="locTable">
+        <thead>
+          <tr>
+            <th class="loc-th" data-col="Name">ΟΝΟΜΑΣΙΑ ↕</th>
+            <th class="loc-th" data-col="City">ΠΟΛΗ ↕</th>
+            <th class="loc-th" data-col="Country">ΧΩΡΑ ↕</th>
+            <th class="loc-th">ΤΥΠΟΣ</th>
+            <th class="loc-th">ΣΥΝΤΕΤΑΓΜΕΝΕΣ</th>
+            <th class="loc-th loc-th-act"></th>
+          </tr>
+        </thead>
+        <tbody id="locTbody"></tbody>
+      </table>
     </div>
-  </div>
-</div>
+    <div id="locPager" class="loc-pager"></div>
 
-<!-- Map Panel — γεμίζει από το locations_map.js με το πρώτο κλικ στην καρτέλα -->
-<div id="locPanel-map" class="loc-panel" style="display:none">
-  <div id="locMapHost" style="height:calc(100vh - 265px);border-top:3px solid var(--navy-mid)"></div>
+    <!-- Χάρτης — γεμίζει από το locations_map.js με το πρώτο άνοιγμα -->
+    <div id="locMapHost" class="loc-map-host"></div>
+  </div>
 </div>
 
 <style>
-.loc-tab { padding:10px 20px;font-size:13px;font-weight:500;color:var(--text-dim);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .15s,border-color .15s;display:inline-block; }
-.loc-tab:hover { color:var(--text); }
-.loc-tab.active { color:var(--navy-mid);border-bottom-color:var(--navy-mid);font-weight:600; }
-.loc-bar-row { appearance:none;border:0;background:none;font:inherit;color:inherit;width:100%;text-align:left;display:flex;align-items:center;padding:7px 18px;gap:12px; }
-.loc-bar-row.clickable { cursor:pointer;transition:background .1s; }
-.loc-bar-row.clickable:hover { background:var(--bg-hover); }
-.loc-bar-row.clickable:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
-.loc-bar-label { min-width:140px;max-width:180px;font-size:13px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
-.loc-bar-track { flex:1;height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden; }
-.loc-bar-fill  { height:100%;background:var(--navy-mid);border-radius:3px;transition:width .5s ease; }
-.loc-bar-count { font-size:12px;color:var(--text-dim);min-width:32px;text-align:right;font-variant-numeric:tabular-nums; }
-.loc-pager-btn { background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:4px 10px;font-size:12px;color:var(--text-mid);cursor:pointer;transition:all .12s; }
-.loc-pager-btn:hover:not(:disabled) { border-color:var(--navy-mid);color:var(--navy-mid); }
-.loc-pager-btn.active { background:var(--navy-mid);color:#fff;border-color:var(--navy-mid);font-weight:700; }
-#locSearch:focus, #locCountryFilter:focus, #locTypeFilter:focus { border-color:var(--navy-mid) !important; box-shadow:0 0 0 3px rgba(11,25,41,0.08) !important; }
-.loc-pager-btn.active { background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700; }
-.loc-pager-btn:disabled { opacity:.3;cursor:not-allowed; }
-.loc-act-btn { background:none;border:none;cursor:pointer;padding:4px 7px;border-radius:5px;color:var(--text-dim);transition:all .12s;font-size:12px;line-height:1; }
-.loc-act-btn:hover { background:var(--bg-hover);color:var(--text); }
-.loc-act-btn.del:hover { background:var(--danger-bg);color:var(--danger); }
-#locTable thead th {
-  background: var(--navy-mid) !important;
-  color: rgba(196,207,219,0.85) !important;
-  border-bottom: none !important;
-  letter-spacing: 1.2px;
-}
-#locTable thead th.loc-th[data-col]:hover {
-  color: #fff !important;
-}
-/* Οι γραμμές άνοιξαν κάρτα (Βήμα 4, 25/8) — το παλιό cursor:default έκρυβε ότι είναι πατήσιμες */
-#locTable tbody tr { cursor:pointer !important; }
-#locTable tbody tr:hover { background:var(--bg-hover); }
-.kpi-card { cursor:default !important; }
+/* Κεφαλίδες ταξινόμησης: το ↕ είναι μέρος του κειμένου της στήλης */
+#locTable thead th.loc-th[data-col] { cursor: pointer; }
+#locTable thead th.loc-th[data-col]:hover { color: var(--text); }
+#locTable thead th.loc-th-act { width: 80px; }
+/* Οι γραμμές ανοίγουν καρτέλα (Βήμα 4, 25/8) */
+#locTable tbody tr { cursor: pointer; }
+#locTable tbody tr:hover td { background: var(--bg-hover); }
+/* Κελί δύο σειρών (DESIGN.md ΜΕΡΟΣ Ζ.1): όνομα πάνω, διεύθυνση κάτω αχνά —
+   λύνει το πλάτος χωρίς κοπή (κανόνας #6) και χωρίς δεύτερη στήλη. */
+.loc-cell2 { display: flex; flex-direction: column; justify-content: center; line-height: 14px; }
+.loc-cell2 .loc-name { font-weight: 500; color: var(--text); }
+.loc-cell2 .loc-sub { font-size: var(--text-xs); color: var(--text-dim); line-height: 13px; margin-top: 1px; }
+.loc-coord { color: var(--text-mid); text-decoration: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.loc-coord:hover { color: var(--navy-mid); }
+/* Άγνωστο ≠ μηδέν (κανόνας #3). Η πλήρης φράση σε χρώμα προσοχής ΜΟΝΟ στις
+   συντεταγμένες — το λειτουργικό κενό που φιλτράρει το chip. Πόλη/Χώρα/Τύπος
+   λείπουν σε εκατοντάδες εγγραφές (575 αταξινόμητα, 25/8): με φράση παντού η
+   στήλη γίνεται τοίχος πορτοκαλί και το χρώμα παύει να διακρίνει (κανόνας #4). */
+.loc-miss { color: var(--warning); font-size: var(--text-xs); white-space: nowrap; }
+.loc-dash { color: var(--text-dim); }
+.loc-type { color: var(--text-mid); }
+.loc-act-btn { background: none; border: none; cursor: pointer; padding: 4px 7px; border-radius: var(--radius-sm); color: var(--text-dim); transition: all .12s; font-size: 12px; line-height: 1; }
+.loc-act-btn:hover { background: var(--bg-hover); color: var(--text); }
+.loc-act-btn.del:hover { background: var(--danger-bg); color: var(--danger); }
+/* Chip-φίλτρο: πλήθος σε χρώμα προσοχής ΚΑΙ λέξη (κανόνας #2) */
+.loc-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--radius-full); border: 1px solid var(--silver-light); background: var(--bg); font: inherit; font-size: var(--text-sm); color: var(--text-mid); cursor: pointer; white-space: nowrap; }
+.loc-chip b { color: var(--warning); font-variant-numeric: tabular-nums; }
+.loc-chip:hover { border-color: var(--border-focus); }
+.loc-chip[aria-pressed="true"] { background: var(--navy-mid); border-color: var(--navy-mid); color: var(--text-inverse); }
+.loc-chip[aria-pressed="true"] b { color: var(--text-inverse); }
+.loc-chip:empty { display: none; }
+.loc-pager { display: flex; align-items: center; gap: 6px; padding: 8px var(--space-6); border-top: 1px solid var(--border-row); justify-content: flex-end; background: var(--bg-card); flex-shrink: 0; }
+.loc-pager-btn { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--text-xs); color: var(--text-mid); cursor: pointer; transition: all .12s; }
+.loc-pager-btn:hover:not(:disabled) { border-color: var(--navy-mid); color: var(--navy-mid); }
+.loc-pager-btn.active { background: var(--navy-mid); color: var(--text-inverse); border-color: var(--navy-mid); font-weight: 700; }
+.loc-pager-btn:disabled { opacity: .3; cursor: not-allowed; }
+.loc-pager-info { font-size: var(--text-xs); color: var(--text-dim); margin-right: 8px; font-variant-numeric: tabular-nums; }
+/* Εναλλαγή πίνακα/χάρτη μέσα στο ίδιο panel: ο χάρτης παίρνει τον χώρο του
+   πίνακα. Όσο είναι display:none το Leaflet μετρά μηδενικό ύψος — γι' αυτό
+   το _lmapOpen κάνει invalidateSize σε κάθε επόμενο άνοιγμα. */
+.loc-map-host { display: none; flex: 1; min-height: 0; }
+.loc-map-on #locTableWrap, .loc-map-on #locPager { display: none; }
+.loc-map-on .loc-map-host { display: block; }
 </style>`;
 }
 
-// ── Tabs ──────────────────────────────────────
+// ── Events ─────────────────────────────────────
 function _locBindEvents() {
-  document.querySelectorAll('.loc-tab').forEach(t => {
-    t.addEventListener('click', () => {
-      document.querySelectorAll('.loc-tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      document.querySelectorAll('.loc-panel').forEach(p => p.style.display = 'none');
-      document.getElementById('locPanel-' + t.dataset.tab).style.display = 'block';
-      // Ο χάρτης χτίζεται με το πρώτο άνοιγμα της καρτέλας, όχι με τη σελίδα:
-      // το Leaflet (54 KB) και το fetch των συνεργείων δεν χρεώνονται σε όποιον
-      // δεν ανοίξει ποτέ τον χάρτη. Στα επόμενα ανοίγματα το _lmapOpen κάνει
-      // invalidateSize, γιατί όσο το panel ήταν display:none το Leaflet
-      // μετρούσε μηδενικό ύψος και ο χάρτης θα έμενε γκρι.
-      if (t.dataset.tab === 'map' && typeof _lmapOpen === 'function') _lmapOpen();
-    });
-  });
   document.getElementById('locSearch').addEventListener('input', () => { LOC.page = 1; _locApplyFilters(); });
   document.getElementById('locCountryFilter').addEventListener('change', () => { LOC.page = 1; _locApplyFilters(); });
+  document.getElementById('locTypeFilter').addEventListener('change', () => { LOC.page = 1; _locApplyFilters(); });
   document.getElementById('locMoveFilter').addEventListener('change', async (e) => {
     LOC.moveFilter = e.target.value; LOC.page = 1;
     if (LOC.moveFilter && !LOC.moveIdx) await _locBuildMoveIdx();
     _locApplyFilters();
   });
-  document.getElementById('locTypeFilter').addEventListener('change', () => { LOC.page = 1; _locApplyFilters(); });
+  document.getElementById('locNoCoords').addEventListener('click', () => {
+    LOC.noCoords = !LOC.noCoords; LOC.page = 1;
+    _locApplyFilters();
+  });
+  document.getElementById('locMapBtn').addEventListener('click', _locToggleMap);
   document.querySelectorAll('.loc-th[data-col]').forEach(th => {
     th.addEventListener('click', () => {
       const col = th.dataset.col;
@@ -193,113 +173,46 @@ function _locBindEvents() {
   });
 }
 
-// ── Overview ──────────────────────────────────
-function _locRenderOverview() {
-  const recs = LOC.records.map(r => r.fields);
-  const total = recs.length;
-  const countries = [...new Set(recs.map(r => r.Country).filter(Boolean))];
-  const withCoords = recs.filter(r => r.Latitude != null && r.Longitude != null).length;
-  const missing = recs.filter(r => !r.Country || !r.City).length;
-
-  document.getElementById('locSub').textContent =
-    `${total.toLocaleString()} locations · ${countries.length} χώρες · ${withCoords.toLocaleString()} with coordinates`;
-
-  document.getElementById('locKpis').innerHTML = [
-    { label: 'Σύνολο Τοποθεσιών',  value: total.toLocaleString(),     delta: '' },
-    { label: 'Countries',        value: countries.length,           delta: '' },
-    { label: 'Με Συντεταγμένες', value: withCoords.toLocaleString(),delta: `${Math.round(withCoords/total*100)}% coverage` },
-    { label: 'Ελλιπή Στοιχεία',     value: missing.toLocaleString(),   delta: 'Χωρίς χώρα ή πόλη — κλικ για λίστα', click: "_locFilterByCountry('__missing')" },
-  ].map(k => `
-    <div class="kpi-card" ${k.click ? `style="cursor:pointer" role="button" tabindex="0" onclick="${k.click}" onkeydown="if(event.key==='Enter'){${k.click}}"` : 'style="cursor:default"'}>
-      <div class="kpi-label">${k.label}</div>
-      <div class="kpi-value">${k.value}</div>
-      ${k.delta ? `<div class="kpi-delta">${k.delta}</div>` : ''}
-    </div>`).join('');
-
-  // Country bars — clickable drill-down
-  const cCounts = {};
-  recs.forEach(r => { const k = r.Country || '— Unknown'; cCounts[k] = (cCounts[k]||0)+1; });
-  const cSorted = Object.entries(cCounts).sort((a,b) => b[1]-a[1]).slice(0,18);
-  const cMax = cSorted[0]?.[1] || 1;
-  document.getElementById('locCountryLabel').textContent = `${countries.length} χώρες`;
-  document.getElementById('locCountryBars').innerHTML =
-    cSorted.map(([label, count]) => `
-      <button type="button" class="loc-bar-row clickable" onclick="_locFilterByCountry('${label.replace(/\\/g,'\\\\').replace(/'/g,"\\'")}')">
-        <div class="loc-bar-label" title="${_locEsc(label)}">${_locEsc(label)}</div>
-        <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/cMax*100).toFixed(1)}%"></div></div>
-        <div class="loc-bar-count">${count}</div>
-      </button>`).join('') +
-    `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Κλικ σε χώρα για φιλτράρισμα →</div>`;
-
-  // «Ανά Κίνηση» (Ε, owner 25/8): οι «48 κατηγορίες» ήταν ονόματα πελατών σε
-  // λάθος πεδίο. Οι μπάρες τροφοδοτούνται από τον ΙΔΙΟ δείκτη με το φίλτρο
-  // της λίστας (αρχή 3) — μετρήσεις ΤΟΠΟΘΕΣΙΩΝ, όχι παραγγελιών.
-  document.getElementById('locTypeBars').innerHTML =
-    '<div style="padding:12px 18px;font-size:12px;color:var(--text-dim)">υπολογισμός κινήσεων…</div>';
-  _locRenderMoveBars();
-}
-
-async function _locRenderMoveBars() {
-  const el = document.getElementById('locTypeBars');
-  if (!LOC.moveIdx) { try { await _locBuildMoveIdx(); } catch (e) { /* handled in builder */ } }
-  if (!document.getElementById('locTypeBars')) return;
-  if (!LOC.moveIdx) {
-    el.innerHTML = '<div style="padding:12px 18px;font-size:12px;color:#8A5A00">Ο δείκτης κινήσεων δεν φόρτωσε — δοκίμασε ανανέωση.</div>';
-    return;
-  }
-  const cnt = { 'ΕΞΑΓΩΓΗ': 0, 'ΕΙΣΑΓΩΓΗ': 0, 'ΚΑΘΟΔΟΣ': 0, 'ΑΝΟΔΟΣ': 0 };
-  LOC.moveIdx.forEach(set => set.forEach(t => { cnt[t] = (cnt[t] || 0) + 1; }));
-  const none = LOC.records.length - LOC.moveIdx.size;
-  const max = Math.max(1, ...Object.values(cnt));
-  document.getElementById('locTypeLabel').textContent = `${LOC.moveIdx.size} τοποθεσίες με κίνηση`;
-  el.innerHTML = Object.entries(cnt).map(([label, count]) => `
-    <button type="button" class="loc-bar-row clickable" onclick="_locFilterByMove('${label}')">
-      <div class="loc-bar-label">${label}</div>
-      <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(count/max*100).toFixed(1)}%"></div></div>
-      <div class="loc-bar-count">${count}</div>
-    </button>`).join('') +
-    `<div class="loc-bar-row"><div class="loc-bar-label" style="color:var(--text-dim)">— καμία κίνηση καταγεγραμμένη</div>
-      <div class="loc-bar-track"><div class="loc-bar-fill" style="width:${(none/Math.max(none,max)*100).toFixed(1)}%;opacity:.25"></div></div>
-      <div class="loc-bar-count">${none}</div></div>` +
-    `<div style="padding:8px 18px 12px;font-size:11px;color:var(--text-dim)">Κλικ σε κίνηση για φιλτράρισμα → · πηγή: στάσεις παραγγελιών</div>`;
-}
-
-function _locFilterByMove(t) {
-  document.querySelector('.loc-tab[data-tab="list"]')?.click();
-  const sel = document.getElementById('locMoveFilter');
-  if (sel) sel.value = t;
-  LOC.moveFilter = t; LOC.page = 1;
-  _locApplyFilters();
+// Ο χάρτης χτίζεται με το πρώτο άνοιγμα, όχι με τη σελίδα: το Leaflet (54 KB)
+// και το fetch των συνεργείων δεν χρεώνονται σε όποιον δεν τον ανοίξει ποτέ
+// (owner 12/8). Στα επόμενα ανοίγματα το _lmapOpen κάνει invalidateSize.
+function _locToggleMap() {
+  LOC.mapOpen = !LOC.mapOpen;
+  const panel = document.getElementById('locListPanel');
+  const btn = document.getElementById('locMapBtn');
+  if (!panel || !btn) return;
+  panel.classList.toggle('loc-map-on', LOC.mapOpen);
+  btn.textContent = LOC.mapOpen ? 'Λίστα' : 'Χάρτης';
+  if (LOC.mapOpen && typeof _lmapOpen === 'function') _lmapOpen();
 }
 
 // ── Filter options ─────────────────────────────
 function _locBuildFilterOptions() {
   const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
   const cf = document.getElementById('locCountryFilter');
-  // LO-2: η κάρτα «Ελλιπή Στοιχεία» οδηγεί εδώ — μόνιμη επιλογή στο φίλτρο
+  // LO-2: η παλιά κάρτα «Ελλιπή Στοιχεία» οδηγούσε εδώ — μένει ως μόνιμη επιλογή
   { const o = document.createElement('option'); o.value = '__missing'; o.textContent = '— Ελλιπή στοιχεία'; cf.appendChild(o); }
   countries.forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; cf.appendChild(o); });
 
+  // Τύποι από τα ΔΕΔΟΜΕΝΑ, όχι από σταθερή λίστα: η παλιά είχε «Office»,
+  // «Budapest Hub», «Service / Workshop» που δεν υπάρχουν σε καμία εγγραφή
+  // (νεκρές επιλογές = ψέμα, αρχή 8). Οι 60+ γραφές του ελεύθερου Type
+  // φαίνονται έτσι ως έχουν — ποιότητα δεδομένων ορατή, όχι κρυμμένη.
+  const types = [...new Set(LOC.records.map(r => (r.fields.Type || '').trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'el'));
   const tf = document.getElementById('locTypeFilter');
-  ['Client Depot','Veroia Hub','Budapest Hub','Partner Warehouse','Office','Service / Workshop','Fuel Station','Custom Point']
-    .forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; tf.appendChild(o); });
+  types.forEach(t => { const o = document.createElement('option'); o.value = t; o.textContent = t; tf.appendChild(o); });
 }
 
-function _locFilterByCountry(country) {
-  document.querySelectorAll('.loc-tab').forEach(x => x.classList.remove('active'));
-  document.querySelector('.loc-tab[data-tab="list"]')?.classList.add('active');
-  document.querySelectorAll('.loc-panel').forEach(p => p.style.display = 'none');
-  document.getElementById('locPanel-list').style.display = 'block';
-  document.getElementById('locCountryFilter').value = country;
-  LOC.page = 1;
-  _locApplyFilters();
+function _locHasCoords(f) {
+  return f.Latitude != null && f.Longitude != null;
 }
 
 // ── Filter + Sort ──────────────────────────────
 function _locApplyFilters() {
   const q       = (document.getElementById('locSearch')?.value || '').toLowerCase().trim();
   const country = document.getElementById('locCountryFilter')?.value || '';
-  const type    = (document.getElementById('locTypeFilter')?.value || '').toLowerCase();
+  const type    = document.getElementById('locTypeFilter')?.value || '';
 
   LOC.filtered = LOC.records.filter(r => {
     if (LOC.moveFilter) {
@@ -309,13 +222,10 @@ function _locApplyFilters() {
       if (!set || !set.has(LOC.moveFilter)) return false;
     }
     const f = r.fields;
+    if (LOC.noCoords && _locHasCoords(f)) return false;
     if (country === '__missing') { if (f.Country && f.City) return false; }
     else if (country && f.Country !== country) return false;
-    if (type) {
-      const t = (f.Type || '').toLowerCase();
-      const isClient = type === 'client depot' && (t.startsWith('client') || t.startsWith('clinet'));
-      if (!isClient && !t.includes(type)) return false;
-    }
+    if (type && (f.Type || '').trim() !== type) return false;
     if (q) {
       const hay = [f.Name, f.City, f.Country, f.Address].filter(Boolean).join(' ').toLowerCase();
       if (!hay.includes(q)) return false;
@@ -329,8 +239,20 @@ function _locApplyFilters() {
     return av < bv ? -LOC.sortDir : av > bv ? LOC.sortDir : 0;
   });
 
+  const total = LOC.records.length;
   const el = document.getElementById('locCount');
-  if (el) el.textContent = LOC.filtered.length.toLocaleString() + ' records';
+  if (el) el.textContent = LOC.filtered.length === total
+    ? `${total.toLocaleString('el-GR')} εγγραφές`
+    : `${LOC.filtered.length.toLocaleString('el-GR')} από ${total.toLocaleString('el-GR')}`;
+
+  // Το chip μετρά ΟΛΕΣ τις εγγραφές χωρίς συντεταγμένες, όχι τις φιλτραρισμένες:
+  // είναι ο λογαριασμός που εκκρεμεί, ανεξάρτητα από το τι κοιτάς τώρα.
+  const chip = document.getElementById('locNoCoords');
+  if (chip) {
+    const n = LOC.records.filter(r => !_locHasCoords(r.fields)).length;
+    chip.innerHTML = n ? `<b>${n.toLocaleString('el-GR')}</b> χωρίς συντεταγμένες` : '';
+    chip.setAttribute('aria-pressed', LOC.noCoords ? 'true' : 'false');
+  }
   _locRenderTable();
 }
 
@@ -342,30 +264,31 @@ function _locRenderTable() {
   if (!tbody) return;
 
   if (!LOC.filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-dim)">No locations found</td></tr>`;
+    // Κενό ≠ αποτυχία (κανόνας #7): η φόρτωση πέτυχε, τα φίλτρα δεν βρήκαν τίποτα.
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-dim)">Καμία τοποθεσία με αυτά τα φίλτρα.</td></tr>`;
     document.getElementById('locPager').innerHTML = '';
     return;
   }
 
   tbody.innerHTML = slice.map(r => {
     const f = r.fields;
-    const hasCoords = f.Latitude != null && f.Longitude != null;
+    const hasCoords = _locHasCoords(f);
     const mapsUrl = hasCoords ? `https://maps.google.com?q=${f.Latitude},${f.Longitude}` : '';
-    return `<tr onclick="_locOpenCard('${r.id}')" style="cursor:pointer">
-      <td style="font-weight:500;color:var(--text)" title="${_locEsc(f.Name||'')}">${_locEsc(f.Name || '—')}</td>
-      <td>${_locEsc(f.City || '—')}</td>
-      <td><span class="badge badge-blue" style="font-size:11px">${_locEsc(f.Country || '—')}</span></td>
-      <td style="font-size:12px" title="${_locEsc(f.Type||'')}">${_locEsc(f.Type || '—')}</td>
-      <td style="white-space:nowrap">
+    return `<tr onclick="_locOpenCard('${r.id}')">
+      <td><div class="loc-cell2"><div class="loc-name">${_locEsc(f.Name || '—')}</div>${f.Address ? `<div class="loc-sub">${_locEsc(f.Address)}</div>` : ''}</div></td>
+      <td>${f.City ? _locEsc(f.City) : '<span class="loc-dash">—</span>'}</td>
+      <td>${f.Country ? _locEsc(f.Country) : '<span class="loc-dash">—</span>'}</td>
+      <td class="loc-type">${f.Type ? _locEsc(f.Type) : '<span class="loc-dash">—</span>'}</td>
+      <td>
         ${hasCoords
-          ? `<a href="${mapsUrl}" target="_blank" onclick="event.stopPropagation()" style="color:var(--text-mid);text-decoration:none" onmouseover="this.style.color='var(--navy-mid)'" onmouseout="this.style.color='var(--text-mid)'">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} ↗</a>`
-          : '<span style="color:var(--text-dim)">—</span>'}
+          ? `<a class="loc-coord" href="${mapsUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} ↗</a>`
+          : '<span class="loc-miss">— δεν έχει καταχωρηθεί</span>'}
       </td>
       <td onclick="event.stopPropagation()" style="text-align:right;padding-right:14px">
-        <button class="loc-act-btn" onclick="_locOpenEdit('${r.id}')" title="Edit">✏️</button>
+        <button class="loc-act-btn" onclick="_locOpenEdit('${r.id}')" title="Επεξεργασία">✏️</button>
         ${r.id === F.VEROIA_LOC
           ? '<span class="loc-act-btn" title="Κλειδωμένο — κλειδί της αλυσίδας Veroia Switch" style="cursor:default;opacity:0.5">🔒</span>'
-          : `<button class="loc-act-btn del" onclick="_locConfirmDelete('${r.id}','${_locEsc(f.Name||'').replace(/'/g,"\\'")}') " title="Delete">🗑️</button>`}
+          : `<button class="loc-act-btn del" onclick="_locConfirmDelete('${r.id}','${_locEsc(f.Name||'').replace(/'/g,"\\'")}') " title="Διαγραφή">🗑️</button>`}
       </td>
     </tr>`;
   }).join('');
@@ -379,11 +302,11 @@ function _locRenderPager() {
   const pager = document.getElementById('locPager');
   if (!pager) return;
   if (pages <= 1) {
-    pager.innerHTML = `<span style="font-size:12px;color:var(--text-dim)">${total.toLocaleString()} records</span>`;
+    pager.innerHTML = `<span class="loc-pager-info">${total.toLocaleString('el-GR')} εγγραφές</span>`;
     return;
   }
   const p = LOC.page;
-  let html = `<span style="font-size:12px;color:var(--text-dim);margin-right:8px">${((p-1)*LOC.pageSize+1).toLocaleString()}–${Math.min(p*LOC.pageSize,total).toLocaleString()} of ${total.toLocaleString()}</span>`;
+  let html = `<span class="loc-pager-info">${((p-1)*LOC.pageSize+1).toLocaleString('el-GR')}–${Math.min(p*LOC.pageSize,total).toLocaleString('el-GR')} από ${total.toLocaleString('el-GR')}</span>`;
   html += `<button class="loc-pager-btn" onclick="_locGoPage(${p-1})" ${p===1?'disabled':''}>‹</button>`;
   const range = [];
   for (let i = 1; i <= pages; i++) {
@@ -407,9 +330,9 @@ function _locGoPage(p) {
 // ── Create / Edit ──────────────────────────────
 function _locOpenCreate() {
   LOC.editingId = null;
-  openModal('New Location', _locFormHTML({}),
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-primary" id="locSaveBtn" onclick="_locSave()">Save Location</button>`);
+  openModal('Νέα τοποθεσία', _locFormHTML({}),
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-primary" id="locSaveBtn" onclick="_locSave()">Αποθήκευση</button>`);
   setTimeout(() => document.getElementById('locGeoBtn')?.addEventListener('click', _locGeocode), 50);
 }
 
@@ -417,9 +340,9 @@ function _locOpenEdit(id) {
   const rec = LOC.records.find(r => r.id === id);
   if (!rec) return;
   LOC.editingId = id;
-  openModal('Edit Location', _locFormHTML(rec.fields),
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-primary" id="locSaveBtn" onclick="_locSave()">Save Changes</button>`);
+  openModal('Επεξεργασία τοποθεσίας', _locFormHTML(rec.fields),
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-primary" id="locSaveBtn" onclick="_locSave()">Αποθήκευση</button>`);
   setTimeout(() => document.getElementById('locGeoBtn')?.addEventListener('click', _locGeocode), 50);
 }
 
@@ -430,27 +353,28 @@ function _locFormHTML(f) {
 <datalist id="locTDL">${['Client Depot','Fuel Station','Partner Warehouse','ΣΥΝΕΡΓΕΙΟ','Custom Point','Veroia Hub','Πλυντήριο'].map(t => `<option value="${t}">`).join('')}</datalist>
 <div class="form-grid">
   <div class="form-field span-2">
-    <label class="form-label">Name *</label>
-    <input id="locF_name" class="form-input" placeholder="e.g. VERMION FRESH, Veroia" value="${_locEsc(f.Name||'')}">
+    <label class="form-label">Όνομα *</label>
+    <input id="locF_name" class="form-input" placeholder="π.χ. VERMION FRESH, Veroia" value="${_locEsc(f.Name||'')}">
+    <div style="font-size:var(--text-xs);color:var(--text-dim);margin-top:4px">Λατινικοί χαρακτήρες (greeklish), όπως όλες οι εγγραφές — κανόνας 9/8.</div>
   </div>
   <div class="form-field">
-    <label class="form-label">Country</label>
-    <input id="locF_country" class="form-input" list="locCDL" placeholder="e.g. Greece" value="${_locEsc(f.Country||'')}">
+    <label class="form-label">Χώρα</label>
+    <input id="locF_country" class="form-input" list="locCDL" placeholder="π.χ. Greece" value="${_locEsc(f.Country||'')}">
   </div>
   <div class="form-field">
-    <label class="form-label">City</label>
-    <input id="locF_city" class="form-input" placeholder="e.g. Veroia" value="${_locEsc(f.City||'')}">
+    <label class="form-label">Πόλη</label>
+    <input id="locF_city" class="form-input" placeholder="π.χ. Veroia" value="${_locEsc(f.City||'')}">
   </div>
   <div class="form-field span-2">
-    <label class="form-label">Address</label>
-    <input id="locF_address" class="form-input" placeholder="Street, postal code…" value="${_locEsc(f.Address||'')}">
+    <label class="form-label">Διεύθυνση</label>
+    <input id="locF_address" class="form-input" placeholder="Οδός, Τ.Κ.…" value="${_locEsc(f.Address||'')}">
   </div>
   <div class="form-field span-2">
-    <label class="form-label">Type</label>
-    <input id="locF_type" class="form-input" list="locTDL" placeholder="e.g. Client Depot" value="${_locEsc(f.Type||'')}">
+    <label class="form-label">Τύπος</label>
+    <input id="locF_type" class="form-input" list="locTDL" placeholder="π.χ. Client Depot" value="${_locEsc(f.Type||'')}">
   </div>
   <div class="form-field">
-    <label class="form-label">Ωράριο (Opening Hours)</label>
+    <label class="form-label">Ωράριο</label>
     <input id="locF_hours" class="form-input" placeholder="π.χ. 06:00–14:00" value="${_locEsc(f['Opening Hours']||'')}">
   </div>
   <div class="form-field">
@@ -458,11 +382,11 @@ function _locFormHTML(f) {
     <input id="locF_days" class="form-input" placeholder="π.χ. Δευ–Παρ" value="${_locEsc(f['Delivery Days']||'')}">
   </div>
   <div class="form-field">
-    <label class="form-label">Latitude</label>
+    <label class="form-label">Γεωγρ. πλάτος (Latitude)</label>
     <input id="locF_lat" class="form-input" type="number" step="any" placeholder="40.5211" value="${f.Latitude != null ? f.Latitude : ''}">
   </div>
   <div class="form-field">
-    <label class="form-label">Longitude</label>
+    <label class="form-label">Γεωγρ. μήκος (Longitude)</label>
     <input id="locF_lon" class="form-input" type="number" step="any" placeholder="22.2033" value="${f.Longitude != null ? f.Longitude : ''}">
   </div>
   <div class="form-field">
@@ -474,14 +398,14 @@ function _locFormHTML(f) {
     <input id="locF_notes" class="form-input" placeholder="π.χ. χωρίς κλαρκ — τηλεφώνησε πριν" value="${_locEsc(f.Notes||'')}">
   </div>
   <div class="form-field span-2">
-    <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">Auto-fill coordinates from Name + City</button>
+    <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">Εύρεση συντεταγμένων από όνομα + πόλη</button>
   </div>
 </div>`;
 }
 
 async function _locSave() {
   const name = document.getElementById('locF_name')?.value.trim();
-  if (!name) { toast('Name is required', 'danger'); return; }
+  if (!name) { toast('Το όνομα είναι υποχρεωτικό', 'danger'); return; }
   const fields = { Name: name };
   const country = document.getElementById('locF_country')?.value.trim();
   const city    = document.getElementById('locF_city')?.value.trim();
@@ -505,12 +429,12 @@ async function _locSave() {
   fields['Phone'] = document.getElementById('locF_phone')?.value.trim() || null;
 
   const btn = document.getElementById('locSaveBtn');
-  if (btn) { btn.textContent = 'Saving…'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
   try {
     const data = LOC.editingId
       ? await atPatch(TABLES.LOCATIONS, LOC.editingId, fields)
       : await atCreate(TABLES.LOCATIONS, fields);
-    if (data.error) throw new Error(data.error.message || 'Save failed');
+    if (data.error) throw new Error(data.error.message || 'Η αποθήκευση απέτυχε');
     if (LOC.editingId) {
       const idx = LOC.records.findIndex(r => r.id === LOC.editingId);
       if (idx !== -1) LOC.records[idx] = data;
@@ -518,16 +442,15 @@ async function _locSave() {
       LOC.records.unshift(data);
     }
     closeModal();
-    _locRenderOverview();
     _locApplyFilters();
     // Ο χάρτης χτίζεται μία φορά και κρατά δικό του αντίγραφο των σημείων: χωρίς
     // αυτό, αλλαγή συντεταγμένων έδειχνε πράσινο toast ενώ η καρφίτσα έμενε στο
     // παλιό σημείο μέχρι reload — ο χρήστης θα νόμιζε ότι έσωσε λάθος.
     if (typeof _lmapRefresh === 'function') _lmapRefresh();
-    toast(LOC.editingId ? 'Location updated ✓' : 'Location created ✓', 'success');
+    toast(LOC.editingId ? 'Η τοποθεσία ενημερώθηκε ✓' : 'Η τοποθεσία δημιουργήθηκε ✓', 'success');
   } catch (e) {
-    reportError('Save failed', e);
-    if (btn) { btn.textContent = 'Save Location'; btn.disabled = false; }
+    reportError('Η αποθήκευση απέτυχε', e);
+    if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
   }
 }
 
@@ -536,30 +459,30 @@ async function _locGeocode() {
   const city    = document.getElementById('locF_city')?.value.trim();
   const country = document.getElementById('locF_country')?.value.trim();
   const q = [name, city, country].filter(Boolean).join(', ');
-  if (!q) { toast('Enter name or city first', 'danger'); return; }
+  if (!q) { toast('Συμπλήρωσε πρώτα όνομα ή πόλη', 'danger'); return; }
   const btn = document.getElementById('locGeoBtn');
-  if (btn) { btn.textContent = 'Searching…'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Αναζήτηση…'; btn.disabled = true; }
   try {
     const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
     const d = await r.json();
     if (d[0]) {
       document.getElementById('locF_lat').value = parseFloat(d[0].lat).toFixed(6);
       document.getElementById('locF_lon').value = parseFloat(d[0].lon).toFixed(6);
-      toast('Coordinates filled ✓', 'success');
-    } else { toast('No result found', 'danger'); }
-  } catch (e) { toast('Geocode failed', 'danger'); }
-  finally { if (btn) { btn.textContent = 'Auto-fill coordinates from Name + City'; btn.disabled = false; } }
+      toast('Οι συντεταγμένες συμπληρώθηκαν ✓', 'success');
+    } else { toast('Δεν βρέθηκε αποτέλεσμα', 'danger'); }
+  } catch (e) { toast('Η γεωκωδικοποίηση απέτυχε', 'danger'); }
+  finally { if (btn) { btn.textContent = 'Εύρεση συντεταγμένων από όνομα + πόλη'; btn.disabled = false; } }
 }
 
 // ── Delete ─────────────────────────────────────
 function _locConfirmDelete(id, name) {
-  openModal('Delete Location?',
+  openModal('Διαγραφή τοποθεσίας;',
     `<div style="color:var(--text-mid);font-size:14px;line-height:1.7">
-      Delete <strong style="color:var(--text)">${name}</strong>?<br>
-      <span style="color:var(--danger);font-size:12px">Orders linked to this location will lose the reference.</span>
+      Διαγραφή της <strong style="color:var(--text)">${name}</strong>;<br>
+      <span style="color:var(--danger);font-size:12px">Οι παραγγελίες που τη δηλώνουν ως σημείο θα χάσουν την αναφορά.</span>
      </div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-     <button class="btn btn-danger" onclick="_locDoDelete('${id}')">Delete</button>`);
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-danger" onclick="_locDoDelete('${id}')">Διαγραφή</button>`);
 }
 
 async function _locDoDelete(id) {
@@ -576,12 +499,12 @@ async function _locDoDelete(id) {
   closeModal();
   try {
     const data = await atSoftDelete(TABLES.LOCATIONS, id);
-    if (data.error) throw new Error(data.error.message || 'Delete failed');
+    if (data.error) throw new Error(data.error.message || 'Η διαγραφή απέτυχε');
     LOC.records = LOC.records.filter(r => r.id !== id);
-    _locRenderOverview();
     _locApplyFilters();
-    toast('Location deleted', 'success');
-  } catch (e) { reportError('Delete failed', e); }
+    if (typeof _lmapRefresh === 'function') _lmapRefresh();
+    toast('Η τοποθεσία διαγράφηκε', 'success');
+  } catch (e) { reportError('Η διαγραφή απέτυχε', e); }
 }
 
 // ── Fetch ───────────────────────────────────────
@@ -609,6 +532,9 @@ function _locEsc(s) {
 // γονιό κάθε στάσης — ΜΕΤΑΦΡΑΣΗ ΣΤΗΝ ΕΜΦΑΝΙΣΗ μόνο: η βάση κρατά
 // Export/Import και βελάκια (σύμβαση CLAUDE.md), τίποτα δεν ξαναγράφεται.
 // Μηδενικοί τύποι ΔΕΝ εμφανίζονται (το «Εθνικές 0×» ήταν θόρυβος).
+// Η δομή είναι το πρότυπο καρτέλας του συστήματος (owner 2/9, Figma
+// w2-location-card 230:821): navy κεφαλή, outline chips, «— δεν έχει
+// καταχωρηθεί» για το κενό, δίγραμμο ιστορικό.
 const LOCC = { openId: null, stops: null, orderById: {}, natById: {}, natOrdById: {}, pgByRec: {}, failed: false };
 
 function _locCardHost() {
@@ -623,34 +549,37 @@ function _locCardHost() {
   return document.getElementById('loccPanel');
 }
 
+// Μόνο tokens (κανόνας #1) — το χρώμα έχει ένα σπίτι, το style.css.
 function _locCardCss() { return `
-.locc-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);opacity:0;pointer-events:none;transition:opacity .2s;z-index:9000}
-.locc-overlay.open{opacity:1;pointer-events:auto}
-.locc-panel{position:fixed;top:0;right:-560px;width:560px;max-width:96vw;height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(11,25,41,.25);transition:right .25s;z-index:9100;overflow-y:auto}
+.locc-overlay{position:fixed;inset:0;background:var(--navy-mid);opacity:0;pointer-events:none;transition:opacity .2s;z-index:var(--z-overlay)}
+.locc-overlay.open{opacity:.45;pointer-events:auto}
+.locc-panel{position:fixed;top:0;right:-560px;width:560px;max-width:96vw;height:100vh;background:var(--bg-card);box-shadow:var(--shadow-panel);transition:right .25s;z-index:var(--z-top);overflow-y:auto}
 .locc-panel.open{right:0}
-.locc-head{background:var(--navy-mid,#0B1929);color:#fff;padding:16px 22px}
-.locc-head h2{font-family:'Syne',sans-serif;font-size:17px;margin:0 0 3px;padding-right:26px}
-.locc-meta{font-size:12px;color:#94A3B8}
-.locc-addr{font-size:12px;color:#CBD5E1;margin-top:2px}
-.locc-close{float:right;background:none;border:none;color:#94A3B8;font-size:18px;cursor:pointer;margin:-2px -6px 0 0}
+.locc-head{background:var(--navy-mid);color:var(--text-inverse);padding:16px 22px}
+.locc-head h2{font-family:'Syne',sans-serif;font-size:17px;margin:0 0 3px;padding-right:26px;color:var(--text-inverse)}
+.locc-meta{font-size:12px;color:var(--text-dim)}
+.locc-addr{font-size:12px;color:var(--text-dim);margin-top:2px}
+.locc-close{float:right;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;margin:-2px -6px 0 0}
 .locc-chips{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
-.locc-chip{display:inline-block;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;letter-spacing:.03em;border:1px solid rgba(226,232,240,.35);color:#E2E8F0}
-.locc-sect{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:13px 22px 5px;border-top:1px solid rgba(0,0,0,.06)}
+.locc-chip{display:inline-block;padding:2px 9px;border-radius:var(--radius-full);font-size:11px;font-weight:600;letter-spacing:.03em;border:1px solid var(--border-dark);color:var(--text-inverse)}
+.locc-sect{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:13px 22px 5px;border-top:1px solid var(--border-row)}
 .locc-sect:first-of-type{border-top:none}
 .locc-sect .n{font-weight:500;letter-spacing:0;text-transform:none}
 .locc-rows{padding:0 22px 10px}
-.locc-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:5px 0;border-bottom:1px dashed rgba(0,0,0,.05)}
+.locc-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--border-row)}
 .locc-row:last-child{border-bottom:none}
 .locc-row .k{color:var(--text-dim);flex-shrink:0}
 .locc-row .v{text-align:right}
-.locc-h{padding:6px 0;border-bottom:1px dashed rgba(0,0,0,.05)}
+.locc-h{padding:6px 0;border-bottom:1px dashed var(--border-row)}
 .locc-h:last-child{border-bottom:none}
 .locc-h1{display:grid;grid-template-columns:52px 92px 1fr 56px;gap:8px;font-size:12.5px;align-items:baseline}
 .locc-h1 .num{text-align:right;font-variant-numeric:tabular-nums}
+.locc-h1 .who{min-width:0;overflow-wrap:anywhere}
 .locc-h2{font-size:11.5px;color:var(--text-dim);margin:2px 0 0 60px;font-variant-numeric:tabular-nums}
-.locc-stype{display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.05em;border:1px solid rgba(11,25,41,.22);color:#334155;background:#fff;white-space:nowrap}
+.locc-stype{display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.05em;border:1px solid var(--border-mid);color:var(--text-mid);background:var(--bg-card);white-space:nowrap}
 .locc-empty{font-size:13px;color:var(--text-dim);padding:14px 22px 18px}
-.locc-note{font-size:12.5px;color:#8A5A00;background:#fff;border:1px solid #E6CE9E;border-radius:6px;padding:8px 12px;margin:12px 22px}
+.locc-miss{color:var(--text-dim)}
+.locc-note{font-size:12.5px;color:var(--warning);background:var(--bg-card);border:1px solid var(--warning-soft);border-radius:var(--radius);padding:8px 12px;margin:12px 22px}
 `; }
 
 function _locCloseCard() {
@@ -794,20 +723,15 @@ function _locGoodsAgg() {
 
 function _locCardHtml(rec, loadingBody) {
   const f = rec.fields;
-  const miss = '<span style="color:var(--text-dim)">— δεν έχει καταχωρηθεί</span>';
+  const miss = '<span class="locc-miss">— δεν έχει καταχωρηθεί</span>';
   const head = `
   <div class="locc-head"><button class="locc-close" onclick="_locCloseCard()">&times;</button>
     <h2>${_locEsc(f.Name || '—')}</h2>
     <div class="locc-meta">${_locEsc(f.City || '—')} · ${_locEsc(f.Country || '—')}</div>
     ${f.Address ? '<div class="locc-addr">' + _locEsc(f.Address) + '</div>' : ''}
     ${_locTypeChips()}</div>`;
-  if (loadingBody != null) return head + loadingBody;
-  if (LOCC.failed) {
-    return head + `<div class="locc-note">Το ιστορικό δεν φόρτωσε (${_locEsc(LOCC.failError || 'σφάλμα')}) — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν κινήσεις.
-      <button class="btn" style="margin-left:8px" onclick="_locOpenCard('${rec.id}')">Δοκίμασε ξανά</button></div>`;
-  }
   const maps = (f.Latitude != null && f.Longitude != null)
-    ? `${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} <a href="https://maps.google.com?q=${f.Latitude},${f.Longitude}" target="_blank" onclick="event.stopPropagation()">Χάρτης</a>`
+    ? `${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} <a href="https://maps.google.com?q=${f.Latitude},${f.Longitude}" target="_blank" rel="noopener" onclick="event.stopPropagation()">Χάρτης</a>`
     : miss;
   const row = (k, v) => `<div class="locc-row"><span class="k">${k}</span><span class="v">${v || miss}</span></div>`;
   const info = `<div class="locc-sect">Στοιχεία</div><div class="locc-rows">
@@ -818,6 +742,13 @@ function _locCardHtml(rec, loadingBody) {
     ${row('Σημειώσεις', f.Notes && _locEsc(f.Notes))}
     ${row('Συντεταγμένες', maps)}
   </div>`;
+  if (loadingBody != null) return head + info + loadingBody;
+  // Τα Στοιχεία είναι στιγμιαία (από την εγγραφή) — μένουν ορατά και όταν το
+  // ασύγχρονο μισό (ιστορικό) αποτύχει. Πριν, η αποτυχία έκρυβε και το τηλέφωνο.
+  if (LOCC.failed) {
+    return head + info + `<div class="locc-note">Το ιστορικό δεν φόρτωσε (${_locEsc(LOCC.failError || 'σφάλμα')}) — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν κινήσεις.
+      <button class="btn" style="margin-left:8px" onclick="_locOpenCard('${rec.id}')">Δοκίμασε ξανά</button></div>`;
+  }
   const agg = Object.values(_locGoodsAgg()).sort((a, b) => b.n - a.n);
   const goods = !LOCC.stops.length ? '' : `<div class="locc-sect">Προϊόντα</div><div class="locc-rows">
     ${agg.length
@@ -835,6 +766,7 @@ function _locCardHtml(rec, loadingBody) {
 
 // Ιστορικό σε ΔΥΟ γραμμές ανά κίνηση (owner 25/8) — αναφορά και πινακίδα
 // δεν κόβονται ποτέ: 1η ημ/νία·τύπος·πελάτης·παλέτες, 2η ORD-id·ref·πινακίδα.
+// Ούτε ο πελάτης κόβεται (κανόνας #6): τυλίγει σε δεύτερη σειρά αν χρειαστεί.
 function _locHistRow(s) {
   const f = s.fields;
   const lbl = { Loading: 'ΦΟΡΤΩΣΗ', Unloading: 'ΠΑΡΑΔΟΣΗ', 'Cross-dock': 'CROSS-DOCK' };
@@ -852,7 +784,7 @@ function _locHistRow(s) {
     <div class="locc-h1">
       <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${f['DateTime'] ? fmtDateDM(f['DateTime']) + '/' + String(f['DateTime']).slice(2, 4) : '—'}</span>
       <span><span class="locc-stype">${lbl[f['Stop Type']] || _locEsc(f['Stop Type'] || '—')}</span></span>
-      <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${client}">${client || '—'}</span>
+      <span class="who">${client || '—'}</span>
       <span class="num">${f['Pallets'] != null ? f['Pallets'] + ' pal' : '—'}</span>
     </div>
     ${l2 ? '<div class="locc-h2">' + _locEsc(l2) + '</div>' : ''}
