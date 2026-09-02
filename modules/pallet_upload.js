@@ -3,6 +3,8 @@
 // Opens from Order detail when Pallet Exchange=true
 // Dynamic sheet tabs: 1 per loading location + crossdock (if Veroia Switch)
 // AI extraction via Claude Sonnet from uploaded image/PDF
+// Redesign κύμα 2 (2/9/2026): ελληνικά κείμενα, χωρίς emoji/alert, tokens μόνο
+// (DESIGN.md #1/#2). Η λογική και ο πίνακας εγγραφής δεν άλλαξαν — βλ. παραδοτέο.
 // ═══════════════════════════════════════════════
 // Module state uses 'PU' / '_pu' prefix to avoid global collisions.
 'use strict';
@@ -57,10 +59,10 @@ async function openPalletUpload(orderId) {
       const sf = loadStops[i].fields;
       const locArr = sf[F.STOP_LOCATION];
       const locId = Array.isArray(locArr) ? locArr[0] : null;
-      const locName = locId ? await _puLocName(locId) : `Stop ${i+1}`;
+      const locName = locId ? await _puLocName(locId) : `Στάση ${i+1}`;
       PU.tabs.push({
         idx: PU.tabs.length,
-        label: loadStops.length > 1 ? `Sheet 1${letters[i]}` : 'Sheet 1',
+        label: loadStops.length > 1 ? `Δελτίο 1${letters[i]}` : 'Δελτίο 1',
         locId, locName, stopType: 'Loading', done: !!sf[F.STOP_PALLET_SHEET_OK],
         stopRecId: loadStops[i].id,
       });
@@ -68,20 +70,20 @@ async function openPalletUpload(orderId) {
     // Cross-dock tabs
     for (const cd of crossDockStops) {
       PU.tabs.push({
-        idx: PU.tabs.length, label: 'Sheet 2',
-        locId: null, locName: 'Veroia Crossdock', stopType: 'Crossdock',
+        idx: PU.tabs.length, label: 'Δελτίο 2',
+        locId: null, locName: 'Cross-Dock Βέροια', stopType: 'Crossdock',
         done: !!cd.fields[F.STOP_PALLET_SHEET_OK], stopRecId: cd.id,
       });
     }
     // If VS order has no cross-dock stop yet, add placeholder tab
     if (f['Veroia Switch'] && !crossDockStops.length) {
-      PU.tabs.push({ idx: PU.tabs.length, label: 'Sheet 2', locId: null,
-        locName: 'Veroia Crossdock', stopType: 'Crossdock', done: false });
+      PU.tabs.push({ idx: PU.tabs.length, label: 'Δελτίο 2', locId: null,
+        locName: 'Cross-Dock Βέροια', stopType: 'Crossdock', done: false });
     }
   } else {
     // No ORDER_STOPS found — show empty state
-    PU.tabs.push({ idx: 0, label: 'Sheet 1', locId: null,
-      locName: 'No stops found', stopType: 'Loading', done: false });
+    PU.tabs.push({ idx: 0, label: 'Δελτίο 1', locId: null,
+      locName: 'Δεν βρέθηκαν στάσεις', stopType: 'Loading', done: false });
   }
 
   // Load partners from ref cache
@@ -126,7 +128,7 @@ function _puRenderModal(clientName) {
          data-idx="${i}" onclick="selectPalletTab(${i})">
       <span class="pu-tab-num">${t.done ? '✓' : (i + 1)}</span>
       <span class="pu-tab-label">${t.locName}</span>
-      <span class="pu-tab-type">${t.stopType}</span>
+      <span class="pu-tab-type">${t.stopType === 'Loading' ? 'Φόρτωση' : 'Cross-dock'}</span>
     </div>
   `).join('');
 
@@ -134,15 +136,15 @@ function _puRenderModal(clientName) {
   <div class="pu-overlay" id="puOverlay" onclick="if(event.target===this)closePalletUpload()">
     <div class="pu-modal">
       <div class="pu-header">
-        <h2>Pallet Exchange</h2>
+        <h2>Ανταλλαγή Παλετών</h2>
         <button class="pu-close" onclick="closePalletUpload()">&times;</button>
       </div>
 
       <div class="pu-strip">
-        <div><span class="pu-strip-label">Order</span><span class="pu-strip-val">${f['Order Number'] || '—'}</span></div>
-        <div><span class="pu-strip-label">Direction</span><span class="pu-strip-val">${f['Direction'] || '—'}</span></div>
-        <div><span class="pu-strip-label">Client</span><span class="pu-strip-val">${clientName || '—'}</span></div>
-        <div><span class="pu-strip-label">Pallets</span><span class="pu-strip-val">${f['Total Pallets'] || '—'}</span></div>
+        <div><span class="pu-strip-label">Παραγγελία</span><span class="pu-strip-val">${f['Reference'] || '—'}</span></div>
+        <div><span class="pu-strip-label">Κατεύθυνση</span><span class="pu-strip-val">${f['Direction'] || '—'}</span></div>
+        <div><span class="pu-strip-label">Πελάτης</span><span class="pu-strip-val">${clientName || '—'}</span></div>
+        <div><span class="pu-strip-label">Παλέτες</span><span class="pu-strip-val">${f['Total Pallets'] || '—'}</span></div>
       </div>
 
       <div class="pu-tabs" id="puTabs">${tabsHtml}</div>
@@ -173,18 +175,18 @@ function _puTabContent(idx) {
          ondrop="event.preventDefault();this.classList.remove('drag-over');_puHandleFile(event.dataTransfer.files[0])">
       <input type="file" id="puFileInput" accept="image/*,.pdf" style="display:none"
              onchange="_puHandleFile(this.files[0])">
-      <div class="pu-upload-icon">📄</div>
-      <div class="pu-upload-text">Drop image or PDF here, or click to select</div>
-      <div class="pu-upload-hint">JPG, PNG, PDF — max 10 MB</div>
+      <div class="pu-upload-icon">${typeof icon === 'function' ? icon('file_text', 28) : ''}</div>
+      <div class="pu-upload-text">Σύρε εικόνα ή PDF εδώ, ή κάνε κλικ για επιλογή</div>
+      <div class="pu-upload-hint">JPG, PNG, PDF — έως 10 MB</div>
     </div>
 
     <div id="puFilePreview" style="display:none" class="pu-file-preview">
       <span id="puFileName"></span>
-      <button class="btn btn-sm" onclick="_puClearFile()">✕</button>
+      <button class="btn btn-sm" onclick="_puClearFile()" title="Αφαίρεση αρχείου">✕</button>
     </div>
 
     <button class="btn btn-scan" id="puBtnExtract" onclick="_puExtractAI()" disabled>
-      AI Extract
+      Ανάγνωση με AI
     </button>
     <div id="puAiStatus" class="pu-status" style="display:none"></div>
   </div>
@@ -199,52 +201,52 @@ function _puTabContent(idx) {
 
     <div class="pu-form-grid">
       <div class="pu-field">
-        <label>Pallets OUT (left at supplier)</label>
+        <label>Δώσαμε (άδειες που αφήσαμε)</label>
         <input type="number" id="puOut" value="0" min="0" oninput="_puUpdateBalance()">
       </div>
       <div class="pu-field">
-        <label>Pallets IN (taken from supplier)</label>
+        <label>Πήραμε (γεμάτες που πήραμε)</label>
         <input type="number" id="puIn" value="0" min="0" oninput="_puUpdateBalance()">
       </div>
       <div class="pu-field">
-        <label>Date</label>
+        <label>Ημερομηνία</label>
         <input type="date" id="puDate">
       </div>
       <div class="pu-field">
-        <label>Transport No.</label>
-        <input type="text" id="puTransport" placeholder="e.g. ABC123">
+        <label>Αρ. μεταφοράς</label>
+        <input type="text" id="puTransport" placeholder="π.χ. ABC123">
       </div>
       ${isLoading ? `
       <div class="pu-field pu-full-width">
         <label class="pu-toggle-label">
           <input type="checkbox" id="puChargePartner" onchange="_puTogglePartner()">
-          <span>Charge Partner</span>
+          <span>Χρέωση συνεργάτη</span>
         </label>
       </div>
       ` : ''}
       <div class="pu-field ${isLoading ? 'pu-partner-field' : ''}" id="puPartnerField"
            style="${isLoading ? 'display:none' : ''}">
-        <label>Partner</label>
+        <label>Συνεργάτης</label>
         <select id="puPartner">
-          <option value="">— Select Partner —</option>
+          <option value="">— Επιλογή συνεργάτη —</option>
           ${(PU.partners || []).map(p =>
             `<option value="${p.id}">${p.fields['Company Name'] || p.id}</option>`
           ).join('')}
         </select>
       </div>
       <div class="pu-field">
-        <label>Issuer</label>
+        <label>Εκδότης</label>
         <input type="text" id="puIssuer" readonly>
       </div>
       <div class="pu-field pu-full-width">
-        <label>Notes</label>
+        <label>Σημειώσεις</label>
         <textarea id="puNotes" rows="2"></textarea>
       </div>
     </div>
 
     <div class="pu-actions">
-      <button class="btn" onclick="_puBackToUpload()">Back</button>
-      <button class="btn btn-new-order" onclick="_puSave()">Save Sheet</button>
+      <button class="btn" onclick="_puBackToUpload()">Πίσω</button>
+      <button class="btn btn-new-order" onclick="_puSave()">Αποθήκευση δελτίου</button>
     </div>
   </div>`;
 }
@@ -268,7 +270,7 @@ function selectPalletTab(idx) {
 function _puHandleFile(file) {
   if (!file) return;
   if (file.size > 10 * 1024 * 1024) {
-    alert('File too large (max 10 MB)');
+    showErrorToast('Το αρχείο είναι πολύ μεγάλο (έως 10 MB)', 'error');
     return;
   }
 
@@ -301,7 +303,7 @@ async function _puExtractAI() {
   btn.disabled = true;
   status.style.display = 'flex';
   status.className = 'pu-status loading';
-  status.innerHTML = '<div class="spinner"></div><span>AI reading document...</span>';
+  status.innerHTML = '<div class="spinner"></div><span>Το AI διαβάζει το έγγραφο...</span>';
 
   try {
     // Build a File-like blob from cached base64 if needed, OR use the cached data directly.
@@ -392,7 +394,7 @@ KEY RULES:
     _puShowConfirm(parsed);
   } catch (e) {
     status.className = 'pu-status error';
-    status.innerHTML = '❌ Extraction failed';
+    status.innerHTML = 'Η ανάγνωση απέτυχε — δοκίμασε ξανά ή συμπλήρωσε χειροκίνητα';
     btn.disabled = false;
     if (typeof logError === 'function') logError(e, 'pallet_upload_extract');
   }
@@ -441,14 +443,14 @@ function _puUpdateBalance() {
   const numEl = document.getElementById('puBalanceNum');
   const descEl = document.getElementById('puBalanceDesc');
 
-  numEl.textContent = bal === 0 ? 'BALANCED' : bal > 0 ? `+${bal}` : String(bal);
+  numEl.textContent = bal === 0 ? 'ΙΣΟΣΚΕΛΙΣΜΕΝΟ' : bal > 0 ? `+${bal}` : String(bal);
   numEl.className = 'pu-balance-num ' + (bal > 0 ? 'positive' : bal < 0 ? 'negative' : 'zero');
 
   descEl.textContent = bal > 0
-    ? `They owe us ${bal} pallets`
+    ? `Μας χρωστάνε ${bal} παλέτες`
     : bal < 0
-      ? `We owe them ${Math.abs(bal)} pallets`
-      : 'Balanced — no debt';
+      ? `Χρωστάμε ${Math.abs(bal)} παλέτες`
+      : 'Ισοσκελισμένο — καμία οφειλή';
 }
 
 /* ── Toggle partner field ────────────────────── */
@@ -518,7 +520,7 @@ async function _puSave() {
   } else {
     // --- CROSSDOCK: Partner records only ---
     if (!partnerId) {
-      alert('Please select a Partner for the crossdock sheet');
+      showErrorToast('Διάλεξε συνεργάτη για το δελτίο cross-dock', 'error');
       return;
     }
     // Partner took pallets from Veroia = OUT (they owe us)
@@ -536,7 +538,7 @@ async function _puSave() {
   }
 
   if (records.length === 0) {
-    alert('No pallets to record (both OUT and IN are 0)');
+    showErrorToast('Καμία παλέτα για καταχώρηση — Δώσαμε και Πήραμε είναι και τα δύο 0', 'error');
     return;
   }
 
@@ -579,8 +581,8 @@ async function _puSave() {
       const body = document.getElementById('puBody');
       body.innerHTML = `<div style="text-align:center;padding:40px">
         <div style="font-size:48px;margin-bottom:16px">✓</div>
-        <div style="font-size:18px;font-weight:600;color:var(--success,#10B981)">All sheets uploaded!</div>
-        <div style="margin-top:8px;color:#64748B">${records.length} records created</div>
+        <div style="font-size:18px;font-weight:600;color:var(--success)">Όλα τα δελτία καταχωρήθηκαν</div>
+        <div style="margin-top:8px;color:var(--text-dim)">${records.length} εγγραφές δημιουργήθηκαν</div>
       </div>`;
       setTimeout(closePalletUpload, 2000);
     }
