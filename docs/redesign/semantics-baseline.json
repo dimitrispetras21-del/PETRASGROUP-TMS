@@ -46,7 +46,7 @@
   "zeroSuspects": {
     "audit": {
       "audit_trail": 0,
-      "metrics_audit": 5
+      "metrics_audit": 8
     },
     "daily_ops": {
       "daily_ops": 0

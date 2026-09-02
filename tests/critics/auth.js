@@ -126,6 +126,15 @@ async function preparePage(page, role = 'owner') {
       name: 'Critic', role: r, username: 'demo_' + r,
       loginAt: Date.now(), expiresAt: Date.now() + 8 * 60 * 60 * 1000,
     }));
+    // tms_jwt ΕΠΙΣΗΣ — μετρήθηκε 3/9/2026: το modules/audit_trail.js:59-60 ελέγχει
+    // την ΥΠΑΡΞΗ token πριν καλέσει το /audit και σταματά στο «No session
+    // token. Sign in again.». Χωρίς αυτή τη γραμμή η οθόνη audit_trail δεν
+    // απέδωσε ΠΟΤΕ στους κριτές — το audit.json κρατούσε μόνο τα πεδία του
+    // metrics_audit, και το fan-in του contract.spec (ένα Set για όλες τις
+    // διαδρομές) το έκρυβε. Η τιμή είναι εμφανώς ψεύτικη επίτηδες: στο replay
+    // το matching γίνεται κατά URL και το header δεν διαβάζεται· ό,τι ξεφύγει
+    // στον ζωντανό Worker παίρνει 401, ακριβώς όπως και χωρίς token.
+    localStorage.setItem('tms_jwt', 'critic.replay.no-real-token');
   }, role);
 
   // Bridge: app.html's bootstrap is `navigate(localStorage.getItem('tms_page')
