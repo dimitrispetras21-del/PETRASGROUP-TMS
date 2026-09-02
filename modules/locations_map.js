@@ -22,19 +22,28 @@ const LMAP = {
   }
 };
 
+// Χρώματα από tokens, όχι ωμά hex (DESIGN.md #1): εδώ μένουν ΟΝΟΜΑΤΑ
+// μεταβλητών του style.css, οι τιμές λύνονται σε runtime (_lmapVar) επειδή το
+// Leaflet γράφει SVG attributes που δεν καταλαβαίνουν var(). Πλησιέστερα
+// υπάρχοντα tokens: hub/wash δεν έχουν δικό τους — ζητήθηκαν --map-hub /
+// --map-wash και παλέτα --map-cli-1…12 στο παραδοτέο του κύματος 2.
 const LMAP_CATS = {
-  client:   { label: 'Πελάτες',               color: '#027BBD' },
-  hub:      { label: 'Αποθήκες / Cross-dock', color: '#7C3AED' },
-  workshop: { label: 'Συνεργεία',             color: '#DC2626' },
-  customs:  { label: 'Τελωνεία',              color: '#F59E0B' },
-  fuel:     { label: 'Καύσιμα',               color: '#059669' },
-  wash:     { label: 'Πλυντήρια',             color: '#0891B2' },
-  partner:  { label: 'Συνεργάτες',            color: '#166534' },
-  unknown:  { label: 'Αταξινόμητα',           color: '#94A3B8' },
+  client:   { label: 'Πελάτες',               v: '--accent' },
+  hub:      { label: 'Αποθήκες / Cross-dock', v: '--navy-mid' },
+  workshop: { label: 'Συνεργεία',             v: '--danger' },
+  customs:  { label: 'Τελωνεία',              v: '--warning' },
+  fuel:     { label: 'Καύσιμα',               v: '--success' },
+  wash:     { label: 'Πλυντήρια',             v: '--accent-hover' },
+  partner:  { label: 'Συνεργάτες',            v: '--chip-partner' },
+  unknown:  { label: 'Αταξινόμητα',           v: '--text-dim' },
 };
+function _lmapVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+Object.keys(LMAP_CATS).forEach(k => Object.defineProperty(LMAP_CATS[k], 'color', { get() { return _lmapVar(this.v); } }));
 
-const LMAP_CLI_COLORS = ['#027BBD','#DC2626','#7C3AED','#F59E0B','#059669','#DB2777',
-  '#0891B2','#CA8A04','#4F46E5','#B91C1C','#15803D','#9333EA'];
+const LMAP_CLI_VARS = ['--accent','--danger','--navy-mid','--warning','--success','--chip-partner',
+  '--accent-hover','--danger-strong','--status-in-progress','--text-mid','--p-accent','--ceo-accent'];
 
 // ── Lazy load Leaflet ──────────────────────────
 // Τοπικά αρχεία, όχι CDN (owner 12/8): μπαίνουν στο service-worker cache όπως
@@ -233,7 +242,7 @@ function _lmapRender(host) {
   LMAP.pts.forEach(p => { if (p.cl) cliCount[p.cl] = (cliCount[p.cl] || 0) + 1; });
   const topCli = Object.keys(cliCount).sort((a, b) => cliCount[b] - cliCount[a]).slice(0, 12);
   LMAP.cliColor = {};
-  topCli.forEach((c, i) => LMAP.cliColor[c] = LMAP_CLI_COLORS[i]);
+  topCli.forEach((c, i) => LMAP.cliColor[c] = _lmapVar(LMAP_CLI_VARS[i]));
   LMAP.cliCount = cliCount;
   S.cats = new Set(Object.keys(LMAP_CATS));
   S.clients = new Set(topCli);
@@ -338,7 +347,7 @@ function _lmapRender(host) {
 
 // ── Σχεδίαση ───────────────────────────────────
 function _lmapColorOf(p) {
-  if (LMAP.S.colorBy === 'client') return (p.cl && LMAP.cliColor[p.cl]) || '#CBD5E0';
+  if (LMAP.S.colorBy === 'client') return (p.cl && LMAP.cliColor[p.cl]) || _lmapVar('--text-dim');
   return (LMAP_CATS[p.g] || LMAP_CATS.unknown).color;
 }
 const _LMAP_IC = new Map();
@@ -346,12 +355,13 @@ function _lmapIcon(color, big) {
   const k = color + (big ? 'b' : '');
   if (_LMAP_IC.has(k)) return _LMAP_IC.get(k);
   const w = big ? 25 : 19, h = big ? 35 : 27;
+  const paper = _lmapVar('--bg-card');
   const i = L.divIcon({
     className: 'lmap-pin', iconSize: [w, h], iconAnchor: [w / 2, h], tooltipAnchor: [0, -h + 6],
     html: '<svg width="' + w + '" height="' + h + '" viewBox="0 0 24 34" aria-hidden="true">' +
       '<path d="M12 33.5C12 33.5 23 20.4 23 12A11 11 0 1 0 1 12c0 8.4 11 21.5 11 21.5z" fill="' +
-      color + '" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>' +
-      '<circle cx="12" cy="12" r="4" fill="#fff" fill-opacity=".92"/></svg>'
+      color + '" stroke="' + paper + '" stroke-width="2" stroke-linejoin="round"/>' +
+      '<circle cx="12" cy="12" r="4" fill="' + paper + '" fill-opacity=".92"/></svg>'
   });
   _LMAP_IC.set(k, i); return i;
 }
@@ -485,8 +495,9 @@ function _lmapSetCenter(la, lo) {
   S.center = [la, lo];
   if (LMAP.circle) LMAP.map.removeLayer(LMAP.circle);
   if (LMAP.cMark) LMAP.map.removeLayer(LMAP.cMark);
-  LMAP.circle = L.circle([la, lo], { radius: S.radiusKm * 1000, color: '#027BBD', weight: 2,
-    fillColor: '#027BBD', fillOpacity: 0.06, dashArray: '6 5' }).addTo(LMAP.map);
+  const accent = _lmapVar('--accent');
+  LMAP.circle = L.circle([la, lo], { radius: S.radiusKm * 1000, color: accent, weight: 2,
+    fillColor: accent, fillOpacity: 0.06, dashArray: '6 5' }).addTo(LMAP.map);
   LMAP.cMark = L.marker([la, lo], { icon: L.divIcon({ className: '', iconSize: [18, 18],
     iconAnchor: [9, 9], html: '<div class="lmap-ctr"><i></i><b></b></div>' }) }).addTo(LMAP.map);
   LMAP.map.fitBounds(LMAP.circle.getBounds(), { padding: [40, 40] });
