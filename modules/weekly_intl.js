@@ -305,6 +305,7 @@ const _WI2_CSS=`
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
 .wi2-void{flex:1;min-height:34px;border-radius:var(--radius);background:var(--bg)}
+.wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
 .wi2-void.navy{background:var(--navy-mid)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
 .wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;align-items:center;height:auto;min-height:38px;white-space:normal;align-self:stretch}
@@ -921,7 +922,7 @@ function _wiImpRowHTML(row,impNo){
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
   let leftInner, leftCls='';
-  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()">ΚΕΝΗ ΚΑΘΟΔΟΣ</div>`; }
+  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()">ΚΕΝΟ EXPORT</div>`; }
   else if(row.saved&&impPartner){ leftCls=' bgap'; leftInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"></div>`; }
   else leftInner=`<div class="wi2-void"></div>`;
 
@@ -1477,7 +1478,7 @@ function _wiRowHTML(row,i){
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
-    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχον import εδώ)">ΚΕΝΟ ΓΥΡΙΣΜΑ${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
+    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχον import εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
   } else if(parCell){
     impInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"></div>`;
   } else {
