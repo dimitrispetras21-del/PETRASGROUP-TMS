@@ -1477,7 +1477,7 @@ function _wiRowHTML(row,i){
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
-    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής. Κλικ: τα αδιάθετα imports (ή σύρε import εδώ)">ΚΕΝΟ ΓΥΡΙΣΜΑ${urg?`<small>ΕΠΕΙΓΟΝ · παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή</small>`:''}</div>`;
+    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχον import εδώ)">ΚΕΝΟ ΓΥΡΙΣΜΑ${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
   } else if(parCell){
     impInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"></div>`;
   } else {
@@ -1508,7 +1508,7 @@ function _wiRowHTML(row,i){
     </div>
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?'style="cursor:pointer"':''}
-         onclick="event.stopPropagation();${gapCell?`_wk3Gaps()`:imp?`_wk3Edit('${row.importId}')`:``}"
+         onclick="event.stopPropagation();${imp?`_wk3Edit('${row.importId}')`:parCell?``:`_wiNewImport(${row.id})`}"
          ondragover="event.preventDefault();document.getElementById('wi-ci-${row.id}').classList.add('dh')"
          ondragleave="document.getElementById('wi-ci-${row.id}').classList.remove('dh')"
          ondrop="event.stopPropagation();_wiDropOnRow(event,${row.id})">${impInner}</div>
@@ -1628,6 +1628,32 @@ async function _wiUnmatch(impId){
   const expRow=WINTL.rows.find(r=>r.type==='export'&&r.importId===impId);
   if(!expRow) return;
   await _wiRemoveImport(expRow.id);
+}
+
+// Κενό κουτί εισαγωγής → νέα παραγγελία εισαγωγής, ήδη δεμένη με το export που
+// την άνοιξε (owner 3/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΟ export περιμένει
+// και το ταίριασμα εκτελείται μόνο αν η φόρμα όντως δημιουργήσει εγγραφή.
+function _wiNewImport(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId);
+  if(!row) return;
+  if(row.importId){ toast('Η γραμμή έχει ήδη ταιριασμένη εισαγωγή','warn'); return; }
+  if(typeof openIntlEditWith!=='function'){ toast('Η φόρμα παραγγελίας δεν είναι διαθέσιμη','warn'); return; }
+  window._wiPendingMatch={rowId,at:Date.now()};
+  openIntlEditWith(null,{Type:'International',Direction:'Import'});
+}
+
+// Καλείται από το orders_intl ΜΟΝΟ μετά από επιτυχή δημιουργία. Τρεις φύλακες,
+// γιατί η φόρμα μπορεί να ακυρωθεί και να δημιουργηθεί άσχετη παραγγελία μετά:
+// σωστή κατεύθυνση, ίδια σελίδα, και το export να μην έχει προλάβει να ταιριάξει.
+async function _wiConsumePendingMatch(newId,fields){
+  const p=window._wiPendingMatch; window._wiPendingMatch=null;
+  if(!p||!newId) return;
+  if((fields||{})['Direction']!=='Import') return;
+  if(typeof currentPage!=='undefined'&&currentPage!=='weekly_intl') return;
+  if(Date.now()-p.at>30*60*1000) return;
+  const row=WINTL.rows.find(r=>r.id===p.rowId);
+  if(!row||row.importId) return;
+  await _wiSaveImportMatch(p.rowId,newId);
 }
 
 // Print import
@@ -2695,6 +2721,8 @@ window._wiOpenImpPopover = _wiOpenImpPopover;
 window._wiClosePopover = _wiClosePopover;
 window._wiSaveFromPopover = _wiSaveFromPopover;
 window._wiClear = _wiClear;
+window._wiNewImport = _wiNewImport;
+window._wiConsumePendingMatch = _wiConsumePendingMatch;
 window._wiRemoveImport = _wiRemoveImport;
 window._wiUnmatch = _wiUnmatch;
 window._wiPrint = _wiPrint;

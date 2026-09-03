@@ -1968,6 +1968,14 @@ async function submitIntlOrder(recId) {
       reportError('Ο συγχρονισμός εθνικού φορτίου απέτυχε', e, 'warn');
     }
 
+    // Weekly International: εισαγωγή που ξεκίνησε από κενό κουτί ταιριάζεται
+    // αμέσως με το export που την άνοιξε (owner 3/9). Πριν το closeModal, ώστε
+    // το repaint από κάτω να δει ήδη γραμμένο το ταίριασμα.
+    if (!recId && typeof window._wiConsumePendingMatch === 'function') {
+      try { await window._wiConsumePendingMatch(savedOrderId, fields); }
+      catch (e) { console.warn('[wi pending match]', e); }
+    }
+
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
     toast(recId ? 'Order updated ✓' : 'Order created ✓');
