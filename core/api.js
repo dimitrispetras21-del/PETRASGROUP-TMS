@@ -757,6 +757,18 @@ const _REF_FIELDS = {
   drivers:   ['Full Name', 'Active'],
   trailers:  ['License Plate', 'Active', ...TRAILER_EXPIRY_NAMES],
   locations: ['Name', 'City', 'Country', 'Latitude', 'Longitude'],
+  // Δ5 (3/9/2026) ΕΚΚΡΕΜΕΙ — ΜΗΝ προσθέσεις 'City'/'Country' εδώ χωρίς νέα
+  // ηχογράφηση HAR. Το Ημερήσιο σχεδιάστηκε με υπογραμμή «ΒΕΡΟΙΑ · GR» κάτω
+  // από κάθε πελάτη και δεν εμφανίζεται ποτέ, ακριβώς επειδή λείπουν από εδώ
+  // (παγίδα facade #2: στήλη που δεν ζητήθηκε δεν γυρίζει, και η απουσία
+  // διαβάζεται ως κενό). Ο Worker ΕΧΕΙ τον χάρτη (City: "city", Country:
+  // "country") — το εμπόδιο είναι ΜΟΝΟ η δοκιμή: το recorded URL του
+  // .har/tms.har κρατά `fields[]=Company Name` σε 20 σελίδες, ο matcher
+  // κανονικοποιεί μόνο ημερομηνίες, άρα κάθε αίτημα γίνεται abort. Μετρήθηκε
+  // 3/9 με το πεδίο προσωρινά προσθεμένο: 3 ακυρωμένα αιτήματα και ΝΕΑ
+  // σφάλματα κονσόλας σε daily_ops (περιεχόμενο 23 χαρακτήρες), invoicing (49),
+  // clients, orders_intl — δηλαδή κριτής #6 κόκκινος παντού.
+  // Σειρά ενεργειών: νέο HAR → μετά η προσθήκη. Όχι το αντίστροφο.
   clients:   ['Company Name'],
   partners:  ['Company Name', 'Adress', 'Country'],
 };
