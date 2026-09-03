@@ -253,7 +253,12 @@ const _WI2_CSS=`
 .wi2-card.ok{background:var(--success-bg);border-color:var(--success)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
 .wi2-date{flex-shrink:0;font:700 10.5px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:4px;padding:2px 6px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
-.wk3.wi2 .wi2-date.wk3-ld{width:auto;text-align:left;margin:0;font-size:10.5px}
+/* ΣΤΟΙΧΙΣΗ (owner 3/9): το πλακίδιο έπαιρνε πλάτος από το περιεχόμενο —
+   μετρήθηκαν 26,6px («1/9») έως 44px («28/8» με ✓) — και το όνομα του
+   πελάτη ξεκινούσε σε έξι διαφορετικά x μέσα στην ίδια στήλη (560..577).
+   min-width αντί για width: τα κοντά πλακίδια γεμίζουν ως το κοινό όριο,
+   ένα μελλοντικό πιο μακρύ σπρώχνει αντί να κοπεί. */
+.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:46px;box-sizing:border-box;text-align:left;margin:0;font-size:10.5px}
 .wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent}
 .wi2-cb{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
 .wi2-name{font-size:12px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:break-word;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
@@ -1131,9 +1136,23 @@ function _wk3AddDays(iso,days){ const d=new Date(iso+'T12:00:00'); d.setDate(d.g
 function _wi2Split(str){
   const parts=_wiRaw(str||'').split(',').map(t=>t.trim()).filter(Boolean);
   let cc='',city='',title=parts[0]||'';
+  // ΔΥΟ ΠΑΡΑΓΩΓΟΙ, ΔΥΟ ΣΕΙΡΕΣ (owner 3/9 — «χάνεται η πόλη»):
+  //  · το Summary της βάσης γράφει «Τίτλος, CC, Πόλη»
+  //  · η ετικέτα του core/form-helpers.js:22 γράφει «Όνομα, Πόλη, Χώρα»
+  // Ο παλιός κώδικας κοίταζε ΜΟΝΟ μετά τον κωδικό χώρας, οπότε στη δεύτερη
+  // σειρά η πόλη πεταγόταν σιωπηλά: η φόρτωση έδειχνε σκέτο «GR» ενώ η
+  // παράδοση έδειχνε «Πόλη, CC».
+  // ΑΥΣΤΗΡΩΣ ΠΡΟΣΘΕΤΙΚΟ: η παλιά διαδρομή μένει byte-ίδια· κοιτάμε πριν τον
+  // κωδικό ΜΟΝΟ αν η παλιά δεν βρήκε πόλη. Μετρήθηκε 3/9: χωρίς αυτό, μία
+  // γραμμή παράδοσης έχανε το «Slovenia» που έδειχνε πριν.
   for(let i=1;i<parts.length;i++){
     const c=/^[A-Z]{2}$/.test(parts[i])?parts[i]:(_WK3CC[parts[i].toUpperCase()]||null);
-    if(c){ cc=c; if(parts[i+1]&&!/^[A-Z]{2}$/.test(parts[i+1])) city=parts[i+1]; break; }
+    if(c){
+      cc=c;
+      if(parts[i+1]&&!/^[A-Z]{2}$/.test(parts[i+1])) city=parts[i+1];
+      else if(i>1&&parts[i-1]&&!/^[A-Z]{2}$/.test(parts[i-1])) city=parts[i-1];
+      break;
+    }
   }
   return {title,city,cc};
 }
@@ -1375,16 +1394,19 @@ function _wiRowHTML(row,i){
     const il=_wi2Loc(f2['Loading Summary']||f2['Client Name']||f2['Client Summary']||'—','Φόρτωση',f2._stopsL);
     const ilIso=f2['Loading DateTime']||'';
     const iload=_wi2Card({cls:stI.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',ilIso,ilIso?_wk3D(_wiFmt(ilIso)):'—',stI.loaded?' done':'','Ημ. φόρτωσης εισαγωγής'+(stI.loaded?' — φορτώθηκε ✓':'')), name:il.name, sub:il.sub, extra:_wk3MoreStops(f2['Loading Summary']||'',f2._stopsL,'load')});
-    // Narrow column: pallets + flags go under the name, only the × stays on the right
-    const isub=`<span class="wi2-flags">${_wiBadges(f2)}</span> ${_wi2Pal(f2)}`;
-    const iright=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`;
+    // ΙΔΙΑ ΘΕΣΗ ΜΕ ΤΗΝ ΕΞΑΓΩΓΗ (owner 3/9): οι παλέτες και τα σήματα έμπαιναν
+    // εδώ στη ΔΕΥΤΕΡΗ ΣΕΙΡΑ, κάτω από το όνομα, ενώ στην εξαγωγή μπαίνουν στη
+    // δεξιά θυρίδα — δύο ιδιώματα για το ίδιο πράγμα στην ίδια γραμμή. Και
+    // επειδή μοιράζονταν τη σειρά με την πόλη, η πόλη στριμωχνόταν πίσω από
+    // «PE · 33 p». Τώρα: δεξιά οι παλέτες, η δεύτερη σειρά μένει της πόλης.
+    const iright=`<span class="wi2-flags">${_wiBadges(f2)}</span>${_wi2Pal(f2)}<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wiUnmatch('${imp.id}')">×</button>`;
     let idel;
     if(impVS){ const v=_wk3VsCd(f2,'imp');
       // Matched preview is the narrow column: «Cross-Dock VS» on one line, no city (the badge says it)
-      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stI.delivered?' done':'')+(stI.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:isub, title:'Cross-Dock Βέροια', right:iright});
+      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stI.delivered?' done':'')+(stI.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'', title:'Cross-Dock Βέροια', right:iright});
     } else {
       const id2=_wi2Loc(f2['Delivery Summary']||f2['Client Name']||f2['Client Summary']||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
-      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:(id2.sub?id2.sub+' · ':'')+isub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
+      idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
