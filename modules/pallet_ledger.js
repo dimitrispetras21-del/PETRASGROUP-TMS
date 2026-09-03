@@ -411,6 +411,11 @@ function _plvDraw() {
     <div id="plvTbl" style="margin-top:12px">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvListHtml(rows)}</div>
   </div>
   <div id="plvModal"></div>`;
+  // Όλο το #plvTbl ως ΕΝΑ σύνολο: στην ομαδοποιημένη όψη κάθε ομάδα είναι δικός
+  // της <table>, αλλά οι στήλες ΠΡΕΠΕΙ να μένουν ίδιες μεταξύ ομάδων — κρίση ανά
+  // ομάδα θα έδινε διαφορετικές στήλες ανά πελάτη και θα κατέστρεφε την
+  // ευθυγράμμιση που το κοινό colgroup υπάρχει για να κρατά.
+  collapseEmptyColumns('plvTbl', 'pallets:list');
 }
 
 /* ── Redesign 27/8: ιεραρχία πελάτης → σημείο → κινήσεις ──
@@ -472,6 +477,30 @@ const _PLV_EMPTY = (cols) => `<tr><td colspan="${cols}" class="plv-empty" style=
 
 // Ίδια πλάτη σε ΟΛΑ τα τμήματα ώστε οι στήλες να ευθυγραμμίζονται μεταξύ ομάδων.
 const _PLV_COLS_G = `<colgroup><col style="width:8%"><col style="width:7%"><col style="width:13%"><col style="width:20%"><col style="width:7%"><col style="width:7%"><col style="width:11%"><col style="width:14%"><col style="width:4%"><col style="width:9%"></colgroup>`;
+
+// Κεφαλίδα της ΟΜΑΔΟΠΟΙΗΜΕΝΗΣ όψης (owner 3/9). Μέχρι σήμερα κεφαλίδες είχε
+// ΜΟΝΟ η ομαδοποίηση «Χωρίς» — δηλαδή η μόνη που ΔΕΝ είναι η προεπιλογή. Η
+// λογίστρια έβλεπε «↓ 32 · ↑ 0» χωρίς τίποτα να της λέει ποιο είναι ποιο, και
+// οι κεφαλίδες εμφανίζονταν μόνο όταν ο πίνακας ήταν άδειος (_plvListHtml
+// πέφτει στο _plvTableHtml όταν rows.length === 0).
+//
+// ΜΙΑ φορά πάνω από τις ομάδες, ΟΧΙ μία ανά ομάδα: οι επτά ομάδες θα έτρωγαν
+// επτά γραμμές ύψους — ακριβώς ο χώρος που το redesign της 27/8 πάλεψε να
+// κερδίσει (15 ορατές γραμμές αντί για ≥20 στα 1080p). Ευθυγραμμίζεται επειδή
+// μοιράζεται ΤΟ ΙΔΙΟ colgroup και table-layout:fixed με κάθε πίνακα ομάδας.
+//
+// Η 4η στήλη αλλάζει νόημα με την ομαδοποίηση: όταν ομαδοποιούμε ανά σημείο, η
+// επικεφαλίδα της ομάδας ΕΙΝΑΙ το σημείο, οπότε η γραμμή δείχνει τον
+// αντισυμβαλλόμενο (βλ. _plvMovementRow) — η κεφαλίδα ακολουθεί, αλλιώς θα
+// έλεγε ψέματα.
+const _plvGroupHead = () => `<div style="overflow-x:auto"><table class="plv-tbl" style="table-layout:fixed">${_PLV_COLS_G}
+      <tr>
+        <th>Κωδ.</th><th>Ημ/νία</th><th>Είδος</th>
+        <th>${PLV.groupBy === 'location' ? 'Αντισυμβαλλόμενος' : 'Σημείο'}</th>
+        <th class="plv-num">Πήραμε</th><th class="plv-num">Δώσαμε</th>
+        <th>Reference</th><th>Μεταφορικό</th><th title="Δελτίο"></th><th>Κατάσταση</th>
+      </tr>
+    </table></div>`;
 
 function _plvTableHtml(rows) {
   return `
@@ -545,6 +574,9 @@ function plvToggleGroup(key) {
   PLV.open[key] = !_plvIsOpen(key, groups.length);
   const el = document.getElementById('plvTbl');
   if (el) el.innerHTML = _plvListHtml(_plvRows());
+  // Το δίπλωμα ομάδας ξαναγράφει τη λίστα χωρίς να περάσει από το _plvDraw:
+  // χωρίς αυτή τη γραμμή, το άνοιγμα μιας ομάδας θα επανέφερνε τις κενές στήλες.
+  collapseEmptyColumns('plvTbl', 'pallets:list');
 }
 
 function plvGroupBy(mode) {
@@ -557,7 +589,7 @@ function _plvListHtml(rows) {
   if (PLV.groupBy === 'none' || !rows.length) return _plvTableHtml(rows);
   const groups = _plvBuildGroups(rows);
   const arrow = (o) => `<span class="plv-dim" style="display:inline-block;width:12px;font-size:10px">${o ? '▾' : '▸'}</span>`;
-  let html = '<div>';
+  let html = '<div>' + _plvGroupHead();
   groups.forEach(T => {
     const o = _plvIsOpen(T.key, groups.length);
     let balHtml = '';

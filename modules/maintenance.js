@@ -639,17 +639,23 @@ function _expiryPaint() {
     </div>
 
     <div class="mnt-section"><b>ΦΟΡΤΗΓΑ</b><span class="mnt-sub">${fTrucks.length}${fTrucks.length !== truckRows.length ? ` από ${truckRows.length}` : ''} ενεργά</span></div>
-    <table class="mnt-table">
+    <table class="mnt-table" id="exp-tbl-trucks">
       <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${truckHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
       <tbody>${fTrucks.length ? rowsFor(fTrucks, TRUCK_EXPIRY_FIELDS, 'Truck') : emptyRow(3 + TRUCK_EXPIRY_FIELDS.length, 'Κανένα φορτηγό σε αυτή την κατηγορία')}</tbody>
     </table>
 
     <div class="mnt-section" style="margin-top:var(--space-4)"><b>ΡΥΜΟΥΛΚΕΣ</b><span class="mnt-sub">${fTrailers.length}${fTrailers.length !== trailerRows.length ? ` από ${trailerRows.length}` : ''} ενεργές</span></div>
-    <table class="mnt-table">
+    <table class="mnt-table" id="exp-tbl-trailers">
       <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${trailerHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
       <tbody>${fTrailers.length ? rowsFor(fTrailers, TRAILER_EXPIRY_FIELDS, 'Trailer') : emptyRow(3 + TRAILER_EXPIRY_FIELDS.length, 'Καμία ρυμούλκα σε αυτή την κατηγορία')}</tbody>
     </table>
     <div class="mnt-foot">Ασφαλιστής ρυμουλκών: δεν υπάρχει στήλη στον πίνακα trailers — δεν καταχωρείται ακόμη. · Κλικ σε ημερομηνία ή ασφαλιστή για επεξεργασία.</div>`;
+
+  // ΧΩΡΙΣΤΑ ανά πίνακα, ΠΟΤΕ μαζί: φορτηγά και ρυμούλκες έχουν ίδιο πλήθος
+  // στηλών, αλλά ο ΑΣΦΑΛΙΣΤΗΣ είναι γεμάτος στα φορτηγά και κενός στις
+  // ρυμούλκες. Κοινή κρίση θα κρατούσε ζωντανές 37 παύλες.
+  collapseEmptyColumns('exp-tbl-trucks', 'maint:expiry:trucks');
+  collapseEmptyColumns('exp-tbl-trailers', 'maint:expiry:trailers');
 }
 
 function _expirySearchFn(v) {
@@ -817,7 +823,7 @@ function _svcPaint() {
       ${_mntRefreshBtn("MAINT.history=[];renderServiceRecords()")}
     </div>
 
-    <table class="mnt-table">
+    <table class="mnt-table" id="svc-tbl">
       <thead><tr>
         <th style="width:100px">ΗΜ/ΝΙΑ</th><th style="width:150px">ΟΧΗΜΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th>
         <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px">ΚΟΣΤΟΣ</th><th class="r" style="width:120px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
@@ -829,6 +835,12 @@ function _svcPaint() {
             action: anyFilter ? { label: 'Καθαρισμός φίλτρων', onClick: '_svcClearFilters()' } : { label: 'Νέα εγγραφή', onClick: '_svcOpenForm()' }
           })}</td></tr>`}</tbody>
     </table>`;
+
+  // ΑΡ. ΑΝΤ/ΚΟΥ και ΟΔΟΜΕΤΡΟ ΔΕΝ κρύβονται εδώ, και είναι σκόπιμο: έχουν 62 και
+  // 76 πραγματικές τιμές αντίστοιχα στις 1.095 (Supabase 3/9). Ο κανόνας κόβει
+  // μόνο στο 100%. Θα κρυφτούν μόνοι τους όταν ένα φίλτρο αφήσει ορατές μόνο
+  // γραμμές χωρίς τιμή — εκεί όντως δεν λένε τίποτα.
+  collapseEmptyColumns('svc-tbl', 'maint:svc');
 }
 
 // ── Record card (w2-maint-service-record-card 196:754) ──────────
@@ -1284,7 +1296,7 @@ function _historyPaint(vType) {
         </div>
       </div>
 
-      <table class="mnt-table">
+      <table class="mnt-table" id="hist-tbl">
         <thead><tr>
           <th style="width:110px">ΗΜ/ΝΙΑ</th><th style="width:200px">ΚΑΤΗΓΟΡΙΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:220px">ΣΥΝΕΡΓΕΙΟ</th>
           <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:120px">ΚΟΣΤΟΣ</th><th class="r" style="width:130px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
@@ -1297,6 +1309,11 @@ function _historyPaint(vType) {
         })}</td></tr>`}</tbody>
       </table>
     `}`;
+
+  // Ένα όχημα τη φορά: εδώ οι στήλες αδειάζουν πολύ πιο εύκολα από ό,τι στο
+  // συνολικό Ιστορικό — γι' αυτό ο κανόνας κρίνει τις ΟΡΑΤΕΣ γραμμές και όχι
+  // τον πίνακα ολόκληρο. Χωριστό κλειδί ανά τύπο οχήματος.
+  collapseEmptyColumns('hist-tbl', 'maint:hist:' + vType);
 }
 
 // Export history to CSV

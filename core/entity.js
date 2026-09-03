@@ -3,6 +3,138 @@
 // Generic CRUD renderer for master data tables
 // ═══════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════
+// ΚΟΙΝΟΣ ΚΑΝΟΝΑΣ — ΣΤΗΛΕΣ ΠΟΥ ΔΕΝ ΕΧΟΥΝ ΠΕΙ ΠΟΤΕ ΤΙΠΟΤΑ
+// ═══════════════════════════════════════════════════════════════════════
+// ΤΙ ΛΥΝΕΙ (μετρημένο 3/9/2026): ΑΝΑΝΕΩΘΗΚΕ 65/65 κενή · ΑΣΦΑΛΙΣΤΗΣ
+// ρυμουλκών 37/37 (δεν υπάρχει καν στήλη `insurance_partner` στο trailers) ·
+// Πόλη/Τηλέφωνο συνεργείων 0/70 · Επαφή συνεργατών 0/432 · Reference/
+// Μεταφορικό/Δελτίο στο Ισοζύγιο. Έπιαναν 26–31% του πλάτους σε αρκετούς
+// πίνακες, και οι παύλες τους έχουν ΜΕΓΑΛΥΤΕΡΗ αντίθεση (17.85:1) από τα
+// ίδια τα δεδομένα — τραβούσαν το μάτι περισσότερο από την πληροφορία.
+//
+// ΓΙΑΤΙ ΕΔΩ και όχι σε δικό του `core/dead-columns.js`: νέο αρχείο σημαίνει
+// νέο <script> στο app.html, που αυτός ο γύρος δεν αγγίζει. Το entity.js
+// φορτώνεται πριν από ΟΛΑ τα modules (app.html:117), άρα οι τέσσερις οθόνες
+// που το καλούν (entity · maintenance · locations · pallet_ledger) το βρίσκουν
+// έτοιμο. Μεταφέρεται αυτούσιο αν κάποτε γίνει δικό του αρχείο.
+//
+// ΤΟ ΚΑΤΩΦΛΙ ΕΙΝΑΙ ΑΠΟΦΑΣΗ, ΟΧΙ ΛΕΠΤΟΜΕΡΕΙΑ — και είναι 100%. Το 93% ΔΕΝ
+// κρύβεται: το ΟΔΟΜΕΤΡΟ έχει 76 πραγματικές τιμές σε 1.095 γραμμές (Supabase
+// 3/9, σε ΚΑΘΕ έτος: 21+43+8) και αυτές ακριβώς οι 76 είναι που ψάχνει
+// κάποιος. Κάθε κατώφλι κάτω από το 100% κρύβει δεδομένα από κάποιον· το 100%
+// δεν είναι κρίση, είναι μέτρηση. Αλλάζει σε ΕΝΑ σημείο: DEAD_COL_THRESHOLD.
+//
+// «ΟΡΑΤΕΣ ΓΡΑΜΜΕΣ», ΟΧΙ ΟΛΟΣ Ο ΠΙΝΑΚΑΣ: ο κανόνας κρίνει ό,τι αποδίδεται τώρα,
+// γι' αυτό δουλεύει πάνω στο DOM και όχι πάνω στα records. Συνέπεια που είναι
+// χαρακτηριστικό, όχι σφάλμα: η Επαφή πελατών (1 γεμάτη στις 1.920) κρύβεται
+// στις πρώτες 500 και ΞΑΝΑΕΜΦΑΝΙΖΕΤΑΙ μόλις η αναζήτηση φέρει τον έναν πελάτη
+// που την έχει. Το ίδιο ανά σελίδα στις Τοποθεσίες.
+//
+// ΤΟ ΠΕΔΙΟ ΔΕΝ ΧΑΝΕΤΑΙ: μόνο `display:none`. Τα <th>/<td> μένουν στο DOM, και
+// η καρτέλα, η φόρμα και η εξαγωγή CSV διαβάζουν από τα δεδομένα — δεν
+// περνούν από εδώ καθόλου.
+//
+// ΚΑΙ ΑΚΟΥΓΕΤΑΙ (αρχή 1): κάτω από τον πίνακα μπαίνει γραμμή που ΟΝΟΜΑΖΕΙ τις
+// στήλες που κρύφτηκαν, με κουμπί επαναφοράς. Χωρίς αυτό θα ήταν σιωπηλή
+// εξαφάνιση πεδίου — ακριβώς το λάθος που το έργο ήδη πλήρωσε.
+
+// Κενό = τίποτα ή σκέτη παύλα. Το «— δεν έχει καταχωρηθεί» ΔΕΝ είναι κενό:
+// είναι πρόταση, και η στήλη που τη γράφει κάνει τη δουλειά της.
+const DEAD_COL_EMPTY_RE = /^[\s—–-]*$/;
+// 1 = κενή σε ΟΛΕΣ τις ορατές γραμμές. Βλ. «ΤΟ ΚΑΤΩΦΛΙ» παραπάνω πριν το αλλάξεις.
+const DEAD_COL_THRESHOLD = 1;
+
+const _deadColRevealed = new Set();   // κλειδιά που ο χρήστης ξε-έκρυψε
+const _deadColRoots = {};             // κλειδί → ρίζα, για το toggle
+
+/**
+ * Κρύβει οπτικά κάθε στήλη που είναι κενή σε όλες τις ορατές γραμμές.
+ * Ξαναεκτελείται σε κάθε βάψιμο· είναι idempotent (καθαρίζει πρώτα τα δικά της).
+ * @param {HTMLElement|string} root - πίνακας ή περιέκτης πινάκων (id ή στοιχείο).
+ *   Περιέκτης ΜΟΝΟ όταν όλοι οι πίνακες μέσα μοιράζονται τις ίδιες στήλες
+ *   (Ισοζύγιο: μία κεφαλίδα, ένας πίνακας ανά ομάδα). Στις Λήξεις περνιέται
+ *   κάθε πίνακας ΧΩΡΙΣΤΑ: φορτηγά και ρυμούλκες έχουν ίδιο πλήθος στηλών αλλά
+ *   ο ΑΣΦΑΛΙΣΤΗΣ είναι γεμάτος μόνο στα φορτηγά.
+ * @param {string} key - σταθερό κλειδί ανά πίνακα· κρατά το «Εμφάνιση» ζωντανό
+ *   μετά από repaint (κάθε πάτημα στην αναζήτηση ξαναγράφει το innerHTML).
+ */
+function collapseEmptyColumns(root, key) {
+  const el = typeof root === 'string' ? document.getElementById(root) : root;
+  if (!el) return;
+  _deadColRoots[key] = el;
+
+  // Πάντα από μηδέν. Ο πίνακας των Τοποθεσιών ΔΕΝ ξαναχτίζεται σε κάθε βάψιμο
+  // (αλλάζει μόνο το tbody), οπότε κεφαλίδα κρυμμένη στη σελίδα 1 θα έμενε
+  // κρυμμένη και στη σελίδα 7 που έχει τιμές.
+  el.querySelectorAll('[data-deadcol]').forEach(n => {
+    n.style.display = ''; n.removeAttribute('data-deadcol');
+  });
+  const prev = document.querySelector(`[data-deadcol-note="${key}"]`);
+  if (prev) prev.remove();
+
+  const trs = [...el.querySelectorAll('tr')];
+  const headRow = trs.find(r => r.querySelector('th'));
+  if (!headRow) return;
+  const head = [...headRow.cells];
+  // Γραμμές δεδομένων = ίδιο πλήθος κελιών με την κεφαλίδα. Αυτό κόβει τις
+  // γραμμές colspan (κενή κατάσταση, «πρώτες 500 από…»), που αλλιώς θα
+  // μετριόνταν ως ένα κενό κελί σε κάθε στήλη και θα έκρυβαν ΟΛΟΝ τον πίνακα.
+  const rows = trs.filter(r => r !== headRow && !r.querySelector('th')
+                               && r.cells.length === head.length);
+  if (!rows.length) return;   // κενός πίνακας: οι κεφαλίδες ΜΕΝΟΥΝ
+
+  const label = th => (th.textContent.trim() || th.getAttribute('title') || '');
+  const dead = [];
+  head.forEach((th, i) => {
+    // Στήλη χωρίς όνομα = στήλη ενεργειών/εικονιδίου, δεν κρίνεται από κείμενο.
+    // Το title μετράει ως όνομα: το «Δελτίο» του Ισοζυγίου ζει μόνο εκεί.
+    if (!label(th) || th.hasAttribute('data-keep-col')) return;
+    const empty = rows.filter(r => DEAD_COL_EMPTY_RE.test(r.cells[i].textContent)).length;
+    if (empty / rows.length >= DEAD_COL_THRESHOLD) dead.push(i);
+  });
+  if (!dead.length) return;
+
+  const hidden = !_deadColRevealed.has(key);
+  if (hidden) {
+    // Τα <col> κρύβονται ΜΑΖΙ με τα κελιά: με table-layout:fixed (Ισοζύγιο) τα
+    // πλάτη έρχονται από το colgroup, οπότε κρυμμένο κελί με ορατό col αφήνει
+    // τη στήλη να κρατά τον χώρο της και δεν κερδίζεται τίποτα.
+    const cgs = [...el.querySelectorAll('colgroup')].filter(g => g.children.length === head.length);
+    dead.forEach(i => {
+      [head[i], ...rows.map(r => r.cells[i]), ...cgs.map(g => g.children[i])]
+        .forEach(n => { n.style.display = 'none'; n.setAttribute('data-deadcol', ''); });
+    });
+  }
+
+  const note = document.createElement('div');
+  note.setAttribute('data-deadcol-note', key);
+  note.style.cssText = 'display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;'
+    + 'padding:var(--space-2) var(--space-3);color:var(--text-dim);font-size:var(--text-xs)';
+  const txt = document.createElement('span');
+  txt.textContent = (hidden ? 'Κρυμμένες στήλες — καμία τιμή στις γραμμές που βλέπεις: '
+                            : 'Χωρίς καμία τιμή στις γραμμές που βλέπεις: ');
+  const names = document.createElement('b');
+  names.style.fontWeight = '600';
+  names.textContent = dead.map(i => label(head[i])).join(', ');
+  txt.appendChild(names);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = hidden ? 'Εμφάνιση' : 'Απόκρυψη';
+  btn.style.cssText = 'background:none;border:0;padding:0;cursor:pointer;'
+    + 'color:var(--accent-text);font:inherit;text-decoration:underline';
+  btn.onclick = () => toggleDeadColumns(key);
+  note.append(txt, btn);
+  el.insertAdjacentElement('afterend', note);
+}
+
+function toggleDeadColumns(key) {
+  if (_deadColRevealed.has(key)) _deadColRevealed.delete(key);
+  else _deadColRevealed.add(key);
+  const el = _deadColRoots[key];
+  if (el && el.isConnected) collapseEmptyColumns(el, key);
+}
+
 // ── Entity Config Registry ───────────────────────
 const ENTITY_CONFIG = {
 
@@ -199,7 +331,13 @@ const ENTITY_CONFIG = {
       { field: 'Full Name',      label: 'Οδηγός', primary: true },
       { field: 'Phone',          label: 'Τηλέφωνο' },
       { field: 'Type',           label: 'Τύπος', type: 'tag', emphasize: ['Internal'] },
-      { field: 'Salary Base',    label: 'Μισθός', perm: 'full' },   // DV-3: μισθοδοσία — μόνο με δικαίωμα εγγραφής
+      // Η στήλη «Μισθός» ΕΦΥΓΕ από τη λίστα (owner 3/9). ΔΕΝ κρύφτηκε: το
+      // κρύψιμο λέει «κενή σήμερα, ίσως γεμίσει αύριο», και εδώ αυτό είναι
+      // ψέμα — δεν υπάρχει στήλη salary/wage στο `drivers` (information_schema
+      // 29/8, ξαναμετρημένο 3/9), άρα δεν μπορεί να γεμίσει χωρίς migration.
+      // Το πεδίο ΔΕΝ χάθηκε: μένει στη φόρμα (κλειδωμένο, με τον λόγο) και στην
+      // καρτέλα (cardNotice «Δεν έχει καταχωρηθεί») — εκεί όπου η απουσία
+      // εξηγείται αντί να καταλαμβάνει μια στήλη με 59 παύλες.
       { field: 'License Number', label: 'Αρ. διπλώματος' },
       { field: 'License Expiry', label: 'Δίπλωμα έως', type: 'expiry' },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
@@ -457,7 +595,11 @@ const ENTITY_CONFIG = {
     filters: [
       { field: 'Specialty', label: 'Ειδικότητα', type: 'dynamic' },
       { field: 'Country',   label: 'Χώρα',       type: 'dynamic' },
-      { field: 'City',      label: 'Πόλη',       type: 'dynamic' },
+      // Το φίλτρο «Πόλη» ΕΦΥΓΕ (owner 3/9): `workshops.city` είναι 0/70 στη
+      // Supabase, άρα το dynamic dropdown πρόσφερε μία και μόνη επιλογή —
+      // «Όλα». Ένα φίλτρο που δεν φιλτράρει υπόσχεται δεδομένα που δεν
+      // υπάρχουν. Η ΣΤΗΛΗ μένει (η στήλη city υπάρχει και μπορεί να γεμίσει)
+      // και κρύβεται μόνη της από τον κανόνα των κενών στηλών.
       { field: 'Active',    label: 'Κατάσταση',    type: 'bool', options: [
         { val: '', label: 'Όλα' },
         { val: 'true',  label: 'Ενεργός' },
@@ -471,9 +613,10 @@ const ENTITY_CONFIG = {
       { field: 'City',           label: 'Πόλη' },
       { field: 'Specialty',      label: 'Ειδικότητα' },
       { field: 'Phone',          label: 'Τηλέφωνο' },
-      { field: '_serviceCount',  label: 'Εργασίες', type: 'number' },
-      { field: '_totalSpend',    label: 'Δαπάνη',    type: 'currency' },
-      { field: '_lastUsed',      label: 'Τελευταία χρήση', type: 'date_rel' },
+      // keepEmpty: γεμίζουν από το _enrichWorkshopsV2, ΜΕΤΑ το πρώτο βάψιμο.
+      { field: '_serviceCount',  label: 'Εργασίες', type: 'number', keepEmpty: true },
+      { field: '_totalSpend',    label: 'Δαπάνη',    type: 'currency', keepEmpty: true },
+      { field: '_lastUsed',      label: 'Τελευταία χρήση', type: 'date_rel', keepEmpty: true },
       { field: 'Active',         label: 'Κατάσταση', type: 'active' },
     ],
     // Per workshops-form 120:654: Στοιχεία / Επικοινωνία / Διεύθυνση.
@@ -1098,7 +1241,9 @@ function clearEntityFilters(entityKey) {
 /**
  * Οι στήλες που επιτρέπεται να δει ο τρέχων ρόλος.
  * Μια στήλη με perm:'full' κρύβεται όταν το δικαίωμα του τμήματος είναι μόνο
- * ανάγνωση — DV-3: ο dispatcher (drivers:'view') έβλεπε τον ΜΙΣΘΟ κάθε οδηγού.
+ * ανάγνωση (DV-3). ΣΗΜΕΡΑ ΚΑΜΙΑ ΣΤΗΛΗ ΔΕΝ ΤΟ ΧΡΗΣΙΜΟΠΟΙΕΙ: η μόνη που το είχε
+ * ήταν ο ΜΙΣΘΟΣ των οδηγών, που αφαιρέθηκε 3/9 (δεν υπάρχει στήλη στη βάση).
+ * Ο μηχανισμός μένει γιατί η επόμενη στήλη μισθοδοσίας/κόστους θα τον θέλει.
  * CLIENT-SIDE ΜΟΝΟ: το πεδίο εξακολουθεί να επιστρέφεται από το backend.
  * @param {Object} cfg - ENTITY_CONFIG entry
  * @returns {Array} ορατές στήλες
@@ -1133,10 +1278,7 @@ function buildEntityTable(entityKey, records) {
       if (seen.has(n)) _dupPlates.add(n); else seen.set(n, r.id);
     });
   }
-  // DV-3: ο dispatcher έχει drivers:'view' και έβλεπε τη στήλη ΜΙΣΘΟΣ όλων των
-  // οδηγών. Οι στήλες με perm:'full' κρύβονται όταν το δικαίωμα είναι μόνο
-  // ανάγνωση. CLIENT-SIDE ΜΟΝΟ — δεν αντικαθιστά server RBAC, το πεδίο
-  // εξακολουθεί να έρχεται στην απόκριση.
+  // Πύλη ρόλου ανά στήλη (DV-3) — χωρίς χρήστη σήμερα· βλ. _entityVisibleCols.
   const cols = _entityVisibleCols(cfg);
   const s = _entitySort[entityKey] || { col: null, dir: 0 };
   const sortedRecs = _entitySortRecords(entityKey, records);
@@ -1151,7 +1293,11 @@ function buildEntityTable(entityKey, records) {
     // money — Year is a fixed 4-digit label and stays left (spec 2026-08-29 §3).
     const alignRight = cfg.v2 ? (c.type === 'currency' || !!c.unit)
                               : (c.type === 'number' || c.type === 'currency');
-    return `<th style="cursor:pointer;user-select:none${alignRight?';text-align:right':''}" aria-sort="${ariaSort}" tabindex="0" role="button"
+    // keepEmpty: εξαίρεση από τον κανόνα των κενών στηλών, για στήλες που
+    // γεμίζουν ΜΕΤΑ το πρώτο βάψιμο. Χωρίς αυτό οι τρεις στήλες εμπλουτισμού
+    // των Συνεργείων κρύβονταν στο πρώτο render και επανέρχονταν 200ms μετά —
+    // ο πίνακας αναπηδούσε μπροστά στα μάτια του χρήστη σε κάθε φόρτωση.
+    return `<th ${c.keepEmpty ? 'data-keep-col ' : ''}style="cursor:pointer;user-select:none${alignRight?';text-align:right':''}" aria-sort="${ariaSort}" tabindex="0" role="button"
       onclick="entitySortToggle('${entityKey}',${i})"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
   }).join('');
@@ -1367,6 +1513,9 @@ function applyEntityFilters(entityKey) {
   st.filtered = recs;
   const noun = cfg.countNoun || ['εγγραφή', 'εγγραφές'];
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
+  // Η ΜΟΝΗ διαδρομή που αποδίδει τον πίνακα και για τις έξι οθόνες — άρα και το
+  // μόνο σημείο που χρειάζεται ο κανόνας των κενών στηλών.
+  collapseEmptyColumns(entityKey + '_table', 'entity:' + entityKey);
   document.getElementById(entityKey + '_count').textContent =
     recs.length.toLocaleString('el-GR') + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
 }

@@ -267,6 +267,9 @@ function _locRenderTable() {
     // Κενό ≠ αποτυχία (κανόνας #7): η φόρτωση πέτυχε, τα φίλτρα δεν βρήκαν τίποτα.
     tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-dim)">Καμία τοποθεσία με αυτά τα φίλτρα.</td></tr>`;
     document.getElementById('locPager').innerHTML = '';
+    // ΚΑΙ εδώ: χωρίς αυτή την κλήση, στήλη κρυμμένη στην προηγούμενη σελίδα θα
+    // έμενε κρυμμένη πάνω από άδειο πίνακα — κεφαλίδες που λείπουν χωρίς λόγο.
+    collapseEmptyColumns('locTableWrap', 'locations');
     return;
   }
 
@@ -292,6 +295,13 @@ function _locRenderTable() {
       </td>
     </tr>`;
   }).join('');
+
+  // ΤΥΠΟΣ: 26 γεμάτες στις 1.164 (Supabase 3/9), αλλά η σελίδα δείχνει 50 τη
+  // φορά — άρα στις περισσότερες σελίδες είναι κενή σε ΟΛΕΣ τις ορατές γραμμές
+  // και κρύβεται, ενώ ξαναεμφανίζεται στη σελίδα που έχει τιμές. Η κεφαλίδα δεν
+  // ξαναχτίζεται εδώ (αλλάζει μόνο το tbody), γι' αυτό η collapseEmptyColumns
+  // καθαρίζει πρώτα ό,τι έκρυψε την προηγούμενη φορά.
+  collapseEmptyColumns('locTableWrap', 'locations');
 
   _locRenderPager();
 }
