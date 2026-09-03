@@ -454,6 +454,14 @@ var PERMISSIONS = {
     // χωρίς δικαίωμα ο dispatcher έπαιρνε «Delete failed» και το stop γύριζε.
     national_loads: ["GET", "POST", "PATCH", "DELETE"],
     order_stops: ["GET", "POST", "PATCH", "DELETE"],
+    // LOCAL MOVES (Δ18): οι τοπικές κινήσεις του Weekly National. Ο dispatcher
+    // τις δημιουργεί, αναθέτει οδηγό και τις σβήνει από την ίδια οθόνη —
+    // ίδιο δικαίωμα με τα national_loads που στέκουν δίπλα τους. DELETE =
+    // soft-delete του facade.
+    // Οι υπόλοιποι ρόλοι: owner/management/accountant καλύπτονται από το δικό
+    // τους `"*"`, το warehouse ΔΕΝ έχει wildcard και μένει σκόπιμα έξω — ο
+    // σχεδιασμός της εβδομάδας δεν είναι δουλειά της αποθήκης.
+    local_moves: ["GET", "POST", "PATCH", "DELETE"],
     // planning:'full' -> dispatchers own the ramp board (daily_ramp.js). DELETE
     // is the facade soft-delete. Auto-sync creates ramp rows on board render
     // (#38) via this same POST grant.
@@ -883,7 +891,17 @@ var TABLES = {
       // Greek values, never translated (gotcha #9)
       Status: "status",
       "Date Reported": "date_reported",
-      Notes: "notes"
+      Notes: "notes",
+      // 3/9/2026 — ίδιο σχήμα με το contact_person (30/8): οι στήλες ΥΠΗΡΧΑΝ
+      // (maint_req.workshop_name text, maint_req.estimated_cost numeric —
+      // επαληθευμένες στο information_schema), έλειπε ΜΟΝΟ ο χάρτης. Ο facade
+      // πετούσε και τα δύο σιωπηλά με 200 OK (παγίδα #1), οπότε η λίστα
+      // εντολών έλεγε «δεν έχει οριστεί» για πάντα.
+      // ⚠ Το Workshop είναι ΚΕΙΜΕΝΟ (όνομα συνεργείου), ΟΧΙ link: ο πίνακας
+      // maint_req δεν έχει workshop_id — αντίθετα με το maint_history, που το
+      // έχει και το περνά από `links`. Μπαίνει στο `fields`, ποτέ στο `links`.
+      Workshop: "workshop_name",
+      "Estimated Cost": "estimated_cost"
     }
   },
   // ── Ramp (Wave 3): the daily dock-planning board (modules/daily_ramp.js) ──
@@ -1458,6 +1476,15 @@ var TABLES = {
       "Temperature C": "temperature_c",
       "Loading DateTime": "loading_datetime",
       "Delivery DateTime": "delivery_datetime",
+      // Ώρα ραντεβού ανά σκέλος (migration 2026-08-10_nl_appointments.sql, ήδη
+      // εκτελεσμένο). Scalars text 'HH:MM', ΟΧΙ links — το ραντεβού είναι
+      // απόφαση που κατέγραψε άνθρωπος, δεν εξάγεται από τα datetime.
+      // Το βήμα «WORKER» εκείνου του migration έμεινε ημιτελές: το
+      // weekly_natl.js ζητούσε τα labels από 10/8, ο facade δεν τα γνώριζε,
+      // οπότε η ανάγνωση σιωπούσε και η εγγραφή γύριζε 400 «No writable
+      // fields» (μετρημένο 3/9: 0 από 20 γραμμένα).
+      "Loading Appointment": "loading_appointment",
+      "Delivery Appointment": "delivery_appointment",
       "Actual Delivery Date": "actual_delivery_date",
       Reference: "reference",
       "Matched Load": "matched_load",
@@ -1514,6 +1541,53 @@ var TABLES = {
       "Delivery Location 8": { column: "delivery_location_8_id", table: "locations" },
       "Delivery Location 9": { column: "delivery_location_9_id", table: "locations" },
       "Delivery Location 10": { column: "delivery_location_10_id", table: "locations" }
+    }
+  },
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOCAL MOVES: η ενότητα «ΤΟΠΙΚΑ ΔΡΟΜΟΛΟΓΙΑ» του Weekly National (SPEC Δ18).
+  // Ο πίνακας υπάρχει από 10/8 (migration 2026-08-10_local_moves.sql) και το
+  // modules/weekly_natl.js τον καλεί από τότε — ο facade όμως δεν τον γνώριζε
+  // καθόλου, οπότε και οι 4 διαδρομές γύριζαν 404 «Table not available» και η
+  // ενότητα έδειχνε μόνιμα «οι τοπικές κινήσεις δεν φορτώθηκαν».
+  //
+  // ⚠ ΤΟ ID ΕΙΝΑΙ ΣΚΕΤΟ 'local_moves', ΟΧΙ tblXXX. Έτσι το δηλώνει το
+  // config.js:72 (`LOCAL_MOVES: 'local_moves'`) — ο πίνακας γεννήθηκε στην
+  // εποχή του Postgres και δεν είχε ποτέ ταυτότητα Airtable να μιμηθεί.
+  //
+  // ΠΡΟΫΠΟΘΕΣΗ DEPLOY: το db/migrations/2026-09-03_fixes.sql πρέπει να έχει
+  // τρέξει ΠΡΩΤΑ. Ο πίνακας δεν έχει σήμερα στήλη legacy_id, και ο facade
+  // διαβάζει/γράφει ΚΑΘΕ μία εγγραφή με `legacy_id=eq.recXXX`. Χωρίς αυτήν
+  // κάθε GET-one/PATCH/DELETE θα γυρίζει 500 από την PostgREST, και το POST
+  // θα σκάει στο mintLegacyId(). Ο πίνακας έχει 0 γραμμές, άρα τίποτα δεν
+  // χάνεται από τη σειρά — μόνο μην τα αντιστρέψεις.
+  //
+  // Τα ονόματα πεδίων είναι ΑΚΡΙΒΩΣ όσα στέλνει το weekly_natl.js
+  // (_wnSaveLocal / _wnSaveCover / φίλτρο {Date} του _wnLoadAll).
+  // ══════════════════════════════════════════════════════════════════════════
+  local_moves: {
+    name: "LOCAL MOVES",
+    pg: "local_moves",
+    fields: {
+      Date: "move_date",
+      Sequence: "sequence",
+      Description: "description",
+      Pallets: "pallets",
+      "Time From": "time_from",
+      "Time To": "time_to",
+      Status: "status",
+      Notes: "notes"
+    },
+    links: {
+      Driver: { column: "driver_id", table: "drivers" },
+      Truck: { column: "truck_id", table: "trucks" },
+      Trailer: { column: "trailer_id", table: "trailers" },
+      Partner: { column: "partner_id", table: "partners" },
+      "From Location": { column: "from_location_id", table: "locations" },
+      "To Location": { column: "to_location_id", table: "locations" },
+      // Οι δύο γονείς (CHECK local_moves_one_parent: ποτέ και οι δύο).
+      // Και οι δύο NULL = αυτοτελής τοπική κίνηση.
+      "Parent Nat Load": { column: "parent_nat_load_id", table: "national_loads" },
+      "Parent Order": { column: "parent_order_id", table: "orders" }
     }
   },
   // ══════════════════════════════════════════════════════════════════════════
@@ -2298,6 +2372,38 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
   return jsonOk({ records }, origin, env);
 }
 __name(facadeBatchCreate, "facadeBatchCreate");
+// Το «πριν» του audit. Το handleFacadeDelete το έστελνε πάντα· τα δύο PATCH
+// στέλνανε ΜΟΝΟ `after`, οπότε η οθόνη Ιστορικού δεν είχε τι να συγκρίνει και
+// αναγκαζόταν να μαντεύει τι άλλαξε (μετρημένο 3/9/2026: 1.244 από 1.254
+// ενημερώσεις χωρίς before_data).
+//
+// ΚΟΣΤΟΣ: ένα επιπλέον SELECT ανά PATCH — και ανά εγγραφή σε batch (μέγιστο 10).
+// Στον σημερινό ρυθμό (audit_log, 14 ημέρες: 4-93 ενημερώσεις/ημέρα, διάμεσος
+// ~27) είναι ~30 ερωτήματα την ημέρα παραπάνω, όχι διπλασιασμός του φόρτου:
+// τα PATCH είναι ελάχιστο κλάσμα της κίνησης — μια φόρτωση Weekly κάνει ήδη
+// δεκάδες SELECT.
+//
+// Η αποτυχία της ανάγνωσης ΔΕΝ μπλοκάρει την ενημέρωση: το «πριν» είναι
+// τεκμηρίωση, όχι προϋπόθεση. Γυρίζει null, γράφεται console.error, και η
+// γραμμή του audit μπαίνει όπως έμπαινε μέχρι σήμερα — ποτέ χαμένη εγγραφή
+// χρήστη επειδή δεν διαβάστηκε το ιστορικό.
+//
+// ΧΩΡΙΣ φίλτρο deleted_at: το dbUpdate παρακάτω δεν φιλτράρει ούτε αυτό, και
+// το «πριν» πρέπει να είναι η γραμμή που ΟΝΤΩΣ ενημερώνεται.
+async function readRowBefore(env, table, recId) {
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("legacy_id", `eq.${recId}`);
+    params.set("limit", "1");
+    const { rows } = await dbSelectRaw(env, table, params);
+    return rows[0] || null;
+  } catch (e) {
+    console.error(`AUDIT before-read failed ${table} ${recId}`, e.message);
+    return null;
+  }
+}
+__name(readRowBefore, "readRowBefore");
 async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   const { res, caller, cfg } = await authorizeWrite(request, tableId, "PATCH", origin, env);
   if (res) return res;
@@ -2332,6 +2438,8 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   }
   const records = [];
   for (const { recId, patch } of patches) {
+    // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
+    const before = await readRowBefore(env, cfg.pg, recId);
     let updated;
     try {
       updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
@@ -2346,6 +2454,7 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
       action: "update",
       table: cfg.pg,
       recordId: recId,
+      before,
       after: updated
     });
     records.push(await shapeOneWithLinks(updated, cfg, env));
@@ -2421,6 +2530,8 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   if (Object.keys(patch).length === 0) {
     return jsonError("No writable fields in request", 400, origin, env);
   }
+  // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
+  const before = await readRowBefore(env, cfg.pg, recId);
   let updated;
   try {
     updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
@@ -2437,6 +2548,7 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
     action: "update",
     table: cfg.pg,
     recordId: recId,
+    before,
     after: updated
   });
   const record = await shapeOneWithLinks(updated, cfg, env);
@@ -2734,6 +2846,60 @@ async function handleCosts(request, url, origin, env) {
 }
 __name(handleCosts, "handleCosts");
 
+// src/routes/performance.js — ΕΠΙΔΟΣΗ ΠΑΡΑΔΟΣΗΣ (3/9/2026)
+// Read-only διαδρομή προς τα τρία views του 2026-08-30_delivery_views.sql.
+// Τα views υπάρχουν και επαληθεύτηκαν στη βάση από 30/8· μέχρι σήμερα ΚΑΝΕΙΣ
+// δεν τα διάβαζε, γιατί δεν υπήρχε διαδρομή προς αυτά (grep στο repo: 0).
+//
+// ΡΟΛΟΙ ΑΝΑ ΠΕΔΙΟ, ΟΧΙ ΕΝΑΣ ΓΙΑ ΟΛΑ — και δεν είναι υπερβολή:
+// το v_client_delivery φέρνει `revenue` και το v_partner_delivery `paid`.
+// Είναι νούμερα P&L, και «ο dispatcher δεν βλέπει P&L» είναι κλειδωμένη
+// απόφαση του owner (23/8/2026). Το v_driver_delivery δεν έχει κανένα ποσό,
+// γι' αυτό ανοίγει και στον dispatcher: είναι η επίδοση των οδηγών που ο
+// ίδιος αναθέτει. Ένας ενιαίος έλεγχος θα διέρρεε τζίρο πελατών ή τα ποσά
+// των συνεργατών — μια γραμμή κώδικα λιγότερη, μια κλειδωμένη απόφαση σπασμένη.
+//
+// ΜΕΤΑΦΡΑΣΗ ΤΑΥΤΟΤΗΤΩΝ: τα views ομαδοποιούν σε pg bigint (driver_id κ.λπ.),
+// ενώ ολόκληρο το frontend μιλάει legacy ids (recXXX). Η μετάφραση γίνεται ΕΔΩ,
+// με τον ίδιο resolveIdsToLegacy που χρησιμοποιεί ο facade — όχι με join της
+// PostgREST πάνω σε view, που εξαρτάται από συμπερασμό σχέσης και σπάει σιωπηλά.
+var PERF_SCOPES = {
+  driver: { view: "v_driver_delivery", key: "driver_id", base: "drivers", roles: ["owner", "management", "dispatcher"] },
+  client: { view: "v_client_delivery", key: "client_id", base: "clients", roles: ["owner", "management", "accountant"] },
+  partner: { view: "v_partner_delivery", key: "partner_id", base: "partners", roles: ["owner", "management", "accountant"] }
+};
+async function handlePerformance(request, url, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return jsonError("Unauthorized", 401, origin, env);
+  const scope = url.searchParams.get("scope") || "";
+  const spec = PERF_SCOPES[scope];
+  // Άγνωστο scope = 400, ΠΟΤΕ σιωπηλά άδεια λίστα: «κανένα αποτέλεσμα» και
+  // «έγραψες λάθος το scope» δεν επιτρέπεται να μοιάζουν (αρχή 1).
+  if (!spec) {
+    return jsonError(`Unknown scope: use one of ${Object.keys(PERF_SCOPES).join(", ")}`, 400, origin, env);
+  }
+  if (!spec.roles.includes(caller.role)) return jsonError("Forbidden", 403, origin, env);
+  try {
+    const params = new URLSearchParams();
+    params.set("select", "*");
+    params.set("order", `${spec.key}.asc`);
+    params.set("limit", "1000");
+    const { rows } = await dbSelectRaw(env, spec.view, params);
+    const legacyById = await resolveIdsToLegacy(env, dbSelectRaw, spec.base, rows.map((r) => r[spec.key]));
+    // `id` = το legacy id, όπως σε κάθε άλλη απάντηση του facade. Το pg id
+    // μένει στη θέση του (driver_id/client_id/partner_id) για διασταύρωση.
+    // legacy_id null = η εγγραφή γονέα δεν βρέθηκε· περνά ως null και ΔΕΝ
+    // κόβεται — μια γραμμή που εξαφανίζεται είναι χειρότερη από μια που
+    // φαίνεται αταύτιστη.
+    const records = rows.map((r) => ({ id: legacyById.get(r[spec.key]) ?? null, ...r }));
+    return jsonOk({ scope, records, count: records.length }, origin, env);
+  } catch (e) {
+    console.error(`PERFORMANCE ${scope}`, e.message);
+    return jsonError("Failed to load performance data", 500, origin, env);
+  }
+}
+__name(handlePerformance, "handlePerformance");
+
 // src/routes/pallets.js — ΠΑΛΕΤΕΣ Φ1 (PALLETS_ARCHITECTURE §5/§6)
 // Ημερολόγιο pl_movements: CRUD + confirm/reverse + balances.
 // taken/given ΠΑΝΤΑ από τη δική μας σκοπιά (taken = πήραμε εμείς).
@@ -2746,7 +2912,13 @@ var PL_PERMS = {
   // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
   // source: management also reads the movements ledger (read-only).
   // Parked had balances+gate only.
-  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"] }
+  // lookups (3/9/2026): ΟΧΙ νέο δικαίωμα σε δεδομένα — είναι οι λίστες
+  // πελατών/συνεργατών/τοποθεσιών που το management ήδη διαβάζει από τον
+  // facade. Έλειπε, και επειδή το renderPalletLedger κάνει
+  // Promise.all([movements, lookups]) ένα 403 στο δεύτερο έριχνε ΟΛΗ τη
+  // σελίδα Ισοζυγίου σε «Σφάλμα φόρτωσης» — ενώ τα άλλα τρία αιτήματα είχαν
+  // απαντήσει κανονικά. Μόνο GET: το management δεν γράφει κινήσεις.
+  management: { movements: ["GET"], balances: ["GET"], gate: ["GET"], lookups: ["GET"] }
 };
 // Το gate είναι read-only «λείπει δελτίο;» — το χρειάζεται όποιος βλέπει
 // τιμολόγηση, γι' αυτό δίνεται σε όλους τους ρόλους παρακάτω.
@@ -3306,6 +3478,9 @@ var index_default = {
     }
     if (url.pathname.startsWith("/pallets/")) {
       return handlePallets(request, url, origin, env);
+    }
+    if (url.pathname === "/performance/delivery" && request.method === "GET") {
+      return handlePerformance(request, url, origin, env);
     }
     const facadeMatch = url.pathname.match(FACADE_PATH);
     if (facadeMatch) {
