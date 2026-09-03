@@ -17,7 +17,6 @@
     "Εταιρεία",
     "Κατάσταση",
     "Μάρκα",
-    "Μισθός",
     "Μοντέλο",
     "Οδηγός",
     "Πινακίδα",
@@ -28,16 +27,8 @@
     "Χώρα"
   ],
   "actions": [
-    "Briefing",
-    "Fleet",
-    "Help",
-    "Quick jump…⌘K",
-    "Sign out",
-    "Today",
-    "Unassigned",
-    "Undo",
-    "Νέα εγγραφή",
-    "◀"
+    "Εμφάνιση",
+    "Νέα εγγραφή"
   ],
   "endpoints": [
     "GET tbl3vhUmzKDWhJynR",
