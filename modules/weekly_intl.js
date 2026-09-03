@@ -258,7 +258,13 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-row:hover{background:var(--bg-hover)}
 .wk3.wi2 .wk3-row.wi2-un{border-color:var(--danger-strong);border-left-width:3px}
 .wk3.wi2 .wk3-row.wi2-gap{border-color:var(--warning);border-left-width:3px}
-.wk3.wi2 .wk3-row.wi2-urg{border-color:var(--danger-strong);border-left-width:3px}
+/* ΣΥΓΚΡΟΥΣΗ ΟΝΟΜΑΤΟΣ (owner 3/9, από screenshot της οθόνης του): η μπάντα
+   «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ» και οι επείγουσες ΓΡΑΜΜΕΣ είχαν την ίδια κλάση
+   .wi2-urg. Ο κανόνας της μπάντας ορίζει display:flex και γράφεται μετά
+   το style.css, οπότε νικούσε το display:grid της γραμμής: ΜΟΝΟ αυτές οι
+   γραμμές έπαυαν να είναι πλέγμα και στοιβάζονταν αριστερά, με έξτρα
+   padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
+.wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);border-left-width:3px}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
 .wk3.wi2 .wk3-legrow{background:var(--bg);border-style:dashed;min-height:38px}
 .wk3.wi2 .wk3-num{border-right:none;font-size:10.5px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:3px;flex-wrap:wrap}
@@ -1448,7 +1454,7 @@ function _wiRowHTML(row,i){
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de2.name, sub:de2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del')}); })()
     :`<span class="wi2-dash" title="Χωρίς εθνικό σκέλος">—</span>`;
 
-  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-urg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
+  const rowCls=['wk3-row',!row.saved?'wi2-un':'',urg?'wi2-rowurg':gapCell?'wi2-gap':'',stF.delivered&&!stF.late?'wk3-done':''].filter(Boolean).join(' ');
   return `
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
