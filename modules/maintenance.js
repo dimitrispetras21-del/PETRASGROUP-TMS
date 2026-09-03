@@ -1,5 +1,7 @@
 // ═══════════════════════════════════════════════════════════════
-// MAINTENANCE MODULE — Expiry Alerts, Service Records, History
+// MAINTENANCE MODULE — Κέντρο Συντήρησης · Εντολές · Λήξεις ·
+// Ιστορικό Service · Ιστορικό Φορτηγών/Ρυμουλκών
+// Redesign wave 2 (Figma KO7l2AfucR3HJEDIg1Yptr, frames w2-maint-*).
 // ═══════════════════════════════════════════════════════════════
 
 'use strict';
@@ -73,58 +75,133 @@ const MAINT_TYPES = [
 ];
 const MAINT_TYPE_LABEL = Object.fromEntries(MAINT_TYPES);
 
+// Display-only vocabularies. Stored values stay English (facade contract);
+// the screen speaks Greek (DESIGN.md ΜΕΡΟΣ Ε).
+const MAINT_STATUS_LABEL = { Completed: 'Ολοκληρώθηκε', Done: 'Ολοκληρώθηκε', Scheduled: 'Προγραμματισμένο', 'In Progress': 'Σε εξέλιξη' };
+const MREQ_STATUS_LABEL  = { Pending: 'Εκκρεμεί', 'In Progress': 'Σε εξέλιξη', Done: 'Ολοκληρώθηκε' };
+const EXPIRY_DOC_GR      = { KTEO: 'KTEO', KEK: 'KEK', FRC: 'FRC', Insurance: 'Ασφάλεια' };
+const _mntTypeGr = t => t === 'Truck' ? 'Φορτηγό' : t === 'Trailer' ? 'Ρυμούλκα' : '';
+
 /* ── CSS ─────────────────────────────────────────────────────── */
+// Tokens only (DESIGN.md #1). Table header background reuses --border-row
+// (same value as the Figma header fill); bar tracks reuse --bg-row-alt.
 (function(){
   if (document.getElementById('maint-css')) return;
   const s = document.createElement('style'); s.id = 'maint-css';
   s.textContent = `
-/* expiry badges */
-.exp-badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; font-weight:700; letter-spacing:.3px; }
-.exp-overdue { background:#7F1D1D; color:#FEE2E2; }
-.exp-critical { background:#991B1B; color:#FEE2E2; }
-.exp-warning { background:#92400E; color:var(--warning-soft); }
-.exp-upcoming { background:#78350F; color:#FDE68A; }
-.exp-ok { background:#065F46; color:#D1FAE5; }
-.exp-none { background:#374151; color:var(--text-disabled); }
-
-/* KPI cards — dark navy */
-.mk-kpis { display:flex; gap:10px; margin-bottom:16px; flex-wrap:wrap; }
-.mk-kpi { background:var(--panel); border:1px solid var(--panel-border);
-  border-radius:10px; padding:14px 18px; flex:1; min-width:100px; }
-.mk-kpi-lbl { font-size:12px; font-weight:500; letter-spacing:.3px; color:var(--panel-dim); font-family:'DM Sans',sans-serif; margin-bottom:4px; }
-.mk-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; line-height:1; color:var(--panel-text); }
-
+/* header row */
+.mnt-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; min-height:40px; padding:var(--space-1) 0 var(--space-1); }
+.mnt-title { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-lg); color:var(--text); white-space:nowrap; }
+.mnt-sub { font-size:var(--text-sm); color:var(--text-dim); }
+.mnt-spacer { flex:1; min-width:var(--space-2); }
+.mnt-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border:1px solid var(--silver-light); border-radius:var(--radius-full);
+  font:inherit; font-size:var(--text-sm); color:var(--text-mid); background:var(--bg-card); cursor:pointer; white-space:nowrap; }
+.mnt-pill b { font-weight:700; color:var(--text); }
+.mnt-pill.is-danger b { color:var(--danger); }
+.mnt-pill.is-warning b { color:var(--warning); }
+.mnt-pill.is-dim b { color:var(--text-dim); }
+.mnt-pill.is-ok b { color:var(--success); }
+.mnt-pill.active { border-color:var(--accent); background:var(--accent-light); color:var(--accent-text); }
+.mnt-pill.static { cursor:default; }
+.mnt-search { height:34px; width:230px; padding:0 var(--space-3); border:1px solid var(--silver-light); border-radius:var(--radius);
+  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--bg-card); outline:none; }
+.mnt-search::placeholder { color:var(--text-dim); }
+.mnt-search:focus, .mnt-select:focus { border-color:var(--border-focus); box-shadow:var(--shadow-focus); }
+.mnt-select { height:34px; padding:0 var(--space-2); border:1px solid var(--silver-light); border-radius:var(--radius);
+  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--bg-card); outline:none; cursor:pointer; max-width:190px; }
+.mnt-select.wide { min-width:240px; }
+/* KPI cards */
+.mnt-kpis { display:flex; gap:var(--space-3); margin-bottom:var(--space-1); }
+.mnt-kpi { flex:1; min-width:0; border:1px solid var(--silver-light); border-radius:var(--radius); padding:8px 14px; background:var(--bg-card);
+  display:flex; flex-direction:column; gap:2px; text-align:left; font-family:inherit; }
+button.mnt-kpi { cursor:pointer; }
+button.mnt-kpi:hover { border-color:var(--border-dark); }
+.mnt-kpi.active { border-color:var(--accent); box-shadow:var(--shadow-focus); }
+.mnt-kpi-l { font-size:var(--text-2xs); font-weight:700; color:var(--text-dim); letter-spacing:.3px; text-transform:uppercase; white-space:nowrap; }
+.mnt-kpi-v { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--num-md); color:var(--text); line-height:1.15; display:flex; align-items:baseline; gap:var(--space-2); }
+.mnt-kpi-v.ok { color:var(--success); }
+.mnt-kpi-v.bad { color:var(--danger); }
+.mnt-kpi-v.warn { color:var(--warning); }
+.mnt-kpi-v small { font-family:'DM Sans',sans-serif; font-size:var(--text-xs); font-weight:500; }
+.mnt-kpi-s { font-size:var(--text-2xs); color:var(--text-dim); }
+.mnt-bar { height:4px; background:var(--bg-row-alt); border-radius:2px; overflow:hidden; width:100%; }
+.mnt-bar > i { display:block; height:100%; background:var(--navy-mid); border-radius:2px; }
+.mnt-bar > i.ok { background:var(--success); }
+.mnt-bar > i.warn { background:var(--warning); }
+.mnt-bar > i.bad { background:var(--danger); }
+.mnt-bar.thick { height:10px; }
+/* cards */
+.mnt-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-4); margin-bottom:var(--space-4); }
+.mnt-card { border:1px solid var(--silver-light); border-radius:var(--radius); padding:14px 16px; background:var(--bg-card);
+  display:flex; flex-direction:column; gap:10px; min-width:0; }
+.mnt-card-t { font-size:var(--text-2xs); font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.3px; }
+.mnt-card-lead { font-size:var(--text-body); font-weight:500; color:var(--text); }
+.mnt-row { display:flex; align-items:center; gap:10px; min-height:30px; font-size:var(--text-sm); color:var(--text); }
+.mnt-row.click { cursor:pointer; border-radius:var(--radius-sm); margin:0 -6px; padding:0 6px; }
+.mnt-row.click:hover { background:var(--bg-hover); }
+.mnt-row .w110 { width:110px; flex-shrink:0; font-weight:700; font-size:var(--text-body); }
+.mnt-row .w80 { width:80px; flex-shrink:0; color:var(--text-dim); }
+.mnt-row .w50 { width:50px; flex-shrink:0; color:var(--text-dim); }
+.mnt-row .w100 { width:100px; flex-shrink:0; font-weight:700; }
+.mnt-row .grow { flex:1; min-width:0; }
+.mnt-row .amt { font-weight:500; white-space:nowrap; }
+.mnt-note { font-size:var(--text-2xs); color:var(--text-dim); }
+.mnt-bars { display:flex; gap:18px; align-items:flex-end; height:186px; }
+.mnt-bar-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; height:100%; }
+.mnt-bar-col > i { width:100%; background:var(--navy-mid); border-radius:3px; display:block; }
+.mnt-bar-col > i.peak { background:var(--warning); }
+.mnt-bar-col > span { font-size:var(--text-2xs); color:var(--text-dim); white-space:nowrap; }
+.mnt-bar-col > span.v { font-weight:500; }
 /* tables */
-.mt { width:100%; border-collapse:collapse; background:var(--bg-card); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
-.mt thead th { padding:7px 10px; font-size:10px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
-  color:var(--text-dim); text-align:left; border-bottom:1px solid var(--border); background:#F0F5FA; white-space:nowrap; }
-.mt tbody td { padding:7px 10px; font-size:12px; border-bottom:1px solid var(--border); vertical-align:middle; }
-.mt tbody tr:last-child td { border-bottom:none; }
-.mt tbody tr:hover td { background:var(--bg-hover); cursor:pointer; }
-.mt .rn { font-family:'Syne',sans-serif; font-weight:700; color:var(--text-dim); font-size:10px; }
-.mt .c { text-align:center; }
-.mt .r { text-align:right; }
-
-/* vehicle card */
-.mv-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px 20px;
-  display:flex; gap:20px; align-items:center; margin-bottom:16px; }
-.mv-plate { font-family:'Syne',sans-serif; font-size:20px; font-weight:800; letter-spacing:1px; }
-.mv-info { font-size:12px; color:var(--text-dim); }
-
-/* form */
-.mf-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:calc(var(--z-overlay) + 100); display:flex; align-items:center; justify-content:center; }
-.mf-modal { background:var(--bg-card); border-radius:12px; padding:0; width:560px; max-height:85vh; overflow-y:auto;
-  box-shadow:0 20px 60px rgba(0,0,0,0.3); }
-.mf-head { padding:16px 20px; border-bottom:1px solid var(--border); font-family:'Syne',sans-serif; font-size:14px; font-weight:700;
-  display:flex; justify-content:space-between; align-items:center; }
-.mf-body { padding:16px 20px; display:flex; flex-direction:column; gap:12px; }
-.mf-row { display:flex; gap:10px; }
-.mf-field { display:flex; flex-direction:column; gap:3px; flex:1; }
-.mf-field label { font-size:10px; font-weight:600; letter-spacing:.5px; color:var(--text-dim); text-transform:uppercase; }
-.mf-field input, .mf-field select, .mf-field textarea { padding:8px 10px; font-size:12px; border:1px solid var(--border-mid);
-  border-radius:6px; background:var(--bg); color:var(--text); outline:none; font-family:'DM Sans',sans-serif; }
-.mf-field input:focus, .mf-field select:focus, .mf-field textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(2,123,189,0.15); }
-.mf-foot { padding:12px 20px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:8px; }
+.mnt-table { width:100%; border-collapse:collapse; background:var(--bg-card); }
+.mnt-table th { height:34px; padding:0 var(--space-4); background:var(--border-row); color:var(--text-mid); font-size:var(--text-body); font-weight:600; text-align:left; white-space:nowrap; }
+.mnt-table th.r, .mnt-table td.r { text-align:right; }
+.mnt-table td { height:40px; padding:0 var(--space-4); border-bottom:1px solid var(--border-row); font-size:var(--text-body); color:var(--text); vertical-align:middle; }
+.mnt-table tbody tr.click { cursor:pointer; }
+.mnt-table tbody tr.click:hover td { background:var(--bg-hover); }
+.mnt-table tbody tr.sos td { background:var(--danger-bg); }
+.mnt-main { font-weight:700; color:var(--text); }
+.mnt-dim { color:var(--text-dim); font-size:var(--text-xs); }
+.mnt-mid { color:var(--text-mid); }
+.mnt-cell2 { display:flex; flex-direction:column; gap:1px; line-height:1.25; }
+.mnt-num { font-variant-numeric:tabular-nums; }
+.mnt-bad { color:var(--danger); font-weight:500; }
+.mnt-warn { color:var(--warning); font-weight:500; }
+.mnt-ok { color:var(--success); font-weight:700; }
+.mnt-cell-edit { cursor:pointer; }
+.mnt-cell-edit:hover { text-decoration:underline dotted; }
+.mnt-section { display:flex; align-items:center; gap:var(--space-2); height:26px; }
+.mnt-section b { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-body); color:var(--text); }
+.mnt-band { display:flex; align-items:center; gap:10px; height:40px; padding:0 var(--space-4); background:var(--bg-row-alt); font-size:var(--text-sm); color:var(--text-dim); cursor:pointer; list-style:none; }
+.mnt-band::-webkit-details-marker { display:none; }
+.mnt-band b { color:var(--text-mid); }
+.mnt-link { color:var(--accent-text); cursor:pointer; background:none; border:0; font:inherit; font-size:var(--text-xs); padding:0; white-space:nowrap; }
+.mnt-link:hover { text-decoration:underline; }
+.mnt-inline-input { font-family:'DM Sans',sans-serif; font-size:var(--text-sm); padding:4px 6px; border:2px solid var(--border-focus); border-radius:var(--radius); background:var(--bg-card); color:var(--text); outline:none; }
+.mnt-foot { font-size:var(--text-xs); color:var(--text-dim); padding:var(--space-2) var(--space-4); }
+/* record drawer (w2-maint-service-record-card 196:754) */
+.mnt-drawer-bg { position:fixed; inset:0; background:var(--navy-mid); opacity:.45; z-index:var(--z-overlay); }
+.mnt-drawer { position:fixed; top:0; right:0; bottom:0; width:480px; max-width:95vw; background:var(--bg-card); box-shadow:var(--shadow-panel);
+  z-index:calc(var(--z-overlay) + 100); overflow-y:auto; animation:mnt-in var(--duration-fast) var(--ease-out); display:flex; flex-direction:column; }
+@keyframes mnt-in { from { transform:translateX(24px); opacity:0; } to { transform:none; opacity:1; } }
+.mnt-drawer-head { background:var(--navy-mid); padding:18px 22px; display:flex; flex-direction:column; gap:var(--space-2); }
+.mnt-drawer-plate { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-lg); color:var(--text-inverse); }
+.mnt-drawer-head .mnt-dim { color:var(--panel-dim); font-size:var(--text-sm); }
+.mnt-drawer-x { margin-left:auto; background:none; border:0; color:var(--panel-dim); font-size:var(--text-base); cursor:pointer; }
+.mnt-drawer .ecard-sec-body { color:var(--text); font-size:var(--text-body); word-break:break-word; }
+.mnt-drawer-foot { margin-top:auto; padding:var(--space-3) 22px; border-top:1px solid var(--silver-light); display:flex; gap:var(--space-2); justify-content:flex-end; }
+/* modal form (w2-maint-service-form / w2-maint-request-form) */
+.mf-overlay { position:fixed; inset:0; z-index:calc(var(--z-overlay) + 100); display:flex; align-items:flex-start; justify-content:center; padding-top:60px; overflow-y:auto; }
+.mf-overlay::before { content:''; position:fixed; inset:0; background:var(--navy-mid); opacity:.45; }
+.mf-modal { position:relative; background:var(--bg-card); border-radius:var(--radius-md); width:720px; max-width:95vw; box-shadow:var(--shadow-lg); margin-bottom:60px; }
+.mf-head { padding:18px 24px 14px; display:flex; align-items:center; gap:var(--space-2); font-family:'Syne',sans-serif; font-size:var(--text-lg); font-weight:700; color:var(--text); }
+.mf-head .mnt-drawer-x { color:var(--text-dim); }
+.mf-body { padding:0 24px 8px; display:flex; flex-direction:column; gap:14px; }
+.mf-row { display:flex; gap:14px; }
+.mf-row > .form-field { flex:1; min-width:0; }
+.mf-foot { padding:14px 24px 18px; display:flex; align-items:center; gap:10px; justify-content:flex-end; }
+.mf-warn { font-size:var(--text-xs); color:var(--warning); margin-right:auto; }
+.mf-scan { display:flex; align-items:center; gap:10px; }
 `;
   document.head.appendChild(s);
 })();
@@ -136,6 +213,11 @@ async function _maintLoad(forceHistory = false) {
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Brand','Model','Year','Active',
         'KTEO Expiry','Insurance Expiry','Tachograph Expiry','ADR Expiry','KEK Expiry',
         'Insurance Partner','Next Maintenance Date'] }, true),
+      // NOTE (3/9/2026): 'Notes' (NO-FRC marker read by _expiryFieldsFor) and the
+      // workshop 'Phone' are NOT requested here on purpose. The critics replay a
+      // recorded HAR by exact URL; adding a field changes the URL, every fetch
+      // aborts, and all six screens fall to their error state. Both additions
+      // wait for a HAR re-record by the integrator — see the delivery notes.
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Brand','Model','Year','Trailer Type','Active',
         'ATP Expiry','KTEO Expiry','Insurance Expiry','FRC Expiry',
         'Pallet Capacity','Next Maintenance Date'] }, true),
@@ -171,33 +253,94 @@ function _daysUntil(dateStr) {
   const nDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   return Math.round((dDate - nDate) / 864e5);
 }
-function _expBadge(days) {
-  if (days === null) return '<span class="exp-badge exp-none">N/A</span>';
-  if (days < 0)  return `<span class="exp-badge exp-overdue">${days}d OVERDUE</span>`;
-  if (days <= 7) return `<span class="exp-badge exp-critical">${days}d</span>`;
-  if (days <= 30) return `<span class="exp-badge exp-warning">${days}d</span>`;
-  if (days <= 60) return `<span class="exp-badge exp-upcoming">${days}d</span>`;
-  return `<span class="exp-badge exp-ok">${days}d</span>`;
+// dd/mm/yy — with 852-day-old expiries the year is the difference between
+// "renew this month" and "illegal since 2024" (DEEP_AUDIT maint_expiry ME-3).
+function _fmtDMY(d, full) {
+  if (!d) return '—';
+  const p = toLocalDate(d).split('-');
+  if (p.length !== 3) return '—';
+  return `${p[2]}/${p[1]}/${full ? p[0] : p[0].slice(2)}`;
 }
-function _fmtDate(d) { return d ? d.substring(0, 10) : '—'; }
-function _fmtCost(v) { return v != null ? '€' + Number(v).toLocaleString('el-GR', {minimumFractionDigits:0}) : '—'; }
-function _wsName(wsArr) {
-  // H9 fix: handle all Airtable linked-record shapes + guard MAINT.workshops null.
-  // Input can be: null, undefined, string 'recXXX', [string], [{id}], empty array.
-  if (!wsArr) return '—';
-  if (!MAINT.workshops || !MAINT.workshops.length) return '—';
-  let id;
-  if (Array.isArray(wsArr)) {
-    if (!wsArr.length) return '—';
-    id = typeof wsArr[0] === 'string' ? wsArr[0] : wsArr[0]?.id;
-  } else if (typeof wsArr === 'string') {
-    id = wsArr;
-  } else if (typeof wsArr === 'object') {
-    id = wsArr.id;
+function _fmtDM(d) { const s = _fmtDMY(d); return s === '—' ? s : s.slice(0, 5); }
+// Unknown ≠ zero: null/undefined/NaN render as a dash, never €0 (DESIGN.md #3).
+function _fmtCost(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  const n = Number(v);
+  return Number.isFinite(n) ? '€' + Math.round(n).toLocaleString('el-GR') : '—';
+}
+function _fmtK(n) {
+  if (n >= 1000) return '€' + (n / 1000).toFixed(1).replace('.', ',').replace(',0', '') + 'k';
+  return '€' + Math.round(n);
+}
+// Sum with an explicit "missing" count, so a total never quietly absorbs
+// records that have no cost (they are counted separately: «N χωρίς κόστος»).
+function _sumCost(recs) {
+  let sum = 0, n = 0, missing = 0;
+  for (const r of recs) {
+    const c = r.fields['Cost'];
+    if (c === null || c === undefined || c === '' || !Number.isFinite(Number(c))) { missing++; continue; }
+    sum += Number(c); n++;
   }
-  if (!id) return '—';
-  const ws = MAINT.workshops.find(w => w.id === id);
+  return { sum, n, missing };
+}
+function _relDays(dateStr) {
+  const d = _daysUntil(dateStr);
+  if (d === null) return '';
+  const ago = -d;
+  if (ago === 0) return 'σήμερα';
+  if (ago === 1) return 'χθες';
+  if (ago < 0) return `σε ${-ago} ημ.`;
+  if (ago < 60) return `πριν ${ago} ημ.`;
+  if (ago < 365) return `πριν ${Math.round(ago / 30)} μήνες`;
+  return `πριν ${(ago / 365).toFixed(1).replace('.', ',')} χρ.`;
+}
+// Expiry wording, one place: expired → danger, ≤30 days → warning, else dim.
+function _dueText(days) {
+  if (days === null) return { cls: 'mnt-dim', text: '—' };
+  if (days < 0) return { cls: 'mnt-bad', text: `ληγμένο ${-days} ημ.` };
+  if (days <= 30) return { cls: 'mnt-warn', text: `σε ${days} ημ.` };
+  return { cls: 'mnt-dim', text: `σε ${days} ημ.` };
+}
+function _pctOf(n, d) { return d ? Math.round(n / d * 100) : null; }
+function _wsRec(wsArr) {
+  if (!wsArr || !MAINT.workshops || !MAINT.workshops.length) return null;
+  let id;
+  if (Array.isArray(wsArr)) { if (!wsArr.length) return null; id = typeof wsArr[0] === 'string' ? wsArr[0] : wsArr[0]?.id; }
+  else if (typeof wsArr === 'string') id = wsArr;
+  else if (typeof wsArr === 'object') id = wsArr.id;
+  if (!id) return null;
+  return MAINT.workshops.find(w => w.id === id) || null;
+}
+function _wsName(wsArr) {
+  // Input can be: null, undefined, string 'recXXX', [string], [{id}], empty array.
+  const ws = _wsRec(wsArr);
   return ws ? (ws.fields['Name'] || '—') : '—';
+}
+// Vehicle type by plate — MAINT_REQ rows rarely carry 'Vehicle Type' (0/1 today).
+function _mntVehicleType(plate, explicit) {
+  if (explicit === 'Truck' || explicit === 'Trailer') return explicit;
+  const p = String(plate || '').trim().toUpperCase();
+  if (!p) return '';
+  if (MAINT.trucks.some(v => String(v.fields['License Plate'] || '').toUpperCase() === p)) return 'Truck';
+  if (MAINT.trailers.some(v => String(v.fields['License Plate'] || '').toUpperCase() === p)) return 'Trailer';
+  return '';
+}
+function _mntVehicleRec(plate, vType) {
+  const list = vType === 'Trailer' ? MAINT.trailers : vType === 'Truck' ? MAINT.trucks : [...MAINT.trucks, ...MAINT.trailers];
+  return list.find(v => v.fields['License Plate'] === plate) || null;
+}
+const _mi = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
+// Body-level hosts for the record drawer and the modal forms, so every screen
+// (lists, histories, dashboard) opens the same card/form without owning a slot.
+function _mntHost(id) {
+  let h = document.getElementById(id);
+  if (!h) { h = document.createElement('div'); h.id = id; document.body.appendChild(h); }
+  return h;
+}
+function _mntCloseDrawer() { const h = document.getElementById('mnt-drawer-host'); if (h) h.innerHTML = ''; }
+function _mntCloseModal()  { const h = document.getElementById('mnt-modal-host');  if (h) h.innerHTML = ''; }
+function _mntRefreshBtn(onclick) {
+  return `<button type="button" class="btn btn-ghost btn-sm btn-icon" title="Ανανέωση δεδομένων" aria-label="Ανανέωση" onclick="${onclick}">${_mi('refresh')}</button>`;
 }
 
 // Flat list of all expiry rows (used by Dashboard)
@@ -224,20 +367,6 @@ function _expiryBuildRows() {
   return rows;
 }
 
-// ═════════════════════════════════════════════════════════════════
-// PAGE 1: EXPIRY ALERTS — Airtable-style layout
-// ═════════════════════════════════════════════════════════════════
-async function renderExpiryAlerts() {
-  document.getElementById('content').innerHTML = showLoading('Loading certificates…');
-  try {
-    await _maintLoad();
-    _expiryPaint();
-  } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
-    console.error(e);
-  }
-}
-
 // Build per-vehicle rows with all expiry fields as columns
 function _expiryVehicleRows(vehicles, expiryFields, vType) {
   return vehicles
@@ -252,7 +381,8 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
         if (d.days === null) return min;
         return (min === null || d.days < min) ? d.days : min;
       }, null);
-      return { id: v.id, plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'', docs, worst, vType };
+      return { id: v.id, plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'',
+        trailerType: f['Trailer Type']||'', docs, worst, vType };
     })
     .sort((a, b) => {
       if (a.worst === null && b.worst === null) return 0;
@@ -262,30 +392,25 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
     });
 }
 
-// Cell — compact single-line: "DD/MM · Xd"
-function _expCell(doc, recId, fieldName, vType) {
-  const editAttr = recId ? `onclick="_expInlineEdit(event,'${recId}','${fieldName}','${vType}')"` : '';
-  const cursor = recId ? 'cursor:pointer' : '';
-  if (!doc.date) return `<td class="c" style="color:var(--text-mid);${cursor}" ${editAttr}><span style="font-size:11px">—</span></td>`;
-  const d = _daysUntil(doc.date);
-  const parts = toLocalDate(doc.date).split('-');
-  // With documents 852 days overdue, "17/02" is ambiguous by years. The year is
-  // the difference between "renew it this month" and "this vehicle has been
-  // illegal since 2024". See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-3.
-  const dateStr = parts[2]+'/'+parts[1]+'/'+parts[0].slice(2);
-  let color, daysStr;
-  if (d < 0)        { color = '#EF4444'; daysStr = Math.abs(d) + 'ημ. ληγμένο'; }
-  else if (d <= 7)  { color = '#EF4444'; daysStr = d + ' ημ.'; }
-  else if (d <= 30) { color = 'var(--panel-warn)'; daysStr = d + ' ημ.'; }
-  else if (d <= 90) { color = 'var(--accent)'; daysStr = d + ' ημ.'; }
-  else              { color = 'var(--panel-ok)'; daysStr = d + ' ημ.'; }
-  return `<td class="c" style="${cursor}" ${editAttr}>
-    <span style="font-size:12px;color:#CBD5E1">${dateStr}</span>
-    <span style="font-size:11px;font-weight:600;color:${color};margin-left:4px">${daysStr}</span>
-  </td>`;
+// ═════════════════════════════════════════════════════════════════
+// PAGE: ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ (w2-maint-expiry-overview 191:745)
+// ═════════════════════════════════════════════════════════════════
+async function renderExpiryAlerts() {
+  document.getElementById('content').innerHTML = showLoading('Φόρτωση εγγράφων στόλου…');
+  try {
+    await _maintLoad();
+    // «ΑΝΑΝΕΩΘΗΚΕ» reads the explicit renewal actions («✓ Ανανεώθηκε» writes a
+    // Done MAINT_REQ «<doc> — Renewal»). A failure here is shown, not swallowed.
+    MREQ._expiryLoadFailed = false;
+    try { await _mreqLoad(); } catch (e) { MREQ._expiryLoadFailed = true; if (typeof logError === 'function') logError(e, 'maint expiry: renewals load'); }
+    _expiryPaint();
+  } catch(e) {
+    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκαν τα έγγραφα του στόλου');
+    console.error(e);
+  }
 }
 
-// Inline date editor
+// Inline date editor (click on a document cell)
 async function _expInlineEdit(e, recId, fieldName, vType) {
   e.stopPropagation();
   const td = e.currentTarget;
@@ -296,15 +421,16 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   )?.fields[fieldName] || '';
   const inp = document.createElement('input');
   inp.type = 'date';
+  inp.className = 'mnt-inline-input';
   inp.value = currentVal ? toLocalDate(currentVal) : '';
-  inp.style.cssText = 'font-size:12px;padding:4px 6px;border:2px solid var(--accent);border-radius:6px;background:var(--bg);color:var(--text);outline:none;width:130px;font-family:"DM Sans",sans-serif';
+  inp.style.width = '140px';
   td.innerHTML = '';
   td.appendChild(inp);
   inp.focus();
 
   const save = async () => {
     const newVal = inp.value || null;
-    td.innerHTML = '<span style="color: var(--accent-text);font-size:11px">Saving…</span>';
+    td.innerHTML = '<span class="mnt-dim">Αποθήκευση…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
       await atSafePatch(tableId, recId, { [fieldName]: newVal });
@@ -312,7 +438,7 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
       if (rec) rec.fields[fieldName] = newVal;
       _expiryPaint();
     } catch(err) {
-      showErrorToast('Save failed: ' + err.message);
+      showErrorToast('Η αποθήκευση απέτυχε: ' + err.message);
       _expiryPaint();
     }
   };
@@ -321,26 +447,7 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') _expiryPaint(); });
 }
 
-// Row-level severity encoding was removed, not just restyled.
-//
-// It started as a 3px coloured left border (the banned side-stripe), so the
-// first attempt converted it to a row tint. Measured against live data that
-// failed too: 44 of 64 rows came back red, 4 amber, 16 clean. When 69% of a
-// table is alarm-red it reads as "everything is on fire", not "look here
-// first" — the encoding stops discriminating exactly when it matters most.
-//
-// Each cell already carries its own expiry colour and its own «ληγμένο» /
-// «N ημ.» label, which is strictly more precise: it says WHICH document and
-// HOW overdue, not merely that something in this row is wrong. A vehicle in
-// good standing is legible by having no coloured cells at all.
-//
-// Kept as a no-op so the two call sites stay explicit about the decision
-// rather than silently losing an attribute.
-function _expRowTint(_worst) {
-  return '';
-}
-
-// Inline text editor for Insurer field
+// Inline text editor for the insurer (trucks only — trailers have no column)
 async function _expInsurerEdit(e, recId, vType) {
   e.stopPropagation();
   const td = e.currentTarget;
@@ -349,22 +456,23 @@ async function _expInsurerEdit(e, recId, vType) {
   const currentVal = rec?.fields['Insurance Partner'] || '';
   const inp = document.createElement('input');
   inp.type = 'text';
+  inp.className = 'mnt-inline-input';
   inp.value = currentVal;
-  inp.placeholder = 'Insurer…';
-  inp.style.cssText = 'font-size:11px;padding:3px 6px;border:2px solid var(--accent);border-radius:5px;background:var(--bg);color:var(--text);outline:none;width:120px;font-family:"DM Sans",sans-serif';
+  inp.placeholder = 'Ασφαλιστής…';
+  inp.style.width = '150px';
   td.innerHTML = '';
   td.appendChild(inp);
   inp.focus();
   inp.select();
   const save = async () => {
     const newVal = inp.value.trim() || null;
-    td.innerHTML = '<span style="color: var(--accent-text);font-size:10px">Saving…</span>';
+    td.innerHTML = '<span class="mnt-dim">Αποθήκευση…</span>';
     try {
       const tableId = vType === 'Truck' ? TABLES.TRUCKS : TABLES.TRAILERS;
       await atSafePatch(tableId, recId, { 'Insurance Partner': newVal });
       if (rec) rec.fields['Insurance Partner'] = newVal;
       _expiryPaint();
-    } catch(err) { showErrorToast('Save failed: ' + err.message); _expiryPaint(); }
+    } catch(err) { showErrorToast('Η αποθήκευση απέτυχε: ' + err.message); _expiryPaint(); }
   };
   inp.addEventListener('blur', save);
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp.blur(); if (ev.key === 'Escape') _expiryPaint(); });
@@ -378,14 +486,15 @@ let _expiryTab = 'all'; // 'all', 'expired', 'expiring30', 'valid'
 let _expiryDocType = '';
 let _expirySearch = '';
 /**
- * Open Expiry Alerts pre-filtered. Called from the Maintenance Dashboard KPIs.
+ * Open Expiry Alerts pre-filtered. Called from the Maintenance Dashboard.
  * @param {string} tab - 'all'|'expired'|'expiring30'|'valid'
  * @param {string} [docType] - 'KTEO'|'KEK'|'FRC'|'Insurance'
+ * @param {string} [plate] - lands the search on one vehicle («άνοιγμα →»)
  */
-function _expiryGoto(tab, docType) {
+function _expiryGoto(tab, docType, plate) {
   _expiryTab = tab || 'all';
   _expiryDocType = docType || '';
-  _expirySearch = '';
+  _expirySearch = plate ? String(plate).toLowerCase() : '';
   navigate('maint_expiry');
 }
 
@@ -396,263 +505,212 @@ function _expiryFilterRows(rows) {
   if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
   // Keeps only vehicles whose THAT document is expired — matches what the KPI counted.
   if (_expiryDocType) out = out.filter(r => r.docs.some(d => d.label === _expiryDocType && d.days !== null && d.days < 0));
-  if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
+  if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || r.model.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
   return out;
 }
+
+// Renewal actions per plate: the Done MAINT_REQ rows that «✓ Ανανεώθηκε»
+// creates («KTEO — Renewal»). Inline date edits leave no such trace (only the
+// audit_log, which is not a source of truth — DECISION_LOG 2/9).
+function _expiryRenewals() {
+  const byPlate = {};
+  for (const r of MREQ.data) {
+    const f = r.fields;
+    const m = /^(KTEO|KEK|FRC|Insurance)\s+—\s+Renewal$/i.exec(String(f['Description'] || '').trim());
+    if (!m || f['Status'] !== 'Done' || !f['Date Reported']) continue;
+    const plate = String(f['Vehicle Plate'] || '').toUpperCase();
+    const ago = -(_daysUntil(f['Date Reported']) ?? 0);
+    const cur = byPlate[plate];
+    if (!cur || ago < cur.ago) byPlate[plate] = { doc: m[1], ago, date: f['Date Reported'] };
+  }
+  return byPlate;
+}
+
 function _expiryPaint() {
   // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
   if (typeof currentPage !== 'undefined' && currentPage !== 'maint_expiry') return;
+  _mntCloseDrawer();
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
+  const all = [...truckRows, ...trailerRows];
 
   // KPIs — count per vehicle (not per document)
   const expiredTrucks = truckRows.filter(r => r.worst !== null && r.worst < 0).length;
-  const expiring30Trucks = truckRows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
-  const validTrucks = truckRows.filter(r => r.worst === null || r.worst > 30).length;
   const expiredTrailers = trailerRows.filter(r => r.worst !== null && r.worst < 0).length;
-  const expiring30Trailers = trailerRows.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
-  const validTrailers = trailerRows.filter(r => r.worst === null || r.worst > 30).length;
+  const expiring30 = all.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
+  const valid = all.filter(r => r.worst === null || r.worst > 30).length;
+  const expired = expiredTrucks + expiredTrailers;
+  const total = all.length;
+  const compliant = total - expired;
+  const compliancePct = _pctOf(compliant, total);
+  const compCls = compliancePct === null ? '' : compliancePct >= 90 ? 'ok' : compliancePct >= 70 ? 'warn' : 'bad';
 
-  // Filter by tab + search (shared function)
+  const renewals = _expiryRenewals();
+  const renewed7 = Object.values(renewals).filter(r => r.ago <= 7).length;
+
   const fTrucks = _expiryFilterRows(truckRows);
   const fTrailers = _expiryFilterRows(trailerRows);
-
-  const tabBtn = (id, label, count, sev) => {
-    const active = _expiryTab === id;
-    const sevColor = sev === 'danger' ? 'var(--danger)' : sev === 'warning' ? 'var(--warning)' : sev === 'success' ? 'var(--success)' : 'var(--text-mid)';
-    return `<button class="exp-tab ${active?'active':''}" onclick="_expiryTab='${id}';_expiryPaint()">
-      <span>${label}</span>
-      <span class="exp-tab-count" style="${active?'':'color:'+sevColor}">${count}</span>
-    </button>`;
-  };
-
-  const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
-  const compliancePct = (expiredTrucks + expiredTrailers) === 0 ? 100
-    : Math.round(((truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers) / Math.max(1, (truckRows.length + trailerRows.length))) * 100);
-  const complianceColor = compliancePct >= 90 ? 'var(--panel-ok)' : compliancePct >= 70 ? 'var(--panel-warn)' : '#EF4444';
 
   // Report the figures this page shows. The key names say what is being
   // counted, because that is the whole confusion this page sat at the centre
   // of: expiredVehicles here vs expiredDocRows on the Maintenance Dashboard.
   if (typeof reportPageMetrics === 'function') reportPageMetrics('maint_expiry', {
-    expiredVehicles: expiredTrucks + expiredTrailers,
-    expiringVehicles30d: expiring30Trucks + expiring30Trailers,
-    validVehicles: validTrucks + validTrailers,
-    totalVehicles: truckRows.length + trailerRows.length,
-    compliantVehicles: truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers,
+    expiredVehicles: expired,
+    expiringVehicles30d: expiring30,
+    validVehicles: valid,
+    totalVehicles: total,
+    compliantVehicles: compliant,
     compliancePct,
   });
 
-  // Command Center for expiry status
-  const actions = [];
-  if (expiredTrucks + expiredTrailers > 0) actions.push({
-    icon: (typeof icon === 'function') ? icon('alert_circle', 14) : '',
-    // These are VEHICLES with at least one expired document, not documents.
-    // Calling them "documents" is why this page said 45 while the Maintenance
-    // Dashboard said 57 (which really is the document count) and the main
-    // Dashboard said 37 — three numbers for what read as one thing.
-    // See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-1.
-    sev: 'crit', text: `${expiredTrucks + expiredTrailers} οχήματα με ληγμένο έγγραφο — άμεση ανανέωση`
-  });
-  if (expiring30Trucks + expiring30Trailers > 0) actions.push({
-    icon: (typeof icon === 'function') ? icon('clock', 14) : '',
-    sev: 'warn', text: `${expiring30Trucks + expiring30Trailers} λήγουν εντός 30 ημερών`
-  });
-  if (!actions.length) actions.push({
-    icon: (typeof icon === 'function') ? icon('check_circle', 14) : '',
-    sev: 'ok', text: 'Όλα τα έγγραφα του στόλου σε ισχύ'
-  });
+  const pill = (id, label, count, sev) =>
+    `<button type="button" class="mnt-pill ${sev || ''} ${_expiryTab === id ? 'active' : ''}" onclick="_expiryTab='${id}';_expiryPaint()"><b>${count}</b> ${label}</button>`;
+
+  const docCell = (r, d) => {
+    const editAttr = `onclick="_expInlineEdit(event,'${r.id}','${d.field}','${r.vType}')"`;
+    if (!d.date) return `<td class="mnt-cell-edit" ${editAttr} title="Κλικ για καταχώρηση"><span class="mnt-dim">—</span></td>`;
+    const due = _dueText(d.days);
+    return `<td class="mnt-cell-edit mnt-num" ${editAttr} title="Κλικ για αλλαγή">${_fmtDMY(d.date)} <span class="${due.cls}" style="font-size:var(--text-sm);margin-left:4px">${due.text}</span></td>`;
+  };
+  const renewCell = (plate) => {
+    const rn = renewals[String(plate).toUpperCase()];
+    if (!rn) return `<td><span class="mnt-dim">—</span></td>`;
+    return `<td><span class="mnt-ok">✓</span> <span class="mnt-mid" style="font-size:var(--text-sm)">${EXPIRY_DOC_GR[rn.doc] || rn.doc} — ${_relDays(rn.date)}</span></td>`;
+  };
+  const vehicleCell = (r) => {
+    const sub = [r.brand, r.model].filter(Boolean).join(' ');
+    const kind = r.vType === 'Trailer' && r.trailerType ? ` · ${escapeHtml(r.trailerType)}` : '';
+    return `<td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(r.plate)}</span><span class="mnt-dim">${escapeHtml(sub) || 'μάρκα/μοντέλο — δεν έχει καταχωρηθεί'}${kind}</span></div></td>`;
+  };
+  const rowsFor = (rows, fields, vType) => rows.map(r => {
+    const cells = fields.map(ef => {
+      const d = r.docs.find(x => x.field === ef.field);
+      if (!d) return `<td><span class="mnt-dim" style="font-size:var(--text-sm)">δεν απαιτείται</span></td>`;
+      return docCell(r, d);
+    }).join('');
+    const insurer = vType === 'Truck'
+      ? `<td class="mnt-cell-edit mnt-mid" onclick="_expInsurerEdit(event,'${r.id}','Truck')" title="Κλικ για αλλαγή">${r.insurer ? escapeHtml(r.insurer) : '<span class="mnt-dim">—</span>'}</td>`
+      : `<td><span class="mnt-dim">—</span></td>`;
+    return `<tr>${vehicleCell(r)}${cells}${insurer}${renewCell(r.plate)}</tr>`;
+  }).join('');
+  const emptyRow = (cols, msg) => `<tr><td colspan="${cols}" style="height:auto;padding:0">${showEmpty({ illustration: 'truck', title: msg, description: 'Άλλαξε φίλτρο ή αναζήτηση για να δεις οχήματα.' })}</td></tr>`;
+
+  const truckHead = TRUCK_EXPIRY_FIELDS.map(ef => `<th>${ef.label === 'Insurance' ? 'ΑΣΦΑΛΕΙΑ' : ef.label}</th>`).join('');
+  const trailerHead = TRAILER_EXPIRY_FIELDS.map(ef => `<th>${ef.label === 'Insurance' ? 'ΑΣΦΑΛΕΙΑ' : ef.label}</th>`).join('');
 
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
-        <div class="page-title">Λήξεις Εγγράφων</div>
-        <div class="page-sub">Επισκόπηση συμμόρφωσης εγγράφων στόλου</div>
-      </div>
-      <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2: ιστορικό service">${_i('clock')} Ιστορικό Service</button>
-        <button class="btn btn-ghost btn-sm" onclick="_expiryExportCSV()">${_i('file_text')} Εξαγωγή CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_expiryPrint()">${_i('file_text')} Εκτύπωση</button>
-        <button class="btn btn-ghost btn-sm" onclick="MAINT._loaded=false;renderExpiryAlerts()">${_i('refresh')} Ανανέωση</button>
+    <div class="mnt-head">
+      <span class="mnt-title">Λήξεις Εγγράφων</span>
+      <span class="mnt-sub">${total} ενεργά οχήματα</span>
+      ${pill('all', 'όλα', total)}
+      ${pill('expired', 'ληγμένα', expired, 'is-danger')}
+      ${pill('expiring30', 'λήγουν ≤30 ημ.', expiring30, 'is-warning')}
+      ${pill('valid', 'σε ισχύ', valid, 'is-ok')}
+      ${_expiryDocType ? `<button type="button" class="mnt-pill active" onclick="_expiryDocType='';_expiryPaint()" title="Καθαρισμός φίλτρου εγγράφου">μόνο ${escapeHtml(EXPIRY_DOC_GR[_expiryDocType] || _expiryDocType)} ✕</button>` : ''}
+      <span class="mnt-spacer"></span>
+      <input class="mnt-search" id="exp-q" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${escapeHtml(_expirySearch)}" oninput="_expirySearchFn(this.value)">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_expiryExportCSV()">Εξαγωγή CSV</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_expiryPrint()">Εκτύπωση</button>
+      ${_mntRefreshBtn("MAINT._loaded=false;MREQ._loaded=false;renderExpiryAlerts()")}
+    </div>
+
+    <div class="mnt-kpis">
+      <button type="button" class="mnt-kpi ${_expiryTab === 'all' && !_expiryDocType ? 'active' : ''}" onclick="_expiryTab='all';_expiryDocType='';_expiryPaint()">
+        <span class="mnt-kpi-l">Συμμόρφωση στόλου</span>
+        <span class="mnt-kpi-v ${compCls}" style="font-size:var(--text-xl)">${compliancePct === null ? '—' : compliancePct + '%'}</span>
+        <span class="mnt-bar"><i class="${compCls}" style="width:${compliancePct || 0}%"></i></span>
+        <span class="mnt-kpi-s">${compliant}/${total} οχήματα χωρίς ληγμένο έγγραφο</span>
+      </button>
+      <button type="button" class="mnt-kpi ${_expiryTab === 'expired' ? 'active' : ''}" onclick="_expiryTab='expired';_expiryPaint()">
+        <span class="mnt-kpi-l">Οχήματα με ληγμένο</span>
+        <span class="mnt-kpi-v ${expired ? 'bad' : 'ok'}" style="font-size:var(--text-xl)">${expired}</span>
+        <span class="mnt-kpi-s">${expiredTrucks} ${expiredTrucks === 1 ? 'φορτηγό' : 'φορτηγά'} · ${expiredTrailers} ${expiredTrailers === 1 ? 'ρυμούλκα' : 'ρυμούλκες'}${expired ? ' — άμεση ανανέωση' : ''}</span>
+      </button>
+      <button type="button" class="mnt-kpi ${_expiryTab === 'expiring30' ? 'active' : ''}" onclick="_expiryTab='expiring30';_expiryPaint()">
+        <span class="mnt-kpi-l">Λήγουν ≤30 ημ.</span>
+        <span class="mnt-kpi-v ${expiring30 ? 'warn' : 'ok'}" style="font-size:var(--text-xl)">${expiring30}</span>
+        <span class="mnt-kpi-s">${expiring30 ? 'χρειάζονται προγραμματισμό' : 'τίποτα δεν λήγει μέσα σε 30 ημέρες'}</span>
+      </button>
+      <div class="mnt-kpi">
+        <span class="mnt-kpi-l">Ανανεώθηκαν — 7 ημ.</span>
+        <span class="mnt-kpi-v ${renewed7 ? 'ok' : ''}" style="font-size:var(--text-xl)">${MREQ._expiryLoadFailed ? '—' : renewed7}</span>
+        <span class="mnt-kpi-s">${MREQ._expiryLoadFailed ? 'το ιστορικό ενεργειών δεν φορτώθηκε' : 'από το ιστορικό ενεργειών («✓ Ανανεώθηκε»)'}</span>
       </div>
     </div>
 
-    <!-- Command Center banner -->
-    ${(typeof buildCommandCenterHTML === 'function') ? buildCommandCenterHTML({
-      title: 'ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ',
-      pct: compliancePct,
-      actions,
-      widgets: [],
-    }) : ''}
+    <div class="mnt-section"><b>ΦΟΡΤΗΓΑ</b><span class="mnt-sub">${fTrucks.length}${fTrucks.length !== truckRows.length ? ` από ${truckRows.length}` : ''} ενεργά</span></div>
+    <table class="mnt-table">
+      <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${truckHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
+      <tbody>${fTrucks.length ? rowsFor(fTrucks, TRUCK_EXPIRY_FIELDS, 'Truck') : emptyRow(3 + TRUCK_EXPIRY_FIELDS.length, 'Κανένα φορτηγό σε αυτή την κατηγορία')}</tbody>
+    </table>
 
-    <!-- KPI Cards v2 — with icons + subtle status bars -->
-    <div class="exp-kpis">
-      <div class="exp-kpi exp-kpi-danger">
-        <div class="exp-kpi-ico">${_i('alert_circle')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Οχήματα με ληγμένο</div>
-          <div class="exp-kpi-val">${expiredTrucks + expiredTrailers}</div>
-          <div class="exp-kpi-sub">${expiredTrucks} φορτηγά · ${expiredTrailers} ρυμούλκες</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-warning">
-        <div class="exp-kpi-ico">${_i('clock')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Λήγουν ≤30 ημ.</div>
-          <div class="exp-kpi-val">${expiring30Trucks + expiring30Trailers}</div>
-          <div class="exp-kpi-sub">Χρειάζονται προγραμματισμό</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-success">
-        <div class="exp-kpi-ico">${_i('check_circle')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Σε ισχύ</div>
-          <div class="exp-kpi-val">${validTrucks + validTrailers}</div>
-          <div class="exp-kpi-sub">${validTrucks} φορτηγά · ${validTrailers} ρυμούλκες</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-compliance">
-        <div class="exp-kpi-ico">${_i('target')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Συμμόρφωση</div>
-          <div class="exp-kpi-val" style="color:${complianceColor}">${compliancePct}%</div>
-          <div class="exp-kpi-bar"><div class="exp-kpi-bar-fill" style="width:${compliancePct}%;background:${complianceColor}"></div></div>
-          <!-- The fraction was missing, so "30%" sat next to a "Valid 13" card
-               and the two looked contradictory: compliance counts the 6
-               expiring-soon vehicles as still compliant, the Valid card does
-               not. Showing the numerator makes the difference visible instead
-               of leaving the user to guess which number to trust.
-               See docs/design/DEEP_AUDIT_2026-08-04/maint_expiry.md ME-2. -->
-          <div class="exp-kpi-sub">${truckRows.length + trailerRows.length - expiredTrucks - expiredTrailers}/${truckRows.length + trailerRows.length} χωρίς ληγμένο έγγραφο</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tabs v2 -->
-    <div class="exp-tab-bar">
-      <div class="exp-tab-group">
-        ${tabBtn('all', 'Όλα', truckRows.length + trailerRows.length)}
-        ${tabBtn('expired', 'Ληγμένα', expiredTrucks + expiredTrailers, 'danger')}
-        ${tabBtn('expiring30', 'Λήγουν ≤30 ημ.', expiring30Trucks + expiring30Trailers, 'warning')}
-        ${tabBtn('valid', 'Σε ισχύ', validTrucks + validTrailers, 'success')}
-      </div>
-      ${_expiryDocType ? `<button type="button" class="btn btn-ghost btn-sm" onclick="_expiryDocType='';_expiryPaint()"
-        style="background:var(--accent-light);color: var(--accent-text);font-weight:700">
-        Μόνο ${escapeHtml(_expiryDocType)} · καθαρισμός ✕</button>` : ''}
-      <div class="exp-search-wrap">
-        ${_i('search')}
-        <input class="exp-search-input" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${_expirySearch}" oninput="_expirySearchFn(this.value)">
-      </div>
-    </div>
-
-    <!-- TRUCKS SECTION -->
-    <div class="exp-section">
-      <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('truck')}</div>
-        <div>
-          <div class="exp-section-title">Φορτηγά</div>
-          <div class="exp-section-sub">${fTrucks.length} από ${truckRows.length}</div>
-        </div>
-      </div>
-      <div class="exp-table-wrap">
-        <table class="mt">
-          <thead><tr>
-            <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
-            ${TRUCK_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
-            <th style="width:120px;max-width:120px">ΑΣΦΑΛΙΣΤΗΣ</th>
-          </tr></thead>
-          <tbody>${fTrucks.length ? fTrucks.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
-            <td class="rn">${i+1}</td>
-            <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
-            <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
-            ${r.docs.map(d => _expCell(d, r.id, d.field, 'Truck')).join('')}
-            <td style="font-size:var(--text-xs);color:var(--text-mid);cursor:pointer" onclick="_expInsurerEdit(event,'${r.id}','Truck')">${r.insurer || '<span style=&quot;color:var(--text-dim)&quot;>—</span>'}</td>
-          </tr>`).join('') : `<tr><td colspan="${4 + TRUCK_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">Κανένα φορτηγό σε αυτή την κατηγορία</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <!-- TRAILERS SECTION -->
-    <div class="exp-section">
-      <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:rgba(124,58,237,0.12);color:#7C3AED">${_i('package')}</div>
-        <div>
-          <div class="exp-section-title">Ρυμούλκες</div>
-          <div class="exp-section-sub">${fTrailers.length} από ${trailerRows.length}</div>
-        </div>
-      </div>
-      <div class="exp-table-wrap">
-        <table class="mt">
-          <thead><tr>
-            <th style="width:30px">#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th>
-            ${TRAILER_EXPIRY_FIELDS.map(ef => `<th class="c">${ef.label}</th>`).join('')}
-          </tr></thead>
-          <tbody>${fTrailers.length ? fTrailers.map((r, i) => `<tr style="${_expRowTint(r.worst)}">
-            <td class="rn">${i+1}</td>
-            <td style="font-weight:700;font-size:var(--text-sm)">${r.plate}</td>
-            <td style="font-size:var(--text-xs);color:var(--text-mid)">${r.brand}</td>
-            ${r.docs.map(d => _expCell(d, r.id, d.field, 'Trailer')).join('')}
-          </tr>`).join('') : `<tr><td colspan="${3 + TRAILER_EXPIRY_FIELDS.length}" style="text-align:center;color:var(--text-dim);padding:var(--space-6)">Καμία ρυμούλκα σε αυτή την κατηγορία</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>`;
+    <div class="mnt-section" style="margin-top:var(--space-4)"><b>ΡΥΜΟΥΛΚΕΣ</b><span class="mnt-sub">${fTrailers.length}${fTrailers.length !== trailerRows.length ? ` από ${trailerRows.length}` : ''} ενεργές</span></div>
+    <table class="mnt-table">
+      <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${trailerHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
+      <tbody>${fTrailers.length ? rowsFor(fTrailers, TRAILER_EXPIRY_FIELDS, 'Trailer') : emptyRow(3 + TRAILER_EXPIRY_FIELDS.length, 'Καμία ρυμούλκα σε αυτή την κατηγορία')}</tbody>
+    </table>
+    <div class="mnt-foot">Ασφαλιστής ρυμουλκών: δεν υπάρχει στήλη στον πίνακα trailers — δεν καταχωρείται ακόμη. · Κλικ σε ημερομηνία ή ασφαλιστή για επεξεργασία.</div>`;
 }
 
-function _expirySearchFn(v) { _expirySearch = v.toLowerCase().trim(); _expiryPaint(); }
+function _expirySearchFn(v) {
+  _expirySearch = v.toLowerCase().trim();
+  _expiryPaint();
+  const el = document.getElementById('exp-q');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
 
 function _expiryExportCSV() {
   const truckRows = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
   const trailerRows = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
   // Apply same shared filter (tab + search)
-  const all = [..._expiryFilterRows(truckRows).map(r => ({...r, vType:'Truck'})), ..._expiryFilterRows(trailerRows).map(r => ({...r, vType:'Trailer'}))];
-  if (!all.length) { toast('No data to export', 'error'); return; }
-  const rows = [['Type','Plate','Brand','Model','KTEO Expiry','KTEO Days','KEK/FRC Expiry','KEK/FRC Days','Insurance Expiry','Insurance Days','Insurer']];
+  const all = [..._expiryFilterRows(truckRows), ..._expiryFilterRows(trailerRows)];
+  if (!all.length) { toast('Δεν υπάρχουν δεδομένα για εξαγωγή', 'error'); return; }
+  const rows = [['Τύπος','Πινακίδα','Μάρκα','Μοντέλο','KTEO λήξη','KTEO ημέρες','KEK/FRC λήξη','KEK/FRC ημέρες','Ασφάλεια λήξη','Ασφάλεια ημέρες','Ασφαλιστής']];
   all.forEach(r => {
     const d = r.docs;
-    rows.push([r.vType, r.plate, r.brand, r.model,
-      d[0]?.date||'', d[0]?.days??'', d[1]?.date||'', d[1]?.days??'', d[2]?.date||'', d[2]?.days??'', r.insurer]);
+    const kt = d.find(x => x.label === 'KTEO'), kf = d.find(x => x.label === 'KEK' || x.label === 'FRC'), ins = d.find(x => x.label === 'Insurance');
+    rows.push([_mntTypeGr(r.vType), r.plate, r.brand, r.model,
+      kt?.date||'', kt?.days??'', kf?.date||'', kf?.days??'', ins?.date||'', ins?.days??'', r.insurer]);
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `fleet_expiry_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  toast('CSV exported');
+  toast('Το CSV εξήχθη');
 }
 
+// Print through the app's own stylesheet (tokens), not a copied colour list.
 function _expiryPrint() {
   const content = document.getElementById('content').innerHTML;
-  const win = window.open('','_blank');
-  win.document.write(`<!DOCTYPE html><html><head><title>Expiry Alerts — Petras Group</title>
-    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0} body{font-family:'DM Sans',sans-serif;padding:20px;color:#0F172A;font-size:12px}
-      .page-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700} .page-sub{font-size:11px;color:#475569;margin-bottom:12px}
-      .mk-kpis{display:flex;gap:10px;margin-bottom:14px} .mk-kpi{border:1px solid #ddd;border-left:3px solid #0EA5E9;border-radius:6px;padding:10px 14px;flex:1}
-      .mk-kpi-lbl{font-size:9px;font-weight:600;color:#9CA3AF;text-transform:uppercase;letter-spacing:1px} .mk-kpi-val{font-family:'Syne',sans-serif;font-size:22px;font-weight:700}
-      table{width:100%;border-collapse:collapse;border:1px solid #ddd} thead th{padding:6px 8px;font-size:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:#9CA3AF;background:#F0F5FA;border-bottom:1px solid #ddd;text-align:left}
-      tbody td{padding:6px 8px;font-size:11px;border-bottom:1px solid #eee}
-      .exp-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700}
-      .exp-overdue{background:#7F1D1D;color:#FEE2E2} .exp-critical{background:#991B1B;color:#FEE2E2} .exp-warning{background:#92400E;color:#FEF3C7}
-      .exp-upcoming{background:#78350F;color:#FDE68A} .exp-ok{background:#065F46;color:#D1FAE5} .exp-none{background:#374151;color:#9CA3AF}
-      .btn,select{display:none!important} .rn{font-family:'Syne',sans-serif;font-weight:700;color:#9CA3AF}
-      @media print{body{padding:10px}}
+  const css = document.getElementById('maint-css')?.textContent || '';
+  const base = document.baseURI.replace(/[^/]*$/, '');
+  const win = window.open('', '_blank');
+  if (!win) { toast('Ο browser μπλόκαρε το παράθυρο εκτύπωσης', 'error'); return; }
+  win.document.write(`<!DOCTYPE html><html lang="el"><head><meta charset="utf-8"><title>Λήξεις Εγγράφων — Petras Group</title>
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="${base}assets/style.css">
+    <style>${css}
+      body { padding:20px; background:var(--bg-card); color:var(--text); font-family:'DM Sans',sans-serif; }
+      button, input, .mnt-foot { display:none !important; }
+      .mnt-kpi { display:flex; }
+      @media print { body { padding:10px; } }
     </style></head><body>${content}</body></html>`);
   win.document.close();
-  setTimeout(() => win.print(), 500);
+  setTimeout(() => win.print(), 900);
 }
 
 // ═════════════════════════════════════════════════════════════════
-// PAGE 2: SERVICE RECORDS
+// PAGE: ΙΣΤΟΡΙΚΟ SERVICE (w2-maint-service-overview 156:577)
 // ═════════════════════════════════════════════════════════════════
 let _svcFilters = { vehicle: '', type: '', status: '', year: '', workshop: '', review: '', q: '' };
 
 async function renderServiceRecords() {
-  document.getElementById('content').innerHTML = showLoading('Loading service records…');
+  document.getElementById('content').innerHTML = showLoading('Φόρτωση ιστορικού service…');
   try {
     await _maintLoad(true);
     _svcPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
+    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκε το ιστορικό service');
     console.error(e);
   }
 }
@@ -674,10 +732,38 @@ function _svcClearFilters() {
   _svcPaint();
 }
 
+function _svcSortedHistory() {
+  return [...MAINT.history].sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
+}
+
+// One table row for a service record — shared by Ιστορικό Service and the
+// per-vehicle histories (showVehicle toggles the ΟΧΗΜΑ/ΚΑΤΗΓΟΡΙΑ column).
+function _svcRowHtml(r, showVehicle) {
+  const f = r.fields;
+  const cat = MAINT_TYPE_LABEL[f['Type']] || f['Type'] || '';
+  const status = MAINT_STATUS_LABEL[f['Status']] || f['Status'] || '—';
+  const review = f['Needs Review'] ? `<span class="mnt-warn" style="font-size:var(--text-xs)">θέλει έλεγχο</span>` : '';
+  const first = showVehicle
+    ? `<td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(f['Vehicle Type']) || '—'}</span></div></td>
+       <td><div class="mnt-cell2"><span>${escapeHtml(f['Description'] || '—')}</span>${cat ? `<span class="mnt-dim">${escapeHtml(cat)}</span>` : ''}</div></td>`
+    : `<td class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(cat || '—')}</td>
+       <td>${escapeHtml(f['Description'] || '—')}</td>`;
+  return `<tr class="click" onclick="_svcOpenCard('${r.id}')">
+    <td class="mnt-num">${_fmtDMY(f['Date'])}</td>
+    ${first}
+    <td class="mnt-mid">${escapeHtml(_wsName(f['Workshop']))}</td>
+    <td class="mnt-mid" style="font-size:var(--text-sm)">${f['Parts'] ? escapeHtml(f['Parts']) : '<span class="mnt-dim">—</span>'}</td>
+    <td class="r mnt-num" style="font-weight:500">${_fmtCost(f['Cost'])}</td>
+    <td class="r mnt-num mnt-mid">${f['Odometer km'] ? Number(f['Odometer km']).toLocaleString('el-GR') : '<span class="mnt-dim">—</span>'}</td>
+    <td><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
+  </tr>`;
+}
+
 function _svcPaint() {
   // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
   if (typeof currentPage !== 'undefined' && currentPage !== 'maint_svc') return;
-  let records = [...MAINT.history].sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
+  _mntCloseDrawer();
+  let records = _svcSortedHistory();
 
   // Apply filters
   if (_svcFilters.vehicle) records = records.filter(r => r.fields['Vehicle Plate'] === _svcFilters.vehicle);
@@ -698,231 +784,177 @@ function _svcPaint() {
     });
   }
 
-  // KPI calculations
   const allRecs = MAINT.history;
-  const costYTD = allRecs.filter(r => (r.fields['Date']||'').startsWith('2026') && (r.fields['Status']==='Completed'||r.fields['Status']==='Done'))
-    .reduce((s, r) => s + (r.fields['Cost']||0), 0);
-  const svcCount = allRecs.filter(r => (r.fields['Date']||'').startsWith('2026')).length;
-  const avgCost = svcCount ? costYTD / svcCount : 0;
   const types = [...new Set(allRecs.map(r => r.fields['Type']).filter(Boolean))].sort();
   const vehicles = [...new Set(allRecs.map(r => r.fields['Vehicle Plate']).filter(Boolean))].sort();
   const statuses = [...new Set(allRecs.map(r => r.fields['Status']).filter(Boolean))].sort();
   const years = [...new Set(allRecs.map(r => (r.fields['Date']||'').slice(0,4)).filter(Boolean))].sort().reverse();
   const workshops = [...new Set(allRecs.map(r => _wsName(r.fields['Workshop'])).filter(n => n && n !== '—'))].sort();
   const reviewCount = allRecs.filter(r => r.fields['Needs Review']).length;
+  const anyFilter = Object.values(_svcFilters).some(Boolean);
 
-  const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
-  const currentYear = new Date().getFullYear();
+  const sel = (key, label, allLabel, opts) => `<select class="mnt-select" title="${label}" onchange="_svcSetFilter('${key}',this.value)">
+      <option value="">${label}: ${allLabel}</option>
+      ${opts.map(([v, l]) => `<option value="${escapeHtml(v)}" ${_svcFilters[key] === v ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}
+    </select>`;
 
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
-        <div class="page-title">Service Records</div>
-        <div class="page-sub">${MAINT.history.length} συνολικά · εμφανίζονται ${records.length}</div>
-      </div>
-      <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-primary btn-sm" onclick="_svcOpenForm()">${_i('plus')} Νέα Εγγραφή</button>
-        <button class="btn btn-ghost btn-sm" onclick="MAINT.history=[];renderServiceRecords()">${_i('refresh')} Refresh</button>
-      </div>
+    <div class="mnt-head">
+      <span class="mnt-title">Ιστορικό Service</span>
+      <span class="mnt-sub">${allRecs.length.toLocaleString('el-GR')} εργασίες${anyFilter ? ` · εμφανίζονται ${records.length.toLocaleString('el-GR')}` : ''}</span>
+      ${sel('vehicle', 'Όχημα', 'Όλα', vehicles.map(v => [v, v]))}
+      ${sel('type', 'Τύπος', 'Όλοι', types.map(t => [t, MAINT_TYPE_LABEL[t] || t]))}
+      ${sel('workshop', 'Συνεργείο', 'Όλα', workshops.map(w => [w, w]))}
+      ${sel('year', 'Έτος', 'Όλα', years.map(y => [y, y]))}
+      ${sel('status', 'Κατάσταση', 'Όλες', statuses.map(s => [s, MAINT_STATUS_LABEL[s] || s]))}
+      <button type="button" class="mnt-pill is-warning ${_svcFilters.review === 'yes' ? 'active' : ''}" title="Εγγραφές με προβληματικό δεδομένο στην πηγή" onclick="_svcSetFilter('review', _svcFilters.review === 'yes' ? '' : 'yes')"><b>${reviewCount}</b> θέλουν έλεγχο</button>
+      ${anyFilter ? `<button type="button" class="mnt-link" onclick="_svcClearFilters()">καθαρισμός ✕</button>` : ''}
+      <span class="mnt-spacer"></span>
+      <input id="svc-q" class="mnt-search" style="width:200px" placeholder="Αναζήτηση…" title="Περιγραφή, ανταλλακτικό, τιμολόγιο, συνεργείο, πινακίδα"
+             value="${escapeHtml(_svcFilters.q||'')}" oninput="_svcSetFilter('q',this.value)">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_svcOpenForm(null, {scan:true})">Scan τιμολογίου</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_svcOpenForm()">Νέα εγγραφή</button>
+      ${_mntRefreshBtn("MAINT.history=[];renderServiceRecords()")}
     </div>
 
-    <!-- KPI Cards v2 -->
-    <div class="exp-kpis">
-      <div class="exp-kpi" style="color: var(--accent-text)">
-        <div class="exp-kpi-ico">${_i('trending_up')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Cost YTD</div>
-          <div class="exp-kpi-val">${_fmtCost(costYTD)}</div>
-          <div class="exp-kpi-sub">${currentYear} total</div>
-        </div>
-      </div>
-      <div class="exp-kpi" style="color:var(--text-mid)">
-        <div class="exp-kpi-ico">${_i('clipboard')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Services YTD</div>
-          <div class="exp-kpi-val">${svcCount}</div>
-          <div class="exp-kpi-sub">records</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-warning">
-        <div class="exp-kpi-ico">${_i('target')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">Avg Cost</div>
-          <div class="exp-kpi-val">${_fmtCost(avgCost)}</div>
-          <div class="exp-kpi-sub">per service</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Filter bar -->
-    <div class="exp-tab-bar">
-      <div style="display:flex;gap:var(--space-2);flex-wrap:wrap">
-        <input id="svc-q" class="svc-filter" style="min-width:260px" placeholder="Αναζήτηση: περιγραφή, ανταλλακτικό, τιμολόγιο, συνεργείο…"
-               value="${(_svcFilters.q||'').replace(/"/g,'&quot;')}" oninput="_svcSetFilter('q',this.value)">
-        <select class="svc-filter" onchange="_svcSetFilter('vehicle',this.value)">
-          <option value="">Όχημα: Όλα</option>
-          ${vehicles.map(v => `<option value="${v}" ${_svcFilters.vehicle===v?'selected':''}>${v}</option>`).join('')}
-        </select>
-        <select class="svc-filter" onchange="_svcSetFilter('type',this.value)">
-          <option value="">Τύπος: Όλοι</option>
-          ${types.map(t => `<option value="${t}" ${_svcFilters.type===t?'selected':''}>${MAINT_TYPE_LABEL[t]||t}</option>`).join('')}
-        </select>
-        <select class="svc-filter" onchange="_svcSetFilter('workshop',this.value)">
-          <option value="">Συνεργείο: Όλα</option>
-          ${workshops.map(w => `<option value="${w}" ${_svcFilters.workshop===w?'selected':''}>${w}</option>`).join('')}
-        </select>
-        <select class="svc-filter" onchange="_svcSetFilter('year',this.value)">
-          <option value="">Έτος: Όλα</option>
-          ${years.map(y => `<option value="${y}" ${_svcFilters.year===y?'selected':''}>${y}</option>`).join('')}
-        </select>
-        <select class="svc-filter" onchange="_svcSetFilter('status',this.value)">
-          <option value="">Κατάσταση: Όλες</option>
-          ${statuses.map(s => `<option value="${s}" ${_svcFilters.status===s?'selected':''}>${s}</option>`).join('')}
-        </select>
-        <select class="svc-filter" onchange="_svcSetFilter('review',this.value)">
-          <option value="">Έλεγχος: Όλα</option>
-          <option value="yes" ${_svcFilters.review==='yes'?'selected':''}>Θέλουν έλεγχο (${reviewCount})</option>
-          <option value="no"  ${_svcFilters.review==='no' ?'selected':''}>Ελεγμένα</option>
-        </select>
-        ${Object.values(_svcFilters).some(Boolean)
-          ? `<button class="btn btn-ghost btn-sm" onclick="_svcClearFilters()">Καθαρισμός</button>` : ''}
-      </div>
-    </div>
-
-    <!-- Records table -->
-    <div class="exp-section">
-      <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('clipboard')}</div>
-        <div>
-          <div class="exp-section-title">Όλες οι Εργασίες</div>
-          <div class="exp-section-sub">${records.length} records in view</div>
-        </div>
-      </div>
-      <div class="exp-table-wrap">
-        <table class="mt">
-          <thead><tr>
-            <th style="width:30px">#</th><th>Date</th><th>Plate</th><th>Type</th><th>Workshop</th><th>Description</th><th class="r">Cost €</th><th>Odometer</th><th>Status</th>
-          </tr></thead>
-          <tbody>${records.length ? records.map((r, i) => {
-            const f = r.fields;
-            const statusCls = f['Status']==='Completed'||f['Status']==='Done'?'exp-ok':f['Status']==='Scheduled'?'exp-upcoming':'exp-warning';
-            return `<tr onclick="_svcOpenForm('${r.id}')">
-              <td class="rn">${i+1}</td>
-              <td style="font-size:var(--text-sm)">${_fmtDate(f['Date'])}</td>
-              <td style="font-weight:700;font-size:var(--text-sm)">${f['Vehicle Plate']||'—'}</td>
-              <td style="font-size:var(--text-sm)">${MAINT_TYPE_LABEL[f['Type']]||f['Type']||'—'}</td>
-              <td style="font-size:var(--text-xs);color:var(--text-mid)">${_wsName(f['Workshop'])}</td>
-              <td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:var(--text-xs)">${(f['Description']||'').substring(0,80)}</td>
-              <td class="r" style="font-size:var(--text-sm);font-variant-numeric:tabular-nums">${_fmtCost(f['Cost'])}</td>
-              <td style="font-size:var(--text-xs);font-variant-numeric:tabular-nums">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
-              <td><span class="exp-badge ${statusCls}" style="font-size:9px">${f['Status']||'—'}</span></td>
-            </tr>`;
-          }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+    <table class="mnt-table">
+      <thead><tr>
+        <th style="width:100px">ΗΜ/ΝΙΑ</th><th style="width:150px">ΟΧΗΜΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th>
+        <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px">ΚΟΣΤΟΣ</th><th class="r" style="width:120px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
+      </tr></thead>
+      <tbody>${records.length ? records.map(r => _svcRowHtml(r, true)).join('') : `<tr><td colspan="8" style="height:auto;padding:0">${showEmpty({
             illustration: 'order',
-            title: 'Καμία καταγραφή συντήρησης ακόμη',
-            description: 'Εδώ καταγράφονται συντηρήσεις, επισκευές και έλεγχοι των οχημάτων του στόλου.',
-            action: { label: 'Νέα καταγραφή', onClick: '_svcOpenForm()' }
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία καταγραφή συντήρησης</div>'}</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
-    <div id="mf-container"></div>`;
+            title: anyFilter ? 'Καμία εργασία με αυτά τα φίλτρα' : 'Καμία καταγραφή συντήρησης ακόμη',
+            description: anyFilter ? 'Άλλαξε ή καθάρισε τα φίλτρα.' : 'Εδώ καταγράφονται συντηρήσεις, επισκευές και έλεγχοι των οχημάτων του στόλου.',
+            action: anyFilter ? { label: 'Καθαρισμός φίλτρων', onClick: '_svcClearFilters()' } : { label: 'Νέα εγγραφή', onClick: '_svcOpenForm()' }
+          })}</td></tr>`}</tbody>
+    </table>`;
 }
 
-function _svcOpenForm(editId) {
+// ── Record card (w2-maint-service-record-card 196:754) ──────────
+function _svcOpenCard(id) {
+  const rec = MAINT.history.find(r => r.id === id);
+  if (!rec) { toast('Η εγγραφή δεν βρέθηκε', 'error'); return; }
+  const f = rec.fields;
+  const ws = _wsRec(f['Workshop']);
+  const cat = MAINT_TYPE_LABEL[f['Type']] || f['Type'] || '';
+  const status = MAINT_STATUS_LABEL[f['Status']] || f['Status'] || '—';
+  const next = f['Next Service km'] ? `στα ${Number(f['Next Service km']).toLocaleString('el-GR')} χλμ`
+             : f['Next Service Date'] ? _fmtDMY(f['Next Service Date'], true) : null;
+  const spec = (label, val) => `<div class="ecard-spec"><span class="ecard-spec-label" style="min-width:150px">${label}</span><span class="ecard-spec-val${val ? '' : ' dim'}">${val || '—'}</span></div>`;
+  const wsContact = ws ? [ws.fields['City'], ws.fields['Phone']].filter(Boolean).join(' · ') : '';
+  _mntHost('mnt-drawer-host').innerHTML = `
+    <div class="mnt-drawer-bg" onclick="_mntCloseDrawer()"></div>
+    <div class="mnt-drawer" role="dialog" aria-modal="true" aria-label="Εγγραφή service ${escapeHtml(f['Vehicle Plate'] || '')}">
+      <div class="mnt-drawer-head">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="mnt-drawer-plate">${escapeHtml(f['Vehicle Plate'] || '—')}</span>
+          <span class="mnt-dim">${escapeHtml(cat)}${f['Vehicle Type'] ? ' · ' + _mntTypeGr(f['Vehicle Type']) : ''}</span>
+          <button type="button" class="mnt-drawer-x" onclick="_mntCloseDrawer()" aria-label="Κλείσιμο">✕</button>
+        </div>
+        <span class="mnt-dim">${_fmtDMY(f['Date'], true)} · ${escapeHtml(status)}${f['Needs Review'] ? ' · θέλει έλεγχο' : ''}</span>
+      </div>
+      <div class="ecard-sec"><div class="ecard-sec-title">Εργασία</div><div class="ecard-sec-body">${escapeHtml(f['Description'] || '') || '<span class="mnt-dim">δεν έχει καταχωρηθεί</span>'}</div></div>
+      <div class="ecard-sec"><div class="ecard-sec-title">Στοιχεία</div>
+        ${spec('Κόστος', _fmtCost(f['Cost']) === '—' ? '' : _fmtCost(f['Cost']))}
+        ${spec('Οδόμετρο', f['Odometer km'] ? Number(f['Odometer km']).toLocaleString('el-GR') + ' χλμ' : '')}
+        ${spec('Αρ. τιμολογίου', escapeHtml(f['Invoice Number'] || ''))}
+        ${spec('Επόμενο σέρβις', next ? escapeHtml(next) : '')}
+      </div>
+      <div class="ecard-sec"><div class="ecard-sec-title">Ανταλλακτικά</div><div class="ecard-sec-body">${escapeHtml(f['Parts'] || '') || '<span class="mnt-dim">—</span>'}</div></div>
+      <div class="ecard-sec"><div class="ecard-sec-title">Συνεργείο</div>
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500;color:var(--text)">${ws ? escapeHtml(ws.fields['Name'] || '—') : '<span class="mnt-dim">δεν έχει καταχωρηθεί</span>'}</span>
+          ${ws ? `<span class="mnt-spacer"></span><button type="button" class="mnt-link" onclick="_mntOpenWorkshop('${ws.id}')">καρτέλα →</button>` : ''}</div>
+        ${ws ? `<div class="mnt-dim" style="margin-top:4px">${wsContact ? escapeHtml(wsContact) : 'πόλη/τηλέφωνο — δεν έχουν καταχωρηθεί'}</div>` : ''}
+      </div>
+      <div class="ecard-sec" style="border-bottom:none"><div class="ecard-sec-title">Σημειώσεις</div><div class="ecard-sec-body mnt-mid">${escapeHtml(f['Notes'] || '') || '<span class="mnt-dim">—</span>'}</div></div>
+      <div class="mnt-drawer-foot">
+        <button type="button" class="btn btn-ghost btn-sm" style="margin-right:auto;color:var(--danger)" onclick="_svcDelete('${rec.id}')">Διαγραφή</button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseDrawer()">Κλείσιμο</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="_mntCloseDrawer();_svcOpenForm('${rec.id}')">Επεξεργασία</button>
+      </div>
+    </div>`;
+}
+
+// «καρτέλα →»: the Workshops screen has no deep link, so navigate and select
+// once its list has rendered (bounded wait — gives up silently after 4s).
+function _mntOpenWorkshop(wsId) {
+  _mntCloseDrawer();
+  navigate('workshops');
+  let tries = 0;
+  const t = setInterval(() => {
+    tries++;
+    const ready = document.getElementById('workshops_table') && typeof selectEntity === 'function'
+      && typeof _entityState !== 'undefined' && _entityState.workshops?.records?.length;
+    if (ready) { clearInterval(t); selectEntity('workshops', wsId); }
+    else if (tries > 20) clearInterval(t);
+  }, 200);
+}
+
+// ── Form (w2-maint-service-form 165:679) ─────────────────────────
+function _svcOpenForm(editId, opts) {
   const rec = editId ? MAINT.history.find(r => r.id === editId) : null;
   const f = rec ? rec.fields : {};
 
   const allVehicles = [
     ...MAINT.trucks.map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
     ...MAINT.trailers.map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
-  ].sort((a,b) => a.plate.localeCompare(b.plate));
+  ].filter(v => v.plate).sort((a,b) => a.plate.localeCompare(b.plate));
 
   const wsOpts = MAINT.workshops
     .filter(w => w.fields['Active'])
-    .map(w => `<option value="${w.id}"${(f['Workshop']||[])[0]===w.id?' selected':''}>${w.fields['Name']||'?'}</option>`)
+    .map(w => `<option value="${w.id}"${(f['Workshop']||[])[0]===w.id?' selected':''}>${escapeHtml(w.fields['Name']||'?')}</option>`)
     .join('');
 
   const vPlate = f['Vehicle Plate'] || '';
-  const vType = f['Vehicle Type'] || '';
+  const field = (label, inner, extra) => `<div class="form-field"><label class="form-label">${label}</label>${inner}${extra || ''}</div>`;
 
-  document.getElementById('mf-container').innerHTML = `
-    <div class="mf-overlay" onclick="if(event.target===this)this.remove()">
+  _mntHost('mnt-modal-host').innerHTML = `
+    <div class="mf-overlay" onclick="if(event.target===this)_mntCloseModal()">
       <div class="mf-modal" role="dialog" aria-modal="true">
-        <div class="mf-head"><span>${editId ? 'Επεξεργασία' : 'Νέο'} Service</span>
-          <button class="btn btn-ghost" style="padding:4px 8px" onclick="this.closest('.mf-overlay').remove()">✕</button></div>
+        <div class="mf-head"><span>${editId ? 'Επεξεργασία Service' : 'Νέο Service'}</span>
+          <button type="button" class="mnt-drawer-x" onclick="_mntCloseModal()" aria-label="Κλείσιμο">✕</button></div>
         <div class="mf-body">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <div class="mf-scan">
             <input type="file" id="mf-scanfile" accept="image/*,application/pdf" style="display:none" onchange="_svcScanInvoice(this)">
-            <button class="btn btn-scan" type="button" onclick="document.getElementById('mf-scanfile').click()">📄 Σκανάρισμα τιμολογίου (AI)</button>
-            <span id="mf-scanstatus" style="font-size:12px;color:var(--text-dim)"></span>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mf-scanfile').click()">Σκανάρισμα τιμολογίου (AI)</button>
+            <span id="mf-scanstatus" class="mnt-dim">συμπληρώνει μόνο τα κενά πεδία — ο χρήστης ελέγχει πριν την αποθήκευση</span>
           </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Όχημα</label>
-              <select id="mf-vehicle" onchange="_svcVehicleChange(this)">
+            ${field('Όχημα *', `<select class="form-select" id="mf-vehicle">
                 <option value="">Επιλογή οχήματος…</option>
-                ${allVehicles.map(v => `<option value="${v.plate}|${v.type}"${vPlate===v.plate?' selected':''}>${v.plate} (${v.type==='Truck'?'Φορτηγό':'Τρέιλερ'})</option>`).join('')}
-              </select>
-            </div>
-            <div class="mf-field"><label>Ημερομηνία</label>
-              <input type="date" id="mf-date" value="${f['Date']?toLocalDate(f['Date']):localToday()}">
-            </div>
+                ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}|${v.type}"${vPlate===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
+              </select>`, '<div class="ef-err" id="mf-err-vehicle"></div>')}
+            ${field('Ημερομηνία', `<input class="form-input" type="date" id="mf-date" value="${f['Date']?toLocalDate(f['Date']):localToday()}">`)}
           </div>
           <div class="mf-row">
-            <div class="mf-field"><label>Τύπος</label>
-              <select id="mf-type">
-                ${MAINT_TYPES.map(([v,l]) => `<option value="${v}"${f['Type']===v?' selected':''}>${l}</option>`).join('')}
-              </select>
-            </div>
-            <div class="mf-field"><label>Συνεργείο</label>
-              <select id="mf-workshop"><option value="">—</option>${wsOpts}</select>
-            </div>
+            ${field('Τύπος', `<select class="form-select" id="mf-type">${MAINT_TYPES.map(([v,l]) => `<option value="${v}"${f['Type']===v?' selected':''}>${l}</option>`).join('')}</select>`)}
+            ${field('Συνεργείο', `<select class="form-select" id="mf-workshop"><option value="">—</option>${wsOpts}</select>`)}
           </div>
-          <div class="mf-field"><label>Περιγραφή</label>
-            <textarea id="mf-desc" rows="2">${f['Description']||''}</textarea>
-          </div>
+          ${field('Περιγραφή', `<textarea class="form-textarea" id="mf-desc" rows="2">${escapeHtml(f['Description']||'')}</textarea>`)}
           <div class="mf-row">
-            <div class="mf-field"><label>Κόστος €</label>
-              <input type="number" id="mf-cost" step="0.01" value="${f['Cost']||''}">
-            </div>
-            <div class="mf-field"><label>Χιλιόμετρα (οδόμετρο)</label>
-              <input type="number" id="mf-odo" value="${f['Odometer km']||''}">
-            </div>
-            <div class="mf-field"><label>Αρ. Τιμολογίου</label>
-              <input type="text" id="mf-inv" value="${f['Invoice Number']||''}">
-            </div>
+            ${field('Κόστος €', `<input class="form-input" type="number" id="mf-cost" step="0.01" value="${f['Cost'] ?? ''}">`, '<div class="ef-err" id="mf-err-cost"></div>')}
+            ${field('Χιλιόμετρα (οδόμετρο)', `<input class="form-input" type="number" id="mf-odo" value="${f['Odometer km'] ?? ''}">`, '<div class="ef-err" id="mf-err-odo"></div>')}
+            ${field('Αρ. Τιμολογίου', `<input class="form-input" type="text" id="mf-inv" value="${escapeHtml(f['Invoice Number']||'')}">`)}
           </div>
-          <div class="mf-field"><label>Ανταλλακτικά</label>
-            <textarea id="mf-parts" rows="2">${f['Parts']||''}</textarea>
-          </div>
+          ${field('Ανταλλακτικά', `<textarea class="form-textarea" id="mf-parts" rows="2">${escapeHtml(f['Parts']||'')}</textarea>`)}
           <div class="mf-row">
-            <div class="mf-field"><label>Επόμενο Service (ημ/νία)</label>
-              <input type="date" id="mf-nextdate" value="${f['Next Service Date']||''}">
-            </div>
-            <div class="mf-field"><label>Επόμενο Service (km)</label>
-              <input type="number" id="mf-nextkm" value="${f['Next Service km']||''}">
-            </div>
-            <div class="mf-field"><label>Κατάσταση</label>
-              <select id="mf-status">
-                ${[['Completed','Ολοκληρώθηκε'],['Scheduled','Προγραμματισμένο'],['In Progress','Σε εξέλιξη']].map(([v,l]) => `<option value="${v}"${f['Status']===v?' selected':''}>${l}</option>`).join('')}
-              </select>
-            </div>
+            ${field('Επόμενο Service (ημ/νία)', `<input class="form-input" type="date" id="mf-nextdate" value="${f['Next Service Date']?toLocalDate(f['Next Service Date']):''}">`)}
+            ${field('Επόμενο Service (km)', `<input class="form-input" type="number" id="mf-nextkm" value="${f['Next Service km'] ?? ''}">`)}
+            ${field('Κατάσταση', `<select class="form-select" id="mf-status">
+                ${[['Completed','Ολοκληρώθηκε'],['Scheduled','Προγραμματισμένο'],['In Progress','Σε εξέλιξη']].map(([v,l]) => `<option value="${v}"${(f['Status']||'Completed')===v?' selected':''}>${l}</option>`).join('')}
+              </select>`)}
           </div>
-          <div class="mf-field"><label>Σημειώσεις</label>
-            <textarea id="mf-notes" rows="2">${f['Notes']||''}</textarea>
-          </div>
+          ${field('Σημειώσεις', `<textarea class="form-textarea" id="mf-notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>`)}
         </div>
         <div class="mf-foot">
-          ${editId ? `<button class="btn btn-ghost" style="margin-right:auto;color:var(--danger)" onclick="_svcDelete('${editId}')">Διαγραφή</button>` : ''}
-          <button class="btn btn-ghost" onclick="this.closest('.mf-overlay').remove()">Άκυρο</button>
-          <button class="btn btn-new-order" onclick="_svcSave('${editId||''}')">Αποθήκευση</button>
+          ${editId ? `<button type="button" class="btn btn-ghost btn-sm" style="margin-right:auto;color:var(--danger)" onclick="_svcDelete('${editId}')">Διαγραφή</button>` : ''}
+          <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseModal()">Άκυρο</button>
+          <button type="button" class="btn btn-primary btn-sm" onclick="_svcSave('${editId||''}')">Αποθήκευση</button>
         </div>
       </div>
     </div>`;
-}
-
-function _svcVehicleChange(sel) {
-  // Auto-fill vehicle type from selection
+  if (opts && opts.scan) document.getElementById('mf-scanfile')?.click();
 }
 
 /* ── AI invoice scan → prefill form (verify-before-commit: user reviews, then saves) ── */
@@ -985,9 +1017,11 @@ async function _svcScanInvoice(input) {
 }
 
 async function _svcSave(editId) {
+  const setErr = (id, msg) => { const el = document.getElementById(id); if (el) el.textContent = msg || ''; };
+  setErr('mf-err-vehicle'); setErr('mf-err-cost'); setErr('mf-err-odo');
   const vSel = document.getElementById('mf-vehicle').value;
   const [plate, vType] = vSel ? vSel.split('|') : ['',''];
-  if (!plate) { toast('Επιλέξτε όχημα', 'danger'); return; }
+  if (!plate) { setErr('mf-err-vehicle', 'Επιλέξτε όχημα'); return; }
 
   // Completed records must carry Cost + Odometer km — they feed the per-km
   // wear-rate calibration (TRIP_COSTS_SPEC §10.2 item 10)
@@ -995,7 +1029,8 @@ async function _svcSave(editId) {
   const costRaw = document.getElementById('mf-cost').value.trim();
   const odoRaw  = document.getElementById('mf-odo').value.trim();
   if (stVal === 'Completed' && (costRaw === '' || odoRaw === '')) {
-    toast('Για Ολοκληρωμένο service απαιτούνται Κόστος και Χιλιόμετρα', 'danger');
+    if (costRaw === '') setErr('mf-err-cost', 'Απαιτείται για ολοκληρωμένο service');
+    if (odoRaw === '')  setErr('mf-err-odo', 'Απαιτείται για ολοκληρωμένο service');
     return;
   }
 
@@ -1022,7 +1057,7 @@ async function _svcSave(editId) {
   const vList = (vType === 'Truck' ? MAINT.trucks : MAINT.trailers) || [];
   const vRec  = vList.find(v => v.fields['License Plate'] === plate);
   if (!vRec) {
-    toast(`Το όχημα ${plate} δεν βρέθηκε στον στόλο`, 'danger');
+    setErr('mf-err-vehicle', `Το όχημα ${plate} δεν βρέθηκε στον στόλο`);
     return;
   }
   fields[vType === 'Truck' ? 'Truck' : 'Trailer'] = [vRec.id];
@@ -1035,11 +1070,11 @@ async function _svcSave(editId) {
       await atCreate(TABLES.MAINT_HISTORY, fields);
       toast('Η εγγραφή δημιουργήθηκε ✓');
     }
-    document.querySelector('.mf-overlay')?.remove();
+    _mntCloseModal();
     MAINT.history = [];
-    renderServiceRecords();
+    _mntRepaintCurrent();
   } catch(e) {
-    reportError('Save failed', e);
+    reportError('Η αποθήκευση απέτυχε', e);
   }
 }
 
@@ -1047,15 +1082,25 @@ async function _svcDelete(id) {
   if (!(await confirmAction('Διαγραφή αυτής της εγγραφής service;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
   try {
     await atSoftDelete(TABLES.MAINT_HISTORY, id);
-    toast('Deleted');
-    document.querySelector('.mf-overlay')?.remove();
+    toast('Η εγγραφή διαγράφηκε');
+    _mntCloseModal(); _mntCloseDrawer();
     MAINT.history = [];
-    renderServiceRecords();
-  } catch(e) { toast('Error', 'danger'); }
+    _mntRepaintCurrent();
+  } catch(e) { reportError('Η διαγραφή απέτυχε', e); }
+}
+
+// After a write, redraw whichever maintenance screen is open (the form can be
+// opened from four of them).
+function _mntRepaintCurrent() {
+  const p = (typeof currentPage !== 'undefined') ? currentPage : 'maint_svc';
+  if (p === 'maint_trucks') return _renderHistory('trucks');
+  if (p === 'maint_trailers') return _renderHistory('trailers');
+  if (p === 'maint_dash') return renderMaintDash();
+  return renderServiceRecords();
 }
 
 // ═════════════════════════════════════════════════════════════════
-// PAGE 3+4: TRUCKS/TRAILERS HISTORY (shared)
+// PAGES: ΙΣΤΟΡΙΚΟ ΦΟΡΤΗΓΩΝ / ΡΥΜΟΥΛΚΩΝ (173:824 / 173:1492)
 // ═════════════════════════════════════════════════════════════════
 let _historyVehicle = { trucks: '', trailers: '' };
 
@@ -1073,13 +1118,12 @@ async function renderTrucksHistory()   { await _renderHistory('trucks'); }
 async function renderTrailersHistory() { await _renderHistory('trailers'); }
 
 async function _renderHistory(vType) {
-  const title = vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών';
-  document.getElementById('content').innerHTML = showLoading('Loading history…');
+  document.getElementById('content').innerHTML = showLoading('Φόρτωση ιστορικού…');
   try {
     await _maintLoad(true);
     _historyPaint(vType);
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
+    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκε το ιστορικό συντήρησης');
     console.error(e);
   }
 }
@@ -1087,7 +1131,17 @@ async function _renderHistory(vType) {
 // History UI state per vType
 const _historyFilter = { trucks: {}, trailers: {} };
 
+function _historySetFilter(vType, k, v) {
+  _historyFilter[vType][k] = v;
+  _historyPaint(vType);
+  if (k === 'q') { const el = document.getElementById('hist-q'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+}
+
 function _historyPaint(vType) {
+  const page = vType === 'trucks' ? 'maint_trucks' : 'maint_trailers';
+  // SH-2/MA-3 guard: η σελίδα ιστορικού γράφει μετά από αργό fetch.
+  if (typeof currentPage !== 'undefined' && currentPage !== page) return;
+  _mntCloseDrawer();
   const vehicles = vType === 'trucks' ? MAINT.trucks : MAINT.trailers;
   const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';   // DB value in 'Vehicle Type'
   const vTypeGr    = vType === 'trucks' ? 'φορτηγό' : 'ρυμούλκα'; // display only
@@ -1095,7 +1149,7 @@ function _historyPaint(vType) {
   // the page opened on CB0138HO with a full title and an empty history — and
   // an empty history for the wrong vehicle reads exactly like an empty history
   // for the right one. Nothing is selected until someone selects it.
-  // See docs/design/DEEP_AUDIT_2026-08-04/maint_trucks.md MT-4 / Π3.
+  // See docs/design/DEEP_AUDIT_2026-08-04/maint_trucks.md MT-4 / Π3 and Figma 173:1492.
   const selected = _historyVehicle[vType];
   const state = _historyFilter[vType];
 
@@ -1104,7 +1158,7 @@ function _historyPaint(vType) {
     .sort((a,b) => (a.fields['License Plate']||'').localeCompare(b.fields['License Plate']||''))
     .map(v => {
       const p = v.fields['License Plate']||'?';
-      return `<option value="${p}"${selected===p?' selected':''}>${p} — ${v.fields['Brand']||''} ${v.fields['Model']||''}</option>`;
+      return `<option value="${escapeHtml(p)}"${selected===p?' selected':''}>${escapeHtml(p)} — ${escapeHtml([v.fields['Brand'], v.fields['Model']].filter(Boolean).join(' '))}</option>`;
     }).join('');
 
   // All records for selected vehicle (for stats)
@@ -1114,11 +1168,9 @@ function _historyPaint(vType) {
         .sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
     : [];
 
-  // Available years + types for filters
   const years = [...new Set(allRecs.map(r => (r.fields['Date']||'').slice(0, 4)).filter(Boolean))].sort().reverse();
   const types = [...new Set(allRecs.map(r => r.fields['Type']).filter(Boolean))].sort();
 
-  // Apply filters
   let records = allRecs;
   if (state.year)  records = records.filter(r => (r.fields['Date']||'').startsWith(state.year));
   if (state.type)  records = records.filter(r => r.fields['Type'] === state.type);
@@ -1126,264 +1178,152 @@ function _historyPaint(vType) {
     const q = state.q.toLowerCase();
     records = records.filter(r => {
       const f = r.fields;
-      return String(f['Description']||'').toLowerCase().includes(q)
-          || String(f['Type']||'').toLowerCase().includes(q)
-          || _wsName(f['Workshop']).toLowerCase().includes(q);
+      return [f['Description'], f['Type'], MAINT_TYPE_LABEL[f['Type']], f['Parts'], f['Invoice Number'], f['Notes'], _wsName(f['Workshop'])]
+        .some(v => String(v || '').toLowerCase().includes(q));
     });
   }
 
-  // Stats (based on filtered set)
   const year = new Date().getFullYear();
-  const ytdRecs = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year)));
-  const prevYearRecs = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year - 1)));
-  const totalCostYTD = ytdRecs.reduce((s, r) => s + (parseFloat(r.fields['Cost'])||0), 0);
-  const totalCostPrev = prevYearRecs.reduce((s, r) => s + (parseFloat(r.fields['Cost'])||0), 0);
-  const avgCost = ytdRecs.length ? totalCostYTD / ytdRecs.length : 0;
-  const lastService = allRecs[0]?.fields['Date'] || '—';
+  const ytd = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year)));
+  const prev = allRecs.filter(r => (r.fields['Date']||'').startsWith(String(year - 1)));
+  const ytdCost = _sumCost(ytd), prevCost = _sumCost(prev);
+  const delta = (prevCost.sum > 0 && ytdCost.n) ? Math.round((ytdCost.sum - prevCost.sum) / prevCost.sum * 100) : null;
+  const avg = ytdCost.n ? ytdCost.sum / ytdCost.n : null;
+  const last = allRecs[0] || null;
+  const firstYear = allRecs.length ? (allRecs[allRecs.length - 1].fields['Date'] || '').slice(0, 4) : '';
+  const nextSvc = last ? (last.fields['Next Service km'] ? `επόμενο στα ${Number(last.fields['Next Service km']).toLocaleString('el-GR')} χλμ`
+                        : last.fields['Next Service Date'] ? `επόμενο ${_fmtDMY(last.fields['Next Service Date'])}` : 'επόμενο σέρβις — δεν έχει καταχωρηθεί') : '';
 
-  // Monthly cost for last 12 months (for sparkline)
-  const now = new Date();
-  const monthlyBuckets = {};
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    monthlyBuckets[d.toISOString().slice(0, 7)] = 0;
-  }
-  allRecs.forEach(r => {
-    const mKey = (r.fields['Date']||'').slice(0, 7);
-    if (mKey in monthlyBuckets) {
-      monthlyBuckets[mKey] += parseFloat(r.fields['Cost'])||0;
-    }
-  });
-  const monthlyValues = Object.values(monthlyBuckets);
-
-  // Type breakdown
+  // Category breakdown (current year) and top workshops (all years)
   const byType = {};
-  ytdRecs.forEach(r => {
-    const t = r.fields['Type'] || 'Other';
-    if (!byType[t]) byType[t] = { count: 0, cost: 0 };
-    byType[t].count++;
-    byType[t].cost += parseFloat(r.fields['Cost'])||0;
-  });
-  const typeEntries = Object.entries(byType).sort((a, b) => b[1].cost - a[1].cost);
+  ytd.forEach(r => { const t = r.fields['Type'] || 'Other'; byType[t] = byType[t] || { count: 0, cost: 0 }; byType[t].count++; byType[t].cost += Number(r.fields['Cost']) || 0; });
+  const typeEntries = Object.entries(byType).sort((a, b) => b[1].cost - a[1].cost).slice(0, 5);
   const maxTypeCost = typeEntries.length ? typeEntries[0][1].cost : 0;
-
-  // Top workshops (by cost)
   const byWs = {};
-  allRecs.forEach(r => {
-    const wsName = _wsName(r.fields['Workshop']);
-    if (!wsName || wsName === '—') return;
-    if (!byWs[wsName]) byWs[wsName] = 0;
-    byWs[wsName] += parseFloat(r.fields['Cost'])||0;
-  });
+  allRecs.forEach(r => { const n = _wsName(r.fields['Workshop']); if (!n || n === '—') return; byWs[n] = (byWs[n] || 0) + (Number(r.fields['Cost']) || 0); });
   const topWs = Object.entries(byWs).sort((a, b) => b[1] - a[1]).slice(0, 5);
-  const maxWsCost = topWs.length ? topWs[0][1] : 0;
 
-  // MoM delta for cost
-  const costDelta = totalCostPrev > 0
-    ? Math.round(((totalCostYTD - totalCostPrev) / totalCostPrev) * 100)
-    : null;
-
-  // Vehicle info
   const vRec = selected ? vehicles.find(v => v.fields['License Plate'] === selected) : null;
-  const vf = vRec?.fields || {};
+  const canNew = !!selected;
 
-  const _i = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
-
-  // SH-2/MA-3 guard: η σελίδα ιστορικού γράφει μετά από αργό fetch.
-  if (typeof currentPage !== 'undefined' && currentPage !== (vType === 'trucks' ? 'maint_trucks' : 'maint_trailers')) return;
   document.getElementById('content').innerHTML = `
-    <div class="dash-wrap">
-      <div class="dash-header">
-        <div>
-          <div class="dash-greeting">${_i(vType === 'trucks' ? 'truck' : 'truck', 22)} ${vType === 'trucks' ? 'Trucks' : 'Trailers'} History</div>
-          <div class="dash-date">Εγγραφές service & συντήρησης ανά όχημα${selected && vRec ? ` · ${vf['License Plate']||''} — ${vf['Brand']||''} ${vf['Model']||''}` : ''}</div>
-        </div>
-        <div style="display:flex;gap:var(--space-2);align-items:center">
-          <button class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')">${_i('plus')} Νέα Εγγραφή</button>
-          <button class="btn btn-ghost btn-sm" onclick="_historyExport('${vType}')">${_i('file_text')} Export CSV</button>
-          <button class="btn btn-secondary btn-sm" onclick="MAINT.history=[];_renderHistory('${vType}')">${_i('refresh')} Refresh</button>
-        </div>
-      </div>
-
-      <!-- Vehicle + Filter toolbar -->
-      <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
-        <select class="svc-filter" style="min-width:280px" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
-          <option value="">Επίλεξε ${vTypeGr}…</option>
-          ${vehicleOpts}
+    <div class="mnt-head">
+      <span class="mnt-title">${vType === 'trucks' ? 'Ιστορικό Φορτηγών' : 'Ιστορικό Ρυμουλκών'}</span>
+      <select class="mnt-select wide" title="Όχημα" onchange="_historyVehicle['${vType}']=this.value;_historyFilter['${vType}']={};_historyPaint('${vType}')">
+        <option value="">Επίλεξε ${vTypeGr}…</option>
+        ${vehicleOpts}
+      </select>
+      ${selected ? `
+        <select class="mnt-select" title="Έτος" onchange="_historySetFilter('${vType}','year',this.value)">
+          <option value="">Έτος: Όλα</option>
+          ${years.map(y => `<option value="${y}"${state.year===y?' selected':''}>${y}</option>`).join('')}
         </select>
-        ${selected ? `
-          <div class="entity-search-wrap" style="min-width:200px">
-            ${_i('search')}
-            <input class="entity-search-input" placeholder="Search description / type / workshop…" value="${escapeHtml(state.q || '')}"
-              oninput="_historyFilter['${vType}'].q=this.value;_historyPaint('${vType}')">
-          </div>
-          <select class="svc-filter" onchange="_historyFilter['${vType}'].year=this.value;_historyPaint('${vType}')">
-            <option value="">Year: All</option>
-            ${years.map(y => `<option value="${y}"${state.year===y?' selected':''}>${y}</option>`).join('')}
-          </select>
-          <select class="svc-filter" onchange="_historyFilter['${vType}'].type=this.value;_historyPaint('${vType}')">
-            <option value="">Type: All</option>
-            ${types.map(t => `<option value="${escapeHtml(t)}"${state.type===t?' selected':''}>${escapeHtml(t)}</option>`).join('')}
-          </select>
-          <span class="entity-count-chip">${records.length}</span>
-        ` : ''}
-      </div>
-
-      ${!selected ? `
-        <div class="dash-card">
-          <div class="dash-card-body">
-            <div class="dash-empty" style="padding:var(--space-12) var(--space-4)">
-              ${_i('truck', 32)}
-              <div>Επίλεξε ${vTypeGr} για να δεις το ιστορικό του</div>
-            </div>
-          </div>
-        </div>` : `
-
-      <!-- KPI Bar (4 stats) -->
-      <div class="dash-kpi-bar" style="grid-template-columns:repeat(4,1fr)">
-        <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-accent),transparent)"></div>
-          <div class="dash-kpi-label">${_i('coins', 11)} Cost YTD</div>
-          <div class="dash-kpi-value dash-val-accent">${_fmtCost(totalCostYTD)}${costDelta !== null ? `<span class="ceo-delta ${costDelta > 0 ? 'up-bad' : costDelta < 0 ? 'down' : 'flat'}" style="margin-left:8px">${_i(costDelta > 0 ? 'trending_up' : costDelta < 0 ? 'trending_down' : 'minus', 10)}${costDelta >= 0 ? '+' : ''}${costDelta}%</span>` : ''}</div>
-          <div class="dash-kpi-sub">${year} vs ${year-1}${totalCostPrev ? ` (€${Math.round(totalCostPrev).toLocaleString()})` : ''}</div>
-        </div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-ok-hi),transparent)"></div>
-          <div class="dash-kpi-label">${_i('list_checks', 11)} Services YTD</div>
-          <div class="dash-kpi-value dash-val-success">${ytdRecs.length}</div>
-          <div class="dash-kpi-sub">${allRecs.length} total all-time</div>
-        </div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-warn),transparent)"></div>
-          <div class="dash-kpi-label">${_i('activity', 11)} Avg Cost</div>
-          <div class="dash-kpi-value dash-val-warning">${_fmtCost(avgCost)}</div>
-          <div class="dash-kpi-sub">per service YTD</div>
-        </div>
-        <div class="dash-kpi">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-accent),transparent)"></div>
-          <div class="dash-kpi-label">${_i('clock', 11)} Last Service</div>
-          <div class="dash-kpi-value dash-val-accent" style="font-size:22px">${_fmtDate(lastService)}</div>
-          <div class="dash-kpi-sub">${lastService !== '—' ? _elRelTime ? _elRelTime(lastService) : '' : 'no services yet'}</div>
-        </div>
-      </div>
-
-      <!-- Secondary row: sparkline + type breakdown + top workshops -->
-      <div class="dash-grid-main" style="margin-bottom:var(--space-4)">
-        <div class="dash-left">
-          <div class="dash-card">
-            <div class="dash-card-header">
-              <div class="dash-card-title">${_i('trending_up', 12)} COST TREND · LAST 12 MONTHS</div>
-              <span class="dash-card-meta">monthly</span>
-            </div>
-            <div class="dash-card-body">
-              ${monthlyValues.some(v => v > 0)
-                ? `<div style="height:60px">${_mdSpark(monthlyValues, 'var(--panel-accent)', 600)}</div>`
-                : `<div class="dash-empty" style="padding:var(--space-6) 0">${_i('activity', 24)}<div>No cost data yet</div></div>`}
-            </div>
-          </div>
-          <div class="dash-card">
-            <div class="dash-card-header">
-              <div class="dash-card-title">${_i('tool', 12)} SERVICE TYPE BREAKDOWN · ${year}</div>
-              <span class="dash-card-meta">${typeEntries.length} types</span>
-            </div>
-            <div class="dash-card-body">
-              ${typeEntries.length ? `<div style="display:flex;flex-direction:column;gap:6px">
-                ${typeEntries.slice(0, 6).map(([t, stats]) => `
-                  <div style="display:flex;align-items:center;gap:8px;font-size:11px">
-                    <span style="width:120px;color:var(--dc-text);font-weight:600">${escapeHtml(t)}</span>
-                    <div style="flex:1;height:14px;background:rgba(255,255,255,0.04);border-radius:4px;overflow:hidden">
-                      <div style="height:100%;width:${maxTypeCost ? (stats.cost/maxTypeCost*100) : 0}%;background:linear-gradient(90deg,var(--panel-accent),#7DD3FC);border-radius:4px;transition:width 0.6s"></div>
-                    </div>
-                    <span style="width:36px;text-align:right;color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${stats.count}×</span>
-                    <span style="width:64px;text-align:right;color:var(--dc-text);font-variant-numeric:tabular-nums;font-weight:700">${_fmtCost(stats.cost)}</span>
-                  </div>`).join('')}
-              </div>` : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('tool', 24)}<div>No services in ${year}</div></div>`}
-            </div>
-          </div>
-        </div>
-        <div class="dash-right">
-          <div class="dash-card">
-            <div class="dash-card-header">
-              <div class="dash-card-title">${_i('award', 12)} TOP WORKSHOPS</div>
-              <span class="dash-card-meta">all-time</span>
-            </div>
-            <div class="dash-card-body">
-              ${topWs.length ? topWs.map(([name, cost], i) => `
-                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--dc-card-border);font-size:11px">
-                  <span style="width:16px;color:var(--dc-accent);font-weight:700">#${i+1}</span>
-                  <span style="flex:1;color:var(--dc-text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(name)}">${escapeHtml(name)}</span>
-                  <span style="color:var(--dc-text);font-weight:700;font-variant-numeric:tabular-nums">${_fmtCost(cost)}</span>
-                </div>`).join('') : `<div class="dash-empty" style="padding:var(--space-4) 0">${_i('building', 20)}<div>Κανένα συνεργείο καταχωρημένο</div></div>`}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Records Table -->
-      <div class="dash-card">
-        <div class="dash-card-header">
-          <div class="dash-card-title">${_i('file_text', 12)} SERVICE RECORDS</div>
-          <span class="dash-card-meta">${records.length} ${allRecs.length !== records.length ? `of ${allRecs.length}` : ''}</span>
-        </div>
-        <div class="dash-card-body flush">
-          ${records.length ? `<table class="md-fleet-table">
-            <thead><tr>
-              <th style="width:36px">#</th>
-              <th style="width:90px">Date</th>
-              <th style="width:120px">Type</th>
-              <th>Workshop</th>
-              <th>Description</th>
-              <th style="text-align:right;width:90px">Cost €</th>
-              <th style="text-align:right;width:110px">Odometer</th>
-              <th style="width:110px;text-align:center">Status</th>
-            </tr></thead>
-            <tbody>${records.map((r, i) => {
-              const f = r.fields;
-              const statusCls = f['Status']==='Completed' ? 'green' : f['Status']==='Scheduled' ? 'amber' : 'red';
-              return `<tr onclick="_svcOpenForm('${r.id}')">
-                <td style="color:var(--dc-text-dim);font-variant-numeric:tabular-nums">${i+1}</td>
-                <td style="color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${_fmtDate(f['Date'])}</td>
-                <td style="font-weight:500">${escapeHtml(f['Type']||'—')}</td>
-                <td style="color:var(--dc-text-mid)">${escapeHtml(_wsName(f['Workshop']))}</td>
-                <td style="max-width:340px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dc-text-dim);font-size:11px" title="${escapeHtml(f['Description']||'')}">${escapeHtml((f['Description']||'').substring(0, 100))}</td>
-                <td class="mono" style="text-align:right;font-weight:700;color:var(--dc-text)">${_fmtCost(f['Cost'])}</td>
-                <td style="text-align:right;color:var(--dc-text-mid);font-variant-numeric:tabular-nums;font-size:11px">${f['Odometer km']?f['Odometer km'].toLocaleString()+' km':'—'}</td>
-                <td style="text-align:center"><span class="dash-aging-pill ${statusCls}">${f['Status']||'—'}</span></td>
-              </tr>`;
-            }).join('')}</tbody>
-          </table>` : `<div style="padding:var(--space-6)"><div class="dash-empty">${_i('file_text', 28)}<div>No records${allRecs.length ? ' matching filters' : ' for this vehicle yet'}</div></div></div>`}
-        </div>
-      </div>
-      `}
+        <select class="mnt-select" title="Κατηγορία" onchange="_historySetFilter('${vType}','type',this.value)">
+          <option value="">Κατηγορία: Όλες</option>
+          ${types.map(t => `<option value="${escapeHtml(t)}"${state.type===t?' selected':''}>${escapeHtml(MAINT_TYPE_LABEL[t] || t)}</option>`).join('')}
+        </select>
+        <span class="mnt-pill static"><b>${records.length}</b> ${records.length === 1 ? 'εργασία' : 'εργασίες'}${records.length !== allRecs.length ? ` από ${allRecs.length}` : ''}</span>
+      ` : ''}
+      <span class="mnt-spacer"></span>
+      ${selected ? `<input id="hist-q" class="mnt-search" style="width:180px" placeholder="Αναζήτηση εργασίας…" value="${escapeHtml(state.q || '')}" oninput="_historySetFilter('${vType}','q',this.value)">` : ''}
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_historyExport('${vType}')" ${canNew ? '' : 'disabled title="Επίλεξε πρώτα όχημα"'}>Εξαγωγή CSV</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_svcOpenFormForVehicle('${vType}')" ${canNew ? '' : 'disabled title="Επίλεξε πρώτα όχημα"'}>Νέα εγγραφή</button>
+      ${_mntRefreshBtn(`MAINT.history=[];_renderHistory('${vType}')`)}
     </div>
-    <div id="mf-container"></div>`;
+
+    ${!selected ? `
+      <div style="max-width:420px;margin:120px auto 0">${showEmpty({
+        illustration: 'truck',
+        title: vType === 'trucks' ? 'Κανένα φορτηγό επιλεγμένο' : 'Καμία ρυμούλκα επιλεγμένη',
+        description: `Επίλεξε ${vTypeGr} από τη λίστα πάνω για να δεις το ιστορικό ${vType === 'trucks' ? 'του' : 'της'}.`,
+      })}</div>
+      <p class="mnt-note" style="text-align:center;max-width:560px;margin:var(--space-3) auto 0">Τίποτα δεν προεπιλέγεται — κενό ιστορικό λάθος οχήματος μοιάζει με κενό ιστορικό του σωστού. Από την καρτέλα οχήματος φτάνεις εδώ με το όχημα ήδη διαλεγμένο.</p>
+    ` : `
+      <div class="mnt-kpis">
+        <div class="mnt-kpi">
+          <span class="mnt-kpi-l">Δαπάνη ${year}</span>
+          <span class="mnt-kpi-v" style="font-size:var(--text-xl)">${ytdCost.n ? _fmtCost(ytdCost.sum) : '—'}${delta !== null ? `<small class="${delta > 0 ? 'mnt-warn' : 'mnt-ok'}">${delta > 0 ? '+' : ''}${delta}% vs ${year - 1}</small>` : ''}</span>
+          <span class="mnt-kpi-s">${prevCost.n ? `${year - 1}: ${_fmtCost(prevCost.sum)}` : `${year - 1}: καμία εργασία`}${ytdCost.missing ? ` · ${ytdCost.missing} χωρίς κόστος` : ''}</span>
+        </div>
+        <div class="mnt-kpi">
+          <span class="mnt-kpi-l">Εργασίες ${year}</span>
+          <span class="mnt-kpi-v" style="font-size:var(--text-xl)">${ytd.length}</span>
+          <span class="mnt-kpi-s">${allRecs.length} συνολικά${firstYear ? ` από το ${firstYear}` : ''}</span>
+        </div>
+        <div class="mnt-kpi">
+          <span class="mnt-kpi-l">Μ.Ο. ανά εργασία</span>
+          <span class="mnt-kpi-v" style="font-size:var(--text-xl)">${avg === null ? '—' : _fmtCost(avg)}</span>
+          <span class="mnt-kpi-s">${avg === null ? `καμία εργασία με κόστος το ${year}` : `μέσος όρος ${year} (${ytdCost.n} με κόστος)`}</span>
+        </div>
+        <div class="mnt-kpi">
+          <span class="mnt-kpi-l">Τελευταίο σέρβις</span>
+          <span class="mnt-kpi-v" style="font-size:var(--text-xl)">${last ? _fmtDMY(last.fields['Date']) : '—'}</span>
+          <span class="mnt-kpi-s">${last ? `${_relDays(last.fields['Date'])} · ${nextSvc}` : 'καμία εργασία καταχωρημένη'}</span>
+        </div>
+      </div>
+
+      <div class="mnt-grid2">
+        <div class="mnt-card">
+          <span class="mnt-card-t">Ανάλυση ανά κατηγορία — ${year}</span>
+          ${typeEntries.length ? typeEntries.map(([t, s]) => `
+            <div class="mnt-row" style="min-height:22px;font-size:var(--text-xs)">
+              <span style="width:180px;flex-shrink:0">${escapeHtml(MAINT_TYPE_LABEL[t] || t)}</span>
+              <span class="mnt-bar thick grow"><i style="width:${maxTypeCost ? Math.round(s.cost / maxTypeCost * 100) : 0}%"></i></span>
+              <span class="mnt-dim mnt-num" style="width:32px;text-align:right">${s.count}×</span>
+              <span class="mnt-num" style="width:70px;text-align:right;font-weight:700">${_fmtCost(s.cost)}</span>
+            </div>`).join('') : `<span class="mnt-dim">Καμία εργασία το ${year}</span>`}
+        </div>
+        <div class="mnt-card">
+          <span class="mnt-card-t">Top συνεργεία — όλα τα έτη</span>
+          ${topWs.length ? topWs.map(([n, c], i) => `
+            <div class="mnt-row" style="min-height:22px;font-size:var(--text-xs)">
+              <span class="mnt-dim" style="width:24px;font-weight:700">#${i + 1}</span>
+              <span class="grow">${escapeHtml(n)}</span>
+              <span class="mnt-num" style="font-weight:700">${_fmtCost(c)}</span>
+            </div>`).join('') : `<span class="mnt-dim">Κανένα συνεργείο καταχωρημένο</span>`}
+        </div>
+      </div>
+
+      <table class="mnt-table">
+        <thead><tr>
+          <th style="width:110px">ΗΜ/ΝΙΑ</th><th style="width:200px">ΚΑΤΗΓΟΡΙΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:220px">ΣΥΝΕΡΓΕΙΟ</th>
+          <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:120px">ΚΟΣΤΟΣ</th><th class="r" style="width:130px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
+        </tr></thead>
+        <tbody>${records.length ? records.map(r => _svcRowHtml(r, false)).join('') : `<tr><td colspan="8" style="height:auto;padding:0">${showEmpty({
+          illustration: 'order',
+          title: allRecs.length ? 'Καμία εργασία με αυτά τα φίλτρα' : `Καμία εργασία για ${escapeHtml(selected)}`,
+          description: allRecs.length ? 'Άλλαξε έτος, κατηγορία ή αναζήτηση.' : `Δεν έχει καταχωρηθεί ιστορικό για αυτ${vType === 'trucks' ? 'ό το φορτηγό' : 'ή τη ρυμούλκα'}${vRec ? '' : ' (δεν βρέθηκε στον ενεργό στόλο)'}.`,
+          action: allRecs.length ? null : { label: 'Νέα εγγραφή', onClick: `_svcOpenFormForVehicle('${vType}')` },
+        })}</td></tr>`}</tbody>
+      </table>
+    `}`;
 }
 
 // Export history to CSV
 function _historyExport(vType) {
   const selected = _historyVehicle[vType];
-  if (!selected) { if (typeof toast === 'function') toast('Select a vehicle first', 'error'); return; }
+  if (!selected) { if (typeof toast === 'function') toast('Επίλεξε πρώτα όχημα', 'error'); return; }
   const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
   const recs = MAINT.history
     .filter(r => r.fields['Vehicle Plate'] === selected && r.fields['Vehicle Type'] === vTypeLabel)
     .sort((a, b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''));
-  if (!recs.length) { if (typeof toast === 'function') toast('No records to export'); return; }
-  const rows = [['Date','Type','Workshop','Description','Cost','Odometer km','Status']];
+  if (!recs.length) { if (typeof toast === 'function') toast('Δεν υπάρχουν εγγραφές για εξαγωγή'); return; }
+  const rows = [['Ημερομηνία','Κατηγορία','Συνεργείο','Εργασία','Ανταλλακτικά','Κόστος','Οδόμετρο km','Κατάσταση']];
   recs.forEach(r => {
     const f = r.fields;
     rows.push([
-      f['Date']||'', f['Type']||'', _wsName(f['Workshop']),
-      f['Description']||'', f['Cost']||0, f['Odometer km']||'', f['Status']||''
+      f['Date']||'', MAINT_TYPE_LABEL[f['Type']] || f['Type'] || '', _wsName(f['Workshop']),
+      f['Description']||'', f['Parts']||'', f['Cost'] ?? '', f['Odometer km'] ?? '', MAINT_STATUS_LABEL[f['Status']] || f['Status'] || ''
     ]);
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `${vType}-history-${selected.replace(/\s+/g,'_')}-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `${vType}-history-${selected.replace(/\s+/g,'_')}-${localToday()}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
-  if (typeof toast === 'function') toast('CSV exported');
+  if (typeof toast === 'function') toast('Το CSV εξήχθη');
 }
 
 // Expose globally
@@ -1396,537 +1336,24 @@ function _svcOpenFormForVehicle(vType) {
   _svcOpenForm();
   if (selected) {
     const vTypeLabel = vType === 'trucks' ? 'Truck' : 'Trailer';
-    setTimeout(() => {
-      const sel = document.getElementById('mf-vehicle');
-      if (sel) sel.value = `${selected}|${vTypeLabel}`;
-    }, 50);
+    const sel = document.getElementById('mf-vehicle');
+    if (sel) sel.value = `${selected}|${vTypeLabel}`;
   }
 }
 
 // ═════════════════════════════════════════════════════════════════
-// PAGE 5: MAINTENANCE DASHBOARD — Bloomberg-style command center
+// PAGE: ΚΕΝΤΡΟ ΣΥΝΤΗΡΗΣΗΣ (w2-maint-dashboard 193:823)
 // ═════════════════════════════════════════════════════════════════
-
 let _maintDashRefreshTimer = null;
-
-function _maintDashSkeleton() {
-  return `<div style="padding:0;max-width:1600px">
-    <style>
-      @keyframes maint-sk { 0% { opacity: 0.4; } 50% { opacity: 0.8; } 100% { opacity: 0.4; } }
-      .maint-sk-block { background: #0B1120; border: 1px solid rgba(30,41,59,0.5); border-radius: 8px; animation: maint-sk 1.4s ease-in-out infinite; }
-    </style>
-    <div style="display:flex;justify-content:space-between;margin-bottom:20px">
-      <div>
-        <div class="maint-sk-block" style="width:240px;height:24px;margin-bottom:6px;border-radius:6px"></div>
-        <div class="maint-sk-block" style="width:180px;height:14px;border-radius:4px"></div>
-      </div>
-      <div class="maint-sk-block" style="width:120px;height:14px;border-radius:4px;align-self:flex-end"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px">
-      ${[1,2,3,4,5,6].map(() => '<div class="maint-sk-block" style="height:82px"></div>').join('')}
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px">
-      <div style="display:flex;flex-direction:column;gap:16px">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div class="maint-sk-block" style="height:260px"></div>
-          <div class="maint-sk-block" style="height:260px"></div>
-        </div>
-        <div class="maint-sk-block" style="height:300px"></div>
-        <div class="maint-sk-block" style="height:200px"></div>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div class="maint-sk-block" style="height:240px"></div>
-        <div class="maint-sk-block" style="height:160px"></div>
-      </div>
-    </div>
-  </div>`;
-}
-
-function _maintExpiryStatus(dateStr) {
-  if (!dateStr) return { status: 'unknown', days: null, color: '#64748B' };
-  const now = new Date();
-  const exp = new Date(dateStr);
-  const days = Math.floor((exp - now) / 86400000);
-  if (days < 0) return { status: 'expired', days: Math.abs(days), color: '#EF4444' };
-  if (days <= 30) return { status: 'expiring', days, color: 'var(--panel-warn)' };
-  return { status: 'ok', days, color: 'var(--panel-ok)' };
-}
-
-function _maintDaysPill(days, status) {
-  if (days === null) return '<span class="dash-aging-pill" style="background:rgba(100,116,139,0.12);color:var(--text-dim)">—</span>';
-  const cls = status === 'expired' ? 'red' : status === 'expiring' ? 'amber' : 'green';
-  // MD-4: «852d late» — a document two years gone rendered exactly like one
-  // ten days gone, and in English. Ancient overdues now escalate in wording
-  // (months/years), so the reader sees «2 χρ.» instead of doing division.
-  let label;
-  if (status !== 'expired') label = days + ' ημ.';
-  else if (days >= 365) label = (days/365).toFixed(days >= 730 ? 0 : 1).replace('.', ',') + ' χρ. ληγμένο';
-  else if (days >= 60)  label = Math.round(days/30) + ' μήνες ληγμένο';
-  else                  label = days + ' ημ. ληγμένο';
-  return `<span class="dash-aging-pill ${cls}"${status==='expired'&&days>=60?' style="font-weight:700"':''}>${label}</span>`;
-}
-
-function _maintCompBlock(dateStr, label) {
-  const s = _maintExpiryStatus(dateStr);
-  const lbl = label || '';
-  if (s.status === 'unknown') return `<span class="md-comp-block none">${lbl || '—'}</span>`;
-  return `<span class="md-comp-block ${s.status === 'expired' ? 'expired' : s.status === 'expiring' ? 'warn' : 'ok'}">${lbl || ''}</span>`;
-}
-
-// ── Monthly cost aggregator (replaces "coming soon" placeholder) ──
-function _maintMonthlyCost(history) {
-  const byMonth = {};
-  const now = new Date();
-  // Initialize 6 μήνες (even if 0)
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = d.toISOString().slice(0, 7); // YYYY-MM
-    byMonth[key] = 0;
-  }
-  history.forEach(r => {
-    const dateStr = r.fields['Date'];
-    if (!dateStr) return;
-    const key = dateStr.slice(0, 7);
-    if (!(key in byMonth)) return; // outside our 6-month window
-    // Bugfix: old `parseFloat(a || b || 0)` returns NaN if `a` is empty string.
-    // Proper fallback chain with separate parseFloat calls:
-    // C10 fix: previous `parseFloat(a) || parseFloat(b)` incorrectly fell through to
-    // the fallback when the primary field was a legitimate 0. Use isFinite() check.
-    const c1 = parseFloat(r.fields['Cost']);
-    const c2 = parseFloat(r.fields['Total Cost']);
-    const cost = Number.isFinite(c1) ? c1 : (Number.isFinite(c2) ? c2 : 0);
-    byMonth[key] += cost;
-  });
-  return Object.entries(byMonth)
-    .sort(([a],[b]) => a.localeCompare(b))
-    .map(([key, cost]) => ({
-      key,
-      month: ['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'][parseInt(key.slice(5,7))-1],
-      cost: Math.round(cost)
-    }));
-}
-
-// ── Inline sparkline for maintenance ──
-function _mdSpark(values, color, width) {
-  if (!values || values.length < 2) return '';
-  const w = width || 120, h = 32, pad = 2;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const step = (w - pad * 2) / (values.length - 1);
-  const points = values.map((v, i) => {
-    const x = pad + i * step;
-    const y = pad + (h - pad * 2) * (1 - (v - min) / range);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const lastX = pad + (values.length - 1) * step;
-  const lastY = pad + (h - pad * 2) * (1 - (values[values.length - 1] - min) / range);
-  const areaPoints = `${pad},${h-pad} ${points} ${lastX.toFixed(1)},${h-pad}`;
-  const gradId = 'md' + Math.random().toString(36).slice(2,8);
-  return `<svg class="md-cost-spark" viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-    <defs><linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>
-      <stop offset="100%" stop-color="${color}" stop-opacity="0"/>
-    </linearGradient></defs>
-    <polygon points="${areaPoints}" fill="url(#${gradId})"/>
-    <polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="1.8" fill="${color}"/>
-  </svg>`;
-}
-
-// ── MoM delta pill for maintenance ──
-function _mdDelta(curr, prev, lowerIsBetter) {
-  if (!prev || prev === 0 || isNaN(prev)) return '';
-  const diff = curr - prev;
-  const pct = Math.round(diff / prev * 100);
-  const _ic = (n, s) => (typeof icon === 'function') ? icon(n, s || 10) : '';
-  if (pct === 0) return `<span class="dash-kpi-delta flat">${_ic('minus')}0%</span>`;
-  const isUp = pct > 0;
-  const cls = lowerIsBetter
-    ? (isUp ? 'down' : 'up')  // reversed semantics for "down-bad" class naming
-    : (isUp ? 'up' : 'down');
-  const iconName = isUp ? 'trending_up' : 'trending_down';
-  // Use ceo-delta pattern for consistency (has more variants)
-  const finalCls = lowerIsBetter
-    ? (isUp ? 'down-bad' : 'down')
-    : (isUp ? 'up' : 'down-bad');
-  return `<span class="ceo-delta ${finalCls}">${_ic(iconName)}${isUp ? '+' : ''}${pct}%</span>`;
-}
+const _MONTHS_GR = ['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
 
 async function renderMaintDash() {
   const c = document.getElementById('content');
-  c.innerHTML = _maintDashSkeleton();
-  const _ic = (n, size) => (typeof icon === 'function') ? icon(n, size || 14) : '';
-
+  c.innerHTML = showLoading('Φόρτωση κέντρου συντήρησης…');
   try {
     await _maintLoad(true);
-
-    const now = new Date();
-    const today = localToday();
-    const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-
-    // ═══ CALCULATIONS ═══
-    const activeTrucks = MAINT.trucks.filter(t => t.fields['Active']);
-    const activeTrailers = MAINT.trailers.filter(t => t.fields['Active']);
-    const totalFleet = activeTrucks.length + activeTrailers.length;
-
-    // Build flat expiry rows for all documents
-    const allExpRows = _expiryBuildRows();
-    const expiredRows = allExpRows.filter(r => r.days !== null && r.days < 0);
-    const expiring30Rows = allExpRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 30);
-    const expiring60Rows = allExpRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 60);
-
-    // Per-document-type expired counts
-    const kteoExpired = expiredRows.filter(r => r.docType === 'KTEO').length;
-    const kekExpired = expiredRows.filter(r => r.docType === 'KEK').length;
-    const insExpired = expiredRows.filter(r => r.docType === 'Insurance').length;
-    // FRC (the cold-chain certificate, trailers only — see TRAILER_EXPIRY_FIELDS)
-    // had no card, so the three cards summed to 53 while the banner above them
-    // said 57. Four expired FRCs were simply invisible on this page — on a
-    // cold-chain fleet, the one certificate you cannot be caught without.
-    // See docs/design/DEEP_AUDIT_2026-08-04/maint_dash.md MD-1.
-    const frcExpired = expiredRows.filter(r => r.docType === 'FRC').length;
-
-    // Compliance: vehicles with no expired docs
-    const truckRowsAll = _expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck');
-    const trailerRowsAll = _expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer');
-    const allVehicleRows = [...truckRowsAll, ...trailerRowsAll];
-    const totalExpiredVehicles = allVehicleRows.filter(r => r.worst !== null && r.worst < 0).length;
-    const compliancePct = totalFleet ? Math.round((totalFleet - totalExpiredVehicles) / totalFleet * 100) : 100;
-    const scoreColor = compliancePct >= 90 ? 'var(--panel-ok-hi)' : compliancePct >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
-
-    // Overdue list
-    const overdueList = expiredRows.slice(0, 10);
-    // Expiring soon list (within 60 days, not expired)
-    const soonList = expiring60Rows.sort((a,b) => a.days - b.days).slice(0, 10);
-
-    // Recent service records
-    const recentSvc = [...MAINT.history]
-      .sort((a,b) => (b.fields['Date']||'').localeCompare(a.fields['Date']||''))
-      .slice(0, 8);
-
-    // Monthly cost breakdown (6 μήνες, with MoM delta)
-    const monthlyCosts = _maintMonthlyCost(MAINT.history);
-    const currentMonth = monthlyCosts[monthlyCosts.length - 1]?.cost || 0;
-    const prevMonth = monthlyCosts[monthlyCosts.length - 2]?.cost || 0;
-    const maxMonthly = Math.max(...monthlyCosts.map(m => m.cost), 1);
-
-    // Service count trend per month (from same history)
-    const serviceCountTrend = (() => {
-      const byMonth = {};
-      for (let i = 5; i >= 0; i--) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        byMonth[d.toISOString().slice(0, 7)] = 0;
-      }
-      MAINT.history.forEach(r => {
-        const key = (r.fields['Date'] || '').slice(0, 7);
-        if (key in byMonth) byMonth[key]++;
-      });
-      return Object.entries(byMonth).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => v);
-    })();
-    const currentSvcCount = serviceCountTrend[serviceCountTrend.length - 1] || 0;
-    const prevSvcCount = serviceCountTrend[serviceCountTrend.length - 2] || 0;
-
-    // Alert banner
-    const totalExpired = expiredRows.length;
-
-    // Report the figures this page shows. expiredDocRows is the DOCUMENT count
-    // (one row per expired certificate) — deliberately a different key from
-    // maint_expiry's expiredVehicles, so the audit compares like with like and
-    // can state why the two legitimately differ.
-    if (typeof reportPageMetrics === 'function') reportPageMetrics('maint_dash', {
-      expiredDocRows: totalExpired,
-      kteoExpired, kekExpired, frcExpired, insExpired,
-      expiredVehicles: totalExpiredVehicles,
-      totalFleet,
-      activeTrucks: activeTrucks.length,
-      activeTrailers: activeTrailers.length,
-      compliantVehicles: totalFleet - totalExpiredVehicles,
-      compliancePct,
-    });
-
-    // SH-2/MA-3: the fetches above take seconds. If the user has navigated
-    // away meanwhile, writing here would paint THIS page under ANOTHER page's
-    // title — reproduced live 8/8 (topbar «Drivers», content «Επισκόπηση
-    // Στόλου»). currentPage is the router's source of truth.
-    if (typeof currentPage !== 'undefined' && currentPage !== 'maint_dash') return;
-
-    // ═══ RENDER ═══
-    c.innerHTML = `
-      <div class="dash-wrap">
-        <!-- Header -->
-        <div class="dash-header">
-          <div>
-            <div class="dash-greeting">Επισκόπηση Στόλου</div>
-            <div class="dash-date">Στόλος Petras Group · ${dateStr}</div>
-          </div>
-          <div class="dash-live">
-            <span class="dash-live-dot"></span>
-            LIVE — ΑΝΑΝΕΩΣΗ ΚΑΘΕ 5'
-          </div>
-        </div>
-
-        <!-- Alert Banner -->
-        ${totalExpired > 0 ? `<button type="button" class="dash-burn-item burn-crit"
-          style="margin-bottom:var(--space-4)" onclick="_expiryGoto('expired')"
-          aria-label="${totalExpired} ληγμένα έγγραφα — άνοιγμα λίστας">
-          <span class="dash-burn-n">${totalExpired}</span>
-          <span class="dash-burn-txt">
-            <strong>Ληγμένα έγγραφα χρειάζονται άμεση ενέργεια</strong>
-            <em>σε ${totalExpiredVehicles} ${totalExpiredVehicles === 1 ? 'όχημα' : 'οχήματα'} · φορτηγά + ρυμούλκες</em>
-          </span>
-          <span class="dash-burn-go">${_ic('chevron_right', 18)}</span>
-        </button>` : ''}
-
-        <!-- KPI Bar (6 cards) -->
-        <div class="dash-kpi-bar" style="grid-template-columns:repeat(6,1fr)">
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--accent),transparent)"></div>
-            <div class="dash-kpi-label">${_ic('truck', 11)} ΣΥΝΟΛΟ ΣΤΟΛΟΥ</div>
-            <div class="dash-kpi-value dash-val-accent">${totalFleet}</div>
-            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>${activeTrucks.length} φορτηγά<span class="sep">·</span>${activeTrailers.length} ρυμούλκες<span class="sep">·</span>ενεργά</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KTEO')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kteoExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΤΕΟ</div>
-            <div class="dash-kpi-value ${kteoExpired ? 'dash-val-danger' : 'dash-val-success'}">${kteoExpired}</div>
-            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>ληγμένα σήμερα</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','KEK')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${kekExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('file_check', 11)} ΛΗΓΜΕΝΑ ΚΕΚ</div>
-            <div class="dash-kpi-value ${kekExpired ? 'dash-val-danger' : 'dash-val-success'}">${kekExpired}</div>
-            <div class="dash-receipt"><b>TRUCKS</b><span class="sep">·</span>ληγμένα σήμερα<span class="sep">·</span>μόνο φορτηγά</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','FRC')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${frcExpired?'var(--danger)':'var(--panel-ok)'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('droplet', 11)} ΛΗΓΜΕΝΑ FRC</div>
-            <div class="dash-kpi-value ${frcExpired ? 'dash-val-danger' : 'dash-val-success'}">${frcExpired}</div>
-            <div class="dash-receipt"><b>TRAILERS</b><span class="sep">·</span>ψυκτική βεβαίωση<span class="sep">·</span>μόνο ρυμούλκες</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('expired','Insurance')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${insExpired?'#D97706':'var(--panel-ok)'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('shield', 11)} ΛΗΓΜΕΝΕΣ ΑΣΦΑΛΕΙΕΣ</div>
-            <div class="dash-kpi-value ${insExpired ? 'dash-val-warning' : 'dash-val-success'}">${insExpired}</div>
-            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>ληγμένα σήμερα</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('expiring30')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${expiring30Rows.length?'#D97706':'var(--panel-ok)'},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('clock', 11)} ΛΗΓΟΥΝ &lt;30 ΗΜ.</div>
-            <div class="dash-kpi-value ${expiring30Rows.length ? 'dash-val-warning' : 'dash-val-success'}">${expiring30Rows.length}</div>
-            <div class="dash-receipt"><b>TRUCKS + TRAILERS</b><span class="sep">·</span>παράθυρο 30 ημερών</div>
-          </button>
-          <button type="button" class="dash-kpi" onclick="_expiryGoto('all')">
-            <div class="dash-kpi-glow" style="background:linear-gradient(90deg,${scoreColor},transparent)"></div>
-            <div class="dash-kpi-label">${_ic('award', 11)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
-            <div class="dash-kpi-value" style="color:${scoreColor}">${compliancePct}%</div>
-            <div class="dash-receipt"><b>${totalFleet - totalExpiredVehicles}/${totalFleet}</b> χωρίς ληγμένο<span class="sep">·</span>φορτηγά + ρυμούλκες</div>
-          </button>
-        </div>
-
-        <!-- Main Grid -->
-        <div class="dash-grid-main">
-          <!-- LEFT -->
-          <div class="dash-left">
-
-            <!-- Expiry Timeline 2-col -->
-            <div class="md-timeline-grid">
-              <!-- OVERDUE -->
-              <div class="dash-card">
-                <div class="dash-card-header">
-                  <div class="dash-card-title is-danger">${_ic('alert_triangle', 12)} ΣΕ ΚΑΘΥΣΤΕΡΗΣΗ</div>
-                  <span class="dash-card-link" onclick="_expiryGoto('expired')">Λήξεις Εγγράφων ${_ic('chevron_right', 12)}</span>
-                </div>
-                <div class="dash-card-body">
-                  ${overdueList.length ? overdueList.map(r => {
-                    const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) + '/' + r.date.substring(2,4) : '—';
-                    return `<div class="md-exp-row">
-                      <div class="md-exp-plate">${r.plate}</div>
-                      <div class="md-exp-doc">${r.docType} · ${r.vType}</div>
-                      <div class="md-exp-date">${dateDisp}</div>
-                      <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
-                    </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Κανένα έγγραφο σε καθυστέρηση</div></div>`}
-                  ${expiredRows.length > overdueList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
-                    onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiredRows.length - overdueList.length} ${_ic('chevron_right', 12)}</button>` : ''}
-                </div>
-              </div>
-
-              <!-- EXPIRING SOON -->
-              <div class="dash-card">
-                <div class="dash-card-header">
-                  <div class="dash-card-title">${_ic('clock', 12)} ΛΗΓΟΥΝ ΣΥΝΤΟΜΑ</div>
-                  <span class="dash-card-meta">εντός 60 ημερών</span>
-                </div>
-                <div class="dash-card-body">
-                  ${soonList.length ? soonList.map(r => {
-                    const s = _maintExpiryStatus(r.date);
-                    const dateDisp = r.date ? r.date.substring(8,10) + '/' + r.date.substring(5,7) + '/' + r.date.substring(2,4) : '—';
-                    return `<div class="md-exp-row">
-                      <div class="md-exp-plate">${r.plate}</div>
-                      <div class="md-exp-doc">${r.docType} · ${r.vType}</div>
-                      <div class="md-exp-date">${dateDisp}</div>
-                      <div class="md-exp-days">${_maintDaysPill(s.days, s.status)}</div>
-                    </div>`;
-                  }).join('') : `<div class="dash-empty">${_ic('check_circle', 24)}<div>Τίποτα δεν λήγει σύντομα</div></div>`}
-                  ${expiring60Rows.length > soonList.length ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:8px 0;background:none;border:0;font:inherit;cursor:pointer"
-                    onclick="_expiryGoto('expiring30')">Δες και τα άλλα ${expiring60Rows.length - soonList.length} ${_ic('chevron_right', 12)}</button>` : ''}
-                </div>
-              </div>
-            </div>
-
-            <!-- Fleet Overview Table -->
-            <div class="dash-card">
-              <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('truck', 12)} ΣΤΟΛΟΣ · ΦΟΡΤΗΓΑ</div>
-                <span class="dash-card-meta">${activeTrucks.length} ενεργά</span>
-              </div>
-              <div class="dash-card-body flush">
-                <table class="md-fleet-table">
-                  <thead><tr>
-                    <th>ΠΙΝΑΚΙΔΑ</th><th>ΜΑΡΚΑ</th><th>ΜΟΝΤΕΛΟ</th>
-                    <th style="text-align:center">KT</th>
-                    <th style="text-align:center">KK</th>
-                    <th style="text-align:center">INS</th>
-                    <th style="text-align:center">ΚΑΤΑΣΤΑΣΗ</th>
-                  </tr></thead>
-                  <tbody>
-                    ${activeTrucks.map(t => {
-                      const f = t.fields;
-                      const kt = _maintExpiryStatus(f['KTEO Expiry']);
-                      const kk = _maintExpiryStatus(f['KEK Expiry']);
-                      const ins = _maintExpiryStatus(f['Insurance Expiry']);
-                      const worst = [kt, kk, ins].filter(s => s.days !== null).sort((a,b) => {
-                        const da = a.status === 'expired' ? -a.days : a.days;
-                        const db = b.status === 'expired' ? -b.days : b.days;
-                        return da - db;
-                      })[0];
-                      const statusLabel = !worst ? 'N/A' : worst.status === 'expired' ? 'EXPIRED' : worst.status === 'expiring' ? 'WARN' : 'OK';
-                      const statusCls = !worst ? 'na' : worst.status === 'expired' ? 'expired' : worst.status === 'expiring' ? 'warn' : 'ok';
-                      return `<tr onclick="navigate('maint_expiry')">
-                        <td><span class="md-fleet-plate">${f['License Plate'] || '—'}</span></td>
-                        <td><span class="md-fleet-dim">${f['Brand'] || '—'}</span></td>
-                        <td><span class="md-fleet-dim">${f['Model'] || '—'}</span></td>
-                        <td style="text-align:center">${_maintCompBlock(f['KTEO Expiry'])}</td>
-                        <td style="text-align:center">${_maintCompBlock(f['KEK Expiry'])}</td>
-                        <td style="text-align:center">${_maintCompBlock(f['Insurance Expiry'])}</td>
-                        <td style="text-align:center"><span class="md-fleet-status ${statusCls}">${statusLabel}</span></td>
-                      </tr>`;
-                    }).join('')}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Recent Service -->
-            <div class="dash-card">
-              <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('file_text', 12)} ΠΡΟΣΦΑΤΕΣ ΕΠΕΜΒΑΣΕΙΣ</div>
-                <span class="dash-card-link" onclick="navigate('maint_svc')">Ιστορικό ${_ic('chevron_right', 12)}</span>
-              </div>
-              <div class="dash-card-body flush">
-                ${recentSvc.length ? `<table class="md-svc-table">
-                  <thead><tr><th>ΗΜ/ΝΙΑ</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΤΥΠΟΣ</th><th style="text-align:right">ΚΟΣΤΟΣ</th></tr></thead>
-                  <tbody>
-                    ${recentSvc.map(r => { const f = r.fields; return `<tr>
-                      <td style="color:var(--dc-text-dim)">${_fmtDate(f['Date'])}</td>
-                      <td><span class="md-fleet-plate">${f['Vehicle Plate'] || '—'}</span></td>
-                      <td style="color:var(--dc-text-mid)">${f['Type'] || '—'}</td>
-                      <td class="mono" style="text-align:right;color:var(--dc-text)">${_fmtCost(f['Cost'])}</td>
-                    </tr>`; }).join('')}
-                  </tbody>
-                </table>` : `<div style="padding:var(--space-4)"><div class="dash-empty">${_ic('file_text', 24)}<div>Καμία καταγραφή συντήρησης ακόμη</div></div></div>`}
-              </div>
-            </div>
-
-          </div>
-
-          <!-- RIGHT -->
-          <div class="dash-right">
-
-            <!-- Fleet Compliance Score Ring -->
-            <div class="dash-card">
-              <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('award', 12)} ΣΥΜΜΟΡΦΩΣΗ ΣΤΟΛΟΥ</div>
-                <span class="dash-card-meta">${totalFleet - totalExpiredVehicles}/${totalFleet}</span>
-              </div>
-              <div class="dash-card-body md-score-wrap">
-                <div class="md-score-ring" style="--md-score-color:${scoreColor};--md-score-deg:${Math.round(compliancePct * 3.6)}deg">
-                  <div class="md-score-num" style="color:${scoreColor}">${compliancePct}%</div>
-                </div>
-                <div class="md-score-label">οχήματα χωρίς ληγμένο</div>
-              </div>
-            </div>
-
-            <!-- Compliance Snapshot (block grid) -->
-            <div class="dash-card">
-              <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('file_check', 12)} ΑΝΑ ΟΧΗΜΑ</div>
-              </div>
-              <div class="dash-card-body" style="padding:var(--space-2) var(--space-4)">
-                <div class="md-comp-headers">
-                  <span>KT</span><span>KK</span><span>INS</span>
-                </div>
-                ${activeTrucks.slice(0, 10).map(t => {
-                  const f = t.fields;
-                  return `<div class="md-comp-row">
-                    <div class="md-comp-plate">${f['License Plate'] || '—'}</div>
-                    <div class="md-comp-blocks">
-                      ${_maintCompBlock(f['KTEO Expiry'], 'KT')}
-                      ${_maintCompBlock(f['KEK Expiry'], 'KK')}
-                      ${_maintCompBlock(f['Insurance Expiry'], 'INS')}
-                    </div>
-                  </div>`;
-                }).join('')}
-                ${activeTrailers.length ? `
-                  <div class="md-comp-divider" title="FRC = Cold chain certificate (trailers use FRC instead of KEK)">TRAILERS <span style="font-weight:500;text-transform:none;letter-spacing:0;color:var(--dc-text-dim);margin-left:6px;font-size:9px">KT · FRC · INS</span></div>
-                  ${activeTrailers.slice(0, 5).map(t => {
-                    const f = t.fields;
-                    return `<div class="md-comp-row">
-                      <div class="md-comp-plate">${f['License Plate'] || '—'}</div>
-                      <div class="md-comp-blocks">
-                        ${_maintCompBlock(f['KTEO Expiry'], 'KT')}
-                        ${_maintCompBlock(f['FRC Expiry'], 'FRC')}
-                        ${_maintCompBlock(f['Insurance Expiry'], 'INS')}
-                      </div>
-                    </div>`;
-                  }).join('')}` : ''}
-              </div>
-            </div>
-
-            <!-- Monthly Cost Summary (REAL DATA, replaces placeholder) -->
-            <div class="dash-card">
-              <div class="dash-card-header">
-                <div class="dash-card-title">${_ic('coins', 12)} ΚΟΣΤΟΣ ΣΥΝΤΗΡΗΣΗΣ</div>
-                <span class="dash-card-meta">6 μήνες</span>
-              </div>
-              <div class="dash-card-body">
-                <div class="md-cost-label">Τρέχων μήνας</div>
-                <div class="md-cost-big">${_fmtCost(currentMonth)}${_mdDelta(currentMonth, prevMonth, true)}</div>
-                <div class="md-cost-sub">${currentSvcCount} service${currentSvcCount !== 1 ? 's' : ''}${prevSvcCount ? ` · ${_mdDelta(currentSvcCount, prevSvcCount, true).replace('<span class="ceo-delta', '<span class="ceo-delta" style="margin-left:4px;padding:0 4px;font-size:9px"')}` : ''}</div>
-                <div class="md-cost-spark-wrap">
-                  <span class="md-cost-spark-label">6μ trend</span>
-                  ${_mdSpark(monthlyCosts.map(m => m.cost), 'var(--panel-accent)', 140)}
-                </div>
-                <div class="md-cost-breakdown">
-                  ${monthlyCosts.map(m => `<div class="md-cost-month-row">
-                    <span class="md-cost-month-label">${m.month}</span>
-                    <div class="md-cost-month-bar">
-                      <div class="md-cost-month-fill" style="width:${maxMonthly ? (m.cost/maxMonthly*100) : 0}%"></div>
-                    </div>
-                    <span class="md-cost-month-val">${_fmtCost(m.cost)}</span>
-                  </div>`).join('')}
-                </div>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    `;
-
-    // Auto-refresh every 5 minutes
+    _maintDashPaint();
+    // Auto-refresh every 5 minutes while the page stays open
     if (_maintDashRefreshTimer) clearInterval(_maintDashRefreshTimer);
     _maintDashRefreshTimer = setInterval(() => {
       if (typeof currentPage !== 'undefined' && currentPage === 'maint_dash') {
@@ -1938,18 +1365,201 @@ async function renderMaintDash() {
         _maintDashRefreshTimer = null;
       }
     }, 5 * 60 * 1000);
-
   } catch(e) {
     console.error('Maintenance Dashboard error:', e);
-    c.innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
+    c.innerHTML = showError('Δεν φορτώθηκαν τα δεδομένα συντήρησης');
   }
 }
 
+function _maintDashPaint() {
+  const c = document.getElementById('content');
+  const now = new Date();
+  const year = now.getFullYear();
+
+  const activeTrucks = MAINT.trucks.filter(t => t.fields['Active']);
+  const activeTrailers = MAINT.trailers.filter(t => t.fields['Active']);
+  const totalFleet = activeTrucks.length + activeTrailers.length;
+
+  const allExpRows = _expiryBuildRows();
+  const expiredRows = allExpRows.filter(r => r.days !== null && r.days < 0);
+  const expiring30Rows = allExpRows.filter(r => r.days !== null && r.days >= 0 && r.days <= 30);
+  const kteoExpired = expiredRows.filter(r => r.docType === 'KTEO').length;
+  const kekExpired = expiredRows.filter(r => r.docType === 'KEK').length;
+  const insExpired = expiredRows.filter(r => r.docType === 'Insurance').length;
+  const frcExpired = expiredRows.filter(r => r.docType === 'FRC').length;
+
+  // Per-vehicle rows (worst document first) — the same table maint_expiry shows.
+  const vehicleRows = [..._expiryVehicleRows(MAINT.trucks, TRUCK_EXPIRY_FIELDS, 'Truck'), ..._expiryVehicleRows(MAINT.trailers, TRAILER_EXPIRY_FIELDS, 'Trailer')]
+    .sort((a, b) => (a.worst === null ? 1 : b.worst === null ? -1 : a.worst - b.worst));
+  const expiredVehicles = vehicleRows.filter(r => r.worst !== null && r.worst < 0).length;
+  const compliancePct = _pctOf(totalFleet - expiredVehicles, totalFleet);
+  const compCls = compliancePct === null ? '' : compliancePct >= 90 ? 'ok' : compliancePct >= 70 ? 'warn' : 'bad';
+  const worst6 = vehicleRows.filter(r => r.worst !== null).slice(0, 6);
+
+  // Year spend / damages
+  const yearRecs = MAINT.history.filter(r => (r.fields['Date'] || '').startsWith(String(year)));
+  const yearCost = _sumCost(yearRecs);
+  const monthsElapsed = now.getMonth() + 1;
+  const accidents = yearRecs.filter(r => r.fields['Type'] === 'Accident');
+  const accCost = _sumCost(accidents);
+
+  // Last 6 months
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(year, now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    months.push({ key, label: _MONTHS_GR[d.getMonth()], recs: [] });
+  }
+  for (const r of MAINT.history) {
+    const m = months.find(x => (r.fields['Date'] || '').startsWith(x.key));
+    if (m) m.recs.push(r);
+  }
+  months.forEach(m => { m.cost = _sumCost(m.recs); });
+  const sixSum = months.reduce((s, m) => s + m.cost.sum, 0);
+  const sixN = months.reduce((s, m) => s + m.cost.n, 0);
+  const sixMissing = months.reduce((s, m) => s + m.cost.missing, 0);
+  const maxMonth = Math.max(...months.map(m => m.cost.sum), 0);
+  const peak = maxMonth > 0 ? months.find(m => m.cost.sum === maxMonth) : null;
+  let peakNote = '';
+  if (peak) {
+    const top = [...peak.recs].filter(r => Number.isFinite(Number(r.fields['Cost']))).sort((a, b) => Number(b.fields['Cost']) - Number(a.fields['Cost']))[0];
+    if (top) {
+      const share = _pctOf(Number(top.fields['Cost']), peak.cost.sum);
+      peakNote = `${peak.label}: ${escapeHtml(top.fields['Description'] || MAINT_TYPE_LABEL[top.fields['Type']] || 'εργασία')} ${escapeHtml(top.fields['Vehicle Plate'] || '')} (${_fmtCost(top.fields['Cost'])}) — το ${share}% του μήνα (${_fmtCost(peak.cost.sum)})`;
+    }
+  }
+
+  // Recent 5 and category top 5
+  const recent = _svcSortedHistory().slice(0, 5);
+  const byType = {};
+  yearRecs.forEach(r => { const t = r.fields['Type'] || 'Other'; byType[t] = (byType[t] || 0) + (Number(r.fields['Cost']) || 0); });
+  const cats = Object.entries(byType).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const maxCat = cats.length ? cats[0][1] : 0;
+
+  // Report the figures this page shows. expiredDocRows is the DOCUMENT count
+  // (one row per expired certificate) — deliberately a different key from
+  // maint_expiry's expiredVehicles, so the audit compares like with like and
+  // can state why the two legitimately differ.
+  if (typeof reportPageMetrics === 'function') reportPageMetrics('maint_dash', {
+    expiredDocRows: expiredRows.length,
+    kteoExpired, kekExpired, frcExpired, insExpired,
+    expiredVehicles,
+    totalFleet,
+    activeTrucks: activeTrucks.length,
+    activeTrailers: activeTrailers.length,
+    compliantVehicles: totalFleet - expiredVehicles,
+    compliancePct,
+  });
+
+  // SH-2/MA-3: the fetches above take seconds. If the user has navigated
+  // away meanwhile, writing here would paint THIS page under ANOTHER page's
+  // title — reproduced live 8/8 (topbar «Drivers», content «Επισκόπηση
+  // Στόλου»). currentPage is the router's source of truth.
+  if (typeof currentPage !== 'undefined' && currentPage !== 'maint_dash') return;
+  _mntCloseDrawer();
+
+  const hhmm = now.toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' });
+
+  c.innerHTML = `
+    <div class="mnt-head">
+      <span class="mnt-title">Κέντρο Συντήρησης</span>
+      <span class="mnt-sub">στόλος &amp; έγγραφα σε μία ματιά</span>
+      <span class="mnt-spacer"></span>
+      <span class="mnt-sub" style="font-size:var(--text-xs)">Ενημερώθηκε ${hhmm} · ανανέωση κάθε 5'</span>
+      ${_mntRefreshBtn("MAINT._loaded=false;MAINT.history=[];renderMaintDash()")}
+    </div>
+
+    <div class="mnt-kpis">
+      <button type="button" class="mnt-kpi" onclick="_expiryGoto('all')">
+        <span class="mnt-kpi-l">Σύνολο στόλου</span>
+        <span class="mnt-kpi-v">${totalFleet}</span>
+        <span class="mnt-kpi-s">ενεργά · ${activeTrucks.length} φορτηγά, ${activeTrailers.length} ρυμ. · ${MAINT.trucks.length + MAINT.trailers.length} σύνολο</span>
+      </button>
+      <button type="button" class="mnt-kpi" onclick="_expiryGoto('all')">
+        <span class="mnt-kpi-l">Συμμόρφωση</span>
+        <span class="mnt-kpi-v ${compCls}">${compliancePct === null ? '—' : compliancePct + '%'}</span>
+        <span class="mnt-kpi-s">${totalFleet - expiredVehicles}/${totalFleet} χωρίς ληγμένο έγγραφο</span>
+      </button>
+      <button type="button" class="mnt-kpi" onclick="_expiryGoto('expired')">
+        <span class="mnt-kpi-l">Ληγμένα έγγραφα</span>
+        <span class="mnt-kpi-v ${expiredRows.length ? 'bad' : 'ok'}">${expiredRows.length}</span>
+        <span class="mnt-kpi-s">${expiredRows.length ? `σε ${expiredVehicles} ${expiredVehicles === 1 ? 'όχημα' : 'οχήματα'} — άνοιγμα στις Λήξεις` : 'κανένα ληγμένο έγγραφο'}</span>
+      </button>
+      <button type="button" class="mnt-kpi" onclick="_expiryGoto('expiring30')">
+        <span class="mnt-kpi-l">Λήγουν ≤30 ημ.</span>
+        <span class="mnt-kpi-v ${expiring30Rows.length ? 'warn' : 'ok'}">${expiring30Rows.length}</span>
+        <span class="mnt-kpi-s">${expiring30Rows.length ? 'έγγραφα — προγραμματισμός' : 'τίποτα δεν λήγει μέσα σε 30 ημέρες'}</span>
+      </button>
+      <div class="mnt-kpi">
+        <span class="mnt-kpi-l">Ζημιές ${year}</span>
+        <span class="mnt-kpi-v">${accidents.length}</span>
+        <span class="mnt-kpi-s">${accidents.length
+          ? `${accCost.n ? _fmtCost(accCost.sum) : '—'}${yearCost.sum > 0 && accCost.n ? ` = ${_pctOf(accCost.sum, yearCost.sum)}% της δαπάνης έτους (${_fmtCost(yearCost.sum)})` : ''}${accCost.missing ? ` · ${accCost.missing} χωρίς κόστος` : ''}`
+          : 'καμία καταχωρημένη ζημιά / ατύχημα'}</span>
+      </div>
+      <div class="mnt-kpi">
+        <span class="mnt-kpi-l">Δαπάνη ${year}</span>
+        <span class="mnt-kpi-v">${yearCost.n ? _fmtCost(yearCost.sum) : '—'}</span>
+        <span class="mnt-kpi-s">${yearCost.n ? `μ.ό. ${_fmtCost(yearCost.sum / monthsElapsed)} / μήνα (${monthsElapsed} μήνες)` : `καμία εργασία με κόστος το ${year}`}${yearCost.missing ? ` · ${yearCost.missing} χωρίς κόστος` : ''}</span>
+      </div>
+    </div>
+
+    <div class="mnt-grid2">
+      <div class="mnt-card">
+        <span class="mnt-card-t">Μηνιαία δαπάνη συντήρησης — 6 μήνες</span>
+        <span class="mnt-card-lead">${sixN ? `${_fmtCost(sixSum)} σύνολο · μ.ό. ${_fmtCost(sixSum / 6)}/μήνα` : 'καμία εργασία με κόστος τους τελευταίους 6 μήνες'}${sixMissing ? ` <span class="mnt-dim">· ${sixMissing} χωρίς κόστος</span>` : ''}</span>
+        <div class="mnt-bars">
+          ${months.map(m => `<div class="mnt-bar-col">
+            <span class="v">${m.cost.n ? _fmtK(m.cost.sum) : '—'}</span>
+            <i class="${peak && m.key === peak.key ? 'peak' : ''}" style="height:${maxMonth ? Math.max(2, Math.round(m.cost.sum / maxMonth * 135)) : 2}px"></i>
+            <span>${m.label}</span>
+          </div>`).join('')}
+        </div>
+        ${peakNote ? `<span class="mnt-note">${peakNote}</span>` : ''}
+      </div>
+
+      <div class="mnt-card">
+        <span class="mnt-card-t">Λήξεις ανά όχημα — τα ${worst6.length} χειρότερα</span>
+        ${worst6.length ? worst6.map(r => {
+          const d = r.docs.filter(x => x.days !== null).sort((a, b) => a.days - b.days)[0];
+          const due = _dueText(d.days);
+          return `<div class="mnt-row click" style="height:32px" onclick="_expiryGoto(${d.days < 0 ? "'expired'" : "'all'"}, '', '${escapeHtml(r.plate)}')">
+            <span class="w110">${escapeHtml(r.plate)}</span>
+            <span class="w80">${EXPIRY_DOC_GR[d.label] || d.label}</span>
+            <span class="${due.cls}" style="font-weight:700">${due.text}</span>
+            <span class="grow"></span>
+            <span class="mnt-link">άνοιγμα →</span>
+          </div>`;
+        }).join('') : `<span class="mnt-dim">Κανένα έγγραφο με ημερομηνία λήξης καταχωρημένη</span>`}
+      </div>
+
+      <div class="mnt-card">
+        <span class="mnt-card-t">Πρόσφατα service</span>
+        ${recent.length ? recent.map(r => { const f = r.fields; return `<div class="mnt-row click" onclick="_svcOpenCard('${r.id}')">
+            <span class="w50 mnt-num">${_fmtDM(f['Date'])}</span>
+            <span class="w100">${escapeHtml(f['Vehicle Plate'] || '—')}</span>
+            <span class="grow">${escapeHtml(f['Description'] || MAINT_TYPE_LABEL[f['Type']] || '—')}</span>
+            <span class="amt mnt-num">${_fmtCost(f['Cost'])}</span>
+          </div>`; }).join('') : `<span class="mnt-dim">Καμία καταγραφή συντήρησης ακόμη</span>`}
+        <button type="button" class="mnt-link" style="align-self:flex-start" onclick="navigate('maint_svc')">όλο το ιστορικό →</button>
+      </div>
+
+      <div class="mnt-card">
+        <span class="mnt-card-t">Δαπάνη έτους ανά κατηγορία — top ${cats.length || 5}</span>
+        ${cats.length ? cats.map(([t, cost]) => `<div style="display:flex;flex-direction:column;gap:4px;min-height:32px;justify-content:center">
+            <div class="mnt-row" style="min-height:0"><span class="grow">${escapeHtml(MAINT_TYPE_LABEL[t] || t)}</span><span class="amt mnt-num">${_fmtCost(cost)}</span></div>
+            <span class="mnt-bar"><i style="width:${maxCat ? Math.round(cost / maxCat * 100) : 0}%"></i></span>
+          </div>`).join('') : `<span class="mnt-dim">Καμία εργασία το ${year}</span>`}
+      </div>
+    </div>`;
+}
+
 // ═════════════════════════════════════════════════════════════════
-// PAGE: MAINTENANCE REQUESTS (Work Orders)
+// PAGE: ΕΝΤΟΛΕΣ ΕΡΓΑΣΙΑΣ (w2-maint-requests-overview 158:585)
 // ═════════════════════════════════════════════════════════════════
-const MREQ = { data: [], _loaded: false };
-let _mreqTab = 'active';
+const MREQ = { data: [], _loaded: false, _expiryLoadFailed: false };
+let _mreqTab = 'active';   // 'active' | 'sos' | 'urgent' | 'done' | 'all'
+let _mreqSearch = '';
 
 const MREQ_FIELDS = ['Vehicle Plate','Vehicle Type','Description','Priority','Status','Date Reported','Workshop','Notes'];
 const MREQ_PRIORITIES = ['SOS','Άμεσα','Κανονικό'];
@@ -1963,38 +1573,35 @@ async function _mreqLoad(force) {
 }
 
 async function renderMaintRequests() {
-  document.getElementById('content').innerHTML = showLoading('Loading work orders…');
+  document.getElementById('content').innerHTML = showLoading('Φόρτωση εντολών εργασίας…');
   try {
     await _mreqLoad();
     if (!MAINT._loaded) await _maintLoad();
     _mreqPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Failed to load maintenance data</div>`;
+    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκαν οι εντολές εργασίας');
     if (typeof logError === 'function') logError(e, 'maintenance requests load');
   }
 }
 
-function _mreqPrioBadge(p) {
-  if (p === 'SOS') return '<span class="exp-badge exp-overdue">SOS</span>';
-  if (p === 'Άμεσα') return '<span class="exp-badge exp-warning">ΆΜΕΣΑ</span>';
-  return '<span class="exp-badge exp-ok">ΚΑΝΟΝΙΚΌ</span>';
-}
-function _mreqStatusBadge(s) {
-  if (s === 'Done') return '<span class="exp-badge exp-ok">DONE</span>';
-  if (s === 'In Progress') return '<span class="exp-badge" style="background:#1E40AF;color:#DBEAFE">IN PROGRESS</span>';
-  return '<span class="exp-badge" style="background:#92400E;color:var(--warning-soft)">PENDING</span>';
+// H8 fix: normalize Greek priority strings (NFC) to handle Unicode variants
+const _normP = s => (s||'').normalize('NFC').trim();
+function _mreqPrioHtml(p) {
+  const n = _normP(p);
+  if (n === 'SOS') return '<span class="mnt-bad" style="font-size:var(--text-sm);font-weight:700">SOS</span>';
+  if (n === 'Άμεσα') return '<span class="mnt-warn" style="font-size:var(--text-sm);font-weight:700">ΆΜΕΣΑ</span>';
+  return '<span class="mnt-mid" style="font-size:var(--text-sm);font-weight:700">ΚΑΝΟΝΙΚΟ</span>';
 }
 
 // Build auto-generated expiry work orders (≤14 days)
 function _mreqExpiryAlerts() {
   const alerts = [];
-  const existingPlates = new Set(MREQ.data.map(r => (r.fields['Vehicle Plate']||'').toUpperCase()));
   const check = (vehicles, fields, vType) => {
     for (const v of vehicles) {
       const f = v.fields;
       if (!f['Active']) continue;
       const plate = f['License Plate'] || '';
-      for (const ef of fields) {
+      for (const ef of _expiryFieldsFor(f, fields)) {
         const d = f[ef.field];
         if (!d) continue;
         const days = _daysUntil(d);
@@ -2008,7 +1615,7 @@ function _mreqExpiryAlerts() {
           if (hasManual) continue;
           alerts.push({
             plate, vType, doc: ef.label, days, date: toLocalDate(d),
-            desc: `${ef.label} ${days < 0 ? 'EXPIRED' : 'expiring'} — ${Math.abs(days)}d ${days < 0 ? 'overdue' : 'left'}`,
+            desc: `${ef.label} ${days < 0 ? 'ληγμένο' : 'λήγει'} — ${Math.abs(days)} ημ. ${days < 0 ? 'πριν' : 'ακόμη'}`,
           });
         }
       }
@@ -2020,14 +1627,20 @@ function _mreqExpiryAlerts() {
   return alerts;
 }
 
+function _mreqSetSearch(v) {
+  _mreqSearch = v.toLowerCase().trim();
+  _mreqPaint();
+  const el = document.getElementById('mreq-q');
+  if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+}
+
 function _mreqPaint() {
   // SH-2/MA-3 guard: μην ζωγραφίσεις αν ο χρήστης έχει ήδη φύγει.
   if (typeof currentPage !== 'undefined' && currentPage !== 'maint_req') return;
-  // H8 fix: normalize Greek priority strings (NFC) to handle Unicode variants
+  _mntCloseDrawer();
   // H7 note: missing priority defaults to 'Κανονικό' (2) which is correct for sort
-  const _normP = s => (s||'').normalize('NFC').trim();
+  const po = { 'SOS': 0, 'Άμεσα': 1, 'Κανονικό': 2 };
   const all = [...MREQ.data].sort((a,b) => {
-    const po = { 'SOS': 0, 'Άμεσα': 1, 'Κανονικό': 2 };
     const pa = po[_normP(a.fields['Priority'])] ?? 2;
     const pb = po[_normP(b.fields['Priority'])] ?? 2;
     if (pa !== pb) return pa - pb;
@@ -2036,170 +1649,100 @@ function _mreqPaint() {
 
   const active = all.filter(r => r.fields['Status'] !== 'Done');
   const done = all.filter(r => r.fields['Status'] === 'Done');
-  const filtered = _mreqTab === 'active' ? active : _mreqTab === 'done' ? done : all;
+  const sosList = active.filter(r => _normP(r.fields['Priority']) === 'SOS');
+  const urgentList = active.filter(r => _normP(r.fields['Priority']) === 'Άμεσα');
+  let filtered = _mreqTab === 'active' ? active : _mreqTab === 'done' ? done : _mreqTab === 'sos' ? sosList : _mreqTab === 'urgent' ? urgentList : all;
+  if (_mreqSearch) {
+    const q = _mreqSearch;
+    filtered = filtered.filter(r => [r.fields['Vehicle Plate'], r.fields['Description'], r.fields['Notes'], r.fields['Workshop']]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+  }
   const expiryAlerts = _mreqTab !== 'done' ? _mreqExpiryAlerts() : [];
 
-  const pending = all.filter(r => r.fields['Status'] === 'Pending').length;
-  const inProg = all.filter(r => r.fields['Status'] === 'In Progress').length;
-  const sos = active.filter(r => r.fields['Priority'] === 'SOS').length;
+  const pill = (id, label, count, sev) =>
+    `<button type="button" class="mnt-pill ${sev || ''} ${_mreqTab === id ? 'active' : ''}" onclick="_mreqTab='${id}';_mreqPaint()"><b>${count}</b> ${label}</button>`;
 
-  const tabBtn = (id, label, count, sev) => {
-    const act = _mreqTab === id;
-    const sevColor = sev === 'danger' ? 'var(--danger)' : sev === 'warning' ? 'var(--warning)' : sev === 'success' ? 'var(--success)' : 'var(--text-mid)';
-    return `<button class="exp-tab ${act?'active':''}" onclick="_mreqTab='${id}';_mreqPaint()">
-      <span>${label}</span>
-      <span class="exp-tab-count" style="${act?'':'color:'+sevColor}">${count}</span>
-    </button>`;
-  };
-
-  const _i = n => (typeof icon === 'function') ? icon(n, 18) : '';
+  const rows = filtered.map(r => {
+    const f = r.fields;
+    const vt = _mntVehicleType(f['Vehicle Plate'], f['Vehicle Type']);
+    const isSos = _normP(f['Priority']) === 'SOS' && f['Status'] !== 'Done';
+    const status = MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—';
+    return `<tr class="click ${isSos ? 'sos' : ''}" onclick="_mreqOpenForm('${r.id}')">
+      <td>${_mreqPrioHtml(f['Priority'])}</td>
+      <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(vt) || 'εκτός ενεργού στόλου'}</span></div></td>
+      <td><div class="mnt-cell2"><span>${escapeHtml(f['Description'] || '—')}</span>${f['Notes'] ? `<span class="mnt-dim">${escapeHtml(f['Notes'])}</span>` : ''}</div></td>
+      <td class="mnt-mid">${f['Workshop'] ? escapeHtml(f['Workshop']) : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
+      <td class="mnt-mid mnt-num">${_fmtDMY(f['Date Reported'])}</td>
+      <td onclick="event.stopPropagation()">
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
+          <span style="font-weight:${f['Status'] === 'In Progress' ? 500 : 400}">${escapeHtml(status)}</span>
+          ${f['Status'] !== 'Done' ? `<button type="button" class="btn btn-ghost btn-sm" title="Σήμανση ως ολοκληρωμένη" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
 
   document.getElementById('content').innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
-        <div class="page-title">Εντολές Εργασίας</div>
-        <div class="page-sub">Καθημερινά αιτήματα συντήρησης</div>
-      </div>
-      <div style="display:flex;gap:var(--space-2)">
-        <button class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">${_i('plus')} Νέα εντολή</button>
-        <button class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2">${_i('clock')} Ιστορικό Service</button>
-        <button class="btn btn-ghost btn-sm" onclick="MREQ._loaded=false;renderMaintRequests()">${_i('refresh')} Refresh</button>
-      </div>
+    <div class="mnt-head">
+      <span class="mnt-title">Εντολές Εργασίας</span>
+      ${pill('active', 'ενεργές', active.length)}
+      ${pill('sos', 'SOS', sosList.length, 'is-danger')}
+      ${pill('urgent', 'άμεσα', urgentList.length, 'is-warning')}
+      ${pill('done', 'ολοκληρωμένες', done.length, 'is-dim')}
+      ${pill('all', 'όλες', all.length, 'is-dim')}
+      <span class="mnt-spacer"></span>
+      <input id="mreq-q" class="mnt-search" style="width:200px" placeholder="Αναζήτηση πινακίδας…" value="${escapeHtml(_mreqSearch)}" oninput="_mreqSetSearch(this.value)">
+      <button type="button" class="btn btn-ghost btn-sm" onclick="navigate('maint_svc')" title="MS-2">Ιστορικό Service</button>
+      <button type="button" class="btn btn-primary btn-sm" onclick="_mreqOpenForm()">Νέα εντολή</button>
+      ${_mntRefreshBtn("MREQ._loaded=false;renderMaintRequests()")}
     </div>
 
-    ${sos ? `<div style="background:var(--danger-bg);border:1px solid rgba(220,38,38,0.3);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:center;gap:var(--space-3);animation:slide-up-fade var(--duration-base) var(--ease-out)">
-      <div style="width:36px;height:36px;border-radius:var(--radius-full);background:var(--danger);color:#fff;display:inline-flex;align-items:center;justify-content:center">${_i('alert_circle',18)}</div>
-      <div style="flex:1">
-        <div style="color:var(--danger);font-size:var(--text-sm);font-weight:700">${sos} SOS work order${sos>1?'s':''} — immediate attention required</div>
-        <div style="color:var(--text-mid);font-size:var(--text-xs);margin-top:2px">Click a row below to update</div>
-      </div>
-    </div>` : ''}
-
-    <!-- KPI Cards v2 -->
-    <div class="exp-kpis">
-      <div class="exp-kpi exp-kpi-danger">
-        <div class="exp-kpi-ico">${_i('alert_circle')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">ΕΠΕΙΓΟΝ</div>
-          <div class="exp-kpi-val">${sos}</div>
-          <div class="exp-kpi-sub">άμεσα</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-warning">
-        <div class="exp-kpi-ico">${_i('clock')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">ΕΚΚΡΕΜΕΙ</div>
-          <div class="exp-kpi-val">${pending}</div>
-          <div class="exp-kpi-sub">δεν ξεκίνησε</div>
-        </div>
-      </div>
-      <div class="exp-kpi" style="color: var(--accent-text)">
-        <div class="exp-kpi-ico">${_i('refresh')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">ΣΕ ΕΞΕΛΙΞΗ</div>
-          <div class="exp-kpi-val">${inProg}</div>
-          <div class="exp-kpi-sub">ενεργές</div>
-        </div>
-      </div>
-      <div class="exp-kpi exp-kpi-success">
-        <div class="exp-kpi-ico">${_i('check_circle')}</div>
-        <div class="exp-kpi-body">
-          <div class="exp-kpi-lbl">ΟΛΟΚΛΗΡΩΜΕΝΕΣ</div>
-          <div class="exp-kpi-val">${done.length}</div>
-          <div class="exp-kpi-sub">έγιναν</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="exp-tab-bar">
-      <div class="exp-tab-group">
-        ${tabBtn('active', 'Ενεργές', active.length, 'warning')}
-        ${tabBtn('done', 'Ολοκληρωμένες', done.length, 'success')}
-        ${tabBtn('all', 'Όλες', all.length)}
-      </div>
-    </div>
-
-    <!-- ΕΝΟΤΗΤΑ 1: πραγματικές, χειροκίνητες εντολές -->
-    <div class="exp-section">
-      <div class="exp-section-hdr">
-        <div class="exp-section-badge" style="background:var(--accent-light);color: var(--accent-text)">${_i('checklist')}</div>
-        <div>
-          <div class="exp-section-title">${_mreqTab === 'active' ? 'ΕΝΤΟΛΕΣ ΕΡΓΑΣΙΑΣ' : _mreqTab === 'done' ? 'ΟΛΟΚΛΗΡΩΜΕΝΕΣ ΕΝΤΟΛΕΣ' : 'ΟΛΕΣ ΟΙ ΕΝΤΟΛΕΣ'} (${filtered.length})</div>
-          <div class="exp-section-sub">Κάνε κλικ σε γραμμή για ενημέρωση</div>
-        </div>
-      </div>
-      <div class="exp-table-wrap">
-        <table class="mt">
-          <thead><tr>
-            <th>#</th><th>ΠΙΝΑΚΙΔΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th class="c">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜΕΡΟΜΗΝΙΑ</th><th>ΣΥΝΕΡΓΕΙΟ</th><th>ΣΗΜΕΙΩΣΕΙΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
-          </tr></thead>
-          <tbody>${filtered.length ? filtered.map((r, i) => {
-        const f = r.fields;
-        return `<tr style="${f['Priority']==='SOS'?'background:rgba(127,29,29,0.06)':''}" onclick="_mreqOpenForm('${r.id}')">
-          <td class="rn">${i+1}</td>
-          <td style="font-weight:700;white-space:nowrap">${f['Vehicle Plate']||'—'}</td>
-          <td style="max-width:250px">${f['Description']||'—'}</td>
-          <td class="c">${_mreqPrioBadge(f['Priority'])}</td>
-          <td class="c">${_mreqStatusBadge(f['Status'])}</td>
-          <td style="white-space:nowrap;font-size:12px">${f['Date Reported']?toLocalDate(f['Date Reported']).split('-').reverse().join('/'):'—'}</td>
-          <td style="font-size:12px">${f['Workshop']||'—'}</td>
-          <td style="font-size:11px;max-width:150px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f['Notes']||''}</td>
-          <td class="c" onclick="event.stopPropagation()">
-            ${f['Status']!=='Done' ? `<button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqQuickStatus('${r.id}','Done')">✓ Ολοκληρώθηκε</button>` : ''}
-          </td>
-        </tr>`;
-      }).join('') : `<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({
+    <table class="mnt-table">
+      <thead><tr>
+        <th style="width:150px">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px">ΟΧΗΜΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
+      </tr></thead>
+      <tbody>${filtered.length ? rows : `<tr><td colspan="6" style="height:auto;padding:0">${showEmpty({
             illustration: 'truck',
-            title: _mreqTab === 'done' ? 'Καμία ολοκληρωμένη εντολή ακόμη' : 'Καμία ενεργή εντολή εργασίας',
-            description: _mreqTab === 'done' ? 'Οι ολοκληρωμένες συντηρήσεις θα εμφανίζονται εδώ' : 'Δημιούργησε εντολή, ή δες τις λήξεις εγγράφων παρακάτω',
-            action: _mreqTab !== 'done' ? { label: 'Νέα εντολή', onClick: '_mreqOpenForm()' } : null
-          }) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία εντολή εργασίας</div>'}</td></tr>`}</tbody>
-        </table>
-      </div>
-    </div>
+            title: _mreqSearch ? 'Καμία εντολή για αυτή την αναζήτηση' : _mreqTab === 'done' ? 'Καμία ολοκληρωμένη εντολή ακόμη' : 'Καμία ενεργή εντολή εργασίας',
+            description: _mreqSearch ? 'Δοκίμασε άλλη πινακίδα ή λέξη.' : _mreqTab === 'done' ? 'Οι ολοκληρωμένες συντηρήσεις θα εμφανίζονται εδώ.' : 'Δημιούργησε εντολή, ή δες τις λήξεις εγγράφων παρακάτω.',
+            action: (_mreqTab !== 'done' && !_mreqSearch) ? { label: 'Νέα εντολή', onClick: '_mreqOpenForm()' } : null
+          })}</td></tr>`}</tbody>
+    </table>
 
-    <!-- ΕΝΟΤΗΤΑ 2: αυτόματα από λήξεις. Συμπτυγμένη, όριο 10.
-         Δεν είναι εντολές εργασίας — είναι η ίδια πληροφορία με το Expiry
-         Alerts. Έδιναν 3.913px ύψος για 1 πραγματική εντολή, και 64 κουμπιά
-         «Done» που έκλειναν κάτι που δεν άνοιξε ποτέ κανείς.
-         maint_req.md MR-1/MR-3/MR-4/MR-6. -->
-    ${expiryAlerts.length ? `<details class="exp-section" style="padding:0">
-      <summary style="cursor:pointer;list-style:none;padding:var(--space-4);display:flex;align-items:center;gap:var(--space-3)">
-        <div class="exp-section-badge" style="background:var(--warning-bg);color:var(--warning)">${_i('alert_triangle')}</div>
-        <div style="flex:1">
-          <div class="exp-section-title">ΑΠΟ ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ (${expiryAlerts.length})</div>
-          <div class="exp-section-sub">Δεν είναι εντολές εργασίας — προέρχονται από τα έγγραφα του στόλου</div>
-        </div>
-        <span class="dash-card-link" onclick="event.preventDefault();event.stopPropagation();_expiryGoto('expired')">Άνοιγμα στις Λήξεις Εγγράφων ${_i('chevron_right')}</span>
+    <!-- Αυτόματα από λήξεις. Συμπτυγμένα, όριο 10. Δεν είναι εντολές εργασίας —
+         είναι η ίδια πληροφορία με τις Λήξεις Εγγράφων. Έδιναν 3.913px ύψος
+         για 1 πραγματική εντολή, και 64 κουμπιά «Done» που έκλειναν κάτι που
+         δεν άνοιξε ποτέ κανείς. maint_req.md MR-1/MR-3/MR-4/MR-6. -->
+    ${expiryAlerts.length ? `<details>
+      <summary class="mnt-band">
+        <span>▸</span>
+        <b>ΑΠΟ ΛΗΞΕΙΣ ΕΓΓΡΑΦΩΝ (${expiryAlerts.length})</b>
+        <span>Δεν είναι εντολές εργασίας — προέρχονται από τα έγγραφα του στόλου</span>
+        <span class="mnt-spacer"></span>
+        <button type="button" class="mnt-link" style="font-size:var(--text-sm);font-weight:500" onclick="event.preventDefault();event.stopPropagation();_expiryGoto('expired')">Άνοιγμα στις Λήξεις Εγγράφων →</button>
       </summary>
-      <div class="exp-table-wrap">
-        <table class="mt">
-          <thead><tr>
-            <th style="width:60px"></th><th>ΠΙΝΑΚΙΔΑ</th><th>ΕΓΓΡΑΦΟ</th><th class="c">ΚΑΤΑΣΤΑΣΗ</th><th>ΗΜ. ΛΗΞΗΣ</th><th>ΤΥΠΟΣ</th><th style="width:100px" class="c">ΕΝΕΡΓΕΙΕΣ</th>
-          </tr></thead>
-          <tbody>${expiryAlerts.slice(0, 10).map(ea => `<tr style="background:rgba(146,64,14,0.06)">
-          <td><span class="exp-badge exp-warning" style="font-size:8px;padding:1px 5px">ΑΥΤΟΜ.</span></td>
-          <td style="font-weight:700;white-space:nowrap">${ea.plate}</td>
-          <td>${ea.doc} — <span style="color:${ea.days<0?'var(--danger)':'#D97706'};font-weight:700">${ea.days<0?Math.abs(ea.days)+' ημ. ληγμένο':'λήγει σε '+ea.days+' ημ.'}</span></td>
-          <td class="c">${ea.days<0?'<span class="exp-badge exp-overdue">ΛΗΓΜΕΝΟ</span>':'<span class="exp-badge exp-warning">ΛΗΓΕΙ</span>'}</td>
-          <td style="white-space:nowrap;font-size:12px">${ea.date.split('-').reverse().join('/')}</td>
-          <td style="font-size:12px">${ea.vType}</td>
-          <td class="c" onclick="event.stopPropagation()">
-            <button class="btn btn-ghost" style="padding:3px 8px;font-size:10px" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Ανανεώθηκε</button>
-          </td>
+      <table class="mnt-table">
+        <thead><tr>
+          <th style="width:170px">ΟΧΗΜΑ</th><th>ΕΓΓΡΑΦΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th><th style="width:130px">ΗΜ. ΛΗΞΗΣ</th><th style="width:250px">ΕΝΕΡΓΕΙΕΣ</th>
+        </tr></thead>
+        <tbody>${expiryAlerts.slice(0, 10).map(ea => `<tr>
+          <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(ea.plate)}</span><span class="mnt-dim">${_mntTypeGr(ea.vType)}</span></div></td>
+          <td>${EXPIRY_DOC_GR[ea.doc] || ea.doc} — <span class="${ea.days < 0 ? 'mnt-bad' : 'mnt-warn'}">${ea.days < 0 ? `ληγμένο ${Math.abs(ea.days)} ημ.` : `λήγει σε ${ea.days} ημ.`}</span></td>
+          <td class="${ea.days < 0 ? 'mnt-bad' : 'mnt-warn'}" style="font-size:var(--text-sm)">${ea.days < 0 ? 'ΛΗΓΜΕΝΟ' : 'ΛΗΓΕΙ'}</td>
+          <td class="mnt-num mnt-mid">${_fmtDMY(ea.date)}</td>
+          <td><button type="button" class="btn btn-ghost btn-sm" title="Καταγράφει ολοκληρωμένη εντολή ανανέωσης" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Ανανεώθηκε</button></td>
         </tr>`).join('')}</tbody>
-        </table>
-        ${expiryAlerts.length > 10 ? `<button type="button" class="dash-card-link" style="display:block;width:100%;text-align:center;padding:10px 0;background:none;border:0;font:inherit;cursor:pointer"
-          onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων ${_i('chevron_right')}</button>` : ''}
-      </div>
-    </details>` : ''}
-    <div id="mreq-form-container"></div>`;
+      </table>
+      ${expiryAlerts.length > 10 ? `<button type="button" class="mnt-link" style="display:block;width:100%;text-align:center;padding:10px 0" onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων →</button>` : ''}
+    </details>` : ''}`;
 }
 
 async function _mreqDismissExpiry(plate, docType, desc) {
   try {
     const fields = {
       'Vehicle Plate': plate,
+      'Vehicle Type': _mntVehicleType(plate) || null,
+      // Stable marker, read back by _expiryRenewals() («ΑΝΑΝΕΩΘΗΚΕ» column).
       'Description': docType + ' — Renewal',
       'Priority': 'SOS',
       'Status': 'Done',
@@ -2208,6 +1751,7 @@ async function _mreqDismissExpiry(plate, docType, desc) {
     };
     const created = await atCreate(TABLES.MAINT_REQ, fields);
     MREQ.data.push(created);
+    toast('Καταγράφηκε η ανανέωση ✓');
     _mreqPaint();
   } catch(e) { reportError('Σφάλμα δημιουργίας αιτήματος συντήρησης', e); }
 }
@@ -2218,84 +1762,86 @@ async function _mreqQuickStatus(recId, newStatus) {
     const rec = MREQ.data.find(r => r.id === recId);
     if (rec) rec.fields['Status'] = newStatus;
     _mreqPaint();
-  } catch(e) { reportError('Status update failed', e); }
+  } catch(e) { reportError('Η αλλαγή κατάστασης απέτυχε', e); }
 }
 
+// ── Form (w2-maint-request-form 165:769) ─────────────────────────
 function _mreqOpenForm(editId) {
   const rec = editId ? MREQ.data.find(r => r.id === editId) : null;
   const f = rec ? rec.fields : {};
 
-  const allPlates = [
-    ...MAINT.trucks.filter(t=>t.fields['Active']).map(t => t.fields['License Plate']||''),
-    ...MAINT.trailers.filter(t=>t.fields['Active']).map(t => t.fields['License Plate']||''),
-  ].filter(Boolean).sort();
+  const allVehicles = [
+    ...MAINT.trucks.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Truck' })),
+    ...MAINT.trailers.filter(t=>t.fields['Active']).map(t => ({ plate: t.fields['License Plate']||'', type: 'Trailer' })),
+  ].filter(v => v.plate).sort((a, b) => a.plate.localeCompare(b.plate));
+  const known = allVehicles.some(v => v.plate === f['Vehicle Plate']);
+  const custom = !!(f['Vehicle Plate'] && !known);
 
-  const plateOpts = allPlates.map(p => `<option value="${p}"${f['Vehicle Plate']===p?' selected':''}>${p}</option>`).join('');
-  const prioOpts = MREQ_PRIORITIES.map(p => `<option value="${p}"${f['Priority']===p?' selected':''}>${p}</option>`).join('');
-  const statusOpts = MREQ_STATUSES.map(s => `<option value="${s}"${f['Status']===s?' selected':''}>${s}</option>`).join('');
+  const field = (label, inner, extra) => `<div class="form-field"><label class="form-label">${label}</label>${inner}${extra || ''}</div>`;
+  const prioLabel = { 'SOS': 'SOS', 'Άμεσα': 'Άμεσα', 'Κανονικό': 'Κανονικό' };
 
-  const html = `
-  <div class="mf-overlay" onclick="if(event.target===this)document.getElementById('mreq-form-container').innerHTML=''">
+  _mntHost('mnt-modal-host').innerHTML = `
+  <div class="mf-overlay" onclick="if(event.target===this)_mntCloseModal()">
     <div class="mf-modal" role="dialog" aria-modal="true">
-      <div class="mf-head"><span>${editId?'Edit':'New'} Work Order</span>
-        <button onclick="document.getElementById('mreq-form-container').innerHTML=''" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--text-dim)">✕</button></div>
+      <div class="mf-head"><span>${editId ? 'Επεξεργασία Εντολής Εργασίας' : 'Νέα Εντολή Εργασίας'}</span>
+        <button type="button" class="mnt-drawer-x" onclick="_mntCloseModal()" aria-label="Κλείσιμο">✕</button></div>
       <div class="mf-body">
         <div class="mf-row">
-          <div class="mf-field"><label>Vehicle Plate</label>
-            <select id="mreq-plate"><option value="">— Select —</option>${plateOpts}
-            <option value="__custom">Other (type below)</option></select></div>
-          <div class="mf-field"><label>Or type plate</label>
-            <input id="mreq-plate-custom" value="${f['Vehicle Plate']||''}" placeholder="e.g. CB1286KE"></div>
+          ${field('Όχημα *', `<select class="form-select" id="mreq-plate" onchange="document.getElementById('mreq-plate-custom-wrap').style.display=this.value==='__custom'?'':'none'">
+              <option value="">— Επιλογή —</option>
+              ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}"${f['Vehicle Plate']===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
+              <option value="__custom"${custom ? ' selected' : ''}>Άλλο όχημα (πληκτρολόγηση)</option>
+            </select>`, `<div id="mreq-plate-custom-wrap" style="${custom ? '' : 'display:none'};margin-top:6px"><input class="form-input" id="mreq-plate-custom" value="${escapeHtml(custom ? f['Vehicle Plate'] : '')}" placeholder="π.χ. CB1286KE"></div><div class="ef-err" id="mreq-err-plate"></div>`)}
+          ${field('Ημ. αναφοράς', `<input class="form-input" type="date" id="mreq-date" value="${f['Date Reported']?toLocalDate(f['Date Reported']):localToday()}">`)}
         </div>
         <div class="mf-row">
-          <div class="mf-field"><label>Priority</label>
-            <select id="mreq-prio">${prioOpts}</select></div>
-          <div class="mf-field"><label>Status</label>
-            <select id="mreq-status">${statusOpts}</select></div>
+          ${field('Προτεραιότητα', `<select class="form-select" id="mreq-prio">${MREQ_PRIORITIES.map(p => `<option value="${p}"${_normP(f['Priority'])===p?' selected':''}>${prioLabel[p]}</option>`).join('')}</select>`)}
+          ${field('Κατάσταση', `<select class="form-select" id="mreq-status">${MREQ_STATUSES.map(s => `<option value="${s}"${(f['Status']||'Pending')===s?' selected':''}>${MREQ_STATUS_LABEL[s]}</option>`).join('')}</select>`)}
         </div>
-        <div class="mf-field"><label>Description</label>
-          <textarea id="mreq-desc" rows="3" style="resize:vertical">${f['Description']||''}</textarea></div>
+        ${field('Περιγραφή *', `<textarea class="form-textarea" id="mreq-desc" rows="2">${escapeHtml(f['Description']||'')}</textarea>`, '<div class="ef-err" id="mreq-err-desc"></div>')}
         <div class="mf-row">
-          <div class="mf-field"><label>Date Reported</label>
-            <input type="date" id="mreq-date" value="${f['Date Reported']?toLocalDate(f['Date Reported']):localToday()}"></div>
-          <div class="mf-field"><label>Workshop</label>
-            <select id="mreq-workshop">
-              <option value="">— Select —</option>
+          ${field('Συνεργείο', `<select class="form-select" id="mreq-workshop">
+              <option value="">— Επιλογή —</option>
               ${MAINT.workshops.filter(w=>w.fields['Active']).map(w =>
-                `<option value="${w.fields['Name']||''}"${f['Workshop']===w.fields['Name']?' selected':''}>${w.fields['Name']||'?'}${w.fields['City']?' — '+w.fields['City']:''}</option>`
+                `<option value="${escapeHtml(w.fields['Name']||'')}"${f['Workshop']===w.fields['Name']?' selected':''}>${escapeHtml(w.fields['Name']||'?')}${w.fields['City']?' — '+escapeHtml(w.fields['City']):''}</option>`
               ).join('')}
-              <option value="__other"${f['Workshop']&&!MAINT.workshops.find(w=>w.fields['Name']===f['Workshop'])?' selected':''}>Other</option>
-            </select></div>
-          <div class="mf-field"><label>Est. Cost €</label>
-            <input type="number" id="mreq-cost" step="0.01" value="${f['Estimated Cost']||''}" placeholder="0.00"></div>
+              <option value="__other"${f['Workshop']&&!MAINT.workshops.find(w=>w.fields['Name']===f['Workshop'])?' selected':''}>Άλλο</option>
+            </select>`)}
+          ${field('Εκτ. Κόστος €', `<input class="form-input" type="number" id="mreq-cost" step="0.01" value="" placeholder="—" disabled>`,
+            // The column estimated_cost exists; the Worker map does not carry it, so
+            // a typed value would be dropped with a 200 OK (CLAUDE.md, facade trap #1).
+            // Disabled + written reason + omitted from the payload, like contact_person
+            // in wave 1 — never an input whose value quietly vanishes.
+            '<div class="ef-hint">Δεν αποθηκεύεται ακόμη — εκκρεμεί ο χάρτης του Worker</div>')}
         </div>
-        <div class="mf-field"><label>Notes</label>
-          <textarea id="mreq-notes" rows="2" style="resize:vertical">${f['Notes']||''}</textarea></div>
+        ${field('Σημειώσεις', `<textarea class="form-textarea" id="mreq-notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>`)}
       </div>
       <div class="mf-foot">
-        ${editId?`<button class="btn" style="background:#7F1D1D;color:#FEE2E2;margin-right:auto" onclick="_mreqDelete('${editId}')">Delete</button>`:''}
-        <button class="btn btn-ghost" onclick="document.getElementById('mreq-form-container').innerHTML=''">Cancel</button>
-        <button class="btn btn-new-order" onclick="_mreqSave('${editId||''}')">Save</button>
+        <span class="mf-warn">Το Εκτ. Κόστος δεν αποθηκεύεται ακόμη — η στήλη υπάρχει, λείπει ο χάρτης του Worker</span>
+        ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>`:''}
+        <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseModal()">Άκυρο</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="_mreqSave('${editId||''}')">Αποθήκευση</button>
       </div>
     </div>
   </div>`;
-  document.getElementById('mreq-form-container').innerHTML = html;
-
-  const sel = document.getElementById('mreq-plate');
-  if (f['Vehicle Plate'] && !allPlates.includes(f['Vehicle Plate'])) sel.value = '__custom';
 }
 
 async function _mreqSave(editId) {
+  const setErr = (id, msg) => { const el = document.getElementById(id); if (el) el.textContent = msg || ''; };
+  setErr('mreq-err-plate'); setErr('mreq-err-desc');
   const sel = document.getElementById('mreq-plate');
   const plate = sel.value === '__custom' || !sel.value
     ? document.getElementById('mreq-plate-custom').value.trim()
     : sel.value;
-  if (!plate) { alert('Vehicle Plate is required'); return; }
+  if (!plate) { setErr('mreq-err-plate', 'Απαιτείται όχημα'); return; }
+  const desc = document.getElementById('mreq-desc').value.trim();
+  if (!desc) { setErr('mreq-err-desc', 'Απαιτείται περιγραφή'); return; }
 
   const wsVal = document.getElementById('mreq-workshop').value;
   const fields = {
     'Vehicle Plate': plate,
-    'Description': document.getElementById('mreq-desc').value.trim(),
+    'Vehicle Type': _mntVehicleType(plate) || null,
+    'Description': desc,
     // H7 fix: ensure Priority always has a value — default 'Κανονικό'
     'Priority': document.getElementById('mreq-prio').value || 'Κανονικό',
     'Status': document.getElementById('mreq-status').value,
@@ -2303,29 +1849,30 @@ async function _mreqSave(editId) {
     'Workshop': wsVal === '__other' ? null : (wsVal || null),
     'Notes': document.getElementById('mreq-notes').value.trim() || null,
   };
-  const costEl = document.getElementById('mreq-cost');
-  if (costEl && costEl.value) fields['Estimated Cost'] = parseFloat(costEl.value);
+  // 'Estimated Cost' is deliberately NOT sent — see the form field comment.
 
   try {
     if (editId) {
       await atSafePatch(TABLES.MAINT_REQ, editId, fields);
       const rec = MREQ.data.find(r => r.id === editId);
       if (rec) Object.assign(rec.fields, fields);
+      toast('Η εντολή ενημερώθηκε ✓');
     } else {
       const created = await atCreate(TABLES.MAINT_REQ, fields);
       MREQ.data.push(created);
+      toast('Η εντολή δημιουργήθηκε ✓');
     }
-    document.getElementById('mreq-form-container').innerHTML = '';
+    _mntCloseModal();
     _mreqPaint();
   } catch(e) { reportError('Αποτυχία αποθήκευσης αιτήματος συντήρησης', e); }
 }
 
 async function _mreqDelete(recId) {
-  if (!(await confirmAction('Διαγραφή αυτού του work order;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
+  if (!(await confirmAction('Διαγραφή αυτής της εντολής εργασίας;', { danger: true, confirmLabel: 'Διαγραφή' }))) return;
   try {
     await atSoftDelete(TABLES.MAINT_REQ, recId);
     MREQ.data = MREQ.data.filter(r => r.id !== recId);
-    document.getElementById('mreq-form-container').innerHTML = '';
+    _mntCloseModal();
     _mreqPaint();
   } catch(e) { reportError('Αποτυχία διαγραφής αιτήματος συντήρησης', e); }
 }
