@@ -1,17 +1,24 @@
 // ═══════════════════════════════════════════════════════════════
-// DAILY OPS PLAN — v3.1
-// Table-based spreadsheet layout — International ORDERS only
+// DAILY OPS PLAN — v4 (redesign κύμα 3, Figma w3-daily-ops 169:699, 2/9/2026)
+// Table-based layout — International ORDERS only
 // Stacked: Export Load → Export Deliver → Import Load → Import Deliver
+// Οι ΤΕΣΣΕΡΙΣ ενότητες μένουν ως έχουν (κλείδωμα owner — η ενοποίηση του
+// audit απορρίφθηκε). Tokens μόνο (DESIGN.md #1), ονόματα χωρίς κοπή (#6).
 // ═══════════════════════════════════════════════════════════════
 (function() {
 'use strict';
 
 const OPS = {
-  date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[],
+  date:'today', intl:[], trucks:[], drivers:[], locs:[], clients:[], overdue:[], overdueLoads:[],
   // Filters: search text, direction, status
   filters: { q:'', direction:'', status:'' },
+  loadedAt: null,
 };
 
+// Η λίστα πεδίων μένει ΙΔΙΑ με πριν: τα checkboxes (Docs Ready/Temp OK/CMR/
+// Client Notified/Driver Notified/Second Card) αφαιρέθηκαν από την ΟΘΟΝΗ
+// (owner 2/9 — μέτρηση 0–5/107 συμπληρωμένα), όχι από το αίτημα — η αλλαγή
+// είναι στην απόδοση, το αίτημα προς το facade δεν χρειάζεται να αλλάξει.
 const OPS_FIELDS = [
   'Direction','Goods','Temperature °C','Total Pallets','Client',
   'Loading DateTime','Delivery DateTime','Status',
@@ -22,8 +29,6 @@ const OPS_FIELDS = [
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
   'Truck','Trailer','Driver','Is Partner Trip','Partner',
 ];
-
-/* ── CSS moved to assets/style.css ── */
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
 async function renderDailyOps() {
@@ -48,6 +53,11 @@ async function _opsLoad() {
   const dayF=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'),IS_SAME({VS CD Date},'${tgt}','day'),AND({Veroia Switch}=1,IS_SAME({Loading DateTime},'${prev}','day')))`;
   const dayFOld=`OR(IS_SAME({Loading DateTime},'${tgt}','day'),IS_SAME({Delivery DateTime},'${tgt}','day'))`;
   const ovF=`AND(IS_BEFORE({Delivery DateTime},TODAY()),OR({Status}='In Transit',{Status}='Assigned',{Status}='Pending',{Status}=''))`;
+  // Εκκρεμείς ΦΟΡΤΩΣΕΙΣ από προηγούμενες ημέρες (2/9): συμμετρικό με τις
+  // παραδόσεις. Ως τώρα ο κώδικας κοιτούσε μόνο Delivery DateTime — μια
+  // φόρτωση που δεν έγινε και δεν μετατέθηκε χανόταν σιωπηλά (αρχή 1).
+  // «Δεν φορτώθηκε» = Status όχι In Transit/Delivered — καμία άλλη υπόθεση.
+  const ovLF=`AND(IS_BEFORE({Loading DateTime},TODAY()),OR({Status}='Assigned',{Status}='Pending',{Status}=''))`;
   let intl, ov;
   try{
     [intl,ov] = await Promise.all([
@@ -63,16 +73,26 @@ async function _opsLoad() {
       OPS.date==='today'?atGetAll(TABLES.ORDERS,{filterByFormula:ovF,fields:OPS_FIELDS},false):[],
     ]);
   }
+  // Η νέα κλήση ζει ΧΩΡΙΣΤΑ: αν αποτύχει, η ημέρα αποδίδεται κανονικά και η
+  // ζώνη λέει ρητά ότι δεν φορτώθηκε (αρχή 1) — δεν ρίχνει ολόκληρη τη σελίδα.
+  let ovL=[]; OPS.overdueLoadsErr=false;
+  if(OPS.date==='today'){
+    try{ ovL=await atGetAll(TABLES.ORDERS,{filterByFormula:ovLF,fields:OPS_FIELDS},false); }
+    catch(e){ console.warn('[ops] overdue loadings fetch failed:', e.message); OPS.overdueLoadsErr=true; }
+  }
   OPS.intl=intl;
   const ids=new Set(intl.map(r=>r.id));
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
+  const ovIds=new Set(OPS.overdue.map(r=>r.id));
+  OPS.overdueLoads=ovL.filter(r=>!ids.has(r.id)&&!ovIds.has(r.id));
+  OPS.loadedAt=new Date();
 
   // Κληρονομιά ανάθεσης ζεύγους (owner 13/8): σε ταιριασμένα ζεύγη η ανάθεση
   // γράφεται ΜΟΝΟ στο export (Matched Import ID) — τα imports εμφανίζονταν
   // «κενά» εδώ ενώ το Weekly τα έδειχνε ανατεθειμένα. Γεμίζουμε Truck/Driver/
   // Trailer/Partner ΜΟΝΟ στη μνήμη για την προβολή· ΔΕΝ γράφεται στη βάση.
   try{
-    const bareImps=[...intl,...OPS.overdue].filter(r=>{
+    const bareImps=[...intl,...OPS.overdue,...OPS.overdueLoads].filter(r=>{
       const f=r.fields;
       return f['Direction']==='Import' && !(f['Truck']||[]).length && !(f['Partner']||[]).length && !(f['Driver']||[]).length;
     });
@@ -90,7 +110,7 @@ async function _opsLoad() {
   }catch(e){ console.warn('[ops] pair-assignment inherit:', e.message); }
 
   // Batch fetch ORDER_STOPS for location resolution
-  const allRecs = [...intl, ...OPS.overdue];
+  const allRecs = [...intl, ...OPS.overdue, ...OPS.overdueLoads];
   const stopIds = allRecs.flatMap(r => r.fields['ORDER STOPS'] || []);
   OPS._stopsByOrder = {};
   if (stopIds.length) {
@@ -124,6 +144,21 @@ const _T=f=>getTruckPlate(getLinkedId(f['Truck']))||'';
 const _D=f=>getDriverName(getLinkedId(f['Driver']))||'';
 const _DM=(dt,d)=>dt?toLocalDate(dt)===d:false;
 const _P=f=>f['Is Partner Trip']===true||f['Is Partner Trip']==='Yes';
+// Υπογραμμή πελάτη «ΒΕΡΟΙΑ · GR» (Figma) — από το cache αναφοράς, όσο
+// υπάρχουν City/Country στην εγγραφή· αλλιώς τίποτα (όχι «—»).
+const _CSub=f=>{
+  const id=getLinkedId(f['Client']);
+  const c=id?(OPS.clients||[]).find(x=>x.id===id):null;
+  if(!c) return '';
+  const cf=c.fields||{};
+  return [cf['City'],cf['Country']].filter(Boolean).map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
+};
+// «06:30» από ISO datetime — μόνο αν υπάρχει πραγματική ώρα (00:00 = ημέρα).
+const _HM=dt=>{ if(!dt||!/T\d\d:\d\d/.test(String(dt))) return ''; try{ const d=new Date(dt); const h=d.getHours(),m=d.getMinutes(); if(!h&&!m) return ''; return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }catch(_){ return ''; } };
+const _DMY=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?`${+p[2]}/${+p[1]}`:d; };
+const _DMYFull=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d; };
+const _daysAgo=d=>{ try{ const a=new Date(toLocalDate(d)+'T12:00:00'), b=new Date(localToday()+'T12:00:00'); return Math.round((b-a)/864e5); }catch(_){ return null; } };
+const _agoTxt=n=>n==null?'':n===1?'πριν 1 ημέρα':`πριν ${n} ημέρες`;
 
 function _opsCats() {
   const today=localToday();
@@ -181,12 +216,106 @@ function _opsSetFilter(field, val) {
   _opsDraw();
 }
 
+// Το CSS της οθόνης — tokens μόνο. Οι παλιές .ops-kpi/.ops-alert (σκούρες
+// κάρτες, κόκκινο φόντο) δεν χρησιμοποιούνται πλέον· το style.css δεν
+// αγγίζεται (αρχείο εκτός μονάδας).
+const _OPS_STYLE=`<style>
+  .do-page{font-size:var(--text-sm);color:var(--text)}
+  .do-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .do-h1{font-family:Syne;font-size:20px;font-weight:700;margin:0}
+  .do-sub{font-size:var(--text-xs);color:var(--text-dim)}
+  .do-sub b{color:var(--danger);font-weight:600}
+  .do-seg{display:flex;border:1px solid var(--border-mid);border-radius:var(--radius);overflow:hidden;background:var(--bg-card)}
+  .do-seg button,.do-seg input{border:0;background:none;padding:6px 12px;font-family:inherit;font-size:var(--text-sm);color:var(--text-mid);cursor:pointer}
+  .do-seg button.on{background:var(--navy-mid);color:var(--bg-card);font-weight:600}
+  .do-seg input{width:112px;font-size:var(--text-xs);color:var(--text-mid)}
+  .do-sel{height:32px;padding:0 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-sm);color:var(--text-mid)}
+  .do-q{height:32px;padding:0 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-sm);color:var(--text);min-width:200px;flex:1}
+  .do-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .do-link{background:none;border:0;color:var(--accent);font-weight:600;font-size:var(--text-body);cursor:pointer;font-family:inherit;padding:6px 8px}
+  .do-kpis{display:flex;gap:0;border:1px solid var(--border-mid);border-radius:var(--radius-md);background:var(--bg-card);margin-bottom:12px}
+  .do-kpi{flex:1;padding:10px 16px}
+  .do-kpi+.do-kpi{border-left:1px solid var(--border)}
+  .do-kpi-l{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-mid)}
+  .do-kpi-v{font-size:18px;font-weight:700;color:var(--accent-text);margin-top:2px}
+  .do-kpi-v small{font-size:var(--text-xs);font-weight:400;color:var(--text-dim)}
+  .do-kpi-bar{height:3px;background:var(--border);border-radius:var(--radius-full);margin-top:6px;overflow:hidden}
+  .do-kpi-fill{height:100%;background:var(--accent)}
+  .do-kpi.ok .do-kpi-v{color:var(--success)} .do-kpi.ok .do-kpi-fill{background:var(--success)}
+  .do-zone{border:1px solid var(--danger);border-radius:var(--radius-md);background:var(--bg-card);margin-bottom:12px}
+  .do-zone-h{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:var(--text-sm);font-weight:600;color:var(--danger);cursor:pointer;user-select:none;background:none;border:0;width:100%;text-align:left;font-family:inherit}
+  .do-zone-h i{width:8px;height:8px;background:var(--danger);display:inline-block}
+  .do-zone-h .do-note{margin-left:auto;font-weight:400;color:var(--text-dim);font-size:var(--text-xs)}
+  .do-zone-h .do-tog{font-weight:400;color:var(--text-dim);font-size:var(--text-xs);margin-left:12px}
+  .do-zrow{display:flex;align-items:center;gap:14px;padding:0 14px;height:40px;border-top:1px solid var(--border)}
+  .do-zrow .do-cl{font-weight:600;min-width:180px}
+  .do-zrow .do-rt{color:var(--text-mid);flex:1;min-width:0}
+  .do-zrow .do-late{color:var(--danger);font-weight:600;white-space:nowrap}
+  .do-sec{margin-top:14px}
+  .do-sec-h{display:flex;align-items:baseline;gap:10px;padding:0 0 6px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid)}
+  .do-sec-h span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-dim);font-size:var(--text-xs)}
+  .do-t{width:100%;border-collapse:collapse;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-md)}
+  .do-t th{padding:0 10px;height:32px;text-align:left;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid);background:var(--bg-hover);white-space:nowrap}
+  .do-t td{padding:0 10px;height:40px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+  .do-t td.do-wrap{white-space:normal}
+  .do-t tr.do-done td{color:var(--text-dim)}
+  .do-t tr.do-hover:hover td{background:var(--bg-hover)}
+  .do-num{color:var(--text-dim);width:24px}
+  .do-main{font-weight:600;line-height:1.15}
+  .do-sl{display:block;font-size:10px;color:var(--text-dim);font-weight:400;letter-spacing:.02em;margin-top:1px}
+  .do-plate{font-weight:600}
+  .do-nodrv{color:var(--danger)}
+  .do-st{width:170px;white-space:nowrap}
+  .do-st-transit{color:var(--accent-text);font-weight:600}
+  .do-st-wait{color:var(--text-mid)}
+  .do-st-done{color:var(--success);font-weight:600}
+  .do-st-moved{color:var(--warning);font-weight:600}
+  .do-acts{width:252px}
+  .do-slots{display:flex;align-items:center;gap:4px}
+  .do-slot{width:104px;display:flex;justify-content:center}
+  .do-slot.do-more{width:44px}
+  .do-btn{height:28px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--navy-mid);background:var(--navy-mid);color:var(--bg-card);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
+  .do-btn:hover{background:var(--accent);border-color:var(--accent)}
+  .do-late-btn{height:28px;padding:0 8px;border:0;background:none;color:var(--danger);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
+  .do-late-btn:hover{text-decoration:underline}
+  .do-ghost{height:28px;padding:0 8px;border:0;background:none;color:var(--accent);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
+  .do-ghost:hover{text-decoration:underline}
+  .do-dots{height:28px;width:28px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);color:var(--text-mid);cursor:pointer;font-family:inherit;font-size:14px;line-height:1}
+  .do-dots:hover{border-color:var(--accent);color:var(--accent-text)}
+  .do-tinp{height:28px;padding:0 6px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-xs);color:var(--text)}
+  .do-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:var(--radius-full);border:1px solid var(--border-mid);font-size:var(--text-xs);font-weight:600;background:var(--bg-card);cursor:pointer;color:var(--warning);white-space:nowrap}
+  .do-pill.full{color:var(--text-mid)}
+  .do-sub td{background:var(--bg);height:36px;border-top:1px dashed var(--border-mid)}
+  .do-sub .do-srow{display:flex;align-items:center;gap:14px;padding-left:36px;font-size:var(--text-sm)}
+  .do-sub .do-srow .do-sn{font-weight:700;width:16px;color:var(--accent-text)}
+  .do-sub .do-srow .do-sloc{flex:1;min-width:0;white-space:normal}
+  .do-empty{padding:9px 14px;border:1px dashed var(--border-mid);border-radius:var(--radius-md);color:var(--text-dim);font-size:var(--text-sm);background:var(--bg-card)}
+  .do-foot{margin-top:16px;font-size:var(--text-xs);color:var(--text-dim);text-align:right}
+  /* Popover «Αλλαγή ημέρας» — στη γραμμή, Enter = Αύριο */
+  .do-pop{position:absolute;z-index:var(--z-float,50);width:360px;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:14px 16px;text-align:left;white-space:normal}
+  .do-pop h4{font-family:Syne;font-size:14px;margin:0 0 2px}
+  .do-pop .do-psub{font-size:var(--text-xs);color:var(--text-dim);margin-bottom:10px}
+  .do-pop .do-opts{display:flex;gap:6px;margin-bottom:10px}
+  .do-pop .do-opt{flex:1;border:1px solid var(--border-mid);border-radius:var(--radius);padding:6px 8px;background:var(--bg-card);cursor:pointer;font-family:inherit;text-align:left}
+  .do-pop .do-opt b{display:block;font-size:var(--text-sm);color:var(--text)}
+  .do-pop .do-opt span{font-size:10px;color:var(--text-dim)}
+  .do-pop .do-opt.on{background:var(--navy-mid);border-color:var(--navy-mid)} .do-pop .do-opt.on b,.do-pop .do-opt.on span{color:var(--bg-card)}
+  .do-pop .do-opt input{width:100%;border:0;background:none;font-family:inherit;font-size:var(--text-xs);color:var(--text);padding:0}
+  .do-pop label{display:flex;align-items:flex-start;gap:8px;font-size:var(--text-sm);color:var(--text);margin-bottom:10px;cursor:pointer}
+  .do-pop label small{display:block;font-size:10px;color:var(--text-dim)}
+  .do-pop .do-pfoot{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-dim)}
+  .do-pop .do-pfoot .sp{flex:1}
+  .do-menu{position:absolute;z-index:var(--z-float,50);background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:180px;padding:4px 0;text-align:left}
+  .do-menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-family:inherit;font-size:var(--text-sm);color:var(--text);cursor:pointer;white-space:nowrap}
+  .do-menu button:hover{background:var(--bg-hover)}
+</style>`;
+
 /* ── DRAW ─────────────────────────────────────────────────────── */
 function _opsDraw() {
   const today=localToday();
   const tmrw=localTomorrow();
   const isToday=OPS.date==='today';
-  const tgt=isToday?today:tmrw;
+  const tgt=OPS.date==='tomorrow'?tmrw:isToday?today:OPS.date;
   const fD=d=>{try{const dt=new Date(d);
     const ds=['Κυριακή','Δευτέρα','Τρίτη','Τετάρτη','Πέμπτη','Παρασκευή','Σάββατο'];
     const ms=['Ιαν','Φεβ','Μαρ','Απρ','Μαϊ','Ιουν','Ιουλ','Αυγ','Σεπ','Οκτ','Νοε','Δεκ'];
@@ -195,427 +324,213 @@ function _opsDraw() {
   const cats=_opsCats();
   const all=[...cats.el,...cats.ed,...cats.il,...cats.id];
   const total=all.length;
-  const nDel=all.filter(r=>(r.fields['Status']||'')==='Delivered').length;
-  const nLoad=all.filter(r=>(r.fields['Status']||'')==='In Transit').length;
-  const nPend=total-nDel-nLoad;
-  const chkF=['Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'];
-  let tC=0,dC=0;all.forEach(r=>chkF.forEach(f=>{if(r.fields[f]!==undefined){tC++;if(r.fields[f])dC++;}}));
 
-  // Per-direction completion
+  // Per-direction completion — κάθε αναλογία x/y, ποτέ σκέτο ποσοστό.
   const loadsAll = [...cats.el, ...cats.il];
   const delsAll  = [...cats.ed, ...cats.id];
   const loadsDone = loadsAll.filter(r=>['In Transit','Delivered'].includes(r.fields['Status']||'')).length;
   const delsDone  = delsAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
-  const expAll = [...cats.el, ...cats.ed];
-  const impAll = [...cats.il, ...cats.id];
-  const expDone = expAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
-  const impDone = impAll.filter(r=>(r.fields['Status']||'')==='Delivered').length;
-  const overallPct = total ? Math.round(nDel/total*100) : 0;
+  const pendN=isToday?OPS.overdue.length+OPS.overdueLoads.length:0;
 
-  // ═══ COMMAND CENTER — computed action recommendations ═══
-  const now = new Date();
-  const nowH = now.getHours() + now.getMinutes()/60;
-  const actions = [];
-  if (isToday && total) {
-    const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
-    // Overdue unhandled
-    if (OPS.overdue.length) actions.push({icon:_i('alert_circle'), sev:'crit', text:`${OPS.overdue.length} εκκρεμείς παραδόσεις awaiting confirmation`, scrollTo:'ovL'});
+  const kpi=(lbl,done,n,ok)=>`<div class="do-kpi${ok?' ok':''}"><div class="do-kpi-l">${lbl}</div>
+    <div class="do-kpi-v">${n?`${done} <small>/ ${n} ${n===1?'δηλωμένη':'δηλωμένες'}</small>`:'<small>καμία σήμερα</small>'}</div>
+    <div class="do-kpi-bar"><div class="do-kpi-fill" style="width:${n?Math.round(done/n*100):0}%"></div></div></div>`;
 
-    // Loadings without truck/driver assigned
-    const noAssign = loadsAll.filter(r => !_T(r.fields) || !_D(r.fields)).filter(r=>(r.fields['Status']||'')!=='Delivered' && (r.fields['Status']||'')!=='In Transit');
-    if (noAssign.length) actions.push({icon:_i('user'), sev:'warn', text:`${noAssign.length} loading${noAssign.length>1?'s':''} without truck/driver assigned`});
+  // Ζώνες εκκρεμών από προηγούμενες ημέρες — παραδόσεις ΚΑΙ φορτώσεις (2/9)
+  const route=r=>`${escapeHtml(_L(_opsStopLoc(r.id,'Loading'))||'—')} → ${escapeHtml(_L(_opsStopLoc(r.id,'Unloading'))||'—')}`;
+  const zone=(key,rows,title,note,rowHtml)=>{
+    if(!rows.length) return '';
+    const open=OPS._zoneOpen?.[key]!==false;
+    return `<div class="do-zone">
+      <button type="button" class="do-zone-h" aria-expanded="${open?'true':'false'}" aria-controls="${key}" onclick="_opsToggleZone('${key}')"><i></i>${title}${note?`<span class="do-note">${note}</span>`:''}<span class="do-tog">${open?'▲ Απόκρυψη':'▼ Εμφάνιση'}</span></button>
+      <div id="${key}" style="display:${open?'block':'none'}">${rows.map(rowHtml).join('')}</div></div>`;
+  };
+  const ovH=isToday?zone('ovL',OPS.overdue,
+    `${OPS.overdue.length} ${OPS.overdue.length===1?'εκκρεμής παράδοση':'εκκρεμείς παραδόσεις'} από προηγούμενες ημέρες`,'',
+    r=>{const f=r.fields, n=_daysAgo(f['Delivery DateTime']);
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}</span>
+        <span class="do-late">παράδοση ${_DMY(f['Delivery DateTime'])} · ${_agoTxt(n)}</span>
+        ${_opsSlots(r,'ovd',true)}</div>`;}):'';
+  const ovLH=isToday?zone('ovLoad',OPS.overdueLoads,
+    `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
+    'δεν φορτώθηκε και δεν μετατέθηκε',
+    r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
+      return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_T(f)?' · '+escapeHtml(_T(f)):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
+        <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
+        ${_opsSlots(r,'ovl',true)}</div>`;}):'';
+  const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-empty" style="border-color:var(--danger);color:var(--danger);margin-bottom:12px">Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — η κλήση απέτυχε· ξαναπάτησε Ανανέωση. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</div>`:'';
 
-    // Loadings without Docs Ready (pending status)
-    const missingDocs = loadsAll.filter(r => !r.fields['Docs Ready'] && (r.fields['Status']||'')==='');
-    if (missingDocs.length) actions.push({icon:_i('file_text'), sev:'warn', text:`${missingDocs.length} pending loading${missingDocs.length>1?'s':''} without Docs Ready`});
-
-    // Deliveries in transit without CMR
-    const missingCMR = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['CMR Photo Received']);
-    if (missingCMR.length) actions.push({icon:_i('camera'), sev:'warn', text:`${missingCMR.length} in-transit deliver${missingCMR.length>1?'ies':'y'} without CMR photo`});
-
-    // Deliveries in transit without ETA
-    const missingETA = delsAll.filter(r => (r.fields['Status']||'')==='In Transit' && !r.fields['ETA']);
-    if (missingETA.length) actions.push({icon:_i('clock'), sev:'warn', text:`${missingETA.length} in-transit deliver${missingETA.length>1?'ies':'y'} without ETA`});
-
-    // Pending deliveries that are still not delivered after noon
-    if (nowH > 14 && nPend > 0) {
-      const pendDels = delsAll.filter(r => (r.fields['Status']||'')!=='Delivered').length;
-      if (pendDels > 0) actions.push({icon:_i('clock'), sev:'warn', text:`Afternoon — ${pendDels} delivery${pendDels>1?'ies':''} still not confirmed`});
-    }
-
-    // All good
-    if (!actions.length && total > 0) {
-      if (nDel === total) actions.push({icon:_i('party'), sev:'ok', text:'Όλες οι παραγγελίες παραδόθηκαν — η μέρα έκλεισε!'});
-      else if (loadsDone === loadsAll.length && delsDone < delsAll.length) actions.push({icon:_i('check_circle'), sev:'ok', text:'Όλες οι φορτώσεις έγιναν — αναμονή on deliveries'});
-      else actions.push({icon:_i('check'), sev:'ok', text:'Καμία εκκρεμής ενέργεια — όλα υπό έλεγχο'});
-    }
-  }
-
-  // Overdue
-  let ovH='';
-  if(isToday&&OPS.overdue.length){
-    ovH=`<div class="ops-alert">
-      <button type="button" class="ops-alert-hdr" aria-expanded="false" aria-controls="ovL"
-        style="width:100%;background:none;border:0;font:inherit;color:inherit;cursor:pointer;text-align:left"
-        onclick="_opsToggleOverdue(this)">
-        <div class="ops-alert-txt">⚠ ${OPS.overdue.length} παραγγελίες με εκκρεμή παράδοση</div>
-        <div class="ops-alert-tog">▼ Εμφάνιση</div>
-      </button>
-      <div class="ops-alert-list" id="ovL">${OPS.overdue.map(r=>{const f=r.fields;
-        return `<div class="ops-alert-row">
-          <span class="ops-alert-info">${_L(_opsStopLoc(r.id,'Loading'))||'—'} → ${_L(_opsStopLoc(r.id,'Unloading'))||'—'}<span class="ops-alert-dt">${toLocalDate(f['Delivery DateTime'])}</span></span>
-          <!-- ΠΡΟΣΟΧΗ: το δεύτερο όρισμα είναι ΥΠΟΧΡΕΩΤΙΚΟ εδώ. Η υπογραφή είναι
-               _opsOvAct(id, perf='Delayed'), οπότε η κλήση χωρίς αυτό κατέγραφε
-               ΚΑΘΥΣΤΕΡΗΣΗ ενώ το κουμπί έλεγε «Παραδόθηκε». Βλ. commit. -->
-          <button class="ops-alert-btn ok" onclick="event.stopPropagation();_opsOvAct('${r.id}','On Time')">Παραδόθηκε</button>
-          <button class="ops-alert-btn no" onclick="event.stopPropagation();_opsOvAct('${r.id}','Delayed')">Καθυστέρησε</button>
-        </div>`;}).join('')}</div></div>`;
-  }
-
-  // Command Center HTML
-  const sevColor = s => s==='crit'?'var(--danger)':s==='warn'?'#D97706':s==='ok'?'#059669':'var(--accent)';
-  const sevBg = s => s==='crit'?'#FEE2E2':s==='warn'?'var(--warning-soft)':s==='ok'?'#D1FAE5':'#DBEAFE';
-  const cmdCenterH = (isToday && total) ? `
-    <div style="background:linear-gradient(135deg,var(--navy-mid),#1E3A8A);color:#fff;padding:16px 20px;border-radius:10px;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:14px">
-          <!-- Circular completion ring -->
-          <div style="position:relative;width:64px;height:64px">
-            <svg width="64" height="64" viewBox="0 0 64 64" style="transform:rotate(-90deg)">
-              <circle cx="32" cy="32" r="28" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="6"/>
-              <circle cx="32" cy="32" r="28" fill="none" stroke="#10B981" stroke-width="6"
-                stroke-dasharray="${2*Math.PI*28}" stroke-dashoffset="${2*Math.PI*28*(1-overallPct/100)}" stroke-linecap="round"/>
-            </svg>
-            <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'Syne',sans-serif">
-              <div style="font-size:18px;font-weight:700;line-height:1">${overallPct}%</div>
-              <div style="font-size:9px;opacity:0.7;letter-spacing:0.5px">DONE</div>
-            </div>
-          </div>
-          <div>
-            <div style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;letter-spacing:1px">COMMAND CENTER</div>
-            <div style="font-size:12px;opacity:0.7;margin-top:2px">${nDel}/${total} παραδόθηκαν · ${nLoad} σε μεταφορά · ${nPend} σε αναμονή</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="display:flex;gap:16px;font-size:11px">
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΕΞΑΓΩΓΗ</div><div style="font-weight:700;font-size:14px">${expAll.length?Math.round(expDone/expAll.length*100):0}%</div></div>
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΕΙΣΑΓΩΓΗ</div><div style="font-weight:700;font-size:14px">${impAll.length?Math.round(impDone/impAll.length*100):0}%</div></div>
-            <div><div style="opacity:0.6;font-size:9px;letter-spacing:0.5px">ΛΙΣΤΑ ΕΛΕΓΧΟΥ</div><div style="font-weight:700;font-size:14px">${tC?Math.round(dC/tC*100):0}%</div></div>
-          </div>
-        </div>
+  const upd=OPS.loadedAt?String(OPS.loadedAt.getHours()).padStart(2,'0')+':'+String(OPS.loadedAt.getMinutes()).padStart(2,'0'):'';
+  document.getElementById('content').innerHTML=`${_OPS_STYLE}
+    <div class="do-page">
+    <div class="do-top">
+      <h1 class="do-h1">Ημερήσιο Πλάνο</h1>
+      <span class="do-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${isToday?'σήμερα':OPS.date==='tomorrow'?'αύριο':''}${pendN?` · <b>${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}</b>`:''}</span>
+      <div class="do-seg">
+        <button class="${isToday?'on':''}" onclick="OPS.date='today';renderDailyOps()">Σήμερα</button>
+        <button class="${OPS.date==='tomorrow'?'on':''}" onclick="OPS.date='tomorrow';renderDailyOps()">Αύριο</button>
+        <input type="date" value="${tgt}" title="Άλλη ημερομηνία"
+          onchange="OPS.date=this.value===localToday()?'today':this.value===localTomorrow()?'tomorrow':this.value;renderDailyOps()">
       </div>
-      ${actions.length ? `<div style="display:flex;flex-direction:column;gap:6px">
-        ${actions.map(a => `<div style="background:${sevBg(a.sev)};color:${sevColor(a.sev)};padding:8px 12px;border-radius:6px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:10px${a.scrollTo?';cursor:pointer':''}" ${a.scrollTo?`onclick="document.getElementById('${a.scrollTo}').style.display='flex';window.scrollTo({top:document.getElementById('${a.scrollTo}').offsetTop-80,behavior:'smooth'})"`:''}>
-          <span style="font-size:16px">${a.icon}</span><span>${a.text}</span>
-        </div>`).join('')}
-      </div>` : ''}
-    </div>` : '';
-
-  const _opsI = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
-  document.getElementById('content').innerHTML=`
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div><div class="page-title">${_opsI('list_checks', 22)} Daily Ops Plan</div>
-        <div class="page-sub">${fD(tgt)} · ${total} ${total===1?'παραγγελία':'παραγγελίες'} ${OPS.date==='today'?'σήμερα':'αύριο'}${isToday && OPS.overdue.length ? ` · <span style="color:var(--danger);font-weight:600">${OPS.overdue.length} εκκρεμείς από προηγούμενες ημέρες</span>` : ''}</div></div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
-        <button class="btn btn-primary btn-sm" onclick="_opsPrint()">${_opsI('file_text')} Print</button>
-        <button class="btn btn-secondary btn-sm" onclick="renderDailyOps()">${_opsI('refresh')} Ανανέωση</button>
-      </div>
-    </div>
-    <div class="ops-toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
-      <button class="ops-day-btn ${isToday?'active':''}" onclick="OPS.date='today';renderDailyOps()">ΣΗΜΕΡΑ</button>
-      <button class="ops-day-btn ${!isToday?'active':''}" onclick="OPS.date='tomorrow';renderDailyOps()">ΑΥΡΙΟ</button>
-      <input type="date" class="ops-day-btn" style="cursor:pointer" value="${tgt}" title="Άλλη ημερομηνία — DO-7"
-        onchange="OPS.date=this.value===localToday()?'today':this.value===localTomorrow()?'tomorrow':this.value;renderDailyOps()">
-      <input type="text" class="filter-select" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού / τοποθεσίας…"
-        value="${OPS.filters?.q||''}"
-        oninput="_opsSetFilter('q', this.value)"
-        style="flex:1;min-width:200px;padding:0 12px;height:36px;border-radius:6px;border:1px solid var(--border);font-size:13px">
-      <select class="filter-select" onchange="_opsSetFilter('direction', this.value)" style="height:36px">
-        <option value="">Όλες οι κατευθύνσεις</option>
+      <select class="do-sel" onchange="_opsSetFilter('direction', this.value)">
+        <option value="">Κατεύθυνση: Όλες</option>
         <option value="export" ${OPS.filters?.direction==='export'?'selected':''}>Εξαγωγή</option>
         <option value="import" ${OPS.filters?.direction==='import'?'selected':''}>Εισαγωγή</option>
       </select>
-      <select class="filter-select" onchange="_opsSetFilter('status', this.value)" style="height:36px">
-        <option value="">Όλες οι καταστάσεις</option>
+      <select class="do-sel" onchange="_opsSetFilter('status', this.value)">
+        <option value="">Κατάσταση: Όλες</option>
         <option value="Pending"    ${OPS.filters?.status==='Pending'?'selected':''}>Σε αναμονή</option>
         <option value="Assigned"   ${OPS.filters?.status==='Assigned'?'selected':''}>Ανατεθειμένο</option>
         <option value="In Transit" ${OPS.filters?.status==='In Transit'?'selected':''}>Σε μεταφορά</option>
         <option value="Delivered"  ${OPS.filters?.status==='Delivered'?'selected':''}>Παραδόθηκε</option>
       </select>
-      ${(OPS.filters?.q||OPS.filters?.direction||OPS.filters?.status) ? `
-        <button class="btn btn-ghost btn-sm" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()" style="height:36px">Καθαρισμός</button>
-      ` : ''}
+      <input type="text" class="do-q" placeholder="Αναζήτηση…" value="${escapeHtml(OPS.filters?.q||'')}" oninput="_opsSetFilter('q', this.value)">
+      ${(OPS.filters?.q||OPS.filters?.direction||OPS.filters?.status) ? `<button class="do-link" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()">Καθαρισμός</button>` : ''}
+      <div class="do-right">
+        <button class="btn btn-secondary btn-sm" onclick="_opsPrint()">Εκτύπωση</button>
+        <button class="do-link" onclick="renderDailyOps()">Ανανέωση</button>
+      </div>
     </div>
-    ${cmdCenterH}
-    <div class="ops-kpis">
-      <div class="ops-kpi"><div class="ops-kpi-label">Σε αναμονή</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${total?'var(--panel-text)':'var(--panel-dim)'}">${total?nPend:'—'}</span></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Φορτώσεις</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${loadsAll.length?'var(--panel-accent)':'var(--panel-dim)'}">${loadsAll.length?loadsDone:'—'}</span><span class="ops-kpi-sub">${loadsAll.length?'/ '+loadsAll.length:''}</span></div>
-        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${loadsAll.length?Math.round(loadsDone/loadsAll.length*100):0}%;background:var(--accent)"></div></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Παραδόσεις</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${delsAll.length?'var(--panel-ok)':'var(--panel-dim)'}">${delsAll.length?delsDone:'—'}</span><span class="ops-kpi-sub">${delsAll.length?'/ '+delsAll.length:''}</span></div>
-        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${delsAll.length?Math.round(delsDone/delsAll.length*100):0}%;background:var(--success)"></div></div></div>
-      <div class="ops-kpi"><div class="ops-kpi-label">Λίστα ελέγχου</div>
-        <div class="ops-kpi-row"><span class="ops-kpi-val" style="color:${tC?'var(--panel-ok)':'var(--panel-dim)'}">${tC?dC:'—'}</span><span class="ops-kpi-sub">${tC?'/ '+tC:''}</span></div>
-        <div class="ops-kpi-bar"><div class="ops-kpi-fill" style="width:${tC?Math.round(dC/tC*100):0}%;background:var(--success)"></div></div></div>
+    <div class="do-kpis">${kpi('ΦΟΡΤΩΣΕΙΣ',loadsDone,loadsAll.length,false)}${kpi('ΠΑΡΑΔΟΣΕΙΣ',delsDone,delsAll.length,true)}</div>
+    ${ovH}${ovLH}${ovLErr}
+    <div class="ops-sections" style="gap:0">
+      ${_opsSec('el','ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday,'Καμία παραγγελία εξαγωγής για φόρτωση')}
+      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση')}
+      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση')}
+      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση')}
     </div>
-    ${ovH}
-    <div class="ops-sections">
-      ${_opsSec('el','↑ ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday)}
-      ${_opsSec('ed','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday)}
-      ${_opsSec('il','↑ ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday)}
-      ${_opsSec('id','↓ ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday)}
+    <div class="do-foot">ORDERS · φίλτρο ημέρας ${_DMYFull(tgt)} · ${OPS.intl.length} ${OPS.intl.length===1?'εγγραφή':'εγγραφές'}${pendN?` + ${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}`:''}${upd?` · ενημερώθηκε ${upd}`:''}</div>
     </div>`;
 }
-
 
 /* ── FOUR SECTIONS ─────────────────────────────────────────────────────
    Restored on the owner's instruction: Export Loadings, Export Deliveries,
    Import Loadings, Import Deliveries, each with only the columns that apply to
    it. The DEEP_AUDIT_2026-08-04 DO-2/DO-3 rewrite folded these into one
    time-sorted table with a «ΕΛΕΓΧΟΙ» cell; the dispatchers read the day by
-   section, not by clock, so the sections are back.
+   section, not by clock, so the sections are back. Locked again 2/9. */
 
-   What the unified table gained and this keeps: Greek button labels and status
-   badges, and «—» where a location is missing. The compact «Καμία παραγγελία»
-   row comes back with the sections — four illustrated empty states stacked on
-   one page is noise, not guidance. */
-
-/** DO-8: το toggle ήταν inline χειραγώγηση DOM μέσα σε <div onclick> — μη
- *  προσβάσιμο και με την κατάσταση να ζει στο style attribute. */
-function _opsToggleOverdue(btn) {
-  const l = document.getElementById('ovL');
+function _opsToggleZone(key) {
+  const l = document.getElementById(key);
   if (!l) return;
-  const willOpen = l.style.display !== 'flex';
-  l.style.display = willOpen ? 'flex' : 'none';
-  btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-  const tog = btn.querySelector('.ops-alert-tog');
-  if (tog) tog.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση';
+  OPS._zoneOpen = OPS._zoneOpen || {};
+  const willOpen = l.style.display === 'none';
+  OPS._zoneOpen[key] = willOpen;
+  l.style.display = willOpen ? 'block' : 'none';
+  const btn = l.previousElementSibling;
+  if (btn) { btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); const t = btn.querySelector('.do-tog'); if (t) t.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση'; }
 }
 
-function _opsSec(type,label,items,isToday) {
+function _opsSec(type,label,items,isToday,emptyTxt) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
-  let cols='';
-  if(isToday && isL && isExp)
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΘΕΡΜ.</th><th>ΠΑΛΕΤΕΣ</th><th class="c">ΕΓΓΡΑΦΑ</th><th>ΠΡΟΚΑΤΑΒΟΛΗ €</th><th class="c">2Η ΚΑΡΤΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  else if(isToday && isL && !isExp)
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΘΕΡΜ.</th><th>ΩΡΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  else if(isToday && !isL)
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th><th class="c">ΦΩΤΟ CMR</th><th class="c">ΕΝΗΜΕΡΩΣΗ ΠΕΛΑΤΗ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  else if(!isToday && isL && isExp)
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  else if(!isToday && isL && !isExp)
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th class="c">ΕΝΗΜΕΡΩΘΗΚΕ ΟΔΗΓΟΣ</th><th>ΩΡΑ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-  else
-    cols='<th>#</th><th>ΠΕΛΑΤΗΣ</th><th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th><th>ΕΝΕΡΓΕΙΕΣ</th>';
-
-  const rows=items.length
-    ? items.map((r,i)=>_opsRow(r,i+1,type,isToday)).join('')
-    : '<tr class="ops-empty"><td colspan="20">Καμία παραγγελία</td></tr>';
-
-  return `<div>
-    <div class="ops-sec-hd ${type}"><span>${label}</span><span style="opacity:.5">${items.length}</span></div>
-    <table class="ops-t"><thead><tr>${cols}</tr></thead><tbody>${rows}</tbody></table>
+  const isTmrw=OPS.date==='tomorrow';
+  const when=isToday?'σήμερα':isTmrw?'αύριο':'';
+  // Στήλες ανά ενότητα (Figma 169:699): ΘΕΡΜ./ΕΓΓΡΑΦΑ/ΦΩΤΟ CMR/ΕΝΗΜΕΡΩΣΗ
+  // ΠΕΛΑΤΗ/2Η ΚΑΡΤΑ αφαιρέθηκαν (owner 2/9)· ΚΑΤΑΣΤΑΣΗ = νέα στήλη λέξης.
+  const mid = isL&&isExp ? '<th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΠΑΛ.</th><th>ΠΡΟΚ. €</th>'
+            : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΩΡΑ</th>'
+                        : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th>';
+  const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
+  const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
+  const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
+  if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
+  return `<div class="do-sec">${head}
+    <div style="overflow-x:auto"><table class="do-t"><thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,i+1,type,isToday)).join('')}</tbody></table></div>
   </div>`;
 }
 
 /* ── ROW ──────────────────────────────────────────────────────── */
+// Η κατάσταση είναι ΜΟΝΟ η λέξη (owner 3/9, DECISION_LOG 2/9 επιλογή 2): το
+// frame δείχνει «Σε μεταφορά · 06:32 · Παντελής», αλλά ώρα/όνομα δεν υπάρχουν
+// στη βάση (loaded_at απορρίφθηκε) και το audit_log ΔΕΝ διαβάζεται ως
+// παράκαμψη. Συνειδητή απόκλιση από το frame.
+function _opsStatusWord(f, multiPill) {
+  const st=f['Status']||'';
+  if(st==='Delivered') return '<span class="do-st-done">Παραδόθηκε ✓</span>';
+  if(st==='In Transit') return '<span class="do-st-transit">Σε μεταφορά</span>';
+  // «Μετατέθηκε»: το Postponed To κρατά τη ΝΕΑ ημέρα — η γραμμή είναι ενεργή
+  // εκείνη τη μέρα, με τα κουμπιά της. Το «από 30/8» ΔΕΝ δείχνεται: θέλει
+  // write-once original_loading_date ή audit_log — κανένα εγκεκριμένο (ΑΝΟΙΧΤΟ).
+  if(f['Postponed To']) return `<span class="do-st-moved">Μετατέθηκε</span>${multiPill?' '+multiPill:''}`;
+  return `<span class="do-st-wait">Σε αναμονή</span>${multiPill?' '+multiPill:''}`;
+}
+
+// ΕΝΕΡΓΕΙΕΣ = 3 σταθερές θυρίδες [κύριο 104][Καθυστέρησε/Αλλαγή ημέρας 104][⋯ 44]
+// (owner 2/9: τα κουμπιά δεν αλλάζουν θέση ανά γραμμή). Κενή θυρίδα = κενή,
+// ώστε η στήλη να διαβάζεται κάθετα. ctx: el/ed/il/id/ovd/ovl.
+function _opsSlots(rec, ctx, explicitChange) {
+  const f=rec.fields, id=rec.id;
+  const st=f['Status']||'';
+  const isL=ctx==='el'||ctx==='il'||ctx==='ovl';
+  const isOv=ctx==='ovd'||ctx==='ovl';
+  const stype=isL?'Loading':'Unloading';
+  const multi=_opsStopsOf(id,stype).length>1;
+  const isTmrw=OPS.date==='tomorrow';
+  const done=st==='Delivered'||(isL&&st==='In Transit');
+  let s1='', s2='', s3='';
+  if(!done && !isTmrw){
+    if(isL){
+      // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8)
+      s1=multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button>`
+             :`<button class="do-btn" onclick="confirmAction('Φορτώθηκε;').then(ok=>{if(ok)_opsStat('${id}','In Transit')})">Φορτώθηκε</button>`;
+      if(explicitChange) s2=`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','load')">Αλλαγή ημέρας</button>`;
+    } else {
+      const okFn=isOv?`_opsOvAct('${id}','On Time')`:`_opsDel('${id}','On Time')`;
+      const lateFn=isOv?`_opsOvAct('${id}','Delayed')`:`_opsDel('${id}','Delayed')`;
+      s1=multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Παραδόθηκε</button>`
+             :`<button class="do-btn" onclick="confirmAction('Παραδόθηκε;').then(ok=>{if(ok)${okFn}})">Παραδόθηκε</button>`;
+      s2=multi?`<button class="do-late-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Καθυστέρησε</button>`
+             :`<button class="do-late-btn" onclick="confirmAction('Καθυστέρησε;').then(ok=>{if(ok)${lateFn}})">Καθυστέρησε</button>`;
+    }
+    s3=`<button class="do-dots" title="Περισσότερα" onclick="_opsMenu(event,'${id}','${isL?'load':'deliver'}')">⋯</button>`;
+  } else if(isTmrw && !done){
+    s2=`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','${isL?'load':'deliver'}')">Αλλαγή ημέρας</button>`;
+  }
+  return `<div class="do-slots"><span class="do-slot">${s1}</span><span class="do-slot">${s2}</span><span class="do-slot do-more">${s3}</span></div>`;
+}
+
 function _opsRow(rec,num,type,isToday) {
   const f=rec.fields, id=rec.id;
-  const client=_C(f);
+  const client=_C(f), sub=_CSub(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
   const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_T(f), driver=_D(f), partner=_P(f);
   const pal=f['Total Pallets']||'';
   const st=f['Status']||'';
   const isDone=st==='Delivered';
-  const isInTransit=st==='In Transit';
-  const isPostponed=!!f['Postponed To']&&!isDone&&!isInTransit;
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
-  // Επίδοση ανά στάση (26/8): ο τύπος σημείων του τμήματος + αν είναι multi.
   const _stype=isL?'Loading':'Unloading';
   const _mStops=_opsStopsOf(id,_stype);
   const _multi=_mStops.length>1;
   const _expanded=_multi && OPS._expanded && OPS._expanded.has(id);
 
-  // Per-row checklist progress mini-bar. Tokens, not raw hex — Φάση 9 Α.
-  const _rowChks = isL ? ['Docs Ready','Temp OK','Driver Notified'] : ['CMR Photo Received','Client Notified'];
-  const _rowDone = _rowChks.filter(k => f[k]).length;
-  const _rowPct = Math.round(_rowDone/_rowChks.length*100);
-  const _rowBar = isDone ? ''
-    : `<div title="${_rowDone}/${_rowChks.length} έλεγχοι" style="width:24px;height:3px;background:var(--border);border-radius:2px;margin-top:3px;overflow:hidden"><div style="width:${_rowPct}%;height:100%;background:${_rowPct===100?'var(--success)':_rowPct>=50?'var(--accent)':'var(--warning)'};transition:width .3s"></div></div>`;
-
-  const statusBadge = isInTransit ? '<span style="background:#1E40AF;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΣΕ ΜΕΤΑΦΟΡΑ</span>'
-    : isPostponed ? '<span style="background:#92400E;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΑΝΑΒΛΗΘΗΚΕ</span>'
-    : isDone ? '<span style="background:#065F46;color:#fff;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600">ΠΑΡΑΔΟΘΗΚΕ ✓</span>'
-    : null;
-
-  const chk=(fld,v)=>`<input type="checkbox" ${v?'checked':''} onchange="_opsTog('${id}','${fld}',this.checked)">`;
   const timeSelect=(fld,v)=>{
     const hrs=[];for(let h=0;h<24;h++)for(let m=0;m<60;m+=30){const t=String(h).padStart(2,'0')+':'+String(m).padStart(2,'0');hrs.push(t);}
-    return `<select class="tinp" onchange="_opsSvF('${id}','${fld}',this.value)"><option value="">--:--</option>${hrs.map(t=>`<option value="${t}"${v===t?' selected':''}>${t}</option>`).join('')}</select>`;
+    return `<select class="do-tinp" onchange="_opsSvF('${id}','${fld}',this.value)"><option value="">--:--</option>${hrs.map(t=>`<option value="${t}"${v===t?' selected':''}>${t}</option>`).join('')}</select>`;
   };
-  const amtInp=(fld,v)=>`<input class="tinp" type="number" step="1" value="${v||''}" placeholder="0" style="width:60px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
+  const amtInp=(fld,v)=>`<input class="do-tinp" type="number" step="1" value="${v||''}" placeholder="—" style="width:64px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
-  // Action buttons with confirmation
-  const _btn = (cls, label, action) => `<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="confirmAction('${label};').then(ok=>{if(ok)${action}})">${label}</button>`;
-  // Multi: τα κουμπιά της ΣΥΝΟΨΗΣ δεν δηλώνουν — ανοίγουν τα σημεία, χωρίς
-  // διάλογο επιβεβαίωσης (το άνοιγμα δεν είναι δήλωση). Η δήλωση ζει ΜΟΝΟ
-  // στις υπο-γραμμές (μία πηγή αλήθειας, αρχή 3).
-  const _tglBtn=(cls,label)=>`<button class="btn ${cls}" style="padding:4px 12px;font-size:11px" onclick="event.stopPropagation();_opsToggleStops('${id}')">${label}</button>`;
-  const loadBtn = (_multi&&isL) ? _tglBtn('btn-primary','Σε μεταφορά') : _btn('btn-primary','Σε μεταφορά',`_opsStat('${id}','In Transit')`);
-  const postBtn = _btn('btn-ghost','Αναβολή',`_opsPost('${id}')`);
-  const delBtn = (_multi&&!isL) ? _tglBtn('btn-success','Παραδόθηκε') : _btn('btn-success','Παραδόθηκε',`_opsDel('${id}','On Time')`);
-  const delayBtn = (_multi&&!isL) ? _tglBtn('btn-danger','Καθυστέρησε') : _btn('btn-danger','Καθυστέρησε',`_opsDel('${id}','Delayed')`);
-  const _pb=_opsStopsBadge(id,_stype);
+  const cl=`<td class="do-wrap"><span class="do-main">${escapeHtml(client)}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
+  const locCell=(name,dt)=>`<td class="do-wrap"><span class="do-main">${escapeHtml(name||'—')}</span><span class="do-sl">${_HM(dt)||'—'}</span></td>`;
+  const truckCell=`<td class="do-plate">${escapeHtml(truck)||'—'}</td>`;
+  const drvCell=`<td>${driver?escapeHtml(driver):(partner?'<span class="do-sl" style="font-size:var(--text-xs)">συνεργάτης</span>':'<span class="do-nodrv">χωρίς οδηγό</span>')}</td>`;
+  const pill=_opsStopsBadge(id,_stype);
+  const stCell=`<td class="do-st">${_opsStatusWord(f,pill)}</td>`;
+  const actCell=`<td class="do-acts">${_opsSlots(rec,type,false)}</td>`;
 
-  let cells='';
-  if(isToday && isL && isExp) {
-    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
-    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
-    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
-    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
-    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
-    // εκεί η δουλειά όντως έχει προχωρήσει.
-    const actionCol = isPostponed ? `<td>${_pb} ${statusBadge} ${loadBtn} ${postBtn}</td>`
-                    : statusBadge ? `<td>${_pb} ${statusBadge}</td>`
-                                  : `<td>${_pb} ${loadBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${loadL}">${loadL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
-      <td>${pal}</td>
-      <td class="c">${chk('Docs Ready',f['Docs Ready'])}</td>
-      <td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>
-      <td class="c">${!partner?chk('Second Card',f['Second Card']):''}</td>
-      ${actionCol}`;
-  } else if(isToday && isL && !isExp) {
-    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
-    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
-    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
-    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
-    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
-    // εκεί η δουλειά όντως έχει προχωρήσει.
-    const actionCol = isPostponed ? `<td>${_pb} ${statusBadge} ${loadBtn} ${postBtn}</td>`
-                    : statusBadge ? `<td>${_pb} ${statusBadge}</td>`
-                                  : `<td>${_pb} ${loadBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${loadL}">${loadL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
-      <td class="c">${chk('Temp OK',f['Temp OK'])}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>
-      ${actionCol}`;
-  } else if(isToday && !isL) {
-    // Το «ΑΝΑΒΛΗΘΗΚΕ» είναι ΥΠΕΝΘΥΜΙΣΗ, όχι κατάσταση: το Postponed To κρατά τη ΝΕΑ
-    // ημέρα φόρτωσης, άρα εκείνη τη μέρα η παραγγελία είναι κανονικά ενεργή. Όσο το
-    // σήμα ΑΝΤΙΚΑΘΙΣΤΟΥΣΕ τα κουμπιά, ο dispatcher δεν είχε τρόπο ούτε να την
-    // προχωρήσει ούτε να την ξανα-αναβάλει — 3 παραγγελίες έμειναν παγωμένες από
-    // 22/8 (Παντελής/audit 25/8). In Transit και Delivered κρατούν μόνο σήμα:
-    // εκεί η δουλειά όντως έχει προχωρήσει.
-    const actionCol = isPostponed ? `<td>${_pb} ${statusBadge} ${delBtn} ${delayBtn} ${postBtn}</td>`
-                    : statusBadge ? `<td>${_pb} ${statusBadge}</td>`
-                                  : `<td>${_pb} ${delBtn} ${delayBtn} ${postBtn}</td>`;
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${delivL}">${delivL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>
-      <td class="c">${chk('CMR Photo Received',f['CMR Photo Received'])}</td>
-      <td class="c">${chk('Client Notified',f['Client Notified'])}</td>
-      ${actionCol}`;
-  } else if(!isToday && isL && isExp) {
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${loadL}">${loadL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
-      <td>${postBtn}</td>`;
-  } else if(!isToday && isL && !isExp) {
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${loadL}">${loadL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td class="c">${chk('Driver Notified',f['Driver Notified'])}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>
-      <td>${postBtn}</td>`;
-  } else {
-    cells=`<td class="rn">${num}${_rowBar}</td>
-      <td class="trn" title="${client}">${client}</td>
-      <td class="trn" title="${delivL}">${delivL||'—'}</td>
-      <td class="trn-s">${truck||'—'}</td><td class="trn-s">${driver||'—'}</td>
-      <td>${timeSelect('ETA',f['ETA'])}</td>
-      <td>${postBtn}</td>`;
-  }
+  let mid='';
+  if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'])}${truckCell}${drvCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
+  else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'])}${truckCell}${drvCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
+  else           mid=`${locCell(delivL,f['Delivery DateTime'])}${truckCell}${drvCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
+
   // Multi: κλικ στη γραμμή (όχι σε κουμπί/πεδίο) ανοίγει τα σημεία· οι
   // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody.
   const _trClick=_multi?` onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"`:'';
-  const _trCur=_multi?'cursor:pointer;':'';
-  return `<tr class="${isDone?'done':isInTransit?'transit':''}" style="${_trCur}${isInTransit?'background:#EFF6FF':isDone?'opacity:.5':''}"${_trClick}>${cells}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+  return `<tr id="r_${id}" class="do-hover${isDone?' do-done':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
 }
-
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-// Crash-test fix: per-checkbox debounce lock to prevent out-of-order writes
-// when user rapid-clicks (e.g., 5 toggles in 1 sec). Without this, parallel
-// atPatch calls could resolve in wrong order, leaving UI state desynced from DB.
-const _opsTogLock = new Map();
-async function _opsTog(id,fld,v){
-  const lockKey = `${id}:${fld}`;
-  if (_opsTogLock.get(lockKey)) {
-    // Already a write in flight — queue the latest value, coalesce
-    _opsTogLock.set(lockKey, { queued: v });
-    return;
-  }
-  _opsTogLock.set(lockKey, true);
-  try{
-    await atSafePatch(TABLES.ORDERS,id,{[fld]:v});
-    const r=OPS.intl.find(x=>x.id===id);
-    if(r) r.fields[fld]=v;
-    toast(v?'✓':'—');
-
-    // Auto-status transitions based on checklist completion
-    if(v && r) {
-      const f=r.fields;
-      const status=f['Status']||'';
-      const loadChecks=['Docs Ready','Temp OK','Driver Notified'];
-      const delChecks=['CMR Photo Received','Client Notified'];
-
-      // All loading checks done + status is Assigned/Pending → suggest "In Transit"
-      if(loadChecks.includes(fld) && (status==='Assigned'||status==='Pending'||status==='')) {
-        const allLoaded=loadChecks.every(c=>f[c]);
-        if(allLoaded && await confirmAction('Ολα τα loading checks ✓ — Αλλαγή σε "In Transit";', { confirmLabel: 'Αλλαγή' })) {
-          await _opsStat(id,'In Transit');
-          return;
-        }
-      }
-
-      // All delivery checks done + status is In Transit → suggest "Delivered"
-      if(delChecks.includes(fld) && status==='In Transit') {
-        const allDel=delChecks.every(c=>f[c]);
-        if(allDel && await confirmAction('Ολα τα delivery checks ✓ — Αλλαγή σε "Delivered (On Time)";', { confirmLabel: 'Αλλαγή' })) {
-          await _opsDel(id,'On Time');
-          return;
-        }
-      }
-    }
-    _opsDraw();
-  }catch(e){toast('Error','danger');}
-  finally {
-    // Drain any queued value that arrived during the write
-    const entry = _opsTogLock.get(lockKey);
-    _opsTogLock.delete(lockKey);
-    if (entry && typeof entry === 'object' && 'queued' in entry && entry.queued !== v) {
-      // Re-run with the latest queued value
-      _opsTog(id, fld, entry.queued);
-    }
-  }
-}
-async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Error','danger');}}
-// Single Status field — unified lifecycle (Pending/Assigned/In Transit/Delivered/Invoiced/Cancelled)
+async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
 // ── Επίδοση ΑΝΑ ΣΤΑΣΗ (owner 26/8, v2: αναπτυσσόμενες υπο-γραμμές) ──────
 // Τα σημεία ΔΕΝ παραδίδονται μαζί — το ένα σήμερα, το άλλο αύριο. Άρα:
 // καμία υποχρέωση ταυτόχρονης απόφασης (το παράθυρο-picker αφαιρέθηκε,
@@ -643,15 +558,16 @@ function _opsStopsBadge(id, stype){
   const full=n===st.length;
   const w=stype==='Unloading'?'παραδόθηκαν':'φορτώθηκαν';
   const caret=(OPS._expanded&&OPS._expanded.has(id))?'▾':'▸';
-  return `<span style="display:inline-block;padding:2px 9px;border-radius:9999px;font-size:11px;font-weight:600;border:1px solid ${full?'rgba(11,25,41,.2)':'#E6CE9E'};color:${full?'#334155':'#8A5A00'};background:#fff;white-space:nowrap;cursor:pointer" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="${full?'Όλα τα σημεία δηλωμένα':'Κλικ: τα σημεία ένα-ένα — δηλώνεις όποιο έγινε, τα άλλα περιμένουν'}">${n}/${st.length} ${w} ${caret}</span>`;
+  return `<span class="do-pill${full?' full':''}" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="${full?'Όλα τα σημεία δηλωμένα':'Κλικ: τα σημεία ένα-ένα — δηλώνεις όποιο έγινε, τα άλλα περιμένουν'}">${n}/${st.length} ${w} ${caret}</span>`;
 }
 function _opsToggleStops(id){
   OPS._expanded = OPS._expanded || new Set();
   if(OPS._expanded.has(id)) OPS._expanded.delete(id); else OPS._expanded.add(id);
   _opsDraw();
 }
-// Υπο-γραμμές: μία ανά σημείο, με σειρά, στοιχεία και ΔΙΚΑ της κουμπιά.
-// Δηλωμένη = δείχνει τι δηλώθηκε (ποιος/πότε) και ΔΕΝ ξαναρωτά.
+// Υπο-γραμμές: μία ανά σημείο, με σειρά, στοιχεία και ΔΙΚΑ της κουμπιά στις
+// ίδιες 3 θυρίδες. Δηλωμένη = δείχνει τι δηλώθηκε (ποιος/πότε) και ΔΕΝ
+// ξαναρωτά. Οι τοποθεσίες ΑΝΑΔΙΠΛΩΝΟΝΤΑΙ — ποτέ ellipsis (κανόνας 6).
 function _opsSubRows(rec, stype){
   const id=rec.id;
   const isDel=stype==='Unloading';
@@ -663,14 +579,15 @@ function _opsSubRows(rec, stype){
     const perf=f['Performance'];
     const okLbl=isDel?'Παραδόθηκε':'Φορτώθηκε';
     const right=perf
-      ? `<span style="font-weight:600;color:${perf==='Delayed'?'#B91C1C':'var(--navy-mid,#0B1929)'}">${perf==='Delayed'?'Καθυστέρησε':'Στην ώρα'} ✓</span>
-         <span style="color:var(--text-dim);font-size:11px">${escapeHtml(f['Completed By']||'')}${f['Completed At']?' · '+fmtDate(f['Completed At']):''}</span>`
-      : `<button class="btn btn-success" style="padding:3px 10px;font-size:11px" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button>
-         <button class="btn btn-danger" style="padding:3px 10px;font-size:11px" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`;
-    return `<tr class="ops-sub"><td colspan="20" style="background:#F8FAFC;padding:6px 14px 6px 46px;border-bottom:1px dashed rgba(0,0,0,.07)">
-      <div style="display:flex;align-items:center;gap:14px;font-size:12.5px">
-        <span style="font-weight:700;width:16px">${i+1}</span>
-        <span style="min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(String(loc))}">${escapeHtml(String(loc))}</span>
+      ? `<span class="do-slots"><span style="font-weight:600;color:${perf==='Delayed'?'var(--danger)':'var(--success)'}">${perf==='Delayed'?'Καθυστέρησε':'Στην ώρα'} ✓</span>
+         <span class="do-sl" style="margin:0 0 0 8px;font-size:var(--text-xs)">${escapeHtml(f['Completed By']||'')}${f['Completed At']?' · '+fmtDate(f['Completed At']):''}</span></span>`
+      : `<span class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button></span>
+         <span class="do-slot">${isDel?`<button class="do-late-btn" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`:''}</span>
+         <span class="do-slot do-more"></span></span>`;
+    return `<tr class="do-sub"><td colspan="20">
+      <div class="do-srow">
+        <span class="do-sn">${'①②③④⑤⑥⑦⑧⑨'[i]||(i+1)}</span>
+        <span class="do-sloc">${escapeHtml(String(loc))}</span>
         <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${dt}</span>
         <span style="color:var(--text-dim);width:40px">${pal}</span>
         ${right}
@@ -708,8 +625,10 @@ async function _opsStat(id,st){
   }
   return _opsStatFinal(id,st);
 }
+// Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
+function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
 async function _opsStatFinal(id,st){try{
-  const r0=OPS.intl.find(x=>x.id===id);
+  const r0=_opsFind(id);
   const patch={'Status':st};
   // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
   if(st==='In Transit'&&r0?.fields['Veroia Switch']&&r0?.fields['Direction']==='Export'&&!r0?.fields['VS CD Date']){
@@ -720,11 +639,13 @@ async function _opsStatFinal(id,st){try{
   // γράφεται με before/after στο audit_log, άρα το «πότε και από ποιον» μένει εκεί.
   if(r0?.fields['Postponed To']) patch['Postponed To']=null;
   await atSafePatch(TABLES.ORDERS,id,patch);
-  const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']=st;if(patch['VS CD Date'])r.fields['VS CD Date']=patch['VS CD Date'];if('Postponed To' in patch)r.fields['Postponed To']=null;}
+  if(r0){r0.fields['Status']=st;if(patch['VS CD Date'])r0.fields['VS CD Date']=patch['VS CD Date'];if('Postponed To' in patch)r0.fields['Postponed To']=null;}
+  // Η εκκρεμής φόρτωση που φορτώθηκε φεύγει από τη ζώνη — δεν είναι πια εκκρεμής.
+  OPS.overdueLoads=OPS.overdueLoads.filter(r=>r.id!==id);
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { console.warn('PA status sync:', e.message); }
-  toast(st+' ✓');_opsDraw();}catch(e){toast('Error','danger');}}
+  toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
 async function _opsDel(id,perf){
   const dels=_opsStopsOf(id,'Unloading');
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
@@ -742,48 +663,128 @@ async function _opsDelFinal(id,perf){const d=localToday();
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { console.warn('PA status sync:', e.message); }
-  toast(perf==='On Time'?'✓ Delivered':'✗ Delayed',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Error','danger');}}
-async function _opsPost(id){
-  // Auto-postpone to next day (Status stays as-is; Postponed To carries the flag)
-  const r=OPS.intl.find(x=>x.id===id);if(!r)return;
+  toast(perf==='On Time'?'Παραδόθηκε ✓':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
+
+/* ── «⋯» μενού γραμμής + «Αλλαγή ημέρας» popover ──────────────────────
+   Η αναβολή ΕΙΝΑΙ αλλαγή ημερομηνίας στην παραγγελία — μία πηγή (αρχή 3).
+   Popover στη γραμμή, προεπιλογή «Αύριο», Enter = ό,τι έκανε το σημερινό +1
+   (owner 2/9). Το ρητό checkbox αντικαθιστά την τυφλή μετακίνηση της
+   παράδοσης που έκανε ο παλιός κώδικας. */
+function _opsCloseFloat(){ document.querySelectorAll('.do-pop,.do-menu').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); }
+function _opsPopKey(e){ if(e.key==='Escape') _opsCloseFloat(); if(e.key==='Enter'&&document.querySelector('.do-pop')){ e.preventDefault(); _opsChangeDayGo(); } }
+// Το rect του κουμπιού διαβάζεται ΠΡΙΝ κλείσουν τα προηγούμενα floats: το
+// στοιχείο του «⋯» μενού αποσπάται από το DOM και το rect του γίνεται 0/0 —
+// το popover έβγαινε στο -360px (μετρήθηκε στο rig 3/9).
+function _opsRect(ev){ const b=ev.currentTarget||ev.target; return b.getBoundingClientRect(); }
+function _opsAnchor(rb, el){
+  const host=document.getElementById('content'); const hb=host.getBoundingClientRect();
+  host.style.position=host.style.position||'relative';
+  el.style.top=(rb.bottom-hb.top+host.scrollTop+6)+'px';
+  el.style.right=Math.max(8,hb.right-rb.right)+'px';
+  host.appendChild(el);
+}
+function _opsMenu(ev, id, kind){
+  ev.stopPropagation(); const rb=_opsRect(ev); _opsCloseFloat();
+  const m=document.createElement('div'); m.className='do-menu';
+  m.innerHTML=`<button onclick="_opsChangeDay(event,'${id}','${kind}')">Αλλαγή ημέρας…</button>`;
+  _opsAnchor(rb,m);
+  setTimeout(()=>document.addEventListener('click',_opsCloseFloat,{once:true}),0);
+}
+const _plus=(iso,days)=>toLocalDate(new Date(new Date(toLocalDate(iso)+'T12:00:00').getTime()+days*864e5));
+const _nextMonday=(iso)=>{ const d=new Date(toLocalDate(iso)+'T12:00:00'); const add=((8-d.getDay())%7)||7; return toLocalDate(new Date(d.getTime()+add*864e5)); };
+const _dowShort=iso=>['Κυρ','Δευ','Τρι','Τετ','Πεμ','Παρ','Σαβ'][new Date(iso+'T12:00:00').getDay()];
+function _opsChangeDay(ev, id, kind){
+  ev.stopPropagation(); const rb=_opsRect(ev); _opsCloseFloat();
+  const r=_opsFind(id); if(!r) return;
   const f=r.fields;
-  const loadDt=toLocalDate(f['Loading DateTime']);
-  const delDt=toLocalDate(f['Delivery DateTime']);
-  const nextLoad=loadDt?toLocalDate(new Date(new Date(loadDt+'T12:00:00').getTime()+864e5)):'';
-  const nextDel=delDt?toLocalDate(new Date(new Date(delDt+'T12:00:00').getTime()+864e5)):'';
-  const patch={'Postponed To':nextLoad||nextDel};
-  if(nextLoad) patch['Loading DateTime']=nextLoad;
-  if(nextDel) patch['Delivery DateTime']=nextDel;
-  try{await atSafePatch(TABLES.ORDERS,id,patch);
+  const base=kind==='load'?f['Loading DateTime']:f['Delivery DateTime'];
+  if(!base){ toast('Η παραγγελία δεν έχει ημερομηνία '+(kind==='load'?'φόρτωσης':'παράδοσης'),'danger'); return; }
+  const tmrw=_plus(base,1), mon=_nextMonday(base);
+  const stype=kind==='load'?'Loading':'Unloading';
+  const loc=_L(_opsStopLoc(id,stype))||'';
+  const hasDel=kind==='load'&&!!f['Delivery DateTime'];
+  OPS._pop={id,kind,base,choice:tmrw,moveDel:hasDel};
+  const p=document.createElement('div'); p.className='do-pop';
+  p.innerHTML=`<h4>Αλλαγή ημέρας ${kind==='load'?'φόρτωσης':'παράδοσης'}</h4>
+    <div class="do-psub">${escapeHtml(_C(f))}${loc?' · '+escapeHtml(loc):''}${f['Total Pallets']?' · '+f['Total Pallets']+'p':''} · τώρα ${_DMY(base)}</div>
+    <div class="do-opts">
+      <button class="do-opt on" data-v="${tmrw}" onclick="_opsPopPick(this)"><b>Αύριο</b><span>${_dowShort(tmrw)} ${_DMY(tmrw)}</span></button>
+      <button class="do-opt" data-v="${mon}" onclick="_opsPopPick(this)"><b>Δευτέρα</b><span>${_DMY(mon)}</span></button>
+      <button class="do-opt" data-v="" onclick="_opsPopPick(this)"><b>Άλλη…</b><input type="date" min="${localToday()}" onclick="event.stopPropagation()" onchange="_opsPopOther(this)"></button>
+    </div>
+    ${hasDel?`<label><input type="checkbox" checked onchange="OPS._pop.moveDel=this.checked;_opsPopHint()"><span>Μετακίνηση και της παράδοσης<small id="doPopHint"></small></span></label>`:''}
+    <div class="do-pfoot"><span>Γράφεται στην παραγγελία · ιστορικό στο audit log</span><span class="sp"></span>
+      <button class="do-ghost" onclick="_opsCloseFloat()">Άκυρο</button>
+      <button class="do-btn" onclick="_opsChangeDayGo()">Αλλαγή ↵</button></div>`;
+  _opsAnchor(rb,p);
+  _opsPopHint();
+  document.addEventListener('keydown',_opsPopKey);
+  setTimeout(()=>document.addEventListener('click',function h(e){ if(!p.contains(e.target)) _opsCloseFloat(); else document.addEventListener('click',h,{once:true}); },{once:true}),0);
+}
+function _opsPopPick(btn){
+  document.querySelectorAll('.do-pop .do-opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const v=btn.getAttribute('data-v');
+  if(v) OPS._pop.choice=v; else { const i=btn.querySelector('input'); OPS._pop.choice=i&&i.value?i.value:null; if(i) i.focus(); }
+  _opsPopHint();
+}
+function _opsPopOther(inp){ OPS._pop.choice=inp.value||null; _opsPopHint(); }
+function _opsPopHint(){
+  const h=document.getElementById('doPopHint'); if(!h||!OPS._pop) return;
+  const r=_opsFind(OPS._pop.id); const del=r&&r.fields['Delivery DateTime'];
+  if(!del||!OPS._pop.choice||!OPS._pop.moveDel){ h.textContent=del?'η παράδοση μένει '+_dowShort(toLocalDate(del))+' '+_DMY(del):''; return; }
+  const delta=Math.round((new Date(OPS._pop.choice+'T12:00:00')-new Date(toLocalDate(OPS._pop.base)+'T12:00:00'))/864e5);
+  const nd=_plus(del,delta);
+  h.textContent=`${_dowShort(toLocalDate(del))} ${_DMY(del)} → ${_dowShort(nd)} ${_DMY(nd)} (ίδια απόσταση)`;
+}
+async function _opsChangeDayGo(){
+  const p=OPS._pop; if(!p) return;
+  if(!p.choice){ toast('Διάλεξε ημερομηνία','danger'); return; }
+  const r=_opsFind(p.id); if(!r) return;
+  const f=r.fields;
+  const patch={};
+  const delta=Math.round((new Date(p.choice+'T12:00:00')-new Date(toLocalDate(p.base)+'T12:00:00'))/864e5);
+  if(p.kind==='load'){
+    patch['Loading DateTime']=p.choice;
+    if(p.moveDel&&f['Delivery DateTime']) patch['Delivery DateTime']=_plus(f['Delivery DateTime'],delta);
+  } else {
+    patch['Delivery DateTime']=p.choice;
+  }
+  // «Postponed To» ΣΥΝΕΧΙΖΕΙ να γράφεται με τη ΝΕΑ ημέρα, όπως ως τώρα: το
+  // διαβάζουν Weekly/φίλτρα και το σήμα «Μετατέθηκε». Το μοντέλο «μία πηγή =
+  // η ημερομηνία» θέλει original_loading_date/audit_log — ΑΝΟΙΧΤΟ (owner).
+  patch['Postponed To']=patch['Loading DateTime']||patch['Delivery DateTime'];
+  _opsCloseFloat();
+  try{await atSafePatch(TABLES.ORDERS,p.id,patch);
   invalidateCache(TABLES.ORDERS);
   // Central sync — dates changed, propagate to NAT_LOADS, GL, RAMP
   if (typeof syncOrderDownstream === 'function') {
-    syncOrderDownstream(id, { source: 'intl', changedFields: ['Loading DateTime','Delivery DateTime','Postponed To'], skipPA: true })
-      .catch(e => console.warn('[ops postpone sync]', e));
+    syncOrderDownstream(p.id, { source: 'intl', changedFields: Object.keys(patch), skipPA: true })
+      .catch(e => console.warn('[ops change-day sync]', e));
   }
-  toast('Postponed → '+(nextLoad||nextDel));renderDailyOps();}catch(e){toast('Error','danger');}}
+  toast('Μετατέθηκε → '+_DMYFull(p.choice));OPS._pop=null;renderDailyOps();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}
+}
+
 function _opsPrint() {
   const content = document.querySelector('.ops-sections');
   if (!content) return;
   const win = window.open('','_blank','width=1100,height=800');
-  win.document.write(`<html><head><title>Daily Ops Plan</title>
+  // Το παράθυρο εκτύπωσης δεν φορτώνει το style.css — ασπρόμαυρο, χωρίς χρώματα.
+  win.document.write(`<html><head><title>Ημερήσιο Πλάνο</title>
     <style>
-      body{font-family:'DM Sans',sans-serif;padding:20px;color:#1E293B;font-size:12px}
+      body{font-family:'DM Sans',sans-serif;padding:20px;font-size:12px}
       h1{font-family:'Syne',sans-serif;font-size:18px;margin-bottom:4px}
-      .sub{color:#64748B;font-size:12px;margin-bottom:16px}
+      .sub{opacity:.6;font-size:12px;margin-bottom:16px}
       table{width:100%;border-collapse:collapse;margin-bottom:18px}
-      th{background:#F0F5FA;padding:7px 10px;font-size:9px;text-transform:uppercase;
-        letter-spacing:.8px;text-align:left;border-bottom:2px solid #E2E8F0;font-weight:600}
-      td{padding:6px 10px;border-bottom:1px solid #E2E8F0;font-size:11px}
-      .sec{background:#0B1929;color:#C4CFDB;padding:6px 12px;font-size:9px;
-        font-weight:800;letter-spacing:1.5px;text-transform:uppercase;border-radius:6px 6px 0 0;
-        border-left:3px solid #027BBD;margin-top:12px}
-      .ops-toolbar,.btn,.ops-alert,.ops-kpis{display:none!important}
-      input,select,button{display:none}
+      th{padding:7px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.8px;text-align:left;border-bottom:2px solid;font-weight:600}
+      td{padding:6px 10px;border-bottom:1px solid;font-size:11px}
+      .do-sec-h{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:12px}
+      .do-sl{display:block;font-size:9px;opacity:.6}
+      .do-acts,.do-slots,button,input,select{display:none}
       @media print{body{padding:10px}table{page-break-inside:auto}}
     </style></head><body>
-    <h1>Daily Ops Plan</h1>
-    <div class="sub">${document.querySelector('.page-sub')?.textContent||''}</div>
+    <h1>Ημερήσιο Πλάνο</h1>
+    <div class="sub">${document.querySelector('.do-sub')?.textContent||''}</div>
     ${content.innerHTML}
   </body></html>`);
   win.document.close();
@@ -808,23 +809,20 @@ async function _opsOvActFinal(id,perf='Delayed'){const d=localToday();
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
       .catch(e => console.warn('[ops overdue sync]', e));
   }
-  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Error','danger');}}
+  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
 
 // Expose functions used from onclick/onchange handlers
 window.renderDailyOps = renderDailyOps;
 window.OPS = OPS;
 window._opsPrint = _opsPrint;
-window._opsTog = _opsTog;
 window._opsSvF = _opsSvF;
 window._opsStat = _opsStat;
 window._opsDel = _opsDel;
-window._opsPost = _opsPost;
 window._opsOvAct = _opsOvAct;
 window._opsSetFilter = _opsSetFilter;
-// Must stay INSIDE the IIFE: it sat after the closing `})();`, where the name is
-// out of scope, so this line threw a ReferenceError on every load and the ⚠
-// overdue banner's toggle was never wired up. Arrived with DO-8 (7ca4965).
-window._opsToggleOverdue = _opsToggleOverdue;
+window._opsToggleZone = _opsToggleZone;
 window._opsToggleStops = _opsToggleStops;
 window._opsMarkStopUI = _opsMarkStopUI;
+window._opsMenu = _opsMenu; window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
+window._opsPopPick = _opsPopPick; window._opsPopOther = _opsPopOther; window._opsPopHint = _opsPopHint; window._opsCloseFloat = _opsCloseFloat;
 })();
