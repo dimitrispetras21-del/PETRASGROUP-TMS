@@ -29,7 +29,12 @@
             type: 'page',
             section: group.section,
             title: item.label,
-            keywords: `${item.label} ${group.section}`.toLowerCase(),
+            // Το μενού μεταφράστηκε στα ελληνικά 3/9. Χωρίς αυτό, όποιος
+            // πληκτρολογεί «clients» ή «weekly» δεν βρίσκει τίποτα — το
+            // ⌘K είναι εργαλείο ταχύτητας και η ταχύτητα δεν έχει γλώσσα.
+            // Το id είναι ήδη αγγλικό και σταθερό: το ρίχνουμε στα keywords
+            // (χωρίς κάτω παύλες, ώστε «daily ops» να πιάνει το daily_ops).
+            keywords: `${item.label} ${group.section} ${item.id} ${String(item.id).replace(/_/g,' ')}`.toLowerCase(),
             action: () => { if (typeof navigate === 'function') navigate(item.id); },
             icon: 'file_text',
           });
@@ -87,7 +92,7 @@
       <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
         <div class="cmdk-search">
           ${ico('search')}
-          <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Search pages or actions…" value="${CMD.query.replace(/"/g,'&quot;')}" autocomplete="off" autofocus>
+          <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Αναζήτηση σελίδας ή ενέργειας…" value="${CMD.query.replace(/"/g,'&quot;')}" autocomplete="off" autofocus>
           <span class="cmdk-esc">ESC</span>
         </div>
         <!-- SH-7: τα role="option" ήταν ορφανά — χωρίς γονέα role="listbox" ο
