@@ -679,7 +679,7 @@ function _applyIntlFilters() {
     });
   }
   if (_intlFilters['Direction']) recs = recs.filter(r => r.fields['Direction'] === _intlFilters['Direction']);
-  if (_intlFilters['Status'])    recs = recs.filter(r => r.fields['Status']    === _intlFilters['Status']);
+  if (_intlFilters['Status'])    recs = recs.filter(r => (r.fields['Status']||'Pending') === _intlFilters['Status']);
   if (_intlFilters['Brand'])     recs = recs.filter(r => r.fields['Brand']     === _intlFilters['Brand']);
   if (_intlFilters['_week'])     recs = recs.filter(r => String(r.fields['Week Number']) === String(_intlFilters['_week']));
   if (_intlFilters['_status']) {
@@ -1895,6 +1895,11 @@ async function submitIntlOrder(recId) {
         }
       } catch (e) {}
     }
+    // Πρώτη κατάσταση του λεξιλογίου (DESIGN.md ΜΕΡΟΣ Ε) στη δημιουργία ΜΟΝΟ:
+    // στην επεξεργασία το Status ανήκει στο popover ανάθεσης, δεν το ξαναγράφει
+    // η φόρμα.
+    if (!recId && !fields['Status']) fields['Status'] = 'Pending';
+
     const result = recId
       ? await atSafePatch(TABLES.ORDERS, recId, fields)
       : await atCreate(TABLES.ORDERS, fields);
