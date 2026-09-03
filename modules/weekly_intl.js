@@ -182,6 +182,21 @@ async function _wiInjectStopSummaries(allOrders) {
 const _WI2_CSS=`
 .wk3.wi2{--fL:200px;--fR:200px}
 .wk3.wi2.fl-off{--fL:18px}.wk3.wi2.fr-off{--fR:18px}
+/* ΑΥΤΟΜΑΤΟ ΜΑΖΕΜΑ ΤΩΝ ΕΘΝΙΚΩΝ ΣΤΗΛΩΝ (owner 3/9). Οι έξι στήλες θέλουν
+   ~1200px· σε παράθυρο 1440 μένουν ~1100, οπότε ή ξεχειλίζουν (παραγωγή:
+   70px στα 1440, 144px στα 1366) ή στριμώχνονται τόσο που κόβονται τα
+   ονόματα. Οι δύο στήλες «προς/από Βέροια» είναι οι λιγότερο κρίσιμες και
+   έχουν ήδη χειροκίνητο διακόπτη — εδώ γίνεται αυτόματος. Πάνω από 1500
+   επανέρχονται πλήρεις. Τα ◂ ▸ εξακολουθούν να δουλεύουν χειροκίνητα. */
+@media (max-width:1500px){.wk3.wi2{--fL:18px;--fR:18px}}
+/* Μαζεμένη στήλη = μαζεμένη κεφαλίδα. Το κείμενο «ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ» είναι
+   γυμνός κόμβος δίπλα στο βελάκι, οπότε ξεχείλιζε από τα 18px. font-size:0
+   στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
+   στήλη παραμένει πατήσιμη. Ίδιο και για τον χειροκίνητο διακόπτη, που το
+   είχε ΚΑΙ ΑΥΤΟΣ — απλώς δεν το έβλεπε κανείς. */
+@media (max-width:1500px){.wk3.wi2 .wk3-cols .c.fc{font-size:0;overflow:hidden;padding:0;text-align:center}.wk3.wi2 .wk3-cols .c.fc .fc-ch{font-size:9px}}
+.wk3.wi2.fl-off .wk3-cols .c.fc:first-child,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child{font-size:0;overflow:hidden}
+.wk3.wi2.fl-off .wk3-cols .c.fc:first-child .fc-ch,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child .fc-ch{font-size:11px}
 /* ΣΤΟΙΧΙΣΗ (owner 3/9, πάνω στα πραγματικά δεδομένα): κάθε .wk3-row είναι
    ΔΙΚΟ ΤΟΥ πλέγμα, και το minmax(260px,…) έβαζε ελάχιστο που εξαρτάται από
    το περιεχόμενο — άρα κάθε γραμμή υπολόγιζε ΔΙΚΑ ΤΗΣ πλάτη. Οι γραμμές με
@@ -208,17 +223,14 @@ const _WI2_CSS=`
 .wi2-lg b{color:var(--text)}
 .wi2-lg[hidden]{display:none}
 .wi2-band{display:flex;align-items:center;gap:14px;padding:12px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);margin-bottom:10px;flex-wrap:wrap}
-.wi2-urg{display:flex;align-items:center;gap:14px;padding:10px 18px 10px 14px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--bg-card)}
+.wi2-urg{display:flex;align-items:center;gap:12px;padding:7px 16px 7px 12px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--bg-card)}
 .wi2-urg.zero{border-color:var(--silver-light)}
-.wi2-urg .n{font:700 24px 'Syne',sans-serif;color:var(--bg-card);background:var(--warning);border:none;border-radius:var(--radius);padding:3px 11px;cursor:pointer;line-height:1.2}
+.wi2-urg .n{font:700 20px 'Syne',sans-serif;color:var(--bg-card);background:var(--warning);border:none;border-radius:var(--radius);padding:3px 11px;cursor:pointer;line-height:1.2}
 .wi2-urg.zero .n{background:var(--bg-hover);color:var(--text-dim);cursor:default}
 .wi2-urg h4{font:700 12px 'Syne',sans-serif;letter-spacing:1px;color:var(--warning);margin:0}
 .wi2-urg.zero h4{color:var(--text-dim)}
 .wi2-urg p{font-size:11px;color:var(--text-mid);margin:2px 0 0}
-.wi2-phase{display:inline-flex;gap:6px;align-items:center;font-size:9px;font-weight:500;color:var(--text-mid);background:var(--bg-hover);border-radius:3px;padding:1px 6px;margin-top:4px}
-.wi2-free{min-width:230px;font-size:10.5px;color:var(--text-mid);line-height:1.5}
-.wi2-free .k,.wi2-quick .k{font:700 9.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--text-dim)}
-.wi2-free .p{font:700 12px 'Syne',sans-serif;color:var(--text)}
+.wi2-quick .k{font:700 9.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--text-dim)}
 .wi2-quick .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .wi2-chip{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--bg-hover);border:none;border-radius:var(--radius);padding:5px 11px;cursor:pointer;white-space:nowrap}
 .wi2-chip:hover{background:var(--silver-light)}
@@ -659,14 +671,12 @@ function _wiPaint(){
   const pendAll=pending+impNoVehicle;
   const firstPendingId=_firstExp(r=>!r.saved);
   const jumpPending=firstPendingId?`_ccJump('${firstPendingId}')`:'_wiJumpFirstUnassigned()';
-  // Free fleet TODAY, from this week's assignments only — a truck booked in
-  // another week is not loaded here, and the tile says so in its tooltip.
-  const trucksFree=(data.trucks||[]).filter(t=>{const b=WINTL._busy.byTruck[t.id];return !b||b.end<today;});
-  const driversFree=(data.drivers||[]).filter(d=>{const b=WINTL._busy.byDriver[d.id];return !b||_wk3AddDays(b.end,2)<=today;});
+  // «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» και ο δείκτης φάσης αφαιρέθηκαν 3/9 (owner: λιγότερος
+  // θόρυβος, περισσότερες εγγραφές). Έφυγαν ΚΑΙ οι υπολογισμοί τους, όχι μόνο
+  // η εμφάνιση: ένας υπολογισμός που δεν διαβάζει κανείς είναι νεκρός κώδικας.
+  // Η διαθεσιμότητα στόλου δεν χάθηκε — ζει στο popover ανάθεσης, εκεί που
+  // χρειάζεται όταν διαλέγεις φορτηγό.
   const cur=_wiCurrentWeek();
-  const phaseHint=week>cur?'ΦΑΣΗ: ΧΤΙΖΕΤΑΙ — εδώ μετρούν τα «χωρίς ανάθεση»· τα κενά γυρίσματα κρίνονται στην εκτέλεση'
-    :week===cur?'ΦΑΣΗ: ΣΕ ΕΞΕΛΙΞΗ — σε εβδομάδα που χτίζεται εδώ μετρούν τα «χωρίς ανάθεση»'
-    :'ΦΑΣΗ: ΚΛΕΙΣΜΕΝΗ — περασμένη εβδομάδα, μόνο ανάγνωση/διορθώσεις';
   const chip=(q,lbl,n)=>`<button class="wi2-chip${(WINTL.quick||'')===q?' on':''}" data-q="${q}" onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`;
   const tally=(cls,num,den,lbl,title,onclick)=>`<${onclick?'button':'span'} class="t ${cls}" title="${title}"${onclick?` onclick="${onclick}"`:''}><b>${den==null?num:num+'/'+den}</b>${lbl}</${onclick?'button':'span'}>`;
 
@@ -687,18 +697,15 @@ function _wiPaint(){
     <!-- KPI band (frame 319:906): replaces the Command Center — same numbers
          (gaps, unmatched, free fleet), once, every fraction with its denominator. -->
     <div class="wi2-band">
+      <!-- ΘΟΡΥΒΟΣ ΚΑΤΩ, ΓΡΑΜΜΕΣ ΠΑΝΩ (owner 3/9): «θέλω απλά το badge με το 8 και
+           το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
+           εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
+           να χωράνε περισσότερες εγγραφές στην οθόνη. Κανένας αριθμός δεν
+           χάθηκε: τα κενά γυρίσματα και τα ασυμφώνητα ζουν στα γρήγορα φίλτρα
+           και στο tally του υποσέλιδου, με τους παρονομαστές τους. -->
       <div class="wi2-urg${gaps?'':' zero'}">
         <button class="n" onclick="_wk3Gaps()" title="Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports">${gaps}</button>
-        <div>
-          <h4>ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</h4>
-          <p>${gaps} από ${ownRows.length} δικούς γύρους επιστρέφουν άδειοι · ${urgN} με παράδοση εντός 48h · ${unmatched} από ${impN} εισαγωγές χωρίς ταίριασμα</p>
-          <div class="wi2-phase">${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,cur):''} ${phaseHint}</div>
-        </div>
-      </div>
-      <div class="wi2-free" title="Με βάση τις αναθέσεις ΑΥΤΗΣ της εβδομάδας μόνο — άλλες εβδομάδες δεν φορτώνονται εδώ. Οδηγοί: κανόνας Χ+2.">
-        <div class="k">ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ · ${trucksFree.length}/${(data.trucks||[]).length}</div>
-        <div class="p">${trucksFree.slice(0,3).map(t=>escapeHtml(t.label)).join(' · ')||'—'}</div>
-        <div>${trucksFree.length>3?`+${trucksFree.length-3} ακόμη · `:''}${driversFree.length}/${(data.drivers||[]).length} οδηγοί διαθέσιμοι (Χ+2)</div>
+        <h4>ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</h4>
       </div>
       <div class="wi2-quick">
         <div class="k">ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ</div>
