@@ -57,6 +57,190 @@ function _weekNum(dateStr) {
   return Math.floor((d - ws) / 604800000) + 1;
 }
 
+// ─── Alignment pass (παρτίδα 3, Figma w4-orders-interaction-spec 208:724) ──
+// Owner 30/8: the layout STAYS; only colour, typography, card, motion.
+// Everything below is display-only. DB values (Export/Pending/…) are never
+// rewritten: filters, sorting, CSV and writes keep reading the raw field.
+const _oiLocMeta = {};   // locId → {name, city, country} for the two-line cells
+// A failed «Invoiced» write stays visible IN the cell until a write succeeds.
+// A toast alone let the checkbox read as success while 0/89 rows were written
+// (accountant → 403, ten days of production). Spec §2.
+const _oiInvErr  = {};   // recId → error text
+const _OI_STATUS = {
+  'Pending':    { gr: 'Σε αναμονή',   dot: 'pending' },
+  'Assigned':   { gr: 'Ανατεθειμένη', dot: 'assigned' },
+  'In Transit': { gr: 'Σε μεταφορά',  dot: 'transit' },
+  'Delivered':  { gr: 'Παραδόθηκε',   dot: 'delivered' },
+  'Invoiced':   { gr: 'Τιμολογήθηκε', dot: 'invoiced' },
+  'Cancelled':  { gr: 'Ακυρώθηκε',    dot: 'cancelled' },
+};
+const _OI_DIR    = { Export: '↑ Εξαγωγή', Import: '↓ Εισαγωγή' };
+const _OI_DIR_W  = { Export: 'Εξαγωγή',   Import: 'Εισαγωγή' };
+const _OI_REEFER = { 'Continuous': 'Συνεχής', 'Start-Stop': 'Start-Stop', 'No temp': 'Χωρίς ψύξη' };
+// Status = 6px dot + word in --text-mid (spec §6): the colour lives only in
+// the dot, the word carries the meaning (DESIGN.md #2).
+function _oiStatusHtml(st) {
+  const s = _OI_STATUS[st] || { gr: st || '—', dot: 'unknown' };
+  return `<span class="oi-dot oi-dot-${s.dot}"></span><span class="oi-st">${escapeHtml(s.gr)}</span>`;
+}
+function _oiDate(d) { return d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric' }) : '—'; }
+// Unknown ≠ zero (DESIGN.md #3): null/'' → «—»; a real number, 0 included, prints.
+function _oiMoney(v) { return (v === null || v === undefined || v === '') ? '—' : '€ ' + Number(v).toLocaleString('el-GR'); }
+function _oiStops(orderId, type) {
+  const stops = (window._intlStopsByOrder || {})[orderId];
+  if (!stops || !stops.length) return [];
+  return stops.filter(s => s.fields[F.STOP_TYPE] === type)
+    .sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0));
+}
+function _oiLocOf(stop) {
+  const arr = stop.fields[F.STOP_LOCATION];
+  const id = Array.isArray(arr) ? arr[0] : null;
+  const m = id ? _oiLocMeta[id] : null;
+  return { id, name: m?.name || (id ? (_fhLocationsMap[id] || id.slice(-6)) : '?'), city: m?.city || '', country: m?.country || '' };
+}
+// Two-line cell (spec §5): names on line 1 — wraps, never ellipsis — and the
+// first stop's city/country on line 2. Pre-normalisation orders have no
+// ORDER_STOPS; they fall back to the legacy summary string, one line.
+function _oiLocCell(r, type, summaryKey) {
+  const stops = _oiStops(r.id, type);
+  if (!stops.length) {
+    const s = _cleanSummary(r.fields[summaryKey]);
+    return `<span class="oi-name" title="${s}">${s}</span>`;
+  }
+  const locs = stops.map(_oiLocOf);
+  // First stop by name; the others as «+N» on line 2 — the full list sits in
+  // the title and in the card. Joining every name overflowed the two lines
+  // the row allows (measured 3/9: 2-stop cells were the ones being cut).
+  const names = locs[0].name;
+  const all = locs.map(l => l.name).join(', ');
+  const sub = [[locs[0].city, locs[0].country].filter(Boolean).join(', ')];
+  if (locs.length > 1) sub.push(`+${locs.length - 1}`);
+  // The cross-dock leg sits on the Greek side: loading for exports, delivery for imports.
+  const cdSide = r.fields['Direction'] === 'Import' ? 'Unloading' : 'Loading';
+  if (r.fields['Veroia Switch'] && type === cdSide) sub.push('μέσω CD');
+  const subTxt = sub.filter(Boolean).join(' · ');
+  return `<span class="oi-name" title="${escapeHtml(all)}">${escapeHtml(names)}</span>`
+       + (subTxt ? `<span class="oi-sub" title="${escapeHtml(subTxt)}">${escapeHtml(subTxt)}</span>` : '');
+}
+function _oiAssignCell(f) {
+  const pid = (f['Partner'] || [])[0];
+  if (pid) {
+    const pr = (typeof getRefPartners === 'function' ? getRefPartners() : []).find(x => x.id === pid);
+    const name = pr?.fields?.['Company Name'] || 'Συνεργάτης';
+    const sub = [f['Partner Truck Plates'] || '', 'συνεργάτης'].filter(Boolean).join(' · ');
+    return `<span class="oi-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="oi-sub">${escapeHtml(sub)}</span>`;
+  }
+  const tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
+  if (!tid && !did) return '<span class="oi-miss">—</span>';
+  const t = tid ? (typeof getRefTrucks === 'function' ? getRefTrucks() : []).find(x => x.id === tid) : null;
+  const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(x => x.id === did) : null;
+  const plate = t?.fields?.['License Plate'] || '';
+  const driver = (d?.fields?.['Full Name'] || '').trim();
+  return `<span class="oi-name">${escapeHtml(plate || driver || '—')}</span>`
+       + (plate && driver ? `<span class="oi-sub" title="${escapeHtml(driver)}">${escapeHtml(driver)}</span>` : '');
+}
+// Signals sit next to the order number — no separate flags column (spec §6).
+// VS keeps its colour (semantic, same navy as the Weekly VS badge); the rest
+// are quiet.
+function _oiFlags(f) {
+  const out = [];
+  if (f['Veroia Switch'])     out.push('<span class="oi-flag oi-flag-vs" title="Veroia Switch">VS</span>');
+  if (f['National Groupage']) out.push('<span class="oi-flag" title="National Groupage">GRP</span>');
+  if (f['Pallet Exchange'])   out.push('<span class="oi-flag" title="Ανταλλαγή παλετών">PE</span>');
+  if (f['High Risk Flag'])    out.push('<span class="oi-flag oi-flag-hr" title="Υψηλό ρίσκο">⚠</span>');
+  return out.join('');
+}
+function _oiInvCell(r) {
+  const on = !!r.fields['Invoiced'], err = _oiInvErr[r.id];
+  const inner = err ? `<span class="oi-inv-err" title="${escapeHtml(err)}">⚠</span>`
+              : on  ? '<span class="oi-chk on" title="Τιμολογήθηκε — κλικ για αναίρεση">✓</span>'
+                    : '<span class="oi-chk" title="Σήμανση ως τιμολογημένη"></span>';
+  return `<td class="oi-inv" onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${on})">${inner}</td>`;
+}
+function _oiPeriodLabel() {
+  return _intlPeriod === '60' ? 'τελευταίες 60 ημέρες' : _intlPeriod === '180' ? 'τελευταίοι 6 μήνες' : 'όλες οι ημερομηνίες';
+}
+function _oiCloseCard() { document.getElementById('intlDetail')?.classList.add('hidden'); }
+
+// Module-scoped styles, tokens only (DESIGN.md #1) — same pattern as the
+// locations card. style.css is the integrator's file, not this unit's.
+function _oiEnsureStyles() {
+  if (document.getElementById('oiStyles')) return;
+  const st = document.createElement('style'); st.id = 'oiStyles'; st.textContent = _oiCss();
+  document.head.appendChild(st);
+}
+function _oiCss() { return `
+.oi-layout .entity-table-wrap thead th{background:var(--surface-sunken);font-size:var(--text-2xs);font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mid);padding:0 8px;height:30px;line-height:12px;white-space:normal;border-bottom:1px solid var(--silver-light);overflow:hidden;vertical-align:middle}
+.oi-layout .entity-table-wrap tbody td{height:40px;padding:0 8px;font-size:var(--text-sm);line-height:13px;color:var(--text);border-bottom:1px solid var(--silver-light);white-space:normal;overflow:hidden;text-overflow:clip;max-width:none;vertical-align:middle}
+.oi-layout .entity-table-wrap tbody tr{transition:none;cursor:pointer}
+.oi-layout .entity-table-wrap tbody tr:hover td{background:var(--surface-sunken)}
+.oi-layout .entity-table-wrap tbody tr.selected td{background:var(--accent-light)}
+.oi-layout td strong{font-weight:700}
+.oi-name{display:block;max-height:26px;overflow:hidden;overflow-wrap:anywhere}
+.oi-name:only-child{max-height:39px}
+.oi-sub{display:block;font-size:var(--text-2xs);line-height:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden}
+.oi-dim{color:var(--text-mid);font-size:var(--text-xs)}
+.oi-num{font-variant-numeric:tabular-nums}
+.oi-med{font-weight:500}
+.oi-miss{color:var(--text-dim)}
+.oi-layout .entity-table-wrap tbody td.oi-nowrap{white-space:nowrap}
+.oi-flag{display:inline-block;margin-left:4px;padding:1px 4px;border-radius:3px;font-size:8px;line-height:10px;font-weight:700;vertical-align:1px;color:var(--navy-mid);background:var(--silver-light)}
+.oi-flag-vs{background:var(--navy-mid);color:var(--text-inverse)}
+.oi-flag-hr{background:var(--danger-bg);color:var(--danger-strong)}
+.oi-dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:6px;vertical-align:1px;background:var(--text-dim)}
+.oi-dot-pending{background:var(--warning)}
+.oi-dot-assigned{background:var(--accent)}
+.oi-dot-transit{background:var(--navy-mid)}
+.oi-dot-delivered{background:var(--success)}
+.oi-dot-invoiced{background:var(--text-dim)}
+.oi-dot-cancelled{background:var(--danger-strong)}
+.oi-st{color:var(--text-mid);font-size:var(--text-xs)}
+.oi-inv{cursor:pointer;text-align:center}
+.oi-chk{display:inline-block;width:14px;height:14px;border:1.5px solid var(--border-dark);border-radius:4px;background:var(--bg-card);vertical-align:middle;line-height:11px;font-size:11px;font-weight:700;color:var(--text-mid)}
+.oi-chk.on{border-color:var(--text-mid)}
+.oi-inv-err{color:var(--danger-strong);font-weight:700;font-size:13px}
+.oi-layout .entity-detail-panel{width:480px;flex-shrink:0;display:flex;flex-direction:column;background:var(--bg-card);border-left:1px solid var(--silver-light);position:relative;z-index:var(--z-raised);box-shadow:var(--shadow-panel);transition:none;overflow-y:auto;overflow-x:hidden}
+.oi-layout .entity-detail-panel.hidden{display:none;width:0;border-left:none;box-shadow:none}
+.oi-layout .entity-detail-panel:not(.hidden){animation:oi-slide var(--duration-fast) var(--ease-out)}
+@keyframes oi-slide{from{transform:translateX(100%)}to{transform:none}}
+.oi-card-head{background:var(--navy-mid);color:var(--text-inverse);padding:20px 22px 16px;flex-shrink:0}
+.oi-card-title{display:flex;align-items:flex-start;gap:10px;font-family:'Syne',sans-serif;font-weight:700;font-size:17px;line-height:20px;letter-spacing:1px;text-transform:uppercase}
+.oi-card-title span{flex:1;overflow-wrap:anywhere}
+.oi-close{background:none;border:0;color:var(--panel-dim);font-size:18px;line-height:18px;cursor:pointer;padding:0 2px;font-family:inherit}
+.oi-close:hover{color:var(--panel-text)}
+.oi-card-sub{font-size:11.5px;color:var(--panel-dim);margin-top:4px}
+.oi-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.oi-chip{display:inline-block;padding:3px 9px;border-radius:var(--radius-full);border:1px solid var(--panel-border);font-size:9px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--panel-text)}
+.oi-chip-warn{color:var(--panel-warn)}
+.oi-chip-bad{color:var(--panel-bad)}
+.oi-sect{padding:14px 22px 12px;border-top:1px solid var(--silver-light)}
+.oi-sect:first-of-type{border-top:none}
+.oi-sect-alt{background:var(--surface-sunken)}
+.oi-sect-t{font-family:'Syne',sans-serif;font-weight:700;font-size:10.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-mid);margin-bottom:6px}
+.oi-kv{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:4px 0;font-size:var(--text-sm)}
+.oi-kv .k{color:var(--text-dim);font-size:11.5px;flex-shrink:0}
+.oi-kv .v{font-weight:600;text-align:right;overflow-wrap:anywhere}
+.oi-kv .v.miss{font-weight:400;color:var(--text-dim)}
+.oi-kv .v.warn{color:var(--warning)}
+.oi-stop{display:flex;align-items:baseline;gap:8px;padding:4px 0;font-size:var(--text-sm)}
+.oi-stop .d{color:var(--text-mid);font-size:11.5px;min-width:30px}
+.oi-stype{display:inline-block;border:1px solid var(--silver-light);border-radius:3px;padding:1px 6px;font-size:8.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text-mid);white-space:nowrap}
+.oi-stop .n{flex:1;font-weight:600;overflow-wrap:anywhere}
+.oi-stop .q{font-weight:700;white-space:nowrap}
+.oi-note{font-size:11.5px;color:var(--warning);line-height:1.4}
+.oi-text{font-size:11.5px;color:var(--text-mid);line-height:1.5;white-space:pre-wrap}
+.oi-links{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:6px}
+.oi-link{background:none;border:0;padding:0;font:inherit;font-size:11.5px;font-weight:500;color:var(--accent-text);cursor:pointer}
+.oi-link:hover{text-decoration:underline}
+.oi-link-danger{color:var(--danger-strong)}
+.oi-sep{color:var(--text-dim)}
+.oi-balance{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.oi-balance:empty{display:none}
+.oi-bal{display:inline-block;padding:5px 10px;border-radius:var(--radius);font-size:11.5px;font-weight:500;border:1px solid var(--border-mid)}
+.oi-bal-bad{background:var(--danger-bg);border-color:var(--danger-strong);color:var(--danger-strong)}
+.oi-bal-warn{background:var(--warning-soft);border-color:var(--warning-soft);color:var(--warning)}
+`; }
+
 // ─── Main ───────────────────────────────────────
 async function renderOrdersIntl() {
   const c = document.getElementById('content');
@@ -112,6 +296,13 @@ async function renderOrdersIntl() {
     }
     // Inject Loading/Delivery Summary from ORDER_STOPS for orders missing them
     await _loadLocations();
+    // City/country for the two-line cells. Same cached GET the form helpers
+    // use (no new endpoint); the helpers keep only the joined label.
+    try {
+      (await atGet(TABLES.LOCATIONS)).forEach(l => {
+        _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '', country: l.fields['Country'] || '' };
+      });
+    } catch(e) { console.warn('orders_intl: location meta', e); }
     records.forEach(r => {
       const loadSummary = _stopsLocationSummary(r.id, 'Loading');
       const delSummary = _stopsLocationSummary(r.id, 'Unloading');
@@ -121,6 +312,7 @@ async function renderOrdersIntl() {
     // Pre-resolve all client names — batch fetches in parallel
     const clientIds = [...new Set(records.map(r=>(r.fields['Client']||[])[0]).filter(Boolean))];
     await fhBatchResolveClients(clientIds);
+    _oiEnsureStyles();
     _renderIntlLayout(c);
     _applyIntlFilters();
   } catch(e) {
@@ -136,16 +328,16 @@ function _renderIntlLayout(c) {
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Διεθνείς Παραγγελίες</div>
-        <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} orders</div>
+        <div class="page-sub" id="intlSub">${INTL_ORDERS.data.length} παραγγελίες · ${_oiPeriodLabel()}</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openIntlScan()">${_i('camera')} Scan</button>
-        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">${_i('plus')} New Order</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openIntlCreate()">+ Νέα παραγγελία</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_intlExportCSV()">${_i('download')} CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Print</button>
+        <button class="btn btn-ghost btn-sm" onclick="_intlPrint()">${_i('file_text')} Εκτύπωση</button>
       </div>
     </div>
-    <div class="entity-layout">
+    <div class="entity-layout oi-layout">
       <div class="entity-list-panel">
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
@@ -214,21 +406,24 @@ function _oiAssign(f){
 }
 
 // ─── Sort helpers ────────────────────────────────
+// Widths sum to 1129px: measured 3/9 in the rig at 1920×1080 the list gets
+// 1618px with the card closed and 1138px with the 480px card open. Anything
+// wider than 1138 pushes the last column out of view (the 29/8 lesson).
+// table-layout:fixed scales them up proportionally when the card is closed.
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡ.',  type: 'text',   w: '70px', get: (f) => f['Order Number']||'' },
-  { key: 'flags',    label: '',           type: 'text',   w: '80px',  get: () => '', nosort: true },
-  { key: 'week',     label: 'ΕΒΔ.',      type: 'number', w: '55px',  get: (f) => f['Week Number']||0 },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: '75px',  get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   w: '140px', get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',   type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',  type: 'text',   w: '140px', get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
-  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   w: '75px',  get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: '75px',  get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: '45px',  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
-  { key: 'assign',   label: 'ΑΝΑΘΕΣΗ',   type: 'text',   w: '120px', get: (f) => _oiAssign(f) },
-  { key: 'price',    label: 'ΤΙΜΗ €',    type: 'number', w: '70px',  get: (f) => f['Price']||0 },
-  { key: 'status',   label: 'ΚΑΤΑΣΤΑΣΗ',    type: 'text',   w: '80px',  get: (f) => f['Status']||'Pending' },
-  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: '45px',  get: (f) => f['Invoiced']?'1':'0' },
+  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡ.',       type: 'text',   w: 104, get: (f) => f['Order Number']||'' },
+  { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 84,  get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',        type: 'text',   w: 130, get: (f) => _clientName(f) },
+  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',        type: 'text',   w: 137, get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',       type: 'text',   w: 137, get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
+  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ',   type: 'date',   w: 72,  get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: 72,  get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'ΠΑΛ.',           type: 'number', w: 40,  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
+  { key: 'assign',   label: 'ΑΝΑΘΕΣΗ',        type: 'text',   w: 106, get: (f) => _oiAssign(f) },
+  { key: 'price',    label: 'ΤΙΜΗ €',         type: 'number', w: 64,  get: (f) => f['Price']||0 },
+  { key: 'status',   label: 'ΚΑΤΑΣΤΑΣΗ',      type: 'text',   w: 99,  get: (f) => f['Status']||'Pending' },
+  { key: 'inv',      label: 'ΤΙΜ.',           type: 'text',   w: 40,  get: (f) => f['Invoiced']?'1':'0' },
 ];
 
 function _intlSortToggle(key) {
@@ -256,47 +451,29 @@ function _intlSortRecords(recs) {
 }
 
 // ─── Table (Virtual Scroll) ─────────────────────
+// Column widths come from the shared <colgroup> (both the thead table and the
+// virtual-scroll tbody table carry it), so cells carry no inline widths and
+// nothing is clipped with ellipsis (DESIGN.md #6).
 function _oiRowHtml(r) {
   const f = r.fields;
-  const dir = f['Direction']||'';
-  const dirB = dir==='Export' ? '<span class="badge badge-blue">↑ Export</span>'
-             : dir==='Import' ? '<span class="badge badge-green">↓ Import</span>'
-             : `<span class="badge badge-grey">${dir||'—'}</span>`;
-  const st = f['Status']||'Pending';
-  const stB = st==='Assigned' ? '<span class="badge badge-green">Assigned</span>'
-            : st==='In Transit' ? '<span class="badge" style="background:#0369A1;color:#fff">In Transit</span>'
-            : st==='Delivered' ? '<span class="badge badge-grey">Delivered</span>'
-            : st==='Invoiced' ? '<span class="badge badge-grey">Invoiced</span>'
-            : st==='Cancelled' ? '<span class="badge badge-red">Cancelled</span>'
-            : '<span class="badge badge-yellow">Pending</span>';
-  // Flags: all badges in separate column
-  const hr  = f['High Risk Flag'] ? '<span title="High Risk" style="color:var(--danger);font-size:11px">⚠</span>' : '';
-  const grp = f['National Groupage'] ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 4px">GRP</span>' : '';
-  const vs  = f['Veroia Switch'] ? '<span class="badge" style="font-size:9px;padding:1px 4px;background:#7C3AED;color:#fff">VS</span>' : '';
-  const flags = [hr, grp, vs].filter(Boolean).join(' ');
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
-  const _cw = (w) => `style="width:${w};min-width:${w};max-width:${w};overflow:hidden;text-overflow:ellipsis;white-space:nowrap"`;
-  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="${sel}" style="height:${_OI_ROW_H}px">
-    <td ${_cw('70px')}><strong style="color:var(--text);font-size:12px">${escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''))}</strong></td>
-    <td ${_cw('80px')}>${flags}</td>
-    <td ${_cw('55px')}>W${escapeHtml(f['Week Number']||'—')}</td>
-    <td ${_cw('75px')}>${dirB}</td>
-    <td ${_cw('140px')}>${_clientName(f)}</td>
-    <td ${_cw('140px')}>${escapeHtml(_stopsLocationSummary(r.id,'Loading')) || _cleanSummary(f['Loading Summary'])}</td>
-    <td ${_cw('140px')}>${escapeHtml(_stopsLocationSummary(r.id,'Unloading')) || _cleanSummary(f['Delivery Summary'])}</td>
-    <td ${_cw('75px')}>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
-    <td ${_cw('75px')}>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-    <td ${_cw('45px')}>${_stopsTotalPallets(r.id) || f['Total Pallets'] || '—'}</td>
-    <td ${_cw('120px')} title="${escapeHtml(_oiAssign(f))}">${escapeHtml(_oiAssign(f))||'—'}</td>
-    <td ${_cw('70px')}>${f['Price']?'€'+escapeHtml(String(f['Price'])):'—'}</td>
-    <td ${_cw('80px')}>${stB}</td>
-    <td ${_cw('45px')} onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${!!f['Invoiced']})"
-      title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
-      style="cursor:pointer;text-align:center;width:45px;min-width:45px;max-width:45px">
-      ${f['Invoiced']
-        ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
-        : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
-    </td>
+  const orderNo = escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''));
+  const pal = _stopsTotalPallets(r.id) || f['Total Pallets'];
+  const client = _clientName(f);
+  return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}" style="height:${_OI_ROW_H}px">
+    <td><strong>${orderNo}</strong>${_oiFlags(f)}</td>
+    <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
+    <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
+    <td><span class="oi-name" title="${client}">${client}</span></td>
+    <td>${_oiLocCell(r, 'Loading', 'Loading Summary')}</td>
+    <td>${_oiLocCell(r, 'Unloading', 'Delivery Summary')}</td>
+    <td class="oi-num">${_oiDate(f['Loading DateTime'])}</td>
+    <td class="oi-num">${_oiDate(f['Delivery DateTime'])}</td>
+    <td class="oi-num oi-med">${pal ? escapeHtml(String(pal)) : '—'}</td>
+    <td>${_oiAssignCell(f)}</td>
+    <td class="oi-num oi-med">${_oiMoney(f['Price'])}</td>
+    <td class="oi-nowrap">${_oiStatusHtml(f['Status']||'Pending')}</td>
+    ${_oiInvCell(r)}
   </tr>`;
 }
 
@@ -344,7 +521,7 @@ function _intlActiveFilters() {
   const active = [];
   if (_intlFilters['_q'])       active.push(`αναζήτηση «${escapeHtml(_intlFilters['_q'])}»`);
   if (_intlFilters['Direction'])active.push(`κατεύθυνση ${_intlFilters['Direction'] === 'Export' ? 'Εξαγωγή' : 'Εισαγωγή'}`);
-  if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml(_intlFilters['_status'])}`);
+  if (_intlFilters['_status'])  active.push(`κατάσταση ${escapeHtml((_OI_STATUS[_intlFilters['_status']] || {}).gr || _intlFilters['_status'])}`);
   if (_intlFilters['Status'])   active.push(`κατάσταση ${escapeHtml(_intlFilters['Status'])}`);
   if (_intlFilters['Brand'])    active.push(`μάρκα ${escapeHtml(_intlFilters['Brand'])}`);
   if (_intlFilters['_week'])    active.push(`εβδομάδα ${escapeHtml(String(_intlFilters['_week']))}`);
@@ -382,8 +559,9 @@ function _renderIntlTable(records) {
     const arrow = _intlSortCol===c.key ? (_intlSortDir===1?' <span style="color: var(--accent-text)">▲</span>':_intlSortDir===2?' <span style="color: var(--accent-text)">▼</span>':'') : '';
     const click = c.nosort ? '' : ` onclick="_intlSortToggle('${c.key}')"`;
     const cursor = c.nosort ? 'default' : 'pointer';
-    return `<th style="cursor:${cursor};user-select:none;width:${c.w};min-width:${c.w};max-width:${c.w}"${click}>${c.label}${arrow}</th>`;
+    return `<th style="cursor:${cursor};user-select:none"${click}>${c.label}${arrow}</th>`;
   }).join('');
+  const colgroup = `<colgroup>${_intlColDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
 
   const totalH = sortedRecs.length * _OI_ROW_H;
   // OI-6: with results SHOWING, active filters were invisible — the page could
@@ -395,15 +573,15 @@ function _renderIntlTable(records) {
       <button type="button" onclick="_intlClearFilters()" style="margin-left:auto;background:none;border:1px solid var(--border-mid);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text-mid);cursor:pointer">Καθαρισμός</button>
     </div>` : '';
   wrap.innerHTML = `${filterStrip}`+`
-    <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
-      <table style="table-layout:fixed;width:100%">
+    <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent">
+      <table style="table-layout:fixed;width:100%">${colgroup}
         <thead><tr>${ths}</tr></thead>
       </table>
       <div id="oiTopSpacer" style="height:0"></div>
-      <table style="table-layout:fixed;width:100%"><tbody></tbody></table>
+      <table style="table-layout:fixed;width:100%">${colgroup}<tbody></tbody></table>
       <div id="oiBottomSpacer" style="height:${totalH}px"></div>
     </div>
-    <div style="padding:8px 16px;color:var(--panel-dim);font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+    <div style="padding:8px 16px;color:var(--text-dim);font-size:12px;text-align:center">${sortedRecs.length} παραγγελίες</div>`;
 
   const scroller = document.getElementById('oiVScroll');
   scroller.addEventListener('scroll', _oiOnScroll, { passive: true });
@@ -453,7 +631,7 @@ function _applyIntlFilters() {
   _renderIntlTable(recs);
   const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('intlCount').textContent = n;
-  document.getElementById('intlSub').textContent   = n;
+  document.getElementById('intlSub').textContent   = `${n} · ${_oiPeriodLabel()}`;
 
   // The week the filter is actually querying. This is the figure that silently
   // pulled the wrong week before Wave 1 unified it on isoWeekNumber(): the
@@ -467,150 +645,120 @@ function _applyIntlFilters() {
   });
 }
 
-// ─── Detail Panel ───────────────────────────────
+// ─── Detail Panel (card, Figma 204:1395 · pattern w2-location-card 230:821) ──
 function selectIntlOrder(recId) {
   INTL_ORDERS.selectedId = recId;
   document.querySelectorAll('#intlTable tbody tr').forEach(tr => tr.classList.remove('selected'));
   const row = document.getElementById('irow_'+recId); if (row) row.classList.add('selected');
   const rec = INTL_ORDERS.data.find(r => r.id === recId); if (!rec) return;
   const panel = document.getElementById('intlDetail');
+  // Opening is the one animation of this screen (spec §1). A click on another
+  // row while open only swaps content — the class does not change, so the
+  // slide does not replay. Closed = display:none AND width 0 (the 482px lesson).
   panel.classList.remove('hidden');
-  const f = rec.fields;
-  const canEdit = can('orders') === 'full';
-  const hasTrip = (f['TRIPS (Export Order)']?.length||0)+(f['TRIPS (Import Order)']?.length||0) > 0;
-  const stMap = {Pending:'badge-yellow',Assigned:'badge-blue',Active:'badge-green',Delivered:'badge-grey',Cancelled:'badge-red'};
-
-  const buildStops = (stopType) => {
-    let html = '';
-    const stops = (window._intlStopsByOrder || {})[recId];
-    if (stops && stops.length) {
-      const filtered = stops.filter(s => s.fields[F.STOP_TYPE] === stopType)
-        .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
-      filtered.forEach((s, idx) => {
-        const locArr = s.fields[F.STOP_LOCATION];
-        const locId = Array.isArray(locArr) ? locArr[0] : null;
-        const name = locId ? escapeHtml(_fhLocationsMap[locId] || locId.slice(-6)) : '?';
-        const pal = s.fields[F.STOP_PALLETS];
-        const dtRaw = s.fields[F.STOP_DATETIME];
-        const dtStr = dtRaw ? formatDateShort(dtRaw) : '';
-        html += _dF(`Stop ${idx+1}`, `${name}${pal?' — '+escapeHtml(String(pal))+' pal':''}${dtStr?' · '+dtStr:''}`);
-      });
-    }
-    return html || _dF('Location', '—');
-  };
-
-  panel.innerHTML = `
-    <div class="detail-header">
-      <div>
-        <div class="detail-title" style="font-size:13px">
-          ${f['High Risk Flag']?'<span style="color:var(--danger);margin-right:4px">⚠</span>':''}
-          ${escapeHtml(f['Order Number']||recId.slice(-6))}
-        </div>
-        <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${escapeHtml(f['Brand']||'')} · ${escapeHtml(f['Direction']||'')} · W${escapeHtml(f['Week Number']||'—')}
-        </div>
-      </div>
-      <div class="detail-actions">
-        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openIntlEdit('${recId}')">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </button>`:''}
-        ${canEdit && f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelIntlOrder('${recId}')" style="color:#D97706">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </button>`:''}
-        ${canEdit?`<button type="button" class="btn-icon" title="Delete order (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteIntlOrder('${recId}')" style="color:var(--danger)">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 4h10M5 4V2h6v2M6 7v5M10 7v5M4 4l1 10h6l1-10"/></svg>
-        </button>`:''}
-        <button type="button" class="btn-icon" onclick="document.getElementById('intlDetail').classList.add('hidden')">✕</button>
-      </div>
-    </div>
-    <div class="detail-body">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${escapeHtml(f['Status']||'No Status')}</span>
-        ${hasTrip?'<span class="badge badge-green">Trip Assigned</span>':'<span class="badge badge-yellow">No Trip</span>'}
-        ${f['Invoiced']?'<span class="badge badge-grey">Invoiced</span>':''}
-        ${f['High Risk Flag']?'<span class="badge badge-red">⚠ High Risk</span>':''}
-        ${f['Veroia Switch']?'<span class="badge badge-yellow">Veroia Switch</span>':''}
-        ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
-      </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Timeline</div>
-        <div style="display:flex;align-items:center;gap:0;padding:4px 0">
-          ${['Pending','Assigned','In Transit','Delivered','Invoiced'].map((st,i,arr) => {
-            const statuses = ['Pending','Assigned','In Transit','Delivered','Invoiced'];
-            const currentIdx = statuses.indexOf(f['Status']||'Pending');
-            const done = i <= currentIdx;
-            const active = i === currentIdx;
-            const col = done ? 'var(--accent)' : '#1E293B';
-            return `<div style="display:flex;align-items:center;gap:0">
-              <div style="width:${active?'10':'8'}px;height:${active?'10':'8'}px;border-radius:50%;background:${done?col:'transparent'};border:2px solid ${col};flex-shrink:0${active?';box-shadow:0 0 0 3px rgba(2,123,189,0.2)':''}"></div>
-              <div style="font-size:9px;color:${done?'var(--accent)':'#475569'};font-weight:${active?'700':'400'};margin:0 2px;white-space:nowrap">${st}</div>
-              ${i<arr.length-1?`<div style="width:12px;height:2px;background:${i<currentIdx?'var(--accent)':'#1E293B'};flex-shrink:0"></div>`:''}
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Order</div>
-        ${_dF('Client',       _clientName(f))}
-        ${_dF('Reference',    f['Reference']?'('+escapeHtml(f['Reference'])+')':'—')}
-        ${_dF('Goods',        escapeHtml(f['Goods']||'—'))}
-        ${_dF('Temperature',  f['Temperature °C']!=null?escapeHtml(f['Temperature °C'])+' °C':'—')}
-        ${_dF('Reefer Mode',  escapeHtml(f['Refrigerator Mode']||'—'))}
-        ${_dF('Pallet Type',  escapeHtml(f['Pallet Type']||'—'))}
-        ${_dF('Total Pallets',escapeHtml(f['Total Pallets']||'—'))}
-        ${_dF('Gross Weight', f['Gross Weight kg']?escapeHtml(f['Gross Weight kg'])+' kg':'—')}
-        ${_dF('Pallet Exch.', f['Pallet Exchange']?'✓ Yes':'No')}
-        ${f['Pallet Exchange'] ? `
-        <div style="margin:8px 0;padding:8px;background:rgba(2,123,189,0.08);border-radius:6px;border:1px solid rgba(2,123,189,0.15)">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-            <span style="font-weight:600;font-size:11px;color: var(--accent-text)">PALLET SHEETS</span>
-            <button onclick="openPalletUpload('${recId}')" style="margin-left:auto;background:var(--accent);color:white;border:none;padding:4px 12px;border-radius:4px;font-size:11px;cursor:pointer">
-              Δελτίο Παλετών
-            </button>
-          </div>
-          <div style="display:flex;gap:12px;font-size:11px">
-            <span>Sheet 1: ${f['Pallet Sheet 1 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>
-            ${f['Veroia Switch']?`<span>Sheet 2: ${f['Pallet Sheet 2 Uploaded']?'<span style="color:var(--success)">✓ Done</span>':'<span style="color:var(--warning)">Pending</span>'}</span>`:'<span style="color:var(--text-dim)">Sheet 2: N/A</span>'}
-          </div>
-        </div>` : ''}
-        ${_dF('Carrier',      escapeHtml(f['Carrier Type']||'—'))}
-      </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Loading</div>
-        ${buildStops('Loading')}
-      </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Delivery</div>
-        ${buildStops('Unloading')}
-      </div>
-      ${can('costs')!=='none'?`
-      <div class="detail-section">
-        <div class="detail-section-title">Financial</div>
-        ${_dF('Price',     f['Price']    ?'€ '+Number(f['Price']).toLocaleString('el-GR')    :'—')}
-        ${_dF('Net Price', f['Net Price']?'€ '+Number(f['Net Price']).toLocaleString('el-GR') :'—')}
-        ${_dF('Invoice Status',escapeHtml(f['Invoice Status']||'—'))}
-      </div>`:''}
-      ${f['Pallet Exchange'] ? `
-      <div class="detail-section">
-        <div class="detail-section-title">Pallet Exchange</div>
-        <button class="btn btn-scan" onclick="openPalletUpload('${recId}')" style="width:100%;margin-bottom:8px">
-          Δελτίο Παλετών — Upload
-        </button>
-        <div style="display:flex;gap:8px">
-          ${_chk('Sheet 1', f['Pallet Sheet 1 Uploaded'])}
-          ${f['Veroia Switch'] ? _chk('Sheet 2', f['Pallet Sheet 2 Uploaded']) : ''}
-        </div>
-        <div style="margin-top:6px">
-          <a href="#" onclick="event.preventDefault();navigate('pallet_ledger')" style="font-size:11px;color: var(--accent-text)">View Ledger Records →</a>
-        </div>
-      </div>` : ''}
-      ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
-        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${escapeHtml(f['Notes'])}</div></div>`:''}
-    </div>`;
+  panel.innerHTML = _oiCardHtml(rec);
+  panel.scrollTop = 0;
 }
 
-function _dF(l,v) { return `<div class="detail-field"><span class="detail-field-label">${escapeHtml(l)}</span><span class="detail-field-value">${v}</span></div>`; }
-function _chk(l,v) { return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--success)':'var(--text-dim)'}">${v?'✅':'⬜'} ${l}</div>`; }
+function _oiCardHtml(rec) {
+  const f = rec.fields, recId = rec.id;
+  const canEdit = can('orders') === 'full';
+  const orderNo = escapeHtml((f['Order Number']||recId.slice(-6)).replace(/["']+/g,''));
+  const st = f['Status'] || 'Pending';
+  const stGr = (_OI_STATUS[st] || {}).gr || st;
+  // «Χωρίς ανάθεση» = no own truck AND no partner (owner 2/9). A partner load
+  // IS assigned. Shown for every status: 15/89 delivered orders belong to
+  // nobody and that gap must stay visible (DECISION_LOG 30/8).
+  const pid = (f['Partner']||[])[0], tid = (f['Truck']||[])[0], did = (f['Driver']||[])[0];
+  const unassigned = !tid && !pid;
+  const pe = !!f['Pallet Exchange'], vs = !!f['Veroia Switch'];
+  const chips = [
+    `<span class="oi-chip">${escapeHtml(stGr)}</span>`,
+    pe ? '<span class="oi-chip">Ανταλλαγή παλετών</span>' : '',
+    vs ? '<span class="oi-chip">Veroia Switch</span>' : '',
+    f['National Groupage'] ? '<span class="oi-chip">Groupage</span>' : '',
+    unassigned ? '<span class="oi-chip oi-chip-warn">Χωρίς ανάθεση</span>' : '',
+    f['High Risk Flag'] ? '<span class="oi-chip oi-chip-bad">Υψηλό ρίσκο</span>' : '',
+  ].filter(Boolean).join('');
+  const miss = '— δεν έχει καταχωρηθεί';
+  const kv = (k, v, cls) => `<div class="oi-kv"><span class="k">${k}</span><span class="v${cls ? ' ' + cls : ''}">${v}</span></div>`;
+  const kvm = (k, v, cls) => kv(k, v || miss, v ? (cls || '') : 'miss');
+  const temp = f['Temperature °C'] != null ? escapeHtml(f['Temperature °C']) + ' °C' : '';
+  const reefer = _OI_REEFER[f['Refrigerator Mode']] || f['Refrigerator Mode'] || '';
+  const pal = _stopsTotalPallets(recId) || f['Total Pallets'];
+  const gw = f['Gross Weight kg'];
+  const hasPrice = f['Price'] !== null && f['Price'] !== undefined && f['Price'] !== '';
+  let peV = 'Όχι', peCls = '';
+  if (pe) {
+    const pend = [];
+    if (!f['Pallet Sheet 1 Uploaded']) pend.push('Δελτίο 1');
+    if (vs && !f['Pallet Sheet 2 Uploaded']) pend.push('Δελτίο 2');
+    peV = pend.length ? `Ναι — ${pend.join(' & ')} εκκρεμεί` : 'Ναι — δελτία καταχωρημένα';
+    peCls = pend.length ? 'warn' : '';
+  }
+  const stopRow = (s, label) => {
+    const l = _oiLocOf(s);
+    const p = s.fields[F.STOP_PALLETS];
+    return `<div class="oi-stop"><span class="d oi-num">${_oiDate(s.fields[F.STOP_DATETIME])}</span><span class="oi-stype">${label}</span><span class="n">${escapeHtml([l.name, l.city].filter(Boolean).join(', '))}</span><span class="q oi-num">${p ? escapeHtml(String(p)) + ' pal' : '—'}</span></div>`;
+  };
+  let route = _oiStops(recId, 'Loading').map(s => stopRow(s, 'Φόρτωση')).join('')
+            + _oiStops(recId, 'Unloading').map(s => stopRow(s, 'Παράδοση')).join('');
+  if (!route) {
+    // Pre-normalisation record: no ORDER_STOPS, only the legacy summary strings.
+    route = `<div class="oi-stop"><span class="oi-stype">Φόρτωση</span><span class="n">${_cleanSummary(f['Loading Summary'])}</span></div>
+             <div class="oi-stop"><span class="oi-stype">Παράδοση</span><span class="n">${_cleanSummary(f['Delivery Summary'])}</span></div>`;
+  }
+  let assign = '';
+  if (pid) {
+    const pr = (typeof getRefPartners==='function'?getRefPartners():[]).find(x=>x.id===pid);
+    assign = kv('Συνεργάτης', escapeHtml(pr?.fields?.['Company Name'] || 'Συνεργάτης'))
+           + (f['Partner Truck Plates'] ? kv('Πινακίδες', escapeHtml(f['Partner Truck Plates'])) : '');
+  } else if (!unassigned) {
+    const t = tid ? (typeof getRefTrucks==='function'?getRefTrucks():[]).find(x=>x.id===tid) : null;
+    const d = did ? (typeof getRefDrivers==='function'?getRefDrivers():[]).find(x=>x.id===did) : null;
+    assign = (t ? kv('Φορτηγό', escapeHtml(t.fields?.['License Plate']||'')) : '')
+           + (d ? kv('Οδηγός', escapeHtml(d.fields?.['Full Name']||'')) : '');
+  }
+  const assignBody = unassigned ? '<div class="oi-note">Χωρίς ανάθεση — η ανάθεση γίνεται στο Weekly International</div>' : assign;
+  const canCancel = canEdit && !['Cancelled','Delivered','Invoiced'].includes(st);
+  const actions = canEdit ? [
+    `<button type="button" class="oi-link" data-oi-act="edit" onclick="openIntlEdit('${recId}')">Επεξεργασία</button>`,
+    `<button type="button" class="oi-link" data-oi-act="dup" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`,
+    canCancel ? `<button type="button" class="oi-link" data-oi-act="cancel" title="Σήμανση ως ακυρωμένη — η εγγραφή μένει" onclick="cancelIntlOrder('${recId}')">Ακύρωση</button>` : '',
+    `<button type="button" class="oi-link oi-link-danger" data-oi-act="delete" title="Διαγραφή με cascade — NL/GL/CL/Ramp/Παλέτες" onclick="deleteIntlOrder('${recId}')">Διαγραφή</button>`,
+  ].filter(Boolean).join('<span class="oi-sep">·</span>') : '';
+
+  return `
+    <div class="oi-card-head">
+      <div class="oi-card-title"><span>${orderNo} · ${_clientName(f)}</span><button type="button" class="oi-close" title="Κλείσιμο (Esc)" onclick="_oiCloseCard()">×</button></div>
+      <div class="oi-card-sub">${escapeHtml(_OI_DIR_W[f['Direction']] || f['Direction'] || '—')} · W${escapeHtml(f['Week Number']||'—')} · ${escapeHtml(f['Brand']||'—')}</div>
+      ${f['Reference'] ? `<div class="oi-card-sub">Ref (${escapeHtml(f['Reference'])})</div>` : ''}
+      <div class="oi-chips">${chips}</div>
+    </div>
+    <div class="oi-sect"><div class="oi-sect-t">Στοιχεία</div>
+      ${f['Reference'] ? '' : kvm('Reference', '')}
+      ${kvm('Εμπόρευμα', f['Goods'] ? escapeHtml(f['Goods']) : '')}
+      ${kvm('Θερμοκρασία', [temp, escapeHtml(reefer)].filter(Boolean).join(' · '))}
+      ${kvm('Παλέτες', pal ? [escapeHtml(String(pal)), escapeHtml(f['Pallet Type']||'')].filter(Boolean).join(' · ') : '')}
+      ${kvm('Μικτό βάρος', gw ? escapeHtml(Number(gw).toLocaleString('el-GR')) + ' kg' : '')}
+      ${kv('Ανταλλαγή παλετών', peV, peCls)}
+      ${f['Carrier Type'] ? kv('Μεταφορέας', escapeHtml(f['Carrier Type'])) : ''}
+      ${kvm('Τιμή', hasPrice ? _oiMoney(f['Price']) : '')}
+      ${f['Invoice Status'] ? kv('Κατάσταση τιμολόγησης', escapeHtml(f['Invoice Status'])) : ''}
+      ${kv('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
+    </div>
+    <div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Διαδρομή</div>${route}</div>
+    ${pe ? `<div class="oi-sect"><div class="oi-sect-t">Δελτία παλετών</div>
+      ${kv('Δελτίο 1', f['Pallet Sheet 1 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 1 Uploaded'] ? '' : 'warn')}
+      ${vs ? kv('Δελτίο 2 (cross-dock)', f['Pallet Sheet 2 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 2 Uploaded'] ? '' : 'warn') : ''}
+      <div class="oi-links"><button type="button" class="oi-link" onclick="openPalletUpload('${recId}')">Δελτίο παλετών →</button><button type="button" class="oi-link" onclick="navigate('pallet_ledger')">Ισοζύγιο παλετών →</button></div>
+    </div>` : ''}
+    <div class="oi-sect"><div class="oi-sect-t">Ανάθεση</div>${assignBody}
+      <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Weekly International →</button></div>
+    </div>
+    ${f['Notes'] ? `<div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Σημειώσεις</div><div class="oi-text">${escapeHtml(f['Notes'])}</div></div>` : ''}
+    ${actions ? `<div class="oi-sect"><div class="oi-sect-t">Ενέργειες</div><div class="oi-links">${actions}</div></div>` : ''}`;
+}
 
 // ─── Linked select widgets (delegates to core/form-helpers.js) ──
 function _locSelect(id, currentId) { return fhLocSelect(id, currentId, 'fhLocDrop'); }
@@ -621,25 +769,24 @@ function _clientSelect(id, currentId, currentLabel) { return fhClientSelect(id, 
 // stop 1 datetime field: 'Loading DateTime' / 'Delivery DateTime' (main fields)
 // stop 2-10: 'Loading DateTime 2-10' / 'Unloading DateTime 1-10'
 function _stopRow(type, i, locId, palVal, dtVal) {
-  const label = type==='l' ? 'Loading' : 'Unloading';
   const req   = i===1 ? ' *' : '';
   // ✕ μόνο στα i>1 (owner 12/8): το πρώτο σημείο είναι υποχρεωτικό — αν δεν
   // το θες, αλλάζεις την τιμή του, δεν το σβήνεις. Ο spacer κρατά τη στοίχιση.
   const rm = i > 1
-    ? `<button type="button" title="Αφαίρεση σημείου" onclick="_removeStop('${type}',${i})"
+    ? `<button type="button" title="Αφαίρεση στάσης" onclick="_removeStop('${type}',${i})"
         style="height:38px;border:none;background:none;color:var(--text-dim);font-size:17px;cursor:pointer;padding:0">×</button>`
     : '<div></div>';
   return `<div id="stoprow_${type}_${i}" style="display:grid;grid-template-columns:1fr 100px 130px 24px;gap:8px;margin-bottom:10px;align-items:end">
     <div>
-      <label class="form-label" style="font-size:11px">${label} Location ${i}${req}</label>
+      <label class="form-label" style="font-size:11px">Τοποθεσία ${i}${req}</label>
       ${_locSelect(type+'_'+i, locId)}
     </div>
     <div>
-      <label class="form-label" style="font-size:11px">Pallets${req}</label>
+      <label class="form-label" style="font-size:11px">Παλέτες${req}</label>
       <input class="form-input" type="number" id="pal_${type}_${i}" value="${palVal||''}" placeholder="0" min="0">
     </div>
     <div>
-      <label class="form-label" style="font-size:11px">Date${req}</label>
+      <label class="form-label" style="font-size:11px">Ημερομηνία${req}</label>
       <input class="form-input" type="date" id="dt_${type}_${i}" value="${dtVal||''}">
     </div>
     ${rm}
@@ -733,54 +880,54 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
     <div class="form-grid">
       <!-- Owner 11/8: Brand/Type αφαιρέθηκαν — δεδομένα Petras Group / International -->
       <div class="form-field">
-        <label class="form-label">Direction *</label>
-        <select class="form-select" id="f_Direction"><option value="">— Select —</option>
+        <label class="form-label">Κατεύθυνση *</label>
+        <select class="form-select" id="f_Direction"><option value="">— Επιλογή —</option>
           ${opt([['Export','Εξαγωγή'],['Import','Εισαγωγή']],'Direction')}</select>
       </div>
       <div class="form-field">
-        <label class="form-label">Client *</label>
+        <label class="form-label">Πελάτης *</label>
         ${_clientSelect('client', clientId, clientLabel)}
       </div>
       <div class="form-field">
-        <label class="form-label">Price (€) *</label>
+        <label class="form-label">Τιμή (€) *</label>
         <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
       </div>
       <div class="form-field">
         <label class="form-label">Reference</label>
-        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="e.g. 3813">
+        <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="π.χ. 3813">
       </div>
       <div class="form-field">
-        <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="f_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="e.g. Fresh Produce">
+        <label class="form-label">Εμπόρευμα</label>
+        <input class="form-input" type="text" id="f_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="π.χ. Φρέσκα λαχανικά">
       </div>
       <div class="form-field">
-        <label class="form-label">Gross Weight (kg)</label>
+        <label class="form-label">Μικτό βάρος (kg)</label>
         <input class="form-input" type="number" id="f_GrossWeight" value="${f['Gross Weight kg']||''}">
       </div>
       <div class="form-field">
-        <label class="form-label">Temperature °C *</label>
+        <label class="form-label">Θερμοκρασία °C *</label>
         <input class="form-input" type="number" id="f_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
       <div class="form-field">
-        <label class="form-label">Refrigerator Mode *</label>
-        <select class="form-select" id="f_ReeferMode"><option value="">— Select —</option>
+        <label class="form-label">Λειτουργία ψυκτικού *</label>
+        <select class="form-select" id="f_ReeferMode"><option value="">— Επιλογή —</option>
           ${opt([['Continuous','Συνεχής (Continuous)'],['Start-Stop','Start-Stop'],['No temp','Χωρίς ψύξη']],'Refrigerator Mode')}</select>
       </div>
       <div class="form-field">
-        <label class="form-label">Pallet Type *</label>
-        <select class="form-select" id="f_PalletType"><option value="">— Select —</option>
+        <label class="form-label">Τύπος παλέτας *</label>
+        <select class="form-select" id="f_PalletType"><option value="">— Επιλογή —</option>
           ${opt(['EUR','CHEP','Industrial','Euro'],'Pallet Type')}</select>
       </div>
       <div class="form-field" style="padding-top:24px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="f_PalletExch" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
-          Pallet Exchange</label>
+          Ανταλλαγή παλετών (PE)</label>
       </div>
     </div>
     <div style="display:flex;gap:24px;margin:16px 0;flex-wrap:wrap">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_HighRisk" ${f['High Risk Flag']?'checked':''} style="width:15px;height:15px">
-        ⚠ High Risk</label>
+        ⚠ Υψηλό ρίσκο</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
         <input type="checkbox" id="f_VeroiaSwitch" ${f['Veroia Switch']?'checked':''} style="width:15px;height:15px">
         Veroia Switch</label>
@@ -790,38 +937,53 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
     </div>
 
     <div style="padding-top:16px;border-top:1px solid var(--border)">
-      <div class="detail-section-title" style="margin-bottom:12px">Loading Stops</div>
-      <div id="stops_l">${buildStopRows('l')}</div>
+      <div class="detail-section-title" style="margin-bottom:12px">Στάσεις φόρτωσης</div>
+      <div id="stops_l" oninput="_oiBalanceUpdate()">${buildStopRows('l')}</div>
       <button type="button" class="btn btn-ghost" id="btn_addL"
         style="font-size:12px;padding:5px 14px" onclick="_addStop('l')"
-        ${cntL>=10?'style="display:none"':''}>+ Add Loading Stop</button>
+        ${cntL>=10?'style="display:none"':''}>+ Προσθήκη στάσης φόρτωσης</button>
     </div>
 
     <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
-      <div class="detail-section-title" style="margin-bottom:12px">Delivery Stops</div>
-      <div id="stops_u">${buildStopRows('u')}</div>
+      <div class="detail-section-title" style="margin-bottom:12px">Στάσεις παράδοσης</div>
+      <div id="stops_u" oninput="_oiBalanceUpdate()">${buildStopRows('u')}</div>
       <button type="button" class="btn btn-ghost" id="btn_addU"
         style="font-size:12px;padding:5px 14px" onclick="_addStop('u')"
-        ${cntU>=10?'style="display:none"':''}>+ Add Delivery Stop</button>
+        ${cntU>=10?'style="display:none"':''}>+ Προσθήκη στάσης παράδοσης</button>
+      <div id="oiBalance" class="oi-balance"></div>
     </div>
 
     <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:20px">
       <div class="form-field span-2">
-        <label class="form-label">Notes</label>
-        <textarea class="form-textarea" id="f_Notes" rows="3" placeholder="Special instructions, trailer requirements, contacts..." style="width:100%;resize:vertical;min-height:60px">${escapeHtml(f['Notes']||'')}</textarea>
+        <label class="form-label">Σημειώσεις</label>
+        <textarea class="form-textarea" id="f_Notes" rows="3" placeholder="Ειδικές οδηγίες, απαιτήσεις ρυμούλκας, επαφές…" style="width:100%;resize:vertical;min-height:60px">${escapeHtml(f['Notes']||'')}</textarea>
       </div>
     </div>`;
 
   const footer = `
-    ${isEdit?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">⧉ Διπλασιασμός</button>`:''}
+    ${isEdit?`<button class="btn btn-ghost" title="Νέα παραγγελία με ίδια στοιχεία — αλλάζεις μόνο ημερομηνίες (π.χ. LABIDINO Δευ/Τετ/Παρ)" onclick="duplicateIntlOrder('${recId}')">Διπλασιασμός</button>`:''}
     ${(!isEdit&&window._scanQueue&&window._scanQueue.length)?`<button class="btn btn-ghost" title="Προσπέρασε αυτό το σκαν χωρίς αποθήκευση" onclick="closeModal();_scanQueueNext()">Παράλειψη → (${window._scanQueue.length} ακόμη)</button>`:''}
-    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">
-      ${isEdit?'Save Changes':'Submit'}
-    </button>`;
+    <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+    <button class="btn btn-success" id="btnSubmit" onclick="submitIntlOrder('${recId||''}')">Αποθήκευση</button>`;
 
   document.getElementById('modal').style.maxWidth = '760px';
-  openModal(isEdit ? 'Edit Order' : 'New Order', body, footer);
+  _oiEnsureStyles();  // the form opens from the Weekly too, before this page has rendered
+  openModal(isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
+  _oiBalanceUpdate();
+}
+
+// Display-only pallet balance (Figma 165:676). Mirrors the existing
+// non-blocking warning at submit; it blocks nothing and writes nothing —
+// gating «Αποθήκευση» on it is NOT approved (ΑΝΟΙΧΤΟ, παρτίδα 3). 33 = the
+// truck capacity the scan preview already checks against.
+function _oiBalanceUpdate() {
+  const el = document.getElementById('oiBalance'); if (!el) return;
+  const sum = t => Array.from({ length: 10 }, (_, i) => parseFloat(document.getElementById(`pal_${t}_${i+1}`)?.value) || 0).reduce((a, b) => a + b, 0);
+  const L = sum('l'), U = sum('u');
+  const parts = [];
+  if (L > 0 && U > 0 && L !== U) parts.push(`<span class="oi-bal oi-bal-bad">Ισοζύγιο: φόρτωση ${L} ≠ παράδοση ${U} — ${L > U ? 'λείπουν' : 'περισσεύουν'} ${Math.abs(L - U)} παλέτες</span>`);
+  if (L > 0) parts.push(`<span class="oi-bal ${L > 33 ? 'oi-bal-bad' : 'oi-bal-warn'}">Γέμισμα φορτηγού ${L}/33</span>`);
+  el.innerHTML = parts.join('');
 }
 
 function _addStop(type) {
@@ -835,6 +997,7 @@ function _addStop(type) {
   div.innerHTML = _stopRow(type, next, '', '', '');
   wrap.appendChild(div.firstElementChild);
   if (next >= 10) document.getElementById('btn_add'+(type==='l'?'L':'U')).style.display='none';
+  _oiBalanceUpdate();
 }
 
 // Owner 12/8: «αν κατά λάθος προσθέσω ένα έξτρα, δεν υπάρχει επιλογή να το
@@ -845,6 +1008,7 @@ function _removeStop(type, i) {
   document.getElementById(`stoprow_${type}_${i}`)?.remove();
   const btn = document.getElementById('btn_add'+(type==='l'?'L':'U'));
   if (btn) btn.style.display = '';
+  _oiBalanceUpdate();
 }
 
 // ─── Submit ─────────────────────────────────────
@@ -1376,7 +1540,7 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
 
 async function submitIntlOrder(recId) {
   const btn = document.getElementById('btnSubmit');
-  if (btn) { btn.textContent = 'Saving...'; btn.disabled = true; }
+  if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
 
   try {
     const fields = {};
@@ -1394,7 +1558,7 @@ async function submitIntlOrder(recId) {
     if (unmatchedLocs.length) {
       // OI-5: app modal αντί για native alert — ίδιο κείμενο, ίδια ροή.
       await confirmAction('Οι παρακάτω τοποθεσίες δεν έχουν επιλεγεί από τη λίστα:\n\n' + unmatchedLocs.join('\n') + '\n\nΨάξε και επίλεξε από το dropdown.', { title: 'Αδύνατη υποβολή', confirmLabel: 'ΟΚ' });
-      if (btn) { btn.textContent = recId ? 'Update Order' : 'Submit'; btn.disabled = false; }
+      if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
       throw new Error('validation');
     }
 
@@ -1547,7 +1711,7 @@ async function submitIntlOrder(recId) {
               `Θέλεις να συνεχίσεις;`,
               { title: 'Groupage φορτίο', confirmLabel: 'Συνέχεια', danger: true }
             );
-            if (!ok) { btn.textContent = 'Save Changes'; btn.disabled = false; return; }
+            if (!ok) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; return; }
 
             // Auto-restore: delete CL + NL, set GL → Unassigned
             toast('Auto-restore CL...', 'info');
@@ -1595,7 +1759,7 @@ async function submitIntlOrder(recId) {
           { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
         );
         if (!ok) {
-          if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+          if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
           return;
         }
       }
@@ -1611,7 +1775,7 @@ async function submitIntlOrder(recId) {
           const ok2 = await confirmAction(
             `Υπάρχει ήδη order με Reference «${fields['Reference']}» (${(() => { const d = String(dups[0].fields?.['Loading DateTime'] || '').slice(0, 10); return d ? 'φορτώνει ' + d.split('-').reverse().join('/') : 'χωρίς ημερομηνία φόρτωσης'; })()}). Σίγουρα να δημιουργηθεί δεύτερο;`,
             { title: 'Πιθανό διπλό', confirmLabel: 'Δημιουργία ούτως ή άλλως', danger: true });
-          if (!ok2) { if (btn) { btn.textContent = 'Submit'; btn.disabled = false; } return; }
+          if (!ok2) { if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; } return; }
         }
       } catch (e) {}
     }
@@ -1703,7 +1867,7 @@ async function submitIntlOrder(recId) {
     // 'validation' is the sentinel thrown after a blocking validation alert (line ~1259);
     // that path already messaged the user, so don't double-report.
     if (e.message !== 'validation') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
-    if (btn) { btn.textContent = recId ? 'Save Changes' : 'Submit'; btn.disabled = false; }
+    if (btn) { btn.textContent = 'Αποθήκευση'; btn.disabled = false; }
   }
 }
 
@@ -1714,7 +1878,9 @@ async function toggleIntlInvoiced(recId, current) {
   if (newVal && !(await _checkPalletSheets(recId))) return;
   try {
     const res = await atSafePatch(TABLES.ORDERS, recId, { 'Invoiced': newVal });
-    if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
+    if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωσε', 'warn'); return; }
+    if (res?.error) throw new Error(res.error.message || JSON.stringify(res.error));
+    delete _oiInvErr[recId];
     // Update local data
     const rec = INTL_ORDERS.data.find(r => r.id === recId);
     if (rec) rec.fields['Invoiced'] = newVal;
@@ -1723,10 +1889,18 @@ async function toggleIntlInvoiced(recId, current) {
       syncOrderDownstream(recId, { source: 'intl', changedFields: ['Invoiced'], skipVS: true, skipGRP: true, skipRamp: true, skipPA: true })
         .catch(e => console.warn('[intl invoice sync]', e));
     }
-    // Re-render table only (no full reload)
+    // Re-render table only (no full reload); the open card must follow too
     _applyIntlFilters();
-    toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
-  } catch(e) { reportError('Σφάλμα ενημέρωσης τιμολόγησης', e); }
+    if (INTL_ORDERS.selectedId === recId) selectIntlOrder(recId);
+    toast(newVal ? 'Σημειώθηκε ως τιμολογημένη' : 'Αφαιρέθηκε η τιμολόγηση');
+  } catch(e) {
+    // The failure stays IN the cell (spec §2), not only in a toast: the
+    // accountant gets 403 on orders and «Invoiced» read as success for ten
+    // days with 0/89 rows written. Cleared only by a write that succeeds.
+    _oiInvErr[recId] = 'Δεν γράφτηκε: ' + (e && e.message ? e.message : 'σφάλμα');
+    _applyIntlFilters();
+    reportError('Η τιμολόγηση ΔΕΝ γράφτηκε — η ένδειξη ⚠ μένει στη γραμμή', e);
+  }
 }
 
 // ─── Status Change ─────────────────────────────
@@ -1754,11 +1928,11 @@ async function _checkPalletSheets(recId) {
   const f = rec.fields;
   if (!f['Pallet Exchange']) return true; // no PE, allow invoice
   if (!f['Pallet Sheet 1 Uploaded']) {
-    toast('Pallet Sheet 1 missing — upload before invoicing', 'danger');
+    toast('Λείπει το Δελτίο 1 — καταχώρησέ το πριν την τιμολόγηση', 'danger');
     return false;
   }
   if (f['Veroia Switch'] && !f['Pallet Sheet 2 Uploaded']) {
-    toast('Pallet Sheet 2 (Crossdock) missing — upload before invoicing', 'danger');
+    toast('Λείπει το Δελτίο 2 (cross-dock) — καταχώρησέ το πριν την τιμολόγηση', 'danger');
     return false;
   }
   return true;
@@ -2894,6 +3068,8 @@ window.openIntlEdit = openIntlEdit;
 window.openIntlEditWith = (recId, fields) => _openModal(recId, fields||{});
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
+window._oiCloseCard = _oiCloseCard;
+window._oiBalanceUpdate = _oiBalanceUpdate;
 window.toggleIntlInvoiced = toggleIntlInvoiced;
 window._intlSortToggle = _intlSortToggle;
 window._applyIntlFilters = _applyIntlFilters;
