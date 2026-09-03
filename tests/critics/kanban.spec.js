@@ -47,7 +47,11 @@ for (const unit of KANBAN_UNITS) {
     await gotoPage(page, unit.routes[0], baseURL);
     await page.waitForTimeout(3000);
     const text = await renderedText(page, unit.unit);
-    const upper = text.toUpperCase();
+    // NFD + αφαίρεση διακριτικών ΠΡΙΝ το toUpperCase: η JS κρατά τον τόνο
+    // («Κυριακή» → «ΚΥΡΙΑΚΉ»), οπότε το includes('ΚΥΡΙΑΚΗ') αποτύγχανε σε
+    // κείμενο που ΕΙΧΕ τη μέρα. Βρέθηκε από τον agent του weekly_natl (3/9):
+    // ο κριτής μετρούσε ορθογραφία τόνου, όχι παρουσία ημέρας.
+    const upper = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     const id = IDENTITY[unit.unit];
 
     // 1 · ΔΟΜΗ ΣΤΗΛΩΝ — κάθε κεφαλίδα υπάρχει ως κείμενο. Το πλήθος ελέγχεται

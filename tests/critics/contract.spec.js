@@ -105,6 +105,11 @@ async function readContract(page, unit, baseURL) {
     await gotoPage(page, route, baseURL);
     await expect(page.locator('#sidebar')).toBeVisible({ timeout: 15000 });
     await page.waitForTimeout(2500);   // async data loads
+    if (unit.fixture && unit.fixture.date) {
+      // Οθόνη ημέρας: το συμβόλαιο μετριέται σε μέρα με δεδομένα (units.js).
+      await page.locator('#content input[type="date"]').first().fill(unit.fixture.date);
+      await page.waitForTimeout(2500);
+    }
 
     for (const t of await page.locator('th, [data-field], label').allTextContents()) {
       const s = sanitize(t);

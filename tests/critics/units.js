@@ -47,7 +47,10 @@ module.exports = [
   // Tier 3 — the contract MAY change; the critic reports a diff for approval
   // instead of failing (spec §6.1).
   { unit: 'dashboard',   tier: 3, routes: ['dashboard'],    files: ['modules/dashboard.js'] },
-  { unit: 'daily_ops',   tier: 3, routes: ['daily_ops'],    files: ['modules/daily_ops.js'] },
+  // fixture.date: το συμβόλαιο μετριέται σε ΜΕΡΑ ΜΕ ΔΕΔΟΜΕΝΑ (28/08/2026 στο
+  // HAR). Η σημερινή, κενή μέρα αποδίδει 4 ενότητες χωρίς πίνακα → 0 th →
+  // συμβόλαιο χωρίς πεδία = πύλη που δεν φυλάει τίποτα (agent daily_ops 3/9).
+  { unit: 'daily_ops',   tier: 3, routes: ['daily_ops'],    files: ['modules/daily_ops.js'], fixture: { date: '2026-08-28' } },
   { unit: 'weekly_intl', tier: 3, routes: ['weekly_intl'],  files: ['modules/weekly_intl.js'] },
   { unit: 'weekly_natl', tier: 3, routes: ['weekly_natl'],  files: ['modules/weekly_natl.js'] },
   { unit: 'orders_intl', tier: 3, routes: ['orders_intl'],  files: ['modules/orders_intl.js'] },
