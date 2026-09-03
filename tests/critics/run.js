@@ -13,6 +13,21 @@ const UNITS = require('./units');
 const { check } = require('./static');
 const baseline = require('../../docs/redesign/baseline.json');
 
+// ΦΡΟΥΡΟΣ ΣΤΟΧΟΥ (3/9/2026). Χωρίς PW_BASE_URL το playwright.config.js δείχνει
+// στο deployed GitHub Pages — δηλαδή η σουίτα «επαληθεύει» την ΠΑΡΑΓΩΓΗ και
+// όχι τον κώδικα που πρόκειται να γίνει push. Έγινε 29/8 (πριν το merge του
+// κύματος 1) και ΞΑΝΑ 3/9 στο σημείο push Α: δύο συμβόλαια «κόκκινα» επειδή
+// ο κριτής κοίταζε τον παλιό κώδικα. Αρχή 1: ό,τι δεν γίνεται, ακούγεται.
+// Ρητή επιλογή της παραγωγής: CRITICS_TARGET=deployed.
+const TARGET = process.env.PW_BASE_URL;
+if (!TARGET && process.env.CRITICS_TARGET !== 'deployed') {
+  console.error('✗ Δεν ορίστηκε PW_BASE_URL — η σουίτα θα έλεγχε το deployed Pages, όχι τον τοπικό κώδικα.');
+  console.error('  Τοπικά:  PW_BASE_URL=http://127.0.0.1:8788/ npm run critics');
+  console.error('  Παραγωγή (ρητά): CRITICS_TARGET=deployed npm run critics');
+  process.exit(2);
+}
+console.log(`Στόχος: ${TARGET || 'deployed GitHub Pages (ρητά)'}`);
+
 const results = [];
 for (const unit of UNITS) {
   try {
