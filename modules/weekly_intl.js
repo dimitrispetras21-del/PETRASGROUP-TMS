@@ -188,13 +188,13 @@ const _WI2_CSS=`
    ονόματα. Οι δύο στήλες «προς/από Βέροια» είναι οι λιγότερο κρίσιμες και
    έχουν ήδη χειροκίνητο διακόπτη — εδώ γίνεται αυτόματος. Πάνω από 1500
    επανέρχονται πλήρεις. Τα ◂ ▸ εξακολουθούν να δουλεύουν χειροκίνητα. */
-@media (max-width:1500px){.wk3.wi2{--fL:18px;--fR:18px}}
+@media (max-width:1800px){.wk3.wi2{--fL:18px;--fR:18px}}
 /* Μαζεμένη στήλη = μαζεμένη κεφαλίδα. Το κείμενο «ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ» είναι
    γυμνός κόμβος δίπλα στο βελάκι, οπότε ξεχείλιζε από τα 18px. font-size:0
    στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
    στήλη παραμένει πατήσιμη. Ίδιο και για τον χειροκίνητο διακόπτη, που το
    είχε ΚΑΙ ΑΥΤΟΣ — απλώς δεν το έβλεπε κανείς. */
-@media (max-width:1500px){.wk3.wi2 .wk3-cols .c.fc{font-size:0;overflow:hidden;padding:0;text-align:center}.wk3.wi2 .wk3-cols .c.fc .fc-ch{font-size:9px}}
+@media (max-width:1800px){.wk3.wi2 .wk3-cols .c.fc{font-size:0;overflow:hidden;padding:0;text-align:center}.wk3.wi2 .wk3-cols .c.fc .fc-ch{font-size:9px}}
 .wk3.wi2.fl-off .wk3-cols .c.fc:first-child,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child{font-size:0;overflow:hidden}
 .wk3.wi2.fl-off .wk3-cols .c.fc:first-child .fc-ch,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child .fc-ch{font-size:11px}
 /* ΣΤΟΙΧΙΣΗ (owner 3/9, πάνω στα πραγματικά δεδομένα): κάθε .wk3-row είναι
@@ -204,7 +204,7 @@ const _WI2_CSS=`
    τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
    περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1fr) 240px minmax(0,1.05fr) var(--fR)}
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 240px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:var(--text-xl);color:var(--text);display:flex;align-items:center;gap:10px;white-space:nowrap}
 .wi2-legend-btn{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--silver-light);border-radius:var(--radius-full);padding:2px 8px;background:none;cursor:pointer}
@@ -271,7 +271,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
 .wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0}
 .wk3.wi2 .wk3-grpb{font-size:9px;padding:0 4px}
-.wk3.wi2 .wk3-leg{padding:2px 4px;align-items:center;gap:6px;min-height:38px}
+.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:2px 4px;align-items:center;gap:6px;min-height:38px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
 .wi2-card{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px;min-height:34px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);box-shadow:var(--shadow-xs);box-sizing:border-box;transition:box-shadow var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
@@ -288,7 +288,9 @@ const _WI2_CSS=`
 .wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:46px;box-sizing:border-box;text-align:left;margin:0;font-size:10.5px}
 .wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent}
 .wi2-cb{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
-.wi2-name{font-size:12px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:break-word;display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.wi2-name{font-size:12px;font-weight:600;color:var(--text);overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.wi2-name>*{margin-right:5px}
+.wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
 .wi2-sub{font-size:10px;color:var(--text-dim);white-space:normal}
 .wi2-nw{white-space:nowrap}
 .wi2-card>.wi2-flags,.wi2-card>.wi2-pal,.wi2-card>.wi2-ref,.wi2-card>.wk3-unm{flex-shrink:0}
@@ -308,7 +310,10 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;align-items:center;height:auto;min-height:38px;white-space:normal;align-self:stretch}
 .wk3.wi2 .wk3-feed.bgap{background:transparent !important}
 .wk3.wi2.fl-off .wk3-feed.l,.wk3.wi2.fr-off .wk3-feed.r{background:var(--bg)}
-.wk3.wi2 .wk3-assign{padding:0 4px;gap:4px}
+.wk3.wi2 .wk3-assign{display:grid;grid-template-columns:20px minmax(0,1fr) 20px;padding:0 4px;gap:4px;align-items:center}
+.wk3.wi2 .wk3-assign>.wk3-prt.l{grid-column:1}
+.wk3.wi2 .wk3-assign>.wk3-prt.r{grid-column:3}
+.wk3.wi2 .wk3-assign>:not(.wk3-prt){grid-column:2;min-width:0}
 .wk3.wi2 .wk3-pill{height:auto;min-height:34px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:3px 10px;font-size:11.5px;line-height:1.25;border-radius:var(--radius);white-space:normal;overflow:visible;box-sizing:border-box}
 .wk3.wi2 .wk3-pill small{font-size:10px;color:var(--silver);white-space:normal}
 .wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:9.5px}
@@ -369,7 +374,7 @@ const _WI2_CSS=`
    τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1fr) 200px minmax(0,1fr)}}
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}}
 `;
 
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
@@ -782,6 +787,7 @@ function _wiPaint(){
   });
   _wi2FootSync();
   if(WINTL.filter||WINTL.filterStatus||WINTL.quick) _wiApplyFilter();
+  requestAnimationFrame(_wi2Balance);
 
   // T4 (Wave 2), the blind half: exports PLANNED in W+1 that LOAD inside this
   // week — invisible here because exports filter by delivery week (PREMORTEM
@@ -946,7 +952,7 @@ function _wiImpRowHTML(row,impNo){
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
-      <button class="wk3-prt" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>
+      <button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}${ref}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}</div>
@@ -1196,6 +1202,39 @@ function _wi2Loc(str,label,arr){
 function _wi2Card(o){
   return `<div class="wi2-card${o.cls?' '+o.cls:''}"${o.title?` title="${o.title}"`:''}>${o.date||''}<div class="wi2-cb"><div class="wi2-name">${o.name}</div>${o.sub?`<div class="wi2-sub">${o.sub}</div>`:''}${o.extra||''}</div>${o.right||''}</div>`;
 }
+// Το μοίρασμα φόρτωσης↔παράδοσης ακολουθεί το περιεχόμενο (owner 3/9).
+// Ένας λόγος για ΟΛΗ τη στήλη, όχι ανά γραμμή: αλλιώς το βέλος χοροπηδά και
+// χάνεται η κάθετη στοίχιση που ζητήθηκε στο ίδιο μήνυμα. Κριτήριο = η πιο
+// απαιτητική κάρτα κάθε πλευράς, γιατί όλες μοιράζονται την ίδια γεωμετρία:
+// αν μία δεν χωράει, η στήλη είναι στενή. Όρια 35-65% ώστε μια ακραία
+// ονομασία να μη μηδενίζει την απέναντι πλευρά.
+function _wi2Balance(){
+  const sheet=document.querySelector('.wk3.wi2'); if(!sheet) return;
+  const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
+  if(!legs.length) return;
+  sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
+  const need=c=>{
+    let t=0; c.querySelectorAll('.wi2-name,.wi2-sub').forEach(e=>{t=Math.max(t,e.scrollWidth)});
+    let fixed=0; [...c.children].forEach(e=>{ if(!e.classList.contains('wi2-cb')) fixed+=e.offsetWidth; });
+    return t+fixed+16;
+  };
+  let L=0,R=0;
+  legs.forEach(l=>{ L=Math.max(L,need(l.children[0])); R=Math.max(R,need(l.children[2])); });
+  sheet.classList.remove('wi2-measure');
+  if(!(L+R)) return;
+  const r=Math.min(.65,Math.max(.35,L/(L+R)));
+  sheet.style.setProperty('--sL',r.toFixed(3)+'fr');
+  sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
+  // Ό,τι κόπηκε στις δύο γραμμές κρατά το πλήρες κείμενο σε tooltip — τίποτα
+  // δεν χάνεται σιωπηλά (αρχή 1).
+  let cut=0;
+  document.querySelectorAll('#wi-rows .wi2-name').forEach(e=>{
+    if(e.scrollHeight>e.clientHeight+1){ e.title=e.innerText.trim(); cut++; } else if(e.title) e.removeAttribute('title');
+  });
+  WINTL._clamped=cut;
+}
+let _wi2BalTimer=null;
+window.addEventListener('resize',()=>{ clearTimeout(_wi2BalTimer); _wi2BalTimer=setTimeout(_wi2Balance,150); });
 // Clickable date chip → calendar → PATCH (existing _wk3PickDate, all dates stay editable — owner 10/8)
 function _wi2Date(oid,field,iso,txt,cls,title){
   return `<span class="wi2-date wk3-ld${cls||''}" title="${title||''} — κλικ για αλλαγή" onclick="_wk3PickDate(event,'${oid}','${field}','${iso||''}')">${txt||'—'}</span>`;
@@ -1462,10 +1501,10 @@ function _wiRowHTML(row,i){
     <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
       ${isGroup
-        ?`<button class="wk3-prt" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
-        :`<button class="wk3-prt" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Export — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
+        ?`<button class="wk3-prt l" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
+        :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Export — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
-      ${row.importId?`<button class="wk3-prt" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+      ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?'style="cursor:pointer"':''}
