@@ -185,6 +185,11 @@
   --space-12: 48px;
   --space-16: 64px;
 
+  /* Ο χώρος που κρατά ελεύθερο το πλωτό κουμπί συνομιλίας
+     (.aic-btn, core/ai-chat.js:203): 24px απόσταση + 52px κουμπί + 12px
+     αναπνοή. Καταναλωτής σήμερα: .entity-layout — βλ. το σχόλιο Δ1 εκεί. */
+  --fab-clear: 88px;
+
   /* ═══ Radius scale ═══ */
   --radius-sm: 4px;
   --radius:    6px;
@@ -1406,8 +1411,6 @@ tbody tr:hover { background: var(--bg-hover); }
    scroller, στο κάτω άκρο του panel, και θα έμενε καλυμμένη για πάντα.
    Κόστος: ~44px, μία γραμμή πίνακα.
    Το 32px είναι το top padding του .content — ό,τι αλλάξει εκεί, αλλάζει εδώ. */
-:root { --fab-clear: 88px; }
-
 .entity-layout {
   display: flex;
   gap: 0;
