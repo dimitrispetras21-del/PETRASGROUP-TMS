@@ -64,23 +64,126 @@ async function renderOrdersNatl() {
   }
 }
 
+// Greek display words for DB values (DESIGN.md ΜΕΡΟΣ Ε): the value in the
+// record never changes, only what the screen prints. Direction keeps the
+// arrows as plain text — no filled badge (owner 30/8, spec §6).
+const _ON_DIR = { 'South→North': '↑ ΑΝΟΔΟΣ', 'North→South': '↓ ΚΑΘΟΔΟΣ' };
+const _ON_DIR_WORD = { 'South→North': 'ΑΝΟΔΟΣ', 'North→South': 'ΚΑΘΟΔΟΣ' };
+const _ON_STATUS = {
+  Pending: 'ΣΕ ΑΝΑΜΟΝΗ', Confirmed: 'ΕΠΙΒΕΒΑΙΩΜΕΝΗ', Assigned: 'ΑΝΑΤΕΘΕΙΜΕΝΗ',
+  'In Transit': 'ΣΕ ΜΕΤΑΦΟΡΑ', Delivered: 'ΠΑΡΑΔΟΘΗΚΕ', Cancelled: 'ΑΚΥΡΩΘΗΚΕ', Invoiced: 'ΤΙΜΟΛΟΓΗΘΗΚΕ',
+};
+const _ON_TYPE = { Independent: 'Ανεξάρτητη', 'Veroia Switch': 'Veroia Switch' };
+// d/M like the Figma list ("7/9"): formatDateShort gives an English month name
+// ("24 Aug") that wraps in an 80px column and is not Greek (ΜΕΡΟΣ Ε).
+const _onDate = d => d ? new Date(d).toLocaleDateString('el-GR', { day: 'numeric', month: 'numeric' }) : '—';
+const _onHasTrip = f => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0)) > 0;
+
+// Scoped styles for this screen only (spec w4-orders-interaction-spec 208:724).
+// They live here and not in style.css because the batch rule is "one agent,
+// one file"; tokens that do not exist yet (--surface-dark, --text-on-dark,
+// --warn, --ok) fall back to the nearest existing one and are REQUESTED in the
+// hand-off, not invented.
+const _ON_CSS = `
+<style>
+.on-v2 .entity-table-wrap thead th{background:var(--surface-sunken);font:700 10px/1.3 'DM Sans',sans-serif;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mid);padding:8px var(--space-2);border-bottom:1px solid var(--silver-light)}
+.on-v2 .entity-table-wrap tbody td{height:${_ON_ROW_H}px;padding:0 var(--space-2);font-size:var(--text-sm);line-height:1.25;color:var(--text);border-bottom:1px solid var(--border-row);white-space:normal;overflow:visible;text-overflow:clip;max-width:none;vertical-align:middle}
+/* Hover without transition: an eight-hour work table must not "swim" (spec §2). */
+.on-v2 .entity-table-wrap tbody tr{transition:none}
+.on-v2 .entity-table-wrap tbody tr:nth-child(even) td{background:var(--bg-row-alt)}
+.on-v2 .entity-table-wrap tbody tr:hover td{background:var(--surface-sunken)}
+.on-v2 .entity-table-wrap tbody tr.selected td{background:var(--accent-light)}
+.on-v2 #onVScroll{scrollbar-width:thin;scrollbar-color:var(--silver-light) transparent}
+.on-v2 .entity-table-wrap tbody td.on-num,.on-v2 .entity-table-wrap tbody td.on-dir,.on-v2 .entity-table-wrap tbody td.on-trip{white-space:nowrap}
+.on-num{font-variant-numeric:tabular-nums}
+.on-name{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:700;color:var(--text)}
+.on-tag{display:inline-block;font:700 8px/1 'DM Sans',sans-serif;letter-spacing:.3px;padding:2px 4px;border-radius:3px}
+.on-tag-vs{background:var(--navy-mid);color:var(--text-inverse)}
+.on-tag-grp{background:var(--bg-hover);color:var(--navy-mid)}
+.on-dir{color:var(--text-mid);white-space:nowrap}
+.on-cell2{display:flex;flex-direction:column;min-width:0}
+.on-cell2>span{line-height:1.15}
+.on-cell2 small{font-size:10px;color:var(--text-dim);line-height:1.1}
+/* Form: the chosen mode card keeps a border, not a fill (spec §6). */
+#modal .nf-mode.on{background:var(--bg-card);box-shadow:none}
+.on-dot{display:inline-block;width:6px;height:6px;border-radius:var(--radius-full);margin-right:6px;vertical-align:middle}
+.on-dot.ok{background:var(--success)}
+.on-dot.warn{background:var(--warning)}
+.on-trip{color:var(--text-mid);font-size:var(--text-xs);white-space:nowrap}
+.on-inv{cursor:pointer;text-align:center}
+.on-inv-box{display:inline-block;width:14px;height:14px;border:1.5px solid var(--border-dark);border-radius:var(--radius-sm);background:var(--bg-card);vertical-align:middle}
+.on-inv-on{font-weight:700;color:var(--text-mid)}
+.on-inv-fail{font-weight:700;color:var(--warning)}
+/* Detail card: 480px, shadow to the left, closed = width 0 AND display:none
+   (the 482px lesson of 29/8 — a closed panel that keeps width cuts columns). */
+.on-v2 .entity-detail-panel{width:480px;background:var(--bg-card);position:relative;z-index:1;box-shadow:var(--shadow-panel);border-left:1px solid var(--border);overflow-y:auto}
+.on-v2 .entity-detail-panel.hidden{width:0;display:none;border-left:none;box-shadow:none}
+.on-v2 .entity-detail-panel.on-opening{animation:onSlideIn var(--duration-fast) var(--ease-out)}
+@keyframes onSlideIn{from{transform:translateX(100%)}to{transform:none}}
+.on-card-head{background:var(--navy-mid);padding:20px 22px 16px}
+.on-card-title-row{display:flex;align-items:flex-start;gap:10px}
+.on-card-title{flex:1;font-family:'Syne',sans-serif;font-weight:700;font-size:17px;line-height:20px;letter-spacing:1px;text-transform:uppercase;color:var(--text-inverse);word-break:break-word}
+.on-card-x{background:none;border:none;cursor:pointer;color:var(--panel-dim);font-size:18px;line-height:1;padding:0 2px}
+.on-card-x:hover{color:var(--text-inverse)}
+.on-card-sub{font-size:var(--text-sm);color:var(--panel-dim);margin-top:4px}
+.on-chips{display:flex;flex-wrap:wrap;gap:6px;padding-top:10px}
+.on-chip{border:1px solid var(--silver-dim);border-radius:var(--radius-full);padding:3px 9px;font:700 9px/1.3 'DM Sans',sans-serif;letter-spacing:.8px;color:var(--silver-light);white-space:nowrap}
+.on-chip.warn{color:var(--panel-warn)}
+.on-sec{padding:14px 22px 12px;border-bottom:1px solid var(--silver-light)}
+.on-sec:last-child{border-bottom:none}
+.on-sec.sunken{background:var(--bg-row-alt)}
+.on-sec-title{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:1.4px;text-transform:uppercase;color:var(--text-mid);margin-bottom:9px}
+.on-row{display:flex;align-items:center;gap:8px;min-height:22px;font-size:var(--text-sm)}
+.on-row-l{color:var(--text-dim);white-space:nowrap}
+.on-row-v{margin-left:auto;text-align:right;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums;word-break:break-word}
+.on-row-v.dim{color:var(--text-dim);font-weight:400}
+.on-row-main{color:var(--text);word-break:break-word}
+.on-mini{border:1px solid var(--silver-light);border-radius:3px;padding:1px 6px;font:700 9px/1.3 'DM Sans',sans-serif;letter-spacing:.5px;color:var(--text-mid);white-space:nowrap}
+.on-row-date{color:var(--text-mid);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:36px}
+.on-link{background:none;border:none;padding:0;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:var(--text-sm);color:var(--accent-text)}
+.on-link:hover{text-decoration:underline}
+.on-acts{display:flex;gap:14px;font-size:var(--text-sm)}
+.on-act{background:none;border:none;padding:0;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:var(--text-sm);color:var(--text-mid)}
+.on-act:hover{color:var(--text);text-decoration:underline}
+.on-act.danger{color:var(--danger)}
+.on-notes{font-size:var(--text-sm);color:var(--text-mid);line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.on-empty{padding:48px;text-align:center;color:var(--text-dim);font-size:var(--text-sm)}
+.on-foot{padding:8px 16px;color:var(--text-dim);font-size:var(--text-sm);text-align:center;font-variant-numeric:tabular-nums}
+</style>`;
+
+// Esc closes the card (spec §1). One listener, installed once, checks that the
+// card is on screen so it does nothing on other pages.
+function _onEscClose(e) {
+  if (e.key !== 'Escape') return;
+  const p = document.getElementById('natlDetail');
+  if (p && !p.classList.contains('hidden')) closeNatlDetail();
+}
+function closeNatlDetail() {
+  const p = document.getElementById('natlDetail');
+  if (p) p.classList.add('hidden');
+  NATL_ORDERS.selectedId = null;
+  document.querySelectorAll('#natlTable tbody tr.selected').forEach(tr => tr.classList.remove('selected'));
+}
+
 function _renderNatlLayout(c) {
   const canEdit = can('orders') === 'full';
   const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
-  c.innerHTML = `
+  document.removeEventListener('keydown', _onEscClose);
+  document.addEventListener('keydown', _onEscClose);
+  c.innerHTML = `${_ON_CSS}
     <div class="page-header" style="margin-bottom:var(--space-4)">
       <div>
         <div class="page-title">Εθνικές Παραγγελίες</div>
-        <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} orders</div>
+        <div class="page-sub" id="natlSub">${NATL_ORDERS.data.length} παραγγελίες</div>
       </div>
       <div style="display:flex;gap:var(--space-2);align-items:center">
         <button class="btn btn-secondary btn-sm" onclick="openNatlScan()">${_i('camera')} Scan</button>
-        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} New Order</button>` : ''}
+        ${canEdit ? `<button class="btn btn-primary btn-sm" onclick="openNatlCreate()">${_i('plus')} Νέα παραγγελία</button>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="_natlExportCSV()">${_i('download')} CSV</button>
-        <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Print</button>
+        <button class="btn btn-ghost btn-sm" onclick="_natlPrint()">${_i('file_text')} Εκτύπωση</button>
       </div>
     </div>
-    <div class="entity-layout">
+    <div class="entity-layout on-v2">
       <div class="entity-list-panel">
         <div class="entity-toolbar-v2">
           <div class="entity-search-wrap">
@@ -166,18 +269,33 @@ function _natlSortRecords(recs) {
 }
 
 // ─── Table (Virtual Scroll) ─────────────────────
+// Two-line cell (DESIGN.md ΜΕΡΟΣ Ζ.1): the location label is "Name, City,
+// Country" — the name stays on line one, the qualifier drops to line two in
+// 10px. Solves the cut without widening the column; nothing is ever clipped.
+function _onCell2(label) {
+  if (!label || label === '—') return '<span class="dim">—</span>';
+  const i = label.indexOf(', ');
+  if (i < 0) return `<span class="on-cell2"><span>${escapeHtml(label)}</span></span>`;
+  return `<span class="on-cell2"><span>${escapeHtml(label.slice(0, i))}</span><small>${escapeHtml(label.slice(i + 2))}</small></span>`;
+}
+
+// ΤΙΜ. cell: an empty 14px box says "click me" (the old "·" did not), the tick
+// says done. A failed write keeps ⚠ IN the cell — never only a toast (0/89
+// "invoiced" wrote nothing for ten days while the toast said success).
+function _onInvCell(f) {
+  return f['Invoiced'] ? '<span class="on-inv-on">✓</span>' : '<span class="on-inv-box"></span>';
+}
+
 function _onRowHtml(r) {
   const f = r.fields;
-  const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
+  const hasTrip = _onHasTrip(f);
   const dir = f['Direction']||'';
-  const dirB = dir==='South→North'
-    ? '<span class="badge badge-blue">↑ S→N</span>'
-    : dir==='North→South'
-      ? '<span class="badge badge-green">↓ N→S</span>'
-      : `<span class="badge badge-grey">${dir||'—'}</span>`;
-  const tripB  = hasTrip ? '<span class="badge badge-green">Assigned</span>' : '<span class="badge badge-yellow">Pending</span>';
-  const vsB    = f['Type']==='Veroia Switch' ? '<span class="badge badge-yellow" style="margin-right:4px;font-size:10px">VS</span>' : '';
-  const grpB   = f['National Groupage'] ? '<span class="badge badge-blue" style="margin-right:4px;font-size:10px">GRP</span>' : '';
+  const dirT   = _ON_DIR[dir] || escapeHtml(dir) || '—';
+  const tripT  = hasTrip
+    ? '<span class="on-dot ok"></span>Ανατεθειμένο'
+    : '<span class="on-dot warn"></span>Εκκρεμεί';
+  const vsB    = f['Type']==='Veroia Switch' ? '<span class="on-tag on-tag-vs">VS</span>' : '';
+  const grpB   = f['National Groupage'] ? '<span class="on-tag on-tag-grp">GRP</span>' : '';
   const sel    = r.id === NATL_ORDERS.selectedId ? ' selected' : '';
 
   const _pickupId = (f['Pickup Location 1']||[])[0]||'';
@@ -186,24 +304,21 @@ function _onRowHtml(r) {
   const delivery = _delivId ? (_fhLocationsMap[_delivId]||'—') : '—';
   const _clientId = (f['Client']||[])[0]||'';
   const client = _clientId ? (_fhClientsMap[_clientId]||'—') : '—';
+  // Unknown is not zero (rule #3): a missing count is "—"; a written 0 is "0".
+  const pal = f['Pallets'] != null ? f['Pallets'] : '—';
 
   return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}" style="height:${_ON_ROW_H}px">
-    <td style="white-space:nowrap">${vsB}${grpB}<strong style="color:var(--text);font-size:12px">${escapeHtml(f['Name']||r.id.slice(-6))}</strong></td>
-    <td>${dirB}</td>
-    <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(client)}</td>
-    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(pickup)}</td>
-    <td style="max-width:120px;overflow:hidden;text-overflow:ellipsis">${escapeHtml(delivery)}</td>
-    <td>${f['Loading DateTime']  ? formatDateShort(f['Loading DateTime'])  : '—'}</td>
-    <td>${f['Delivery DateTime'] ? formatDateShort(f['Delivery DateTime']) : '—'}</td>
-    <td>${f['Pallets']||'—'}</td>
-    <td>${tripB}</td>
-    <td onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
-      title="${f['Invoiced']?'Mark as Not Invoiced':'Mark as Invoiced'}"
-      style="cursor:pointer;text-align:center">
-      ${f['Invoiced']
-        ? '<span class="badge badge-grey" style="cursor:pointer">✓ INV</span>'
-        : '<span style="color:var(--text-dim);font-size:18px;line-height:1">·</span>'}
-    </td>
+    <td><span class="on-name">${escapeHtml(f['Name']||r.id.slice(-6))}${vsB}${grpB}</span></td>
+    <td class="on-dir">${dirT}</td>
+    <td>${_onCell2(client)}</td>
+    <td>${_onCell2(pickup)}</td>
+    <td>${_onCell2(delivery)}</td>
+    <td class="on-num">${_onDate(f['Loading DateTime'])}</td>
+    <td class="on-num">${_onDate(f['Delivery DateTime'])}</td>
+    <td class="on-num">${pal}</td>
+    <td class="on-trip">${tripT}</td>
+    <td class="on-inv" id="ninv_${r.id}" onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
+      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(f)}</td>
   </tr>`;
 }
 
@@ -245,7 +360,7 @@ function _onOnScroll() {
 
 function _renderNatlTable(records) {
   const wrap = document.getElementById('natlTable');
-  if (!records.length) { wrap.innerHTML = `<div style="text-align:center;padding:48px;color:var(--text-dim)">Καμία παραγγελία δεν ταιριάζει στα φίλτρα</div>`; return; }
+  if (!records.length) { wrap.innerHTML = `<div class="on-empty">Καμία παραγγελία δεν ταιριάζει στα φίλτρα</div>`; return; }
 
   const sortedRecs = _natlSortRecords(records);
   _onVS.sortedRecs = sortedRecs;
@@ -259,7 +374,7 @@ function _renderNatlTable(records) {
 
   const totalH = sortedRecs.length * _ON_ROW_H;
   wrap.innerHTML = `
-    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:#CBD5E0 transparent">
+    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto">
       <table>
         <thead><tr>${ths}</tr></thead>
       </table>
@@ -267,7 +382,7 @@ function _renderNatlTable(records) {
       <table><tbody></tbody></table>
       <div id="onBottomSpacer" style="height:${totalH}px"></div>
     </div>
-    <div style="padding:8px 16px;color:var(--panel-dim);font-size:12px;text-align:center">${sortedRecs.length} orders</div>`;
+    <div class="on-foot">${sortedRecs.length} ${sortedRecs.length===1?'παραγγελία':'παραγγελίες'}</div>`;
 
   const scroller = document.getElementById('onVScroll');
   scroller.addEventListener('scroll', _onOnScroll, { passive: true });
@@ -309,79 +424,117 @@ function _applyNatlFilters() {
   _renderNatlTable(recs);
   const n = recs.length + (recs.length===1?' παραγγελία':' παραγγελίες');
   document.getElementById('natlCount').textContent = n;
-  document.getElementById('natlSub').textContent   = n;
+  const period = { '60': 'τελευταίες 60 ημέρες', '180': 'τελευταίοι 6 μήνες', all: 'όλες οι ημερομηνίες' }[_natlPeriod] || '';
+  document.getElementById('natlSub').textContent   = period ? `${n} · ${period}` : n;
 }
 
 // ─── Detail Panel ───────────────────────────────
+// Local row helper: the old panel borrowed `_dF` from modules/orders_intl.js —
+// a cross-module dependency that the parallel orders_intl redesign may rename.
+// Values sit RIGHT-aligned (w2-location-card 230:821).
+function _onDF(label, valueHtml, dim) {
+  return `<div class="on-row"><span class="on-row-l">${escapeHtml(label)}</span><span class="on-row-v${dim ? ' dim' : ''}">${valueHtml}</span></div>`;
+}
+const _ON_NA = '— δεν έχει καταχωρηθεί';
+
 function selectNatlOrder(recId) {
+  const wasClosed = !NATL_ORDERS.selectedId;
   NATL_ORDERS.selectedId = recId;
   document.querySelectorAll('#natlTable tbody tr').forEach(tr => tr.classList.remove('selected'));
   const row = document.getElementById('nrow_'+recId); if(row) row.classList.add('selected');
   const rec = NATL_ORDERS.data.find(r => r.id === recId); if(!rec) return;
   const panel = document.getElementById('natlDetail');
   panel.classList.remove('hidden');
+  // Slide in only when opening from closed; switching rows swaps content with
+  // no motion (spec §1: motion only where it explains something).
+  panel.classList.remove('on-opening');
+  if (wasClosed) {
+    void panel.offsetWidth;   // restart the animation if the class was just removed
+    panel.classList.add('on-opening');
+    panel.addEventListener('animationend', () => panel.classList.remove('on-opening'), { once: true });
+  }
   const f = rec.fields;
   const canEdit = can('orders') === 'full';
-  const hasTrip = (f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0) > 0;
-  const stMap = {Pending:'badge-yellow',Confirmed:'badge-blue','In Transit':'badge-green',Delivered:'badge-grey'};
+  const hasTrip = _onHasTrip(f);
   const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
   const pId = (f['Pickup Location 1']||[])[0]||'';
-  const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
+  const client = cId ? (_fhClientsMap[cId] || cId) : '';
+  const name = f['Name'] || recId.slice(-6);
+  const subParts = [_ON_DIR_WORD[f['Direction']] || f['Direction'] || '', _ON_TYPE[f['Type']] || f['Type'] || ''].filter(Boolean);
+
+  // Header chips are OUTLINE only; PE always shows when it applies (owner 31/8).
+  const chips = [];
+  if (f['Status'] && _ON_STATUS[f['Status']]) chips.push(`<span class="on-chip">${_ON_STATUS[f['Status']]}</span>`);
+  else if (f['Status']) chips.push(`<span class="on-chip">${escapeHtml(String(f['Status']).toUpperCase())}</span>`);
+  chips.push(hasTrip ? '<span class="on-chip">ΜΕ ΔΡΟΜΟΛΟΓΙΟ</span>' : '<span class="on-chip warn">ΧΩΡΙΣ ΔΡΟΜΟΛΟΓΙΟ</span>');
+  chips.push(f['Invoiced'] ? '<span class="on-chip">ΤΙΜΟΛΟΓΗΘΗΚΕ</span>' : '<span class="on-chip warn">ΧΩΡΙΣ ΤΙΜΟΛΟΓΗΣΗ</span>');
+  if (f['National Groupage']) chips.push('<span class="on-chip">GRP</span>');
+  if (f['Type']==='Veroia Switch') chips.push('<span class="on-chip">VS</span>');
+  if (f['Pallet Exchange']) chips.push('<span class="on-chip">PE · ΑΝΤΑΛΛΑΓΗ ΠΑΛΕΤΩΝ</span>');
+
+  // Route: date + outline chip + name + right-hand quantity. Per-stop pallets
+  // live in ORDER_STOPS (not loaded here) — the total is shown on the right
+  // only when there is exactly one delivery, otherwise it would be a guess.
+  const delivIds = [];
+  for (let i = 1; i <= 10; i++) { const id = (f[`Delivery Location ${i}`]||[])[0]; if (id) delivIds.push(id); }
+  if (!delivIds.length && (f['Delivery Location']||[])[0]) delivIds.push(f['Delivery Location'][0]);
+  const palTotal = f['Pallets'] != null ? `${f['Pallets']} pal` : '';
+  const routeRow = (date, kind, locId, right) => `
+    <div class="on-row">
+      <span class="on-row-date">${_onDate(date)}</span>
+      <span class="on-mini">${kind}</span>
+      <span class="on-row-main">${escapeHtml(locId ? (_fhLocationsMap[locId] || locId) : '—')}</span>
+      <span class="on-row-v">${right || ''}</span>
+    </div>`;
+  const routeHtml = [
+    pId ? routeRow(f['Loading DateTime'], 'ΠΑΡΑΛΑΒΗ', pId, palTotal) : '',
+    ...delivIds.map(id => routeRow(f['Delivery DateTime'], 'ΠΑΡΑΔΟΣΗ', id, delivIds.length === 1 ? palTotal : '')),
+  ].join('') || `<div class="on-row"><span class="on-row-v dim">${_ON_NA}</span></div>`;
 
   panel.innerHTML = `
-    <div class="detail-header">
-      <div>
-        <div class="detail-title" style="font-size:13px">${escapeHtml(f['Name']||recId.slice(-6))}</div>
-        <div style="font-size:11px;color:var(--text-dim);margin-top:2px">
-          ${escapeHtml(f['Direction']||'')} · ${escapeHtml(f['Type']||'')}
-        </div>
+    <div class="on-card-head">
+      <div class="on-card-title-row">
+        <div class="on-card-title">${escapeHtml(name)}${client ? ' · ' + escapeHtml(client) : ''}</div>
+        <button type="button" class="on-card-x" title="Κλείσιμο (Esc)" onclick="closeNatlDetail()">×</button>
       </div>
-      <div class="detail-actions">
-        ${canEdit?`<button type="button" class="btn-icon" title="Edit" onclick="openNatlEdit('${recId}')">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </button>
-        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced' ? `<button type="button" class="btn-icon" title="Cancel order (mark as Cancelled, keep record)" onclick="cancelNatlOrder('${recId}')" style="color:#D97706">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l10 10M13 3L3 13"/></svg>
-        </button>`:''}
-        <button type="button" class="btn-icon" title="Delete (cascade — removes linked NL/GL/CL/Ramp/Pallets)" onclick="deleteNatlOrder('${recId}')" style="color:var(--danger)">
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 10h8l1-10"/></svg>
-        </button>`:''}
-        <button type="button" class="btn-icon" onclick="document.getElementById('natlDetail').classList.add('hidden')">✕</button>
-      </div>
+      ${subParts.length ? `<div class="on-card-sub">${escapeHtml(subParts.join(' · '))}</div>` : ''}
+      <div class="on-chips">${chips.join('')}</div>
     </div>
-    <div class="detail-body">
-      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
-        <span class="badge ${stMap[f['Status']]||'badge-grey'}">${escapeHtml(f['Status']||'No Status')}</span>
-        ${hasTrip?'<span class="badge badge-green">Trip Assigned</span>':'<span class="badge badge-yellow">No Trip</span>'}
-        ${f['National Groupage']?'<span class="badge badge-blue">Groupage</span>':''}
-        ${f['Type']==='Veroia Switch'?'<span class="badge badge-yellow">Veroia Switch</span>':''}
-        ${f['Invoiced']?'<span class="badge badge-grey">Invoiced</span>':''}
-        ${f['Pallet Exchange']?'<span class="badge badge-grey">Pallet Exch.</span>':''}
+    <div class="on-sec">
+      <div class="on-sec-title">Στοιχεία</div>
+      ${_onDF('Πελάτης', client ? escapeHtml(client) : _ON_NA, !client)}
+      ${_onDF('Κατάσταση', f['Status'] ? (_ON_STATUS[f['Status']] || escapeHtml(f['Status'])) : _ON_NA, !f['Status'])}
+      ${_onDF('Εμπόρευμα', f['Goods'] ? escapeHtml(f['Goods']) : _ON_NA, !f['Goods'])}
+      ${_onDF('Παλέτες', f['Pallets'] != null ? escapeHtml(String(f['Pallets'])) : _ON_NA, f['Pallets'] == null)}
+      ${_onDF('Θερμοκρασία', f['Temperature °C'] != null ? escapeHtml(String(f['Temperature °C'])) + ' °C' : _ON_NA, f['Temperature °C'] == null)}
+      ${can('costs')!=='none' ? _onDF('Τιμή', f['Price'] != null ? Number(f['Price']).toLocaleString('el-GR') + ' €' : _ON_NA, f['Price'] == null) : ''}
+      ${_onDF('Τιμολογήθηκε', f['Invoiced'] ? 'Ναι' : 'Όχι')}
+    </div>
+    <div class="on-sec sunken">
+      <div class="on-sec-title">Διαδρομή</div>
+      ${routeHtml}
+    </div>
+    <div class="on-sec">
+      <div class="on-sec-title">Ανάθεση</div>
+      <div class="on-row">
+        <span class="${hasTrip ? 'on-dot ok' : 'on-dot warn'}"></span>
+        <span class="on-row-main">${hasTrip ? 'Ανατεθειμένο σε δρομολόγιο' : 'Χωρίς δρομολόγιο'}</span>
       </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Order</div>
-        ${_dF('Client',      escapeHtml(_fhClientsMap[cId]||cId||'—'))}
-        ${_dF('Direction',   escapeHtml(f['Direction']||'—'))}
-        ${_dF('Type',        escapeHtml(f['Type']||'—'))}
-        ${_dF('Goods',       escapeHtml(f['Goods']||'—'))}
-        ${_dF('Pallets',     escapeHtml(f['Pallets']||'—'))}
-        ${_dF('Temperature', f['Temperature °C']!=null?escapeHtml(f['Temperature °C'])+' °C':'—')}
+      <div class="on-row"><button type="button" class="on-link" onclick="navigate('weekly_natl')">άνοιγμα στο Weekly National →</button></div>
+    </div>
+    ${f['Notes'] ? `<div class="on-sec">
+      <div class="on-sec-title">Σημειώσεις</div>
+      <div class="on-notes">${escapeHtml(f['Notes'])}</div>
+    </div>` : ''}
+    ${canEdit ? `<div class="on-sec">
+      <div class="on-sec-title">Ενέργειες</div>
+      <div class="on-acts">
+        <button type="button" class="on-act" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>
+        ${f['Status']!=='Cancelled' && f['Status']!=='Delivered' && f['Status']!=='Invoiced'
+          ? `<button type="button" class="on-act" title="Σήμανση ως ακυρωμένη — η εγγραφή μένει" onclick="cancelNatlOrder('${recId}')">Ακύρωση</button>` : ''}
+        <button type="button" class="on-act danger" title="Διαγραφή με cascade — αφαιρεί NL/GL/CL/Ramp/Παλέτες" onclick="deleteNatlOrder('${recId}')">Διαγραφή</button>
       </div>
-      <div class="detail-section">
-        <div class="detail-section-title">Route</div>
-        ${_dF('Pickup',    escapeHtml(_fhLocationsMap[pId]||pId||'—'))}
-        ${_dF('Load Date', f['Loading DateTime']  ? formatDate(f['Loading DateTime'])  : '—')}
-        ${_dF('Delivery',  escapeHtml(_fhLocationsMap[dId]||dId||'—'))}
-        ${_dF('Del Date',  f['Delivery DateTime'] ? formatDate(f['Delivery DateTime']) : '—')}
-      </div>
-      ${can('costs')!=='none'?`
-      <div class="detail-section">
-        <div class="detail-section-title">Financial</div>
-        ${_dF('Price', f['Price']?'€ '+Number(f['Price']).toLocaleString('el-GR'):'—')}
-      </div>`:''}
-      ${f['Notes']?`<div class="detail-section"><div class="detail-section-title">Notes</div>
-        <div style="font-size:12.5px;color:var(--text-mid);line-height:1.5">${escapeHtml(f['Notes'])}</div></div>`:''}
-    </div>`;
+    </div>` : ''}`;
 }
 
 /* ═══ Φ3β — GROUPAGE: μία καταχώρηση, πολλοί πελάτες (Γ1) ═════════════
@@ -546,11 +699,11 @@ function _natlMode(m) {
   if (simple) simple.style.display = m ? 'none' : '';
   if (grp)    grp.style.display    = m ? '' : 'none';
   const modal = document.getElementById('modal');
-  if (modal) modal.style.maxWidth = m ? '900px' : '680px';
+  if (modal) { modal.style.width = m ? '900px' : '680px'; modal.style.maxWidth = '96vw'; }
   const btn = document.getElementById('natlBtnSubmit');
   if (btn) {
     btn.setAttribute('onclick', m ? '_grpSubmit()' : "submitNatlOrder('')");
-    btn.textContent = m ? 'Καταχώρηση' : 'Submit';
+    btn.textContent = m ? 'Καταχώρηση' : 'Καταχώρηση';
   }
   if (m) { if (!_grpRows.length) _grpRows = [++_grpSeq]; _grpRender(); }
 }
@@ -570,7 +723,7 @@ let _simRows = [], _simSeq = 0;
 function _simRowHTML(uid, pre) {
   pre = pre || {};
   return `<div class="grp-row" id="simr_${uid}"
-      style="border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:var(--bg-card)">
     <div style="display:grid;grid-template-columns:minmax(0,3fr) 62px 150px minmax(0,1.2fr) 34px;gap:12px;align-items:end">
       <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('nsl'+uid, pre.loc||'')}</div>
       <div><label class="form-label">Παλέτες</label>
@@ -582,7 +735,7 @@ function _simRowHTML(uid, pre) {
       <div><label class="form-label">Σημείωση</label>
         <input class="form-input" id="simn${uid}" value="${escapeHtml(pre.note||'')}" placeholder="π.χ. παράδοση πρωί"></div>
       <button type="button" title="Αφαίρεση" onclick="_simDelRow(${uid})"
-        style="height:38px;border:1px solid var(--border-mid);background:#fff;border-radius:8px;cursor:pointer;font-size:16px;color:var(--text-dim)">×</button>
+        style="height:38px;border:1px solid var(--border-mid);background:var(--bg-card);border-radius:var(--radius);cursor:pointer;font-size:16px;color:var(--text-dim)">×</button>
     </div>
   </div>`;
 }
@@ -614,7 +767,7 @@ function _simRead() {
 
 function _grpRowHTML(uid) {
   return `<div class="grp-row" id="grpr_${uid}"
-      style="border:1px solid var(--border-mid);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:#fff">
+      style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px 14px;margin-bottom:10px;background:var(--bg-card)">
     <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:10px">
       <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+uid, '', '')}</div>
       <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη)</span></label>
@@ -687,10 +840,10 @@ function _grpPreview() {
   const box = document.getElementById('gf_preview'); if (!box) return;
   const g = _grpGroups();
   const tot = g.reduce((s,x)=>s+x.stops.reduce((a,y)=>a+(y.pallets||0),0),0);
-  const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:#B45309' : 'color:var(--text-mid)');
+  const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:var(--warning)' : 'color:var(--text-mid)');
   box.innerHTML = !g.length ? '' : `
-    <div style="border:1px dashed rgba(2,123,189,.35);background:var(--accent-light);border-radius:8px;padding:12px 14px">
-      <div style="font-size:11.5px;font-weight:700;color: var(--accent-text);margin-bottom:7px">
+    <div style="border:1px solid var(--silver-light);background:var(--surface-sunken);border-radius:var(--radius);padding:12px 14px">
+      <div style="font-size:11.5px;font-weight:700;color:var(--text);margin-bottom:7px">
         ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
       ${g.map(x=>`<div style="font-size:11.5px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}
       ${tot>33?'<div style="margin-top:7px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
@@ -737,6 +890,20 @@ async function _grpSubmit() {
 }
 
 // ─── Modal ──────────────────────────────────────
+// Resets the inline width this form puts on #modal the moment the overlay
+// closes — whichever way it closes (Άκυρο, ✕ in the header, overlay click).
+// Without this the next modal of ANY module would open 900px wide.
+let _onModalObs = null;
+function _onWatchModalClose() {
+  if (_onModalObs) return;
+  const overlay = document.getElementById('modalOverlay');
+  const modal = document.getElementById('modal');
+  if (!overlay || !modal) return;
+  _onModalObs = new MutationObserver(() => {
+    if (!overlay.classList.contains('open')) { modal.style.width = ''; modal.style.maxWidth = ''; }
+  });
+  _onModalObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+}
 function openNatlCreate() { _openNatlModal(null, {}); }
 function openNatlEdit(recId) {
   const rec = NATL_ORDERS.data.find(r=>r.id===recId);
@@ -757,41 +924,41 @@ async function _openNatlModal(recId, f) {
   const body = `
     <div class="form-grid">
       <div class="form-field">
-        <label class="form-label">Direction *</label>
-        <select class="form-select" id="nf_Direction"><option value="">— Select —</option>
+        <label class="form-label">Κατεύθυνση *</label>
+        <select class="form-select" id="nf_Direction"><option value="">— Επιλογή —</option>
           ${opt([['North→South','ΚΑΘΟΔΟΣ (Βορράς→Νότος)'],['South→North','ΑΝΟΔΟΣ (Νότος→Βορράς)']],'Direction')}</select>
       </div>
       <div class="form-field">
-        <label class="form-label">Type</label>
-        <select class="form-select" id="nf_Type"><option value="">— Select —</option>
+        <label class="form-label">Τύπος</label>
+        <select class="form-select" id="nf_Type"><option value="">— Επιλογή —</option>
           ${opt([['Independent','Ανεξάρτητη'],['Veroia Switch','Veroia Switch']],'Type')}</select>
       </div>
       <div class="form-field">
-        <label class="form-label">Client *</label>
+        <label class="form-label">Πελάτης *</label>
         ${_clientSelect('nclient', clientId, clientLabel)}
       </div>
       <div class="form-field">
-        <label class="form-label">Price (€)</label>
+        <label class="form-label">Τιμή (€)</label>
         <input class="form-input" type="number" id="nf_Price" value="${f['Price']||''}">
       </div>
       <div class="form-field">
-        <label class="form-label">Goods</label>
-        <input class="form-input" type="text" id="nf_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="e.g. Fresh Produce">
+        <label class="form-label">Εμπόρευμα</label>
+        <input class="form-input" type="text" id="nf_Goods" value="${escapeHtml(f['Goods']||'')}" placeholder="π.χ. Φρέσκα λαχανικά">
       </div>
       <div class="form-field">
-        <label class="form-label">Temperature °C</label>
+        <label class="form-label">Θερμοκρασία °C</label>
         <input class="form-input" type="number" id="nf_Temp" value="${f['Temperature °C']!=null?f['Temperature °C']:''}">
       </div>
       <div class="form-field" style="padding-top:24px">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="nf_PalletExch" ${f['Pallet Exchange']?'checked':''} style="width:15px;height:15px">
-          Pallet Exchange</label>
+          Ανταλλαγή παλετών (PE)</label>
       </div>
     </div>
     <input type="checkbox" id="nf_Groupage" ${f['National Groupage']?'checked':''} style="display:none">
     ${isEdit ? '' : `
     <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
-      <div class="detail-section-title">Order Type</div>
+      <div class="detail-section-title">Τύπος καταχώρησης</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
         <label class="nf-mode on" id="nf_m0" onclick="_natlMode(0)">
           <input type="radio" name="nfmode" checked>
@@ -813,11 +980,11 @@ async function _openNatlModal(recId, f) {
       <div class="detail-section-title" style="margin-bottom:12px">Φόρτωση</div>
       <div class="form-grid">
         <div class="form-field">
-          <label class="form-label">Pickup Location *</label>
+          <label class="form-label">Σημείο φόρτωσης *</label>
           ${_locSelect('npickup', pickupId)}
         </div>
         <div class="form-field">
-          <label class="form-label">Loading Date *</label>
+          <label class="form-label">Ημ. φόρτωσης *</label>
           <input class="form-input" type="date" id="nf_LoadDate"
             value="${f['Loading DateTime']?toLocalDate(f['Loading DateTime']):''}">
         </div>
@@ -829,18 +996,20 @@ async function _openNatlModal(recId, f) {
     </div>
 
     <div style="margin-top:16px">
-      <label class="form-label">Notes</label>
+      <label class="form-label">Σημειώσεις</label>
       <textarea class="form-textarea" id="nf_Notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>
     </div>`;
 
   const footer = `
-    <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+    <button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
     <button class="btn btn-success" id="natlBtnSubmit" onclick="submitNatlOrder('${recId||''}')">
-      ${isEdit?'Save Changes':'Submit'}
+      ${isEdit?'Αποθήκευση':'Καταχώρηση'}
     </button>`;
 
-  document.getElementById('modal').style.maxWidth = '680px';
-  openModal(isEdit ? 'Edit National Order' : 'New National Order', body, footer);
+  const modalEl = document.getElementById('modal');
+  modalEl.style.width = '680px'; modalEl.style.maxWidth = '96vw';
+  _onWatchModalClose();
+  openModal(isEdit ? 'Επεξεργασία εθνικής παραγγελίας' : 'Νέα εθνική παραγγελία', body, footer);
   if (!isEdit) { _grpRows = []; _natlMode(0); }
 
   // Προσυμπλήρωση των σημείων παράδοσης από τις 10 θέσεις του schema.
@@ -864,7 +1033,7 @@ async function _openNatlModal(recId, f) {
 // ─── Submit ─────────────────────────────────────
 async function submitNatlOrder(recId) {
   const btn = document.getElementById('natlBtnSubmit');
-  if(btn) { btn.textContent='Saving...'; btn.disabled=true; }
+  if(btn) { btn.textContent='Αποθήκευση…'; btn.disabled=true; }
 
   try {
     const fields = {};
@@ -911,17 +1080,17 @@ async function submitNatlOrder(recId) {
 
     // Validation
     const _vErrors = [];
-    if(!fields['Direction'])          _vErrors.push('Direction is required');
-    if(!clientId)                     _vErrors.push('Client is required');
-    if(!pickupId)                     _vErrors.push('Pickup Location is required');
+    if(!fields['Direction'])          _vErrors.push('Η κατεύθυνση είναι υποχρεωτική');
+    if(!clientId)                     _vErrors.push('Ο πελάτης είναι υποχρεωτικός');
+    if(!pickupId)                     _vErrors.push('Το σημείο φόρτωσης είναι υποχρεωτικό');
     if(!delivId)                      _vErrors.push('Χρειάζεται τουλάχιστον ένα σημείο παράδοσης');
-    if(!fields['Loading DateTime'])   _vErrors.push('Loading Date is required');
+    if(!fields['Loading DateTime'])   _vErrors.push('Η ημερομηνία φόρτωσης είναι υποχρεωτική');
     if(!fields['Delivery DateTime'])  _vErrors.push('Χρειάζεται ημερομηνία σε ένα τουλάχιστον σημείο');
 
     // Date cross-validation
     if (fields['Loading DateTime'] && fields['Delivery DateTime']) {
       if (new Date(fields['Delivery DateTime']) < new Date(fields['Loading DateTime'])) {
-        _vErrors.push('Delivery date cannot be before loading date');
+        _vErrors.push('Η ημερομηνία παράδοσης δεν μπορεί να προηγείται της φόρτωσης');
       }
     }
     // Crash-test fix: reject negative pallet counts (previously silently saved)
@@ -958,7 +1127,7 @@ async function submitNatlOrder(recId) {
             { title: 'Πιθανό duplicate', confirmLabel: 'Αποθήκευση ως νέα' }
           );
           if (!ok) {
-            if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+            if (btn) { btn.textContent = 'Καταχώρηση'; btn.disabled = false; }
             throw new Error('v');
           }
         }
@@ -991,7 +1160,7 @@ async function submitNatlOrder(recId) {
         // mid-entry.
         if (didFail(dups)) {
           if (!(await confirmAction('Ο έλεγχος για διπλότυπα δεν μπόρεσε να εκτελεστεί. Συνέχεια χωρίς έλεγχο;', { confirmLabel: 'Συνέχεια' }))) {
-            if (btn) { btn.textContent = 'Submit'; btn.disabled = false; }
+            if (btn) { btn.textContent = 'Καταχώρηση'; btn.disabled = false; }
             throw new Error('v');
           }
         } else if (dups.length) {
@@ -1114,14 +1283,14 @@ async function submitNatlOrder(recId) {
     invalidateCache(TABLES.NAT_ORDERS);
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
-    toast(recId ? 'Order updated ✓' : 'Order created ✓');
+    toast(recId ? 'Η παραγγελία ενημερώθηκε' : 'Η παραγγελία καταχωρήθηκε');
     await renderOrdersNatl();
 
   } catch(e) {
     // 'v' is the validation sentinel thrown after a blocking validation message;
     // that path already told the user, so skip to avoid double-reporting.
     if(e.message!=='v') reportError('Σφάλμα αποθήκευσης παραγγελίας', e);
-    if(btn) { btn.textContent=recId?'Save Changes':'Submit'; btn.disabled=false; }
+    if(btn) { btn.textContent=recId?'Αποθήκευση':'Καταχώρηση'; btn.disabled=false; }
   }
 }
 
@@ -1140,7 +1309,13 @@ async function toggleNatlInvoiced(recId, current) {
     }
     _applyNatlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
-  } catch(e) { reportError('Σφάλμα ενημέρωσης τιμολόγησης', e); }
+  } catch(e) {
+    // The ⚠ stays in the cell until the next successful repaint: a toast
+    // disappears in seconds, the unsaved tick would then look saved (spec §2).
+    const cell = document.getElementById('ninv_' + recId);
+    if (cell) { cell.innerHTML = '<span class="on-inv-fail" title="Η εγγραφή απέτυχε — δεν αποθηκεύτηκε">⚠</span>'; }
+    reportError('Σφάλμα ενημέρωσης τιμολόγησης', e);
+  }
 }
 
 // ═══════════════════════════════════════════════
@@ -1582,12 +1757,11 @@ function openNatlScan() {
       ondragover="event.preventDefault();document.getElementById('natlScanDrop').style.borderColor='var(--accent)'"
       ondragleave="document.getElementById('natlScanDrop').style.borderColor='var(--border-dark)'"
       ondrop="_natlScanDrop(event)">
-      <div style="font-size:30px;margin-bottom:8px;opacity:0.35">📎</div>
-      <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Drag & drop ή κλικ για upload</div>
+      <div style="font-size:13px;font-weight:500;color:var(--text-mid)">Σύρε το αρχείο εδώ ή κάνε κλικ για επιλογή</div>
       <div style="font-size:12px;color:var(--text-dim);margin-top:4px">JPG · PNG · PDF — max 10MB</div>
       <button type="button" class="btn btn-ghost btn-sm" style="margin-top:12px"
         onclick="event.stopPropagation();document.getElementById('natlScanCamera').click()">
-        📷 &nbsp;Λήψη με κάμερα
+        ${(typeof icon === 'function') ? icon('camera', 14) : ''} Λήψη με κάμερα
       </button>
     </div>
     <input type="file" id="natlScanFile" accept="image/*,application/pdf" style="display:none"
@@ -1599,7 +1773,7 @@ function openNatlScan() {
 
   `<button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
    <button class="btn btn-success" id="btnNatlScanGo" onclick="_natlScanExtract()" disabled>
-     🤖 &nbsp;Extract & Fill Form
+     Εξαγωγή & συμπλήρωση φόρμας
    </button>`);
 }
 
@@ -1621,8 +1795,7 @@ async function _natlScanHandleFile(file) {
 
   const drop = document.getElementById('natlScanDrop');
   if (drop) drop.innerHTML = `
-    <div style="font-size:24px;margin-bottom:6px">✅</div>
-    <div style="font-size:13px;font-weight:500;color:var(--success)">${escapeHtml(file.name)}</div>
+    <div style="font-size:13px;font-weight:500;color:var(--success)">✓ ${escapeHtml(file.name)}</div>
     <div style="font-size:12px;color:var(--text-dim);margin-top:3px">${(file.size/1024).toFixed(0)} KB — κλικ για αλλαγή</div>`;
 
   const st = document.getElementById('natlScanStatus');
@@ -1637,9 +1810,9 @@ async function _natlScanHandleFile(file) {
       const dataUrl = await scanRenderPDFPreview(file);
       st.innerHTML = dataUrl
         ? `<div class="scan-preview-doc"><img src="${dataUrl}" alt="PDF page 1"></div>`
-        : `<div class="scan-preview-info">📄 PDF · ${escapeHtml(file.name)}</div>`;
+        : `<div class="scan-preview-info">PDF · ${escapeHtml(file.name)}</div>`;
     }
-  } catch(e) { st.innerHTML = `<div class="scan-preview-info">📄 ${escapeHtml(file.name)}</div>`; }
+  } catch(e) { st.innerHTML = `<div class="scan-preview-info">${escapeHtml(file.name)}</div>`; }
 }
 
 async function _natlScanExtract() {
@@ -1765,8 +1938,8 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
     parsed._docType = 'DELIVERY_NOTE';
     await _natlScanPreview(parsed);
   } catch (e) {
-    setStatus('❌ ', e.message || 'Extraction failed', 'error');
-    if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
+    setStatus('× ', e.message || 'Η εξαγωγή απέτυχε', 'error');
+    if (btn) { btn.disabled = false; btn.innerHTML = 'Εξαγωγή & συμπλήρωση φόρμας'; }
     if (typeof logError === 'function') logError(e, 'natl_scan_extract');
   }
 }
@@ -1774,7 +1947,7 @@ Set client_id and location_id fields when tools return a confident match (>0.85)
 async function _natlScanPreview(data) {
   const st = document.getElementById('natlScanStatus');
   const btn = document.getElementById('btnNatlScanGo');
-  if (btn) { btn.disabled = false; btn.innerHTML = '🤖 &nbsp;Extract & Fill Form'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = 'Εξαγωγή & συμπλήρωση φόρμας'; }
 
   // Match client — prefer AI-supplied client_id (from tool use), then fuzzy fallback
   let clientId = '', clientLabel = '';
@@ -1866,7 +2039,7 @@ async function _natlScanPreview(data) {
       ${row('Pallets',   data.pallets!=null?String(data.pallets):'', fc.pallets)}
       ${row('Goods',     escapeHtml(data.goods||''), null)}
       ${row('Temp',      data.temperature_c!=null?data.temperature_c+' °C':'', null)}
-      ${data.notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">ℹ ${escapeHtml(data.notes)}</div>` : ''}
+      ${data.notes ? `<div style="margin-top:8px;font-size:11px;color:var(--text-dim);font-style:italic">${escapeHtml(data.notes)}</div>` : ''}
     </div>
     <div style="font-size:11px;color:var(--text-dim);text-align:center;padding-top:4px">
       ✓ matched · ~ partial · ⚠ low confidence
@@ -1875,8 +2048,8 @@ async function _natlScanPreview(data) {
   window._natlScanResult = { data, matched: { clientId, clientLabel, pickups, deliveries } };
   document.getElementById('modalFooter').innerHTML = `
     <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-    <button class="btn btn-ghost" onclick="openNatlScan()">↩ Rescan</button>
-    <button class="btn btn-success" onclick="_natlScanOpenForm()">Open Form →</button>`;
+    <button class="btn btn-ghost" onclick="openNatlScan()">← Νέα σάρωση</button>
+    <button class="btn btn-success" onclick="_natlScanOpenForm()">Άνοιγμα φόρμας →</button>`;
 
   // Duplicate detection — fire-and-forget. Insert warning if Reference matches existing.
   if (data.reference && typeof findDuplicateOrders === 'function') {
@@ -1888,14 +2061,14 @@ async function _natlScanPreview(data) {
         const name = f['Name'] || d.id.slice(-6);
         return `<li style="margin:4px 0">
           <a href="#" onclick="event.preventDefault();closeModal();renderOrdersNatl().then(()=>setTimeout(()=>selectNatlOrder('${d.id}'),300))"
-             style="color:#92400E;text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
-          <span style="color:#78350F;font-size:11px"> · ${loadDate||'no date'}</span>
+             style="color:var(--warning);text-decoration:underline;font-weight:600">${escapeHtml(String(name))}</a>
+          <span style="color:var(--warning);font-size:11px"> · ${loadDate||'χωρίς ημερομηνία'}</span>
         </li>`;
       }).join('');
       st.insertAdjacentHTML('afterbegin', `
-        <div style="background:var(--warning-soft);border:1px solid #FBBF24;padding:10px 14px;border-radius:8px;margin-bottom:10px">
-          <div style="font-weight:700;color:#92400E;font-size:13px">⚠ Πιθανό duplicate</div>
-          <div style="font-size:12px;color:#78350F;margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
+        <div style="background:var(--warning-soft);border:1px solid var(--row-empty-border);padding:10px 14px;border-radius:var(--radius);margin-bottom:10px">
+          <div style="font-weight:700;color:var(--warning);font-size:13px">⚠ Πιθανό διπλότυπο</div>
+          <div style="font-size:12px;color:var(--warning);margin-top:4px">Βρέθηκε ήδη παραγγελία με Reference <strong>${escapeHtml(String(data.reference))}</strong>:</div>
           <ul style="margin:6px 0 0 18px;padding:0;font-size:12px">${dupListHtml}</ul>
         </div>`);
     });
@@ -1984,62 +2157,61 @@ function _natlPrint() {
   const recs = NATL_ORDERS.filtered || [];
   if (!recs.length) { toast('No records to print', 'error'); return; }
   const today = localToday();
+  const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const printVars = ['--navy-mid','--text','--text-mid','--text-dim','--silver-light','--surface-sunken',
+    '--badge-pe-bg','--badge-pe-text','--badge-ok-bg','--badge-ok-text','--warning-soft','--warning','--text-inverse']
+    .map(n => `${n}:${tok(n)}`).join(';');
   const rowsHTML = recs.map(r => {
     const f = r.fields;
     const cId = (f['Client']||[])[0]; const pId = (f['Pickup Location 1']||[])[0];
     const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0];
     const direction = f['Direction']||'';
-    const dirCls = direction.includes('North→South') ? 'dir-imp' : 'dir-exp';
-    const trip = ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending';
-    const stCls = trip === 'Assigned' ? 'st-ok' : 'st-pending';
+    const trip = _onHasTrip(f) ? 'Ανατεθειμένο' : 'Εκκρεμεί';
     return `<tr>
       <td>${escapeHtml(f['Name']||'')}</td>
-      <td><span class="dir ${dirCls}">${direction}</span></td>
+      <td><span class="dir">${_ON_DIR[direction] || escapeHtml(direction)}</span></td>
       <td>${escapeHtml(cId?(_fhClientsMap[cId]||''):'')}</td>
       <td>${escapeHtml(pId?(_fhLocationsMap[pId]||''):'')}</td>
       <td>${escapeHtml(dId?(_fhLocationsMap[dId]||''):'')}</td>
       <td>${(f['Loading DateTime']||'').substring(0,10)}</td>
       <td>${(f['Delivery DateTime']||'').substring(0,10)}</td>
-      <td class="r">${f['Pallets']||0}</td>
+      <td class="r">${f['Pallets'] != null ? f['Pallets'] : '—'}</td>
       <td>${escapeHtml(f['Type']||'')}</td>
-      <td><span class="st ${stCls}">${trip}</span></td>
-      <td class="r">${f['Price'] ? '€'+Number(f['Price']).toLocaleString() : '—'}</td>
+      <td><span class="st">${trip}</span></td>
+      <td class="r">${f['Price'] != null ? Number(f['Price']).toLocaleString('el-GR')+' €' : '—'}</td>
     </tr>`;
   }).join('');
   const html = `<!DOCTYPE html><html><head>
-    <title>National Orders — ${today}</title>
+    <title>Εθνικές Παραγγελίες — ${today}</title>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+      :root{${printVars}}
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:'DM Sans',sans-serif;color:#0F172A;padding:20px;font-size:11px}
+      body{font-family:'DM Sans',sans-serif;color:var(--text);padding:20px;font-size:11px}
       h1{font-family:'Syne',sans-serif;font-size:22px;color:var(--navy-mid);margin-bottom:4px}
-      .sub{color:#64748B;font-size:11px;margin-bottom:18px}
-      table{width:100%;border-collapse:collapse;font-size:10px}
-      thead th{background:var(--navy-mid);color:#fff;padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
-      tbody td{padding:6px;border-bottom:1px solid #E2E8F0}
+      .sub{color:var(--text-dim);font-size:11px;margin-bottom:18px}
+      table{width:100%;border-collapse:collapse;font-size:10px;font-variant-numeric:tabular-nums}
+      thead th{background:var(--navy-mid);color:var(--text-inverse);padding:8px 6px;text-align:left;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.4px}
+      tbody td{padding:6px;border-bottom:1px solid var(--silver-light)}
       .r{text-align:right}
-      .dir{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:700;white-space:nowrap}
-      .dir-exp{background:#DBEAFE;color:#1E40AF}
-      .dir-imp{background:var(--warning-soft);color:#92400E}
-      .st{padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600}
-      .st-ok{background:#D1FAE5;color:#064E3B}
-      .st-pending{background:#F1F5F9;color:#475569}
-      .footer{margin-top:14px;font-size:9px;color:#64748B;display:flex;justify-content:space-between}
+      .dir{font-size:10px;white-space:nowrap;color:var(--text-mid)}
+      .st{font-size:10px;color:var(--text-mid)}
+      .footer{margin-top:14px;font-size:9px;color:var(--text-dim);display:flex;justify-content:space-between}
       @media print { body { padding: 0 } @page { size: A4 landscape; margin: 1cm } }
     </style>
   </head><body>
-    <h1>National Orders</h1>
-    <div class="sub">${recs.length} orders · ${today} · Petras Group TMS</div>
+    <h1>Εθνικές Παραγγελίες</h1>
+    <div class="sub">${recs.length} παραγγελίες · ${today} · Petras Group TMS</div>
     <table>
       <thead><tr>
-        <th>Name</th><th>Direction</th><th>Client</th><th>Pickup</th><th>Delivery</th>
-        <th>Load Date</th><th>Del Date</th><th class="r">Pallets</th><th>Type</th>
-        <th>Trip</th><th class="r">Price</th>
+        <th>Όνομα</th><th>Κατεύθ.</th><th>Πελάτης</th><th>Παραλαβή</th><th>Παράδοση</th>
+        <th>Ημ. φόρτωσης</th><th>Ημ. παράδοσης</th><th class="r">Παλ.</th><th>Τύπος</th>
+        <th>Δρομολόγιο</th><th class="r">Τιμή</th>
       </tr></thead>
       <tbody>${rowsHTML}</tbody>
     </table>
     <div class="footer">
-      <span>Printed ${new Date().toLocaleString('el-GR')}</span>
+      <span>Εκτύπωση ${new Date().toLocaleString('el-GR')}</span>
       <span>Petras Group · Cold Chain Logistics</span>
     </div>
     <script>window.addEventListener('load',()=>setTimeout(()=>window.print(),300));<\/script>
