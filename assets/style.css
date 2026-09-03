@@ -1308,12 +1308,27 @@ tbody tr:hover { background: var(--bg-hover); }
 
 .modal-body { padding: 24px; }
 
+/* Δ2 (3/9/2026): το «Αποθήκευση» έβγαινε ΕΚΤΟΣ ορατής περιοχής. Ο scroller
+   είναι το ΙΔΙΟ το .modal (overflow-y:auto, max-height:90vh) και το υποσέλιδο
+   είναι απλό τελευταίο παιδί του — άρα κυλούσε μαζί με το σώμα. Μετρημένο στη
+   φόρμα διεθνών: scrollHeight 1031 vs clientHeight 970 (1920), 808 (1440),
+   689 (1366)· και στα τρία το κουμπί έπεφτε κάτω από το λευκό κουτί, ΧΩΡΙΣ
+   τίποτα να το δείχνει. Το sticky το καρφώνει στο κάτω άκρο του ορατού modal.
+   ΓΙΑΤΙ sticky και όχι flex-column με scroller το .modal-body: το flex θα
+   πρόσθετε ΔΕΥΤΕΡΟ overflow context, που κόβει τις αναδυόμενες λίστες
+   αυτόματης συμπλήρωσης (πελάτης/τοποθεσία) 60px ψηλότερα από σήμερα.
+   Το background πρέπει να είναι αδιαφανές — αλλιώς το περιεχόμενο περνά από
+   κάτω και διαβάζεται μέσα από το υποσέλιδο. */
 .modal-footer {
   display: flex;
   gap: 10px;
   justify-content: flex-end;
   padding: 16px 24px;
   border-top: 1px solid var(--border);
+  position: sticky;
+  bottom: 0;
+  z-index: var(--z-sticky);
+  background: var(--bg-card);
 }
 
 /* Form fields */
@@ -1378,10 +1393,25 @@ tbody tr:hover { background: var(--bg-hover); }
    MASTER DATA — ENTITY PAGES
 ═══════════════════════════════════════════════ */
 
+/* Δ1 (3/9/2026) — --fab-clear: ΜΙΑ τιμή για το ύψος που κρατά ελεύθερο το
+   πλωτό κουμπί συνομιλίας (.aic-btn, core/ai-chat.js:203): 24px απόσταση από
+   το κάτω άκρο + 52px το ίδιο το κουμπί + 12px αναπνοή. Μετρημένο 3/9 στο rig:
+   το κάτω άκρο του .entity-layout ήταν 44px πάνω από το viewport ενώ το FAB
+   φτάνει τα 76px — άρα τα τελευταία 32px κάθε λίστας ήταν ΚΑΤΩ από το κουμπί.
+   Θύματα (1920 και 1440): δύο κουμπιά διαγραφής + το βελάκι «επόμενη σελίδα»
+   στις Τοποθεσίες, κουμπιά επεξεργασίας σε Πελάτες/Οδηγούς/Φορτηγά. Μη
+   αναστρέψιμη πράξη κάτω από άλλο κουμπί.
+   ΓΙΑΤΙ ύψος και όχι padding μέσα στον scroller: το padding ανεβάζει μόνο την
+   τελευταία ΓΡΑΜΜΗ· η μπάρα σελιδοποίησης των Τοποθεσιών κάθεται έξω από τον
+   scroller, στο κάτω άκρο του panel, και θα έμενε καλυμμένη για πάντα.
+   Κόστος: ~44px, μία γραμμή πίνακα.
+   Το 32px είναι το top padding του .content — ό,τι αλλάξει εκεί, αλλάζει εδώ. */
+:root { --fab-clear: 88px; }
+
 .entity-layout {
   display: flex;
   gap: 0;
-  height: calc(100vh - var(--header-h) - 80px);
+  height: calc(100vh - var(--header-h) - 32px - var(--fab-clear));
   overflow: hidden;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -1445,9 +1475,34 @@ tbody tr:hover { background: var(--bg-hover); }
 .entity-table-wrap {
   flex: 1;
   overflow-y: auto;
+  /* Δ3 (3/9/2026): ρητό, όχι υπονοούμενο. Το overflow-x υπολογιζόταν ήδη σε
+     `auto` (κανόνας CSS: αν ο ένας άξονας δεν είναι visible, ο άλλος γίνεται
+     auto), αλλά κανείς δεν το είχε γράψει — και ένα μελλοντικό
+     `overflow: hidden` εδώ θα έκοβε στήλες ΟΡΙΣΤΙΚΑ, χωρίς κανένα ίχνος. */
+  overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: #CBD5E0 transparent;
 }
+/* Δ3 — η μπάρα πρέπει να ΦΑΙΝΕΤΑΙ, αλλιώς η απώλεια στηλών είναι σιωπηλή.
+   Μετρημένο 3/9 στο rig (Πελάτες, 1440×900, ανοιχτή καρτέλα): ο πίνακας θέλει
+   1411px, το πλαίσιο δίνει 658px, 6 από τις 7 στήλες (Χώρα, Πόλη, Επαφή,
+   Τηλέφωνο, Κατάσταση, ενέργειες) βγαίνουν έξω. Το `scrollLeft` έφτανε ως το
+   753 — δηλαδή ο πίνακας ΚΥΛΟΥΣΕ ήδη — αλλά τα overlay scrollbars του macOS
+   δεν δείχνουν τίποτα μέχρι να κυλήσεις: μετρημένο offsetHeight−clientHeight
+   = 0, καμία μπάρα, καμία ένδειξη. Ο ορισμός ::-webkit-scrollbar αναγκάζει τον
+   Chromium σε κλασική μπάρα που πιάνει χώρο, άρα φαίνεται μόνη της.
+   Το κόστος είναι 10px πλάτους: ο πίνακας είναι width:100% και ακολουθεί.
+   Απορρίφθηκε η εναλλακτική «grid ώστε η καρτέλα να στενεύει τον πίνακα»:
+   η καρτέλα ΗΔΗ τον στενεύει (flex αδέλφια, μετρημένο listW 1138→658) — το
+   πρόβλημα δεν ήταν η επικάλυψη, ήταν η αόρατη υπερχείλιση. */
+.entity-table-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+.entity-table-wrap::-webkit-scrollbar-track { background: transparent; }
+.entity-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-dark);
+  border-radius: var(--radius-full);
+}
+.entity-table-wrap::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+.entity-table-wrap::-webkit-scrollbar-corner { background: transparent; }
 
 .entity-table-wrap table { width: 100%; border-collapse: collapse; }
 
@@ -1495,9 +1550,13 @@ tbody tr:hover { background: var(--bg-hover); }
    (≥20 γραμμές ορατές σε 1080p) δεν αντέχει — spec 2026-08-29 §3. */
 .entity-layout.entity-v2 {
   /* Χωρίς page-header από πάνω: μόνο το top padding του .content (32px) και
-     44px αναπνοή κάτω — ίδιο κάτω άκρο με τις παλιές οθόνες, ώστε το AI FAB
-     να μην κάθεται πάνω στην τελευταία γραμμή. */
-  height: calc(100vh - var(--header-h) - 76px);
+     αναπνοή κάτω — ίδιο κάτω άκρο με τις παλιές οθόνες, ώστε το AI FAB
+     να μην κάθεται πάνω στην τελευταία γραμμή.
+     Δ1 (3/9/2026): τα 44px που έλεγε το σχόλιο ΔΕΝ έφταναν — το FAB πιάνει 76px
+     (24 offset + 52 ύψος) και μετρήθηκαν κουμπιά επεξεργασίας από κάτω σε
+     Πελάτες/Οδηγούς/Φορτηγά, στα 1920 ΚΑΙ στα 1440. Ίδιος τύπος με τον γονέα
+     πλέον — ΕΝΑ νούμερο (--fab-clear), όχι δύο που αποκλίνουν. */
+  height: calc(100vh - var(--header-h) - 32px - var(--fab-clear));
 }
 .ev2-bar {
   display: flex;

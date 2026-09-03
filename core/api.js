@@ -243,7 +243,30 @@ async function _atRetry(fn, retries = 3) {
         localStorage.removeItem('tms_user');
         localStorage.removeItem('tms_jwt');
         window.location.href = 'index.html';
-        throw new Error('Unauthorized');
+        // _noRetry: δεν υπάρχει διαδρομή ανανέωσης token — η session μόλις
+        // σβήστηκε και ο browser φεύγει για το index.html. Χωρίς τη σημαία, ο
+        // throw έπεφτε στο κοινό catch παρακάτω, που ξαναδοκίμαζε δύο φορές
+        // (1s+2s) με το ίδιο ληγμένο token, ενώ η σελίδα ήδη έφευγε.
+        const _e401 = new Error('Unauthorized');
+        _e401._noRetry = true;
+        throw _e401;
+      }
+      // 403 = ο RBAC του Worker είπε όχι. Η ίδια αίτηση παίρνει την ίδια
+      // απάντηση κάθε φορά, άρα η επανάληψη δεν σώζει τίποτα: μετρημένο 3/9 —
+      // ένα κλικ παρήγαγε 3 αιτήματα με αναμονή 1s+2s, δηλαδή ~3 δευτερόλεπτα
+      // πριν ο χρήστης δει το σφάλμα και τριπλό φορτίο στον Worker σε κάθε
+      // άρνηση. Ξεχωριστό από το 400/422 από πάνω: εκείνο μεταφράζει λάθη
+      // εγκυρότητας του body· εδώ το body είναι μια χαρά, το δικαίωμα λείπει.
+      // Το ωμό κείμενο του Worker («Forbidden») πάει στο log, όχι στην οθόνη.
+      if (res.status === 403) {
+        const errData403 = await res.json().catch(() => ({}));
+        const raw403 = _atErrMsg(errData403.error, 'Forbidden');
+        const msg403 = 'Δεν έχετε δικαίωμα για αυτή την ενέργεια';
+        if (typeof logError === 'function') logError(new Error(`${msg403} — ${raw403}`), '_atRetry 403');
+        if (typeof showErrorToast === 'function') showErrorToast(msg403, 'error');
+        const _e403 = new Error(msg403);
+        _e403._noRetry = true;
+        throw _e403;
       }
       if (res.status === 429) {
         if (typeof showErrorToast === 'function') {
