@@ -1480,8 +1480,12 @@ tbody tr:hover { background: var(--bg-hover); }
      auto), αλλά κανείς δεν το είχε γράψει — και ένα μελλοντικό
      `overflow: hidden` εδώ θα έκοβε στήλες ΟΡΙΣΤΙΚΑ, χωρίς κανένα ίχνος. */
   overflow-x: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #CBD5E0 transparent;
+  /* ΧΩΡΙΣ scrollbar-width/scrollbar-color εδώ: ο Chromium, όταν δει τις
+     τυποποιημένες ιδιότητες, ΑΓΝΟΕΙ τα ::-webkit-scrollbar παρακάτω και
+     κρατά τα overlay scrollbars του macOS — δηλαδή αόρατα. Μετρήθηκε 3/9:
+     με `scrollbar-width: thin` το offsetHeight−clientHeight έμενε 0 ακόμη και
+     με τον πίνακα στα 1411px μέσα σε 658px. Η εμφάνιση δεν χάνεται· την
+     ορίζουν τα ::-webkit-scrollbar-thumb/track από κάτω, με tokens. */
 }
 /* Δ3 — η μπάρα πρέπει να ΦΑΙΝΕΤΑΙ, αλλιώς η απώλεια στηλών είναι σιωπηλή.
    Μετρημένο 3/9 στο rig (Πελάτες, 1440×900, ανοιχτή καρτέλα): ο πίνακας θέλει
