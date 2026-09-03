@@ -48,6 +48,9 @@ async function renderOrdersNatl() {
     NATL_ORDERS.filtered = records;
     NATL_ORDERS.selectedId = null;
     Object.keys(_natlFilters).forEach(k => delete _natlFilters[k]);
+    // Δ3: a stale ⚠ from a previous visit would claim a write failed in THIS
+    // list. The map is module-level, so it survives navigation unless wiped.
+    Object.keys(_onInvErr).forEach(k => delete _onInvErr[k]);
     _onPage = 1;
 
     // Pre-resolve all client names — batch fetches in parallel (not N+1)
@@ -87,7 +90,11 @@ const _onHasTrip = f => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.len
 const _ON_CSS = `
 <style>
 .on-v2 .entity-table-wrap thead th{background:var(--surface-sunken);font:700 10px/1.3 'DM Sans',sans-serif;letter-spacing:.5px;text-transform:uppercase;color:var(--text-mid);padding:8px var(--space-2);border-bottom:1px solid var(--silver-light)}
-.on-v2 .entity-table-wrap tbody td{height:${_ON_ROW_H}px;padding:0 var(--space-2);font-size:var(--text-sm);line-height:1.25;color:var(--text);border-bottom:1px solid var(--border-row);white-space:normal;overflow:visible;text-overflow:clip;max-width:none;vertical-align:middle}
+/* overflow:hidden, not visible: with table-layout:fixed (Δ1) a long value would
+   otherwise print straight across the next column instead of stopping at its
+   own. Every clipped cell carries the full text in its title (Δ5). */
+.on-v2 .entity-table-wrap thead th{overflow:hidden}
+.on-v2 .entity-table-wrap tbody td{height:${_ON_ROW_H}px;padding:0 var(--space-2);font-size:var(--text-sm);line-height:1.25;color:var(--text);border-bottom:1px solid var(--border-row);white-space:normal;overflow:hidden;text-overflow:ellipsis;max-width:none;vertical-align:middle}
 /* Hover without transition: an eight-hour work table must not "swim" (spec §2). */
 .on-v2 .entity-table-wrap tbody tr{transition:none}
 .on-v2 .entity-table-wrap tbody tr:nth-child(even) td{background:var(--bg-row-alt)}
@@ -96,24 +103,43 @@ const _ON_CSS = `
 .on-v2 #onVScroll{scrollbar-width:thin;scrollbar-color:var(--silver-light) transparent}
 .on-v2 .entity-table-wrap tbody td.on-num,.on-v2 .entity-table-wrap tbody td.on-dir,.on-v2 .entity-table-wrap tbody td.on-trip{white-space:nowrap}
 .on-num{font-variant-numeric:tabular-nums}
-.on-name{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;font-weight:700;color:var(--text)}
+/* The reference text must be its OWN element to get «…»: an anonymous flex item
+   (a bare text node) cannot take text-overflow, it just clips mid-letter. */
+.on-name{display:flex;align-items:center;gap:4px;min-width:0;font-weight:700;color:var(--text)}
+.on-name>.on-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.on-name>.on-tag{flex:none}
+.on-name-miss>.on-ref{color:var(--text-dim);font-weight:400}
 .on-tag{display:inline-block;font:700 8px/1 'DM Sans',sans-serif;letter-spacing:.3px;padding:2px 4px;border-radius:3px}
 .on-tag-vs{background:var(--navy-mid);color:var(--text-inverse)}
 .on-tag-grp{background:var(--bg-hover);color:var(--navy-mid)}
 .on-dir{color:var(--text-mid);white-space:nowrap}
 .on-cell2{display:flex;flex-direction:column;min-width:0}
-.on-cell2>span{line-height:1.15}
-.on-cell2 small{font-size:10px;color:var(--text-dim);line-height:1.1}
+/* Each half stays on ONE line. Not cosmetic: the cell used to be free to wrap
+   because the column was 676px wide by accident (Δ1). Bounded to 161px a long
+   client name wrapped to four lines and pushed the row past ${_ON_ROW_H}px —
+   which is the exact height the virtual scroller's spacers assume, so the list
+   would scroll to the wrong rows. «…» + the full text in the title (Δ5). */
+.on-cell2>span{line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.on-cell2 small{font-size:10px;color:var(--text-dim);line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Form: the chosen mode card keeps a border, not a fill (spec §6). */
 #modal .nf-mode.on{background:var(--bg-card);box-shadow:none}
 .on-dot{display:inline-block;width:6px;height:6px;border-radius:var(--radius-full);margin-right:6px;vertical-align:middle}
 .on-dot.ok{background:var(--success)}
 .on-dot.warn{background:var(--warning)}
 .on-trip{color:var(--text-mid);font-size:var(--text-xs);white-space:nowrap}
+/* 2px, not var(--space-2): the error ring below is ~32px wide and the column is
+   44px — the default padding clipped its right edge (measured 3/9). */
+.on-v2 .entity-table-wrap tbody td.on-inv{padding:0 2px}
 .on-inv{cursor:pointer;text-align:center}
 .on-inv-box{display:inline-block;width:14px;height:14px;border:1.5px solid var(--border-dark);border-radius:var(--radius-sm);background:var(--bg-card);vertical-align:middle}
 .on-inv-on{font-weight:700;color:var(--text-mid)}
-.on-inv-fail{font-weight:700;color:var(--warning)}
+/* Δ3: the ring carries the alarm so the ✓/box inside can keep carrying the
+   state. Red outline + ⚠ side by side — never one instead of the other. */
+.on-inv-ring{display:inline-flex;align-items:center;gap:2px;padding:0 2px;border:1px solid var(--danger-strong);border-radius:var(--radius-sm)}
+.on-inv-fail{font-weight:700;font-size:10px;line-height:1;color:var(--danger-strong)}
+/* Δ4: the symbols must be readable without hovering for a tooltip. */
+.on-legend{padding:6px 16px;color:var(--text-dim);font-size:var(--text-xs);border-bottom:1px solid var(--border)}
+.on-legend b{font-weight:700;color:var(--text-mid)}
 /* Detail card: 480px, shadow to the left, closed = width 0 AND display:none
    (the 482px lesson of 29/8 — a closed panel that keeps width cuts columns). */
 .on-v2 .entity-detail-panel{width:480px;background:var(--bg-card);position:relative;z-index:1;box-shadow:var(--shadow-panel);border-left:1px solid var(--border);overflow-y:auto}
@@ -150,6 +176,11 @@ const _ON_CSS = `
 .on-empty{padding:48px;text-align:center;color:var(--text-dim);font-size:var(--text-sm)}
 .on-foot{padding:8px 16px;color:var(--text-dim);font-size:var(--text-sm);text-align:center;font-variant-numeric:tabular-nums}
 </style>`;
+
+// Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
+// only to someone who already suspected something. One line under the table
+// spells them out — cheaper than a tooltip nobody hovers.
+const _ON_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>⚠</b> η τιμολόγηση ΔΕΝ γράφτηκε — δοκίμασε ξανά';
 
 // Esc closes the card (spec §1). One listener, installed once, checks that the
 // card is on screen so it does nothing on other pages.
@@ -231,17 +262,20 @@ function _renderNatlLayout(c) {
 }
 
 // ─── Sort helpers ────────────────────────────────
+// `w` (px) feeds the shared <colgroup> that BOTH tables carry — see
+// _renderNatlTable. Widths sum to 1129, the same budget orders_intl.js uses, so
+// table-layout:fixed scales them proportionally at any list width.
 const _natlColDefs = [
-  { key: 'name',     label: 'ΟΝΟΜΑ',      type: 'text',   get: (f) => f['Name']||'' },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   get: (f) => f['Direction']||'' },
-  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
-  { key: 'pickup',   label: 'ΠΑΡΑΛΑΒΗ',    type: 'text',   get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
-  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',  type: 'text',   get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
-  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   get: (f) => f['Loading DateTime']||'' },
-  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   get: (f) => f['Delivery DateTime']||'' },
-  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', get: (f) => f['Pallets']||0 },
-  { key: 'trip',     label: 'ΔΡΟΜΟΛΟΓΙΟ',      type: 'text',   get: (f) => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending' },
-  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   get: (f) => f['Invoiced']?'1':'0' },
+  { key: 'name',     label: 'ΑΝΑΦΟΡΑ',    type: 'text',   w: 120, get: (f) => f['Reference']||'' },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',       type: 'text',   w: 96,  get: (f) => f['Direction']||'' },
+  { key: 'client',   label: 'ΠΕΛΑΤΗΣ',    type: 'text',   w: 160, get: (f) => { const id=(f['Client']||[])[0]; return id?(_fhClientsMap[id]||''):''; } },
+  { key: 'pickup',   label: 'ΠΑΡΑΛΑΒΗ',    type: 'text',   w: 180, get: (f) => { const id=(f['Pickup Location 1']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
+  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',  type: 'text',   w: 180, get: (f) => { const id=(f['Delivery Location 1']||f['Delivery Location']||[])[0]; return id?(_fhLocationsMap[id]||''):''; } },
+  { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ', type: 'date',   w: 78,  get: (f) => f['Loading DateTime']||'' },
+  { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: 82,  get: (f) => f['Delivery DateTime']||'' },
+  { key: 'pal',      label: 'ΠΑΛ.',       type: 'number', w: 44,  get: (f) => f['Pallets']||0 },
+  { key: 'trip',     label: 'ΔΡΟΜΟΛΟΓΙΟ',      type: 'text',   w: 145, get: (f) => ((f['Linked Trip']?.length||0)+(f['NATIONAL TRIPS']?.length||0)+(f['NATIONAL TRIPS 2']?.length||0))>0?'Assigned':'Pending' },
+  { key: 'inv',      label: 'ΤΙΜ.',       type: 'text',   w: 44,  get: (f) => f['Invoiced']?'1':'0' },
 ];
 
 function _natlSortToggle(key) {
@@ -272,18 +306,36 @@ function _natlSortRecords(recs) {
 // Two-line cell (DESIGN.md ΜΕΡΟΣ Ζ.1): the location label is "Name, City,
 // Country" — the name stays on line one, the qualifier drops to line two in
 // 10px. Solves the cut without widening the column; nothing is ever clipped.
+// Δ5 (3/9): the column is now width-bound (Δ1), so a long label WILL run out
+// of room. It gets «…» and the full text in `title` — a visible cut with a way
+// to read the rest, never a silent one mid-word.
 function _onCell2(label) {
   if (!label || label === '—') return '<span class="dim">—</span>';
+  const t = escapeHtml(label);
   const i = label.indexOf(', ');
-  if (i < 0) return `<span class="on-cell2"><span>${escapeHtml(label)}</span></span>`;
-  return `<span class="on-cell2"><span>${escapeHtml(label.slice(0, i))}</span><small>${escapeHtml(label.slice(i + 2))}</small></span>`;
+  if (i < 0) return `<span class="on-cell2" title="${t}"><span>${t}</span></span>`;
+  return `<span class="on-cell2" title="${t}"><span>${escapeHtml(label.slice(0, i))}</span><small>${escapeHtml(label.slice(i + 2))}</small></span>`;
 }
 
 // ΤΙΜ. cell: an empty 14px box says "click me" (the old "·" did not), the tick
 // says done. A failed write keeps ⚠ IN the cell — never only a toast (0/89
 // "invoiced" wrote nothing for ten days while the toast said success).
-function _onInvCell(f) {
-  return f['Invoiced'] ? '<span class="on-inv-on">✓</span>' : '<span class="on-inv-box"></span>';
+//
+// Δ3 (3/9): the ⚠ is ADDED to the state, never PUT IN ITS PLACE. The accountant
+// is refused on every click (403 on `orders`), so a substituting ⚠ wiped the ✓
+// off every invoiced order after one morning of retries — the column stopped
+// answering the only question it exists to answer. The error also lives in a
+// module map, not in the DOM: the virtual scroller rewrites tbody.innerHTML on
+// the first scroll and the old in-place patch vanished with it.
+const _onInvErr = {};   // recId → error text; cleared by a write that succeeds
+function _onInvCell(r) {
+  const err = _onInvErr[r.id];
+  const state = r.fields['Invoiced']
+    ? '<span class="on-inv-on">✓</span>'
+    : '<span class="on-inv-box"></span>';
+  return err
+    ? `<span class="on-inv-ring" title="${escapeHtml(err)}">${state}<span class="on-inv-fail">⚠</span></span>`
+    : state;
 }
 
 function _onRowHtml(r) {
@@ -307,8 +359,19 @@ function _onRowHtml(r) {
   // Unknown is not zero (rule #3): a missing count is "—"; a written 0 is "0".
   const pal = f['Pallets'] != null ? f['Pallets'] : '—';
 
+  // Δ2 (3/9): the first column printed `r.id.slice(-6)` — six characters of an
+  // internal row id («7qDsiu») read by the team as an order number. `Name` is
+  // not a NATIONAL ORDERS field at all (worker TABLES map: Reference is, Name
+  // is not), so that fallback was permanent, never a fallback. Now it prints
+  // the Reference, and «—» when none was entered — the same answer the card of
+  // the same record already gives.
+  const ref = String(f['Reference'] || '').trim();
+  const refCell = ref
+    ? `<span class="on-name" title="${escapeHtml(ref)}"><span class="on-ref">${escapeHtml(ref)}</span>${vsB}${grpB}</span>`
+    : `<span class="on-name on-name-miss" title="Δεν έχει καταχωρηθεί αναφορά"><span class="on-ref">—</span>${vsB}${grpB}</span>`;
+
   return `<tr onclick="selectNatlOrder('${r.id}')" id="nrow_${r.id}" class="${sel}" style="height:${_ON_ROW_H}px">
-    <td><span class="on-name">${escapeHtml(f['Name']||r.id.slice(-6))}${vsB}${grpB}</span></td>
+    <td>${refCell}</td>
     <td class="on-dir">${dirT}</td>
     <td>${_onCell2(client)}</td>
     <td>${_onCell2(pickup)}</td>
@@ -318,7 +381,7 @@ function _onRowHtml(r) {
     <td class="on-num">${pal}</td>
     <td class="on-trip">${tripT}</td>
     <td class="on-inv" id="ninv_${r.id}" onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
-      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(f)}</td>
+      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(r)}</td>
   </tr>`;
 }
 
@@ -372,14 +435,27 @@ function _renderNatlTable(records) {
     return `<th style="cursor:pointer;user-select:none" onclick="_natlSortToggle('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
 
+  // Δ1 (3/9): head and body are two SEPARATE <table>s (the virtual scroller
+  // needs the head to stay put while the body is repainted). Two auto-layout
+  // tables size themselves independently — one to its titles, one to its data —
+  // so every column drifted: ΠΑΡΑΛΑΒΗ +430px, ΗΜ. ΦΟΡΤΩΣΗΣ +566px measured at
+  // 1920. The user read «ΠΑΛ.» and saw a date. The fix is the orders_intl one:
+  // the SAME <colgroup> in both tables + table-layout:fixed, which makes the
+  // declared widths — not the content — decide.
+  const colgroup = `<colgroup>${_natlColDefs.map(c => `<col style="width:${c.w}px">`).join('')}</colgroup>`;
+
   const totalH = sortedRecs.length * _ON_ROW_H;
+  // The legend goes ABOVE the table, not under it: the scroller is
+  // «calc(100vh - 280px)», so at 1440×900 — the team's screen — anything after
+  // it falls below the fold and is never seen. Measured 3/9.
   wrap.innerHTML = `
+    <div class="on-legend">${_ON_LEGEND}</div>
     <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto">
-      <table>
+      <table style="table-layout:fixed;width:100%">${colgroup}
         <thead><tr>${ths}</tr></thead>
       </table>
       <div id="onTopSpacer" style="height:0"></div>
-      <table><tbody></tbody></table>
+      <table style="table-layout:fixed;width:100%">${colgroup}<tbody></tbody></table>
       <div id="onBottomSpacer" style="height:${totalH}px"></div>
     </div>
     <div class="on-foot">${sortedRecs.length} ${sortedRecs.length===1?'παραγγελία':'παραγγελίες'}</div>`;
@@ -403,7 +479,9 @@ function _applyNatlFilters() {
       const cId = Array.isArray(f['Client']) ? f['Client'][0] : '';
       const pId = (f['Pickup Location 1']||[])[0]||'';
       const dId = (f['Delivery Location 1']||f['Delivery Location']||[])[0]||'';
-      return String(f['Name']||'').toLowerCase().includes(q)
+      // Δ2: 'Name' is not a NATIONAL ORDERS field — searching it matched
+      // nothing, ever. The list shows Reference, so search must too.
+      return String(f['Reference']||'').toLowerCase().includes(q)
         || (_fhClientsMap[cId]||'').toLowerCase().includes(q)
         || (_fhLocationsMap[pId]||'').toLowerCase().includes(q)
         || (_fhLocationsMap[dId]||'').toLowerCase().includes(q)
@@ -1300,6 +1378,7 @@ async function toggleNatlInvoiced(recId, current) {
   try {
     const res = await atSafePatch(TABLES.NAT_ORDERS, recId, { 'Invoiced': newVal });
     if (res?.conflict) { toast('Record modified by another user — refresh','warn'); return; }
+    delete _onInvErr[recId];
     const rec = NATL_ORDERS.data.find(r => r.id === recId);
     if(rec) rec.fields['Invoiced'] = newVal;
     // Central sync
@@ -1310,11 +1389,13 @@ async function toggleNatlInvoiced(recId, current) {
     _applyNatlFilters();
     toast(newVal ? 'Marked as Invoiced' : 'Invoice removed');
   } catch(e) {
-    // The ⚠ stays in the cell until the next successful repaint: a toast
-    // disappears in seconds, the unsaved tick would then look saved (spec §2).
-    const cell = document.getElementById('ninv_' + recId);
-    if (cell) { cell.innerHTML = '<span class="on-inv-fail" title="Η εγγραφή απέτυχε — δεν αποθηκεύτηκε">⚠</span>'; }
-    reportError('Σφάλμα ενημέρωσης τιμολόγησης', e);
+    // Δ3: the failure goes in the MAP, not straight into the cell. The old
+    // in-place innerHTML patch was erased by the virtual scroller's first
+    // tbody repaint, and it replaced the ✓ instead of joining it. Cleared only
+    // by a write that succeeds.
+    _onInvErr[recId] = 'Δεν γράφτηκε: ' + (e && e.message ? e.message : 'σφάλμα');
+    _applyNatlFilters();
+    reportError('Η τιμολόγηση ΔΕΝ γράφτηκε — η ένδειξη ⚠ μένει στη γραμμή', e);
   }
 }
 

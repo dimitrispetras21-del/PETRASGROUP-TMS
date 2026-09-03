@@ -74,6 +74,10 @@ const _OI_STATUS = {
   'Invoiced':   { gr: 'Τιμολογήθηκε', dot: 'invoiced' },
   'Cancelled':  { gr: 'Ακυρώθηκε',    dot: 'cancelled' },
 };
+// Δ4 (3/9): the badges and the ⚠ only explained themselves in a `title`, i.e.
+// only to someone who already suspected something. One line under the table
+// spells them out — cheaper than a tooltip nobody hovers.
+const _OI_LEGEND = '<b>VS</b> Veroia Switch · <b>GRP</b> ομαδοποίηση · <b>PE</b> ανταλλαγή παλετών · <b>HR</b> υψηλό ρίσκο · <b>⚠</b> η τιμολόγηση ΔΕΝ γράφτηκε — δοκίμασε ξανά';
 const _OI_DIR    = { Export: '↑ Εξαγωγή', Import: '↓ Εισαγωγή' };
 const _OI_DIR_W  = { Export: 'Εξαγωγή',   Import: 'Εισαγωγή' };
 const _OI_REEFER = { 'Continuous': 'Συνεχής', 'Start-Stop': 'Start-Stop', 'No temp': 'Χωρίς ψύξη' };
@@ -128,7 +132,11 @@ function _oiAssignCell(f) {
     const pr = (typeof getRefPartners === 'function' ? getRefPartners() : []).find(x => x.id === pid);
     const name = pr?.fields?.['Company Name'] || 'Συνεργάτης';
     const sub = [f['Partner Truck Plates'] || '', 'συνεργάτης'].filter(Boolean).join(' · ');
-    return `<span class="oi-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="oi-sub">${escapeHtml(sub)}</span>`;
+    // Δ5 (3/9): the sub-line is the PLATES. It is nowrap+hidden in a 106px
+    // column, so it is routinely cut — and the redesign dropped the title the
+    // old cell had, leaving no way at all to read a plate. Both halves back:
+    // «…» so the cut is visible, title so the value is still reachable.
+    return `<span class="oi-name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="oi-sub" title="${escapeHtml(sub)}">${escapeHtml(sub)}</span>`;
   }
   const tid = (f['Truck'] || [])[0], did = (f['Driver'] || [])[0];
   if (!tid && !did) return '<span class="oi-miss">—</span>';
@@ -136,7 +144,7 @@ function _oiAssignCell(f) {
   const d = did ? (typeof getRefDrivers === 'function' ? getRefDrivers() : []).find(x => x.id === did) : null;
   const plate = t?.fields?.['License Plate'] || '';
   const driver = (d?.fields?.['Full Name'] || '').trim();
-  return `<span class="oi-name">${escapeHtml(plate || driver || '—')}</span>`
+  return `<span class="oi-name" title="${escapeHtml([plate, driver].filter(Boolean).join(' · ') || '—')}">${escapeHtml(plate || driver || '—')}</span>`
        + (plate && driver ? `<span class="oi-sub" title="${escapeHtml(driver)}">${escapeHtml(driver)}</span>` : '');
 }
 // Signals sit next to the order number — no separate flags column (spec §6).
@@ -147,14 +155,25 @@ function _oiFlags(f) {
   if (f['Veroia Switch'])     out.push('<span class="oi-flag oi-flag-vs" title="Veroia Switch">VS</span>');
   if (f['National Groupage']) out.push('<span class="oi-flag" title="National Groupage">GRP</span>');
   if (f['Pallet Exchange'])   out.push('<span class="oi-flag" title="Ανταλλαγή παλετών">PE</span>');
-  if (f['High Risk Flag'])    out.push('<span class="oi-flag oi-flag-hr" title="Υψηλό ρίσκο">⚠</span>');
+  // Δ4 (3/9): this was a ⚠, pixel-identical to the ⚠ of a FAILED invoicing
+  // write two columns to the right — the same mark meaning "this load is risky"
+  // and "the database refused your click". «HR» joins the VS/GRP/PE family and
+  // is spelled out in the legend under the table; ⚠ is now the alarm only.
+  if (f['High Risk Flag'])    out.push('<span class="oi-flag oi-flag-hr" title="Υψηλό ρίσκο">HR</span>');
   return out.join('');
 }
+// Δ3 (3/9): the ⚠ is ADDED to the state, never PUT IN ITS PLACE. The accountant
+// is refused on every click (403 on `orders`), so the substituting ⚠ wiped the
+// ✓ off every invoiced order after one morning of retries — the column stopped
+// answering the only question it exists to answer. Ring + ⚠ = "the last write
+// failed"; the box inside still says whether the order IS invoiced.
 function _oiInvCell(r) {
   const on = !!r.fields['Invoiced'], err = _oiInvErr[r.id];
-  const inner = err ? `<span class="oi-inv-err" title="${escapeHtml(err)}">⚠</span>`
-              : on  ? '<span class="oi-chk on" title="Τιμολογήθηκε — κλικ για αναίρεση">✓</span>'
-                    : '<span class="oi-chk" title="Σήμανση ως τιμολογημένη"></span>';
+  const box = on ? '<span class="oi-chk on" title="Τιμολογήθηκε — κλικ για αναίρεση">✓</span>'
+                 : '<span class="oi-chk" title="Σήμανση ως τιμολογημένη"></span>';
+  const inner = err
+    ? `<span class="oi-inv-ring" title="${escapeHtml(err)}">${box}<span class="oi-inv-err">⚠</span></span>`
+    : box;
   return `<td class="oi-inv" onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${on})">${inner}</td>`;
 }
 function _oiPeriodLabel() {
@@ -176,9 +195,18 @@ function _oiCss() { return `
 .oi-layout .entity-table-wrap tbody tr:hover td{background:var(--surface-sunken)}
 .oi-layout .entity-table-wrap tbody tr.selected td{background:var(--accent-light)}
 .oi-layout td strong{font-weight:700}
-.oi-name{display:block;max-height:26px;overflow:hidden;overflow-wrap:anywhere}
-.oi-name:only-child{max-height:39px}
-.oi-sub{display:block;font-size:var(--text-2xs);line-height:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden}
+/* Δ5: ONE line. A two-reference order («02162511, 102162512») wrapped to two
+   lines and pushed the VS/GRP/PE badges onto a third, which the 40px row cut
+   off — losing an operational signal silently to save half a reference. The
+   «…» + title lose nothing silently. */
+.oi-ref{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Δ5: line-clamp instead of a bare max-height. Same two/three lines as before,
+   but the cut now ENDS IN «…» instead of shearing a word in half with nothing
+   to show for it. Every .oi-name is rendered with a title carrying the full
+   value, so the rest is one hover away. */
+.oi-name{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;max-height:26px;overflow:hidden;overflow-wrap:anywhere}
+.oi-name:only-child{-webkit-line-clamp:3;line-clamp:3;max-height:39px}
+.oi-sub{display:block;font-size:var(--text-2xs);line-height:12px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .oi-dim{color:var(--text-mid);font-size:var(--text-xs)}
 .oi-num{font-variant-numeric:tabular-nums}
 .oi-med{font-weight:500}
@@ -195,10 +223,17 @@ function _oiCss() { return `
 .oi-dot-invoiced{background:var(--text-dim)}
 .oi-dot-cancelled{background:var(--danger-strong)}
 .oi-st{color:var(--text-mid);font-size:var(--text-xs)}
+/* 2px, not 8px: the error ring below is ~32px wide and the column is 40px. */
+.oi-layout .entity-table-wrap tbody td.oi-inv{padding:0 2px}
 .oi-inv{cursor:pointer;text-align:center}
 .oi-chk{display:inline-block;width:14px;height:14px;border:1.5px solid var(--border-dark);border-radius:4px;background:var(--bg-card);vertical-align:middle;line-height:11px;font-size:11px;font-weight:700;color:var(--text-mid)}
 .oi-chk.on{border-color:var(--text-mid)}
-.oi-inv-err{color:var(--danger-strong);font-weight:700;font-size:13px}
+/* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
+.oi-inv-ring{display:inline-flex;align-items:center;gap:2px;padding:0 2px;border:1px solid var(--danger-strong);border-radius:4px}
+.oi-inv-err{color:var(--danger-strong);font-weight:700;font-size:10px;line-height:1}
+/* Δ4: the marks must be readable without hunting for a tooltip. */
+.oi-legend{padding:6px 16px;color:var(--text-dim);font-size:var(--text-xs);border-bottom:1px solid var(--border)}
+.oi-legend b{font-weight:700;color:var(--text-mid)}
 .oi-layout .entity-detail-panel{width:480px;flex-shrink:0;display:flex;flex-direction:column;background:var(--bg-card);border-left:1px solid var(--silver-light);position:relative;z-index:var(--z-raised);box-shadow:var(--shadow-panel);transition:none;overflow-y:auto;overflow-x:hidden}
 .oi-layout .entity-detail-panel.hidden{display:none;width:0;border-left:none;box-shadow:none}
 .oi-layout .entity-detail-panel:not(.hidden){animation:oi-slide var(--duration-fast) var(--ease-out)}
@@ -239,6 +274,10 @@ function _oiCss() { return `
 .oi-bal{display:inline-block;padding:5px 10px;border-radius:var(--radius);font-size:11.5px;font-weight:500;border:1px solid var(--border-mid)}
 .oi-bal-bad{background:var(--danger-bg);border-color:var(--danger-strong);color:var(--danger-strong)}
 .oi-bal-warn{background:var(--warning-soft);border-color:var(--warning-soft);color:var(--warning)}
+/* Δ6: NOT scoped to .oi-layout — these live in the modal, which is a sibling
+   of #content, not a descendant of the list layout. */
+.oi-req-msg{color:var(--danger-strong);font-size:11px;line-height:1.3;margin-top:4px}
+.oi-req-bad{border-color:var(--danger-strong)}
 `; }
 
 // ─── Main ───────────────────────────────────────
@@ -264,6 +303,10 @@ async function renderOrdersIntl() {
     INTL_ORDERS.filtered = records;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
+    // Δ3 (3/9): _oiInvErr is module-level, so a ⚠ from an earlier visit
+    // survived navigation and claimed a write had failed in THIS list. It must
+    // describe the session on screen, not every session since page load.
+    Object.keys(_oiInvErr).forEach(k => delete _oiInvErr[k]);
     _oiPage = 1;
     // Apply dashboard nav filter if coming from KPI click
     if (window._dashNav) {
@@ -411,7 +454,7 @@ function _oiAssign(f){
 // wider than 1138 pushes the last column out of view (the 29/8 lesson).
 // table-layout:fixed scales them up proportionally when the card is closed.
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'ΑΡ. ΠΑΡ.',       type: 'text',   w: 104, get: (f) => f['Order Number']||'' },
+  { key: 'orderNo',  label: 'ΑΝΑΦΟΡΑ',       type: 'text',   w: 104, get: (f) => f['Reference']||'' },
   { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 84,  get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'ΠΕΛΑΤΗΣ',        type: 'text',   w: 130, get: (f) => _clientName(f) },
@@ -457,11 +500,21 @@ function _intlSortRecords(recs) {
 function _oiRowHtml(r) {
   const f = r.fields;
   const sel = r.id === INTL_ORDERS.selectedId ? ' selected' : '';
-  const orderNo = escapeHtml((f['Order Number']||r.id.slice(-6)).replace(/["']+/g,''));
+  // Δ2 (3/9): this column printed `r.id.slice(-6)` — six characters of an
+  // internal row id («a2SNCr») that the team read as an order number. It was
+  // not a fallback but the permanent value: 'Order Number' is a derived field
+  // the Worker deliberately does not expose (worker/src/index.js, ORDERS map),
+  // so f['Order Number'] is undefined on every record. Now: the Reference the
+  // form actually writes, and «—» when it was never entered — the same answer
+  // the card of the same record already gives («— δεν έχει καταχωρηθεί»).
+  const ref = String(f['Reference'] || '').replace(/["']+/g, '').trim();
+  const refCell = ref
+    ? `<strong class="oi-ref" title="${escapeHtml(ref)}">${escapeHtml(ref)}</strong>`
+    : '<span class="oi-miss" title="Δεν έχει καταχωρηθεί αναφορά">—</span>';
   const pal = _stopsTotalPallets(r.id) || f['Total Pallets'];
   const client = _clientName(f);
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}" style="height:${_OI_ROW_H}px">
-    <td><strong>${orderNo}</strong>${_oiFlags(f)}</td>
+    <td>${refCell}${_oiFlags(f)}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>
@@ -572,7 +625,11 @@ function _renderIntlTable(records) {
       <span style="font-weight:600">Φίλτρα:</span> ${activeF.join(' · ')}
       <button type="button" onclick="_intlClearFilters()" style="margin-left:auto;background:none;border:1px solid var(--border-mid);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text-mid);cursor:pointer">Καθαρισμός</button>
     </div>` : '';
+  // The legend goes ABOVE the table, not under it: the scroller is
+  // «calc(100vh - 280px)», so at 1440×900 — the team's screen — anything after
+  // it falls below the fold and is never seen. Measured 3/9.
   wrap.innerHTML = `${filterStrip}`+`
+    <div class="oi-legend">${_OI_LEGEND}</div>
     <div id="oiVScroll" style="height:calc(100vh - 280px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border-dark) transparent">
       <table style="table-layout:fixed;width:100%">${colgroup}
         <thead><tr>${ths}</tr></thead>
@@ -613,7 +670,9 @@ function _applyIntlFilters() {
     recs = recs.filter(r => {
       const f = r.fields;
       return _clientName(f).toLowerCase().includes(q)
-        || String(f['Order Number']||'').toLowerCase().includes(q)
+        // Δ2: 'Order Number' is derived and never reaches the browser — this
+        // clause could never match. Reference is what the list now shows.
+        || String(f['Reference']||'').toLowerCase().includes(q)
         || _cleanSummary(f['Loading Summary']).toLowerCase().includes(q)
         || _cleanSummary(f['Delivery Summary']).toLowerCase().includes(q)
         || (f['Goods']||'').toLowerCase().includes(q);
@@ -794,6 +853,52 @@ function _stopRow(type, i, locId, palVal, dtVal) {
 }
 
 // ─── Modal ──────────────────────────────────────
+// ─── Δ6 (3/9) · the starred fields that nothing enforced ────────────────────
+// The form marks Τιμή, Θερμοκρασία, Λειτουργία ψυκτικού and Τύπο παλέτας with
+// «*», but _vErrors only ever checked six OTHER fields — so the star was
+// decoration. Measured: 15 of 110 orders carry no price at all.
+//
+// This does NOT hard-block. Two reasons, both operational: a price is often
+// genuinely unknown at entry time (that is WHY 15 rows are empty), and a form
+// that refuses to save at 06:00 stops the day's work — the same argument that
+// keeps DELETE narrow and everything else wide (owner 23/8). So: first save
+// paints the gaps in red, next to the field, and refuses once; pressing
+// «Αποθήκευση» again saves exactly what the old code would have saved. Nothing
+// about the request body changes. Turning this into a hard block is a one-line
+// change and an owner decision, not ours.
+const _OI_REQ_SOFT = [
+  { id: 'f_Price',      label: 'Τιμή (€)' },
+  // «Χωρίς ψύξη» is a legitimate answer that leaves the temperature empty on
+  // purpose — demanding a number there would invent data.
+  { id: 'f_Temp',       label: 'Θερμοκρασία °C', skip: () => document.getElementById('f_ReeferMode')?.value === 'No temp' },
+  { id: 'f_ReeferMode', label: 'Λειτουργία ψυκτικού' },
+  { id: 'f_PalletType', label: 'Τύπος παλέτας' },
+];
+let _oiReqAck = '';   // the exact set of gaps the user has already been shown
+
+function _oiCheckSoftRequired() {
+  document.querySelectorAll('#modal .oi-req-msg').forEach(n => n.remove());
+  document.querySelectorAll('#modal .oi-req-bad').forEach(n => n.classList.remove('oi-req-bad'));
+  const missing = [];
+  for (const r of _OI_REQ_SOFT) {
+    const el = document.getElementById(r.id);
+    if (!el || (r.skip && r.skip())) continue;
+    if (String(el.value == null ? '' : el.value).trim() !== '') continue;
+    missing.push(r.label);
+    el.classList.add('oi-req-bad');
+    const msg = document.createElement('div');
+    msg.className = 'oi-req-msg';
+    msg.textContent = 'Υποχρεωτικό — δεν συμπληρώθηκε';
+    el.insertAdjacentElement('afterend', msg);
+  }
+  const key = missing.join('|');
+  if (!missing.length) { _oiReqAck = ''; return null; }
+  if (_oiReqAck === key) return null;   // already shown, already re-submitted
+  _oiReqAck = key;
+  document.querySelector('#modal .oi-req-bad')?.scrollIntoView({ block: 'center' });
+  return missing;
+}
+
 function openIntlCreate() { _openModal(null, {}); }
 function openIntlEdit(recId) {
   const rec = INTL_ORDERS.data.find(r=>r.id===recId);
@@ -968,6 +1073,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
 
   document.getElementById('modal').style.maxWidth = '760px';
   _oiEnsureStyles();  // the form opens from the Weekly too, before this page has rendered
+  _oiReqAck = '';     // Δ6: each opened form earns its own acknowledgement
   openModal(isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
   _oiBalanceUpdate();
 }
@@ -1682,6 +1788,16 @@ async function submitIntlOrder(recId) {
 
     if (_vErrors.length) {
       showErrorToast(_vErrors.join(' | '), 'warn', 8000);
+      throw new Error('validation');
+    }
+
+    // Δ6: the starred-but-unenforced fields. Warns once, in place; a second
+    // press of the same button saves. Nothing here touches `fields`.
+    const _softMissing = _oiCheckSoftRequired();
+    if (_softMissing) {
+      showErrorToast(
+        `Λείπουν υποχρεωτικά: ${_softMissing.join(', ')}. Πάτησε ξανά «Αποθήκευση» για να καταχωρηθεί χωρίς αυτά.`,
+        'warn', 9000);
       throw new Error('validation');
     }
 
