@@ -2,64 +2,82 @@
 // CORE — ROUTER & SIDEBAR
 // ═══════════════════════════════════════════════
 
+// Δ6 (3/9/2026): τα labels είναι ΕΛΛΗΝΙΚΑ και ταυτίζονται με τον τίτλο που
+// γράφει η ίδια η σελίδα — μέχρι σήμερα 41 από 43 ήταν αγγλικά πάνω από
+// ελληνικό περιεχόμενο, και μέσα στην ΙΔΙΑ ομάδα συνυπήρχαν «Επισκόπηση
+// Στόλου» με «Work Orders»/«Expiry Alerts»/«Service Records». Η ίδια οθόνη
+// λεγόταν τρεις φορές αλλιώς: μενού, breadcrumb, τίτλος.
+// ΠΗΓΗ κάθε ονόματος — ο τίτλος που ήδη ζωγραφίζει ο κώδικας:
+//   entity.js titleV2 (Πελάτες/Συνεργάτες/Οδηγοί/Φορτηγά/Ρυμούλκες/Συνεργεία),
+//   maintenance.js .mnt-title (Εντολές Εργασίας/Λήξεις Εγγράφων/Ιστορικό
+//   Service/Ιστορικό Φορτηγών/Ιστορικό Ρυμουλκών), locations.js .ev2-title
+//   (Τοποθεσίες), orders_*.js .page-title (Διεθνείς/Εθνικές Παραγγελίες),
+//   daily_ops.js (Ημερήσιο Πλάνο), daily_ramp (Πίνακας Ράμπας), invoicing.js
+//   (Τιμολόγηση), pallet_ledger.js (Ισοζύγιο Παλετών), performance.js (Η
+//   Απόδοσή μου), audit_trail.js (Ιστορικό Ενεργειών), metrics_audit.js
+//   (Έλεγχος Μετρήσεων), router.js showComingSoon (Μισθοδοσία Οδηγών,
+//   Ρυθμίσεις).
+// ΕΞΑΙΡΕΣΗ: «TRIP PnL» μένει ως έχει — είναι ο όρος του owner και ο τίτλος
+// που γράφει το modules/costs.js. Μετάφρασή του θα δημιουργούσε τέταρτο όνομα.
+// ΤΑ SECTIONS επίσης: το breadcrumb του navigate() συνθέτει «section / label».
 const NAV = [
-  { section: 'Planning', perm: 'planning', items: [
-    { id: 'dashboard',      label: 'Dashboard',           icon: 'layout_grid' },
-    { id: 'weekly_intl',    label: 'Weekly International',icon: 'globe' },
-    { id: 'weekly_natl',    label: 'Weekly National',     icon: 'home' },
+  { section: 'Σχεδιασμός', perm: 'planning', items: [
+    { id: 'dashboard',      label: 'Πίνακας Ελέγχου',     icon: 'layout_grid' },
+    { id: 'weekly_intl',    label: 'Εβδομαδιαίο Διεθνών', icon: 'globe' },
+    { id: 'weekly_natl',    label: 'Εβδομαδιαίο Εθνικών', icon: 'home' },
     // owner-only (owner 12/8): η σελίδα ξαναχτίζεται μετά τον καθαρισμό
     // δεδομένων και δεν τη δουλεύει κανείς άλλος στο μεταξύ. Το gate είναι
     // ΜΟΝΟ front end — το petras-assign iframe κρατά δικό του JWT, οπότε όποιος
     // ξέρει το URL το φτάνει απευθείας. Πραγματικό κλείδωμα θέλει RBAC στον Worker.
-    { id: 'weekly_pickups', label: 'National Pick Ups',   icon: 'package', role: 'owner' },
+    { id: 'weekly_pickups', label: 'Εθνικές Παραλαβές',   icon: 'package', role: 'owner' },
   ]},
-  { section: 'Daily Ops', perm: 'planning', items: [
-    { id: 'daily_ops',      label: 'Daily Ops Plan',      icon: 'list_checks' },
-    { id: 'daily_ramp',     label: 'Daily Ramp Board',    icon: 'activity' },
+  { section: 'Ημερήσια Λειτουργία', perm: 'planning', items: [
+    { id: 'daily_ops',      label: 'Ημερήσιο Πλάνο',      icon: 'list_checks' },
+    { id: 'daily_ramp',     label: 'Πίνακας Ράμπας',      icon: 'activity' },
   ]},
-  { section: 'Orders', perm: 'orders', items: [
-    { id: 'orders_intl', label: 'International Orders', icon: 'file_text' },
-    { id: 'orders_natl', label: 'National Orders',      icon: 'file_text' },
-    { id: 'locations',   label: 'Locations',            icon: 'map_pin' },
+  { section: 'Παραγγελίες', perm: 'orders', items: [
+    { id: 'orders_intl', label: 'Διεθνείς Παραγγελίες', icon: 'file_text' },
+    { id: 'orders_natl', label: 'Εθνικές Παραγγελίες',  icon: 'file_text' },
+    { id: 'locations',   label: 'Τοποθεσίες',           icon: 'map_pin' },
   ]},
-  { section: 'Clients & Partners', perm: 'clients', items: [
-    { id: 'clients',  label: 'Clients',  icon: 'building' },
-    { id: 'partners', label: 'Partners', icon: 'users' },
+  { section: 'Πελάτες & Συνεργάτες', perm: 'clients', items: [
+    { id: 'clients',  label: 'Πελάτες',    icon: 'building' },
+    { id: 'partners', label: 'Συνεργάτες', icon: 'users' },
   ]},
-  { section: 'Drivers', perm: 'drivers', items: [
-    { id: 'drivers', label: 'Drivers',        icon: 'user' },
-    { id: 'payroll', label: 'Driver Payroll', icon: 'coins', soon: true },
+  { section: 'Οδηγοί', perm: 'drivers', items: [
+    { id: 'drivers', label: 'Οδηγοί',             icon: 'user' },
+    { id: 'payroll', label: 'Μισθοδοσία Οδηγών',  icon: 'coins', soon: true },
   ]},
-  { section: 'Maintenance', perm: 'maintenance', items: [
+  { section: 'Συντήρηση', perm: 'maintenance', items: [
     { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
-    { id: 'maint_req',    label: 'Work Orders',     icon: 'list_checks' },
-    { id: 'maint_expiry', label: 'Expiry Alerts',   icon: 'alert_triangle' },
-    { id: 'maint_svc',    label: 'Service Records', icon: 'tool' },
+    { id: 'maint_req',    label: 'Εντολές Εργασίας',  icon: 'list_checks' },
+    { id: 'maint_expiry', label: 'Λήξεις Εγγράφων',   icon: 'alert_triangle' },
+    { id: 'maint_svc',    label: 'Ιστορικό Service',  icon: 'tool' },
   ]},
-  { section: 'Fleet', perm: 'maintenance', items: [
-    { id: 'trucks',         label: 'Trucks',           icon: 'truck' },
-    { id: 'trailers',       label: 'Trailers',         icon: 'truck' },
-    { id: 'workshops',      label: 'Workshops',        icon: 'tool' },
-    { id: 'maint_trucks',   label: 'Trucks History',   icon: 'clock' },
-    { id: 'maint_trailers', label: 'Trailers History', icon: 'clock' },
+  { section: 'Στόλος', perm: 'maintenance', items: [
+    { id: 'trucks',         label: 'Φορτηγά',            icon: 'truck' },
+    { id: 'trailers',       label: 'Ρυμούλκες',          icon: 'truck' },
+    { id: 'workshops',      label: 'Συνεργεία',          icon: 'tool' },
+    { id: 'maint_trucks',   label: 'Ιστορικό Φορτηγών',  icon: 'clock' },
+    { id: 'maint_trailers', label: 'Ιστορικό Ρυμουλκών', icon: 'clock' },
   ]},
-  { section: 'Finance', perm: 'orders', items: [
-    { id: 'invoicing',     label: 'Invoicing',     icon: 'file_check' },
-    { id: 'pallet_ledger', label: 'Pallet Ledger', icon: 'package' },
-    { id: 'costs',         label: 'TRIP PnL',      icon: 'coins', role: 'owner' },
+  { section: 'Οικονομικά', perm: 'orders', items: [
+    { id: 'invoicing',     label: 'Τιμολόγηση',       icon: 'file_check' },
+    { id: 'pallet_ledger', label: 'Ισοζύγιο Παλετών', icon: 'package' },
+    { id: 'costs',         label: 'TRIP PnL',         icon: 'coins', role: 'owner' },
   ]},
-  { section: 'Insights', perm: 'ceo_dashboard', items: [
-    { id: 'ceo_dashboard', label: 'CEO Dashboard',  icon: 'award' },
-    { id: 'performance',   label: 'My Performance', icon: 'trending_up' },
+  { section: 'Ανάλυση', perm: 'ceo_dashboard', items: [
+    { id: 'ceo_dashboard', label: 'Πίνακας Διοίκησης', icon: 'award' },
+    { id: 'performance',   label: 'Η Απόδοσή μου',     icon: 'trending_up' },
   ]},
-  { section: 'Admin', perm: 'settings', items: [
-    { id: 'settings',      label: 'Settings',      icon: 'settings' },
-    { id: 'metrics_audit', label: 'Metrics Audit', icon: 'bar_chart' },
-    { id: 'trash',         label: 'Trash',         icon: 'trash' },
-    { id: 'error_log',     label: 'Error Log',     icon: 'alert_triangle' },
+  { section: 'Διαχείριση', perm: 'settings', items: [
+    { id: 'settings',      label: 'Ρυθμίσεις',           icon: 'settings' },
+    { id: 'metrics_audit', label: 'Έλεγχος Μετρήσεων',   icon: 'bar_chart' },
+    { id: 'trash',         label: 'Κάδος',               icon: 'trash' },
+    { id: 'error_log',     label: 'Καταγραφή Σφαλμάτων', icon: 'alert_triangle' },
     // Distinct from Metrics Audit (data-consistency checks) and Error Log (JS
     // errors): this is who-changed-what, read from the server-side trail.
-    { id: 'audit_trail',   label: 'Audit Trail',   icon: 'clock' },
+    { id: 'audit_trail',   label: 'Ιστορικό Ενεργειών',  icon: 'clock' },
   ]},
 ];
 
