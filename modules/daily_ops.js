@@ -84,7 +84,14 @@ async function _opsLoad() {
   const ids=new Set(intl.map(r=>r.id));
   OPS.overdue=ov.filter(r=>!ids.has(r.id));
   const ovIds=new Set(OPS.overdue.map(r=>r.id));
-  OPS.overdueLoads=ovL.filter(r=>!ids.has(r.id)&&!ovIds.has(r.id));
+  // ΔΕΝ αφαιρούνται όσες είναι ήδη στη μέρα (3/9): ακριβώς αυτές είναι το
+  // ζητούμενο — φόρτωση 30/8 αδήλωτη ΚΑΙ παράδοση σήμερα. Με το παλιό
+  // `!ids.has(r.id)` η ζώνη έβγαινε μονίμως άδεια και η αντίφαση έμενε
+  // αόρατη (αρχή 1). Η ίδια παραγγελία φαίνεται και στη ζώνη και στην
+  // ενότητά της — όπως ήδη φαίνεται σε ΦΟΡΤΩΣΕΙΣ και ΠΑΡΑΔΟΣΕΙΣ όταν κάνει
+  // και τα δύο την ίδια μέρα: η οθόνη ομαδοποιεί κατά ΔΟΥΛΕΙΑ, όχι κατά
+  // εγγραφή. Το `!ovIds` μένει: μία εκκρεμότητα, μία ζώνη.
+  OPS.overdueLoads=ovL.filter(r=>!ovIds.has(r.id));
   OPS.loadedAt=new Date();
 
   // Κληρονομιά ανάθεσης ζεύγους (owner 13/8): σε ταιριασμένα ζεύγη η ανάθεση
@@ -266,22 +273,21 @@ const _OPS_STYLE=`<style>
   .do-plate{font-weight:600}
   .do-nodrv{color:var(--danger)}
   .do-st{width:170px;white-space:nowrap}
-  .do-st-transit{color:var(--accent-text);font-weight:600}
-  .do-st-wait{color:var(--text-mid)}
+  .do-st-wait{color:var(--text);font-weight:700}
   .do-st-done{color:var(--success);font-weight:600}
-  .do-st-moved{color:var(--warning);font-weight:600}
+  .do-st-moved{color:var(--warning);font-weight:400;font-size:var(--text-xs)}
   .do-acts{width:252px}
   .do-slots{display:flex;align-items:center;gap:4px}
-  .do-slot{width:104px;display:flex;justify-content:center}
-  .do-slot.do-more{width:44px}
+  /* min-width, όχι width: το «Αλλαγή ημέρας» είναι φαρδύτερο από 104px και
+     θα ξεχείλιζε πάνω στη διπλανή θυρίδα. Ίδιο σχήμα σε όλες τις γραμμές
+     της ενότητας ⇒ η στήλη διαβάζεται κάθετα. */
+  .do-slot{min-width:104px;display:flex;justify-content:center}
   .do-btn{height:28px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--navy-mid);background:var(--navy-mid);color:var(--bg-card);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-btn:hover{background:var(--accent);border-color:var(--accent)}
   .do-late-btn{height:28px;padding:0 8px;border:0;background:none;color:var(--danger);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-late-btn:hover{text-decoration:underline}
   .do-ghost{height:28px;padding:0 8px;border:0;background:none;color:var(--accent);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-ghost:hover{text-decoration:underline}
-  .do-dots{height:28px;width:28px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);color:var(--text-mid);cursor:pointer;font-family:inherit;font-size:14px;line-height:1}
-  .do-dots:hover{border-color:var(--accent);color:var(--accent-text)}
   .do-tinp{height:28px;padding:0 6px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-xs);color:var(--text)}
   .do-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:var(--radius-full);border:1px solid var(--border-mid);font-size:var(--text-xs);font-weight:600;background:var(--bg-card);cursor:pointer;color:var(--warning);white-space:nowrap}
   .do-pill.full{color:var(--text-mid)}
@@ -305,9 +311,6 @@ const _OPS_STYLE=`<style>
   .do-pop label small{display:block;font-size:10px;color:var(--text-dim)}
   .do-pop .do-pfoot{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-dim)}
   .do-pop .do-pfoot .sp{flex:1}
-  .do-menu{position:absolute;z-index:var(--z-float,50);background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:180px;padding:4px 0;text-align:left}
-  .do-menu button{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 12px;font-family:inherit;font-size:var(--text-sm);color:var(--text);cursor:pointer;white-space:nowrap}
-  .do-menu button:hover{background:var(--bg-hover)}
 </style>`;
 
 /* ── DRAW ─────────────────────────────────────────────────────── */
@@ -350,14 +353,14 @@ function _opsDraw() {
     r=>{const f=r.fields, n=_daysAgo(f['Delivery DateTime']);
       return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}</span>
         <span class="do-late">παράδοση ${_DMY(f['Delivery DateTime'])} · ${_agoTxt(n)}</span>
-        ${_opsSlots(r,'ovd',true)}</div>`;}):'';
+        ${_opsSlots(r,'ovd')}</div>`;}):'';
   const ovLH=isToday?zone('ovLoad',OPS.overdueLoads,
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
       return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_T(f)?' · '+escapeHtml(_T(f)):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
-        ${_opsSlots(r,'ovl',true)}</div>`;}):'';
+        ${_opsSlots(r,'ovl')}</div>`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-empty" style="border-color:var(--danger);color:var(--danger);margin-bottom:12px">Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — η κλήση απέτυχε· ξαναπάτησε Ανανέωση. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</div>`:'';
 
   const upd=OPS.loadedAt?String(OPS.loadedAt.getHours()).padStart(2,'0')+':'+String(OPS.loadedAt.getMinutes()).padStart(2,'0'):'';
@@ -394,10 +397,10 @@ function _opsDraw() {
     <div class="do-kpis">${kpi('ΦΟΡΤΩΣΕΙΣ',loadsDone,loadsAll.length,false)}${kpi('ΠΑΡΑΔΟΣΕΙΣ',delsDone,delsAll.length,true)}</div>
     ${ovH}${ovLH}${ovLErr}
     <div class="ops-sections" style="gap:0">
-      ${_opsSec('el','ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday,'Καμία παραγγελία εξαγωγής για φόρτωση')}
-      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση')}
-      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση')}
-      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση')}
+      ${_opsSec('el','ΦΟΡΤΩΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.el,isToday,'Καμία παραγγελία εξαγωγής για φόρτωση',1)}
+      ${_opsSec('ed','ΠΑΡΑΔΟΣΕΙΣ ΕΞΑΓΩΓΗΣ',cats.ed,isToday,'Καμία παραγγελία εξαγωγής για παράδοση',1+cats.el.length)}
+      ${_opsSec('il','ΦΟΡΤΩΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.il,isToday,'Καμία παραγγελία εισαγωγής για φόρτωση',1+cats.el.length+cats.ed.length)}
+      ${_opsSec('id','ΠΑΡΑΔΟΣΕΙΣ ΕΙΣΑΓΩΓΗΣ',cats.id,isToday,'Καμία παραγγελία εισαγωγής για παράδοση',1+cats.el.length+cats.ed.length+cats.il.length)}
     </div>
     <div class="do-foot">ORDERS · φίλτρο ημέρας ${_DMYFull(tgt)} · ${OPS.intl.length} ${OPS.intl.length===1?'εγγραφή':'εγγραφές'}${pendN?` + ${pendN} ${pendN===1?'εκκρεμής':'εκκρεμείς'}`:''}${upd?` · ενημερώθηκε ${upd}`:''}</div>
     </div>`;
@@ -421,7 +424,10 @@ function _opsToggleZone(key) {
   if (btn) { btn.setAttribute('aria-expanded', willOpen ? 'true' : 'false'); const t = btn.querySelector('.do-tog'); if (t) t.textContent = willOpen ? '▲ Απόκρυψη' : '▼ Εμφάνιση'; }
 }
 
-function _opsSec(type,label,items,isToday,emptyTxt) {
+// `start`: η αρίθμηση συνεχίζεται από ενότητα σε ενότητα. Με `i+1` σε κάθε
+// ενότητα η οθόνη είχε τέσσερα «#1» και κανείς δεν μπορούσε να πει «το 7»
+// στο τηλέφωνο — ο αριθμός δεν ταυτοποιούσε τίποτα (3/9).
+function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
   const isTmrw=OPS.date==='tomorrow';
   const when=isToday?'σήμερα':isTmrw?'αύριο':'';
@@ -435,7 +441,7 @@ function _opsSec(type,label,items,isToday,emptyTxt) {
   const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
-    <div style="overflow-x:auto"><table class="do-t"><thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,i+1,type,isToday)).join('')}</tbody></table></div>
+    <div style="overflow-x:auto"><table class="do-t"><thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
   </div>`;
 }
 
@@ -444,49 +450,63 @@ function _opsSec(type,label,items,isToday,emptyTxt) {
 // frame δείχνει «Σε μεταφορά · 06:32 · Παντελής», αλλά ώρα/όνομα δεν υπάρχουν
 // στη βάση (loaded_at απορρίφθηκε) και το audit_log ΔΕΝ διαβάζεται ως
 // παράκαμψη. Συνειδητή απόκλιση από το frame.
-function _opsStatusWord(f, multiPill) {
+// Η λέξη μιλά τη γλώσσα της ΕΝΟΤΗΤΑΣ, δύο καταστάσεις μόνο (3/9): ως τώρα το
+// ίδιο «Σε μεταφορά», στο ίδιο μπλε, σήμαινε ΕΓΙΝΕ στις ΦΟΡΤΩΣΕΙΣ και ΔΕΝ
+// ΕΓΙΝΕ στις ΠΑΡΑΔΟΣΕΙΣ — και μέσα στις Φορτώσεις συνυπήρχε με το «Παραδόθηκε
+// ✓» εννοώντας κι εκείνο «τελείωσε». Το λεξιλόγιο της ΒΑΣΗΣ (Pending/Assigned/
+// In Transit/Delivered) ΔΕΝ αγγίζεται — αλλάζει μόνο η λέξη στην οθόνη.
+// Το εκκρεμές είναι το εντονότερο της στήλης: είναι η δουλειά που μένει.
+function _opsStatusWord(f, multiPill, isL) {
   const st=f['Status']||'';
-  if(st==='Delivered') return '<span class="do-st-done">Παραδόθηκε ✓</span>';
-  if(st==='In Transit') return '<span class="do-st-transit">Σε μεταφορά</span>';
-  // «Μετατέθηκε»: το Postponed To κρατά τη ΝΕΑ ημέρα — η γραμμή είναι ενεργή
-  // εκείνη τη μέρα, με τα κουμπιά της. Το «από 30/8» ΔΕΝ δείχνεται: θέλει
-  // write-once original_loading_date ή audit_log — κανένα εγκεκριμένο (ΑΝΟΙΧΤΟ).
-  if(f['Postponed To']) return `<span class="do-st-moved">Μετατέθηκε</span>${multiPill?' '+multiPill:''}`;
-  return `<span class="do-st-wait">Σε αναμονή</span>${multiPill?' '+multiPill:''}`;
+  const done=isL ? (st==='In Transit'||st==='Delivered') : st==='Delivered';
+  if(done) return `<span class="do-st-done">${isL?'Φορτώθηκε':'Παραδόθηκε'} ✓</span>`;
+  // «μετατέθηκε»: το Postponed To κρατά τη ΝΕΑ ημέρα — η γραμμή είναι ενεργή
+  // εκείνη τη μέρα, με τα κουμπιά της. Μένει ως δευτερεύουσα σημείωση, όχι ως
+  // τρίτη κατάσταση. Το «από 30/8» ΔΕΝ δείχνεται: θέλει write-once
+  // original_loading_date ή audit_log — κανένα εγκεκριμένο (ΑΝΟΙΧΤΟ).
+  const moved=f['Postponed To']?' <span class="do-st-moved">μετατέθηκε</span>':'';
+  return `<span class="do-st-wait">Εκκρεμεί</span>${moved}${multiPill?' '+multiPill:''}`;
 }
 
-// ΕΝΕΡΓΕΙΕΣ = 3 σταθερές θυρίδες [κύριο 104][Καθυστέρησε/Αλλαγή ημέρας 104][⋯ 44]
-// (owner 2/9: τα κουμπιά δεν αλλάζουν θέση ανά γραμμή). Κενή θυρίδα = κενή,
-// ώστε η στήλη να διαβάζεται κάθετα. ctx: el/ed/il/id/ovd/ovl.
-function _opsSlots(rec, ctx, explicitChange) {
+// ΕΝΕΡΓΕΙΕΣ: κύριο κουμπί, «Καθυστέρησε» στις παραδόσεις, «Αλλαγή ημέρας»
+// ΟΡΑΤΗ. Κάθε θυρίδα που αποδίδεται είναι γεμάτη — μέσα στην ενότητα όλες οι
+// ανοιχτές γραμμές έχουν το ίδιο σχήμα, άρα η στήλη διαβάζεται κάθετα.
+//
+// Το «⋯» έφυγε (3/9): έκρυβε ΕΝΑ στοιχείο, την ίδια «Αλλαγή ημέρας» που στις
+// ζώνες ήταν ήδη ορατός σύνδεσμος, και η κενή μεσαία θυρίδα σε 25/32 γραμμές
+// των ΦΟΡΤΩΣΕΩΝ άφηνε 104px κενού ανάμεσα στο κουμπί και σε αυτό.
+// ctx: el/ed/il/id/ovd/ovl.
+function _opsSlots(rec, ctx) {
   const f=rec.fields, id=rec.id;
   const st=f['Status']||'';
   const isL=ctx==='el'||ctx==='il'||ctx==='ovl';
   const isOv=ctx==='ovd'||ctx==='ovl';
   const stype=isL?'Loading':'Unloading';
   const multi=_opsStopsOf(id,stype).length>1;
-  const isTmrw=OPS.date==='tomorrow';
+  // Η δήλωση γράφει ΣΗΜΕΡΙΝΗ ημερομηνία (`Actual Delivery Date`=localToday())
+  // και «On Time». Σε άλλη μέρα αυτό είναι ψέμα στη βάση για γεγονός που δεν
+  // έγινε. Ο παλιός κώδικας το φύλαγε με isToday· στο κύμα 3 ο φρουρός έγινε
+  // `!isTmrw` και τα κουμπιά εμφανίστηκαν σε ΚΑΘΕ ημερομηνία. Επαναφορά 3/9.
+  const isToday=OPS.date==='today';
   const done=st==='Delivered'||(isL&&st==='In Transit');
-  let s1='', s2='', s3='';
-  if(!done && !isTmrw){
+  if(done) return '';
+  const slots=[];
+  if(isToday){
     if(isL){
       // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8)
-      s1=multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button>`
-             :`<button class="do-btn" onclick="confirmAction('Φορτώθηκε;').then(ok=>{if(ok)_opsStat('${id}','In Transit')})">Φορτώθηκε</button>`;
-      if(explicitChange) s2=`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','load')">Αλλαγή ημέρας</button>`;
+      slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button>`
+                      :`<button class="do-btn" onclick="confirmAction('Φορτώθηκε;').then(ok=>{if(ok)_opsStat('${id}','In Transit')})">Φορτώθηκε</button>`);
     } else {
       const okFn=isOv?`_opsOvAct('${id}','On Time')`:`_opsDel('${id}','On Time')`;
       const lateFn=isOv?`_opsOvAct('${id}','Delayed')`:`_opsDel('${id}','Delayed')`;
-      s1=multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Παραδόθηκε</button>`
-             :`<button class="do-btn" onclick="confirmAction('Παραδόθηκε;').then(ok=>{if(ok)${okFn}})">Παραδόθηκε</button>`;
-      s2=multi?`<button class="do-late-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Καθυστέρησε</button>`
-             :`<button class="do-late-btn" onclick="confirmAction('Καθυστέρησε;').then(ok=>{if(ok)${lateFn}})">Καθυστέρησε</button>`;
+      slots.push(multi?`<button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Παραδόθηκε</button>`
+                      :`<button class="do-btn" onclick="confirmAction('Παραδόθηκε;').then(ok=>{if(ok)${okFn}})">Παραδόθηκε</button>`);
+      slots.push(multi?`<button class="do-late-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Καθυστέρησε</button>`
+                      :`<button class="do-late-btn" onclick="confirmAction('Καθυστέρησε;').then(ok=>{if(ok)${lateFn}})">Καθυστέρησε</button>`);
     }
-    s3=`<button class="do-dots" title="Περισσότερα" onclick="_opsMenu(event,'${id}','${isL?'load':'deliver'}')">⋯</button>`;
-  } else if(isTmrw && !done){
-    s2=`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','${isL?'load':'deliver'}')">Αλλαγή ημέρας</button>`;
   }
-  return `<div class="do-slots"><span class="do-slot">${s1}</span><span class="do-slot">${s2}</span><span class="do-slot do-more">${s3}</span></div>`;
+  slots.push(`<button class="do-ghost" onclick="_opsChangeDay(event,'${id}','${isL?'load':'deliver'}')">Αλλαγή ημέρας</button>`);
+  return `<div class="do-slots">${slots.map(s=>`<span class="do-slot">${s}</span>`).join('')}</div>`;
 }
 
 function _opsRow(rec,num,type,isToday) {
@@ -511,12 +531,18 @@ function _opsRow(rec,num,type,isToday) {
   const amtInp=(fld,v)=>`<input class="do-tinp" type="number" step="1" value="${v||''}" placeholder="—" style="width:64px" onblur="_opsSvF('${id}','${fld}',parseFloat(this.value)||null)">`;
 
   const cl=`<td class="do-wrap"><span class="do-main">${escapeHtml(client)}</span>${sub?`<span class="do-sl">${sub}</span>`:''}</td>`;
-  const locCell=(name,dt)=>`<td class="do-wrap"><span class="do-main">${escapeHtml(name||'—')}</span><span class="do-sl">${_HM(dt)||'—'}</span></td>`;
+  // Χωρίς ώρα δεν αποδίδεται ΤΙΠΟΤΑ — όπως ήδη κάνει η υπογραμμή πελάτη.
+  // Οι στήλες loading_datetime/delivery_datetime είναι `date` στη βάση, άρα
+  // το `_HM` γυρίζει πάντα κενό: το «—» κρεμόταν κάτω από ΚΑΘΕ τοποθεσία σε
+  // κάθε γραμμή και διαβαζόταν ως «η ώρα είναι άγνωστη» ενώ ώρα δεν υπάρχει
+  // καν ως έννοια (κανόνας #3: «—» σημαίνει άγνωστο).
+  const locCell=(name,dt)=>{const hm=_HM(dt);
+    return `<td class="do-wrap"><span class="do-main">${escapeHtml(name||'—')}</span>${hm?`<span class="do-sl">${hm}</span>`:''}</td>`;};
   const truckCell=`<td class="do-plate">${escapeHtml(truck)||'—'}</td>`;
   const drvCell=`<td>${driver?escapeHtml(driver):(partner?'<span class="do-sl" style="font-size:var(--text-xs)">συνεργάτης</span>':'<span class="do-nodrv">χωρίς οδηγό</span>')}</td>`;
   const pill=_opsStopsBadge(id,_stype);
-  const stCell=`<td class="do-st">${_opsStatusWord(f,pill)}</td>`;
-  const actCell=`<td class="do-acts">${_opsSlots(rec,type,false)}</td>`;
+  const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL)}</td>`;
+  const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
   if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'])}${truckCell}${drvCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
@@ -583,7 +609,7 @@ function _opsSubRows(rec, stype){
          <span class="do-sl" style="margin:0 0 0 8px;font-size:var(--text-xs)">${escapeHtml(f['Completed By']||'')}${f['Completed At']?' · '+fmtDate(f['Completed At']):''}</span></span>`
       : `<span class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button></span>
          <span class="do-slot">${isDel?`<button class="do-late-btn" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`:''}</span>
-         <span class="do-slot do-more"></span></span>`;
+         </span>`;
     return `<tr class="do-sub"><td colspan="20">
       <div class="do-srow">
         <span class="do-sn">${'①②③④⑤⑥⑦⑧⑨'[i]||(i+1)}</span>
@@ -665,16 +691,16 @@ async function _opsDelFinal(id,perf){const d=localToday();
   catch(e) { console.warn('PA status sync:', e.message); }
   toast(perf==='On Time'?'Παραδόθηκε ✓':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
 
-/* ── «⋯» μενού γραμμής + «Αλλαγή ημέρας» popover ──────────────────────
+/* ── «Αλλαγή ημέρας» popover ───────────────────────────────────────────
    Η αναβολή ΕΙΝΑΙ αλλαγή ημερομηνίας στην παραγγελία — μία πηγή (αρχή 3).
    Popover στη γραμμή, προεπιλογή «Αύριο», Enter = ό,τι έκανε το σημερινό +1
    (owner 2/9). Το ρητό checkbox αντικαθιστά την τυφλή μετακίνηση της
    παράδοσης που έκανε ο παλιός κώδικας. */
-function _opsCloseFloat(){ document.querySelectorAll('.do-pop,.do-menu').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); }
+function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); }
 function _opsPopKey(e){ if(e.key==='Escape') _opsCloseFloat(); if(e.key==='Enter'&&document.querySelector('.do-pop')){ e.preventDefault(); _opsChangeDayGo(); } }
-// Το rect του κουμπιού διαβάζεται ΠΡΙΝ κλείσουν τα προηγούμενα floats: το
-// στοιχείο του «⋯» μενού αποσπάται από το DOM και το rect του γίνεται 0/0 —
-// το popover έβγαινε στο -360px (μετρήθηκε στο rig 3/9).
+// Το rect του κουμπιού διαβάζεται ΠΡΙΝ κλείσει το προηγούμενο popover: αν
+// κλείσει πρώτο, το στοιχείο αποσπάται από το DOM, το rect του γίνεται 0/0
+// και το popover βγαίνει στο -360px (μετρήθηκε στο rig 3/9).
 function _opsRect(ev){ const b=ev.currentTarget||ev.target; return b.getBoundingClientRect(); }
 function _opsAnchor(rb, el){
   const host=document.getElementById('content'); const hb=host.getBoundingClientRect();
@@ -682,13 +708,6 @@ function _opsAnchor(rb, el){
   el.style.top=(rb.bottom-hb.top+host.scrollTop+6)+'px';
   el.style.right=Math.max(8,hb.right-rb.right)+'px';
   host.appendChild(el);
-}
-function _opsMenu(ev, id, kind){
-  ev.stopPropagation(); const rb=_opsRect(ev); _opsCloseFloat();
-  const m=document.createElement('div'); m.className='do-menu';
-  m.innerHTML=`<button onclick="_opsChangeDay(event,'${id}','${kind}')">Αλλαγή ημέρας…</button>`;
-  _opsAnchor(rb,m);
-  setTimeout(()=>document.addEventListener('click',_opsCloseFloat,{once:true}),0);
 }
 const _plus=(iso,days)=>toLocalDate(new Date(new Date(toLocalDate(iso)+'T12:00:00').getTime()+days*864e5));
 const _nextMonday=(iso)=>{ const d=new Date(toLocalDate(iso)+'T12:00:00'); const add=((8-d.getDay())%7)||7; return toLocalDate(new Date(d.getTime()+add*864e5)); };
@@ -699,7 +718,12 @@ function _opsChangeDay(ev, id, kind){
   const f=r.fields;
   const base=kind==='load'?f['Loading DateTime']:f['Delivery DateTime'];
   if(!base){ toast('Η παραγγελία δεν έχει ημερομηνία '+(kind==='load'?'φόρτωσης':'παράδοσης'),'danger'); return; }
-  const tmrw=_plus(base,1), mon=_nextMonday(base);
+  // Βάση των επιλογών = ΣΗΜΕΡΑ, όχι η παλιά ημέρα της γραμμής (3/9): στη ζώνη
+  // εκκρεμών η παλιά ημέρα είναι ήδη περασμένη, οπότε το «Αύριο» μετέθετε στο
+  // ΠΑΡΕΛΘΟΝ και η γραμμή ξαναγύριζε εκκρεμής. Το `base` μένει ως το «τώρα …»
+  // και ως αφετηρία του delta που μετακινεί μαζί την παράδοση.
+  const _tdy=localToday();
+  const tmrw=_plus(_tdy,1), mon=_nextMonday(_tdy);
   const stype=kind==='load'?'Loading':'Unloading';
   const loc=_L(_opsStopLoc(id,stype))||'';
   const hasDel=kind==='load'&&!!f['Delivery DateTime'];
@@ -823,6 +847,6 @@ window._opsSetFilter = _opsSetFilter;
 window._opsToggleZone = _opsToggleZone;
 window._opsToggleStops = _opsToggleStops;
 window._opsMarkStopUI = _opsMarkStopUI;
-window._opsMenu = _opsMenu; window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
+window._opsChangeDay = _opsChangeDay; window._opsChangeDayGo = _opsChangeDayGo;
 window._opsPopPick = _opsPopPick; window._opsPopOther = _opsPopOther; window._opsPopHint = _opsPopHint; window._opsCloseFloat = _opsCloseFloat;
 })();
