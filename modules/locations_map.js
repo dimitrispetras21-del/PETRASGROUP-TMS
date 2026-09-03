@@ -159,6 +159,18 @@ function _lmapEnrichWorkshops() {
   }
 }
 
+// Ένα σημείο με λάθος συντεταγμένες τραβούσε ολόκληρο το κάδρο: μετρήθηκε
+// 3/9/2026 το «VF Hellas» (χώρα Greece) στο 8.10 / 23.56 — Κεντρική Αφρική.
+// Το fitBounds άνοιγε ως τον Ισημερινό, >60% του καμβά έβγαινε Ατλαντικός και
+// Αφρική, και στα 1440×900 όλη η Ευρώπη χωρούσε σε ~200×170px.
+// Το σημείο ΜΕΝΕΙ στον χάρτη και στη λίστα — κόβεται μόνο από το ΚΑΔΡΟ. Αν το
+// κρύβαμε, το λάθος δεδομένο γινόταν αόρατο και δεν θα το διόρθωνε ποτέ κανείς
+// (αρχή 1)· γι' αυτό δηλώνεται και ρητά, με το όνομά του, πάνω από τα φίλτρα.
+const _LMAP_EU = { s: 33, n: 72, w: -12, e: 42 };
+function _lmapInEurope(p) {
+  return p.la >= _LMAP_EU.s && p.la <= _LMAP_EU.n && p.lo >= _LMAP_EU.w && p.lo <= _LMAP_EU.e;
+}
+
 // ── Δεδομένα ───────────────────────────────────
 function _lmapBuildPoints() {
   LMAP.pts = [];
@@ -250,8 +262,19 @@ function _lmapRender(host) {
   S.cats = new Set(Object.keys(LMAP_CATS));
   S.clients = new Set(topCli);
 
+  // Το catCnt δεν είναι μόνο νούμερο δίπλα στην ετικέτα: ΦΙΛΤΡΑΡΕΙ ποιες
+  // κατηγορίες γράφονται καθόλου (3/9/2026). Το .lmap-acc-b έχει max-height
+  // 186px· με «Πελάτες 0» και «Συνεργάτες 0» μέσα το ύψος πήγαινε 206px και
+  // έκοβε στη μέση την «Αταξινόμητα 1.116» — το 96,5% των σημείων — αφήνοντας
+  // το checkbox της απρόσιτο. Δύο άδειες γραμμές έκρυβαν τη μόνη που μετράει.
   const catCnt = {};
   LMAP.pts.forEach(p => catCnt[p.g] = (catCnt[p.g] || 0) + 1);
+  const outEu = LMAP.pts.filter(p => !_lmapInEurope(p));
+  const outEuHint = outEu.length
+    ? `<div class="lmap-hint"><b>${outEu.length}</b> εκτός Ευρώπης — έξω από το κάδρο:
+       ${outEu.slice(0, 3).map(p => _lmapEsc(p.n)).join(', ')}${outEu.length > 3 ? '…' : ''}.
+       Πιθανό λάθος συντεταγμένων.</div>`
+    : '';
 
   host.innerHTML =
 `<div class="lmap-grid" id="lmapGrid">
@@ -267,11 +290,12 @@ function _lmapRender(host) {
         <button id="lmapCCat" class="on" onclick="_lmapSetColorBy('cat')">Χρώμα: κατηγορία</button>
         <button id="lmapCCli" onclick="_lmapSetColorBy('client')">Χρώμα: πελάτης</button>
       </div>
+      ${outEuHint}
     </div>
     <div class="lmap-acc" id="lmapAccCat">
       <button class="lmap-acc-h" onclick="this.parentNode.classList.toggle('closed')">
         Τι είναι το σημείο <span class="ar">▾</span></button>
-      <div class="lmap-acc-b">${Object.keys(LMAP_CATS).map(k => `
+      <div class="lmap-acc-b">${Object.keys(LMAP_CATS).filter(k => catCnt[k]).map(k => `
         <label class="lmap-ck"><input type="checkbox" checked data-k="${k}">
           <span class="lmap-dot" style="background:${LMAP_CATS[k].color}"></span>
           <span>${LMAP_CATS[k].label}</span>
@@ -306,12 +330,15 @@ function _lmapRender(host) {
 
   LMAP.map = L.map('lmapMap', { zoomControl: false }).setView([48, 14], 5);
   L.control.zoom({ position: 'bottomright' }).addTo(LMAP.map);
-  // CARTO Voyager (owner 12/8, μετά από οπτική σύγκριση 6 υποβάθρων): κρατά την
-  // καθαρότητα του Light ώστε τα χρώματα των κατηγοριών να μένουν το πιο έντονο
-  // στην οθόνη, αλλά με χρώμα σε δρόμους και πράσινο ώστε να αναγνωρίζεται η
-  // περιοχή με μια ματιά. Το {r} δίνει @2x tiles σε οθόνες retina.
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    { attribution: '© OpenStreetMap · © CARTO', maxZoom: 19, subdomains: 'abcd' }).addTo(LMAP.map);
+  // Υπόβαθρο OSM standard, χωρίς κλειδί. Ήταν CARTO Voyager (owner 12/8, μετά
+  // από οπτική σύγκριση 6 υποβάθρων, «24/24 tiles καθαρά»). Η ΥΠΗΡΕΣΙΑ ΑΛΛΑΞΕ
+  // από τότε: 3/9/2026 τα voyager tiles γυρίζουν 200 OK αλλά με ψημένο μέσα στην
+  // εικόνα «API KEY REQUIRED», διαγώνια, δεκάδες φορές ανά οθόνη — τα ονόματα
+  // χωρών δεν διαβάζονται. Δεν παραβιάζεται απόφαση· ακυρώθηκε η προϋπόθεσή της.
+  // Χάνουμε το @2x ({r}): το OSM δεν σερβίρει retina tiles. Αν ξαναβρεθεί
+  // key-free καθαρό υπόβαθρο, εδώ αλλάζει — μία γραμμή.
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(LMAP.map);
 
   LMAP.pinLayer = L.layerGroup();
   LMAP.cluster = L.markerClusterGroup({
@@ -344,7 +371,12 @@ function _lmapRender(host) {
   // (19) — άδειος χάρτης. Μετρήθηκε στο demo, δεν υποτέθηκε.
   requestAnimationFrame(() => {
     LMAP.map.invalidateSize();
-    LMAP.map.fitBounds(L.latLngBounds(LMAP.pts.map(p => [p.la, p.lo])), { padding: [25, 25] });
+    // Κάδρο μόνο στα ευρωπαϊκά σημεία (βλ. _LMAP_EU). Το maxZoom φρουρεί την
+    // αντίθετη ακρότητα: με φιλτραρισμένα λίγα και κοντινά σημεία το fitBounds
+    // θα κόλλαγε σε επίπεδο δρόμου, όπου το δίκτυο δεν διαβάζεται καθόλου.
+    const fit = LMAP.pts.filter(_lmapInEurope);
+    LMAP.map.fitBounds(L.latLngBounds((fit.length ? fit : LMAP.pts).map(p => [p.la, p.lo])),
+      { padding: [25, 25], maxZoom: 11 });
   });
 }
 
