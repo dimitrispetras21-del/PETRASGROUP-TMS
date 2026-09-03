@@ -74,7 +74,19 @@ async function _auditFetch() {
   try {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(_auditFilters)) {
-      if (v && String(v).trim()) qs.set(k, String(v).trim());
+      if (!v || !String(v).trim()) continue;
+      // «Έως 3/9» must MEAN the whole of 3/9. The Worker passes `until`
+      // verbatim into PostgREST as created_at=lte.<until> (deployed src
+      // index.js:210), and a bare date is midnight at the START of that day —
+      // so the chosen day was silently excluded. Measured on audit_log
+      // 3/9/2026: 1/9–3/9 returned 57 rows instead of 89 (−36%), and
+      // «3/9 έως 3/9» returned 0. The end-of-day stamp is sent from here
+      // because we cannot deploy the Worker; the real fix is `lt.<until+1d>`
+      // server-side. RESIDUE: the stamp carries no zone, so Postgres reads it
+      // as UTC while the team reads it as Athens time — the last 3 hours of
+      // the local day are still outside the range. Owner call (needs Worker).
+      if (k === 'until') { qs.set(k, `${String(v).trim()}T23:59:59.999`); continue; }
+      qs.set(k, String(v).trim());
     }
     qs.set('limit', String(AUDIT_LIMIT));
 
@@ -174,7 +186,25 @@ function _auditDiff(before, after) {
  * Fixing the Worker to record before_data is the real fix and is the owner's
  * call (deploy); this derivation goes away by itself once before_data arrives.
  */
+// Actions whose after_data is NOT a row snapshot, so it can neither be
+// diffed against a previous state nor become the previous state of the next
+// entry. cascade_delete writes per-step COUNTS ({ramp:0, order_stops:3, …},
+// deployed src/index.js:2491); upload writes a file path; invoice_override
+// writes an override note. Diffing a 10-key counter object against the
+// order's last 125-key snapshot produced ~55 bogus "changes" (~1.500
+// characters) in one cell — apples against oranges, presented as evidence.
+const _AUDIT_NO_SNAPSHOT = new Set(['cascade_delete', 'upload', 'invoice_override']);
+// Plus create/delete, whose own after/absence is already the whole story.
+const _AUDIT_NO_DERIVE = new Set(['create', 'delete', ...(_AUDIT_NO_SNAPSHOT)]);
+
 function _auditAttachBefore(entries) {
+  // A neighbour-derived "before" is only true if the page holds EVERY entry
+  // between the two. `actor` and `action` filter server-side, so the middle
+  // neighbour vanishes and the chain X→Y→Z collapses to X→Z: the screen then
+  // shows a change this user never made AND charges it to them. Measured
+  // 3/9/2026: 51 of 649 chains. table/record_id are part of the chain key and
+  // since/until cut a contiguous window, so only these two lie.
+  const chainBroken = !!(_auditFilters.actor || _auditFilters.action);
   const last = new Map();   // "table|record" → latest snapshot seen walking oldest→newest
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i];
@@ -184,32 +214,116 @@ function _auditAttachBefore(entries) {
     e._before = before;
     e._after = after;
     e._derived = false;
-    if (!before && e.action !== 'create' && e.action !== 'delete' && last.has(key)) {
-      e._before = last.get(key);
-      e._derived = true;
+    e._chainBroken = false;
+    if (!before && !_AUDIT_NO_DERIVE.has(e.action)) {
+      if (chainBroken) e._chainBroken = true;
+      else if (last.has(key)) { e._before = last.get(key); e._derived = true; }
     }
-    if (e.action === 'delete') last.delete(key);
-    else if (after) last.set(key, after);
+    if (e.action === 'delete' || e.action === 'cascade_delete') last.delete(key);
+    else if (after && !_AUDIT_NO_SNAPSHOT.has(e.action)) last.set(key, after);
   }
 }
 
-function _auditFmtVal(v) {
+// The ΑΛΛΑΓΗ column speaks about transports, not about Postgres. These are the
+// EVERY column that actually changed across the recorded 200-row page
+// (measured 3/9/2026 on .har/tms-repaired.har — 26 distinct columns, nothing
+// speculative). An unlisted column falls through to its raw name on purpose:
+// a new field must be VISIBLE as unlabelled, not silently hidden or guessed.
+// NOT a copy of the Worker's TABLES map (principle 3) — those are Airtable
+// labels for the write path; these are Postgres column names as the audit
+// trail stores them, a different vocabulary that the trail alone speaks.
+const _AUDIT_FIELD = {
+  status:                   'Κατάσταση',
+  direction:                'Κατεύθυνση',
+  driver_id:                'Οδηγός',
+  truck_id:                 'Φορτηγό',
+  trailer_id:               'Ρυμούλκα',
+  partner_id:               'Συνεργάτης',
+  partner_rate:             'Τιμή συνεργάτη',
+  partner_truck_plates:     'Πινακίδες συνεργάτη',
+  is_partner_trip:          'Δρομολόγιο συνεργάτη',
+  location_id:              'Τοποθεσία',
+  assigned_at:              'Ανατέθηκε',
+  completed_at:             'Ολοκληρώθηκε',
+  completed_by:             'Ολοκληρώθηκε από',
+  closed_at:                'Έκλεισε',
+  actual_delivery_date:     'Πραγματική παράδοση',
+  performance:              'Επίδοση',
+  delivery_performance:     'Επίδοση παράδοσης',
+  temperature:              'Θερμοκρασία',
+  temperature_c:            'Θερμοκρασία',
+  pallets:                  'Παλέτες',
+  loading_pallets_1:        'Φόρτωση 1 · παλέτες',
+  loading_pallets_2:        'Φόρτωση 2 · παλέτες',
+  loading_location_1_id:    'Φόρτωση 1 · τοποθεσία',
+  loading_location_2_id:    'Φόρτωση 2 · τοποθεσία',
+  matched_import_id:        'Αντιστοιχισμένη εισαγωγή',
+  national_order_created:   'Δημιουργήθηκε εθνική',
+};
+function _auditFieldLabel(f) {
+  return _AUDIT_FIELD[f] || String(f);
+}
+
+const _AUDIT_ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+const _AUDIT_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function _auditFmtVal(v, field) {
   if (v === null || v === undefined || v === '') return '—';
   if (v === true) return 'ναι';
   if (v === false) return 'όχι';
-  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+  if (typeof v === 'object') return JSON.stringify(v);
+  const s = String(v);
+  // Timestamps went out raw and in UTC ("2026-08-28T16:39:26.067+00:00") on a
+  // row whose ΠΟΤΕ column showed 19:39 local — three unexplained hours, in the
+  // one place whose job is to be believable. Same formatter as ΠΟΤΕ, so the
+  // two columns of a row now agree.
+  if (_AUDIT_ISO_TS.test(s)) return _auditWhen(s).short;
+  if (_AUDIT_ISO_DATE.test(s)) {
+    // Parsed by hand, not by new Date(): 'YYYY-MM-DD' is UTC midnight to the
+    // Date constructor, which shifts the day west of Greenwich.
+    const [y, m, d] = s.split('-');
+    return `${d}/${m}${Number(y) === new Date().getFullYear() ? '' : '/' + y.slice(-2)}`;
+  }
+  // Foreign keys: the id alone reads as a quantity ("driver_id: 52"). '#52'
+  // reads as an identity. No lookup — an extra request per row would break
+  // the recorded HAR the critics replay, and #52 already answers "which one
+  // changed", which is this column's question.
+  if (field && /_id$/.test(field) && /^\d+$/.test(s)) return `#${s}`;
+  return s;
 }
 
-// Action vocabulary of the Worker's audit() calls: create/update/delete on the
-// facade, confirm/reverse on pallet movements. Anything else shows raw, so a
-// new verb is visible rather than swallowed.
+// The Worker's nine audit() verbs (grep 'action: "' on deployed src/index.js).
+// Counted in audit_log 3/9/2026: create 2.027 · update 1.254 · delete 88 ·
+// cascade_delete 30 — the other five routes exist but have never written a
+// row. They stay listed because the day one fires it must read as a word, not
+// as raw English. 'login' was REMOVED: the Worker has no such call and never
+// had one, so the entry described an event that cannot happen (principle 8).
+// Anything else still shows raw, so a tenth verb is visible, not swallowed.
 const _AUDIT_ACTION = {
-  create:  { label: 'Δημιουργία',  cls: 'at-act-create' },
-  update:  { label: 'Αλλαγή',      cls: 'at-act-update' },
-  delete:  { label: 'Διαγραφή',    cls: 'at-act-delete' },
-  confirm: { label: 'Επιβεβαίωση', cls: 'at-act-create' },
-  reverse: { label: 'Αντιστροφή',  cls: 'at-act-delete' },
-  login:   { label: 'Σύνδεση',     cls: 'at-act-login' },
+  create:           { label: 'Δημιουργία',       cls: 'at-act-create' },
+  update:           { label: 'Αλλαγή',           cls: 'at-act-update' },
+  delete:           { label: 'Διαγραφή',         cls: 'at-act-delete' },
+  // Heavier than a plain delete because it IS heavier: one click takes the
+  // order plus its stops, national loads and consolidated memberships with it.
+  cascade_delete:   { label: 'Ολική διαγραφή',   cls: 'at-act-cascade' },
+  confirm:          { label: 'Επιβεβαίωση',      cls: 'at-act-create' },
+  reverse:          { label: 'Αντιστροφή',       cls: 'at-act-delete' },
+  invoice_override: { label: 'Παράκαμψη τιμολ.', cls: 'at-act-update' },
+  upload:           { label: 'Ανέβασμα αρχείου', cls: 'at-act-create' },
+};
+
+// What a cascade actually swept, from the RPC's own count summary. Zero counts
+// are dropped: ten "0"s per row would bury the one number that matters.
+const _AUDIT_CASCADE = {
+  order_stops:                   'στάσεις',
+  national_loads:                'εθνικά φορτία',
+  national_orders:               'εθνικές παραγγελίες',
+  // Never deleted, only released — the never-delete rule for GROUPAGE LINES.
+  groupage_lines_unassigned:     'γραμμές groupage σε Unassigned',
+  consolidated_loads_deleted:    'ομαδοποιημένα φορτία',
+  cons_load_memberships_removed: 'συμμετοχές σε ομαδοποίηση',
+  ramp:                          'εγγραφές ράμπας',
+  pallet_ledger:                 'κινήσεις παλετών',
 };
 
 // Table names are the Postgres names (orders, order_stops, pl_movements).
@@ -235,21 +349,49 @@ function _auditRecordLabel(e) {
   return '';
 }
 
+/** cascade_delete: not a diff — the RPC's count of what the cascade took. */
+function _auditCascadeHtml(e) {
+  const s = e._after && typeof e._after === 'object' ? e._after : {};
+  const swept = Object.entries(_AUDIT_CASCADE)
+    .filter(([k]) => Number(s[k]) > 0)
+    // "label: n", not "n label": Greek nouns would need singular/plural pairs
+    // to read right at 1, and this matches the diff idiom of the same column.
+    .map(([k, label]) => `${label}: ${Number(s[k])}`);
+  return '<span class="at-dim">Διαγραφή εγγραφής και όσων κρέμονταν από αυτήν'
+    + (swept.length ? ` — ${_auditEsc(swept.join(' · '))}` : '')
+    + '</span>';
+}
+
 /** The ΑΛΛΑΓΗ cell: one line per entry, wrapping rather than cut. */
 function _auditChangeHtml(e) {
   if (e.action === 'create') return '<span class="at-dim">Νέα εγγραφή</span>';
   if (e.action === 'delete') return '<span class="at-dim">Διαγραφή εγγραφής</span>';
+  if (e.action === 'cascade_delete') return _auditCascadeHtml(e);
+  if (e._chainBroken) {
+    // Honest about WHY, not just that: the derivation is switched off while a
+    // user/action filter is on, because the neighbour it needs is filtered out
+    // server-side — see _auditAttachBefore.
+    return '<span class="at-dim">άγνωστο — το φίλτρο κρύβει τη σειρά των αλλαγών</span>';
+  }
   if (!e._before) {
     // Unknown is not "nothing changed" — see _auditAttachBefore.
     return '<span class="at-dim">άγνωστο — δεν καταγράφηκε η προηγούμενη τιμή</span>';
   }
   const diff = _auditDiff(e._before, e._after);
   if (!diff.length) return '<span class="at-dim">Αποθήκευση χωρίς αλλαγή πεδίου</span>';
-  const title = e._derived ? ' title="σε σύγκριση με την προηγούμενη καταγεγραμμένη κατάσταση της εγγραφής"' : '';
-  return `<span class="at-diff"${title}>` + diff.map((d) =>
-    `<span class="at-diff-item"><b>${_auditEsc(d.field)}</b>: ` +
-    `<span class="at-from">${_auditEsc(_auditFmtVal(d.from))}</span> → ` +
-    `<span class="at-to">${_auditEsc(_auditFmtVal(d.to))}</span></span>`,
+  // A derived "before" is an INFERENCE and has to look like one. Measured on
+  // the live page 3/9/2026: 36 of 37 diffs were derived, 1 was recorded — so
+  // 97% of the column that answers "what changed" was a deduction wearing the
+  // clothes of evidence, and its only tell was a title tooltip nobody hovers
+  // over 200 rows to find. The '≈' and the muted left rule say it at a glance;
+  // the tooltip stays for the detail. Legend above the table (_auditRenderBody).
+  const der = e._derived;
+  const title = der ? ' title="σε σύγκριση με την προηγούμενη καταγεγραμμένη κατάσταση της εγγραφής — συμπέρασμα, όχι καταγεγραμμένη τιμή"' : '';
+  const approx = der ? '<span class="at-approx">≈</span>' : '';
+  return `<span class="at-diff${der ? ' at-diff-derived' : ''}"${title}>` + diff.map((d) =>
+    `<span class="at-diff-item"><b>${_auditEsc(_auditFieldLabel(d.field))}</b>: ` +
+    `${approx}<span class="at-from">${_auditEsc(_auditFmtVal(d.from, d.field))}</span> → ` +
+    `<span class="at-to">${_auditEsc(_auditFmtVal(d.to, d.field))}</span></span>`,
   ).join('<span class="at-sep"> · </span>') + '</span>';
 }
 
@@ -354,11 +496,14 @@ async function renderAuditTrail() {
         <select id="afTable" class="filter-select"></select>
       </span>
       <span class="at-filter"><label for="afAction">Ενέργεια:</label>
+        <!-- One option per verb the Worker can write (_AUDIT_ACTION). The list
+             held three, while the server filters on an exact match — so the
+             30 recorded 'cascade_delete' rows were unreachable from «Διαγραφή»
+             and looked like they did not exist. -->
         <select id="afAction" class="filter-select">
           <option value="">Όλες</option>
-          <option value="create">Δημιουργία</option>
-          <option value="update">Αλλαγή</option>
-          <option value="delete">Διαγραφή</option>
+          ${Object.entries(_AUDIT_ACTION).map(([v, a]) =>
+            `<option value="${v}">${_auditEsc(a.label)}</option>`).join('')}
         </select>
       </span>
       <span class="at-filter"><label for="afRange">Εύρος:</label>
@@ -408,17 +553,27 @@ async function renderAuditTrail() {
     .at-actor { display: block; font-size: var(--text-body); font-weight: 500; color: var(--text); }
     .at-role { display: block; font-size: var(--text-xs); color: var(--text-dim); }
     /* Action idiom of THIS screen (owner 2/9: each screen keeps its own):
-       plain words, weight carries the meaning — deletion bold, login dim. */
-    .at-act-create { color: var(--text); }
-    .at-act-update { color: var(--text-mid); }
-    .at-act-delete { color: var(--text); font-weight: 700; }
-    .at-act-login  { color: var(--text-dim); }
+       plain words, weight carries the meaning — total deletion heaviest.
+       SELECTOR, not just the class: the .at-table tbody td rule above sets a color
+       with specificity 0-1-2 and beat the bare 0-1-0 classes, so Δημιουργία
+       and Αλλαγή rendered in the SAME grey while only Διαγραφή (which changed
+       weight, not colour) stood out. Measured 3/9/2026 — the classes existed
+       and did nothing. */
+    .at-table tbody td.at-act-create  { color: var(--text); font-weight: 500; }
+    .at-table tbody td.at-act-update  { color: var(--text-mid); }
+    .at-table tbody td.at-act-delete  { color: var(--text); font-weight: 700; }
+    .at-table tbody td.at-act-cascade { color: var(--danger-strong); font-weight: 700; }
     .at-rec { text-decoration: none; cursor: pointer; color: var(--text-mid); display: flex; flex-direction: column; }
     .at-rec:hover .at-rec-label, .at-rec:hover .at-rec-only { color: var(--accent-text); text-decoration: underline; }
     .at-rec-label { color: var(--text); }
     .at-rec-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); color: var(--text-dim); }
     .at-rec-only { font-size: var(--text-sm); color: var(--text-mid); }
     .at-change { color: var(--text); }
+    /* Derived vs recorded, visible without hovering — see _auditChangeHtml. */
+    .at-diff-derived { display: inline-block; border-left: 2px solid var(--silver); padding-left: 8px; }
+    .at-approx { color: var(--silver-dim); font-weight: 600; margin-right: 2px; }
+    .at-legend { display: flex; align-items: baseline; gap: 5px; padding: 0 0 6px; font-size: var(--text-xs); color: var(--text-dim); }
+    .at-legend .at-approx { font-size: var(--text-sm); }
     .at-diff-item b { font-weight: 500; color: var(--text-mid); }
     .at-from { color: var(--text-dim); }
     .at-to { color: var(--text); }
@@ -499,7 +654,18 @@ async function _auditRenderBody() {
     sub.title = n >= AUDIT_LIMIT ? 'Το όριο είναι 200 — στένεψε τα φίλτρα για παλαιότερες' : 'νεότερες πρώτα';
   }
 
+  // Caption for the ΑΛΛΑΓΗ column, shown only when there is a '≈' on screen —
+  // explaining a mark that is not there would be its own small lie.
+  // ABOVE the table, not inside the <th>: tests/critics/contract.spec.js
+  // scrapes every <th>'s full text into the committed tier-1 contract, so any
+  // words added inside the header would delete the field "Αλλαγή" from it.
+  const legend = _auditEntries.some((e) => e._derived)
+    ? '<div class="at-legend"><span class="at-approx">≈</span>'
+      + '<span>συμπέρασμα από την προηγούμενη καταγραφή της ίδιας εγγραφής — ο Worker δεν κατέγραψε την παλιά τιμή</span></div>'
+    : '';
+
   body.innerHTML = `
+    ${legend}
     <div class="table-wrap">
       <table class="at-table">
         <thead><tr>
