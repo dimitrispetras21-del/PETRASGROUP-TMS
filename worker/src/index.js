@@ -431,7 +431,23 @@ var PERMISSIONS = {
     scan_examples: ["GET", "POST"],
     drivers: ["GET", "POST", "PATCH", "DELETE"],
     trucks: ["GET", "POST", "PATCH", "DELETE"],
-    trailers: ["GET", "POST", "PATCH", "DELETE"]
+    trailers: ["GET", "POST", "PATCH", "DELETE"],
+    // OWNER LOCK 23/8: "temporarily every role edits broadly (early stage — a
+    // 403 at the wrong moment stops work)". The accountant is the one role the
+    // lock never reached. Without these two lines the invoicing checkbox and
+    // the pallet sheet fail on EVERY click — after the photo, the AI
+    // extraction and the typing — with a generic message that never says the
+    // word "permission". Measured 3/9: invoiced true on 2 of 111 orders, none
+    // of them written by this role.
+    //
+    // KNOWN COST, written here so nobody discovers it later: the facade has NO
+    // per-field permissions, so `orders: PATCH` grants write to EVERY order
+    // field, not only Invoiced. That is the same width the lock already gives
+    // dispatcher and management, and it narrows when permissions are tightened
+    // in one pass — as the lock itself says.
+    // Owner said yes explicitly, 3/9/2026, after being told this cost.
+    orders: ["GET", "PATCH"],
+    pallet_ledger_suppliers: ["GET", "POST", "PATCH"]
   },
   dispatcher: {
     // No blanket read: dispatchers must not see P&L / cost tables (R-04 scenario).
