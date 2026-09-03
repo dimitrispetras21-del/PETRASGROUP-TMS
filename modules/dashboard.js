@@ -20,6 +20,28 @@ const _arr = v => Array.isArray(v) ? v : (v ? [v] : []);
 const _unassigned = f => !_arr(f['Truck']).length && !_arr(f['Partner']).length;
 const _open = f => { const s = f['Status'] || 'Pending'; return s !== 'Delivered' && s !== 'Invoiced' && s !== 'Cancelled'; };
 
+// Πληκτρολόγιο για στοιχεία που δεν είναι <button>/<a> (γραμμές πίνακα,
+// ειδοποιήσεις). Χωρίς αυτό μετρήθηκαν 3/9/2026 στην οθόνη 121 στοιχεία με
+// onclick και μόνο 56 προσβάσιμα με Tab — ο πληκτρολογιακός χρήστης δεν
+// μπορούσε να ανοίξει καμία γραμμή. Το `this.click()` καλεί το ΙΔΙΟ onclick,
+// ώστε να μην υπάρχει δεύτερη διαδρομή που μπορεί να αποκλίνει.
+const _KB = `tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}"`;
+
+// Διαφορά σε ΗΜΕΡΕΣ, τοπική ζώνη — ΠΟΤΕ σε ώρες (3/9/2026).
+// Οι στήλες φόρτωσης/παράδοσης είναι Postgres `date` χωρίς ώρα, οπότε
+// `new Date('2026-09-03')` = μεσάνυχτα UTC = 03:00 Αθήνας. Η παλιά ωριαία
+// αφαίρεση έβγαζε ΚΑΘΕ σημερινή φόρτωση «πέρασε · 3 ώρες» μετά τις 03:00 και
+// την ταξινομούσε πρώτη — μετρήθηκε ζωντανά σε 7/7 γραμμές. Η σύγκριση
+// ημέρας-με-ημέρα δεν έχει ζώνη να χάσει: το toLocalDate() κανονικοποιεί και
+// τα δύο σχήματα (σκέτη ημερομηνία ή ISO με ώρα) σε τοπικό YYYY-MM-DD και το
+// Date.UTC() αφαιρεί ακέραιες ημέρες χωρίς θερινή ώρα στη μέση.
+function _dashDayDiff(raw, todayStr) {
+  const d = toLocalDate(raw);
+  if (!d) return null;
+  const p = d.split('-').map(Number), t = todayStr.split('-').map(Number);
+  return Math.round((Date.UTC(p[0], p[1] - 1, p[2]) - Date.UTC(t[0], t[1] - 1, t[2])) / 864e5);
+}
+
 // Στόχοι έτους 2026 — PLACEHOLDER (owner 30/8: «οι στόχοι είναι placeholder,
 // ορίζονται με τον owner»). Δεν υπάρχει πίνακας ρυθμίσεων για να αποθηκευτούν
 // και το localStorage απορρίφθηκε ρητά (CEO anti-pattern) — μένουν εδώ
@@ -88,6 +110,21 @@ async function renderDashboard() {
     const weekOf = w => orders.filter(r => Number(r.fields['Week Number']) === Number(w));
     const trendWeeks = [wn - 3, wn - 2, wn - 1, wn].filter(w => w >= 1);
 
+    // Άγνωστο ≠ μηδέν, και «λίγα» ≠ «κακά» (3/9/2026). Δευτέρα πρωί η εβδομάδα
+    // έχει 2-3 παραγγελίες: το `_pct(0,3)` έγραφε «Ανάθεση 0% (0/3)», το KPI
+    // «ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ 0%», το δέλτα «−32 μον. vs W35», και το σκορ έπεφτε
+    // ~20 μονάδες κατηγορώντας την Ανάθεση για μια εβδομάδα που δεν έχει καν
+    // αρχίσει. Μηδέν παραγγελίες = κανένα ποσοστό· κάτω από WEEK_MIN το
+    // ποσοστό ΔΗΛΩΝΕΤΑΙ «πολύ νωρίς» και δεν κρίνεται με χρώμα.
+    // Ο έλεγχος γίνεται ΕΔΩ και όχι στο core/metrics.js — εκείνο δεν είναι
+    // δικό μας αρχείο και το `_pct` το μοιράζονται κι άλλες οθόνες.
+    const WEEK_MIN = 5;
+    const weekN = weekOf(wn).length;
+    const weekNone = weekN === 0;
+    const weekEarly = weekN < WEEK_MIN;
+    const weekNote = weekNone ? `καμία παραγγελία στη W${wn} ακόμη`
+      : weekEarly ? `πολύ νωρίς — ${weekN} ${weekN === 1 ? 'παραγγελία' : 'παραγγελίες'} στη W${wn}` : '';
+
     // Φορτηγά σε δρόμο — metrics.fleetUtilization, ίδιος τύπος για KPI και τάση.
     const util = metrics.fleetUtilization(trucks, orders, { week: wn });
     const utilTrend = trendWeeks.map(w => ({ week: w, pct: metrics.fleetUtilization(trucks, orders, { week: w }).pct, n: weekOf(w).length }));
@@ -127,7 +164,9 @@ async function renderDashboard() {
     const deadKmScore = deadKmAvg == null ? null
       : deadKmAvg <= 50 ? 100 : deadKmAvg <= 150 ? Math.round(100 - (deadKmAvg - 50)) : Math.max(0, Math.round(50 - (deadKmAvg - 150) * 0.33));
     let score = null, scoreParts = 0, scorePartial = false;
-    if (onTime) {
+    // Χωρίς καμία παραγγελία στην εβδομάδα, η Ανάθεση δεν είναι 0% — είναι
+    // άγνωστη· ένα σκορ χτισμένο πάνω της θα ήταν κατασκευασμένο.
+    if (onTime && !weekNone) {
       const base = { assignment_rate: assign.pct, on_time: onTime.pct, compliance: comp.pct };
       if (deadKmScore != null) {
         score = metrics.weeklyScore({ ...base, dead_km_score: deadKmScore }).score; scoreParts = 4;
@@ -140,7 +179,8 @@ async function renderDashboard() {
     }
     const onTimeCount = onTime ? Math.round(onTime.pct * onTime.judged / 100) : 0;
     const comps = [
-      { l: 'Ανάθεση',     pct: assign.pct,  txt: `${assign.pct}% (${assign.assigned}/${assign.total})` },
+      { l: 'Ανάθεση',     pct: weekNone ? null : assign.pct,
+        txt: weekNone ? `— (${weekNote})` : `${assign.pct}% (${assign.assigned}/${assign.total})${weekEarly ? ' · πολύ νωρίς' : ''}` },
       { l: 'Συνέπεια',    pct: onTime ? onTime.pct : null, txt: onTime ? `${onTime.pct}% (${onTimeCount}/${onTime.judged})` : '— (χωρίς κρίση)' },
       { l: 'Συμμόρφωση',  pct: comp.pct,    txt: `${comp.pct}% (${comp.valid}/${comp.total})` },
       { l: 'Κενά χλμ',    pct: deadKmScore, txt: deadKmScore == null ? '— (χωρίς μέτρηση)' : `${deadKmScore}% (${deadKmAvg} χλμ)` },
@@ -171,21 +211,24 @@ async function renderDashboard() {
     departures.sort(byDayTime); deliveries.sort(byDayTime);
 
     // ═══ ΑΝΑΜΟΝΗ ΑΝΑΘΕΣΗΣ — ΚΑΤΑ ΠΡΟΘΕΣΜΙΑ ═══
-    // ΠΡΟΘΕΣΜΙΑ = ώρες έως τη φόρτωση (owner 2/9), όχι «ηλικία» από τη
-    // δημιουργία — το createdTime ήταν ανάποδο σήμα.
+    // ΠΡΟΘΕΣΜΙΑ = ΗΜΕΡΕΣ έως τη φόρτωση (owner 2/9 · μονάδα διορθωμένη 3/9),
+    // όχι «ηλικία» από τη δημιουργία — το createdTime ήταν ανάποδο σήμα.
+    // Ώρες δεν υπάρχουν στη βάση· βλ. _dashDayDiff.
     const waiting = orders.filter(r => _unassigned(r.fields) && _open(r.fields)).map(r => {
       const f = r.fields;
-      const loadRaw = f['Loading DateTime'] || '';
-      const hrs = loadRaw ? Math.round((new Date(loadRaw).getTime() - now.getTime()) / 3600000) : null;
+      const days = _dashDayDiff(f['Loading DateTime'], today);
       const dir = f['Direction'] === 'Import' ? 'IMP' : 'EXP';
       return {
         id: r.id, label: f['Reference'] ? `${dir} ${f['Reference']}` : dir,
         client: _dashClientName(f, clientMap), route: orderRoute(f, 80),
         delDate: (f['Delivery DateTime'] || '').substring(0, 10), pallets: f['Total Pallets'],
-        hrs, direction: f['Direction'],
+        days, direction: f['Direction'],
       };
-    }).sort((a, b) => (a.hrs == null ? 1e9 : a.hrs) - (b.hrs == null ? 1e9 : b.hrs));
-    const waitingSoon = waiting.filter(w => w.hrs != null && w.hrs <= 48).length;
+    }).sort((a, b) => (a.days == null ? 1e9 : a.days) - (b.days == null ? 1e9 : b.days));
+    // Δύο ΞΕΧΩΡΙΣΤΟΙ αριθμοί: το παλιό «σε <48ω» μετρούσε και τις αρνητικές
+    // ώρες, δηλαδή έλεγε «φορτώνουν σε <48ω» για φορτία που είχαν ΗΔΗ περάσει.
+    const waitingLate = waiting.filter(w => w.days != null && w.days < 0).length;
+    const waitingSoon = waiting.filter(w => w.days != null && w.days >= 0 && w.days <= 2).length;
 
     // ═══ ΕΙΔΟΠΟΙΗΣΕΙΣ ΣΤΟΛΟΥ ═══
     // ληγμένα → χωρίς καταχώρηση → συντομότερη λήξη (dash-home, 2/9), όλα
@@ -221,6 +264,22 @@ async function renderDashboard() {
     const nUnknown = alerts.filter(a => a.state === 'unknown').length;
     const nSoon = alerts.filter(a => a.state === 'soon').length;
 
+    // ΜΙΑ γραμμή ανά ΟΧΗΜΑ, όχι ανά έγγραφο (3/9/2026). Μετρήθηκε: 43
+    // ειδοποιήσεις σε στήλη 380px που συνέχιζε μόνη της 770px κάτω από την
+    // αριστερή στήλη, με την ίδια πινακίδα να επαναλαμβάνεται 2-3 φορές.
+    // Η ομαδοποίηση ΔΕΝ κρύβει τίποτα — κανένα slice, κάθε έγγραφο μένει
+    // ορατό δίπλα στην πινακίδα του (αρχή 1). Το `alerts` είναι ήδη
+    // ταξινομημένο και το Map κρατά σειρά εισαγωγής, οπότε το χειρότερο
+    // έγγραφο κάθε οχήματος είναι το docs[0] και τα οχήματα βγαίνουν με τη
+    // σειρά του χειρότερου εγγράφου τους.
+    const _groups = new Map();
+    alerts.forEach(a => {
+      const key = a.kind + '|' + a.plate;
+      if (!_groups.has(key)) _groups.set(key, { plate: a.plate, kind: a.kind, docs: [] });
+      _groups.get(key).docs.push(a);
+    });
+    const alertGroups = [..._groups.values()];
+
     // ═══ ΣΤΟΧΟΙ 2026 — τιμές από το ΠΡΑΓΜΑΤΙΚΟ παράθυρο (30 ημ), όχι YTD ═══
     // Το frame γράφει YTD· το YTD θέλει ανάγνωση όλου του έτους (νέα κλήση =
     // αλλαγή απόδοσης, PRIME DIRECTIVE). Μέχρι απόφαση owner, το παράθυρο
@@ -247,7 +306,10 @@ async function renderDashboard() {
     const greeting = now.getHours() < 12 ? 'Καλημέρα' : now.getHours() < 18 ? 'Καλό απόγευμα' : 'Καλό βράδυ';
     const dateStr = now.toLocaleDateString('el-GR', { weekday: 'long', day: 'numeric', month: 'long' });
     const hhmm = now.toTimeString().slice(0, 5);
-    const ringColor = score == null ? 'var(--text-dim)' : scorePartial ? 'var(--navy-light)' : score >= 85 ? 'var(--success)' : score >= 70 ? 'var(--warning)' : 'var(--danger)';
+    // Ουδέτερος δακτύλιος όταν το σκορ είναι μερικό Ή η εβδομάδα μόλις άρχισε:
+    // ένα κόκκινο 53 από τρεις παραγγελίες Δευτέρας είναι ετυμηγορία που
+    // κανείς δεν έχει δικαίωμα να βγάλει ακόμη.
+    const ringColor = score == null ? 'var(--text-dim)' : (scorePartial || weekEarly) ? 'var(--navy-light)' : score >= 85 ? 'var(--success)' : score >= 70 ? 'var(--warning)' : 'var(--danger)';
     const prevUtil = utilTrend.length > 1 ? utilTrend[utilTrend.length - 2] : null;
     const prevOnTime = onTimeTrend.length > 1 ? onTimeTrend[onTimeTrend.length - 2].r : null;
 
@@ -277,6 +339,8 @@ async function renderDashboard() {
               <div class="dh-ring-num">${score == null ? '—' : score + (scorePartial ? '*' : '')}</div>
             </div>
             <div class="dh-score-label">ΒΑΘΜΟΣ W${wn}${score == null ? ' · χωρίς δείγμα' : ` · ${scoreParts}/4`}</div>
+            ${scorePartial ? `<div class="dh-score-note">* μερικό σκορ — ${scoreParts} από 4 συνιστώσες (λείπουν τα Κενά χλμ)</div>` : ''}
+            ${weekEarly && score != null ? `<div class="dh-score-note">${weekNote}</div>` : ''}
           </div>
           <div class="dh-bars">
             ${comps.map(x => `<div class="dh-bar${weakest && x.l === weakest.l ? ' low' : ''}">
@@ -284,20 +348,25 @@ async function renderDashboard() {
               <div class="dh-bar-track">${x.pct == null ? '' : `<div class="dh-bar-fill" style="width:${x.pct}%"></div>`}</div>
               <span class="dh-bar-val">${x.txt}</span>
             </div>`).join('')}
-            <div class="dh-receipt">metrics.weeklyScore() · βάρη 30/30/25/15 · ${onTime ? `δείγμα ${onTime.judged} κριθείσες` : 'χωρίς κρίση παράδοσης — το σκορ δεν υπολογίζεται'}${scorePartial ? ' · χωρίς Κενά χλμ (3/4)' : ''}${weakest && score != null ? ` · τραβά κάτω: ${weakest.l}` : ''}</div>
+            <div class="dh-receipt">metrics.weeklyScore() · βάρη 30/30/25/15 · ${onTime ? `δείγμα ${onTime.judged} κριθείσες` : 'χωρίς κρίση παράδοσης — το σκορ δεν υπολογίζεται'}${weekNone ? ` · ${weekNote} — το σκορ δεν υπολογίζεται` : ''}${scorePartial ? ` · χωρίς Κενά χλμ (${scoreParts}/4)` : ''}${weakest && score != null ? ` · τραβά κάτω: ${weakest.l}` : ''}</div>
           </div>
         </div>
 
         ${_dashKpi({
-          label: 'ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ', link: 'Εβδομαδιαίο', page: 'weekly_intl',
-          value: `${util.pct}%`,
-          delta: prevUtil ? _dashDeltaPts(util.pct, prevUtil.pct, prevUtil.n, wn - 1, 'μον.', false) : '',
+          label: 'ΦΟΡΤΗΓΑ ΣΕ ΔΡΟΜΟ', period: `W${wn}`, link: 'Εβδομαδιαίο', page: 'weekly_intl',
+          // Χωρίς παραγγελίες στην εβδομάδα δεν υπάρχει «0% αξιοποίηση» —
+          // υπάρχει εβδομάδα που δεν άρχισε. Και το δέλτα σιωπά όσο το
+          // δείγμα είναι πολύ μικρό: «−32 μον. vs W35» από 3 παραγγελίες
+          // είναι θόρυβος που διαβάζεται ως κατάρρευση.
+          value: weekNone ? '—' : `${util.pct}%`, muted: weekNone,
+          delta: (prevUtil && !weekEarly) ? _dashDeltaPts(util.pct, prevUtil.pct, prevUtil.n, wn - 1, 'μον.', false) : '',
           trend: _dashTrend(utilTrend.map(t => ({ v: t.pct, ok: t.n > 0 }))),
-          sub: `${util.busy}/${util.total} ενεργά φορτηγά · ${unassignedWeek} χωρίς ανάθεση`,
+          sub: `${util.busy}/${util.total} ενεργά φορτηγά · ${unassignedWeek} χωρίς ανάθεση${weekNote ? ` · ${weekNote}` : ''}`,
+          warnSub: weekEarly,
           src: `ORDERS × TRUCKS · W${wn} ISO · φορτηγά με ≥1 ανάθεση`,
         })}
         ${_dashKpi({
-          label: 'ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ', link: 'Εβδομαδιαίο', page: 'weekly_intl',
+          label: 'ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ', period: `W${wn}`, link: 'Εβδομαδιαίο', page: 'weekly_intl',
           value: deadKmAvg == null ? '—' : `${deadKmAvg} χλμ`,
           muted: deadKmAvg == null,
           delta: deadKmAvg == null ? '' : _dashDeltaPts(deadKmAvg, deadKmPrev, deadKmPrev == null ? 0 : 1, wn - 1, 'χλμ', true),
@@ -310,7 +379,11 @@ async function renderDashboard() {
           warnSub: stopsFailed || (deadKmAvg == null && deadKm.paired > 0),
         })}
         ${_dashKpi({
-          label: 'ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ', link: 'Παραγγελίες', page: 'orders_intl',
+          // ΠΡΟΣΟΧΗ: αυτό το πλακίδιο μετράει ΟΛΟ το παράθυρο 30 ημερών
+          // (`orders`), όχι την εβδομάδα — γι' αυτό το επίθημα λέει «30 ΗΜ»
+          // ενώ κάθεται μέσα στη ζώνη «Η ΕΒΔΟΜΑΔΑ». Η ασυμφωνία υπήρχε πάντα
+          // και ήταν αόρατη· τώρα δηλώνεται (αρχή 1).
+          label: 'ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ', period: '30 ΗΜ', link: 'Παραγγελίες', page: 'orders_intl',
           value: onTime ? `${onTime.pct}%` : '—', muted: !onTime,
           delta: onTime && prevOnTime ? _dashDeltaPts(onTime.pct, prevOnTime.pct, prevOnTime.judged, wn - 1, 'μον.', false) : '',
           trend: _dashTrend(onTimeTrend.map(t => ({ v: t.r ? t.r.pct : null, ok: !!t.r }))),
@@ -321,17 +394,17 @@ async function renderDashboard() {
 
       <div class="dh-card dh-goals">
         <div class="dh-goals-head">
-          <span class="dh-goals-title">Στόχοι έτους 2026</span>
-          <span class="dh-goals-note">τιμές: τελευταίες 30 ημέρες (όχι YTD — παράθυρο δεδομένων) · στόχοι ενδεικτικοί, ορίζονται από τον owner</span>
+          <span class="dh-goals-title">Στόχοι 2026 — μέτρηση τελευταίων 30 ημερών</span>
+          <span class="dh-goals-note">όχι YTD: το παράθυρο δεδομένων είναι 30 ημερών · στόχοι ενδεικτικοί, ορίζονται από τον owner</span>
         </div>
         <div class="dh-goals-grid">
-          ${_dashGoal('ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ', onTime ? `${onTime.pct}%` : '—', onTime ? `(δείγμα ${onTime.judged})` : '(χωρίς κρίση)', `στόχος ≥ ${DASH_GOALS_2026.onTimePct}%`,
+          ${_dashGoal('ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ', '30 ΗΜ', onTime ? `${onTime.pct}%` : '—', onTime ? `(δείγμα ${onTime.judged})` : '(χωρίς κρίση)', `στόχος ≥ ${DASH_GOALS_2026.onTimePct}%`,
             onTime ? _dashGap(onTime.pct - DASH_GOALS_2026.onTimePct, 'μον.') : null)}
-          ${_dashGoal('ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ', dead30Avg == null ? '—' : `${dead30Avg} χλμ μ.ό.`, dead30Avg == null ? (dead30.paired ? '(λείπουν συντεταγμένες)' : '(κανένα ζεύγος)') : `(${dead30.list.length} ζεύγη)`, `στόχος ≤ ${DASH_GOALS_2026.deadKmAvg} χλμ`,
+          ${_dashGoal('ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ', '30 ΗΜ', dead30Avg == null ? '—' : `${dead30Avg} χλμ μ.ό.`, dead30Avg == null ? (dead30.paired ? '(λείπουν συντεταγμένες)' : '(κανένα ζεύγος)') : `(${dead30.list.length} ζεύγη)`, `στόχος ≤ ${DASH_GOALS_2026.deadKmAvg} χλμ`,
             dead30Avg == null ? null : _dashGap(DASH_GOALS_2026.deadKmAvg - dead30Avg, 'χλμ'))}
-          ${_dashGoal('ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ', `${util30.pct}%`, `(${util30.busy}/${util30.total} φορτηγά)`, `στόχος ≥ ${DASH_GOALS_2026.utilizationPct}%`,
-            _dashGap(util30.pct - DASH_GOALS_2026.utilizationPct, 'μον.'))}
-          ${_dashGoal('ΗΜΕΡΕΣ ΧΩΡΙΣ ΛΗΓΜΕΝΟ ΕΓΓΡΑΦΟ', '—', '(δεν μετράται ακόμη)', `στόχος ${DASH_GOALS_2026.daysNoExpired}`,
+          ${_dashGoal('ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ', '30 ΗΜ', util30.total ? `${util30.pct}%` : '—', util30.total ? `(${util30.busy}/${util30.total} φορτηγά)` : '(κανένα ενεργό φορτηγό)', `στόχος ≥ ${DASH_GOALS_2026.utilizationPct}%`,
+            util30.total ? _dashGap(util30.pct - DASH_GOALS_2026.utilizationPct, 'μον.') : null)}
+          ${_dashGoal('ΗΜΕΡΕΣ ΧΩΡΙΣ ΛΗΓΜΕΝΟ ΕΓΓΡΑΦΟ', 'ΕΤΟΣ', '—', '(δεν μετράται ακόμη)', `στόχος ${DASH_GOALS_2026.daysNoExpired}`,
             `<span class="dh-goal-d">χρειάζεται ιστορικό λήξεων ανά ημέρα · σήμερα: ${nExpired ? `${nExpired} ληγμένα σε κυκλοφορία` : 'κανένα ληγμένο'}</span>`)}
         </div>
       </div>
@@ -342,16 +415,16 @@ async function renderDashboard() {
 
           <div class="dh-card">
             <div class="dh-ch">Αναμονή ανάθεσης — κατά προθεσμία
-              <span class="n">${waiting.length} ανοιχτές · χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη${waitingSoon ? ` · ${waitingSoon} φορτώνουν σε &lt;48ω` : ''} · ORDERS 30 ημ</span>
+              <span class="n">${waiting.length} ανοιχτές · χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη${waitingLate ? ` · ${waitingLate} πέρασαν` : ''}${waitingSoon ? ` · ${waitingSoon} φορτώνουν εντός 2 ημερών` : ''} · ORDERS 30 ημ</span>
             </div>
             ${waiting.length ? `<table class="dh-tbl">
               <thead><tr><th>ΦΟΡΤΙΟ</th><th>ΠΕΛΑΤΗΣ / ΔΡΟΜΟΛΟΓΙΟ</th><th>ΠΑΡΑΔΟΣΗ</th><th style="text-align:right">PAL</th><th style="text-align:right">ΠΡΟΘΕΣΜΙΑ</th></tr></thead>
-              <tbody>${waiting.map(w => `<tr onclick="window._dashNav={dir:'${w.direction === 'Import' ? 'Import' : 'Export'}',trip:'unassigned'};navigate('orders_intl')">
+              <tbody>${waiting.map(w => `<tr ${_KB} aria-label="${_esc(w.label)} — άνοιγμα παραγγελίας" onclick="window._dashNav={dir:'${w.direction === 'Import' ? 'Import' : 'Export'}',trip:'unassigned'};navigate('orders_intl')">
                 <td class="dh-lbl">${_esc(w.label)}</td>
                 <td><span class="c">${_esc(w.client)}</span> <span class="r">${_esc(w.route)}</span></td>
                 <td>${w.delDate ? fmtDateDM(w.delDate) : '—'}</td>
                 <td style="text-align:right;font-variant-numeric:tabular-nums">${w.pallets != null ? w.pallets : '—'}</td>
-                <td style="text-align:right">${_dashDuePill(w.hrs)}</td>
+                <td style="text-align:right">${_dashDuePill(w.days)}</td>
               </tr>`).join('')}</tbody>
             </table>` : `<div class="dh-empty">Καμία ανοιχτή παραγγελία χωρίς ανάθεση — ORDERS 30 ημ, ${orders.length} παραγγελίες ελέγχθηκαν.</div>`}
             <div class="dh-foot">ΔΙΑΘΕΣΙΜΑ ΓΙΑ ΑΝΑΘΕΣΗ · ${idlePlates.length}/${activeTrucks.length}
@@ -365,13 +438,13 @@ async function renderDashboard() {
         <div class="dh-right">
           <div class="dh-card">
             <div class="dh-ch">Ειδοποιήσεις στόλου <a class="dh-link" style="margin-left:auto" onclick="navigate('maint_expiry')">Λήξεις ›</a></div>
-            <div class="dh-sum">${nExpired} ληγμένα · ${nUnknown} χωρίς καταχώρηση · ${nSoon} λήγουν σε 30 ημ</div>
-            ${alerts.length ? alerts.map(a => `<div class="dh-alert" onclick="navigate('${a.kind === 'truck' ? 'trucks' : 'trailers'}')">
-              <span class="p">${_esc(a.plate)}${a.kind === 'trailer' ? ' <span class="k">(ρυμ.)</span>' : ''}</span>
-              <span class="d">${a.doc}</span>
-              ${a.state === 'expired' ? `<span class="x">ΛΗΓΜΕΝΟ — ${Math.abs(a.days)} ${Math.abs(a.days) === 1 ? 'μέρα' : 'μέρες'}</span>`
+            <div class="dh-sum">${nExpired} ληγμένα · ${nUnknown} χωρίς καταχώρηση · ${nSoon} λήγουν σε 30 ημ — σε ${alertGroups.length} ${alertGroups.length === 1 ? 'όχημα' : 'οχήματα'}</div>
+            ${alertGroups.length ? alertGroups.map(g => `<div class="dh-alert" role="button" ${_KB} onclick="navigate('${g.kind === 'truck' ? 'trucks' : 'trailers'}')">
+              <span class="p">${_esc(g.plate)}${g.kind === 'trailer' ? ' <span class="k">(ρυμ.)</span>' : ''}</span>
+              <span class="dh-docs">${g.docs.map(a => `<span class="dh-doc"><span class="d">${a.doc}</span> ${
+                a.state === 'expired' ? `<span class="x">ΛΗΓΜΕΝΟ — ${Math.abs(a.days)} ${Math.abs(a.days) === 1 ? 'μέρα' : 'μέρες'}</span>`
                 : a.state === 'unknown' ? '<span class="u">άγνωστο · συμπλήρωση ›</span>'
-                : `<span class="k">σε ${a.days} ${a.days === 1 ? 'μέρα' : 'μέρες'}</span>`}
+                : `<span class="k">σε ${a.days} ${a.days === 1 ? 'μέρα' : 'μέρες'}</span>`}</span>`).join('')}</span>
             </div>`).join('') : '<div class="dh-empty">Κανένα έγγραφο ληγμένο, άγνωστο ή προς λήξη σε 30 ημέρες — TRUCKS + TRAILERS.</div>'}
           </div>
         </div>
@@ -449,9 +522,13 @@ function _dashPlate(f, truckMap) {
   if (_arr(f['Partner']).length) return f['Partner Truck Plates'] || 'ΣΥΝ.';
   return '';
 }
+// Ώρα φόρτωσης/παράδοσης — ΜΟΝΟ αν υπάρχει. Οι στήλες είναι `date` χωρίς ώρα
+// (μετρημένο 3/9: κανένα δείγμα με 'T'), οπότε η συνάρτηση επέστρεφε μόνιμα
+// «—» και κάθε γραμμή ξεκινούσε με μια παύλα που δεν σήμαινε τίποτα. Κενό
+// string = η γραμμή δεν αποδίδει καθόλου ώρα (αρχή 8: ή ζωντανεύει ή φεύγει).
 function _dashTime(raw) {
   raw = raw || '';
-  return raw.includes('T') ? (raw.split('T')[1] || '').substring(0, 5) || '—' : '—';
+  return raw.includes('T') ? (raw.split('T')[1] || '').substring(0, 5) : '';
 }
 // Κανόνας #2: η κατάσταση είναι ΛΕΞΗ, όχι χρωματιστή κουκκίδα.
 function _dashStatusWord(f) {
@@ -466,9 +543,9 @@ function _dashStatusWord(f) {
 
 function _dashOpsCard(title, rows, page, linkLabel, collapsed, emptyText, src) {
   const group = day => rows.filter(r => r.day === day);
-  const rowHtml = r => `<div class="dh-row" onclick="navigate('${page}')">
+  const rowHtml = r => `<div class="dh-row" role="button" ${_KB} onclick="navigate('${page}')">
     <div><div class="c">${_esc(r.client)}</div><div class="r">${_esc(r.route)}</div></div>
-    <div class="m">${r.time} · ${r.pallets != null ? r.pallets + 'p' : '—'}${r.plate ? ' · ' + _esc(r.plate) : ''}<div class="s ${r.status.cls}">${r.status.t}</div></div>
+    <div class="m">${r.time ? r.time + ' · ' : ''}${r.pallets != null ? r.pallets + 'p' : '—'}${r.plate ? ' · ' + _esc(r.plate) : ''}<div class="s ${r.status.cls}">${r.status.t}</div></div>
   </div>`;
   const body = rows.length
     ? ['ΣΗΜΕΡΑ', 'ΑΥΡΙΟ'].map(d => group(d).length ? `<div class="dh-grp">${d}</div>${group(d).map(rowHtml).join('')}` : '').join('')
@@ -489,7 +566,7 @@ function _dashOpsCard(title, rows, page, linkLabel, collapsed, emptyText, src) {
 
 function _dashKpi(k) {
   return `<button type="button" class="dh-card dh-kpi" onclick="navigate('${k.page}')">
-    <div class="dh-kpi-top"><span>${k.label}</span><span class="dh-kpi-link">${k.link} ›</span></div>
+    <div class="dh-kpi-top"><span>${k.label}${k.period ? ` <span class="dh-per">· ${k.period}</span>` : ''}</span><span class="dh-kpi-link">${k.link} ›</span></div>
     <div class="dh-kpi-val${k.muted ? ' muted' : ''}">${k.value}${k.delta || ''}</div>
     ${k.trend}
     <div class="dh-kpi-sub${k.warnSub ? ' warn' : ''}">${k.sub}</div>
@@ -520,8 +597,12 @@ function _dashTrend(points) {
     <span>${withData.length} εβδ · ${vals[0]} → ${vals[vals.length - 1]}</span></div>`;
 }
 
-function _dashGoal(label, value, meta, target, gapHtml) {
-  return `<div><div class="dh-goal-l">${label}</div>
+// `period` υποχρεωτικό: δύο πλακίδια με το ΙΔΙΟ όνομα και διαφορετικό αριθμό
+// («ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ —» της εβδομάδας 130px πάνω από «ΚΕΝΑ ΧΙΛΙΟΜΕΤΡΑ 218 χλμ»
+// των 30 ημερών) διαβάζονται ως αντίφαση. Το επίθημα υπήρχε στο Figma και
+// είχε αφαιρεθεί — επανήλθε 3/9/2026, και στα ΔΥΟ επίπεδα.
+function _dashGoal(label, period, value, meta, target, gapHtml) {
+  return `<div><div class="dh-goal-l">${label} <span class="dh-per">· ${period}</span></div>
     <div class="dh-goal-v">${value} <span class="dh-goal-t">${meta}</span><span class="dh-goal-t">· ${target}</span></div>
     ${gapHtml || '<span class="dh-goal-d">απόσταση από τον στόχο: δεν μετράται</span>'}</div>`;
 }
@@ -535,13 +616,19 @@ function _dashGap(diff, unit) {
     : `<span class="dh-goal-d bad">−${abs} ${unit} από τον στόχο</span>`;
 }
 
-// Προθεσμία φόρτωσης: ≤48ω κόκκινο pill, το μόνο κόκκινο της οθόνης (2/9).
-function _dashDuePill(hrs) {
-  if (hrs == null) return '<span class="dh-pill">χωρίς ώρα φόρτωσης</span>';
-  if (hrs < 0) return `<span class="dh-pill due">πέρασε · ${Math.abs(hrs) < 48 ? Math.abs(hrs) + ' ώρες' : Math.round(Math.abs(hrs) / 24) + ' μέρες'}</span>`;
-  if (hrs <= 48) return `<span class="dh-pill due">σε ${hrs} ${hrs === 1 ? 'ώρα' : 'ώρες'}</span>`;
-  const d = Math.round(hrs / 24);
-  return `<span class="dh-pill">σε ${d} ${d === 1 ? 'μέρα' : 'μέρες'}</span>`;
+// Προθεσμία φόρτωσης σε ΗΜΕΡΕΣ (3/9). Δύο αλλαγές μαζί:
+//  · μονάδα — «σήμερα» δεν λέγεται πια «πέρασε · 3 ώρες» (βλ. _dashDayDiff)·
+//  · χρώμα — η προθεσμία είναι ΠΟΡΤΟΚΑΛΙ, όχι κόκκινο. Το κόκκινο μένει
+//    αποκλειστικά στο ΛΗΓΜΕΝΟ έγγραφο των Ειδοποιήσεων στόλου: όταν δύο
+//    διαφορετικά πράγματα βάφονται ίδια, και η στήλη βγαίνει 7/7 κόκκινη, το
+//    χρώμα παύει να ταξινομεί (frame dash-home 338:874, μέτρηση 3/9).
+function _dashDuePill(days) {
+  if (days == null) return '<span class="dh-pill">χωρίς ημερομηνία φόρτωσης</span>';
+  if (days < 0) { const a = Math.abs(days); return `<span class="dh-pill late">πέρασε · ${a} ${a === 1 ? 'μέρα' : 'μέρες'}</span>`; }
+  if (days === 0) return '<span class="dh-pill due">φορτώνει σήμερα</span>';
+  if (days === 1) return '<span class="dh-pill due">αύριο</span>';
+  if (days <= 2) return `<span class="dh-pill due">σε ${days} μέρες</span>`;
+  return `<span class="dh-pill">σε ${days} μέρες</span>`;
 }
 
 // ── CSS (μόνο tokens — κανόνας #1) ─────────────────────────
@@ -561,6 +648,10 @@ function _dashCss() { return `<style>
 .dh-ring::after{content:'';position:absolute;inset:10px;background:var(--bg-card);border-radius:50%}
 .dh-ring-num{position:relative;z-index:1;font-size:48px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
 .dh-score-label{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);text-align:center;margin-top:6px;white-space:nowrap}
+/* Ο αστερίσκος του «53*» δεν εξηγούνταν πουθενά στην οθόνη (σάρωση κάθε
+   κόμβου κειμένου 3/9): μια tooltip δεν είναι εξήγηση για τον χρήστη των
+   05:30. Η επεξήγηση είναι ΟΡΑΤΟ κείμενο, κάτω από τον δακτύλιο. */
+.dh-score-note{font-size:10px;line-height:13px;color:var(--text-dim);text-align:center;margin-top:4px}
 .dh-bars{flex:1;min-width:0}
 .dh-bar{display:grid;grid-template-columns:92px 1fr 118px;align-items:center;gap:8px;font-size:12px;margin-bottom:7px}
 .dh-bar-track{height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden}
@@ -574,10 +665,13 @@ function _dashCss() { return `<style>
 .dh-kpi:hover{border-color:var(--border-focus)}
 .dh-kpi-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim)}
 .dh-kpi-link{font-weight:500;letter-spacing:0;color:var(--accent-text);white-space:nowrap}
+.dh-per{font-weight:500;letter-spacing:0;color:var(--text-dim);white-space:nowrap}
 .dh-kpi-val{font-size:36px;font-weight:700;line-height:36px;margin-top:8px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .dh-kpi-val.muted{color:var(--text-dim)}
 .dh-delta{font-size:11px;font-weight:600;padding:2px 6px;border-radius:999px;background:var(--bg-hover);color:var(--text-mid);white-space:nowrap}
-.dh-delta.good{color:var(--success)} .dh-delta.bad{color:var(--danger)}
+/* Το αρνητικό δέλτα είναι τάση, ΟΧΙ ληγμένο έγγραφο — πορτοκαλί. Το κόκκινο
+   της οθόνης ανήκει αποκλειστικά στο ΛΗΓΜΕΝΟ (3/9). */
+.dh-delta.good{color:var(--success)} .dh-delta.bad{color:var(--warning)}
 .dh-trend{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text-dim);min-height:16px}
 .dh-bars4{display:flex;align-items:flex-end;gap:3px;height:16px}
 .dh-bars4 i{display:block;width:7px;background:var(--silver-light);border-radius:2px}
@@ -605,29 +699,51 @@ function _dashCss() { return `<style>
 .dh-link{font-size:12px;font-weight:500;color:var(--accent-text);cursor:pointer;white-space:nowrap}
 .dh-details summary{list-style:none;cursor:pointer} .dh-details summary::-webkit-details-marker{display:none}
 .dh-grp{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);padding:6px 14px 0}
-.dh-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:4px 14px;min-height:34px;cursor:pointer}
+/* ≥36px σε κάθε κλικαρίσιμη γραμμή (μέτρηση 3/9: 49 στόχοι κάτω από 36px). */
+.dh-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 14px;min-height:36px;cursor:pointer}
 .dh-row:hover{background:var(--bg-hover)}
 .dh-row .c{font-size:13px;font-weight:500}
 .dh-row .r{font-size:11px;color:var(--text-dim)}
 .dh-row .m{text-align:right;font-size:11px;color:var(--text-mid);white-space:nowrap;font-variant-numeric:tabular-nums}
 .dh-row .s{font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--text-dim)}
-.dh-row .s.on{color:var(--accent-text)} .dh-row .s.none{color:var(--danger)}
+/* «ΧΩΡΙΣ ΦΟΡΤΗΓΟ» = ενέργεια σήμερα, όχι ληγμένο έγγραφο — πορτοκαλί (3/9). */
+.dh-row .s.on{color:var(--accent-text)} .dh-row .s.none{color:var(--warning)}
+.dh-row:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
 .dh-tbl{width:100%;border-collapse:collapse;font-size:13px}
 .dh-tbl th{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);text-align:left;padding:8px 8px 6px;border-bottom:1px solid var(--border-row)}
 .dh-tbl th:first-child,.dh-tbl td:first-child{padding-left:14px}
-.dh-tbl td{padding:4px 8px;border-bottom:1px solid var(--border-row);vertical-align:middle;height:24px}
+.dh-tbl td{padding:8px;border-bottom:1px solid var(--border-row);vertical-align:middle;height:36px}
 .dh-tbl tbody tr{cursor:pointer} .dh-tbl tbody tr:hover td{background:var(--bg-hover)}
+.dh-tbl tbody tr:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
 .dh-tbl .dh-lbl{font-weight:600;white-space:nowrap}
 .dh-tbl .c{font-weight:500} .dh-tbl .r{font-size:11px;color:var(--text-dim);margin-left:8px}
-.dh-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--bg-hover);color:var(--text-mid);white-space:nowrap}
-.dh-pill.due{background:var(--danger-bg);color:var(--danger)}
+/* Η ΠΡΟΘΕΣΜΙΑ είναι πορτοκαλί, ποτέ κόκκινη (3/9): το κόκκινο μοιραζόταν με
+   το ΛΗΓΜΕΝΟ ΚΤΕΟ των Ειδοποιήσεων και τα δύο σήμαιναν διαφορετικά πράγματα
+   — ενέργεια σήμερα vs χρόνιο εύρημα. Επιπλέον το --danger πάνω σε
+   --danger-bg μετρήθηκε 4.28:1 (κάτω από AA)· το --warning σε λευκή κάρτα
+   δίνει 5.0:1 και πάνω σε --warning-bg 4.6:1. Περίγραμμα αντί για γέμισμα
+   ώστε 7/7 πορτοκαλί γραμμές να μη γίνουν πάλι ένας τοίχος χρώματος. */
+.dh-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--bg-hover);border:1px solid transparent;color:var(--text-mid);white-space:nowrap}
+.dh-pill.due{background:var(--bg-card);border-color:var(--warning);color:var(--warning)}
+.dh-pill.late{background:var(--warning-bg);border-color:var(--warning);color:var(--warning)}
 .dh-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 14px;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);border-top:1px solid var(--border-row)}
 .dh-foot-none{font-weight:400;letter-spacing:0;font-size:11px}
 .dh-plate{font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text);letter-spacing:0}
-.dh-alert{display:grid;grid-template-columns:96px 64px minmax(0,1fr);gap:8px;padding:4px 14px;font-size:12px;align-items:center;min-height:27px;cursor:pointer}
+/* Μία γραμμή ανά ΟΧΗΜΑ: τα έγγραφά του μπαίνουν σε στήλη μέσα στη γραμμή,
+   ώστε τίποτα να μη χαθεί και η στήλη να μη συνεχίζει μόνη της (βλ. Δ3). */
+.dh-alert{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;padding:6px 14px;font-size:12px;align-items:start;min-height:36px;cursor:pointer;border-bottom:1px solid var(--border-row)}
 .dh-alert:hover{background:var(--bg-hover)}
-.dh-alert .p{font-weight:600} .dh-alert .d{color:var(--text-mid)}
-.dh-alert .x{color:var(--danger);font-weight:700} .dh-alert .u{color:var(--warning)} .dh-alert .k{color:var(--text-mid)}
+.dh-alert:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
+.dh-alert .p{font-weight:600;padding-top:1px}
+/* Τα έγγραφα ρέουν οριζόντια και τυλίγονται μόνο όταν δεν χωρούν: σε στοίβα
+   η ομαδοποίηση έκανε τη στήλη ΨΗΛΟΤΕΡΗ (μετρήθηκε 1.376px) και ακύρωνε τον
+   σκοπό της. Το σταθερό πλάτος στο όνομα εγγράφου κρατά τη στήλη ΚΤΕΟ/ΚΕΚ/FRC
+   ευθυγραμμισμένη όταν τυλιχτούν — αλλιώς το «Ασφάλεια» μετατόπιζε τη γραμμή. */
+.dh-docs{display:flex;flex-wrap:wrap;column-gap:10px;row-gap:2px;min-width:0}
+.dh-doc{display:inline-flex;gap:6px;align-items:baseline;white-space:nowrap}
+.dh-doc .d{min-width:58px}
+.dh-alert .d{color:var(--text-mid)}
+.dh-alert .x{color:var(--danger-strong);font-weight:700} .dh-alert .u{color:var(--warning)} .dh-alert .k{color:var(--text-mid)}
 .dh-sum{font-size:12px;color:var(--text-mid);padding:0 14px 6px}
 .dh-empty{padding:14px;font-size:12px;color:var(--text-dim)}
 .dh-err{padding:12px 14px;font-size:12px;color:var(--warning);border:1px solid var(--warning-soft);border-radius:6px;margin:8px 14px 14px}
