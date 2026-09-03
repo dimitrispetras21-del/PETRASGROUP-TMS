@@ -165,6 +165,14 @@ function _puTabContent(idx) {
   const tab = PU.tabs[idx];
   if (!tab) return '';
   const isLoading = tab.stopType === 'Loading';
+  // Η ΦΟΡΑ (Δώσαμε / Πήραμε) είναι ίδια στα δύο δελτία· το ΕΙΔΟΣ της παλέτας
+  // αντιστρέφεται. Οι παρενθέσεις ήταν σταθερές και έλεγαν το αντίθετο στο
+  // cross-dock (διορθώθηκε 3/9/2026). Πηγή αλήθειας ο ίδιος ο _puSave:
+  //   Φόρτωση  — OUT = «empties we left at supplier», IN = «full pallets we took»
+  //   Cross-dock — OUT = «Partner took pallets from Veroia», IN = «Partner left empties»
+  // Λάθος ετικέτα εδώ δεν πέφτει πουθενά: ο χρήστης γράφει τα νούμερα ανάποδα,
+  // το ισοζύγιο του συνεργάτη βγαίνει με ανάποδο πρόσημο, και φαίνεται μήνες
+  // μετά σε συμφωνία. Αλλάζει ΜΟΝΟ το κείμενο — τα πεδία εγγραφής ίδια.
 
   return `
   <div class="pu-upload-section" id="puUploadSection">
@@ -201,11 +209,11 @@ function _puTabContent(idx) {
 
     <div class="pu-form-grid">
       <div class="pu-field">
-        <label>Δώσαμε (άδειες που αφήσαμε)</label>
+        <label>${isLoading ? 'Δώσαμε (άδειες που αφήσαμε)' : 'Δώσαμε (γεμάτες που πήρε ο συνεργάτης)'}</label>
         <input type="number" id="puOut" value="0" min="0" oninput="_puUpdateBalance()">
       </div>
       <div class="pu-field">
-        <label>Πήραμε (γεμάτες που πήραμε)</label>
+        <label>${isLoading ? 'Πήραμε (γεμάτες που πήραμε)' : 'Πήραμε (άδειες που άφησε ο συνεργάτης)'}</label>
         <input type="number" id="puIn" value="0" min="0" oninput="_puUpdateBalance()">
       </div>
       <div class="pu-field">
