@@ -1049,7 +1049,7 @@ function plvNewMovement() {
         ${_plvDropzone()}
       </div>
       <div class="plv-mfoot">
-        <span>Χωρίς δελτίο η κίνηση μένει «εκκρεμής» μέχρι επιβεβαίωση</span>
+        <span>Χωρίς δελτίο η κίνηση μένει «εκκρεμής» μέχρι να την επιβεβαιώσει κάποιος (με ή χωρίς δελτίο)</span>
         <span class="plv-sp"></span>
         <button class="plv-btn-ghost" onclick="plvCloseModal()">Άκυρο</button>
         <button class="btn-new-order" onclick="plvDoCreate()">Καταχώρηση</button>
@@ -1077,7 +1077,9 @@ async function plvDoCreate() {
     const [kind, pid] = partyVal.split(':');
     const path = await _plvUploadIfAny();
     // Πύλη δελτίων (owner 25/8, frame 2/9): ΜΕ δελτίο η κίνηση γίνεται
-    // οριστική αμέσως· ΧΩΡΙΣ δελτίο μένει εκκρεμής μέχρι να επιβεβαιωθεί
+    // οριστική αμέσως· ΧΩΡΙΣ δελτίο μένει εκκρεμής μέχρι να επιβεβαιωθεί —
+    // η επιβεβαίωση ΔΕΝ απαιτεί δελτίο: ο Worker δέχεται sheet_source 'MANUAL'
+    // (ελεγκτής 3/9 — το παλιό σχόλιο έλεγε «με δελτίο» και υπερέβαλλε)
     // με δελτίο. Πριν (12/8) όλες οριστικοποιούνταν στην καταχώρηση.
     const body = {
       movement_date: md,
@@ -1095,7 +1097,7 @@ async function plvDoCreate() {
     if (loc) body.location_id = parseInt(loc, 10);
     if (path) body.sheet_url = path;
     await plFetch('/pallets/movements', { method: 'POST', body });
-    toast(path ? 'Κίνηση καταχωρήθηκε και οριστικοποιήθηκε ✓' : 'Κίνηση καταχωρήθηκε ως εκκρεμής — επιβεβαίωση με δελτίο');
+    toast(path ? 'Κίνηση καταχωρήθηκε και οριστικοποιήθηκε ✓' : 'Κίνηση καταχωρήθηκε ως εκκρεμής — θέλει επιβεβαίωση');
     plvCloseModal(); await renderPalletLedger();
   } catch (e) { showErrorToast('Αποτυχία: ' + e.message, 'error'); }
   finally { PLV.busy = false; }
