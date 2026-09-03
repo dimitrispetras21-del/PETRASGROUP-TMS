@@ -413,10 +413,10 @@ function _oiAssign(f){
 const _intlColDefs = [
   { key: 'orderNo',  label: 'ΑΡ. ΠΑΡ.',       type: 'text',   w: 104, get: (f) => f['Order Number']||'' },
   { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
-  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 74,  get: (f) => f['Direction']||'' },
+  { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 84,  get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'ΠΕΛΑΤΗΣ',        type: 'text',   w: 130, get: (f) => _clientName(f) },
-  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',        type: 'text',   w: 142, get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
-  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',       type: 'text',   w: 142, get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
+  { key: 'loading',  label: 'ΦΟΡΤΩΣΗ',        type: 'text',   w: 137, get: (f, r) => _stopsLocationSummary(r?.id,'Loading') || _cleanSummary(f['Loading Summary']) },
+  { key: 'delivery', label: 'ΠΑΡΑΔΟΣΗ',       type: 'text',   w: 137, get: (f, r) => _stopsLocationSummary(r?.id,'Unloading') || _cleanSummary(f['Delivery Summary']) },
   { key: 'loadDate', label: 'ΗΜ. ΦΟΡΤΩΣΗΣ',   type: 'date',   w: 72,  get: (f) => f['Loading DateTime']||'' },
   { key: 'delDate',  label: 'ΗΜ. ΠΑΡΑΔΟΣΗΣ',  type: 'date',   w: 72,  get: (f) => f['Delivery DateTime']||'' },
   { key: 'pal',      label: 'ΠΑΛ.',           type: 'number', w: 40,  get: (f, r) => _stopsTotalPallets(r?.id) || f['Total Pallets'] || 0 },
