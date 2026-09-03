@@ -182,7 +182,14 @@ async function _wiInjectStopSummaries(allOrders) {
 const _WI2_CSS=`
 .wk3.wi2{--fL:200px;--fR:200px}
 .wk3.wi2.fl-off{--fL:18px}.wk3.wi2.fr-off{--fR:18px}
-.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(260px,1fr) 240px minmax(260px,1.05fr) var(--fR)}
+/* ΣΤΟΙΧΙΣΗ (owner 3/9, πάνω στα πραγματικά δεδομένα): κάθε .wk3-row είναι
+   ΔΙΚΟ ΤΟΥ πλέγμα, και το minmax(260px,…) έβαζε ελάχιστο που εξαρτάται από
+   το περιεχόμενο — άρα κάθε γραμμή υπολόγιζε ΔΙΚΑ ΤΗΣ πλάτη. Οι γραμμές με
+   «ΚΕΝΟ ΓΥΡΙΣΜΑ» (κουτί flex:1) έβγαζαν τις στήλες ~170px αριστερότερα από
+   τις κανονικές, στον ίδιο πίνακα. minmax(0,…) αφαιρεί το κατώφλι
+   περιεχομένου: τα κλάσματα γίνονται καθαρά αναλογικά και κάθε γραμμή —
+   και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
+.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1fr) 240px minmax(0,1.05fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:var(--text-xl);color:var(--text);display:flex;align-items:center;gap:10px;white-space:nowrap}
 .wi2-legend-btn{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--silver-light);border-radius:var(--radius-full);padding:2px 8px;background:none;cursor:pointer}
@@ -249,7 +256,9 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-leg{padding:2px 4px;align-items:center;gap:6px;min-height:38px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
-.wi2-card{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px;min-height:34px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);box-shadow:var(--shadow-xs);box-sizing:border-box}
+.wi2-card{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px;min-height:34px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);box-shadow:var(--shadow-xs);box-sizing:border-box;transition:box-shadow var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
+.wk3-leg:hover>.wi2-card{box-shadow:var(--shadow-lift);border-color:var(--silver);transform:translateY(-1px)}
+@media (prefers-reduced-motion:reduce){.wi2-card{transition:none}.wk3-leg:hover>.wi2-card{transform:none}}
 .wi2-card.ok{background:var(--success-bg);border-color:var(--success)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
 .wi2-date{flex-shrink:0;font:700 10.5px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:4px;padding:2px 6px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
@@ -336,7 +345,13 @@ const _WI2_CSS=`
 .wi2-spin{width:12px;height:12px;border:2px solid var(--accent-light);border-top-color:var(--bg-card);border-radius:50%;animation:wi-spin .6s linear infinite}
 .wi-sdo-sub.free{color:var(--success)}
 .wi2-sd-note{padding:5px 10px;font-size:9.5px;color:var(--text-dim);background:var(--bg-hover)}
-@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(220px,1fr) 200px minmax(220px,1fr)}}
+/* ΣΤΕΝΑ ΠΛΑΤΗ: ΤΕΣΣΕΡΙΣ στήλες επίτηδες — το assets/style.css:2790 κάνει
+   display:none τις δύο .wk3-feed κάτω από 1360px, άρα μένουν τέσσερα
+   ΟΡΑΤΑ κελιά. Δοκίμασα έξι στήλες με τα feeds στα 18px και ήταν ΛΑΘΟΣ:
+   τα κρυμμένα κελιά δεν πιάνουν στήλη, οπότε η εξαγωγή έπεφτε στα 18px.
+   minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
+   από το περιεχόμενο της κάθε γραμμής. */
+@media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1fr) 200px minmax(0,1fr)}}
 `;
 
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
