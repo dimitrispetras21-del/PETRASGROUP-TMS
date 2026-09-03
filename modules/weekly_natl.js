@@ -1,21 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════════
-// WEEKLY NATIONAL — v2.0
+// WEEKLY NATIONAL — v4 (batch 3 of the redesign, 3/9/2026)
 // ─────────────────────────────────────────────────────────────────────
-// Same layout philosophy as Weekly International.
-// 3 columns: ΚΑΘΟΔΟΣ (N→S) | ΑΝΑΘΕΣΗ | ΑΝΟΔΟΣ (S→N)
+// Board of the national week: one row per NATIONAL LOAD, four cells
+//   # · ΚΑΘΟΔΟΣ (N→S) · ΑΝΑΘΕΣΗ · ΑΝΟΔΟΣ (S→N)
+// plus a second section, ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ (driver × day), same width.
+// Contract: Figma w4-kanban-contract (165:678) — 12 points; the frame is
+// w4-weekly-natl-board-v2 (388:901). Where the two disagree the contract
+// wins (DECISION_LOG 3/9: rules over frames).
 //
-// Fields read from NATIONAL ORDERS:
-//   Direction ('North→South' | 'South→North')
-//   Type ('Veroia Switch' | 'Independent')
-//   Client, Pickup Location, Delivery Location
-//   Loading DateTime, Delivery DateTime
-//   Pallets, Pallet Exchange, National Groupage, Temperature °C
-//   Truck[], Trailer[], Driver[], Partner[], Is Partner Trip
-//   Partner Truck Plates, Partner Rate, Groupage ID, Matched Order ID
-//   Status, Invoiced, Notes
-//
-// Fields written: Truck, Trailer, Driver, Partner, Is Partner Trip,
-//   Partner Truck Plates, Partner Rate, Groupage ID, Matched Order ID
+// Fields read from NATIONAL LOADS (facade tblVW42cZnfC47gTb):
+//   Direction, Status, Source Type, Source Record, Client (plain text),
+//   Loading/Delivery DateTime, Loading/Delivery Appointment, Total Pallets,
+//   Pallet Exchange, Matched Load, Truck[], Trailer[], Driver[], Partner[],
+//   Is Partner Trip, Partner Truck Plates, Partner Rate,
+//   Pickup Location 1..10, Delivery Location 1..10
+// Fields written to NATIONAL LOADS: Truck, Trailer, Driver, Partner,
+//   Is Partner Trip, Partner Truck Plates, Partner Rate, Status,
+//   Matched Load, Loading/Delivery Appointment
+// LOCAL_MOVES (Δ18 — table NOT deployed on the Worker yet, 404 expected):
+//   read Date, Sequence, Driver, Truck, Trailer, Partner, From/To Location,
+//   Pallets, Time From, Description, Status, Parent Nat Load, Parent Order
+//   written: the same names (create / driver patch / delete)
 // ═══════════════════════════════════════════════════════════════════════
 (function() {
 'use strict';
@@ -27,17 +32,27 @@ const WNATL = {
   filter: '',
   filterStatus: '',
   _seq: 0,
+  // T3: per-row write results survive repaints (⚠ must stay visible until a
+  // reload proves the row is right). Cleared in _wnLoadAll.
+  _syncErr: new Set(),
+  _syncOk: 0,
+  _loadedAt: null,
+  // display number of every row in the current paint (1…, A1…) — the local
+  // «εξυπηρετεί ▸ εθνικό #3» chip names the row by it (Δ6).
+  _rowNo: {},
 };
 
+// ONE filter state (WNATL.filterStatus) drives the select, the quick-filter
+// chips and the rows — two widgets, one truth (principle 3).
 function _wnApplyFilter() {
   const q = (WNATL.filter||'').toLowerCase();
   const fs = WNATL.filterStatus||'';
-  document.querySelectorAll('#wn-rows > [data-row-id]').forEach(el => {
+  document.querySelectorAll('#wn-rows [data-row-id]').forEach(el => {
     const row = WNATL.rows.find(r => String(r.id) === el.dataset.rowId);
     if (!row) { el.style.display=''; return; }
     let show = true;
     if (q) {
-      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||''].join(' ').toLowerCase();
+      const blob = [row.truckLabel, row.driverLabel, row.partnerLabel, row.client||'', row.route||''].join(' ').toLowerCase();
       if (!blob.includes(q)) show = false;
     }
     if (show && fs) {
@@ -45,9 +60,29 @@ function _wnApplyFilter() {
       else if (fs === 'assigned' && !row.saved) show = false;
       // WN-1β: visible ΑΝΟΔΟΣ rows are the unmatched ones by construction
       else if (fs === 'unmatched' && row.type !== 'southnorth') show = false;
+      else if (fs === 'uncovered' && !row.needsLocal) show = false;
+      else if (fs === 'groupage' && !row.isGrp) show = false;
     }
     el.style.display = show ? '' : 'none';
+    // the lazy stops panel sits outside the row — it follows the row
+    const box = document.getElementById('wn-stops-'+row.id);
+    if (box && !show && box.style.display !== 'none') {
+      box.style.display = 'none';
+      const b = document.getElementById('wn-grpb-'+row.id);
+      if (b) b.textContent = b.textContent.replace('▾', '▸');
+    }
   });
+  document.querySelectorAll('#wn-quick [data-qf]').forEach(b => b.classList.toggle('on', b.dataset.qf === fs));
+  const sel = document.getElementById('wn-status');
+  if (sel && sel.value !== fs) sel.value = fs;
+  const clr = document.getElementById('wn-clear');
+  if (clr) clr.style.display = (q || fs) ? '' : 'none';
+}
+function _wnQuick(v) { WNATL.filterStatus = v || ''; _wnApplyFilter(); }
+function _wnClearFilter() {
+  WNATL.filter = ''; WNATL.filterStatus = '';
+  const s = document.getElementById('wn-search'); if (s) s.value = '';
+  _wnApplyFilter();
 }
 
 function _wnPulseRow(rowId) {
@@ -88,7 +123,12 @@ async function renderWeeklyNatl() {
     _wnPaint();
   } catch(e) {
     if (loadId !== _wnLoadId) return; // stale error, ignore
-    content.innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`;
+    // Contract #6: error ≠ empty. The message names the failure and offers
+    // Retry — a blank sheet would read as «no loads this week».
+    content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px;color:var(--danger)">
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px">Σφάλμα φόρτωσης της εβδομάδας ${WNATL.week}</div>
+      <div style="font-size:12px;color:var(--text-mid)">${escapeHtml(String(e && e.message || e || 'άγνωστο σφάλμα'))}</div>
+      <button class="btn btn-primary btn-sm" onclick="renderWeeklyNatl()">↻ Retry</button></div>`;
     console.error('renderWeeklyNatl:', e);
   }
 }
@@ -149,7 +189,11 @@ async function _wnLoadAll() {
 
   // Τοπικές κινήσεις: ταξινομημένες ανά μέρα και σειρά μέσα στη μέρα (Δ7).
   // didFail => η ενότητα εμφανίζεται κενή, τα εθνικά δεν επηρεάζονται.
-  WNATL.data.locals = (typeof didFail === 'function' && didFail(locals)) ? []
+  WNATL._loadedAt = new Date();
+  WNATL._syncErr = new Set(); WNATL._syncOk = 0;
+  // Contract #6: the section must say «δεν φορτώθηκε», not show 7 empty days.
+  WNATL.data._localsFailed = (typeof didFail === 'function' && didFail(locals));
+  WNATL.data.locals = WNATL.data._localsFailed ? []
     : (locals || []).slice().sort((a,b) => {
         const d = String(a.fields?.['Date']||'').localeCompare(String(b.fields?.['Date']||''));
         return d || ((a.fields?.['Sequence']||0) - (b.fields?.['Sequence']||0));
@@ -167,6 +211,7 @@ function _wnBuildRow(ord, type) {
   const trailerId = (f['Trailer']||[])[0]||'';
   const driverId  = (f['Driver'] ||[])[0]||'';
   const partnerId = (f['Partner']||[])[0]||'';
+  const delN = _wnLocParts(f, 'Delivery').n;
   return {
     id: ++WNATL._seq, type,
     source: f['Source Type'] === 'Groupage' ? 'cl' : undefined,
@@ -181,6 +226,13 @@ function _wnBuildRow(ord, type) {
     partnerPlates: f['Partner Truck Plates']||'',
     partnerRate:   f['Partner Rate'] ? String(f['Partner Rate']) : '',
     saved: !!(truckId || partnerId),
+    // search + quick filters read these; the Δ6 pair (coveredBy/needsLocal)
+    // is derived per paint from the local moves (see _wnPaint).
+    client: f['Client'] || '',
+    route: [_wnNlPickupSummary(f), _wnNlDeliverySummary(f)].join(' '),
+    status: f['Status'] || '',
+    isGrp: f['Source Type'] === 'Groupage' || delN > 1,
+    coveredBy: [], needsLocal: false,
   };
 }
 
@@ -230,7 +282,7 @@ function _wnTabs(cur) {
   for (let w = cur-3; w <= cur+3; w++) {
     if (w < 1 || w > 53) continue;
     const wS = _wnWeekStart(w), wE = new Date(wS); wE.setDate(wS.getDate()+6);
-    html += `<button type="button" class="wk3-tab${w===cur?' on':''}" title="${fmt(wS)}–${fmt(wE)}" onclick="WNATL.week=${w};renderWeeklyNatl()">W${w}</button>`;
+    html += `<button type="button" class="wk3-tab${w===cur?' on':''}" title="${fmt(wS)}–${fmt(wE)}" onclick="WNATL.week=${w};renderWeeklyNatl()">W${w}${w===today?' (Τρέχουσα)':''}</button>`;
   }
   html += step(1);
   if (cur !== today)
@@ -238,12 +290,156 @@ function _wnTabs(cur) {
   return html;
 }
 
+/* ── WN4 CSS ──────────────────────────────────────────────────────────
+   Lives here and not in assets/style.css because a batch agent touches ONLY
+   its unit's file (plan 2/9 §1.2); the integrator lifts the block into the
+   stylesheet once per batch. Tokens only — the static critic counts hex
+   literals in modules and the natl allowance (14) may only go down. */
+function _wnCss() { return `<style id="wn4-css">
+.wn4{--wn4-row:40px;--wn4-card:32px;display:block;width:100%}
+.wn4-head{display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap}
+.wn4-crumb{font-size:11px;color:var(--text-dim)} .wn4-crumb b{color:var(--text-mid);font-weight:500}
+.wn4-title{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text);display:flex;align-items:center;gap:10px;line-height:1.2}
+.wn4-lgb{font:inherit;font-size:10.5px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer}
+.wn4-lgb:hover{color:var(--accent-text)}
+.wn4-legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:11px;color:var(--text-mid);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:10px;align-items:center}
+.wn4-legend[hidden]{display:none}
+.wn4-legend .sw{display:inline-block;width:16px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+.wn4-head .wk3-tabs{margin:0 auto;padding:4px;align-items:center;background:var(--surface-sunken);border-radius:8px}
+.wn4-head .wk3-tab{top:0;border-radius:6px;border:none} .wn4-head .wk3-tab.on{background:var(--navy-mid);color:var(--text-inverse)}
+.wn4-head .wk3-tab.on::after{display:none}
+.wn4-acts{display:flex;gap:8px;align-items:center}
+.wn4-btn{font:inherit;font-size:11.5px;font-weight:600;color:var(--text-mid);background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer}
+.wn4-btn:hover{color:var(--text);background:var(--accent-light)}
+.wn4-btn.pri{background:var(--accent);color:var(--text-inverse);border-color:var(--accent);font-weight:700}
+.wn4-strip{display:flex;align-items:center;gap:20px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;flex-wrap:wrap}
+.wn4-alert{display:flex;align-items:center;gap:14px;padding:8px 18px 8px 14px;border:1.5px solid var(--border);border-radius:8px;background:none;font:inherit;text-align:left;cursor:default}
+.wn4-alert.hot{border-color:var(--danger-strong);cursor:pointer}
+.wn4-alert .n{font-family:'Syne',sans-serif;font-weight:700;font-size:22px;line-height:1;padding:4px 11px;border-radius:6px;background:var(--success);color:var(--text-inverse)}
+.wn4-alert.hot .n{background:var(--danger-strong)}
+.wn4-alert .t{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;color:var(--success)}
+.wn4-alert.hot .t{color:var(--danger-strong)}
+.wn4-alert .s{font-size:11px;color:var(--text-mid);margin-top:2px}
+.wn4-free .l,.wn4-quick .l{font-size:9.5px;font-weight:700;letter-spacing:1px;color:var(--text-dim)}
+.wn4-free .p{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--text);margin:3px 0}
+.wn4-free .d{font-size:10.5px;color:var(--text-mid)}
+.wn4-quick .r{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.wn4-qf{font:inherit;font-size:10.5px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:none;border-radius:6px;padding:5px 11px;cursor:pointer}
+.wn4-qf:hover{color:var(--accent-text)} .wn4-qf.on{background:var(--navy-mid);color:var(--text-inverse);font-weight:700}
+.wn4-queue{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--accent-light);color:var(--accent-text);border:none;border-radius:6px;padding:7px 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+.wn4-queue b{font-family:'Syne',sans-serif;font-size:13px}
+.wn4 .wk3-sub{margin-bottom:8px}
+.wn4-cross{font-size:11px;color:var(--accent-text);margin-left:auto;cursor:help}
+.wn4-cross+.wk3-range{margin-left:0}
+.wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
+.wn4-cols .c{font-family:'Syne',sans-serif;font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--text-mid);padding:10px 12px;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.wn4-cols .c small{font-family:'DM Sans',sans-serif;font-weight:600;letter-spacing:.6px;color:var(--text-dim)}
+.wn4-cols .c.mid{justify-content:center}
+.wn4-cols .hint{margin-left:auto;color:var(--text-dim);cursor:help;font-size:10px;border:1px solid var(--border);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0}
+.wn4-day{background:var(--bg);border:1.5px solid var(--border-mid);border-radius:10px;padding:2px 10px 10px;margin-bottom:8px}
+.wn4-day.today{border-color:var(--accent)}
+.wn4-day.quiet .wn4-dh .d{color:var(--text-dim)}
+.wn4-dh{display:flex;align-items:center;gap:10px;padding:8px 2px 4px;flex-wrap:wrap}
+.wn4-dh .d{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:var(--text)}
+.wn4-dh .k{font-size:11px;color:var(--text-dim)}
+.wn4-dh .k .bad{color:var(--chip-unassigned);font-weight:500} .wn4-dh .k .hot{color:var(--danger-strong);font-weight:500}
+.wn4-dh .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--text-inverse);background:var(--accent);border-radius:999px;padding:2px 8px}
+.wn4-none{font-size:11px;color:var(--text-dim);padding:6px 2px 2px}
+.wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);min-height:var(--wn4-row);align-items:center;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:6px}
+.wn4 .wk3-row:hover{background:var(--bg-card)}
+.wn4 .wk3-row.hot{border-color:var(--danger-strong);box-shadow:inset 3px 0 0 var(--danger-strong)}
+.wn4 .wk3-row.sn{background:var(--bg-row-alt)}
+.wn4 .wk3-num{border:none;font-size:10.5px;color:var(--text-dim);flex-direction:column;gap:0;padding:0 4px 0 8px}
+.wn4 .wk3-num.imp{color:var(--accent-text);font-weight:700}
+.wn4 .wk3-leg{padding:3px 4px;overflow:visible;align-items:center;gap:6px;min-width:0}
+.wn4 .wk3-leg.void,.wn4 .wk3-leg.bgap{background:none;justify-content:stretch}
+.wn4-dark{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;background:var(--navy-mid);display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:var(--text-inverse);opacity:.85}
+.wn4-drop{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;border:1.5px dashed var(--border-mid);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:0 8px}
+.wn4 .wk3-leg.dh{outline:none;background:none} .wn4 .wk3-leg.dh .wn4-drop{border-color:var(--accent);background:var(--accent-light)}
+.wn4-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0;padding:0 2px}
+.wn4-card{flex:1 1 0;min-width:0;min-height:var(--wn4-card);display:flex;align-items:center;gap:6px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 2px rgba(11,25,41,.08)}
+.wn4-card.ok{background:var(--badge-ok-bg);border-color:var(--success)}
+.wn4-card .dt{font-size:10.5px;font-weight:700;color:var(--accent-text);background:var(--accent-light);border-radius:4px;padding:2px 6px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.wn4-card .nm{min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.wn4-card .nm b{font-size:12px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere}
+.wn4-card .nm small{font-size:10px;color:var(--text-dim);white-space:normal}
+.wn4-card .ok{color:var(--success);font-weight:700;font-size:12px;flex-shrink:0}
+.wn4-card .sp{flex:1 1 0;min-width:4px}
+.wn4-card .pl{font-size:11.5px;font-weight:500;color:var(--text);flex-shrink:0;font-variant-numeric:tabular-nums}
+.wn4-card .wk3-hh{margin-left:0;background:none;color:var(--text-mid);border:1px solid var(--border);font-weight:700;font-size:9px;border-radius:3px}
+.wn4-chip{font:inherit;font-size:9.5px;font-weight:500;border-radius:4px;padding:1px 6px;white-space:nowrap;border:none;flex-shrink:0;line-height:1.5}
+.wn4-chip.need{color:var(--danger-strong);border:1px solid var(--danger-strong);background:none}
+.wn4-chip.cov{color:var(--success);background:var(--badge-ok-bg);cursor:pointer}
+.wn4-chip.grp{color:var(--navy-mid);background:var(--surface-sunken);cursor:pointer;font-weight:600}
+.wn4-chip.grp:hover{background:var(--accent-light)} .wn4-chip.grp.full{color:var(--warning)} .wn4-chip.grp.over{color:var(--danger)}
+.wn4-chip.srv{color:var(--accent-text);background:var(--accent-light);cursor:pointer}
+.wn4-chip.solo{color:var(--text-mid);background:var(--surface-sunken)}
+.wn4 .wk3-assign{display:grid;grid-template-columns:40px 1fr 40px;gap:0;padding:0;align-self:stretch;align-items:center}
+.wn4 .wk3-assign .wk3-prt{justify-self:center;border:1px solid var(--border);border-radius:5px;font-size:12px;padding:3px 5px}
+.wn4 .wk3-assign .wk3-prt.a sup{font-size:7px;font-weight:700}
+.wn4 .wk3-pill{height:auto;min-height:var(--wn4-card);flex-direction:column;justify-content:center;gap:0;line-height:1.2;padding:3px 10px;margin:0 4px;width:auto;font-size:11.5px;font-weight:600;white-space:normal;overflow:visible;text-align:center}
+.wn4 .wk3-pill small{font-size:10px;font-weight:400;overflow:visible;text-overflow:clip;white-space:normal}
+.wn4 .wk3-pill.un{border-color:var(--chip-unassigned)}
+.wn4 .wk3-pill.unimp{font-size:9.5px}
+.wn4 .wk3-flags{width:auto;gap:4px}
+.wn4 .wi-sync{margin-top:0;font-size:11px;min-height:0}
+.wn4-empty{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px dashed var(--border-mid);border-radius:8px;background:var(--bg-card);margin-bottom:8px;font-size:12px;color:var(--text-mid)}
+.wn4-empty b{font-family:'Syne',sans-serif;font-weight:800;color:var(--text)}
+.wn4-empty button{margin-left:auto;font:inherit;font-size:11.5px;font-weight:600;color:var(--accent-text);background:none;border:none;cursor:pointer}
+.wn4 .wn3-stops{background:var(--surface-sunken);border:none;border-radius:0 0 8px 8px;margin:0 8px;padding:8px 14px 8px 44px}
+.wn4-sec{margin-top:16px}
+.wn4-sech{display:flex;align-items:center;gap:10px;padding:8px 2px 8px;flex-wrap:wrap}
+.wn4-sech .t{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:2px;color:var(--navy-mid)}
+.wn4-sech .s{font-size:10.5px;color:var(--text-dim)}
+.wn4-sech .wn4-btn{margin-left:auto}
+.wn4-ladd{font:inherit;font-size:10px;font-weight:600;color:var(--text-mid);background:none;border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer;margin-left:auto}
+.wn4-ladd:hover{color:var(--accent-text);border-color:var(--accent)}
+.wn4-lfail{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--danger-strong);border-radius:8px;background:var(--bg-card);font-size:12px;color:var(--danger-strong)}
+.wn4-lfail small{color:var(--text-mid)} .wn4-lfail button{margin-left:auto}
+.wn4-lrow{display:grid;grid-template-columns:36px 240px minmax(0,1fr);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:6px}
+.wn4-lrow.hot{border-color:var(--danger-strong);box-shadow:inset 3px 0 0 var(--danger-strong)}
+.wn4-lrow .n{font-size:10.5px;color:var(--text-dim);padding:12px 0 0 12px}
+.wn4-drv{margin:6px 4px;min-height:36px;display:flex;flex-direction:column;justify-content:center;gap:1px;padding:4px 10px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px}
+.wn4-drv b{font-size:11.5px;font-weight:600;color:var(--text)} .wn4-drv small{font-size:10px;color:var(--text-mid)}
+.wn4-drv.need{background:none;border:1.5px dashed var(--danger-strong)} .wn4-drv.need b{color:var(--danger-strong)}
+.wn4-drv.need button{font:inherit;font-size:10px;font-weight:700;color:var(--accent-text);background:none;border:none;padding:0;cursor:pointer;text-align:left}
+.wn4-mvs{display:flex;flex-direction:column;gap:4px;padding:6px 8px 6px 6px;min-width:0}
+.wn4-mv{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
+.wn4-mv .i{font-size:11px;font-weight:700;color:var(--accent-text);flex-shrink:0}
+.wn4-mv .wn4-card{flex:0 1 300px;min-height:32px} .wn4-mv .wn4-card.f{flex-basis:260px}
+.wn4-mv .ds{font-size:10.5px;color:var(--text-dim)}
+.wn4-mv .rm{margin-left:auto;font:inherit;font-size:13px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0 4px;border-radius:4px}
+.wn4-mv .rm:hover{color:var(--danger);background:var(--danger-bg)}
+.wn4-addst{font:inherit;font-size:10px;font-weight:500;color:var(--text-dim);background:none;border:none;padding:2px 0;cursor:pointer;text-align:left}
+.wn4-addst:hover{color:var(--accent-text)}
+.wn4-foot{display:flex;align-items:center;gap:20px;padding:10px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:12px;flex-wrap:wrap}
+.wn4-foot .t{font-size:11px;color:var(--text-mid);display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:0;font-family:inherit}
+.wn4-foot .t b{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text)}
+.wn4-foot .t.bad b{color:var(--chip-unassigned)} .wn4-foot .t.hot b{color:var(--danger-strong)} .wn4-foot .t.ok b{color:var(--success)}
+.wn4-foot .t[onclick]{cursor:pointer}
+.wn4-foot .m{font-size:11px;color:var(--text-mid)} .wn4-foot .m.hot{color:var(--danger-strong);font-weight:600}
+@media print{.wn4-strip,.wn4-acts,.wk3-sub{display:none}}
+</style>`; }
+
+// Element id of a row on the board — ns rows are #wn-row-<id>, standalone
+// ΑΝΟΔΟΣ rows #wn-sn-<orderId>. Used by every jump (tally, chips, banner).
+function _wnRowElId(r) { return r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn-row-'+r.id; }
+
 function _wnPaint() {
   // Δ6: χάρτης «ποιο εθνικό φορτίο καλύπτεται από ποια τοπική κίνηση».
   // Μία φορά ανά paint — τον διαβάζει κάθε εθνική γραμμή.
   WNATL._locByParent = _wnLocalsByParent();
   const { rows, week, data } = WNATL;
   const _wnI = (n, s) => (typeof icon === 'function') ? icon(n, s || 14) : '';
+  // Δ6 — the local-coverage state of every leg, derived once per paint.
+  // «χρειάζεται τοπικό» = a LOCAL_MOVE points at this load and nobody drives
+  // it yet (SPEC §3.5: the need is declared explicitly and stays visible
+  // until covered). «καλύπτεται τοπικά» = at least one such move has a driver.
+  rows.forEach(r => {
+    const ms = WNATL._locByParent[r.orderId] || [];
+    r.coveredBy = ms.filter(m => _fid(m.fields?.['Driver']) || _fid(m.fields?.['Partner']));
+    r.needsLocal = ms.length > 0 && r.coveredBy.length === 0;
+  });
   const nsRows = rows.filter(r => r.type==='northsouth');
   const snRows = rows.filter(r => r.type==='southnorth');
   const assigned = nsRows.filter(r => r.saved).length;
@@ -251,9 +447,10 @@ function _wnPaint() {
   const total = nsRows.length + snRows.length;
   const pct = total ? Math.round(assigned / total * 100) : 0;
 
-  // Same reporting contract as weekly_intl: weekNumberDefault comes from
-  // _wnCurrentWeek(), the Sunday-start formula this planner still carries, so
-  // the audit can see it drift from canonical isoWeekNumber().
+  // Same reporting contract as weekly_intl (kanban contract #11): the numbers
+  // below are the AUDIT's, unchanged since Wave 1 — weekNumberDefault comes
+  // from _wnCurrentWeek(), the Sunday-start formula this planner still
+  // carries, so the audit can see it drift from canonical isoWeekNumber().
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_natl', {
     weekNumber: week,
     weekNumberDefault: _wnCurrentWeek(),
@@ -264,161 +461,188 @@ function _wnPaint() {
     completionPct: pct,
   });
 
-  // Command Center actions
-  const actions=[];
-  const _ico = n => (typeof icon === 'function') ? icon(n, 14) : '';
-  // Π4 (Wave 1): chips jump to the first row needing the action (twin of intl).
-  // ns rows render as #wn-row-<id>, standalone ΑΝΟΔΟΣ rows as #wn-sn-<orderId>.
-  const _rowElId = r => r.type==='southnorth' ? 'wn-sn-'+r.orderId : 'wn-row-'+r.id;
-  const _firstRow = (pred) => { const r = rows.find(pred); return r ? _rowElId(r) : undefined; };
-  if (pending > 0) actions.push({icon:_ico('file_text'), sev:'warn', text:`${pending} χωρίς ανάθεση`, scrollTo:_firstRow(r=>r.type==='northsouth'&&!r.saved)});
-  const missingTruck = rows.filter(r => r.saved && !r.truckId && !r.partnerId).length;
-  if (missingTruck > 0) actions.push({icon:_ico('truck'), sev:'warn', text:`${missingTruck} assigned χωρίς truck/partner`, scrollTo:_firstRow(r=>r.saved && !r.truckId && !r.partnerId)});
-  const missingDriver = rows.filter(r => r.saved && r.truckId && !r.driverId && !r.partnerId).length;
-  if (missingDriver > 0) actions.push({icon:_ico('user'), sev:'warn', text:`${missingDriver} με truck χωρίς driver`, scrollTo:_firstRow(r=>r.saved && r.truckId && !r.driverId && !r.partnerId)});
-  if (!actions.length && total > 0 && pct === 100) actions.push({icon:_ico('party'), sev:'ok', text:'Όλα assigned!'});
-  else if (!actions.length && total > 0) actions.push({icon:_ico('check'), sev:'ok', text:'No pending actions'});
+  // Visible tally (contract #3): every fraction carries its denominator.
+  // «ανατεθειμένα» counts BOTH directions (an ΑΝΟΔΟΣ with a vehicle is
+  // assigned too) — the audit's `assigned` above counts ΚΑΘΟΔΟΣ only and is
+  // left as it was so the metric history stays comparable.
+  const assignedAll = rows.filter(r => r.saved).length;
+  const pendingAll  = total - assignedAll;
+  const uncovered   = rows.filter(r => r.needsLocal).length;
+  const matchedN    = nsRows.filter(r => r.matchedId).length;
+  const snTotal     = snRows.length + matchedN;           // every ΑΝΟΔΟΣ of the week
+  const grpN        = rows.filter(r => r.isGrp).length;
+  const delivered   = rows.filter(r => r.status === 'Delivered').length;
+  const crossRows   = rows.filter(r => { const f = _wnOrd(r)?.fields; const dw = _wnWeekOf(f?.['Delivery DateTime']); return dw != null && dw !== week; });
+  const _firstRow = (pred) => { const r = rows.find(pred); return r ? _wnRowElId(r) : ''; };
+  const _jump = id => id ? `_ccJump('${id}')` : '';
+
+  // ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ: current week → today's assignments (board + locals);
+  // any other week → the whole week, and the label says so.
+  const todayKey = (typeof localToday==='function') ? localToday() : toLocalDate(new Date());
+  const isCur = week === _wnCurrentWeek();
+  const busyT = new Set(), busyD = new Set();
+  rows.forEach(r => {
+    if (isCur && _wnRowKey(r) !== todayKey) return;
+    if (r.truckId) busyT.add(r.truckId);
+    if (r.driverId) busyD.add(r.driverId);
+  });
+  (data.locals||[]).forEach(m => {
+    if (isCur && toLocalDate(m.fields?.['Date']) !== todayKey) return;
+    const d = _fid(m.fields?.['Driver']); if (d) busyD.add(d);
+    const t = _fid(m.fields?.['Truck']);  if (t) busyT.add(t);
+  });
+  const freeT = data.trucks.filter(t => !busyT.has(t.id));
+  const freeD = data.drivers.filter(d => !busyD.has(d.id));
+  const _few = (arr, n) => arr.slice(0, n).map(x => escapeHtml(x.label)).join(' · ') + (arr.length > n ? ` · +${arr.length-n}` : '');
 
   const wS   = _wnWeekStart(week);
   const wE   = new Date(wS);  wE.setDate(wS.getDate()+6);
   const fmtD = d => d.toLocaleDateString('el-GR',{day:'numeric',month:'short'});
   const weekRange = `${fmtD(wS)} – ${fmtD(wE)}`;
+  const role = (typeof ROLE !== 'undefined' ? ROLE : '');
+  const hhmm = d => d ? String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0') : '—';
+  const localsFailed = !!data._localsFailed;
+  const lDrivers = new Set((data.locals||[]).map(m => _fid(m.fields?.['Driver']) || ('p:'+_fid(m.fields?.['Partner']))).filter(k => k && k !== 'p:'));
+
+  const alertHot = uncovered > 0 || pendingAll > 0;
+  const alertSub = [
+    `${uncovered} από ${total} σκέλη δηλώθηκαν «χρειάζεται τοπικό» και δεν έχουν οδηγό`,
+    `${pendingAll} από ${total} χωρίς ανάθεση`,
+  ].join(' · ');
 
   document.getElementById('content').innerHTML = `
-    <div class="wn3 wk3 ${_wnQuietOn()?'wi-quiet':''}" style="display:block;width:100%">
-    <!-- Φέτα 1β: κεφαλή v3 — sheet tabs + tally μίας γραμμής, ίδια με το intl.
-         Αντικαθιστά τη λωρίδα εβδομάδας και το page-header: η ίδια πληροφορία,
-         ΜΙΑ φορά, κλικ = μετάβαση. -->
-    <div class="wk3-mast">
+    ${_wnCss()}
+    <div class="wn3 wk3 wn4 ${_wnQuietOn()?'wi-quiet':''}">
+
+    <!-- head: crumb + title + legend · week tabs · actions (contract #4 inventory) -->
+    <div class="wn4-head">
+      <div>
+        <div class="wn4-crumb">Σχεδιασμός / <b>Weekly National</b></div>
+        <div class="wn4-title">Πίνακας Εθνικών Δρομολογίων
+          <button class="wn4-lgb" onclick="const l=document.getElementById('wn-legend');l.hidden=!l.hidden" title="Τι σημαίνει κάθε χρώμα και σήμα">? υπόμνημα</button></div>
+      </div>
       <nav class="wk3-tabs" aria-label="Εβδομάδες">${_wnTabs(week)}</nav>
       ${typeof weekPhaseBadge==='function'?weekPhaseBadge(week,_wnCurrentWeek()):''}
-      <div class="wk3-tally">
-        <span class="wk3-t"><b>${nsRows.length}</b> κάθοδος</span>
-        <span class="wk3-t"><b>${snRows.length}</b> άνοδος</span>
-        <span class="wk3-t" title="${assigned} από ${total} με ανάθεση"><b>${assigned}</b>/${total} ανατεθ.</span>
-        ${pending>0?`<button class="wk3-t alert" title="Κάθοδοι χωρίς ανάθεση — κλικ: πήγαινε στην πρώτη" onclick="${(()=>{const id=_firstRow(r=>r.type==='northsouth'&&!r.saved);return id?`_ccJump('${id}')`:'';})()}"><b>${pending}</b> εκκρεμή</button>`:''}
-        <span id="wn-pickups-q"></span>
-        <div class="wk3-acts">
-          <button class="btn btn-primary btn-sm" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">${_wnI('plus',13)} New Order</button>
-          <button class="wk3-ab" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής">${_wnI('eye',13)} Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
-          <button class="wk3-ab" onclick="_wnPrintWeek()">${_wnI('file_text',13)} Εκτύπωση</button>
-          <button class="wk3-ab" onclick="_wnExportCSV()">CSV</button>
-          <button class="wk3-ab" onclick="renderWeeklyNatl()" title="Ανανέωση">${_wnI('refresh',13)}</button>
-        </div>
+      <div class="wn4-acts">
+        <button class="wn4-btn" onclick="_wnToggleDetails()" title="Πρόσθετες ενδείξεις γραμμής (↦ όρια εβδομάδας, ⚠ φόρτωση χωρίς ανάθεση)">Λεπτομέρειες${_wnQuietOn()?'':' ✓'}</button>
+        <button class="wn4-btn" onclick="_wnPrintWeek()">Εκτύπωση</button>
+        <button class="wn4-btn" onclick="_wnExportCSV()">CSV</button>
+        <button class="wn4-btn" onclick="renderWeeklyNatl()" title="Ανανέωση">Ανανέωση</button>
+        <button class="wn4-btn pri" onclick="_wnNewOrder()" title="Νέα εθνική παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
       </div>
     </div>
-    <div style="display:block;width:100%">
+    <div id="wn-legend" class="wn4-legend" hidden>
+      <span><span class="sw" style="background:var(--navy-deep)"></span>ιδιόκτητο (οδηγός + πινακίδες)</span>
+      <span><span class="sw" style="background:var(--chip-partner)"></span>συνεργάτης (εταιρεία + πινακίδες)</span>
+      <span><span class="sw" style="border:1.5px dashed var(--chip-unassigned)"></span>χωρίς ανάθεση — κλικ για ανάθεση</span>
+      <span><span class="sw" style="border:1.5px dashed var(--border-mid)"></span>ΑΝΟ · χωρίς όχημα</span>
+      <span><span class="sw" style="background:var(--navy-mid)"></span>δεν αναμένεται σκέλος</span>
+      <span>— = δεν υπάρχει σκέλος (μονή διαδρομή)</span>
+      <span><span class="sw" style="background:var(--badge-ok-bg);border:1px solid var(--success)"></span>✓ φορτώθηκε / παραδόθηκε (Status)</span>
+      <span>PE = ανταλλαγή παλετών · ①② = σειρά σημείων · ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε</span>
+    </div>
 
-      <!-- Command Center — WN-1 (Wave 1): always shown, collapsible, same
-           pattern and same localStorage key as the intl twin so the two pages
-           behave identically. -->
-      ${(()=>{
-        const assignedTruckIds = new Set();
-        rows.forEach(r => { if (r.truckId) assignedTruckIds.add(r.truckId); });
-        // Π5α (Wave 1): real unmatched counts — ΚΑΘΟΔΟΣ rows with no matched
-        // ΑΝΟΔΟΣ, and every visible ΑΝΟΔΟΣ row (matched ones are absorbed
-        // into their pair). The old nsCount-snCount diff hid same-day pairs.
-        const nsUnmatched = rows.filter(r=>r.type==='northsouth' && !r.matchedId).length;
-        const snUnmatched = rows.filter(r=>r.type==='southnorth').length;
-        const widgets = [
-          widgetFleet(data.trucks || [], assignedTruckIds),
-          widgetEmptyLegs(nsUnmatched, snUnmatched, ''),
-          `<div id="wn-cc-vswk" style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('bar_chart',11)} ΣΕ ΣΧΕΣΗ ΜΕ ΠΡΟΗΓΟΥΜΕΝΗ</div><div style="font-size:11px;opacity:0.5">loading…</div></div>`,
-          // Π5β (Wave 1): on-time hidden for current/past weeks (recording is
-          // broken — real ~100%, recorded 16%, 00 §Β7); static note on future.
-          ...(week > _wnCurrentWeek() ? [
-            `<div style="background:rgba(255,255,255,0.07);padding:10px 12px;border-radius:6px"><div style="font-size:10px;opacity:0.7;letter-spacing:0.5px;margin-bottom:4px">${_wnI('clock',11)} ΣΥΝΕΠΕΙΑ ΠΑΡΑΔΟΣΗΣ</div><div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:18px;font-weight:700;font-family:'Syne',sans-serif;opacity:.55">—</span><span style="font-size:11px;opacity:0.6">δεν έχει ξεκινήσει</span></div></div>`,
-          ] : []),
-        ];
-        const ccActions = total > 0 ? actions : [{icon:_wnI('info'), sev:'ok', text:'Κανένα εθνικό φορτίο για αυτή την εβδομάδα ακόμη'}];
-        const open = localStorage.getItem('tms_cc_open') !== '0';
-        return `<details ${open ? 'open' : ''} ontoggle="localStorage.setItem('tms_cc_open', this.open ? '1' : '0')" style="margin-bottom:var(--space-3)">
-          <summary style="cursor:pointer;list-style:none;height:44px;display:flex;align-items:center;gap:12px;padding:0 14px;background:var(--navy-mid);color:#C4CFDB;border-radius:8px;font-size:12px">
-            <span style="font-family:'Syne',sans-serif;font-weight:700;letter-spacing:1px">COMMAND CENTER · W${week}</span>
-            <span style="opacity:.7">${nsRows.length} κάθοδος · ${snRows.length} άνοδος · ${pct}% ολοκληρωμένο</span>
-            <span style="margin-left:auto;opacity:.5">▾</span>
-          </summary>
-          ${buildCommandCenterHTML({ title: `COMMAND CENTER · W${week}`, pct, actions: ccActions, widgets })}
-        </details>`;
-      })()}
-
-      <!-- Search/filter bar — wk3-sub, twin του intl -->
-      <div class="wk3-sub">
-        <div class="entity-search-wrap">
-          ${_wnI('search')}
-          <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη / φορτηγού / οδηγού…" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${WNATL.filter||''}">
-        </div>
-        <!-- WN-1β (Wave 1): «Χωρίς ταίριασμα» filter, twin of intl «unmatched».
-             Labels ελληνικά (WI-3 pattern) — values ΑΜΕΤΑΒΛΗΤΑ (_wnApplyFilter). -->
-        <select class="svc-filter" onchange="WNATL.filterStatus=this.value;_wnApplyFilter()">
-          <option value="">Όλες οι καταστάσεις</option>
-          <option value="pending" ${WNATL.filterStatus==='pending'?'selected':''}>Χωρίς ανάθεση</option>
-          <option value="assigned" ${WNATL.filterStatus==='assigned'?'selected':''}>Ανατεθειμένα</option>
-          <option value="unmatched" ${WNATL.filterStatus==='unmatched'?'selected':''}>Άνοδοι χωρίς ταίριασμα</option>
-        </select>
-        ${WNATL.filter||WNATL.filterStatus?`<button class="btn btn-ghost btn-sm" onclick="WNATL.filter='';WNATL.filterStatus='';document.getElementById('wn-search').value='';_wnApplyFilter()">${_wnI('x', 12)} Καθαρισμός</button>`:''}
-        <span class="wk3-range">Weekly National · Εβδομάδα ${week} · ${weekRange}</span>
+    <!-- strip: uncovered/pending alert · free today · quick filters · Pick Ups queue (owner) -->
+    <div class="wn4-strip">
+      <button type="button" class="wn4-alert${alertHot?' hot':''}" title="${escapeHtml(alertSub)}${alertHot?' — κλικ: πήγαινε στην πρώτη':''}" onclick="${_jump(_firstRow(r=>r.needsLocal) || _firstRow(r=>!r.saved))}">
+        <span class="n">${uncovered + pendingAll}</span>
+        <span><div class="t">${alertHot ? 'ΑΚΑΛΥΠΤΑ ΚΟΜΜΑΤΙΑ · ΧΩΡΙΣ ΑΝΑΘΕΣΗ' : 'ΟΛΑ ΚΑΛΥΜΜΕΝΑ'}</div><div class="s">${alertSub}</div></span>
+      </button>
+      <div class="wn4-free">
+        <div class="l">ΕΛΕΥΘΕΡΑ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} · ${freeT.length}/${data.trucks.length}</div>
+        <div class="p">${freeT.length ? _few(freeT, 3) : 'κανένα φορτηγό ελεύθερο'}</div>
+        <div class="d">οδηγοί χωρίς ανάθεση ${freeD.length}/${data.drivers.length}${freeD.length?' · '+_few(freeD, 2):''}</div>
       </div>
+      <div class="wn4-quick" id="wn-quick">
+        <div class="l">ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ</div>
+        <div class="r">
+          <button class="wn4-qf" data-qf="" onclick="_wnQuick('')">Όλα (${total})</button>
+          <button class="wn4-qf" data-qf="pending" onclick="_wnQuick('pending')">Χωρίς ανάθεση (${pendingAll})</button>
+          <button class="wn4-qf" data-qf="unmatched" onclick="_wnQuick('unmatched')">Άνοδοι χωρίς ταίριασμα (${snRows.length})</button>
+          <button class="wn4-qf" data-qf="uncovered" onclick="_wnQuick('uncovered')">Ακάλυπτα (${uncovered})</button>
+          <button class="wn4-qf" data-qf="groupage" onclick="_wnQuick('groupage')">Groupage (${grpN})</button>
+        </div>
+      </div>
+      <span id="wn-pickups-q" style="margin-left:auto"></span>
+    </div>
 
-    <div class="wk3-wrap">
-      <main class="wk3-sheet">
-        <div class="wk3-cols">
-          <div class="c"></div>
-          <div class="c cm">ΚΑΘΟΔΟΣ <span class="n">${nsRows.length}</span></div>
-          <div class="c cm" style="justify-content:center">ΑΝΑΘΕΣΗ</div>
-          <div class="c cm">ΑΝΟΔΟΣ <span class="n">${snRows.length}</span><span class="hint" title="Σύρε μια άνοδο πάνω σε κάθοδο για ταίριασμα σε round trip">ⓘ</span></div>
-        </div>
-        <div id="wn-rows">
-          ${rows.length ? _wnAllRowsHTML() : (typeof showEmpty === 'function' ? showEmpty({
-            illustration: 'truck',
-            title: `Δεν υπάρχουν εθνικά φορτία για την εβδομάδα ${week}`,
-            description: 'Δημιούργησε εθνική παραγγελία, ή ενεργοποίησε τον διακόπτη Βέροιας σε μια διεθνή παραγγελία.',
-            action: { label: 'Άνοιγμα Εθνικών Παραγγελιών', onClick: "navigate('orders_natl')" }
-          }) : '<div class="wk3-empty"><div class="big">Άδειο φύλλο — W'+week+'</div><p>Καμία εθνική κίνηση ακόμη.</p></div>')}
-        </div>
-      </main>
+    <!-- search / status / details / cross-week / range — wk3-sub, twin του intl -->
+    <div class="wk3-sub">
+      <div class="entity-search-wrap">
+        ${_wnI('search')}
+        <input id="wn-search" class="entity-search-input" type="text" placeholder="Αναζήτηση πελάτη, φορτηγού, οδηγού" oninput="WNATL.filter=this.value.toLowerCase().trim();_wnApplyFilter()" value="${escapeHtml(WNATL.filter||'')}">
+      </div>
+      <!-- WN-1β (Wave 1): values ΑΜΕΤΑΒΛΗΤΑ (_wnApplyFilter) — plus the two of the frame -->
+      <select id="wn-status" class="svc-filter" onchange="_wnQuick(this.value)">
+        <option value="">Κατάσταση: Όλες</option>
+        <option value="pending">Χωρίς ανάθεση</option>
+        <option value="assigned">Ανατεθειμένα</option>
+        <option value="unmatched">Άνοδοι χωρίς ταίριασμα</option>
+        <option value="uncovered">Ακάλυπτα κομμάτια</option>
+        <option value="groupage">Groupage</option>
+      </select>
+      <button id="wn-clear" class="btn btn-ghost btn-sm" style="display:none" onclick="_wnClearFilter()">${_wnI('x', 12)} Καθαρισμός</button>
+      ${crossRows.length ? `<span class="wn4-cross" title="Παραδίδουν σε άλλη εβδομάδα — στην προβολή εκείνης δεν εμφανίζονται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)" onclick="${_jump(_wnRowElId(crossRows[0]))}">↦ ${crossRows.length} παραδίδ${crossRows.length===1?'ει':'ουν'} σε άλλη εβδομάδα</span>` : ''}
+      <span class="wk3-range">Εβδομάδα ${week} · ${weekRange} · Κυρ–Σαβ</span>
+    </div>
+
+    <!-- sheet: sticky column identity (contract #1) + one panel per day (contract #2) -->
+    <div class="wn4-cols">
+      <div class="c"></div>
+      <div class="c">ΚΑΘΟΔΟΣ <small>Βορράς → Νότος · ${nsRows.length}</small></div>
+      <div class="c mid">ΑΝΑΘΕΣΗ</div>
+      <div class="c">ΑΝΟΔΟΣ <small>Νότος → Βορράς · ${snTotal}</small><span class="hint" title="Σύρε μια άνοδο πάνω σε κάθοδο για ταίριασμα σε round trip">ⓘ</span></div>
+    </div>
+    <div id="wn-rows">
+      ${rows.length ? '' : `<div class="wn4-empty"><b>Άδειο φύλλο — W${week}</b> Καμία εθνική κίνηση ακόμη. Δημιούργησε εθνική παραγγελία, ή ενεργοποίησε τον διακόπτη Βέροιας σε μια διεθνή.<button onclick="navigate('orders_natl')">Άνοιγμα Εθνικών Παραγγελιών ▸</button></div>`}
+      ${_wnAllRowsHTML()}
     </div>
 
     <!-- Δ1: δεύτερη ενότητα, ίδιο πλάτος και ίδιες ημέρες με τα εθνικά -->
-    <div class="wk3-sheet wn3-loc">
-      <div class="wn3-sech">
+    <div class="wn4-sec">
+      <div class="wn4-sech">
         <span class="t">ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ</span>
-        <span class="s">Οδηγός × ημέρα · οι κινήσεις της ημέρας</span>
-        <button class="wn3-add" onclick="_wnAddLocal('${toLocalDate(_wnWeekStart(week))}')">+ Τοπικό</button>
+        <span class="s">Οδηγός × ημέρα · οι κινήσεις της ημέρας με τη σειρά τους · κάθε κίνηση δείχνει ποιο φορτίο εξυπηρετεί</span>
+        <button class="wn4-btn" onclick="_wnAddLocal('${toLocalDate(_wnWeekStart(week))}')">+ Τοπική κίνηση</button>
       </div>
       <div id="wn-locals">${_wnLocalsHTML()}</div>
     </div>
 
+    <!-- bottom tally — contract #3: closed list, every fraction with its denominator -->
+    <div class="wn4-foot">
+      <span class="t"><b>${nsRows.length}</b> κάθοδο${nsRows.length===1?'ς':'ι'}</span>
+      <span class="t"><b>${snTotal}</b> άνοδο${snTotal===1?'ς':'ι'}</span>
+      <span class="t" title="Άνοδοι που κάθονται σε round trip με κάθοδο"><b>${matchedN}/${snTotal}</b> άνοδοι ταιριασμένες</span>
+      <span class="t" title="Σκέλη με φορτηγό ή συνεργάτη, και στις δύο κατευθύνσεις"><b>${assignedAll}/${total}</b> ανατεθειμένα</span>
+      <button class="t bad" title="Σκέλη χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>!r.saved))}"><b>${pendingAll}/${total}</b> εκκρεμή · χωρίς ανάθεση</button>
+      <button class="t hot" title="Δηλώθηκαν «χρειάζεται τοπικό» και δεν έχουν οδηγό — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>r.needsLocal))}"><b>${uncovered}/${total}</b> ακάλυπτα κομμάτια</button>
+      <span class="t ok" title="Status = Delivered (γραμμένο γεγονός, όχι υπολογισμός)"><b>${delivered}/${total}</b> παραδόθηκε</span>
+      <span class="t" title="${localsFailed?'Ο πίνακας τοπικών κινήσεων δεν είναι διαθέσιμος':''}"><b>${localsFailed?'—':(data.locals||[]).length}</b> τοπικές κινήσεις · ${localsFailed?'—':lDrivers.size} οδηγοί</span>
+      <span class="m">Ενημερώθηκε ${hhmm(WNATL._loadedAt)}</span>
+      <span class="m" id="wn-syncsum"></span>
+      <span class="m" id="wn-prev"></span>
+    </div>
+
     <div id="wn-ctx"></div>
     <div id="wn-popover"></div>
-    </div><!-- /main content -->
-    </div><!-- /block wrapper -->
+    </div>
   `;
 
   window._wnDragging = null;
+  _wnApplyFilter();
+  _wnSyncSummary();
 
-  // Async: fill "vs last week" + "on-time streak" widgets.
-  //
-  // Two fixes combined — #28 and the 2026-08-04 audit found different halves of
-  // the same problem. Kept identical to weekly_intl.js on purpose: these are
-  // twin pages and their failure semantics must not drift apart again.
-  //
-  // 1. FAILURE (#28): each source is isolated with safeFetch, and a failed one
-  //    HIDES its widget rather than showing a fabricated comparison. An absent
-  //    widget reads as "not available"; a 0 reads as a fact — and "0 last week"
-  //    makes this week look like a record.
-  //
-  // 2. EMPTY WEEK (audit WN-2): this block sat inside `if (total > 0)`, so on an
-  //    empty week both placeholders stayed on "loading…" permanently. It never
-  //    surfaced only because this page also hides the whole Command Center when
-  //    the week is empty — one load with data away from being visible.
-  // Π5β (Wave 1): fetchOnTimeStreak dropped — twin of the intl change; the
-  // widget is hidden (or static «δεν έχει ξεκινήσει») until recording is fixed.
+  // «vs last week» — kept from the Command Center as one honest line in the
+  // tally. #28 rule unchanged: a failed fetch HIDES the line rather than show
+  // a fabricated «0 last week» that would make this week look like a record.
   safeFetch(() => fetchPreviousWeekStats(week, TABLES.NAT_LOADS, true), 'weekly natl: previous week stats', {total:0,assigned:0})
   .then(prev => {
-    const el1 = document.getElementById('wn-cc-vswk');
-    if (el1) el1.outerHTML = didFail(prev) ? '' : widgetVsLastWeek(total, prev.total, assigned, prev.assigned);
-  }).catch(e => console.warn('CC async widgets (natl):', e));
+    const el = document.getElementById('wn-prev');
+    if (!el) return;
+    if (didFail(prev)) { el.textContent = ''; return; }
+    el.textContent = `W${week-1}: ${prev.total} φορτία · ${prev.assigned}/${prev.total} ανατεθειμένα`;
+    el.title = 'Η προηγούμενη εβδομάδα, για σύγκριση';
+  }).catch(e => console.warn('prev week (natl):', e));
 
   // Φέτα 3 (Δ11): η ουρά του National Pick Ups. Τον χειμώνα εκεί κάθονται
   // δεκάδες γραμμές groupage που περιμένουν να γίνουν φορτηγό — και το
@@ -428,7 +652,7 @@ function _wnPaint() {
   // χειρότερο από το τίποτα.
   // owner 12/8: το Pick Ups έγινε owner-only. Ο μετρητής είναι κουμπί προς
   // εκείνη τη σελίδα — σε άλλον ρόλο θα οδηγούσε σε «δεν έχεις πρόσβαση».
-  if ((typeof ROLE !== 'undefined' ? ROLE : '') !== 'owner') {
+  if (role !== 'owner') {
     const q0 = document.getElementById('wn-pickups-q');
     if (q0) q0.outerHTML = '';
   } else
@@ -437,7 +661,7 @@ function _wnPaint() {
   .then(gl => {
     const el = document.getElementById('wn-pickups-q');
     if (!el || didFail(gl) || !gl.length) return;
-    el.outerHTML = `<button class="wk3-t queue" title="Γραμμές groupage που περιμένουν ανάθεση στο National Pick Ups — κλικ: άνοιγμα της σελίδας" onclick="navigate('weekly_pickups')"><b>${gl.length}</b> στην ουρά Pick Ups ↗</button>`;
+    el.outerHTML = `<button class="wn4-queue" title="Γραμμές groupage που περιμένουν ανάθεση στο National Pick Ups — κλικ: άνοιγμα της σελίδας" onclick="navigate('weekly_pickups')"><b>${gl.length}</b> στην ουρά Pick Ups ↗</button>`;
   }).catch(e => console.warn('pick ups queue (natl):', e));
 }
 
@@ -452,25 +676,28 @@ function _wnPaint() {
 //
 // 2. Και οι 7 μέρες εμφανίζονται ΠΑΝΤΑ. Η κενή μέρα είναι πληροφορία
 //    («η Τετάρτη δεν έχει τίποτα — γιατί;»), όχι απουσία.
+// The NAT_LOAD behind a row. ns rows point at orderIds[0], sn rows at orderId.
+function _wnOrd(row) {
+  return (row.type==='southnorth')
+    ? WNATL.data.southnorth.find(r => r.id===row.orderId)
+    : WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
+}
+// The day a row belongs to: its FIRST loading (SPEC §3.1). Delivery only if
+// the loading is missing entirely; 'zzz' sorts undated rows after the week.
+function _wnRowKey(row) {
+  const f = _wnOrd(row)?.fields || {};
+  return toLocalDate(f['Loading DateTime'] || f['Delivery DateTime'] || '') || 'zzz';
+}
+
 function _wnAllRowsHTML() {
   const { week } = WNATL;
   const nsRows = WNATL.rows.filter(r => r.type==='northsouth');
   const snRows = WNATL.rows.filter(r => r.type==='southnorth');
   let idx = 0, snIdx = 0;
 
-  const _ord = row => (row.type==='southnorth')
-    ? WNATL.data.southnorth.find(r => r.id===row.orderId)
-    : WNATL.data.northsouth.find(r => r.id===row.orderIds[0]);
-
-  // Πρώτη φόρτωση· fallback στην παράδοση μόνο αν λείπει εντελώς η φόρτωση.
-  const _key = row => {
-    const f = _ord(row)?.fields || {};
-    return toLocalDate(f['Loading DateTime'] || f['Delivery DateTime'] || '') || 'zzz';
-  };
-
   const dayMap = {};
   const put = (row, bucket) => {
-    const k = _key(row);
+    const k = _wnRowKey(row);
     if (!dayMap[k]) dayMap[k] = { ns:[], sn:[] };
     dayMap[k][bucket].push(row);
   };
@@ -487,31 +714,32 @@ function _wnAllRowsHTML() {
   Object.keys(dayMap).sort().forEach(k => { if (keys.indexOf(k) === -1) keys.push(k); });
 
   const todayKey = (typeof localToday==='function') ? localToday() : toLocalDate(new Date());
+  WNATL._rowNo = {};
   let html = '';
 
   keys.forEach(key => {
     const { ns, sn } = dayMap[key] || { ns:[], sn:[] };
     const isToday = key === todayKey;
     const lbl = _wnDayLabel(key);
-    const counts = (ns.length || sn.length)
-      ? `${lbl.date} · ${ns.length} κάθοδος · ${sn.length} άνοδος`
-      : lbl.date;
+    const parts = [];
+    if (ns.length) parts.push(`${ns.length} κάθοδο${ns.length===1?'ς':'ι'}`);
+    const p = ns.filter(r => !r.saved).length;
+    if (p) parts.push(`<span class="bad">${p} χωρίς ανάθεση</span>`);
+    const u = [...ns, ...sn].filter(r => r.needsLocal).length;
+    if (u) parts.push(`<span class="hot">${u} χρειάζεται τοπικό</span>`);
+    if (sn.length) parts.push(`${sn.length} άνοδο${sn.length===1?'ς':'ι'} χωρίς ταίριασμα`);
 
-    html += `<div class="wk3-dayh${isToday?' today':''}">
-      <span class="d">${lbl.name}</span>
-      <span class="k">${counts}</span>
-      ${isToday?'<span class="now" style="margin-left:auto">ΣΗΜΕΡΑ</span>':''}
-    </div>`;
+    html += `<section class="wn4-day${isToday?' today':''}${(!ns.length && !sn.length)?' quiet':''}" data-day="${key}">
+      <div class="wn4-dh"><span class="d">${lbl.name} ${lbl.date}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${parts.join(' · ')}</span></div>`;
 
     if (!ns.length && !sn.length) {
-      html += `<div style="padding:9px 14px;font-size:11px;color:var(--text-dim);
-        background:var(--bg);border-bottom:1px solid var(--border)">Καμία κίνηση</div>`;
+      html += `<div class="wn4-none">Καμία κίνηση — η κενή μέρα είναι πληροφορία, όχι απουσία</div></section>`;
       return;
     }
-
-    ns.forEach(row => { html += _wnRowHTML(row, idx++); });
+    ns.forEach(row => { WNATL._rowNo[row.id] = String(idx+1); html += _wnRowHTML(row, idx++); });
     // Β.3-4 (Wave 1): ΑΝΟΔΟΣ rows numbered A1… like the intl I1… imports.
-    sn.forEach(row => { html += _wnSnRowHTML(row, ++snIdx); });
+    sn.forEach(row => { WNATL._rowNo[row.id] = 'A'+(snIdx+1); html += _wnSnRowHTML(row, ++snIdx); });
+    html += `</section>`;
   });
 
   return html;
@@ -555,39 +783,48 @@ function _wnTruckPlate(m) {
 }
 function _wnLocLbl(id) { return WNATL.data._locMap?.[id] || _wnLocName(id) || '—'; }
 
-// Chip «καλύπτεται τοπικά» πάνω στο ΕΘΝΙΚΟ σκέλος (Δ6, η ανάποδη κατεύθυνση).
-// Το ζητούμενο ήταν να μη χάνεται ποτέ η σχέση: όποιος κοιτάει το φορτίο
-// βλέπει ότι κάποιος τοπικός το καλύπτει, χωρίς να ψάχνει.
+// Chip «καλύπτεται τοπικά · <οδηγός> <μέρα>» πάνω στο ΕΘΝΙΚΟ σκέλος (Δ6, η
+// ανάποδη κατεύθυνση). Κλικ → η τοπική κίνηση που το καλύπτει.
 function _wnCoveredChip(row) {
-  const ms = (WNATL._locByParent || {})[row.orderId];
-  if (!ms || !ms.length) return '';
+  const ms = row.coveredBy || [];
+  if (!ms.length) return '';
   const who = _wnDriverName(ms[0]).trim().split(/\s+/)[0];
   const d = new Date(toLocalDate(ms[0].fields?.['Date'])+'T12:00:00');
   const day = isNaN(d.getTime()) ? '' : ' ' + d.toLocaleDateString('el-GR',{weekday:'short'});
-  return `<span class="wn3-chip down" title="Το σκέλος καλύπτεται από τοπικό οδηγό${ms.length>1?` (${ms.length} κινήσεις)`:''}">καλύπτεται τοπικά · ${escapeHtml(who)}${day}</span>`;
+  return `<button class="wn4-chip cov" title="Το σκέλος καλύπτεται από τοπικό οδηγό${ms.length>1?` (${ms.length} κινήσεις)`:''} — κλικ: πήγαινε στην κίνηση"
+    onclick="event.stopPropagation();_ccJump('wn-lmv-${ms[0].id}')">καλύπτεται τοπικά · ${escapeHtml(who)}${day}</button>`;
 }
 
-// Chip «εξυπηρετεί ▸ …» πάνω στην τοπική κίνηση (Δ6, η μία κατεύθυνση)
+// Chip «εξυπηρετεί ▸ …» πάνω στην τοπική κίνηση (Δ6, η μία κατεύθυνση).
+// Names the board row by its display number («εθνικό #3») so the two ends
+// of the link read the same on both sections.
 function _wnServesChip(m) {
   const f = m.fields || {};
   const nl = _fid(f['Parent Nat Load']);
   if (nl) {
-    const all = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])];
-    const rec = all.find(r => r.id === nl);
-    const row = WNATL.rows.find(r => r.orderId === nl);
-    const who = row?.driverLabel?.trim().split(/\s+/)[0]
-             || row?.partnerLabel || rec?.fields?.['Client'] || 'εθνικό';
-    return `<button class="wn3-chip up" title="Εξυπηρετεί εθνικό φορτίο — κλικ: πήγαινε εκεί"
-             onclick="event.stopPropagation();_ccJump('wn-row-${row?row.id:''}')">εξυπηρετεί ▸ ${escapeHtml(who)}</button>`;
+    const row = WNATL.rows.find(r => r.orderId === nl || r.matchedId === nl);
+    const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nl);
+    const no = row ? (WNATL._rowNo[row.id] || '') : '';
+    const client = rec?.fields?.['Client'] || '';
+    return `<button class="wn4-chip srv" title="Εξυπηρετεί εθνικό φορτίο — κλικ: πήγαινε εκεί"
+      onclick="event.stopPropagation();${row?`_ccJump('${_wnRowElId(row)}')`:''}">εξυπηρετεί ▸ εθνικό${no?' #'+no:''}${client?' · '+escapeHtml(client):''}${row?'':' (άλλη εβδομάδα)'}</button>`;
   }
   if (_fid(f['Parent Order']))
-    return `<span class="wn3-chip up" title="Εξυπηρετεί διεθνές δρομολόγιο">εξυπηρετεί ▸ διεθνές</span>`;
-  return '';
+    return `<span class="wn4-chip srv" style="cursor:help" title="Εξυπηρετεί διεθνές δρομολόγιο (${escapeHtml(String(_fid(f['Parent Order'])))})">εξυπηρετεί ▸ διεθνές</span>`;
+  return `<span class="wn4-chip solo" title="Δεν εξυπηρετεί άλλο δρομολόγιο">αυτοτελής κίνηση</span>`;
 }
+
+const _WN_CIRC = ['①','②','③','④','⑤','⑥','⑦','⑧','⑨','⑩'];
 
 function _wnLocalsHTML() {
   const { week } = WNATL;
   const list = WNATL.data.locals || [];
+
+  // Contract #6: a table that did not load is an ERROR, not seven empty days.
+  if (WNATL.data._localsFailed) {
+    return `<div class="wn4-lfail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Τα εθνικά παραπάνω δεν επηρεάζονται.</small>
+      <button class="wn4-btn" onclick="renderWeeklyNatl()">↻ Retry</button></div>`;
+  }
 
   const byDay = {};
   list.forEach(m => {
@@ -608,68 +845,84 @@ function _wnLocalsHTML() {
     const lbl = _wnDayLabel(key);
     const isToday = key === todayKey;
 
-    // ομαδοποίηση ανά οδηγό — η γραμμή είναι ο οδηγός, όχι η κίνηση (Δ7)
+    // ομαδοποίηση ανά οδηγό — η γραμμή είναι ο οδηγός, όχι η κίνηση (Δ7).
+    // Κίνηση χωρίς οδηγό ΚΑΙ χωρίς συνεργάτη = δηλωμένη ανάγκη («χρειάζεται
+    // τοπικό») — δική της γραμμή, κόκκινη, μέχρι να καλυφθεί.
     const byDrv = {}; const order = [];
     moves.forEach(m => {
-      const k = _fid(m.fields?.['Driver']) || ('p:'+_fid(m.fields?.['Partner'])) || 'x';
+      const d = _fid(m.fields?.['Driver']), p = _fid(m.fields?.['Partner']);
+      const k = d || (p ? 'p:'+p : 'need:'+m.id);
       if (!byDrv[k]) { byDrv[k] = []; order.push(k); }
       byDrv[k].push(m);
     });
-
-    html += `<div class="wk3-dayh${isToday?' today':''}">
-      <span class="d">${lbl.name}</span>
-      <span class="k">${lbl.date}${moves.length?` · ${order.length} οδηγοί · ${moves.length} κινήσεις`:''}</span>
-      ${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}
-      <button class="wn3-add" onclick="_wnAddLocal('${key}')" title="Νέα τοπική κίνηση αυτή τη μέρα">+ Τοπικό</button>
-    </div>`;
-
-    if (!moves.length) {
-      html += `<div class="wn3-lempty">Καμία τοπική κίνηση</div>`;
-      return;
+    const nat = moves.filter(m => _fid(m.fields?.['Parent Nat Load'])).length;
+    const intl = moves.filter(m => _fid(m.fields?.['Parent Order'])).length;
+    const need = order.filter(k => k.startsWith('need:')).length;
+    const drivers = order.length - need;
+    const parts = [];
+    if (moves.length) {
+      parts.push(`${drivers} οδηγ${drivers===1?'ός':'οί'} · ${moves.length} κινήσ${moves.length===1?'η':'εις'}`);
+      if (nat) parts.push(`${nat} εξυπηρετ${nat===1?'εί':'ούν'} εθνικό`);
+      if (intl) parts.push(`${intl} διεθνές`);
+      if (need) parts.push(`<span class="hot">${need} ακάλυπτ${need===1?'ο':'α'}</span>`);
     }
+
+    html += `<section class="wn4-day${isToday?' today':''}${moves.length?'':' quiet'}" data-day="${key}">
+      <div class="wn4-dh"><span class="d">${lbl.name} ${lbl.date}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${parts.join(' · ')}</span>
+        <button class="wn4-ladd" onclick="_wnAddLocal('${key}')" title="Νέα τοπική κίνηση αυτή τη μέρα">+ Τοπικό</button></div>`;
+
+    if (!moves.length) { html += `<div class="wn4-none">Καμία τοπική κίνηση</div></section>`; return; }
 
     order.forEach(dk => {
       const ms = byDrv[dk]; n++;
       const first = ms[0];
-      const rows = ms.map((m, i) => {
+      const isNeed = dk.startsWith('need:');
+      const mvs = ms.map((m, i) => {
         const f = m.fields || {};
         const from = _wnLocLbl(_fid(f['From Location']));
         const to   = _wnLocLbl(_fid(f['To Location']));
-        const tm   = f['Time From'] ? `<span class="wk3-hh">${escapeHtml(f['Time From'])}</span>` : '';
-        const pal  = f['Pallets'] != null ? `<span class="pl">${f['Pallets']}p</span>` : '';
-        return `<div class="mv"><span class="i">${i+1}</span>
-          <span class="txt">${escapeHtml(from)} → <b>${escapeHtml(to)}</b>${f['Description']?' · '+escapeHtml(f['Description']):''}</span>
-          ${tm}${pal}${_wnServesChip(m)}
+        const done = f['Status'] === 'Delivered' || f['Status'] === 'Done';
+        return `<div class="wn4-mv" id="wn-lmv-${m.id}"><span class="i">${_WN_CIRC[i] || (i+1)}</span>
+          ${_wnCard({ name: escapeHtml(from), appt: f['Time From'], cls: 'f' })}
+          <span class="wn4-arrow">→</span>
+          ${_wnCard({ name: escapeHtml(to), pals: f['Pallets'], ok: done, okTitle: 'Ολοκληρώθηκε (Status: '+escapeHtml(String(f['Status']||''))+')' })}
+          ${f['Description'] ? `<span class="ds">${escapeHtml(f['Description'])}</span>` : ''}
+          ${_wnServesChip(m)}
           <button class="rm" title="Διαγραφή κίνησης" onclick="_wnDelLocal('${m.id}')">×</button></div>`;
       }).join('');
-      html += `<div class="wn3-lrow">
-        <div class="wk3-num">${n}</div>
-        <div class="wn3-lhead"><span class="nm">${escapeHtml(_wnDriverName(first))}</span>
-          <span class="pl">${escapeHtml(_wnTruckPlate(first))}</span></div>
-        <div class="wn3-lmoves">${rows}
-          <button class="wn3-addst" onclick="_wnAddLocal('${key}','', '${_fid(first.fields?.['Driver'])}')">+ κίνηση</button>
+      const head = isNeed
+        ? `<div class="wn4-drv need"><b>χρειάζεται τοπικό</b><button onclick="_wnCoverLocal('${first.id}')">Ανάθεση οδηγού ▸</button></div>`
+        : `<div class="wn4-drv"><b>${escapeHtml(_wnDriverName(first))}</b><small>${escapeHtml(_wnTruckPlate(first) || '—')}</small></div>`;
+      html += `<div class="wn4-lrow${isNeed?' hot':''}">
+        <div class="n">${n}</div>
+        ${head}
+        <div class="wn4-mvs">${mvs}
+          ${isNeed ? '' : `<button class="wn4-addst" onclick="_wnAddLocal('${key}','', '${_fid(first.fields?.['Driver'])}')">+ κίνηση</button>`}
         </div></div>`;
     });
+    html += `</section>`;
   });
 
   return html;
 }
 
 /* ── Δημιουργία τοπικής κίνησης (Δ8, και οι δύο δρόμοι) ───────────── */
-// dateISO: η μέρα. parentNlId: όταν γεννιέται από «σπάσιμο» εθνικού σκέλους.
+// dateISO: η μέρα. parentNlId: όταν γεννιέται από «σπάσιμο» εθνικού σκέλους —
+// τότε ο οδηγός είναι ΠΡΟΑΙΡΕΤΙΚΟΣ (SPEC §3.5): χωρίς οδηγό η ανάγκη
+// καταγράφεται ως «χρειάζεται τοπικό» και μένει ορατή μέχρι να καλυφθεί.
 function _wnAddLocal(dateISO, parentNlId, driverId) {
   const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
   const locs = (WNATL.data.locations||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
   const parentNote = parentNlId
-    ? `<div class="wn3-pnote">Θα συνδεθεί με το εθνικό φορτίο — θα φαίνεται και από τις δύο πλευρές.</div>` : '';
+    ? `<div class="wn3-pnote">Θα συνδεθεί με το εθνικό φορτίο — θα φαίνεται και από τις δύο πλευρές. Ο οδηγός είναι προαιρετικός: χωρίς οδηγό το σκέλος μένει «χρειάζεται τοπικό» μέχρι να καλυφθεί.</div>` : '';
 
   openModal('Νέα τοπική κίνηση', `
     ${parentNote}
     <div class="form-grid">
       <div class="form-field"><label class="form-label">Ημερομηνία *</label>
         <input class="form-input" type="date" id="lm_date" value="${dateISO||''}"></div>
-      <div class="form-field"><label class="form-label">Οδηγός *</label>
-        <select class="form-select" id="lm_driver"><option value="">— Επιλογή —</option>${opt(WNATL.data.drivers, driverId||'')}</select></div>
+      <div class="form-field"><label class="form-label">Οδηγός${parentNlId?'':' *'}</label>
+        <select class="form-select" id="lm_driver"><option value="">${parentNlId?'— Χωρίς οδηγό ακόμη (χρειάζεται τοπικό) —':'— Επιλογή —'}</option>${opt(WNATL.data.drivers, driverId||'')}</select></div>
       <div class="form-field"><label class="form-label">Όχημα</label>
         <select class="form-select" id="lm_truck"><option value="">—</option>${opt(WNATL.data.trucks,'')}</select></div>
       <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
@@ -690,7 +943,9 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
 async function _wnSaveLocal(parentNlId) {
   const v = id => document.getElementById(id)?.value?.trim() || '';
   const date = v('lm_date'), driver = v('lm_driver'), from = v('lm_from'), to = v('lm_to');
-  if (!date || !driver || !from || !to) { toast('Ημερομηνία, οδηγός, από και προς είναι υποχρεωτικά', 'warn'); return; }
+  if (!date || !from || !to || (!driver && !parentNlId)) {
+    toast(parentNlId ? 'Ημερομηνία, από και προς είναι υποχρεωτικά' : 'Ημερομηνία, οδηγός, από και προς είναι υποχρεωτικά', 'warn'); return;
+  }
   const time = v('lm_time');
   if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) { toast('Ώρα σε μορφή ΩΩ:ΛΛ', 'warn'); return; }
 
@@ -700,9 +955,10 @@ async function _wnSaveLocal(parentNlId) {
   const seq = same.reduce((mx,m)=>Math.max(mx, m.fields?.['Sequence']||0), 0) + 1;
 
   const fields = {
-    'Date': date, 'Sequence': seq, 'Driver': [driver],
+    'Date': date, 'Sequence': seq,
     'From Location': [from], 'To Location': [to], 'Status': 'Pending',
   };
+  if (driver) fields['Driver'] = [driver];
   const truck = v('lm_truck'); if (truck) fields['Truck'] = [truck];
   if (time) fields['Time From'] = time;
   const pal = v('lm_pal'); if (pal) fields['Pallets'] = parseFloat(pal);
@@ -715,12 +971,53 @@ async function _wnSaveLocal(parentNlId) {
     await atCreate(TABLES.LOCAL_MOVES, fields);
     invalidateCache(TABLES.LOCAL_MOVES);
     closeModal();
-    toast('Η τοπική κίνηση καταχωρήθηκε', 'success');
+    toast(driver ? 'Η τοπική κίνηση καταχωρήθηκε' : 'Καταγράφηκε: χρειάζεται τοπικό — μένει ορατό μέχρι να καλυφθεί', 'success');
     renderWeeklyNatl();
   } catch (e) {
     console.error('_wnSaveLocal:', e);
     if (btn) { btn.disabled = false; btn.textContent = 'Καταχώρηση'; }
     toast('Η κίνηση δεν αποθηκεύτηκε', 'error');
+  }
+}
+
+// Κάλυψη δηλωμένης ανάγκης: δίνει οδηγό (και προαιρετικά όχημα) σε υπάρχουσα
+// κίνηση χωρίς οδηγό. PATCH στα ίδια ονόματα πεδίων με τη δημιουργία.
+function _wnCoverLocal(moveId) {
+  const m = (WNATL.data.locals||[]).find(x => x.id === moveId);
+  if (!m) return;
+  const opt = arr => arr.map(o => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join('');
+  openModal('Ανάθεση τοπικού οδηγού', `
+    <div class="wn3-pnote">${escapeHtml(_wnLocLbl(_fid(m.fields?.['From Location'])))} → ${escapeHtml(_wnLocLbl(_fid(m.fields?.['To Location'])))} · ${escapeHtml(toLocalDate(m.fields?.['Date'])||'')}</div>
+    <div class="form-grid">
+      <div class="form-field"><label class="form-label">Οδηγός *</label>
+        <select class="form-select" id="lc_driver"><option value="">— Επιλογή —</option>${opt(WNATL.data.drivers)}</select></div>
+      <div class="form-field"><label class="form-label">Όχημα</label>
+        <select class="form-select" id="lc_truck"><option value="">—</option>${opt(WNATL.data.trucks)}</select></div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-success" id="lc_submit" onclick="_wnSaveCover('${moveId}')">Ανάθεση</button>`);
+}
+
+async function _wnSaveCover(moveId) {
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const driver = v('lc_driver');
+  if (!driver) { toast('Επίλεξε οδηγό', 'warn'); return; }
+  const fields = { 'Driver': [driver] };
+  const truck = v('lc_truck'); if (truck) fields['Truck'] = [truck];
+  const btn = document.getElementById('lc_submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
+  try {
+    const res = await atSafePatch(TABLES.LOCAL_MOVES, moveId, fields);
+    if (res?.conflict) { toast('Record modified by another user — refreshing','warn'); closeModal(); await renderWeeklyNatl(); return; }
+    if (res?.error) throw new Error(res.error.message || res.error.type);
+    invalidateCache(TABLES.LOCAL_MOVES);
+    closeModal();
+    toast('Το σκέλος καλύφθηκε τοπικά', 'success');
+    renderWeeklyNatl();
+  } catch (e) {
+    console.error('_wnSaveCover:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Ανάθεση'; }
+    toast('Η ανάθεση δεν αποθηκεύτηκε', 'error');
   }
 }
 
@@ -743,7 +1040,10 @@ function _wnDayLabel(key) {
   const d = new Date(key + 'T12:00:00');
   if (isNaN(d.getTime())) return { name:'—', date:key };
   return {
-    name: d.toLocaleDateString('el-GR', { weekday:'long' }).toUpperCase(),
+    // Capitals carry no tonos in Greek typography — «ΚΥΡΙΑΚΗ», never
+    // «ΚΥΡΙΑΚΉ» (what a plain toUpperCase() produces and what the kanban
+    // critic could not find, 3/9).
+    name: d.toLocaleDateString('el-GR', { weekday:'long' }).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase(),
     date: String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0'),
   };
 }
@@ -774,110 +1074,143 @@ function _wnCrossChip(f){
   return `<span class="wi-cross" title="Η παράδοση πέφτει στη W${dw} — στην προβολή εκείνης της εβδομάδας η γραμμή δεν εμφανίζεται (φίλτρο ανά εβδομάδα ΦΟΡΤΩΣΗΣ)">↦ παραδίδει W${dw}</span>`;
 }
 function _wnSync(id, state, msg){
-  const el=document.getElementById(id); if(!el) return;
-  el.className='wi-sync'+(state?' wi-sync--'+state:'');
-  el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
-  el.title=msg||'';
-  if(state==='ok') setTimeout(()=>{ if(el.textContent==='✓'){el.textContent='';el.className='wi-sync';} },4000);
+  // T3: the per-row slot reports server truth. ⚠ is remembered in
+  // WNATL._syncErr so a repaint (which rebuilds the DOM) re-renders it —
+  // «μένει ορατό» until a reload proves the row is right.
+  if(state==='err') WNATL._syncErr.add(id); else WNATL._syncErr.delete(id);
+  if(state==='ok') WNATL._syncOk++;
+  const el=document.getElementById(id);
+  if(el){
+    el.className='wi-sync'+(state?' wi-sync--'+state:'');
+    el.textContent=state==='pend'?'⟳':state==='ok'?'✓':state==='err'?'⚠':'';
+    el.title=msg||'';
+    if(state==='ok') setTimeout(()=>{ if(el.textContent==='✓'){el.textContent='';el.className='wi-sync';} },4000);
+  }
+  _wnSyncSummary();
+}
+// Bottom-tally line: «N γραμμές γραμμένες · M δεν γράφτηκε». Silent when
+// nothing was written since the last load.
+function _wnSyncSummary(){
+  const el=document.getElementById('wn-syncsum'); if(!el) return;
+  const bad=WNATL._syncErr.size, ok=WNATL._syncOk;
+  const parts=[];
+  if(ok) parts.push(`${ok} εγγραφ${ok===1?'ή':'ές'} γραμμέν${ok===1?'η':'ες'}`);
+  if(bad) parts.push(`${bad} ΔΕΝ γράφτηκ${bad===1?'ε':'αν'} — κάνε Ανανέωση`);
+  el.textContent=parts.join(' · ');
+  el.classList.toggle('hot', bad>0);
+}
+// Inline ⚠ for rows whose last write failed — used by the row renderers so
+// the mark survives _wnPaint().
+function _wnSyncSlot(id){
+  const err=WNATL._syncErr.has(id);
+  return `<span class="wi-sync${err?' wi-sync--err':''}" id="${id}" title="${err?'Η τελευταία εγγραφή ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση':''}">${err?'⚠':''}</span>`;
+}
+
+/* ── Leg card ─────────────────────────────────────────────────────── */
+// [date] name / sub-line · appointment · ✓ · chips · pallets · tail.
+// Names are NEVER cut (DESIGN.md #6): the name line wraps instead — a row with
+// many delivery points grows past 40px, which the contract allows (#9,
+// «διπλώνουν σε δικές τους γραμμές»). `name`/`sub` arrive already escaped.
+function _wnCard(o) {
+  return `<div class="wn4-card${o.ok?' ok':''}${o.cls?' '+o.cls:''}">
+    ${o.date?`<span class="dt" title="${o.dateTitle||''}">${o.date}</span>`:''}
+    <span class="nm"><b>${o.name||'—'}</b>${o.sub?`<small>${o.sub}</small>`:''}</span>
+    ${_wnHH(o.appt)}${o.ok?`<span class="ok" title="${o.okTitle||''}">✓</span>`:''}
+    ${o.chips||''}<span class="sp"></span>${(o.pals!=null&&o.pals!=='')?`<span class="pl">${o.pals} p</span>`:''}${o.tail||''}</div>`;
+}
+
+// Location name/sub-line for the 1..10 slots of one side. Same de-duplication
+// as _wnNlPickupSummary (owner 10/8: same place twice = ONE stop). Returns
+// escaped HTML: multiple points become ①② numbered names (wk3-stopn).
+function _wnLocParts(f, kind) {
+  const seen = [], names = [], cities = [];
+  for (let i = 1; i <= 10; i++) {
+    const arr = f[`${kind} Location ${i}`];
+    if (!arr?.length) continue;
+    const id = arr[0]?.id || arr[0];
+    if (!id || seen.indexOf(id) !== -1) continue;
+    seen.push(id);
+    const loc  = WNATL.data.locations.find(r => r.id === id);
+    const full = WNATL.data._locMap?.[id] || loc?.fields?.Name || loc?.fields?.City || '';
+    const nm   = full.split(',')[0].trim();
+    const city = (loc?.fields?.City || full.split(',').slice(1).join(',')).trim();
+    if (nm && names.indexOf(nm) === -1) names.push(nm);
+    if (city && city !== nm && cities.indexOf(city) === -1) cities.push(city);
+  }
+  const name = names.length <= 1
+    ? escapeHtml(names[0] || '')
+    : names.map((n, i) => `<span class="wk3-stopn" title="Σημείο ${i+1}">${i+1}</span>${escapeHtml(n)}`).join(' ');
+  return { name, sub: escapeHtml(cities.join(' / ')), n: names.length };
 }
 
 /* ── N→S ROW ─────────────────────────────────────────────────────── */
 function _wnRowHTML(row, i) {
   const { data } = WNATL;
-
-  // All rows come from NAT_LOADS — unified lookup
   const allLoads = [...(data.northsouth||[]), ...(data.southnorth||[])];
   const primary = allLoads.find(r=>r.id===row.orderId);
   const f = primary?.fields || {};
-  const ords = [primary].filter(Boolean);
   const isGroup = f['Source Type'] === 'Groupage';
   const sn = row.matchedId ? allLoads.find(r=>r.id===row.matchedId) : null;
 
-  // Route — use unified Pickup/Delivery Location fields
-  let fromStr, toStr;
-  if (isGroup) {
-    fromStr = _wnNlPickupSummary(f) || f['Name'] || '—';
-    toStr   = _wnNlDeliverySummary(f) || 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK';
-  } else {
-    fromStr = _wnNlPickupSummary(f) || '—';
-    toStr   = _wnNlDeliverySummary(f) || f['Client'] || '—';
-  }
-
-  // Client (plain text in NL)
+  const fromP = _wnLocParts(f, 'Pickup'), toP = _wnLocParts(f, 'Delivery');
   const clientLabel = f['Client'] || '';
+  // Unknown ≠ 0 (contract #8): no Total Pallets → no «p» at all, never «0 p».
+  const pals = f['Total Pallets'];
+  const st = f['Status'] || '';
+  const loaded = st === 'In Transit' || st === 'Delivered', delivered = st === 'Delivered';
+  const loadDt = f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '';
+  const delDt  = f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '';
 
-  // Dates & pallets
-  const pals   = f['Total Pallets'] || 0;
-  const loadDt = _wnFmt(f['Loading DateTime']);
-  const delDt  = _wnFmt(f['Delivery DateTime']) || '—';
-
-  // Classic design — no colored dots on row numbers
   const isPartner = !!(row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label);
-  const isCL = row.source === 'cl';
-  let sCls = 's-default';
-
-  // Pill
   const pill = _wnPill(row);
 
-  // Matched S→N preview (right column)
   // Φέτα 2: δύο ΔΙΑΦΟΡΕΤΙΚΑ κενά, όχι ένα.
   //   «δεν υπάρχει σκέλος» — συνεργάτης με ανάθεση, μονή διαδρομή. Το Χ του
   //   Excel. Δεν καλεί σε drag· δείχνει —, γιατί δεν λείπει τίποτα.
   //   «δεν ταιριάχτηκε ακόμη» — όλα τα υπόλοιπα. Καλεί σε drag.
-  // Η σύμβαση είναι ήδη του σπιτιού: .wk3-leg.bgap στο intl (owner, 9/8).
   const isOneWay = !sn && row.saved && isPartner;
   const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay);
 
-  // Φέτα 4 (Δ9): πολυστάσιο φορτίο → συμπτυγμένο σήμα «▸ N · Xp».
-  // Το πλήθος και το σύνολο τα ξέρουμε ήδη από τη γραμμή — καμία επιπλέον
-  // κλήση. Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί το σήμα, γιατί
-  // ζει στα ORDER_STOPS και δεν αξίζει να κατεβαίνει για όλη την εβδομάδα.
-  const _delNames = [];
-  for (let k = 1; k <= 10; k++) {
-    const arr = f[`Delivery Location ${k}`];
-    if (!arr?.length) continue;
-    const id = arr[0]?.id || arr[0];
-    const nm = (WNATL.data._locMap?.[id] || _wnLocName(id) || '').split(',')[0].trim();
-    if (nm && _delNames.indexOf(nm) === -1) _delNames.push(nm);
-  }
-  const _nDel = _delNames.length;
-  const grpBtn = _nDel > 1
-    ? `<button class="wk3-grpb" id="wn-grpb-${row.id}" data-n="${_nDel}" data-p="${pals}"
-        title="${_nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
-        onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${_nDel} σημεία</button>`
+  // Φέτα 4 (Δ9): πολυστάσιο φορτίο → συμπτυγμένο σήμα «▸ N σημεία · x/33».
+  // Το γέμισμα από το Total Pallets της γραμμής (κανονικό <30 · πορτοκαλί ≥30
+  // · κόκκινο >33). Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί.
+  const nDel = toP.n;
+  const fillCls = pals > 33 ? ' over' : (pals >= 30 ? ' full' : '');
+  const grpChip = nDel > 1
+    ? `<button class="wn4-chip grp${fillCls}" id="wn-grpb-${row.id}" data-n="${nDel}" data-p="${pals||0}"
+        title="${nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
+        onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${nDel} σημεία${pals?` · ${pals}/33`:''}</button>`
+    : '';
+  const needChip = row.needsLocal
+    ? `<span class="wn4-chip need" title="Δηλώθηκε «χρειάζεται τοπικό» και δεν έχει οδηγό ακόμη — Ανάθεση οδηγού από την ενότητα ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ">χρειάζεται τοπικό</span>`
     : '';
 
-  // Badges
-  const badges = _wnBadges(f);
+  const fromCard = _wnCard({
+    date: loadDt, dateTitle: 'Ημ. φόρτωσης',
+    name: fromP.name || (isGroup ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
+    appt: f['Loading Appointment'], ok: loaded, okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+  });
+  const toCard = _wnCard({
+    date: delDt, dateTitle: 'Ημ. παράδοσης',
+    name: toP.name || escapeHtml(clientLabel) || (isGroup ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : '—'),
+    sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
+    appt: f['Delivery Appointment'], ok: delivered, okTitle: 'Παραδόθηκε (Status: Delivered)',
+    chips: _wnCoveredChip(row) + needChip + grpChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
+    pals,
+  });
 
-  const clBg = isCL ? 'background:rgba(13,148,136,0.04);' : '';
-  // Φέτα 1β: grid wk3-row (4 στήλες) αντί για wi-row/wi-compact.
-  // ΟΛΟΙ οι handlers μεταφέρθηκαν αυτούσιοι: dragstart, δεξί κλικ (_wnCtx),
+  // ΟΛΟΙ οι handlers αυτούσιοι από τη v3: dragstart, δεξί κλικ (_wnCtx),
   // popover ανάθεσης, print, και το drop target της ανόδου.
   return `
-  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row"
-    style="${clBg}"
+  <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
-    <div class="wk3-num">${i+1}<span class="wi-sync" id="wn-sync-${row.id}"></span></div>
-    <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">
-      <span class="wk3-route">
-        <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
-        <span class="wk3-sep">→</span>
-        <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${_wnStopsHTML(f,'Delivery')||escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
-        ${grpBtn}
-      </span>
-      <span class="wk3-meta">
-        <span class="wk3-pal">${pals?pals+'p':''}</span>
-        <span class="wk3-flags">${_wnCoveredChip(row)}${badges}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>
-      </span>
-    </div>
+    <div class="wk3-num">${i+1}${_wnSyncSlot('wn-sync-'+row.id)}</div>
+    <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
+      <button class="wk3-prt" title="Εκτύπωση εντολής καθόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
       ${pill}
-      <button class="wk3-prt" title="Εκτύπωση εντολής"
-              onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
+      ${sn ? `<button class="wk3-prt a" title="Εκτύπωση εντολής ανόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'southnorth')">⎙<sup>A</sup></button>` : '<span></span>'}
     </div>
     <div class="wk3-leg${sn?'':(isOneWay?' bgap':' void')}" id="wn-ci-${row.id}"
          onclick="event.stopPropagation()"
@@ -887,7 +1220,7 @@ function _wnRowHTML(row, i) {
       ${snCell}
     </div>
   </div>
-  ${_nDel > 1 ? `<div class="wn3-stops" id="wn-stops-${row.id}" style="display:none"></div>` : ''}`;
+  ${nDel > 1 ? `<div class="wn3-stops" id="wn-stops-${row.id}" style="display:none"></div>` : ''}`;
 }
 
 /* ── Φέτα 4 (Δ9): ανάλυση groupage, lazy ──────────────────────────── */
@@ -897,18 +1230,20 @@ async function _wnToggleStops(rowId, nlId) {
   if (!box || !btn) return;
   const n = btn.dataset.n, p = btn.dataset.p;
 
+  const sfx = Number(p) > 0 ? ` · ${p}/33` : '';
   if (box.style.display !== 'none') {           // κλείσιμο
     box.style.display = 'none';
-    btn.textContent = `▸ ${n} σημεία`;
+    btn.textContent = `▸ ${n} σημεία${sfx}`;
     return;
   }
   box.style.display = '';
-  btn.textContent = `▾ ${n} σημεία`;
+  btn.textContent = `▾ ${n} σημεία${sfx}`;
   if (box.dataset.loaded === '1') return;
 
   box.innerHTML = '<span class="ld">φόρτωση στάσεων…</span>';
   try {
     let stops = await stopsLoad(nlId, F.STOP_PARENT_NL);
+    let noInfo = null;   // { noId: { client, price } } — groupage only
     let dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
 
     const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])].find(r => r.id === nlId);
@@ -935,8 +1270,23 @@ async function _wnToggleStops(rowId, nlId) {
             .map(g => _id(g.fields?.['Linked National Order']))
             .filter(Boolean))];
           const sets = await Promise.all(
-            noIds.map(id => stopsLoad(id, F.STOP_PARENT_NAT).catch(() => [])));
+            noIds.map(id => stopsLoad(id, F.STOP_PARENT_NAT)
+              .then(st => (st||[]).map(s => Object.assign(s, { _no: id }))).catch(() => [])));
           stops = sets.flat();
+          // Δ13: η αξία μπαίνει ανά πελάτη. Price = τιμή πώλησης, ορατή σε κάθε
+          // ρόλο (κλείδωμα 23/8) — ΟΧΙ κέρδος/περιθώριο. Αποτυχία εδώ χάνει μόνο
+          // την επικεφαλίδα πελάτη, όχι τις στάσεις.
+          try {
+            const clients = (typeof getRefClients === 'function') ? getRefClients() : [];
+            const nos = await Promise.all(noIds.map(id =>
+              atGetAll(TABLES.NAT_ORDERS, { filterByFormula: `RECORD_ID()='${id}'`, fields: ['Client', 'Price'] }, false)
+                .then(r => (r||[])[0]).catch(() => null)));
+            noInfo = {};
+            nos.filter(Boolean).forEach(o => {
+              const c = clients.find(x => x.id === _id(o.fields?.['Client']));
+              noInfo[o.id] = { client: c?.fields?.['Company Name'] || c?.fields?.['Name'] || '', price: o.fields?.['Price'] };
+            });
+          } catch(e) { console.warn('groupage NO info:', e); }
         } else {
           stops = await stopsLoad(src, F.STOP_PARENT_NAT);
         }
@@ -966,7 +1316,7 @@ async function _wnToggleStops(rowId, nlId) {
     }
 
     let sum = 0, missing = 0;
-    const lines = dels.map(s => {
+    const stopLine = s => {
       const raw = s.fields[F.STOP_LOCATION];
       const lid = Array.isArray(raw) ? (raw[0]?.id || raw[0]) : (raw?.id || raw);
       const nm  = WNATL.data._locMap?.[lid] || _wnLocName(lid) || '—';
@@ -977,7 +1327,8 @@ async function _wnToggleStops(rowId, nlId) {
            + `<span>${escapeHtml(nm)}</span>`
            + (note?`<span class="o">${escapeHtml(note)}</span>`:'')
            + `</div>`;
-    }).join('');
+    };
+    const lines = _wnGrpLines(dels, noInfo, stopLine);
 
     // Το «—» σε μια στάση σημαίνει ότι οι παλέτες της δεν καταγράφηκαν ποτέ
     // (Α1 fallback). Το λέμε ρητά αντί να παρουσιάσουμε μερικό άθροισμα ως
@@ -996,37 +1347,55 @@ async function _wnToggleStops(rowId, nlId) {
   }
 }
 
+// Groupage panel lines: one header per client («ΣΚΛΑΒΕΝΙΤΗΣ — 960 €», its
+// pallets, its N points) followed by that client's stops. Without NO info
+// (Direct/VS loads) the stops render flat. `stopLine` accumulates the sum.
+function _wnGrpLines(dels, noInfo, stopLine) {
+  if (!noInfo) return dels.map(stopLine).join('');
+  let html = '';
+  Object.keys(noInfo).forEach(id => {
+    const own = dels.filter(s => s._no === id);
+    const known = own.filter(s => s.fields[F.STOP_PALLETS] != null);
+    const p = known.reduce((a, s) => a + s.fields[F.STOP_PALLETS], 0);
+    const inf = noInfo[id];
+    const price = (typeof inf.price === 'number') ? ' — ' + inf.price.toLocaleString('el-GR') + ' €' : '';
+    html += `<div class="st"><span class="p">${known.length ? p + 'p' : '—'}</span>`
+          + `<span><b>${escapeHtml(inf.client || 'πελάτης')}</b>${price}</span>`
+          + `<span class="o">${own.length} σημεί${own.length===1?'ο':'α'}</span></div>`
+          + own.map(stopLine).join('');
+  });
+  html += dels.filter(s => !noInfo[s._no]).map(stopLine).join('');
+  return html;
+}
+
 /* ── Matched S→N cell (right column when linked) ─────────────────── */
 function _wnSnInlineCell(snRec, rowId) {
   const f = snRec.fields;
   const clientLabel = f['Client'] || '';
   const isGroupage = f['Source Type'] === 'Groupage';
-  const fromStr  = _wnNlPickupSummary(f) || '—';
-  const toStr    = _wnNlDeliverySummary(f) || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : clientLabel) || '—';
-  const loadDt   = _wnFmt(f['Loading DateTime']);
-  const delDt    = _wnFmt(f['Delivery DateTime']);
-  const pals     = f['Total Pallets']||0;
-  // Φέτα 1β: ίδια τυπογραφία διαδρομής με το αριστερό σκέλος (wk3-route)
-  return `<span class="wk3-route">
-      <b class="wk3-ld" title="Ημ. φόρτωσης ανόδου">${loadDt||''}</b>
-      <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
-      <span class="wk3-sep">→</span>
-      <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-      <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
-    </span>
-    <span class="wk3-meta">
-      <span class="wk3-pal">${pals?pals+'p':''}</span>
-      <span class="wk3-flags">${_wnBadges(f)}</span>
-    </span>
-    <button class="wk3-unm" title="Αφαίρεση ταιριάσματος"
-            onclick="event.stopPropagation();_wnUnmatch(${rowId},'${snRec.id}')">✕</button>`;
+  const fromP = _wnLocParts(f, 'Pickup'), toP = _wnLocParts(f, 'Delivery');
+  const st = f['Status'] || '';
+  const fromCard = _wnCard({
+    date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης ανόδου',
+    name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
+    appt: f['Loading Appointment'], ok: st === 'In Transit' || st === 'Delivered', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+  });
+  const toCard = _wnCard({
+    date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
+    name: toP.name || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : escapeHtml(clientLabel)) || '—',
+    sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
+    appt: f['Delivery Appointment'], ok: st === 'Delivered', okTitle: 'Παραδόθηκε (Status: Delivered)',
+    chips: `<span class="wk3-flags">${_wnBadges(f)}</span>`, pals: f['Total Pallets'],
+    tail: `<button class="wk3-unm" title="Αφαίρεση ταιριάσματος" onclick="event.stopPropagation();_wnUnmatch(${rowId},'${snRec.id}')">✕</button>`,
+  });
+  return `${fromCard}<span class="wn4-arrow">→</span>${toCard}`;
 }
 
-/* ── Κενό σκέλος ανόδου — δύο διαφορετικά νοήματα (Φέτα 2) ───────── */
+/* ── Κενό σκέλος ανόδου — δύο διαφορετικά νοήματα (Φέτα 2, contract #8) ── */
 function _wnDragCell(isOneWay) {
   return isOneWay
-    ? `<span class="nolg" title="Μονή διαδρομή — δεν υπάρχει σκέλος ανόδου">—</span>`
-    : `<span style="font-size:10px;color:rgba(196,207,219,0.30);font-style:italic">σύρε άνοδο εδώ</span>`;
+    ? `<div class="wn4-dark" title="Μονή διαδρομή — δεν υπάρχει σκέλος ανόδου (το Χ του Excel)"><span class="nolg">—</span>&nbsp;μονή διαδρομή</div>`
+    : `<div class="wn4-drop">σύρε άνοδο εδώ — ή άφησέ το κενό: μετρά στις «χωρίς ταίριασμα»</div>`;
 }
 
 /* ── S→N standalone row ──────────────────────────────────────────── */
@@ -1035,56 +1404,42 @@ function _wnSnRowHTML(row, snNo) {
   const ord = data.southnorth.find(r => r.id===row.orderId);
   if (!ord) return '';
   const f = ord.fields;
-
-  // Client is plain text in NAT_LOADS
   const clientLabel = f['Client'] || '';
-  // S→N: Groupage = pickup from suppliers → Veroia; Direct = pickup summary
   const isGroupage = f['Source Type'] === 'Groupage';
-  const fromStr     = isGroupage
-    ? (_wnNlPickupSummary(f) || f['Name'] || '—')
-    : (_wnNlPickupSummary(f) || '—');
-  const toStr = _wnNlDeliverySummary(f) || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : clientLabel) || '—';
-  const pals        = f['Total Pallets']||0;
-  const loadDt      = _wnFmt(f['Loading DateTime']);
-  const delDt       = _wnFmt(f['Delivery DateTime']);
-  const badges      = _wnBadges(f);
-  const pill        = _wnPill(row);
+  const fromP = _wnLocParts(f, 'Pickup'), toP = _wnLocParts(f, 'Delivery');
+  const st = f['Status'] || '';
+  const pill = _wnPill(row);
 
-  // Classic design — no colored dots
-  const isPartnerSN = !!(row.partnerLabel || WNATL.data.partners.find(p=>p.id===row.partnerId)?.label);
-  const isCLsn = row.source === 'cl';
-  let sClsSN = 's-default';
+  const fromCard = _wnCard({
+    date: f['Loading DateTime'] ? _wnFmt(f['Loading DateTime']) : '', dateTitle: 'Ημ. φόρτωσης',
+    name: fromP.name || (isGroupage ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
+    appt: f['Loading Appointment'], ok: st === 'In Transit' || st === 'Delivered', okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
+  });
+  const toCard = _wnCard({
+    date: f['Delivery DateTime'] ? _wnFmt(f['Delivery DateTime']) : '', dateTitle: 'Ημ. παράδοσης',
+    name: toP.name || (isGroupage ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : escapeHtml(clientLabel)) || '—',
+    sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
+    appt: f['Delivery Appointment'], ok: st === 'Delivered', okTitle: 'Παραδόθηκε (Status: Delivered)',
+    chips: _wnCoveredChip(row) + (row.needsLocal ? `<span class="wn4-chip need">χρειάζεται τοπικό</span>` : '') + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
+    pals: f['Total Pallets'],
+  });
 
-  const clBgSN = isCLsn ? 'background:rgba(13,148,136,0.04);' : '';
-  // Φέτα 1β: grid wk3-row. Το ΑΡΙΣΤΕΡΟ κελί μένει κενό/σκούρο — «δεν υπάρχει
-  // σκέλος καθόδου», όπως το Χ του Excel (owner, 8/8). Handlers αυτούσιοι.
-  return `<div id="wn-sn-${ord.id}"
-    class="wk3-row"
-    style="${clBgSN}cursor:grab"
+  // Το ΑΡΙΣΤΕΡΟ κελί μένει navy — «δεν αναμένεται σκέλος καθόδου» (contract #8,
+  // owner 8/8). Handlers αυτούσιοι.
+  return `<div id="wn-sn-${ord.id}" data-row-id="${row.id}"
+    class="wk3-row sn${row.needsLocal?' hot':''}"
+    style="cursor:grab"
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')"
     oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
-    <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}</div>
-    <div class="wk3-leg void"></div>
+    <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
+    <div class="wk3-leg void"><div class="wn4-dark" title="Δεν αναμένεται σκέλος καθόδου"></div></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
+      <button class="wk3-prt" title="Εκτύπωση εντολής" onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">⎙</button>
       ${pill}
-      <button class="wk3-prt" title="Εκτύπωση εντολής"
-        onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">⎙</button>
+      <span></span>
     </div>
-    <div class="wk3-leg">
-      <span class="wk3-route">
-        <b class="wk3-ld" title="Ημ. φόρτωσης">${loadDt||''}</b>
-        <span class="frm">${escapeHtml(fromStr)}</span>${_wnHH(f['Loading Appointment'])}
-        <span class="wk3-sep">→</span>
-        <b class="wk3-ld" title="Ημ. παράδοσης">${delDt!=='—'?delDt:''}</b>
-        <span class="to">${escapeHtml(toStr)}</span>${_wnHH(f['Delivery Appointment'])}
-        
-      </span>
-      <span class="wk3-meta">
-        <span class="wk3-pal">${pals?pals+'p':''}</span>
-        <span class="wk3-flags">${badges}</span>
-      </span>
-    </div>
+    <div class="wk3-leg">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
   </div>`;
 }
 
@@ -1238,17 +1593,15 @@ function _wnPill(row) {
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
   const isCL    = row.source === 'cl';
 
-  // Β.3-3 (Wave 1): ΑΝΟΔΟΣ-without-vehicle is visually distinct (dashed) from
-  // ΚΑΘΟΔΟΣ-without-assignment — same red meant two different things.
-  // Φέτα 1β: wk3-pill 24px μίας γραμμής (πινακίδα + επώνυμο), όπως το intl.
-  // Β.3-3 διατηρείται: ΑΝΟΔΟΣ χωρίς όχημα (dashed, unimp) ≠ ΚΑΘΟΔΟΣ χωρίς
-  // ανάθεση (κόκκινο κενό) — το ίδιο κόκκινο σήμαινε δύο διαφορετικά πράγματα.
-  const surname = driver ? driver.trim().split(/\s+/)[0] : '';
+  // Contract #5 — colour AND class AND text: own = navy (driver + plates),
+  // par = green (company + plates), un = empty red dashed (owner 12/8:
+  // «χρώμα, όχι λόγια»), unimp = dashed grey «ΑΝΟ · χωρίς όχημα». Two lines
+  // now, nothing sliced: the text is what tells them apart without colour.
   if (!row.saved) return row.type === 'southnorth'
     ? `<div class="wk3-pill unimp" title="Άνοδος χωρίς όχημα — κλικ για ανάθεση">ΑΝΟ · χωρίς όχημα</div>`
-    : `<div class="wk3-pill un" title="Αδιάθετο — κλικ για ανάθεση"></div>`;
-  if (partner) return `<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner.slice(0,22))}${(row.partnerPlates||surname)?` <small>${escapeHtml([row.partnerPlates,surname].filter(Boolean).join(' '))}</small>`:''}</div>`;
-  return `<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml([truck,trailer].filter(Boolean).join('·')||'—')}${surname?` <small>${escapeHtml(surname)}</small>`:''}</div>`;
+    : `<div class="wk3-pill un" title="Αδιάθετο — κλικ για ανάθεση" aria-label="Χωρίς ανάθεση"></div>`;
+  if (partner) return `<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner)}${(row.partnerPlates||driver)?`<small>${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))}</small>`:''}</div>`;
+  return `<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(driver || '—')}<small>${escapeHtml([truck,trailer].filter(Boolean).join(' / ') || '—')}</small></div>`;
 }
 
 function _wnNavWeek(d) {
@@ -1401,7 +1754,7 @@ function _wnOpenPopover(e, rowId) {
       <button class="wi-pop-cancel" onclick="_wnClosePopover()">Ακύρωση</button>
       <button class="wi-pop-save" id="wn-pop-btn-${rowId}"
               onclick="event.stopPropagation();_wnSaveFromPopover(${rowId})">
-        <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;display:none;animation:wi-spin .6s linear infinite"></div>
+        <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:var(--text-inverse);border-radius:50%;display:none;animation:wi-spin .6s linear infinite"></div>
         ${row.saved ? 'Ενημέρωση' : 'Αποθήκευση'}
       </button>
     </div>`;
@@ -1614,6 +1967,16 @@ function _wnCtx(e, rowId) {
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</button>`);
+  if (row && row.orderIds.length > 1)
+    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnSplit(${rowId})">Διαχωρισμός (${row.orderIds.length} εντολές)</button>`);
+
+  // Δ8 (δεύτερος δρόμος εισόδου): «σπάσιμο» σκέλους σε τοπικό οδηγό. Ανοίγει
+  // τη φόρμα τοπικής κίνησης δεμένη με αυτό το φορτίο· χωρίς οδηγό η ανάγκη
+  // καταγράφεται ως «χρειάζεται τοπικό» (SPEC §3.5).
+  if (row) {
+    const dk = _wnRowKey(row);
+    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnAddLocal('${dk==='zzz'?'':dk}','${row.orderId}')">Ανάθεση σε τοπικό οδηγό</button>`);
+  }
 
   // Δ5 (owner 10/8): το ραντεβού μπαίνει ΜΕ ΠΡΟΘΕΣΗ, από εδώ — δεν εξάγεται
   // αυτόματα από την ώρα του datetime. Δείχνουμε την τρέχουσα τιμή στο ίδιο
@@ -1895,6 +2258,12 @@ window._wnNewOrder = _wnNewOrder;
 window._wnAddLocal  = _wnAddLocal;
 window._wnSaveLocal = _wnSaveLocal;
 window._wnDelLocal  = _wnDelLocal;
+// v4 (batch 3) — inline handlers of the strip, the quick filters, the
+// «χρειάζεται τοπικό» cover flow (module in IIFE, same reason as above)
+window._wnQuick = _wnQuick;
+window._wnClearFilter = _wnClearFilter;
+window._wnCoverLocal = _wnCoverLocal;
+window._wnSaveCover = _wnSaveCover;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
@@ -1903,17 +2272,18 @@ window._wnDelLocal  = _wnDelLocal;
 function _wnPrintWeek(){
   const secs=[['ΚΑΘΟΔΟΣ (Βορράς → Νότος)','northsouth'],['ΑΝΟΔΟΣ (Νότος → Βορράς)','southnorth']];
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly National — W${WNATL.week}</h2>
-    <p style="font-size:12px;color:#666;margin-bottom:16px">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>`;
+    <style>.wnp th,.wnp td{padding:4px 6px;border:1px solid #ddd;text-align:left}.wnp th{padding:6px;background:#F0F5FA}.wnp .c{text-align:center}.wnp-sub{font-size:12px;color:#666;margin-bottom:16px}</style>
+    <p class="wnp-sub">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>`;
   for(const [secTitle,type] of secs){
     const rows=WNATL.rows.filter(r=>r.type===type);
     html+=`<h3 style="font-family:'Syne',sans-serif;font-size:13px;margin:14px 0 6px">${secTitle} — ${rows.length}</h3>
-      <table style="width:100%;border-collapse:collapse;font-size:11px">
-        <thead><tr style="background:#F0F5FA">
-          <th style="padding:6px;border:1px solid #ddd;text-align:left">#</th>
-          <th style="padding:6px;border:1px solid #ddd;text-align:left">Διαδρομή</th>
-          <th style="padding:6px;border:1px solid #ddd;text-align:left">Ημερομηνίες</th>
-          <th style="padding:6px;border:1px solid #ddd;text-align:center">Παλ.</th>
-          <th style="padding:6px;border:1px solid #ddd;text-align:left">Ανάθεση</th>
+      <table class="wnp" style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead><tr>
+          <th>#</th>
+          <th>Διαδρομή</th>
+          <th>Ημερομηνίες</th>
+          <th class="c">Παλ.</th>
+          <th>Ανάθεση</th>
         </tr></thead><tbody>`;
     rows.forEach((row,i)=>{
       const ord=WNATL.data[type].find(o=>o.id===row.orderId); if(!ord)return;
@@ -1923,11 +2293,11 @@ function _wnPrintWeek(){
       const assign=row.partnerLabel?`Συνεργάτης: ${row.partnerLabel}${row.partnerPlates?' ('+row.partnerPlates+')':''}`
                   :(row.truckLabel?`Στόλος: ${row.truckLabel}${row.driverLabel?' · '+row.driverLabel:''}`:'Χωρίς ανάθεση');
       html+=`<tr>
-        <td style="padding:4px 6px;border:1px solid #ddd">${i+1}</td>
-        <td style="padding:4px 6px;border:1px solid #ddd">${String(from).slice(0,34)} → ${String(to).slice(0,34)}</td>
-        <td style="padding:4px 6px;border:1px solid #ddd">${toLocalDate(f['Loading DateTime'])||'—'} → ${toLocalDate(f['Delivery DateTime'])||'—'}</td>
-        <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">${f['Total Pallets']||0}</td>
-        <td style="padding:4px 6px;border:1px solid #ddd">${assign}</td>
+        <td>${i+1}</td>
+        <td>${from} → ${to}</td>
+        <td>${toLocalDate(f['Loading DateTime'])||'—'} → ${toLocalDate(f['Delivery DateTime'])||'—'}</td>
+        <td class="c">${f['Total Pallets']!=null?f['Total Pallets']:'—'}</td>
+        <td>${assign}</td>
       </tr>`;
     });
     html+='</tbody></table>';
