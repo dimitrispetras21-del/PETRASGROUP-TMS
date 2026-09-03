@@ -247,11 +247,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wk3-dayh{position:sticky;top:38px;z-index:20;background:var(--bg-card);border:none;padding:8px 2px 2px;gap:10px;align-items:baseline;box-shadow:none}
 .wk3.wi2 .wk3-dayh .d{font:700 15px 'Syne',sans-serif;letter-spacing:0;color:var(--text)}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
-.wk3.wi2 .wk3-dayh .k{font-size:11px;color:var(--text-dim);display:flex;gap:8px;flex-wrap:wrap}
-.wk3.wi2 .wk3-dayh .k .w{color:var(--warning);font-weight:500}
-.wk3.wi2 .wk3-dayh .k .b,.wk3.wi2 .wk3-dayh .k .u{color:var(--danger-strong);font-weight:500}
-.wk3.wi2 .wk3-dayh .k .sep{font-style:normal;color:var(--text-dim)}
-.wk3.wi2 .wk3-dayh .now{font:700 8.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--bg-card);background:var(--accent);border:none;border-radius:3px;padding:2px 8px}
+.wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3-dayh .now{font:700 8.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--bg-card);background:var(--accent);border:none;border-radius:3px;padding:2px 8px}
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 2px 2px;font-style:italic}
 .wk3.wi2 .wk3-row{min-height:40px;margin-top:6px;border:1px solid var(--silver-light);border-radius:var(--radius-md);background:var(--bg-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--bg-card)}
@@ -326,14 +322,7 @@ const _WI2_CSS=`
 .wi2-legnote{font-size:10px;color:var(--text-dim);white-space:nowrap}
 .wi2-unlink{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-dim);background:none;border:none;cursor:pointer}
 .wi2-unlink:hover{color:var(--danger)}
-.wi2-foot{display:flex;align-items:center;gap:20px;padding:10px 16px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);margin-top:8px;flex-wrap:wrap}
-.wi2-foot .t{display:flex;gap:6px;align-items:center;font:400 11px 'DM Sans',sans-serif;color:var(--text-mid);background:none;border:none;padding:0;white-space:nowrap}
-.wi2-foot button.t{cursor:pointer}
-.wi2-foot .t b{font:700 13px 'Syne',sans-serif;color:var(--text)}
-.wi2-foot .t.un b,.wi2-foot .t.late b{color:var(--danger-strong)}
-.wi2-foot .t.gap b{color:var(--warning)}
-.wi2-foot .t.dim b{color:var(--text-dim)}
-.wi2-foot .t.ok b{color:var(--success)}
+.wi2-foot{display:flex;align-items:center;justify-content:flex-end;gap:20px;padding:3px 16px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);margin-top:8px;flex-wrap:wrap}
 .wi2-foot .sync{font-size:11px;color:var(--text-mid);margin-left:auto}
 .wi2-foot .sync .err{color:var(--danger);font-weight:700}
 .wk3.wi2 #wi-popover{width:600px;border-radius:10px;border-color:var(--silver-light)}
@@ -690,8 +679,6 @@ function _wiPaint(){
   // χρειάζεται όταν διαλέγεις φορτηγό.
   const cur=_wiCurrentWeek();
   const chip=(q,lbl,n)=>`<button class="wi2-chip${(WINTL.quick||'')===q?' on':''}" data-q="${q}" onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`;
-  const tally=(cls,num,den,lbl,title,onclick)=>`<${onclick?'button':'span'} class="t ${cls}" title="${title}"${onclick?` onclick="${onclick}"`:''}><b>${den==null?num:num+'/'+den}</b>${lbl}</${onclick?'button':'span'}>`;
-
   document.getElementById('content').innerHTML=`
     <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}" style="display:block;width:100%">
     <style>${_WI2_CSS}</style>
@@ -713,8 +700,9 @@ function _wiPaint(){
            το ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ 8 επείγοντα». Η αναλυτική πρόταση, η φάση της
            εβδομάδας και ολόκληρο το «ΕΛΕΥΘΕΡΑ ΣΗΜΕΡΑ» έφυγαν — ο στόχος είναι
            να χωράνε περισσότερες εγγραφές στην οθόνη. Κανένας αριθμός δεν
-           χάθηκε: τα κενά γυρίσματα και τα ασυμφώνητα ζουν στα γρήγορα φίλτρα
-           και στο tally του υποσέλιδου, με τους παρονομαστές τους. -->
+           χάθηκε: τα κενά γυρίσματα και τα ασυμφώνητα ζουν στα γρήγορα
+           φίλτρα, με τους παρονομαστές τους. Τα σύνολα του υποσέλιδου και τα
+           τσιπάκια της κεφαλίδας ημέρας αφαιρέθηκαν 3/9 για τον ίδιο λόγο. -->
       <div class="wi2-urg${gaps?'':' zero'}">
         <button class="n" onclick="_wk3Gaps()" title="Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports">${gaps}</button>
         <h4>ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</h4>
@@ -762,15 +750,6 @@ function _wiPaint(){
     </div>
     <!-- Tally (contract §3): every fraction carries its denominator. -->
     <div class="wi2-foot">
-      ${tally('',expN,null,'εξαγωγές','Εξαγωγές της εβδομάδας')}
-      ${tally('',impN,null,'εισαγωγές','Εισαγωγές της εβδομάδας')}
-      ${tally('',matched,impN,'ταιριασμένες',`${matched} ταιριασμένες · ${unmatched} εισαγωγές χωρίς ταίριασμα`)}
-      ${tally('',ownRows.length,expN,'ιδιόκτητα','Εξαγωγές σε δικό μας φορτηγό')}
-      ${tally('',parRows.length,expN,'συνεργάτες','Εξαγωγές σε συνεργάτη')}
-      ${tally(pendAll?'un':'dim',pendAll,total,'χωρίς ανάθεση',`Χωρίς ανάθεση: ${pending} εξαγ + ${impNoVehicle} εισαγ. Κλικ: πήγαινε στο πρώτο`,pendAll?jumpPending:'')}
-      ${tally(gaps?'gap':'dim',gaps,ownRows.length,'κενά γυρίσματα','Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports',gaps?'_wk3Gaps()':'')}
-      ${tally(delivN?'ok':'dim',delivN,total,'παραδόθηκαν','Παραδομένα φορτία (Status Delivered/Invoiced)')}
-      ${tally(lateN?'late':'dim',lateN,total,'καθυστερημένα','Delivery Performance = Delayed — πράξη ανθρώπου, όχι υπολογισμός (owner 30/8)')}
       <span id="wi2-sync" class="sync"></span>
     </div>
     <div id="wi-ctx"></div>
@@ -843,23 +822,9 @@ function _wiAllRowsHTML(){
     const showImps=grp.imps.filter(r=>!r.matchedTo); // matched imports live inside their export row
     // Day counters (frame 368:966): what the day owes, in words
     const gExp=grp.exps.length;
-    const gPend=grp.exps.filter(r=>!r.saved).length;
-    const gGap=grp.exps.filter(r=>r.saved&&!r.partnerId&&!r.importId);
-    const gUrg=gGap.filter(r=>_wi2Urgent(_f(r),today)).length;
-    const gLate=[...grp.exps,...grp.imps].filter(r=>_wk3StFlags(_f(r)).late).length;
-    const gImpUn=showImps.length;
-    const gImpNv=showImps.filter(r=>!r.saved).length;
-    const k=[];
-    if(gExp) k.push(`<span>${gExp} ${gExp===1?'εξαγωγή':'εξαγωγές'}</span>`);
-    if(gPend) k.push(`<span class="u">${gPend} χωρίς ανάθεση</span>`);
-    if(gGap.length-gUrg) k.push(`<span class="w">${gGap.length-gUrg} ${gGap.length-gUrg===1?'κενό γύρισμα':'κενά γυρίσματα'}</span>`);
-    if(gUrg) k.push(`<span class="b">${gUrg} ${gUrg===1?'κενό γύρισμα επείγον':'κενά γυρίσματα επείγοντα'}</span>`);
-    if(gLate) k.push(`<span class="b">${gLate} ${gLate===1?'καθυστερημένη':'καθυστερημένες'}</span>`);
-    if(gImpUn) k.push(`<span>${gImpUn} ${gImpUn===1?'εισαγωγή χωρίς ταίριασμα':'εισαγωγές χωρίς ταίριασμα'}</span>`);
-    if(gImpNv) k.push(`<span class="u">${gImpNv} ${gImpNv===1?'εισαγωγή χωρίς όχημα':'εισαγωγές χωρίς όχημα'}</span>`);
     const empty=!gExp&&!showImps.length;
     html+=`<section class="wi2-day${isToday?' today':''}${empty?' empty':''}" data-day="${grp.rawDate}">
-      <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}<span class="k">${k.join('<i class="sep">·</i>')}</span></div>`;
+      <div class="wk3-dayh${isToday?' today':''}"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span>${isToday?'<span class="now">ΣΗΜΕΡΑ</span>':''}</div>`;
     if(empty){ html+=`<div class="wi2-none">Καμία κίνηση — η κενή μέρα είναι πληροφορία, όχι απουσία</div></section>`; return; }
 
     // Owner (9/8): ταξινόμηση ανά πελάτη και μετά Veroia Switch
