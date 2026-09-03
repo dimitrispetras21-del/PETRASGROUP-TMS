@@ -183,7 +183,7 @@ function _oiCss() { return `
 .oi-num{font-variant-numeric:tabular-nums}
 .oi-med{font-weight:500}
 .oi-miss{color:var(--text-dim)}
-.oi-nowrap{white-space:nowrap}
+.oi-layout .entity-table-wrap tbody td.oi-nowrap{white-space:nowrap}
 .oi-flag{display:inline-block;margin-left:4px;padding:1px 4px;border-radius:3px;font-size:8px;line-height:10px;font-weight:700;vertical-align:1px;color:var(--navy-mid);background:var(--silver-light)}
 .oi-flag-vs{background:var(--navy-mid);color:var(--text-inverse)}
 .oi-flag-hr{background:var(--danger-bg);color:var(--danger-strong)}
