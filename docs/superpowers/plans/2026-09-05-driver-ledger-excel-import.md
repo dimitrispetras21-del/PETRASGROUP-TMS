@@ -2013,3 +2013,109 @@ git commit -q -m "ledger-import: rules v2 — shape-first classification, Latin 
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 2c: inventory — running-total breaks and opening balances
+
+**Why.** After rules v2, 84 sheets still have `raw_final ≠ running_last`. The coordinator traced every canonical one: the Excel ΠΡΟΟΔΕΥΤΙΚΟ column is not always `previous + (ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ)`. There are (a) **breaks** — rows where the cached running total jumps by an amount not present in the row (a value typed over the formula, e.g. −100 repeated, or a 0.78 rounding drift), and (b) **opening balances** — the first running value already includes a balance carried from a previous sheet. The ledger must equal the ΠΡΟΟΔΕΥΤΙΚΟ people have been trusting, and every discrepancy must be visible as its own line, so the inventory records each break with its row and amount. The analyst (Task 7) will turn breaks into `adjustment` lines with a note and opening balances into the carry logic; this task only measures.
+
+**Files:**
+- Modify: `tools/ledger-import/inventory.py`
+- Modify: `tools/ledger-import/tests/test_inventory.py` (add one test)
+
+**Interfaces:**
+- Node gains: `opening_balance: str|None` (decimal string, present only when |x| > 0.05), `running_breaks: [{"row": int, "entry_date": "YYYY-MM-DD", "diff": "decimal string"}]`, `running_consistent: bool|None` (None when the sheet has no ΠΡΟΟΔΕΥΤΙΚΟ column). Invariant: `d2(raw_final) + d2(opening_balance or 0) + Σ d2(diff) == d2(running_last)` ⇔ `running_consistent`.
+- Summary line replaces `raw≠running N` with `running inconsistent N · sheets with breaks M · opening balances K`.
+
+- [ ] **Step 1: Add the failing test to `tests/test_inventory.py`** (append inside `TestParseSheet`, before `if __name__`):
+
+```python
+    def test_running_breaks_and_opening_balance(self):
+        ws = book([
+            ('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+            (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 350),       # opening 100: 350 − 250
+            (dt.datetime(2024, 1, 20), 'ΜΕΤΡΗΤΑ', 200, None, None, None, -200, 150),
+            (dt.datetime(2024, 2, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 180),          # break −100: 150+130=280, cached 180
+            (dt.datetime(2024, 2, 9), 'ΠΑΤΡΑ', 0, None, None, 230, 230, None),           # no running on this row
+            (dt.datetime(2024, 2, 15), 'ΜΕΤΡΗΤΑ', 400, None, None, None, -400, 10.78),  # 180+230−400 = 10 → +0.78 drift
+        ])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['raw_final'], '10.00')
+        self.assertEqual(n['running_last'], '10.78')
+        self.assertEqual(n['opening_balance'], '100.00')
+        self.assertEqual(n['running_breaks'], [{'row': 4, 'entry_date': '2024-02-01', 'diff': '-100.00'},
+                                               {'row': 6, 'entry_date': '2024-02-15', 'diff': '0.78'}])
+        self.assertTrue(n['running_consistent'])
+
+    def test_no_running_column_means_consistency_unknown(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertIsNone(n['running_consistent']); self.assertIsNone(n['opening_balance']); self.assertEqual(n['running_breaks'], [])
+```
+
+Also change the existing `test_standard_sheet` expectations: it must now also assert `self.assertEqual(n['running_breaks'], [])`, `self.assertIsNone(n['opening_balance'])`, `self.assertTrue(n['running_consistent'])` (append these three lines at the end of that test).
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `cd tools/ledger-import && python3 -m unittest tests.test_inventory 2>&1 | tail -3`
+Expected: `KeyError: 'opening_balance'` (or `running_breaks`).
+
+- [ ] **Step 3: Implement in `inventory.py`**
+
+In `parse_sheet`, replace the block that computes `running_last` (from `running_last = None` down to just before `balance_sum = None`) with:
+
+```python
+    running_last, opening, breaks, consistent = None, None, [], None
+    if 'running' in cols:
+        # Walk the cached ΠΡΟΟΔΕΥΤΙΚΟ against our own deltas. Rows without a running
+        # value (a blank cell in the middle) accumulate into `acc` until the next
+        # cached value. The first cached value fixes the opening balance; every later
+        # jump that the row's own amounts do not explain is a break.
+        prev_run, acc = None, Decimal('0')
+        for r in rows:
+            c = r['cells']
+            delta = d2(c.get('value') if is_num(c.get('value')) else 0) - d2(c.get('advance') if is_num(c.get('advance')) else 0) + d2(c.get('expenses') if is_num(c.get('expenses')) else 0)
+            acc += delta
+            run = c.get('running')
+            if not is_num(run): continue
+            run = d2(run)
+            if prev_run is None:
+                opening = run - acc
+            else:
+                diff = run - (prev_run + acc)
+                if abs(diff) > Decimal('0.05'):
+                    breaks.append({'row': r['row'], 'entry_date': r['entry']['entry_date'], 'diff': str(diff)})
+            prev_run, acc = run, Decimal('0')
+            running_last = str(run)
+        if opening is not None and abs(opening) <= Decimal('0.05'): opening = None
+        if running_last is not None:
+            raw = raw_balance(cells_used)
+            consistent = (raw + (opening or Decimal('0')) + sum((Decimal(b['diff']) for b in breaks), Decimal('0'))).quantize(Decimal('0.01')) == d2(running_last)
+```
+
+Add `from decimal import Decimal` to the imports. Add to the returned dict: `'opening_balance': str(opening) if opening is not None else None, 'running_breaks': breaks, 'running_consistent': consistent`.
+
+In `main()`, replace the `raw≠running %d` part of the summary (text and value) with:
+`running inconsistent %d · sheets with breaks %d · opening balances %d` and values
+`sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance'])`.
+
+Note: `opening` is computed from the first row that has a cached running value; if that row is not the first data row, `acc` already holds the deltas of the earlier rows — that is intended (the opening is whatever the sheet carried before its first line).
+
+- [ ] **Step 4: Run tests**
+
+Run: `cd tools/ledger-import && python3 -m unittest discover -s tests 2>&1 | tail -3` → `OK`, 36 tests.
+
+- [ ] **Step 5: Real run**
+
+Run: `python3 tools/ledger-import/inventory.py` and record the line. Expected: `running inconsistent` is small (single digits); if it is above 20, report DONE_WITH_CONCERNS with the first 5 inconsistent sheets (file, sheet, raw_final, opening_balance, Σbreaks, running_last).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tools/ledger-import/inventory.py tools/ledger-import/tests/test_inventory.py
+git commit -q -m "ledger-import: inventory measures ΠΡΟΟΔΕΥΤΙΚΟ breaks and opening balances, and whether raw + breaks + opening = cached
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
