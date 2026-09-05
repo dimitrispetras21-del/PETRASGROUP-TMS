@@ -1391,7 +1391,9 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 - [ ] **Step 1: Split the map keys** into groups of ≤5 (only keys with `files`, skip `alias_of`). Expected ≈ 14–18 groups.
 
-- [ ] **Step 2: Dispatch one Haiku agent per group** (Agent tool, `model: "haiku"`, `run_in_background: true`), prompt = contents of `prompts/ANALYST.md` + the group's keys + absolute paths of `work/`. All groups in one message so they run concurrently.
+- [ ] **Step 1b (after Task 10a): build every plan deterministically** — `python3 tools/ledger-import/make_plan.py` then `python3 tools/ledger-import/verify_plan.py`. Keys that come out `ready` with no warnings need no analyst at all; only keys with `needs_decision` or `warnings` go to Step 2.
+
+- [ ] **Step 2: Dispatch one Haiku agent per group of ≤5 keys that need decisions** (Agent tool, `model: "haiku"`, `run_in_background: true`), prompt = contents of `prompts/ANALYST.md` (decisions workflow) + the group's keys + absolute paths of `work/`. All groups in one message so they run concurrently. Analysts write `work/decisions/<key>.json` and re-run `make_plan.py <key>`; they never write plans.
 
 - [ ] **Step 3: Run the gate**
 
