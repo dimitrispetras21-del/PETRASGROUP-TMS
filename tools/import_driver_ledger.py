@@ -68,6 +68,10 @@ def parse_workbook(path):
             excel_final = d2(v); break
     return rows, anomalies, excel_final
 
+def payload_rows(rows):
+    """Filter out private (_*) and None-valued keys from entry dicts."""
+    return [{k: v for k, v in e.items() if not k.startswith('_') and v is not None} for e in rows]
+
 def compute_balance(rows):
     bal = Decimal('0')
     for e in rows:
@@ -75,7 +79,7 @@ def compute_balance(rows):
             bal += d2(e['trip_value']) - (d2(e['advance']) - d2(e['expenses']))
         else:
             bal -= d2(e['amount'])
-    return bal.quantize(Decimal('0.01'))
+    return bal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -102,12 +106,15 @@ def main():
     if not a.token: sys.exit('✗ --token (or $TMS_JWT) required for --commit')
     payload = {'driver_id': driver_id, 'file_name': os.path.basename(a.xlsx),
                'file_hash': hashlib.sha256(open(a.xlsx, 'rb').read()).hexdigest(),
-               'rows': [{k: v for k, v in e.items() if not k.startswith('_') and v is not None} for e in rows]}
+               'rows': payload_rows(rows)}
     req = urllib.request.Request(PROXY + '/costs/ledger/import', data=json.dumps(payload).encode(),
                                  headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + a.token}, method='POST')
     try:
         with urllib.request.urlopen(req) as res:
             out = json.load(res)
+    except urllib.error.URLError as err:
+        # Network error: DNS failure, connection refused, timeout, etc.
+        sys.exit(f'✗ network error: {err.reason}')
     except urllib.error.HTTPError as err:
         sys.exit(f'✗ HTTP {err.code}: {err.read().decode()[:300]}')
     print(f'  ✓ imported batch {out["batch"]}: {out["rows"]} rows, server balance {out["balance"]}')

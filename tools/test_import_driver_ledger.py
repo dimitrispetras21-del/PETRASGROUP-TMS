@@ -1,7 +1,7 @@
 import unittest, tempfile, os, datetime as dt
 from decimal import Decimal
 import openpyxl
-from import_driver_ledger import parse_workbook, compute_balance, classify
+from import_driver_ledger import parse_workbook, compute_balance, classify, payload_rows
 
 def make_xlsx(rows):
     wb = openpyxl.Workbook(); ws = wb.active
@@ -14,6 +14,13 @@ def make_xlsx(rows):
         r += 1
     ws[f'C{r}'] = 'ΣΥΝΟΛΟ'; ws[f'F{r}'] = f'=SUM(F4:F{r-1})'
     p = os.path.join(tempfile.mkdtemp(), 't.xlsx'); wb.save(p); return p
+
+class PayloadRowsTests(unittest.TestCase):
+    def test_payload_rows_filters_underscore_and_none(self):
+        rows = [{'entry_type':'trip','entry_date':'2024-08-10','date_end':None,'route':'X','trip_value':800.0,'advance':200.0,'expenses':0.0,'_row':4}]
+        result = payload_rows(rows)
+        expected = [{'entry_type':'trip','entry_date':'2024-08-10','route':'X','trip_value':800.0,'advance':200.0,'expenses':0.0}]
+        self.assertEqual(result, expected)
 
 class ClassifyTests(unittest.TestCase):
     def test_trip(self):
