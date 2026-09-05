@@ -2,6 +2,7 @@
 // run `npm install` in worker/ before deploying from a fresh clone.
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
+import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -2721,25 +2722,86 @@ async function handleCosts(request, url, origin, env) {
       return jsonOk({ record: updated }, origin, env);
     }
     // ---- POST /costs/rt  (planners auto ή manual modal) ----
+    // N1 (5/9): validateRtBody + planRtUpsert (worker/src/rt-rules.mjs) replace
+    // the old create-only path. A leg whose order_id/nat_load_id already sits
+    // on an RT no longer 422s or silently duplicates — it ATTACHES to that RT
+    // (idempotent: resending the same legs is a no-op). This closes the gap
+    // rt-feed.js documented ("προσθαφαίρεση legs σε υπάρχον RT" was a known
+    // hole) that left 9 matched Weekly International pairs as single-leg RTs.
     if (resource === "rt" && method === "POST" && !recId) {
       const body = await request.json().catch(() => null);
-      if (!body) return jsonError("Invalid request", 400, origin, env);
-      const row = ctPick(body, ["scope", "trip_type", "truck_id", "trailer_id", "driver_id", "partner_id", "date_start", "date_end", "total_km", "source"]);
-      if (!row.scope || !row.trip_type || !row.date_start) {
-        return jsonError("scope, trip_type, date_start required", 400, origin, env);
+      const v = validateRtBody(body);
+      if (!v.ok) return jsonError(v.error, v.status, origin, env);
+      const orderIds = v.legs.filter((l) => l.order_id !== void 0).map((l) => l.order_id);
+      const natIds = v.legs.filter((l) => l.nat_load_id !== void 0).map((l) => l.nat_load_id);
+      let existing = [];
+      if (orderIds.length || natIds.length) {
+        const parts = [];
+        if (orderIds.length) parts.push(`order_id.in.(${orderIds.join(",")})`);
+        if (natIds.length) parts.push(`nat_load_id.in.(${natIds.join(",")})`);
+        const exParams = new URLSearchParams({ select: "order_id,nat_load_id,rt_id" });
+        exParams.append("or", `(${parts.join(",")})`);
+        existing = (await dbSelectRaw(env, "ct_rt_legs", exParams)).rows;
       }
-      row.created_by = caller.sub;
+      const plan = planRtUpsert({ legs: v.legs, existing });
+      if (plan.action === "conflict") return jsonError(plan.error, plan.status, origin, env);
+      if (plan.action === "attach") {
+        const before = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${plan.rt_id}`, select: "*" }));
+        if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+        const rtRow = before.rows[0];
+        const addedLegs = [];
+        for (const leg of plan.legsToAdd) {
+          addedLegs.push(await dbInsert(env, "ct_rt_legs", { ...leg, rt_id: plan.rt_id }));
+        }
+        // A later leg (e.g. the import half of a Weekly match) can carry a
+        // later date_end than the RT had when it was created solo — extend,
+        // never shrink, so the window still covers every attached leg.
+        const extendsWindow = v.row.date_end && (!rtRow.date_end || v.row.date_end > rtRow.date_end);
+        const record = extendsWindow
+          ? await ctDbPatch(env, "ct_round_trips", `id=eq.${plan.rt_id}`, { date_end: v.row.date_end, updated_at: new Date().toISOString() })
+          : rtRow;
+        if (addedLegs.length || extendsWindow) {
+          await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(plan.rt_id), before: rtRow, after: { ...record, addedLegs } });
+        }
+        const legsRes = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ rt_id: `eq.${plan.rt_id}`, select: "id,direction,order_id,nat_load_id" }));
+        return jsonOk({ record, legs: legsRes.rows, attached: true }, origin, env, 200);
+      }
+      // plan.action === "create"
+      const row = { ...v.row, created_by: caller.sub };
       const created = await dbInsert(env, "ct_round_trips", row);
-      const legs = Array.isArray(body.legs) ? body.legs : [];
       const createdLegs = [];
-      for (const leg of legs.slice(0, 20)) {
-        const legRow = ctPick(leg, ["direction", "order_id", "nat_load_id"]);
-        if (!legRow.direction || legRow.order_id === void 0 && legRow.nat_load_id === void 0) continue;
-        legRow.rt_id = created.id;
-        createdLegs.push(await dbInsert(env, "ct_rt_legs", legRow));
+      for (const leg of v.legs) {
+        createdLegs.push(await dbInsert(env, "ct_rt_legs", { ...leg, rt_id: created.id }));
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "ct_round_trips", recordId: String(created.id), after: { ...created, legs: createdLegs } });
       return jsonOk({ record: created, legs: createdLegs }, origin, env, 201);
+    }
+    // ---- DELETE /costs/rt/:id/legs?order_id=X|nat_load_id=X ----
+    // N1: the only way to detach a leg (a Weekly International unmatch, or a
+    // manual correction) — guarded by canRemoveLeg so a closed/complete/
+    // cancelled RT's legs stay historical, never silently rewritten.
+    if (resource === "rt" && method === "DELETE" && recId && seg[3] === "legs") {
+      const orderIdQ = url.searchParams.get("order_id");
+      const natLoadIdQ = url.searchParams.get("nat_load_id");
+      if (!orderIdQ && !natLoadIdQ) return jsonError("order_id or nat_load_id required", 400, origin, env);
+      const rtBefore = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!rtBefore.rows.length) return jsonError("Not found", 404, origin, env);
+      const rem = canRemoveLeg(rtBefore.rows[0]);
+      if (!rem.ok) return jsonError(rem.error, rem.status, origin, env);
+      const legFilter = orderIdQ ? `order_id=eq.${encodeURIComponent(orderIdQ)}` : `nat_load_id=eq.${encodeURIComponent(natLoadIdQ)}`;
+      const legBefore = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ rt_id: `eq.${recId}`, select: "*", ...(orderIdQ ? { order_id: `eq.${orderIdQ}` } : { nat_load_id: `eq.${natLoadIdQ}` }) }));
+      if (!legBefore.rows.length) return jsonError("Leg not found on this round trip", 404, origin, env);
+      const res = await fetch(`${env.SUPABASE_URL}/rest/v1/ct_rt_legs?rt_id=eq.${encodeURIComponent(recId)}&${legFilter}`, {
+        method: "DELETE",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+      });
+      if (!res.ok) {
+        const d = await res.text().catch(() => "");
+        console.error("COSTS rt leg delete", res.status, d.slice(0, 200));
+        return jsonError(`Delete failed (${res.status})`, 500, origin, env);
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_rt_legs", recordId: String(recId), before: legBefore.rows[0] });
+      return jsonOk({ deleted: true }, origin, env);
     }
     // ---- GET /costs/rt  (λίστα ΧΩΡΙΣ αποτελέσματα PnL) ----
     if (resource === "rt" && method === "GET") {
