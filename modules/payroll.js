@@ -198,7 +198,7 @@ function dlEntryRowHtml(e, opts) {
 
   if (e.cancelled) {
     return `<div class="dl-row canc" title="${escapeHtml(e.deleted_reason || '')}">
-      <div style="width:${wDate}px"><span style="font-size:12px">${dateTxt}</span></div>
+      <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
       <div style="flex:1"><span class="m">${routeText}</span></div>
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
@@ -211,7 +211,7 @@ function dlEntryRowHtml(e, opts) {
 
   if (!compact && _dl.editId === e.id) {
     return `<div class="dl-row edit">
-      <div style="width:100px"><span style="font-size:12px">${dateTxt}</span></div>
+      <div style="width:100px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
       <div style="flex:1"><span class="m">${routeText}</span></div>
       <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiValue" value="${e.trip_value ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
       <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiAdvance" value="${e.advance ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
@@ -235,7 +235,7 @@ function dlEntryRowHtml(e, opts) {
   const cancelBtn = compact ? '' : `<div style="width:32px" class="r"><button class="dl-x" title="Ακύρωση" onclick="event.stopPropagation();dlRowCancelClick(${e.id})">×</button></div>`;
 
   return `<div class="dl-row${e.needs_review ? ' review' : ''}${clickable ? ' click' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}"${clickable ? ` onclick="dlEditRow(${e.id})"` : ''} title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
-    <div style="width:${wDate}px"><span style="font-size:12px">${dateTxt}</span></div>
+    <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
     <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}">${routeText}</span>${rtIcon}</div>
     <div style="width:${wMoney}px" class="r">${valueCell}</div>
     <div style="width:${wMoney}px" class="r">${advCell}</div>
@@ -361,7 +361,7 @@ function dlHomeRightHtml() {
       <span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span>
     </div>
     <div class="dl-mini-boxes">
-      <div class="box"><div class="k">Αξία έτους</div><div class="v">${dlEur(value)}</div></div>
+      <div class="box"><div class="k">Αξία έτους</div><div class="v">${(trips.length && trips.every(e => e.pending)) ? '—' : dlEur(value)}</div></div>
       <div class="box"><div class="k">Πληρωμές έτους</div><div class="v">${dlEur(cash + bank)}</div></div>
       <div class="box"><div class="k">Τελευταίο</div><div class="v" style="font-size:13px">${last}</div></div>
     </div>
@@ -618,7 +618,7 @@ async function dlLoadPrevMonth() {
       const entries = r.records || [];
       const find = t => { const e = entries.find(x => x.entry_type === t && !x.cancelled); return e ? Number(e.amount) : null; };
       _dl.bulk.prevMonth[d.driver_id] = { payment_bank: find('payment_bank'), payment_cash: find('payment_cash') };
-    } catch (e) { _dl.bulk.prevMonth[d.driver_id] = { payment_bank: null, payment_cash: null }; }
+    } catch (e) { _dl.bulk.prevMonth[d.driver_id] = { payment_bank: null, payment_cash: null, failed: true }; }
   }));
   _dl.bulk.prevLoaded = true;
   dlRenderBulk();
@@ -655,7 +655,7 @@ function dlBulkRowHtml(d) {
   return `<div class="dl-row">
     <div style="width:320px"><span class="m">${escapeHtml(d.full_name)}</span></div>
     <div style="width:130px" class="r"><span class="n${bal < 0 ? ' dl-neg' : ''}">${dlMoney(bal)}</span></div>
-    <div style="width:130px" class="r"><span class="n dim">${_dl.bulk.prevLoaded ? (pmVal != null ? dlEur(pmVal) : '—') : '…'}</span></div>
+    <div style="width:130px" class="r"><span class="n dim">${_dl.bulk.prevLoaded ? (pm && pm.failed ? '<span title="δεν φορτώθηκε">?</span>' : (pmVal != null ? dlEur(pmVal) : '—')) : '…'}</span></div>
     <div style="width:150px" class="r"><input class="dl-ei" type="number" step="0.01" value="${amt ?? ''}" oninput="dlBulkAmount(${d.driver_id},this.value)"></div>
     <div style="width:150px" class="r" id="dlNewBal_${d.driver_id}">${dlBulkNewBalHtml(bal, amt)}</div>
     <div style="width:40px" class="r">${result === 'ok' ? '<span style="color:var(--ok)">✓</span>' : (result === 'fail' ? '<span style="color:var(--danger)">✕</span>' : '')}</div>
