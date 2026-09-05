@@ -31,9 +31,9 @@ const MAP = [
     src: 'core/ui.js',              fns: ['showEmpty', 'showError'] },
 
   // Κύμα 5 — Μισθοδοσία Οδηγών (5/9/2026). Node ids = τα τρία screens.
-  { component: 'PayrollBalances', nodeId: '454:901', src: 'modules/payroll.js', fns: ['renderPayroll', 'dlRenderList'] },
-  { component: 'DriverLedger',    nodeId: '454:902', src: 'modules/payroll.js', fns: ['renderPayrollDriver', 'dlRenderDriver'] },
-  { component: 'LedgerEntryForm', nodeId: '454:903', src: 'modules/payroll.js', fns: ['dlOpenForm', 'dlRecalc', 'dlSaveForm'] },
+  { component: 'PayrollBalances', nodeId: '454:901', src: 'modules/payroll.js', fns: ['renderPayroll', 'dlRenderHome'] },
+  { component: 'DriverLedger',    nodeId: '454:902', src: 'modules/payroll.js', fns: ['renderPayrollDriver', 'dlRenderDriverCard'] },
+  { component: 'LedgerEntryForm', nodeId: '454:903', src: 'modules/payroll.js', fns: ['dlOpenPayment', 'dlSavePayment'] },
 
   // Built in Figma, not yet in code. Listed rather than omitted: a gap you can
   // see is work, a gap you cannot see is a surprise during implementation.

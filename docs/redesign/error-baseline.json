@@ -18,5 +18,8 @@
     "Failed to load resource: the server responded with a status of 404 (Not Found)",
     "[TMS ERROR] _atFetch: Error: Table not available on this backend",
     "[TMS ERROR] safeFetch: weekly natl: local moves: Error: Table not available on this backend"
+  ],
+  "payroll": [
+    "Failed to load resource: net::ERR_FAILED"
   ]
 }

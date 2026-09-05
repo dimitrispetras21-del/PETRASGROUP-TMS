@@ -478,18 +478,24 @@ async function renderWeeklyIntl(){
     // Order. The NL table has a `links` block, so FIND/ARRAYJOIN is translated
     // (CLAUDE.md). Non-blocking on purpose: a failed read leaves every tile as
     // «ΠΡΟΣ ΑΝΑΘΕΣΗ» plus a console note — never a broken board (αρχή 1 + 7).
-    WINTL.data.nlBySrc = {};
-    {
+    // Deferred on purpose (5/9): the board paints from ORDERS alone and the tiles
+    // fill in when NATIONAL LOADS answers. A slow or dead read must never hold the
+    // whole Weekly hostage — the kanban critic timed out on the blocking version.
+    // `nlMap` identity is the re-render guard: a new week assigns a new map.
+    const nlMap = {};
+    WINTL.data.nlBySrc = nlMap;
+    (async () => {
       const vsIds = ([...expOrders, ...impOrders]).filter(r => r.fields && r.fields['Veroia Switch']).map(r => r.id);
-      if (vsIds.length) {
-        const parts = vsIds.map(id => `FIND("${id}",ARRAYJOIN({Source Order},","))>0`);
-        const f = parts.length === 1 ? parts[0] : `OR(${parts.join(',')})`;
-        const nl = await safeFetch(() => atGetAll(TABLES.NAT_LOADS, { filterByFormula: f,
-          fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip'] }, false),
-          'weekly intl: national carriers', []);
-        if (!didFail(nl)) nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) WINTL.data.nlBySrc[src] = r; });
-      }
-    }
+      if (!vsIds.length) return;
+      const parts = vsIds.map(id => `FIND("${id}",ARRAYJOIN({Source Order},","))>0`);
+      const f = parts.length === 1 ? parts[0] : `OR(${parts.join(',')})`;
+      const nl = await safeFetch(() => atGetAll(TABLES.NAT_LOADS, { filterByFormula: f,
+        fields: ['Source Order','Truck','Driver','Partner','Partner Truck Plates','Is Partner Trip'] }, false),
+        'weekly intl: national carriers', []);
+      if (didFail(nl) || WINTL.data.nlBySrc !== nlMap) return;
+      nl.forEach(r => { const src = (r.fields['Source Order'] || [])[0]; if (src) nlMap[src] = r; });
+      if (Object.keys(nlMap).length) _wiPaint();
+    })().catch(e => console.warn('[weekly intl] national carriers:', e));
 
     // Ακριβές όριο εβδομάδας (Σαβ–Παρ) στην effective ημερομηνία (Delivery ή Loading)
     expOrders = expOrders.filter(r=>{
