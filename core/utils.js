@@ -113,6 +113,37 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// Round-trip leg block (owner decision 5/9/2026): a round trip is a stack of
+// leg rows, never one wrapped single line. Shared by the driver ledger
+// (modules/payroll.js — dlEntryRowHtml trip rows) and the driver/truck/
+// trailer card (core/entity.js — _loadEntityCardRT), so both screens read
+// the same shape from dl_v_rt_route.route_legs and never disagree (αρχή 3).
+// The 6-column CSS grid in assets/style.css (.rt-legs) does the per-leg
+// wrapping on its own — this function just emits 6 cells per leg in order.
+// A missing name/city/country/date is left OUT, never invented (K3) or
+// defaulted to something that looks like data.
+function rtLegBlockHtml(legs) {
+  if (!Array.isArray(legs) || !legs.length) return '';
+  const dm = s => (s && String(s).length >= 10) ? String(s).slice(8, 10) + '/' + String(s).slice(5, 7) : '—';
+  const dirIcon = d => (d === 'EXPORT' || d === 'ANODOS') ? '↗' : (d === 'IMPORT' || d === 'KATHODOS') ? '↙' : '—';
+  const place = (p, extraStops) => {
+    if (!p || !p.name) return '<span class="rt-n">—</span>';
+    const stops = extraStops > 0
+      ? ` <span class="rt-c">+${extraStops} στάσ${extraStops === 1 ? 'η' : 'εις'}</span>`
+      : '';
+    const cc = [p.city, p.country].filter(Boolean).join(', ');
+    return `<span class="rt-n">${escapeHtml(String(p.name).toUpperCase())}</span>${stops}`
+      + (cc ? `<br><span class="rt-c">${escapeHtml(cc)}</span>` : '');
+  };
+  const legHtml = l => `<span class="rt-dir">${dirIcon(l.dir)}</span>`
+    + `<span class="rt-d">${dm(l.load)}</span>`
+    + `<span>${place(l.from)}</span>`
+    + `<span class="rt-a">→</span>`
+    + `<span class="rt-d">${dm(l.deliv)}</span>`
+    + `<span>${place(l.to, l.extra_stops)}</span>`;
+  return `<div class="rt-legs">${legs.map(legHtml).join('')}</div>`;
+}
+
 /**
  * Convert Airtable UTC datetime to local YYYY-MM-DD string
  * @param {string|null} raw - ISO datetime string from Airtable
