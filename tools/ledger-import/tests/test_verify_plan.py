@@ -107,5 +107,11 @@ class TestVerify(unittest.TestCase):
         extra = cross_plan_errors({'A': {'driver_id': 1, 'batches': [{'file_id': 'F1'}]}, 'B': {'driver_id': 2, 'batches': [{'file_id': 'F2'}]}})
         self.assertEqual(extra, {})
 
+    def test_trip_date_end_before_entry_date_rejected(self):
+        p = plan()
+        p['batches'][0]['rows'][0]['date_end'] = '2024-01-09'  # before entry_date '2024-01-10'
+        errs = verify(p, [NODE], AUTO, MAP)
+        self.assertTrue(any('date_end' in e for e in errs))
+
 if __name__ == '__main__':
     unittest.main()

@@ -120,6 +120,24 @@ class TestCommit(unittest.TestCase):
         self.assertEqual(json.load(open(p)), {'a': 1}); self.assertEqual(os.listdir(d), ['state.json'])
 
 
+class TestSelectPlans(unittest.TestCase):
+    def test_select_plans_no_filter_returns_all(self):
+        plans = {'A': {'driver_key': 'A'}, 'B': {'driver_key': 'B'}}
+        result = C.select_plans(plans, None)
+        self.assertEqual(set(result.keys()), {'A', 'B'})
+
+    def test_select_plans_filters_to_only(self):
+        plans = {'A': {'driver_key': 'A'}, 'B': {'driver_key': 'B'}}
+        result = C.select_plans(plans, ['A'])
+        self.assertEqual(set(result.keys()), {'A'})
+
+    def test_select_plans_unknown_key_exits(self):
+        plans = {'A': {'driver_key': 'A'}, 'B': {'driver_key': 'B'}}
+        with self.assertRaises(SystemExit) as cm:
+            C.select_plans(plans, ['ZZZ'])
+        self.assertIn('ZZZ', str(cm.exception))
+
+
 class TestRun(unittest.TestCase):
     """run() reads the plan file straight off disk (to hash the exact reviewed
     bytes — B2), so these tests point commit.WORK at a scratch directory."""
@@ -180,6 +198,20 @@ class TestRun(unittest.TestCase):
         self.assertEqual(state['X']['before'], '40.00')
         self.assertEqual(state['X']['proof']['delta'], '250.00')
         self.assertTrue(state['X']['done'])
+
+    def test_run_rejects_cross_plan_same_driver_id_before_writing(self):
+        # I7: cross-plan errors (same driver_id or file_id in two plans) are
+        # checked at the start of run(), over ALL loaded plans, not just selected ones.
+        # Any error ⇒ Mismatch, nothing written.
+        plan_x = dict(self.REUSE_PLAN)
+        plan_y = dict(self.REUSE_PLAN)
+        plan_y['driver_key'] = 'Y'
+        reviews = {'X': {'verdict': 'ok', 'plan_sha256': self.plan_sha256},
+                   'Y': {'verdict': 'ok', 'plan_sha256': self.plan_sha256}}
+        with self.assertRaises(C.Mismatch) as cm:
+            C.run({'X': plan_x, 'Y': plan_y}, reviews, self.AUTO, self.index, [], self.MAPPING, None, {}, commit=False)
+        exc = str(cm.exception)
+        self.assertIn('driver_id 8', exc); self.assertIn('X', exc); self.assertIn('Y', exc)
 
 if __name__ == '__main__':
     unittest.main()

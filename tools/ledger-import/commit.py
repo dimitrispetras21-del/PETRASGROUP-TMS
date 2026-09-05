@@ -6,7 +6,7 @@ batch ids so the owner can decide on dl_cancel_batch."""
 import argparse, datetime as dt, glob, hashlib, json, os, sys, urllib.error, urllib.request
 from decimal import Decimal
 from rules import d2
-from verify_plan import verify
+from verify_plan import verify, cross_plan_errors
 
 HERE = os.path.dirname(os.path.abspath(__file__)); WORK = os.path.join(HERE, 'work')
 PROXY = 'https://petras-tms-backend-staging.petrasgroup.workers.dev'
@@ -125,6 +125,14 @@ def dry_run_bodies(plan, auto_rows):
     return batch_bodies, patch_bodies
 
 def run(plans, reviews, auto_rows, index, inventory_nodes, mapping, api, state, commit):
+    # I7 — cross-plan errors are checked over ALL loaded plans (before select_plans filters),
+    # not just the selected ones
+    cross = cross_plan_errors(plans)
+    if cross:
+        errors = []
+        for key in sorted(cross.keys()):
+            errors.extend(['%s: %s' % (key, e) for e in cross[key]])
+        raise Mismatch('; '.join(errors))
     for key in sorted(plans):
         plan = plans[key]; review = reviews.get(key, {})
         if plan['status'] != 'ready' or review.get('verdict') != 'ok':

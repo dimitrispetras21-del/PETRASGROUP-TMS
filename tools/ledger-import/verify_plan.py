@@ -74,6 +74,12 @@ def verify(plan, nodes, auto_rows, map_entry):
                     v = r.get(f)
                     if v is not None and (not is_number(v) or v < 0):
                         errs.append('batch %s row %d: %s must be a number ≥ 0' % (b['file_id'], i, f))
+                # Mirror the Worker's date_end validation (validateNewEntry)
+                if r.get('date_end') is not None:
+                    if not ISO_DATE.match(str(r.get('date_end'))):
+                        errs.append('batch %s row %d date_end must be YYYY-MM-DD' % (b['file_id'], i))
+                    elif str(r.get('date_end')) < str(r.get('entry_date')):
+                        errs.append('batch %s row %d date_end cannot be before entry_date' % (b['file_id'], i))
             else:
                 for f in TRIP_ONLY_FIELDS:
                     if r.get(f) is not None: errs.append('batch %s row %d: %s is not allowed on a %s' % (b['file_id'], i, f, r['entry_type']))
