@@ -27,32 +27,70 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
+  /* ═══ DESIGN.md ΜΕΡΟΣ Β — τα tokens του σχεδιαστικού συστήματος (4/9/2026) ═══
+     ΜΙΑ πηγή αλήθειας: το όνομα ΚΑΙ η τιμή καθενός είναι αυτά που γράφει το
+     DESIGN.md. Όταν τα δύο διαφωνούσαν, νίκησε το DESIGN.md (owner 4/9). Τα
+     παλαιότερα ονόματα που ήδη χρησιμοποιούν τα modules (--bg, --bg-card,
+     --navy-mid, --success, --warning, --danger-strong, ...) ΔΕΝ σβήστηκαν:
+     έγιναν aliases παρακάτω, ώστε να μη σπάσει καμία οθόνη. Νέος κώδικας
+     γράφει ΜΟΝΟ αυτά τα ονόματα. Πίνακας συμφιλίωσης: docs/DECISION_LOG.md 4/9.
+
+     Δύο τιμές ΑΛΛΑΞΑΝ οπτικά και θέλουν παρακολούθηση:
+     · --text-dim #94A3B8: 2,57:1 σε λευκό — κάτω από το AA (η προηγούμενη
+       #5B6B7F είχε μετρηθεί 5,03 στις 5/8/2026, βλ. ιστορικό git). Ρόλος
+       «αχνό», ποτέ για κείμενο που ΠΡΕΠΕΙ να διαβαστεί — για αυτό --text-mid.
+     · --border-dark #334155: το DESIGN.md το ορίζει «πάνω σε σκούρο». Πριν
+       ήταν rgba(0,0,0,.16), ένα ελαφρώς πιο έντονο περίγραμμα σε ΦΩΤΕΙΝΟ
+       (form-input, checkbox, drop-zones — 23 χρήσεις). Αυτές οι χρήσεις
+       παίρνουν τώρα σκούρο περίγραμμα· κάθε οθόνη το ξαναβλέπει στο κύμα 5. */
+
+  /* Επιφάνειες */
+  --surface-page:   #F4F6F9;
+  --surface-card:   #FFFFFF;
+  /* Ζώνες κεφαλίδας πίνακα, hover — αντικαθιστά τα σκόρπια F1F5F9/F0F9FF. */
+  --surface-sunken: #F0F5FA;
+  --surface-dark:   #0B1929;
+
+  /* Κείμενο */
+  --text:         #0F172A;
+  --text-mid:     #475569;
+  --text-dim:     #94A3B8;
+  --text-on-dark: #E2E8F0;
+
+  /* Περιγράμματα */
+  --border:       #E2E8F0;
+  --border-dark:  #334155;
+
+  /* Accent — μόνο κύρια ενέργεια. Ως ΚΕΙΜΕΝΟ δεν περνά AA (4,10 σε λευκό,
+     3,77 στο --surface-page): για συνδέσμους/tabs υπάρχει το --accent-text. */
+  --accent:       #0284C7;
+  --accent-hover: #0369A1;
+
+  /* Σημασιολογικά — ΕΝΑ νόημα το καθένα */
+  --ok:          #15803D;
+  --warn:        #92400E;
+  --warn-bg:     #FEF3C7;
+  --warn-border: #E6CE9E;
+  --danger:      #B91C1C;
+  --unassigned:  #7F1D1D;
+
   /* Sidebar */
   --navy:        #080F1A;
-  --navy-mid:    #0B1929;
+  --navy-mid:    var(--surface-dark);
   --navy-light:  #122238;
   --navy-hover:  #17304F;
   --silver:      #C4CFDB;
   --silver-dim:  #6E8099;
-  --silver-light:#E2E8F0;
+  --silver-light:var(--text-on-dark);
 
   /* Content */
-  --bg:          #F4F6F9;
-  --bg-card:     #FFFFFF;
+  --bg:          var(--surface-page);
+  --bg-card:     var(--surface-card);
   --bg-hover:    #EEF2F6;
-  --text:        #0F172A;
-  --text-mid:    #475569;
-  /* #9CA3AF was 2.54:1 on --bg-card and 2.35:1 on --bg, i.e. below the 4.5:1
-     AA floor — and it carries every KPI subtitle, every "—" cell and every
-     helper line. #64748B is 4.76:1 on white and matches --dc-text-dim (line
-     ~3690), which the dark cards already use. Verified: --text-dim is not used
-     on any dark surface, so nothing loses contrast.
-     Open since the 2026-07-11 audit. See _CROSS_CUTTING.md §4.
-     2026-08-05: το #64748B είχε μετρηθεί σε ΛΕΥΚΟ (4.76). Η πραγματική σελίδα
-     όμως έχει --bg #F4F6F9, όπου έπεφτε στο 4.40 — κάτω από το AA, και το
-     κουβαλούν 133 ορατά στοιχεία σε μία μόνο σελίδα. Το #5B6B7F δίνει 5.03
-     πάνω στο --bg και 5.45 σε λευκό: περνά και στις ΔΥΟ επιφάνειες. */
-  --text-dim:    #5B6B7F;
+  /* --text, --text-mid, --text-dim: ορίζονται στο μπλοκ DESIGN.md παραπάνω.
+     Ιστορικό του --text-dim (μη το «ξαναδιορθώσεις» σιωπηλά): 11/7 audit
+     #9CA3AF 2,54:1 → 5/8/2026 #5B6B7F (5,03 στο --bg) → 4/9/2026 #94A3B8
+     κατά DESIGN.md ΜΕΡΟΣ Β. Αν το AA ξαναγίνει απαίτηση, αλλάζει ΕΚΕΙ. */
   /* Genuinely disabled controls only — never for readable text. */
   --text-disabled: #9CA3AF;
 
@@ -74,10 +112,8 @@
   --z-overlay: 9000;
   --z-top: 9999;
 
-  /* Borders */
-  --border:      rgba(0,0,0,0.06);
+  /* Borders — --border/--border-dark στο μπλοκ DESIGN.md παραπάνω. */
   --border-mid:  rgba(0,0,0,0.10);
-  --border-dark: rgba(0,0,0,0.16);
 
   /* Accents — Cold Chain Blue */
   /* Σκούρο πάνελ μέσα σε ΦΩΤΕΙΝΗ σελίδα — δεν είναι dark mode.
@@ -104,17 +140,16 @@
      ΕΠΟΜΕΝΗ δήλωση (έφαγε το --panel-ok-hi, πιάστηκε στον live έλεγχο). */
   --panel-ok-hi:  #34D399;
   --panel-bad-hi: #F87171;
-  --warning-soft: #FEF3C7;
+  --warning-soft: var(--warn-bg);
 
   --panel:        #0F172A;
   --panel-border: #1E293B;
   --panel-text:   #F1F5F9;
   --panel-dim:    #94A3B8;
 
-  --accent:       #027BBD;
-  --accent-hover: #0369A1;
-  /* Το accent ως ΚΕΙΜΕΝΟ, όχι ως γέμισμα. Το #027BBD περνάει σε λευκή κάρτα
-     (4,59) αλλά πέφτει στο 4,24 πάνω στο --bg #F4F6F9 — και οι σύνδεσμοι, τα
+  /* --accent/--accent-hover στο μπλοκ DESIGN.md παραπάνω. */
+  /* Το accent ως ΚΕΙΜΕΝΟ, όχι ως γέμισμα. Το #0284C7 δίνει 4,10 σε λευκή κάρτα
+     και 3,77 πάνω στο --bg #F4F6F9 — και οι σύνδεσμοι, τα
      ενεργά tabs και τα chips κάθονται ακριβώς εκεί. Το #0369A1 δίνει 5,48 στο
      --bg και 5,93 σε λευκό: περνά και στις δύο επιφάνειες.
      Ίδια τιμή με το --accent-hover, ΣΥΜΠΤΩΣΗ όχι σχέση — το ένα είναι απόκριση
@@ -134,16 +169,21 @@
      αριθμός στοιχείων, και κάθε σκούρανση το φέρνει προς το καφέ.
      Για ΣΚΟΥΡΑ πάνελ ΜΗΝ τα χρησιμοποιείς — υπάρχουν τα --panel-ok/warn/bad.
      Τα *-bg μένουν στις αρχικές τιμές: είναι 8% γεμίσματα, όχι κείμενο. */
-  --success:     #047857;
+  /* 4/9/2026: alias του DESIGN token — οι μετρήσεις παραπάνω αφορούν το
+     παλιό #047857· το #15803D δίνει 4,62 στο --bg, 5,01 σε λευκό (περνά). */
+  --success:     var(--ok);
   --success-bg:  rgba(5,150,105,0.08);
-  --danger:      #DC2626;
+  /* --danger στο μπλοκ DESIGN.md (#B91C1C — η παλιά τιμή #DC2626 έμενε
+     στο 4,28 πάνω στο δικό της γέμισμα, βλ. παρακάτω). */
   --danger-bg:   rgba(220,38,38,0.08);
   /* Το #DC2626 δίνει 4.46 σε καθαρό --bg, αλλά μόλις 4.28 όταν κάθεται πάνω
      στο ίδιο του το 8% γέμισμα (--danger-bg) — δηλαδή ακριβώς εκεί που
      χρησιμοποιείται πιο συχνά. Το #B91C1C δίνει 5.73 εκεί. Μόνο για ΚΕΙΜΕΝΟ
      πάνω σε κόκκινη απόχρωση σε ΦΩΤΕΙΝΟ· σε σκούρο θέλει --panel-bad. */
-  --danger-strong: #B91C1C;
-  --warning:     #B45309;
+  /* 4/9/2026: ίδια τιμή με το DESIGN --danger· μένει ως alias για 47 χρήσεις
+     (και το επείγον κόκκινο του weekly_intl, που ΠΡΕΠΕΙ να μείνει #B91C1C). */
+  --danger-strong: var(--danger);
+  --warning:     var(--warn);
   --warning-bg:  rgba(217,119,6,0.08);
 
   --sidebar-w:   228px;
@@ -271,12 +311,12 @@
      είναι όντως το ίδιο navy, όχι σύμπτωση. */
   --chip-own:        var(--navy-mid);
   --chip-partner:    #166534;
-  --chip-unassigned: #7F1D1D;
+  --chip-unassigned: var(--unassigned);
 
   /* Γραμμή κενής επιστροφής. Το γέμισμα είναι το υπάρχον --warning-soft. */
   --row-empty-bg:     var(--warning-soft);
   --row-empty-border: #D97706;
-  --row-empty-text:   #92400E;
+  --row-empty-text:   var(--warn);
 
   /* Badges. Ζεύγη γέμισμα/κείμενο — μετρήθηκαν 28/8, όλα ≥4,5:1 μεταξύ τους. */
   --badge-pe-bg:     #DBEAFE;
@@ -305,11 +345,6 @@
      το --space-1· το --text-2xs κάτω από το --text-xs, για badges. */
   --space-05: 2px;
   --text-2xs: 10px;
-
-  /* Ζώνες κεφαλίδας πίνακα — DESIGN.md ΜΕΡΟΣ Β: αντικαθιστά τα σκόρπια
-     F1F5F9/F0F9FF. Ίδια τιμή με το φόντο που το thead είχε ήδη ως ωμό hex
-     (γρ. ~1421)· τώρα το χρώμα έχει όνομα και σπίτι (κανόνας #1). */
-  --surface-sunken: #F0F5FA;
 }
 
 /* Tabular figures for all numeric cells */

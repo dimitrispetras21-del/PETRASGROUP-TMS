@@ -14,6 +14,31 @@ const HEX = /#[0-9A-Fa-f]{3,8}\b/g;
 // these companies and read the name off the screen.
 const TRUNCATE = /(text-overflow\s*:\s*ellipsis|\btruncate\b|\bline-clamp\b)/g;
 
+// Silent truncation (DESIGN.md Κ6, 4/9/2026): `overflow:hidden` together with
+// `white-space:nowrap` and NO `text-overflow:ellipsis` in the same rule. The
+// text is cut with no visual sign at all — worse than an ellipsis, because the
+// dispatcher cannot tell that "Bakker Barendrecht" ends in "…B.V." and calls
+// the wrong company. Counted per declaration block (innermost `{...}`) and per
+// inline `style="..."` attribute, since modules carry CSS in both forms.
+//
+// REPORTED ONLY — deliberately NOT in the ratchet. Every screen carries some of
+// these today; failing the suite on them before the wave-5 screens are fixed
+// would paint all 12 units red on day one, and a suite that is always red is
+// ignored within a week (same argument as the hex allowance above). Once the
+// screens are redesigned, add it to check() with allowance 0.
+const BLOCK_OR_STYLE = /\{[^{}]*\}|\bstyle\s*=\s*"[^"]*"|\bstyle\s*=\s*'[^']*'/g;
+const OVERFLOW_HIDDEN = /overflow(?:-x)?\s*:\s*hidden/;
+const NOWRAP          = /white-space\s*:\s*nowrap/;
+const ELLIPSIS        = /text-overflow\s*:\s*ellipsis/;
+
+function countSilent(src) {
+  let n = 0;
+  for (const seg of src.match(BLOCK_OR_STYLE) || []) {
+    if (OVERFLOW_HIDDEN.test(seg) && NOWRAP.test(seg) && !ELLIPSIS.test(seg)) n++;
+  }
+  return n;
+}
+
 // The HEX regex matches "#..." anywhere, including inside comments that have
 // nothing to do with colour: modules/pallet_ledger.js:72 has a Greek comment
 // mentioning "Πελάτης #1314" (a historical customer-index bug — 1314 is
@@ -40,6 +65,7 @@ function measure(unit) {
   return {
     hex:      unit.files.reduce((n, f) => n + countIn(f, HEX), 0),
     truncate: unit.files.reduce((n, f) => n + countIn(f, TRUNCATE), 0),
+    silent:   unit.files.reduce((n, f) => n + countSilent(stripComments(fs.readFileSync(f, 'utf8'))), 0),
   };
 }
 
@@ -67,4 +93,4 @@ function check(unit, allowance) {
   return { pass: failures.length === 0, failures, measured: m };
 }
 
-module.exports = { measure, check };
+module.exports = { measure, check, countSilent };

@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { measure, check } = require('./static');
+const { measure, check, countSilent } = require('./static');
 const UNITS = require('./units');
 
 test('measure counts hex colours in a unit', () => {
@@ -40,4 +40,20 @@ test('hex-looking sequences inside comments are not counted', () => {
   } finally {
     fs.unlinkSync(fixture);
   }
+});
+
+test('silent truncation: hidden+nowrap without ellipsis is counted, with ellipsis is not, and never fails', () => {
+  const src = [
+    '.a{overflow:hidden;white-space:nowrap}',                          // silent
+    '.b{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}',   // visible cut
+    '.c{white-space:nowrap}',                                          // no clipping
+    '<td style="overflow:hidden; white-space: nowrap">x</td>',         // inline, silent
+  ].join('\n');
+  assert.strictEqual(countSilent(src), 2);
+  const weekly = UNITS.find(u => u.unit === 'weekly_intl');
+  const m = measure(weekly);
+  assert.ok(typeof m.silent === 'number');
+  // Reported only: an allowance that ignores `silent` must still pass.
+  const r = check(weekly, { hex: m.hex, truncate: m.truncate });
+  assert.strictEqual(r.pass, true);
 });

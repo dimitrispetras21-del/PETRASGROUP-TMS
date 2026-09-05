@@ -46,7 +46,8 @@ if (results.length < UNITS.length) {
 const failed = results.filter(r => !r.pass);
 for (const r of results) {
   const mark = r.pass ? '✓' : '✗';
-  console.log(`${mark} ${r.unit.padEnd(14)} hex ${String(r.measured.hex).padStart(3)}  κοπή ${r.measured.truncate}`);
+  // «σιωπηλή κοπή» τυπώνεται, δεν κρίνει — βλ. countSilent στο static.js.
+  console.log(`${mark} ${r.unit.padEnd(14)} hex ${String(r.measured.hex).padStart(3)}  κοπή ${r.measured.truncate}  σιωπηλή κοπή ${r.measured.silent}`);
 }
 for (const f of failed) for (const msg of f.failures) console.log(`   ${msg}`);
 
