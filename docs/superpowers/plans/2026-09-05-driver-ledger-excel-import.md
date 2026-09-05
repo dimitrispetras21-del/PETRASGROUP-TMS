@@ -2676,3 +2676,109 @@ git commit -q -m "ledger-import: make_plan — deterministic plan builder from i
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10c: four deterministic fixes surfaced by the first plan run
+
+**Why.** `make_plan.py` produced 53 ready / 31 needs_decision plans. Reading the 73 questions, four groups are not judgment calls:
+1. **`date_end` a year off** (`date_end 2026-03-02 before entry_date`, 9 rows): the same year-only repair we do for `entry_date` applies — a `date_end` before the start is repaired when changing its year alone lands it within 0–60 days after `entry_date`.
+2. **Node arithmetic off by ≤ 0.05** (`άθροισμα γραμμών 3.86 ≠ expected_final 3.84`, 7 sheets): the inventory only records a `rounding_residual` when |gap| > 0.05, so gaps of 1–5 cents never get their line. Record any residual > 0.005.
+3. **Carry / opening of 0.00** (ΚΑΒΑΛΑΡΗΣ: `amount must be > 0 (≠ 0 for adjustment)`): a zero carry or opening means nothing was carried — skip it, do not emit an adjustment of 0.
+4. **Payment lines whose expenses equal the amount** (`ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ` with ΕΛΑΒΕ = ΕΞΟΔΑ, 3 rows): the company paid an expense through the driver — net effect on the driver's balance is exactly 0. Such a line is recorded nowhere in the ledger (there is nothing to record) but is counted, never silently: the node gets `zero_net_skipped`.
+
+**Files:**
+- Modify: `tools/ledger-import/rules.py` (`classify`: zero-net payment)
+- Modify: `tools/ledger-import/inventory.py` (`date_end` repair; residual threshold; `zero_net_skipped` counter; summary)
+- Modify: `tools/ledger-import/make_plan.py` (zero carry/opening → skip)
+- Tests: `tests/test_rules.py`, `tests/test_inventory.py`, `tests/test_make_plan.py` (one test each)
+
+- [ ] **Step 1: Tests**
+
+`tests/test_rules.py`, inside `TestClassify`, REPLACE `test_payment_line_swallowed_by_expenses_is_unknown` with:
+```python
+    def test_payment_line_with_expenses_equal_to_amount_is_zero_net(self):
+        # ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ 120 / ΕΞΟΔΑ 120: the company paid an expense through the
+        # driver; the driver's balance does not move, so there is nothing to record.
+        self.assertEqual(classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ', 'advance': 120, 'expenses': 120}), 'ZERO_NET')
+        with self.assertRaises(Unknown):
+            classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 9})
+```
+`tests/test_inventory.py`, inside `TestParseSheet`, add:
+```python
+    def test_date_end_year_typo_repaired_and_small_residual_recorded(self):
+        ws = book([('ΗΜΕΡ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (dt.datetime(2025, 2, 25), dt.datetime(2026, 3, 2), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 250.02),
+                   (dt.datetime(2025, 3, 10), dt.datetime(2025, 3, 15), 'ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ', 120, 120, None, None, 0, 250.02),
+                   (dt.datetime(2025, 3, 20), None, 'ΜΕΤΡΗΤΑ', 100, None, None, None, -100, 150.02)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 2)
+        self.assertEqual(n['zero_net_skipped'], 1)
+        self.assertEqual(n['rows'][0]['entry']['date_end'], '2025-03-02')
+        self.assertIsNone(n['rows'][0]['date_problem'])
+        self.assertIn('2026-03-02', n['rows'][0]['entry']['note'])
+        self.assertEqual(n['rounding_residual'], '0.02')
+        self.assertTrue(n['running_consistent'])
+```
+`tests/test_make_plan.py`, inside `TestBuildPlan`, add:
+```python
+    def test_zero_opening_and_zero_carry_are_skipped(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=500)], final='0.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=0.0), row(5, '2024-01-12', value=100, advance=50)], opening_balance='0.00', final='50.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+```
+- [ ] **Step 2: Run** the three test files → 3 failures/errors.
+
+- [ ] **Step 3: Implement**
+
+`rules.py`, in the payment-keyword block added by Task 2e, replace
+```python
+        net = float(d2(adv - (exp or 0)))
+        if net <= 0: raise Unknown('payment line whose expenses cancel the amount: %r' % label)
+```
+with
+```python
+        net = float(d2(adv - (exp or 0)))
+        if net == 0: return 'ZERO_NET'      # advance fully spent on company expenses: the driver's balance did not move
+        if net < 0: raise Unknown('payment line whose expenses exceed the amount: %r' % label)
+```
+`inventory.py`, in the row loop, after `if e == 'TOTALS': totals_skipped += 1; continue` add `if e == 'ZERO_NET': zero_net += 1; continue` and initialise `zero_net = 0` next to `totals_skipped`. In the date pass, replace the two lines
+```python
+        end = r['entry'].get('date_end')
+        if end and end < r['entry']['entry_date']:
+            r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
+```
+with
+```python
+        end = r['entry'].get('date_end')
+        if end and end < r['entry']['entry_date']:
+            # A return date before the departure is almost always a year typo;
+            # repair it only when the year alone brings it to 0–60 days after departure.
+            start = dt.date.fromisoformat(r['entry']['entry_date']); e0 = dt.date.fromisoformat(end)
+            cands = set()
+            for y in {e0.year - 1, e0.year + 1, start.year, start.year + 1}:
+                try: cand = e0.replace(year=y)
+                except ValueError: continue
+                if start <= cand <= start + dt.timedelta(days=60): cands.add(cand)
+            if len(cands) == 1:
+                fixed = cands.pop()
+                r['entry']['date_end'] = fixed.isoformat(); add_note(r['entry'], 'λήξη Excel %s → %s (έτος)' % (end, fixed.isoformat()))
+                r['date_fix'] = r['date_fix'] or {'from': end, 'to': fixed.isoformat(), 'note': 'λήξη: έτος'}
+            else:
+                r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
+```
+Residual threshold: replace `if abs(gap) <= Decimal('0.05'): consistent, residual = True, None` (or the equivalent lines from Task 2d) so that: `abs(gap) <= Decimal('0.005')` → consistent, no residual; `<= 1.00` → consistent with residual; else inconsistent. Add `'zero_net_skipped': zero_net` to the returned dict and ` · zero-net %d` to the summary with `sum(n['zero_net_skipped'] for n in nodes)`.
+
+`make_plan.py`: in the opening block, wrap so that `if opening is not None and opening == 0: pn[k]['opening_carry_skipped'] = True` (skip, no line) before the action logic; in the carry branch, `if d2(e['amount']) == 0: pn[k]['opening_carry_skipped'] = True; continue` before computing `action`. Also make `carries_prev` true when `prev_final` is within TOL of 0 and the opening/carry is 0 (already covered by the equality test — verify with the test).
+
+- [ ] **Step 4: Run** the whole suite → OK (74 tests).
+- [ ] **Step 5: Real run** in order: `python3 tools/ledger-import/inventory.py` (record line), `python3 tools/ledger-import/make_plan.py | tail -1` (record status counts), `python3 tools/ledger-import/verify_plan.py | grep -c ^OK` and `| grep ^REJECT`. Expected: ready ≥ 60, 0 REJECT.
+- [ ] **Step 6: Commit**
+```bash
+git add tools/ledger-import/rules.py tools/ledger-import/inventory.py tools/ledger-import/make_plan.py tools/ledger-import/tests/test_rules.py tools/ledger-import/tests/test_inventory.py tools/ledger-import/tests/test_make_plan.py
+git commit -q -m "ledger-import: date_end year repair, residual from 0.005, zero carry/opening skipped, zero-net payment lines counted (first plan run)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
