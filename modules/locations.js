@@ -154,6 +154,16 @@ function _locShell() {
 .loc-map-host { display: none; flex: 1; min-height: 0; }
 .loc-map-on #locTableWrap, .loc-map-on #locPager { display: none; }
 .loc-map-on .loc-map-host { display: block; }
+/* Lat/Lon/Τηλέφωνο σε 3 ίσες στήλες μέσα στη φόρμα (Figma 218:1010).
+   Ειδικός συνδυασμός επιλογέα (όχι .form-grid μόνο) ώστε να νικά με
+   βεβαιότητα το grid-template-columns:1fr 1fr του .form-grid — χωρίς αυτό
+   η σειρά της κατάταξης στο CSS θα αποφάσιζε, όχι το intent. */
+.form-grid.loc-form-row3 { grid-template-columns: 1fr 1fr 1fr; }
+/* Γεωκωδικοποίηση ως σύνδεσμος, όχι κουμπί περιγράμματος (Figma 218:1010) */
+.loc-geo-row { flex-direction: row; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+.loc-geo-link { background: none; border: none; padding: 0; font: inherit; font-weight: 600; color: var(--accent); cursor: pointer; }
+.loc-geo-link:hover { text-decoration: underline; }
+.loc-geo-caption { font-size: var(--text-xs); color: var(--text-dim); }
 </style>`;
 }
 
@@ -404,24 +414,30 @@ function _locFormHTML(f) {
     <label class="form-label">Ημέρες παράδοσης</label>
     <input id="locF_days" class="form-input" placeholder="π.χ. Δευ–Παρ" value="${_locEsc(f['Delivery Days']||'')}">
   </div>
-  <div class="form-field">
-    <label class="form-label">Γεωγρ. πλάτος (Latitude)</label>
-    <input id="locF_lat" class="form-input" type="number" step="any" placeholder="40.5211" value="${f.Latitude != null ? f.Latitude : ''}">
+  <div class="form-field span-2">
+    <!-- Lat/Lon/Τηλέφωνο σε μία γραμμή τριών ίσων στηλών — Figma 218:1010 -->
+    <div class="form-grid loc-form-row3">
+      <div class="form-field">
+        <label class="form-label">Γεωγρ. πλάτος (Latitude)</label>
+        <input id="locF_lat" class="form-input" type="number" step="any" placeholder="40.5211" value="${f.Latitude != null ? f.Latitude : ''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Γεωγρ. μήκος (Longitude)</label>
+        <input id="locF_lon" class="form-input" type="number" step="any" placeholder="22.2033" value="${f.Longitude != null ? f.Longitude : ''}">
+      </div>
+      <div class="form-field">
+        <label class="form-label">Τηλέφωνο</label>
+        <input id="locF_phone" class="form-input" placeholder="π.χ. 210 558 4237" value="${_locEsc(f.Phone||'')}">
+      </div>
+    </div>
   </div>
-  <div class="form-field">
-    <label class="form-label">Γεωγρ. μήκος (Longitude)</label>
-    <input id="locF_lon" class="form-input" type="number" step="any" placeholder="22.2033" value="${f.Longitude != null ? f.Longitude : ''}">
-  </div>
-  <div class="form-field">
-    <label class="form-label">Τηλέφωνο</label>
-    <input id="locF_phone" class="form-input" placeholder="π.χ. 210 558 4237" value="${_locEsc(f.Phone||'')}">
-  </div>
-  <div class="form-field">
+  <div class="form-field span-2">
     <label class="form-label">Σημειώσεις</label>
     <input id="locF_notes" class="form-input" placeholder="π.χ. χωρίς κλαρκ — τηλεφώνησε πριν" value="${_locEsc(f.Notes||'')}">
   </div>
-  <div class="form-field span-2">
-    <button class="btn btn-ghost" id="locGeoBtn" style="width:100%;justify-content:center">Εύρεση συντεταγμένων από όνομα + πόλη</button>
+  <div class="form-field span-2 loc-geo-row">
+    <button class="loc-geo-link" id="locGeoBtn">Εύρεση συντεταγμένων</button>
+    <span class="loc-geo-caption">γεωκωδικοποίηση από Name + City + Country</span>
   </div>
 </div>`;
 }
