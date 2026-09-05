@@ -328,6 +328,16 @@ select 'MIGRATION 011 OK' as status;
 --   select has_table_privilege('service_role','dl_entries','DELETE');   -- false
 --   select driver_pay_pending, dl_expenses from ct_v_rt_pnl where code='RT-1014'; -- true, 50.00
 --   select has_table_privilege('anon','ct_v_rt_pnl','SELECT');          -- false
+--   -- security_invoker: ο service_role πρέπει να διαβάζει ό,τι διαβάζουν τα views.
+--   -- Μετρήθηκε 5/9/2026 ΠΡΙΝ το migration: όλα true (rt, lines, wear, revenue,
+--   -- settings, orders, national_loads, locations, drivers, maint_history, trucks,
+--   -- ct_setting EXECUTE). Ξαναμέτρησέ το ΜΕΤΑ — αν ένα γυρίσει false, το /costs/pnl
+--   -- πέφτει με permission denied.
+--   select has_table_privilege('service_role','ct_round_trips','SELECT'),
+--          has_table_privilege('service_role','ct_cost_lines','SELECT'),
+--          has_table_privilege('service_role','ct_v_wear_rate','SELECT'),
+--          has_table_privilege('service_role','ct_v_rt_revenue','SELECT'),
+--          has_function_privilege('service_role','ct_setting(text)','EXECUTE'); -- all true
 -- ============================================================
 -- 011_rollback: drop trigger dl_sync_from_rt on ct_round_trips; drop function
 -- dl_sync_from_rt, dl_import, dl_cancel_batch; drop view dl_v_rt_gap,
