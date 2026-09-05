@@ -2322,3 +2322,355 @@ git commit -q -m "ledger-import: infer unlabeled date/route columns from the dat
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10a: `make_plan.py` — deterministic plan builder; analysts write decisions, not plans
+
+**Why.** Task 10 assumed the Haiku analysts would write each driver's plan JSON (up to 1,300 rows per driver) by hand. An LLM copying thousands of numeric rows is the most expensive and least reliable way to do deterministic work. In graph terms: the code builds the payload from the graph, the agents decide only the edges the code cannot (which sheet continues which, whether an opening balance is a carry, which Excel trip is which RT). So: `make_plan.py` builds `work/plans/<key>.json` from inventory + map + auto rows + an optional `work/decisions/<key>.json`; anything it cannot decide goes to `needs_decision` with a precise question.
+
+**Files:**
+- Create: `tools/ledger-import/make_plan.py`
+- Test: `tools/ledger-import/tests/test_make_plan.py`
+
+**Interfaces:**
+- Consumes: `work/inventory.json` (nodes with `rows[].entry`, `running_breaks`, `opening_balance`, `rounding_residual`, `expected_final`, `running_consistent`, `unknown`, `out_of_scope`, `first_date`, `last_date`, `n_rows`), `work/map.json`, `work/auto_rows.json`, `work/decisions/<key>.json` (optional).
+- Produces: `work/plans/<key>.json` in the Plan JSON schema (File Structure section), plus two extra informational keys: `warnings: [str]` and `crosscheck: {file_id: missing_rows}`.
+- Function: `build_plan(key, entry, nodes, auto_rows, decision) -> plan` (pure), CLI: `python3 make_plan.py [KEY ...]` (all map keys with `files` when none given).
+- Decisions file schema (written by analysts, all keys optional):
+```json
+{"driver_key": "X",
+ "nodes": [{"file_id": "F1", "sheet": "S2", "role": "duplicate", "why": "rows ⊆ S1"}],
+ "openings": [{"file_id": "F1", "sheet": "S3", "action": "skip|adjust", "why": "…"}],
+ "carries":  [{"file_id": "F1", "sheet": "S3", "row": 4, "action": "skip|adjust", "why": "…"}],
+ "settled":  [{"file_id": "F1", "sheet": "S1", "why": "final 120 was paid outside the ledger"}],
+ "matches":  [{"dl_id": 900, "src": {"file_id": "F1", "sheet": "S1", "row": 160}}, {"dl_id": 901, "src": null}],
+ "needs_decision": ["free text the analyst wants the owner to see"]}
+```
+`settled` declares that a chain sheet's non-zero final was paid outside the ledger: the builder then adds one `adjustment` of `−final` dated at the sheet's last row with note `«εξόφληση εκτός καρτέλας (απόφαση αναλυτή)»` so the running ledger continues from 0, exactly as the next sheet does.
+
+**Rules the builder applies (each one deterministic):**
+1. Nodes of the canonical files: role = decision, else `out_of_scope` if the inventory says so or `n_rows == 0`, else `chain`. Chain nodes ordered by `first_date`.
+2. Two chain nodes whose `[first_date, last_date]` overlap ⇒ `needs_decision` («φύλλα … επικαλύπτονται χρονικά»).
+3. Auto-duplicate: a chain node all of whose rows `(entry_date, trip_value, advance, expenses, amount)` appear in another chain node of the same driver (as a multiset) is demoted to `duplicate` with a warning — unless a decision names it.
+4. Per chain node, in order: opening balance → carry rows → each row (`entry` copied, `src` added; `carry` rows never emitted) → break adjustments right after their row → rounding residual last. Opening/carry action: decision, else `skip` when the previous chain node's final equals the amount ±0.05, else `adjust`; an `adjust` over 1,000 in absolute value without a decision ⇒ `needs_decision`.
+5. Continuity: if the previous chain node's final is not 0 (±0.05) and the next node does not skip it (opening/carry) and no `settled` decision covers it ⇒ `needs_decision` («το φύλλο … κλείνει με X και το επόμενο ξεκινά από 0 — εξοφλήθηκε εκτός;»).
+6. Node arithmetic: Σ deltas of the node's emitted lines must equal `expected_final` (±0.005) — for the first chain node exactly; for later nodes `expected_final` is compared against Σ deltas of that node alone (its ΠΡΟΟΔΕΥΤΙΚΟ restarts). Mismatch ⇒ `needs_decision` with both numbers.
+7. Unknown rows, `date_problem` rows, `running_consistent: false` in a chain node ⇒ `needs_decision` naming sheet and row.
+8. Crosscheck files: count rows of their sheets not present in the chain multiset → `crosscheck[file_id] = n` (informational; the reviewer reads it).
+9. RT overlap: `auto = rows of this driver_id`; `cutoff = min(entry_date) − 1 day` or null. Trips with `entry_date > cutoff` are matched (decision `matches` first, then nearest by `|entry_date − auto.entry_date|` ≤ 2 days, each auto at most once, auto rows with `trip_value` not null are not matchable). A match becomes a patch `{dl_id, trip_value?, advance?, expenses?, note}` (keys only when the Excel value is not null; note = `Excel: <route> · <entry_date>[→<date_end>]`, plus the row's own note if any) and the row leaves the batch. Payments/adjustments after the cutoff stay. Auto rows left ⇒ `auto_unmatched`.
+10. Batches: one per canonical file, rows in node order; `expected_final` = Σ deltas of the batch rows. `expected_total_balance` = Σ batch finals + Σ patch deltas. When continuity holds this equals the last chain node's `expected_final` (+ settled adjustments); if it does not, add `needs_decision` («σύνολο καρτέλας … ≠ τελευταίο ΠΡΟΟΔΕΥΤΙΚΟ …»).
+11. `status` = `ready` when `needs_decision` is empty, else `needs_decision`. `date_fixes` collected from rows. `create_driver` from the map. `driver_id` from the map.
+
+- [ ] **Step 1: Write the failing tests**
+
+```python
+# tools/ledger-import/tests/test_make_plan.py
+import unittest, sys, os, copy
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from make_plan import build_plan
+
+def row(rn, date, typ='trip', **kw):
+    e = {'entry_type': typ, 'entry_date': date}
+    if typ == 'trip': e.update({'date_end': None, 'route': kw.pop('route', 'R'), 'trip_value': kw.pop('value', None), 'advance': kw.pop('advance', None), 'expenses': kw.pop('expenses', None)})
+    else: e['amount'] = kw.pop('amount')
+    if 'note' in kw: e['note'] = kw.pop('note')
+    return {'row': rn, 'entry': e, 'cells': {}, 'date_fix': kw.pop('fix', None), 'date_problem': kw.pop('problem', None), 'date_inherited': False}
+
+def node(file_id, sheet, rows, **kw):
+    n = {'file_id': file_id, 'file_name': file_id + '.xlsx', 'sheet': sheet, 'out_of_scope': False, 'rows': rows, 'unknown': [],
+         'running_breaks': [], 'opening_balance': None, 'rounding_residual': None, 'running_consistent': True,
+         'first_date': min(r['entry']['entry_date'] for r in rows) if rows else None, 'last_date': max(r['entry']['entry_date'] for r in rows) if rows else None,
+         'n_rows': len(rows), 'expected_final': kw.pop('final')}
+    n.update(kw); return n
+
+ENTRY = {'driver_id': 8, 'files': ['F1'], 'crosscheck': []}
+
+class TestBuildPlan(unittest.TestCase):
+    def test_single_sheet_with_break_and_residual(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300, expenses=50), row(5, '2024-01-20', 'payment_cash', amount=200), row(6, '2024-02-01', value=230, advance=100)],
+                 running_breaks=[{'row': 6, 'entry_date': '2024-02-01', 'diff': '-100.00'}], rounding_residual='0.07', final='80.07')
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        types = [r['entry_type'] for r in p['batches'][0]['rows']]
+        self.assertEqual(types, ['trip', 'payment_cash', 'trip', 'adjustment', 'adjustment'])
+        self.assertEqual(p['batches'][0]['rows'][3]['amount'], -100.0)
+        self.assertIn('γρ. 6', p['batches'][0]['rows'][3]['note'])
+        self.assertEqual(p['batches'][0]['rows'][4]['amount'], 0.07)
+        self.assertEqual(p['batches'][0]['expected_final'], '80.07')
+        self.assertEqual(p['expected_total_balance'], '80.07')
+        self.assertNotIn('rt_id', p['batches'][0]['rows'][0]); self.assertEqual(p['batches'][0]['rows'][0]['src'], {'file_id': 'F1', 'sheet': 'S1', 'row': 4})
+
+    def test_opening_equal_to_previous_final_is_skipped(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50)], opening_balance='200.00', final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertTrue(next(x for x in p['nodes'] if x['sheet'] == 'S2')['opening_carry_skipped'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+
+    def test_previous_sheet_left_a_balance_and_next_starts_fresh(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50)], final='50.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'needs_decision'); self.assertTrue(any('εξοφλήθηκε' in d for d in p['needs_decision']))
+        # the analyst declares it settled outside the ledger → one −200 adjustment, plan ready, total = 50
+        p2 = build_plan('X', ENTRY, [a, b], [], {'settled': [{'file_id': 'F1', 'sheet': 'S1', 'why': 'paid in cash 2023-12'}]})
+        self.assertEqual(p2['status'], 'ready', p2['needs_decision'])
+        adj = [r for r in p2['batches'][0]['rows'] if r['entry_type'] == 'adjustment']
+        self.assertEqual(adj[0]['amount'], -200.0); self.assertEqual(adj[0]['entry_date'], '2023-01-10')
+        self.assertEqual(p2['expected_total_balance'], '50.00')
+
+    def test_rt_overlap_matching(self):
+        n = node('F1', 'S1', [row(4, '2026-07-01', value=500, advance=300), row(5, '2026-08-15', value=600, advance=300, expenses=20, route='ΓΕΡΜΑΝΙΑ'),
+                              row(6, '2026-08-20', 'payment_bank', amount=400), row(7, '2026-08-25', value=230, advance=0, route='ΑΘΗΝΑ')], final='510.00')
+        auto = [{'dl_id': 900, 'driver_id': 8, 'entry_date': '2026-08-14', 'date_end': '2026-08-21', 'rt_id': 87, 'rt_code': 'RT-1087', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None},
+                {'dl_id': 901, 'driver_id': 8, 'entry_date': '2026-08-30', 'date_end': None, 'rt_id': 88, 'rt_code': 'RT-1088', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None},
+                {'dl_id': 950, 'driver_id': 9, 'entry_date': '2026-08-15', 'date_end': None, 'rt_id': 89, 'rt_code': 'RT-1089', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, None)
+        self.assertEqual(p['cutoff'], '2026-08-13')
+        self.assertEqual(len(p['patches']), 1); pt = p['patches'][0]
+        self.assertEqual(pt['dl_id'], 900); self.assertEqual(pt['trip_value'], 600.0); self.assertEqual(pt['expenses'], 20.0); self.assertIn('ΓΕΡΜΑΝΙΑ', pt['note'])
+        self.assertEqual([r['entry_type'] for r in p['batches'][0]['rows']], ['trip', 'payment_bank', 'trip'])   # ΑΘΗΝΑ stays: no auto within 2 days
+        self.assertEqual(p['auto_unmatched'], [{'dl_id': 901, 'entry_date': '2026-08-30'}])
+        self.assertEqual(p['batches'][0]['expected_final'], '230.00'); self.assertEqual(p['expected_total_balance'], '510.00')
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+
+    def test_match_override_and_unmatch(self):
+        n = node('F1', 'S1', [row(5, '2026-08-15', value=600, advance=300, route='ΓΕΡΜΑΝΙΑ')], final='300.00')
+        auto = [{'dl_id': 900, 'driver_id': 8, 'entry_date': '2026-08-14', 'date_end': None, 'rt_id': 87, 'rt_code': 'RT-1087', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, {'matches': [{'dl_id': 900, 'src': None}]})
+        self.assertEqual(p['patches'], []); self.assertEqual(len(p['batches'][0]['rows']), 1)
+
+    def test_unknown_and_inconsistent_go_to_needs_decision(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300)], final='200.00', unknown=[{'row': 9, 'reason': 'unrecognised row: ΠΡΟΣΤΙΜΟ', 'cells': {}}], running_consistent=False)
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'needs_decision')
+        self.assertTrue(any('γρ. 9' in d for d in p['needs_decision'])); self.assertTrue(any('ΠΡΟΟΔΕΥΤΙΚΟ' in d for d in p['needs_decision']))
+
+    def test_duplicate_node_auto_detected_and_decision_role(self):
+        a = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300), row(5, '2024-02-10', value=100, advance=0)], final='300.00')
+        b = node('F1', 'S2', [row(4, '2024-02-10', value=100, advance=0)], final='100.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(next(x for x in p['nodes'] if x['sheet'] == 'S2')['role'], 'duplicate')
+        self.assertEqual(p['expected_total_balance'], '300.00')
+        p2 = build_plan('X', ENTRY, [a, b], [], {'nodes': [{'file_id': 'F1', 'sheet': 'S2', 'role': 'out_of_scope', 'why': 'test'}]})
+        self.assertEqual(next(x for x in p2['nodes'] if x['sheet'] == 'S2')['role'], 'out_of_scope')
+
+    def test_create_driver_and_no_auto(self):
+        n = node('F1', 'S1', [row(4, '2026-08-27', value=100, advance=0)], final='100.00')
+        entry = {'driver_id': None, 'create': {'Full Name': 'New One', 'Active': True}, 'files': ['F1'], 'crosscheck': []}
+        p = build_plan('NEW', entry, [n], [{'dl_id': 1, 'driver_id': 8, 'entry_date': '2026-08-27', 'trip_value': None, 'advance': None, 'expenses': None}], None)
+        self.assertIsNone(p['driver_id']); self.assertEqual(p['create_driver']['Full Name'], 'New One'); self.assertIsNone(p['cutoff']); self.assertEqual(p['patches'], [])
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_make_plan 2>&1 | tail -2` → `ModuleNotFoundError: No module named 'make_plan'`.
+
+- [ ] **Step 3: Write `make_plan.py`**
+
+```python
+#!/usr/bin/env python3
+"""Deterministic plan builder. The graph (which sheets continue which, what an
+opening balance means, which Excel trip is which RT) is decided by people or by
+the analyst agents in work/decisions/<key>.json; everything that follows from
+those decisions — thousands of rows, break lines, patches, sums — is built here,
+the same way every time. Anything the rules cannot settle becomes a precise
+needs_decision question instead of a guess."""
+import datetime as dt, glob, json, os, sys
+from collections import Counter
+from decimal import Decimal
+from rules import d2
+
+HERE = os.path.dirname(os.path.abspath(__file__)); WORK = os.path.join(HERE, 'work')
+TOL = Decimal('0.05')
+
+def delta(e):
+    if e['entry_type'] == 'trip': return d2(e.get('trip_value')) - (d2(e.get('advance')) - d2(e.get('expenses')))
+    if e['entry_type'] == 'adjustment': return d2(e['amount'])
+    return -d2(e['amount'])
+
+def sig(e):
+    """Row identity for duplicate/crosscheck comparison: what money moved, when."""
+    return (e['entry_type'], e['entry_date'], e.get('trip_value'), e.get('advance'), e.get('expenses'), e.get('amount'))
+
+def adj(date, amount, note, src):
+    return {'entry_type': 'adjustment', 'entry_date': date, 'amount': float(d2(amount)), 'note': note, 'src': src}
+
+def clean(e, src):
+    out = {k: v for k, v in e.items() if v is not None}
+    out['src'] = src
+    return out
+
+def build_plan(key, entry, nodes, auto_rows, decision):
+    dec = decision or {}
+    needs = list(dec.get('needs_decision', [])); warnings = []
+    files = entry.get('files', [])
+    dec_nodes = {(d['file_id'], d['sheet']): d for d in dec.get('nodes', [])}
+    dec_open = {(d['file_id'], d['sheet']): d for d in dec.get('openings', [])}
+    dec_carry = {(d['file_id'], d['sheet'], d['row']): d for d in dec.get('carries', [])}
+    settled = {(d['file_id'], d['sheet']) for d in dec.get('settled', [])}
+    canon = [n for f in files for n in nodes if n['file_id'] == f]
+    cross = [n for n in nodes if n['file_id'] in entry.get('crosscheck', [])]
+    roles = {}
+    for n in canon:
+        k = (n['file_id'], n['sheet'])
+        roles[k] = dec_nodes[k]['role'] if k in dec_nodes else ('out_of_scope' if n['out_of_scope'] or n['n_rows'] == 0 else 'chain')
+    chain = sorted([n for n in canon if roles[(n['file_id'], n['sheet'])] == 'chain'], key=lambda n: (n['first_date'] or '9999', files.index(n['file_id'])))
+    # rule 3 — auto-duplicate: every row of A appears in B ⇒ A is an extract of B
+    sigs = {(n['file_id'], n['sheet']): Counter(sig(r['entry']) for r in n['rows']) for n in chain}
+    for a in list(chain):
+        ka = (a['file_id'], a['sheet'])
+        if ka in dec_nodes or not a['rows']: continue
+        for b in chain:
+            kb = (b['file_id'], b['sheet'])
+            if kb == ka or b['n_rows'] <= a['n_rows']: continue
+            if all(sigs[kb][s] >= c for s, c in sigs[ka].items()):
+                roles[ka] = 'duplicate'; chain.remove(a); warnings.append('%s/%s: rows ⊆ %s/%s → duplicate' % (a['file_id'][:8], a['sheet'], b['file_id'][:8], b['sheet'])); break
+    # rule 2 — overlapping chain nodes
+    for i in range(1, len(chain)):
+        if chain[i - 1]['last_date'] and chain[i]['first_date'] and chain[i]['first_date'] < chain[i - 1]['last_date']:
+            needs.append('φύλλα %s και %s επικαλύπτονται χρονικά (%s > %s)' % (chain[i - 1]['sheet'], chain[i]['sheet'], chain[i - 1]['last_date'], chain[i]['first_date']))
+    plan_nodes = [{'file_id': n['file_id'], 'file_name': n['file_name'], 'sheet': n['sheet'], 'role': roles[(n['file_id'], n['sheet'])],
+                   'expected_final': n['expected_final'], 'opening_carry_skipped': False, 'why': dec_nodes.get((n['file_id'], n['sheet']), {}).get('why')} for n in canon]
+    pn = {(x['file_id'], x['sheet']): x for x in plan_nodes}
+    # rules 4-7 — emit lines per chain node
+    lines = []          # (file_id, entry dict with src)
+    prev_final = None; prev_node = None; date_fixes = []
+    for n in chain:
+        k = (n['file_id'], n['sheet']); node_lines = []; src0 = {'file_id': n['file_id'], 'sheet': n['sheet']}
+        first_date = n['first_date']; last_date = n['last_date']
+        # continuity / settlement of the previous sheet
+        opening = d2(n['opening_balance']) if n.get('opening_balance') else None
+        first_carry = next((r for r in n['rows'] if r['entry']['entry_type'] == 'carry'), None)
+        carries_prev = (opening is not None and prev_final is not None and abs(opening - prev_final) <= TOL) or \
+                       (first_carry is not None and prev_final is not None and abs(d2(first_carry['entry']['amount']) - prev_final) <= TOL)
+        if prev_node is not None and prev_final is not None and abs(prev_final) > TOL and not carries_prev:
+            pk = (prev_node['file_id'], prev_node['sheet'])
+            if pk in settled:
+                lines.append((prev_node['file_id'], adj(prev_node['last_date'], -prev_final, 'εξόφληση εκτός καρτέλας (απόφαση αναλυτή): %s' % next(d['why'] for d in dec['settled'] if (d['file_id'], d['sheet']) == pk), dict(pk[0] and {'file_id': pk[0], 'sheet': pk[1], 'row': None}))))
+            else:
+                needs.append('το φύλλο %s κλείνει με %s και το επόμενο (%s) ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;' % (prev_node['sheet'], prev_final, n['sheet']))
+        # opening balance
+        if opening is not None:
+            action = dec_open.get(k, {}).get('action') or ('skip' if carries_prev else 'adjust')
+            if action == 'skip': pn[k]['opening_carry_skipped'] = True
+            else:
+                if abs(opening) > 1000 and k not in dec_open: needs.append('υπόλοιπο έναρξης %s στο φύλλο %s χωρίς προηγούμενο φύλλο που να το εξηγεί' % (opening, n['sheet']))
+                node_lines.append(adj(first_date, opening, 'υπόλοιπο έναρξης φύλλου %s στο Excel' % n['sheet'], dict(src0, row=None)))
+        breaks = {}
+        for b in n.get('running_breaks', []): breaks.setdefault(b['row'], []).append(b)
+        for r in n['rows']:
+            e = r['entry']; src = dict(src0, row=r['row'])
+            if r.get('date_fix'): date_fixes.append(dict(r['date_fix'], sheet=n['sheet'], row=r['row']))
+            if e['entry_type'] == 'carry':
+                ck = (n['file_id'], n['sheet'], r['row'])
+                action = dec_carry.get(ck, {}).get('action') or ('skip' if (r is first_carry and carries_prev) else 'adjust')
+                if action == 'skip': pn[k]['opening_carry_skipped'] = True
+                else:
+                    if abs(d2(e['amount'])) > 1000 and ck not in dec_carry: needs.append('μεταφορά υπολοίπου %s στο φύλλο %s γρ. %d χωρίς προηγούμενο φύλλο που να την εξηγεί' % (e['amount'], n['sheet'], r['row']))
+                    node_lines.append(adj(e['entry_date'], e['amount'], 'μεταφορά υπολοίπου από Excel %s γρ. %d' % (n['sheet'], r['row']), src))
+            else:
+                node_lines.append(clean(e, src))
+            for b in breaks.get(r['row'], []):
+                node_lines.append(adj(b['entry_date'], b['diff'], 'διαφορά ΠΡΟΟΔΕΥΤΙΚΟΥ στο Excel, φύλλο %s γρ. %d: %s' % (n['sheet'], r['row'], b['diff']), dict(src0, row=r['row'])))
+        if n.get('rounding_residual'):
+            node_lines.append(adj(last_date, n['rounding_residual'], 'διαφορά στρογγυλοποίησης Excel, φύλλο %s: %s' % (n['sheet'], n['rounding_residual']), dict(src0, row=None)))
+        for u in n.get('unknown', []): needs.append('%s γρ. %d: %s' % (n['sheet'], u['row'], u['reason']))
+        for r in n['rows']:
+            if r.get('date_problem'): needs.append('%s γρ. %d: %s' % (n['sheet'], r['row'], r['date_problem']))
+        if n.get('running_consistent') is False: needs.append('%s: το ΠΡΟΟΔΕΥΤΙΚΟ του Excel δεν συμφωνεί με τις γραμμές (raw %s, αναμενόμενο %s)' % (n['sheet'], n.get('raw_final'), n['expected_final']))
+        node_final = sum((delta(x) for x in node_lines), Decimal('0'))
+        if n['expected_final'] is None: needs.append('%s: χωρίς ΠΡΟΟΔΕΥΤΙΚΟ και χωρίς στήλη ΥΠΟΛΟΙΠΟ' % n['sheet'])
+        elif abs(node_final - d2(n['expected_final'])) > Decimal('0.005'): needs.append('%s: άθροισμα γραμμών %s ≠ expected_final %s' % (n['sheet'], node_final, n['expected_final']))
+        lines.extend((n['file_id'], x) for x in node_lines)
+        prev_final, prev_node = node_final, n
+    # rule 8 — crosscheck
+    chain_sigs = Counter(sig(x) for _, x in lines if x['entry_type'] != 'adjustment')
+    crosscheck = {}
+    for c in cross:
+        missing = sum(max(0, cnt - chain_sigs.get(s, 0)) for s, cnt in Counter(sig(r['entry']) for r in c['rows'] if r['entry']['entry_type'] != 'carry').items())
+        crosscheck[c['file_id']] = crosscheck.get(c['file_id'], 0) + missing
+    # rule 9 — RT overlap
+    driver_id = entry.get('driver_id')
+    auto = sorted([a for a in auto_rows if driver_id and a['driver_id'] == driver_id], key=lambda a: a['entry_date'])
+    cutoff = None; patches = []; used = set()
+    if auto:
+        cutoff = (dt.date.fromisoformat(auto[0]['entry_date']) - dt.timedelta(days=1)).isoformat()
+        forced = {}; unmatched_forced = set()
+        for m in dec.get('matches', []):
+            if m.get('src') is None: unmatched_forced.add(m['dl_id'])
+            else: forced[(m['src']['file_id'], m['src']['sheet'], m['src']['row'])] = m['dl_id']
+        matchable = {a['dl_id']: a for a in auto if a.get('trip_value') is None and a['dl_id'] not in unmatched_forced}
+        kept = []
+        for fid, x in lines:
+            if x['entry_type'] != 'trip' or x['entry_date'] <= cutoff: kept.append((fid, x)); continue
+            sk = (x['src']['file_id'], x['src']['sheet'], x['src']['row'])
+            target = None
+            if sk in forced and forced[sk] in matchable and forced[sk] not in used: target = matchable[forced[sk]]
+            else:
+                d0 = dt.date.fromisoformat(x['entry_date'])
+                cands = sorted((abs((dt.date.fromisoformat(a['entry_date']) - d0).days), a['dl_id']) for a in matchable.values() if a['dl_id'] not in used)
+                if cands and cands[0][0] <= 2: target = matchable[cands[0][1]]
+            if target is None: kept.append((fid, x)); continue
+            used.add(target['dl_id'])
+            p = {'dl_id': target['dl_id']}
+            for f in ('trip_value', 'advance', 'expenses'):
+                if x.get(f) is not None: p[f] = x[f]
+            note = 'Excel: %s · %s%s' % (x.get('route', ''), x['entry_date'], ('→' + x['date_end']) if x.get('date_end') else '')
+            if x.get('note'): note += ' · ' + x['note']
+            p['note'] = note; p['src'] = x['src']; patches.append(p)
+        lines = kept
+    auto_unmatched = [{'dl_id': a['dl_id'], 'entry_date': a['entry_date']} for a in auto if a['dl_id'] not in used]
+    # rule 10 — batches
+    batches = []
+    for f in files:
+        rows = [x for fid, x in lines if fid == f]
+        if not rows: continue
+        fname = next(n['file_name'] for n in canon if n['file_id'] == f)
+        batches.append({'file_id': f, 'file_name': fname, 'rows': rows, 'expected_final': str(sum((delta(x) for x in rows), Decimal('0')).quantize(Decimal('0.01')))})
+    total = sum((d2(b['expected_final']) for b in batches), Decimal('0')) + sum((d2(p.get('trip_value')) - (d2(p.get('advance')) - d2(p.get('expenses'))) for p in patches), Decimal('0'))
+    if chain and prev_final is not None and not needs and abs(total - prev_final) > Decimal('0.005'):
+        needs.append('σύνολο καρτέλας %s ≠ τελευταίο ΠΡΟΟΔΕΥΤΙΚΟ %s' % (total, prev_final))
+    if not chain: needs.append('κανένα φύλλο καρτέλας προς εισαγωγή')
+    return {'driver_key': key, 'driver_id': driver_id, 'create_driver': entry.get('create'),
+            'nodes': plan_nodes, 'batches': batches, 'patches': patches, 'cutoff': cutoff, 'auto_unmatched': auto_unmatched,
+            'date_fixes': date_fixes, 'needs_decision': needs, 'warnings': warnings, 'crosscheck': crosscheck,
+            'expected_total_balance': str(total.quantize(Decimal('0.01'))), 'status': 'ready' if not needs else 'needs_decision'}
+
+def main(keys):
+    inv = json.load(open(os.path.join(WORK, 'inventory.json'), encoding='utf-8'))['nodes']
+    m = json.load(open(os.path.join(WORK, 'map.json'), encoding='utf-8'))
+    auto = json.load(open(os.path.join(WORK, 'auto_rows.json'), encoding='utf-8'))
+    os.makedirs(os.path.join(WORK, 'plans'), exist_ok=True)
+    keys = keys or [k for k, v in m.items() if not k.startswith('_') and 'alias_of' not in v and v.get('files')]
+    counts = Counter()
+    for key in keys:
+        dp = os.path.join(WORK, 'decisions', key + '.json')
+        decision = json.load(open(dp, encoding='utf-8')) if os.path.exists(dp) else None
+        plan = build_plan(key, m[key], inv, auto, decision)
+        json.dump(plan, open(os.path.join(WORK, 'plans', key + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        counts[plan['status']] += 1
+        print('%-32s %-14s rows %5d patches %2d total %10s %s' % (key[:32], plan['status'], sum(len(b['rows']) for b in plan['batches']), len(plan['patches']), plan['expected_total_balance'], ('· ' + plan['needs_decision'][0][:70]) if plan['needs_decision'] else ''))
+    print(dict(counts))
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
+```
+
+- [ ] **Step 4: Run** `cd tools/ledger-import && python3 -m unittest tests.test_make_plan -v 2>&1 | tail -4` → `OK` (8 tests). If `test_previous_sheet_left_a_balance…` fails on the settled adjustment's `src`, the expression `dict(pk[0] and {...})` is over-clever — replace it with `{'file_id': pk[0], 'sheet': pk[1], 'row': None}`.
+
+- [ ] **Step 5: Whole suite** `python3 -m unittest discover -s tests 2>&1 | tail -3` → OK (previous total + 8).
+
+- [ ] **Step 6: Real run** `python3 tools/ledger-import/make_plan.py > tools/ledger-import/work/make_plan.out; tail -1 tools/ledger-import/work/make_plan.out` → prints the status counts, e.g. `{'ready': N, 'needs_decision': M}`. Then `python3 tools/ledger-import/verify_plan.py | grep -c ^OK` and `… | grep ^REJECT | head`. Report both. A REJECT here means the builder and the gate disagree — do not patch either; report the lines.
+
+- [ ] **Step 7: Commit**
+```bash
+git add tools/ledger-import/make_plan.py tools/ledger-import/tests/test_make_plan.py
+git commit -q -m "ledger-import: make_plan — deterministic plan builder from inventory + map + auto rows + analyst decisions
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
