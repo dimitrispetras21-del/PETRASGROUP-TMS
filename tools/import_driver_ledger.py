@@ -81,6 +81,23 @@ def compute_balance(rows):
             bal -= d2(e['amount'])
     return bal.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
+def post_import(payload, token):
+    """POST to /costs/ledger/import and return parsed response dict.
+    On HTTPError: calls sys.exit with server error body.
+    On URLError: calls sys.exit with network error reason.
+    """
+    req = urllib.request.Request(PROXY + '/costs/ledger/import', data=json.dumps(payload).encode(),
+                                 headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token}, method='POST')
+    try:
+        with urllib.request.urlopen(req) as res:
+            return json.load(res)
+    # HTTPError first: it subclasses URLError and carries the server's error body.
+    except urllib.error.HTTPError as err:
+        sys.exit(f'✗ HTTP {err.code}: {err.read().decode()[:300]}')
+    except urllib.error.URLError as err:
+        # Network error: DNS failure, connection refused, timeout, etc.
+        sys.exit(f'✗ network error: {err.reason}')
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('xlsx'); ap.add_argument('--commit', action='store_true')
@@ -107,16 +124,7 @@ def main():
     payload = {'driver_id': driver_id, 'file_name': os.path.basename(a.xlsx),
                'file_hash': hashlib.sha256(open(a.xlsx, 'rb').read()).hexdigest(),
                'rows': payload_rows(rows)}
-    req = urllib.request.Request(PROXY + '/costs/ledger/import', data=json.dumps(payload).encode(),
-                                 headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + a.token}, method='POST')
-    try:
-        with urllib.request.urlopen(req) as res:
-            out = json.load(res)
-    except urllib.error.URLError as err:
-        # Network error: DNS failure, connection refused, timeout, etc.
-        sys.exit(f'✗ network error: {err.reason}')
-    except urllib.error.HTTPError as err:
-        sys.exit(f'✗ HTTP {err.code}: {err.read().decode()[:300]}')
+    out = post_import(payload, a.token)
     print(f'  ✓ imported batch {out["batch"]}: {out["rows"]} rows, server balance {out["balance"]}')
     if d2(out['balance']) != bal:
         sys.exit('✗ SERVER BALANCE DIFFERS — ask the owner to run dl_cancel_batch on this batch')

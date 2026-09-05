@@ -1,7 +1,8 @@
-import unittest, tempfile, os, datetime as dt
+import unittest, tempfile, os, datetime as dt, sys, io, urllib.error
 from decimal import Decimal
+from unittest.mock import patch
 import openpyxl
-from import_driver_ledger import parse_workbook, compute_balance, classify, payload_rows
+from import_driver_ledger import parse_workbook, compute_balance, classify, payload_rows, post_import
 
 def make_xlsx(rows):
     wb = openpyxl.Workbook(); ws = wb.active
@@ -49,6 +50,28 @@ class ParseTests(unittest.TestCase):
         self.assertEqual(compute_balance(rows), Decimal('738.00'))   # (800-200) - 600 + (950-(300-88)) = 738
         self.assertTrue(any('C > D' in a for a in anomalies))
         self.assertIsNone(excel_final)   # openpyxl-written file has no cached formula values
+
+class PostImportTests(unittest.TestCase):
+    def test_http_error_caught_first_with_server_body(self):
+        """HTTPError is caught before URLError and includes server response body."""
+        error_body = b'{"error":"row 3: amount required"}'
+        http_err = urllib.error.HTTPError(url='http://test', code=422, msg='Unprocessable', hdrs=None, fp=io.BytesIO(error_body))
+        with patch('import_driver_ledger.urllib.request.urlopen', side_effect=http_err):
+            with self.assertRaises(SystemExit) as cm:
+                post_import({'driver_id': 'rec123', 'rows': []}, 'token_xyz')
+            msg = str(cm.exception)
+            self.assertTrue(msg.startswith('✗ HTTP 422:'), f'Got: {msg}')
+            self.assertIn('amount required', msg)
+
+    def test_url_error_caught_after_http_error(self):
+        """URLError (non-HTTP) is caught and includes reason."""
+        url_err = urllib.error.URLError('Name or service not known')
+        with patch('import_driver_ledger.urllib.request.urlopen', side_effect=url_err):
+            with self.assertRaises(SystemExit) as cm:
+                post_import({'driver_id': 'rec123', 'rows': []}, 'token_xyz')
+            msg = str(cm.exception)
+            self.assertTrue(msg.startswith('✗ network error:'), f'Got: {msg}')
+            self.assertIn('Name or service not known', msg)
 
 if __name__ == '__main__':
     unittest.main()
