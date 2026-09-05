@@ -26,3 +26,6 @@ docs/research/
 # Βλ. docs/superpowers/plans/2026-08-28-redesign-oracle.md
 .har/
 docs/redesign/before/
+
+# driver ledger import — personal financial data, never commit
+tools/ledger-import/work/
