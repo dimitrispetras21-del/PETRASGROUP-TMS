@@ -1,15 +1,25 @@
-"""Pure rules for the ledger import. No I/O, no Worker, no Supabase — so every
-rule is testable and the analysts (LLM agents) reason about inputs that were
-normalised the same way for every one of the 30 sheet layouts.
+"""Pure rules for the ledger import (v2). No I/O, no Worker, no Supabase.
+
+v2 after the first real run over 156 workbooks: the Excel model is uniform —
+every line is ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ — so classification is by *shape* first
+(which amount columns are filled) and by keyword second. A keyword can only
+turn a line into a payment when the line has no ΑΞΙΑ; otherwise ΤΡΑΠΕΖΟΥΝΤΑ
+would be a bank deposit.
 """
 import datetime as dt, re, unicodedata
 from decimal import Decimal, ROUND_HALF_UP
 
 class Unknown(Exception):
-    """A row shape the rules do not recognise. The driver goes to needs_decision;
-    we never guess what a payroll row meant."""
+    """A row shape the rules do not recognise. The driver goes to needs_decision."""
 
-# Header keywords per field. Matching is on the upper-cased, accent-stripped cell.
+# Payroll sheets mix Latin lookalikes into Greek words (KATAΘΕΣΗ, KAT.TΡΑΠEZA).
+LATIN_TO_GREEK = str.maketrans('ABEHIKMNOPTXYZ', 'ΑΒΕΗΙΚΜΝΟΡΤΧΥΖ')
+
+def norm(s):
+    s = unicodedata.normalize('NFD', str(s)).upper()
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip()
+    return s.translate(LATIN_TO_GREEK)
+
 FIELD_KEYS = [
     ('official', ('ΕΠΙΣΗΜ',)),          # 2017-2019 monthly model → whole sheet out of scope
     ('running',  ('ΠΡΟΟΔ',)),
@@ -20,18 +30,25 @@ FIELD_KEYS = [
     ('route',    ('ΔΡΟΜΟΛ', 'ΠΕΡΙΓΡΑΦ')),
     ('date_end', ('ΛΗΞΗ', 'ΕΠΙΣΤΡΟΦ')),
     ('date',     ('ΗΜΕΡ',)),
-    ('cash',     ('ΜΕΤΡΗΤ',)),
+    ('cash',     ('ΜΕΤΡΗΤ',)),          # holds TEXT (the payment label) in most layouts
     ('bank',     ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ')),
-    ('seq',      ('Α/Α',)),
 ]
+SEQ_LABELS = ('Α/Α', 'ΑΑ', 'Α.Α', 'Α.Α.', 'ΝΟ', '#')
 REQUIRED = ('advance', 'expenses')
-
-def norm(s):
-    s = unicodedata.normalize('NFD', str(s)).upper()
-    return ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip()
+BANK_KEYS = tuple(norm(k) for k in ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ', 'ΚΑΤ.', 'EUROBANK', 'ΠΕΙΡΑΙ', 'IBAN'))
+ETE_RE = re.compile(r'(^|[^Α-Ω])ΕΤΕ([^Α-Ω]|$)')            # Εθνική Τράπεζα, as a word
+ADJUST_KEYS = ('ΠΙΣΤΩΣ', 'ΧΡΕΩΣ', 'ΔΙΟΡΘ', 'ΔΩΡΟ', 'ΕΠΙΔΟΜ', 'ΜΠΟΝ', 'BONUS', 'ΛΑΘ')
+CARRY_KEYS = ('ΜΕΤΑΦΟΡΑ', 'ΥΠΟΛΟΙΠΟ')
 
 def d2(v):
     return Decimal(str(v if v not in (None, '') else 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+def num(v):
+    """Blank → None (NULL = not recorded); a number, including 0, → float."""
+    return float(d2(v)) if is_num(v) else None
 
 def to_date(v):
     if isinstance(v, dt.datetime): return v.date()
@@ -45,82 +62,102 @@ def to_date(v):
             except ValueError: return None
     return None
 
-def is_num(v):
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
-
 def detect_header(rows):
-    """First row where ≥3 distinct fields match wins. `date_end` falls back to the
-    unlabeled column right after `date` when it sits before `route` — the most
-    common layout labels only the start date and leaves the end date unlabeled."""
+    """First row with ≥3 fields incl. ΕΛΑΒΕ and ΕΞΟΔΑ wins. Two fallbacks for
+    columns that are almost never labeled: the end date (right after the date,
+    before the route) and the Α/Α counter (right before the date)."""
     for i, row in enumerate(rows, 1):
         cols = {}
         for j, cell in enumerate(row, 1):
             if cell in (None, ''): continue
             n = norm(cell)
+            if n in SEQ_LABELS:
+                cols.setdefault('seq', j); continue
             for field, keys in FIELD_KEYS:
                 if field not in cols and any(k in n for k in keys):
                     cols[field] = j; break
         if len(cols) >= 3 and all(f in cols for f in REQUIRED):
-            if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route']:
+            used = set(cols.values())
+            if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route'] and cols['date'] + 1 not in used:
                 cols['date_end'] = cols['date'] + 1
+            if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used:
+                cols['seq'] = cols['date'] - 1
             return {'row': i, 'cols': cols, 'out_of_scope': 'official' in cols}
     return None
 
+def _has_seq(v):
+    return is_num(v) or (isinstance(v, str) and v.strip().isdigit())
+
 def classify(c):
-    """c = {field: raw cell}. Returns entry dict, None (blank), or 'STOP' (ΣΥΝΟΛΟ)."""
-    desc = norm(c.get('route') or '')
-    if 'ΣΥΝΟΛΟ' in desc or 'ΣΥΝΟΛΟ' in norm(c.get('date') or ''): return 'STOP'
-    nums = {k: c.get(k) for k in ('advance', 'expenses', 'value', 'balance', 'cash', 'bank')}
-    has_amount = any(is_num(v) and v != 0 for v in nums.values())
+    """c = {field: raw cell, '_row_text': every string cell of the row joined}.
+    Returns an entry dict, None (nothing to record), or 'TOTALS' (skip)."""
+    if 'ΣΥΝΟΛ' in norm(c.get('_row_text') or '') or 'ΣΥΝΟΛ' in norm(c.get('route') or '') or 'ΣΥΝΟΛ' in norm(c.get('date') or ''):
+        return 'TOTALS'
+    desc = str(c.get('route') or '').strip()
+    pay_desc = ' · '.join(str(c.get(k)).strip() for k in ('cash', 'bank') if isinstance(c.get(k), str) and str(c.get(k)).strip())
+    label = (desc or pay_desc)[:200]
+    carry_kw = any(k in norm(label) for k in CARRY_KEYS)
+    has_amount = any(is_num(c.get(k)) and c.get(k) != 0 for k in ('advance', 'expenses', 'value', 'cash', 'bank')) \
+        or (carry_kw and is_num(c.get('balance')))
+    has_seq = _has_seq(c.get('seq'))
+    if not has_amount and not has_seq: return None                       # blank line, or a text-only note
     date = to_date(c.get('date')) or to_date(c.get('date_end'))
-    if not desc and not has_amount and c.get('seq') in (None, ''): return None
-    if date is None: raise Unknown('row with amounts/description but no date: %r' % (c.get('route'),))
-    iso = date.isoformat()
-    adv = float(d2(c['advance'])) if is_num(c.get('advance')) else None
-    if 'ΜΕΤΡΗΤ' in desc or (is_num(c.get('cash')) and c.get('cash') != 0 and not is_num(c.get('value'))):
-        amt = adv if adv else (float(d2(c['cash'])) if is_num(c.get('cash')) else None)
-        if not amt or amt <= 0: raise Unknown('cash payment without positive amount: %r' % (c.get('route'),))
-        return {'entry_type': 'payment_cash', 'entry_date': iso, 'amount': amt}
-    if 'ΚΑΤΑΘΕΣ' in desc or 'ΤΡΑΠΕΖ' in desc or (is_num(c.get('bank')) and c.get('bank') != 0 and not is_num(c.get('value'))):
-        amt = adv if adv else (float(d2(c['bank'])) if is_num(c.get('bank')) else None)
-        if not amt or amt <= 0: raise Unknown('bank payment without positive amount: %r' % (c.get('route'),))
-        return {'entry_type': 'payment_bank', 'entry_date': iso, 'amount': amt}
-    if ('ΜΕΤΑΦΟΡΑ' in desc or 'ΥΠΟΛΟΙΠΟ' in desc) and not is_num(c.get('value')) and not is_num(c.get('advance')):
-        if not is_num(c.get('balance')): raise Unknown('carry row without balance: %r' % (c.get('route'),))
+    if date is None and not label and not has_seq: return 'TOTALS'        # numbers alone, no date, no text
+    iso = date.isoformat() if date else None                              # None → caller inherits the previous row's date
+    adv, exp, val = num(c.get('advance')), num(c.get('expenses')), num(c.get('value'))
+    t = norm(label + ' ' + pay_desc)
+    bank = any(k in t for k in BANK_KEYS) or bool(ETE_RE.search(t))
+    cash = 'ΜΕΤΡΗΤ' in t
+    if carry_kw and not val and not adv and not exp:
+        if not is_num(c.get('balance')): raise Unknown('carry row without balance: %r' % label)
         return {'entry_type': 'carry', 'entry_date': iso, 'amount': float(d2(c['balance']))}
-    value_present = is_num(c.get('value')) and c['value'] != 0
-    # A trip needs a value or a sequence number. A described row with only an
-    # advance could be a gift, a loan or a trip — that is a human's call.
-    if value_present or c.get('seq') not in (None, ''):
+    if (cash or bank) and val and not adv and not has_seq:
+        raise Unknown('payment keyword but the amount is in ΑΞΙΑ: %r' % label)
+    if val and not adv and not exp and not has_seq and any(k in t for k in ADJUST_KEYS):
+        return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': val, 'note': label}
+    if val or has_seq or (exp and desc):                                  # a value, a counter, or expenses on a named line = a journey
         end = to_date(c.get('date_end'))
         return {'entry_type': 'trip', 'entry_date': iso,
                 'date_end': end.isoformat() if end else None,
-                'route': (str(c.get('route') or '').strip() or None),
-                'trip_value': float(d2(c['value'])) if is_num(c.get('value')) else None,
-                'advance': adv,
-                'expenses': float(d2(c['expenses'])) if is_num(c.get('expenses')) else None}
-    raise Unknown('unrecognised row: %r' % (c.get('route'),))
+                'route': desc or 'χωρίς περιγραφή (Excel)',
+                'trip_value': val, 'advance': adv, 'expenses': exp}
+    if exp and adv and not (desc or val or has_seq):
+        raise Unknown('row has both advance and expenses but no description or value: %r' % label)
+    if adv:                                                               # money handed to the driver, nothing else on the line
+        if adv < 0:
+            return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': -adv, 'note': ('αρνητικό ΕΛΑΒΕ στο Excel: ' + label).strip(': ')}
+        e = {'entry_type': 'payment_bank' if (bank and not cash) else 'payment_cash', 'entry_date': iso, 'amount': adv}
+        if label: e['note'] = label
+        return e
+    if cash or bank:                                                      # amount typed in the ΜΕΤΡΗΤΑ/ΚΑΤΑΘΕΣΗ column itself
+        col = num(c.get('cash')) if cash else num(c.get('bank'))
+        if col and col > 0:
+            e = {'entry_type': 'payment_cash' if cash else 'payment_bank', 'entry_date': iso, 'amount': col}
+            if label: e['note'] = label
+            return e
+        raise Unknown('payment keyword without a positive amount: %r' % label)
+    raise Unknown('unrecognised row: %r' % label)
 
-def fix_date(cur, prev, nxt, today, slack=dt.timedelta(days=400)):
-    """Return (date, note). Untouched when plausible. A date in the future or >400
-    days out of sequence is repaired only when changing the YEAR alone lands it
-    between its neighbours — anything else is None (needs a human)."""
-    def plausible(d):
-        return d <= today and (prev is None or d >= prev) and (nxt is None or d <= nxt)
-    if plausible(cur): return (cur, None)
-    if prev is None or nxt is None: return None       # not enough context to pin the year
+def fix_date(cur, neighbours, today, spike=dt.timedelta(days=200), window=dt.timedelta(days=45)):
+    """(date, note) or None. Sheets are not chronological (payments are logged with
+    earlier dates), so only a *spike* — a date after today or >200 days away from
+    every neighbour — is suspect. It is repaired only when changing the YEAR alone
+    lands it within 45 days of the neighbours' span; anything else is a human's call."""
+    lo = min(neighbours) if neighbours else None
+    hi = max(neighbours) if neighbours else None
+    if cur <= today and (not neighbours or lo - spike <= cur <= hi + spike): return (cur, None)
+    if not neighbours: return None
     cands = set()
-    for y in {cur.year - 1, cur.year + 1, prev.year, nxt.year}:
+    for y in {cur.year - 1, cur.year + 1} | {d.year for d in neighbours}:
         try: d = cur.replace(year=y)
         except ValueError: continue
-        if plausible(d): cands.add(d)
+        if d <= today and lo - window <= d <= hi + window: cands.add(d)
     if len(cands) != 1: return None
     fixed = cands.pop()
     return (fixed, 'ημ/νία Excel %s → %s (έτος)' % (cur.isoformat(), fixed.isoformat()))
 
 def raw_balance(cells_list):
-    """Σ ΑΞΙΑ − Σ ΕΛΑΒΕ + Σ ΕΞΟΔΑ over raw cells. Independent of classification,
-    so a mis-classified row cannot hide a balance error."""
+    """Σ ΑΞΙΑ − Σ ΕΛΑΒΕ + Σ ΕΞΟΔΑ over raw cells — independent of classification."""
     tot = Decimal('0')
     for c in cells_list:
         tot += d2(c.get('value') if is_num(c.get('value')) else 0)
