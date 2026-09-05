@@ -176,7 +176,9 @@
         updEl.textContent = 'Ενημερώθηκε ' + now.toLocaleTimeString('el-GR', {hour:'2-digit',minute:'2-digit'});
         if (_failed.length) {
           updEl.textContent += ` · ⚠ δεν φόρτωσε: ${_failed.join(', ')}`;
-          updEl.style.color = '#B45309';
+          // #ceo-updated sits on the light page ground, not on a dark card —
+          // hence --warn (DESIGN ΜΕΡΟΣ Β), not the on-dark --ceo-warn.
+          updEl.style.color = 'var(--warn)';
         } else {
           updEl.style.color = '';
         }
@@ -189,12 +191,15 @@
       const isTimeout = err && err.message === 'CEO_LOAD_TIMEOUT';
       if (typeof logError === 'function') logError(err, 'CEO Dashboard loadAll');
       const c = document.getElementById('content');
-      if (c) c.innerHTML = `<div style="padding:40px;text-align:center;color:var(--danger)">
-        <div style="font-weight:600;margin-bottom:6px">${isTimeout ? 'Δεν φόρτωσε μέσα σε 15 δευτερόλεπτα' : 'Σφάλμα φόρτωσης'}</div>
-        <div style="font-size:12px;color:var(--text-dim);margin-bottom:14px">${isTimeout
-          ? 'Ο διακομιστής δεν απάντησε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.'
-          : 'Κάτι πήγε στραβά κατά τη φόρτωση των δεδομένων.'}</div>
-        <button onclick="renderCEODashboard()" style="padding:8px 16px;background:var(--accent);color:#fff;border:none;border-radius:6px;cursor:pointer">Δοκίμασε ξανά</button>
+      // DESIGN rule 7 / dashboard pattern: what happened · what it does NOT
+      // mean · what to do. «Κάτι πήγε στραβά» told the reader none of the three.
+      // --text-mid, not --text-dim: the body is the message, not a footnote.
+      if (c) c.innerHTML = `<div style="padding:32px;text-align:center;color:var(--danger)">
+        <div style="font-weight:600;margin-bottom:8px">${isTimeout ? 'Ο πίνακας διοίκησης δεν απάντησε μέσα σε 15 δευτερόλεπτα' : 'Ο πίνακας διοίκησης δεν φόρτωσε'}</div>
+        <div style="font-size:12px;color:var(--text-mid);margin-bottom:16px">${isTimeout
+          ? 'Ο διακομιστής δεν απάντησε — ORDERS / DRIVERS / κόστη. Αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν δεδομένα. Έλεγξε τη σύνδεση και ξαναδοκίμασε.'
+          : 'Η φόρτωση των ORDERS / DRIVERS / κόστους γύρισε σφάλμα. Αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν δεδομένα. Ξαναδοκίμασε· αν επιμένει, ενημέρωσε τον διαχειριστή.'}</div>
+        <button type="button" class="btn btn-primary btn-sm" onclick="renderCEODashboard()">Ξαναδοκίμασε</button>
       </div>`;
     } finally {
       // Always clear, on both paths: a live timer would fire after a successful
@@ -318,7 +323,8 @@
       el('strat-deadkm-bar').style.background = deadKM.pct < 15 ? 'var(--panel-ok-hi)' : deadKM.pct < 25 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
       // Sparkline (inline SVG, no Chart.js)
       const weeklyDead = _computeWeeklyDeadKM(data.sparkOrders);
-      el('strat-deadkm-spark').innerHTML = _ceoSpark(weeklyDead.map(d => d.value), '#D97706', 64);
+      // On a dark card: the on-dark amber (--ceo-warn), same family as the bar above it.
+      el('strat-deadkm-spark').innerHTML = _ceoSpark(weeklyDead.map(d => d.value), 'var(--ceo-warn)', 64);
     } else {
       el('strat-deadkm-val').textContent = 'N/A';
       el('strat-deadkm-val').className = 'ceo-kpi-num ceo-val-muted';
@@ -895,7 +901,7 @@
         <div><div class="ceo-brand-label">ΥΠΟΣΧΕΣΗ 3</div><div class="ceo-brand-name">ΗΡΕΜΙΑ — μηδέν αγωνία πελάτη</div></div>
       </div>
       <div class="ceo-brand-body">
-        <div class="ceo-gauge-ring" style="--g-color:#3B82F6;--g-deg:0deg">
+        <div class="ceo-gauge-ring" style="--g-color:var(--ceo-accent);--g-deg:0deg">
           <div class="ceo-gauge-inner">
             <div class="ceo-brand-big" id="brand-anxiety-val">—</div>
           </div>

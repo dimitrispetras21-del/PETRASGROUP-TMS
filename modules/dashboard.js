@@ -178,14 +178,17 @@ async function renderDashboard() {
       }
     }
     const onTimeCount = onTime ? Math.round(onTime.pct * onTime.judged / 100) : 0;
+    // `judged:false` = the value is shown but NOT ranked: a bar that says
+    // «πολύ νωρίς» and is painted amber as «τραβά κάτω» contradicts itself
+    // (measured 4/9: «Ανάθεση 0% (0/3) · πολύ νωρίς» in warn colour).
     const comps = [
-      { l: 'Ανάθεση',     pct: weekNone ? null : assign.pct,
+      { l: 'Ανάθεση',     pct: weekNone ? null : assign.pct, judged: !weekEarly,
         txt: weekNone ? `— (${weekNote})` : `${assign.pct}% (${assign.assigned}/${assign.total})${weekEarly ? ' · πολύ νωρίς' : ''}` },
       { l: 'Συνέπεια',    pct: onTime ? onTime.pct : null, txt: onTime ? `${onTime.pct}% (${onTimeCount}/${onTime.judged})` : '— (χωρίς κρίση)' },
       { l: 'Συμμόρφωση',  pct: comp.pct,    txt: `${comp.pct}% (${comp.valid}/${comp.total})` },
       { l: 'Κενά χλμ',    pct: deadKmScore, txt: deadKmScore == null ? '— (χωρίς μέτρηση)' : `${deadKmScore}% (${deadKmAvg} χλμ)` },
     ];
-    const known = comps.filter(x => x.pct != null);
+    const known = comps.filter(x => x.pct != null && x.judged !== false);
     const weakest = known.length ? known.reduce((a, b) => (b.pct < a.pct ? b : a)) : null;
 
     // ═══ ΑΝΑΧΩΡΗΣΕΙΣ / ΠΑΡΑΔΟΣΕΙΣ ═══
@@ -309,7 +312,7 @@ async function renderDashboard() {
     // Ουδέτερος δακτύλιος όταν το σκορ είναι μερικό Ή η εβδομάδα μόλις άρχισε:
     // ένα κόκκινο 53 από τρεις παραγγελίες Δευτέρας είναι ετυμηγορία που
     // κανείς δεν έχει δικαίωμα να βγάλει ακόμη.
-    const ringColor = score == null ? 'var(--text-dim)' : (scorePartial || weekEarly) ? 'var(--navy-light)' : score >= 85 ? 'var(--success)' : score >= 70 ? 'var(--warning)' : 'var(--danger)';
+    const ringColor = score == null ? 'var(--text-dim)' : (scorePartial || weekEarly) ? 'var(--surface-dark)' : score >= 85 ? 'var(--ok)' : score >= 70 ? 'var(--warn)' : 'var(--danger)';
     const prevUtil = utilTrend.length > 1 ? utilTrend[utilTrend.length - 2] : null;
     const prevOnTime = onTimeTrend.length > 1 ? onTimeTrend[onTimeTrend.length - 2].r : null;
 
@@ -636,85 +639,88 @@ function _dashCss() { return `<style>
 .dh{max-width:1336px;margin:0 auto;padding:0 0 24px;color:var(--text);font-family:'DM Sans',sans-serif}
 .dh-header{display:flex;justify-content:space-between;align-items:flex-start;padding:2px 0 8px}
 .dh-greet{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;line-height:22px}
-.dh-date{font-size:12px;color:var(--text-dim);margin-top:3px}
+.dh-date{font-size:12px;color:var(--text-dim);margin-top:4px}
 .dh-actions{display:flex;align-items:center;gap:8px}
 .dh-upd{font-size:11px;color:var(--text-dim);margin-left:8px;white-space:nowrap}
-.dh-band-label{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);margin:10px 0 6px}
+.dh-band-label{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);margin:12px 0 8px}
 .dh-band{display:grid;grid-template-columns:minmax(380px,500px) repeat(3,minmax(0,1fr));gap:12px}
-.dh-card{background:var(--bg-card);border:1px solid var(--border);border-radius:8px;min-width:0}
+.dh-card{background:var(--surface-card);border:1px solid var(--border);border-radius:6px;min-width:0}
 .dh-score{display:flex;gap:16px;padding:12px 16px}
 .dh-ring-wrap{flex:0 0 120px}
-.dh-ring{width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--ring) var(--deg),var(--bg-hover) 0);display:grid;place-items:center;position:relative}
-.dh-ring::after{content:'';position:absolute;inset:10px;background:var(--bg-card);border-radius:50%}
+.dh-ring{width:120px;height:120px;border-radius:50%;background:conic-gradient(var(--ring) var(--deg),var(--surface-sunken) 0);display:grid;place-items:center;position:relative}
+.dh-ring::after{content:'';position:absolute;inset:10px;background:var(--surface-card);border-radius:50%}
 .dh-ring-num{position:relative;z-index:1;font-size:48px;font-weight:700;line-height:1;font-variant-numeric:tabular-nums}
-.dh-score-label{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);text-align:center;margin-top:6px;white-space:nowrap}
+.dh-score-label{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim);text-align:center;margin-top:8px;white-space:nowrap}
 /* Ο αστερίσκος του «53*» δεν εξηγούνταν πουθενά στην οθόνη (σάρωση κάθε
    κόμβου κειμένου 3/9): μια tooltip δεν είναι εξήγηση για τον χρήστη των
    05:30. Η επεξήγηση είναι ΟΡΑΤΟ κείμενο, κάτω από τον δακτύλιο. */
-.dh-score-note{font-size:10px;line-height:13px;color:var(--text-dim);text-align:center;margin-top:4px}
+.dh-score-note{font-size:11px;line-height:14px;color:var(--text-dim);text-align:center;margin-top:4px}
 .dh-bars{flex:1;min-width:0}
-.dh-bar{display:grid;grid-template-columns:92px 1fr 118px;align-items:center;gap:8px;font-size:12px;margin-bottom:7px}
-.dh-bar-track{height:5px;background:var(--bg-hover);border-radius:3px;overflow:hidden}
-.dh-bar-fill{height:100%;border-radius:3px;background:var(--navy-light)}
+/* Value column is minmax(118px,auto), not a fixed 118px: «0% (0/3) · πολύ νωρίς»
+   measures 121px and was clipped by the card edge (4/9). The track shrinks
+   instead — a bar 3px shorter is invisible, a cut word is not. */
+.dh-bar{display:grid;grid-template-columns:92px minmax(0,1fr) minmax(118px,auto);align-items:center;gap:8px;font-size:12px;margin-bottom:8px}
+.dh-bar-track{height:5px;background:var(--surface-sunken);border-radius:6px;overflow:hidden}
+.dh-bar-fill{height:100%;border-radius:6px;background:var(--surface-dark)}
 .dh-bar.low span:first-child{font-weight:700}
-.dh-bar.low .dh-bar-fill{background:var(--warning)}
+.dh-bar.low .dh-bar-fill{background:var(--warn)}
 .dh-bar-val{text-align:right;font-variant-numeric:tabular-nums;color:var(--text-mid);white-space:nowrap}
-.dh-receipt,.dh-src{font-size:10px;color:var(--text-dim);line-height:13px}
-.dh-receipt{margin-top:10px}
-.dh-kpi{padding:14px 14px 12px;display:flex;flex-direction:column;align-items:stretch;cursor:pointer;text-align:left;font:inherit;color:inherit}
-.dh-kpi:hover{border-color:var(--border-focus)}
+.dh-receipt,.dh-src{font-size:11px;color:var(--text-dim);line-height:14px}
+.dh-receipt{margin-top:12px}
+.dh-kpi{padding:16px 16px 12px;display:flex;flex-direction:column;align-items:stretch;cursor:pointer;text-align:left;font:inherit;color:inherit}
+.dh-kpi:hover{border-color:var(--accent)}
 .dh-kpi-top{display:flex;justify-content:space-between;gap:8px;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim)}
 .dh-kpi-link{font-weight:500;letter-spacing:0;color:var(--accent-text);white-space:nowrap}
 .dh-per{font-weight:500;letter-spacing:0;color:var(--text-dim);white-space:nowrap}
 .dh-kpi-val{font-size:36px;font-weight:700;line-height:36px;margin-top:8px;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums;flex-wrap:wrap}
 .dh-kpi-val.muted{color:var(--text-dim)}
-.dh-delta{font-size:11px;font-weight:600;padding:2px 6px;border-radius:999px;background:var(--bg-hover);color:var(--text-mid);white-space:nowrap}
+.dh-delta{font-size:11px;font-weight:600;padding:2px 6px;border-radius:9999px;background:var(--surface-sunken);color:var(--text-mid);white-space:nowrap}
 /* Το αρνητικό δέλτα είναι τάση, ΟΧΙ ληγμένο έγγραφο — πορτοκαλί. Το κόκκινο
    της οθόνης ανήκει αποκλειστικά στο ΛΗΓΜΕΝΟ (3/9). */
-.dh-delta.good{color:var(--success)} .dh-delta.bad{color:var(--warning)}
-.dh-trend{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:11px;color:var(--text-dim);min-height:16px}
-.dh-bars4{display:flex;align-items:flex-end;gap:3px;height:16px}
-.dh-bars4 i{display:block;width:7px;background:var(--silver-light);border-radius:2px}
-.dh-bars4 i.last{background:var(--navy-mid)}
-.dh-bars4 i[data-empty]{background:var(--bg-hover)}
+.dh-delta.good{color:var(--ok)} .dh-delta.bad{color:var(--warn)}
+.dh-trend{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--text-dim);min-height:16px}
+.dh-bars4{display:flex;align-items:flex-end;gap:4px;height:16px}
+.dh-bars4 i{display:block;width:7px;background:var(--border);border-radius:6px}
+.dh-bars4 i.last{background:var(--surface-dark)}
+.dh-bars4 i[data-empty]{background:var(--surface-sunken)}
 .dh-noseries{font-style:italic}
-.dh-kpi-sub{font-size:12px;color:var(--text-mid);margin-top:6px}
-.dh-kpi-sub.warn{color:var(--warning)}
+.dh-kpi-sub{font-size:12px;color:var(--text-mid);margin-top:8px}
+.dh-kpi-sub.warn{color:var(--warn)}
 .dh-src{margin-top:auto;padding-top:8px}
 .dh-goals{margin-top:12px;padding:12px 16px}
 .dh-goals-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
 .dh-goals-title{font-size:14px;font-weight:700}
 .dh-goals-note{font-size:11px;color:var(--text-dim)}
 .dh-goals-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:24px;margin-top:8px}
-.dh-goal-l{font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--text-dim)}
-.dh-goal-v{font-size:16px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums}
+.dh-goal-l{font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text-dim)}
+.dh-goal-v{font-size:16px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
 .dh-goal-t{font-size:11px;color:var(--text-dim);font-weight:400;margin-left:4px}
 .dh-goal-d{display:block;font-size:11px;margin-top:4px;color:var(--text-mid)}
-.dh-goal-d.bad{color:var(--warning)}
+.dh-goal-d.bad{color:var(--warn)}
 .dh-main{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:12px;margin-top:12px;align-items:start}
 .dh-left{display:flex;flex-direction:column;gap:12px;min-width:0}
-.dh-ops{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.dh-ch{display:flex;align-items:center;gap:8px;padding:10px 14px 4px;font-size:13px;font-weight:700}
+.dh-ops{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.dh-ch{display:flex;align-items:center;gap:8px;padding:12px 16px 4px;font-size:13px;font-weight:700}
 .dh-ch .n{font-weight:500;color:var(--text-mid);font-size:12px;margin-left:auto}
 .dh-link{font-size:12px;font-weight:500;color:var(--accent-text);cursor:pointer;white-space:nowrap}
 .dh-details summary{list-style:none;cursor:pointer} .dh-details summary::-webkit-details-marker{display:none}
-.dh-grp{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);padding:6px 14px 0}
+.dh-grp{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);padding:8px 16px 0}
 /* ≥36px σε κάθε κλικαρίσιμη γραμμή (μέτρηση 3/9: 49 στόχοι κάτω από 36px). */
-.dh-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 14px;min-height:36px;cursor:pointer}
-.dh-row:hover{background:var(--bg-hover)}
+.dh-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:4px 16px;min-height:36px;cursor:pointer}
+.dh-row:hover{background:var(--surface-sunken)}
 .dh-row .c{font-size:13px;font-weight:500}
 .dh-row .r{font-size:11px;color:var(--text-dim)}
 .dh-row .m{text-align:right;font-size:11px;color:var(--text-mid);white-space:nowrap;font-variant-numeric:tabular-nums}
-.dh-row .s{font-size:9px;font-weight:700;letter-spacing:.06em;color:var(--text-dim)}
+.dh-row .s{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-dim)}
 /* «ΧΩΡΙΣ ΦΟΡΤΗΓΟ» = ενέργεια σήμερα, όχι ληγμένο έγγραφο — πορτοκαλί (3/9). */
-.dh-row .s.on{color:var(--accent-text)} .dh-row .s.none{color:var(--warning)}
-.dh-row:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
+.dh-row .s.on{color:var(--accent-text)} .dh-row .s.none{color:var(--warn)}
+.dh-row:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .dh-tbl{width:100%;border-collapse:collapse;font-size:13px}
-.dh-tbl th{font-size:9px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);text-align:left;padding:8px 8px 6px;border-bottom:1px solid var(--border-row)}
-.dh-tbl th:first-child,.dh-tbl td:first-child{padding-left:14px}
-.dh-tbl td{padding:8px;border-bottom:1px solid var(--border-row);vertical-align:middle;height:36px}
-.dh-tbl tbody tr{cursor:pointer} .dh-tbl tbody tr:hover td{background:var(--bg-hover)}
-.dh-tbl tbody tr:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
+.dh-tbl th{font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--text-dim);text-align:left;padding:8px 8px 6px;border-bottom:1px solid var(--border)}
+.dh-tbl th:first-child,.dh-tbl td:first-child{padding-left:16px}
+.dh-tbl td{padding:8px;border-bottom:1px solid var(--border);vertical-align:middle;height:36px}
+.dh-tbl tbody tr{cursor:pointer} .dh-tbl tbody tr:hover td{background:var(--surface-sunken)}
+.dh-tbl tbody tr:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
 .dh-tbl .dh-lbl{font-weight:600;white-space:nowrap}
 .dh-tbl .c{font-weight:500} .dh-tbl .r{font-size:11px;color:var(--text-dim);margin-left:8px}
 /* Η ΠΡΟΘΕΣΜΙΑ είναι πορτοκαλί, ποτέ κόκκινη (3/9): το κόκκινο μοιραζόταν με
@@ -723,31 +729,31 @@ function _dashCss() { return `<style>
    --danger-bg μετρήθηκε 4.28:1 (κάτω από AA)· το --warning σε λευκή κάρτα
    δίνει 5.0:1 και πάνω σε --warning-bg 4.6:1. Περίγραμμα αντί για γέμισμα
    ώστε 7/7 πορτοκαλί γραμμές να μη γίνουν πάλι ένας τοίχος χρώματος. */
-.dh-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--bg-hover);border:1px solid transparent;color:var(--text-mid);white-space:nowrap}
-.dh-pill.due{background:var(--bg-card);border-color:var(--warning);color:var(--warning)}
-.dh-pill.late{background:var(--warning-bg);border-color:var(--warning);color:var(--warning)}
-.dh-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 14px;font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);border-top:1px solid var(--border-row)}
+.dh-pill{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:9999px;background:var(--surface-sunken);border:1px solid transparent;color:var(--text-mid);white-space:nowrap}
+.dh-pill.due{background:var(--surface-card);border-color:var(--warn);color:var(--warn)}
+.dh-pill.late{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
+.dh-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 16px;font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-dim);border-top:1px solid var(--border)}
 .dh-foot-none{font-weight:400;letter-spacing:0;font-size:11px}
-.dh-plate{font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;border:1px solid var(--border);color:var(--text);letter-spacing:0}
+.dh-plate{font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid var(--border);color:var(--text);letter-spacing:0}
 /* Μία γραμμή ανά ΟΧΗΜΑ: τα έγγραφά του μπαίνουν σε στήλη μέσα στη γραμμή,
    ώστε τίποτα να μη χαθεί και η στήλη να μη συνεχίζει μόνη της (βλ. Δ3). */
-.dh-alert{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;padding:6px 14px;font-size:12px;align-items:start;min-height:36px;cursor:pointer;border-bottom:1px solid var(--border-row)}
-.dh-alert:hover{background:var(--bg-hover)}
-.dh-alert:focus-visible{outline:2px solid var(--border-focus);outline-offset:-2px}
-.dh-alert .p{font-weight:600;padding-top:1px}
+.dh-alert{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;padding:8px 16px;font-size:12px;align-items:start;min-height:36px;cursor:pointer;border-bottom:1px solid var(--border)}
+.dh-alert:hover{background:var(--surface-sunken)}
+.dh-alert:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dh-alert .p{font-weight:600;padding-top:2px}
 /* Τα έγγραφα ρέουν οριζόντια και τυλίγονται μόνο όταν δεν χωρούν: σε στοίβα
    η ομαδοποίηση έκανε τη στήλη ΨΗΛΟΤΕΡΗ (μετρήθηκε 1.376px) και ακύρωνε τον
    σκοπό της. Το σταθερό πλάτος στο όνομα εγγράφου κρατά τη στήλη ΚΤΕΟ/ΚΕΚ/FRC
    ευθυγραμμισμένη όταν τυλιχτούν — αλλιώς το «Ασφάλεια» μετατόπιζε τη γραμμή. */
-.dh-docs{display:flex;flex-wrap:wrap;column-gap:10px;row-gap:2px;min-width:0}
-.dh-doc{display:inline-flex;gap:6px;align-items:baseline;white-space:nowrap}
+.dh-docs{display:flex;flex-wrap:wrap;column-gap:12px;row-gap:2px;min-width:0}
+.dh-doc{display:inline-flex;gap:8px;align-items:baseline;white-space:nowrap}
 .dh-doc .d{min-width:58px}
 .dh-alert .d{color:var(--text-mid)}
-.dh-alert .x{color:var(--danger-strong);font-weight:700} .dh-alert .u{color:var(--warning)} .dh-alert .k{color:var(--text-mid)}
-.dh-sum{font-size:12px;color:var(--text-mid);padding:0 14px 6px}
-.dh-empty{padding:14px;font-size:12px;color:var(--text-dim)}
-.dh-err{padding:12px 14px;font-size:12px;color:var(--warning);border:1px solid var(--warning-soft);border-radius:6px;margin:8px 14px 14px}
-.dh-sk{background:var(--bg-hover);border-radius:8px;animation:dh-sk 1.4s ease-in-out infinite}
+.dh-alert .x{color:var(--danger);font-weight:700} .dh-alert .u{color:var(--warn)} .dh-alert .k{color:var(--text-mid)}
+.dh-sum{font-size:12px;color:var(--text-mid);padding:0 16px 8px}
+.dh-empty{padding:16px;font-size:12px;color:var(--text-dim)}
+.dh-err{padding:12px 16px;font-size:12px;color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;margin:8px 16px 16px}
+.dh-sk{background:var(--surface-sunken);border-radius:6px;animation:dh-sk 1.4s ease-in-out infinite}
 @keyframes dh-sk{0%,100%{opacity:.5}50%{opacity:.9}}
 @media (max-width:1366px){.dh-band{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.dh-score{grid-column:1/-1}.dh-main{grid-template-columns:minmax(0,1fr) 340px}}
 </style>`; }

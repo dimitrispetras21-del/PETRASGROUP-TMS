@@ -79,7 +79,7 @@ async function renderPerformance() {
     _perfDraw();
   } catch(e) {
     // Use unified error banner instead of raw red text
-    const safeMsg = (e && e.message ? e.message : 'Unknown error').replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+    const safeMsg = (e && e.message ? e.message : 'άγνωστο σφάλμα').replace(/[<>&]/g, ch => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
     c.innerHTML = `
       <div class="tms-page-header">
         <div class="tms-page-titles">
@@ -90,8 +90,8 @@ async function renderPerformance() {
       <div class="tms-error-banner" role="alert">
         <span class="tms-error-icon">⚠</span>
         <div class="tms-error-content">
-          <div class="tms-error-title">Δεν φορτώθηκαν τα δεδομένα</div>
-          <div class="tms-error-msg">${safeMsg}</div>
+          <div class="tms-error-title">Η απόδοση δεν φόρτωσε</div>
+          <div class="tms-error-msg">${safeMsg} — ORDERS / NATIONAL LOADS / TRUCKS. Αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν παραδόσεις. Ξαναδοκίμασε.</div>
           <button class="tms-error-action" onclick="renderPerformance()">Δοκιμή ξανά</button>
         </div>
       </div>`;
@@ -180,6 +180,15 @@ function _perfCompute() {
   // Numeric comparison (Week Number is a formula field returning a number)
   const weekOrders = orders.filter(r => Number(r.fields['Week Number']) === Number(wn));
   const activeTrucks = PERF.trucks.filter(t => t.fields['Active']).length;
+  // Same rule as modules/dashboard.js (3/9): zero orders in the week = no
+  // percentage at all (-1, rendered «—»); under WEEK_MIN the percentage is
+  // shown but DECLARED «πολύ νωρίς» and not judged with colour. Without this
+  // the card read «ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ 0%» in red on Monday morning, 200px away
+  // from a dashboard saying «πολύ νωρίς — 3 παραγγελίες» for the same week.
+  const WEEK_MIN = 5;
+  const weekN = weekOrders.length;
+  const weekNone = weekN === 0;
+  const weekEarly = weekN < WEEK_MIN;
 
   // On-Time %
   const withPerf = orders.filter(r => r.fields['Delivery Performance']);
@@ -215,12 +224,12 @@ function _perfCompute() {
     // Usage rate: ~5 working days/week = 100%. Each day ≈ 20.25 pp.
     return Math.min(days * 4.5 * 4.5, 100);
   });
-  const fleet_usage = rates.length ? Math.round(rates.reduce((s, r) => s + r, 0) / rates.length) : 0;
+  const fleet_usage = (weekNone || !rates.length) ? -1 : Math.round(rates.reduce((s, r) => s + r, 0) / rates.length);
 
   // Plan Completion (assigned / total this week)
   const totalWeek = weekOrders.filter(r => r.fields['Direction'] === 'Export').length;
   const assignedWeek = weekOrders.filter(r => r.fields['Direction'] === 'Export' && r.fields['Truck']).length;
-  const plan_complete = totalWeek ? Math.round(assignedWeek / totalWeek * 100) : 0;
+  const plan_complete = totalWeek ? Math.round(assignedWeek / totalWeek * 100) : -1;
 
   // Assignment Speed — avg hours from order creation to truck/partner assignment
   // Uses Airtable's native Created Time + our custom Assigned At timestamp
@@ -305,7 +314,7 @@ function _perfCompute() {
   // Subcontractor cost % (partner trips vs total assigned trips)
   const assignedTrips = weekOrders.filter(r => r.fields['Truck'] || r.fields['Partner']);
   const partnerTrips = assignedTrips.filter(r => r.fields['Is Partner Trip']);
-  const sub_cost_pct = assignedTrips.length ? Math.round(partnerTrips.length / assignedTrips.length * 100) : 0;
+  const sub_cost_pct = assignedTrips.length ? Math.round(partnerTrips.length / assignedTrips.length * 100) : -1;
 
   // Client updates — % of delivered orders this week with Client Notified=true
   const weekDelivered = weekOrders.filter(r => r.fields['Status'] === 'Delivered' || r.fields['Status'] === 'Invoiced');
@@ -411,7 +420,8 @@ function _perfCompute() {
   // ΚΑΜΙΑ καταγεγραμμένη επίδοση παράδοσης — δηλαδή έδινε καλό βαθμό για
   // δεδομένα που δεν υπάρχουν, και ήταν ο λόγος που η κάρτα έλεγε 44 ενώ το
   // γράφημα δίπλα της έλεγε 15. Χωρίς δείγμα, το σκορ ΔΕΝ υπολογίζεται.
-  const _ontimeKnown = on_time >= 0;
+  // Neither half of the score may be built on an unknown (-1) input.
+  const _ontimeKnown = on_time >= 0 && plan_complete >= 0;
   const _deadKmScore = dead_km < 0 ? 100
     : dead_km <= 50 ? 100
     : dead_km <= 150 ? Math.round(100 - (dead_km - 50))
@@ -438,7 +448,7 @@ function _perfCompute() {
     natl_profit, crisis_count, plan_reviewed,
     outstanding, pallet_balance,
     zero_anxiety: 0,
-    _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length }
+    _meta: { wn, totalWeek, assignedWeek, activeTrucks, weekExports: weekExports.length, weekN, weekNone, weekEarly }
   };
 }
 
@@ -589,29 +599,50 @@ function _perfDraw() {
   }
 
   // KPI cards — with Lucide icon + WoW delta
+  const meta = vals._meta;
+  // KPIs computed from THIS week's orders — the only ones «πολύ νωρίς» applies
+  // to. on_time / dead_km carry their own «no sample» reasons.
+  const WEEK_KPIS = new Set(['fleet_usage', 'plan_complete', 'sub_cost_pct', 'weekly_score']);
+  // Rule 3 (DESIGN): the reason for «—» is visible text, not a tooltip — and it
+  // is the RIGHT reason: «καμία παράδοση με επίδοση» under ΑΞΙΟΠΟΙΗΣΗ ΣΤΟΛΟΥ was
+  // a lie for the fleet KPI, whose sample is the week's orders.
+  const unknownWhy = id =>
+    id === 'on_time' ? 'καμία παράδοση με καταγεγραμμένη επίδοση'
+    : id === 'dead_km' ? 'κανένα ζεύγος εξαγωγής/εισαγωγής με συντεταγμένες'
+    : id === 'weekly_score' ? 'χωρίς δείγμα — δεν υπολογίζεται'
+    : WEEK_KPIS.has(id) ? `καμία παραγγελία στη W${meta.wn}`
+    : 'χωρίς δείγμα';
   const kpiCards = kpiDefs.map(kpi => {
     const raw = vals[kpi.id] ?? 0;
     // PF-3: -1 σημαίνει «δεν υπάρχει δείγμα», όχι μηδέν. Αποδίδεται «—» ώστε
     // να μη διαβάζεται ως καταστροφική επίδοση, και δεν βάφεται κόκκινο.
     const unknown = raw === -1;
+    // «Early» = value shown, verdict withheld: neutral colour, no bar judgement.
+    const early = !unknown && meta.weekEarly && WEEK_KPIS.has(kpi.id);
     const val = (typeof raw === 'number' && !unknown) ? raw : 0;
     const pct = kpi.target ? Math.min(Math.round((kpi.invert ? (kpi.target / Math.max(val, 0.1)) : (val / kpi.target)) * 100), 120) : 0;
     const valCls = kpi.invert
       ? (val <= kpi.target ? 'perf-val-ok' : val <= kpi.target * 1.5 ? 'perf-val-warn' : 'perf-val-bad')
       : (val >= kpi.target ? 'perf-val-ok' : val >= kpi.target * 0.7 ? 'perf-val-warn' : 'perf-val-bad');
-    const barColor = kpi.invert
-      ? (val <= kpi.target ? 'var(--panel-ok-hi)' : val <= kpi.target * 1.5 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)')
-      : (val >= kpi.target ? 'var(--panel-ok-hi)' : val >= kpi.target * 0.7 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)');
+    // --p-* are the .perf-wrap page tokens: on the dark KPI card they resolve to
+    // the on-dark palette (--panel-*), which the light --ok/--warn/--danger
+    // cannot replace without failing contrast on navy (DESIGN has no on-dark
+    // semantic tokens yet — noted in the wave report).
+    const barColor = (unknown || early) ? 'var(--p-text-dim)' : kpi.invert
+      ? (val <= kpi.target ? 'var(--p-ok)' : val <= kpi.target * 1.5 ? 'var(--p-warn)' : 'var(--p-bad)')
+      : (val >= kpi.target ? 'var(--p-ok)' : val >= kpi.target * 0.7 ? 'var(--p-warn)' : 'var(--p-bad)');
     const glowColor = barColor;
     const iconName = kpiIconMap[kpi.id] || 'activity';
+    const note = unknown ? unknownWhy(kpi.id)
+      : early ? `πολύ νωρίς — ${meta.weekN} ${meta.weekN === 1 ? 'παραγγελία' : 'παραγγελίες'} στη W${meta.wn}` : '';
     return `<div class="perf-kpi">
       <div class="perf-kpi-glow" style="background:linear-gradient(90deg,${glowColor},transparent)"></div>
       <div class="perf-kpi-label">${_i(iconName, 11)} ${kpi.label}</div>
-      <div class="perf-kpi-val ${unknown ? '' : valCls}">${unknown
-        ? `<span title="Καμία παράδοση με καταγεγραμμένη επίδοση" style="color:var(--text-dim)">—</span>`
-        : `${val}${kpi.unit}${_wowDelta(kpi.id, val, !!kpi.invert)}`}</div>
-      <div class="perf-kpi-target">Στόχος: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}</div>
-      <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div></div>
+      <div class="perf-kpi-val ${(unknown || early) ? '' : valCls}">${unknown
+        ? `<span style="color:var(--p-text-dim)">—</span>`
+        : `${val}${kpi.unit}${early ? '' : _wowDelta(kpi.id, val, !!kpi.invert)}`}</div>
+      <div class="perf-kpi-target">Στόχος: ${kpi.invert ? '≤' : '≥'}${kpi.target}${kpi.unit}${note ? ` · ${note}` : ''}</div>
+      <div class="perf-kpi-bar"><div class="perf-kpi-fill" style="width:${(unknown || early) ? 0 : Math.min(pct, 100)}%;background:${barColor}"></div></div>
     </div>`;
   }).join('');
 
@@ -620,7 +651,9 @@ function _perfDraw() {
     // -1 = εβδομάδα χωρίς καμία καταγεγραμμένη επίδοση παράδοσης. Μηδενική
     // μπάρα και «—», όχι 0/100: το μηδέν διαβάζεται ως καταστροφική επίδοση.
     const unknown = t.score < 0;
-    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? 'var(--panel-ok-hi)' : t.score >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
+    // Light .perf-card: DESIGN tokens. The on-dark --panel-* here measured
+    // 2.9:1 (--panel-warn) and 2.5:1 (--panel-bad-hi) as text on white.
+    const color = unknown ? 'var(--text-dim)' : t.score >= 85 ? 'var(--ok)' : t.score >= 70 ? 'var(--warn)' : 'var(--danger)';
     return `<div class="perf-trend-row">
       <div class="perf-trend-wk">W${t.week}</div>
       <div class="perf-trend-bar">
@@ -645,8 +678,10 @@ function _perfDraw() {
     // Από τα links τοποθεσιών — τα Summary/Points ήταν φαντάσματα (26/8).
     const _loadRaw = orderLoadName(f, 999) || '';
     const _delRaw  = orderDelName(f, 999) || '';
-    const _load = (Array.isArray(_loadRaw) ? _loadRaw.join(' / ') : _loadRaw).split('/')[0]?.trim().slice(0, 15) || '?';
-    const _del  = (Array.isArray(_delRaw) ? _delRaw.join(' / ') : _delRaw).split('/')[0]?.trim().slice(0, 15) || '?';
+    // No slice(0,15): «E u J Strobl Ge» is a company the dispatcher phones
+    // (DESIGN rule 6). The column has the width; the cut had no reason.
+    const _load = (Array.isArray(_loadRaw) ? _loadRaw.join(' / ') : _loadRaw).split('/')[0]?.trim() || '—';
+    const _del  = (Array.isArray(_delRaw) ? _delRaw.join(' / ') : _delRaw).split('/')[0]?.trim() || '—';
     const route = `${escapeHtml(_load)} → ${escapeHtml(_del)}`;
     const date = toLocalDate(f['Delivery DateTime']);
     return `<tr>
@@ -658,18 +693,27 @@ function _perfDraw() {
   }).join('');
 
   // Conic score ring — weekly score
-  const scoreColor = vals.weekly_score >= 85 ? 'var(--panel-ok-hi)' : vals.weekly_score >= 70 ? 'var(--panel-warn)' : 'var(--panel-bad-hi)';
-  const scoreDeg = Math.min(vals.weekly_score, 100) * 3.6;
+  const scoreUnknown = vals.weekly_score < 0;
+  const scoreEarly = !scoreUnknown && vals._meta.weekEarly;
+  const scoreColor = (scoreUnknown || scoreEarly) ? 'var(--text-dim)' : vals.weekly_score >= 85 ? 'var(--ok)' : vals.weekly_score >= 70 ? 'var(--warn)' : 'var(--danger)';
+  const scoreDeg = scoreUnknown ? 0 : Math.min(vals.weekly_score, 100) * 3.6;
 
   // Executive Briefing (was Nakis Feedback)
-  const feedback = vals.weekly_score >= 85
-    ? `Εξαιρετικη εβδομαδα! On-time ${vals.on_time}%, dead km ${vals.dead_km >= 0 ? 'μολις ' + vals.dead_km + 'km' : 'χωρις μετρηση'}.`
+  const _v = (n, unit) => n < 0 ? 'χωρίς μέτρηση' : `${n}${unit}`;
+  const feedback = scoreUnknown
+    ? `Χωρίς σκορ για τη W${wn}: ${vals.on_time < 0 ? 'καμία παράδοση με καταγεγραμμένη επίδοση' : `καμία παραγγελία στη W${wn}`}. Δεν σημαίνει κακή εβδομάδα — σημαίνει ότι δεν μετρήθηκε ακόμη.`
+    : scoreEarly
+    ? `Πολύ νωρίς για κρίση — ${vals._meta.weekN} ${vals._meta.weekN === 1 ? 'παραγγελία' : 'παραγγελίες'} στη W${wn}. Συνέπεια παράδοσης ${_v(vals.on_time, '%')}, κενά χλμ ${_v(vals.dead_km, ' χλμ')}.`
+    : vals.weekly_score >= 85
+    ? `Εξαιρετική εβδομάδα. Συνέπεια παράδοσης ${_v(vals.on_time, '%')}, κενά χλμ ${vals.dead_km >= 0 ? 'μόλις ' + vals.dead_km + ' χλμ' : 'χωρίς μέτρηση'}.`
     : vals.weekly_score >= 70
-    ? `Καλη εβδομαδα. Προσεξε: dead km ${vals.dead_km >= 0 ? vals.dead_km + 'km' : 'χωρις μετρηση'} (target ≤50km).`
-    : `Χρειαζεται βελτιωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
+    ? `Καλή εβδομάδα. Πρόσεξε: κενά χλμ ${_v(vals.dead_km, ' χλμ')} (στόχος ≤ 50 χλμ).`
+    : `Χρειάζεται βελτίωση. Ολοκλήρωση πλάνου ${_v(vals.plan_complete, '%')}, συνέπεια παράδοσης ${_v(vals.on_time, '%')}.`;
+  // No warning on an unknown (-1) or a too-early week: «αδρανή φορτηγά» from
+  // three Monday orders is the same false alarm the card used to raise.
   const warnings = [
-    vals.dead_km > 100 ? 'Dead KM >100km — έλεγξε import matching' : '',
-    vals.fleet_usage < 60 ? 'Fleet usage χαμηλό — αδρανή φορτηγά' : '',
+    vals.dead_km > 100 ? 'Κενά χλμ > 100 — έλεγξε το ταίριασμα εισαγωγών' : '',
+    (!scoreEarly && vals.fleet_usage >= 0 && vals.fleet_usage < 60) ? 'Χαμηλή αξιοποίηση στόλου — αδρανή φορτηγά' : '',
   ].filter(Boolean).join(' · ');
 
   // Goals
@@ -679,7 +723,7 @@ function _perfDraw() {
     <div class="perf-goal-row">
       <input type="checkbox" class="perf-goal-check" ${g.done ? 'checked' : ''} onchange="_perfToggleGoal(${i})">
       <span class="perf-goal-text ${g.done ? 'done' : ''}">${escapeHtml(g.text)}</span>
-      <button class="perf-goal-remove" onclick="_perfRemoveGoal(${i})" title="Remove">${_i('x', 12)}</button>
+      <button class="perf-goal-remove" onclick="_perfRemoveGoal(${i})" title="Αφαίρεση">${_i('x', 12)}</button>
     </div>`).join('') : '<div class="perf-goal-empty">Δεν έχουν οριστεί στόχοι</div>';
   const goalInput = `<div class="perf-goal-input-row">
     <input id="perf-goal-input" type="text" placeholder="Νέος στόχος..." onkeydown="if(event.key==='Enter')_perfAddGoal()">
@@ -708,10 +752,10 @@ function _perfDraw() {
           </div>
           <div class="perf-live" style="${PERF.weekOffset !== 0 ? 'opacity:0.4' : ''}">
             <span class="perf-live-dot"></span>
-            ${PERF.weekOffset === 0 ? 'LIVE' : 'PAST'}
+            ${PERF.weekOffset === 0 ? 'ΤΡΕΧΟΥΣΑ' : 'ΠΑΡΕΛΘΟΝ'}
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${_i('refresh', 14)} Refresh</button>
-          <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${_i('file_text', 14)} Export CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="renderPerformance()">${_i('refresh', 14)} Ανανέωση</button>
+          <button class="btn btn-ghost btn-sm" onclick="_perfExportCSV()">${_i('file_text', 14)} Εξαγωγή CSV</button>
         </div>
       </div>
 
@@ -726,7 +770,7 @@ function _perfDraw() {
               <span class="perf-card-meta">τελευταίες 4 εβδομάδες</span>
             </div>
             <div class="perf-card-body">
-              ${trendHTML || '<div style="color:var(--p-text-dim);font-size:12px;padding:var(--space-3) 0">Χωρίς δεδομένα τάσης</div>'}
+              ${trendHTML || '<div style="color:var(--p-text-dim);font-size:12px;padding:var(--space-3) 0">Καμία εβδομάδα με καταγεγραμμένη επίδοση — ORDERS, 4 εβδομάδες</div>'}
             </div>
           </div>
 
@@ -739,7 +783,7 @@ function _perfDraw() {
             <div class="perf-card-body flush">
               <table class="perf-activity">
                 <thead><tr><th>ΗΜ/ΝΙΑ</th><th>ΔΡΟΜΟΛΟΓΙΟ</th><th>PAL</th><th>ΕΠΙΔΟΣΗ</th></tr></thead>
-                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--p-text-dim);padding:var(--space-5)">Καμία παράδοση ακόμη</td></tr>'}</tbody>
+                <tbody>${activityRows || '<tr><td colspan="4" style="text-align:center;color:var(--p-text-dim);padding:var(--space-6)">Καμία παράδοση με καταγεγραμμένη επίδοση — ORDERS</td></tr>'}</tbody>
               </table>
             </div>
           </div>
@@ -754,20 +798,22 @@ function _perfDraw() {
             </div>
             <div class="perf-card-body perf-score-wrap">
               <div class="perf-score-ring" style="--perf-score-color:${scoreColor};--perf-score-deg:${scoreDeg}deg">
-                <div class="perf-score-num" style="color:${scoreColor}">${vals.weekly_score}</div>
+                <div class="perf-score-num" style="color:${scoreColor}">${scoreUnknown ? '—' : vals.weekly_score}</div>
               </div>
-              <div class="perf-score-label">ΣΥΝΟΛΙΚΗ ΑΠΟΔΟΣΗ</div>
+              <div class="perf-score-label">ΣΥΝΟΛΙΚΗ ΑΠΟΔΟΣΗ${scoreUnknown ? ' · χωρίς δείγμα' : scoreEarly ? ' · πολύ νωρίς' : ''}</div>
               <div class="perf-score-bars">
                 ${kpiDefs.map(kpi => {
                   const v = vals[kpi.id] ?? 0;
-                  const c = kpi.invert ? (v <= kpi.target ? 'var(--panel-ok-hi)' : 'var(--panel-bad-hi)') : (v >= kpi.target ? 'var(--panel-ok-hi)' : 'var(--panel-bad-hi)');
-                  const pctFill = Math.min(kpi.invert ? (kpi.target / Math.max(v, 1) * 100) : (v / kpi.target * 100), 100);
+                  const vUnknown = v < 0;
+                  const vEarly = !vUnknown && vals._meta.weekEarly && WEEK_KPIS.has(kpi.id);
+                  const c = (vUnknown || vEarly) ? 'var(--text-dim)' : kpi.invert ? (v <= kpi.target ? 'var(--ok)' : 'var(--danger)') : (v >= kpi.target ? 'var(--ok)' : 'var(--danger)');
+                  const pctFill = (vUnknown || vEarly) ? 0 : Math.min(kpi.invert ? (kpi.target / Math.max(v, 1) * 100) : (v / kpi.target * 100), 100);
                   return `<div class="perf-score-bar-row">
                     <span class="perf-score-bar-lbl">${kpi.label.split(' ').slice(0,2).join(' ')}</span>
                     <div class="perf-score-bar-track">
                       <div class="perf-score-bar-fill" style="width:${pctFill}%;background:${c}"></div>
                     </div>
-                    <span class="perf-score-bar-val" style="color:${c}">${v}${kpi.unit}</span>
+                    <span class="perf-score-bar-val" style="color:${c}">${vUnknown ? '—' : v + kpi.unit}</span>
                   </div>`;
                 }).join('')}
               </div>
@@ -815,7 +861,7 @@ function _perfSaveGoals(goals) {
   try { localStorage.setItem(_perfGoalsKey(), JSON.stringify(goals)); }
   catch (e) {
     if (typeof logError === 'function') logError(e, 'perf goals save (quota?)');
-    if (typeof toast === 'function') toast('Error saving goal — storage full?', 'error');
+    if (typeof toast === 'function') toast('Ο στόχος δεν αποθηκεύτηκε — γεμάτος χώρος του browser;', 'error');
   }
 }
 function _perfAddGoal() {
@@ -824,7 +870,7 @@ function _perfAddGoal() {
   const goals = _perfGetGoals();
   // Crash-test fix: cap goals at 50 to prevent unbounded localStorage growth.
   if (goals.length >= 50) {
-    if (typeof toast === 'function') toast('Max 50 goals — delete some first', 'warn');
+    if (typeof toast === 'function') toast('Μέγιστο 50 στόχοι — σβήσε πρώτα κάποιους', 'warn');
     return;
   }
   goals.push({ text: input.value.trim().slice(0, 200), done: false, created: localToday() });
@@ -874,7 +920,7 @@ window._perfShiftWeek = _perfShiftWeek;
 
 function _perfExportCSV() {
   const orders = PERF.orders;
-  if (!orders || !orders.length) { toast('No data to export', 'error'); return; }
+  if (!orders || !orders.length) { toast('Δεν υπάρχουν δεδομένα για εξαγωγή', 'error'); return; }
   const rows = [['Order No','Direction','Week','Client','Load Date','Del Date','Pallets','Truck','Driver','Partner','Delivery Performance','Status']];
   orders.forEach(r => { const f = r.fields;
     rows.push([f['Order Number']||'', f['Direction']||'', f['Week Number']||'',
@@ -889,7 +935,7 @@ function _perfExportCSV() {
   const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
   a.download = `performance_${localToday()}.csv`; a.click(); URL.revokeObjectURL(a.href);
-  toast('CSV exported');
+  toast('Το CSV εξήχθη');
 }
 
 })();
