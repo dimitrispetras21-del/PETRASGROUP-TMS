@@ -145,7 +145,7 @@ function dlVisible() {
     // an explicit false hides/moves a row (DESIGN.md #3).
     if (_dl.filter === 'all' && b.active === false) return false;
     if (_dl.filter === 'balance' && (b.active === false || !(Number(b.balance) !== 0))) return false;
-    if (_dl.filter === 'pending' && !(b.pending_count > 0)) return false;
+    if (_dl.filter === 'pending' && !(b.pending_count > 0 && b.active !== false)) return false;
     if (_dl.filter === 'stale' && !(b.days_since_last_entry > 30 && b.active !== false)) return false;
     if (_dl.filter === 'inactive' && b.active !== false) return false;
     return !q || String(b.full_name).toLowerCase().includes(q);
@@ -276,7 +276,7 @@ function dlRenderDriver(b) {
 }
 
 function dlOpenForm(driverId, type) {
-  const drivers = _dl.balances.filter(b => b.active);
+  const drivers = _dl.balances.filter(b => b.active !== false); // NULL active = unknown, still a real driver (I1 rule everywhere)
   const m = document.getElementById('dlModal'); document.getElementById('dlOverlay').classList.add('open'); m.classList.add('open');
   const cur = driverId ? drivers.find(d => d.driver_id === driverId) : null;
   const bal = cur ? Number(cur.balance || 0) : 0;
@@ -330,7 +330,7 @@ function dlDriverChanged(sel) {
   const found = _dl.balances.find(b => b.driver_id === Number(sel.value));
   document.getElementById('dlModal').dataset.balance = String(Number(found?.balance || 0));
   const driverHint = document.getElementById('dlDriverHint');
-  if (driverHint) driverHint.textContent = found ? 'υπόλοιπο ' + dlEur(found.balance) + ' πριν την κίνηση' : 'χωρίς καρτέλα';
+  if (driverHint) driverHint.textContent = found ? 'υπόλοιπο ' + dlEur(found.balance) + ' πριν την κίνηση' : (sel.value ? 'χωρίς καρτέλα' : '');
   dlRecalc();
 }
 
