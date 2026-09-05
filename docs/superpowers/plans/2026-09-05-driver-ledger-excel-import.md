@@ -2127,3 +2127,91 @@ git commit -q -m "ledger-import: inventory measures ΠΡΟΟΔΕΥΤΙΚΟ break
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 2e: rules — totals need "no date", payment lines may carry expenses
+
+**Why.** The Task 2b review found two classification defects in the brief's own code:
+1. `ΣΥΝΟΛ` anywhere in the row text made it a totals line — a dated trip described as `ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ 24 ΠΑΛΕΤΕΣ` vanished silently into `totals_skipped`.
+2. A `ΜΕΤΡΗΤΑ` line with a small ΕΞΟΔΑ (a bank fee) became a "trip to ΜΕΤΡΗΤΑ" because `(exp and desc)` was tested before the payment keywords.
+
+**Files:**
+- Modify: `tools/ledger-import/rules.py` (function `classify` only)
+- Modify: `tools/ledger-import/tests/test_rules.py` (add tests)
+
+**Interfaces:** unchanged. New behaviour: a payment line with ΕΞΟΔΑ produces `amount = ΕΛΑΒΕ − ΕΞΟΔΑ` (the Excel arithmetic of the line) with the expenses named in `note`.
+
+- [ ] **Step 1: Add tests** (inside `TestClassify`):
+
+```python
+    def test_dated_row_mentioning_synoliko_is_not_totals(self):
+        e = classify({'date': D(2024, 5, 10), 'route': 'ΓΕΡΜΑΝΙΑ', 'advance': 300, 'expenses': 50, 'value': 800,
+                      '_row_text': 'ΓΕΡΜΑΝΙΑ ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ 24 ΠΑΛΕΤΕΣ'})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertEqual(e['trip_value'], 800.0)
+
+    def test_synolo_cell_is_totals_even_with_a_date(self):
+        self.assertEqual(classify({'date': D(2024, 12, 31), 'route': 'ΣΥΝΟΛΟ', 'value': 9000, 'advance': 5000, 'expenses': 300}), 'TOTALS')
+        self.assertEqual(classify({'date': D(2024, 12, 31), 'route': 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ', 'value': 9000}), 'TOTALS')
+
+    def test_payment_line_with_expenses_nets_them(self):
+        e = classify({'date': D(2024, 4, 1), 'route': 'ΜΕΤΡΗΤΑ', 'advance': 200, 'expenses': 5, 'value': 0})
+        self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 195.0)
+        self.assertIn('ΕΞΟΔΑ 5.00', e['note'])
+
+    def test_payment_line_swallowed_by_expenses_is_unknown(self):
+        with self.assertRaises(Unknown):
+            classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 5})
+```
+
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_rules 2>&1 | tail -3` → 3 failures/errors among the new tests.
+
+- [ ] **Step 3: Edit `classify` in `rules.py`**
+
+Replace the first statement of `classify` (the `if 'ΣΥΝΟΛ' in norm(c.get('_row_text') ...: return 'TOTALS'`) and the later `date = ...` line with this block at the top of the function:
+
+```python
+    # A totals line is a cell that IS the word ΣΥΝΟΛΟ, or a ΣΥΝΟΛ- mention on a
+    # line without a date. A dated line that merely mentions ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ in
+    # its description is a trip and must not vanish into totals_skipped.
+    date = to_date(c.get('date')) or to_date(c.get('date_end'))
+    route_n = norm(c.get('route') or '')
+    if route_n in ('ΣΥΝΟΛΟ', 'ΣΥΝΟΛΑ', 'ΣΥΝΟΛΟ:', 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ') or \
+       (date is None and ('ΣΥΝΟΛ' in norm(c.get('_row_text') or '') or 'ΣΥΝΟΛ' in norm(c.get('date') or ''))):
+        return 'TOTALS'
+```
+(and delete the old `date = to_date(...)` line further down so `date` is computed once).
+
+Insert this block immediately BEFORE the `if val or has_seq or (exp and desc):` trip branch:
+
+```python
+    # A payment keyword wins over the "expenses = journey" heuristic: a ΜΕΤΡΗΤΑ
+    # line with a 5 € bank fee is a payment of ΕΛΑΒΕ − ΕΞΟΔΑ, not a trip to
+    # "ΜΕΤΡΗΤΑ". The net keeps the line's Excel arithmetic (ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ).
+    if (cash or bank) and not val and not has_seq and adv and adv > 0:
+        net = float(d2(adv - (exp or 0)))
+        if net <= 0: raise Unknown('payment line whose expenses cancel the amount: %r' % label)
+        e = {'entry_type': 'payment_bank' if (bank and not cash) else 'payment_cash', 'entry_date': iso, 'amount': net}
+        note = label
+        if exp: note = (label + ' · ' if label else '') + 'ΕΞΟΔΑ %.2f στη γραμμή πληρωμής (καθαρό %.2f)' % (exp, net)
+        if note: e['note'] = note
+        return e
+```
+
+Then add a why-comment above the guard the previous implementer added (`if exp and adv and not (desc or val or has_seq): raise Unknown(...)`):
+```python
+    # Advance + expenses with no description, value or counter: could be a trip
+    # whose route was never typed or cash handed over with a receipt — a human decides.
+```
+
+- [ ] **Step 4: Run** the rules tests (34 OK) and the whole suite (`python3 -m unittest discover -s tests 2>&1 | tail -3`; count = previous total + 4).
+
+- [ ] **Step 5: Real run** `python3 tools/ledger-import/inventory.py` — record the line; `totals skipped` should drop noticeably (some of the 2,800 were dated rows) and `unknown rows` may rise slightly; `running inconsistent` must not rise above 9. If it does, report DONE_WITH_CONCERNS with the newly inconsistent sheets.
+
+- [ ] **Step 6: Commit**
+```bash
+git add tools/ledger-import/rules.py tools/ledger-import/tests/test_rules.py
+git commit -q -m "ledger-import: totals need no date (ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ is a trip), payment lines net their expenses (review 2b)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
