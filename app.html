@@ -73,13 +73,13 @@
         <span id="userName">—</span>
         <span class="role-badge" id="roleBadge">—</span>
       </div>
-      <button class="btn-logout" onclick="logout()">Sign out</button>
+      <button class="btn-logout" onclick="logout()">Αποσύνδεση</button>
     </div>
   </div>
 
   <!-- Content -->
   <div class="content" id="content" role="main" aria-live="polite">
-    <div class="loading"><div class="spinner"></div> Loading...</div>
+    <div class="loading"><div class="spinner"></div> Φόρτωση…</div>
   </div>
 
 </div>
@@ -192,7 +192,10 @@ function init() {
   document.getElementById('userName').textContent   = user.name;
   document.getElementById('userAvatar').textContent = user.name.charAt(0).toUpperCase();
   const rb = document.getElementById('roleBadge');
-  rb.textContent = user.role;
+  // Δ6 (design audit 5/9): badge showed the raw PERMISSIONS key. class= stays
+  // on the raw role (styling hook, and existing CSS selectors key off it) —
+  // only the visible text is translated.
+  rb.textContent = (typeof roleLabelGr === 'function') ? roleLabelGr(user.role) : user.role;
   rb.className   = 'role-badge ' + user.role;
   initModal();
   renderNav();

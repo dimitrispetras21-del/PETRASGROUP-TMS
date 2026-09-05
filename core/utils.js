@@ -14,6 +14,22 @@ function _tmsLog(...args) {
 }
 if (typeof window !== 'undefined') window._tmsLog = _tmsLog;
 
+// -- Role label (Greek) -------------------------
+// Δ6 (design audit 5/9): the topbar badge printed the raw PERMISSIONS role
+// key ('owner', 'accountant', ...) in English on every single page. No
+// generic role→label map existed yet — performance.js has one, but it is a
+// per-person job-title list for a different screen, not this. 'dispatcher'
+// stays as-is: the team already uses the English word in speech.
+const ROLE_LABEL_GR = {
+  owner: 'Ιδιοκτήτης',
+  management: 'Διοίκηση',
+  accountant: 'Οικονομικά',
+  dispatcher: 'Dispatcher',
+  warehouse: 'Αποθήκη',
+};
+function roleLabelGr(role) { return ROLE_LABEL_GR[role] || role; }
+if (typeof window !== 'undefined') window.roleLabelGr = roleLabelGr;
+
 // -- Error Toast Notifications -----------------
 // Non-blocking bottom-right toast for API / runtime errors.
 // Max 3 visible at once; auto-dismiss after 5 s.
@@ -1082,7 +1098,7 @@ function renderUndoButton() {
   if (!a) {
     // Idle state: always visible, icon only, dimmed, title shows "nothing to undo"
     btn.classList.add('undo-btn-idle');
-    btn.title = 'Nothing to undo';
+    btn.title = 'Καμία ενέργεια για αναίρεση'; // Δ6 (design audit 5/9): shell-wide GR pass
     if (lbl) lbl.style.display = 'none';
     if (cd) cd.style.display = 'none';
     if (_undoTickTimer) { clearInterval(_undoTickTimer); _undoTickTimer = null; }

@@ -34,8 +34,14 @@ body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#f
 #doc{display:none;padding:36px 44px;max-width:900px;margin:0 auto}
 
 /* ── HEADER ── */
+/* Δ5 (design audit 5/9): padding-bottom/margin-bottom trimmed from 18/20 to
+   10/12 — this and the other spacing cuts below (route2/vb/cargo/tl/stop/
+   chk/contact2) recover the ~40px a single-leg order needed to keep the
+   signature block (.sigs2, page-break-inside:avoid) on the SAME page
+   instead of alone on a near-empty page 2. No field removed, nothing
+   reworded — only the gaps between blocks. */
 .doc-header{display:flex;justify-content:space-between;align-items:flex-start;
-  padding-bottom:18px;margin-bottom:20px;
+  padding-bottom:10px;margin-bottom:12px;
   border-bottom:3px solid #0B1929}
 .carrier-label{font-size:8px;font-weight:700;letter-spacing:1.5px;
   text-transform:uppercase;color:#9CA3AF;margin-bottom:4px}
@@ -164,20 +170,20 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .doctag .s{font-size:10px;color:#475569}
 .doctag .ordno{display:inline-block;margin-top:5px;font-size:10.5px;font-weight:800;background:#F4F6F9;border:1px solid #D6DDE6;border-radius:6px;padding:3px 10px;letter-spacing:.5px}
 .doctag .cxl{font-size:8.5px;color:#94A3B8;margin-top:4px}
-.vb{background:#0B1929;border-radius:10px;padding:12px 18px;display:flex;margin-bottom:12px}
+.vb{background:#0B1929;border-radius:10px;padding:12px 18px;display:flex;margin-bottom:8px}
 .vb .c{flex:1;border-right:1px solid rgba(255,255,255,.1);padding:0 16px}
 .vb .c:first-child{padding-left:0}.vb .c:last-child{border:none}
 .vb .k{font-size:7.5px;font-weight:800;letter-spacing:1.4px;color:rgba(196,207,219,.5);text-transform:uppercase;margin-bottom:3px}
 .vb .v{font-size:13.5px;font-weight:800;color:#fff;letter-spacing:.4px}
 .vb .v small{font-weight:500;color:rgba(255,255,255,.6);font-size:10px}
-.route2{display:flex;align-items:stretch;border:1.5px solid #0B1929;border-radius:10px;overflow:hidden;margin-bottom:12px}
+.route2{display:flex;align-items:stretch;border:1.5px solid #0B1929;border-radius:10px;overflow:hidden;margin-bottom:8px}
 .route2 .side{flex:1;padding:11px 16px;min-width:0}
 .route2 .side.to{text-align:right;background:#F4F6F9}
 .route2 .k{font-size:7.5px;font-weight:800;letter-spacing:1.6px;color:#94A3B8;text-transform:uppercase}
 .route2 .n{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;color:#0B1929;line-height:1.2;margin:2px 0}
 .route2 .d{font-size:11px;font-weight:800;color:#0284C7}
 .route2 .mid{display:flex;align-items:center;padding:0 6px;color:#0284C7;font-size:20px;font-weight:700}
-.cargo{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px}
+.cargo{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}
 .chip{border:1px solid #D6DDE6;border-radius:9px;padding:7px 11px;background:#fff}
 .chip .k{font-size:7.5px;font-weight:800;letter-spacing:1.1px;color:#94A3B8;text-transform:uppercase;margin-bottom:2px}
 .chip .v{font-size:13px;font-weight:800;color:#0B1929}
@@ -186,9 +192,9 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .chip.pe-yes{border-color:rgba(6,118,71,.45);background:#F2FBF6}.chip.pe-yes .v{color:#067647}
 .chip.pe-no{border-color:rgba(220,38,38,.4);background:#FEF6F5}.chip.pe-no .v{color:#DC2626}
 .chip.alert{border-color:rgba(220,38,38,.4);background:#FEF6F5}.chip.alert .v{color:#DC2626;font-size:11px}
-.tl{position:relative;margin:2px 0 14px;padding-left:30px}
+.tl{position:relative;margin:2px 0 10px;padding-left:30px}
 .tl::before{content:'';position:absolute;left:10px;top:14px;bottom:14px;width:2px;background:#D6DDE6}
-.stop{position:relative;background:#FAFBFC;border:1px solid #E7EBF0;border-radius:10px;padding:11px 15px;margin-bottom:9px;page-break-inside:avoid}
+.stop{position:relative;background:#FAFBFC;border:1px solid #E7EBF0;border-radius:10px;padding:11px 15px;margin-bottom:7px;page-break-inside:avoid}
 .stop .num{position:absolute;left:-30px;top:11px;width:21px;height:21px;border-radius:50%;background:#0284C7;color:#fff;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px #fff}
 .stop.load .num{background:#0B1929}
 .stop .type{font-size:8px;font-weight:800;letter-spacing:1.2px;color:#fff;background:#0B1929;border-radius:3px;padding:2px 7px;text-transform:uppercase}
@@ -210,10 +216,10 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .rate2 .terms small{font-size:9.5px;color:#475569;font-weight:600}
 .notes2{border:1px solid #EAD9B0;border-radius:8px;background:#FFFCF5;padding:9px 15px;font-size:11px;margin-bottom:12px}
 .notes2 b{text-transform:uppercase;font-size:8.5px;letter-spacing:1px;color:#B45309}
-.chk{display:flex;gap:16px;align-items:baseline;border:1px solid #D6DDE6;border-radius:8px;padding:9px 15px;font-size:11px;margin-bottom:12px;flex-wrap:wrap}
+.chk{display:flex;gap:16px;align-items:baseline;border:1px solid #D6DDE6;border-radius:8px;padding:9px 15px;font-size:11px;margin-bottom:8px;flex-wrap:wrap}
 .chk b{font-size:8.5px;font-weight:800;letter-spacing:1.2px;color:#0B1929;text-transform:uppercase}
 .chk span{color:#0F172A;font-weight:600}
-.contact2{display:flex;gap:18px;background:#F4F6F9;border-radius:8px;padding:8px 15px;font-size:10.5px;color:#475569;margin-bottom:12px;flex-wrap:wrap}
+.contact2{display:flex;gap:18px;background:#F4F6F9;border-radius:8px;padding:8px 15px;font-size:10.5px;color:#475569;margin-bottom:8px;flex-wrap:wrap}
 .contact2 b{color:#0B1929}
 .sigs2{display:grid;grid-template-columns:1fr 1fr;border:1.5px solid #0B1929;border-radius:8px;overflow:hidden;page-break-inside:avoid}
 .sigs2 .s{padding:11px 15px 7px;border-right:1.5px solid #0B1929}
@@ -349,7 +355,7 @@ function stopQR(lat,lng){
 }
 var _stopSeq=0; // συνεχής αρίθμηση σημείων ανά έγγραφο (①②③…)
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
-function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr){
+function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr,isEst){
   var L=LBL||LBL_EN;
   var typeCls='', typeLbl='';
   if(dtLabel==='loading'){typeCls='load'; typeLbl=L.load;}
@@ -368,7 +374,10 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   if(mapsUrl)addrBits.push(L.coords+': '+loc.lat+', '+loc.lng+' · <a href="'+mapsUrl+'" target="_blank">📍 '+mapsUrl.replace('https://','')+'</a>');
   if(addrBits.length)h+='<div class="addr">'+addrBits.join('<br>')+'</div>';
   h+='<div class="grid">';
-  h+='<div class="f"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+'</b><span class="big">'+fmtDT(dt)+'</span></div>';
+  // Δ4c (design audit 5/9): vDtEst was computed at the call site (Veroia
+  // Switch legs without a real cross-dock date yet) but never reached the
+  // page — the driver saw a firm date for a day that is still a guess.
+  h+='<div class="f"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+'</b><span class="big">'+fmtDT(dt)+(isEst?' (εκτ.)':'')+'</span></div>';
   if(loc.hours)h+='<div class="f"><b>'+L.hours+'</b><span>'+loc.hours+'</span></div>';
   if(loc.days)h+='<div class="f"><b>'+L.days+'</b><span>'+loc.days+'</span></div>';
   h+='<div class="f"><b>'+L.pal+'</b><span>'+(pals||'—')+' × '+(palType||'EUR')+'</span></div>';
@@ -429,7 +438,7 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
-      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
+      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode'],vDtEst);
   }
   var loadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Loading'})
     .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
@@ -459,7 +468,7 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     var vDtEst=!_vsReal;
     var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()-86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'delivery',vDt,
-      fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
+      fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','',vDtEst);
   }
   // Try ORDER_STOPS first
   var unloadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Unloading'})
@@ -539,7 +548,17 @@ async function loadAll(){
     }
     renderDocs(htmlArr);
   }catch(err){
-    document.getElementById('loading').innerHTML='<span style="color:#DC2626">Error: '+err.message+'</span>';
+    // Δ4a (design audit 5/9): raw «Error: <message>» told the driver/partner
+    // nothing and read as English. Same Κ7 block already used above for the
+    // locations failure (icon, GR text, retry) — a failed load is not proof
+    // the order doesn't exist.
+    document.getElementById('loading').innerHTML=
+      '<div style="max-width:420px;margin:80px auto;text-align:center;font-family:\'DM Sans\',sans-serif;color:#7F1D1D;background:#FEE2E2;border:2px solid #B91C1C;border-radius:8px;padding:20px 24px">'
+      +'<div style="font-size:24px;margin-bottom:8px">⚠</div>'
+      +'<div style="font-weight:700">Δεν φορτώθηκε η εντολή — δεν σημαίνει ότι δεν υπάρχει. Ξαναδοκίμασε.</div>'
+      +'<button type="button" onclick="location.reload()" style="margin-top:14px;padding:8px 18px;border:1px solid #7F1D1D;border-radius:6px;background:#fff;color:#7F1D1D;font-size:13px;cursor:pointer">Ξαναδοκίμασε</button>'
+      +'</div>';
+    console.error('print: loadAll failed', err);
   }
 }
 
@@ -603,7 +622,14 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var legLabel=isExport?'Export':'Import';
   var wk=f['Week Number']||f['Week Number']||'—';
   var rate=eur(f['Partner Rate']);
-  var orderNo=f['Order Number']||String(orderRec.id||orderId||'').slice(-6).toUpperCase(); // group-safe (Wave 3 fix)
+  // Δ4d (design audit 5/9): 'Order Number' does not exist in the Worker's
+  // field map (CLAUDE.md) so this always fell through to a slice of the
+  // internal record id — six characters that match nothing outside the
+  // system (CMR, email, accounting), exactly the mistake orders_intl.js Δ2
+  // and invoicing.js _invOrderNo already ruled out. orders_intl.js:523/798
+  // confirm the app's own convention for this table: Reference, with an
+  // explicit "not recorded" when absent — never a record-id fallback.
+  var orderNo=f['Reference']||'— δεν έχει καταχωρηθεί';
   var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
   _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
@@ -669,9 +695,13 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     '<div class="pbar-spacer"></div>';
 
   var refNo=f['Reference']||'';
+  // Δ4b (design audit 5/9): the driver sheet is Greek throughout (Redesign
+  // 9/8: Συνεργάτης=EN, Οδηγός=GR) — 'Dispatcher'/'Reference' were the two
+  // English labels left in it. The partner (EN) object is untouched on
+  // purpose.
   var _m=isPartner
     ?{date:'Date',week:'Week',cat:'Category',disp:'Dispatcher',ord:'Order No',ref:'Reference',flags:'Flags'}
-    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Dispatcher',ord:'Αρ. Εντολής',ref:'Reference',flags:'Σημάνσεις'};
+    :{date:'Ημερομηνία',week:'Εβδομάδα',cat:'Κατηγορία',disp:'Υπεύθυνος',ord:'Αρ. Εντολής',ref:'Αναφορά',flags:'Σημάνσεις'};
   var metaHTML='<div class="meta">'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.date+'</span><span class="meta-val">'+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+'</span></div>'+
     '<div class="meta-item"><span class="meta-lbl">'+_m.week+'</span><span class="meta-val">W'+wk+'</span></div>'+

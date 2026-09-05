@@ -550,7 +550,8 @@ function _expiryFilterRows(rows) {
   let out = rows;
   if (_expiryTab === 'expired') out = out.filter(r => r.worst !== null && r.worst < 0);
   if (_expiryTab === 'expiring30') out = out.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30);
-  if (_expiryTab === 'valid') out = out.filter(r => r.worst === null || r.worst > 30);
+  if (_expiryTab === 'valid') out = out.filter(r => r.worst !== null && r.worst > 30);
+  if (_expiryTab === 'nodate') out = out.filter(r => r.worst === null);
   // Keeps only vehicles whose THAT document is expired — matches what the KPI counted.
   if (_expiryDocType) out = out.filter(r => r.docs.some(d => d.label === _expiryDocType && d.days !== null && d.days < 0));
   if (_expirySearch) { const q = _expirySearch; out = out.filter(r => r.plate.toLowerCase().includes(q) || r.brand.toLowerCase().includes(q) || r.model.toLowerCase().includes(q) || (r.insurer||'').toLowerCase().includes(q)); }
@@ -586,11 +587,18 @@ function _expiryPaint() {
   const expiredTrucks = truckRows.filter(r => r.worst !== null && r.worst < 0).length;
   const expiredTrailers = trailerRows.filter(r => r.worst !== null && r.worst < 0).length;
   const expiring30 = all.filter(r => r.worst !== null && r.worst >= 0 && r.worst <= 30).length;
-  const valid = all.filter(r => r.worst === null || r.worst > 30).length;
+  // Δ3 (design audit 5/9, K3 «άγνωστο δεν είναι μηδέν»): a vehicle with NO
+  // expiry date at all (worst===null) used to fall into "valid" and count as
+  // compliant — indistinguishable from a vehicle actually checked and in
+  // order. It now gets its own bucket, and compliance is computed only over
+  // vehicles that have at least one date on record.
+  const valid = all.filter(r => r.worst !== null && r.worst > 30).length;
+  const noDate = all.filter(r => r.worst === null).length;
   const expired = expiredTrucks + expiredTrailers;
   const total = all.length;
-  const compliant = total - expired;
-  const compliancePct = _pctOf(compliant, total);
+  const withDate = total - noDate;
+  const compliant = withDate - expired;
+  const compliancePct = _pctOf(compliant, withDate);
   const compCls = compliancePct === null ? '' : compliancePct >= 90 ? 'ok' : compliancePct >= 70 ? 'warn' : 'bad';
 
   const renewals = _expiryRenewals();
@@ -655,6 +663,7 @@ function _expiryPaint() {
       ${pill('expired', 'ληγμένα', expired, 'is-danger')}
       ${pill('expiring30', 'λήγουν ≤30 ημ.', expiring30, 'is-warning')}
       ${pill('valid', 'σε ισχύ', valid, 'is-ok')}
+      ${pill('nodate', 'χωρίς ημερομηνία', noDate, 'is-dim')}
       ${_expiryDocType ? `<button type="button" class="mnt-pill active" onclick="_expiryDocType='';_expiryPaint()" title="Καθαρισμός φίλτρου εγγράφου">μόνο ${escapeHtml(EXPIRY_DOC_GR[_expiryDocType] || _expiryDocType)} ✕</button>` : ''}
       <span class="mnt-spacer"></span>
       <input class="mnt-search" id="exp-q" placeholder="Αναζήτηση πινακίδας ή μάρκας…" value="${escapeHtml(_expirySearch)}" oninput="_expirySearchFn(this.value)">
@@ -668,7 +677,7 @@ function _expiryPaint() {
         <span class="mnt-kpi-l">Συμμόρφωση στόλου</span>
         <span class="mnt-kpi-v ${compCls}" style="font-size:var(--text-xl)">${compliancePct === null ? '—' : compliancePct + '%'}</span>
         <span class="mnt-bar"><i class="${compCls}" style="width:${compliancePct || 0}%"></i></span>
-        <span class="mnt-kpi-s">${compliant}/${total} οχήματα χωρίς ληγμένο έγγραφο</span>
+        <span class="mnt-kpi-s">${compliant}/${withDate} οχήματα χωρίς ληγμένο έγγραφο, από ${withDate} με ημερομηνία</span>
       </button>
       <button type="button" class="mnt-kpi ${_expiryTab === 'expired' ? 'active' : ''}" onclick="_expiryTab='expired';_expiryPaint()">
         <span class="mnt-kpi-l">Οχήματα με ληγμένο</span>
@@ -1450,6 +1459,11 @@ function _maintDashPaint() {
   const activeTrucks = MAINT.trucks.filter(t => t.fields['Active']);
   const activeTrailers = MAINT.trailers.filter(t => t.fields['Active']);
   const totalFleet = activeTrucks.length + activeTrailers.length;
+  // Δ1 (design audit 5/9): the «Σύνολο στόλου» headline showed the ACTIVE
+  // count while the true fleet total sat in the caption — a reader scanning
+  // only the big number saw the smaller figure. Headline = everything on
+  // record, caption spells out how many of those are active.
+  const totalFleetAll = MAINT.trucks.length + MAINT.trailers.length;
 
   const allExpRows = _expiryBuildRows();
   const expiredRows = allExpRows.filter(r => r.days !== null && r.days < 0);
@@ -1543,8 +1557,8 @@ function _maintDashPaint() {
     <div class="mnt-kpis">
       <button type="button" class="mnt-kpi" onclick="_expiryGoto('all')">
         <span class="mnt-kpi-l">Σύνολο στόλου</span>
-        <span class="mnt-kpi-v">${totalFleet}</span>
-        <span class="mnt-kpi-s">ενεργά · ${activeTrucks.length} φορτηγά, ${activeTrailers.length} ρυμ. · ${MAINT.trucks.length + MAINT.trailers.length} σύνολο</span>
+        <span class="mnt-kpi-v">${totalFleetAll}</span>
+        <span class="mnt-kpi-s">ενεργά ${totalFleet}/${totalFleetAll} · ${activeTrucks.length} φορτηγά, ${activeTrailers.length} ρυμ.</span>
       </button>
       <button type="button" class="mnt-kpi" onclick="_expiryGoto('all')">
         <span class="mnt-kpi-l">Συμμόρφωση</span>
@@ -1606,10 +1620,17 @@ function _maintDashPaint() {
 
       <div class="mnt-card">
         <span class="mnt-card-t">Πρόσφατα service</span>
-        ${recent.length ? recent.map(r => { const f = r.fields; return `<div class="mnt-row click" onclick="_svcOpenCard('${r.id}')">
+        ${recent.length ? recent.map(r => {
+          const f = r.fields;
+          // Δ2 (design audit 5/9): same field/badge as the history table's
+          // _svcRowHtml (review, line ~800) — the card used to drop the flag,
+          // so a record needing review looked identical here and «fine» there.
+          const review = f['Needs Review'] ? `<span class="mnt-warn" style="font-size:var(--text-xs)">θέλει έλεγχο</span>` : '';
+          return `<div class="mnt-row click" onclick="_svcOpenCard('${r.id}')">
             <span class="w50 mnt-num">${_fmtDM(f['Date'])}</span>
             <span class="w100">${escapeHtml(f['Vehicle Plate'] || '—')}</span>
             <span class="grow">${escapeHtml(f['Description'] || MAINT_TYPE_LABEL[f['Type']] || '—')}</span>
+            ${review}
             <span class="amt mnt-num">${_fmtCost(f['Cost'])}</span>
           </div>`; }).join('') : `<span class="mnt-dim">Καμία καταγραφή συντήρησης ακόμη</span>`}
         <button type="button" class="mnt-link" style="align-self:flex-start" onclick="navigate('maint_svc')">όλο το ιστορικό →</button>

@@ -288,26 +288,29 @@
       <img src="logo.png" alt="Petras Group">
     </div>
 
-    <div class="form-title">Welcome</div>
-    <div class="form-sub">Sign in to access the system</div>
+    <div class="form-title">Καλώς ήρθατε</div>
+    <div class="form-sub">Συνδεθείτε για πρόσβαση στο σύστημα</div>
 
     <!-- LG-7: a real <form> — native Enter-to-submit, password managers and
          screen readers finally see this as a login form. doLogin() unchanged. -->
     <form onsubmit="doLogin(); return false;">
       <div class="field-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" placeholder="Enter username" autocomplete="username">
+        <label for="username">Όνομα χρήστη</label>
+        <input type="text" id="username" placeholder="Εισαγωγή ονόματος χρήστη" autocomplete="username">
       </div>
 
       <div class="field-group">
-        <label for="password">Password</label>
+        <label for="password">Κωδικός πρόσβασης</label>
         <input type="password" id="password" placeholder="••••••••" autocomplete="current-password">
       </div>
 
-      <button type="submit" class="btn-login">Sign In →</button>
-      <div class="error-msg" id="errMsg">Incorrect username or password</div>
+      <button type="submit" class="btn-login">Σύνδεση →</button>
+      <div class="error-msg" id="errMsg">Λάθος όνομα χρήστη ή κωδικός πρόσβασης</div>
     </form>
-    <div class="form-version">v1.0 · Petras Group TMS · 2026</div>
+    <!-- Δ7 (design audit 5/9): matches core/router.js's page-footer ('v2.0').
+         Not made a shared constant — router.js is outside this change's
+         allowed file list; the two copies must be bumped together by hand. -->
+    <div class="form-version">v2.0 · Petras Group TMS · 2026</div>
   </div>
 </div>
 

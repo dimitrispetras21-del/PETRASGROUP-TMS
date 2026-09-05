@@ -835,8 +835,11 @@
   <!-- Header -->
   <div class="ceo-header">
     <div class="ceo-title-block">
-      <div class="ceo-title">CEO Dashboard</div>
-      <div class="ceo-subtitle">Scaling Up · People · Strategy · Execution · Cash</div>
+      <div class="ceo-title">Πίνακας Διοίκησης</div>
+      <!-- Δ8 (design audit 5/9): matches the menu label (core/router.js) and
+           reuses the four quadrant names already on this page (ΑΝΘΡΩΠΟΙ /
+           ΣΤΡΑΤΗΓΙΚΗ / ΕΚΤΕΛΕΣΗ / ΤΑΜΕΙΟ below) instead of the English ones. -->
+      <div class="ceo-subtitle">Άνθρωποι · Στρατηγική · Εκτέλεση · Ταμείο</div>
     </div>
     <div class="ceo-period-seg">
       <button class="ceo-period-btn${_period==='week'?' active':''}"    data-period="week">Εβδομάδα</button>
