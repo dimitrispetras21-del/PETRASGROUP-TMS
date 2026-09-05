@@ -33,7 +33,7 @@
   },
   "weekly_intl": {
     "hex": 56,
-    "truncate": 1
+    "truncate": 4
   },
   "weekly_natl": {
     "hex": 0,
