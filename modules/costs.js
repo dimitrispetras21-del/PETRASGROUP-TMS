@@ -3,11 +3,14 @@
 // Data: Worker /costs/* (JWT) — see docs/COSTS_ARCHITECTURE.md
 // ═══════════════════════════════════════════════════════════════
 
+// driver_pay / cash_m: gone since 5/9/2026 — driver money is entered in the
+// ledger (Μισθοδοσία Οδηγών) and read back here. Offering them in this
+// dropdown again would recreate the second source of truth the ledger removed.
 const CT_CATEGORY_LABELS = {
   fuel: 'Καύσιμα', reefer_fuel: 'Καύσιμα ψυγείου', tolls: 'Διόδια', dkv: 'DKV κάρτα',
-  adblue: 'AdBlue', driver_pay: 'Οδηγός', cash_m: 'Έξοδα Μ', spedition: 'Spedition',
+  adblue: 'AdBlue', spedition: 'Spedition',
   accommodation: 'Διαμονή', ferry_train: 'Ferry/Τρένα', fines: 'Πρόστιμα',
-  partner_rate: 'Κόμιστρο συνεργάτη', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
+  partner_rate: 'Partner rate', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
 };
 
 const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 'trip', openRt: null,
@@ -613,7 +616,8 @@ async function ctOpenPanel(id) {
   const complete = linesFetchFailed ? ctCostInfo(t).complete : lines.length > 0;
   const cats = {};
   lines.forEach(l => { const k = l.category; (cats[k] = cats[k] || { net: 0, vat: 0 }); cats[k].net += Number(l.net || 0); cats[k].vat += Number(l.vat || 0); });
-  const maxV = Math.max(1, ...Object.values(cats).map(c => c.net + c.vat), wear);
+  const dlNet = Number(t.dl_trip_value || 0) + Number(t.dl_expenses || 0);
+  const maxV = Math.max(1, ...Object.values(cats).map(c => c.net + c.vat), wear, dlNet);
   let costRows = Object.entries(cats).map(([k, v]) => `
     <div class="ct-crow"><span class="ct-cl">${CT_CATEGORY_LABELS[k] || k}</span>
     <span class="ct-bar"><i style="width:${Math.round((v.net + v.vat) / maxV * 100)}%"></i></span>
@@ -622,6 +626,16 @@ async function ctOpenPanel(id) {
   if (wear > 0.5) costRows += `<div class="ct-crow"><span class="ct-cl">Φθορά <span class="ct-badge ct-b-pend" style="font-size:11px">αυτόματο</span></span>
     <span class="ct-bar"><i style="width:${Math.round(wear / maxV * 100)}%;background:var(--text-dim)"></i></span>
     <span class="ct-cv ct-mono">${ctEur(wear)}</span><span class="ct-cvat ct-mono">€/km × km</span></div>`;
+  // Driver pay + Έξοδα Μ come from the ledger, not from cost lines. Pending or
+  // missing is said in words — never shown as 0 (DESIGN.md #3).
+  if (t.trip_type === 'OWNED') {
+    const state = t.driver_pay_missing ? 'χωρίς γραμμή καρτέλας — άνοιξε τη Μισθοδοσία'
+      : t.driver_pay_pending ? 'εκκρεμεί αξία στην καρτέλα' : '';
+    costRows += `<div class="ct-crow"><span class="ct-cl">Οδηγός <span class="ct-badge ct-b-pend" style="font-size:11px">από καρτέλα</span></span>
+      <span class="ct-bar"><i style="width:${Math.round(dlNet / maxV * 100)}%"></i></span>
+      <span class="ct-cv ct-mono">${state ? '<span style="color:var(--warn)">' + state + '</span>' : ctEur(dlNet)}</span>
+      <span class="ct-cvat ct-mono">${t.dl_expenses != null ? 'Έξοδα Μ ' + ctEur(t.dl_expenses) : '—'}</span></div>`;
+  }
   if (linesFetchFailed) costRows = `<div class="ct-note ct-nwarn">${icon('warning', 13)} Οι γραμμές κόστους δεν φόρτωσαν — η ανάλυση ανά κατηγορία δεν είναι διαθέσιμη. Τα σύνολα από κάτω έρχονται από τη βάση.</div>`;
   else if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-mid)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από τη φόρμα πιο πάνω.</div>';
   if (t.trip_type === 'PARTNER') costRows += `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-mid)">Καύσιμα/διόδια/οδηγός δεν καταγράφονται εδώ — είναι κόστη του συνεργάτη, όχι ελλιπή δικά μας. Το δικό μας κόστος είναι το κόμιστρο.</span><span></span></div>`;
