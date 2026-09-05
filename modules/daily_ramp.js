@@ -33,7 +33,9 @@ let _rampAutoRefresh = null;
 async function renderDailyRamp() {
   document.getElementById('content').innerHTML = showLoading('Loading ramp board…');
   try { await _rampLoad(); _rampDraw(); }
-  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`; console.error(e); }
+  // Failure ≠ empty (DESIGN.md #7): what happened, what it does NOT mean, what
+  // to do. Wording only — the flow around it is unchanged.
+  catch(e) { document.getElementById('content').innerHTML = `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:16px;padding:8px 12px;border:1px solid var(--danger);border-radius:var(--radius);color:var(--danger);font-size:var(--text-sm);background:var(--surface-card)"><span>Ο Πίνακας Ράμπας δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν κινήσεις σήμερα.</span><button class="btn btn-primary btn-sm" onclick="renderDailyRamp()">Ξαναδοκίμασε</button></div>`; console.error(e); }
   // Auto-refresh every 2 minutes while on this page (disable after 3 consecutive failures)
   clearInterval(_rampAutoRefresh);
   let _rampFailCount = 0;
@@ -467,23 +469,23 @@ function _rampDraw() {
         <div class="ramp-sec-hd inbound"><span>↓ ΕΙΣΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${inb.length}</span></div>
         <table class="ramp-t"><thead><tr>
           <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος φόρτωσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
-        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία άφιξη σήμερα',description:'Πρόσθεσε άφιξη από το κουμπί + Άφιξη, ή άλλαξε ημερομηνία.',action:{label:'+ Άφιξη',onClick:"_rampAddNew('Παραλαβή')"}}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία άφιξη σήμερα</div>'}</td></tr>`}</tbody></table>
+        </tr></thead><tbody>${inb.length?inb.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία άφιξη σήμερα',description:'Πρόσθεσε άφιξη από το κουμπί + Άφιξη, ή άλλαξε ημερομηνία.',action:{label:'+ Άφιξη',onClick:"_rampAddNew('Παραλαβή')"}}) : '<div style="text-align:center;padding:32px;color:var(--text-dim)">Καμία άφιξη σήμερα</div>'}</td></tr>`}</tbody></table>
       </div>
       <div>
         <div class="ramp-sec-hd outbound"><span>↑ ΕΞΕΡΧΟΜΕΝΑ</span><span style="opacity:.5">${out.length}</span></div>
         <table class="ramp-t"><thead><tr>
           <th>#</th><th>Ώρα</th><th>Πελάτης</th><th>Τόπος παράδοσης</th><th class="ramp-col-2nd">Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th class="ramp-col-2nd">Φορτηγό</th><th>Ενέργειες</th>
-        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία αναχώρηση σήμερα',description:'Πρόσθεσε αναχώρηση από το κουμπί + Αναχώρηση, ή άλλαξε ημερομηνία.',action:{label:'+ Αναχώρηση',onClick:"_rampAddNew('Φόρτωση')"}}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία αναχώρηση σήμερα</div>'}</td></tr>`}</tbody></table>
+        </tr></thead><tbody>${out.length?out.map((r,i)=>_rRow(r,i+1,tOpts)).join(''):`<tr><td colspan="9" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία αναχώρηση σήμερα',description:'Πρόσθεσε αναχώρηση από το κουμπί + Αναχώρηση, ή άλλαξε ημερομηνία.',action:{label:'+ Αναχώρηση',onClick:"_rampAddNew('Φόρτωση')"}}) : '<div style="text-align:center;padding:32px;color:var(--text-dim)">Καμία αναχώρηση σήμερα</div>'}</td></tr>`}</tbody></table>
       </div>
     </div>
 
-    <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:6px">${_i('clock', 14)} ΧΡΟΝΟΔΙΑΓΡΑΜΜΑ — ΟΛΕΣ ΟΙ ΚΙΝΗΣΕΙΣ</span><span style="opacity:.5">${allSorted.length}</span></div>
+    <div class="ramp-sec-hd timeline"><span style="display:inline-flex;align-items:center;gap:8px">${_i('clock', 14)} ΧΡΟΝΟΔΙΑΓΡΑΜΜΑ — ΟΛΕΣ ΟΙ ΚΙΝΗΣΕΙΣ</span><span style="opacity:.5">${allSorted.length}</span></div>
     <table class="ramp-t"><thead><tr>
       <th>Ώρα</th><th>Τύπος</th><th>Πελάτης</th><th>Τόπος</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Φορτηγό</th><th>Οδηγός</th><th>Κατάσταση</th>
-    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):`<tr><td colspan="10" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία κίνηση σήμερα',description:'Μόλις καταχωρηθεί άφιξη ή αναχώρηση, θα εμφανιστεί εδώ με τη σειρά της ώρας.'}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Καμία κίνηση σήμερα</div>'}</td></tr>`}</tbody></table>
+    </tr></thead><tbody>${allSorted.length?allSorted.map(r=>_rTlRow(r)).join(''):`<tr><td colspan="10" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Καμία κίνηση σήμερα',description:'Μόλις καταχωρηθεί άφιξη ή αναχώρηση, θα εμφανιστεί εδώ με τη σειρά της ώρας.'}) : '<div style="text-align:center;padding:32px;color:var(--text-dim)">Καμία κίνηση σήμερα</div>'}</td></tr>`}</tbody></table>
 
     ${(RAMP.postponed||[]).length?`<div style="margin-top:16px">
-      <div class="ramp-sec-hd" style="background:#92400E"><span style="display:inline-flex;align-items:center;gap:6px">${_i('chevron_right', 14)} ΑΝΑΒΛΗΘΗΚΑΝ ΑΠΟ ΣΗΜΕΡΑ</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
+      <div class="ramp-sec-hd" style="background:var(--warn)"><span style="display:inline-flex;align-items:center;gap:8px">${_i('chevron_right', 14)} ΑΝΑΒΛΗΘΗΚΑΝ ΑΠΟ ΣΗΜΕΡΑ</span><span style="opacity:.5">${RAMP.postponed.length}</span></div>
       <table class="ramp-t"><thead><tr>
         <th>#</th><th>Τύπος</th><th>Πελάτης</th><th>Εμπόρευμα</th><th>Θερμ.</th><th>Παλέτες</th><th>Μεταφέρθηκε στις</th><th>Ενέργειες</th>
       </tr></thead><tbody>${RAMP.postponed.map((r,i)=>{
@@ -492,25 +494,25 @@ function _rampDraw() {
         const movedTo=f['Plan Date']?f['Plan Date'].substring(5).replace('-','/'):'—';
         return`<tr style="background:var(--warning-soft);opacity:.8">
           <td class="rn">${i+1}</td>
-          <td>${isIn?'<span style="color:#059669">↓ IN</span>':'<span style="color:#0EA5E9">↑ OUT</span>'}</td>
+          <td>${isIn?'<span style="color:var(--ok)">↓ ΕΙΣ</span>':'<span style="color:var(--accent)">↑ ΕΞ</span>'}</td>
           <td>${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
           <td>${escapeHtml((f['Goods']||'').substring(0,25))}</td>
           <td>${escapeHtml(f['Temperature']||'')}</td>
           <td>${escapeHtml(f['Pallets']||'')}</td>
           <td>${movedTo}</td>
-          <td><button class="btn btn-primary" style="padding:3px 8px;font-size:10px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
+          <td><button class="btn btn-primary" style="padding:4px 8px;font-size:11px" onclick="confirmAction('Επαναφορά στο σήμερα;').then(ok=>{if(ok)_rampRestore('${r.id}')})">Επαναφορά</button></td>
         </tr>`;}).join('')}</tbody></table>
     </div>`:''}
 
     <div style="margin-top:16px">
-      <div class="ramp-sec-hd stock"><span style="display:inline-flex;align-items:center;gap:6px">${_i('package', 14)} ΑΠΟΘΕΜΑ ΣΤΗΝ ΑΠΟΘΗΚΗ</span><span style="opacity:.5">${stockPal} παλ.</span></div>
+      <div class="ramp-sec-hd stock"><span style="display:inline-flex;align-items:center;gap:8px">${_i('package', 14)} ΑΠΟΘΕΜΑ ΣΤΗΝ ΑΠΟΘΗΚΗ</span><span style="opacity:.5">${stockPal} παλ.</span></div>
       <table class="ramp-t"><thead><tr><th>#</th><th>Πελάτης</th><th>Παλέτες</th><th>Παρελήφθη</th><th>Ημέρες</th></tr></thead>
       <tbody>${Object.keys(sbc).length?Object.keys(sbc).sort().map((cl,i)=>{
         const d=sbc[cl],dates=d.items.map(r=>r.fields['Plan Date']).filter(Boolean).sort(),
           oldest=dates[0]||'',days=oldest?Math.floor((Date.now()-new Date(oldest).getTime())/864e5):0,
           dc=days<=1?'fresh':days<=3?'aging':'old';
         return`<tr><td class="rn">${i+1}</td><td class="stock-client">${escapeHtml(cl)}</td><td>${d.pal}</td><td>${oldest?oldest.substring(5):''}</td><td class="stock-days ${dc}">${days}d</td></tr>`;
-      }).join(''):`<tr><td colspan="5" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Η αποθήκη είναι άδεια',description:'Δεν υπάρχει απόθεμα σε παλέτες αυτή τη στιγμή.'}) : '<div style="text-align:center;padding:40px;color:var(--text-dim)">Η αποθήκη είναι άδεια</div>'}</td></tr>`}</tbody></table>
+      }).join(''):`<tr><td colspan="5" style="padding:0">${typeof showEmpty === 'function' ? showEmpty({illustration:'ramp',title:'Η αποθήκη είναι άδεια',description:'Δεν υπάρχει απόθεμα σε παλέτες αυτή τη στιγμή.'}) : '<div style="text-align:center;padding:32px;color:var(--text-dim)">Η αποθήκη είναι άδεια</div>'}</td></tr>`}</tbody></table>
     </div>`;
 }
 
@@ -567,7 +569,7 @@ function _rRow(rec,num,tOpts) {
     }
     subHtml = stops.map(s => `<tr class="sub-row">
       <td></td><td></td>
-      <td style="padding-left:18px">↳ ${escapeHtml(s.client)}</td>
+      <td style="padding-left:16px">↳ ${escapeHtml(s.client)}</td>
       <td>${escapeHtml(s.loc)}</td>
       <td class="ramp-col-2nd">${escapeHtml(s.ref)}</td>
       <td>${escapeHtml(s.temp)}</td>
@@ -838,41 +840,44 @@ function _rampExportCSV() {
 
 function _rampPrint() {
   const content = document.getElementById('content').innerHTML;
+  // The print window is a separate document and does not load style.css, so
+  // var(--token) cannot resolve there. The values are read from the live
+  // :root at print time — one home for every colour (DESIGN.md #1), and the
+  // paper follows the screen if a token ever changes. No hex lives here.
+  const T = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const win = window.open('','_blank');
   win.document.write(`<!DOCTYPE html><html><head><title>Πίνακας Ράμπας — Vermion Fresh</title>
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
     <style>
       * { box-sizing:border-box; margin:0; padding:0; }
-      body { font-family:'DM Sans',sans-serif; padding:20px; color:#0F172A; font-size:12px; }
+      body { font-family:'DM Sans',sans-serif; padding:16px; color:${T('--text')}; font-size:12px; font-variant-numeric:tabular-nums; }
       .page-title { font-family:'Syne',sans-serif; font-size:18px; font-weight:700; }
-      .page-sub { font-size:11px; color:#475569; margin-bottom:12px; }
-      .ramp-kpis { display:flex; gap:10px; margin-bottom:14px; }
-      .ramp-kpi { border:1px solid #ddd; border-left:3px solid #0EA5E9; border-radius:6px; padding:10px 14px; flex:1; }
-      .ramp-kpi-lbl { font-size:9px; font-weight:600; color:#9CA3AF; text-transform:uppercase; letter-spacing:1px; }
-      .ramp-kpi-val { font-family:'Syne',sans-serif; font-size:22px; font-weight:700; }
-      .ramp-kpi-sub { font-size:10px; color:#9CA3AF; }
-      .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
-      .ramp-sec-hd { background:#0B1929; color:#C4CFDB; padding:6px 12px; border-radius:6px 6px 0 0;
-        font-family:'Syne',sans-serif; font-size:9px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
+      .page-sub { font-size:11px; color:${T('--text-mid')}; margin-bottom:12px; }
+      .ramp-kpis { display:flex; gap:8px; margin-bottom:12px; }
+      .ramp-kpi { border:1px solid ${T('--border')}; border-radius:6px; padding:8px 12px; flex:1; }
+      .ramp-kpi-lbl { font-size:11px; font-weight:600; color:${T('--text-mid')}; text-transform:uppercase; letter-spacing:1px; }
+      .ramp-kpi-val { font-family:'DM Sans',sans-serif; font-size:18px; font-weight:700; }
+      .ramp-kpi-sub { font-size:11px; color:${T('--text-mid')}; }
+      .ramp-pair { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; }
+      .ramp-sec-hd { background:${T('--surface-dark')}; color:${T('--text-on-dark')}; padding:4px 12px; border-radius:6px 6px 0 0;
+        font-family:'Syne',sans-serif; font-size:11px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase;
         display:flex; justify-content:space-between; }
-      .ramp-sec-hd.inbound { border-left:3px solid #059669; }
-      .ramp-sec-hd.outbound { border-left:3px solid #0EA5E9; }
-      .ramp-sec-hd.timeline { border-left:3px solid #6B7280; }
-      .ramp-sec-hd.stock { border-left:3px solid #D97706; }
-      table { width:100%; border-collapse:collapse; border:1px solid #ddd; border-top:none; }
-      thead th { padding:6px 8px; font-size:8px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
-        color:#9CA3AF; background:#F0F5FA; border-bottom:1px solid #ddd; text-align:left; }
-      tbody td { padding:6px 8px; font-size:11px; border-bottom:1px solid #eee; }
-      .sub-row td { font-size:10px; color:#475569; background:#FAFBFC; }
-      .rn { font-family:'Syne',sans-serif; font-weight:700; color:#9CA3AF; }
+      table { width:100%; border-collapse:collapse; border:1px solid ${T('--border')}; border-top:none; }
+      thead th { padding:4px 8px; font-size:11px; font-weight:600; letter-spacing:.8px; text-transform:uppercase;
+        color:${T('--text-mid')}; background:${T('--surface-sunken')}; border-bottom:1px solid ${T('--border')}; text-align:left; }
+      tbody td { padding:4px 8px; font-size:12px; border-bottom:1px solid ${T('--border')}; }
+      .sub-row td { font-size:11px; color:${T('--text-mid')}; background:${T('--surface-sunken')}; }
+      .rn { font-family:'Syne',sans-serif; font-weight:700; color:${T('--text-mid')}; }
       .btn, select.tinp, .ramp-toolbar, .ramp-day-btn, .ramp-date-inp { display:none !important; }
-      .tl-type { font-size:7px; font-weight:800; padding:1px 4px; border-radius:2px; color:#fff; }
-      .tl-type.in { background:#059669; } .tl-type.out { background:#0EA5E9; }
-      .vs-badge { font-size:7px; font-weight:800; padding:1px 4px; border-radius:2px; border:1px solid; }
-      .vs-badge.vf { color:#059669; border-color:#059669; } .vs-badge.vs { color:#0EA5E9; border-color:#0EA5E9; }
-      .vs-badge.vsg { color:#7C3AED; border-color:#7C3AED; }
-      .stock-days.fresh { color:#059669; } .stock-days.aging { color:#D97706; } .stock-days.old { color:#DC2626; }
-      @media print { body { padding:10px; } }
+      .tl-type { font-size:11px; font-weight:800; padding:0 4px; border-radius:6px; color:${T('--surface-card')}; }
+      .tl-type.in { background:${T('--ok')}; } .tl-type.out { background:${T('--accent')}; }
+      .vs-badge { font-size:11px; font-weight:800; padding:0 4px; border-radius:6px; border:1px solid; }
+      /* VS+G has no token of its own (no purple in DESIGN.md B); the letters
+         carry the meaning, so it prints in the mid text grey. */
+      .vs-badge.vf { color:${T('--ok')}; border-color:${T('--ok')}; } .vs-badge.vs { color:${T('--accent')}; border-color:${T('--accent')}; }
+      .vs-badge.vsg { color:${T('--text-mid')}; border-color:${T('--text-mid')}; }
+      .stock-days.fresh { color:${T('--ok')}; } .stock-days.aging { color:${T('--warn')}; } .stock-days.old { color:${T('--danger')}; }
+      @media print { body { padding:8px; } }
     </style></head><body>${content}</body></html>`);
   win.document.close();
   setTimeout(()=>win.print(), 500);

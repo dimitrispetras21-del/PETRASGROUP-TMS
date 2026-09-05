@@ -34,7 +34,9 @@ const OPS_FIELDS = [
 async function renderDailyOps() {
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
   try { await _opsLoad(); _opsDraw(); }
-  catch(e) { document.getElementById('content').innerHTML = `<div style="color:var(--danger);padding:40px">Σφάλμα φόρτωσης σελίδας</div>`; console.error(e); }
+  // Failure ≠ empty (DESIGN.md #7): say what happened, what it does NOT mean,
+  // and what to do — a bare «Σφάλμα» read as «no orders today» at 05:30.
+  catch(e) { document.getElementById('content').innerHTML = `${_OPS_STYLE}<div class="do-page"><div class="do-err"><span>Το Ημερήσιο Πλάνο δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν παραγγελίες σήμερα.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div></div>`; console.error(e); }
 }
 
 async function _opsLoad() {
@@ -223,93 +225,118 @@ function _opsSetFilter(field, val) {
   _opsDraw();
 }
 
-// Το CSS της οθόνης — tokens μόνο. Οι παλιές .ops-kpi/.ops-alert (σκούρες
-// κάρτες, κόκκινο φόντο) δεν χρησιμοποιούνται πλέον· το style.css δεν
-// αγγίζεται (αρχείο εκτός μονάδας).
+// Screen CSS — tokens only (DESIGN.md B). Sizes come from the six-step type
+// scale (C), spacing from 4/8/12/16/24/32 (D), radius 6px / 9999px only.
+// The accent is reserved for the primary action's hover and the focus ring;
+// every other blue that used to be here (links, KPI numbers, stop numbers,
+// «Αλλαγή ημέρας») was decoration and now reads in text greys (B: «Αν το
+// accent εμφανίζεται πάνω από δύο φορές σε μια οθόνη, κάτι πάει στραβά»).
+// The old .ops-kpi/.ops-alert rules in style.css are no longer used here;
+// style.css is not touched (file outside this unit).
 const _OPS_STYLE=`<style>
-  .do-page{font-size:var(--text-sm);color:var(--text)}
-  .do-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-  .do-h1{font-family:Syne;font-size:20px;font-weight:700;margin:0}
+  .do-page{font-size:var(--text-sm);color:var(--text);font-variant-numeric:tabular-nums}
+  .do-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .do-h1{font-family:Syne;font-size:28px;font-weight:700;margin:0;line-height:1.15}
   .do-sub{font-size:var(--text-xs);color:var(--text-dim)}
   .do-sub b{color:var(--danger);font-weight:600}
-  .do-seg{display:flex;border:1px solid var(--border-mid);border-radius:var(--radius);overflow:hidden;background:var(--bg-card)}
-  .do-seg button,.do-seg input{border:0;background:none;padding:6px 12px;font-family:inherit;font-size:var(--text-sm);color:var(--text-mid);cursor:pointer}
-  .do-seg button.on{background:var(--navy-mid);color:var(--bg-card);font-weight:600}
+  .do-seg{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--surface-card)}
+  .do-seg:hover{border-color:var(--border-dark)}
+  .do-seg button,.do-seg input{border:0;background:none;height:32px;padding:0 12px;font-family:inherit;font-size:var(--text-sm);color:var(--text-mid);cursor:pointer}
+  .do-seg button:hover{background:var(--surface-sunken);color:var(--text)}
+  .do-seg button.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:600}
   .do-seg input{width:112px;font-size:var(--text-xs);color:var(--text-mid)}
-  .do-sel{height:32px;padding:0 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-sm);color:var(--text-mid)}
-  .do-q{height:32px;padding:0 10px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-sm);color:var(--text);min-width:200px;flex:1}
-  .do-right{margin-left:auto;display:flex;align-items:center;gap:10px}
-  .do-link{background:none;border:0;color:var(--accent);font-weight:600;font-size:var(--text-body);cursor:pointer;font-family:inherit;padding:6px 8px}
-  .do-kpis{display:flex;gap:0;border:1px solid var(--border-mid);border-radius:var(--radius-md);background:var(--bg-card);margin-bottom:12px}
-  .do-kpi{flex:1;padding:10px 16px}
+  .do-sel{height:32px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-family:inherit;font-size:var(--text-sm);color:var(--text-mid)}
+  .do-q{height:32px;padding:0 8px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-family:inherit;font-size:var(--text-sm);color:var(--text);min-width:200px;flex:1}
+  .do-q::placeholder{color:var(--text-dim)}
+  .do-sel:hover,.do-q:hover,.do-tinp:hover{border-color:var(--border-dark)}
+  /* Six states (D2): hover above, selected = .on / .do-open, disabled and
+     focus below, empty = .do-empty, error = .do-err. */
+  .do-page button:focus-visible,.do-page input:focus-visible,.do-page select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .do-page button:disabled,.do-page select:disabled,.do-page input:disabled{color:var(--text-dim);background:var(--surface-sunken);border-color:var(--border);cursor:not-allowed}
+  .do-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .do-link{background:none;border:0;color:var(--text-mid);font-weight:600;font-size:var(--text-body);cursor:pointer;font-family:inherit;padding:4px 8px}
+  .do-link:hover{color:var(--text);text-decoration:underline}
+  .do-kpis{display:flex;gap:0;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);margin-bottom:12px}
+  .do-kpi{flex:1;padding:8px 16px}
   .do-kpi+.do-kpi{border-left:1px solid var(--border)}
-  .do-kpi-l{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-mid)}
-  .do-kpi-v{font-size:18px;font-weight:700;color:var(--accent-text);margin-top:2px}
+  .do-kpi-l{font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;color:var(--text-mid)}
+  .do-kpi-v{font-size:18px;font-weight:700;color:var(--text);margin-top:4px}
   .do-kpi-v small{font-size:var(--text-xs);font-weight:400;color:var(--text-dim)}
-  .do-kpi-bar{height:3px;background:var(--border);border-radius:var(--radius-full);margin-top:6px;overflow:hidden}
-  .do-kpi-fill{height:100%;background:var(--accent)}
-  .do-kpi.ok .do-kpi-v{color:var(--success)} .do-kpi.ok .do-kpi-fill{background:var(--success)}
-  .do-zone{border:1px solid var(--danger);border-radius:var(--radius-md);background:var(--bg-card);margin-bottom:12px}
-  .do-zone-h{display:flex;align-items:center;gap:8px;padding:8px 14px;font-size:var(--text-sm);font-weight:600;color:var(--danger);cursor:pointer;user-select:none;background:none;border:0;width:100%;text-align:left;font-family:inherit}
-  .do-zone-h i{width:8px;height:8px;background:var(--danger);display:inline-block}
+  .do-kpi-bar{height:4px;background:var(--border);border-radius:var(--radius-full);margin-top:4px;overflow:hidden}
+  .do-kpi-fill{height:100%;background:var(--surface-dark)}
+  .do-kpi.ok .do-kpi-v{color:var(--ok)} .do-kpi.ok .do-kpi-fill{background:var(--ok)}
+  /* Overdue = expired (B: --danger «ληγμένο»), not «attention» — the day has
+     already passed, so it is not the amber of a gap. */
+  .do-zone{border:1px solid var(--danger);border-radius:var(--radius);background:var(--surface-card);margin-bottom:12px}
+  .do-zone-h{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:var(--text-sm);font-weight:600;color:var(--danger);cursor:pointer;user-select:none;background:none;border:0;width:100%;text-align:left;font-family:inherit}
+  .do-zone-h i{width:8px;height:8px;background:var(--danger);display:inline-block;border-radius:var(--radius-full)}
   .do-zone-h .do-note{margin-left:auto;font-weight:400;color:var(--text-dim);font-size:var(--text-xs)}
   .do-zone-h .do-tog{font-weight:400;color:var(--text-dim);font-size:var(--text-xs);margin-left:12px}
-  .do-zrow{display:flex;align-items:center;gap:14px;padding:0 14px;height:40px;border-top:1px solid var(--border)}
+  .do-zrow{display:flex;align-items:center;gap:12px;padding:0 12px;height:40px;border-top:1px solid var(--border);font-size:var(--text-body)}
   .do-zrow .do-cl{font-weight:600;min-width:180px}
   .do-zrow .do-rt{color:var(--text-mid);flex:1;min-width:0}
   .do-zrow .do-late{color:var(--danger);font-weight:600;white-space:nowrap}
-  .do-sec{margin-top:14px}
-  .do-sec-h{display:flex;align-items:baseline;gap:10px;padding:0 0 6px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid)}
+  .do-sec{margin-top:12px}
+  .do-sec-h{display:flex;align-items:baseline;gap:8px;padding:0 0 4px;font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid)}
   .do-sec-h span{font-weight:400;letter-spacing:0;text-transform:none;color:var(--text-dim);font-size:var(--text-xs)}
-  .do-t{width:100%;border-collapse:collapse;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-md)}
-  .do-t th{padding:0 10px;height:32px;text-align:left;font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-mid);background:var(--bg-hover);white-space:nowrap}
-  .do-t td{padding:0 10px;height:40px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle}
+  .do-t{width:100%;border-collapse:collapse;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius)}
+  .do-t th{padding:0 8px;height:32px;text-align:left;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
+  .do-t td{padding:0 8px;height:40px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle;font-size:var(--text-body)}
   .do-t td.do-wrap{white-space:normal}
   .do-t tr.do-done td{color:var(--text-dim)}
-  .do-t tr.do-hover:hover td{background:var(--bg-hover)}
+  .do-t tr.do-hover:hover td,.do-t tr.do-open td{background:var(--surface-sunken)}
   .do-num{color:var(--text-dim);width:24px}
   .do-main{font-weight:600;line-height:1.15}
-  .do-sl{display:block;font-size:10px;color:var(--text-dim);font-weight:400;letter-spacing:.02em;margin-top:1px}
-  .do-plate{font-weight:600}
-  .do-nodrv{color:var(--danger)}
+  .do-sl{display:block;font-size:var(--text-xs);color:var(--text-dim);font-weight:400;letter-spacing:.02em}
+  /* Assignment: colour AND word (DESIGN.md E). Text on the tag is the card
+     white — --text-on-dark on --ok measures 4.1:1, white 5.1:1. */
+  .do-tag{display:inline-block;height:16px;line-height:16px;padding:0 8px;border-radius:var(--radius-full);font-size:var(--text-xs);font-weight:700;letter-spacing:.04em;color:var(--surface-card);vertical-align:1px;margin-right:4px}
+  .do-tag.own{background:var(--surface-dark)}
+  .do-tag.prt{background:var(--ok)}
+  .do-tag.none{background:var(--unassigned)}
   .do-st{width:170px;white-space:nowrap}
   .do-st-wait{color:var(--text);font-weight:700}
-  .do-st-done{color:var(--success);font-weight:600}
-  .do-st-moved{color:var(--warning);font-weight:400;font-size:var(--text-xs)}
+  .do-st-done{color:var(--ok);font-weight:600}
+  .do-st-moved{color:var(--warn);font-weight:400;font-size:var(--text-xs)}
   .do-acts{width:252px}
   .do-slots{display:flex;align-items:center;gap:4px}
   /* min-width, όχι width: το «Αλλαγή ημέρας» είναι φαρδύτερο από 104px και
      θα ξεχείλιζε πάνω στη διπλανή θυρίδα. Ίδιο σχήμα σε όλες τις γραμμές
      της ενότητας ⇒ η στήλη διαβάζεται κάθετα. */
   .do-slot{min-width:104px;display:flex;justify-content:center}
-  .do-btn{height:28px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--navy-mid);background:var(--navy-mid);color:var(--bg-card);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
+  .do-btn{height:28px;padding:0 12px;border-radius:var(--radius);border:1px solid var(--surface-dark);background:var(--surface-dark);color:var(--surface-card);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-btn:hover{background:var(--accent);border-color:var(--accent)}
   .do-late-btn{height:28px;padding:0 8px;border:0;background:none;color:var(--danger);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
   .do-late-btn:hover{text-decoration:underline}
-  .do-ghost{height:28px;padding:0 8px;border:0;background:none;color:var(--accent);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
-  .do-ghost:hover{text-decoration:underline}
-  .do-tinp{height:28px;padding:0 6px;border:1px solid var(--border-mid);border-radius:var(--radius);background:var(--bg-card);font-family:inherit;font-size:var(--text-xs);color:var(--text)}
-  .do-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:var(--radius-full);border:1px solid var(--border-mid);font-size:var(--text-xs);font-weight:600;background:var(--bg-card);cursor:pointer;color:var(--warning);white-space:nowrap}
-  .do-pill.full{color:var(--text-mid)}
-  .do-sub td{background:var(--bg);height:36px;border-top:1px dashed var(--border-mid)}
-  .do-sub .do-srow{display:flex;align-items:center;gap:14px;padding-left:36px;font-size:var(--text-sm)}
-  .do-sub .do-srow .do-sn{font-weight:700;width:16px;color:var(--accent-text)}
+  .do-ghost{height:28px;padding:0 8px;border:0;background:none;color:var(--text-mid);font-family:inherit;font-size:var(--text-xs);font-weight:600;cursor:pointer;white-space:nowrap}
+  .do-ghost:hover{text-decoration:underline;color:var(--text)}
+  .do-tinp{height:28px;padding:0 4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);font-family:inherit;font-size:var(--text-xs);color:var(--text)}
+  /* Outline only: the amber fill/border tokens would be two colours that
+     appear nowhere else on this screen (measured 4/9: 13 vs 12 before). */
+  .do-pill{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:var(--radius-full);border:1px solid var(--warn);background:var(--surface-card);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--warn);white-space:nowrap}
+  .do-pill.full{color:var(--text-mid);background:var(--surface-card);border-color:var(--border)}
+  .do-sub td{background:var(--surface-page);height:36px;border-top:1px dashed var(--border)}
+  .do-sub .do-srow{display:flex;align-items:center;gap:12px;padding-left:32px;font-size:var(--text-sm)}
+  .do-sub .do-srow .do-sn{font-weight:700;width:16px;color:var(--text-mid)}
   .do-sub .do-srow .do-sloc{flex:1;min-width:0;white-space:normal}
-  .do-empty{padding:9px 14px;border:1px dashed var(--border-mid);border-radius:var(--radius-md);color:var(--text-dim);font-size:var(--text-sm);background:var(--bg-card)}
+  .do-empty{padding:8px 12px;border:1px dashed var(--border);border-radius:var(--radius);color:var(--text-dim);font-size:var(--text-sm);background:var(--surface-card)}
+  .do-err{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 12px;border:1px solid var(--danger);border-radius:var(--radius);color:var(--danger);font-size:var(--text-sm);background:var(--surface-card);margin-bottom:12px}
   .do-foot{margin-top:16px;font-size:var(--text-xs);color:var(--text-dim);text-align:right}
-  /* Popover «Αλλαγή ημέρας» — στη γραμμή, Enter = Αύριο */
-  .do-pop{position:absolute;z-index:var(--z-float,50);width:360px;background:var(--bg-card);border:1px solid var(--border-mid);border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:14px 16px;text-align:left;white-space:normal}
-  .do-pop h4{font-family:Syne;font-size:14px;margin:0 0 2px}
-  .do-pop .do-psub{font-size:var(--text-xs);color:var(--text-dim);margin-bottom:10px}
-  .do-pop .do-opts{display:flex;gap:6px;margin-bottom:10px}
-  .do-pop .do-opt{flex:1;border:1px solid var(--border-mid);border-radius:var(--radius);padding:6px 8px;background:var(--bg-card);cursor:pointer;font-family:inherit;text-align:left}
+  /* Popover «Αλλαγή ημέρας» — στη γραμμή, Enter = Αύριο. Floats above the
+     page, so it is the one element here allowed a shadow (D). */
+  .do-pop{position:absolute;z-index:var(--z-float,50);width:360px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-md);padding:12px 16px;text-align:left;white-space:normal}
+  .do-pop h4{font-family:inherit;font-size:var(--text-base);font-weight:700;margin:0 0 4px}
+  .do-pop .do-psub{font-size:var(--text-xs);color:var(--text-dim);margin-bottom:8px}
+  .do-pop .do-opts{display:flex;gap:8px;margin-bottom:8px}
+  .do-pop .do-opt{flex:1;border:1px solid var(--border);border-radius:var(--radius);padding:4px 8px;background:var(--surface-card);cursor:pointer;font-family:inherit;text-align:left}
+  .do-pop .do-opt:hover{border-color:var(--border-dark)}
   .do-pop .do-opt b{display:block;font-size:var(--text-sm);color:var(--text)}
-  .do-pop .do-opt span{font-size:10px;color:var(--text-dim)}
-  .do-pop .do-opt.on{background:var(--navy-mid);border-color:var(--navy-mid)} .do-pop .do-opt.on b,.do-pop .do-opt.on span{color:var(--bg-card)}
+  .do-pop .do-opt span{font-size:var(--text-xs);color:var(--text-dim)}
+  .do-pop .do-opt.on{background:var(--surface-dark);border-color:var(--surface-dark)} .do-pop .do-opt.on b,.do-pop .do-opt.on span{color:var(--text-on-dark)}
   .do-pop .do-opt input{width:100%;border:0;background:none;font-family:inherit;font-size:var(--text-xs);color:var(--text);padding:0}
-  .do-pop label{display:flex;align-items:flex-start;gap:8px;font-size:var(--text-sm);color:var(--text);margin-bottom:10px;cursor:pointer}
-  .do-pop label small{display:block;font-size:10px;color:var(--text-dim)}
-  .do-pop .do-pfoot{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-dim)}
+  .do-pop label{display:flex;align-items:flex-start;gap:8px;font-size:var(--text-sm);color:var(--text);margin-bottom:8px;cursor:pointer}
+  .do-pop label small{display:block;font-size:var(--text-xs);color:var(--text-dim)}
+  .do-pop .do-pfoot{display:flex;align-items:center;gap:8px;font-size:var(--text-xs);color:var(--text-dim)}
   .do-pop .do-pfoot .sp{flex:1}
 </style>`;
 
@@ -361,7 +388,15 @@ function _opsDraw() {
       return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_T(f)?' · '+escapeHtml(_T(f)):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
         ${_opsSlots(r,'ovl')}</div>`;}):'';
-  const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-empty" style="border-color:var(--danger);color:var(--danger);margin-bottom:12px">Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — η κλήση απέτυχε· ξαναπάτησε Ανανέωση. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</div>`:'';
+  const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
+
+  // Quick filters with nothing behind them are disabled (D2): a choice that
+  // can only produce an empty table is not a choice. Counted on the day's
+  // records BEFORE the user's own filters, so the options never disable each
+  // other away.
+  const nDir={export:0,import:0}, nSt={};
+  for(const r of OPS.intl){ const f=r.fields; const d=(f['Direction']||'').trim().toLowerCase(); nDir[(d==='import'||d==='↓ import')?'import':'export']++; const s=f['Status']||''; nSt[s]=(nSt[s]||0)+1; }
+  const opt=(v,lbl,cur,n)=>`<option value="${v}"${cur===v?' selected':''}${n?'':' disabled'}>${lbl}</option>`;
 
   const upd=OPS.loadedAt?String(OPS.loadedAt.getHours()).padStart(2,'0')+':'+String(OPS.loadedAt.getMinutes()).padStart(2,'0'):'';
   document.getElementById('content').innerHTML=`${_OPS_STYLE}
@@ -377,15 +412,15 @@ function _opsDraw() {
       </div>
       <select class="do-sel" onchange="_opsSetFilter('direction', this.value)">
         <option value="">Κατεύθυνση: Όλες</option>
-        <option value="export" ${OPS.filters?.direction==='export'?'selected':''}>Εξαγωγή</option>
-        <option value="import" ${OPS.filters?.direction==='import'?'selected':''}>Εισαγωγή</option>
+        ${opt('export','Εξαγωγή',OPS.filters?.direction,nDir.export)}
+        ${opt('import','Εισαγωγή',OPS.filters?.direction,nDir.import)}
       </select>
       <select class="do-sel" onchange="_opsSetFilter('status', this.value)">
         <option value="">Κατάσταση: Όλες</option>
-        <option value="Pending"    ${OPS.filters?.status==='Pending'?'selected':''}>Σε αναμονή</option>
-        <option value="Assigned"   ${OPS.filters?.status==='Assigned'?'selected':''}>Ανατεθειμένο</option>
-        <option value="In Transit" ${OPS.filters?.status==='In Transit'?'selected':''}>Σε μεταφορά</option>
-        <option value="Delivered"  ${OPS.filters?.status==='Delivered'?'selected':''}>Παραδόθηκε</option>
+        ${opt('Pending','Σε αναμονή',OPS.filters?.status,nSt['Pending'])}
+        ${opt('Assigned','Ανατεθειμένο',OPS.filters?.status,nSt['Assigned'])}
+        ${opt('In Transit','Σε μεταφορά',OPS.filters?.status,nSt['In Transit'])}
+        ${opt('Delivered','Παραδόθηκε',OPS.filters?.status,nSt['Delivered'])}
       </select>
       <input type="text" class="do-q" placeholder="Αναζήτηση…" value="${escapeHtml(OPS.filters?.q||'')}" oninput="_opsSetFilter('q', this.value)">
       ${(OPS.filters?.q||OPS.filters?.direction||OPS.filters?.status) ? `<button class="do-link" onclick="OPS.filters={q:'',direction:'',status:''};renderDailyOps()">Καθαρισμός</button>` : ''}
@@ -433,9 +468,13 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const when=isToday?'σήμερα':isTmrw?'αύριο':'';
   // Στήλες ανά ενότητα (Figma 169:699): ΘΕΡΜ./ΕΓΓΡΑΦΑ/ΦΩΤΟ CMR/ΕΝΗΜΕΡΩΣΗ
   // ΠΕΛΑΤΗ/2Η ΚΑΡΤΑ αφαιρέθηκαν (owner 2/9)· ΚΑΤΑΣΤΑΣΗ = νέα στήλη λέξης.
-  const mid = isL&&isExp ? '<th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΠΑΛ.</th><th>ΠΡΟΚ. €</th>'
-            : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΩΡΑ</th>'
-                        : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΦΟΡΤΗΓΟ</th><th>ΟΔΗΓΟΣ</th><th>ΕΚΤ. ΑΦΙΞΗ</th>';
+  // ΦΟΡΤΗΓΟ + ΟΔΗΓΟΣ became one ΑΝΑΘΕΣΗ column (owner 4/9, DESIGN.md E): the
+  // dispatcher reads WHO carries the load — «ΙΔ.» plate + driver, «ΣΥΝ.» +
+  // partner name, or «ΠΡΟΣ ΑΝΑΘΕΣΗ». Two columns showed «—» and «χωρίς
+  // οδηγό» for the same fact, and an own-fleet plate carried no marker at all.
+  const mid = isL&&isExp ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΠΑΛ.</th><th>ΠΡΟΚ. €</th>'
+            : isL       ? '<th>ΦΟΡΤΩΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΩΡΑ</th>'
+                        : '<th>ΠΑΡΑΔΟΣΗ</th><th>ΑΝΑΘΕΣΗ</th><th>ΕΚΤ. ΑΦΙΞΗ</th>';
   const cols=`<th>#</th><th>ΠΕΛΑΤΗΣ</th>${mid}<th>ΚΑΤΑΣΤΑΣΗ</th><th style="text-align:right">ΕΝΕΡΓΕΙΕΣ</th>`;
   const done=items.filter(r=>isL?['In Transit','Delivered'].includes(r.fields['Status']||''):(r.fields['Status']||'')==='Delivered').length;
   const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
@@ -515,7 +554,8 @@ function _opsRow(rec,num,type,isToday) {
   const loadL=_L(_opsStopLoc(id,'Loading'));
   const delivL=_L(_opsStopLoc(id,'Unloading'));
   const truck=_T(f), driver=_D(f), partner=_P(f);
-  const pal=f['Total Pallets']||'';
+  // Missing is not zero and not blank (DESIGN.md #3): a dash.
+  const pal=f['Total Pallets']!=null&&f['Total Pallets']!==''?f['Total Pallets']:'—';
   const st=f['Status']||'';
   const isDone=st==='Delivered';
   const isL=type==='el'||type==='il', isExp=type==='el'||type==='ed';
@@ -538,25 +578,47 @@ function _opsRow(rec,num,type,isToday) {
   // καν ως έννοια (κανόνας #3: «—» σημαίνει άγνωστο).
   const locCell=(name,dt)=>{const hm=_HM(dt);
     return `<td class="do-wrap"><span class="do-main">${escapeHtml(name||'—')}</span>${hm?`<span class="do-sl">${hm}</span>`:''}</td>`;};
-  const truckCell=`<td class="do-plate">${escapeHtml(truck)||'—'}</td>`;
-  const drvCell=`<td>${driver?escapeHtml(driver):(partner?'<span class="do-sl" style="font-size:var(--text-xs)">συνεργάτης</span>':'<span class="do-nodrv">χωρίς οδηγό</span>')}</td>`;
+  // Assignment cell — colour AND word (DESIGN.md E, owner 4/9). «ΠΡΟΣ
+  // ΑΝΑΘΕΣΗ», not «χωρίς οδηγό»: the empty cell means the dispatcher owes an
+  // action, not that a driver is missing. Partner trips name the company —
+  // the generic word «συνεργάτης» told the phone caller nothing.
+  const asgCell=_opsAsgCell(f, truck, driver, partner);
   const pill=_opsStopsBadge(id,_stype);
   const stCell=`<td class="do-st">${_opsStatusWord(f,pill,isL)}</td>`;
   const actCell=`<td class="do-acts">${_opsSlots(rec,type)}</td>`;
 
   let mid='';
-  if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'])}${truckCell}${drvCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
-  else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'])}${truckCell}${drvCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
-  else           mid=`${locCell(delivL,f['Delivery DateTime'])}${truckCell}${drvCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
+  if(isL&&isExp) mid=`${locCell(loadL,f['Loading DateTime'])}${asgCell}<td>${pal}</td><td>${!partner?amtInp('Advance Paid',f['Advance Paid']):''}</td>`;
+  else if(isL)   mid=`${locCell(loadL,f['Loading DateTime'])}${asgCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
+  else           mid=`${locCell(delivL,f['Delivery DateTime'])}${asgCell}<td>${timeSelect('ETA',f['ETA'])}</td>`;
 
   // Multi: κλικ στη γραμμή (όχι σε κουμπί/πεδίο) ανοίγει τα σημεία· οι
-  // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody.
+  // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody. Η ανοιχτή
+  // γραμμή κρατά το φόντο επιλογής (.do-open) όσο είναι ανοιχτή.
   const _trClick=_multi?` onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"`:'';
-  return `<tr id="r_${id}" class="do-hover${isDone?' do-done':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+  return `<tr id="r_${id}" class="do-hover${isDone?' do-done':''}${_expanded?' do-open':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+}
+
+// Own fleet = a plate or a driver on a non-partner trip. A plate without a
+// driver is still «ΙΔ.» — the truck is ours, the driver line just stays empty.
+// «Partner Truck Plates» is NOT requested in OPS_FIELDS (the request must stay
+// byte-identical to the 28/8 recording), so the partner line shows only the
+// company; when the pair-inherit above brought plates in memory, they appear.
+function _opsAsgCell(f, truck, driver, partner) {
+  const sub=s=>s?`<span class="do-sl">${s}</span>`:'';
+  if(partner){
+    const name=getPartnerName(getLinkedId(f['Partner']))||'—';
+    const plates=escapeHtml(String(f['Partner Truck Plates']||''));
+    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag prt">ΣΥΝ.</span>${name}</span>${sub([plates,escapeHtml(driver)].filter(Boolean).join(' · '))}</td>`;
+  }
+  if(truck||driver){
+    return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag own">ΙΔ.</span>${escapeHtml(truck)||'—'}</span>${sub(escapeHtml(driver))}</td>`;
+  }
+  return `<td class="do-asg do-wrap"><span class="do-main"><span class="do-tag none">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></span></td>`;
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
+async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 // ── Επίδοση ΑΝΑ ΣΤΑΣΗ (owner 26/8, v2: αναπτυσσόμενες υπο-γραμμές) ──────
 // Τα σημεία ΔΕΝ παραδίδονται μαζί — το ένα σήμερα, το άλλο αύριο. Άρα:
 // καμία υποχρέωση ταυτόχρονης απόφασης (το παράθυρο-picker αφαιρέθηκε,
@@ -605,7 +667,7 @@ function _opsSubRows(rec, stype){
     const perf=f['Performance'];
     const okLbl=isDel?'Παραδόθηκε':'Φορτώθηκε';
     const right=perf
-      ? `<span class="do-slots"><span style="font-weight:600;color:${perf==='Delayed'?'var(--danger)':'var(--success)'}">${perf==='Delayed'?'Καθυστέρησε':'Στην ώρα'} ✓</span>
+      ? `<span class="do-slots"><span style="font-weight:600;color:${perf==='Delayed'?'var(--danger)':'var(--ok)'}">${perf==='Delayed'?'Καθυστέρησε':'Στην ώρα'} ✓</span>
          <span class="do-sl" style="margin:0 0 0 8px;font-size:var(--text-xs)">${escapeHtml(f['Completed By']||'')}${f['Completed At']?' · '+fmtDate(f['Completed At']):''}</span></span>`
       : `<span class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button></span>
          <span class="do-slot">${isDel?`<button class="do-late-btn" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`:''}</span>
@@ -671,7 +733,7 @@ async function _opsStatFinal(id,st){try{
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
   catch(e) { console.warn('PA status sync:', e.message); }
-  toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
+  toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
   const dels=_opsStopsOf(id,'Unloading');
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
@@ -689,7 +751,7 @@ async function _opsDelFinal(id,perf){const d=localToday();
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
   catch(e) { console.warn('PA status sync:', e.message); }
-  toast(perf==='On Time'?'Παραδόθηκε ✓':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
+  toast(perf==='On Time'?'Παραδόθηκε ✓':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 /* ── «Αλλαγή ημέρας» popover ───────────────────────────────────────────
    Η αναβολή ΕΙΝΑΙ αλλαγή ημερομηνίας στην παραγγελία — μία πηγή (αρχή 3).
@@ -786,7 +848,7 @@ async function _opsChangeDayGo(){
     syncOrderDownstream(p.id, { source: 'intl', changedFields: Object.keys(patch), skipPA: true })
       .catch(e => console.warn('[ops change-day sync]', e));
   }
-  toast('Μετατέθηκε → '+_DMYFull(p.choice));OPS._pop=null;renderDailyOps();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}
+  toast('Μετατέθηκε → '+_DMYFull(p.choice));OPS._pop=null;renderDailyOps();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}
 }
 
 function _opsPrint() {
@@ -796,16 +858,18 @@ function _opsPrint() {
   // Το παράθυρο εκτύπωσης δεν φορτώνει το style.css — ασπρόμαυρο, χωρίς χρώματα.
   win.document.write(`<html><head><title>Ημερήσιο Πλάνο</title>
     <style>
-      body{font-family:'DM Sans',sans-serif;padding:20px;font-size:12px}
+      body{font-family:'DM Sans',sans-serif;padding:16px;font-size:12px;font-variant-numeric:tabular-nums}
       h1{font-family:'Syne',sans-serif;font-size:18px;margin-bottom:4px}
       .sub{opacity:.6;font-size:12px;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;margin-bottom:18px}
-      th{padding:7px 10px;font-size:9px;text-transform:uppercase;letter-spacing:.8px;text-align:left;border-bottom:2px solid;font-weight:600}
-      td{padding:6px 10px;border-bottom:1px solid;font-size:11px}
-      .do-sec-h{font-size:9px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:12px}
-      .do-sl{display:block;font-size:9px;opacity:.6}
+      table{width:100%;border-collapse:collapse;margin-bottom:16px}
+      th{padding:4px 8px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;text-align:left;border-bottom:2px solid;font-weight:600}
+      td{padding:4px 8px;border-bottom:1px solid;font-size:12px}
+      .do-sec-h{font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-top:12px}
+      .do-sl{display:block;font-size:11px;opacity:.6}
+      /* On paper the tag has no colour — the word alone must carry it (DESIGN.md #2). */
+      .do-tag{font-weight:700;margin-right:4px}
       .do-acts,.do-slots,button,input,select{display:none}
-      @media print{body{padding:10px}table{page-break-inside:auto}}
+      @media print{body{padding:8px}table{page-break-inside:auto}}
     </style></head><body>
     <h1>Ημερήσιο Πλάνο</h1>
     <div class="sub">${document.querySelector('.do-sub')?.textContent||''}</div>
@@ -833,7 +897,7 @@ async function _opsOvActFinal(id,perf='Delayed'){const d=localToday();
     syncOrderDownstream(id, { source: 'intl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true })
       .catch(e => console.warn('[ops overdue sync]', e));
   }
-  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Σφάλμα αποθήκευσης','danger');}}
+  OPS.overdue=OPS.overdue.filter(r=>r.id!==id);toast(perf==='Delayed'?'Σημειώθηκε ως καθυστερημένη':'Σημειώθηκε ως παραδοθείσα');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 // Expose functions used from onclick/onchange handlers
 window.renderDailyOps = renderDailyOps;
