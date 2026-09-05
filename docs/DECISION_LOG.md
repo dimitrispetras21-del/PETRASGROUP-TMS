@@ -833,3 +833,14 @@ CHECK του `ct_cost_lines` (migration 011). Trigger στο `ct_round_trips` γ
 **Απόδειξη:** 0/0/0/0 ασυμφωνίες μετά· δοκιμή καταρράκτη με rollback.
 **Ποιος:** owner («μας αναγκάζει να αλλάξουμε οδηγό ή όχημα μέσα σε υπάρχον
 roundtrip — αυτό πρέπει να μεταφέρεται παντού»), Fable.
+
+### 2026-09-05 · rbac · Μισθοδοσία κλειστή για dispatchers από τώρα · καμία διαγραφή roundtrip
+
+**Επιλογή (owner, βράδυ 5/9):** «Η μισθοδοσία για τους dispatcher κλειδώνει από τώρα» —
+επαληθεύτηκε ότι ισχύει ήδη σε τρία στρώματα: μενού (`core/router.js` item perm
+`costs`, dispatcher = none), πύλη `navigate()`, Worker `COSTS_PERMS.dispatcher` χωρίς
+`ledger`. Καμία αλλαγή χρειάστηκε. Το management κρατά ανάγνωση (`costs: view`).
+**Επιλογή 2:** «Προς το παρόν δεν υπάρχει δικαίωμα delete στα round trips» — το
+`DELETE /costs/rt/:id/legs` μένει 403 για όλους· το ξε-ταίριασμα στο Weekly αφήνει
+το σκέλος στο RT (αρχή 5: κλειστό μέχρι να χρειαστεί).
+**Ποιος:** owner.
