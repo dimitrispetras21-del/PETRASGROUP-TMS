@@ -51,6 +51,14 @@ class TestVerify(unittest.TestCase):
         self.assertTrue(any('inconsistent' in e for e in verify(plan(), [node], AUTO, MAP)))
     def test_file_not_in_map(self):
         self.assertTrue(any('map' in e for e in verify(plan(), [NODE], AUTO, {'driver_id': 8, 'files': [], 'crosscheck': []})))
+    def test_driver_id_must_match_map(self):
+        self.assertTrue(any('map driver' in e for e in verify(plan(driver_id=9), [NODE], AUTO, {'driver_id': 8, 'files': ['F1'], 'crosscheck': []})))
+    def test_driver_id_and_create_driver_together_rejected(self):
+        p = plan(create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('both' in e for e in verify(p, [NODE], AUTO, MAP)))
+    def test_create_driver_plan_needs_map_create(self):
+        p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('map has no create' in e for e in verify(p, [NODE], AUTO, {'driver_id': None, 'files': ['F1'], 'crosscheck': []})))
 
 if __name__ == '__main__':
     unittest.main()

@@ -18,13 +18,19 @@ def row_delta(r):
 
 def verify(plan, nodes, auto_rows, map_entry):
     errs = []
-    key = plan.get('driver_key', '?')
     if plan.get('status') == 'needs_decision':
         if not plan.get('needs_decision'): errs.append('status needs_decision without reasons')
         return errs
     if plan.get('status') != 'ready': errs.append('status must be ready or needs_decision'); return errs
+    # Identity is the one thing the arithmetic cannot catch: a wrong driver_id
+    # writes a perfectly balanced ledger onto the wrong person.
     if not plan.get('driver_id') and not plan.get('create_driver'): errs.append('neither driver_id nor create_driver')
+    if plan.get('driver_id') and plan.get('create_driver'): errs.append('both driver_id and create_driver set — pick one')
     if map_entry is None: errs.append('driver key not in map'); return errs
+    if map_entry.get('driver_id') and plan.get('driver_id') != map_entry['driver_id']:
+        errs.append('plan driver_id %s ≠ map driver_id %s' % (plan.get('driver_id'), map_entry['driver_id']))
+    if plan.get('create_driver') and not map_entry.get('create'):
+        errs.append('plan creates a driver but the map has no create block for this key')
     by_id = {(n['file_id'], n['sheet']): n for n in nodes}
     chain = [n for n in plan.get('nodes', []) if n.get('role') == 'chain']
     for n in chain:
