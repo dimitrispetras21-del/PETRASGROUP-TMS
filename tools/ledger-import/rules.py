@@ -78,6 +78,21 @@ def detect_header(rows):
                     cols[field] = j; break
         if len(cols) >= 3 and all(f in cols for f in REQUIRED):
             used = set(cols.values())
+            # Unlabeled date/route (the national-driver layout labels only the
+            # money columns): infer them from the next 30 data rows — the column
+            # left of ΕΛΑΒΕ with the most date cells is the date, the one with
+            # the most text cells is the route.
+            sample = rows[i:i + 30]
+            left = [j for j in range(1, cols['advance']) if j not in used]
+            if 'date' not in cols and left:
+                best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and to_date(r[j - 1]) is not None))
+                if sum(1 for r in sample if len(r) >= best and to_date(r[best - 1]) is not None) >= 3:
+                    cols['date'] = best; used.add(best)
+            left = [j for j in range(1, cols['advance']) if j not in used]
+            if 'route' not in cols and left:
+                best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and isinstance(r[j - 1], str) and r[j - 1].strip()))
+                if sum(1 for r in sample if len(r) >= best and isinstance(r[best - 1], str) and r[best - 1].strip()) >= 3:
+                    cols['route'] = best; used.add(best)
             if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route'] and cols['date'] + 1 not in used:
                 cols['date_end'] = cols['date'] + 1
             if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used:

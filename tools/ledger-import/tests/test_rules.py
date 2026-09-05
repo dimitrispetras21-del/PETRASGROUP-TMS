@@ -47,6 +47,20 @@ class TestHeader(unittest.TestCase):
         rows = [(None, 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ Δ', None, 'ΗΜΕΡ', 'ΕΠΙΣΗΜΗ', 'ΤΡΑΠΕΖΑ', 'ΥΠΟΛΟΙΠΟ')]
         self.assertTrue(detect_header(rows)['out_of_scope'])
 
+    def test_unlabeled_date_and_route_are_inferred_from_data(self):
+        rows = [(None, 'Σεπτέμβριος 2023', None, None, None, None, None, None, None),
+                (None, None, None, 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ ΔΡ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                (None, None, None, None, None, None, None, None, 0),
+                (None, dt.datetime(2023, 9, 14), 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, 0, 0, 60, 60, 60),
+                (None, dt.datetime(2023, 9, 15), 'ΑΘΗΝΑ', 100, 20, 80, 230, 150, 210),
+                (None, dt.datetime(2023, 9, 20), 'ΜΕΤΡΗΤΑ', 200, 0, 200, 0, -200, 10)]
+        h = detect_header(rows)
+        self.assertEqual(h['row'], 2)
+        self.assertEqual(h['cols']['date'], 2)
+        self.assertEqual(h['cols']['route'], 3)
+        self.assertEqual(h['cols']['seq'], 1)
+        self.assertEqual(h['cols']['value'], 7)
+
     def test_no_header(self):
         self.assertIsNone(detect_header([('a', 'b'), (1, 2)]))
 
