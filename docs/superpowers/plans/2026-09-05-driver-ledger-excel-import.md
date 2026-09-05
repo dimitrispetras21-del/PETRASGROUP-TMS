@@ -2984,3 +2984,58 @@ git commit -q -m "ledger-import: drop unrepairable return dates (noted), leading
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10e: make_plan — skipped-amount arithmetic done once, per cause (review of 10c)
+
+**Why.** The review of Task 10c showed that `opening_carry_skipped` is set by three unrelated events (opening skipped, first carry skipped, any zero carry) and then used in arithmetic (`running_final`, `expected −= opening`). A node with a real opening (emitted) plus a zero carry row further down gets the flag and its balance is shifted by the opening a second time (seen on ΣΟΥΛΙΩΤΗΣ/SCANIA). A second latent problem: a carry row shows up in the inventory as a `running_breaks` jump of the same amount (its cells carry no ΑΞΙΑ/ΕΛΑΒΕ/ΕΞΟΔΑ, but the cached ΠΡΟΟΔΕΥΤΙΚΟ moves), so a carry can be emitted twice — once as the carry adjustment, once as the break line.
+
+**Rule.** For each chain node keep a local `skipped = Decimal('0')`: add the opening when it is skipped, add the first carry's amount when it is skipped. Breaks recorded on a carry row are the carry itself — never emitted as separate lines. Zero carries emit nothing and touch no flag. `running_final = node_final + skipped`; the arithmetic check is `node_final == expected_final − skipped`. `pn[k]['opening_carry_skipped']` stays informational: true iff `skipped != 0`.
+
+**Files:**
+- Modify: `tools/ledger-import/make_plan.py`
+- Test: `tools/ledger-import/tests/test_make_plan.py` (two tests)
+
+- [ ] **Step 1: Tests** (inside `TestBuildPlan`):
+```python
+    def test_real_opening_plus_zero_carry_is_not_double_counted(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50), row(5, '2024-02-01', 'carry', amount=0.0), row(6, '2024-03-01', value=30, advance=0)],
+                 opening_balance='-8.00', final='72.00')          # −8 + 50 + 30 = 72; the −8 is NOT the previous final (200) → emitted as adjustment
+        p = build_plan('X', ENTRY, [a, b], [], {'settled': [{'file_id': 'F1', 'sheet': 'S1', 'why': 'paid'}]})
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        s2 = next(x for x in p['nodes'] if x['sheet'] == 'S2')
+        self.assertFalse(s2['opening_carry_skipped'])
+        self.assertEqual(p['expected_total_balance'], '72.00')
+
+    def test_carry_row_break_is_not_emitted_twice(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=200.0), row(5, '2024-01-12', value=100, advance=50)],
+                 running_breaks=[{'row': 4, 'entry_date': '2024-01-10', 'diff': '200.00'}], final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+        # and when the carry is NOT explained by the previous sheet it is emitted exactly once
+        c = node('F1', 'S3', [row(4, '2025-01-10', 'carry', amount=40.0), row(5, '2025-01-12', value=10, advance=0)],
+                 running_breaks=[{'row': 4, 'entry_date': '2025-01-10', 'diff': '40.00'}], final='50.00')
+        p2 = build_plan('X', ENTRY, [a, b, c], [], None)
+        adj_lines = [r for b_ in p2['batches'] for r in b_['rows'] if r['entry_type'] == 'adjustment']
+        self.assertEqual([x['amount'] for x in adj_lines], [-250.0, 40.0]) if any('εξόφληση' in x.get('note', '') for x in adj_lines) else self.assertEqual([x['amount'] for x in adj_lines], [40.0])
+```
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_make_plan 2>&1 | tail -3` → 2 failures.
+- [ ] **Step 3: Implement** in `build_plan`, inside the `for n in chain:` loop:
+  - after `first_carry = …` add `skipped = Decimal('0')`.
+  - opening block: `if opening is not None and opening != 0:` (drop the separate zero branch) with `action` as now; on `skip`: `skipped += opening`; on `adjust`: emit as now. Do not set `pn[k]['opening_carry_skipped']` here.
+  - carry rows: if `d2(e['amount']) == 0`: `continue` (no flag). Else compute `action` as now; on `skip`: `skipped += d2(e['amount'])`; on `adjust`: emit as now. In both cases **`breaks.pop(r['row'], None)`** before the `for b in breaks.get(r['row'], [])` loop runs (a carry row's break is the carry).
+  - replace `running_final = node_final + (opening if … else …)` with `running_final = node_final + skipped`, and the `expected` adjustment with `expected = d2(n['expected_final']) - skipped`.
+  - after the arithmetic: `pn[k]['opening_carry_skipped'] = skipped != 0`.
+- [ ] **Step 4: Run** the suite → OK (previous + 2). Then `python3 tools/ledger-import/make_plan.py | tail -1` and `python3 tools/ledger-import/verify_plan.py | grep -c ^OK` — record.
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/make_plan.py tools/ledger-import/tests/test_make_plan.py
+git commit -q -m "ledger-import: make_plan — skipped opening/carry amounts tracked per node, carry-row breaks not emitted twice (review 10c)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
