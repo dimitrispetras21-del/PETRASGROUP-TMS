@@ -668,7 +668,11 @@ async function renderEntity(entityKey) {
       // Rule #7 (DESIGN.md): a failed load must never look like an empty
       // table or an eternal skeleton. Old-path screens keep their current
       // behaviour until each one's own redesign step.
-      c.innerHTML = showError('Η φόρτωση απέτυχε. Έλεγξε τη σύνδεση και δοκίμασε ξανά.');
+      // What happened · what it does NOT mean · what to do (DESIGN.md #7). The
+      // retry re-enters here rather than reloading, so the sidebar and the
+      // session stay as they were.
+      c.innerHTML = showError('Δεν φορτώθηκαν οι εγγραφές — δεν σημαίνει ότι δεν υπάρχουν. Έλεγξε τη σύνδεση και ξαναδοκίμασε.')
+        + `<div style="text-align:center;padding:0 0 16px"><button type="button" class="btn btn-secondary btn-sm" onclick="renderEntity('${entityKey}')">Ξαναδοκίμασε</button></div>`;
       if (typeof logError === 'function') logError(e, 'entity list load');
       return;
     }
@@ -725,8 +729,18 @@ async function renderEntity(entityKey) {
   };
   const filtersHTML = cfg.filters.map(fi => {
     if (fi.type === 'bool' || fi.type === 'select') {
+      // ΜΕΡΟΣ Δ2 «ανενεργό»: an option that would match nothing is disabled
+      // (grey, not selectable) instead of leading to an empty table. Counted
+      // on the UNFILTERED records with the very predicate the filter applies
+      // (_entityFilterPred), so the option and the result can never disagree.
+      // A predicate the engine cannot build leaves the option live.
+      const _dead = o => {
+        if (!o.val) return false;
+        const pred = _entityFilterPred(cfg, fi.field, o.val, fi.type);
+        return !!pred && !records.some(pred);
+      };
       return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
-        ${fi.options.map(o => `<option value="${o.val}" ${_sel(fi, o.val)}>${fi.label}: ${o.label}</option>`).join('')}
+        ${fi.options.map(o => `<option value="${o.val}" ${_sel(fi, o.val)}${_dead(o) ? ' disabled title="Καμία εγγραφή"' : ''}>${fi.label}: ${o.label}</option>`).join('')}
       </select>`;
     } else if (fi.type === 'dynamic') {
       const opts = dynamicOpts[fi.field] || [];
@@ -859,19 +873,19 @@ function _renderStatsBarV2(entityKey, records) {
       else if (days.some(d => d <= 30)) soon++;
     }
     out.push(stat(entityKey === 'drivers' ? 'Ενεργοί' : 'Ενεργά', active,
-      active ? 'var(--success)' : 'var(--text-dim)'));
+      active ? 'var(--ok)' : 'var(--text-dim)'));
     out.push(stat(entityKey === 'drivers' ? 'Ληγμένο δίπλωμα' : 'Ληγμένο έγγραφο', expired,
-      expired ? 'var(--danger)' : 'var(--success)'));
-    out.push(stat('Λήγει <30 ημ.', soon, soon ? 'var(--warning)' : 'var(--text-dim)'));
+      expired ? 'var(--danger)' : 'var(--ok)'));
+    out.push(stat('Λήγει <30 ημ.', soon, soon ? 'var(--warn)' : 'var(--text-dim)'));
     if (unknown) out.push(stat('Χωρίς ημερομηνία', unknown, 'var(--text-mid)'));
   } else if (entityKey === 'workshops') {
     // Τα _serviceCount/_totalSpend έρχονται από το _enrichWorkshopsV2, που
     // τρέχει ΜΕΤΑ. Ώσπου να έρθουν, οι δύο τελευταίες μετρήσεις λείπουν αντί
     // να δείχνουν 0 — και η enrichment ξανακαλεί αυτή τη συνάρτηση.
     const used = records.filter(r => r.fields['_serviceCount']).length;
-    out.push(stat('Ενεργά', active, active ? 'var(--success)' : 'var(--text-dim)'));
+    out.push(stat('Ενεργά', active, active ? 'var(--ok)' : 'var(--text-dim)'));
     if (records.some(r => r.fields['_serviceCount'] != null)) {
-      out.push(stat('Σε χρήση', used, used ? 'var(--success)' : 'var(--text-dim)'));
+      out.push(stat('Σε χρήση', used, used ? 'var(--ok)' : 'var(--text-dim)'));
       const jobs = records.reduce((s, r) => s + (r.fields['_serviceCount'] || 0), 0);
       out.push(stat('Εργασίες', jobs));
       if (showMoney) {
@@ -885,9 +899,9 @@ function _renderStatsBarV2(entityKey, records) {
     // έχει το φίλτρο, που κάνει ορατή και την ασυνέπεια (GR/GREECE/ΕΛΛΑΔΑ).
     const noPhone = records.filter(r => !r.fields['Phone']).length;
     const countries = new Set(records.map(r => r.fields['Country']).filter(Boolean)).size;
-    out.push(stat('Ενεργοί', active, active ? 'var(--success)' : 'var(--text-dim)'));
+    out.push(stat('Ενεργοί', active, active ? 'var(--ok)' : 'var(--text-dim)'));
     out.push(stat('Χώρες', countries));
-    out.push(stat('Χωρίς τηλέφωνο', noPhone, noPhone ? 'var(--warning)' : 'var(--success)'));
+    out.push(stat('Χωρίς τηλέφωνο', noPhone, noPhone ? 'var(--warn)' : 'var(--ok)'));
   }
 
   el.innerHTML = out.join('');
@@ -1262,6 +1276,12 @@ function _entityVisibleCols(cfg) {
   return cfg.columns.filter(c => !c.perm || can(cfg.perm) === c.perm);
 }
 
+// Render cap: 500 rows max to keep DOM responsive. Previously was a silent 200 cap
+// which hid entries in growing tables (clients/partners > 200). Now we render up to
+// 500 and say so twice — in the count next to the title and in a footer row —
+// so nobody reads «1.820 εγγραφές» over a table that holds 500.
+const ENTITY_RENDER_CAP = 500;
+
 function buildEntityTable(entityKey, records) {
   const cfg = ENTITY_CONFIG[entityKey];
   // TR-2/TL-3: δύο πινακίδες που κανονικοποιούνται στην ΙΔΙΑ τιμή είναι σχεδόν
@@ -1301,12 +1321,8 @@ function buildEntityTable(entityKey, records) {
       onclick="entitySortToggle('${entityKey}',${i})"
       onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();entitySortToggle('${entityKey}',${i})}">${c.label}${arrow}</th>`;
   }).join('');
-  // Render cap: 500 rows max to keep DOM responsive. Previously was a silent 200 cap
-  // which hid entries in growing tables (clients/partners > 200). Now we render up to
-  // 500 and show a visible footer warning if more exist, so users know to use search.
-  const RENDER_CAP = 500;
-  const truncated = sortedRecs.length > RENDER_CAP;
-  const rowsToRender = truncated ? sortedRecs.slice(0, RENDER_CAP) : sortedRecs;
+  const truncated = sortedRecs.length > ENTITY_RENDER_CAP;
+  const rowsToRender = truncated ? sortedRecs.slice(0, ENTITY_RENDER_CAP) : sortedRecs;
   return `<table>
     <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
@@ -1314,7 +1330,7 @@ function buildEntityTable(entityKey, records) {
         ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
         : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
       }
-      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:10px 14px;background:var(--row-empty-bg);color:var(--row-empty-text);font-size:12px;text-align:center">⚠ Showing first ${RENDER_CAP} of ${sortedRecs.length} — use search/filter to narrow results</td></tr>` : ''}
+      ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:8px 16px;background:var(--warn-bg);color:var(--warn);font-size:12px;text-align:center;font-variant-numeric:tabular-nums">⚠ Εμφανίζονται οι πρώτες ${ENTITY_RENDER_CAP} από ${sortedRecs.length.toLocaleString('el-GR')} — στένεψε με αναζήτηση ή φίλτρο για να δεις τις υπόλοιπες</td></tr>` : ''}
     </tbody>
   </table>`;
 }
@@ -1422,8 +1438,11 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
     if (col.primary) {
       const dup = plateField && col.field === plateField && typeof normalizePlate === 'function'
         && dupPlates && dupPlates.has(normalizePlate(val));
-      return `<td><strong style="color:var(--text)">${val || '—'}</strong>${dup
-        ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:10px;font-weight:700;color:var(--warning);white-space:nowrap">⚠ διπλότυπο;</span>'
+      // A plate is a number in a column (ΜΕΡΟΣ Γ): tabular digits so ΙΑΒ 1099
+      // and ΙΑΒ 1100 line up. 11px is the floor for text that is read.
+      const numeric = plateField && col.field === plateField ? ' style="font-variant-numeric:tabular-nums"' : '';
+      return `<td${numeric}><strong style="color:var(--text)">${val || '—'}</strong>${dup
+        ? ' <span title="Υπάρχει άλλη εγγραφή με οπτικά ίδια πινακίδα — ελληνικά/λατινικά ομόγλυφα ή κενό" style="font-size:11px;font-weight:700;color:var(--warn);white-space:nowrap">⚠ διπλότυπο;</span>'
         : ''}</td>`;
     }
     if (col.field === 'Phone' && val) return `<td style="font-variant-numeric:tabular-nums;white-space:nowrap">${_fmtPhone(val)}</td>`;
@@ -1460,6 +1479,44 @@ function entityFilter(entityKey, field, val, type) {
   applyEntityFilters(entityKey);
 }
 
+/**
+ * The predicate one filter value applies to a record — or null when the
+ * engine has no rule for it (then the filter is a no-op, as before).
+ * Lives apart from applyEntityFilters because the filter dropdowns count
+ * their options with it (ΜΕΡΟΣ Δ2, zero → disabled); a second copy of these
+ * rules next to the <option>s would drift (principle 3).
+ * @returns {null|function(Object):boolean}
+ */
+function _entityFilterPred(cfg, field, val, type) {
+  // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
+  // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
+  if (/country|χωρα|χώρα/i.test(field) && typeof normalizeCountry === 'function') {
+    return r => normalizeCountry(r.fields[field]) === normalizeCountry(val);
+  }
+  if (field === '_compliance') {
+    // Compliance filter: check expiry dates from the compliance column config
+    const complianceCol = cfg.columns.find(c => c.type === 'compliance');
+    if (!complianceCol) return null;
+    return r => {
+      const statuses = complianceCol.fields.map(fc => {
+        const d = r.fields[fc.field];
+        if (!d) return 'none';
+        const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+        return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
+      });
+      if (val === 'expired')  return statuses.includes('expired');
+      if (val === 'expiring') return statuses.includes('expiring') && !statuses.includes('expired');
+      if (val === 'ok')       return statuses.every(s => s === 'ok' || s === 'none');
+      return true;
+    };
+  }
+  if (type === 'bool') {
+    const boolVal = val === 'true';
+    return r => !!r.fields[field] === boolVal;
+  }
+  return r => String(r.fields[field] || '') === val;
+}
+
 function applyEntityFilters(entityKey) {
   const cfg = ENTITY_CONFIG[entityKey];
   const st  = _entityState[entityKey];
@@ -1480,34 +1537,8 @@ function applyEntityFilters(entityKey) {
     }));
   }
   for (const [field, { val, type }] of Object.entries(st.filters)) {
-    // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
-    // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
-    if (/country|χωρα|χώρα/i.test(field) && typeof normalizeCountry === 'function') {
-      recs = recs.filter(r => normalizeCountry(r.fields[field]) === normalizeCountry(val));
-      continue;
-    }
-    if (field === '_compliance') {
-      // Compliance filter: check expiry dates from the compliance column config
-      const complianceCol = cfg.columns.find(c => c.type === 'compliance');
-      if (!complianceCol) continue;
-      recs = recs.filter(r => {
-        const statuses = complianceCol.fields.map(fc => {
-          const d = r.fields[fc.field];
-          if (!d) return 'none';
-          const days = Math.ceil((new Date(d) - new Date()) / 86400000);
-          return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
-        });
-        if (val === 'expired')  return statuses.includes('expired');
-        if (val === 'expiring') return statuses.includes('expiring') && !statuses.includes('expired');
-        if (val === 'ok')       return statuses.every(s => s === 'ok' || s === 'none');
-        return true;
-      });
-    } else if (type === 'bool') {
-      const boolVal = val === 'true';
-      recs = recs.filter(r => !!r.fields[field] === boolVal);
-    } else {
-      recs = recs.filter(r => String(r.fields[field] || '') === val);
-    }
+    const pred = _entityFilterPred(cfg, field, val, type);
+    if (pred) recs = recs.filter(pred);
   }
 
   st.filtered = recs;
@@ -1516,8 +1547,11 @@ function applyEntityFilters(entityKey) {
   // Η ΜΟΝΗ διαδρομή που αποδίδει τον πίνακα και για τις έξι οθόνες — άρα και το
   // μόνο σημείο που χρειάζεται ο κανόνας των κενών στηλών.
   collapseEmptyColumns(entityKey + '_table', 'entity:' + entityKey);
+  // When the table is capped, the count says so HERE, at the top, and not
+  // only in the footer 500 rows down that nobody scrolls to (principle 1).
+  const capped = recs.length > ENTITY_RENDER_CAP ? `πρώτες ${ENTITY_RENDER_CAP} από ` : '';
   document.getElementById(entityKey + '_count').textContent =
-    recs.length.toLocaleString('el-GR') + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
+    capped + recs.length.toLocaleString('el-GR') + ' ' + (recs.length === 1 ? noun[0] : noun[1]);
 }
 
 // ── Detail Panel ──────────────────────────────────
@@ -2097,6 +2131,15 @@ async function _loadEntityCardActivity(entityKey, rec) {
 }
 
 // ── Order History for Clients & Partners ─────────
+// Two-row cell (DESIGN.md ΜΕΡΟΣ Ζ): origin above, destination below, dimmed.
+// Replaces an ellipsis at 120–140px that cut location names — rule #6: the
+// dispatcher phones these places, so the name is never clipped.
+function _entityRouteCell(route) {
+  const parts = String(route || '—').split(' → ');
+  if (parts.length < 2) return parts[0];
+  return `<div>${parts[0]}</div><div style="color:var(--text-dim)">→ ${parts.slice(1).join(' → ')}</div>`;
+}
+
 async function _loadEntityHistory(type, recId, name) {
   const el = document.getElementById('entity_history_' + recId);
   if (!el) return;
@@ -2139,7 +2182,7 @@ async function _loadEntityHistory(type, recId, name) {
         <tbody>${orders.slice(0,30).map(o => `<tr style="border-bottom:1px solid var(--border)">
           <td style="padding:4px 6px;color:var(--text-mid)">${o.date||'—'}</td>
           <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${o.type==='INTL'?'var(--accent)':'var(--success)'}">${o.type}</span></td>
-          <td style="padding:4px 6px;color:var(--text);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.route}</td>
+          <td style="padding:4px 6px;color:var(--text)">${_entityRouteCell(o.route)}</td>
           <td style="padding:4px 6px;text-align:center;color:var(--text-mid)">${o.pals}</td>
           <td style="padding:4px 6px"><span class="badge ${o.status==='Delivered'?'badge-green':o.status==='Invoiced'?'badge-blue':o.status==='Assigned'?'badge-yellow':'badge-grey'}" style="font-size:9px">${o.status}</span></td>
         </tr>`).join('')}${orders.length>30?`<tr><td colspan="5" style="padding:6px;text-align:center;color:var(--text-dim)">+${orders.length-30} more</td></tr>`:''}</tbody>
@@ -2267,7 +2310,7 @@ function _renderClientOrders(el, orders) {
     return `<tr style="border-bottom:1px solid var(--border)">
       <td style="padding:4px 6px;color:var(--text-mid)">${o.date||'—'}</td>
       <td style="padding:4px 6px"><span style="font-size:9px;font-weight:700;color:${kindColor}">${o.type}</span></td>
-      <td style="padding:4px 6px;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${o.route}</td>
+      <td style="padding:4px 6px;color:var(--text)">${_entityRouteCell(o.route)}</td>
       <td style="padding:4px 6px;text-align:center;color:var(--text-mid)">${o.pals}</td>
       <td style="padding:4px 6px;text-align:right;color:var(--text);font-weight:600">${o.price?'€'+Math.round(o.price):'—'}</td>
       <td style="padding:4px 6px"><span class="badge ${badgeCls}" style="font-size:9px">${o.status}</span></td>

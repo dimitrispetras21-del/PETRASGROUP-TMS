@@ -37,6 +37,15 @@ const AUDIT_UI_ROLES = ['owner', 'management'];
 // returns 200 anyway, so the header says exactly what the user gets.
 const AUDIT_LIMIT = 200;
 
+// The one message for every failure we did not name ourselves. A raw
+// e.message here is the BROWSER's wording ("Failed to fetch", "Unexpected
+// token") — English, and silent about what to do next. DESIGN.md #7: a failure
+// must say what happened, what it does NOT mean, and what to do.
+const AUDIT_NET_MSG = 'Το ιστορικό δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν ενέργειες. Έλεγξε τη σύνδεση και ξαναδοκίμασε.';
+// Marks an error whose text was written for the screen; everything else is
+// replaced by AUDIT_NET_MSG in _auditFetch's catch.
+const _auditFail = (msg) => Object.assign(new Error(msg), { shown: true });
+
 // AT-7: κλικ στο record id → το trail φιλτράρει στο ιστορικό ΤΟΥ record.
 function _auditFilterRecord(id) {
   const inp = document.getElementById('afRecord');
@@ -94,15 +103,15 @@ async function _auditFetch() {
     // These two auth messages stay in English on purpose: tests/critics/
     // semantics.spec.js recognises them as "the screen did not render" and
     // would go blind to a missing token if they were reworded here.
-    if (!token) throw new Error('No session token. Sign in again.');
+    if (!token) throw _auditFail('No session token. Sign in again.');
 
     const res = await fetch(`${PROXY_URL}/audit?${qs.toString()}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
 
-    if (res.status === 403) throw new Error('Ο ρόλος σου δεν έχει πρόσβαση στο ιστορικό ενεργειών.');
-    if (res.status === 401) throw new Error('Session expired. Sign in again.');
-    if (!res.ok) throw new Error(`Το ιστορικό δεν φορτώθηκε (${res.status}).`);
+    if (res.status === 403) throw _auditFail('Ο ρόλος σου δεν έχει πρόσβαση στο ιστορικό ενεργειών.');
+    if (res.status === 401) throw _auditFail('Session expired. Sign in again.');
+    if (!res.ok) throw _auditFail(`Το ιστορικό δεν φορτώθηκε (ο server απάντησε ${res.status}) — δεν σημαίνει ότι δεν υπάρχουν ενέργειες. Ξαναδοκίμασε· αν επιμένει, πες το στον Δημήτρη.`);
 
     const data = await res.json();
     _auditEntries = Array.isArray(data.entries) ? data.entries : [];
@@ -112,7 +121,7 @@ async function _auditFetch() {
     }
   } catch (e) {
     _auditEntries = [];
-    _auditError = e.message || 'Το ιστορικό δεν φορτώθηκε.';
+    _auditError = (e && e.shown && e.message) ? e.message : AUDIT_NET_MSG;
     if (typeof logError === 'function') logError(e, 'auditTrail:fetch');
   } finally {
     _auditLoading = false;
@@ -264,6 +273,26 @@ function _auditFieldLabel(f) {
   return _AUDIT_FIELD[f] || String(f);
 }
 
+// The JWT role, as a word the team uses. Lower-case on purpose: it sits under
+// the username as a qualifier, not as a title. Unknown role shows raw.
+const _AUDIT_ROLE = {
+  owner:      'ιδιοκτήτης',
+  management: 'διοίκηση',
+  accountant: 'λογιστήριο',
+  dispatcher: 'δρομολόγηση',
+  warehouse:  'αποθήκη',
+};
+
+// Direction values are stored in English / with arrows and shown in Greek —
+// DESIGN.md ΜΕΡΟΣ Ε: translation happens on display, never by writing new
+// values to the database. Anything else in that column shows raw.
+const _AUDIT_DIRECTION = {
+  'Export':      'ΕΞΑΓΩΓΗ',
+  'Import':      'ΕΙΣΑΓΩΓΗ',
+  'North→South': 'ΚΑΘΟΔΟΣ',
+  'South→North': 'ΑΝΟΔΟΣ',
+};
+
 const _AUDIT_ISO_TS = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
 const _AUDIT_ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -289,6 +318,7 @@ function _auditFmtVal(v, field) {
   // the recorded HAR the critics replay, and #52 already answers "which one
   // changed", which is this column's question.
   if (field && /_id$/.test(field) && /^\d+$/.test(s)) return `#${s}`;
+  if (field === 'direction' && _AUDIT_DIRECTION[s]) return _AUDIT_DIRECTION[s];
   return s;
 }
 
@@ -326,11 +356,41 @@ const _AUDIT_CASCADE = {
   pallet_ledger:                 'κινήσεις παλετών',
 };
 
-// Table names are the Postgres names (orders, order_stops, pl_movements).
-// Shown as-is, upper-cased: a label map here would be a second copy of the
-// Worker's TABLES (principle 3), and it drifts the day a table is added.
+// Table names arrive as Postgres names (orders, order_stops, pl_movements) and
+// are shown with the words the sidebar already uses for the same screens —
+// DESIGN.md ΜΕΡΟΣ Ε: on screen always Greek. This is NOT a copy of the
+// Worker's TABLES map (principle 3): that one is label→column for the write
+// path; this is display vocabulary, same idea as _AUDIT_FIELD above. A table
+// missing here falls through to its raw name upper-cased, so a new table is
+// VISIBLE as unlabelled — never hidden, never guessed.
+const _AUDIT_TABLE = {
+  orders:                   'Διεθνείς παραγγελίες',
+  national_orders:          'Εθνικές παραγγελίες',
+  national_loads:           'Εθνικά φορτία',
+  order_stops:              'Στάσεις παραγγελίας',
+  groupage_lines:           'Γραμμές groupage',
+  consolidated_loads:       'Ομαδοποιημένα φορτία',
+  partner_assignments:      'Αναθέσεις συνεργατών',
+  ramp:                     'Ράμπα',
+  fuel:                     'Καύσιμα',
+  pallet_ledger_suppliers:  'Παλέτες προμηθευτών',
+  pallet_ledger_partners:   'Παλέτες συνεργατών',
+  pl_movements:             'Κινήσεις παλετών',
+  workshops:                'Συνεργεία',
+  maint_history:            'Ιστορικό service',
+  maint_req:                'Εντολές εργασίας',
+  clients:                  'Πελάτες',
+  partners:                 'Συνεργάτες',
+  locations:                'Τοποθεσίες',
+  drivers:                  'Οδηγοί',
+  trucks:                   'Φορτηγά',
+  trailers:                 'Ρυμούλκες',
+  ct_round_trips:           'Δρομολόγια P&L',
+  ct_cost_lines:            'Γραμμές κόστους',
+};
 function _auditTableLabel(t) {
-  return t ? String(t).toUpperCase().replace(/_/g, ' ') : '—';
+  if (!t) return '—';
+  return _AUDIT_TABLE[t] || String(t).toUpperCase().replace(/_/g, ' ');
 }
 
 // A human handle for the record, when the snapshot carries one. The columns
@@ -416,7 +476,7 @@ function _auditRow(e) {
   return `
     <tr>
       <td class="at-when" title="${_auditEsc(when.full)}">${_auditEsc(when.short)}</td>
-      <td class="at-who">${e.actor ? `<span class="at-actor">${_auditEsc(e.actor)}</span><span class="at-role">${_auditEsc(e.role || '—')}</span>` : '<span class="at-dim">—</span>'}</td>
+      <td class="at-who">${e.actor ? `<span class="at-actor">${_auditEsc(e.actor)}</span><span class="at-role">${_auditEsc(_AUDIT_ROLE[e.role] || e.role || '—')}</span>` : '<span class="at-dim">—</span>'}</td>
       <td class="at-action ${act.cls}">${_auditEsc(act.label)}</td>
       <td class="at-table-name">${_auditEsc(_auditTableLabel(e.table_name))}</td>
       <td class="at-record">${recBtn}</td>
@@ -450,6 +510,12 @@ function _auditRefreshOptions() {
 
 function _auditHasFilter() {
   return Object.values(_auditFilters).some((v) => v && String(v).trim());
+}
+
+/** «Καθαρισμός» is live only when a filter or a non-default range is set. */
+function _auditSyncClear() {
+  const b = document.getElementById('afClear');
+  if (b) b.disabled = !(_auditHasFilter() || _auditRange !== 'all');
 }
 
 /**
@@ -522,29 +588,37 @@ async function renderAuditTrail() {
       </span>
       <span class="at-spacer"></span>
       <input id="afRecord" class="search-input at-search" placeholder="Αναζήτηση εγγραφής…" title="Ακριβές id εγγραφής (recXXXX ή αριθμός) — Enter για αναζήτηση" value="${_auditEsc(f.record_id)}">
-      <button type="button" class="btn btn-ghost btn-sm" id="afClear">Καθαρισμός</button>
+      <!-- Disabled while there is nothing to clear (ΜΕΡΟΣ Δ2, «ανενεργό»):
+           a live button on a page with no filter promises an action that
+           does nothing. Synced in _auditSyncClear after every change. -->
+      <button type="button" class="btn btn-ghost btn-sm" id="afClear" title="Αφαιρεί όλα τα φίλτρα">Καθαρισμός</button>
     </div>
     <div id="auditBody"><div class="loading">Φόρτωση…</div></div>
     <style>
-    /* Header: title + count + filters + search on one 58px line (Figma 163:605). */
-    .at-head { display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 0 0 8px; flex-wrap: wrap; }
+    /* Header: title + count + filters + search on one 58px line (Figma 163:605).
+       Every gap is from the DESIGN.md ΜΕΡΟΣ Δ scale (4/8/12/16/24/32); the
+       colours are the ΜΕΡΟΣ Β tokens only — the sidebar's --silver* family
+       was borrowed here for rules and the ≈ mark and is gone (wave 5). */
+    .at-head { display: flex; align-items: center; gap: 12px; min-height: 58px; padding: 0 0 8px; flex-wrap: wrap; }
     .at-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--text); margin: 0; }
-    .at-sub { font-size: var(--text-sm); color: var(--text-dim); margin-right: 6px; }
-    .at-filter { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-sm); color: var(--text-mid); white-space: nowrap; }
-    /* max-width: the Πίνακας list holds "PARTNER ASSIGNMENTS" and would size
+    .at-sub { font-size: var(--text-sm); color: var(--text-dim); margin-right: 8px; }
+    .at-filter { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-sm); color: var(--text-mid); white-space: nowrap; }
+    /* max-width: the Πίνακας list holds «Αναθέσεις συνεργατών» and would size
        the control to its longest option, pushing the search off the 58px line. */
-    .at-filter .filter-select { background: var(--bg-card); border-color: var(--silver-light); color: var(--text); font-weight: 500; max-width: 150px; }
+    .at-filter .filter-select { background: var(--surface-card); border-color: var(--border); color: var(--text); font-weight: 500; max-width: 150px; }
     .at-dates { display: inline-flex; align-items: center; gap: 4px; }
     .at-dates[hidden] { display: none; }
     .at-spacer { flex: 1 0 0; }
     .at-search { max-width: 220px; height: 34px; padding: 0 12px; font-size: var(--text-sm); }
     /* 40px rows (Figma 163:641), 16px cell padding, header at body size. The
        global thead th is 10px/1px-tracking; the frame reads at 13px. No
-       nowrap on cells: a long change wraps and the row grows — never cut (#6). */
-    .at-table thead th { height: 34px; padding: 0 16px; font-size: var(--text-body); font-weight: 600; letter-spacing: 0; color: var(--text-mid); background: var(--surface-sunken); border-bottom: 1px solid var(--border-row); }
-    .at-table tbody td { height: 40px; padding: 4px 16px; font-size: var(--text-sm); color: var(--text-mid); border-bottom: 1px solid var(--border-row); line-height: 1.35; }
+       nowrap on cells: a long change wraps and the row grows — never cut (#6).
+       tabular-nums on every cell: ids, dates and «#52» foreign keys sit in
+       every column, not only in ΠΟΤΕ (ΜΕΡΟΣ Γ). */
+    .at-table thead th { height: 34px; padding: 0 16px; font-size: var(--text-body); font-weight: 600; letter-spacing: 0; color: var(--text-mid); background: var(--surface-sunken); border-bottom: 1px solid var(--border); }
+    .at-table tbody td { height: 40px; padding: 4px 16px; font-size: var(--text-sm); color: var(--text-mid); border-bottom: 1px solid var(--border); line-height: 1.35; font-variant-numeric: tabular-nums; }
     .at-table tbody tr { cursor: default; }
-    .at-table th.at-when, .at-table td.at-when { width: 150px; white-space: nowrap; color: var(--text); font-variant-numeric: tabular-nums; }
+    .at-table th.at-when, .at-table td.at-when { width: 150px; white-space: nowrap; color: var(--text); }
     .at-table th.at-who, .at-table td.at-who { width: 170px; }
     .at-table th.at-action, .at-table td.at-action { width: 140px; }
     .at-table th.at-table-name, .at-table td.at-table-name { width: 190px; }
@@ -562,17 +636,23 @@ async function renderAuditTrail() {
     .at-table tbody td.at-act-create  { color: var(--text); font-weight: 500; }
     .at-table tbody td.at-act-update  { color: var(--text-mid); }
     .at-table tbody td.at-act-delete  { color: var(--text); font-weight: 700; }
-    .at-table tbody td.at-act-cascade { color: var(--danger-strong); font-weight: 700; }
+    .at-table tbody td.at-act-cascade { color: var(--danger); font-weight: 700; }
     .at-rec { text-decoration: none; cursor: pointer; color: var(--text-mid); display: flex; flex-direction: column; }
     .at-rec:hover .at-rec-label, .at-rec:hover .at-rec-only { color: var(--accent-text); text-decoration: underline; }
-    .at-rec-label { color: var(--text); }
+    /* nowrap on the LABEL only. Measured 5/9/2026: two national-load rows
+       stood at 56px because «GO TRANSPORT Ι.Κ.Ε. — 2026-08-30» wrapped onto
+       two lines above its id inside the 170px column. Rule #5 wants ≤44px
+       and rule #6 forbids cutting a name, so the name stays whole and the
+       column grows to fit it; the ΑΛΛΑΓΗ column, which wraps by design,
+       gives up the width. */
+    .at-rec-label { color: var(--text); white-space: nowrap; }
     .at-rec-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-xs); color: var(--text-dim); }
     .at-rec-only { font-size: var(--text-sm); color: var(--text-mid); }
     .at-change { color: var(--text); }
     /* Derived vs recorded, visible without hovering — see _auditChangeHtml. */
-    .at-diff-derived { display: inline-block; border-left: 2px solid var(--silver); padding-left: 8px; }
-    .at-approx { color: var(--silver-dim); font-weight: 600; margin-right: 2px; }
-    .at-legend { display: flex; align-items: baseline; gap: 5px; padding: 0 0 6px; font-size: var(--text-xs); color: var(--text-dim); }
+    .at-diff-derived { display: inline-block; border-left: 2px solid var(--text-dim); padding-left: 8px; }
+    .at-approx { color: var(--text-dim); font-weight: 600; margin-right: 4px; }
+    .at-legend { display: flex; align-items: baseline; gap: 4px; padding: 0 0 8px; font-size: var(--text-xs); color: var(--text-dim); }
     .at-legend .at-approx { font-size: var(--text-sm); }
     .at-diff-item b { font-weight: 500; color: var(--text-mid); }
     .at-from { color: var(--text-dim); }
@@ -585,6 +665,7 @@ async function renderAuditTrail() {
   document.getElementById('afRange').value = _auditRange;
   document.getElementById('afDates').hidden = _auditRange !== 'custom';
   _auditRefreshOptions();
+  _auditSyncClear();
 
   const apply = () => {
     _auditFilters.actor = document.getElementById('afActor').value;
@@ -601,6 +682,7 @@ async function renderAuditTrail() {
       _auditFilters.since = range === 'all' ? '' : _auditIsoDaysAgo(Number(range));
       _auditFilters.until = '';
     }
+    _auditSyncClear();
     _auditRenderBody();
   };
   for (const id of ['afActor', 'afTable', 'afAction', 'afRange', 'afSince', 'afUntil']) {
@@ -632,9 +714,12 @@ async function _auditRenderBody() {
   // must never look like "the load failed".
   if (_auditError) {
     if (sub) sub.textContent = 'δεν φορτώθηκε';
-    body.innerHTML = typeof showError === 'function'
+    // The message says «ξαναδοκίμασε»; the button makes it true without a
+    // page reload, which would also wipe the filters the user had set.
+    body.innerHTML = (typeof showError === 'function'
       ? showError(_auditError)
-      : `<div class="empty-state"><p><b>${_auditEsc(_auditError)}</b></p></div>`;
+      : `<div class="empty-state"><p><b>${_auditEsc(_auditError)}</b></p></div>`)
+      + '<div style="text-align:center;padding:0 0 16px"><button type="button" class="btn btn-secondary btn-sm" onclick="_auditRenderBody()">Ξαναδοκίμασε</button></div>';
     return;
   }
   if (!_auditEntries.length) {
