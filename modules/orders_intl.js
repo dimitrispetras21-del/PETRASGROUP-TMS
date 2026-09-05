@@ -939,8 +939,10 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
 
   // ── Try loading ORDER_STOPS (new normalized data) ──
   let _orderStops = [];
+  INTL_ORDERS._stopsFail = null;
   if (isEdit) {
-    try { _orderStops = await stopsLoad(recId, F.STOP_PARENT_ORDER); } catch(e) { console.warn('stopsLoad:', e); }
+    try { _orderStops = await stopsLoad(recId, F.STOP_PARENT_ORDER); }
+    catch(e) { INTL_ORDERS._stopsFail = recId; console.warn('stopsLoad:', e); }
   }
   let _loadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Loading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
   let _unloadStops = _orderStops.filter(s => s.fields[F.STOP_TYPE]==='Unloading').sort((a,b) => (a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
@@ -981,7 +983,7 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   // Value/label ΧΩΡΙΣΤΑ (παγίδα Φ1): το value είναι ΤΙΜΗ ΒΑΣΗΣ και δεν μεταφράζεται ποτέ.
   const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
-  const body = `
+  let body = `
     <div class="form-grid">
       <!-- Owner 11/8: Brand/Type αφαιρέθηκαν — δεδομένα Petras Group / International -->
       <div class="form-field">
@@ -1074,6 +1076,12 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   document.getElementById('modal').style.maxWidth = '760px';
   _oiEnsureStyles();  // the form opens from the Weekly too, before this page has rendered
   _oiReqAck = '';     // Δ6: each opened form earns its own acknowledgement
+  if (INTL_ORDERS._stopsFail === recId && recId) {
+    body = `<div style="background:var(--danger-bg);border:1.5px solid var(--danger-strong);border-radius:6px;padding:10px 12px;margin-bottom:12px;font-weight:600;color:var(--danger-strong)">
+      ⚠ Οι στάσεις της παραγγελίας ΔΕΝ φορτώθηκαν. Τα σημεία φόρτωσης και παράδοσης παρακάτω είναι κενά επειδή απέτυχε η ανάγνωση — <u>όχι επειδή δεν υπάρχουν</u>.
+      Η αποθήκευση είναι κλειδωμένη ώστε να μη σβηστούν. Κλείσε, κάνε Ανανέωση και ξαναδοκίμασε.
+    </div>` + body;
+  }
   openModal(isEdit ? 'Επεξεργασία παραγγελίας' : 'Νέα διεθνής παραγγελία', body, footer);
   _oiBalanceUpdate();
 }
@@ -1649,6 +1657,15 @@ async function submitIntlOrder(recId) {
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
 
   try {
+    // Οι στάσεις δεν φορτώθηκαν: αποθήκευση θα έγραφε κενά τα «Loading/Delivery
+    // Location N» και θα έσβηνε τις υπαρκτές στάσεις. Σταματάμε ΠΡΙΝ το write.
+    if (recId && INTL_ORDERS._stopsFail === recId) {
+      toast('Οι στάσεις δεν φορτώθηκαν — η αποθήκευση θα τις έσβηνε. Κάνε Ανανέωση και ξαναδοκίμασε.', 'warn');
+      const _b = document.getElementById('btnSubmit');
+      if (_b) { _b.textContent = 'Αποθήκευση'; _b.disabled = false; }
+      return;
+    }
+
     const fields = {};
 
     // Validate: no unmatched location text (text input filled but hidden recId empty)

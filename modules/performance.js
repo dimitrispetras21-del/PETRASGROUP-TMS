@@ -263,7 +263,7 @@ function _perfCompute() {
       )));
     }
   });
-  const dead_km = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : 0;
+  const dead_km = deadKmList.length ? Math.round(deadKmList.reduce((s,v)=>s+v,0)/deadKmList.length) : -1;
 
   // National On-Time — derive from Actual Delivery Date vs expected Delivery DateTime
   // On time if Actual Delivery Date <= Delivery DateTime (date only comparison)
@@ -663,12 +663,12 @@ function _perfDraw() {
 
   // Executive Briefing (was Nakis Feedback)
   const feedback = vals.weekly_score >= 85
-    ? `Εξαιρετικη εβδομαδα! On-time ${vals.on_time}%, dead km μολις ${vals.dead_km || 0}km.`
+    ? `Εξαιρετικη εβδομαδα! On-time ${vals.on_time}%, dead km ${vals.dead_km >= 0 ? 'μολις ' + vals.dead_km + 'km' : 'χωρις μετρηση'}.`
     : vals.weekly_score >= 70
-    ? `Καλη εβδομαδα. Προσεξε: dead km ${vals.dead_km || 0}km (target ≤50km).`
+    ? `Καλη εβδομαδα. Προσεξε: dead km ${vals.dead_km >= 0 ? vals.dead_km + 'km' : 'χωρις μετρηση'} (target ≤50km).`
     : `Χρειαζεται βελτιωση. Plan completion ${vals.plan_complete}%, on-time ${vals.on_time}%.`;
   const warnings = [
-    (vals.dead_km || 0) > 100 ? 'Dead KM >100km — έλεγξε import matching' : '',
+    vals.dead_km > 100 ? 'Dead KM >100km — έλεγξε import matching' : '',
     vals.fleet_usage < 60 ? 'Fleet usage χαμηλό — αδρανή φορτηγά' : '',
   ].filter(Boolean).join(' · ');
 

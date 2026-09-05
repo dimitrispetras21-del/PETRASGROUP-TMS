@@ -398,7 +398,7 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||'—');
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
   try{
-    var vcd=f['VS CD Date']?String(f['VS CD Date']):null;
+    var vcd=(f['Cross-dock Date']||f['VS CD Date'])?String(f['Cross-dock Date']||f['VS CD Date']):null;
     if(veroiaSwitch&&isExport) ld=vcd||(ld?new Date(new Date(ld).getTime()+86400000).toISOString():ld);
     if(veroiaSwitch&&!isExport) dd=vcd||(dd?new Date(new Date(dd).getTime()-86400000).toISOString():dd);
   }catch(e){}
@@ -412,7 +412,9 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
 function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Loading DateTime']||'';
   if(veroiaSwitch&&isExport){
-    var vDt=f['VS CD Date']?String(f['VS CD Date']):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
+    var _vsReal=f['Cross-dock Date']||f['VS CD Date'];
+    var vDtEst=!_vsReal;
+    var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()+86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'loading',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
@@ -441,7 +443,9 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
 function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
   var dt=f['Delivery DateTime']||'';
   if(veroiaSwitch&&!isExport){
-    var vDt=f['VS CD Date']?String(f['VS CD Date']):(dt?new Date(new Date(dt).getTime()-86400000).toISOString():'');
+    var _vsReal=f['Cross-dock Date']||f['VS CD Date'];
+    var vDtEst=!_vsReal;
+    var vDt=_vsReal?String(_vsReal):(dt?new Date(new Date(dt).getTime()-86400000).toISOString():'');
     return buildCard(1,{name:VEROIA,address:VADDR,lat:VLAT,lng:VLNG},'delivery',vDt,
       fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
   }
@@ -499,13 +503,14 @@ async function loadAll(){
     var fetchLocs=function(){ return atFetch(T_LOCS,''); };
     var[partners,trucks,trailers,drivers,locs]=await Promise.all([
       atFetch(T_PARTNERS,'&fields[]=Company Name&fields[]=VAT Number&fields[]=Adress&fields[]=Email'),
-      atFetch(T_TRUCKS,'&fields[]=License Plate&fields[]=Gross Vehicle Weight kg'),
-      atFetch(T_TRAILERS,'&fields[]=License Plate&fields[]=Weight kg'),
+      atFetch(T_TRUCKS,'&fields[]=License Plate&fields[]=Tare Weight kg'),
+      atFetch(T_TRAILERS,'&fields[]=License Plate&fields[]=Tare Weight kg'),
       atFetch(T_DRIVERS,'&fields[]=Full Name'),
       fetchLocs(),
     ]);
     allPartners=partners;allTrucks=trucks;allTrailers=trailers;
     allDrivers=drivers;allLocations=locs;
+    window.__locsFailed=!(locs&&locs.length);
     // Wave 3 (Π1): one document per order, sequentially — single or group.
     var htmlArr=[]; _waArr=[];
     for(var oi=0;oi<orderIdList.length;oi++){
@@ -708,11 +713,18 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     var truck=allTrucks.find(r=>f['Truck']&&r.id===f['Truck'][0])||{};
     var trailer=allTrailers.find(r=>f['Trailer']&&r.id===f['Trailer'][0])||{};
     var df=driver.fields||{},tf=truck.fields||{},trf=trailer.fields||{};
-    var truckW=parseFloat(tf['Gross Vehicle Weight kg']||tf['Weight kg']||0);
-    var trailerW=parseFloat(trf['Weight kg']||trf['Gross Vehicle Weight kg']||0);
+    var truckW=tf['Tare Weight kg']!=null?parseFloat(tf['Tare Weight kg']):null;
+    var trailerW=trf['Tare Weight kg']!=null?parseFloat(trf['Tare Weight kg']):null;
     // Owner (9/8): μικτό = απόβαρο φορτηγού + απόβαρο τρέιλερ + μικτό φορτίου
     var cargoW=parseFloat(f['Gross Weight kg']||0);
-    var totalW=truckW+trailerW+cargoW;
+    // Σύνολο ΜΟΝΟ όταν ξέρουμε και τα τρία. 15/36 φορτηγά δεν έχουν απόβαρο
+    // καταχωρημένο· εκεί τυπώνεται το φορτίο με ρητή ένδειξη τι λείπει, ώστε
+    // κανείς να μη διαβάσει μερικό άθροισμα ως μικτό βάρος.
+    var tareKnown=(truckW!=null&&!isNaN(truckW))&&(trailerW!=null&&!isNaN(trailerW));
+    var totalW=tareKnown?truckW+trailerW+cargoW:null;
+    var missTare=[];
+    if(truckW==null||isNaN(truckW)) missTare.push('φορτηγού');
+    if(trailerW==null||isNaN(trailerW)) missTare.push('ρυμούλκας');
     html=pbarHTML+
     '<div class="doc-header">'+
       '<div class="brand-wrap" style="text-align:left">'+
@@ -732,7 +744,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
       '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
       '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
       '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
-      '<div class="c"><div class="k">Μικτό βάρος</div><div class="v">'+(totalW>0?totalW.toLocaleString('de-DE')+' <small>KG</small>':'—')+'</div></div>'+
+      '<div class="c"><div class="k">Μικτό βάρος</div><div class="v">'+(totalW>0?totalW.toLocaleString('de-DE')+' <small>KG</small>':(cargoW>0?cargoW.toLocaleString('de-DE')+' <small>KG φορτίο</small><br><small style="color:#b91c1c">χωρίς απόβαρο '+missTare.join(' και ')+'</small>':'—'))+'</div></div>'+
     '</div>'+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
     chipsHTML+
@@ -765,6 +777,14 @@ function renderDocs(htmlArr){
   var docEl=document.getElementById('doc');
   docEl.style.display='block';
   var N=htmlArr.length;
+  // Κανόνας 7: η αποτυχία μιλάει και ξεχωρίζει από το κενό. Χωρίς τον πίνακα
+  // τοποθεσιών κάθε διεύθυνση γίνεται «—» και το φύλλο έβγαινε σιωπηλά σωστό.
+  if (window.__locsFailed) {
+    docEl.insertAdjacentHTML('beforebegin',
+      '<div style="background:#FEE2E2;border:2px solid #B91C1C;color:#7F1D1D;padding:12px 14px;margin:0 0 12px;font:700 13px system-ui;border-radius:6px">'
+      + '⚠ ΟΙ ΤΟΠΟΘΕΣΙΕΣ ΔΕΝ ΦΟΡΤΩΘΗΚΑΝ — οι διευθύνσεις παρακάτω λείπουν επειδή απέτυχε η ανάγνωση, ΟΧΙ επειδή δεν υπάρχουν. ΜΗΝ δώσεις αυτό το φύλλο στον οδηγό. Κάνε ανανέωση.'
+      + '</div>');
+  }
   docEl.innerHTML=htmlArr.map(function(h,i){
     var tag=N>1?'<div style="font-size:9px;font-weight:800;letter-spacing:1.2px;color:#6B7280;margin:0 0 8px">ΟΜΑΔΙΚΟ ΦΟΡΤΙΟ — ΕΓΓΡΑΦΟ '+(i+1)+' / '+N+'</div>':'';
     return '<div class="p-doc" style="'+(i<N-1?'page-break-after:always;':'')+'">'+tag+h+'</div>';

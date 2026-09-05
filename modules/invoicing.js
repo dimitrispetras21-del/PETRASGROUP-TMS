@@ -34,7 +34,7 @@ function _invRoute(rec) {
   if (rec._type === 'intl') {
     // Από τα links τοποθεσιών — τα Loading/Delivery Summary ήταν φαντάσματα
     // του χάρτη (26/8) και η στήλη ΔΙΑΔΡΟΜΗ έβγαινε «— → —» σε κάθε γραμμή.
-    return orderRoute(rec.fields, 25) || '—';
+    return orderRoute(rec.fields, 999) || '—';
   }
   return rec.fields['Goods'] || '—';
 }
@@ -64,7 +64,7 @@ function _invPrice(rec) {
   const v2 = parseFloat(f['Net Price']);
   if (Number.isFinite(v2)) return v2;
   const v3 = parseFloat(f['Total Price'] || f['Amount'] || f['Revenue']);
-  return Number.isFinite(v3) ? v3 : 0;
+  return Number.isFinite(v3) ? v3 : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0
 }
 function _invNetPrice(rec) {
   const f = rec.fields;
@@ -176,7 +176,8 @@ function _invIsOverdue(rec) {
 }
 
 function _fmtEuro(v) {
-  return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(v || 0);
+  if (v === null || v === undefined || !Number.isFinite(Number(v))) return '—';
+  return new Intl.NumberFormat('el-GR', { style: 'currency', currency: 'EUR' }).format(Number(v));
 }
 
 // Auto-suggest next invoice number: INV-YYYY-NNNN
@@ -435,6 +436,8 @@ function _renderInvKPI() {
   const outstandingClients = new Set(outstandingRecs.map(r => Array.isArray(r.fields['Client']) ? r.fields['Client'][0] : null).filter(Boolean));
 
   const readyTotal = ready.reduce((s, r) => s + (_invPrice(r) || 0), 0);
+  // Το άθροισμα αγνοεί όσες δεν έχουν τιμή — άρα ΥΠΟτιμά τον τζίρο. Λέγεται.
+  const readyNoPrice = ready.filter(r => _invPrice(r) === null).length;
   const invTotal   = invoiced.reduce((s, r) => s + (_invPrice(r) || 0), 0);
 
   // Report the tab and card counts. These deliberately sum to MORE than total:
@@ -464,7 +467,7 @@ function _renderInvKPI() {
     <div style="${cardStyle}">
       <div style="${labelStyle}">ΕΤΟΙΜΕΣ ΠΡΟΣ ΤΙΜΟΛΟΓΗΣΗ</div>
       <div style="${valueStyle};color: var(--accent-text)">${ready.length}</div>
-      <div style="${deltaStyle}">${_fmtEuro(readyTotal)}</div>
+      <div style="${deltaStyle}">${_fmtEuro(readyTotal)}${readyNoPrice ? ` <span style="color:var(--warning)" title="Δεν αθροίζονται: δεν έχουν καταχωρημένη τιμή. Ο τζίρος είναι μεγαλύτερος κατά άγνωστο ποσό.">· ${readyNoPrice} χωρίς τιμή</span>` : ''}</div>
     </div>
     <div style="${cardStyle};${overdue.length ? 'border-color:#7F1D1D' : ''}">
       <div style="${labelStyle}">ΚΑΘΥΣΤΕΡΗΜΕΝΕΣ (>30 ημ.)</div>
@@ -627,7 +630,12 @@ function _renderInvTable() {
       <td><strong>${escapeHtml(_invOrderNo(r))}</strong></td>
       <td>${typeBadge}</td>
       <td onclick="event.stopPropagation();_invShowClientHistory(${JSON.stringify(_invClientName(r)).replace(/"/g,'&quot;')})" style="cursor:pointer;color:#7DD3FC;text-decoration:underline;text-decoration-style:dotted" title="Δες ιστορικό πελάτη">${escapeHtml(_invClientName(r))}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(_invRoute(r))}</td>
+      <td style="max-width:230px" title="${escapeHtml(_invRoute(r))}">${
+        r._type === 'intl'
+          ? `<div style="line-height:1.25">${escapeHtml(orderLoadName(r.fields, 999) || '—')}</div>`
+            + `<div style="line-height:1.25;font-size:11px;color:var(--text-dim)">→ ${escapeHtml(orderDelName(r.fields, 999) || '—')}</div>`
+          : escapeHtml(_invRoute(r))
+      }</td>
       <td>${agingBadge}</td>
       <td style="text-align:right">${_invPallets(r)}</td>
       <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
