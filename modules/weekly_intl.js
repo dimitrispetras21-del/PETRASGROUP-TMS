@@ -119,6 +119,10 @@ function _wiClean(s){return escapeHtml((s||'').replace(/^['"\s/]+/,'').replace(/
 // escape στο render· διπλό escape εμφάνιζε «&quot;» σε ονόματα με εισαγωγικά.
 function _wiRaw(s){return (s||'').replace(/^['"\s/]+/,'').replace(/['"\s/]+$/,'').trim();}
 function _wiFv(v){return Array.isArray(v)?v[0]||'':v||'';}
+// Κ6: a shortened company name always shows that it was shortened. Menus and
+// dialogs used bare .slice(0,n) — the reader could not tell «KOLIOS» from
+// «KOLIOS GmbH Fleischwaren» cut at the same letter.
+function _wiCut(s,n){ s=String(s||''); return s.length>n?s.slice(0,n-1)+'…':s; }
 
 // Batch fetch ORDER_STOPS and inject Loading/Delivery Summary into records missing them
 async function _wiInjectStopSummaries(allOrders) {
@@ -175,10 +179,10 @@ async function _wiInjectStopSummaries(allOrders) {
 
 // v2 board (Figma w4-weekly-intl-board-v2 319:873, popover 189:745), scoped
 // under .wk3.wi2 so the shared wk3-* rules weekly_natl still uses stay
-// untouched. Tokens only. Two colours the frame needs and style.css lacks
-// (gap orange, unassigned dark red) are requested as tokens in the batch-3
-// report and mapped here to the nearest existing ones (--warning,
-// --danger-strong) until they land.
+// untouched. DESIGN.md tokens only (wave 5, 5/9): surfaces/text/border/
+// semantic — no hex, no shadow on cards (depth = borders), radii 6/9999,
+// spacing 4·8·12·16·24·32, sizes 11·12·13·14·18 (the urgent gap box is the
+// one deliberate exception: owner 4/9, it stays byte-identical).
 const _WI2_CSS=`
 .wk3.wi2{--fL:200px;--fR:200px}
 .wk3.wi2.fl-off{--fL:18px}.wk3.wi2.fr-off{--fR:18px}
@@ -194,7 +198,7 @@ const _WI2_CSS=`
    στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
    στήλη παραμένει πατήσιμη. Ίδιο και για τον χειροκίνητο διακόπτη, που το
    είχε ΚΑΙ ΑΥΤΟΣ — απλώς δεν το έβλεπε κανείς. */
-@media (max-width:1800px){.wk3.wi2 .wk3-cols .c.fc{font-size:0;overflow:hidden;padding:0;text-align:center}.wk3.wi2 .wk3-cols .c.fc .fc-ch{font-size:9px}}
+@media (max-width:1800px){.wk3.wi2 .wk3-cols .c.fc{font-size:0;overflow:hidden;padding:0;text-align:center}.wk3.wi2 .wk3-cols .c.fc .fc-ch{font-size:11px}}
 .wk3.wi2.fl-off .wk3-cols .c.fc:first-child,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child{font-size:0;overflow:hidden}
 .wk3.wi2.fl-off .wk3-cols .c.fc:first-child .fc-ch,.wk3.wi2.fr-off .wk3-cols .c.fc:last-child .fc-ch{font-size:11px}
 /* ΣΤΟΙΧΙΣΗ (owner 3/9, πάνω στα πραγματικά δεδομένα): κάθε .wk3-row είναι
@@ -206,54 +210,61 @@ const _WI2_CSS=`
    και η κεφαλίδα — βγάζει ταυτόσημες στήλες. */
 .wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px var(--fL) minmax(0,1.1fr) 240px minmax(0,0.9fr) var(--fR)}
 .wi2-mast{display:flex;align-items:center;gap:var(--space-4);margin-bottom:var(--space-3);flex-wrap:wrap}
-.wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:var(--text-xl);color:var(--text);display:flex;align-items:center;gap:10px;white-space:nowrap}
-.wi2-legend-btn{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--silver-light);border-radius:var(--radius-full);padding:2px 8px;background:none;cursor:pointer}
-.wi2-legend-btn:hover{background:var(--bg-hover)}
-.wi2-tabs{display:flex;gap:2px;background:var(--bg-hover);border-radius:var(--radius-md);padding:4px;margin:0 auto}
-.wi2-tabs .wk3-step,.wi2-tabs .wk3-tab{border:none;background:none;cursor:pointer;font:500 11.5px 'DM Sans',sans-serif;color:var(--text-mid);padding:7px 14px;border-radius:var(--radius);line-height:1.3}
-.wi2-tabs .wk3-step{padding:7px 8px;font-weight:700;color:var(--text-dim)}
-.wi2-tabs .wk3-tab:hover{background:var(--bg-card)}
-.wi2-tabs .wk3-tab.on{background:var(--navy-mid);color:var(--bg-card);font-weight:700}
+.wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
+.wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
+.wi2-legend-btn:hover{background:var(--surface-sunken)}
+.wi2-tabs{display:flex;gap:4px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px;margin:0 auto}
+.wi2-tabs .wk3-step,.wi2-tabs .wk3-tab{border:none;background:none;cursor:pointer;font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);padding:8px 12px;border-radius:var(--radius);line-height:1.3}
+.wi2-tabs .wk3-step{padding:8px;font-weight:700;color:var(--text-dim)}
+.wi2-tabs .wk3-tab:hover{background:var(--surface-card)}
+.wi2-tabs .wk3-tab.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
 .wi2-acts{display:flex;gap:8px;align-items:center}
-.wi2-btn{font:500 11.5px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);padding:8px 14px;cursor:pointer;white-space:nowrap;line-height:1.3}
-.wi2-btn:hover{background:var(--bg-hover);color:var(--text)}
-.wi2-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--bg-card);font-weight:700}
+.wi2-btn{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;cursor:pointer;white-space:nowrap;line-height:1.3}
+.wi2-btn:hover{background:var(--surface-sunken);color:var(--text)}
+.wi2-btn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface-card);font-weight:700}
 .wi2-btn.primary:hover{background:var(--accent-hover)}
-.wi2-lg{background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);padding:10px 14px;margin-bottom:10px;font-size:11px;color:var(--text-mid);display:flex;flex-wrap:wrap;gap:6px 22px}
+.wi2-lg{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;font-size:11px;color:var(--text-mid);display:flex;flex-wrap:wrap;gap:8px 24px}
 .wi2-lg b{color:var(--text)}
 .wi2-lg[hidden]{display:none}
-.wi2-band{display:flex;align-items:center;gap:14px;padding:12px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);margin-bottom:10px;flex-wrap:wrap}
-.wi2-urg{display:flex;align-items:center;gap:12px;padding:7px 16px 7px 12px;border:1.5px solid var(--warning);border-radius:var(--radius-md);background:var(--bg-card)}
-.wi2-urg.zero{border-color:var(--silver-light)}
-.wi2-urg .n{font:700 20px 'Syne',sans-serif;color:var(--bg-card);background:var(--warning);border:none;border-radius:var(--radius);padding:3px 11px;cursor:pointer;line-height:1.2}
-.wi2-urg.zero .n{background:var(--bg-hover);color:var(--text-dim);cursor:default}
-.wi2-urg h4{font:700 12px 'Syne',sans-serif;letter-spacing:1px;color:var(--warning);margin:0}
+.wi2-band{display:flex;align-items:center;gap:16px;padding:12px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:12px;flex-wrap:wrap}
+.wi2-urg{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border:1px solid var(--warn-border);border-radius:var(--radius);background:var(--warn-bg)}
+.wi2-urg.zero{border-color:var(--border);background:var(--surface-card)}
+.wi2-urg .n{font:700 18px 'Syne',sans-serif;color:var(--surface-card);background:var(--warn);border:none;border-radius:var(--radius);padding:4px 12px;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums}
+.wi2-urg.zero .n{background:var(--surface-sunken);color:var(--text-dim);cursor:default}
+.wi2-urg h4{font:700 12px 'Syne',sans-serif;letter-spacing:1px;color:var(--warn);margin:0}
 .wi2-urg.zero h4{color:var(--text-dim)}
-.wi2-urg p{font-size:11px;color:var(--text-mid);margin:2px 0 0}
-.wi2-quick .k{font:700 9.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--text-dim)}
-.wi2-quick .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
-.wi2-chip{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--bg-hover);border:none;border-radius:var(--radius);padding:5px 11px;cursor:pointer;white-space:nowrap}
-.wi2-chip:hover{background:var(--silver-light)}
-.wi2-chip.on{background:var(--navy-mid);color:var(--bg-card);font-weight:700}
-.wi2-week{margin-left:auto;font:500 11.5px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap}
-.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 370px);padding-bottom:4px}
-.wk3.wi2 .wk3-cols{background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);margin-bottom:8px;min-height:30px}
-.wk3.wi2 .wk3-cols .c{font:700 9.5px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:30px;gap:5px}
+.wi2-urg p{font-size:11px;color:var(--text-mid);margin:4px 0 0}
+.wi2-quick .k{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--text-dim)}
+.wi2-quick .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.wi2-chip{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);background:var(--surface-sunken);border:1px solid transparent;border-radius:var(--radius);padding:4px 12px;cursor:pointer;white-space:nowrap;font-variant-numeric:tabular-nums}
+.wi2-chip:hover{background:var(--border)}
+.wi2-chip.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
+/* Δ2 «ανενεργό»: φίλτρο με μηδέν αποτελέσματα δεν πατιέται — ένα κλικ που
+   αδειάζει την οθόνη χωρίς λόγο διαβάζεται ως σφάλμα. */
+.wi2-chip:disabled,.wi2-chip:disabled:hover{color:var(--text-dim);background:var(--surface-card);border-color:var(--border);cursor:default}
+.wi2-week{margin-left:auto;font:500 12px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 340px);padding-bottom:4px}
+.wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;min-height:30px}
+.wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:30px;gap:4px}
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
-.wk3.wi2 .wk3-cols .n{background:none;color:inherit;font:700 9.5px 'Syne',sans-serif;letter-spacing:1.2px;min-width:0;height:auto;padding:0}
-.wi2-day{background:var(--bg-card);border:1px solid var(--silver-light);border-radius:10px;padding:2px 10px 10px;margin-bottom:8px}
+.wk3.wi2 .wk3-cols .c .fc-ch{font-size:11px}
+.wk3.wi2 .wk3-cols .n{background:none;color:inherit;font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;min-width:0;height:auto;padding:0;font-variant-numeric:tabular-nums}
+.wi2-day{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:4px 12px 8px;margin-bottom:8px}
 .wi2-day.today{border-color:var(--accent)}
-.wi2-day.empty{padding-bottom:6px}
-.wk3.wi2 .wk3-dayh{position:sticky;top:38px;z-index:20;background:var(--bg-card);border:none;padding:8px 2px 2px;gap:10px;align-items:baseline;box-shadow:none}
-.wk3.wi2 .wk3-dayh .d{font:700 15px 'Syne',sans-serif;letter-spacing:0;color:var(--text)}
+.wi2-day.empty{padding-bottom:8px}
+.wk3.wi2 .wk3-dayh{position:sticky;top:38px;z-index:20;background:var(--surface-card);border:none;padding:8px 4px 4px;gap:12px;align-items:baseline;box-shadow:none}
+.wk3.wi2 .wk3-dayh .d{font:700 18px 'Syne',sans-serif;letter-spacing:0;color:var(--text);font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-dayh.today .d{color:var(--text)}
-.wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3.wi2 .wk3-dayh .now{font:700 8.5px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--bg-card);background:var(--accent);border:none;border-radius:3px;padding:2px 8px}
-.wi2-none{font-size:11px;color:var(--text-dim);padding:4px 2px 2px;font-style:italic}
-.wk3.wi2 .wk3-row{min-height:40px;margin-top:6px;border:1px solid var(--silver-light);border-radius:var(--radius-md);background:var(--bg-card);align-items:center}
-.wk3.wi2 .wk3-row.alt{background:var(--bg-card)}
-.wk3.wi2 .wk3-row:hover{background:var(--bg-hover)}
-.wk3.wi2 .wk3-row.wi2-un{border-color:var(--danger-strong);border-left-width:3px}
-.wk3.wi2 .wk3-row.wi2-gap{border-color:var(--warning);border-left-width:3px}
+.wk3.wi2 .wk3-dayh .now{font:700 11px 'DM Sans',sans-serif;letter-spacing:1px;color:var(--surface-card);background:var(--accent);border:none;border-radius:var(--radius-full);padding:0 8px;line-height:16px}
+.wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
+/* ΥΨΟΣ ΓΡΑΜΜΗΣ ≤ 44px (DESIGN Κ5): γραμμή 1px + κελί 0 + κάρτα 4+1 πάνω/κάτω
+   = 12px «σκελετός», οπότε το περιεχόμενο της κάρτας έχει ακριβώς 32px:
+   όνομα 16px + σειρά μεταδεδομένων 16px. Κάθε padding εδώ είναι μετρημένο. */
+.wk3.wi2 .wk3-row{min-height:40px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
+.wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
+.wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
+.wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);border-left-width:3px}
+.wk3.wi2 .wk3-row.wi2-gap{border-color:var(--warn);border-left-width:3px}
 /* ΣΥΓΚΡΟΥΣΗ ΟΝΟΜΑΤΟΣ (owner 3/9, από screenshot της οθόνης του): η μπάντα
    «ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ» και οι επείγουσες ΓΡΑΜΜΕΣ είχαν την ίδια κλάση
    .wi2-urg. Ο κανόνας της μπάντας ορίζει display:flex και γράφεται μετά
@@ -262,102 +273,133 @@ const _WI2_CSS=`
    padding και φόντο κάρτας. Η γραμμή πήρε δικό της όνομα. */
 .wk3.wi2 .wk3-row.wi2-rowurg{border-color:var(--danger-strong);border-left-width:3px}
 .wk3.wi2 .wk3-row.wk3-done{background:var(--success-bg)}
-.wk3.wi2 .wk3-legrow{background:var(--bg);border-style:dashed;min-height:38px}
-.wk3.wi2 .wk3-num{border-right:none;font-size:10.5px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:3px;flex-wrap:wrap}
+.wk3.wi2 .wk3-legrow{background:var(--surface-page);border-style:dashed;min-height:38px}
+.wk3.wi2 .wk3-num{border-right:none;font-size:11px;color:var(--text-dim);justify-content:flex-start;padding-left:8px;gap:4px;flex-wrap:wrap;font-variant-numeric:tabular-nums}
 .wk3.wi2 .wk3-num.imp{color:var(--accent-text);font-weight:700}
-.wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0}
-.wk3.wi2 .wk3-grpb{font-size:9px;padding:0 4px}
-.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:2px 4px;align-items:center;gap:6px;min-height:38px}
+.wk3.wi2 .wk3-num .wi-sync{display:inline;margin:0;font-size:11px}
+.wk3.wi2 .wk3-grpb{font-size:11px;padding:0 4px;border-radius:var(--radius-full)}
+.wk3.wi2 .wk3-leg{display:grid;grid-template-columns:minmax(0,var(--sL,1fr)) auto minmax(0,var(--sR,1fr));padding:0 4px;align-items:center;gap:4px;min-height:38px}
 .wk3.wi2 .wk3-leg.gap,.wk3.wi2 .wk3-leg.void{background:transparent;justify-content:stretch}
 .wk3.wi2 .wk3-leg.bgap,.wk3.wi2 .wk3-leg.grp{background:transparent}
-.wi2-card{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:6px;min-height:34px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius);box-shadow:var(--shadow-xs);box-sizing:border-box;transition:box-shadow var(--duration-fast) var(--ease-out),border-color var(--duration-fast) var(--ease-out),background var(--duration-fast) var(--ease-out),transform var(--duration-fast) var(--ease-out)}
-.wk3-leg:hover>.wi2-card{box-shadow:var(--shadow-lift);border-color:var(--silver);transform:translateY(-1px)}
-@media (prefers-reduced-motion:reduce){.wi2-card{transition:none}.wk3-leg:hover>.wi2-card{transform:none}}
-.wi2-card.ok{background:var(--success-bg);border-color:var(--success)}
+/* ΚΑΡΤΑ ΔΥΟ ΣΕΙΡΩΝ (owner 4/9): το όνομα παίρνει ΟΛΟ το πλάτος σε δική του
+   σειρά· ημερομηνία, πόλη, σήματα και παλέτες στη δεύτερη. Πριν, το πλακίδιο
+   ημερομηνίας και οι παλέτες έτρωγαν ~110px από το όνομα στην ίδια σειρά. */
+.wi2-card{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:0;min-height:34px;padding:4px 8px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);box-sizing:border-box;transition:border-color 150ms,background 150ms}
+.wk3-leg:hover>.wi2-card{border-color:var(--text-dim)}
+@media (prefers-reduced-motion:reduce){.wi2-card{transition:none}}
+.wi2-card.ok{background:var(--success-bg);border-color:var(--ok)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
-.wi2-date{flex-shrink:0;font:700 10.5px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:4px;padding:2px 6px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
+.wi2-meta{display:flex;align-items:center;gap:8px;min-width:0;height:16px}
+.wi2-right{margin-left:auto;display:inline-flex;align-items:center;gap:4px;flex-shrink:0}
+.wi2-right>*{flex-shrink:0}
+.wi2-date{flex-shrink:0;font:700 11px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:var(--radius);padding:0 8px;line-height:16px;cursor:pointer;font-variant-numeric:tabular-nums;margin:0}
 /* ΣΤΟΙΧΙΣΗ (owner 3/9): το πλακίδιο έπαιρνε πλάτος από το περιεχόμενο —
    μετρήθηκαν 26,6px («1/9») έως 44px («28/8» με ✓) — και το όνομα του
    πελάτη ξεκινούσε σε έξι διαφορετικά x μέσα στην ίδια στήλη (560..577).
    min-width αντί για width: τα κοντά πλακίδια γεμίζουν ως το κοινό όριο,
    ένα μελλοντικό πιο μακρύ σπρώχνει αντί να κοπεί. */
-.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:46px;box-sizing:border-box;text-align:left;margin:0;font-size:10.5px}
-.wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent}
-.wi2-cb{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.25}
-.wi2-name{font-size:12px;font-weight:600;color:var(--text);overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.wi2-name>*{margin-right:5px}
+.wk3.wi2 .wi2-date.wk3-ld{width:auto;min-width:48px;box-sizing:border-box;text-align:left;margin:0;font-size:11px}
+.wk3.wi2 .wi2-date.wk3-ld.done::after{font-size:11px}
+/* style.css pins these two with !important and hex; same weight, token value */
+.wk3.wi2 .wk3-ld.done{color:var(--ok) !important}
+.wk3.wi2 .wk3-ld.late{color:var(--warn) !important}
+.wi2-date.estd{font-style:italic;border:1px dashed var(--accent-text);background:transparent;line-height:14px}
+/* ΚΛΙΜΑΚΩΣΗ ΟΝΟΜΑΤΟΣ (owner 4/9): μία σειρά, 13px. Αν δεν χωρά, η
+   _wi2Balance κατεβάζει ΜΟΝΟ αυτό το όνομα ως 10px· αν ούτε έτσι, .clamp
+   (δύο σειρές με ορατό «…» + title). Το ellipsis εδώ είναι δίχτυ, όχι
+   σχέδιο: ποτέ σιωπηλή κοπή (Κ6), ακόμη και πριν προλάβει η μέτρηση. */
+.wi2-name{font-size:13px;line-height:16px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wi2-name>*{margin-right:4px}
+.wi2-name.clamp{white-space:normal;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2}
 .wk3.wi2.wi2-measure .wi2-name,.wk3.wi2.wi2-measure .wi2-sub{white-space:nowrap;display:block;overflow:visible}
-.wi2-sub{font-size:10px;color:var(--text-dim);white-space:normal}
+.wi2-sub{font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .wi2-nw{white-space:nowrap}
-.wi2-card>.wi2-flags,.wi2-card>.wi2-pal,.wi2-card>.wi2-ref,.wi2-card>.wk3-unm{flex-shrink:0}
-.wi2-ref{font-size:10px;color:var(--text-dim);white-space:nowrap}
-.wi2-pal{font-size:11.5px;font-weight:500;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums}
-.wi2-pal.hi{color:var(--warning);font-weight:700}.wi2-pal.over{color:var(--danger);font-weight:700}.wi2-pal.na{color:var(--text-dim);cursor:help}
-.wi2-flags{display:inline-flex;gap:3px;align-items:center}
+.wi2-ref{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.wi2-pal{font-size:12px;font-weight:500;color:var(--text);white-space:nowrap;font-variant-numeric:tabular-nums}
+.wi2-pal.hi{color:var(--warn);font-weight:700}.wi2-pal.over{color:var(--danger);font-weight:700}.wi2-pal.na{color:var(--text-dim);cursor:help}
+.wi2-flags{display:inline-flex;gap:4px;align-items:center}
 .wi2-flags:empty{display:none}
+.wk3.wi2 .wi-badge{font-size:11px;padding:0 4px;border-radius:var(--radius);line-height:16px;letter-spacing:.5px;margin:0}
+.wk3.wi2 .wi-cross,.wk3.wi2 .wi-exec{font-size:11px;line-height:16px;padding:0 4px;margin:0;border-radius:var(--radius)}
+.wk3.wi2 .wk3-vsb{font-size:11px;padding:0 4px;border-radius:var(--radius)}
+.wk3.wi2 .wk3-okc{font-size:11px}
+.wk3.wi2 .wk3-stopn,.wk3.wi2 .wk3-gmn{width:16px;height:16px;font-size:11px;line-height:16px}
 .wi2-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0}
-.wi2-late{font-size:10px;font-weight:700;color:var(--danger-strong);white-space:nowrap}
-.wi2-gapbox{flex:1;min-height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warning);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warning);cursor:pointer;box-sizing:border-box;background:var(--bg-card)}
+.wi2-late{font-size:11px;font-weight:700;color:var(--danger);white-space:nowrap}
+.wi2-gapbox{flex:1;min-height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;border:1px solid var(--warn);border-radius:var(--radius);font:700 10px 'Syne',sans-serif;letter-spacing:.8px;color:var(--warn);cursor:pointer;box-sizing:border-box;background:var(--surface-card)}
 .wi2-gapbox.urg{border-color:var(--danger-strong);color:var(--danger-strong)}
 .wi2-gapbox small{font:500 11px 'DM Sans',sans-serif;letter-spacing:0}
-.wi2-void{flex:1;min-height:34px;border-radius:var(--radius);background:var(--bg)}
+.wi2-void{flex:1;min-height:34px;border-radius:var(--radius);background:var(--surface-page)}
 .wk3.wi2 .wk3-leg>.wi2-gapbox,.wk3.wi2 .wk3-leg>.wi2-void{grid-column:1/-1}
-.wi2-void.navy{background:var(--navy-mid)}
+.wi2-void.navy{background:var(--surface-dark)}
 .wi2-dash{width:100%;text-align:center;color:var(--text-dim);font-size:12px;cursor:help}
-.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;align-items:center;height:auto;min-height:38px;white-space:normal;align-self:stretch}
+.wk3.wi2 .wk3-feed{background:transparent;padding:0 4px;align-items:center;height:auto;min-height:38px;white-space:normal;align-self:stretch;font-size:11px}
 .wk3.wi2 .wk3-feed.bgap{background:transparent !important}
-.wk3.wi2.fl-off .wk3-feed.l,.wk3.wi2.fr-off .wk3-feed.r{background:var(--bg)}
+.wk3.wi2.fl-off .wk3-feed.l,.wk3.wi2.fr-off .wk3-feed.r{background:var(--surface-page)}
 .wk3.wi2 .wk3-assign{display:grid;grid-template-columns:20px minmax(0,1fr) 20px;padding:0 4px;gap:4px;align-items:center}
 .wk3.wi2 .wk3-assign>.wk3-prt.l{grid-column:1}
 .wk3.wi2 .wk3-assign>.wk3-prt.r{grid-column:3}
 .wk3.wi2 .wk3-assign>:not(.wk3-prt){grid-column:2;min-width:0}
-.wk3.wi2 .wk3-pill{height:auto;min-height:34px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:3px 10px;font-size:11.5px;line-height:1.25;border-radius:var(--radius);white-space:normal;overflow:visible;box-sizing:border-box}
-.wk3.wi2 .wk3-pill small{font-size:10px;color:var(--silver);white-space:normal}
-.wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:9.5px}
-.wk3.wi2 .wk3-prt{border:1px solid var(--silver-light);border-radius:5px;padding:4px 6px;font-size:13px;background:var(--bg-card)}
-.wk3.wi2 .wk3-stopline{padding-left:0;font-size:10.5px;line-height:1.5}
+/* ΑΝΑΘΕΣΗ — χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» / «ΣΥΝ.» /
+   «ΠΡΟΣ ΑΝΑΘΕΣΗ». Δύο σειρές με ορατό «…» και title — όχι αναδίπλωση, γιατί
+   μια τρίτη σειρά σπάει το όριο των 44px της γραμμής. */
+.wk3.wi2 .wk3-pill{height:auto;min-height:34px;flex-direction:column;align-items:flex-start;justify-content:center;gap:0;padding:4px 12px;font-size:12px;line-height:1.25;border-radius:var(--radius);white-space:nowrap;overflow:hidden;box-sizing:border-box;transform:none;box-shadow:none}
+.wk3.wi2 .wk3-row:hover .wk3-pill{transform:none;box-shadow:none}
+.wk3.wi2 .wk3-pill .t,.wk3.wi2 .wk3-pill small{display:block;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wk3.wi2 .wk3-pill small{font-size:11px;color:var(--text-on-dark);font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill .t{font-variant-numeric:tabular-nums}
+.wk3.wi2 .wk3-pill.un{color:var(--unassigned);align-items:center;font-weight:700;letter-spacing:.5px}
+.wk3.wi2 .wk3-pill.unimp{align-items:center;font-size:12px}
+.wk3.wi2 .wk3-pill.unimp small{color:var(--text-dim);font-weight:500}
+.wk3.wi2 .wk3-prt{border:1px solid var(--border);border-radius:var(--radius);padding:4px;font-size:13px;background:var(--surface-card)}
+.wk3.wi2 .wk3-stopline{padding-left:0;font-size:11px;line-height:1.5}
 .wk3.wi2 .wk3-stopline .wk3-sln{white-space:normal;overflow:visible}
+.wk3.wi2 .wk3-sld{font-size:11px}
 .wk3.wi2 .wk3-lcol .wk3-stopline.dl{padding-left:0}
-.wk3.wi2 .wk3-gm{font-size:10.5px}
-.wi2-legnote{font-size:10px;color:var(--text-dim);white-space:nowrap}
-.wi2-unlink{font:500 10.5px 'DM Sans',sans-serif;color:var(--text-dim);background:none;border:none;cursor:pointer}
+.wk3.wi2 .wk3-gm{font-size:11px}
+.wi2-legnote{font-size:11px;color:var(--text-dim);white-space:nowrap}
+.wi2-unlink{font:500 11px 'DM Sans',sans-serif;color:var(--text-dim);background:none;border:none;cursor:pointer}
 .wi2-unlink:hover{color:var(--danger)}
-.wi2-foot{display:flex;align-items:center;justify-content:flex-end;gap:20px;padding:3px 16px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);margin-top:8px;flex-wrap:wrap}
-.wi2-foot .sync{font-size:11px;color:var(--text-mid);margin-left:auto}
+.wk3.wi2 .wk3-empty .big{font-size:18px}
+.wi2-foot{display:flex;align-items:center;justify-content:flex-end;gap:24px;padding:4px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-top:8px;flex-wrap:wrap}
+.wi2-foot .sync{font-size:11px;color:var(--text-mid);margin-left:auto;font-variant-numeric:tabular-nums}
 .wi2-foot .sync .err{color:var(--danger);font-weight:700}
-.wk3.wi2 #wi-popover{width:600px;border-radius:10px;border-color:var(--silver-light)}
-.wk3.wi2 .wi-pop-header{background:var(--bg-card);border-bottom:1px solid var(--silver-light);padding:12px 16px 10px;justify-content:flex-start;gap:8px}
-.wk3.wi2 .wi-pop-title{color:var(--text);font-size:13px;text-transform:none;letter-spacing:0}
-.wk3.wi2 .wi-pop-subtitle{color:var(--text-mid);font-size:11.5px;margin:0;flex:1;min-width:0}
+.wk3.wi2 #wi-popover{width:600px;border-radius:var(--radius);border-color:var(--border)}
+.wk3.wi2 .wi-pop-header{background:var(--surface-card);border-bottom:1px solid var(--border);padding:12px 16px 8px;justify-content:flex-start;gap:8px}
+.wk3.wi2 .wi-pop-title{color:var(--text);font-size:14px;text-transform:none;letter-spacing:0}
+.wk3.wi2 .wi-pop-subtitle{color:var(--text-mid);font-size:12px;margin:0;flex:1;min-width:0}
 .wk3.wi2 .wi-pop-close{margin-left:auto;color:var(--text-dim);font-size:13px}
-.wk3.wi2 .wi-pop-close:hover{background:var(--bg-hover);color:var(--text)}
-.wk3.wi2 .wi-pop-body{padding:12px 16px 8px;gap:10px}
-.wk3.wi2 .wi-pop-section-lbl{font:700 10.5px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-dim);border:none;padding:0;margin:0}
-.wk3.wi2 .wi-pop-lbl{text-transform:none;letter-spacing:0;font-size:10.5px;font-weight:500;color:var(--text-mid)}
-.wk3.wi2 .wi-pop-row{flex-wrap:nowrap;gap:10px;align-items:flex-end}
+.wk3.wi2 .wi-pop-close:hover{background:var(--surface-sunken);color:var(--text)}
+.wk3.wi2 .wi-pop-body{padding:12px 16px 8px;gap:12px}
+.wk3.wi2 .wi-pop-section-lbl{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-dim);border:none;padding:0;margin:0}
+.wk3.wi2 .wi-pop-lbl{text-transform:none;letter-spacing:0;font-size:11px;font-weight:500;color:var(--text-mid)}
+.wk3.wi2 .wi-pop-row{flex-wrap:nowrap;gap:12px;align-items:flex-end}
 .wk3.wi2 .wi-pop-field{flex:1;min-width:0}
-.wk3.wi2 .wi-pop-inp{width:100%;box-sizing:border-box;background:var(--bg-card);border-color:var(--silver-light);height:30px;padding:6px 9px;font-size:11.5px}
-.wk3.wi2 .wi-pop-inp:disabled{background:var(--bg)}
-.wi2-pop-note{font-size:10px;color:var(--text-dim);padding-bottom:8px}
-.wi2-pop-warn{display:none;gap:8px;align-items:center;background:var(--warning-bg);border:1px solid var(--warning);border-radius:var(--radius);padding:7px 10px;margin:8px 16px 0;font-size:10.5px;font-weight:500;color:var(--warning)}
+.wk3.wi2 .wi-pop-inp{width:100%;box-sizing:border-box;background:var(--surface-card);border-color:var(--border);height:32px;padding:4px 8px;font-size:12px}
+.wk3.wi2 .wi-pop-inp:disabled{background:var(--surface-page)}
+.wk3.wi2 .wi-sdo-sub{font-size:11px}
+.wi2-pop-note{font-size:11px;color:var(--text-dim);padding-bottom:8px}
+.wi2-pop-warn{display:none;gap:8px;align-items:center;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius);padding:8px 12px;margin:8px 16px 0;font-size:11px;font-weight:500;color:var(--warn)}
 .wi2-pop-warn.on{display:flex}
-.wk3.wi2 .wi-lane-hist{background:var(--bg-hover);border-radius:var(--radius);padding:8px 10px;margin:8px 16px 0;display:flex;gap:6px 16px;flex-wrap:wrap}
+.wk3.wi2 .wi-lane-hist{background:var(--surface-sunken);border-radius:var(--radius);padding:8px 12px;margin:8px 16px 0;display:flex;gap:8px 16px;flex-wrap:wrap}
 .wk3.wi2 .wi-lane-hist:empty{display:none}
-.wk3.wi2 .wi-lane-item{background:var(--bg-card)}
-.wi2-pop-sec{padding:10px 16px 0}
-.wi2-piz{border:1.5px dashed var(--border-dark);border-radius:var(--radius);padding:8px 10px;text-align:center;font-size:10.5px;color:var(--text-dim);margin:6px 16px 0}
+.wk3.wi2 .wi-lane-title,.wk3.wi2 .wi-lane-item{font-size:11px;border-radius:var(--radius)}
+.wk3.wi2 .wi-lane-item{background:var(--surface-card);font-variant-numeric:tabular-nums}
+.wi2-pop-sec{padding:12px 16px 0}
+.wi2-piz{border:1px dashed var(--border-dark);border-radius:var(--radius);padding:8px 12px;text-align:center;font-size:11px;color:var(--text-dim);margin:8px 16px 0}
 .wi2-piz.dh{border-color:var(--accent);background:var(--accent-light)}
-.wi2-ichip{display:flex;align-items:center;gap:10px;text-align:left;color:var(--text);font-size:11px;font-weight:600}
-.wi2-ichip small{font-weight:400;color:var(--text-dim);font-size:10px}
+.wi2-ichip{display:flex;align-items:center;gap:12px;text-align:left;color:var(--text);font-size:11px;font-weight:600}
+.wi2-ichip small{font-weight:400;color:var(--text-dim);font-size:11px;font-variant-numeric:tabular-nums}
 .wi2-ichip .wk3-unm{margin-left:auto}
-.wk3.wi2 .wi-pop-footer{background:var(--bg-card);align-items:center;gap:10px;padding:10px 16px 12px}
-.wi2-pop-sync{font-size:9.5px;color:var(--text-dim);margin-right:auto}
-.wk3.wi2 .wi-pop-save{background:var(--accent);padding:6px 14px;font-size:11.5px;box-shadow:none}
+.wk3.wi2 .wi-pop-footer{background:var(--surface-card);align-items:center;gap:12px;padding:12px 16px}
+.wi2-pop-sync{font-size:11px;color:var(--text-dim);margin-right:auto}
+.wk3.wi2 .wi-pop-save{background:var(--accent);padding:8px 16px;font-size:12px;box-shadow:none;border-radius:var(--radius)}
 .wk3.wi2 .wi-pop-save:hover{background:var(--accent-hover)}
-.wk3.wi2 .wi-pop-cancel{padding:6px 12px;font-size:11.5px;font-weight:500}
-.wi2-spin{width:12px;height:12px;border:2px solid var(--accent-light);border-top-color:var(--bg-card);border-radius:50%;animation:wi-spin .6s linear infinite}
-.wi-sdo-sub.free{color:var(--success)}
-.wi2-sd-note{padding:5px 10px;font-size:9.5px;color:var(--text-dim);background:var(--bg-hover)}
+.wk3.wi2 .wi-pop-cancel{padding:8px 12px;font-size:12px;font-weight:500;border-radius:var(--radius)}
+.wi2-spin{width:12px;height:12px;border:2px solid var(--accent-light);border-top-color:var(--surface-card);border-radius:var(--radius-full);animation:wi-spin .6s linear infinite}
+.wi-sdo-sub.free{color:var(--ok)}
+.wi2-sd-note{padding:4px 12px;font-size:11px;color:var(--text-dim);background:var(--surface-sunken)}
+.wk3.wi2 .wi-ctx-h{font-size:11px}
 /* ΣΤΕΝΑ ΠΛΑΤΗ: ΤΕΣΣΕΡΙΣ στήλες επίτηδες — το assets/style.css:2790 κάνει
    display:none τις δύο .wk3-feed κάτω από 1360px, άρα μένουν τέσσερα
    ΟΡΑΤΑ κελιά. Δοκίμασα έξι στήλες με τα feeds στα 18px και ήταν ΛΑΘΟΣ:
@@ -446,10 +488,18 @@ async function renderWeeklyIntl(){
     }
   }catch(err){
     if (loadId !== _wiLoadId) return;
+    // Σφάλμα ≠ κενό (DESIGN Κ7, πρότυπο dashboard): τι δεν φόρτωσε · τι ΔΕΝ
+    // σημαίνει · τι να κάνεις. Το ωμό «Failed to fetch» του browser δεν λέει
+    // τίποτα σε dispatcher στις 05:30 — μεταφράζεται σε αιτία που καταλαβαίνει.
+    const why=/failed to fetch|networkerror|load failed/i.test(err.message||'')
+      ?'Χωρίς απάντηση από τον διακομιστή — έλεγξε τη σύνδεση'
+      :escapeHtml(err.message||'σφάλμα');
     document.getElementById('content').innerHTML=`
-      <div class="empty-state">
-        <p style="color:var(--danger);font-size:13px">${err.message}</p>
-        <button class="btn btn-ghost" onclick="renderWeeklyIntl()" style="margin-top:12px">Retry</button>
+      <div class="empty-state" role="alert" style="display:block;text-align:center;padding:48px 24px">
+        <p style="font-size:14px;font-weight:700;color:var(--text);margin:0 0 8px">Το εβδομαδιαίο διεθνών δεν φορτώθηκε</p>
+        <p style="color:var(--danger);font-size:13px;margin:0 0 4px">${why} — ORDERS / ORDER_STOPS, εβδομάδα ${WINTL.week}.</p>
+        <p style="color:var(--text-mid);font-size:13px;margin:0">Αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν παραγγελίες αυτή την εβδομάδα.</p>
+        <button class="btn btn-ghost" onclick="renderWeeklyIntl()" style="margin-top:12px">Ξαναδοκίμασε</button>
       </div>`;
   }
 }
@@ -678,7 +728,9 @@ function _wiPaint(){
   // Η διαθεσιμότητα στόλου δεν χάθηκε — ζει στο popover ανάθεσης, εκεί που
   // χρειάζεται όταν διαλέγεις φορτηγό.
   const cur=_wiCurrentWeek();
-  const chip=(q,lbl,n)=>`<button class="wi2-chip${(WINTL.quick||'')===q?' on':''}" data-q="${q}" onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`;
+  // Δ2 (DESIGN): φίλτρο με μηδέν = ανενεργό. Το ενεργό μένει πατήσιμο ακόμη
+  // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
+  const chip=(q,lbl,n)=>{ const on=(WINTL.quick||'')===q; return `<button class="wi2-chip${on?' on':''}" data-q="${q}"${(!n&&!on)?' disabled':''} onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`; };
   document.getElementById('content').innerHTML=`
     <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}" style="display:block;width:100%">
     <style>${_WI2_CSS}</style>
@@ -704,7 +756,7 @@ function _wiPaint(){
            φίλτρα, με τους παρονομαστές τους. Τα σύνολα του υποσέλιδου και τα
            τσιπάκια της κεφαλίδας ημέρας αφαιρέθηκαν 3/9 για τον ίδιο λόγο. -->
       <div class="wi2-urg${gaps?'':' zero'}">
-        <button class="n" onclick="_wk3Gaps()" title="Own γύροι χωρίς φορτίο επιστροφής — κλικ: τα αδιάθετα imports">${gaps}</button>
+        <button class="n" onclick="_wk3Gaps()" title="Ιδιόκτητοι γύροι χωρίς φορτίο επιστροφής — κλικ: οι αταίριαστες εισαγωγές">${gaps}</button>
         <h4>ΚΕΝΑ ΓΥΡΙΣΜΑΤΑ${urgN?` · ${urgN} ${urgN===1?'ΕΠΕΙΓΟΝ':'ΕΠΕΙΓΟΝΤΑ'}`:''}</h4>
       </div>
       <div class="wi2-quick">
@@ -869,25 +921,26 @@ function _wiImpRowHTML(row,impNo){
 
   const impTruck   =row.truckLabel   ||data.trucks.find(t=>t.id===row.truckId)?.label||'';
   const impTrailer =row.trailerLabel ||data.trailers.find(t=>t.id===row.trailerId)?.label||'';
-  const impPartner =row.partnerLabel ||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'Συνεργάτης':'');
-  const impSurname =row.driverLabel  ?row.driverLabel.trim().split(/\s+/)[0]:'';
+  // «—» και όχι «Συνεργάτης» για partner που λείπει από την cache (owner 4/9:
+  // η γενική λέξη δεν είναι επωνυμία)· το πρόθεμα ΣΥΝ. λέει ήδη το είδος.
+  const impPartner =row.partnerLabel ||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'—':'');
   const plates=[impTruck,impTrailer].filter(Boolean).join(' / ');
   let impPill;
   if(row.saved){
     if(impPartner){
-      impPill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή">${escapeHtml(impPartner)}<small>${escapeHtml([row.partnerPlates,impSurname].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(impPartner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">ΣΥΝ. ${escapeHtml(impPartner)}</span><small>${escapeHtml([row.partnerPlates,row.driverLabel].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
     } else {
-      impPill=`<div class="wk3-pill own" title="${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή">${escapeHtml(impSurname||plates||'—')}<small>${impSurname?escapeHtml(plates):'&nbsp;'}</small></div>`;
+      impPill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${row.driverLabel?' · '+escapeHtml(row.driverLabel):''} — κλικ: αλλαγή"><span class="t">ΙΔ. ${escapeHtml(plates||'—')}</span><small>${escapeHtml(row.driverLabel||'')||'&nbsp;'}</small></div>`;
     }
   } else {
     // Β.3-3: import-without-vehicle is NOT the same red as export-without-
     // assignment — dashed border (non-color signal) + explicit prefix.
-    impPill=`<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση">ΕΙΣ · χωρίς όχημα</div>`;
+    impPill=`<div class="wk3-pill unimp" title="Εισαγωγή χωρίς δικό όχημα — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span><small>εισαγωγή · χωρίς όχημα</small></div>`;
   }
 
   // Left (export) cell: own vehicle with no export = empty southbound leg.
   let leftInner, leftCls='';
-  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Own όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή χωρίς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()">ΚΕΝΟ EXPORT</div>`; }
+  if(row.saved&&!impPartner){ leftCls=' gap'; leftInner=`<div class="wi2-gapbox" title="Ιδιόκτητο όχημα χωρίς εξαγωγή — κενό σκέλος καθόδου. Κλικ: πρώτη εξαγωγή προς ανάθεση" onclick="event.stopPropagation();_wiJumpFirstUnassigned()">ΚΕΝΟ EXPORT</div>`; }
   else if(row.saved&&impPartner){ leftCls=' bgap'; leftInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"></div>`; }
   else leftInner=`<div class="wi2-void"></div>`;
 
@@ -902,7 +955,7 @@ function _wiImpRowHTML(row,impNo){
     const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—',(stR.delivered?' done':'')+(stR.late?' late':''),'Ημ. παράδοσης'+(stR.delivered?' — παραδόθηκε ✓':'')+(stR.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:de.name+(stR.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance)">! καθυστέρηση</span>':''), sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del'), right});
   }
-  const ref=f['Reference']?`<span class="wi2-ref" title="Reference">${escapeHtml(String(f['Reference']))}</span>`:'';
+  const ref=f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:'';
   // Right feed: VS import → national distribution from Veroia (final destination)
   const feedR=impVS2?(()=>{ const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
     return _wi2Card({date:_wi2Date(imp.id,'Delivery DateTime',dIso,dIso?_wk3D(_wiFmt(dIso)):'—','','Εθνικό σκέλος: ημ. τελικής διανομής'), name:de.name, sub:de.sub, extra:_wk3MoreStops(toStr,f._stopsD,'del')}); })()
@@ -918,7 +971,7 @@ function _wiImpRowHTML(row,impNo){
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
-      <button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>
+      <button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}${ref}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}</div>
@@ -953,7 +1006,7 @@ function _wiLegRowHTML(legRow){
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
 function _wiBadges(f){
   const b=[];
-  if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk" title="High Risk">!</span>');
+  if(f['High Risk Flag'])   b.push('<span class="wi-badge wi-b-risk" title="Υψηλό ρίσκο">!</span>');
   if(f['Pallet Exchange'])  b.push('<span class="wi-badge wi-b-pe">PE</span>');
   if(f['National Groupage'])b.push('<span class="wi-badge wi-b-grpg">GRP</span>');
   const veroia=f['Veroia Switch'];
@@ -1165,8 +1218,12 @@ function _wi2Loc(str,label,arr){
   const s=_wi2Split(raw);
   return {name:escapeHtml(s.title||'—'),sub:escapeHtml([s.city,s.cc].filter(Boolean).join(', '))};
 }
+// Δύο σειρές (owner 4/9): όνομα μόνο του σε όλο το πλάτος· από κάτω
+// ημερομηνία · πόλη · σήματα/παλέτες. Το «extra» (πολλαπλά σημεία, μέλη
+// ομάδας) διπλώνει κάτω από τη δεύτερη σειρά, όπως και πριν.
 function _wi2Card(o){
-  return `<div class="wi2-card${o.cls?' '+o.cls:''}"${o.title?` title="${o.title}"`:''}>${o.date||''}<div class="wi2-cb"><div class="wi2-name">${o.name}</div>${o.sub?`<div class="wi2-sub">${o.sub}</div>`:''}${o.extra||''}</div>${o.right||''}</div>`;
+  const meta=(o.date||'')+(o.sub?`<span class="wi2-sub" title="${o.sub}">${o.sub}</span>`:'')+(o.right?`<span class="wi2-right">${o.right}</span>`:'');
+  return `<div class="wi2-card${o.cls?' '+o.cls:''}"${o.title?` title="${o.title}"`:''}><div class="wi2-name">${o.name}</div>${meta?`<div class="wi2-meta">${meta}</div>`:''}${o.extra||''}</div>`;
 }
 // Το μοίρασμα φόρτωσης↔παράδοσης ακολουθεί το περιεχόμενο (owner 3/9).
 // Ένας λόγος για ΟΛΗ τη στήλη, όχι ανά γραμμή: αλλιώς το βέλος χοροπηδά και
@@ -1176,26 +1233,42 @@ function _wi2Card(o){
 // ονομασία να μη μηδενίζει την απέναντι πλευρά.
 function _wi2Balance(){
   const sheet=document.querySelector('.wk3.wi2'); if(!sheet) return;
+  const names=[...document.querySelectorAll('#wi-rows .wi2-name')];
+  // Reset last pass first: a name that shrank for a narrow column must be
+  // measured again at 13px after a resize widened it.
+  names.forEach(e=>{ e.classList.remove('clamp'); e.style.fontSize=''; });
   const legs=[...document.querySelectorAll('#wi-rows .wk3-leg')].filter(l=>l.offsetParent&&l.children.length>=3);
-  if(!legs.length) return;
-  sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
-  const need=c=>{
-    let t=0; c.querySelectorAll('.wi2-name,.wi2-sub').forEach(e=>{t=Math.max(t,e.scrollWidth)});
-    let fixed=0; [...c.children].forEach(e=>{ if(!e.classList.contains('wi2-cb')) fixed+=e.offsetWidth; });
-    return t+fixed+16;
-  };
-  let L=0,R=0;
-  legs.forEach(l=>{ L=Math.max(L,need(l.children[0])); R=Math.max(R,need(l.children[2])); });
-  sheet.classList.remove('wi2-measure');
-  if(!(L+R)) return;
-  const r=Math.min(.65,Math.max(.35,L/(L+R)));
-  sheet.style.setProperty('--sL',r.toFixed(3)+'fr');
-  sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
-  // Ό,τι κόπηκε στις δύο γραμμές κρατά το πλήρες κείμενο σε tooltip — τίποτα
-  // δεν χάνεται σιωπηλά (αρχή 1).
+  if(legs.length){
+    sheet.classList.add('wi2-measure');            // nowrap: διαβάζουμε το φυσικό πλάτος
+    const need=c=>{
+      const n=c.querySelector(':scope>.wi2-name'); let t=n?n.scrollWidth:0;
+      const m=c.querySelector(':scope>.wi2-meta');
+      if(m){ let w=0; [...m.children].forEach(e=>{ w+=e.offsetWidth+8; }); t=Math.max(t,w); }
+      return t+16;
+    };
+    let L=0,R=0;
+    legs.forEach(l=>{ L=Math.max(L,need(l.children[0])); R=Math.max(R,need(l.children[2])); });
+    sheet.classList.remove('wi2-measure');
+    if(L+R){
+      const r=Math.min(.65,Math.max(.35,L/(L+R)));
+      sheet.style.setProperty('--sL',r.toFixed(3)+'fr');
+      sheet.style.setProperty('--sR',(1-r).toFixed(3)+'fr');
+    }
+  }
+  // ΚΛΙΜΑΚΩΣΗ ΑΝΑ ΟΝΟΜΑ (owner 4/9): 13px σε όλο το πλάτος → 12 → 11 → 10,
+  // μετρημένο με scrollWidth ΜΟΝΟ για το όνομα που δεν χωρά. Αν ούτε στα 10px
+  // χωρά: δύο σειρές με ορατό «…» και το πλήρες κείμενο σε title — τίποτα
+  // δεν κόβεται σιωπηλά (Κ6). Οι μαζεμένες εθνικές στήλες (18px) εξαιρούνται:
+  // εκεί δεν χωρά τίποτα και η μέτρηση θα «μίκραινε» κάθε όνομα άσκοπα.
   let cut=0;
-  document.querySelectorAll('#wi-rows .wi2-name').forEach(e=>{
-    if(e.scrollHeight>e.clientHeight+1){ e.title=e.innerText.trim(); cut++; } else if(e.title) e.removeAttribute('title');
+  const fits=e=>e.scrollWidth<=e.clientWidth+1;
+  names.forEach(e=>{
+    if(e.clientWidth<40) return;
+    if(!fits(e)){
+      for(const px of [12,11,10]){ e.style.fontSize=px+'px'; if(fits(e)) break; }
+      if(!fits(e)){ e.classList.add('clamp'); e.title=e.innerText.trim(); cut++; return; }
+    }
+    if(e.title) e.removeAttribute('title');
   });
   WINTL._clamped=cut;
 }
@@ -1239,7 +1312,7 @@ function _wi2When(f,today){
 function _wi2Legend(){ const el=document.getElementById('wi2-legend'); if(el) el.hidden=!el.hidden; }
 function _wi2LegendHTML(){
   return `<div id="wi2-legend" class="wi2-lg" hidden>
-    <span><b>Ανάθεση:</b> navy = δικός στόλος (οδηγός · πινακίδες) · πράσινο = συνεργάτης (εταιρεία · πινακίδες) · κόκκινο διακεκομμένο κενό = χωρίς ανάθεση · γκρι διακεκομμένο «ΕΙΣ · χωρίς όχημα» = εισαγωγή χωρίς δικό όχημα</span>
+    <span><b>Ανάθεση:</b> navy «ΙΔ.» = δικός στόλος (πινακίδες · οδηγός) · πράσινο «ΣΥΝ.» = συνεργάτης (επωνυμία · πινακίδες) · κόκκινο διακεκομμένο «ΠΡΟΣ ΑΝΑΘΕΣΗ» = εκκρεμεί ανάθεση · γκρι διακεκομμένο «ΠΡΟΣ ΑΝΑΘΕΣΗ · εισαγωγή» = εισαγωγή χωρίς δικό όχημα</span>
     <span><b>Εισαγωγή:</b> ΚΕΝΟ ΓΥΡΙΣΜΑ = δικός γύρος χωρίς φορτίο επιστροφής (κόκκινο = επείγον, παράδοση εντός 48h) · navy κελί = συνεργάτης, δεν αναμένεται σκέλος · ανοιχτό κελί = σύρε εισαγωγή εδώ</span>
     <span><b>Σήματα:</b> VS = Veroia Switch · PE = ανταλλαγή παλετών · ! = υψηλό ρίσκο / καθυστέρηση · ①② = σειρά στάσεων · ↤/↦ = φόρτωση σε άλλη εβδομάδα · ⚠ φόρτωση χωρίς ανάθεση (μόνο τρέχουσα)</span>
     <span><b>Sync:</b> ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
@@ -1374,19 +1447,25 @@ function _wiRowHTML(row,i){
   const driver =row.driverLabel ||data.drivers.find(d=>d.id===row.driverId)?.label||'';
   // Fallback «Συνεργάτης» (owner 12/8): νέος partner που δεν είναι ακόμη στην
   // 30' cache των άλλων χρηστών εμφανιζόταν ως navy «—» αντί για πράσινο pill.
-  const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'Συνεργάτης':'');
-  const surname=driver?driver.trim().split(/\s+/)[0]:'';
+  // «—» αντί για «Συνεργάτης» όταν ο partner λείπει από την cache: η γενική
+  // λέξη δεν είναι επωνυμία (owner 4/9)· το πρόθεμα ΣΥΝ. λέει ήδη το είδος.
+  const partner=row.partnerLabel||data.partners.find(p=>p.id===row.partnerId)?.label||(row.partnerId?'—':'');
   const plates=[truck,trailer].filter(Boolean).join(' / ');
   let pill;
+  // Χρώμα ΚΑΙ λέξη (DESIGN ΜΕΡΟΣ Ε, owner 4/9): «ΙΔ.» + πινακίδα + οδηγός,
+  // «ΣΥΝ.» + επωνυμία. Το πλήρες κείμενο ζει στο title — το πλακίδιο κόβει
+  // με ορατό «…», ποτέ σιωπηλά.
   if(row.saved){
     if(partner){
-      pill=`<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner)}<small>${escapeHtml([row.partnerPlates,surname].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill par" title="Συνεργάτης: ${escapeHtml(partner)}${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">ΣΥΝ. ${escapeHtml(partner)}</span><small>${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))||'&nbsp;'}</small></div>`;
     } else {
-      pill=`<div class="wk3-pill own" title="${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(surname||plates||'—')}<small>${surname?escapeHtml(plates):'&nbsp;'}</small></div>`;
+      pill=`<div class="wk3-pill own" title="Ιδιόκτητο: ${escapeHtml(plates)}${driver?' · '+escapeHtml(driver):''} — κλικ: αλλαγή ανάθεσης"><span class="t">ΙΔ. ${escapeHtml(plates||'—')}</span><small>${escapeHtml(driver||'')||'&nbsp;'}</small></div>`;
     }
   } else {
-    // v3 (owner 12/8: «χρώμα, όχι λόγια»): ορφανό = κενό κόκκινο dashed πεδίο.
-    pill=`<div class="wk3-pill un" title="Ορφανό — χωρίς ανάθεση. Κλικ για ανάθεση"></div>`;
+    // «ΠΡΟΣ ΑΝΑΘΕΣΗ», όχι κενό (owner 4/9 αντικαθιστά το «χρώμα, όχι λόγια»
+    // του 12/8): εκκρεμότητα με όνομα, που ζητά κλικ — και διαβάζεται χωρίς
+    // το κόκκινο.
+    pill=`<div class="wk3-pill un" title="Προς ανάθεση — κλικ για ανάθεση"><span class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</span></div>`;
   }
 
   const stF=_wk3StFlags(pf);
@@ -1412,7 +1491,7 @@ function _wiRowHTML(row,i){
   const delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
     name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
     sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-    right:`${refs?`<span class="wi2-ref" title="Reference">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+    right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
 
   // Import side: matched preview · «ΚΕΝΟ ΓΥΡΙΣΜΑ» (own, no import) · navy
   // (partner — nothing expected back, owner 9/8) · open drop target.
@@ -1443,7 +1522,7 @@ function _wiRowHTML(row,i){
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
   } else if(gapCell){
-    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — own γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχον import εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
+    impInner=`<div class="wi2-gapbox${urg?' urg':''}" title="Κενό γυρισμού — ιδιόκτητος γύρος χωρίς φορτίο επιστροφής${urg?` · ΕΠΕΙΓΟΝ: παράδοση ${_wi2When(pf,today)}, χωρίς εισαγωγή`:''}. Κλικ: νέα παραγγελία εισαγωγής (ή σύρε υπάρχουσα εισαγωγή εδώ)">ΚΕΝΟ IMPORT${urg?`<small>ΕΠΕΙΓΟΝ</small>`:''}</div>`;
   } else if(parCell){
     impInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος επιστροφής"></div>`;
   } else {
@@ -1468,9 +1547,9 @@ function _wiRowHTML(row,i){
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
       ${isGroup
         ?`<button class="wk3-prt l" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
-        :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Export — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
+        :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εξαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
-      ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή Import — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
+      ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
     </div>
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?'style="cursor:pointer"':''}
@@ -1562,6 +1641,7 @@ function _wiRepaintRow(rowId){
   // position in WINTL.rows.
   const no=parseInt(WINTL._rowNo?.[row.orderIds[0]],10);
   el.outerHTML=_wiRowHTML(row,isNaN(no)?0:no-1);
+  requestAnimationFrame(_wi2Balance); // the fresh row's names need their fit pass too
 }
 
 /* ── DRAG & DROP ───────────────────────────────────────────────────── */
@@ -1654,8 +1734,8 @@ async function _wiSaveImportMatch(rowId,impId){
     const importRec = await atGetOne(TABLES.ORDERS, impId);
     const existingMatch = importRec.fields?.['Matched Export ID'] || importRec.fields?.['Matched Import ID'];
     if (existingMatch) {
-      if (typeof showErrorToast === 'function') showErrorToast('This import was already matched by another user. Refreshing...', 'warn');
-      else toast('Import already matched by another user — refreshing', 'warn');
+      if (typeof showErrorToast === 'function') showErrorToast('Η εισαγωγή ταιριάστηκε ήδη από άλλον χρήστη — ανανέωση…', 'warn');
+      else toast('Η εισαγωγή ταιριάστηκε ήδη από άλλον χρήστη — ανανέωση…', 'warn');
       await renderWeeklyIntl();
       return;
     }
@@ -1672,8 +1752,8 @@ async function _wiSaveImportMatch(rowId,impId){
     const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
     const existingExpMatch = exportRec.fields?.['Matched Import ID'];
     if (existingExpMatch && existingExpMatch !== impId) {
-      if (typeof showErrorToast === 'function') showErrorToast('This export already has a different import matched. Refreshing...', 'warn');
-      else toast('Export already matched — refreshing', 'warn');
+      if (typeof showErrorToast === 'function') showErrorToast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
+      else toast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
       await renderWeeklyIntl();
       return;
     }
@@ -1712,7 +1792,7 @@ async function _wiSaveImportMatch(rowId,impId){
   for(const orderId of row.orderIds){
     try{
       const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
-      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
       // Central sync — matching link can affect downstream planning
       if (typeof syncOrderDownstream === 'function') {
@@ -1771,7 +1851,7 @@ async function _wiRemoveImport(rowId){
           .catch(e => console.warn('[wi unmatch sync]', e));
       }
     }catch(err){
-      toast('Error: '+err.message.slice(0,60),'warn');
+      toast('Σφάλμα: '+err.message.slice(0,60),'warn');
       ok=false;
     }
   }
@@ -1913,18 +1993,18 @@ async function _wiAutoMatch() {
   // Show confirmation dialog with distance info
   const imp_label = (impRow) => {
     const imp = data.imports.find(r => r.id === impRow.orderId);
-    return imp ? _wiClean(imp.fields['Loading Summary'] || '').slice(0, 25) : '?';
+    return imp ? _wiCut(_wiClean(imp.fields['Loading Summary'] || ''), 25) : '?';
   };
   const exp_label = (expRow) => {
     const exp = data.exports.find(r => r.id === expRow.orderIds[0]);
-    return exp ? _wiClean(exp.fields['Delivery Summary'] || '').slice(0, 25) : '?';
+    return exp ? _wiCut(_wiClean(exp.fields['Delivery Summary'] || ''), 25) : '?';
   };
 
   const msg = suggestions.map((s, i) =>
     `${i+1}. ${exp_label(s.expRow)} ↔ ${imp_label(s.impRow)} (${s.dist < 9999 ? Math.round(s.dist)+'km' : '?'} · score ${s.score})`
   ).join('\n');
 
-  if (!(await confirmAction(`Auto-Match βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`, { title: 'Auto-Match', confirmLabel: 'Εφαρμογή' }))) return;
+  if (!(await confirmAction(`Το αυτόματο ταίριασμα βρήκε ${suggestions.length} ζεύγη:\n\n${msg}\n\nΕφαρμογή;`, { title: 'Αυτόματο ταίριασμα', confirmLabel: 'Εφαρμογή' }))) return;
 
   // Apply all matches
   for (const s of suggestions) {
@@ -2084,7 +2164,7 @@ async function _wiFillLaneHist(rowId,row){
     el.innerHTML='<span class="wi-lane-title">Ιστορικό γραμμής '+escapeHtml(lane)+' — '+hits.length+' τελευταία κόμιστρα:</span>'+hits.map(r=>{
       const pid=(r.fields['Partner']||[])[0];
       const pn=WINTL.data.partners.find(p=>p.id===pid)?.label||'—';
-      return `<span class="wi-lane-item">W${r.fields['Week Number']||'—'} · ${(r.fields['Partner Rate']||0).toLocaleString('el-GR')}€ · ${escapeHtml(String(pn).slice(0,18))}</span>`;
+      return `<span class="wi-lane-item">W${r.fields['Week Number']||'—'} · ${(r.fields['Partner Rate']||0).toLocaleString('el-GR')}€ · ${escapeHtml(_wiCut(pn,18))}</span>`;
     }).join('');
   }catch(e){ console.warn('lane hist:',e); }
 }
@@ -2156,7 +2236,7 @@ async function _wiSaveFromPopover(rowId){
   for(const orderId of row.orderIds){
     try{
       const res=await atSafePatch(TABLES.ORDERS,orderId,expFields);
-      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
     }catch(err){errors.push(err.message);}
@@ -2164,7 +2244,7 @@ async function _wiSaveFromPopover(rowId){
   if(row.importId && !row.orderIds.includes(row.importId)){
     try{
       const res=await atSafePatch(TABLES.ORDERS,row.importId,impFields);
-      if(res?.conflict){ toast('Record modified by another user — refreshing','warn'); await renderWeeklyIntl(); return; }
+      if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       // Το σκέλος εισαγωγής είναι ΑΚΡΙΒΩΣ η περίπτωση PARTNER_DROPOFF (ο partner
       // μάς φέρνει φορτίο): χωρίς αυτό το κάλεσμα καταγραφόταν μόνο η μισή ροή.
@@ -2313,7 +2393,7 @@ function _wiCtx(e,rowId){
     html+=`<div class="wi-ctx-h">Groupage · χωράνε ≤33 παλ (τώρα ${myPals}p)</div>`;
     others.slice(0,6).forEach(o=>{
       const exp=WINTL.data.exports.find(r=>r.id===o.orderIds[0]);
-      const lbl=_wiClean(exp?.fields['Delivery Summary']||`Row ${o.id}`).slice(0,24);
+      const lbl=_wiCut(_wiClean(exp?.fields['Delivery Summary']||`Γραμμή ${o.id}`),24);
       const op=_wiRowPals(o);
       html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiMerge(${rowId},${o.id})`);
     });
@@ -2355,7 +2435,7 @@ function _wiRotCands(parentRow){
     const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
     if(!o||o.fields['Rotation ID']) continue;
     if(String(o.fields['Loading DateTime']||'')<pLoad) continue;
-    const lbl=`${_wk3D(_wiFmt(o.fields['Loading DateTime']))} ${_wk3Loc(o.fields['Loading Summary']||'—')} → ${_wk3Loc(o.fields['Delivery Summary']||'—')}`.slice(0,40);
+    const lbl=`${_wk3D(_wiFmt(o.fields['Loading DateTime']))} ${_wk3Loc(o.fields['Loading Summary']||'—')} → ${_wk3Loc(o.fields['Delivery Summary']||'—')}`; // full label: the menu wraps, a cut hides the destination
     out.push({oid,lbl});
     if(out.length>=6) break;
   }
@@ -2403,7 +2483,7 @@ function _wiImpCtx(e,rowId){
     html+=`<div class="wi-ctx-h">Groupage εισαγωγών · ≤33 παλ (τώρα ${myPals}p)</div>`;
     others.slice(0,6).forEach(o=>{
       const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
-      const lbl=_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0].slice(0,22);
+      const lbl=_wiCut(_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0],22);
       const op=_wiRowPals(o);
       html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiImpGroup(${rowId},${o.id})`);
     });
@@ -2529,20 +2609,20 @@ function _wiRotaRender(){
   const row=WINTL.rows.find(r=>r.id===st.rowId); if(!row) return;
   const exps=st.ids.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean);
   const asn=row.partnerLabel?row.partnerLabel+(row.partnerPlates?' · '+row.partnerPlates:'')
-    :(row.truckLabel?row.truckLabel+(row.driverLabel?' · '+row.driverLabel:''):'Αδιάθετο');
-  const btnS='width:22px;height:22px;border:1px solid var(--border-mid);background:var(--bg-card);border-radius:5px;color:var(--text-mid);cursor:pointer';
+    :(row.truckLabel?row.truckLabel+(row.driverLabel?' · '+row.driverLabel:''):'Προς ανάθεση');
+  const btnS='width:24px;height:24px;border:1px solid var(--border);background:var(--surface-card);border-radius:6px;color:var(--text-mid);cursor:pointer';
   const cardRow=(e)=>{const f=e.fields;
-    return `<div style="border:1px solid var(--border-mid);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:6px;align-items:center">
-      <div><div style="font-weight:800;font-size:12.5px">${(_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'—').split(',')[0]))}</div>
-        <div style="font-size:11px;color:var(--text-mid);margin-top:2px">${f['Reference']?`Ref <b>${escapeHtml(String(f['Reference']))}</b> · `:''}<b>${('Total Pallets' in f)?f['Total Pallets']+' παλ':'— παλ'}</b> · ${(_wiClean(f['Loading Summary']||'—'))} → ${(_wiClean(f['Delivery Summary']||'—'))}</div></div>
-      <button style="font-size:10.5px;font-weight:800;color:var(--accent);border:1px solid var(--accent);background:var(--bg-card);border-radius:7px;padding:5px 12px;cursor:pointer;white-space:nowrap" onclick="_wiRotaClose();_wk3Edit('${e.id}')">Επεξεργασία</button>
+    return `<div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:8px;display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center">
+      <div><div style="font-weight:800;font-size:13px">${(_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'—').split(',')[0]))}</div>
+        <div style="font-size:11px;color:var(--text-mid);margin-top:4px;font-variant-numeric:tabular-nums">${f['Reference']?`Ref <b>${escapeHtml(String(f['Reference']))}</b> · `:''}<b>${('Total Pallets' in f)?f['Total Pallets']+' παλ':'— παλ'}</b> · ${(_wiClean(f['Loading Summary']||'—'))} → ${(_wiClean(f['Delivery Summary']||'—'))}</div></div>
+      <button style="font-size:11px;font-weight:800;color:var(--accent);border:1px solid var(--accent);background:var(--surface-card);border-radius:6px;padding:4px 12px;cursor:pointer;white-space:nowrap" onclick="_wiRotaClose();_wk3Edit('${e.id}')">Επεξεργασία</button>
     </div>`;};
   const seqRow=(e,k)=>{const f=e.fields;
-    return `<div style="display:grid;grid-template-columns:24px 1fr auto 52px;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--border);background:var(--bg-card)">
-      <span style="width:17px;height:17px;border-radius:50%;background:var(--text);color:var(--bg-card);font-size:9.5px;font-weight:800;text-align:center;line-height:17px">${k+1}</span>
-      <span style="font-weight:700;font-size:12px">${(_wiClean(f['Delivery Summary']||'—'))}<small style="display:block;font-weight:500;color:var(--text-mid);font-size:10.5px">${[f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):'', (_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'').split(',')[0]))].filter(Boolean).join(' · ')}</small></span>
+    return `<div style="display:grid;grid-template-columns:24px 1fr auto 52px;gap:8px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-card)">
+      <span style="width:16px;height:16px;border-radius:9999px;background:var(--text);color:var(--surface-card);font-size:11px;font-weight:800;text-align:center;line-height:16px">${k+1}</span>
+      <span style="font-weight:700;font-size:12px">${(_wiClean(f['Delivery Summary']||'—'))}<small style="display:block;font-weight:500;color:var(--text-mid);font-size:11px">${[f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):'', (_wiClean(f['Client Name']||f['Client Summary']||String(f['Loading Summary']||'').split(',')[0]))].filter(Boolean).join(' · ')}</small></span>
       <span></span>
-      <span style="display:flex;gap:3px;justify-content:flex-end">
+      <span style="display:flex;gap:4px;justify-content:flex-end">
         <button ${k===0?'disabled':''} style="${btnS}${k===0?';opacity:.3;cursor:default':''}" onclick="_wiRotaMv(${k},-1)">↑</button>
         <button ${k===exps.length-1?'disabled':''} style="${btnS}${k===exps.length-1?';opacity:.3;cursor:default':''}" onclick="_wiRotaMv(${k},1)">↓</button>
       </span>
@@ -2551,23 +2631,23 @@ function _wiRotaRender(){
   if(!ov){ ov=document.createElement('div'); ov.id='wiRotaOv'; document.body.appendChild(ov); }
   ov.innerHTML=`
     <div style="position:fixed;inset:0;background:rgba(11,25,41,.45);z-index:var(--z-overlay)" onclick="_wiRotaClose()"></div>
-    <div style="position:fixed;top:0;right:0;width:480px;max-width:94vw;height:100vh;background:var(--bg-card);z-index:var(--z-overlay);box-shadow:var(--shadow-lg);display:flex;flex-direction:column">
-      <div style="background:var(--navy-mid);color:var(--panel-text);padding:14px 18px">
-        <button style="float:right;background:none;border:none;color:var(--panel-text);font-size:20px;cursor:pointer" onclick="_wiRotaClose()">×</button>
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">Καρτέλα Ρότας — GRP ×${exps.length}</div>
-        <div style="font-size:11px;color:var(--silver);margin-top:3px">${exps.length} παραγγελίες · ${_wi2PalGroup(exps).replace(/<[^>]+>/g,'')} · ${escapeHtml(asn)}</div>
+    <div style="position:fixed;top:0;right:0;width:480px;max-width:94vw;height:100vh;background:var(--surface-card);z-index:var(--z-overlay);box-shadow:var(--shadow-lg);display:flex;flex-direction:column">
+      <div style="background:var(--surface-dark);color:var(--text-on-dark);padding:16px">
+        <button style="float:right;background:none;border:none;color:var(--text-on-dark);font-size:18px;cursor:pointer" onclick="_wiRotaClose()">×</button>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:18px">Καρτέλα Ρότας — GRP ×${exps.length}</div>
+        <div style="font-size:11px;color:var(--text-on-dark);margin-top:4px">${exps.length} παραγγελίες · ${_wi2PalGroup(exps).replace(/<[^>]+>/g,'')} · ${escapeHtml(asn)}</div>
       </div>
-      <div style="flex:1;overflow-y:auto;padding:14px 18px">
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:1.2px;color:var(--navy-mid);text-transform:uppercase;margin-bottom:8px">Παραγγελίες του group</div>
+      <div style="flex:1;overflow-y:auto;padding:16px">
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1.2px;color:var(--surface-dark);text-transform:uppercase;margin-bottom:8px">Παραγγελίες του group</div>
         ${exps.map(cardRow).join('')}
-        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:10.5px;letter-spacing:1.2px;color:var(--navy-mid);text-transform:uppercase;margin:14px 0 8px">Σειρά παράδοσης <span style="font-weight:500;color:var(--text-dim);text-transform:none;letter-spacing:0">— βελάκια ↑↓</span></div>
-        <div style="border:1px solid var(--border-mid);border-radius:10px;overflow:hidden">${exps.map(seqRow).join('')}</div>
-        <div style="font-size:10.5px;color:var(--text-dim);margin-top:6px;line-height:1.5">Η σειρά καθορίζει την αρίθμηση στο Weekly και τη διαδρομή στο φύλλο οδηγού.</div>
+        <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:11px;letter-spacing:1.2px;color:var(--surface-dark);text-transform:uppercase;margin:16px 0 8px">Σειρά παράδοσης <span style="font-weight:500;color:var(--text-dim);text-transform:none;letter-spacing:0">— βελάκια ↑↓</span></div>
+        <div style="border:1px solid var(--border);border-radius:6px;overflow:hidden">${exps.map(seqRow).join('')}</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:8px;line-height:1.5">Η σειρά καθορίζει την αρίθμηση στο Weekly και τη διαδρομή στο φύλλο οδηγού.</div>
       </div>
-      <div style="border-top:1px solid var(--border);padding:12px 18px;display:flex;gap:10px;justify-content:flex-end">
-        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 14px;cursor:pointer;background:var(--bg-card);color:var(--danger-strong);border:1px solid var(--danger-strong);margin-right:auto" onclick="_wiRotaSplit()">Διάλυση ομάδας</button>
-        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:var(--bg-card);color:var(--text-mid);border:1px solid var(--border-mid)" onclick="_wiRotaClose()">Κλείσιμο</button>
-        <button style="font-size:11.5px;font-weight:800;border-radius:8px;padding:8px 18px;cursor:pointer;background:var(--accent);color:var(--bg-card);border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
+      <div style="border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:12px;justify-content:flex-end">
+        <button style="font-size:12px;font-weight:800;border-radius:6px;padding:8px 16px;cursor:pointer;background:var(--surface-card);color:var(--danger);border:1px solid var(--danger);margin-right:auto" onclick="_wiRotaSplit()">Διάλυση ομάδας</button>
+        <button style="font-size:12px;font-weight:800;border-radius:6px;padding:8px 16px;cursor:pointer;background:var(--surface-card);color:var(--text-mid);border:1px solid var(--border)" onclick="_wiRotaClose()">Κλείσιμο</button>
+        <button style="font-size:12px;font-weight:800;border-radius:6px;padding:8px 16px;cursor:pointer;background:var(--accent);color:var(--surface-card);border:none" onclick="_wiRotaSave()">Αποθήκευση σειράς</button>
       </div>
     </div>`;
 }
@@ -2638,37 +2718,45 @@ function _wiOpenImpPopover(e, impId, rowId){
 function _wiPrintWeek(){
   const rows=WINTL.rows.filter(r=>r.type==='export');
   const data=WINTL.data;
-  let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly International — W${WINTL.week}</h2>
-    <p style="font-size:12px;color:#666;margin-bottom:16px">${rows.length} exports · ${data.imports.length} imports · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
+  // Χαρτί: το φύλλο ανοίγει σε ΔΙΚΟ του παράθυρο χωρίς style.css (core/utils
+  // _printWeekShell), άρα κανένα var(--token) δεν θα έλυνε εκεί. Αντί για hex
+  // (DESIGN Κ1): καθόλου χρώμα — περιγράμματα currentColor, έντονη κεφαλίδα.
+  // Καμία κοπή επωνυμίας (Κ6): το χαρτί αναδιπλώνει. Άγνωστες παλέτες = «—» (Κ3).
+  const td='padding:4px 6px;border:1px solid';
+  const pals=f=>('Total Pallets' in f&&f['Total Pallets']!==''&&f['Total Pallets']!=null)?f['Total Pallets']:'—';
+  let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Εβδομαδιαίο Διεθνών — W${WINTL.week}</h2>
+    <p style="font-size:12px;margin-bottom:16px">${rows.length} εξαγωγές · ${data.imports.length} εισαγωγές · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>
     <table style="width:100%;border-collapse:collapse;font-size:11px">
-      <thead><tr style="background:#F0F5FA">
-        <th style="padding:6px;border:1px solid #ddd;text-align:left">#</th>
-        <th style="padding:6px;border:1px solid #ddd;text-align:left">Route</th>
-        <th style="padding:6px;border:1px solid #ddd;text-align:left">Date</th>
-        <th style="padding:6px;border:1px solid #ddd;text-align:center">Pal</th>
-        <th style="padding:6px;border:1px solid #ddd;text-align:left">Assignment</th>
-        <th style="padding:6px;border:1px solid #ddd;text-align:left">Import</th>
+      <thead><tr style="font-weight:700">
+        <th style="${td};text-align:left">#</th>
+        <th style="${td};text-align:left">Διαδρομή</th>
+        <th style="${td};text-align:left">Ημερομηνίες</th>
+        <th style="${td};text-align:center">Παλ.</th>
+        <th style="${td};text-align:left">Ανάθεση</th>
+        <th style="${td};text-align:left">Εισαγωγή</th>
       </tr></thead><tbody>`;
   rows.forEach((row,i)=>{
     const exps=row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean);
     const primary=exps[0];if(!primary)return;
     const f=primary.fields;
     const imp=row.importId?data.imports.find(r=>r.id===row.importId):null;
-    const partner=row.partnerLabel||'';
-    const truck=row.truckLabel||'';
-    const assign=partner?`Partner: ${partner}`:(truck?`Owned: ${truck}`:'Unassigned');
+    // Λεξιλόγιο ΜΕΡΟΣ Ε: «ΣΥΝ.» + επωνυμία · «ΙΔ.» + πινακίδα + οδηγός · «ΠΡΟΣ ΑΝΑΘΕΣΗ»
+    const partner=row.partnerLabel||(row.partnerId?'—':'');
+    const plates=[row.truckLabel,row.trailerLabel].filter(Boolean).join(' / ');
+    const assign=partner?`ΣΥΝ. ${partner}${row.partnerPlates?' · '+row.partnerPlates:''}`
+      :(plates?`ΙΔ. ${plates}${row.driverLabel?' · '+row.driverLabel:''}`:'ΠΡΟΣ ΑΝΑΘΕΣΗ');
     html+=`<tr>
-      <td style="padding:4px 6px;border:1px solid #ddd">${i+1}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd">${(f['Loading Summary']||'').slice(0,30)} → ${(f['Delivery Summary']||'').slice(0,30)}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd;text-align:center">${f['Total Pallets']||0}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd">${assign}</td>
-      <td style="padding:4px 6px;border:1px solid #ddd">${imp?((imp.fields['Loading Summary']||'').slice(0,25)+' → '+(imp.fields['Delivery Summary']||'').slice(0,25)):'—'}</td>
+      <td style="${td}">${i+1}</td>
+      <td style="${td}">${escapeHtml(f['Loading Summary']||'')} → ${escapeHtml(f['Delivery Summary']||'')}</td>
+      <td style="${td};font-variant-numeric:tabular-nums">${toLocalDate(f['Loading DateTime'])} → ${toLocalDate(f['Delivery DateTime'])}</td>
+      <td style="${td};text-align:center;font-variant-numeric:tabular-nums">${pals(f)}</td>
+      <td style="${td}">${escapeHtml(assign)}</td>
+      <td style="${td}">${imp?(escapeHtml(imp.fields['Loading Summary']||'')+' → '+escapeHtml(imp.fields['Delivery Summary']||'')):'—'}</td>
     </tr>`;
   });
   html+='</tbody></table>';
   // WI-11: shared shell (core/utils) — one print chrome for both weekly pages.
-  _printWeekShell(`Week ${WINTL.week} — Petras TMS`, html);
+  _printWeekShell(`Εβδομάδα ${WINTL.week} — Petras TMS`, html);
 }
 
 // Expose functions used from onclick/oninput/onfocus handlers
@@ -2780,7 +2868,7 @@ function _wiExportCSV() {
     rows.push([f['Order Number']||'', f['Direction']||'',
       typeof getClientName==='function' ? getClientName((f['Client']||[])[0]) : '',
       f['Loading Summary']||'', f['Delivery Summary']||'',
-      f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
+      f['Loading DateTime']||'', f['Delivery DateTime']||'', ('Total Pallets' in f)?f['Total Pallets']:'',
       trk, trl, drv, prt, assigned?'Assigned':'Unassigned',
     ]); });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
