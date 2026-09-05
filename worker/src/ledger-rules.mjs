@@ -6,6 +6,10 @@ export const DL_TYPES = ['trip', 'payment_cash', 'payment_bank', 'adjustment'];
 export const DL_FIELDS = ['driver_id', 'entry_type', 'entry_date', 'date_end', 'route', 'rt_id',
   'trip_value', 'advance', 'expenses', 'amount', 'note'];
 const TRIP_ONLY = ['date_end', 'route', 'rt_id', 'trip_value', 'advance', 'expenses'];
+// Single source for "which fields a trip PATCH may touch": every DL field except the
+// identity fields (driver_id/entry_type, never patched) and amount (forbidden on a
+// trip at creation too — see validateNewEntry).
+const TRIP_EDITABLE = DL_FIELDS.filter(f => f !== 'driver_id' && f !== 'entry_type' && f !== 'amount');
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
 function num(v) { return typeof v === 'number' && Number.isFinite(v); }
@@ -49,25 +53,47 @@ export function validatePatch(body, before) {
   const reason = String(body.reason || '').trim();
   if (body.cancel) {
     if (!reason) return { error: 'reason required to cancel' };
+    // cancel is a standalone action — mixing in other edits would hide which
+    // change actually happened in the audit trail
+    const extra = Object.keys(body).filter(k => k !== 'cancel' && k !== 'reason');
+    if (extra.length) return { error: 'cancel cannot be combined with other fields: ' + extra.join(', ') };
     return { patch: { deleted_at: new Date().toISOString(), deleted_reason: reason }, needsReason: true };
   }
   if (body.needs_review === false) {
     if (!reason) return { error: 'reason required to clear needs_review' };
+    const extra = Object.keys(body).filter(k => k !== 'needs_review' && k !== 'reason');
+    if (extra.length) return { error: 'needs_review cannot be combined with other fields: ' + extra.join(', ') };
     return { patch: { needs_review: false, review_note: reason }, needsReason: true };
   }
-  const editable = before.entry_type === 'trip'
-    ? ['entry_date', 'date_end', 'route', 'rt_id', 'trip_value', 'advance', 'expenses', 'note']
-    : ['entry_date', 'amount', 'note'];
+  const editable = before.entry_type === 'trip' ? TRIP_EDITABLE : ['entry_date', 'amount', 'note'];
   const patch = {}; let needsReason = false;
   for (const [k, v] of Object.entries(body)) {
     if (k === 'reason') continue;
     if (!editable.includes(k)) return { error: k + ' is not editable on a ' + before.entry_type };
-    if (['trip_value', 'advance', 'expenses', 'amount'].includes(k) && v != null && (!num(v) || v < 0)) return { error: k + ' must be a number ≥ 0' };
+    if (['trip_value', 'advance', 'expenses'].includes(k) && v != null && (!num(v) || v < 0)) return { error: k + ' must be a number ≥ 0' };
+    if (k === 'amount' && v != null) {
+      // same per-type invariant as validateNewEntry: payment amounts are always
+      // positive, adjustments may be negative but never zero
+      if (!num(v)) return { error: 'amount must be a number' };
+      const isAdjustment = before.entry_type === 'adjustment';
+      if (isAdjustment ? v === 0 : v <= 0) return { error: 'amount must be ' + (isAdjustment ? '≠ 0' : '> 0') };
+    }
+    if (k === 'rt_id' && v != null && !Number.isInteger(v)) return { error: 'rt_id must be an integer' };
     if (['entry_date', 'date_end'].includes(k) && v != null && !ISO.test(v)) return { error: k + ' must be YYYY-MM-DD' };
     patch[k] = v;
-    // filling an empty field is data entry; overwriting a written one is a correction
+    // Notes are free-text metadata, not an audited financial/date fact — the
+    // spec requires a reason for amount/date corrections, not for notes.
     if (k !== 'note' && before[k] != null && before[k] !== v) needsReason = true;
   }
   if (!Object.keys(patch).length) return { error: 'nothing to update' };
+  // Date pair invariant re-checked after the merge: a PATCH that only moves one
+  // end of the range must still not leave date_end before entry_date.
+  if ('entry_date' in patch || 'date_end' in patch) {
+    const effEntryDate = 'entry_date' in patch ? patch.entry_date : before.entry_date;
+    const effDateEnd = 'date_end' in patch ? patch.date_end : before.date_end;
+    if (effDateEnd != null && effEntryDate != null && effDateEnd < effEntryDate) {
+      return { error: 'date_end must not be before entry_date' };
+    }
+  }
   return { patch, needsReason };
 }
