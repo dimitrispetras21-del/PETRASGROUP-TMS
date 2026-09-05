@@ -96,5 +96,12 @@ class TestBuildPlan(unittest.TestCase):
         p = build_plan('NEW', entry, [n], [{'dl_id': 1, 'driver_id': 8, 'entry_date': '2026-08-27', 'trip_value': None, 'advance': None, 'expenses': None}], None)
         self.assertIsNone(p['driver_id']); self.assertEqual(p['create_driver']['Full Name'], 'New One'); self.assertIsNone(p['cutoff']); self.assertEqual(p['patches'], [])
 
+    def test_zero_opening_and_zero_carry_are_skipped(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=500)], final='0.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=0.0), row(5, '2024-01-12', value=100, advance=50)], opening_balance='0.00', final='50.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+
 if __name__ == '__main__':
     unittest.main()

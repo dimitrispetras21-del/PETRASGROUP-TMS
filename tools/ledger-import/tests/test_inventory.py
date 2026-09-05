@@ -108,5 +108,19 @@ class TestParseSheet(unittest.TestCase):
         self.assertIsNone(n['running_consistent']); self.assertIsNone(n['opening_balance']); self.assertEqual(n['running_breaks'], [])
         self.assertEqual(n['expected_final'], n['balance_sum'])
 
+    def test_date_end_year_typo_repaired_and_small_residual_recorded(self):
+        ws = book([('ΗΜΕΡ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (dt.datetime(2025, 2, 25), dt.datetime(2026, 3, 2), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 250.02),
+                   (dt.datetime(2025, 3, 10), dt.datetime(2025, 3, 15), 'ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ', 120, 120, None, None, 0, 250.02),
+                   (dt.datetime(2025, 3, 20), None, 'ΜΕΤΡΗΤΑ', 100, None, None, None, -100, 150.02)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 2)
+        self.assertEqual(n['zero_net_skipped'], 1)
+        self.assertEqual(n['rows'][0]['entry']['date_end'], '2025-03-02')
+        self.assertIsNone(n['rows'][0]['date_problem'])
+        self.assertIn('2026-03-02', n['rows'][0]['entry']['note'])
+        self.assertEqual(n['rounding_residual'], '0.02')
+        self.assertTrue(n['running_consistent'])
+
 if __name__ == '__main__':
     unittest.main()

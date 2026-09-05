@@ -147,9 +147,12 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 195.0)
         self.assertIn('ΕΞΟΔΑ 5.00', e['note'])
 
-    def test_payment_line_swallowed_by_expenses_is_unknown(self):
+    def test_payment_line_with_expenses_equal_to_amount_is_zero_net(self):
+        # ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ 120 / ΕΞΟΔΑ 120: the company paid an expense through the
+        # driver; the driver's balance does not move, so there is nothing to record.
+        self.assertEqual(classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ', 'advance': 120, 'expenses': 120}), 'ZERO_NET')
         with self.assertRaises(Unknown):
-            classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 5})
+            classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 9})
 
 class TestFixDate(unittest.TestCase):
     today = D(2026, 9, 5)

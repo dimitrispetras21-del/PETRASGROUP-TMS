@@ -29,7 +29,7 @@ def parse_sheet(ws, today):
     if h is None: return None
     cols = h['cols']
     rows, unknown, cells_used = [], [], []
-    totals_skipped = text_only = 0
+    totals_skipped = text_only = zero_net = 0
     for rn, raw in enumerate(ws.iter_rows(min_row=h['row'] + 1, values_only=True), h['row'] + 1):
         cells = {f: (raw[cols[f] - 1] if f in cols and cols[f] <= len(raw) else None) for f in PICK}
         cells['_row_text'] = ' '.join(str(v) for v in raw if isinstance(v, str))
@@ -40,6 +40,7 @@ def parse_sheet(ws, today):
             if cells.get('date') is not None: cells_used.append(cells)   # a dated money line counts even if unclassified
             continue
         if e == 'TOTALS': totals_skipped += 1; continue
+        if e == 'ZERO_NET': zero_net += 1; continue
         if e is None:
             if any(v not in (None, '') for v in raw): text_only += 1
             continue
@@ -62,8 +63,22 @@ def parse_sheet(ws, today):
             r['date_fix'] = {'from': dates[i].isoformat(), 'to': fx[0].isoformat(), 'note': fx[1]}
             r['entry']['entry_date'] = fx[0].isoformat(); add_note(r['entry'], fx[1])
         end = r['entry'].get('date_end')
-        if end and end < r['entry']['entry_date']:
-            r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
+        if end:
+            start = dt.date.fromisoformat(r['entry']['entry_date']); e0 = dt.date.fromisoformat(end)
+            # A return date before the departure OR way too far in the future is almost always a year typo;
+            # repair it only when the year alone brings it to 0–60 days after departure.
+            if e0 < start or e0 > start + dt.timedelta(days=60):
+                cands = set()
+                for y in {e0.year - 1, e0.year + 1, start.year, start.year + 1}:
+                    try: cand = e0.replace(year=y)
+                    except ValueError: continue
+                    if start <= cand <= start + dt.timedelta(days=60): cands.add(cand)
+                if len(cands) == 1:
+                    fixed = cands.pop()
+                    r['entry']['date_end'] = fixed.isoformat(); add_note(r['entry'], 'λήξη Excel %s → %s (έτος)' % (end, fixed.isoformat()))
+                    r['date_fix'] = r['date_fix'] or {'from': end, 'to': fixed.isoformat(), 'note': 'λήξη: έτος'}
+                else:
+                    r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
     running_last, opening, breaks, consistent = None, None, [], None
     trailing, expected_final, residual = Decimal('0'), None, None
     if 'running' in cols:
@@ -94,7 +109,7 @@ def parse_sheet(ws, today):
             expected_final = str(d2(running_last) + trailing)
             tot = raw + (opening or Decimal('0')) + sum((Decimal(b['diff']) for b in breaks), Decimal('0'))
             gap = (d2(running_last) + trailing) - tot
-            if abs(gap) <= Decimal('0.05'):
+            if abs(gap) <= Decimal('0.005'):
                 consistent = True
                 residual = None
             elif abs(gap) <= Decimal('1.00'):
@@ -116,7 +131,7 @@ def parse_sheet(ws, today):
             'opening_balance': str(opening) if opening is not None else None, 'running_breaks': breaks, 'running_consistent': consistent,
             'expected_final': expected_final, 'trailing_delta': str(trailing) if trailing != 0 else None, 'rounding_residual': residual,
             'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
-            'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only}
+            'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only, 'zero_net_skipped': zero_net}
 
 def main():
     today = dt.date.today()
@@ -133,10 +148,10 @@ def main():
     out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
     json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     R = [r for n in nodes for r in n['rows']]
-    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d'
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d · zero-net %d'
           % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
              sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
-             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta'])))
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta']), sum(n['zero_net_skipped'] for n in nodes)))
 
 if __name__ == '__main__':
     main()

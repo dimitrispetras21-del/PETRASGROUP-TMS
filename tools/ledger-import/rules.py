@@ -140,7 +140,8 @@ def classify(c):
     # "ΜΕΤΡΗΤΑ". The net keeps the line's Excel arithmetic (ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ).
     if (cash or bank) and not val and not has_seq and adv and adv > 0:
         net = float(d2(adv - (exp or 0)))
-        if net <= 0: raise Unknown('payment line whose expenses cancel the amount: %r' % label)
+        if net == 0: return 'ZERO_NET'      # advance fully spent on company expenses: the driver's balance did not move
+        if net < 0: raise Unknown('payment line whose expenses exceed the amount: %r' % label)
         e = {'entry_type': 'payment_bank' if (bank and not cash) else 'payment_cash', 'entry_date': iso, 'amount': net}
         note = label
         if exp: note = (label + ' · ' if label else '') + 'ΕΞΟΔΑ %.2f στη γραμμή πληρωμής (καθαρό %.2f)' % (exp, net)

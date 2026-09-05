@@ -80,7 +80,9 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             else:
                 needs.append('το φύλλο %s κλείνει με %s και το επόμενο (%s) ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;' % (prev_node['sheet'], prev_final, n['sheet']))
         # opening balance
-        if opening is not None:
+        if opening is not None and opening == 0:
+            pn[k]['opening_carry_skipped'] = True
+        elif opening is not None:
             action = dec_open.get(k, {}).get('action') or ('skip' if carries_prev else 'adjust')
             if action == 'skip': pn[k]['opening_carry_skipped'] = True
             else:
@@ -92,6 +94,9 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             e = r['entry']; src = dict(src0, row=r['row'])
             if r.get('date_fix'): date_fixes.append(dict(r['date_fix'], sheet=n['sheet'], row=r['row']))
             if e['entry_type'] == 'carry':
+                if d2(e['amount']) == 0:
+                    pn[k]['opening_carry_skipped'] = True
+                    continue
                 ck = (n['file_id'], n['sheet'], r['row'])
                 action = dec_carry.get(ck, {}).get('action') or ('skip' if (r is first_carry and carries_prev) else 'adjust')
                 if action == 'skip': pn[k]['opening_carry_skipped'] = True
