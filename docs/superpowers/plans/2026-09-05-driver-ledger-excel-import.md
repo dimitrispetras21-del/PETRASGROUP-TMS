@@ -400,7 +400,9 @@ def classify(c):
         if not is_num(c.get('balance')): raise Unknown('carry row without balance: %r' % (c.get('route'),))
         return {'entry_type': 'carry', 'entry_date': iso, 'amount': float(d2(c['balance']))}
     value_present = is_num(c.get('value')) and c['value'] != 0
-    if value_present or c.get('seq') not in (None, '') or (desc and (adv is not None or is_num(c.get('expenses')))):
+    # A trip needs a value or a sequence number. A described row with only an
+    # advance could be a gift, a loan or a trip — that is a human's call.
+    if value_present or c.get('seq') not in (None, ''):
         end = to_date(c.get('date_end'))
         return {'entry_type': 'trip', 'entry_date': iso,
                 'date_end': end.isoformat() if end else None,
