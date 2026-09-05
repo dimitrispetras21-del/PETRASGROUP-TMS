@@ -120,6 +120,16 @@ async function renderPayroll() {
   dlRenderList();
 }
 
+// Re-render on each keystroke rebuilds the input, which resets the caret to
+// the end unless the position is restored explicitly.
+function dlSearchInput(el) {
+  const pos = el.selectionStart;
+  _dl.q = el.value;
+  dlRenderList();
+  const s = document.querySelector('.dl-search');
+  if (s) { s.focus(); s.setSelectionRange(pos, pos); }
+}
+
 function dlVisible() {
   const q = _dl.q.trim().toLowerCase();
   return _dl.balances.filter(b => {
@@ -157,7 +167,7 @@ function dlRenderList() {
     <div class="dl-head"><span class="dl-title">Μισθοδοσία Οδηγών</span><span style="width:8px"></span>
       ${chip('all', 'Όλοι', act.length)}${chip('balance', 'Με υπόλοιπο', owe.length + owed.length)}${chip('pending', 'Εκκρεμείς αξίες', pending)}${chip('stale', 'Χωρίς κίνηση 30+ ημ.', stale)}${chip('inactive', 'Ανενεργοί')}
       <span class="dl-sp"></span>
-      <input class="dl-search" placeholder="Αναζήτηση…" value="${escapeHtml(_dl.q)}" oninput="_dl.q=this.value;dlRenderList();document.querySelector('.dl-search').focus()">
+      <input class="dl-search" placeholder="Αναζήτηση…" value="${escapeHtml(_dl.q)}" oninput="dlSearchInput(this)">
       <button class="dl-btn pri" onclick="dlOpenForm(null,'trip')">Νέα κίνηση</button></div>
     <div class="dl-metrics"><span><b>Χρωστάμε ${dlEur(total)}</b> σε ${owe.length} οδηγούς</span><span>·</span>
       ${pending ? `<span class="warn">${pending} δρομολόγι${pending === 1 ? 'ο' : 'α'} χωρίς αξία</span>` : ''}
@@ -212,7 +222,7 @@ function dlRenderDriver(b) {
     return `<div class="dl-row${isTrip ? '' : ' pay'}${e.cancelled ? ' canc' : ''}${e.needs_review ? ' review' : ''}" onclick="dlOpenEdit(${e.id})">
       <div style="width:56px"><span class="s">${e.source === 'excel_import' ? 'xls' : (e.source === 'auto' ? 'auto' : '—')}</span></div>
       <div style="width:120px"><span style="font-size:12px">${dlDateRange(e.entry_date, e.date_end)}</span></div>
-      <div style="width:120px"><span class="dl-pill">${dlTypeLabel(e.entry_type)}</span></div>
+      <div style="width:120px"><span class="dl-pill">${escapeHtml(dlTypeLabel(e.entry_type))}</span></div>
       <div style="width:448px"><span class="m" style="font-weight:${isTrip ? 500 : 400}">${escapeHtml(e.route_text || (e.entry_type === 'payment_bank' ? 'Κατάθεση τράπεζα' : e.entry_type === 'payment_cash' ? 'Πληρωμή μετρητά' : 'Προσαρμογή'))}</span><span class="s">${sub}</span></div>
       <div style="width:100px" class="r">${num(isTrip ? money(e.advance) : money(e.amount), isTrip && e.advance == null)}</div>
       <div style="width:100px" class="r">${num(isTrip ? money(e.expenses) : '—', !isTrip || e.expenses == null)}</div>
@@ -223,7 +233,7 @@ function dlRenderDriver(b) {
   }).join('') : showEmpty({ title: 'Καμία κίνηση ακόμη', description: 'Η καρτέλα ξεκινά με το πρώτο δρομολόγιο ή την εισαγωγή του Excel.' });
   c.innerHTML = dlStyles() + `<div class="dl-page">
     <div class="dl-head"><a class="link" href="#" onclick="renderPayroll();return false">← Μισθοδοσία</a><span class="dl-title">${escapeHtml(b.full_name)}</span>
-      <span class="dl-pill" style="background:var(--ok);color:var(--text-on-dark);border-color:var(--ok);font-size:10px;font-weight:600">${b.active ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ'}</span>
+      <span class="dl-pill" style="background:var(--ok);color:var(--text-on-dark);border-color:var(--ok);font-size:11px;font-weight:600">${b.active ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ'}</span>
       <span class="s" style="font-size:12px">${b.type === 'External' ? 'Εξωτερικός' : 'Εσωτερικός'}</span><span class="dl-sp"></span>
       ${years.map(yr).join('')}
       <button class="dl-btn" onclick="dlOpenForm(${b.driver_id},'payment_cash')">Πληρωμή</button>
@@ -253,8 +263,8 @@ function dlOpenForm(driverId, type) {
   const drvOpts = drivers.map(d => `<option value="${d.driver_id}"${d.driver_id === driverId ? ' selected' : ''}>${escapeHtml(d.full_name)}</option>`).join('');
   m.innerHTML = `<div style="display:flex;align-items:center;margin-bottom:16px"><span class="dl-title">Νέα κίνηση${cur ? ' — ' + escapeHtml(cur.full_name) : ''}</span><span class="dl-sp"></span><button class="dl-btn" style="border:0" onclick="dlCloseForm()">✕</button></div>
     <div class="dl-f" style="margin-bottom:6px"><label>Είδος κίνησης *</label></div><div class="dl-seg">${seg}</div>
-    <div class="dl-fr"><div class="dl-f"><label>Οδηγός *</label><select id="dlDriver">${drvOpts}</select><span class="h">${cur ? 'ενεργός · υπόλοιπο ' + dlEur(bal) + ' πριν την κίνηση' : ''}</span></div>
-      ${type === 'trip' ? `<div class="dl-f"><label>Σύνδεση με round trip</label><select id="dlRt">${rtOpts}</select><span class="h">προαιρετικό · τρέφει το TRIP PnL</span></div>` : `<div class="dl-f"><label>Ημερομηνία *</label><input type="date" id="dlDate" value="${today}"></div>`}</div>
+    <div class="dl-fr"><div class="dl-f"><label>Οδηγός *</label><select id="dlDriver" onchange="dlDriverChanged(this)">${drvOpts}</select><span class="h">${cur ? 'ενεργός · υπόλοιπο ' + dlEur(bal) + ' πριν την κίνηση' : ''}</span></div>
+      ${type === 'trip' ? `<div class="dl-f"><label>Σύνδεση με round trip</label><select id="dlRt">${rtOpts}</select><span class="h" id="dlRtHint">προαιρετικό · τρέφει το TRIP PnL</span></div>` : `<div class="dl-f"><label>Ημερομηνία *</label><input type="date" id="dlDate" value="${today}"></div>`}</div>
     ${type === 'trip' ? `
     <div class="dl-fr"><div class="dl-f"><label>Αναχώρηση *</label><input type="date" id="dlDate" value="${today}"></div><div class="dl-f"><label>Επιστροφή</label><input type="date" id="dlEnd"><span class="h">κενή όσο ο οδηγός είναι στον δρόμο</span></div></div>
     <div class="dl-fr"><div class="dl-f"><label>Διαδρομή *</label><input id="dlRoute" placeholder="ΒΕΡΟΙΑ-ΠΟΛΩΝΙΑ-ΒΕΡΟΙΑ"><span class="h">ελεύθερο κείμενο, όπως στο Excel — ή αυτόματα από το RT</span></div></div>
@@ -269,6 +279,23 @@ function dlOpenForm(driverId, type) {
       <button class="dl-btn" style="border:0;color:var(--accent)" onclick="dlCloseForm()">Άκυρο</button><button class="dl-btn pri" onclick="dlSaveForm('${type}')">Καταχώρηση</button></div><div class="dl-err" id="dlErr"></div>`;
   m.dataset.balance = String(bal);
   dlRecalc();
+}
+
+// The RT dropdown was populated for the driver open when the form loaded —
+// switching driver inside the form (no reload) leaves a stale RT selected
+// for someone else. Lock it until the form is reopened for the new driver.
+function dlDriverChanged(sel) {
+  const rt = document.getElementById('dlRt');
+  if (!rt) return;
+  const hint = document.getElementById('dlRtHint');
+  if (Number(sel.value) !== _dl.driver) {
+    rt.value = '';
+    rt.disabled = true;
+    if (hint) hint.textContent = 'άλλαξε οδηγός — άνοιξε την καρτέλα του για σύνδεση με RT';
+  } else {
+    rt.disabled = false;
+    if (hint) hint.textContent = 'προαιρετικό · τρέφει το TRIP PnL';
+  }
 }
 
 // The arithmetic is shown before saving: the toast is not the proof.
