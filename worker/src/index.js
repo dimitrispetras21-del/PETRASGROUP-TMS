@@ -1,6 +1,7 @@
 // Browser Rendering (owner 25/8): bundled by wrangler from worker/node_modules —
 // run `npm install` in worker/ before deploying from a fresh clone.
 import puppeteer from "@cloudflare/puppeteer";
+import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -2662,14 +2663,19 @@ function ctPick(body, fields) {
 
 // src/routes/costs.js — COSTS Φ1 (2026-08-10, COSTS_ARCHITECTURE §5/§6)
 // RT create/close/list · manual cost lines (net+VAT) · PnL read (OWNER ONLY)
-var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "driver_pay", "cash_m", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
+// driver_pay and cash_m left this list on 2026-09-05 (migration 011): driver
+// money lives in the ledger (dl_entries) and TRIP PnL reads it from there.
+// Writing them here again would be the second source of truth T1 forbids.
+var CT_CATEGORIES = ["fuel", "reefer_fuel", "tolls", "dkv", "adblue", "spedition", "accommodation", "ferry_train", "fines", "partner_rate", "fixed_alloc", "other"];
 var COSTS_PERMS = {
   // lines PATCH/DELETE: ΣΗΜΑΔΕΜΕΝΗ ΠΡΟΣΘΗΚΗ (owner 24/8) πάνω στην πιστή
   // μεταφορά — μόνο owner, με υποχρεωτικό reason στο audit (βλ. handlers).
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"] },
-  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"] },
+  // ledger (owner 5/9): owner, accountant, management write; import owner only.
+  // dispatcher/warehouse: nothing — driver pay is not theirs to see.
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
-  management: {},
+  management: { lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   warehouse: {}
 };
 function ctCan(role, resource, method) {
@@ -2830,6 +2836,106 @@ async function handleCosts(request, url, origin, env) {
       }
       await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { reason: String(body.reason).trim() } });
       return jsonOk({ deleted: true }, origin, env);
+    }
+    // ---- LEDGER (Μισθοδοσία Οδηγών) — spec 2026-09-05 §4 ----
+    // ---- GET /costs/ledger : one row per driver + reconciliation gap ----
+    if (resource === "ledger" && method === "GET" && !recId) {
+      const [bal, gap] = await Promise.all([
+        dbSelectRaw(env, "dl_v_balance", new URLSearchParams({ select: "*", order: "full_name.asc", limit: "300" })),
+        dbSelectRaw(env, "dl_v_rt_gap", new URLSearchParams({ select: "rt_id,code,driver_id,date_start", limit: "500" }))
+      ]);
+      return jsonOk({ records: bal.rows, gap: gap.rows.length, gapRts: gap.rows }, origin, env);
+    }
+    // ---- GET /costs/ledger/:driverId?year= : the driver's ledger ----
+    if (resource === "ledger" && method === "GET" && recId && recId !== "import") {
+      const year = url.searchParams.get("year");
+      if (year && !/^\d{4}$/.test(year)) return jsonError("year must be YYYY", 400, origin, env);
+      const params = new URLSearchParams({ select: "*", driver_id: `eq.${recId}`, order: "entry_date.desc,id.desc", limit: "2000" });
+      if (year) { params.append("entry_date", `gte.${year}-01-01`); params.append("entry_date", `lte.${year}-12-31`); }
+      const [entries, rts] = await Promise.all([
+        dbSelectRaw(env, "dl_v_entries", params),
+        // RTs of this driver still without a live ledger line — the form's «Σύνδεση με RT» list
+        dbSelectRaw(env, "dl_v_rt_gap", new URLSearchParams({ select: "rt_id,code,date_start", driver_id: `eq.${recId}`, order: "date_start.desc" }))
+      ]);
+      return jsonOk({ records: entries.rows, rts: rts.rows }, origin, env);
+    }
+    // ---- POST /costs/ledger : new trip / payment ----
+    if (resource === "ledger" && method === "POST" && !recId) {
+      const body = await request.json().catch(() => null);
+      const v = validateNewEntry(body);
+      if (v.error) return jsonError(v.error, 400, origin, env);
+      const drv = await dbSelectRaw(env, "drivers", new URLSearchParams({ select: "id,active,deleted_at", id: `eq.${v.row.driver_id}` }));
+      if (!drv.rows.length || drv.rows[0].deleted_at) return jsonError("driver_id: unknown driver", 400, origin, env);
+      if (v.row.rt_id) {
+        const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,driver_id,trip_type", id: `eq.${v.row.rt_id}` }));
+        if (!rt.rows.length) return jsonError("rt_id: unknown round trip", 400, origin, env);
+        if (rt.rows[0].driver_id !== v.row.driver_id) return jsonError("rt_id: the round trip belongs to another driver", 400, origin, env);
+      }
+      v.row.created_by = caller.sub;
+      let created;
+      try { created = await dbInsert(env, "dl_entries", v.row); }
+      catch (e) {
+        // the partial unique index dl_rt_live: a second live line for the same RT
+        if (/23505|dl_rt_live/.test(e.message)) return jsonError("rt_id: this round trip already has a ledger line", 409, origin, env);
+        throw e;
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "dl_entries", recordId: String(created.id), after: created });
+      return jsonOk({ record: created }, origin, env, 201);
+    }
+    // ---- PATCH /costs/ledger/:id : fill, correct (reason), cancel (reason) ----
+    if (resource === "ledger" && method === "PATCH" && recId) {
+      const body = await request.json().catch(() => null);
+      const before = await dbSelectRaw(env, "dl_entries", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      if (before.rows[0].deleted_at && !(body && body.restore)) return jsonError("entry is cancelled", 409, origin, env);
+      let patch;
+      if (body && body.restore) {
+        // undoing a cancellation is an owner act, with a reason, like everything that rewrites history
+        if (caller.role !== "owner") return jsonError("Forbidden", 403, origin, env);
+        // restoring a live row would write a false «επαναφορά» into the audit trail
+        if (!before.rows[0].deleted_at) return jsonError("entry is not cancelled", 409, origin, env);
+        if (!String(body.reason || "").trim()) return jsonError("reason required to restore", 400, origin, env);
+        patch = { deleted_at: null, deleted_reason: null, note: ((before.rows[0].note || "") + " · επαναφορά: " + String(body.reason).trim()).trim() };
+      } else {
+        const v = validatePatch(body, before.rows[0]);
+        if (v.error) return jsonError(v.error, 400, origin, env);
+        if (v.needsReason && !String((body || {}).reason || "").trim()) return jsonError("reason required to change a written value", 400, origin, env);
+        patch = v.patch;
+      }
+      patch.updated_at = new Date().toISOString();
+      const updated = await ctDbPatch(env, "dl_entries", `id=eq.${encodeURIComponent(recId)}`, patch);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "dl_entries", recordId: String(recId), before: before.rows[0], after: { ...updated, reason: String((body || {}).reason || "").trim() || null } });
+      return jsonOk({ record: updated }, origin, env);
+    }
+    // ---- POST /costs/ledger/import : one Excel file = one atomic batch (owner) ----
+    if (resource === "ledger" && method === "POST" && recId === "import") {
+      if (caller.role !== "owner") return jsonError("Forbidden", 403, origin, env);
+      const body = await request.json().catch(() => null);
+      if (!body || !Number.isInteger(body.driver_id) || !Array.isArray(body.rows) || !body.rows.length || !body.file_hash || !body.file_name) {
+        return jsonError("driver_id, file_name, file_hash, rows[] required", 400, origin, env);
+      }
+      for (let i = 0; i < body.rows.length; i++) {
+        if (body.rows[i].driver_id !== void 0 && body.rows[i].driver_id !== body.driver_id) {
+          return jsonError(`row ${i + 1}: driver_id differs from the batch`, 400, origin, env);
+        }
+        // dl_import's INSERT has no rt_id column — accepting it here would silently
+        // drop it, the same trap CLAUDE.md's «μηχανισμός-παγίδα 1» warns about.
+        if (body.rows[i].rt_id !== void 0) {
+          return jsonError(`row ${i + 1}: rt_id is not accepted by import`, 400, origin, env);
+        }
+        const v = validateNewEntry({ ...body.rows[i], driver_id: body.driver_id });
+        if (v.error) return jsonError(`row ${i + 1}: ${v.error}`, 400, origin, env);
+      }
+      const batch = crypto.randomUUID();
+      let result;
+      try {
+        result = await dbRpc(env, "dl_import", { p_driver_id: body.driver_id, p_batch: batch, p_file_name: body.file_name, p_file_hash: body.file_hash, p_rows: body.rows, p_actor: "import:" + caller.sub });
+      } catch (e) {
+        if (/DL_DUPLICATE_FILE/.test(e.message)) return jsonError("this file was already imported", 409, origin, env);
+        throw e;
+      }
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "dl_import_batches", recordId: batch, after: { driver_id: body.driver_id, file_name: body.file_name, ...result } });
+      return jsonOk(result, origin, env, 201);
     }
     // ---- GET /costs/pnl  (ΑΠΟΤΕΛΕΣΜΑΤΑ — ΜΟΝΟ OWNER, spec §10.2.11) ----
     if (resource === "pnl" && method === "GET") {

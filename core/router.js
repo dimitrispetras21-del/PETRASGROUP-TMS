@@ -46,7 +46,10 @@ const NAV = [
   ]},
   { section: 'Οδηγοί', perm: 'drivers', items: [
     { id: 'drivers', label: 'Οδηγοί',             icon: 'user' },
-    { id: 'payroll', label: 'Μισθοδοσία Οδηγών',  icon: 'coins', soon: true },
+    // The section is «Οδηγοί» (drivers:view for dispatcher), but this page is
+    // money (costs) — same gate as navigate()/renderPayroll(). Without its own
+    // perm key it would inherit the section's 'drivers' and show to dispatcher.
+    { id: 'payroll', label: 'Μισθοδοσία Οδηγών',  icon: 'coins', perm: 'costs' },
   ]},
   { section: 'Συντήρηση', perm: 'maintenance', items: [
     { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
@@ -118,20 +121,18 @@ function renderNav() {
 
   NAV.forEach((group, gi) => {
     if (can(group.perm) === 'none') return;
-    // The group of the CURRENT page always renders open — a collapsed default
-    // must never hide where the user actually is.
-    const hasActive = group.items.some(it => it.id === currentPage);
-    const collapsed = !hasActive && _navGroupIsCollapsed(gi);
-    const sid = 'navgrp_' + gi;
-    html += '<div class="nav-section' + (collapsed ? ' collapsed-section' : '') + '" onclick="toggleNavSection(this,\'' + sid + '\',' + gi + ')">'
-          + '<span>' + group.section + '</span>'
-          + '<span class="chevron">' + _navIcon('chevron_down') + '</span>'
-          + '</div>';
-    html += '<div class="nav-group-items' + (collapsed ? ' collapsed-items' : '') + '" id="' + sid + '">';
+    // Build items first so a section that ends up with zero visible items
+    // after per-item gating (role or perm) skips its header too — e.g. if a
+    // future section held only an owner-only item, a dispatcher must not see
+    // an empty section title with nothing underneath.
+    let itemsHtml = '';
     for (const item of group.items) {
       // Per-item role gate (e.g. TRIP PnL: owner-only — spec §10.2.11)
       if (item.role && typeof ROLE !== 'undefined' && ROLE !== item.role) continue;
-      html += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
+      // Per-item perm gate (e.g. Μισθοδοσία Οδηγών: perm 'costs', not the
+      // section's 'drivers' — see the item's own comment above in NAV).
+      if (item.perm && can(item.perm) === 'none') continue;
+      itemsHtml += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
             + '" onclick="navigate(\'' + item.id + '\')"'
             + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'
             + ' id="nav_' + item.id + '">'
@@ -142,7 +143,17 @@ function renderNav() {
             + (item.soon ? '<span style="font-size:9px;color:var(--text-dim);border:1px solid var(--border-mid);border-radius:8px;padding:1px 6px;margin-left:6px;flex-shrink:0">σύντομα</span>' : '')
             + '</div>';
     }
-    html += '</div>';
+    if (!itemsHtml) return;
+    // The group of the CURRENT page always renders open — a collapsed default
+    // must never hide where the user actually is.
+    const hasActive = group.items.some(it => it.id === currentPage);
+    const collapsed = !hasActive && _navGroupIsCollapsed(gi);
+    const sid = 'navgrp_' + gi;
+    html += '<div class="nav-section' + (collapsed ? ' collapsed-section' : '') + '" onclick="toggleNavSection(this,\'' + sid + '\',' + gi + ')">'
+          + '<span>' + group.section + '</span>'
+          + '<span class="chevron">' + _navIcon('chevron_down') + '</span>'
+          + '</div>';
+    html += '<div class="nav-group-items' + (collapsed ? ' collapsed-items' : '') + '" id="' + sid + '">' + itemsHtml + '</div>';
   });
   nav.innerHTML = html;
 
@@ -221,7 +232,7 @@ let currentPage = '';
 function navigate(page) {
   // Permission guard: block navigation if user lacks access
   const _pagePerm = {};
-  NAV.forEach(g => g.items.forEach(i => { _pagePerm[i.id] = g.perm; }));
+  NAV.forEach(g => g.items.forEach(i => { _pagePerm[i.id] = i.perm || g.perm; }));
   const reqPerm = _pagePerm[page];
   if (reqPerm && typeof can === 'function' && can(reqPerm) === 'none') {
     if (typeof toast === 'function') toast('Δεν έχετε πρόσβαση σε αυτή τη σελίδα', 'error');
@@ -336,17 +347,10 @@ function navigate(page) {
     case 'trailers':       renderEntity('trailers');      break;
     // Drivers
     case 'drivers':        renderEntity('drivers');       break;
-    // PR-3: ίδιο gate με settings/trash/error_log. Σήμερα η σελίδα είναι
-    // placeholder, αλλά όταν χτιστεί θα δείχνει μισθούς — το gate μπαίνει
-    // ΠΡΙΝ υπάρξει κάτι να διαρρεύσει, όχι μετά. Ο dispatcher έχει
-    // drivers:'view' και χάνει την πρόσβαση — σκόπιμο (βλ. payroll.md PR-3).
-    case 'payroll':
-      if (can('drivers') !== 'full') { c.innerHTML = showAccessDenied(); break; }
-      c.innerHTML = showComingSoon('Μισθοδοσία Οδηγών', {
-      icon: 'coins',
-      today: 'Η μισθοδοσία υπολογίζεται εκτός συστήματος. Τα δεδομένα ανά δρομολόγιο υπάρχουν ήδη στις Παραγγελίες (οδηγός, ημερομηνίες, παλέτες).',
-      eta: 'Προαπαιτεί την αλυσίδα κόστους: χωρίς κόστος ανά δρομολόγιο, η αμοιβή δεν μπορεί να διασταυρωθεί. Μετά τη σύνδεση εντολής εργασίας → εγγραφής κόστους (MR-2).',
-    });        break;
+    // Gate on ONE key (spec 5/9 §4): costs. owner/accountant 'full',
+    // management 'view' — all three may open it; the Worker decides writes.
+    // dispatcher has costs:'none' and never sees driver money.
+    case 'payroll':        renderPayroll();                                   break;
     // Costs
     // Not in NAV — reachable only via ?page= or a stale bookmark. See
     // docs/design/DEEP_AUDIT_2026-08-04/costs.md CO-1. Blocked on the
