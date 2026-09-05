@@ -193,6 +193,11 @@ const ENTITY_CONFIG = {
       { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
+      ]},
+      // Empty section label — see the "sec.section" comment in buildEntityModal:
+      // this is a 3-col continuation of ΣΤΟΙΧΕΙΑ ΕΤΑΙΡΕΙΑΣ above, not a new
+      // heading (clients-form 120:395 puts Χώρα/Πόλη/Διεύθυνση on one row).
+      { section: '', cols: 3, fields: [
         { f: 'Country',      label: 'Χώρα' },
         { f: 'City',         label: 'Πόλη' },
         { f: 'Adress',       label: 'Διεύθυνση' },
@@ -437,6 +442,10 @@ const ENTITY_CONFIG = {
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
+      ]},
+      // Empty section label — 3-col continuation of ΤΑΥΤΟΤΗΤΑ above
+      // (truck-form 119:345: Μάρκα/Μοντέλο/Έτος share one row).
+      { section: '', cols: 3, fields: [
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
@@ -536,6 +545,10 @@ const ENTITY_CONFIG = {
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
+      ]},
+      // Empty section label — 3-col continuation of ΤΑΥΤΟΤΗΤΑ above
+      // (trailers-form 120:573: Μάρκα/Μοντέλο/Έτος share one row).
+      { section: '', cols: 3, fields: [
         { f: 'Brand',         label: 'Μάρκα' },
         { f: 'Model',         label: 'Μοντέλο' },
         { f: 'Year',          label: 'Έτος (1η ταξ.)', type: 'number' },
@@ -1728,22 +1741,28 @@ function _renderEntityCardV2(entityKey, rec, panel) {
       <div class="ecard-head-main">
         <div class="ecard-title-row">
           <span class="ecard-title">${_ecEsc(title)}</span>
-          ${/* Το badge μπαίνει ΜΟΝΟ όταν δεν υπάρχει το κουμπί εναλλαγής.
-                Με canEdit εμφανίζονταν δύο δείκτες της ίδιας κατάστασης στις
-                δύο άκρες της κεφαλίδας (audit 29/8). Οι ρόλοι μόνο-ανάγνωσης
-                δεν έχουν κουμπί, οπότε εκεί το badge παραμένει η μόνη ένδειξη
-                και ΔΕΝ αφαιρείται. */''}
-          ${canEdit ? '' : `<span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>`}
+        </div>
+        ${/* Status + type pill + meta text on one row under the title
+              (Figma client-card 122:636 / driver-overview 116:300) — moved
+              out of the title row so a long name never pushes the pills off
+              to one side. One status indicator only: canEdit gets the LIVE
+              button (still calling toggleActive, styled as the same pill so
+              it doesn't read as a second, different control); read-only
+              roles keep the static badge. Two indicators of the same state
+              at once was the audit-29/8 bug this replaces, not reintroduces. */''}
+        <div class="ecard-meta-row">
+          ${canEdit
+            ? `<button type="button" class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">${f['Active'] ? onL : offL}</button>`
+            : `<span class="badge ${f['Active'] ? 'badge-green' : 'badge-grey'}">${f['Active'] ? onL : offL}</span>`}
           ${tagHTML}
+          ${sub ? `<span class="ecard-sub">${_ecEsc(sub)}</span>` : ''}
           <span id="ec_${recId}_svc"></span>
         </div>
-        ${sub ? `<div class="ecard-sub">${_ecEsc(sub)}</div>` : ''}
       </div>
       <div class="detail-actions">
         ${canEdit ? `<button type="button" class="btn-icon" title="Επεξεργασία" onclick="openEntityEdit('${entityKey}','${recId}')">
           <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 2l3 3-9 9H2v-3l9-9z"/></svg>
-        </button>
-        <button class="active-toggle ${f['Active'] ? 'on' : 'off'}" onclick="toggleActive('${entityKey}','${recId}',${!f['Active']})">${f['Active'] ? '● ' + onL : '○ ' + offL}</button>` : ''}
+        </button>` : ''}
         <button type="button" class="btn-icon" onclick="document.getElementById('${entityKey}_detail').classList.add('hidden')">✕</button>
       </div>
     </div>
@@ -2374,8 +2393,16 @@ function buildEntityModal(entityKey, recId, fields) {
     // its heading as `section`, and this line read `title` — so every modal
     // of all six entities rendered «undefined» headings in production.
     // Caught 29/8 by the form probe; nobody had reported it.
-    bodyHTML += `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${sec.section || sec.title || ''}</div></div>`;
-    bodyHTML += '<div class="form-grid">';
+    const secLabel = sec.section || sec.title || '';
+    // Empty label = a 3-column continuation row under the PREVIOUS heading
+    // (clients-form 120:395: ΣΤΟΙΧΕΙΑ ΕΤΑΙΡΕΙΑΣ is one 2-col row then one
+    // 3-col row — a second heading here would just repeat the same word).
+    // The grid still gets the heading's top margin so the two rows read as
+    // one section instead of colliding.
+    bodyHTML += secLabel
+      ? `<div style="margin-bottom:4px;margin-top:16px"><div class="detail-section-title">${secLabel}</div></div>`
+      : '';
+    bodyHTML += `<div class="form-grid${sec.cols === 3 ? ' cols-3' : ''}"${secLabel ? '' : ' style="margin-top:16px"'}>`;
     for (const field of sec.fields) {
       const val = fields[field.f] ?? '';
       let input = '';
@@ -2434,14 +2461,17 @@ function buildEntityModal(entityKey, recId, fields) {
     </button>`;
 
   // v2 titles come whole from config — genitive/nominative do not compose
-  // from one noun («Νέο φορτηγού» is broken Greek). The chip after the dash is
-  // the record's primary field, whatever the entity calls it.
+  // from one noun («Νέο φορτηγού» is broken Greek). The record's primary
+  // field goes to openModal as its own `chip` argument (Figma clients-form
+  // 120:395: an accent-coloured span, no dash) instead of being concatenated
+  // into the title string — that used to render as plain black text via
+  // textContent, losing the colour distinction entirely.
   const primaryF = (cfg.columns.find(c => c.primary) || {}).field;
-  const chip = isEdit && primaryF && fields[primaryF] ? ' — ' + fields[primaryF] : '';
+  const chip = isEdit && primaryF && fields[primaryF] ? fields[primaryF] : '';
   const title = isV2
-    ? `${isEdit ? ((cfg.formTitles || [])[1] || 'Επεξεργασία') : ((cfg.formTitles || [])[0] || 'Νέα εγγραφή')}${chip}`
+    ? `${isEdit ? ((cfg.formTitles || [])[1] || 'Επεξεργασία') : ((cfg.formTitles || [])[0] || 'Νέα εγγραφή')}`
     : `${isEdit ? 'Edit' : 'New'} ${cfg.labelSingle}`;
-  openModal(title, bodyHTML, footerHTML);
+  openModal(title, bodyHTML, footerHTML, chip);
 
   if (isV2) {
     // One delegated listener re-validates as the user types, so the message

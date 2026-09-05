@@ -9,9 +9,21 @@ let _modalPrevFocus = null;
 // Callers MUST pass HTML-escaped strings for any user-generated content.
 // Use `escapeHtml(userInput)` on order numbers, client names, notes, etc.
 // Static HTML (button markup, icon SVGs) is safe as-is.
-function openModal(title, bodyHTML, footerHTML = '') {
+function openModal(title, bodyHTML, footerHTML = '', chip = '') {
   _modalPrevFocus = document.activeElement;
-  document.getElementById('modalTitle').textContent = title;
+  const titleEl = document.getElementById('modalTitle');
+  // textContent replaces every child, so an old chip from a previous modal
+  // never survives into one opened without a chip — no separate reset needed.
+  titleEl.textContent = title;
+  if (chip) {
+    // Record-name chip (entity.js buildEntityModal) as its own accent span,
+    // not baked into the title string — a plain textContent concatenation
+    // can't carry a different colour (clients-form 120:395).
+    const chipEl = document.createElement('span');
+    chipEl.className = 'modal-title-chip';
+    chipEl.textContent = chip;
+    titleEl.appendChild(chipEl);
+  }
   document.getElementById('modalBody').innerHTML = bodyHTML;
   document.getElementById('modalFooter').innerHTML = footerHTML;
   const overlay = document.getElementById('modalOverlay');
