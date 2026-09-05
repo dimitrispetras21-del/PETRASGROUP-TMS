@@ -13,12 +13,48 @@ const INV = { data: [], filtered: [], selectedId: null, sort: { col: 'aging', di
   balances: null };
 const _invFilters = { tab: 'ready', type: '', weekFrom: '', weekTo: '', client: '' };
 
+// Inline style atoms shared by every cell and badge on this screen. Inline
+// (not style.css) because this wave touches invoicing.js only, and the global
+// `tbody td { padding: 13px 18px }` gave 45-61px rows here — DESIGN.md #5
+// caps a working table at 44px. Values come from the DESIGN.md scales only.
+const _INV_TD    = 'padding:4px 12px;';
+const _INV_NUM   = 'font-variant-numeric:tabular-nums;';
+const _INV_BADGE = 'display:inline-block;padding:0 8px;border-radius:9999px;font-size:11px;font-weight:600;line-height:18px;white-space:nowrap;vertical-align:middle;';
+
+// Colour AND word on every badge (DESIGN.md #2). Text + 1px border in the
+// semantic token; a fill only where asked. No tinted backgrounds: the old
+// `${color}22` hex-alpha suffix on a var() was invalid CSS (rendered as no
+// background at all), and a tint would be a colour with no token.
+function _invBadge(text, color, opts = {}) {
+  const look = opts.fill
+    ? `background:${color};color:var(--text-on-dark);border:1px solid ${color};`
+    : `background:${opts.bg || 'transparent'};color:${color};border:1px solid ${opts.border || color};`;
+  const title = opts.title ? ` title="${opts.title}"` : '';
+  return `<span style="${_INV_BADGE}${look}${_INV_NUM}${opts.style || ''}"${title}>${text}</span>`;
+}
+function _invTypeLabel(rec) { return rec._type === 'intl' ? 'ΔΙΕΘΝΗΣ' : 'ΕΘΝΙΚΗ'; }
+function _invTypeBadge(rec) {
+  return rec._type === 'intl'
+    ? _invBadge('ΔΙΕΘΝΗΣ', 'var(--surface-dark)', { fill: true })
+    : _invBadge('ΕΘΝΙΚΗ', 'var(--text-mid)', { border: 'var(--border-dark)' });
+}
+// DESIGN.md ΜΕΡΟΣ Ε: the base keeps Export/Import, the screen speaks Greek.
+// Translation happens at display time only — never written back.
+function _invDirectionLabel(v) {
+  if (v === 'Export') return 'ΕΞΑΓΩΓΗ';
+  if (v === 'Import') return 'ΕΙΣΑΓΩΓΗ';
+  return v ? escapeHtml(String(v)) : '—';
+}
+
 // ─── Helpers ─────────────────────────────────────
 function _invClientName(rec) {
   const f = rec.fields;
   const id = Array.isArray(f['Client']) ? f['Client'][0] : null;
-  if (id) return getClientName(id);
-  return f['Client Summary'] || f['Client Name'] || '—';
+  if (id) return getClientName(id);   // already HTML-escaped (core/data-helpers.js)
+  // Escaped here too, so the result is HTML-safe on every branch and callers
+  // print it as-is. Escaping AGAIN at the call site printed «&amp;» on screen
+  // (FRESH TRADE &amp; TRANSPORTS) — the name is what the accountant reads.
+  return escapeHtml(f['Client Summary'] || f['Client Name'] || '—');
 }
 
 // Raw (un-escaped) client company name, for name-matching against the
@@ -54,6 +90,12 @@ function _invOrderNo(rec) {
 function _invPallets(rec) {
   return rec._type === 'intl' ? (rec.fields['Total Pallets'] || 0) : (rec.fields['Pallets'] || 0);
 }
+// For display only. _invPallets stays numeric for sums and sorting; on screen
+// a pallet count nobody entered is a dash, not 0 (DESIGN.md #3).
+function _invPalletsDisplay(rec) {
+  const v = rec._type === 'intl' ? rec.fields['Total Pallets'] : rec.fields['Pallets'];
+  return (v === undefined || v === null || v === '') ? '—' : escapeHtml(String(v));
+}
 
 // H5 fix: defensive fallback chain — older records may use 'Price', newer 'Net Price'.
 // If field is renamed in Airtable, revenue calculations shouldn't silently become 0.
@@ -71,7 +113,7 @@ function _invNetPrice(rec) {
   const v = parseFloat(f['Net Price']);
   if (Number.isFinite(v)) return v;
   const v2 = parseFloat(f['Price']);
-  return Number.isFinite(v2) ? v2 : 0;
+  return Number.isFinite(v2) ? v2 : null;   // null = δεν καταχωρήθηκε· ΟΧΙ 0 (DESIGN.md #3)
 }
 function _invWeek(rec) { return rec.fields['Week Number'] || '—'; }
 
@@ -161,11 +203,13 @@ function _invDaysSinceDelivery(rec) {
 }
 
 function _invAgingBucket(days) {
-  if (days == null) return { key: 'na',   label: '—',     color: '#64748B' };
-  if (days <= 7)    return { key: '0-7',  label: '0-7μ',  color: 'var(--panel-ok)' };
-  if (days <= 14)   return { key: '7-14', label: '7-14μ', color: '#7DD3FC' };
-  if (days <= 30)   return { key: '14-30',label: '14-30μ',color: 'var(--panel-warn)' };
-  return                    { key: '>30', label: `${days}μ`, color: 'var(--danger)' };
+  // 7-14 days is neutral on purpose: the label already says the age, and a
+  // fourth semantic colour would mean nothing (DESIGN.md ΜΕΡΟΣ Β: one meaning each).
+  if (days == null) return { key: 'na',   label: '—',        color: 'var(--text-dim)' };
+  if (days <= 7)    return { key: '0-7',  label: '0-7 ημ.',  color: 'var(--ok)' };
+  if (days <= 14)   return { key: '7-14', label: '7-14 ημ.', color: 'var(--text-mid)' };
+  if (days <= 30)   return { key: '14-30',label: '14-30 ημ.',color: 'var(--warn)' };
+  return                    { key: '>30', label: `${days} ημ.`, color: 'var(--danger)' };
 }
 
 function _invIsOverdue(rec) {
@@ -297,52 +341,68 @@ async function renderInvoicing() {
     _renderInvLayout(c);
     _applyInvFilters();
   } catch (e) {
-    c.innerHTML = showError('Αποτυχία φόρτωσης τιμολόγησης');
+    c.innerHTML = `<div class="empty-state">
+      <div style="font-size:28px;margin-bottom:12px;color:var(--danger)">⚠</div>
+      <h3 style="color:var(--danger);font-family:'Syne',sans-serif;font-size:18px;margin:0">Δεν φορτώθηκε η τιμολόγηση</h3>
+      <p style="color:var(--text-mid);font-size:13px;margin:8px 0 0">Η λίστα δεν ήρθε από τον server. <strong>Δεν σημαίνει ότι δεν υπάρχουν παραγγελίες προς τιμολόγηση</strong> — τα δεδομένα είναι στη θέση τους.</p>
+      <button type="button" class="btn btn-primary btn-sm" style="margin-top:12px" onclick="renderInvoicing()">Ξαναδοκίμασε</button>
+    </div>`;
     console.error('Invoicing:', e);
   }
 }
 
 // ─── Layout ──────────────────────────────────────
+// One line of sub-text, used at first render AND after every filter change —
+// it used to be duplicated in _applyInvFilters and the two copies drifted.
+function _invSubText(shown, total) {
+  return `${shown} από ${total} παραγγελίες`
+    + (INV.natlFailed ? ' <span style="color:var(--warn)">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : '')
+    + (INV.gateFailed ? ' <span style="color:var(--warn)">· ⚠ ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά στάση</span>' : '');
+}
+
 function _renderInvLayout(c) {
   // SH-2/MA-3 guard
   if (typeof currentPage !== 'undefined' && currentPage !== 'invoicing') return;
   const _i = n => (typeof icon === 'function') ? icon(n, 14) : '';
+  // Header, KPI strip and the tabs+filters row share ONE goal: ≥20 table rows
+  // visible at 1080p (DESIGN.md #5). Sub-text sits beside the title, KPI
+  // values share a line with their detail, tabs and filters share a row.
   c.innerHTML = `
-    <div class="page-header" style="margin-bottom:var(--space-4)">
-      <div>
+    <div class="page-header" style="margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
         <div class="page-title">Τιμολόγηση</div>
-        <div class="page-sub" id="invSub">${INV.data.length} παραγγελίες${INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : ''}${INV.gateFailed ? ' <span style="color:#B45309">· ⚠ ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά στάση</span>' : ''}</div>
+        <div class="page-sub" id="invSub" style="margin-top:0;${_INV_NUM}">${_invSubText(INV.data.length, INV.data.length)}</div>
       </div>
-      <div style="display:flex;gap:var(--space-2);align-items:center">
+      <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-ghost btn-sm" onclick="_invShowOutstandingModal()">${_i('users')} Υπόλοιπα ανά πελάτη</button>
-        <button class="btn btn-secondary btn-sm" onclick="_invExportPDF()">${_i('file_text')} PDF για Λογιστή</button>
+        <button class="btn btn-secondary btn-sm" onclick="_invExportPDF()">${_i('file_text')} PDF για λογιστή</button>
         <button class="btn btn-primary btn-sm" onclick="_invBatchInvoice()" id="invBatchBtn" style="display:none">${_i('check')} Σήμανση επιλεγμένων ως τιμολογημένες</button>
-        <button class="btn btn-ghost btn-sm" onclick="_invExportCSV()">${_i('file_text')} Export CSV</button>
+        <button class="btn btn-ghost btn-sm" onclick="_invExportCSV()">${_i('file_text')} Εξαγωγή CSV</button>
       </div>
     </div>
 
-    <!-- KPI Cards -->
-    <div id="invKPI" style="display:grid;grid-template-columns:repeat(5,1fr);gap:var(--space-3);margin-bottom:var(--space-5)"></div>
+    <!-- KPI strip -->
+    <div id="invKPI" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px"></div>
 
-    <!-- Tabs -->
-    <div id="invTabs" style="display:flex;gap:0;margin-bottom:var(--space-4);border-bottom:2px solid var(--border-default, #1E293B)"></div>
-
-    <!-- Filters -->
-    <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
-      <div class="entity-search-wrap">
-        ${_i('search')}
-        <input class="entity-search-input" placeholder="Αναζήτηση πελάτη…"
-          oninput="_invSetFilter('client',this.value)">
+    <!-- Tabs + filters, one row -->
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;border-bottom:1px solid var(--border)">
+      <div id="invTabs" style="display:flex;align-items:center;gap:0;flex-wrap:wrap;min-width:0"></div>
+      <div style="display:flex;gap:8px;align-items:center;padding-bottom:8px">
+        <div class="entity-search-wrap" style="height:32px;min-width:200px">
+          ${_i('search')}
+          <input class="entity-search-input" placeholder="Αναζήτηση πελάτη…"
+            oninput="_invSetFilter('client',this.value)">
+        </div>
+        <select class="svc-filter" style="height:32px" onchange="_invSetFilter('type',this.value)">
+          <option value="">Τύπος: όλες</option>
+          <option value="intl">Διεθνείς</option>
+          <option value="natl">Εθνικές</option>
+        </select>
+        <input type="number" class="svc-filter" style="width:120px;height:32px;${_INV_NUM}" placeholder="Εβδομάδα από"
+          onchange="_invSetFilter('weekFrom',this.value)">
+        <input type="number" class="svc-filter" style="width:120px;height:32px;${_INV_NUM}" placeholder="Εβδομάδα έως"
+          onchange="_invSetFilter('weekTo',this.value)">
       </div>
-      <select class="svc-filter" onchange="_invSetFilter('type',this.value)">
-        <option value="">Type: All</option>
-        <option value="intl">International</option>
-        <option value="natl">National</option>
-      </select>
-      <input type="number" class="svc-filter" style="width:110px" placeholder="Εβδομάδα από"
-        onchange="_invSetFilter('weekFrom',this.value)">
-      <input type="number" class="svc-filter" style="width:110px" placeholder="Εβδομάδα έως"
-        onchange="_invSetFilter('weekTo',this.value)">
     </div>
 
     <div style="display:flex;gap:16px;align-items:flex-start">
@@ -382,16 +442,18 @@ function _renderInvTabs() {
   if (!el) return;
   el.innerHTML = tabs.map(t => {
     const isActive = _invFilters.tab === t.key;
-    const isOverdue = t.key === 'overdue' && t.count > 0;
-    const color = isActive ? 'var(--accent)' : (isOverdue ? 'var(--danger)' : 'var(--panel-dim)');
+    // Six states (DESIGN.md Δ2): a quick filter with nothing behind it is
+    // disabled — grey, not clickable — instead of a click onto an empty table.
+    const disabled = !isActive && t.count === 0;
+    const color = isActive ? 'var(--accent)' : (disabled ? 'var(--text-dim)' : 'var(--text-mid)');
     return `
-      <button onclick="_invSetTab('${t.key}')"
-        style="padding:8px 18px;font-family:'Syne',sans-serif;font-size:13px;font-weight:600;
-        border:none;cursor:pointer;background:none;
-        color:${color};
+      <button type="button" onclick="_invSetTab('${t.key}')"${disabled ? ' disabled' : ''}
+        style="padding:8px 12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:600;
+        border:none;background:none;cursor:${disabled ? 'not-allowed' : 'pointer'};
+        color:${color};${_INV_NUM}
         border-bottom:2px solid ${isActive ? 'var(--accent)' : 'transparent'};
-        margin-bottom:-2px">
-        ${t.label} <span style="font-weight:400;opacity:0.7">(${t.count})</span>
+        margin-bottom:-1px">
+        ${t.label} <span style="font-weight:400">(${t.count})</span>
       </button>`;
   }).join('');
 
@@ -400,16 +462,17 @@ function _renderInvTabs() {
   // κάποιος σε audit μήνες μετά.
   const _sum = _nReady + _nBlocked + _nInvoiced;
   const _ok = _sum === INV.data.length;
+  const _overdueActive = _invFilters.tab === 'overdue';
   el.insertAdjacentHTML('beforeend', `
-    <div style="width:100%;padding:6px 0 0;font-size:11px;color:var(--text-dim);font-family:'DM Sans',sans-serif">
+    <span style="margin-left:12px;padding-bottom:8px;font-size:11px;color:var(--text-dim);white-space:nowrap;${_INV_NUM}">
       ${_nReady} + ${_nBlocked} + ${_nInvoiced} = ${_sum}
-      <span style="color:${_ok ? 'var(--success)' : 'var(--danger)'};font-weight:700">${_ok ? '✓' : '✗ δεν κλείνει με ' + INV.data.length}</span>
-      <span style="margin-left:14px">·</span>
-      <button type="button" onclick="_invSetTab('overdue')"
-        style="background:none;border:0;font:inherit;cursor:pointer;color:${_nOverdue ? 'var(--danger)' : 'var(--text-dim)'};text-decoration:underline;padding:0 0 0 6px">
+      <span style="color:${_ok ? 'var(--ok)' : 'var(--danger)'};font-weight:700">${_ok ? '✓' : '✗ δεν κλείνει με ' + INV.data.length}</span>
+      <span style="margin:0 4px">·</span>
+      <button type="button" onclick="_invSetTab('overdue')"${_nOverdue ? '' : ' disabled'}
+        style="background:none;border:0;font:inherit;${_INV_NUM}cursor:${_nOverdue ? 'pointer' : 'not-allowed'};color:${_nOverdue ? 'var(--danger)' : 'var(--text-dim)'};font-weight:${_overdueActive ? 700 : 400};text-decoration:underline;padding:0">
         ${_nOverdue} καθυστερημένες (>30 ημ.)</button>
-      <span style="opacity:.7"> — ηλικία, όχι κατηγορία· κόβει εγκάρσια τις παραπάνω</span>
-    </div>`);
+      <span title="Η καθυστέρηση είναι ηλικία, όχι κατηγορία: κόβει εγκάρσια τις καρτέλες Έτοιμες και Μπλοκαρισμένες"> — ηλικία, όχι κατηγορία</span>
+    </span>`);
 }
 
 function _invSetTab(key)            { _invFilters.tab = key; _applyInvFilters(); }
@@ -458,38 +521,29 @@ function _renderInvKPI() {
   const el = document.getElementById('invKPI');
   if (!el) return;
 
-  const cardStyle = `background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;padding:16px 18px`;
-  const labelStyle = `font-size:11px;color:var(--panel-dim);font-family:'DM Sans',sans-serif;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px`;
-  const valueStyle = `font-size:22px;font-weight:700;color:var(--panel-text);font-family:'Syne',sans-serif`;
-  const deltaStyle = `font-size:11px;color:var(--text-dim);margin-top:4px;font-family:'DM Sans',sans-serif`;
+  // Label on one line, value + detail on the next: 5 cards in ~60px instead
+  // of ~105px, which is worth 1-2 more table rows at 1080p (DESIGN.md #5).
+  // Every card carries its word, so the value colour never stands alone (#2).
+  const card = (label, value, sub, o = {}) => `
+    <div style="background:var(--surface-card);border:1px solid ${o.border || 'var(--border)'};border-radius:6px;padding:8px 12px;min-width:0;${o.onclick ? 'cursor:pointer;' : ''}"${o.onclick ? ` onclick="${o.onclick}" title="${o.title}"` : ''}>
+      <div style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">${label}</div>
+      <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:4px">
+        <span style="font-size:18px;font-weight:700;line-height:1.2;color:${o.color || 'var(--text)'};${_INV_NUM}">${value}</span>
+        <span style="font-size:11px;color:var(--text-dim);${_INV_NUM}">${sub}</span>
+      </div>
+    </div>`;
 
-  el.innerHTML = `
-    <div style="${cardStyle}">
-      <div style="${labelStyle}">ΕΤΟΙΜΕΣ ΠΡΟΣ ΤΙΜΟΛΟΓΗΣΗ</div>
-      <div style="${valueStyle};color: var(--accent-text)">${ready.length}</div>
-      <div style="${deltaStyle}">${_fmtEuro(readyTotal)}${readyNoPrice ? ` <span style="color:var(--warning)" title="Δεν αθροίζονται: δεν έχουν καταχωρημένη τιμή. Ο τζίρος είναι μεγαλύτερος κατά άγνωστο ποσό.">· ${readyNoPrice} χωρίς τιμή</span>` : ''}</div>
-    </div>
-    <div style="${cardStyle};${overdue.length ? 'border-color:#7F1D1D' : ''}">
-      <div style="${labelStyle}">ΚΑΘΥΣΤΕΡΗΜΕΝΕΣ (>30 ημ.)</div>
-      <div style="${valueStyle};color:${overdue.length ? 'var(--danger)' : 'var(--panel-ok)'}">${overdue.length}</div>
-      <div style="${deltaStyle}">${overdue.length ? 'Άμεση ενέργεια' : 'Όλα ΟΚ'}</div>
-    </div>
-    <div style="${cardStyle}">
-      <div style="${labelStyle}">ΜΠΛΟΚΑΡΙΣΜΕΝΕΣ — λείπουν δελτία παλετών</div>
-      <div style="${valueStyle};color:var(--panel-warn)">${blocked.length}</div>
-      <div style="${deltaStyle}">Αναμονή δελτίων παλετών</div>
-    </div>
-    <div style="${cardStyle}">
-      <div style="${labelStyle}">ΤΙΜΟΛΟΓΗΜΕΝΕΣ</div>
-      <div style="${valueStyle};color:var(--panel-ok)">${invoiced.length}</div>
-      <div style="${deltaStyle}">${_fmtEuro(invTotal)}</div>
-    </div>
-    <div style="${cardStyle};cursor:pointer" onclick="_invShowOutstandingModal()" title="Δες ανά πελάτη">
-      <div style="${labelStyle}">ΑΝΟΙΧΤΑ ΥΠΟΛΟΙΠΑ</div>
-      <div style="${valueStyle}">${_fmtEuro(outstandingTotal)}</div>
-      <div style="${deltaStyle}">${outstandingClients.size} πελάτες</div>
-    </div>
-  `;
+  el.innerHTML = [
+    card('Έτοιμες προς τιμολόγηση', ready.length,
+      _fmtEuro(readyTotal) + (readyNoPrice ? ` <span style="color:var(--warn)" title="Δεν αθροίζονται: δεν έχουν καταχωρημένη τιμή. Ο τζίρος είναι μεγαλύτερος κατά άγνωστο ποσό.">· ${readyNoPrice} χωρίς τιμή</span>` : '')),
+    card('Καθυστερημένες (>30 ημ.)', overdue.length,
+      overdue.length ? 'Άμεση ενέργεια' : 'Όλα εντάξει',
+      { color: overdue.length ? 'var(--danger)' : 'var(--ok)', border: overdue.length ? 'var(--danger)' : undefined }),
+    card('Μπλοκαρισμένες', blocked.length, 'λείπουν δελτία παλετών', { color: 'var(--warn)' }),
+    card('Τιμολογημένες', invoiced.length, _fmtEuro(invTotal), { color: 'var(--ok)' }),
+    card('Ανοιχτά υπόλοιπα', _fmtEuro(outstandingTotal), `${outstandingClients.size} πελάτες`,
+      { onclick: '_invShowOutstandingModal()', title: 'Δες ανά πελάτη' }),
+  ].join('');
 }
 
 // ─── Table head (sortable) ───────────────────────
@@ -497,22 +551,24 @@ function _renderInvHead() {
   const head = document.getElementById('invThead');
   if (!head) return;
   const cols = [
-    { key: '_check', label: '<input type="checkbox" onchange="_invToggleAll(this.checked)" style="cursor:pointer">', sortable: false, w: '30px' },
+    { key: '_check', label: '<input type="checkbox" onchange="_invToggleAll(this.checked)" title="Επιλογή όλων των έτοιμων" style="cursor:pointer;margin:0;vertical-align:middle">', sortable: false, w: '30px' },
     { key: 'order',  label: 'ΑΡ. ΠΑΡΑΓΓΕΛΙΑΣ' },
     { key: 'type',   label: 'ΤΥΠΟΣ' },
-    { key: 'client', label: 'ΠΕΛΑΤΗΣ' },
-    { key: 'route',  label: 'ΔΙΑΔΡΟΜΗ' },
+    { key: 'client', label: 'ΠΕΛΑΤΗΣ', mw: '200px' },
+    { key: 'route',  label: 'ΔΙΑΔΡΟΜΗ', w: '26%' },
     { key: 'aging',  label: 'ΗΛΙΚΙΑ' },
     { key: 'pallets',label: 'ΠΑΛΕΤΕΣ', align: 'right' },
     { key: 'price',  label: 'ΑΞΙΑ',   align: 'right' },
     { key: 'pe',     label: 'ΔΕΛΤΙΟ',      align: 'center' },
     { key: 'status', label: 'ΚΑΤΑΣΤΑΣΗ' },
   ];
+  // 11px, not the global 10px `thead th`: nothing readable below 11px (DESIGN.md ΜΕΡΟΣ Γ).
+  const TH = 'padding:8px 12px;font-size:11px;';
   head.innerHTML = cols.map(c => {
-    if (c.sortable === false) return `<th style="width:${c.w||''}">${c.label}</th>`;
+    if (c.sortable === false) return `<th style="${TH}width:${c.w||''}">${c.label}</th>`;
     const arrow = INV.sort.col === c.key ? (INV.sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
     const align = c.align ? `text-align:${c.align};` : '';
-    return `<th style="cursor:pointer;${align}user-select:none" onclick="_invSetSort('${c.key}')">${c.label}${arrow}</th>`;
+    return `<th style="${TH}cursor:pointer;${align}${c.w ? `width:${c.w};` : ''}${c.mw ? `min-width:${c.mw};` : ''}user-select:none" onclick="_invSetSort('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
 }
 
@@ -553,11 +609,7 @@ function _applyInvFilters() {
   // innerHTML (not textContent) because the warning carries markup; the counts
   // interpolated here are numbers, not user input.
   const sub = document.getElementById('invSub');
-  if (sub) {
-    sub.innerHTML = `${list.length} από ${INV.data.length} παραγγελίες`
-      + (INV.natlFailed ? ' <span style="color:#B45309">· ⚠ τα εθνικά δεν φόρτωσαν, η λίστα είναι ελλιπής</span>' : '')
-      + (INV.gateFailed ? ' <span style="color:#B45309">· ⚠ ο έλεγχος δελτίων παλετών δεν φόρτωσε — ισχύει ο παλιός έλεγχος ανά στάση</span>' : '');
-  }
+  if (sub) sub.innerHTML = _invSubText(list.length, INV.data.length);
 }
 
 function _invSortVal(rec, col) {
@@ -580,7 +632,13 @@ function _renderInvTable() {
   if (!tbody) return;
 
   if (!INV.filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:32px">No orders match current filters</td></tr>`;
+    // Empty ≠ error (DESIGN.md #7): the load succeeded, the filters just
+    // matched nothing — or there is genuinely nothing delivered to invoice.
+    // A failed load never reaches here; it renders the retry block instead.
+    const msg = INV.data.length
+      ? 'Καμία παραγγελία με τα τρέχοντα φίλτρα'
+      : 'Καμία παραδομένη ή τιμολογημένη παραγγελία — δεν υπάρχει τίποτα προς τιμολόγηση';
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:32px;font-size:13px">${msg}</td></tr>`;
     return;
   }
 
@@ -594,53 +652,53 @@ function _renderInvTable() {
   });
 
   tbody.innerHTML = sorted.map(r => {
-    const f = r.fields;
-    const sel = INV.selectedId === r.id ? 'background:#1E293B;' : '';
-    const overdueRow = _invIsOverdue(r) ? 'background:#3F1212;' : '';
+    const sel = INV.selectedId === r.id ? 'background:var(--surface-sunken);' : '';
     // IN-1: η καθυστέρηση φεύγει από τις καρτέλες και γίνεται σήμανση γραμμής.
-    const overdueBadge = _invIsOverdue(r)
-      ? '<span title="Παραδόθηκε πριν από πάνω από 30 ημέρες" style="display:inline-block;margin-left:6px;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;background:var(--danger-bg);color:var(--danger)">ΚΑΘΥΣΤΕΡΗΜΕΝΗ</span>'
+    // A 3px danger bar on the leading cell + the word in the status cell. The
+    // old full-row dark-red fill (a dark-theme leftover) buried the row's own
+    // text on this light table; the bar marks without hiding.
+    const overdue = _invIsOverdue(r);
+    const overdueBar = overdue ? 'box-shadow:inset 3px 0 0 var(--danger);' : '';
+    const overdueBadge = overdue
+      ? _invBadge('ΚΑΘΥΣΤΕΡΗΜΕΝΗ', 'var(--danger)', { title: 'Παραδόθηκε πριν από πάνω από 30 ημέρες', style: 'margin-left:4px;' })
       : '';
 
-    const typeBadge = r._type === 'intl'
-      ? '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C2D5C;color:var(--panel-accent)">INTL</span>'
-      : '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#14532D;color:#4ADE80">NATL</span>';
-
+    // ΔΕΛΤΙΟ: tick or cross AND the word (DESIGN.md #2) — a bare ✗ says nothing
+    // about what is missing.
     const peIcon = r._type !== 'intl' ? '<span style="color:var(--text-dim)">—</span>'
       : _invPESheetsOK(r)
-        ? '<span style="color:var(--panel-ok);font-weight:700">&#10003;</span>'
-        : '<span style="color:var(--panel-warn);font-weight:700">&#10007;</span>';
+        ? '<span style="color:var(--ok);font-weight:700" title="Δελτία παλετών: εντάξει">✓</span>'
+        : '<span style="color:var(--warn);font-weight:700;font-size:11px;white-space:nowrap" title="Λείπει δελτίο παλετών — δεν τιμολογείται">✗ λείπει</span>';
 
     let statusBadge;
-    if (_invIsInvoiced(r)) {
-      statusBadge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#064E3B;color:#6EE7B7">Τιμολογημένη</span>';
-    } else if (_invIsBlocked(r)) {
-      statusBadge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#78350F;color:#FCD34D">Μπλοκαρισμένη</span>';
-    } else {
-      statusBadge = '<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:#0C4A6E;color:#7DD3FC">Έτοιμη</span>';
-    }
+    if (_invIsInvoiced(r))     statusBadge = _invBadge('Τιμολογημένη', 'var(--ok)');
+    else if (_invIsBlocked(r)) statusBadge = _invBadge('Μπλοκαρισμένη', 'var(--warn)', { bg: 'var(--warn-bg)', border: 'var(--warn-border)' });
+    else                       statusBadge = _invBadge('Έτοιμη', 'var(--text)', { border: 'var(--border-dark)' });
 
     const days = _invDaysSinceDelivery(r);
     const bucket = _invAgingBucket(days);
-    const agingBadge = `<span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:${bucket.color}22;color:${bucket.color};border:1px solid ${bucket.color}55">${bucket.label}</span>`;
+    const agingBadge = _invBadge(bucket.label, bucket.color, { title: days == null ? 'Χωρίς ημερομηνία παράδοσης' : `${days} ημέρες από την παράδοση` });
 
     const isReady = _invIsReady(r);
-    return `<tr onclick="_invSelect('${r.id}')" style="cursor:pointer;${sel}${overdueRow}transition:background 0.15s">
-      <td onclick="event.stopPropagation()"><input type="checkbox" class="inv-cb" data-id="${r.id}" onchange="_invCheckChanged()" ${!isReady?'disabled style="opacity:0.3"':'style="cursor:pointer"'}></td>
-      <td><strong>${escapeHtml(_invOrderNo(r))}</strong></td>
-      <td>${typeBadge}</td>
-      <td onclick="event.stopPropagation();_invShowClientHistory(${JSON.stringify(_invClientName(r)).replace(/"/g,'&quot;')})" style="cursor:pointer;color:#7DD3FC;text-decoration:underline;text-decoration-style:dotted" title="Δες ιστορικό πελάτη">${escapeHtml(_invClientName(r))}</td>
-      <td style="max-width:230px" title="${escapeHtml(_invRoute(r))}">${
+    const cb = isReady
+      ? `<input type="checkbox" class="inv-cb" data-id="${r.id}" onchange="_invCheckChanged()" style="cursor:pointer;margin:0;vertical-align:middle">`
+      : `<input type="checkbox" class="inv-cb" data-id="${r.id}" disabled title="Δεν επιλέγεται: μπλοκαρισμένη ή ήδη τιμολογημένη" style="opacity:0.3;margin:0;vertical-align:middle">`;
+    return `<tr onclick="_invSelect('${r.id}')" style="cursor:pointer;${sel}transition:background 0.15s">
+      <td onclick="event.stopPropagation()" style="${_INV_TD}${overdueBar}">${cb}</td>
+      <td style="${_INV_TD}${_INV_NUM}"><strong style="color:var(--text)">${escapeHtml(_invOrderNo(r))}</strong></td>
+      <td style="${_INV_TD}">${_invTypeBadge(r)}</td>
+      <td onclick="event.stopPropagation();_invShowClientHistory(${JSON.stringify(_invClientName(r)).replace(/"/g,'&quot;')})" style="${_INV_TD}cursor:pointer" title="Δες ιστορικό πελάτη"><span style="color:var(--text);font-weight:500;text-decoration:underline dotted;text-underline-offset:3px">${_invClientName(r)}</span></td>
+      <td style="${_INV_TD}max-width:340px" title="${escapeHtml(_invRoute(r))}">${
         r._type === 'intl'
           ? `<div style="line-height:1.25">${escapeHtml(orderLoadName(r.fields, 999) || '—')}</div>`
             + `<div style="line-height:1.25;font-size:11px;color:var(--text-dim)">→ ${escapeHtml(orderDelName(r.fields, 999) || '—')}</div>`
           : escapeHtml(_invRoute(r))
       }</td>
-      <td>${agingBadge}</td>
-      <td style="text-align:right">${_invPallets(r)}</td>
-      <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
-      <td style="text-align:center">${peIcon}</td>
-      <td>${statusBadge}${overdueBadge}</td>
+      <td style="${_INV_TD}">${agingBadge}</td>
+      <td style="${_INV_TD}text-align:right;${_INV_NUM}">${_invPalletsDisplay(r)}</td>
+      <td style="${_INV_TD}text-align:right;${_INV_NUM}">${_fmtEuro(_invPrice(r))}</td>
+      <td style="${_INV_TD}text-align:center">${peIcon}</td>
+      <td style="${_INV_TD}white-space:nowrap">${statusBadge}${overdueBadge}</td>
     </tr>`;
   }).join('');
 }
@@ -670,6 +728,7 @@ function _renderInvDetail() {
 
   // Invoice block — different rendering depending on state
   let invoiceBlock = '';
+  const BTN = 'width:100%;padding:8px;border-radius:6px;font-size:13px;font-weight:600;font-family:\'DM Sans\',sans-serif;';
   if (isBlocked) {
     // Φ4: say exactly which loading stops are missing a sheet, not just "missing".
     // g is undefined when the gate call failed and we fell back to the old
@@ -679,72 +738,72 @@ function _renderInvDetail() {
     const missingMsg = g
       ? `Λείπει δελτίο σε ${(g.loading_stops || 0) - (g.covered_stops || 0)} από ${g.loading_stops || 0} φορτώσεις — δεν τιμολογείται`
       : 'Λείπει δελτίο παλετών — δεν τιμολογείται';
-    invoiceBlock = `<button disabled style="width:100%;padding:10px;border-radius:8px;border:1px solid #334155;
-      background:#1E293B;color:var(--text-dim);font-size:13px;font-weight:600;cursor:not-allowed;margin-top:12px">
+    invoiceBlock = `<button disabled style="${BTN}border:1px solid var(--border);background:var(--surface-sunken);color:var(--text-dim);cursor:not-allowed;margin-top:12px;${_INV_NUM}">
       ${escapeHtml(missingMsg)}</button>`;
     // Owner-only override (docs/PALLETS_ARCHITECTURE.md §4.1): recorded via
     // POST /pallets/override BEFORE the invoice write, so there is always an
     // audit trail explaining who unblocked this order and why — never silent.
     if (typeof ROLE !== 'undefined' && ROLE === 'owner') {
-      invoiceBlock += `<button onclick="_invOverrideInvoice('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
-        border:1px solid #B45309;background:#78350F22;color:#FCD34D;font-size:13px;font-weight:600;cursor:pointer;margin-top:8px">
+      invoiceBlock += `<button onclick="_invOverrideInvoice('${rec.id}')" style="${BTN}
+        border:1px solid var(--warn-border);background:var(--warn-bg);color:var(--warn);cursor:pointer;margin-top:8px">
         ⚠ Τιμολόγηση με παράκαμψη</button>`;
     }
   } else if (!isInvoiced && canInvoice) {
     const nextNum = _invNextNumber();
     const today = localToday();
+    const INPUT = 'width:100%;padding:8px;border-radius:6px;background:var(--surface-card);border:1px solid var(--border-dark);color:var(--text);font-size:13px;font-family:\'DM Sans\',sans-serif;' + _INV_NUM;
     invoiceBlock = `
-      <div style="margin-top:14px;padding:12px;background:#1E293B;border-radius:8px;border:1px solid #334155">
-        <div style="font-size:11px;color:var(--panel-dim);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px">Έκδοση Τιμολογίου</div>
-        <input id="invNumInput" value="${nextNum}" style="width:100%;padding:8px;border-radius:6px;background:var(--panel);border:1px solid #334155;color:var(--panel-text);font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:8px" placeholder="Invoice Number">
-        <input id="invDateInput" type="date" value="${today}" style="width:100%;padding:8px;border-radius:6px;background:var(--panel);border:1px solid #334155;color:var(--panel-text);font-size:13px;font-family:'DM Sans',sans-serif;margin-bottom:10px">
-        <button onclick="_invMarkInvoiced('${rec.id}')" style="width:100%;padding:10px;border-radius:8px;
-          border:none;background:var(--accent);color:#fff;font-size:13px;font-weight:600;cursor:pointer;
-          transition:background 0.15s"
-          onmouseenter="this.style.background='#0369A1'" onmouseleave="this.style.background='var(--accent)'">
-          Mark as Invoiced</button>
+      <div style="margin-top:12px;padding:12px;background:var(--surface-sunken);border-radius:6px;border:1px solid var(--border)">
+        <div style="font-size:11px;color:var(--text-mid);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Έκδοση τιμολογίου</div>
+        <input id="invNumInput" value="${nextNum}" style="${INPUT}margin-bottom:8px" placeholder="Αριθμός τιμολογίου">
+        <input id="invDateInput" type="date" value="${today}" style="${INPUT}margin-bottom:12px">
+        <button onclick="_invMarkInvoiced('${rec.id}')" style="${BTN}
+          border:none;background:var(--accent);color:var(--surface-card);cursor:pointer;transition:background 0.15s"
+          onmouseenter="this.style.background='var(--accent-hover)'" onmouseleave="this.style.background='var(--accent)'">
+          Σήμανση ως τιμολογημένη</button>
       </div>`;
   } else if (isInvoiced) {
     const num = f['Invoice Number'] || '—';
     const date = f['Invoice Date'] || '—';
     invoiceBlock = `
-      <div style="margin-top:14px;padding:12px;background:#064E3B22;border-radius:8px;border:1px solid #064E3B">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:11px;color:var(--panel-dim);text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο</span>
-          <span style="font-size:11px;font-weight:600;color:#6EE7B7">Invoiced</span>
+      <div style="margin-top:12px;padding:12px;border-radius:6px;border:1px solid var(--ok)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+          <span style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px">Τιμολόγιο</span>
+          <span style="font-size:11px;font-weight:600;color:var(--ok)">✓ Τιμολογήθηκε</span>
         </div>
-        <div style="font-size:13px;color:var(--panel-text);font-weight:600">${escapeHtml(num)}</div>
-        <div style="font-size:11px;color:var(--panel-dim);margin-top:2px">${escapeHtml(date)}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600;${_INV_NUM}">${escapeHtml(num)}</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-top:2px;${_INV_NUM}">${escapeHtml(date)}</div>
       </div>`;
   }
 
+  // Values wrap instead of truncating: company names and routes are what the
+  // reader phones about (DESIGN.md #6) — the old overflow:hidden + ellipsis
+  // cut them at 200px.
   const row = (label, val) => `
-    <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #1E293B">
-      <span style="color:var(--panel-dim);font-size:12px">${label}</span>
-      <span style="color:var(--panel-text);font-size:13px;font-weight:500;text-align:right;max-width:200px;overflow:hidden;text-overflow:ellipsis">${val}</span>
+    <div style="display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text-mid);font-size:12px;white-space:nowrap">${label}</span>
+      <span style="color:var(--text);font-size:13px;font-weight:500;text-align:right;${_INV_NUM}">${val}</span>
     </div>`;
 
   panel.style.display = 'block';
   panel.innerHTML = `
-    <div style="background:var(--panel);border:1px solid var(--panel-border);border-radius:10px;padding:20px;position:sticky;top:16px;max-height:calc(100vh - 40px);overflow-y:auto">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--panel-text)">${escapeHtml(_invOrderNo(rec))}</span>
-        <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;
-          background:${rec._type === 'intl' ? '#0C2D5C' : '#14532D'};
-          color:${rec._type === 'intl' ? 'var(--panel-accent)' : '#4ADE80'}">${rec._type === 'intl' ? 'INTL' : 'NATL'}</span>
+    <div style="background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:16px;position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);${_INV_NUM}">${escapeHtml(_invOrderNo(rec))}</span>
+        ${_invTypeBadge(rec)}
       </div>
-      ${days != null ? `<div style="margin-bottom:10px;padding:6px 10px;background:${bucket.color}22;border-radius:6px;border:1px solid ${bucket.color}55"><span style="font-size:11px;color:${bucket.color};font-weight:600">${(typeof icon==='function')?icon('clock',12):''} ${days} μέρες από την παράδοση</span></div>` : ''}
-      ${row('Client', escapeHtml(_invClientName(rec)))}
-      ${row('Route', escapeHtml(_invRoute(rec)))}
-      ${row('Week', _invWeek(rec))}
-      ${row('Pallets', _invPallets(rec))}
-      ${row('Price', _fmtEuro(_invPrice(rec)))}
-      ${row('Net Price', _fmtEuro(_invNetPrice(rec)))}
-      ${rec._type === 'intl' ? row('Pallet Exchange', _invPERequired(rec) ? 'Yes' : 'No') : ''}
-      ${rec._type === 'intl' && _invPERequired(rec) ? row('PE Sheets', _invPESheetsOK(rec) ? 'Uploaded' : 'Missing') : ''}
-      ${row('Status', f['Status'] || '—')}
-      ${row('Direction', f['Direction'] || '—')}
-      ${row('Pallet Balance', `<span id="invPalBal_${rec.id}" style="color:var(--panel-dim)">…</span>`)}
+      ${days != null ? `<div style="margin-bottom:8px;padding:4px 8px;border-radius:6px;border:1px solid ${bucket.color};color:${bucket.color};font-size:11px;font-weight:600;${_INV_NUM}">${(typeof icon==='function')?icon('clock',12):''} ${days} ημέρες από την παράδοση</div>` : ''}
+      ${row('Πελάτης', _invClientName(rec))}
+      ${row('Διαδρομή', escapeHtml(_invRoute(rec)))}
+      ${row('Εβδομάδα', escapeHtml(String(_invWeek(rec))))}
+      ${row('Παλέτες', _invPalletsDisplay(rec))}
+      ${row('Τιμή', _fmtEuro(_invPrice(rec)))}
+      ${row('Καθαρή τιμή', _fmtEuro(_invNetPrice(rec)))}
+      ${rec._type === 'intl' ? row('Ανταλλαγή παλετών', _invPERequired(rec) ? 'Ναι' : 'Όχι') : ''}
+      ${rec._type === 'intl' && _invPERequired(rec) ? row('Δελτία παλετών', _invPESheetsOK(rec) ? '<span style="color:var(--ok)">✓ ανέβηκαν</span>' : '<span style="color:var(--warn)">✗ λείπουν</span>') : ''}
+      ${row('Κατάσταση', escapeHtml(f['Status'] || '—'))}
+      ${row('Κατεύθυνση', _invDirectionLabel(f['Direction']))}
+      ${row('Υπόλοιπο παλετών', `<span id="invPalBal_${rec.id}" style="color:var(--text-dim)">…</span>`)}
       ${invoiceBlock}
     </div>
   `;
@@ -777,7 +836,7 @@ async function _invMarkInvoiced(recId) {
   if (!rec) return;
 
   if (!_invPESheetsOK(rec)) {
-    toast('Cannot invoice — pallet exchange sheets are missing', 'error');
+    toast('Δεν τιμολογείται — λείπουν δελτία ανταλλαγής παλετών', 'error');
     return;
   }
 
@@ -786,7 +845,7 @@ async function _invMarkInvoiced(recId) {
   const invNumber = numInput ? numInput.value.trim() : '';
   const invDate   = dateInput ? dateInput.value : localToday();
 
-  if (!invNumber) { toast('Συμπλήρωσε Invoice Number', 'error'); return; }
+  if (!invNumber) { toast('Συμπλήρωσε αριθμό τιμολογίου', 'error'); return; }
 
   try {
     await _invWriteInvoice(rec, invNumber, invDate);
@@ -841,7 +900,7 @@ function _invToggleAll(checked) {
 async function _invBatchInvoice() {
   const ids = [...document.querySelectorAll('.inv-cb:checked')].map(cb => cb.dataset.id);
   if (!ids.length) return;
-  if (!(await confirmAction(`Σήμανση ${ids.length} orders ως Invoiced;\n(Αυτόματη αρίθμηση τιμολογίων, σημερινή ημερομηνία)`, { confirmLabel: 'Τιμολόγηση' }))) return;
+  if (!(await confirmAction(`Σήμανση ${ids.length} παραγγελιών ως τιμολογημένες;\n(Αυτόματη αρίθμηση τιμολογίων, σημερινή ημερομηνία)`, { confirmLabel: 'Τιμολόγηση' }))) return;
 
   // H4 fix: track failures in detail + show detailed report instead of silent fail count.
   let ok = 0;
@@ -881,14 +940,14 @@ async function _invBatchInvoice() {
   if (failures.length) {
     // Show detailed failure report via modal so user knows exactly which orders to retry
     const body = `
-      <p style="margin-bottom:var(--space-3)">Τιμολογήθηκαν <strong style="color:var(--success)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>${skipped ? `, Παραλείφθηκαν <strong style="color:var(--panel-warn)">${skipped}</strong> (λείπει δελτίο παλετών)` : ''}:</p>
-      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:var(--space-2)">
-        ${failures.map(f => `<div style="padding:6px;border-bottom:1px solid var(--border);font-size:12px">
+      <p style="margin-bottom:12px;${_INV_NUM}">Τιμολογήθηκαν <strong style="color:var(--ok)">${ok}</strong>, Απέτυχαν <strong style="color:var(--danger)">${failures.length}</strong>${skipped ? `, Παραλείφθηκαν <strong style="color:var(--warn)">${skipped}</strong> (λείπει δελτίο παλετών)` : ''}:</p>
+      <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px">
+        ${failures.map(f => `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px">
           <strong>${escapeHtml(f.client || f.id)}</strong><br>
-          <span style="color:var(--danger);font-family:'DM Sans',monospace;font-size:11px">${escapeHtml(f.msg)}</span>
+          <span style="color:var(--danger);font-size:11px">${escapeHtml(f.msg)}</span>
         </div>`).join('')}
       </div>`;
-    if (typeof openModal === 'function') openModal('Batch Invoice Report', body);
+    if (typeof openModal === 'function') openModal('Αναφορά μαζικής τιμολόγησης', body);
     else toast(`${ok} τιμολόγια εκδόθηκαν, ${failures.length} απέτυχαν${skippedTxt}`, 'warn');
   } else {
     toast(`${ok} τιμολογήθηκαν${skippedTxt}`, skipped ? 'warn' : 'success');
@@ -916,23 +975,24 @@ function _invShowOutstandingModal() {
     .map(([name, d]) => {
       const bucket = _invAgingBucket(d.oldest);
       return `<tr>
-        <td>${escapeHtml(name)}</td>
-        <td style="text-align:right">${d.count}</td>
-        <td style="text-align:right;font-weight:600">${_fmtEuro(d.total)}</td>
-        <td style="text-align:center"><span style="color:${bucket.color};font-weight:600">${bucket.label}</span></td>
+        <td style="${_INV_TD}color:var(--text)">${name}</td>
+        <td style="${_INV_TD}text-align:right;${_INV_NUM}">${d.count}</td>
+        <td style="${_INV_TD}text-align:right;font-weight:600;${_INV_NUM}">${_fmtEuro(d.total)}</td>
+        <td style="${_INV_TD}text-align:center">${_invBadge(bucket.label, bucket.color)}</td>
       </tr>`;
     }).join('');
 
   const grandTotal = Object.values(byClient).reduce((s,d) => s + d.total, 0);
+  const TH = 'padding:8px 12px;font-size:11px;';
 
-  openModal('Outstanding by Client', `
-    <div style="max-height:60vh;overflow-y:auto">
+  openModal('Υπόλοιπα ανά πελάτη', `
+    <div style="max-height:60vh;overflow:auto">
       <table style="width:100%">
         <thead>
-          <tr><th>Client</th><th style="text-align:right">Orders</th><th style="text-align:right">Total</th><th style="text-align:center">Oldest</th></tr>
+          <tr><th style="${TH}">Πελάτης</th><th style="${TH}text-align:right">Παραγγελίες</th><th style="${TH}text-align:right">Σύνολο</th><th style="${TH}text-align:center">Παλαιότερη</th></tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:30px;color:var(--text-dim)">Δεν υπάρχουν εκκρεμότητες</td></tr>'}</tbody>
-        ${rows ? `<tfoot><tr style="border-top:2px solid #334155"><td colspan="2" style="font-weight:700">TOTAL</td><td style="text-align:right;font-weight:700;color:var(--panel-warn)">${_fmtEuro(grandTotal)}</td><td></td></tr></tfoot>` : ''}
+        <tbody>${rows || '<tr><td colspan="4" style="text-align:center;padding:32px;color:var(--text-dim)">Καμία εκκρεμότητα — όλες οι παραδομένες έχουν τιμολογηθεί</td></tr>'}</tbody>
+        ${rows ? `<tfoot><tr style="border-top:2px solid var(--border-dark)"><td colspan="2" style="${_INV_TD}font-weight:700;color:var(--text)">ΣΥΝΟΛΟ</td><td style="${_INV_TD}text-align:right;font-weight:700;color:var(--text);${_INV_NUM}">${_fmtEuro(grandTotal)}</td><td></td></tr></tfoot>` : ''}
       </table>
     </div>
   `);
@@ -940,21 +1000,23 @@ function _invShowOutstandingModal() {
 
 // ─── CSV Export ─────────────────────────────────
 function _invExportCSV() {
-  const rows = [['Order No','Type','Client','Route','Aging Days','Pallets','Price','Net Price','Invoice Number','Invoice Date','PE Status','Status']];
+  // Greek headers: the file goes to the accountant's Excel, not to a machine.
+  // Blank (not 0) for a price nobody entered — DESIGN.md #3 holds in exports too.
+  const rows = [['Αρ. παραγγελίας','Τύπος','Πελάτης','Διαδρομή','Ημέρες από παράδοση','Παλέτες','Τιμή','Καθαρή τιμή','Αρ. τιμολογίου','Ημ. τιμολογίου','Δελτία PE','Κατάσταση']];
   INV.filtered.forEach(r => {
     rows.push([
       _invOrderNo(r),
-      r._type === 'intl' ? 'International' : 'National',
+      _invTypeLabel(r),
       _invClientName(r),
       _invRoute(r).replace(/,/g, ' '),
       _invDaysSinceDelivery(r) ?? '',
       _invPallets(r),
-      _invPrice(r) || 0,
-      _invNetPrice(r) || 0,
+      _invPrice(r) ?? '',
+      _invNetPrice(r) ?? '',
       r.fields['Invoice Number'] || '',
       r.fields['Invoice Date'] || '',
-      _invPESheetsOK(r) ? 'OK' : 'Missing',
-      _invIsInvoiced(r) ? 'Invoiced' : _invIsBlocked(r) ? 'Blocked' : 'Ready',
+      _invPESheetsOK(r) ? 'Εντάξει' : 'Λείπουν',
+      _invIsInvoiced(r) ? 'Τιμολογημένη' : _invIsBlocked(r) ? 'Μπλοκαρισμένη' : 'Έτοιμη',
     ]);
   });
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -963,15 +1025,27 @@ function _invExportCSV() {
   const a = document.createElement('a');
   a.href = url; a.download = `invoicing_${localToday()}.csv`;
   a.click(); URL.revokeObjectURL(url);
-  toast('CSV exported');
+  toast('Το CSV εξήχθη');
 }
 
 // ─── Bulk PDF Export (for accountant) ───────────────
+// The report opens in a bare window with no style.css, so `var(--navy-mid)`
+// and `var(--accent)` there resolved to nothing (header bar and totals
+// printed colourless). Copy the live token values across instead of writing
+// hex here: one home per colour (DESIGN.md #1), and the report follows the
+// app's palette without a second list to keep in sync.
+function _invTokenCSS() {
+  const cs = getComputedStyle(document.documentElement);
+  const names = ['--surface-card','--surface-page','--surface-sunken','--surface-dark',
+                 '--text','--text-mid','--text-on-dark','--border','--accent','--accent-hover'];
+  return ':root{' + names.map(n => `${n}:${cs.getPropertyValue(n).trim()}`).join(';') + '}';
+}
+
 function _invExportPDF() {
   const list = INV.filtered;
   if (!list.length) { toast('Δεν υπάρχουν εγγραφές για εξαγωγή', 'error'); return; }
 
-  const tabLabel = ({ ready:'Ready', overdue:'Overdue', blocked:'Blocked', invoiced:'Invoiced', all:'All' })[_invFilters.tab] || 'All';
+  const tabLabel = ({ ready:'Έτοιμες', overdue:'Καθυστερημένες', blocked:'Μπλοκαρισμένες', invoiced:'Τιμολογημένες', all:'Όλες' })[_invFilters.tab] || 'Όλες';
   const today = new Date().toLocaleDateString('el-GR');
 
   // Sort by date descending
@@ -991,11 +1065,11 @@ function _invExportPDF() {
     const dtStr = dt ? new Date(dt).toLocaleDateString('el-GR') : '—';
     return `<tr>
       <td>${escapeHtml(_invOrderNo(r))}</td>
-      <td>${r._type === 'intl' ? 'INTL' : 'NATL'}</td>
-      <td>${escapeHtml(_invClientName(r))}</td>
+      <td>${_invTypeLabel(r)}</td>
+      <td>${_invClientName(r)}</td>
       <td>${escapeHtml(_invRoute(r))}</td>
       <td style="text-align:center">${dtStr}</td>
-      <td style="text-align:right">${_invPallets(r)}</td>
+      <td style="text-align:right">${_invPalletsDisplay(r)}</td>
       <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
       <td style="text-align:right">${_fmtEuro(_invNetPrice(r))}</td>
       <td>${escapeHtml(f['Invoice Number']||'—')}</td>
@@ -1004,25 +1078,26 @@ function _invExportPDF() {
   }).join('');
 
   const html = `<!DOCTYPE html><html lang="el"><head><meta charset="UTF-8">
-    <title>Invoicing Report — ${tabLabel} — ${today}</title>
+    <title>Αναφορά τιμολόγησης — ${tabLabel} — ${today}</title>
     <style>
+      ${_invTokenCSS()}
       *{margin:0;padding:0;box-sizing:border-box}
-      body{font-family:Arial,sans-serif;font-size:11px;color:#111;padding:20px}
-      .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--navy-mid);padding-bottom:12px;margin-bottom:16px}
-      .hdr h1{font-size:18px;font-weight:700;color:var(--navy-mid)}
-      .hdr .meta{font-size:11px;color:#555;text-align:right}
-      .stats{display:flex;gap:24px;margin-bottom:14px;padding:10px;background:#F5F7FA;border-radius:6px}
+      body{font-family:Arial,sans-serif;font-size:11px;color:var(--text);background:var(--surface-card);padding:20px;font-variant-numeric:tabular-nums}
+      .hdr{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid var(--surface-dark);padding-bottom:12px;margin-bottom:16px}
+      .hdr h1{font-size:18px;font-weight:700;color:var(--surface-dark)}
+      .hdr .meta{font-size:11px;color:var(--text-mid);text-align:right}
+      .stats{display:flex;gap:24px;margin-bottom:12px;padding:8px 12px;background:var(--surface-sunken);border-radius:6px}
       .stat{font-size:11px}
-      .stat b{display:block;font-size:14px;color:var(--navy-mid)}
-      table{width:100%;border-collapse:collapse;font-size:10px}
-      thead th{background:var(--navy-mid);color:#fff;padding:6px 8px;text-align:left;font-weight:600}
-      tbody td{padding:5px 8px;border-bottom:1px solid #E5E7EB}
-      tbody tr:nth-child(even){background:#FAFAFA}
-      tfoot td{padding:8px;font-weight:700;background:#F5F7FA;border-top:2px solid var(--navy-mid)}
-      .pbar{position:fixed;top:0;left:0;right:0;background:var(--navy-mid);color:#fff;padding:10px 20px;display:flex;justify-content:space-between;align-items:center}
-      .pbar button{background:var(--accent);color:#fff;border:none;padding:6px 18px;border-radius:5px;font-size:12px;font-weight:700;cursor:pointer}
-      .pbar button:hover{background:#0369A1}
-      .body-wrap{margin-top:50px}
+      .stat b{display:block;font-size:14px;color:var(--surface-dark)}
+      table{width:100%;border-collapse:collapse;font-size:11px}
+      thead th{background:var(--surface-dark);color:var(--text-on-dark);padding:4px 8px;text-align:left;font-weight:600}
+      tbody td{padding:4px 8px;border-bottom:1px solid var(--border)}
+      tbody tr:nth-child(even){background:var(--surface-page)}
+      tfoot td{padding:8px;font-weight:700;background:var(--surface-sunken);border-top:2px solid var(--surface-dark)}
+      .pbar{position:fixed;top:0;left:0;right:0;background:var(--surface-dark);color:var(--text-on-dark);padding:8px 20px;display:flex;justify-content:space-between;align-items:center}
+      .pbar button{background:var(--accent);color:var(--surface-card);border:none;padding:6px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer}
+      .pbar button:hover{background:var(--accent-hover)}
+      .body-wrap{margin-top:48px}
       @media print {
         .pbar{display:none}
         .body-wrap{margin-top:0}
@@ -1031,38 +1106,38 @@ function _invExportPDF() {
       }
     </style></head><body>
     <div class="pbar">
-      <span style="font-weight:700">Petras Group — Invoicing Report</span>
-      <button onclick="window.print()">Εκτύπωση / Save as PDF</button>
+      <span style="font-weight:700">Petras Group — Αναφορά τιμολόγησης</span>
+      <button onclick="window.print()">Εκτύπωση / Αποθήκευση PDF</button>
     </div>
     <div class="body-wrap">
       <div class="hdr">
         <div>
-          <h1>Invoicing Report</h1>
-          <div style="font-size:11px;color:#555;margin-top:4px">Tab: ${tabLabel}</div>
+          <h1>Αναφορά τιμολόγησης</h1>
+          <div style="font-size:11px;color:var(--text-mid);margin-top:4px">Καρτέλα: ${tabLabel}</div>
         </div>
         <div class="meta">
-          <div><b>Date:</b> ${today}</div>
-          <div><b>Records:</b> ${sorted.length}</div>
+          <div><b>Ημερομηνία:</b> ${today}</div>
+          <div><b>Εγγραφές:</b> ${sorted.length}</div>
         </div>
       </div>
       <div class="stats">
-        <div class="stat"><b>${sorted.length}</b>Orders</div>
-        <div class="stat"><b>${totalPallets}</b>Total Pallets</div>
-        <div class="stat"><b>${_fmtEuro(totalPrice)}</b>Gross Revenue</div>
-        <div class="stat"><b>${_fmtEuro(totalNet)}</b>Net Revenue</div>
+        <div class="stat"><b>${sorted.length}</b>Παραγγελίες</div>
+        <div class="stat"><b>${totalPallets}</b>Σύνολο παλετών</div>
+        <div class="stat"><b>${_fmtEuro(totalPrice)}</b>Μικτός τζίρος</div>
+        <div class="stat"><b>${_fmtEuro(totalNet)}</b>Καθαρός τζίρος</div>
       </div>
       <table>
         <thead><tr>
-          <th>Order #</th><th>Type</th><th>Client</th><th>Route</th>
-          <th style="text-align:center">Delivered</th>
-          <th style="text-align:right">Pallets</th>
-          <th style="text-align:right">Price</th>
-          <th style="text-align:right">Net</th>
-          <th>Inv. #</th><th style="text-align:center">Inv. Date</th>
+          <th>Αρ. παραγγελίας</th><th>Τύπος</th><th>Πελάτης</th><th>Διαδρομή</th>
+          <th style="text-align:center">Παράδοση</th>
+          <th style="text-align:right">Παλέτες</th>
+          <th style="text-align:right">Τιμή</th>
+          <th style="text-align:right">Καθαρή</th>
+          <th>Αρ. τιμ.</th><th style="text-align:center">Ημ. τιμ.</th>
         </tr></thead>
         <tbody>${rows}</tbody>
         <tfoot><tr>
-          <td colspan="5">TOTAL</td>
+          <td colspan="5">ΣΥΝΟΛΟ</td>
           <td style="text-align:right">${totalPallets}</td>
           <td style="text-align:right">${_fmtEuro(totalPrice)}</td>
           <td style="text-align:right">${_fmtEuro(totalNet)}</td>
@@ -1104,45 +1179,41 @@ function _invShowClientHistory(clientName) {
     const bucket = _invAgingBucket(days);
     const isInv = _invIsInvoiced(r);
     const statusBadge = isInv
-      ? `<span style="padding:2px 6px;border-radius:4px;background:#064E3B;color:#6EE7B7;font-size:10px;font-weight:600">Invoiced</span>`
-      : `<span style="padding:2px 6px;border-radius:4px;background:#0C4A6E;color:#7DD3FC;font-size:10px;font-weight:600">Pending</span>`;
+      ? _invBadge('Τιμολογημένη', 'var(--ok)')
+      : _invBadge('Εκκρεμεί', 'var(--text)', { border: 'var(--border-dark)' });
 
     return `<tr>
-      <td>${escapeHtml(_invOrderNo(r))}</td>
-      <td>${r._type === 'intl' ? 'INTL' : 'NATL'}</td>
-      <td>${dtStr}</td>
-      <td><span style="color:${bucket.color};font-weight:600">${bucket.label}</span></td>
-      <td style="text-align:right">${_fmtEuro(_invPrice(r))}</td>
-      <td>${escapeHtml(f['Invoice Number']||'—')}</td>
-      <td>${statusBadge}</td>
+      <td style="padding:4px 8px;${_INV_NUM}color:var(--text)">${escapeHtml(_invOrderNo(r))}</td>
+      <td style="padding:4px 8px">${_invTypeBadge(r)}</td>
+      <td style="padding:4px 8px;${_INV_NUM}white-space:nowrap">${dtStr}</td>
+      <td style="padding:4px 8px">${_invBadge(bucket.label, bucket.color)}</td>
+      <td style="padding:4px 8px;text-align:right;${_INV_NUM}white-space:nowrap">${_fmtEuro(_invPrice(r))}</td>
+      <td style="padding:4px 8px;${_INV_NUM}">${escapeHtml(f['Invoice Number']||'—')}</td>
+      <td style="padding:4px 8px">${statusBadge}</td>
     </tr>`;
   }).join('');
 
+  const mini = (label, value, sub, color) => `
+    <div style="padding:8px 12px;background:var(--surface-card);border-radius:6px;border:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px">${label}</div>
+      <div style="font-size:18px;font-weight:700;color:${color || 'var(--text)'};${_INV_NUM}">${value}</div>
+      ${sub ? `<div style="font-size:11px;color:var(--text-dim);margin-top:2px;${_INV_NUM}">${sub}</div>` : ''}
+    </div>`;
+  const TH = 'padding:8px 12px;font-size:11px;';
+
+  const MT = 'padding:4px 8px;';
   openModal(`Ιστορικό — ${clientName}`, `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px">
-      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
-        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Σύνολο</div>
-        <div style="font-size:18px;font-weight:700;color:var(--panel-text)">${orders.length}</div>
-      </div>
-      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
-        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Invoiced</div>
-        <div style="font-size:18px;font-weight:700;color:var(--panel-ok)">${invoicedCount}</div>
-      </div>
-      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
-        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Pending</div>
-        <div style="font-size:18px;font-weight:700;color:var(--panel-warn)">${pendingCount}</div>
-        <div style="font-size:10px;color:var(--text-dim);margin-top:2px">${_fmtEuro(pendingTotal)}</div>
-      </div>
-      <div style="padding:10px;background:var(--panel);border-radius:6px;border:1px solid var(--panel-border)">
-        <div style="font-size:10px;color:var(--panel-dim);text-transform:uppercase">Total Revenue</div>
-        <div style="font-size:18px;font-weight:700;color:var(--panel-text)">${_fmtEuro(totalPrice)}</div>
-      </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+      ${mini('Σύνολο', orders.length)}
+      ${mini('Τιμολογημένες', invoicedCount, '', invoicedCount ? 'var(--ok)' : 'var(--text-dim)')}
+      ${mini('Εκκρεμείς', pendingCount, pendingCount ? _fmtEuro(pendingTotal) : '', pendingCount ? 'var(--warn)' : 'var(--text-dim)')}
+      ${mini('Συνολικός τζίρος', _fmtEuro(totalPrice))}
     </div>
-    <div style="max-height:50vh;overflow-y:auto">
+    <div style="max-height:50vh;overflow:auto">
       <table style="width:100%">
         <thead><tr>
-          <th>Order #</th><th>Type</th><th>Delivered</th><th>Aging</th>
-          <th style="text-align:right">Price</th><th>Inv. #</th><th>Status</th>
+          <th style="${MT}font-size:11px">Αρ. παραγγελίας</th><th style="${MT}font-size:11px">Τύπος</th><th style="${MT}font-size:11px">Παράδοση</th><th style="${MT}font-size:11px">Ηλικία</th>
+          <th style="${MT}font-size:11px;text-align:right">Τιμή</th><th style="${MT}font-size:11px">Αρ. τιμ.</th><th style="${MT}font-size:11px">Κατάσταση</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -1165,7 +1236,7 @@ function _invFetchPalletBalance(clientId, mountId) {
 
   if (INV.balances === null) {
     // Deliberately NOT "0": an unknown balance must not read as a settled one.
-    target.innerHTML = '<span style="color:var(--panel-warn);font-size:10px">δεν φόρτωσε</span>';
+    target.innerHTML = '<span style="color:var(--warn);font-size:11px">δεν φόρτωσε — δεν σημαίνει μηδέν</span>';
     return;
   }
 
@@ -1176,14 +1247,14 @@ function _invFetchPalletBalance(clientId, mountId) {
     // (genuinely "no history") OR the name didn't match (see matching
     // weakness above) — those two cases are indistinguishable from here,
     // so this is deliberately NOT shown as "0" either.
-    target.innerHTML = '<span style="color:var(--panel-dim);font-size:10px">χωρίς κινήσεις</span>';
+    target.innerHTML = '<span style="color:var(--text-dim);font-size:11px">χωρίς κινήσεις</span>';
     return;
   }
 
   const balance = Number(rec.balance) || 0;
-  const color = balance > 0 ? 'var(--panel-ok)' : balance < 0 ? 'var(--panel-warn)' : 'var(--panel-dim)';
+  const color = balance > 0 ? 'var(--ok)' : balance < 0 ? 'var(--warn)' : 'var(--text-dim)';
   const sign = balance > 0 ? '+' : '';
   const label = balance > 0 ? '(μας οφείλει)' : balance < 0 ? '(τους οφείλουμε)' : '(μηδέν)';
-  const pending = rec.pending_count ? `<span style="color:var(--panel-warn);font-size:10px;margin-left:6px">· ${rec.pending_count} εκκρεμή</span>` : '';
-  target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--panel-dim);font-size:10px">${label}</span>${pending}`;
+  const pending = rec.pending_count ? `<span style="color:var(--warn);font-size:11px;margin-left:4px">· ${rec.pending_count} εκκρεμή</span>` : '';
+  target.innerHTML = `<span style="color:${color};font-weight:600">${sign}${balance}</span> <span style="color:var(--text-dim);font-size:11px">${label}</span>${pending}`;
 }
