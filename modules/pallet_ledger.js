@@ -4,6 +4,7 @@
 // Redesign κύμα 2 (2/9/2026): Figma w2-pallet-ledger-overview / -movements /
 // -balances-clients / -balances-partners / -movement-form. Tokens μόνο —
 // κανένα hex εδώ (DESIGN.md #1)· τα ονόματα δεν κόβονται ποτέ (#6).
+// Κύμα 5 (5/9/2026): μόνο τα 18 tokens του ΜΕΡΟΥΣ Β, έξι μεγέθη, tabular-nums.
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
@@ -33,7 +34,13 @@ async function renderPalletLedger() {
     PLV.balances.clients = bc.records || [];
     PLV.balances.partners = bp.records || [];
   } catch (e) {
-    c.innerHTML = `<div style="padding:40px;color:var(--danger)">Σφάλμα φόρτωσης: ${e.message}</div>`;
+    // Failure is NOT emptiness (DESIGN.md #7): say what happened, what it does
+    // not mean, and what to do — a bare "Σφάλμα φόρτωσης" read as "no pallets".
+    c.innerHTML = `${_PLV_STYLE}<div class="plv-page"><div class="plv-fail">
+      <b>Δεν φορτώθηκαν οι κινήσεις παλετών</b>
+      Δεν σημαίνει ότι δεν υπάρχουν — απλώς δεν ήρθαν από τον διακομιστή. Αιτία: ${escapeHtml(_plvErrMsg(e))}
+      <div style="margin-top:12px"><button class="plv-btn-ghost" onclick="renderPalletLedger()">Ξαναδοκίμασε</button></div>
+    </div></div>`;
     return;
   }
   // Ο εμπλουτισμός ΕΚΤΟΣ του παραπάνω try: αποτυχία του δεν αδειάζει ποτέ τη
@@ -70,6 +77,15 @@ async function _plvEnrich() {
   }
 }
 
+// The browser's own wording for a dead network is "Failed to fetch" — an
+// English sentence that tells the accountant nothing. plFetch lives in core/
+// (out of scope), so the page translates at the point where it speaks.
+function _plvErrMsg(e) {
+  const m = (e && e.message) || '';
+  if (/failed to fetch|networkerror|load failed/i.test(m)) return 'δεν υπήρξε απάντηση από τον διακομιστή (δίκτυο ή διακομιστής εκτός)';
+  return m || 'άγνωστο σφάλμα';
+}
+
 // Το όνομα έρχεται embedded από το /pallets/movements (PostgREST join) — τα
 // lookups μένουν ΜΟΝΟ ως fallback, γιατί κόβονται στα 1000 (db-max-rows) και
 // άφηναν όσους πελάτες έπεφταν αλφαβητικά μετά το όριο ως «Πελάτης #1314» (12/8).
@@ -81,7 +97,7 @@ function _plvName(m) {
   }
   if (m.partners && m.partners.company_name) return m.partners.company_name;
   const p = ((PLV.lookups && PLV.lookups.partners) || []).find(x => x.id === m.partner_id);
-  return p ? p.company_name : ('Partner #' + m.partner_id);
+  return p ? p.company_name : ('Συνεργάτης #' + m.partner_id);
 }
 function _plvLoc(m) {
   if (m.locations && m.locations.name) return m.locations.name;
@@ -116,8 +132,8 @@ function _plvQty(n, dir) {
 }
 
 const PLV_EVENT_GR = {
-  LOADING: 'Φόρτωση', DELIVERY: 'Παράδοση', PARTNER_PICKUP: 'Παραλαβή από partner',
-  PARTNER_DROPOFF: 'Παράδοση από partner', RETURN_OUT: 'Επιστροφή αδειών',
+  LOADING: 'Φόρτωση', DELIVERY: 'Παράδοση', PARTNER_PICKUP: 'Παραλαβή από συνεργάτη',
+  PARTNER_DROPOFF: 'Παράδοση από συνεργάτη', RETURN_OUT: 'Επιστροφή αδειών',
   RETURN_IN: 'Παραλαβή αδειών', ADJUSTMENT: 'Τακτοποίηση'
 };
 
@@ -229,10 +245,10 @@ function _plvOverview() {
   const card = (lbl, valHtml, bodyHtml, go, title) => `<div class="plv-card" onclick="plvTab('${go}')" title="${title}">
     <div class="plv-card-h"><span class="plv-card-l">${lbl}</span>${valHtml}</div>${bodyHtml}</div>`;
   return `<div class="plv-cards">
-    ${card('ΜΑΣ ΟΦΕΙΛΟΥΝ', `<span class="plv-card-v plv-in">${owed} pal</span>`, top3(owedList, '+'), 'clients', 'Άνοιγμα: Πελάτες')}
-    ${card('ΟΦΕΙΛΟΥΜΕ', `<span class="plv-card-v plv-out">${owe} pal</span>`, top3(oweList, '−'), 'partners', 'Άνοιγμα: Συνεργάτες')}
-    ${card('ΕΚΚΡΕΜΗ', `<span class="plv-card-v" style="color:var(--warning)">${pend.length}</span>`,
-      `<div class="plv-card-row"><span>${withSheet} με δελτίο</span></div><div class="plv-card-row"><span style="color:var(--warning);font-weight:600">${pend.length - withSheet} χωρίς δελτίο</span></div>`, 'pending', 'Άνοιγμα: Εκκρεμείς')}
+    ${card('ΜΑΣ ΟΦΕΙΛΟΥΝ', `<span class="plv-card-v plv-in">${owed} παλ.</span>`, top3(owedList, '+'), 'clients', 'Άνοιγμα: Πελάτες')}
+    ${card('ΟΦΕΙΛΟΥΜΕ', `<span class="plv-card-v plv-out">${owe} παλ.</span>`, top3(oweList, '−'), 'partners', 'Άνοιγμα: Συνεργάτες')}
+    ${card('ΕΚΚΡΕΜΗ', `<span class="plv-card-v" style="color:var(--warn)">${pend.length}</span>`,
+      `<div class="plv-card-row"><span>${withSheet} με δελτίο</span></div><div class="plv-card-row"><span style="color:var(--warn);font-weight:600">${pend.length - withSheet} χωρίς δελτίο</span></div>`, 'pending', 'Άνοιγμα: Εκκρεμείς')}
   </div>`;
 }
 
@@ -264,7 +280,7 @@ function _plvBalanceTable(kind) {
     .sort((a, b) => b.balance - a.balance); // πρώτα όποιος μας χρωστάει τα περισσότερα
   if (!rows.length) return `<div class="plv-empty">
     ${typeof icon === 'function' ? icon('check_circle', 28) : ''}
-    <div style="margin:10px 0 4px;font-weight:600;color:var(--text)">Κανένα ανοιχτό υπόλοιπο</div>
+    <div style="margin:8px 0 4px;font-weight:600;color:var(--text)">Κανένα ανοιχτό υπόλοιπο</div>
     <div>Όλα τα ισοζύγια ${kind === 'clients' ? 'πελατών' : 'συνεργατών'} είναι στο μηδέν.</div>
   </div>`;
   const idKey = kind === 'clients' ? 'client_id' : 'partner_id';
@@ -283,7 +299,7 @@ function _plvBalanceTable(kind) {
         ? '<span class="plv-dim">0 · ισοσκελισμένο</span>'
         : `<b class="${b.balance > 0 ? 'plv-in' : 'plv-out'}">${b.balance > 0 ? '+' : '−'}${Math.abs(b.balance)}</b> <span class="plv-dim">${b.balance > 0 ? 'μας χρωστά' : 'χρωστάμε'}</span>`}</td>
       <td class="plv-num"><span class="${b.pending_count ? '' : 'plv-dim'}">${b.pending_count || 0}</span></td>
-      <td style="color:var(--accent);font-size:var(--text-xs);text-align:right">ανάλυση →</td></tr>`).join('')}
+      <td style="color:var(--text-mid);font-size:var(--text-xs);text-align:right">ανάλυση →</td></tr>`).join('')}
   </table></div>`;
 }
 
@@ -292,89 +308,107 @@ const PLV_TABS = [['pending', 'Εκκρεμείς'], ['noreturn', 'Χωρίς π
 function _plvTabsHtml() {
   const pend = PLV.movements.filter(m => m.status === 'pending').length;
   const nr = _plvNoReturnCount();
+  // A tab with nothing behind it is disabled, not merely empty (DESIGN.md Δ2):
+  // a clickable «Χωρίς πλήρη επιστροφή» that opens an empty table reads as a
+  // bug. The active tab is never disabled — the user must be able to see
+  // where they are. Balance tabs count open lines; null = not loaded = enabled.
+  const balCount = k => PLV.balances[k] ? PLV.balances[k].filter(b => b.balance !== 0 || b.pending_count > 0).length : 1;
+  const counts = { pending: pend, noreturn: nr, all: PLV.movements.filter(m => m.status !== 'reversed').length,
+    clients: balCount('clients'), partners: balCount('partners') };
   return `<div class="plv-tabs">${PLV_TABS.map(([id, lbl]) => {
     // «Εκκρεμείς (N)»: ίδια μορφή με το συμβόλαιο (pallets.json) — ο κριτής
     // #1 σβήνει τα ψηφία και συγκρίνει το «Εκκρεμείς ()».
     const txt = id === 'pending' ? `${lbl} (${pend})` : id === 'noreturn' && nr ? `${lbl}<span class="plv-badge">${nr}</span>` : lbl;
-    return `<button class="plv-tab${PLV.tab === id ? ' on' : ''}" onclick="plvTab('${id}')">${txt}</button>`;
+    const off = counts[id] === 0 && PLV.tab !== id;
+    return `<button class="plv-tab${PLV.tab === id ? ' on' : ''}"${off ? ' disabled title="Καμία εγγραφή"' : ''} onclick="plvTab('${id}')">${txt}</button>`;
   }).join('')}</div>`;
 }
 
-// Το κοινό CSS της μονάδας — μία φορά ανά σχεδίαση, tokens μόνο.
+// Το κοινό CSS της μονάδας — μία φορά ανά σχεδίαση, tokens μόνο (DESIGN.md Β).
+// Every number on this page sits in a column (pallets, dates, codes), so
+// tabular-nums goes on the root and is inherited by all 53 cells — one rule,
+// not one per column (DESIGN.md Γ).
 const _PLV_STYLE = `<style>
-  .plv-page{padding:20px 24px;max-width:1280px;margin:0 auto;font-size:var(--text-sm);color:var(--text)}
-  .plv-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-  .plv-h1{font-family:Syne;font-size:20px;font-weight:700;margin:0}
-  .plv-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .plv-tabs{display:flex;gap:6px;flex-wrap:wrap}
-  .plv-tab{padding:6px 12px;border-radius:var(--radius-full);border:1px solid var(--silver-light);background:var(--bg-card);color:var(--text-mid);font-size:var(--text-sm);cursor:pointer;font-family:inherit;line-height:1.2}
-  .plv-tab:hover{border-color:var(--accent);color:var(--accent-text)}
-  .plv-tab.on,.plv-seg button.on{background:var(--navy-mid);border-color:var(--navy-mid);color:var(--bg-card)}
-  .plv-badge{display:inline-block;margin-left:6px;padding:0 6px;border-radius:var(--radius-full);background:var(--warning-bg);color:var(--warning);font-weight:700;font-size:var(--text-xs)}
+  #plvModal{font-size:var(--text-sm)}
+  .plv-page{padding:16px 24px;max-width:1280px;margin:0 auto;font-size:var(--text-sm);color:var(--text);font-variant-numeric:tabular-nums}
+  .plv-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .plv-h1{font-family:Syne;font-size:28px;font-weight:700;margin:0;line-height:1.2}
+  .plv-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .plv-tabs{display:flex;gap:4px;flex-wrap:wrap}
+  .plv-tab{padding:4px 12px;border-radius:var(--radius-full);border:1px solid var(--border);background:var(--surface-card);color:var(--text-mid);font-size:var(--text-sm);cursor:pointer;font-family:inherit;line-height:1.2}
+  .plv-tab:hover{border-color:var(--text-dim);color:var(--text)}
+  .plv-tab.on,.plv-seg button.on{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--text-on-dark)}
+  .plv-tab:disabled,.plv-tab:disabled:hover{color:var(--text-dim);border-color:var(--border);background:var(--surface-page);cursor:not-allowed}
+  .plv-badge{display:inline-block;margin-left:4px;padding:0 6px;border-radius:var(--radius-full);background:var(--warn-bg);color:var(--warn);font-weight:700;font-size:var(--text-xs)}
   .plv-search{position:relative;display:flex;align-items:center}
-  .plv-search input{width:210px;padding:7px 26px 7px 10px;font-size:var(--text-sm);border:1px solid var(--silver-light);border-radius:var(--radius);background:var(--bg-card);color:var(--text);font-family:inherit}
-  .plv-x{position:absolute;right:8px;cursor:pointer;color:var(--text-dim);font-size:16px;line-height:1}
-  .plv-count,.plv-date,.plv-seg{font-size:var(--text-xs);color:var(--text-dim);white-space:nowrap}
-  .plv-date input{padding:5px 6px;font-size:var(--text-xs);border:1px solid var(--silver-light);border-radius:var(--radius);font-family:inherit;color:var(--text)}
+  .plv-search input{width:210px;padding:4px 24px 4px 8px;font-size:var(--text-sm);border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-family:inherit}
+  .plv-x{position:absolute;right:8px;cursor:pointer;color:var(--text-dim);font-size:var(--text-base);line-height:1}
+  .plv-count,.plv-date,.plv-seg{font-size:var(--text-xs);color:var(--text-mid);white-space:nowrap}
+  .plv-date input{padding:4px;font-size:var(--text-xs);border:1px solid var(--border);border-radius:var(--radius);font-family:inherit;color:var(--text)}
   .plv-seg{display:flex;gap:4px;align-items:center}
-  .plv-seg button{padding:4px 10px;border-radius:var(--radius-full);border:1px solid var(--silver-light);background:var(--bg-card);color:var(--text-mid);font-size:var(--text-xs);cursor:pointer;font-family:inherit}
-  .plv-link{background:none;border:0;color:var(--accent);font-weight:600;font-size:var(--text-body);cursor:pointer;font-family:inherit;padding:6px 8px}
-  .plv-link:hover{color:var(--accent-text);text-decoration:underline}
-  .plv-cards{display:flex;gap:12px;margin:14px 0 12px;flex-wrap:wrap}
-  .plv-card{flex:1 1 200px;background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius-md);padding:10px 14px;cursor:pointer;transition:box-shadow .15s,border-color .15s}
-  .plv-card:hover{border-color:var(--accent);box-shadow:var(--shadow-sm)}
+  .plv-seg button{padding:4px 8px;border-radius:var(--radius-full);border:1px solid var(--border);background:var(--surface-card);color:var(--text-mid);font-size:var(--text-xs);cursor:pointer;font-family:inherit}
+  /* Accent is reserved for the one primary action («+ Νέα κίνηση»); links are plain text */
+  .plv-link{background:none;border:0;color:var(--text);font-weight:600;font-size:var(--text-body);cursor:pointer;font-family:inherit;padding:4px 8px;text-decoration:underline}
+  .plv-link:hover{color:var(--text-mid)}
+  .plv-cards{display:flex;gap:12px;margin:12px 0 8px;flex-wrap:wrap}
+  .plv-card{flex:1 1 200px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:8px 12px;cursor:pointer;transition:border-color .15s}
+  .plv-card:hover{border-color:var(--text-dim)}
   .plv-card-h{display:flex;justify-content:space-between;align-items:baseline}
-  .plv-card-l{font-size:10px;font-weight:700;letter-spacing:.06em;color:var(--text-mid)}
-  .plv-card-v{font-family:Syne;font-size:17px;font-weight:700}
+  .plv-card-l{font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;color:var(--text-mid)}
+  .plv-card-v{font-size:18px;font-weight:700}
   .plv-card-row{display:flex;justify-content:space-between;gap:8px;font-size:var(--text-xs);margin-top:4px;color:var(--text-mid)}
   .plv-card-row:hover span{text-decoration:underline}
-  .plv-strip{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0;padding:8px 12px;background:var(--bg-hover);border-radius:var(--radius);font-size:var(--text-xs);color:var(--text-dim)}
+  .plv-strip{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 0;padding:8px 12px;background:var(--surface-sunken);border-radius:var(--radius);font-size:var(--text-xs);color:var(--text-mid)}
   .plv-tbl{width:100%;border-collapse:collapse;font-size:var(--text-sm)}
-  .plv-tbl th{padding:8px 10px;text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--bg-hover);white-space:nowrap}
-  .plv-tbl td{padding:0 10px;height:36px;border-top:1px solid var(--silver-light);white-space:nowrap;vertical-align:middle}
+  .plv-tbl th{padding:8px;text-align:left;font-size:var(--text-xs);font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);background:var(--surface-sunken);white-space:nowrap}
+  .plv-tbl td{padding:0 8px;height:32px;border-top:1px solid var(--border);white-space:nowrap;vertical-align:middle}
   .plv-tbl td.plv-wrap{white-space:normal}
-  .plv-tbl tr.plv-row{cursor:pointer}.plv-tbl tr.plv-row:hover td{background:var(--bg-hover)}
-  .plv-code{font-weight:600}.plv-dim{color:var(--text-dim)}.plv-loc{color:var(--text-dim);text-transform:uppercase;font-size:var(--text-xs)}
+  .plv-tbl tr.plv-row{cursor:pointer}.plv-tbl tr.plv-row:hover td{background:var(--surface-sunken)}
+  .plv-code{font-weight:600}.plv-dim{color:var(--text-dim)}.plv-loc{color:var(--text-mid);text-transform:uppercase;font-size:var(--text-xs)}
   .plv-num{text-align:right}
-  .plv-in{color:var(--success);font-weight:600}.plv-out{color:var(--danger);font-weight:600}.plv-zero{color:var(--text-dim);opacity:.6}
-  .plv-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:var(--radius-full);border:1px solid var(--silver-light);font-size:var(--text-xs);font-weight:500;white-space:nowrap;color:var(--text-mid);line-height:1.4}
+  .plv-in{color:var(--ok);font-weight:600}.plv-out{color:var(--danger);font-weight:600}.plv-zero{color:var(--text-dim)}
+  .plv-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:var(--radius-full);border:1px solid var(--border);font-size:var(--text-xs);font-weight:500;white-space:nowrap;color:var(--text-mid);line-height:1.4}
   .plv-pill i{width:6px;height:6px;border-radius:50%;background:var(--text-dim)}
-  .plv-pill-pending i{background:var(--warning)}.plv-pill-ok i{background:var(--success)}
-  .plv-clip{color:var(--text-dim);text-decoration:none}.plv-clip:hover{color:var(--accent)}
-  .plv-ghead{display:flex;align-items:center;gap:8px;background:var(--accent-light);border-radius:var(--radius);padding:6px 12px;margin:8px 0 0;cursor:pointer;user-select:none}
-  .plv-gname{font-family:Syne;font-size:13.5px;font-weight:700}
-  .plv-gsum{margin-left:auto;font-size:var(--text-xs);color:var(--text-dim);white-space:nowrap}
-  .plv-empty{padding:44px;text-align:center;color:var(--text-dim);font-size:var(--text-sm)}
-  /* Modal — Figma w2-pallet-movement-form: 680px, δύο στήλες, dashed dropzone */
+  .plv-pill-pending i{background:var(--warn)}.plv-pill-ok i{background:var(--ok)}
+  .plv-clip{color:var(--text-dim);text-decoration:none}.plv-clip:hover{color:var(--text)}
+  .plv-ghead{display:flex;align-items:center;gap:8px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px 12px;margin:8px 0 0;cursor:pointer;user-select:none}
+  .plv-gname{font-size:var(--text-body);font-weight:700}
+  .plv-gsum{margin-left:auto;font-size:var(--text-xs);color:var(--text-mid);white-space:nowrap}
+  .plv-empty{padding:32px;text-align:center;color:var(--text-mid);font-size:var(--text-sm)}
+  /* Failure state — amber, never the grey dashed «empty» (DESIGN.md #7) */
+  .plv-fail{margin:16px auto;max-width:56ch;padding:16px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:var(--text-body)}
+  .plv-fail b{display:block;margin-bottom:4px}
+  /* Modal — Figma w2-pallet-movement-form: 680px, δύο στήλες, dashed dropzone.
+     Scrim: no token exists for the overlay tint — same rgba the app's own overlays use. */
   .plv-overlay{position:fixed;inset:0;background:rgba(11,25,41,.45);display:flex;align-items:center;justify-content:center;z-index:var(--z-overlay,1000)}
-  .plv-modal{background:var(--bg-card);color:var(--text);border-radius:var(--radius-md);box-shadow:var(--shadow-md);width:min(680px,94vw);max-height:92vh;overflow:auto}
+  .plv-modal{background:var(--surface-card);color:var(--text);border-radius:var(--radius);box-shadow:var(--shadow-md);width:min(680px,94vw);max-height:92vh;overflow:auto}
   .plv-modal.plv-sm{width:min(460px,94vw)}
-  .plv-mhead{display:flex;align-items:center;gap:8px;padding:18px 24px 14px}
+  .plv-mhead{display:flex;align-items:center;gap:8px;padding:16px 24px 12px}
   .plv-mhead h3{font-family:Syne;font-size:18px;margin:0}
-  .plv-mclose{margin-left:auto;cursor:pointer;font-size:16px;color:var(--text-dim);line-height:1}
-  .plv-mbody{padding:0 24px 8px;display:flex;flex-direction:column;gap:14px}
-  .plv-grid2{display:flex;gap:14px}.plv-grid2>*{flex:1 1 0;min-width:0}
-  .plv-f{display:flex;flex-direction:column;gap:6px;font-size:var(--text-xs);color:var(--text-mid)}
-  .plv-f input,.plv-f select{width:100%;box-sizing:border-box;padding:8px 12px;font-size:var(--text-body);font-family:inherit;color:var(--text);background:var(--bg-card);border:1px solid var(--silver-light);border-radius:var(--radius)}
-  .plv-f input:focus,.plv-f select:focus{outline:2px solid var(--accent);outline-offset:-1px}
-  .plv-hint{font-size:var(--text-xs);color:var(--text-dim)}
-  .plv-drop{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 16px;border:1px dashed var(--silver-light);border-radius:var(--radius);cursor:pointer;text-align:center}
-  .plv-drop:hover,.plv-drop.over{border-color:var(--accent);background:var(--accent-light)}
-  .plv-drop b{font-size:var(--text-sm);font-weight:500;color:var(--text-mid)}.plv-drop span{font-size:var(--text-xs);color:var(--text-dim)}
-  .plv-mfoot{display:flex;align-items:center;gap:10px;padding:14px 24px 18px;font-size:var(--text-xs);color:var(--warning)}
+  .plv-mclose{margin-left:auto;cursor:pointer;font-size:var(--text-base);color:var(--text-dim);line-height:1}
+  .plv-mbody{padding:0 24px 8px;display:flex;flex-direction:column;gap:12px}
+  .plv-grid2{display:flex;gap:12px}.plv-grid2>*{flex:1 1 0;min-width:0}
+  .plv-f{display:flex;flex-direction:column;gap:4px;font-size:var(--text-xs);color:var(--text-mid)}
+  .plv-f input,.plv-f select{width:100%;box-sizing:border-box;padding:8px 12px;font-size:var(--text-body);font-family:inherit;color:var(--text);background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius)}
+  .plv-f input:focus,.plv-f select:focus{outline:2px solid var(--text);outline-offset:-1px}
+  .plv-hint{font-size:var(--text-xs);color:var(--text-mid)}
+  .plv-drop{display:flex;flex-direction:column;align-items:center;gap:4px;padding:12px 16px;border:1px dashed var(--border);border-radius:var(--radius);cursor:pointer;text-align:center}
+  .plv-drop:hover,.plv-drop.over{border-color:var(--text-dim);background:var(--surface-sunken)}
+  .plv-drop b{font-size:var(--text-sm);font-weight:500;color:var(--text-mid)}.plv-drop span{font-size:var(--text-xs);color:var(--text-mid)}
+  .plv-mfoot{display:flex;align-items:center;gap:8px;padding:12px 24px 16px;font-size:var(--text-xs);color:var(--warn)}
   .plv-mfoot .plv-sp{flex:1}
-  .plv-btn-ghost{background:none;border:0;color:var(--accent);font-weight:600;font-size:var(--text-body);padding:8px 16px;cursor:pointer;font-family:inherit;border-radius:var(--radius)}
-  .plv-btn-ghost:hover{background:var(--accent-light)}
+  .plv-btn-ghost{background:var(--surface-card);border:1px solid var(--border);color:var(--text);font-weight:600;font-size:var(--text-body);padding:8px 16px;cursor:pointer;font-family:inherit;border-radius:var(--radius)}
+  .plv-btn-ghost:hover{background:var(--surface-sunken)}
   .plv-btn-danger{background:none;border:1px solid var(--danger);color:var(--danger);font-weight:600;font-size:var(--text-body);padding:8px 16px;cursor:pointer;font-family:inherit;border-radius:var(--radius)}
-  .plv-note{font-size:var(--text-xs);color:var(--warning);margin:0}
-  /* Πλαϊνό πάνελ κίνησης */
-  .plv-panel{position:absolute;top:0;right:0;bottom:0;width:min(400px,94vw);background:var(--bg-card);color:var(--text);box-shadow:var(--shadow-md);padding:22px;overflow:auto}
-  .plv-prow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--silver-light);font-size:var(--text-body)}
-  .plv-prow span:first-child{color:var(--text-dim);white-space:nowrap}.plv-prow span:last-child{text-align:right}
+  .plv-note{font-size:var(--text-xs);color:var(--warn);margin:0}
+  /* Πλαϊνό πάνελ κίνησης — floats above the page, so a shadow is allowed (DESIGN.md Δ) */
+  .plv-panel{position:absolute;top:0;right:0;bottom:0;width:min(400px,94vw);background:var(--surface-card);color:var(--text);box-shadow:var(--shadow-md);padding:24px;overflow:auto}
+  .plv-prow{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border);font-size:var(--text-body)}
+  .plv-prow span:first-child{color:var(--text-mid);white-space:nowrap}.plv-prow span:last-child{text-align:right}
   /* Typeahead: color ρητά — το --panel τυχαίνει να έχει την ίδια τιμή με το --text,
      οπότε χωρίς αυτό η λίστα βγαίνει σκούρο σε σκούρο (πιάστηκε live 12/8). */
-  .plv-ac{position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--bg-card);color:var(--text);border:1px solid var(--silver-light);border-radius:var(--radius);max-height:210px;overflow:auto;box-shadow:var(--shadow-md)}
-  .plv-ac>div{padding:9px 12px;font-size:var(--text-body);cursor:pointer}.plv-ac>div:hover{background:var(--bg-hover)}
+  .plv-ac{position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface-card);color:var(--text);border:1px solid var(--border);border-radius:var(--radius);max-height:210px;overflow:auto;box-shadow:var(--shadow-md)}
+  .plv-ac>div{padding:8px 12px;font-size:var(--text-body);cursor:pointer}.plv-ac>div:hover{background:var(--surface-sunken)}
 </style>`;
 
 function _plvDraw() {
@@ -394,7 +428,7 @@ function _plvDraw() {
         ${[['client', 'Ανά πελάτη'], ['location', 'Ανά σημείο'], ['none', 'Χωρίς']].map(([v, l]) =>
           `<button class="${PLV.groupBy === v ? 'on' : ''}" onclick="plvGroupBy('${v}')">${l}</button>`).join('')}
       </div>
-      ${PLV.enrichFail ? '<span style="color:var(--warning)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}`;
+      ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
       <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>`;
   // Δύο διατάξεις κεφαλής (Figma): με κάρτες οφειλών (Εκκρεμείς/Χωρίς πλήρη
@@ -404,11 +438,11 @@ function _plvDraw() {
        ${_plvOverview()}
        <div class="plv-top">${_plvTabsHtml()}<div class="plv-right">${filters}</div></div>`
     : `<div class="plv-top"><h1 class="plv-h1">Ισοζύγιο Παλετών</h1>${_plvTabsHtml()}<div class="plv-right">${actions}</div></div>
-       ${isBalanceTab ? _plvBalanceStrip(PLV.tab) : `<div class="plv-top" style="margin-top:10px"><div class="plv-right">${filters}</div></div>`}`;
+       ${isBalanceTab ? _plvBalanceStrip(PLV.tab) : `<div class="plv-top" style="margin-top:8px"><div class="plv-right">${filters}</div></div>`}`;
   c.innerHTML = `${_PLV_STYLE}
   <div class="plv-page">
     ${head}
-    <div id="plvTbl" style="margin-top:12px">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvListHtml(rows)}</div>
+    <div id="plvTbl" style="margin-top:8px">${isBalanceTab ? _plvBalanceTable(PLV.tab) : _plvListHtml(rows)}</div>
   </div>
   <div id="plvModal"></div>`;
   // Όλο το #plvTbl ως ΕΝΑ σύνολο: στην ομαδοποιημένη όψη κάθε ομάδα είναι δικός
@@ -433,7 +467,7 @@ function _plvRowExtras(m) {
   if (f['Is Partner Trip']) {
     const pid = getLinkedId(f['Partner']);
     const p = pid ? getRefPartners().find(x => x.id === pid) : null;
-    carrier = ((p && p.fields['Company Name']) || 'Partner')
+    carrier = ((p && p.fields['Company Name']) || 'Συνεργάτης')
       + (f['Partner Truck Plates'] ? ' · ' + f['Partner Truck Plates'] : '');
   } else {
     carrier = getTruckPlate(getLinkedId(f['Truck'])) || '';
@@ -470,9 +504,9 @@ function _plvMovementRow(m, grouped) {
 
 const _PLV_EMPTY = (cols) => `<tr><td colspan="${cols}" class="plv-empty" style="height:auto">
         ${typeof icon === 'function' ? icon('package', 28) : ''}
-        <div style="margin:10px 0 4px;font-weight:600;color:var(--text)">Καμία κίνηση εδώ</div>
+        <div style="margin:8px 0 4px;font-weight:600;color:var(--text)">Καμία κίνηση εδώ</div>
         <div>Δοκίμασε άλλο tab ή καθάρισε αναζήτηση/ημερομηνίες.</div>
-        <button class="btn-new-order" style="margin-top:14px" onclick="plvNewMovement()">+ Νέα κίνηση</button>
+        <button class="btn-new-order" style="margin-top:12px" onclick="plvNewMovement()">+ Νέα κίνηση</button>
       </td></tr>`;
 
 // Ίδια πλάτη σε ΟΛΑ τα τμήματα ώστε οι στήλες να ευθυγραμμίζονται μεταξύ ομάδων.
@@ -588,7 +622,7 @@ function plvGroupBy(mode) {
 function _plvListHtml(rows) {
   if (PLV.groupBy === 'none' || !rows.length) return _plvTableHtml(rows);
   const groups = _plvBuildGroups(rows);
-  const arrow = (o) => `<span class="plv-dim" style="display:inline-block;width:12px;font-size:10px">${o ? '▾' : '▸'}</span>`;
+  const arrow = (o) => `<span class="plv-dim" style="display:inline-block;width:12px;font-size:var(--text-xs)">${o ? '▾' : '▸'}</span>`;
   let html = '<div>' + _plvGroupHead();
   groups.forEach(T => {
     const o = _plvIsOpen(T.key, groups.length);
@@ -669,11 +703,11 @@ async function plvDrill(kind, id) {
         <div class="plv-right"><button class="plv-link" onclick="plvStmtCSV()">Εξαγωγή CSV καρτέλας</button></div>
       </div>
       <div class="plv-strip">
-        <span>Υπόλοιπο <b class="${balCls}">${bal ? (bal.balance > 0 ? '+' : '') + bal.balance : '0'} pal</b></span>
+        <span>Υπόλοιπο <b class="${balCls}">${bal ? (bal.balance > 0 ? '+' : '') + bal.balance : '0'} παλ.</b></span>
         <span class="plv-dim">·</span><span>${pendCnt} εκκρεμείς (εκτός τρεχούμενου)</span>
       </div>
-      ${locRows.length ? `<div class="plv-card-l" style="margin:16px 0 6px">ΑΝΑ ΣΗΜΕΙΟ</div>
-      <table class="plv-tbl" style="width:auto;min-width:280px;margin-bottom:6px">
+      ${locRows.length ? `<div class="plv-card-l" style="margin:16px 0 4px">ΑΝΑ ΣΗΜΕΙΟ</div>
+      <table class="plv-tbl" style="width:auto;min-width:280px;margin-bottom:8px">
         ${locRows.map(l => `<tr><td class="plv-wrap">${escapeHtml(l.location_name || '—')}</td>
         <td class="plv-num"><b class="${l.balance > 0 ? 'plv-in' : 'plv-out'}">${l.balance > 0 ? '+' : ''}${l.balance}</b></td></tr>`).join('')}
       </table>` : ''}
@@ -697,7 +731,7 @@ async function plvDrill(kind, id) {
     </div>
     <div id="plvModal"></div>`;
   } catch (e) {
-    showErrorToast('Αποτυχία καρτέλας: ' + e.message, 'error');
+    showErrorToast('Αποτυχία καρτέλας: ' + _plvErrMsg(e), 'error');
     _plvDraw();
   }
 }
@@ -868,7 +902,7 @@ async function plvDoConfirm(id) {
     } else {
       plvCloseModal(); await renderPalletLedger();
     }
-  } catch (e) { showErrorToast('Αποτυχία επιβεβαίωσης: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Αποτυχία επιβεβαίωσης: ' + _plvErrMsg(e), 'error'); }
   // Σε αποτυχία: το μήνυμα του Worker εμφανίζεται, το modal ΜΕΝΕΙ στην
   // τρέχουσα κίνηση — ο wizard δεν προσπερνά ποτέ σιωπηλά (αρχή 1).
   finally { PLV.busy = false; }
@@ -893,7 +927,7 @@ function plvOpenPanel(id) {
     : m.status === 'confirmed' && m.event_type === 'DELIVERY' ? `
       <button class="btn-new-order" style="width:100%" onclick="plvCloseModal();plvFixDelivery(${m.id})">Διόρθωση ανταλλαγής</button>`
     : m.status === 'confirmed' ? `
-      <div class="plv-hint" style="margin-bottom:6px">Οι οριστικές δεν σβήνονται — μόνο αντιλογισμός, με αιτιολογία:</div>
+      <div class="plv-hint" style="margin-bottom:4px">Οι οριστικές δεν σβήνονται — μόνο αντιλογισμός, με αιτιολογία:</div>
       <div class="plv-f"><input id="plvRevReason" type="text" placeholder="Αιτιολογία αντιλογισμού"></div>
       <button class="plv-btn-danger" style="width:100%;margin-top:8px" onclick="plvPanelReverse(${m.id})">Αντιλογισμός</button>`
     : '';
@@ -904,7 +938,7 @@ function plvOpenPanel(id) {
         <h3>${m.code}</h3>
         <span class="plv-mclose" onclick="plvCloseModal()" title="Κλείσιμο (Esc)">✕</span>
       </div>
-      <div style="margin:8px 0 14px">${_plvPill(m.status)}</div>
+      <div style="margin:8px 0 12px">${_plvPill(m.status)}</div>
       ${row('Είδος', PLV_EVENT_GR[m.event_type] || m.event_type)}
       ${row('Αντισυμβαλλόμενος', escapeHtml(_plvName(m)))}
       ${row('Σημείο', escapeHtml(_plvLoc(m)) || '—')}
@@ -917,7 +951,7 @@ function plvOpenPanel(id) {
       ${m.confirmed_by ? row('Επιβεβαίωση', `${m.confirmed_by}${m.confirmed_at ? ' · ' + _plvFmtDate(m.confirmed_at) : ''}`) : ''}
       ${m.reason ? row('Αιτιολογία', escapeHtml(m.reason)) : ''}
       ${m.notes ? row('Σημείωση', escapeHtml(m.notes)) : ''}
-      <div style="margin-top:18px">${actions}</div>
+      <div style="margin-top:16px">${actions}</div>
     </div>
   </div>`;
   document.addEventListener('keydown', _plvEsc);
@@ -929,7 +963,7 @@ async function plvPanelDelete(id) {
     await plFetch('/pallets/movements/' + id, { method: 'DELETE' });
     toast('Η εκκρεμής διαγράφηκε ✓');
     plvCloseModal(); await renderPalletLedger();
-  } catch (e) { showErrorToast('Αποτυχία διαγραφής: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Αποτυχία διαγραφής: ' + _plvErrMsg(e), 'error'); }
 }
 
 async function plvPanelReverse(id) {
@@ -939,7 +973,7 @@ async function plvPanelReverse(id) {
     await plFetch('/pallets/movements/' + id + '/reverse', { method: 'POST', body: { reason } });
     toast('Αντιλογίστηκε ✓');
     plvCloseModal(); await renderPalletLedger();
-  } catch (e) { showErrorToast('Αποτυχία αντιλογισμού: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Αποτυχία αντιλογισμού: ' + _plvErrMsg(e), 'error'); }
 }
 
 /* ── Διόρθωση ανταλλαγής (σενάριο Lidl): reverse + σωστό replacement ── */
@@ -983,7 +1017,7 @@ async function plvDoFix(id) {
     if (res.replacement) await plFetch('/pallets/movements/' + res.replacement.id + '/confirm', { method: 'POST' });
     toast('Διόρθωση καταχωρήθηκε ✓');
     plvCloseModal(); await renderPalletLedger();
-  } catch (e) { showErrorToast('Αποτυχία διόρθωσης: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Αποτυχία διόρθωσης: ' + _plvErrMsg(e), 'error'); }
   finally { PLV.busy = false; }
 }
 
@@ -1014,14 +1048,14 @@ function plvAcSearch(field, type) {
     } catch (e) {
       // Σιωπηλή άδεια λίστα θα διαβαζόταν ως «δεν υπάρχει τέτοιος πελάτης» και
       // η λογίστρια θα άνοιγε διπλοεγγραφή.
-      box.innerHTML = '<div style="color:var(--danger)">Σφάλμα αναζήτησης: ' + escapeHtml(e.message) + '</div>';
+      box.innerHTML = '<div style="color:var(--danger)">Σφάλμα αναζήτησης: ' + escapeHtml(_plvErrMsg(e)) + '</div>';
       box.style.display = 'block';
       return;
     }
     PLV_AC.rows[field] = rows;
     box.innerHTML = rows.length
       ? rows.map((r, i) => `<div onmousedown="plvAcPick('${field}',${i})">${escapeHtml(r.name || '')}` +
-          (r.kind === 'P' ? ' <span class="plv-dim">· partner</span>' : '') + '</div>').join('')
+          (r.kind === 'P' ? ' <span class="plv-dim">· συνεργάτης</span>' : '') + '</div>').join('')
       : '<div class="plv-dim">Καμία εγγραφή</div>';
     box.style.display = 'block';
   }, 250);
@@ -1062,14 +1096,14 @@ function plvNewMovement() {
           ${_plvField('Είδος *', `<select id="plvNmType">
             <option value="RETURN_OUT">Επιστροφή αδειών (δίνουμε)</option>
             <option value="RETURN_IN">Παραλαβή αδειών (παίρνουμε)</option>
-            <option value="PARTNER_PICKUP">Partner πήρε από εμάς</option>
-            <option value="PARTNER_DROPOFF">Partner μάς έφερε</option>
+            <option value="PARTNER_PICKUP">Συνεργάτης πήρε από εμάς</option>
+            <option value="PARTNER_DROPOFF">Συνεργάτης μάς έφερε</option>
             <option value="ADJUSTMENT">Τακτοποίηση/διαγραφή οφειλής (μόνο owner)</option>
           </select>`)}
           ${_plvField('Ημερομηνία', `<input id="plvNmDate" type="date" value="${new Date().toISOString().slice(0, 10)}" min="2020-01-01" max="2030-12-31">`)}
         </div>
         <div class="plv-grid2">
-          ${_plvField('Αντισυμβαλλόμενος *', ac('plvNmParty', 'party', 'Πελάτης ή partner — 2+ γράμματα'))}
+          ${_plvField('Αντισυμβαλλόμενος *', ac('plvNmParty', 'party', 'Πελάτης ή συνεργάτης — 2+ γράμματα'))}
           ${_plvField('Σημείο (προαιρετικό)', ac('plvNmLoc', 'locations', 'Τοποθεσία — 2+ γράμματα'))}
         </div>
         <div class="plv-grid2">
@@ -1131,7 +1165,7 @@ async function plvDoCreate() {
     await plFetch('/pallets/movements', { method: 'POST', body });
     toast(path ? 'Κίνηση καταχωρήθηκε και οριστικοποιήθηκε ✓' : 'Κίνηση καταχωρήθηκε ως εκκρεμής — θέλει επιβεβαίωση');
     plvCloseModal(); await renderPalletLedger();
-  } catch (e) { showErrorToast('Αποτυχία: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Αποτυχία: ' + _plvErrMsg(e), 'error'); }
   finally { PLV.busy = false; }
 }
 
@@ -1139,7 +1173,7 @@ async function plvViewSheet(path) {
   try {
     const r = await plFetch('/pallets/sheets?path=' + encodeURIComponent(path));
     window.open(r.url, '_blank');
-  } catch (e) { showErrorToast('Δεν άνοιξε το δελτίο: ' + e.message, 'error'); }
+  } catch (e) { showErrorToast('Δεν άνοιξε το δελτίο: ' + _plvErrMsg(e), 'error'); }
 }
 
 window.renderPalletLedger = renderPalletLedger;

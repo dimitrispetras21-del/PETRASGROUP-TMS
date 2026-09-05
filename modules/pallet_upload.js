@@ -587,9 +587,9 @@ async function _puSave() {
     } else {
       // All done — close after brief delay
       const body = document.getElementById('puBody');
-      body.innerHTML = `<div style="text-align:center;padding:40px">
-        <div style="font-size:48px;margin-bottom:16px">✓</div>
-        <div style="font-size:18px;font-weight:600;color:var(--success)">Όλα τα δελτία καταχωρήθηκαν</div>
+      body.innerHTML = `<div style="text-align:center;padding:32px">
+        <div style="font-size:28px;margin-bottom:16px;color:var(--ok)">✓</div>
+        <div style="font-size:18px;font-weight:600;color:var(--ok)">Όλα τα δελτία καταχωρήθηκαν</div>
         <div style="margin-top:8px;color:var(--text-dim)">${records.length} εγγραφές δημιουργήθηκαν</div>
       </div>`;
       setTimeout(closePalletUpload, 2000);
