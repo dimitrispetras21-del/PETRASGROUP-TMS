@@ -3322,3 +3322,47 @@ git commit -q -m "ledger-import: rows below ΣΥΝΟΛΟ without a running value
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10j: memo rule — on sheets without a ΠΡΟΟΔΕΥΤΙΚΟ column only undated rows below ΣΥΝΟΛΟ are memos
+
+**Why.** Task 10i treated every row after a ΣΥΝΟΛΟ line as a memo on sheets that have no ΠΡΟΟΔΕΥΤΙΚΟ column. Old sheets (2019 layouts, the ΜΠΡΑΧΟ 2021–24 sheet) carry yearly ΣΥΝΟΛΟ subtotals with hundreds of real, dated rows after them — 3,083 rows were dropped, 688 in one sheet. The memo pattern that motivated 10i (ΤΣΑΡΝΟΥΧΑΣ) lives on a sheet WITH a running column, where the rule «entry only if ΠΡΟΟΔΕΥΤΙΚΟ continues» is right. On sheets without a running column, a dated row below ΣΥΝΟΛΟ is an entry; only an undated one is a memo.
+
+**Files:** `tools/ledger-import/inventory.py`, `tools/ledger-import/tests/test_inventory.py`
+
+- [ ] **Step 1: Test** — replace `test_totals_ends_a_sheet_without_running_column` with:
+```python
+    def test_totals_on_sheet_without_running_keeps_dated_rows(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250),
+                   (None, 'ΣΥΝΟΛΟ 2025', 300, 50, None, 500, 250),
+                   (dt.datetime(2026, 1, 10), 'ΑΘΗΝΑ', 100, None, None, 230, 130),      # dated → entry
+                   (None, 'ΕΞΟΦΛΗΘΗ', 1002, None, None, None, -1002)])                   # undated → memo
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 2); self.assertEqual(n['after_totals_skipped'], 1)
+        self.assertEqual(n['balance_sum'], '380.00')
+```
+- [ ] **Step 2: Run** → 1 failure.
+- [ ] **Step 3: Implement** — change the memo condition in `parse_sheet` to:
+```python
+        if after_totals and (('running' in cols and not is_num(cells.get('running'))) or ('running' not in cols and to_date(cells.get('date')) is None)):
+```
+(import `to_date` from `rules` if it is not imported already) and update the comment: with a ΠΡΟΟΔΕΥΤΙΚΟ column the running value decides; without one, the date decides.
+- [ ] **Step 4:** suite OK (same count, 95); `python3 tools/ledger-import/inventory.py` (record `rows` and `after-totals memos` — rows should be back near 34,900 and memos in the low hundreds), `python3 tools/ledger-import/make_plan.py | tail -1`, `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`, and the CHANGED list versus `tools/ledger-import/work/plans_snapshot_pre10h.json`:
+```bash
+python3 - <<'PY'
+import json,glob
+s=json.load(open('tools/ledger-import/work/plans_snapshot_pre10h.json',encoding='utf-8'))
+for p in glob.glob('tools/ledger-import/work/plans/*.json'):
+    d=json.load(open(p,encoding='utf-8')); o=s.get(d['driver_key'],{})
+    if o.get('total')!=d['expected_total_balance'] or o.get('status')!=d['status']: print('CHANGED',d['driver_key'],o.get('status'),o.get('total'),'→',d['status'],d['expected_total_balance'])
+PY
+```
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/inventory.py tools/ledger-import/tests/test_inventory.py
+git commit -q -m "ledger-import: memo rule — without a ΠΡΟΟΔΕΥΤΙΚΟ column only undated rows below ΣΥΝΟΛΟ are memos
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
