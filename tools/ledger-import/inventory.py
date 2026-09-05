@@ -4,10 +4,10 @@ normalised by rules.py. Reads with data_only=True so the cached ΠΡΟΟΔΕΥΤ
 visible. Nothing here decides anything — it records, and it repairs only what
 rules.py allows (year spikes, missing dates inherited from the line above), each
 repair written into the row's note."""
-import datetime as dt, json, os, warnings
+import argparse, datetime as dt, json, os, warnings
 from decimal import Decimal
 import openpyxl
-from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, to_date, Unknown
+from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, to_date, Unknown, FIELD_KEYS, norm
 warnings.filterwarnings('ignore')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -23,6 +23,17 @@ def jsonable(v):
 def add_note(entry, text):
     entry['note'] = (entry['note'] + ' · ' + text) if entry.get('note') else text
 
+TEXT_AMOUNT_FIELDS = ('advance', 'expenses', 'value', 'balance')
+
+def collect_text_amounts(cells, rn, out):
+    # I8: a cell typed as text in an amount column (e.g. a formula error, or a
+    # human typing "?") silently becomes 0 once openpyxl/is_num see it — the row
+    # looks like a real amount and vanishes. Flag it instead of guessing.
+    for field in TEXT_AMOUNT_FIELDS:
+        v = cells.get(field)
+        if isinstance(v, str) and v.strip():
+            out.append({'row': rn, 'field': field, 'text': v[:40]})
+
 def parse_sheet(ws, today):
     head = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row or 0, 400), values_only=True))
     h = detect_header(head)
@@ -32,6 +43,7 @@ def parse_sheet(ws, today):
     pending = []  # leading undated rows waiting for the first dated row
     after_totals = False
     memos = []  # rows below ΣΥΝΟΛΟ line without a running value (loan reconciliations, notes)
+    text_amount_rows = []
     totals_skipped = text_only = zero_net = 0
     for rn, raw in enumerate(ws.iter_rows(min_row=h['row'] + 1, values_only=True), h['row'] + 1):
         cells = {f: (raw[cols[f] - 1] if f in cols and cols[f] <= len(raw) else None) for f in PICK}
@@ -41,12 +53,17 @@ def parse_sheet(ws, today):
         except Unknown as ex:
             unknown.append({'row': rn, 'reason': str(ex), 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'}})
             if cells.get('date') is not None: cells_used.append(cells)   # a dated money line counts even if unclassified
+            collect_text_amounts(cells, rn, text_amount_rows)
             continue
         if e == 'TOTALS': after_totals = True; totals_skipped += 1; continue
-        if e == 'ZERO_NET': zero_net += 1; continue
         if e is None:
             if any(v not in (None, '') for v in raw): text_only += 1
             continue
+        # I8: only for rows that became a real entry (or ZERO_NET) — a repeated
+        # header row mid-sheet ("ΕΛΑΒΕ"/"ΕΞΟΔΑ" as text in their own columns) is
+        # already `None` above and correctly counted as text_only, not a typo to flag.
+        collect_text_amounts(cells, rn, text_amount_rows)
+        if e == 'ZERO_NET': zero_net += 1; continue
         # Below the ΣΥΝΟΛΟ line, what counts as a ledger entry depends on the sheet layout.
         # With a ΠΡΟΟΔΕΥΤΙΚΟ column, the running value decides: only entries with a running value
         # are ledger entries. Without one, the date decides: only dated rows are entries.
@@ -165,27 +182,45 @@ def parse_sheet(ws, today):
             'expected_final': expected_final, 'trailing_delta': str(trailing) if trailing != 0 else None, 'rounding_residual': residual,
             'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
             'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only, 'zero_net_skipped': zero_net,
-            'after_totals_skipped': len(memos), 'after_totals': memos}
+            'after_totals_skipped': len(memos), 'after_totals': memos, 'text_amount_rows': text_amount_rows}
 
-def main():
-    today = dt.date.today()
+def skip_reason(ws, today):
+    # B1: a sheet that fails header detection used to vanish with no trace.
+    # Record enough to tell "not a ledger sheet" apart from "the header row is
+    # unusual" without opening the workbook by hand.
+    head = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row or 0, 400), values_only=True))
+    non_empty = sum(1 for row in head for v in row if v not in (None, ''))
+    blob = norm(' '.join(str(v) for row in head for v in row if isinstance(v, str)))
+    matched = [field for field, keys in FIELD_KEYS if any(k in blob for k in keys)]
+    return non_empty, matched
+
+def main(today=None):
+    if today is None: today = dt.date.today()
     index = json.load(open(os.path.join(WORK, 'drive-index.json'), encoding='utf-8'))
-    nodes = []
+    nodes, skipped_sheets = [], []
     for it in index:
         wb = openpyxl.load_workbook(it['local'], data_only=True, read_only=True)
         for ws in wb.worksheets:
             n = parse_sheet(ws, today)
-            if n is None: continue
+            if n is None:
+                non_empty, matched = skip_reason(ws, today)
+                skipped_sheets.append({'file_id': it['id'], 'file_name': it['name'], 'sheet': ws.title,
+                                        'non_empty_cells': non_empty, 'matched_fields': matched})
+                continue
             n.update({'file_id': it['id'], 'file_name': it['name'], 'path': it['path'],
                       'folder': 'ΣΤΑΜΑΤΗΣΑΝ' if it['path'].startswith('ΣΤΑΜΑΤΗΣΑΝ/') else 'root', 'modified': it['modified']})
             nodes.append(n)
-    out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
+    out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'today': today.isoformat(), 'nodes': nodes, 'skipped_sheets': skipped_sheets}
     json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     R = [r for n in nodes for r in n['rows']]
-    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d · zero-net %d · after-totals memos %d'
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d · zero-net %d · after-totals memos %d · text amounts %d · sheets skipped %d (non-empty %d)'
           % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
              sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
-             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta']), sum(n['zero_net_skipped'] for n in nodes), sum(n['after_totals_skipped'] for n in nodes)))
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta']), sum(n['zero_net_skipped'] for n in nodes), sum(n['after_totals_skipped'] for n in nodes),
+             sum(len(n['text_amount_rows']) for n in nodes), len(skipped_sheets), sum(s['non_empty_cells'] for s in skipped_sheets)))
 
 if __name__ == '__main__':
-    main()
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--today', type=dt.date.fromisoformat, default=None, help='YYYY-MM-DD, default today (reproducible spike repair)')
+    a = ap.parse_args()
+    main(a.today)

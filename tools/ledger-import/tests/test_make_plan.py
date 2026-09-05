@@ -147,6 +147,27 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual(p['patches'][0]['trip_value'], 650.0)
         self.assertEqual([r['src']['row'] for r in p['batches'][0]['rows']], [97])
 
+    def test_negative_trip_amount_needs_decision_but_row_still_passes_through(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=-50, advance=0)], final='-50.00')
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'needs_decision')
+        self.assertTrue(any('αρνητικό ποσό σε δρομολόγιο' in d and 'γρ. 4' in d for d in p['needs_decision']))
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip'])
+
+    def test_text_amount_row_needs_decision(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300)], final='200.00',
+                  text_amount_rows=[{'row': 6, 'field': 'expenses', 'text': '?'}])
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'needs_decision')
+        self.assertTrue(any('ποσό ως κείμενο' in d and 'γρ. 6' in d and 'expenses' in d for d in p['needs_decision']))
+
+    def test_file_hash_recorded_on_batch_and_none_when_missing(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300)], final='200.00')
+        p = build_plan('X', ENTRY, [n], [], None, {'F1': 'abc123'})
+        self.assertEqual(p['batches'][0]['file_hash'], 'abc123')
+        p2 = build_plan('X', ENTRY, [n], [], None, {})
+        self.assertIsNone(p2['batches'][0]['file_hash'])
+
     def test_opening_and_first_carry_are_one_event(self):
         a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
         b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=200.0), row(5, '2024-01-12', value=100, advance=50)], opening_balance='200.00', final='250.00')

@@ -2,7 +2,7 @@
 import unittest, sys, os, datetime as dt
 import openpyxl
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from inventory import parse_sheet
+from inventory import parse_sheet, skip_reason
 
 def book(rows):
     wb = openpyxl.Workbook(); ws = wb.active
@@ -151,6 +151,37 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['after_totals_skipped'], 2)
         self.assertEqual([m['amount'] for m in n['after_totals']], [1002.0, 1002.0])
         self.assertEqual(n['expected_final'], '130.00'); self.assertTrue(n['running_consistent'])
+
+    def test_text_amount_flagged_and_totals_row_excluded(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 250),
+                   (dt.datetime(2025, 3, 1), 'ΑΘΗΝΑ', 100, '?', None, 230, 130, 380),   # ΕΞΟΔΑ typed as text
+                   (None, 'ΣΥΝΟΛΟ', 'δεν ξέρω', 50, None, 500, 0, None)])              # ΣΥΝΟΛΟ line: never flagged
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(len(n['text_amount_rows']), 1)
+        self.assertEqual(n['text_amount_rows'][0], {'row': 3, 'field': 'expenses', 'text': '?'})
+
+    def test_repeated_header_row_mid_sheet_is_not_a_text_amount(self):
+        # A repeated header row (some ledgers restart a header block partway down
+        # the sheet) puts the column labels themselves into the ΕΛΑΒΕ/ΕΞΟΔΑ/ΑΞΙΑ/
+        # ΥΠΟΛΟΙΠΟ cells — classify() already discards it as a blank/text-only
+        # line (counted in text_only_skipped); it must not also become a
+        # "amount typed as text" question for every row like it in the workbook.
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250),
+                   (None, 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),   # repeated header, no date/seq
+                   (dt.datetime(2025, 3, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['text_amount_rows'], [])
+        self.assertEqual(n['text_only_skipped'], 1)
+        self.assertEqual(n['n_rows'], 2)
+
+    def test_skip_reason_reports_non_empty_cells_and_matched_fields(self):
+        ws = book([('κάτι', 'άσχετο'), (1, 2), ('ΗΜΕΡΟΜΗΝΙΑ', 'ΕΛΑΒΕ')])   # no header row detected (< 3 fields, no ΕΞΟΔΑ)
+        non_empty, matched = skip_reason(ws, dt.date(2026, 9, 5))
+        self.assertEqual(non_empty, 6)
+        self.assertIn('date', matched); self.assertIn('advance', matched)
+        self.assertNotIn('expenses', matched)
 
     def test_totals_on_sheet_without_running_keeps_dated_rows(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),

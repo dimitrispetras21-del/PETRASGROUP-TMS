@@ -1,6 +1,8 @@
 # Reviewer — one verdict per plan
 
-You receive plan paths. For each: read `work/plans/<KEY>.json`, `work/decisions/<KEY>.json` (if any), and the inventory nodes of the plan's files (extract with Python; never print the whole inventory). Write `work/reviews/<KEY>.json` = `{"driver_key", "verdict": "ok"|"reject", "reasons": [], "checked": {"chain": true, "duplicates": true, "openings": true, "rt_matches": true, "decisions": true}}`.
+You receive plan paths. For each: read `work/plans/<KEY>.json`, `work/decisions/<KEY>.json` (if any), and the inventory nodes of the plan's files (extract with Python; never print the whole inventory). Write `work/reviews/<KEY>.json` = `{"driver_key", "verdict": "ok"|"reject", "reasons": [], "checked": {"chain": true, "duplicates": true, "openings": true, "rt_matches": true, "decisions": true}, "plan_sha256": "…"}`.
+
+Always write `plan_sha256` = sha256 of the exact plan file you reviewed — commit.py refuses to import a plan whose bytes on disk no longer match the hash in its review.
 
 Reject on any of:
 - A `chain` node whose rows overlap in dates with another `chain` node of the same driver.

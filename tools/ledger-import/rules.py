@@ -35,7 +35,9 @@ FIELD_KEYS = [
 ]
 SEQ_LABELS = ('Α/Α', 'ΑΑ', 'Α.Α', 'Α.Α.', 'ΝΟ', '#')
 REQUIRED = ('advance', 'expenses')
-BANK_KEYS = tuple(norm(k) for k in ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ', 'ΚΑΤ.', 'EUROBANK', 'ΠΕΙΡΑΙ', 'IBAN'))
+# 'ΚΑΤ.' removed (task 12, minor): it matched «ΚΑΤ. ΑΧΑΪΑ» (a route abbreviation,
+# not a bank keyword) and misclassified trips as payments. ΚΑΤΑΘΕΣ/ΤΡΑΠΕΖ still catch it.
+BANK_KEYS = tuple(norm(k) for k in ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ', 'EUROBANK', 'ΠΕΙΡΑΙ', 'IBAN'))
 ETE_RE = re.compile(r'(^|[^Α-Ω])ΕΤΕ([^Α-Ω]|$)')            # Εθνική Τράπεζα, as a word
 ADJUST_KEYS = ('ΠΙΣΤΩΣ', 'ΧΡΕΩΣ', 'ΔΙΟΡΘ', 'ΔΩΡΟ', 'ΕΠΙΔΟΜ', 'ΜΠΟΝ', 'BONUS', 'ΛΑΘ')
 CARRY_KEYS = ('ΜΕΤΑΦΟΡΑ', 'ΥΠΟΛΟΙΠΟ')

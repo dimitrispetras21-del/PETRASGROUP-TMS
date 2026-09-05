@@ -2,13 +2,19 @@
 """Deterministic gate between the analysts and the write path. An LLM wrote the
 plan; this file refuses anything the Worker or the arithmetic would refuse later,
 so a rejection costs seconds instead of a cancelled batch."""
-import glob, json, os, sys
+import glob, json, os, re, sys
 from decimal import Decimal
 from rules import d2
 
 HERE = os.path.dirname(os.path.abspath(__file__)); WORK = os.path.join(HERE, 'work')
 TYPES = ('trip', 'payment_cash', 'payment_bank', 'adjustment')
 ROW_FIELDS = {'entry_type', 'entry_date', 'date_end', 'route', 'trip_value', 'advance', 'expenses', 'amount', 'note', 'src'}
+ISO_DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+TRIP_ONLY_FIELDS = ('date_end', 'route', 'trip_value', 'advance', 'expenses')
+BATCH_ROW_CAP = 2000   # Worker cap, index.js: "rows: max 2000 per file"
+
+def is_number(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
 
 def row_delta(r):
     if r['entry_type'] == 'trip':
@@ -49,15 +55,30 @@ def verify(plan, nodes, auto_rows, map_entry):
     auto = {a['dl_id']: a for a in auto_rows}
     total = Decimal('0')
     for b in plan.get('batches', []):
+        rows = b.get('rows', [])
+        if len(rows) > BATCH_ROW_CAP: errs.append('batch %s has %d rows > Worker cap %d' % (b['file_id'], len(rows), BATCH_ROW_CAP))
         bal = Decimal('0')
-        for i, r in enumerate(b.get('rows', []), 1):
+        for i, r in enumerate(rows, 1):
             extra = set(r) - ROW_FIELDS
             if extra: errs.append('batch %s row %d has forbidden fields %s' % (b['file_id'], i, sorted(extra)))   # rt_id lands here
             if r.get('entry_type') not in TYPES: errs.append('batch %s row %d bad entry_type' % (b['file_id'], i)); continue
-            if not r.get('entry_date'): errs.append('batch %s row %d no entry_date' % (b['file_id'], i))
-            if r['entry_type'] == 'trip' and not r.get('route'): errs.append('batch %s row %d trip without route' % (b['file_id'], i))
-            if r['entry_type'] != 'trip' and not (isinstance(r.get('amount'), (int, float)) and (r['amount'] != 0 if r['entry_type'] == 'adjustment' else r['amount'] > 0)):
-                errs.append('batch %s row %d amount must be > 0 (≠ 0 for adjustment)' % (b['file_id'], i))
+            if not r.get('entry_date') or not ISO_DATE.match(str(r.get('entry_date'))):
+                errs.append('batch %s row %d entry_date must be YYYY-MM-DD' % (b['file_id'], i))
+            # Mirror the Worker's per-type shape (ledger-rules.mjs validateNewEntry): a
+            # trip never carries amount, a payment/adjustment never carries trip fields —
+            # catching it here costs seconds, catching it live costs a cancelled batch.
+            if r['entry_type'] == 'trip':
+                if r.get('amount') is not None: errs.append('batch %s row %d: amount is not allowed on a trip' % (b['file_id'], i))
+                if not r.get('route'): errs.append('batch %s row %d trip without route' % (b['file_id'], i))
+                for f in ('trip_value', 'advance', 'expenses'):
+                    v = r.get(f)
+                    if v is not None and (not is_number(v) or v < 0):
+                        errs.append('batch %s row %d: %s must be a number ≥ 0' % (b['file_id'], i, f))
+            else:
+                for f in TRIP_ONLY_FIELDS:
+                    if r.get(f) is not None: errs.append('batch %s row %d: %s is not allowed on a %s' % (b['file_id'], i, f, r['entry_type']))
+                if not (is_number(r.get('amount')) and (r['amount'] != 0 if r['entry_type'] == 'adjustment' else r['amount'] > 0)):
+                    errs.append('batch %s row %d amount must be > 0 (≠ 0 for adjustment)' % (b['file_id'], i))
             bal += row_delta(r)
         if str(bal.quantize(Decimal('0.01'))) != str(d2(b.get('expected_final'))):
             errs.append('batch balance mismatch %s: %s ≠ expected_final %s' % (b['file_id'], bal, b.get('expected_final')))
@@ -76,16 +97,44 @@ def verify(plan, nodes, auto_rows, map_entry):
         errs.append('total balance %s ≠ expected_total_balance %s' % (total, plan.get('expected_total_balance')))
     return errs
 
+def cross_plan_errors(plans):
+    """plans: {driver_key: plan}. I7 — a driver_id or a batch file_id claimed by two
+    plans means two independent reviews of the same money; reject both rather than
+    trust whichever commit.py happens to run first."""
+    by_driver, by_file = {}, {}
+    for key, plan in plans.items():
+        did = plan.get('driver_id')
+        if did is not None: by_driver.setdefault(did, []).append(key)
+        for b in plan.get('batches', []):
+            by_file.setdefault(b.get('file_id'), []).append(key)
+    extra = {}
+    for did, keys in by_driver.items():
+        if len(set(keys)) > 1:
+            for key in set(keys):
+                others = sorted(set(k for k in keys if k != key))
+                extra.setdefault(key, []).append('driver_id %s also used by plan(s) %s' % (did, ', '.join(others)))
+    for fid, keys in by_file.items():
+        if len(set(keys)) > 1:
+            for key in set(keys):
+                others = sorted(set(k for k in keys if k != key))
+                extra.setdefault(key, []).append('file %s also imported by plan(s) %s' % (fid, ', '.join(others)))
+    return extra
+
 def main(paths):
     inv = json.load(open(os.path.join(WORK, 'inventory.json'), encoding='utf-8'))['nodes']
     auto = json.load(open(os.path.join(WORK, 'auto_rows.json'), encoding='utf-8'))
     m = json.load(open(os.path.join(WORK, 'map.json'), encoding='utf-8'))
-    bad = 0
+    plans = {}
     for p in sorted(paths or glob.glob(os.path.join(WORK, 'plans', '*.json'))):
         plan = json.load(open(p, encoding='utf-8'))
-        errs = verify(plan, inv, auto, m.get(plan.get('driver_key')))
-        if errs: bad += 1; print('REJECT %s: %s' % (plan.get('driver_key'), '; '.join(errs)))
-        else: print('OK %s (%s)' % (plan.get('driver_key'), plan.get('status')))
+        plans[plan.get('driver_key')] = plan
+    cross = cross_plan_errors(plans)
+    bad = 0
+    for key in sorted(plans):
+        plan = plans[key]
+        errs = verify(plan, inv, auto, m.get(key)) + cross.get(key, [])
+        if errs: bad += 1; print('REJECT %s: %s' % (key, '; '.join(errs)))
+        else: print('OK %s (%s)' % (key, plan.get('status')))
     sys.exit(1 if bad else 0)
 
 if __name__ == '__main__':

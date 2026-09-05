@@ -37,6 +37,7 @@ def main():
         if os.path.exists(dest) and os.path.getsize(dest) == it['size']:
             continue
         subprocess.run(['rclone', 'backend', 'copyid', REMOTE, it['id'], dest], check=True, capture_output=True)
+    items.sort(key=lambda it: (it['path'], it['id']))   # deterministic index order (task 12, minor)
     json.dump(items, open(os.path.join(WORK, 'drive-index.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     print(f'{len(items)} workbooks · {sum(1 for i in items if "/" not in i["path"])} in root · '
           f'{sum(1 for i in items if i["path"].startswith("ΣΤΑΜΑΤΗΣΑΝ/"))} in ΣΤΑΜΑΤΗΣΑΝ')

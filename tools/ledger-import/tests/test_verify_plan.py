@@ -1,6 +1,6 @@
 import unittest, sys, os, copy
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from verify_plan import verify
+from verify_plan import verify, cross_plan_errors
 
 NODE = {'file_id': 'F1', 'file_name': 'X.xlsx', 'sheet': 'S1', 'out_of_scope': False, 'raw_final': '100.00', 'running_last': '100.00', 'running_consistent': True, 'expected_final': '100.00',
         'rows': [{'row': 4, 'entry': {'entry_type': 'trip', 'entry_date': '2024-01-10', 'date_end': None, 'route': 'A', 'trip_value': 400.0, 'advance': 300.0, 'expenses': None}, 'date_problem': None},
@@ -67,6 +67,45 @@ class TestVerify(unittest.TestCase):
     def test_create_driver_when_map_has_id_is_rejected(self):
         p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
         self.assertTrue(any('map has driver_id' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    # I2 — per-type checks mirroring the Worker (ledger-rules.mjs)
+    def test_trip_amount_forbidden(self):
+        p = plan(); p['batches'][0]['rows'][0]['amount'] = 5.0
+        self.assertTrue(any('amount is not allowed on a trip' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    def test_trip_negative_value_rejected(self):
+        p = plan(); p['batches'][0]['rows'][0]['trip_value'] = -1.0
+        self.assertTrue(any('trip_value must be a number' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    def test_payment_forbids_trip_fields(self):
+        p = plan(); p['batches'][0]['rows'] = [{'entry_type': 'payment_cash', 'entry_date': '2024-02-01', 'amount': 50.0, 'route': 'X', 'src': {'sheet': 'S1', 'row': 5}}]
+        p['batches'][0]['expected_final'] = '-50.00'
+        self.assertTrue(any('route is not allowed on a payment_cash' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    def test_entry_date_bad_format_rejected(self):
+        p = plan(); p['batches'][0]['rows'][0]['entry_date'] = '10/01/2024'
+        self.assertTrue(any('entry_date must be YYYY-MM-DD' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    def test_batch_over_worker_cap_rejected(self):
+        p = plan()
+        row = {'entry_type': 'payment_cash', 'entry_date': '2024-01-01', 'amount': 1.0, 'src': {'sheet': 'S1', 'row': 1}}
+        p['batches'][0]['rows'] = [row] * 2001
+        p['batches'][0]['expected_final'] = '-2001.00'
+        self.assertTrue(any('Worker cap' in e for e in verify(p, [NODE], AUTO, MAP)))
+
+    # I7 — cross-plan guards
+    def test_cross_plan_same_driver_id_rejects_both(self):
+        extra = cross_plan_errors({'A': {'driver_id': 8, 'batches': []}, 'B': {'driver_id': 8, 'batches': []}})
+        self.assertIn('A', extra); self.assertIn('B', extra)
+        self.assertTrue(any('driver_id 8' in e for e in extra['A']))
+
+    def test_cross_plan_same_file_id_rejects_both(self):
+        extra = cross_plan_errors({'A': {'driver_id': 1, 'batches': [{'file_id': 'F1'}]}, 'B': {'driver_id': 2, 'batches': [{'file_id': 'F1'}]}})
+        self.assertIn('A', extra); self.assertIn('B', extra)
+
+    def test_cross_plan_no_overlap_is_clean(self):
+        extra = cross_plan_errors({'A': {'driver_id': 1, 'batches': [{'file_id': 'F1'}]}, 'B': {'driver_id': 2, 'batches': [{'file_id': 'F2'}]}})
+        self.assertEqual(extra, {})
 
 if __name__ == '__main__':
     unittest.main()

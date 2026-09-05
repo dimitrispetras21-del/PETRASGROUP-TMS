@@ -5,13 +5,16 @@ the analyst agents in work/decisions/<key>.json; everything that follows from
 those decisions — thousands of rows, break lines, patches, sums — is built here,
 the same way every time. Anything the rules cannot settle becomes a precise
 needs_decision question instead of a guess."""
-import datetime as dt, glob, json, os, sys
+import argparse, datetime as dt, glob, hashlib, json, os, sys
 from collections import Counter
 from decimal import Decimal
 from rules import d2
 
 HERE = os.path.dirname(os.path.abspath(__file__)); WORK = os.path.join(HERE, 'work')
 TOL = Decimal('0.05')
+
+def file_sha(path):
+    return hashlib.sha256(open(path, 'rb').read()).hexdigest()
 
 def delta(e):
     if e['entry_type'] == 'trip': return d2(e.get('trip_value')) - (d2(e.get('advance')) - d2(e.get('expenses')))
@@ -30,8 +33,9 @@ def clean(e, src):
     out['src'] = src
     return out
 
-def build_plan(key, entry, nodes, auto_rows, decision):
+def build_plan(key, entry, nodes, auto_rows, decision, file_hashes=None):
     dec = decision or {}
+    file_hashes = file_hashes or {}
     needs = list(dec.get('needs_decision', [])); warnings = []
     files = entry.get('files', [])
     dec_nodes = {(d['file_id'], d['sheet']): d for d in dec.get('nodes', [])}
@@ -79,7 +83,7 @@ def build_plan(key, entry, nodes, auto_rows, decision):
         if prev_node is not None and prev_final is not None and abs(prev_final) > TOL and not carries_prev:
             pk = (prev_node['file_id'], prev_node['sheet'])
             if pk in settled:
-                lines.append((prev_node['file_id'], adj(prev_node['last_date'], -prev_final, 'εξόφληση εκτός καρτέλας (απόφαση αναλυτή): %s' % next(d['why'] for d in dec['settled'] if (d['file_id'], d['sheet']) == pk), {'file_id': pk[0], 'sheet': pk[1], 'row': None})))
+                lines.append((prev_node['file_id'], adj(prev_node['last_date'], -prev_final, 'εξόφληση εκτός καρτέλας (απόφαση αναλυτή): %s' % next(d.get('why', '—') for d in dec['settled'] if (d['file_id'], d['sheet']) == pk), {'file_id': pk[0], 'sheet': pk[1], 'row': None})))
             else:
                 needs.append('το φύλλο %s κλείνει με %s και το επόμενο (%s) ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;' % (prev_node['sheet'], prev_final, n['sheet']))
         # opening balance
@@ -95,6 +99,11 @@ def build_plan(key, entry, nodes, auto_rows, decision):
         for r in n['rows']:
             e = r['entry']; src = dict(src0, row=r['row'])
             if r.get('date_fix'): date_fixes.append(dict(r['date_fix'], sheet=n['sheet'], row=r['row']))
+            # I2: a negative trip_value/advance/expenses in the Excel is almost always a
+            # typo or a sign error, not a real reversal — a human decides, the row still
+            # passes through so the sheet's own arithmetic checks below stay meaningful.
+            if e['entry_type'] == 'trip' and any(e.get(f) is not None and e[f] < 0 for f in ('trip_value', 'advance', 'expenses')):
+                needs.append('αρνητικό ποσό σε δρομολόγιο: %s γρ. %d' % (n['sheet'], r['row']))
             if e['entry_type'] == 'carry':
                 if d2(e['amount']) == 0:
                     continue
@@ -116,6 +125,7 @@ def build_plan(key, entry, nodes, auto_rows, decision):
         if n.get('rounding_residual'):
             node_lines.append(adj(last_date, n['rounding_residual'], 'διαφορά στρογγυλοποίησης Excel, φύλλο %s: %s' % (n['sheet'], n['rounding_residual']), dict(src0, row=None)))
         for u in n.get('unknown', []): needs.append('%s γρ. %d: %s' % (n['sheet'], u['row'], u['reason']))
+        for t in n.get('text_amount_rows', []): needs.append('ποσό ως κείμενο: %s γρ. %d/%s/%s' % (n['sheet'], t['row'], t['field'], t['text']))
         for r in n['rows']:
             if r.get('date_problem'): needs.append('%s γρ. %d: %s' % (n['sheet'], r['row'], r['date_problem']))
         if n.get('running_consistent') is False: needs.append('%s: το ΠΡΟΟΔΕΥΤΙΚΟ του Excel δεν συμφωνεί με τις γραμμές (raw %s, αναμενόμενο %s)' % (n['sheet'], n.get('raw_final'), n['expected_final']))
@@ -182,7 +192,8 @@ def build_plan(key, entry, nodes, auto_rows, decision):
         rows = [x for fid, x in lines if fid == f]
         if not rows: continue
         fname = next(n['file_name'] for n in canon if n['file_id'] == f)
-        batches.append({'file_id': f, 'file_name': fname, 'rows': rows, 'expected_final': str(sum((delta(x) for x in rows), Decimal('0')).quantize(Decimal('0.01')))})
+        batches.append({'file_id': f, 'file_name': fname, 'rows': rows, 'file_hash': file_hashes.get(f),
+                         'expected_final': str(sum((delta(x) for x in rows), Decimal('0')).quantize(Decimal('0.01')))})
     total = sum((d2(b['expected_final']) for b in batches), Decimal('0')) + sum((d2(p.get('trip_value')) - (d2(p.get('advance')) - d2(p.get('expenses'))) for p in patches), Decimal('0'))
     if chain and prev_final is not None and not needs and abs(total - prev_final) > Decimal('0.005'):
         needs.append('σύνολο καρτέλας %s ≠ τελευταίο ΠΡΟΟΔΕΥΤΙΚΟ %s' % (total, prev_final))
@@ -192,17 +203,26 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             'date_fixes': date_fixes, 'needs_decision': needs, 'warnings': warnings, 'crosscheck': crosscheck,
             'expected_total_balance': str(total.quantize(Decimal('0.01'))), 'status': 'ready' if not needs else 'needs_decision'}
 
-def main(keys):
+def main(argv):
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--today', type=dt.date.fromisoformat, default=None,
+                     help='YYYY-MM-DD, default today — no rule here depends on it today, kept for parity with inventory.py so a repair run can be pinned end to end')
+    ap.add_argument('keys', nargs='*')
+    a = ap.parse_args(argv)
+    today = a.today or dt.date.today()
+    print('using --today %s' % today.isoformat())
     inv = json.load(open(os.path.join(WORK, 'inventory.json'), encoding='utf-8'))['nodes']
     m = json.load(open(os.path.join(WORK, 'map.json'), encoding='utf-8'))
     auto = json.load(open(os.path.join(WORK, 'auto_rows.json'), encoding='utf-8'))
+    index = json.load(open(os.path.join(WORK, 'drive-index.json'), encoding='utf-8'))
+    file_hashes = {it['id']: file_sha(it['local']) for it in index}
     os.makedirs(os.path.join(WORK, 'plans'), exist_ok=True)
-    keys = keys or [k for k, v in m.items() if not k.startswith('_') and 'alias_of' not in v and v.get('files')]
+    keys = a.keys or [k for k, v in m.items() if not k.startswith('_') and 'alias_of' not in v and v.get('files')]
     counts = Counter()
     for key in keys:
         dp = os.path.join(WORK, 'decisions', key + '.json')
         decision = json.load(open(dp, encoding='utf-8')) if os.path.exists(dp) else None
-        plan = build_plan(key, m[key], inv, auto, decision)
+        plan = build_plan(key, m[key], inv, auto, decision, file_hashes)
         json.dump(plan, open(os.path.join(WORK, 'plans', key + '.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         counts[plan['status']] += 1
         print('%-32s %-14s rows %5d patches %2d total %10s %s' % (key[:32], plan['status'], sum(len(b['rows']) for b in plan['batches']), len(plan['patches']), plan['expected_total_balance'], ('· ' + plan['needs_decision'][0][:70]) if plan['needs_decision'] else ''))
