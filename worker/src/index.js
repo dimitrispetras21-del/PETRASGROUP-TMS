@@ -2849,8 +2849,9 @@ async function handleCosts(request, url, origin, env) {
     // ---- GET /costs/ledger/:driverId?year= : the driver's ledger ----
     if (resource === "ledger" && method === "GET" && recId && recId !== "import") {
       const year = url.searchParams.get("year");
+      if (year && !/^\d{4}$/.test(year)) return jsonError("year must be YYYY", 400, origin, env);
       const params = new URLSearchParams({ select: "*", driver_id: `eq.${recId}`, order: "entry_date.desc,id.desc", limit: "2000" });
-      if (year && /^\d{4}$/.test(year)) { params.append("entry_date", `gte.${year}-01-01`); params.append("entry_date", `lte.${year}-12-31`); }
+      if (year) { params.append("entry_date", `gte.${year}-01-01`); params.append("entry_date", `lte.${year}-12-31`); }
       const [entries, rts] = await Promise.all([
         dbSelectRaw(env, "dl_v_entries", params),
         // RTs of this driver still without a live ledger line — the form's «Σύνδεση με RT» list
@@ -2891,6 +2892,8 @@ async function handleCosts(request, url, origin, env) {
       if (body && body.restore) {
         // undoing a cancellation is an owner act, with a reason, like everything that rewrites history
         if (caller.role !== "owner") return jsonError("Forbidden", 403, origin, env);
+        // restoring a live row would write a false «επαναφορά» into the audit trail
+        if (!before.rows[0].deleted_at) return jsonError("entry is not cancelled", 409, origin, env);
         if (!String(body.reason || "").trim()) return jsonError("reason required to restore", 400, origin, env);
         patch = { deleted_at: null, deleted_reason: null, note: ((before.rows[0].note || "") + " · επαναφορά: " + String(body.reason).trim()).trim() };
       } else {
@@ -2912,7 +2915,10 @@ async function handleCosts(request, url, origin, env) {
         return jsonError("driver_id, file_name, file_hash, rows[] required", 400, origin, env);
       }
       for (let i = 0; i < body.rows.length; i++) {
-        const v = validateNewEntry({ driver_id: body.driver_id, ...body.rows[i] });
+        if (body.rows[i].driver_id !== void 0 && body.rows[i].driver_id !== body.driver_id) {
+          return jsonError(`row ${i + 1}: driver_id differs from the batch`, 400, origin, env);
+        }
+        const v = validateNewEntry({ ...body.rows[i], driver_id: body.driver_id });
         if (v.error) return jsonError(`row ${i + 1}: ${v.error}`, 400, origin, env);
       }
       const batch = crypto.randomUUID();
