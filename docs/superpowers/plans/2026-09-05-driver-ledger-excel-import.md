@@ -2871,3 +2871,110 @@ git commit -q -m "ledger-import: write-path safety — save after driver create,
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10d: five more deterministic rules from the analyst wave
+
+**Why.** The analysts resolved what needed judgment; what remains in their questions is again arithmetic the code can settle without guessing — the Excel line rule `ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ` is unambiguous, only the label was open:
+1. **Return date that cannot be repaired** (day/month slips such as 2026-03-31 → 2026-03-02, 8 rows across 6 drivers): the balance is untouched by `date_end`; a whole driver must not stay blocked. Drop the return date, keep the departure, write the original into the note. Not silent: `date_fix` records `{"from": …, "to": null, "note": "λήξη Excel … μη έγκυρη, αφαιρέθηκε"}`.
+2. **Leading rows without a date** (`row without a date and no previous row`, 12 rows in 4 drivers — opening lines typed before the first dated row): inherit the date of the **first dated row below**, with the same kind of note (`ημ/νία από επόμενη γραμμή`). Today the pass inherits only from above.
+3. **Advance equal to expenses, no value, no counter, any description** (`ΓΙΑ ΠΡΟΣΤΥΜΟ ΒΟΥΛΓ 115/115`, `ΑΠΌ ΠΡΑΤ ΠΛΥΣΙΜΟ 30/30`): net 0 — the company paid an expense through the driver. Same treatment as the zero-net payment line (`ZERO_NET`, counted), regardless of the wording.
+4. **Expenses only, with a description, no advance, no value, no counter** (`ΠΡΟΣΤΙΜΟ ΓΙΑΝΝΙΤΣΩΝ` ΕΞΟΔΑ 170, `ΦΠΑ ΑΠΟΔΕΙΞΕΩΝ` 66): the driver paid a company cost from his own pocket, the company owes it — Excel adds +ΕΞΟΔΑ to the balance. Emit `adjustment +ΕΞΟΔΑ` with note `έξοδα χωρίς δρομολόγιο: <description>`.
+5. Two small carry-overs from earlier reviews: in `detect_header` run the **seq fallback before the route inference** (so an unlabeled Α/Α column can never win the "most text" contest); in `commit.py` call `save(state)` also on the reuse path of `ensure_driver` (consistency with the create path).
+
+**Files:**
+- Modify: `tools/ledger-import/rules.py`, `tools/ledger-import/inventory.py`, `tools/ledger-import/commit.py`
+- Tests: `tests/test_rules.py`, `tests/test_inventory.py`, `tests/test_commit.py`
+
+- [ ] **Step 1: Tests**
+
+`tests/test_rules.py`, inside `TestClassify`, add:
+```python
+    def test_advance_equal_expenses_without_value_is_zero_net(self):
+        self.assertEqual(classify({'date': D(2021, 4, 28), 'cash': 'ΓΙΑ ΠΡΟΣΤΥΜΟ ΒΟΥΛΓ (ΠΡΑΤ)', 'advance': 115, 'expenses': 115, 'value': 0}), 'ZERO_NET')
+        self.assertEqual(classify({'date': D(2021, 10, 4), 'advance': 30, 'expenses': 30}), 'ZERO_NET')
+
+    def test_expenses_only_with_description_is_adjustment(self):
+        e = classify({'date': D(2021, 3, 3), 'cash': 'ΠΡΟΣΤΙΜΟ ΓΙΑΝΝΙΤΣΩΝ', 'expenses': 170, 'advance': 0, 'value': 0})
+        self.assertEqual(e['entry_type'], 'adjustment'); self.assertEqual(e['amount'], 170.0); self.assertIn('ΠΡΟΣΤΙΜΟ', e['note'])
+        with self.assertRaises(Unknown):
+            classify({'date': D(2021, 3, 3), 'expenses': 170})       # expenses only and no words at all: still a human's call
+```
+and inside `TestHeader`:
+```python
+    def test_unlabeled_seq_column_does_not_become_the_route(self):
+        rows = [(None, None, None, 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ ΔΡ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                ('1', dt.datetime(2023, 9, 14), 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, 0, 0, 60, 60, 60),
+                ('2', dt.datetime(2023, 9, 15), 'ΑΘΗΝΑ', 100, 20, 80, 230, 150, 210),
+                ('3', dt.datetime(2023, 9, 20), 'ΜΕΤΡΗΤΑ', 200, 0, 200, 0, -200, 10)]
+        h = detect_header(rows)
+        self.assertEqual(h['cols']['date'], 2); self.assertEqual(h['cols']['seq'], 1); self.assertEqual(h['cols']['route'], 3)
+```
+`tests/test_inventory.py`, inside `TestParseSheet`, add:
+```python
+    def test_leading_undated_rows_inherit_from_below_and_bad_date_end_is_dropped(self):
+        ws = book([('ΗΜΕΡ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (None, None, 'ΥΠΟΛΟΙΠΟ ΑΠΟ ΠΑΛΙΑ', 390, None, None, None, -390, -390),
+                   (dt.datetime(2020, 11, 10), None, 'ΜΕΤΡΗΤΑ', 0, None, None, 390, 390, 0),
+                   (dt.datetime(2026, 3, 31), dt.datetime(2026, 3, 2), 'ΒΕΡΟΙΑ-ΑΥΣΤΡΙΑ-ΒΕΡΟΙΑ', 300, 75, None, 600, 225, 225)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 3)
+        self.assertEqual(n['unknown'], [])
+        self.assertEqual(n['rows'][0]['entry']['entry_date'], '2020-11-10')
+        self.assertTrue(n['rows'][0]['date_inherited']); self.assertIn('επόμενη γραμμή', n['rows'][0]['entry']['note'])
+        self.assertIsNone(n['rows'][2]['entry']['date_end']); self.assertIsNone(n['rows'][2]['date_problem'])
+        self.assertIn('2026-03-02', n['rows'][2]['entry']['note']); self.assertEqual(n['rows'][2]['date_fix']['to'], None)
+```
+(The second row here has `value 390` with route `ΜΕΤΡΗΤΑ` and `advance 0` — that is the Task 2e "payment keyword but the amount is in ΑΞΙΑ" case and would be `Unknown`. Change that row to `(dt.datetime(2020, 11, 10), None, 'ΕΠΙΣΤΡΟΦΗ', 0, 390, None, None, 390, 0)` — an expenses-only line with a description — so the sheet parses with 3 rows and the test also exercises rule 4.)
+
+`tests/test_commit.py`: in `test_ensure_driver_is_idempotent_from_state` keep as is; add:
+```python
+    def test_ensure_driver_reuse_path_saves(self):
+        api = api_with({}); saved = []
+        plan = dict(PLAN); plan['driver_id'] = 8; plan['create_driver'] = None
+        self.assertEqual(C.ensure_driver(api, plan, {}, save=lambda s: saved.append(1)), 8)
+        self.assertEqual(saved, [1]); api.post.assert_not_called()
+```
+
+- [ ] **Step 2: Run** the three files → failures on the new tests.
+
+- [ ] **Step 3: Implement**
+
+`rules.py` — in `classify`, immediately before the `if (cash or bank) and val and not adv and not has_seq:` line, insert:
+```python
+    # Excel line rule ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ, applied to two shapes that carry no
+    # value and no counter: advance == expenses is a company cost paid through the
+    # driver (net 0, nothing to record); expenses alone is a company cost the
+    # driver paid himself (the company owes it).
+    if not val and not has_seq and adv and exp and d2(adv) == d2(exp):
+        return 'ZERO_NET'
+    if not val and not has_seq and not adv and exp and exp > 0 and label:
+        return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': exp, 'note': 'έξοδα χωρίς δρομολόγιο: ' + label}
+```
+In `detect_header`, move the existing `seq` fallback (`if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used: cols['seq'] = cols['date'] - 1`) so that it runs right after the date inference block and before the route inference block, and add `used.add(cols['seq'])` after it.
+
+`inventory.py` — in the row loop, when `e['entry_date'] is None` and `rows` is empty, do NOT push to `unknown`; instead append the row to a `pending` list (with its `cells`, `rn`, `e`) and continue. When the first row with a date is appended to `rows`, flush `pending` in order before it: each pending entry gets `entry_date = <that date>`, `add_note(e, 'ημ/νία από επόμενη γραμμή (κενή στο Excel)')`, `date_inherited = True`, and is appended to `rows` and `cells_used` ahead of the dated row. If the loop ends with `pending` still non-empty (a sheet with no dated row at all), push them to `unknown` with the old reason.
+In the date pass, replace the branch that appends `' date_end %s before entry_date'` (the `else:` of the year-repair) with:
+```python
+            else:
+                # Not a year typo (day/month slip or swapped cells). The balance does not
+                # depend on the return date, so the driver is not blocked: drop it, keep
+                # the original in the note and in date_fix.
+                add_note(r['entry'], 'λήξη Excel %s μη έγκυρη (πριν την αναχώρηση), αφαιρέθηκε' % end)
+                r['date_fix'] = r['date_fix'] or {'from': end, 'to': None, 'note': 'λήξη αφαιρέθηκε'}
+                r['entry']['date_end'] = None
+```
+and apply the same drop (with note `λήξη Excel %s > 60 ημέρες μετά την αναχώρηση, αφαιρέθηκε`) for the `e0 > start + 60 days` case when the year repair finds no candidate.
+
+`commit.py` — in `ensure_driver`, on the `if plan.get('driver_id'):` path call `save(state)` before returning.
+
+- [ ] **Step 4: Run** the whole suite → OK (previous count + 5).
+- [ ] **Step 5: Real run**: `python3 tools/ledger-import/inventory.py` (line), `python3 tools/ledger-import/make_plan.py | tail -1` (counts), `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`, `… | grep ^REJECT`. The analysts' `work/decisions/*.json` are picked up automatically. Expected: date problems ≤ 3, ready ≥ 65, 0 REJECT.
+- [ ] **Step 6: Commit**
+```bash
+git add tools/ledger-import/rules.py tools/ledger-import/inventory.py tools/ledger-import/commit.py tools/ledger-import/tests/test_rules.py tools/ledger-import/tests/test_inventory.py tools/ledger-import/tests/test_commit.py
+git commit -q -m "ledger-import: drop unrepairable return dates (noted), leading undated rows inherit from below, adv==exp is zero-net, expenses-only is an adjustment, seq before route inference, save on reuse path
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
