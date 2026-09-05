@@ -2264,3 +2264,61 @@ git commit -q -m "ledger-import: verify_plan checks identity — plan driver_id 
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 2f: header detection infers unlabeled date/route columns from the data
+
+**Why.** 11 sheets (4 canonical, one with 465 rows) label only `ΕΛΑΒΕ ΕΞΟΔΑ ΥΠΟΛΟΙΠΟ ΑΞΙΑ ΔΡ ΥΠΟΛΟΙΠΟ ΠΡΟΟΔΕΥΤΙΚΟ`; the date and the route sit in unlabeled columns to the left (`[None, 2023-09-14, 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, 0, 0, 60, 60, 60]`). With no `date` column every row was skipped as a totals line — 0 rows, silently. The header row alone cannot say where the date is; the data rows can.
+
+**Files:**
+- Modify: `tools/ledger-import/rules.py` (`detect_header` only)
+- Modify: `tools/ledger-import/tests/test_rules.py` (add one test)
+
+**Interfaces:** unchanged (`detect_header(rows)` — `rows` already includes the data rows that follow the header, up to 400).
+
+- [ ] **Step 1: Add test** (inside `TestHeader`):
+```python
+    def test_unlabeled_date_and_route_are_inferred_from_data(self):
+        rows = [(None, 'Σεπτέμβριος 2023', None, None, None, None, None, None, None),
+                (None, None, None, 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ ΔΡ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                (None, None, None, None, None, None, None, None, 0),
+                (None, dt.datetime(2023, 9, 14), 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, 0, 0, 60, 60, 60),
+                (None, dt.datetime(2023, 9, 15), 'ΑΘΗΝΑ', 100, 20, 80, 230, 150, 210),
+                (None, dt.datetime(2023, 9, 20), 'ΜΕΤΡΗΤΑ', 200, 0, 200, 0, -200, 10)]
+        h = detect_header(rows)
+        self.assertEqual(h['row'], 2)
+        self.assertEqual(h['cols']['date'], 2)
+        self.assertEqual(h['cols']['route'], 3)
+        self.assertEqual(h['cols']['seq'], 1)
+        self.assertEqual(h['cols']['value'], 7)
+```
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_rules 2>&1 | tail -3` → 1 failure (`KeyError: 'date'`).
+- [ ] **Step 3: Implement.** In `detect_header`, right after `used = set(cols.values())` and before the existing `date_end`/`seq` fallbacks, insert:
+```python
+            # Unlabeled date/route (the national-driver layout labels only the
+            # money columns): infer them from the next 30 data rows — the column
+            # left of ΕΛΑΒΕ with the most date cells is the date, the one with
+            # the most text cells is the route.
+            sample = rows[i:i + 30]
+            left = [j for j in range(1, cols['advance']) if j not in used]
+            if 'date' not in cols and left:
+                best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and to_date(r[j - 1]) is not None))
+                if sum(1 for r in sample if len(r) >= best and to_date(r[best - 1]) is not None) >= 3:
+                    cols['date'] = best; used.add(best)
+            left = [j for j in range(1, cols['advance']) if j not in used]
+            if 'route' not in cols and left:
+                best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and isinstance(r[j - 1], str) and r[j - 1].strip()))
+                if sum(1 for r in sample if len(r) >= best and isinstance(r[best - 1], str) and r[best - 1].strip()) >= 3:
+                    cols['route'] = best; used.add(best)
+```
+(`to_date` is already defined above `detect_header` in the module; if it is defined below, move the `detect_header` function after it.)
+- [ ] **Step 4: Run** the rules tests (35 OK) and the suite (53 OK).
+- [ ] **Step 5: Real run** `python3 tools/ledger-import/inventory.py` — record the line. `rows` must rise by roughly 700–900 (the 11 sheets). Then run: `python3 -c "import json;inv=json.load(open('tools/ledger-import/work/inventory.json'))['nodes'];print('sheets without date col:',sum(1 for n in inv if 'date' not in n['cols']))"` — expected 0 or a small number, list them in the report if any remain.
+- [ ] **Step 6: Commit**
+```bash
+git add tools/ledger-import/rules.py tools/ledger-import/tests/test_rules.py
+git commit -q -m "ledger-import: infer unlabeled date/route columns from the data rows (11 sheets read 0 rows)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
