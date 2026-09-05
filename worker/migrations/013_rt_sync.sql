@@ -234,26 +234,47 @@ drop trigger if exists rt_sync_legs on ct_rt_legs;
 create trigger rt_sync_legs after insert or delete on ct_rt_legs
   for each row execute function rt_sync_legs();
 
--- 7. Backfill: today's round trips take the truth from their orders (the legs
---    of every live RT agree with each other — measured 5/9), then the window.
+-- 7. Backfill. Normally the orders are the truth and the round trip follows.
+--    Exception found on the first run (RT-1014, 5/9): both orders had NO
+--    driver/truck at all while the closed round trip had them — there the
+--    round trip is the truth and the orders take it back. The legs of every
+--    live RT agree with each other (measured 5/9), so one leg is enough.
 do $$
-declare r record;
+declare r record; ord record;
 begin
   for r in
-    select distinct on (rt.id) rt.id, o.driver_id, o.truck_id, o.trailer_id, o.partner_id, o.is_partner_trip
+    select distinct on (rt.id) rt.id,
+           rt.driver_id rt_driver, rt.truck_id rt_truck, rt.trailer_id rt_trailer, rt.partner_id rt_partner, rt.trip_type rt_type,
+           o.driver_id, o.truck_id, o.trailer_id, o.partner_id, o.is_partner_trip
     from ct_round_trips rt
     join ct_rt_legs l on l.rt_id = rt.id
     join orders o on o.id = l.order_id and o.deleted_at is null
     where rt.status <> 'cancelled'
     order by rt.id, l.id
   loop
-    update ct_round_trips
-       set driver_id = r.driver_id, truck_id = r.truck_id, trailer_id = r.trailer_id, partner_id = r.partner_id,
-           trip_type = case when coalesce(r.is_partner_trip, false) then 'PARTNER' else 'OWNED' end,
-           updated_at = now()
-     where id = r.id
-       and (driver_id is distinct from r.driver_id or truck_id is distinct from r.truck_id
-         or trailer_id is distinct from r.trailer_id or partner_id is distinct from r.partner_id);
+    if r.truck_id is null and r.driver_id is null and (r.rt_truck is not null or r.rt_driver is not null) then
+      for ord in
+        select id, driver_id, truck_id, trailer_id, partner_id, is_partner_trip from orders
+        where deleted_at is null and id in (select order_id from ct_rt_legs where rt_id = r.id and order_id is not null)
+      loop
+        update orders
+           set driver_id = r.rt_driver, truck_id = r.rt_truck, trailer_id = r.rt_trailer,
+               partner_id = r.rt_partner, is_partner_trip = (r.rt_type = 'PARTNER')
+         where id = ord.id;
+        perform rt_sync_audit('update', 'orders', ord.id::text, to_jsonb(ord) - 'id',
+          jsonb_build_object('driver_id', r.rt_driver, 'truck_id', r.rt_truck, 'trailer_id', r.rt_trailer,
+                             'partner_id', r.rt_partner, 'is_partner_trip', (r.rt_type = 'PARTNER'),
+                             'source_rt', r.id, 'reason', 'backfill 013: orders had no assignment'));
+      end loop;
+    else
+      update ct_round_trips
+         set driver_id = r.driver_id, truck_id = r.truck_id, trailer_id = r.trailer_id, partner_id = r.partner_id,
+             trip_type = case when coalesce(r.is_partner_trip, false) then 'PARTNER' else 'OWNED' end,
+             updated_at = now()
+       where id = r.id
+         and (driver_id is distinct from r.driver_id or truck_id is distinct from r.truck_id
+           or trailer_id is distinct from r.trailer_id or partner_id is distinct from r.partner_id);
+    end if;
     perform rt_recompute(r.id);
   end loop;
 end $$;
