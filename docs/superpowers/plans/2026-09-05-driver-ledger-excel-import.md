@@ -3366,3 +3366,56 @@ git commit -q -m "ledger-import: memo rule — without a ΠΡΟΟΔΕΥΤΙΚΟ 
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 12: final fix wave before the first write (whole-branch review, Opus)
+
+Verdict of the final review: READY TO WRITE after these fixes. Implement all of them in one pass, TDD where a rule changes, keep every existing test green (95 now). Work file by file; commit once at the end with the message in Step 9. Do NOT run `commit.py --commit`; the dry run (`python3 tools/ledger-import/commit.py`) is allowed and now must build and validate bodies.
+
+#### B1 — sheets that fail header detection must be visible
+`inventory.py`: when `parse_sheet` returns None for a worksheet, record `{file_id, file_name, sheet, non_empty_cells, matched_fields}` (count non-empty cells in the first 400 rows; `matched_fields` = which of the header keywords appeared anywhere in those rows — reuse `rules.FIELD_KEYS` and `norm`) into a top-level list `skipped_sheets` of `inventory.json`, and print ` · sheets skipped %d (non-empty %d)` in the summary. `report.py`: new owner section «Φύλλα που δεν διαβάστηκαν» listing file, sheet, non-empty cells, matched fields; public summary gets the two counts only.
+
+#### B2 — the write path re-verifies and binds plan bytes to the review
+`commit.py`: import `verify` from `verify_plan`; in `run()`, before touching a driver, run `verify(plan, inventory_nodes, auto_rows, map_entry)` and stop (`Mismatch`) on any error. Also compute `sha256` of the plan file and require `review['plan_sha256'] == that` — a review of other bytes is not a review (`Mismatch` with «plan changed since review»). `main()` therefore also loads `work/inventory.json` and `work/map.json`. Add `plan_sha256` to the review contract in `prompts/REVIEWER.md` (one sentence: «write `plan_sha256` = sha256 of the plan file you reviewed»). Provide `tools/ledger-import/stamp_reviews.py` (tiny, no tests needed): for every review with verdict ok and no `plan_sha256`, stamp the current plan file's sha256 — the coordinator runs it once now because the 56 reviews were written against these exact plans; from now on the reviewer writes it.
+
+#### B3 — driver creation survives a crash between POST and lookup
+`commit.py ensure_driver`: save `st['created_legacy_id'] = rec['id']` and `save(state)` immediately after the facade POST returns; on entry, if `st.get('created_legacy_id')` and no `driver_id`, skip the POST and resolve that legacy id via `/costs/lookups`. Test: a first call whose lookup returns no match raises `Mismatch` but leaves `created_legacy_id` in state; a second call with the same state does not POST and resolves.
+
+#### B4 — `--only` safety
+`argparse`: `--only` with `nargs='+'`; after loading plans, `unknown = set(a.only) - set(plans)`; if unknown: `sys.exit('✗ unknown driver key(s): …')`. Test via `main`-level helper or by extracting the filter into a function `select_plans(plans, only)`.
+
+#### B5 — report shows what the code already knows
+`report.py` owner report: sections «Σημειώσεις κάτω από ΣΥΝΟΛΟ» (per driver: sheet, row, label, amount from node `after_totals`), «Προειδοποιήσεις σχεδίων» (`plan['warnings']`), «Γραμμές αντιγράφων που λείπουν από το κανονικό» (`plan['crosscheck']` non-zero), «Από το map» (`_report`: unmapped files, duplicate driver ids, drivers without ledger file, active-true-in-stopped-folder), and «Νέοι οδηγοί δίπλα στους υπάρχοντες» (two columns: the 32 create names, the 59 existing `full_name`s from `work/drivers.json`) — I9. `build()` gets a `skipped_sheets` argument and the `drivers` list; update `main()` accordingly. Public summary: counts only.
+
+#### I1 — proof is a delta, not an absolute
+`commit.py`: before the first import of a driver, `GET /costs/ledger/<id>` and store `st['before'] = running balance` (`'0.00'` when no records); `proof` compares `after − before` with `expected_total_balance`. For a created driver `before` is `'0.00'` without a GET. Update tests.
+
+#### I2 — `verify_plan` mirrors the Worker per type; dry run builds bodies
+`verify_plan.verify`: per row — `trip`: `amount` forbidden, `trip_value/advance/expenses` numbers ≥ 0 when present, `route` required; `payment_*`/`adjustment`: forbid `date_end/route/trip_value/advance/expenses`; `entry_date` must match `^\d{4}-\d{2}-\d{2}$`; a batch of more than 2,000 rows is rejected (Worker cap). `make_plan`: a trip row with a negative `trip_value`, `advance` or `expenses` puts the driver in `needs_decision` («αρνητικό ποσό σε δρομολόγιο: φύλλο/γρ.») instead of passing through. `verify_plan.main()`: cross-plan guards — the same `driver_id` in two plans, or the same batch `file_id` in two plans ⇒ REJECT both (I7). `commit.run` in dry-run mode builds the request bodies (`clean_rows`, patches) and runs the same checks it would run live, printing per-driver counts — no network.
+
+#### I3 — provenance
+`make_plan`: each batch records `file_hash` = sha256 of the local workbook at plan time (read `work/drive-index.json` for the local path; pass a `file_hashes` dict into `build_plan` — tests pass `{}` and get `None`). `commit.import_batch` asserts `batch['file_hash'] == file_sha(...)` when present, else `Mismatch` («workbook changed since the plan was built — rebuild and re-review»).
+
+#### I4 — save after every patch
+`commit.apply_patches`: `save(state)` after each successful PATCH (pass `save` in, like `ensure_driver`).
+
+#### I6 — network robustness
+`Api._req`: timeout 180 s; catch `urllib.error.URLError` and raise `ApiError(0, 'network: …')`; `main()` already stops on `ApiError` — make the STOP message include the reconcile hint (`select * from dl_import_batches order by created_at desc limit 5`).
+
+#### I8 — amounts typed as text
+`inventory.py`: per node count `text_amounts` = cells in `advance/expenses/value/balance` columns that are non-empty strings that are not the ΣΥΝΟΛΟ row (collect `{row, field, text[:40]}` into `text_amount_rows`), print ` · text amounts %d` in the summary; `report.py` owner section lists them per driver. `make_plan`: a chain node with `text_amount_rows` ⇒ `needs_decision` («ποσό ως κείμενο: φύλλο/γρ./στήλη/κείμενο»).
+
+#### Minor, do them too (cheap)
+`README.md`: correct the runbook (fetch → inventory → map (hand-written from `map_helper.py` output) → auto_rows export → `make_plan.py` → analysts write `work/decisions/` → `verify_plan.py` → Sonnet reviews with `plan_sha256` → `report.py` → `commit.py`). `commit.py`: log the returned batch id (`import <file_id> → batch <uuid>`; not sensitive). `inventory.py` and `make_plan.py`: optional `--today YYYY-MM-DD` (default today) so the spike repair is reproducible; store `today` in `inventory.json`. `make_plan.py:82`: `d.get('why', '—')`. `fetch.py`: sort `items` by `(path, id)` before writing the index. `rules.py`: remove `'ΚΑΤ.'` from `BANK_KEYS` (it matches «ΚΑΤ. ΑΧΑΪΑ»); keep `ΚΑΤΑΘΕΣ`/`ΤΡΑΠΕΖ`. Leave `fetch.py`'s unused `sys` import alone.
+
+#### Step 8 — real run, in order
+`python3 tools/ledger-import/fetch.py` (index sort only; files unchanged) · `python3 tools/ledger-import/inventory.py` · `python3 tools/ledger-import/make_plan.py | tail -1` · `python3 tools/ledger-import/verify_plan.py | grep -c ^OK` and `| grep ^REJECT` · `python3 tools/ledger-import/stamp_reviews.py` · `python3 tools/ledger-import/commit.py` (dry run: must build all bodies and end without a STOP) · `python3 tools/ledger-import/report.py | tail -8`. Report every line. Expected: ready count may drop by the drivers that gain a negative-amount or text-amount question; 0 REJECT; dry run clean.
+
+#### Step 9 — commit
+```bash
+git add tools/ledger-import/README.md tools/ledger-import/fetch.py tools/ledger-import/rules.py tools/ledger-import/inventory.py tools/ledger-import/make_plan.py tools/ledger-import/verify_plan.py tools/ledger-import/report.py tools/ledger-import/commit.py tools/ledger-import/stamp_reviews.py tools/ledger-import/prompts/REVIEWER.md tools/ledger-import/tests/
+git commit -q -m "ledger-import: final fix wave — skipped sheets visible, write path re-verifies + plan hash, crash-safe driver create, --only guard, delta proof, per-type validation, provenance hash, text amounts, report sections (final review)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
