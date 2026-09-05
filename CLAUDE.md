@@ -426,6 +426,8 @@ filterByFormula = `{National Groupage}=1`   // 1, όχι TRUE()
 ```bash
 # 1. Edit module file
 # 2. Bump ?v= στο app.html:  modules/orders_natl.js?v=TIMESTAMP
+#    ΚΑΙ το SW_VERSION στο sw.js με το ίδιο TIMESTAMP — αλλιώς ο service worker
+#    σερβίρει το παλιό app.html και το νέο module «δεν υπάρχει» (5/9/2026)
 # 3. git add . && git commit -m "..." && git push
 ```
 Το `CLAUDE.md` και τα `docs/` **δεν** φορτώνονται από το app.html — δεν θέλουν
