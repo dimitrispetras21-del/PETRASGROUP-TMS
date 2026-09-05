@@ -2291,7 +2291,11 @@ tbody tr:hover { background: var(--bg-hover); }
     flex-direction: column; padding: 0; display: flex;
     overflow-x: visible; overflow-y: auto; flex: 1;
   }
-  .sidebar .nav-group-items { display: flex; flex-direction: column; max-height: none; }
+  /* The nav is a column flex container here; without this the group boxes
+     SHRINK to share the viewport height (measured 5/9: 69px for four 44px
+     items, overflow hidden) and every item after the first is clipped. */
+  .sidebar .nav-group-items { display: flex; flex-direction: column; max-height: none; flex: 0 0 auto; }
+  .sidebar .nav-section { flex: 0 0 auto; }
   .sidebar .nav-item {
     flex-direction: row; padding: 12px 16px; font-size: var(--text-base);
     margin: 0; border-radius: 0; gap: 12px; white-space: normal;
