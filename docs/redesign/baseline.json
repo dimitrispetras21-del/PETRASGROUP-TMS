@@ -46,5 +46,9 @@
   "orders_natl": {
     "hex": 0,
     "truncate": 6
+  },
+  "payroll": {
+    "hex": 0,
+    "truncate": 0
   }
 }

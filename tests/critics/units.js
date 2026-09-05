@@ -55,4 +55,7 @@ module.exports = [
   { unit: 'weekly_natl', tier: 3, routes: ['weekly_natl'],  files: ['modules/weekly_natl.js'] },
   { unit: 'orders_intl', tier: 3, routes: ['orders_intl'],  files: ['modules/orders_intl.js'] },
   { unit: 'orders_natl', tier: 3, routes: ['orders_natl'],  files: ['modules/orders_natl.js'] },
+  // Κύμα 5 (5/9/2026): η Μισθοδοσία Οδηγών γεννιέται μέσα στη σουίτα, όχι
+  // μετά — αλλιώς είναι η επόμενη «αόρατη» οθόνη (βλ. maint_trucks 30/8).
+  { unit: 'payroll',     tier: 3, routes: ['payroll'],      files: ['modules/payroll.js'] },
 ];
