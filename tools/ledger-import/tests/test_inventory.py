@@ -44,6 +44,7 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['running_breaks'], [])
         self.assertIsNone(n['opening_balance'])
         self.assertTrue(n['running_consistent'])
+        self.assertEqual(n['expected_final'], '320.50')
 
     def test_unknown_rows_are_collected_not_fatal(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
@@ -72,20 +73,40 @@ class TestParseSheet(unittest.TestCase):
             (dt.datetime(2024, 2, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 180),          # break −100: 150+130=280, cached 180
             (dt.datetime(2024, 2, 9), 'ΠΑΤΡΑ', 0, None, None, 230, 230, None),           # no running on this row
             (dt.datetime(2024, 2, 15), 'ΜΕΤΡΗΤΑ', 400, None, None, None, -400, 10.78),  # 180+230−400 = 10 → +0.78 drift
+            (dt.datetime(2024, 2, 20), 'ΜΕΤΡΗΤΑ', 5, None, None, None, -5, None),        # no running on this row
         ])
         n = parse_sheet(ws, today=dt.date(2026, 9, 5))
-        self.assertEqual(n['raw_final'], '10.00')
+        self.assertEqual(n['raw_final'], '5.00')
         self.assertEqual(n['running_last'], '10.78')
         self.assertEqual(n['opening_balance'], '100.00')
         self.assertEqual(n['running_breaks'], [{'row': 4, 'entry_date': '2024-02-01', 'diff': '-100.00'},
                                                {'row': 6, 'entry_date': '2024-02-15', 'diff': '0.78'}])
         self.assertTrue(n['running_consistent'])
+        self.assertEqual(n['trailing_delta'], '-5.00')
+        self.assertEqual(n['expected_final'], '5.78')
+        self.assertIsNone(n['rounding_residual'])
+
+    def test_rounding_residual_is_tolerated(self):
+        ws = book([
+            ('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+            (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, None, None, 500, 200, 200.02),
+            (dt.datetime(2024, 1, 20), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 330.04),
+            (dt.datetime(2024, 2, 1), 'ΠΑΤΡΑ', 0, None, None, 230, 230, 560.07),
+        ])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['running_breaks'], [])
+        self.assertEqual(n['raw_final'], '560.00')
+        self.assertIsNone(n['opening_balance'])
+        self.assertEqual(n['rounding_residual'], '0.07')
+        self.assertTrue(n['running_consistent'])
+        self.assertEqual(n['expected_final'], '560.07')
 
     def test_no_running_column_means_consistency_unknown(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
                    (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250)])
         n = parse_sheet(ws, today=dt.date(2026, 9, 5))
         self.assertIsNone(n['running_consistent']); self.assertIsNone(n['opening_balance']); self.assertEqual(n['running_breaks'], [])
+        self.assertEqual(n['expected_final'], n['balance_sum'])
 
 if __name__ == '__main__':
     unittest.main()

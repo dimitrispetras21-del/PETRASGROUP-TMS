@@ -65,6 +65,7 @@ def parse_sheet(ws, today):
         if end and end < r['entry']['entry_date']:
             r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
     running_last, opening, breaks, consistent = None, None, [], None
+    trailing, expected_final, residual = Decimal('0'), None, None
     if 'running' in cols:
         # Walk the cached ΠΡΟΟΔΕΥΤΙΚΟ against our own deltas. Rows without a running
         # value (a blank cell in the middle) accumulate into `acc` until the next
@@ -86,19 +87,34 @@ def parse_sheet(ws, today):
                     breaks.append({'row': r['row'], 'entry_date': r['entry']['entry_date'], 'diff': str(diff)})
             prev_run, acc = run, Decimal('0')
             running_last = str(run)
+        trailing = acc  # acc holds the deltas after the last cached running value
         if opening is not None and abs(opening) <= Decimal('0.05'): opening = None
         if running_last is not None:
             raw = raw_balance(cells_used)
-            consistent = (raw + (opening or Decimal('0')) + sum((Decimal(b['diff']) for b in breaks), Decimal('0'))).quantize(Decimal('0.01')) == d2(running_last)
+            expected_final = str(d2(running_last) + trailing)
+            tot = raw + (opening or Decimal('0')) + sum((Decimal(b['diff']) for b in breaks), Decimal('0'))
+            gap = (d2(running_last) + trailing) - tot
+            if abs(gap) <= Decimal('0.05'):
+                consistent = True
+                residual = None
+            elif abs(gap) <= Decimal('1.00'):
+                consistent = True
+                residual = str(gap.quantize(Decimal('0.01')))
+            else:
+                consistent = False
+                residual = None
     balance_sum = None
     if 'balance' in cols:
         vals = [c.get('balance') for c in cells_used if is_num(c.get('balance'))]
         balance_sum = str(sum((d2(v) for v in vals), d2(0))) if vals else None
+    if expected_final is None:
+        expected_final = balance_sum
     ds = sorted(dt.date.fromisoformat(r['entry']['entry_date']) for r in rows)
     return {'sheet': ws.title, 'header_row': h['row'], 'cols': cols, 'out_of_scope': h['out_of_scope'],
             'rows': rows, 'unknown': unknown, 'raw_final': str(raw_balance(cells_used)) if cells_used else None,
             'running_last': running_last, 'balance_sum': balance_sum,
             'opening_balance': str(opening) if opening is not None else None, 'running_breaks': breaks, 'running_consistent': consistent,
+            'expected_final': expected_final, 'trailing_delta': str(trailing) if trailing != 0 else None, 'rounding_residual': residual,
             'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
             'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only}
 
@@ -117,10 +133,10 @@ def main():
     out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
     json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     R = [r for n in nodes for r in n['rows']]
-    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d'
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d'
           % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
              sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
-             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance'])))
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta'])))
 
 if __name__ == '__main__':
     main()
