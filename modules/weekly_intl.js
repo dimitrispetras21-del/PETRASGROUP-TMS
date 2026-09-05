@@ -1887,6 +1887,18 @@ async function _wiSaveImportMatch(rowId,impId){
       if(ri?.error) throw new Error(ri.error.message||ri.error.type);
     }catch(err){ console.warn('[wi match] import assignment inherit:',err.message); }
   }
+
+  // P&L feed (5/9, N2): a match writes 'Matched Import ID' through
+  // syncOrderDownstream with skipPL:true (core/rt-feed.js says why — matching
+  // alone isn't a P&L trigger), so rtOnOrderSaved never ran for a match on its
+  // own. Call it directly: with N1 (worker/src/rt-rules.mjs) it attaches the
+  // import's leg to the export's existing RT instead of leaving it single-leg
+  // (measured 5/9: 9 of 46 matched pairs stuck that way). Non-blocking.
+  if(!matchFailed && typeof rtOnOrderSaved === 'function'){
+    for(const orderId of row.orderIds){
+      rtOnOrderSaved(orderId).catch(e => console.warn('[wi match] rt sync:', e && e.message));
+    }
+  }
 }
 
 async function _wiRemoveImport(rowId){
@@ -1933,6 +1945,14 @@ async function _wiRemoveImport(rowId){
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Το ταίριασμα αφαιρέθηκε ✓');
+    // P&L feed (5/9, N2): the unmatch above went through syncOrderDownstream
+    // with skipPL:true, same reason the match never reached the feed either —
+    // so the import's leg was never detached and stayed on the export's RT
+    // forever. rtOnImportUnmatched (core/rt-feed.js) removes just that leg via
+    // DELETE /costs/rt/:id/legs (N1); non-blocking, toasts on its own failure.
+    if(typeof rtOnImportUnmatched === 'function'){
+      rtOnImportUnmatched(row.orderIds[0], impId).catch(e => console.warn('[wi unmatch] rt sync:', e && e.message));
+    }
   }
 }
 
@@ -2322,6 +2342,19 @@ async function _wiSaveFromPopover(rowId){
     return;
   }
   _wiClosePopover();
+
+  // P&L feed (5/9, N2): assigning Truck/Driver here is exactly what turns an
+  // order "executing" for rt-feed.js (Status Assigned + a vehicle) — but this
+  // popover save never called it, so an RT for this trip was only ever created
+  // on the NEXT unrelated order-form save. The block above (row.importId &&
+  // !row.orderIds.includes(...)) already inherits Truck/Trailer/Driver onto a
+  // matched import unconditionally, so rtOnOrderSaved for the export alone is
+  // enough — it resolves the match itself via 'Matched Import ID'.
+  if(typeof rtOnOrderSaved === 'function'){
+    for(const orderId of row.orderIds){
+      rtOnOrderSaved(orderId).catch(e => console.warn('[wi popover] rt sync:', e && e.message));
+    }
+  }
 
   // PARTNER ASSIGNMENT sync (both export + import rows)
   if(isPartner){

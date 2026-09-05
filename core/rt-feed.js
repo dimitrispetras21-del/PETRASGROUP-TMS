@@ -10,7 +10,9 @@
 //  • RT με γραμμές κόστους δεν ακυρώνεται ποτέ αυτόματα (ποτέ ορφανά κόστη).
 //  • Μοναδικότητα: unique index ct_leg_order στη βάση — όχι έλεγχοι κώδικα.
 // Κενά του σημερινού /costs API (δηλώνονται με toast, ΔΕΝ αυτοσχεδιάζουμε):
-// προσθαφαίρεση legs σε υπάρχον RT, OWNED↔PARTNER, ενημέρωση κομίστρου.
+// OWNED↔PARTNER, ενημέρωση κομίστρου.
+// Η προσθήκη legs σε υπάρχον RT ΛΥΘΗΚΕ 5/9 (worker/src/rt-rules.mjs, N1):
+// το POST /costs/rt είναι πλέον idempotent — attach αντί για δεύτερο create.
 // ═══════════════════════════════════════════════════════════
 'use strict';
 
@@ -132,13 +134,17 @@ async function rtOnOrderSaved(orderId) {
       rtRef = res.record;
       // Αυτο-ίαση: ο Worker δεν είναι transactional — αν τα legs δεν γράφτηκαν,
       // το RT είναι ορφανό (δεν θα ξαναβρεθεί ποτέ) και ακυρώνεται ΕΔΩ, φωναχτά.
-      if (rtRef && (res.legs || []).length < body.legs.length) {
+      // Δεν ισχύει σε response attach:true (N1, 5/9) — εκεί το RT βρέθηκε ήδη
+      // υπαρκτό και res.legs είναι ΟΛΑ τα σκέλη του, όχι μόνο τα καινούρια.
+      if (!res.attached && rtRef && (res.legs || []).length < body.legs.length) {
         await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'cancelled' } });
         _rtWarn('P&L: το ' + rtRef.code + ' δημιουργήθηκε χωρίς σκέλη και ακυρώθηκε — δες μετρητή συμφωνίας');
         return;
       }
       // Singleton κόμιστρο partner στη γέννηση — αλλιώς «κόστη ελλιπή» για πάντα.
-      if (partnerTrip && parseFloat(f['Partner Rate'])) {
+      // Παραλείπεται σε attach:true: το RT δεν γεννήθηκε τώρα, άρα ήδη έχει (ή
+      // έπρεπε να έχει πάρει) το κόμιστρό του — να το ξαναβάλεις θα το διπλογράψει.
+      if (!res.attached && partnerTrip && parseFloat(f['Partner Rate'])) {
         await plFetch('/costs/lines', { method: 'POST', body: {
           rt_id: rtRef.id, category: 'partner_rate', net: parseFloat(f['Partner Rate']), vat: 0,
           line_date: dStart, note: 'auto από Weekly (' + (f['Reference'] || orderId) + ')' } });
@@ -151,10 +157,29 @@ async function rtOnOrderSaved(orderId) {
       if (dStart && rt.date_start !== dStart) patch.date_start = dStart;
       if (dEnd && rt.date_end !== dEnd) patch.date_end = dEnd;
       if (Object.keys(patch).length) await plFetch('/costs/rt/' + rt.id, { method: 'PATCH', body: patch });
-      // Κενά του σημερινού API — δηλώνονται, δεν σιωπούν:
-      const want = [pgX].concat(pgI != null ? [pgI] : []).sort().join(',');
-      const have = (rt.ct_rt_legs || []).map(l => l.order_id).sort().join(',');
-      if (want !== have) _rtWarn('P&L: τα σκέλη του ' + rt.code + ' άλλαξαν (import) — ο συγχρονισμός σκελών θέλει επέκταση Worker· δες το στο TRIP PnL');
+      // Λείπον σκέλος σε ήδη υπάρχον RT — π.χ. ταίριασμα στο Weekly International
+      // ΜΕΤΑ τη δημιουργία του RT εξαγωγής (9 μονοσκελή RT μετρημένα 5/9, CLAUDE.md
+      // «Κατάσταση 24/8, ενημ. 30/8»). Πριν το N1 (worker/src/rt-rules.mjs) ο
+      // Worker δεν μπορούσε να προσθέσει σκέλος σε υπάρχον RT και εδώ μόνο
+      // φωνάζαμε· τώρα το POST /costs/rt είναι idempotent και προσαρτά (attach)
+      // ό,τι λείπει.
+      const wantIds = [pgX].concat(pgI != null ? [pgI] : []);
+      const haveIds = (rt.ct_rt_legs || []).map(l => l.order_id);
+      const missingIds = wantIds.filter(id => !haveIds.includes(id));
+      if (missingIds.length) {
+        const legsBody = missingIds.map(id => ({ direction: id === pgX ? 'EXPORT' : 'IMPORT', order_id: id }));
+        const attachRes = await plFetch('/costs/rt', { method: 'POST', body: {
+          scope: 'INTL', trip_type: partnerTrip ? 'PARTNER' : 'OWNED',
+          // Το validateRtBody απαιτεί truck_id/partner_id ακόμα κι όταν η ενέργεια
+          // θα καταλήξει attach (δεν χρησιμοποιούνται εκεί) — πέφτουμε πίσω στα
+          // ήδη γνωστά του rt όταν τα _rtFleetIds δεν βρήκαν αντιστοίχιση.
+          truck_id: partnerTrip ? null : (ids.truck_id || rt.truck_id),
+          partner_id: partnerTrip ? (ids.partner_id || rt.partner_id) : null,
+          date_start: rt.date_start, date_end: dEnd || rt.date_end, legs: legsBody
+        } });
+        if (attachRes && attachRes.attached && attachRes.record) rtRef = attachRes.record;
+        else _rtWarn('P&L: το ' + rt.code + ' δεν πήρε το σκέλος αυτόματα — δες το στο TRIP PnL');
+      }
       if ((partnerTrip ? 'PARTNER' : 'OWNED') !== rt.trip_type) _rtWarn('P&L: αλλαγή ιδιόκτητο↔συνεργάτης στο ' + rt.code + ' δεν συγχρονίζεται αυτόματα — δες το στο TRIP PnL');
     }
     // Κλείσιμο = γεγονός δεδομένων (κλειδωμένο 10/8): solo export → Delivered
@@ -183,5 +208,24 @@ async function rtOnOrderDeleted(orderId) {
   });
 }
 
+// ── Ξεταίριασμα εισαγωγής (Weekly International _wiRemoveImport) ──
+// Το ταίριασμα/ξεταίριασμα γράφει 'Matched Import ID' μέσω syncOrderDownstream
+// με skipPL:true (δεν είναι από μόνο του γεγονός P&L) — άρα ο αυτόματος feed
+// ΠΟΤΕ δεν έβλεπε το ξεταίριασμα, και το σκέλος εισαγωγής έμενε κολλημένο σε
+// RT που δεν το αφορά πια. Καλείται απευθείας από modules/weekly_intl.js.
+// Αφαιρεί ΜΟΝΟ το σκέλος εισαγωγής — το RT της εξαγωγής μένει (ξαναγίνεται
+// μονοσκελές, όπως πριν το ταίριασμα).
+async function rtOnImportUnmatched(exportOrderId, importOrderId) {
+  return _rtSafe('αφαίρεση σκέλους εισαγωγής', async () => {
+    const pgI = await _rtPg(importOrderId);
+    if (pgI == null) return; // χωρίς στάση φόρτωσης — τίποτα καταγεγραμμένο στο /costs
+    const pgX = await _rtPg(exportOrderId);
+    const rt = await _rtFind([pgX, pgI].filter(v => v != null));
+    if (!rt) return; // δεν δημιουργήθηκε ποτέ RT — τίποτα να καθαριστεί
+    await plFetch('/costs/rt/' + rt.id + '/legs?order_id=' + pgI, { method: 'DELETE' });
+  });
+}
+
 window.rtOnOrderSaved = rtOnOrderSaved;
 window.rtOnOrderDeleted = rtOnOrderDeleted;
+window.rtOnImportUnmatched = rtOnImportUnmatched;
