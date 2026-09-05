@@ -809,7 +809,7 @@ import unittest, sys, os, copy
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from verify_plan import verify
 
-NODE = {'file_id': 'F1', 'file_name': 'X.xlsx', 'sheet': 'S1', 'out_of_scope': False, 'raw_final': '100.00', 'running_last': '100.00',
+NODE = {'file_id': 'F1', 'file_name': 'X.xlsx', 'sheet': 'S1', 'out_of_scope': False, 'raw_final': '100.00', 'running_last': '100.00', 'running_consistent': True, 'expected_final': '100.00',
         'rows': [{'row': 4, 'entry': {'entry_type': 'trip', 'entry_date': '2024-01-10', 'date_end': None, 'route': 'A', 'trip_value': 400.0, 'advance': 300.0, 'expenses': None}, 'date_problem': None},
                  {'row': 5, 'entry': {'entry_type': 'payment_cash', 'entry_date': '2024-02-01', 'amount': 0.0}, 'date_problem': None}],
         'unknown': []}
@@ -853,6 +853,9 @@ class TestVerify(unittest.TestCase):
     def test_needs_decision_status_skips_balance_checks_but_needs_reasons(self):
         p = plan(status='needs_decision', needs_decision=[])
         self.assertTrue(any('needs_decision' in e for e in verify(p, [NODE], AUTO, MAP)))
+    def test_inconsistent_node_rejected(self):
+        node = dict(NODE); node['running_consistent'] = False
+        self.assertTrue(any('inconsistent' in e for e in verify(plan(), [node], AUTO, MAP)))
     def test_file_not_in_map(self):
         self.assertTrue(any('map' in e for e in verify(plan(), [NODE], AUTO, {'driver_id': 8, 'files': [], 'crosscheck': []})))
 
@@ -904,6 +907,7 @@ def verify(plan, nodes, auto_rows, map_entry):
         if src['out_of_scope']: errs.append('chain node %s is out_of_scope layout' % n['sheet'])
         if src['unknown']: errs.append('chain node %s has %d unknown rows — must be needs_decision' % (n['sheet'], len(src['unknown'])))
         if any(r['date_problem'] for r in src['rows']): errs.append('chain node %s has unrepaired dates' % n['sheet'])
+        if src.get('running_consistent') is False: errs.append('chain node %s: Excel ΠΡΟΟΔΕΥΤΙΚΟ inconsistent with rows — needs_decision' % n['sheet'])
     auto = {a['dl_id']: a for a in auto_rows}
     total = Decimal('0')
     for b in plan.get('batches', []):
@@ -953,7 +957,7 @@ if __name__ == '__main__':
 - [ ] **Step 4: Run tests**
 
 Run: `cd tools/ledger-import && python3 -m unittest tests.test_verify_plan -v 2>&1 | tail -3`
-Expected: `OK` (10 tests).
+Expected: `OK` (11 tests).
 
 - [ ] **Step 5: Commit**
 
