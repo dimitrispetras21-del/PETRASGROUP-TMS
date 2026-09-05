@@ -3112,3 +3112,21 @@ git commit -q -m "ledger-import: report — fixed decision categories; public su
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10f: small fixes from the review of 10d
+
+**Files:** `tools/ledger-import/tests/test_inventory.py`, `tools/ledger-import/rules.py`, `tools/ledger-import/inventory.py`
+
+- [ ] **Step 1:** In `tests/test_inventory.py`, `test_rounding_residual_is_tolerated`: restore the two assertions that were removed: `self.assertTrue(n['running_consistent'])` and `self.assertEqual(n['expected_final'], '560.07')` (they pass; their removal was not asked for).
+- [ ] **Step 2:** In `rules.py` `detect_header`, rewrite the header-cell condition with explicit parentheses: `if ((field == 'balance') or (field not in cols)) and any(k in n for k in keys):` with the existing comment (κράτησε comes first, the line balance after ΑΞΙΑ, so the last ΥΠΟΛΟΙΠΟ wins).
+- [ ] **Step 3:** In `inventory.py`: (a) the dropped-return-date branch must record a distinct structured note: `date_fix = {'from': end, 'to': None, 'note': 'λήξη Excel %s μη έγκυρη (πριν την αναχώρηση), αφαιρέθηκε' % end}` for the before-departure case and `… (> 60 ημέρες μετά την αναχώρηση) …` for the other; (b) simplify `if pending and rows == []:` to `if pending:` if the invariant holds (pending is only ever non-empty while rows is empty) — keep behaviour identical.
+- [ ] **Step 4:** Run the suite (`cd tools/ledger-import && python3 -m unittest discover -s tests 2>&1 | tail -3`) → OK, same count (89). Run `python3 tools/ledger-import/inventory.py` and `python3 tools/ledger-import/make_plan.py | tail -1` — counts must be unchanged (ready 60 / needs_decision 24; if they change, report the difference — do not "fix").
+- [ ] **Step 5:** Commit:
+```bash
+git add tools/ledger-import/tests/test_inventory.py tools/ledger-import/rules.py tools/ledger-import/inventory.py
+git commit -q -m "ledger-import: restore dropped assertions, explicit precedence in header match, distinct date_fix notes (review 10d)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
