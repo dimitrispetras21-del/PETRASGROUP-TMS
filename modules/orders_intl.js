@@ -186,7 +186,13 @@ function _oiInvCell(r) {
   const inner = err
     ? `<span class="oi-inv-ring" title="${escapeHtml(err)}">${box}<span class="oi-inv-err">⚠</span></span>`
     : box;
-  return `<td class="oi-inv" onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${on})">${inner}</td>`;
+  // B2 (design audit 6α): the cell looked clickable for every role, but the
+  // write only succeeds for orders/costs "full" (invoicing.js uses the same
+  // rule) — everyone else just collected a silent 403. Same box, no onclick.
+  const canInvoice = can('orders') === 'full' || can('costs') === 'full';
+  return canInvoice
+    ? `<td class="oi-inv" onclick="event.stopPropagation();toggleIntlInvoiced('${r.id}',${on})">${inner}</td>`
+    : `<td class="oi-inv oi-inv-disabled" title="Χωρίς δικαίωμα τιμολόγησης">${inner}</td>`;
 }
 function _oiPeriodLabel() {
   return _intlPeriod === '60' ? 'τελευταίες 60 ημέρες' : _intlPeriod === '180' ? 'τελευταίοι 6 μήνες' : 'όλες οι ημερομηνίες';
@@ -251,6 +257,7 @@ function _oiCss() { return `
 /* 4px, not 8px: the error ring below is ~34px wide and the column is 40px. */
 .oi-layout .entity-table-wrap tbody td.oi-inv{padding:0 4px}
 .oi-inv{cursor:pointer;text-align:center}
+.oi-inv-disabled{cursor:not-allowed}
 .oi-chk{display:inline-block;width:18px;height:18px;border:1px solid var(--border-dark);border-radius:6px;background:var(--surface-card);vertical-align:middle;line-height:16px;font-size:11px;font-weight:700;color:var(--text-mid)}
 .oi-chk.on{border-color:var(--text-mid)}
 /* Δ3: the ring carries the alarm so the box inside can keep carrying the state. */
@@ -452,13 +459,16 @@ function _renderIntlLayout(c) {
             <option value="Export"${_dis('Direction','Export')}>↑ Εξαγωγή</option>
             <option value="Import"${_dis('Direction','Import')}>↓ Εισαγωγή</option>
           </select>
+          ${/* B1 (design audit 6α): "Invoiced" dropped from this list — it is
+                 a checkbox column, never a transport status (CLAUDE.md locked
+                 decision, DESIGN.md ΜΕΡΟΣ Ε: Pending→Assigned→In Transit→
+                 Delivered, plus Cancelled). */''}
           <select class="svc-filter" onchange="intlFilter('_status',this.value)">
             <option value="">Κατάσταση: Όλες</option>
             <option value="Pending"${_dis('Status','Pending')}>Σε αναμονή</option>
             <option value="Assigned"${_dis('Status','Assigned')}>Ανατεθειμένη</option>
             <option value="In Transit"${_dis('Status','In Transit')}>Σε μεταφορά</option>
             <option value="Delivered"${_dis('Status','Delivered')}>Παραδόθηκε</option>
-            <option value="Invoiced"${_dis('Status','Invoiced')}>Τιμολογήθηκε</option>
             <option value="Cancelled"${_dis('Status','Cancelled')}>Ακυρώθηκε</option>
           </select>
           <select class="svc-filter" onchange="intlFilter('Brand',this.value)">

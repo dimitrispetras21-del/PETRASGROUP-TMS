@@ -154,6 +154,7 @@ const _ON_CSS = `
    44px — the default padding clipped its right edge (measured 3/9). */
 .on-v2 .entity-table-wrap tbody td.on-inv{padding:0 4px}
 .on-inv{cursor:pointer;text-align:center}
+.on-inv-disabled{cursor:not-allowed}
 .on-inv-box{display:inline-block;width:16px;height:16px;border:1px solid var(--border-dark);border-radius:var(--radius);background:var(--surface-card);vertical-align:middle}
 .on-inv-on{font-weight:700;color:var(--ok)}
 /* Δ3: the ring carries the alarm so the ✓/box inside can keep carrying the
@@ -281,12 +282,18 @@ function _renderNatlLayout(c) {
             ${_onOpt('Independent', 'Ανεξάρτητη', cnt(f => f['Type'] === 'Independent'))}
             ${_onOpt('Veroia Switch', 'Veroia Switch', cnt(f => f['Type'] === 'Veroia Switch'))}
           </select>
+          ${/* B1 (design audit 6α): "Confirmed" is not part of the app's
+                 status vocabulary (CLAUDE.md locked decision — Pending→
+                 Assigned→In Transit→Delivered, plus Cancelled) and
+                 "Cancelled" was missing entirely. Wording matches _OI_STATUS
+                 in orders_intl.js — same five labels everywhere. */''}
           <select class="svc-filter" onchange="natlFilter('Status',this.value)">
             <option value="">Κατάσταση παραγγελίας: Όλες</option>
             ${_onOpt('Pending', 'Σε αναμονή', cnt(f => f['Status'] === 'Pending'))}
-            ${_onOpt('Confirmed', 'Επιβεβαιωμένη', cnt(f => f['Status'] === 'Confirmed'))}
+            ${_onOpt('Assigned', 'Ανατεθειμένη', cnt(f => f['Status'] === 'Assigned'))}
             ${_onOpt('In Transit', 'Σε μεταφορά', cnt(f => f['Status'] === 'In Transit'))}
             ${_onOpt('Delivered', 'Παραδόθηκε', cnt(f => f['Status'] === 'Delivered'))}
+            ${_onOpt('Cancelled', 'Ακυρώθηκε', cnt(f => f['Status'] === 'Cancelled'))}
           </select>
           <select class="svc-filter" onchange="natlFilter('_trip',this.value)">
             <option value="">Ανάθεση: Όλες</option>
@@ -467,9 +474,17 @@ function _onRowHtml(r) {
     <td class="on-num">${_onDate(f['Delivery DateTime'])}</td>
     <td class="on-num">${pal}</td>
     <td class="on-trip${hasTrip ? '' : ' unassigned'}">${tripT}</td>
-    <td class="on-inv" id="ninv_${r.id}" onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
-      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(r)}</td>
+    ${_onInvTd(r)}
   </tr>`;
+}
+// B2 (design audit 6α): same rule invoicing.js uses — everyone else got a
+// live-looking checkbox that just 403'd on click.
+function _onInvTd(r) {
+  const canInvoice = can('orders') === 'full' || can('costs') === 'full';
+  if (!canInvoice) return `<td class="on-inv on-inv-disabled" id="ninv_${r.id}" title="Χωρίς δικαίωμα τιμολόγησης">${_onInvCell(r)}</td>`;
+  const f = r.fields;
+  return `<td class="on-inv" id="ninv_${r.id}" onclick="event.stopPropagation();toggleNatlInvoiced('${r.id}',${!!f['Invoiced']})"
+      title="${f['Invoiced']?'Αφαίρεση σήμανσης τιμολόγησης':'Σήμανση ως τιμολογημένη'}">${_onInvCell(r)}</td>`;
 }
 
 function _onVirtualPaint() {

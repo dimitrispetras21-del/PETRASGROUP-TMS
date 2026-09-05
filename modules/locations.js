@@ -151,7 +151,7 @@ function _locShell() {
 /* Εναλλαγή πίνακα/χάρτη μέσα στο ίδιο panel: ο χάρτης παίρνει τον χώρο του
    πίνακα. Όσο είναι display:none το Leaflet μετρά μηδενικό ύψος — γι' αυτό
    το _lmapOpen κάνει invalidateSize σε κάθε επόμενο άνοιγμα. */
-.loc-map-host { display: none; flex: 1; min-height: 0; }
+.loc-map-host { display: none; flex: 1; min-height: 0; position: relative; }
 .loc-map-on #locTableWrap, .loc-map-on #locPager { display: none; }
 .loc-map-on .loc-map-host { display: block; }
 </style>`;
@@ -196,9 +196,21 @@ function _locToggleMap() {
   if (LOC.mapOpen && typeof _lmapOpen === 'function') _lmapOpen();
 }
 
+// B3 (design audit 6α): read-time merge only — the dropdown showed «GR» (2
+// records) AND «Greece» (381) as two countries. Data itself is untouched
+// (Supabase = SELECT only, CLAUDE.md ΚΑΝΟΝΕΣ ΒΑΣΗΣ); fixing the value in the
+// two rows is a separate owner decision (§5 of the audit). Add further
+// ISO-code/casing duplicates here only once confirmed — never guess.
+const _LOC_COUNTRY_ALIAS = { 'GR': 'Greece' };
+function _locNormCountry(c) {
+  if (!c) return c;
+  const t = String(c).trim();
+  return _LOC_COUNTRY_ALIAS[t] || t;
+}
+
 // ── Filter options ─────────────────────────────
 function _locBuildFilterOptions() {
-  const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
+  const countries = [...new Set(LOC.records.map(r => _locNormCountry(r.fields.Country)).filter(Boolean))].sort();
   const cf = document.getElementById('locCountryFilter');
   // LO-2: η παλιά κάρτα «Ελλιπή Στοιχεία» οδηγούσε εδώ — μένει ως μόνιμη επιλογή
   { const o = document.createElement('option'); o.value = '__missing'; o.textContent = '— Ελλιπή στοιχεία'; cf.appendChild(o); }
@@ -234,7 +246,7 @@ function _locApplyFilters() {
     const f = r.fields;
     if (LOC.noCoords && _locHasCoords(f)) return false;
     if (country === '__missing') { if (f.Country && f.City) return false; }
-    else if (country && f.Country !== country) return false;
+    else if (country && _locNormCountry(f.Country) !== country) return false;
     if (type && (f.Type || '').trim() !== type) return false;
     if (q) {
       const hay = [f.Name, f.City, f.Country, f.Address].filter(Boolean).join(' ').toLowerCase();
@@ -608,9 +620,17 @@ function _locCardCss() { return `
 .locc-note b{color:var(--danger)}
 `; }
 
+// B4 (design audit 6α): Escape closed every other panel/modal in the app
+// (core/ui.js:349 — modal overlay, entity detail panel) but not this one; it
+// never registered a listener. Scoped add/remove on open/close, like the
+// natl order screen's own detail panel (_onEscClose), instead of teaching the
+// shared core/ui.js listener about a class it doesn't otherwise know.
+function _locEscClose(e) { if (e.key === 'Escape') _locCloseCard(); }
+
 function _locCloseCard() {
   document.getElementById('loccOverlay')?.classList.remove('open');
   document.getElementById('loccPanel')?.classList.remove('open');
+  document.removeEventListener('keydown', _locEscClose);
   LOCC.openId = null;
 }
 
@@ -634,6 +654,8 @@ async function _locOpenCard(id) {
   const panel = _locCardHost();
   document.getElementById('loccOverlay').classList.add('open');
   panel.classList.add('open');
+  document.removeEventListener('keydown', _locEscClose); // avoid a duplicate if re-opened without closing
+  document.addEventListener('keydown', _locEscClose);
   LOCC.openId = id; LOCC.stops = null; LOCC.failed = false; LOCC.pgByRec = {};
   panel.innerHTML = _locCardHtml(rec, '<div class="locc-empty">Φόρτωση ιστορικού…</div>');
   try {

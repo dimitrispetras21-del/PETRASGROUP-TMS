@@ -189,6 +189,23 @@ function _lmapBuildPoints() {
   _lmapEnrichWorkshops();
 }
 
+// B5: reuses the app's shared error-banner classes (assets/style.css,
+// already used by performance.js for the same "partial data, not gone"
+// message) instead of inventing a new notice component for one screen.
+function _lmapWorkshopWarnHtml() {
+  return `<div class="tms-error-banner" role="alert" style="position:absolute;top:var(--space-3);left:var(--space-3);right:var(--space-3);z-index:1000;margin:0">
+    <span class="tms-error-icon">⚠</span>
+    <div class="tms-error-content">
+      <div class="tms-error-title">Τα συνεργεία δεν φορτώθηκαν</div>
+      <div class="tms-error-msg">Δεν σημαίνει ότι δεν υπάρχουν. Οι τοποθεσίες παραπάνω δεν επηρεάζονται.</div>
+      <div style="display:flex;gap:var(--space-2);margin-top:var(--space-2)">
+        <button type="button" class="tms-error-action" onclick="LMAP.built=false;_lmapOpen()">Ξαναδοκίμασε</button>
+        <button type="button" class="tms-error-action" style="background:transparent;color:var(--danger);border:1px solid var(--danger)" onclick="this.closest('.tms-error-banner').remove()">Κλείσιμο</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // ── Entry point (καλείται από το locations.js) ──
 async function _lmapOpen() {
   const host = document.getElementById('locMapHost');
@@ -196,6 +213,7 @@ async function _lmapOpen() {
   if (LMAP.built) { setTimeout(() => LMAP.map && LMAP.map.invalidateSize(), 30); return; }
 
   host.innerHTML = '<div class="lmap-msg">Φόρτωση χάρτη…</div>';
+  let workshopsFailed = false;
   try {
     // Τα συνεργεία είναι «καλό να υπάρχουν»: αν πέσει το fetch, ο χάρτης ανοίγει
     // με 15 συνεργεία αντί 19 — δεν κλειδώνει ολόκληρη η καρτέλα για ένα extra.
@@ -203,7 +221,7 @@ async function _lmapOpen() {
       _lmapLoadLib(),
       atGetAll(TABLES.WORKSHOPS,
         { fields: ['Name', 'City', 'Specialty', 'Phone', 'Contact Person', 'Active'] }, true)
-        .catch(e => { if (typeof logError === 'function') logError(e, '_lmapOpen workshops'); return []; })
+        .catch(e => { if (typeof logError === 'function') logError(e, '_lmapOpen workshops'); workshopsFailed = true; return []; })
     ]);
     LMAP.workshops = res[1] || [];
     _lmapBuildPoints();
@@ -213,6 +231,14 @@ async function _lmapOpen() {
     }
     _lmapRender(host);
     LMAP.built = true;
+    // B5 (design audit 6α): the workshops fetch used to fail silently into an
+    // empty list — only a console [TMS ERROR], nothing on screen — so the map
+    // looked complete while quietly missing every workshop pin. Same K7
+    // wording the other partial-load warnings in this app use: say what
+    // didn't load and that it does NOT mean the data is gone. `.loc-map-host`
+    // is `position:relative` (locations.js) so this sits over the map without
+    // reflowing the grid underneath.
+    if (workshopsFailed) host.insertAdjacentHTML('beforeend', _lmapWorkshopWarnHtml());
   } catch (e) {
     if (typeof logError === 'function') logError(e, '_lmapOpen');
     // Failure ≠ empty (DESIGN.md #7): the empty case above says «καμία τοποθεσία
