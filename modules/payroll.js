@@ -91,26 +91,6 @@ function dlDateRange(start, end) {
 const _dl = { view: 'home', balances: [], gap: 0, q: '', selected: null, selLoading: false, selErr: null,
   driver: null, entries: [], rts: [], year: String(new Date().getFullYear()), editId: null, bulk: null };
 
-// Detailed route per leg (owner 5/9): «dd/mm NAME · City, Country → dd/mm NAME ·
-// City, Country», legs joined by « || ». The location NAME is upper-cased, city
-// and country stay as written. A missing piece is left out, never invented (K3).
-// Falls back to route_text where the view has no legs (hand-written routes).
-function dlRouteLegsHtml(legs) {
-  const dm = s => (s && s.length >= 10) ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
-  const place = p => {
-    if (!p || !p.name) return '';
-    const cc = [p.city, p.country].filter(Boolean).join(', ');
-    return escapeHtml(String(p.name).toUpperCase()) + (cc ? ` <span class="dl-cc">· ${escapeHtml(cc)}</span>` : '');
-  };
-  const one = l => {
-    const a = [dm(l.load), place(l.from)].filter(Boolean).join(' ');
-    const b = [dm(l.deliv), place(l.to)].filter(Boolean).join(' ');
-    const extra = l.extra_stops > 0 ? ` <span class="dl-cc">+${l.extra_stops} στάσ.</span>` : '';
-    return `${a} → ${b}${extra}`;
-  };
-  return legs.map(one).join(' <span class="dl-sep">||</span> ');
-}
-
 function dlInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   return ((parts[0] ? parts[0][0] : '') + (parts[1] ? parts[1][0] : '')).toUpperCase() || '?';
@@ -180,6 +160,13 @@ function dlStyles() {
   .dl-err{color:var(--danger);font-size:12px;margin-top:8px}
   .dl-cc{color:var(--text-dim);font-weight:400}
   .dl-sep{color:var(--text-dim);font-weight:600;padding:0 4px}
+  /* Leg block under a trip entry (owner 5/9): the border that used to close
+     the row now closes the whole entry, so the legs read as part of it, not
+     a divider from the next row. .rt-legs/.rt-* come from assets/style.css —
+     one leg renderer shared with the entity card (core/utils.js:rtLegBlockHtml). */
+  .dl-entry{border-bottom:1px solid var(--border)}
+  .dl-entry .dl-row{border-bottom:0}
+  .dl-entry-legs{padding:2px 16px 10px 0}
   </style>`;
 }
 
@@ -190,14 +177,21 @@ function dlEntryRowHtml(e, opts) {
   const wDate = compact ? 90 : 100, wMoney = compact ? 90 : 110, wTotal = compact ? 100 : 130;
   const isTrip = e.entry_type === 'trip';
   const dateTxt = dlDateRange(e.entry_date, e.date_end);
+  // Leg block (owner 5/9): route detail moves BELOW the header row as one row
+  // per leg — see assets/style.css .rt-legs and core/utils.js:rtLegBlockHtml
+  // (shared with the entity card). route_text is only what's left to show
+  // when the view has no legs — hand-written routes never had legs to begin with.
+  const hasLegs = isTrip && Array.isArray(e.route_legs) && e.route_legs.length > 0;
   const routeText = isTrip
-    ? (Array.isArray(e.route_legs) && e.route_legs.length ? dlRouteLegsHtml(e.route_legs) : e.route_text ? escapeHtml(e.route_text) : '—')
+    ? (hasLegs ? '' : e.route_text ? escapeHtml(e.route_text) : '—')
     : (e.entry_type === 'payment_bank' ? 'Κατάθεση τράπεζας' : e.entry_type === 'payment_cash' ? 'Πληρωμή μετρητά' : 'Προσαρμογή');
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
+  const legsHtml = hasLegs ? `<div class="dl-entry-legs" style="margin-left:${wDate + 16}px">${rtLegBlockHtml(e.route_legs)}</div>` : '';
+  const wrap = row => hasLegs ? `<div class="dl-entry">${row}${legsHtml}</div>` : row;
 
   if (e.cancelled) {
-    return `<div class="dl-row canc" title="${escapeHtml(e.deleted_reason || '')}">
+    return wrap(`<div class="dl-row canc" title="${escapeHtml(e.deleted_reason || '')}">
       <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
       <div style="flex:1"><span class="m">${routeText}</span></div>
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
@@ -206,11 +200,11 @@ function dlEntryRowHtml(e, opts) {
       ${compact ? '' : `<div style="width:120px" class="r"><span class="n">—</span></div>`}
       <div style="width:${wTotal}px" class="r"><span class="n">—</span></div>
       ${compact ? '' : '<div style="width:32px"></div>'}
-    </div>`;
+    </div>`);
   }
 
   if (!compact && _dl.editId === e.id) {
-    return `<div class="dl-row edit">
+    return wrap(`<div class="dl-row edit">
       <div style="width:100px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
       <div style="flex:1"><span class="m">${routeText}</span></div>
       <div style="width:110px" class="r"><input class="dl-ei" type="number" step="0.01" id="dlEiValue" value="${e.trip_value ?? ''}" onkeydown="dlEiKeydown(event,${e.id})"></div>
@@ -219,7 +213,7 @@ function dlEntryRowHtml(e, opts) {
       <div style="width:120px" class="r"><span class="n dim">—</span></div>
       <div style="width:130px" class="r"><span class="n dim">—</span></div>
       <div style="width:32px"></div>
-    </div>`;
+    </div>`);
   }
 
   const valueCell = isTrip
@@ -234,7 +228,7 @@ function dlEntryRowHtml(e, opts) {
   const clickable = !compact && isTrip;
   const cancelBtn = compact ? '' : `<div style="width:32px" class="r"><button class="dl-x" title="Ακύρωση" onclick="event.stopPropagation();dlRowCancelClick(${e.id})">×</button></div>`;
 
-  return `<div class="dl-row${e.needs_review ? ' review' : ''}${clickable ? ' click' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}"${clickable ? ` onclick="dlEditRow(${e.id})"` : ''} title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
+  return wrap(`<div class="dl-row${e.needs_review ? ' review' : ''}${clickable ? ' click' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}"${clickable ? ` onclick="dlEditRow(${e.id})"` : ''} title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
     <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
     <div style="flex:1"><span class="m" style="font-weight:${isTrip ? 500 : 400}">${routeText}</span>${rtIcon}</div>
     <div style="width:${wMoney}px" class="r">${valueCell}</div>
@@ -243,7 +237,7 @@ function dlEntryRowHtml(e, opts) {
     ${compact ? '' : `<div style="width:120px" class="r">${balCell}</div>`}
     <div style="width:${wTotal}px" class="r">${totalCell}</div>
     ${cancelBtn}
-  </div>`;
+  </div>`);
 }
 
 // ═══════════════════ ΟΘΟΝΗ 1 — ΑΡΧΙΚΗ ═══════════════════

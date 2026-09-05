@@ -310,7 +310,6 @@ const ENTITY_CONFIG = {
       helper: 'Το πεδίο δεν αποθηκεύεται ακόμη — εκκρεμεί στήλη στη βάση.',
     },
     cardRt: true,
-    cardRtShowTruck: true,
     cardTruckAgg: true,
     perm: 'drivers',
     searchFields: ['Full Name', 'License Number'],
@@ -1642,6 +1641,12 @@ function _ecDate(d) {
   return dt.toLocaleDateString('el-GR', { day: '2-digit', month: 'short', year: 'numeric' }).replace(/\./g, '');
 }
 
+// ct_round_trips.status vocabulary (owner 5/9/2026) — no RT code on screen,
+// so the status word is the only thing the card says about where a round
+// trip stands. An unmapped value falls back to the raw text (K3: unknown is
+// shown, never hidden as if it matched one of the known five).
+const RT_STATUS_WORD = { planned: 'προγραμματισμένο', in_progress: 'σε εξέλιξη', closed: 'κλειστό', complete: 'ολοκληρωμένο', cancelled: 'ακυρωμένο' };
+
 function _ecRange(a, b) {
   const da = a ? new Date(a) : null, db = b ? new Date(b) : null;
   const fm = d => d.toLocaleDateString('el-GR', { day: '2-digit', month: 'short' }).replace(/\./g, '');
@@ -1944,18 +1949,25 @@ async function _loadEntityCardRT(entityKey, rec) {
     const rts = recsAll.slice(0, 5);
     const plateById = {};
     for (const x of lk.trucks || []) plateById[x.id] = x.license_plate;
-    // No route text yet: /costs/rt returns leg ids, not location names — the
-    // mock's «Βέροια → Μιλάνο» needs joins this endpoint does not serve.
-    // Shown instead: code, dates, km, status/plate. Recorded in OBSERVATIONS.
+    // Leg block (owner 5/9): /costs/rt now carries route_legs from
+    // dl_v_rt_route (migration 012, merged in the worker) — same shape and
+    // renderer as the driver ledger (core/utils.js:rtLegBlockHtml), so this
+    // card and the ledger never disagree on what a leg shows (αρχή 3).
+    // No RT code on screen (owner rule) — it only lives in the title attr.
     el.innerHTML = rts.length
-      ? rts.map(rt => `<div class="ecard-row">
-          <span class="ecard-row-code">${_ecEsc(rt.code || ('RT-' + rt.id))}</span>
-          <span class="ecard-row-date">${_ecRange(rt.date_start, rt.date_end)}</span>
-          <span class="ecard-row-main">${rt.total_km != null ? parseFloat(rt.total_km).toLocaleString('el-GR') + ' χλμ' : '—'}</span>
-          <span class="ecard-row-state">${cfg && cfg.cardRtShowTruck
-            ? _ecEsc(plateById[rt.truck_id] || '—')
-            : (rt.status === 'closed' ? 'κλειστό' : rt.status === 'open' ? 'ανοιχτό' : _ecEsc(rt.status || ''))}</span>
-        </div>`).join('')
+      ? rts.map(rt => {
+          const status = RT_STATUS_WORD[rt.status] || _ecEsc(rt.status || '—');
+          const legs = Array.isArray(rt.route_legs) && rt.route_legs.length
+            ? rtLegBlockHtml(rt.route_legs)
+            : `<div class="ecard-empty">${rt.route_text ? _ecEsc(rt.route_text) : 'Καμία καταγεγραμμένη διαδρομή.'}</div>`;
+          return `<div class="ecard-rt" title="${_ecEsc(rt.code || ('RT-' + rt.id))}">
+            <div class="ecard-rt-head">
+              <span class="ecard-row-date">${_ecRange(rt.date_start, rt.date_end)}</span>
+              <span class="ecard-row-state">${status}</span>
+            </div>
+            ${legs}
+          </div>`;
+        }).join('')
       : `<div class="ecard-empty">Καμία καταγεγραμμένη διαδρομή.</div>`;
 
     // «Με ποια φορτηγά» (driver card): per-truck round-trip counts from the

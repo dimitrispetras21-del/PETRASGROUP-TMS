@@ -1808,6 +1808,29 @@ tbody tr:hover { background: var(--bg-hover); }
 .ecard-more { font-size: var(--text-xs); color: var(--text-dim); padding-top: 4px; }
 .ecard-empty { font-size: var(--text-sm); color: var(--text-dim); }
 .ecard-fail { font-size: var(--text-sm); color: var(--warning); }
+/* ── RT leg block (owner decision 5/9/2026) — shared by the driver ledger
+   (modules/payroll.js, core/utils.js:rtLegBlockHtml) and this entity card.
+   One row PER LEG, never a single wrapped line: a 6-column grid template
+   does the wrapping on its own — every 6 cells (one leg) land on their own
+   row automatically, so the caller never computes line breaks. */
+.rt-legs {
+  display: grid;
+  grid-template-columns: 20px 44px 1fr 16px 44px 1fr;
+  column-gap: var(--space-2);
+  row-gap: var(--space-1);
+  align-items: baseline;
+  font-family: 'DM Sans', sans-serif;
+}
+.rt-dir, .rt-a { color: var(--text-dim); text-align: center; }
+.rt-d { color: var(--text-mid); font-variant-numeric: tabular-nums; font-size: var(--text-sm); white-space: nowrap; }
+.rt-n { font-size: var(--text-body); font-weight: 600; color: var(--text); }
+.rt-c { font-size: var(--text-sm); color: var(--text-dim); font-weight: 400; }
+/* Entity card round-trip block: header (dates left, status right) + legs.
+   Separate from .ecard-row (a single flex line, used by other card sections)
+   because this one stacks a header over a multi-row leg grid. */
+.ecard-rt { padding: var(--space-2) 0; border-bottom: 1px solid var(--border-row); }
+.ecard-rt:last-child { border-bottom: none; }
+.ecard-rt-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-1); }
 /* «Με ποια φορτηγά» (driver card): πινακίδα · πλήθος · σχετική μπάρα. Η μπάρα
    επαναλαμβάνει το πλήθος οπτικά — το νούμερο είναι γραμμένο δίπλα (κανόνας #2). */
 .ecard-agg-row { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; font-size: var(--text-sm); }

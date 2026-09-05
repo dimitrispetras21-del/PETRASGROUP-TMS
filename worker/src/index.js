@@ -2815,6 +2815,23 @@ async function handleCosts(request, url, origin, env) {
       if (q.get("truck_id")) params.append("truck_id", `eq.${q.get("truck_id")}`);
       if (q.get("status")) params.append("status", `eq.${q.get("status")}`);
       const { rows } = await dbSelectRaw(env, "ct_round_trips", params);
+      // Route detail (leg blocks) lives in dl_v_rt_route, built for the driver
+      // ledger (migration 012) — reused here instead of re-deriving it, so the
+      // driver card and the ledger never disagree on what a leg shows (αρχή 3).
+      if (rows.length) {
+        const ids = [...new Set(rows.map((r) => r.id))];
+        const routeParams = new URLSearchParams();
+        routeParams.set("select", "rt_id,route_text,route_legs");
+        routeParams.set("rt_id", `in.(${ids.join(",")})`);
+        const routeByRt = /* @__PURE__ */ new Map();
+        const { rows: routeRows } = await dbSelectRaw(env, "dl_v_rt_route", routeParams);
+        for (const rr of routeRows) routeByRt.set(rr.rt_id, rr);
+        for (const r of rows) {
+          const rr = routeByRt.get(r.id);
+          r.route_text = rr ? rr.route_text : null;
+          r.route_legs = rr ? rr.route_legs : null;
+        }
+      }
       return jsonOk({ records: rows }, origin, env);
     }
     // ---- PATCH /costs/rt/:id  (κλείσιμο/διόρθωση — fallback του data event) ----
