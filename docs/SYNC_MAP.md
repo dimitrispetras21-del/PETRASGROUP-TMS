@@ -84,7 +84,9 @@ select (select count(*) from m where imp_id is null or imp_deleted is not null o
                           join ct_round_trips r on r.id = a.rt_id and r.status <> 'cancelled'
                           where a.order_id = m.exp_id and b.order_id = m.imp_id))
      + (select count(*) from (select matched_import_id from orders where deleted_at is null and matched_import_id is not null
-          group by 1 having count(*) > 1 and bool_and(groupage_id is null)) d) as drift,
+          group by 1 having count(*) > 1
+             -- two exports on one import are legitimate only as one groupage RT (N0, 5/9)
+             and count(distinct (select l.rt_id from ct_rt_legs l where l.order_id = orders.id limit 1)) > 1) d) as drift,
        (select array_agg(exp_id) from (select exp_id from m where imp_id is null or imp_deleted is not null limit 3) s) as sample;
 ```
 
@@ -153,7 +155,9 @@ with flat as (
          (select count(*) from (values (o.loading_location_1_id),(o.loading_location_2_id),(o.loading_location_3_id),(o.loading_location_4_id),(o.loading_location_5_id),
                                        (o.loading_location_6_id),(o.loading_location_7_id),(o.loading_location_8_id),(o.loading_location_9_id),(o.loading_location_10_id),
                                        (o.unloading_location_1_id),(o.unloading_location_2_id),(o.unloading_location_3_id),(o.unloading_location_4_id),(o.unloading_location_5_id),
-                                       (o.unloading_location_6_id),(o.unloading_location_7_id),(o.unloading_location_8_id),(o.unloading_location_9_id),(o.unloading_location_10_id)) v(x) where x is not null) n_flat,
+                                       (o.unloading_location_6_id),(o.unloading_location_7_id),(o.unloading_location_8_id),(o.unloading_location_9_id),(o.unloading_location_10_id),
+                                       (o.veroia_crossdock_id)) v(x) where x is not null) n_flat,
+         -- the Cross-dock stop is the flat column veroia_crossdock_id (measured 5/9: 25 false positives without it)
          (select count(*) from order_stops s where s.order_id = o.id and s.deleted_at is null) n_stops
   from orders o where o.deleted_at is null and o.created_at >= '2026-08-01')
 select count(*) filter (where n_stops > 0 and n_stops <> n_flat) as drift,
@@ -245,7 +249,7 @@ from fuel f where f.deleted_at is null;
 πρέπει να έχουν τα ίδια usernames/roles με τους λογαριασμούς της βάσης.
 
 ```sql
-select string_agg(username || ':' || role, ', ' order by username) as db_users from app_users where active;
+select string_agg(username || ':' || role, ', ' order by username) as db_users from users where active;  -- table is `users` (5/9)
 ```
 
 ---
@@ -254,19 +258,19 @@ select string_agg(username || ':' || role, ', ' order by username) as db_users f
 
 Συμπληρώνεται από το audit (βλ. `docs/data-audit/2026-09/2026-09-05-sync-audit.md`).
 
-| Δεσμός | Κανόνας | Απόκλιση | Ετυμηγορία | Επόμενο βήμα |
+| Δεσμός | Κανόνας | Απόκλιση 5/9 | Ετυμηγορία | Επόμενο βήμα |
 |---|---|---|---|---|
-| E1 | DB | | | |
-| E2 | DB | | | |
-| E3 | οθόνη + Worker | | | |
-| E4 | οθόνη | | | |
-| E5 | οθόνη + DB (RESTRICT) | | | |
-| E6 | οθόνη | | | |
-| E7 | οθόνη | | | |
-| E8 | οθόνη | | | |
-| E9 | — | | ⚪ εκτός | ράμπα αργότερα (owner) |
-| E10 | οθόνη | | | |
-| E11 | οθόνη | | | |
-| E12 | — | | | N4 |
-| E13 | — | | | |
-| E14 | — | | | |
+| E1 παραγγελία↔RT | DB (013) | 0 | 🟢 | νυχτερινός έλεγχος |
+| E2 RT→μισθοδοσία | DB (011) | 0 | 🟢 | νυχτερινός έλεγχος |
+| E3 ταίριασμα exp↔imp | οθόνη + Worker | 0 (1 ψευδές: groupage) | 🟡 | FK/έλεγχος στη βάση όταν το `matched_import_id` γίνει bigint |
+| E4 VS→εθνικό φορτίο | οθόνη | 1 (NL 57: Pending ενώ η παραγγελία Delivered) | 🔴 | απόφαση owner: το NL ακολουθεί την κατάσταση της παραγγελίας; → trigger |
+| E5 groupage lines | οθόνη + RESTRICT | 0 | 🟡 | trigger «1 γραμμή ανά στάση» αργότερα |
+| E6 CL→NL | οθόνη | 0 | 🟡 | trigger vehicle CL→NL αργότερα |
+| E7 στάσεις↔στήλες | οθόνη | 0 (25 ψευδή: Cross-dock) | 🟡 | μακροπρόθεσμα μία πηγή (αρχή 3) |
+| E8 ανάθεση συνεργάτη | οθόνη | 0 | 🟡 | — |
+| E9 ράμπα | — | 40/40 ασύνδετα | ⚪ | owner: ράμπα αργότερα |
+| E10 παλέτες | οθόνη | **9** παραγγελίες Delivered με PE χωρίς κίνηση | 🔴 | trigger «PE → εκκρεμής κίνηση» (πλαίσιο παλετών, Αλεξία)· backfill |
+| E11 κατάσταση | οθόνη | **8** (5 NULL · 2 In Transit χωρίς όχημα · RT-1019 κλειστό/274 In Transit) | 🔴 | **014**: NOT NULL DEFAULT 'Pending' + CHECK λεξιλογίου· backfill 5 |
+| E12 NL↔RT | — | 2 | 🔴 γνωστό | N4 |
+| E13 καύσιμα | — | πίνακας άδειος | ⚫ μη μετρήσιμο | Fuel Receipts UI |
+| E14 ρόστερ χρηστών | — | 6 (alexia ανενεργή στη βάση + 5 demo_*) | 🔴 | αφαίρεση demo_* από config.js/index.html· alexia ενεργοποίηση όταν ξεκινήσει |
