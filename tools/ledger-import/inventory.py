@@ -7,7 +7,7 @@ repair written into the row's note."""
 import datetime as dt, json, os, warnings
 from decimal import Decimal
 import openpyxl
-from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, Unknown
+from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, to_date, Unknown
 warnings.filterwarnings('ignore')
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -47,10 +47,12 @@ def parse_sheet(ws, today):
         if e is None:
             if any(v not in (None, '') for v in raw): text_only += 1
             continue
-        # Below the ΣΥΝΟΛΟ line only rows where the ΠΡΟΟΔΕΥΤΙΚΟ continues are ledger
-        # entries; the rest are memos (loan reconciliations, notes) and must not move
-        # the balance. Kept for the owner report, never imported.
-        if after_totals and not ('running' in cols and is_num(cells.get('running'))):
+        # Below the ΣΥΝΟΛΟ line, what counts as a ledger entry depends on the sheet layout.
+        # With a ΠΡΟΟΔΕΥΤΙΚΟ column, the running value decides: only entries with a running value
+        # are ledger entries. Without one, the date decides: only dated rows are entries.
+        # Undated rows (or rows without a running value) are memos (loan reconciliations, notes)
+        # and must not move the balance. Kept for the owner report, never imported.
+        if after_totals and (('running' in cols and not is_num(cells.get('running'))) or ('running' not in cols and to_date(cells.get('date')) is None)):
             memos.append({'row': rn, 'label': str(cells.get('route') or cells.get('cash') or '')[:80], 'amount': float(d2(cells.get('advance') if is_num(cells.get('advance')) else (cells.get('value') if is_num(cells.get('value')) else 0)))})
             continue
         inherited = False

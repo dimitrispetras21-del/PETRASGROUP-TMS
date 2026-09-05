@@ -152,13 +152,15 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual([m['amount'] for m in n['after_totals']], [1002.0, 1002.0])
         self.assertEqual(n['expected_final'], '130.00'); self.assertTrue(n['running_consistent'])
 
-    def test_totals_ends_a_sheet_without_running_column(self):
+    def test_totals_on_sheet_without_running_keeps_dated_rows(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
                    (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250),
-                   (None, 'ΣΥΝΟΛΟ', 300, 50, None, 500, 250),
-                   (dt.datetime(2025, 4, 1), 'ΚΑΤΑΘΕΣΗ', 1002, None, None, None, -1002)])
+                   (None, 'ΣΥΝΟΛΟ 2025', 300, 50, None, 500, 250),
+                   (dt.datetime(2026, 1, 10), 'ΑΘΗΝΑ', 100, None, None, 230, 130),      # dated → entry
+                   (None, 'ΕΞΟΦΛΗΘΗ', 1002, None, None, None, -1002)])                   # undated → memo
         n = parse_sheet(ws, today=dt.date(2026, 9, 5))
-        self.assertEqual(n['n_rows'], 1); self.assertEqual(n['after_totals_skipped'], 1); self.assertEqual(n['balance_sum'], '250.00')
+        self.assertEqual(n['n_rows'], 2); self.assertEqual(n['after_totals_skipped'], 1)
+        self.assertEqual(n['balance_sum'], '380.00')
 
 if __name__ == '__main__':
     unittest.main()
