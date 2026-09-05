@@ -202,20 +202,20 @@ function _aicPageContext() {
 /* Floating launcher button */
 .aic-btn { position:fixed; bottom:24px; right:24px; z-index:var(--z-float);
   width:52px; height:52px; border-radius:50%; border:none;
-  background:var(--accent); color:#fff; cursor:pointer;
+  background:var(--accent); color:var(--text-on-dark); cursor:pointer;
   box-shadow:0 4px 16px rgba(2,123,189,0.35);
   display:flex; align-items:center; justify-content:center;
   transition:all var(--duration-base, .2s) var(--ease-out, ease); }
-.aic-btn:hover { background:var(--accent-hover, #0369A1); transform:scale(1.08); }
+.aic-btn:hover { background:var(--accent-hover); transform:scale(1.08); }
 .aic-btn .aic-dot { position:absolute; top:2px; right:2px; width:12px; height:12px;
-  background:var(--danger, var(--danger)); border-radius:50%; border:2px solid var(--bg-card, #fff);
+  background:var(--danger, var(--danger)); border-radius:50%; border:2px solid var(--surface-card);
   display:none; }
 .aic-btn.has-alerts .aic-dot { display:block; }
 
 /* Panel */
 .aic-panel { position:fixed; bottom:24px; right:24px; z-index:var(--z-float);
   width:400px; height:600px; max-height:80vh;
-  background:#0F1C2F; border-radius:var(--radius-lg, 12px);
+  background:var(--surface-dark); border-radius:6px;
   box-shadow:0 12px 48px rgba(15,23,42,0.4);
   display:flex; flex-direction:column; overflow:hidden;
   transform:scale(0.92) translateY(16px); opacity:0;
@@ -224,27 +224,27 @@ function _aicPageContext() {
 .aic-panel.open { transform:scale(1) translateY(0); opacity:1; pointer-events:auto; }
 
 /* Header */
-.aic-head { height:52px; background:var(--navy-mid); color:#fff;
+.aic-head { height:52px; background:var(--navy-mid); color:var(--text-on-dark);
   display:flex; align-items:center; padding:0 var(--space-4, 16px);
   flex-shrink:0; border-bottom:1px solid rgba(255,255,255,0.06); }
 .aic-head-title { font-family:'Syne',sans-serif; font-size:15px; font-weight:700;
   flex:1; letter-spacing:0.3px; display:inline-flex; align-items:center; gap:8px; }
 .aic-head-title .aic-head-status { width:7px; height:7px; border-radius:50%;
   background:var(--panel-ok-hi); box-shadow:0 0 0 3px rgba(16,185,129,0.15); }
-.aic-quota-badge { font-size:9px; font-weight:600; color:var(--panel-dim);
-  font-family:'DM Sans',monospace; padding:2px 8px;
-  background:rgba(255,255,255,0.05); border-radius:10px; margin-right:8px; }
+.aic-quota-badge { font-size:11px; font-weight:600; color:var(--panel-dim);
+  font-family:'DM Sans',monospace; padding:2px 8px; font-variant-numeric:tabular-nums;
+  background:rgba(255,255,255,0.05); border-radius:9999px; margin-right:8px; }
 .aic-quota-badge.warn { color:var(--panel-warn); background:rgba(245,158,11,0.12); }
 .aic-quota-badge.full { color:var(--panel-bad-hi); background:rgba(220,38,38,0.15); }
 .aic-head-close { background:none; border:none; color:var(--panel-dim); cursor:pointer;
   padding:6px; border-radius:6px; display:flex; align-items:center;
   transition:all var(--duration-fast, .12s) ease; }
-.aic-head-close:hover { color:#fff; background:rgba(255,255,255,0.1); }
+.aic-head-close:hover { color:var(--text-on-dark); background:rgba(255,255,255,0.1); }
 
 /* Quick action buttons */
 .aic-quick { display:flex; gap:6px; padding:8px var(--space-3, 12px); flex-wrap:wrap;
   border-bottom:1px solid rgba(255,255,255,0.06); }
-.aic-qbtn { padding:5px 11px; border-radius:14px; border:1px solid rgba(255,255,255,0.10);
+.aic-qbtn { padding:4px 12px; border-radius:9999px; border:1px solid rgba(255,255,255,0.10);
   background:rgba(255,255,255,0.04); color:var(--panel-dim); font-size:11px; font-weight:600;
   cursor:pointer; transition:all var(--duration-fast, .15s) ease; white-space:nowrap; }
 .aic-qbtn:hover { background:rgba(56,189,248,0.12); color:var(--panel-accent); border-color:rgba(56,189,248,0.3); }
@@ -255,12 +255,12 @@ function _aicPageContext() {
   scrollbar-width:thin; scrollbar-color:rgba(255,255,255,0.08) transparent; }
 .aic-msgs::-webkit-scrollbar { width:6px; }
 .aic-msgs::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:3px; }
-.aic-msg { max-width:88%; padding:9px 13px; border-radius:12px; font-size:13px;
+.aic-msg { max-width:88%; padding:8px 12px; border-radius:6px; font-size:13px;
   line-height:1.5; word-wrap:break-word; white-space:pre-wrap;
   animation:aic-msg-in 0.18s var(--ease-out, ease); }
 @keyframes aic-msg-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
-.aic-msg.user { align-self:flex-end; background:var(--accent, var(--accent)); color:#fff; border-bottom-right-radius:4px; }
-.aic-msg.asst { align-self:flex-start; background:rgba(255,255,255,0.04); color:#E2E8F0;
+.aic-msg.user { align-self:flex-end; background:var(--accent, var(--accent)); color:var(--text-on-dark); border-bottom-right-radius:4px; }
+.aic-msg.asst { align-self:flex-start; background:rgba(255,255,255,0.04); color:var(--text-on-dark);
   border-bottom-left-radius:4px; border:1px solid rgba(255,255,255,0.04); }
 .aic-msg.asst .tool-badge { display:inline-flex; align-items:center; gap:5px;
   background:rgba(56,189,248,0.12); color:var(--panel-accent);
@@ -274,24 +274,25 @@ function _aicPageContext() {
   border-top:1px solid rgba(255,255,255,0.06);
   padding:10px var(--space-3, 12px); gap:8px; flex-shrink:0;
   background:rgba(0,0,0,0.15); }
-.aic-input { flex:1; border:1px solid rgba(255,255,255,0.10); border-radius:10px;
-  padding:10px 14px; font-size:13px; font-family:'DM Sans',sans-serif;
-  outline:none; background:rgba(255,255,255,0.04); color:#E2E8F0; resize:none;
+.aic-input { flex:1; border:1px solid rgba(255,255,255,0.10); border-radius:6px;
+  padding:8px 12px; font-size:13px; font-family:'DM Sans',sans-serif;
+  outline:none; background:rgba(255,255,255,0.04); color:var(--text-on-dark); resize:none;
   max-height:80px; overflow-y:auto;
   transition:border-color var(--duration-fast, .15s) ease, box-shadow var(--duration-fast, .15s) ease; }
-.aic-input::placeholder { color:#64748B; }
+.aic-input::placeholder { color:var(--text-dim); }
 .aic-input:focus { border-color:var(--panel-accent); box-shadow:0 0 0 3px rgba(56,189,248,0.15); }
 .aic-send { width:36px; height:36px; border-radius:50%; border:none;
-  background:var(--accent, var(--accent)); color:#fff; cursor:pointer;
+  background:var(--accent, var(--accent)); color:var(--text-on-dark); cursor:pointer;
   display:flex; align-items:center; justify-content:center; flex-shrink:0;
   transition:all var(--duration-fast, .15s) ease; }
-.aic-send:hover { background:var(--accent-hover, #0369A1); transform:scale(1.05); }
+.aic-send:hover { background:var(--accent-hover); transform:scale(1.05); }
 .aic-send:disabled { opacity:0.4; cursor:not-allowed; transform:none; }
 .aic-stop { width:36px; height:36px; border-radius:50%; border:none;
-  background:var(--danger); color:#fff; cursor:pointer; flex-shrink:0;
+  background:var(--danger); color:var(--text-on-dark); cursor:pointer; flex-shrink:0;
   display:flex; align-items:center; justify-content:center;
   transition:all .15s ease; animation:aic-pulse 1.6s ease-in-out infinite; }
-.aic-stop:hover { background:#B91C1C; transform:scale(1.05); }
+/* Hover darkens via opacity, not a second red: the palette has ONE danger. */
+.aic-stop:hover { opacity:0.85; transform:scale(1.05); }
 @keyframes aic-pulse {
   0%,100% { box-shadow:0 0 0 0 rgba(220,38,38,0.5); }
   50%     { box-shadow:0 0 0 6px rgba(220,38,38,0); }
@@ -307,9 +308,9 @@ function _aicPageContext() {
 }
 @keyframes aic-overlay-in { from { opacity:0; } to { opacity:1; } }
 .aic-confirm-card {
-  background:#0F1C2F; color:#E2E8F0;
+  background:var(--surface-dark); color:var(--text-on-dark);
   border:1px solid rgba(255,255,255,0.08);
-  border-radius:var(--radius-lg, 12px);
+  border-radius:6px;
   width:100%; max-width:440px;
   box-shadow:0 24px 60px rgba(0,0,0,0.5);
   overflow:hidden;
@@ -347,12 +348,12 @@ function _aicPageContext() {
   background:rgba(255,255,255,0.04); color:var(--panel-dim);
   border:1px solid rgba(255,255,255,0.08);
 }
-.aic-confirm-cancel:hover { background:rgba(255,255,255,0.08); color:#E2E8F0; }
+.aic-confirm-cancel:hover { background:rgba(255,255,255,0.08); color:var(--text-on-dark); }
 .aic-confirm-ok {
   background:var(--panel-accent); color:var(--navy-mid);
   border:1px solid var(--panel-accent);
 }
-.aic-confirm-ok:hover { background:#7DD3FC; }
+.aic-confirm-ok:hover { opacity:0.85; }
 
 @media (prefers-reduced-motion: reduce) {
   .aic-msg, .aic-confirm-overlay, .aic-confirm-card { animation:none; }

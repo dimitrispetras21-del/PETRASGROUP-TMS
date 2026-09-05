@@ -27,8 +27,31 @@ function openModal(title, bodyHTML, footerHTML = '') {
 
 function closeModal() {
   document.getElementById('modalOverlay').classList.remove('open');
+  _modalBusy = false;
   if (_modalPrevFocus) { try { _modalPrevFocus.focus(); } catch(_) {} _modalPrevFocus = null; }
 }
+
+/**
+ * The «ανενεργό» state of the modal footer (DESIGN Δ2 — six states, the
+ * disabled one designed with the first). Normal/hover/focus/disabled looks
+ * come from .btn in style.css; what the shell lacked was a way to ENTER the
+ * disabled state during a save. Without it a double-click on «Αποθήκευση»
+ * fires two PATCHes, and Escape mid-flight closes the form over a request
+ * that is still running. Call modalSetBusy(true) before the await and
+ * modalSetBusy(false) in finally; closeModal() clears it too.
+ */
+let _modalBusy = false;
+function modalSetBusy(busy) {
+  _modalBusy = !!busy;
+  const footer = document.getElementById('modalFooter');
+  if (!footer) return;
+  footer.querySelectorAll('button').forEach(b => {
+    if (_modalBusy) { if (!b.disabled) { b.disabled = true; b.dataset.busyLock = '1'; } }
+    else if (b.dataset.busyLock) { b.disabled = false; delete b.dataset.busyLock; }
+  });
+  footer.setAttribute('aria-busy', _modalBusy ? 'true' : 'false');
+}
+if (typeof window !== 'undefined') window.modalSetBusy = modalSetBusy;
 
 /**
  * Styled confirmation dialog, Promise-based drop-in for native confirm().
@@ -99,7 +122,7 @@ function initModal() {
   document.addEventListener('keydown', e => {
     const overlay = document.getElementById('modalOverlay');
     if (!overlay || !overlay.classList.contains('open')) return;
-    if (e.key === 'Escape') { closeModal(); return; }
+    if (e.key === 'Escape') { if (!_modalBusy) closeModal(); return; }
     if (e.key !== 'Tab') return;
     const modal = document.getElementById('modal');
     const focusable = [...modal.querySelectorAll('input,select,textarea,button,a,[tabindex]:not([tabindex="-1"])')];
@@ -122,10 +145,10 @@ function initModal() {
 function showEmpty(cfgOrMsg, sub) {
   // Legacy string signature: showEmpty('No records found', 'hint')
   if (typeof cfgOrMsg === 'string' || cfgOrMsg == null) {
-    return showEmptyLegacy(cfgOrMsg || 'No records found', sub || '');
+    return showEmptyLegacy(cfgOrMsg || 'Καμία εγγραφή', sub || '');
   }
   // Object config signature: showEmpty({illustration, title, description, action})
-  const { illustration = 'inbox', title = 'No records', description = '', action } = cfgOrMsg;
+  const { illustration = 'inbox', title = 'Καμία εγγραφή', description = '', action } = cfgOrMsg;
   const svg = _EMPTY_SVG[illustration] || _EMPTY_SVG.inbox;
   return `<div class="empty-state">
     <div class="empty-state-illustration">${svg}</div>
@@ -188,13 +211,13 @@ const _EMPTY_SVG = {
 // ── Loading Skeletons ────────────────────────────
 function showLoading(msg = 'Φόρτωση…') {
   return `<div style="padding:24px">
-    <div style="display:flex;gap:14px;margin-bottom:24px">
-      ${[1,2,3,4].map(() => `<div style="flex:1;height:70px;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative">
+    <div style="display:flex;gap:12px;margin-bottom:24px">
+      ${[1,2,3,4].map(() => `<div style="flex:1;height:70px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;overflow:hidden;position:relative">
         <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.03),transparent);animation:sk-shimmer 1.5s infinite"></div>
       </div>`).join('')}
     </div>
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;overflow:hidden">
-      <div style="height:36px;background:var(--bg-subtle,#F0F5FA);border-bottom:1px solid var(--border)"></div>
+    <div style="background:var(--surface-card);border:1px solid var(--border);border-radius:6px;overflow:hidden">
+      <div style="height:36px;background:var(--surface-sunken);border-bottom:1px solid var(--border)"></div>
       ${[1,2,3,4,5,6].map(() => `<div style="height:40px;border-bottom:1px solid var(--border);position:relative;overflow:hidden">
         <div style="position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(0,0,0,0.02),transparent);animation:sk-shimmer 1.5s infinite"></div>
       </div>`).join('')}
@@ -208,19 +231,32 @@ function showError(msg) {
   // escapeHtml: msg historically carried raw e.message (Airtable field names,
   // record IDs) straight into innerHTML. Callers now pass static text, but the
   // escape stays as the safety net for any future caller that forgets.
-  return `<div class="empty-state"><div style="font-size:32px;margin-bottom:12px">&#9888;</div><h3 style="color:var(--danger)">Κάτι πήγε στραβά</h3><p style="color:var(--text-dim);font-size:13px">${escapeHtml(msg)}</p></div>`;
+  //
+  // Κ7: a failed load must never look like an empty table. Three sentences,
+  // the dashboard pattern — what happened, what it does NOT mean, what to do.
+  // The retry re-runs the current route; a hard reload would drop the JWT
+  // caches and the user's place in the app for no gain.
+  const retry = (typeof currentPage !== 'undefined' && typeof navigate === 'function')
+    ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:16px" onclick="navigate(currentPage)">Ξαναδοκίμασε</button>` : '';
+  return `<div class="empty-state" style="padding:32px 16px;text-align:center">
+    <div style="font-size:28px;margin-bottom:12px;color:var(--danger)">&#9888;</div>
+    <h3 style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--danger);margin-bottom:4px">Δεν φορτώθηκε</h3>
+    <p style="color:var(--text);font-size:13px">${escapeHtml(msg)}</p>
+    <p style="color:var(--text-mid);font-size:12px;margin-top:4px">Δεν σημαίνει ότι δεν υπάρχουν εγγραφές — η οθόνη δεν μπόρεσε να τις διαβάσει.</p>
+    ${retry}
+  </div>`;
 }
 
 // A4: Empty states with subtle illustrations — legacy string-based signature
 // Kept for callers that do showEmpty('msg', 'sub'); the object-config variant
 // is defined above (line ~61) and handles illustration/title/description/action.
-function showEmptyLegacy(msg = 'No records found', sub = '') {
+function showEmptyLegacy(msg = 'Καμία εγγραφή', sub = '') {
   return `<div class="empty-state" style="padding:60px 20px;text-align:center">
     <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:color-mix(in srgb, var(--text-dim) 12%, transparent);display:flex;align-items:center;justify-content:center">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="stroke:var(--text-dim)" stroke-width="1.5"><path d="M9 5H2v14h20V5h-7"/><path d="M9 5l3-3 3 3"/><path d="M12 2v10"/></svg>
     </div>
-    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text);margin-bottom:4px">${msg}</h3>
-    ${sub ? `<p style="color:var(--text-dim);font-size:12px">${sub}</p>` : ''}
+    <h3 style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">${msg}</h3>
+    ${sub ? `<p style="color:var(--text-mid);font-size:12px">${sub}</p>` : ''}
   </div>`;
 }
 
@@ -229,8 +265,8 @@ function showAccessDenied() {
     <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--danger-bg);display:flex;align-items:center;justify-content:center">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style="stroke:var(--danger)" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/><circle cx="12" cy="16" r="1"/></svg>
     </div>
-    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">Δεν έχεις πρόσβαση</h3>
-    <p style="color:var(--text-dim);font-size:12px">Αυτή η ενότητα δεν είναι διαθέσιμη για τον ρόλο σου.</p>
+    <h3 style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">Δεν έχεις πρόσβαση</h3>
+    <p style="color:var(--text-mid);font-size:12px">Αυτή η ενότητα δεν είναι διαθέσιμη για τον ρόλο σου.</p>
   </div>`;
 }
 
@@ -254,14 +290,14 @@ function showComingSoon(label, opts) {
   const ico = (typeof icon === 'function' && o.icon) ? icon(o.icon, 28) : `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>`;
   return `<div class="empty-state" style="padding:60px 20px;text-align:center;max-width:520px;margin:0 auto">
     <div style="width:64px;height:64px;margin:0 auto 16px;border-radius:50%;background:var(--accent-light);display:flex;align-items:center;justify-content:center;color: var(--accent-text)">${ico}</div>
-    <h3 style="font-family:'Syne',sans-serif;font-size:15px;font-weight:700;color:var(--text)">${escapeHtml(label)}</h3>
-    <p style="color:var(--text-dim);font-size:12px;margin-bottom:${o.today || o.eta ? '18px' : '0'}">Δεν έχει υλοποιηθεί ακόμη</p>
-    ${o.today ? `<div style="text-align:left;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:4px">Πώς γίνεται σήμερα</div>
+    <h3 style="font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--text)">${escapeHtml(label)}</h3>
+    <p style="color:var(--text-dim);font-size:12px;margin-bottom:${o.today || o.eta ? '16px' : '0'}">Δεν έχει υλοποιηθεί ακόμη</p>
+    ${o.today ? `<div style="text-align:left;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:12px 16px;margin-bottom:12px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:4px">Πώς γίνεται σήμερα</div>
       <div style="font-size:13px;color:var(--text)">${o.today}</div>
     </div>` : ''}
-    ${o.eta ? `<div style="text-align:left;background:var(--warning-bg);border:1px solid var(--warning);border-radius:8px;padding:12px 14px">
-      <div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--warning);margin-bottom:4px">Τι λείπει</div>
+    ${o.eta ? `<div style="text-align:left;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:6px;padding:12px 16px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text-dim);margin-bottom:4px">Τι λείπει</div>
       <div style="font-size:13px;color:var(--text)">${o.eta}</div>
     </div>` : ''}
     ${o.action ? `<button type="button" class="btn btn-primary" style="margin-top:16px" onclick="${o.action.onClick}">${escapeHtml(o.action.label)}</button>` : ''}
@@ -277,21 +313,23 @@ function toast(msg, type = 'success') {
     // bottom:88px, not 24px — the AI-chat launcher (.aic-btn, core/ai-chat.js
     // line ~203) is 52px tall at bottom:24px/right:24px, so a toast at 24px
     // landed on top of it. See docs/design/DEEP_AUDIT_2026-08-04/shell.md SH-5.
-    el.style.cssText = `position:fixed;bottom:88px;right:24px;padding:12px 20px;border-radius:8px;
+    el.style.cssText = `position:fixed;bottom:88px;right:24px;padding:12px 16px;border-radius:6px;
       font-size:13px;font-weight:500;z-index:var(--z-top);box-shadow:0 4px 16px rgba(0,0,0,0.15);
       transform:translateY(20px);opacity:0;transition:transform 0.25s ease,opacity 0.25s ease;
       display:flex;align-items:center;gap:8px`;
     document.body.appendChild(el);
   }
-  const colors = { success: '#059669', danger: 'var(--danger)', info: '#3B82F6', warn: '#D97706' };
+  // "info" has no semantic token (DESIGN ΜΕΡΟΣ Β) — it is a neutral notice,
+  // so it sits on the dark surface, same as showErrorToast in core/utils.js.
+  const colors = { success: 'var(--ok)', danger: 'var(--danger)', info: 'var(--surface-dark)', warn: 'var(--warn)' };
   const icons = {
-    success: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><path d="M4 10l4 4 8-8"/></svg>',
-    danger: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>',
-    warn: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><path d="M10 4v7M10 14v1"/></svg>',
-    info: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="#fff" stroke-width="2"><circle cx="10" cy="10" r="7"/><path d="M10 7v4M10 14v0"/></svg>',
+    success: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10l4 4 8-8"/></svg>',
+    danger: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l8 8M14 6l-8 8"/></svg>',
+    warn: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 4v7M10 14v1"/></svg>',
+    info: '<svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="7"/><path d="M10 7v4M10 14v0"/></svg>',
   };
   el.style.background = colors[type] || colors.success;
-  el.style.color = '#fff';
+  el.style.color = 'var(--text-on-dark)';
   el.innerHTML = (icons[type] || icons.success) + `<span>${msg}</span>`;
   // Animate in
   requestAnimationFrame(() => {
@@ -311,7 +349,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     const overlay = document.querySelector('.mf-overlay');
     if (overlay) { overlay.remove(); return; }
-    if (document.getElementById('modalOverlay')?.classList.contains('open')) { closeModal(); return; }
+    if (document.getElementById('modalOverlay')?.classList.contains('open')) { if (!_modalBusy) closeModal(); return; }
     // Close entity detail panel
     const detail = document.querySelector('.entity-detail-panel:not(.hidden)');
     if (detail) { detail.classList.add('hidden'); return; }

@@ -44,9 +44,13 @@ function showErrorToast(message, type = 'error', durationMs = 5000) {
   }
 
   const toast = document.createElement('div');
-  const bg = type === 'warn' ? '#92400E' : type === 'info' ? '#1E3A5F' : '#7F1D1D';
+  // Error toasts used the same dark red DESIGN.md reserves for "χωρίς
+  // ανάθεση" (--unassigned). A red that means both "unassigned" and "failed" means
+  // nothing (ΜΕΡΟΣ Β), so failures use --danger. "info" has no semantic token;
+  // it is a neutral notice, so it sits on the dark surface like the sidebar.
+  const bg = type === 'warn' ? 'var(--warn)' : type === 'info' ? 'var(--surface-dark)' : 'var(--danger)';
   toast.style.cssText =
-    `background:${bg};color:#fff;padding:12px 18px;border-radius:8px;font:13px/1.4 "DM Sans",sans-serif;`
+    `background:${bg};color:var(--text-on-dark);padding:12px 16px;border-radius:6px;font:13px/1.4 "DM Sans",sans-serif;`
     + 'box-shadow:0 4px 12px rgba(0,0,0,.35);pointer-events:auto;opacity:0;transform:translateY(8px);'
     + 'transition:opacity .25s,transform .25s;';
   toast.textContent = message;
@@ -697,6 +701,18 @@ function getErrorLog() {
   try { return JSON.parse(localStorage.getItem('tms_errors') || '[]'); } catch { return []; }
 }
 
+// True when a localStorage key holds something that is NOT a JSON array —
+// corrupt or truncated. The readers above (getErrorLog, getTrash in api.js)
+// catch and return [], which is right for the callers that only need a list,
+// but the Trash and Error Log pages must not print "empty" over a store they
+// could not read (DESIGN Κ7: empty and failed are two different sentences).
+function _localStoreUnreadable(key) {
+  let raw;
+  try { raw = localStorage.getItem(key); } catch { return true; }
+  if (raw == null || raw === '') return false;
+  try { return !Array.isArray(JSON.parse(raw)); } catch { return true; }
+}
+
 // Auto-purge stale entries older than N days. Runs once per session on load.
 // Stale entries are usually false positives from before a fix shipped — they
 // pollute the log and obscure new issues. Default 14-day window keeps recent
@@ -733,17 +749,18 @@ const _errLogState = { search: '', severity: '', user: '', ctx: '', range: 'all'
 function _elRelTime(iso) {
   if (!iso) return '—';
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return Math.round(diff / 60) + 'm ago';
-  if (diff < 86400) return Math.round(diff / 3600) + 'h ago';
-  if (diff < 604800) return Math.round(diff / 86400) + 'd ago';
+  if (diff < 60) return 'μόλις τώρα';
+  if (diff < 3600) return 'πριν ' + Math.round(diff / 60) + ' λ.';
+  if (diff < 86400) return 'πριν ' + Math.round(diff / 3600) + ' ώ.';
+  if (diff < 604800) return 'πριν ' + Math.round(diff / 86400) + ' ημ.';
   return new Date(iso).toLocaleDateString('el-GR');
 }
 
+// Κ2: the pill colour never carries the meaning alone — the word is on it.
 function _elSeverityPill(sev) {
   const map = { critical: 'red', warning: 'amber', info: 'green' };
-  const label = { critical: 'CRIT', warning: 'WARN', info: 'INFO' };
-  return `<span class="dash-aging-pill ${map[sev] || 'amber'}">${label[sev] || 'WARN'}</span>`;
+  const label = { critical: 'ΚΡΙΣΙΜΟ', warning: 'ΠΡΟΕΙΔ.', info: 'ΠΛΗΡ.' };
+  return `<span class="dash-aging-pill ${map[sev] || 'amber'}">${label[sev] || 'ΠΡΟΕΙΔ.'}</span>`;
 }
 
 function _elFilter(errors) {
@@ -770,7 +787,7 @@ function _errLogSetFilter(key, val) { _errLogState[key] = val; renderErrorLog();
 
 function _errLogExport(format) {
   const errors = getErrorLog();
-  if (!errors.length) { if (typeof toast === 'function') toast('No errors to export'); return; }
+  if (!errors.length) { if (typeof toast === 'function') toast('Δεν υπάρχουν καταγραφές για εξαγωγή', 'info'); return; }
   let blob, filename;
   if (format === 'csv') {
     const rows = [['Timestamp','Severity','Count','User','Page','Context','Message','Stack']];
@@ -790,7 +807,7 @@ function _errLogExport(format) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
-  if (typeof toast === 'function') toast('Exported ' + format.toUpperCase());
+  if (typeof toast === 'function') toast('Εξαγωγή ' + format.toUpperCase() + ' ολοκληρώθηκε');
 }
 
 function _errLogClear() {
@@ -804,11 +821,11 @@ function _errLogClear() {
     <div class="aic-confirm-card">
       <div class="aic-confirm-head">
         <span class="aic-confirm-icon">${_ic}</span>
-        <span class="aic-confirm-title">Καθαρισμός Error Log;</span>
+        <span class="aic-confirm-title">Καθαρισμός καταγραφής σφαλμάτων;</span>
       </div>
       <div class="aic-confirm-body">
-        <div>Θα διαγραφούν <strong>${_errorLog.length}</strong> error entries.</div>
-        <div style="margin-top:8px;color:var(--panel-dim);font-size:11px">Μπορείς να κάνεις Export πρώτα (JSON/CSV) αν θέλεις να κρατήσεις backup.</div>
+        <div>Θα διαγραφούν <strong>${_errorLog.length}</strong> καταγραφές.</div>
+        <div style="margin-top:8px;color:var(--panel-dim);font-size:11px">Μπορείς να κάνεις εξαγωγή πρώτα (JSON/CSV) αν θέλεις να κρατήσεις αντίγραφο.</div>
       </div>
       <div class="aic-confirm-foot">
         <button class="aic-confirm-cancel">Ακύρωση</button>
@@ -824,7 +841,7 @@ function _errLogClear() {
     localStorage.removeItem('tms_errors');
     close();
     renderErrorLog();
-    if (typeof toast === 'function') toast('Error log cleared');
+    if (typeof toast === 'function') toast('Η καταγραφή σφαλμάτων καθαρίστηκε');
   };
   overlay.onclick = (e) => { if (e.target === overlay) close(); };
 }
@@ -842,17 +859,17 @@ function _errLogShowStack(idx) {
         <span class="aic-confirm-title" style="font-size:13px">${escapeHtml(e.msg || '')}</span>
       </div>
       <div class="aic-confirm-body">
-        <div><strong>Context:</strong> ${escapeHtml(e.ctx || '—')}</div>
-        <div><strong>User:</strong> ${escapeHtml(e.user || '—')}</div>
-        <div><strong>Page:</strong> ${escapeHtml(e.page || '—')}</div>
-        <div><strong>When:</strong> ${e.ts ? new Date(e.ts).toLocaleString('el-GR') : '—'} (${_elRelTime(e.ts)})</div>
-        ${(e.count && e.count > 1) ? `<div><strong>Count:</strong> ${e.count} occurrences</div>` : ''}
-        <div style="margin-top:10px"><strong>Stack trace:</strong></div>
-        <pre style="margin:4px 0 0;padding:10px;background:rgba(0,0,0,.25);border-radius:4px;font-size:11px;line-height:1.4;max-height:300px;overflow:auto;white-space:pre-wrap;font-family:'DM Sans',monospace">${escapeHtml(e.stack || '(no stack trace)')}</pre>
+        <div><strong>Πλαίσιο:</strong> ${escapeHtml(e.ctx || '—')}</div>
+        <div><strong>Χρήστης:</strong> ${escapeHtml(e.user || '—')}</div>
+        <div><strong>Σελίδα:</strong> ${escapeHtml(e.page || '—')}</div>
+        <div><strong>Πότε:</strong> ${e.ts ? new Date(e.ts).toLocaleString('el-GR') : '—'} (${_elRelTime(e.ts)})</div>
+        ${(e.count && e.count > 1) ? `<div><strong>Φορές:</strong> ${e.count}</div>` : ''}
+        <div style="margin-top:12px"><strong>Ίχνος στοίβας:</strong></div>
+        <pre style="margin:4px 0 0;padding:12px;background:rgba(0,0,0,.25);border-radius:6px;font-size:11px;line-height:1.4;max-height:300px;overflow:auto;white-space:pre-wrap;font-family:'DM Sans',monospace">${escapeHtml(e.stack || '(χωρίς ίχνος στοίβας)')}</pre>
       </div>
       <div class="aic-confirm-foot">
-        <button class="aic-confirm-cancel">Close</button>
-        <button class="aic-confirm-ok" onclick="navigator.clipboard.writeText(${JSON.stringify(JSON.stringify(e, null, 2))});this.textContent='Copied!';setTimeout(()=>this.textContent='Copy JSON',1200)">Copy JSON</button>
+        <button class="aic-confirm-cancel">Κλείσιμο</button>
+        <button class="aic-confirm-ok" onclick="navigator.clipboard.writeText(${JSON.stringify(JSON.stringify(e, null, 2))});this.textContent='Αντιγράφηκε';setTimeout(()=>this.textContent='Αντιγραφή JSON',1200)">Αντιγραφή JSON</button>
       </div>
     </div>`;
   document.body.appendChild(overlay);
@@ -872,6 +889,10 @@ function renderErrorLog() {
   const u = JSON.parse(localStorage.getItem('tms_user') || '{}');
   if (u.role !== 'owner') { c.innerHTML = showAccessDenied(); return; }
 
+  // Κ7: getErrorLog() swallows a corrupt localStorage entry and returns [], so
+  // the page would say "no errors" over a store it could not read. Read the raw
+  // value here and tell the two apart; the empty-state text depends on it.
+  const unreadable = _localStoreUnreadable('tms_errors');
   const all = getErrorLog().reverse(); // newest first
   const filtered = _elFilter(all);
 
@@ -899,48 +920,63 @@ function renderErrorLog() {
     return `<tr onclick="_errLogShowStack(${origIdx})" style="cursor:pointer">
       <td style="white-space:nowrap">${_elSeverityPill(e.severity)}</td>
       <td style="white-space:nowrap;font-family:'DM Sans',monospace;font-size:11px;color:var(--dc-text-dim)" title="${e.ts ? new Date(e.ts).toLocaleString('el-GR') : ''}">${_elRelTime(e.ts)}</td>
-      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500">${escapeHtml((e.msg || '').substring(0, 140))}${(e.count && e.count > 1) ? `<span style="margin-left:6px;padding:1px 6px;background:rgba(56,189,248,0.12);color:var(--panel-accent);border-radius:3px;font-size:10px;font-weight:700;font-family:'DM Sans',monospace">×${e.count}</span>` : ''}</td>
-      <td style="color:var(--dc-text-mid)">${escapeHtml(e.ctx || '—')}</td>
-      <td style="color:var(--dc-text-mid)">${escapeHtml(e.user || '—')}</td>
-      <td style="color:var(--dc-text-dim);font-size:11px">${escapeHtml(e.page || '—')}</td>
+      <td style="max-width:340px;overflow:hidden;text-overflow:ellipsis;font-weight:500" title="${escapeHtml(e.msg || '')}">${escapeHtml((e.msg || '').substring(0, 140))}${(e.count && e.count > 1) ? `<span style="margin-left:4px;padding:1px 4px;background:var(--surface-sunken);color:var(--text-mid);border-radius:9999px;font-size:11px;font-weight:700;font-variant-numeric:tabular-nums">×${e.count}</span>` : ''}</td>
+      <td style="color:var(--text-mid)">${escapeHtml(e.ctx || '—')}</td>
+      <td style="color:var(--text-mid)">${escapeHtml(e.user || '—')}</td>
+      <td style="color:var(--text-dim);font-size:11px">${escapeHtml(e.page || '—')}</td>
     </tr>`;
   }).join('');
+
+  // Δ2: a quick filter with nothing behind it is disabled, not a dead click.
+  // .dash-kpi has no :disabled rule in style.css, so the muted look is inline.
+  const kpiAttrs = (n) => n ? '' : ' disabled style="opacity:.45;cursor:not-allowed"';
+
+  // Κ7 — three different sentences for three different situations.
+  let emptyText;
+  if (unreadable) {
+    emptyText = 'Η καταγραφή δεν διαβάστηκε — τα δεδομένα στον browser είναι κατεστραμμένα.'
+      + ' Δεν σημαίνει ότι δεν υπάρχουν σφάλματα. Κάνε «Καθαρισμός» για να ξαναρχίσει η καταγραφή.';
+  } else if (all.length && !rows.length) {
+    emptyText = 'Καμία καταγραφή με αυτά τα φίλτρα';
+  } else {
+    emptyText = 'Καμία καταγραφή σφάλματος';
+  }
 
   c.innerHTML = `
     <div class="dash-wrap">
       <div class="dash-header">
         <div>
-          <div class="dash-greeting">${_ic('alert_triangle', 22)} Error Log</div>
+          <div class="dash-greeting">${_ic('alert_triangle', 22)} Καταγραφή Σφαλμάτων</div>
           <div class="dash-date">${all.length} καταγραφές · ${filtered.length} σε προβολή · ${sentryOn
             ? 'Κεντρική καταγραφή: <strong style="color:var(--dc-ok)">ΕΝΕΡΓΗ</strong>'
             : 'Κεντρική καταγραφή: <strong style="color:var(--dc-warn)">ΑΝΕΝΕΡΓΗ</strong> — τα σφάλματα μένουν μόνο σε αυτόν τον browser'}</div>
         </div>
         <div style="display:flex;gap:var(--space-2);align-items:center">
-          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('json')">${_ic('file_text', 14)} JSON</button>
-          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('csv')">${_ic('file_text', 14)} CSV</button>
-          <button class="btn btn-secondary btn-sm" onclick="_errLogClear()">${_ic('trash', 14)} Clear</button>
+          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('json')"${all.length ? '' : ' disabled'}>${_ic('file_text', 14)} JSON</button>
+          <button class="btn btn-ghost btn-sm" onclick="_errLogExport('csv')"${all.length ? '' : ' disabled'}>${_ic('file_text', 14)} CSV</button>
+          <button class="btn btn-secondary btn-sm" onclick="_errLogClear()"${(all.length || unreadable) ? '' : ' disabled'}>${_ic('trash', 14)} Καθαρισμός</button>
         </div>
       </div>
 
       <!-- KPI Bar (3 severity counts) -->
       <div class="dash-kpi-bar" style="grid-template-columns:repeat(3,1fr)">
-        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','critical')">
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','critical')"${kpiAttrs(counts.critical)}>
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--danger),transparent)"></div>
-          <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Critical</div>
+          <div class="dash-kpi-label">${_ic('alert_triangle', 11)} Κρίσιμα</div>
           <div class="dash-kpi-value ${counts.critical ? 'dash-val-danger' : 'dash-val-muted'}">${counts.critical}</div>
-          <div class="dash-kpi-sub">errors + exceptions</div>
+          <div class="dash-kpi-sub">σφάλματα + εξαιρέσεις</div>
         </button>
-        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','warning')">
-          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,#D97706,transparent)"></div>
-          <div class="dash-kpi-label">${_ic('clock', 11)} Warning</div>
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','warning')"${kpiAttrs(counts.warning)}>
+          <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--warn),transparent)"></div>
+          <div class="dash-kpi-label">${_ic('clock', 11)} Προειδοποιήσεις</div>
           <div class="dash-kpi-value ${counts.warning ? 'dash-val-warning' : 'dash-val-muted'}">${counts.warning}</div>
-          <div class="dash-kpi-sub">auth, network, 4xx</div>
+          <div class="dash-kpi-sub">ταυτοποίηση, δίκτυο, 4xx</div>
         </button>
-        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','info')">
+        <button type="button" class="dash-kpi" onclick="_errLogSetFilter('severity','info')"${kpiAttrs(counts.info)}>
           <div class="dash-kpi-glow" style="background:linear-gradient(90deg,var(--panel-ok),transparent)"></div>
-          <div class="dash-kpi-label">${_ic('info', 11)} Info</div>
+          <div class="dash-kpi-label">${_ic('info', 11)} Πληροφορίες</div>
           <div class="dash-kpi-value ${counts.info ? 'dash-val-success' : 'dash-val-muted'}">${counts.info}</div>
-          <div class="dash-kpi-sub">aborts, expected</div>
+          <div class="dash-kpi-sub">ακυρώσεις, αναμενόμενα</div>
         </button>
       </div>
 
@@ -948,25 +984,25 @@ function renderErrorLog() {
       <div class="entity-toolbar-v2" style="margin-bottom:var(--space-4)">
         <div class="entity-search-wrap">
           ${_ic('search')}
-          <input class="entity-search-input" placeholder="Search message / context / user…"
+          <input class="entity-search-input" placeholder="Αναζήτηση σε μήνυμα / πλαίσιο / χρήστη…"
             value="${escapeHtml(_errLogState.search)}"
             oninput="_errLogState.search=this.value;renderErrorLog()">
         </div>
         <select class="svc-filter" onchange="_errLogSetFilter('severity',this.value)">
-          <option value="">Severity: All</option>
-          <option value="critical"${_errLogState.severity==='critical'?' selected':''}>Critical</option>
-          <option value="warning"${_errLogState.severity==='warning'?' selected':''}>Warning</option>
-          <option value="info"${_errLogState.severity==='info'?' selected':''}>Info</option>
+          <option value="">Σοβαρότητα: Όλες</option>
+          <option value="critical"${_errLogState.severity==='critical'?' selected':''}>Κρίσιμα</option>
+          <option value="warning"${_errLogState.severity==='warning'?' selected':''}>Προειδοποιήσεις</option>
+          <option value="info"${_errLogState.severity==='info'?' selected':''}>Πληροφορίες</option>
         </select>
         <select class="svc-filter" onchange="_errLogSetFilter('user',this.value)">
-          <option value="">User: All</option>
+          <option value="">Χρήστης: Όλοι</option>
           ${users.map(u => `<option value="${escapeHtml(u)}"${_errLogState.user===u?' selected':''}>${escapeHtml(u)}</option>`).join('')}
         </select>
         <select class="svc-filter" onchange="_errLogSetFilter('range',this.value)">
-          <option value="all">Time: All</option>
-          <option value="1h"${_errLogState.range==='1h'?' selected':''}>Last hour</option>
-          <option value="24h"${_errLogState.range==='24h'?' selected':''}>Last 24h</option>
-          <option value="7d"${_errLogState.range==='7d'?' selected':''}>Last 7 days</option>
+          <option value="all">Χρόνος: Όλος</option>
+          <option value="1h"${_errLogState.range==='1h'?' selected':''}>Τελευταία ώρα</option>
+          <option value="24h"${_errLogState.range==='24h'?' selected':''}>Τελευταίες 24 ώρες</option>
+          <option value="7d"${_errLogState.range==='7d'?' selected':''}>Τελευταίες 7 ημέρες</option>
         </select>
         <span class="entity-count-chip">${filtered.length}</span>
       </div>
@@ -976,14 +1012,14 @@ function renderErrorLog() {
         <div class="dash-card-body flush">
           <table class="md-fleet-table">
             <thead><tr>
-              <th style="width:70px">Sev</th>
-              <th style="width:90px">When</th>
-              <th>Message</th>
-              <th style="width:160px">Context</th>
-              <th style="width:120px">User</th>
-              <th style="width:120px">Page</th>
+              <th style="width:80px">Σοβαρότητα</th>
+              <th style="width:100px">Πότε</th>
+              <th>Μήνυμα</th>
+              <th style="width:160px">Πλαίσιο</th>
+              <th style="width:120px">Χρήστης</th>
+              <th style="width:120px">Σελίδα</th>
             </tr></thead>
-            <tbody>${rows.length ? rows : `<tr><td colspan="6"><div class="dash-empty" style="padding:var(--space-8) var(--space-4)">${_ic('check_circle', 28)}<div>No errors logged${all.length && !rows.length ? ' matching filters' : ''}</div></div></td></tr>`}</tbody>
+            <tbody>${rows.length ? rows : `<tr><td colspan="6"><div class="dash-empty" style="padding:var(--space-6) var(--space-4)${unreadable ? ';color:var(--danger)' : ''}">${_ic(unreadable ? 'alert_triangle' : 'check_circle', 28)}<div>${emptyText}</div></div></td></tr>`}</tbody>
           </table>
         </div>
       </div>
@@ -1474,23 +1510,37 @@ function _tableNameFromId(tableId) {
 
 function renderTrashViewer() {
   const c = document.getElementById('content');
-  const trash = typeof getTrash === 'function' ? getTrash() : [];
+  // Κ7: getTrash() (core/api.js) returns [] for a corrupt store, so without
+  // this check a broken localStorage would read as "the trash is empty" and
+  // the user would believe the deletions are gone for good.
+  const unreadable = _localStoreUnreadable('tms_trash');
+  const trash = (!unreadable && typeof getTrash === 'function') ? getTrash() : [];
 
+  // Colours used to be hard-coded dark-theme hexes (near-black cards, the
+  // "unassigned" red on the clear button) on a light page. Tokens + the shared
+  // .btn classes, so hover/disabled/focus come from style.css like everywhere.
   let html = `
     <div style="max-width:1100px;margin:0 auto;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
         <div>
-          <h2 style="margin:0;font-family:'Syne',sans-serif;font-size:22px;color:var(--text-primary,#e2e8f0);">Trash</h2>
-          <p style="margin:4px 0 0;color:var(--text-dim,var(--panel-dim));font-size:13px;">${trash.length} deleted record(s) — last 50 kept in browser storage</p>
+          <h2 style="margin:0;font-family:'Syne',sans-serif;font-size:18px;color:var(--text);">Κάδος</h2>
+          <p style="margin:4px 0 0;color:var(--text-dim);font-size:13px;font-variant-numeric:tabular-nums;">${unreadable ? '—' : trash.length} διαγραμμένες εγγραφές — κρατούνται οι τελευταίες 50, σε αυτόν τον browser</p>
         </div>
-        ${trash.length ? `<button onclick="_clearAllTrash()" style="background:#7F1D1D;color:#fca5a5;border:none;padding:8px 16px;border-radius:8px;cursor:pointer;font-size:13px;font-family:'DM Sans',sans-serif;">Clear All Trash</button>` : ''}
+        ${(trash.length || unreadable) ? `<button class="btn btn-danger" onclick="_clearAllTrash()">Άδειασμα κάδου</button>` : ''}
       </div>`;
 
-  if (!trash.length) {
+  if (unreadable) {
     html += `
-      <div style="text-align:center;padding:60px 20px;color:var(--text-dim,var(--panel-dim));">
+      <div style="text-align:center;padding:32px 16px;color:var(--danger);">
+        <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="margin-bottom:16px;"><path d="M10 3l8 14H2L10 3zM10 8v4M10 14v1"/></svg>
+        <p style="font-size:14px;font-weight:600;">Ο κάδος δεν διαβάστηκε</p>
+        <p style="font-size:12px;margin-top:4px;color:var(--text-mid);">Τα δεδομένα του κάδου σε αυτόν τον browser είναι κατεστραμμένα. Δεν σημαίνει ότι ο κάδος είναι άδειος. Με «Άδειασμα κάδου» ξαναρχίζει καθαρός.</p>
+      </div>`;
+  } else if (!trash.length) {
+    html += `
+      <div style="text-align:center;padding:32px 16px;color:var(--text-dim);">
         <svg width="48" height="48" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.2" style="opacity:0.4;margin-bottom:16px;"><path d="M3 6h14M8 6V4h4v2M5 6v11a1 1 0 001 1h8a1 1 0 001-1V6M8 9v6M12 9v6"/></svg>
-        <p style="font-size:15px;">Ο κάδος είναι άδειος</p>
+        <p style="font-size:14px;color:var(--text);">Καμία διαγραμμένη εγγραφή</p>
         <p style="font-size:12px;margin-top:4px;">Οι διαγραμμένες εγγραφές εμφανίζονται εδώ για επαναφορά (τελευταίες 50, σε αυτόν τον browser)</p>
       </div>`;
   } else {
@@ -1503,16 +1553,16 @@ function renderTrashViewer() {
       const preview = _trashPreview(item.fields);
 
       html += `
-        <div style="background:var(--card-bg,#111827);border:1px solid var(--border,#1e293b);border-radius:10px;padding:14px 18px;display:flex;align-items:center;gap:14px;">
+        <div style="background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:12px 16px;display:flex;align-items:center;gap:12px;">
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-              <span style="background:#1e3a5f;color:#93c5fd;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;">${escapeHtml(tableName)}</span>
-              <span style="color:var(--text-dim,var(--panel-dim));font-size:11px;">${escapeHtml(item.id)}</span>
+              <span style="background:var(--surface-sunken);color:var(--text-mid);padding:2px 8px;border-radius:9999px;font-size:11px;font-weight:600;">${escapeHtml(tableName)}</span>
+              <span style="color:var(--text-dim);font-size:11px;">${escapeHtml(item.id)}</span>
             </div>
-            <div style="color:var(--text-primary,#e2e8f0);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(preview)}</div>
-            <div style="color:var(--text-dim,var(--panel-dim));font-size:11px;margin-top:4px;">Deleted ${escapeHtml(timeAgo)} by ${escapeHtml(item.deletedBy || 'unknown')}</div>
+            <div style="color:var(--text);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(preview)}">${escapeHtml(preview)}</div>
+            <div style="color:var(--text-dim);font-size:11px;margin-top:4px;">Διαγράφηκε ${escapeHtml(timeAgo)} από ${escapeHtml(item.deletedBy || 'άγνωστο χρήστη')}</div>
           </div>
-          <button onclick="_restoreTrashItem(${idx})" style="background:#0c4a1a;color:#86efac;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'DM Sans',sans-serif;white-space:nowrap;">Restore</button>
+          <button class="btn btn-secondary btn-sm" onclick="_restoreTrashItem(${idx})" style="white-space:nowrap;">Επαναφορά</button>
         </div>`;
     });
     html += `</div>`;
@@ -1525,16 +1575,16 @@ function renderTrashViewer() {
 function _trashTimeAgo(date) {
   const diff = Date.now() - date.getTime();
   const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return mins + 'm ago';
+  if (mins < 1) return 'μόλις τώρα';
+  if (mins < 60) return 'πριν ' + mins + ' λ.';
   const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return hrs + 'h ago';
+  if (hrs < 24) return 'πριν ' + hrs + ' ώ.';
   const days = Math.floor(hrs / 24);
-  return days + 'd ago';
+  return 'πριν ' + days + ' ημ.';
 }
 
 function _trashPreview(fields) {
-  if (!fields) return '(no data)';
+  if (!fields) return '(χωρίς δεδομένα)';
   // Try common identifying fields
   const tryFields = ['Name', 'Company Name', 'Full Name', 'License Plate', 'Direction', 'Status', 'Client', 'Type', 'City'];
   const parts = [];
@@ -1551,16 +1601,16 @@ function _trashPreview(fields) {
 }
 
 async function _restoreTrashItem(idx) {
-  if (!confirm('Restore this record to its original table?')) return;
+  if (!confirm('Επαναφορά της εγγραφής στον αρχικό της πίνακα;')) return;
   const result = await atRestoreFromTrash(idx);
   if (result) {
-    if (typeof showErrorToast === 'function') showErrorToast('Record restored successfully', 'info');
+    if (typeof showErrorToast === 'function') showErrorToast('Η εγγραφή επαναφέρθηκε', 'info');
     renderTrashViewer(); // Re-render
   }
 }
 
 function _clearAllTrash() {
-  if (!confirm('Permanently clear all trash? This cannot be undone.')) return;
+  if (!confirm('Οριστικό άδειασμα του κάδου; Δεν αναιρείται.')) return;
   localStorage.setItem('tms_trash', '[]');
   renderTrashViewer();
 }

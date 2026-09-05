@@ -43,13 +43,15 @@
     }
     // Quick actions
     items.push(
-      { type: 'action', title: 'Refresh current page', keywords: 'refresh reload',
+      // Titles in Greek (screen text); the English stays in keywords so the
+      // old muscle memory («refresh», «logout») keeps finding them.
+      { type: 'action', title: 'Ανανέωση σελίδας', keywords: 'refresh reload ανανεωση ανανέωση',
         action: () => { if (typeof currentPage !== 'undefined' && typeof navigate === 'function') navigate(currentPage); },
         icon: 'refresh' },
-      { type: 'action', title: 'Sign out', keywords: 'logout sign out exit',
+      { type: 'action', title: 'Αποσύνδεση', keywords: 'logout sign out exit αποσυνδεση αποσύνδεση',
         action: () => { if (typeof logout === 'function') logout(); },
         icon: 'user_check' },
-      { type: 'action', title: 'Undo last action', keywords: 'undo revert',
+      { type: 'action', title: 'Αναίρεση τελευταίας ενέργειας', keywords: 'undo revert αναιρεση αναίρεση',
         action: () => { if (typeof undoLastAction === 'function') undoLastAction(); },
         icon: 'refresh' },
     );
@@ -89,7 +91,7 @@
     const filtered = _filter(CMD.query);
     const ico = (n) => (typeof icon === 'function') ? icon(n, 16) : '';
     overlay.innerHTML = `
-      <div class="cmdk" role="dialog" aria-modal="true" aria-label="Command palette">
+      <div class="cmdk" role="dialog" aria-modal="true" aria-label="Παλέτα εντολών">
         <div class="cmdk-search">
           ${ico('search')}
           <input id="cmdk-input" class="cmdk-input" type="text" placeholder="Αναζήτηση σελίδας ή ενέργειας…" value="${CMD.query.replace(/"/g,'&quot;')}" autocomplete="off" autofocus>
@@ -106,15 +108,15 @@
                    id="cmdk-opt-${i}" role="option" aria-selected="${i === CMD.selectedIdx}">
                 <span class="cmdk-ico">${ico(it.icon || 'file_text')}</span>
                 <span class="cmdk-title">${it.title}</span>
-                ${it.section ? `<span class="cmdk-section">${it.section}</span>` : `<span class="cmdk-section">${it.type === 'action' ? 'Action' : ''}</span>`}
+                ${it.section ? `<span class="cmdk-section">${it.section}</span>` : `<span class="cmdk-section">${it.type === 'action' ? 'Ενέργεια' : ''}</span>`}
               </div>
             `).join('')
           }
         </div>
         <div class="cmdk-footer">
-          <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-          <span><kbd>↵</kbd> select</span>
-          <span><kbd>ESC</kbd> close</span>
+          <span><kbd>↑</kbd><kbd>↓</kbd> πλοήγηση</span>
+          <span><kbd>↵</kbd> επιλογή</span>
+          <span><kbd>ESC</kbd> κλείσιμο</span>
         </div>
       </div>`;
     const input = document.getElementById('cmdk-input');
