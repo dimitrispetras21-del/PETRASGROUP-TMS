@@ -164,6 +164,8 @@ function dlRenderList() {
   const stale = act.filter(b => b.days_since_last_entry > 30).length;
   const rows = dlVisible();
   const chip = (id, label, n) => `<button class="dl-chip${_dl.filter === id ? ' on' : ''}" onclick="_dl.filter='${id}';dlRenderList()">${label}${n != null ? ' <b>' + n + '</b>' : ''}</button>`;
+  // A zero balance made only of pending (valueless) trips is not «τακτοποιημένο»:
+  // the value is unknown, so the cell says so (DESIGN.md #3) instead of 0,00 €.
   const body = rows.length ? rows.map(b => {
     const w = dlBalanceWord(b.balance);
     const last = b.last_trip_date ? `${dlDateRange(b.last_trip_date, b.last_trip_end)} ${escapeHtml(b.last_trip_route || '')}` : '—';
@@ -173,7 +175,7 @@ function dlRenderList() {
       <div style="width:560px"><span class="m">${escapeHtml(b.full_name)}</span><span class="s">${dlTypeWord(b.type)}${staleTxt ? ' · ' + staleTxt : ''}</span></div>
       <div style="width:384px"><span style="font-size:12px">${last}</span><span class="s">${sub}</span></div>
       <div style="width:120px" class="r"><span class="n">${b.has_entries ? b.trips_ytd : '—'}</span></div>
-      <div style="width:200px" class="r"><span class="n ${w.cls}" style="font-weight:700">${b.has_entries ? dlEur(b.balance) : '—'} <span style="font-weight:400;color:var(--text-dim);font-size:12px">${b.has_entries ? w.text : 'χωρίς καρτέλα'}</span></span></div>
+      <div style="width:200px" class="r"><span class="n ${w.cls}" style="font-weight:700">${b.has_entries && !(Number(b.balance) === 0 && b.pending_count > 0) ? dlEur(b.balance) : '—'} <span style="font-weight:400;color:var(--text-dim);font-size:12px">${!b.has_entries ? 'χωρίς καρτέλα' : (Number(b.balance) === 0 && b.pending_count > 0 ? '<span style="color:var(--warn)">εκκρεμεί αξία</span>' : w.text)}</span></span></div>
       <div style="width:120px"><span class="link">καρτέλα →</span></div></div>`;
   }).join('') : showEmpty({ title: 'Καμία καρτέλα σε αυτό το φίλτρο', description: 'Άλλαξε φίλτρο ή καταχώρησε την πρώτη κίνηση.' });
   c.innerHTML = dlStyles() + `<div class="dl-page">
