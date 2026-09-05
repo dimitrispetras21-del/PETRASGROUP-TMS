@@ -98,6 +98,8 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['raw_final'], '560.00')
         self.assertIsNone(n['opening_balance'])
         self.assertEqual(n['rounding_residual'], '0.07')
+        self.assertTrue(n['running_consistent'])
+        self.assertEqual(n['expected_final'], '560.07')
 
     def test_leading_undated_rows_inherit_from_below_and_bad_date_end_is_dropped(self):
         ws = book([('ΗΜΕΡ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),

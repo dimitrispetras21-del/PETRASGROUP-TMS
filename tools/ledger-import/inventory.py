@@ -54,7 +54,7 @@ def parse_sheet(ws, today):
             e['entry_date'] = rows[-1]['entry']['entry_date']; inherited = True; add_note(e, INHERIT_NOTE)
         else:
             # This is the first dated row: flush pending entries and inherit from it
-            if pending and rows == []:
+            if pending:
                 for p in pending:
                     p['entry']['entry_date'] = e['entry_date']; add_note(p['entry'], 'ημ/νία από επόμενη γραμμή (κενή στο Excel)')
                     rows.append({'row': p['row'], 'entry': p['entry'], 'cells': {k: jsonable(v) for k, v in p['cells'].items() if k != '_row_text'},
@@ -95,14 +95,12 @@ def parse_sheet(ws, today):
                     # Not a year typo (day/month slip or swapped cells). The balance does not
                     # depend on the return date, so the driver is not blocked: drop it, keep
                     # the original in the note and in date_fix.
-                    msg = 'λήξη Excel %s μη έγκυρη' % end
-                    if e0 > start + dt.timedelta(days=60):
-                        msg += ' (> 60 ημέρες μετά την αναχώρηση)'
+                    if e0 < start:
+                        msg = 'λήξη Excel %s μη έγκυρη (πριν την αναχώρηση), αφαιρέθηκε' % end
                     else:
-                        msg += ' (πριν την αναχώρηση)'
-                    msg += ', αφαιρέθηκε'
+                        msg = 'λήξη Excel %s μη έγκυρη (> 60 ημέρες μετά την αναχώρηση), αφαιρέθηκε' % end
                     add_note(r['entry'], msg)
-                    r['date_fix'] = r['date_fix'] or {'from': end, 'to': None, 'note': 'λήξη αφαιρέθηκε'}
+                    r['date_fix'] = r['date_fix'] or {'from': end, 'to': None, 'note': msg}
                     r['entry']['date_end'] = None
     running_last, opening, breaks, consistent = None, None, [], None
     trailing, expected_final, residual = Decimal('0'), None, None

@@ -76,7 +76,7 @@ def detect_header(rows):
             for field, keys in FIELD_KEYS:
                 # For balance field, allow later matches to overwrite earlier ones
                 # (κράτησε comes first, the line balance comes after ΑΞΙΑ)
-                if (field != 'balance' and field not in cols or field == 'balance') and any(k in n for k in keys):
+                if ((field == 'balance') or (field not in cols)) and any(k in n for k in keys):
                     cols[field] = j; break
         if len(cols) >= 3 and all(f in cols for f in REQUIRED):
             used = set(cols.values())
