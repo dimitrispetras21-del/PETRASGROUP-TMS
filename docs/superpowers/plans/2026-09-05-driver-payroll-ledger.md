@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Αντικατάσταση του Excel-ανά-οδηγό με καρτέλα οδηγού στο TMS: πίνακας `dl_entries` ως πηγή αλήθειας για αμοιβή και Έξοδα Μ, αυτόματη γραμμή από κάθε round trip με οδηγό, τρεις οθόνες, και πλήρης εισαγωγή του ιστορικού με απόδειξη στον πίνακα (Αιμίλιος → 354,76 €).
+**Goal:** Αντικατάσταση του Excel-ανά-οδηγό με καρτέλα οδηγού στο TMS: πίνακας `dl_entries` ως πηγή αλήθειας για αμοιβή και Έξοδα Μ, αυτόματη γραμμή από κάθε round trip με οδηγό, τρεις οθόνες, και πλήρης εισαγωγή του ιστορικού με απόδειξη στον πίνακα (οδηγό-Ας → 123,45 €).
 
 **Architecture:** Νέος πίνακας `dl_entries` + views (`dl_v_entries`, `dl_v_balance`, `dl_v_rt_gap`) + trigger `dl_sync_from_rt()` στη Supabase. Ο Worker αποκτά πόρο `ledger` μέσα στο υπάρχον `handleCosts` (`/costs/ledger*`). Το TRIP PnL **διαβάζει** αμοιβή/Έξοδα Μ από την καρτέλα (`ct_v_rt_costs`), οι κατηγορίες `driver_pay`/`cash_m` παύουν να γράφονται στο `ct_cost_lines`. Νέο module `modules/payroll.js` (3 οθόνες, Figma `w5-payroll-*`). Εισαγωγή ιστορικού με Python script (dry run προεπιλογή) → RPC `dl_import`.
 
@@ -21,7 +21,7 @@
 - **Ρόλοι**: owner, accountant, management → GET/POST/PATCH στο `ledger`. Dispatcher/warehouse: τίποτα. Front end gate: `can('costs') !== 'none'`.
 - **Σχόλια κώδικα στα αγγλικά, γράφουν το ΓΙΑΤΙ.** Commits με `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - **Μετά από κάθε αλλαγή αρχείου του app**: bump `?v=TIMESTAMP` στο `app.html` για το αρχείο, commit, push.
-- **Τεστ αποδοχής εισαγωγής**: `ΑΙΜΙΛΙΟΣ.xlsx` → 168 γραμμές, υπόλοιπο **354,76** — διαφορά ⇒ άρνηση.
+- **Τεστ αποδοχής εισαγωγής**: `ΟΔΗΓΟΣ-Α.xlsx` → 168 γραμμές, υπόλοιπο **123,45** — διαφορά ⇒ άρνηση.
 
 ---
 
@@ -435,9 +435,9 @@ test('trip: value/advance/expenses optional (pending), amount forbidden', () => 
 
 test('payment: amount > 0 required, trip fields forbidden', () => {
   assert.match(validateNewEntry({ driver_id: 46, entry_type: 'payment_cash', entry_date: '2026-07-31' }).error, /amount/);
-  assert.match(validateNewEntry({ driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 950.47, trip_value: 1 }).error, /trip_value/);
-  assert.deepStrictEqual(validateNewEntry({ driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 950.47 }),
-    { row: { driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 950.47, source: 'manual' } });
+  assert.match(validateNewEntry({ driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 200.50, trip_value: 1 }).error, /trip_value/);
+  assert.deepStrictEqual(validateNewEntry({ driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 200.50 }),
+    { row: { driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 200.50, source: 'manual' } });
 });
 
 test('unknown field is named in the error, never dropped silently', () => {
@@ -749,7 +749,7 @@ Expected: `401` (υπάρχει και ζητά JWT). Έλεγξε ότι τα s
 - Test: `tools/test_import_driver_ledger.py`
 
 **Interfaces:**
-- Consumes: `POST /costs/ledger/import` (Task 3), διάταξη `ΑΙΜΙΛΙΟΣ.xlsx` (spec §6): κεφαλίδα γρ. 3, στήλες B Α/Α · C έναρξη · D λήξη · E περιγραφή · F ΕΛΑΒΕ · G ΕΞΟΔΑ · I ΑΞΙΑ · K ΠΡΟΟΔΕΥΤΙΚΟ.
+- Consumes: `POST /costs/ledger/import` (Task 3), διάταξη `ΟΔΗΓΟΣ-Α.xlsx` (spec §6): κεφαλίδα γρ. 3, στήλες B Α/Α · C έναρξη · D λήξη · E περιγραφή · F ΕΛΑΒΕ · G ΕΞΟΔΑ · I ΑΞΙΑ · K ΠΡΟΟΔΕΥΤΙΚΟ.
 - Produces: CLI `python3 tools/import_driver_ledger.py <file.xlsx> [--commit] [--token $TMS_JWT]`· συναρτήσεις `parse_workbook(path) → (rows, anomalies, excel_final)`, `compute_balance(rows) → Decimal`, `classify(b, c, d, e, f, g, i) → dict | None`.
 
 - [ ] **Step 1: Γράψε τα τεστ**
@@ -814,14 +814,14 @@ Expected: `ModuleNotFoundError: No module named 'import_driver_ledger'`.
 
 ```python
 #!/usr/bin/env python3
-"""Import one driver's Excel ledger (ΑΙΜΙΛΙΟΣ.xlsx layout) into the TMS ledger.
+"""Import one driver's Excel ledger (ΟΔΗΓΟΣ-Α.xlsx layout) into the TMS ledger.
 
 Dry run by default: parses, classifies, computes the final balance and compares
 it with the workbook's last ΠΡΟΟΔΕΥΤΙΚΟ. Nothing is sent unless --commit AND the
 two numbers agree. Unknown row shapes STOP the run — the tool never guesses.
 
-    python3 tools/import_driver_ledger.py ~/Drive/μισθοδοσία/ΑΙΜΙΛΙΟΣ.xlsx
-    python3 tools/import_driver_ledger.py ~/Drive/μισθοδοσία/ΑΙΜΙΛΙΟΣ.xlsx --commit --token "$TMS_JWT"
+    python3 tools/import_driver_ledger.py ~/Drive/μισθοδοσία/ΟΔΗΓΟΣ-Α.xlsx
+    python3 tools/import_driver_ledger.py ~/Drive/μισθοδοσία/ΟΔΗΓΟΣ-Α.xlsx --commit --token "$TMS_JWT"
 """
 import argparse, hashlib, json, os, sys, urllib.request, urllib.error
 from decimal import Decimal, ROUND_HALF_UP
@@ -935,7 +935,7 @@ if __name__ == '__main__':
 
 `tools/driver-ledger-map.json`:
 ```json
-{ "ΑΙΜΙΛΙΟΣ": 46 }
+{ "ΟΔΗΓΟΣ-Α": 46 }
 ```
 
 - [ ] **Step 4: Τρέξε τα τεστ, δες ότι περνούν**
@@ -945,22 +945,22 @@ Expected: `Ran 5 tests … OK`.
 
 - [ ] **Step 5: Dry run στο πραγματικό αρχείο (τεστ αποδοχής)**
 
-Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΑΙΜΙΛΙΟΣ.xlsx`
+Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΟΔΗΓΟΣ-Α.xlsx`
 Expected:
 ```
-ΑΙΜΙΛΙΟΣ → driver 46 · 168 rows · {'trip': …, 'payment_cash': …, 'payment_bank': …}
+ΟΔΗΓΟΣ-Α → driver 46 · 168 rows · {'trip': …, 'payment_cash': …, 'payment_bank': …}
   ⚠ row 36: C > D (2025-12-27 > 2025-01-03) — year typo? kept as is
-  computed balance 354.76 · Excel last ΠΡΟΟΔΕΥΤΙΚΟ 354.76
+  computed balance 123.45 · Excel last ΠΡΟΟΔΕΥΤΙΚΟ 123.45
   ✓ balance matches
   dry run — add --commit to write
 ```
-Αν το `computed balance` ≠ 354.76: ο parser έχει λάθος. Μη «διορθώσεις» το Excel· τύπωσε ανά γραμμή `entry_type, balance_delta, running` και βρες ποια γραμμή αποκλίνει.
+Αν το `computed balance` ≠ 123.45: ο parser έχει λάθος. Μη «διορθώσεις» το Excel· τύπωσε ανά γραμμή `entry_type, balance_delta, running` και βρες ποια γραμμή αποκλίνει.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add tools/import_driver_ledger.py tools/test_import_driver_ledger.py tools/driver-ledger-map.json
-git commit -m "tools(ledger): Excel → dl_entries importer, dry run by default, refuses when balance ≠ workbook (ΑΙΜΙΛΙΟΣ 354,76)
+git commit -m "tools(ledger): Excel → dl_entries importer, dry run by default, refuses when balance ≠ workbook (ΟΔΗΓΟΣ-Α 123,45)
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
@@ -973,7 +973,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 - Create: `modules/payroll.js` (μόνο helpers + CommonJS export guard), `tests/payroll-format.test.js`
 
 **Interfaces:**
-- Produces (global στο browser, `module.exports` στο node): `dlEur(n) → '354,76 €' | '—'`, `dlBalanceWord(n) → {text, cls}` (`'του χρωστάμε'|'μας χρωστά'|'τακτοποιημένο'`, cls `'dl-owe'|'dl-owed'|'dl-zero'`), `dlDelta(entry) → '+555,00' | '−950,47' | '—'`, `dlTypeLabel(t)`, `dlDateRange(start, end) → '10–17/08' | '13/08'`.
+- Produces (global στο browser, `module.exports` στο node): `dlEur(n) → '123,45 €' | '—'`, `dlBalanceWord(n) → {text, cls}` (`'του χρωστάμε'|'μας χρωστά'|'τακτοποιημένο'`, cls `'dl-owe'|'dl-owed'|'dl-zero'`), `dlDelta(entry) → '+555,00' | '−200,50' | '—'`, `dlTypeLabel(t)`, `dlDateRange(start, end) → '10–17/08' | '13/08'`.
 
 - [ ] **Step 1: Γράψε τα τεστ**
 
@@ -987,12 +987,12 @@ test('unknown is not zero: null/undefined render as a dash, real zero as 0,00 �
   assert.strictEqual(dlEur(null), '—');
   assert.strictEqual(dlEur(undefined), '—');
   assert.strictEqual(dlEur(0), '0,00 €');
-  assert.strictEqual(dlEur(354.76), '354,76 €');
+  assert.strictEqual(dlEur(123.45), '123,45 €');
   assert.strictEqual(dlEur(1240), '1.240,00 €');
 });
 
 test('balance carries a word, not only a sign or colour (DESIGN.md #2)', () => {
-  assert.deepStrictEqual(dlBalanceWord(354.76), { text: 'του χρωστάμε', cls: 'dl-owe' });
+  assert.deepStrictEqual(dlBalanceWord(123.45), { text: 'του χρωστάμε', cls: 'dl-owe' });
   assert.deepStrictEqual(dlBalanceWord(-120), { text: 'μας χρωστά', cls: 'dl-owed' });
   assert.deepStrictEqual(dlBalanceWord(0), { text: 'τακτοποιημένο', cls: 'dl-zero' });
 });
@@ -1000,7 +1000,7 @@ test('balance carries a word, not only a sign or colour (DESIGN.md #2)', () => {
 test('line delta: trip pending shows a dash, payments are negative with a real minus sign', () => {
   assert.strictEqual(dlDelta({ entry_type: 'trip', pending: true, balance_delta: -300 }), '—');
   assert.strictEqual(dlDelta({ entry_type: 'trip', pending: false, balance_delta: 555 }), '+555,00');
-  assert.strictEqual(dlDelta({ entry_type: 'payment_bank', pending: false, balance_delta: -950.47 }), '−950,47');
+  assert.strictEqual(dlDelta({ entry_type: 'payment_bank', pending: false, balance_delta: -200.50 }), '−200,50');
 });
 
 test('type labels and date ranges', () => {
@@ -1042,7 +1042,7 @@ function dlBalanceWord(n) {
   if (v < 0) return { text: 'μας χρωστά', cls: 'dl-owed' };
   return { text: 'τακτοποιημένο', cls: 'dl-zero' };
 }
-// U+2212 minus: a hyphen next to tabular digits reads as a typo («-950,47»).
+// U+2212 minus: a hyphen next to tabular digits reads as a typo («-200,50»).
 function dlDelta(e) {
   if (e.entry_type === 'trip' && e.pending) return '—';
   const v = Number(e.balance_delta) || 0;
@@ -1533,7 +1533,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 ---
 
-### Task 9: Εισαγωγή ιστορικού — Αιμίλιος πρώτα, μετά ο φάκελος Drive
+### Task 9: Εισαγωγή ιστορικού — οδηγό-Ας πρώτα, μετά ο φάκελος Drive
 
 **Files:**
 - Modify: `tools/driver-ledger-map.json` (ένα id ανά αρχείο)
@@ -1542,11 +1542,11 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 
 Ο owner κάνει login στο app· στο DevTools: `localStorage.getItem('tms_jwt')` → `export TMS_JWT=…` στο terminal (8 ώρες ζωής, δεν μπαίνει σε αρχείο).
 
-- [ ] **Step 2: Αιμίλιος — dry run, commit, απόδειξη**
+- [ ] **Step 2: οδηγό-Ας — dry run, commit, απόδειξη**
 
-Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΑΙΜΙΛΙΟΣ.xlsx` → `✓ balance matches` (354.76).
-Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΑΙΜΙΛΙΟΣ.xlsx --commit`
-Expected: `✓ imported batch <uuid>: 168 rows, server balance 354.76`.
+Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΟΔΗΓΟΣ-Α.xlsx` → `✓ balance matches` (123.45).
+Run: `python3 tools/import_driver_ledger.py ~/Downloads/ΟΔΗΓΟΣ-Α.xlsx --commit`
+Expected: `✓ imported batch <uuid>: 168 rows, server balance 123.45`.
 Απόδειξη (Supabase, SELECT):
 ```sql
 select d.full_name, count(*) as rows, sum(e.balance_delta) as balance,
@@ -1554,7 +1554,7 @@ select d.full_name, count(*) as rows, sum(e.balance_delta) as balance,
 from dl_entries e join drivers d on d.id=e.driver_id
 where e.deleted_at is null and e.source='excel_import' group by 1;
 ```
-Expected: `Eksuzyan Emil · 168 · 354.76`. Ξανατρέξε το ίδιο `--commit` → `✗ HTTP 409: this file was already imported`.
+Expected: `Eksuzyan Emil · 168 · 123.45`. Ξανατρέξε το ίδιο `--commit` → `✗ HTTP 409: this file was already imported`.
 
 - [ ] **Step 3: Ο φάκελος Drive**
 
@@ -1597,7 +1597,7 @@ CHECK του `ct_cost_lines` (migration 011). Trigger στο `ct_round_trips` γ
 **Εναλλακτικές:** (Β) όλα μέσα στο `ct_cost_lines` — απορρίφθηκε: το ιστορικό
 (2.500+ γραμμές) δεν έχει RT· (Γ) μόνο πληρωμές + υπόλοιπο έναρξης —
 απορρίφθηκε από τον owner («πλήρης εισαγωγή»).
-**Απόδειξη:** `ΑΙΜΙΛΙΟΣ.xlsx` 168 γραμμές → 354,76 € = τελευταίο ΠΡΟΟΔΕΥΤΙΚΟ
+**Απόδειξη:** `ΟΔΗΓΟΣ-Α.xlsx` 168 γραμμές → 123,45 € = τελευταίο ΠΡΟΟΔΕΥΤΙΚΟ
 του Excel, επιβεβαιωμένο με `sum(balance_delta)` στη βάση μετά την εισαγωγή.
 `dl_v_rt_gap = 0`. Αναθεωρεί το TRIP_COSTS_SPEC §10.1 #5 ως προς τον πίνακα,
 όχι ως προς την αρχή «ανά δρομολόγιο».
@@ -1620,7 +1620,7 @@ Driver pay παραμένει per-trip, manual v1. Η πηγή δεν είναι
 - [ ] **Step 3: CLAUDE.md** — στο «Κατάσταση modules», μετάφερε το «Driver Payroll» από «Επόμενα» σε «Σε παραγωγική χρήση» ως `Μισθοδοσία Οδηγών (καρτέλα οδηγού, από 5/9/2026)`. Στον πίνακα του επαναλαμβανόμενου ελέγχου πρόσθεσε γραμμή:
 
 ```markdown
-| Μισθοδοσία: αξία / έλαβε / έξοδα | `dl_entries.trip_value/advance/expenses` | μετρήθηκε μετά την εισαγωγή: Αιμίλιος 168/168, υπόλοιπο 354,76 |
+| Μισθοδοσία: αξία / έλαβε / έξοδα | `dl_entries.trip_value/advance/expenses` | μετρήθηκε μετά την εισαγωγή: οδηγό-Ας 168/168, υπόλοιπο 123,45 |
 ```
 
 - [ ] **Step 4: Μνήμη** — ενημέρωσε `~/.claude/projects/-Users-dimitrispetras-PETRASGROUP-TMS/memory/project_driver_payroll_ledger.md`: κατάσταση «υλοποιήθηκε <ημερομηνία>», ποια αρχεία Drive εισήχθησαν, ποια εκκρεμούν, και ότι το επόμενο είναι ο αυτόματος υπολογισμός αξίας (owner: «όχι τώρα»).
