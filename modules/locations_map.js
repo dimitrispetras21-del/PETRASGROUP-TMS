@@ -32,8 +32,8 @@ const LMAP_CATS = {
   client:   { label: 'Πελάτες',               v: '--accent' },
   hub:      { label: 'Αποθήκες / Cross-dock', v: '--map-hub' },
   workshop: { label: 'Συνεργεία',             v: '--danger' },
-  customs:  { label: 'Τελωνεία',              v: '--warning' },
-  fuel:     { label: 'Καύσιμα',               v: '--success' },
+  customs:  { label: 'Τελωνεία',              v: '--warn' },
+  fuel:     { label: 'Καύσιμα',               v: '--ok' },
   wash:     { label: 'Πλυντήρια',             v: '--map-wash' },
   partner:  { label: 'Συνεργάτες',            v: '--chip-partner' },
   unknown:  { label: 'Αταξινόμητα',           v: '--text-dim' },
@@ -215,9 +215,11 @@ async function _lmapOpen() {
     LMAP.built = true;
   } catch (e) {
     if (typeof logError === 'function') logError(e, '_lmapOpen');
-    host.innerHTML = '<div class="lmap-msg">Ο χάρτης δεν φόρτωσε.<br>' +
-      '<button class="btn btn-primary btn-sm" style="margin-top:12px" ' +
-      'onclick="LMAP.built=false;_lmapOpen()">Δοκίμασε ξανά</button></div>';
+    // Failure ≠ empty (DESIGN.md #7): the empty case above says «καμία τοποθεσία
+    // με συντεταγμένες»; this one must not be readable the same way.
+    host.innerHTML = '<div class="lmap-msg">Δεν φορτώθηκε — ο χάρτης. Αυτό δεν σημαίνει ότι δεν υπάρχουν τοποθεσίες.<br>' +
+      '<button type="button" class="btn btn-primary btn-sm" style="margin-top:var(--space-3)" ' +
+      'onclick="LMAP.built=false;_lmapOpen()">Ξαναδοκίμασε</button></div>';
   }
 }
 
@@ -286,7 +288,7 @@ function _lmapRender(host) {
         <button id="lmapPin" class="on" onclick="_lmapSetGrouped(false)">📌 Καρφίτσες</button>
         <button id="lmapGrp" onclick="_lmapSetGrouped(true)">🔢 Ομάδες</button>
       </div>
-      <div class="lmap-seg" style="margin-top:6px">
+      <div class="lmap-seg" style="margin-top:var(--space-2)">
         <button id="lmapCCat" class="on" onclick="_lmapSetColorBy('cat')">Χρώμα: κατηγορία</button>
         <button id="lmapCCli" onclick="_lmapSetColorBy('client')">Χρώμα: πελάτης</button>
       </div>
@@ -582,7 +584,7 @@ function _lmapDetail(p) {
   ${_lmapRow('Επαφή', p.ct, 'δεν έχει καταχωρηθεί')}
 
   <div class="lmap-sect">Ιστορικό κινήσεων</div>
-  <div class="lmap-mt">Καμία καταγεγραμμένη κίνηση για αυτό το σημείο.</div>
+  <div class="lmap-mt"><button type="button" class="btn btn-sm" onclick="_locOpenCard('${_lmapEsc(p.id)}')">Άνοιγμα καρτέλας τοποθεσίας →</button></div>
 
   <div class="lmap-sect">Ενέργειες</div>
   <div class="lmap-brow">
@@ -590,7 +592,7 @@ function _lmapDetail(p) {
        href="https://maps.google.com/?q=${p.la},${p.lo}">Google Maps</a>
     <button class="btn btn-sm" onclick="_lmapNearHere(${p.la},${p.lo})">Τι έχει κοντά</button>
   </div>
-  <div class="lmap-brow" style="margin-top:8px">
+  <div class="lmap-brow" style="margin-top:var(--space-2)">
     <button class="btn btn-primary btn-sm" style="flex:1"
       onclick="_lmapEdit('${_lmapEsc(p.id)}')">Επεξεργασία τοποθεσίας</button>
   </div>

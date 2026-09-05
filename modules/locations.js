@@ -38,7 +38,12 @@ async function renderLocations() {
     _locBuildFilterOptions();
     _locApplyFilters();
   } catch (e) {
-    c.innerHTML = showError('Η φόρτωση των τοποθεσιών απέτυχε');
+    // Failure ≠ empty (DESIGN.md #7): what did not load, what that does NOT
+    // mean, one retry. The raw e.message («Failed to fetch») goes to the log only.
+    c.innerHTML = `<div role="alert" style="max-width:560px;margin:var(--space-8) auto 0;padding:var(--space-4);border:1px solid var(--danger);border-radius:var(--radius);background:var(--surface-card);color:var(--text);font-size:var(--text-body);display:flex;flex-direction:column;gap:var(--space-2)">
+      <b style="font-family:'Syne',sans-serif;font-size:var(--text-base);color:var(--danger)">Δεν φορτώθηκαν — οι τοποθεσίες</b>
+      <span>Αυτό δεν σημαίνει ότι δεν υπάρχουν τοποθεσίες. Έλεγξε τη σύνδεση και ξαναδοκίμασε.</span>
+      <span><button type="button" class="btn btn-primary btn-sm" onclick="renderLocations()">Ξαναδοκίμασε</button></span></div>`;
     if (typeof logError === 'function') logError(e, 'renderLocations load');
   }
 }
@@ -107,37 +112,42 @@ function _locShell() {
 #locTable thead th.loc-th-act { width: 80px; }
 /* Οι γραμμές ανοίγουν καρτέλα (Βήμα 4, 25/8) */
 #locTable tbody tr { cursor: pointer; }
-#locTable tbody tr:hover td { background: var(--bg-hover); }
+#locTable tbody tr:hover td { background: var(--surface-sunken); }
+/* Κάθε αριθμός σε στήλη (συντεταγμένες, πλήθη) ευθυγραμμίζεται — ΜΕΡΟΣ Γ. */
+#locTable td { font-variant-numeric: tabular-nums; }
 /* Κελί δύο σειρών (DESIGN.md ΜΕΡΟΣ Ζ.1): όνομα πάνω, διεύθυνση κάτω αχνά —
    λύνει το πλάτος χωρίς κοπή (κανόνας #6) και χωρίς δεύτερη στήλη. */
 .loc-cell2 { display: flex; flex-direction: column; justify-content: center; line-height: 14px; }
 .loc-cell2 .loc-name { font-weight: 500; color: var(--text); }
 .loc-cell2 .loc-sub { font-size: var(--text-xs); color: var(--text-dim); line-height: 13px; margin-top: 1px; }
 .loc-coord { color: var(--text-mid); text-decoration: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.loc-coord:hover { color: var(--navy-mid); }
+.loc-coord:hover { color: var(--text); }
 /* Άγνωστο ≠ μηδέν (κανόνας #3). Η πλήρης φράση σε χρώμα προσοχής ΜΟΝΟ στις
    συντεταγμένες — το λειτουργικό κενό που φιλτράρει το chip. Πόλη/Χώρα/Τύπος
    λείπουν σε εκατοντάδες εγγραφές (575 αταξινόμητα, 25/8): με φράση παντού η
    στήλη γίνεται τοίχος πορτοκαλί και το χρώμα παύει να διακρίνει (κανόνας #4). */
-.loc-miss { color: var(--warning); font-size: var(--text-xs); white-space: nowrap; }
+.loc-miss { color: var(--warn); font-size: var(--text-xs); white-space: nowrap; }
 .loc-dash { color: var(--text-dim); }
 .loc-type { color: var(--text-mid); }
-.loc-act-btn { background: none; border: none; cursor: pointer; padding: 4px 7px; border-radius: var(--radius-sm); color: var(--text-dim); transition: all .12s; font-size: 12px; line-height: 1; }
-.loc-act-btn:hover { background: var(--bg-hover); color: var(--text); }
+.loc-act-btn { background: none; border: none; cursor: pointer; padding: var(--space-1) var(--space-2); border-radius: var(--radius); color: var(--text-dim); transition: all .12s; font-size: var(--text-sm); line-height: 1; }
+.loc-act-btn:hover { background: var(--surface-sunken); color: var(--text); }
 .loc-act-btn.del:hover { background: var(--danger-bg); color: var(--danger); }
-/* Chip-φίλτρο: πλήθος σε χρώμα προσοχής ΚΑΙ λέξη (κανόνας #2) */
-.loc-chip { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--radius-full); border: 1px solid var(--silver-light); background: var(--bg); font: inherit; font-size: var(--text-sm); color: var(--text-mid); cursor: pointer; white-space: nowrap; }
-.loc-chip b { color: var(--warning); font-variant-numeric: tabular-nums; }
-.loc-chip:hover { border-color: var(--border-focus); }
-.loc-chip[aria-pressed="true"] { background: var(--navy-mid); border-color: var(--navy-mid); color: var(--text-inverse); }
-.loc-chip[aria-pressed="true"] b { color: var(--text-inverse); }
+/* Chip-φίλτρο: πλήθος σε χρώμα προσοχής ΚΑΙ λέξη (κανόνας #2). Με μηδέν γίνεται
+   disabled, όχι αόρατο (Δ2): ο αναγνώστης βλέπει ότι ο λογαριασμός είναι στο 0. */
+.loc-chip { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-3); border-radius: var(--radius-full); border: 1px solid var(--border); background: var(--surface-card); font: inherit; font-size: var(--text-sm); color: var(--text-mid); cursor: pointer; white-space: nowrap; }
+.loc-chip b { color: var(--warn); font-variant-numeric: tabular-nums; }
+.loc-chip:hover:not(:disabled) { background: var(--surface-sunken); }
+.loc-chip[aria-pressed="true"] { background: var(--surface-dark); border-color: var(--surface-dark); color: var(--text-on-dark); }
+.loc-chip[aria-pressed="true"] b { color: var(--text-on-dark); }
+.loc-chip:disabled { color: var(--text-dim); background: var(--surface-page); cursor: default; }
+.loc-chip:disabled b { color: var(--text-dim); }
 .loc-chip:empty { display: none; }
-.loc-pager { display: flex; align-items: center; gap: 6px; padding: 8px var(--space-6); border-top: 1px solid var(--border-row); justify-content: flex-end; background: var(--bg-card); flex-shrink: 0; }
-.loc-pager-btn { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 4px 10px; font-size: var(--text-xs); color: var(--text-mid); cursor: pointer; transition: all .12s; }
-.loc-pager-btn:hover:not(:disabled) { border-color: var(--navy-mid); color: var(--navy-mid); }
-.loc-pager-btn.active { background: var(--navy-mid); color: var(--text-inverse); border-color: var(--navy-mid); font-weight: 700; }
+.loc-pager { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-6); border-top: 1px solid var(--border); justify-content: flex-end; background: var(--surface-card); flex-shrink: 0; }
+.loc-pager-btn { background: var(--surface-page); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-1) var(--space-3); font-size: var(--text-xs); color: var(--text-mid); cursor: pointer; transition: all .12s; }
+.loc-pager-btn:hover:not(:disabled) { border-color: var(--surface-dark); color: var(--text); }
+.loc-pager-btn.active { background: var(--surface-dark); color: var(--text-on-dark); border-color: var(--surface-dark); font-weight: 700; }
 .loc-pager-btn:disabled { opacity: .3; cursor: not-allowed; }
-.loc-pager-info { font-size: var(--text-xs); color: var(--text-dim); margin-right: 8px; font-variant-numeric: tabular-nums; }
+.loc-pager-info { font-size: var(--text-xs); color: var(--text-dim); margin-right: var(--space-2); font-variant-numeric: tabular-nums; }
 /* Εναλλαγή πίνακα/χάρτη μέσα στο ίδιο panel: ο χάρτης παίρνει τον χώρο του
    πίνακα. Όσο είναι display:none το Leaflet μετρά μηδενικό ύψος — γι' αυτό
    το _lmapOpen κάνει invalidateSize σε κάθε επόμενο άνοιγμα. */
@@ -250,7 +260,8 @@ function _locApplyFilters() {
   const chip = document.getElementById('locNoCoords');
   if (chip) {
     const n = LOC.records.filter(r => !_locHasCoords(r.fields)).length;
-    chip.innerHTML = n ? `<b>${n.toLocaleString('el-GR')}</b> χωρίς συντεταγμένες` : '';
+    chip.innerHTML = `<b>${n.toLocaleString('el-GR')}</b> χωρίς συντεταγμένες`;
+    chip.disabled = !n && !LOC.noCoords;
     chip.setAttribute('aria-pressed', LOC.noCoords ? 'true' : 'false');
   }
   _locRenderTable();
@@ -264,8 +275,10 @@ function _locRenderTable() {
   if (!tbody) return;
 
   if (!LOC.filtered.length) {
-    // Κενό ≠ αποτυχία (κανόνας #7): η φόρτωση πέτυχε, τα φίλτρα δεν βρήκαν τίποτα.
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-dim)">Καμία τοποθεσία με αυτά τα φίλτρα.</td></tr>`;
+    // Κενό ≠ αποτυχία (κανόνας #7): η φόρτωση πέτυχε. Δύο διαφορετικά κενά —
+    // «δεν βρέθηκε με τα φίλτρα» και «δεν υπάρχει καμία» — ώστε το δεύτερο να
+    // μη διαβάζεται ως «χαλάρωσε τα φίλτρα».
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:var(--space-8);color:var(--text-dim)">${LOC.records.length ? 'Καμία τοποθεσία με αυτά τα φίλτρα.' : 'Καμία τοποθεσία καταχωρημένη.'}</td></tr>`;
     document.getElementById('locPager').innerHTML = '';
     // ΚΑΙ εδώ: χωρίς αυτή την κλήση, στήλη κρυμμένη στην προηγούμενη σελίδα θα
     // έμενε κρυμμένη πάνω από άδειο πίνακα — κεφαλίδες που λείπουν χωρίς λόγο.
@@ -287,7 +300,7 @@ function _locRenderTable() {
           ? `<a class="loc-coord" href="${mapsUrl}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${f.Latitude.toFixed(4)}, ${f.Longitude.toFixed(4)} ↗</a>`
           : '<span class="loc-miss">— δεν έχει καταχωρηθεί</span>'}
       </td>
-      <td onclick="event.stopPropagation()" style="text-align:right;padding-right:14px">
+      <td onclick="event.stopPropagation()" style="text-align:right;padding-right:var(--space-4)">
         <button class="loc-act-btn" onclick="_locOpenEdit('${r.id}')" title="Επεξεργασία">✏️</button>
         ${r.id === F.VEROIA_LOC
           ? '<span class="loc-act-btn" title="Κλειδωμένο — κλειδί της αλυσίδας Veroia Switch" style="cursor:default;opacity:0.5">🔒</span>'
@@ -365,7 +378,7 @@ function _locFormHTML(f) {
   <div class="form-field span-2">
     <label class="form-label">Όνομα *</label>
     <input id="locF_name" class="form-input" placeholder="π.χ. VERMION FRESH, Veroia" value="${_locEsc(f.Name||'')}">
-    <div style="font-size:var(--text-xs);color:var(--text-dim);margin-top:4px">Λατινικοί χαρακτήρες (greeklish), όπως όλες οι εγγραφές — κανόνας 9/8.</div>
+    <div style="font-size:var(--text-xs);color:var(--text-dim);margin-top:var(--space-1)">Λατινικοί χαρακτήρες (greeklish), όπως όλες οι εγγραφές — κανόνας 9/8.</div>
   </div>
   <div class="form-field">
     <label class="form-label">Χώρα</label>
@@ -487,9 +500,9 @@ async function _locGeocode() {
 // ── Delete ─────────────────────────────────────
 function _locConfirmDelete(id, name) {
   openModal('Διαγραφή τοποθεσίας;',
-    `<div style="color:var(--text-mid);font-size:14px;line-height:1.7">
+    `<div style="color:var(--text-mid);font-size:var(--text-base);line-height:1.7">
       Διαγραφή της <strong style="color:var(--text)">${name}</strong>;<br>
-      <span style="color:var(--danger);font-size:12px">Οι παραγγελίες που τη δηλώνουν ως σημείο θα χάσουν την αναφορά.</span>
+      <span style="color:var(--danger);font-size:var(--text-sm)">Οι παραγγελίες που τη δηλώνουν ως σημείο θα χάσουν την αναφορά.</span>
      </div>`,
     `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
      <button class="btn btn-danger" onclick="_locDoDelete('${id}')">Διαγραφή</button>`);
@@ -559,37 +572,40 @@ function _locCardHost() {
   return document.getElementById('loccPanel');
 }
 
-// Μόνο tokens (κανόνας #1) — το χρώμα έχει ένα σπίτι, το style.css.
+// Μόνο tokens του ΜΕΡΟΥΣ Β (κανόνας #1) — το χρώμα έχει ένα σπίτι, το style.css.
+// Μεγέθη μόνο από την κλίμακα (τα 9.5/10.5/11.5/12.5px έγιναν 11/12/13) και
+// αποστάσεις μόνο 4/8/12/16/24 (ΜΕΡΟΣ Γ/Δ).
 function _locCardCss() { return `
-.locc-overlay{position:fixed;inset:0;background:var(--navy-mid);opacity:0;pointer-events:none;transition:opacity .2s;z-index:var(--z-overlay)}
+.locc-overlay{position:fixed;inset:0;background:var(--surface-dark);opacity:0;pointer-events:none;transition:opacity .2s;z-index:var(--z-overlay)}
 .locc-overlay.open{opacity:.45;pointer-events:auto}
-.locc-panel{position:fixed;top:0;right:-560px;width:560px;max-width:96vw;height:100vh;background:var(--bg-card);box-shadow:var(--shadow-panel);transition:right .25s;z-index:var(--z-top);overflow-y:auto}
+.locc-panel{position:fixed;top:0;right:-560px;width:560px;max-width:96vw;height:100vh;background:var(--surface-card);box-shadow:var(--shadow-panel);transition:right .25s;z-index:var(--z-top);overflow-y:auto}
 .locc-panel.open{right:0}
-.locc-head{background:var(--navy-mid);color:var(--text-inverse);padding:16px 22px}
-.locc-head h2{font-family:'Syne',sans-serif;font-size:17px;margin:0 0 3px;padding-right:26px;color:var(--text-inverse)}
-.locc-meta{font-size:12px;color:var(--text-dim)}
-.locc-addr{font-size:12px;color:var(--text-dim);margin-top:2px}
-.locc-close{float:right;background:none;border:none;color:var(--text-dim);font-size:18px;cursor:pointer;margin:-2px -6px 0 0}
-.locc-chips{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
-.locc-chip{display:inline-block;padding:2px 9px;border-radius:var(--radius-full);font-size:11px;font-weight:600;letter-spacing:.03em;border:1px solid var(--border-dark);color:var(--text-inverse)}
-.locc-sect{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:13px 22px 5px;border-top:1px solid var(--border-row)}
+.locc-head{background:var(--surface-dark);color:var(--text-on-dark);padding:var(--space-4) var(--space-6)}
+.locc-head h2{font-family:'Syne',sans-serif;font-size:var(--text-lg);margin:0 0 var(--space-1);padding-right:var(--space-6);color:var(--text-on-dark)}
+.locc-meta{font-size:var(--text-sm);color:var(--panel-dim)}
+.locc-addr{font-size:var(--text-sm);color:var(--panel-dim);margin-top:var(--space-1)}
+.locc-close{float:right;background:none;border:none;color:var(--panel-dim);font-size:var(--text-lg);cursor:pointer;margin:0}
+.locc-chips{margin-top:var(--space-2);display:flex;gap:var(--space-1);flex-wrap:wrap}
+.locc-chip{display:inline-block;padding:0 var(--space-2);line-height:20px;border-radius:var(--radius-full);font-size:var(--text-xs);font-weight:600;letter-spacing:.03em;border:1px solid var(--border-dark);color:var(--text-on-dark)}
+.locc-sect{font-size:var(--text-xs);font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);padding:var(--space-3) var(--space-6) var(--space-1);border-top:1px solid var(--border)}
 .locc-sect:first-of-type{border-top:none}
 .locc-sect .n{font-weight:500;letter-spacing:0;text-transform:none}
-.locc-rows{padding:0 22px 10px}
-.locc-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:5px 0;border-bottom:1px dashed var(--border-row)}
+.locc-rows{padding:0 var(--space-6) var(--space-2)}
+.locc-row{display:flex;justify-content:space-between;gap:var(--space-3);font-size:var(--text-body);padding:var(--space-1) 0;border-bottom:1px dashed var(--border)}
 .locc-row:last-child{border-bottom:none}
 .locc-row .k{color:var(--text-dim);flex-shrink:0}
 .locc-row .v{text-align:right}
-.locc-h{padding:6px 0;border-bottom:1px dashed var(--border-row)}
+.locc-h{padding:var(--space-1) 0;border-bottom:1px dashed var(--border)}
 .locc-h:last-child{border-bottom:none}
-.locc-h1{display:grid;grid-template-columns:52px 92px 1fr 56px;gap:8px;font-size:12.5px;align-items:baseline}
+.locc-h1{display:grid;grid-template-columns:52px 92px 1fr 56px;gap:var(--space-2);font-size:var(--text-body);align-items:baseline}
 .locc-h1 .num{text-align:right;font-variant-numeric:tabular-nums}
 .locc-h1 .who{min-width:0;overflow-wrap:anywhere}
-.locc-h2{font-size:11.5px;color:var(--text-dim);margin:2px 0 0 60px;font-variant-numeric:tabular-nums}
-.locc-stype{display:inline-block;padding:1px 6px;border-radius:5px;font-size:9.5px;font-weight:700;letter-spacing:.05em;border:1px solid var(--border-mid);color:var(--text-mid);background:var(--bg-card);white-space:nowrap}
-.locc-empty{font-size:13px;color:var(--text-dim);padding:14px 22px 18px}
+.locc-h2{font-size:var(--text-sm);color:var(--text-dim);margin:0 0 0 60px;font-variant-numeric:tabular-nums}
+.locc-stype{display:inline-block;padding:0 var(--space-1);border-radius:var(--radius);font-size:var(--text-xs);font-weight:700;letter-spacing:.05em;border:1px solid var(--border);color:var(--text-mid);background:var(--surface-card);white-space:nowrap}
+.locc-empty{font-size:var(--text-body);color:var(--text-dim);padding:var(--space-3) var(--space-6) var(--space-4)}
 .locc-miss{color:var(--text-dim)}
-.locc-note{font-size:12.5px;color:var(--warning);background:var(--bg-card);border:1px solid var(--warning-soft);border-radius:var(--radius);padding:8px 12px;margin:12px 22px}
+.locc-note{font-size:var(--text-body);color:var(--text);background:var(--surface-card);border:1px solid var(--danger);border-radius:var(--radius);padding:var(--space-2) var(--space-3);margin:var(--space-3) var(--space-6)}
+.locc-note b{color:var(--danger)}
 `; }
 
 function _locCloseCard() {
@@ -639,8 +655,10 @@ async function _locOpenCard(id) {
     }
     LOCC.stops = stops.sort((a, b) => String(b.fields['DateTime'] || '').localeCompare(String(a.fields['DateTime'] || '')));
   } catch (e) {
-    // Ορατή αποτυχία — ποτέ κενό που μοιάζει με «δεν υπάρχουν κινήσεις».
-    LOCC.failed = true; LOCC.stops = []; LOCC.failError = e.message;
+    // Ορατή αποτυχία — ποτέ κενό που μοιάζει με «δεν υπάρχουν κινήσεις». Το
+    // e.message («Failed to fetch») πάει στο log, όχι στην οθόνη.
+    LOCC.failed = true; LOCC.stops = [];
+    if (typeof logError === 'function') logError(e, '_locOpenCard history');
   }
   if (LOCC.openId === id) panel.innerHTML = _locCardHtml(rec, null);
 }
@@ -691,9 +709,11 @@ async function _locBuildMoveIdx() {
     LOC.moveIdx = idx;
   } catch (e) {
     // Ορατή αποτυχία: το φίλτρο μηδενίζεται — δεν φιλτράρει «σιωπηλά τίποτα».
+    // Το e.message πάει στο log, όχι στο toast (ποτέ «Failed to fetch» στην οθόνη).
     LOC.moveFilter = '';
     const sel = document.getElementById('locMoveFilter'); if (sel) sel.value = '';
-    if (typeof toast === 'function') toast('Ο δείκτης τύπων κίνησης δεν φόρτωσε: ' + e.message, 'error');
+    if (typeof logError === 'function') logError(e, '_locBuildMoveIdx');
+    if (typeof toast === 'function') toast('Δεν φορτώθηκε ο δείκτης τύπων κίνησης — το φίλτρο καθαρίστηκε. Δεν σημαίνει ότι δεν υπάρχουν κινήσεις. Ξαναδοκίμασε.', 'error');
   }
 }
 
@@ -756,8 +776,8 @@ function _locCardHtml(rec, loadingBody) {
   // Τα Στοιχεία είναι στιγμιαία (από την εγγραφή) — μένουν ορατά και όταν το
   // ασύγχρονο μισό (ιστορικό) αποτύχει. Πριν, η αποτυχία έκρυβε και το τηλέφωνο.
   if (LOCC.failed) {
-    return head + info + `<div class="locc-note">Το ιστορικό δεν φόρτωσε (${_locEsc(LOCC.failError || 'σφάλμα')}) — αυτό ΔΕΝ σημαίνει ότι δεν υπάρχουν κινήσεις.
-      <button class="btn" style="margin-left:8px" onclick="_locOpenCard('${rec.id}')">Δοκίμασε ξανά</button></div>`;
+    return head + info + `<div class="locc-note" role="alert"><b>Δεν φορτώθηκε — το ιστορικό κινήσεων.</b> Αυτό δεν σημαίνει ότι δεν υπάρχουν κινήσεις.
+      <button type="button" class="btn btn-sm" style="margin-left:var(--space-2)" onclick="_locOpenCard('${rec.id}')">Ξαναδοκίμασε</button></div>`;
   }
   const agg = Object.values(_locGoodsAgg()).sort((a, b) => b.n - a.n);
   const goods = !LOCC.stops.length ? '' : `<div class="locc-sect">Προϊόντα</div><div class="locc-rows">

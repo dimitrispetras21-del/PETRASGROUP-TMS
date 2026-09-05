@@ -83,125 +83,148 @@ const EXPIRY_DOC_GR      = { KTEO: 'KTEO', KEK: 'KEK', FRC: 'FRC', Insurance: '�
 const _mntTypeGr = t => t === 'Truck' ? 'Φορτηγό' : t === 'Trailer' ? 'Ρυμούλκα' : '';
 
 /* ── CSS ─────────────────────────────────────────────────────── */
-// Tokens only (DESIGN.md #1). Table header background reuses --border-row
-// (same value as the Figma header fill); bar tracks reuse --bg-row-alt.
+// Tokens only, and only the DESIGN.md ΜΕΡΟΣ Β set (4/9/2026): the old aliases
+// (--silver-light, --bg-card, --navy-mid, --success, --warning, --bg-row-alt,
+// --border-row) still resolve, but every alias is a second name for the same
+// colour — and the reconciliation table lives in one place, not in this file.
+// Spacing is the six-step scale (4/8/12/16/24/32), corners are 6px or full,
+// nothing readable is below 11px (ΜΕΡΟΣ Γ/Δ). Numbers are DM Sans + tabular.
 (function(){
   if (document.getElementById('maint-css')) return;
   const s = document.createElement('style'); s.id = 'maint-css';
   s.textContent = `
 /* header row */
-.mnt-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; min-height:40px; padding:var(--space-1) 0 var(--space-1); }
+.mnt-head { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; min-height:40px; padding:var(--space-1) 0; }
 .mnt-title { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-lg); color:var(--text); white-space:nowrap; }
 .mnt-sub { font-size:var(--text-sm); color:var(--text-dim); }
 .mnt-spacer { flex:1; min-width:var(--space-2); }
-.mnt-pill { display:inline-flex; align-items:center; gap:5px; padding:5px 10px; border:1px solid var(--silver-light); border-radius:var(--radius-full);
-  font:inherit; font-size:var(--text-sm); color:var(--text-mid); background:var(--bg-card); cursor:pointer; white-space:nowrap; }
-.mnt-pill b { font-weight:700; color:var(--text); }
+.mnt-pill { display:inline-flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-3); border:1px solid var(--border); border-radius:var(--radius-full);
+  font:inherit; font-size:var(--text-sm); color:var(--text-mid); background:var(--surface-card); cursor:pointer; white-space:nowrap; }
+.mnt-pill b { font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
 .mnt-pill.is-danger b { color:var(--danger); }
-.mnt-pill.is-warning b { color:var(--warning); }
+.mnt-pill.is-warning b { color:var(--warn); }
 .mnt-pill.is-dim b { color:var(--text-dim); }
-.mnt-pill.is-ok b { color:var(--success); }
-.mnt-pill.active { border-color:var(--accent); background:var(--accent-light); color:var(--accent-text); }
+.mnt-pill.is-ok b { color:var(--ok); }
+.mnt-pill:hover:not(:disabled):not(.active) { background:var(--surface-sunken); }
+/* Selected = dark fill, like the locations chip. The accent used to mark the
+   active pill AND the active KPI AND the primary button on the same screen;
+   ΜΕΡΟΣ Β keeps it for the one primary action only. */
+.mnt-pill.active { border-color:var(--surface-dark); background:var(--surface-dark); color:var(--text-on-dark); }
+.mnt-pill.active b { color:var(--text-on-dark); }
+/* Δ2: a quick filter that would show nothing is disabled, not hidden — the
+   reader still sees the category exists and that it is empty. */
+.mnt-pill:disabled { color:var(--text-dim); background:var(--surface-page); cursor:default; }
+.mnt-pill:disabled b { color:var(--text-dim); }
 .mnt-pill.static { cursor:default; }
-.mnt-search { height:34px; width:230px; padding:0 var(--space-3); border:1px solid var(--silver-light); border-radius:var(--radius);
-  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--bg-card); outline:none; }
+.mnt-search { height:34px; width:230px; padding:0 var(--space-3); border:1px solid var(--border); border-radius:var(--radius);
+  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--surface-card); outline:none; }
 .mnt-search::placeholder { color:var(--text-dim); }
 .mnt-search:focus, .mnt-select:focus { border-color:var(--border-focus); box-shadow:var(--shadow-focus); }
-.mnt-select { height:34px; padding:0 var(--space-2); border:1px solid var(--silver-light); border-radius:var(--radius);
-  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--bg-card); outline:none; cursor:pointer; max-width:190px; }
+.mnt-select { height:34px; padding:0 var(--space-2); border:1px solid var(--border); border-radius:var(--radius);
+  font-family:'DM Sans',sans-serif; font-size:var(--text-sm); color:var(--text); background:var(--surface-card); outline:none; cursor:pointer; max-width:190px; }
 .mnt-select.wide { min-width:240px; }
 /* KPI cards */
 .mnt-kpis { display:flex; gap:var(--space-3); margin-bottom:var(--space-1); }
-.mnt-kpi { flex:1; min-width:0; border:1px solid var(--silver-light); border-radius:var(--radius); padding:8px 14px; background:var(--bg-card);
-  display:flex; flex-direction:column; gap:2px; text-align:left; font-family:inherit; }
+.mnt-kpi { flex:1; min-width:0; border:1px solid var(--border); border-radius:var(--radius); padding:var(--space-2) var(--space-4); background:var(--surface-card);
+  display:flex; flex-direction:column; gap:var(--space-1); text-align:left; font-family:inherit; font-size:var(--text-body); color:var(--text); }
 button.mnt-kpi { cursor:pointer; }
-button.mnt-kpi:hover { border-color:var(--border-dark); }
-.mnt-kpi.active { border-color:var(--accent); box-shadow:var(--shadow-focus); }
-.mnt-kpi-l { font-size:var(--text-2xs); font-weight:700; color:var(--text-dim); letter-spacing:.3px; text-transform:uppercase; white-space:nowrap; }
-.mnt-kpi-v { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--num-md); color:var(--text); line-height:1.15; display:flex; align-items:baseline; gap:var(--space-2); }
-.mnt-kpi-v.ok { color:var(--success); }
+button.mnt-kpi:hover { background:var(--surface-sunken); }
+.mnt-kpi.active { border-color:var(--surface-dark); box-shadow:inset 0 0 0 1px var(--surface-dark); }
+.mnt-kpi-l { font-size:var(--text-xs); font-weight:700; color:var(--text-dim); letter-spacing:.3px; text-transform:uppercase; white-space:nowrap; }
+.mnt-kpi-v { font-family:'DM Sans',sans-serif; font-weight:700; font-size:var(--num-md); color:var(--text); line-height:1.15; display:flex; align-items:baseline; gap:var(--space-2); font-variant-numeric:tabular-nums; }
+.mnt-kpi-v.ok { color:var(--ok); }
 .mnt-kpi-v.bad { color:var(--danger); }
-.mnt-kpi-v.warn { color:var(--warning); }
-.mnt-kpi-v small { font-family:'DM Sans',sans-serif; font-size:var(--text-xs); font-weight:500; }
-.mnt-kpi-s { font-size:var(--text-2xs); color:var(--text-dim); }
-.mnt-bar { height:4px; background:var(--bg-row-alt); border-radius:2px; overflow:hidden; width:100%; }
-.mnt-bar > i { display:block; height:100%; background:var(--navy-mid); border-radius:2px; }
-.mnt-bar > i.ok { background:var(--success); }
-.mnt-bar > i.warn { background:var(--warning); }
+.mnt-kpi-v.warn { color:var(--warn); }
+.mnt-kpi-v small { font-size:var(--text-xs); font-weight:500; }
+.mnt-kpi-s { font-size:var(--text-xs); color:var(--text-dim); }
+.mnt-bar { height:4px; background:var(--surface-sunken); border-radius:var(--radius-full); overflow:hidden; width:100%; }
+.mnt-bar > i { display:block; height:100%; background:var(--surface-dark); border-radius:var(--radius-full); }
+.mnt-bar > i.ok { background:var(--ok); }
+.mnt-bar > i.warn { background:var(--warn); }
 .mnt-bar > i.bad { background:var(--danger); }
-.mnt-bar.thick { height:10px; }
+.mnt-bar.thick { height:8px; }
 /* cards */
 .mnt-grid2 { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-4); margin-bottom:var(--space-4); }
-.mnt-card { border:1px solid var(--silver-light); border-radius:var(--radius); padding:14px 16px; background:var(--bg-card);
-  display:flex; flex-direction:column; gap:10px; min-width:0; }
-.mnt-card-t { font-size:var(--text-2xs); font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.3px; }
+.mnt-card { border:1px solid var(--border); border-radius:var(--radius); padding:var(--space-3) var(--space-4); background:var(--surface-card);
+  display:flex; flex-direction:column; gap:var(--space-2); min-width:0; }
+.mnt-card-t { font-size:var(--text-xs); font-weight:700; color:var(--text-dim); text-transform:uppercase; letter-spacing:.3px; }
 .mnt-card-lead { font-size:var(--text-body); font-weight:500; color:var(--text); }
-.mnt-row { display:flex; align-items:center; gap:10px; min-height:30px; font-size:var(--text-sm); color:var(--text); }
-.mnt-row.click { cursor:pointer; border-radius:var(--radius-sm); margin:0 -6px; padding:0 6px; }
-.mnt-row.click:hover { background:var(--bg-hover); }
+.mnt-row { display:flex; align-items:center; gap:var(--space-2); min-height:30px; font-size:var(--text-sm); color:var(--text); font-variant-numeric:tabular-nums; }
+.mnt-row.click { cursor:pointer; border-radius:var(--radius); margin:0 calc(-1 * var(--space-2)); padding:0 var(--space-2); }
+.mnt-row.click:hover { background:var(--surface-sunken); }
 .mnt-row .w110 { width:110px; flex-shrink:0; font-weight:700; font-size:var(--text-body); }
 .mnt-row .w80 { width:80px; flex-shrink:0; color:var(--text-dim); }
 .mnt-row .w50 { width:50px; flex-shrink:0; color:var(--text-dim); }
 .mnt-row .w100 { width:100px; flex-shrink:0; font-weight:700; }
 .mnt-row .grow { flex:1; min-width:0; }
 .mnt-row .amt { font-weight:500; white-space:nowrap; }
-.mnt-note { font-size:var(--text-2xs); color:var(--text-dim); }
-.mnt-bars { display:flex; gap:18px; align-items:flex-end; height:186px; }
-.mnt-bar-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:4px; height:100%; }
-.mnt-bar-col > i { width:100%; background:var(--navy-mid); border-radius:3px; display:block; }
-.mnt-bar-col > i.peak { background:var(--warning); }
-.mnt-bar-col > span { font-size:var(--text-2xs); color:var(--text-dim); white-space:nowrap; }
+.mnt-note { font-size:var(--text-xs); color:var(--text-dim); }
+.mnt-bars { display:flex; gap:var(--space-4); align-items:flex-end; height:186px; }
+.mnt-bar-col { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; gap:var(--space-1); height:100%; }
+.mnt-bar-col > i { width:100%; background:var(--surface-dark); border-radius:var(--radius); display:block; }
+.mnt-bar-col > i.peak { background:var(--warn); }
+.mnt-bar-col > span { font-size:var(--text-xs); color:var(--text-dim); white-space:nowrap; font-variant-numeric:tabular-nums; }
 .mnt-bar-col > span.v { font-weight:500; }
 /* tables */
-.mnt-table { width:100%; border-collapse:collapse; background:var(--bg-card); }
-.mnt-table th { height:34px; padding:0 var(--space-4); background:var(--border-row); color:var(--text-mid); font-size:var(--text-body); font-weight:600; text-align:left; white-space:nowrap; }
+.mnt-table { width:100%; border-collapse:collapse; background:var(--surface-card); }
+/* Fixed layout is what makes text-overflow work inside a table cell: with auto
+   layout a nowrap cell just widens the column and nothing ever clips. */
+.mnt-table.mnt-fixed { table-layout:fixed; }
+.mnt-table th { height:34px; padding:0 var(--space-4); background:var(--surface-sunken); color:var(--text-mid); font-size:var(--text-body); font-weight:600; text-align:left; white-space:nowrap; }
 .mnt-table th.r, .mnt-table td.r { text-align:right; }
-.mnt-table td { height:40px; padding:0 var(--space-4); border-bottom:1px solid var(--border-row); font-size:var(--text-body); color:var(--text); vertical-align:middle; }
+.mnt-table td { height:40px; padding:0 var(--space-4); border-bottom:1px solid var(--border); font-size:var(--text-body); color:var(--text); vertical-align:middle; font-variant-numeric:tabular-nums; }
 .mnt-table tbody tr.click { cursor:pointer; }
-.mnt-table tbody tr.click:hover td { background:var(--bg-hover); }
+.mnt-table tbody tr.click:hover td { background:var(--surface-sunken); }
 .mnt-table tbody tr.sos td { background:var(--danger-bg); }
 .mnt-main { font-weight:700; color:var(--text); }
 .mnt-dim { color:var(--text-dim); font-size:var(--text-xs); }
 .mnt-mid { color:var(--text-mid); }
-.mnt-cell2 { display:flex; flex-direction:column; gap:1px; line-height:1.25; }
+.mnt-cell2 { display:flex; flex-direction:column; line-height:1.3; min-width:0; }
+/* Κ6 fallback: one line, ellipsis, full text in the title. Used for free text
+   (work description, parts) and as the last resort under a two-row name cell. */
+.mnt-clip { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .mnt-num { font-variant-numeric:tabular-nums; }
 .mnt-bad { color:var(--danger); font-weight:500; }
-.mnt-warn { color:var(--warning); font-weight:500; }
-.mnt-ok { color:var(--success); font-weight:700; }
+.mnt-warn { color:var(--warn); font-weight:500; }
+.mnt-ok { color:var(--ok); font-weight:700; }
 .mnt-cell-edit { cursor:pointer; }
 .mnt-cell-edit:hover { text-decoration:underline dotted; }
 .mnt-section { display:flex; align-items:center; gap:var(--space-2); height:26px; }
 .mnt-section b { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-body); color:var(--text); }
-.mnt-band { display:flex; align-items:center; gap:10px; height:40px; padding:0 var(--space-4); background:var(--bg-row-alt); font-size:var(--text-sm); color:var(--text-dim); cursor:pointer; list-style:none; }
+.mnt-band { display:flex; align-items:center; gap:var(--space-2); height:40px; padding:0 var(--space-4); background:var(--surface-sunken); font-size:var(--text-sm); color:var(--text-dim); cursor:pointer; list-style:none; }
 .mnt-band::-webkit-details-marker { display:none; }
 .mnt-band b { color:var(--text-mid); }
 .mnt-link { color:var(--accent-text); cursor:pointer; background:none; border:0; font:inherit; font-size:var(--text-xs); padding:0; white-space:nowrap; }
 .mnt-link:hover { text-decoration:underline; }
-.mnt-inline-input { font-family:'DM Sans',sans-serif; font-size:var(--text-sm); padding:4px 6px; border:2px solid var(--border-focus); border-radius:var(--radius); background:var(--bg-card); color:var(--text); outline:none; }
+.mnt-inline-input { font-family:'DM Sans',sans-serif; font-size:var(--text-sm); padding:var(--space-1) var(--space-2); border:2px solid var(--border-focus); border-radius:var(--radius); background:var(--surface-card); color:var(--text); outline:none; }
 .mnt-foot { font-size:var(--text-xs); color:var(--text-dim); padding:var(--space-2) var(--space-4); }
+/* failure ≠ empty (DESIGN.md #7): --danger is the one colour that means error */
+.mnt-err { max-width:560px; margin:var(--space-8) auto 0; padding:var(--space-4); border:1px solid var(--danger); border-radius:var(--radius); background:var(--surface-card);
+  color:var(--text); font-size:var(--text-body); display:flex; flex-direction:column; gap:var(--space-2); }
+.mnt-err b { font-family:'Syne',sans-serif; font-size:var(--text-base); color:var(--danger); }
 /* record drawer (w2-maint-service-record-card 196:754) */
-.mnt-drawer-bg { position:fixed; inset:0; background:var(--navy-mid); opacity:.45; z-index:var(--z-overlay); }
-.mnt-drawer { position:fixed; top:0; right:0; bottom:0; width:480px; max-width:95vw; background:var(--bg-card); box-shadow:var(--shadow-panel);
+.mnt-drawer-bg { position:fixed; inset:0; background:var(--surface-dark); opacity:.45; z-index:var(--z-overlay); }
+.mnt-drawer { position:fixed; top:0; right:0; bottom:0; width:480px; max-width:95vw; background:var(--surface-card); box-shadow:var(--shadow-panel);
   z-index:calc(var(--z-overlay) + 100); overflow-y:auto; animation:mnt-in var(--duration-fast) var(--ease-out); display:flex; flex-direction:column; }
 @keyframes mnt-in { from { transform:translateX(24px); opacity:0; } to { transform:none; opacity:1; } }
-.mnt-drawer-head { background:var(--navy-mid); padding:18px 22px; display:flex; flex-direction:column; gap:var(--space-2); }
-.mnt-drawer-plate { font-family:'Syne',sans-serif; font-weight:700; font-size:var(--text-lg); color:var(--text-inverse); }
+.mnt-drawer-head { background:var(--surface-dark); padding:var(--space-4) var(--space-6); display:flex; flex-direction:column; gap:var(--space-2); }
+.mnt-drawer-plate { font-family:'DM Sans',sans-serif; font-weight:700; font-size:var(--text-lg); color:var(--text-on-dark); font-variant-numeric:tabular-nums; }
 .mnt-drawer-head .mnt-dim { color:var(--panel-dim); font-size:var(--text-sm); }
 .mnt-drawer-x { margin-left:auto; background:none; border:0; color:var(--panel-dim); font-size:var(--text-base); cursor:pointer; }
 .mnt-drawer .ecard-sec-body { color:var(--text); font-size:var(--text-body); word-break:break-word; }
-.mnt-drawer-foot { margin-top:auto; padding:var(--space-3) 22px; border-top:1px solid var(--silver-light); display:flex; gap:var(--space-2); justify-content:flex-end; }
+.mnt-drawer-foot { margin-top:auto; padding:var(--space-3) var(--space-6); border-top:1px solid var(--border); display:flex; gap:var(--space-2); justify-content:flex-end; }
 /* modal form (w2-maint-service-form / w2-maint-request-form) */
-.mf-overlay { position:fixed; inset:0; z-index:calc(var(--z-overlay) + 100); display:flex; align-items:flex-start; justify-content:center; padding-top:60px; overflow-y:auto; }
-.mf-overlay::before { content:''; position:fixed; inset:0; background:var(--navy-mid); opacity:.45; }
-.mf-modal { position:relative; background:var(--bg-card); border-radius:var(--radius-md); width:720px; max-width:95vw; box-shadow:var(--shadow-lg); margin-bottom:60px; }
-.mf-head { padding:18px 24px 14px; display:flex; align-items:center; gap:var(--space-2); font-family:'Syne',sans-serif; font-size:var(--text-lg); font-weight:700; color:var(--text); }
+.mf-overlay { position:fixed; inset:0; z-index:calc(var(--z-overlay) + 100); display:flex; align-items:flex-start; justify-content:center; padding-top:var(--space-8); overflow-y:auto; }
+.mf-overlay::before { content:''; position:fixed; inset:0; background:var(--surface-dark); opacity:.45; }
+.mf-modal { position:relative; background:var(--surface-card); border-radius:var(--radius); width:720px; max-width:95vw; box-shadow:var(--shadow-lg); margin-bottom:var(--space-8); }
+.mf-head { padding:var(--space-4) var(--space-6) var(--space-3); display:flex; align-items:center; gap:var(--space-2); font-family:'Syne',sans-serif; font-size:var(--text-lg); font-weight:700; color:var(--text); }
 .mf-head .mnt-drawer-x { color:var(--text-dim); }
-.mf-body { padding:0 24px 8px; display:flex; flex-direction:column; gap:14px; }
-.mf-row { display:flex; gap:14px; }
+.mf-body { padding:0 var(--space-6) var(--space-2); display:flex; flex-direction:column; gap:var(--space-3); }
+.mf-row { display:flex; gap:var(--space-3); }
 .mf-row > .form-field { flex:1; min-width:0; }
-.mf-foot { padding:14px 24px 18px; display:flex; align-items:center; gap:10px; justify-content:flex-end; }
-.mf-warn { font-size:var(--text-xs); color:var(--warning); margin-right:auto; }
-.mf-scan { display:flex; align-items:center; gap:10px; }
+.mf-foot { padding:var(--space-3) var(--space-6) var(--space-4); display:flex; align-items:center; gap:var(--space-2); justify-content:flex-end; }
+.mf-warn { font-size:var(--text-xs); color:var(--warn); margin-right:auto; }
+.mf-scan { display:flex; align-items:center; gap:var(--space-2); }
 `;
   document.head.appendChild(s);
 })();
@@ -316,6 +339,26 @@ function _wsName(wsArr) {
   const ws = _wsRec(wsArr);
   return ws ? (ws.fields['Name'] || '—') : '—';
 }
+// Workshop cell: name on top, qualifier below (DESIGN.md ΜΕΡΟΣ Ζ.1). A trailing
+// parenthesis in the name («ΣΟΥΛΗΣ (ΓΕΩΡΓΙΑΔΗΣ ΓΙΩΡΓΟΣ)») IS the qualifier; else
+// the city. A wrapped workshop name is what pushed rows to 65px (35 rows > 44px
+// on 3/9), so both lines clip, with the full name kept in the title.
+function _wsCell(wsArr) {
+  const ws = _wsRec(wsArr);
+  if (!ws) return '<span class="mnt-dim">—</span>';
+  const name = String(ws.fields['Name'] || '—');
+  const m = /^(.*\S)\s*\(([^()]+)\)\s*$/.exec(name);
+  const main = m ? m[1] : name;
+  const sub = m ? m[2] : (ws.fields['City'] || '');
+  return `<div class="mnt-cell2"><span class="mnt-mid mnt-clip" title="${escapeHtml(name)}">${escapeHtml(main)}</span>${sub ? `<span class="mnt-dim mnt-clip">${escapeHtml(sub)}</span>` : ''}</div>`;
+}
+// Failure ≠ empty (DESIGN.md #7): what did not load, what that does NOT mean,
+// and one retry. Never the raw e.message («Failed to fetch») on screen.
+function _mntErrorHtml(what, notMeaning, retry) {
+  return `<div class="mnt-err" role="alert"><b>Δεν φορτώθηκε — ${what}</b>
+    <span>Αυτό δεν σημαίνει ότι ${notMeaning}. Έλεγξε τη σύνδεση και ξαναδοκίμασε.</span>
+    <span><button type="button" class="btn btn-primary btn-sm" onclick="${retry}">Ξαναδοκίμασε</button></span></div>`;
+}
 // Vehicle type by plate — MAINT_REQ rows rarely carry 'Vehicle Type' (0/1 today).
 function _mntVehicleType(plate, explicit) {
   if (explicit === 'Truck' || explicit === 'Trailer') return explicit;
@@ -405,7 +448,7 @@ async function renderExpiryAlerts() {
     try { await _mreqLoad(); } catch (e) { MREQ._expiryLoadFailed = true; if (typeof logError === 'function') logError(e, 'maint expiry: renewals load'); }
     _expiryPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκαν τα έγγραφα του στόλου');
+    document.getElementById('content').innerHTML = _mntErrorHtml('τα έγγραφα του στόλου', 'είναι όλα σε ισχύ', 'renderExpiryAlerts()');
     console.error(e);
   }
 }
@@ -438,7 +481,8 @@ async function _expInlineEdit(e, recId, fieldName, vType) {
       if (rec) rec.fields[fieldName] = newVal;
       _expiryPaint();
     } catch(err) {
-      showErrorToast('Η αποθήκευση απέτυχε: ' + err.message);
+      showErrorToast('Η αποθήκευση απέτυχε — η ημερομηνία δεν άλλαξε. Ξαναδοκίμασε.');
+      if (typeof logError === 'function') logError(err, 'maint expiry: inline date');
       _expiryPaint();
     }
   };
@@ -472,7 +516,11 @@ async function _expInsurerEdit(e, recId, vType) {
       await atSafePatch(tableId, recId, { 'Insurance Partner': newVal });
       if (rec) rec.fields['Insurance Partner'] = newVal;
       _expiryPaint();
-    } catch(err) { showErrorToast('Η αποθήκευση απέτυχε: ' + err.message); _expiryPaint(); }
+    } catch(err) {
+      showErrorToast('Η αποθήκευση απέτυχε — ο ασφαλιστής δεν άλλαξε. Ξαναδοκίμασε.');
+      if (typeof logError === 'function') logError(err, 'maint expiry: insurer');
+      _expiryPaint();
+    }
   };
   inp.addEventListener('blur', save);
   inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') inp.blur(); if (ev.key === 'Escape') _expiryPaint(); });
@@ -563,8 +611,9 @@ function _expiryPaint() {
     compliancePct,
   });
 
+  // Δ2: zero → disabled (the active one stays clickable so the reader can see it is empty).
   const pill = (id, label, count, sev) =>
-    `<button type="button" class="mnt-pill ${sev || ''} ${_expiryTab === id ? 'active' : ''}" onclick="_expiryTab='${id}';_expiryPaint()"><b>${count}</b> ${label}</button>`;
+    `<button type="button" class="mnt-pill ${sev || ''} ${_expiryTab === id ? 'active' : ''}" ${count || _expiryTab === id ? '' : 'disabled'} onclick="_expiryTab='${id}';_expiryPaint()"><b>${count}</b> ${label}</button>`;
 
   const docCell = (r, d) => {
     const editAttr = `onclick="_expInlineEdit(event,'${r.id}','${d.field}','${r.vType}')"`;
@@ -696,10 +745,10 @@ function _expiryPrint() {
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="${base}assets/style.css">
     <style>${css}
-      body { padding:20px; background:var(--bg-card); color:var(--text); font-family:'DM Sans',sans-serif; }
+      body { padding:var(--space-6); background:var(--surface-card); color:var(--text); font-family:'DM Sans',sans-serif; }
       button, input, .mnt-foot { display:none !important; }
       .mnt-kpi { display:flex; }
-      @media print { body { padding:10px; } }
+      @media print { body { padding:var(--space-3); } }
     </style></head><body>${content}</body></html>`);
   win.document.close();
   setTimeout(() => win.print(), 900);
@@ -716,7 +765,7 @@ async function renderServiceRecords() {
     await _maintLoad(true);
     _svcPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκε το ιστορικό service');
+    document.getElementById('content').innerHTML = _mntErrorHtml('το ιστορικό service', 'δεν υπάρχουν εργασίες', 'renderServiceRecords()');
     console.error(e);
   }
 }
@@ -749,16 +798,21 @@ function _svcRowHtml(r, showVehicle) {
   const cat = MAINT_TYPE_LABEL[f['Type']] || f['Type'] || '';
   const status = MAINT_STATUS_LABEL[f['Status']] || f['Status'] || '—';
   const review = f['Needs Review'] ? `<span class="mnt-warn" style="font-size:var(--text-xs)">θέλει έλεγχο</span>` : '';
+  // Description and parts are free text and used to wrap to 2–3 lines: the row
+  // stays ≤44px (DESIGN.md #5), the full text is in the title and in the card.
+  const desc = escapeHtml(f['Description'] || '');
+  const descCell = `<span class="mnt-clip" title="${desc}">${desc || '—'}</span>`;
   const first = showVehicle
     ? `<td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(f['Vehicle Type']) || '—'}</span></div></td>
-       <td><div class="mnt-cell2"><span>${escapeHtml(f['Description'] || '—')}</span>${cat ? `<span class="mnt-dim">${escapeHtml(cat)}</span>` : ''}</div></td>`
+       <td><div class="mnt-cell2">${descCell}${cat ? `<span class="mnt-dim mnt-clip">${escapeHtml(cat)}</span>` : ''}</div></td>`
     : `<td class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(cat || '—')}</td>
-       <td>${escapeHtml(f['Description'] || '—')}</td>`;
+       <td>${descCell}</td>`;
+  const parts = escapeHtml(f['Parts'] || '');
   return `<tr class="click" onclick="_svcOpenCard('${r.id}')">
     <td class="mnt-num">${_fmtDMY(f['Date'])}</td>
     ${first}
-    <td class="mnt-mid">${escapeHtml(_wsName(f['Workshop']))}</td>
-    <td class="mnt-mid" style="font-size:var(--text-sm)">${f['Parts'] ? escapeHtml(f['Parts']) : '<span class="mnt-dim">—</span>'}</td>
+    <td>${_wsCell(f['Workshop'])}</td>
+    <td class="mnt-mid" style="font-size:var(--text-sm)">${parts ? `<span class="mnt-clip" title="${parts}">${parts}</span>` : '<span class="mnt-dim">—</span>'}</td>
     <td class="r mnt-num" style="font-weight:500">${_fmtCost(f['Cost'])}</td>
     <td class="r mnt-num mnt-mid">${f['Odometer km'] ? Number(f['Odometer km']).toLocaleString('el-GR') : '<span class="mnt-dim">—</span>'}</td>
     <td><div class="mnt-cell2"><span class="mnt-mid" style="font-size:var(--text-sm)">${escapeHtml(status)}</span>${review}</div></td>
@@ -813,17 +867,17 @@ function _svcPaint() {
       ${sel('workshop', 'Συνεργείο', 'Όλα', workshops.map(w => [w, w]))}
       ${sel('year', 'Έτος', 'Όλα', years.map(y => [y, y]))}
       ${sel('status', 'Κατάσταση', 'Όλες', statuses.map(s => [s, MAINT_STATUS_LABEL[s] || s]))}
-      <button type="button" class="mnt-pill is-warning ${_svcFilters.review === 'yes' ? 'active' : ''}" title="Εγγραφές με προβληματικό δεδομένο στην πηγή" onclick="_svcSetFilter('review', _svcFilters.review === 'yes' ? '' : 'yes')"><b>${reviewCount}</b> θέλουν έλεγχο</button>
+      <button type="button" class="mnt-pill is-warning ${_svcFilters.review === 'yes' ? 'active' : ''}" ${reviewCount || _svcFilters.review === 'yes' ? '' : 'disabled'} title="Εγγραφές με προβληματικό δεδομένο στην πηγή" onclick="_svcSetFilter('review', _svcFilters.review === 'yes' ? '' : 'yes')"><b>${reviewCount}</b> θέλουν έλεγχο</button>
       ${anyFilter ? `<button type="button" class="mnt-link" onclick="_svcClearFilters()">καθαρισμός ✕</button>` : ''}
       <span class="mnt-spacer"></span>
       <input id="svc-q" class="mnt-search" style="width:200px" placeholder="Αναζήτηση…" title="Περιγραφή, ανταλλακτικό, τιμολόγιο, συνεργείο, πινακίδα"
              value="${escapeHtml(_svcFilters.q||'')}" oninput="_svcSetFilter('q',this.value)">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="_svcOpenForm(null, {scan:true})">Scan τιμολογίου</button>
+      <button type="button" class="btn btn-ghost btn-sm" onclick="_svcOpenForm(null, {scan:true})">Σάρωση τιμολογίου</button>
       <button type="button" class="btn btn-primary btn-sm" onclick="_svcOpenForm()">Νέα εγγραφή</button>
       ${_mntRefreshBtn("MAINT.history=[];renderServiceRecords()")}
     </div>
 
-    <table class="mnt-table" id="svc-tbl">
+    <table class="mnt-table mnt-fixed" id="svc-tbl">
       <thead><tr>
         <th style="width:100px">ΗΜ/ΝΙΑ</th><th style="width:150px">ΟΧΗΜΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th>
         <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:110px">ΚΟΣΤΟΣ</th><th class="r" style="width:120px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
@@ -859,7 +913,7 @@ function _svcOpenCard(id) {
     <div class="mnt-drawer-bg" onclick="_mntCloseDrawer()"></div>
     <div class="mnt-drawer" role="dialog" aria-modal="true" aria-label="Εγγραφή service ${escapeHtml(f['Vehicle Plate'] || '')}">
       <div class="mnt-drawer-head">
-        <div style="display:flex;align-items:center;gap:10px">
+        <div style="display:flex;align-items:center;gap:var(--space-2)">
           <span class="mnt-drawer-plate">${escapeHtml(f['Vehicle Plate'] || '—')}</span>
           <span class="mnt-dim">${escapeHtml(cat)}${f['Vehicle Type'] ? ' · ' + _mntTypeGr(f['Vehicle Type']) : ''}</span>
           <button type="button" class="mnt-drawer-x" onclick="_mntCloseDrawer()" aria-label="Κλείσιμο">✕</button>
@@ -875,9 +929,9 @@ function _svcOpenCard(id) {
       </div>
       <div class="ecard-sec"><div class="ecard-sec-title">Ανταλλακτικά</div><div class="ecard-sec-body">${escapeHtml(f['Parts'] || '') || '<span class="mnt-dim">—</span>'}</div></div>
       <div class="ecard-sec"><div class="ecard-sec-title">Συνεργείο</div>
-        <div style="display:flex;align-items:center;gap:8px"><span style="font-weight:500;color:var(--text)">${ws ? escapeHtml(ws.fields['Name'] || '—') : '<span class="mnt-dim">δεν έχει καταχωρηθεί</span>'}</span>
+        <div style="display:flex;align-items:center;gap:var(--space-2)"><span style="font-weight:500;color:var(--text)">${ws ? escapeHtml(ws.fields['Name'] || '—') : '<span class="mnt-dim">δεν έχει καταχωρηθεί</span>'}</span>
           ${ws ? `<span class="mnt-spacer"></span><button type="button" class="mnt-link" onclick="_mntOpenWorkshop('${ws.id}')">καρτέλα →</button>` : ''}</div>
-        ${ws ? `<div class="mnt-dim" style="margin-top:4px">${wsContact ? escapeHtml(wsContact) : 'πόλη/τηλέφωνο — δεν έχουν καταχωρηθεί'}</div>` : ''}
+        ${ws ? `<div class="mnt-dim" style="margin-top:var(--space-1)">${wsContact ? escapeHtml(wsContact) : 'πόλη/τηλέφωνο — δεν έχουν καταχωρηθεί'}</div>` : ''}
       </div>
       <div class="ecard-sec" style="border-bottom:none"><div class="ecard-sec-title">Σημειώσεις</div><div class="ecard-sec-body mnt-mid">${escapeHtml(f['Notes'] || '') || '<span class="mnt-dim">—</span>'}</div></div>
       <div class="mnt-drawer-foot">
@@ -929,7 +983,7 @@ function _svcOpenForm(editId, opts) {
         <div class="mf-body">
           <div class="mf-scan">
             <input type="file" id="mf-scanfile" accept="image/*,application/pdf" style="display:none" onchange="_svcScanInvoice(this)">
-            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mf-scanfile').click()">Σκανάρισμα τιμολογίου (AI)</button>
+            <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('mf-scanfile').click()">Σάρωση τιμολογίου (AI)</button>
             <span id="mf-scanstatus" class="mnt-dim">συμπληρώνει μόνο τα κενά πεδία — ο χρήστης ελέγχει πριν την αποθήκευση</span>
           </div>
           <div class="mf-row">
@@ -1135,7 +1189,7 @@ async function _renderHistory(vType) {
     await _maintLoad(true);
     _historyPaint(vType);
   } catch(e) {
-    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκε το ιστορικό συντήρησης');
+    document.getElementById('content').innerHTML = _mntErrorHtml('το ιστορικό συντήρησης', 'δεν υπάρχουν εργασίες', `_renderHistory('${vType}')`);
     console.error(e);
   }
 }
@@ -1244,7 +1298,7 @@ function _historyPaint(vType) {
     </div>
 
     ${!selected ? `
-      <div style="max-width:420px;margin:120px auto 0">${showEmpty({
+      <div style="max-width:420px;margin:var(--space-8) auto 0">${showEmpty({
         illustration: 'truck',
         title: vType === 'trucks' ? 'Κανένα φορτηγό επιλεγμένο' : 'Καμία ρυμούλκα επιλεγμένη',
         description: `Επίλεξε ${vTypeGr} από τη λίστα πάνω για να δεις το ιστορικό ${vType === 'trucks' ? 'του' : 'της'}.`,
@@ -1286,7 +1340,7 @@ function _historyPaint(vType) {
             </div>`).join('') : `<span class="mnt-dim">Καμία εργασία το ${year}</span>`}
         </div>
         <div class="mnt-card">
-          <span class="mnt-card-t">Top συνεργεία — όλα τα έτη</span>
+          <span class="mnt-card-t">Κορυφαία συνεργεία — όλα τα έτη</span>
           ${topWs.length ? topWs.map(([n, c], i) => `
             <div class="mnt-row" style="min-height:22px;font-size:var(--text-xs)">
               <span class="mnt-dim" style="width:24px;font-weight:700">#${i + 1}</span>
@@ -1296,7 +1350,7 @@ function _historyPaint(vType) {
         </div>
       </div>
 
-      <table class="mnt-table" id="hist-tbl">
+      <table class="mnt-table mnt-fixed" id="hist-tbl">
         <thead><tr>
           <th style="width:110px">ΗΜ/ΝΙΑ</th><th style="width:200px">ΚΑΤΗΓΟΡΙΑ</th><th>ΕΡΓΑΣΙΑ</th><th style="width:220px">ΣΥΝΕΡΓΕΙΟ</th>
           <th style="width:130px">ΑΡ. ΑΝΤ/ΚΟΥ</th><th class="r" style="width:120px">ΚΟΣΤΟΣ</th><th class="r" style="width:130px">ΟΔΟΜΕΤΡΟ</th><th style="width:140px">ΚΑΤΑΣΤΑΣΗ</th>
@@ -1384,7 +1438,7 @@ async function renderMaintDash() {
     }, 5 * 60 * 1000);
   } catch(e) {
     console.error('Maintenance Dashboard error:', e);
-    c.innerHTML = showError('Δεν φορτώθηκαν τα δεδομένα συντήρησης');
+    c.innerHTML = _mntErrorHtml('τα δεδομένα συντήρησης', 'ο στόλος είναι εντάξει', 'renderMaintDash()');
   }
 }
 
@@ -1529,7 +1583,7 @@ function _maintDashPaint() {
           ${months.map(m => `<div class="mnt-bar-col">
             <span class="v">${m.cost.n ? _fmtK(m.cost.sum) : '—'}</span>
             <i class="${peak && m.key === peak.key ? 'peak' : ''}" style="height:${maxMonth ? Math.max(2, Math.round(m.cost.sum / maxMonth * 135)) : 2}px"></i>
-            <span>${m.label}</span>
+            <span>${m.label}${peak && m.key === peak.key ? ' · κορύφωση' : ''}</span>
           </div>`).join('')}
         </div>
         ${peakNote ? `<span class="mnt-note">${peakNote}</span>` : ''}
@@ -1562,8 +1616,8 @@ function _maintDashPaint() {
       </div>
 
       <div class="mnt-card">
-        <span class="mnt-card-t">Δαπάνη έτους ανά κατηγορία — top ${cats.length || 5}</span>
-        ${cats.length ? cats.map(([t, cost]) => `<div style="display:flex;flex-direction:column;gap:4px;min-height:32px;justify-content:center">
+        <span class="mnt-card-t">Δαπάνη έτους ανά κατηγορία — οι ${cats.length || 5} μεγαλύτερες</span>
+        ${cats.length ? cats.map(([t, cost]) => `<div style="display:flex;flex-direction:column;gap:var(--space-1);min-height:32px;justify-content:center">
             <div class="mnt-row" style="min-height:0"><span class="grow">${escapeHtml(MAINT_TYPE_LABEL[t] || t)}</span><span class="amt mnt-num">${_fmtCost(cost)}</span></div>
             <span class="mnt-bar"><i style="width:${maxCat ? Math.round(cost / maxCat * 100) : 0}%"></i></span>
           </div>`).join('') : `<span class="mnt-dim">Καμία εργασία το ${year}</span>`}
@@ -1596,7 +1650,7 @@ async function renderMaintRequests() {
     if (!MAINT._loaded) await _maintLoad();
     _mreqPaint();
   } catch(e) {
-    document.getElementById('content').innerHTML = showError('Δεν φορτώθηκαν οι εντολές εργασίας');
+    document.getElementById('content').innerHTML = _mntErrorHtml('οι εντολές εργασίας', 'δεν υπάρχουν εντολές', 'renderMaintRequests()');
     if (typeof logError === 'function') logError(e, 'maintenance requests load');
   }
 }
@@ -1676,19 +1730,21 @@ function _mreqPaint() {
   }
   const expiryAlerts = _mreqTab !== 'done' ? _mreqExpiryAlerts() : [];
 
+  // Δ2: zero → disabled (the active one stays clickable so the reader can see it is empty).
   const pill = (id, label, count, sev) =>
-    `<button type="button" class="mnt-pill ${sev || ''} ${_mreqTab === id ? 'active' : ''}" onclick="_mreqTab='${id}';_mreqPaint()"><b>${count}</b> ${label}</button>`;
+    `<button type="button" class="mnt-pill ${sev || ''} ${_mreqTab === id ? 'active' : ''}" ${count || _mreqTab === id ? '' : 'disabled'} onclick="_mreqTab='${id}';_mreqPaint()"><b>${count}</b> ${label}</button>`;
 
   const rows = filtered.map(r => {
     const f = r.fields;
     const vt = _mntVehicleType(f['Vehicle Plate'], f['Vehicle Type']);
     const isSos = _normP(f['Priority']) === 'SOS' && f['Status'] !== 'Done';
     const status = MREQ_STATUS_LABEL[f['Status']] || f['Status'] || '—';
+    const desc = escapeHtml(f['Description'] || ''), notes = escapeHtml(f['Notes'] || ''), wsn = escapeHtml(f['Workshop'] || '');
     return `<tr class="click ${isSos ? 'sos' : ''}" onclick="_mreqOpenForm('${r.id}')">
       <td>${_mreqPrioHtml(f['Priority'])}</td>
       <td><div class="mnt-cell2"><span class="mnt-main">${escapeHtml(f['Vehicle Plate'] || '—')}</span><span class="mnt-dim">${_mntTypeGr(vt) || 'εκτός ενεργού στόλου'}</span></div></td>
-      <td><div class="mnt-cell2"><span>${escapeHtml(f['Description'] || '—')}</span>${f['Notes'] ? `<span class="mnt-dim">${escapeHtml(f['Notes'])}</span>` : ''}</div></td>
-      <td class="mnt-mid">${f['Workshop'] ? escapeHtml(f['Workshop']) : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
+      <td><div class="mnt-cell2"><span class="mnt-clip" title="${desc}">${desc || '—'}</span>${notes ? `<span class="mnt-dim mnt-clip" title="${notes}">${notes}</span>` : ''}</div></td>
+      <td class="mnt-mid">${wsn ? `<span class="mnt-clip" title="${wsn}">${wsn}</span>` : '<span class="mnt-dim" style="font-size:var(--text-sm)">δεν έχει οριστεί</span>'}</td>
       <td class="mnt-mid mnt-num">${_fmtDMY(f['Date Reported'])}</td>
       <td onclick="event.stopPropagation()">
         <div style="display:flex;align-items:center;gap:var(--space-2)">
@@ -1714,7 +1770,7 @@ function _mreqPaint() {
       ${_mntRefreshBtn("MREQ._loaded=false;renderMaintRequests()")}
     </div>
 
-    <table class="mnt-table">
+    <table class="mnt-table mnt-fixed">
       <thead><tr>
         <th style="width:150px">ΠΡΟΤΕΡΑΙΟΤΗΤΑ</th><th style="width:170px">ΟΧΗΜΑ</th><th>ΠΕΡΙΓΡΑΦΗ</th><th style="width:200px">ΣΥΝΕΡΓΕΙΟ</th><th style="width:150px">ΑΝΑΦΕΡΘΗΚΕ</th><th style="width:250px">ΚΑΤΑΣΤΑΣΗ</th>
       </tr></thead>
@@ -1750,7 +1806,7 @@ function _mreqPaint() {
           <td><button type="button" class="btn btn-ghost btn-sm" title="Καταγράφει ολοκληρωμένη εντολή ανανέωσης" onclick="_mreqDismissExpiry('${ea.plate.replace(/'/g,"\\'")}','${ea.doc}','${ea.desc.replace(/'/g,"\\'")}')">✓ Ανανεώθηκε</button></td>
         </tr>`).join('')}</tbody>
       </table>
-      ${expiryAlerts.length > 10 ? `<button type="button" class="mnt-link" style="display:block;width:100%;text-align:center;padding:10px 0" onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων →</button>` : ''}
+      ${expiryAlerts.length > 10 ? `<button type="button" class="mnt-link" style="display:block;width:100%;text-align:center;padding:var(--space-2) 0" onclick="_expiryGoto('expired')">Δες και τα άλλα ${expiryAlerts.length - 10} στις Λήξεις Εγγράφων →</button>` : ''}
     </details>` : ''}`;
 }
 
@@ -1808,7 +1864,7 @@ function _mreqOpenForm(editId) {
               <option value="">— Επιλογή —</option>
               ${allVehicles.map(v => `<option value="${escapeHtml(v.plate)}"${f['Vehicle Plate']===v.plate?' selected':''}>${escapeHtml(v.plate)} (${_mntTypeGr(v.type)})</option>`).join('')}
               <option value="__custom"${custom ? ' selected' : ''}>Άλλο όχημα (πληκτρολόγηση)</option>
-            </select>`, `<div id="mreq-plate-custom-wrap" style="${custom ? '' : 'display:none'};margin-top:6px"><input class="form-input" id="mreq-plate-custom" value="${escapeHtml(custom ? f['Vehicle Plate'] : '')}" placeholder="π.χ. CB1286KE"></div><div class="ef-err" id="mreq-err-plate"></div>`)}
+            </select>`, `<div id="mreq-plate-custom-wrap" style="${custom ? '' : 'display:none'};margin-top:var(--space-2)"><input class="form-input" id="mreq-plate-custom" value="${escapeHtml(custom ? f['Vehicle Plate'] : '')}" placeholder="π.χ. CB1286KE"></div><div class="ef-err" id="mreq-err-plate"></div>`)}
           ${field('Ημ. αναφοράς', `<input class="form-input" type="date" id="mreq-date" value="${f['Date Reported']?toLocalDate(f['Date Reported']):localToday()}">`)}
         </div>
         <div class="mf-row">
