@@ -2694,13 +2694,13 @@ async function handleCosts(request, url, origin, env) {
     return jsonError("Forbidden", 403, origin, env);
   }
   try {
-    // ---- GET /costs/lookups  (ids + labels για dropdowns/ονόματα) ----
+    // ---- GET /costs/lookups  (ids + labels + legacy_id για matching facade→pg) ----
     if (resource === "lookups" && method === "GET") {
       const [trucks, trailers, drivers, partners] = await Promise.all([
-        dbSelect(env, "trucks", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
-        dbSelect(env, "trailers", { select: "id,license_plate,active", order: "license_plate.asc", limit: 300 }),
-        dbSelect(env, "drivers", { select: "id,full_name,active", order: "full_name.asc", limit: 300 }),
-        dbSelect(env, "partners", { select: "id,company_name,active", order: "company_name.asc", limit: 500 })
+        dbSelect(env, "trucks", { select: "id,legacy_id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "trailers", { select: "id,legacy_id,license_plate,active", order: "license_plate.asc", limit: 300 }),
+        dbSelect(env, "drivers", { select: "id,legacy_id,full_name,active", order: "full_name.asc", limit: 300 }),
+        dbSelect(env, "partners", { select: "id,legacy_id,company_name,active", order: "company_name.asc", limit: 500 })
       ]);
       return jsonOk({ trucks, trailers, drivers, partners }, origin, env);
     }
