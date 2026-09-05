@@ -2296,6 +2296,10 @@ tbody tr:hover { background: var(--bg-hover); }
      items, overflow hidden) and every item after the first is clipped. */
   .sidebar .nav-group-items { display: flex; flex-direction: column; max-height: none; flex: 0 0 auto; }
   .sidebar .nav-section { flex: 0 0 auto; }
+  /* Desktop keeps closed sections at max-height:0 + opacity:0; the mobile drawer
+     shows every section expanded, so both must be reset — max-height alone left
+     invisible boxes that still took their full height (measured 5/9). */
+  .sidebar .nav-group-items.collapsed-items { opacity: 1; max-height: none; padding: 2px 0 4px; }
   .sidebar .nav-item {
     flex-direction: row; padding: 12px 16px; font-size: var(--text-base);
     margin: 0; border-radius: 0; gap: 12px; white-space: normal;
