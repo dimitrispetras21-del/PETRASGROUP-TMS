@@ -41,6 +41,9 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['text_only_skipped'], 1)
         self.assertEqual(n['unknown'], [])
         self.assertEqual(n['first_date'], '2024-03-13')
+        self.assertEqual(n['running_breaks'], [])
+        self.assertIsNone(n['opening_balance'])
+        self.assertTrue(n['running_consistent'])
 
     def test_unknown_rows_are_collected_not_fatal(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
@@ -60,6 +63,29 @@ class TestParseSheet(unittest.TestCase):
 
     def test_no_header_returns_none(self):
         self.assertIsNone(parse_sheet(book([('x', 'y'), (1, 2)]), today=dt.date(2026, 9, 5)))
+
+    def test_running_breaks_and_opening_balance(self):
+        ws = book([
+            ('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+            (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 350),       # opening 100: 350 − 250
+            (dt.datetime(2024, 1, 20), 'ΜΕΤΡΗΤΑ', 200, None, None, None, -200, 150),
+            (dt.datetime(2024, 2, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 180),          # break −100: 150+130=280, cached 180
+            (dt.datetime(2024, 2, 9), 'ΠΑΤΡΑ', 0, None, None, 230, 230, None),           # no running on this row
+            (dt.datetime(2024, 2, 15), 'ΜΕΤΡΗΤΑ', 400, None, None, None, -400, 10.78),  # 180+230−400 = 10 → +0.78 drift
+        ])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['raw_final'], '10.00')
+        self.assertEqual(n['running_last'], '10.78')
+        self.assertEqual(n['opening_balance'], '100.00')
+        self.assertEqual(n['running_breaks'], [{'row': 4, 'entry_date': '2024-02-01', 'diff': '-100.00'},
+                                               {'row': 6, 'entry_date': '2024-02-15', 'diff': '0.78'}])
+        self.assertTrue(n['running_consistent'])
+
+    def test_no_running_column_means_consistency_unknown(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2024, 1, 10), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertIsNone(n['running_consistent']); self.assertIsNone(n['opening_balance']); self.assertEqual(n['running_breaks'], [])
 
 if __name__ == '__main__':
     unittest.main()

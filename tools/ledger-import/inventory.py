@@ -5,6 +5,7 @@ visible. Nothing here decides anything — it records, and it repairs only what
 rules.py allows (year spikes, missing dates inherited from the line above), each
 repair written into the row's note."""
 import datetime as dt, json, os, warnings
+from decimal import Decimal
 import openpyxl
 from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, Unknown
 warnings.filterwarnings('ignore')
@@ -63,11 +64,32 @@ def parse_sheet(ws, today):
         end = r['entry'].get('date_end')
         if end and end < r['entry']['entry_date']:
             r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
-    running_last = None
+    running_last, opening, breaks, consistent = None, None, [], None
     if 'running' in cols:
-        for r in reversed(rows):
-            v = r['cells'].get('running')
-            if is_num(v): running_last = str(d2(v)); break
+        # Walk the cached ΠΡΟΟΔΕΥΤΙΚΟ against our own deltas. Rows without a running
+        # value (a blank cell in the middle) accumulate into `acc` until the next
+        # cached value. The first cached value fixes the opening balance; every later
+        # jump that the row's own amounts do not explain is a break.
+        prev_run, acc = None, Decimal('0')
+        for r in rows:
+            c = r['cells']
+            delta = d2(c.get('value') if is_num(c.get('value')) else 0) - d2(c.get('advance') if is_num(c.get('advance')) else 0) + d2(c.get('expenses') if is_num(c.get('expenses')) else 0)
+            acc += delta
+            run = c.get('running')
+            if not is_num(run): continue
+            run = d2(run)
+            if prev_run is None:
+                opening = run - acc
+            else:
+                diff = run - (prev_run + acc)
+                if abs(diff) > Decimal('0.05'):
+                    breaks.append({'row': r['row'], 'entry_date': r['entry']['entry_date'], 'diff': str(diff)})
+            prev_run, acc = run, Decimal('0')
+            running_last = str(run)
+        if opening is not None and abs(opening) <= Decimal('0.05'): opening = None
+        if running_last is not None:
+            raw = raw_balance(cells_used)
+            consistent = (raw + (opening or Decimal('0')) + sum((Decimal(b['diff']) for b in breaks), Decimal('0'))).quantize(Decimal('0.01')) == d2(running_last)
     balance_sum = None
     if 'balance' in cols:
         vals = [c.get('balance') for c in cells_used if is_num(c.get('balance'))]
@@ -76,6 +98,7 @@ def parse_sheet(ws, today):
     return {'sheet': ws.title, 'header_row': h['row'], 'cols': cols, 'out_of_scope': h['out_of_scope'],
             'rows': rows, 'unknown': unknown, 'raw_final': str(raw_balance(cells_used)) if cells_used else None,
             'running_last': running_last, 'balance_sum': balance_sum,
+            'opening_balance': str(opening) if opening is not None else None, 'running_breaks': breaks, 'running_consistent': consistent,
             'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
             'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only}
 
@@ -94,10 +117,10 @@ def main():
     out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
     json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     R = [r for n in nodes for r in n['rows']]
-    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · raw≠running %d'
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d'
           % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
              sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
-             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_last'] and n['raw_final'] != n['running_last'])))
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance'])))
 
 if __name__ == '__main__':
     main()
