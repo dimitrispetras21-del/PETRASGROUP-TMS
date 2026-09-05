@@ -91,6 +91,26 @@ function dlDateRange(start, end) {
 const _dl = { view: 'home', balances: [], gap: 0, q: '', selected: null, selLoading: false, selErr: null,
   driver: null, entries: [], rts: [], year: String(new Date().getFullYear()), editId: null, bulk: null };
 
+// Detailed route per leg (owner 5/9): «dd/mm NAME · City, Country → dd/mm NAME ·
+// City, Country», legs joined by « || ». The location NAME is upper-cased, city
+// and country stay as written. A missing piece is left out, never invented (K3).
+// Falls back to route_text where the view has no legs (hand-written routes).
+function dlRouteLegsHtml(legs) {
+  const dm = s => (s && s.length >= 10) ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
+  const place = p => {
+    if (!p || !p.name) return '';
+    const cc = [p.city, p.country].filter(Boolean).join(', ');
+    return escapeHtml(String(p.name).toUpperCase()) + (cc ? ` <span class="dl-cc">· ${escapeHtml(cc)}</span>` : '');
+  };
+  const one = l => {
+    const a = [dm(l.load), place(l.from)].filter(Boolean).join(' ');
+    const b = [dm(l.deliv), place(l.to)].filter(Boolean).join(' ');
+    const extra = l.extra_stops > 0 ? ` <span class="dl-cc">+${l.extra_stops} στάσ.</span>` : '';
+    return `${a} → ${b}${extra}`;
+  };
+  return legs.map(one).join(' <span class="dl-sep">||</span> ');
+}
+
 function dlInitials(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
   return ((parts[0] ? parts[0][0] : '') + (parts[1] ? parts[1][0] : '')).toUpperCase() || '?';
@@ -158,6 +178,8 @@ function dlStyles() {
   .dl-fr{display:flex;gap:16px;margin-bottom:16px}
   .dl-seg{display:flex;border:1px solid var(--border);border-radius:6px;overflow:hidden} .dl-seg button{flex:1;height:36px;border:0;background:none;font:inherit;font-size:13px;color:var(--text-mid);cursor:pointer} .dl-seg button.on{background:var(--surface-dark);color:var(--text-on-dark);font-weight:500}
   .dl-err{color:var(--danger);font-size:12px;margin-top:8px}
+  .dl-cc{color:var(--text-dim);font-weight:400}
+  .dl-sep{color:var(--text-dim);font-weight:600;padding:0 4px}
   </style>`;
 }
 
@@ -169,7 +191,7 @@ function dlEntryRowHtml(e, opts) {
   const isTrip = e.entry_type === 'trip';
   const dateTxt = dlDateRange(e.entry_date, e.date_end);
   const routeText = isTrip
-    ? (e.route_text ? escapeHtml(e.route_text) : '—')
+    ? (Array.isArray(e.route_legs) && e.route_legs.length ? dlRouteLegsHtml(e.route_legs) : e.route_text ? escapeHtml(e.route_text) : '—')
     : (e.entry_type === 'payment_bank' ? 'Κατάθεση τράπεζας' : e.entry_type === 'payment_cash' ? 'Πληρωμή μετρητά' : 'Προσαρμογή');
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
