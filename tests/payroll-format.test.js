@@ -1,7 +1,7 @@
 // tests/payroll-format.test.js
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange } = require('../modules/payroll.js');
+const { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney } = require('../modules/payroll.js');
 
 test('unknown is not zero: null/undefined render as a dash, real zero as 0,00 €', () => {
   assert.strictEqual(dlEur(null), '—');
@@ -36,4 +36,10 @@ test('type labels and date ranges', () => {
   assert.strictEqual(dlDateRange('2026-08-31', '2026-09-02'), '31/08–02/09');
   assert.strictEqual(dlDateRange('2026-08-13', null), '13/08');
   assert.strictEqual(dlDateRange('2026-12-29', '2027-01-04'), '29/12/26–04/01/27');
+});
+
+test('dlMoney: balance display — positive plain, negative parenthesised, unknown dash (v2 UI rule #1)', () => {
+  assert.strictEqual(dlMoney(354.76), '354,76 €');
+  assert.strictEqual(dlMoney(-95.2), '(95,20 €)');
+  assert.strictEqual(dlMoney(null), '—');
 });
