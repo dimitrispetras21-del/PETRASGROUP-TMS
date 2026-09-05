@@ -3130,3 +3130,130 @@ git commit -q -m "ledger-import: restore dropped assertions, explicit precedence
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10g: RT matching scores start AND end dates (review of plans, group 8)
+
+**Why.** ΧΡΥΣΟΥΛΙΔΗΣ: the auto row RT-1010 (20/8 → 26/8) was matched to a one-day local trip starting 20/8 because only the start date was compared; the 7-day Hungary trip 21/8 → 27/8 fits far better. The Worker links the RT's PnL to whatever line gets the values, so a wrong match puts the wrong trip's amounts on the RT.
+
+**Rule.** Candidates are still Excel trips with `|Δstart| ≤ 2 days`. Among them choose the smallest `score = |Δstart| + |Δend|`, where `Δend` compares `date_end` values when both the Excel row and the auto row have one (0 otherwise); ties → smaller `Δstart`, then earlier Excel row. Assignment is global per driver: collect all candidate pairs for the post-cutoff trips, assign greedily by ascending score with each Excel row and each auto row used at most once, then build patches/kept rows. Analyst `matches` overrides and `src: null` unmatches still apply first.
+
+**Files:** `tools/ledger-import/make_plan.py`, `tools/ledger-import/tests/test_make_plan.py`
+
+- [ ] **Step 1: Test** (inside `TestBuildPlan`):
+```python
+    def test_rt_match_prefers_matching_span_over_same_start(self):
+        rows = [row(97, '2026-08-20', value=50, advance=0, route='ΒΕΡΟΙΑ-ΓΑΛΑΤΑΔΕΣ-ΒΕΡΟΙΑ'),
+                row(98, '2026-08-21', value=650, advance=300, expenses=531.2, route='ΒΕΡΟΙΑ-ΟΥΓΓΑΡΙΑ-ΒΟΛΟΣ-ΒΕΡΟΙΑ')]
+        rows[0]['entry']['date_end'] = '2026-08-20'; rows[1]['entry']['date_end'] = '2026-08-27'
+        n = node('F1', 'S1', rows, final='931.20')
+        auto = [{'dl_id': 7, 'driver_id': 8, 'entry_date': '2026-08-20', 'date_end': '2026-08-26', 'rt_id': 10, 'rt_code': 'RT-1010', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, None)
+        self.assertEqual(len(p['patches']), 1)
+        self.assertEqual(p['patches'][0]['src']['row'], 98)
+        self.assertEqual(p['patches'][0]['trip_value'], 650.0)
+        self.assertEqual([r['src']['row'] for r in p['batches'][0]['rows']], [97])
+```
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_make_plan 2>&1 | tail -3` → 1 failure (patch attached to row 97).
+- [ ] **Step 3: Implement** the RT block of `build_plan` as a two-phase assignment:
+```python
+    if auto:
+        cutoff = (dt.date.fromisoformat(auto[0]['entry_date']) - dt.timedelta(days=1)).isoformat()
+        forced = {}; unmatched_forced = set()
+        for m in dec.get('matches', []):
+            if m.get('src') is None: unmatched_forced.add(m['dl_id'])
+            else: forced[(m['src']['file_id'], m['src']['sheet'], m['src']['row'])] = m['dl_id']
+        matchable = {a['dl_id']: a for a in auto if a.get('trip_value') is None and a['dl_id'] not in unmatched_forced}
+        # Phase 1 — score every (post-cutoff trip, auto row) pair. A one-day local trip
+        # and a week-long RT can share a start date; the return date tells them apart.
+        pairs = []; assigned = {}          # excel index -> dl_id
+        for i, (fid, x) in enumerate(lines):
+            if x['entry_type'] != 'trip' or x['entry_date'] <= cutoff: continue
+            sk = (x['src']['file_id'], x['src']['sheet'], x['src']['row'])
+            if sk in forced:
+                if forced[sk] in matchable: assigned[i] = forced[sk]
+                continue
+            d0 = dt.date.fromisoformat(x['entry_date']); e0 = dt.date.fromisoformat(x['date_end']) if x.get('date_end') else None
+            for a in matchable.values():
+                ds = abs((dt.date.fromisoformat(a['entry_date']) - d0).days)
+                if ds > 2: continue
+                de = abs((dt.date.fromisoformat(a['date_end']) - e0).days) if (e0 and a.get('date_end')) else 0
+                pairs.append((ds + de, ds, i, a['dl_id']))
+        used = set(assigned.values())
+        for score, ds, i, dl in sorted(pairs):        # Phase 2 — best score first, each side once
+            if i in assigned or dl in used: continue
+            assigned[i] = dl; used.add(dl)
+        kept = []
+        for i, (fid, x) in enumerate(lines):
+            if i not in assigned: kept.append((fid, x)); continue
+            target = matchable[assigned[i]]
+            p = {'dl_id': target['dl_id']}
+            for f in ('trip_value', 'advance', 'expenses'):
+                if x.get(f) is not None: p[f] = x[f]
+            note = 'Excel: %s · %s%s' % (x.get('route', ''), x['entry_date'], ('→' + x['date_end']) if x.get('date_end') else '')
+            if x.get('note'): note += ' · ' + x['note']
+            p['note'] = note; p['src'] = x['src']; patches.append(p)
+        lines = kept
+    auto_unmatched = [{'dl_id': a['dl_id'], 'entry_date': a['entry_date']} for a in auto if a['dl_id'] not in used]
+```
+(`used = set()` must be initialised before the `if auto:` block as it is today, so `auto_unmatched` works when there are no auto rows.)
+- [ ] **Step 4:** suite OK (previous + 1); `python3 tools/ledger-import/make_plan.py | tail -1`; `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`; then print which drivers' patches changed versus the snapshot:
+```bash
+python3 - <<'PY'
+import json,glob
+snap=json.load(open('tools/ledger-import/work/patches_snapshot.json',encoding='utf-8'))
+for p in glob.glob('tools/ledger-import/work/plans/*.json'):
+    d=json.load(open(p,encoding='utf-8')); now=sorted([x['dl_id'],x['src']['sheet'],x['src']['row']] for x in d['patches'])
+    if now!=[list(t) for t in snap.get(d['driver_key'],[])]: print('CHANGED',d['driver_key'],snap.get(d['driver_key']),'→',now)
+PY
+```
+Report that list verbatim.
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/make_plan.py tools/ledger-import/tests/test_make_plan.py
+git commit -q -m "ledger-import: RT matching scores start and end dates, assigned by best score (review of plans)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10h: one skip per carry-forward event; year repair only inside the neighbours' span
+
+**Why.** (1) Review of 10e: when a sheet's first row is a carry row, the inventory derives `opening_balance` from that same row, so opening and first carry describe one event; the builder added both to `skipped` (double). (2) Review of plans (ΒΑΙΝΑΛΗΣ Ν.): `fix_date` changed 2026-12-17 to 2025-12-17 although the neighbours are 2026-02-11 / 2026-02-17 — the candidate sat in the 45-day margin, not between the neighbours; the real typo was the month. A year repair is only trustworthy when it lands inside the neighbours' span (with a few days' slack for out-of-order rows).
+
+**Files:** `tools/ledger-import/make_plan.py`, `tools/ledger-import/rules.py`, tests `test_make_plan.py`, `test_rules.py`
+
+- [ ] **Step 1: Tests**
+`test_make_plan.py` (inside `TestBuildPlan`):
+```python
+    def test_opening_and_first_carry_are_one_event(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=200.0), row(5, '2024-01-12', value=100, advance=50)], opening_balance='200.00', final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+```
+`test_rules.py` (inside `TestFixDate`):
+```python
+    def test_year_candidate_outside_neighbour_span_is_not_applied(self):
+        # month typo (12 → 02): a year change lands two months before the neighbours — refuse
+        self.assertIsNone(fix_date(D(2026, 12, 17), [D(2026, 1, 21), D(2026, 2, 11), D(2026, 2, 17), D(2026, 2, 20)], self.today))
+    def test_year_candidate_inside_span_with_small_slack_is_applied(self):
+        self.assertEqual(fix_date(D(2025, 12, 27), [D(2024, 12, 20), D(2024, 12, 29), D(2025, 1, 5)], self.today)[0], D(2024, 12, 27))
+```
+and change the existing `test_year_typo_in_future_is_fixed` neighbours to `[D(2025, 12, 20), D(2025, 12, 29), D(2026, 1, 5)]` (the candidate 2025-12-27 is inside that span).
+- [ ] **Step 2: Run** → 2 failures (make_plan needs_decision; rules applies the bad repair).
+- [ ] **Step 3: Implement**
+`rules.fix_date`: change the default `window` from 45 days to **7 days** and the docstring accordingly («lands within the neighbours' span, ±7 days for rows logged out of order»).
+`make_plan.build_plan`: track `opening_event = None` per chain node; when the opening is skipped set `opening_event = opening`. In the carry branch, before computing `action`: `if r is first_carry and opening_event is not None and abs(d2(e['amount']) - opening_event) <= TOL: breaks.pop(r['row'], None); continue` (same event, already skipped; nothing added to `skipped`). Comment why: the inventory derives the opening from that very row.
+- [ ] **Step 4:** suite OK (previous + 3); `python3 tools/ledger-import/inventory.py` (record `date fixes` and `date problems`), `python3 tools/ledger-import/make_plan.py | tail -1`, `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`. Expect date fixes to drop and date problems to rise by the difference (those rows now go to the owner).
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/make_plan.py tools/ledger-import/rules.py tools/ledger-import/tests/test_make_plan.py tools/ledger-import/tests/test_rules.py
+git commit -q -m "ledger-import: one skip per carry-forward event; year repair only inside the neighbours' span (reviews 10e + plans)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
