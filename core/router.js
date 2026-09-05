@@ -46,7 +46,7 @@ const NAV = [
   ]},
   { section: 'Οδηγοί', perm: 'drivers', items: [
     { id: 'drivers', label: 'Οδηγοί',             icon: 'user' },
-    { id: 'payroll', label: 'Μισθοδοσία Οδηγών',  icon: 'coins', soon: true },
+    { id: 'payroll', label: 'Μισθοδοσία Οδηγών',  icon: 'coins' },
   ]},
   { section: 'Συντήρηση', perm: 'maintenance', items: [
     { id: 'maint_dash',   label: 'Επισκόπηση Στόλου', icon: 'layout_grid' },
@@ -336,17 +336,10 @@ function navigate(page) {
     case 'trailers':       renderEntity('trailers');      break;
     // Drivers
     case 'drivers':        renderEntity('drivers');       break;
-    // PR-3: ίδιο gate με settings/trash/error_log. Σήμερα η σελίδα είναι
-    // placeholder, αλλά όταν χτιστεί θα δείχνει μισθούς — το gate μπαίνει
-    // ΠΡΙΝ υπάρξει κάτι να διαρρεύσει, όχι μετά. Ο dispatcher έχει
-    // drivers:'view' και χάνει την πρόσβαση — σκόπιμο (βλ. payroll.md PR-3).
-    case 'payroll':
-      if (can('drivers') !== 'full') { c.innerHTML = showAccessDenied(); break; }
-      c.innerHTML = showComingSoon('Μισθοδοσία Οδηγών', {
-      icon: 'coins',
-      today: 'Η μισθοδοσία υπολογίζεται εκτός συστήματος. Τα δεδομένα ανά δρομολόγιο υπάρχουν ήδη στις Παραγγελίες (οδηγός, ημερομηνίες, παλέτες).',
-      eta: 'Προαπαιτεί την αλυσίδα κόστους: χωρίς κόστος ανά δρομολόγιο, η αμοιβή δεν μπορεί να διασταυρωθεί. Μετά τη σύνδεση εντολής εργασίας → εγγραφής κόστους (MR-2).',
-    });        break;
+    // Gate on ONE key (spec 5/9 §4): costs. owner/accountant 'full',
+    // management 'view' — all three may open it; the Worker decides writes.
+    // dispatcher has costs:'none' and never sees driver money.
+    case 'payroll':        renderPayroll();                                   break;
     // Costs
     // Not in NAV — reachable only via ?page= or a stale bookmark. See
     // docs/design/DEEP_AUDIT_2026-08-04/costs.md CO-1. Blocked on the
