@@ -1,0 +1,100 @@
+import unittest, sys, os, copy
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from make_plan import build_plan
+
+def row(rn, date, typ='trip', **kw):
+    e = {'entry_type': typ, 'entry_date': date}
+    if typ == 'trip': e.update({'date_end': None, 'route': kw.pop('route', 'R'), 'trip_value': kw.pop('value', None), 'advance': kw.pop('advance', None), 'expenses': kw.pop('expenses', None)})
+    else: e['amount'] = kw.pop('amount')
+    if 'note' in kw: e['note'] = kw.pop('note')
+    return {'row': rn, 'entry': e, 'cells': {}, 'date_fix': kw.pop('fix', None), 'date_problem': kw.pop('problem', None), 'date_inherited': False}
+
+def node(file_id, sheet, rows, **kw):
+    n = {'file_id': file_id, 'file_name': file_id + '.xlsx', 'sheet': sheet, 'out_of_scope': False, 'rows': rows, 'unknown': [],
+         'running_breaks': [], 'opening_balance': None, 'rounding_residual': None, 'running_consistent': True,
+         'first_date': min(r['entry']['entry_date'] for r in rows) if rows else None, 'last_date': max(r['entry']['entry_date'] for r in rows) if rows else None,
+         'n_rows': len(rows), 'expected_final': kw.pop('final')}
+    n.update(kw); return n
+
+ENTRY = {'driver_id': 8, 'files': ['F1'], 'crosscheck': []}
+
+class TestBuildPlan(unittest.TestCase):
+    def test_single_sheet_with_break_and_residual(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300, expenses=50), row(5, '2024-01-20', 'payment_cash', amount=200), row(6, '2024-02-01', value=230, advance=100)],
+                 running_breaks=[{'row': 6, 'entry_date': '2024-02-01', 'diff': '-100.00'}], rounding_residual='0.07', final='80.07')
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        types = [r['entry_type'] for r in p['batches'][0]['rows']]
+        self.assertEqual(types, ['trip', 'payment_cash', 'trip', 'adjustment', 'adjustment'])
+        self.assertEqual(p['batches'][0]['rows'][3]['amount'], -100.0)
+        self.assertIn('γρ. 6', p['batches'][0]['rows'][3]['note'])
+        self.assertEqual(p['batches'][0]['rows'][4]['amount'], 0.07)
+        self.assertEqual(p['batches'][0]['expected_final'], '80.07')
+        self.assertEqual(p['expected_total_balance'], '80.07')
+        self.assertNotIn('rt_id', p['batches'][0]['rows'][0]); self.assertEqual(p['batches'][0]['rows'][0]['src'], {'file_id': 'F1', 'sheet': 'S1', 'row': 4})
+
+    def test_opening_equal_to_previous_final_is_skipped(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50)], opening_balance='200.00', final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertTrue(next(x for x in p['nodes'] if x['sheet'] == 'S2')['opening_carry_skipped'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+
+    def test_previous_sheet_left_a_balance_and_next_starts_fresh(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50)], final='50.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'needs_decision'); self.assertTrue(any('εξοφλήθηκε' in d for d in p['needs_decision']))
+        # the analyst declares it settled outside the ledger → one −200 adjustment, plan ready, total = 50
+        p2 = build_plan('X', ENTRY, [a, b], [], {'settled': [{'file_id': 'F1', 'sheet': 'S1', 'why': 'paid in cash 2023-12'}]})
+        self.assertEqual(p2['status'], 'ready', p2['needs_decision'])
+        adj = [r for r in p2['batches'][0]['rows'] if r['entry_type'] == 'adjustment']
+        self.assertEqual(adj[0]['amount'], -200.0); self.assertEqual(adj[0]['entry_date'], '2023-01-10')
+        self.assertEqual(p2['expected_total_balance'], '50.00')
+
+    def test_rt_overlap_matching(self):
+        n = node('F1', 'S1', [row(4, '2026-07-01', value=500, advance=300), row(5, '2026-08-15', value=600, advance=300, expenses=20, route='ΓΕΡΜΑΝΙΑ'),
+                              row(6, '2026-08-20', 'payment_bank', amount=400), row(7, '2026-08-25', value=230, advance=0, route='ΑΘΗΝΑ')], final='350.00')
+        auto = [{'dl_id': 900, 'driver_id': 8, 'entry_date': '2026-08-14', 'date_end': '2026-08-21', 'rt_id': 87, 'rt_code': 'RT-1087', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None},
+                {'dl_id': 901, 'driver_id': 8, 'entry_date': '2026-08-30', 'date_end': None, 'rt_id': 88, 'rt_code': 'RT-1088', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None},
+                {'dl_id': 950, 'driver_id': 9, 'entry_date': '2026-08-15', 'date_end': None, 'rt_id': 89, 'rt_code': 'RT-1089', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, None)
+        self.assertEqual(p['cutoff'], '2026-08-13')
+        self.assertEqual(len(p['patches']), 1); pt = p['patches'][0]
+        self.assertEqual(pt['dl_id'], 900); self.assertEqual(pt['trip_value'], 600.0); self.assertEqual(pt['expenses'], 20.0); self.assertIn('ΓΕΡΜΑΝΙΑ', pt['note'])
+        self.assertEqual([r['entry_type'] for r in p['batches'][0]['rows']], ['trip', 'payment_bank', 'trip'])   # ΑΘΗΝΑ stays: no auto within 2 days
+        self.assertEqual(p['auto_unmatched'], [{'dl_id': 901, 'entry_date': '2026-08-30'}])
+        self.assertEqual(p['batches'][0]['expected_final'], '30.00'); self.assertEqual(p['expected_total_balance'], '350.00')
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+
+    def test_match_override_and_unmatch(self):
+        n = node('F1', 'S1', [row(5, '2026-08-15', value=600, advance=300, route='ΓΕΡΜΑΝΙΑ')], final='300.00')
+        auto = [{'dl_id': 900, 'driver_id': 8, 'entry_date': '2026-08-14', 'date_end': None, 'rt_id': 87, 'rt_code': 'RT-1087', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, {'matches': [{'dl_id': 900, 'src': None}]})
+        self.assertEqual(p['patches'], []); self.assertEqual(len(p['batches'][0]['rows']), 1)
+
+    def test_unknown_and_inconsistent_go_to_needs_decision(self):
+        n = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300)], final='200.00', unknown=[{'row': 9, 'reason': 'unrecognised row: ΠΡΟΣΤΙΜΟ', 'cells': {}}], running_consistent=False)
+        p = build_plan('X', ENTRY, [n], [], None)
+        self.assertEqual(p['status'], 'needs_decision')
+        self.assertTrue(any('γρ. 9' in d for d in p['needs_decision'])); self.assertTrue(any('ΠΡΟΟΔΕΥΤΙΚΟ' in d for d in p['needs_decision']))
+
+    def test_duplicate_node_auto_detected_and_decision_role(self):
+        a = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300), row(5, '2024-02-10', value=100, advance=0)], final='300.00')
+        b = node('F1', 'S2', [row(4, '2024-02-10', value=100, advance=0)], final='100.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(next(x for x in p['nodes'] if x['sheet'] == 'S2')['role'], 'duplicate')
+        self.assertEqual(p['expected_total_balance'], '300.00')
+        p2 = build_plan('X', ENTRY, [a, b], [], {'nodes': [{'file_id': 'F1', 'sheet': 'S2', 'role': 'out_of_scope', 'why': 'test'}]})
+        self.assertEqual(next(x for x in p2['nodes'] if x['sheet'] == 'S2')['role'], 'out_of_scope')
+
+    def test_create_driver_and_no_auto(self):
+        n = node('F1', 'S1', [row(4, '2026-08-27', value=100, advance=0)], final='100.00')
+        entry = {'driver_id': None, 'create': {'Full Name': 'New One', 'Active': True}, 'files': ['F1'], 'crosscheck': []}
+        p = build_plan('NEW', entry, [n], [{'dl_id': 1, 'driver_id': 8, 'entry_date': '2026-08-27', 'trip_value': None, 'advance': None, 'expenses': None}], None)
+        self.assertIsNone(p['driver_id']); self.assertEqual(p['create_driver']['Full Name'], 'New One'); self.assertIsNone(p['cutoff']); self.assertEqual(p['patches'], [])
+
+if __name__ == '__main__':
+    unittest.main()
