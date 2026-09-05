@@ -30,6 +30,8 @@ def parse_sheet(ws, today):
     cols = h['cols']
     rows, unknown, cells_used = [], [], []
     pending = []  # leading undated rows waiting for the first dated row
+    after_totals = False
+    memos = []  # rows below ΣΥΝΟΛΟ line without a running value (loan reconciliations, notes)
     totals_skipped = text_only = zero_net = 0
     for rn, raw in enumerate(ws.iter_rows(min_row=h['row'] + 1, values_only=True), h['row'] + 1):
         cells = {f: (raw[cols[f] - 1] if f in cols and cols[f] <= len(raw) else None) for f in PICK}
@@ -40,10 +42,16 @@ def parse_sheet(ws, today):
             unknown.append({'row': rn, 'reason': str(ex), 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'}})
             if cells.get('date') is not None: cells_used.append(cells)   # a dated money line counts even if unclassified
             continue
-        if e == 'TOTALS': totals_skipped += 1; continue
+        if e == 'TOTALS': after_totals = True; totals_skipped += 1; continue
         if e == 'ZERO_NET': zero_net += 1; continue
         if e is None:
             if any(v not in (None, '') for v in raw): text_only += 1
+            continue
+        # Below the ΣΥΝΟΛΟ line only rows where the ΠΡΟΟΔΕΥΤΙΚΟ continues are ledger
+        # entries; the rest are memos (loan reconciliations, notes) and must not move
+        # the balance. Kept for the owner report, never imported.
+        if after_totals and not ('running' in cols and is_num(cells.get('running'))):
+            memos.append({'row': rn, 'label': str(cells.get('route') or cells.get('cash') or '')[:80], 'amount': float(d2(cells.get('advance') if is_num(cells.get('advance')) else (cells.get('value') if is_num(cells.get('value')) else 0)))})
             continue
         inherited = False
         if e['entry_date'] is None:
@@ -154,7 +162,8 @@ def parse_sheet(ws, today):
             'opening_balance': str(opening) if opening is not None else None, 'running_breaks': breaks, 'running_consistent': consistent,
             'expected_final': expected_final, 'trailing_delta': str(trailing) if trailing != 0 else None, 'rounding_residual': residual,
             'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
-            'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only, 'zero_net_skipped': zero_net}
+            'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only, 'zero_net_skipped': zero_net,
+            'after_totals_skipped': len(memos), 'after_totals': memos}
 
 def main():
     today = dt.date.today()
@@ -171,10 +180,10 @@ def main():
     out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
     json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
     R = [r for n in nodes for r in n['rows']]
-    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d · zero-net %d'
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · running inconsistent %d · sheets with breaks %d · opening balances %d · rounding residuals %d · trailing %d · zero-net %d · after-totals memos %d'
           % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
              sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
-             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta']), sum(n['zero_net_skipped'] for n in nodes)))
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_consistent'] is False), sum(1 for n in nodes if n['running_breaks']), sum(1 for n in nodes if n['opening_balance']), sum(1 for n in nodes if n['rounding_residual']), sum(1 for n in nodes if n['trailing_delta']), sum(n['zero_net_skipped'] for n in nodes), sum(n['after_totals_skipped'] for n in nodes)))
 
 if __name__ == '__main__':
     main()

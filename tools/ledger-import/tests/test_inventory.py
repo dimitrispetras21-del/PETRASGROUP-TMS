@@ -135,5 +135,30 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['rounding_residual'], '0.02')
         self.assertTrue(n['running_consistent'])
 
+    def test_rows_after_totals_without_running_are_memos(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 250),
+                   (dt.datetime(2025, 3, 1), 'ΔΟΣΗ ΔΑΝΕΙΟΥ', 200, None, None, None, -200, 50),
+                   (dt.datetime(2025, 3, 10), 'ΜΕΤΡΗΤΑ', 50, None, None, None, -50, 0),
+                   (None, 'ΣΥΝΟΛΟ', 550, 50, None, 500, 0, None),
+                   (None, 'ΔΑΝΕΙΟ ΚΑΘΕ ΔΡΟΜΟΛΟΓΙΟ -200 ΑΠΟΠΛΗΡΩΜΗ', None, None, None, None, None, None),
+                   (dt.datetime(2025, 4, 1), 'ΚΑΤΑΘΕΣΗ ΤΡΑΠΕΖΑ ETE', 1002, None, None, None, -1002, None),
+                   (dt.datetime(2025, 5, 1), 'ΚΑΤΑΘΕΣΗ ΤΡΑΠΕΖΑ ETE', 1002, None, None, None, -1002, None),
+                   (None, 'ΕΞΟΦΛΗΘΗ', None, None, None, None, 2004, None),
+                   (dt.datetime(2025, 6, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 130)])   # running continues → a real entry
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual([r['entry']['entry_type'] for r in n['rows']], ['trip', 'payment_cash', 'payment_cash', 'trip'])
+        self.assertEqual(n['after_totals_skipped'], 2)
+        self.assertEqual([m['amount'] for m in n['after_totals']], [1002.0, 1002.0])
+        self.assertEqual(n['expected_final'], '130.00'); self.assertTrue(n['running_consistent'])
+
+    def test_totals_ends_a_sheet_without_running_column(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250),
+                   (None, 'ΣΥΝΟΛΟ', 300, 50, None, 500, 250),
+                   (dt.datetime(2025, 4, 1), 'ΚΑΤΑΘΕΣΗ', 1002, None, None, None, -1002)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 1); self.assertEqual(n['after_totals_skipped'], 1); self.assertEqual(n['balance_sum'], '250.00')
+
 if __name__ == '__main__':
     unittest.main()
