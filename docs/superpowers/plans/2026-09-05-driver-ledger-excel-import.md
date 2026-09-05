@@ -2215,3 +2215,52 @@ git commit -q -m "ledger-import: totals need no date (ΣΥΝΟΛΙΚΟ ΦΟΡΤ�
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 6b: verify_plan — identity checks (review of Task 6)
+
+**Why.** The Task 6 review found two gaps in the gate: a plan may carry a `driver_id` different from the map's, and a plan may carry both `driver_id` and `create_driver`. Both would let a whole batch land on the wrong driver.
+
+**Files:**
+- Modify: `tools/ledger-import/verify_plan.py`
+- Modify: `tools/ledger-import/tests/test_verify_plan.py`
+
+- [ ] **Step 1: Add tests** (inside `TestVerify`):
+```python
+    def test_driver_id_must_match_map(self):
+        self.assertTrue(any('map driver' in e for e in verify(plan(driver_id=9), [NODE], AUTO, {'driver_id': 8, 'files': ['F1'], 'crosscheck': []})))
+    def test_driver_id_and_create_driver_together_rejected(self):
+        p = plan(create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('both' in e for e in verify(p, [NODE], AUTO, MAP)))
+    def test_create_driver_plan_needs_map_create(self):
+        p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('map has no create' in e for e in verify(p, [NODE], AUTO, {'driver_id': None, 'files': ['F1'], 'crosscheck': []})))
+```
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_verify_plan 2>&1 | tail -3` → 3 failures.
+- [ ] **Step 3: Implement** — in `verify()`, replace the line
+```python
+    if not plan.get('driver_id') and not plan.get('create_driver'): errs.append('neither driver_id nor create_driver')
+    if map_entry is None: errs.append('driver key not in map'); return errs
+```
+with
+```python
+    # Identity is the one thing the arithmetic cannot catch: a wrong driver_id
+    # writes a perfectly balanced ledger onto the wrong person.
+    if not plan.get('driver_id') and not plan.get('create_driver'): errs.append('neither driver_id nor create_driver')
+    if plan.get('driver_id') and plan.get('create_driver'): errs.append('both driver_id and create_driver set — pick one')
+    if map_entry is None: errs.append('driver key not in map'); return errs
+    if map_entry.get('driver_id') and plan.get('driver_id') != map_entry['driver_id']:
+        errs.append('plan driver_id %s ≠ map driver_id %s' % (plan.get('driver_id'), map_entry['driver_id']))
+    if plan.get('create_driver') and not map_entry.get('create'):
+        errs.append('plan creates a driver but the map has no create block for this key')
+```
+Also delete the unused `key = plan.get('driver_key', '?')` line.
+- [ ] **Step 4: Run** the file tests (14 OK) and the whole suite (55 OK).
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/verify_plan.py tools/ledger-import/tests/test_verify_plan.py
+git commit -q -m "ledger-import: verify_plan checks identity — plan driver_id = map, never both id and create (review 6)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
