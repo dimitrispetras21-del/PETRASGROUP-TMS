@@ -34,7 +34,7 @@ def read_token():
         if line.startswith('TMS_JWT='): return line.split('=', 1)[1].strip().strip('"')
     sys.exit('✗ TMS_JWT missing from .env.local (owner token, 8h) — the owner pastes it, agents never see it')
 
-def ensure_driver(api, plan, state):
+def ensure_driver(api, plan, state, save=None):
     key = plan['driver_key']; st = state.setdefault(key, {})
     if st.get('driver_id'): return st['driver_id']
     if plan.get('driver_id'): st['driver_id'] = plan['driver_id']; return st['driver_id']
@@ -46,14 +46,22 @@ def ensure_driver(api, plan, state):
     match = [d for d in drivers if d.get('legacy_id') == legacy]
     if len(match) != 1: raise Mismatch('created driver %s not found in lookups by legacy_id %s' % (fields, legacy))
     st['driver_id'] = match[0]['id']; st['created_legacy_id'] = legacy
+    # Persist state immediately after resolving driver_id: a rerun must never POST the driver twice
+    if save: save(state)
     return st['driver_id']
 
 def clean_rows(rows):
-    return [{k: v for k, v in r.items() if k != 'src' and v is not None} for r in rows]
+    # Strip 'src' (parser metadata) and 'rt_id' (defense in depth; verify_plan and Worker both refuse rt_id)
+    return [{k: v for k, v in r.items() if k not in ('src', 'rt_id') and v is not None} for r in rows]
 
 def import_batch(api, driver_id, batch, file_hash):
     body = {'driver_id': driver_id, 'file_name': batch['file_name'], 'file_hash': file_hash, 'rows': clean_rows(batch['rows'])}
-    out = api.post('/costs/ledger/import', body)
+    try:
+        out = api.post('/costs/ledger/import', body)
+    except ApiError as e:
+        if e.status == 409:
+            raise Mismatch('file %s already imported (409) but not in state.json — reconcile by hand: select * from dl_import_batches where file_hash = %r' % (batch['file_name'], file_hash))
+        raise
     if d2(out['balance']) != d2(batch['expected_final']):
         raise Mismatch('batch %s server balance %s ≠ expected %s' % (out['batch'], out['balance'], batch['expected_final']))
     return out
@@ -68,6 +76,9 @@ def apply_patches(api, driver_id, patches, auto_rows, state, key):
         body = {k: p[k] for k in ('trip_value', 'advance', 'expenses', 'note') if k in p and p[k] is not None}
         for f in ('trip_value', 'advance', 'expenses'):
             if f in body and a.get(f) is not None: raise Mismatch('patch %s: %s already written on the auto row' % (p['dl_id'], f))
+        # Preserve existing notes: concatenate with ' · ' separator
+        if a.get('note') and 'note' in body:
+            body['note'] = a['note'] + ' · ' + body['note']
         api.patch('/costs/ledger/%d' % p['dl_id'], body)
         done.append(p['dl_id'])
 
@@ -87,7 +98,7 @@ def run(plans, reviews, auto_rows, index, api, state, commit):
         if state.get(key, {}).get('done'): print('done already %s' % key); continue
         print('%s %s: %d batches, %d patches, expect %s' % ('COMMIT' if commit else 'dry', key, len(plan['batches']), len(plan['patches']), plan['expected_total_balance']))
         if not commit: continue
-        driver_id = ensure_driver(api, plan, state)
+        driver_id = ensure_driver(api, plan, state, save=save)
         st = state[key]; st.setdefault('batches', {})
         for b in plan['batches']:
             if b['file_id'] in st['batches']: continue
@@ -101,8 +112,14 @@ def run(plans, reviews, auto_rows, index, api, state, commit):
         st['proof'] = {'got': got, 'expected': plan['expected_total_balance']}; st['done'] = True; save(state)
         print('  ✓ %s balance %s' % (key, got))
 
-def save(state):
-    json.dump(state, open(os.path.join(WORK, 'state.json'), 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+def save(state, path=None):
+    # Atomic write: write to .tmp then rename to avoid partial state if interrupted
+    if path is None:
+        path = os.path.join(WORK, 'state.json')
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(state, f, ensure_ascii=False, indent=1)
+    os.replace(tmp, path)
 
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--commit', action='store_true'); ap.add_argument('--only', nargs='*')

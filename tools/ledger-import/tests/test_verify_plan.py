@@ -60,5 +60,13 @@ class TestVerify(unittest.TestCase):
         p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
         self.assertTrue(any('map has no create' in e for e in verify(p, [NODE], AUTO, {'driver_id': None, 'files': ['F1'], 'crosscheck': []})))
 
+    def test_plan_driver_id_when_map_says_create_is_rejected(self):
+        m = {'driver_id': None, 'create': {'Full Name': 'X Y', 'Active': True}, 'files': ['F1'], 'crosscheck': []}
+        self.assertTrue(any('map says create' in e for e in verify(plan(driver_id=42), [NODE], AUTO, m)))
+
+    def test_create_driver_when_map_has_id_is_rejected(self):
+        p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('map has driver_id' in e for e in verify(p, [NODE], AUTO, MAP)))
+
 if __name__ == '__main__':
     unittest.main()

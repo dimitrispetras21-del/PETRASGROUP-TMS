@@ -31,6 +31,11 @@ def verify(plan, nodes, auto_rows, map_entry):
         errs.append('plan driver_id %s ≠ map driver_id %s' % (plan.get('driver_id'), map_entry['driver_id']))
     if plan.get('create_driver') and not map_entry.get('create'):
         errs.append('plan creates a driver but the map has no create block for this key')
+    # Symmetric identity gate: map and plan must agree on create vs. reuse
+    if not map_entry.get('driver_id') and plan.get('driver_id'):
+        errs.append('plan has driver_id %s but the map says create — identity mismatch' % plan['driver_id'])
+    if map_entry.get('driver_id') and plan.get('create_driver'):
+        errs.append('plan creates a driver but the map has driver_id %s' % map_entry['driver_id'])
     by_id = {(n['file_id'], n['sheet']): n for n in nodes}
     chain = [n for n in plan.get('nodes', []) if n.get('role') == 'chain']
     for n in chain:
