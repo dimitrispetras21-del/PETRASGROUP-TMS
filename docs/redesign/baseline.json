@@ -16,7 +16,7 @@
     "truncate": 1
   },
   "audit": {
-    "hex": 13,
+    "hex": 0,
     "truncate": 0
   },
   "styles": {
@@ -36,15 +36,15 @@
     "truncate": 1
   },
   "weekly_natl": {
-    "hex": 14,
+    "hex": 0,
     "truncate": 0
   },
   "orders_intl": {
-    "hex": 27,
+    "hex": 0,
     "truncate": 7
   },
   "orders_natl": {
     "hex": 0,
-    "truncate": 4
+    "truncate": 6
   }
 }
