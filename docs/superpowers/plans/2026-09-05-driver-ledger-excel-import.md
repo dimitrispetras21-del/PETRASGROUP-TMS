@@ -3039,3 +3039,76 @@ git commit -q -m "ledger-import: make_plan — skipped opening/carry amounts tra
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 8b: report — fixed decision categories, no free text in the public summary
+
+**Why.** After the analyst wave the questions are free text (with driver names, sheet names, amounts). `report.py` bucketed them by `text.split(':')[0]`, which turned the **public** summary into a wall of names and amounts — the exact thing §8 of the spec forbids in a public repo. Categories must be fixed and keyword-based; free text stays only in the owner report.
+
+**Files:**
+- Modify: `tools/ledger-import/report.py`
+- Test: `tools/ledger-import/tests/test_report.py` (new)
+
+- [ ] **Step 1: Test**
+```python
+# tools/ledger-import/tests/test_report.py
+import unittest, sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from report import categorize, build
+
+class TestCategorize(unittest.TestCase):
+    def test_fixed_categories(self):
+        self.assertEqual(categorize('φύλλα Α και Β επικαλύπτονται χρονικά (…)'), 'επικάλυψη φύλλων')
+        self.assertEqual(categorize('το φύλλο Χ κλείνει με -72.00 και το επόμενο ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;'), 'υπόλοιπο προηγούμενου φύλλου')
+        self.assertEqual(categorize('Φύλλο1 row 166: Trip entry 2024-06-18, date_end 2024-04-23 (54 days before)'), 'ημερομηνία')
+        self.assertEqual(categorize('MEL γρ. 151: unrecognised row \'ΠΡΟΣΤΙΜΟ\''), 'άγνωστη γραμμή')
+        self.assertEqual(categorize('Φύλλο1: το ΠΡΟΟΔΕΥΤΙΚΟ του Excel δεν συμφωνεί με τις γραμμές'), 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές')
+        self.assertEqual(categorize('Φύλλο1: άθροισμα γραμμών 167.76 ≠ expected_final 0.00'), 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές')
+        self.assertEqual(categorize('κανένα φύλλο καρτέλας προς εισαγωγή'), 'χωρίς φύλλο καρτέλας')
+        self.assertEqual(categorize('rows without dates in Excel — provide dates'), 'ημερομηνία')
+        self.assertEqual(categorize('something else entirely'), 'άλλο')
+
+class TestPublicHasNoNames(unittest.TestCase):
+    def test_public_summary_is_counts_only(self):
+        plans = {'ΠΑΠΠΗΣ ΓΙΑΝΝΗΣ': {'driver_key': 'ΠΑΠΠΗΣ ΓΙΑΝΝΗΣ', 'driver_id': 8, 'status': 'needs_decision', 'nodes': [], 'batches': [], 'patches': [],
+                 'auto_unmatched': [], 'date_fixes': [], 'needs_decision': ['Φύλλο1 γρ. 5: unrecognised row \'ΔΩΡΟ 150\''], 'expected_total_balance': '79.03', 'create_driver': None}}
+        owner, public = build(plans, {}, {}, [], [])
+        self.assertNotIn('ΠΑΠΠΗΣ', public); self.assertNotIn('79.03', public); self.assertNotIn('ΔΩΡΟ', public)
+        self.assertIn('άγνωστη γραμμή (1)', public)
+        self.assertIn('ΠΑΠΠΗΣ', owner)
+
+if __name__ == '__main__':
+    unittest.main()
+```
+- [ ] **Step 2: Run** `cd tools/ledger-import && python3 -m unittest tests.test_report 2>&1 | tail -2` → `ImportError: cannot import name 'categorize'`.
+- [ ] **Step 3: Implement** in `report.py`: add
+```python
+CATEGORIES = [                       # order matters: first match wins
+    ('επικαλύπτονται', 'επικάλυψη φύλλων'),
+    ('εξοφλήθηκε', 'υπόλοιπο προηγούμενου φύλλου'),
+    ('ΠΡΟΟΔΕΥΤΙΚΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('άθροισμα γραμμών', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('expected_final', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('unrecognised', 'άγνωστη γραμμή'),
+    ('payment keyword', 'άγνωστη γραμμή'),
+    ('advance and expenses', 'άγνωστη γραμμή'),
+    ('κανένα φύλλο', 'χωρίς φύλλο καρτέλας'),
+    ('date', 'ημερομηνία'), ('ημ/ν', 'ημερομηνία'), ('ημερομην', 'ημερομηνία'), ('spike', 'ημερομηνία'),
+    ('υπόλοιπο έναρξης', 'υπόλοιπο έναρξης φύλλου'), ('μεταφορά υπολοίπου', 'υπόλοιπο έναρξης φύλλου'),
+]
+def categorize(text):
+    t = text.lower()
+    for key, cat in CATEGORIES:
+        if key.lower() in t: return cat
+    return 'άλλο'
+```
+and in `build()` replace `decisions[d.split(':')[0]] += 1` with `decisions[categorize(d)] += 1`. The public bullet for categories then prints only `κατηγορία (n)` pairs. Also make sure nothing else in `pub` interpolates a driver key, a note or an amount from a plan (the five bullets are counts only — keep it that way).
+- [ ] **Step 4: Run** the suite → OK (previous + 2). Run `python3 tools/ledger-import/report.py | tail -3` and confirm the last bullet is short.
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/report.py tools/ledger-import/tests/test_report.py
+git commit -q -m "ledger-import: report — fixed decision categories; public summary carries counts only
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
