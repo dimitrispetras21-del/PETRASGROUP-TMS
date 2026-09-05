@@ -42,12 +42,27 @@ const AUDIT_CATEGORY_SOURCES = {
 
 // Human-facing names for the banner; the internal keys are not obvious to a user.
 const AUDIT_SOURCE_LABELS = {
-  orders: 'Orders', natOrders: 'National Orders', natLoads: 'National Loads',
-  trucks: 'Trucks', trailers: 'Trailers', drivers: 'Drivers', partners: 'Partners',
-  locations: 'Locations', clients: 'Clients', ramp: 'Ramp Plan',
-  maintReq: 'Maintenance Requests', plSup: 'Pallet Ledger (Suppliers)',
-  plPart: 'Pallet Ledger (Partners)',
+  orders: 'Παραγγελίες', natOrders: 'Εθνικές Παραγγελίες', natLoads: 'Εθνικά Φορτία',
+  trucks: 'Φορτηγά', trailers: 'Ρυμούλκες', drivers: 'Οδηγοί', partners: 'Συνεργάτες',
+  locations: 'Τοποθεσίες', clients: 'Πελάτες', ramp: 'Ράμπα',
+  maintReq: 'Αιτήματα Συντήρησης', plSup: 'Ισοζύγιο Παλετών (Προμηθευτές)',
+  plPart: 'Ισοζύγιο Παλετών (Συνεργάτες)',
 };
+
+// Page names as the sidebar shows them, read from core/router.js NAV so a
+// cross-check row reads exactly like the menu item the reader must go open —
+// and cannot drift from it (one source of truth). The `page` id stays the
+// router id: that is what readPageMetrics() keys on. Rows keep an explicit
+// `label` only when they name something narrower than the page (a card, a tab).
+function _auditPageName(id) {
+  if (typeof NAV !== 'undefined') {
+    for (const sec of NAV) {
+      const it = (sec.items || []).find(i => i.id === id);
+      if (it) return it.label;
+    }
+  }
+  return id;
+}
 
 // ─── CROSS-CHECKS ────────────────────────────────────────────
 // The point of this page. Each entry names one idea that more than one screen
@@ -71,13 +86,11 @@ const AUDIT_CROSS_CHECKS = [
     canonical: () => (typeof isoWeekNumber === 'function' ? isoWeekNumber(new Date()) : null),
     canonicalLabel: 'isoWeekNumber() — core/utils.js',
     rows: [
-      { page: 'dashboard',    key: 'weekNumber',        label: 'Dashboard' },
-      { page: 'orders_intl',  key: 'weekNumberDefault', label: 'International Orders' },
-      { page: 'performance',  key: 'weekNumberDefault', label: 'My Performance' },
-      { page: 'weekly_intl',  key: 'weekNumberDefault', label: 'Weekly International',
-        note: 'δικός του τύπος _wiCurrentWeek() (Sunday-start)' },
-      { page: 'weekly_natl',  key: 'weekNumberDefault', label: 'Weekly National',
-        note: 'δικός του τύπος _wnCurrentWeek() (Sunday-start)' },
+      { page: 'dashboard',    key: 'weekNumber' },
+      { page: 'orders_intl',  key: 'weekNumberDefault' },
+      { page: 'performance',  key: 'weekNumberDefault' },
+      { page: 'weekly_intl',  key: 'weekNumberDefault', note: 'δικός του τύπος _wiCurrentWeek() (έναρξη Κυριακή)' },
+      { page: 'weekly_natl',  key: 'weekNumberDefault', note: 'δικός του τύπος _wnCurrentWeek() (έναρξη Κυριακή)' },
     ],
   },
   {
@@ -85,13 +98,13 @@ const AUDIT_CROSS_CHECKS = [
     label: 'Ληγμένα έγγραφα στόλου',
     why: 'Τρεις οθόνες, τρία νούμερα. Δύο μετρούν έγγραφα με ΔΙΑΦΟΡΕΤΙΚΑ πεδία, μία μετρά οχήματα.',
     canonical: null,
-    canonicalNote: 'Δεν υπάρχει κανονική μέτρηση στο core/metrics.js — οι σελίδες συγκρίνονται μεταξύ τους, με βάση το Maintenance Dashboard.',
+    canonicalNote: 'Δεν υπάρχει κανονική μέτρηση στο core/metrics.js — οι σελίδες συγκρίνονται μεταξύ τους, με βάση την Επισκόπηση Στόλου.',
     baseline: 'maint_dash',
     rows: [
-      { page: 'maint_dash',   key: 'expiredDocRows',   label: 'Maintenance Dashboard', unit: 'έγγραφα' },
-      { page: 'dashboard',    key: 'expiredFleetDocs', label: 'Dashboard', unit: 'έγγραφα',
-        note: 'ρυμούλκες: KTEO+FRC+Insurance (κοινή λίστα TRAILER_EXPIRY_FIELDS από 26/8)' },
-      { page: 'maint_expiry', key: 'expiredVehicles',  label: 'Expiry Alerts', unit: 'οχήματα',
+      { page: 'maint_dash',   key: 'expiredDocRows',   unit: 'έγγραφα' },
+      { page: 'dashboard',    key: 'expiredFleetDocs', unit: 'έγγραφα',
+        note: 'ρυμούλκες: ΚΤΕΟ+FRC+Ασφάλεια (κοινή λίστα TRAILER_EXPIRY_FIELDS από 26/8)' },
+      { page: 'maint_expiry', key: 'expiredVehicles',  unit: 'οχήματα',
         declared: 'Μετρά ΟΧΗΜΑΤΑ με ≥1 ληγμένο έγγραφο — άλλο μέγεθος, όχι διαφωνία' },
     ],
   },
@@ -103,8 +116,8 @@ const AUDIT_CROSS_CHECKS = [
     canonicalNote: 'Δεν υπάρχει κανονική μέτρηση· οι δύο σελίδες συντήρησης οφείλουν να ταυτίζονται.',
     baseline: 'maint_expiry',
     rows: [
-      { page: 'maint_expiry', key: 'expiredVehicles', label: 'Expiry Alerts', unit: 'οχήματα' },
-      { page: 'maint_dash',   key: 'expiredVehicles', label: 'Maintenance Dashboard', unit: 'οχήματα' },
+      { page: 'maint_expiry', key: 'expiredVehicles', unit: 'οχήματα' },
+      { page: 'maint_dash',   key: 'expiredVehicles', unit: 'οχήματα' },
     ],
   },
   {
@@ -115,10 +128,10 @@ const AUDIT_CROSS_CHECKS = [
       ? metrics.compliancePct(d.trucks).pct : null,
     canonicalLabel: 'metrics.compliancePct() — μόνο ενεργά φορτηγά',
     rows: [
-      { page: 'dashboard',    key: 'compliancePct', label: 'Dashboard', unit: '%' },
-      { page: 'maint_expiry', key: 'compliancePct', label: 'Expiry Alerts', unit: '%',
+      { page: 'dashboard',    key: 'compliancePct', unit: '%' },
+      { page: 'maint_expiry', key: 'compliancePct', unit: '%',
         declared: 'Μετρά φορτηγά + ρυμούλκες — ευρύτερος στόλος από την κανονική' },
-      { page: 'maint_dash',   key: 'compliancePct', label: 'Maintenance Dashboard', unit: '%',
+      { page: 'maint_dash',   key: 'compliancePct', unit: '%',
         declared: 'Μετρά φορτηγά + ρυμούλκες — ευρύτερος στόλος από την κανονική' },
     ],
   },
@@ -141,10 +154,10 @@ const AUDIT_CROSS_CHECKS = [
     baseline: 'performance',
     baselineKey: 'weeklyScore',
     rows: [
-      { page: 'performance', key: 'weeklyScore',      label: 'My Performance — κάρτα KPI', unit: '/100' },
-      { page: 'performance', key: 'weeklyScoreTrend', label: 'My Performance — γράφημα', unit: '/100',
-        note: 'τοπικός τύπος στο _perfTrends(): αντικαθιστά τη συμμόρφωση με empty legs και καρφώνει 50 για dead km' },
-      { page: 'dashboard',   key: 'weeklyScore',      label: 'Dashboard — δαχτυλίδι', unit: '/100' },
+      { page: 'performance', key: 'weeklyScore',      label: 'Η Απόδοσή μου — κάρτα KPI', unit: '/100' },
+      { page: 'performance', key: 'weeklyScoreTrend', label: 'Η Απόδοσή μου — γράφημα', unit: '/100',
+        note: 'τοπικός τύπος στο _perfTrends(): αντικαθιστά τη συμμόρφωση με κενά γυρίσματα και καρφώνει 50 για νεκρά χλμ' },
+      { page: 'dashboard',   key: 'weeklyScore',      label: 'Πίνακας Ελέγχου — δαχτυλίδι', unit: '/100' },
     ],
   },
   {
@@ -159,7 +172,7 @@ const AUDIT_CROSS_CHECKS = [
       { page: 'invoicing', key: 'total',    label: 'Σύνολο παραγγελιών' },
       { page: 'invoicing', key: '_tabSum',  label: 'Άθροισμα των 4 καρτελών',
         compute: v => v.ready + v.overdue + v.blocked + v.invoiced,
-        declared: 'Ξεπερνά το σύνολο εκ κατασκευής — το Overdue είναι φίλτρο ηλικίας πάνω στα ίδια Ready/Blocked, άρα μετριούνται δύο φορές' },
+        declared: 'Ξεπερνά το σύνολο εκ κατασκευής: το Overdue είναι φίλτρο ηλικίας πάνω στα Ready/Blocked, άρα μετριούνται δύο φορές' },
       { page: 'invoicing', key: 'ready',    label: 'Καρτέλα «Ready»',
         declared: 'Υποσύνολο του συνόλου' },
       { page: 'invoicing', key: 'overdue',  label: 'Καρτέλα «Overdue»',
@@ -172,7 +185,7 @@ const AUDIT_CROSS_CHECKS = [
   },
   {
     id: 'expiry_valid_vs_compliant',
-    label: 'Expiry Alerts — «συμμόρφωση» vs «VALID»',
+    label: 'Λήξεις Εγγράφων — «συμμόρφωση» έναντι «VALID»',
     why: 'Στην ίδια οθόνη, δίπλα δίπλα: το ποσοστό συμμόρφωσης βγαίνει από άλλον αριθμό οχημάτων από την κάρτα VALID.',
     canonical: null,
     canonicalNote: 'Εσωτερική συνέπεια μίας σελίδας — δεν υπάρχει κανονική τιμή, βάση είναι ο αριθμητής της συμμόρφωσης.',
@@ -187,7 +200,7 @@ const AUDIT_CROSS_CHECKS = [
   {
     id: 'fleet_trucks',
     label: 'Πλήθος φορτηγών',
-    why: 'Η σελίδα Φορτηγά λέει 36, το Dashboard και η Συντήρηση λένε 27 — χωρίς να γράφει πουθενά γιατί.',
+    why: 'Η σελίδα Φορτηγά λέει 36, ο Πίνακας Ελέγχου και η Συντήρηση λένε 27 — χωρίς να γράφει πουθενά γιατί.',
     canonical: null,
     canonicalNote: 'Δεν υπάρχει κανονική μέτρηση· βάση σύγκρισης τα ενεργά φορτηγά της σελίδας Φορτηγά.',
     baseline: 'trucks',
@@ -196,8 +209,8 @@ const AUDIT_CROSS_CHECKS = [
       { page: 'trucks',     key: 'active',       label: 'Φορτηγά — ενεργά' },
       { page: 'trucks',     key: 'total',        label: 'Φορτηγά — όλες οι εγγραφές',
         declared: 'Περιλαμβάνει και ανενεργά· η σελίδα δεν το δηλώνει στον τίτλο' },
-      { page: 'dashboard',  key: 'activeTrucks', label: 'Dashboard' },
-      { page: 'maint_dash', key: 'activeTrucks', label: 'Maintenance Dashboard' },
+      { page: 'dashboard',  key: 'activeTrucks' },
+      { page: 'maint_dash', key: 'activeTrucks' },
     ],
   },
 ];
@@ -239,7 +252,7 @@ function _auditCrossCompute() {
           value = entry.values[r.key];
         }
       }
-      return Object.assign({}, r, { value, at: entry ? entry.at : null, seen: !!entry });
+      return Object.assign({}, r, { label: r.label || _auditPageName(r.page), value, at: entry ? entry.at : null, seen: !!entry });
     });
 
     // What everything else is measured against: the canonical value when there
@@ -280,7 +293,7 @@ function _auditCrossCompute() {
 async function renderMetricsAudit() {
   const c = document.getElementById('content');
   c.style.padding = '';
-  c.innerHTML = `<div style="text-align:center;padding:60px;color:var(--panel-dim)">Loading audit data...</div>`;
+  c.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-mid);font-size:13px">Φόρτωση δεδομένων ελέγχου…</div>`;
 
   if (AUDIT.fetching) return;
   AUDIT.fetching = true;
@@ -332,7 +345,13 @@ async function renderMetricsAudit() {
   } catch(e) {
     // Static message only: e.message can carry Airtable internals (field names,
     // record IDs) and would land in innerHTML unescaped. Detail goes to the gated log.
-    c.innerHTML = `<div style="padding:40px;color:var(--danger)">Failed to load audit data</div>`;
+    // Failure is not emptiness (DESIGN.md #7): say what happened, what it does
+    // NOT mean, and what to do — and give the retry right here.
+    c.innerHTML = `<div style="padding:16px;border:1px solid var(--danger);border-radius:6px;background:var(--surface-card);font-size:13px;color:var(--text)">
+      <b style="color:var(--danger)">Δεν φορτώθηκαν τα δεδομένα ελέγχου.</b>
+      Δεν σημαίνει ότι οι μετρήσεις είναι λάθος — δεν υπολογίστηκαν καθόλου. Η αποτυχία έχει καταγραφεί.
+      <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="renderMetricsAudit()">Ξαναδοκίμασε</button>
+    </div>`;
     if (typeof logError === 'function') logError(e, 'metrics_audit load');
   } finally {
     AUDIT.fetching = false;
@@ -347,143 +366,147 @@ function _runAllMetrics(d) {
   const add = (category, key, label, value, note, diag) => {
     results.push({ category, key, label, value, note, diag: diag || [] });
   };
+  // A percentage with no denominator is unknown, not 0% (DESIGN.md #3): "0%
+  // on time" out of zero deliveries would read as a perfect failure.
+  const pct = (p, total) => (total > 0 ? p + '%' : '—');
+  const eur = n => '€' + n.toLocaleString('el-GR');
 
   // ════ OPERATIONAL ═══════════════════════════════
   try {
     const unassignedExp = metrics.unassignedOrders(d.orders, { direction: 'Export', period: period30 });
-    add('op', 'op.unassigned_export', 'Unassigned Exports (30d)', unassignedExp, 'Orders without truck/partner');
+    add('op', 'op.unassigned_export', 'Εξαγωγές χωρίς ανάθεση (30ημ)', unassignedExp, 'Παραγγελίες χωρίς φορτηγό/συνεργάτη');
 
     const unassignedImp = metrics.unassignedOrders(d.orders, { direction: 'Import', period: period30 });
-    add('op', 'op.unassigned_import', 'Unassigned Imports (30d)', unassignedImp);
+    add('op', 'op.unassigned_import', 'Εισαγωγές χωρίς ανάθεση (30ημ)', unassignedImp);
 
     const pending = metrics.pendingToday(d.orders);
-    add('op', 'op.pending_today', 'Pending Today', pending, "Loading date=today, not started");
+    add('op', 'op.pending_today', 'Εκκρεμείς σήμερα', pending, 'Φόρτωση σήμερα, δεν ξεκίνησαν');
 
     const loadDone = metrics.loadingsDone(d.orders);
-    add('op', 'op.loadings_today_done', 'Loadings Done Today', loadDone);
+    add('op', 'op.loadings_today_done', 'Φορτώσεις που έγιναν σήμερα', loadDone);
 
     const delDone = metrics.deliveriesDone(d.orders);
-    add('op', 'op.deliveries_today_done', 'Deliveries Done Today', delDone);
+    add('op', 'op.deliveries_today_done', 'Παραδόσεις που έγιναν σήμερα', delDone);
 
     const chkProg = metrics.checklistProgress(d.orders);
-    add('op', 'op.checklist_pct', 'Checklist Progress (all orders)', chkProg.pct + '%', `${chkProg.done}/${chkProg.total} checks`);
+    add('op', 'op.checklist_pct', 'Πρόοδος λίστας ελέγχου (όλες)', pct(chkProg.pct, chkProg.total), `${chkProg.done}/${chkProg.total} έλεγχοι`);
 
     const overdue = metrics.overdueDeliveries(d.orders);
-    add('op', 'op.overdue_deliveries', 'Overdue Deliveries', overdue.length, 'Delivery date past, not yet delivered',
-      overdue.length > 0 ? [`Sample: ${overdue.slice(0,3).map(r => r.fields['Order Number']||r.id.slice(-6)).join(', ')}`] : []);
+    add('op', 'op.overdue_deliveries', 'Καθυστερημένες παραδόσεις', overdue.length, 'Η ημερομηνία παράδοσης πέρασε, δεν παραδόθηκαν',
+      overdue.length > 0 ? [`Δείγμα: ${overdue.slice(0,3).map(r => r.fields['Order Number']||r.id.slice(-6)).join(', ')}`] : []);
 
     const highRisk = metrics.highRiskDeliveries(d.orders);
-    add('op', 'op.high_risk', 'High-Risk Deliveries (<48h unassigned)', highRisk);
+    add('op', 'op.high_risk', 'Παραδόσεις υψηλού ρίσκου (<48ω χωρίς ανάθεση)', highRisk);
 
     const flow = metrics.rampPalletFlow(d.ramp);
-    add('op', 'op.pallet_flow', 'Ramp Pallet Flow Today', `${flow.inbound} IN / ${flow.outbound} OUT / ${flow.net} NET`, 'RAMP records');
+    add('op', 'op.pallet_flow', 'Ροή παλετών ράμπας σήμερα', `${flow.inbound} ΕΙΣ / ${flow.outbound} ΕΞ / ${flow.net} ΚΑΘ.`, 'εγγραφές ράμπας');
 
     const stock = metrics.stockInWarehouse(d.ramp);
-    add('op', 'op.stock_pallets', 'Stock in Warehouse', stock + ' pallets', 'Done + In Stock');
-  } catch(e) { add('op', '_error', 'OP error', 'ERR: '+e.message); }
+    add('op', 'op.stock_pallets', 'Απόθεμα στην αποθήκη', stock + ' παλέτες', 'Done + In Stock');
+  } catch(e) { add('op', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ PERFORMANCE ══════════════════════════════
   try {
     const otAll = metrics.onTimePct(d.orders);
-    add('perf', 'perf.on_time_pct', 'On-Time % (all-time)', otAll.pct + '%', `${otAll.onTime}/${otAll.total} with performance set`,
-      otAll.total === 0 ? ['⚠ No orders with Delivery Performance set — cannot compute'] : []);
+    add('perf', 'perf.on_time_pct', 'Εμπρόθεσμες % (συνολικά)', pct(otAll.pct, otAll.total), `${otAll.onTime}/${otAll.total} με καταχωρημένη επίδοση`,
+      otAll.total === 0 ? ['⚠ Καμία παραγγελία με Delivery Performance — δεν υπολογίζεται'] : []);
 
     const ot30 = metrics.onTimePct(d.orders, { period: { daysBack: 30 } });
-    add('perf', 'perf.on_time_pct_30d', 'On-Time % (30 days)', ot30.pct + '%', `${ot30.onTime}/${ot30.total}`);
+    add('perf', 'perf.on_time_pct_30d', 'Εμπρόθεσμες % (30ημ)', pct(ot30.pct, ot30.total), `${ot30.onTime}/${ot30.total}`);
 
     const cmr = metrics.cmrSameDayPct(d.orders, { period: period30 });
-    add('perf', 'perf.cmr_pct', 'CMR Received % (30d delivered)', cmr.pct + '%', `${cmr.withCMR}/${cmr.total}`);
+    add('perf', 'perf.cmr_pct', 'CMR παρελήφθη % (παραδόσεις 30ημ)', pct(cmr.pct, cmr.total), `${cmr.withCMR}/${cmr.total}`);
 
     const clientUp = metrics.clientUpdatePct(d.orders, { period: period30 });
-    add('perf', 'perf.client_update_pct', 'Client Notified % (30d delivered)', clientUp.pct + '%', `${clientUp.notified}/${clientUp.total}`);
+    add('perf', 'perf.client_update_pct', 'Ενημέρωση πελάτη % (παραδόσεις 30ημ)', pct(clientUp.pct, clientUp.total), `${clientUp.notified}/${clientUp.total}`);
 
     const streak = metrics.onTimeStreak(d.orders, { currentWeek: curWeek, threshold: 90 });
-    add('perf', 'perf.on_time_streak', 'On-Time Streak (weeks ≥90%)', streak + ' weeks');
+    add('perf', 'perf.on_time_streak', 'Σερί εμπρόθεσμων (εβδομάδες ≥90%)', streak + ' εβδ.');
 
     const trend = metrics.onTimeTrend(d.orders, { weeks: 4, currentWeek: curWeek });
-    add('perf', 'perf.on_time_trend', 'On-Time Trend (last 4 weeks)',
-      trend.map(t => `W${t.week}: ${t.pct}%(${t.total})`).join(' | '));
+    add('perf', 'perf.on_time_trend', 'Τάση εμπρόθεσμων (4 εβδομάδες)',
+      trend.map(t => `Ε${t.week}: ${pct(t.pct, t.total)} (${t.total})`).join(' · '));
 
     const exports = d.orders.filter(r => r.fields['Direction'] === 'Export');
     const imports = d.orders.filter(r => r.fields['Direction'] === 'Import');
     const el = metrics.emptyLegs(exports, imports);
-    add('perf', 'perf.empty_legs', 'Empty Legs (heuristic)', el.total, `${el.soloExp} solo exp + ${el.soloImp} solo imp`);
-  } catch(e) { add('perf', '_error', 'PERF error', 'ERR: '+e.message); }
+    add('perf', 'perf.empty_legs', 'Κενά γυρίσματα (εκτίμηση)', el.total, `${el.soloExp} μόνες εξαγωγές + ${el.soloImp} μόνες εισαγωγές`);
+  } catch(e) { add('perf', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ FINANCIAL ══════════════════════════════════
   try {
     const out = metrics.outstandingBalance(d.orders, d.natOrders);
-    add('fin', 'fin.outstanding_balance', 'Outstanding Balance', `€${out.toLocaleString('el-GR')}`,
-      'Delivered but not Invoiced', out === 0 ? ['⚠ Zero — check Invoiced field and Status values'] : []);
+    add('fin', 'fin.outstanding_balance', 'Ανεξόφλητο υπόλοιπο', eur(out),
+      'Παραδόθηκαν, δεν τιμολογήθηκαν', out === 0 ? ['⚠ Μηδέν — έλεγξε το πεδίο Invoiced και τις τιμές Status'] : []);
 
     const revInv = metrics.revenueInvoiced(d.orders, d.natOrders);
-    add('fin', 'fin.revenue_invoiced', 'Revenue (Invoiced total)', `€${revInv.toLocaleString('el-GR')}`, 'All-time');
+    add('fin', 'fin.revenue_invoiced', 'Έσοδα (τιμολογημένα σύνολο)', eur(revInv), 'Συνολικά');
 
     const rev30 = metrics.revenueInvoiced(d.orders, d.natOrders, { period: period30 });
-    add('fin', 'fin.revenue_invoiced_30d', 'Revenue Invoiced (30d)', `€${rev30.toLocaleString('el-GR')}`);
+    add('fin', 'fin.revenue_invoiced_30d', 'Έσοδα τιμολογημένα (30ημ)', eur(rev30));
 
     const ready = metrics.revenueReadyToInvoice(d.orders);
-    add('fin', 'fin.revenue_ready', 'Revenue Ready to Invoice', `€${ready.toLocaleString('el-GR')}`, 'Delivered + sheets OK');
+    add('fin', 'fin.revenue_ready', 'Έσοδα έτοιμα για τιμολόγηση', eur(ready), 'Παραδόθηκαν + δελτία εντάξει');
 
     const overdueInv = metrics.overdueInvoices(d.orders);
-    add('fin', 'fin.overdue_invoices', 'Overdue Invoices (>30d)', overdueInv.length);
+    add('fin', 'fin.overdue_invoices', 'Εκπρόθεσμα τιμολόγια (>30ημ)', overdueInv.length);
 
     const palSup = metrics.palletBalance(d.plSup, { counterpartyField: 'Loading Supplier' });
-    add('fin', 'fin.pallet_balance_sup', 'Suppliers Net Pallets Owed', palSup.total,
-      `${Object.keys(palSup.balances).length} suppliers`);
+    add('fin', 'fin.pallet_balance_sup', 'Καθαρό ισοζύγιο παλετών προμηθευτών', palSup.total,
+      `${Object.keys(palSup.balances).length} προμηθευτές`);
 
     const palPart = metrics.palletBalance(d.plPart, { counterpartyField: 'Partner' });
-    add('fin', 'fin.pallet_balance_part', 'Partners Net Pallets Owed', palPart.total,
-      `${Object.keys(palPart.balances).length} partners`);
-  } catch(e) { add('fin', '_error', 'FIN error', 'ERR: '+e.message); }
+    add('fin', 'fin.pallet_balance_part', 'Καθαρό ισοζύγιο παλετών συνεργατών', palPart.total,
+      `${Object.keys(palPart.balances).length} συνεργάτες`);
+  } catch(e) { add('fin', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ FLEET ═══════════════════════════════════════
   try {
     const util = metrics.fleetUtilization(d.trucks, d.orders, { week: curWeek });
-    add('fleet', 'fleet.utilization', 'Fleet Utilization (this week)', util.pct + '%', `${util.busy}/${util.total} busy`);
+    add('fleet', 'fleet.utilization', 'Αξιοποίηση στόλου (τρέχουσα εβδ.)', pct(util.pct, util.total), `${util.busy}/${util.total} απασχολημένα`);
 
     const idle = metrics.idleTrucks(d.trucks, d.orders, { week: curWeek });
-    add('fleet', 'fleet.idle', 'Idle Trucks (this week)', idle);
+    add('fleet', 'fleet.idle', 'Αδρανή φορτηγά (τρέχουσα εβδ.)', idle);
 
     const expAlerts = metrics.expiryAlerts(d.trucks, { daysAhead: 30 });
-    add('fleet', 'fleet.expiry_30d', 'Trucks with Expiring Docs (30d)',
-      `${expAlerts.total} trucks`, `KTEO: ${expAlerts.kteo.length}, KEK: ${expAlerts.kek.length}, Insurance: ${expAlerts.insurance.length}`);
+    add('fleet', 'fleet.expiry_30d', 'Φορτηγά με έγγραφα προς λήξη (30ημ)',
+      `${expAlerts.total} φορτηγά`, `ΚΤΕΟ: ${expAlerts.kteo.length}, ΚΕΚ: ${expAlerts.kek.length}, Ασφάλεια: ${expAlerts.insurance.length}`);
 
     const trailAlerts = metrics.expiryAlertsTrailers(d.trailers, { daysAhead: 30 });
-    add('fleet', 'fleet.expiry_trailers', 'Trailers with Expiring Docs (30d)',
-      `${trailAlerts.total} trailers`, `KTEO: ${trailAlerts.kteo.length}, FRC: ${trailAlerts.frc.length}, Insurance: ${trailAlerts.insurance.length}`);
+    add('fleet', 'fleet.expiry_trailers', 'Ρυμούλκες με έγγραφα προς λήξη (30ημ)',
+      `${trailAlerts.total} ρυμούλκες`, `ΚΤΕΟ: ${trailAlerts.kteo.length}, FRC: ${trailAlerts.frc.length}, Ασφάλεια: ${trailAlerts.insurance.length}`);
 
     const comp = metrics.compliancePct(d.trucks);
-    add('fleet', 'fleet.compliance', 'Compliance % (all docs valid)', comp.pct + '%', `${comp.valid}/${comp.total} active trucks`);
+    add('fleet', 'fleet.compliance', 'Συμμόρφωση % (όλα τα έγγραφα σε ισχύ)', pct(comp.pct, comp.total), `${comp.valid}/${comp.total} ενεργά φορτηγά`);
 
     const down = metrics.fleetDowntime(d.maintReq);
-    add('fleet', 'fleet.downtime', 'Fleet Downtime (est)', down + ' hrs', `Based on ${d.maintReq.filter(r=>r.fields['Status']!=='Done').length} pending maintenance`);
-  } catch(e) { add('fleet', '_error', 'FLEET error', 'ERR: '+e.message); }
+    add('fleet', 'fleet.downtime', 'Ακινησία στόλου (εκτίμηση)', down + ' ώρες', `Με βάση ${d.maintReq.filter(r=>r.fields['Status']!=='Done').length} εκκρεμή αιτήματα συντήρησης`);
+  } catch(e) { add('fleet', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ HR ═════════════════════════════════════════
   try {
     const ar = metrics.assignmentRate(d.orders, { week: curWeek });
-    add('hr', 'hr.assignment_rate', 'Assignment Rate (this week)', ar.pct + '%', `${ar.assigned}/${ar.total}`);
+    add('hr', 'hr.assignment_rate', 'Ποσοστό ανάθεσης (τρέχουσα εβδ.)', pct(ar.pct, ar.total), `${ar.assigned}/${ar.total}`);
 
     const ptp = metrics.partnerTripPct(d.orders, { week: curWeek });
-    add('hr', 'hr.partner_trip_pct', 'Partner Trip % (this week)', ptp.pct + '%', `${ptp.partners}/${ptp.assigned} of assigned`);
+    add('hr', 'hr.partner_trip_pct', 'Δρομολόγια συνεργατών % (τρέχουσα εβδ.)', pct(ptp.pct, ptp.assigned), `${ptp.partners}/${ptp.assigned} των ανατεθειμένων`);
 
     const wor = metrics.workOrdersResolvedPct(d.maintReq);
-    add('hr', 'hr.work_orders_resolved', 'Work Orders Resolved %', wor.pct + '%', `${wor.resolved}/${wor.total}`);
+    add('hr', 'hr.work_orders_resolved', 'Εντολές εργασίας που έκλεισαν %', pct(wor.pct, wor.total), `${wor.resolved}/${wor.total}`);
 
     const crisis = metrics.crisisEventsResolved(d.maintReq);
-    add('hr', 'hr.crisis_resolved', 'Crisis Events Resolved', crisis);
-  } catch(e) { add('hr', '_error', 'HR error', 'ERR: '+e.message); }
+    add('hr', 'hr.crisis_resolved', 'Επείγοντα που έκλεισαν', crisis);
+  } catch(e) { add('hr', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ INVENTORY ═════════════════════════════════
   try {
     const sheets = metrics.palletSheetsComplete(d.orders);
-    add('inv', 'inv.sheets_complete', 'PE Sheets Complete %', sheets.pct + '%', `${sheets.complete}/${sheets.total} orders with PE`);
+    add('inv', 'inv.sheets_complete', 'Δελτία PE πλήρη %', pct(sheets.pct, sheets.total), `${sheets.complete}/${sheets.total} παραγγελίες με PE`);
 
     const ages = metrics.stockAgeBuckets(d.ramp);
-    add('inv', 'inv.stock_age', 'Stock Age Buckets',
-      `Fresh(≤1d): ${ages.fresh_le_1d} · Aging(2-3d): ${ages.aging_2_3d} · Old(>3d): ${ages.old_gt_3d}`);
-  } catch(e) { add('inv', '_error', 'INV error', 'ERR: '+e.message); }
+    add('inv', 'inv.stock_age', 'Ηλικία αποθέματος',
+      `≤1ημ: ${ages.fresh_le_1d} · 2-3ημ: ${ages.aging_2_3d} · >3ημ: ${ages.old_gt_3d}`);
+  } catch(e) { add('inv', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   // ════ BUSINESS HEALTH ═══════════════════════════
   try {
@@ -493,17 +516,71 @@ function _runAllMetrics(d) {
     const score = metrics.weeklyScore({
       assignment_rate: ar.pct, on_time: ot.pct, compliance: comp.pct, dead_km_score: 75,
     });
-    add('biz', 'biz.weekly_score', 'Weekly Score (composite)', score.score + '/100',
-      `${score.color.toUpperCase()} · AR:${ar.pct}% OT:${ot.pct}% Comp:${comp.pct}% DKS:75%(est)`);
+    add('biz', 'biz.weekly_score', 'Εβδομαδιαίο σκορ (σύνθετο)', score.score + '/100',
+      `${({ green: 'ΠΡΑΣΙΝΟ', yellow: 'ΚΙΤΡΙΝΟ', red: 'ΚΟΚΚΙΝΟ' })[score.color] || score.color} · ανάθεση ${pct(ar.pct, ar.total)} · εμπρόθεσμες ${pct(ot.pct, ot.total)} · συμμόρφωση ${pct(comp.pct, comp.total)} · νεκρά χλμ 75% (εκτίμηση)`);
 
     const impCount = d.orders.filter(r => r.fields['Direction']==='Import' && r.fields['Week Number']===curWeek).length;
     const expCount = d.orders.filter(r => r.fields['Direction']==='Export' && r.fields['Week Number']===curWeek).length;
     const imb = metrics.directionImbalance(expCount, impCount);
-    add('biz', 'biz.imbalance', 'Direction Imbalance (this week)', imb, `${expCount} exports vs ${impCount} imports`);
-  } catch(e) { add('biz', '_error', 'BIZ error', 'ERR: '+e.message); }
+    add('biz', 'biz.imbalance', 'Ανισορροπία κατεύθυνσης (τρέχουσα εβδ.)', imb, `${expCount} εξαγωγές έναντι ${impCount} εισαγωγών`);
+  } catch(e) { add('biz', '_error', 'Σφάλμα υπολογισμού', 'ΣΦΑΛΜΑ: '+e.message); }
 
   return results;
 }
+
+// Scoped styles for this page. They live in the module rather than style.css
+// because this is an internal audit tool: it must not add weight to the
+// stylesheet every production screen loads. Colours are tokens only (DESIGN.md
+// ΜΕΡΟΣ Β); the per-category tints the page used to have are gone on purpose —
+// the category name is the meaning, the colour was decoration.
+const AUDIT_CSS = `
+.ma-wrap{font-size:13px;color:var(--text)}
+.ma-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+.ma-title{font-family:'Syne',sans-serif;font-size:18px;font-weight:700;color:var(--text);margin:0}
+.ma-sub{font-size:12px;color:var(--text-mid);margin-top:4px}
+.ma-actions{display:flex;gap:8px}
+.ma-status{padding:8px 12px;border:1px solid;border-radius:6px;margin-bottom:8px;font-size:13px;font-weight:700;background:var(--surface-card)}
+.ma-status.ok{border-color:var(--ok);color:var(--ok)}
+.ma-status.bad{border-color:var(--danger);color:var(--danger)}
+.ma-status small{font-weight:400;font-size:12px;color:var(--text-mid)}
+.ma-note{background:var(--surface-sunken);border:1px solid var(--border);color:var(--text-mid);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:12px;line-height:1.4}
+.ma-note b{color:var(--text)}
+.ma-warn{background:var(--warn-bg);border:1px solid var(--warn-border);color:var(--warn);padding:8px 12px;border-radius:6px;margin-bottom:12px;font-size:13px;line-height:1.4}
+.ma-section{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:var(--text-mid);margin:0 0 8px}
+.ma-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(720px,1fr));gap:12px;margin-bottom:16px}
+.ma-card{background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:12px;min-width:0}
+.ma-card-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+.ma-card-title{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:var(--text)}
+.ma-card-title.bad{color:var(--danger)}
+.ma-cat-title{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:var(--text);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.ma-why{font-size:12px;color:var(--text-mid);margin-bottom:4px}
+.ma-canon{font-size:12px;color:var(--text-mid);margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+.ma-canon b{color:var(--text);font-variant-numeric:tabular-nums}
+.ma-k{font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim)}
+.ma-badge{font-size:11px;font-weight:700;padding:0 8px;border-radius:9999px;border:1px solid var(--danger);color:var(--danger);white-space:nowrap;font-variant-numeric:tabular-nums}
+.ma-table{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.ma-table th{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim);padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
+.ma-table td{padding:4px 8px;border-bottom:1px solid var(--border);vertical-align:middle;line-height:1.25;overflow-wrap:break-word;color:var(--text)}
+.ma-table tbody tr:hover td{background:var(--surface-sunken)}
+.ma-table .r{text-align:right}
+.ma-num{font-variant-numeric:tabular-nums;font-weight:700}
+.ma-dim{color:var(--text-dim);font-weight:400}
+.ma-lbl{font-weight:600}
+.ma-key{font-family:monospace;font-size:11px;color:var(--text-dim)}
+.ma-sec{font-size:11px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.ma-row-fault td:first-child{box-shadow:inset 3px 0 0 var(--danger)}
+.ma-row-declared td,.ma-row-warn td{background:var(--warn-bg)}
+.ma-row-declared td:first-child,.ma-row-warn td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+.ma-ok{color:var(--ok);font-weight:700}
+.ma-bad{color:var(--danger);font-weight:700}
+.ma-warnt{color:var(--warn)}
+.ma-filters{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 12px}
+.ma-search{flex:1;min-width:200px;height:28px;padding:0 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif;color:var(--text);background:var(--surface-card)}
+.ma-tab.on{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--text-on-dark)}
+.ma-tab .ma-cnt{font-variant-numeric:tabular-nums;font-weight:400;margin-left:4px}
+.ma-empty{background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:16px;color:var(--text-mid);font-size:13px}
+.ma-legend{background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:12px;margin-top:12px;font-size:12px;color:var(--text-mid)}
+`;
 
 /**
  * Render the cross-check section: canonical value · page value · difference.
@@ -513,75 +590,74 @@ function _runAllMetrics(d) {
 function _auditCrossHTML(cross, q) {
   const match = chk => !q
     || chk.label.toLowerCase().includes(q)
-    || chk.rows.some(r => r.label.toLowerCase().includes(q) || r.page.includes(q) || r.key.toLowerCase().includes(q));
+    || chk.rows.some(r => (r.label || '').toLowerCase().includes(q) || r.page.includes(q) || r.key.toLowerCase().includes(q));
   const visible = cross.checks.filter(match);
 
   if (!visible.length) {
-    return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px;color:var(--text-dim);font-size:13px">
-      Καμία διασταύρωση δεν ταιριάζει με «${escapeHtml(q)}».
-    </div>`;
+    return `<div class="ma-empty">Καμία διασταύρωση δεν ταιριάζει με «${escapeHtml(q)}».</div>`;
   }
 
   const cell = (r) => {
     // Not opened yet is a different state from opened-and-reported-nothing, and
     // the difference matters: the first is "go look at that page", the second
     // is "that page stopped reporting this figure".
-    if (!r.seen)          return `<span style="color:var(--text-dim)" title="Άνοιξε τη σελίδα για να καταγραφεί">δεν άνοιξε</span>`;
-    if (r.value === null) return `<span style="color:var(--text-dim)">δεν αναφέρθηκε</span>`;
-    return `<b>${r.value}${r.unit ? ' ' + escapeHtml(r.unit) : ''}</b>`;
+    if (!r.seen)          return `<span class="ma-dim" title="Άνοιξε τη σελίδα για να καταγραφεί">δεν άνοιξε</span>`;
+    if (r.value === null) return `<span class="ma-dim">δεν αναφέρθηκε</span>`;
+    // The capture time sits under the value, not in the note: the note column
+    // already carries the explanation and a third line there pushes the row
+    // past 44px.
+    const at = r.at ? `<div class="ma-sec">${new Date(r.at).toLocaleTimeString('el-GR')}</div>` : '';
+    return `<span class="ma-num">${r.value}${r.unit ? ' ' + escapeHtml(r.unit) : ''}</span>${at}`;
   };
 
+  // Colour never carries the meaning alone (DESIGN.md #2): every non-zero
+  // difference is labelled "διαφορά" or "δηλωμένη" next to its number.
   const diffCell = (r) => {
-    if (r.diff === null) return `<span style="color:var(--text-dim)">—</span>`;
-    if (r.isBase)        return `<span style="color:var(--text-dim)">βάση</span>`;
-    if (r.diff === 0)    return `<span style="color:var(--success)">✓ ίδιο</span>`;
+    if (r.diff === null) return `<span class="ma-dim">—</span>`;
+    if (r.isBase)        return `<span class="ma-dim">βάση</span>`;
+    if (r.diff === 0)    return `<span class="ma-ok">✓ ίδιο</span>`;
     const sign = r.diff > 0 ? '+' : '';
-    const color = r.declared ? 'var(--warning)' : 'var(--danger)';
-    return `<b style="color:${color}">${r.declared ? '' : '🔴 '}${sign}${r.diff}</b>`;
+    return r.declared
+      ? `<span class="ma-warnt ma-num">${sign}${r.diff} δηλωμένη</span>`
+      : `<span class="ma-bad ma-num">${sign}${r.diff} διαφορά</span>`;
   };
 
   return visible.map(chk => {
     const faults = chk.rows.filter(r => r.fault).length;
     const canonLine = chk.canonical !== null
-      ? `<b>${chk.canonical}</b> <span style="color:var(--text-dim)">· ${escapeHtml(chk.canonicalLabel || 'core/metrics.js')}</span>`
-      : `<span style="color:var(--text-dim)">${escapeHtml(chk.canonicalNote || 'Δεν υπάρχει κανονική τιμή.')}</span>`;
+      ? `<b>${chk.canonical}</b> <span class="ma-dim">· ${escapeHtml(chk.canonicalLabel || 'core/metrics.js')}</span>`
+      : `<span class="ma-dim">${escapeHtml(chk.canonicalNote || 'Δεν υπάρχει κανονική τιμή.')}</span>`;
 
     return `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px">
-        <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:${faults ? 'var(--danger)' : 'var(--accent)'}">
-          ${escapeHtml(chk.label)}
-        </div>
-        ${faults ? `<span style="background:var(--danger-bg);color:var(--danger);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px">${faults} ${faults === 1 ? 'διαφορά' : 'διαφορές'}</span>` : ''}
+    <div class="ma-card">
+      <div class="ma-card-head">
+        <div class="ma-card-title${faults ? ' bad' : ''}">${escapeHtml(chk.label)}</div>
+        ${faults ? `<span class="ma-badge">${faults} ${faults === 1 ? 'διαφορά' : 'διαφορές'}</span>` : ''}
       </div>
-      <div style="font-size:11px;color:var(--text-dim);margin-bottom:8px">${escapeHtml(chk.why)}</div>
-      <div style="font-size:12px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">
-        <span style="font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-dim)">Κανονική τιμή</span>
-        &nbsp;${canonLine}
-      </div>
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
-          <th style="text-align:left;padding:6px 8px;width:34%">Σελίδα</th>
-          <th style="text-align:right;padding:6px 8px;width:16%">Τιμή σελίδας</th>
-          <th style="text-align:right;padding:6px 8px;width:14%">Διαφορά</th>
-          <th style="text-align:left;padding:6px 8px;width:36%">Σημείωση</th>
+      <div class="ma-why">${escapeHtml(chk.why)}</div>
+      <div class="ma-canon"><span class="ma-k">Κανονική τιμή</span> &nbsp;${canonLine}</div>
+      <table class="ma-table">
+        <thead><tr>
+          <th style="width:28%">Σελίδα</th>
+          <th class="r" style="width:12%">Τιμή σελίδας</th>
+          <th class="r" style="width:11%">Διαφορά</th>
+          <th style="width:49%">Σημείωση</th>
         </tr></thead>
         <tbody>
           ${chk.rows.map(r => {
-            // Declared differences get the warm tint, real ones the red: the
-            // reader must be able to tell "this is expected and here is why"
+            // Declared differences get the warm tint, real ones the red stripe:
+            // the reader must be able to tell "this is expected and here is why"
             // from "nobody knows why these disagree" at a glance.
-            const bg = r.fault ? 'background:var(--danger-bg);'
-                     : (r.declared && r.diff !== null && r.diff !== 0) ? 'background:var(--warning-bg);' : '';
+            const cls = r.fault ? 'ma-row-fault'
+                      : (r.declared && r.diff !== null && r.diff !== 0) ? 'ma-row-declared' : '';
             const note = r.declared
-              ? `<span style="color:var(--warning)">Δηλωμένη διαφορά: ${escapeHtml(r.declared)}</span>`
-              : (r.note ? `<span style="color:var(--text-dim)">${escapeHtml(r.note)}</span>` : '');
-            return `<tr style="border-bottom:1px solid var(--border);${bg}">
-              <td style="padding:8px;font-weight:600">${escapeHtml(r.label)}
-                <div style="font-family:monospace;font-size:10px;color:var(--text-dim)">${escapeHtml(r.page)}.${escapeHtml(r.key)}</div></td>
-              <td style="padding:8px;text-align:right;font-family:'Syne',sans-serif;font-size:15px">${cell(r)}</td>
-              <td style="padding:8px;text-align:right;font-size:12px">${diffCell(r)}</td>
-              <td style="padding:8px;font-size:11px">${note}${r.at ? `<div style="color:var(--text-dim);font-size:10px">καταγράφηκε ${new Date(r.at).toLocaleTimeString('el-GR')}</div>` : ''}</td>
+              ? `<span class="ma-warnt">Δηλωμένη: ${escapeHtml(r.declared)}</span>`
+              : (r.note ? `<span class="ma-dim">${escapeHtml(r.note)}</span>` : '');
+            return `<tr class="${cls}">
+              <td><div class="ma-lbl">${escapeHtml(r.label)}</div><div class="ma-key">${escapeHtml(r.page)}.${escapeHtml(r.key)}</div></td>
+              <td class="r">${cell(r)}</td>
+              <td class="r" style="font-size:12px">${diffCell(r)}</td>
+              <td style="font-size:11px">${note}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -618,13 +694,13 @@ function _auditDraw() {
   });
 
   const catLabels = {
-    op: { name: 'ΛΕΙΤΟΥΡΓΙΚΕΣ', ic: 'target', color: 'var(--accent)' },
-    perf: { name: 'ΑΠΟΔΟΣΗ', ic: 'bar_chart', color: 'var(--panel-ok)' },
-    fin: { name: 'ΟΙΚΟΝΟΜΙΚΕΣ', ic: 'euro', color: 'var(--panel-warn)' },
-    fleet: { name: 'ΣΤΟΛΟΣ', ic: 'truck', color: '#8B5CF6' },
-    hr: { name: 'ΟΜΑΔΑ', ic: 'users', color: '#EC4899' },
-    inv: { name: 'ΑΠΟΘΕΜΑ', ic: 'package', color: '#06B6D4' },
-    biz: { name: 'ΕΠΙΧΕΙΡΗΣΗ', ic: 'building', color: '#1E40AF' },
+    op: { name: 'ΛΕΙΤΟΥΡΓΙΚΕΣ', ic: 'target' },
+    perf: { name: 'ΑΠΟΔΟΣΗ', ic: 'bar_chart' },
+    fin: { name: 'ΟΙΚΟΝΟΜΙΚΕΣ', ic: 'euro' },
+    fleet: { name: 'ΣΤΟΛΟΣ', ic: 'truck' },
+    hr: { name: 'ΟΜΑΔΑ', ic: 'users' },
+    inv: { name: 'ΑΠΟΘΕΜΑ', ic: 'package' },
+    biz: { name: 'ΕΠΙΧΕΙΡΗΣΗ', ic: 'building' },
   };
 
   // Sources that failed to load on this run. On a healthy load this is empty
@@ -636,58 +712,63 @@ function _auditDraw() {
   // computed from nothing: before this, an unreachable table just produced
   // zeroes that looked like real zeroes on the page meant to verify accuracy.
   const failBanner = failed.length ? `
-    <div style="background:var(--warning-soft);border:1px solid var(--panel-warn);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;color:#78350F">
-      <b>⚠ Some figures below may be wrong.</b>
-      ${failedLabels.length} source ${failedLabels.length === 1 ? 'table' : 'tables'} could not be loaded:
+    <div class="ma-warn">
+      <b>⚠ Κάποια νούμερα παρακάτω μπορεί να είναι λάθος.</b>
+      Δεν φορτώθηκαν ${failedLabels.length} ${failedLabels.length === 1 ? 'πίνακας' : 'πίνακες'}:
       <b>${failedLabels.map(escapeHtml).join(', ')}</b>.
-      Metrics computed from ${failedLabels.length === 1 ? 'it' : 'them'} are shown as
-      <b>unavailable</b> rather than zero. Reload to retry; the failure has been reported.
+      Οι μετρήσεις που ${failedLabels.length === 1 ? 'τον' : 'τους'} διαβάζουν εμφανίζονται ως «—», όχι ως μηδέν —
+      δεν σημαίνει ότι είναι μηδέν. Πάτησε «Ανανέωση» για νέα προσπάθεια· η αποτυχία έχει καταγραφεί.
     </div>` : '';
 
+  // MA-6: 38 rows over 2.627px meant scanning four screens to find one
+  // metric. Search matches the human label, the key, and the note.
+  const filtered = cat => (byCategory[cat] || []).filter(r => !q
+    || r.label.toLowerCase().includes(q)
+    || r.key.toLowerCase().includes(q)
+    || String(r.note || '').toLowerCase().includes(q));
+
   const catHTML = cat => {
-    const label = catLabels[cat] || { name: cat, color: '#6B7280' };
-    // MA-6: 38 rows over 2.627px meant scanning four screens to find one
-    // metric. Search matches the human label, the key, and the note.
-    const items = (byCategory[cat] || []).filter(r => !q
-      || r.label.toLowerCase().includes(q)
-      || r.key.toLowerCase().includes(q)
-      || String(r.note || '').toLowerCase().includes(q));
+    const label = catLabels[cat] || { name: cat };
+    const items = filtered(cat);
     if (!items.length) return '';
     // Does this category read any source that failed? If so its numbers are
     // not trustworthy, and saying so beats printing a confident zero.
     const catFailed = (AUDIT_CATEGORY_SOURCES[cat] || []).filter(s => failed.includes(s));
     const catWarn = catFailed.length ? `
-      <div style="font-size:11px;color:#B45309;margin:-6px 0 10px;font-weight:600">
-        ⚠ Unreliable: ${catFailed.map(s => escapeHtml(AUDIT_SOURCE_LABELS[s] || s)).join(', ')} could not be loaded
+      <div class="ma-warnt" style="font-size:11px;font-weight:600;margin:-4px 0 8px">
+        ⚠ Αναξιόπιστες: δεν φορτώθηκε ${catFailed.map(s => escapeHtml(AUDIT_SOURCE_LABELS[s] || s)).join(', ')}
       </div>` : '';
     return `
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:12px">
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:${label.color};margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid ${label.color}33">${(typeof icon==='function'&&label.ic)?icon(label.ic,12):''} ${label.name}</div>
+    <div class="ma-card" style="margin-bottom:12px">
+      <div class="ma-cat-title">${(typeof icon==='function'&&label.ic)?icon(label.ic,12):''} ${label.name}</div>
       ${catWarn}
-      <table style="width:100%;border-collapse:collapse;font-size:13px">
-        <thead><tr style="color:var(--text-dim);font-size:10px;text-transform:uppercase;letter-spacing:0.5px">
-          <th style="text-align:left;padding:6px 8px;width:40%">Metric</th>
-          <th style="text-align:left;padding:6px 8px;width:20%">Key</th>
-          <th style="text-align:right;padding:6px 8px;width:15%">Value</th>
-          <th style="text-align:left;padding:6px 8px;width:25%">Note</th>
+      <table class="ma-table">
+        <thead><tr>
+          <th style="width:30%">Μέτρηση</th>
+          <th style="width:20%">Κλειδί</th>
+          <th class="r" style="width:20%">Τιμή</th>
+          <th style="width:30%">Σημείωση</th>
         </tr></thead>
         <tbody>
           ${items.map(r => {
-            const hasWarn = (r.diag||[]).length > 0 || String(r.value).includes('ERR') || catFailed.length > 0;
+            const isErr = String(r.value).startsWith('ΣΦΑΛΜΑ');
+            const hasWarn = (r.diag||[]).length > 0 || isErr || catFailed.length > 0;
             // A metric whose source did not load is displayed as "—" with an
             // explanation, never as the 0 the computation produced from an
             // empty array. That substitution is the whole point of this page's
             // conversion: on the accuracy-checking screen, a wrong number is
             // worse than a missing one.
-            const value = catFailed.length ? '<span style="color:#B45309" title="Source data could not be loaded">—</span>' : r.value;
+            const value = catFailed.length
+              ? '<span class="ma-warnt" title="Δεν φορτώθηκαν τα δεδομένα πηγής">—</span>'
+              : `<span class="ma-num${isErr ? ' ma-bad' : ''}">${r.value}</span>`;
             const note = catFailed.length
-              ? `<span style="color:#B45309">Unavailable: source data could not be loaded</span>`
-              : `${r.note || ''}${r.diag && r.diag.length ? '<br><span style="color:#D97706">⚠ '+r.diag.join(' · ')+'</span>' : ''}`;
-            return `<tr style="border-bottom:1px solid var(--border);${hasWarn?'background:var(--warning-soft)':''}">
-              <td style="padding:8px;font-weight:600">${r.label}</td>
-              <td style="padding:8px;color:var(--text-dim);font-family:monospace;font-size:11px">${r.key}</td>
-              <td style="padding:8px;text-align:right;font-weight:700;font-family:'Syne',sans-serif;font-size:15px">${value}</td>
-              <td style="padding:8px;color:var(--text-dim);font-size:11px">${note}</td>
+              ? `<span class="ma-warnt">Μη διαθέσιμη: δεν φορτώθηκαν τα δεδομένα πηγής</span>`
+              : `${r.note || ''}${r.diag && r.diag.length ? '<br><span class="ma-warnt">'+r.diag.join(' · ')+'</span>' : ''}`;
+            return `<tr class="${hasWarn ? 'ma-row-warn' : ''}">
+              <td class="ma-lbl">${r.label}</td>
+              <td class="ma-key">${r.key}</td>
+              <td class="r">${value}</td>
+              <td class="ma-dim" style="font-size:11px">${note}</td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -699,8 +780,9 @@ function _auditDraw() {
   // them turns "δεν άνοιξε" from a dead end into an instruction.
   const unseenPages = [...new Set(
     cross.checks.flatMap(chk => chk.rows.filter(r => !r.seen).map(r => r.page))
-  )];
+  )].map(_auditPageName);
 
+  const allCats = ['op','perf','fin','fleet','hr','inv','biz'];
   const catTabs = [
     { k: 'all',   name: 'Όλες' },
     { k: 'op',    name: 'Λειτουργικές' },
@@ -711,63 +793,66 @@ function _auditDraw() {
     { k: 'inv',   name: 'Απόθεμα' },
     { k: 'biz',   name: 'Επιχείρηση' },
   ];
-  const shownCats = AUDIT.cat === 'all'
-    ? ['op','perf','fin','fleet','hr','inv','biz']
-    : [AUDIT.cat];
+  const shownCats = AUDIT.cat === 'all' ? allCats : [AUDIT.cat];
+  // A quick filter that would show nothing is disabled, not merely empty
+  // (DESIGN.md Δ2): a clickable tab that leads to "no rows" is a dead end.
+  const tabCount = k => (k === 'all' ? allCats : [k]).reduce((n, cat) => n + filtered(cat).length, 0);
 
   c.innerHTML = `
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+  <style>${AUDIT_CSS}</style>
+  <div class="ma-wrap">
+  <div class="ma-head">
     <div>
-      <h2 style="font-family:'Syne',sans-serif;font-size:22px;margin:0">Έλεγχος Μετρήσεων</h2>
-      <div style="font-size:12px;color:var(--text-dim);margin-top:4px">
+      <h2 class="ma-title">Έλεγχος Μετρήσεων</h2>
+      <div class="ma-sub">
         ${AUDIT.results.length} μετρήσεις · φορτώθηκε ${AUDIT.loadedAt?.toLocaleTimeString('el-GR')||'—'} · κανονικές τιμές από <code>metrics.js</code>
       </div>
     </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-ghost" onclick="_auditExportJSON()">Copy JSON</button>
+    <div class="ma-actions">
+      <button class="btn btn-ghost" onclick="_auditExportJSON()">Αντιγραφή JSON</button>
       <button class="btn btn-new-order" onclick="renderMetricsAudit()">${(typeof icon==='function')?icon('refresh',12):''} Ανανέωση</button>
     </div>
   </div>
 
   ${failBanner}
 
-  <div style="background:${cross.diffCount ? 'var(--danger-bg)' : 'var(--success-bg)'};border:1px solid ${cross.diffCount ? 'var(--danger)' : 'var(--success)'};border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:${cross.diffCount ? 'var(--danger)' : 'var(--success)'};font-weight:700">
+  <div class="ma-status ${cross.diffCount ? 'bad' : 'ok'}">
     ${cross.diffCount
       ? `⚠ ${cross.diffCount} ${cross.diffCount === 1 ? 'διαφορά εντοπίστηκε' : 'διαφορές εντοπίστηκαν'}`
       : '✓ Καμία ανεξήγητη διαφορά μεταξύ σελίδων'}
-    <span style="font-weight:400;font-size:12px;color:var(--text-dim)">
-      · ${cross.pagesSeen} ${cross.pagesSeen === 1 ? 'σελίδα έχει αναφέρει' : 'σελίδες έχουν αναφέρει'} τιμές σε αυτή τη συνεδρία
-    </span>
+    <small>· ${cross.pagesSeen} ${cross.pagesSeen === 1 ? 'σελίδα έχει αναφέρει' : 'σελίδες έχουν αναφέρει'} τιμές σε αυτή τη συνεδρία</small>
   </div>
 
-  <div style="background:#DBEAFE;border:1px solid #3B82F6;color:#1E40AF;padding:12px 16px;border-radius:6px;margin-bottom:16px;font-size:13px">
-    <b>Πώς να το χρησιμοποιήσεις:</b> άνοιξε τις σελίδες που σε ενδιαφέρουν (Dashboard, Συντήρηση, Τιμολόγηση…)
+  <div class="ma-note">
+    <b>Πώς να το χρησιμοποιήσεις:</b> άνοιξε τις σελίδες που σε ενδιαφέρουν (Πίνακας Ελέγχου, Συντήρηση, Τιμολόγηση…)
     και γύρνα εδώ. Κάθε σελίδα καταγράφει τα νούμερα που έδειξε, και ο πίνακας «Διασταυρώσεις» τα συγκρίνει
-    αυτόματα. <b>Κόκκινη γραμμή</b> = δύο σελίδες διαφωνούν χωρίς εξήγηση. <b>Πορτοκαλί</b> = η διαφορά είναι
+    αυτόματα. <b>Κόκκινη λωρίδα «διαφορά»</b> = δύο σελίδες διαφωνούν χωρίς εξήγηση. <b>Κίτρινη γραμμή «δηλωμένη»</b> = η διαφορά είναι
     σωστή και γράφει από πού προκύπτει.
-    ${unseenPages.length ? `<div style="margin-top:6px">Δεν έχουν ανοίξει ακόμη: <b>${unseenPages.map(escapeHtml).join(', ')}</b></div>` : ''}
+    ${unseenPages.length ? `<div style="margin-top:4px">Δεν έχουν ανοίξει ακόμη: <b>${unseenPages.map(escapeHtml).join(', ')}</b></div>` : ''}
   </div>
 
-  <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:var(--text-mid);margin:0 0 10px">
-    ΔΙΑΣΤΑΥΡΩΣΕΙΣ ΜΕΤΑΞΥ ΣΕΛΙΔΩΝ
+  <div class="ma-section">ΔΙΑΣΤΑΥΡΩΣΕΙΣ ΜΕΤΑΞΥ ΣΕΛΙΔΩΝ</div>
+  <div class="ma-grid">${_auditCrossHTML(cross, q)}</div>
+
+  <div class="ma-section">ΜΕΤΡΗΣΕΙΣ</div>
+  <div class="ma-filters">
+    <input id="auditSearch" type="search" class="ma-search" value="${escapeHtml(AUDIT.q)}"
+      oninput="_auditSetQuery(this.value)" placeholder="Αναζήτηση μέτρησης ή κλειδιού…">
+    ${catTabs.map(t => {
+      const n = tabCount(t.k);
+      return `<button class="btn btn-ghost btn-sm ma-tab${AUDIT.cat === t.k ? ' on' : ''}" ${n ? '' : 'disabled'}
+        onclick="_auditSetCat('${t.k}')">${t.name}<span class="ma-cnt">${n}</span></button>`;
+    }).join('')}
   </div>
-  ${_auditCrossHTML(cross, q)}
 
-  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:20px 0 12px">
-    <input id="auditSearch" type="search" value="${escapeHtml(AUDIT.q)}"
-      oninput="_auditSetQuery(this.value)" placeholder="Αναζήτηση μέτρησης ή κλειδιού…"
-      style="flex:1;min-width:200px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px;font-family:'DM Sans',sans-serif">
-    ${catTabs.map(t => `<button class="btn btn-ghost" onclick="_auditSetCat('${t.k}')"
-      style="font-size:11px;padding:6px 10px;${AUDIT.cat === t.k ? 'background:var(--accent-light);color: var(--accent-text);font-weight:700' : ''}">${t.name}</button>`).join('')}
-  </div>
+  ${shownCats.map(catHTML).join('') || `<div class="ma-empty">Καμία μέτρηση δεν ταιριάζει με «${escapeHtml(AUDIT.q)}».</div>`}
 
-  ${shownCats.map(catHTML).join('') || `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;color:var(--text-dim);font-size:13px">Καμία μέτρηση δεν ταιριάζει με «${escapeHtml(AUDIT.q)}».</div>`}
-
-  <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:12px;font-size:12px;color:var(--text-dim)">
-    <b>Υπόμνημα:</b> κίτρινη γραμμή = warning ή error στη μέτρηση.
+  <div class="ma-legend">
+    <b>Υπόμνημα:</b> κίτρινη γραμμή = προειδοποίηση ή σφάλμα στη μέτρηση· «—» = δεν υπολογίζεται (λείπουν δεδομένα), όχι μηδέν.
     <b>Τύποι:</b> <code>METRICS.md</code> και <code>core/metrics.js</code>.
     <b>Διασταυρώσεις:</b> οι τιμές των σελίδων καταγράφονται κατά το render και ζουν όσο το tab —
     το εργαλείο δεν αλλάζει τίποτα, μόνο διαβάζει.
+  </div>
   </div>`;
 }
 
@@ -805,8 +890,8 @@ function _auditExportJSON() {
     })(),
   };
   navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
-    toast('JSON copied to clipboard');
-  }).catch(() => toast('Copy failed', 'error'));
+    toast('Το JSON αντιγράφηκε');
+  }).catch(() => toast('Η αντιγραφή απέτυχε — δοκίμασε ξανά', 'error'));
 }
 
 // Expose
