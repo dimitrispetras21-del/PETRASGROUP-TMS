@@ -23,6 +23,14 @@ class PayloadRowsTests(unittest.TestCase):
         expected = [{'entry_type':'trip','entry_date':'2024-08-10','route':'X','trip_value':800.0,'advance':200.0,'expenses':0.0}]
         self.assertEqual(result, expected)
 
+    def test_payload_rows_filters_empty_string(self):
+        # A trip with no description classifies with route='' — must not be sent
+        # as an empty string (would store route='' instead of leaving it unset).
+        rows = [{'entry_type':'trip','entry_date':'2024-08-10','route':'','trip_value':800.0,'advance':200.0,'expenses':0.0,'_row':5}]
+        result = payload_rows(rows)
+        expected = [{'entry_type':'trip','entry_date':'2024-08-10','trip_value':800.0,'advance':200.0,'expenses':0.0}]
+        self.assertEqual(result, expected)
+
 class ClassifyTests(unittest.TestCase):
     def test_trip(self):
         r = classify(1, dt.datetime(2024, 8, 10), dt.datetime(2024, 8, 15), 'ΒΕΡΟΙΑ-ΙΤΑΛΙΑ-ΒΕΡΟΙΑ', 200, 0, 800)

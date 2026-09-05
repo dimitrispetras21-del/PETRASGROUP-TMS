@@ -45,6 +45,10 @@ function dlDelta(e) {
 
 function dlTypeLabel(t) { return DL_TYPE_LABELS[t] || t; }
 
+// dl_v_balance.type is NULL for most rows (57/59) — unknown is said in words,
+// never guessed as one of the two known values (DESIGN.md #3).
+function dlTypeWord(t) { return t === 'External' ? 'Εξωτερικός' : t === 'Internal' ? 'Εσωτερικός' : '—'; }
+
 function dlDateRange(start, end) {
   // Format date as DD/MM, optionally with YY if crossing a year boundary
   const dm = (s, includeYear = false) => {
@@ -109,6 +113,10 @@ async function renderPayroll() {
   if (can('costs') === 'none') { c.innerHTML = showAccessDenied(); return; }
   c.style.padding = '0';
   _dl.driver = null;
+  // List header «Δρομολόγια {year}» must match trips_ytd, which the view
+  // always computes for the current year — never a year left over from a
+  // driver page.
+  _dl.year = String(new Date().getFullYear());
   c.innerHTML = dlStyles() + '<div class="dl-page"><div style="padding:32px;color:var(--text-mid)">Φόρτωση καρτελών…</div></div>';
   try {
     const r = await ctFetch('/costs/ledger');
@@ -133,21 +141,26 @@ function dlSearchInput(el) {
 function dlVisible() {
   const q = _dl.q.trim().toLowerCase();
   return _dl.balances.filter(b => {
-    if (_dl.filter === 'all' && !b.active) return false;
-    if (_dl.filter === 'balance' && !(Number(b.balance) !== 0)) return false;
+    // active is NULL for 25/59 drivers: unknown reads as active (shown), only
+    // an explicit false hides/moves a row (DESIGN.md #3).
+    if (_dl.filter === 'all' && b.active === false) return false;
+    if (_dl.filter === 'balance' && (b.active === false || !(Number(b.balance) !== 0))) return false;
     if (_dl.filter === 'pending' && !(b.pending_count > 0)) return false;
-    if (_dl.filter === 'stale' && !(b.days_since_last_entry > 30 && b.active)) return false;
-    if (_dl.filter === 'inactive' && b.active) return false;
+    if (_dl.filter === 'stale' && !(b.days_since_last_entry > 30 && b.active !== false)) return false;
+    if (_dl.filter === 'inactive' && b.active !== false) return false;
     return !q || String(b.full_name).toLowerCase().includes(q);
   });
 }
 
 function dlRenderList() {
   const c = document.getElementById('content');
-  const act = _dl.balances.filter(b => b.active);
+  const act = _dl.balances.filter(b => b.active !== false);
   const owe = act.filter(b => Number(b.balance) > 0), owed = act.filter(b => Number(b.balance) < 0);
   const total = act.reduce((a, b) => a + Number(b.balance || 0), 0);
   const pending = act.reduce((a, b) => a + Number(b.pending_count || 0), 0);
+  // Chip counts drivers, not trips, so it agrees with the 'pending' filter's
+  // list (M5); the metrics bar below keeps the trip total in words.
+  const pendingDrivers = act.filter(b => b.pending_count > 0).length;
   const stale = act.filter(b => b.days_since_last_entry > 30).length;
   const rows = dlVisible();
   const chip = (id, label, n) => `<button class="dl-chip${_dl.filter === id ? ' on' : ''}" onclick="_dl.filter='${id}';dlRenderList()">${label}${n != null ? ' <b>' + n + '</b>' : ''}</button>`;
@@ -157,7 +170,7 @@ function dlRenderList() {
     const sub = b.last_trip_rt_code ? `<span class="link">${escapeHtml(b.last_trip_rt_code)}</span>` : (b.last_trip_date ? 'χωρίς σύνδεση RT' : 'καμία καταχώρηση');
     const staleTxt = b.days_since_last_entry > 30 ? `<span style="color:var(--warn)">χωρίς κίνηση ${b.days_since_last_entry} ημέρες</span>` : (b.last_payment_date ? `τελευταία πληρωμή ${dlDateRange(b.last_payment_date, null)} ${b.last_payment_type === 'payment_bank' ? 'τράπεζα' : 'μετρητά'}` : '');
     return `<div class="dl-row${b.review_count ? ' review' : ''}" onclick="renderPayrollDriver(${b.driver_id})">
-      <div style="width:560px"><span class="m">${escapeHtml(b.full_name)}</span><span class="s">${b.type === 'External' ? 'Εξωτερικός' : 'Εσωτερικός'}${staleTxt ? ' · ' + staleTxt : ''}</span></div>
+      <div style="width:560px"><span class="m">${escapeHtml(b.full_name)}</span><span class="s">${dlTypeWord(b.type)}${staleTxt ? ' · ' + staleTxt : ''}</span></div>
       <div style="width:384px"><span style="font-size:12px">${last}</span><span class="s">${sub}</span></div>
       <div style="width:120px" class="r"><span class="n">${b.has_entries ? b.trips_ytd : '—'}</span></div>
       <div style="width:200px" class="r"><span class="n ${w.cls}" style="font-weight:700">${b.has_entries ? dlEur(b.balance) : '—'} <span style="font-weight:400;color:var(--text-dim);font-size:12px">${b.has_entries ? w.text : 'χωρίς καρτέλα'}</span></span></div>
@@ -165,7 +178,7 @@ function dlRenderList() {
   }).join('') : showEmpty({ title: 'Καμία καρτέλα σε αυτό το φίλτρο', description: 'Άλλαξε φίλτρο ή καταχώρησε την πρώτη κίνηση.' });
   c.innerHTML = dlStyles() + `<div class="dl-page">
     <div class="dl-head"><span class="dl-title">Μισθοδοσία Οδηγών</span><span style="width:8px"></span>
-      ${chip('all', 'Όλοι', act.length)}${chip('balance', 'Με υπόλοιπο', owe.length + owed.length)}${chip('pending', 'Εκκρεμείς αξίες', pending)}${chip('stale', 'Χωρίς κίνηση 30+ ημ.', stale)}${chip('inactive', 'Ανενεργοί')}
+      ${chip('all', 'Όλοι', act.length)}${chip('balance', 'Με υπόλοιπο', owe.length + owed.length)}${chip('pending', 'Εκκρεμείς αξίες', pendingDrivers)}${chip('stale', 'Χωρίς κίνηση 30+ ημ.', stale)}${chip('inactive', 'Ανενεργοί')}
       <span class="dl-sp"></span>
       <input class="dl-search" placeholder="Αναζήτηση…" value="${escapeHtml(_dl.q)}" oninput="dlSearchInput(this)">
       <button class="dl-btn pri" onclick="dlOpenForm(null,'trip')">Νέα κίνηση</button></div>
@@ -204,6 +217,14 @@ function dlRenderDriver(b) {
   const cash = live.filter(e => e.entry_type === 'payment_cash').reduce((a, e) => a + Number(e.amount), 0);
   const bank = live.filter(e => e.entry_type === 'payment_bank').reduce((a, e) => a + Number(e.amount), 0);
   const w = dlBalanceWord(b.balance);
+  // active is NULL for some drivers: the pill says ΑΓΝΩΣΤΟ instead of
+  // defaulting to either known state, and only true state gets the --ok
+  // colour (M4) — colour AND word together (DESIGN.md #2).
+  const activeWord = b.active === true ? 'ΕΝΕΡΓΟΣ' : b.active === false ? 'ΑΝΕΝΕΡΓΟΣ' : 'ΑΓΝΩΣΤΟ';
+  const activeBg = b.active === true ? 'var(--ok)' : 'var(--text-dim)';
+  const pendingTrips = trips.filter(e => e.pending).length;
+  const allPending = trips.length > 0 && pendingTrips === trips.length;
+  const pendingWord = pendingTrips === 1 ? 'εκκρεμεί' : 'εκκρεμούν';
   const yr = y => `<button class="dl-chip${_dl.year === y ? ' on' : ''}" onclick="_dl.year='${y}';renderPayrollDriver(${b.driver_id})">${y === 'all' ? 'Όλα' : y}</button>`;
   const y0 = new Date().getFullYear();
   const years = [String(y0), String(y0 - 1), String(y0 - 2), 'all'];
@@ -233,21 +254,23 @@ function dlRenderDriver(b) {
   }).join('') : showEmpty({ title: 'Καμία κίνηση ακόμη', description: 'Η καρτέλα ξεκινά με το πρώτο δρομολόγιο ή την εισαγωγή του Excel.' });
   c.innerHTML = dlStyles() + `<div class="dl-page">
     <div class="dl-head"><a class="link" href="#" onclick="renderPayroll();return false">← Μισθοδοσία</a><span class="dl-title">${escapeHtml(b.full_name)}</span>
-      <span class="dl-pill" style="background:var(--ok);color:var(--text-on-dark);border-color:var(--ok);font-size:11px;font-weight:600">${b.active ? 'ΕΝΕΡΓΟΣ' : 'ΑΝΕΝΕΡΓΟΣ'}</span>
-      <span class="s" style="font-size:12px">${b.type === 'External' ? 'Εξωτερικός' : 'Εσωτερικός'}</span><span class="dl-sp"></span>
+      <span class="dl-pill" style="background:${activeBg};color:var(--text-on-dark);border-color:${activeBg};font-size:11px;font-weight:600">${activeWord}</span>
+      <span class="s" style="font-size:12px">${dlTypeWord(b.type)}</span><span class="dl-sp"></span>
       ${years.map(yr).join('')}
       <button class="dl-btn" onclick="dlOpenForm(${b.driver_id},'payment_cash')">Πληρωμή</button>
       <button class="dl-btn pri" onclick="dlOpenForm(${b.driver_id},'trip')">Νέο δρομολόγιο</button></div>
     <div class="dl-band">
       <div><div class="k">ΥΠΟΛΟΙΠΟ ΣΗΜΕΡΑ</div><div><span class="v big ${w.cls}">${dlEur(b.balance)}</span> <span class="s" style="font-size:12px">${w.text}</span></div></div>
       <div><div class="k">ΔΡΟΜΟΛΟΓΙΑ ${_dl.year === 'all' ? '' : _dl.year}</div><div class="v">${trips.length}</div></div>
-      <div><div class="k">ΑΞΙΑ ΔΡΟΜΟΛΟΓΙΩΝ</div><div class="v">${dlEur(value)}</div></div>
+      <div><div class="k">ΑΞΙΑ ΔΡΟΜΟΛΟΓΙΩΝ</div><div>${allPending
+        ? `<span class="v">—</span> <span class="s" style="font-size:12px">όλα εκκρεμούν</span>`
+        : `<span class="v">${dlEur(value)}</span>${pendingTrips > 0 ? ` <span class="s" style="font-size:12px">· ${pendingTrips} ${pendingWord}</span>` : ''}`}</div></div>
       <div><div class="k">ΠΛΗΡΩΜΕΣ</div><div><span class="v">${dlEur(cash + bank)}</span> <span class="s" style="font-size:12px">μετρητά ${dlEur(cash)} · τράπεζα ${dlEur(bank)}</span></div></div>
       <span class="dl-sp"></span><span class="s">πηγή: dl_v_entries · το υπόλοιπο υπολογίζεται, δεν γράφεται</span></div>
     <div class="dl-th"><div style="width:56px">#</div><div style="width:120px">Ημ/νία</div><div style="width:120px">Είδος</div><div style="width:448px">Διαδρομή / περιγραφή</div><div style="width:100px" class="r">Έλαβε</div><div style="width:100px" class="r">Έξοδα</div><div style="width:100px" class="r">Κράτησε</div><div style="width:100px" class="r">Αξία</div><div style="width:120px" class="r">Υπόλοιπο</div><div style="width:120px" class="r">Προοδευτικό</div></div>
     <div>${rows}</div>
     <div class="dl-foot"><span>Σύνολα ${_dl.year === 'all' ? '' : _dl.year} · ${trips.length} δρομολόγια · ${live.length - trips.length} πληρωμές · ${_dl.entries.length - live.length} ακυρωμέν${_dl.entries.length - live.length === 1 ? 'η' : 'ες'}</span><span class="dl-sp"></span>
-      <span>Αξία <b>${dlEur(value)}</b> &nbsp; Πληρωμές <b>${dlEur(cash + bank)}</b></span></div>
+      <span>Αξία <b>${allPending ? '—' : dlEur(value)}</b>${allPending ? ' <span style="color:var(--warn)">όλα εκκρεμούν</span>' : (pendingTrips > 0 ? ` <span style="color:var(--warn)">· ${pendingTrips} ${pendingWord}</span>` : '')} &nbsp; Πληρωμές <b>${dlEur(cash + bank)}</b></span></div>
     <div class="dl-overlay" id="dlOverlay" onclick="dlCloseForm()"></div><div class="dl-modal" id="dlModal"></div>
   </div>`;
 }
@@ -260,10 +283,14 @@ function dlOpenForm(driverId, type) {
   const today = new Date().toISOString().slice(0, 10);
   const seg = ['trip', 'payment_cash', 'payment_bank'].map(t => `<button class="${type === t ? 'on' : ''}" onclick="dlOpenForm(${driverId || 'null'},'${t}')">${t === 'trip' ? 'Δρομολόγιο' : t === 'payment_cash' ? 'Πληρωμή μετρητά' : 'Πληρωμή τράπεζα'}</button>`).join('');
   const rtOpts = '<option value="">— χωρίς σύνδεση —</option>' + (driverId ? _dl.rts : []).map(r => `<option value="${r.rt_id}">${escapeHtml(r.code)} · ${dlDateRange(r.date_start, null)}</option>`).join('');
-  const drvOpts = drivers.map(d => `<option value="${d.driver_id}"${d.driver_id === driverId ? ' selected' : ''}>${escapeHtml(d.full_name)}</option>`).join('');
+  // Opened from the list (no driverId): force an explicit choice — the select
+  // must not silently default to the first driver in the array and post a
+  // trip against the wrong person (I4).
+  const drvOpts = (driverId ? '' : '<option value="" selected>— επίλεξε οδηγό —</option>') +
+    drivers.map(d => `<option value="${d.driver_id}"${d.driver_id === driverId ? ' selected' : ''}>${escapeHtml(d.full_name)}</option>`).join('');
   m.innerHTML = `<div style="display:flex;align-items:center;margin-bottom:16px"><span class="dl-title">Νέα κίνηση${cur ? ' — ' + escapeHtml(cur.full_name) : ''}</span><span class="dl-sp"></span><button class="dl-btn" style="border:0" onclick="dlCloseForm()">✕</button></div>
     <div class="dl-f" style="margin-bottom:6px"><label>Είδος κίνησης *</label></div><div class="dl-seg">${seg}</div>
-    <div class="dl-fr"><div class="dl-f"><label>Οδηγός *</label><select id="dlDriver" onchange="dlDriverChanged(this)">${drvOpts}</select><span class="h">${cur ? 'ενεργός · υπόλοιπο ' + dlEur(bal) + ' πριν την κίνηση' : ''}</span></div>
+    <div class="dl-fr"><div class="dl-f"><label>Οδηγός *</label><select id="dlDriver" onchange="dlDriverChanged(this)">${drvOpts}</select><span class="h" id="dlDriverHint">${cur ? 'υπόλοιπο ' + dlEur(bal) + ' πριν την κίνηση' : (driverId ? 'χωρίς καρτέλα' : '')}</span></div>
       ${type === 'trip' ? `<div class="dl-f"><label>Σύνδεση με round trip</label><select id="dlRt">${rtOpts}</select><span class="h" id="dlRtHint">προαιρετικό · τρέφει το TRIP PnL</span></div>` : `<div class="dl-f"><label>Ημερομηνία *</label><input type="date" id="dlDate" value="${today}"></div>`}</div>
     ${type === 'trip' ? `
     <div class="dl-fr"><div class="dl-f"><label>Αναχώρηση *</label><input type="date" id="dlDate" value="${today}"></div><div class="dl-f"><label>Επιστροφή</label><input type="date" id="dlEnd"><span class="h">κενή όσο ο οδηγός είναι στον δρόμο</span></div></div>
@@ -286,16 +313,25 @@ function dlOpenForm(driverId, type) {
 // for someone else. Lock it until the form is reopened for the new driver.
 function dlDriverChanged(sel) {
   const rt = document.getElementById('dlRt');
-  if (!rt) return;
-  const hint = document.getElementById('dlRtHint');
-  if (Number(sel.value) !== _dl.driver) {
-    rt.value = '';
-    rt.disabled = true;
-    if (hint) hint.textContent = 'άλλαξε οδηγός — άνοιξε την καρτέλα του για σύνδεση με RT';
-  } else {
-    rt.disabled = false;
-    if (hint) hint.textContent = 'προαιρετικό · τρέφει το TRIP PnL';
+  if (rt) {
+    const hint = document.getElementById('dlRtHint');
+    if (Number(sel.value) !== _dl.driver) {
+      rt.value = '';
+      rt.disabled = true;
+      if (hint) hint.textContent = 'άλλαξε οδηγός — άνοιξε την καρτέλα του για σύνδεση με RT';
+    } else {
+      rt.disabled = false;
+      if (hint) hint.textContent = 'προαιρετικό · τρέφει το TRIP PnL';
+    }
   }
+  // «Νέα κίνηση» from the list opens with no driver picked (I4): the balance
+  // band used for dlRecalc's arithmetic must follow the actual selection,
+  // not stay at whatever driver the form happened to open for.
+  const found = _dl.balances.find(b => b.driver_id === Number(sel.value));
+  document.getElementById('dlModal').dataset.balance = String(Number(found?.balance || 0));
+  const driverHint = document.getElementById('dlDriverHint');
+  if (driverHint) driverHint.textContent = found ? 'υπόλοιπο ' + dlEur(found.balance) + ' πριν την κίνηση' : 'χωρίς καρτέλα';
+  dlRecalc();
 }
 
 // The arithmetic is shown before saving: the toast is not the proof.
@@ -314,9 +350,18 @@ function dlRecalc() {
   el.innerHTML = `<div><div class="k">ΚΡΑΤΗΣΕ</div><b>${kept != null ? dlEur(kept) : '—'}</b></div><div><div class="k">ΥΠΟΛΟΙΠΟ ΓΡΑΜΜΗΣ</div><b>${delta != null ? (delta >= 0 ? '+' : '−') + dlEur(Math.abs(delta)) : 'εκκρεμεί'}</b></div><div><div class="k">ΝΕΟ ΠΡΟΟΔΕΥΤΙΚΟ</div><b>${delta != null ? dlEur(bal + delta) : '—'}</b></div><span class="dl-sp"></span><span class="k">αξία − (έλαβε − έξοδα)</span>`;
 }
 
+// Balances list is stale the moment any ledger write lands: the running
+// balance and the pending-count chips only reflect reality after a re-fetch,
+// shared by every write path so none of them can drift back to the old copy.
+async function dlReloadBalances() {
+  const r = await ctFetch('/costs/ledger');
+  _dl.balances = r.records || []; _dl.gap = r.gap || 0;
+}
+
 async function dlSaveForm(type) {
   const g = id => { const x = document.getElementById(id); return x ? x.value : ''; };
   const n = id => { const v = g(id); return v === '' ? undefined : Number(v); };
+  if (!g('dlDriver')) { document.getElementById('dlErr').textContent = 'Επίλεξε οδηγό.'; return; }
   const body = { driver_id: Number(g('dlDriver')), entry_type: type, entry_date: g('dlDate') || undefined, note: g('dlNote') || undefined };
   if (type === 'trip') {
     Object.assign(body, { date_end: g('dlEnd') || undefined, route: g('dlRoute') || undefined, rt_id: g('dlRt') ? Number(g('dlRt')) : undefined, trip_value: n('dlValue'), advance: n('dlAdvance'), expenses: n('dlExpenses') });
@@ -326,7 +371,7 @@ async function dlSaveForm(type) {
   try {
     await ctFetch('/costs/ledger', { method: 'POST', body });
     dlCloseForm();
-    const r = await ctFetch('/costs/ledger'); _dl.balances = r.records || []; _dl.gap = r.gap || 0;
+    await dlReloadBalances();
     if (_dl.driver) renderPayrollDriver(_dl.driver); else dlRenderList();
   } catch (e) { document.getElementById('dlErr').textContent = 'Δεν καταχωρήθηκε: ' + e.message; }
 }
@@ -351,13 +396,13 @@ async function dlSaveEdit(id) {
   else { const v = n('dlAmount'); if (v !== Number(e.amount)) body.amount = v; }
   Object.keys(body).forEach(k => body[k] === undefined && delete body[k]);
   if (Object.keys(body).filter(k => k !== 'reason').length === 0) { document.getElementById('dlErr').textContent = 'Τίποτα δεν άλλαξε.'; return; }
-  try { await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body }); dlCloseForm(); renderPayrollDriver(_dl.driver); }
+  try { await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body }); dlCloseForm(); await dlReloadBalances(); renderPayrollDriver(_dl.driver); }
   catch (err) { document.getElementById('dlErr').textContent = 'Δεν αποθηκεύτηκε: ' + err.message; }
 }
 async function dlCancelEntry(id) {
   const reason = document.getElementById('dlReason').value.trim();
   if (!reason) { document.getElementById('dlErr').textContent = 'Η ακύρωση θέλει αιτιολογία.'; return; }
-  try { await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body: { cancel: true, reason } }); dlCloseForm(); renderPayrollDriver(_dl.driver); }
+  try { await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body: { cancel: true, reason } }); dlCloseForm(); await dlReloadBalances(); renderPayrollDriver(_dl.driver); }
   catch (err) { document.getElementById('dlErr').textContent = 'Δεν ακυρώθηκε: ' + err.message; }
 }
 function dlCloseForm() {

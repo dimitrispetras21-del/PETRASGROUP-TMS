@@ -2918,6 +2918,11 @@ async function handleCosts(request, url, origin, env) {
         if (body.rows[i].driver_id !== void 0 && body.rows[i].driver_id !== body.driver_id) {
           return jsonError(`row ${i + 1}: driver_id differs from the batch`, 400, origin, env);
         }
+        // dl_import's INSERT has no rt_id column — accepting it here would silently
+        // drop it, the same trap CLAUDE.md's «μηχανισμός-παγίδα 1» warns about.
+        if (body.rows[i].rt_id !== void 0) {
+          return jsonError(`row ${i + 1}: rt_id is not accepted by import`, 400, origin, env);
+        }
         const v = validateNewEntry({ ...body.rows[i], driver_id: body.driver_id });
         if (v.error) return jsonError(`row ${i + 1}: ${v.error}`, 400, origin, env);
       }

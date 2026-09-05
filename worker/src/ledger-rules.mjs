@@ -34,6 +34,10 @@ export function validateNewEntry(body) {
     }
     if (body.route != null && String(body.route).trim()) row.route = String(body.route).trim();
     if (body.rt_id != null) { if (!Number.isInteger(body.rt_id)) return { error: 'rt_id must be an integer' }; row.rt_id = body.rt_id; }
+    // A trip with neither would show as an empty row in the ledger with no
+    // way to identify which journey it was — the description field is the
+    // only human-readable anchor when there is no RT link.
+    if (row.route == null && row.rt_id == null) return { error: 'route or rt_id required for a trip' };
   } else {
     for (const f of TRIP_ONLY) if (body[f] != null) return { error: f + ' is not allowed on a ' + body.entry_type };
     if (!num(body.amount)) return { error: 'amount required' };

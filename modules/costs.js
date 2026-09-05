@@ -10,7 +10,7 @@ const CT_CATEGORY_LABELS = {
   fuel: 'Καύσιμα', reefer_fuel: 'Καύσιμα ψυγείου', tolls: 'Διόδια', dkv: 'DKV κάρτα',
   adblue: 'AdBlue', spedition: 'Spedition',
   accommodation: 'Διαμονή', ferry_train: 'Ferry/Τρένα', fines: 'Πρόστιμα',
-  partner_rate: 'Partner rate', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
+  partner_rate: 'Κόμιστρο συνεργάτη', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
 };
 
 const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 'trip', openRt: null,
@@ -607,16 +607,19 @@ async function ctOpenPanel(id) {
   let lines = [], linesFetchFailed = false;
   try { lines = (await ctFetch('/costs/lines?rt_id=' + id)).records || []; } catch (e) { linesFetchFailed = true; }
   const linesNet = lines.reduce((a, l) => a + Number(l.net || 0), 0);
+  // cost_net carries the ledger money since migration 011 (dl_trip_value +
+  // dl_expenses are summed into it) — without subtracting dlNet here, the
+  // driver's Έξοδα Μ would render as fabricated «Φθορά».
+  const dlNet = Number(t.dl_trip_value || 0) + Number(t.dl_expenses || 0);
   // Σε αποτυχία fetch η «φθορά» ΔΕΝ υπολογίζεται: αλλιώς όλο το cost_net θα
   // εμφανιζόταν ως ψεύτικη γραμμή «Φθορά (auto)» (εύρημα review 24/8).
-  const wear = linesFetchFailed ? 0 : Math.max(0, Number(t.cost_net || 0) - linesNet);
+  const wear = linesFetchFailed ? 0 : Math.max(0, Number(t.cost_net || 0) - linesNet - dlNet);
   // Η πληρότητα στο ανάπτυγμα κρίνεται από τα per-rt δεδομένα που ΜΟΛΙΣ
   // φορτώθηκαν — όχι από το κομμένο-στα-300 bulk της λίστας, που μπορεί να
   // αντιφάσκει με την ενότητα «Γραμμές (N)» δύο σημεία πιο κάτω.
   const complete = linesFetchFailed ? ctCostInfo(t).complete : lines.length > 0;
   const cats = {};
   lines.forEach(l => { const k = l.category; (cats[k] = cats[k] || { net: 0, vat: 0 }); cats[k].net += Number(l.net || 0); cats[k].vat += Number(l.vat || 0); });
-  const dlNet = Number(t.dl_trip_value || 0) + Number(t.dl_expenses || 0);
   const maxV = Math.max(1, ...Object.values(cats).map(c => c.net + c.vat), wear, dlNet);
   let costRows = Object.entries(cats).map(([k, v]) => `
     <div class="ct-crow"><span class="ct-cl">${CT_CATEGORY_LABELS[k] || k}</span>

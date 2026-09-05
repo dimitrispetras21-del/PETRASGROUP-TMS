@@ -8,6 +8,13 @@ test('trip: value/advance/expenses optional (pending), amount forbidden', () => 
   assert.match(validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', amount: 5 }).error, /amount/);
 });
 
+test('trip: route or rt_id required — a bare trip is unidentifiable in the ledger', () => {
+  assert.match(validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10' }).error, /route or rt_id/);
+  assert.match(validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', route: '   ' }).error, /route or rt_id/);
+  assert.deepStrictEqual(validateNewEntry({ driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', rt_id: 7 }),
+    { row: { driver_id: 46, entry_type: 'trip', entry_date: '2026-08-10', rt_id: 7, source: 'manual' } });
+});
+
 test('payment: amount > 0 required, trip fields forbidden', () => {
   assert.match(validateNewEntry({ driver_id: 46, entry_type: 'payment_cash', entry_date: '2026-07-31' }).error, /amount/);
   assert.match(validateNewEntry({ driver_id: 46, entry_type: 'payment_bank', entry_date: '2026-07-31', amount: 950.47, trip_value: 1 }).error, /trip_value/);

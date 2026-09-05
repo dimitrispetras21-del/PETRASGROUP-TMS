@@ -69,8 +69,10 @@ def parse_workbook(path):
     return rows, anomalies, excel_final
 
 def payload_rows(rows):
-    """Filter out private (_*) and None-valued keys from entry dicts."""
-    return [{k: v for k, v in e.items() if not k.startswith('_') and v is not None} for e in rows]
+    """Filter out private (_*), None-valued, and empty-string keys from entry dicts.
+    A trip with no description parses to route='' — sending that would store an
+    empty string instead of leaving the column unset (Worker distinguishes the two)."""
+    return [{k: v for k, v in e.items() if not k.startswith('_') and v is not None and v != ''} for e in rows]
 
 def compute_balance(rows):
     bal = Decimal('0')
