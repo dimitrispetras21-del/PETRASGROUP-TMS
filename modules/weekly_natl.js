@@ -94,10 +94,14 @@ function _wnPulseRow(rowId) {
   setTimeout(() => { el.style.background = orig; }, 700);
 }
 
-// Week number matching Airtable WEEKNUM (Sunday-start)
+// Which week is "today" — uses the canonical isoWeekNumber() (core/utils.js),
+// the same source Dashboard/Orders/Performance already agree on. The old
+// Math.ceil WEEKNUM(Sunday-start) formula misplaced Saturdays into next
+// week's bucket (Sat 5/9/2026 → 37 instead of 36), so the "Τρέχουσα" tab was
+// wrong every weekend (design audit 5/9/2026, A1). _wnWeekStart below still
+// buckets rows by the old Sunday-start scheme — untouched, out of scope here.
 function _wnCurrentWeek() {
-  const d = new Date(), y = d.getFullYear(), j = new Date(y, 0, 1);
-  return Math.ceil(((d - j) / 86400000 + j.getDay() + 1) / 7);
+  return isoWeekNumber(new Date());
 }
 // Week start (Sunday) for a given week number
 function _wnWeekStart(w) {
@@ -504,8 +508,10 @@ function _wnPaint() {
 
   // Same reporting contract as weekly_intl (kanban contract #11): the numbers
   // below are the AUDIT's, unchanged since Wave 1 — weekNumberDefault comes
-  // from _wnCurrentWeek(), the Sunday-start formula this planner still
-  // carries, so the audit can see it drift from canonical isoWeekNumber().
+  // from _wnCurrentWeek(), which now calls the canonical isoWeekNumber()
+  // directly (design audit 5/9/2026, A1). The tab bucketing (_wnWeekStart,
+  // Sunday-start WEEKNUM) is unchanged, so weekNumber and weekNumberDefault
+  // can still diverge by that tab numbering — the audit keeps watching it.
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_natl', {
     weekNumber: week,
     weekNumberDefault: _wnCurrentWeek(),
@@ -696,6 +702,9 @@ function _wnPaint() {
   `;
 
   window._wnDragging = null;
+  // A5 (design audit 5/9/2026): .wk3-tabs now scrolls instead of overflowing
+  // the page at 390px — keep the active tab visible inside that scroll area.
+  document.querySelector('.wk3-tabs .wk3-tab.on')?.scrollIntoView({inline:'nearest',block:'nearest'});
   _wnApplyFilter();
   _wnSyncSummary();
 

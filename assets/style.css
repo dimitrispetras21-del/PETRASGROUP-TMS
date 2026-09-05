@@ -473,6 +473,21 @@ body {
   padding: 4px 0 12px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.10) transparent;
+  /* Bottom "more below" cue (design audit 5/9/2026, A6): at 1440×900 the nav
+     list (scrollHeight 871) is taller than its box (778) with no hint it
+     scrolls. Two background layers, no JS: the navy cover is `local` so it
+     scrolls with the list and sits at the list's real bottom edge; the dark
+     shadow is `scroll` so it stays pinned to the box's visible bottom edge.
+     Scrolled to the true end, the cover reaches the shadow's position and
+     hides it — so the last item is never dimmed once you get there. */
+  background-color: var(--navy-mid);
+  background-image:
+    linear-gradient(rgba(255,255,255,0), var(--navy-mid) 75%),
+    linear-gradient(to top, rgba(0,0,0,.35), rgba(0,0,0,0));
+  background-repeat: no-repeat, no-repeat;
+  background-position: center bottom, center bottom;
+  background-size: 100% 36px, 100% 16px;
+  background-attachment: local, scroll;
 }
 /* Webkit scrollbar */
 .sidebar-nav::-webkit-scrollbar { width: 6px; }
@@ -2264,6 +2279,13 @@ tbody tr:hover { background: var(--bg-hover); }
   .sidebar .nav-label,
   .sidebar .nav-section,
   .sidebar .sidebar-logo { display: flex; }
+  /* display:flex above isn't enough on its own: the desktop collapsed rules
+     (.sidebar.collapsed .nav-label/.nav-section, opacity:0 at ~611/528) still
+     match here, so a drawer opened while .collapsed carries over from desktop
+     rendered every label invisible after navigating (design audit 5/9/2026,
+     A4). Same selector, later in the cascade, wins on mobile only. */
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .nav-section { opacity: 1; }
   .sidebar .sidebar-toggle { display: none; }  /* desktop collapse button hidden on mobile */
   .sidebar-nav {
     flex-direction: column; padding: 0; display: flex;
@@ -2667,7 +2689,13 @@ tbody tr:hover { background: var(--bg-hover); }
 .wk3-mast{display:flex;align-items:center;gap:14px;background:var(--bg-card,#fff);
   border:1px solid var(--border-mid);border-radius:10px;padding:0 14px;min-height:50px;
   margin-bottom:10px;flex-wrap:wrap}
-.wk3-tabs{display:flex;align-items:flex-end;gap:2px;align-self:stretch;padding-top:10px}
+/* min-width:0 lets this flex item shrink below its content width instead of
+   forcing .wk3-mast (and the page) wider; overflow-x scrolls the tab strip
+   itself at narrow widths like 390px instead (design audit 5/9/2026, A5). */
+.wk3-tabs{display:flex;align-items:flex-end;gap:2px;align-self:stretch;padding-top:10px;
+  min-width:0;overflow-x:auto;scroll-snap-type:x proximity}
+.wk3-tabs::-webkit-scrollbar{display:none}
+.wk3-tab{scroll-snap-align:center}
 .wk3-tab{font-family:'Syne',sans-serif;font-weight:700;font-size:11.5px;color:var(--text-mid);
   padding:7px 12px 8px;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;
   position:relative;top:1px;transition:.15s;background:none;cursor:pointer}

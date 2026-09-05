@@ -167,7 +167,11 @@ const _HM=dt=>{ if(!dt||!/T\d\d:\d\d/.test(String(dt))) return ''; try{ const d=
 const _DMY=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?`${+p[2]}/${+p[1]}`:d; };
 const _DMYFull=d=>{ if(!d) return ''; const p=String(d).slice(0,10).split('-'); return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:d; };
 const _daysAgo=d=>{ try{ const a=new Date(toLocalDate(d)+'T12:00:00'), b=new Date(localToday()+'T12:00:00'); return Math.round((b-a)/864e5); }catch(_){ return null; } };
-const _agoTxt=n=>n==null?'':n===1?'πριν 1 ημέρα':`πριν ${n} ημέρες`;
+// `n==null` let NaN through (Delivery/Loading DateTime malformed or unparsable
+// in _daysAgo's try/catch) → rendered "πριν NaN ημέρες" in the overdue zones.
+// Number.isFinite catches NaN too; show "—" rather than hiding the row's date
+// note entirely (Αρχή 1: a bad date must be visible, not silently swallowed).
+const _agoTxt=n=>!Number.isFinite(n)?'—':n===1?'πριν 1 ημέρα':`πριν ${n} ημέρες`;
 
 function _opsCats() {
   const today=localToday();
@@ -272,7 +276,10 @@ const _OPS_STYLE=`<style>
   .do-zone-h i{width:8px;height:8px;background:var(--danger);display:inline-block;border-radius:var(--radius-full)}
   .do-zone-h .do-note{margin-left:auto;font-weight:400;color:var(--text-dim);font-size:var(--text-xs)}
   .do-zone-h .do-tog{font-weight:400;color:var(--text-dim);font-size:var(--text-xs);margin-left:12px}
-  .do-zrow{display:flex;align-items:center;gap:12px;padding:0 12px;height:40px;border-top:1px solid var(--border);font-size:var(--text-body)}
+  /* min-height, not height (design audit 5/9/2026, A3): a fixed height clipped
+     the row wherever .do-rt's route text wrapped to two lines instead of
+     making room for it. */
+  .do-zrow{display:flex;align-items:center;gap:12px;padding:0 12px;min-height:40px;border-top:1px solid var(--border);font-size:var(--text-body)}
   .do-zrow .do-cl{font-weight:600;min-width:180px}
   .do-zrow .do-rt{color:var(--text-mid);flex:1;min-width:0}
   .do-zrow .do-late{color:var(--danger);font-weight:600;white-space:nowrap}

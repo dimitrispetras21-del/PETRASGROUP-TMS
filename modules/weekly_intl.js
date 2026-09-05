@@ -94,8 +94,14 @@ function _wiWeekNumOf(d){
   const y=d.getFullYear(),j=new Date(y,0,1);
   return Math.ceil(((d-j)/86400000+j.getDay()+1)/7);
 }
+// "Τρέχουσα" (today's) week now reuses the canonical isoWeekNumber() (core/
+// utils.js) instead of the Saturday-shifted WEEKNUM formula above —
+// weekly_natl.js's equivalent bug (Saturday misplaced a week early) meant the
+// two boards' "current week" badges could disagree (design audit 5/9/2026,
+// A1). _wiWeekNumOf/_wiWeekOf still bucket ORDER ROWS into week tabs with the
+// Saturday-start scheme — untouched, that is a separate, wider concern.
 function _wiCurrentWeek(){
-  return _wiWeekNumOf(new Date(Date.now()+86400000));
+  return isoWeekNumber(new Date());
 }
 // Week start για εβδομάδα w — πλέον ΣΑΒΒΑΤΟ (Κυριακή παλιάς αρίθμησης −1μέρα)
 function _wiWeekStart(w){
@@ -215,7 +221,13 @@ const _WI2_CSS=`
 .wi2-title{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:var(--text);display:flex;align-items:center;gap:12px;white-space:nowrap}
 .wi2-legend-btn{font:500 11px 'DM Sans',sans-serif;color:var(--text-mid);border:1px solid var(--border);border-radius:var(--radius-full);padding:4px 8px;background:none;cursor:pointer}
 .wi2-legend-btn:hover{background:var(--surface-sunken)}
-.wi2-tabs{display:flex;gap:4px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px;margin:0 auto}
+/* min-width:0 + overflow-x lets this strip scroll instead of forcing .wi2-mast
+   (and the page) wider at narrow widths like 390px (design audit 5/9/2026, A5,
+   same fix as the shared .wk3-tabs in assets/style.css). */
+.wi2-tabs{display:flex;gap:4px;background:var(--surface-sunken);border-radius:var(--radius);padding:4px;margin:0 auto;
+  min-width:0;overflow-x:auto;scroll-snap-type:x proximity}
+.wi2-tabs::-webkit-scrollbar{display:none}
+.wi2-tabs .wk3-tab{scroll-snap-align:center}
 .wi2-tabs .wk3-step,.wi2-tabs .wk3-tab{border:none;background:none;cursor:pointer;font:500 12px 'DM Sans',sans-serif;color:var(--text-mid);padding:8px 12px;border-radius:var(--radius);line-height:1.3}
 .wi2-tabs .wk3-step{padding:8px;font-weight:700;color:var(--text-dim)}
 .wi2-tabs .wk3-tab:hover{background:var(--surface-card)}
@@ -245,7 +257,14 @@ const _WI2_CSS=`
    αδειάζει την οθόνη χωρίς λόγο διαβάζεται ως σφάλμα. */
 .wi2-chip:disabled,.wi2-chip:disabled:hover{color:var(--text-dim);background:var(--surface-card);border-color:var(--border);cursor:default}
 .wi2-week{margin-left:auto;font:500 12px 'DM Sans',sans-serif;color:var(--text-dim);white-space:nowrap;font-variant-numeric:tabular-nums}
-.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 340px);padding-bottom:4px}
+/* 340px was an unmeasured guess. Measured with Playwright at 1440×900 against
+   a real loaded week (W35, design audit 5/9/2026 A7): topbar 52 + content's
+   own 32px top padding + .wi2-mast 89 (12 margin) + .wi2-band 74 (12 gap) +
+   .wk3-sub 62 (10 gap) = 343px of real chrome above this sheet. 344 rounds up
+   so the sheet never runs 1px past the true chrome. This barely differs from
+   the old 340 — it does not by itself reach the ≥20-rows target below; that
+   comes from the row min-height cut alongside it. */
+.wk3.wi2 .wk3-sheet{background:transparent;border:none;box-shadow:none;border-radius:0;max-height:calc(100vh - 344px);padding-bottom:4px}
 .wk3.wi2 .wk3-cols{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;min-height:30px}
 .wk3.wi2 .wk3-cols .c{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-mid);padding:0 8px;height:30px;gap:4px}
 .wk3.wi2 .wk3-cols .c.fc{color:var(--text-dim)}
@@ -261,8 +280,13 @@ const _WI2_CSS=`
 .wi2-none{font-size:11px;color:var(--text-dim);padding:4px 4px 0;font-style:italic}
 /* ΥΨΟΣ ΓΡΑΜΜΗΣ ≤ 44px (DESIGN Κ5): γραμμή 1px + κελί 0 + κάρτα 4+1 πάνω/κάτω
    = 12px «σκελετός», οπότε το περιεχόμενο της κάρτας έχει ακριβώς 32px:
-   όνομα 16px + σειρά μεταδεδομένων 16px. Κάθε padding εδώ είναι μετρημένο. */
-.wk3.wi2 .wk3-row{min-height:40px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
+   όνομα 16px + σειρά μεταδεδομένων 16px. Κάθε padding εδώ είναι μετρημένο.
+   min-height is the FLOOR for the shortest rows, not this ceiling — a 2-line
+   card already grows past it to the 44px above regardless of the number
+   below, since nothing here clips overflow. 40→36 (design audit 5/9/2026, A7)
+   only tightens rows shorter than that floor; verified in Playwright against
+   real W35 data that every 2-line row still renders ≥44px, K5 unaffected. */
+.wk3.wi2 .wk3-row{min-height:36px;margin-top:4px;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-card);align-items:center}
 .wk3.wi2 .wk3-row.alt{background:var(--surface-card)}
 .wk3.wi2 .wk3-row:hover{background:var(--surface-sunken)}
 .wk3.wi2 .wk3-row.wi2-un{border-color:var(--unassigned);border-left-width:3px}
@@ -721,11 +745,12 @@ function _wiPaint(){
   const pct=total?Math.round((assigned+matched)/total*100):0;
 
   // Report what this planner shows. weekNumber is the week the user is looking
-  // at; weekNumberDefault is what _wiCurrentWeek() calls "today". That helper is
-  // a THIRD week formula (Sunday-start WEEKNUM), separate from the canonical
-  // isoWeekNumber() the Dashboard, Orders and Performance were unified on. The
-  // two agree today and will not agree on every date — reporting both is how
-  // the audit catches the next 31-vs-32 before a person does.
+  // at; weekNumberDefault is what _wiCurrentWeek() calls "today" — now the
+  // same isoWeekNumber() the Dashboard, Orders and Performance are unified on
+  // (design audit 5/9/2026, A1). Still reporting both: the row-bucketing tabs
+  // (_wiWeekOf, Saturday-start WEEKNUM) are a separate scheme, so weekNumber
+  // and weekNumberDefault can still diverge by the tab's own numbering — the
+  // audit keeps watching for that gap.
   if (typeof reportPageMetrics === 'function') reportPageMetrics('weekly_intl', {
     weekNumber: week,
     weekNumberDefault: _wiCurrentWeek(),
@@ -848,6 +873,9 @@ function _wiPaint(){
     </div><!-- /block wrapper -->
   `;
   window._wiDragging=null;
+  // A5 (design audit 5/9/2026): .wi2-tabs now scrolls instead of overflowing
+  // the page at 390px — keep the active tab visible inside that scroll area.
+  document.querySelector('.wi2-tabs .wk3-tab.on')?.scrollIntoView({inline:'nearest',block:'nearest'});
   // Re-apply ⚠ from the session log (T3: a failed write stays visible after a
   // repaint) and fill the footer sync line.
   Object.entries(WINTL._syncLog||{}).forEach(([oid,s])=>{
