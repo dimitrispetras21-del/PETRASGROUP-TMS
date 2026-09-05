@@ -1908,24 +1908,24 @@ async function _loadEntityCardMaint(entityKey, rec) {
 async function _loadEntityCardRT(entityKey, rec) {
   const cfg = ENTITY_CONFIG[entityKey];
   const recId = rec.id;
-  const plate = String(rec.fields['License Plate'] || '');
   const body = () => document.getElementById(`ec_${recId}_rt`);
   try {
     if (typeof ctFetch !== 'function') throw new Error('ctFetch unavailable');
     // /costs/rt carries NO money columns (worker: «λίστα ΧΩΡΙΣ αποτελέσματα
-    // PnL») — safe for every role that can read it. The plate→numeric-id map
-    // goes through /costs/lookups, same as modules/costs.js.
+    // PnL») — safe for every role that can read it. Entity facade IDs (recXXXX)
+    // map via /costs/lookups.legacy_id to Postgres IDs for filtering round trips.
+    // This avoids fragile name/plate string matching (spelling variants, renames).
     const isTrailer = entityKey === 'trailers';
     const isDriver = entityKey === 'drivers';
     const lk = await ctFetch('/costs/lookups');
-    const t = isDriver
-      ? (lk.drivers || []).find(x => String(x.full_name || '').trim().toLowerCase()
-          === String(rec.fields['Full Name'] || '').trim().toLowerCase())
+    // Match this entity record's facade ID (recId) to find the Postgres ID
+    const pgId = isDriver
+      ? (lk.drivers || []).find(x => x.legacy_id === recId)?.id
       : ((isTrailer ? lk.trailers : lk.trucks) || [])
-          .find(x => _ecPlate(x.license_plate) === _ecPlate(plate));
+          .find(x => x.legacy_id === recId)?.id;
     let el = body();
     if (!el) return;
-    if (!t) {
+    if (pgId === undefined) {
       const noMatch = `<div class="ecard-empty">${isDriver ? 'Ο οδηγός' : 'Το όχημα'} δεν έχει αντιστοιχιστεί στα δρομολόγια κόστους.</div>`;
       el.innerHTML = noMatch;
       // The aggregation feeds off the same match — it must not stay «Φόρτωση…».
@@ -1933,14 +1933,14 @@ async function _loadEntityCardRT(entityKey, rec) {
       if (aggE) aggE.innerHTML = noMatch;
       return;
     }
-    // The worker filters rt by truck_id only; trailers and drivers take the
-    // latest page and filter client-side (14 rows total today).
-    const res = await ctFetch(isTrailer || isDriver ? '/costs/rt' : '/costs/rt?truck_id=' + t.id);
+    // Fetch round trips filtered by the Postgres ID; for trucks, the worker
+    // handles the filter server-side. For drivers/trailers, filter client-side.
+    const res = await ctFetch(isTrailer || isDriver ? '/costs/rt' : '/costs/rt?truck_id=' + pgId);
     el = body();
     if (!el) return;
     let recsAll = res.records || [];
-    if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === t.id);
-    if (isDriver)  recsAll = recsAll.filter(r => r.driver_id === t.id);
+    if (isTrailer) recsAll = recsAll.filter(r => r.trailer_id === pgId);
+    if (isDriver)  recsAll = recsAll.filter(r => r.driver_id === pgId);
     const rts = recsAll.slice(0, 5);
     const plateById = {};
     for (const x of lk.trucks || []) plateById[x.id] = x.license_plate;
