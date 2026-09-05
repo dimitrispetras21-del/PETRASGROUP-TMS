@@ -386,17 +386,29 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
 function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var L=LBL||LBL_EN;
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
-  // Fallback στα ORDER_STOPS όταν τα Summaries λείπουν (stops-based orders)
-  function stopName(type,last){
+  // First loading / last unloading stop of the order, by Stop Number.
+  function stopAt(type,last){
     var st=orderStops.filter(function(r){return r.fields['Stop Type']===type})
       .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
-    if(!st.length) return '';
-    var loc=resolveLoc(st[last?st.length-1:0].fields['Location']);
+    return st.length?st[last?st.length-1:0]:null;
+  }
+  // Fallback στα ORDER_STOPS όταν τα Summaries λείπουν (stops-based orders)
+  function stopName(type,last){
+    var s=stopAt(type,last); if(!s) return '';
+    var loc=resolveLoc(s.fields['Location']);
     return loc?loc.name:'';
   }
   var from=(veroiaSwitch&&isExport)?VEROIA:(t(f['Loading Summary'])||stopName('Loading',false)||'—');
   var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||'—');
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
+  // One source for the dates (5/9): the stop's own DateTime, exactly as the
+  // cards below read it (buildLoadHTML/buildDelHTML: sf['DateTime']||dt). The
+  // strip used to read only the order-level dates, so a rescheduled stop made
+  // the header and the cards of the SAME sheet disagree — the driver reads the
+  // header. Order-level date only when the stop has none / there are no stops.
+  // The Veroia legs keep the order-level base: their card does the same.
+  if(!(veroiaSwitch&&isExport)){var ls=stopAt('Loading',false); if(ls&&ls.fields['DateTime']) ld=ls.fields['DateTime'];}
+  if(!(veroiaSwitch&&!isExport)){var us=stopAt('Unloading',true); if(us&&us.fields['DateTime']) dd=us.fields['DateTime'];}
   try{
     var vcd=(f['Cross-dock Date']||f['VS CD Date'])?String(f['Cross-dock Date']||f['VS CD Date']):null;
     if(veroiaSwitch&&isExport) ld=vcd||(ld?new Date(new Date(ld).getTime()+86400000).toISOString():ld);
