@@ -301,7 +301,7 @@ const _WI2_CSS=`
 .wk3.wi2 .wi2-carrier.own{background:var(--navy-mid);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.par{background:var(--chip-partner);color:var(--text-on-dark)}
 .wk3.wi2 .wi2-carrier.un{background:transparent;border:1px dashed var(--unassigned);color:var(--unassigned)}
-body.wi-fs #content{background:var(--bg);padding:12px;overflow:auto}
+.wk3.wi2 .wk3-sheet:fullscreen,.wk3.wi2 .wk3-sheet:-webkit-full-screen{background:var(--bg);padding:12px;overflow:auto;width:100%;height:100%}
 @media (prefers-reduced-motion:reduce){.wk3.wi2 .wk3-pill,.wk3.wi2 .wi2-gapbox,.wk3.wi2 .wi2-void,.wk3.wi2 .wi2-date,.wk3.wi2 .wi2-carrier{transition:none}.wk3.wi2 .wk3-pill:hover,.wk3.wi2 .wi2-gapbox:hover,.wk3.wi2 .wi2-date:hover,.wk3.wi2 .wi2-carrier:hover{transform:none}}
 .wi2-card.ok{background:var(--success-bg);border-color:var(--ok)}
 .wi2-card.late{background:var(--danger-bg);border-color:var(--danger)}
@@ -773,7 +773,7 @@ function _wiPaint(){
         <button class="wi2-btn" onclick="_wiPrintWeek()" title="Εκτύπωση εβδομάδας">Εκτύπωση</button>
         <button class="wi2-btn" onclick="_wiExportCSV()" title="Εξαγωγή CSV">CSV</button>
         <button class="wi2-btn" onclick="renderWeeklyIntl()" title="Ανανέωση">Ανανέωση</button>
-        <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — Esc για έξοδο">Πλήρης οθόνη</button>
+        <button class="wi2-btn" id="wi-fs" onclick="_wiFullscreen()" title="Πλήρης οθόνη — μόνο ο πίνακας· Esc για έξοδο">Πλήρης οθόνη</button>
         <button class="wi2-btn primary" onclick="_wiNewOrder()" title="Νέα διεθνής παραγγελία — χωρίς έξοδο από το εβδομαδιαίο">+ Νέα παραγγελία</button>
       </div>
     </div>
@@ -1756,7 +1756,7 @@ async function _wiConsumePendingMatch(newId,fields){
 // Fullscreen on #content only (owner 4/9): the browser hides sidebar/topbar for
 // us, Esc exits natively. No layout of our own to maintain.
 function _wiFullscreen(){
-  const el=document.getElementById('content')||document.documentElement;
+  const el=document.querySelector('.wk3.wi2 .wk3-sheet')||document.getElementById('content')||document.documentElement;
   if(document.fullscreenElement){ document.exitFullscreen?.(); return; }
   (el.requestFullscreen||el.webkitRequestFullscreen)?.call(el);
 }
