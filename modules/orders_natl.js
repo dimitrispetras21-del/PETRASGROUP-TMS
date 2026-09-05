@@ -885,6 +885,13 @@ function _natlMode(m) {
   const simple = document.getElementById('nf_simple'), grp = document.getElementById('nf_grp');
   if (simple) simple.style.display = m ? 'none' : '';
   if (grp)    grp.style.display    = m ? '' : 'none';
+  // Audit w4: top-level Πελάτης/Τιμή δεν τα διαβάζει ποτέ το _grpSubmit — σε
+  // Groupage ο πελάτης/η τιμή δηλώνονται ανά γραμμή παράδοσης (grpc/grpv).
+  const clientF = document.getElementById('nf_clientField'), priceF = document.getElementById('nf_priceField');
+  if (clientF) clientF.style.display = m ? 'none' : '';
+  if (priceF)  priceF.style.display  = m ? 'none' : '';
+  const pickupHint = document.getElementById('nf_pickupHint');
+  if (pickupHint) pickupHint.style.display = m ? '' : 'none';
   const modal = document.getElementById('modal');
   if (modal) { modal.style.width = m ? '900px' : '680px'; modal.style.maxWidth = '96vw'; }
   const btn = document.getElementById('natlBtnSubmit');
@@ -1120,11 +1127,14 @@ async function _openNatlModal(recId, f) {
         <select class="form-select" id="nf_Type"><option value="">— Επιλογή —</option>
           ${opt([['Independent','Ανεξάρτητη'],['Veroia Switch','Veroia Switch']],'Type')}</select>
       </div>
-      <div class="form-field">
+      <!-- Δ16/audit w4: κρύβονται σε Groupage — εκεί ο πελάτης/η τιμή δηλώνονται
+           ανά γραμμή παράδοσης (grpc/grpv) και _grpSubmit δεν τα διαβάζει ποτέ.
+           Στοιχεία μένουν στο DOM (_natlMode τα κρύβει/δείχνει), όχι αφαιρούνται. -->
+      <div class="form-field" id="nf_clientField">
         <label class="form-label">Πελάτης *</label>
         ${_clientSelect('nclient', clientId, clientLabel)}
       </div>
-      <div class="form-field">
+      <div class="form-field" id="nf_priceField">
         <label class="form-label">Τιμή (€)</label>
         <input class="form-input" type="number" id="nf_Price" value="${f['Price']||''}">
       </div>
@@ -1156,18 +1166,16 @@ async function _openNatlModal(recId, f) {
       </div>
     </div>`}
 
-    <div id="nf_grp" style="display:none;padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
-      <div class="detail-section-title">Παραδόσεις — μία κάρτα ανά σημείο</div>
-      <div id="gf_rows"></div>
-      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-top:8px"
-        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
-      <div id="gf_preview" style="margin-top:16px"></div>
-    </div>
-    <div id="nf_simple" style="padding-top:16px;border-top:1px solid var(--border)">
+    <!-- Audit w4 (Figma 165:677): το σημείο/ημ. φόρτωσης ήταν μέσα στο #nf_simple,
+         που το Groupage κρύβει — αλλά _grpSubmit τα απαιτεί (κοινά για όλο το
+         φορτίο, ένα σημείο φόρτωσης για όλους τους πελάτες). Έμεναν αόρατα και
+         υποχρεωτικά ταυτόχρονα. Μπαίνουν σε κοινό μπλοκ πριν τις κάρτες, ορατό
+         και στους δύο τύπους καταχώρησης· ids/onchange αμετάβλητα. -->
+    <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
       <div class="detail-section-title" style="margin-bottom:12px">Φόρτωση</div>
       <div class="form-grid">
         <div class="form-field">
-          <label class="form-label">Σημείο φόρτωσης *</label>
+          <label class="form-label">Σημείο φόρτωσης * <span id="nf_pickupHint" style="color:var(--text-dim);font-weight:400;display:none">(κοινό για το φορτίο)</span></label>
           ${_locSelect('npickup', pickupId)}
         </div>
         <div class="form-field">
@@ -1176,7 +1184,17 @@ async function _openNatlModal(recId, f) {
             value="${f['Loading DateTime']?toLocalDate(f['Loading DateTime']):''}">
         </div>
       </div>
-      <div class="detail-section-title" style="margin:16px 0 12px">Παραδόσεις — μία κάρτα ανά σημείο</div>
+    </div>
+
+    <div id="nf_grp" style="display:none;padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
+      <div class="detail-section-title">Παραδόσεις — μία κάρτα ανά σημείο</div>
+      <div id="gf_rows"></div>
+      <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-top:8px"
+        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
+      <div id="gf_preview" style="margin-top:16px"></div>
+    </div>
+    <div id="nf_simple" style="padding-top:16px;border-top:1px solid var(--border)">
+      <div class="detail-section-title" style="margin-bottom:12px">Παραδόσεις — μία κάρτα ανά σημείο</div>
       <div id="sf_rows"></div>
       <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-top:8px"
         onclick="_simAddRow()">+ Προσθήκη σημείου</button>

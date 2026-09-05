@@ -1057,8 +1057,9 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
   const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
   let body = `
-    <div class="form-grid">
+    <div class="form-grid cols-3">
       <!-- Owner 11/8: Brand/Type αφαιρέθηκαν — δεδομένα Petras Group / International -->
+      <!-- Figma 165:676: πρώτη γραμμή σε 3 στήλες (Κατεύθυνση/Πελάτης/Τιμή) -->
       <div class="form-field">
         <label class="form-label">Κατεύθυνση *</label>
         <select class="form-select" id="f_Direction"><option value="">— Επιλογή —</option>
@@ -1072,6 +1073,8 @@ async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
         <label class="form-label">Τιμή (€) *</label>
         <input class="form-input" type="number" id="f_Price" value="${f['Price']||''}">
       </div>
+    </div>
+    <div class="form-grid">
       <div class="form-field">
         <label class="form-label">Reference</label>
         <input class="form-input" type="text" id="f_Reference" value="${escapeHtml(f['Reference']||'')}" placeholder="π.χ. 3813">
