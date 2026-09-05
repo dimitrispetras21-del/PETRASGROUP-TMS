@@ -466,7 +466,7 @@ function ctLegLine(l) {
 // Στα costs-missing ΚΟΣΤΗ/ΚΑΘΑΡΟ είναι παύλες + κουμπί καταχώρησης — η παύλα
 // είναι σχεδιαστική απόφαση, όχι παράλειψη: άγραφο κόστος ως €0 θα διαβαζόταν
 // ως καθαρό κέρδος (DESIGN.md κανόνας 3). Πράσινο ΜΟΝΟ σε πραγματικό καθαρό.
-function ctCardNums(t, ci) {
+function ctCardNums(t, ci, gated) {
   const dash = '<b class="nv dim">—</b>';
   let costs = dash, net = dash, badge = '', right = '', note = '';
   if (_ct.linesFailed) {
@@ -474,6 +474,18 @@ function ctCardNums(t, ci) {
     note = `<span class="ct-eqnote">οι γραμμές κόστους δεν φόρτωσαν — πληρότητα άγνωστη</span>`;
   } else if (!ci.complete) {
     right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Καταχώρηση κοστών</button>`;
+  } else if (gated) {
+    // Γ4 (design audit wave 6α, 5/9): ci.complete only means «≥1 γραμμή
+    // κόστους καταχωρήθηκε» — ένα partner trip χωρίς δελτίο παλετών (βλ.
+    // lockLine στο ctCardHtml) έχει ένα γνωστό-ελλιπές κόστος (οι χαμένες
+    // παλέτες) που ΔΕΝ μπαίνει σε αυτή τη μέτρηση. Δείχνοντας πραγματικό
+    // ΚΑΘΑΡΟ/% εδώ αντιφάσκει με την προειδοποίηση ακριβώς από κάτω. Τα
+    // ΚΟΣΤΗ μένουν αριθμός (είναι πραγματικά, απλώς ελλιπή) — μόνο το
+    // ΚΑΘΑΡΟ/% κρατιούνται πίσω. Ο υπολογισμός (t.profit_worst/
+    // margin_worst_pct) ΔΕΝ αλλάζει — μόνο η προβολή.
+    costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
+    net = '<b class="nv dim">— προσωρινό</b>';
+    badge = '<span class="ct-mgn dim">— προσωρινό</span>';
   } else {
     const p = Number(t.profit_worst);
     costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
@@ -537,7 +549,10 @@ function ctCardHtml(t) {
         : `<div class="ct-leg" style="color:var(--warn);font-size:12px">${icon('warning', 12)} οι τιμές των σκελών αθροίζουν ${ctEur(legsSum)} αλλά το έσοδο trip είναι ${ctEur(t.revenue)} — ανεξήγητη διαφορά ${ctEur(diff)}</div>`;
     }
   }
-  const why = ci.complete && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>` : '';
+  // Γ4: don't explain a negative ΚΑΘΑΡΟ that the card itself just marked
+  // «— προσωρινό» a few lines below (gated) — the explanation would read as
+  // a confident number while the display right above it withholds one.
+  const why = ci.complete && !gated && Number(t.profit_worst) < 0 ? `<div class="ct-dwhy">${icon('warning', 12)} ${ctWhyText(t, lines)}</div>` : '';
   return `<div class="ct-card" id="ctCard${t.id}" onclick="ctOpenPanel(${t.id})">
     <div class="ct-chead">
       <div class="ct-chl">
@@ -551,7 +566,7 @@ function ctCardHtml(t) {
     <div class="ct-div"></div>
     <div class="ct-clegs">${legs.map(ctLegLine).join('')}${returnLine}${vsNote}${partnerNote}</div>
     <div class="ct-div"></div>
-    ${ctCardNums(t, ci)}
+    ${ctCardNums(t, ci, gated)}
     ${lockLine}
     ${why}
   </div>`;

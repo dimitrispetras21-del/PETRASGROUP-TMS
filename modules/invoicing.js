@@ -84,7 +84,20 @@ function _invOrderNo(rec) {
   // See docs/design/DEEP_AUDIT_2026-08-04/invoicing.md IN-2.
   // 'Reference', ΟΧΙ 'Order Number': το δεύτερο δεν υπάρχει στον χάρτη του
   // Worker (CLAUDE.md, παγίδες ονομάτων) — έδειχνε «(χωρίς αριθμό)» παντού.
-  return rec.fields['Reference'] || rec.fields['National Order ID'] || '(χωρίς αριθμό)';
+  //
+  // Γ2 (design audit wave 6α, 5/9) asked for a second fallback before the
+  // literal string — an "order's numeric id, as the app shows it elsewhere".
+  // Checked worker/src/index.js TABLES map: 'National Order ID' below is NOT
+  // a real field on either ORDERS or NATIONAL ORDERS (dead/phantom — it never
+  // resolves, principle 8). And what orders_intl.js:523 / orders_natl.js:649
+  // actually show elsewhere for a missing Reference is NOT a numeric id —
+  // it's nothing (blank cell) or the honest label «ΧΩΡΙΣ ΑΝΑΦΟΡΑ» — because
+  // the id-as-fallback path was tried and reverted there too (Δ2, same "worse
+  // than an admitted gap" reasoning as the comment above). So there is no
+  // real identifier to add here without reintroducing that exact bug a
+  // fourth time. Left as Reference → literal string; the dead 'National
+  // Order ID' read is removed as it never contributed a value.
+  return rec.fields['Reference'] || '(χωρίς αριθμό)';
 }
 
 function _invPallets(rec) {
@@ -340,6 +353,12 @@ async function renderInvoicing() {
 
     _renderInvLayout(c);
     _applyInvFilters();
+    // Γ5: one resize listener for the life of the module, not per render —
+    // renderInvoicing() re-runs on every visit to this page.
+    if (!_invNarrowListenerAdded) {
+      window.addEventListener('resize', _invApplyNarrowCols);
+      _invNarrowListenerAdded = true;
+    }
   } catch (e) {
     c.innerHTML = `<div class="empty-state">
       <div style="font-size:28px;margin-bottom:12px;color:var(--danger)">⚠</div>
@@ -413,6 +432,7 @@ function _renderInvLayout(c) {
             <tbody id="invBody"></tbody>
           </table>
         </div>
+        <div id="invNarrowNote"></div>
       </div>
       <div id="invDetail" style="width:360px;flex-shrink:0;display:none"></div>
     </div>
@@ -482,6 +502,7 @@ function _invSetSort(col) {
   else { INV.sort.col = col; INV.sort.dir = 'asc'; }
   _renderInvTable();
   _renderInvHead();
+  _invApplyNarrowCols(); // Γ5: re-render replaces the <td>/<th> nodes, so the hide state must be reapplied
 }
 
 // ─── KPI Cards ───────────────────────────────────
@@ -524,9 +545,14 @@ function _renderInvKPI() {
   // Label on one line, value + detail on the next: 5 cards in ~60px instead
   // of ~105px, which is worth 1-2 more table rows at 1080p (DESIGN.md #5).
   // Every card carries its word, so the value colour never stands alone (#2).
+  // Γ5 (design audit wave 6α, 5/9): label was `white-space:nowrap` with no
+  // ellipsis — at 1024px, in a 5-column grid, "ΚΑΘΥΣΤΕΡΗΜΕΝΕΣ (>30 ημ.)" had
+  // nowhere to go and got visually cut by the next card. Letting it wrap to
+  // two lines shows the whole word instead (K6: no truncation on the words
+  // that carry meaning); the value/sub row below already has room to match.
   const card = (label, value, sub, o = {}) => `
     <div style="background:var(--surface-card);border:1px solid ${o.border || 'var(--border)'};border-radius:6px;padding:8px 12px;min-width:0;${o.onclick ? 'cursor:pointer;' : ''}"${o.onclick ? ` onclick="${o.onclick}" title="${o.title}"` : ''}>
-      <div style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px;white-space:nowrap">${label}</div>
+      <div style="font-size:11px;color:var(--text-mid);text-transform:uppercase;letter-spacing:0.5px;line-height:1.3">${label}</div>
       <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-top:4px">
         <span style="font-size:18px;font-weight:700;line-height:1.2;color:${o.color || 'var(--text)'};${_INV_NUM}">${value}</span>
         <span style="font-size:11px;color:var(--text-dim);${_INV_NUM}">${sub}</span>
@@ -564,13 +590,50 @@ function _renderInvHead() {
   ];
   // 11px, not the global 10px `thead th`: nothing readable below 11px (DESIGN.md ΜΕΡΟΣ Γ).
   const TH = 'padding:8px 12px;font-size:11px;';
+  // data-col lets _invApplyNarrowCols (Γ5) find/hide a column's <th>, matched
+  // by the same data-col attribute on its <td>s in _renderInvTable.
   head.innerHTML = cols.map(c => {
-    if (c.sortable === false) return `<th style="${TH}width:${c.w||''}">${c.label}</th>`;
+    if (c.sortable === false) return `<th data-col="${c.key}" style="${TH}width:${c.w||''}">${c.label}</th>`;
     const arrow = INV.sort.col === c.key ? (INV.sort.dir === 'asc' ? ' ▲' : ' ▼') : '';
     const align = c.align ? `text-align:${c.align};` : '';
-    return `<th style="${TH}cursor:pointer;${align}${c.w ? `width:${c.w};` : ''}${c.mw ? `min-width:${c.mw};` : ''}user-select:none" onclick="_invSetSort('${c.key}')">${c.label}${arrow}</th>`;
+    return `<th data-col="${c.key}" style="${TH}cursor:pointer;${align}${c.w ? `width:${c.w};` : ''}${c.mw ? `min-width:${c.mw};` : ''}user-select:none" onclick="_invSetSort('${c.key}')">${c.label}${arrow}</th>`;
   }).join('');
 }
+
+// ─── Narrow-screen columns (Γ5, design audit wave 6α, 5/9) ───────────────
+// At ≤1200px ΤΥΠΟΣ/ΠΑΛΕΤΕΣ/ΔΕΛΤΙΟ used to fall off the right edge with no
+// scrollbar (.table-wrap--sticky is `overflow:visible` — style.css:1116) and
+// no notice: a completely silent loss, exactly what DESIGN.md κανόνας 7
+// exists to stop. Fix reuses core/entity.js's collapseEmptyColumns disclosure
+// UI verbatim (bold column names + «Εμφάνιση» toggle below the table,
+// same tokens/markup) because a hidden column needs the same announcement
+// whether the reason is "no data" or "no room" — but the criterion here is
+// viewport width, not cell emptiness, so it's its own small function rather
+// than a call into collapseEmptyColumns.
+// Lowest-value columns for this screen (accountant reads ΠΕΛΑΤΗΣ/ΔΙΑΔΡΟΜΗ/
+// ΑΞΙΑ/ΚΑΤΑΣΤΑΣΗ/ΗΛΙΚΙΑ first — the ones the batch-invoice decision needs).
+const _INV_NARROW_COLS = [['type', 'ΤΥΠΟΣ'], ['pallets', 'ΠΑΛΕΤΕΣ'], ['pe', 'ΔΕΛΤΙΟ']];
+const _INV_NARROW_BP = 1200;
+let _invNarrowRevealed = false;
+let _invNarrowListenerAdded = false;
+
+function _invApplyNarrowCols() {
+  const note = document.getElementById('invNarrowNote');
+  if (!note) return;
+  const narrow = window.innerWidth <= _INV_NARROW_BP;
+  const hide = narrow && !_invNarrowRevealed;
+  _INV_NARROW_COLS.forEach(([key]) => {
+    document.querySelectorAll(`#invThead [data-col="${key}"], #invBody [data-col="${key}"]`)
+      .forEach(el => { el.style.display = hide ? 'none' : ''; });
+  });
+  if (!narrow) { note.innerHTML = ''; return; }
+  const names = _INV_NARROW_COLS.map(c => c[1]).join(', ');
+  note.innerHTML = `<div style="display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;padding:var(--space-2) var(--space-3);color:var(--text-dim);font-size:var(--text-xs)">
+    <span>${hide ? 'Κρυμμένες στήλες — δεν χωράνε στη στενή οθόνη: ' : 'Δεν χωράνε στη στενή οθόνη, παραμένουν ορατές: '}<b style="font-weight:600">${escapeHtml(names)}</b></span>
+    <button type="button" onclick="_invToggleNarrowCols()" style="background:none;border:0;padding:0;cursor:pointer;color:var(--accent-text);font:inherit;text-decoration:underline">${hide ? 'Εμφάνιση' : 'Απόκρυψη'}</button>
+  </div>`;
+}
+function _invToggleNarrowCols() { _invNarrowRevealed = !_invNarrowRevealed; _invApplyNarrowCols(); }
 
 // ─── Filter + Render Table ───────────────────────
 function _applyInvFilters() {
@@ -602,6 +665,7 @@ function _applyInvFilters() {
   _renderInvKPI();
   _renderInvHead();
   _renderInvTable();
+  _invApplyNarrowCols(); // Γ5: applies the ≤1200px column hide/notice to the freshly-rendered head+rows
 
   // Re-append the incomplete-list warning: this line runs on every filter change
   // and would otherwise wipe the notice set at render time, so the shortfall
@@ -686,7 +750,7 @@ function _renderInvTable() {
     return `<tr onclick="_invSelect('${r.id}')" style="cursor:pointer;${sel}transition:background 0.15s">
       <td onclick="event.stopPropagation()" style="${_INV_TD}${overdueBar}">${cb}</td>
       <td style="${_INV_TD}${_INV_NUM}"><strong style="color:var(--text)">${escapeHtml(_invOrderNo(r))}</strong></td>
-      <td style="${_INV_TD}">${_invTypeBadge(r)}</td>
+      <td data-col="type" style="${_INV_TD}">${_invTypeBadge(r)}</td>
       <td onclick="event.stopPropagation();_invShowClientHistory(${JSON.stringify(_invClientName(r)).replace(/"/g,'&quot;')})" style="${_INV_TD}cursor:pointer" title="Δες ιστορικό πελάτη"><span style="color:var(--text);font-weight:500;text-decoration:underline dotted;text-underline-offset:3px">${_invClientName(r)}</span></td>
       <td style="${_INV_TD}max-width:340px" title="${escapeHtml(_invRoute(r))}">${
         r._type === 'intl'
@@ -695,9 +759,9 @@ function _renderInvTable() {
           : escapeHtml(_invRoute(r))
       }</td>
       <td style="${_INV_TD}">${agingBadge}</td>
-      <td style="${_INV_TD}text-align:right;${_INV_NUM}">${_invPalletsDisplay(r)}</td>
+      <td data-col="pallets" style="${_INV_TD}text-align:right;${_INV_NUM}">${_invPalletsDisplay(r)}</td>
       <td style="${_INV_TD}text-align:right;${_INV_NUM}">${_fmtEuro(_invPrice(r))}</td>
-      <td style="${_INV_TD}text-align:center">${peIcon}</td>
+      <td data-col="pe" style="${_INV_TD}text-align:center">${peIcon}</td>
       <td style="${_INV_TD}white-space:nowrap">${statusBadge}${overdueBadge}</td>
     </tr>`;
   }).join('');
@@ -928,7 +992,15 @@ async function _invBatchInvoice() {
       Object.assign(rec.fields, fields);
       ok++;
     } catch(e) {
-      const clientName = (rec.fields['Client Name'] || rec.fields['Client Summary'] || '').slice(0, 30);
+      // Γ1 (design audit wave 6α, 5/9): 'Client Name' isn't a field on either
+      // ORDERS or NATIONAL ORDERS — Client is a link, resolved through
+      // _invClientName (like every other client cell on this screen) — so a
+      // failed row always showed an empty client. _invClientName already
+      // returns escaped HTML (see its own comment on why), so it's rendered
+      // as-is below, not slice()'d — cutting an escaped string like
+      // "FRESH TRADE &amp; TRANSPORTS" at a fixed length could split an
+      // HTML entity in half.
+      const clientName = _invClientName(rec);
       failures.push({ id, msg: e.message || String(e), client: clientName });
       if (typeof logError === 'function') logError(e, 'invBatchInvoice ' + id);
     }

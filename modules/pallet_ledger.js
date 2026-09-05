@@ -634,10 +634,22 @@ function _plvListHtml(rows) {
       // Αν το τοπικό άθροισμα αποκλίνει από την όψη, το ⚠ το ΔΕΙΧΝΕΙ αντί να
       // διαλέξει σιωπηλά πλευρά (αρχή 1) — δύο πηγές αλήθειας = καμία.
       const mismatch = vb && vb.balance !== bal;
-      balHtml = ` · υπόλοιπο <b class="${bal > 0 ? 'plv-in' : bal < 0 ? 'plv-out' : ''}">${bal > 0 ? '+' : ''}${bal}</b>${mismatch ? ` <span title="Απόκλιση από την όψη pl_v_balance_clients: όψη=${vb.balance}, υπολογισμένο=${bal}" style="color:var(--danger);cursor:help">⚠</span>` : ''}`;
+      // Γ3 (design audit wave 6α, 5/9): on the Εκκρεμείς tab _plvRows() only
+      // returns pending movements, so ↓/↑ here count pending flow — but
+      // _plvClientBal (called above) sums CONFIRMED movements only, always
+      // (line ~591). Same header, two different populations. The numbers
+      // were already correct; nothing was mislabeled until now — add the
+      // word so nobody reads «υπόλοιπο» as the running total of the ↓/↑
+      // shown right next to it.
+      const balLabel = PLV.tab === 'pending' ? ' <span class="plv-dim" style="font-size:var(--text-xs)">(επιβεβαιωμένο)</span>' : '';
+      balHtml = ` · υπόλοιπο${balLabel} <b class="${bal > 0 ? 'plv-in' : bal < 0 ? 'plv-out' : ''}">${bal > 0 ? '+' : ''}${bal}</b>${mismatch ? ` <span title="Απόκλιση από την όψη pl_v_balance_clients: όψη=${vb.balance}, υπολογισμένο=${bal}" style="color:var(--danger);cursor:help">⚠</span>` : ''}`;
     }
+    // Same Γ3 fix on the arrow pair: label them «(εκκρεμή)» on the Εκκρεμείς
+    // tab only, since that's the one tab where they don't already mean «all
+    // movements for this group» (other tabs show a mixed or confirmed set).
+    const arrowsLabel = PLV.tab === 'pending' ? ' <span class="plv-dim" style="font-size:var(--text-xs)">(εκκρεμή)</span>' : '';
     html += `<div class="plv-ghead" onclick="plvToggleGroup('${T.key}')">${arrow(o)}<span class="plv-gname">${escapeHtml(T.label)}</span>
-      <span class="plv-gsum">${T.count} ${T.count === 1 ? 'κίνηση' : 'κινήσεις'} · <span class="plv-in">↓ ${T.tk}</span> · <span class="plv-out">↑ ${T.gv}</span>${balHtml}</span></div>`;
+      <span class="plv-gsum">${T.count} ${T.count === 1 ? 'κίνηση' : 'κινήσεις'} · <span class="plv-in">↓ ${T.tk}</span> · <span class="plv-out">↑ ${T.gv}</span>${arrowsLabel}${balHtml}</span></div>`;
     // Ένα επίπεδο κάτω από την επικεφαλίδα (Figma 2/9): η δεύτερη διάσταση
     // (σημείο ή αντισυμβαλλόμενος) είναι στήλη της γραμμής, όχι ενδιάμεση
     // ετικέτα — οι ετικέτες των 27/8 έτρωγαν 24px ανά σημείο (12 σε έναν
