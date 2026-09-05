@@ -1458,3 +1458,553 @@ git push -q origin main
 - Spec §1 canonical-by-fileId → Task 1 (`copyid`) + Task 4 map. §2 graph roles → ANALYST steps 2–4, REVIEWER, verify. §3 row rules → Task 2 + inventory date repair; unknown descriptions consolidated → report + Task 10 step 5. §4 overlap → ANALYST step 7, verify (NULL-only, once per auto row), commit `apply_patches`. §5 drivers → map `create`, `ensure_driver` via facade + lookups. §6 roles/models → Task 10. §7 write & proof → Task 11. §8 privacy → `.gitignore`, two reports. §9 alarms → verify + commit stop + proof SQL.
 - Names consistent: `driver_key`, `expected_final`, `expected_total_balance`, `patches[].dl_id`, `nodes[].role`, `status`, `Mismatch`, `ensure_driver/import_batch/apply_patches/proof/run`.
 - Known simplification: `raw_balance` counts unknown rows' amounts so the sheet invariant still holds even when a row is unclassified; a sheet with unknown rows can never reach `ready`, so nothing unclassified is ever written.
+
+---
+
+### Task 2b: rules v2 + inventory v2 — fit the rules to the real workbooks
+
+**Why this task exists.** The first real run of `inventory.py` over 156 workbooks (259 sheets, 23,404 rows) produced `unknown rows 11190 · date problems 8942 · raw≠running 112`. The coordinator inspected the raw sheets and found five causes, none of them data problems:
+1. In many layouts the `ΜΕΤΡΗΤΑ` column holds the **payment description text** (`ΜΕΤΡΗΤΑ`, `KAT.TΡΑΠEZA EUR`, `από TRANS COMBI`) while `ΔΡΟΜΟΛΟΓΙΟ` holds only trip routes. 4,313 such strings. The rules treated `cash` as a number.
+2. Greek words typed with **Latin lookalikes** (`KATAΘΕΣΗ FRESH` — Latin K, A, T, A). Keyword matching missed them.
+3. **Totals lines** without the word ΣΥΝΟΛΟ (a row with no date, no text, just column sums) were counted as unknown rows and doubled the raw balance (exactly 2× in dozens of sheets). Where ΣΥΝΟΛΟ exists it often sits in the unlabeled first column, which the rules never looked at.
+4. The Excel model is uniform: **every row is `ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ`**. Money the driver received is an advance-only row with a label (`ΚΑΥΣΙΜΑ ΠΡΑΤΗΡΙΟ`, `ΑΠΌ ΠΩΛΗΣΗ ΕΥΡΩΠΑΛΕΤΩΝ`, `ΕΠΙΔΟΜΑ ΑΔΕΙΑΣ`) or with no label at all (3,764 rows). Rows with a place name plus advance **and expenses** but no value (`ΘΕΣΣΑΛΟΝΙΚΗ 75/25`) are local trips whose value was never written. The `Α/Α` column was never detected (0 of 259 sheets) because its header is unlabeled or Latin.
+5. Sheets are not strictly chronological (payments are logged with earlier dates), so "between prev and next" flagged 8,942 rows. Real anomalies are **spikes**: a date far from all its neighbours. Simulated on the real data: a 200-day spike window against up to 3 neighbours each side finds 101 rows, 98 repairable by a year change, 3 for decision.
+
+Also from the Task 2 review: `ΤΡΑΠΕΖΟΥΝΤΑ` (a destination) matched the bank keyword and silently turned a trip into a payment. In v2 a keyword can only make a payment when the row has **no ΑΞΙΑ**.
+
+**Files:**
+- Modify: `tools/ledger-import/rules.py` (replace whole file)
+- Modify: `tools/ledger-import/tests/test_rules.py` (replace whole file)
+- Modify: `tools/ledger-import/inventory.py` (replace whole file)
+- Modify: `tools/ledger-import/tests/test_inventory.py` (replace whole file)
+
+**Interfaces (changed):**
+- `classify(cells)` now returns `'TOTALS'` instead of `'STOP'`; entry types are `trip | payment_cash | payment_bank | adjustment | carry`; `entry_date` may be `None` (the caller inherits the previous row's date); payments and adjustments may carry `note`.
+- `fix_date(cur, neighbours, today) -> (date, note) | None` — `neighbours` is a list of dates (up to 3 before and 3 after, all ≤ today), no longer `prev, nxt`.
+- `detect_header` may set `cols['seq']` by fallback (the unlabeled column left of the date).
+- Inventory rows gain `date_inherited: bool`; nodes gain `totals_skipped`, `text_only_skipped` counts. Everything else in the node shape is unchanged.
+
+- [ ] **Step 1: Replace `tests/test_rules.py`**
+
+```python
+# tools/ledger-import/tests/test_rules.py
+import unittest, datetime as dt, sys, os
+from decimal import Decimal
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from rules import detect_header, classify, fix_date, raw_balance, Unknown, d2, to_date, norm
+
+D = dt.date
+
+class TestNorm(unittest.TestCase):
+    def test_latin_lookalikes_become_greek(self):
+        self.assertEqual(norm('KATAΘΕΣΗ FRESH'), 'ΚΑΤΑΘΕΣΗ FRESH')
+        self.assertEqual(norm('kat.tΡΑΠEZA eur'), 'ΚΑΤ.ΤΡΑΠΕΖΑ ΕUR')
+    def test_accents_stripped(self):
+        self.assertEqual(norm('Κατάθεση από ΟΕ'), 'ΚΑΤΑΘΕΣΗ ΑΠΟ ΟΕ')
+
+class TestHeader(unittest.TestCase):
+    def test_standard_layout_with_unlabeled_end_date_and_seq(self):
+        rows = [(None,)*11, ('ΚΑΡΤΕΛΑ',) + (None,)*10,
+                (None, None, 'ΗΜΕΡΟΜΗΝΙΑ', None, 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ ΔΡΟΜ.', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ')]
+        h = detect_header(rows)
+        self.assertEqual(h['row'], 3)
+        self.assertEqual(h['cols']['date'], 3)
+        self.assertEqual(h['cols']['date_end'], 4)
+        self.assertEqual(h['cols']['seq'], 2)          # unlabeled column left of the date
+        self.assertEqual(h['cols']['route'], 5)
+        self.assertEqual(h['cols']['value'], 9)
+        self.assertEqual(h['cols']['running'], 11)
+        self.assertFalse(h['out_of_scope'])
+
+    def test_metrita_column_is_not_taken_as_end_date(self):
+        # ΜΟΥΡΑΤΙΔΗΣ layout: A=α/α B=ΗΜΕΡ C=ΜΕΤΡΗΤΑ(text) D=ΔΡΟΜΟΛΟΓΙΟ ...
+        rows = [(None, 'ΗΜΕΡ.', 'ΜΕΤΡΗΤΑ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ Δ', None, 'ΠΡΟΟΔΕΥΤΙΚΟ')]
+        h = detect_header(rows)
+        self.assertEqual(h['cols']['cash'], 3)
+        self.assertNotIn('date_end', h['cols'])
+        self.assertEqual(h['cols']['seq'], 1)
+
+    def test_labeled_seq_latin(self):
+        rows = [('A/A', 'ΗΜΕΡΟΜΗΝΙΑ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΚΟΣΤΟΣ', 'ΥΠΟΛΟΙΠΟ')]
+        h = detect_header(rows)
+        self.assertEqual(h['cols']['seq'], 1)
+        self.assertEqual(h['cols']['date_end'], 3)
+        self.assertEqual(h['cols']['value'], 8)
+
+    def test_old_monthly_layout_is_out_of_scope(self):
+        rows = [(None, 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ Δ', None, 'ΗΜΕΡ', 'ΕΠΙΣΗΜΗ', 'ΤΡΑΠΕΖΑ', 'ΥΠΟΛΟΙΠΟ')]
+        self.assertTrue(detect_header(rows)['out_of_scope'])
+
+    def test_no_header(self):
+        self.assertIsNone(detect_header([('a', 'b'), (1, 2)]))
+
+class TestClassify(unittest.TestCase):
+    def test_trip(self):
+        e = classify({'date': D(2024, 3, 13), 'date_end': D(2024, 3, 20), 'route': 'ΓΕΡΜΑΝΙΑ', 'advance': 300, 'expenses': 120.5, 'value': 450})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertEqual(e['trip_value'], 450.0); self.assertEqual(e['date_end'], '2024-03-20')
+
+    def test_trip_blank_value_is_none(self):
+        e = classify({'date': D(2024, 3, 13), 'route': 'ΑΘΗΝΑ', 'advance': 100, 'seq': 12})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertIsNone(e['trip_value']); self.assertIsNone(e['expenses'])
+
+    def test_place_with_advance_and_expenses_is_pending_trip(self):
+        e = classify({'date': D(2021, 5, 15), 'route': 'ΘΕΣΣΑΛΟΝΙΚΗ', 'advance': 75, 'expenses': 25})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertIsNone(e['trip_value']); self.assertEqual(e['expenses'], 25.0)
+
+    def test_trapezounta_is_a_trip_not_a_bank_payment(self):
+        e = classify({'date': D(2024, 3, 13), 'route': 'ΤΡΑΠΕΖΟΥΝΤΑ', 'advance': 500, 'value': 4000, 'expenses': 300})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertEqual(e['trip_value'], 4000.0)
+
+    def test_cash_payment_by_description(self):
+        e = classify({'date': D(2024, 4, 1), 'route': 'ΜΕΤΡΗΤΑ ', 'advance': 200, 'expenses': 0, 'value': 0})
+        self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 200.0); self.assertEqual(e['entry_date'], '2024-04-01')
+
+    def test_bank_payment_by_latin_description_in_cash_column(self):
+        e = classify({'date': D(2020, 8, 31), 'cash': 'KAT.TΡΑΠEZA EUR', 'advance': 500, 'expenses': 0})
+        self.assertEqual(e['entry_type'], 'payment_bank'); self.assertEqual(e['amount'], 500.0); self.assertEqual(e['note'], 'KAT.TΡΑΠEZA EUR')
+
+    def test_advance_only_with_label_is_cash_payment(self):
+        e = classify({'date': D(2022, 10, 4), 'route': 'ΚΑΥΣΙΜΑ ΠΡΑΤΗΡΙΟ', 'advance': 27, 'expenses': 0, 'value': 0})
+        self.assertEqual(e, {'entry_type': 'payment_cash', 'entry_date': '2022-10-04', 'amount': 27.0, 'note': 'ΚΑΥΣΙΜΑ ΠΡΑΤΗΡΙΟ'})
+
+    def test_advance_only_without_label_is_cash_payment(self):
+        e = classify({'date': D(2022, 10, 4), 'advance': 400})
+        self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 400.0); self.assertNotIn('note', e)
+
+    def test_bank_payment_by_amount_in_bank_column(self):
+        e = classify({'date': D(2024, 4, 30), 'bank': 500, 'route': 'ΚΑΤΑΘΕΣΗ'})
+        self.assertEqual(e['entry_type'], 'payment_bank'); self.assertEqual(e['amount'], 500.0)
+
+    def test_negative_advance_is_adjustment(self):
+        e = classify({'date': D(2019, 7, 24), 'route': 'ΜΕΤΡΗΤΑ', 'advance': -297.34})
+        self.assertEqual(e['entry_type'], 'adjustment'); self.assertEqual(e['amount'], 297.34)
+
+    def test_value_only_credit_is_adjustment(self):
+        e = classify({'route': 'ΠΙΣΤΩΣΗ ΛΟΓΟΥ ΛΑΘΟΥΣ ΑΞΙΑΣ ΔΡΟΜ', 'value': 50, 'advance': 0, 'expenses': 0})
+        self.assertEqual(e['entry_type'], 'adjustment'); self.assertEqual(e['amount'], 50.0); self.assertIsNone(e['entry_date'])
+
+    def test_payment_keyword_with_value_and_no_advance_is_unknown(self):
+        with self.assertRaises(Unknown):
+            classify({'date': D(2023, 7, 10), 'route': 'ΜΕΤΡΗΤΑ', 'advance': 0, 'value': 250})
+
+    def test_carry_row(self):
+        e = classify({'date': D(2025, 1, 1), 'route': 'ΜΕΤΑΦΟΡΑ ΥΠΟΛΟΙΠΟΥ', 'balance': 123.45})
+        self.assertEqual(e['entry_type'], 'carry'); self.assertEqual(e['amount'], 123.45)
+
+    def test_blank_text_only_and_totals(self):
+        self.assertIsNone(classify({'date': None, 'route': None}))
+        self.assertIsNone(classify({'date': D(2024, 1, 1), 'route': 'ΣΗΜΕΙΩΣΗ'}))                    # text only, no money
+        self.assertEqual(classify({'route': 'ΣΥΝΟΛΟ', 'value': 999}), 'TOTALS')
+        self.assertEqual(classify({'value': 999, 'advance': 100, '_row_text': 'ΣΥΝΟΛΑ 2023'}), 'TOTALS')
+        self.assertEqual(classify({'value': 26030, 'advance': 30014.2, 'expenses': 3225.2}), 'TOTALS')   # numbers only, no date, no text
+
+    def test_no_date_with_label_returns_none_date(self):
+        e = classify({'route': 'ΑΠΌ ΠΩΛΗΣΗ ΕΥΡΩΠΑΛΕΤΩΝ', 'advance': 90, 'expenses': 0, 'value': 0})
+        self.assertEqual(e['entry_type'], 'payment_cash'); self.assertIsNone(e['entry_date'])
+
+    def test_unknown_advance_and_expenses_without_label(self):
+        with self.assertRaises(Unknown):
+            classify({'date': D(2024, 1, 1), 'advance': 100, 'expenses': 30})
+
+class TestFixDate(unittest.TestCase):
+    today = D(2026, 9, 5)
+    def test_year_typo_in_future_is_fixed(self):
+        r = fix_date(D(2026, 12, 27), [D(2025, 12, 20), D(2025, 12, 22), D(2026, 1, 5)], self.today)
+        self.assertEqual(r[0], D(2025, 12, 27)); self.assertIn('2026-12-27', r[1])
+    def test_spike_a_year_off_inside_the_past_is_fixed(self):
+        r = fix_date(D(2025, 12, 27), [D(2024, 12, 20), D(2024, 12, 29), D(2025, 1, 5)], self.today)
+        self.assertEqual(r, (D(2024, 12, 27), 'ημ/νία Excel 2025-12-27 → 2024-12-27 (έτος)'))
+    def test_out_of_order_but_near_is_untouched(self):
+        self.assertEqual(fix_date(D(2025, 5, 1), [D(2025, 6, 1), D(2025, 6, 3)], self.today), (D(2025, 5, 1), None))
+    def test_no_neighbours_future_is_none(self):
+        self.assertIsNone(fix_date(D(2026, 12, 27), [], self.today))
+    def test_month_day_swap_is_not_repaired(self):
+        self.assertIsNone(fix_date(D(2022, 9, 12), [D(2022, 2, 2), D(2022, 2, 5), D(2022, 2, 7)], self.today))
+
+class TestBalance(unittest.TestCase):
+    def test_raw_balance(self):
+        cells = [{'value': 450, 'advance': 300, 'expenses': 120.5}, {'advance': 200}, {'value': None, 'advance': None, 'expenses': 30}]
+        self.assertEqual(raw_balance(cells), Decimal('100.50'))
+    def test_d2_and_to_date(self):
+        self.assertEqual(d2('1.005'), Decimal('1.01'))
+        self.assertEqual(to_date(dt.datetime(2024, 1, 2, 10)), D(2024, 1, 2))
+        self.assertEqual(to_date('02/01/2024'), D(2024, 1, 2))
+        self.assertIsNone(to_date('ΣΥΝΟΛΟ'))
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+- [ ] **Step 2: Run to verify the new tests fail against the old rules**
+
+Run: `cd tools/ledger-import && python3 -m unittest tests.test_rules 2>&1 | tail -3`
+Expected: `ImportError: cannot import name 'norm'` (or several failures once `norm` exists).
+
+- [ ] **Step 3: Replace `rules.py`**
+
+```python
+"""Pure rules for the ledger import (v2). No I/O, no Worker, no Supabase.
+
+v2 after the first real run over 156 workbooks: the Excel model is uniform —
+every line is ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ — so classification is by *shape* first
+(which amount columns are filled) and by keyword second. A keyword can only
+turn a line into a payment when the line has no ΑΞΙΑ; otherwise ΤΡΑΠΕΖΟΥΝΤΑ
+would be a bank deposit.
+"""
+import datetime as dt, re, unicodedata
+from decimal import Decimal, ROUND_HALF_UP
+
+class Unknown(Exception):
+    """A row shape the rules do not recognise. The driver goes to needs_decision."""
+
+# Payroll sheets mix Latin lookalikes into Greek words (KATAΘΕΣΗ, KAT.TΡΑΠEZA).
+LATIN_TO_GREEK = str.maketrans('ABEHIKMNOPTXYZ', 'ΑΒΕΗΙΚΜΝΟΡΤΧΥΖ')
+
+def norm(s):
+    s = unicodedata.normalize('NFD', str(s)).upper()
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn').strip()
+    return s.translate(LATIN_TO_GREEK)
+
+FIELD_KEYS = [
+    ('official', ('ΕΠΙΣΗΜ',)),          # 2017-2019 monthly model → whole sheet out of scope
+    ('running',  ('ΠΡΟΟΔ',)),
+    ('balance',  ('ΥΠΟΛΟΙΠ',)),
+    ('value',    ('ΑΞΙΑ', 'ΚΟΣΤΟΣ')),
+    ('expenses', ('ΕΞΟΔΑ',)),
+    ('advance',  ('ΕΛΑΒΕ',)),
+    ('route',    ('ΔΡΟΜΟΛ', 'ΠΕΡΙΓΡΑΦ')),
+    ('date_end', ('ΛΗΞΗ', 'ΕΠΙΣΤΡΟΦ')),
+    ('date',     ('ΗΜΕΡ',)),
+    ('cash',     ('ΜΕΤΡΗΤ',)),          # holds TEXT (the payment label) in most layouts
+    ('bank',     ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ')),
+]
+SEQ_LABELS = ('Α/Α', 'ΑΑ', 'Α.Α', 'Α.Α.', 'ΝΟ', '#')
+REQUIRED = ('advance', 'expenses')
+BANK_KEYS = tuple(norm(k) for k in ('ΚΑΤΑΘΕΣ', 'ΤΡΑΠΕΖ', 'ΚΑΤ.', 'EUROBANK', 'ΠΕΙΡΑΙ', 'IBAN'))
+ETE_RE = re.compile(r'(^|[^Α-Ω])ΕΤΕ([^Α-Ω]|$)')            # Εθνική Τράπεζα, as a word
+ADJUST_KEYS = ('ΠΙΣΤΩΣ', 'ΧΡΕΩΣ', 'ΔΙΟΡΘ', 'ΔΩΡΟ', 'ΕΠΙΔΟΜ', 'ΜΠΟΝ', 'BONUS', 'ΛΑΘ')
+CARRY_KEYS = ('ΜΕΤΑΦΟΡΑ', 'ΥΠΟΛΟΙΠΟ')
+
+def d2(v):
+    return Decimal(str(v if v not in (None, '') else 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+
+def is_num(v):
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+def num(v):
+    """Blank → None (NULL = not recorded); a number, including 0, → float."""
+    return float(d2(v)) if is_num(v) else None
+
+def to_date(v):
+    if isinstance(v, dt.datetime): return v.date()
+    if isinstance(v, dt.date): return v
+    if isinstance(v, str):
+        m = re.match(r'^\s*(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})\s*$', v)
+        if m:
+            d, mo, y = (int(x) for x in m.groups())
+            if y < 100: y += 2000
+            try: return dt.date(y, mo, d)
+            except ValueError: return None
+    return None
+
+def detect_header(rows):
+    """First row with ≥3 fields incl. ΕΛΑΒΕ and ΕΞΟΔΑ wins. Two fallbacks for
+    columns that are almost never labeled: the end date (right after the date,
+    before the route) and the Α/Α counter (right before the date)."""
+    for i, row in enumerate(rows, 1):
+        cols = {}
+        for j, cell in enumerate(row, 1):
+            if cell in (None, ''): continue
+            n = norm(cell)
+            if n in SEQ_LABELS:
+                cols.setdefault('seq', j); continue
+            for field, keys in FIELD_KEYS:
+                if field not in cols and any(k in n for k in keys):
+                    cols[field] = j; break
+        if len(cols) >= 3 and all(f in cols for f in REQUIRED):
+            used = set(cols.values())
+            if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route'] and cols['date'] + 1 not in used:
+                cols['date_end'] = cols['date'] + 1
+            if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used:
+                cols['seq'] = cols['date'] - 1
+            return {'row': i, 'cols': cols, 'out_of_scope': 'official' in cols}
+    return None
+
+def _has_seq(v):
+    return is_num(v) or (isinstance(v, str) and v.strip().isdigit())
+
+def classify(c):
+    """c = {field: raw cell, '_row_text': every string cell of the row joined}.
+    Returns an entry dict, None (nothing to record), or 'TOTALS' (skip)."""
+    if 'ΣΥΝΟΛ' in norm(c.get('_row_text') or '') or 'ΣΥΝΟΛ' in norm(c.get('route') or '') or 'ΣΥΝΟΛ' in norm(c.get('date') or ''):
+        return 'TOTALS'
+    desc = str(c.get('route') or '').strip()
+    pay_desc = ' · '.join(str(c.get(k)).strip() for k in ('cash', 'bank') if isinstance(c.get(k), str) and str(c.get(k)).strip())
+    label = (desc or pay_desc)[:200]
+    has_amount = any(is_num(c.get(k)) and c.get(k) != 0 for k in ('advance', 'expenses', 'value', 'cash', 'bank'))
+    has_seq = _has_seq(c.get('seq'))
+    if not has_amount and not has_seq: return None                       # blank line, or a text-only note
+    date = to_date(c.get('date')) or to_date(c.get('date_end'))
+    if date is None and not label and not has_seq: return 'TOTALS'        # numbers alone, no date, no text
+    iso = date.isoformat() if date else None                              # None → caller inherits the previous row's date
+    adv, exp, val = num(c.get('advance')), num(c.get('expenses')), num(c.get('value'))
+    t = norm(label + ' ' + pay_desc)
+    bank = any(k in t for k in BANK_KEYS) or bool(ETE_RE.search(t))
+    cash = 'ΜΕΤΡΗΤ' in t
+    if any(k in t for k in CARRY_KEYS) and not val and not adv and not exp:
+        if not is_num(c.get('balance')): raise Unknown('carry row without balance: %r' % label)
+        return {'entry_type': 'carry', 'entry_date': iso, 'amount': float(d2(c['balance']))}
+    if (cash or bank) and val and not adv and not has_seq:
+        raise Unknown('payment keyword but the amount is in ΑΞΙΑ: %r' % label)
+    if val and not adv and not exp and not has_seq and any(k in t for k in ADJUST_KEYS):
+        return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': val, 'note': label}
+    if val or has_seq or exp:                                             # a value, a counter, or expenses = a journey
+        end = to_date(c.get('date_end'))
+        return {'entry_type': 'trip', 'entry_date': iso,
+                'date_end': end.isoformat() if end else None,
+                'route': desc or 'χωρίς περιγραφή (Excel)',
+                'trip_value': val, 'advance': adv, 'expenses': exp}
+    if adv:                                                               # money handed to the driver, nothing else on the line
+        if adv < 0:
+            return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': -adv, 'note': ('αρνητικό ΕΛΑΒΕ στο Excel: ' + label).strip(': ')}
+        e = {'entry_type': 'payment_bank' if (bank and not cash) else 'payment_cash', 'entry_date': iso, 'amount': adv}
+        if label: e['note'] = label
+        return e
+    if cash or bank:                                                      # amount typed in the ΜΕΤΡΗΤΑ/ΚΑΤΑΘΕΣΗ column itself
+        col = num(c.get('cash')) if cash else num(c.get('bank'))
+        if col and col > 0:
+            e = {'entry_type': 'payment_cash' if cash else 'payment_bank', 'entry_date': iso, 'amount': col}
+            if label: e['note'] = label
+            return e
+        raise Unknown('payment keyword without a positive amount: %r' % label)
+    raise Unknown('unrecognised row: %r' % label)
+
+def fix_date(cur, neighbours, today, spike=dt.timedelta(days=200), window=dt.timedelta(days=45)):
+    """(date, note) or None. Sheets are not chronological (payments are logged with
+    earlier dates), so only a *spike* — a date after today or >200 days away from
+    every neighbour — is suspect. It is repaired only when changing the YEAR alone
+    lands it within 45 days of the neighbours' span; anything else is a human's call."""
+    lo = min(neighbours) if neighbours else None
+    hi = max(neighbours) if neighbours else None
+    if cur <= today and (not neighbours or lo - spike <= cur <= hi + spike): return (cur, None)
+    if not neighbours: return None
+    cands = set()
+    for y in {cur.year - 1, cur.year + 1} | {d.year for d in neighbours}:
+        try: d = cur.replace(year=y)
+        except ValueError: continue
+        if d <= today and lo - window <= d <= hi + window: cands.add(d)
+    if len(cands) != 1: return None
+    fixed = cands.pop()
+    return (fixed, 'ημ/νία Excel %s → %s (έτος)' % (cur.isoformat(), fixed.isoformat()))
+
+def raw_balance(cells_list):
+    """Σ ΑΞΙΑ − Σ ΕΛΑΒΕ + Σ ΕΞΟΔΑ over raw cells — independent of classification."""
+    tot = Decimal('0')
+    for c in cells_list:
+        tot += d2(c.get('value') if is_num(c.get('value')) else 0)
+        tot -= d2(c.get('advance') if is_num(c.get('advance')) else 0)
+        tot += d2(c.get('expenses') if is_num(c.get('expenses')) else 0)
+    return tot.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+```
+
+- [ ] **Step 4: Run the rules tests**
+
+Run: `cd tools/ledger-import && python3 -m unittest tests.test_rules -v 2>&1 | tail -4`
+Expected: `OK`, 30 tests. If `test_month_day_swap_is_not_repaired` fails: 2022-09-12 with neighbours in Feb 2022 must produce no candidate (year 2021/2023 lands far away) — check the `window` bound.
+
+- [ ] **Step 5: Replace `tests/test_inventory.py`**
+
+```python
+# tools/ledger-import/tests/test_inventory.py
+import unittest, sys, os, datetime as dt
+import openpyxl
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from inventory import parse_sheet
+
+def book(rows):
+    wb = openpyxl.Workbook(); ws = wb.active
+    for r in rows: ws.append(list(r))
+    return ws
+
+class TestParseSheet(unittest.TestCase):
+    def test_standard_sheet(self):
+        ws = book([
+            ('ΚΑΡΤΕΛΑ',),
+            (None,),
+            (None, None, 'ΗΜΕΡΟΜΗΝΙΑ', None, 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+            (None, 1, dt.datetime(2024, 3, 13), dt.datetime(2024, 3, 20), 'ΓΕΡΜΑΝΙΑ', 300, 120.5, None, 450, 270.5, 270.5),
+            (None, None, dt.datetime(2024, 4, 1), None, 'ΜΕΤΡΗΤΑ', 200, None, None, None, -200, 70.5),
+            (None, None, None, None, 'ΑΠΌ ΠΩΛΗΣΗ ΕΥΡΩΠΑΛΕΤΩΝ', 90, 0, None, 0, -90, -19.5),   # no date → inherits 2024-04-01
+            (None, 2, dt.datetime(2024, 12, 27), None, 'ΑΘΗΝΑ', 100, None, None, 230, 130, 110.5),
+            (None, 3, dt.datetime(2025, 12, 30), None, 'ΠΑΤΡΑ', 100, None, None, 230, 130, 240.5),   # spike: a year off → 2024-12-30
+            (None, 4, dt.datetime(2025, 1, 4), None, 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, None, None, 80, 80, 320.5),
+            (None, None, dt.datetime(2025, 1, 6), None, 'ΣΗΜΕΙΩΣΗ ΧΩΡΙΣ ΠΟΣΑ', None, None, None, None, None, None),
+            (None, None, None, None, None, 790, 120.5, None, 990, None, None),                       # totals without the word
+            (None, None, 'ΣΥΝΟΛΟ', None, None, 790, 120.5, None, 990, None, None),
+        ])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['header_row'], 3)
+        self.assertEqual(n['cols']['seq'], 2)
+        self.assertEqual(n['n_rows'], 6)
+        self.assertEqual([r['entry']['entry_type'] for r in n['rows']], ['trip', 'payment_cash', 'payment_cash', 'trip', 'trip', 'trip'])
+        self.assertEqual(n['rows'][2]['entry']['entry_date'], '2024-04-01')
+        self.assertTrue(n['rows'][2]['date_inherited'])
+        self.assertIn('προηγούμενη γραμμή', n['rows'][2]['entry']['note'])
+        self.assertEqual(n['rows'][4]['date_fix']['to'], '2024-12-30')
+        self.assertEqual(n['rows'][4]['entry']['entry_date'], '2024-12-30')
+        self.assertEqual(n['raw_final'], '320.50')
+        self.assertEqual(n['running_last'], '320.50')
+        self.assertEqual(n['totals_skipped'], 2)
+        self.assertEqual(n['text_only_skipped'], 1)
+        self.assertEqual(n['unknown'], [])
+        self.assertEqual(n['first_date'], '2024-03-13')
+
+    def test_unknown_rows_are_collected_not_fatal(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2024, 1, 5), None, 100, 30, None, None, -70)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(len(n['unknown']), 1)
+        self.assertIsNone(n['running_last'])
+        self.assertEqual(n['balance_sum'], '-70.00')
+        self.assertEqual(n['raw_final'], '-70.00')
+
+    def test_first_row_without_date_is_unknown(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (None, 'ΜΕΤΡΗΤΑ', 100, None, None, None, -100)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 0)
+        self.assertIn('no previous row', n['unknown'][0]['reason'])
+
+    def test_no_header_returns_none(self):
+        self.assertIsNone(parse_sheet(book([('x', 'y'), (1, 2)]), today=dt.date(2026, 9, 5)))
+
+if __name__ == '__main__':
+    unittest.main()
+```
+
+- [ ] **Step 6: Replace `inventory.py`**
+
+```python
+#!/usr/bin/env python3
+"""Parse every workbook in work/xlsx into nodes (one per sheet) with rows already
+normalised by rules.py. Reads with data_only=True so the cached ΠΡΟΟΔΕΥΤΙΚΟ is
+visible. Nothing here decides anything — it records, and it repairs only what
+rules.py allows (year spikes, missing dates inherited from the line above), each
+repair written into the row's note."""
+import datetime as dt, json, os, warnings
+import openpyxl
+from rules import detect_header, classify, fix_date, raw_balance, is_num, d2, Unknown
+warnings.filterwarnings('ignore')
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+WORK = os.path.join(HERE, 'work')
+PICK = ('seq', 'date', 'date_end', 'route', 'advance', 'expenses', 'value', 'balance', 'running', 'cash', 'bank')
+INHERIT_NOTE = 'ημ/νία από προηγούμενη γραμμή (κενή στο Excel)'
+
+def jsonable(v):
+    if isinstance(v, (dt.datetime, dt.date)): return v.isoformat()[:10]
+    if isinstance(v, float) and v != v: return None
+    return v
+
+def add_note(entry, text):
+    entry['note'] = (entry['note'] + ' · ' + text) if entry.get('note') else text
+
+def parse_sheet(ws, today):
+    head = list(ws.iter_rows(min_row=1, max_row=min(ws.max_row or 0, 400), values_only=True))
+    h = detect_header(head)
+    if h is None: return None
+    cols = h['cols']
+    rows, unknown, cells_used = [], [], []
+    totals_skipped = text_only = 0
+    for rn, raw in enumerate(ws.iter_rows(min_row=h['row'] + 1, values_only=True), h['row'] + 1):
+        cells = {f: (raw[cols[f] - 1] if f in cols and cols[f] <= len(raw) else None) for f in PICK}
+        cells['_row_text'] = ' '.join(str(v) for v in raw if isinstance(v, str))
+        try:
+            e = classify(cells)
+        except Unknown as ex:
+            unknown.append({'row': rn, 'reason': str(ex), 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'}})
+            if cells.get('date') is not None: cells_used.append(cells)   # a dated money line counts even if unclassified
+            continue
+        if e == 'TOTALS': totals_skipped += 1; continue
+        if e is None:
+            if any(v not in (None, '') for v in raw): text_only += 1
+            continue
+        inherited = False
+        if e['entry_date'] is None:
+            if not rows:
+                unknown.append({'row': rn, 'reason': 'row without a date and no previous row to inherit from', 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'}})
+                continue
+            e['entry_date'] = rows[-1]['entry']['entry_date']; inherited = True; add_note(e, INHERIT_NOTE)
+        rows.append({'row': rn, 'entry': e, 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'},
+                     'date_fix': None, 'date_problem': None, 'date_inherited': inherited})
+        cells_used.append(cells)
+    dates = [dt.date.fromisoformat(r['entry']['entry_date']) for r in rows]
+    for i, r in enumerate(rows):
+        nb = [d for d in dates[max(0, i - 3):i] + dates[i + 1:i + 4] if d <= today]
+        fx = fix_date(dates[i], nb, today)
+        if fx is None:
+            r['date_problem'] = 'date %s is a spike and not repairable by year alone' % dates[i].isoformat()
+        elif fx[1]:
+            r['date_fix'] = {'from': dates[i].isoformat(), 'to': fx[0].isoformat(), 'note': fx[1]}
+            r['entry']['entry_date'] = fx[0].isoformat(); add_note(r['entry'], fx[1])
+        end = r['entry'].get('date_end')
+        if end and end < r['entry']['entry_date']:
+            r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
+    running_last = None
+    if 'running' in cols:
+        for r in reversed(rows):
+            v = r['cells'].get('running')
+            if is_num(v): running_last = str(d2(v)); break
+    balance_sum = None
+    if 'balance' in cols:
+        vals = [c.get('balance') for c in cells_used if is_num(c.get('balance'))]
+        balance_sum = str(sum((d2(v) for v in vals), d2(0))) if vals else None
+    ds = sorted(dt.date.fromisoformat(r['entry']['entry_date']) for r in rows)
+    return {'sheet': ws.title, 'header_row': h['row'], 'cols': cols, 'out_of_scope': h['out_of_scope'],
+            'rows': rows, 'unknown': unknown, 'raw_final': str(raw_balance(cells_used)) if cells_used else None,
+            'running_last': running_last, 'balance_sum': balance_sum,
+            'first_date': ds[0].isoformat() if ds else None, 'last_date': ds[-1].isoformat() if ds else None,
+            'n_rows': len(rows), 'totals_skipped': totals_skipped, 'text_only_skipped': text_only}
+
+def main():
+    today = dt.date.today()
+    index = json.load(open(os.path.join(WORK, 'drive-index.json'), encoding='utf-8'))
+    nodes = []
+    for it in index:
+        wb = openpyxl.load_workbook(it['local'], data_only=True, read_only=True)
+        for ws in wb.worksheets:
+            n = parse_sheet(ws, today)
+            if n is None: continue
+            n.update({'file_id': it['id'], 'file_name': it['name'], 'path': it['path'],
+                      'folder': 'ΣΤΑΜΑΤΗΣΑΝ' if it['path'].startswith('ΣΤΑΜΑΤΗΣΑΝ/') else 'root', 'modified': it['modified']})
+            nodes.append(n)
+    out = {'generated': dt.datetime.now().isoformat(timespec='seconds'), 'nodes': nodes}
+    json.dump(out, open(os.path.join(WORK, 'inventory.json'), 'w', encoding='utf-8'), ensure_ascii=False)
+    R = [r for n in nodes for r in n['rows']]
+    print('nodes %d · rows %d · unknown rows %d · date fixes %d · date problems %d · date inherited %d · totals skipped %d · text-only %d · out_of_scope %d · raw≠running %d'
+          % (len(nodes), len(R), sum(len(n['unknown']) for n in nodes), sum(1 for r in R if r['date_fix']), sum(1 for r in R if r['date_problem']),
+             sum(1 for r in R if r['date_inherited']), sum(n['totals_skipped'] for n in nodes), sum(n['text_only_skipped'] for n in nodes),
+             sum(n['out_of_scope'] for n in nodes), sum(1 for n in nodes if n['running_last'] and n['raw_final'] != n['running_last'])))
+
+if __name__ == '__main__':
+    main()
+```
+
+- [ ] **Step 7: Run the inventory tests, then the whole suite**
+
+Run: `cd tools/ledger-import && python3 -m unittest tests.test_inventory -v 2>&1 | tail -4` → `OK` (4 tests).
+Run: `cd tools/ledger-import && python3 -m unittest discover -s tests 2>&1 | tail -3` → `OK`, 34 tests.
+
+- [ ] **Step 8: Real run**
+
+Run: `python3 tools/ledger-import/inventory.py`
+Record the full summary line in the report. Expected order of magnitude: `unknown rows` well under 1,000, `date problems` under 50, `raw≠running` under 40. If any of the three is above that, still commit (the tests pass) but report DONE_WITH_CONCERNS with the line and the top 5 `unknown` reasons (run: `python3 -c "import json,collections;inv=json.load(open('tools/ledger-import/work/inventory.json'))['nodes'];c=collections.Counter(u['reason'].split(':')[0] for n in inv for u in n['unknown']);print(c.most_common(5))"`).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add tools/ledger-import/rules.py tools/ledger-import/tests/test_rules.py tools/ledger-import/inventory.py tools/ledger-import/tests/test_inventory.py
+git commit -q -m "ledger-import: rules v2 — shape-first classification, Latin lookalikes, totals lines, Α/Α fallback, date spikes with neighbours, inherited dates (first real run: 11190 unknown → fit)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
