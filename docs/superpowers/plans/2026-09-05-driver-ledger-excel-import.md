@@ -3419,3 +3419,21 @@ git commit -q -m "ledger-import: final fix wave — skipped sheets visible, writ
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 12b: two follow-ups from the review of Task 12
+
+**Files:** `tools/ledger-import/commit.py`, `tools/ledger-import/tests/test_commit.py`, `tools/ledger-import/verify_plan.py` (only if `date_end` check is added there), `tools/ledger-import/tests/test_verify_plan.py`
+
+1. `commit.run()` must also run the cross-plan guard before writing anything: import `cross_plan_errors` from `verify_plan` and, at the start of `run()`, compute it over ALL loaded plans (not only the selected ones); any error ⇒ `Mismatch` and nothing is written. Test: two plans with the same `driver_id` ⇒ `run(..., commit=False)` raises `Mismatch` naming both keys.
+2. Unit-test `select_plans(plans, only)`: `only=None` → all; `only=['A']` → only A; `only=['ZZZ']` → `SystemExit` whose message names `ZZZ`.
+3. `verify_plan.verify`: for trip rows, if `date_end` is present it must match `^\d{4}-\d{2}-\d{2}$` and be ≥ `entry_date` (mirrors `validateNewEntry`). Test: a trip with `date_end` before `entry_date` is rejected with a message containing `date_end`.
+
+Run the suite (expected 121 + 4 = 125 OK) and `python3 tools/ledger-import/commit.py` (dry run must still end without STOP; report the summary lines). Commit:
+```bash
+git add tools/ledger-import/commit.py tools/ledger-import/tests/test_commit.py tools/ledger-import/verify_plan.py tools/ledger-import/tests/test_verify_plan.py
+git commit -q -m "ledger-import: cross-plan guard inside the write path, select_plans tests, date_end mirrored in verify (review 12)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
