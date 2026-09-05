@@ -119,6 +119,24 @@ class TestClassify(unittest.TestCase):
         with self.assertRaises(Unknown):
             classify({'date': D(2024, 1, 1), 'advance': 100, 'expenses': 30})
 
+    def test_dated_row_mentioning_synoliko_is_not_totals(self):
+        e = classify({'date': D(2024, 5, 10), 'route': 'ΓΕΡΜΑΝΙΑ', 'advance': 300, 'expenses': 50, 'value': 800,
+                      '_row_text': 'ΓΕΡΜΑΝΙΑ ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ 24 ΠΑΛΕΤΕΣ'})
+        self.assertEqual(e['entry_type'], 'trip'); self.assertEqual(e['trip_value'], 800.0)
+
+    def test_synolo_cell_is_totals_even_with_a_date(self):
+        self.assertEqual(classify({'date': D(2024, 12, 31), 'route': 'ΣΥΝΟΛΟ', 'value': 9000, 'advance': 5000, 'expenses': 300}), 'TOTALS')
+        self.assertEqual(classify({'date': D(2024, 12, 31), 'route': 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ', 'value': 9000}), 'TOTALS')
+
+    def test_payment_line_with_expenses_nets_them(self):
+        e = classify({'date': D(2024, 4, 1), 'route': 'ΜΕΤΡΗΤΑ', 'advance': 200, 'expenses': 5, 'value': 0})
+        self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 195.0)
+        self.assertIn('ΕΞΟΔΑ 5.00', e['note'])
+
+    def test_payment_line_swallowed_by_expenses_is_unknown(self):
+        with self.assertRaises(Unknown):
+            classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 5})
+
 class TestFixDate(unittest.TestCase):
     today = D(2026, 9, 5)
     def test_year_typo_in_future_is_fixed(self):

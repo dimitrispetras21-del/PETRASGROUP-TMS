@@ -91,7 +91,13 @@ def _has_seq(v):
 def classify(c):
     """c = {field: raw cell, '_row_text': every string cell of the row joined}.
     Returns an entry dict, None (nothing to record), or 'TOTALS' (skip)."""
-    if 'ΣΥΝΟΛ' in norm(c.get('_row_text') or '') or 'ΣΥΝΟΛ' in norm(c.get('route') or '') or 'ΣΥΝΟΛ' in norm(c.get('date') or ''):
+    # A totals line is a cell that IS the word ΣΥΝΟΛΟ, or a ΣΥΝΟΛ- mention on a
+    # line without a date. A dated line that merely mentions ΣΥΝΟΛΙΚΟ ΦΟΡΤΙΟ in
+    # its description is a trip and must not vanish into totals_skipped.
+    date = to_date(c.get('date')) or to_date(c.get('date_end'))
+    route_n = norm(c.get('route') or '')
+    if route_n in ('ΣΥΝΟΛΟ', 'ΣΥΝΟΛΑ', 'ΣΥΝΟΛΟ:', 'ΓΕΝΙΚΟ ΣΥΝΟΛΟ') or \
+       (date is None and ('ΣΥΝΟΛ' in norm(c.get('_row_text') or '') or 'ΣΥΝΟΛ' in norm(c.get('date') or ''))):
         return 'TOTALS'
     desc = str(c.get('route') or '').strip()
     pay_desc = ' · '.join(str(c.get(k)).strip() for k in ('cash', 'bank') if isinstance(c.get(k), str) and str(c.get(k)).strip())
@@ -101,7 +107,6 @@ def classify(c):
         or (carry_kw and is_num(c.get('balance')))
     has_seq = _has_seq(c.get('seq'))
     if not has_amount and not has_seq: return None                       # blank line, or a text-only note
-    date = to_date(c.get('date')) or to_date(c.get('date_end'))
     if date is None and not label and not has_seq: return 'TOTALS'        # numbers alone, no date, no text
     iso = date.isoformat() if date else None                              # None → caller inherits the previous row's date
     adv, exp, val = num(c.get('advance')), num(c.get('expenses')), num(c.get('value'))
@@ -115,12 +120,25 @@ def classify(c):
         raise Unknown('payment keyword but the amount is in ΑΞΙΑ: %r' % label)
     if val and not adv and not exp and not has_seq and any(k in t for k in ADJUST_KEYS):
         return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': val, 'note': label}
+    # A payment keyword wins over the "expenses = journey" heuristic: a ΜΕΤΡΗΤΑ
+    # line with a 5 € bank fee is a payment of ΕΛΑΒΕ − ΕΞΟΔΑ, not a trip to
+    # "ΜΕΤΡΗΤΑ". The net keeps the line's Excel arithmetic (ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ).
+    if (cash or bank) and not val and not has_seq and adv and adv > 0:
+        net = float(d2(adv - (exp or 0)))
+        if net <= 0: raise Unknown('payment line whose expenses cancel the amount: %r' % label)
+        e = {'entry_type': 'payment_bank' if (bank and not cash) else 'payment_cash', 'entry_date': iso, 'amount': net}
+        note = label
+        if exp: note = (label + ' · ' if label else '') + 'ΕΞΟΔΑ %.2f στη γραμμή πληρωμής (καθαρό %.2f)' % (exp, net)
+        if note: e['note'] = note
+        return e
     if val or has_seq or (exp and desc):                                  # a value, a counter, or expenses on a named line = a journey
         end = to_date(c.get('date_end'))
         return {'entry_type': 'trip', 'entry_date': iso,
                 'date_end': end.isoformat() if end else None,
                 'route': desc or 'χωρίς περιγραφή (Excel)',
                 'trip_value': val, 'advance': adv, 'expenses': exp}
+    # Advance + expenses with no description, value or counter: could be a trip
+    # whose route was never typed or cash handed over with a receipt — a human decides.
     if exp and adv and not (desc or val or has_seq):
         raise Unknown('row has both advance and expenses but no description or value: %r' % label)
     if adv:                                                               # money handed to the driver, nothing else on the line
