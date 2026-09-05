@@ -2965,7 +2965,18 @@ async function handleCosts(request, url, origin, env) {
         patch = v.patch;
       }
       patch.updated_at = new Date().toISOString();
-      const updated = await ctDbPatch(env, "dl_entries", `id=eq.${encodeURIComponent(recId)}`, patch);
+      let updated;
+      try {
+        updated = await ctDbPatch(env, "dl_entries", `id=eq.${encodeURIComponent(recId)}`, patch);
+      } catch (e) {
+        // PATCH can move rt_id too (TRIP_EDITABLE in ledger-rules.mjs) and hit the
+        // same dl_rt_live unique index or FK as the create path (index.js:2941), but
+        // had no catch here — it fell through to handleCosts' generic 500 instead
+        // of the 409/400 the equivalent POST conflict already gets (verify-worker §4).
+        if (/23505|dl_rt_live/.test(e.message)) return jsonError("rt_id: this round trip already has a ledger line", 409, origin, env);
+        if (/23503/.test(e.message)) return jsonError("rt_id: unknown round trip", 400, origin, env);
+        throw e;
+      }
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "dl_entries", recordId: String(recId), before: before.rows[0], after: { ...updated, reason: String((body || {}).reason || "").trim() || null } });
       return jsonOk({ record: updated }, origin, env);
     }
@@ -2976,6 +2987,14 @@ async function handleCosts(request, url, origin, env) {
       if (!body || !Number.isInteger(body.driver_id) || !Array.isArray(body.rows) || !body.rows.length || !body.file_hash || !body.file_name) {
         return jsonError("driver_id, file_name, file_hash, rows[] required", 400, origin, env);
       }
+      // A file with a run-away row count would still pass every per-row check and
+      // reach dl_import as one giant statement — cap it before that, not after.
+      if (body.rows.length > 2000) return jsonError("rows: max 2000 per file", 400, origin, env);
+      // The plain POST checks the driver exists before writing (index.js:2929-2930);
+      // import skipped this, so a bad driver_id fell through to an FK violation inside
+      // dl_import and surfaced as a generic 500 instead of a clean 400 (verify-worker §1).
+      const drv = await dbSelectRaw(env, "drivers", new URLSearchParams({ select: "id,deleted_at", id: `eq.${body.driver_id}` }));
+      if (!drv.rows.length || drv.rows[0].deleted_at) return jsonError("driver_id: unknown driver", 400, origin, env);
       for (let i = 0; i < body.rows.length; i++) {
         if (body.rows[i].driver_id !== void 0 && body.rows[i].driver_id !== body.driver_id) {
           return jsonError(`row ${i + 1}: driver_id differs from the batch`, 400, origin, env);
