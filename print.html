@@ -629,7 +629,10 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   // and invoicing.js _invOrderNo already ruled out. orders_intl.js:523/798
   // confirm the app's own convention for this table: Reference, with an
   // explicit "not recorded" when absent — never a record-id fallback.
-  var orderNo=f['Reference']||'— δεν έχει καταχωρηθεί';
+  // ΑΡ. ΕΝΤΟΛΗΣ is the order's own number (Postgres id via «Order ID»), never a
+  // slice of the legacy record id (audit 5/9) and never the Reference — that one
+  // has its own line (ΑΝΑΦΟΡΑ); printing it twice read as a copy-paste mistake.
+  var orderNo=(f['Order ID']!=null&&f['Order ID']!=='')?('#'+f['Order ID']):'— δεν έχει καταχωρηθεί';
   var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
   _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
