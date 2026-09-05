@@ -179,7 +179,7 @@ class TestClassify(unittest.TestCase):
 class TestFixDate(unittest.TestCase):
     today = D(2026, 9, 5)
     def test_year_typo_in_future_is_fixed(self):
-        r = fix_date(D(2026, 12, 27), [D(2025, 12, 20), D(2025, 12, 22), D(2026, 1, 5)], self.today)
+        r = fix_date(D(2026, 12, 27), [D(2025, 12, 20), D(2025, 12, 29), D(2026, 1, 5)], self.today)
         self.assertEqual(r[0], D(2025, 12, 27)); self.assertIn('2026-12-27', r[1])
     def test_spike_a_year_off_inside_the_past_is_fixed(self):
         r = fix_date(D(2025, 12, 27), [D(2024, 12, 20), D(2024, 12, 29), D(2025, 1, 5)], self.today)
@@ -190,6 +190,11 @@ class TestFixDate(unittest.TestCase):
         self.assertIsNone(fix_date(D(2026, 12, 27), [], self.today))
     def test_month_day_swap_is_not_repaired(self):
         self.assertIsNone(fix_date(D(2022, 9, 12), [D(2022, 2, 2), D(2022, 2, 5), D(2022, 2, 7)], self.today))
+    def test_year_candidate_outside_neighbour_span_is_not_applied(self):
+        # month typo (12 → 02): a year change lands two months before the neighbours — refuse
+        self.assertIsNone(fix_date(D(2026, 12, 17), [D(2026, 1, 21), D(2026, 2, 11), D(2026, 2, 17), D(2026, 2, 20)], self.today))
+    def test_year_candidate_inside_span_with_small_slack_is_applied(self):
+        self.assertEqual(fix_date(D(2025, 12, 27), [D(2024, 12, 20), D(2024, 12, 29), D(2025, 1, 5)], self.today)[0], D(2024, 12, 27))
 
 class TestBalance(unittest.TestCase):
     def test_raw_balance(self):

@@ -83,10 +83,10 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             else:
                 needs.append('το φύλλο %s κλείνει με %s και το επόμενο (%s) ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;' % (prev_node['sheet'], prev_final, n['sheet']))
         # opening balance
-        skipped = Decimal('0')
+        skipped = Decimal('0'); opening_event = None
         if opening is not None and opening != 0:
             action = dec_open.get(k, {}).get('action') or ('skip' if carries_prev else 'adjust')
-            if action == 'skip': skipped += opening
+            if action == 'skip': skipped += opening; opening_event = opening
             else:
                 if abs(opening) > 1000 and k not in dec_open: needs.append('υπόλοιπο έναρξης %s στο φύλλο %s χωρίς προηγούμενο φύλλο που να το εξηγεί' % (opening, n['sheet']))
                 node_lines.append(adj(first_date, opening, 'υπόλοιπο έναρξης φύλλου %s στο Excel' % n['sheet'], dict(src0, row=None)))
@@ -98,6 +98,10 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             if e['entry_type'] == 'carry':
                 if d2(e['amount']) == 0:
                     continue
+                # the inventory derives opening_balance from the carry row, so opening and
+                # first carry are one event; skip the carry without double-counting
+                if r is first_carry and opening_event is not None and abs(d2(e['amount']) - opening_event) <= TOL:
+                    breaks.pop(r['row'], None); continue
                 ck = (n['file_id'], n['sheet'], r['row'])
                 action = dec_carry.get(ck, {}).get('action') or ('skip' if (r is first_carry and carries_prev) else 'adjust')
                 if action == 'skip': skipped += d2(e['amount'])

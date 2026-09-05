@@ -147,5 +147,13 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual(p['patches'][0]['trip_value'], 650.0)
         self.assertEqual([r['src']['row'] for r in p['batches'][0]['rows']], [97])
 
+    def test_opening_and_first_carry_are_one_event(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=200.0), row(5, '2024-01-12', value=100, advance=50)], opening_balance='200.00', final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+
 if __name__ == '__main__':
     unittest.main()

@@ -184,11 +184,11 @@ def classify(c):
         raise Unknown('payment keyword without a positive amount: %r' % label)
     raise Unknown('unrecognised row: %r' % label)
 
-def fix_date(cur, neighbours, today, spike=dt.timedelta(days=200), window=dt.timedelta(days=45)):
+def fix_date(cur, neighbours, today, spike=dt.timedelta(days=200), window=dt.timedelta(days=7)):
     """(date, note) or None. Sheets are not chronological (payments are logged with
     earlier dates), so only a *spike* — a date after today or >200 days away from
     every neighbour — is suspect. It is repaired only when changing the YEAR alone
-    lands it within 45 days of the neighbours' span; anything else is a human's call."""
+    lands it within the neighbours' span, ±7 days for rows logged out of order; anything else is a human's call."""
     lo = min(neighbours) if neighbours else None
     hi = max(neighbours) if neighbours else None
     if cur <= today and (not neighbours or lo - spike <= cur <= hi + spike): return (cur, None)
