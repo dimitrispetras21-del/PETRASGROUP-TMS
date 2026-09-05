@@ -1,33 +1,33 @@
-# Analyst — one plan per driver
+# Analyst — decisions per driver (not plans)
 
-You receive: a list of driver keys, the paths of `work/inventory.json`, `work/map.json`, `work/auto_rows.json`, and `work/plans/`. You write exactly one JSON file per driver key, schema below. You do not call any network, you do not modify any other file, you never guess. Work from the inventory only — do not reopen the xlsx.
+The plan for every driver is built by `python3 tools/ledger-import/make_plan.py <KEY>` from `work/inventory.json`, `work/map.json`, `work/auto_rows.json` and, if present, `work/decisions/<KEY>.json`. You never write a plan. You write **decisions** — the edges of the graph the code cannot settle — and you re-run the builder to see the effect. You do not call any network, you do not modify any file outside `work/decisions/`, you never guess.
 
-## Per driver
+## Inputs for a key
+- `work/plans/<KEY>.json` — the current draft: `status`, `needs_decision[]`, `warnings[]`, `nodes[]` (role per sheet), `crosscheck{}`, `patches[]`, `auto_unmatched[]`.
+- Inventory nodes of the key's files: extract with Python (`json.load` then filter `n['file_id'] in files`); **never print the whole inventory** (35,000 rows). Print only what you need: a node's `first_date`, `last_date`, `n_rows`, `expected_final`, `opening_balance`, `running_breaks`, and a handful of rows around a question.
+- `work/map.json[KEY]` — `files` (canonical, in order), `crosscheck`, `_note`.
 
-1. Load the map entry. Canonical files = `files`. Crosscheck files = `crosscheck` (and any key with `alias_of` pointing here).
-2. Collect the inventory nodes of the canonical files. Decide each node's `role`:
-   - `out_of_scope` if `out_of_scope` is true (2017–2019 monthly model).
-   - `duplicate` if its rows (date, value, advance, expenses) are a subset of another node of the same driver that you keep as `chain`.
-   - `chain` otherwise. Order chain nodes by `first_date`. Two chain nodes may not overlap in dates; if they do, put the driver in `needs_decision`.
-3. For each chain node take `expected_final` from the inventory node (it is the cached ΠΡΟΟΔΕΥΤΙΚΟ plus the deltas of any trailing rows without a cached value, or `balance_sum` when the sheet has no ΠΡΟΟΔΕΥΤΙΚΟ column). If it is null ⇒ `needs_decision` («no ΠΡΟΟΔΕΥΤΙΚΟ and no ΥΠΟΛΟΙΠΟ column»). If the node has a ΠΡΟΟΔΕΥΤΙΚΟ column and `running_consistent` is false ⇒ `needs_decision` with `raw_final`, `opening_balance`, the breaks and `running_last` (do not "fix" it). If the node has no ΠΡΟΟΔΕΥΤΙΚΟ column and `raw_final ≠ balance_sum` ⇒ `needs_decision` likewise.
-3b. **Breaks.** Every item of `running_breaks` becomes one line `{"entry_type": "adjustment", "entry_date": <break entry_date>, "amount": <diff as number>, "note": "διαφορά ΠΡΟΟΔΕΥΤΙΚΟΥ στο Excel, φύλλο <sheet> γρ. <row>: <diff>"}` placed right after the row it belongs to. The ledger must equal the ΠΡΟΟΔΕΥΤΙΚΟ people have been reading, and each unexplained jump must be visible as its own line — never folded into a trip.
-3c. **Opening balance.** A node with `opening_balance` behaves like a node that starts with a carry row of that amount: if the previous chain node is imported and its final equals the opening (±0.05) ⇒ nothing to add, set `opening_carry_skipped: true`; otherwise add `{"entry_type": "adjustment", "entry_date": <first row date>, "amount": <opening>, "note": "υπόλοιπο έναρξης φύλλου <sheet> στο Excel"}` as the first line of the node. An opening that matches nothing and exceeds 1,000 in absolute value ⇒ `needs_decision` (name the amount).
-3d. **Rounding residual.** A node with `rounding_residual` (|x| ≤ 1.00, accumulated sub-0.05 drifts) gets one last line `{"entry_type": "adjustment", "entry_date": <last row date>, "amount": <residual>, "note": "διαφορά στρογγυλοποίησης Excel, φύλλο <sheet>: <residual>"}` so the batch equals `expected_final` to the cent.
-4. A `carry` row (entry_type `carry`) at the start of a chain node: if the previous chain node is imported and its final equals the carry amount ⇒ drop the row and set `opening_carry_skipped: true`. Otherwise convert it to `{"entry_type": "adjustment", "amount": <carry>, "note": "μεταφορά υπολοίπου από Excel <sheet>"}`. A carry anywhere else ⇒ `needs_decision`. Never emit `entry_type: carry` in a batch — the Worker does not know it.
-5. Any `unknown` row in a chain node, any row with `date_problem` ⇒ `needs_decision` (list them: sheet, row, reason). Keep going with the rest of the plan so the reviewer sees the full picture, but `status` must be `needs_decision`.
-6. Crosscheck: for each crosscheck node, every row (date, value, advance, expenses) must exist in a chain node. Otherwise add to `needs_decision` («crosscheck row not in canonical: …»).
-7. **RT overlap.** Auto rows of this `driver_id` from `auto_rows.json`. If none: `cutoff` = null, all rows go to batches. Else `cutoff` = min(entry_date) − 1 day.
-   - Rows with entry_date ≤ cutoff ⇒ batches.
-   - Trips after cutoff: match to an auto row of the same driver with `|entry_date − auto.entry_date| ≤ 2 days`, nearest first, each auto row at most once, auto rows whose `trip_value` is not null are not matchable. Match ⇒ a `patches` item `{dl_id, trip_value, advance, expenses, note: "Excel: <route> · <entry_date>→<date_end>"}` (omit a key whose Excel cell was blank). No match ⇒ batches.
-   - Payments after cutoff ⇒ batches.
-   - Auto rows left without a match ⇒ `auto_unmatched`.
-8. Batches: one per canonical file, rows from its chain nodes in sheet order, each row = the inventory `entry` (its `note` already carries any repair: inherited date, year fix) minus `carry` handling, plus the break/opening adjustments of 3b/3c, plus `src`. Strip keys with null values except keep `note`. **Never include `rt_id`.** `expected_final` of a batch = Σ row deltas (trip: value − (advance − expenses); payment: −amount; adjustment: +amount) and must equal the last chain node's `running_last` (or `balance_sum`) of that file.
-9. `expected_total_balance` = Σ batch finals + Σ patch (value − (advance − expenses)). It must equal the last chain node's `expected_final` (plus carries you converted). If not, you made a mistake — find it or go `needs_decision`.
-10. `date_fixes` = every row whose inventory `date_fix` is not null (copy from, to). They are already applied in `entry`.
-11. `create_driver` = the map's `create` object or null.
+## What you may decide (schema of `work/decisions/<KEY>.json`)
+```json
+{"driver_key": "KEY", "confirmed": true,
+ "nodes":    [{"file_id": "…", "sheet": "…", "role": "chain|duplicate|out_of_scope", "why": "…"}],
+ "openings": [{"file_id": "…", "sheet": "…", "action": "skip|adjust", "why": "…"}],
+ "carries":  [{"file_id": "…", "sheet": "…", "row": 4, "action": "skip|adjust", "why": "…"}],
+ "settled":  [{"file_id": "…", "sheet": "…", "why": "…"}],
+ "matches":  [{"dl_id": 900, "src": {"file_id": "…", "sheet": "…", "row": 160}}, {"dl_id": 901, "src": null}],
+ "needs_decision": ["a question only the owner can answer, with sheet and row"]}
+```
+- **Overlapping sheets** (`επικαλύπτονται χρονικά`): look at both nodes. If one is an extract of the other (same rows, fewer of them, often a year sheet next to a full one) mark the smaller `duplicate`. If they are different periods that merely share an edge date, both stay `chain` and you add nothing — but if the builder still complains, say so in `needs_decision`.
+- **Previous sheet closes with X, next starts from 0** (`εξοφλήθηκε εκτός καρτέλας;`): if the next sheet's first rows or its title (`ΝΕΑ ΚΑΡΤΕΛΑ`, `NEW …`) show a fresh start and the old final is small (|X| ≤ 50) or the old sheet ends with a payment that zeroes it within rounding, declare `settled` with the evidence. If X is large and nothing explains it, leave the question for the owner (keep it in `needs_decision`, add the amount and dates).
+- **Opening balance / carry row** (`υπόλοιπο έναρξης … χωρίς προηγούμενο φύλλο`): `adjust` when this is the driver's first sheet we import and the balance is real history (the previous ledger is out of scope or missing); `skip` only when a previous chain sheet ends with that amount (the builder already does this automatically — you override only with a reason).
+- **RT matches**: the builder matches by nearest date (≤ 2 days). Override with `matches` only when the route or the dates make the automatic choice wrong (e.g. two trips 1 day apart matched crosswise), or set `src: null` to leave an auto row unmatched.
+- **Unknown rows, date problems, ΠΡΟΟΔΕΥΤΙΚΟ inconsistent**: these are the owner's. Do not invent a classification. Leave them, but make the question precise: sheet, row, what the cells contain (from `unknown[].cells`), and what the two possible readings would do to the balance.
 
-Write `status: "ready"` only when `needs_decision` is empty. Write the file with `ensure_ascii=False`, indent 1. Then print one line per driver: `key · status · rows · patches · total`.
+## Procedure per key
+1. `python3 tools/ledger-import/make_plan.py KEY` (prints one line). Read `work/plans/KEY.json` → `status`, `needs_decision`, `warnings`.
+2. If `status == ready` and no warnings: write `{"driver_key": "KEY", "confirmed": true}` and move on.
+3. Otherwise write the decisions you can justify, re-run the builder, re-read. At most 3 rounds. Whatever remains stays in `needs_decision` — that is a valid outcome.
+4. Then `python3 tools/ledger-import/verify_plan.py work/plans/KEY.json` must print `OK`.
+5. Print one line: `KEY · status · rows · patches · total · <remaining questions count>`.
 
-## Schema
-
-(see docs/superpowers/plans/2026-09-05-driver-ledger-excel-import.md → "Plan JSON")
+Write JSON with `ensure_ascii=False`, indent 1. Every `why` is one sentence naming the evidence (sheet, rows, amounts).

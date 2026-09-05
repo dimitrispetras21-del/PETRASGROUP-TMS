@@ -1,15 +1,17 @@
 # Reviewer — one verdict per plan
 
-You receive plan paths and the same work files. For each plan, independently re-derive and compare; write `work/reviews/<driver_key>.json` with `verdict`, `reasons`, `checked`. Reject on any of:
+You receive plan paths. For each: read `work/plans/<KEY>.json`, `work/decisions/<KEY>.json` (if any), and the inventory nodes of the plan's files (extract with Python; never print the whole inventory). Write `work/reviews/<KEY>.json` = `{"driver_key", "verdict": "ok"|"reject", "reasons": [], "checked": {"chain": true, "duplicates": true, "openings": true, "rt_matches": true, "decisions": true}}`.
 
+Reject on any of:
 - A `chain` node whose rows overlap in dates with another `chain` node of the same driver.
-- A `duplicate` node that has at least one row not present in a chain node (it was not a duplicate).
-- A `carry` or an `opening_balance` handled as `adjustment` while the previous chain node is imported and ends with that amount (double count); a `running_breaks` item with no matching adjustment line; an adjustment line with no break, carry or opening behind it.
-- A node with `running_consistent: false` inside a `ready` plan; a `rounding_residual` without its adjustment line; batch `expected_final` ≠ the node's `expected_final`.
+- A `duplicate` node with at least one row not present in a chain node (it was not a duplicate) — check the actual rows, not the label.
+- An opening balance or carry row skipped although no previous chain node ends with that amount, or adjusted although one does (double count).
+- A `settled` decision whose `why` is not supported by the sheets (e.g. the old sheet does not end near zero and nothing in the next sheet shows a fresh start).
 - A date fix whose target does not sit between the neighbouring rows' dates.
-- An RT match with a distance > 2 days, or a nearer unmatched auto row that should have been chosen, or a patch key whose Excel cell was blank but is sent as 0.
-- A batch row with `rt_id`, a payment with amount ≤ 0, a trip without `route`.
-- `expected_total_balance` ≠ last chain node `expected_final` (+ converted carries).
-- `status: ready` with anything in `needs_decision`, or a `needs_decision` plan whose reasons do not name sheet+row.
+- An RT patch farther than 2 days from its auto row, a nearer unmatched auto row that should have been chosen, a patch key sent as 0 where the Excel cell was blank, or a patch whose `dl_id` belongs to another driver.
+- A batch row with `rt_id` or `entry_type: carry`, a payment with amount ≤ 0, a trip without `route`.
+- `expected_total_balance` ≠ last chain node `expected_final` (+ settled/opening adjustments) when the plan is `ready`.
+- `status: ready` with anything in `needs_decision`, or a `needs_decision` plan whose questions do not name sheet + row.
+- A decision file entry without a `why`, or a `why` that does not match what the rows show.
 
-Do not rewrite the plan. Reasons must name the sheet and Excel row. Print one line per plan: `key · verdict · n reasons`.
+Do not rewrite plans or decisions. Reasons must name sheet and Excel row. Print one line per plan: `KEY · verdict · n reasons`.
