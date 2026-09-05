@@ -103,5 +103,37 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual(p['status'], 'ready', p['needs_decision'])
         self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
 
+    def test_real_opening_plus_zero_carry_is_not_double_counted(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', value=100, advance=50), row(5, '2024-02-01', 'carry', amount=0.0), row(6, '2024-03-01', value=30, advance=0)],
+                 opening_balance='-8.00', final='72.00')          # −8 + 50 + 30 = 72; the −8 is NOT the previous final (200) → emitted as adjustment
+        p = build_plan('X', ENTRY, [a, b], [], {'settled': [{'file_id': 'F1', 'sheet': 'S1', 'why': 'paid'}]})
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        s2 = next(x for x in p['nodes'] if x['sheet'] == 'S2')
+        self.assertFalse(s2['opening_carry_skipped'])
+        self.assertEqual(p['expected_total_balance'], '72.00')
+
+    def test_carry_row_break_is_not_emitted_twice(self):
+        a = node('F1', 'S1', [row(4, '2023-01-10', value=500, advance=300)], final='200.00')
+        b = node('F1', 'S2', [row(4, '2024-01-10', 'carry', amount=200.0), row(5, '2024-01-12', value=100, advance=50)],
+                 running_breaks=[{'row': 4, 'entry_date': '2024-01-10', 'diff': '200.00'}], final='250.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+        self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
+        self.assertEqual(p['expected_total_balance'], '250.00')
+        # and when the carry is NOT explained by the previous sheet it is emitted exactly once
+        c = node('F1', 'S3', [row(4, '2025-01-10', 'carry', amount=40.0), row(5, '2025-01-12', value=10, advance=0)],
+                 running_breaks=[{'row': 4, 'entry_date': '2025-01-10', 'diff': '40.00'}], final='50.00')
+        p2 = build_plan('X', ENTRY, [a, b, c], [], None)
+        adj_lines = [r for b_ in p2['batches'] for r in b_['rows'] if r['entry_type'] == 'adjustment']
+        self.assertEqual([x['amount'] for x in adj_lines], [-250.0, 40.0]) if any('εξόφληση' in x.get('note', '') for x in adj_lines) else self.assertEqual([x['amount'] for x in adj_lines], [40.0])
+
+    def test_extract_sheet_with_leading_carry_is_still_a_duplicate(self):
+        a = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300), row(5, '2024-02-10', value=100, advance=0)], final='300.00')
+        b = node('F1', 'S2', [row(3, '2024-02-01', 'carry', amount=200.0), row(4, '2024-02-10', value=100, advance=0)], final='300.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertEqual(next(x for x in p['nodes'] if x['sheet'] == 'S2')['role'], 'duplicate')
+        self.assertEqual(p['status'], 'ready', p['needs_decision'])
+
 if __name__ == '__main__':
     unittest.main()

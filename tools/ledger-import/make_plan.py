@@ -46,14 +46,17 @@ def build_plan(key, entry, nodes, auto_rows, decision):
         roles[k] = dec_nodes[k]['role'] if k in dec_nodes else ('out_of_scope' if n['out_of_scope'] or n['n_rows'] == 0 else 'chain')
     chain = sorted([n for n in canon if roles[(n['file_id'], n['sheet'])] == 'chain'], key=lambda n: (n['first_date'] or '9999', files.index(n['file_id'])))
     # rule 3 — auto-duplicate: every row of A appears in B ⇒ A is an extract of B
-    sigs = {(n['file_id'], n['sheet']): Counter(sig(r['entry']) for r in n['rows']) for n in chain}
+    sigs = {(n['file_id'], n['sheet']): Counter(sig(r['entry']) for r in n['rows'] if r['entry']['entry_type'] != 'carry') for n in chain}
+    non_carry_counts = {(n['file_id'], n['sheet']): sum(1 for r in n['rows'] if r['entry']['entry_type'] != 'carry') for n in chain}
     for a in list(chain):
         ka = (a['file_id'], a['sheet'])
         if ka in dec_nodes or not a['rows']: continue
+        a_sigs = sigs[ka]
+        if not a_sigs: continue  # skip if all rows are carry rows
         for b in chain:
             kb = (b['file_id'], b['sheet'])
-            if kb == ka or b['n_rows'] <= a['n_rows']: continue
-            if all(sigs[kb][s] >= c for s, c in sigs[ka].items()):
+            if kb == ka or non_carry_counts[kb] <= non_carry_counts[ka]: continue
+            if all(sigs[kb][s] >= c for s, c in a_sigs.items()):
                 roles[ka] = 'duplicate'; chain.remove(a); warnings.append('%s/%s: rows ⊆ %s/%s → duplicate' % (a['file_id'][:8], a['sheet'], b['file_id'][:8], b['sheet'])); break
     # rule 2 — overlapping chain nodes
     for i in range(1, len(chain)):
@@ -80,11 +83,10 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             else:
                 needs.append('το φύλλο %s κλείνει με %s και το επόμενο (%s) ξεκινά από 0 — εξοφλήθηκε εκτός καρτέλας;' % (prev_node['sheet'], prev_final, n['sheet']))
         # opening balance
-        if opening is not None and opening == 0:
-            pn[k]['opening_carry_skipped'] = True
-        elif opening is not None:
+        skipped = Decimal('0')
+        if opening is not None and opening != 0:
             action = dec_open.get(k, {}).get('action') or ('skip' if carries_prev else 'adjust')
-            if action == 'skip': pn[k]['opening_carry_skipped'] = True
+            if action == 'skip': skipped += opening
             else:
                 if abs(opening) > 1000 and k not in dec_open: needs.append('υπόλοιπο έναρξης %s στο φύλλο %s χωρίς προηγούμενο φύλλο που να το εξηγεί' % (opening, n['sheet']))
                 node_lines.append(adj(first_date, opening, 'υπόλοιπο έναρξης φύλλου %s στο Excel' % n['sheet'], dict(src0, row=None)))
@@ -95,14 +97,14 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             if r.get('date_fix'): date_fixes.append(dict(r['date_fix'], sheet=n['sheet'], row=r['row']))
             if e['entry_type'] == 'carry':
                 if d2(e['amount']) == 0:
-                    pn[k]['opening_carry_skipped'] = True
                     continue
                 ck = (n['file_id'], n['sheet'], r['row'])
                 action = dec_carry.get(ck, {}).get('action') or ('skip' if (r is first_carry and carries_prev) else 'adjust')
-                if action == 'skip': pn[k]['opening_carry_skipped'] = True
+                if action == 'skip': skipped += d2(e['amount'])
                 else:
                     if abs(d2(e['amount'])) > 1000 and ck not in dec_carry: needs.append('μεταφορά υπολοίπου %s στο φύλλο %s γρ. %d χωρίς προηγούμενο φύλλο που να την εξηγεί' % (e['amount'], n['sheet'], r['row']))
                     node_lines.append(adj(e['entry_date'], e['amount'], 'μεταφορά υπολοίπου από Excel %s γρ. %d' % (n['sheet'], r['row']), src))
+                breaks.pop(r['row'], None)
             else:
                 node_lines.append(clean(e, src))
             for b in breaks.get(r['row'], []):
@@ -114,12 +116,11 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             if r.get('date_problem'): needs.append('%s γρ. %d: %s' % (n['sheet'], r['row'], r['date_problem']))
         if n.get('running_consistent') is False: needs.append('%s: το ΠΡΟΟΔΕΥΤΙΚΟ του Excel δεν συμφωνεί με τις γραμμές (raw %s, αναμενόμενο %s)' % (n['sheet'], n.get('raw_final'), n['expected_final']))
         node_final = sum((delta(x) for x in node_lines), Decimal('0'))
-        running_final = node_final + (opening if pn[k]['opening_carry_skipped'] and opening is not None else Decimal('0'))
+        running_final = node_final + skipped
+        pn[k]['opening_carry_skipped'] = skipped != 0
         if n['expected_final'] is None: needs.append('%s: χωρίς ΠΡΟΟΔΕΥΤΙΚΟ και χωρίς στήλη ΥΠΟΛΟΙΠΟ' % n['sheet'])
         else:
-            expected = d2(n['expected_final'])
-            if pn[k]['opening_carry_skipped'] and opening is not None:
-                expected -= opening
+            expected = d2(n['expected_final']) - skipped
             if abs(node_final - expected) > Decimal('0.005'): needs.append('%s: άθροισμα γραμμών %s ≠ expected_final %s' % (n['sheet'], node_final, n['expected_final']))
         lines.extend((n['file_id'], x) for x in node_lines)
         prev_final, prev_node = running_final, n
