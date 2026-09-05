@@ -157,9 +157,25 @@ declare
   has_amounts boolean;
 begin
   select * into live from dl_entries where rt_id = new.id and deleted_at is null limit 1;
+  has_amounts := live.trip_value is not null or live.advance is not null or live.expenses is not null;
 
+  -- A ledger line must not sit attributed to a driver who no longer drives
+  -- this RT (trip_type moved off OWNED, or the driver was unassigned) with
+  -- no trace of it (principle 1): flag it for review if amounts were already
+  -- entered, otherwise cancel it — mirrors the RT-cancelled handling below.
   if new.trip_type <> 'OWNED' or new.driver_id is null then
-    return new;                                   -- partner trips have no driver of ours
+    if live.id is null then
+      return new;                                   -- nothing to do
+    elsif has_amounts then
+      update dl_entries set needs_review = true,
+        review_note = 'RT ' || new.code || ' έμεινε χωρίς οδηγό μας ' || to_char(now(), 'DD/MM/YYYY') || ', μετά την καταχώρηση ποσών',
+        updated_at = now() where id = live.id;
+      return new;
+    else
+      update dl_entries set deleted_at = now(), deleted_reason = 'RT ' || new.code || ' έμεινε χωρίς οδηγό μας',
+        updated_at = now() where id = live.id;
+      return new;
+    end if;
   end if;
 
   if live.id is null then
@@ -170,8 +186,6 @@ begin
     end if;
     return new;
   end if;
-
-  has_amounts := live.trip_value is not null or live.advance is not null or live.expenses is not null;
 
   if new.status = 'cancelled' then
     if has_amounts then
@@ -258,7 +272,7 @@ alter table ct_cost_lines drop constraint ct_cost_lines_category_check;
 alter table ct_cost_lines add constraint ct_cost_lines_category_check check (category in
   ('fuel','reefer_fuel','tolls','dkv','adblue','spedition','accommodation','ferry_train','fines','partner_rate','fixed_alloc','other'));
 
-create or replace view ct_v_rt_costs as
+create or replace view ct_v_rt_costs with (security_invoker = true) as
 select rt.id as rt_id,
        coalesce(c.net,0) + coalesce(dl.trip_value,0) + coalesce(dl.expenses,0) as lines_net,
        coalesce(c.vat,0) as vat,
@@ -275,7 +289,7 @@ left join (select rt_id, sum(net) as net, sum(vat) as vat
 left join dl_entries dl on dl.rt_id = rt.id and dl.deleted_at is null
 left join ct_v_wear_rate w on w.truck_id = rt.truck_id;
 
-create or replace view ct_v_rt_pnl as
+create or replace view ct_v_rt_pnl with (security_invoker = true) as
 select rt.id, rt.code, rt.scope, rt.trip_type, rt.truck_id, rt.driver_id,
        rt.partner_id, rt.date_start, rt.date_end, rt.status, rt.total_km,
        r.revenue,
@@ -294,6 +308,11 @@ join ct_v_rt_revenue r on r.rt_id = rt.id
 join ct_v_rt_costs   c on c.rt_id = rt.id
 where rt.status <> 'cancelled';
 
+-- These two existed open since 001 (Supabase grants anon on new objects).
+-- They now carry driver pay, so they close here (principle 5).
+revoke all on ct_v_rt_costs, ct_v_rt_pnl from public, anon, authenticated;
+grant select on ct_v_rt_costs, ct_v_rt_pnl to service_role;
+
 -- 6. Backfill: existing owned RTs with a driver get their pending line now
 update ct_round_trips set updated_at = updated_at
 where trip_type = 'OWNED' and driver_id is not null and status <> 'cancelled';
@@ -308,6 +327,7 @@ select 'MIGRATION 011 OK' as status;
 --   select has_table_privilege('anon','dl_entries','SELECT');           -- false
 --   select has_table_privilege('service_role','dl_entries','DELETE');   -- false
 --   select driver_pay_pending, dl_expenses from ct_v_rt_pnl where code='RT-1014'; -- true, 50.00
+--   select has_table_privilege('anon','ct_v_rt_pnl','SELECT');          -- false
 -- ============================================================
 -- 011_rollback: drop trigger dl_sync_from_rt on ct_round_trips; drop function
 -- dl_sync_from_rt, dl_import, dl_cancel_batch; drop view dl_v_rt_gap,
