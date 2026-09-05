@@ -6,6 +6,26 @@ import glob, json, os, collections
 
 HERE = os.path.dirname(os.path.abspath(__file__)); WORK = os.path.join(HERE, 'work')
 
+CATEGORIES = [                       # order matters: first match wins
+    ('επικαλύπτονται', 'επικάλυψη φύλλων'),
+    ('εξοφλήθηκε', 'υπόλοιπο προηγούμενου φύλλου'),
+    ('ΠΡΟΟΔΕΥΤΙΚΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('άθροισμα γραμμών', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('expected_final', 'ΠΡΟΟΔΕΥΤΙΚΟ ≠ γραμμές'),
+    ('unrecognised', 'άγνωστη γραμμή'),
+    ('payment keyword', 'άγνωστη γραμμή'),
+    ('advance and expenses', 'άγνωστη γραμμή'),
+    ('κανένα φύλλο', 'χωρίς φύλλο καρτέλας'),
+    ('date', 'ημερομηνία'), ('ημ/ν', 'ημερομηνία'), ('ημερομην', 'ημερομηνία'), ('spike', 'ημερομηνία'),
+    ('υπόλοιπο έναρξης', 'υπόλοιπο έναρξης φύλλου'), ('μεταφορά υπολοίπου', 'υπόλοιπο έναρξης φύλλου'),
+]
+
+def categorize(text):
+    t = text.lower()
+    for key, cat in CATEGORIES:
+        if key.lower() in t: return cat
+    return 'άλλο'
+
 def load_dir(sub):
     return {json.load(open(p, encoding='utf-8'))['driver_key']: json.load(open(p, encoding='utf-8'))
             for p in glob.glob(os.path.join(WORK, sub, '*.json'))}
@@ -26,7 +46,7 @@ def build(plans, reviews, mapping, nodes, auto):
         if p.get('create_driver'): notes.append('ΝΕΟΣ ΟΔΗΓΟΣ'); creates.append((key, p['create_driver']))
         if p.get('date_fixes'): notes.append('%d διορθ. έτους' % len(p['date_fixes']))
         if p.get('auto_unmatched'): notes.append('%d auto χωρίς Excel' % len(p['auto_unmatched']))
-        for d in p.get('needs_decision', []): decisions[d.split(':')[0]] += 1
+        for d in p.get('needs_decision', []): decisions[categorize(d)] += 1
         owner.append('| %s | %s | %s | %s | %d | %d | %d | %d | %s | %d | %s |' % (
             key, p.get('driver_id') or '—', p['status'], r.get('verdict', '—'), len(rows), c['trip'],
             c['payment_cash'] + c['payment_bank'], len(p['patches']), p['expected_total_balance'], outs, ', '.join(notes)))
