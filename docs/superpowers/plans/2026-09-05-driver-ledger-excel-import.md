@@ -3257,3 +3257,68 @@ git commit -q -m "ledger-import: one skip per carry-forward event; year repair o
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 10i: rows after the ΣΥΝΟΛΟ line without a running value are memos, not entries
+
+**Why.** ΤΣΑΡΝΟΥΧΑΣ «NEW 2025»: below the ΣΥΝΟΛΟ line (row 66) the sheet holds a memo block («ΔΑΝΕΙΟ ΚΑΘΕ ΔΡΟΜΟΛΟΓΙΟ −200 ΑΠΟΠΛΗΡΩΜΗ», two lines of 1.002,00, «ΕΞΟΦΛΗΘΗ») reconciling loan instalments that are already rows of the ledger. Since Task 2e a ΣΥΝΟΛΟ line is skipped rather than ending the sheet (mid-sheet subtotals exist), so the memo lines were imported as two bank payments of 1.002,00 and the driver's balance came out −2.004,00 instead of 0. Rule: after a ΣΥΝΟΛΟ line, a row is an entry only if the ΠΡΟΟΔΕΥΤΙΚΟ column continues on it (a cached running value); on a sheet with no ΠΡΟΟΔΕΥΤΙΚΟ column the ΣΥΝΟΛΟ line ends the data. Skipped memo rows are counted and kept (label + amounts) so the owner report can show them.
+
+**Files:** `tools/ledger-import/inventory.py`, `tools/ledger-import/tests/test_inventory.py`
+
+- [ ] **Step 1: Test** (inside `TestParseSheet`):
+```python
+    def test_rows_after_totals_without_running_are_memos(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250, 250),
+                   (dt.datetime(2025, 3, 1), 'ΔΟΣΗ ΔΑΝΕΙΟΥ', 200, None, None, None, -200, 50),
+                   (dt.datetime(2025, 3, 10), 'ΜΕΤΡΗΤΑ', 50, None, None, None, -50, 0),
+                   (None, 'ΣΥΝΟΛΟ', 550, 50, None, 500, 0, None),
+                   (None, 'ΔΑΝΕΙΟ ΚΑΘΕ ΔΡΟΜΟΛΟΓΙΟ -200 ΑΠΟΠΛΗΡΩΜΗ', None, None, None, None, None, None),
+                   (dt.datetime(2025, 4, 1), 'ΚΑΤΑΘΕΣΗ ΤΡΑΠΕΖΑ ETE', 1002, None, None, None, -1002, None),
+                   (dt.datetime(2025, 5, 1), 'ΚΑΤΑΘΕΣΗ ΤΡΑΠΕΖΑ ETE', 1002, None, None, None, -1002, None),
+                   (None, 'ΕΞΟΦΛΗΘΗ', None, None, None, None, 2004, None),
+                   (dt.datetime(2025, 6, 1), 'ΑΘΗΝΑ', 100, None, None, 230, 130, 130)])   # running continues → a real entry
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual([r['entry']['entry_type'] for r in n['rows']], ['trip', 'payment_cash', 'payment_cash', 'trip'])
+        self.assertEqual(n['after_totals_skipped'], 2)
+        self.assertEqual([m['amount'] for m in n['after_totals']], [1002.0, 1002.0])
+        self.assertEqual(n['expected_final'], '130.00'); self.assertTrue(n['running_consistent'])
+
+    def test_totals_ends_a_sheet_without_running_column(self):
+        ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),
+                   (dt.datetime(2025, 2, 17), 'ΓΕΡΜΑΝΙΑ', 300, 50, None, 500, 250),
+                   (None, 'ΣΥΝΟΛΟ', 300, 50, None, 500, 250),
+                   (dt.datetime(2025, 4, 1), 'ΚΑΤΑΘΕΣΗ', 1002, None, None, None, -1002)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 1); self.assertEqual(n['after_totals_skipped'], 1); self.assertEqual(n['balance_sum'], '250.00')
+```
+- [ ] **Step 2: Run** → 2 failures (`KeyError: 'after_totals_skipped'`).
+- [ ] **Step 3: Implement** in `parse_sheet`: add `after_totals = False; memos = []` before the loop. Where `e == 'TOTALS'` is handled: `after_totals = True; totals_skipped += 1; continue`. Right after `classify` returns an entry (`e` is a dict, before the date-inheritance logic): 
+```python
+        if after_totals and not ('running' in cols and is_num(cells.get('running'))):
+            # Below the ΣΥΝΟΛΟ line only rows where the ΠΡΟΟΔΕΥΤΙΚΟ continues are ledger
+            # entries; the rest are memos (loan reconciliations, notes) and must not move
+            # the balance. Kept for the owner report, never imported.
+            memos.append({'row': rn, 'label': str(cells.get('route') or cells.get('cash') or '')[:80], 'amount': float(d2(cells.get('advance') if is_num(cells.get('advance')) else (cells.get('value') if is_num(cells.get('value')) else 0)))})
+            continue
+```
+Also the `text_only` skip and `ZERO_NET` skip should not count memo rows twice (place the memo check before them or leave as is — either is fine as long as the tests pass). Add to the returned dict: `'after_totals_skipped': len(memos), 'after_totals': memos`. Add ` · after-totals memos %d` to the summary line with `sum(n['after_totals_skipped'] for n in nodes)`.
+- [ ] **Step 4:** suite OK (previous + 2); `python3 tools/ledger-import/inventory.py` (line), `python3 tools/ledger-import/make_plan.py | tail -1`, `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`. Then print the drivers whose `expected_total_balance` changed versus `work/plans_snapshot_pre10h.json`:
+```bash
+python3 - <<'PY'
+import json,glob
+s=json.load(open('tools/ledger-import/work/plans_snapshot_pre10h.json',encoding='utf-8'))
+for p in glob.glob('tools/ledger-import/work/plans/*.json'):
+    d=json.load(open(p,encoding='utf-8')); o=s.get(d['driver_key'],{})
+    if o.get('total')!=d['expected_total_balance'] or o.get('status')!=d['status']: print('CHANGED',d['driver_key'],o.get('status'),o.get('total'),'→',d['status'],d['expected_total_balance'])
+PY
+```
+Report that list verbatim.
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/inventory.py tools/ledger-import/tests/test_inventory.py
+git commit -q -m "ledger-import: rows below ΣΥΝΟΛΟ without a running value are memos — counted, never imported (review of plans)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
