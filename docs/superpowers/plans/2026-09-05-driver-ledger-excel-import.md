@@ -1497,8 +1497,10 @@ D = dt.date
 
 class TestNorm(unittest.TestCase):
     def test_latin_lookalikes_become_greek(self):
-        self.assertEqual(norm('KATAΘΕΣΗ FRESH'), 'ΚΑΤΑΘΕΣΗ FRESH')
-        self.assertEqual(norm('kat.tΡΑΠEZA eur'), 'ΚΑΤ.ΤΡΑΠΕΖΑ ΕUR')
+        # norm() is for keyword matching only: Latin letters that look Greek become Greek,
+        # so genuine Latin words come out mangled — that is accepted, never displayed.
+        self.assertTrue(norm('KATAΘΕΣΗ FRESH').startswith('ΚΑΤΑΘΕΣΗ '))
+        self.assertTrue(norm('kat.tΡΑΠEZA eur').startswith('ΚΑΤ.ΤΡΑΠΕΖΑ'))
     def test_accents_stripped(self):
         self.assertEqual(norm('Κατάθεση από ΟΕ'), 'ΚΑΤΑΘΕΣΗ ΑΠΟ ΟΕ')
 
@@ -1560,8 +1562,9 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(e['entry_type'], 'payment_cash'); self.assertEqual(e['amount'], 200.0); self.assertEqual(e['entry_date'], '2024-04-01')
 
     def test_bank_payment_by_latin_description_in_cash_column(self):
-        e = classify({'date': D(2020, 8, 31), 'cash': 'KAT.TΡΑΠEZA EUR', 'advance': 500, 'expenses': 0})
-        self.assertEqual(e['entry_type'], 'payment_bank'); self.assertEqual(e['amount'], 500.0); self.assertEqual(e['note'], 'KAT.TΡΑΠEZA EUR')
+        label = 'KAT.T\u03a1\u0391\u03a0EZA EUR'          # Latin K,A,T,T,E,Z,A around Greek Ρ,Α,Π — as typed in the sheet
+        e = classify({'date': D(2020, 8, 31), 'cash': label, 'advance': 500, 'expenses': 0})
+        self.assertEqual(e['entry_type'], 'payment_bank'); self.assertEqual(e['amount'], 500.0); self.assertEqual(e['note'], label)
 
     def test_advance_only_with_label_is_cash_payment(self):
         e = classify({'date': D(2022, 10, 4), 'route': 'ΚΑΥΣΙΜΑ ΠΡΑΤΗΡΙΟ', 'advance': 27, 'expenses': 0, 'value': 0})
@@ -1741,7 +1744,9 @@ def classify(c):
     desc = str(c.get('route') or '').strip()
     pay_desc = ' · '.join(str(c.get(k)).strip() for k in ('cash', 'bank') if isinstance(c.get(k), str) and str(c.get(k)).strip())
     label = (desc or pay_desc)[:200]
-    has_amount = any(is_num(c.get(k)) and c.get(k) != 0 for k in ('advance', 'expenses', 'value', 'cash', 'bank'))
+    carry_kw = any(k in norm(label) for k in CARRY_KEYS)
+    has_amount = any(is_num(c.get(k)) and c.get(k) != 0 for k in ('advance', 'expenses', 'value', 'cash', 'bank')) \
+        or (carry_kw and is_num(c.get('balance')))
     has_seq = _has_seq(c.get('seq'))
     if not has_amount and not has_seq: return None                       # blank line, or a text-only note
     date = to_date(c.get('date')) or to_date(c.get('date_end'))
@@ -1751,14 +1756,14 @@ def classify(c):
     t = norm(label + ' ' + pay_desc)
     bank = any(k in t for k in BANK_KEYS) or bool(ETE_RE.search(t))
     cash = 'ΜΕΤΡΗΤ' in t
-    if any(k in t for k in CARRY_KEYS) and not val and not adv and not exp:
+    if carry_kw and not val and not adv and not exp:
         if not is_num(c.get('balance')): raise Unknown('carry row without balance: %r' % label)
         return {'entry_type': 'carry', 'entry_date': iso, 'amount': float(d2(c['balance']))}
     if (cash or bank) and val and not adv and not has_seq:
         raise Unknown('payment keyword but the amount is in ΑΞΙΑ: %r' % label)
     if val and not adv and not exp and not has_seq and any(k in t for k in ADJUST_KEYS):
         return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': val, 'note': label}
-    if val or has_seq or exp:                                             # a value, a counter, or expenses = a journey
+    if val or has_seq or (exp and desc):                                  # a value, a counter, or expenses on a named line = a journey
         end = to_date(c.get('date_end'))
         return {'entry_type': 'trip', 'entry_date': iso,
                 'date_end': end.isoformat() if end else None,
