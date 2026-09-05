@@ -2782,3 +2782,92 @@ git commit -q -m "ledger-import: date_end year repair, residual from 0.005, zero
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 9b: write-path safety fixes (review of Tasks 9 + 6b)
+
+**Why.** The review of the write path found: (1) a crash between creating a driver and the first `save(state)` would create the driver twice on rerun; (2) a crash between a successful import and `save(state)` makes the rerun hit `409` with no batch id to reconcile; (3) `apply_patches` overwrites an existing `note`; (4) `state.json` is written non-atomically; (5) `clean_rows` does not strip `rt_id` (defense in depth); (6) the identity gate is asymmetric: a plan can attach an existing `driver_id` to a key the map says must be created.
+
+**Files:**
+- Modify: `tools/ledger-import/commit.py`, `tools/ledger-import/tests/test_commit.py`
+- Modify: `tools/ledger-import/verify_plan.py`, `tools/ledger-import/tests/test_verify_plan.py`
+
+- [ ] **Step 1: Tests**
+
+`tests/test_commit.py` — change and add:
+```python
+    def test_ensure_driver_creates_then_resolves_numeric_id(self):
+        api = api_with({'post': [{'id': 'recNEW', 'fields': {'Full Name': 'X Y'}}],
+                        'get': [{'drivers': [{'id': 77, 'legacy_id': 'recNEW', 'full_name': 'X Y', 'active': True}]}]})
+        state = {}; saved = []
+        self.assertEqual(C.ensure_driver(api, dict(PLAN), state, save=lambda s: saved.append(dict(s))), 77)
+        api.post.assert_called_once_with('/v0/appElT5CQV6JQvym8/tbl7UGmYhc2Y82pPs', {'fields': {'Full Name': 'X Y', 'Active': True}})
+        self.assertEqual(state['X']['driver_id'], 77)
+        self.assertEqual(len(saved), 1)                      # state persisted the moment the id is known
+
+    def test_import_batch_strips_src_rt_id_and_checks_balance(self):
+        api = api_with({'post': [{'batch': 'b1', 'rows': 1, 'balance': '100.00'}]})
+        batch = copy.deepcopy(PLAN['batches'][0]); batch['rows'][0]['rt_id'] = 5
+        out = C.import_batch(api, 8, batch, file_hash='abc')
+        body = api.post.call_args[0][1]
+        self.assertNotIn('src', body['rows'][0]); self.assertNotIn('rt_id', body['rows'][0])
+        self.assertEqual(out['batch'], 'b1')
+
+    def test_import_batch_409_becomes_mismatch_with_reconcile_hint(self):
+        api = MagicMock(); api.post.side_effect = C.ApiError(409, 'this file was already imported')
+        with self.assertRaises(C.Mismatch) as cm: C.import_batch(api, 8, PLAN['batches'][0], file_hash='abc')
+        self.assertIn('dl_import_batches', str(cm.exception))
+
+    def test_apply_patches_keeps_existing_note(self):
+        api = api_with({'patch': [{'id': 900}]})
+        auto = [{'dl_id': 900, 'driver_id': 8, 'trip_value': None, 'advance': None, 'expenses': None, 'note': 'παλιά σημείωση'}]
+        C.apply_patches(api, 8, PLAN['patches'], auto, {'X': {}}, 'X')
+        self.assertEqual(api.patch.call_args[0][1]['note'], 'παλιά σημείωση · Excel: B')
+
+    def test_save_is_atomic(self):
+        import tempfile, json, os
+        d = tempfile.mkdtemp(); p = os.path.join(d, 'state.json')
+        C.save({'a': 1}, path=p)
+        self.assertEqual(json.load(open(p)), {'a': 1}); self.assertEqual(os.listdir(d), ['state.json'])
+```
+(keep the other tests; add `import copy` at the top; `test_import_batch_strips_src_and_checks_balance` is replaced by the new `…strips_src_rt_id…` test; `test_ensure_driver_is_idempotent_from_state` now calls `C.ensure_driver(api, dict(PLAN), {'X': {'driver_id': 77}}, save=lambda s: None)`.)
+
+`tests/test_verify_plan.py` — add:
+```python
+    def test_plan_driver_id_when_map_says_create_is_rejected(self):
+        m = {'driver_id': None, 'create': {'Full Name': 'X Y', 'Active': True}, 'files': ['F1'], 'crosscheck': []}
+        self.assertTrue(any('map says create' in e for e in verify(plan(driver_id=42), [NODE], AUTO, m)))
+    def test_create_driver_when_map_has_id_is_rejected(self):
+        p = plan(driver_id=None, create_driver={'Full Name': 'X Y', 'Active': True})
+        self.assertTrue(any('map has driver_id' in e for e in verify(p, [NODE], AUTO, MAP)))
+```
+
+- [ ] **Step 2: Run** both test files → failures on the new tests.
+
+- [ ] **Step 3: Implement**
+
+`commit.py`:
+- `ensure_driver(api, plan, state, save)` — new fourth parameter; after `st['driver_id'] = match[0]['id']; st['created_legacy_id'] = legacy` call `save(state)` **before** returning. Comment why: a rerun must never POST the driver twice.
+- `clean_rows`: `if k not in ('src', 'rt_id') and v is not None` — with a comment that `verify_plan` and the Worker both refuse `rt_id`, this is the third fence.
+- `import_batch`: wrap the `api.post` in `try/except ApiError as e: if e.status == 409: raise Mismatch('file %s already imported (409) but not in state.json — reconcile by hand: select * from dl_import_batches where file_hash = %r' % (batch['file_name'], file_hash)); raise`.
+- `apply_patches`: when building `body`, if `a.get('note')` is truthy and `'note' in body`: `body['note'] = a['note'] + ' · ' + body['note']`.
+- `save(state, path=None)`: write to `path + '.tmp'` then `os.replace(tmp, path)`; default path stays `WORK/state.json`.
+- `run()`: pass `save` into `ensure_driver(api, plan, state, save)`.
+
+`verify_plan.py` — after the existing map-driver check add:
+```python
+    if not map_entry.get('driver_id') and plan.get('driver_id'):
+        errs.append('plan has driver_id %s but the map says create — identity mismatch' % plan['driver_id'])
+    if map_entry.get('driver_id') and plan.get('create_driver'):
+        errs.append('plan creates a driver but the map has driver_id %s' % map_entry['driver_id'])
+```
+
+- [ ] **Step 4: Run** the whole suite → OK (previous count + 5).
+- [ ] **Step 5: Commit**
+```bash
+git add tools/ledger-import/commit.py tools/ledger-import/tests/test_commit.py tools/ledger-import/verify_plan.py tools/ledger-import/tests/test_verify_plan.py
+git commit -q -m "ledger-import: write-path safety — save after driver create, 409 reconcile hint, keep notes, atomic state, strip rt_id, symmetric identity gate (review 9/6b)
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
