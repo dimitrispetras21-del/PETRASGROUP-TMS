@@ -273,4 +273,4 @@ select string_agg(username || ':' || role, ', ' order by username) as db_users f
 | E11 κατάσταση | οθόνη | **8** (5 NULL · 2 In Transit χωρίς όχημα · RT-1019 κλειστό/274 In Transit) | 🔴 | **014**: NOT NULL DEFAULT 'Pending' + CHECK λεξιλογίου· backfill 5 |
 | E12 NL↔RT | — | 2 | 🔴 γνωστό | N4 |
 | E13 καύσιμα | — | πίνακας άδειος | ⚫ μη μετρήσιμο | Fuel Receipts UI |
-| E14 ρόστερ χρηστών | — | 6 (alexia ανενεργή στη βάση + 5 demo_*) | 🔴 | αφαίρεση demo_* από config.js/index.html· alexia ενεργοποίηση όταν ξεκινήσει |
+| E14 ρόστερ χρηστών | — | 1 (alexia ανενεργή στη βάση — ξεκινά σε μια εβδομάδα)· τα 5 `demo_*` είναι σκόπιμα fixtures του rig (`tests/critics/auth.js`), δεν μπαίνουν ποτέ | 🟡 | ενεργοποίηση alexia όταν ξεκινήσει· τίποτα άλλο |
