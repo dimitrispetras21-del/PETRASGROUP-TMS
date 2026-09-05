@@ -135,5 +135,17 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual(next(x for x in p['nodes'] if x['sheet'] == 'S2')['role'], 'duplicate')
         self.assertEqual(p['status'], 'ready', p['needs_decision'])
 
+    def test_rt_match_prefers_matching_span_over_same_start(self):
+        rows = [row(97, '2026-08-20', value=50, advance=0, route='ΒΕΡΟΙΑ-ΓΑΛΑΤΑΔΕΣ-ΒΕΡΟΙΑ'),
+                row(98, '2026-08-21', value=650, advance=300, expenses=531.2, route='ΒΕΡΟΙΑ-ΟΥΓΓΑΡΙΑ-ΒΟΛΟΣ-ΒΕΡΟΙΑ')]
+        rows[0]['entry']['date_end'] = '2026-08-20'; rows[1]['entry']['date_end'] = '2026-08-27'
+        n = node('F1', 'S1', rows, final='931.20')
+        auto = [{'dl_id': 7, 'driver_id': 8, 'entry_date': '2026-08-20', 'date_end': '2026-08-26', 'rt_id': 10, 'rt_code': 'RT-1010', 'trip_value': None, 'advance': None, 'expenses': None, 'note': None}]
+        p = build_plan('X', ENTRY, [n], auto, None)
+        self.assertEqual(len(p['patches']), 1)
+        self.assertEqual(p['patches'][0]['src']['row'], 98)
+        self.assertEqual(p['patches'][0]['trip_value'], 650.0)
+        self.assertEqual([r['src']['row'] for r in p['batches'][0]['rows']], [97])
+
 if __name__ == '__main__':
     unittest.main()

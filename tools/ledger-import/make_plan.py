@@ -141,18 +141,29 @@ def build_plan(key, entry, nodes, auto_rows, decision):
             if m.get('src') is None: unmatched_forced.add(m['dl_id'])
             else: forced[(m['src']['file_id'], m['src']['sheet'], m['src']['row'])] = m['dl_id']
         matchable = {a['dl_id']: a for a in auto if a.get('trip_value') is None and a['dl_id'] not in unmatched_forced}
-        kept = []
-        for fid, x in lines:
-            if x['entry_type'] != 'trip' or x['entry_date'] <= cutoff: kept.append((fid, x)); continue
+        # Phase 1 — score every (post-cutoff trip, auto row) pair. A one-day local trip
+        # and a week-long RT can share a start date; the return date tells them apart.
+        pairs = []; assigned = {}          # excel index -> dl_id
+        for i, (fid, x) in enumerate(lines):
+            if x['entry_type'] != 'trip' or x['entry_date'] <= cutoff: continue
             sk = (x['src']['file_id'], x['src']['sheet'], x['src']['row'])
-            target = None
-            if sk in forced and forced[sk] in matchable and forced[sk] not in used: target = matchable[forced[sk]]
-            else:
-                d0 = dt.date.fromisoformat(x['entry_date'])
-                cands = sorted((abs((dt.date.fromisoformat(a['entry_date']) - d0).days), a['dl_id']) for a in matchable.values() if a['dl_id'] not in used)
-                if cands and cands[0][0] <= 2: target = matchable[cands[0][1]]
-            if target is None: kept.append((fid, x)); continue
-            used.add(target['dl_id'])
+            if sk in forced:
+                if forced[sk] in matchable: assigned[i] = forced[sk]
+                continue
+            d0 = dt.date.fromisoformat(x['entry_date']); e0 = dt.date.fromisoformat(x['date_end']) if x.get('date_end') else None
+            for a in matchable.values():
+                ds = abs((dt.date.fromisoformat(a['entry_date']) - d0).days)
+                if ds > 2: continue
+                de = abs((dt.date.fromisoformat(a['date_end']) - e0).days) if (e0 and a.get('date_end')) else 0
+                pairs.append((ds + de, ds, i, a['dl_id']))
+        used = set(assigned.values())
+        for score, ds, i, dl in sorted(pairs):        # Phase 2 — best score first, each side once
+            if i in assigned or dl in used: continue
+            assigned[i] = dl; used.add(dl)
+        kept = []
+        for i, (fid, x) in enumerate(lines):
+            if i not in assigned: kept.append((fid, x)); continue
+            target = matchable[assigned[i]]
             p = {'dl_id': target['dl_id']}
             for f in ('trip_value', 'advance', 'expenses'):
                 if x.get(f) is not None: p[f] = x[f]
