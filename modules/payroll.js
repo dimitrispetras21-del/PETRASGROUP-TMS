@@ -28,6 +28,9 @@ function dlEur(n) {
 // a stray hyphen next to tabular digits. Used for every "balance" figure
 // (ΟΦΕΙΛΗ, ΝΕΑ ΟΦΕΙΛΗ, ΣΥΝΟΛΟ/running balance) — never for a per-line delta,
 // which keeps the older +/− format from dlDelta.
+// A balance that is 0 only because every trip is still valueless is unknown, not zero:
+// a dash, so twelve «0,00 €» do not shout on the home list (DESIGN.md #3).
+function dlBal(b) { return (Number(b.balance) === 0 && b.pending_count > 0) ? '—' : dlMoney(b.balance); }
 function dlMoney(n) {
   if (n === null || n === undefined || n === '') return '—';
   const v = Number(n);
@@ -293,7 +296,7 @@ function dlRenderHome() {
   const row = (b, faded) => `<div class="dl-lrow${_dl.selected === b.driver_id ? ' sel' : ''}${faded ? ' faded' : ''}" onclick="dlSelectDriver(${b.driver_id})">
       <div class="dl-avatar">${escapeHtml(dlInitials(b.full_name))}</div>
       <span class="m" style="flex:1">${escapeHtml(b.full_name)}</span>
-      ${faded ? '' : `<span class="n${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlMoney(b.balance)}</span>`}
+      ${faded ? '' : `<span class="n${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span>`}
     </div>`;
   const listHtml = (groups.withEntries.length || groups.rest.length)
     ? groups.withEntries.map(b => row(b, false)).join('') + groups.rest.map(b => row(b, true)).join('')
@@ -333,7 +336,7 @@ function dlHomeRightHtml() {
       <div class="dl-avatar" style="width:56px;height:56px;font-size:18px">${escapeHtml(dlInitials(b.full_name))}</div>
       <div style="flex:1"><span class="dl-title" style="font-size:18px">${escapeHtml(b.full_name)}</span><br>
         <span class="s">${dlTypeWord(b.type)} · ${b.trips_ytd || 0} δρομολόγια φέτος</span></div>
-      <span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlMoney(b.balance)}</span>
+      <span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span>
     </div>
     <div class="dl-mini-boxes">
       <div class="box"><div class="k">Αξία έτους</div><div class="v">${dlEur(value)}</div></div>
@@ -411,7 +414,7 @@ function dlRenderDriverCard() {
       <div class="dl-avatar" style="width:56px;height:56px;font-size:18px">${escapeHtml(dlInitials(b.full_name))}</div>
       <div class="dl-hero-main"><span class="dl-title">${escapeHtml(b.full_name)}</span>
         <span class="s">${dlTypeWord(b.type)}${firstEntry ? ' · από ' + dlDateRange(firstEntry, null) : ''}</span></div>
-      <div class="dl-hero-bal"><span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlMoney(b.balance)}</span></div>
+      <div class="dl-hero-bal"><span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span></div>
       <div class="dl-hero-stat"><div class="k">Δρομολόγια ${_dl.year === 'all' ? '' : _dl.year}</div><div class="v">${trips.length}</div></div>
       <div class="dl-hero-stat"><div class="k">Αξία ${_dl.year === 'all' ? '' : _dl.year}</div><div class="v">${allPending ? '—' : dlEur(value)}</div></div>
       <div class="dl-hero-stat"><div class="k">Πληρωμές ${_dl.year === 'all' ? '' : _dl.year}</div><div class="v">${dlEur(cash + bank)}</div></div>
