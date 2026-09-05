@@ -90,7 +90,7 @@ function _wnPulseRow(rowId) {
   if (!el) return;
   const orig = el.style.background;
   el.style.transition = 'background 0.3s';
-  el.style.background = 'rgba(16,185,129,0.15)';
+  el.style.background = 'var(--surface-sunken)';
   setTimeout(() => { el.style.background = orig; }, 700);
 }
 
@@ -114,7 +114,7 @@ let _wnLoadId = 0; // prevents stale renders from rapid week switching
 async function renderWeeklyNatl() {
   const loadId = ++_wnLoadId;
   const content = document.getElementById('content');
-  content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:10px;padding:80px;color:var(--text-dim)">
+  content.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:32px;color:var(--text-dim)">
     <div class="spinner"></div> Φόρτωση εβδομάδας ${WNATL.week}…</div>`;
   try {
     await _wnLoadAll();
@@ -123,12 +123,16 @@ async function renderWeeklyNatl() {
     _wnPaint();
   } catch(e) {
     if (loadId !== _wnLoadId) return; // stale error, ignore
-    // Contract #6: error ≠ empty. The message names the failure and offers
-    // Retry — a blank sheet would read as «no loads this week».
-    content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px;color:var(--danger)">
-      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:15px">Σφάλμα φόρτωσης της εβδομάδας ${WNATL.week}</div>
-      <div style="font-size:12px;color:var(--text-mid)">${escapeHtml(String(e && e.message || e || 'άγνωστο σφάλμα'))}</div>
-      <button class="btn btn-primary btn-sm" onclick="renderWeeklyNatl()">↻ Retry</button></div>`;
+    // Contract #6 / DESIGN.md #7: error ≠ empty. Three sentences — what
+    // happened, what it does NOT mean, what to do — so a failed load can never
+    // be read as «no loads this week». The browser's own «Failed to fetch» is
+    // not shown: it names nothing the dispatcher can act on.
+    const raw = String(e && e.message || e || '');
+    const why = /fetch|network|load failed/i.test(raw) ? 'δεν ήρθε απάντηση από τον διακομιστή' : raw || 'άγνωστο σφάλμα';
+    content.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:32px;color:var(--danger)">
+      <div style="font-family:'Syne',sans-serif;font-weight:800;font-size:14px">Η εβδομάδα ${WNATL.week} δεν φορτώθηκε</div>
+      <div style="font-size:12px;color:var(--text-mid)">Δεν σημαίνει ότι δεν υπάρχουν φορτία — ${escapeHtml(why)}.</div>
+      <button class="btn btn-primary btn-sm" onclick="renderWeeklyNatl()">↻ Ξαναδοκίμασε</button></div>`;
     console.error('renderWeeklyNatl:', e);
   }
 }
@@ -294,139 +298,162 @@ function _wnTabs(cur) {
    Lives here and not in assets/style.css because a batch agent touches ONLY
    its unit's file (plan 2/9 §1.2); the integrator lifts the block into the
    stylesheet once per batch. Tokens only — the static critic counts hex
-   literals in modules and the natl allowance (14) may only go down. */
+   literals in modules and the natl allowance (14) may only go down.
+   Wave 5 (4/9): DESIGN.md tokens only (ΜΕΡΟΣ Β), the six sizes of ΜΕΡΟΣ Γ
+   (nothing under 11px), spacing 4/8/12/16/24/32, radii 6/9999. The base
+   .wn4 font-size pins the inherited 16px of the wrappers to the table size
+   so no descendant can fall back to the browser default. */
 function _wnCss() { return `<style id="wn4-css">
-.wn4{--wn4-row:40px;--wn4-card:32px;display:block;width:100%}
-.wn4-head{display:flex;align-items:center;gap:16px;margin-bottom:10px;flex-wrap:wrap}
-.wn4-title{font-family:'Syne',sans-serif;font-weight:800;font-size:20px;color:var(--text);display:flex;align-items:center;gap:10px;line-height:1.2}
-.wn4-lgb{font:inherit;font-size:10.5px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer}
+.wn4{--wn4-row:40px;--wn4-card:32px;display:block;width:100%;font-size:13px}
+.wn4-head{display:flex;align-items:center;gap:16px;margin-bottom:8px;flex-wrap:wrap}
+.wn4-title{font-family:'Syne',sans-serif;font-weight:800;font-size:18px;color:var(--text);display:flex;align-items:center;gap:8px;line-height:1.2}
+.wn4-lgb{font:inherit;font-size:11px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px;padding:4px 8px;cursor:pointer}
 .wn4-lgb:hover{color:var(--accent-text)}
-.wn4-legend{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:11px;color:var(--text-mid);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:8px 14px;margin-bottom:10px;align-items:center}
+.wn4-legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:11px;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px;align-items:center}
 .wn4-legend[hidden]{display:none}
-.wn4-legend .sw{display:inline-block;width:16px;height:11px;border-radius:3px;vertical-align:-1px;margin-right:5px}
-.wn4-head .wk3-tabs{margin:0 auto;padding:4px;align-items:center;background:var(--surface-sunken);border-radius:8px}
-.wn4-head .wk3-tab{top:0;border-radius:6px;border:none} .wn4-head .wk3-tab.on{background:var(--navy-mid);color:var(--text-inverse)}
+.wn4-legend .sw{display:inline-block;width:16px;height:11px;border-radius:6px;vertical-align:-1px;margin-right:4px}
+.wn4-head .wk3-tabs{margin:0 auto;padding:4px;align-items:center;background:var(--surface-sunken);border-radius:6px}
+.wn4-head .wk3-tab{top:0;border-radius:6px;border:none;font-size:12px} .wn4-head .wk3-tab.on{background:var(--surface-dark);color:var(--text-on-dark)}
 .wn4-head .wk3-tab.on::after{display:none}
+.wn4-head .wk3-step{font:inherit;font-size:14px;border:none}
 .wn4-acts{display:flex;gap:8px;align-items:center}
-.wn4-btn{font:inherit;font-size:11.5px;font-weight:600;color:var(--text-mid);background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer}
-.wn4-btn:hover{color:var(--text);background:var(--accent-light)}
-.wn4-btn.pri{background:var(--accent);color:var(--text-inverse);border-color:var(--accent);font-weight:700}
-.wn4-strip{display:flex;align-items:center;gap:20px;padding:12px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:10px;flex-wrap:wrap}
-.wn4-alert{display:flex;align-items:center;gap:14px;padding:8px 18px 8px 14px;border:1.5px solid var(--border);border-radius:8px;background:none;font:inherit;text-align:left;cursor:default}
-.wn4-alert.hot{border-color:var(--danger-strong);cursor:pointer}
-.wn4-alert .n{font-family:'Syne',sans-serif;font-weight:700;font-size:22px;line-height:1;padding:4px 11px;border-radius:6px;background:var(--success);color:var(--text-inverse)}
-.wn4-alert.hot .n{background:var(--danger-strong)}
-.wn4-alert .t{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;color:var(--success)}
-.wn4-alert.hot .t{color:var(--danger-strong)}
-.wn4-alert .s{font-size:11px;color:var(--text-mid);margin-top:2px}
-.wn4-free .l,.wn4-quick .l{font-size:9.5px;font-weight:700;letter-spacing:1px;color:var(--text-dim)}
-.wn4-free .p{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;color:var(--text);margin:3px 0}
-.wn4-free .d{font-size:10.5px;color:var(--text-mid)}
-.wn4-quick .r{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
-.wn4-qf{font:inherit;font-size:10.5px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:none;border-radius:6px;padding:5px 11px;cursor:pointer}
-.wn4-qf:hover{color:var(--accent-text)} .wn4-qf.on{background:var(--navy-mid);color:var(--text-inverse);font-weight:700}
-.wn4-queue{margin-left:auto;display:inline-flex;align-items:center;gap:6px;background:var(--accent-light);color:var(--accent-text);border:none;border-radius:6px;padding:7px 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
-.wn4-queue b{font-family:'Syne',sans-serif;font-size:13px}
+.wn4-btn{font:inherit;font-size:12px;font-weight:600;color:var(--text-mid);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:4px 12px;cursor:pointer}
+.wn4-btn:hover{color:var(--text);background:var(--surface-sunken)}
+.wn4-btn.pri{background:var(--accent);color:var(--surface-card);border-color:var(--accent);font-weight:700}
+.wn4-btn.pri:hover{background:var(--accent-hover);border-color:var(--accent-hover);color:var(--surface-card)}
+.wn4-strip{display:flex;align-items:center;gap:24px;padding:12px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px;flex-wrap:wrap}
+.wn4-alert{display:flex;align-items:center;gap:12px;padding:8px 16px 8px 12px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text);font:inherit;text-align:left;cursor:default}
+.wn4-alert.hot{border-color:var(--danger);cursor:pointer}
+.wn4-alert .n{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;line-height:1;padding:4px 8px;border-radius:6px;background:var(--ok);color:var(--surface-card);font-variant-numeric:tabular-nums}
+.wn4-alert.hot .n{background:var(--danger)}
+.wn4-alert .t{font-family:'Syne',sans-serif;font-weight:700;font-size:12px;letter-spacing:1px;color:var(--ok)}
+.wn4-alert.hot .t{color:var(--danger)}
+.wn4-alert .s{font-size:11px;color:var(--text-mid);margin-top:4px}
+.wn4-free .l,.wn4-quick .l{font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text-dim);font-variant-numeric:tabular-nums}
+.wn4-free .p{font-weight:700;font-size:12px;color:var(--text);margin:4px 0;font-variant-numeric:tabular-nums}
+.wn4-free .d{font-size:11px;color:var(--text-mid)}
+.wn4-quick .r{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
+.wn4-qf{font:inherit;font-size:12px;font-weight:600;color:var(--text-mid);background:var(--surface-sunken);border:1px solid var(--surface-sunken);border-radius:6px;padding:4px 12px;cursor:pointer;font-variant-numeric:tabular-nums}
+.wn4-qf:hover{color:var(--accent-text)} .wn4-qf.on{background:var(--surface-dark);border-color:var(--surface-dark);color:var(--text-on-dark);font-weight:700}
+/* Δ2 «ανενεργό»: a filter whose count is zero would only blank the sheet —
+   it is rendered disabled so the eye reads «nothing here» before the click. */
+.wn4-qf:disabled{color:var(--text-dim);background:none;border:1px dashed var(--border);cursor:not-allowed}
+.wn4-queue{margin-left:auto;display:inline-flex;align-items:center;gap:4px;background:var(--surface-sunken);color:var(--accent-text);border:none;border-radius:6px;padding:8px 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
+.wn4-queue b{font-size:13px;font-variant-numeric:tabular-nums}
 .wn4 .wk3-sub{margin-bottom:8px}
+.wn4 .wk3-range{font-size:12px}
 .wn4-cross{font-size:11px;color:var(--accent-text);margin-left:auto;cursor:help}
 .wn4-cross+.wk3-range{margin-left:0}
-.wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-bottom:8px}
-.wn4-cols .c{font-family:'Syne',sans-serif;font-size:9px;font-weight:800;letter-spacing:1.8px;color:var(--text-mid);padding:10px 12px;white-space:nowrap;display:flex;align-items:center;gap:6px}
-.wn4-cols .c small{font-family:'DM Sans',sans-serif;font-weight:600;letter-spacing:.6px;color:var(--text-dim)}
+.wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px}
+.wn4-cols .c{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:1.8px;color:var(--text-mid);padding:8px 12px;white-space:nowrap;display:flex;align-items:center;gap:8px}
+.wn4-cols .c small{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px;color:var(--text-dim);font-variant-numeric:tabular-nums}
 .wn4-cols .c.mid{justify-content:center}
-.wn4-cols .hint{margin-left:auto;color:var(--text-dim);cursor:help;font-size:10px;border:1px solid var(--border);border-radius:50%;width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0}
-.wn4-day{background:var(--bg);border:1.5px solid var(--border-mid);border-radius:10px;padding:2px 10px 10px;margin-bottom:8px}
-.wn4-day.today{border-color:var(--accent)}
+.wn4-cols .hint{margin-left:auto;color:var(--text-dim);cursor:help;font-size:11px;border:1px solid var(--border);border-radius:9999px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0}
+.wn4-day{background:var(--surface-page);border:1px solid var(--border);border-radius:6px;padding:4px 8px 8px;margin-bottom:8px}
+/* «today» is navy, not accent: the accent is reserved for the one primary
+   action of the screen (DESIGN.md ΜΕΡΟΣ Β) and the day marker is not an action. */
+.wn4-day.today{border-color:var(--surface-dark)}
 .wn4-day.quiet .wn4-dh .d{color:var(--text-dim)}
 /* Δ4: κενή μέρα του πίνακα = μία γκρίζα γραμμή. Ορατή (Δ2), υποχωρητική. */
-.wn4-dayq{display:flex;align-items:center;gap:10px;padding:4px 12px;margin-bottom:2px;border-bottom:1px solid var(--border)}
+.wn4-dayq{display:flex;align-items:center;gap:8px;padding:4px 12px;border-bottom:1px solid var(--border)}
 .wn4-dayq .d{font-family:'Syne',sans-serif;font-weight:600;font-size:11px;letter-spacing:.5px;color:var(--text-dim)}
 .wn4-dayq .k{font-size:11px;color:var(--text-dim)}
-.wn4-dayq.today .d{color:var(--accent-text)}
-.wn4-dayq .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--text-inverse);background:var(--accent);border-radius:999px;padding:1px 7px}
-.wn4-dh{display:flex;align-items:center;gap:10px;padding:8px 2px 4px;flex-wrap:wrap}
-.wn4-dh .d{font-family:'Syne',sans-serif;font-weight:700;font-size:15px;color:var(--text)}
+.wn4-dayq.today .d{color:var(--text)}
+.wn4-dayq .now,.wn4-dh .now{font-size:11px;font-weight:800;letter-spacing:1px;color:var(--text-on-dark);background:var(--surface-dark);border-radius:9999px;padding:0 8px}
+.wn4-dh{display:flex;align-items:center;gap:8px;padding:8px 4px 4px;flex-wrap:wrap}
+.wn4-dh .d{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;color:var(--text)}
 .wn4-dh .k{font-size:11px;color:var(--text-dim)}
-.wn4-dh .k .bad{color:var(--chip-unassigned);font-weight:500} .wn4-dh .k .hot{color:var(--danger-strong);font-weight:500}
-.wn4-dh .now{font-size:8.5px;font-weight:800;letter-spacing:1.3px;color:var(--text-inverse);background:var(--accent);border-radius:999px;padding:2px 8px}
-.wn4-none{font-size:11px;color:var(--text-dim);padding:6px 2px 2px}
-.wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);min-height:var(--wn4-row);align-items:center;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:6px}
-/* Δ5: ΙΔΙΟ hover με το intl (weekly_intl.js:239, token --bg-hover). Η γραμμή
-   αυτού του πίνακα είναι ~1600px· χωρίς φωτισμό το μάτι δεν έχει τι να
-   ακολουθήσει από τον πελάτη μέχρι την ανάθεση. Ο παλιός κανόνας έγραφε
-   --bg-card, δηλαδή ΑΚΥΡΩΝΕ ρητά το καθολικό .wk3-row:hover του style.css. */
-.wn4 .wk3-row:hover{background:var(--bg-hover)}
-.wn4 .wk3-row.hot{border-color:var(--danger-strong);box-shadow:inset 3px 0 0 var(--danger-strong)}
-.wn4 .wk3-row.sn{background:var(--bg-row-alt)}
-.wn4 .wk3-num{border:none;font-size:10.5px;color:var(--text-dim);flex-direction:column;gap:0;padding:0 4px 0 8px}
-.wn4 .wk3-num.imp{color:var(--accent-text);font-weight:700}
-.wn4 .wk3-leg{padding:3px 4px;overflow:visible;align-items:center;gap:6px;min-width:0}
+.wn4-dh .k .bad{color:var(--unassigned);font-weight:500} .wn4-dh .k .hot{color:var(--danger);font-weight:500}
+.wn4-none{font-size:11px;color:var(--text-dim);padding:4px}
+.wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);min-height:var(--wn4-row);align-items:center;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:4px}
+/* Δ5: ΙΔΙΟ hover με το intl (weekly_intl.js:239). Η γραμμή αυτού του πίνακα
+   είναι ~1600px· χωρίς φωτισμό το μάτι δεν έχει τι να ακολουθήσει από τον
+   πελάτη μέχρι την ανάθεση. Ο παλιός κανόνας έγραφε --bg-card, δηλαδή
+   ΑΚΥΡΩΝΕ ρητά το καθολικό .wk3-row:hover του style.css. */
+.wn4 .wk3-row:hover{background:var(--surface-sunken)}
+.wn4 .wk3-row.hot{border-color:var(--danger);border-left-width:3px}
+.wn4 .wk3-row.sn{background:var(--surface-page)}
+.wn4 .wk3-num{border:none;font-size:11px;color:var(--text-dim);flex-direction:column;gap:0;padding:0 4px 0 8px}
+.wn4 .wk3-num.imp{color:var(--text);font-weight:700}
+.wn4 .wk3-leg{padding:4px;overflow:visible;align-items:center;gap:4px;min-width:0}
 .wn4 .wk3-leg.void,.wn4 .wk3-leg.bgap{background:none;justify-content:stretch}
-.wn4-dark{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;background:var(--navy-mid);display:flex;align-items:center;padding:0 10px;font-size:10.5px;color:var(--text-inverse);opacity:.85}
-.wn4-drop{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;border:1.5px dashed var(--border-mid);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-dim);font-style:italic;text-align:center;padding:0 8px}
-.wn4 .wk3-leg.dh{outline:none;background:none} .wn4 .wk3-leg.dh .wn4-drop{border-color:var(--accent);background:var(--accent-light)}
-.wn4-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0;padding:0 2px}
-.wn4-card{flex:1 1 0;min-width:0;min-height:var(--wn4-card);display:flex;align-items:center;gap:6px;padding:2px 8px;background:var(--bg-card);border:1px solid var(--border);border-radius:6px;box-shadow:0 1px 2px rgba(11,25,41,.08)}
-.wn4-card.ok{background:var(--badge-ok-bg);border-color:var(--success)}
-.wn4-card .dt{font-size:10.5px;font-weight:700;color:var(--accent-text);background:var(--accent-light);border-radius:4px;padding:2px 6px;flex-shrink:0;font-variant-numeric:tabular-nums}
+.wn4-dark{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;background:var(--surface-dark);display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text-on-dark)}
+.wn4-drop{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;border:1px dashed var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-dim);font-style:italic;text-align:center;padding:0 8px}
+.wn4 .wk3-leg.dh{outline:none;background:none} .wn4 .wk3-leg.dh .wn4-drop{border-color:var(--accent);background:var(--surface-sunken)}
+.wn4-arrow{color:var(--text-dim);font-size:12px;flex-shrink:0;padding:0 4px}
+.wn4-card{flex:1 1 0;min-width:0;min-height:var(--wn4-card);display:flex;align-items:center;gap:4px;padding:0 8px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px}
+.wn4-card.ok{border-color:var(--ok)}
+.wn4-card .dt{font-size:11px;font-weight:700;color:var(--text-mid);background:var(--surface-sunken);border-radius:6px;padding:0 4px;flex-shrink:0;font-variant-numeric:tabular-nums}
+/* Κελί δύο σειρών (DESIGN.md ΜΕΡΟΣ Ζ.1): name 13px, qualifier 11px dim. */
 .wn4-card .nm{min-width:0;display:flex;flex-direction:column;line-height:1.2}
-.wn4-card .nm b{font-size:12px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere}
-.wn4-card .nm small{font-size:10px;color:var(--text-dim);white-space:normal}
-.wn4-card .ok{color:var(--success);font-weight:700;font-size:12px;flex-shrink:0}
+.wn4-card .nm b{font-size:13px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere}
+.wn4-card .nm small{font-size:11px;color:var(--text-dim);white-space:normal}
+.wn4-card .ok{color:var(--ok);font-weight:700;font-size:12px;flex-shrink:0}
 .wn4-card .sp{flex:1 1 0;min-width:4px}
-.wn4-card .pl{font-size:11.5px;font-weight:500;color:var(--text);flex-shrink:0;font-variant-numeric:tabular-nums}
-.wn4-card .wk3-hh{margin-left:0;background:none;color:var(--text-mid);border:1px solid var(--border);font-weight:700;font-size:9px;border-radius:3px}
-.wn4-chip{font:inherit;font-size:9.5px;font-weight:500;border-radius:4px;padding:1px 6px;white-space:nowrap;border:none;flex-shrink:0;line-height:1.5}
-.wn4-chip.need{color:var(--danger-strong);border:1px solid var(--danger-strong);background:none}
-.wn4-chip.cov{color:var(--success);background:var(--badge-ok-bg);cursor:pointer}
-.wn4-chip.grp{color:var(--navy-mid);background:var(--surface-sunken);cursor:pointer;font-weight:600}
-.wn4-chip.grp:hover{background:var(--accent-light)} .wn4-chip.grp.full{color:var(--warning)} .wn4-chip.grp.over{color:var(--danger)}
-.wn4-chip.srv{color:var(--accent-text);background:var(--accent-light);cursor:pointer}
+.wn4-card .pl{font-size:12px;font-weight:500;color:var(--text);flex-shrink:0;font-variant-numeric:tabular-nums}
+.wn4-card .wk3-hh{margin-left:0;background:none;color:var(--text-mid);border:1px solid var(--border);font-weight:700;font-size:11px;border-radius:6px;font-variant-numeric:tabular-nums}
+.wn4-chip{font:inherit;font-size:11px;font-weight:500;border-radius:6px;padding:0 4px;white-space:nowrap;border:none;flex-shrink:0;line-height:1.5}
+.wn4-chip.need{color:var(--danger);border:1px solid var(--danger);background:none}
+.wn4-chip.cov{color:var(--ok);border:1px solid var(--ok);background:none;cursor:pointer}
+.wn4-chip.grp{color:var(--text);background:var(--surface-sunken);cursor:pointer;font-weight:600;font-variant-numeric:tabular-nums}
+.wn4-chip.grp:hover{color:var(--accent-text)} .wn4-chip.grp.full{color:var(--warn)} .wn4-chip.grp.over{color:var(--danger)}
+.wn4-chip.srv{color:var(--accent-text);background:var(--surface-sunken);cursor:pointer}
 .wn4-chip.solo{color:var(--text-mid);background:var(--surface-sunken)}
 .wn4 .wk3-assign{display:grid;grid-template-columns:40px 1fr 40px;gap:0;padding:0;align-self:stretch;align-items:center}
-.wn4 .wk3-assign .wk3-prt{justify-self:center;border:1px solid var(--border);border-radius:5px;font-size:12px;padding:3px 5px}
-.wn4 .wk3-assign .wk3-prt.a sup{font-size:7px;font-weight:700}
-.wn4 .wk3-pill{height:auto;min-height:var(--wn4-card);flex-direction:column;justify-content:center;gap:0;line-height:1.2;padding:3px 10px;margin:0 4px;width:auto;font-size:11.5px;font-weight:600;white-space:normal;overflow:visible;text-align:center}
-.wn4 .wk3-pill small{font-size:10px;font-weight:400;overflow:visible;text-overflow:clip;white-space:normal}
-.wn4 .wk3-pill.un{border-color:var(--chip-unassigned)}
-.wn4 .wk3-pill.unimp{font-size:9.5px}
+.wn4 .wk3-assign .wk3-prt{justify-self:center;border:1px solid var(--border);border-radius:6px;font-size:12px;padding:4px}
+.wn4 .wk3-assign .wk3-prt.a sup{font-size:11px;font-weight:700}
+.wn4 .wk3-pill{height:auto;min-height:var(--wn4-card);flex-direction:column;justify-content:center;gap:0;line-height:1.2;padding:4px 8px;margin:0 4px;width:auto;font-size:12px;font-weight:600;white-space:normal;overflow:visible;text-align:center;font-variant-numeric:tabular-nums}
+.wn4 .wk3-pill small{font-size:11px;font-weight:400;overflow:visible;text-overflow:clip;white-space:normal}
+.wn4 .wk3-pill.own{background:var(--surface-dark);color:var(--text-on-dark)}
+.wn4 .wk3-pill.own small,.wn4 .wk3-pill.par small{color:var(--text-on-dark)}
+.wn4 .wk3-pill.par{color:var(--text-on-dark)}
+/* ΠΡΟΣ ΑΝΑΘΕΣΗ (owner 4/9): the empty box is a pending action, written as
+   one — same dark red as the legend, no fill, so the word is what you read. */
+.wn4 .wk3-pill.un{background:none;border:1px dashed var(--unassigned);color:var(--unassigned)}
+.wn4 .wk3-pill.unimp{font-size:11px;background:none;border:1px dashed var(--border);color:var(--text-mid)}
 .wn4 .wk3-flags{width:auto;gap:4px}
+.wn4 .wi-badge{font-size:11px;padding:0 4px;border-radius:6px}
+.wn4 .wi-cross,.wn4 .wi-exec{font-size:11px}
+.wn4 .wk3-stopn{width:16px;height:16px;font-size:11px;background:var(--surface-dark);color:var(--text-on-dark)}
 .wn4 .wi-sync{margin-top:0;font-size:11px;min-height:0}
-.wn4-empty{display:flex;align-items:center;gap:12px;padding:10px 14px;border:1px dashed var(--border-mid);border-radius:8px;background:var(--bg-card);margin-bottom:8px;font-size:12px;color:var(--text-mid)}
+.wn4 .wi-pop-section-lbl,.wn4 .wi-pop-lbl,.wn4 .wi-pop-subtitle,.wn4 .wi-pop-divider{font-size:11px}
+.wn4-empty{display:flex;align-items:center;gap:12px;padding:8px 12px;border:1px dashed var(--border);border-radius:6px;background:var(--surface-card);margin-bottom:8px;font-size:12px;color:var(--text-mid)}
 .wn4-empty b{font-family:'Syne',sans-serif;font-weight:800;color:var(--text)}
-.wn4-empty button{margin-left:auto;font:inherit;font-size:11.5px;font-weight:600;color:var(--accent-text);background:none;border:none;cursor:pointer}
-.wn4 .wn3-stops{background:var(--surface-sunken);border:none;border-radius:0 0 8px 8px;margin:0 8px;padding:8px 14px 8px 44px}
+.wn4-empty button{margin-left:auto;font:inherit;font-size:12px;font-weight:600;color:var(--accent-text);background:none;border:none;cursor:pointer}
+.wn4 .wn3-stops{background:var(--surface-sunken);border:none;border-radius:0 0 6px 6px;margin:0 8px;padding:8px 12px 8px 44px}
+.wn4 .wn3-stops .st .o,.wn4 .wn3-stops .ld{font-size:11px}
+.wn4 .wn3-stops .st .p{color:var(--text)} .wn4 .wn3-stops .tot.full .p{color:var(--warn)}
 .wn4-sec{margin-top:16px}
-.wn4-sech{display:flex;align-items:center;gap:10px;padding:8px 2px 8px;flex-wrap:wrap}
-.wn4-sech .t{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:2px;color:var(--navy-mid)}
-.wn4-sech .s{font-size:10.5px;color:var(--text-dim)}
+.wn4-sech{display:flex;align-items:center;gap:8px;padding:8px 4px;flex-wrap:wrap}
+.wn4-sech .t{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:2px;color:var(--text)}
+.wn4-sech .s{font-size:11px;color:var(--text-dim)}
 .wn4-sech .wn4-btn{margin-left:auto}
-.wn4-ladd{font:inherit;font-size:10px;font-weight:600;color:var(--text-mid);background:none;border:1px solid var(--border);border-radius:5px;padding:2px 8px;cursor:pointer;margin-left:auto}
+.wn4-ladd{font:inherit;font-size:11px;font-weight:600;color:var(--text-mid);background:none;border:1px solid var(--border);border-radius:6px;padding:0 8px;cursor:pointer;margin-left:auto}
 .wn4-ladd:hover{color:var(--accent-text);border-color:var(--accent)}
-.wn4-lfail{display:flex;align-items:center;gap:10px;padding:10px 14px;border:1px solid var(--danger-strong);border-radius:8px;background:var(--bg-card);font-size:12px;color:var(--danger-strong)}
-.wn4-lfail small{color:var(--text-mid)} .wn4-lfail button{margin-left:auto}
-.wn4-lrow{display:grid;grid-template-columns:36px 240px minmax(0,1fr);background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:6px}
-.wn4-lrow.hot{border-color:var(--danger-strong);box-shadow:inset 3px 0 0 var(--danger-strong)}
-.wn4-lrow .n{font-size:10.5px;color:var(--text-dim);padding:12px 0 0 12px}
-.wn4-drv{margin:6px 4px;min-height:36px;display:flex;flex-direction:column;justify-content:center;gap:1px;padding:4px 10px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px}
-.wn4-drv b{font-size:11.5px;font-weight:600;color:var(--text)} .wn4-drv small{font-size:10px;color:var(--text-mid)}
-.wn4-drv.need{background:none;border:1.5px dashed var(--danger-strong)} .wn4-drv.need b{color:var(--danger-strong)}
-.wn4-drv.need button{font:inherit;font-size:10px;font-weight:700;color:var(--accent-text);background:none;border:none;padding:0;cursor:pointer;text-align:left}
-.wn4-mvs{display:flex;flex-direction:column;gap:4px;padding:6px 8px 6px 6px;min-width:0}
-.wn4-mv{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap}
-.wn4-mv .i{font-size:11px;font-weight:700;color:var(--accent-text);flex-shrink:0}
+.wn4-lfail{display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--danger);border-radius:6px;background:var(--surface-card);font-size:12px;color:var(--danger)}
+.wn4-lfail small{color:var(--text-mid);font-size:12px} .wn4-lfail button{margin-left:auto}
+.wn4-lrow{display:grid;grid-template-columns:36px 240px minmax(0,1fr);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:4px}
+.wn4-lrow.hot{border-color:var(--danger);border-left-width:3px}
+.wn4-lrow .n{font-size:11px;color:var(--text-dim);padding:12px 0 0 12px}
+.wn4-drv{margin:4px;min-height:36px;display:flex;flex-direction:column;justify-content:center;gap:0;padding:4px 8px;background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px}
+.wn4-drv b{font-size:12px;font-weight:600;color:var(--text)} .wn4-drv small{font-size:11px;color:var(--text-mid)}
+.wn4-drv.need{background:none;border:1px dashed var(--danger)} .wn4-drv.need b{color:var(--danger)}
+.wn4-drv.need button{font:inherit;font-size:11px;font-weight:700;color:var(--accent-text);background:none;border:none;padding:0;cursor:pointer;text-align:left}
+.wn4-mvs{display:flex;flex-direction:column;gap:4px;padding:4px 8px;min-width:0}
+.wn4-mv{display:flex;align-items:center;gap:4px;min-width:0;flex-wrap:wrap}
+.wn4-mv .i{font-size:11px;font-weight:700;color:var(--text-mid);flex-shrink:0}
 .wn4-mv .wn4-card{flex:0 1 300px;min-height:32px} .wn4-mv .wn4-card.f{flex-basis:260px}
-.wn4-mv .ds{font-size:10.5px;color:var(--text-dim)}
-.wn4-mv .rm{margin-left:auto;font:inherit;font-size:13px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0 4px;border-radius:4px}
-.wn4-mv .rm:hover{color:var(--danger);background:var(--danger-bg)}
-.wn4-addst{font:inherit;font-size:10px;font-weight:500;color:var(--text-dim);background:none;border:none;padding:2px 0;cursor:pointer;text-align:left}
+.wn4-mv .ds{font-size:11px;color:var(--text-dim)}
+.wn4-mv .rm{margin-left:auto;font:inherit;font-size:13px;color:var(--text-dim);background:none;border:none;cursor:pointer;padding:0 4px;border-radius:6px}
+.wn4-mv .rm:hover{color:var(--danger);background:var(--surface-sunken)}
+.wn4-addst{font:inherit;font-size:11px;font-weight:500;color:var(--text-dim);background:none;border:none;padding:0;cursor:pointer;text-align:left}
 .wn4-addst:hover{color:var(--accent-text)}
-.wn4-foot{display:flex;align-items:center;gap:20px;padding:10px 16px;background:var(--bg-card);border:1px solid var(--border);border-radius:8px;margin-top:12px;flex-wrap:wrap}
-.wn4-foot .t{font-size:11px;color:var(--text-mid);display:inline-flex;align-items:center;gap:6px;background:none;border:none;padding:0;font-family:inherit}
-.wn4-foot .t b{font-family:'Syne',sans-serif;font-weight:700;font-size:13px;color:var(--text)}
-.wn4-foot .t.bad b{color:var(--chip-unassigned)} .wn4-foot .t.hot b{color:var(--danger-strong)} .wn4-foot .t.ok b{color:var(--success)}
+.wn4-foot{display:flex;align-items:center;gap:16px;padding:8px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:12px;flex-wrap:wrap}
+.wn4-foot .t{font-size:11px;color:var(--text-mid);display:inline-flex;align-items:center;gap:4px;background:none;border:none;padding:0;font-family:inherit}
+.wn4-foot .t b{font-weight:700;font-size:13px;color:var(--text);font-variant-numeric:tabular-nums}
+.wn4-foot .t.bad b{color:var(--unassigned)} .wn4-foot .t.hot b{color:var(--danger)}
 .wn4-foot .t[onclick]{cursor:pointer}
-.wn4-foot .m{font-size:11px;color:var(--text-mid)} .wn4-foot .m.hot{color:var(--danger-strong);font-weight:600}
+.wn4-foot .m{font-size:11px;color:var(--text-mid)} .wn4-foot .m.hot{color:var(--danger);font-weight:600}
 @media print{.wn4-strip,.wn4-acts,.wk3-sub{display:none}}
 </style>`; }
 
@@ -564,15 +591,15 @@ function _wnPaint() {
       </div>
     </div>
     <div id="wn-legend" class="wn4-legend" hidden>
-      <span><span class="sw" style="background:var(--navy-deep)"></span>ιδιόκτητο (οδηγός + πινακίδες)</span>
-      <span><span class="sw" style="background:var(--chip-partner)"></span>συνεργάτης (εταιρεία + πινακίδες)</span>
-      <span><span class="sw" style="border:1.5px dashed var(--chip-unassigned)"></span>χωρίς ανάθεση — κλικ για ανάθεση</span>
-      <span><span class="sw" style="border:1.5px dashed var(--border-mid)"></span>ΑΝΟ · χωρίς όχημα</span>
+      <span><span class="sw" style="background:var(--surface-dark)"></span>ΙΔ. = ιδιόκτητο (πινακίδα + οδηγός)</span>
+      <span><span class="sw" style="background:var(--chip-partner)"></span>ΣΥΝ. = συνεργάτης (επωνυμία + πινακίδες)</span>
+      <span><span class="sw" style="border:1px dashed var(--unassigned)"></span>ΠΡΟΣ ΑΝΑΘΕΣΗ — κλικ για ανάθεση</span>
+      <span><span class="sw" style="border:1px dashed var(--border)"></span>ΑΝΟ · χωρίς όχημα</span>
       <!-- Δ6: εδώ ζει η οδηγία του κενού κελιού ΑΝΟΔΟΣ, μία φορά. -->
-      <span><span class="sw" style="border:1.5px dashed var(--border-mid)"></span>κενό κελί ανόδου «—» = σύρε μια άνοδο εδώ· αν μείνει κενό μετρά στις «χωρίς ταίριασμα»</span>
-      <span><span class="sw" style="background:var(--navy-mid)"></span>δεν αναμένεται σκέλος</span>
+      <span><span class="sw" style="border:1px dashed var(--border)"></span>κενό κελί ανόδου «—» = σύρε μια άνοδο εδώ· αν μείνει κενό μετρά στις «χωρίς ταίριασμα»</span>
+      <span><span class="sw" style="background:var(--surface-dark)"></span>δεν αναμένεται σκέλος</span>
       <span>— = δεν υπάρχει σκέλος (μονή διαδρομή)</span>
-      <span><span class="sw" style="background:var(--badge-ok-bg);border:1px solid var(--success)"></span>✓ φορτώθηκε / παραδόθηκε (Status)</span>
+      <span><span class="sw" style="border:1px solid var(--ok)"></span>✓ φορτώθηκε / παραδόθηκε (Status)</span>
       <span>PE = ανταλλαγή παλετών · ①② = σειρά σημείων · ⟳ γράφεται · ✓ γράφτηκε · ⚠ ΔΕΝ γράφτηκε</span>
     </div>
 
@@ -584,7 +611,7 @@ function _wnPaint() {
       </button>
       <button type="button" class="wn4-alert${pendingAll?' hot':''}" title="${escapeHtml(pendSub)}${pendingAll?' — κλικ: πήγαινε στο πρώτο':''}" onclick="${_jump(_firstRow(r=>!r.saved))}">
         <span class="n">${pendingAll}</span>
-        <span><div class="t">ΧΩΡΙΣ ΑΝΑΘΕΣΗ</div><div class="s">${pendSub}</div></span>
+        <span><div class="t">ΠΡΟΣ ΑΝΑΘΕΣΗ</div><div class="s">${pendSub}</div></span>
       </button>
       <div class="wn4-free">
         <div class="l">ΕΛΕΥΘΕΡΑ ${isCur?'ΣΗΜΕΡΑ':'ΤΗΝ ΕΒΔΟΜΑΔΑ'} · ${freeT.length}/${data.trucks.length}</div>
@@ -594,11 +621,11 @@ function _wnPaint() {
       <div class="wn4-quick" id="wn-quick">
         <div class="l">ΓΡΗΓΟΡΑ ΦΙΛΤΡΑ</div>
         <div class="r">
-          <button class="wn4-qf" data-qf="" onclick="_wnQuick('')">Όλα (${total})</button>
-          <button class="wn4-qf" data-qf="pending" onclick="_wnQuick('pending')">Χωρίς ανάθεση (${pendingAll})</button>
-          <button class="wn4-qf" data-qf="unmatched" onclick="_wnQuick('unmatched')">Άνοδοι χωρίς ταίριασμα (${snRows.length})</button>
-          <button class="wn4-qf" data-qf="uncovered" onclick="_wnQuick('uncovered')">Ακάλυπτα (${uncovered})</button>
-          <button class="wn4-qf" data-qf="groupage" onclick="_wnQuick('groupage')">Groupage (${grpN})</button>
+          <button class="wn4-qf" data-qf="" onclick="_wnQuick('')"${total?'':' disabled'}>Όλα (${total})</button>
+          <button class="wn4-qf" data-qf="pending" onclick="_wnQuick('pending')"${pendingAll?'':' disabled'}>Προς ανάθεση (${pendingAll})</button>
+          <button class="wn4-qf" data-qf="unmatched" onclick="_wnQuick('unmatched')"${snRows.length?'':' disabled'}>Άνοδοι χωρίς ταίριασμα (${snRows.length})</button>
+          <button class="wn4-qf" data-qf="uncovered" onclick="_wnQuick('uncovered')"${uncovered?'':' disabled'}>Ακάλυπτα (${uncovered})</button>
+          <button class="wn4-qf" data-qf="groupage" onclick="_wnQuick('groupage')"${grpN?'':' disabled'}>Groupage (${grpN})</button>
         </div>
       </div>
       <span id="wn-pickups-q" style="margin-left:auto"></span>
@@ -613,7 +640,7 @@ function _wnPaint() {
       <!-- WN-1β (Wave 1): values ΑΜΕΤΑΒΛΗΤΑ (_wnApplyFilter) — plus the two of the frame -->
       <select id="wn-status" class="svc-filter" onchange="_wnQuick(this.value)">
         <option value="">Κατάσταση: Όλες</option>
-        <option value="pending">Χωρίς ανάθεση</option>
+        <option value="pending">Προς ανάθεση</option>
         <option value="assigned">Ανατεθειμένα</option>
         <option value="unmatched">Άνοδοι χωρίς ταίριασμα</option>
         <option value="uncovered">Ακάλυπτα κομμάτια</option>
@@ -654,9 +681,9 @@ function _wnPaint() {
       <span class="t"><b>${snTotal}</b> άνοδο${snTotal===1?'ς':'ι'}</span>
       <span class="t" title="Άνοδοι που κάθονται σε round trip με κάθοδο"><b>${matchedN}/${snTotal}</b> άνοδοι ταιριασμένες</span>
       <span class="t" title="Σκέλη με φορτηγό ή συνεργάτη, και στις δύο κατευθύνσεις"><b>${assignedAll}/${total}</b> ανατεθειμένα</span>
-      <button class="t bad" title="Σκέλη χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>!r.saved))}"><b>${pendingAll}/${total}</b> εκκρεμή · χωρίς ανάθεση</button>
+      <button class="t bad" title="Σκέλη χωρίς φορτηγό ΚΑΙ χωρίς συνεργάτη — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>!r.saved))}"><b>${pendingAll}/${total}</b> προς ανάθεση</button>
       <button class="t hot" title="Δηλώθηκαν «χρειάζεται τοπικό» και δεν έχουν οδηγό — κλικ: πήγαινε στο πρώτο" onclick="${_jump(_firstRow(r=>r.needsLocal))}"><b>${uncovered}/${total}</b> ακάλυπτα κομμάτια</button>
-      <span class="t ok" title="Η ώρα παράδοσης έχει περάσει (υπολογισμός, όχι γραμμένο Status — owner 10/8: το «παραδόθηκε» των εθνικών δεν γράφεται στη βάση)"><b>${delivered}/${total}</b> παραδόθηκε</span>
+      <span class="t" title="Υπολογισμός από το ρολόι, όχι γραμμένο Status — owner 10/8: το «παραδόθηκε» των εθνικών δεν γράφεται στη βάση"><b>${delivered}/${total}</b> πέρασε η ώρα παράδοσης</span>
       <span class="t" title="${localsFailed?'Ο πίνακας τοπικών κινήσεων δεν είναι διαθέσιμος':''}"><b>${localsFailed?'—':(data.locals||[]).length}</b> τοπικές κινήσεις · ${localsFailed?'—':lDrivers.size} οδηγοί</span>
       <span class="m">Ενημερώθηκε ${hhmm(WNATL._loadedAt)}</span>
       <span class="m" id="wn-syncsum"></span>
@@ -764,7 +791,7 @@ function _wnAllRowsHTML() {
     const parts = [];
     if (ns.length) parts.push(`${ns.length} κάθοδο${ns.length===1?'ς':'ι'}`);
     const p = ns.filter(r => !r.saved).length;
-    if (p) parts.push(`<span class="bad">${p} χωρίς ανάθεση</span>`);
+    if (p) parts.push(`<span class="bad">${p} προς ανάθεση</span>`);
     const u = [...ns, ...sn].filter(r => r.needsLocal).length;
     if (u) parts.push(`<span class="hot">${u} χρειάζεται τοπικό</span>`);
     if (sn.length) parts.push(`${sn.length} άνοδο${sn.length===1?'ς':'ι'} χωρίς ταίριασμα`);
@@ -870,8 +897,8 @@ function _wnLocalsHTML() {
 
   // Contract #6: a table that did not load is an ERROR, not seven empty days.
   if (WNATL.data._localsFailed) {
-    return `<div class="wn4-lfail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Τα εθνικά παραπάνω δεν επηρεάζονται.</small>
-      <button class="wn4-btn" onclick="renderWeeklyNatl()">↻ Retry</button></div>`;
+    return `<div class="wn4-lfail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— δεν σημαίνει ότι δεν υπάρχουν: ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Τα εθνικά παραπάνω δεν επηρεάζονται.</small>
+      <button class="wn4-btn" onclick="renderWeeklyNatl()">↻ Ξαναδοκίμασε</button></div>`;
   }
 
   const byDay = {};
@@ -1647,15 +1674,18 @@ function _wnPill(row) {
   const partner = row.partnerLabel || data.partners.find(p=>p.id===row.partnerId)?.label||'';
   const isCL    = row.source === 'cl';
 
-  // Contract #5 — colour AND class AND text: own = navy (driver + plates),
-  // par = green (company + plates), un = empty red dashed (owner 12/8:
-  // «χρώμα, όχι λόγια»), unimp = dashed grey «ΑΝΟ · χωρίς όχημα». Two lines
-  // now, nothing sliced: the text is what tells them apart without colour.
+  // Contract #5 — colour AND class AND word (DESIGN.md ΜΕΡΟΣ Ε «Ανάθεση»):
+  // own = navy «ΙΔ.» + plate + driver, par = green «ΣΥΝ.» + company,
+  // un = dark-red dashed «ΠΡΟΣ ΑΝΑΘΕΣΗ» (owner 4/9: the empty box is an
+  // action owed by the dispatcher, so it is written — it replaces the 12/8
+  // «χρώμα, όχι λόγια» empty box), unimp = dashed grey «ΑΝΟ · χωρίς όχημα»
+  // (an unmatched άνοδος is resolved by drag as often as by assignment, so it
+  // keeps its own word). Two lines, nothing sliced.
   if (!row.saved) return row.type === 'southnorth'
     ? `<div class="wk3-pill unimp" title="Άνοδος χωρίς όχημα — κλικ για ανάθεση">ΑΝΟ · χωρίς όχημα</div>`
-    : `<div class="wk3-pill un" title="Αδιάθετο — κλικ για ανάθεση" aria-label="Χωρίς ανάθεση"></div>`;
-  if (partner) return `<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(partner)}${(row.partnerPlates||driver)?`<small>${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))}</small>`:''}</div>`;
-  return `<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">${escapeHtml(driver || '—')}<small>${escapeHtml([truck,trailer].filter(Boolean).join(' / ') || '—')}</small></div>`;
+    : `<div class="wk3-pill un" title="Προς ανάθεση — κλικ για ανάθεση">ΠΡΟΣ ΑΝΑΘΕΣΗ</div>`;
+  if (partner) return `<div class="wk3-pill par" title="Συνεργάτης${row.partnerPlates?' · '+escapeHtml(row.partnerPlates):''}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">ΣΥΝ. ${escapeHtml(partner)}${(row.partnerPlates||driver)?`<small>${escapeHtml([row.partnerPlates,driver].filter(Boolean).join(' · '))}</small>`:''}</div>`;
+  return `<div class="wk3-pill own" title="${escapeHtml([truck,trailer].filter(Boolean).join(' · '))}${driver?' · '+escapeHtml(driver):''}${isCL?' · από Pick Ups':''} — κλικ: αλλαγή ανάθεσης">ΙΔ. ${escapeHtml(truck || '—')}<small>${escapeHtml([driver,trailer].filter(Boolean).join(' · ') || '—')}</small></div>`;
 }
 
 function _wnNavWeek(d) {
@@ -1796,7 +1826,7 @@ function _wnOpenPopover(e, rowId) {
           </div>
           <div class="wi-pop-field">
             <span class="wi-pop-lbl">Κόμιστρο €</span>
-            <input class="wi-pop-inp" type="number" step="0.01" placeholder="0.00"
+            <input class="wi-pop-inp" type="number" step="0.01" placeholder="π.χ. 350"
                    id="wn-pop-rate-${rowId}" style="width:90px" value="${row.partnerRate||''}"/>
           </div>
         </div>
@@ -1808,7 +1838,7 @@ function _wnOpenPopover(e, rowId) {
       <button class="wi-pop-cancel" onclick="_wnClosePopover()">Ακύρωση</button>
       <button class="wi-pop-save" id="wn-pop-btn-${rowId}"
               onclick="event.stopPropagation();_wnSaveFromPopover(${rowId})">
-        <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid rgba(255,255,255,0.3);border-top-color:var(--text-inverse);border-radius:50%;display:none;animation:wi-spin .6s linear infinite"></div>
+        <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid var(--border-dark);border-top-color:var(--text-on-dark);border-radius:9999px;display:none;animation:wi-spin .6s linear infinite"></div>
         ${row.saved ? 'Ενημέρωση' : 'Αποθήκευση'}
       </button>
     </div>`;
@@ -2333,11 +2363,11 @@ window._wnSaveCover = _wnSaveCover;
 function _wnPrintWeek(){
   const secs=[['ΚΑΘΟΔΟΣ (Βορράς → Νότος)','northsouth'],['ΑΝΟΔΟΣ (Νότος → Βορράς)','southnorth']];
   let html=`<h2 style="font-family:'Syne',sans-serif;margin-bottom:12px">Weekly National — W${WNATL.week}</h2>
-    <style>.wnp th,.wnp td{padding:4px 6px;border:1px solid #ddd;text-align:left}.wnp th{padding:6px;background:#F0F5FA}.wnp .c{text-align:center}.wnp-sub{font-size:12px;color:#666;margin-bottom:16px}</style>
+    <style>.wnp th,.wnp td{padding:4px 8px;border:1px solid;text-align:left}.wnp th{padding:8px;font-weight:700}.wnp .c{text-align:center}.wnp-sub{font-size:12px;margin-bottom:16px}</style>
     <p class="wnp-sub">${WNATL.data.northsouth.length} ΚΑΘΟΔΟΣ · ${WNATL.data.southnorth.length} ΑΝΟΔΟΣ · Εκτύπωση ${new Date().toLocaleString('el-GR')} — αντικαθιστά κάθε προηγούμενη έκδοση</p>`;
   for(const [secTitle,type] of secs){
     const rows=WNATL.rows.filter(r=>r.type===type);
-    html+=`<h3 style="font-family:'Syne',sans-serif;font-size:13px;margin:14px 0 6px">${secTitle} — ${rows.length}</h3>
+    html+=`<h3 style="font-family:'Syne',sans-serif;font-size:13px;margin:16px 0 8px">${secTitle} — ${rows.length}</h3>
       <table class="wnp" style="width:100%;border-collapse:collapse;font-size:11px">
         <thead><tr>
           <th>#</th>
@@ -2351,8 +2381,8 @@ function _wnPrintWeek(){
       const f=ord.fields;
       const from=(typeof _wnNlPickupSummary==='function'?_wnNlPickupSummary(f):'')||f['Name']||'—';
       const to=(typeof _wnNlDeliverySummary==='function'?_wnNlDeliverySummary(f):'')||'—';
-      const assign=row.partnerLabel?`Συνεργάτης: ${row.partnerLabel}${row.partnerPlates?' ('+row.partnerPlates+')':''}`
-                  :(row.truckLabel?`Στόλος: ${row.truckLabel}${row.driverLabel?' · '+row.driverLabel:''}`:'Χωρίς ανάθεση');
+      const assign=row.partnerLabel?`ΣΥΝ. ${row.partnerLabel}${row.partnerPlates?' ('+row.partnerPlates+')':''}`
+                  :(row.truckLabel?`ΙΔ. ${row.truckLabel}${row.driverLabel?' · '+row.driverLabel:''}`:'ΠΡΟΣ ΑΝΑΘΕΣΗ');
       html+=`<tr>
         <td>${i+1}</td>
         <td>${from} → ${to}</td>
