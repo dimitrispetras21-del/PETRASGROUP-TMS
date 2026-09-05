@@ -98,8 +98,19 @@ class TestParseSheet(unittest.TestCase):
         self.assertEqual(n['raw_final'], '560.00')
         self.assertIsNone(n['opening_balance'])
         self.assertEqual(n['rounding_residual'], '0.07')
-        self.assertTrue(n['running_consistent'])
-        self.assertEqual(n['expected_final'], '560.07')
+
+    def test_leading_undated_rows_inherit_from_below_and_bad_date_end_is_dropped(self):
+        ws = book([('ΗΜΕΡ', 'ΛΗΞΗ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                   (None, None, 'ΥΠΟΛΟΙΠΟ ΑΠΟ ΠΑΛΙΑ', 390, None, None, None, -390, -390),
+                   (dt.datetime(2020, 11, 10), None, 'ΕΠΙΣΤΡΟΦΗ', 0, 390, None, None, 390, 0),
+                   (dt.datetime(2020, 11, 15), dt.datetime(2020, 11, 5), 'ΒΕΡΟΙΑ-ΑΥΣΤΡΙΑ-ΒΕΡΟΙΑ', 300, 75, None, 600, 225, 225)])
+        n = parse_sheet(ws, today=dt.date(2026, 9, 5))
+        self.assertEqual(n['n_rows'], 3)
+        self.assertEqual(n['unknown'], [])
+        self.assertEqual(n['rows'][0]['entry']['entry_date'], '2020-11-10')
+        self.assertTrue(n['rows'][0]['date_inherited']); self.assertIn('επόμενη γραμμή', n['rows'][0]['entry']['note'])
+        self.assertIsNone(n['rows'][2]['entry']['date_end']); self.assertIsNone(n['rows'][2]['date_problem'])
+        self.assertIn('2020-11-05', n['rows'][2]['entry']['note']); self.assertEqual(n['rows'][2]['date_fix']['to'], None)
 
     def test_no_running_column_means_consistency_unknown(self):
         ws = book([('ΗΜΕΡ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', None, 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ'),

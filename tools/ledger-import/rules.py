@@ -74,7 +74,9 @@ def detect_header(rows):
             if n in SEQ_LABELS:
                 cols.setdefault('seq', j); continue
             for field, keys in FIELD_KEYS:
-                if field not in cols and any(k in n for k in keys):
+                # For balance field, allow later matches to overwrite earlier ones
+                # (κράτησε comes first, the line balance comes after ΑΞΙΑ)
+                if (field != 'balance' and field not in cols or field == 'balance') and any(k in n for k in keys):
                     cols[field] = j; break
         if len(cols) >= 3 and all(f in cols for f in REQUIRED):
             used = set(cols.values())
@@ -88,15 +90,17 @@ def detect_header(rows):
                 best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and to_date(r[j - 1]) is not None))
                 if sum(1 for r in sample if len(r) >= best and to_date(r[best - 1]) is not None) >= 3:
                     cols['date'] = best; used.add(best)
+            if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route'] and cols['date'] + 1 not in used:
+                cols['date_end'] = cols['date'] + 1
+            # seq fallback runs before route inference so an unlabeled Α/Α column can never win
+            # the "most text" contest as the route
+            if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used:
+                cols['seq'] = cols['date'] - 1; used.add(cols['seq'])
             left = [j for j in range(1, cols['advance']) if j not in used]
             if 'route' not in cols and left:
                 best = max(left, key=lambda j: sum(1 for r in sample if len(r) >= j and isinstance(r[j - 1], str) and r[j - 1].strip()))
                 if sum(1 for r in sample if len(r) >= best and isinstance(r[best - 1], str) and r[best - 1].strip()) >= 3:
                     cols['route'] = best; used.add(best)
-            if 'date_end' not in cols and 'date' in cols and 'route' in cols and cols['date'] + 1 < cols['route'] and cols['date'] + 1 not in used:
-                cols['date_end'] = cols['date'] + 1
-            if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used:
-                cols['seq'] = cols['date'] - 1
             return {'row': i, 'cols': cols, 'out_of_scope': 'official' in cols}
     return None
 
@@ -135,6 +139,14 @@ def classify(c):
         raise Unknown('payment keyword but the amount is in ΑΞΙΑ: %r' % label)
     if val and not adv and not exp and not has_seq and any(k in t for k in ADJUST_KEYS):
         return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': val, 'note': label}
+    # Excel line rule ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ, applied to two shapes that carry no
+    # value and no counter: advance == expenses is a company cost paid through the
+    # driver (net 0, nothing to record); expenses alone is a company cost the
+    # driver paid himself (the company owes it).
+    if not val and not has_seq and adv and exp and d2(adv) == d2(exp):
+        return 'ZERO_NET'
+    if not val and not has_seq and not adv and exp and exp > 0 and label:
+        return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': exp, 'note': 'έξοδα χωρίς δρομολόγιο: ' + label}
     # A payment keyword wins over the "expenses = journey" heuristic: a ΜΕΤΡΗΤΑ
     # line with a 5 € bank fee is a payment of ΕΛΑΒΕ − ΕΞΟΔΑ, not a trip to
     # "ΜΕΤΡΗΤΑ". The net keeps the line's Excel arithmetic (ΑΞΙΑ − ΕΛΑΒΕ + ΕΞΟΔΑ).

@@ -37,7 +37,10 @@ def read_token():
 def ensure_driver(api, plan, state, save=None):
     key = plan['driver_key']; st = state.setdefault(key, {})
     if st.get('driver_id'): return st['driver_id']
-    if plan.get('driver_id'): st['driver_id'] = plan['driver_id']; return st['driver_id']
+    if plan.get('driver_id'):
+        st['driver_id'] = plan['driver_id']
+        if save: save(state)
+        return st['driver_id']
     fields = {k: v for k, v in plan['create_driver'].items() if v not in (None, '')}
     rec = api.post(DRIVERS_PATH, {'fields': fields})
     legacy = rec['id']

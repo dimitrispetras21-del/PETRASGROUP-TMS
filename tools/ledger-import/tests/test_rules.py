@@ -64,6 +64,18 @@ class TestHeader(unittest.TestCase):
     def test_no_header(self):
         self.assertIsNone(detect_header([('a', 'b'), (1, 2)]))
 
+    def test_unlabeled_seq_column_does_not_become_the_route(self):
+        rows = [(None, None, None, 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ ΔΡ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ'),
+                ('1', dt.datetime(2023, 9, 14), 'ΘΕΣΣΑΛΟΝΙΚΗ', 0, 0, 0, 60, 60, 60),
+                ('2', dt.datetime(2023, 9, 15), 'ΑΘΗΝΑ', 100, 20, 80, 230, 150, 210),
+                ('3', dt.datetime(2023, 9, 20), 'ΜΕΤΡΗΤΑ', 200, 0, 200, 0, -200, 10)]
+        h = detect_header(rows)
+        self.assertEqual(h['cols']['date'], 2); self.assertEqual(h['cols']['seq'], 1); self.assertEqual(h['cols']['route'], 3)
+
+    def test_second_ypoloipo_column_is_the_balance(self):
+        rows = [(None, 'ΗΜΕΡΟΜΗΝΙΑ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ')]
+        self.assertEqual(detect_header(rows)['cols']['balance'], 8)
+
 class TestClassify(unittest.TestCase):
     def test_trip(self):
         e = classify({'date': D(2024, 3, 13), 'date_end': D(2024, 3, 20), 'route': 'ΓΕΡΜΑΝΙΑ', 'advance': 300, 'expenses': 120.5, 'value': 450})
@@ -153,6 +165,16 @@ class TestClassify(unittest.TestCase):
         self.assertEqual(classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ ΠΕΙΡΑΙΩΣ', 'advance': 120, 'expenses': 120}), 'ZERO_NET')
         with self.assertRaises(Unknown):
             classify({'date': D(2024, 4, 1), 'route': 'ΚΑΤΑΘΕΣΗ', 'advance': 5, 'expenses': 9})
+
+    def test_advance_equal_expenses_without_value_is_zero_net(self):
+        self.assertEqual(classify({'date': D(2021, 4, 28), 'cash': 'ΓΙΑ ΠΡΟΣΤΥΜΟ ΒΟΥΛΓ (ΠΡΑΤ)', 'advance': 115, 'expenses': 115, 'value': 0}), 'ZERO_NET')
+        self.assertEqual(classify({'date': D(2021, 10, 4), 'advance': 30, 'expenses': 30}), 'ZERO_NET')
+
+    def test_expenses_only_with_description_is_adjustment(self):
+        e = classify({'date': D(2021, 3, 3), 'cash': 'ΠΡΟΣΤΙΜΟ ΓΙΑΝΝΙΤΣΩΝ', 'expenses': 170, 'advance': 0, 'value': 0})
+        self.assertEqual(e['entry_type'], 'adjustment'); self.assertEqual(e['amount'], 170.0); self.assertIn('ΠΡΟΣΤΙΜΟ', e['note'])
+        with self.assertRaises(Unknown):
+            classify({'date': D(2021, 3, 3), 'expenses': 170})       # expenses only and no words at all: still a human's call
 
 class TestFixDate(unittest.TestCase):
     today = D(2026, 9, 5)

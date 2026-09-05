@@ -29,6 +29,7 @@ def parse_sheet(ws, today):
     if h is None: return None
     cols = h['cols']
     rows, unknown, cells_used = [], [], []
+    pending = []  # leading undated rows waiting for the first dated row
     totals_skipped = text_only = zero_net = 0
     for rn, raw in enumerate(ws.iter_rows(min_row=h['row'] + 1, values_only=True), h['row'] + 1):
         cells = {f: (raw[cols[f] - 1] if f in cols and cols[f] <= len(raw) else None) for f in PICK}
@@ -47,12 +48,25 @@ def parse_sheet(ws, today):
         inherited = False
         if e['entry_date'] is None:
             if not rows:
-                unknown.append({'row': rn, 'reason': 'row without a date and no previous row to inherit from', 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'}})
+                # Leading undated row: hold it in pending for when the first dated row appears
+                pending.append({'row': rn, 'cells': cells, 'entry': e})
                 continue
             e['entry_date'] = rows[-1]['entry']['entry_date']; inherited = True; add_note(e, INHERIT_NOTE)
+        else:
+            # This is the first dated row: flush pending entries and inherit from it
+            if pending and rows == []:
+                for p in pending:
+                    p['entry']['entry_date'] = e['entry_date']; add_note(p['entry'], 'ημ/νία από επόμενη γραμμή (κενή στο Excel)')
+                    rows.append({'row': p['row'], 'entry': p['entry'], 'cells': {k: jsonable(v) for k, v in p['cells'].items() if k != '_row_text'},
+                                 'date_fix': None, 'date_problem': None, 'date_inherited': True})
+                    cells_used.append(p['cells'])
+                pending = []
         rows.append({'row': rn, 'entry': e, 'cells': {k: jsonable(v) for k, v in cells.items() if k != '_row_text'},
                      'date_fix': None, 'date_problem': None, 'date_inherited': inherited})
         cells_used.append(cells)
+    # If pending still has entries at the end (a sheet with no dated row at all), push them to unknown
+    for p in pending:
+        unknown.append({'row': p['row'], 'reason': 'row without a date and no previous row to inherit from', 'cells': {k: jsonable(v) for k, v in p['cells'].items() if k != '_row_text'}})
     dates = [dt.date.fromisoformat(r['entry']['entry_date']) for r in rows]
     for i, r in enumerate(rows):
         nb = [d for d in dates[max(0, i - 3):i] + dates[i + 1:i + 4] if d <= today]
@@ -78,7 +92,18 @@ def parse_sheet(ws, today):
                     r['entry']['date_end'] = fixed.isoformat(); add_note(r['entry'], 'λήξη Excel %s → %s (έτος)' % (end, fixed.isoformat()))
                     r['date_fix'] = r['date_fix'] or {'from': end, 'to': fixed.isoformat(), 'note': 'λήξη: έτος'}
                 else:
-                    r['date_problem'] = ((r['date_problem'] or '') + ' date_end %s before entry_date' % end).strip()
+                    # Not a year typo (day/month slip or swapped cells). The balance does not
+                    # depend on the return date, so the driver is not blocked: drop it, keep
+                    # the original in the note and in date_fix.
+                    msg = 'λήξη Excel %s μη έγκυρη' % end
+                    if e0 > start + dt.timedelta(days=60):
+                        msg += ' (> 60 ημέρες μετά την αναχώρηση)'
+                    else:
+                        msg += ' (πριν την αναχώρηση)'
+                    msg += ', αφαιρέθηκε'
+                    add_note(r['entry'], msg)
+                    r['date_fix'] = r['date_fix'] or {'from': end, 'to': None, 'note': 'λήξη αφαιρέθηκε'}
+                    r['entry']['date_end'] = None
     running_last, opening, breaks, consistent = None, None, [], None
     trailing, expected_final, residual = Decimal('0'), None, None
     if 'running' in cols:

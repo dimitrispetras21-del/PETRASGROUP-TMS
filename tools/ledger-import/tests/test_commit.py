@@ -31,6 +31,12 @@ class TestCommit(unittest.TestCase):
         self.assertEqual(C.ensure_driver(api, dict(PLAN), {'X': {'driver_id': 77}}, save=lambda s: None), 77)
         api.post.assert_not_called()
 
+    def test_ensure_driver_reuse_path_saves(self):
+        api = api_with({}); saved = []
+        plan = dict(PLAN); plan['driver_id'] = 8; plan['create_driver'] = None
+        self.assertEqual(C.ensure_driver(api, plan, {}, save=lambda s: saved.append(1)), 8)
+        self.assertEqual(saved, [1]); api.post.assert_not_called()
+
     def test_import_batch_strips_src_rt_id_and_checks_balance(self):
         api = api_with({'post': [{'batch': 'b1', 'rows': 1, 'balance': '100.00'}]})
         batch = copy.deepcopy(PLAN['batches'][0]); batch['rows'][0]['rt_id'] = 5
