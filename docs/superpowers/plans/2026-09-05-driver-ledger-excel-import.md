@@ -2883,6 +2883,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
 4. **Expenses only, with a description, no advance, no value, no counter** (`ΠΡΟΣΤΙΜΟ ΓΙΑΝΝΙΤΣΩΝ` ΕΞΟΔΑ 170, `ΦΠΑ ΑΠΟΔΕΙΞΕΩΝ` 66): the driver paid a company cost from his own pocket, the company owes it — Excel adds +ΕΞΟΔΑ to the balance. Emit `adjustment +ΕΞΟΔΑ` with note `έξοδα χωρίς δρομολόγιο: <description>`.
 5. Two small carry-overs from earlier reviews: in `detect_header` run the **seq fallback before the route inference** (so an unlabeled Α/Α column can never win the "most text" contest); in `commit.py` call `save(state)` also on the reuse path of `ensure_driver` (consistency with the create path).
 
+6. **Two ΥΠΟΛΟΙΠΟ columns.** Several layouts label both «κράτησε» (ΕΛΑΒΕ − ΕΞΟΔΑ, placed before ΑΞΙΑ) and the real line balance (after ΑΞΙΑ) as `ΥΠΟΛΟΙΠΟ`. First-match currently picks «κράτησε», so `balance_sum` is wrong wherever it is the fallback (no ΠΡΟΟΔΕΥΤΙΚΟ). Rule: for the `balance` field the **last** matching column wins.
+
 **Files:**
 - Modify: `tools/ledger-import/rules.py`, `tools/ledger-import/inventory.py`, `tools/ledger-import/commit.py`
 - Tests: `tests/test_rules.py`, `tests/test_inventory.py`, `tests/test_commit.py`
@@ -2910,6 +2912,10 @@ and inside `TestHeader`:
                 ('3', dt.datetime(2023, 9, 20), 'ΜΕΤΡΗΤΑ', 200, 0, 200, 0, -200, 10)]
         h = detect_header(rows)
         self.assertEqual(h['cols']['date'], 2); self.assertEqual(h['cols']['seq'], 1); self.assertEqual(h['cols']['route'], 3)
+
+    def test_second_ypoloipo_column_is_the_balance(self):
+        rows = [(None, 'ΗΜΕΡΟΜΗΝΙΑ', 'ΔΡΟΜΟΛΟΓΙΟ', 'ΕΛΑΒΕ', 'ΕΞΟΔΑ', 'ΥΠΟΛΟΙΠΟ', 'ΑΞΙΑ', 'ΥΠΟΛΟΙΠΟ', 'ΠΡΟΟΔΕΥΤΙΚΟ')]
+        self.assertEqual(detect_header(rows)['cols']['balance'], 8)
 ```
 `tests/test_inventory.py`, inside `TestParseSheet`, add:
 ```python
@@ -2952,7 +2958,7 @@ and inside `TestHeader`:
     if not val and not has_seq and not adv and exp and exp > 0 and label:
         return {'entry_type': 'adjustment', 'entry_date': iso, 'amount': exp, 'note': 'έξοδα χωρίς δρομολόγιο: ' + label}
 ```
-In `detect_header`, move the existing `seq` fallback (`if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used: cols['seq'] = cols['date'] - 1`) so that it runs right after the date inference block and before the route inference block, and add `used.add(cols['seq'])` after it.
+In `detect_header`'s header-cell loop, let a later `ΥΠΟΛΟΙΠ` cell overwrite an earlier one: change the condition `if field not in cols and any(k in n for k in keys)` so that for `field == 'balance'` a repeat match replaces `cols['balance']` (comment: «κράτησε» comes first, the line balance comes after ΑΞΙΑ). Then move the existing `seq` fallback (`if 'seq' not in cols and 'date' in cols and cols['date'] > 1 and cols['date'] - 1 not in used: cols['seq'] = cols['date'] - 1`) so that it runs right after the date inference block and before the route inference block, and add `used.add(cols['seq'])` after it.
 
 `inventory.py` — in the row loop, when `e['entry_date'] is None` and `rows` is empty, do NOT push to `unknown`; instead append the row to a `pending` list (with its `cells`, `rn`, `e`) and continue. When the first row with a date is appended to `rows`, flush `pending` in order before it: each pending entry gets `entry_date = <that date>`, `add_note(e, 'ημ/νία από επόμενη γραμμή (κενή στο Excel)')`, `date_inherited = True`, and is appended to `rows` and `cells_used` ahead of the dated row. If the loop ends with `pending` still non-empty (a sheet with no dated row at all), push them to `unknown` with the old reason.
 In the date pass, replace the branch that appends `' date_end %s before entry_date'` (the `else:` of the year-repair) with:
@@ -2969,7 +2975,7 @@ and apply the same drop (with note `λήξη Excel %s > 60 ημέρες μετά
 
 `commit.py` — in `ensure_driver`, on the `if plan.get('driver_id'):` path call `save(state)` before returning.
 
-- [ ] **Step 4: Run** the whole suite → OK (previous count + 5).
+- [ ] **Step 4: Run** the whole suite → OK (previous count + 6).
 - [ ] **Step 5: Real run**: `python3 tools/ledger-import/inventory.py` (line), `python3 tools/ledger-import/make_plan.py | tail -1` (counts), `python3 tools/ledger-import/verify_plan.py | grep -c ^OK`, `… | grep ^REJECT`. The analysts' `work/decisions/*.json` are picked up automatically. Expected: date problems ≤ 3, ready ≥ 65, 0 REJECT.
 - [ ] **Step 6: Commit**
 ```bash
