@@ -449,7 +449,15 @@ async function renderWeeklyIntl(){
       // Σαβ–Παρ (display): date-range αντί {Week Number} — υπερσύνολο με OR
       // στα δύο dates, ακριβές κόψιμο client-side ώστε να μη χαθεί καμία
       // εγγραφή χωρίς Delivery DateTime.
-      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}')),AND(IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+86400000))}'))))`},false),
+      // B2 (owner 6/9): widened to ±8 days (was ±1) to match the import query
+      // below — an export whose Plan Week Start would place it in THIS week
+      // needs to be fetched even if its real date sits in an adjacent week.
+      // Exports don't get a UI action to write Plan Week Start in Wave 1
+      // (only _wiImpShift does, on imports), so this is defensive plumbing —
+      // widening the DATE window is safe pre-deploy; filtering by
+      // {Plan Week Start} in the formula itself would 422 (unmapped field,
+      // CLAUDE.md facade trap) until the Worker ships it.
+      atGetAll(TABLES.ORDERS,  {filterByFormula:`AND({Type}='International',{Direction}='Export',OR(AND(IS_AFTER({Delivery DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Delivery DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}')),AND(IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))))`},false),
       atGetAll(TABLES.ORDERS,  {filterByFormula:impFilter},false),
     ]);
     if (loadId !== _wiLoadId) return;
@@ -483,8 +491,15 @@ async function renderWeeklyIntl(){
       if (Object.keys(nlMap).length) _wiPaint();
     })().catch(e => console.warn('[weekly intl] national carriers:', e));
 
-    // Ακριβές όριο εβδομάδας (Σαβ–Παρ) στην effective ημερομηνία (Delivery ή Loading)
+    // Ακριβές όριο εβδομάδας (Σαβ–Παρ) στην effective ημερομηνία (Delivery ή Loading).
+    // B2 (owner 6/9): an explicit Plan Week Start overrides the date range in
+    // EITHER direction — belongs here if it names THIS week's Saturday, is
+    // excluded if it names another week, even when the natural date would say
+    // otherwise. No export gets this field written in Wave 1 (see fetch
+    // comment above), so today this is a no-op for every row.
     expOrders = expOrders.filter(r=>{
+      const pws=toLocalDate(r.fields['Plan Week Start']||'');
+      if(pws) return pws===wsFmt;
       const eff=toLocalDate(r.fields['Delivery DateTime']||r.fields['Loading DateTime']||'');
       return eff>=wsFmt && eff<=weFmt;
     });
@@ -544,8 +559,17 @@ function _wiBuildRows(){
     const driverId =(f['Driver'] ||[])[0]||'';
     const partnerId=(f['Partner']||[])[0]||'';
     const importId =f['Matched Import ID']||null;
+    // B2 (owner 6/9): effective week = Plan Week Start when set, else the
+    // natural date rule already used to fetch/filter `exports` above. Exports
+    // don't get a UI action to set this field in Wave 1 (only _wiImpShift does,
+    // on imports) — this flag stays false for every export today and only
+    // starts mattering once something else writes Plan Week Start on ORDERS.
+    const _pws=toLocalDate(f['Plan Week Start']||'');
+    const _eff=toLocalDate(f['Delivery DateTime']||f['Loading DateTime']||'');
+    const outOfWindow=!!(_pws&&WINTL._range&&_pws===WINTL._range.ws&&_eff&&(_eff<WINTL._range.ws||_eff>WINTL._range.we));
 
     WINTL.rows.push({
+      outOfWindow,
       id:          ++WINTL._seq,
       type:        'export',
       orderId:     exp.id,
@@ -603,10 +627,22 @@ function _wiBuildRows(){
     const impDriverId =(f['Driver'] ||[])[0]||'';
     // Cross-week: import εκτός τρέχουσας Σαβ–Παρ = «γειτονικό» — δική του
     // ενότητα στο τέλος, εκτός tally/ομάδων ημερών.
+    // B2 (owner 6/9): «Μεταφορά εβδομάδας» writes Plan Week Start instead of
+    // moving the dates (see _wiImpShift) — an explicit Plan Week Start always
+    // wins over the natural in-range check, in EITHER direction: it can pull a
+    // naturally-adjacent row INTO this week (adj=false) or push a naturally
+    // in-range row OUT to another week (adj=true, e.g. moved forward from a
+    // week whose date window still overlaps this one). `outOfWindow` marks the
+    // "pulled in but its real day is still outside Σαβ–Παρ" case — rendered in
+    // its own trailing section (_wiAllRowsHTML) instead of a normal day slot,
+    // so the dispatcher still sees the true loading day.
     const _ld=toLocalDate(f['Loading DateTime']||'');
-    const _adj=!!(WINTL._range&&_ld&&(_ld<WINTL._range.ws||_ld>WINTL._range.we));
+    const _pws=toLocalDate(f['Plan Week Start']||'');
+    const _inRange=!!(WINTL._range&&_ld&&_ld>=WINTL._range.ws&&_ld<=WINTL._range.we);
+    const _adj=_pws&&WINTL._range?(_pws!==WINTL._range.ws):!_inRange;
+    const outOfWindow=!!(_pws&&WINTL._range&&_pws===WINTL._range.ws&&!_inRange);
     WINTL.rows.push({
-      adj:_adj, adjW:_adj?_wiWeekOf(f['Loading DateTime']):null,
+      adj:_adj, adjW:_adj?_wiWeekOf(f['Loading DateTime']):null, outOfWindow,
       id:          ++WINTL._seq,
       type:        'import',
       orderId:     imp.id,
@@ -622,6 +658,29 @@ function _wiBuildRows(){
       partnerRate:  f['Partner Rate']?String(f['Partner Rate']):'',
       partnerRateImp:'',
       saved:!!(truckId||partnerId),
+    });
+  }
+
+  // A1 (owner 6/9): import groups collapse into one row too — the block above
+  // (Π1, Wave 3) only ever matched `r.type==='export'`, so a SECOND grouped
+  // import always stayed its own row and a truck assigned on the lead never
+  // reached it (measured live: two import rows sharing a Group ID, one truck
+  // on the lead only). No `|` delivery-order suffix here — that suffix encodes
+  // DELIVERY sequence for a multi-drop export leg (_wiGrpOrder) and has no
+  // meaning for an import PICKUP group, so members sort by Loading DateTime.
+  {
+    const byGid={};
+    WINTL.rows.forEach(r=>{
+      if(r.type!=='import') return;
+      const gid=impById[r.orderId]?.fields?.['Group ID'];
+      if(gid){(byGid[gid]=byGid[gid]||[]).push(r);}
+    });
+    Object.values(byGid).forEach(list=>{
+      if(list.length<2) return;
+      list.sort((a,b)=>String(impById[a.orderId]?.fields['Loading DateTime']||'').localeCompare(String(impById[b.orderId]?.fields['Loading DateTime']||'')));
+      const [lead,...rest]=list;
+      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
+      WINTL.rows=WINTL.rows.filter(r=>!rest.includes(r));
     });
   }
 
@@ -882,15 +941,24 @@ function _wiAllRowsHTML(){
   // «Καμία κίνηση» — information, not absence (contract §6).
   const groups={};
   if(WINTL._range){ let d=WINTL._range.ws; for(let i=0;i<7;i++){ groups[d]={rawDate:d,exps:[],imps:[]}; d=_wk3AddDays(d,1); } }
+  // B2 (owner 6/9): a row moved into this week via Plan Week Start whose REAL
+  // day still falls outside Σαβ–Παρ goes into `extraGroups`, rendered in its
+  // own section AFTER Friday (below) instead of a normal day slot — the
+  // dispatcher needs to see the true loading/delivery day, not just "this
+  // week" (owner: «θα πρέπει να προστεθεί και άλλη ημέρα εβδομάδας»).
+  const extraGroups={};
   expRows.forEach(row=>{
     const raw=toLocalDate(_f(row)['Delivery DateTime']||_f(row)['Loading DateTime']||'');
-    (groups[raw]=groups[raw]||{rawDate:raw,exps:[],imps:[]}).exps.push(row);
+    const bucket=row.outOfWindow?extraGroups:groups;
+    (bucket[raw]=bucket[raw]||{rawDate:raw,exps:[],imps:[]}).exps.push(row);
   });
   impRows.forEach(row=>{
     const raw=toLocalDate(_f(row)['Loading DateTime']||'');
-    (groups[raw]=groups[raw]||{rawDate:raw,exps:[],imps:[]}).imps.push(row);
+    const bucket=row.outOfWindow?extraGroups:groups;
+    (bucket[raw]=bucket[raw]||{rawDate:raw,exps:[],imps:[]}).imps.push(row);
   });
   const sorted=Object.values(groups).sort((a,b)=>(a.rawDate||'~').localeCompare(b.rawDate||'~'));
+  const extraSorted=Object.values(extraGroups).sort((a,b)=>(a.rawDate||'~').localeCompare(b.rawDate||'~'));
 
   WINTL._rowNo={}; // orderId → visible row number («4», «I2») for the footer sync line
   let html='',idx=0,impIdx=0;
@@ -933,6 +1001,31 @@ function _wiAllRowsHTML(){
   // (Owner 10/8: η ενότητα «ΓΕΙΤΟΝΙΚΕΣ ΕΒΔΟΜΑΔΕΣ» αφαιρέθηκε — τη θέση της
   // πήρε το δεξί κλικ → Μεταφορά εβδομάδας. Τα W±1 imports παραμένουν στη
   // μνήμη για matched previews και για τον χάρτη διαθεσιμότητας.)
+
+  // B2: extra day sections, appended after Friday — same day-header markup,
+  // labelled with the REAL day plus the week it actually belongs to (owner
+  // example: «ΣΑΒΒΑΤΟ 12/09 · W37»), so «μεταφέρθηκε» never gets confused with
+  // one of the seven real days of this week.
+  extraSorted.forEach(grp=>{
+    let wd='';
+    try{ if(grp.rawDate) wd=new Date(grp.rawDate+'T12:00:00').toLocaleDateString('el-GR',{weekday:'long'}).toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,''); }catch{}
+    const dm=grp.rawDate?`${+grp.rawDate.slice(8,10)}/${+grp.rawDate.slice(5,7)}`:'';
+    const realWeek=grp.rawDate?_wiWeekOf(grp.rawDate+'T12:00:00'):null;
+    const showImps=grp.imps.filter(r=>!r.matchedTo);
+    if(!grp.exps.length&&!showImps.length) return;
+    grp.exps.sort((a,b)=>String(_f(a)['Delivery DateTime']||'').localeCompare(String(_f(b)['Delivery DateTime']||'')));
+    showImps.sort((a,b)=>String(_f(a)['Loading DateTime']||'').localeCompare(String(_f(b)['Loading DateTime']||'')));
+    html+=`<section class="wi2-day wi2-day--extra" data-day="${grp.rawDate}">
+      <div class="wk3-dayh"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span><span class="wi-cross" title="Μεταφέρθηκε σε αυτή την προβολή (Μεταφορά εβδομάδας) — η πραγματική ημέρα φόρτωσης/παράδοσης είναι εκτός Σαβ–Παρ αυτής της εβδομάδας">μεταφέρθηκε${realWeek!=null?' · W'+realWeek:''}</span></div>`;
+    grp.exps.forEach(row=>{ WINTL._rowNo[row.orderIds[0]]=String(idx+1); html+=_wiRowHTML(row,idx++);
+      const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
+      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+    });
+    showImps.forEach(row=>{ ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx; html+=_wiImpRowHTML(row,impIdx);
+      (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+    });
+    html+='</section>';
+  });
   return html;
 }
 
@@ -999,7 +1092,9 @@ function _wiImpRowHTML(row,impNo){
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
-      <button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>
+      ${row.orderIds.length>1
+        ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
+        : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
@@ -2511,39 +2606,78 @@ function _wiCtx(e,rowId){
 }
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
 
-// Ρότα: υποψήφια σκέλη για γονέα-order — διεθνή, χωρίς δική τους ρότα,
-// όχι ο ίδιος/η ταιριασμένη του εισαγωγή, φόρτωση από τη φόρτωση του γονέα
-// και μετά. Επιστρέφει [{oid,lbl}].
+// Ρότα: υποψήφια σκέλη για γονέα-order — διεθνή, χωρίς δική τους ρότα, όχι
+// μέλος του ίδιου group, όχι η ταιριασμένη εισαγωγή/εξαγωγή του γονέα, φόρτωση
+// από την ΠΑΡΑΔΟΣΗ του γονέα και μετά (owner 6/9: το επόμενο σκέλος ξεκινά
+// όταν ο γονέας έχει ήδη παραδώσει — η παλιά σύγκριση με τη ΔΙΚΗ ΤΟΥ φόρτωση
+// άφηνε μέσα υποψήφια που φορτώνουν ΠΡΙΝ ο γονέας καν παραδώσει). Επιστρέφει
+// [{oid,lbl}], ταξινομημένα κατά ημερομηνία φόρτωσης.
 function _wiRotCands(parentRow){
   const pOid=parentRow.type==='import'?parentRow.orderId:parentRow.orderIds?.[0];
   const po=WINTL.data.exports.find(x=>x.id===pOid)||WINTL.data.imports.find(x=>x.id===pOid);
   if(!po) return [];
-  const pLoad=String(po.fields['Loading DateTime']||'');
-  const out=[];
+  const pDeliv=String(po.fields['Delivery DateTime']||po.fields['Loading DateTime']||'');
+  const excludeIds=new Set([...(parentRow.orderIds||[]),pOid,parentRow.importId,parentRow.matchedTo].filter(Boolean));
+  const cands=[];
   for(const r of WINTL.rows){
     if(r.id===parentRow.id||r.legOf||r.adj) continue;
     const oid=r.type==='import'?r.orderId:r.orderIds?.[0];
-    if(!oid||oid===pOid||oid===parentRow.importId) continue;
+    if(!oid||excludeIds.has(oid)) continue;
     const o=WINTL.data.exports.find(x=>x.id===oid)||WINTL.data.imports.find(x=>x.id===oid);
     if(!o||o.fields['Rotation ID']) continue;
-    if(String(o.fields['Loading DateTime']||'')<pLoad) continue;
-    const lbl=`${_wk3D(_wiFmt(o.fields['Loading DateTime']))} ${_wk3Loc(o.fields['Loading Summary']||'—')} → ${_wk3Loc(o.fields['Delivery Summary']||'—')}`; // full label: the menu wraps, a cut hides the destination
-    out.push({oid,lbl});
-    if(out.length>=6) break;
+    const oLoad=String(o.fields['Loading DateTime']||'');
+    if(oLoad<pDeliv) continue;
+    cands.push({oid,oLoad,f:o.fields});
   }
-  return out;
+  cands.sort((a,b)=>a.oLoad.localeCompare(b.oLoad));
+  return cands.slice(0,6).map(c=>({
+    oid:c.oid,
+    // full label: the menu wraps, a cut hides the destination
+    lbl:`${_wk3D(_wiFmt(c.f['Loading DateTime']))} · ${_wk3Loc(c.f['Loading Summary']||'—')} → ${_wk3Loc(c.f['Delivery Summary']||'—')}`,
+  }));
+}
+// C2 (owner 6/9, used by _wiRotUnlink below): raw fetch instead of plFetch
+// (core/pallet-feed.js is out of scope for this task) — the caller needs the
+// actual HTTP status to tell 403 (no permission) from 409 (round trip closed)
+// apart; plFetch's thrown Error only carries a message string.
+async function _wiRtLegDelete(rtId, pgOrderId){
+  const jwt=localStorage.getItem('tms_jwt');
+  const res=await fetch(PROXY_URL+'/costs/rt/'+rtId+'/legs?order_id='+pgOrderId,{
+    method:'DELETE',
+    headers:{'Content-Type':'application/json', ...(jwt?{Authorization:'Bearer '+jwt}:{})},
+  });
+  const data=await res.json().catch(()=>({}));
+  return {ok:res.ok, status:res.status, error:data.error};
 }
 async function _wiRotAdd(parentRowId, legOid){
   const pr=WINTL.rows.find(r=>r.id===parentRowId); if(!pr) return;
   const pOid=pr.type==='import'?pr.orderId:pr.orderIds?.[0];
-  const patch={'Rotation ID':pOid};
-  // Το σκέλος κληρονομεί όχημα/οδηγό του γονέα (ίδιο φορτηγό συνεχίζει)
-  if(pr.truckId)   patch['Truck']=[pr.truckId];
-  if(pr.trailerId) patch['Trailer']=[pr.trailerId];
-  if(pr.driverId)  patch['Driver']=[pr.driverId];
   try{
-    const res=await atSafePatch(TABLES.ORDERS,legOid,patch);
+    const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':pOid});
     if(res?.error) throw new Error(res.error.message||res.error.type);
+    // C1 (owner 6/9): feed the PARENT — with A2's rtLegsForOrder, the leg's
+    // Rotation ID now makes it part of the parent's round trip, so if the
+    // parent already has (or is getting) one, the Worker attaches this leg
+    // and migration 013's rt_sync_legs trigger copies truck/trailer/driver
+    // onto it on its own. Only the fallback path below still copies by hand.
+    let attached=null;
+    if(typeof rtOnOrderSaved==='function'){
+      await rtOnOrderSaved(pOid).catch(e=>console.warn('[wi rota add] rt sync:',e&&e.message));
+    }
+    if(typeof rtFindForOrder==='function'){
+      attached=(await rtFindForOrder(legOid).catch(()=>({rt:null}))).rt;
+    }
+    // Fallback: the parent has no round trip yet (unassigned) — nothing could
+    // attach, so copy the vehicle by hand as before or the leg sits without
+    // one until somebody happens to re-save the parent.
+    if(!attached && (pr.truckId||pr.trailerId||pr.driverId)){
+      const fallback={};
+      if(pr.truckId)   fallback['Truck']=[pr.truckId];
+      if(pr.trailerId) fallback['Trailer']=[pr.trailerId];
+      if(pr.driverId)  fallback['Driver']=[pr.driverId];
+      const res2=await atSafePatch(TABLES.ORDERS,legOid,fallback);
+      if(res2?.error) console.warn('[wi rota add] fallback vehicle copy failed:',res2.error.message||res2.error.type);
+    }
     toast('⤷ Σκέλος συνδέθηκε στη ρότα ✓');
     renderWeeklyIntl();
   }catch(e){ reportError('Η σύνδεση σκέλους απέτυχε',e); }
@@ -2556,6 +2690,23 @@ async function _wiRotUnlink(e,legOid){
   try{
     const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
     if(res?.error) throw new Error(res.error.message||res.error.type);
+    // C2 (owner 6/9): the leg also leaves its round trip — otherwise it stays
+    // a leg of an RT it no longer belongs to, and migration 013's triggers
+    // would keep pulling this order's vehicle back into line with that RT on
+    // every future save. The round trip itself is never deleted (financial
+    // history — rt-feed.js header, owner 24/8).
+    if(typeof rtFindForOrder==='function'){
+      const {pg,rt}=await rtFindForOrder(legOid).catch(()=>({pg:null,rt:null}));
+      if(rt&&pg!=null){
+        const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
+        if(!del.ok){
+          const msg=del.status===403?'Χωρίς δικαίωμα αφαίρεσης σκέλους'
+            :del.status===409?'Ο γύρος είναι κλειστός'
+            :('Το σκέλος δεν αφαιρέθηκε από το round trip: '+(del.error||('HTTP '+del.status)));
+          toast(msg,'warn');
+        }
+      }
+    }
     toast('Σκέλος αποσυνδέθηκε ✓');
     renderWeeklyIntl();
   }catch(err){ reportError('Η αποσύνδεση απέτυχε',err); }
@@ -2597,25 +2748,42 @@ function _wiImpCtx(e,rowId){
     top:`${Math.min(e.clientY,window.innerHeight-220)}px`});
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
+// B1 (owner 6/9): «δεν θέλω να αλλάζουν οι ημερομηνίες» — this used to PATCH
+// Loading/Delivery DateTime ±7, which lied about when the truck actually
+// loads. It now writes ONLY `Plan Week Start` (Worker label pending deploy,
+// added to the map today — CLAUDE.md facade trap #1: an unmapped label is a
+// SILENT no-op with 200 OK) and reads the record back to catch exactly that.
+// Moving back to the row's own natural week clears the field (null) instead
+// of writing a value equal to it, so "by date" stays the true default.
 async function _wiImpShift(rowId,days){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
   const w=WINTL.week+(days>0?1:-1);
+  const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
+  const clearing=natWeek===w;
+  const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
   const ok=await confirmAction(
-    `Η εισαγωγή θα μεταφερθεί στην W${w}: οι ημερομηνίες φόρτωσης και παράδοσης μετακινούνται ${days>0?'+7':'−7'} ημέρες.`,
+    `Η εισαγωγή θα εμφανίζεται στην W${w} (οι ημερομηνίες φόρτωσης/παράδοσης ΔΕΝ αλλάζουν).`,
     {title:'Μεταφορά εβδομάδας',confirmLabel:'Μεταφορά'});
   if(!ok) return;
-  const sh=s=>{ if(!s) return null; try{return new Date(new Date(s).getTime()+days*86400000).toISOString();}catch(e){return null;} };
-  const patch={};
-  const nl=sh(imp.fields['Loading DateTime']); if(nl) patch['Loading DateTime']=nl;
-  const nd=sh(imp.fields['Delivery DateTime']); if(nd) patch['Delivery DateTime']=nd;
-  if(!Object.keys(patch).length){ toast('Η εισαγωγή δεν έχει ημερομηνίες','warn'); return; }
+  _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…');
   try{
-    const res=await atPatch(TABLES.ORDERS,imp.id,patch);
+    const res=await atPatch(TABLES.ORDERS,imp.id,{'Plan Week Start':targetPws});
     if(res?.error) throw new Error(res.error.message||res.error.type);
-    toast(`Μεταφέρθηκε στην W${w} ✓`);
+    // Read-back (αρχή 2 — «η απόδειξη είναι ο πίνακας»): a non-null write that
+    // doesn't come back means the Worker still doesn't know the field.
+    if(targetPws!=null){
+      const fresh=await atGetOne(TABLES.ORDERS,imp.id);
+      if(!fresh || !fresh.fields || !fresh.fields['Plan Week Start']){
+        _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ αποθηκεύτηκε — ο Worker δεν γνωρίζει ακόμη το πεδίο Plan Week Start');
+        toast('Η μεταφορά δεν αποθηκεύτηκε — ο Worker δεν γνωρίζει ακόμη το πεδίο','warn');
+        return;
+      }
+    }
+    _wiSync('wi-sync-'+rowId,'ok','Η μεταφορά αποθηκεύτηκε');
+    toast(`Θα εμφανίζεται στην W${w} ✓`);
     renderWeeklyIntl();
-  }catch(e){ reportError('Η μεταφορά απέτυχε',e); }
+  }catch(e){ _wiSync('wi-sync-'+rowId,'err','Η μεταφορά ΔΕΝ γράφτηκε στη βάση'); reportError('Η μεταφορά απέτυχε',e); }
 }
 async function _wiImpGroup(rowId,otherRowId){
   const a=WINTL.rows.find(r=>r.id===rowId), b=WINTL.rows.find(r=>r.id===otherRowId);
@@ -2629,6 +2797,9 @@ async function _wiImpGroup(rowId,otherRowId){
       if(res?.error) throw new Error(res.error.message||res.error.type);
     }
     toast('Groupage εισαγωγών ✓');
+    // A3 (owner 6/9): same reasoning as _wiMerge below — one round trip per
+    // group, fed as soon as the Group ID is on both members.
+    if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(ai.id).catch(e=>console.warn('[wi imp group] rt sync:',e&&e.message));
     renderWeeklyIntl();
   }catch(e){ reportError('Το groupage απέτυχε',e); }
 }
@@ -2659,7 +2830,12 @@ async function _wiMerge(rowId,otherId){
   WINTL.rows=WINTL.rows.filter(r=>r.id!==otherId);
   _wiPaint();toast('Ομαδοποιήθηκε');
   const gid='GRP-'+String(row.orderIds[0]).slice(-8);
-  await _wiGroupPatch(row.orderIds, gid, row.id);
+  const ok=await _wiGroupPatch(row.orderIds, gid, row.id);
+  // A3 (owner 6/9): a group is one round trip (rtLegsForOrder, core/rt-feed.js)
+  // — feed it right after the Group ID lands so an already-assigned group
+  // doesn't wait for an unrelated order save to get its RT. No-op (safe) when
+  // nothing in the group is assigned yet; rt-feed.js reports its own failures.
+  if(ok&&typeof rtOnOrderSaved==='function') rtOnOrderSaved(row.orderIds[0]).catch(e=>console.warn('[wi merge] rt sync:',e&&e.message));
 }
 async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
@@ -2683,6 +2859,15 @@ function _wiPrintGroup(rowId){
   const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   const sheet=row.partnerId?'partner':'driver';
   window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=export&sheet=${sheet}`,'_blank');
+}
+// A1 (owner 6/9): same packet for a grouped IMPORT row — print.html's `leg`
+// param applies to every id in `orderIds` alike, so this only differs from
+// _wiPrintGroup above in leg=import.
+function _wiPrintImpGroup(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
+  const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
+  const sheet=row.partnerId?'partner':'driver';
+  window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=import&sheet=${sheet}`,'_blank');
 }
 
 /* ── ΚΑΡΤΕΛΑ ΡΟΤΑΣ (owner 12/8, εγκεκριμένο πρωτότυπο grp_trip_proto) ──
@@ -2913,6 +3098,7 @@ window._wiCtx = _wiCtx;
 window._wiMerge = _wiMerge;
 window._wiSplit = _wiSplit;
 window._wiPrintGroup = _wiPrintGroup;
+window._wiPrintImpGroup = _wiPrintImpGroup;
 window._wiToggleDetails = _wiToggleDetails;
 // Νέα παραγγελία από το εβδομαδιαίο — inline onclick, module σε IIFE
 window._wiNewOrder = _wiNewOrder;

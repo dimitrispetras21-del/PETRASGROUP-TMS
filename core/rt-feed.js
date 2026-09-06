@@ -72,6 +72,92 @@ async function _rtFind(pgIds) {
 const _rtClosed = rt => rt && (rt.status === 'closed' || rt.status === 'complete');
 const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorToast(msg, 'warn', 9000); };
 
+// ── Wave 1 (owner 6/9): a GROUP is one round trip, not one per pair ──
+// Pure — no I/O, so it can be unit-tested with plain node (same posture as
+// worker/src/rt-rules.mjs). Given one order of a round trip plus the other
+// orders that could be its leg-mates (already fetched by the caller), returns
+// EVERY leg that belongs together: all Group ID siblings, each export's
+// matched import (and the reverse — an import's matching export), and any
+// rotation leg hanging off any of those. De-duplicated by order id. Nat loads
+// are intentionally absent — VS legs are not modelled as round-trip legs yet.
+// Implementation note: this is a closure over three symmetric relations
+// (Group ID sibling, Matched Import ID pair, Rotation ID parent↔child) —
+// walked as a graph (BFS) rather than "start's group, then start's pair,
+// then start's rotation" in sequence, because the set must come out
+// IDENTICAL no matter which member triggers the feed first (owner: "whichever
+// member triggers the feed first"). A one-pass version keyed off `start`
+// alone missed a group's rotation leg when triggered from the group's
+// MATCHED IMPORT (the import has no Group ID of its own to expand from) —
+// caught by the unit test that triggers from each side of the same trip.
+function rtLegsForOrder(order, allOrders) {
+  const byId = {};
+  (allOrders || []).forEach(o => { if (o && o.id) byId[o.id] = o; });
+  const start = (order && order.id && byId[order.id]) ? byId[order.id] : order;
+  if (!start || !start.id) return [];
+  byId[start.id] = start;
+
+  const dirOf = o => ((o.fields || {})['Direction'] === 'Import') ? 'IMPORT' : 'EXPORT';
+  const seen = new Set([start.id]);
+  const queue = [start.id];
+  const visit = id => { if (id && byId[id] && !seen.has(id)) { seen.add(id); queue.push(id); } };
+
+  while (queue.length) {
+    const o = byId[queue.pop()];
+    const f = o.fields || {};
+    const gid = f['Group ID'];
+    if (gid) Object.values(byId).forEach(cand => { if ((cand.fields || {})['Group ID'] === gid) visit(cand.id); });
+    visit(f['Matched Import ID']); // export → its import
+    Object.values(byId).forEach(cand => { if ((cand.fields || {})['Matched Import ID'] === o.id) visit(cand.id); }); // import ← its export
+    visit(f['Rotation ID']); // rotation leg → its parent
+    Object.values(byId).forEach(cand => { if ((cand.fields || {})['Rotation ID'] === o.id) visit(cand.id); }); // parent ← its rotation legs
+  }
+
+  return [...seen].map(id => ({ orderId: id, direction: dirOf(byId[id]) }));
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { rtLegsForOrder };
+
+// Fetch the small set of orders that could be leg-mates of `rec`: Group ID
+// siblings, each one's matched import/export counterpart, and rotation legs
+// off any of those — targeted filters, not a full ORDERS scan (CLAUDE.md
+// «κάθε αντίγραφο αποκλίνει» applies to queries too: a full-table read here
+// would be slow AND would still miss nothing rtLegsForOrder needs).
+async function _rtGatherOrders(rec) {
+  const byId = { [rec.id]: rec };
+  const filterIn = async (formula) => {
+    try { return await atGetAll(TABLES.ORDERS, { filterByFormula: formula }, true) || []; }
+    catch (e) { console.warn('[rt-feed] gather:', e && e.message); return []; }
+  };
+  // Fixed point, not a single pass: a rotation leg can belong to ITS OWN
+  // Group ID too, and a freshly-discovered group sibling can have its own
+  // matched import — one pass would miss those. Bounded by MAX_LEGS
+  // (worker/src/rt-rules.mjs) since a round trip can have at most 20 legs, so
+  // this converges in at most a handful of rounds for the group sizes this
+  // app actually has (owner: 2-4 members).
+  let grew = true;
+  while (grew && Object.keys(byId).length <= 20) {
+    grew = false;
+    for (const o of Object.values(byId)) {
+      const gid = o.fields['Group ID'];
+      if (gid) { for (const cand of await filterIn(`{Group ID}='${gid}'`)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } } }
+      const mid = o.fields['Matched Import ID'];
+      if (mid && !byId[mid]) { const imp = await atGetOne(TABLES.ORDERS, mid); if (imp) { byId[imp.id] = imp; grew = true; } }
+    }
+    for (const id of Object.keys(byId)) {
+      for (const cand of await filterIn(`{Matched Import ID}='${id}'`)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } }
+      for (const cand of await filterIn(`{Rotation ID}='${id}'`)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } }
+    }
+  }
+  return Object.values(byId);
+}
+
+// Exposed for callers that need an order's round trip without re-implementing
+// the pg lookup (weekly_intl.js Ρότα unlink, C2 — 6/9).
+async function rtFindForOrder(orderId) {
+  const pg = await _rtPg(orderId);
+  if (pg == null) return { pg: null, rt: null };
+  return { pg, rt: await _rtFind([pg]) };
+}
+
 // ── Κύρια είσοδος: κάθε αποθήκευση διεθνούς παραγγελίας ──
 async function rtOnOrderSaved(orderId) {
   return _rtSafe('συγχρονισμός round trip', async () => {
@@ -79,6 +165,8 @@ async function rtOnOrderSaved(orderId) {
     if (!rec) return;
     let f = rec.fields;
     // Import με ζεύγος: η άγκυρα είναι το export του — δουλεύουμε σε εκείνο.
+    // (Ρότα/ομάδα σκέλη μπαίνουν παρακάτω μέσω rtLegsForOrder, όχι εδώ —
+    // η άγκυρα καθορίζει status/assigned/ημερομηνίες, όπως πριν.)
     if (f['Direction'] === 'Import') {
       const exp = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Matched Import ID}='${orderId}'` }, true);
       if (exp && exp.length) { orderId = exp[0].id; rec = exp[0]; f = rec.fields; }
@@ -89,8 +177,30 @@ async function rtOnOrderSaved(orderId) {
     const importRec = f['Matched Import ID'] || null;
     const pgX = await _rtPg(orderId);
     if (pgX == null) return; // χωρίς στάση φόρτωσης — τη δείχνει ο μετρητής
+
+    // A2 (owner 6/9): a group/rota is ONE round trip, not one per export+import
+    // pair. Gather the order's leg-mates (group siblings, matched pairs,
+    // rotation legs) and translate the whole set to pg ids — pgX/pgI stay as
+    // the two-id shape the rest of this function already knows for the
+    // create/close paths below; `legPgs`/`pgDir` carry the FULL set for the
+    // POST /costs/rt body so a 3+ leg group attaches in one go.
+    const gathered = await _rtGatherOrders(rec);
+    const legsInfo = rtLegsForOrder(rec, gathered);
+    const pgDir = {}; const legPgs = [];
+    for (const leg of legsInfo) {
+      const pg = await _rtPg(leg.orderId);
+      if (pg == null) continue; // χωρίς στάση — το πιάνει ο μετρητής συμφωνίας
+      pgDir[pg] = leg.direction;
+      legPgs.push(pg);
+    }
+    if (!legPgs.includes(pgX)) { pgDir[pgX] = 'EXPORT'; legPgs.push(pgX); }
     const pgI = importRec ? await _rtPg(importRec) : null;
-    const rt = await _rtFind([pgX, pgI].filter(v => v != null));
+    if (pgI != null && !legPgs.includes(pgI)) { pgDir[pgI] = 'IMPORT'; legPgs.push(pgI); }
+    if (legPgs.length > 20) { // MAX_LEGS (worker/src/rt-rules.mjs) — never silently truncate
+      _rtWarn('P&L: η ομάδα έχει πάνω από 20 σκέλη — πάνω από το όριο του Worker, δες το χειροκίνητα στο TRIP PnL');
+      return;
+    }
+    const rt = await _rtFind(legPgs);
     const gone = status === 'Cancelled';
     const exec = (status === 'In Transit' || status === 'Delivered') && assigned;
 
@@ -126,7 +236,7 @@ async function rtOnOrderSaved(orderId) {
         date_start: dStart, date_end: dEnd,
         truck_id: partnerTrip ? null : ids.truck_id, trailer_id: partnerTrip ? null : ids.trailer_id,
         driver_id: partnerTrip ? null : ids.driver_id, partner_id: partnerTrip ? ids.partner_id : null,
-        legs: [{ direction: 'EXPORT', order_id: pgX }].concat(pgI != null ? [{ direction: 'IMPORT', order_id: pgI }] : [])
+        legs: legPgs.map(pg => ({ direction: pgDir[pg], order_id: pg }))
       };
       if (body.trip_type === 'OWNED' && !body.truck_id) { _rtWarn('P&L: δεν βρέθηκε το φορτηγό στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
       if (body.trip_type === 'PARTNER' && !body.partner_id) { _rtWarn('P&L: δεν βρέθηκε ο συνεργάτης στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
@@ -163,11 +273,14 @@ async function rtOnOrderSaved(orderId) {
       // Worker δεν μπορούσε να προσθέσει σκέλος σε υπάρχον RT και εδώ μόνο
       // φωνάζαμε· τώρα το POST /costs/rt είναι idempotent και προσαρτά (attach)
       // ό,τι λείπει.
-      const wantIds = [pgX].concat(pgI != null ? [pgI] : []);
       const haveIds = (rt.ct_rt_legs || []).map(l => l.order_id);
-      const missingIds = wantIds.filter(id => !haveIds.includes(id));
+      const missingIds = legPgs.filter(id => !haveIds.includes(id));
       if (missingIds.length) {
-        const legsBody = missingIds.map(id => ({ direction: id === pgX ? 'EXPORT' : 'IMPORT', order_id: id }));
+        // Send the WHOLE leg set, not only the missing ones: the Worker decides
+        // «attach» by looking for a posted leg that already belongs to an RT and
+        // then inserts only what is missing (rt-rules.mjs planRtUpsert). Posting
+        // just the new leg always created a second, separate RT (proven 6/9).
+        const legsBody = legPgs.map(id => ({ direction: pgDir[id], order_id: id }));
         const attachRes = await plFetch('/costs/rt', { method: 'POST', body: {
           scope: 'INTL', trip_type: partnerTrip ? 'PARTNER' : 'OWNED',
           // Το validateRtBody απαιτεί truck_id/partner_id ακόμα κι όταν η ενέργεια
@@ -191,6 +304,10 @@ async function rtOnOrderSaved(orderId) {
     if (shouldClose && rtRef && !_rtClosed(rtRef)) {
       await plFetch('/costs/rt/' + rtRef.id, { method: 'PATCH', body: { status: 'closed' } });
     }
+    // Returned for callers that need to know whether a round trip exists now
+    // (weekly_intl.js C1, Ρότα add — 6/9): undefined on every early return
+    // above (not exec, cancelled, closed, gone) means "no RT to attach to".
+    return rtRef;
   });
 }
 
@@ -229,3 +346,5 @@ async function rtOnImportUnmatched(exportOrderId, importOrderId) {
 window.rtOnOrderSaved = rtOnOrderSaved;
 window.rtOnOrderDeleted = rtOnOrderDeleted;
 window.rtOnImportUnmatched = rtOnImportUnmatched;
+window.rtLegsForOrder = rtLegsForOrder;
+window.rtFindForOrder = rtFindForOrder;
