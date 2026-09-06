@@ -234,16 +234,18 @@ async function _maintLoad(forceHistory = false) {
   if (!MAINT._loaded) {
     const [trucks, trailers, ws] = await Promise.all([
       atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Brand','Model','Year','Active',
-        'KTEO Expiry','Insurance Expiry','Tachograph Expiry','ADR Expiry','KEK Expiry',
+        'KTEO Expiry','Insurance Expiry','Tachograph Expiry','KEK Expiry',
         'Insurance Partner','Next Maintenance Date'] }, true),
       // NOTE (3/9/2026): 'Notes' (NO-FRC marker read by _expiryFieldsFor) and the
       // workshop 'Phone' are NOT requested here on purpose. The critics replay a
       // recorded HAR by exact URL; adding a field changes the URL, every fetch
       // aborts, and all six screens fall to their error state. Both additions
       // wait for a HAR re-record by the integrator — see the delivery notes.
+      // ADR Expiry / Pallet Capacity / ATP Expiry removed 6/9 (owner audit):
+      // none of the three is a real column — requesting them changed nothing
+      // but the URL these critics replay against.
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Brand','Model','Year','Trailer Type','Active',
-        'ATP Expiry','KTEO Expiry','Insurance Expiry','FRC Expiry',
-        'Pallet Capacity','Next Maintenance Date'] }, true),
+        'KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] }, true),
       atGetAll(TABLES.WORKSHOPS, { fields: ['Name','City','Specialty','Active'] }, true),
     ]);
     MAINT.trucks = trucks;

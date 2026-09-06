@@ -396,9 +396,10 @@ const ENTITY_CONFIG = {
     cardMaint: true,
     cardRt: true,
     cardDocs: [
-      { f: 'KTEO Expiry',      label: 'ΚΤΕΟ' },
-      { f: 'KEK Expiry',       label: 'ΚΕΚ' },
-      { f: 'Insurance Expiry', label: 'Ασφάλεια' },
+      { f: 'KTEO Expiry',        label: 'ΚΤΕΟ' },
+      { f: 'KEK Expiry',         label: 'ΚΕΚ' },
+      { f: 'Insurance Expiry',   label: 'Ασφάλεια' },
+      { f: 'Tachograph Expiry',  label: 'Ταχογράφος' },
     ],
     cardSpecs: [
       { f: 'VIN',               label: 'VIN' },
@@ -406,12 +407,19 @@ const ENTITY_CONFIG = {
       { f: 'Tare Weight kg',    label: 'Απόβαρο', unit: 'kg', num: true },
       { f: 'Year',              label: 'Έτος 1ης ταξ.' },
       { f: 'Insurance Partner', label: 'Ασφαλιστής' },
+      // date: true — raw ISO string would otherwise print unformatted, the
+      // only date among these six specs (owner 6/9).
+      { f: 'Next Maintenance Date', label: 'Επόμενη συντήρηση', date: true },
       { f: 'Notes',             label: 'Σημειώσεις' },
     ],
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Insurance Partner'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, μάρκα…',
+    // defaultSort: ['Country','License Plate'] — v2 has no per-column default
+    // sort concept, so it's read generically in _entitySortRecords (owner 6/9).
+    defaultSort: ['Country', 'License Plate'],
     filters: [
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Brand',  label: 'Μάρκα',  type: 'dynamic' },
       { field: 'Active', label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
@@ -427,6 +435,7 @@ const ENTITY_CONFIG = {
     ],
     columns: [
       { field: 'License Plate',       label: 'Πινακίδα', primary: true },
+      { field: 'Country',             label: 'Χώρα' },
       { field: 'Brand',               label: 'Μάρκα' },
       { field: 'Model',               label: 'Μοντέλο' },
       { field: 'Year',                label: 'Έτος', type: 'number' },
@@ -442,6 +451,7 @@ const ENTITY_CONFIG = {
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
+        { f: 'Country',       label: 'Χώρα', type: 'country' },
       ]},
       // Empty section label — 3-col continuation of ΤΑΥΤΟΤΗΤΑ above
       // (truck-form 119:345: Μάρκα/Μοντέλο/Έτος share one row).
@@ -455,10 +465,16 @@ const ENTITY_CONFIG = {
         { f: 'Tare Weight kg', label: 'Απόβαρο (kg)', type: 'number' },
       ]},
       { section: 'Έγγραφα', fields: [
-        { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',     type: 'date' },
-        { f: 'KEK Expiry',        label: 'ΚΕΚ έως',      type: 'date' },
-        { f: 'Insurance Expiry',  label: 'Ασφάλεια έως', type: 'date' },
+        { f: 'KTEO Expiry',       label: 'ΚΤΕΟ έως',        type: 'date' },
+        { f: 'KEK Expiry',        label: 'ΚΕΚ έως',         type: 'date' },
+        { f: 'Insurance Expiry',  label: 'Ασφάλεια έως',    type: 'date' },
         { f: 'Insurance Partner', label: 'Ασφαλιστής' },
+        { f: 'Tachograph Expiry', label: 'Ταχογράφος έως',  type: 'date' },
+      ]},
+      // Trucks only (owner 6/9): the field the audit found requested but
+      // uncolumned — real once worker/migrations/017_fleet.sql deploys.
+      { section: 'Συντήρηση', fields: [
+        { f: 'Next Maintenance Date', label: 'Επόμενη συντήρηση', type: 'date' },
       ]},
       { section: 'Σημειώσεις', fields: [
         { f: 'Notes', label: 'Σημειώσεις', type: 'textarea' },
@@ -514,7 +530,10 @@ const ENTITY_CONFIG = {
     perm: 'maintenance',
     searchFields: ['License Plate', 'VIN', 'Brand', 'Model', 'Trailer Type'],
     searchHint: 'Αναζήτηση: πινακίδα, VIN, τύπος…',
+    // Same generic default-sort path as trucks (see _entitySortRecords, owner 6/9).
+    defaultSort: ['Country', 'License Plate'],
     filters: [
+      { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic', labels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' } },
       { field: 'Active',       label: 'Κατάσταση', type: 'bool', options: [
         { val: '', label: 'Όλα' },
@@ -530,6 +549,7 @@ const ENTITY_CONFIG = {
     ],
     columns: [
       { field: 'License Plate',           label: 'Πινακίδα',  primary: true },
+      { field: 'Country',                 label: 'Χώρα' },
       { field: 'Brand',                   label: 'Μάρκα' },
       { field: 'Model',                   label: 'Μοντέλο' },
       { field: 'Year',                    label: 'Έτος', type: 'number' },
@@ -545,6 +565,7 @@ const ENTITY_CONFIG = {
       { section: 'Ταυτότητα', fields: [
         { f: 'License Plate', label: 'Πινακίδα', req: true },
         { f: 'VIN',           label: 'Αριθμός πλαισίου (VIN)' },
+        { f: 'Country',       label: 'Χώρα', type: 'country' },
       ]},
       // Empty section label — 3-col continuation of ΤΑΥΤΟΤΗΤΑ above
       // (trailers-form 120:573: Μάρκα/Μοντέλο/Έτος share one row).
@@ -878,7 +899,10 @@ async function renderEntity(entityKey) {
 // απόδοσης, που κατά την PRIME DIRECTIVE δεν μπαίνει χωρίς ρητή απόφαση.
 const _EXPIRY_FIELDS = {
   drivers:  ['License Expiry'],
-  trucks:   ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry'],
+  // Tachograph Expiry added 6/9 (owner: «κρατάμε tachograph_expiry, μόνο σε
+  // φορτηγά, είναι πολύ σημαντικό») — trucks only, real once worker/
+  // migrations/017_fleet.sql deploys.
+  trucks:   ['KTEO Expiry', 'KEK Expiry', 'Insurance Expiry', 'Tachograph Expiry'],
   trailers: ['KTEO Expiry', 'FRC Expiry', 'Insurance Expiry'],
 };
 
@@ -1171,6 +1195,7 @@ function entitySortToggle(entityKey, colIdx) {
 
 function _entitySortRecords(entityKey, recs) {
   const s = _entitySort[entityKey];
+  const cfg = ENTITY_CONFIG[entityKey];
   if (!s || s.col === null || s.dir === 0) {
     // DV-4: with no user sort, drivers came back in DB order and the first
     // screen was mostly Inactive people. Active first; DB order within each
@@ -1182,9 +1207,21 @@ function _entitySortRecords(entityKey, recs) {
       // so nothing sorted. Caught live on the dispatcher check (7/8).
       return [...recs].sort((a, b) => (b.fields['Active'] ? 1 : 0) - (a.fields['Active'] ? 1 : 0));
     }
+    // v2 has no per-column "default sort" concept, so a config-driven list of
+    // fields is read generically here — the ONE place default order is
+    // decided, not a copy per screen (trucks/trailers: Χώρα, μετά Πινακίδα —
+    // owner 6/9).
+    if (cfg && cfg.defaultSort) {
+      return [...recs].sort((a, b) => {
+        for (const f of cfg.defaultSort) {
+          const c = String(a.fields[f] || '').localeCompare(String(b.fields[f] || ''));
+          if (c) return c;
+        }
+        return 0;
+      });
+    }
     return recs;
   }
-  const cfg = ENTITY_CONFIG[entityKey];
   // ΠΡΕΠΕΙ να είναι η ΙΔΙΑ λίστα με αυτήν που παρήγαγε τις κεφαλίδες: ο δείκτης
   // ταξινόμησης έρχεται από τη θέση στη ΦΙΛΤΡΑΡΙΣΜΕΝΗ λίστα, οπότε αν εδώ
   // διαβαζόταν η πλήρης cfg.columns, μια κρυμμένη στήλη θα μετατόπιζε τους
@@ -1765,6 +1802,7 @@ function _renderEntityCardV2(entityKey, rec, panel) {
       return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val dim">—</span></div>`;
     if (sp.num && !isNaN(parseFloat(v))) v = parseFloat(v).toLocaleString('el-GR');
     if (sp.phone) v = _fmtPhone(v);
+    if (sp.date) v = _ecDate(v);
     // Μόνο εμφάνιση, ποτέ η αποθηκευμένη τιμή: το πεδίο κρατά «Euro 6» ενώ η
     // ετικέτα λέει ήδη «Euro» — «Euro | Euro 6». Μετονομασία της ετικέτας δεν
     // γίνεται: το «Euro» είναι ένα από τα 24 πεδία του συμβολαίου (σκληρή
