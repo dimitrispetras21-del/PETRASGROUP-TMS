@@ -976,11 +976,19 @@ var TABLES = {
       "Stop Temp 5": "stop_temp_5",
       "Stop Ref 5": "stop_ref_5",
       "Stop Pallets 5": "stop_pallets_5"
-      // Link fields ('Order','National Order','Trip','Driver','Truck') are NOT
-      // mapped here: they are FK bigint columns, not label-valued fields, and the
-      // facade cannot round-trip a recXXX link array to an FK until the parents
-      // migrate (Wave 4/5). Kept out of the map so a write can't set them yet and
-      // a read doesn't surface an unresolved FK as a bad Airtable link (§4.3).
+    },
+    // Links were left out until the parents migrated (Wave 4/5). They did, but
+    // the block was never added: 0/44 ramp rows had an order, truck or driver
+    // (measured 6/9/2026) — the ramp screen wrote ['recXXX'] into labels the
+    // facade dropped silently (§ silent-drop trap) — and every
+    // FIND(...ARRAYJOIN({Order})) cleanup on order delete came back 422
+    // «Unsupported query» (38 in the week of 30/8). Same shape as ORDER STOPS.
+    // 'Trip' stays out: trip_id has no facade table to resolve against.
+    links: {
+      Order: { column: "order_id", table: "orders" },
+      "National Order": { column: "national_order_id", table: "national_orders" },
+      Truck: { column: "truck_id", table: "trucks" },
+      Driver: { column: "driver_id", table: "drivers" }
     }
   },
   // ── Pallet ledgers (Wave 2): pallet movements OUT/IN (modules/pallet_ledger.js
