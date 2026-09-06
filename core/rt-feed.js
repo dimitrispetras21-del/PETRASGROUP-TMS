@@ -276,7 +276,11 @@ async function rtOnOrderSaved(orderId) {
       const haveIds = (rt.ct_rt_legs || []).map(l => l.order_id);
       const missingIds = legPgs.filter(id => !haveIds.includes(id));
       if (missingIds.length) {
-        const legsBody = missingIds.map(id => ({ direction: pgDir[id], order_id: id }));
+        // Send the WHOLE leg set, not only the missing ones: the Worker decides
+        // «attach» by looking for a posted leg that already belongs to an RT and
+        // then inserts only what is missing (rt-rules.mjs planRtUpsert). Posting
+        // just the new leg always created a second, separate RT (proven 6/9).
+        const legsBody = legPgs.map(id => ({ direction: pgDir[id], order_id: id }));
         const attachRes = await plFetch('/costs/rt', { method: 'POST', body: {
           scope: 'INTL', trip_type: partnerTrip ? 'PARTNER' : 'OWNED',
           // Το validateRtBody απαιτεί truck_id/partner_id ακόμα κι όταν η ενέργεια
