@@ -818,7 +818,12 @@ var TABLES = {
       "Euro Standard": "euro_standard",
 "Year": "year",
 "Tare Weight kg": "tare_weight_kg",
-      Notes: "notes"
+      Notes: "notes",
+      // Maintenance screen has asked for these for months while the columns
+      // didn't exist (owner 6/9/2026, migration 017).
+      "Tachograph Expiry": "tachograph_expiry",
+      "Next Maintenance Date": "next_maintenance",
+      Country: "country"
     }
   },
   tblDcrqRJXzPrtYLm: {
@@ -836,7 +841,9 @@ var TABLES = {
       "Year": "year",
      "Trailer Type": "trailer_type",
       "Tare Weight kg": "tare_weight_kg",
-      Notes: "notes"
+      Notes: "notes",
+      // Registration country for fleet KPI cards (owner 6/9/2026, migration 017).
+      Country: "country"
     }
   },
   // ── Maintenance (workshops has data path; history/req read by the module) ──
