@@ -853,11 +853,15 @@ function _wiPaint(){
   if (week === _wiCurrentWeek()) {
     const ws2=_wiWeekStart(week), we2=new Date(ws2); we2.setDate(ws2.getDate()+6);
     const f2=`AND({Type}='International',{Direction}='Export',{Week Number}=${week+1},IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws2.getTime()-86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we2.getTime()+86400000))}'))`;
-    safeFetch(() => atGetAll(TABLES.ORDERS,{filterByFormula:f2,fields:['Loading Summary','Loading DateTime']},false), 'weekly intl: cross-week incoming', [])
+    // «Loading Summary» is an Airtable formula the Worker never had (ORDERS map:
+    // «DERIVED fields intentionally absent»), so the facade dropped it silently
+    // and the chip's tooltip listed no names for 95 loads in a week (audit 6/9).
+    // The first loading location is a real link column; resolve it like :153.
+    safeFetch(() => atGetAll(TABLES.ORDERS,{filterByFormula:f2,fields:['Loading Location 1','Loading DateTime']},false), 'weekly intl: cross-week incoming', [])
     .then(recs => {
       const el=document.getElementById('wi-crossweek-in');
       if(!el||didFail(recs)||!recs.length) return;
-      const names=recs.slice(0,3).map(r=>_wiClean(r.fields['Loading Summary']||'')).filter(Boolean).join(' · ');
+      const names=recs.slice(0,3).map(r=>_wiClean(_fhLocationsMap[getLinkedId(r.fields['Loading Location 1'])]||'')).filter(Boolean).join(' · ');
       el.outerHTML=`<span class="entity-count-chip" style="background:var(--accent-light);color: var(--accent-text);border-color:transparent" title="Πλάνο W${week+1} με φόρτωση ΜΕΣΑ σε αυτή την εβδομάδα — δες τη W${week+1} για ανάθεση. ${names}">↦ ${recs.length} φορτών${recs.length>1?'ουν':'ει'} τώρα · πλάνο W${week+1}</span>`;
     }).catch(e => console.warn('cross-week incoming:', e));
   }
