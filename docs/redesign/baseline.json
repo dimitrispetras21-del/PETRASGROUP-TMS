@@ -21,7 +21,8 @@
   },
   "styles": {
     "hex": 442,
-    "truncate": 27
+    "truncate": 28,
+    "_note_truncate": "27→28 (5/9): entity card title clamp 2 γραμμές, σκόπιμη εξαίρεση owner (Figma 122:636, commit 1baf3de) — το πλήρες όνομα διαβάζεται στο σώμα της καρτέλας"
   },
   "dashboard": {
     "hex": 15,
