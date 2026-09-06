@@ -416,7 +416,9 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4 .wi-cross,.wn4 .wi-exec{font-size:11px}
 .wn4 .wk3-stopn{width:16px;height:16px;font-size:11px;background:var(--surface-dark);color:var(--text-on-dark)}
 .wn4 .wi-sync{margin-top:0;font-size:11px;min-height:0}
-.wn4 .wi-pop-section-lbl,.wn4 .wi-pop-lbl,.wn4 .wi-pop-subtitle,.wn4 .wi-pop-divider{font-size:11px}
+/* Owner 6/9: the assignment popover is now the exact twin of intl's — its
+   shell lives unscoped in assets/style.css, so no .wn4-only font-size
+   override here anymore (it used to shrink the popover text below intl's). */
 .wn4-empty{display:flex;align-items:center;gap:12px;padding:8px 12px;border:1px dashed var(--border);border-radius:6px;background:var(--surface-card);margin-bottom:8px;font-size:12px;color:var(--text-mid)}
 .wn4-empty b{font-family:'Syne',sans-serif;font-weight:800;color:var(--text)}
 .wn4-empty button{margin-left:auto;font:inherit;font-size:12px;font-weight:600;color:var(--accent-text);background:none;border:none;cursor:pointer}
@@ -1777,7 +1779,10 @@ function _wnOpenPopover(e, rowId) {
     });
   }
 
-  const mkDrop = (px, arr, selId, ph, wide) => {
+  // Twin of intl (owner 6/9): no more `wide` flag/class — intl sizes columns
+  // via an inline flex-basis on the .wi-pop-field wrapper instead, so every
+  // field here is dropped identically into the shared 100%-width input rule.
+  const mkDrop = (px, arr, selId, ph) => {
     const uid  = `${px}_wn_${rowId}`;
     const sel  = arr.find(x => x.id===selId)?.label||'';
     const showBusy=(px==='tk'||px==='dr');
@@ -1788,7 +1793,7 @@ function _wnOpenPopover(e, rowId) {
       return `<div class="wi-sdo${sub?' wi-sdo--busy':''}" data-id="${x.id}" data-lbl="${l}">${l}${sub}</div>`;
     }).join('');
     return `<div class="wi-sd" id="wsd-${uid}">
-      <input type="text" class="wi-pop-inp${wide?' wi-pop-inp-wide':''} wi-sdi"
+      <input type="text" class="wi-pop-inp wi-sdi"
              placeholder="${ph}" value="${sel.replace(/"/g,'&quot;')}"
              oninput="_wiSdF('${uid}',this.value)" onfocus="_wiSdO('${uid}')" autocomplete="off"/>
       <input type="hidden" id="wsd-v-${uid}" value="${selId||''}"/>
@@ -1796,56 +1801,56 @@ function _wnOpenPopover(e, rowId) {
     </div>`;
   };
 
+  // Route subtitle — same shape as intl's (date · from → date · to · pallets).
+  // National rows have no free-text "Loading/Delivery Summary" field, so the
+  // place name comes from Pickup/Delivery Location N via _wnLocParts (same
+  // helper the board cards use), falling back to Client when a leg has no
+  // location rows yet.
+  const primaryOrd = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])]
+    .find(x => x.id===row.orderIds?.[0]);
+  const pf = primaryOrd?.fields || {};
+  const fromP = _wnLocParts(pf,'Pickup'), toP = _wnLocParts(pf,'Delivery');
+  const fromLbl = fromP.name || escapeHtml(pf['Client']||'') || '—';
+  const toLbl = toP.name || escapeHtml(pf['Client']||'') || '—';
+  const subT = `${pf['Loading DateTime']?_wnFmt(pf['Loading DateTime'])+' ':''}${fromLbl}${fromP.sub?', '+fromP.sub:''}`
+    + ` → ${pf['Delivery DateTime']?_wnFmt(pf['Delivery DateTime'])+' ':''}${toLbl}${toP.sub?', '+toP.sub:''}`
+    + ` · ${('Total Pallets' in pf)?pf['Total Pallets']+'p':'— p'}`;
+
   const pop = document.getElementById('wn-popover');
   pop.innerHTML = `
     <div class="wi-pop-header">
-      <div>
-        <div class="wi-pop-title">Ανάθεση Δρομολογίου</div>
-        <div class="wi-pop-subtitle">Κάθοδος · ${row.orderIds.length} εντολ${row.orderIds.length>1?'ές':'ή'}</div>
-      </div>
-      <button class="wi-pop-close" onclick="_wnClosePopover()">×</button>
+      <div class="wi-pop-title">Ανάθεση</div>
+      <div class="wi-pop-subtitle">${subT} <span style="color:var(--text-dim)">· Κάθοδος · ${row.orderIds.length} εντολ${row.orderIds.length>1?'ές':'ή'}</span></div>
+      <button class="wi-pop-close" onclick="_wnClosePopover()" title="Κλείσιμο">✕</button>
     </div>
     <div class="wi-pop-body">
-      <div>
-        <div class="wi-pop-section-lbl">Ιδιόκτητο Όχημα</div>
-        <div class="wi-pop-row">
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Τράκτορας</span>${mkDrop('tk',trucks,row.truckId,'Πινακίδα…',false)}</div>
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Τρέιλερ</span>${mkDrop('tl',trailers,row.trailerId,'Πινακίδα…',false)}</div>
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Οδηγός</span>${mkDrop('dr',drivers,row.driverId,'Όνομα…',false)}</div>
-        </div>
+      <div class="wi-pop-section-lbl">ΔΙΚΟΣ ΣΤΟΛΟΣ</div>
+      <div class="wi-pop-row">
+        <div class="wi-pop-field"><span class="wi-pop-lbl">Φορτηγό</span>${mkDrop('tk',trucks,row.truckId,'Πινακίδα…')}</div>
+        <div class="wi-pop-field"><span class="wi-pop-lbl">Ρυμούλκα</span>${mkDrop('tl',trailers,row.trailerId,'Πινακίδα…')}</div>
+        <div class="wi-pop-field"><span class="wi-pop-lbl">Οδηγός</span>${mkDrop('dr',drivers,row.driverId,'Όνομα…')}</div>
       </div>
-      <div class="wi-pop-divider">ή συνεργάτης</div>
-      <div>
-        <div class="wi-pop-section-lbl">Συνεργάτης</div>
-        <div class="wi-pop-row">
-          <div class="wi-pop-field"><span class="wi-pop-lbl">Εταιρεία</span>${mkDrop('pt',partners,row.partnerId,'Επωνυμία…',true)}</div>
-          <div class="wi-pop-field">
-            <span class="wi-pop-lbl">Πινακίδα</span>
-            <input class="wi-pop-inp wi-pop-inp-wide" type="text" placeholder="π.χ. ΙΑΒ 1099"
-                   id="wn-pop-pp-${rowId}" value="${(row.partnerPlates||'').replace(/"/g,'&quot;')}"/>
-          </div>
-          <div class="wi-pop-field">
-            <span class="wi-pop-lbl">Κόμιστρο €</span>
-            <input class="wi-pop-inp" type="number" step="0.01" placeholder="π.χ. 350"
-                   id="wn-pop-rate-${rowId}" style="width:90px" value="${row.partnerRate||''}"/>
-          </div>
-        </div>
+      <div class="wi-pop-section-lbl">ΣΥΝΕΡΓΑΤΗΣ</div>
+      <div class="wi-pop-row">
+        <div class="wi-pop-field" style="flex:2"><span class="wi-pop-lbl">Εταιρεία</span>${mkDrop('pt',partners,row.partnerId,'Επωνυμία…')}</div>
+        <div class="wi-pop-field" style="flex:0 0 150px"><span class="wi-pop-lbl">Πινακίδες</span><input class="wi-pop-inp" type="text" placeholder="π.χ. ΙΑΒ 1099" id="wn-pop-pp-${rowId}" value="${escapeHtml(row.partnerPlates||'')}"/></div>
+        <div class="wi-pop-field" style="flex:0 0 130px"><span class="wi-pop-lbl">Κόμιστρο €</span><input class="wi-pop-inp" type="number" step="0.01" placeholder="π.χ. 350" id="wn-pop-rate-${rowId}" value="${row.partnerRate||''}"/></div>
       </div>
     </div>
     <div id="wn-lane-${rowId}" class="wi-lane-hist"></div>
     <div class="wi-pop-footer">
-      ${row.saved ? `<button class="wi-pop-cancel" onclick="_wnClear(${rowId}).then(()=>_wnClosePopover())">Εκκαθάριση</button>` : ''}
-      <button class="wi-pop-cancel" onclick="_wnClosePopover()">Ακύρωση</button>
+      <span class="wi2-pop-sync">sync: ⟳ γράφεται → ✓ γράφτηκε / ⚠ ΔΕΝ γράφτηκε (μένει ορατό)</span>
+      ${row.saved ? `<button class="wi-pop-cancel" onclick="event.stopPropagation();_wnClear(${rowId}).then(()=>_wnClosePopover())">Καθαρισμός</button>` : ''}
       <button class="wi-pop-save" id="wn-pop-btn-${rowId}"
               onclick="event.stopPropagation();_wnSaveFromPopover(${rowId})">
-        <div id="wn-pop-spin-${rowId}" style="width:12px;height:12px;border:2px solid var(--border-dark);border-top-color:var(--text-on-dark);border-radius:9999px;display:none;animation:wi-spin .6s linear infinite"></div>
-        ${row.saved ? 'Ενημέρωση' : 'Αποθήκευση'}
+        <div id="wn-pop-spin-${rowId}" class="wi2-spin" style="display:none"></div>
+        ${row.saved ? 'Ενημέρωση ανάθεσης' : 'Αποθήκευση ανάθεσης'}
       </button>
     </div>`;
 
   const _el = e.currentTarget || e.target || document.body;
   const rect = _el.getBoundingClientRect ? _el.getBoundingClientRect() : {left:200,bottom:200,top:200};
-  const popW=480, popH=320;
+  const popW=600, popH=380;
   let left = rect.left - 10;
   let top  = rect.bottom + 6;
   if (left + popW > window.innerWidth - 12) left = window.innerWidth - popW - 12;

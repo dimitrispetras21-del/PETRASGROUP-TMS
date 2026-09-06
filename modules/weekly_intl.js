@@ -380,39 +380,25 @@ const _WI2_CSS=`
 .wi2-foot{display:flex;align-items:center;justify-content:flex-end;gap:24px;padding:4px 16px;background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);margin-top:8px;flex-wrap:wrap}
 .wi2-foot .sync{font-size:11px;color:var(--text-mid);margin-left:auto;font-variant-numeric:tabular-nums}
 .wi2-foot .sync .err{color:var(--danger);font-weight:700}
-.wk3.wi2 #wi-popover{width:600px;border-radius:var(--radius);border-color:var(--border)}
-.wk3.wi2 .wi-pop-header{background:var(--surface-card);border-bottom:1px solid var(--border);padding:12px 16px 8px;justify-content:flex-start;gap:8px}
-.wk3.wi2 .wi-pop-title{color:var(--text);font-size:14px;text-transform:none;letter-spacing:0}
-.wk3.wi2 .wi-pop-subtitle{color:var(--text-mid);font-size:12px;margin:0;flex:1;min-width:0}
-.wk3.wi2 .wi-pop-close{margin-left:auto;color:var(--text-dim);font-size:13px}
-.wk3.wi2 .wi-pop-close:hover{background:var(--surface-sunken);color:var(--text)}
-.wk3.wi2 .wi-pop-body{padding:12px 16px 8px;gap:12px}
-.wk3.wi2 .wi-pop-section-lbl{font:700 11px 'Syne',sans-serif;letter-spacing:1.2px;color:var(--text-dim);border:none;padding:0;margin:0}
-.wk3.wi2 .wi-pop-lbl{text-transform:none;letter-spacing:0;font-size:11px;font-weight:500;color:var(--text-mid)}
-.wk3.wi2 .wi-pop-row{flex-wrap:nowrap;gap:12px;align-items:flex-end}
-.wk3.wi2 .wi-pop-field{flex:1;min-width:0}
-.wk3.wi2 .wi-pop-inp{width:100%;box-sizing:border-box;background:var(--surface-card);border-color:var(--border);height:32px;padding:4px 8px;font-size:12px}
-.wk3.wi2 .wi-pop-inp:disabled{background:var(--surface-page)}
-.wk3.wi2 .wi-sdo-sub{font-size:11px}
+/* Owner 6/9: the assignment-popover shell (#wi-popover/#wn-popover, all
+   .wi-pop-* classes, .wi-sdo-sub, .wi-lane-*) moved OUT of this .wk3.wi2
+   scope into assets/style.css as bare classes — Weekly National reuses the
+   exact same markup classes, and a style that only existed inside this
+   module's own injected <style> tag never reached natl on a direct visit
+   to that page (no shared DOM, no shared CSS). One popover look, not a
+   second copy (principle 3) — see assets/style.css "ASSIGNMENT POPOVER". */
 .wi2-pop-note{font-size:11px;color:var(--text-dim);padding-bottom:8px}
 .wi2-pop-warn{display:none;gap:8px;align-items:center;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--radius);padding:8px 12px;margin:8px 16px 0;font-size:11px;font-weight:500;color:var(--warn)}
 .wi2-pop-warn.on{display:flex}
-.wk3.wi2 .wi-lane-hist{background:var(--surface-sunken);border-radius:var(--radius);padding:8px 12px;margin:8px 16px 0;display:flex;gap:8px 16px;flex-wrap:wrap}
-.wk3.wi2 .wi-lane-hist:empty{display:none}
-.wk3.wi2 .wi-lane-title,.wk3.wi2 .wi-lane-item{font-size:11px;border-radius:var(--radius)}
-.wk3.wi2 .wi-lane-item{background:var(--surface-card);font-variant-numeric:tabular-nums}
 .wi2-pop-sec{padding:12px 16px 0}
 .wi2-piz{border:1px dashed var(--border-dark);border-radius:var(--radius);padding:8px 12px;text-align:center;font-size:11px;color:var(--text-dim);margin:8px 16px 0}
 .wi2-piz.dh{border-color:var(--accent);background:var(--accent-light)}
 .wi2-ichip{display:flex;align-items:center;gap:12px;text-align:left;color:var(--text);font-size:11px;font-weight:600}
 .wi2-ichip small{font-weight:400;color:var(--text-dim);font-size:11px;font-variant-numeric:tabular-nums}
 .wi2-ichip .wk3-unm{margin-left:auto}
-.wk3.wi2 .wi-pop-footer{background:var(--surface-card);align-items:center;gap:12px;padding:12px 16px}
-.wi2-pop-sync{font-size:11px;color:var(--text-dim);margin-right:auto}
-.wk3.wi2 .wi-pop-save{background:var(--accent);padding:8px 16px;font-size:12px;box-shadow:none;border-radius:var(--radius)}
-.wk3.wi2 .wi-pop-save:hover{background:var(--accent-hover)}
-.wk3.wi2 .wi-pop-cancel{padding:8px 12px;font-size:12px;font-weight:500;border-radius:var(--radius)}
-.wi2-spin{width:12px;height:12px;border:2px solid var(--accent-light);border-top-color:var(--surface-card);border-radius:var(--radius-full);animation:wi-spin .6s linear infinite}
+/* .wi2-pop-sync / .wi2-spin moved to assets/style.css — natl's footer reuses
+   them verbatim (owner 6/9 twin), and this <style> tag never reaches natl on
+   a direct page load (see "ASSIGNMENT POPOVER" comment there). */
 .wi-sdo-sub.free{color:var(--ok)}
 .wi2-sd-note{padding:4px 12px;font-size:11px;color:var(--text-dim);background:var(--surface-sunken)}
 .wk3.wi2 .wi-ctx-h{font-size:11px}

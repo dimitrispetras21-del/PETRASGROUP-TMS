@@ -2718,7 +2718,7 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wi-cross { font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px; margin-left:6px; background: var(--accent-light); color: var(--accent-text); white-space:nowrap; cursor:help; }
 /* Π2: second line inside truck/driver dropdown options — where the asset is
    already committed this week. 10px, no new column (density rule). */
-.wi-sdo-sub { font-size:10px; color:var(--warning); opacity:.95; margin-top:1px; }
+.wi-sdo-sub { font-size:11px; color:var(--warning); opacity:.95; margin-top:1px; }
 .wi-sdo--busy { border-left:2px solid var(--warning-soft); }
 
 /* Ήσυχη προβολή (owner 8/8): τα per-row chips των Κυμάτων 1-2 κρύβονται από
@@ -3020,10 +3020,15 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 }
 
 /* Π3 (Wave 3): lane rate history strip inside the assignment popover. */
-.wi-lane-hist { display:flex; flex-wrap:wrap; gap:6px; align-items:center; padding:0 14px 10px; }
+/* Merged with the popover's Wave-5 look (owner 6/9, shared by intl+natl —
+   see assets/style.css "ASSIGNMENT POPOVER"): padded surface box, not bare
+   chips on transparent. */
+.wi-lane-hist { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px;
+  padding:8px 12px; margin:8px 16px 0; background:var(--surface-sunken); border-radius:var(--radius); }
 .wi-lane-hist:empty { display:none; }
-.wi-lane-title { font-size:10px; font-weight:700; color: var(--text-dim); letter-spacing:.3px; }
-.wi-lane-item { font-size:10px; font-weight:600; color: var(--text-mid); background: var(--bg-hover); padding:2px 8px; border-radius:8px; }
+.wi-lane-title { font-size:11px; font-weight:700; color: var(--text-dim); letter-spacing:.3px; }
+.wi-lane-item { font-size:11px; font-weight:600; color: var(--text-mid); background: var(--surface-card);
+  padding:2px 8px; border-radius:var(--radius); font-variant-numeric:tabular-nums; }
 
 /* legacy compat */
 .pt { font-size:var(--text-xs); font-weight:700; white-space:nowrap; overflow:hidden;
@@ -3095,54 +3100,62 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wi-irm:hover { opacity:1; color:var(--danger); }
 .wi-inone { font-size:10px; color:var(--border-dark); }
 
-/* ASSIGNMENT POPOVER */
-#wi-popover {
+/* ASSIGNMENT POPOVER — shared shell for Weekly International (#wi-popover)
+   AND Weekly National (#wn-popover). Owner 6/9: the two must look and read
+   IDENTICAL («ίδιο shell, ίδιο λεξιλόγιο, ίδια κουμπιά») — so the popover
+   CSS lives here ONCE, as bare classes, instead of being duplicated per
+   module or scoped to intl's own board root (previously `.wk3.wi2 ...`,
+   which never reached natl on a direct page visit — that <style> tag only
+   existed inside weekly_intl.js's own render, see git history 6/9). Values
+   below are the merged result of the old dark/compact look and intl's
+   Wave-5 redesign (05/09) — the redesign wins on every property it touched. */
+#wi-popover, #wn-popover {
   display:none; position:fixed; z-index:var(--z-top);
-  background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:var(--radius-lg);
+  background:var(--surface-card); border:1px solid var(--border);
+  border-radius:var(--radius);
   box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
-  width:430px; padding:0; overflow:hidden;
+  width:600px; padding:0; overflow:hidden;
 }
 .wi-pop-header {
-  display:flex; align-items:center; justify-content:space-between;
-  padding:10px 14px 9px; background:var(--navy-mid);
-  border-bottom:1px solid rgba(255,255,255,0.06);
+  display:flex; align-items:center; justify-content:flex-start; gap:8px;
+  padding:12px 16px 8px; background:var(--surface-card);
+  border-bottom:1px solid var(--border);
 }
-.wi-pop-title { font-family:'Syne',sans-serif; font-size:var(--text-xs); font-weight:700;
-  letter-spacing:0.8px; text-transform:uppercase; color:var(--silver); }
-.wi-pop-subtitle { font-size:10px; color:var(--silver-dim); margin-top:1px; }
-.wi-pop-close { background:none; border:none; cursor:pointer; color:var(--silver-dim);
-  font-size:18px; line-height:1; padding:2px 4px; border-radius:var(--radius-sm); }
-.wi-pop-close:hover { color:var(--silver); background:rgba(255,255,255,0.08); }
-.wi-pop-body { padding:12px 14px 0; display:flex; flex-direction:column; gap:10px; }
-.wi-pop-section-lbl { font-size:9px; font-weight:700; letter-spacing:1.2px;
-  text-transform:uppercase; color:var(--text-dim);
-  padding-bottom:5px; border-bottom:1px solid var(--border); margin-bottom:2px; }
-.wi-pop-row { display:flex; gap:6px; align-items:flex-end; flex-wrap:wrap; }
-.wi-pop-field { display:flex; flex-direction:column; gap:3px; }
-.wi-pop-lbl { font-size:9px; font-weight:700; letter-spacing:1px;
-  text-transform:uppercase; color:var(--text-dim); }
-.wi-pop-inp { width:120px; padding:7px 9px; font-size:var(--text-xs); border-radius:var(--radius);
-  border:1px solid var(--border-mid); background:var(--bg);
-  color:var(--text); outline:none; transition:border-color .15s,box-shadow .15s; }
+.wi-pop-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:700;
+  letter-spacing:0; text-transform:none; color:var(--text); }
+.wi-pop-subtitle { font-size:12px; color:var(--text-mid); margin:0; flex:1; min-width:0; }
+.wi-pop-close { background:none; border:none; cursor:pointer; color:var(--text-dim);
+  font-size:13px; line-height:1; padding:2px 4px; border-radius:var(--radius-sm); margin-left:auto; }
+.wi-pop-close:hover { color:var(--text); background:var(--surface-sunken); }
+.wi-pop-body { padding:12px 16px 8px; display:flex; flex-direction:column; gap:12px; }
+.wi-pop-section-lbl { font:700 11px 'Syne',sans-serif; letter-spacing:1.2px;
+  text-transform:uppercase; color:var(--text-dim); border:none; padding:0; margin:0; }
+.wi-pop-row { display:flex; gap:12px; align-items:flex-end; flex-wrap:nowrap; }
+.wi-pop-field { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.wi-pop-lbl { font-size:11px; font-weight:500; letter-spacing:0; text-transform:none; color:var(--text-mid); }
+.wi-pop-inp { width:100%; box-sizing:border-box; height:32px; padding:4px 8px;
+  font-size:12px; border-radius:var(--radius); border:1px solid var(--border);
+  background:var(--surface-card); color:var(--text); outline:none;
+  transition:border-color .15s,box-shadow .15s; }
 .wi-pop-inp:focus { border-color:rgba(11,25,41,0.4);
-  box-shadow:0 0 0 3px rgba(11,25,41,0.08); background:var(--bg-card); }
-.wi-pop-inp-wide { width:185px; }
-.wi-pop-divider { display:flex; align-items:center; gap:8px; font-size:9px;
-  color:var(--text-dim); letter-spacing:.5px; text-transform:uppercase; margin:2px 0; }
-.wi-pop-divider::before,.wi-pop-divider::after { content:''; flex:1; height:1px; background:var(--border); }
-.wi-pop-footer { display:flex; gap:8px; justify-content:flex-end;
-  padding:10px 14px 12px; border-top:1px solid var(--border);
-  background:var(--bg); margin-top:12px; }
+  box-shadow:0 0 0 3px rgba(11,25,41,0.08); background:var(--surface-card); }
+.wi-pop-inp:disabled { background:var(--surface-page); }
+.wi-pop-footer { display:flex; align-items:center; gap:12px; justify-content:flex-end;
+  padding:12px 16px; border-top:1px solid var(--border);
+  background:var(--surface-card); margin-top:12px; }
 .wi-pop-save { display:inline-flex; align-items:center; gap:6px;
-  padding:8px 24px; font-size:var(--text-xs); font-weight:700; border:none;
-  border-radius:var(--radius); cursor:pointer; background:var(--navy-mid); color:#fff;
-  transition:background .15s; box-shadow:0 1px 4px rgba(0,0,0,0.15); }
-.wi-pop-save:hover { background:var(--navy); }
+  padding:8px 16px; font-size:12px; font-weight:700; border:none;
+  border-radius:var(--radius); cursor:pointer; background:var(--accent); color:#fff;
+  transition:background .15s; box-shadow:none; }
+.wi-pop-save:hover { background:var(--accent-hover); }
 .wi-pop-save:disabled { opacity:.45; cursor:default; }
-.wi-pop-cancel { padding:7px 16px; font-size:var(--text-xs); border:1px solid var(--border-mid);
+.wi-pop-cancel { padding:8px 12px; font-size:12px; font-weight:500; border:1px solid var(--border-mid);
   border-radius:var(--radius); cursor:pointer; background:none; color:var(--text-mid); }
 .wi-pop-cancel:hover { background:var(--bg-hover); }
+.wi2-pop-sync { font-size:11px; color:var(--text-dim); margin-right:auto; }
+.wi2-spin { width:12px; height:12px; border:2px solid var(--accent-light);
+  border-top-color:var(--surface-card); border-radius:var(--radius-full);
+  animation:wi-spin .6s linear infinite; }
 
 /* IMPORT ROWS */
 .wi-imp-row {
@@ -3219,20 +3232,9 @@ button.wi-ctx-item { appearance:none; border:0; background:none; font:inherit; c
 .wi-ctx-item:hover { background:var(--bg-hover); }
 .wi-ctx-danger { color:var(--danger) !important; }
 
-#wn-popover {
-  display:none; position:fixed; z-index:var(--z-top);
-  background:var(--bg-card); border:1px solid var(--border-mid);
-  border-radius:var(--radius-lg);
-  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
-  width:480px; padding:0; overflow:visible;
-}
-#wn-popover .wi-pop-body { padding:12px 14px 0; display:flex; flex-direction:column; gap:10px; }
-#wn-popover .wi-pop-row  { display:flex; gap:6px; align-items:flex-end; flex-wrap:nowrap; }
-#wn-popover .wi-pop-field { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
-#wn-popover .wi-pop-inp  { width:100%; padding:7px 9px; font-size:var(--text-xs); border-radius:var(--radius);
-  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
-#wn-popover .wi-sdi { width:100%; padding:7px 9px; font-size:var(--text-xs); border-radius:var(--radius);
-  border:1px solid var(--border-mid); background:var(--bg); color:var(--text); outline:none; }
+/* #wn-popover geometry + .wi-pop-* field styling now live in the shared
+   "ASSIGNMENT POPOVER" block above (twin of #wi-popover, owner 6/9) — a
+   second copy here would drift the moment one of them gets edited. */
 
 /* ═══════════════════════════════════════════════
    DAILY RAMP BOARD
