@@ -418,6 +418,10 @@ const ENTITY_CONFIG = {
     // defaultSort: ['Country','License Plate'] — v2 has no per-column default
     // sort concept, so it's read generically in _entitySortRecords (owner 6/9).
     defaultSort: ['Country', 'License Plate'],
+    // KPI cards (§C, owner 6/9) — 4 for trucks (adds Συντήρηση), 3 for
+    // trailers. Shared computation lives in _fleetKpiCards so the two
+    // configs never drift on what counts as "expiring" or "no country".
+    kpiCards: records => _fleetKpiCards('trucks', records, true),
     filters: [
       { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Brand',  label: 'Μάρκα',  type: 'dynamic' },
@@ -532,6 +536,9 @@ const ENTITY_CONFIG = {
     searchHint: 'Αναζήτηση: πινακίδα, VIN, τύπος…',
     // Same generic default-sort path as trucks (see _entitySortRecords, owner 6/9).
     defaultSort: ['Country', 'License Plate'],
+    // KPI cards (§C, owner 6/9) — 3 cards, no Συντήρηση (trailers have no
+    // Next Maintenance Date). Same shared computation as trucks.
+    kpiCards: records => _fleetKpiCards('trailers', records, false),
     filters: [
       { field: 'Country', label: 'Χώρα', type: 'dynamic', allLabel: 'Όλες' },
       { field: 'Trailer Type', label: 'Τύπος',   type: 'dynamic', labels: { Reefer: 'Ψυγείο', Curtainsider: 'Τέντα' } },
@@ -788,7 +795,7 @@ async function renderEntity(entityKey) {
       // A predicate the engine cannot build leaves the option live.
       const _dead = o => {
         if (!o.val) return false;
-        const pred = _entityFilterPred(cfg, fi.field, o.val, fi.type);
+        const pred = _entityFilterPred(cfg, fi.field, o.val, fi.type, entityKey);
         return !!pred && !records.some(pred);
       };
       return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
@@ -818,21 +825,31 @@ async function renderEntity(entityKey) {
     // (≥20 rows visible at 1080p) cannot afford — spec 2026-08-29 §3.
     // Expiries live in the record card, never in the list (spec §3); the
     // Έγγραφα filter chip stays because it already exists.
+    const searchHTML = `<input class="ev2-search" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
+            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">`;
+    const newBtnHTML = canEdit ? `
+          <button class="btn btn-primary btn-sm ev2-new" onclick="openEntityCreate('${entityKey}')">
+            ${_i('plus')}
+            Νέα εγγραφή
+          </button>` : '';
+    // KPI cards (§C, owner 6/9) go BELOW the header and ABOVE the filters —
+    // which means splitting the one-row bar into title+count, then the KPI
+    // row, then filters+search+action, but ONLY for the two entities that
+    // define kpiCards. Clients/partners/drivers/workshops keep the original
+    // single ev2-bar untouched below.
     c.innerHTML = `
+    ${cfg.kpiCards ? _kpiCardsCss() : ''}
     <div class="entity-layout entity-v2">
       <div class="entity-list-panel">
         <div class="ev2-bar">
           <span class="ev2-title">${cfg.titleV2 || cfg.label}</span>
           <span class="ev2-count" id="${entityKey}_count"></span>
-          ${filtersHTML}
-          <input class="ev2-search" placeholder="${cfg.searchHint || 'Αναζήτηση…'}"
-            oninput="entitySearch('${entityKey}', this.value)" id="${entityKey}_search">
-          ${canEdit ? `
-          <button class="btn btn-primary btn-sm ev2-new" onclick="openEntityCreate('${entityKey}')">
-            ${_i('plus')}
-            Νέα εγγραφή
-          </button>` : ''}
+          ${cfg.kpiCards ? '' : filtersHTML}
+          ${cfg.kpiCards ? '' : searchHTML}
+          ${cfg.kpiCards ? '' : newBtnHTML}
         </div>
+        ${cfg.kpiCards ? `<div class="ekpi-row" id="${entityKey}_kpi"></div>` : ''}
+        ${cfg.kpiCards ? `<div class="ev2-bar">${filtersHTML}${searchHTML}${newBtnHTML}</div>` : ''}
         <div class="ev2-stats" id="${entityKey}_stats_strip"></div>
         <div class="entity-table-wrap" id="${entityKey}_table"></div>
       </div>
@@ -842,6 +859,7 @@ async function renderEntity(entityKey) {
     // applied exactly the way a user's own click would apply them.
     applyEntityFilters(entityKey);
     _renderStatsBarV2(entityKey, records);
+    if (cfg.kpiCards) _renderKpiCards(entityKey, records);
     if (entityKey === 'workshops') _enrichWorkshopsV2(entityKey, records);
     return;
   }
@@ -965,6 +983,144 @@ function _renderStatsBarV2(entityKey, records) {
   }
 
   el.innerHTML = out.join('');
+}
+
+// ── KPI cards, trucks & trailers only (§C, owner 6/9/2026) ─────────────────
+// Shared by both configs' `kpiCards` (see trucks/trailers ENTITY_CONFIG above)
+// so "expiring" and "no country" are computed once, not once per screen —
+// principle 3 (two sources of truth means none). Computed from the records
+// the screen already holds — no new fetch (PRIME DIRECTIVE: no perf/
+// architecture change without asking).
+function _fleetKpiCards(entityKey, records, withMaintenance) {
+  const now = Date.now();
+  const active = records.filter(r => r.fields['Active']);
+
+  // 1. Fleet age — mean of (this year − Year) over ACTIVE records that HAVE a
+  // Year. Inactive vehicles are excluded on purpose: a retired 2004 truck
+  // still sitting in the table would drag the "current fleet" number down.
+  const thisYear = new Date().getFullYear();
+  const withYear = active.filter(r => r.fields['Year']);
+  const avgAge = withYear.length
+    ? withYear.reduce((s, r) => s + (thisYear - parseInt(r.fields['Year'], 10)), 0) / withYear.length
+    : null;
+  const cardAge = {
+    label: 'Ηλικία στόλου',
+    value: avgAge == null ? '—' : avgAge.toFixed(1),
+    sub: `${withYear.length} από ${active.length} με έτος`,
+  };
+
+  // 2. Per country — value is the ISO code tally itself ("GR 25 · BG 11"),
+  // never the Greek display name: this card is a compact count, not a label
+  // (contrast with the Χώρα filter dropdown, which does show Greek names).
+  // Grouped by countryCode() same as the dynamic filter above, so "GR" /
+  // "Greece" / "ΕΛΛΑΔΑ" tally as one bucket instead of three (owner 5/9).
+  const counts = new Map();
+  let noCountry = 0;
+  records.forEach(r => {
+    const raw = r.fields['Country'];
+    if (!raw) { noCountry++; return; }
+    const code = (typeof countryCode === 'function' && countryCode(raw)) || raw;
+    counts.set(code, (counts.get(code) || 0) + 1);
+  });
+  const sortedCounts = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const cardCountry = {
+    label: 'Ανά χώρα',
+    value: sortedCounts.length ? sortedCounts.map(([c, n]) => `${c} ${n}`).join(' · ') : '—',
+    sub: noCountry ? `χωρίς χώρα ${noCountry}` : '',
+  };
+
+  // 3. Documents expiring — same field list as the Έγγραφα filter chip
+  // (_EXPIRY_FIELDS, the one source — see the _compliance fallback in
+  // _entityFilterPred). A record counts once even with several fields due.
+  const EXP = _EXPIRY_FIELDS[entityKey] || [];
+  const expiringCount = records.filter(r => EXP.some(f => {
+    const d = r.fields[f];
+    if (!d) return false;
+    const days = Math.floor((new Date(d).getTime() - now) / 86400000);
+    return days <= 30; // negative (already expired) counts too — same as the card's own label
+  })).length;
+  const cardExpiring = {
+    label: 'Λήγουν σε 30 ημ.',
+    value: String(expiringCount),
+    sub: '',
+    // Applies the SAME _compliance filter the dropdown uses — entityFilter()
+    // is the one path that sets/reads filter state (no second mechanism).
+    // 'expiring' chosen to match this card's own label ("Λήγει <30 ημ." is
+    // the dropdown option with the same wording); note this undercounts vs.
+    // the number shown above, which is expired+expiring together — the
+    // dropdown has no single value for that union, and adding one is out of
+    // scope for a KPI card (owner 6/9). Click «Με ληγμένο» separately for
+    // the expired half.
+    onClick: `entityFilter('${entityKey}','_compliance','expiring','select')`,
+  };
+
+  const cards = [cardAge, cardCountry, cardExpiring];
+
+  // 4. Trucks only — Next Maintenance Date has no table column of its own
+  // (cardSpecs/the form only, T2 6/9), so sorting by it can't go through
+  // entitySortToggle's column-index lookup — see entitySortByField below.
+  if (withMaintenance) {
+    const maintCount = records.filter(r => {
+      const d = r.fields['Next Maintenance Date'];
+      if (!d) return false;
+      const days = Math.floor((new Date(d).getTime() - now) / 86400000);
+      return days <= 14;
+    }).length;
+    cards.push({
+      label: 'Συντήρηση 14 ημ.',
+      value: String(maintCount),
+      sub: '',
+      onClick: `entitySortByField('${entityKey}','Next Maintenance Date',1)`,
+    });
+  }
+  return cards;
+}
+
+/**
+ * Renders the KPI card row for a v2 fleet screen into `#{entityKey}_kpi`.
+ * No-op when the config doesn't define `kpiCards` (clients/partners/drivers/
+ * workshops keep their current layout unchanged).
+ */
+function _renderKpiCards(entityKey, records) {
+  const cfg = ENTITY_CONFIG[entityKey];
+  const el = document.getElementById(entityKey + '_kpi');
+  if (!el || !cfg || !cfg.kpiCards) return;
+  const cards = cfg.kpiCards(records) || [];
+  el.innerHTML = cards.map(c => `
+    <div class="ekpi-card${c.onClick ? ' clickable' : ''}" ${c.onClick ? `onclick="${c.onClick}"` : ''}>
+      <div class="ekpi-label">${c.label}</div>
+      <div class="ekpi-value">${c.value}</div>
+      ${c.sub ? `<div class="ekpi-sub">${c.sub}</div>` : ''}
+    </div>`).join('');
+}
+
+// Same visual language as dashboard.js's .dh-card (navy label, big number,
+// dim subtitle) but its OWN rule block — importing dashboard.js's CSS into
+// entity.js would couple two independently-deployed modules for a handful of
+// declarations (owner 6/9: "do not import dashboard CSS").
+function _kpiCardsCss() {
+  return `<style>
+.ekpi-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:var(--space-3);padding:var(--space-3) var(--space-6);background:var(--bg-card);border-bottom:1px solid var(--silver-light);flex-shrink:0}
+@media (max-width:720px){.ekpi-row{grid-template-columns:1fr}}
+.ekpi-card{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3);min-width:0;text-align:left}
+.ekpi-card.clickable{cursor:pointer}
+.ekpi-card.clickable:hover{border-color:var(--accent)}
+.ekpi-label{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--navy)}
+.ekpi-value{font-size:28px;font-weight:700;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums;color:var(--text)}
+.ekpi-sub{font-size:12px;color:var(--text-dim);margin-top:2px}
+</style>`;
+}
+
+/**
+ * Sorts a v2 entity list by a field name directly, bypassing entitySortToggle's
+ * column-index lookup — needed for the trucks "Συντήρηση" KPI card, which
+ * sorts by Next Maintenance Date even though that field has no table column
+ * (owner 6/9). Same `_entitySort` state and re-render path as a header click
+ * (see the `s.field` branch in _entitySortRecords) — not a second mechanism.
+ */
+function entitySortByField(entityKey, field, dir) {
+  _entitySort[entityKey] = { col: null, dir, field };
+  applyEntityFilters(entityKey);
 }
 
 // ── Fleet stats strips (DV-5, TR-5, TL-5) ─────────────────
@@ -1196,6 +1352,21 @@ function entitySortToggle(entityKey, colIdx) {
 function _entitySortRecords(entityKey, recs) {
   const s = _entitySort[entityKey];
   const cfg = ENTITY_CONFIG[entityKey];
+  // Explicit field sort, set by entitySortByField (the KPI "Συντήρηση" card,
+  // owner 6/9) — bypasses the column-index lookup below because Next
+  // Maintenance Date has no table column to point an index at. `s.col` stays
+  // null here, so this check must run BEFORE the "no sort" branch, which
+  // otherwise treats col===null as "nothing chosen".
+  if (s && s.field) {
+    const dir = s.dir === 2 ? -1 : 1;
+    return [...recs].sort((a, b) => {
+      // No date = sorts last regardless of direction, same idea as the
+      // date branch further down (empty is worse than any real date here).
+      const ta = a.fields[s.field] ? new Date(a.fields[s.field]).getTime() : Infinity;
+      const tb = b.fields[s.field] ? new Date(b.fields[s.field]).getTime() : Infinity;
+      return (ta - tb) * dir;
+    });
+  }
   if (!s || s.col === null || s.dir === 0) {
     // DV-4: with no user sort, drivers came back in DB order and the first
     // screen was mostly Inactive people. Active first; DB order within each
@@ -1568,9 +1739,10 @@ function entityFilter(entityKey, field, val, type) {
  * Lives apart from applyEntityFilters because the filter dropdowns count
  * their options with it (ΜΕΡΟΣ Δ2, zero → disabled); a second copy of these
  * rules next to the <option>s would drift (principle 3).
+ * @param {string} [entityKey] - only needed for `_compliance`'s _EXPIRY_FIELDS fallback (owner 6/9)
  * @returns {null|function(Object):boolean}
  */
-function _entityFilterPred(cfg, field, val, type) {
+function _entityFilterPred(cfg, field, val, type, entityKey) {
   // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
   // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
   if (/country|χωρα|χώρα/i.test(field) && typeof countryCode === 'function') {
@@ -1588,10 +1760,17 @@ function _entityFilterPred(cfg, field, val, type) {
   if (field === '_compliance') {
     // Compliance filter: check expiry dates from the compliance column config
     const complianceCol = cfg.columns.find(c => c.type === 'compliance');
-    if (!complianceCol) return null;
+    // Trucks/trailers v2 configs have no `type: 'compliance'` column (that
+    // mini-block cell only exists on the maintenance screen), so this always
+    // returned null here — the Έγγραφα dropdown rendered but filtered nothing
+    // on those two screens (T2 audit, 6/9/2026). _EXPIRY_FIELDS is already the
+    // one place per-entity expiry fields live (feeds _renderStatsBarV2 above),
+    // so it's reused as the fallback instead of a second list.
+    const expFields = complianceCol ? complianceCol.fields.map(fc => fc.field) : _EXPIRY_FIELDS[entityKey];
+    if (!expFields) return null;
     return r => {
-      const statuses = complianceCol.fields.map(fc => {
-        const d = r.fields[fc.field];
+      const statuses = expFields.map(fld => {
+        const d = r.fields[fld];
         if (!d) return 'none';
         const days = Math.ceil((new Date(d) - new Date()) / 86400000);
         return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
@@ -1629,7 +1808,7 @@ function applyEntityFilters(entityKey) {
     }));
   }
   for (const [field, { val, type }] of Object.entries(st.filters)) {
-    const pred = _entityFilterPred(cfg, field, val, type);
+    const pred = _entityFilterPred(cfg, field, val, type, entityKey);
     if (pred) recs = recs.filter(pred);
   }
 
