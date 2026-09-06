@@ -29,6 +29,13 @@ workers_dev = true
 [browser]
 binding = "BROWSER"
 
+# Workers Logs (owner 6/9/2026): χωρίς αυτό ο Worker δεν κρατούσε κανένα log —
+# το observability API γύριζε μηδέν εγγραφές για κάθε διάστημα, άρα «μηδέν
+# εξαιρέσεις στον Worker» δεν αποδεικνυόταν από πουθενά (αρχή 1). ΠΑΝΩ από το
+# [vars] για τον ίδιο λόγο με το [browser].
+[observability]
+enabled = true
+
 [vars]
 ALLOWED_ORIGIN = "https://dimitrispetras21-del.github.io"
 SUPABASE_URL = "https://gatejgbpyodlepkvqkgf.supabase.co"
