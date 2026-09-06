@@ -2478,6 +2478,10 @@ window.openNatlCreate = openNatlCreate;
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
 window.toggleNatlInvoiced = toggleNatlInvoiced;
+// The card's «×» is an inline onclick, so it resolves in the global scope; the
+// Esc handler lives inside the module and never needed this. Without it the ×
+// threw «closeNatlDetail is not defined» (app_errors 5/9 17:40, 6/9 16:35).
+window.closeNatlDetail = closeNatlDetail;
 window._natlSortToggle = _natlSortToggle;
 window._applyNatlFilters = _applyNatlFilters;
 window.natlSearch = natlSearch;
