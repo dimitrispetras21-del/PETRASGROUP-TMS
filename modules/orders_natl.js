@@ -871,8 +871,10 @@ let _grpSeq = 0;
 /* Δ17 — επιλογή τύπου ΜΕΣΑ στη φόρμα, μόνο σε δημιουργία.
    Το κρυφό nf_Groupage μένει συγχρονισμένο: το διαβάζει το submitNatlOrder
    αυτούσιο, οπότε η απλή διαδρομή δεν αγγίχτηκε καθόλου.
-   Το πλάτος αλλάζει ΜΟΝΟ στο groupage — η απλή φόρμα μένει 680px, ίδια
-   ακριβώς με πριν. */
+   Owner 6/9: το πλάτος είναι πλέον ΣΤΑΘΕΡΟ (.modal--wide, 1100px) και στους
+   δύο τύπους — πριν εναλλασσόταν 680/900px, αλλά ο owner θέλει «περισσότερο
+   χώρο» γενικά, όχι μόνο στο Groupage. Η κλάση μπαίνει μία φορά στο
+   openNatlModal· εδώ δεν αγγίζουμε το πλάτος καθόλου. */
 function _natlMode(m) {
   const cb = document.getElementById('nf_Groupage'); if (cb) cb.checked = !!m;
   const m0 = document.getElementById('nf_m0'), m1 = document.getElementById('nf_m1');
@@ -891,8 +893,6 @@ function _natlMode(m) {
   if (priceF)  priceF.style.display  = m ? 'none' : '';
   const pickupHint = document.getElementById('nf_pickupHint');
   if (pickupHint) pickupHint.style.display = m ? '' : 'none';
-  const modal = document.getElementById('modal');
-  if (modal) { modal.style.width = m ? '900px' : '680px'; modal.style.maxWidth = '96vw'; }
   const btn = document.getElementById('natlBtnSubmit');
   if (btn) {
     btn.setAttribute('onclick', m ? '_grpSubmit()' : "submitNatlOrder('')");
@@ -917,7 +917,7 @@ function _simRowHTML(uid, pre) {
   pre = pre || {};
   return `<div class="grp-row" id="simr_${uid}"
       style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px;margin-bottom:8px;background:var(--surface-card)">
-    <div style="display:grid;grid-template-columns:minmax(0,3fr) 62px 150px minmax(0,1.2fr) 34px;gap:12px;align-items:end">
+    <div style="display:grid;grid-template-columns:minmax(360px,1.6fr) 80px 150px minmax(180px,1fr) 34px;gap:12px;align-items:end">
       <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('nsl'+uid, pre.loc||'')}</div>
       <div><label class="form-label">Παλέτες</label>
         <input class="form-input" type="number" id="simp${uid}" min="0" max="99" step="1"
@@ -961,7 +961,7 @@ function _simRead() {
 // Μία στάση μέσα σε μία κάρτα πελάτη.
 function _grpDeliveryRowHTML(rowUid) {
   return `<div class="grp-row" id="grpr_${rowUid}" style="margin-bottom:8px">
-    <div style="display:grid;grid-template-columns:minmax(0,3fr) 72px 150px minmax(0,1.2fr) 34px;gap:12px;align-items:end">
+    <div style="display:grid;grid-template-columns:minmax(360px,1.6fr) 80px 150px minmax(180px,1fr) 34px;gap:12px;align-items:end">
       <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('grpl'+rowUid, '')}</div>
       <div><label class="form-label">Παλέτες</label>
         <input class="form-input" type="number" id="grpp${rowUid}" min="0" max="99" step="1"
@@ -983,7 +983,7 @@ function _grpCardHTML(cardUid) {
   const rows = _grpCardRows[cardUid] || [];
   return `<div class="grp-card" id="grpcard_${cardUid}"
       style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--surface-card)">
-    <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:minmax(300px,2fr) 160px 34px;gap:12px;align-items:end;margin-bottom:8px">
       <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+cardUid, '', '')}</div>
       <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη)</span></label>
         <input class="form-input" type="number" id="grpv${cardUid}" oninput="_grpPreview()"></div>
@@ -1124,9 +1124,9 @@ async function _grpSubmit() {
 }
 
 // ─── Modal ──────────────────────────────────────
-// Resets the inline width this form puts on #modal the moment the overlay
-// closes — whichever way it closes (Άκυρο, ✕ in the header, overlay click).
-// Without this the next modal of ANY module would open 900px wide.
+// Removes the .modal--wide class this form puts on #modal the moment the
+// overlay closes — whichever way it closes (Άκυρο, ✕ in the header, overlay
+// click). Without this the next modal of ANY module would open 1100px wide.
 let _onModalObs = null;
 function _onWatchModalClose() {
   if (_onModalObs) return;
@@ -1134,7 +1134,7 @@ function _onWatchModalClose() {
   const modal = document.getElementById('modal');
   if (!overlay || !modal) return;
   _onModalObs = new MutationObserver(() => {
-    if (!overlay.classList.contains('open')) { modal.style.width = ''; modal.style.maxWidth = ''; }
+    if (!overlay.classList.contains('open')) { modal.classList.remove('modal--wide'); }
   });
   _onModalObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
 }
@@ -1156,7 +1156,7 @@ async function _openNatlModal(recId, f) {
   const opt = (arr, cur) => arr.map(o=>{const v=Array.isArray(o)?o[0]:o, l=Array.isArray(o)?o[1]:o; return `<option value="${v}" ${f[cur]===v?'selected':''}>${l}</option>`;}).join('');
 
   const body = `
-    <div class="form-grid">
+    <div class="form-grid cols-3">
       <div class="form-field">
         <label class="form-label">Κατεύθυνση *</label>
         <select class="form-select" id="nf_Direction"><option value="">— Επιλογή —</option>
@@ -1213,7 +1213,7 @@ async function _openNatlModal(recId, f) {
          και στους δύο τύπους καταχώρησης· ids/onchange αμετάβλητα. -->
     <div style="padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
       <div class="detail-section-title" style="margin-bottom:12px">Φόρτωση</div>
-      <div class="form-grid">
+      <div class="form-grid" style="grid-template-columns:2fr 1fr">
         <div class="form-field">
           <label class="form-label">Σημείο φόρτωσης * <span id="nf_pickupHint" style="color:var(--text-dim);font-weight:400;display:none">(κοινό για το φορτίο)</span></label>
           ${_locSelect('npickup', pickupId)}
@@ -1252,7 +1252,7 @@ async function _openNatlModal(recId, f) {
     </button>`;
 
   const modalEl = document.getElementById('modal');
-  modalEl.style.width = '680px'; modalEl.style.maxWidth = '96vw';
+  modalEl.classList.add('modal--wide');
   _onWatchModalClose();
   openModal(isEdit ? 'Επεξεργασία εθνικής παραγγελίας' : 'Νέα εθνική παραγγελία', body, footer);
   if (!isEdit) { _grpCards = []; _grpCardRows = {}; _natlMode(0); }

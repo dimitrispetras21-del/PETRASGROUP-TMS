@@ -1313,6 +1313,15 @@ tbody tr:hover { background: var(--bg-hover); }
   animation: modalIn 0.2s cubic-bezier(0.22,1,0.36,1);
 }
 
+/* Owner 6/9/2026: national order form needed more horizontal room so
+   delivery-row fields (location names especially) stop being cramped.
+   A class, not an inline width, so ONLY the natl form opts in — every other
+   modal (clients, trucks, maintenance, ...) keeps the 600px default. */
+.modal--wide {
+  width: 1100px;
+  max-width: 96vw;
+}
+
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(16px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
