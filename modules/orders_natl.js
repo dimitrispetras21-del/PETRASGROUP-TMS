@@ -985,7 +985,7 @@ function _grpCardHTML(cardUid) {
       style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--surface-card)">
     <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:8px">
       <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+cardUid, '', '')}</div>
-      <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη — Δ13)</span></label>
+      <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη)</span></label>
         <input class="form-input" type="number" id="grpv${cardUid}" oninput="_grpPreview()"></div>
       <button type="button" title="Αφαίρεση πελάτη" onclick="_grpDelCard(${cardUid})"
         style="height:38px;border:none;background:none;color:var(--text-mid);font-size:18px;cursor:pointer">×</button>
