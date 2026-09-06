@@ -293,7 +293,18 @@ async function _atRetry(fn, retries = 3) {
           : matchesInvalidValue ? 'Μη αποδεκτή τιμή πεδίου'
           : matchesPermissions ? 'Δεν έχετε δικαίωμα'
           : rawMsg;
-        if (typeof logError === 'function') logError(new Error(mapped), `_atRetry ${res.status}`);
+        // Say WHERE it came from. The 38 «Unsupported query» of 30/8–5/9 could not
+        // be attributed: the async stack ends inside _atRetry and the message had
+        // no table or filter (audit 6/9). res.url carries both.
+        let where = '';
+        try {
+          const u = new URL(res.url);
+          const tid = (u.pathname.match(/\/v0\/[^/]+\/([^/?]+)/) || [])[1] || '';
+          const tname = (typeof _tableNameFromId === 'function' && tid) ? (_tableNameFromId(tid) || tid) : tid;
+          const flt = u.searchParams.get('filterByFormula') || '';
+          where = ` · ${tname}${flt ? ' · ' + flt.slice(0, 160) : ''}`;
+        } catch (_) { /* diagnostics must never break the error path */ }
+        if (typeof logError === 'function') logError(new Error(mapped + where), `_atRetry ${res.status}`);
         if (typeof showErrorToast === 'function') showErrorToast(mapped, 'error');
         // Deterministic: the same body will be rejected identically on every
         // attempt, so this throw must escape the retry loop, not feed it. It fell

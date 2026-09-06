@@ -671,10 +671,17 @@ async function safeFetch(fetchFn, context, fallback = []) {
   try {
     return await fetchFn();
   } catch (error) {
+    // A 401 here means api.js already cleared the session and is sending the
+    // browser to index.html; the sibling fetches of the same refresh (dashboard
+    // alerts ×2–3 every 5 min) all land here at once. Logging them said nothing
+    // new — 19 «Unauthorized» rows at 03:00/17:00/21:00 in one week (audit 6/9),
+    // all at JWT expiry. Fail quietly, still return the tagged fallback.
+    const sessionEnded = !!(error && error._noRetry && error.message === 'Unauthorized');
     // logError is the single funnel to localStorage + Sentry + /app-errors.
     // Guarded: utils.js load order means a very early caller could beat it.
     try {
-      if (typeof logError === 'function') logError(error, `safeFetch: ${context}`);
+      if (sessionEnded) { /* session gone, page leaving — no report */ }
+      else if (typeof logError === 'function') logError(error, `safeFetch: ${context}`);
       else console.error(`[TMS] safeFetch(${context}) failed:`, error);
     } catch (_) { /* reporting must never cascade — see _postAppError */ }
     return _markFailed(fallback, error);
