@@ -434,6 +434,10 @@ const ENTITY_CONFIG = {
         { val: '', label: 'Όλα' },
         { val: 'expired',  label: 'Με ληγμένο' },
         { val: 'expiring', label: 'Λήγει <30 ημ.' },
+        // due30 = expired ∪ expiring, i.e. exactly the KPI card's own count
+        // (review 6/9, Critical #1) — selectable here too, not just card-only,
+        // so the dropdown can show the value the card just applied.
+        { val: 'due30',    label: 'Λήγει σε 30 ημ. (όλα)' },
         { val: 'ok',       label: 'Όλα εντάξει' },
       ]},
     ],
@@ -551,6 +555,8 @@ const ENTITY_CONFIG = {
         { val: '', label: 'Όλα' },
         { val: 'expired',  label: 'Με ληγμένο' },
         { val: 'expiring', label: 'Λήγει <30 ημ.' },
+        // due30 = expired ∪ expiring, same as trucks above (review 6/9, Critical #1).
+        { val: 'due30',    label: 'Λήγει σε 30 ημ. (όλα)' },
         { val: 'ok',       label: 'Όλα εντάξει' },
       ]},
     ],
@@ -798,7 +804,10 @@ async function renderEntity(entityKey) {
         const pred = _entityFilterPred(cfg, fi.field, o.val, fi.type, entityKey);
         return !!pred && !records.some(pred);
       };
-      return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
+      // id lets applyEntityFilters() re-sync this <select> after a KPI card
+      // sets the filter programmatically (review 6/9, Important #1) — before
+      // this, a card-driven filter change left the dropdown stuck on "Όλα".
+      return `<select class="svc-filter" id="${entityKey}_filter_${fi.field}" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'${fi.type||''}')">
         ${fi.options.map(o => `<option value="${o.val}" ${_sel(fi, o.val)}${_dead(o) ? ' disabled title="Καμία εγγραφή"' : ''}>${fi.label}: ${o.label}</option>`).join('')}
       </select>`;
     } else if (fi.type === 'dynamic') {
@@ -1014,9 +1023,13 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
   // (contrast with the Χώρα filter dropdown, which does show Greek names).
   // Grouped by countryCode() same as the dynamic filter above, so "GR" /
   // "Greece" / "ΕΛΛΑΔΑ" tally as one bucket instead of three (owner 5/9).
+  // Same base as card 1 (active records) — review 6/9, Finding 4: counting
+  // this one over ALL records while card 1 counts only active ones let the
+  // two cards disagree (e.g. an inactive truck with no Country inflating
+  // "χωρίς χώρα" without ever showing up in the age card's denominator).
   const counts = new Map();
   let noCountry = 0;
-  records.forEach(r => {
+  active.forEach(r => {
     const raw = r.fields['Country'];
     if (!raw) { noCountry++; return; }
     const code = (typeof countryCode === 'function' && countryCode(raw)) || raw;
@@ -1045,13 +1058,12 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
     sub: '',
     // Applies the SAME _compliance filter the dropdown uses — entityFilter()
     // is the one path that sets/reads filter state (no second mechanism).
-    // 'expiring' chosen to match this card's own label ("Λήγει <30 ημ." is
-    // the dropdown option with the same wording); note this undercounts vs.
-    // the number shown above, which is expired+expiring together — the
-    // dropdown has no single value for that union, and adding one is out of
-    // scope for a KPI card (owner 6/9). Click «Με ληγμένο» separately for
-    // the expired half.
-    onClick: `entityFilter('${entityKey}','_compliance','expiring','select')`,
+    // 'due30' = expired ∪ expiring, matching this card's own count exactly
+    // (review 6/9, Critical #1 fix — 'expiring' alone silently excluded
+    // already-expired records, so a click showed fewer rows than the number
+    // on the card). The dropdown carries the same value as an option now,
+    // so it stays inspectable after the click, not just applied blind.
+    onClick: `entityFilter('${entityKey}','_compliance','due30','select')`,
   };
 
   const cards = [cardAge, cardCountry, cardExpiring];
@@ -1071,6 +1083,10 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
       value: String(maintCount),
       sub: '',
       onClick: `entitySortByField('${entityKey}','Next Maintenance Date',1)`,
+      // No table column exists to hang a ▲/▼ arrow on (see entitySortByField
+      // below), so _renderKpiCards uses this to highlight the card itself as
+      // the sort indicator instead (review 6/9, Important #1).
+      sortField: 'Next Maintenance Date',
     });
   }
   return cards;
@@ -1086,12 +1102,19 @@ function _renderKpiCards(entityKey, records) {
   const el = document.getElementById(entityKey + '_kpi');
   if (!el || !cfg || !cfg.kpiCards) return;
   const cards = cfg.kpiCards(records) || [];
-  el.innerHTML = cards.map(c => `
-    <div class="ekpi-card${c.onClick ? ' clickable' : ''}" ${c.onClick ? `onclick="${c.onClick}"` : ''}>
+  // A card that sorted by its own field (the maintenance card — no table
+  // column exists to show a ▲/▼ arrow instead) stays visibly "on" after the
+  // click, same idea as a header's sort arrow (review 6/9, Important #1).
+  const sortState = _entitySort[entityKey];
+  el.innerHTML = cards.map(c => {
+    const isActive = c.sortField && sortState && sortState.field === c.sortField;
+    return `
+    <div class="ekpi-card${c.onClick ? ' clickable' : ''}${isActive ? ' active' : ''}" ${c.onClick ? `onclick="${c.onClick}"` : ''}>
       <div class="ekpi-label">${c.label}</div>
       <div class="ekpi-value">${c.value}</div>
       ${c.sub ? `<div class="ekpi-sub">${c.sub}</div>` : ''}
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // Same visual language as dashboard.js's .dh-card (navy label, big number,
@@ -1105,6 +1128,7 @@ function _kpiCardsCss() {
 .ekpi-card{background:var(--surface-card);border:1px solid var(--border);border-radius:var(--radius);padding:var(--space-3);min-width:0;text-align:left}
 .ekpi-card.clickable{cursor:pointer}
 .ekpi-card.clickable:hover{border-color:var(--accent)}
+.ekpi-card.active{border-color:var(--accent);border-width:2px}
 .ekpi-label{font-family:'Syne',sans-serif;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--navy)}
 .ekpi-value{font-size:28px;font-weight:700;line-height:1.2;margin-top:4px;font-variant-numeric:tabular-nums;color:var(--text)}
 .ekpi-sub{font-size:12px;color:var(--text-dim);margin-top:2px}
@@ -1385,7 +1409,14 @@ function _entitySortRecords(entityKey, recs) {
     if (cfg && cfg.defaultSort) {
       return [...recs].sort((a, b) => {
         for (const f of cfg.defaultSort) {
-          const c = String(a.fields[f] || '').localeCompare(String(b.fields[f] || ''));
+          // Blank goes LAST regardless of direction — plain localeCompare('')
+          // sorted empty-Country trucks to the TOP of the list, which is the
+          // opposite of the intent (a truck missing Country is an exception
+          // to notice, not the headline row) — review 6/9, Important #2.
+          const av = String(a.fields[f] || ''), bv = String(b.fields[f] || '');
+          if (!av && bv) { return 1; }
+          if (av && !bv) { return -1; }
+          const c = av.localeCompare(bv);
           if (c) return c;
         }
         return 0;
@@ -1777,6 +1808,11 @@ function _entityFilterPred(cfg, field, val, type, entityKey) {
       });
       if (val === 'expired')  return statuses.includes('expired');
       if (val === 'expiring') return statuses.includes('expiring') && !statuses.includes('expired');
+      // due30 mirrors the KPI card's own count exactly (expired ∪ expiring) —
+      // added because the card's onClick used 'expiring' alone, which silently
+      // dropped every already-expired record from the click-through result
+      // even though they're counted on the card face (review 6/9, Critical #1).
+      if (val === 'due30')    return statuses.includes('expired') || statuses.includes('expiring');
       if (val === 'ok')       return statuses.every(s => s === 'ok' || s === 'none');
       return true;
     };
@@ -1813,6 +1849,16 @@ function applyEntityFilters(entityKey) {
   }
 
   st.filtered = recs;
+  // Re-sync bool/select <select>s to the state that just applied — a KPI
+  // card can set st.filters without ever touching the <select> itself, so
+  // without this the dropdown kept showing "Όλα" while the table was
+  // already filtered (review 6/9, Important #1). Reuses st.filters, the
+  // same object _sel() reads at initial render — no new state.
+  (cfg.filters || []).forEach(fi => {
+    if (fi.type !== 'bool' && fi.type !== 'select') return;
+    const el = document.getElementById(entityKey + '_filter_' + fi.field);
+    if (el) el.value = (st.filters[fi.field] || {}).val || '';
+  });
   const noun = cfg.countNoun || ['εγγραφή', 'εγγραφές'];
   document.getElementById(entityKey + '_table').innerHTML = buildEntityTable(entityKey, recs);
   // Η ΜΟΝΗ διαδρομή που αποδίδει τον πίνακα και για τις έξι οθόνες — άρα και το
