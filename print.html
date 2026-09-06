@@ -237,6 +237,7 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 <div id="doc"></div>
 
 <script src="core/share-helpers.js?v=1787730518"></script>
+<script src="core/countries.js"></script>
 <script>
 // Airtable token REMOVED (S-1 remediation, 2026-07-13). This page now reads
 // through the Cloudflare Worker with the logged-in user's JWT, same as core/api.js.
@@ -317,7 +318,16 @@ function resolveLoc(locField){
   var loc=allLocations.find(r=>r.id===locField[0]);if(!loc)return null;
   var l=loc.fields,parts=[];
   if(l['Address'])parts.push(l['Address']);if(l['City'])parts.push(l['City']);
-  if(l['State/province'])parts.push(l['State/province']);if(l['Country'])parts.push(l['Country']);
+  if(l['State/province'])parts.push(l['State/province']);
+  // Redesign 9/8 language layer (LBL_EN/LBL_GR, set by generatePDF before any
+  // card is built): the driver sheet reads Greek, the partner sheet English —
+  // the country name now follows the same rule, whatever spelling/code the
+  // location record stores (one list everywhere, owner 5/9).
+  if(l['Country']){
+    var isPartnerSheet=(typeof LBL!=='undefined'&&LBL===LBL_EN);
+    parts.push(typeof countryName==='function'
+      ? countryName(l['Country'], isPartnerSheet?'en':'el') : l['Country']);
+  }
   return{name:l['Name']||'—',address:parts.join(', '),lat:l['Latitude']||'',lng:l['Longitude']||'',
     hours:l['Opening Hours']||'',days:l['Delivery Days']||''}; // Wave 3
 }

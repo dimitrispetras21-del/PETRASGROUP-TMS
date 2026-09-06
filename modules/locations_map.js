@@ -181,7 +181,10 @@ function _lmapBuildPoints() {
     if (!isFinite(la) || !isFinite(lo)) continue;   // 8 σημεία δεν έχουν γεωκωδικοποιηθεί ακόμη
     const t = f['Type'] || '';
     LMAP.pts.push({
-      id: r.id, n: f['Name'] || '—', c: f['City'] || '', k: f['Country'] || '',
+      // One list everywhere (owner 5/9): k always carries the Greek name, whatever
+      // spelling/code the record stores — every popup/tooltip below reads it as-is.
+      id: r.id, n: f['Name'] || '—', c: f['City'] || '',
+      k: f['Country'] ? (typeof countryName === 'function' ? countryName(f['Country']) : f['Country']) : '',
       t: t, g: _lmapCategorize(t, f['Name']), cl: _lmapClientOf(t),
       la: la, lo: lo, sp: '', ph: '', ct: ''
     });

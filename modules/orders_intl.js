@@ -396,7 +396,12 @@ async function renderOrdersIntl() {
     // use (no new endpoint); the helpers keep only the joined label.
     try {
       (await atGet(TABLES.LOCATIONS)).forEach(l => {
-        _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '', country: l.fields['Country'] || '' };
+        // One list everywhere (owner 5/9): resolve to the Greek name once here
+        // so every reader of _oiLocMeta (row sub-line, stop popover) gets it
+        // for free, whatever spelling/code the location record still stores.
+        const rawCountry = l.fields['Country'] || '';
+        _oiLocMeta[l.id] = { name: l.fields['Name'] || '', city: l.fields['City'] || '',
+          country: rawCountry && typeof countryName === 'function' ? countryName(rawCountry) : rawCountry };
       });
     } catch(e) { console.warn('orders_intl: location meta', e); _oiLoadWarns.push(_OI_WARN_LOC); }
     records.forEach(r => {
@@ -2692,8 +2697,11 @@ async function _scanPreview(data) {
       </div>
       ${row('Client',   escapeHtml(clientLabel||data.client_name), !!clientId)}
       ${data.reference ? row('Reference', escapeHtml(String(data.reference)), true) : ''}
-      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
-      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+s.country:'')), !!s._locId)).join('')}
+      ${/* s.country is whatever spelling the AI extracted from the document; countryName()
+            returns it unchanged when unrecognised (K3), so this only ever improves the
+            fallback line and never masks a real extraction miss. */''}
+      ${loadStops.map((s,i)=>row('Loading '+(loadStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId)).join('')}
+      ${delStops.map((s,i)=>row('Delivery '+(delStops.length>1?i+1:''), escapeHtml(s._locLabel||s.city+(s.country?', '+(typeof countryName==='function'?countryName(s.country):s.country):'')), !!s._locId)).join('')}
       ${row('Load Date',  escapeHtml(data.loading_date),  true)}
       ${row('Del Date',   escapeHtml(data.delivery_date),  true)}
       ${row('Goods',      escapeHtml(data.goods),          true)}
