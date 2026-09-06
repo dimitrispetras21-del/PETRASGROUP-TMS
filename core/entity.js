@@ -1000,6 +1000,16 @@ function _renderStatsBarV2(entityKey, records) {
 // principle 3 (two sources of truth means none). Computed from the records
 // the screen already holds — no new fetch (PRIME DIRECTIVE: no perf/
 // architecture change without asking).
+// ONE expiry rule for the «Έγγραφα» filter and the KPI card: the card used
+// floor()/«≤30» and the filter ceil()/«<30», so a document due in 31 days was
+// counted on the card face but missing from the click-through — 18 vs 14 on
+// the live trucks list, 6/9/2026 21:35 (four insurances expiring 7/10).
+function _expiryStatus(d) {
+  if (!d) return 'none';
+  const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+  return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
+}
+
 function _fleetKpiCards(entityKey, records, withMaintenance) {
   const now = Date.now();
   const active = records.filter(r => r.fields['Active']);
@@ -1050,10 +1060,8 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
   // «Ενεργό» list, so counting inactive vehicles here showed 26 while the click
   // listed 14 (live check 6/9 21:20). Card and list must agree.
   const expiringCount = active.filter(r => EXP.some(f => {
-    const d = r.fields[f];
-    if (!d) return false;
-    const days = Math.floor((new Date(d).getTime() - now) / 86400000);
-    return days <= 30; // negative (already expired) counts too — same as the card's own label
+    const s = _expiryStatus(r.fields[f]); // same rule as the filter's due30
+    return s === 'expired' || s === 'expiring';
   })).length;
   const cardExpiring = {
     label: 'Λήγουν σε 30 ημ.',
@@ -1803,12 +1811,7 @@ function _entityFilterPred(cfg, field, val, type, entityKey) {
     const expFields = complianceCol ? complianceCol.fields.map(fc => fc.field) : _EXPIRY_FIELDS[entityKey];
     if (!expFields) return null;
     return r => {
-      const statuses = expFields.map(fld => {
-        const d = r.fields[fld];
-        if (!d) return 'none';
-        const days = Math.ceil((new Date(d) - new Date()) / 86400000);
-        return days < 0 ? 'expired' : days < 30 ? 'expiring' : 'ok';
-      });
+      const statuses = expFields.map(fld => _expiryStatus(r.fields[fld]));
       if (val === 'expired')  return statuses.includes('expired');
       if (val === 'expiring') return statuses.includes('expiring') && !statuses.includes('expired');
       // due30 mirrors the KPI card's own count exactly (expired ∪ expiring) —
