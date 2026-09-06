@@ -2,7 +2,7 @@
 
 **Ποιος:** Δημήτρης (owner) · Fable 5.1 (συντονιστής) · Sonnet (ελεγκτές, υλοποιητές)
 **Figma:** `KO7l2AfucR3HJEDIg1Yptr`, σελίδα Screens
-**Κατάσταση:** απογραφή · υλοποίηση · **ανεξάρτητη επαλήθευση: 3/3 κλάδοι ΠΕΡΝΟΥΝ** · **χωρίς merge/deploy** (απόφαση owner: στο τέλος, μαζί)
+**Κατάσταση:** απογραφή · υλοποίηση · **ανεξάρτητη επαλήθευση: 5/5 κλάδοι-παραδόσεις ΠΕΡΝΟΥΝ (5/9: entity, locations, orders · 6/9: weekly-natl-assign, orders Groupage — payload diff κενό, intl popover pixel diff 0)** · **χωρίς merge/deploy** (απόφαση owner: στο τέλος, μαζί)
 
 ## 1. Το αίτημα
 
