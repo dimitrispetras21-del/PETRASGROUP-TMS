@@ -323,7 +323,15 @@ async function renderInvoicing() {
     intlRecs.forEach(r => { r._type = 'intl'; });
     natlRecs.forEach(r => { r._type = 'natl'; });
 
-    INV.data = [...intlRecs, ...natlRecs];
+    // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is the parent order's own
+    // execution detail — the parent still carries client/price/invoiced, so
+    // invoicing must count and bill it once, not once per leg. No-op while the
+    // flag is off (nothing ever has Parent Order set until migration 018 +
+    // Worker deploy) — this is a pure client-side filter, no request change.
+    const _invVisible = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
+      ? intlRecs.filter(r => !getLinkedId(r.fields['Parent Order']))
+      : intlRecs;
+    INV.data = [..._invVisible, ...natlRecs];
     INV.filtered = INV.data;
     INV.selectedId = null;
     _invFilters.tab = 'ready';

@@ -89,17 +89,35 @@ const _rtWarn = (msg) => { if (typeof showErrorToast === 'function') showErrorTo
 // alone missed a group's rotation leg when triggered from the group's
 // MATCHED IMPORT (the import has no Group ID of its own to expand from) —
 // caught by the unit test that triggers from each side of the same trip.
+// Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a split PARENT never joins a round
+// trip — its Truck/Partner are cleared on split (docs/design/2026-09-06-order-
+// split.md: «Roundtrip: ποτέ» for the parent, status becomes derived from its
+// legs), so it already fails rtOnOrderSaved's `assigned` check on its own and
+// never reaches this function in the normal flow. This is defence in depth for
+// any caller that hands us a parent id directly (e.g. a future Ρότα «add» on a
+// split row) — pure, no I/O, so rtLegsForOrder stays unit-testable with plain
+// node. A LEG (its OWN Parent Order is set) is unaffected — it is an ordinary
+// order for the feed, exactly like before this order-splitting feature existed.
+function _rtIsSplitParent(o, byId) {
+  if (!o || !o.fields || o.fields['Parent Order']) return false; // legs are ordinary
+  const pid = o.id;
+  return Object.values(byId).some(cand => {
+    const p = (cand.fields || {})['Parent Order'];
+    return (Array.isArray(p) ? p[0] : p) === pid;
+  });
+}
 function rtLegsForOrder(order, allOrders) {
   const byId = {};
   (allOrders || []).forEach(o => { if (o && o.id) byId[o.id] = o; });
   const start = (order && order.id && byId[order.id]) ? byId[order.id] : order;
   if (!start || !start.id) return [];
   byId[start.id] = start;
+  if (_rtIsSplitParent(start, byId)) return [];
 
   const dirOf = o => ((o.fields || {})['Direction'] === 'Import') ? 'IMPORT' : 'EXPORT';
   const seen = new Set([start.id]);
   const queue = [start.id];
-  const visit = id => { if (id && byId[id] && !seen.has(id)) { seen.add(id); queue.push(id); } };
+  const visit = id => { if (id && byId[id] && !seen.has(id) && !_rtIsSplitParent(byId[id], byId)) { seen.add(id); queue.push(id); } };
 
   while (queue.length) {
     const o = byId[queue.pop()];
@@ -147,7 +165,11 @@ async function _rtGatherOrders(rec) {
       for (const cand of await filterIn(`{Rotation ID}='${id}'`)) { if (!byId[cand.id]) { byId[cand.id] = cand; grew = true; } }
     }
   }
-  return Object.values(byId);
+  // Wave 3: strip any gathered order that turned out to be a split PARENT —
+  // rtLegsForOrder's own guard already excludes it from the final leg set, but
+  // dropping it here too means a stray candidate never reaches _rtPg for a
+  // wasted /pallets/gate lookup.
+  return Object.values(byId).filter(o => !_rtIsSplitParent(o, byId));
 }
 
 // Exposed for callers that need an order's round trip without re-implementing
