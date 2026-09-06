@@ -104,6 +104,10 @@ const TRUCK_EXPIRY_FIELDS = [
   { field: 'KTEO Expiry',      label: 'KTEO' },
   { field: 'KEK Expiry',       label: 'KEK' },
   { field: 'Insurance Expiry', label: 'Insurance' },
+  // Tachograph calibration (owner 6/9/2026: «πολύ σημαντικό», trucks only).
+  // Feeds the maintenance expiry table + alerts; the column arrives with
+  // worker/migrations/017_fleet.sql — until then the cell simply reads «—».
+  { field: 'Tachograph Expiry', label: 'Ταχογράφος' },
 ];
 const TRAILER_EXPIRY_FIELDS = [
   { field: 'KTEO Expiry',      label: 'KTEO' },
