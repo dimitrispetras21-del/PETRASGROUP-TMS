@@ -547,9 +547,15 @@ function _renderNatlTable(records) {
   // The legend goes ABOVE the table, not under it: the scroller is
   // «calc(100vh - 280px)», so at 1440×900 — the team's screen — anything after
   // it falls below the fold and is never seen. Measured 3/9.
+  // overflow-anchor:none on the scroller (owner 6/9/2026: «η κύλιση από ένα σημείο
+  // και μετά πάει τρομερά γρήγορα χωρίς να σταματάει»). Chrome's scroll anchoring
+  // picks a row as anchor; the virtual paint replaces tbody and grows the top
+  // spacer, the browser «compensates» scrollTop, that fires scroll → paint again:
+  // a runaway loop that froze the tab in the repro. Anchoring is meaningless for
+  // a list whose rows are recycled, so it is switched off.
   wrap.innerHTML = `
     <div class="on-legend">${_ON_LEGEND}</div>
-    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto">
+    <div id="onVScroll" style="height:calc(100vh - 280px);overflow-y:auto;overflow-anchor:none">
       <table style="table-layout:fixed;width:100%">${colgroup}
         <thead><tr>${ths}</tr></thead>
       </table>
