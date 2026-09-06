@@ -176,5 +176,20 @@ class TestBuildPlan(unittest.TestCase):
         self.assertEqual([r['entry_type'] for b_ in p['batches'] for r in b_['rows']], ['trip', 'trip'])
         self.assertEqual(p['expected_total_balance'], '250.00')
 
+    def test_skip_overlaps_ok_and_date_override(self):
+        a = node('F1', 'S1', [row(4, '2024-01-10', value=500, advance=300), row(5, '2024-01-20', value=100, advance=0)], final='300.00')
+        b = node('F1', 'S2', [row(4, '2024-01-15', value=50, advance=0)], final='50.00')
+        p = build_plan('X', ENTRY, [a, b], [], None)
+        self.assertTrue(any('επικαλύπτονται' in d for d in p['needs_decision']))
+        p2 = build_plan('X', ENTRY, [a, b], [], {'overlaps_ok': [['S1', 'S2']], 'settled': [{'file_id': 'F1', 'sheet': 'S1', 'why': 'paid'}]})
+        self.assertFalse(any('επικαλύπτονται' in d for d in p2['needs_decision']))
+        c = node('F1', 'S3', [row(4, '2024-01-10', value=500, advance=300), row(5, '2026-12-17', 'payment_bank', amount=100, problem='date 2026-12-17 is a spike'), row(6, '2024-02-20', value=100, advance=0)], final='200.00')
+        p3 = build_plan('X', ENTRY, [c], [], {'date_overrides': [{'file_id': 'F1', 'sheet': 'S3', 'row': 5, 'entry_date': '2024-02-17', 'why': 'month typo'}]})
+        self.assertEqual(p3['status'], 'ready', p3['needs_decision'])
+        r5 = next(r for r in p3['batches'][0]['rows'] if r['src']['row'] == 5)
+        self.assertEqual(r5['entry_date'], '2024-02-17'); self.assertIn('2026-12-17', r5['note'])
+        p4 = build_plan('X', ENTRY, [a], [], {'skip': True, 'skip_why': 'inactive'})
+        self.assertEqual(p4['status'], 'skip'); self.assertEqual(p4['batches'], []); self.assertIn('ΠΑΡΑΛΕΙΨΗ', p4['needs_decision'][0])
+
 if __name__ == '__main__':
     unittest.main()

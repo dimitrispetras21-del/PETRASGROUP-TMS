@@ -27,7 +27,10 @@ def verify(plan, nodes, auto_rows, map_entry):
     if plan.get('status') == 'needs_decision':
         if not plan.get('needs_decision'): errs.append('status needs_decision without reasons')
         return errs
-    if plan.get('status') != 'ready': errs.append('status must be ready or needs_decision'); return errs
+    if plan.get('status') == 'skip':
+        if not plan.get('needs_decision'): errs.append('status skip without a reason')
+        return errs
+    if plan.get('status') != 'ready': errs.append('status must be ready, needs_decision or skip'); return errs
     # Identity is the one thing the arithmetic cannot catch: a wrong driver_id
     # writes a perfectly balanced ledger onto the wrong person.
     if not plan.get('driver_id') and not plan.get('create_driver'): errs.append('neither driver_id nor create_driver')
@@ -50,7 +53,10 @@ def verify(plan, nodes, auto_rows, map_entry):
         if src is None: errs.append('chain node %s/%s not in inventory' % (n['file_id'], n['sheet'])); continue
         if src['out_of_scope']: errs.append('chain node %s is out_of_scope layout' % n['sheet'])
         if src['unknown']: errs.append('chain node %s has %d unknown rows — must be needs_decision' % (n['sheet'], len(src['unknown'])))
-        if any(r['date_problem'] for r in src['rows']): errs.append('chain node %s has unrepaired dates' % n['sheet'])
+        # A human decision may have replaced a spike date (recorded in date_fixes as 'απόφαση');
+        # those rows are no longer unrepaired.
+        decided = {(f.get('sheet'), f.get('row')) for f in plan.get('date_fixes', []) if f.get('note') == 'απόφαση'}
+        if any(r['date_problem'] and (n['sheet'], r['row']) not in decided for r in src['rows']): errs.append('chain node %s has unrepaired dates' % n['sheet'])
         if src.get('running_consistent') is False: errs.append('chain node %s: Excel ΠΡΟΟΔΕΥΤΙΚΟ inconsistent with rows — needs_decision' % n['sheet'])
     auto = {a['dl_id']: a for a in auto_rows}
     total = Decimal('0')

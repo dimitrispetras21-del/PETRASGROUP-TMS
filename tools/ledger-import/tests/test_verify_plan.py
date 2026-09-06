@@ -113,5 +113,15 @@ class TestVerify(unittest.TestCase):
         errs = verify(p, [NODE], AUTO, MAP)
         self.assertTrue(any('date_end' in e for e in errs))
 
+    def test_skip_status_passes_with_reason(self):
+        self.assertEqual(verify(plan(status='skip', needs_decision=['ΠΑΡΑΛΕΙΨΗ: inactive']), [NODE], AUTO, MAP), [])
+        self.assertTrue(verify(plan(status='skip', needs_decision=[]), [NODE], AUTO, MAP))
+
+    def test_decided_date_override_clears_unrepaired_flag(self):
+        node = copy.deepcopy(NODE); node['rows'][0]['date_problem'] = 'spike'
+        self.assertTrue(any('unrepaired' in e for e in verify(plan(), [node], AUTO, MAP)))
+        p = plan(date_fixes=[{'from': '2024-01-10', 'to': '2024-02-10', 'note': 'απόφαση', 'sheet': 'S1', 'row': 4}])
+        self.assertFalse(any('unrepaired' in e for e in verify(p, [node], AUTO, MAP)))
+
 if __name__ == '__main__':
     unittest.main()

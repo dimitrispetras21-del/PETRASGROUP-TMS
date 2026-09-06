@@ -42,6 +42,14 @@ def build_plan(key, entry, nodes, auto_rows, decision, file_hashes=None):
     dec_open = {(d['file_id'], d['sheet']): d for d in dec.get('openings', [])}
     dec_carry = {(d['file_id'], d['sheet'], d['row']): d for d in dec.get('carries', [])}
     settled = {(d['file_id'], d['sheet']) for d in dec.get('settled', [])}
+    overlaps_ok = {tuple(x) for x in dec.get('overlaps_ok', [])}          # pairs of sheet names whose date overlap a human accepted
+    date_overrides = {(d['file_id'], d['sheet'], d['row']): d for d in dec.get('date_overrides', [])}
+    if dec.get('skip'):
+        # Owner 6/9/2026: an inactive driver's unresolved past is not imported — a returning
+        # driver starts from zero. The plan says so instead of pretending to be ready.
+        return {'driver_key': key, 'driver_id': entry.get('driver_id'), 'create_driver': entry.get('create'), 'nodes': [], 'batches': [], 'patches': [],
+                'cutoff': None, 'auto_unmatched': [], 'date_fixes': [], 'needs_decision': ['ΠΑΡΑΛΕΙΨΗ: ' + str(dec.get('skip_why', 'απόφαση'))],
+                'warnings': [], 'crosscheck': {}, 'expected_total_balance': '0.00', 'status': 'skip'}
     canon = [n for f in files for n in nodes if n['file_id'] == f]
     cross = [n for n in nodes if n['file_id'] in entry.get('crosscheck', [])]
     roles = {}
@@ -64,6 +72,7 @@ def build_plan(key, entry, nodes, auto_rows, decision, file_hashes=None):
                 roles[ka] = 'duplicate'; chain.remove(a); warnings.append('%s/%s: rows ⊆ %s/%s → duplicate' % (a['file_id'][:8], a['sheet'], b['file_id'][:8], b['sheet'])); break
     # rule 2 — overlapping chain nodes
     for i in range(1, len(chain)):
+        if (chain[i - 1]['sheet'], chain[i]['sheet']) in overlaps_ok: continue
         if chain[i - 1]['last_date'] and chain[i]['first_date'] and chain[i]['first_date'] < chain[i - 1]['last_date']:
             needs.append('φύλλα %s και %s επικαλύπτονται χρονικά (%s > %s)' % (chain[i - 1]['sheet'], chain[i]['sheet'], chain[i - 1]['last_date'], chain[i]['first_date']))
     plan_nodes = [{'file_id': n['file_id'], 'file_name': n['file_name'], 'sheet': n['sheet'], 'role': roles[(n['file_id'], n['sheet'])],
@@ -99,6 +108,12 @@ def build_plan(key, entry, nodes, auto_rows, decision, file_hashes=None):
         for r in n['rows']:
             e = r['entry']; src = dict(src0, row=r['row'])
             if r.get('date_fix'): date_fixes.append(dict(r['date_fix'], sheet=n['sheet'], row=r['row']))
+            ok_ = (n['file_id'], n['sheet'], r['row'])
+            if ok_ in date_overrides and e['entry_type'] != 'carry':
+                o = date_overrides[ok_]; e = dict(e)
+                e['note'] = ((e.get('note') or '') + ' · ' if e.get('note') else '') + 'ημ/νία Excel %s → %s (απόφαση: %s)' % (e['entry_date'], o['entry_date'], o.get('why', '—'))
+                date_fixes.append({'from': e['entry_date'], 'to': o['entry_date'], 'note': 'απόφαση', 'sheet': n['sheet'], 'row': r['row']})
+                e['entry_date'] = o['entry_date']
             # I2: a negative trip_value/advance/expenses in the Excel is almost always a
             # typo or a sign error, not a real reversal — a human decides, the row still
             # passes through so the sheet's own arithmetic checks below stay meaningful.
@@ -127,7 +142,7 @@ def build_plan(key, entry, nodes, auto_rows, decision, file_hashes=None):
         for u in n.get('unknown', []): needs.append('%s γρ. %d: %s' % (n['sheet'], u['row'], u['reason']))
         for t in n.get('text_amount_rows', []): needs.append('ποσό ως κείμενο: %s γρ. %d/%s/%s' % (n['sheet'], t['row'], t['field'], t['text']))
         for r in n['rows']:
-            if r.get('date_problem'): needs.append('%s γρ. %d: %s' % (n['sheet'], r['row'], r['date_problem']))
+            if r.get('date_problem') and (n['file_id'], n['sheet'], r['row']) not in date_overrides: needs.append('%s γρ. %d: %s' % (n['sheet'], r['row'], r['date_problem']))
         if n.get('running_consistent') is False: needs.append('%s: το ΠΡΟΟΔΕΥΤΙΚΟ του Excel δεν συμφωνεί με τις γραμμές (raw %s, αναμενόμενο %s)' % (n['sheet'], n.get('raw_final'), n['expected_final']))
         node_final = sum((delta(x) for x in node_lines), Decimal('0'))
         running_final = node_final + skipped
