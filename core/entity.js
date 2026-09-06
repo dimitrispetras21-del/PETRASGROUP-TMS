@@ -1046,7 +1046,10 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
   // (_EXPIRY_FIELDS, the one source — see the _compliance fallback in
   // _entityFilterPred). A record counts once even with several fields due.
   const EXP = _EXPIRY_FIELDS[entityKey] || [];
-  const expiringCount = records.filter(r => EXP.some(f => {
+  // Base = active, like cards 1–2: the click filters INSIDE the default
+  // «Ενεργό» list, so counting inactive vehicles here showed 26 while the click
+  // listed 14 (live check 6/9 21:20). Card and list must agree.
+  const expiringCount = active.filter(r => EXP.some(f => {
     const d = r.fields[f];
     if (!d) return false;
     const days = Math.floor((new Date(d).getTime() - now) / 86400000);
@@ -1072,7 +1075,7 @@ function _fleetKpiCards(entityKey, records, withMaintenance) {
   // (cardSpecs/the form only, T2 6/9), so sorting by it can't go through
   // entitySortToggle's column-index lookup — see entitySortByField below.
   if (withMaintenance) {
-    const maintCount = records.filter(r => {
+    const maintCount = active.filter(r => { // same base as the other cards (6/9)
       const d = r.fields['Next Maintenance Date'];
       if (!d) return false;
       const days = Math.floor((new Date(d).getTime() - now) / 86400000);
