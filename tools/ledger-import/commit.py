@@ -22,7 +22,11 @@ class Api:
     def _req(self, method, path, body=None):
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(PROXY + path, data=data, method=method,
-                                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.token})
+                                     # The Worker answers 403 to any request without the app's Origin
+                                     # (deployed index.js:308), even with a valid token.
+                                     headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + self.token,
+                                              'Origin': 'https://dimitrispetras21-del.github.io',
+                                              'User-Agent': 'Mozilla/5.0 (ledger-import commit)'})
         self.log.write('%s %s %s\n' % (dt.datetime.now().isoformat(timespec='seconds'), method, path))   # never the token, never the body
         try:
             with urllib.request.urlopen(req, timeout=180) as res: return json.load(res)
