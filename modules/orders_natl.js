@@ -2224,7 +2224,10 @@ async function _natlScanPreview(data) {
   const allLocs = (typeof getRefLocations === 'function' ? getRefLocations() : []) || [];
   const locList = allLocs.map(l => ({
     id: l.id,
-    label: [(l.fields?.['Name']||''), (l.fields?.['City']||''), (l.fields?.['Country']||'')].filter(Boolean).join(' · '),
+    // One list everywhere (owner 5/9): Greek name, whatever spelling/code the
+    // location record stores — same normalisation as the rest of the screen.
+    label: [(l.fields?.['Name']||''), (l.fields?.['City']||''),
+      (l.fields?.['Country'] && typeof countryName === 'function' ? countryName(l.fields['Country']) : (l.fields?.['Country']||''))].filter(Boolean).join(' · '),
   })).filter(l => l.label);
   const _matchLoc = s => {
     if (s.location_id) {

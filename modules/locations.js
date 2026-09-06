@@ -208,11 +208,27 @@ function _locToggleMap() {
 
 // ── Filter options ─────────────────────────────
 function _locBuildFilterOptions() {
-  const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
   const cf = document.getElementById('locCountryFilter');
   // LO-2: η παλιά κάρτα «Ελλιπή Στοιχεία» οδηγούσε εδώ — μένει ως μόνιμη επιλογή
   { const o = document.createElement('option'); o.value = '__missing'; o.textContent = '— Ελλιπή στοιχεία'; cf.appendChild(o); }
-  countries.forEach(c => { const o = document.createElement('option'); o.value = o.textContent = c; cf.appendChild(o); });
+
+  // One list everywhere (owner 5/9): options collapse on the ISO code so
+  // «GR» and «Greece» are ONE entry instead of two — CL-1/PA-1's bug, here
+  // for LOCATIONS too. Labels are always the Greek name; the value stays
+  // the code so the predicate below compares like-for-like.
+  const codes = new Set();
+  let hasUnknown = false;
+  LOC.records.forEach(r => {
+    const raw = r.fields.Country;
+    if (!raw) return;
+    const c = typeof countryCode === 'function' ? countryCode(raw) : null;
+    if (c) codes.add(c); else hasUnknown = true;
+  });
+  [...codes].sort((a, b) => countryName(a).localeCompare(countryName(b), 'el'))
+    .forEach(c => { const o = document.createElement('option'); o.value = c; o.textContent = countryName(c); cf.appendChild(o); });
+  // K3: a spelling countryCode() cannot resolve is never dropped from the
+  // filter — one shared bucket instead of one stray option per misspelling.
+  if (hasUnknown) { const o = document.createElement('option'); o.value = '__unknown'; o.textContent = 'άγνωστη γραφή'; cf.appendChild(o); }
 
   // Τύποι από τα ΔΕΔΟΜΕΝΑ, όχι από σταθερή λίστα: η παλιά είχε «Office»,
   // «Budapest Hub», «Service / Workshop» που δεν υπάρχουν σε καμία εγγραφή
@@ -244,7 +260,10 @@ function _locApplyFilters() {
     const f = r.fields;
     if (LOC.noCoords && _locHasCoords(f)) return false;
     if (country === '__missing') { if (f.Country && f.City) return false; }
-    else if (country && f.Country !== country) return false;
+    else if (country === '__unknown') {
+      if (!f.Country || (typeof countryCode === 'function' && countryCode(f.Country))) return false;
+    }
+    else if (country && (typeof countryCode === 'function' ? countryCode(f.Country) !== country : f.Country !== country)) return false;
     if (type && (f.Type || '').trim() !== type) return false;
     if (q) {
       const hay = [f.Name, f.City, f.Country, f.Address].filter(Boolean).join(' ').toLowerCase();
@@ -303,7 +322,11 @@ function _locRenderTable() {
     return `<tr onclick="_locOpenCard('${r.id}')">
       <td><div class="loc-cell2"><div class="loc-name">${_locEsc(f.Name || '—')}</div>${f.Address ? `<div class="loc-sub">${_locEsc(f.Address)}</div>` : ''}</div></td>
       <td>${f.City ? _locEsc(f.City) : '<span class="loc-dash">—</span>'}</td>
-      <td>${f.Country ? _locEsc(f.Country) : '<span class="loc-dash">—</span>'}</td>
+      <td>${f.Country ? (typeof countryIsKnown === 'function' && !countryIsKnown(f.Country)
+        // K3/K7: a spelling countryCode() cannot resolve is shown, muted, with the
+        // reason — never silently swapped for a guess or hidden as a dash.
+        ? `<span class="loc-dash" title="άγνωστη γραφή — χρειάζεται διόρθωση">${_locEsc(countryName(f.Country))}</span>`
+        : _locEsc(typeof countryName === 'function' ? countryName(f.Country) : f.Country)) : '<span class="loc-dash">—</span>'}</td>
       <td class="loc-type">${f.Type ? _locEsc(f.Type) : '<span class="loc-dash">—</span>'}</td>
       <td>
         ${hasCoords
@@ -380,9 +403,7 @@ function _locOpenEdit(id) {
 }
 
 function _locFormHTML(f) {
-  const countries = [...new Set(LOC.records.map(r => r.fields.Country).filter(Boolean))].sort();
   return `
-<datalist id="locCDL">${countries.map(c => `<option value="${_locEsc(c)}">`).join('')}</datalist>
 <datalist id="locTDL">${['Client Depot','Fuel Station','Partner Warehouse','ΣΥΝΕΡΓΕΙΟ','Custom Point','Veroia Hub','Πλυντήριο'].map(t => `<option value="${t}">`).join('')}</datalist>
 <div class="form-grid">
   <div class="form-field span-2">
@@ -392,7 +413,9 @@ function _locFormHTML(f) {
   </div>
   <div class="form-field">
     <label class="form-label">Χώρα</label>
-    <input id="locF_country" class="form-input" list="locCDL" placeholder="π.χ. Greece" value="${_locEsc(f.Country||'')}">
+    <!-- One list everywhere (owner 5/9): a free-text datalist spread misspellings
+         (this field is the reason CL-1/PA-1 exist) — see core/countries.js. -->
+    <select id="locF_country" class="form-input">${countryOptionsHtml(f.Country)}</select>
   </div>
   <div class="form-field">
     <label class="form-label">Πόλη</label>
@@ -497,7 +520,10 @@ async function _locGeocode() {
   const name    = document.getElementById('locF_name')?.value.trim();
   const city    = document.getElementById('locF_city')?.value.trim();
   const country = document.getElementById('locF_country')?.value.trim();
-  const q = [name, city, country].filter(Boolean).join(', ');
+  // The select now stores the ISO code (GR), not free text (Greece) — Nominatim's
+  // free-text q= matches the full country name far more reliably than a bare code.
+  const countryQ = country && typeof countryName === 'function' ? countryName(country, 'en') : country;
+  const q = [name, city, countryQ].filter(Boolean).join(', ');
   if (!q) { toast('Συμπλήρωσε πρώτα όνομα ή πόλη', 'danger'); return; }
   const btn = document.getElementById('locGeoBtn');
   if (btn) { btn.textContent = 'Αναζήτηση…'; btn.disabled = true; }
@@ -773,7 +799,7 @@ function _locCardHtml(rec, loadingBody) {
   const head = `
   <div class="locc-head"><button class="locc-close" onclick="_locCloseCard()">&times;</button>
     <h2>${_locEsc(f.Name || '—')}</h2>
-    <div class="locc-meta">${_locEsc(f.City || '—')} · ${_locEsc(f.Country || '—')}</div>
+    <div class="locc-meta">${_locEsc(f.City || '—')} · ${_locEsc(f.Country ? (typeof countryName === 'function' ? countryName(f.Country) : f.Country) : '—')}</div>
     ${f.Address ? '<div class="locc-addr">' + _locEsc(f.Address) + '</div>' : ''}
     ${_locTypeChips()}</div>`;
   const maps = (f.Latitude != null && f.Longitude != null)

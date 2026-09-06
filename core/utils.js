@@ -131,7 +131,10 @@ function rtLegBlockHtml(legs) {
     const stops = extraStops > 0
       ? ` <span class="rt-c">+${extraStops} στάσ${extraStops === 1 ? 'η' : 'εις'}</span>`
       : '';
-    const cc = [p.city, p.country].filter(Boolean).join(', ');
+    // One list everywhere (owner 5/9): show the Greek name whatever the stored
+    // spelling is — the RT feed carries the raw value straight from the DB.
+    const country = typeof countryName === 'function' ? countryName(p.country) : p.country;
+    const cc = [p.city, country].filter(Boolean).join(', ');
     return `<span class="rt-n">${escapeHtml(String(p.name).toUpperCase())}</span>${stops}`
       + (cc ? `<br><span class="rt-c">${escapeHtml(cc)}</span>` : '');
   };

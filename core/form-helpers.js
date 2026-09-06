@@ -19,7 +19,9 @@ async function fhLoadLocations() {
   const sorted = locs
     .map(r => ({
       id: r.id,
-      label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ')
+      // One list everywhere (owner 5/9): the picker shows the Greek name even
+      // when the record still stores an old English/Greek spelling or code.
+      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
   // Push into shared array (don't reassign — other refs may hold it)
@@ -37,7 +39,9 @@ function _fhRefreshLocations(locRecords) {
   const sorted = locRecords
     .map(r => ({
       id: r.id,
-      label: [r.fields['Name'], r.fields['City'], r.fields['Country']].filter(Boolean).join(', ')
+      // One list everywhere (owner 5/9): the picker shows the Greek name even
+      // when the record still stores an old English/Greek spelling or code.
+      label: [r.fields['Name'], r.fields['City'], typeof countryName === 'function' ? countryName(r.fields['Country']) : r.fields['Country']].filter(Boolean).join(', ')
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
   _fhLocationsArr.length = 0;

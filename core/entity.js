@@ -198,7 +198,7 @@ const ENTITY_CONFIG = {
       // this is a 3-col continuation of ΣΤΟΙΧΕΙΑ ΕΤΑΙΡΕΙΑΣ above, not a new
       // heading (clients-form 120:395 puts Χώρα/Πόλη/Διεύθυνση on one row).
       { section: '', cols: 3, fields: [
-        { f: 'Country',      label: 'Χώρα' },
+        { f: 'Country',      label: 'Χώρα', type: 'country' },
         { f: 'City',         label: 'Πόλη' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
@@ -262,7 +262,7 @@ const ENTITY_CONFIG = {
       { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
         { f: 'VAT Number',   label: 'ΑΦΜ' },
-        { f: 'Country',      label: 'Χώρα' },
+        { f: 'Country',      label: 'Χώρα', type: 'country' },
         { f: 'Adress',       label: 'Διεύθυνση' },
       ]},
       { section: 'Επικοινωνία', fields: [
@@ -651,6 +651,10 @@ const ENTITY_CONFIG = {
         // If a 422 'Unknown field name: Address' appears for WORKSHOPS, change here.
         { f: 'Address',        label: 'Διεύθυνση' },
         { f: 'City',           label: 'Πόλη' },
+        // Country existed only as a list filter (line ~609) — no form field ever
+        // wrote it, so the filter always ran against whatever import wrote in.
+        // Same select as clients/partners (owner 5/9: one country list).
+        { f: 'Country',        label: 'Χώρα', type: 'country' },
         { f: 'Notes',          label: 'Σημειώσεις', type: 'textarea' },
       ]},
     ],
@@ -718,14 +722,29 @@ async function renderEntity(entityKey) {
     if (fi.type === 'dynamic') {
       // CL-1/PA-1: το φίλτρο χώρας πρόσφερε GR · GREECE · ΕΛΛΑΔΑ ως τρεις
       // ΞΕΧΩΡΙΣΤΕΣ επιλογές, οπότε όποιος διάλεγε «GR» έχανε σιωπηλά τους
-      // άλλους δύο. Οι επιλογές ομαδοποιούνται πλέον στην κανονική μορφή· η
-      // τιμή της εγγραφής μένει ανέγγιχτη.
+      // άλλους δύο. Οι επιλογές ομαδοποιούνται πλέον στον κωδικό ISO (one
+      // list everywhere, owner 5/9) — η τιμή της εγγραφής μένει ανέγγιχτη.
       const _isCountry = /country|χωρα|χώρα/i.test(fi.field) || /country/i.test(fi.label || '');
-      dynamicOpts[fi.field] = [...new Set(records
-        .map(r => _isCountry && typeof normalizeCountry === 'function'
-          ? normalizeCountry(r.fields[fi.field]) : r.fields[fi.field])
-        .filter(Boolean))].sort();
-      if (_isCountry) dynamicOpts['__norm__' + fi.field] = true;
+      if (_isCountry && typeof countryCode === 'function') {
+        const codes = new Set();
+        let hasUnknown = false;
+        records.forEach(r => {
+          const raw = r.fields[fi.field];
+          if (!raw) return;
+          const c = countryCode(raw);
+          if (c) codes.add(c); else hasUnknown = true;
+        });
+        // Sorted by the Greek name the option shows, not the raw code.
+        dynamicOpts[fi.field] = [...codes].sort((a, b) => countryName(a).localeCompare(countryName(b), 'el'));
+        // K3: an unrecognised spelling is never dropped — it gets ONE shared
+        // bucket instead of one stray option per misspelling.
+        if (hasUnknown) dynamicOpts[fi.field].push('__unknown');
+      } else {
+        dynamicOpts[fi.field] = [...new Set(records
+          .map(r => _isCountry && typeof normalizeCountry === 'function'
+            ? normalizeCountry(r.fields[fi.field]) : r.fields[fi.field])
+          .filter(Boolean))].sort();
+      }
     }
   }
 
@@ -756,11 +775,16 @@ async function renderEntity(entityKey) {
       </select>`;
     } else if (fi.type === 'dynamic') {
       const opts = dynamicOpts[fi.field] || [];
-      // fi.labels: display-only Greek for stored English values (ΜΕΡΟΣ Ε).
-      // The option VALUE stays raw so filtering matches the records.
+      const _isCountry = /country|χωρα|χώρα/i.test(fi.field) || /country/i.test(fi.label || '');
+      // Country options carry a code as VALUE but a Greek name as label
+      // (one list everywhere, owner 5/9); every other dynamic filter keeps
+      // showing the raw stored value, same as before.
+      const optLabel = o => _isCountry && typeof countryName === 'function'
+        ? (o === '__unknown' ? 'άγνωστη γραφή' : countryName(o))
+        : (fi.labels && fi.labels[o]) || o;
       return `<select class="svc-filter" onchange="entityFilter('${entityKey}','${fi.field}',this.value,'')">
         <option value="">${fi.label}: ${fi.allLabel || 'Όλα'}</option>
-        ${opts.map(o => `<option value="${o}">${(fi.labels && fi.labels[o]) || o}</option>`).join('')}
+        ${opts.map(o => `<option value="${o}">${optLabel(o)}</option>`).join('')}
       </select>`;
     }
     return '';
@@ -1458,6 +1482,16 @@ function buildEntityRow(entityKey, r, cols, plateField, dupPlates) {
         : ''}</td>`;
     }
     if (col.field === 'Phone' && val) return `<td style="font-variant-numeric:tabular-nums;white-space:nowrap">${_fmtPhone(val)}</td>`;
+    if (col.field === 'Country' && val && typeof countryName === 'function') {
+      // One list everywhere (owner 5/9): the cell always shows the Greek
+      // name, whatever spelling the record stores. A spelling countryCode()
+      // cannot resolve is shown muted instead of hidden (K3/K7 — the screen
+      // must say it does not know, not pretend it does).
+      const known = typeof countryIsKnown !== 'function' || countryIsKnown(val);
+      return known
+        ? `<td>${_ecEsc(countryName(val))}</td>`
+        : `<td style="color:var(--text-dim)" title="άγνωστη γραφή — χρειάζεται διόρθωση">${_ecEsc(countryName(val))}</td>`;
+    }
     return `<td>${val != null && val !== '' ? val : '—'}</td>`;
   }).join('');
 
@@ -1502,6 +1536,15 @@ function entityFilter(entityKey, field, val, type) {
 function _entityFilterPred(cfg, field, val, type) {
   // Το ταίριασμα γίνεται στην ίδια κανονική μορφή που παρήγαγε την επιλογή,
   // αλλιώς «GR» δεν θα έβρισκε ποτέ τις εγγραφές που λένε «ΕΛΛΑΔΑ».
+  if (/country|χωρα|χώρα/i.test(field) && typeof countryCode === 'function') {
+    // '__unknown' is the shared bucket for spellings countryCode() cannot
+    // resolve (K3) — matched by absence of a code, not by any code value.
+    return r => {
+      const raw = r.fields[field];
+      if (val === '__unknown') return !!raw && countryCode(raw) == null;
+      return countryCode(raw) === val;
+    };
+  }
   if (/country|χωρα|χώρα/i.test(field) && typeof normalizeCountry === 'function') {
     return r => normalizeCountry(r.fields[field]) === normalizeCountry(val);
   }
@@ -1693,7 +1736,8 @@ function _renderEntityCardV2(entityKey, rec, panel) {
   const primaryField = cfg.columns.find(c => c.primary)?.field || Object.keys(f)[0];
   const title = f[primaryField] || recId.slice(-6);
   // Phones render formatted, same as the list column (DV-7).
-  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x]) : f[x]).filter(Boolean).join(cfg.cardSubtitleSep || ' ')
+  const sub = (cfg.cardSubtitle || []).map(x => x === 'Phone' ? _fmtPhone(f[x])
+    : x === 'Country' && typeof countryName === 'function' ? countryName(f[x]) : f[x]).filter(Boolean).join(cfg.cardSubtitleSep || ' ')
     + (cfg.cardSubtitleExtra && f[cfg.cardSubtitleExtra] ? ' · ' + f[cfg.cardSubtitleExtra] : '');
   const [onL, offL] = cfg.activeLabels || ['Ενεργό', 'Ανενεργό'];
   // Type badge next to the status badge (trailer-card mock: ΨΥΓΕΙΟ).
@@ -2424,6 +2468,12 @@ function buildEntityModal(entityKey, recId, fields) {
         input = `<input class="form-input" type="number" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}"${field.disabled ? '' : ' placeholder="0"'}>`;
       } else if (field.type === 'email') {
         input = `<input class="form-input" type="email" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="email@example.com">`;
+      } else if (field.type === 'country') {
+        // One list everywhere (owner 5/9): the option VALUES are ISO codes,
+        // the visible names are Greek. A legacy spelling the list cannot
+        // resolve stays selected as "… (άγνωστη γραφή)" instead of being
+        // silently swapped for a guess (K3) — see core/countries.js.
+        input = `<select class="form-input" id="ef_${field.f.replace(/\s/g,'_')}">${countryOptionsHtml(val)}</select>`;
       } else {
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
       }

@@ -160,7 +160,10 @@ const _CSub=f=>{
   const c=id?(OPS.clients||[]).find(x=>x.id===id):null;
   if(!c) return '';
   const cf=c.fields||{};
-  return [cf['City'],cf['Country']].filter(Boolean).map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
+  // One list everywhere (owner 5/9): show the Greek name even where the client
+  // record still stores an old spelling/code.
+  const country=cf['Country']?(typeof countryName==='function'?countryName(cf['Country']):cf['Country']):'';
+  return [cf['City'],country].filter(Boolean).map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
 };
 // «06:30» από ISO datetime — μόνο αν υπάρχει πραγματική ώρα (00:00 = ημέρα).
 const _HM=dt=>{ if(!dt||!/T\d\d:\d\d/.test(String(dt))) return ''; try{ const d=new Date(dt); const h=d.getHours(),m=d.getMinutes(); if(!h&&!m) return ''; return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0'); }catch(_){ return ''; } };
