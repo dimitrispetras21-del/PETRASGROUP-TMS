@@ -1414,10 +1414,7 @@ tbody tr:hover { background: var(--bg-hover); }
 }
 
 .form-grid.cols-1 { grid-template-columns: 1fr; }
-<<<<<<< HEAD
 /* Per-section 3-col row (clients/trucks/trailers forms — see the ENTITY_CONFIG
-   `cols: 3` sections in entity.js): Χώρα/Πόλη/Διεύθυνση, Μάρκα/Μοντέλο/Έτος. */
-=======
 >>>>>>> 174ad7e (orders: φόρμες παραγγελιών ευθυγράμμιση με Figma 165:676/165:677 (audit w4))
 .form-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
 
