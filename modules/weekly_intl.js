@@ -3285,8 +3285,8 @@ function _wiImpCtx(e,rowId){
   // Wave 2 (owner 6/9): local movement around Βέροια tied to this import.
   if(row.orderId) html+=btn('Τοπική κίνηση (Βέροια)',`_wiAddLocal('${row.orderId}')`);
   html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
-  html+=btn(`← Στην W${WINTL.week-1} (ημερομηνίες −7)`,`_wiImpShift(${rowId},-7)`);
-  html+=btn(`Στην W${WINTL.week+1} (ημερομηνίες +7) →`,`_wiImpShift(${rowId},7)`);
+  html+=btn(`← Στην W${WINTL.week-1}`,`_wiImpShift(${rowId},-7)`);
+  html+=btn(`Στην W${WINTL.week+1} →`,`_wiImpShift(${rowId},7)`);
   html+=_wiSplitCtxItems(row,rowId,btn);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
