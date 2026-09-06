@@ -357,6 +357,11 @@ function normalizeCountry(v) {
   if (v == null) return '';
   const raw = String(v).trim();
   if (!raw) return '';
+  // One vocabulary (core/countries.js, 5/9): the ISO code when the value is
+  // recognised in any spelling; the raw value otherwise — losing a country is
+  // worse than showing an odd one. _COUNTRY_MAP stays only as the fallback
+  // when countries.js is not loaded (print.html without it, tests).
+  if (typeof countryCode === 'function') { const c = countryCode(raw); if (c) return c; }
   return _COUNTRY_MAP[raw.toLowerCase()] || raw;
 }
 
