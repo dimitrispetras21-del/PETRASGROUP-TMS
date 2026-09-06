@@ -1133,6 +1133,9 @@ var TABLES = {
       // Weekly «Μεταφορά εβδομάδας» (owner 6/9/2026): the planning week only —
       // the dates above never move. Migration 016.
       "Plan Week Start": "plan_week_start",
+      // Order legs (owner 6/9/2026, migration 018): a leg is an ORDERS row that
+      // belongs to a parent order; the parent keeps client/price/invoicing.
+      "Leg No": "leg_no",
       "Cross-dock Date": "cross_dock_date",
       "Postponed To": "postponed_to",
       "Actual Delivery Date": "actual_delivery_date",
@@ -1209,6 +1212,7 @@ var TABLES = {
     },
     links: {
       Client: { column: "client_id", table: "clients" },
+      "Parent Order": { column: "parent_order_id", table: "orders" },
       Record: { column: "partner_id", table: "partners" },
       // legacy 2nd partner link -> same FK as Partner
       Partner: { column: "partner_id", table: "partners" },

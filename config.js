@@ -344,3 +344,10 @@ const PERMS = {
   // Keep these two in step: the UI hides, the backend enforces.
   warehouse:  { planning:'view', orders:'view',  clients:'none', maintenance:'none', drivers:'none', costs:'none',  settings:'none', performance:'none', ceo_dashboard:'none' },
 };
+
+// ── Feature switches (αρχή 5: ό,τι γεννιέται, γεννιέται κλειστό) ──
+// ORDER_SPLIT (owner 6/9/2026): «Σπάσιμο σκέλους» in Weekly International.
+// Needs migration 018 in the base AND the Worker with «Parent Order»/«Leg No»
+// deployed — without them the facade would silently drop the two fields and
+// leave orphan legs. Flip to true only after both, then bump ?v= in app.html.
+const FEATURES = { ORDER_SPLIT: false };
