@@ -102,20 +102,28 @@ async function renderPerformance() {
 
 /* ── LOAD ─────────────────────────────────────────────────── */
 async function _perfLoad() {
+  // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): 'Parent Order' is added to the
+  // fields[] list ONLY when the flag is on — an unconditional addition would
+  // change this request's byte signature for every session, flag on or off,
+  // and break the off-path HAR contract the critics pin (CLAUDE.md facade
+  // traps §1: an unrequested field is harmless to the Worker, but a changed
+  // request is not "no behavioural change").
+  const _perfOrderFields = ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
+           'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
+           'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
+           'Assigned At','Actual Delivery Date',
+           // Χωρίς αυτά, το cmrFieldPresent (:285) ήταν ΠΑΝΤΑ false — ο Worker
+           // δεν επιστρέφει ό,τι δεν ζητηθεί — και το KPI έπεφτε σιωπηλά στο
+           // proxy «Delivery Performance ⇒ μαζεύτηκαν χαρτιά» (audit 25/8).
+           'CMR Photo Received','CMR Received',
+           'Loading Location 1','Unloading Location 1'];
+  if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) _perfOrderFields.push('Parent Order');
   const [orders, natLoads, trucks, maint] = await Promise.all([
     atGetAll(TABLES.ORDERS, {
       // Note: 'Loading Points' / 'Delivery Points' removed — they don't exist as
       // Airtable fields and cause UNKNOWN_FIELD_NAME 422. The fallback below
       // (_load = ... || f['Loading Points']) silently handles their absence.
-      fields: ['Direction','Delivery Performance','Status','Truck','Driver','Partner',
-               'Is Partner Trip','Loading DateTime','Delivery DateTime','Matched Import ID',
-               'Total Pallets','Client','Week Number','Client Notified','ORDER STOPS',
-               'Assigned At','Actual Delivery Date',
-               // Χωρίς αυτά, το cmrFieldPresent (:285) ήταν ΠΑΝΤΑ false — ο Worker
-               // δεν επιστρέφει ό,τι δεν ζητηθεί — και το KPI έπεφτε σιωπηλά στο
-               // proxy «Delivery Performance ⇒ μαζεύτηκαν χαρτιά» (audit 25/8).
-               'CMR Photo Received','CMR Received',
-               'Loading Location 1','Unloading Location 1']
+      fields: _perfOrderFields
     }, true),
     // safeFetch on both. This page computes performance metrics, so a missing
     // source does not blank a number, it QUIETLY SHIFTS one: fewer national
@@ -136,7 +144,13 @@ async function _perfLoad() {
     didFail(natLoads) && 'εθνικά φορτία',
     didFail(maint)    && 'αιτήματα συντήρησης',
   ].filter(Boolean);
-  PERF.orders = orders || [];
+  // Wave 3: a split leg is execution detail of its parent order, not a second
+  // customer delivery — excluded here so every KPI below (on-time %, dead km,
+  // assignment rate…) counts the trip once. core/metrics.js filters again on
+  // its own input (defense in depth, αρχή 4), so this is not the only guard.
+  PERF.orders = (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT)
+    ? (orders || []).filter(r => !getLinkedId(r.fields['Parent Order']))
+    : (orders || []);
   PERF.natLoads = natLoads || [];
   PERF.trucks = trucks || [];
   PERF.maint = maint || [];

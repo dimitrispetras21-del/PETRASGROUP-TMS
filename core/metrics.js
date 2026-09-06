@@ -35,9 +35,25 @@ const metrics = (function() {
   const _fieldArr = v => Array.isArray(v) ? v : (v ? [v] : []);
   const _pct = (n, d) => d > 0 ? Math.round(n/d*100) : 0;
 
+  // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): every counting function below takes
+  // raw ORDERS records from whichever screen calls it (dashboard.js, performance.js,
+  // and others outside this task's file list, e.g. ceo_dashboard.js) — a split leg
+  // is execution detail of its parent, not a second customer order, so it is
+  // stripped HERE, once, rather than trusting every caller to have already
+  // filtered it (αρχή 4: the rule sits as low as it can reach). No-op while the
+  // flag is off — nothing ever has Parent Order set until migration 018 + Worker deploy.
+  function _excludeLegs(orders) {
+    if (typeof FEATURES === 'undefined' || !FEATURES.ORDER_SPLIT) return orders;
+    return (orders || []).filter(r => {
+      const p = r.fields && r.fields['Parent Order'];
+      return !(Array.isArray(p) ? p.length : p);
+    });
+  }
+
   // ════ OPERATIONAL ═══════════════════════════════════
 
   function unassignedOrders(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { direction, period } = opts;
     return orders.filter(r => {
       const f = r.fields;
@@ -50,6 +66,7 @@ const metrics = (function() {
   }
 
   function pendingToday(orders, date) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const today = date || _today();
     const doneStatuses = new Set(['In Transit','Delivered','Invoiced']);
     return orders.filter(r => {
@@ -60,6 +77,7 @@ const metrics = (function() {
   }
 
   function loadingsDone(orders, date) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const today = date || _today();
     const doneStatuses = new Set(['In Transit','Delivered','Invoiced']);
     return orders.filter(r => {
@@ -69,6 +87,7 @@ const metrics = (function() {
   }
 
   function deliveriesDone(orders, date) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const today = date || _today();
     return orders.filter(r => {
       const f = r.fields;
@@ -77,6 +96,7 @@ const metrics = (function() {
   }
 
   function checklistProgress(orders) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const checks = ['Docs Ready','Temp OK','CMR Photo Received','Client Notified','Driver Notified'];
     let total = 0, done = 0;
     orders.forEach(r => checks.forEach(k => {
@@ -86,6 +106,7 @@ const metrics = (function() {
   }
 
   function overdueDeliveries(orders) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const today = _today();
     const delivered = new Set(['Delivered','Invoiced']);
     return orders.filter(r => {
@@ -96,6 +117,7 @@ const metrics = (function() {
   }
 
   function highRiskDeliveries(orders) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const now = Date.now();
     const cutoff = now + 48*3600*1000;
     return orders.filter(r => {
@@ -132,6 +154,7 @@ const metrics = (function() {
   // ════ PERFORMANCE ═══════════════════════════════════
 
   function onTimePct(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { period } = opts;
     const considered = orders.filter(r => {
       const f = r.fields;
@@ -143,11 +166,13 @@ const metrics = (function() {
   }
 
   function delayedPct(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const r = onTimePct(orders, opts);
     return { pct: 100 - r.pct, delayed: r.total - r.onTime, total: r.total };
   }
 
   function onTimeTrend(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { weeks = 4, currentWeek } = opts;
     const curW = currentWeek || _weekOf(_today());
     const byWeek = {};
@@ -169,6 +194,7 @@ const metrics = (function() {
   }
 
   function onTimeStreak(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { currentWeek, threshold = 90, lookback = 8 } = opts;
     const curW = currentWeek || _weekOf(_today());
     const trend = onTimeTrend(orders, { weeks: lookback, currentWeek: curW });
@@ -183,6 +209,7 @@ const metrics = (function() {
   }
 
   function cmrSameDayPct(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { period } = opts;
     const delivered = orders.filter(r => {
       const f = r.fields;
@@ -194,6 +221,7 @@ const metrics = (function() {
   }
 
   function clientUpdatePct(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { period } = opts;
     const delivered = orders.filter(r => {
       const f = r.fields;
@@ -254,6 +282,7 @@ const metrics = (function() {
   // ════ FINANCIAL ═════════════════════════════════════
 
   function outstandingBalance(orders, natOrders = []) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const pool = [...orders, ...natOrders];
     return pool
       .filter(r => r.fields['Status'] === 'Delivered' && !r.fields['Invoiced'])
@@ -261,6 +290,7 @@ const metrics = (function() {
   }
 
   function revenueInvoiced(orders, natOrders = [], opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { period } = opts;
     const pool = [...orders, ...natOrders];
     return pool
@@ -270,6 +300,7 @@ const metrics = (function() {
   }
 
   function revenueReadyToInvoice(orders) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     return orders
       .filter(r => {
         const f = r.fields;
@@ -285,6 +316,7 @@ const metrics = (function() {
   }
 
   function overdueInvoices(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { daysCutoff = 30 } = opts;
     const cutoff = _daysAgo(daysCutoff);
     return orders.filter(r => {
@@ -391,6 +423,7 @@ const metrics = (function() {
   // ════ HR ══════════════════════════════════════════
 
   function assignmentRate(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { week } = opts;
     const periodOrders = week ? orders.filter(o => o.fields['Week Number'] === week) : orders;
     const assigned = periodOrders.filter(o => {
@@ -401,6 +434,7 @@ const metrics = (function() {
   }
 
   function partnerTripPct(orders, opts = {}) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const { week } = opts;
     const periodOrders = week ? orders.filter(o => o.fields['Week Number'] === week) : orders;
     const assigned = periodOrders.filter(o => {
@@ -428,6 +462,7 @@ const metrics = (function() {
   // ════ INVENTORY ═══════════════════════════════════
 
   function palletSheetsComplete(orders) {
+    orders = _excludeLegs(orders); // Wave 3: strip split legs before counting (see _excludeLegs)
     const withPE = orders.filter(r => r.fields['Pallet Exchange']);
     const complete = withPE.filter(r => {
       const f = r.fields;

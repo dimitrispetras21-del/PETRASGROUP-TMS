@@ -646,6 +646,17 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   var notesHTML=rawNotes?'<div class="notes-box'+(urgent?' urgent':'')+'"><b>'+(urgent?'⚠ ':'')+'Notes:</b> '+rawNotes+'</div>':'';
 
   var titleStr=isPartner?('Partner Assignment Order — '+legLabel+' — W'+wk):('Εντολή Οδηγού — '+legLabelGr+' — W'+wk);
+  // Wave 3 (owner 6/9): a leg carries 'Parent Order'/'Leg No' once migration
+  // 018 + the Worker deploy — no FEATURES flag here (print.html loads no
+  // config.js), so this is inert until then by construction: nothing ever
+  // writes those fields while the split feature stays off. Hand-over side =
+  // the DELIVERY of leg 1, the LOADING of leg 2 (docs/design/2026-09-06-
+  // order-split.md — the hand-over is one shared location either way).
+  if(f['Parent Order']&&f['Leg No']){
+    var legN=f['Leg No'];
+    var handOver=(legN===1?(f['Delivery Summary']||f['Client Summary']):(f['Loading Summary']||f['Client Summary']))||'—';
+    titleStr+=isPartner?(' — leg '+legN+'/2 · hand-over at '+handOver):(' — σκέλος '+legN+'/2 · παράδοση-παραλαβή στο '+handOver);
+  }
   window._shTitle=titleStr; // ορατό στο renderDocs για το μενού κοινής χρήσης (το titleStr είναι τοπικό εδώ)
 
   // v2.1 chips φορτίου — PE πρώτης τάξης (εγκεκριμένο)

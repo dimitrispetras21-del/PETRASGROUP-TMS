@@ -52,6 +52,11 @@ async function plOnOrderSaved(orderId, source) {
   return _plSafe('δημιουργία εκκρεμών φόρτωσης', async () => {
     const { rec, stops } = await _plLoadOrder(orderId, source);
     if (!rec) return;
+    // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is not a second delivery
+    // to the client — the pallet ledger tracks exchange against the PARENT's
+    // client only, or a hand-over would double the balance for one shipment.
+    // No-op while the flag is off (nothing ever has Parent Order set).
+    if (source === 'intl' && typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
     if (!rec.fields['Pallet Exchange']) return plOnExchangeOff(orderId, source);
     const clientRec = _plClientRec(rec.fields);
     const claimed = new Set();
@@ -94,7 +99,10 @@ async function plOnOrderSaved(orderId, source) {
 async function plOnDelivered(orderId) {
   return _plSafe('εγγραφές παράδοσης', async () => {
     const { rec, stops } = await _plLoadOrder(orderId, 'intl');
-    if (!rec || !rec.fields['Pallet Exchange']) return;
+    if (!rec) return;
+    // Wave 3: see plOnOrderSaved — a leg's delivery isn't a second client delivery.
+    if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(rec.fields['Parent Order'])) return;
+    if (!rec.fields['Pallet Exchange']) return;
     const clientRec = _plClientRec(rec.fields);
     for (const s of stops) {
       if (s.fields[F.STOP_TYPE] !== 'Unloading') continue;
@@ -122,6 +130,10 @@ async function plOnIntlPartnerAssigned(orderId) {
     const rec = await atGetOne(TABLES.ORDERS, orderId);
     if (!rec) return;
     const f = rec.fields;
+    // Wave 3: see plOnOrderSaved — a leg's partner hand-over isn't a second
+    // client-facing exchange; the parent's own assignment is cleared on split,
+    // so it never reaches here with a partner anyway, but a leg can.
+    if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT && getLinkedId(f['Parent Order'])) return;
     const partnerRec = Array.isArray(f['Partner']) ? f['Partner'][0] : null;
     const eligible = f['Pallet Exchange'] && f['Veroia Switch'] && f['Is Partner Trip'] && partnerRec;
     const evType = f['Direction'] === 'Import' ? 'PARTNER_DROPOFF' : 'PARTNER_PICKUP';

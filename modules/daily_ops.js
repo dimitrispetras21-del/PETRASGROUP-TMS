@@ -96,6 +96,30 @@ async function _opsLoad() {
   OPS.overdueLoads=ovL.filter(r=>!ovIds.has(r.id));
   OPS.loadedAt=new Date();
 
+  // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a split PARENT keeps its
+  // ORIGINAL Loading/Delivery DateTime (only the legs move the hand-over
+  // date), so it can still land in today's day-window even though it is not
+  // itself executing anymore — «σκέλη κινούνται, ο γονέας όχι». A parent has
+  // no own 'Parent Order', so a plain field check can't tell it apart from a
+  // never-split order; the only way to know is to ask which ids are SOMEONE
+  // ELSE's Parent Order — one extra filtered query, entirely new and gated by
+  // the flag, so the off-path fetch above is untouched.
+  OPS.legParents = new Set();
+  if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) {
+    const candidateIds=[...intl,...OPS.overdue,...OPS.overdueLoads].filter(r=>!getLinkedId(r.fields['Parent Order'])).map(r=>r.id);
+    if(candidateIds.length){
+      try{
+        const legsF=`OR(${candidateIds.map(id=>`FIND("${id}",ARRAYJOIN({Parent Order},","))>0`).join(',')})`;
+        const legs=await atGetAll(TABLES.ORDERS,{filterByFormula:legsF,fields:['Parent Order']},false);
+        legs.forEach(l=>{ const p=getLinkedId(l.fields['Parent Order']); if(p) OPS.legParents.add(p); });
+      }catch(e){ console.warn('[ops] split-leg parent lookup:', e.message); }
+    }
+    intl=intl.filter(r=>!OPS.legParents.has(r.id));
+    OPS.overdue=OPS.overdue.filter(r=>!OPS.legParents.has(r.id));
+    OPS.overdueLoads=OPS.overdueLoads.filter(r=>!OPS.legParents.has(r.id));
+  }
+  OPS.intl=intl;
+
   // Κληρονομιά ανάθεσης ζεύγους (owner 13/8): σε ταιριασμένα ζεύγη η ανάθεση
   // γράφεται ΜΟΝΟ στο export (Matched Import ID) — τα imports εμφανίζονταν
   // «κενά» εδώ ενώ το Weekly τα έδειχνε ανατεθειμένα. Γεμίζουμε Truck/Driver/

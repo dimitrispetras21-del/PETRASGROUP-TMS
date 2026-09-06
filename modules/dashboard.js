@@ -65,7 +65,7 @@ async function renderDashboard() {
     const trucks = getRefTrucks();
     const clients = getRefClients();
     const trailers = getRefTrailers();
-    const [orders, natLoads] = await Promise.all([
+    let [orders, natLoads] = await Promise.all([
       atGet(TABLES.ORDERS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
       // Το NAT_LOADS φορτώνεται και δεν διαβάζεται από κανένα πλακίδιο — όπως
       // και πριν. Μένει για ισότητα συμβολαίου (endpoint) μέχρι απόφαση owner·
@@ -73,6 +73,15 @@ async function renderDashboard() {
       atGet(TABLES.NAT_LOADS, `IS_AFTER({Loading DateTime}, '${_dashCutoff}')`),
     ]);
     void natLoads;
+    // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a split leg is execution detail
+    // of its parent order — every KPI/list below reads `orders`, so filtering
+    // once here (rather than at each tile) keeps the dashboard counting the
+    // customer's order once. No fields[] restriction on this fetch, so the
+    // field is already present when it exists — this is a pure client-side
+    // filter, no request-shape change on the off-path.
+    if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) {
+      orders = orders.filter(r => !getLinkedId(r.fields['Parent Order']));
+    }
 
     const _dashStopsByOrder = {};
     const _dashStopIds = orders.flatMap(r => r.fields['ORDER STOPS'] || []);

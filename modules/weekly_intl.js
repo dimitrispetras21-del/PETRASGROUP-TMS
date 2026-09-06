@@ -694,6 +694,33 @@ function _wiBuildRows(){
   });
   Object.values(WINTL._legs).forEach(a=>a.sort((x,y)=>
     String(_ordOf(x)?.fields?.['Loading DateTime']||'').localeCompare(String(_ordOf(y)?.fields?.['Loading DateTime']||''))));
+
+  // ── ΣΠΑΣΙΜΟ ΣΚΕΛΟΥΣ (owner 6/9, FEATURES.ORDER_SPLIT) ──────────────────
+  // A leg (its 'Parent Order' is set) is an ordinary fetched order — no extra
+  // query needed, it is already in WINTL.data.exports/imports because it has
+  // its own real dates. It renders nested under the parent's row (same
+  // mechanism as the Ρότα legs above: excluded from the top-level list,
+  // appended right after the parent in _wiAllRowsHTML), not scattered into its
+  // own day slot, because the dispatcher reads "this order" as ONE line even
+  // though it now moves in two trucks. Depth is one (migration 018 CHECK), so
+  // a leg is never itself checked for children here.
+  WINTL._splitLegs={};
+  if(typeof FEATURES!=='undefined'&&FEATURES.ORDER_SPLIT){
+    WINTL.rows.forEach(r=>{
+      if(r.orderIds&&r.orderIds.length>1) return; // groupage: split not offered on groups
+      const o=_ordOf(r);
+      const parentId=o&&getLinkedId(o.fields?.['Parent Order']);
+      if(!parentId) return;
+      r.splitLegOf=parentId;
+      r.splitLegNo=o.fields['Leg No']||null;
+      (WINTL._splitLegs[parentId]=WINTL._splitLegs[parentId]||[]).push(r);
+    });
+    Object.values(WINTL._splitLegs).forEach(a=>a.sort((x,y)=>(x.splitLegNo||0)-(y.splitLegNo||0)));
+    WINTL.rows.forEach(r=>{
+      const pid=r.orderIds?.[0]||r.orderId;
+      if(WINTL._splitLegs[pid]) r.hasSplitLegs=true;
+    });
+  }
 }
 
 /* ── PAINT ─────────────────────────────────────────────────────────── */
@@ -930,8 +957,8 @@ function _wiPaint(){
 
 /* ── ALL ROWS ──────────────────────────────────────────────────────── */
 function _wiAllRowsHTML(){
-  const expRows=WINTL.rows.filter(r=>r.type==='export'&&!r.legOf);
-  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj);
+  const expRows=WINTL.rows.filter(r=>r.type==='export'&&!r.legOf&&!r.splitLegOf);
+  const impRows=WINTL.rows.filter(r=>r.type==='import'&&!r.legOf&&!r.adj&&!r.splitLegOf);
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const _f=r=>(WINTL.data.exports.find(x=>x.id===(r.orderIds?.[0]))||WINTL.data.imports.find(x=>x.id===r.orderId))?.fields||{};
 
@@ -989,12 +1016,14 @@ function _wiAllRowsHTML(){
     // Export rows (+ σκέλη ρότας του export ΚΑΙ της ταιριασμένης εισαγωγής του)
     grp.exps.forEach(row=>{ WINTL._rowNo[row.orderIds[0]]=String(idx+1); html+=_wiRowHTML(row,idx++);
       const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
-      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+        (WINTL._splitLegs?.[pid]||[]).forEach(lr=>{ html+=_wiSplitLegRowHTML(lr); }); });
     });
     // Unmatched imports numbered I1… (Β.3-4) so «γραμμή I3» means something on
     // the phone between two dispatchers.
     showImps.forEach(row=>{ ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx; html+=_wiImpRowHTML(row,impIdx);
       (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+      (WINTL._splitLegs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiSplitLegRowHTML(lr); });
     });
     html+='</section>';
   });
@@ -1019,10 +1048,12 @@ function _wiAllRowsHTML(){
       <div class="wk3-dayh"><span class="d">${wd||'ΧΩΡΙΣ ΗΜΕΡΟΜΗΝΙΑ'}${dm?' '+dm:''}</span><span class="wi-cross" title="Μεταφέρθηκε σε αυτή την προβολή (Μεταφορά εβδομάδας) — η πραγματική ημέρα φόρτωσης/παράδοσης είναι εκτός Σαβ–Παρ αυτής της εβδομάδας">μεταφέρθηκε${realWeek!=null?' · W'+realWeek:''}</span></div>`;
     grp.exps.forEach(row=>{ WINTL._rowNo[row.orderIds[0]]=String(idx+1); html+=_wiRowHTML(row,idx++);
       const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
-      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+      pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+        (WINTL._splitLegs?.[pid]||[]).forEach(lr=>{ html+=_wiSplitLegRowHTML(lr); }); });
     });
     showImps.forEach(row=>{ ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx; html+=_wiImpRowHTML(row,impIdx);
       (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+      (WINTL._splitLegs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiSplitLegRowHTML(lr); });
     });
     html+='</section>';
   });
@@ -1090,12 +1121,14 @@ function _wiImpRowHTML(row,impNo){
     <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">G</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="Χωρίς εθνικό σκέλος"><span class="wi2-dash">—</span></div>
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
-    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
+    ${row.hasSplitLegs
+      ? `<div class="wk3-assign wi2-splitparent" title="Σπασμένο σε 2 σκέλη — η εκτέλεση ζει στα σκέλη από κάτω"><span class="wi2-splitchip">2 σκέλη</span></div>`
+      : `<div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenImpPopover(event,'${imp.id}',${row.id})">
       ${impPill}
       ${row.orderIds.length>1
         ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
-    </div>
+    </div>`}
     <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
   </div>`;
@@ -1124,7 +1157,25 @@ function _wiLegRowHTML(legRow){
     <div class="wk3-feed r"></div>
   </div>`;
 }
-
+// Σκέλος σπασίματος (owner 6/9, FEATURES.ORDER_SPLIT): unlike a Ρότα leg
+// (inherits the parent's vehicle, no assignment of its own), a split leg is a
+// full order with its OWN assign pill / print / import-matching — exactly what
+// _wiRowHTML/_wiImpRowHTML already render for any row. Reusing them (rather
+// than a second hand-written card-builder) is deliberate: two renderers for
+// "an order's cards" would drift apart the first time one of them changes
+// (αρχή 3 — «δύο πηγές αλήθειας σημαίνει καμία»). Only the leading number
+// cell is swapped for a «⤷N» leg marker so the row reads as nested under its
+// parent instead of claiming its own place in the day's count.
+function _wiSplitLegRowHTML(legRow){
+  const inner = legRow.type==='import'
+    ? _wiImpRowHTML(legRow, '')
+    : _wiRowHTML(legRow, -1);
+  if(!inner) return '';
+  const label=legRow.splitLegNo?`⤷${legRow.splitLegNo}`:'⤷';
+  return inner
+    .replace('class="wk3-row', 'class="wk3-row wk3-splitleg')
+    .replace(/<div class="wk3-num[^>]*>[\s\S]*?<\/div>/, `<div class="wk3-num" title="Σκέλος ${legRow.splitLegNo||'?'}/2 του σπασίματος">${label}</div>`);
+}
 
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
 function _wiBadges(f){
@@ -1686,13 +1737,19 @@ function _wiRowHTML(row,i){
     <div class="wk3-num">${i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
     <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
-    <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
+    ${row.hasSplitLegs
+      // Wave 3: the parent no longer executes — no assign popover, no print
+      // (nothing to hand a driver for a row that is not itself moving). The
+      // chip is the ONLY signal here (DESIGN K2: colour never carries meaning
+      // alone) — it also names it, unlike a bare icon.
+      ? `<div class="wk3-assign wi2-splitparent" title="Σπασμένο σε 2 σκέλη — η εκτέλεση ζει στα σκέλη από κάτω"><span class="wi2-splitchip">2 σκέλη</span></div>`
+      : `<div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wiOpenPopover(event,${row.id})">
       ${isGroup
         ?`<button class="wk3-prt l" title="Εκτύπωση ομάδας — ${exps.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintGroup(${row.id})">⎙</button>`
         :`<button class="wk3-prt l" title="Εκτύπωση εντολής (export) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.orderIds[0],'export',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εξαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'export')">⎙</button>`}
       ${pill}
       ${row.importId?`<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(row.importId,'import',!!(row.partnerId||row.partnerLabel))}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrint(${row.id},'import')">⎙<sup>I</sup></button>`:''}
-    </div>
+    </div>`}
     <div class="wk3-leg imp${gapCell?' gap':''}${parCell?' bgap':''}" id="wi-ci-${row.id}"
          ${imp?'style="cursor:pointer"':''}
          onclick="event.stopPropagation();${imp?`_wk3Edit('${row.importId}')`:parCell?``:`_wiNewImport(${row.id})`}"
@@ -2597,6 +2654,7 @@ function _wiCtx(e,rowId){
   if(isGroup) html+=btn('Διάλυση groupage',`_wiSplit(${rowId})`);
   if(row.importId) html+=btn('Αφαίρεση ταιριάσματος εισαγωγής',`_wiRemoveImport(${rowId})`);
   if(row.saved) html+=btn('Καθαρισμός ανάθεσης',`_wiClear(${rowId})`,true);
+  html+=_wiSplitCtxItems(row,rowId,btn);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   Object.assign(ctx.style,{display:'block',
@@ -2605,6 +2663,231 @@ function _wiCtx(e,rowId){
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
 function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
+
+// Σπάσιμο σκέλους (owner 6/9, FEATURES.ORDER_SPLIT): shared by _wiCtx (export
+// rows) and _wiImpCtx (import rows) — one row can offer «Σπάσιμο σκέλους»
+// (not a group, not itself a leg, not already split) OR «Ένωση ξανά» (already
+// split), never both. Off (no FEATURES) or a group/leg row → no entry at all,
+// exactly like before this feature existed.
+function _wiSplitCtxItems(row,rowId,btn){
+  if(typeof FEATURES==='undefined'||!FEATURES.ORDER_SPLIT) return '';
+  if(row.orderIds&&row.orderIds.length>1) return ''; // groupage: not offered
+  if(row.legOf||row.splitLegOf) return ''; // a leg is never split/rejoined itself
+  let html='<div class="wi-ctx-sep"></div>';
+  if(row.hasSplitLegs){
+    const legs=WINTL._splitLegs?.[row.orderIds?.[0]||row.orderId]||[];
+    const _ordOf2=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
+    const blocking=legs.find(lr=>['In Transit','Delivered'].includes(_ordOf2(lr)?.fields?.['Status']));
+    if(blocking) html+=btn(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf2(blocking)?.fields?.['Status']})`,`toast('Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε','warn')`);
+    else html+=btn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
+  } else {
+    html+=btn('Σπάσιμο σκέλους',`_wiOpenSplitModal(${rowId})`);
+  }
+  return html;
+}
+
+async function _wiOpenSplitModal(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const parentOid=row.orderIds?.[0]||row.orderId;
+  const parentRec=(row.type==='export'?WINTL.data.exports:WINTL.data.imports).find(o=>o.id===parentOid);
+  if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
+  await fhLoadLocations();
+  const opt=arr=>arr.map(x=>`<option value="${x.id}">${escapeHtml(x.label)}</option>`).join('');
+  const body=`
+    <div class="form-group">
+      <label class="form-label">Σημείο παράδοσης-παραλαβής *</label>
+      ${fhLocSelect('wiSplitLoc','')}
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Ημερομηνία/ώρα παράδοσης εκεί *</label>
+      <input type="datetime-local" class="form-input" id="wiSplitDt">
+    </div>
+    <div class="form-group" style="margin-top:12px">
+      <label class="form-label">Ποιος εκτελεί το σκέλος 2 (προαιρετικό — κενό = ΠΡΟΣ ΑΝΑΘΕΣΗ)</label>
+      <select class="form-input" id="wiSplitMode" onchange="_wiSplitModeChange()">
+        <option value="">ΠΡΟΣ ΑΝΑΘΕΣΗ</option>
+        <option value="own">Δικό μας</option>
+        <option value="partner">Συνεργάτης</option>
+      </select>
+    </div>
+    <div id="wiSplitOwn" style="display:none;margin-top:8px;gap:8px">
+      <select class="form-input" id="wiSplitTruck" style="margin-bottom:6px"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
+      <select class="form-input" id="wiSplitTrailer" style="margin-bottom:6px"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
+      <select class="form-input" id="wiSplitDriver"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
+    </div>
+    <div id="wiSplitPartner" style="display:none;margin-top:8px">
+      <select class="form-input" id="wiSplitPartnerSel"><option value="">Συνεργάτης…</option>${opt(WINTL.data.partners)}</select>
+    </div>`;
+  const footer=`<button class="btn btn-ghost" onclick="closeModal()">Ακύρωση</button>
+    <button class="btn btn-primary" id="wiSplitGo" onclick="_wiDoSplit(${rowId})">Σπάσιμο</button>`;
+  openModal('Σπάσιμο σκέλους',body,footer);
+}
+function _wiSplitModeChange(){
+  const m=document.getElementById('wiSplitMode')?.value;
+  const own=document.getElementById('wiSplitOwn'), par=document.getElementById('wiSplitPartner');
+  if(own) own.style.display=m==='own'?'block':'none';
+  if(par) par.style.display=m==='partner'?'block':'none';
+}
+
+// Το «Σπάσιμο σκέλους» — τέσσερα βήματα, ΚΑΘΕ ένα ελεγμένο με ανάγνωση πίσω
+// (αρχή 2: η απόδειξη είναι ο πίνακας) πριν συνεχίσει στο επόμενο. Καμία
+// αποτυχία δεν προχωρά σιωπηλά — το toast λέει ΑΚΡΙΒΩΣ τι γράφτηκε και τι όχι,
+// με τα ids, ώστε μια μισοτελειωμένη προσπάθεια να διορθωθεί χειροκίνητα αντί
+// να μείνει κρυφή ασυνέπεια στη βάση (owner 6/9, design doc §«Η κίνηση»).
+async function _wiDoSplit(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const locId=document.getElementById('lv_wiSplitLoc')?.value;
+  const dtLocal=document.getElementById('wiSplitDt')?.value;
+  if(!locId||!dtLocal){ toast('Σημείο και ημερομηνία παράδοσης-παραλαβής είναι υποχρεωτικά','warn'); return; }
+  const handOverIso=new Date(dtLocal).toISOString();
+  const mode=document.getElementById('wiSplitMode')?.value||'';
+  const execTruck=document.getElementById('wiSplitTruck')?.value||'';
+  const execTrailer=document.getElementById('wiSplitTrailer')?.value||'';
+  const execDriver=document.getElementById('wiSplitDriver')?.value||'';
+  const execPartner=document.getElementById('wiSplitPartnerSel')?.value||'';
+  if(mode==='partner'&&!execPartner){ toast('Επίλεξε συνεργάτη ή άφησε ΠΡΟΣ ΑΝΑΘΕΣΗ','warn'); return; }
+
+  const parentOid=row.orderIds?.[0]||row.orderId;
+  const parentRec=(row.type==='export'?WINTL.data.exports:WINTL.data.imports).find(o=>o.id===parentOid);
+  if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
+  const pf=parentRec.fields;
+
+  modalSetBusy(true);
+  const common={};
+  ['Type','Direction','Client','Reference','Total Pallets','Pallet Type','Goods','Temperature °C','Veroia Switch']
+    .forEach(k=>{ if(pf[k]!==undefined&&pf[k]!==null&&pf[k]!=='') common[k]=pf[k]; });
+
+  const parentAssigned=!!(getLinkedId(pf['Truck'])||getLinkedId(pf['Partner']));
+  const leg1Fields={...common,
+    'Loading Location 1':pf['Loading Location 1'], 'Loading DateTime':pf['Loading DateTime'],
+    'Unloading Location 1':[locId], 'Delivery DateTime':handOverIso,
+    'Parent Order':[parentOid], 'Leg No':1,
+    'Truck':pf['Truck']||[], 'Trailer':pf['Trailer']||[], 'Driver':pf['Driver']||[],
+    'Partner':pf['Partner']||[], 'Is Partner Trip':!!pf['Is Partner Trip'],
+    'Partner Truck Plates':pf['Partner Truck Plates']||'',
+    'Status':parentAssigned?(pf['Status']||'Assigned'):'Pending',
+  };
+  const leg2Assign=mode==='own'
+    ?{'Truck':execTruck?[execTruck]:[],'Trailer':execTrailer?[execTrailer]:[],'Driver':execDriver?[execDriver]:[],'Partner':[],'Is Partner Trip':false}
+    :mode==='partner'
+    ?{'Truck':[],'Trailer':[],'Driver':[],'Partner':[execPartner],'Is Partner Trip':true}
+    :{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false};
+  const leg2Assigned=mode==='own'?!!execTruck:mode==='partner';
+  const leg2Fields={...common,
+    'Loading Location 1':[locId], 'Loading DateTime':handOverIso,
+    'Unloading Location 1':pf['Unloading Location 1'], 'Unloading Location 2':pf['Unloading Location 2'], 'Unloading Location 3':pf['Unloading Location 3'],
+    'Delivery DateTime':pf['Delivery DateTime'],
+    'Parent Order':[parentOid], 'Leg No':2, ...leg2Assign,
+    'Status':leg2Assigned?'Assigned':'Pending',
+  };
+  Object.keys(leg2Fields).forEach(k=>{ if(leg2Fields[k]===undefined) delete leg2Fields[k]; });
+
+  let leg1=null, leg2=null;
+  try{
+    leg1=await atCreate(TABLES.ORDERS,leg1Fields);
+    if(leg1?.error) throw new Error(leg1.error.message||leg1.error.type);
+    // Facade trap #1 (CLAUDE.md): an unmapped field is a SILENT 200 — read the
+    // response back and refuse to continue on a leg the base can't identify.
+    if(!getLinkedId(leg1.fields?.['Parent Order'])||leg1.fields?.['Leg No']!==1)
+      throw new Error('Ο Worker δεν επέστρεψε Parent Order/Leg No στο σκέλος 1 — ελέγξτε τον χάρτη πριν ξαναδοκιμάσετε');
+  }catch(e){
+    modalSetBusy(false);
+    reportError('Το σπάσιμο ΔΕΝ έγινε — αποτυχία στο σκέλος 1, τίποτα δεν γράφτηκε στον γονέα ('+parentOid+')',e);
+    return;
+  }
+  try{
+    leg2=await atCreate(TABLES.ORDERS,leg2Fields);
+    if(leg2?.error) throw new Error(leg2.error.message||leg2.error.type);
+    if(!getLinkedId(leg2.fields?.['Parent Order'])||leg2.fields?.['Leg No']!==2)
+      throw new Error('Ο Worker δεν επέστρεψε Parent Order/Leg No στο σκέλος 2');
+  }catch(e){
+    modalSetBusy(false);
+    reportError('Το σκέλος 1 δημιουργήθηκε (ID '+leg1.id+') αλλά το σκέλος 2 ΑΠΕΤΥΧΕ — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
+    return;
+  }
+  try{
+    const patchRes=await atPatch(TABLES.ORDERS,parentOid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':''});
+    if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
+  }catch(e){
+    modalSetBusy(false);
+    reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ αδειάστηκε — άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+')',e);
+    return;
+  }
+
+  // RT (design doc: «ο γύρος του γονέα παίρνει το σκέλος 1»): the parent's own
+  // leg leaves its round trip, then rtOnOrderSaved re-derives leg 1's trip from
+  // its (inherited) truck — best-effort, never blocks the split (rt-feed's own
+  // _rtSafe already toasts on failure without throwing).
+  try{
+    const mate=await rtFindForOrder(parentOid).catch(()=>({pg:null,rt:null}));
+    if(mate.rt&&mate.pg!=null) await _wiRtLegDelete(mate.rt.id,mate.pg).catch(e=>console.warn('[wi split] rt leg delete:',e&&e.message));
+    if(typeof rtOnOrderSaved==='function'){
+      await rtOnOrderSaved(leg1.id).catch(e=>console.warn('[wi split] rt leg1:',e&&e.message));
+      if(mode==='own'&&execTruck) await rtOnOrderSaved(leg2.id).catch(e=>console.warn('[wi split] rt leg2:',e&&e.message));
+    }
+  }catch(e){ console.warn('[wi split] rt sync:',e&&e.message); }
+
+  if(mode==='partner'&&typeof paUpsert==='function'){
+    try{ await paUpsert({parentType:'order',parentId:leg2.id,partnerId:execPartner,status:'Assigned'}); }
+    catch(e){ console.warn('[wi split] PA upsert:',e&&e.message); }
+  }
+
+  modalSetBusy(false);
+  closeModal();
+  toast('Σπάσιμο ✓ — σκέλος 1 ('+leg1.id.slice(-6)+') · σκέλος 2 ('+leg2.id.slice(-6)+')');
+  await renderWeeklyIntl();
+}
+
+// «Ένωση ξανά» — μόνο όσο ΚΑΝΕΝΑ σκέλος δεν είναι In Transit/Delivered (design
+// doc). Τα σκέλη ΔΕΝ διαγράφονται (Status='Cancelled', audit trail — ίδιος
+// κανόνας με τα GROUPAGE LINES, CLAUDE.md), η ανάθεση του σκέλους 1 επιστρέφει
+// στον γονέα.
+async function _wiRejoinLegs(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const parentOid=row.orderIds?.[0]||row.orderId;
+  const _ordOf3=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
+  const legs=(WINTL._splitLegs?.[parentOid]||[]).slice().sort((a,b)=>(a.splitLegNo||0)-(b.splitLegNo||0));
+  if(!legs.length){ toast('Δεν βρέθηκαν σκέλη','warn'); return; }
+  if(legs.some(lr=>['In Transit','Delivered'].includes(_ordOf3(lr)?.fields?.['Status']))){
+    toast('Δεν γίνεται ένωση — κάποιο σκέλος είναι ήδη σε εκτέλεση ή παραδόθηκε','warn'); return;
+  }
+  if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη γίνονται Cancelled (όχι διαγραφή) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
+
+  const leg1=legs.find(lr=>lr.splitLegNo===1)||legs[0];
+  const leg1o=_ordOf3(leg1);
+  const restoreFields={
+    'Truck':leg1o?.fields?.['Truck']||[], 'Trailer':leg1o?.fields?.['Trailer']||[], 'Driver':leg1o?.fields?.['Driver']||[],
+    'Partner':leg1o?.fields?.['Partner']||[], 'Is Partner Trip':!!leg1o?.fields?.['Is Partner Trip'],
+    'Partner Truck Plates':leg1o?.fields?.['Partner Truck Plates']||'',
+    'Status':(getLinkedId(leg1o?.fields?.['Truck'])||getLinkedId(leg1o?.fields?.['Partner']))?'Assigned':'Pending',
+  };
+  try{
+    const patchRes=await atPatch(TABLES.ORDERS,parentOid,restoreFields);
+    if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
+  }catch(e){ reportError('Η ένωση απέτυχε — η ανάθεση ΔΕΝ επέστρεψε στον γονέα ('+parentOid+'), τα σκέλη μένουν ως έχουν',e); return; }
+
+  const errors=[];
+  for(const lr of legs){
+    const oid=lr.orderIds?.[0]||lr.orderId;
+    try{
+      const res=await atPatch(TABLES.ORDERS,oid,{'Status':'Cancelled'});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+    }catch(e){ errors.push(oid+': '+e.message); }
+  }
+  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ έγινε Cancelled — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+
+  try{
+    for(const lr of legs){
+      const oid=lr.orderIds?.[0]||lr.orderId;
+      const mate=await rtFindForOrder(oid).catch(()=>({pg:null,rt:null}));
+      if(mate.rt&&mate.pg!=null) await _wiRtLegDelete(mate.rt.id,mate.pg).catch(e=>console.warn('[wi rejoin] rt leg delete:',e&&e.message));
+    }
+    if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
+  }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
+
+  toast(errors.length?'Ένωση με σφάλματα — δες το μήνυμα':'Ένωση ξανά ✓');
+  await renderWeeklyIntl();
+}
 
 // Ρότα: υποψήφια σκέλη για γονέα-order — διεθνή, χωρίς δική τους ρότα, όχι
 // μέλος του ίδιου group, όχι η ταιριασμένη εισαγωγή/εξαγωγή του γονέα, φόρτωση
@@ -2741,6 +3024,7 @@ function _wiImpCtx(e,rowId){
   html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
   html+=btn(`← Στην W${WINTL.week-1} (ημερομηνίες −7)`,`_wiImpShift(${rowId},-7)`);
   html+=btn(`Στην W${WINTL.week+1} (ημερομηνίες +7) →`,`_wiImpShift(${rowId},7)`);
+  html+=_wiSplitCtxItems(row,rowId,btn);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   Object.assign(ctx.style,{display:'block',
@@ -3122,6 +3406,10 @@ window._wk3Edit = _wk3Edit;
 window._wiImpCtx = _wiImpCtx;
 window._wiRotAdd = _wiRotAdd;
 window._wiRotUnlink = _wiRotUnlink;
+window._wiOpenSplitModal = _wiOpenSplitModal;
+window._wiSplitModeChange = _wiSplitModeChange;
+window._wiDoSplit = _wiDoSplit;
+window._wiRejoinLegs = _wiRejoinLegs;
 window._wk3PickDate = _wk3PickDate;
 // Αναδιπλούμενα εθνικά πάνελ (owner 10/8) — ανεξάρτητα, με μνήμη ανά χρήστη
 function _wk3FeedTog(side){

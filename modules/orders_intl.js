@@ -228,6 +228,9 @@ function _oiCss() { return `
 .oi-num{font-variant-numeric:tabular-nums}
 .oi-med{font-weight:500}
 .oi-miss{color:var(--text-dim)}
+/* Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): tokens only (DESIGN K1) — no new
+   hex, reuses the accent pair already used for the primary action elsewhere. */
+.oi-legchip{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:9999px;font-size:10px;font-weight:700;color:var(--accent);background:var(--surface-sunken);border:1px solid var(--border);vertical-align:middle}
 /* ΠΡΟΣ ΑΝΑΘΕΣΗ (owner 4/9): the empty box is an open action for the
    dispatcher, not a fact about the fleet — a tile that asks for a click, in the
    one colour that means only «χωρίς ανάθεση». nowrap: a wrapped pill reads as
@@ -352,8 +355,22 @@ async function renderOrdersIntl() {
         .catch(e => { console.warn('orders_intl: ref data', e); _oiLoadWarns.push(_OI_WARN_REF); }),
     ]);
     records.sort((a,b) => (b.fields['Loading DateTime']||'').localeCompare(a.fields['Loading DateTime']||''));
-    INTL_ORDERS.data = records;
-    INTL_ORDERS.filtered = records;
+    // Wave 3 (owner 6/9, FEATURES.ORDER_SPLIT): a leg is the parent's own
+    // execution detail, not a second customer order — the list shows the
+    // parent once (chip «2 σκέλη» in _oiRowHtml), legs stay reachable only via
+    // the base ORDERS table. No fields[] restriction on this fetch, so
+    // 'Parent Order' is already present when it exists — pure client-side
+    // filter, no request-shape change on the off-path.
+    INTL_ORDERS.legParents = null;
+    let _oiVisible = records;
+    if (typeof FEATURES !== 'undefined' && FEATURES.ORDER_SPLIT) {
+      const legParents = new Set();
+      records.forEach(r => { const p = getLinkedId(r.fields['Parent Order']); if (p) legParents.add(p); });
+      INTL_ORDERS.legParents = legParents;
+      _oiVisible = records.filter(r => !getLinkedId(r.fields['Parent Order']));
+    }
+    INTL_ORDERS.data = _oiVisible;
+    INTL_ORDERS.filtered = _oiVisible;
     INTL_ORDERS.selectedId = null;
     Object.keys(_intlFilters).forEach(k => delete _intlFilters[k]);
     // Δ3 (3/9): _oiInvErr is module-level, so a ⚠ from an earlier visit
@@ -584,8 +601,12 @@ function _oiRowHtml(r) {
     : '<span class="oi-miss" title="Δεν έχει καταχωρηθεί αναφορά">—</span>';
   const pal = _stopsTotalPallets(r.id) || f['Total Pallets'];
   const client = _clientName(f);
+  // Wave 3: the parent still owns client/price/invoicing — a chip says the
+  // route now runs in two legs instead of listing them as separate rows.
+  const legChip = INTL_ORDERS.legParents && INTL_ORDERS.legParents.has(r.id)
+    ? '<span class="oi-legchip" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : '';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}" style="height:${_OI_ROW_H}px">
-    <td>${refCell}${_oiFlags(f)}</td>
+    <td>${refCell}${legChip}${_oiFlags(f)}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
     <td><span class="oi-name" title="${client}">${client}</span></td>

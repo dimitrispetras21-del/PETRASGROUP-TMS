@@ -2838,6 +2838,12 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wk3-legrow{min-height:28px;background:#F3F7FB;border-bottom:1px dashed var(--border)}
 .wk3-legrow:hover{background:var(--accent-light)}
 .wk3-legrow .wk3-route{font-size:11px;line-height:28px}
+/* Σπάσιμο σκέλους (owner 6/9, FEATURES.ORDER_SPLIT): ίδια οικογένεια με το
+   .wk3-legrow της ρότας από πάνω — sunken surface token, όχι νέο hex. */
+.wk3-splitleg{background:var(--surface-sunken);border-bottom:1px dashed var(--border)}
+.wk3-splitleg .wk3-num{color:var(--accent);font-weight:800}
+.wi2-splitchip{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:700;color:var(--accent);background:var(--surface-card);border:1px solid var(--border)}
+.wi2-splitparent{justify-content:center;align-items:center;cursor:default}
 /* Owner (9/8): partner με ανάθεση, χωρίς απέναντι σκέλος → «μαύρο» (navy) πεδίο */
 .wk3-leg.bgap{background:var(--navy-mid,#0B1929)}
 .wk3-leg.bgap:hover{background:#13253A}
