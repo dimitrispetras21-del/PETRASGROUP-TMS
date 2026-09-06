@@ -320,6 +320,7 @@ const _OPS_STYLE=`<style>
   .do-pill.full{color:var(--text-mid);background:var(--surface-card);border-color:var(--border)}
   .do-sub td{background:var(--surface-page);height:36px;border-top:1px dashed var(--border)}
   .do-sub .do-srow{display:flex;align-items:center;gap:12px;padding-left:32px;font-size:var(--text-sm)}
+  .do-zsub{background:var(--surface-page);min-height:36px;display:flex;align-items:center;border-top:1px dashed var(--border);padding:0 12px}
   .do-sub .do-srow .do-sn{font-weight:700;width:16px;color:var(--text-mid)}
   .do-sub .do-srow .do-sloc{flex:1;min-width:0;white-space:normal}
   .do-empty{padding:8px 12px;border:1px dashed var(--border);border-radius:var(--radius);color:var(--text-dim);font-size:var(--text-sm);background:var(--surface-card)}
@@ -383,14 +384,14 @@ function _opsDraw() {
     r=>{const f=r.fields, n=_daysAgo(f['Delivery DateTime']);
       return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}</span>
         <span class="do-late">παράδοση ${_DMY(f['Delivery DateTime'])} · ${_agoTxt(n)}</span>
-        ${_opsSlots(r,'ovd')}</div>`;}):'';
+        ${_opsSlots(r,'ovd')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Unloading',true):''}`;}):'';
   const ovLH=isToday?zone('ovLoad',OPS.overdueLoads,
     `${OPS.overdueLoads.length} ${OPS.overdueLoads.length===1?'εκκρεμής φόρτωση':'εκκρεμείς φορτώσεις'} από προηγούμενες ημέρες`,
     'δεν φορτώθηκε και δεν μετατέθηκε',
     r=>{const f=r.fields, n=_daysAgo(f['Loading DateTime']);
       return `<div class="do-zrow" id="r_${r.id}"><span class="do-cl">${escapeHtml(_C(f))}</span><span class="do-rt">${route(r)}${_T(f)?' · '+escapeHtml(_T(f)):''}${_D(f)?' · '+escapeHtml(_D(f)):''}</span>
         <span class="do-late">φόρτωση ${_DMY(f['Loading DateTime'])} · ${_agoTxt(n)}</span>
-        ${_opsSlots(r,'ovl')}</div>`;}):'';
+        ${_opsSlots(r,'ovl')}</div>${OPS._expanded?.has(r.id)?_opsSubRows(r,'Loading',true):''}`;}):'';
   const ovLErr=isToday&&OPS.overdueLoadsErr?`<div class="do-err"><span>Η ζώνη εκκρεμών φορτώσεων δεν φορτώθηκε — δεν σημαίνει ότι δεν υπάρχουν εκκρεμείς φορτώσεις. Οι υπόλοιπες ενότητες είναι ενημερωμένες.</span><button class="do-btn" onclick="renderDailyOps()">Ξαναδοκίμασε</button></div>`:'';
 
   // Quick filters with nothing behind them are disabled (D2): a choice that
@@ -659,7 +660,11 @@ function _opsToggleStops(id){
 // Υπο-γραμμές: μία ανά σημείο, με σειρά, στοιχεία και ΔΙΚΑ της κουμπιά στις
 // ίδιες 3 θυρίδες. Δηλωμένη = δείχνει τι δηλώθηκε (ποιος/πότε) και ΔΕΝ
 // ξαναρωτά. Οι τοποθεσίες ΑΝΑΔΙΠΛΩΝΟΝΤΑΙ — ποτέ ellipsis (κανόνας 6).
-function _opsSubRows(rec, stype){
+// asDiv: the overdue zones are flex <div class="do-zrow"> rows, not table rows.
+// Until 6/9 the zones never drew the sub-rows at all, so on a multi-stop
+// overdue order «Παραδόθηκε»/«Φορτώθηκε» only toggled OPS._expanded and nothing
+// visible happened (owner 6/9: 2 deliveries + 1 loading «δεν αποκρίνονται»).
+function _opsSubRows(rec, stype, asDiv){
   const id=rec.id;
   const isDel=stype==='Unloading';
   return _opsStopsOf(id, stype).map((s,i)=>{
@@ -675,14 +680,14 @@ function _opsSubRows(rec, stype){
       : `<span class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();confirmAction('${okLbl} σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','On Time')})">${okLbl}</button></span>
          <span class="do-slot">${isDel?`<button class="do-late-btn" onclick="event.stopPropagation();confirmAction('Καθυστέρησε σημείο ${i+1};').then(ok=>{if(ok)_opsMarkStopUI('${id}','${s.id}','Delayed')})">Καθυστέρησε</button>`:''}</span>
          </span>`;
-    return `<tr class="do-sub"><td colspan="20">
-      <div class="do-srow">
+    const inner=`<div class="do-srow">
         <span class="do-sn">${'①②③④⑤⑥⑦⑧⑨'[i]||(i+1)}</span>
         <span class="do-sloc">${escapeHtml(String(loc))}</span>
         <span style="color:var(--text-dim);font-variant-numeric:tabular-nums">${dt}</span>
         <span style="color:var(--text-dim);width:40px">${pal}</span>
         ${right}
-      </div></td></tr>`;
+      </div>`;
+    return asDiv?`<div class="do-sub do-zsub">${inner}</div>`:`<tr class="do-sub"><td colspan="20">${inner}</td></tr>`;
   }).join('');
 }
 // Δήλωση ΕΝΟΣ σημείου — ανεξάρτητη: αν έμειναν άλλα, η παραγγελία δεν
