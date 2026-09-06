@@ -854,16 +854,15 @@ async function _natlWriteGroupageChain(common, groups) {
 }
 
 /* ── Φόρμα groupage ───────────────────────────────────────────────────
- * Μία γραμμή ανά ΣΤΑΣΗ, με στήλη πελάτη. Η ομαδοποίηση σε παραγγελίες
- * γίνεται στην υποβολή: όσοι πελάτες, τόσες παραγγελίες.
- *
- * Το εγκεκριμένο prototype έχει φωλιασμένα κουτιά ανά πελάτη. Εδώ η ίδια
- * πληροφορία μπαίνει σε επίπεδο πίνακα με στήλη «Πελάτης» — παράγει
- * ΑΚΡΙΒΩΣ τα ίδια δεδομένα με πολύ λιγότερο κώδικα, και η προεπισκόπηση
- * από κάτω δείχνει την ομαδοποίηση όσο γράφεις, ώστε να μη χαθεί η εικόνα
- * «ποιος πελάτης, πόσα σημεία».
+ * Μία ΚΑΡΤΑ ανά ΠΕΛΑΤΗ (owner 6/9, Figma 165:677), με ένα ή περισσότερα
+ * σημεία παράδοσης μέσα σε αυτήν. Παλιότερα (Δ audit w4) ήταν μία γραμμή
+ * ανά στάση με στήλη πελάτη· η ομαδοποίηση σε παραγγελίες γινόταν στην
+ * υποβολή. Εδώ η ομαδοποίηση είναι η ίδια η δομή: όσες κάρτες, τόσοι
+ * πελάτες, τόσες παραγγελίες. Το payload που φτάνει στο _natlWriteGroupageChain
+ * είναι ΤΟ ΙΔΙΟ ΑΚΡΙΒΩΣ — μόνο η φόρμα άλλαξε (βλ. _grpGroups).
  */
-let _grpRows = [];
+let _grpCards = [];       // uids καρτών, με τη σειρά εμφάνισης· 1 κάρτα = 1 πελάτης
+let _grpCardRows = {};    // cardUid -> [rowUid,...] τα σημεία παράδοσης αυτής της κάρτας
 
 // openNatlGroupage αφαιρέθηκε: το groupage ζει ΜΕΣΑ στη φόρμα (Δ17).
 
@@ -899,7 +898,7 @@ function _natlMode(m) {
     btn.setAttribute('onclick', m ? '_grpSubmit()' : "submitNatlOrder('')");
     btn.textContent = m ? 'Καταχώρηση' : 'Καταχώρηση';
   }
-  if (m) { if (!_grpRows.length) _grpRows = [++_grpSeq]; _grpRender(); }
+  if (m) { _grpRender(); }
 }
 
 
@@ -959,88 +958,129 @@ function _simRead() {
   })).filter(s => s.locId);
 }
 
-function _grpRowHTML(uid) {
-  return `<div class="grp-row" id="grpr_${uid}"
-      style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px;margin-bottom:8px;background:var(--surface-card)">
-    <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:8px">
-      <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+uid, '', '')}</div>
-      <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη)</span></label>
-        <input class="form-input" type="number" id="grpv${uid}" oninput="_grpPreview()"></div>
-      <button type="button" title="Αφαίρεση" onclick="_grpDelRow(${uid})"
-        style="height:38px;border:none;background:none;color:var(--text-mid);font-size:18px;cursor:pointer">×</button>
-    </div>
-    <div style="display:grid;grid-template-columns:minmax(0,3fr) 72px 150px minmax(0,1.2fr);gap:12px;align-items:end">
-      <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('grpl'+uid, '')}</div>
+// Μία στάση μέσα σε μία κάρτα πελάτη.
+function _grpDeliveryRowHTML(rowUid) {
+  return `<div class="grp-row" id="grpr_${rowUid}" style="margin-bottom:8px">
+    <div style="display:grid;grid-template-columns:minmax(0,3fr) 72px 150px minmax(0,1.2fr) 34px;gap:12px;align-items:end">
+      <div><label class="form-label">Τοποθεσία παράδοσης *</label>${_locSelect('grpl'+rowUid, '')}</div>
       <div><label class="form-label">Παλέτες</label>
-        <input class="form-input" type="number" id="grpp${uid}" min="0" max="99" step="1"
+        <input class="form-input" type="number" id="grpp${rowUid}" min="0" max="99" step="1"
           style="text-align:right"
           oninput="if(this.value.length>2)this.value=this.value.slice(0,2);_grpPreview()"></div>
       <div><label class="form-label">Ημερομηνία</label>
-        <input class="form-input" type="date" id="grpd${uid}"></div>
+        <input class="form-input" type="date" id="grpd${rowUid}"></div>
       <div><label class="form-label">Σημείωση</label>
-        <input class="form-input" id="grpn${uid}" placeholder="π.χ. παράδοση πρωί"></div>
+        <input class="form-input" id="grpn${rowUid}" placeholder="π.χ. παράδοση πρωί"></div>
+      <button type="button" title="Αφαίρεση σημείου" onclick="_grpDelRow(${rowUid})"
+        style="height:38px;border:none;background:none;color:var(--text-mid);font-size:18px;cursor:pointer">×</button>
     </div>
   </div>`;
 }
 
+// Μία κάρτα ανά πελάτη: header (πελάτης + αξία + αφαίρεση πελάτη) και από
+// κάτω τα σημεία παράδοσής του.
+function _grpCardHTML(cardUid) {
+  const rows = _grpCardRows[cardUid] || [];
+  return `<div class="grp-card" id="grpcard_${cardUid}"
+      style="border:1px solid var(--border-mid);border-radius:var(--radius);padding:12px;margin-bottom:12px;background:var(--surface-card)">
+    <div style="display:grid;grid-template-columns:minmax(0,2fr) 130px 34px;gap:12px;align-items:end;margin-bottom:8px">
+      <div><label class="form-label">Πελάτης *</label>${_clientSelect('grpc'+cardUid, '', '')}</div>
+      <div><label class="form-label">Αξία € <span style="color:var(--text-dim);font-weight:400">(ανά πελάτη — Δ13)</span></label>
+        <input class="form-input" type="number" id="grpv${cardUid}" oninput="_grpPreview()"></div>
+      <button type="button" title="Αφαίρεση πελάτη" onclick="_grpDelCard(${cardUid})"
+        style="height:38px;border:none;background:none;color:var(--text-mid);font-size:18px;cursor:pointer">×</button>
+    </div>
+    <div id="grpcard_rows_${cardUid}">${rows.map(_grpDeliveryRowHTML).join('')}</div>
+    <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-top:4px"
+      onclick="_grpAddRow(${cardUid})">+ σημείο για αυτόν τον πελάτη</button>
+  </div>`;
+}
+
 // Προσθήκη/αφαίρεση ΧΩΡΙΣ πλήρη επανασχεδίαση: ένα re-render θα έσβηνε ό,τι
-// έχει ήδη πληκτρολογηθεί στα πεδία αναζήτησης των άλλων γραμμών.
-function _grpAddRow() {
+// έχει ήδη πληκτρολογηθεί στα πεδία αναζήτησης των άλλων καρτών/σημείων.
+function _grpAddCard() {
   const c = document.getElementById('gf_rows'); if (!c) return;
-  const uid = ++_grpSeq; _grpRows.push(uid);
-  c.insertAdjacentHTML('beforeend', _grpRowHTML(uid));
+  const cardUid = ++_grpSeq, rowUid = ++_grpSeq;
+  _grpCards.push(cardUid);
+  _grpCardRows[cardUid] = [rowUid];
+  c.insertAdjacentHTML('beforeend', _grpCardHTML(cardUid));
   _grpPreview();
 }
-function _grpDelRow(uid) {
-  if (_grpRows.length <= 1) return;
-  const el = document.getElementById('grpr_'+uid); if (el) el.remove();
-  _grpRows = _grpRows.filter(x => x !== uid);
+function _grpDelCard(cardUid) {
+  if (_grpCards.length <= 1) return;   // πάντα μένει τουλάχιστον ένας πελάτης
+  const el = document.getElementById('grpcard_'+cardUid); if (el) el.remove();
+  _grpCards = _grpCards.filter(x => x !== cardUid);
+  delete _grpCardRows[cardUid];
+  _grpPreview();
+}
+function _grpAddRow(cardUid) {
+  const rows = _grpCardRows[cardUid]; if (!rows || rows.length >= 10) return;   // Α6: schema 10 θέσεων
+  const container = document.getElementById('grpcard_rows_'+cardUid); if (!container) return;
+  const rowUid = ++_grpSeq; rows.push(rowUid);
+  container.insertAdjacentHTML('beforeend', _grpDeliveryRowHTML(rowUid));
+  _grpPreview();
+}
+function _grpDelRow(rowUid) {
+  const cardUid = Object.keys(_grpCardRows).find(k => _grpCardRows[k].includes(rowUid));
+  if (cardUid == null) return;
+  const rows = _grpCardRows[cardUid];
+  if (rows.length <= 1) return;        // πάντα μένει τουλάχιστον ένα σημείο ανά πελάτη
+  const el = document.getElementById('grpr_'+rowUid); if (el) el.remove();
+  _grpCardRows[cardUid] = rows.filter(x => x !== rowUid);
   _grpPreview();
 }
 function _grpSet() { _grpPreview(); }   // συμβατότητα με παλιά onchange
 
 function _grpRender() {
   const c = document.getElementById('gf_rows'); if (!c) return;
-  if (!_grpRows.length || typeof _grpRows[0] !== 'number') _grpRows = [++_grpSeq];
-  c.innerHTML = _grpRows.map(_grpRowHTML).join('');
+  if (!_grpCards.length) {
+    const cardUid = ++_grpSeq, rowUid = ++_grpSeq;
+    _grpCards = [cardUid]; _grpCardRows = { [cardUid]: [rowUid] };
+  }
+  c.innerHTML = _grpCards.map(_grpCardHTML).join('');
   _grpPreview();
 }
 
 // Διαβάζει ΑΠΟ ΤΟ DOM — τα αναζητήσιμα πεδία γράφουν στα κρυφά lv_<id>,
-// όχι σε δικό μας μοντέλο.
+// όχι σε δικό μας μοντέλο. Μία κάρτα = μία εγγραφή του πίνακα που επιστρέφει
+// (ίδιο σχήμα {clientId, clientLabel, price, stops} με πριν, ώστε το
+// _natlWriteGroupageChain να μη χρειάζεται καμία αλλαγή — βλ. equality test).
 function _grpGroups() {
   const clients = (getRefClients?.()||[]);
-  const by = {}; const order = [];
-  _grpRows.forEach(uid => {
-    const g = id => document.getElementById(id)?.value?.trim() || '';
-    const cid = g('lv_grpc'+uid), lid = g('lv_grpl'+uid);
-    if (!cid || !lid) return;
-    if (!by[cid]) {
-      by[cid] = { clientId:cid,
-        clientLabel: clients.find(c=>c.id===cid)?.fields?.['Company Name']
-                  || document.getElementById('ls_grpc'+uid)?.value || '',
-        price:'', stops:[] };
-      order.push(cid);
-    }
-    const pr = g('grpv'+uid); if (pr && !by[cid].price) by[cid].price = pr;
-    by[cid].stops.push({ locId:lid, pallets:parseFloat(g('grpp'+uid))||0,
-                         date:g('grpd'+uid), note:g('grpn'+uid) });
-  });
-  return order.map(k => by[k]);
+  const g = id => document.getElementById(id)?.value?.trim() || '';
+  return _grpCards.map(cardUid => {
+    const cid = g('lv_grpc'+cardUid);
+    const rows = _grpCardRows[cardUid] || [];
+    const stops = rows.map(rowUid => ({
+      locId: g('lv_grpl'+rowUid), pallets: parseFloat(g('grpp'+rowUid))||0,
+      date: g('grpd'+rowUid), note: g('grpn'+rowUid)
+    })).filter(s => s.locId);
+    return {
+      clientId: cid,
+      clientLabel: clients.find(c=>c.id===cid)?.fields?.['Company Name']
+                || document.getElementById('ls_grpc'+cardUid)?.value || '',
+      price: g('grpv'+cardUid), stops
+    };
+  }).filter(x => x.clientId && x.stops.length);
 }
 
-// Ενημερώνει ΜΟΝΟ την προεπισκόπηση — ποτέ τις γραμμές.
+// Ενημερώνει ΜΟΝΟ την προεπισκόπηση — ποτέ τις κάρτες.
 function _grpPreview() {
   const box = document.getElementById('gf_preview'); if (!box) return;
   const g = _grpGroups();
   const tot = g.reduce((s,x)=>s+x.stops.reduce((a,y)=>a+(y.pallets||0),0),0);
+  const nStops = g.reduce((s,x)=>s+x.stops.length,0);
   const cls = tot>33 ? 'color:var(--danger)' : (tot>=30 ? 'color:var(--warn)' : 'color:var(--text-mid)');
   box.innerHTML = !g.length ? '' : `
     <div style="border:1px solid var(--border);background:var(--surface-sunken);border-radius:var(--radius);padding:12px">
       <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:8px">
-        ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
+        ${g.length} ${g.length===1?'παραγγελία':'παραγγελίες'} θα δημιουργηθούν · 1 φορτίο · <span style="${cls}">${tot}/33 παλέτες</span></div>
       ${g.map(x=>`<div style="font-size:12px;color:var(--text-mid)"><b style="color:var(--text)">${escapeHtml(x.clientLabel)}</b> · ${x.stops.length} σημεία · ${x.stops.reduce((s,y)=>s+(y.pallets||0),0)}p${x.price?' · '+x.price+' €':''}</div>`).join('')}
       ${tot>33?'<div style="margin-top:8px;font-size:11px;color:var(--danger);font-weight:600">Ξεπερνά τις 33 παλέτες.</div>':''}
+      <!-- Α1: ό,τι δεν γίνεται πρέπει να ακούγεται — και το αντίστροφο: ό,τι
+           λέμε ότι θα γραφτεί πρέπει να είναι αυτό που _natlWriteGroupageChain
+           ΟΝΤΩΣ δημιουργεί, όχι μια ευχή. -->
+      <div style="margin-top:8px;font-size:11px;color:var(--text-dim)">Θα γραφτούν: ${g.length} NAT ORDERS → ${nStops} GROUPAGE LINES → 1 CONSOLIDATED LOAD → 1 NAT LOAD</div>
     </div>`;
   const btn = document.getElementById('natlBtnSubmit');
   if (btn && btn.getAttribute('onclick')==='_grpSubmit()')
@@ -1187,10 +1227,10 @@ async function _openNatlModal(recId, f) {
     </div>
 
     <div id="nf_grp" style="display:none;padding-top:16px;border-top:1px solid var(--border);margin-top:16px">
-      <div class="detail-section-title">Παραδόσεις — μία κάρτα ανά σημείο</div>
+      <div class="detail-section-title">Παραδόσεις — μία κάρτα ανά πελάτη</div>
       <div id="gf_rows"></div>
       <button type="button" class="btn btn-ghost" style="font-size:12px;padding:4px 12px;margin-top:8px"
-        onclick="_grpAddRow()">+ Προσθήκη γραμμής</button>
+        onclick="_grpAddCard()">+ Προσθήκη πελάτη</button>
       <div id="gf_preview" style="margin-top:16px"></div>
     </div>
     <div id="nf_simple" style="padding-top:16px;border-top:1px solid var(--border)">
@@ -1215,7 +1255,7 @@ async function _openNatlModal(recId, f) {
   modalEl.style.width = '680px'; modalEl.style.maxWidth = '96vw';
   _onWatchModalClose();
   openModal(isEdit ? 'Επεξεργασία εθνικής παραγγελίας' : 'Νέα εθνική παραγγελία', body, footer);
-  if (!isEdit) { _grpRows = []; _natlMode(0); }
+  if (!isEdit) { _grpCards = []; _grpCardRows = {}; _natlMode(0); }
 
   // Προσυμπλήρωση των σημείων παράδοσης από τις 10 θέσεις του schema.
   _simRows = []; _simSeq = 0;
@@ -2454,6 +2494,8 @@ window.cancelNatlOrder = cancelNatlOrder;
 // Φ3β — groupage: όλα καλούνται από inline onclick, module σε IIFE
 window._grpAddRow = _grpAddRow;
 window._grpDelRow = _grpDelRow;
+window._grpAddCard = _grpAddCard;
+window._grpDelCard = _grpDelCard;
 window._grpSet    = _grpSet;
 window._grpPreview = _grpPreview;
 window._grpSubmit = _grpSubmit;
