@@ -14,6 +14,14 @@
 //
 // Fields written on import drop (auto-save, independent):
 //   Matched Import ID  (stores import order record ID as text)
+//
+// LOCAL_MOVES (Wave 2, owner 6/9 — table `local_moves`, facade id
+// TABLES.LOCAL_MOVES, same table weekly_natl.js's ΤΟΠΙΚΕΣ ΠΑΡΑΔΟΣΕΙΣ writes):
+//   read Date, Sequence, Driver, Truck, Trailer, Partner, From/To Location,
+//   Pallets, Time From, Description, Status, Parent Order
+//   written: the same names on create/edit; NEVER Parent Nat Load (DB CHECK
+//   local_moves_one_parent forbids both parents at once — that link is
+//   weekly_natl.js's, this screen only ever writes Parent Order)
 // ═══════════════════════════════════════════════════════════════════════
 (function() {
 'use strict';
@@ -409,6 +417,16 @@ const _WI2_CSS=`
    minmax(0,…) όπως και στο πλήρες πλάτος, για να μην εξαρτώνται τα πλάτη
    από το περιεχόμενο της κάθε γραμμής. */
 @media (max-width:1360px){.wk3.wi2 .wk3-cols,.wk3.wi2 .wk3-row{grid-template-columns:36px minmax(0,1.1fr) 200px minmax(0,0.9fr)}}
+/* Wave 2 (owner 6/9): local movements around Veroia, tied to an
+   international order — not costed, not invoiced, no round-trip need.
+   Sub-row reuses .wk3-legrow's look (dashed, page background) but spans the
+   whole width instead of the leg grid, since it has no export/import side. */
+.wk3.wi2 .wi-lmv-row{grid-template-columns:36px 1fr;cursor:pointer}
+.wk3.wi2 .wi-lmv-body{grid-column:2/-1;padding:0 4px;font-size:12px;color:var(--text-mid);display:flex;align-items:center;gap:4px;font-variant-numeric:tabular-nums}
+.wk3.wi2 .wi-lmv-need{color:var(--unassigned);font-weight:700}
+.wk3.wi2 .wi-lmv-row.err{border-color:var(--danger);border-style:solid}
+.wk3.wi2 .wi-lmv-row.err .wk3-num{color:var(--danger)}
+.wk3.wi2 .wi-lmv-fail{display:flex;align-items:center;gap:12px;padding:8px 16px;margin-bottom:8px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:12px}
 `;
 
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
@@ -443,9 +461,18 @@ async function renderWeeklyIntl(){
     // εμφανίζονται σε δική τους ενότητα στο τέλος, ΔΕΝ μετράνε στο tally.
     const impFilter=`AND({Type}='International',{Direction}='Import',IS_AFTER({Loading DateTime},'${toLocalDate(new Date(ws.getTime()-8*86400000))}'),IS_BEFORE({Loading DateTime},'${toLocalDate(new Date(we.getTime()+8*86400000))}'))`;
 
-    let [,,expOrders,impOrders] = await Promise.all([
+    let [,localMoves,expOrders,impOrders] = await Promise.all([
       preloadReferenceData(),
-      Promise.resolve(), // placeholder to keep destructuring aligned
+      // Wave 2 (owner 6/9): local movements around Veroia, tied to an
+      // international order — never costed, never invoiced, no round-trip
+      // requirement. safeFetch: a dead/undeployed local_moves route must
+      // never hide the whole board (CLAUDE.md `local_moves` is listed
+      // "αμφίβολο" — needs the same production measurement as anything
+      // else before it's trusted). Sat–Fri ±1 day, like weekly_natl's own
+      // query — the move's own Date is what matters, not the order's.
+      safeFetch(() => atGetAll(TABLES.LOCAL_MOVES, {
+        filterByFormula: `AND(IS_AFTER({Date},'${toLocalDate(new Date(ws.getTime()-86400000))}'),IS_BEFORE({Date},'${toLocalDate(new Date(we.getTime()+86400000))}'))`,
+      }, false), 'weekly intl: local moves', []),
       // Σαβ–Παρ (display): date-range αντί {Week Number} — υπερσύνολο με OR
       // στα δύο dates, ακριβές κόψιμο client-side ώστε να μη χαθεί καμία
       // εγγραφή χωρίς Delivery DateTime.
@@ -510,6 +537,25 @@ async function renderWeeklyIntl(){
       ));
     WINTL.data.imports = impOrders;
     WINTL._loadedAt = new Date(); // footer «Ενημερώθηκε HH:MM»
+
+    // Wave 2: local moves indexed by the order they serve. Contract #6/#7
+    // (DESIGN.md Α7): a table that did not load is an ERROR banner, not a
+    // silently empty set of sub-rows — never render a confident "no local
+    // moves" when the fetch itself failed.
+    WINTL.data._localsFailed = didFail(localMoves);
+    WINTL.data.locals = WINTL.data._localsFailed ? [] : (localMoves || []);
+    WINTL._localsByOrder = {};
+    WINTL.data.locals.forEach(m => {
+      const oid = getLinkedId(m.fields?.['Parent Order']);
+      if (oid) (WINTL._localsByOrder[oid] = WINTL._localsByOrder[oid] || []).push(m);
+    });
+    Object.values(WINTL._localsByOrder).forEach(arr => arr.sort((a,b) =>
+      (a.fields?.['Sequence']||0) - (b.fields?.['Sequence']||0)));
+    // Location names for the sub-row text and the form's dropdowns — loaded
+    // once, shared with orders_intl/natl (fhLoadLocations is idempotent).
+    // _wiInjectStopSummaries below only loads it when an order has stops, so
+    // an all-new week with zero ORDER STOPS would otherwise leave it empty.
+    await fhLoadLocations();
 
     if (loadId !== _wiLoadId) return;
     _wiBuildRows();
@@ -865,6 +911,7 @@ function _wiPaint(){
       <span id="wi-crossweek-in"></span>
       <span class="wi2-week">Εβδομάδα ${week} · ${_wiWeekRange(week)} · Σαβ–Παρ</span>
     </div>
+    ${WINTL.data._localsFailed ? `<div class="wi-lmv-fail">Οι τοπικές κινήσεις δεν φορτώθηκαν <small>— δεν σημαίνει ότι δεν υπάρχουν: ο πίνακας LOCAL_MOVES δεν είναι διαθέσιμος στον Worker. Οι παραγγελίες παραπάνω δεν επηρεάζονται.</small><button class="wi2-btn" onclick="renderWeeklyIntl()">↻ Ξαναδοκίμασε</button></div>` : ''}
     <div class="wk3-wrap">
       <main class="wk3-sheet">
         <div class="wk3-cols">
@@ -990,11 +1037,15 @@ function _wiAllRowsHTML(){
     grp.exps.forEach(row=>{ WINTL._rowNo[row.orderIds[0]]=String(idx+1); html+=_wiRowHTML(row,idx++);
       const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
       pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+      // Wave 2: local moves render after route legs, keyed the same way (each
+      // order id in the group can carry its own local move).
+      pids.forEach(pid=>{ (WINTL._localsByOrder?.[pid]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,pid); }); });
     });
     // Unmatched imports numbered I1… (Β.3-4) so «γραμμή I3» means something on
     // the phone between two dispatchers.
     showImps.forEach(row=>{ ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx; html+=_wiImpRowHTML(row,impIdx);
       (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+      (WINTL._localsByOrder?.[row.orderId]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,row.orderId); });
     });
     html+='</section>';
   });
@@ -1020,9 +1071,13 @@ function _wiAllRowsHTML(){
     grp.exps.forEach(row=>{ WINTL._rowNo[row.orderIds[0]]=String(idx+1); html+=_wiRowHTML(row,idx++);
       const pids=[...(row.orderIds||[])]; if(row.importId) pids.push(row.importId);
       pids.forEach(pid=>{ (WINTL._legs?.[pid]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); }); });
+      // Wave 2: local moves render after route legs, keyed the same way (each
+      // order id in the group can carry its own local move).
+      pids.forEach(pid=>{ (WINTL._localsByOrder?.[pid]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,pid); }); });
     });
     showImps.forEach(row=>{ ++impIdx; WINTL._rowNo[row.orderId]='I'+impIdx; html+=_wiImpRowHTML(row,impIdx);
       (WINTL._legs?.[row.orderId]||[]).forEach(lr=>{ html+=_wiLegRowHTML(lr); });
+      (WINTL._localsByOrder?.[row.orderId]||[]).forEach(m=>{ html+=_wiLocalRowHTML(m,row.orderId); });
     });
     html+='</section>';
   });
@@ -2597,6 +2652,9 @@ function _wiCtx(e,rowId){
   if(isGroup) html+=btn('Διάλυση groupage',`_wiSplit(${rowId})`);
   if(row.importId) html+=btn('Αφαίρεση ταιριάσματος εισαγωγής',`_wiRemoveImport(${rowId})`);
   if(row.saved) html+=btn('Καθαρισμός ανάθεσης',`_wiClear(${rowId})`,true);
+  // Wave 2 (owner 6/9): local movement around Βέροια tied to this order —
+  // no cost, no invoice, no round-trip need (unlike the rota leg above).
+  if(row.orderIds?.[0]) html+=btn('Τοπική κίνηση (Βέροια)',`_wiAddLocal('${row.orderIds[0]}')`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
   Object.assign(ctx.style,{display:'block',
@@ -2712,6 +2770,209 @@ async function _wiRotUnlink(e,legOid){
   }catch(err){ reportError('Η αποσύνδεση απέτυχε',err); }
 }
 
+/* ── WAVE 2: LOCAL MOVES (owner 6/9) ───────────────────────────────────
+   «Τοπικές = γύρω από τη Βέροια (Θεσσαλονίκη/Σκύδρα/Βέροια/Νάουσα). Κινήσεις
+   που δεν κοστολογούνται και δεν τιμολογούνται, ούτε υπάρχει άμεση ανάγκη
+   για backload.» A local movement tied to an international order — same
+   `local_moves` table weekly_natl.js already ships (SPEC Δ18), writing
+   `Parent Order` instead of `Parent Nat Load` (DB CHECK
+   local_moves_one_parent forbids setting both).
+   Not extracted into a shared helper with weekly_natl.js's _wnAddLocal/
+   _wnSaveLocal: that screen is live in daily production and refactoring it
+   was out of scope for this Wave — duplicating this form keeps the whole
+   blast radius of Wave 2 inside this file. ─────────────────────────────── */
+
+// Location name for a linked-record id, reusing the shared cache every order
+// form already fills (core/form-helpers.js) instead of a second fetch.
+function _wiLmvLoc(id){ return id ? (_fhLocationsMap[id] || '') : ''; }
+
+// Compact sub-row under the order it belongs to — same visual family as the
+// rotation leg row (.wk3-legrow): dashed border, page background, «⤷».
+function _wiLocalRowHTML(m, orderId) {
+  const f = m.fields || {};
+  const drv = WINTL.data.drivers.find(d => d.id === getLinkedId(f['Driver']));
+  const prt = WINTL.data.partners.find(p => p.id === getLinkedId(f['Partner']));
+  const trk = WINTL.data.trucks.find(t => t.id === getLinkedId(f['Truck']));
+  // DESIGN.md ΜΕΡΟΣ Ε (Κανόνας 2 — χρώμα ΚΑΙ λέξη): ίδιο ακριβώς λεξιλόγιο
+  // με τις κάρτες ανάθεσης του ίδιου board («ΙΔ.»/«ΣΥΝ.»/«ΠΡΟΣ ΑΝΑΘΕΣΗ»).
+  const whoTxt = drv
+    ? `ΙΔ. ${escapeHtml([trk?.label, drv.label].filter(Boolean).join(' · '))}`
+    : (prt ? `ΣΥΝ. ${escapeHtml(prt.label)}` : '<span class="wi-lmv-need">ΠΡΟΣ ΑΝΑΘΕΣΗ</span>');
+  const dateTxt = f['Date'] ? _wiFmt(f['Date']) : '—';
+  const fromTxt = escapeHtml(_wiLmvLoc(getLinkedId(f['From Location'])) || '—');
+  const toTxt   = escapeHtml(_wiLmvLoc(getLinkedId(f['To Location'])) || '—');
+  // T3 twin (CLAUDE.md facade trap #1): a create/patch whose Parent Order did
+  // NOT survive the read-back stays visibly ⚠ until fixed — never disappears
+  // behind a repaint.
+  const isErr = WINTL._localsSyncErr?.has(m.id);
+  const tip = isErr
+    ? '⚠ Η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε στην ανάγνωση — έλεγξε χειροκίνητα. Κλικ: επεξεργασία.'
+    : 'Τοπική κίνηση (Βέροια) — κλικ: επεξεργασία · δεξί κλικ: διαγραφή';
+  return `<div class="wk3-row wk3-legrow wi-lmv-row${isErr?' err':''}" data-lmv-id="${m.id}" title="${tip}"
+      oncontextmenu="_wiLmvCtx(event,'${m.id}')"
+      onclick="event.stopPropagation();_wiAddLocal('${orderId}','${m.id}')">
+    <div class="wk3-num" style="color:var(--accent-text);font-weight:800">⤷<span class="wi-sync" id="wi-sync-lmv-${m.id}">${isErr?'⚠':''}</span></div>
+    <div class="wi-lmv-body">τοπικό · ${dateTxt} · ${fromTxt} → ${toTxt} · ${whoTxt}</div>
+  </div>`;
+}
+
+// Create (no moveId) or edit (moveId) — same modal either way.
+async function _wiAddLocal(orderId, moveId) {
+  await fhLoadLocations();
+  const exp = WINTL.data.exports.find(r=>r.id===orderId);
+  const imp = WINTL.data.imports.find(r=>r.id===orderId);
+  const ord = exp || imp;
+  if (!ord) { toast('Η παραγγελία δεν βρέθηκε στη μνήμη — ξαναφόρτωσε την εβδομάδα', 'warn'); return; }
+  const isImport = !!imp;
+  const of = ord.fields || {};
+  const existing = moveId ? (WINTL._localsByOrder?.[orderId]||[]).find(m=>m.id===moveId) : null;
+  const ef = existing?.fields || {};
+
+  // Prefill (owner 6/9): an IMPORT ends its international leg at its LAST
+  // unloading stop — that's where the truck sits, so a local move continues
+  // FROM there. An EXPORT starts at its FIRST loading stop — a local move
+  // feeds goods TO there before the truck departs. Only on CREATE; an
+  // existing move keeps whatever it was saved with.
+  let prefillLocId = '', prefillDate = '';
+  if (!existing) {
+    if (isImport) {
+      for (let i = 10; i >= 1; i--) { const id = getLinkedId(of[`Unloading Location ${i}`]); if (id) { prefillLocId = id; break; } }
+      prefillDate = toLocalDate(of['Delivery DateTime'] || '');
+    } else {
+      prefillLocId = getLinkedId(of['Loading Location 1']) || '';
+      prefillDate = toLocalDate(of['Loading DateTime'] || '');
+    }
+  }
+  const dateVal   = existing ? (toLocalDate(ef['Date']) || '') : prefillDate;
+  const fromVal   = existing ? (getLinkedId(ef['From Location']) || '') : (isImport ? prefillLocId : '');
+  const toVal     = existing ? (getLinkedId(ef['To Location']) || '')   : (isImport ? '' : prefillLocId);
+  const drvVal    = getLinkedId(ef['Driver']);
+  const prtVal    = getLinkedId(ef['Partner']);
+  const assignVal = drvVal ? 'd:'+drvVal : (prtVal ? 'p:'+prtVal : '');
+  const truckVal  = getLinkedId(ef['Truck']) || '';
+  const timeVal   = ef['Time From'] || '';
+  const palVal    = existing ? (ef['Pallets']||'') : (of['Total Pallets']||'');
+  const descVal   = ef['Description'] || '';
+
+  const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
+  // Driver/truck OR partner — both optional at creation (K3: unknown stays
+  // empty, shown as ΠΡΟΣ ΑΝΑΘΕΣΗ on the board, never a fabricated default).
+  const assignOpt = `<option value="">— Χωρίς ανάθεση ακόμη (ΠΡΟΣ ΑΝΑΘΕΣΗ) —</option>`
+    + `<optgroup label="Οδηγοί">${WINTL.data.drivers.map(d=>`<option value="d:${d.id}" ${assignVal==='d:'+d.id?'selected':''}>${escapeHtml(d.label)}</option>`).join('')}</optgroup>`
+    + `<optgroup label="Συνεργάτες">${WINTL.data.partners.map(p=>`<option value="p:${p.id}" ${assignVal==='p:'+p.id?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</optgroup>`;
+
+  openModal(existing ? 'Επεξεργασία τοπικής κίνησης' : 'Νέα τοπική κίνηση (Βέροια)', `
+    <div class="wn3-pnote">Θα συνδεθεί με τη διεθνή παραγγελία — δεν κοστολογείται, δεν τιμολογείται, δεν χρειάζεται γύρισμα φορτωμένο (owner 6/9). Οδηγός/όχημα ή συνεργάτης είναι προαιρετικά.</div>
+    <div class="form-grid">
+      <div class="form-field"><label class="form-label">Ημερομηνία *</label>
+        <input class="form-input" type="date" id="wilm_date" value="${dateVal||''}"></div>
+      <div class="form-field"><label class="form-label">Ανάθεση</label>
+        <select class="form-select" id="wilm_assign">${assignOpt}</select></div>
+      <div class="form-field"><label class="form-label">Όχημα</label>
+        <select class="form-select" id="wilm_truck"><option value="">—</option>${opt(WINTL.data.trucks, truckVal)}</select></div>
+      <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
+        <input class="form-input" id="wilm_time" placeholder="π.χ. 11:00" value="${escapeHtml(timeVal)}"></div>
+      <div class="form-field"><label class="form-label">Από *</label>
+        <select class="form-select" id="wilm_from"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, fromVal)}</select></div>
+      <div class="form-field"><label class="form-label">Προς *</label>
+        <select class="form-select" id="wilm_to"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, toVal)}</select></div>
+      <div class="form-field"><label class="form-label">Παλέτες</label>
+        <input class="form-input" type="number" id="wilm_pal" value="${palVal||''}"></div>
+      <div class="form-field"><label class="form-label">Περιγραφή</label>
+        <input class="form-input" id="wilm_desc" placeholder="π.χ. 2 κιβώτια Άλμη" value="${escapeHtml(descVal)}"></div>
+    </div>`,
+    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+     <button class="btn btn-success" id="wilm_submit" onclick="_wiSaveLocal('${orderId}'${existing?`,'${existing.id}'`:''})">${existing?'Αποθήκευση':'Καταχώρηση'}</button>`);
+}
+
+async function _wiSaveLocal(orderId, moveId) {
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const date = v('wilm_date'), from = v('wilm_from'), to = v('wilm_to');
+  if (!date || !from || !to) { toast('Ημερομηνία, από και προς είναι υποχρεωτικά', 'warn'); return; }
+  const time = v('wilm_time');
+  if (time && !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(time)) { toast('Ώρα σε μορφή ΩΩ:ΛΛ', 'warn'); return; }
+  const assign = v('wilm_assign');
+  const driver = assign.startsWith('d:') ? assign.slice(2) : '';
+  const partner = assign.startsWith('p:') ? assign.slice(2) : '';
+  const truck = v('wilm_truck');
+  const pal = v('wilm_pal');
+  const desc = v('wilm_desc');
+
+  // Exact labels from the deployed TABLES map (worker/src/index.js local_moves
+  // block) — confirmed before writing (CLAUDE.md facade trap #1).
+  const fields = { 'Date': date, 'From Location': [from], 'To Location': [to] };
+  if (!moveId) fields['Status'] = 'Pending';
+  if (driver) fields['Driver'] = [driver];
+  if (partner) fields['Partner'] = [partner];
+  if (driver && truck) fields['Truck'] = [truck];
+  if (time) fields['Time From'] = time;
+  if (pal) fields['Pallets'] = parseFloat(pal);
+  if (desc) fields['Description'] = desc;
+  // Never both parents (DB CHECK local_moves_one_parent) — this screen only
+  // ever writes Parent Order, never Parent Nat Load (that's weekly_natl.js).
+  if (!moveId) fields['Parent Order'] = [orderId];
+
+  const btn = document.getElementById('wilm_submit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Αποθήκευση…'; }
+  try {
+    const rec = moveId
+      ? await atSafePatch(TABLES.LOCAL_MOVES, moveId, fields)
+      : await atCreate(TABLES.LOCAL_MOVES, fields);
+    if (rec?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση', 'warn'); closeModal(); await renderWeeklyIntl(); return; }
+    if (rec?.error) throw new Error(rec.error.message || rec.error.type);
+    invalidateCache(TABLES.LOCAL_MOVES);
+    const id = moveId || rec.id;
+
+    // CLAUDE.md facade trap #1: an unmapped label is a SILENT no-op with a
+    // 200 OK — the create/patch response alone does not prove the link
+    // landed. Read the record back and require `Parent Order` to actually
+    // name this order before calling it saved.
+    WINTL._localsSyncErr = WINTL._localsSyncErr || new Set();
+    let verifyOk;
+    try {
+      const check = await atGetOne(TABLES.LOCAL_MOVES, id);
+      verifyOk = getLinkedId(check?.fields?.['Parent Order']) === orderId;
+    } catch (e) { verifyOk = false; console.warn('[wi local move] verify read-back failed:', e?.message); }
+    if (verifyOk) WINTL._localsSyncErr.delete(id); else WINTL._localsSyncErr.add(id);
+    _wiSync('wi-sync-lmv-'+id, verifyOk?'ok':'err', verifyOk?'Η κίνηση γράφτηκε' : 'Parent Order δεν επιβεβαιώθηκε στην ανάγνωση');
+
+    closeModal();
+    toast(verifyOk
+      ? (moveId ? 'Η τοπική κίνηση ενημερώθηκε' : 'Η τοπική κίνηση καταχωρήθηκε')
+      : 'Η κίνηση γράφτηκε αλλά η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε — έλεγξε χειροκίνητα',
+      verifyOk ? 'success' : 'error');
+    renderWeeklyIntl();
+  } catch (e) {
+    console.error('_wiSaveLocal:', e);
+    if (btn) { btn.disabled = false; btn.textContent = moveId ? 'Αποθήκευση' : 'Καταχώρηση'; }
+    toast('Η κίνηση δεν αποθηκεύτηκε', 'error');
+  }
+}
+
+async function _wiDelLocal(id) {
+  if (!(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή τοπικής κίνησης', confirmLabel:'Διαγραφή' }))) return;
+  try {
+    await atDelete(TABLES.LOCAL_MOVES, id);
+    invalidateCache(TABLES.LOCAL_MOVES);
+    WINTL._localsSyncErr?.delete(id);
+    toast('Διαγράφηκε', 'success');
+    renderWeeklyIntl();
+  } catch (e) {
+    console.error('_wiDelLocal:', e);
+    toast('Η διαγραφή απέτυχε', 'error');
+  }
+}
+
+function _wiLmvCtx(e, moveId) {
+  e.preventDefault(); e.stopPropagation();
+  const ctx=document.getElementById('wi-ctx');
+  ctx.innerHTML = `<button class="wi-ctx-i d" onclick="_wiDelLocal('${moveId}');_wiCtxClose()">Διαγραφή τοπικής κίνησης</button>`;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-100)}px`});
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+
 // Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
 // σε προηγούμενη/επόμενη εβδομάδα (μετακινεί τις ημερομηνίες ±7 ημέρες).
 function _wiImpCtx(e,rowId){
@@ -2738,6 +2999,8 @@ function _wiImpCtx(e,rowId){
     rc2.forEach(c2=>{ html+=btn(`⤷ ${c2.lbl}`,`_wiRotAdd(${rowId},'${c2.oid}')`); });
     html+=`<div class="wi-ctx-sep"></div>`;
   }
+  // Wave 2 (owner 6/9): local movement around Βέροια tied to this import.
+  if(row.orderId) html+=btn('Τοπική κίνηση (Βέροια)',`_wiAddLocal('${row.orderId}')`);
   html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
   html+=btn(`← Στην W${WINTL.week-1} (ημερομηνίες −7)`,`_wiImpShift(${rowId},-7)`);
   html+=btn(`Στην W${WINTL.week+1} (ημερομηνίες +7) →`,`_wiImpShift(${rowId},7)`);
@@ -3133,6 +3396,10 @@ function _wk3FeedTog(side){
 window._wk3FeedTog = _wk3FeedTog;
 window._wiImpShift = _wiImpShift;
 window._wiImpGroup = _wiImpGroup;
+window._wiAddLocal = _wiAddLocal;
+window._wiSaveLocal = _wiSaveLocal;
+window._wiDelLocal = _wiDelLocal;
+window._wiLmvCtx = _wiLmvCtx;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
