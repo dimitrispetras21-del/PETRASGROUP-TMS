@@ -1123,6 +1123,9 @@ var TABLES = {
       "High Risk Auto Flag": "high_risk_auto_flag",
       "Loading DateTime": "loading_datetime",
       "Delivery DateTime": "delivery_datetime",
+      // Weekly «Μεταφορά εβδομάδας» (owner 6/9/2026): the planning week only —
+      // the dates above never move. Migration 016.
+      "Plan Week Start": "plan_week_start",
       "Cross-dock Date": "cross_dock_date",
       "Postponed To": "postponed_to",
       "Actual Delivery Date": "actual_delivery_date",
@@ -2681,9 +2684,11 @@ var COSTS_PERMS = {
   // μεταφορά — μόνο owner, με υποχρεωτικό reason στο audit (βλ. handlers).
   // ledger (owner 5/9): owner, accountant, management write; import owner only.
   // dispatcher/warehouse: nothing — driver pay is not theirs to see.
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
-  dispatcher: { rt: ["GET", "POST", "PATCH"], lookups: ["GET"] },
+  // rt DELETE = one LEG leaves an open round trip (unmatch, «ακύρωση προώθησης»);
+  // the round trip itself is never deleted (owner 6/9/2026). Accountant/management: no.
+  dispatcher: { rt: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"] },
   management: { lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   warehouse: {}
 };
