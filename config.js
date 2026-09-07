@@ -350,4 +350,4 @@ const PERMS = {
 // Needs migration 018 in the base AND the Worker with «Parent Order»/«Leg No»
 // deployed — without them the facade would silently drop the two fields and
 // leave orphan legs. Flip to true only after both, then bump ?v= in app.html.
-const FEATURES = { ORDER_SPLIT: false };
+const FEATURES = { ORDER_SPLIT: true }; // opened 7/9/2026 after migration 018 + Worker deploy (verified)
