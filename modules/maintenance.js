@@ -233,7 +233,7 @@ button.mnt-kpi:hover { background:var(--surface-sunken); }
 async function _maintLoad(forceHistory = false) {
   if (!MAINT._loaded) {
     const [trucks, trailers, ws] = await Promise.all([
-      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Brand','Model','Year','Active',
+      atGetAll(TABLES.TRUCKS, { fields: ['License Plate','Brand','Model','Year','Active','Country',
         'KTEO Expiry','Insurance Expiry','Tachograph Expiry','KEK Expiry',
         'Insurance Partner','Next Maintenance Date'] }, true),
       // NOTE (3/9/2026): 'Notes' (NO-FRC marker read by _expiryFieldsFor) and the
@@ -244,7 +244,12 @@ async function _maintLoad(forceHistory = false) {
       // ADR Expiry / Pallet Capacity / ATP Expiry removed 6/9 (owner audit):
       // none of the three is a real column — requesting them changed nothing
       // but the URL these critics replay against.
-      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Brand','Model','Year','Trailer Type','Active',
+      // 'Country' ADDED 7/9 (owner: split fleet/documents by registration
+      // country) despite the same URL-break risk above — the grouping needs
+      // it and every truck/trailer already carries a value. The recorded HAR
+      // for this page is now stale; it needs a re-record before the critics
+      // trust this screen again.
+      atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Brand','Model','Year','Trailer Type','Active','Country',
         'KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] }, true),
       atGetAll(TABLES.WORKSHOPS, { fields: ['Name','City','Specialty','Active'] }, true),
     ]);
@@ -427,7 +432,7 @@ function _expiryVehicleRows(vehicles, expiryFields, vType) {
         return (min === null || d.days < min) ? d.days : min;
       }, null);
       return { id: v.id, plate: f['License Plate']||'?', brand: f['Brand']||'', model: f['Model']||'', insurer: f['Insurance Partner']||'',
-        trailerType: f['Trailer Type']||'', docs, worst, vType };
+        trailerType: f['Trailer Type']||'', country: f['Country']||'', docs, worst, vType };
     })
     .sort((a, b) => {
       if (a.worst === null && b.worst === null) return 0;
@@ -644,6 +649,18 @@ function _expiryPaint() {
       : `<td><span class="mnt-dim">—</span></td>`;
     return `<tr>${vehicleCell(r)}${cells}${insurer}${renewCell(r.plate)}</tr>`;
   }).join('');
+  // Groups the expiry table by registration country (owner 7/9 — same rule
+  // and helper as the fleet lists in core/entity.js, so the two screens can
+  // never disagree on group order/naming). Vehicles sort by plate INSIDE each
+  // group here — the table's normal worst-expiry-first order would otherwise
+  // scatter a country's rows across every group instead of keeping them together.
+  const groupedRowsFor = (rows, fields, vType, colspan) => {
+    const byPlate = [...rows].sort((a, b) => String(a.plate).localeCompare(String(b.plate)));
+    return groupByCountry(byPlate, r => r.country).map(g => `
+      <tr class="entity-group-row"><td colspan="${colspan}" style="background:#F0F5FA;color:var(--text-dim);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:8px 18px;cursor:default">${escapeHtml(g.name)} · ${g.items.length}</td></tr>
+      ${rowsFor(g.items, fields, vType)}
+    `).join('');
+  };
   const emptyRow = (cols, msg) => `<tr><td colspan="${cols}" style="height:auto;padding:0">${showEmpty({ illustration: 'truck', title: msg, description: 'Άλλαξε φίλτρο ή αναζήτηση για να δεις οχήματα.' })}</td></tr>`;
 
   const truckHead = TRUCK_EXPIRY_FIELDS.map(ef => `<th>${ef.label === 'Insurance' ? 'ΑΣΦΑΛΕΙΑ' : ef.label}</th>`).join('');
@@ -692,13 +709,13 @@ function _expiryPaint() {
     <div class="mnt-section"><b>ΦΟΡΤΗΓΑ</b><span class="mnt-sub">${fTrucks.length}${fTrucks.length !== truckRows.length ? ` από ${truckRows.length}` : ''} ενεργά</span></div>
     <table class="mnt-table" id="exp-tbl-trucks">
       <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${truckHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
-      <tbody>${fTrucks.length ? rowsFor(fTrucks, TRUCK_EXPIRY_FIELDS, 'Truck') : emptyRow(3 + TRUCK_EXPIRY_FIELDS.length, 'Κανένα φορτηγό σε αυτή την κατηγορία')}</tbody>
+      <tbody>${fTrucks.length ? groupedRowsFor(fTrucks, TRUCK_EXPIRY_FIELDS, 'Truck', 3 + TRUCK_EXPIRY_FIELDS.length) : emptyRow(3 + TRUCK_EXPIRY_FIELDS.length, 'Κανένα φορτηγό σε αυτή την κατηγορία')}</tbody>
     </table>
 
     <div class="mnt-section" style="margin-top:var(--space-4)"><b>ΡΥΜΟΥΛΚΕΣ</b><span class="mnt-sub">${fTrailers.length}${fTrailers.length !== trailerRows.length ? ` από ${trailerRows.length}` : ''} ενεργές</span></div>
     <table class="mnt-table" id="exp-tbl-trailers">
       <thead><tr><th style="width:18%">ΟΧΗΜΑ</th>${trailerHead}<th>ΑΣΦΑΛΙΣΤΗΣ</th><th>ΑΝΑΝΕΩΘΗΚΕ</th></tr></thead>
-      <tbody>${fTrailers.length ? rowsFor(fTrailers, TRAILER_EXPIRY_FIELDS, 'Trailer') : emptyRow(3 + TRAILER_EXPIRY_FIELDS.length, 'Καμία ρυμούλκα σε αυτή την κατηγορία')}</tbody>
+      <tbody>${fTrailers.length ? groupedRowsFor(fTrailers, TRAILER_EXPIRY_FIELDS, 'Trailer', 3 + TRAILER_EXPIRY_FIELDS.length) : emptyRow(3 + TRAILER_EXPIRY_FIELDS.length, 'Καμία ρυμούλκα σε αυτή την κατηγορία')}</tbody>
     </table>
     <div class="mnt-foot">Ασφαλιστής ρυμουλκών: δεν υπάρχει στήλη στον πίνακα trailers — δεν καταχωρείται ακόμη. · Κλικ σε ημερομηνία ή ασφαλιστή για επεξεργασία.</div>`;
 

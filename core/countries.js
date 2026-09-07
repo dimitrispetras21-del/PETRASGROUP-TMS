@@ -101,6 +101,30 @@ function countryOptionsHtml(selected, opts) {
   return html;
 }
 
+/** Splits `records` into per-country buckets for a grouped list/table view
+ *  (owner 7/9: fleet lists + documents tables both split by registration
+ *  country — one helper so the two screens can never disagree on the rule).
+ *  `getCountry(record)` returns the raw stored value; unrecognised/blank
+ *  values fall into one «no country» bucket, always last. Order: Greece
+ *  first when present, then the rest by group size (busiest first), unknown
+ *  last — the owner's own example order («ΕΛΛΑΔΑ · 25», «ΒΟΥΛΓΑΡΙΑ · 11»,
+ *  «ΧΩΡΙΣ ΧΩΡΑ · 1»). Returns [{code, name, items}]. */
+function groupByCountry(records, getCountry) {
+  const buckets = new Map();
+  for (const r of records) {
+    const code = countryCode(getCountry(r));
+    const key = code || '__unknown';
+    if (!buckets.has(key)) buckets.set(key, { code: code || null, name: code ? countryName(code) : 'χωρίς χώρα', items: [] });
+    buckets.get(key).items.push(r);
+  }
+  const groups = [...buckets.values()];
+  const gr = groups.filter(g => g.code === 'GR');
+  const unknown = groups.filter(g => g.code === null);
+  const rest = groups.filter(g => g.code && g.code !== 'GR')
+    .sort((a, b) => b.items.length - a.items.length || a.name.localeCompare(b.name, 'el'));
+  return [...gr, ...rest, ...unknown];
+}
+
 if (typeof window !== 'undefined') {
   window.COUNTRY_CODES = COUNTRY_CODES;
   window.COUNTRY_PRIORITY = COUNTRY_PRIORITY;
@@ -108,6 +132,7 @@ if (typeof window !== 'undefined') {
   window.countryIsKnown = countryIsKnown;
   window.countryName = countryName;
   window.countryOptionsHtml = countryOptionsHtml;
+  window.groupByCountry = groupByCountry;
 } else {
   // `node core/countries.js` — the self-check that keeps the aliases honest.
   const cases = [['GR', 'GR'], ['gr', 'GR'], ['Greece', 'GR'], ['GREECE', 'GR'], ['ΕΛΛΑΔΑ', 'GR'], ['Ελλάδα', 'GR'],

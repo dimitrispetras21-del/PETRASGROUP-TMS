@@ -1609,13 +1609,25 @@ function buildEntityTable(entityKey, records) {
   }).join('');
   const truncated = sortedRecs.length > ENTITY_RENDER_CAP;
   const rowsToRender = truncated ? sortedRecs.slice(0, ENTITY_RENDER_CAP) : sortedRecs;
+  // Country group headers (owner 7/9: fleet + documents split by registration
+  // country) — only for screens whose default order IS Country-first, and only
+  // while that default is actually in effect. The moment the user clicks a
+  // column header (s.col/s.field set), the list is a plain sort again: a
+  // group header above rows no longer grouped by that key would lie.
+  const usingCountryGroups = cfg && cfg.defaultSort && cfg.defaultSort[0] === 'Country'
+    && !(s && s.field) && (!s || s.col === null || s.dir === 0);
+  const bodyHtml = sortedRecs.length === 0
+    ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
+    : usingCountryGroups && typeof groupByCountry === 'function'
+      ? groupByCountry(rowsToRender, r => r.fields['Country']).map(g => `
+        <tr class="entity-group-row"><td colspan="${cols.length+1}" style="background:#F0F5FA;color:var(--text-dim);font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;padding:8px 18px;cursor:default">${_ecEsc(g.name)} · ${g.items.length}</td></tr>
+        ${g.items.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')}
+      `).join('')
+      : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('');
   return `<table>
     <thead><tr>${ths}<th></th></tr></thead>
     <tbody>
-      ${sortedRecs.length === 0
-        ? `<tr><td colspan="${cols.length+1}" style="padding:0">${_entityEmptyState(entityKey, cfg)}</td></tr>`
-        : rowsToRender.map(r => buildEntityRow(entityKey, r, cols, _plateField, _dupPlates)).join('')
-      }
+      ${bodyHtml}
       ${truncated ? `<tr><td colspan="${cols.length+1}" style="padding:8px 16px;background:var(--warn-bg);color:var(--warn);font-size:12px;text-align:center;font-variant-numeric:tabular-nums">⚠ Εμφανίζονται οι πρώτες ${ENTITY_RENDER_CAP} από ${sortedRecs.length.toLocaleString('el-GR')} — στένεψε με αναζήτηση ή φίλτρο για να δεις τις υπόλοιπες</td></tr>` : ''}
     </tbody>
   </table>`;
