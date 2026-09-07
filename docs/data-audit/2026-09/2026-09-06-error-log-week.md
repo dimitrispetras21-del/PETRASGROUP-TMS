@@ -127,3 +127,18 @@ Spec: `docs/superpowers/specs/2026-09-06-fleet-fields-kpi-design.md`. Τρεις
 μία νεκρή inline) — αρχή 3, να ενοποιηθούν σε επόμενο βήμα· οι critics της Συντήρησης θέλουν ξανά εγγραφή HAR
 (`node tests/critics/record-har.js`, owner) γιατί άλλαξε η λίστα `fields` του αιτήματος.
 Μέχρι το deploy: η στήλη Χώρα, ο ταχογράφος και η επόμενη συντήρηση δείχνουν «—» (τα labels δεν υπάρχουν ακόμη στον ζωντανό Worker).
+
+## 8. Migration + deploy Worker — Δευτέρα 7/9/2026 (owner: «τώρα, κάνε deploy», 10:40, εντός ωρών με ρητή απόφασή του)
+
+**Βάση (10:25, SQL editor):** 017 fleet (στήλες + προσυμπλήρωση χώρας) · 018 view `orders_with_derived` + `plan_week_start`
+(αλλιώς η ανάγνωση «Plan Week Start» θα έσπαγε μετά το deploy) · 3 παραγγελίες → Pending.
+Απόδειξη: trucks GR 25 · BG 11 · NULL 0 — trailers GR 23 · BG 16 · NULL 1 (TB53142, αγνώριστη μορφή) — view OK — 0 χωρίς Status.
+
+**Worker (10:41, wrangler 4.129, version da1c7cb3):** πριν: αντίγραφο ζωντανού bundle + bindings· φρουρός τριών OK στο ζωντανό.
+Μετά, στο κατεβασμένο bundle: dispatcher `order_stops` DELETE ✓ · `VS CD Date` ✓ · WORKSHOPS tax_id/legal_name/Country/Aliases ✓ ·
+RAMP links ✓ · fleet labels ✓ · `Order No` ✓ · `Plan Week Start` ✓. Bindings ίδια (3 secrets επιβίωσαν) · observability
+`enabled: true, logs persist` (πρώτη φορά που ο Worker κρατά logs).
+Smoke: `/costs/rt` 401 · `/costs/ledger/:id` 401 · login λάθος κωδικός 401 (Origin) · με session owner: RAMP `FIND(...ARRAYJOIN({Order}))` **200**,
+TRUCKS επιστρέφει `Country` GR/BG ✓.
+**Εκκρεμές από το deploy:** «Order No» επιστρέφει null — η στήλη `id` δεν περνά στα fields του facade (κρατιέται εσωτερικά). Διόρθωση σε εξέλιξη.
+**Απόδειξη γραφής (θέλει χρήστη):** αποθήκευση ταχογράφου από τη φόρμα φορτηγού → `trucks.tachograph_expiry`· αποθήκευση εγγραφής ράμπας με φορτηγό → `ramp.truck_id`.
