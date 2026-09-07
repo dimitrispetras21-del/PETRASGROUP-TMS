@@ -269,7 +269,11 @@ async function _rampAutoSync() {
     if (category) rec['Ramp Category'] = category;
     if (sf[F.STOP_TEMP]) rec['Temperature'] = String(sf[F.STOP_TEMP]);
     if (intlPid) rec['Order'] = [intlPid];
-    else if (nlPid) rec['National Order'] = [nlPid];
+    // nlPid is a NATIONAL LOAD id. Until 6/9 the facade dropped 'National Order'
+    // silently; since the 7/9 links block it resolves the label against
+    // national_orders and would answer 400, so the ramp row would not be created
+    // at all. The load gets its own link ('National Load', migration 020 /
+    // spec national-load-source) — until then the row is created unlinked, as before.
 
     // Truck/Driver from parent
     const parent = intlPid ? intlMap[intlPid] : nlPid ? nlMap[nlPid] : null;
