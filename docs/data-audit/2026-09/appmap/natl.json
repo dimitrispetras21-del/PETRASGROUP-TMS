@@ -1,0 +1,65 @@
+{
+  "circuit": "natl",
+  "title": "Εθνικές παραγγελίες",
+  "columns": [
+    {
+      "key": "sources",
+      "label": "ΟΘΟΝΕΣ / ΠΗΓΕΣ",
+      "nodes": [
+        {"id": "orders_natl", "label": "Εθνικές Παραγγελίες", "sub": "φόρμα + λίστα", "status": "partial", "note": "γράφει παραγγελία, φορτίο ποτέ (Ε1)"},
+        {"id": "weekly_natl", "label": "Weekly National", "sub": "ανάθεση φορτίων", "status": "partial", "note": "ανάθεση ok, status-sync πίσω σπάει για VS"},
+        {"id": "daily_ramp", "label": "Ράμπα", "sub": "«Ολοκληρώθηκε»", "status": "broken", "note": "προαγωγή status ρωτά λάθος πίνακα (Ε4)"},
+        {"id": "orders_intl_vs", "label": "Veroia Switch", "sub": "VS→φορτίο (intl)", "status": "ok", "note": "1-προς-1 με τις 25 VS παραγγελίες"},
+        {"id": "invoicing_write", "label": "Τιμολόγηση", "sub": "μαζική εγγραφή", "status": "partial", "note": "γράφει Status='Invoiced' (Ε7)"}
+      ]
+    },
+    {
+      "key": "core",
+      "label": "ΠΙΝΑΚΕΣ",
+      "nodes": [
+        {"id": "national_orders", "label": "Εθνικές Παραγγ.", "sub": "national_orders · 4", "status": "partial", "note": "status NULL σε όλες, source_order_id NULL σε όλες"},
+        {"id": "national_loads", "label": "Εθνικά Φορτία", "sub": "national_loads · 25", "status": "partial", "note": "όλες οι 25 από VS· καμία στήλη/FK προς national_orders"},
+        {"id": "groupage_chain", "label": "Groupage Chain", "sub": "GL 0 · CL 0", "status": "unused", "note": "groupage_lines + consolidated_loads, ποτέ δεν χρησιμοποιήθηκαν"},
+        {"id": "order_stops", "label": "Στάσεις", "sub": "order_stops · 389", "status": "partial", "note": "66 σε φορτία, 14 από αυτά σε διαγραμμένα φορτία"},
+        {"id": "ramp_local", "label": "Ράμπα · Τοπικές", "sub": "ramp 44 · local 0", "status": "unused", "note": "ramp 0/44 με εθνικό link· local_moves 0 γραμμές, χωρίς cascade"},
+        {"id": "partner_assignments", "label": "Partner Assign.", "sub": "partner_assignments · 23", "status": "ok", "note": "paSyncStatus δουλεύει και για natl/nat_load"}
+      ]
+    },
+    {
+      "key": "consumers",
+      "label": "ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ",
+      "nodes": [
+        {"id": "weekly_grid", "label": "Weekly National", "sub": "ανάγνωση εβδομάδας", "status": "ok", "note": "διαβάζει national_loads, 25 ορατά"},
+        {"id": "ramp_done", "label": "Ράμπα Ολοκληρ.", "sub": "προαγωγή status", "status": "broken", "note": "ρωτά national_orders με id national_loads, πάντα αποτυγχάνει"},
+        {"id": "payroll_rt", "label": "Μισθοδοσία / RT", "sub": "round trips", "status": "broken", "note": "καμία διαδρομή· 0/98 legs με nat_load_id"},
+        {"id": "invoicing_read", "label": "Τιμολόγηση", "sub": "λίστα ανάγνωσης", "status": "partial", "note": "formula αντισταθμίζει το ότι Status ποτέ Delivered"},
+        {"id": "groupage_badge", "label": "Weekly badge GL", "sub": "εκκρεμή groupage", "status": "unused", "note": "μετρητής unassigned GL, πάντα 0"}
+      ]
+    }
+  ],
+  "edges": [
+    {"from": "orders_intl_vs", "to": "national_loads", "status": "ok", "label": "VS→φορτίο", "evidence": "orders_intl.js:1486-1491 · 25/25"},
+    {"from": "orders_natl", "to": "national_loads", "status": "broken", "label": "εθνική→φορτίο", "evidence": "orders_natl.js:1717-1800 · 400 «Unknown linked record», 0/4"},
+    {"from": "orders_natl", "to": "national_orders", "status": "ok", "label": "καταχώρηση", "evidence": "orders_natl.js:776,1423 · 4 rows"},
+    {"from": "orders_natl", "to": "groupage_chain", "status": "unused", "label": "groupage chain", "evidence": "_syncGroupageLines orders_natl.js:1471-1512 · GL 0, CL 0"},
+    {"from": "national_loads", "to": "order_stops", "status": "partial", "label": "φορτίο→στάσεις", "evidence": "handleFacadeDelete χωρίς cascade (γρ.2605-2629) · 14 ορφανές"},
+    {"from": "national_loads", "to": "ramp_local", "status": "partial", "label": "φορτίο→ράμπα", "evidence": "daily_ramp.js:135-272 · ramp 0/44 συνδεδεμένο"},
+    {"from": "national_loads", "to": "weekly_grid", "status": "ok", "label": "φορτίο→Weekly", "evidence": "weekly_natl.js:150 · 25 ορατά"},
+    {"from": "national_loads", "to": "payroll_rt", "status": "broken", "label": "φορτίο→μισθοδοσία", "evidence": "order-sync.js:90 μόνο source==='intl' · 0/98 nat_load_id"},
+    {"from": "national_orders", "to": "invoicing_read", "status": "partial", "label": "εθνική→τιμολόγηση", "evidence": "invoicing.js:313,930 · γράφει Status='Invoiced'"},
+    {"from": "weekly_natl", "to": "national_loads", "status": "ok", "label": "ανάθεση φορτηγού", "evidence": "weekly_natl.js:1969,1976"},
+    {"from": "weekly_natl", "to": "national_orders", "status": "broken", "label": "ανάθεση→status", "evidence": "weekly_natl.js:1990-1992 · λάθος πίνακας για VS-φορτία, μόνο console.warn"},
+    {"from": "daily_ramp", "to": "ramp_local", "status": "ok", "label": "δημιουργία ramp", "evidence": "daily_ramp.js:300 · 44 rows"},
+    {"from": "daily_ramp", "to": "ramp_done", "status": "broken", "label": "Ολοκληρώθηκε", "evidence": "daily_ramp.js:664,674,694,697,705 · λάθος πίνακας, 0/44 links"},
+    {"from": "invoicing_write", "to": "national_orders", "status": "partial", "label": "batch Invoiced", "evidence": "invoicing.js:927-935 · Status+Invoiced μαζί, αντίθετο απόφαση 23/8"},
+    {"from": "groupage_chain", "to": "groupage_badge", "status": "unused", "label": "εκκρεμή GL", "evidence": "weekly_natl.js:728 · groupage_lines 0"},
+    {"from": "national_orders", "to": "partner_assignments", "status": "ok", "label": "παραγγελία→PA", "evidence": "order-sync.js:43-54 paSyncStatus · 23 rows"}
+  ],
+  "findings": [
+    {"sev": "critical", "text": "national_loads δεν έχει στήλη/FK προς national_orders — η εθνική παραγγελία δεν γίνεται ποτέ φορτίο", "evidence": "app_errors 7/9 12:22-12:23 · 400 «Unknown linked record» · 0/4"},
+    {"sev": "high", "text": "Διαγραφή φορτίου δεν κάνει cascade στις στάσεις", "evidence": "backend-map §4-1 · handleFacadeDelete γρ.2605-2629 · 14 ζωντανές order_stops σε 7 διαγραμμένα φορτία"},
+    {"sev": "high", "text": "Ράμπα «Ολοκληρώθηκε» ρωτά τον πίνακα ΠΑΡΑΓΓΕΛΙΩΝ με id ΦΟΡΤΙΟΥ — προαγωγή status αποτυγχάνει πάντα, μόνο console.warn", "evidence": "daily_ramp.js:674,694,705"},
+    {"sev": "medium", "text": "Μαζική τιμολόγηση γράφει Status='Invoiced' αντίθετα με την κλειδωμένη απόφαση owner 23/8", "evidence": "invoicing.js:929-934"},
+    {"sev": "medium", "text": "Μισθοδοσία/RT τυφλά στα εθνικά — rtOnOrderSaved καλείται μόνο για source==='intl'", "evidence": "core/order-sync.js:90 · ct_rt_legs has_nat_load_id 0/98"}
+  ]
+}

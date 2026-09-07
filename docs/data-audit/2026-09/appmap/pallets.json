@@ -1,0 +1,44 @@
+{"circuit":"pallets","title":"Παλέτες — ανταλλαγή EUR/EPAL",
+ "columns":[
+  {"key":"sources","label":"ΟΘΟΝΕΣ / ΠΗΓΕΣ","nodes":[
+    {"id":"orders_save","label":"Παραγγελίες","sub":"φόρτωση/παράδοση","status":"ok","note":"save→LOADING pending· Delivered→DELIVERY net 0"},
+    {"id":"weekly_partner","label":"Ανάθεση σε Partner","sub":"Weekly Intl · VS","status":"broken","note":"0/1 επιλέξιμης παραγγελίας έγραψε κίνηση"},
+    {"id":"pallet_upload","label":"Δελτίο παλετών AI","sub":"OCR upload (Sonnet)","status":"broken","note":"γράφει σε νεκρό πίνακα, όχι στο pl_movements"},
+    {"id":"pallet_ledger_manual","label":"Ισοζύγιο Παλετών","sub":"νέα κίνηση + επιβεβ.","status":"ok","note":"χειροκίνητη φόρμα, confirm/reverse δουλεύουν"}
+  ]},
+  {"key":"core","label":"ΠΙΝΑΚΕΣ","nodes":[
+    {"id":"pl_movements","label":"Κινήσεις παλετών","sub":"pl_movements · 95","status":"ok","note":"60 pending, 34 confirmed, 1 reversed"},
+    {"id":"pallet_ledger_legacy","label":"Παλιά ledger","sub":"pallet_ledger_* · 0/0","status":"unused","note":"SUPPLIERS/PARTNERS, 0 γραμμές — νεκρός στόχος του OCR upload"},
+    {"id":"scan_examples","label":"Παραδείγματα OCR","sub":"scan_examples · 0 ζωντ.","status":"unused","note":"2 γραμμές, και οι δύο δοκιμαστικές/διαγραμμένες"},
+    {"id":"pl_v_order_gate","label":"Πύλη τιμολόγησης","sub":"pl_v_order_gate · 128","status":"ok","note":"τροφοδοτεί το gate Invoiced"},
+    {"id":"pl_v_balance","label":"Υπόλοιπα","sub":"pl_v_balance_* · 9/0","status":"ok","note":"9 πελάτες με ιστορικό, 0 συνεργάτες"},
+    {"id":"ct_v_rt_pallet_gate","label":"Πύλη PnL συνεργάτη","sub":"ct_v_rt_pallet_gate · 0","status":"partial","note":"λειτουργεί αλλά αδοκίμαστη — 0 partner κινήσεις"}
+  ]},
+  {"key":"consumers","label":"ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ","nodes":[
+    {"id":"invoicing","label":"Τιμολόγηση","sub":"gate Invoiced","status":"ok","note":"μπλοκάρει checkbox αν λείπει δελτίο φόρτωσης"},
+    {"id":"costs_pnl","label":"TRIP PnL","sub":"partner gate","status":"partial","note":"endpoint ζωντανό, ποτέ δεν μπλόκαρε κάτι (0 δεδομένα)"},
+    {"id":"ai_training","label":"Εκπαίδευση OCR","sub":"few-shot examples","status":"unused","note":"ποτέ δεν τροφοδοτήθηκε από πραγματική διόρθωση"}
+  ]}
+ ],
+ "edges":[
+  {"from":"orders_save","to":"pl_movements","status":"ok","label":"LOADING pending","evidence":"core/pallet-feed.js:51-96"},
+  {"from":"orders_save","to":"pl_movements","status":"ok","label":"DELIVERY net 0","evidence":"modules/daily_ops.js:782,926"},
+  {"from":"weekly_partner","to":"pl_movements","status":"broken","label":"PARTNER κίνηση","evidence":"core/pallet-feed.js:128-177 · SQL: 0 PARTNER_* σειρές συνολικά"},
+  {"from":"pallet_upload","to":"pallet_ledger_legacy","status":"broken","label":"OCR → νεκρός πίνακ.","evidence":"modules/pallet_upload.js:556 atCreate(TABLES.PALLET_LEDGER)"},
+  {"from":"pallet_ledger_manual","to":"pl_movements","status":"ok","label":"νέα κίνηση/POST","evidence":"modules/pallet_ledger.js:1097-1101"},
+  {"from":"pl_movements","to":"pl_v_order_gate","status":"ok","label":"τροφοδοτεί gate","evidence":"SQL pl_v_order_gate = 128 σειρές"},
+  {"from":"pl_movements","to":"pl_v_balance","status":"ok","label":"υπόλοιπα","evidence":"SQL pl_v_balance_clients = 9 σειρές"},
+  {"from":"pl_movements","to":"ct_v_rt_pallet_gate","status":"partial","label":"partner gate","evidence":"SQL ct_v_rt_pallet_gate = 0 σειρές"},
+  {"from":"pl_v_order_gate","to":"invoicing","status":"ok","label":"μπλοκάρει Invoiced","evidence":"modules/invoicing.js:136-146,257"},
+  {"from":"ct_v_rt_pallet_gate","to":"costs_pnl","status":"partial","label":"μπλοκάρει PnL","evidence":"modules/costs.js:175 · SQL 0 σειρές"},
+  {"from":"pl_v_balance","to":"pallet_ledger_manual","status":"ok","label":"υπόλοιπα πελατών","evidence":"modules/pallet_ledger.js:24-33"},
+  {"from":"scan_examples","to":"ai_training","status":"unused","label":"few-shot","evidence":"SQL scan_examples: 2/2 test rows, deleted_at set"}
+ ],
+ "findings":[
+  {"sev":"critical","text":"Το OCR δελτίο (pallet_upload.js) γράφει ΑΚΟΜΑ στον νεκρό πίνακα pallet_ledger_suppliers/partners — 0 σειρές σε κάθε έναν, ασύνδετο από το pl_movements/Φ2/Φ4.","evidence":"modules/pallet_upload.js:556 · SQL count(pallet_ledger_suppliers)=0, count(pallet_ledger_partners)=0"},
+  {"sev":"high","text":"Ο feeder Partner (Weekly Intl → VS ανάθεση) δεν έχει γράψει ΠΟΤΕ καμία PARTNER_PICKUP/DROPOFF, ενώ υπάρχει τουλάχιστον 1 επιλέξιμη Delivered παραγγελία.","evidence":"core/pallet-feed.js:128-177 · SQL group by event_type: 0 PARTNER_* · order id=175 (VS+PE+Partner, Delivered) έχει μόνο 1 LOADING (PM-1029), καμία partner κίνηση"},
+  {"sev":"medium","text":"Το partner PnL gate του costs (ct_v_rt_pallet_gate) είναι αδοκίμαστο — 0 σειρές, άμεση συνέπεια του παραπάνω· δεν προκύπτει αν η σύνδεση gate→PnL δουλεύει ποτέ στην πράξη.","evidence":"SQL count(ct_v_rt_pallet_gate)=0 · modules/costs.js:175"},
+  {"sev":"medium","text":"Το σύστημα εκπαίδευσης OCR (scan_examples) δεν τροφοδοτήθηκε ποτέ από πραγματική διόρθωση χρήστη — μόνο 2 δοκιμαστικές γραμμές, και οι δύο soft-deleted.","evidence":"SQL scan_examples: client_id='recTEST', corrected={\"client_name\":\"ΔΟΚΙΜΗ\"}, deleted_at IS NOT NULL σε 2/2"},
+  {"sev":"medium","text":"60 pending LOADING κινήσεις εκκρεμούν προς επιβεβαίωση, η παλαιότερη από 12/8/2026 (σχεδόν 4 βδομάδες) — καμία ειδοποίηση εκτός της κάρτας «Εκκρεμείς» στο Ισοζύγιο.","evidence":"SQL: status='pending' → count=60, oldest=2026-08-12, newest=2026-09-07"},
+  {"sev":"low","text":"Το Φ4 gate στην Τιμολόγηση δουλεύει αποδεδειγμένα (128 σειρές, μπλοκάρει το Invoiced) — μόνο η πλευρά «πελάτης» της αρχιτεκτονικής είναι ώριμη· η πλευρά «partner» (costs) όχι.","evidence":"SQL pl_v_order_gate=128 · modules/invoicing.js:136-146,257"}
+ ]}

@@ -1,0 +1,304 @@
+{
+ "circuit": "ramp_master",
+ "title": "Ράμπα & βασικά αρχεία",
+ "columns": [
+  {
+   "key": "sources",
+   "label": "ΟΘΟΝΕΣ / ΠΗΓΕΣ",
+   "nodes": [
+    {
+     "id": "ramp_screen",
+     "label": "Πίνακας Ράμπας",
+     "sub": "",
+     "status": "partial",
+     "note": "auto-sync από order_stops Βέροιας· 44 γραμμές, καμία με order/truck/driver ακόμα"
+    },
+    {
+     "id": "clients_partners_form",
+     "label": "Πελάτες·Συνεργάτες",
+     "sub": "φόρμα",
+     "status": "partial",
+     "note": "Contact Person/Payment Terms Days πλέον εγγράψιμα αλλά σχεδόν αχρησιμοποίητα"
+    },
+    {
+     "id": "fleet_form",
+     "label": "Στόλος",
+     "sub": "Οδηγοί·Φορτ.·Τρέιλερ",
+     "status": "partial",
+     "note": "trailers λείπουν ATP/Pallet Cap./Weight από τον χάρτη"
+    },
+    {
+     "id": "workshops_form",
+     "label": "Συνεργεία",
+     "sub": "+ maintenance",
+     "status": "ok",
+     "note": "Aliases/ΑΦΜ/Επωνυμία γεμάτα 70/70"
+    },
+    {
+     "id": "locations_screen",
+     "label": "Τοποθεσίες",
+     "sub": "λίστα + χάρτης",
+     "status": "ok",
+     "note": "1175 γραμμές, /api/locations ζωντανό"
+    },
+    {
+     "id": "login_roster",
+     "label": "Σύνδεση",
+     "sub": "index.html ρόστερ",
+     "status": "partial",
+     "note": "12 στο roster, 18 στη βάση, 7 ενεργοί"
+    }
+   ]
+  },
+  {
+   "key": "core",
+   "label": "ΠΙΝΑΚΕΣ",
+   "nodes": [
+    {
+     "id": "ramp_tbl",
+     "label": "Ράμπα",
+     "sub": "ramp · 44",
+     "status": "partial",
+     "note": "order_id/national_order_id χωρίς FK· links block νέο (7/9), αναπόδεικτο"
+    },
+    {
+     "id": "clients_partners_tbl",
+     "label": "Πελ./Συνεργάτες",
+     "sub": "clients 1920 partners 432",
+     "status": "partial",
+     "note": "contact_person clients 1/1920, partners 0/432· payment_terms_days 0/1920"
+    },
+    {
+     "id": "fleet_tbl",
+     "label": "Στόλος",
+     "sub": "drv·81 / trk·36 / trl·40",
+     "status": "ok",
+     "note": "βασικά πεδία γράφονται· λείπουν cold-chain πεδία τρέιλερ"
+    },
+    {
+     "id": "workshops_tbl",
+     "label": "Συνεργεία",
+     "sub": "workshops · 70",
+     "status": "ok",
+     "note": "χάρτης πλήρης, αλλά ζητεί μερικές φορές legacy γραφές (Aliases)"
+    },
+    {
+     "id": "locations_tbl",
+     "label": "Τοποθεσίες",
+     "sub": "locations · 1175",
+     "status": "ok",
+     "note": "μόνο λατινικοί χαρακτήρες (owner 9/8)"
+    },
+    {
+     "id": "users_tbl",
+     "label": "Χρήστες",
+     "sub": "users · 18 (7 ενεργ.)",
+     "status": "partial",
+     "note": "5 demo λογαριασμοί active=false στη βάση"
+    }
+   ]
+  },
+  {
+   "key": "consumers",
+   "label": "ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ",
+   "nodes": [
+    {
+     "id": "orders_forms",
+     "label": "Φόρμες παραγγ.",
+     "sub": "intl/natl dropdowns",
+     "status": "ok",
+     "note": "πελάτης/συνεργάτης/στόλος/τοποθεσία από reference cache"
+    },
+    {
+     "id": "order_status_sync",
+     "label": "Status ράμπας",
+     "sub": "Ολοκληρώθηκε→Order",
+     "status": "broken",
+     "note": "National Order id είναι από national_loads· ρωτά national_orders"
+    },
+    {
+     "id": "maintenance_screen",
+     "label": "Συντήρηση",
+     "sub": "ιστορικό/αιτήματα",
+     "status": "ok",
+     "note": "workshop_id/truck_id/trailer_id FK γεμάτα"
+    },
+    {
+     "id": "payroll_card",
+     "label": "Μισθοδοσία",
+     "sub": "καρτέλα οδηγού",
+     "status": "partial",
+     "note": "drivers δεν έχει στήλη βασικού μισθού"
+    },
+    {
+     "id": "ceo_dashboard_perf",
+     "label": "CEO/Επιδόσεις",
+     "sub": "KPI στόλου/πελατών",
+     "status": "partial",
+     "note": "αρκετοί δείκτες δομικά 0 (γνωστό, CLAUDE.md)"
+    },
+    {
+     "id": "login_tamper_guard",
+     "label": "Έλεγχος σύνδεσης",
+     "sub": "roster vs βάση",
+     "status": "partial",
+     "note": "demo λογαριασμοί στο roster αλλά ανενεργοί στη βάση"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "ramp_screen",
+   "to": "ramp_tbl",
+   "status": "partial",
+   "label": "auto-sync γραφή",
+   "evidence": "modules/daily_ramp.js:259-306"
+  },
+  {
+   "from": "clients_partners_form",
+   "to": "clients_partners_tbl",
+   "status": "partial",
+   "label": "γράφει φόρμα",
+   "evidence": "worker/src/index.js:772-773,789"
+  },
+  {
+   "from": "fleet_form",
+   "to": "fleet_tbl",
+   "status": "partial",
+   "label": "γράφει φόρμα",
+   "evidence": "worker/src/index.js:829-848"
+  },
+  {
+   "from": "workshops_form",
+   "to": "workshops_tbl",
+   "status": "ok",
+   "label": "γράφει φόρμα",
+   "evidence": "worker/src/index.js:850-870"
+  },
+  {
+   "from": "locations_screen",
+   "to": "locations_tbl",
+   "status": "ok",
+   "label": "γράφει/διαβάζει",
+   "evidence": "worker/src/index.js:732-753"
+  },
+  {
+   "from": "login_roster",
+   "to": "users_tbl",
+   "status": "partial",
+   "label": "επαλήθευση login",
+   "evidence": "index.html:326-349 vs SQL public.users"
+  },
+  {
+   "from": "ramp_tbl",
+   "to": "order_status_sync",
+   "status": "broken",
+   "label": "Ολοκληρώθηκε",
+   "evidence": "modules/daily_ramp.js:672-706"
+  },
+  {
+   "from": "fleet_tbl",
+   "to": "orders_forms",
+   "status": "ok",
+   "label": "dropdown",
+   "evidence": "core/api.js:792 preloadReferenceData"
+  },
+  {
+   "from": "clients_partners_tbl",
+   "to": "orders_forms",
+   "status": "ok",
+   "label": "dropdown",
+   "evidence": "core/data-helpers.js getRefClients"
+  },
+  {
+   "from": "locations_tbl",
+   "to": "orders_forms",
+   "status": "ok",
+   "label": "στάσεις",
+   "evidence": "modules/orders_intl.js"
+  },
+  {
+   "from": "fleet_tbl",
+   "to": "maintenance_screen",
+   "status": "ok",
+   "label": "οχήματα",
+   "evidence": "worker/src/index.js:902-906"
+  },
+  {
+   "from": "workshops_tbl",
+   "to": "maintenance_screen",
+   "status": "ok",
+   "label": "συνεργείο",
+   "evidence": "worker/src/index.js:903"
+  },
+  {
+   "from": "fleet_tbl",
+   "to": "payroll_card",
+   "status": "partial",
+   "label": "στοιχεία οδηγού",
+   "evidence": "modules/payroll.js — δεν προκύπτει στήλη μισθού"
+  },
+  {
+   "from": "clients_partners_tbl",
+   "to": "ceo_dashboard_perf",
+   "status": "partial",
+   "label": "KPI πελατών",
+   "evidence": "modules/ceo_dashboard.js"
+  },
+  {
+   "from": "users_tbl",
+   "to": "login_tamper_guard",
+   "status": "partial",
+   "label": "7/18 ενεργοί",
+   "evidence": "SQL: select id,username,role,active from public.users"
+  }
+ ],
+ "findings": [
+  {
+   "sev": "critical",
+   "text": "RAMP link «National Order» resolveΐζεται στο national_orders, αλλά ο κώδικας γράφει εκεί id από national_loads (VS/Direct φορτία στη Βέροια) — κάθε τέτοια αποθήκευση θα γυρίσει 400 «Unknown linked record».",
+   "evidence": "worker/src/index.js:994-999,2291-2294 · modules/daily_ramp.js:204-272"
+  },
+  {
+   "sev": "critical",
+   "text": "Το «Ολοκληρώθηκε» ρωτά τον πίνακα NAT_ORDERS με id που στην πραγματικότητα είναι national_loads — ίδιο λάθος πίνακα με πάνω, σε άλλο σημείο. Η κατάσταση εθνικού φορτίου ποτέ δεν προάγεται από τη ράμπα σε αυτή τη διαδρομή.",
+   "evidence": "modules/daily_ramp.js:673-674,692-706"
+  },
+  {
+   "sev": "high",
+   "text": "ramp.order_id και ramp.national_order_id χωρίς FK constraint (σε αντίθεση με truck_id/driver_id που έχουν) — η βάση δεν πιάνει λάθος id σε αυτές τις δύο στήλες.",
+   "evidence": "SQL pg_constraint: ramp_truck_id_fkey, ramp_driver_id_fkey υπάρχουν· κανένα ramp_order_id_fkey/ramp_national_order_id_fkey"
+  },
+  {
+   "sev": "high",
+   "text": "0/44 ζωντανές γραμμές ράμπας έχουν order/national_order/truck/driver ακόμα σήμερα — τελευταία γραμμή δημιουργήθηκε 6/9 07:47 (πριν το links block). Η διόρθωση 7/9 παραμένει αναπόδεικτη γιατί δεν έχει ξανατρέξει το auto-sync.",
+   "evidence": "SQL: count(*) filter (order_id/national_order_id/truck_id/driver_id) = 0/44 · facade_unknown_fields last_seen 2026-09-06"
+  },
+  {
+   "sev": "medium",
+   "text": "Ο Worker παραγωγής πετάει ΑΚΟΜΑ σιωπηλά «Tachograph Expiry»/«Next Maintenance Date» (TRUCKS) σε ανάγνωση σήμερα το πρωί, ενώ το repo έχει ήδη τον χάρτη — ένδειξη ότι το deploy υστερεί του repo (αρχή 3, ΠΑΓΙΔΑ DEPLOY).",
+   "evidence": "facade_unknown_fields: trucks 'Tachograph Expiry' last_seen 2026-09-07 07:17· 'Next Maintenance Date' last_seen 2026-09-05· vs worker/src/index.js:824-825"
+  },
+  {
+   "sev": "medium",
+   "text": "TRAILERS δεν έχει ποτέ πάρει χάρτη για «ATP Expiry»/«Pallet Capacity»/«Weight kg» — ίδιο μοτίβο με το ιστορικό περιστατικό ψύξης του CLAUDE.md, ζωντανό σήμερα σε άλλο πεδίο.",
+   "evidence": "worker/src/index.js:829-848 (απουσιάζουν)· facade_unknown_fields trailers 'ATP Expiry' last_seen 2026-09-05, 'Pallet Capacity'/'Weight kg' last_seen 2026-09-04/05"
+  },
+  {
+   "sev": "low",
+   "text": "core/entity.js λέει ακόμη «dead — renders «—»» για Clients Contact Person/Payment Terms Days και Partners Contact Person, αλλά τα πεδία δεν είναι πια disabled και ο Worker τα δέχεται· στην πράξη σχεδόν αγράφα.",
+   "evidence": "core/entity.js:161-166,233 · SQL: clients.contact_person 1/1920, payment_terms_days 0/1920, partners.contact_person 0/432"
+  },
+  {
+   "sev": "low",
+   "text": "warehouse δεν έχει καμία πρόσβαση στη ράμπα (ούτε GET) — απούσα γραμμή 'ramp' και απών wildcard '*' στο PERMISSIONS.warehouse.",
+   "evidence": "worker/src/index.js PERMISSIONS.warehouse block (γρ. ~509-527)"
+  },
+  {
+   "sev": "low",
+   "text": "5 demo λογαριασμοί υπάρχουν στο index.html USERS roster αλλά είναι active=false στο public.users — demo login θα περάσει το frontend tamper guard και θα αποτύχει στο backend.",
+   "evidence": "index.html:345-349 · SQL public.users demo_owner/management/accountant/dispatcher/warehouse active=false"
+  }
+ ]
+}

@@ -1,0 +1,45 @@
+{"circuit":"intl","title":"Διεθνείς παραγγελίες",
+ "columns":[
+  {"key":"sources","label":"ΟΘΟΝΕΣ / ΠΗΓΕΣ","nodes":[
+    {"id":"orders_intl","label":"Διεθνείς Παραγγελίες","sub":"φόρμα + λίστα","status":"partial","note":"αποθήκευση ok· delete cascade με κενά (Ε2,Ε3)"},
+    {"id":"weekly_intl","label":"Weekly International","sub":"ανάθεση/ταίριασμα","status":"partial","note":"ανάθεση ok· PA write σιωπηλό (Ε4)"},
+    {"id":"daily_ops","label":"Daily Ops","sub":"εκτέλεση ημέρας","status":"partial","note":"status ok· ποτέ δεν κλείνει round trip (Ε5)"}
+  ]},
+  {"key":"core","label":"ΠΙΝΑΚΕΣ","nodes":[
+    {"id":"orders","label":"Παραγγελίες","sub":"orders · 130","status":"ok","note":"χάρτης πλήρης· delete-cascade PATCH-gated, όχι DELETE (Ε1)"},
+    {"id":"order_stops","label":"Στάσεις","sub":"order_stops · 401","status":"partial","note":"14 ορφανές σε διαγραμμένα NAT_LOADS (Ε3)"},
+    {"id":"partner_assignments","label":"Partner Assign.","sub":"partner_assignments · 24","status":"ok","note":"wired σωστά για 'order'· cascade delete δεν το αγγίζει (Ε2)"}
+  ]},
+  {"key":"consumers","label":"ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ","nodes":[
+    {"id":"nat_loads_vs","label":"Veroia Switch","sub":"national_loads · 25","status":"ok","note":"25/25 από VS, 1-προς-1"},
+    {"id":"ramp_stops","label":"Ράμπα","sub":"via στάσεις","status":"broken","note":"order_id 0/44 — ποτέ δεν συνδέεται"},
+    {"id":"invoicing","label":"Τιμολόγηση","sub":"invoiced · 2/130","status":"partial","note":"δικαίωμα λύθηκε 3/9· λανθάνον Status='Invoiced' (Ε6)"},
+    {"id":"dashboard_ceo","label":"Dashboard/CEO","sub":"KPI ζωντανά","status":"ok","note":"διαβάζει orders απευθείας"},
+    {"id":"payroll_rt","label":"Μισθοδοσία/RT","sub":"ct_rt_legs · 98/98","status":"partial","note":"δουλεύει από τις 2 άλλες οθόνες· Daily Ops ποτέ δεν το ταΐζει (Ε5)"},
+    {"id":"pallets_gate","label":"Παλέτες","sub":"pl_movements · 94/95","status":"ok","note":"δεμένα σε order/στάση, live Φ1+Φ2"}
+  ]}
+ ],
+ "edges":[
+  {"from":"orders_intl","to":"orders","status":"ok","label":"αποθήκευση","evidence":"orders_intl.js:2044-2046 · 130 ζωντανές"},
+  {"from":"orders_intl","to":"order_stops","status":"ok","label":"στάσεις","evidence":"core/stops-helpers.js:51-101"},
+  {"from":"orders_intl","to":"partner_assignments","status":"partial","label":"διαγραφή cascade","evidence":"orders_intl.js:3078-3087 · DB RPC δεν το αγγίζει (Ε2)"},
+  {"from":"weekly_intl","to":"orders","status":"ok","label":"ανάθεση","evidence":"weekly_intl.js:2866-2879"},
+  {"from":"weekly_intl","to":"partner_assignments","status":"partial","label":"ανάθεση συνεργάτη","evidence":"weekly_intl.js:2907,2913,2917 · toast λέει επιτυχία ούτως ή άλλως"},
+  {"from":"daily_ops","to":"orders","status":"ok","label":"status ημέρας","evidence":"daily_ops.js:761,781"},
+  {"from":"daily_ops","to":"order_stops","status":"ok","label":"ολοκλήρωση στάσης","evidence":"daily_ops.js:662-667"},
+  {"from":"orders","to":"nat_loads_vs","status":"ok","label":"VS→φορτίο","evidence":"orders_intl.js:1279-1570 · 25/25"},
+  {"from":"order_stops","to":"ramp_stops","status":"broken","label":"ράμπα via στάσεις","evidence":"SQL ramp.order_id = 0/44 ζωντανές"},
+  {"from":"orders","to":"invoicing","status":"partial","label":"λίστα τιμολόγησης","evidence":"invoicing.js:297-313,927-930"},
+  {"from":"orders","to":"dashboard_ceo","status":"ok","label":"KPI","evidence":"dashboard.js:69 · ceo_dashboard.js:126"},
+  {"from":"orders","to":"payroll_rt","status":"partial","label":"round trip feed","evidence":"core/rt-feed.js via orders_intl.js:2098 · daily_ops.js ποτέ δεν καλεί (Ε5)"},
+  {"from":"order_stops","to":"pallets_gate","status":"ok","label":"pallet feed","evidence":"pl_movements.order_stop_id · 94/95 δεμένα"},
+  {"from":"partner_assignments","to":"payroll_rt","status":"partial","label":"planned cost","evidence":"ct_v_rt_costs διαβάζει partner_rate σε read-time view, όχι trigger"}
+ ],
+ "findings":[
+  {"sev":"critical","text":"Το cascade-delete της παραγγελίας ελέγχει δικαίωμα PATCH, όχι DELETE — dispatcher/management/accountant μπορούν να διαγράψουν ΚΑΘΕ παραγγελία (όχι μόνο leg), αχρηστεύοντας το SCOPED_DELETE που έπρεπε να το εμποδίζει.","evidence":"worker/src/index.js:2658 (can(...,\"PATCH\")) vs PERMISSIONS.dispatcher.orders γρ.461 (χωρίς DELETE) · authorizeScopedDelete γρ.2605-2624 ποτέ δεν καλείται για ORDERS"},
+  {"sev":"high","text":"Η RPC delete_order_cascade δεν αγγίζει καθόλου partner_assignments — η μόνη προστασία από ορφανά PA είναι το χειροκίνητο βήμα στο JS. Σήμερα 0 ορφανά, αλλά δύο πηγές αλήθειας για την ίδια διαγραφή.","evidence":"pg_get_functiondef(delete_order_cascade) — καμία αναφορά partner_assignments · db/migrations/2026-08-12_wipe_orders.sql:43-45 το διαγράφει ξεχωριστά · orders_intl.js:3078-3087 (JS cascade)"},
+  {"sev":"high","text":"Ούτε το JS ούτε η DB RPC καθαρίζουν τις στάσεις που δημιούργησε το Veroia Switch πάνω στο national_load (parent = national_load_id, όχι order_id) — μένουν ζωντανές σε διαγραμμένα φορτία.","evidence":"SQL: order_stops.national_load_id → deleted national_loads = 14 ζωντανές · orders_intl.js:1534 (δημιουργία)"},
+  {"sev":"medium","text":"Στο popover ανάθεσης του Weekly Intl, αποτυχία εγγραφής partner_assignments είναι σιωπηλή — το toast λέει «Αποθηκεύτηκε ✓» ακόμα κι αν το PA write απέτυχε.","evidence":"weekly_intl.js:2907,2913,2917 (console.warn μόνο, χωρίς logError/toast)"},
+  {"sev":"medium","text":"Το Daily Ops (η οθόνη εκτέλεσης) αλλάζει Status σε Delivered/In Transit χωρίς ποτέ να καλεί rtOnOrderSaved· ο μοναδικός αυτόματος μηχανισμός (syncOrderDownstream) ενεργοποιείται μόνο σε αλλαγή 'Pallet Exchange'. Ο trigger rt_sync_from_order κρατά ενήμερο ένα ΥΠΑΡΧΟΝ round trip, αλλά δεν δημιουργεί ούτε κλείνει κανένα.","evidence":"daily_ops.js:761,781,928-931 · core/order-sync.js:87-91 · pg_get_functiondef(rt_sync_from_order)"},
+  {"sev":"medium","text":"invoicing.js μπορεί να γράψει Status='Invoiced' και στο ORDERS (όχι μόνο national_orders) — αντίθετο με την κλειδωμένη απόφαση owner 23/8 ότι το Invoiced είναι μόνο checkbox. Σήμερα λανθάνον: 0/130 ζωντανές το έχουν.","evidence":"invoicing.js:927-930 · SQL count(status='Invoiced')=0/130"}
+ ]}

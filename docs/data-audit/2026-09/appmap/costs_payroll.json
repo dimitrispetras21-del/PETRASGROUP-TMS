@@ -1,0 +1,69 @@
+{
+  "circuit": "costs_payroll",
+  "title": "Κόστος δρομολογίων & Μισθοδοσία",
+  "columns": [
+    {
+      "key": "sources",
+      "label": "ΟΘΟΝΕΣ / ΠΗΓΕΣ",
+      "nodes": [
+        {"id": "weekly_feed", "label": "Weekly Διεθνών", "sub": "auto δημιουργία RT", "status": "ok", "note": "εκτέλεση+ανάθεση → RT· 50/50 RT από planner, 0 από το modal"},
+        {"id": "trip_pnl_manual", "label": "TRIP PnL χειρ.", "sub": "+RT / +κόστος", "status": "unused", "note": "κουμπιά υπάρχουν, 0 χρήσεις αποδεδειγμένες"},
+        {"id": "payroll_ui", "label": "Μισθοδοσία Οδηγών", "sub": "γρήγορη καταχ./πληρωμή", "status": "partial", "note": "λειτουργεί, σχεδόν αχρησιμοποίητη μπρος στο Excel"},
+        {"id": "excel_import", "label": "Εισαγωγή Excel", "sub": "tools/ledger-import", "status": "ok", "note": "one-off script, όχι οθόνη· 6/9/2026"},
+        {"id": "settings_ui", "label": "Ρυθμίσεις RT", "sub": "ct_settings PATCH", "status": "partial", "note": "seed σωστό· καμία απόδειξη PATCH από UI"},
+        {"id": "dkv_dadi", "label": "DKV/DADI σάρωση", "sub": "σχεδιασμένο, όχι χτισμένο", "status": "unused", "note": "Φ3/Φ4 (COSTS_ARCHITECTURE §7) ποτέ δεν ξεκίνησαν"}
+      ]
+    },
+    {
+      "key": "core",
+      "label": "ΠΙΝΑΚΕΣ",
+      "nodes": [
+        {"id": "ct_round_trips", "label": "Δρομολόγια (RT)", "sub": "ct_round_trips · 50", "status": "ok", "note": "όλα scope INTL· 0 NATL· 0 από χειροκίνητο modal"},
+        {"id": "ct_rt_legs", "label": "Σκέλη δρομολογίου", "sub": "ct_rt_legs · 98", "status": "ok", "note": "98/98 order_id (intl)· 0 nat_load_id"},
+        {"id": "dl_entries", "label": "Καρτέλα οδηγού", "sub": "dl_entries · 11.127", "status": "ok", "note": "11.078 excel_import· 44 auto (trigger)· 5 manual"},
+        {"id": "dl_import_batches", "label": "Παρτίδες εισαγωγής", "sub": "dl_import_batches · 70", "status": "ok", "note": "unique file_hash· idempotent, 6/9"},
+        {"id": "ct_cost_lines_settings", "label": "Κόστη + Ρυθμίσεις", "sub": "lines·1 · settings·5", "status": "partial", "note": "1η γραμμή είναι auto (Weekly), όχι χειροκίνητη· settings σωστά (€850/€650) αλλά αδοκίμαστο PATCH"},
+        {"id": "ct_docs_fuel_aliases", "label": "Παραστατικά/Καύσιμα", "sub": "3 πίνακες · όλοι 0", "status": "unused", "note": "ct_cost_docs, ct_plate_aliases, fuel — καμία γραμμή ποτέ"}
+      ]
+    },
+    {
+      "key": "consumers",
+      "label": "ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ",
+      "nodes": [
+        {"id": "trip_pnl_read", "label": "TRIP PnL", "sub": "ct_v_rt_pnl · owner", "status": "ok", "note": "μόνο owner (κλειδωμένο 11/7)· φορτώνει pnl/rt/lines/lookups"},
+        {"id": "payroll_read", "label": "Καρτέλα Οδηγού", "sub": "dl_v_balance/entries", "status": "ok", "note": "68 οδηγοί, dl_v_rt_gap = 0 (κανένα RT χωρίς γραμμή)"},
+        {"id": "entity_cards", "label": "Κάρτες Οδ./Φορτ.", "sub": "cardRt σε 3 entities", "status": "partial", "note": "management 403 — λείπει από COSTS_PERMS.rt"},
+        {"id": "ceo_dashboard", "label": "CEO Dashboard", "sub": "ζημιογόνα δρομολόγια", "status": "broken", "note": "διαβάζει νεκρό Airtable id, όχι το ct_v_rt_pnl που υπάρχει"},
+        {"id": "wear_bridge", "label": "Γέφυρα φθοράς", "sub": "ct_v_wear_rate", "status": "unused", "note": "view χτίστηκε (§10.2.10)· καμία διαδρομή/οθόνη το διαβάζει"},
+        {"id": "partner_pnl", "label": "Partner PnL", "sub": "reconciliation Ειρήνη", "status": "unused", "note": "ούτε το view (ct_v_partner_pnl) ούτε σελίδα χτίστηκαν"}
+      ]
+    }
+  ],
+  "edges": [
+    {"from": "weekly_feed", "to": "ct_round_trips", "status": "ok", "label": "auto δημιουργία", "evidence": "core/rt-feed.js:260-281 · 47/50 OWNED+3 PARTNER, source='planner'"},
+    {"from": "weekly_feed", "to": "ct_rt_legs", "status": "ok", "label": "σκέλη ομάδας", "evidence": "core/rt-feed.js:217-230,300-319 · 98 σκέλη, attach idempotent (N1, 5/9)"},
+    {"from": "trip_pnl_manual", "to": "ct_round_trips", "status": "unused", "label": "χειροκίνητο RT", "evidence": "modules/costs.js:777 ctOpenRtModal · 0/50 RT με source='manual' (SQL 7/9)"},
+    {"from": "trip_pnl_manual", "to": "ct_cost_lines_settings", "status": "unused", "label": "καταχώρηση κόστους", "evidence": "modules/costs.js:715 ctOpenCostModal · η μόνη γραμμή στο ct_cost_lines είναι σημειωμένη «auto από Weekly»"},
+    {"from": "payroll_ui", "to": "dl_entries", "status": "partial", "label": "δρομολόγιο/πληρωμή", "evidence": "modules/payroll.js:471,504,571 · μόνο 3 trip + 2 πληρωμές source='manual' από 11.127"},
+    {"from": "excel_import", "to": "dl_entries", "status": "ok", "label": "εισαγωγή Excel", "evidence": "worker/src/index.js:3052-3089 dl_import RPC · 11.078/11.127 γραμμές source='excel_import'"},
+    {"from": "excel_import", "to": "dl_import_batches", "status": "ok", "label": "batch ανά αρχείο", "evidence": "dl_import_batches n=70, unique(file_hash) εμποδίζει διπλή εισαγωγή"},
+    {"from": "settings_ui", "to": "ct_cost_lines_settings", "status": "partial", "label": "ρυθμίσεις VS", "evidence": "worker/src/index.js:2764-2775 PATCH /costs/settings · ct_settings 5 σειρές, seed 10/8, καμία PATCH στο audit_log"},
+    {"from": "dkv_dadi", "to": "ct_docs_fuel_aliases", "status": "unused", "label": "σάρωση τιμολογίων", "evidence": "COSTS_ARCHITECTURE.md §4,§7 (Φ3/Φ4) · ct_cost_docs=0, ct_plate_aliases=0"},
+    {"from": "ct_round_trips", "to": "dl_entries", "status": "ok", "label": "auto γραμμή καρτέλας", "evidence": "trigger dl_sync_from_rt (worker/migrations/011_driver_ledger.sql) · 44 auto rows, dl_v_rt_gap=0"},
+    {"from": "ct_rt_legs", "to": "ct_round_trips", "status": "ok", "label": "συγχρονισμός στόλου", "evidence": "trigger rt_sync_legs (013_rt_sync.sql) · πρώτο σκέλος γράφει truck/driver στο RT"},
+    {"from": "ct_round_trips", "to": "ct_rt_legs", "status": "partial", "label": "αλλαγή→sibling", "evidence": "trigger rt_sync_to_orders (013_rt_sync.sql) γράφει πίσω στα orders· καμία αντίστοιχη διαδρομή για national_loads (0 NATL legs)"},
+    {"from": "ct_round_trips", "to": "trip_pnl_read", "status": "ok", "label": "λίστα + PnL", "evidence": "worker/src/index.js:2858-2887,3090-3103 · 50 RT, ct_v_rt_pnl owner-only"},
+    {"from": "dl_entries", "to": "payroll_read", "status": "ok", "label": "καρτέλα/υπόλοιπο", "evidence": "worker/src/index.js:2972-2991 dl_v_balance/dl_v_entries · 68 οδηγοί, Σ=12.951,52€ (5/9 απόδειξη)"},
+    {"from": "ct_round_trips", "to": "entity_cards", "status": "partial", "label": "διαδρομές οχήματος", "evidence": "core/entity.js:2257-2350 · GET /costs/rt· management: COSTS_PERMS χωρίς 'rt' (index.js:2731) → 403 (app_errors 29/8 14:37)"},
+    {"from": "ct_cost_lines_settings", "to": "ceo_dashboard", "status": "broken", "label": "ζημιογόνα trips", "evidence": "modules/ceo_dashboard.js:146 TABLES.TRIP_COSTS (νεκρό Airtable id) · app_errors: «Table not available on this backend» 25/8-5/9, δεν διαβάζει ποτέ το ct_v_rt_pnl"},
+    {"from": "ct_docs_fuel_aliases", "to": "wear_bridge", "status": "unused", "label": "φθορά/km", "evidence": "COSTS_ARCHITECTURE.md §10.2.10 · καμία διαδρομή Worker προς ct_v_wear_rate (grep: 0)"},
+    {"from": "ct_cost_lines_settings", "to": "partner_pnl", "status": "unused", "label": "συμφωνία συνεργάτη", "evidence": "TRIP_COSTS_SPEC.md §10.2.7,§10.3 · το view δεν υπάρχει καν στη βάση (grep information_schema.views: 0)"}
+  ],
+  "findings": [
+    {"sev": "critical", "text": "CEO Dashboard διαβάζει ακόμη το νεκρό Airtable TABLES.TRIP_COSTS αντί για το ζωντανό ct_v_rt_pnl — η κάρτα «ζημιογόνα δρομολόγια» είναι πάντα κενή, σιωπηλά (safeFetch το κρύβει)", "evidence": "modules/ceo_dashboard.js:146 · app_errors 25/8,28/8,29/8,5/9: «Table not available on this backend»"},
+    {"sev": "high", "text": "Η χειροκίνητη δημιουργία RT και η χειροκίνητη καταχώρηση κόστους (Shape B/C) υπάρχουν στην οθόνη αλλά δεν έχουν χρησιμοποιηθεί ποτέ — όλα τα 50 RT ήρθαν από τον αυτόματο feeder, η μόνη γραμμή σε ct_cost_lines είναι επίσης auto", "evidence": "SQL 7/9: ct_round_trips WHERE source='manual' → 0· ct_cost_lines → 1 row, note='auto από Weekly'"},
+    {"sev": "high", "text": "Ολόκληρος ο σχεδιασμένος αγωγός κόστους (DKV/DADI σάρωση, plate aliasing, allocation engine, Partner PnL, Κατανάλωση, Γέφυρα φθοράς) είναι στο χαρτί από 10/8 αλλά κανένα κομμάτι δεν χτίστηκε — 3 πίνακες στο 0, 2 views χωρίς καμία διαδρομή, 1 view (ct_v_partner_pnl) ούτε καν στη βάση", "evidence": "COSTS_ARCHITECTURE.md §7 Φ3-Φ5· grep worker/src+modules για ct_v_wear_rate/ct_v_consumption/ct_v_partner_pnl → 0 χρήσεις"},
+    {"sev": "medium", "text": "COSTS_PERMS δεν έχει γραμμή 'rt' για τον ρόλο management — η κάρτα δρομολογίων στα Οδηγοί/Φορτηγά/Ρυμούλκες σπάει με 403 για αυτόν τον ρόλο", "evidence": "worker/src/index.js:2731 (management: {lookups,ledger} — λείπει rt)· app_errors 29/8 14:37 «entity card: round trips: Unauthorized»"},
+    {"sev": "medium", "text": "«Καταχώριση αξίας δρομολογίου» παραμένει ανοιχτή διαδικασία: 13/44 auto-γραμμών RT είναι ακόμη χωρίς τιμή (δρομολόγια σε εξέλιξη/μετά το τέλος του Excel) και καμία οθόνη δεν είναι η κύρια πηγή — 6.603 από τις 6.605 γραμμές τύπου trip με τιμή ήρθαν από το Excel, όχι από το app", "evidence": "SQL 7/9: dl_entries GROUP BY entry_type,source · trip/auto: 31/44 with_value· trip/excel_import: 6603/6605"}
+  ]
+}

@@ -1,0 +1,319 @@
+{
+ "circuit": "maintenance",
+ "title": "Συντήρηση & έγγραφα στόλου",
+ "columns": [
+  {
+   "key": "sources",
+   "label": "ΟΘΟΝΕΣ / ΠΗΓΕΣ",
+   "nodes": [
+    {
+     "id": "maint_dash",
+     "label": "Κέντρο Συντήρησης",
+     "sub": "επισκόπηση/KPI",
+     "status": "ok",
+     "note": "μόνο ανάγνωση, KPI-κλικ πάει στα Λήξεις/Service"
+    },
+    {
+     "id": "maint_expiry",
+     "label": "Λήξεις Εγγράφων",
+     "sub": "inline edit + renewal",
+     "status": "partial",
+     "note": "✓Ανανεώθηκε γράφει ΜΟΝΟ εντολή· δεν αλλάζει την ημ/νία λήξης"
+    },
+    {
+     "id": "maint_req",
+     "label": "Εντολές Εργασίας",
+     "sub": "CRUD + ✓Ανανεώθηκε",
+     "status": "partial",
+     "note": "0 ζωντανές εγγραφές σήμερα· Εκτ. Κόστος κλειδωμένο άσκοπα"
+    },
+    {
+     "id": "maint_svc",
+     "label": "Ιστορικό Service",
+     "sub": "maint_history · CRUD",
+     "status": "ok",
+     "note": "+ ιστορικό ανά όχημα (maint_trucks/trailers) + σάρωση τιμολογίου AI"
+    },
+    {
+     "id": "fleet_master",
+     "label": "Φορτηγά·Ρυμούλκες",
+     "sub": "καρτέλα + φόρμα",
+     "status": "ok",
+     "note": "— CRUD trucks/trailers/workshops, ομαδοποίηση ανά χώρα 6-7/9"
+    }
+   ]
+  },
+  {
+   "key": "core",
+   "label": "ΠΙΝΑΚΕΣ",
+   "nodes": [
+    {
+     "id": "trucks",
+     "label": "Φορτηγά",
+     "sub": "trucks · 36",
+     "status": "ok",
+     "note": "36 ενεργά, τελ. εγγραφή 6/8/2026"
+    },
+    {
+     "id": "trailers",
+     "label": "Ρυμούλκες",
+     "sub": "trailers · 40",
+     "status": "ok",
+     "note": "40 ενεργές, τελ. εγγραφή 6/8/2026"
+    },
+    {
+     "id": "workshops",
+     "label": "Συνεργεία",
+     "sub": "workshops · 70",
+     "status": "ok"
+    },
+    {
+     "id": "maint_history",
+     "label": "Ιστορικό Service",
+     "sub": "maint_history · 1091",
+     "status": "ok",
+     "note": "91/1091 «θέλουν έλεγχο» (import)· odometer μόνο σε 72/1091"
+    },
+    {
+     "id": "maint_req_t",
+     "label": "Εντολές Εργασίας",
+     "sub": "maint_req · 0",
+     "status": "unused",
+     "note": "1 εγγραφή σύνολο, διαγραμμένη· 0 ενεργές (SQL 7/9)"
+    },
+    {
+     "id": "unused_tables",
+     "label": "Άχρηστοι πίνακες",
+     "sub": "maint_plan·fuel · 0",
+     "status": "unused",
+     "note": "maint_plan: χτισμένος για km/service, ΚΑΝΕΝΑ σημείο κώδικα δεν τον καλεί· fuel: γράφεται μόνο από εξωτερικό εργαλείο import, όχι από το app"
+    }
+   ]
+  },
+  {
+   "key": "consumers",
+   "label": "ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ",
+   "nodes": [
+    {
+     "id": "dash_alerts",
+     "label": "Ταμπλό Αρχικής",
+     "sub": "ειδοπ. στόλου",
+     "status": "ok",
+     "note": "— χρησιμοποιεί τη σωστή κοινή λίστα εγγράφων"
+    },
+    {
+     "id": "notif_bell",
+     "label": "Ειδοπ. Topbar",
+     "sub": "κουδούνι, role-gated",
+     "status": "partial",
+     "note": "9× «Unauthorized» ίδια με JWT λήξη έως 6/9, ήδη σιωπηλό· 1 νεκρός έλεγχος ρόλου"
+    },
+    {
+     "id": "ai_chat",
+     "label": "AI Παρατηρητής",
+     "sub": "δικές του λίστες",
+     "status": "partial",
+     "note": "δικό του, ξεχωριστό αντίγραφο λίστας — χωρίς Ταχογράφο, χωρίς κανόνα NO-FRC"
+    },
+    {
+     "id": "performance",
+     "label": "Απόδοση & Έλεγχος",
+     "sub": "performance·metrics",
+     "status": "ok",
+     "note": "+ — ίδια κοινή λίστα εγγράφων"
+    },
+    {
+     "id": "entity_card",
+     "label": "Καρτέλα Οχήματος",
+     "sub": "χλμ 72/1091 μόνο",
+     "status": "partial",
+     "note": "χλμ = τελευταίο Odometer km από service, ΟΧΙ ζωντανό οδόμετρο"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "maint_expiry",
+   "to": "trucks",
+   "status": "ok",
+   "label": "διορθώνει ημ/νία",
+   "evidence": "modules/maintenance.js:464-497,486"
+  },
+  {
+   "from": "maint_expiry",
+   "to": "trailers",
+   "status": "ok",
+   "label": "διορθώνει ημ/νία",
+   "evidence": "modules/maintenance.js:464-497,486"
+  },
+  {
+   "from": "maint_expiry",
+   "to": "maint_req_t",
+   "status": "partial",
+   "label": "✓Ανανεώθηκε",
+   "evidence": "modules/maintenance.js:1832-1849 · δεν αλλάζει το πεδίο λήξης"
+  },
+  {
+   "from": "maint_req",
+   "to": "maint_req_t",
+   "status": "partial",
+   "label": "καταχωρεί εντολή",
+   "evidence": "modules/maintenance.js:1921-1961 · SQL: 0 ενεργές σήμερα"
+  },
+  {
+   "from": "maint_svc",
+   "to": "maint_history",
+   "status": "ok",
+   "label": "γράφει/διαγράφει",
+   "evidence": "modules/maintenance.js:1104-1174"
+  },
+  {
+   "from": "fleet_master",
+   "to": "trucks",
+   "status": "ok",
+   "label": "CRUD φόρμα",
+   "evidence": "core/entity.js:375-500 (trucks cfg + save)"
+  },
+  {
+   "from": "fleet_master",
+   "to": "trailers",
+   "status": "ok",
+   "label": "CRUD φόρμα",
+   "evidence": "core/entity.js:501-605 (trailers cfg + save)"
+  },
+  {
+   "from": "fleet_master",
+   "to": "workshops",
+   "status": "ok",
+   "label": "CRUD φόρμα",
+   "evidence": "core/entity.js:606+ (workshops cfg + save)"
+  },
+  {
+   "from": "maint_dash",
+   "to": "maint_history",
+   "status": "ok",
+   "label": "διαβάζει",
+   "evidence": "modules/maintenance.js:1440-1444"
+  },
+  {
+   "from": "maint_dash",
+   "to": "trucks",
+   "status": "ok",
+   "label": "διαβάζει",
+   "evidence": "modules/maintenance.js:233-259 (_maintLoad)"
+  },
+  {
+   "from": "trucks",
+   "to": "dash_alerts",
+   "status": "ok",
+   "label": "λήξεις εγγράφων",
+   "evidence": "modules/dashboard.js:258 (TRUCK_EXPIRY_NAMES)"
+  },
+  {
+   "from": "trailers",
+   "to": "dash_alerts",
+   "status": "ok",
+   "label": "λήξεις εγγράφων",
+   "evidence": "modules/dashboard.js:263-272 (NO-FRC rule εφαρμόζεται)"
+  },
+  {
+   "from": "trucks",
+   "to": "notif_bell",
+   "status": "ok",
+   "label": "λήξεις + KTEO",
+   "evidence": "core/utils.js:1190,1202"
+  },
+  {
+   "from": "maint_req_t",
+   "to": "notif_bell",
+   "status": "partial",
+   "label": "εκκρεμείς εντολές",
+   "evidence": "core/utils.js:1202 · SQL 0 ενεργές"
+  },
+  {
+   "from": "trucks",
+   "to": "ai_chat",
+   "status": "partial",
+   "label": "ξεχωριστή λίστα",
+   "evidence": "core/ai-chat.js:1259-1266,1284 (own copy, no Tachograph)"
+  },
+  {
+   "from": "maint_req_t",
+   "to": "ai_chat",
+   "status": "partial",
+   "label": "SOS/pending count",
+   "evidence": "core/ai-chat.js:1300-1310 · SQL 0"
+  },
+  {
+   "from": "maint_req_t",
+   "to": "performance",
+   "status": "partial",
+   "label": "διαβάζει",
+   "evidence": "modules/performance.js:139 · SQL 0"
+  },
+  {
+   "from": "trucks",
+   "to": "performance",
+   "status": "ok",
+   "label": "συμμόρφωση",
+   "evidence": "modules/performance.js:349· core/metrics.js:385-413"
+  },
+  {
+   "from": "maint_history",
+   "to": "entity_card",
+   "status": "partial",
+   "label": "τελ. χλμ/ζημιές",
+   "evidence": "core/entity.js:2157-2224 · 72/1091 έχουν odometer"
+  },
+  {
+   "from": "maint_req_t",
+   "to": "entity_card",
+   "status": "partial",
+   "label": "«ΣΕ ΣΕΡΒΙΣ»",
+   "evidence": "core/entity.js:2245-2254 · SQL 0"
+  }
+ ],
+ "findings": [
+  {
+   "sev": "critical",
+   "text": "maint_req ουσιαστικά άδειο: 1 εγγραφή σύνολο, ΔΙΑΓΡΑΜΜΕΝΗ, 0 ενεργές. Όλο το κύκλωμα Εντολών Εργασίας + το ιστορικό «✓ Ανανεώθηκε» δεν έχει αφήσει κανένα ζωντανό ίχνος.",
+   "evidence": "SQL: select count(*), count(*) filter(deleted_at is null) from maint_req → 1 / 0"
+  },
+  {
+   "sev": "high",
+   "text": "«✓ Ανανεώθηκε» (maint_req) γράφει ΜΟΝΟ μια ολοκληρωμένη εντολή· ΔΕΝ αλλάζει το πεδίο λήξης του οχήματος. Χωρίς το ξεχωριστό inline-edit της ημερομηνίας, το όχημα μένει «ληγμένο» παντού αλλού (dashboard, AI, Κέντρο Συντήρησης).",
+   "evidence": "modules/maintenance.js:1832-1849 vs 464-499 — δύο ασύνδετα σημεία εγγραφής"
+  },
+  {
+   "sev": "high",
+   "text": "Το «Εκτ. Κόστος» στις Εντολές Εργασίας είναι κλειδωμένο με σχόλιο «λείπει ο χάρτης του Worker» — αλλά ο Worker ΗΔΗ χαρτογραφεί Estimated Cost→estimated_cost από 3/9. Το σχόλιο/κλείδωμα είναι μπαγιάτικο.",
+   "evidence": "modules/maintenance.js:1902-1907 vs worker/src/index.js:917-918"
+  },
+  {
+   "sev": "medium",
+   "text": "Τέσσερα (όχι τρία) αντίγραφα της λίστας εγγράφων λήξης: core/constants.js (ζωντανό, με Ταχογράφο)· core/entity.js _EXPIRY_FIELDS (ζωντανό, ίδιο)· core/entity.js _renderFleetStatsStrip (ΝΕΚΡΟΣ κώδικας, το ίδιο το σχόλιο 916-921 το επιβεβαιώνει)· core/ai-chat.js (ζωντανό αλλά ξεχωριστό, χωρίς Ταχογράφο, χωρίς κανόνα NO-FRC).",
+   "evidence": "core/constants.js:103-116· core/entity.js:927-933,1165-1194· core/ai-chat.js:1259-1296"
+  },
+  {
+   "sev": "medium",
+   "text": "cardKm (καρτέλα φορτηγού) ΔΕΝ είναι ζωντανό οδόμετρο — είναι το τελευταίο Odometer km από maint_history, γεμάτο σε μόλις 72/1091 εγγραφές. Υπάρχει πίνακας maint_plan φτιαγμένος ακριβώς γι' αυτό (current_odometer_km/next_service_km/km_remaining) με 0 γραμμές και ΚΑΜΙΑ αναφορά στον κώδικα.",
+   "evidence": "core/entity.js:2175-2186 (σχόλιο 72/1091)· SQL: maint_plan count=0, καμία αναφορά σε grep"
+  },
+  {
+   "sev": "low",
+   "text": "Το σχόλιο στο core/entity.js λέει ότι «Next Maintenance Date δεν έχει στήλη» — έχει (trucks.next_maintenance), απλώς 0/36 γεμάτη. Δεν αλλάζει τη συμπεριφορά, αλλά η τεκμηρίωση είναι λάθος.",
+   "evidence": "core/entity.js:1082-1084 vs worker/src/index.js:825· SQL trucks.next_maintenance: 0/36"
+  },
+  {
+   "sev": "low",
+   "text": "Η «Εκτύπωση» των Λήξεων ανοίγει νέο παράθυρο με window.print() πάνω στο ίδιο HTML — δεν περνά ποτέ από το Worker /print/pdf, που υπάρχει αλλά τον χρησιμοποιούν άλλες οθόνες (παραγγελίες).",
+   "evidence": "modules/maintenance.js:757-774 vs worker/src/index.js:3599-3745"
+  },
+  {
+   "sev": "info",
+   "text": "9 εγγραφές «Unauthorized» σε app_errors για «dashboard alerts: maintenance requests» έως 6/9 — διαγνωσμένες ως λήξη JWT (όχι δικαιώματα), ήδη σιωπηλές από τον guard sessionEnded. Επίσης 1 νεκρός έλεγχος ρόλου role==='maintenance' που δεν υπάρχει ποτέ ως ρόλος.",
+   "evidence": "core/utils.js:670-689,1183,1202· app_errors 9 γραμμές έως 2026-09-06"
+  }
+ ]
+}

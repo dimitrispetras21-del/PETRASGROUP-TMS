@@ -1,0 +1,388 @@
+{
+ "circuit": "backend",
+ "title": "Worker & βάση, εγκάρσια",
+ "columns": [
+  {
+   "key": "sources",
+   "label": "ΟΘΟΝΕΣ (ανά κύκλωμα)",
+   "nodes": [
+    {
+     "id": "src_intl",
+     "label": "Διεθνείς",
+     "sub": "",
+     "status": "ok",
+     "note": "orders 130 ζωντανές, τελευταία 7/9 12:14"
+    },
+    {
+     "id": "src_natl",
+     "label": "Εθνικές",
+     "sub": "natl+weekly+GL/CL",
+     "status": "partial",
+     "note": "national_orders→national_loads 400 σε κάθε POST (Ε1, national-architecture-backend-map.md)"
+    },
+    {
+     "id": "src_ramp",
+     "label": "Ράμπα",
+     "sub": "",
+     "status": "partial",
+     "note": "ramp.order_id/national_order_id χωρίς FK· 0/44 με fleet link σήμερα"
+    },
+    {
+     "id": "src_fleet",
+     "label": "Στόλος/Συντήρηση",
+     "sub": "drivers·trucks·maint",
+     "status": "ok",
+     "note": "drivers 81, trucks 36, trailers 40, maint_history 1091"
+    },
+    {
+     "id": "src_pallets",
+     "label": "Παλέτες",
+     "sub": "upload+ισοζύγιο",
+     "status": "partial",
+     "note": "νέο ισοζύγιο ok (pl_movements)· παλιό «Δελτίο» κουμπί γράφει σε νεκρό πίνακα"
+    },
+    {
+     "id": "src_costs",
+     "label": "Κόστος/Μισθοδοσία",
+     "sub": "+",
+     "status": "ok",
+     "note": "dl_entries 11.122, ct_round_trips 48"
+    },
+    {
+     "id": "src_invoicing",
+     "label": "Τιμολόγηση/Dash",
+     "sub": "invoicing+dashboards",
+     "status": "partial",
+     "note": "orders.invoiced OK 3/9· PnL CEO dashboard 403 σε management"
+    },
+    {
+     "id": "src_refdata",
+     "label": "Βασικά αρχεία",
+     "sub": "clients·partners·τοπ.",
+     "status": "ok",
+     "note": "clients 1920, partners 432, locations 1175"
+    }
+   ]
+  },
+  {
+   "key": "core",
+   "label": "WORKER",
+   "nodes": [
+    {
+     "id": "core_facade",
+     "label": "Facade /v0",
+     "sub": "labels→στήλες (TABLES)",
+     "status": "ok",
+     "note": "20 facade IDs"
+    },
+    {
+     "id": "core_costs",
+     "label": "/costs/*",
+     "sub": "RT+ledger+PnL, 401 live",
+     "status": "ok",
+     "note": "handleCosts"
+    },
+    {
+     "id": "core_pallets",
+     "label": "/pallets/*",
+     "sub": "pl_movements, 401 live",
+     "status": "ok",
+     "note": "handlePallets"
+    },
+    {
+     "id": "core_auth",
+     "label": "/auth+PERMS",
+     "sub": "login+ρόλοι",
+     "status": "ok",
+     "note": "handleLogin, 371 PERMISSIONS"
+    },
+    {
+     "id": "core_audit",
+     "label": "/audit+/errors",
+     "sub": "καταγραφή",
+     "status": "ok",
+     "note": "handleAuditGet, 307/338 app-errors"
+    },
+    {
+     "id": "core_misc",
+     "label": "/print+/ai",
+     "sub": "PDF + AI chat proxy",
+     "status": "ok",
+     "note": "handlePrintPdf, 669 handleAiMessages"
+    }
+   ]
+  },
+  {
+   "key": "consumers",
+   "label": "ΒΑΣΗ (Postgres)",
+   "nodes": [
+    {
+     "id": "db_intl",
+     "label": "Διεθνείς",
+     "sub": "orders · 130",
+     "status": "ok",
+     "note": "orders 130 ζωντανές· τελευταία 7/9 12:14. Καμία 'invoices' στήλη-πίνακας — βλ. εύρημα"
+    },
+    {
+     "id": "db_natl",
+     "label": "Εθνικές",
+     "sub": "6 πίν. · 29 ζωντ.",
+     "status": "partial",
+     "note": "national_orders 4, national_loads 25, order_stops μοιρασμένο (401 σύνολο)· groupage_lines 0, consolidated_loads 0, local_moves 0, cons_load_source_orders 0"
+    },
+    {
+     "id": "db_ramp",
+     "label": "Ράμπα",
+     "sub": "ramp · 44",
+     "status": "partial",
+     "note": "44/44 χωρίς truck/driver/order link σήμερα (SQL 7/9)"
+    },
+    {
+     "id": "db_fleet",
+     "label": "Στόλος/Συντήρ.",
+     "sub": "7 πίν. · 1.318 ζωντ.",
+     "status": "ok",
+     "note": "drivers 81, trucks 36, trailers 40, workshops 70, maint_history 1091, maint_req 0, maint_plan 0"
+    },
+    {
+     "id": "db_pallets",
+     "label": "Παλέτες",
+     "sub": "3 πίν. · 95 ζωντ.",
+     "status": "partial",
+     "note": "pl_movements 95 (νέο, ζωντανό)· pallet_ledger_suppliers/partners 0/0 ΠΟΤΕ (σχολιασμένο deprecated στο"
+    },
+    {
+     "id": "db_costs",
+     "label": "Κόστος/Μισθοδ.",
+     "sub": "8 πίν. · 11.344 ζωντ.",
+     "status": "ok",
+     "note": "dl_entries 11.122, ct_rt_legs 98, ct_round_trips 48, dl_import_batches 70, ct_cost_lines 1, ct_settings 5, ct_cost_docs 0, ct_plate_aliases 0"
+    },
+    {
+     "id": "db_invoicing",
+     "label": "Τιμολόγηση",
+     "sub": "καμία δική στήλη",
+     "status": "broken",
+     "note": "PERMISSIONS δίνει ρητά δικαίωμα σε πίνακα 'invoices' που ΔΕΝ υπάρχει στη βάση (information_schema.tables, 36 πίνακες)"
+    },
+    {
+     "id": "db_refdata",
+     "label": "Βασικά αρχεία",
+     "sub": "3 πίν. · 3.527 ζωντ.",
+     "status": "ok",
+     "note": "clients 1920, partners 432, locations 1175"
+    },
+    {
+     "id": "db_system",
+     "label": "Σύστημα",
+     "sub": "5 πίν. · 5.734 εγγρ.",
+     "status": "ok",
+     "note": "audit_log 3977, app_errors 1478, users 18 (7 ενεργοί), facade_unknown_fields 261, scan_examples 0 (2 ποτέ, όλα σβησμένα)"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "src_intl",
+   "to": "core_facade",
+   "status": "ok",
+   "label": "CRUD orders",
+   "evidence": "worker/src/index.js:353-536 ORDERS map"
+  },
+  {
+   "from": "src_intl",
+   "to": "core_misc",
+   "status": "ok",
+   "label": "PDF εγγράφων",
+   "evidence": "worker/src/index.js:3636 handlePrintPdf"
+  },
+  {
+   "from": "src_natl",
+   "to": "core_facade",
+   "status": "partial",
+   "label": "CRUD natl+GL+CL",
+   "evidence": "national-architecture-backend-map.md Ε1: national_orders POST→national_loads 400"
+  },
+  {
+   "from": "src_ramp",
+   "to": "core_facade",
+   "status": "partial",
+   "label": "CRUD ramp",
+   "evidence": "SQL 7/9: ramp 0/44 has_truck/has_driver/has_order"
+  },
+  {
+   "from": "src_fleet",
+   "to": "core_facade",
+   "status": "ok",
+   "label": "CRUD στόλου",
+   "evidence": "worker/src/index.js:759-930 DRIVERS/TRUCKS/TRAILERS/WORKSHOPS/MAINT"
+  },
+  {
+   "from": "src_pallets",
+   "to": "core_facade",
+   "status": "broken",
+   "label": "Δελτίο (παλιό)",
+   "evidence": "modules/pallet_upload.js:556 atCreate(PALLET_LEDGER)→pallet_ledger_suppliers, 0 εγγραφές ποτέ (SQL)"
+  },
+  {
+   "from": "src_pallets",
+   "to": "core_pallets",
+   "status": "ok",
+   "label": "κινήσεις/ισοζύγιο",
+   "evidence": "worker/src/index.js:3241 handlePallets· pl_movements 95 ζωντανές, τελευταία 7/9 12:14"
+  },
+  {
+   "from": "src_costs",
+   "to": "core_costs",
+   "status": "ok",
+   "label": "RT+ledger+PnL",
+   "evidence": "worker/src/index.js:2738 handleCosts· dl_entries 11.122"
+  },
+  {
+   "from": "src_invoicing",
+   "to": "core_facade",
+   "status": "ok",
+   "label": "PATCH invoiced",
+   "evidence": "worker/src/index.js:443 PERMISSIONS.accountant.orders=[GET,PATCH] (owner 3/9)"
+  },
+  {
+   "from": "src_invoicing",
+   "to": "core_costs",
+   "status": "broken",
+   "label": "PnL (CEO dash)",
+   "evidence": "worker/src/index.js:2721-2729 COSTS_PERMS.management={lookups,ledger} — καμία γραμμή 'pnl' → 403"
+  },
+  {
+   "from": "src_refdata",
+   "to": "core_facade",
+   "status": "ok",
+   "label": "CRUD αρχείων",
+   "evidence": "worker/src/index.js:753-826 CLIENTS/PARTNERS/LOCATIONS"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_intl",
+   "status": "ok",
+   "label": "orders",
+   "evidence": "SQL: orders live=130"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_natl",
+   "status": "partial",
+   "label": "natl+GL+CL+stops",
+   "evidence": "SQL: national_loads 25, groupage_lines 0, consolidated_loads 0, local_moves 0"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_ramp",
+   "status": "partial",
+   "label": "ramp",
+   "evidence": "SQL: ramp 44, 0 με fleet/order link"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_fleet",
+   "status": "ok",
+   "label": "στόλος/συντήρηση",
+   "evidence": "SQL: drivers 81, trucks 36, maint_history 1091"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_refdata",
+   "status": "ok",
+   "label": "clients/partners/τοπ.",
+   "evidence": "SQL: clients 1920, partners 432, locations 1175"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_pallets",
+   "status": "unused",
+   "label": "ledger (νεκρό)",
+   "evidence": "SQL: pallet_ledger_suppliers/partners = 0/0 σύνολο, ποτέ"
+  },
+  {
+   "from": "core_facade",
+   "to": "db_invoicing",
+   "status": "partial",
+   "label": "orders.invoiced",
+   "evidence": "δεν υπάρχει ξεχωριστός πίνακας· γράφεται πάνω στο orders (information_schema)"
+  },
+  {
+   "from": "core_costs",
+   "to": "db_costs",
+   "status": "ok",
+   "label": "RT/legs/ledger",
+   "evidence": "SQL: dl_entries 11.122, ct_rt_legs 98"
+  },
+  {
+   "from": "core_pallets",
+   "to": "db_pallets",
+   "status": "ok",
+   "label": "pl_movements",
+   "evidence": "SQL: pl_movements 95, last_seen 7/9 12:14"
+  },
+  {
+   "from": "core_auth",
+   "to": "db_system",
+   "status": "ok",
+   "label": "users/login",
+   "evidence": "SQL: users 18, 7 active=true"
+  },
+  {
+   "from": "core_audit",
+   "to": "db_system",
+   "status": "ok",
+   "label": "audit_log/errors",
+   "evidence": "SQL: audit_log 3977, app_errors 1478 (14η)"
+  }
+ ],
+ "findings": [
+  {
+   "sev": "critical",
+   "text": "PERMISSIONS δίνει ρητά δικαίωμα σε πίνακα 'invoices' (management/accountant) που δεν υπάρχει καθόλου στη βάση — νεκρός/ξεχασμένος κανόνας.",
+   "evidence": "worker/src/index.js:384,432 vs information_schema.tables (36 πίνακες, κανένας 'invoices')"
+  },
+  {
+   "sev": "critical",
+   "text": "Κουμπί «Δελτίο παλετών» στις Διεθνείς γράφει ακόμη σε pallet_ledger_suppliers, πίνακα που η ίδια η εφαρμογή σχολιάζει deprecated/empty — 0 εγγραφές έχουν μπει ΠΟΤΕ.",
+   "evidence": "modules/pallet_upload.js:556, modules/invoicing.js:1232-1237, SQL count=0"
+  },
+  {
+   "sev": "high",
+   "text": "COSTS_PERMS δεν έχει καθόλου γραμμή 'pnl' για management → το P&L του CEO Dashboard γυρίζει 403 σε αυτόν τον ρόλο.",
+   "evidence": "worker/src/index.js:2721-2729"
+  },
+  {
+   "sev": "high",
+   "text": "RLS ενεργό σε 36/36 πίνακες αλλά 0 policies παντού· η μόνη προστασία είναι ο service_role του Worker + το PERMISSIONS του κώδικα.",
+   "evidence": "pg_class.relrowsecurity=true σε 36/36, pg_policy count=0 (SQL 7/9)"
+  },
+  {
+   "sev": "medium",
+   "text": "facade_unknown_fields ζωντανό σήμερα: 'Loading Summary' σε orders (277× read, τελευταία 6/9 16:12), 'Source Record' σε national_loads (49×, τελευταία σήμερα 10:46) — κάποια οθόνη ακόμη ζητά πεδία που δεν υπάρχουν στον χάρτη.",
+   "evidence": "SQL facade_unknown_fields τελ. 14 ημερών"
+  },
+  {
+   "sev": "medium",
+   "text": "app_errors 14ημ.: top σφάλμα '_atRetry: Unsupported query for this table' (73×), 'Missing fields in ORDERS: Status' (56×), δύο ReferenceError (renderTrucksHistory/renderTrailersHistory not defined, ζωντανά έως 25/8).",
+   "evidence": "SQL app_errors τελ. 14 ημερών, group by signature"
+  },
+  {
+   "sev": "medium",
+   "text": "12 από τους 36 πίνακες έχουν 0 ζωντανές γραμμές σήμερα (consolidated_loads, groupage_lines, local_moves, cons_load_source_orders, maint_req, maint_plan, pallet_ledger_suppliers/partners, fuel, scan_examples, ct_cost_docs, ct_plate_aliases). Κάποιοι έχουν ενεργό κώδικα γραφής που ποτέ δεν πυροδοτείται.",
+   "evidence": "SQL count(*) ανά πίνακα 7/9"
+  },
+  {
+   "sev": "low",
+   "text": "users: 18 λογαριασμοί, μόνο 7 active=true (dimitris, thodoris, alexia, eirini, kelesmitos, pantelis, sotiris) — το CLAUDE.md αναφέρει '6 πραγματικοί λογαριασμοί', ένας παραπάνω σήμερα.",
+   "evidence": "SQL users group by role,active 7/9"
+  },
+  {
+   "sev": "info",
+   "text": "Ο φρουρός των τριών (order_stops DELETE dispatcher, 'VS CD Date', 4 πεδία WORKSHOPS) υπάρχει σήμερα στο πηγαίο· τα deploy του 7/9 πρόσθεσαν SCOPED_DELETE (dispatcher σβήνει ORDERS μόνο αν είναι σκέλος) + triggers 019/020 (parent/leg propagation) + costs 021 (partner_rate planned).",
+   "evidence": "worker/src/index.js:474,1216,866-869,2610· git log 89d9d6e/6f09d96/3887737"
+  }
+ ]
+}

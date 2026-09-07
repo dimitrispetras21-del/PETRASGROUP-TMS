@@ -1,0 +1,304 @@
+{
+ "circuit": "invoicing_oversight",
+ "title": "Τιμολόγηση, Dashboards, Επίβλεψη",
+ "columns": [
+  {
+   "key": "sources",
+   "label": "ΟΘΟΝΕΣ / ΠΗΓΕΣ",
+   "nodes": [
+    {
+     "id": "invoicing",
+     "label": "Τιμολόγηση",
+     "sub": "",
+     "status": "partial",
+     "note": "Γράφει Invoiced+Status+αριθμό· μόνο Invoiced επιβιώνει"
+    },
+    {
+     "id": "dashboard",
+     "label": "Dashboard",
+     "sub": "",
+     "status": "ok",
+     "note": "KPI λειτουργίας από ORDERS/NAT_LOADS/στάσεις"
+    },
+    {
+     "id": "ceo_perf",
+     "label": "CEO + Επίδοση",
+     "sub": "ceo_dashboard+",
+     "status": "partial",
+     "note": "Margin σωστό αλλά κρυμμένο πίσω από ανύπαρκτο TRIP_COSTS"
+    },
+    {
+     "id": "metrics_audit",
+     "label": "Έλεγχος Μετρ.",
+     "sub": "",
+     "status": "ok",
+     "note": "Διασταυρώνει ORDERS/NAT_ORDERS με τις άλλες οθόνες"
+    },
+    {
+     "id": "oversight_tools",
+     "label": "Ιστ.·Σφάλμ.·Κάδος",
+     "sub": "audit_trail+",
+     "status": "partial",
+     "note": "Audit Trail ζωντανό· Σφάλματα/Κάδος διαβάζουν localStorage"
+    },
+    {
+     "id": "ai_chat",
+     "label": "Νάκης AI",
+     "sub": "",
+     "status": "broken",
+     "note": "Καλεί Anthropic απευθείας με άδειο κλειδί· ο Worker proxy αχρησιμοποίητος"
+    }
+   ]
+  },
+  {
+   "key": "core",
+   "label": "ΠΙΝΑΚΕΣ",
+   "nodes": [
+    {
+     "id": "orders",
+     "label": "Παραγγελίες",
+     "sub": "orders · 130",
+     "status": "ok",
+     "note": "invoiced=true σε 2/130· invoice_number/date=0"
+    },
+    {
+     "id": "national_orders",
+     "label": "Εθνικές Παραγγ.",
+     "sub": "national_orders · 4",
+     "status": "ok",
+     "note": "invoiced=0/4"
+    },
+    {
+     "id": "audit_log",
+     "label": "Ιστορικό",
+     "sub": "audit_log · 3977",
+     "status": "ok",
+     "note": "Ζωντανό, γράφεται σε κάθε PATCH/POST/DELETE"
+    },
+    {
+     "id": "app_errors",
+     "label": "Σφάλματα server",
+     "sub": "app_errors · 1478",
+     "status": "partial",
+     "note": "Γράφεται κανονικά· καμία οθόνη δεν το διαβάζει"
+    },
+    {
+     "id": "facade_unknown",
+     "label": "Άγνωστα πεδία",
+     "sub": "facade_unknown_fields · 261",
+     "status": "partial",
+     "note": "Καταγράφει σιωπηλές απορρίψεις· καμία οθόνη δεν το δείχνει"
+    },
+    {
+     "id": "users",
+     "label": "Χρήστες",
+     "sub": "users · 18",
+     "status": "partial",
+     "note": "7 ενεργοί + 5 demo σε roster· 6 stg_/zz_ λείπουν από"
+    }
+   ]
+  },
+  {
+   "key": "consumers",
+   "label": "ΠΟΙΟΣ ΤΟ ΔΙΑΒΑΖΕΙ",
+   "nodes": [
+    {
+     "id": "erp_ext",
+     "label": "ERP (εξωτερικό)",
+     "sub": "εκδίδει το τιμολόγιο",
+     "status": "ok",
+     "note": "Κλειδωμένη απόφαση 23/8: το TMS δεν εκδίδει"
+    },
+    {
+     "id": "weekly_screens",
+     "label": "Weekly Intl/Natl",
+     "sub": "διαβάζουν ORDERS αλλού",
+     "status": "partial",
+     "note": "Εκτός εμβέλειας εδώ — δεν επαληθεύτηκε σε αυτό το πέρασμα"
+    },
+    {
+     "id": "error_log_screen",
+     "label": "Καταγρ. Σφαλμ.",
+     "sub": "οθόνη 'Κάδος Σφαλμάτων'",
+     "status": "broken",
+     "note": "Διαβάζει localStorage, ΟΧΙ το GET /app-errors — 1478 γραμμές αόρατες"
+    },
+    {
+     "id": "trash_screen",
+     "label": "Κάδος",
+     "sub": "οθόνη Κάδος",
+     "status": "broken",
+     "note": "localStorage 50 τελευταίων· restore=νέο id, όχι un-delete"
+    },
+    {
+     "id": "owner_mgmt",
+     "label": "Owner/Management",
+     "sub": "οθόνη",
+     "status": "ok",
+     "note": "Μόνοι αναγνώστες GET /audit"
+    },
+    {
+     "id": "ai_proxy",
+     "label": "Worker AI proxy",
+     "sub": "/v1/ai/messages",
+     "status": "unused",
+     "note": "Ζωντανό στον Worker, ποτέ δεν καλείται από το app"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from": "invoicing",
+   "to": "orders",
+   "status": "partial",
+   "label": "Invoiced+αριθμός",
+   "evidence": "modules/invoicing.js:828-836· SQL: invoiced 2/130, invoice_number 0/130"
+  },
+  {
+   "from": "invoicing",
+   "to": "national_orders",
+   "status": "broken",
+   "label": "PATCH 403",
+   "evidence": "worker/src/index.js:423-453 accountant χωρίς γραμμή national_orders· management ίδιο"
+  },
+  {
+   "from": "dashboard",
+   "to": "orders",
+   "status": "ok",
+   "label": "KPI ανάθεσης",
+   "evidence": "modules/dashboard.js:69"
+  },
+  {
+   "from": "ceo_perf",
+   "to": "orders",
+   "status": "ok",
+   "label": "Price/Partner Rate",
+   "evidence": "modules/ceo_dashboard.js:498,569,583-584"
+  },
+  {
+   "from": "ceo_perf",
+   "to": "orders",
+   "status": "broken",
+   "label": "Margin→N/A",
+   "evidence": "ceo_dashboard.js:405-407 κρύβει σωστό partnerMargin πίσω από tripCosts.length>0"
+  },
+  {
+   "from": "metrics_audit",
+   "to": "orders",
+   "status": "ok",
+   "label": "cross-check",
+   "evidence": "modules/metrics_audit.js:315"
+  },
+  {
+   "from": "metrics_audit",
+   "to": "national_orders",
+   "status": "ok",
+   "label": "cross-check",
+   "evidence": "modules/metrics_audit.js:321"
+  },
+  {
+   "from": "oversight_tools",
+   "to": "audit_log",
+   "status": "ok",
+   "label": "GET /audit",
+   "evidence": "modules/audit_trail.js:108· worker AUDIT_READERS=owner,management"
+  },
+  {
+   "from": "oversight_tools",
+   "to": "app_errors",
+   "status": "broken",
+   "label": "δεν διαβάζεται",
+   "evidence": "core/utils.js:942 getErrorLog() localStorage· καμία κλήση GET /app-errors"
+  },
+  {
+   "from": "oversight_tools",
+   "to": "facade_unknown",
+   "status": "broken",
+   "label": "δεν διαβάζεται",
+   "evidence": "καμία αναφορά facade_unknown_fields σε modules/ ή core/"
+  },
+  {
+   "from": "ai_chat",
+   "to": "orders",
+   "status": "partial",
+   "label": "read_orders tool",
+   "evidence": "core/ai-chat.js:1319,1348 — αλλά η ίδια η κλήση Claude αποτυγχάνει (ANTH_KEY κενό)"
+  },
+  {
+   "from": "invoicing",
+   "to": "erp_ext",
+   "status": "ok",
+   "label": "χειροκίνητα",
+   "evidence": "CLAUDE.md κλειδωμένη απόφαση 23/8"
+  },
+  {
+   "from": "app_errors",
+   "to": "error_log_screen",
+   "status": "broken",
+   "label": "προβλεπόταν να",
+   "evidence": "handleAppErrorsGet υπάρχει (worker/src/index.js:338) αλλά ποτέ δεν καλείται"
+  },
+  {
+   "from": "audit_log",
+   "to": "owner_mgmt",
+   "status": "ok",
+   "label": "μόνο αυτοί",
+   "evidence": "worker/src/index.js:186 AUDIT_READERS"
+  },
+  {
+   "from": "ai_chat",
+   "to": "ai_proxy",
+   "status": "broken",
+   "label": "δεν καλείται ποτέ",
+   "evidence": "core/ai-chat.js:898,964 πάει απευθείας στο api.anthropic.com, όχι στο /v1/ai/messages"
+  }
+ ],
+ "findings": [
+  {
+   "sev": "critical",
+   "text": "Το Νάκης AI (core/ai-chat.js) καλεί απευθείας api.anthropic.com με ANTH_KEY='' (config.js:46) — κάθε κλήση αποτυγχάνει με 401. Ο ζωντανός Worker proxy /v1/ai/messages (worker/src/index.js:669-727, με πραγματικό ANTHROPIC_API_KEY) δεν καλείται ΠΟΥΘΕΝΑ από το app. Το εργαλείο είναι εντελώς νεκρό.",
+   "evidence": "config.js:46· core/ai-chat.js:898,964· grep repo: 0 κλήσεις σε /v1/ai/messages εκτός worker"
+  },
+  {
+   "sev": "critical",
+   "text": "Καταγραφή Σφαλμάτων (owner-only οθόνη) διαβάζει ΜΟΝΟ localStorage tms_errors του browser που την ανοίγει· ποτέ δεν διαβάζει το GET /app-errors. 1478 γραμμές στο app_errors είναι αόρατες σε κάθε οθόνη του app.",
+   "evidence": "core/utils.js:933-942 (renderErrorLog)· SQL count(app_errors)=1478"
+  },
+  {
+   "sev": "critical",
+   "text": "Ο Κάδος είναι localStorage-only (τελευταίες 50, ανά browser) και ξεχωριστός μηχανισμός από το deleted_at soft-delete στην Postgres. Η 'Επαναφορά' κάνει atCreate (ΝΕΟ id), όχι un-delete — η παλιά γραμμή μένει deleted_at για πάντα και τυχόν links προς το παλιό id μένουν σπασμένα.",
+   "evidence": "core/api.js:1060-1116 (atSoftDelete/getTrash/atRestoreFromTrash)"
+  },
+  {
+   "sev": "high",
+   "text": "Το checkbox 'Invoiced' σε εθνική παραγγελία γράφει PATCH στο national_orders· ούτε accountant ούτε management έχουν γραμμή national_orders στο PERMISSIONS του Worker (μόνο wildcard '*':GET) — 403 σε κάθε προσπάθεια, ενώ η οθόνη Τιμολόγησης δείχνει το κουμπί ενεργό (το frontend can() ελέγχει μόνο 'costs'/'orders', όχι τον πραγματικό πίνακα).",
+   "evidence": "worker/src/index.js:423-453 (accountant), 382-422 (management)· modules/invoicing.js:731,829"
+  },
+  {
+   "sev": "high",
+   "text": "Στις 2/130 παραγγελίες με invoiced=true, τα invoice_number/invoice_date είναι NULL και το status παρέμεινε 'Delivered' — όχι 'Invoiced' — παρότι ο κώδικας σήμερα γράφει και τα τρία μαζί σε ένα PATCH. Δεν προκύπτει αν γράφτηκαν από παλαιότερο κώδικα/εισαγωγή· δεν είναι αποτέλεσμα άγνωστου πεδίου (δεν εμφανίζονται στο facade_unknown_fields).",
+   "evidence": "SQL orders id 245,246· modules/invoicing.js:828-836"
+  },
+  {
+   "sev": "high",
+   "text": "Το CEO Dashboard δείχνει πάντα 'N/A' στο partner margin KPI επειδή η εμφάνιση εξαρτάται από tripCosts.length>0, και το TRIP_COSTS (facade id tblWUus6uSpqE1LMW) δεν υπάρχει καθόλου στον χάρτη του Worker — 404 σε κάθε φόρτωση. Ο ίδιος ο υπολογισμός partnerMargin από orders.Partner Rate είναι σωστός αλλά κρυμμένος.",
+   "evidence": "modules/ceo_dashboard.js:140-146,405-407,579-586· grep worker/src/index.js για tblWUus6uSpqE1LMW: 0 αποτελέσματα"
+  },
+  {
+   "sev": "medium",
+   "text": "Το performance/delivery route (worker/src/index.js:3121-3173, views v_driver/client/partner_delivery, deployed 3/9) δεν καλείται από ΚΑΝΕΝΑ αρχείο του frontend — grep σε ολόκληρο το repo: 0 κλήσεις. Δουλειά backend χωρίς σύνδεση UI.",
+   "evidence": "grep 'performance/delivery' → μόνο worker/src/index.js"
+  },
+  {
+   "sev": "medium",
+   "text": "Το facade_unknown_fields (261 ετικέτες/γραμμές, ο μηχανισμός που έγινε ακριβώς για να ακούγονται οι σιωπηλές απορρίψεις — αρχή 1) δεν το διαβάζει καμία οθόνη· μόνο SQL το αποκαλύπτει.",
+   "evidence": "grep repo για facade_unknown_fields εκτός worker/docs: 0 αρχεία"
+  },
+  {
+   "sev": "low",
+   "text": "Πίνακας users: 18 γραμμές· 7 ενεργοί λογαριασμοί (όχι 6 όπως λέει το CLAUDE.md — προστέθηκε η alexia) + 5 demo, σύνολο 12 στο roster (config.js/index.html USERS)· 6 ακόμη γραμμές (zz_0013, stg_owner, stg_mgmt, stg_acct, stg_disp, stg_whse) υπάρχουν στη βάση αλλά ΟΧΙ στο roster — αν συνδεθούν, ο tamper guard τους πετάει έξω (fail-closed, αλλά μη τεκμηριωμένο ασυνεπές σύνολο).",
+   "evidence": "SQL users (18 γραμμές)· config.js:313-327, index.html:326-352 (12 entries)"
+  }
+ ]
+}
