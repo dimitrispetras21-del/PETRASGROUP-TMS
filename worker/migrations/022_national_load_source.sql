@@ -1,4 +1,4 @@
--- NOT EXECUTED YET — the owner runs it in the SQL editor together with the deploy
+-- EXECUTED 2026-09-07 15:58 via SQL editor (owner: «ναι, προχώρα με το Βήμα 1»). Proof: orphan stops 0, CHECK 3 στήλες, 2 triggers, ramp 5 FKs.
 begin;
 -- 1. Η εθνική παραγγελία ως πηγή φορτίου (Ε1). Μέχρι σήμερα μόνο orders/consolidated_loads είχαν FK.
 alter table national_loads add column if not exists source_national_order_id bigint references national_orders(id);
