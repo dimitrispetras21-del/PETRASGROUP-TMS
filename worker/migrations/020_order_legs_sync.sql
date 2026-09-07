@@ -9,8 +9,10 @@
 --
 --   parent ──► legs : client, reference, goods, temperature, pallet type/exchange,
 --                     refrigerator mode, pallets (both legs carry the full load),
---                     loading location+datetime → leg 1, last unloading
---                     location+delivery datetime → last leg
+--                     ALL loading points (1..10, datetimes, pallets) → leg 1,
+--                     ALL unloading points (1..10, datetimes, pallets) + delivery
+--                     datetime → last leg (owner 7/9: order 271 had 2+2 points
+--                     and the legs kept only the first of each — never again)
 --   legs   ──► parent: loading datetime (leg 1), delivery datetime (last leg)
 --   leg N «to» ⇄ leg N+1 «from» (the hand-over point) — whichever changes, the
 --                     other follows, with the datetime
@@ -25,42 +27,70 @@ language sql security definer set search_path = public as $$
   values ('trigger:order_legs', 'system', 'update', 'orders', p_id::text, p_before, p_after, now());
 $$;
 
--- last unloading location of a row (the parent's final delivery point)
-create or replace function order_last_unloading(o orders) returns bigint
-language sql immutable as $$
-  select coalesce(o.unloading_location_10_id, o.unloading_location_9_id, o.unloading_location_8_id, o.unloading_location_7_id,
-                  o.unloading_location_6_id, o.unloading_location_5_id, o.unloading_location_4_id, o.unloading_location_3_id,
-                  o.unloading_location_2_id, o.unloading_location_1_id);
-$$;
-
 -- 1. parent → legs
 create or replace function order_parent_to_legs() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare leg orders%rowtype; total numeric; lastu bigint; maxleg int;
+declare leg orders%rowtype; total numeric; maxleg int; changed boolean;
 begin
   select max(leg_no) into maxleg from orders where parent_order_id = new.id and deleted_at is null;
   if maxleg is null then return null; end if;
   total := coalesce(new.loading_pallets_1,0)+coalesce(new.loading_pallets_2,0)+coalesce(new.loading_pallets_3,0)+coalesce(new.loading_pallets_4,0)+coalesce(new.loading_pallets_5,0)
          + coalesce(new.loading_pallets_6,0)+coalesce(new.loading_pallets_7,0)+coalesce(new.loading_pallets_8,0)+coalesce(new.loading_pallets_9,0)+coalesce(new.loading_pallets_10,0);
   if total = 0 then total := null; end if;
-  lastu := order_last_unloading(new);
   for leg in select * from orders where parent_order_id = new.id and deleted_at is null loop
+    -- commercial facts: every leg
     update orders set
       client_id = new.client_id, reference = new.reference, goods = new.goods, temperature_c = new.temperature_c,
-      pallet_type = new.pallet_type, pallet_exchange = new.pallet_exchange, refrigerator_mode = new.refrigerator_mode,
-      loading_pallets_1 = coalesce(total, loading_pallets_1), unloading_pallets_1 = coalesce(total, unloading_pallets_1),
-      loading_location_1_id   = case when leg.leg_no = 1 then new.loading_location_1_id else loading_location_1_id end,
-      loading_datetime        = case when leg.leg_no = 1 then new.loading_datetime      else loading_datetime      end,
-      unloading_location_1_id = case when leg.leg_no = maxleg then coalesce(lastu, unloading_location_1_id) else unloading_location_1_id end,
-      delivery_datetime       = case when leg.leg_no = maxleg then new.delivery_datetime else delivery_datetime end
+      pallet_type = new.pallet_type, pallet_exchange = new.pallet_exchange, refrigerator_mode = new.refrigerator_mode
     where id = leg.id
       and (client_id is distinct from new.client_id or reference is distinct from new.reference or goods is distinct from new.goods
         or temperature_c is distinct from new.temperature_c or pallet_type is distinct from new.pallet_type
-        or pallet_exchange is distinct from new.pallet_exchange or refrigerator_mode is distinct from new.refrigerator_mode
-        or (total is not null and (loading_pallets_1 is distinct from total or unloading_pallets_1 is distinct from total))
-        or (leg.leg_no = 1 and (loading_location_1_id is distinct from new.loading_location_1_id or loading_datetime is distinct from new.loading_datetime))
-        or (leg.leg_no = maxleg and (delivery_datetime is distinct from new.delivery_datetime or (lastu is not null and unloading_location_1_id is distinct from lastu))));
-    if found then
+        or pallet_exchange is distinct from new.pallet_exchange or refrigerator_mode is distinct from new.refrigerator_mode);
+    changed := found;
+    -- leg 1 carries the parent's whole LOADING side (all points, datetimes, pallets)
+    if leg.leg_no = 1 then
+      update orders set
+        loading_location_1_id = new.loading_location_1_id, loading_location_2_id = new.loading_location_2_id, loading_location_3_id = new.loading_location_3_id,
+        loading_location_4_id = new.loading_location_4_id, loading_location_5_id = new.loading_location_5_id, loading_location_6_id = new.loading_location_6_id,
+        loading_location_7_id = new.loading_location_7_id, loading_location_8_id = new.loading_location_8_id, loading_location_9_id = new.loading_location_9_id,
+        loading_location_10_id = new.loading_location_10_id,
+        loading_datetime = new.loading_datetime, loading_datetime_2 = new.loading_datetime_2, loading_datetime_3 = new.loading_datetime_3,
+        loading_datetime_4 = new.loading_datetime_4, loading_datetime_5 = new.loading_datetime_5, loading_datetime_6 = new.loading_datetime_6,
+        loading_datetime_7 = new.loading_datetime_7, loading_datetime_8 = new.loading_datetime_8, loading_datetime_9 = new.loading_datetime_9,
+        loading_datetime_10 = new.loading_datetime_10,
+        loading_pallets_1 = new.loading_pallets_1, loading_pallets_2 = new.loading_pallets_2, loading_pallets_3 = new.loading_pallets_3,
+        loading_pallets_4 = new.loading_pallets_4, loading_pallets_5 = new.loading_pallets_5, loading_pallets_6 = new.loading_pallets_6,
+        loading_pallets_7 = new.loading_pallets_7, loading_pallets_8 = new.loading_pallets_8, loading_pallets_9 = new.loading_pallets_9,
+        loading_pallets_10 = new.loading_pallets_10,
+        unloading_pallets_1 = coalesce(total, unloading_pallets_1)
+      where id = leg.id and (
+        loading_location_1_id is distinct from new.loading_location_1_id or loading_location_2_id is distinct from new.loading_location_2_id
+        or loading_location_3_id is distinct from new.loading_location_3_id or loading_datetime is distinct from new.loading_datetime
+        or loading_pallets_1 is distinct from new.loading_pallets_1 or loading_pallets_2 is distinct from new.loading_pallets_2
+        or loading_location_4_id is distinct from new.loading_location_4_id or loading_location_5_id is distinct from new.loading_location_5_id);
+      changed := changed or found;
+    end if;
+    -- the last leg carries the parent's whole UNLOADING side
+    if leg.leg_no = maxleg then
+      update orders set
+        unloading_location_1_id = new.unloading_location_1_id, unloading_location_2_id = new.unloading_location_2_id, unloading_location_3_id = new.unloading_location_3_id,
+        unloading_location_4_id = new.unloading_location_4_id, unloading_location_5_id = new.unloading_location_5_id, unloading_location_6_id = new.unloading_location_6_id,
+        unloading_location_7_id = new.unloading_location_7_id, unloading_location_8_id = new.unloading_location_8_id, unloading_location_9_id = new.unloading_location_9_id,
+        unloading_location_10_id = new.unloading_location_10_id,
+        unloading_datetime_1 = new.unloading_datetime_1, unloading_datetime_2 = new.unloading_datetime_2, unloading_datetime_3 = new.unloading_datetime_3,
+        unloading_datetime_4 = new.unloading_datetime_4, unloading_datetime_5 = new.unloading_datetime_5,
+        unloading_pallets_1 = new.unloading_pallets_1, unloading_pallets_2 = new.unloading_pallets_2, unloading_pallets_3 = new.unloading_pallets_3,
+        unloading_pallets_4 = new.unloading_pallets_4, unloading_pallets_5 = new.unloading_pallets_5,
+        delivery_datetime = new.delivery_datetime,
+        loading_pallets_1 = coalesce(total, loading_pallets_1)
+      where id = leg.id and (
+        unloading_location_1_id is distinct from new.unloading_location_1_id or unloading_location_2_id is distinct from new.unloading_location_2_id
+        or unloading_location_3_id is distinct from new.unloading_location_3_id or delivery_datetime is distinct from new.delivery_datetime
+        or unloading_pallets_1 is distinct from new.unloading_pallets_1 or unloading_pallets_2 is distinct from new.unloading_pallets_2
+        or unloading_location_4_id is distinct from new.unloading_location_4_id or unloading_location_5_id is distinct from new.unloading_location_5_id);
+      changed := changed or found;
+    end if;
+    if changed then
       perform order_legs_audit(leg.id, jsonb_build_object('from', 'parent', 'parent_id', new.id),
         jsonb_build_object('client_id', new.client_id, 'reference', new.reference, 'goods', new.goods, 'pallets', total,
                            'loading_datetime', new.loading_datetime, 'delivery_datetime', new.delivery_datetime));
@@ -73,7 +103,10 @@ create trigger order_parent_to_legs
   after update of client_id, reference, goods, temperature_c, pallet_type, pallet_exchange, refrigerator_mode,
                   loading_pallets_1, loading_pallets_2, loading_pallets_3, loading_pallets_4, loading_pallets_5,
                   loading_pallets_6, loading_pallets_7, loading_pallets_8, loading_pallets_9, loading_pallets_10,
-                  loading_location_1_id, loading_datetime, delivery_datetime,
+                  loading_location_1_id, loading_location_2_id, loading_location_3_id, loading_location_4_id, loading_location_5_id,
+                  loading_location_6_id, loading_location_7_id, loading_location_8_id, loading_location_9_id, loading_location_10_id,
+                  loading_datetime, loading_datetime_2, loading_datetime_3, loading_datetime_4, loading_datetime_5, delivery_datetime,
+                  unloading_datetime_1, unloading_datetime_2, unloading_datetime_3, unloading_pallets_1, unloading_pallets_2, unloading_pallets_3,
                   unloading_location_1_id, unloading_location_2_id, unloading_location_3_id, unloading_location_4_id, unloading_location_5_id,
                   unloading_location_6_id, unloading_location_7_id, unloading_location_8_id, unloading_location_9_id, unloading_location_10_id
   on orders for each row when (new.parent_order_id is null) execute function order_parent_to_legs();
