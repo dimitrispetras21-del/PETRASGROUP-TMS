@@ -1162,8 +1162,8 @@ function _wiImpRowHTML(row,impNo){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
-  const fromStr=_wiRaw(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||f['Client Name']||f['Client Summary']||'—');
-  const toStr  =_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||f['Client Name']||f['Client Summary']||'—');
+  const fromStr=_wiRaw(f['Loading Summary']||_wiFlatLocNames(f,'Loading')||_wiClientName(f)||'—');
+  const toStr  =_wiRaw(f['Delivery Summary']||_wiFlatLocNames(f,'Unloading')||_wiClientName(f)||'—');
   const stR=_wk3StFlags(f);
   const impVS2=!!f['Veroia Switch'];
 
@@ -1292,9 +1292,14 @@ function _wiSplitFrameHTML(row){
   if(!o) return '';
   const f=o.fields||{};
   const legs=(WINTL._splitLegs?.[pid]||[]).slice().sort((a,b)=>(a.splitLegNo||0)-(b.splitLegNo||0));
-  const client=_wiClean(f['Client Name']||f['Client Summary']||'—');
-  const fromName=_wiRaw(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||client||'—').split(',')[0];
-  const toName=_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||'—').split(',')[0];
+  // Item 3 (owner 7/9, fix pass): _wiClientName (not 'Client Name'/'Client
+  // Summary' — neither is a real ORDERS field, see its own comment above) is
+  // the only source that actually resolves a name here. Raw (not _wiClean,
+  // which escapes) to match fromName/toName's own convention below — escaped
+  // exactly once, at the header's render line.
+  const client=_wiRaw(_wiClientName(f)||'—');
+  const fromName=_wiRaw(f['Loading Summary']||_wiFlatLocNames(f,'Loading')||client||'—').split(',')[0];
+  const toName=_wiRaw(f['Delivery Summary']||_wiFlatLocNames(f,'Unloading')||'—').split(',')[0];
   const pals=_wiParentPalletsTotal(f);
   const ref=f['Reference']?' · '+escapeHtml(String(f['Reference'])):'';
   // Owner 7/9 finding: the parent's own info never gets fixed after a split
@@ -1710,6 +1715,39 @@ function _wiFlatLocName(linkVal){
   const id=getLinkedId(linkVal);
   return id?(_fhLocationsMap[id]||''):'';
 }
+// Item 4 (owner 7/9, fix pass): _wiFlatLocName only ever resolved location 1,
+// so a row with no ORDER STOPS yet but 2+ filled flat 'Loading/Unloading
+// Location N' columns rendered as if it had one point. Every filled slot's
+// full label ("Name, City, Country") joined with ", " is fed straight into
+// the SAME fromStr/toStr string _wi2Loc already parses with _wk3Locs/_wk3Arr
+// when it has no {n,dt} stop array to work from — that parser already knows
+// how to split "Title1, City1, Country1, Title2, City2, Country2…" back into
+// segments (it is the exact shape a real multi-stop Summary field has), so
+// this needs no second renderer.
+function _wiFlatLocNames(f,prefix){
+  const names=[];
+  for(let i=1;i<=10;i++){
+    const n=_wiFlatLocName(f[`${prefix} Location ${i}`]);
+    if(n) names.push(n);
+  }
+  return names.join(', ');
+}
+// Item 3 (owner 7/9, fix pass): the split header showed «—» for the client on
+// every real parent because 'Client Name'/'Client Summary' are not real
+// ORDERS fields — the Worker's link map (worker/src/index.js ~1221) only ever
+// returns the raw Client id array on read, never a resolved name. Same
+// lookup this file's own CSV export already resolves client labels through
+// (getClientName, ~line 4356) via getRefClients() — raw (unescaped) here to
+// match this file's own convention of building raw and escaping once at the
+// render site (see fromName/toName in _wiSplitFrameHTML).
+function _wiClientName(f){
+  const cid=getLinkedId(f['Client']);
+  if(cid&&typeof getRefClients==='function'){
+    const c=getRefClients().find(r=>r.id===cid);
+    if(c&&c.fields['Company Name']) return c.fields['Company Name'];
+  }
+  return f['Client Name']||f['Client Summary']||'';
+}
 // Name line + sub line for one end of a leg. Multi-stop (①②…) keeps the
 // existing folding helpers as they are; only the single-stop case gets a city.
 function _wi2Loc(str,label,arr){
@@ -1945,8 +1983,8 @@ function _wiRowHTML(row,i){
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const hasPartner=!!(row.partnerId||row.partnerLabel);
 
-  const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocName(pf['Loading Location 1'])||pf['Client Name']||pf['Client Summary']||'—'):'—';
-  const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||pf['Client Name']||pf['Client Summary']||'—'):'—';
+  const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocNames(pf,'Loading')||_wiClientName(pf)||'—'):'—';
+  const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocNames(pf,'Unloading')||_wiClientName(pf)||'—'):'—';
   // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
   // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
   // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
@@ -2023,7 +2061,7 @@ function _wiRowHTML(row,i){
   let impInner;
   if(imp){
     const f2=imp.fields;
-    const il=_wi2Loc(f2['Loading Summary']||_wiFlatLocName(f2['Loading Location 1'])||f2['Client Name']||f2['Client Summary']||'—','Φόρτωση',f2._stopsL);
+    const il=_wi2Loc(f2['Loading Summary']||_wiFlatLocNames(f2,'Loading')||_wiClientName(f2)||'—','Φόρτωση',f2._stopsL);
     const ilIso=f2['Loading DateTime']||'';
     const iload=_wi2Card({cls:stI.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',ilIso,ilIso?_wk3D(_wiFmt(ilIso)):'—',stI.loaded?' done':'','Ημ. φόρτωσης εισαγωγής'+(stI.loaded?' — φορτώθηκε ✓':'')), name:il.name, sub:il.sub, extra:_wk3MoreStops(f2['Loading Summary']||'',f2._stopsL,'load')});
     // ΙΔΙΑ ΘΕΣΗ ΜΕ ΤΗΝ ΕΞΑΓΩΓΗ (owner 3/9): οι παλέτες και τα σήματα έμπαιναν
@@ -2037,7 +2075,7 @@ function _wiRowHTML(row,i){
       // Matched preview is the narrow column: «Cross-Dock VS» on one line, no city (the badge says it)
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stI.delivered?' done':'')+(stI.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'', title:'Cross-Dock Βέροια', right:iright});
     } else {
-      const id2=_wi2Loc(f2['Delivery Summary']||_wiFlatLocName(f2['Unloading Location 1'])||f2['Client Name']||f2['Client Summary']||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
+      const id2=_wi2Loc(f2['Delivery Summary']||_wiFlatLocNames(f2,'Unloading')||_wiClientName(f2)||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
