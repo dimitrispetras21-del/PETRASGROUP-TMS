@@ -1044,3 +1044,16 @@ triggers στη βάση (όχι στην οθόνη), καθάρισμα 14 ο�
 παλετών σε νεκρό πίνακα, «Ανανεώθηκε» χωρίς ανανέωση λήξης, CEO Dashboard σε νεκρό TRIP_COSTS, Νάκης AI με κενό κλειδί, Καταγραφή
 Σφαλμάτων μόνο localStorage, `Status='Invoiced'` στη μαζική τιμολόγηση, δικαίωμα σε ανύπαρκτο πίνακα `invoices`.
 **Ποιος:** owner (αποφάσεις), Claude Fable 5.1 (συντονισμός, σύνθεση), 8+ subagents Sonnet (χαρτογράφηση μόνο-ανάγνωσης).
+
+### 2026-09-07 · rbac/invoicing · Ετοιμότητα accountant (Αλεξία, 8/9): δύο δικαιώματα Worker, τέλος το `Status='Invoiced'`
+
+**Επιλογή:** (α) ο accountant παίρνει `national_orders: GET+PATCH` και `movements: DELETE` (μόνο pending — ο
+handler ήδη αρνείται τα confirmed με 409)· (β) η έκδοση τιμολογίου γράφει ΜΟΝΟ `Invoiced`, `Invoice Number`,
+`Invoice Date` — όχι `Status='Invoiced'`. **Εναλλακτικές:** (α) να κρυφτεί το κουμπί «Διαγραφή εκκρεμούς» για
+τον ρόλο — απορρίφθηκε: η accountant είναι η υπεύθυνη παλετών, η διαγραφή εκκρεμούς είναι δουλειά της· (β) να
+μπει το 'Invoiced' στο CHECK της migration 014 — απορρίφθηκε: αντίθετο με την κλειδωμένη απόφαση 23/8, και το
+'Delivered' χανόταν. **Απόδειξη:** χάρτης 24 ενεργειών front↔Worker (22 ΟΚ, 2 403)· χάρτης labels ↔ TABLES
+(0 σιωπηλές απορρίψεις)· SELECT 7/9: invoiced 2/134, 107 παραδομένες ατιμολόγητες, κανένα CHECK στο
+`orders.status` (η 014 δεν εκτελέστηκε). Ζωντανός έλεγχος ως accountant ΕΚΚΡΕΜΕΙ. Πλήρες:
+`docs/data-audit/2026-09/2026-09-08-alexia-readiness.md`. **Ποιος:** owner (αίτημα), Claude Fable 5.1
+(συντονισμός, διορθώσεις), Haiku + Sonnet subagents (μετρήσεις).
