@@ -1,0 +1,63 @@
+# Η παραγγελία είναι η πηγή αλήθειας — ένας συγχρονισμός για ΟΛΑ τα κληρονομούμενα πεδία (spec, 7/9/2026)
+
+Owner 7/9 (σύνοψη): «Ό,τι θέλω να επεξεργαστώ θα το αλλάζω είτε απευθείας στο Weekly International (ευελιξία, ταχύτητα) είτε από τις
+παραγγελίες με Επεξεργασία, και μετά αυτόματα όλα τα άλλα θα ενημερώνονται. Αυτό δεν αφορά μόνο την ημερομηνία· πρέπει να αφορά όλα τα
+στοιχεία, αλλιώς δεν υπάρχει sync.» Υπερκαλύπτει το `2026-09-07-order-date-propagation-design.md` (η ημερομηνία γίνεται ειδική περίπτωση).
+
+## Το μοντέλο, με απλά λόγια
+Η παραγγελία είναι το πρωτότυπο. Στάσεις, φορτίο Veroia Switch, ράμπα, roundtrip, συνεργάτες είναι φωτοτυπίες του για άλλα γραφεία.
+Όταν αλλάζει το πρωτότυπο, η βάση ξαναβγάζει τις φωτοτυπίες μόνη της, ό,τι οθόνη κι αν έγραψε. Κάθε γραφείο κρατά με στυλό μόνο ό,τι
+είναι δική του δουλειά (εκτέλεση): η Βέροια το φορτηγό/οδηγό του εθνικού σκέλους και την κατάσταση του φορτίου, η ράμπα το «έγινε»,
+η στάση το «στην ώρα/καθυστέρησε». Ό,τι είναι κληρονομούμενο ΔΕΝ επεξεργάζεται στη φωτοτυπία.
+
+## Α. Πίνακας κληρονομιάς (ποιο πεδίο της παραγγελίας πάει πού, με ποιον κανόνα)
+| Πεδίο `orders` | `order_stops` | `national_loads` (VS, `source_order_id`) | `ramp` (γραμμές από στάσεις της παραγγελίας) | `ct_round_trips` | `partner_assignments` |
+|---|---|---|---|---|---|
+| `loading_datetime` / `delivery_datetime` | Loading/Unloading στάσεις +δέλτα· Cross-dock = κανόνας | Export: (load, load+1)· Import: (deliv−1, deliv) | `plan_date` +δέλτα, μόνο `status<>'Done'` | υπάρχων `rt_recompute` | — |
+| `cross_dock_date` | Cross-dock στάση | = NL loading (import) / NL delivery (export) | — | — | — |
+| `loading_location_N_id` / `unloading_location_N_id` | ήδη από τη φόρμα (`stopsSave`) — ο trigger ΔΕΝ τα αγγίζει (η στάση είναι εδώ η πηγή) | Pickup/Delivery Location 1..10 από τις στάσεις | Stop Location από τη στάση | — | — |
+| παλέτες ανά στάση (`order_stops.pallets`) | πηγή | `total_pallets` = Σ Loading στάσεων | `pallets` της γραμμής | — | — |
+| `goods`, `temperature_c`, `reference`, `client_id` | — | `goods`, `temperature_c`, `reference`, `client` (όνομα) | `goods`, `temperature`, `supplier_client` | — | — |
+| `pallet_exchange` | — | `pallet_exchange` | — | — | — |
+| `veroia_switch` on/off, `direction` | — | on: φορτίο υπάρχει (JS δημιουργεί)· off: soft-delete + cascade (trigger 022) | — | — | — |
+| `driver_id/truck_id/trailer_id/partner_id` | — | **ΔΕΝ** (δική της ανάθεση) | **ΔΕΝ** (ράμπα δεν αναθέτει) | υπάρχων `rt_sync_from_order` | — |
+| `status` | — | **ΔΕΝ** (Pending/Assigned δικό της)· `Cancelled`/διαγραφή → cascade | — | υπάρχων | `paSyncStatus` (JS) → γίνεται trigger |
+| `deleted_at` | RPC `delete_order_cascade` (ήδη) | ήδη | **προστίθεται** | ήδη | **προστίθεται** |
+
+Στάσεις = ημι-πηγή: τοποθεσίες/παλέτες ανά σημείο ζουν ΕΚΕΙ (η φόρμα τις γράφει)· ο trigger του `orders` μετακινεί μόνο ημερομηνίες.
+Trigger στο `order_stops` (μετά από insert/update/soft-delete) ξαναϋπολογίζει τα παράγωγα στο φορτίο VS (τοποθεσίες, σύνολο παλετών) και στη
+γραμμή ράμπας (τοποθεσία, παλέτες, θερμοκρασία).
+
+## Β. Υλοποίηση
+1. **Βάση — migration 023** (ΔΕΝ εκτελείται από το πλάνο):
+   - `order_dates_propagate()` (όπως στο date spec §Α: στάσεις +δέλτα, cross-dock, φορτίο VS ημερομηνίες, ράμπα Planned).
+   - `order_fields_propagate()` AFTER UPDATE OF `goods, temperature_c, reference, client_id, pallet_exchange` ON `orders` → `national_loads`
+     (VS) και `ramp` (γραμμές με `order_id`/`STOP:` της παραγγελίας): αντιγραφή πεδίων.
+   - `order_stops_derive()` AFTER INSERT OR UPDATE OF `location_id, pallets, temperature, datetime, deleted_at` ON `order_stops` (γονέας `order_id`
+     με VS) → `national_loads.pickup/delivery_location_1..10` (κατά σειρά στάσης), `total_pallets`, και `ramp` γραμμή της στάσης.
+   - `order_delete_children()`: επέκταση της `delete_order_cascade` ώστε να soft-delete και `ramp`, `partner_assignments` (σήμερα μόνο JS).
+   - `orders_status_to_partner()`: `status` → `partner_assignments.status` (αντικαθιστά το `paSyncStatus` JS).
+   - Guard κατά αναδρομής (`pg_trigger_depth()`), audit μέσω `rt_sync_audit`, unit σενάρια σε σχόλια (import/export/χωρίς VS).
+2. **Worker**: τίποτα νέο στους χάρτες. Ένα PATCH που έρχεται από Weekly National/ράμπα σε κληρονομούμενο πεδίο φορτίου/ράμπας
+   (ημερομηνίες, τοποθεσίες, παλέτες, εμπόρευμα, θερμοκρασία, πελάτης, αναφορά) **απορρίπτεται με 409 και μήνυμα** «Αλλάζει από την
+   παραγγελία» όταν η εγγραφή έχει `source_order_id`/`source_national_order_id` (αντίστοιχα `ramp.order_id`/`national_load_id`).
+   Αρχή 1: όχι σιωπηλή απόρριψη — ρητό μήνυμα που η οθόνη δείχνει.
+3. **Front end**: (α) `_syncVeroiaSwitch` παύει να ξαναγράφει πεδία σε υπάρχον φορτίο (μόνο δημιουργεί/σβήνει)· (β) `syncOrderDownstream`
+   μένει μόνο για ό,τι δημιουργεί γραμμές από πρόθεση χρήστη (ράμπα σήμερα, παλέτες, RT feed)· (γ) Weekly National/ράμπα: τα κληρονομούμενα
+   πεδία εμφανίζονται μόνο-ανάγνωση με σύνδεσμο «άνοιγμα παραγγελίας» όταν η εγγραφή έχει πηγή· (δ) το Weekly Intl date picker μένει ως
+   έχει (γράφει παραγγελία). Ίδιο για εθνική παραγγελία → φορτίο της (`source_national_order_id`).
+4. **Backfill (απόφαση owner)**: λίστα αποκλίσεων παραγγελία↔φωτοτυπίες (14 στάσεις σε άλλη μέρα, φορτία με άλλες παλέτες/τοποθεσίες,
+   ράμπα) → ο owner εγκρίνει την ευθυγράμμιση προς την παραγγελία.
+
+## Γ. Απόδειξη
+Ανά πεδίο του πίνακα Α: αλλαγή από τη φόρμα, από το Weekly Intl και από το Ημερήσιο Πλάνο → `select` σε στάσεις/φορτίο/ράμπα/RT/συνεργάτες
+δείχνει τη νέα τιμή, η κατάσταση/ανάθεση του φορτίου αμετάβλητη. Αρνητικό: PATCH ημερομηνίας σε φορτίο VS από Weekly National → 409 με
+μήνυμα, καμία αλλαγή. Διαγραφή παραγγελίας → 0 ζωντανά παιδιά σε 6 πίνακες. Λάβδας = πρώτο σενάριο.
+
+## Δ. Τι ΔΕΝ αλλάζει
+Οι χρήστες αλλάζουν ό,τι άλλαζαν, στα ίδια σημεία (Weekly Intl, φόρμα, Ημερήσιο Πλάνο «Αλλαγή ημέρας»). Χάνουν μόνο τη δυνατότητα να
+«διορθώνουν» με στυλό τη φωτοτυπία στο Weekly National και στη ράμπα — και εκεί παίρνουν σύνδεσμο προς την παραγγελία.
+
+## Πλάνο
+T1 migration 023 + σενάρια (Sonnet) · T2 Worker 409 σε κληρονομούμενα (Sonnet) · T3 front end α–γ (Sonnet) · review Sonnet · T4 migration
+(owner) + deploy + Γ · λίστα backfill στον owner. Πριν από όλα: μία ματιά owner σε αυτό το spec.
