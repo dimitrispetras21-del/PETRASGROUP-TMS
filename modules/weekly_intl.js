@@ -3014,7 +3014,8 @@ async function _wiPanelSplit(rowId){
       <select class="form-input" id="wiSplitDriver" style="width:100%"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
     </div>
     <div id="wiSplitPartner" style="display:none;margin-top:8px">
-      <select class="form-input" id="wiSplitPartnerSel" style="width:100%"><option value="">Συνεργάτης…</option>${opt(WINTL.data.partners)}</select>
+      <select class="form-input" id="wiSplitPartnerSel" style="width:100%;margin-bottom:6px"><option value="">Συνεργάτης…</option>${opt(WINTL.data.partners)}</select>
+      <input type="number" class="form-input" id="wiSplitPartnerRate" placeholder="Κόμιστρο συνεργάτη (€) — προαιρετικό" style="width:100%">
     </div>`;
   const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
     <button class="btn btn-primary" id="wiSplitGo" onclick="_wiDoSplit(${rowId})">Σπάσιμο</button>`;
@@ -3032,6 +3033,32 @@ function _wiSplitModeChange(){
 // αποτυχία δεν προχωρά σιωπηλά — το toast λέει ΑΚΡΙΒΩΣ τι γράφτηκε και τι όχι,
 // με τα ids, ώστε μια μισοτελειωμένη προσπάθεια να διορθωθεί χειροκίνητα αντί
 // να μείνει κρυφή ασυνέπεια στη βάση (owner 6/9, design doc §«Η κίνηση»).
+// Sum the parent's flat "Loading Pallets N" fields (owner 7/9): the ONLY
+// source of a written pallet count — 'Total Pallets' is a read-only view
+// column (worker computed{} block, not fields{}), so writing it on a leg is
+// a silent no-op that used to look like it worked (facade trap #1).
+function _wiParentPalletsTotal(pf){
+  let t=0;
+  for(let i=1;i<=10;i++){ const v=parseFloat(pf['Loading Pallets '+i]); if(!isNaN(v)) t+=v; }
+  return t;
+}
+// Create the two ORDER STOPS a leg needs (Loading + Unloading, stop #1 each)
+// and read them back — a stop write goes through the same silent-drop facade
+// as ORDERS (CLAUDE.md trap #1), so "the POST returned 200" proves nothing.
+async function _wiCreateLegStops(legId,fromLocId,fromDt,toLocId,toDt,pallets){
+  await stopsSave(legId,[
+    {stopNumber:1,stopType:'Loading',locationId:fromLocId,dateTime:fromDt,pallets},
+    {stopNumber:1,stopType:'Unloading',locationId:toLocId,dateTime:toDt,pallets},
+  ],F.STOP_PARENT_ORDER);
+  const back=await stopsLoad(legId,F.STOP_PARENT_ORDER);
+  const okLoad=fromLocId?back.some(s=>s.fields[F.STOP_TYPE]==='Loading'&&getLinkedId(s.fields[F.STOP_LOCATION])===fromLocId):back.some(s=>s.fields[F.STOP_TYPE]==='Loading');
+  const okUnload=toLocId?back.some(s=>s.fields[F.STOP_TYPE]==='Unloading'&&getLinkedId(s.fields[F.STOP_LOCATION])===toLocId):back.some(s=>s.fields[F.STOP_TYPE]==='Unloading');
+  if(!okLoad||!okUnload){
+    throw new Error('ORDER STOPS δεν επιβεβαιώθηκαν στην ανάγνωση'+(okLoad?'':' — Loading λείπει')+(okUnload?'':' — Unloading λείπει'));
+  }
+  return back;
+}
+
 async function _wiDoSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const locId=document.getElementById('lv_wiSplitLoc')?.value;
@@ -3043,22 +3070,31 @@ async function _wiDoSplit(rowId){
   const execTrailer=document.getElementById('wiSplitTrailer')?.value||'';
   const execDriver=document.getElementById('wiSplitDriver')?.value||'';
   const execPartner=document.getElementById('wiSplitPartnerSel')?.value||'';
+  const execPartnerRate=document.getElementById('wiSplitPartnerRate')?.value||'';
   if(mode==='partner'&&!execPartner){ toast('Επίλεξε συνεργάτη ή άφησε ΠΡΟΣ ΑΝΑΘΕΣΗ','warn'); return; }
 
   const parentOid=row.orderIds?.[0]||row.orderId;
   const parentRec=(row.type==='export'?WINTL.data.exports:WINTL.data.imports).find(o=>o.id===parentOid);
   if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
   const pf=parentRec.fields;
+  const totalPallets=_wiParentPalletsTotal(pf);
+  const fromLocId=getLinkedId(pf['Loading Location 1']);
+  const toLocId=getLinkedId(pf['Unloading Location 1']);
 
   _wiPanelSetBusy(true);
+  // Dropped from the old list: 'Total Pallets' (read-only view column, see
+  // _wiParentPalletsTotal above). Added: 'Pallet Exchange', 'Refrigerator
+  // Mode' — both are real ORDERS columns (worker/src/index.js ~1121/1151)
+  // that the split silently left off a leg before this pass.
   const common={};
-  ['Type','Direction','Client','Reference','Total Pallets','Pallet Type','Goods','Temperature °C','Veroia Switch']
+  ['Type','Direction','Client','Reference','Pallet Type','Pallet Exchange','Refrigerator Mode','Goods','Temperature °C','Veroia Switch']
     .forEach(k=>{ if(pf[k]!==undefined&&pf[k]!==null&&pf[k]!=='') common[k]=pf[k]; });
 
   const parentAssigned=!!(getLinkedId(pf['Truck'])||getLinkedId(pf['Partner']));
   const leg1Fields={...common,
     'Loading Location 1':pf['Loading Location 1'], 'Loading DateTime':pf['Loading DateTime'],
     'Unloading Location 1':[locId], 'Delivery DateTime':handOverIso,
+    'Loading Pallets 1':totalPallets, 'Unloading Pallets 1':totalPallets,
     'Parent Order':[parentOid], 'Leg No':1,
     'Truck':pf['Truck']||[], 'Trailer':pf['Trailer']||[], 'Driver':pf['Driver']||[],
     'Partner':pf['Partner']||[], 'Is Partner Trip':!!pf['Is Partner Trip'],
@@ -3068,13 +3104,15 @@ async function _wiDoSplit(rowId){
   const leg2Assign=mode==='own'
     ?{'Truck':execTruck?[execTruck]:[],'Trailer':execTrailer?[execTrailer]:[],'Driver':execDriver?[execDriver]:[],'Partner':[],'Is Partner Trip':false}
     :mode==='partner'
-    ?{'Truck':[],'Trailer':[],'Driver':[],'Partner':[execPartner],'Is Partner Trip':true}
+    ?{'Truck':[],'Trailer':[],'Driver':[],'Partner':[execPartner],'Is Partner Trip':true,
+       ...(execPartnerRate!==''?{'Partner Rate':parseFloat(execPartnerRate)}:{})}
     :{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false};
   const leg2Assigned=mode==='own'?!!execTruck:mode==='partner';
   const leg2Fields={...common,
     'Loading Location 1':[locId], 'Loading DateTime':handOverIso,
     'Unloading Location 1':pf['Unloading Location 1'], 'Unloading Location 2':pf['Unloading Location 2'], 'Unloading Location 3':pf['Unloading Location 3'],
     'Delivery DateTime':pf['Delivery DateTime'],
+    'Loading Pallets 1':totalPallets, 'Unloading Pallets 1':totalPallets,
     'Parent Order':[parentOid], 'Leg No':2, ...leg2Assign,
     'Status':leg2Assigned?'Assigned':'Pending',
   };
@@ -3094,13 +3132,27 @@ async function _wiDoSplit(rowId){
     return;
   }
   try{
+    await _wiCreateLegStops(leg1.id,fromLocId,pf['Loading DateTime'],locId,handOverIso,totalPallets);
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Το σκέλος 1 δημιουργήθηκε (ID '+leg1.id+') αλλά οι ΣΤΑΣΕΙΣ του ΔΕΝ γράφτηκαν — ο γονέας ΔΕΝ αδειάστηκε, το σκέλος 2 ΔΕΝ δημιουργήθηκε. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
+    return;
+  }
+  try{
     leg2=await atCreate(TABLES.ORDERS,leg2Fields);
     if(leg2?.error) throw new Error(leg2.error.message||leg2.error.type);
     if(!getLinkedId(leg2.fields?.['Parent Order'])||leg2.fields?.['Leg No']!==2)
       throw new Error('Ο Worker δεν επέστρεψε Parent Order/Leg No στο σκέλος 2');
   }catch(e){
     _wiPanelSetBusy(false);
-    reportError('Το σκέλος 1 δημιουργήθηκε (ID '+leg1.id+') αλλά το σκέλος 2 ΑΠΕΤΥΧΕ — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
+    reportError('Το σκέλος 1 δημιουργήθηκε με τις στάσεις του (ID '+leg1.id+') αλλά το σκέλος 2 ΑΠΕΤΥΧΕ — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
+    return;
+  }
+  try{
+    await _wiCreateLegStops(leg2.id,locId,handOverIso,toLocId,pf['Delivery DateTime'],totalPallets);
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά οι ΣΤΑΣΕΙΣ του σκέλους 2 ΔΕΝ γράφτηκαν — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Έλεγξε/σβήσε χειροκίνητα.',e);
     return;
   }
   try{
@@ -3108,7 +3160,7 @@ async function _wiDoSplit(rowId){
     if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
   }catch(e){
     _wiPanelSetBusy(false);
-    reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ αδειάστηκε — άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+')',e);
+    reportError('Τα δύο σκέλη δημιουργήθηκαν με τις στάσεις τους (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ αδειάστηκε — άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+')',e);
     return;
   }
 
@@ -3125,8 +3177,13 @@ async function _wiDoSplit(rowId){
     }
   }catch(e){ console.warn('[wi split] rt sync:',e&&e.message); }
 
+  // Partner rate (owner 7/9): PA row carries the agreed rate — same helper
+  // weekly_intl already uses for every other partner assignment (pa-helpers,
+  // single write path). 'Partner Rate' on the leg itself is a second, denormalised
+  // copy the ORDERS map already has a column for — kept in sync with the PA rate
+  // at write time only (no live sync between the two after this).
   if(mode==='partner'&&typeof paUpsert==='function'){
-    try{ await paUpsert({parentType:'order',parentId:leg2.id,partnerId:execPartner,status:'Assigned'}); }
+    try{ await paUpsert({parentType:'order',parentId:leg2.id,partnerId:execPartner,rate:execPartnerRate!==''?parseFloat(execPartnerRate):null,status:'Assigned'}); }
     catch(e){ console.warn('[wi split] PA upsert:',e&&e.message); }
   }
 
