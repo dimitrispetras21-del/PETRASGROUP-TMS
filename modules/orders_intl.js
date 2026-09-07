@@ -2880,7 +2880,7 @@ function _intlExportCSV() {
   if (!recs.length) { toast('Καμία παραγγελία για εξαγωγή — η λίστα είναι κενή', 'error'); return; }
   const rows = [['Order No','Week','Direction','Client','Loading','Delivery','Load Date','Del Date','Pallets','Goods','Status','Invoiced','Price']];
   recs.forEach(r => { const f = r.fields; rows.push([
-    f['Order Number']||'', f['Week Number']||'', f['Direction']||'', _clientName(f),
+    f['Order No']||'', f['Week Number']||'', f['Direction']||'', _clientName(f), // 'Order Number' was the dead Airtable label — the column exported empty (7/9)
     _cleanSummary(f['Loading Summary']), _cleanSummary(f['Delivery Summary']),
     f['Loading DateTime']||'', f['Delivery DateTime']||'', f['Total Pallets']||0,
     f['Goods']||'', f['Status']||'Pending', f['Invoiced']?'Yes':'No', f['Price']||0,
