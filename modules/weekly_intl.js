@@ -1324,6 +1324,11 @@ function _wiSplitHeaderCtx(e,rowId){
     ?_wiCtxBtnDisabled(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf5(blocking)?.fields?.['Status']})`,'Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε')
     :_wiCtxBtn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   html+=_wiCtxBtn('Εκτύπωση όλων',`_wiPrintSplitAll(${rowId})`);
+  // Owner 7/9: "if we want to move the split point, what do we do?" — the
+  // hand-over is the SAME location on leg 1's delivery and leg 2's loading
+  // (migration 020's own invariant), so moving it is a header-level action,
+  // not something either leg's own menu can offer without touching the other.
+  html+=_wiCtxBtn('Αλλαγή σημείου παράδοσης-παραλαβής…',`_wiPanelHandover(${rowId})`);
   // «Τα ταιριάσματα του γονέα» (owner brief): the split does not touch a
   // matched import — same _wiRemoveImport the un-split row's menu offers.
   if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
@@ -1347,6 +1352,134 @@ function _wiPrintSplitAll(rowId){
     const dir=(o.fields['Direction']==='Import')?'import':'export';
     printOrderSheet(o.id,dir,!!(o.fields['Partner']||[]).length);
   });
+}
+// YYYY-MM-DDTHH:mm in the browser's own timezone, for prefilling a
+// datetime-local input — no existing helper does this (toLocalDate in
+// core/utils.js truncates to a bare date, which would silently drop the
+// hand-over's time-of-day every time this panel opens).
+function _wiToDtLocal(iso){
+  if(!iso) return '';
+  const d=new Date(iso); if(isNaN(d.getTime())) return '';
+  const p=n=>String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function _wiHandoverLegs(pid){
+  const legs=(WINTL._splitLegs?.[pid]||[]).slice().sort((a,b)=>(a.splitLegNo||0)-(b.splitLegNo||0));
+  const leg1=legs.find(l=>l.splitLegNo===1), leg2=legs.find(l=>l.splitLegNo===2);
+  const _of=lr=>lr&&(WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId)));
+  return {leg1o:_of(leg1),leg2o:_of(leg2)};
+}
+// Owner 7/9 finding #2: "if we want to move the split point, what do we do?"
+// The hand-over is ONE location/time, shared by leg 1's delivery and leg 2's
+// loading by construction (_wiDoSplit; migration 020's own invariant) — a
+// header-level action, because either leg's own menu could only ever touch
+// its own half and leave the two disagreeing.
+async function _wiPanelHandover(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const pid=row.orderIds?.[0]||row.orderId;
+  const {leg1o,leg2o}=_wiHandoverLegs(pid);
+  if(!leg1o||!leg2o){ toast('Δεν βρέθηκαν και τα δύο σκέλη','warn'); return; }
+  await fhLoadLocations();
+  const curLocId=getLinkedId(leg1o.fields['Unloading Location 1'])||'';
+  const curDt=_wiToDtLocal(leg1o.fields['Delivery DateTime']);
+  const body=`
+    <div class="wi-pf" style="width:100%">
+      <span class="wi-plbl">Νέο σημείο παράδοσης-παραλαβής *</span>
+      ${fhLocSelect('wiHoLoc',curLocId)}
+    </div>
+    <div class="wi-pf" style="width:100%;margin-top:10px">
+      <span class="wi-plbl">Νέα ημερομηνία/ώρα εκεί *</span>
+      <input type="datetime-local" class="form-input" id="wiHoDt" value="${curDt}">
+    </div>`;
+  const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
+    <button class="btn btn-primary" id="wiHoGo" onclick="_wiDoHandoverChange(${rowId})">Αλλαγή</button>`;
+  _wiPanelOpen(_wiAnchorFor(rowId),'Αλλαγή σημείου παράδοσης-παραλαβής',_wiPanelCtxLine(row),body,footer);
+}
+// Four writes (2 ORDERS + 2 ORDER STOPS), each checked against a fresh read
+// before the next starts — same discipline as _wiDoSplit above, and for the
+// same reason: migration 020's triggers keep the two legs in sync going
+// forward, but CLAUDE.md says not to trust that alone ("may not be run yet"),
+// so this screen writes BOTH sides itself rather than PATCHing leg 1 and
+// hoping a trigger fixes leg 2.
+async function _wiDoHandoverChange(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const pid=row.orderIds?.[0]||row.orderId;
+  const newLocId=document.getElementById('lv_wiHoLoc')?.value;
+  const dtLocal=document.getElementById('wiHoDt')?.value;
+  if(!newLocId||!dtLocal){ toast('Σημείο και ημερομηνία είναι υποχρεωτικά','warn'); return; }
+  const newIso=new Date(dtLocal).toISOString();
+  const {leg1o,leg2o}=_wiHandoverLegs(pid);
+  if(!leg1o||!leg2o){ toast('Δεν βρέθηκαν και τα δύο σκέλη','warn'); return; }
+  // Time compared by value, not string equality (the facade may round-trip a
+  // different ISO rendering of the same instant) — but the LOCATION id is
+  // compared exactly, because a silently-dropped link field (facade trap #1)
+  // would otherwise still read back some other truthy id and look fine.
+  const sameInstant=(a,b)=>{ try{ return new Date(a).getTime()===new Date(b).getTime(); }catch(_){ return false; } };
+
+  _wiPanelSetBusy(true);
+  let leg1res=null;
+  try{
+    leg1res=await atPatch(TABLES.ORDERS,leg1o.id,{'Unloading Location 1':[newLocId],'Delivery DateTime':newIso});
+    if(getLinkedId(leg1res.fields?.['Unloading Location 1'])!==newLocId||!sameInstant(leg1res.fields?.['Delivery DateTime'],newIso))
+      throw new Error('Η ανάγνωση πίσω δεν επιβεβαίωσε τη νέα τοποθεσία/ώρα');
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Η αλλαγή σημείου ΔΕΝ έγινε — το σκέλος 1 ('+leg1o.id+') δεν γράφτηκε, τίποτα άλλο δεν αγγίχτηκε',e);
+    return;
+  }
+  let leg2res=null;
+  try{
+    leg2res=await atPatch(TABLES.ORDERS,leg2o.id,{'Loading Location 1':[newLocId],'Loading DateTime':newIso});
+    if(getLinkedId(leg2res.fields?.['Loading Location 1'])!==newLocId||!sameInstant(leg2res.fields?.['Loading DateTime'],newIso))
+      throw new Error('Η ανάγνωση πίσω δεν επιβεβαίωσε τη νέα τοποθεσία/ώρα');
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Το σκέλος 1 ('+leg1o.id+') γράφτηκε με τη νέα τοποθεσία/ώρα αλλά το σκέλος 2 ('+leg2o.id+') ΔΕΝ γράφτηκε — τα δύο σκέλη ΔΕΝ συμφωνούν πια, διόρθωσε χειροκίνητα',e);
+    return;
+  }
+
+  // ORDER STOPS: stopsSave replaces the WHOLE stop set for an order, so the
+  // untouched stop (leg 1's Loading / leg 2's Unloading) must be re-sent
+  // as-is or stops-helpers.js reads it as "no longer in the form" and
+  // deletes it (stopsSave toDelete logic) — read current stops first so
+  // that half is never touched.
+  try{
+    const s1=await stopsLoad(leg1o.id,F.STOP_PARENT_ORDER);
+    const load1=s1.find(s=>s.fields[F.STOP_TYPE]==='Loading'&&s.fields[F.STOP_NUMBER]===1);
+    const unload1=s1.find(s=>s.fields[F.STOP_TYPE]==='Unloading'&&s.fields[F.STOP_NUMBER]===1);
+    await stopsSave(leg1o.id,[
+      {stopNumber:1,stopType:'Loading',locationId:load1?getLinkedId(load1.fields[F.STOP_LOCATION]):getLinkedId(leg1o.fields['Loading Location 1']),dateTime:load1?load1.fields[F.STOP_DATETIME]:leg1o.fields['Loading DateTime'],pallets:load1?.fields?.[F.STOP_PALLETS]},
+      {stopNumber:1,stopType:'Unloading',locationId:newLocId,dateTime:newIso,pallets:unload1?.fields?.[F.STOP_PALLETS]},
+    ],F.STOP_PARENT_ORDER);
+    const back1=await stopsLoad(leg1o.id,F.STOP_PARENT_ORDER);
+    if(!back1.some(s=>s.fields[F.STOP_TYPE]==='Unloading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
+      throw new Error('Η στάση Unloading του σκέλους 1 δεν επιβεβαιώθηκε στην ανάγνωση');
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Τα δύο σκέλη έχουν πια τη νέα τοποθεσία/ώρα στο ORDERS αλλά οι ΣΤΑΣΕΙΣ του σκέλους 1 ('+leg1o.id+') ΔΕΝ επιβεβαιώθηκαν — έλεγξε χειροκίνητα',e);
+    return;
+  }
+  try{
+    const s2=await stopsLoad(leg2o.id,F.STOP_PARENT_ORDER);
+    const load2=s2.find(s=>s.fields[F.STOP_TYPE]==='Loading'&&s.fields[F.STOP_NUMBER]===1);
+    const unload2=s2.find(s=>s.fields[F.STOP_TYPE]==='Unloading'&&s.fields[F.STOP_NUMBER]===1);
+    await stopsSave(leg2o.id,[
+      {stopNumber:1,stopType:'Loading',locationId:newLocId,dateTime:newIso,pallets:load2?.fields?.[F.STOP_PALLETS]},
+      {stopNumber:1,stopType:'Unloading',locationId:unload2?getLinkedId(unload2.fields[F.STOP_LOCATION]):getLinkedId(leg2o.fields['Unloading Location 1']),dateTime:unload2?unload2.fields[F.STOP_DATETIME]:leg2o.fields['Delivery DateTime'],pallets:unload2?.fields?.[F.STOP_PALLETS]},
+    ],F.STOP_PARENT_ORDER);
+    const back2=await stopsLoad(leg2o.id,F.STOP_PARENT_ORDER);
+    if(!back2.some(s=>s.fields[F.STOP_TYPE]==='Loading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
+      throw new Error('Η στάση Loading του σκέλους 2 δεν επιβεβαιώθηκε στην ανάγνωση');
+  }catch(e){
+    _wiPanelSetBusy(false);
+    reportError('Το σκέλος 1 ('+leg1o.id+') ολοκληρώθηκε πλήρως αλλά οι ΣΤΑΣΕΙΣ του σκέλους 2 ('+leg2o.id+') ΔΕΝ επιβεβαιώθηκαν — έλεγξε χειροκίνητα',e);
+    return;
+  }
+
+  _wiPanelSetBusy(false);
+  _wiPanelClose();
+  toast('Σημείο παράδοσης-παραλαβής άλλαξε ✓ — σκέλος 1 ('+leg1o.id.slice(-6)+') · σκέλος 2 ('+leg2o.id.slice(-6)+')');
+  await renderWeeklyIntl();
 }
 
 /* ── ROW HTML ──────────────────────────────────────────────────────── */
@@ -4175,6 +4308,8 @@ window._wiDoSplit = _wiDoSplit;
 window._wiRejoinLegs = _wiRejoinLegs;
 window._wiSplitHeaderCtx = _wiSplitHeaderCtx;
 window._wiPrintSplitAll = _wiPrintSplitAll;
+window._wiPanelHandover = _wiPanelHandover;
+window._wiDoHandoverChange = _wiDoHandoverChange;
 // Flat menu + small anchored panel (owner 7/9 redesign)
 window._wiPanelOpen = _wiPanelOpen;
 window._wiPanelClose = _wiPanelClose;
