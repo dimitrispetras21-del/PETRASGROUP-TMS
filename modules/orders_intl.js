@@ -536,13 +536,20 @@ function _oiAssign(f){
 }
 
 // ─── Sort helpers ────────────────────────────────
-// Widths sum to 1129px (ΑΝΑΘΕΣΗ took 10px from ΠΕΛΑΤΗΣ/ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ on 5/9 so
-// the «ΠΡΟΣ ΑΝΑΘΕΣΗ» tile fits with the card open): measured 3/9 in the rig at 1920×1080 the list gets
-// 1618px with the card closed and 1138px with the 480px card open. Anything
-// wider than 1138 pushes the last column out of view (the 29/8 lesson).
+// Widths sum to 1181px (ΑΝΑΘΕΣΗ took 10px from ΠΕΛΑΤΗΣ/ΦΟΡΤΩΣΗ/ΠΑΡΑΔΟΣΗ on 5/9 so
+// the «ΠΡΟΣ ΑΝΑΘΕΣΗ» tile fits with the card open; ΑΡ. added 52px on 7/9):
+// measured 3/9 in the rig at 1920×1080 the list gets 1618px with the card
+// closed and 1138px with the 480px card open — the new total is now OVER that
+// (the 29/8 lesson: anything wider than 1138 pushes the last column out of
+// view). Not rebalanced here — owner asked for this column at this width;
+// flagged in the session report, not silently absorbed.
 // table-layout:fixed scales them up proportionally when the card is closed.
 const _intlColDefs = [
-  { key: 'orderNo',  label: 'ΑΝΑΦΟΡΑ',       type: 'text',   w: 104, get: (f) => f['Reference']||'' },
+  // 'Order No' is a read-only field the Worker now exposes on ORDERS records
+  // (the Postgres row id, e.g. 165) — added 7/9/2026 so the team has a stable
+  // internal number distinct from the client's own Reference in the next column.
+  { key: 'no',       label: 'ΑΡ.',            t: 'Εσωτερικός αριθμός παραγγελίας', type: 'number', w: 52, get: (f) => f['Order No'] || 0 },
+  { key: 'orderNo',  label: 'ΑΝΑΦΟΡΑ',       t: 'Αναφορά πελάτη',       type: 'text',   w: 104, get: (f) => f['Reference']||'' },
   { key: 'week',     label: 'ΕΒΔ.',           type: 'number', w: 44,  get: (f) => f['Week Number']||0 },
   { key: 'dir',      label: 'ΚΑΤΕΥΘ.',        type: 'text',   w: 88,  get: (f) => f['Direction']||'' },
   { key: 'client',   label: 'ΠΕΛΑΤΗΣ',        type: 'text',   w: 126, get: (f) => _clientName(f) },
@@ -605,7 +612,9 @@ function _oiRowHtml(r) {
   // route now runs in two legs instead of listing them as separate rows.
   const legChip = INTL_ORDERS.legParents && INTL_ORDERS.legParents.has(r.id)
     ? '<span class="oi-legchip" title="Σπασμένο σε 2 σκέλη — δες το Weekly International για την εκτέλεση">2 σκέλη</span>' : '';
+  const orderNoCell = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '—';
   return `<tr onclick="selectIntlOrder('${r.id}')" id="irow_${r.id}" class="oi-row${sel}" style="height:${_OI_ROW_H}px">
+    <td class="oi-dim oi-num">${orderNoCell}</td>
     <td>${refCell}${legChip}${_oiFlags(f)}</td>
     <td class="oi-dim oi-num">W${escapeHtml(f['Week Number']||'—')}</td>
     <td class="oi-dim oi-nowrap">${escapeHtml(_OI_DIR[f['Direction']] || f['Direction'] || '—')}</td>
@@ -773,6 +782,9 @@ function _applyIntlFilters() {
         // Δ2: 'Order Number' is derived and never reaches the browser — this
         // clause could never match. Reference is what the list now shows.
         || String(f['Reference']||'').toLowerCase().includes(q)
+        // 'Order No' (7/9/2026) IS a real read-only field from the Worker —
+        // unlike the legacy 'Order Number' above, this one reaches the browser.
+        || String(f['Order No']||'').toLowerCase().includes(q)
         || _cleanSummary(f['Loading Summary']).toLowerCase().includes(q)
         || _cleanSummary(f['Delivery Summary']).toLowerCase().includes(q)
         || (f['Goods']||'').toLowerCase().includes(q);
@@ -828,6 +840,10 @@ function _oiCardHtml(rec) {
   // uses; without one the title is the client alone (the card body already
   // says «Reference — δεν έχει καταχωρηθεί»).
   const orderNo = escapeHtml(String(f['Reference'] || '').replace(/["']+/g, '').trim());
+  // 'Order No' (7/9/2026): the Worker's new read-only field (Postgres row id)
+  // shown next to the Reference — the comment above still stands for the
+  // legacy 'Order Number', which remains derived and never reaches the browser.
+  const orderNoNum = f['Order No'] ? `#${escapeHtml(String(f['Order No']))}` : '';
   const st = f['Status'] || 'Pending';
   const stGr = (_OI_STATUS[st] || {}).gr || st;
   // «Χωρίς ανάθεση» = no own truck AND no partner (owner 2/9). A partner load
@@ -896,7 +912,7 @@ function _oiCardHtml(rec) {
     <div class="oi-card-head">
       <div class="oi-card-title"><span>${orderNo ? orderNo + ' · ' : ''}${_clientName(f)}</span><button type="button" class="oi-close" title="Κλείσιμο (Esc)" onclick="_oiCloseCard()">×</button></div>
       <div class="oi-card-sub">${escapeHtml(_OI_DIR_W[f['Direction']] || f['Direction'] || '—')} · W${escapeHtml(f['Week Number']||'—')} · ${escapeHtml(f['Brand']||'—')}</div>
-      ${f['Reference'] ? `<div class="oi-card-sub">Ref (${escapeHtml(f['Reference'])})</div>` : ''}
+      ${f['Reference'] ? `<div class="oi-card-sub">Ref (${escapeHtml(f['Reference'])})${orderNoNum ? ' · ' + orderNoNum : ''}</div>` : (orderNoNum ? `<div class="oi-card-sub">${orderNoNum}</div>` : '')}
       <div class="oi-chips">${chips}</div>
     </div>
     <div class="oi-sect"><div class="oi-sect-t">Στοιχεία</div>
