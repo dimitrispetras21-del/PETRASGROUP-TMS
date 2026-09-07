@@ -143,10 +143,10 @@ const ENTITY_CONFIG = {
     label: 'Clients',
     labelSingle: 'Client',
     // Wave 1, fifth entity (Figma clients-overview 118:309, client-card
-    // 122:636, clients-form 120:395). Carries TWO of the three dead fields
-    // (plan §2.1): contact_person and payment_terms_days — 0/1.920 written,
-    // the Worker map has no columns for them. Shown as designed: «—» in
-    // list/card, disabled with the reason in the form, skipped on save.
+    // 122:636, clients-form 120:395). Contact Person and Payment Terms Days
+    // were dead until 30/8/2026 (no Worker column); the map now has both and
+    // the form writes them — measured 7/9: 1/1.920 and 0/1.920, i.e. simply
+    // not filled in yet, not dropped.
     // The card shows VOLUME and FREQUENCY only — never revenue or margin
     // (owner lock 23/8: the dispatcher has full access here).
     v2: true,
@@ -158,12 +158,12 @@ const ENTITY_CONFIG = {
     cardSubtitleSep: ' · ',
     cardSpecsTitle: 'Επικοινωνία',
     cardSpecs: [
-      { f: 'Contact Person',     label: 'Υπεύθυνος επαφής' },   // dead — renders «—»
+      { f: 'Contact Person',     label: 'Υπεύθυνος επαφής' },
       { f: 'Phone',              label: 'Τηλέφωνο', phone: true },
       { f: 'Email',              label: 'Email' },
       { f: 'Adress',             label: 'Διεύθυνση' },
       { f: 'VAT Number',         label: 'ΑΦΜ' },
-      { f: 'Payment Terms Days', label: 'Όροι πληρωμής' },      // dead — renders «—»
+      { f: 'Payment Terms Days', label: 'Όροι πληρωμής' },
     ],
     cardActivity: 'orders',
     cardActivityTitle: 'Δραστηριότητα',
@@ -187,8 +187,7 @@ const ENTITY_CONFIG = {
       { field: 'Phone',         label: 'Τηλέφωνο' },
       { field: 'Active',        label: 'Κατάσταση', type: 'active' },
     ],
-    // Per clients-form 120:395: Στοιχεία εταιρείας / Επικοινωνία, with the
-    // two dead fields disabled + the reason spelled out.
+    // Per clients-form 120:395: Στοιχεία εταιρείας / Επικοινωνία.
     formFields: [
       { section: 'Στοιχεία εταιρείας', fields: [
         { f: 'Company Name', label: 'Επωνυμία', req: true },
@@ -219,8 +218,9 @@ const ENTITY_CONFIG = {
     label: 'Partners',
     labelSingle: 'Partner',
     // Wave 1, sixth entity (Figma partners-overview 118:622, partner-card
-    // 122:703, partners-form 120:463). One dead field: contact_person
-    // (0/214). The card shows assignment volume — the old panel's margin,
+    // 122:703, partners-form 120:463). Contact Person was dead until 30/8/2026;
+    // the Worker map has it now and the form writes it (7/9: 0/432 filled in
+    // yet). The card shows assignment volume — the old panel's margin,
     // revenue and rates do NOT return (owner lock 23/8; the mock has none).
     v2: true,
     titleV2: 'Συνεργάτες',
