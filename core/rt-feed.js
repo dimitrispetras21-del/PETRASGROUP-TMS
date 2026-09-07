@@ -279,14 +279,10 @@ async function rtOnOrderSaved(orderId) {
         _rtWarn('P&L: το ' + rtRef.code + ' δημιουργήθηκε χωρίς σκέλη και ακυρώθηκε — δες μετρητή συμφωνίας');
         return;
       }
-      // Singleton κόμιστρο partner στη γέννηση — αλλιώς «κόστη ελλιπή» για πάντα.
-      // Παραλείπεται σε attach:true: το RT δεν γεννήθηκε τώρα, άρα ήδη έχει (ή
-      // έπρεπε να έχει πάρει) το κόμιστρό του — να το ξαναβάλεις θα το διπλογράψει.
-      if (!res.attached && partnerTrip && parseFloat(f['Partner Rate'])) {
-        await plFetch('/costs/lines', { method: 'POST', body: {
-          rt_id: rtRef.id, category: 'partner_rate', net: parseFloat(f['Partner Rate']), vat: 0,
-          line_date: dStart, note: 'auto από Weekly (' + (f['Reference'] || orderId) + ')' } });
-      }
+      // Partner rate: NOT written here any more (owner 7/9, migration 021). The
+      // P&L derives the planned rate from partner_assignments
+      // (ct_v_rt_costs.partner_planned) and lets an invoiced partner_rate line
+      // replace it — one source, no drift when the assignment changes.
     } else {
       const patch = {};
       if (!partnerTrip && ids.truck_id && rt.truck_id !== ids.truck_id) patch.truck_id = ids.truck_id;
