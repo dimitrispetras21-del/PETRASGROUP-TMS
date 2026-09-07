@@ -273,7 +273,7 @@ async function _rampAutoSync() {
     if (sf[F.STOP_TEMP]) rec['Temperature'] = String(sf[F.STOP_TEMP]);
     if (intlPid) rec['Order'] = [intlPid];
     // nlPid is a NATIONAL LOAD id — writes to its own link ('National Load',
-    // migration 020 / spec national-load-source), never 'National Order':
+    // migration 022 / spec national-load-source), never 'National Order':
     // that label resolves against national_orders and would 400 on a load id
     // (the 6/9-7/9 bug this replaces). 'National Order' stays reserved for a
     // ramp row whose parent really is a national order (F.STOP_PARENT_NAT),
