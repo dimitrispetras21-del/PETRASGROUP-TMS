@@ -453,6 +453,20 @@ const _WI2_CSS=`
 .wk3.wi2 .wi-lmv-fail{display:flex;align-items:center;gap:12px;padding:8px 16px;margin-bottom:8px;border:1px solid var(--warn-border);background:var(--warn-bg);border-radius:var(--radius);color:var(--warn);font-size:12px}
 `;
 
+// Owner audit fix: renderWeeklyIntl only ever blocked can('planning')==='none'
+// (line ~470) — but PERMS (config.js) gives accountant/management/warehouse
+// 'view', not 'none', so any of those roles could still open every
+// right-click menu, the assignment popover and the split/rota/group panels
+// and either hit a 403 or write through a PATCH right the role happens to
+// have elsewhere. 'view' means read-only FOR THIS BOARD: no context menus, no
+// popover writes, no drag/drop, no «+ Νέα παραγγελία» — gated here once and
+// called from every one of those entry points instead of sprinkling checks.
+function _wiBlockReadOnly(){
+  if(can('planning')==='full') return false;
+  toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
+
 /* ── LOAD ASSETS ───────────────────────────────────────────────────── */
 async function _wiLoadAssets(){
   await preloadReferenceData();
@@ -808,6 +822,7 @@ function _wiBuildRows(){
    τρόπους απόκρυψης (style ή class) — αν δεν πυροδοτηθεί, το χειρότερο είναι
    να μην ανανεωθεί, όπως θα γινόταν και χωρίς αυτόν. */
 function _wiNewOrder() {
+  if(_wiBlockReadOnly()) return;
   openIntlCreate();
   const ov = document.getElementById('modalOverlay');
   if (!ov) return;
@@ -1330,6 +1345,7 @@ function _wiSplitFrameHTML(row){
 // στα σκέλη"), so those actions have nothing to act on.
 function _wiSplitHeaderCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const pid=row.orderIds?.[0]||row.orderId;
   const legs=WINTL._splitLegs?.[pid]||[];
@@ -2248,6 +2264,7 @@ window._wiDragging=null;
 
 // Drag from import ROWS (new — replaces shelf drag)
 function _wiImpDragStart(e,impId){
+  if(_wiBlockReadOnly()){ e.preventDefault(); return; }
   // Block drag if import is already matched to an export
   const imp=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
   if(imp&&imp.matchedTo){
@@ -2338,6 +2355,7 @@ async function _wiDropOnPanel(e,rowId){
 
 // Auto-save import match directly to ORDERS record
 async function _wiSaveImportMatch(rowId,impId){
+  if(_wiBlockReadOnly()) return; // defense in depth — dragstart already blocks for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
   // Lock check: verify import is still unmatched on server
@@ -2650,6 +2668,7 @@ async function _wiAutoMatch() {
 /* ── POPOVER (frame w4-assign-popover 189:745) ───────────────────────── */
 function _wiOpenPopover(e,rowId){
   e.stopPropagation();
+  if(_wiBlockReadOnly()) return; // also covers _wiOpenImpPopover, which delegates here
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const {trucks,trailers,drivers,partners}=WINTL.data;
   const o=WINTL.data.exports.find(r=>r.id===row.orderIds[0])||WINTL.data.imports.find(r=>r.id===row.orderId);
@@ -2813,6 +2832,7 @@ function _wiClosePopover(){
 }
 
 async function _wiSaveFromPopover(rowId){
+  if(_wiBlockReadOnly()) return; // defense in depth — the popover itself no longer opens for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);
   if(!row){return;}
   const syncPop=(p,f,l)=>{
@@ -3300,6 +3320,7 @@ function _wiMenuPrint(rowId,isImp){
 
 function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const isGroup=row.orderIds.length>1;
   const myPals=_wiRowPals(row);
@@ -3823,6 +3844,7 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
 // order form (_wk3Edit); the inline «⨯ αποσύνδεση» button is untouched.
 function _wiLegCtx(e,legOid){
   e.preventDefault(); e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
   const ctx=document.getElementById('wi-ctx');
   let html='';
   html+=_wiCtxBtn('Επεξεργασία…',`_wk3Edit('${legOid}')`);
@@ -4050,6 +4072,7 @@ async function _wiDelLocal(id, skipConfirm) {
 // not a browser/modal confirm, and sits last + danger-styled.
 function _wiLmvCtx(e, moveId, orderId) {
   e.preventDefault(); e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
   const ctx=document.getElementById('wi-ctx');
   let html='';
   html+=_wiCtxBtn('Επεξεργασία…',`_wiAddLocal('${orderId}','${moveId}')`);
@@ -4075,6 +4098,7 @@ function _wiPanelConfirmDelLocal(moveId){
 // σε προηγούμενη/επόμενη εβδομάδα (μετακινεί τις ημερομηνίες ±7 ημέρες).
 function _wiImpCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
