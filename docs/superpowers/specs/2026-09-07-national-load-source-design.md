@@ -13,7 +13,7 @@
 - Ό,τι αποτυγχάνει ακούγεται: toast + `logError`, όχι `console.warn` μόνο. Ελληνικά στην οθόνη, αγγλικά σχόλια «γιατί». Bump `?v=` + `SW_VERSION` μαζί.
 - Το Veroia Switch ΔΕΝ αλλάζει (owner 22/8): φορτίο κατευθείαν από τη διεθνή, χωρίς εθνική παραγγελία. Το groupage (GL→CL→NL) δεν αγγίζεται.
 
-## Α. Βάση — `worker/migrations/020_national_load_source.sql` (ΔΕΝ εκτελείται από το πλάνο· owner)
+## Α. Βάση — `worker/migrations/022_national_load_source.sql` (ΔΕΝ εκτελείται από το πλάνο· owner)
 ```sql
 begin;
 -- 1. Η εθνική παραγγελία ως πηγή φορτίου (Ε1). Μέχρι σήμερα μόνο orders/consolidated_loads είχαν FK.
