@@ -3758,25 +3758,27 @@ async function _wiRotUnlink(e,legOid,skipConfirm){
     if(!ok) return;
   }
   try{
-    const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
-    if(res?.error) throw new Error(res.error.message||res.error.type);
-    // C2 (owner 6/9): the leg also leaves its round trip — otherwise it stays
-    // a leg of an RT it no longer belongs to, and migration 013's triggers
-    // would keep pulling this order's vehicle back into line with that RT on
-    // every future save. The round trip itself is never deleted (financial
-    // history — rt-feed.js header, owner 24/8).
+    // Owner audit fix: the RT leg leaves FIRST — a failed DELETE (409 closed
+    // round trip, 403 no right) must never leave the order with an EMPTY
+    // Rotation ID while it still counts as a leg of that RT (live orphan:
+    // order 162 stuck on closed RT-1007, produced by clearing Rotation ID
+    // before even trying the leg removal). If the leg can't be removed, the
+    // rotation link stays untouched and the user is told why.
     if(typeof rtFindForOrder==='function'){
       const {pg,rt}=await rtFindForOrder(legOid).catch(()=>({pg:null,rt:null}));
       if(rt&&pg!=null){
         const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
         if(!del.ok){
-          const msg=del.status===403?'Χωρίς δικαίωμα αφαίρεσης σκέλους'
-            :del.status===409?'Ο γύρος είναι κλειστός'
+          const msg=del.status===409?'Ο γύρος είναι κλειστός — η ρότα μένει· ζήτα από τον owner'
+            :del.status===403?'Χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
             :('Το σκέλος δεν αφαιρέθηκε από το round trip: '+(del.error||('HTTP '+del.status)));
           toast(msg,'warn');
+          return;
         }
       }
     }
+    const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
+    if(res?.error) throw new Error(res.error.message||res.error.type);
     toast('Σκέλος αποσυνδέθηκε ✓');
     renderWeeklyIntl();
   }catch(err){ reportError('Η αποσύνδεση απέτυχε',err); }
