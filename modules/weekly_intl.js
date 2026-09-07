@@ -136,10 +136,16 @@ function _wiCut(s,n){ s=String(s||''); return s.length>n?s.slice(0,n-1)+'…':s;
 
 // Batch fetch ORDER_STOPS and inject Loading/Delivery Summary into records missing them
 async function _wiInjectStopSummaries(allOrders) {
+  // Item 3 fallback (owner 7/9, fix pass): _wiRowHTML/_wiImpRowHTML resolve a
+  // missing Loading/Delivery Summary from the flat 'Loading/Unloading Location
+  // 1' link via _fhLocationsMap. That map must be loaded even when THIS batch
+  // has no ORDER STOPS at all (the early-return below skipped it before) —
+  // otherwise the fallback silently resolves to nothing and the row still
+  // shows «—» although the order's flat location column is filled in.
+  try { await fhLoadLocations(); } catch(e) { console.warn('Weekly INTL: fhLoadLocations failed', e); }
   const allStopIds = allOrders.flatMap(r => r.fields['ORDER STOPS'] || []);
   if (!allStopIds.length) return;
   try {
-    await fhLoadLocations();
     const stopsByOrder = {};
     for (let b = 0; b < allStopIds.length; b += 90) {
       const batch = allStopIds.slice(b, b + 90);
@@ -1123,8 +1129,8 @@ function _wiImpRowHTML(row,impNo){
   const imp=data.imports.find(r=>r.id===row.orderId);
   if(!imp) return '';
   const f=imp.fields;
-  const fromStr=_wiRaw(f['Loading Summary']||f['Client Name']||f['Client Summary']||'—');
-  const toStr  =_wiRaw(f['Delivery Summary']||f['Client Name']||f['Client Summary']||'—');
+  const fromStr=_wiRaw(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||f['Client Name']||f['Client Summary']||'—');
+  const toStr  =_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||f['Client Name']||f['Client Summary']||'—');
   const stR=_wk3StFlags(f);
   const impVS2=!!f['Veroia Switch'];
 
@@ -1439,6 +1445,16 @@ function _wi2Split(str){
   }
   return {title,city,cc};
 }
+// Item 3 (owner 7/9, fix pass): resolve a flat 'Loading/Unloading Location N'
+// link to its name via the shared locations map. Used ONLY as a fallback when
+// Loading/Delivery Summary is empty (no ORDER STOPS yet, e.g. a split leg
+// before this pass started copying stops, or any other order that never got
+// one) — never «—» when the flat column actually names a location. Label
+// format ("Name, City, Country") is one of the two _wi2Split already parses.
+function _wiFlatLocName(linkVal){
+  const id=getLinkedId(linkVal);
+  return id?(_fhLocationsMap[id]||''):'';
+}
 // Name line + sub line for one end of a leg. Multi-stop (①②…) keeps the
 // existing folding helpers as they are; only the single-stop case gets a city.
 function _wi2Loc(str,label,arr){
@@ -1674,8 +1690,8 @@ function _wiRowHTML(row,i){
   const today=(typeof localToday==='function')?localToday():toLocalDate(new Date());
   const hasPartner=!!(row.partnerId||row.partnerLabel);
 
-  const fromStr=primary?_wiRaw(pf['Loading Summary']||pf['Client Name']||pf['Client Summary']||'—'):'—';
-  const toStr  =primary?_wiRaw(pf['Delivery Summary']||pf['Client Name']||pf['Client Summary']||'—'):'—';
+  const fromStr=primary?_wiRaw(pf['Loading Summary']||_wiFlatLocName(pf['Loading Location 1'])||pf['Client Name']||pf['Client Summary']||'—'):'—';
+  const toStr  =primary?_wiRaw(pf['Delivery Summary']||_wiFlatLocName(pf['Unloading Location 1'])||pf['Client Name']||pf['Client Summary']||'—'):'—';
   // GRP (owner 12/8): η γραμμή δείχνει ΕΝΑ σημείο ανά ΜΕΛΟΣ (①=1ο μέλος κ.ο.κ.),
   // όχι το comma-parsing του summary του πρώτου — αυτό εμφάνιζε την πόλη του
   // San Lucar ως ψεύτικο «② προορισμό». Συνθετικά arrays {n,dt} ώστε τα ①②,
@@ -1752,7 +1768,7 @@ function _wiRowHTML(row,i){
   let impInner;
   if(imp){
     const f2=imp.fields;
-    const il=_wi2Loc(f2['Loading Summary']||f2['Client Name']||f2['Client Summary']||'—','Φόρτωση',f2._stopsL);
+    const il=_wi2Loc(f2['Loading Summary']||_wiFlatLocName(f2['Loading Location 1'])||f2['Client Name']||f2['Client Summary']||'—','Φόρτωση',f2._stopsL);
     const ilIso=f2['Loading DateTime']||'';
     const iload=_wi2Card({cls:stI.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',ilIso,ilIso?_wk3D(_wiFmt(ilIso)):'—',stI.loaded?' done':'','Ημ. φόρτωσης εισαγωγής'+(stI.loaded?' — φορτώθηκε ✓':'')), name:il.name, sub:il.sub, extra:_wk3MoreStops(f2['Loading Summary']||'',f2._stopsL,'load')});
     // ΙΔΙΑ ΘΕΣΗ ΜΕ ΤΗΝ ΕΞΑΓΩΓΗ (owner 3/9): οι παλέτες και τα σήματα έμπαιναν
@@ -1766,7 +1782,7 @@ function _wiRowHTML(row,i){
       // Matched preview is the narrow column: «Cross-Dock VS» on one line, no city (the badge says it)
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stI.delivered?' done':'')+(stI.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'', title:'Cross-Dock Βέροια', right:iright});
     } else {
-      const id2=_wi2Loc(f2['Delivery Summary']||f2['Client Name']||f2['Client Summary']||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
+      const id2=_wi2Loc(f2['Delivery Summary']||_wiFlatLocName(f2['Unloading Location 1'])||f2['Client Name']||f2['Client Summary']||'—','Παράδοση',f2._stopsD); const idIso=f2['Delivery DateTime']||'';
       idel=_wi2Card({cls:stI.late?'late':stI.delivered?'ok':'', date:_wi2Date(imp.id,'Delivery DateTime',idIso,idIso?_wk3D(_wiFmt(idIso)):'—',(stI.delivered?' done':'')+(stI.late?' late':''),'Ημ. παράδοσης εισαγωγής'+(stI.delivered?' — παραδόθηκε ✓':'')+(stI.late?' — ΚΑΘΥΣΤΕΡΗΣΕ':'')), name:id2.name+(stI.late?'<span class="wi2-late">! καθυστέρηση</span>':''), sub:id2.sub, extra:_wk3MoreStops(f2['Delivery Summary']||'',f2._stopsD,'del'), right:iright});
     }
     impInner=`${iload}<span class="wi2-arrow">→</span>${idel}`;
