@@ -2844,6 +2844,19 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wk3-splitleg .wk3-num{color:var(--accent);font-weight:800}
 .wi2-splitchip{display:inline-block;padding:3px 10px;border-radius:9999px;font-size:11px;font-weight:700;color:var(--accent);background:var(--surface-card);border:1px solid var(--border)}
 .wi2-splitparent{justify-content:center;align-items:center;cursor:default}
+/* Item 4 (owner 7/9, fix pass): one framed block per split — header strip +
+   its two leg rows, no separate parent row. Left bar reuses the existing
+   --accent token (brief: "word + an existing accent token as a left bar"),
+   no new colour. */
+.wi2-splitframe{border:1px solid var(--border);border-radius:var(--radius);margin-bottom:4px;overflow:hidden}
+.wi2-splitframe-hd{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--surface-sunken);border-left:3px solid var(--accent)}
+.wi2-splitframe-tag{font:700 11px 'Syne',sans-serif;letter-spacing:1px;color:var(--accent)}
+.wi2-splitframe-txt{font:500 12px 'DM Sans',sans-serif;color:var(--text-mid)}
+.wi2-splitframe .wk3-row{border-bottom:1px dashed var(--border)}
+.wi2-splitframe .wk3-row:last-child{border-bottom:none}
+/* Hand-over marker: leg 1's delivery point = leg 2's loading point (by
+   construction, see _wiDoSplit) — shown next to the ⤷N leg number. */
+.wi2-handover{display:inline-block;margin-left:2px;font-size:11px;color:var(--accent)}
 /* Owner (9/8): partner με ανάθεση, χωρίς απέναντι σκέλος → «μαύρο» (navy) πεδίο */
 .wk3-leg.bgap{background:var(--navy-mid,#0B1929)}
 .wk3-leg.bgap:hover{background:#13253A}
