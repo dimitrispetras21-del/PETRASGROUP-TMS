@@ -2380,7 +2380,15 @@ async function _wiSaveImportMatch(rowId,impId){
   try {
     const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
     const existingExpMatch = exportRec.fields?.['Matched Import ID'];
+    // A link to an import that no longer exists (deleted) is not a match.
+    // Migration 023 releases such links in the base; this is the screen's own
+    // guard for a stale read (owner 7/9: «έχει ήδη ταιριασμένη εισαγωγή» on a
+    // ghost blocked every new import for that export). Unknown = keep blocking.
+    let ghostMatch = false;
     if (existingExpMatch && existingExpMatch !== impId) {
+      try { ghostMatch = !(await atGetOne(TABLES.ORDERS, existingExpMatch)); } catch (_) { ghostMatch = false; }
+    }
+    if (existingExpMatch && existingExpMatch !== impId && !ghostMatch) {
       if (typeof showErrorToast === 'function') showErrorToast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
       else toast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
       await renderWeeklyIntl();
