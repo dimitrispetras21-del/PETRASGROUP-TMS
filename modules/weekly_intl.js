@@ -3610,7 +3610,13 @@ async function _wiRejoinLegs(rowId){
   }
   if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη ΔΙΑΓΡΑΦΟΝΤΑΙ (με ίχνος audit — όχι Cancelled) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
 
-  // (a) restore the parent's OWN assignment from leg 1's.
+  // Order matters (7/9, seen in production on order 271): migration 018
+  // re-derives the parent's status on EVERY leg change, including the
+  // soft-delete of ONE leg while the other still exists — so restoring the
+  // parent first and deleting the legs afterwards let the last surviving leg
+  // overwrite the restored status (a Cancelled leftover made the parent
+  // Cancelled again). Legs leave first; the parent is written LAST, when no
+  // leg remains to derive anything from.
   const leg1=legs.find(lr=>lr.splitLegNo===1)||legs[0];
   const leg1o=_ordOf3(leg1);
   const restoreFields={
@@ -3619,12 +3625,8 @@ async function _wiRejoinLegs(rowId){
     'Partner Truck Plates':leg1o?.fields?.['Partner Truck Plates']||'',
     'Status':(getLinkedId(leg1o?.fields?.['Truck'])||getLinkedId(leg1o?.fields?.['Partner']))?'Assigned':'Pending',
   };
-  try{
-    const patchRes=await atPatch(TABLES.ORDERS,parentOid,restoreFields);
-    if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
-  }catch(e){ reportError('Η ένωση απέτυχε — η ανάθεση ΔΕΝ επέστρεψε στον γονέα ('+parentOid+'), τα σκέλη μένουν ως έχουν',e); return; }
 
-  // (b) each leg leaves its round trip BEFORE it is deleted — the round trip
+  // (a) each leg leaves its round trip BEFORE it is deleted — the round trip
   // itself is never deleted (financial history), same rule as _wiRotUnlink.
   try{
     for(const lr of legs){
@@ -3634,29 +3636,27 @@ async function _wiRejoinLegs(rowId){
     }
   }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
 
-  // (c) soft-delete the legs.
+  // (b) soft-delete the legs (Worker DELETE = deleted_at + audit row).
   const errors=[];
   for(const lr of legs){
     const oid=lr.orderIds?.[0]||lr.orderId;
     try{ await atDelete(TABLES.ORDERS,oid); }
-    catch(e){ errors.push(oid+': '+e.message); }
+    catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
   }
-  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ διαγράφηκε — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+  if(errors.length){
+    reportError('Κάποιο σκέλος ΔΕΝ διαγράφηκε — η ανάθεση ΔΕΝ επέστρεψε στον γονέα ('+parentOid+'), έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+    invalidateCache(TABLES.ORDERS); await renderWeeklyIntl(); return;
+  }
+
+  // (c) restore the parent's OWN assignment from leg 1's — last, see above.
+  try{
+    const patchRes=await atPatch(TABLES.ORDERS,parentOid,restoreFields);
+    if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
+    if((patchRes?.fields?.['Status']||'')!==restoreFields['Status'])
+      throw new Error('η ανάγνωση πίσω έδειξε κατάσταση «'+(patchRes?.fields?.['Status']||'—')+'» αντί για «'+restoreFields['Status']+'»');
+  }catch(e){ reportError('Τα σκέλη αφαιρέθηκαν, αλλά η ανάθεση ΔΕΝ επέστρεψε σωστά στον γονέα ('+parentOid+') — άνοιξε την παραγγελία και έλεγξε ανάθεση/κατάσταση',e); }
 
   // (d) re-derive the parent's own round trip from its restored vehicle.
-  try{
-    if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
-  }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
-
-  const errors=[];
-  for(const lr of legs){
-    const oid=lr.orderIds?.[0]||lr.orderId;
-    try{
-      await atDelete(TABLES.ORDERS,oid);
-    }catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
-  }
-  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ αφαιρέθηκε — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
-
   if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
   invalidateCache(TABLES.ORDERS);
 
