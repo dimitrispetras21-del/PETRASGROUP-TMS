@@ -1088,6 +1088,11 @@ var TABLES = {
     // reproduces the frontend's own Sunday-week math, NOT ISO weeks.
     readView: "orders_with_derived",
     computed: {
+      // Internal sequential order number = the Postgres id, read-only (owner
+      // 7/9/2026: «κάθε order να παίρνει εσωτερικό μοναδικό αριθμό»). Named
+      // «Order No», not the legacy Airtable «Order Number» the front end still
+      // treats as never-arriving (orders_intl.js Δ2).
+      "Order No": "id",
       "Week Number": "week_number",
       "Total Pallets": "total_pallets",
       // The human-friendly order code IS the primary key (owner 25/8: no new
