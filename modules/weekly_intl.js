@@ -4147,6 +4147,27 @@ async function _wiMerge(rowId,otherId){
   // nothing in the group is assigned yet; rt-feed.js reports its own failures.
   if(ok&&typeof rtOnOrderSaved==='function') rtOnOrderSaved(row.orderIds[0]).catch(e=>console.warn('[wi merge] rt sync:',e&&e.message));
 }
+// Item 6 (owner 7/9, fix pass): clear one dissolved member's OWN assignment
+// and pull it out of the group's round trip. Before this, dissolve only ever
+// cleared Group ID — every other member kept the group's Truck/Trailer/
+// Driver/Partner in Postgres and stayed a leg of the group's round trip, so
+// the screen painted «ΠΡΟΣ ΑΝΑΘΕΣΗ» (client-side row state only) while the
+// truck was still sitting on the order in the database — a refresh («με την
+// ανανέωση η σελίδα χαλάει», 00 §2) brought it straight back. Same shape as
+// _wiRotUnlink: the round trip itself is never deleted (financial history).
+async function _wiDissolveClearMember(oid){
+  const res=await atSafePatch(TABLES.ORDERS,oid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Status':'Pending'});
+  if(res?.error) throw new Error(res.error.message||res.error.type);
+  if(getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
+    throw new Error('Η ανάθεση δεν αδειάστηκε στην ανάγνωση');
+  if(typeof rtFindForOrder==='function'){
+    const {pg,rt}=await rtFindForOrder(oid).catch(()=>({pg:null,rt:null}));
+    if(rt&&pg!=null){
+      const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
+      if(!del.ok) console.warn('[wi dissolve] rt leg delete failed for',oid,del.status,del.error);
+    }
+  }
+}
 async function _wiSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row||row.orderIds.length<=1) return;
   const allIds=[...row.orderIds];
@@ -4162,6 +4183,15 @@ async function _wiSplit(rowId){
   });
   _wiPaint();toast('Η ομάδα διαλύθηκε');
   await _wiGroupPatch(allIds, '', row.id); // clear Group ID on all members
+  // Keep the FIRST member as it is (design doc: the first member keeps the
+  // group's own assignment/round trip) — only the members split OUT get their
+  // own assignment/RT cleared in the database.
+  const errors=[];
+  for(const oid of rest){
+    try{ await _wiDissolveClearMember(oid); }
+    catch(e){ errors.push(oid+': '+e.message); }
+  }
+  if(errors.length) reportError('Η ομάδα διαλύθηκε αλλά κάποιο μέλος ΔΕΝ αδειάστηκε από ανάθεση/ρότα — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
 }
 // Π1: one paper packet for the whole group (print.html ?orderIds=…).
 function _wiPrintGroup(rowId){
