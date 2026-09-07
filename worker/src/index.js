@@ -1091,8 +1091,10 @@ var TABLES = {
       // Internal sequential order number = the Postgres id, read-only (owner
       // 7/9/2026: «κάθε order να παίρνει εσωτερικό μοναδικό αριθμό»). Named
       // «Order No», not the legacy Airtable «Order Number» the front end still
-      // treats as never-arriving (orders_intl.js Δ2).
-      "Order No": "id",
+      // treats as never-arriving (orders_intl.js Δ2). Read from the view's
+      // `order_no` alias (migration 019): the facade keeps the raw `id` column
+      // internal and never copies it into fields — mapping to "id" came back null.
+      "Order No": "order_no",
       "Week Number": "week_number",
       "Total Pallets": "total_pallets",
       // The human-friendly order code IS the primary key (owner 25/8: no new
