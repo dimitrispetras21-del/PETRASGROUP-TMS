@@ -15,7 +15,7 @@ const _rampFilters = {};
 const RAMP_FIELDS = [
   'Plan Date','Time','Type','Status','Pallets','Goods',
   'Supplier/Client','Notes','Postponed To','Temperature',
-  'Order','National Order','Truck','Driver',
+  'Order','National Order','National Load','Truck','Driver',
   'Is Veroia Switch','Ramp Category','Stock Status',
   'Loading Points','Delivery Points',
   'Stop Client 1','Stop Client 2','Stop Client 3','Stop Client 4','Stop Client 5',
@@ -105,7 +105,7 @@ async function _rampAutoSync() {
 
   // ── Existing RAMP records for dedup ──
   // Include: today's records, any postponed records, and records postponed-to-today
-  const dedupFields = ['Order','National Order','Type','Ramp Category','Supplier/Client','Status','Notes','Time','Plan Date','Postponed To','Pallets'];
+  const dedupFields = ['Order','National Order','National Load','Type','Ramp Category','Supplier/Client','Status','Notes','Time','Plan Date','Postponed To','Pallets'];
   const allExistingRaw = await atGetAll(TABLES.RAMP, {
     filterByFormula: `OR(IS_SAME({Plan Date},'${date}','day'),IS_SAME({Postponed To},'${date}','day'),{Postponed To}!=BLANK())`,
     fields: dedupFields,
@@ -123,9 +123,12 @@ async function _rampAutoSync() {
     // Legacy CL-based key
     const clM = note.match(/^CL:(rec[a-zA-Z0-9]+)/);
     if (clM) existingStopKeys.add('CL:'+clM[1]);
-    // Legacy primary key: Order/NatOrder + Type + Category
+    // Legacy primary key: Order/NatOrder/NatLoad + Type + Category. 'National
+    // Load' is the real link written by this sync from 7/9 (spec
+    // national-load-source); 'National Order' stays for genuine national-order
+    // ramp rows written elsewhere.
     const oid = getLinkId(r.fields['Order'])||'';
-    const nid = getLinkId(r.fields['National Order'])||'';
+    const nid = getLinkId(r.fields['National Order'])||getLinkId(r.fields['National Load'])||'';
     existingKeys.add(`${oid||nid||r.id}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`);
     // Client-based key
     existingClientKeys.add(`${r.fields['Supplier/Client']||''}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`);
@@ -269,11 +272,13 @@ async function _rampAutoSync() {
     if (category) rec['Ramp Category'] = category;
     if (sf[F.STOP_TEMP]) rec['Temperature'] = String(sf[F.STOP_TEMP]);
     if (intlPid) rec['Order'] = [intlPid];
-    // nlPid is a NATIONAL LOAD id. Until 6/9 the facade dropped 'National Order'
-    // silently; since the 7/9 links block it resolves the label against
-    // national_orders and would answer 400, so the ramp row would not be created
-    // at all. The load gets its own link ('National Load', migration 020 /
-    // spec national-load-source) — until then the row is created unlinked, as before.
+    // nlPid is a NATIONAL LOAD id — writes to its own link ('National Load',
+    // migration 020 / spec national-load-source), never 'National Order':
+    // that label resolves against national_orders and would 400 on a load id
+    // (the 6/9-7/9 bug this replaces). 'National Order' stays reserved for a
+    // ramp row whose parent really is a national order (F.STOP_PARENT_NAT),
+    // which this auto-sync does not create today.
+    if (nlPid) rec['National Load'] = [nlPid];
 
     // Truck/Driver from parent
     const parent = intlPid ? intlMap[intlPid] : nlPid ? nlMap[nlPid] : null;
@@ -707,6 +712,45 @@ async function _rampDone(id,isIn){
             }
           }
         } catch(e) { console.warn('Ramp→NatOrder sync failed:', e.message); }
+      }
+
+      // NAT_LOADS-parented ramp row (National Load link, spec
+      // national-load-source Γ3): only outbound advances the load — inbound at
+      // Veroia is just the cross-dock leg, same reasoning as VS above («VS
+      // inbound is just a leg»).
+      const nlId = getLinkedId(r.fields['National Load']);
+      if (isOutbound && nlId) {
+        try {
+          const nlRec = await atGetOne(TABLES.NAT_LOADS, nlId);
+          const curSt = nlRec?.fields?.['Status'] || '';
+          if (curSt!=='In Transit' && curSt!=='Delivered' && curSt!=='Invoiced' && curSt!=='Cancelled') {
+            await atSafePatch(TABLES.NAT_LOADS, nlId, {'Status':'In Transit'});
+            invalidateCache(TABLES.NAT_LOADS);
+          }
+          // National-order-sourced load: advance the national order too, now on
+          // the correct table (today's intent, fixed — Ε4). A VS-sourced load
+          // (Source Order) leaves the international order untouched from here:
+          // its status lives in Weekly International.
+          const srcNoId = getLinkedId(nlRec?.fields?.['Source National Order']);
+          if (srcNoId) {
+            const noRec = await atGetOne(TABLES.NAT_ORDERS, srcNoId);
+            const noSt = noRec?.fields?.['Status'] || '';
+            if (noSt!=='In Transit' && noSt!=='Delivered' && noSt!=='Invoiced' && noSt!=='Cancelled') {
+              await atSafePatch(TABLES.NAT_ORDERS, srcNoId, {'Status':'In Transit'});
+              invalidateCache(TABLES.NAT_ORDERS);
+              if (typeof syncOrderDownstream === 'function') {
+                syncOrderDownstream(srcNoId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
+                  .catch(e => console.warn('[ramp→nat sync]', e));
+              }
+            }
+          }
+        } catch(e) {
+          // Silent console.warn hid this: the ramp row is Done but the load /
+          // national order kept a stale status (spec national-load-source,
+          // global constraint — every failure is heard).
+          toast('Η ράμπα ολοκληρώθηκε αλλά το φορτίο/η παραγγελία ΔΕΝ ενημερώθηκε', 'danger');
+          if (typeof logError === 'function') logError(e, 'ramp done National Load sync ' + nlId);
+        }
       }
     }
 

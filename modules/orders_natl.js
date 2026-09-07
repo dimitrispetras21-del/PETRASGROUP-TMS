@@ -1522,7 +1522,14 @@ async function submitNatlOrder(recId) {
         // Groupage ON → remove NL (CL save will create its own NL)
         await _syncNationalLoad(savedNatlId, {}, true);
       }
-    } catch(e) { console.warn('NL sync error:', e); }
+    } catch(e) {
+      // Silent console.warn hid this for months: the order saved fine but never
+      // reached the Weekly board, invisible until an audit found the 400 in
+      // app_errors (Ε1). Every failure is heard now (spec national-load-source,
+      // global constraint).
+      toast('Η παραγγελία αποθηκεύτηκε αλλά ΔΕΝ μπήκε στο Weekly — δοκίμασε ξανά ή ενημέρωσε', 'danger');
+      if (typeof logError === 'function') logError(e, '_syncNationalLoad ' + savedNatlId);
+    }
     // ─────────────────────────────────────────────────────────
 
     // Central sync — RAMP trigger + PL orphan cleanup + PA sync + cache invalidation
@@ -1720,9 +1727,12 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
   _syncingNLs.add(noId);
   try {
 
-  // Find existing NL record for this NO
+  // Find existing NL record for this NO. 'Source Record' was a write-only
+  // alias resolved for VS (orders_intl); it never matched a real column here,
+  // so this lookup 400'd on every save (Ε1) — 'Source National Order' is the
+  // real FK link (spec national-load-source Γ1).
   const existing = await atGetAll(TABLES.NAT_LOADS, {
-    filterByFormula: `{Source Record}="${noId}"`,
+    filterByFormula: `FIND("${noId}", ARRAYJOIN({Source National Order}, ","))>0`,
     fields: ['Name']
   }, false);
 
@@ -1761,9 +1771,13 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
   const nlFields = {
     'Name': `${clientName || 'Order'} — ${toLocalDate(noFields['Loading DateTime'])}`,
     'Direction': nlDir,
-    'Source Type': 'Direct',
-    'Source Record': noId,
-    'Source Orders': noId,
+    // 'National' distinguishes this from VS-sourced loads ('Direct', written by
+    // orders_intl's _syncVeroiaSwitch) now that a real FK tells them apart — no
+    // consumer keys off 'Direct' on this path, only weekly_natl's `=== 'Groupage'`
+    // checks (spec national-load-source Γ1). 'Source Record'/'Source Orders'
+    // dropped: they drove the write onto the intl-order FK and 400'd (Ε1).
+    'Source Type': 'National',
+    'Source National Order': [noId],
     'Client': clientName,
     'Goods': noFields['Goods'] || '',
     'Total Pallets': noFields['Pallets'] || 0,

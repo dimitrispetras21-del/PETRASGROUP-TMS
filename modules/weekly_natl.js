@@ -9,7 +9,8 @@
 // wins (DECISION_LOG 3/9: rules over frames).
 //
 // Fields read from NATIONAL LOADS (facade tblVW42cZnfC47gTb):
-//   Direction, Status, Source Type, Source Record, Client (plain text),
+//   Direction, Status, Source Type, Source National Order, Source Order,
+//   Client (plain text),
 //   Loading/Delivery DateTime, Loading/Delivery Appointment, Total Pallets,
 //   Pallet Exchange, Matched Load, Truck[], Trailer[], Driver[], Partner[],
 //   Is Partner Trip, Partner Truck Plates, Partner Rate,
@@ -149,7 +150,10 @@ async function _wnLoadAll() {
     preloadReferenceData(),
     atGetAll(TABLES.NAT_LOADS, { filterByFormula: filter, fields: [
       'Direction','Loading DateTime','Delivery DateTime','Truck','Trailer','Driver','Partner',
-      'Client','Total Pallets','Goods','Status','Source Type','Source Record','Matched Load',
+      // 'Source Record' dropped: write-only alias, always empty on read (47
+      // silent drops 7/9) — the real links are 'Source National Order' (national
+      // order source) and 'Source Order' (VS, from orders_intl) — spec national-load-source.
+      'Client','Total Pallets','Goods','Status','Source Type','Source National Order','Source Order','Matched Load',
       'Is Partner Trip','Partner Truck Plates','Partner Rate',
       // Φ1 (Α3): ζητούσε 1..5 ενώ ο renderer κάνει loop 1..10 (_wnNlPickupSummary /
       // _wnNlDeliverySummary) και ο Worker σερβίρει 1..10. Φορτίο με 6+ σημεία
@@ -1329,10 +1333,13 @@ async function _wnToggleStops(rowId, nlId) {
     // Οι στάσεις γράφονται στην ΠΑΡΑΓΓΕΛΙΑ (STOP_PARENT_NAT), όχι στο φορτίο.
     // Ψάχνοντας μόνο με γονέα το φορτίο δεν βρίσκονταν ΠΟΤΕ, και το πάνελ
     // έπεφτε πάντα στο fallback χωρίς παλέτες — αυτό ήταν το «δεν βρέθηκαν
-    // καταγεγραμμένες στάσεις» (owner 12/08). Το `Source Record` δείχνει την
-    // παραγγελία (Direct/VS) ή το CL (Groupage).
-    if (!dels.length && ff['Source Record']) {
-      const src = ff['Source Record'];
+    // καταγεγραμμένες στάσεις» (owner 12/08). `Source National Order` δείχνει
+    // την εθνική παραγγελία, `Source Order` τη διεθνή (VS) — πραγματικά FK πλέον,
+    // αντί για το πολυμορφικό `Source Record` (spec national-load-source Γ2).
+    const _srcNoId = getLinkedId(ff['Source National Order']);
+    const _srcOrdId = getLinkedId(ff['Source Order']);
+    if (!dels.length && (_srcNoId || _srcOrdId)) {
+      const src = _srcNoId || _srcOrdId;
       try {
         if (ff['Source Type'] === 'Groupage') {
           // Στο groupage οι στάσεις ζουν στις εθνικές παραγγελίες του CL· ο
@@ -1364,8 +1371,12 @@ async function _wnToggleStops(rowId, nlId) {
               noInfo[o.id] = { client: c?.fields?.['Company Name'] || c?.fields?.['Name'] || '', price: o.fields?.['Price'] };
             });
           } catch(e) { console.warn('groupage NO info:', e); }
+        } else if (_srcNoId) {
+          stops = await stopsLoad(_srcNoId, F.STOP_PARENT_NAT);
         } else {
-          stops = await stopsLoad(src, F.STOP_PARENT_NAT);
+          // VS-sourced load (Source Order = διεθνής παραγγελία): οι στάσεις
+          // ζουν στην ΠΑΡΑΓΓΕΛΙΑ διεθνών, όχι στην εθνική (spec national-load-source Γ2).
+          stops = await stopsLoad(_srcOrdId, F.STOP_PARENT_ORDER);
         }
         dels = (stops||[]).filter(s => s.fields?.[F.STOP_TYPE] === 'Unloading');
       } catch(e) { console.warn('στάσεις από την πηγή:', e); }
@@ -1983,20 +1994,29 @@ async function _wnSaveFromPopover(rowId) {
   if (errors.length) { toast('Σφάλμα: '+errors[0].slice(0,60), 'warn'); return; }
 
   row.saved = true;
-  // Also update source NAT_ORDER status to Assigned
+  // Also update source NAT_ORDER status to Assigned — only for national-order-
+  // sourced loads (real FK 'Source National Order' now, spec national-load-source
+  // Γ2). A VS-sourced load carries 'Source Order' (the intl order) instead: its
+  // assignment lives in Weekly International, so it is left untouched here.
   try {
     for (const orderId of row.orderIds) {
       const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r=>r.id===orderId);
-      const srcId = nlRec?.fields?.['Source Record'];
-      if (srcId) {
-        await atSafePatch(TABLES.NAT_ORDERS, srcId, { 'Status': 'Assigned' });
+      const noId = getLinkedId(nlRec?.fields?.['Source National Order']);
+      if (noId) {
+        await atSafePatch(TABLES.NAT_ORDERS, noId, { 'Status': 'Assigned' });
         if (typeof syncOrderDownstream === 'function') {
-          syncOrderDownstream(srcId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
+          syncOrderDownstream(noId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
             .catch(e => console.warn('[wn assigned sync]', e));
         }
       }
     }
-  } catch(e) { console.warn('NO status sync:', e); }
+  } catch(e) {
+    // Silent console.warn hid this: the assignment saved on the load but the
+    // national order kept a stale status (spec national-load-source, global
+    // constraint — every failure is heard).
+    toast('Η ανάθεση αποθηκεύτηκε αλλά η εθνική παραγγελία ΔΕΝ ενημερώθηκε', 'danger');
+    if (typeof logError === 'function') logError(e, 'weekly_natl assign NO status');
+  }
 
   // PARTNER ASSIGNMENT sync (one PA record per NAT_LOAD)
   try {
