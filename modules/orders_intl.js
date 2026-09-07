@@ -931,7 +931,7 @@ function _oiCardHtml(rec) {
     ${pe ? `<div class="oi-sect"><div class="oi-sect-t">Δελτία παλετών</div>
       ${kv('Δελτίο 1', f['Pallet Sheet 1 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 1 Uploaded'] ? '' : 'warn')}
       ${vs ? kv('Δελτίο 2 (cross-dock)', f['Pallet Sheet 2 Uploaded'] ? 'καταχωρημένο' : 'εκκρεμεί', f['Pallet Sheet 2 Uploaded'] ? '' : 'warn') : ''}
-      <div class="oi-links"><button type="button" class="oi-link" onclick="openPalletUpload('${recId}')">Δελτίο παλετών →</button><button type="button" class="oi-link" onclick="navigate('pallet_ledger')">Ισοζύγιο παλετών →</button></div>
+      <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('pallet_ledger')">Ισοζύγιο παλετών →</button></div>
     </div>` : ''}
     <div class="oi-sect"><div class="oi-sect-t">Ανάθεση</div>${assignBody}
       <div class="oi-links"><button type="button" class="oi-link" onclick="navigate('weekly_intl')">άνοιγμα στο Εβδομαδιαίο Διεθνών →</button></div>
@@ -2215,10 +2215,14 @@ async function _checkPalletSheets(recId) {
 // declarations rebind the globals, so the in-app modal always won. The pair
 // survived only through script order — reordering app.html would have swapped
 // implementations silently. Removed 2026-08-07 (verified live: the button on a
-// real order opens the in-app modal, zero errors). The buttons below keep
-// calling the global openPalletUpload(recId), now with a single owner.
-// Known gap carried over: after the in-app modal saves, the order detail is
-// not refreshed — the dead close() used to do that but never ran. See SW-6.
+// real order opens the in-app modal, zero errors).
+// 7/9/2026: the order card no longer offers «Δελτίο παλετών →» at all. The
+// OCR modal writes to the dead pallet_ledger_* tables (0 rows ever) and the
+// «Pallet Sheet N Uploaded» flags it sets are 0/138 in production; the
+// invoicing gate reads pl_v_order_gate (confirmed LOADING movements in the
+// Ισοζύγιο). One door for sheets — the one that counts. The card keeps the
+// «Ισοζύγιο παλετών →» link. pallet_upload.js stays loaded until the OCR is
+// re-pointed at pl_movements (TMS map, critical finding).
 
 // ═══════════════════════════════════════════════
 // SCAN ORDER — AI Pre-fill
