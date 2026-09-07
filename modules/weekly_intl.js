@@ -3310,19 +3310,54 @@ function _wiParentPalletsTotal(pf){
   for(let i=1;i<=10;i++){ const v=parseFloat(pf['Loading Pallets '+i]); if(!isNaN(v)) t+=v; }
   return t;
 }
-// Create the two ORDER STOPS a leg needs (Loading + Unloading, stop #1 each)
-// and read them back — a stop write goes through the same silent-drop facade
-// as ORDERS (CLAUDE.md trap #1), so "the POST returned 200" proves nothing.
-async function _wiCreateLegStops(legId,fromLocId,fromDt,toLocId,toDt,pallets){
-  await stopsSave(legId,[
-    {stopNumber:1,stopType:'Loading',locationId:fromLocId,dateTime:fromDt,pallets},
-    {stopNumber:1,stopType:'Unloading',locationId:toLocId,dateTime:toDt,pallets},
-  ],F.STOP_PARENT_ORDER);
+// Item 1 (owner 7/9, fix pass): a parent with 2+ loadings/deliveries used to
+// lose every point past the first — _wiDoSplit only ever read 'Loading/
+// Unloading Location 1'. The real source of truth is ORDER STOPS (stopsLoad):
+// that's what orders_intl.js's own form writes for every point past #1 (the
+// flat 'Loading/Unloading Location N' columns are ALSO written for fidelity,
+// but the per-point DateTime N columns are not — orders_intl.js:1885-1905
+// only ever writes stop 1's date to the two main fields). So stops are tried
+// first; the flat columns are a fallback for older data that predates stops.
+function _wiOrderPoints(pf,stops,type){
+  const fromStops=(stops||[]).filter(s=>s.fields[F.STOP_TYPE]===type)
+    .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
+  if(fromStops.length){
+    return fromStops.map(s=>({
+      locId:getLinkedId(s.fields[F.STOP_LOCATION]),
+      dateTime:s.fields[F.STOP_DATETIME]||'',
+      pallets:s.fields[F.STOP_PALLETS],
+    }));
+  }
+  const pts=[];
+  for(let i=1;i<=10;i++){
+    const locId=getLinkedId(pf[`${type} Location ${i}`]);
+    if(!locId) continue;
+    const dtField=type==='Loading'
+      ?(i===1?'Loading DateTime':`Loading DateTime ${i}`)
+      :(i===1?'Delivery DateTime':`Unloading DateTime ${i}`);
+    pts.push({locId,dateTime:pf[dtField]||'',pallets:pf[`${type} Pallets ${i}`]});
+  }
+  return pts;
+}
+// Create every ORDER STOPS row a leg needs (all its Loading points, all its
+// Unloading points) and read them back — a stop write goes through the same
+// silent-drop facade as ORDERS (CLAUDE.md trap #1), so "the POST returned
+// 200" proves nothing.
+async function _wiCreateLegStops(legId,loadPts,unloadPts){
+  const stopsArr=[
+    ...loadPts.map((p,i)=>({stopNumber:i+1,stopType:'Loading',locationId:p.locId,dateTime:p.dateTime,pallets:p.pallets})),
+    ...unloadPts.map((p,i)=>({stopNumber:i+1,stopType:'Unloading',locationId:p.locId,dateTime:p.dateTime,pallets:p.pallets})),
+  ];
+  await stopsSave(legId,stopsArr,F.STOP_PARENT_ORDER);
   const back=await stopsLoad(legId,F.STOP_PARENT_ORDER);
-  const okLoad=fromLocId?back.some(s=>s.fields[F.STOP_TYPE]==='Loading'&&getLinkedId(s.fields[F.STOP_LOCATION])===fromLocId):back.some(s=>s.fields[F.STOP_TYPE]==='Loading');
-  const okUnload=toLocId?back.some(s=>s.fields[F.STOP_TYPE]==='Unloading'&&getLinkedId(s.fields[F.STOP_LOCATION])===toLocId):back.some(s=>s.fields[F.STOP_TYPE]==='Unloading');
+  const _verify=(pts,type)=>{
+    const backPts=back.filter(s=>s.fields[F.STOP_TYPE]===type);
+    if(backPts.length!==pts.length) return false;
+    return pts.every((p,i)=>!p.locId||backPts.some(s=>s.fields[F.STOP_NUMBER]===i+1&&getLinkedId(s.fields[F.STOP_LOCATION])===p.locId));
+  };
+  const okLoad=_verify(loadPts,'Loading'), okUnload=_verify(unloadPts,'Unloading');
   if(!okLoad||!okUnload){
-    throw new Error('ORDER STOPS δεν επιβεβαιώθηκαν στην ανάγνωση'+(okLoad?'':' — Loading λείπει')+(okUnload?'':' — Unloading λείπει'));
+    throw new Error('ORDER STOPS δεν επιβεβαιώθηκαν στην ανάγνωση'+(okLoad?'':' — Loading λείπει/λάθος')+(okUnload?'':' — Unloading λείπει/λάθος'));
   }
   return back;
 }
@@ -3346,8 +3381,12 @@ async function _wiDoSplit(rowId){
   if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
   const pf=parentRec.fields;
   const totalPallets=_wiParentPalletsTotal(pf);
-  const fromLocId=getLinkedId(pf['Loading Location 1']);
-  const toLocId=getLinkedId(pf['Unloading Location 1']);
+  // Item 1 (owner 7/9, fix pass): a parent with e.g. 2 loadings + 2 deliveries
+  // used to lose everything past point 1 — leg 1 now carries the FULL loading
+  // side, leg 2 the FULL unloading side (see _wiOrderPoints above).
+  const parentStops=await stopsLoad(parentOid,F.STOP_PARENT_ORDER).catch(()=>[]);
+  const loadPts=_wiOrderPoints(pf,parentStops,'Loading');
+  const unloadPts=_wiOrderPoints(pf,parentStops,'Unloading');
 
   _wiPanelSetBusy(true);
   // Dropped from the old list: 'Total Pallets' (read-only view column, see
@@ -3360,15 +3399,19 @@ async function _wiDoSplit(rowId){
 
   const parentAssigned=!!(getLinkedId(pf['Truck'])||getLinkedId(pf['Partner']));
   const leg1Fields={...common,
-    'Loading Location 1':pf['Loading Location 1'], 'Loading DateTime':pf['Loading DateTime'],
-    'Unloading Location 1':[locId], 'Delivery DateTime':handOverIso,
-    'Loading Pallets 1':totalPallets, 'Unloading Pallets 1':totalPallets,
+    'Unloading Location 1':[locId], 'Delivery DateTime':handOverIso, 'Unloading Pallets 1':totalPallets,
     'Parent Order':[parentOid], 'Leg No':1,
     'Truck':pf['Truck']||[], 'Trailer':pf['Trailer']||[], 'Driver':pf['Driver']||[],
     'Partner':pf['Partner']||[], 'Is Partner Trip':!!pf['Is Partner Trip'],
     'Partner Truck Plates':pf['Partner Truck Plates']||'',
     'Status':parentAssigned?(pf['Status']||'Assigned'):'Pending',
   };
+  loadPts.forEach((p,i)=>{
+    const n=i+1;
+    leg1Fields[`Loading Location ${n}`]=p.locId?[p.locId]:[];
+    leg1Fields[n===1?'Loading DateTime':`Loading DateTime ${n}`]=p.dateTime||null;
+    if(p.pallets!=null&&p.pallets!=='') leg1Fields[`Loading Pallets ${n}`]=p.pallets;
+  });
   const leg2Assign=mode==='own'
     ?{'Truck':execTruck?[execTruck]:[],'Trailer':execTrailer?[execTrailer]:[],'Driver':execDriver?[execDriver]:[],'Partner':[],'Is Partner Trip':false}
     :mode==='partner'
@@ -3377,13 +3420,16 @@ async function _wiDoSplit(rowId){
     :{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false};
   const leg2Assigned=mode==='own'?!!execTruck:mode==='partner';
   const leg2Fields={...common,
-    'Loading Location 1':[locId], 'Loading DateTime':handOverIso,
-    'Unloading Location 1':pf['Unloading Location 1'], 'Unloading Location 2':pf['Unloading Location 2'], 'Unloading Location 3':pf['Unloading Location 3'],
-    'Delivery DateTime':pf['Delivery DateTime'],
-    'Loading Pallets 1':totalPallets, 'Unloading Pallets 1':totalPallets,
+    'Loading Location 1':[locId], 'Loading DateTime':handOverIso, 'Loading Pallets 1':totalPallets,
     'Parent Order':[parentOid], 'Leg No':2, ...leg2Assign,
     'Status':leg2Assigned?'Assigned':'Pending',
   };
+  unloadPts.forEach((p,i)=>{
+    const n=i+1;
+    leg2Fields[`Unloading Location ${n}`]=p.locId?[p.locId]:[];
+    leg2Fields[n===1?'Delivery DateTime':`Unloading DateTime ${n}`]=p.dateTime||null;
+    if(p.pallets!=null&&p.pallets!=='') leg2Fields[`Unloading Pallets ${n}`]=p.pallets;
+  });
   Object.keys(leg2Fields).forEach(k=>{ if(leg2Fields[k]===undefined) delete leg2Fields[k]; });
 
   let leg1=null, leg2=null;
@@ -3400,7 +3446,7 @@ async function _wiDoSplit(rowId){
     return;
   }
   try{
-    await _wiCreateLegStops(leg1.id,fromLocId,pf['Loading DateTime'],locId,handOverIso,totalPallets);
+    await _wiCreateLegStops(leg1.id,loadPts,[{locId,dateTime:handOverIso,pallets:totalPallets}]);
   }catch(e){
     _wiPanelSetBusy(false);
     reportError('Το σκέλος 1 δημιουργήθηκε (ID '+leg1.id+') αλλά οι ΣΤΑΣΕΙΣ του ΔΕΝ γράφτηκαν — ο γονέας ΔΕΝ αδειάστηκε, το σκέλος 2 ΔΕΝ δημιουργήθηκε. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
@@ -3417,7 +3463,7 @@ async function _wiDoSplit(rowId){
     return;
   }
   try{
-    await _wiCreateLegStops(leg2.id,locId,handOverIso,toLocId,pf['Delivery DateTime'],totalPallets);
+    await _wiCreateLegStops(leg2.id,[{locId,dateTime:handOverIso,pallets:totalPallets}],unloadPts);
   }catch(e){
     _wiPanelSetBusy(false);
     reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά οι ΣΤΑΣΕΙΣ του σκέλους 2 ΔΕΝ γράφτηκαν — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Έλεγξε/σβήσε χειροκίνητα.',e);
