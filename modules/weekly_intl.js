@@ -1324,9 +1324,17 @@ function _wiSplitHeaderCtx(e,rowId){
   const legs=WINTL._splitLegs?.[pid]||[];
   const _ordOf5=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
   const blocking=legs.find(lr=>['In Transit','Delivered'].includes(_ordOf5(lr)?.fields?.['Status']));
+  // Item 5 (owner 7/9, fix pass): rejoin now DELETEs both legs (see
+  // _wiRejoinLegs) — the Worker only grants DELETE on orders to owner
+  // (dispatcher/management get GET+POST+PATCH, no DELETE, worker/src/index.js
+  // PERMISSIONS). Disabled here rather than left to fail on click, same as
+  // the in-transit block above.
+  const notOwner=typeof ROLE!=='undefined'&&ROLE!=='owner';
   let html='';
   html+=blocking
     ?_wiCtxBtnDisabled(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf5(blocking)?.fields?.['Status']})`,'Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε')
+    :notOwner
+    ?_wiCtxBtnDisabled('Ένωση ξανά','Μόνο ο owner — η ένωση διαγράφει τα σκέλη')
     :_wiCtxBtn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   html+=_wiCtxBtn('Εκτύπωση όλων',`_wiPrintSplitAll(${rowId})`);
   // Owner 7/9: "if we want to move the split point, what do we do?" — the
@@ -3558,15 +3566,19 @@ async function _wiDoSplit(rowId){
 }
 
 // «Ένωση ξανά» — μόνο όσο ΚΑΝΕΝΑ σκέλος δεν είναι In Transit/Delivered (design
-// doc). The legs are SOFT-deleted (Worker DELETE = deleted_at + audit row), not
-// set to Cancelled: a Cancelled leg still counts for migration 018's derived
-// parent status («all legs Cancelled → parent Cancelled»), which cancelled two
-// real customer orders on 7/9 the first time this ran in production. A deleted
-// leg is invisible to that rule and to every GET, so the parent keeps the
-// assignment this function just handed back to it. Only the owner has DELETE on
-// orders (Worker PERMISSIONS) — a dispatcher gets a 403 here, reported as such.
+// doc). Item 5 (owner 7/9, fix pass): the legs are now soft-DELETEd, not set
+// to Status='Cancelled'. Cancelled kept them alive for migration 018's
+// parent-status-from-legs trigger to average — "both legs Cancelled" silently
+// turned the PARENT Cancelled too, the opposite of what a rejoin means. The
+// Worker's DELETE on orders is a soft-delete (writes deleted_at, an audit row
+// is kept — CLAUDE.md never-delete pattern, same shape as GROUPAGE LINES'
+// own Status flip, just enforced by the DB column instead of a status value)
+// and is owner-only (dispatcher/management get GET+POST+PATCH, no DELETE) —
+// _wiSplitHeaderCtx disables the menu item for other roles; this is the
+// second guard for any other caller.
 async function _wiRejoinLegs(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  if(typeof ROLE!=='undefined'&&ROLE!=='owner'){ toast('Μόνο ο owner κάνει ένωση ξανά — η ένωση διαγράφει τα σκέλη','warn'); return; }
   const parentOid=row.orderIds?.[0]||row.orderId;
   const _ordOf3=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
   const legs=(WINTL._splitLegs?.[parentOid]||[]).slice().sort((a,b)=>(a.splitLegNo||0)-(b.splitLegNo||0));
@@ -3574,8 +3586,9 @@ async function _wiRejoinLegs(rowId){
   if(legs.some(lr=>['In Transit','Delivered'].includes(_ordOf3(lr)?.fields?.['Status']))){
     toast('Δεν γίνεται ένωση — κάποιο σκέλος είναι ήδη σε εκτέλεση ή παραδόθηκε','warn'); return;
   }
-  if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη αφαιρούνται (με ίχνος στο ιστορικό) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
+  if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη ΔΙΑΓΡΑΦΟΝΤΑΙ (με ίχνος audit — όχι Cancelled) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
 
+  // (a) restore the parent's OWN assignment from leg 1's.
   const leg1=legs.find(lr=>lr.splitLegNo===1)||legs[0];
   const leg1o=_ordOf3(leg1);
   const restoreFields={
@@ -3589,13 +3602,28 @@ async function _wiRejoinLegs(rowId){
     if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
   }catch(e){ reportError('Η ένωση απέτυχε — η ανάθεση ΔΕΝ επέστρεψε στον γονέα ('+parentOid+'), τα σκέλη μένουν ως έχουν',e); return; }
 
-  // Round-trip legs first, while the orders still exist for rtFindForOrder.
+  // (b) each leg leaves its round trip BEFORE it is deleted — the round trip
+  // itself is never deleted (financial history), same rule as _wiRotUnlink.
   try{
     for(const lr of legs){
       const oid=lr.orderIds?.[0]||lr.orderId;
       const mate=await rtFindForOrder(oid).catch(()=>({pg:null,rt:null}));
       if(mate.rt&&mate.pg!=null) await _wiRtLegDelete(mate.rt.id,mate.pg).catch(e=>console.warn('[wi rejoin] rt leg delete:',e&&e.message));
     }
+  }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
+
+  // (c) soft-delete the legs.
+  const errors=[];
+  for(const lr of legs){
+    const oid=lr.orderIds?.[0]||lr.orderId;
+    try{ await atDelete(TABLES.ORDERS,oid); }
+    catch(e){ errors.push(oid+': '+e.message); }
+  }
+  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ διαγράφηκε — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+
+  // (d) re-derive the parent's own round trip from its restored vehicle.
+  try{
+    if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
   }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
 
   const errors=[];
