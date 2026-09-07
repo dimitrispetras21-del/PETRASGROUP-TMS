@@ -2602,8 +2602,29 @@ async function handleFacadeUpdate(request, tableId, recId, origin, env, ctx) {
   return jsonOk(record, origin, env);
 }
 __name(handleFacadeUpdate, "handleFacadeUpdate");
+// Scoped DELETE (owner 7/9/2026): a dispatcher may soft-delete an ORDER only
+// when it is a split LEG (parent_order_id set) — «Ένωση ξανά» on the Weekly
+// board removes the two legs and hands the assignment back to the parent.
+// Deleting a customer order stays owner-only («το DELETE μένει στενό», 23/8).
+// The row is read first, so the scope can never widen to any other order.
+const SCOPED_DELETE = { orders: { dispatcher: (row) => row.parent_order_id != null } };
+async function authorizeScopedDelete(request, tableId, recId, origin, env) {
+  const caller = await getCaller(request, env);
+  if (!caller) return { res: jsonError("Unauthorized", 401, origin, env) };
+  const cfg = tableConfig(tableId);
+  if (!cfg) return { res: jsonError("Table not available on this backend", 404, origin, env) };
+  if (can(caller.role, cfg.pg, "DELETE")) return { caller, cfg };
+  const scope = SCOPED_DELETE[cfg.pg] && SCOPED_DELETE[cfg.pg][caller.role];
+  if (scope) {
+    const q = new URLSearchParams({ select: "id,parent_order_id", legacy_id: `eq.${recId}`, limit: "1" });
+    const found = await dbSelectRaw(env, cfg.pg, q);
+    if (found.rows && found.rows.length && scope(found.rows[0])) return { caller, cfg };
+  }
+  return { res: jsonError("Forbidden", 403, origin, env) };
+}
+__name(authorizeScopedDelete, "authorizeScopedDelete");
 async function handleFacadeDelete(request, tableId, recId, origin, env) {
-  const { res, caller, cfg } = await authorizeWrite(request, tableId, "DELETE", origin, env);
+  const { res, caller, cfg } = await authorizeScopedDelete(request, tableId, recId, origin, env);
   if (res) return res;
   let deleted;
   try {

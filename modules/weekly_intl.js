@@ -1347,12 +1347,14 @@ function _wiSplitHeaderCtx(e,rowId){
   // (dispatcher/management get GET+POST+PATCH, no DELETE, worker/src/index.js
   // PERMISSIONS). Disabled here rather than left to fail on click, same as
   // the in-transit block above.
-  const notOwner=typeof ROLE!=='undefined'&&ROLE!=='owner';
+  // Owner 7/9: dispatchers rejoin too — the Worker allows DELETE on a LEG only
+  // (SCOPED_DELETE in worker/src/index.js), never on a customer order.
+  const notOwner=typeof ROLE!=='undefined'&&!['owner','dispatcher'].includes(ROLE);
   let html='';
   html+=blocking
     ?_wiCtxBtnDisabled(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf5(blocking)?.fields?.['Status']})`,'Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε')
     :notOwner
-    ?_wiCtxBtnDisabled('Ένωση ξανά','Μόνο ο owner — η ένωση διαγράφει τα σκέλη')
+    ?_wiCtxBtnDisabled('Ένωση ξανά','Μόνο owner/dispatcher — η ένωση αφαιρεί τα σκέλη')
     :_wiCtxBtn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   html+=_wiCtxBtn('Εκτύπωση όλων',`_wiPrintSplitAll(${rowId})`);
   // Owner 7/9: "if we want to move the split point, what do we do?" — the
@@ -3600,7 +3602,7 @@ async function _wiDoSplit(rowId){
 // second guard for any other caller.
 async function _wiRejoinLegs(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
-  if(typeof ROLE!=='undefined'&&ROLE!=='owner'){ toast('Μόνο ο owner κάνει ένωση ξανά — η ένωση διαγράφει τα σκέλη','warn'); return; }
+  if(typeof ROLE!=='undefined'&&!['owner','dispatcher'].includes(ROLE)){ toast('Μόνο owner/dispatcher κάνουν ένωση ξανά — η ένωση αφαιρεί τα σκέλη','warn'); return; }
   const parentOid=row.orderIds?.[0]||row.orderId;
   const _ordOf3=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
   const legs=(WINTL._splitLegs?.[parentOid]||[]).slice().sort((a,b)=>(a.splitLegNo||0)-(b.splitLegNo||0));
