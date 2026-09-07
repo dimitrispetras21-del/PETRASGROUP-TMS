@@ -1,4 +1,4 @@
--- 016 — Planning week for the Weekly boards (owner 6/9/2026)
+-- 016 — Planning week (EXECUTED 6/9/2026 by the parallel channel; view refreshed in 018) for the Weekly boards (owner 6/9/2026)
 --
 -- «Ένα φορτηγό ξεφόρτωσε Παρασκευή· το κουμπώνω με μια εισαγωγή που φορτώνει
 -- Σάββατο. Δεν θέλω να αλλάζουν οι ημερομηνίες.» The Weekly week runs Sat–Fri,

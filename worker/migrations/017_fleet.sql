@@ -1,3 +1,4 @@
+-- EXECUTED 2026-09-07 10:25 via SQL editor (see 018 for the same-run view refresh and proof).
 begin;
 alter table trucks   add column if not exists tachograph_expiry date;
 alter table trucks   add column if not exists next_maintenance  date;
