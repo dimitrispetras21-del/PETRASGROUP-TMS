@@ -827,8 +827,11 @@ function _renderInvDetail() {
 // invoicing. The caller decides whether the sheets check applies.
 async function _invWriteInvoice(rec, invNumber, invDate) {
   const table = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
+  // No Status write here (owner 23/8/2026, locked): «Invoiced» is a checkbox,
+  // not a lifecycle status — the order keeps its 'Delivered'. Migration 014
+  // adds CHECK (status in Pending/Assigned/In Transit/Delivered/Cancelled);
+  // writing 'Invoiced' would fail every invoice the day it runs (7/9/2026).
   const fields = {
-    'Status': 'Invoiced',
     'Invoiced': true,
     'Invoice Number': invNumber,
     'Invoice Date': invDate,
@@ -926,8 +929,8 @@ async function _invBatchInvoice() {
     try {
       const tbl = rec._type === 'intl' ? TABLES.ORDERS : TABLES.NAT_ORDERS;
       const num = _invNextNumber();
+      // Same payload as _invWriteInvoice — no Status write, see the note there.
       const fields = {
-        'Status': 'Invoiced',
         'Invoiced': true,
         'Invoice Number': num,
         'Invoice Date': today,
