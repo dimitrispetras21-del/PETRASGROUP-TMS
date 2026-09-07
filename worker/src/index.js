@@ -994,6 +994,8 @@ var TABLES = {
     links: {
       Order: { column: "order_id", table: "orders" },
       "National Order": { column: "national_order_id", table: "national_orders" },
+      // The ramp row is made from a load's stop; national_order_id is for real national orders only.
+      "National Load": { column: "national_load_id", table: "national_loads" },
       Truck: { column: "truck_id", table: "trucks" },
       Driver: { column: "driver_id", table: "drivers" }
     }
@@ -1562,6 +1564,10 @@ var TABLES = {
       // Polymorphic parent: exactly one set (CHECK enforced). Both owned single FKs.
       "Source Order": { column: "source_order_id", table: "orders" },
       // Direct/VS
+      // National order as source (spec national-load-source, owner 7/9/2026): a
+      // plain national order could never link to its load before — the FK only
+      // pointed at orders, so a real national order's load was unlinked.
+      "Source National Order": { column: "source_national_order_id", table: "national_orders" },
       "Source Consolidated Load": { column: "source_cons_load_id", table: "consolidated_loads" },
       // Groupage
       Truck: { column: "truck_id", table: "trucks" },
