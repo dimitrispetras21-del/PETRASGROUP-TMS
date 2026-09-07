@@ -393,6 +393,18 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
 }
 
 // Route strip: μεγάλο «Από → Προς» με ημερομηνίες — το πρώτο που διαβάζεται.
+// Flat-column fallback (7/9/2026): a split leg (migration 018) and any older
+// order may have NO ORDER STOPS and NO summaries — the truth is then the order's
+// own Loading Location 1 / last Unloading Location N. Without this the sheet
+// printed «—» for a real place (owner: «τα στοιχεία δεν μεταφέρθηκαν»).
+function flatLoc(f,type,last){
+  if(!f) return null;
+  if(type==='Loading') return resolveLoc(f['Loading Location 1'])||null;
+  for(var i=(last?10:1);last?i>=1:i<=10;last?i--:i++){
+    var v=f['Unloading Location '+i]; if(v&&v.length){ var l=resolveLoc(v); if(l) return l; }
+  }
+  return null;
+}
 function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   var L=LBL||LBL_EN;
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
@@ -408,8 +420,8 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
     var loc=resolveLoc(s.fields['Location']);
     return loc?loc.name:'';
   }
-  var from=(veroiaSwitch&&isExport)?VEROIA:(t(f['Loading Summary'])||stopName('Loading',false)||'—');
-  var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||'—');
+  var from=(veroiaSwitch&&isExport)?VEROIA:(t(f['Loading Summary'])||stopName('Loading',false)||(flatLoc(f,'Loading',false)||{}).name||'—');
+  var to=(veroiaSwitch&&!isExport)?VEROIA:(t(f['Delivery Summary'])||stopName('Unloading',true)||(flatLoc(f,'Unloading',true)||{}).name||'—');
   var ld=f['Loading DateTime']||'', dd=f['Delivery DateTime']||'';
   // One source for the dates (5/9): the stop's own DateTime, exactly as the
   // cards below read it (buildLoadHTML/buildDelHTML: sf['DateTime']||dt). The
@@ -457,8 +469,9 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     }
     if(html)return html;
   }
-  return buildCard(1,{name:'—',address:'',lat:'',lng:''},'loading',dt,
-    fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
+  var flL=flatLoc(f,'Loading',false);
+  return buildCard(1,flL||{name:'—',address:'',lat:'',lng:''},'loading',dt,
+    fv(f['Loading Pallets 1'])||fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
     f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
 }
 
@@ -486,8 +499,9 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
     }
     if(html)return html;
   }
-  return buildCard(1,{name:'—',address:'',lat:'',lng:''},'delivery',dt,
-    fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
+  var flU=flatLoc(f,'Unloading',true);
+  return buildCard(1,flU||{name:'—',address:'',lat:'',lng:''},'delivery',dt,
+    fv(f['Unloading Pallets 1'])||fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
 }
 
 function badges(f){
