@@ -189,6 +189,12 @@ async function rtOnOrderSaved(orderId) {
     // Import με ζεύγος: η άγκυρα είναι το export του — δουλεύουμε σε εκείνο.
     // (Ρότα/ομάδα σκέλη μπαίνουν παρακάτω μέσω rtLegsForOrder, όχι εδώ —
     // η άγκυρα καθορίζει status/assigned/ημερομηνίες, όπως πριν.)
+    // Owner audit fix: keep the ORIGINAL import record too — its OWN Group ID
+    // siblings (import groupage, 'GI-' prefix) live on the import, not on the
+    // export, and gathering only from the redirected export missed them (live
+    // case: two Delivered imports in one GI group, one got a round-trip leg,
+    // the other none). Both starting points are gathered below and unioned.
+    const origImportRec = (f['Direction'] === 'Import') ? rec : null;
     if (f['Direction'] === 'Import') {
       const exp = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Matched Import ID}='${orderId}'` }, true);
       if (exp && exp.length) { orderId = exp[0].id; rec = exp[0]; f = rec.fields; }
@@ -212,7 +218,17 @@ async function rtOnOrderSaved(orderId) {
     // the two-id shape the rest of this function already knows for the
     // create/close paths below; `legPgs`/`pgDir` carry the FULL set for the
     // POST /costs/rt body so a 3+ leg group attaches in one go.
-    const gathered = await _rtGatherOrders(rec);
+    let gathered = await _rtGatherOrders(rec);
+    // Owner audit fix (see origImportRec above): union in the original import's
+    // OWN candidate pool when a redirect happened and it's not already the
+    // anchor — rtLegsForOrder itself already walks Group ID/Matched Import ID/
+    // Rotation ID edges correctly, it just needs every sibling IN the pool.
+    if (origImportRec && origImportRec.id !== rec.id) {
+      const fromImport = await _rtGatherOrders(origImportRec);
+      const byId = {};
+      [...gathered, ...fromImport].forEach(o => { if (o && o.id) byId[o.id] = o; });
+      gathered = Object.values(byId);
+    }
     const legsInfo = rtLegsForOrder(rec, gathered);
     const pgDir = {}; const legPgs = [];
     for (const leg of legsInfo) {
