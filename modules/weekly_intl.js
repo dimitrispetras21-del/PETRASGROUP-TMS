@@ -2889,6 +2889,40 @@ async function _wiSaveFromPopover(rowId){
     reportError('Σφάλμα αποθήκευσης αντιστοίχισης — δοκιμάστε ξανά', errors);
     return;
   }
+  // Owner audit fix: import groupage (_wiImpGroup, Group ID prefix 'GI-') has
+  // no propagation path of its own — unlike the export row.orderIds loop
+  // above, a saved import row's OTHER Group ID members never got this
+  // assignment written to THEIR OWN record, so the screen showed the group as
+  // assigned (via the lead's fields) while a sibling stayed unassigned in
+  // Postgres. Query by Group ID rather than trusting row.orderIds, so a row
+  // that hasn't (yet) collapsed the whole group still reaches every member.
+  if(row.type==='import'){
+    const savedImp=WINTL.data.imports.find(x=>row.orderIds.includes(x.id));
+    const gid=savedImp?.fields?.['Group ID']||'';
+    if(gid.indexOf('GI-')===0){
+      const groupFields={
+        'Truck':fields['Truck'],'Trailer':fields['Trailer'],'Driver':fields['Driver'],
+        'Partner':fields['Partner'],'Is Partner Trip':fields['Is Partner Trip'],
+        'Partner Truck Plates':fields['Partner Truck Plates'],'Status':fields['Status'],
+      };
+      try{
+        const siblings=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${gid}'`},true)||[];
+        const sibErrors=[];
+        for(const sib of siblings){
+          if(row.orderIds.includes(sib.id)) continue; // already written above
+          try{
+            const res=await atSafePatch(TABLES.ORDERS,sib.id,groupFields);
+            if(res?.error) throw new Error(res.error.message||res.error.type);
+            const fresh=await atGetOne(TABLES.ORDERS,sib.id);
+            const wrote=isPartner?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
+              :getLinkedId(fresh?.fields?.['Truck'])===row.truckId;
+            if(!wrote) throw new Error('η ανάγνωση πίσω δεν έδειξε την ανάθεση');
+          }catch(e){ sibErrors.push(sib.id+': '+(e&&e.message||e)); }
+        }
+        if(sibErrors.length) reportError('Η ανάθεση γράφτηκε αλλά ΔΕΝ έφτασε σε όλα τα μέλη του groupage εισαγωγών ('+gid+') — έλεγξε χειροκίνητα: '+sibErrors.join(' · '),sibErrors);
+      }catch(e){ console.warn('[wi popover] GI- group propagate:',e&&e.message); }
+    }
+  }
   _wiClosePopover();
 
   // P&L feed (5/9, N2): assigning Truck/Driver here is exactly what turns an
