@@ -1046,19 +1046,13 @@ function _wiAllRowsHTML(){
   // dispatcher needs to see the true loading/delivery day, not just "this
   // week" (owner: «θα πρέπει να προστεθεί και άλλη ημέρα εβδομάδας»).
   const extraGroups={};
-  // Item 4 (owner 7/9, fix pass): a split frame is positioned by LEG 1's
-  // loading date, not the parent's own Delivery DateTime — after a split
-  // that field still names leg 2's delivery, which can be days after leg 1
-  // actually starts moving and would place the whole frame on the wrong day.
-  const _expBucketDate=row=>{
-    if(row.hasSplitLegs){
-      const legs=WINTL._splitLegs?.[row.orderIds?.[0]]||[];
-      const leg1=legs.find(l=>l.splitLegNo===1)||legs[0];
-      const l1dt=leg1&&_f(leg1)['Loading DateTime'];
-      if(l1dt) return toLocalDate(l1dt);
-    }
-    return toLocalDate(_f(row)['Delivery DateTime']||_f(row)['Loading DateTime']||'');
-  };
+  // Split frame day (7/9): the SAME rule as every other export — the day the
+  // customer's delivery happens (the parent's Delivery DateTime = leg 2's
+  // delivery). The fix-pass implementer had moved the frame to leg 1's loading
+  // day, which put split orders days apart from their siblings and read as a
+  // changed sort («άλλαξε η ταξινόμηση»); the hand-over date stays visible on
+  // the leg-1 row inside the frame, so nothing is lost by keeping one rule.
+  const _expBucketDate=row=>toLocalDate(_f(row)['Delivery DateTime']||_f(row)['Loading DateTime']||'');
   expRows.forEach(row=>{
     const raw=_expBucketDate(row);
     const bucket=row.outOfWindow?extraGroups:groups;
@@ -1301,9 +1295,8 @@ function _wiSplitLegRowHTML(legRow){
 // Item 4 (owner 7/9, fix pass): the whole split renders as ONE framed block —
 // a header strip standing in for the parent (which no longer executes and so
 // no longer gets its own row) plus the two leg rows nested directly under it.
-// Positioned at leg 1's loading day in _wiAllRowsHTML (see _wiExpBucketDate),
-// not the parent's own Delivery DateTime — after a split that field still
-// names leg 2's delivery, days away from where leg 1 actually starts moving.
+// Positioned on the customer's delivery day like every export (see
+// _expBucketDate in _wiAllRowsHTML, owner rule 7/9).
 function _wiSplitFrameHTML(row){
   const pid=row.orderIds?.[0]||row.orderId;
   const o=(row.type==='import'?WINTL.data.imports:WINTL.data.exports).find(x=>x.id===pid);
