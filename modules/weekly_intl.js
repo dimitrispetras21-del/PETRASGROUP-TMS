@@ -1438,22 +1438,29 @@ async function _wiDoHandoverChange(rowId){
     return;
   }
 
-  // ORDER STOPS: stopsSave replaces the WHOLE stop set for an order, so the
-  // untouched stop (leg 1's Loading / leg 2's Unloading) must be re-sent
-  // as-is or stops-helpers.js reads it as "no longer in the form" and
-  // deletes it (stopsSave toDelete logic) — read current stops first so
-  // that half is never touched.
+  // ORDER STOPS: stopsSave replaces the WHOLE stop set for an order, so every
+  // untouched stop (leg 1's Loading side — which may be 2+ points since item
+  // 1 of this pass — / leg 2's Unloading side) must be re-sent as-is or
+  // stops-helpers.js reads it as "no longer in the form" and deletes it
+  // (stopsSave toDelete logic). Re-sending only stop #1 of each type, as this
+  // used to do, silently dropped leg 1's 2nd+ loading / leg 2's 2nd+ delivery
+  // — read ALL current stops first so nothing but the hand-over is touched.
   try{
     const s1=await stopsLoad(leg1o.id,F.STOP_PARENT_ORDER);
-    const load1=s1.find(s=>s.fields[F.STOP_TYPE]==='Loading'&&s.fields[F.STOP_NUMBER]===1);
+    const loads1=s1.filter(s=>s.fields[F.STOP_TYPE]==='Loading')
+      .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
     const unload1=s1.find(s=>s.fields[F.STOP_TYPE]==='Unloading'&&s.fields[F.STOP_NUMBER]===1);
+    const keepLoads1=loads1.length
+      ?loads1.map(s=>({stopNumber:s.fields[F.STOP_NUMBER],stopType:'Loading',locationId:getLinkedId(s.fields[F.STOP_LOCATION]),dateTime:s.fields[F.STOP_DATETIME],pallets:s.fields[F.STOP_PALLETS]}))
+      :[{stopNumber:1,stopType:'Loading',locationId:getLinkedId(leg1o.fields['Loading Location 1']),dateTime:leg1o.fields['Loading DateTime']}];
     await stopsSave(leg1o.id,[
-      {stopNumber:1,stopType:'Loading',locationId:load1?getLinkedId(load1.fields[F.STOP_LOCATION]):getLinkedId(leg1o.fields['Loading Location 1']),dateTime:load1?load1.fields[F.STOP_DATETIME]:leg1o.fields['Loading DateTime'],pallets:load1?.fields?.[F.STOP_PALLETS]},
+      ...keepLoads1,
       {stopNumber:1,stopType:'Unloading',locationId:newLocId,dateTime:newIso,pallets:unload1?.fields?.[F.STOP_PALLETS]},
     ],F.STOP_PARENT_ORDER);
     const back1=await stopsLoad(leg1o.id,F.STOP_PARENT_ORDER);
-    if(!back1.some(s=>s.fields[F.STOP_TYPE]==='Unloading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
-      throw new Error('Η στάση Unloading του σκέλους 1 δεν επιβεβαιώθηκε στην ανάγνωση');
+    const back1Loads=back1.filter(s=>s.fields[F.STOP_TYPE]==='Loading');
+    if(back1Loads.length!==keepLoads1.length||!back1.some(s=>s.fields[F.STOP_TYPE]==='Unloading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
+      throw new Error('Οι στάσεις του σκέλους 1 (φόρτωση×'+keepLoads1.length+' + η νέα παράδοση) δεν επιβεβαιώθηκαν στην ανάγνωση');
   }catch(e){
     _wiPanelSetBusy(false);
     reportError('Τα δύο σκέλη έχουν πια τη νέα τοποθεσία/ώρα στο ORDERS αλλά οι ΣΤΑΣΕΙΣ του σκέλους 1 ('+leg1o.id+') ΔΕΝ επιβεβαιώθηκαν — έλεγξε χειροκίνητα',e);
@@ -1461,15 +1468,20 @@ async function _wiDoHandoverChange(rowId){
   }
   try{
     const s2=await stopsLoad(leg2o.id,F.STOP_PARENT_ORDER);
+    const unloads2=s2.filter(s=>s.fields[F.STOP_TYPE]==='Unloading')
+      .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
     const load2=s2.find(s=>s.fields[F.STOP_TYPE]==='Loading'&&s.fields[F.STOP_NUMBER]===1);
-    const unload2=s2.find(s=>s.fields[F.STOP_TYPE]==='Unloading'&&s.fields[F.STOP_NUMBER]===1);
+    const keepUnloads2=unloads2.length
+      ?unloads2.map(s=>({stopNumber:s.fields[F.STOP_NUMBER],stopType:'Unloading',locationId:getLinkedId(s.fields[F.STOP_LOCATION]),dateTime:s.fields[F.STOP_DATETIME],pallets:s.fields[F.STOP_PALLETS]}))
+      :[{stopNumber:1,stopType:'Unloading',locationId:getLinkedId(leg2o.fields['Unloading Location 1']),dateTime:leg2o.fields['Delivery DateTime']}];
     await stopsSave(leg2o.id,[
       {stopNumber:1,stopType:'Loading',locationId:newLocId,dateTime:newIso,pallets:load2?.fields?.[F.STOP_PALLETS]},
-      {stopNumber:1,stopType:'Unloading',locationId:unload2?getLinkedId(unload2.fields[F.STOP_LOCATION]):getLinkedId(leg2o.fields['Unloading Location 1']),dateTime:unload2?unload2.fields[F.STOP_DATETIME]:leg2o.fields['Delivery DateTime'],pallets:unload2?.fields?.[F.STOP_PALLETS]},
+      ...keepUnloads2,
     ],F.STOP_PARENT_ORDER);
     const back2=await stopsLoad(leg2o.id,F.STOP_PARENT_ORDER);
-    if(!back2.some(s=>s.fields[F.STOP_TYPE]==='Loading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
-      throw new Error('Η στάση Loading του σκέλους 2 δεν επιβεβαιώθηκε στην ανάγνωση');
+    const back2Unloads=back2.filter(s=>s.fields[F.STOP_TYPE]==='Unloading');
+    if(back2Unloads.length!==keepUnloads2.length||!back2.some(s=>s.fields[F.STOP_TYPE]==='Loading'&&getLinkedId(s.fields[F.STOP_LOCATION])===newLocId))
+      throw new Error('Οι στάσεις του σκέλους 2 (η νέα φόρτωση + παράδοση×'+keepUnloads2.length+') δεν επιβεβαιώθηκαν στην ανάγνωση');
   }catch(e){
     _wiPanelSetBusy(false);
     reportError('Το σκέλος 1 ('+leg1o.id+') ολοκληρώθηκε πλήρως αλλά οι ΣΤΑΣΕΙΣ του σκέλους 2 ('+leg2o.id+') ΔΕΝ επιβεβαιώθηκαν — έλεγξε χειροκίνητα',e);
