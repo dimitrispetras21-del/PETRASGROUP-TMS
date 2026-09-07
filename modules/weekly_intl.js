@@ -1297,7 +1297,12 @@ function _wiSplitFrameHTML(row){
   const toName=_wiRaw(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||'—').split(',')[0];
   const pals=_wiParentPalletsTotal(f);
   const ref=f['Reference']?' · '+escapeHtml(String(f['Reference'])):'';
-  const header=`<div class="wi2-splitframe-hd" data-row-id="${row.id}" oncontextmenu="_wiSplitHeaderCtx(event,${row.id})" title="Σπασμένο σε 2 σκέλη — δεξί κλικ: ένωση/εκτύπωση όλων">
+  // Owner 7/9 finding: the parent's own info never gets fixed after a split
+  // because nothing opens ITS form any more (legs open their own). Header
+  // click reuses _wk3Edit — the same openIntlEditWith the orders list's own
+  // «Επεξεργασία» calls — on the parent id, so mistakes made before the split
+  // (wrong goods/pallets/client) stay fixable without a rejoin round-trip.
+  const header=`<div class="wi2-splitframe-hd" data-row-id="${row.id}" onclick="event.stopPropagation();_wk3Edit('${pid}')" oncontextmenu="_wiSplitHeaderCtx(event,${row.id})" title="Σπασμένο σε 2 σκέλη — κλικ: αρχική παραγγελία · δεξί κλικ: ένωση/εκτύπωση όλων">
     <span class="wi2-splitframe-tag">ΣΠΑΣΜΕΝΟ</span>
     <span class="wi2-splitframe-txt">2 σκέλη · ${escapeHtml(client)} · ${escapeHtml(fromName)} → ${escapeHtml(toName)} · ${pals||0} p${ref}</span>
   </div>`;
@@ -3051,6 +3056,10 @@ function _wiCtx(e,rowId){
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},false)`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},false)`);
+  // Owner 7/9: a leg's own menu keeps every normal action AND gains a way
+  // back to the parent's form — the parent no longer has a row of its own
+  // to click on, but its info (goods/pallets/client) still needs fixing.
+  if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
   if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
   // Item 4 (owner 7/9): a split leg's menu is the normal one minus Σπάσιμο
   // (already excluded — _wiSplitCtxItems returns '' for row.splitLegOf) AND
@@ -3747,6 +3756,9 @@ function _wiImpCtx(e,rowId){
   let html='';
   html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},true,'${row.orderId}')`);
   html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
+  // Owner 7/9: same reasoning as the export leg's menu above — reach the
+  // parent's form from here too, since imports can be a split leg as well.
+  if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
   // Item 4 (owner 7/9): same exclusion as the export menu — a split leg keeps
   // everything except Σπάσιμο (already gone via _wiSplitCtxItems) and its
   // grouping equivalent here, "Groupage εισαγωγών".
