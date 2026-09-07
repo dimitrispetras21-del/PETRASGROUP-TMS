@@ -1682,6 +1682,16 @@ function _wk3PickDate(ev,orderId,field,curIso){
       }
       const res=await atSafePatch(TABLES.ORDERS,orderId,{[field]:val});
       if(res?.error) throw new Error(res.error.message||res.error.type);
+      // Same downstream sync as Daily Ops «Αλλαγή ημέρας» (daily_ops.js
+      // _opsChangeDay): a date change on a Veroia Switch order must recompute
+      // its national load (and ramp/RT). Until 7/9 this path patched the order
+      // and stopped — owner: Λάβδας VS import moved to 9/9 on Weekly Intl, the
+      // load stayed on 6/9→7/9 on Weekly National. Fire-and-forget, like there.
+      invalidateCache(TABLES.ORDERS);
+      if (typeof syncOrderDownstream === 'function') {
+        syncOrderDownstream(orderId, { source: 'intl', changedFields: [field], skipPA: true })
+          .catch(e => { if (typeof logError === 'function') logError(e, 'weekly intl: date sync'); });
+      }
       toast('Ημερομηνία ενημερώθηκε ✓');
       renderWeeklyIntl();
     }catch(e){ reportError('Η αλλαγή ημερομηνίας απέτυχε',e); }
