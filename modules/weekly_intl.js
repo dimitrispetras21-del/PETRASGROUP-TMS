@@ -3462,9 +3462,13 @@ async function _wiDoSplit(rowId){
 }
 
 // «Ένωση ξανά» — μόνο όσο ΚΑΝΕΝΑ σκέλος δεν είναι In Transit/Delivered (design
-// doc). Τα σκέλη ΔΕΝ διαγράφονται (Status='Cancelled', audit trail — ίδιος
-// κανόνας με τα GROUPAGE LINES, CLAUDE.md), η ανάθεση του σκέλους 1 επιστρέφει
-// στον γονέα.
+// doc). The legs are SOFT-deleted (Worker DELETE = deleted_at + audit row), not
+// set to Cancelled: a Cancelled leg still counts for migration 018's derived
+// parent status («all legs Cancelled → parent Cancelled»), which cancelled two
+// real customer orders on 7/9 the first time this ran in production. A deleted
+// leg is invisible to that rule and to every GET, so the parent keeps the
+// assignment this function just handed back to it. Only the owner has DELETE on
+// orders (Worker PERMISSIONS) — a dispatcher gets a 403 here, reported as such.
 async function _wiRejoinLegs(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const parentOid=row.orderIds?.[0]||row.orderId;
@@ -3474,7 +3478,7 @@ async function _wiRejoinLegs(rowId){
   if(legs.some(lr=>['In Transit','Delivered'].includes(_ordOf3(lr)?.fields?.['Status']))){
     toast('Δεν γίνεται ένωση — κάποιο σκέλος είναι ήδη σε εκτέλεση ή παραδόθηκε','warn'); return;
   }
-  if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη γίνονται Cancelled (όχι διαγραφή) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
+  if(!(await confirmAction('Ένωση των δύο σκελών ξανά στη γονική παραγγελία; Τα σκέλη αφαιρούνται (με ίχνος στο ιστορικό) και η ανάθεση του σκέλους 1 επιστρέφει στον γονέα.',{title:'Ένωση ξανά',confirmLabel:'Ένωση'}))) return;
 
   const leg1=legs.find(lr=>lr.splitLegNo===1)||legs[0];
   const leg1o=_ordOf3(leg1);
@@ -3489,24 +3493,26 @@ async function _wiRejoinLegs(rowId){
     if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
   }catch(e){ reportError('Η ένωση απέτυχε — η ανάθεση ΔΕΝ επέστρεψε στον γονέα ('+parentOid+'), τα σκέλη μένουν ως έχουν',e); return; }
 
-  const errors=[];
-  for(const lr of legs){
-    const oid=lr.orderIds?.[0]||lr.orderId;
-    try{
-      const res=await atPatch(TABLES.ORDERS,oid,{'Status':'Cancelled'});
-      if(res?.error) throw new Error(res.error.message||res.error.type);
-    }catch(e){ errors.push(oid+': '+e.message); }
-  }
-  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ έγινε Cancelled — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
-
+  // Round-trip legs first, while the orders still exist for rtFindForOrder.
   try{
     for(const lr of legs){
       const oid=lr.orderIds?.[0]||lr.orderId;
       const mate=await rtFindForOrder(oid).catch(()=>({pg:null,rt:null}));
       if(mate.rt&&mate.pg!=null) await _wiRtLegDelete(mate.rt.id,mate.pg).catch(e=>console.warn('[wi rejoin] rt leg delete:',e&&e.message));
     }
-    if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
   }catch(e){ console.warn('[wi rejoin] rt sync:',e&&e.message); }
+
+  const errors=[];
+  for(const lr of legs){
+    const oid=lr.orderIds?.[0]||lr.orderId;
+    try{
+      await atDelete(TABLES.ORDERS,oid);
+    }catch(e){ errors.push(oid+': '+(e&&e.message||e)); }
+  }
+  if(errors.length) reportError('Ο γονέας πήρε πίσω την ανάθεση, αλλά κάποιο σκέλος ΔΕΝ αφαιρέθηκε — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+
+  if(typeof rtOnOrderSaved==='function') await rtOnOrderSaved(parentOid).catch(e=>console.warn('[wi rejoin] rt parent:',e&&e.message));
+  invalidateCache(TABLES.ORDERS);
 
   toast(errors.length?'Ένωση με σφάλματα — δες το μήνυμα':'Ένωση ξανά ✓');
   await renderWeeklyIntl();
