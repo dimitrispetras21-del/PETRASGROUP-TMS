@@ -204,10 +204,15 @@ const _ON_CSS = `
 .on-row-date{color:var(--text-mid);font-variant-numeric:tabular-nums;white-space:nowrap;min-width:40px}
 .on-link{background:none;border:none;padding:0;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--accent-text)}
 .on-link:hover{text-decoration:underline}
-.on-acts{display:flex;gap:16px;font-size:13px}
-.on-act{background:none;border:none;padding:0;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text-mid)}
-.on-act:hover{color:var(--text);text-decoration:underline}
-.on-act.danger{color:var(--danger)}
+.on-acts{display:flex;gap:10px;font-size:13px;flex-wrap:wrap}
+/* Owner 7/9/2026: «δεν υπάρχει κουμπί επεξεργασίας» — the actions were grey text
+   links under «Ενέργειες» at the bottom of the card, invisible without scrolling.
+   Real buttons here + a header «Επεξεργασία» next to the × (on-head-edit). */
+.on-act{background:var(--surface-card);border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;color:var(--text)}
+.on-act:hover{border-color:var(--accent);color:var(--accent)}
+.on-act.danger{color:var(--danger)} .on-act.danger:hover{border-color:var(--danger)}
+.on-head-edit{margin-left:auto;margin-right:8px;background:var(--accent);color:#fff;border:none;border-radius:6px;padding:6px 12px;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer}
+.on-head-edit:hover{background:var(--accent-hover,#0369A1)}
 .on-notes{font-size:13px;color:var(--text-mid);line-height:1.5;white-space:pre-wrap;word-break:break-word}
 .on-foot{padding:8px 16px;color:var(--text-mid);font-size:12px;text-align:center;font-variant-numeric:tabular-nums}
 </style>`;
@@ -688,6 +693,7 @@ function selectNatlOrder(recId) {
     <div class="on-card-head">
       <div class="on-card-title-row">
         <div class="on-card-title">${escapeHtml(name)}${client ? ' · ' + escapeHtml(client) : ''}</div>
+        ${canEdit ? `<button type="button" class="on-head-edit" onclick="openNatlEdit('${recId}')">Επεξεργασία</button>` : ''}
         <button type="button" class="on-card-x" title="Κλείσιμο (Esc)" onclick="closeNatlDetail()">×</button>
       </div>
       ${subParts.length ? `<div class="on-card-sub">${escapeHtml(subParts.join(' · '))}</div>` : ''}
