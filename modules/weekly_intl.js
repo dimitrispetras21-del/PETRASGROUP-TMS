@@ -4211,7 +4211,18 @@ async function _wiSplit(rowId){
     });
   });
   _wiPaint();toast('Η ομάδα διαλύθηκε');
-  await _wiGroupPatch(allIds, '', row.id); // clear Group ID on all members
+  const gidOk=await _wiGroupPatch(allIds, '', row.id); // clear Group ID on all members
+  // Owner audit fix: _wiGroupPatch already reports+toasts a partial failure,
+  // but the old code went on to clear members' assignments regardless — if
+  // the Group ID clear didn't actually land in the DB, a refresh re-collapses
+  // the group (its rows still share a Group ID) while the members' own
+  // Truck/Trailer/Driver were already stripped, i.e. the group's vehicle
+  // vanishes from under it. Stop here instead of touching any member.
+  if(!gidOk){
+    reportError('Η ομάδα ΔΕΝ διαλύθηκε στη βάση (Group ID δεν καθαρίστηκε) — καμία ανάθεση δεν αδειάστηκε',null);
+    await renderWeeklyIntl();
+    return;
+  }
   // Keep the FIRST member as it is (design doc: the first member keeps the
   // group's own assignment/round trip) — only the members split OUT get their
   // own assignment/RT cleared in the database.
