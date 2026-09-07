@@ -195,6 +195,12 @@ async function rtOnOrderSaved(orderId) {
     }
     const status = f['Status'] || '';
     const partnerTrip = !!f['Is Partner Trip'];
+    // Owner 7/9: a PARTNER leg of a split never gets a round trip of its own —
+    // one trip per split, the one of our truck on the sibling leg; the partner's
+    // rate reaches that trip's P&L as a planned cost derived from the partner
+    // assignment (migration 021, ct_v_rt_costs.partner_planned). Creating a
+    // PARTNER trip here would double it and split the customer's revenue.
+    if (partnerTrip && getLinkedId(f['Parent Order'])) return;
     const assigned = !!(getLinkedId(f['Truck']) || (partnerTrip && getLinkedId(f['Partner'])));
     const importRec = f['Matched Import ID'] || null;
     const pgX = await _rtPg(orderId);
