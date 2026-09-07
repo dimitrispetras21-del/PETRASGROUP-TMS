@@ -3059,9 +3059,45 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
 .wi-ci-e { font-size:10px; color:var(--text-dim); font-style:italic; letter-spacing:0.2px; }
 .wi-ci-save { font-size:9px; color:var(--success); margin-top:1px; }
 
-/* PANEL */
-.wi-panel { border-top:1px solid var(--border); background:var(--bg);
-  padding:10px 14px 12px 13px; display:flex; flex-direction:column; gap:10px; }
+/* PANEL — small anchored panel (owner 7/9): replaces the inline candidate
+   lists the context menus used to grow AND the plain modal a few actions
+   (split, local move) used to pop over the whole screen. One instance
+   (#wi-panel), positioned next to the row like the assign popover
+   (#wi-popover, shared shell above) — same shadow/border/radius language,
+   different width (a form, not a wide field grid). This selector used to be
+   an inline "border-top" bar with no caller anywhere in the JS (dead —
+   CLAUDE.md rule 8: «ή ζωντανεύει, ή φεύγει»); repurposed here instead of
+   left to rot, .wi-panel-fields/.wi-pf kept as-is since they already fit a
+   stacked-field form. */
+.wi-panel { display:none; position:fixed; z-index:var(--z-top); width:360px;
+  background:var(--surface-card); border:1px solid var(--border);
+  border-radius:var(--radius-md);
+  box-shadow:0 8px 32px rgba(0,0,0,0.18),0 2px 8px rgba(0,0,0,0.1);
+  max-height:min(480px,calc(100vh - 20px)); overflow-y:auto;
+  transition:opacity var(--duration-fast) var(--ease-out); }
+@media (prefers-reduced-motion:reduce) { .wi-panel { transition:none; } }
+.wi-panel-hd { display:flex; align-items:center; gap:8px; padding:12px 14px 8px;
+  border-bottom:1px solid var(--border); }
+.wi-panel-title { font-family:'Syne',sans-serif; font-size:14px; font-weight:700; color:var(--text); flex:1; min-width:0; }
+.wi-panel-x { background:none; border:none; cursor:pointer; color:var(--text-dim);
+  font-size:13px; line-height:1; padding:2px 4px; border-radius:var(--radius-sm); }
+.wi-panel-x:hover { color:var(--text); background:var(--surface-sunken); }
+.wi-panel-ctx { padding:8px 14px 0; font-size:11px; color:var(--text-mid); font-variant-numeric:tabular-nums; }
+.wi-panel-body { padding:10px 14px; display:flex; flex-direction:column; gap:8px; }
+.wi-panel-ft { display:flex; align-items:center; gap:8px; justify-content:flex-end;
+  padding:10px 14px; border-top:1px solid var(--border); }
+.wi-panel-list { display:flex; flex-direction:column; gap:2px; max-height:220px; overflow-y:auto; }
+.wi-panel-opt { display:flex; align-items:center; gap:8px; padding:6px 8px;
+  font-size:12px; color:var(--text); border-radius:var(--radius-sm); cursor:pointer; }
+.wi-panel-opt:hover { background:var(--surface-sunken); }
+.wi-panel-empty { padding:10px 4px; font-size:12px; color:var(--text-dim); }
+.wi-panel-sum { font-size:11px; font-weight:700; color:var(--text-mid); font-variant-numeric:tabular-nums; }
+.wi-panel-sum.over { color:var(--danger); }
+.wi-panel-note { font-size:11px; color:var(--text-mid); }
+.wi-panel-note.dim { color:var(--text-dim); }
+.wi-panel-warn { font-size:13px; color:var(--text); line-height:1.5; }
+.wi-panel-choices { display:flex; gap:8px; }
+.wi-panel-choices .btn { flex:1; }
 .wi-panel-fields { display:flex; flex-wrap:wrap; gap:6px; align-items:flex-end; }
 .wi-pf { display:flex; flex-direction:column; gap:3px; }
 .wi-plbl { font-size:9px; font-weight:700; letter-spacing:1px;
@@ -3217,6 +3253,12 @@ button.ecard-meta-row-btn, .ecard-meta-row button.badge {
   cursor:pointer; color:var(--text); background:none; border:none; transition:background .07s; }
 .wi-ctx-i:hover { background:var(--bg-hover); }
 .wi-ctx-i.d { color:var(--danger); }
+/* K7 (owner 7/9): an empty candidate list is now a disabled item with a
+   reason in its title, not a silently absent menu entry. Keyboard nav
+   (_wiCtxKeydown) skips these, so a visible focus ring never lands here. */
+.wi-ctx-i.dis { color:var(--text-dim); cursor:default; }
+.wi-ctx-i.dis:hover { background:none; }
+.wi-ctx-i:focus-visible { background:var(--bg-hover); outline:2px solid var(--accent); outline-offset:-2px; }
 .wi-ctx-sep { height:1px; background:var(--border); margin:4px 0; }
 .wi-ctx-h { padding:4px 14px 2px; font-size:9px; font-weight:700;
   letter-spacing:1px; text-transform:uppercase; color:var(--text-dim); }

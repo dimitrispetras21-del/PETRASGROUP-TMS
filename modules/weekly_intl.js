@@ -964,6 +964,7 @@ function _wiPaint(){
     </div>
     <div id="wi-ctx"></div>
     <div id="wi-popover"></div>
+    <div id="wi-panel" class="wi-panel"></div>
     </div><!-- /block wrapper -->
   `;
   window._wiDragging=null;
@@ -1204,8 +1205,8 @@ function _wiLegRowHTML(legRow){
   // διαδρομής (3/4), σκέλος εισαγωγής στη στήλη εισαγωγών (5/6).
   const legCell=`<div class="wk3-leg" style="grid-column:${dir==='import'?'5/6':'3/4'};cursor:pointer" onclick="event.stopPropagation();_wk3Edit('${o.id}')">${cards}</div>`;
   const unlink=`<div class="wk3-assign"><button class="wi2-unlink" title="Ακύρωση προώθησης — αποσύνδεση σκέλους από τη ρότα" onclick="_wiRotUnlink(event,'${o.id}')">⨯ αποσύνδεση</button></div>`;
-  return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: αποσύνδεση"
-      oncontextmenu="_wiRotUnlink(event,'${o.id}')">
+  return `<div class="wk3-row wk3-legrow" data-row-id="${legRow.id}" title="Σκέλος ρότας (άλλος πελάτης) — κλικ: φόρμα · δεξί κλικ: μενού"
+      oncontextmenu="_wiLegCtx(event,'${o.id}')">
     <div class="wk3-num" style="color: var(--accent-text);font-weight:800">⤷</div>
     <div class="wk3-feed l"></div>
     ${dir==='import'?`<div class="wk3-leg" style="grid-column:3/4"></div>${unlink}${legCell}`:`${legCell}${unlink}<div class="wk3-leg imp"></div>`}
@@ -2678,6 +2679,247 @@ function _wiRowPals(row){
     return s+(+(o?.fields['Total Pallets']||0));
   },0);
 }
+/* ── FLAT MENU + SMALL ANCHORED PANEL (owner 7/9) ─────────────────────────
+   Redesign: the right-click menus used to mix ACTIONS with inline CANDIDATE
+   LISTS (a header line + N buttons stuffed into the menu itself — «Ομαδοποίηση»,
+   «⤷ Σκέλος προώθησης», «Μεταφορά εβδομάδας» all worked this way). Owner
+   7/9: right-click shows ONE flat list of actions; picking one that needs
+   more input opens a single small panel next to the row (#wi-panel) instead
+   of growing the menu. The panel reuses the assign popover's positioning/
+   escape/outside-click plumbing (_wiOpenPopover/_wiPopoverOutside) so the two
+   anchored surfaces in this screen behave identically to the user. Every
+   handler underneath (_wiMerge, _wiRotAdd, _wiDoSplit, _wiSaveLocal,
+   _wiImpShift…) is unchanged — only how the user reaches it moved. */
+function _wiCtxBtn(label,fnStr,danger){
+  return `<button class="wi-ctx-i${danger?' d':''}" onclick="${fnStr};_wiCtxClose()">${label}</button>`;
+}
+function _wiCtxBtnDisabled(label,title){
+  return `<button class="wi-ctx-i dis" disabled title="${escapeHtml(title||'')}">${label}</button>`;
+}
+function _wiCtxClose(){
+  const el=document.getElementById('wi-ctx');
+  if(!el) return;
+  const wasOpen=el.style.display==='block';
+  el.style.display='none';
+  const rf=el._returnFocus; el._returnFocus=null;
+  // Escape/outside-click AND a normal action click both funnel through here —
+  // for an action that opens the panel next, the panel's own focus (set on
+  // its own next frame) simply wins a moment later. Harmless either way.
+  // tabindex="-1": see the identical note in _wiPanelClose below — a plain
+  // row <div> has none, and .focus() is a silent no-op without it.
+  if(wasOpen&&rf){ try{ if(!rf.hasAttribute('tabindex')) rf.setAttribute('tabindex','-1'); rf.focus(); }catch(_){} }
+}
+// ↑↓ moves focus among enabled items, Enter activates the focused <button>
+// natively, Escape closes. One listener for the module (checks display
+// itself) rather than add/remove per open — the menu opens/closes often.
+function _wiCtxKeydown(e){
+  const ctx=document.getElementById('wi-ctx');
+  if(!ctx||ctx.style.display!=='block') return;
+  if(e.key==='Escape'){ e.preventDefault(); _wiCtxClose(); return; }
+  if(e.key!=='ArrowDown'&&e.key!=='ArrowUp') return;
+  const items=[...ctx.querySelectorAll('.wi-ctx-i:not([disabled])')];
+  if(!items.length) return;
+  e.preventDefault();
+  const i=items.indexOf(document.activeElement);
+  const next=e.key==='ArrowDown'?(i+1+items.length)%items.length:(i-1+items.length)%items.length;
+  items[next].focus();
+}
+document.addEventListener('keydown',_wiCtxKeydown);
+
+// Row DOM lookup shared by every panel opener — every row wrapper (export,
+// import, rotation-leg) carries data-row-id (see _wiRowHTML/_wiImpRowHTML/
+// _wiLegRowHTML), so one selector anchors all of them without threading the
+// clicked element through each menu handler.
+function _wiAnchorFor(rowId){ return document.querySelector(`[data-row-id="${rowId}"]`); }
+function _wiAnchorForOrder(orderId){
+  const row=WINTL.rows.find(r=>(r.orderIds&&r.orderIds.includes(orderId))||r.orderId===orderId);
+  return row?_wiAnchorFor(row.id):null;
+}
+// «Route · dates» caption shown under the panel title (owner 7/9 brief) —
+// the row's own first leg, not the full multi-stop breakdown the board
+// itself shows; the panel only needs to remind, not re-render, the row.
+function _wiPanelCtxLine(row){
+  const isImp=row.type==='import';
+  const o=isImp?WINTL.data.imports.find(r=>r.id===row.orderId)
+    :WINTL.data.exports.find(r=>r.id===row.orderIds?.[0]);
+  if(!o) return '';
+  const f=o.fields||{};
+  const ld=f['Loading DateTime']?_wk3D(_wiFmt(f['Loading DateTime'])):'—';
+  const dd=f['Delivery DateTime']?_wk3D(_wiFmt(f['Delivery DateTime'])):'—';
+  return `${ld} ${_wiClean(f['Loading Summary']||f['Client Name']||'—')} → ${dd} ${_wiClean(f['Delivery Summary']||'—')}`;
+}
+
+function _wiPanelOpen(anchorEl,title,ctxLine,bodyHtml,footerHtml){
+  const panel=document.getElementById('wi-panel');
+  if(!panel) return;
+  panel._returnFocus=anchorEl||document.activeElement;
+  panel.innerHTML=`
+    <div class="wi-panel-hd">
+      <div class="wi-panel-title">${title}</div>
+      <button class="wi-panel-x" onclick="_wiPanelClose()" title="Κλείσιμο" aria-label="Κλείσιμο">✕</button>
+    </div>
+    ${ctxLine?`<div class="wi-panel-ctx">${ctxLine}</div>`:''}
+    <div class="wi-panel-body">${bodyHtml}</div>
+    ${footerHtml?`<div class="wi-panel-ft">${footerHtml}</div>`:''}`;
+  const rect=(anchorEl&&anchorEl.getBoundingClientRect)?anchorEl.getBoundingClientRect():null;
+  const w=360;
+  let left=rect?rect.left:(window.innerWidth-w)/2;
+  if(left+w>window.innerWidth-12) left=window.innerWidth-w-12;
+  if(left<10) left=10;
+  let top=rect?rect.bottom+6:(window.innerHeight-300)/2;
+  Object.assign(panel.style,{width:w+'px',left:`${left}px`,top:`${Math.max(10,top)}px`,display:'block'});
+  document.addEventListener('keydown',_wiPanelKeydown);
+  setTimeout(()=>document.addEventListener('click',_wiPanelOutside,{capture:true}),10);
+  requestAnimationFrame(()=>{
+    // Flip above the anchor if the panel (now laid out) would overflow the
+    // bottom — its height varies per action, so this can only run after render.
+    const h=panel.offsetHeight;
+    if(rect&&top+h>window.innerHeight-12) panel.style.top=`${Math.max(10,rect.top-h-6)}px`;
+    const f=panel.querySelector('input,select,textarea,button,[tabindex]:not([tabindex="-1"])');
+    if(f) f.focus();
+  });
+}
+function _wiPanelClose(){
+  const panel=document.getElementById('wi-panel');
+  if(!panel||panel.style.display!=='block') return;
+  panel.style.display='none';
+  panel.innerHTML='';
+  document.removeEventListener('click',_wiPanelOutside,{capture:true});
+  document.removeEventListener('keydown',_wiPanelKeydown);
+  const rf=panel._returnFocus; panel._returnFocus=null;
+  // The anchor is usually a plain row <div> (see _wiAnchorFor) with no
+  // tabindex — .focus() on it is a silent no-op in every browser without
+  // one. tabindex="-1" makes it script-focusable without adding it to Tab
+  // order or leaving a hover/click focus ring behind (owner brief: focus
+  // must actually return to the row, not just visually appear to).
+  if(rf){ try{ if(!rf.hasAttribute('tabindex')) rf.setAttribute('tabindex','-1'); rf.focus(); }catch(_){} }
+}
+function _wiPanelOutside(e){
+  const panel=document.getElementById('wi-panel');
+  if(panel&&panel.style.display==='block'&&!panel.contains(e.target)) _wiPanelClose();
+}
+function _wiPanelKeydown(e){
+  if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); _wiPanelClose(); }
+}
+// Modal's busy-disable (modalSetBusy) equivalent for the panel footer — used
+// by _wiDoSplit, which used to run inside a modal.
+function _wiPanelSetBusy(busy){
+  const ft=document.querySelector('#wi-panel .wi-panel-ft');
+  if(!ft) return;
+  ft.querySelectorAll('button').forEach(b=>{
+    if(busy){ if(!b.disabled){ b.disabled=true; b.dataset.busyLock='1'; } }
+    else if(b.dataset.busyLock){ b.disabled=false; delete b.dataset.busyLock; }
+  });
+}
+
+// Ρότα: search + radio-select over the SAME candidate list _wiCtx/_wiImpCtx
+// used to dump straight into the menu (_wiRotCands, unchanged) — confirm
+// hands off to the existing _wiRotAdd, unchanged.
+function _wiPanelRota(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const cands=_wiRotCands(row);
+  const body=cands.length
+    ? `<input class="form-input" id="wiRotaSearch" placeholder="Αναζήτηση…" oninput="_wiPanelRotaFilter(this.value)" style="margin-bottom:8px">
+       <div class="wi-panel-list" id="wiRotaList">${cands.map((c,i)=>`
+        <label class="wi-panel-opt" data-txt="${escapeHtml(c.lbl.toLowerCase())}">
+          <input type="radio" name="wiRotaPick" value="${c.oid}" ${i===0?'checked':''}>
+          <span>${c.lbl}</span>
+        </label>`).join('')}</div>`
+    : `<div class="wi-panel-empty">Κανένα διαθέσιμο φορτίο μετά την παράδοση</div>`;
+  const footer=cands.length
+    ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
+       <button class="btn btn-primary" onclick="_wiPanelRotaGo(${rowId})">Σύνδεση</button>`
+    : `<button class="btn btn-ghost" onclick="_wiPanelClose()">Κλείσιμο</button>`;
+  _wiPanelOpen(_wiAnchorFor(rowId),'⤷ Σκέλος προώθησης (ρότα)',_wiPanelCtxLine(row),body,footer);
+}
+function _wiPanelRotaFilter(q){
+  q=(q||'').toLowerCase();
+  document.querySelectorAll('#wiRotaList .wi-panel-opt').forEach(el=>{
+    el.style.display=(el.dataset.txt||'').includes(q)?'':'none';
+  });
+}
+function _wiPanelRotaGo(rowId){
+  const sel=document.querySelector('input[name="wiRotaPick"]:checked');
+  if(!sel){ toast('Επίλεξε ένα φορτίο','warn'); return; }
+  const legOid=sel.value;
+  _wiPanelClose();
+  _wiRotAdd(rowId,legOid);
+}
+
+// Ομαδοποίηση (exports) / Groupage εισαγωγών (imports): same candidate
+// computation _wiCtx/_wiImpCtx used to list inline (≤33 pallets total),
+// checkbox multi-select with a live running sum against that cap. Confirm
+// applies the SAME per-pair merge (_wiMerge/_wiImpGroup) once per checked
+// box — sequential, exactly like repeating the old single-candidate menu
+// click by hand; no new write path (αρχή 3 — «δύο πηγές αλήθειας»).
+function _wiPanelGroupBuild(rowId,isImp){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const myPals=_wiRowPals(row);
+  const others=isImp
+    ? WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo&&(myPals+_wiRowPals(r))<=33)
+    : WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'&&(myPals+_wiRowPals(r))<=33);
+  const cand=others.slice(0,6).map(o=>{
+    let lbl;
+    if(isImp){
+      const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
+      lbl=_wiCut(_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0],28);
+    }else{
+      const exp=WINTL.data.exports.find(r=>r.id===o.orderIds[0]);
+      lbl=_wiCut(_wiClean(exp?.fields['Delivery Summary']||`Γραμμή ${o.id}`),28);
+    }
+    return {id:o.id,lbl,pals:_wiRowPals(o)};
+  });
+  const body=cand.length
+    ? `<div class="wi-panel-list" id="wiGrpList">${cand.map(c=>`
+        <label class="wi-panel-opt">
+          <input type="checkbox" class="wiGrpPick" value="${c.id}" data-pals="${c.pals}" onchange="_wiPanelGroupSum(${myPals})">
+          <span>${c.lbl} (${c.pals}p)</span>
+        </label>`).join('')}</div>
+       <div class="wi-panel-sum" id="wiGrpSum">${myPals}p / 33p</div>`
+    : `<div class="wi-panel-empty">Καμία συμβατή ${isImp?'εισαγωγή':'εξαγωγή'} — όριο 33 παλέτες (τώρα ${myPals}p)</div>`;
+  const footer=cand.length
+    ? `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
+       <button class="btn btn-primary" onclick="_wiPanelGroupGo(${rowId},${isImp?'true':'false'})">Ομαδοποίηση</button>`
+    : `<button class="btn btn-ghost" onclick="_wiPanelClose()">Κλείσιμο</button>`;
+  _wiPanelOpen(_wiAnchorFor(rowId),isImp?'Groupage εισαγωγών':'Ομαδοποίηση',_wiPanelCtxLine(row),body,footer);
+}
+function _wiPanelGroupSum(base){
+  const boxes=[...document.querySelectorAll('.wiGrpPick')];
+  let sum=base;
+  boxes.forEach(b=>{ if(b.checked) sum+=+b.dataset.pals||0; });
+  boxes.forEach(b=>{ if(!b.checked) b.disabled=(sum+(+b.dataset.pals||0))>33; });
+  const el=document.getElementById('wiGrpSum');
+  if(el){ el.textContent=`${sum}p / 33p`; el.classList.toggle('over',sum>33); }
+}
+async function _wiPanelGroupGo(rowId,isImp){
+  const ids=[...document.querySelectorAll('.wiGrpPick:checked')].map(b=>+b.value);
+  if(!ids.length){ toast('Επίλεξε τουλάχιστον ένα φορτίο','warn'); return; }
+  _wiPanelClose();
+  for(const oid of ids){ await (isImp?_wiImpGroup(rowId,oid):_wiMerge(rowId,oid)); }
+}
+
+// Ανάθεση: the menu item just opens the EXISTING assign popover (own
+// positioning/escape already built, owner brief — left untouched) anchored
+// to the row instead of the click point that opened the context menu.
+function _wiPanelAssign(rowId,isImp,impId){
+  const anchorEl=_wiAnchorFor(rowId)||document.body;
+  const fakeEvent={currentTarget:anchorEl,stopPropagation(){}};
+  if(isImp) _wiOpenImpPopover(fakeEvent,impId,rowId);
+  else _wiOpenPopover(fakeEvent,rowId);
+}
+// Εκτύπωση: same group/single, export/import branching the per-row ⎙ icons
+// already used — just reachable from the menu too now.
+function _wiMenuPrint(rowId,isImp){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  if(isImp){
+    if(row.orderIds.length>1) _wiPrintImpGroup(rowId);
+    else _wiPrintImp(row.orderId,!!row.partnerId);
+  }else{
+    if(row.orderIds.length>1) _wiPrintGroup(rowId);
+    else _wiPrint(rowId,'export');
+  }
+}
+
 function _wiCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
@@ -2685,42 +2927,34 @@ function _wiCtx(e,rowId){
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.id!==rowId&&!r.saved&&r.type==='export'
     &&(myPals+_wiRowPals(r))<=33);
-  const btn=(l,fn,d=false)=>
-    `<button class="wi-ctx-i${d?' d':''}" onclick="${fn};_wiCtxClose()">${l}</button>`;
   let html='';
-  if(others.length){
-    html+=`<div class="wi-ctx-h">Groupage · χωράνε ≤33 παλ (τώρα ${myPals}p)</div>`;
-    others.slice(0,6).forEach(o=>{
-      const exp=WINTL.data.exports.find(r=>r.id===o.orderIds[0]);
-      const lbl=_wiCut(_wiClean(exp?.fields['Delivery Summary']||`Γραμμή ${o.id}`),24);
-      const op=_wiRowPals(o);
-      html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiMerge(${rowId},${o.id})`);
-    });
-    html+=`<div class="wi-ctx-sep"></div>`;
-  }else if(row.type==='export'&&!row.saved){
-    html+=`<div class="wi-ctx-h">Groupage — καμία συμβατή (όριο 33 παλ, τώρα ${myPals}p)</div>`;
-  }
-  const rc=_wiRotCands(row);
-  if(rc.length){
-    html+=`<div class="wi-ctx-h">⤷ Σκέλος προώθησης (ρότα)</div>`;
-    rc.forEach(c2=>{ html+=btn(`⤷ ${c2.lbl}`,`_wiRotAdd(${rowId},'${c2.oid}')`); });
-    html+=`<div class="wi-ctx-sep"></div>`;
-  }
-  if(isGroup) html+=btn('Διάλυση groupage',`_wiSplit(${rowId})`);
-  if(row.importId) html+=btn('Αφαίρεση ταιριάσματος εισαγωγής',`_wiRemoveImport(${rowId})`);
-  if(row.saved) html+=btn('Καθαρισμός ανάθεσης',`_wiClear(${rowId})`,true);
+  html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},false)`);
+  html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},false)`);
+  if(row.importId) html+=_wiCtxBtn('Αφαίρεση ταιριάσματος',`_wiRemoveImport(${rowId})`);
+  html+=others.length
+    ? _wiCtxBtn('Ομαδοποίηση…',`_wiPanelGroupBuild(${rowId},false)`)
+    : _wiCtxBtnDisabled('Ομαδοποίηση…',`Καμία συμβατή εξαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+  html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
+  html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
   // Wave 2 (owner 6/9): local movement around Βέροια tied to this order —
   // no cost, no invoice, no round-trip need (unlike the rota leg above).
-  if(row.orderIds?.[0]) html+=btn('Τοπική κίνηση (Βέροια)',`_wiAddLocal('${row.orderIds[0]}')`);
-  html+=_wiSplitCtxItems(row,rowId,btn);
+  if(row.orderIds?.[0]) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderIds[0]}')`);
+  const destr=[];
+  // Owner brief (7/9): grouped visually with the other destructive item below
+  // — «Διάλυση groupage» never wrote different data, it just wasn't styled
+  // as danger before (no third `true` arg to the old inline btn()).
+  if(isGroup) destr.push(_wiCtxBtn('Διάλυση groupage',`_wiSplit(${rowId})`,true));
+  if(row.saved) destr.push(_wiCtxBtn('Καθαρισμός ανάθεσης',`_wiClear(${rowId})`,true));
+  if(destr.length) html+='<div class="wi-ctx-sep"></div>'+destr.join('');
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
   Object.assign(ctx.style,{display:'block',
     left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
     top:`${Math.min(e.clientY,window.innerHeight-260)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
-function _wiCtxClose(){const el=document.getElementById('wi-ctx');if(el) el.style.display='none';}
 
 // Σπάσιμο σκέλους (owner 6/9, FEATURES.ORDER_SPLIT): shared by _wiCtx (export
 // rows) and _wiImpCtx (import rows) — one row can offer «Σπάσιμο σκέλους»
@@ -2731,7 +2965,10 @@ function _wiSplitCtxItems(row,rowId,btn){
   if(typeof FEATURES==='undefined'||!FEATURES.ORDER_SPLIT) return '';
   if(row.orderIds&&row.orderIds.length>1) return ''; // groupage: not offered
   if(row.legOf||row.splitLegOf) return ''; // a leg is never split/rejoined itself
-  let html='<div class="wi-ctx-sep"></div>';
+  // No leading separator (owner 7/9): the flat menu draws ONE separator, right
+  // before the destructive group at the bottom — this item sits inline with
+  // the rest, in the canonical order the redesign brief gives.
+  let html='';
   if(row.hasSplitLegs){
     const legs=WINTL._splitLegs?.[row.orderIds?.[0]||row.orderId]||[];
     const _ordOf2=lr=>WINTL.data.exports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId))||WINTL.data.imports.find(x=>x.id===(lr.orderIds?.[0]||lr.orderId));
@@ -2739,12 +2976,15 @@ function _wiSplitCtxItems(row,rowId,btn){
     if(blocking) html+=btn(`Ένωση ξανά — μπλοκαρισμένη (σκέλος ${blocking.splitLegNo||'?'} ${_ordOf2(blocking)?.fields?.['Status']})`,`toast('Δεν γίνεται ένωση — σκέλος ήδη σε εκτέλεση/παραδόθηκε','warn')`);
     else html+=btn('Ένωση ξανά',`_wiRejoinLegs(${rowId})`);
   } else {
-    html+=btn('Σπάσιμο σκέλους',`_wiOpenSplitModal(${rowId})`);
+    html+=btn('Σπάσιμο σκέλους…',`_wiPanelSplit(${rowId})`);
   }
   return html;
 }
 
-async function _wiOpenSplitModal(rowId){
+// Same fields the old modal opened (fhLocSelect/datetime/mode + own-partner
+// sub-selects) — now in the small panel. _wiSplitModeChange below still
+// toggles #wiSplitOwn/#wiSplitPartner by id, unaffected by the container.
+async function _wiPanelSplit(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
   const parentOid=row.orderIds?.[0]||row.orderId;
   const parentRec=(row.type==='export'?WINTL.data.exports:WINTL.data.imports).find(o=>o.id===parentOid);
@@ -2752,33 +2992,33 @@ async function _wiOpenSplitModal(rowId){
   await fhLoadLocations();
   const opt=arr=>arr.map(x=>`<option value="${x.id}">${escapeHtml(x.label)}</option>`).join('');
   const body=`
-    <div class="form-group">
-      <label class="form-label">Σημείο παράδοσης-παραλαβής *</label>
+    <div class="wi-pf" style="width:100%">
+      <span class="wi-plbl">Σημείο παράδοσης-παραλαβής *</span>
       ${fhLocSelect('wiSplitLoc','')}
     </div>
-    <div class="form-group" style="margin-top:12px">
-      <label class="form-label">Ημερομηνία/ώρα παράδοσης εκεί *</label>
+    <div class="wi-pf" style="width:100%;margin-top:10px">
+      <span class="wi-plbl">Ημερομηνία/ώρα παράδοσης εκεί *</span>
       <input type="datetime-local" class="form-input" id="wiSplitDt">
     </div>
-    <div class="form-group" style="margin-top:12px">
-      <label class="form-label">Ποιος εκτελεί το σκέλος 2 (προαιρετικό — κενό = ΠΡΟΣ ΑΝΑΘΕΣΗ)</label>
+    <div class="wi-pf" style="width:100%;margin-top:10px">
+      <span class="wi-plbl">Ποιος εκτελεί το σκέλος 2 (κενό = ΠΡΟΣ ΑΝΑΘΕΣΗ)</span>
       <select class="form-input" id="wiSplitMode" onchange="_wiSplitModeChange()">
         <option value="">ΠΡΟΣ ΑΝΑΘΕΣΗ</option>
         <option value="own">Δικό μας</option>
         <option value="partner">Συνεργάτης</option>
       </select>
     </div>
-    <div id="wiSplitOwn" style="display:none;margin-top:8px;gap:8px">
-      <select class="form-input" id="wiSplitTruck" style="margin-bottom:6px"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
-      <select class="form-input" id="wiSplitTrailer" style="margin-bottom:6px"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
-      <select class="form-input" id="wiSplitDriver"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
+    <div id="wiSplitOwn" style="display:none;margin-top:8px">
+      <select class="form-input" id="wiSplitTruck" style="margin-bottom:6px;width:100%"><option value="">Φορτηγό…</option>${opt(WINTL.data.trucks)}</select>
+      <select class="form-input" id="wiSplitTrailer" style="margin-bottom:6px;width:100%"><option value="">Ρυμούλκα…</option>${opt(WINTL.data.trailers)}</select>
+      <select class="form-input" id="wiSplitDriver" style="width:100%"><option value="">Οδηγός…</option>${opt(WINTL.data.drivers)}</select>
     </div>
     <div id="wiSplitPartner" style="display:none;margin-top:8px">
-      <select class="form-input" id="wiSplitPartnerSel"><option value="">Συνεργάτης…</option>${opt(WINTL.data.partners)}</select>
+      <select class="form-input" id="wiSplitPartnerSel" style="width:100%"><option value="">Συνεργάτης…</option>${opt(WINTL.data.partners)}</select>
     </div>`;
-  const footer=`<button class="btn btn-ghost" onclick="closeModal()">Ακύρωση</button>
+  const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
     <button class="btn btn-primary" id="wiSplitGo" onclick="_wiDoSplit(${rowId})">Σπάσιμο</button>`;
-  openModal('Σπάσιμο σκέλους',body,footer);
+  _wiPanelOpen(_wiAnchorFor(rowId),'Σπάσιμο σκέλους',_wiPanelCtxLine(row),body,footer);
 }
 function _wiSplitModeChange(){
   const m=document.getElementById('wiSplitMode')?.value;
@@ -2810,7 +3050,7 @@ async function _wiDoSplit(rowId){
   if(!parentRec){ toast('Δεν βρέθηκε η παραγγελία','warn'); return; }
   const pf=parentRec.fields;
 
-  modalSetBusy(true);
+  _wiPanelSetBusy(true);
   const common={};
   ['Type','Direction','Client','Reference','Total Pallets','Pallet Type','Goods','Temperature °C','Veroia Switch']
     .forEach(k=>{ if(pf[k]!==undefined&&pf[k]!==null&&pf[k]!=='') common[k]=pf[k]; });
@@ -2849,7 +3089,7 @@ async function _wiDoSplit(rowId){
     if(!getLinkedId(leg1.fields?.['Parent Order'])||leg1.fields?.['Leg No']!==1)
       throw new Error('Ο Worker δεν επέστρεψε Parent Order/Leg No στο σκέλος 1 — ελέγξτε τον χάρτη πριν ξαναδοκιμάσετε');
   }catch(e){
-    modalSetBusy(false);
+    _wiPanelSetBusy(false);
     reportError('Το σπάσιμο ΔΕΝ έγινε — αποτυχία στο σκέλος 1, τίποτα δεν γράφτηκε στον γονέα ('+parentOid+')',e);
     return;
   }
@@ -2859,7 +3099,7 @@ async function _wiDoSplit(rowId){
     if(!getLinkedId(leg2.fields?.['Parent Order'])||leg2.fields?.['Leg No']!==2)
       throw new Error('Ο Worker δεν επέστρεψε Parent Order/Leg No στο σκέλος 2');
   }catch(e){
-    modalSetBusy(false);
+    _wiPanelSetBusy(false);
     reportError('Το σκέλος 1 δημιουργήθηκε (ID '+leg1.id+') αλλά το σκέλος 2 ΑΠΕΤΥΧΕ — ο γονέας ΔΕΝ αδειάστηκε ακόμη. Σβήσε χειροκίνητα το σκέλος 1 ή ξαναδοκίμασε.',e);
     return;
   }
@@ -2867,7 +3107,7 @@ async function _wiDoSplit(rowId){
     const patchRes=await atPatch(TABLES.ORDERS,parentOid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':''});
     if(patchRes?.error) throw new Error(patchRes.error.message||patchRes.error.type);
   }catch(e){
-    modalSetBusy(false);
+    _wiPanelSetBusy(false);
     reportError('Τα δύο σκέλη δημιουργήθηκαν (ID '+leg1.id+', '+leg2.id+') αλλά ο γονέας ΔΕΝ αδειάστηκε — άδειασε χειροκίνητα την ανάθεσή του ('+parentOid+')',e);
     return;
   }
@@ -2890,8 +3130,8 @@ async function _wiDoSplit(rowId){
     catch(e){ console.warn('[wi split] PA upsert:',e&&e.message); }
   }
 
-  modalSetBusy(false);
-  closeModal();
+  _wiPanelSetBusy(false);
+  _wiPanelClose();
   toast('Σπάσιμο ✓ — σκέλος 1 ('+leg1.id.slice(-6)+') · σκέλος 2 ('+leg2.id.slice(-6)+')');
   await renderWeeklyIntl();
 }
@@ -3023,11 +3263,18 @@ async function _wiRotAdd(parentRowId, legOid){
     renderWeeklyIntl();
   }catch(e){ reportError('Η σύνδεση σκέλους απέτυχε',e); }
 }
-async function _wiRotUnlink(e,legOid){
-  e.preventDefault(); e.stopPropagation();
-  const ok=await confirmAction('Αποσύνδεση του σκέλους από τη ρότα; (Η ανάθεση οχήματος μένει ως έχει.)',
-    {title:'Ρότα',confirmLabel:'Αποσύνδεση'});
-  if(!ok) return;
+// skipConfirm (owner 7/9): the leg row's ⨯ button and the flat menu's own
+// panel confirm both end up here — the button keeps the confirmAction modal,
+// the menu's «Ακύρωση προώθησης» confirms inside its own small panel instead
+// (_wiPanelConfirmUnlink) and skips straight to the write. One write, two
+// front doors — see _wiDelLocal above for the same pattern.
+async function _wiRotUnlink(e,legOid,skipConfirm){
+  if(e){ e.preventDefault(); e.stopPropagation(); }
+  if(!skipConfirm){
+    const ok=await confirmAction('Αποσύνδεση του σκέλους από τη ρότα; (Η ανάθεση οχήματος μένει ως έχει.)',
+      {title:'Ρότα',confirmLabel:'Αποσύνδεση'});
+    if(!ok) return;
+  }
   try{
     const res=await atSafePatch(TABLES.ORDERS,legOid,{'Rotation ID':''});
     if(res?.error) throw new Error(res.error.message||res.error.type);
@@ -3051,6 +3298,31 @@ async function _wiRotUnlink(e,legOid){
     toast('Σκέλος αποσυνδέθηκε ✓');
     renderWeeklyIntl();
   }catch(err){ reportError('Η αποσύνδεση απέτυχε',err); }
+}
+
+// Flat 2-item menu for the rotation-leg row (owner 7/9 — right-click used to
+// fire the unlink directly, no menu at all). Left-click keeps opening the
+// order form (_wk3Edit); the inline «⨯ αποσύνδεση» button is untouched.
+function _wiLegCtx(e,legOid){
+  e.preventDefault(); e.stopPropagation();
+  const ctx=document.getElementById('wi-ctx');
+  let html='';
+  html+=_wiCtxBtn('Επεξεργασία…',`_wk3Edit('${legOid}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Ακύρωση προώθησης',`_wiPanelConfirmUnlink('${legOid}')`,true);
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-120)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+function _wiPanelConfirmUnlink(legOid){
+  const body=`<div class="wi-panel-warn">Αποσύνδεση του σκέλους από τη ρότα; Η ανάθεση οχήματος μένει ως έχει.</div>`;
+  const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
+    <button class="btn btn-danger" onclick="_wiPanelClose();_wiRotUnlink(null,'${legOid}',true)">Αποσύνδεση</button>`;
+  _wiPanelOpen(_wiAnchorForOrder(legOid),'Ρότα','',body,footer);
 }
 
 /* ── WAVE 2: LOCAL MOVES (owner 6/9) ───────────────────────────────────
@@ -3090,9 +3362,9 @@ function _wiLocalRowHTML(m, orderId) {
   const isErr = WINTL._localsSyncErr?.has(m.id);
   const tip = isErr
     ? '⚠ Η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε στην ανάγνωση — έλεγξε χειροκίνητα. Κλικ: επεξεργασία.'
-    : 'Τοπική κίνηση (Βέροια) — κλικ: επεξεργασία · δεξί κλικ: διαγραφή';
+    : 'Τοπική κίνηση (Βέροια) — κλικ: επεξεργασία · δεξί κλικ: μενού';
   return `<div class="wk3-row wk3-legrow wi-lmv-row${isErr?' err':''}" data-lmv-id="${m.id}" title="${tip}"
-      oncontextmenu="_wiLmvCtx(event,'${m.id}')"
+      oncontextmenu="_wiLmvCtx(event,'${m.id}','${orderId}')"
       onclick="event.stopPropagation();_wiAddLocal('${orderId}','${m.id}')">
     <div class="wk3-num" style="color:var(--accent-text);font-weight:800">⤷<span class="wi-sync" id="wi-sync-lmv-${m.id}">${isErr?'⚠':''}</span></div>
     <div class="wi-lmv-body">τοπικό · ${dateTxt} · ${fromTxt} → ${toTxt} · ${whoTxt}</div>
@@ -3144,27 +3416,32 @@ async function _wiAddLocal(orderId, moveId) {
     + `<optgroup label="Οδηγοί">${WINTL.data.drivers.map(d=>`<option value="d:${d.id}" ${assignVal==='d:'+d.id?'selected':''}>${escapeHtml(d.label)}</option>`).join('')}</optgroup>`
     + `<optgroup label="Συνεργάτες">${WINTL.data.partners.map(p=>`<option value="p:${p.id}" ${assignVal==='p:'+p.id?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</optgroup>`;
 
-  openModal(existing ? 'Επεξεργασία τοπικής κίνησης' : 'Νέα τοπική κίνηση (Βέροια)', `
+  // Panel is ~360px wide (owner 7/9 brief) — one column of .wi-pf fields
+  // instead of the old modal's 2-col .form-grid; same ids, so _wiSaveLocal
+  // below reads them exactly as before regardless of container.
+  const anchorEl = moveId ? document.querySelector(`[data-lmv-id="${moveId}"]`) : _wiAnchorForOrder(orderId);
+  const ctxLine = `${of['Loading DateTime']?_wk3D(_wiFmt(of['Loading DateTime']))+' ':''}${_wiClean(of['Loading Summary']||of['Client Name']||'—')} → ${of['Delivery DateTime']?_wk3D(_wiFmt(of['Delivery DateTime']))+' ':''}${_wiClean(of['Delivery Summary']||'—')}`;
+  _wiPanelOpen(anchorEl, existing ? 'Επεξεργασία τοπικής κίνησης' : 'Νέα τοπική κίνηση (Βέροια)', ctxLine, `
     <div class="wn3-pnote">Θα συνδεθεί με τη διεθνή παραγγελία — δεν κοστολογείται, δεν τιμολογείται, δεν χρειάζεται γύρισμα φορτωμένο (owner 6/9). Οδηγός/όχημα ή συνεργάτης είναι προαιρετικά.</div>
-    <div class="form-grid">
-      <div class="form-field"><label class="form-label">Ημερομηνία *</label>
+    <div class="wi-panel-fields" style="flex-direction:column;align-items:stretch">
+      <div class="wi-pf"><span class="wi-plbl">Ημερομηνία *</span>
         <input class="form-input" type="date" id="wilm_date" value="${dateVal||''}"></div>
-      <div class="form-field"><label class="form-label">Ανάθεση</label>
+      <div class="wi-pf"><span class="wi-plbl">Ανάθεση</span>
         <select class="form-select" id="wilm_assign">${assignOpt}</select></div>
-      <div class="form-field"><label class="form-label">Όχημα</label>
+      <div class="wi-pf"><span class="wi-plbl">Όχημα</span>
         <select class="form-select" id="wilm_truck"><option value="">—</option>${opt(WINTL.data.trucks, truckVal)}</select></div>
-      <div class="form-field"><label class="form-label">Ώρα (ΩΩ:ΛΛ)</label>
+      <div class="wi-pf"><span class="wi-plbl">Ώρα (ΩΩ:ΛΛ)</span>
         <input class="form-input" id="wilm_time" placeholder="π.χ. 11:00" value="${escapeHtml(timeVal)}"></div>
-      <div class="form-field"><label class="form-label">Από *</label>
+      <div class="wi-pf"><span class="wi-plbl">Από *</span>
         <select class="form-select" id="wilm_from"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, fromVal)}</select></div>
-      <div class="form-field"><label class="form-label">Προς *</label>
+      <div class="wi-pf"><span class="wi-plbl">Προς *</span>
         <select class="form-select" id="wilm_to"><option value="">— Επιλογή —</option>${opt(_fhLocationsArr, toVal)}</select></div>
-      <div class="form-field"><label class="form-label">Παλέτες</label>
+      <div class="wi-pf"><span class="wi-plbl">Παλέτες</span>
         <input class="form-input" type="number" id="wilm_pal" value="${palVal||''}"></div>
-      <div class="form-field"><label class="form-label">Περιγραφή</label>
+      <div class="wi-pf"><span class="wi-plbl">Περιγραφή</span>
         <input class="form-input" id="wilm_desc" placeholder="π.χ. 2 κιβώτια Άλμη" value="${escapeHtml(descVal)}"></div>
     </div>`,
-    `<button class="btn btn-ghost" onclick="closeModal()">Άκυρο</button>
+    `<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
      <button class="btn btn-success" id="wilm_submit" onclick="_wiSaveLocal('${orderId}'${existing?`,'${existing.id}'`:''})">${existing?'Αποθήκευση':'Καταχώρηση'}</button>`);
 }
 
@@ -3201,7 +3478,7 @@ async function _wiSaveLocal(orderId, moveId) {
     const rec = moveId
       ? await atSafePatch(TABLES.LOCAL_MOVES, moveId, fields)
       : await atCreate(TABLES.LOCAL_MOVES, fields);
-    if (rec?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση', 'warn'); closeModal(); await renderWeeklyIntl(); return; }
+    if (rec?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση', 'warn'); _wiPanelClose(); await renderWeeklyIntl(); return; }
     if (rec?.error) throw new Error(rec.error.message || rec.error.type);
     invalidateCache(TABLES.LOCAL_MOVES);
     const id = moveId || rec.id;
@@ -3219,7 +3496,7 @@ async function _wiSaveLocal(orderId, moveId) {
     if (verifyOk) WINTL._localsSyncErr.delete(id); else WINTL._localsSyncErr.add(id);
     _wiSync('wi-sync-lmv-'+id, verifyOk?'ok':'err', verifyOk?'Η κίνηση γράφτηκε' : 'Parent Order δεν επιβεβαιώθηκε στην ανάγνωση');
 
-    closeModal();
+    _wiPanelClose();
     toast(verifyOk
       ? (moveId ? 'Η τοπική κίνηση ενημερώθηκε' : 'Η τοπική κίνηση καταχωρήθηκε')
       : 'Η κίνηση γράφτηκε αλλά η σύνδεση με την παραγγελία ΔΕΝ επιβεβαιώθηκε — έλεγξε χειροκίνητα',
@@ -3232,8 +3509,12 @@ async function _wiSaveLocal(orderId, moveId) {
   }
 }
 
-async function _wiDelLocal(id) {
-  if (!(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή τοπικής κίνησης', confirmLabel:'Διαγραφή' }))) return;
+// skipConfirm (owner 7/9): the sub-row menu confirms inside the small panel
+// (_wiPanelConfirmDelLocal) instead of opening the confirmAction modal on top
+// of the flat menu — same delete either way, one function, no second copy of
+// the write (αρχή 3, CLAUDE.md).
+async function _wiDelLocal(id, skipConfirm) {
+  if (!skipConfirm && !(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή τοπικής κίνησης', confirmLabel:'Διαγραφή' }))) return;
   try {
     await atDelete(TABLES.LOCAL_MOVES, id);
     invalidateCache(TABLES.LOCAL_MOVES);
@@ -3246,14 +3527,30 @@ async function _wiDelLocal(id) {
   }
 }
 
-function _wiLmvCtx(e, moveId) {
+// Flat 2-item menu (owner 7/9 — was a single bare button before): edit opens
+// the same panel as a left-click; delete is confirmed INSIDE a small panel,
+// not a browser/modal confirm, and sits last + danger-styled.
+function _wiLmvCtx(e, moveId, orderId) {
   e.preventDefault(); e.stopPropagation();
   const ctx=document.getElementById('wi-ctx');
-  ctx.innerHTML = `<button class="wi-ctx-i d" onclick="_wiDelLocal('${moveId}');_wiCtxClose()">Διαγραφή τοπικής κίνησης</button>`;
+  let html='';
+  html+=_wiCtxBtn('Επεξεργασία…',`_wiAddLocal('${orderId}','${moveId}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Διαγραφή',`_wiPanelConfirmDelLocal('${moveId}')`,true);
+  ctx.innerHTML = html;
+  ctx._returnFocus=e.currentTarget;
   Object.assign(ctx.style,{display:'block',
     left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
     top:`${Math.min(e.clientY,window.innerHeight-100)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+function _wiPanelConfirmDelLocal(moveId){
+  const anchorEl=document.querySelector(`[data-lmv-id="${moveId}"]`);
+  const body=`<div class="wi-panel-warn">Διαγραφή αυτής της τοπικής κίνησης;</div>`;
+  const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>
+    <button class="btn btn-danger" onclick="_wiPanelClose();_wiDelLocal('${moveId}',true)">Διαγραφή</button>`;
+  _wiPanelOpen(anchorEl,'Διαγραφή τοπικής κίνησης','',body,footer);
 }
 
 // Owner (10/8): δεξί κλικ σε ΕΙΣΑΓΩΓΗ → Groupage με άλλη εισαγωγή + Μεταφορά
@@ -3261,39 +3558,46 @@ function _wiLmvCtx(e, moveId) {
 function _wiImpCtx(e,rowId){
   e.preventDefault();e.stopPropagation();
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
-  const btn=(l,fn)=>`<button class="wi-ctx-i" onclick="${fn};_wiCtxClose()">${l}</button>`;
-  let html='';
   const myPals=_wiRowPals(row);
   const others=WINTL.rows.filter(r=>r.type==='import'&&r.id!==rowId&&!r.adj&&!r.matchedTo
     &&(myPals+_wiRowPals(r))<=33);
-  if(others.length){
-    html+=`<div class="wi-ctx-h">Groupage εισαγωγών · ≤33 παλ (τώρα ${myPals}p)</div>`;
-    others.slice(0,6).forEach(o=>{
-      const oi=WINTL.data.imports.find(r=>r.id===o.orderId);
-      const lbl=_wiCut(_wiClean(oi?.fields['Loading Summary']||oi?.fields['Client Name']||`I-${o.id}`).split(',')[0],22);
-      const op=_wiRowPals(o);
-      html+=btn(`Μαζί με: ${lbl} (${op}p → ${myPals+op}p)`,`_wiImpGroup(${rowId},${o.id})`);
-    });
-    html+=`<div class="wi-ctx-sep"></div>`;
-  }
-  const rc2=_wiRotCands(row);
-  if(rc2.length){
-    html+=`<div class="wi-ctx-h">⤷ Σκέλος προώθησης (ρότα)</div>`;
-    rc2.forEach(c2=>{ html+=btn(`⤷ ${c2.lbl}`,`_wiRotAdd(${rowId},'${c2.oid}')`); });
-    html+=`<div class="wi-ctx-sep"></div>`;
-  }
+  let html='';
+  html+=_wiCtxBtn('Ανάθεση…',`_wiPanelAssign(${rowId},true,'${row.orderId}')`);
+  html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},true)`);
+  html+=others.length
+    ? _wiCtxBtn('Groupage εισαγωγών…',`_wiPanelGroupBuild(${rowId},true)`)
+    : _wiCtxBtnDisabled('Groupage εισαγωγών…',`Καμία συμβατή εισαγωγή — όριο 33 παλέτες (τώρα ${myPals}p)`);
+  html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
+  html+=_wiSplitCtxItems(row,rowId,_wiCtxBtn);
   // Wave 2 (owner 6/9): local movement around Βέροια tied to this import.
-  if(row.orderId) html+=btn('Τοπική κίνηση (Βέροια)',`_wiAddLocal('${row.orderId}')`);
-  html+=`<div class="wi-ctx-h">Μεταφορά εβδομάδας</div>`;
-  html+=btn(`← Στην W${WINTL.week-1}`,`_wiImpShift(${rowId},-7)`);
-  html+=btn(`Στην W${WINTL.week+1} →`,`_wiImpShift(${rowId},7)`);
-  html+=_wiSplitCtxItems(row,rowId,btn);
+  if(row.orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${row.orderId}')`);
+  html+=_wiCtxBtn('Μεταφορά εβδομάδας…',`_wiPanelWeekShift(${rowId})`);
   const ctx=document.getElementById('wi-ctx');
   ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
   Object.assign(ctx.style,{display:'block',
     left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
     top:`${Math.min(e.clientY,window.innerHeight-220)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+// Two big choices, real loading day shown (owner 7/9 brief) — the panel IS
+// the confirmation now, so _wiImpShift below no longer asks separately.
+function _wiPanelWeekShift(rowId){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const imp=WINTL.data.imports.find(r=>r.id===row.orderId); if(!imp) return;
+  const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
+  const wPrev=WINTL.week-1, wNext=WINTL.week+1;
+  const loadTxt=imp.fields['Loading DateTime']?_wk3D(_wiFmt(imp.fields['Loading DateTime'])):'—';
+  const body=`
+    <div class="wi-panel-note">Πραγματική ημ. φόρτωσης: <b>${loadTxt}</b>${natWeek?` (φυσική εβδομάδα W${natWeek})`:''}</div>
+    <div class="wi-panel-choices">
+      <button class="btn btn-outline" onclick="_wiPanelClose();_wiImpShift(${rowId},-7)">← W${wPrev}</button>
+      <button class="btn btn-outline" onclick="_wiPanelClose();_wiImpShift(${rowId},7)">W${wNext} →</button>
+    </div>
+    <div class="wi-panel-note dim">Οι ημερομηνίες δεν αλλάζουν — αλλάζει μόνο η εβδομάδα που εμφανίζεται.</div>`;
+  const footer=`<button class="btn btn-ghost" onclick="_wiPanelClose()">Άκυρο</button>`;
+  _wiPanelOpen(_wiAnchorFor(rowId),'Μεταφορά εβδομάδας',_wiPanelCtxLine(row),body,footer);
 }
 // B1 (owner 6/9): «δεν θέλω να αλλάζουν οι ημερομηνίες» — this used to PATCH
 // Loading/Delivery DateTime ±7, which lied about when the truck actually
@@ -3302,6 +3606,8 @@ function _wiImpCtx(e,rowId){
 // SILENT no-op with 200 OK) and reads the record back to catch exactly that.
 // Moving back to the row's own natural week clears the field (null) instead
 // of writing a value equal to it, so "by date" stays the true default.
+// Owner 7/9: the confirmAction dialog moved OUT of here — _wiPanelWeekShift's
+// small panel is the confirmation now (two explicit choices, not a yes/no).
 async function _wiImpShift(rowId,days){
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
   const imp=WINTL.data.imports.find(r=>r.id===row.orderId);if(!imp) return;
@@ -3309,10 +3615,6 @@ async function _wiImpShift(rowId,days){
   const natWeek=_wiWeekOf(imp.fields['Loading DateTime']);
   const clearing=natWeek===w;
   const targetPws=clearing?null:toLocalDate(_wiWeekStart(w));
-  const ok=await confirmAction(
-    `Η εισαγωγή θα εμφανίζεται στην W${w} (οι ημερομηνίες φόρτωσης/παράδοσης ΔΕΝ αλλάζουν).`,
-    {title:'Μεταφορά εβδομάδας',confirmLabel:'Μεταφορά'});
-  if(!ok) return;
   _wiSync('wi-sync-'+rowId,'pend','Μεταφορά εβδομάδας…');
   try{
     const res=await atPatch(TABLES.ORDERS,imp.id,{'Plan Week Start':targetPws});
@@ -3669,10 +3971,26 @@ window._wk3Edit = _wk3Edit;
 window._wiImpCtx = _wiImpCtx;
 window._wiRotAdd = _wiRotAdd;
 window._wiRotUnlink = _wiRotUnlink;
-window._wiOpenSplitModal = _wiOpenSplitModal;
+window._wiPanelSplit = _wiPanelSplit;
 window._wiSplitModeChange = _wiSplitModeChange;
 window._wiDoSplit = _wiDoSplit;
 window._wiRejoinLegs = _wiRejoinLegs;
+// Flat menu + small anchored panel (owner 7/9 redesign)
+window._wiPanelOpen = _wiPanelOpen;
+window._wiPanelClose = _wiPanelClose;
+window._wiAnchorFor = _wiAnchorFor;
+window._wiPanelRota = _wiPanelRota;
+window._wiPanelRotaFilter = _wiPanelRotaFilter;
+window._wiPanelRotaGo = _wiPanelRotaGo;
+window._wiPanelGroupBuild = _wiPanelGroupBuild;
+window._wiPanelGroupSum = _wiPanelGroupSum;
+window._wiPanelGroupGo = _wiPanelGroupGo;
+window._wiPanelAssign = _wiPanelAssign;
+window._wiMenuPrint = _wiMenuPrint;
+window._wiPanelWeekShift = _wiPanelWeekShift;
+window._wiLegCtx = _wiLegCtx;
+window._wiPanelConfirmUnlink = _wiPanelConfirmUnlink;
+window._wiPanelConfirmDelLocal = _wiPanelConfirmDelLocal;
 window._wk3PickDate = _wk3PickDate;
 // Αναδιπλούμενα εθνικά πάνελ (owner 10/8) — ανεξάρτητα, με μνήμη ανά χρήστη
 function _wk3FeedTog(side){
