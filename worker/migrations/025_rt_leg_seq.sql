@@ -1,3 +1,6 @@
+-- ΕΚΤΕΛΕΣΜΕΝΗ 2026-09-08 ~13:55 από τον owner (SQL editor) — απόδειξη: null_seq 0 / 101 legs. Έτρεξε ως ΕΠΙΣΚΕΥΗ: το deploy
+-- του Worker 13:45 (εισαγωγή DKV) ανέβασε μαζί και το /costs/rt με seq πριν τρέξει αυτή η migration → 500 σε κάθε
+-- σελίδα δρομολογίων για ~10 λεπτά. Κανόνας από εδώ και πέρα: βλ. DECISION_LOG 2026-09-08 «deploy ↔ migrations».
 -- 025 — dispatcher stop order reaches the round trip's legs (owner 8/9/2026)
 --
 -- NOTE ON THE NUMBER: this was specced as 024_rt_leg_seq.sql, but
