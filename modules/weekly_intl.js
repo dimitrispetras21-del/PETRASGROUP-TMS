@@ -2232,8 +2232,40 @@ function _wiRowHTML(row,i){
   const gapCell=row.saved&&!hasPartner&&!row.importId;
   const parCell=row.saved&&hasPartner&&!row.importId;
   const urg=gapCell&&_wi2Urgent(pf,today);
+  // Matched GI- group (owner 8/9 defect item 4, orders 307+308): a GI- import
+  // group already renders as segmented pills on its OWN unmatched row
+  // (_wiImpRowHTML, via impById's A1 collapse in _wiBuildRows — the row's
+  // orderIds carries every live member). Once matched, this export row used
+  // to fold that same group down to `imp` alone (row.importId, the group's
+  // lead) — every other member vanished from view though it still travels
+  // with this export. impGroupRow is that SAME import row object (found by
+  // its orderId, not re-derived) so its orderIds is the authoritative member
+  // list — gated behind _wiSegOn() so a flag-off board never does this lookup
+  // (byte parity with the pre-existing single-card path below).
+  const impGroupRow=(_wiSegOn()&&row.importId)?WINTL.rows.find(r=>r.type==='import'&&r.orderId===row.importId):null;
+  const impMembers=(impGroupRow&&impGroupRow.orderIds&&impGroupRow.orderIds.length>1)
+    ?impGroupRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean):null;
   let impInner;
-  if(imp){
+  if(impMembers&&impMembers.length>1){
+    // Reuse the SAME segment renderer the standalone GI- row uses, with
+    // impGroupRow.id (NOT this export row's id) as the segment rowId — click/
+    // right-click/assign-panel (_wiSegCtx, _wiCancelGroupMember) resolve the
+    // row by that id, so passing this row's id would silently scope group
+    // actions (Ανάθεση…, Ακύρωση groupage) at the WRONG row. «×» unmatch is
+    // the one control the standalone row doesn't need (nothing to unmatch
+    // there) — kept here, wired to the same _wiRemoveImport(row.id) the
+    // classic single card below already used via _wiUnmatch. Appended INSIDE
+    // the totals block (.wk3-segwrap is a flex row, CLAUDE.md file allowlist
+    // for this fix has no assets/style.css) rather than as a sibling of
+    // gLoad/gDel — .wk3-leg.wk3-tiled is a fixed 3-column grid
+    // (load/arrow/del, assets/style.css .wk3-leg.wk3-tiled) and a 4th sibling
+    // would silently overflow that grid instead of sitting in the delivery
+    // column where the classic card's own «×» lived.
+    const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,false);
+    const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</button>`;
+    const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,false,_wiSegTotalsHTML(impMembers)+unmBtn);
+    impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
+  } else if(imp){
     const f2=imp.fields;
     const il=_wi2Loc(f2['Loading Summary']||_wiFlatLocName(f2['Loading Location 1'])||_wiClientName(f2)||'—','Φόρτωση',f2._stopsL);
     const ilIso=f2['Loading DateTime']||'';
