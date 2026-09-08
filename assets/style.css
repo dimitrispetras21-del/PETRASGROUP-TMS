@@ -7304,3 +7304,43 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
   .lmap-grid.detail-open .lmap-mwrap{display:none}
   .lmap-grid.detail-open .lmap-det{border-left:0}
 }
+
+/* ── Groupage tiles — Weekly International (owner 8/9/2026, FEATURES.GROUP_TILES) ──
+   docs/design/2026-09-08-groupage-tiles.md: ένα πλακάτ ανά ομάδα, διαγώνια
+   τμήματα ανά παραγγελία. Νέες κλάσεις μόνο — η .wk3-seg* markup δεν
+   υπάρχει πουθενά με τη σημαία κλειστή, άρα δεν επηρεάζει το σημερινό
+   board. Νέο CSS ζει ΕΔΩ (όχι στο module) επίτηδες: ο static ratchet
+   tests/critics/static.js μετράει hex/truncate μόνο στο modules/weekly_intl.js
+   — το να προσθέσουμε εδώ κρατά εκείνο το budget ανέγγιχτο. Χρώματα ίδια με
+   τα .wi2-card.ok/.late (weekly_intl.js's own <style>) — ποτέ χρώμα ανά
+   παραγγελία. */
+.wk3-segwrap{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:8px}
+.wk3-segpill{flex:1 1 0;min-width:0;display:flex;border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;background:var(--surface-card)}
+.wk3-seg{position:relative;flex:1 1 0;min-width:0;box-sizing:border-box;
+  display:flex;flex-direction:column;justify-content:center;min-height:34px;
+  padding:4px 14px;background:var(--surface-card);cursor:pointer;
+  transition:transform var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out);}
+/* Διαγώνιο κόψιμο (spec): άκρα στρογγυλά (το κλείνει το overflow:hidden του
+   γονέα), μεσαία τμήματα με ίσια γωνία και στις δύο πλευρές. Επικάλυψη 12px
+   ώστε η διαγώνια «ραφή» να μην αφήνει κενό ανάμεσα σε δύο τμήματα. */
+.wk3-seg[data-pos="first"]{clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%)}
+.wk3-seg[data-pos="mid"]{clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);margin-left:-12px}
+.wk3-seg[data-pos="last"]{clip-path:polygon(12px 0,100% 0,100% 100%,0 100%);margin-left:-12px}
+/* Item 2 (owner 8/9): κίνηση ανά τμήμα ξεχωριστά, όχι όλο το πλακάτ. */
+.wk3-seg:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift);z-index:3}
+@media (prefers-reduced-motion:reduce){.wk3-seg{transition:none}.wk3-seg:hover{transform:none}}
+.wk3-seg.ok{background:var(--success-bg)}
+.wk3-seg.late{background:var(--danger-bg)}
+.wk3-seg.dragging{opacity:.4}
+.wk3-seg.dragover{outline:2px dashed var(--accent);outline-offset:-2px}
+.wk3-segtop{display:flex;align-items:center;gap:6px;font-size:11px}
+.wk3-segtotals{flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-mid);white-space:nowrap}
+/* Item 2 tooltip: πελάτης, αναφορά, παλέτες, ημέρα/ώρα — CSS-only hover. */
+.wk3-segtip{display:none;position:absolute;left:0;top:100%;margin-top:6px;z-index:20;
+  min-width:170px;max-width:240px;background:var(--surface-dark);color:var(--text-on-dark);
+  border-radius:var(--radius);padding:8px 10px;font-size:11px;line-height:1.5;
+  box-shadow:var(--shadow-lg);pointer-events:none;white-space:normal}
+.wk3-seg:hover .wk3-segtip{display:block}
+.wk3-segtip b{display:block;font-size:12px;margin-bottom:2px}
+.wk3-segtip span{display:block;color:var(--text-dim)}
