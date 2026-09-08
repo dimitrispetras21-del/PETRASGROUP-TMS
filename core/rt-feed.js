@@ -170,12 +170,22 @@ function _rtLegSeq(legsInfo, byId) {
     : [...exportLegs].sort(cmp);
   // Imports follow, in the SAME relative order as their matched export — no
   // suffix of their own to read, so they ride on their export's position.
-  const orderedImports = order.length
-    ? [...importLegs].sort((a, b) => {
-        const expPos = id => { const idx = orderedExports.findIndex(e => byId[e.orderId] && byId[e.orderId].fields['Matched Import ID'] === id); return idx < 0 ? 99 : idx; };
-        return expPos(a.orderId) - expPos(b.orderId);
-      })
-    : [...importLegs].sort(cmp);
+  // Item 4 (owner 8/9, groupage-tiles GI- drag reorder): an import GROUPAGE
+  // (Group ID prefix 'GI-', modules/weekly_intl.js _wiImpGroup/_wiSaveSegOrder)
+  // carries its OWN suffix once dragged, independent of any matched export's
+  // position — checked FIRST so a reordered GI- group always wins over the
+  // export-position fallback below, still landing after every export leg
+  // (imports never move ahead of exports here, same as before this change).
+  const giRec = importLegs.map(l => byId[l.orderId]).find(o => o && o.fields && String(o.fields['Group ID'] || '').indexOf('GI-') === 0 && String(o.fields['Group ID'] || '').split('|')[1]);
+  const giOrder = giRec ? String(giRec.fields['Group ID'] || '').split('|')[1].split(',').filter(Boolean) : [];
+  const orderedImports = giOrder.length
+    ? [...importLegs].sort((a, b) => { const pos = id => { const k = giOrder.indexOf(id); return k < 0 ? 99 : k; }; return pos(a.orderId) - pos(b.orderId); })
+    : (order.length
+        ? [...importLegs].sort((a, b) => {
+            const expPos = id => { const idx = orderedExports.findIndex(e => byId[e.orderId] && byId[e.orderId].fields['Matched Import ID'] === id); return idx < 0 ? 99 : idx; };
+            return expPos(a.orderId) - expPos(b.orderId);
+          })
+        : [...importLegs].sort(cmp));
   const seqByOrderId = {};
   [...orderedExports, ...orderedImports].forEach((l, i) => { seqByOrderId[l.orderId] = i + 1; });
   return seqByOrderId;
