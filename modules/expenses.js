@@ -346,6 +346,12 @@ function exFilteredTrips() {
 
 function exRenderPage() {
   const c = document.getElementById('content');
+  // The DKV import view (modules/expenses_import.js) replaces #content in
+  // place. A late refetch of this page (lookups/docs arriving after the user
+  // already clicked «Εισαγωγή DKV») must not paint the list over it — seen
+  // live 8/9: the import screen vanished 2–3 s after opening. If the import
+  // view is on screen, this render is simply not ours to do.
+  if (c && c.querySelector('.ei-page')) return;
   const stats = exTopStats();
   const trips = exFilteredTrips();
   const listHtml = exUnallocatedRowHtml()
