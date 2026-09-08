@@ -1,4 +1,7 @@
--- ΔΕΝ έχει εκτελεστεί. Spec: docs/superpowers/specs/2026-09-08-dkv-import-design.md (§4, §6).
+-- ΕΚΤΕΛΕΣΜΕΝΗ 2026-09-08 ~13:05 από τον owner στον SQL editor. Απόδειξη (owner + SELECT Fable):
+-- ct_import_rules = 0 γραμμές, 6 νέες στήλες στο ct_cost_docs, index ct_cost_lines_import_key_uidx = 1,
+-- bucket storage `cost-docs` private (μαζί με το pallet-sheets, και τα δύο public=false).
+-- Spec: docs/superpowers/specs/2026-09-08-dkv-import-design.md (§4, §6).
 -- Εισαγωγή παραστατικών προμηθευτών (DKV, μετά DADI): οι τρεις μνήμες της «μάθησης» και οι
 -- πύλες ιδιοποίησης. Τίποτα εδώ δεν αγγίζει υπάρχουσες γραμμές — μόνο νέες στήλες/πίνακες.
 begin;
