@@ -1,0 +1,21 @@
+E-Passagenliste /
+E-List of passages
+Example Country
+Kundendaten
+EXAMPLE FRESH S.A. Kundennummer /
+Customer number: 9999999
+Ku.-USt-Id/Nat.St.Nr. /
+Cust. VAT Id/Nat.Tax.No.: EX000000000
+Bezug zur Rechnung / 99/000000001/999
+Reference to the invoice: 99/999999999/002
+Rechnungsdatum /
+Invoice date: 30.09.2026
+Seite / Page: 1 / 1
+Entry date Entry time Exit date Exit time Country Route km Air Net amount
+PAN 00000000000000000002 OBU-ID 0000000000000002 KFZ-KZ XX5678 Emission class Lorry 12000+ kg;5+;E
+01.09.2026 07:38 01.09.2026 07:38 Example Country D02-008: Example A - Example B 3,1 5,00
+01.09.2026 07:41 01.09.2026 07:41 Example Country D02-007: Example B - Example C 2,0 3,00
+02.09.2026 09:10 02.09.2026 09:10 Example Country D02-006: Example C - Example D 2,5 4,00
+PAN 00000000000000000003 OBU-ID 0000000000000003 KFZ-KZ XX 9012 CO2 class 01
+03.09.2026 20:25 03.09.2026 21:46 500000000000000 Example Border | A6 | Example Junction 44A0101 12,3 1,00 7,00
+Total 12,3 1,00 19,00

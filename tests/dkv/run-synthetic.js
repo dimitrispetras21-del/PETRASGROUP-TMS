@@ -163,6 +163,31 @@ assertClose(passageGroup.vat, 3.2, 'passages group vat from » Total line');
 assertClose(passageGroup.gross, 19.2, 'passages group gross from » Total line');
 assert(tollLine.ref.endsWith(passageGroup.ref), 'passages Ref. is a suffix of the invoice transaction number (spec §1 join rule)');
 
+// ── Entry/exit-style passages (the BG/CZ/DE/HR/HU/PL/SI/SK layout) ────
+// The PAN header carries no Ref./Datum and is followed by a tail such as
+// «Emission class …» (CZ/PL/SI/SK) or «CO2 class …» (DE). Regression for
+// 8/9/2026: the plate capture ran to end-of-line, so those plates came out
+// 17–38 chars long and no passages group ever matched a statement line.
+const eeResult = DkvParser.parseDkv([
+  { name: '9999999_2026-09-30_EX_E-List of passages_99-999999999-002.pdf', lines: loadFixture('synthetic-passages-entryexit.txt') },
+]);
+assertEqual(eeResult.passages.length, 3, 'entry/exit passages: 3 (plate × day) groups');
+const eeDay1 = eeResult.passages.find((g) => g.service_date === '2026-09-01');
+const eeDay2 = eeResult.passages.find((g) => g.service_date === '2026-09-02');
+const eeDay3 = eeResult.passages.find((g) => g.service_date === '2026-09-03');
+assert(!!eeDay1 && !!eeDay2 && !!eeDay3, 'entry/exit passages: one group per entry date');
+if (eeDay1 && eeDay2 && eeDay3) {
+  assertEqual(eeDay1.plate, 'XX5678', 'entry/exit plate stops before the «Emission class …» tail');
+  assertEqual(eeDay2.plate, 'XX5678', 'entry/exit plate: second day of the same PAN header');
+  assertEqual(eeDay3.plate, 'XX9012', 'entry/exit plate with inner space stops before the «CO2 class …» tail');
+  assertEqual(eeDay1.passages.length, 2, 'entry/exit day 1 has 2 rows');
+  assertClose(eeDay1.net, 8.0, 'entry/exit day 1 net = Σ row nets');
+  assertClose(eeDay2.net, 4.0, 'entry/exit day 2 net');
+  assertClose(eeDay3.net, 7.0, 'entry/exit day 3 net = last numeric token of the row');
+  assertEqual(eeDay1.ref, null, 'entry/exit groups carry no ref');
+  assertEqual(eeDay1.currency, 'EUR', 'entry/exit groups default to EUR');
+}
+
 // ── report ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
