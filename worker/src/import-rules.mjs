@@ -13,7 +13,11 @@ export function buildImportKey(line) {
   // `seq` (line position inside its document, set by the parser) is what makes
   // the key unique: on the real August 2026 ZIP the tuple without it collided
   // 19 times (same ref for two refuels, ref=0000001 on every reverse-charge line).
-  const parts = [line.doc_no, line.seq, line.ref, line.plate, line.service_date, line.product_code];
+  // `sub` (round 2, splitByPassages below) is empty ('') for a line that was
+  // never split — only a half-month toll line broken into per-day children
+  // carries 1..n here, so those children (same doc_no/seq/ref/plate/date/code
+  // as their parent) still get distinct keys.
+  const parts = [line.doc_no, line.seq, line.ref, line.plate, line.service_date, line.product_code, line.sub];
   return parts.map((p) => (p === null || p === undefined ? '' : String(p))).join('|');
 }
 
@@ -122,6 +126,164 @@ export function applyRules(lines, ctx) {
   });
 }
 
+// ─── per-day split of half-month toll lines (round 2, spec §1 "CZ/HU/PL/BG
+// STATEMENT γραμμές είναι δεκαπενθήμερο ανά όχημα· η λίστα διελεύσεων τις
+// σπάει ανά ημέρα") ────────────────────────────────────────────────────────
+// Called by the Worker's parse handler right after DkvParser.parseDkv and
+// BEFORE applyRules — it works on the parser's own line/passages shape
+// (plate/country/service_date already normalized by the parser), not on
+// anything applyRules or matchRoundTrip add.
+//
+// A half-month statement line for tolls (period_from/period_to set,
+// category==='tolls') is one aggregate charge; the "List of passages" PDF
+// for the same vehicle/period gives the real per-day amounts. We only ever
+// trust the split when the passages found for that (plate, country, period)
+// sum to the statement line's own net (or gross, when the line has no net —
+// spec: "also try gross if the statement line carries gross only") within
+// 0,01 — otherwise the line is left exactly as parsed and the mismatch is
+// reported, never guessed past (CLAUDE.md «ό,τι δεν γίνεται, πρέπει να
+// ακούγεται»).
+// ISO date ± n days, computed on the calendar (no timezone) — used only to
+// widen half-month windows by DKV's one-day billing cut.
+function shiftDay(iso, days) {
+  if (!iso) return iso;
+  const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return t.toISOString().slice(0, 10);
+}
+
+function localAmount(obj, useGross) {
+  const v = useGross ? obj.gross : obj.net;
+  return typeof v === 'number' ? v : 0;
+}
+
+export function splitByPassages(lines, passages) {
+  const passagesList = passages || [];
+  const errors = { split: [] };
+  const out = [];
+  let lines_split = 0;
+  let lines_created = 0;
+
+  for (const line of lines || []) {
+    const isHalfMonthTolls = !!(line.period_from && line.period_to && line.category === 'tolls');
+    if (!isHalfMonthTolls) {
+      out.push(joinRefToPassages(line, passagesList));
+      continue;
+    }
+
+    // DKV's day cut is not midnight: a passage on the 15th at night is billed
+    // in the 16–31 statement, one on 31/07 in 01–15/08 (real ZIP 8/9: PL and
+    // BG lines). So the period is widened by one day on each side; the amount
+    // gate below is what decides whether the widened set is the right one.
+    const from = shiftDay(line.period_from, -1);
+    const to = shiftDay(line.period_to, 1);
+    const groups = passagesList
+      .filter((g) => g.plate && g.plate === line.plate && g.country === line.country &&
+        g.service_date >= from && g.service_date <= to)
+      .sort((a, b) => (a.service_date < b.service_date ? -1 : a.service_date > b.service_date ? 1 : 0));
+
+    // Prefer net (0% VAT tolls, the common case); fall back to gross only
+    // when the line itself has no net figure to compare against.
+    const useGross = line.net == null && line.gross != null;
+    const lineLocal = useGross ? line.gross : line.net;
+    const groupsSum = round2(groups.reduce((s, g) => s + localAmount(g, useGross), 0));
+    // Tolerance in the DOCUMENT currency: dozens of per-passage amounts each
+    // rounded to 2 decimals (0,1576 → 0,16) drift by more than 0,01 in CZK/HUF
+    // (7 Czech lines matched to 3 decimals and were still refused). 0,1% of
+    // the line, floor 0,05. The EUR side is exact regardless: children are
+    // scaled from the parent's EUR and the last day absorbs the remainder.
+    const tolerance = Math.max(0.05, Math.abs(lineLocal || 0) * 0.001);
+    const gateOk = lineLocal != null && groups.length > 0 && Math.abs(groupsSum - lineLocal) <= tolerance;
+
+    if (!gateOk) {
+      errors.split.push({
+        doc_no: line.doc_no,
+        seq: line.seq,
+        reason: 'passages-sum-mismatch',
+        line_net: line.net,
+        passages_net: groupsSum,
+        groups: groups.length,
+      });
+      out.push({ ...line, service_date_source: 'invoice' });
+      continue;
+    }
+
+    lines_split++;
+    const n = groups.length;
+    const parentNetEur = line.net_eur || 0;
+    const parentVatEur = line.vat_eur || 0;
+    const parentGrossEur = line.gross_eur || 0;
+    let runNet = 0;
+    let runVat = 0;
+    let runGross = 0;
+    groups.forEach((g, idx) => {
+      const num = localAmount(g, useGross);
+      const ratio = lineLocal ? num / lineLocal : (n ? 1 / n : 0);
+      let netEur;
+      let vatEur;
+      let grossEur;
+      if (idx < n - 1) {
+        netEur = round2(parentNetEur * ratio);
+        vatEur = round2(parentVatEur * ratio);
+        grossEur = round2(parentGrossEur * ratio);
+        runNet = round2(runNet + netEur);
+        runVat = round2(runVat + vatEur);
+        runGross = round2(runGross + grossEur);
+      } else {
+        // LAST day (chronologically) absorbs whatever rounding left behind,
+        // so Σ children EUR == parent EUR exactly (spec §4).
+        netEur = round2(parentNetEur - runNet);
+        vatEur = round2(parentVatEur - runVat);
+        grossEur = round2(parentGrossEur - runGross);
+      }
+      out.push({
+        ...line,
+        service_date: g.service_date,
+        period_from: null,
+        period_to: null,
+        net: g.net,
+        vat: g.vat,
+        gross: g.gross,
+        net_eur: netEur,
+        vat_eur: vatEur,
+        gross_eur: grossEur,
+        sub: idx + 1,
+        split_from_seq: line.seq,
+        passages_count: (g.passages || []).length,
+        note: 'από λίστα διελεύσεων',
+        service_date_source: 'passages',
+      });
+      lines_created++;
+    });
+  }
+
+  return { lines: out, errors, stats: { lines_split, lines_created } };
+}
+
+// ─── real day for ref-joined invoice lines (round 2, AT/SI/SK style) ────────
+// The invoice's transaction number is the FULL number (e.g.
+// "20260000000056155890"); the passages header only ever prints the tail
+// ("Ref. 0000000056155890") — so the join is a SUFFIX match in either
+// direction, never equality (verified against the real ZIP: an equality
+// join found 0 matches). Only trusted when it resolves to exactly one
+// passages group for the same plate — an ambiguous join is worse than none.
+function joinRefToPassages(line, passagesList) {
+  if (line.ref && line.plate) {
+    const matches = passagesList.filter((g) =>
+      g.plate === line.plate && g.ref && (line.ref.endsWith(g.ref) || g.ref.endsWith(line.ref))
+    );
+    if (matches.length === 1) {
+      return {
+        ...line,
+        service_date: matches[0].service_date,
+        passages_count: (matches[0].passages || []).length,
+        service_date_source: 'passages',
+      };
+    }
+  }
+  return { ...line, service_date_source: 'invoice' };
+}
+
 // ─── round-trip matching (spec §4 "Σκορ ταιριάσματος") ──────────────────────
 function dateOverlaps(line, rt) {
   const start = rt.date_start;
@@ -149,19 +311,28 @@ function overlapDays(line, rt) {
 // status too — a caller that forgets the filter must not silently match a
 // cancelled round trip.
 export function matchRoundTrip(line, rts, rules) {
+  // DKV's own account/box fees (product_code seed 'dkv' — 0949, LI05/06,
+  // 0BGS/CZS/DES/PLS/GRS, 0920, 0922, 01AP) are never a trip cost, no matter
+  // what plate or date is printed on the line — a fee line naming a vehicle
+  // is still an account-level charge, not that vehicle's expense (round 2
+  // 8/9/2026). Checked first, before the plate/truck logic below, so it
+  // wins even when the line otherwise looks fully resolved.
+  if (line.category === 'dkv') {
+    return { match: 'none', rt_id: null, alternatives: [], general: true, none_reason: 'general_fee' };
+  }
   // Reverse-charge / general fees carry no vehicle at all (spec §1) — these
   // are never "unmatched", they are general by definition.
   if (!line.plate) {
-    return { match: 'none', rt_id: null, alternatives: [], general: true };
+    return { match: 'none', rt_id: null, alternatives: [], general: true, none_reason: 'no_plate' };
   }
   if (line.truck_id == null) {
-    return { match: 'none', rt_id: null, alternatives: [], general: false };
+    return { match: 'none', rt_id: null, alternatives: [], general: false, none_reason: 'unknown_plate' };
   }
   const candidates = (rts || []).filter(
     (rt) => rt.status !== 'cancelled' && rt.truck_id === line.truck_id && dateOverlaps(line, rt)
   );
-  if (!candidates.length) return { match: 'none', rt_id: null, alternatives: [], general: false };
-  if (candidates.length === 1) return { match: 'sure', rt_id: candidates[0].id, alternatives: [] };
+  if (!candidates.length) return { match: 'none', rt_id: null, alternatives: [], general: false, none_reason: 'no_rt_on_date' };
+  if (candidates.length === 1) return { match: 'sure', rt_id: candidates[0].id, alternatives: [], none_reason: null };
 
   const prefRule = (rules || []).find((r) => r.kind === 'rt_pref' && r.key === line.plate);
   let chosen = null;
@@ -180,6 +351,7 @@ export function matchRoundTrip(line, rts, rules) {
     match: 'suggest',
     rt_id: chosen.id,
     alternatives: candidates.filter((c) => c.id !== chosen.id).map((c) => c.id),
+    none_reason: null,
   };
 }
 

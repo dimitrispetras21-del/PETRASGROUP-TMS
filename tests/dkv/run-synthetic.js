@@ -88,7 +88,9 @@ assertEqual(DkvParser.detectCurrency(['no currency label here']), 'EUR', 'detect
 
 // halfMonthBounds
 assertEqual(JSON.stringify(DkvParser.halfMonthBounds('05.09.2026')), JSON.stringify({ from: '2026-09-01', to: '2026-09-15' }), 'halfMonthBounds first half');
-assertEqual(JSON.stringify(DkvParser.halfMonthBounds('16.09.2026')), JSON.stringify({ from: '2026-09-16', to: '2026-09-30' }), 'halfMonthBounds second half (30-day month)');
+assertEqual(JSON.stringify(DkvParser.halfMonthBounds('16.09.2026')), JSON.stringify({ from: '2026-09-01', to: '2026-09-15' }), 'halfMonthBounds: billing day 16 closes the FIRST half');
+assertEqual(JSON.stringify(DkvParser.halfMonthBounds('30.09.2026')), JSON.stringify({ from: '2026-09-16', to: '2026-09-30' }), 'halfMonthBounds second half (30-day month)');
+assertEqual(JSON.stringify(DkvParser.halfMonthBounds('01.10.2026')), JSON.stringify({ from: '2026-09-16', to: '2026-09-30' }), 'halfMonthBounds: billing day 1 closes the previous month second half');
 assertEqual(JSON.stringify(DkvParser.halfMonthBounds('28.02.2026')), JSON.stringify({ from: '2026-02-16', to: '2026-02-28' }), 'halfMonthBounds Feb (non-leap)');
 
 // toIsoDate

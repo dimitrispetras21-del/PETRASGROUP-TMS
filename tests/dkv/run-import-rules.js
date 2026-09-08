@@ -39,29 +39,56 @@ function assertDeepEqual(actual, expected, msg) {
 async function main() {
   const mod = await import('../../worker/src/import-rules.mjs');
   const {
-    buildImportKey, findDuplicateImportKeys, applyRules, matchRoundTrip,
+    buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip,
     reconcile, sumGrossEur, isMissingRelationError,
   } = mod;
+  const DkvParser = require('../../core/dkv-parser.js');
 
   // ── buildImportKey (spec §6 gate #2) ────────────────────────────────
+  // 7 parts (doc_no, seq, ref, plate, service_date, product_code, sub) → 6 separators.
   assertEqual(
     buildImportKey({ doc_no: 'D1', ref: 'R1', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }),
-    'D1||R1|XX1234|2026-08-13|0009',
-    'buildImportKey: full line'
+    'D1||R1|XX1234|2026-08-13|0009|',
+    'buildImportKey: full line, no sub (unsplit) → trailing blank'
   );
   assertEqual(
     buildImportKey({ doc_no: 'D1', ref: null, plate: 'XX1234', service_date: '2026-08-13', product_code: null }),
-    'D1|||XX1234|2026-08-13|',
+    'D1|||XX1234|2026-08-13||',
     'buildImportKey: missing pieces become blank, not skipped (positional stability)'
   );
-  assertEqual(buildImportKey({}), '|||||', 'buildImportKey: fully empty line still has 5 separators (seq slot included)');
+  assertEqual(buildImportKey({}), '||||||', 'buildImportKey: fully empty line still has 6 separators (seq + sub slots included)');
+  assertEqual(
+    buildImportKey({ doc_no: 'D1', seq: 3, ref: 'R1', plate: 'XX1234', service_date: '2026-08-13', product_code: '0936', sub: 1 }),
+    'D1|3|R1|XX1234|2026-08-13|0936|1',
+    'buildImportKey: sub=1 (first split child) appears as the 7th field'
+  );
+  assertEqual(
+    buildImportKey({ doc_no: 'D1', seq: 3, ref: 'R1', plate: 'XX1234', service_date: '2026-08-13', product_code: '0936', sub: 2 }),
+    'D1|3|R1|XX1234|2026-08-13|0936|2',
+    'buildImportKey: sub=2 differs from sub=1 → distinct keys even when every other field matches'
+  );
+
+  // ── seed categories (round 2, spec facts 8/9/2026 — codes that were
+  // landing in 'other' on the real ZIP) ───────────────────────────────
+  assertEqual(DkvParser.categoryForProduct('0517'), 'tolls', 'seed: 0517 Putarina u Srbiji (RS) → tolls');
+  assertEqual(DkvParser.categoryForProduct('0519'), 'tolls', 'seed: 0519 Taxă de drum RO → tolls');
+  assertEqual(DkvParser.categoryForProduct('0533'), 'tolls', 'seed: 0533 Cestarina Hrvatska → tolls');
+  assertEqual(DkvParser.categoryForProduct('0900'), 'tolls', 'seed: 0900 Toll D - DKV BOX → tolls');
+  assertEqual(DkvParser.categoryForProduct('0BGS'), 'dkv', 'seed: 0BGS service charge (BG) → dkv');
+  assertEqual(DkvParser.categoryForProduct('0CZS'), 'dkv', 'seed: 0CZS service charge (CZ) → dkv');
+  assertEqual(DkvParser.categoryForProduct('0DES'), 'dkv', 'seed: 0DES service charge (DE) → dkv');
+  assertEqual(DkvParser.categoryForProduct('0PLS'), 'dkv', 'seed: 0PLS service charge (PL) → dkv');
+  assertEqual(DkvParser.categoryForProduct('0920'), 'dkv', 'seed: 0920 DKV BOX EU central → dkv');
+  assertEqual(DkvParser.categoryForProduct('0922'), 'dkv', 'seed: 0922 Increased DKV BOX → dkv');
+  assertEqual(DkvParser.categoryForProduct('01AP'), 'dkv', 'seed: 01AP DKV Analytics → dkv');
+  assertEqual(DkvParser.categoryForProduct('0GRS'), 'dkv', 'seed: 0GRS still dkv (already seeded, round 2 keeps it)');
 
   // ── findDuplicateImportKeys ──────────────────────────────────────────
   assertDeepEqual(findDuplicateImportKeys([{ import_key: 'a' }, { import_key: 'b' }]), [], 'findDuplicateImportKeys: no dupes → []');
   assertDeepEqual(findDuplicateImportKeys([{ import_key: 'a' }, { import_key: 'a' }, { import_key: 'b' }]), ['a'], 'findDuplicateImportKeys: one dupe found');
   assertDeepEqual(
     findDuplicateImportKeys([{ doc_no: 'D', ref: 'R', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }, { doc_no: 'D', ref: 'R', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }]),
-    ['D||R|XX1234|2026-08-13|0009'],
+    ['D||R|XX1234|2026-08-13|0009|'],
     'findDuplicateImportKeys: falls back to buildImportKey when import_key not set on the line'
   );
 
@@ -105,9 +132,19 @@ async function main() {
   const rtsSure = [{ id: 1, truck_id: 101, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-10' }];
   assertDeepEqual(
     matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-08-05' }, rtsSure, []),
-    { match: 'sure', rt_id: 1, alternatives: [] },
+    { match: 'sure', rt_id: 1, alternatives: [], none_reason: null },
     'matchRoundTrip: one candidate in range → sure'
   );
+
+  // ── round 2: DKV account/box fees are never a trip cost ─────────────
+  const rFee = matchRoundTrip({ category: 'dkv', plate: 'XX1234', truck_id: 101, service_date: '2026-08-05' }, rtsSure, []);
+  assertDeepEqual(
+    rFee,
+    { match: 'none', rt_id: null, alternatives: [], general: true, none_reason: 'general_fee' },
+    'matchRoundTrip: category dkv → none/general_fee even with a resolvable plate+truck+date'
+  );
+  const rFeeNoPlate = matchRoundTrip({ category: 'dkv', plate: null }, rtsSure, []);
+  assertEqual(rFeeNoPlate.none_reason, 'general_fee', 'matchRoundTrip: category dkv wins over the no-plate check too (checked first)');
 
   const rtsTwo = [
     { id: 1, truck_id: 101, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-15' },
@@ -127,17 +164,20 @@ async function main() {
   const rNone = matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-01-01' }, rtsSure, []);
   assertEqual(rNone.match, 'none', 'matchRoundTrip: no candidate in range → none');
   assertEqual(rNone.general, false, 'matchRoundTrip: known truck but no RT window → not general (still an allocation gap)');
+  assertEqual(rNone.none_reason, 'no_rt_on_date', 'matchRoundTrip: known truck, no RT covers the date → none_reason no_rt_on_date');
 
   const rGeneral = matchRoundTrip({ plate: null }, rtsSure, []);
-  assertDeepEqual(rGeneral, { match: 'none', rt_id: null, alternatives: [], general: true }, 'matchRoundTrip: no plate at all (reverse charge) → none + general');
+  assertDeepEqual(rGeneral, { match: 'none', rt_id: null, alternatives: [], general: true, none_reason: 'no_plate' }, 'matchRoundTrip: no plate at all (reverse charge) → none + general + no_plate');
 
   const rUnresolvedPlate = matchRoundTrip({ plate: 'UNKNOWN1', truck_id: null }, rtsSure, []);
   assertEqual(rUnresolvedPlate.match, 'none', 'matchRoundTrip: plate present but never resolved to a truck → none');
   assertEqual(rUnresolvedPlate.general, false, 'matchRoundTrip: unresolved plate is NOT a general fee — it needs a plate alias, not allocation');
+  assertEqual(rUnresolvedPlate.none_reason, 'unknown_plate', 'matchRoundTrip: plate present, unresolved → none_reason unknown_plate');
 
   const rtsCancelled = [{ id: 9, truck_id: 101, status: 'cancelled', date_start: '2026-08-01', date_end: '2026-08-10' }];
   const rCancelled = matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-08-05' }, rtsCancelled, []);
   assertEqual(rCancelled.match, 'none', 'matchRoundTrip: a cancelled RT is never a candidate, even in range');
+  assertEqual(rCancelled.none_reason, 'no_rt_on_date', 'matchRoundTrip: cancelled-only RT reads the same as no RT at all → no_rt_on_date');
 
   const rtsHalfSingle = [{ id: 5, truck_id: 101, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-31' }];
   const rHalfSure = matchRoundTrip({ plate: 'XX1234', truck_id: 101, period_from: '2026-08-01', period_to: '2026-08-15' }, rtsHalfSingle, []);
@@ -183,6 +223,96 @@ async function main() {
   assertEqual(sumGrossEur([{ gross: 10, gross_eur: 8 }]), 8, 'sumGrossEur: prefers gross_eur over native gross');
   assertEqual(sumGrossEur([{ gross: 10 }, { gross: -2.04 }]), 7.96, 'sumGrossEur: handles a negative discount line');
   assertEqual(sumGrossEur([]), 0, 'sumGrossEur: empty list → 0');
+
+  // ── splitByPassages (round 2, half-month toll lines → per-day) ──────
+  // Fake half-month CZ toll statement line (net 30, vat 0, gross 30) plus
+  // three passages groups (days 3/8/13) that sum to the same net — gate passes.
+  const halfLine = {
+    doc_no: 'D_CZ', seq: 4, ref: null, plate: 'XX1234', country: 'CZ',
+    category: 'tolls', period_from: '2026-08-01', period_to: '2026-08-15',
+    net: 30, vat: 0, gross: 30, net_eur: 30, vat_eur: 0, gross_eur: 30, currency: 'EUR',
+  };
+  const passagesOk = [
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-03', net: 10, vat: 0, gross: 10, passages: [{}] },
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-08', net: 7, vat: 0, gross: 7, passages: [{}, {}] },
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-13', net: 13, vat: 0, gross: 13, passages: [{}] },
+  ];
+  const splitOk = splitByPassages([halfLine], passagesOk);
+  assertEqual(splitOk.lines.length, 3, 'splitByPassages: gate passes → one line per passages group');
+  assertEqual(splitOk.errors.split.length, 0, 'splitByPassages: gate passes → no split error recorded');
+  assertEqual(splitOk.stats.lines_split, 1, 'splitByPassages: stats count the parent line as split once');
+  assertEqual(splitOk.stats.lines_created, 3, 'splitByPassages: stats count 3 created day-lines');
+  assertDeepEqual(splitOk.lines.map((l) => l.service_date), ['2026-08-03', '2026-08-08', '2026-08-13'], 'splitByPassages: children carry each group\'s own service_date, in order');
+  assertDeepEqual(splitOk.lines.map((l) => l.period_from), [null, null, null], 'splitByPassages: children have period_from/period_to removed');
+  assertDeepEqual(splitOk.lines.map((l) => l.sub), [1, 2, 3], 'splitByPassages: sub numbers children 1..n');
+  assertDeepEqual(splitOk.lines.map((l) => l.split_from_seq), [4, 4, 4], 'splitByPassages: split_from_seq points back at the parent seq');
+  assertDeepEqual(splitOk.lines.map((l) => l.passages_count), [1, 2, 1], 'splitByPassages: passages_count copied from each group');
+  assert(splitOk.lines.every((l) => l.note === 'από λίστα διελεύσεων'), 'splitByPassages: every child carries the passages-source note');
+  assert(splitOk.lines.every((l) => l.service_date_source === 'passages'), 'splitByPassages: every child is tagged service_date_source=passages');
+  // EUR remainder absorption: 30 split across (10,7,13) local → EUR ratios 1/3, 7/30, 13/30
+  // of 30 EUR = 10.00, 7.00, 13.00 exactly here, so verify the general property instead
+  // (Σ children == parent, not float drift) with an amount that does NOT divide evenly.
+  const halfLine2 = { ...halfLine, net: 30, gross_eur: 10, net_eur: 10, vat_eur: 0 };
+  const passagesUneven = [
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-03', net: 10, vat: 0, gross: 10, passages: [] },
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-08', net: 10, vat: 0, gross: 10, passages: [] },
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-13', net: 10, vat: 0, gross: 10, passages: [] },
+  ];
+  const splitUneven = splitByPassages([halfLine2], passagesUneven);
+  const sumChildrenEur = splitUneven.lines.reduce((s, l) => s + l.net_eur, 0);
+  assertEqual(Math.round(sumChildrenEur * 100) / 100, 10, 'splitByPassages: Σ children net_eur == parent net_eur exactly (10/3 rounding absorbed by the last day)');
+  const lastChild = splitUneven.lines[splitUneven.lines.length - 1];
+  const firstTwoSum = splitUneven.lines[0].net_eur + splitUneven.lines[1].net_eur;
+  assertEqual(Math.round((firstTwoSum + lastChild.net_eur) * 100) / 100, 10, 'splitByPassages: last child absorbs whatever the first two rounded away');
+
+  // Gate fails: passages sum (10+7) does not match the line's own net (30).
+  const passagesMismatch = [
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-03', net: 10, vat: 0, gross: 10, passages: [] },
+    { plate: 'XX1234', country: 'CZ', service_date: '2026-08-08', net: 7, vat: 0, gross: 7, passages: [] },
+  ];
+  const splitFail = splitByPassages([halfLine], passagesMismatch);
+  assertEqual(splitFail.lines.length, 1, 'splitByPassages: gate fails → line left untouched (not split)');
+  assertEqual(splitFail.lines[0].period_from, '2026-08-01', 'splitByPassages: gate fails → period_from/to left as parsed');
+  assertEqual(splitFail.errors.split.length, 1, 'splitByPassages: gate fails → one split error recorded');
+  assertEqual(splitFail.errors.split[0].reason, 'passages-sum-mismatch', 'splitByPassages: error reason is passages-sum-mismatch');
+  assertEqual(splitFail.errors.split[0].doc_no, 'D_CZ', 'splitByPassages: error carries doc_no');
+  assertEqual(splitFail.errors.split[0].seq, 4, 'splitByPassages: error carries seq');
+  assertEqual(splitFail.errors.split[0].groups, 2, 'splitByPassages: error reports how many groups were found');
+  assertEqual(splitFail.stats.lines_split, 0, 'splitByPassages: a failed gate does not count as split');
+
+  // No passages at all for the period → still goes through the gate (0 vs 30) and fails, not silently skipped.
+  const splitNoGroups = splitByPassages([halfLine], []);
+  assertEqual(splitNoGroups.lines.length, 1, 'splitByPassages: no passages found → line untouched, still reported as a gate failure');
+  assertEqual(splitNoGroups.errors.split[0].groups, 0, 'splitByPassages: 0 groups recorded when none match plate/country/period');
+
+  // A non-tolls or non-half-month line is never touched by the split logic itself.
+  const plainFuelLine = { doc_no: 'D1', seq: 0, ref: null, plate: 'XX1234', category: 'fuel', service_date: '2026-08-05' };
+  const splitPlain = splitByPassages([plainFuelLine], passagesOk);
+  assertEqual(splitPlain.lines.length, 1, 'splitByPassages: a normal (non-half-month) line passes through unchanged in count');
+  assertEqual(splitPlain.lines[0].service_date_source, 'invoice', 'splitByPassages: a line with no ref/no join stays service_date_source=invoice');
+
+  // ── ref-suffix join (round 2, AT/SI/SK style — join by SUFFIX, not equality) ──
+  const invoiceLine = { doc_no: 'D_AT', seq: 0, ref: '20260000000056155890', plate: 'XX1234', category: 'tolls', service_date: '2026-08-17' };
+  const passageForRef = [{ plate: 'XX1234', country: 'AT', ref: '0000000056155890', service_date: '2026-08-13', passages: [{}, {}] }];
+  const joined = splitByPassages([invoiceLine], passageForRef);
+  assertEqual(joined.lines[0].service_date, '2026-08-13', 'ref join: real passage day (13th) replaces the invoice charge day (17th)');
+  assertEqual(joined.lines[0].service_date_source, 'passages', 'ref join: service_date_source is set to passages on a successful join');
+  assertEqual(joined.lines[0].passages_count, 2, 'ref join: passages_count copied from the joined group');
+
+  // Ambiguous join (two groups suffix-match the same ref) is refused, not guessed.
+  const passagesAmbiguous = [
+    { plate: 'XX1234', country: 'AT', ref: '0000000056155890', service_date: '2026-08-13', passages: [] },
+    { plate: 'XX1234', country: 'AT', ref: '56155890', service_date: '2026-08-14', passages: [] },
+  ];
+  const joinedAmbiguous = splitByPassages([invoiceLine], passagesAmbiguous);
+  assertEqual(joinedAmbiguous.lines[0].service_date, '2026-08-17', 'ref join: two suffix matches → refused, invoice date kept');
+  assertEqual(joinedAmbiguous.lines[0].service_date_source, 'invoice', 'ref join: two suffix matches → service_date_source stays invoice');
+
+  // No ref at all → never attempts a join.
+  const noRefLine = { doc_no: 'D1', seq: 1, ref: null, plate: 'XX1234', category: 'fuel', service_date: '2026-08-05' };
+  const joinedNoRef = splitByPassages([noRefLine], passageForRef);
+  assertEqual(joinedNoRef.lines[0].service_date, '2026-08-05', 'ref join: no ref on the line → service_date left as parsed');
+  assertEqual(joinedNoRef.lines[0].service_date_source, 'invoice', 'ref join: no ref on the line → service_date_source invoice');
 
   // ── isMissingRelationError (migration 024 not executed yet) ─────────
   assert(isMissingRelationError('dbSelectRaw ct_import_rules 404: {"code":"42P01","message":"relation \\"public.ct_import_rules\\" does not exist"}'), 'isMissingRelationError: 42P01 (missing table) recognized');

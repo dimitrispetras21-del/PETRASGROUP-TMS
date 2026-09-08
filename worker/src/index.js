@@ -3,7 +3,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
-import { buildImportKey, findDuplicateImportKeys, applyRules, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
+import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
 // bundler) wraps a CommonJS file's module.exports as the default export of
@@ -3206,13 +3206,21 @@ async function handleCosts(request, url, origin, env) {
       // (b) parse — core/dkv-parser.js, same file the browser runs (spec §2).
       const parsed = DkvParser.parseDkv(body.files);
 
+      // (b2) split half-month toll statement lines into per-day lines using
+      // the "List of passages" PDFs, and join AT/SI/SK-style invoice lines
+      // to their real passage day via `ref` (round 2, spec §1). Must run
+      // before applyRules/matchRoundTrip: it works on the parser's own line
+      // shape, and a split child needs `category` already at 'tolls' — set
+      // by the parser's seed map, not yet touched by a saved rule.
+      const split = splitByPassages(parsed.lines, parsed.passages);
+
       // (c) normalize with the three memories (spec §4).
       // Soft-deleted trucks must not win a plate match (critic 8/9, finding 8).
       const trucksRaw = (await dbSelectRaw(env, "trucks", new URLSearchParams({ select: "id,license_plate", deleted_at: "is.null", limit: "300" }))).rows;
       const trucks = trucksRaw.map((t) => ({ id: t.id, plate: DkvParser.normalizePlate(t.license_plate) }));
       const plateAliases = (await dbSelectRaw(env, "ct_plate_aliases", new URLSearchParams({ select: "alias,truck_id" }))).rows;
       const rules = rules_unavailable ? [] : (await dbSelectRaw(env, "ct_import_rules", new URLSearchParams({ select: "kind,key,value", source: "in.(DKV,ANY)" }))).rows;
-      const normalized = applyRules(parsed.lines, { trucks, plateAliases, rules });
+      const normalized = applyRules(split.lines, { trucks, plateAliases, rules });
 
       // (d) match each line to a round trip (spec §4 score).
       const truckIds = [...new Set(normalized.map((l) => l.truck_id).filter((v) => v != null))];
@@ -3285,18 +3293,27 @@ async function handleCosts(request, url, origin, env) {
         : await dbInsert(env, "ct_cost_docs", docPatch);
 
       return jsonOk({
-        doc,
+        // files_count so the screen's «— αρχεία» title has a number instead of
+        // nothing (it was never returned before — round 2, 8/9/2026).
+        doc: { ...doc, files_count: body.files.length },
         lines,
         reconcile: reconcileResult,
         unknown_product_codes: parsed.errors.unknownProductCodes,
         unknown_plates,
         unparsed: parsed.errors.unparsed,
         rules_unavailable,
+        split: { lines_split: split.stats.lines_split, lines_created: split.stats.lines_created, errors: split.errors.split },
         metrics: {
           lines_total: lines.length,
           lines_sure: lines.filter((l) => l.match === "sure").length,
           lines_suggest: lines.filter((l) => l.match === "suggest").length,
-          lines_none: lines.filter((l) => l.match === "none").length
+          lines_none: lines.filter((l) => l.match === "none").length,
+          none_reason: {
+            general_fee: lines.filter((l) => l.none_reason === "general_fee").length,
+            no_plate: lines.filter((l) => l.none_reason === "no_plate").length,
+            unknown_plate: lines.filter((l) => l.none_reason === "unknown_plate").length,
+            no_rt_on_date: lines.filter((l) => l.none_reason === "no_rt_on_date").length
+          }
         }
       }, origin, env);
     }
