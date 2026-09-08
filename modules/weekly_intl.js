@@ -2704,13 +2704,28 @@ async function _wiRemoveImport(rowId){
   if(ok){
     // Ξεταίριασμα = το import δεν ταξιδεύει πια με αυτό το όχημα (owner 13/8):
     // καθαρίζεται η κληρονομημένη ανάθεσή του για να μην μείνει ορφανή.
-    try{
-      const rc=await atSafePatch(TABLES.ORDERS,impId,{
-        'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
-        'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
-      });
-      if(rc?.error) throw new Error(rc.error.message||rc.error.type);
-    }catch(err){ console.warn('[wi unmatch] import assignment clear:',err.message); }
+    //
+    // GI- group fix (owner 8/9 defect item 3, GI-MTRB928Y/307+308): «η ομάδα
+    // εισαγωγών ταιριάζει ως σύνολο» ισχύει και στο ξεταίριασμα — clearing
+    // only `impId` left a live sibling of the SAME group still assigned to a
+    // vehicle it no longer travels with (the board showed the group as
+    // unmatched/unassigned while Postgres still had one member Assigned).
+    // The group ties or breaks TOGETHER: every live member gets cleared,
+    // never a subset — read back is skipped here (same as the pre-existing
+    // single-id clear) since this is a best-effort inherit-cleanup, not the
+    // authoritative match write above.
+    const giGroup = await _wiGiGroup(impId);
+    const clearErrors=[];
+    for(const memberId of giGroup.members){
+      try{
+        const rc=await atSafePatch(TABLES.ORDERS,memberId,{
+          'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
+          'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
+        });
+        if(rc?.error) throw new Error(rc.error.message||rc.error.type);
+      }catch(err){ clearErrors.push(memberId+': '+(err&&err.message||err)); }
+    }
+    if(clearErrors.length) reportError('Το ταίριασμα αφαιρέθηκε αλλά η ανάθεση ΔΕΝ καθαρίστηκε σε όλα τα μέλη του groupage εισαγωγών — έλεγξε χειροκίνητα: '+clearErrors.join(' · '),clearErrors);
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Το ταίριασμα αφαιρέθηκε ✓');
@@ -2719,8 +2734,12 @@ async function _wiRemoveImport(rowId){
     // so the import's leg was never detached and stayed on the export's RT
     // forever. rtOnImportUnmatched (core/rt-feed.js) removes just that leg via
     // DELETE /costs/rt/:id/legs (N1); non-blocking, toasts on its own failure.
+    // Unlike rtOnOrderSaved, it does NOT gather GI- siblings itself — one call
+    // per member, same fix as the assignment-clear above.
     if(typeof rtOnImportUnmatched === 'function'){
-      rtOnImportUnmatched(row.orderIds[0], impId).catch(e => console.warn('[wi unmatch] rt sync:', e && e.message));
+      for(const memberId of giGroup.members){
+        rtOnImportUnmatched(row.orderIds[0], memberId).catch(e => console.warn('[wi unmatch] rt sync:', e && e.message));
+      }
     }
   }
 }
