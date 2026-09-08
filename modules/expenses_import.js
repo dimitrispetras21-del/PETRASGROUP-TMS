@@ -321,7 +321,7 @@ function eiLoadParseResult(res) {
     id: idx,
     selected: true,
     corrected: false,
-    match: l.match || { status: 'none', rt_id: null, candidates: [] },
+    match: eiNormalizeMatch(l),
   }));
   _ei.rules = [];
   _ei.filter = 'all';
@@ -511,6 +511,31 @@ function eiRtCellHtml(l) {
 function eiToggleRtEditor(id) {
   _ei.rtEditingId = _ei.rtEditingId === id ? null : id;
   eiRenderShell();
+}
+
+// The Worker spreads the match FLAT onto the line (match:'sure'|'suggest'|'none',
+// rt_id, alternatives:[rt ids], general) — import-rules.mjs matchRoundTrip. The
+// screen works with one object per line ({status, rt_id, candidates[]}) so the
+// editor can list candidates with plate/driver/dates. Live test 8/9 14:05: with
+// the raw flat shape every one of 269 lines rendered «Χωρίς δρομολόγιο» although
+// the server had matched 162 — this is the single translation point.
+function eiNormalizeMatch(l) {
+  if (l.match && typeof l.match === 'object') return l.match;
+  const status = typeof l.match === 'string' ? l.match : 'none';
+  const rtInfo = (id) => {
+    const r = (_ex.rts || []).find((x) => x.id === id);
+    if (!r) return { rt_id: id };
+    return {
+      rt_id: id,
+      plate: typeof exTruckName === 'function' ? exTruckName(r.truck_id) : '',
+      driver: typeof exPersonName === 'function' ? exPersonName(r) : '',
+      date_start: r.date_start, date_end: r.date_end,
+    };
+  };
+  const ids = [];
+  if (l.rt_id != null) ids.push(l.rt_id);
+  for (const a of (l.alternatives || [])) if (!ids.includes(a)) ids.push(a);
+  return { status, rt_id: l.rt_id != null ? l.rt_id : null, candidates: ids.map(rtInfo), general: !!l.general };
 }
 
 function eiRtEditorHtml(l) {

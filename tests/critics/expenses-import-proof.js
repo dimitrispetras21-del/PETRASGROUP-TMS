@@ -99,12 +99,12 @@ function installBaseMocks(page) {
 // text or the __eiInjectFiles test hook) — parseDkv itself has no DOM/fetch
 // dependency (spec §2), so it runs here in Node unmodified.
 function matchLineFixture(l) {
-  if (!l.plate) return { status: 'none', rt_id: null, candidates: [] };
+  if (!l.plate) return { match: 'none', rt_id: null, alternatives: [], general: true };
   const day = l.service_date || l.period_from;
   const cands = RT_MATCH_FIXTURE.filter((r) => r.plate === l.plate && day && day >= r.date_start && day <= r.date_end);
-  if (cands.length === 1) return { status: 'sure', rt_id: cands[0].rt_id, candidates: cands.slice() };
-  if (cands.length > 1) return { status: 'suggest', rt_id: null, candidates: cands.slice() };
-  return { status: 'none', rt_id: null, candidates: [] };
+  if (cands.length === 1) return { match: 'sure', rt_id: cands[0].rt_id, alternatives: [] };
+  if (cands.length > 1) return { match: 'suggest', rt_id: cands[0].rt_id, alternatives: cands.slice(1).map((c) => c.rt_id) };
+  return { match: 'none', rt_id: null, alternatives: [], general: false };
 }
 
 function buildParseEnvelope(files, zipName) {
@@ -123,7 +123,7 @@ function buildParseEnvelope(files, zipName) {
     perDoc.push({ doc_no: d.doc_no, country: d.country, parsed_gross: parsedGross, summary_total: summaryTotal, diff, ok: summaryTotal != null && Math.abs(diff) <= 0.01 });
   }
   const ok = perDoc.length > 0 && perDoc.every((d) => d.ok);
-  const lines = parsed.lines.map((l, idx) => Object.assign({}, l, { id: 'L' + idx, match: matchLineFixture(l) }));
+  const lines = parsed.lines.map((l, idx) => Object.assign({}, l, { id: 'L' + idx }, matchLineFixture(l)));
   return {
     doc: { id: 'doc-' + Date.now(), zip_name: zipName, n_files: files.length, period_from: null, period_to: null },
     lines,
