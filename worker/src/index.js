@@ -3,6 +3,13 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
+import { buildImportKey, findDuplicateImportKeys, applyRules, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError } from "./import-rules.mjs";
+// core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
+// header), also loaded by app.html in the browser. esbuild (wrangler's
+// bundler) wraps a CommonJS file's module.exports as the default export of
+// an ESM `import`, so this works without a separate wrapper file — verified
+// by the guard-of-three dry-run step in the Φ2 deploy checklist, not assumed.
+import DkvParser from "../../core/dkv-parser.js";
 
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
@@ -2733,25 +2740,39 @@ var COSTS_PERMS = {
   // μεταφορά — μόνο owner, με υποχρεωτικό reason στο audit (βλ. handlers).
   // ledger (owner 5/9): owner, accountant, management write; import owner only.
   // dispatcher/warehouse: nothing — driver pay is not theirs to see.
-  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  // import (Φ2, spec docs/superpowers/specs/2026-09-08-dkv-import-design.md §5):
+  // owner + accountant parse/commit DKV statements; management reads the
+  // resulting docs list only (parity with its read-only stance on lines/rt
+  // above) — no POST, it never uploads or corrects an import itself.
+  owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"] },
   // lines PATCH/DELETE (owner 7/9/2026, spec docs/superpowers/specs/2026-09-07-trip-expenses-design.md):
   // the accountant screen «Έξοδα Δρομολογίων» lets her fix her own typo and
   // route a parked («Χωρίς δρομολόγιο») receipt to the right trip — both go
   // through the same PATCH/DELETE pair the owner-only screen already used,
   // so the mandatory-reason audit trail below applies unchanged.
-  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET", "POST"] },
   // rt DELETE = one LEG leaves an open round trip (unmatch, «ακύρωση προώθησης»);
   // the round trip itself is never deleted (owner 6/9/2026). Accountant/management: no.
   dispatcher: { rt: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"] },
   // rt/lines GET (owner 7/9/2026, same spec): management reads the expenses
   // screen but never writes it — no POST/PATCH/DELETE, matching «ανάγνωση».
-  management: { rt: ["GET"], lines: ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  management: { rt: ["GET"], lines: ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"], import: ["GET"] },
   warehouse: {}
 };
 function ctCan(role, resource, method) {
   const r = COSTS_PERMS[role];
   return !!(r && r[resource] && r[resource].includes(method));
 }
+// Φ5 hook (spec §7): pages that parseDkv() could not turn into any line but
+// which clearly carry money (parsed.errors.unparsed) would go through the AI
+// scan net here, with few-shot examples from scan_examples (doc_type='dkv').
+// NOT wired in Φ2 — no ANTHROPIC_URL call happens during import yet; unparsed
+// pages are only surfaced to the accountant (spec §6 gate #3), never silently
+// dropped or guessed at.
+async function aiFallbackForUnparsed(unparsedPages, env) {
+  return [];
+}
+__name(aiFallbackForUnparsed, "aiFallbackForUnparsed");
 async function handleCosts(request, url, origin, env) {
   const caller = await getCaller(request, env);
   if (!caller) return jsonError("Unauthorized", 401, origin, env);
@@ -3135,6 +3156,301 @@ async function handleCosts(request, url, origin, env) {
       const { rows } = await dbSelectRaw(env, "ct_v_rt_pallet_gate", params);
       return jsonOk({ records: rows }, origin, env);
     }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ---- /costs/import/* — DKV statement import (Φ2, spec 2026-09-08-dkv-import-design.md §5) ----
+    // ══════════════════════════════════════════════════════════════════════
+    // migration 024 (ct_import_rules table + ct_cost_docs.lines_*/parser_version +
+    // ct_cost_lines.import_key) has NOT been executed yet (worker/migrations/024_import_rules.sql
+    // header). Every read/write that touches those must survive a 42P01 (missing
+    // relation) or 42703 (missing column) from PostgREST — never crash, always say
+    // so in the response (CLAUDE.md «ό,τι δεν γίνεται, πρέπει να ακούγεται»).
+    if (resource === "import" && recId === "parse" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || body.source !== "DKV" || !Array.isArray(body.files) || !body.files.length) {
+        return jsonError("source:'DKV' + files[] required", 400, origin, env);
+      }
+      if (!body.zip_sha256) return jsonError("zip_sha256 required", 400, origin, env);
+
+      // migration 024 is one transaction (begin/commit) — the ct_import_rules
+      // TABLE and the ct_cost_docs.zip_sha256/lines_*/parser_version COLUMNS
+      // either all exist or none do. One cheap probe covers both, so the
+      // zip-hash dedupe check below (which filters ct_cost_docs by the
+      // migration-024 column zip_sha256) never crashes on 42703 either.
+      let rules_unavailable = false;
+      try {
+        await dbSelectRaw(env, "ct_import_rules", new URLSearchParams({ select: "id", limit: "1" }));
+      } catch (e) {
+        if (isMissingRelationError(e.message)) rules_unavailable = true;
+        else throw e;
+      }
+
+      // (a) same ZIP already confirmed → 409 with who/when (spec §5).
+      // Skipped when migration 024 hasn't run: zip_sha256 doesn't exist yet to filter on.
+      let existingDocs = { rows: [] };
+      if (!rules_unavailable) {
+        existingDocs = await dbSelectRaw(env, "ct_cost_docs", new URLSearchParams({
+          select: "id,invoice_no,status,created_at,created_by",
+          zip_sha256: `eq.${body.zip_sha256}`
+        }));
+        const confirmed = existingDocs.rows.find((d) => d.status === "confirmed");
+        if (confirmed) {
+          return jsonOk({ error: "already imported", doc_id: confirmed.id, invoice_no: confirmed.invoice_no, created_at: confirmed.created_at, created_by: confirmed.created_by }, origin, env, 409);
+        }
+      }
+
+      // (b) parse — core/dkv-parser.js, same file the browser runs (spec §2).
+      const parsed = DkvParser.parseDkv(body.files);
+
+      // (c) normalize with the three memories (spec §4).
+      const trucksRaw = await dbSelect(env, "trucks", { select: "id,license_plate", limit: 300 });
+      const trucks = trucksRaw.map((t) => ({ id: t.id, plate: DkvParser.normalizePlate(t.license_plate) }));
+      const plateAliases = (await dbSelectRaw(env, "ct_plate_aliases", new URLSearchParams({ select: "alias,truck_id" }))).rows;
+      const rules = rules_unavailable ? [] : (await dbSelectRaw(env, "ct_import_rules", new URLSearchParams({ select: "kind,key,value", source: "in.(DKV,ANY)" }))).rows;
+      const normalized = applyRules(parsed.lines, { trucks, plateAliases, rules });
+
+      // (d) match each line to a round trip (spec §4 score).
+      const truckIds = [...new Set(normalized.map((l) => l.truck_id).filter((v) => v != null))];
+      let rts = [];
+      if (truckIds.length) {
+        const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
+        rts = (await dbSelectRaw(env, "ct_round_trips", rtParams)).rows;
+      }
+      const lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
+
+      // (e) reconcile (spec §6 gate #1) — passages are excluded automatically:
+      // they never enter parsed.lines, only parsed.passages.
+      const reconcileResult = reconcile(lines, (parsed.summary && parsed.summary.docs) || []);
+      const unknown_plates = [...new Set(lines.filter((l) => l.plate && l.truck_id == null).map((l) => l.plate))];
+
+      // (f)/(g) upsert ct_cost_docs draft. entity is left null on purpose: the
+      // Φ1 parser (core/dkv-parser.js) does not extract a customer/entity name
+      // from the PDF text at all — guessing would risk writing the wrong value
+      // into a check-constrained column (VERMION_FRESH|EUROFRESH|null).
+      const summaryDocEntry = parsed.docs.find((d) => d.doc_type === "summary");
+      const allDates = lines.flatMap((l) => [l.service_date, l.period_from, l.period_to]).filter(Boolean).sort();
+      const totalGross = sumGrossEur(lines);
+      let fileUrlPath = null;
+      if (body.zip_base64) {
+        let bytes;
+        try { bytes = Uint8Array.from(atob(body.zip_base64), (c) => c.charCodeAt(0)); }
+        catch { return jsonError("Invalid zip_base64", 400, origin, env); }
+        if (bytes.length > 40 * 1024 * 1024) return jsonError("ZIP too large (max 40MB)", 400, origin, env);
+        const path = `${body.zip_sha256}.zip`;
+        const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/cost-docs/${path}`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/zip" },
+          body: bytes
+        });
+        if (up.ok) {
+          fileUrlPath = path;
+        } else {
+          // A storage failure must not abort the whole preview — the accountant
+          // still needs to see the parsed lines. Surfaced below, not thrown.
+          console.error("IMPORT zip upload", up.status, (await up.text().catch(() => "")).slice(0, 200));
+        }
+      }
+      const docPatch = {
+        source: "DKV",
+        entity: null,
+        invoice_no: (summaryDocEntry && summaryDocEntry.doc_no) || null,
+        period_from: allDates[0] || null,
+        period_to: allDates[allDates.length - 1] || null,
+        total_gross: totalGross,
+        status: "draft",
+        created_by: caller.sub
+      };
+      // zip_sha256 is a migration-024 column — writing it pre-migration would
+      // 42703. Without it a re-parse of the same ZIP creates a new draft row
+      // each time (no dedupe key to match on) instead of updating one — an
+      // accepted, named degradation while rules_unavailable is true.
+      if (!rules_unavailable) docPatch.zip_sha256 = body.zip_sha256;
+      if (fileUrlPath) docPatch.file_url = fileUrlPath;
+      const draftExisting = existingDocs.rows.find((d) => d.status === "draft");
+      const doc = draftExisting
+        ? await ctDbPatch(env, "ct_cost_docs", `id=eq.${draftExisting.id}`, docPatch)
+        : await dbInsert(env, "ct_cost_docs", docPatch);
+
+      return jsonOk({
+        doc,
+        lines,
+        reconcile: reconcileResult,
+        unknown_product_codes: parsed.errors.unknownProductCodes,
+        unknown_plates,
+        unparsed: parsed.errors.unparsed,
+        rules_unavailable,
+        metrics: {
+          lines_total: lines.length,
+          lines_sure: lines.filter((l) => l.match === "sure").length,
+          lines_suggest: lines.filter((l) => l.match === "suggest").length,
+          lines_none: lines.filter((l) => l.match === "none").length
+        }
+      }, origin, env);
+    }
+
+    // ---- POST /costs/import/commit ----
+    if (resource === "import" && recId === "commit" && method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || !Number.isInteger(body.doc_id) || !Array.isArray(body.lines) || !body.lines.length) {
+        return jsonError("doc_id + lines[] required", 400, origin, env);
+      }
+      if (body.reconcile_ok !== true) return jsonError("reconcile_ok:true required", 400, origin, env);
+
+      const before = await dbSelectRaw(env, "ct_cost_docs", new URLSearchParams({ id: `eq.${body.doc_id}`, select: "*" }));
+      if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      const doc = before.rows[0];
+      if (doc.status !== "draft") return jsonError("doc is not draft (already confirmed)", 409, origin, env);
+
+      // The server never trusts the client's reconcile_ok flag alone — it
+      // recomputes Σ gross of the SENT lines against the doc's stored total.
+      const sentTotal = sumGrossEur(body.lines);
+      const storedTotal = typeof doc.total_gross === "number" ? doc.total_gross : parseFloat(doc.total_gross);
+      if (Number.isFinite(storedTotal) && Math.abs(sentTotal - storedTotal) > 0.01) {
+        return jsonError(`reconcile mismatch: sent lines Σ${sentTotal} ≠ doc total ${storedTotal}`, 409, origin, env);
+      }
+
+      // migration 024 columns present? Probe once, cheaply — if ct_cost_lines
+      // has no import_key column, insert lines without it (and skip doc metrics)
+      // rather than fail the whole commit (spec §5 step 3, "migration_024_missing: true").
+      let migration024Missing = false;
+      try {
+        await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", limit: "1" }));
+      } catch (e) {
+        if (isMissingRelationError(e.message)) migration024Missing = true;
+        else throw e;
+      }
+
+      const rows = [];
+      for (let i = 0; i < body.lines.length; i++) {
+        const ln = body.lines[i];
+        if (!CT_CATEGORIES.includes(ln.category)) return jsonError(`line ${i + 1}: unknown category`, 400, origin, env);
+        const row = ctPick(ln, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "km_reading", "liters", "station", "note"]);
+        row.doc_id = body.doc_id;
+        row.alloc_status = row.rt_id ? "allocated" : "unallocated";
+        row.created_by = caller.sub;
+        if (!migration024Missing) row.import_key = ln.import_key || buildImportKey(ln);
+        rows.push(row);
+      }
+
+      // Pre-batch duplicate check — catches a dupe inside THIS submission
+      // before it ever reaches Postgres.
+      const withinBatchDupes = migration024Missing ? [] : findDuplicateImportKeys(rows);
+      if (withinBatchDupes.length) {
+        return jsonOk({ error: "duplicate import keys in submitted batch", duplicate_keys: withinBatchDupes }, origin, env, 409);
+      }
+      if (!migration024Missing) {
+        const keys = rows.map((r) => r.import_key).filter(Boolean);
+        if (keys.length) {
+          const dupCheck = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", import_key: `in.(${keys.join(",")})` }));
+          if (dupCheck.rows.length) {
+            return jsonOk({ error: "duplicate import keys (already imported)", duplicate_keys: dupCheck.rows.map((r) => r.import_key) }, origin, env, 409);
+          }
+        }
+      }
+
+      const insertRes = await fetch(`${env.SUPABASE_URL}/rest/v1/ct_cost_lines`, {
+        method: "POST",
+        headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify(rows)
+      });
+      if (!insertRes.ok) {
+        const detail = await insertRes.text().catch(() => "");
+        if (/23505/.test(detail)) return jsonError("duplicate lines (unique index)", 409, origin, env);
+        console.error("IMPORT commit insert", insertRes.status, detail.slice(0, 200));
+        return jsonError("Insert failed", 500, origin, env);
+      }
+      const insertedLines = await insertRes.json();
+
+      // Rules (the accountant's «ναι, στο εξής») — best-effort: same 42P01
+      // guard, never blocks the commit that already wrote the actual lines.
+      let rulesWritten = 0;
+      let rulesUnavailable = false;
+      if (Array.isArray(body.rules) && body.rules.length) {
+        for (const r of body.rules) {
+          if (!r || !r.kind || !r.key || r.value === void 0) continue;
+          try {
+            const found = await dbSelectRaw(env, "ct_import_rules", new URLSearchParams({ select: "id,hits", source: "eq.DKV", kind: `eq.${r.kind}`, key: `eq.${r.key}` }));
+            if (found.rows.length) {
+              await ctDbPatch(env, "ct_import_rules", `id=eq.${found.rows[0].id}`, { value: r.value, hits: (found.rows[0].hits || 0) + 1 });
+            } else {
+              await dbInsert(env, "ct_import_rules", { source: "DKV", kind: r.kind, key: r.key, value: r.value, hits: 1, created_by: caller.sub });
+            }
+            rulesWritten++;
+          } catch (e) {
+            if (isMissingRelationError(e.message)) { rulesUnavailable = true; break; }
+            console.error("IMPORT commit rule write failed", e.message);
+          }
+        }
+      }
+
+      // Few-shot examples (spec §4) — only relevant once Φ5 adds AI-produced
+      // lines; empty in Φ2 (no AI calls, see aiFallbackForUnparsed below).
+      if (Array.isArray(body.examples) && body.examples.length) {
+        for (const ex of body.examples) {
+          try { await dbInsert(env, "scan_examples", { doc_type: "dkv", corrected: ex }); }
+          catch (e) { console.error("IMPORT commit example insert failed", e.message); }
+        }
+      }
+
+      const linesCorrected = body.lines.filter((l) => l.corrected).length;
+      const linesUnallocated = rows.filter((r) => r.alloc_status === "unallocated").length;
+      // The spec's commit body field list (§5 step 3) does not name "match" —
+      // it may or may not survive the round trip from the preview screen the
+      // client sends it back from. Reporting 0 when it's simply absent would
+      // be a silently-wrong metric (CLAUDE.md «ό,τι δεν γίνεται, πρέπει να
+      // ακούγεται»); null is the honest "not known" instead of a fake count.
+      const hasMatchField = body.lines.some((l) => l.match !== void 0);
+      const docUpdate = { status: "confirmed" };
+      if (!migration024Missing) {
+        docUpdate.lines_total = insertedLines.length;
+        docUpdate.lines_sure = hasMatchField ? body.lines.filter((l) => l.match === "sure").length : null;
+        docUpdate.lines_corrected = linesCorrected;
+        docUpdate.lines_unallocated = linesUnallocated;
+        docUpdate.parser_version = DkvParser.VERSION;
+      }
+      const updatedDoc = await ctDbPatch(env, "ct_cost_docs", `id=eq.${body.doc_id}`, docUpdate);
+      await audit(env, { actor: caller.sub, role: caller.role, action: "create", table: "ct_cost_lines", recordId: `doc:${body.doc_id}`, after: { count: insertedLines.length, lines_corrected: linesCorrected, lines_unallocated: linesUnallocated } });
+
+      return jsonOk({
+        doc: updatedDoc,
+        lines: insertedLines,
+        rules_written: rulesWritten,
+        rules_unavailable: rulesUnavailable,
+        migration_024_missing: migration024Missing
+      }, origin, env, 201);
+    }
+
+    // ---- GET /costs/import/docs ----
+    if (resource === "import" && recId === "docs" && method === "GET") {
+      const q = url.searchParams;
+      const params = new URLSearchParams();
+      params.set("select", "id,source,invoice_no,period_from,period_to,total_gross,status,lines_total,lines_sure,lines_corrected,lines_unallocated,parser_version,file_url,created_at,created_by");
+      params.set("order", "created_at.desc");
+      params.set("limit", "200");
+      let rows;
+      try {
+        ({ rows } = await dbSelectRaw(env, "ct_cost_docs", params));
+      } catch (e) {
+        // migration 024 columns missing → retry with the pre-024 column set,
+        // still answering the request instead of a blanket 500.
+        if (!isMissingRelationError(e.message)) throw e;
+        const fallbackParams = new URLSearchParams({ select: "id,source,invoice_no,period_from,period_to,total_gross,status,file_url,created_at,created_by", order: "created_at.desc", limit: "200" });
+        rows = (await dbSelectRaw(env, "ct_cost_docs", fallbackParams)).rows;
+      }
+      if (q.get("signed") === "1" && rows.length === 1 && rows[0].file_url) {
+        const sg = await fetch(`${env.SUPABASE_URL}/storage/v1/object/sign/cost-docs/${rows[0].file_url}`, {
+          method: "POST",
+          headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ expiresIn: 3600 })
+        });
+        if (sg.ok) {
+          const data = await sg.json();
+          rows[0].signed_url = `${env.SUPABASE_URL}/storage/v1${data.signedURL}`;
+        }
+      }
+      return jsonOk({ records: rows }, origin, env);
+    }
+
     return jsonError("Not found", 404, origin, env);
   } catch (e) {
     console.error(`COSTS ${method} ${url.pathname}`, e.message);

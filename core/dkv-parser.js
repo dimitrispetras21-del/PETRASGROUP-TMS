@@ -16,6 +16,13 @@
 (function (root) {
   'use strict';
 
+  // Φ2 (Worker) writes this into ct_cost_docs.parser_version on every commit
+  // (spec docs/superpowers/specs/2026-09-08-dkv-import-design.md §4 metrics
+  // table) so "διορθώσεις ανά 100 γραμμές" can be tracked per parser build,
+  // not guessed from a git commit the accountant never sees. Bump on any
+  // change to the line-shape or matching rules below.
+  var VERSION = '1.0.0';
+
   // ─── pdf.js text-item → line grouping ────────────────────────────
   /**
    * Combine two PDF transform matrices (each [a,b,c,d,e,f], representing
@@ -666,6 +673,7 @@
   }
 
   const api = {
+    VERSION,
     pdfTextItemsToLines,
     combineTransforms,
     parseNum,
