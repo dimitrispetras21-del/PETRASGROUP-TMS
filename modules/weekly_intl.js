@@ -1221,23 +1221,26 @@ function _wiImpRowHTML(row,impNo){
 
   // Groupage tiles (owner 8/9, FEATURES.GROUP_TILES): a GI import group
   // already collapses into ONE row (_wiBuildRows «A1», row.orderIds sorted
-  // by Loading DateTime) but this renderer used to show only the LEAD
-  // member's own cards — every other member was invisible except for the
-  // «G» badge. Segments below show every member, in the SAME build-time
-  // order; not draggable (unlike the export GRP pill, imports have no
-  // Group ID suffix ordering — see _wiSegDrop comment).
+  // by Loading DateTime as the build-time fallback) but this renderer used
+  // to show only the LEAD member's own cards — every other member was
+  // invisible except for the «G» badge. Segments below show every member,
+  // ordered by _wiGrpOrder (item 1, owner 8/9): GI- suffix when the group has
+  // been reordered by drag, else Loading DateTime — same rule the standalone
+  // export GRP pill already uses, just with the import fallback field.
+  // Draggable=true (item 2): GI groups reorder the same way GRP groups do
+  // (_wiSegDrop/_wiSaveSegOrder generalized on row.type — see their comments).
   const segOn=_wiSegOn()&&row.orderIds.length>1;
-  const members=segOn?row.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean):null;
+  const members=segOn?_wiGrpOrder(row.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime'):null;
 
   const lo=_wi2Loc(fromStr,'Φόρτωση',f._stopsL);
   const lIso=f['Loading DateTime']||'';
   const loadCard=segOn
-    ? _wiSegPillWrap(row.id,members,'load',true,false)
+    ? _wiSegPillWrap(row.id,members,'load',true,true)
     : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
   const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
   if(segOn){
-    delCard=_wiSegPillWrap(row.id,members,'del',true,false,_wiSegTotalsHTML(members));
+    delCard=_wiSegPillWrap(row.id,members,'del',true,true,_wiSegTotalsHTML(members));
   } else if(impVS2){ const v=_wk3VsCd(f,'imp');
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stR.delivered?' done':'')+(stR.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'Βέροια, GR', right});
   } else {
@@ -2022,19 +2025,26 @@ function _wiSameDayConflict(row){
   return null;
 }
 
-// GRP σειρά παράδοσης (owner 12/8): ζει ΜΕΣΑ στο Group ID ως «GRP-xxx|recA,recB»
-// ώστε να μη χρειαστεί νέα στήλη/worker deploy — το collapse δουλεύει με απλή
-// ισότητα του string, άρα το κοινό suffix δεν το σπάει. Χωρίς suffix, η σειρά
-// πέφτει σε ημερομηνία παράδοσης.
-function _wiGrpOrder(exps){
+// GRP/GI σειρά (owner 12/8, επέκταση 8/9 για groupage εισαγωγών — item 1): ζει
+// ΜΕΣΑ στο Group ID ως «GRP-xxx|recA,recB» (εξαγωγή) ή «GI-xxx|recA,recB»
+// (εισαγωγή) ώστε να μη χρειαστεί νέα στήλη/worker deploy — το collapse
+// δουλεύει με απλή ισότητα του string, άρα το κοινό suffix δεν το σπάει.
+// Χωρίς suffix, η σειρά πέφτει στο `fallbackField` (Delivery DateTime για
+// εξαγωγές — σειρά παράδοσης· Loading DateTime για εισαγωγές, που δεν έχουν
+// «σειρά παράδοσης», μόνο παραλαβής) και μετά στο ίδιο το id, ώστε ισοπαλία
+// ημερομηνίας να μην κρέμεται από τη σειρά άφιξης του API.
+function _wiGrpOrder(exps,fallbackField){
   if(exps.length<2) return exps;
+  const ff=fallbackField||'Delivery DateTime';
   const gid=String(exps.find(e=>e.fields['Group ID'])?.fields['Group ID']||'');
   const seq=(gid.split('|')[1]||'').split(',').filter(Boolean);
   if(seq.length){
     const pos=id=>{const k=seq.indexOf(id);return k<0?99:k;};
     return [...exps].sort((a,b)=>pos(a.id)-pos(b.id));
   }
-  return [...exps].sort((a,b)=>String(a.fields['Delivery DateTime']||'').localeCompare(String(b.fields['Delivery DateTime']||'')));
+  return [...exps].sort((a,b)=>
+    String(a.fields[ff]||'').localeCompare(String(b.fields[ff]||''))
+    ||String(a.id).localeCompare(String(b.id)));
 }
 
 /* ── GROUP TILES (owner 8/9/2026, FEATURES.GROUP_TILES) ───────────────────
@@ -2093,7 +2103,8 @@ function _wiSegTipHTML(o,kind){
 // .wk3-leg που ανοίγει την Καρτέλα Ρότας. Δεξί κλικ = μενού παραγγελίας
 // (_wiSegCtx, item 3) — ίδιο stopPropagation ώστε δεξί κλικ ΕΚΤΟΣ τμήματος
 // να συνεχίσει να φτάνει στο μενού ομάδας (_wiCtx/_wiImpCtx, ανέγγιχτα).
-// Σύρσιμο μόνο όταν draggable (μόνο εξαγωγές — βλ. σχόλιο _wiSegDrop).
+// Σύρσιμο μόνο όταν draggable (εξαγωγές ΚΑΙ εισαγωγές ομαδοποίησης, item 2,
+// owner 8/9 — βλ. σχόλιο _wiSegDrop).
 function _wiSegHTML(o,kind,isImportSide,idx,total,rowId,draggable){
   const pos=idx===0?'first':(idx===total-1?'last':'mid');
   const cls=_wiSegCls(o.fields,kind);
@@ -2243,27 +2254,33 @@ function _wiRowHTML(row,i){
   // list — gated behind _wiSegOn() so a flag-off board never does this lookup
   // (byte parity with the pre-existing single-card path below).
   const impGroupRow=(_wiSegOn()&&row.importId)?WINTL.rows.find(r=>r.type==='import'&&r.orderId===row.importId):null;
+  // Item 1 (owner 8/9): ordered by _wiGrpOrder (GI- suffix, else Loading
+  // DateTime) — NOT impGroupRow.orderIds' raw insertion order — so a drag
+  // reorder done from EITHER this pill or the standalone GI- row (they write
+  // the same Group ID suffix) shows up here identically on the next render.
   const impMembers=(impGroupRow&&impGroupRow.orderIds&&impGroupRow.orderIds.length>1)
-    ?impGroupRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean):null;
+    ?_wiGrpOrder(impGroupRow.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime'):null;
   let impInner;
   if(impMembers&&impMembers.length>1){
     // Reuse the SAME segment renderer the standalone GI- row uses, with
     // impGroupRow.id (NOT this export row's id) as the segment rowId — click/
-    // right-click/assign-panel (_wiSegCtx, _wiCancelGroupMember) resolve the
-    // row by that id, so passing this row's id would silently scope group
-    // actions (Ανάθεση…, Ακύρωση groupage) at the WRONG row. «×» unmatch is
-    // the one control the standalone row doesn't need (nothing to unmatch
-    // there) — kept here, wired to the same _wiRemoveImport(row.id) the
-    // classic single card below already used via _wiUnmatch. Appended INSIDE
-    // the totals block (.wk3-segwrap is a flex row, CLAUDE.md file allowlist
-    // for this fix has no assets/style.css) rather than as a sibling of
-    // gLoad/gDel — .wk3-leg.wk3-tiled is a fixed 3-column grid
-    // (load/arrow/del, assets/style.css .wk3-leg.wk3-tiled) and a 4th sibling
-    // would silently overflow that grid instead of sitting in the delivery
-    // column where the classic card's own «×» lived.
-    const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,false);
+    // right-click/assign-panel/drag-drop (_wiSegCtx, _wiCancelGroupMember,
+    // _wiSegDrop) resolve the row by that id, so passing this row's id would
+    // silently scope group actions (Ανάθεση…, Ακύρωση groupage, reorder) at
+    // the WRONG row. «×» unmatch is the one control the standalone row
+    // doesn't need (nothing to unmatch there) — kept here, wired to the same
+    // _wiRemoveImport(row.id) the classic single card below already used via
+    // _wiUnmatch. Appended INSIDE the totals block (.wk3-segwrap is a flex
+    // row, CLAUDE.md file allowlist for this fix has no assets/style.css)
+    // rather than as a sibling of gLoad/gDel — .wk3-leg.wk3-tiled is a fixed
+    // 3-column grid (load/arrow/del, assets/style.css .wk3-leg.wk3-tiled) and
+    // a 4th sibling would silently overflow that grid instead of sitting in
+    // the delivery column where the classic card's own «×» lived.
+    // draggable=true (item 2, owner 8/9): GI segments reorder from inside a
+    // matched export row exactly like the standalone GI- row does.
+    const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,true);
     const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</button>`;
-    const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,false,_wiSegTotalsHTML(impMembers)+unmBtn);
+    const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,true,_wiSegTotalsHTML(impMembers)+unmBtn);
     impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
   } else if(imp){
     const f2=imp.fields;
@@ -4589,10 +4606,18 @@ function _wiSegDragEnd(e){
   window._wiSegDrag=null;
 }
 // Item 5 (owner 8/9): loading and delivery segments share ONE order — the
-// Group ID suffix (_wiGrpOrder) has room for a single delivery-sequence
-// list, no separate loading-sequence field exists. Dragging in EITHER pill
-// therefore reorders the same array; both pills re-render from it (spec:
-// "αν όχι, η σειρά παράδοσης είναι η σειρά ομάδας και η φόρτωση ακολουθεί").
+// Group ID suffix (_wiGrpOrder) has room for a single delivery/pickup-sequence
+// list, no separate loading-sequence field exists. Dragging in EITHER pill —
+// on EITHER side of the leg, since a matched GI- group also drags from inside
+// the export row's import column (_wiRowHTML's gLoad/gDel) — therefore
+// reorders the SAME array; every pill that shows this group re-renders from
+// it (spec: "αν όχι, η σειρά παράδοσης είναι η σειρά ομάδας και η φόρτωση
+// ακολουθεί").
+// Item 2 (owner 8/9): generalized from export-GRP-only to import-GI groups
+// too — `rowId` here is always the GROUP's OWN row id (row.type tells us
+// which), never the export row a matched GI- pill happens to be painted
+// inside (_wiRowHTML passes impGroupRow.id for exactly this reason), so this
+// resolves the right cache/fallback field no matter which pill triggered it.
 async function _wiSegDrop(e,rowId,orderId){
   e.preventDefault();
   const d=window._wiSegDrag;
@@ -4600,20 +4625,26 @@ async function _wiSegDrop(e,rowId,orderId){
   window._wiSegDrag=null;
   if(!d||d.rowId!==rowId||d.orderId===orderId) return;
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
-  const exps=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean));
-  const ids=exps.map(x=>x.id);
+  const isImp=row.type==='import';
+  const cache=isImp?WINTL.data.imports:WINTL.data.exports;
+  const fallbackField=isImp?'Loading DateTime':'Delivery DateTime';
+  const recs=_wiGrpOrder(row.orderIds.map(id=>cache.find(r=>r.id===id)).filter(Boolean),fallbackField);
+  const ids=recs.map(x=>x.id);
   const from=ids.indexOf(d.orderId), to=ids.indexOf(orderId);
   if(from<0||to<0) return;
   ids.splice(to,0,ids.splice(from,1)[0]);
-  await _wiSaveSegOrder(row.id,ids,exps);
+  await _wiSaveSegOrder(row.id,ids,recs,isImp);
 }
 // Same write as _wiRotaSave (Group ID suffix, PATCH σε ΟΛΑ τα μέλη με
 // ανάγνωση πίσω) — απλώς εδώ το trigger είναι το σύρσιμο τμήματος, όχι τα
 // βελάκια ↑↓ του πάνελ ρότας. Μερική αποτυχία θα έσπαγε την ομάδα στην
 // ανανέωση (collapse βασίζεται σε ισότητα Group ID) — γι' αυτό το toast.
-async function _wiSaveSegOrder(rowId,orderedIds,exps){
+// isImp (item 2, owner 8/9): a fresh GI- group has no suffix yet to read the
+// prefix from, exactly like a fresh GRP- export — same fallback shape
+// ('PREFIX-'+first 8 chars of the first ordered id), just the other prefix.
+async function _wiSaveSegOrder(rowId,orderedIds,exps,isImp){
   const base=String(exps.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
-    ||('GRP-'+String(orderedIds[0]).slice(-8));
+    ||((isImp?'GI-':'GRP-')+String(orderedIds[0]).slice(-8));
   const gid=base+'|'+orderedIds.join(',');
   let failed=false;
   for(const e of exps){
@@ -4627,6 +4658,12 @@ async function _wiSaveSegOrder(rowId,orderedIds,exps){
   if(failed){ toast('Η σειρά δεν αποθηκεύτηκε πλήρως — δοκίμασε ξανά','warn'); }
   else {
     toast('✓ Σειρά αποθηκεύτηκε');
+    // rtOnOrderSaved(orderedIds[0]) reaches the WHOLE round-trip group either
+    // way (rtLegsForOrder walks the Group ID/Matched Import ID graph): for a
+    // matched GI- group this is an import id, which rtOnOrderSaved already
+    // redirects to its matched export (core/rt-feed.js, "Import με ζεύγος");
+    // for an unmatched group it just works the import side directly — no
+    // separate "GI lead" lookup needed.
     if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(orderedIds[0]).catch(e=>console.warn('[wi seg] rt sync:',e&&e.message));
   }
   _wiRepaintRow(rowId);
@@ -4717,12 +4754,16 @@ function _wiPrintGroup(rowId){
 }
 // A1 (owner 6/9): same packet for a grouped IMPORT row — print.html's `leg`
 // param applies to every id in `orderIds` alike, so this only differs from
-// _wiPrintGroup above in leg=import.
+// _wiPrintGroup above in leg=import. Item 1 (owner 8/9): ordered via
+// _wiGrpOrder (GI- suffix, else Loading DateTime) same as the render path —
+// row.orderIds is insertion order, not necessarily the dispatcher's stop
+// order once a GI- group has been drag-reordered (see _wiPrintGroup above).
 function _wiPrintImpGroup(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
   const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   const sheet=row.partnerId?'partner':'driver';
-  window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=import&sheet=${sheet}`,'_blank');
+  const ordered=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.imports.find(r=>r.id===id)).filter(Boolean),'Loading DateTime').map(e=>e.id);
+  window.open(`${base}?orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=import&sheet=${sheet}`,'_blank');
 }
 
 /* ── ΚΑΡΤΕΛΑ ΡΟΤΑΣ (owner 12/8, εγκεκριμένο πρωτότυπο grp_trip_proto) ──
