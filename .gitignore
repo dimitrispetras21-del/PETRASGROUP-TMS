@@ -29,3 +29,6 @@ docs/redesign/before/
 
 # driver ledger import — personal financial data, never commit
 tools/ledger-import/work/
+
+# local-only data (public repo): real supplier files for parser tests
+.local/
