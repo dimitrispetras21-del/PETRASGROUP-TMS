@@ -2476,14 +2476,46 @@ async function _wiDropOnPanel(e,rowId){
   await _wiSaveImportMatch(rowId,impId);
 }
 
+// GI- group resolution (owner 8/9 defect: GI-MTRB928Y, orders 307+308 — a
+// match/rematch/unmatch left one live member cleared while the other was
+// assigned, audit_log 14:10:21–31 UTC). A GI- import group collapses to ONE
+// row/ONE draggable id in _wiBuildRows (the lead, sorted by Loading
+// DateTime) — matching or clearing by that single id only ever touched the
+// lead; a sibling kept its old assignment while the board showed the whole
+// group as matched/cleared. Resolves from the SERVER by Group ID (not
+// WINTL.rows) so a sibling outside this week's loaded range is still
+// reached — same pattern _wiSaveFromPopover's GI- propagation already uses
+// below. Returns members SORTED by Loading DateTime (members[0] === lead); a
+// non-GI order, or a lookup failure, degrades to a single-member group of
+// itself — a failure here must never silently widen OR silently narrow who
+// gets written.
+async function _wiGiGroup(impId, knownRec){
+  let gid='';
+  try{
+    const rec = knownRec || await atGetOne(TABLES.ORDERS, impId);
+    gid = rec?.fields?.['Group ID'] || '';
+  }catch(e){ gid=''; }
+  if(gid.indexOf('GI-')!==0) return { lead: impId, members: [impId] };
+  try{
+    const sibs = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Group ID}='${gid}'` }, true) || [];
+    if(!sibs.length) return { lead: impId, members: [impId] };
+    sibs.sort((a,b)=>String(a.fields['Loading DateTime']||'').localeCompare(String(b.fields['Loading DateTime']||'')));
+    return { lead: sibs[0].id, members: sibs.map(s=>s.id) };
+  }catch(e){
+    if (typeof logError === 'function') logError(e, '_wiGiGroup: sibling lookup failed (single-member fallback)');
+    return { lead: impId, members: [impId] };
+  }
+}
+
 // Auto-save import match directly to ORDERS record
 async function _wiSaveImportMatch(rowId,impId){
   if(_wiBlockReadOnly()) return; // defense in depth — dragstart already blocks for a view-only role
   const row=WINTL.rows.find(r=>r.id===rowId);if(!row) return;
 
   // Lock check: verify import is still unmatched on server
+  let importRec=null;
   try {
-    const importRec = await atGetOne(TABLES.ORDERS, impId);
+    importRec = await atGetOne(TABLES.ORDERS, impId);
     const existingMatch = importRec.fields?.['Matched Export ID'] || importRec.fields?.['Matched Import ID'];
     if (existingMatch) {
       if (typeof showErrorToast === 'function') showErrorToast('Η εισαγωγή ταιριάστηκε ήδη από άλλον χρήστη — ανανέωση…', 'warn');
@@ -2499,6 +2531,14 @@ async function _wiSaveImportMatch(rowId,impId){
     else console.warn('Import lock check failed, proceeding:', e.message);
   }
 
+  // GI- group resolution (owner 8/9 defect item 1): impId is always the
+  // group's lead already (the one draggable id _wiImpRowHTML exposes for a
+  // collapsed row), but resolved from the server rather than trusted blindly
+  // — a lookup failure degrades to matching/inheriting onto impId alone,
+  // never silently onto a wider or narrower set than the server confirms.
+  const giGroup = await _wiGiGroup(impId, importRec);
+  const matchImpId = giGroup.lead;
+
   // Lock check: verify export doesn't already have a matched import on server
   try {
     const exportRec = await atGetOne(TABLES.ORDERS, row.orderIds[0]);
@@ -2508,10 +2548,26 @@ async function _wiSaveImportMatch(rowId,impId){
     // guard for a stale read (owner 7/9: «έχει ήδη ταιριασμένη εισαγωγή» on a
     // ghost blocked every new import for that export). Unknown = keep blocking.
     let ghostMatch = false;
-    if (existingExpMatch && existingExpMatch !== impId) {
-      try { ghostMatch = !(await atGetOne(TABLES.ORDERS, existingExpMatch)); } catch (_) { ghostMatch = false; }
+    // Re-match within the SAME GI- group (owner 8/9 defect item 2): the
+    // group's lead can differ across reloads (fetch-order tie on identical
+    // Loading DateTime), so the id an export already points at and the id a
+    // fresh drag now carries can legitimately both name the SAME group. That
+    // must be a no-op re-confirmation, not a foreign-hijack block — blocking
+    // it forces the dispatcher through an explicit unmatch+rematch, which is
+    // exactly the two-step sequence that stripped a live sibling's assignment
+    // on 8/9 (GI-MTRB928Y/307+308, audit_log 14:10:21–31 UTC).
+    let sameGiGroup = false;
+    if (existingExpMatch && existingExpMatch !== matchImpId) {
+      try {
+        const existingImpRec = await atGetOne(TABLES.ORDERS, existingExpMatch);
+        ghostMatch = !existingImpRec;
+        if (existingImpRec) {
+          const oldGid = existingImpRec.fields?.['Group ID'] || '';
+          sameGiGroup = !!oldGid && oldGid.indexOf('GI-') === 0 && oldGid === (importRec?.fields?.['Group ID'] || '');
+        }
+      } catch (_) { ghostMatch = false; }
     }
-    if (existingExpMatch && existingExpMatch !== impId && !ghostMatch) {
+    if (existingExpMatch && existingExpMatch !== matchImpId && !ghostMatch && !sameGiGroup) {
       if (typeof showErrorToast === 'function') showErrorToast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
       else toast('Η εξαγωγή έχει ήδη άλλη ταιριασμένη εισαγωγή — ανανέωση…', 'warn');
       await renderWeeklyIntl();
@@ -2525,17 +2581,17 @@ async function _wiSaveImportMatch(rowId,impId){
 
   // Optimistic UI update
   const oldImp=row.importId;
-  row.importId=impId;
+  row.importId=matchImpId;
 
   // Clear previous match on any other export row
   WINTL.rows.forEach(r=>{
-    if(r.type==='export'&&r.id!==rowId&&r.importId===impId) r.importId=null;
+    if(r.type==='export'&&r.id!==rowId&&r.importId===matchImpId) r.importId=null;
   });
 
   // Update import row matchedTo
   WINTL.rows.forEach(r=>{
     if(r.type==='import'){
-      if(r.orderId===impId) r.matchedTo=row.orderId;
+      if(r.orderId===matchImpId) r.matchedTo=row.orderId;
       else if(r.matchedTo===row.orderId&&oldImp&&r.orderId!==oldImp) r.matchedTo=null;
     }
   });
@@ -2551,7 +2607,7 @@ async function _wiSaveImportMatch(rowId,impId){
   // Save to ALL export orders in group
   for(const orderId of row.orderIds){
     try{
-      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':impId});
+      const res=await atSafePatch(TABLES.ORDERS,orderId,{'Matched Import ID':matchImpId});
       if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type);
       // Central sync — matching link can affect downstream planning
@@ -2571,6 +2627,14 @@ async function _wiSaveImportMatch(rowId,impId){
   // Ταίριασμα σε ΗΔΗ ανατεθειμένο export (owner 13/8): το import αναλαμβάνεται
   // από το ίδιο όχημα — κληρονομεί την ανάθεση στη βάση. Το κόμιστρο import
   // (partner) μπαίνει αργότερα από το popover, δεν εφευρίσκεται εδώ.
+  //
+  // GI- group fix (owner 8/9 defect item 1, GI-MTRB928Y/307+308): «η ομάδα
+  // εισαγωγών ταιριάζει ως σύνολο» — before this fix the inherited
+  // assignment only ever reached `impId` (the single id this function was
+  // called with); a live sibling in the SAME group kept its old Truck/
+  // Driver/Status while the export's own match pointed at the whole group.
+  // Every member of giGroup now gets the SAME fields, read back individually
+  // — the same defense _wiSaveFromPopover's GI- propagation already uses.
   if(!matchFailed && (row.truckId||row.partnerId)){
     const inh=row.partnerId
       ?{ 'Partner':[row.partnerId],'Is Partner Trip':true,
@@ -2579,10 +2643,18 @@ async function _wiSaveImportMatch(rowId,impId){
       :{ 'Truck':[row.truckId],'Trailer':row.trailerId?[row.trailerId]:[],
          'Driver':row.driverId?[row.driverId]:[],
          'Is Partner Trip':false,'Status':'Assigned','Partner':[],'Partner Truck Plates':'' };
-    try{
-      const ri=await atSafePatch(TABLES.ORDERS,impId,inh);
-      if(ri?.error) throw new Error(ri.error.message||ri.error.type);
-    }catch(err){ console.warn('[wi match] import assignment inherit:',err.message); }
+    const giErrors=[];
+    for(const memberId of giGroup.members){
+      try{
+        const ri=await atSafePatch(TABLES.ORDERS,memberId,inh);
+        if(ri?.error) throw new Error(ri.error.message||ri.error.type);
+        const fresh=await atGetOne(TABLES.ORDERS,memberId);
+        const wrote=row.partnerId?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
+          :getLinkedId(fresh?.fields?.['Truck'])===row.truckId;
+        if(!wrote) throw new Error('η ανάγνωση πίσω δεν έδειξε την ανάθεση');
+      }catch(err){ giErrors.push(memberId+': '+(err&&err.message||err)); }
+    }
+    if(giErrors.length) reportError('Το ταίριασμα γράφτηκε αλλά η ανάθεση ΔΕΝ έφτασε σε όλα τα μέλη του groupage εισαγωγών — έλεγξε χειροκίνητα: '+giErrors.join(' · '),giErrors);
   }
 
   // P&L feed (5/9, N2): a match writes 'Matched Import ID' through
