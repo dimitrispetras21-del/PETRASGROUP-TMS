@@ -287,7 +287,7 @@ function exRenderPage() {
   const listHtml = exUnallocatedRowHtml()
     + (trips.length ? exGroupedTripsHtml(trips) : showEmpty({ title: 'Κανένα δρομολόγιο', description: 'Άλλαξε αναζήτηση.' }));
   c.innerHTML = exStyles() + `<div class="ex-page">
-    <div class="ex-head"><span class="ex-title">Έξοδα Δρομολογίων</span></div>
+    <div class="ex-head"><span class="ex-title">Έξοδα Δρομολογίων</span>${_ex.canWrite ? '<button class="btn-new-order" style="margin-left:auto" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
     <div class="ex-strip">
       <div class="ex-hero-big"><div class="v">${exEur(stats.weekNet)}</div><div class="k">αυτή την εβδομάδα</div></div>
       <div class="ex-hero-sm"><div class="v">${stats.capped ? EX_LINES_CAP + '+' : stats.count}</div><div class="k">γραμμές</div></div>
