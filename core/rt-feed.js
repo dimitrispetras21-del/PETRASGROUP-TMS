@@ -132,7 +132,46 @@ function rtLegsForOrder(order, allOrders) {
 
   return [...seen].map(id => ({ orderId: id, direction: dirOf(byId[id]) }));
 }
-if (typeof module !== 'undefined' && module.exports) module.exports = { rtLegsForOrder };
+
+// ── Wave 2 (owner 8/9, 025_rt_leg_seq.sql): the dispatcher's stop order for a
+// groupage — the Group ID suffix «GRP-xxx|recA,recB» that modules/weekly_intl.js
+// _wiGrpOrder already reads to render the Weekly International row — must reach
+// the round trip's legs (ct_rt_legs.seq) so the driver ledger route, print and
+// any future route screen follow the SAME order instead of re-deriving one from
+// loading time that can disagree with what the dispatcher actually set.
+// Pure — no I/O — same posture as rtLegsForOrder, unit-tested the same way.
+// legsInfo: [{orderId, direction}] (from rtLegsForOrder, or built by hand for
+// the anchor/matched-import fallback legs). byId: orderId -> the order record
+// (fields present); a leg whose record isn't in byId just sorts last within
+// its own half (export or import) rather than crashing the ordering.
+// Returns { [orderId]: seq } with seq 1..n, exports before imports.
+function _rtLegSeq(legsInfo, byId) {
+  const loadOf = (id) => String((byId[id] && byId[id].fields['Loading DateTime']) || '');
+  const cmp = (a, b) => loadOf(a.orderId).localeCompare(loadOf(b.orderId)) || String(a.orderId).localeCompare(String(b.orderId));
+  const exportLegs = legsInfo.filter(l => l.direction === 'EXPORT');
+  const importLegs = legsInfo.filter(l => l.direction !== 'EXPORT');
+  // Every export of the SAME round trip carries the SAME Group ID (siblings),
+  // so the first one found with a suffix is enough to order all of them —
+  // exactly what _wiGrpOrder does for the Weekly International row.
+  const gidRec = exportLegs.map(l => byId[l.orderId]).find(o => o && o.fields && o.fields['Group ID']);
+  const suffix = (gidRec ? String(gidRec.fields['Group ID'] || '') : '').split('|')[1] || '';
+  const order = suffix.split(',').filter(Boolean);
+  const orderedExports = order.length
+    ? [...exportLegs].sort((a, b) => { const pos = id => { const k = order.indexOf(id); return k < 0 ? 99 : k; }; return pos(a.orderId) - pos(b.orderId); })
+    : [...exportLegs].sort(cmp);
+  // Imports follow, in the SAME relative order as their matched export — no
+  // suffix of their own to read, so they ride on their export's position.
+  const orderedImports = order.length
+    ? [...importLegs].sort((a, b) => {
+        const expPos = id => { const idx = orderedExports.findIndex(e => byId[e.orderId] && byId[e.orderId].fields['Matched Import ID'] === id); return idx < 0 ? 99 : idx; };
+        return expPos(a.orderId) - expPos(b.orderId);
+      })
+    : [...importLegs].sort(cmp);
+  const seqByOrderId = {};
+  [...orderedExports, ...orderedImports].forEach((l, i) => { seqByOrderId[l.orderId] = i + 1; });
+  return seqByOrderId;
+}
+if (typeof module !== 'undefined' && module.exports) module.exports = { rtLegsForOrder, _rtLegSeq };
 
 // Fetch the small set of orders that could be leg-mates of `rec`: Group ID
 // siblings, each one's matched import/export counterpart, and rotation legs
@@ -230,20 +269,30 @@ async function rtOnOrderSaved(orderId) {
       gathered = Object.values(byId);
     }
     const legsInfo = rtLegsForOrder(rec, gathered);
-    const pgDir = {}; const legPgs = [];
+    const pgDir = {}; const legPgs = []; const pgRec = {}; // pgRec: pg id -> the order rec id it came from (seq lookup)
     for (const leg of legsInfo) {
       const pg = await _rtPg(leg.orderId);
       if (pg == null) continue; // χωρίς στάση — το πιάνει ο μετρητής συμφωνίας
       pgDir[pg] = leg.direction;
+      pgRec[pg] = leg.orderId;
       legPgs.push(pg);
     }
-    if (!legPgs.includes(pgX)) { pgDir[pgX] = 'EXPORT'; legPgs.push(pgX); }
+    if (!legPgs.includes(pgX)) { pgDir[pgX] = 'EXPORT'; pgRec[pgX] = orderId; legPgs.push(pgX); }
     const pgI = importRec ? await _rtPg(importRec) : null;
-    if (pgI != null && !legPgs.includes(pgI)) { pgDir[pgI] = 'IMPORT'; legPgs.push(pgI); }
+    if (pgI != null && !legPgs.includes(pgI)) { pgDir[pgI] = 'IMPORT'; pgRec[pgI] = importRec; legPgs.push(pgI); }
     if (legPgs.length > 20) { // MAX_LEGS (worker/src/rt-rules.mjs) — never silently truncate
       _rtWarn('P&L: η ομάδα έχει πάνω από 20 σκέλη — πάνω από το όριο του Worker, δες το χειροκίνητα στο TRIP PnL');
       return;
     }
+    // seq (025_rt_leg_seq.sql, 8/9): the dispatcher's stop order, computed from
+    // the SAME records already gathered above — no extra fetch. byId only needs
+    // to cover legPgs' own order recs; anything _rtLegSeq can't find just sorts
+    // last within its half (see its own doc comment).
+    const seqById = {}; (gathered || []).forEach(o => { if (o && o.id) seqById[o.id] = o; });
+    seqById[rec.id] = rec;
+    if (origImportRec) seqById[origImportRec.id] = origImportRec;
+    const seqByOrderId = _rtLegSeq(legPgs.map(pg => ({ orderId: pgRec[pg], direction: pgDir[pg] })), seqById);
+    const seqByPg = {}; legPgs.forEach(pg => { seqByPg[pg] = seqByOrderId[pgRec[pg]]; });
     const rt = await _rtFind(legPgs);
     const gone = status === 'Cancelled';
     const exec = (status === 'In Transit' || status === 'Delivered') && assigned;
@@ -280,7 +329,7 @@ async function rtOnOrderSaved(orderId) {
         date_start: dStart, date_end: dEnd,
         truck_id: partnerTrip ? null : ids.truck_id, trailer_id: partnerTrip ? null : ids.trailer_id,
         driver_id: partnerTrip ? null : ids.driver_id, partner_id: partnerTrip ? ids.partner_id : null,
-        legs: legPgs.map(pg => ({ direction: pgDir[pg], order_id: pg }))
+        legs: legPgs.map(pg => ({ direction: pgDir[pg], order_id: pg, seq: seqByPg[pg] }))
       };
       if (body.trip_type === 'OWNED' && !body.truck_id) { _rtWarn('P&L: δεν βρέθηκε το φορτηγό στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
       if (body.trip_type === 'PARTNER' && !body.partner_id) { _rtWarn('P&L: δεν βρέθηκε ο συνεργάτης στα lookups — το RT δεν δημιουργήθηκε (δες μετρητή)'); return; }
@@ -315,12 +364,18 @@ async function rtOnOrderSaved(orderId) {
       // ό,τι λείπει.
       const haveIds = (rt.ct_rt_legs || []).map(l => l.order_id);
       const missingIds = legPgs.filter(id => !haveIds.includes(id));
-      if (missingIds.length) {
+      // seq (025_rt_leg_seq.sql, 8/9): a leg can already be attached with the
+      // WRONG order — e.g. the dispatcher reordered stops after the round trip
+      // already existed — with nothing missing for the block above to catch.
+      // Re-post (idempotent, rt-rules.mjs planRtUpsert → legsToUpdateSeq) so
+      // that correction still reaches ct_rt_legs.
+      const seqChanged = (rt.ct_rt_legs || []).some(l => legPgs.includes(l.order_id) && l.seq !== seqByPg[l.order_id]);
+      if (missingIds.length || seqChanged) {
         // Send the WHOLE leg set, not only the missing ones: the Worker decides
         // «attach» by looking for a posted leg that already belongs to an RT and
         // then inserts only what is missing (rt-rules.mjs planRtUpsert). Posting
         // just the new leg always created a second, separate RT (proven 6/9).
-        const legsBody = legPgs.map(id => ({ direction: pgDir[id], order_id: id }));
+        const legsBody = legPgs.map(id => ({ direction: pgDir[id], order_id: id, seq: seqByPg[id] }));
         const attachRes = await plFetch('/costs/rt', { method: 'POST', body: {
           scope: 'INTL', trip_type: partnerTrip ? 'PARTNER' : 'OWNED',
           // Το validateRtBody απαιτεί truck_id/partner_id ακόμα κι όταν η ενέργεια
