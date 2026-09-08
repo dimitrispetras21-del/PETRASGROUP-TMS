@@ -1219,12 +1219,26 @@ function _wiImpRowHTML(row,impNo){
   else if(row.saved&&impPartner){ leftCls=' bgap'; leftInner=`<div class="wi2-void navy" title="Ανατεθειμένο σε συνεργάτη — δεν αναμένεται δικό μας σκέλος εξαγωγής"></div>`; }
   else leftInner=`<div class="wi2-void"></div>`;
 
+  // Groupage tiles (owner 8/9, FEATURES.GROUP_TILES): a GI import group
+  // already collapses into ONE row (_wiBuildRows «A1», row.orderIds sorted
+  // by Loading DateTime) but this renderer used to show only the LEAD
+  // member's own cards — every other member was invisible except for the
+  // «G» badge. Segments below show every member, in the SAME build-time
+  // order; not draggable (unlike the export GRP pill, imports have no
+  // Group ID suffix ordering — see _wiSegDrop comment).
+  const segOn=_wiSegOn()&&row.orderIds.length>1;
+  const members=segOn?row.orderIds.map(id=>data.imports.find(r=>r.id===id)).filter(Boolean):null;
+
   const lo=_wi2Loc(fromStr,'Φόρτωση',f._stopsL);
   const lIso=f['Loading DateTime']||'';
-  const loadCard=_wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
+  const loadCard=segOn
+    ? _wiSegPillWrap(row.id,members,'load',true,false)
+    : _wi2Card({cls:stR.loaded?'ok':'', date:_wi2Date(imp.id,'Loading DateTime',lIso,lIso?_wk3D(_wiFmt(lIso)):'—',stR.loaded?' done':'','Ημ. φόρτωσης'+(stR.loaded?' — φορτώθηκε ✓':'')), name:lo.name, sub:lo.sub, extra:_wk3MoreStops(fromStr,f._stopsL,'load')});
   const right=`<span class="wi2-flags">${_wiBadges(f)}</span>${_wi2Pal(f)}${f['Reference']?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(f['Reference']))}</span>`:''}`;
   let delCard;
-  if(impVS2){ const v=_wk3VsCd(f,'imp');
+  if(segOn){
+    delCard=_wiSegPillWrap(row.id,members,'del',true,false,_wiSegTotalsHTML(members));
+  } else if(impVS2){ const v=_wk3VsCd(f,'imp');
     delCard=_wi2Card({cls:stR.late?'late':stR.delivered?'ok':'', date:_wi2Date(imp.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stR.delivered?' done':'')+(stR.late?' late':'')+(v.est?' estd':''),v.est?'Εκτίμηση άφιξης CD (Delivery−1) — κλικ για πραγματική':'Ημ. άφιξης στο Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'Βέροια, GR', right});
   } else {
     const de=_wi2Loc(toStr,'Παράδοση',f._stopsD); const dIso=f['Delivery DateTime']||'';
@@ -1240,7 +1254,7 @@ function _wiImpRowHTML(row,impNo){
     draggable="true"
     oncontextmenu="_wiImpCtx(event,${row.id})"
     ondragstart="event.stopPropagation();_wiImpDragStart(event,'${imp.id}')">
-    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">G</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
+    <div class="wk3-num imp" style="cursor:grab" title="Εισαγωγή I${impNo||''} — σύρε πάνω σε εξαγωγή για ταίριασμα">I${impNo||''}${f['Group ID']?`<span class="wk3-grpb" title="Groupage εισαγωγών · ${escapeHtml(String(f['Group ID']).split('|')[0])}">${segOn?'×'+members.length:'G'}</span>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="Χωρίς εθνικό σκέλος"><span class="wi2-dash">—</span></div>
     <div class="wk3-leg void${leftCls}">${leftInner}</div>
     ${row.hasSplitLegs
@@ -2023,6 +2037,98 @@ function _wiGrpOrder(exps){
   return [...exps].sort((a,b)=>String(a.fields['Delivery DateTime']||'').localeCompare(String(b.fields['Delivery DateTime']||'')));
 }
 
+/* ── GROUP TILES (owner 8/9/2026, FEATURES.GROUP_TILES) ───────────────────
+   Ένα πλακάτ, διαγώνια τμήματα ανά παραγγελία — spec
+   docs/design/2026-09-08-groupage-tiles.md. Νέο render path μόνο πίσω από
+   τη σημαία· _wiRowHTML/_wiImpRowHTML διακλαδίζονται ΠΡΙΝ φτάσουν εδώ, άρα
+   με τη σημαία κλειστή αυτός ο κώδικας ποτέ δεν εκτελείται (byte-for-byte
+   ίδιο board). Χρώμα τμήματος = ΤΑ ΥΠΑΡΧΟΝΤΑ .ok/.late (ίδιο με το μονό
+   πλακάτ, _wi2Card) — ποτέ χρώμα ανά παραγγελία (owner 8/9). Νέο CSS στο
+   assets/style.css (.wk3-seg*), όχι εδώ — ο ratchet weekly_intl μετράει
+   μόνο αυτό το αρχείο. */
+function _wiSegOn(){ return typeof FEATURES!=='undefined' && !!FEATURES.GROUP_TILES; }
+
+function _wiSegCls(f,kind){
+  const st=_wk3StFlags(f);
+  return kind==='load' ? (st.loaded?'ok':'') : (st.late?'late':st.delivered?'ok':'');
+}
+// Ημερομηνία τμήματος — ίδια λογική VS με το μονό πλακάτ (_wi2Card): εξαγωγή
+// φορτώνει από Cross-Dock όταν έχει Veroia Switch, εισαγωγή παραδίδει εκεί.
+function _wiSegDateHTML(o,kind,isImportSide){
+  const f=o.fields||{};
+  const vs=kind==='load' ? (!isImportSide&&!!f['Veroia Switch']) : (isImportSide&&!!f['Veroia Switch']);
+  const cls=_wiSegCls(f,kind);
+  if(vs){
+    const v=_wk3VsCd(f,kind==='load'?'exp':'imp');
+    return _wi2Date(o.id,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(cls?' '+cls:'')+(v.est?' estd':''),
+      v.est?'Εκτίμηση CD — κλικ για πραγματική ημερομηνία':'Ημ. Cross-Dock');
+  }
+  const field=kind==='load'?'Loading DateTime':'Delivery DateTime';
+  const iso=f[field]||'';
+  return _wi2Date(o.id,field,iso,iso?_wk3D(_wiFmt(iso)):'—',cls,'Ημ. '+(kind==='load'?'φόρτωσης':'παράδοσης'));
+}
+// Τόπος/υπότιτλος τμήματος — ίδια λογική με το μονό πλακάτ.
+function _wiSegPlace(o,kind,isImportSide){
+  const f=o.fields||{};
+  const vs=kind==='load' ? (!isImportSide&&!!f['Veroia Switch']) : (isImportSide&&!!f['Veroia Switch']);
+  if(vs) return {name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>',sub:'Βέροια, GR'};
+  const str=kind==='load'
+    ?(f['Loading Summary']||_wiFlatLocName(f['Loading Location 1'])||_wiClientName(f)||'—')
+    :(f['Delivery Summary']||_wiFlatLocName(f['Unloading Location 1'])||_wiClientName(f)||'—');
+  return _wi2Loc(_wiRaw(str),kind==='load'?'Φόρτωση':'Παράδοση',kind==='load'?f._stopsL:f._stopsD);
+}
+// Tooltip hover (item 2, owner 8/9): πελάτης, αναφορά, παλέτες, ημέρα/ώρα.
+function _wiSegTipHTML(o,kind){
+  const f=o.fields||{};
+  const client=_wiClean(f['Client Name']||f['Client Summary']||'—');
+  const ref=f['Reference']?escapeHtml(String(f['Reference'])):'';
+  const pal=_wi2Pal(f).replace(/<[^>]*>/g,'').trim();
+  const iso=kind==='load'?(f['Loading DateTime']||''):(f['Delivery DateTime']||'');
+  const time=/T(\d{2}:\d{2})/.exec(iso||'')?.[1]||'';
+  const when=iso?`${_wk3D(_wiFmt(iso))}${time?' · '+time:''}`:'—';
+  return `<div class="wk3-segtip"><b>${client}</b>${ref?`<span>Ref ${ref}</span>`:''}<span>${when}</span><span>${pal}</span></div>`;
+}
+// Ένα τμήμα του πλακάτ: κλικ = φόρμα ΤΗΣ ΠΑΡΑΓΓΕΛΙΑΣ (item 2, ΟΧΙ της
+// ομάδας) — γι' αυτό stopPropagation, αλλιώς θα έφτανε στο onclick της
+// .wk3-leg που ανοίγει την Καρτέλα Ρότας. Δεξί κλικ = μενού παραγγελίας
+// (_wiSegCtx, item 3) — ίδιο stopPropagation ώστε δεξί κλικ ΕΚΤΟΣ τμήματος
+// να συνεχίσει να φτάνει στο μενού ομάδας (_wiCtx/_wiImpCtx, ανέγγιχτα).
+// Σύρσιμο μόνο όταν draggable (μόνο εξαγωγές — βλ. σχόλιο _wiSegDrop).
+function _wiSegHTML(o,kind,isImportSide,idx,total,rowId,draggable){
+  const pos=idx===0?'first':(idx===total-1?'last':'mid');
+  const cls=_wiSegCls(o.fields,kind);
+  const compact=total>=3;
+  const pl=_wiSegPlace(o,kind,isImportSide);
+  const dateHTML=_wiSegDateHTML(o,kind,isImportSide);
+  const pals=_wi2Pal(o.fields);
+  const body=compact
+    ?`<div class="wk3-segtop">${dateHTML}${pals}</div><div class="wi2-name">${pl.name}</div>`
+    :`<div class="wi2-name">${pl.name}</div><div class="wi2-meta">${dateHTML}<span class="wi2-sub">${pl.sub||''}</span></div>`;
+  const drag=draggable?`draggable="true"
+    ondragstart="event.stopPropagation();_wiSegDragStart(event,${rowId},'${o.id}')"
+    ondragover="event.preventDefault();event.stopPropagation();_wiSegDragOver(event,${rowId},'${o.id}')"
+    ondragleave="event.stopPropagation();this.classList.remove('dragover')"
+    ondrop="event.stopPropagation();_wiSegDrop(event,${rowId},'${o.id}')"
+    ondragend="event.stopPropagation();_wiSegDragEnd(event)"`:'';
+  return `<div class="wk3-seg${cls?' '+cls:''}" data-pos="${pos}" data-order-id="${o.id}" ${drag}
+    onclick="event.stopPropagation();_wk3Edit('${o.id}')"
+    oncontextmenu="event.stopPropagation();_wiSegCtx(event,${rowId},'${o.id}',${isImportSide?'true':'false'})">
+    ${body}${_wiSegTipHTML(o,kind)}
+  </div>`;
+}
+// Σύνολα δεξιά από το πλακάτ παράδοσης (spec: «NN p · N στάσεις» ή
+// «k/N παραδόθηκαν» μόλις παραδοθεί έστω μία στάση).
+function _wiSegTotalsHTML(list){
+  const n=list.length;
+  const delivered=list.filter(o=>_wk3StFlags(o.fields).delivered).length;
+  const stopsTxt=delivered>0?`${delivered}/${n} παραδόθηκαν`:`${n} στάσεις`;
+  return `<span class="wk3-segtotals">${_wi2PalGroup(list)} · ${stopsTxt}</span>`;
+}
+function _wiSegPillWrap(rowId,list,kind,isImportSide,draggable,totalsHTML){
+  const segs=list.map((o,idx)=>_wiSegHTML(o,kind,isImportSide,idx,list.length,rowId,draggable)).join('');
+  return `<div class="wk3-segwrap"><div class="wk3-segpill" data-row-id="${rowId}" data-kind="${kind}">${segs}</div>${totalsHTML||''}</div>`;
+}
+
 function _wiRowHTML(row,i){
   const {data,ui}=WINTL;
   const exps   =_wiGrpOrder(row.orderIds.map(id=>data.exports.find(r=>r.id===id)).filter(Boolean));
@@ -2083,10 +2189,19 @@ function _wiRowHTML(row,i){
   const impVS=!!imp?.fields['Veroia Switch'];
   const loadIso=pf['Loading DateTime']||'';
 
+  // Groupage tiles (owner 8/9, FEATURES.GROUP_TILES): a segmented single
+  // pill replaces the plain loading/delivery cards ONLY for a grouped export
+  // row with the flag on — one segment per member, drag-reorderable (spec
+  // docs/design/2026-09-08-groupage-tiles.md). Flag off or a lone order:
+  // exactly the pre-existing _wi2Card path below, untouched.
+  const segOn=_wiSegOn()&&isGroup;
+
   // Export: loading card → delivery card. VS export loads from the Cross-Dock
   // (hybrid date: real 'VS CD Date' or estimate Loading+1, shown «≈»-styled).
   let loadCard;
-  if(vsExp){ const v=_wk3VsCd(pf,'exp');
+  if(segOn){
+    loadCard=_wiSegPillWrap(row.id,exps,'load',false,true);
+  } else if(vsExp){ const v=_wk3VsCd(pf,'exp');
     loadCard=_wi2Card({cls:stF.loaded?'ok':'', date:_wi2Date(pid,'VS CD Date',v.iso,v.iso?_wk3D(_wiFmt(v.iso+'T12:00:00')):'—',(stF.loaded?' done':'')+(v.est?' estd':''),v.est?'Εκτίμηση (Loading+1) — κλικ για πραγματική ημερομηνία CD':'Ημ. φόρτωσης από Cross-Dock'), name:'<span class="wi2-nw">Cross-Dock <span class="wk3-vsb">VS</span></span>', sub:'Βέροια, GR'});
   } else {
     const lo=_wi2Loc(isGroup?gLs:fromStr,'Φόρτωση',isGroup?gL:pf._stopsL);
@@ -2097,10 +2212,15 @@ function _wiRowHTML(row,i){
     const ml=mf['Loading DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Loading DateTime']))}</b> `:'';
     const md=mf['Delivery DateTime']?`<b class="wk3-ld">${_wk3D(_wiFmt(mf['Delivery DateTime']))}</b> `:'';
     return `<div class="wk3-stopline wk3-gm" title="Κλικ: φόρμα παραγγελίας" onclick="event.stopPropagation();_wk3Edit('${m.id}')"><span class="wk3-gmn">${k+1}</span><span class="wk3-gmc">${ml}${(_wiClean(mf['Loading Summary']||mf['Client Name']||'—'))}</span><span class="wk3-sep">→</span><span class="wk3-gmc">${md}${(_wiClean(mf['Delivery Summary']||'—'))}</span><span class="wk3-gmp">${_wi2Pal(mf)}</span></div>`;}).join(''):'';
-  const delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
-    name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
-    sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
-    right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+  let delCard;
+  if(segOn){
+    delCard=_wiSegPillWrap(row.id,exps,'del',false,true,_wiSegTotalsHTML(exps));
+  } else {
+    delCard=_wi2Card({cls:stF.late?'late':stF.delivered?'ok':'',
+      name:de.name+(stF.late?'<span class="wi2-late" title="Καθυστέρησε (Delivery Performance = Delayed)">! καθυστέρηση</span>':stF.delivered?'<span class="wk3-okc" title="Παραδόθηκε">✓</span>':''),
+      sub:de.sub, extra:_wk3MoreStops(isGroup?gDs:toStr,isGroup?gD:pf._stopsD,'del')+members,
+      right:`${refs?`<span class="wi2-ref" title="Κωδικός αναφοράς">${escapeHtml(String(refs))}</span>`:''}${_wiCrossChip(pf)}${_wiExecChip(pf,row.saved)}<span class="wi2-flags">${_wiBadges(pf)}</span>${isGroup?_wi2PalGroup(exps):_wi2Pal(pf)}`});
+  }
 
   // Import side: matched preview · «ΚΕΝΟ ΓΥΡΙΣΜΑ» (own, no import) · navy
   // (partner — nothing expected back, owner 9/8) · open drop target.
@@ -4299,12 +4419,157 @@ async function _wiSplit(rowId){
   }
   if(errors.length) reportError('Η ομάδα διαλύθηκε αλλά κάποιο μέλος ΔΕΝ αδειάστηκε από ανάθεση/ρότα — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
 }
+
+/* ── GROUP TILES — μενού τμήματος, ακύρωση μέλους, σύρσιμο σειράς ─────────
+   (owner 8/9/2026, FEATURES.GROUP_TILES). Reuse-first: η αποθήκευση σειράς
+   είναι ο ΙΔΙΟΣ μηχανισμός με _wiRotaSave (Group ID suffix, PATCH σε όλα τα
+   μέλη με ανάγνωση πίσω) — δεν φτιάχνουμε δεύτερη πηγή αλήθειας για το ίδιο
+   πράγμα, μόνο διαφορετικό trigger (σύρσιμο τμήματος αντί για βελάκια στο
+   πάνελ ρότας). */
+window._wiSegDrag=null; // {rowId, orderId}
+
+function _wiSegDragStart(e,rowId,orderId){
+  if(_wiBlockReadOnly()){ e.preventDefault(); return; }
+  window._wiSegDrag={rowId,orderId};
+  e.dataTransfer.effectAllowed='move';
+  e.currentTarget.classList.add('dragging');
+}
+function _wiSegDragOver(e,rowId,orderId){
+  const d=window._wiSegDrag;
+  if(!d||d.rowId!==rowId||d.orderId===orderId) return;
+  e.currentTarget.classList.add('dragover');
+}
+function _wiSegDragEnd(e){
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.wk3-seg.dragover').forEach(el=>el.classList.remove('dragover'));
+  window._wiSegDrag=null;
+}
+// Item 5 (owner 8/9): loading and delivery segments share ONE order — the
+// Group ID suffix (_wiGrpOrder) has room for a single delivery-sequence
+// list, no separate loading-sequence field exists. Dragging in EITHER pill
+// therefore reorders the same array; both pills re-render from it (spec:
+// "αν όχι, η σειρά παράδοσης είναι η σειρά ομάδας και η φόρτωση ακολουθεί").
+async function _wiSegDrop(e,rowId,orderId){
+  e.preventDefault();
+  const d=window._wiSegDrag;
+  document.querySelectorAll('.wk3-seg.dragover').forEach(el=>el.classList.remove('dragover'));
+  window._wiSegDrag=null;
+  if(!d||d.rowId!==rowId||d.orderId===orderId) return;
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  const exps=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean));
+  const ids=exps.map(x=>x.id);
+  const from=ids.indexOf(d.orderId), to=ids.indexOf(orderId);
+  if(from<0||to<0) return;
+  ids.splice(to,0,ids.splice(from,1)[0]);
+  await _wiSaveSegOrder(row.id,ids,exps);
+}
+// Same write as _wiRotaSave (Group ID suffix, PATCH σε ΟΛΑ τα μέλη με
+// ανάγνωση πίσω) — απλώς εδώ το trigger είναι το σύρσιμο τμήματος, όχι τα
+// βελάκια ↑↓ του πάνελ ρότας. Μερική αποτυχία θα έσπαγε την ομάδα στην
+// ανανέωση (collapse βασίζεται σε ισότητα Group ID) — γι' αυτό το toast.
+async function _wiSaveSegOrder(rowId,orderedIds,exps){
+  const base=String(exps.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
+    ||('GRP-'+String(orderedIds[0]).slice(-8));
+  const gid=base+'|'+orderedIds.join(',');
+  let failed=false;
+  for(const e of exps){
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,e.id,{'Group ID':gid});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      if(String(res.fields?.['Group ID']||'')!==gid) throw new Error('Δεν επιβεβαιώθηκε στην ανάγνωση');
+      e.fields['Group ID']=gid;
+    }catch(err){ failed=true; console.warn('[wi seg] order save:',err.message); }
+  }
+  if(failed){ toast('Η σειρά δεν αποθηκεύτηκε πλήρως — δοκίμασε ξανά','warn'); }
+  else {
+    toast('✓ Σειρά αποθηκεύτηκε');
+    if(typeof rtOnOrderSaved==='function') rtOnOrderSaved(orderedIds[0]).catch(e=>console.warn('[wi seg] rt sync:',e&&e.message));
+  }
+  _wiRepaintRow(rowId);
+}
+
+// Item 3 (owner 8/9): a segment's own menu — the order-level actions from
+// _wiCtx/_wiImpCtx (assignment stays the GROUP's — one truck moves the whole
+// pill), minus the two group-shaping items that make no sense from inside an
+// existing group (Ομαδοποίηση/Groupage εισαγωγών, Διάλυση/Καθαρισμός — those
+// stay on the row's own menu, reached by right-clicking OUTSIDE a segment,
+// _wiCtx/_wiImpCtx unchanged), plus «Ακύρωση groupage» for THIS order alone.
+function _wiSegCtx(e,rowId,orderId,isImportSide){
+  e.preventDefault(); e.stopPropagation();
+  if(_wiBlockReadOnly()) return;
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row) return;
+  let html='';
+  html+=_wiCtxBtn('Ανάθεση…',isImportSide?`_wiPanelAssign(${rowId},true,'${row.orderId}')`:`_wiPanelAssign(${rowId},false)`);
+  html+=_wiCtxBtn('Εκτύπωση…',`_wiMenuPrint(${rowId},${isImportSide?'true':'false'})`);
+  if(row.splitLegOf) html+=_wiCtxBtn('Αρχική παραγγελία…',`_wk3Edit('${row.splitLegOf}')`);
+  html+=_wiCtxBtn('⤷ Σκέλος προώθησης (ρότα)…',`_wiPanelRota(${rowId})`);
+  if(orderId) html+=_wiCtxBtn('Τοπική κίνηση (Βέροια)…',`_wiAddLocal('${orderId}')`);
+  html+='<div class="wi-ctx-sep"></div>';
+  html+=_wiCtxBtn('Ακύρωση groupage',`_wiCancelGroupMember(${rowId},'${orderId}',${isImportSide?'true':'false'})`,true);
+  const ctx=document.getElementById('wi-ctx');
+  ctx.innerHTML=html;
+  ctx._returnFocus=e.currentTarget;
+  Object.assign(ctx.style,{display:'block',
+    left:`${Math.min(e.clientX,window.innerWidth-220)}px`,
+    top:`${Math.min(e.clientY,window.innerHeight-260)}px`});
+  requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
+  setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
+}
+// Item 3/«Τι γράφεται» (owner 8/9): remove ONE order from its group. Unlike
+// Διάλυση/_wiDissolveClearMember, the order's OWN assignment is left alone
+// (spec: «η ανάθεση παραμένει») — only its Group ID membership ends. The RT
+// leg leaves FIRST, same order as _wiRotUnlink: a failed DELETE (403/409)
+// must never leave the field cleared while the order still counts as a leg
+// of that round trip (live-orphan lesson documented there).
+async function _wiCancelGroupMember(rowId,orderId,isImportSide){
+  const row=WINTL.rows.find(r=>r.id===rowId); if(!row||!row.orderIds||row.orderIds.length<2) return;
+  const ok=await confirmAction('Αφαίρεση αυτής της παραγγελίας από το groupage; Η ανάθεση παραμένει.',
+    {title:'Ακύρωση groupage', confirmLabel:'Αφαίρεση'});
+  if(!ok) return;
+  try{
+    if(typeof rtFindForOrder==='function'){
+      const {pg,rt}=await rtFindForOrder(orderId).catch(()=>({pg:null,rt:null}));
+      if(rt&&pg!=null){
+        const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
+        if(!del.ok){
+          const msg=del.status===409?'Ο γύρος είναι κλειστός — η αφαίρεση σταμάτησε· ζήτα από τον owner'
+            :del.status===403?'Χωρίς δικαίωμα αφαίρεσης σκέλους γύρου'
+            :('Το σκέλος δεν αφαιρέθηκε από το round trip: '+(del.error||('HTTP '+del.status)));
+          toast(msg,'warn');
+          return;
+        }
+      }
+    }
+    const res=await atSafePatch(TABLES.ORDERS,orderId,{'Group ID':''});
+    if(res?.error) throw new Error(res.error.message||res.error.type);
+    if(String(res.fields?.['Group ID']||'')) throw new Error('Το Group ID δεν αδειάστηκε στην ανάγνωση');
+  }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
+  const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
+  const rec=cache.find(r=>r.id===orderId); if(rec) rec.fields['Group ID']='';
+  row.orderIds=row.orderIds.filter(id=>id!==orderId);
+  WINTL.rows.push({
+    id:++WINTL._seq, type:row.type, orderId, orderIds:[orderId], importId:null,
+    truckId:row.truckId, trailerId:row.trailerId, driverId:row.driverId, partnerId:row.partnerId,
+    truckLabel:row.truckLabel, trailerLabel:row.trailerLabel, driverLabel:row.driverLabel, partnerLabel:row.partnerLabel,
+    partnerPlates:row.partnerPlates, partnerRate:row.partnerRate, partnerRateImp:'',
+    saved:row.saved,
+  });
+  toast('Αφαιρέθηκε από το groupage ✓');
+  _wiPaint();
+}
+
 // Π1: one paper packet for the whole group (print.html ?orderIds=…).
 function _wiPrintGroup(rowId){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||row.orderIds.length<2) return;
   const base='https://dimitrispetras21-del.github.io/PETRASGROUP-TMS/print.html';
   const sheet=row.partnerId?'partner':'driver';
-  window.open(`${base}?orderIds=${row.orderIds.join(',')}&leg=export&sheet=${sheet}`,'_blank');
+  // Item 6 (owner 8/9, spec groupage-tiles): row.orderIds is insertion order
+  // (whatever order _wiMerge/_wiRotaSave happened to build it in), NOT the
+  // dispatcher's chosen stop order — the paper was printing the wrong route.
+  // _wiGrpOrder is the SAME function the board and the Rota panel already
+  // trust for that order (Group ID suffix, falls back to delivery date).
+  const ordered=_wiGrpOrder(row.orderIds.map(id=>WINTL.data.exports.find(r=>r.id===id)).filter(Boolean)).map(e=>e.id);
+  window.open(`${base}?orderIds=${(ordered.length?ordered:row.orderIds).join(',')}&leg=export&sheet=${sheet}`,'_blank');
 }
 // A1 (owner 6/9): same packet for a grouped IMPORT row — print.html's `leg`
 // param applies to every id in `orderIds` alike, so this only differs from
@@ -4607,6 +4872,12 @@ window._wiAddLocal = _wiAddLocal;
 window._wiSaveLocal = _wiSaveLocal;
 window._wiDelLocal = _wiDelLocal;
 window._wiLmvCtx = _wiLmvCtx;
+window._wiSegCtx = _wiSegCtx;
+window._wiCancelGroupMember = _wiCancelGroupMember;
+window._wiSegDragStart = _wiSegDragStart;
+window._wiSegDragOver = _wiSegDragOver;
+window._wiSegDrop = _wiSegDrop;
+window._wiSegDragEnd = _wiSegDragEnd;
 
 function _wiExportCSV() {
   const allOrders = [...WINTL.data.exports, ...WINTL.data.imports];
