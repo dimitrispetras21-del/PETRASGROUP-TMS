@@ -2808,7 +2808,7 @@ async function handleCosts(request, url, origin, env) {
         const parts = [];
         if (orderIds.length) parts.push(`order_id.in.(${orderIds.join(",")})`);
         if (natIds.length) parts.push(`nat_load_id.in.(${natIds.join(",")})`);
-        const exParams = new URLSearchParams({ select: "order_id,nat_load_id,rt_id" });
+        const exParams = new URLSearchParams({ select: "id,order_id,nat_load_id,rt_id,seq" });
         exParams.append("or", `(${parts.join(",")})`);
         existing = (await dbSelectRaw(env, "ct_rt_legs", exParams)).rows;
       }
@@ -2822,6 +2822,14 @@ async function handleCosts(request, url, origin, env) {
         for (const leg of plan.legsToAdd) {
           addedLegs.push(await dbInsert(env, "ct_rt_legs", { ...leg, rt_id: plan.rt_id }));
         }
+        // seq (025_rt_leg_seq.sql, 8/9): a leg already attached can still need
+        // its dispatcher stop order corrected — UPDATE it in place, since a
+        // re-post that changes only ordering has no add/remove for the loop
+        // above to catch.
+        const updatedSeqLegs = [];
+        for (const u of plan.legsToUpdateSeq || []) {
+          updatedSeqLegs.push(await ctDbPatch(env, "ct_rt_legs", `id=eq.${u.id}`, { seq: u.seq }));
+        }
         // A later leg (e.g. the import half of a Weekly match) can carry a
         // later date_end than the RT had when it was created solo — extend,
         // never shrink, so the window still covers every attached leg.
@@ -2829,10 +2837,10 @@ async function handleCosts(request, url, origin, env) {
         const record = extendsWindow
           ? await ctDbPatch(env, "ct_round_trips", `id=eq.${plan.rt_id}`, { date_end: v.row.date_end, updated_at: new Date().toISOString() })
           : rtRow;
-        if (addedLegs.length || extendsWindow) {
-          await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(plan.rt_id), before: rtRow, after: { ...record, addedLegs } });
+        if (addedLegs.length || updatedSeqLegs.length || extendsWindow) {
+          await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_round_trips", recordId: String(plan.rt_id), before: rtRow, after: { ...record, addedLegs, updatedSeqLegs } });
         }
-        const legsRes = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ rt_id: `eq.${plan.rt_id}`, select: "id,direction,order_id,nat_load_id" }));
+        const legsRes = await dbSelectRaw(env, "ct_rt_legs", new URLSearchParams({ rt_id: `eq.${plan.rt_id}`, select: "id,direction,order_id,nat_load_id,seq" }));
         return jsonOk({ record, legs: legsRes.rows, attached: true }, origin, env, 200);
       }
       // plan.action === "create"
@@ -2876,7 +2884,7 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "rt" && method === "GET") {
       const q = url.searchParams;
       const params = new URLSearchParams();
-      params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id)");
+      params.set("select", "*,ct_rt_legs(id,direction,order_id,nat_load_id,seq)");
       params.set("order", "date_start.desc");
       params.set("limit", "200");
       if (q.get("from")) params.append("date_start", `gte.${q.get("from")}`);

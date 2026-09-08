@@ -104,6 +104,38 @@ test('planRtUpsert: matches by nat_load_id too', () => {
   assert.deepStrictEqual(planRtUpsert({ legs, existing }), { action: 'attach', rt_id: 3, legsToAdd: [] });
 });
 
+// seq (025_rt_leg_seq.sql, 8/9) — dispatcher stop order reaching ct_rt_legs.
+test('validateRtBody: leg seq is optional and passed through when present (seq on create)', () => {
+  const base = { scope: 'INTL', trip_type: 'OWNED', truck_id: 1, date_start: '2026-09-01' };
+  const r = validateRtBody({ ...base, legs: [{ direction: 'EXPORT', order_id: 1, seq: 2 }, { direction: 'IMPORT', order_id: 2 }] });
+  assert.deepStrictEqual(r.legs, [{ direction: 'EXPORT', order_id: 1, seq: 2 }, { direction: 'IMPORT', order_id: 2 }]);
+});
+
+test('validateRtBody: leg seq must be an integer when present, named', () => {
+  const base = { scope: 'INTL', trip_type: 'OWNED', truck_id: 1, date_start: '2026-09-01' };
+  assert.match(validateRtBody({ ...base, legs: [{ direction: 'EXPORT', order_id: 1, seq: 'x' }] }).error, /seq/);
+});
+
+test('planRtUpsert: a brand-new leg on an existing RT carries its seq (seq on attach)', () => {
+  const legs = [{ direction: 'EXPORT', order_id: 100, seq: 1 }, { direction: 'IMPORT', order_id: 101, seq: 2 }];
+  const existing = [{ id: 9, order_id: 100, nat_load_id: null, rt_id: 7, seq: 1 }];
+  assert.deepStrictEqual(planRtUpsert({ legs, existing }),
+    { action: 'attach', rt_id: 7, legsToAdd: [{ direction: 'IMPORT', order_id: 101, seq: 2 }] });
+});
+
+test('planRtUpsert: existing leg re-posted with a different seq -> legsToUpdateSeq (seq update on re-post)', () => {
+  const legs = [{ direction: 'EXPORT', order_id: 100, seq: 2 }];
+  const existing = [{ id: 55, order_id: 100, nat_load_id: null, rt_id: 7, seq: 1 }];
+  assert.deepStrictEqual(planRtUpsert({ legs, existing }),
+    { action: 'attach', rt_id: 7, legsToAdd: [], legsToUpdateSeq: [{ id: 55, seq: 2 }] });
+});
+
+test('planRtUpsert: existing leg re-posted with the SAME seq -> idempotent, no legsToUpdateSeq key', () => {
+  const legs = [{ direction: 'EXPORT', order_id: 100, seq: 1 }];
+  const existing = [{ id: 55, order_id: 100, nat_load_id: null, rt_id: 7, seq: 1 }];
+  assert.deepStrictEqual(planRtUpsert({ legs, existing }), { action: 'attach', rt_id: 7, legsToAdd: [] });
+});
+
 test('canRemoveLeg: ok for planned/in_progress', () => {
   assert.deepStrictEqual(canRemoveLeg({ status: 'planned' }), { ok: true });
   assert.deepStrictEqual(canRemoveLeg({ status: 'in_progress' }), { ok: true });

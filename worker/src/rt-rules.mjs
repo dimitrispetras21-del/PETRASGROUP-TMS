@@ -35,6 +35,14 @@ function validateLeg(leg, i) {
   if (hasNat && !int(leg.nat_load_id)) return { error: `legs[${i}].nat_load_id must be an integer` };
   const out = { direction: leg.direction };
   if (hasOrder) out.order_id = leg.order_id; else out.nat_load_id = leg.nat_load_id;
+  // seq (025_rt_leg_seq.sql, 8/9): the dispatcher's stop order for a groupage
+  // (Group ID suffix, modules/weekly_intl.js _wiGrpOrder). Optional — every
+  // caller that doesn't send it (older core/rt-feed.js, manual RT creation)
+  // keeps working exactly as before.
+  if (leg.seq !== undefined && leg.seq !== null) {
+    if (!int(leg.seq)) return { error: `legs[${i}].seq must be an integer` };
+    out.seq = leg.seq;
+  }
   return { leg: out };
 }
 
@@ -63,11 +71,13 @@ export function validateRtBody(body) {
   return { ok: true, row: pickRow(body), legs };
 }
 
-// existing: [{order_id, nat_load_id, rt_id}] — the ct_rt_legs rows the caller
-// already found for the order_ids/nat_load_ids in `legs` (index.js looks these
-// up with a SELECT before calling this). We trust the DB's unique partial
-// index (ct_leg_order / ct_leg_nat_load, migration 001) to guarantee each
-// order/load appears in AT MOST one row — no re-check of that here.
+// existing: [{id, order_id, nat_load_id, rt_id, seq}] — the ct_rt_legs rows
+// the caller already found for the order_ids/nat_load_ids in `legs` (index.js
+// looks these up with a SELECT before calling this, now including `id` and
+// `seq` so a re-post that only changes the dispatcher's stop order can UPDATE
+// the leg instead of silently doing nothing). We trust the DB's unique
+// partial index (ct_leg_order / ct_leg_nat_load, migration 001) to guarantee
+// each order/load appears in AT MOST one row — no re-check of that here.
 export function planRtUpsert({ legs, existing }) {
   if (!existing || !existing.length) return { action: 'create' };
   const rtIds = [...new Set(existing.map(e => e.rt_id))];
@@ -75,11 +85,21 @@ export function planRtUpsert({ legs, existing }) {
     return { action: 'conflict', status: 409, error: 'legs already belong to different round trips: ' + rtIds.join(',') };
   }
   const rt_id = rtIds[0];
-  const already = (leg) => existing.some(e =>
+  const findExisting = (leg) => existing.find(e =>
     (leg.order_id !== undefined && e.order_id === leg.order_id) ||
     (leg.nat_load_id !== undefined && e.nat_load_id === leg.nat_load_id));
-  const legsToAdd = legs.filter(l => !already(l));
-  return { action: 'attach', rt_id, legsToAdd };
+  const legsToAdd = [];
+  const legsToUpdateSeq = [];
+  for (const leg of legs) {
+    const match = findExisting(leg);
+    if (!match) { legsToAdd.push(leg); continue; }
+    if (leg.seq !== undefined && leg.seq !== match.seq) legsToUpdateSeq.push({ id: match.id, seq: leg.seq });
+  }
+  const plan = { action: 'attach', rt_id, legsToAdd };
+  // Omitted when empty (not `legsToUpdateSeq: []`) so every caller/test that
+  // predates seq — and never sends it — sees the exact same shape as before.
+  if (legsToUpdateSeq.length) plan.legsToUpdateSeq = legsToUpdateSeq;
+  return plan;
 }
 
 // rt: the ct_round_trips row (or null/undefined, treated as removable — the
