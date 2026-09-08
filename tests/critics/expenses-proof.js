@@ -53,7 +53,9 @@ const LOOKUPS_FIXTURE = {
 };
 const rt = (o) => Object.assign({ code: null, scope: 'INTL', trip_type: 'OWNED', trailer_id: null, partner_id: null, route_legs: null, ct_rt_legs: [] }, o);
 const RT_FIXTURE = [
-  rt({ id: 701, truck_id: 11, driver_id: 11, date_start: '2026-09-05', date_end: '2026-09-09', status: 'closed', route_text: 'Βέροια → Rotterdam' }),
+  rt({ id: 701, truck_id: 11, driver_id: 11, date_start: '2026-09-05', date_end: '2026-09-09', status: 'closed', route_text: 'Βέροια → Rotterdam', route_legs: [
+    { dir: 'EXPORT', load: '2026-09-05', deliv: '2026-09-07', extra_stops: 0, from: { name: 'Medifresh SA', city: 'Petrea', country: 'Greece' }, to: { name: 'Albert Heijn BV', city: 'Rotterdam', country: 'Netherlands' } },
+    { dir: 'IMPORT', load: '2026-09-08', deliv: '2026-09-09', extra_stops: 1, from: { name: 'Obst Stelzer GmbH', city: 'Stubenberg', country: 'Austria' }, to: { name: 'Kaufland Stryama', city: 'Stryama', country: 'Bulgaria' } } ] }),
   rt({ id: 702, truck_id: 12, driver_id: 11, date_start: '2026-09-06', date_end: '2026-09-08', status: 'closed', route_text: 'Νάουσα → Wien' }),
   rt({ id: 703, truck_id: null, driver_id: null, partner_id: 1, trip_type: 'PARTNER', date_start: '2026-09-08', date_end: '2026-09-10', status: 'in_progress', route_text: 'Σόφια → Βέροια' }),
   rt({ id: 704, truck_id: 14, driver_id: 11, date_start: '2026-08-31', date_end: '2026-09-01', status: 'closed', route_text: 'Καβάλα → Σόφια' }),
@@ -190,6 +192,18 @@ async function runAccountantFlow(browser) {
   const gridText = await page.locator('.ex-grid').innerText();
   assert(!gridText.includes('ΘΕ-2004'), 'RT 704 (week 36) is NOT on the week-37 sheet');
   assert(gridText.includes('ΘΕ-2001') && gridText.includes('ΘΕ-2002') && gridText.includes('Meta-Cargo ΕΠΕ'), 'own trucks by plate, partner trip by partner name');
+  // A2 (owner 8/9): the payroll leg block under each trip, route_text only as fallback
+  const legs701 = page.locator('.ex-trip[data-trip="701"] .ex-legs .rt-legs');
+  assert(await legs701.count() === 1 && await legs701.locator('.rt-dir').count() === 2, '701 shows the shared leg block (rtLegBlockHtml) with 2 legs under the amounts row');
+  const legsText = (await legs701.innerText()).replace(/\s+/g, ' ');
+  assert(/↗ 05\/09 MEDIFRESH SA Petrea, Ελλάδα → 07\/09 ALBERT HEIJN BV Rotterdam, Κάτω Χώρες/.test(legsText), 'leg 1 = ↗ load 05/09 MEDIFRESH SA (Petrea, Ελλάδα) → deliv 07/09 ALBERT HEIJN BV — the payroll format verbatim: ' + legsText);
+  assert(/\+1 στάση/.test(legsText), 'extra stop rendered as «+1 στάση», same as payroll');
+  assert(await page.locator('.ex-trip[data-trip="702"] .ex-legs .rt-legs').count() === 0 && (await page.locator('.ex-trip[data-trip="702"] .ex-legs').innerText()).includes('Νάουσα → Wien'), '702 has no legs → route_text fallback line');
+  assert(await page.locator('.ex-trip[data-trip="703"] .ex-legs').count() === 1, 'partner trip 703 shows its route_text line too');
+  assert((await page.locator('.ex-gr[data-rt="701"] > div').nth(3).innerText()).trim() === '05–09/09', 'dates as one line dd–dd/mm (05–09/09)');
+  assert((await page.locator('.ex-gr[data-rt="703"] > div').nth(3).innerText()).trim() === '08–10/09', 'partner trip dates 08–10/09');
+  assert((await cell(page, 701, 'adblue').innerText()).trim() === '', 'empty cell is blank, not a dash');
+  assert((await page.locator('.ex-gr[data-rt="703"] > div').nth(10).innerText()).trim() === '', 'trip without lines has a blank total, not 0,00');
   assert((await page.locator('.ex-gr[data-rt="703"]').innerText()).includes('Συνεργάτης'), 'partner trip row says «Συνεργάτης» instead of a plate');
 
   // ── cells ──
@@ -201,7 +215,7 @@ async function runAccountantFlow(browser) {
   assert(await st(701) === 'Πλήρες', '701 status Πλήρες');
   assert(await st(702) === 'Ελλείψεις', '702 status Ελλείψεις');
   assert(await st(703) === 'Σε εξέλιξη', '703 status Σε εξέλιξη');
-  const total701 = await page.locator('.ex-gr[data-rt="701"] > div').nth(11).innerText();
+  const total701 = await page.locator('.ex-gr[data-rt="701"] > div').nth(10).innerText();
   assert(total701.trim() === '130,00', '701 row total = 130,00 (net, 100 + 30)');
 
   // ── summary ──
@@ -213,7 +227,8 @@ async function runAccountantFlow(browser) {
 
   // ── «Χωρίς δρομολόγιο» row ──
   const noneRow = page.locator('.ex-gr.none-row');
-  assert(await noneRow.count() === 1 && /1 γραμμές προς ανάθεση/.test(await noneRow.innerText()), '«Χωρίς δρομολόγιο» row shows the one in-week unallocated line');
+  assert(await noneRow.count() === 1 && /1 προς ανάθεση/.test(await noneRow.innerText()), '«Χωρίς δρομολόγιο» row shows the one in-week unallocated line');
+  assert(await noneRow.locator('.ex-st.att').count() === 2, 'none row is marked (att) only while it has lines');
   assert((await cell(page, 'none', 'fuel').innerText()).replace(/\s+/g, ' ') === '80,00 1 γρ.', 'none/Καύσιμα cell = 80,00 (line 9201)');
 
   // ── open a cell → inline entry with the group preselected ──
@@ -272,12 +287,15 @@ async function runAccountantFlow(browser) {
   const asg = captured.patches[1];
   assert(asg.id === 9201 && asg.body.rt_id === 701 && asg.body.reason === 'proof: test reason', 'assignment = PATCH rt_id 701 with reason');
   assert(/180,00/.test(await cell(page, 701, 'fuel').innerText()), '701/Καύσιμα now 180,00 (100 + the assigned 80)');
-  assert(/καμία γραμμή/.test(await noneRow.innerText()), '«Χωρίς δρομολόγιο» row is empty for the week after the assignment');
+  assert(/καμία γραμμή/.test(await noneRow.innerText()) && await noneRow.locator('.ex-st.att').count() === 0, '«Χωρίς δρομολόγιο» row is empty and neutral (no att colour) after the assignment');
 
   // ── search ──
   await page.fill('.ex-search', '2001');
   await page.waitForTimeout(100);
   assert(await page.locator('.ex-gr[data-rt]:not(.none-row)').count() === 1, 'search by plate narrows the sheet to one row');
+  await page.fill('.ex-search', 'kaufland');
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-gr[data-rt]:not(.none-row)').count() === 1 && await page.locator('.ex-gr[data-rt="701"]').count() === 1, 'search by client name on a leg (kaufland → 701)');
   await page.fill('.ex-search', '');
 
   // ── week navigation ──

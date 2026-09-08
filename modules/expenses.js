@@ -166,11 +166,18 @@ function exStyles() {
      at widths below the sum the CARD scrolls sideways, never the page. */
   .ex-gridwrap{overflow-x:auto}
   .ex-grid{min-width:1100px}
-  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:26px 70px 110px 76px minmax(120px,1fr) repeat(6,80px) 88px 80px;gap:6px;align-items:center;padding:0 16px}
+  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:26px 72px minmax(150px,1fr) 96px repeat(6,80px) 90px 84px;gap:6px;align-items:center;padding:0 16px}
   .ex-gh{height:32px;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-mid)}
-  .ex-gr{min-height:40px;padding-top:6px;padding-bottom:6px;border-bottom:1px solid var(--border)}
-  .ex-gr.open{background:var(--surface-sunken)}
-  .ex-gr.none-row{border-top:1px solid var(--border-mid,var(--border))}
+  .ex-gr{min-height:40px;padding-top:6px;padding-bottom:6px}
+  /* One trip = amounts row + its leg block (A2, owner 8/9): the border closes
+     the whole trip, as in payroll (.dl-entry), so legs read as part of it. */
+  .ex-trip{border-bottom:1px solid var(--border)}
+  .ex-trip:hover{background:var(--surface-sunken)}
+  .ex-trip.open,.ex-gr.open{background:var(--surface-sunken)}
+  .ex-legs{padding:0 16px 9px 126px;font-size:12px}
+  .ex-legs .rt-n{font-size:11.5px} .ex-legs .rt-c,.ex-legs .rt-d{font-size:11px}
+  .ex-legs .ex-route{font-size:12px}
+  .ex-gr.none-row{border-top:1px solid var(--border-mid,var(--border));border-bottom:1px solid var(--border)}
   .ex-gt{height:40px;background:var(--surface-sunken);border-top:2px solid var(--navy);font-weight:600}
   .ex-gt .grand{font-family:'Syne',sans-serif;font-size:13.5px}
   .r{text-align:right} .dim{color:var(--text-dim)} .mid{color:var(--text-mid)}
@@ -187,7 +194,9 @@ function exStyles() {
   .ex-cell .a{font-variant-numeric:tabular-nums;font-size:12.5px}
   .ex-cell .b{font-size:10px;color:var(--text-dim);white-space:nowrap}
   .ex-cell.missing .a{color:var(--warn);font-weight:500;font-size:11.5px}
-  .ex-cell.empty .a{color:var(--border-mid,var(--text-dim))}
+  /* Empty cell = blank (A2): six faint dashes per row were noise. The hover
+     frame still shows it is a target. */
+  .ex-cell.empty{min-height:26px}
   /* Expanded cell panel: lines of that group + the entry row, full width. */
   .ex-gp{border-bottom:1px solid var(--border-mid,var(--border));border-left:3px solid var(--navy);background:var(--surface-sunken)}
   .ex-gp-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px 4px;font-size:12px}
@@ -228,7 +237,8 @@ function exStyles() {
   @media (max-width:1320px){
     .ex-page{padding:16px 16px 32px}
     .ex-grid{min-width:0}
-    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:22px 62px 96px 66px minmax(90px,1fr) repeat(6,68px) 78px 72px;gap:5px;padding:0 10px}
+    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:22px 64px minmax(120px,1fr) 84px repeat(6,68px) 80px 74px;gap:5px;padding:0 10px}
+    .ex-legs{padding-left:106px}
     .ex-gr{padding-top:5px;padding-bottom:5px}
     .ex-cell .a{font-size:12px}
   }
@@ -328,7 +338,7 @@ function exImportDocRowHtml(d) {
   const period = d.period_from && d.period_to ? (exDate(d.period_from) + '–' + exDate(d.period_to)) : '—';
   const statusTxt = d.status === 'draft' ? 'πρόχειρο' : (d.status || '—');
   const when = d.created_at ? exDate(d.created_at) : '';
-  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + ' · ' + (d.lines_total != null ? d.lines_total : '—') + ' γραμμές · ' + statusTxt + ' · ' + (d.created_by || '—') + (when ? ' ' + when : '');
+  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by || '—') + (when ? ' ' + when : '');
   return `<div class="ex-idoc-row"><span class="s">${escapeHtml(label)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
@@ -384,7 +394,8 @@ function exWeekStats() {
 function exFilteredTrips() {
   const q = _ex.q.trim().toLowerCase();
   if (!q) return _ex.rts;
-  return _ex.rts.filter(r => exTruckName(r.truck_id).toLowerCase().includes(q) || exPersonName(r).toLowerCase().includes(q) || String(r.route_text || '').toLowerCase().includes(q));
+  const legText = r => (Array.isArray(r.route_legs) ? r.route_legs : []).flatMap(l => [l.from && l.from.name, l.from && l.from.city, l.to && l.to.name, l.to && l.to.city]).filter(Boolean).join(' ');
+  return _ex.rts.filter(r => (exTruckName(r.truck_id) + ' ' + exPersonName(r) + ' ' + String(r.route_text || '') + ' ' + legText(r)).toLowerCase().includes(q));
 }
 
 // ═══════════════════ RENDER ═══════════════════
@@ -399,7 +410,7 @@ function exRenderPage() {
   const w = _ex.week;
   const head = `<div class="ex-head">
       <div><div class="ex-title">Έξοδα δρομολογίων — Εβδομάδα ${w.week}</div>
-        <div class="ex-sub">Περίοδος ${exDateFull(w.start)} – ${exDateFull(w.end)} · Καταχώριση ανά δρομολόγιο και κατηγορία · Κλικ σε κελί για επιτόπου καταχώριση</div></div>
+        <div class="ex-sub">Περίοδος ${exDateFull(w.start)} – ${exDateFull(w.end)} · Κλικ σε κελί για καταχώριση</div></div>
       <div class="ex-actions-top">${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
     </div>`;
   let body;
@@ -449,14 +460,14 @@ function exSummaryHtml() {
 
 function exGridHtml() {
   const trips = exFilteredTrips();
-  const th = `<div class="ex-gh"><div class="r">Α/Α</div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομ.</div><div>Διαδρομή</div>${EX_GROUPS.map(g => `<div class="r">${g.label} €</div>`).join('')}<div class="r">Σύνολο €</div><div>Κατάσταση</div></div>`;
+  const th = `<div class="ex-gh"><div class="r">Α/Α</div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div>${EX_GROUPS.map(g => `<div class="r">${g.label} €</div>`).join('')}<div class="r">Σύνολο €</div><div>Κατάσταση</div></div>`;
   const rows = trips.length ? trips.map((r, i) => exTripRowHtml(r, i + 1)).join('')
     : `<div class="ex-gr"><div></div><div class="mid" style="grid-column:2/-1">${_ex.rts.length ? 'Κανένα δρομολόγιο για αυτή την αναζήτηση.' : 'Κανένα δρομολόγιο σε αυτή την εβδομάδα.'}</div></div>`;
   const totals = EX_GROUPS.map(g => exNet(trips.flatMap(r => exGroupLines(exRtLines(r.id), g))));
   const grand = totals.reduce((a, b) => a + b, 0) + exNet(exUnallocInWeek());
-  const tt = `<div class="ex-gt"><div class="r" style="grid-column:1/6">Σύνολο εβδομάδας ${_ex.week.week} (${_ex.rts.length} δρομολόγια, ${exWeekStats().lines} γραμμές)</div>${totals.map(t => `<div class="r n">${exNum(t)}</div>`).join('')}<div class="r n grand">${exNum(grand)}</div><div></div></div>`;
+  const tt = `<div class="ex-gt"><div class="r" style="grid-column:1/5">Σύνολο εβδομάδας ${_ex.week.week} (${_ex.rts.length} δρομολόγια, ${exWeekStats().lines} γραμμές)</div>${totals.map(t => `<div class="r n">${exNum(t)}</div>`).join('')}<div class="r n grand">${exNum(grand)}</div><div></div></div>`;
   const foot = `<div class="ex-foot"><p>Ποσά καθαρά, χωρίς Φ.Π.Α. Κάθε κελί αθροίζει τις γραμμές της κατηγορίας για το δρομολόγιο. «Λείπει» σημαίνεται μόνο σε ολοκληρωμένο δρομολόγιο χωρίς γραμμή στην κατηγορία. Οι γραμμές DKV έρχονται από την εισαγωγή και δεν πληκτρολογούνται.</p><span>Enter = αποθήκευση · Esc = κλείσιμο κελιού</span></div>`;
-  return `<div class="ex-card"><div style="display:flex;justify-content:flex-end;padding:8px 16px 0"><input class="ex-search" placeholder="Πινακίδα, οδηγός, διαδρομή" value="${escapeHtml(_ex.q)}" oninput="exSearchInput(this)"></div>
+  return `<div class="ex-card"><div style="display:flex;justify-content:flex-end;padding:8px 16px 0"><input class="ex-search" placeholder="Πινακίδα, οδηγός, πελάτης" value="${escapeHtml(_ex.q)}" oninput="exSearchInput(this)"></div>
     <div class="ex-gridwrap"><div class="ex-grid">${th}${rows}${exNoneRowHtml()}${tt}</div></div>${foot}</div>`;
 }
 
@@ -476,7 +487,7 @@ function exCellHtml(rtKey, group, lines, missing) {
   const keyArg = typeof rtKey === 'number' ? rtKey : "'" + rtKey + "'";
   const onclick = _ex.canWrite ? ` onclick="exToggleCell(${keyArg},'${group.key}')"` : '';
   const dkv = lines.length && lines.every(l => l.doc_id) ? ' · DKV' : '';
-  const a = missing ? 'λείπει' : (lines.length ? exNum(exNet(lines)) : '—');
+  const a = missing ? 'λείπει' : (lines.length ? exNum(exNet(lines)) : '');
   const b = lines.length ? `${lines.length} γρ.${dkv}` : '';
   return `<div class="${cls}" data-rt="${rtKey}" data-group="${group.key}"${onclick}><span class="a">${a}</span>${b ? `<span class="b">${b}</span>` : ''}</div>`;
 }
@@ -488,16 +499,20 @@ function exTripRowHtml(r, idx) {
   const isOpen = _ex.open && _ex.open.rtId === r.id;
   const partner = exIsPartnerTrip(r);
   const cells = EX_GROUPS.map(g => exCellHtml(r.id, g, exGroupLines(lines, g), missing.includes(g.key))).join('');
-  return `<div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}">
+  // Legs = the payroll block verbatim (core/utils.js rtLegBlockHtml, owner
+  // 5/9 option Γ; A2 8/9 «ίδια λογική με τη Μισθοδοσία»): one row per leg
+  // under the amounts row. route_text only when the view has no legs.
+  const hasLegs = Array.isArray(r.route_legs) && r.route_legs.length > 0;
+  const legsHtml = hasLegs ? rtLegBlockHtml(r.route_legs) : (r.route_text ? `<span class="ex-route">${escapeHtml(r.route_text)}</span>` : '');
+  return `<div class="ex-trip${isOpen ? ' open' : ''}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}">
       <div class="r dim">${idx}</div>
       <div class="ex-clip ${partner ? 'mid' : 'ex-plate'}">${escapeHtml(partner ? 'Συνεργάτης' : exTruckName(r.truck_id))}</div>
       <div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>
-      <div class="mid">${exDateRange(r.date_start, r.date_end)}</div>
-      <div class="ex-route" title="${escapeHtml(r.route_text || '')}">${escapeHtml(r.route_text || '—')}</div>
+      <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
       ${cells}
-      <div class="r n" style="font-weight:600">${exNum(exNet(lines))}</div>
+      <div class="r n" style="font-weight:600">${lines.length ? exNum(exNet(lines)) : ''}</div>
       <div class="ex-st ${st.cls}">${st.word}</div>
-    </div>${isOpen ? exPanelHtml(r) : ''}`;
+    </div>${legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exPanelHtml(r) : ''}</div>`;
 }
 
 // «Χωρίς δρομολόγιο»: unallocated lines dated inside the week (DKV lines the
@@ -508,11 +523,11 @@ function exNoneRowHtml() {
   const isOpen = _ex.open && _ex.open.rtId === 'none';
   const cells = EX_GROUPS.map(g => exCellHtml('none', g, exGroupLines(lines, g), false)).join('');
   return `<div class="ex-gr none-row${isOpen ? ' open' : ''}" data-rt="none">
-      <div></div><div class="dim">—</div><div class="ex-st att">Χωρίς δρομολόγιο</div><div class="mid">εβδ. ${_ex.week.week}</div>
-      <div class="ex-route">${lines.length ? lines.length + ' γραμμές προς ανάθεση' : 'καμία γραμμή'}</div>
+      <div></div><div class="dim">—</div><div class="ex-st${lines.length ? ' att' : ''}">Χωρίς δρομολόγιο</div>
+      <div class="${lines.length ? 'mid' : 'dim'}" style="font-size:12px">${lines.length ? lines.length + ' προς ανάθεση' : 'καμία γραμμή'}</div>
       ${cells}
-      <div class="r n" style="font-weight:600">${exNum(exNet(lines))}</div>
-      <div class="ex-st ${lines.length ? 'att' : ''}">${lines.length ? 'Ανάθεση' : '—'}</div>
+      <div class="r n" style="font-weight:600">${lines.length ? exNum(exNet(lines)) : ''}</div>
+      <div class="ex-st${lines.length ? ' att' : ''}">${lines.length ? 'Ανάθεση' : ''}</div>
     </div>${isOpen ? exPanelHtml(null) : ''}`;
 }
 
