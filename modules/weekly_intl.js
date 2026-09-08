@@ -3141,7 +3141,16 @@ async function _wiSaveFromPopover(rowId){
   if(row.type==='import'){
     const savedImp=WINTL.data.imports.find(x=>row.orderIds.includes(x.id));
     const gid=savedImp?.fields?.['Group ID']||'';
-    if(gid.indexOf('GI-')===0){
+    // Stale/empty guard (owner 8/9 defect item 4): the validation at the top
+    // of this function already refuses to reach here with BOTH Truck and
+    // Partner empty (toast + early return), so `fields` is never actually
+    // empty today — checked again here defensively because a GI- sibling
+    // must NEVER receive an emptied Truck+Partner from an assignment-save
+    // path. An explicit clear has its own action («Καθαρισμός ανάθεσης»,
+    // _wiClear) and its own write — this guard is about a row that reaches
+    // here stale, not about blocking that button.
+    const hasAssignment=!!((fields['Truck']||[]).length||(fields['Partner']||[]).length);
+    if(gid.indexOf('GI-')===0 && hasAssignment){
       const groupFields={
         'Truck':fields['Truck'],'Trailer':fields['Trailer'],'Driver':fields['Driver'],
         'Partner':fields['Partner'],'Is Partner Trip':fields['Is Partner Trip'],
