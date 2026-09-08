@@ -3138,9 +3138,18 @@ async function _wiSaveFromPopover(rowId){
   // assigned (via the lead's fields) while a sibling stayed unassigned in
   // Postgres. Query by Group ID rather than trusting row.orderIds, so a row
   // that hasn't (yet) collapsed the whole group still reaches every member.
-  if(row.type==='import'){
-    const savedImp=WINTL.data.imports.find(x=>row.orderIds.includes(x.id));
+  // 8/9 (live defect, orders 307/308): the SAME gap exists on an EXPORT row
+  // whose matched import belongs to a GI- group — the loop above writes the
+  // lead import only (row.importId), so the export's truck reached one member
+  // and the other stayed «ΠΡΟΣ ΑΝΑΘΕΣΗ». Resolve the group from whichever
+  // import this save touches: the saved import row, or the export's match.
+  const giAnchor=row.type==='import'
+    ? WINTL.data.imports.find(x=>row.orderIds.includes(x.id))
+    : (row.importId ? WINTL.data.imports.find(x=>x.id===row.importId) : null);
+  if(giAnchor){
+    const savedImp=giAnchor;
     const gid=savedImp?.fields?.['Group ID']||'';
+    const written=row.type==='import' ? row.orderIds : [row.importId];
     // Stale/empty guard (owner 8/9 defect item 4): the validation at the top
     // of this function already refuses to reach here with BOTH Truck and
     // Partner empty (toast + early return), so `fields` is never actually
@@ -3160,7 +3169,7 @@ async function _wiSaveFromPopover(rowId){
         const siblings=await atGetAll(TABLES.ORDERS,{filterByFormula:`{Group ID}='${gid}'`},true)||[];
         const sibErrors=[];
         for(const sib of siblings){
-          if(row.orderIds.includes(sib.id)) continue; // already written above
+          if(written.includes(sib.id)) continue; // already written above
           try{
             const res=await atSafePatch(TABLES.ORDERS,sib.id,groupFields);
             if(res?.error) throw new Error(res.error.message||res.error.type);
