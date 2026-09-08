@@ -7318,8 +7318,9 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-segpill{flex:1 1 0;min-width:0;display:flex;border:1px solid var(--border);
   border-radius:var(--radius);overflow:hidden;background:var(--surface-card)}
 .wk3-seg{position:relative;flex:1 1 0;min-width:0;box-sizing:border-box;
-  display:flex;flex-direction:column;justify-content:center;min-height:34px;
-  padding:4px 14px;background:var(--surface-card);cursor:pointer;
+  display:flex;flex-direction:column;justify-content:center;min-height:36px;
+  padding:3px 10px;background:var(--border);--seg-bg:var(--surface-card);cursor:pointer;
+  isolation:isolate;
   transition:transform var(--duration-fast) var(--ease-out),box-shadow var(--duration-fast) var(--ease-out);}
 /* Διαγώνιο κόψιμο (spec): άκρα στρογγυλά (το κλείνει το overflow:hidden του
    γονέα), μεσαία τμήματα με ίσια γωνία και στις δύο πλευρές. Επικάλυψη 12px
@@ -7327,15 +7328,89 @@ button.btn-icon:focus-visible { outline:2px solid var(--accent); outline-offset:
 .wk3-seg[data-pos="first"]{clip-path:polygon(0 0,100% 0,calc(100% - 12px) 100%,0 100%)}
 .wk3-seg[data-pos="mid"]{clip-path:polygon(12px 0,100% 0,calc(100% - 12px) 100%,0 100%);margin-left:-12px}
 .wk3-seg[data-pos="last"]{clip-path:polygon(12px 0,100% 0,100% 100%,0 100%);margin-left:-12px}
+/* Ορατή «ραφή» στη διαγώνια τομή (owner review 8/9 v2 — item β: πριν η γραμμή
+   ανάμεσα σε τμήματα ήταν σχεδόν αόρατη). ΔΟΚΙΜΑΣΤΗΚΕ πρώτα filter:drop-shadow
+   πάνω στο ήδη κομμένο clip-path (η συνηθισμένη συνταγή για «border σε
+   πολύγωνο») — ΔΕΝ δούλεψε: επαληθεύτηκε με απομονωμένο test-case ότι το
+   Chromium clip-άρει ΚΑΙ το ίδιο το drop-shadow μαζί με το σχήμα (η σκιά ζει
+   ΕΚΤΟΣ του πολυγώνου, το clip-path την κόβει κι αυτήν — καμία ένδειξη σε
+   getComputedStyle, μόνο σε πραγματικό screenshot). Λύση που δουλεύει: δύο
+   στρώματα ΙΔΙΟΥ clip-path σχήματος — το ίδιο το .wk3-seg (χρώμα border,
+   πλήρες σχήμα) ΚΑΙ ένα ::before από πάνω με το ΠΡΑΓΜΑΤΙΚΟ χρώμα (ok/late/
+   κανονικό μέσω --seg-bg) σε ΣΜΙΚΡΥΜΕΝΟ (κατά 1.5px ανά πλευρά) ίδιο πολύγωνο
+   — μια λωρίδα 1.5px του χρώματος border μένει ορατή γύρω-γύρω,
+   διαγώνιες πλευρές συμπεριλαμβανομένων. Το ::before είναι ΤΟΠΟΘΕΤΗΜΕΝΟ
+   (position:absolute) — χωρίς δικό του stacking context θα ζωγραφιζόταν
+   ΠΑΝΩ από το απλό (μη-τοποθετημένο) κείμενο, όχι από κάτω (σειρά CSS2.1
+   §E: τα in-flow μη-τοποθετημένα παιδιά ζωγραφίζονται ΠΡΙΝ τα τοποθετημένα
+   με z-index:auto). Το `isolation:isolate` στο .wk3-seg το απομονώνει σε
+   δικό του stacking context· μέσα σε αυτό, z-index:-1 το ρίχνει ΚΑΤΩ από το
+   κανονικό περιεχόμενο (και ΠΑΝΩ από το δικό του background=border-color),
+   χωρίς να επηρεάζει τη στοίβαξη γειτονικών τμημάτων ή του .wk3-segtip
+   (z-index:20, μένει πάνω από όλα). */
+.wk3-seg::before{content:'';position:absolute;inset:0;background:var(--seg-bg);z-index:-1}
+.wk3-seg[data-pos="first"]::before{clip-path:polygon(1.5px 1.5px,calc(100% - 1.5px) 1.5px,calc(100% - 13.5px) calc(100% - 1.5px),1.5px calc(100% - 1.5px))}
+.wk3-seg[data-pos="mid"]::before{clip-path:polygon(13.5px 1.5px,calc(100% - 1.5px) 1.5px,calc(100% - 13.5px) calc(100% - 1.5px),1.5px calc(100% - 1.5px))}
+.wk3-seg[data-pos="last"]::before{clip-path:polygon(13.5px 1.5px,calc(100% - 1.5px) 1.5px,calc(100% - 1.5px) calc(100% - 1.5px),1.5px calc(100% - 1.5px))}
 /* Item 2 (owner 8/9): κίνηση ανά τμήμα ξεχωριστά, όχι όλο το πλακάτ. */
 .wk3-seg:hover{transform:translateY(-2px);box-shadow:var(--shadow-lift);z-index:3}
 @media (prefers-reduced-motion:reduce){.wk3-seg{transition:none}.wk3-seg:hover{transform:none}}
-.wk3-seg.ok{background:var(--success-bg)}
-.wk3-seg.late{background:var(--danger-bg)}
+.wk3-seg.ok{--seg-bg:var(--success-bg)}
+.wk3-seg.late{--seg-bg:var(--danger-bg)}
 .wk3-seg.dragging{opacity:.4}
 .wk3-seg.dragover{outline:2px dashed var(--accent);outline-offset:-2px}
 .wk3-segtop{display:flex;align-items:center;gap:6px;font-size:11px}
-.wk3-segtotals{flex-shrink:0;font-size:11px;font-weight:700;color:var(--text-mid);white-space:nowrap}
+/* Πυκνότερη γραμματοσειρά ΜΕΣΑ στο τμήμα — οι κοινές .wi2-name/.wi2-sub/.wi2-date
+   (μοιρασμένες με τη μονή κάρτα, 13/11/11px) δεν χωρούν σε τμήμα πλάτους
+   ~100-130px· scope εδώ, όχι στις κοινές κλάσεις, ώστε η μονή κάρτα να μείνει
+   ανέγγιχτη. Νούμερα: spec 2026-09-08 v2 §Segment content. */
+.wk3-seg .wi2-name{font-size:10px;line-height:13px;font-weight:600}
+.wk3-seg .wi2-sub{font-size:9px}
+.wk3-seg .wi2-date{font-size:9px;padding:0 5px;min-width:0;height:16px;line-height:16px;
+  border-radius:var(--radius-sm);box-sizing:border-box}
+.wk3-segtop .wi2-name{font-size:9px}
+.wk3-segtop .wi2-pal{font-size:9px}
+/* Σύνολα δεξιά της παράδοσης (owner review 8/9 v2 — item γ): σταθερό κουτί
+   ΕΚΤΟΣ του μεριδίου πλάτους του ίδιου του πλακάτ (βλ. .wk3-tiled παρακάτω) —
+   πριν μοιραζόταν flex:1 1 0 με το .wk3-segpill μέσα στο ίδιο .wk3-segwrap και
+   το στρίμωχνε ίσα με το πλάτος των συνόλων. */
+.wk3-segtotals{flex:0 0 64px;width:64px;box-sizing:border-box;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:1px;text-align:center}
+.wk3-segtotals .wi2-pal{font-size:12px;font-weight:700;line-height:1.15}
+.wk3-segstops{font-size:9px;color:var(--text-dim);line-height:1.15;white-space:nowrap}
+/* Πλάτη πλακάτ (owner review 8/9 v2 — item α): η _wi2Balance() του module
+   μοιράζει sL/sR μετρώντας .wi2-name/.wi2-meta ως ΑΜΕΣΑ παιδιά του .wk3-leg —
+   το .wk3-segwrap δεν έχει τέτοια (είναι δύο επίπεδα πιο μέσα), άρα η μέτρηση
+   επιστρέφει 0 και οι σειρές με segments κληρονομούσαν έναν λόγο υπολογισμένο
+   ΑΠΟ ΑΛΛΕΣ (μονές) γραμμές — τυχαίος για ένα πλακάτ με σύνολα δεξιά. Δικό
+   της grid-template ΜΟΝΟ όταν το JS προσθέσει .wk3-tiled (μόνο όταν segOn —
+   άρα ΠΟΤΕ με κλειστή σημαία, βλ. modules/weekly_intl.js). Ειδικότητα 4-5
+   κλάσεων ώστε να νικά το `.wk3.wi2 .wk3-leg` (inline <style> του module,
+   3 κλάσεις) όποια κι αν είναι η σειρά στο DOM. Νούμερα: spec §Widths —
+   238/262 (3+ μέλη, βλ. compact στο _wiSegHTML) · 230/250 (2 μέλη), με +8px
+   κενό +64px σύνολα προστιθέμενα στο δεξί (παράδοση). */
+.wk3.wi2 .wk3-leg.wk3-tiled{grid-template-columns:minmax(238px,1fr) auto minmax(334px,1fr)}
+.wk3.wi2 .wk3-leg.wk3-tiled[data-seg-n="2"]{grid-template-columns:minmax(230px,1fr) auto minmax(322px,1fr)}
+/* Η ΓΡΑΜΜΗ (.wk3-row) είναι ΚΙ ΑΥΤΗ grid (module's own <style>, γρ. 245:
+   `minmax(0,1.1fr)`/`minmax(0,0.9fr)` για τα δύο .wk3-leg) — min 0 σημαίνει
+   ότι ο browser ΔΕΝ φουσκώνει το track για να χωρέσει το παιδί, άρα το πλάτος
+   που μόλις κλειδώσαμε παραπάνω (238-334/230-322) περίσσευε από το πλάτος
+   που της έδινε η σειρά και το `.wk3-leg{overflow:hidden}` το έκοβε σιωπηλά —
+   ΤΑ ΣΥΝΟΛΑ δεξιά της παράδοσης εξαφανίζονταν εντελώς, αόρατο bug που δεν θα
+   φαινόταν παρά μόνο μετρώντας rects (βρέθηκε με Playwright evaluate, όχι με
+   screenshot). Ίδιο 36px/240px/var(--fL)/var(--fR) με το γρ. 245 ΕΠΙΤΗΔΕΣ
+   (var() λύνεται στην τιμή που έχει ΤΩΡΑ η μεταβλητή — αν αλλάξει εκεί, θα
+   αλλάξει και εδώ)· μόνο τα δύο minmax ελάχιστα ανεβαίνουν, και ΜΟΝΟ σε
+   γραμμή που όντως περιέχει .wk3-tiled. ΔΕΝ καλύπτει το media query
+   max-width:1360px (γρ. 443) — άλλη στήλωση, εκτός εύρους της συγκεκριμένης
+   αναθεώρησης (οθόνες ελέγχθηκαν στα 1440px). Το track παρακάτω δίνει το
+   ΠΕΡΙΘΩΡΙΟ (border-box) του ίδιου του .wk3-leg — για να χωρέσουν τα τρία
+   tracks από πάνω (238-334/230-322) πρέπει να προστεθεί ΚΑΙ το gap:4px×2
+   ΚΑΙ το padding:0 4px×2 του .wk3-leg (γρ. 315, wi2 mode) — 8+8=16px, αλλιώς
+   ξανακόβεται σιωπηλά (επαληθεύτηκε με rects, όχι με μάτι — βλ. σχόλιο πιο
+   πάνω): 238+12(βέλος)+334+16=600 (3+ μέλη) · 230+12+322+16=580 (2 μέλη). */
+.wk3.wi2 .wk3-row:has(.wk3-leg.wk3-tiled){grid-template-columns:36px var(--fL) minmax(600px,1.1fr) 240px minmax(600px,0.9fr) var(--fR)}
+.wk3.wi2 .wk3-row:has(.wk3-leg.wk3-tiled[data-seg-n="2"]){grid-template-columns:36px var(--fL) minmax(580px,1.1fr) 240px minmax(580px,0.9fr) var(--fR)}
 /* Item 2 tooltip: πελάτης, αναφορά, παλέτες, ημέρα/ώρα — CSS-only hover. */
 .wk3-segtip{display:none;position:absolute;left:0;top:100%;margin-top:6px;z-index:20;
   min-width:170px;max-width:240px;background:var(--surface-dark);color:var(--text-on-dark);

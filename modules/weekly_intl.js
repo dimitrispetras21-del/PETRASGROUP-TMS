@@ -1265,7 +1265,7 @@ function _wiImpRowHTML(row,impNo){
         ? `<button class="wk3-prt r" title="Εκτύπωση ομάδας (import) — ${row.orderIds.length} έγγραφα σε ένα πακέτο" onclick="event.stopPropagation();_wiPrintImpGroup(${row.id})">⎙<sup>I</sup></button>`
         : `<button class="wk3-prt r" title="Εκτύπωση εντολής (import) — δεξί κλικ: κοινή χρήση" data-shq="${printSheetQuery(imp.id,'import',!!row.partnerId)}" data-shtitle="Εντολή εισαγωγής — W${WINTL.week}" onclick="event.stopPropagation();_wiPrintImp('${imp.id}',${row.partnerId?'true':'false'})">⎙<sup>I</sup></button>`}
     </div>`}
-    <div class="wk3-leg imp" style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
+    <div class="wk3-leg imp${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${members.length}"`:''} style="cursor:pointer" title="Κλικ: άνοιγμα φόρμας παραγγελίας — σύρε για ταίριασμα" onclick="event.stopPropagation();_wk3Edit('${imp.id}')">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     <div class="wk3-feed r" title="${impVS2?'Εθνική διανομή από Βέροια — τελικός προορισμός. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος'}">${feedR}${(typeof impVS2!=="undefined"?impVS2:(imp&&impVS))?_wi2Carrier(imp.id):''}</div>
   </div>`;
 }
@@ -2116,13 +2116,16 @@ function _wiSegHTML(o,kind,isImportSide,idx,total,rowId,draggable){
     ${body}${_wiSegTipHTML(o,kind)}
   </div>`;
 }
-// Σύνολα δεξιά από το πλακάτ παράδοσης (spec: «NN p · N στάσεις» ή
-// «k/N παραδόθηκαν» μόλις παραδοθεί έστω μία στάση).
+// Σύνολα δεξιά από το πλακάτ παράδοσης (spec: «NN p» πάνω από «N στάσεις» ή
+// «k/N παραδόθηκαν» μόλις παραδοθεί έστω μία στάση) — ΔΥΟ σειρές σε σταθερό
+// κουτί (owner review 8/9 v2: πριν ήταν μία inline γραμμή που μοιραζόταν το
+// ίδιο πλάτος με το ίδιο το πλακάτ παράδοσης και το στρίμωχνε· τώρα ζει σε
+// δικό του σταθερό πλάτος — βλ. assets/style.css .wk3-segtotals/.wk3-tiled).
 function _wiSegTotalsHTML(list){
   const n=list.length;
   const delivered=list.filter(o=>_wk3StFlags(o.fields).delivered).length;
   const stopsTxt=delivered>0?`${delivered}/${n} παραδόθηκαν`:`${n} στάσεις`;
-  return `<span class="wk3-segtotals">${_wi2PalGroup(list)} · ${stopsTxt}</span>`;
+  return `<div class="wk3-segtotals">${_wi2PalGroup(list)}<span class="wk3-segstops">${stopsTxt}</span></div>`;
 }
 function _wiSegPillWrap(rowId,list,kind,isImportSide,draggable,totalsHTML){
   const segs=list.map((o,idx)=>_wiSegHTML(o,kind,isImportSide,idx,list.length,rowId,draggable)).join('');
@@ -2272,7 +2275,7 @@ function _wiRowHTML(row,i){
   <div id="wi-row-${row.id}" data-row-id="${row.id}" class="${rowCls}">
     <div class="wk3-num">${i+1}${isGroup?`<button class="wk3-grpb" title="Groupage ×${exps.length} — κλικ: μέλη ομάδας (βάση: το πρώτο-παραδιδόμενο)" onclick="event.stopPropagation();_wiToggleGroup(${row.id})">×${exps.length}</button>`:''}<span class="wi-sync" id="wi-sync-${row.id}"></span></div>
     <div class="wk3-feed l" title="${vsExp?'Εθνικό σκέλος προς Βέροια — φόρτωση από τον αρχικό πελάτη. Ο μεταφορέας συμπληρώνεται στο Weekly National.':'Χωρίς εθνικό σκέλος — δεν είναι Veroia Switch'}">${feedL}${vsExp?_wi2Carrier(pid):''}</div>
-    <div class="wk3-leg${isGroup?' grp':''}" style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
+    <div class="wk3-leg${isGroup?' grp':''}${segOn?' wk3-tiled':''}"${segOn?` data-seg-n="${exps.length}"`:''} style="cursor:pointer" title="${isGroup?'Κλικ: καρτέλα ρότας ομάδας · δεξί κλικ: groupage/ρότα':'Κλικ: άνοιγμα φόρμας παραγγελίας · δεξί κλικ: groupage/ρότα'}" oncontextmenu="_wiCtx(event,${row.id})" onclick="event.stopPropagation();${isGroup?`_wiRota(${row.id})`:`_wk3Edit('${pid}')`}">${loadCard}<span class="wi2-arrow">→</span>${delCard}</div>
     ${row.hasSplitLegs
       // Wave 3: the parent no longer executes — no assign popover, no print
       // (nothing to hand a driver for a row that is not itself moving). The
