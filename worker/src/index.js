@@ -2832,9 +2832,41 @@ async function handleCosts(request, url, origin, env) {
         const exParams = new URLSearchParams({ select: "id,order_id,nat_load_id,rt_id,seq" });
         exParams.append("or", `(${parts.join(",")})`);
         existing = (await dbSelectRaw(env, "ct_rt_legs", exParams)).rows;
+        // N2 (owner 8/9): planRtUpsert needs each leg's RT status to tell a
+        // discarded plan (cancelled) apart from a real existing trip — one
+        // extra SELECT, not an embed, so this stays a plain read like every
+        // other lookup in this route (no assumption about the PostgREST FK
+        // embed name surviving a schema change).
+        if (existing.length) {
+          const rtIds = [...new Set(existing.map((e) => e.rt_id))];
+          const { rows: rtStatusRows } = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `in.(${rtIds.join(",")})`, select: "id,status" }));
+          const statusById = new Map(rtStatusRows.map((r) => [r.id, r.status]));
+          existing = existing.map((e) => ({ ...e, rt_status: statusById.get(e.rt_id) }));
+        }
       }
       const plan = planRtUpsert({ legs: v.legs, existing });
       if (plan.action === "conflict") return jsonError(plan.error, plan.status, origin, env);
+      if (plan.staleLegIds && plan.staleLegIds.length) {
+        // The stale rows sit on a cancelled RT (a discarded plan, never
+        // costed) but the DB's unique index (ct_leg_order/ct_leg_nat_load)
+        // still holds the order_id/nat_load_id regardless of status — free
+        // them here, BEFORE the insert below, or that insert 500s on
+        // conflict. canRemoveLeg no longer blocks a cancelled RT (see its own
+        // comment) so this is a normal, audited delete, not a bypass of it.
+        const staleRows = existing.filter((e) => plan.staleLegIds.includes(e.id));
+        for (const row of staleRows) {
+          const res = await fetch(`${env.SUPABASE_URL}/rest/v1/ct_rt_legs?id=eq.${row.id}`, {
+            method: "DELETE",
+            headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` }
+          });
+          if (!res.ok) {
+            const d = await res.text().catch(() => "");
+            console.error("COSTS rt stale leg cleanup", res.status, d.slice(0, 200));
+            return jsonError(`Stale leg cleanup failed (${res.status})`, 500, origin, env);
+          }
+          await audit(env, { actor: caller.sub, role: caller.role, action: "delete", table: "ct_rt_legs", recordId: String(row.id), before: row });
+        }
+      }
       if (plan.action === "attach") {
         const before = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ id: `eq.${plan.rt_id}`, select: "*" }));
         if (!before.rows.length) return jsonError("Not found", 404, origin, env);
@@ -2876,8 +2908,12 @@ async function handleCosts(request, url, origin, env) {
     }
     // ---- DELETE /costs/rt/:id/legs?order_id=X|nat_load_id=X ----
     // N1: the only way to detach a leg (a Weekly International unmatch, or a
-    // manual correction) — guarded by canRemoveLeg so a closed/complete/
-    // cancelled RT's legs stay historical, never silently rewritten.
+    // manual correction) — guarded by canRemoveLeg so a closed/complete RT's
+    // legs stay historical, never silently rewritten. A cancelled RT is a
+    // discarded plan, not history (owner 8/9, worker/src/rt-rules.mjs
+    // RT_CLOSED_STATUSES) — canRemoveLeg allows this DELETE for one, which is
+    // also what lets the stale-leg cleanup above (plan.staleLegIds) free a
+    // cancelled RT's leg without a second code path.
     if (resource === "rt" && method === "DELETE" && recId && seg[3] === "legs") {
       const orderIdQ = url.searchParams.get("order_id");
       const natLoadIdQ = url.searchParams.get("nat_load_id");

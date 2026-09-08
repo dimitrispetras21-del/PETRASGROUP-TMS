@@ -64,9 +64,18 @@ function _rtFleetIds(f, lk) {
   };
 }
 
+// A cancelled RT is a discarded plan, not history (owner 8/9 defect: unmatch
+// toast «απέτυχε αφαίρεση σκέλους εισαγωγής» on EVERY unmatch — the plan gets
+// cancelled by rtOnOrderSaved's own «gone || !exec» branch as soon as an order
+// loses its assignment, well before it ever executes, so cancellation here is
+// routine, not rare). Ignored for every caller (unlink/rejoin/cancel-groupage/
+// unmatch, all of which reach this through _rtFind or rtFindForOrder) so each
+// one sees «no RT» and proceeds without a DELETE and without a warning — a
+// closed/complete RT (real financial history, _rtClosed above) is still
+// found and still warns.
 async function _rtFind(pgIds) {
   const r = await plFetch('/costs/rt');
-  return (r.records || []).find(rt => (rt.ct_rt_legs || []).some(l => pgIds.includes(l.order_id))) || null;
+  return (r.records || []).find(rt => rt.status !== 'cancelled' && (rt.ct_rt_legs || []).some(l => pgIds.includes(l.order_id))) || null;
 }
 
 const _rtClosed = rt => rt && (rt.status === 'closed' || rt.status === 'complete');

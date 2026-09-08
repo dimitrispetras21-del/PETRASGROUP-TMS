@@ -5,10 +5,18 @@
 export const RT_SCOPES = ['INTL', 'NATL'];
 export const RT_TRIP_TYPES = ['OWNED', 'PARTNER'];
 export const RT_DIRECTIONS = ['EXPORT', 'IMPORT', 'ANODOS', 'KATHODOS'];
-// Terminal statuses (ct_round_trips.status check, migration 001): a leg is
+// Immutable statuses (ct_round_trips.status check, migration 001): a leg is
 // financial history once the RT reaches one of these — removing it would
-// rewrite a closed record, not correct a plan.
-export const RT_CLOSED_STATUSES = ['closed', 'complete', 'cancelled'];
+// rewrite a closed record, not correct a plan. `cancelled` is deliberately
+// NOT in this list (owner 8/9 defect: unmatch toast «απέτυχε αφαίρεση
+// σκέλους εισαγωγής» on every unmatch, worker/src/index.js DELETE
+// /costs/rt/:id/legs) — a cancelled RT is a discarded PLAN (it never carried
+// real costs; rtOnOrderSaved in core/rt-feed.js only cancels an RT that has
+// zero cost lines), not history, so freeing its leg is a correction, not a
+// rewrite. Also lets planRtUpsert (below) reclaim a stale cancelled-RT leg
+// row for a freshly created RT instead of hitting the DB's unique index
+// (ct_leg_order/ct_leg_nat_load) with nowhere for the leg to go.
+export const RT_CLOSED_STATUSES = ['closed', 'complete'];
 const MAX_LEGS = 20;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -71,21 +79,41 @@ export function validateRtBody(body) {
   return { ok: true, row: pickRow(body), legs };
 }
 
-// existing: [{id, order_id, nat_load_id, rt_id, seq}] — the ct_rt_legs rows
-// the caller already found for the order_ids/nat_load_ids in `legs` (index.js
-// looks these up with a SELECT before calling this, now including `id` and
-// `seq` so a re-post that only changes the dispatcher's stop order can UPDATE
-// the leg instead of silently doing nothing). We trust the DB's unique
-// partial index (ct_leg_order / ct_leg_nat_load, migration 001) to guarantee
-// each order/load appears in AT MOST one row — no re-check of that here.
+// existing: [{id, order_id, nat_load_id, rt_id, seq, rt_status?}] — the
+// ct_rt_legs rows the caller already found for the order_ids/nat_load_ids in
+// `legs` (index.js looks these up with a SELECT before calling this, now
+// including `id` and `seq` so a re-post that only changes the dispatcher's
+// stop order can UPDATE the leg instead of silently doing nothing). We trust
+// the DB's unique partial index (ct_leg_order / ct_leg_nat_load, migration
+// 001) to guarantee each order/load appears in AT MOST one row — no re-check
+// of that here.
+//
+// `rt_status` (owner 8/9 defect, N2): a row whose RT is `cancelled` — a
+// discarded plan, not history (see RT_CLOSED_STATUSES's own comment) — must
+// not count as "existing" for the create/attach decision below. Without this
+// a fresh execution of the SAME order (e.g. re-assigned after the plan that
+// created its old RT was cancelled) silently ATTACHED to that dead RT and
+// stayed invisible in P&L — found via the Weekly International unmatch toast,
+// but the root cause is here, in planning, not in the unmatch path. A caller
+// that never sends `rt_status` (older callers, every existing test) sees the
+// row treated as active — identical to today's behaviour.
+// The DB's unique index still holds the stale row in place regardless of RT
+// status, so `staleLegIds` names it: the caller must free it (DELETE — now
+// allowed for a cancelled RT, see canRemoveLeg) before inserting the leg
+// under whichever RT this plan lands it on.
 export function planRtUpsert({ legs, existing }) {
-  if (!existing || !existing.length) return { action: 'create' };
-  const rtIds = [...new Set(existing.map(e => e.rt_id))];
+  const rows = existing || [];
+  const active = rows.filter(e => e.rt_status !== 'cancelled');
+  const stale = rows.filter(e => e.rt_status === 'cancelled');
+  const staleLegIds = stale.length ? stale.map(e => e.id) : null;
+
+  if (!active.length) return staleLegIds ? { action: 'create', staleLegIds } : { action: 'create' };
+  const rtIds = [...new Set(active.map(e => e.rt_id))];
   if (rtIds.length > 1) {
     return { action: 'conflict', status: 409, error: 'legs already belong to different round trips: ' + rtIds.join(',') };
   }
   const rt_id = rtIds[0];
-  const findExisting = (leg) => existing.find(e =>
+  const findExisting = (leg) => active.find(e =>
     (leg.order_id !== undefined && e.order_id === leg.order_id) ||
     (leg.nat_load_id !== undefined && e.nat_load_id === leg.nat_load_id));
   const legsToAdd = [];
@@ -99,6 +127,7 @@ export function planRtUpsert({ legs, existing }) {
   // Omitted when empty (not `legsToUpdateSeq: []`) so every caller/test that
   // predates seq — and never sends it — sees the exact same shape as before.
   if (legsToUpdateSeq.length) plan.legsToUpdateSeq = legsToUpdateSeq;
+  if (staleLegIds) plan.staleLegIds = staleLegIds;
   return plan;
 }
 

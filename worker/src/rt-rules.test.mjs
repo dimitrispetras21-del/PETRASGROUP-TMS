@@ -141,11 +141,41 @@ test('canRemoveLeg: ok for planned/in_progress', () => {
   assert.deepStrictEqual(canRemoveLeg({ status: 'in_progress' }), { ok: true });
 });
 
-test('canRemoveLeg: rejects closed/complete/cancelled, named with the status', () => {
-  for (const status of ['closed', 'complete', 'cancelled']) {
+test('canRemoveLeg: rejects closed/complete, named with the status', () => {
+  for (const status of ['closed', 'complete']) {
     const r = canRemoveLeg({ status });
     assert.strictEqual(r.ok, false);
     assert.strictEqual(r.status, 409);
     assert.match(r.error, new RegExp(status));
   }
+});
+
+// owner 8/9 defect: a cancelled RT is a discarded PLAN, not history (it never
+// carried real costs — rtOnOrderSaved only ever cancels an RT with zero cost
+// lines) — unlike closed/complete this is safe to correct, not a rewrite of a
+// closed record. Blocking it made every Weekly International unmatch of a
+// re-assigned-then-cancelled group toast «απέτυχε αφαίρεση σκέλους εισαγωγής»
+// even though nothing was actually wrong.
+test('canRemoveLeg: allows removing a leg from a cancelled RT — a discarded plan, not history', () => {
+  assert.deepStrictEqual(canRemoveLeg({ status: 'cancelled' }), { ok: true });
+});
+
+// N2 (owner 8/9): a cancelled RT's legs must not glue a fresh execution onto
+// a dead trip. planRtUpsert treats them as absent for the create/attach
+// decision and tells the caller which rows to free first (the DB's unique
+// index still holds them regardless of status).
+test('planRtUpsert: existing legs only on a cancelled RT -> create, with staleLegIds to free', () => {
+  const legs = [{ direction: 'EXPORT', order_id: 100 }];
+  const existing = [{ id: 42, order_id: 100, nat_load_id: null, rt_id: 7, seq: 1, rt_status: 'cancelled' }];
+  assert.deepStrictEqual(planRtUpsert({ legs, existing }), { action: 'create', staleLegIds: [42] });
+});
+
+test('planRtUpsert: one leg on an active RT, another on a cancelled RT -> attach to the active one, cancelled one flagged stale', () => {
+  const legs = [{ direction: 'EXPORT', order_id: 100 }, { direction: 'IMPORT', order_id: 101 }];
+  const existing = [
+    { id: 5, order_id: 100, nat_load_id: null, rt_id: 7, seq: 1 },
+    { id: 9, order_id: 101, nat_load_id: null, rt_id: 8, seq: 1, rt_status: 'cancelled' }
+  ];
+  assert.deepStrictEqual(planRtUpsert({ legs, existing }),
+    { action: 'attach', rt_id: 7, legsToAdd: [{ direction: 'IMPORT', order_id: 101 }], staleLegIds: [9] });
 });
