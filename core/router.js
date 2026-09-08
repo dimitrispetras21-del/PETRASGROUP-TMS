@@ -67,6 +67,10 @@ const NAV = [
   { section: 'Οικονομικά', perm: 'orders', items: [
     { id: 'invoicing',     label: 'Τιμολόγηση',       icon: 'file_check' },
     { id: 'pallet_ledger', label: 'Ισοζύγιο Παλετών', icon: 'package' },
+    // Same gate as Μισθοδοσία Οδηγών (spec 2026-09-07 §3): perm 'costs', not
+    // the section's 'orders' — accountant (full) and owner (full) write,
+    // management (view) reads, dispatcher (none) never sees it.
+    { id: 'expenses',      label: 'Έξοδα Δρομολογίων', icon: 'coins', perm: 'costs' },
     { id: 'costs',         label: 'TRIP PnL',         icon: 'coins', role: 'owner' },
   ]},
   { section: 'Ανάλυση', perm: 'ceo_dashboard', items: [
@@ -351,6 +355,8 @@ function navigate(page) {
     // management 'view' — all three may open it; the Worker decides writes.
     // dispatcher has costs:'none' and never sees driver money.
     case 'payroll':        renderPayroll();                                   break;
+    // Same gate note as payroll above — perm 'costs', not the section's 'orders'.
+    case 'expenses':       renderExpenses();                                  break;
     // Costs
     // Not in NAV — reachable only via ?page= or a stale bookmark. See
     // docs/design/DEEP_AUDIT_2026-08-04/costs.md CO-1. Blocked on the
