@@ -350,4 +350,7 @@ const PERMS = {
 // Needs migration 018 in the base AND the Worker with «Parent Order»/«Leg No»
 // deployed — without them the facade would silently drop the two fields and
 // leave orphan legs. Flip to true only after both, then bump ?v= in app.html.
-const FEATURES = { ORDER_SPLIT: true }; // opened 7/9/2026 after migration 018 + Worker deploy (verified)
+// GROUP_TILES (owner 8/9/2026, spec docs/design/2026-09-08-groupage-tiles.md):
+// segmented single-pill groupage on Weekly International. Off = today's board
+// renders byte-for-byte unchanged. Flip to true only after live verification.
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: false };
