@@ -20,13 +20,17 @@ const _ei = {
   zipName: null,
   progress: { done: 0, total: 0 },
   error: null,
-  doc: null,                 // { id, zip_name, period_from, period_to, n_files }
+  doc: null,                 // { id, zip_name, period_from, period_to, n_files, files_count }
+  extractedFileCount: null,  // fallback for doc.files_count when the browser already knows (spec round 2 point 3)
   reconcile: null,           // { ok, per_doc:[{doc_no,country,diff,ok}], summary_total, lines_total }
   metrics: null,
   lines: [],                 // working copy: parser line + { id, selected, corrected, match }
   rules: [],                 // corrections marked «να ισχύει στο εξής»
   filter: 'all',             // category chip
+  reviewMode: 'all',         // 'all' | 'decide' (round 2 point 2 — suggest+none only)
+  groupOpen: {},             // plate (or '__NOVEHICLE__') → explicit open/collapsed override
   rtEditingId: null,         // line id whose round-trip cell is open for editing
+  plateEditingId: null,      // line id whose «Σύνδεση με φορτηγό…» select is open (round 2 point 1)
   committing: false,
 };
 
@@ -47,6 +51,18 @@ function eiCatDotClass(cat) {
   if (cat === 'tolls' || cat === 'ferry_train') return 'ei-dot-blue';
   if (cat === 'partner_rate') return 'ei-dot-green';
   return 'ei-dot-gray';
+}
+
+// Label override local to THIS screen only (round 2 point 3: «ferry_train →
+// Γέφυρα/Φέρι»). CT_CATEGORY_LABELS (modules/costs.js) is shared with the
+// TRIP PnL and the ενσωματωμένη Έξοδα Δρομολογίων screen — changing the
+// shared map would rename the category everywhere those already-live
+// screens show it, which nobody asked for (αρχή 3 cuts both ways: sharing
+// the ONE map is right for the common case, but this one label is a
+// DKV-import-screen-only wording choice, so it stays a thin wrapper here).
+function eiCategoryLabel(cat) {
+  if (cat === 'ferry_train') return 'Γέφυρα/Φέρι';
+  return (typeof CT_CATEGORY_LABELS !== 'undefined' && CT_CATEGORY_LABELS[cat]) || cat;
 }
 
 // ═══════════════════ CSS ═══════════════════
@@ -88,6 +104,9 @@ function eiStyles() {
   .ei-metric.ei-m-suggest .v{color:var(--accent-text)}
   .ei-metric.ei-m-warn .v{color:var(--warn)}
 
+  .ei-none-summary{padding:0 24px 12px;font-size:11px;color:var(--warn)}
+  .ei-reviewrow{display:flex;gap:8px;padding:0 24px 12px}
+
   .ei-chiprow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 24px;flex-wrap:wrap}
   .ei-chips{display:flex;gap:8px;flex-wrap:wrap}
   .ei-chip{height:28px;padding:0 12px;border-radius:9999px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:12px;cursor:pointer;color:var(--text-mid)}
@@ -116,6 +135,11 @@ function eiStyles() {
      .ex-line-grid — καμία οριζόντια κύλιση). */
   .ei-row{display:grid;grid-template-columns:24px 52px 130px 44px minmax(140px,1.4fr) 56px 76px 68px minmax(150px,1fr) 64px;gap:8px;align-items:center;padding:8px 16px;border-bottom:1px solid var(--border);font-size:12px}
   .ei-row:last-child{border-bottom:0}
+  /* Subtle indent for a per-day split line under its parent passage-list
+     transaction (spec round 2 point 3) — padding, not margin, so the grid's
+     own column widths stay put and nothing shifts out of the card. */
+  .ei-row.split{padding-left:28px}
+  .ei-group-caret{margin-left:6px}
   .ei-row.unselected{opacity:.45}
   .ei-row.corrected{box-shadow:inset 3px 0 var(--accent)}
   .ei-row>div{min-width:0}
@@ -148,7 +172,8 @@ function eiOpenImport() {
   _ei.step = 'upload'; _ei.error = null; _ei.zipName = null;
   _ei.progress = { done: 0, total: 0 }; _ei.doc = null; _ei.reconcile = null;
   _ei.metrics = null; _ei.lines = []; _ei.rules = []; _ei.filter = 'all';
-  _ei.rtEditingId = null; _ei.committing = false;
+  _ei.reviewMode = 'all'; _ei.groupOpen = {}; _ei.extractedFileCount = null;
+  _ei.rtEditingId = null; _ei.plateEditingId = null; _ei.committing = false;
   eiRenderShell();
 }
 
@@ -276,6 +301,10 @@ const EI_MAX_INLINE_ZIP = 8 * 1024 * 1024;
 
 async function eiSendParse(file, files) {
   _ei.step = 'uploading';
+  // Fallback for the title's file count when doc.files_count is absent
+  // (spec round 2 point 3) — the browser already knows how many files it
+  // extracted from the ZIP, independent of whatever the server echoes back.
+  _ei.extractedFileCount = files.length;
   eiRenderShell();
   const body = { source: 'DKV', zip_name: _ei.zipName, files };
   try {
@@ -325,7 +354,16 @@ function eiLoadParseResult(res) {
   }));
   _ei.rules = [];
   _ei.filter = 'all';
+  _ei.reviewMode = 'all';
+  // Collapse default is decided ONCE, here, and stored explicitly per group —
+  // NOT recomputed on every render from current line state. Recomputing it
+  // meant correcting a suggest line to sure could flip its group to «all
+  // sure» mid-click and collapse the very row the user just corrected, right
+  // out from under them. Freezing it at load time keeps a group's open/closed
+  // state stable through corrections; only the ⌄ caret changes it after this.
+  _ei.groupOpen = eiInitialGroupOpen(_ei.lines);
   _ei.rtEditingId = null;
+  _ei.plateEditingId = null;
   _ei.step = 'preview';
   eiRenderShell();
 }
@@ -338,7 +376,12 @@ function eiLineGross(l) { return Number(l.gross_eur != null ? l.gross_eur : (l.g
 function eiPreviewHtml() {
   const doc = _ei.doc || {};
   const rec = _ei.reconcile || {};
-  const nFiles = doc.n_files != null ? doc.n_files : '—';
+  // doc.files_count (new field, spec round 2 point 3) wins; doc.n_files kept
+  // for whatever shape the Worker sends before it ships; last resort is the
+  // count the browser itself extracted from the ZIP — always known.
+  const nFiles = doc.files_count != null ? doc.files_count
+    : (doc.n_files != null ? doc.n_files
+      : (_ei.extractedFileCount != null ? _ei.extractedFileCount : '—'));
   const period = doc.period_from && doc.period_to ? (exDate(doc.period_from) + '–' + exDate(doc.period_to)) : '';
   const titleLine = 'Εισαγωγή DKV · ' + (_ei.zipName || doc.zip_name || '—') + ' · ' + nFiles + ' αρχεία' + (period ? ' · περίοδος ' + period : '');
   const selCount = eiSelectedCount();
@@ -352,6 +395,8 @@ function eiPreviewHtml() {
       </div>
     </div>
     ${eiReconcileBandHtml()}
+    ${eiNoneReasonSummaryHtml()}
+    ${eiReviewToggleHtml()}
     ${eiChipsRowHtml()}
     <div class="ei-card">${eiGroupsHtml()}</div>
     ${eiFooterHtml()}
@@ -386,6 +431,50 @@ function eiReconcileBandHtml() {
   </div>`;
 }
 
+// «47 χωρίς δρομολόγιο: 18 γενικά τέλη · 1 άγνωστη πινακίδα · 28 χωρίς
+// διαδρομή εκείνη την ημέρα» (spec round 2 point 1) — counted client-side
+// from the flat `none_reason` field so the reason is visible ΠΡΙΝ ανοίξει
+// κανείς κάθε γραμμή μία-μία (αρχή 1: ό,τι δεν γίνεται πρέπει να ακούγεται).
+// none_reason may be absent (Worker Φ2 not deployed yet) — every line just
+// falls out of all four buckets and the sentence quietly shows 0 reasons,
+// never crashes.
+function eiNoneReasonCounts() {
+  const counts = { general_fee: 0, unknown_plate: 0, no_rt_on_date: 0, no_plate: 0 };
+  for (const l of _ei.lines) {
+    if (l.match.status !== 'none') continue;
+    const r = l.none_reason;
+    if (r && Object.prototype.hasOwnProperty.call(counts, r)) counts[r]++;
+  }
+  return counts;
+}
+
+function eiNoneReasonSummaryHtml() {
+  const noneTotal = _ei.lines.filter((l) => l.match.status === 'none').length;
+  if (!noneTotal) return '';
+  const c = eiNoneReasonCounts();
+  const parts = [];
+  if (c.general_fee) parts.push(c.general_fee + ' γενικ' + (c.general_fee === 1 ? 'ό τέλος' : 'ά τέλη'));
+  if (c.unknown_plate) parts.push(c.unknown_plate + ' άγνωστ' + (c.unknown_plate === 1 ? 'η πινακίδα' : 'ες πινακίδες'));
+  if (c.no_rt_on_date) parts.push(c.no_rt_on_date + ' χωρίς διαδρομή εκείνη την ημέρα');
+  if (c.no_plate) parts.push(c.no_plate + ' χωρίς όχημα στο παραστατικό');
+  if (!parts.length) return ''; // none_reason absent for all of them — nothing specific to say yet
+  return `<div class="ei-none-summary">${noneTotal} χωρίς δρομολόγιο: ${escapeHtml(parts.join(' · '))}</div>`;
+}
+
+// «Όλα» / «Θέλουν απόφαση» (spec round 2 point 2) — a second, independent
+// filter on top of the category chips: decide-mode hides every already-sure
+// line so 269 γραμμές don't have to be scanned one by one to find the ~100
+// that actually need a human. Same chip visual language as EI_CHIPS below.
+function eiReviewToggleHtml() {
+  const need = _ei.lines.filter((l) => l.match.status !== 'sure').length;
+  return `<div class="ei-reviewrow">
+    <button class="ei-chip${_ei.reviewMode === 'all' ? ' sel' : ''}" onclick="eiSetReviewMode('all')">Όλα <span class="ei-chip-n">${_ei.lines.length}</span></button>
+    <button class="ei-chip${_ei.reviewMode === 'decide' ? ' sel' : ''}" onclick="eiSetReviewMode('decide')">Θέλουν απόφαση <span class="ei-chip-n">${need}</span></button>
+  </div>`;
+}
+
+function eiSetReviewMode(mode) { _ei.reviewMode = mode; eiRenderShell(); }
+
 function eiChipsRowHtml() {
   const counts = {};
   _ei.lines.forEach((l) => { counts[l.category] = (counts[l.category] || 0) + 1; });
@@ -417,34 +506,82 @@ function eiGroupsHtml() {
   order.sort((a, b) => (a === '__NOVEHICLE__' ? 1 : 0) - (b === '__NOVEHICLE__' ? 1 : 0) || a.localeCompare(b));
   const html = order.map((key) => {
     const groupLines = groups.get(key);
-    const visible = _ei.filter === 'all' ? groupLines : groupLines.filter((l) => l.category === _ei.filter);
+    // Δύο ανεξάρτητα φίλτρα μαζί (spec round 2 point 2): η κατηγορία (chip)
+    // ΚΑΙ το review mode («Θέλουν απόφαση» = ό,τι δεν είναι ήδη σίγουρο). Μια
+    // ομάδα εξαφανίζεται όταν δεν έχει καμία γραμμή που περνά και τα δύο.
+    const visible = groupLines.filter((l) =>
+      (_ei.filter === 'all' || l.category === _ei.filter) &&
+      (_ei.reviewMode === 'all' || l.match.status !== 'sure'));
     if (!visible.length) return '';
-    return key === '__NOVEHICLE__' ? eiNoVehicleGroupHtml(groupLines, visible) : eiVehicleGroupHtml(key, groupLines, visible);
+    return key === '__NOVEHICLE__' ? eiNoVehicleGroupHtml(key, groupLines, visible) : eiVehicleGroupHtml(key, groupLines, visible);
   }).join('');
   return html || showEmpty({ title: 'Καμία γραμμή σε αυτή την κατηγορία', description: '' });
 }
 
+// Ομάδα «όλες σίγουρες» — καμία απόφαση δεν χρειάζεται εκεί, άρα κλείνει από
+// μόνη της (spec round 2 point 2). Ρητή επιλογή του χρήστη (_ei.groupOpen)
+// νικά πάντα το default, ίδιο μοτίβο με το ctWeekIsOpen (modules/costs.js).
+function eiGroupAllSure(groupLines) {
+  return groupLines.length > 0 && groupLines.every((l) => l.match.status === 'sure');
+}
+// Computed once, right after a parse response loads — see the comment at its
+// only call site (eiLoadParseResult) for why this must NOT be recomputed on
+// every render.
+function eiInitialGroupOpen(lines) {
+  const groups = {};
+  for (const l of lines) {
+    const key = l.plate || '__NOVEHICLE__';
+    (groups[key] = groups[key] || []).push(l);
+  }
+  const open = {};
+  for (const key in groups) open[key] = !eiGroupAllSure(groups[key]);
+  return open;
+}
+function eiGroupIsOpen(key) {
+  // A key that didn't exist at load time (e.g. a plate-link correction moved
+  // a line into a plate group nobody had seen yet) starts open — it's mid
+  // correction, the last thing it should do is hide itself.
+  return Object.prototype.hasOwnProperty.call(_ei.groupOpen, key) ? _ei.groupOpen[key] : true;
+}
+function eiToggleGroup(key) {
+  _ei.groupOpen[key] = !eiGroupIsOpen(key);
+  eiRenderShell();
+}
+// key is a plate string (or the fixed '__NOVEHICLE__' token) embedded inside
+// a single-quoted onclick attribute — escape both characters that would break
+// out of it (a literal apostrophe is not something a real plate contains, but
+// this stays correct instead of assuming that).
+function eiJsStr(s) { return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
+
 function eiVehicleGroupHtml(plate, allLines, visibleLines) {
   const total = allLines.reduce((a, l) => a + eiLineGross(l), 0);
+  const allSure = eiGroupAllSure(allLines);
+  const open = eiGroupIsOpen(plate);
   const sureLine = allLines.find((l) => l.match.status === 'sure' && l.match.rt_id);
   const rt = sureLine ? _ex.rts.find((r) => r.id === sureLine.match.rt_id) : null;
   const driver = rt ? exPersonName(rt) : '';
   const dates = rt ? exDateRange(rt.date_start, rt.date_end) : '';
-  return `<div class="ei-grouphead">
+  const head = `<div class="ei-grouphead" onclick="eiToggleGroup('${eiJsStr(plate)}')" style="cursor:pointer">
     <span class="ei-plate">${escapeHtml(plate)}</span>
     ${driver ? `<span>${escapeHtml(driver)}</span>` : ''}
     ${rt ? `<span>${escapeHtml(dates)}${rt.route_text ? ' · ' + escapeHtml(rt.route_text) : ''}</span>` : '<span class="ei-gdates dim">Χωρίς δρομολόγιο</span>'}
-    <span class="ei-gcount">${allLines.length} γραμμές · ${exEur(total)}</span>
-  </div>` + visibleLines.map(eiLineRowHtml).join('');
+    <span class="ei-gcount">${allLines.length} γραμμές · ${exEur(total)}${allSure ? ' · όλες σίγουρες' : ''}</span>
+    <span class="ei-caret ei-group-caret">${open ? '⌃' : '⌄'}</span>
+  </div>`;
+  return open ? head + visibleLines.map(eiLineRowHtml).join('') : head;
 }
 
-function eiNoVehicleGroupHtml(allLines, visibleLines) {
+function eiNoVehicleGroupHtml(key, allLines, visibleLines) {
   const total = allLines.reduce((a, l) => a + eiLineGross(l), 0);
-  return `<div class="ei-grouphead ei-grouphead-none">
+  const allSure = eiGroupAllSure(allLines);
+  const open = eiGroupIsOpen(key);
+  const head = `<div class="ei-grouphead ei-grouphead-none" onclick="eiToggleGroup('${key}')" style="cursor:pointer">
     <span class="ei-gname">Χωρίς όχημα · Γενικά τέλη DKV</span>
     <span class="ei-gnote">Χωρίς δρομολόγιο · γενικά έξοδα</span>
-    <span class="ei-gcount">${allLines.length} γραμμές · ${exEur(total)}</span>
-  </div>` + visibleLines.map(eiLineRowHtml).join('');
+    <span class="ei-gcount">${allLines.length} γραμμές · ${exEur(total)}${allSure ? ' · όλες σίγουρες' : ''}</span>
+    <span class="ei-caret ei-group-caret">${open ? '⌃' : '⌄'}</span>
+  </div>`;
+  return open ? head + visibleLines.map(eiLineRowHtml).join('') : head;
 }
 
 // Κατηγορία ως <select> (όχι click-to-reveal): η διόρθωση είναι μία ενέργεια
@@ -452,32 +589,47 @@ function eiNoVehicleGroupHtml(allLines, visibleLines) {
 // δεύτερη σύμβαση για το ίδιο πράγμα (αρχή 3).
 function eiCategorySelectHtml(l) {
   const cats = (typeof EX_CATEGORIES !== 'undefined') ? EX_CATEGORIES : [l.category];
-  const opts = cats.map((c) => `<option value="${c}"${l.category === c ? ' selected' : ''}>${escapeHtml((typeof CT_CATEGORY_LABELS !== 'undefined' && CT_CATEGORY_LABELS[c]) || c)}</option>`).join('');
+  const opts = cats.map((c) => `<option value="${c}"${l.category === c ? ' selected' : ''}>${escapeHtml(eiCategoryLabel(c))}</option>`).join('');
   return `<select class="ei-catselect" onchange="eiChangeCategory(${l.id}, this.value)">${opts}</select>`;
 }
 
-// Περιγραφή: σταθμός/προϊόν + τιμή μονάδας ή σημείωση ισοτιμίας (spec §1 —
-// ξένο νόμισμα). Το πλήθος διελεύσεων (passages) ΔΕΝ ενώνεται εδώ σε αυτή
-// την επανάληψη: ο parser κρατά τα passages groups ξεχωριστά από τα lines
-// (core/dkv-parser.js parseDkv) και η ένωση μέσω ref είναι πληροφοριακή, όχι
-// μέρος της συμφωνίας (§6 gate #1 μετρά μόνο τα invoice/statement lines) —
-// προσθήκη θα ήταν πολυπλοκότητα χωρίς λειτουργική ανάγκη σε αυτή τη φάση.
+// Περιγραφή: σταθμός/προϊόν + τιμή μονάδας στο ΝΟΜΙΣΜΑ ΤΟΥ ΠΑΡΑΣΤΑΤΙΚΟΥ, με
+// μετατροπή σε EUR δίπλα όταν δεν είναι ήδη EUR (spec round 2 point 3 — πριν
+// έδειχνε πάντα «€» ακόμη και για HUF, χωρίς ισοτιμία). Οι γραμμές split ανά
+// διέλευση (spec round 2 point 1, νέα πεδία `sub`/`passages_count`) παίρνουν
+// τη δική τους γραμμή περιγραφής· ο parser κρατά τα passages groups
+// ξεχωριστά από τα lines (core/dkv-parser.js parseDkv) — η ένωση αυτή γίνεται
+// ΜΟΝΟ εδώ, πληροφοριακά, όχι μέρος της συμφωνίας (§6 gate #1).
 function eiDescription(l) {
   const parts = [];
   if (l.station) parts.push(escapeHtml(l.station) + (l.city ? ', ' + escapeHtml(l.city) : ''));
   else if (l.product) parts.push(escapeHtml(l.product));
-  if (l.unit_price != null && l.unit) parts.push(exEur(l.unit_price) + '/' + escapeHtml(l.unit));
-  if (l.currency && l.currency !== 'EUR' && l.fx_rate) parts.push('ισοτιμία ' + escapeHtml(l.currency) + ' ' + l.fx_rate);
+  if (l.unit_price != null && l.unit) {
+    const cur = l.currency || 'EUR';
+    const priceTxt = Number(l.unit_price).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    parts.push(priceTxt + ' ' + escapeHtml(cur) + '/' + escapeHtml(l.unit));
+    if (cur !== 'EUR' && l.fx_rate) {
+      parts.push('→ EUR ισοτιμία ' + Number(l.fx_rate).toLocaleString('el-GR', { maximumFractionDigits: 6 }));
+    }
+  }
+  if (l.sub != null) {
+    parts.push('↳ από λίστα διελεύσεων · ' + (l.passages_count != null ? l.passages_count : '—') + ' διελεύσεις');
+  }
   return parts.join(' · ') || '—';
 }
 
 function eiLineRowHtml(l) {
   const dateTxt = l.service_date ? exDate(l.service_date) : (l.period_from ? exDate(l.period_from) + '–' + exDate(l.period_to) : '—');
   const litersTxt = l.quantity != null && /LTR|л\./i.test(l.unit || '') ? Number(l.quantity).toLocaleString('el-GR', { maximumFractionDigits: 2 }) : '';
-  const linkLabel = l.match.status === 'sure' ? 'Αλλαγή' : 'Επιλογή';
-  const row = `<div class="ei-row${l.corrected ? ' corrected' : ''}${!l.selected ? ' unselected' : ''}">
+  const linkLabel = eiActionLabel(l);
+  const isSplit = l.sub != null; // spec round 2 point 1/3: per-day split line
+  // «ημέρα διαδρομής» hover hint (round 2 point 3): title="" only, no visible
+  // text — the row is already busy, and this is a secondary detail.
+  const dateTitle = l.service_date_source === 'passages' ? ' title="ημέρα διαδρομής"' : '';
+  const linkOnclick = l.match.status === 'none' && l.none_reason === 'unknown_plate' ? 'eiTogglePlateEditor' : 'eiToggleRtEditor';
+  const row = `<div class="ei-row${l.corrected ? ' corrected' : ''}${!l.selected ? ' unselected' : ''}${isSplit ? ' split' : ''}">
     <input type="checkbox" ${l.selected ? 'checked' : ''} onchange="eiToggleLine(${l.id})">
-    <div class="s">${dateTxt}</div>
+    <div class="s"${dateTitle}>${dateTxt}</div>
     <div class="ei-cat"><span class="ei-dot ${eiCatDotClass(l.category)}"></span>${eiCategorySelectHtml(l)}</div>
     <div class="s">${escapeHtml(l.country || '—')}</div>
     <div class="s ei-desc">${eiDescription(l)}</div>
@@ -485,11 +637,15 @@ function eiLineRowHtml(l) {
     <div class="n r">${exEur(l.net_eur != null ? l.net_eur : l.net)}</div>
     <div class="n r dim">${exEur(l.vat_eur != null ? l.vat_eur : l.vat)}</div>
     <div class="ei-rtcell">${eiRtCellHtml(l)}</div>
-    <div class="ei-rowlink"><button class="ei-link" onclick="eiToggleRtEditor(${l.id})">${linkLabel}</button></div>
+    <div class="ei-rowlink">${linkLabel ? `<button class="ei-link" onclick="${linkOnclick}(${l.id})">${escapeHtml(linkLabel)}</button>` : ''}</div>
   </div>`;
-  return row + (_ei.rtEditingId === l.id ? eiRtEditorHtml(l) : '');
+  return row + (_ei.rtEditingId === l.id ? eiRtEditorHtml(l) : '') + (_ei.plateEditingId === l.id ? eiPlateEditorHtml(l) : '');
 }
 
+// Κείμενο ΓΙΑΤΙ + σωστή ενέργεια ανά none_reason (spec round 2 point 1) —
+// αντικαθιστά το γυμνό «Χωρίς δρομολόγιο», που δεν έλεγε τίποτα για το τι να
+// κάνει κανείς (αρχή 1). none_reason απόν (Worker Φ2 δεν έχει γίνει ακόμη
+// deploy) → η παλιά, γενική εμφάνιση.
 function eiRtCellHtml(l) {
   const m = l.match || { status: 'none' };
   if (m.status === 'sure' && m.rt_id) {
@@ -502,7 +658,34 @@ function eiRtCellHtml(l) {
     const label = cand ? (exDateRange(cand.date_start, cand.date_end) + ' · ' + (cand.driver || cand.plate || '')) : 'Πρόταση';
     return `<span class="ei-dot ei-dot-suggest"></span><span class="s">${escapeHtml(label)}<span class="ei-caret">⌄</span></span>`;
   }
+  const reason = l.none_reason || (m.general ? 'general_fee' : null);
+  if (reason === 'general_fee') {
+    return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Γενικό τέλος DKV · δεν χρεώνεται σε δρομολόγιο</span>`;
+  }
+  if (reason === 'unknown_plate') {
+    return `<span class="ei-dot ei-dot-warn"></span><span class="s">Άγνωστη πινακίδα ${escapeHtml(l.plate || '—')}</span>`;
+  }
+  if (reason === 'no_rt_on_date') {
+    return `<span class="ei-dot ei-dot-warn"></span><span class="s">Καμία διαδρομή του ${escapeHtml(l.plate || '—')} την ${escapeHtml(exDate(l.service_date))}<br><span class="ei-gnote">Πιθανό δρομολόγιο που δεν καταχωρήθηκε</span></span>`;
+  }
+  if (reason === 'no_plate') {
+    return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Χωρίς όχημα στο παραστατικό</span>`;
+  }
   return `<span class="ei-dot ei-dot-warn"></span><span class="s dim">Χωρίς δρομολόγιο</span>`;
+}
+
+// Ετικέτα του κουμπιού δεξιά — ίδια λογική με το eiRtCellHtml παραπάνω: το
+// «γιατί» καθορίζει και τη σωστή ενέργεια, όχι μόνο το κείμενο (spec round 2
+// point 1). Γενικό τέλος DKV: καμία ενέργεια — δεν έχει νόημα «δρομολόγιο».
+function eiActionLabel(l) {
+  const m = l.match || {};
+  if (m.status === 'sure') return 'Αλλαγή';
+  if (m.status === 'suggest') return 'Επιλογή';
+  const reason = l.none_reason || (m.general ? 'general_fee' : null);
+  if (reason === 'general_fee') return null;
+  if (reason === 'unknown_plate') return 'Σύνδεση με φορτηγό…';
+  if (reason === 'no_rt_on_date') return 'Επιλογή δρομολογίου…';
+  return 'Επιλογή';
 }
 
 // Κλικ «Αλλαγή/Επιλογή» → 1) οι υποψήφιοι από το match.candidates (server),
@@ -510,6 +693,64 @@ function eiRtCellHtml(l) {
 // κατά πινακίδα/οδηγό (spec §3 «select of candidate RTs + "άλλο…" search»).
 function eiToggleRtEditor(id) {
   _ei.rtEditingId = _ei.rtEditingId === id ? null : id;
+  _ei.plateEditingId = null;
+  eiRenderShell();
+}
+
+// «Σύνδεση με φορτηγό…» (spec round 2 point 1, reason=unknown_plate): η
+// DKV αναγνώρισε μια πινακίδα που δεν υπάρχει στο _ex.lookups.trucks — π.χ.
+// γράφτηκε λάθος στην κάρτα καυσίμων. Ο χρήστης διαλέγει το πραγματικό
+// φορτηγό, η γραμμή ενημερώνεται και ΜΟΝΟ τότε ξαναπροτείνεται δρομολόγιο.
+function eiTogglePlateEditor(id) {
+  _ei.plateEditingId = _ei.plateEditingId === id ? null : id;
+  _ei.rtEditingId = null;
+  eiRenderShell();
+}
+
+function eiPlateEditorHtml(l) {
+  const trucks = (_ex.lookups && _ex.lookups.trucks) || [];
+  const opts = trucks.map((t) => `<option value="${t.id}">${escapeHtml(t.license_plate)}</option>`).join('');
+  return `<div class="ei-rtedit">
+    <select id="eiPlateSel_${l.id}" onchange="eiConfirmPlateLink(${l.id}, this.value)">
+      <option value="" disabled selected>— σύνδεση με φορτηγό —</option>
+      ${opts}
+    </select>
+  </div>`;
+}
+
+// Ξαναπροτείνει δρομολόγιο ΤΟΠΙΚΑ (χωρίς νέο αίτημα στον Worker) αφού
+// συνδέθηκε το σωστό φορτηγό — ίδιο κριτήριο πλάκα+ημερομηνία με το Φ2
+// matcher, εδώ όμως πάνω στο ήδη φορτωμένο _ex.rts (spec round 2 point 1
+// «re-suggest RTs from _ex.rts for that truck/date client-side»).
+function eiResuggestRtForLine(line) {
+  const day = line.service_date || line.period_from;
+  const cands = (_ex.rts || []).filter((r) => r.truck_id === line.truck_id && day && r.date_start <= day && (r.date_end || r.date_start) >= day);
+  if (cands.length === 1) {
+    line.match = { status: 'sure', rt_id: cands[0].id, candidates: [] };
+    line.none_reason = null;
+  } else if (cands.length > 1) {
+    line.match = { status: 'suggest', rt_id: cands[0].id, candidates: cands.map((r) => ({ rt_id: r.id, plate: line.plate, driver: exPersonName(r), date_start: r.date_start, date_end: r.date_end })) };
+    line.none_reason = null;
+  } else {
+    line.match = { status: 'none', rt_id: null, candidates: [] };
+    line.none_reason = 'no_rt_on_date';
+  }
+}
+
+function eiConfirmPlateLink(lineId, truckIdStr) {
+  if (!truckIdStr) return;
+  const line = _ei.lines.find((l) => l.id === lineId);
+  const truck = ((_ex.lookups && _ex.lookups.trucks) || []).find((t) => t.id === Number(truckIdStr));
+  if (!line || !truck) return;
+  const rawPlate = line.plate; // key of the rule — the UNRECOGNIZED plate as read off the DKV card, not the truck's own plate
+  line.truck_id = truck.id;
+  line.plate = truck.license_plate;
+  line.corrected = true;
+  _ei.plateEditingId = null;
+  eiResuggestRtForLine(line);
+  if (window.confirm('Να ισχύει στο εξής για ' + rawPlate + ';')) {
+    _ei.rules.push({ kind: 'plate', key: rawPlate, value: { truck_id: truck.id } });
+  }
   eiRenderShell();
 }
 
@@ -585,7 +826,7 @@ function eiConfirmRtChange(lineId, val) {
   line.corrected = true;
   _ei.rtEditingId = null;
   const target = line.plate || 'αυτό το όχημα';
-  const catLabel = (typeof CT_CATEGORY_LABELS !== 'undefined' && CT_CATEGORY_LABELS[line.category]) || line.category;
+  const catLabel = eiCategoryLabel(line.category);
   if (window.confirm('Να ισχύει στο εξής για ' + target + ' · ' + catLabel + ';')) {
     _ei.rules.push({ kind: 'rt_pref', key: { plate: line.plate, line_type: line.category }, value: { rt_id: newRtId } });
   }

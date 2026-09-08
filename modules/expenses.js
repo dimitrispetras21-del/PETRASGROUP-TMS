@@ -40,7 +40,11 @@ const EX_MONTHS = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαι', 'Ιουν',
 const _ex = {
   rts: [], lookups: null, allLines: [], canWrite: false,
   q: '', selected: null, panelLines: [], panelLoading: false, panelErr: null,
-  editId: null, qe: null
+  editId: null, qe: null,
+  // «Εισαγωγές» DKV band (round 2, spec point 4) — GET /costs/import/docs,
+  // fetched separately from the critical page data above so a slow/missing
+  // endpoint (Φ2 not deployed everywhere yet) never blocks the main screen.
+  importDocs: [], importDocsLoading: false, importDocsErr: null
 };
 
 // Local calendar dates, never toISOString(): that is UTC, and between 00:00
@@ -119,6 +123,12 @@ function exStyles() {
      ελέγχους μετά το round 2 (η ίδια η οθόνη δεν άλλαξε ελληνικό κείμενο). */
   .ex-hero-big .k,.ex-hero-sm .k{font-size:11px;font-weight:500;color:var(--text-mid);text-transform:none;letter-spacing:.02em}
   .ex-cap-note{padding:6px 24px;font-size:11px;color:var(--warn,#B45309);background:var(--surface-sunken);border-bottom:1px solid var(--border)}
+  /* «Εισαγωγές» DKV band (round 2, spec point 4) — a plain read-only list,
+     no card treatment: it sits below the hero strip like a footnote, not a
+     new competing block (owner 8/9 «λιγότερες λέξεις, ιεραρχία»). */
+  .ex-idocs{border-bottom:1px solid var(--border)}
+  .ex-idochead{padding:8px 24px 2px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-mid)}
+  .ex-idoc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 24px 6px;font-size:12px}
   .ex-warn{color:var(--danger)} .ex-warn b{color:var(--danger)} .ex-warn .v{color:var(--danger)}
   /* WeekGroup στη λίστα αριστερά (round 2 C): ίδιο μοτίβο ετικέτας με το
      TRIP PnL (modules/costs.js .ct-wkhead) — καμία κερδοφορία εδώ, μόνο σύνολο
@@ -244,7 +254,61 @@ async function renderExpenses() {
     c.innerHTML = exStyles() + '<div class="ex-page">' + showError('Τα έξοδα δεν φορτώθηκαν: ' + e.message) + '</div>';
     return;
   }
+  _ex.importDocs = []; _ex.importDocsLoading = true; _ex.importDocsErr = null;
   exRenderPage();
+  exLoadImportDocs(); // fire-and-forget — re-renders the whole page again on arrival, same pattern exAfterMutation already uses
+}
+
+// GET /costs/import/docs (spec round 2 point 4) — a plain list, read-only
+// here. Not on the Promise.all above on purpose: this band is supplementary,
+// its own failure (or the route not existing yet) must never block the rest
+// of the screen loading (αρχή 1 in the other direction — a secondary defect
+// stays visible in ITS OWN corner, not by taking the whole page down).
+async function exLoadImportDocs() {
+  try {
+    const res = await ctFetch('/costs/import/docs');
+    _ex.importDocs = (res && (res.records || res.docs)) || [];
+    _ex.importDocsErr = null;
+  } catch (e) {
+    _ex.importDocs = [];
+    _ex.importDocsErr = e.message;
+  }
+  _ex.importDocsLoading = false;
+  exRenderPage();
+}
+
+function exImportDocsSectionHtml() {
+  if (_ex.importDocsLoading) return `<div class="ex-idocs"><div class="ex-idochead">Εισαγωγές</div><div class="s dim" style="padding:4px 24px 8px">Φόρτωση…</div></div>`;
+  if (_ex.importDocsErr) return `<div class="ex-idocs"><div class="ex-idochead">Εισαγωγές</div><div class="s dim" style="padding:4px 24px 8px">Δεν φορτώθηκαν: ${escapeHtml(_ex.importDocsErr)}</div></div>`;
+  if (!_ex.importDocs.length) return `<div class="ex-idocs"><div class="ex-idochead">Εισαγωγές</div><div class="s dim" style="padding:4px 24px 8px">Καμία εισαγωγή DKV ακόμη.</div></div>`;
+  return `<div class="ex-idocs"><div class="ex-idochead">Εισαγωγές</div>${_ex.importDocs.map(exImportDocRowHtml).join('')}</div>`;
+}
+
+// «DKV · <invoice_no> · <period_from–period_to> · <lines_total> γραμμές ·
+// <status> · <created_by> <date>» (spec round 2 point 4). invoice_no absent
+// on a draft (no παραστατικό εκδόθηκε ακόμη) — falls back to the zip name.
+function exImportDocRowHtml(d) {
+  const period = d.period_from && d.period_to ? (exDate(d.period_from) + '–' + exDate(d.period_to)) : '—';
+  const isDraft = d.status === 'draft';
+  const statusTxt = isDraft ? 'πρόχειρο' : (d.status || '—');
+  const when = d.created_at ? exDate(d.created_at) : '';
+  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + ' · ' + (d.lines_total != null ? d.lines_total : '—') + ' γραμμές · ' + statusTxt + ' · ' + (d.created_by || '—') + (when ? ' ' + when : '');
+  return `<div class="ex-idoc-row">
+    <span class="s">${escapeHtml(label)}</span>
+    <button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button>
+  </div>`;
+}
+
+// GET .../docs?id=..&signed=1 on click, not eagerly for the whole list — a
+// signed URL is a short-lived credential, no reason to mint one nobody asked
+// to open yet.
+async function exOpenImportZip(id) {
+  try {
+    const res = await ctFetch('/costs/import/docs?id=' + encodeURIComponent(id) + '&signed=1');
+    const url = res && (res.signed_url || (res.doc && res.doc.signed_url));
+    if (!url) { showErrorToast('Δεν βρέθηκε σύνδεσμος ZIP.', 'error'); return; }
+    window.open(url, '_blank');
+  } catch (e) { exShowError(e); }
 }
 
 function exTopStats() {
@@ -293,6 +357,7 @@ function exRenderPage() {
       <div class="ex-hero-sm"><div class="v">${stats.capped ? EX_LINES_CAP + '+' : stats.count}</div><div class="k">γραμμές</div></div>
       <div class="ex-hero-sm${stats.unallocated > 0 ? ' ex-warn' : ''}"><div class="v">${stats.capped ? stats.unallocated + '+' : stats.unallocated}</div><div class="k">χωρίς δρομολόγιο</div></div>
     </div>
+    ${exImportDocsSectionHtml()}
     ${stats.capped ? `<div class="ex-cap-note">Οι αριθμοί καλύπτουν τις ${EX_LINES_CAP} πιο πρόσφατες γραμμές — τα σύνολα ανά δρομολόγιο ισχύουν μόνο για όσα φαίνονται με ποσό.</div>` : ''}
     <div class="ex-split">
       <div class="ex-list">

@@ -28,8 +28,8 @@ const DkvParser = require(path.join(WORKTREE, 'core', 'dkv-parser.js'));
 
 const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8794/';
 const SCRATCH = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad';
-const SCREENSHOT_1280 = path.join(SCRATCH, 'dkv-import-1280.png');
-const SCREENSHOT_1440 = path.join(SCRATCH, 'dkv-import-1440.png');
+const SCREENSHOT_1280 = path.join(SCRATCH, 'dkv-import-r2-1280.png');
+const SCREENSHOT_1440 = path.join(SCRATCH, 'dkv-import-r2-1440.png');
 const REAL_ZIP = fs.readdirSync(path.join(MAIN_REPO, '.local', 'dkv')).find((n) => /\.zip$/i.test(n));
 const REAL_ZIP_PATH = REAL_ZIP ? path.join(MAIN_REPO, '.local', 'dkv', REAL_ZIP) : null;
 
@@ -38,6 +38,20 @@ function assert(cond, msg) {
   console.log('  ✓ ' + msg);
 }
 function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+// A vehicle group whose lines are ALL «sure» now renders collapsed by
+// default (spec round 2 point 2) — its .ei-row children aren't in the DOM
+// at all until the ⌄ caret is clicked open. Any assertion that wants to see
+// every line at once (not testing the collapse feature itself) must expand
+// first, or it undercounts rows for reasons unrelated to what it's checking.
+async function expandAllGroups(page) {
+  const heads = page.locator('.ei-grouphead');
+  const n = await heads.count();
+  for (let i = 0; i < n; i++) {
+    const caret = heads.nth(i).locator('.ei-group-caret');
+    if ((await caret.count()) && (await caret.innerText()).trim() === '⌄') await heads.nth(i).click();
+  }
+}
 
 // ── fixtures shared by every flow (shape of /costs/rt, /costs/lookups —
 // same contract expenses-proof.js already exercises) ───────────────────────
@@ -205,6 +219,7 @@ async function runSyntheticInjectFlow(browser) {
   const groupHeads = page.locator('.ei-grouphead');
   assert(await groupHeads.count() === 3, 'three vehicle groups rendered (XX1234, XX5678, Χωρίς όχημα)');
   assert((await page.locator('.ei-grouphead-none').innerText()).includes('Χωρίς όχημα'), 'the no-vehicle group carries the fixed label');
+  await expandAllGroups(page); // a fully-sure group (e.g. one line matched) collapses by default (round 2) — expand before counting
   assert(await page.locator('.ei-row').count() === 4, 'four line rows rendered (matches the 4 synthetic transaction lines)');
 
   await context.close();
@@ -409,6 +424,233 @@ async function runAlreadyImportedFlow(browser) {
   return { consoleErrors };
 }
 
+// ═══════════════════ (e) none_reason, review toggle, collapse, currency,
+//                         split-line, plate-link (round 2) ════════════════
+// Two fully-sure lines on XX1234 (starts collapsed) · a suggest + a split
+// line on XX5678 (mixed, starts open) · four different none_reason lines
+// with no plate/an unrecognized plate (no-vehicle group, starts open).
+// doc.n_files is deliberately WRONG (999) so the title-count assertion below
+// proves files_count wins, not just that a number is shown.
+const NONE_REASON_PREVIEW = {
+  doc: { id: 'doc-r2-1', zip_name: 'r2test.zip', n_files: 999, files_count: 5, period_from: '2026-09-01', period_to: '2026-09-07' },
+  lines: [
+    { id: 'r2-0', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'AT', vehicle_raw: 'XX1234', plate: 'XX1234', card_no: 'x',
+      service_date: '2026-09-01', period_from: null, period_to: null, product_code: '0902', product: 'Toll', category: 'tolls',
+      station: 'Test Station', city: 'Testville', time: '10:00', ref: 'r0', quantity: 1, unit: 'ST', unit_price: 10,
+      net: 10, vat: 2, gross: 12, currency: 'EUR', net_eur: 10, vat_eur: 2, gross_eur: 12, fx_rate: 1,
+      match: { status: 'sure', rt_id: 701, candidates: [] } },
+    { id: 'r2-1', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'HU', vehicle_raw: 'XX1234', plate: 'XX1234', card_no: 'x',
+      service_date: '2026-09-01', period_from: null, period_to: null, product_code: '0009', product: 'Diesel', category: 'fuel',
+      station: 'Fuel stop HU', city: null, time: '08:00', ref: 'r1', quantity: 1, unit: 'DB', unit_price: 70364,
+      net: 28000, vat: 0, gross: 28000, currency: 'HUF', net_eur: 70, vat_eur: 0, gross_eur: 70, fx_rate: 0.0025,
+      match: { status: 'sure', rt_id: 701, candidates: [] } },
+    { id: 'r2-2', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'IT', vehicle_raw: 'XX5678', plate: 'XX5678', card_no: 'x',
+      service_date: '2026-09-02', period_from: null, period_to: null, product_code: '0701', product: 'Ferry', category: 'ferry_train',
+      station: 'Ferry dock', city: null, time: '09:00', ref: 'r2', quantity: 1, unit: 'ST', unit_price: 15,
+      net: 15, vat: 3, gross: 18, currency: 'EUR', net_eur: 15, vat_eur: 3, gross_eur: 18, fx_rate: 1,
+      match: { status: 'suggest', rt_id: 702, candidates: [{ rt_id: 702, plate: 'XX5678', driver: 'Οδηγός Δύο', date_start: '2026-08-30', date_end: '2026-09-05' }] } },
+    { id: 'r2-3', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'IT', vehicle_raw: 'XX5678', plate: 'XX5678', card_no: 'x',
+      service_date: '2026-09-02', period_from: null, period_to: null, product_code: '0902', product: 'Toll', category: 'tolls',
+      station: null, city: null, time: null, ref: 'r3', quantity: 1, unit: 'ST', unit_price: 20,
+      net: 20, vat: 4, gross: 24, currency: 'EUR', net_eur: 20, vat_eur: 4, gross_eur: 24, fx_rate: 1,
+      sub: 1, split_from_seq: 5, passages_count: 12, service_date_source: 'passages',
+      match: { status: 'sure', rt_id: 702, candidates: [] } },
+    { id: 'r2-4', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'GR', vehicle_raw: null, plate: null, card_no: 'x',
+      service_date: null, period_from: '2026-09-01', period_to: '2026-09-07', product_code: '9999', product: 'DKV service fee', category: 'dkv',
+      station: null, city: null, time: null, ref: 'r4', quantity: null, unit: null, unit_price: null,
+      net: 5, vat: 0, gross: 5, currency: 'EUR', net_eur: 5, vat_eur: 0, gross_eur: 5, fx_rate: 1,
+      none_reason: 'general_fee', match: { status: 'none', rt_id: null, candidates: [], general: true } },
+    { id: 'r2-5', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'AT', vehicle_raw: 'YY1111', plate: 'YY1111', card_no: 'x',
+      service_date: '2026-09-01', period_from: null, period_to: null, product_code: '0902', product: 'Toll', category: 'tolls',
+      station: 'Unknown plate stop', city: null, time: '11:00', ref: 'r5', quantity: 1, unit: 'ST', unit_price: 8,
+      net: 8, vat: 1.6, gross: 9.6, currency: 'EUR', net_eur: 8, vat_eur: 1.6, gross_eur: 9.6, fx_rate: 1,
+      none_reason: 'unknown_plate', match: { status: 'none', rt_id: null, candidates: [] } },
+    { id: 'r2-6', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'AT', vehicle_raw: 'ZZ9999', plate: 'ZZ9999', card_no: 'x',
+      service_date: '2026-09-10', period_from: null, period_to: null, product_code: '0100', product: 'Spedition', category: 'spedition',
+      station: null, city: null, time: null, ref: 'r6', quantity: 1, unit: 'ST', unit_price: 50,
+      net: 50, vat: 0, gross: 50, currency: 'EUR', net_eur: 50, vat_eur: 0, gross_eur: 50, fx_rate: 1,
+      none_reason: 'no_rt_on_date', match: { status: 'none', rt_id: null, candidates: [] } },
+    { id: 'r2-7', source: 'DKV', doc_no: 'DOC-R2', doc_type: 'invoice', country: 'GR', vehicle_raw: null, plate: null, card_no: 'x',
+      service_date: null, period_from: null, period_to: null, product_code: '0500', product: 'Other', category: 'other',
+      station: null, city: null, time: null, ref: 'r7', quantity: null, unit: null, unit_price: null,
+      net: 3, vat: 0, gross: 3, currency: 'EUR', net_eur: 3, vat_eur: 0, gross_eur: 3, fx_rate: 1,
+      none_reason: 'no_plate', match: { status: 'none', rt_id: null, candidates: [] } },
+  ],
+  reconcile: { ok: true, summary_total: 191.6, lines_total: 8, per_doc: [{ doc_no: 'DOC-R2', country: 'AT', parsed_gross: 191.6, summary_total: 191.6, diff: 0, ok: true }] },
+  metrics: { lines_total: 8, lines_sure: 3, lines_corrected: 0, lines_unallocated: 4 },
+};
+
+async function runNoneReasonAndReviewFlow(browser) {
+  console.log('\n== (e) none_reason, review toggle, collapse, currency, split, plate-link (round 2) ==');
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  const dialogs = [];
+  page.on('dialog', async (d) => { dialogs.push(d.message()); await d.accept(); });
+
+  await openImportScreen(page);
+  await page.evaluate(() => { window.__eiInjectFiles = [{ name: 'dummy.pdf', text: '' }]; });
+  await page.route('**/costs/import/parse', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NONE_REASON_PREVIEW) }));
+  await page.setInputFiles('#eiFileInput', { name: 'r2.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
+  await page.waitForSelector('.ei-band', { timeout: 15000 });
+
+  // ── title: doc.files_count wins over the wrong doc.n_files ──
+  const titleText = await page.locator('.ei-headtitle').innerText();
+  assert(titleText.includes('5 αρχεία'), 'title uses doc.files_count (5), not the stale doc.n_files (999)');
+
+  // ── collapsed-by-default group + one-line summary ──
+  // Five groups, not three: a none_reason line still carries its OWN plate
+  // when the DKV card had one (unknown_plate: the raw plate itself;
+  // no_rt_on_date: a recognized plate, just no RT that day) — only
+  // general_fee/no_plate (no plate on the document at all) land in the
+  // shared «Χωρίς όχημα» group. XX1234(sure×2) · XX5678(suggest+sure) ·
+  // YY1111(unknown_plate) · ZZ9999(no_rt_on_date) · Χωρίς όχημα(general_fee+no_plate).
+  const groupHeads = page.locator('.ei-grouphead');
+  assert(await groupHeads.count() === 5, 'five groups — every plate the DKV card carries gets its own group, known or not');
+  const xx1234Head = page.locator('.ei-grouphead', { hasText: 'XX1234' });
+  assert((await xx1234Head.innerText()).includes('όλες σίγουρες'), 'the fully-sure XX1234 group shows «όλες σίγουρες»');
+  assert(await page.locator('.ei-row').count() === 6, 'XX1234 starts collapsed — 6 of 8 rows visible (2 hidden)');
+
+  // ── none_reason messaging + per-reason action label ──
+  // Default visible order (XX1234 collapsed): XX5678's 2 rows, then
+  // YY1111(unknown_plate), ZZ9999(no_rt_on_date), then the shared
+  // «Χωρίς όχημα» group's general_fee then no_plate.
+  const rows = page.locator('.ei-row');
+  const unknownRow = rows.nth(2), noRtRow = rows.nth(3), generalRow = rows.nth(4), noPlateRow = rows.nth(5);
+  const generalText = await generalRow.locator('.ei-rtcell').innerText();
+  assert(generalText.includes('Γενικό τέλος DKV') && generalText.includes('δεν χρεώνεται σε δρομολόγιο'), 'general_fee line explains it is a general DKV fee');
+  assert(await generalRow.locator('.ei-rowlink button').count() === 0, 'general_fee line has NO round-trip action — nothing to pick');
+  const unknownText = await unknownRow.locator('.ei-rtcell').innerText();
+  assert(unknownText.includes('Άγνωστη πινακίδα YY1111'), 'unknown_plate line names the unrecognized plate');
+  assert((await unknownRow.locator('.ei-rowlink button').innerText()) === 'Σύνδεση με φορτηγό…', 'unknown_plate line offers «Σύνδεση με φορτηγό…»');
+  const noRtText = await noRtRow.locator('.ei-rtcell').innerText();
+  assert(noRtText.includes('Καμία διαδρομή του ZZ9999') && noRtText.includes('10/09'), 'no_rt_on_date line names the plate and the date');
+  assert(noRtText.includes('Πιθανό δρομολόγιο που δεν καταχωρήθηκε'), 'no_rt_on_date line notes a route may be missing, not created here');
+  assert((await noRtRow.locator('.ei-rowlink button').innerText()) === 'Επιλογή δρομολογίου…', 'no_rt_on_date line offers «Επιλογή δρομολογίου…»');
+  const noPlateText = await noPlateRow.locator('.ei-rtcell').innerText();
+  assert(noPlateText.includes('Χωρίς όχημα στο παραστατικό'), 'no_plate line explains the document itself carries no vehicle');
+  assert((await noPlateRow.locator('.ei-rowlink button').innerText()) === 'Επιλογή', 'no_plate line keeps the plain «Επιλογή» RT picker');
+
+  // ── none_reason summary sentence under the band ──
+  const summaryText = await page.locator('.ei-none-summary').innerText();
+  assert(summaryText.includes('4 χωρίς δρομολόγιο'), 'none-reason summary counts all 4 none-status lines');
+  assert(summaryText.includes('γενικό τέλος') && summaryText.includes('άγνωστη πινακίδα') && summaryText.includes('χωρίς διαδρομή εκείνη την ημέρα') && summaryText.includes('χωρίς όχημα στο παραστατικό'), 'none-reason summary names each of the 4 reasons once');
+
+  // ── review mode toggle («Θέλουν απόφαση» = suggest+none only) ──
+  const reviewRow = page.locator('.ei-reviewrow');
+  assert((await reviewRow.innerText()).includes('Θέλουν απόφαση'), 'review toggle offers «Θέλουν απόφαση»');
+  await reviewRow.locator('button', { hasText: 'Θέλουν απόφαση' }).click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ei-row').count() === 5, 'decide-only mode shows only the 5 non-sure lines (XX1234 fully sure, hidden entirely)');
+  assert(await groupHeads.count() === 4, 'decide-only mode hides the fully-sure XX1234 group entirely — the other 4 groups still have a non-sure line each');
+  await reviewRow.locator('button', { hasText: 'Όλα' }).click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ei-row').count() === 6, 'back to «Όλα» — 6 rows again (XX1234 stays collapsed, its own choice survives the toggle)');
+
+  // ── expand XX1234 → currency description, ferry_train label, split hint ──
+  await xx1234Head.click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ei-row').count() === 8, 'expanding XX1234 shows all 8 rows');
+  const hufDesc = await rows.nth(1).locator('.ei-desc').innerText();
+  assert(hufDesc.includes('70.364,00 HUF/DB'), 'unit price shown in the DOCUMENT currency (HUF), not silently converted to €');
+  assert(hufDesc.includes('→ EUR ισοτιμία 0,0025'), 'fx conversion note shown for a non-EUR line');
+  const ferrySel = rows.nth(2).locator('.ei-catselect');
+  assert((await ferrySel.evaluate((el) => el.options[el.selectedIndex].textContent)) === 'Γέφυρα/Φέρι', 'ferry_train category reads «Γέφυρα/Φέρι» on this screen');
+  const splitRow = rows.nth(3);
+  assert((await splitRow.getAttribute('class') || '').includes('split'), 'a per-day split line (sub field) carries the .split indent class');
+  const splitDesc = await splitRow.locator('.ei-desc').innerText();
+  assert(splitDesc.includes('↳ από λίστα διελεύσεων · 12 διελεύσεις'), 'split line shows its passages_count');
+  const splitDateTitle = await splitRow.locator('.s').first().getAttribute('title');
+  assert(splitDateTitle === 'ημέρα διαδρομής', 'service_date_source=passages gets the «ημέρα διαδρομής» hover hint');
+
+  // ── plate-link flow (unknown_plate → «Σύνδεση με φορτηγό…» → resuggest) ──
+  // Fully expanded order is XX1234(2) · XX5678(2) · YY1111(1, this line) ·
+  // ZZ9999(1) · Χωρίς όχημα(2) — the unknown_plate line is at index 4.
+  const unknownRow2 = rows.nth(4);
+  await unknownRow2.locator('.ei-link', { hasText: 'Σύνδεση με φορτηγό…' }).click();
+  await page.waitForSelector('#eiPlateSel_5', { timeout: 5000 });
+  await page.selectOption('#eiPlateSel_5', '2'); // truck id 2 = XX5678
+  await page.waitForTimeout(150);
+  assert(dialogs.some((m) => /Να ισχύει στο εξής/.test(m) && m.includes('YY1111')), 'plate-link opened a «να ισχύει στο εξής» confirm naming the ORIGINAL unrecognized plate');
+  const pageTextAfterLink = await page.locator('.ei-page').innerText();
+  assert(!pageTextAfterLink.includes('Άγνωστη πινακίδα'), 'after linking, the line no longer reads «Άγνωστη πινακίδα» anywhere');
+
+  // ── commit body: plate rule + resolved rt_id for the linked line ──
+  let commitBody = null;
+  await page.route('**/costs/import/commit', async (route) => {
+    commitBody = route.request().postDataJSON();
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ inserted: commitBody.lines.length, invoice_no: 'DOC-R2' }) });
+  });
+  await page.locator('#eiCommitBtn').click();
+  await page.waitForResponse((r) => r.request().method() === 'POST' && r.url().includes('/costs/import/commit'), { timeout: 10000 });
+  await page.waitForTimeout(200);
+
+  assert(!!commitBody, 'commit POST captured for the round-2 fixture');
+  assert(commitBody.lines.length === 8, 'all 8 lines committed (none unticked in this flow)');
+  assert(commitBody.rules.some((r) => r.kind === 'plate' && r.key === 'YY1111' && r.value.truck_id === 2), 'commit body carries the plate rule (key=YY1111, value.truck_id=2)');
+  const linkedLine = commitBody.lines.find((l) => l.net === 8 && l.category === 'tolls');
+  assert(!!linkedLine && linkedLine.rt_id === 702, 'the plate-linked line resolved to RT 702 (client-side re-suggest, same truck+date)');
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════ (f) «Εισαγωγές» band on modules/expenses.js ══════════
+async function runImportDocsFlow(browser) {
+  console.log('\n== (f) «Εισαγωγές» band on modules/expenses.js ==');
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+
+  const DOCS_FIXTURE = [
+    { id: 'doc-1001', invoice_no: 'INV-1001', period_from: '2026-08-01', period_to: '2026-08-31', lines_total: 269, status: 'committed', created_by: 'demo_accountant', created_at: '2026-09-08T10:00:00Z' },
+    { id: 'doc-1002', invoice_no: null, zip_name: 'draft-sep.zip', period_from: '2026-09-01', period_to: '2026-09-07', lines_total: 40, status: 'draft', created_by: 'demo_accountant', created_at: '2026-09-08T11:00:00Z' },
+  ];
+  let signedRequestUrl = null;
+
+  // Route registration order matters here: preparePage() installs a broad
+  // "**/BACKEND_HOST/**" handler that aborts anything not in the HAR
+  // recording (tests/critics/auth.js _installBackendReplay), and Playwright
+  // tries the MOST RECENTLY registered route first. Every other flow in this
+  // file registers its own page.route() calls AFTER openImportScreen() (which
+  // calls preparePage) for exactly this reason — registering this route
+  // first would let the broad abort-everything handler win and 404 silently.
+  await preparePage(page, 'accountant');
+  installBaseMocks(page);
+  await page.route('**/costs/import/docs**', async (route) => {
+    const url = route.request().url();
+    if (url.includes('signed=1')) {
+      signedRequestUrl = url;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ signed_url: 'https://example.com/signed/doc-1001.zip' }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: DOCS_FIXTURE }) });
+    }
+  });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page', { timeout: 15000 });
+  await page.waitForSelector('.ex-idoc-row', { timeout: 10000 });
+
+  const idocsText = await page.locator('.ex-idocs').innerText();
+  assert(idocsText.includes('INV-1001'), 'import docs list shows the invoice number');
+  assert(idocsText.includes('269 γραμμές'), 'import docs list shows the line count');
+  assert(idocsText.includes('demo_accountant'), 'import docs list shows created_by');
+  assert(idocsText.includes('πρόχειρο'), 'draft doc shows «πρόχειρο» instead of a raw status code');
+  assert(idocsText.includes('draft-sep.zip'), 'draft doc without an invoice_no falls back to the zip name');
+
+  const [popup] = await Promise.all([
+    context.waitForEvent('page'),
+    page.locator('.ex-idoc-row').first().locator('.ex-link', { hasText: 'ZIP' }).click(),
+  ]);
+  await popup.waitForLoadState('domcontentloaded').catch(() => {});
+  assert(popup.url() === 'https://example.com/signed/doc-1001.zip', 'ZIP click opens the signed_url in a new tab');
+  assert(!!signedRequestUrl && signedRequestUrl.includes('id=') && signedRequestUrl.includes('signed=1'), 'the signed-URL request carries both id= and signed=1');
+
+  await context.close();
+  return { consoleErrors };
+}
+
 // ═══════════════════ (d) no horizontal scroll + screenshots ═══════════════
 async function runScreenshotFlow(browser, width, height, screenshotPath, assertNoScroll) {
   console.log('\n== screenshot ' + width + 'x' + height + ' ==');
@@ -419,9 +661,15 @@ async function runScreenshotFlow(browser, width, height, screenshotPath, assertN
 
   await openImportScreen(page);
   await page.evaluate(() => { window.__eiInjectFiles = [{ name: 'dummy.pdf', text: '' }]; });
-  await page.route('**/costs/import/parse', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CORRECTIONS_PREVIEW) }));
+  // NONE_REASON_PREVIEW (round 2 fixture) instead of CORRECTIONS_PREVIEW here
+  // on purpose — it exercises every new round-2 element at once (none_reason
+  // messaging, collapsed group, currency/fx description, split-line indent),
+  // so the screenshot and the no-horizontal-scroll check actually cover the
+  // wider content those features add, not just the round-1 layout.
+  await page.route('**/costs/import/parse', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NONE_REASON_PREVIEW) }));
   await page.setInputFiles('#eiFileInput', { name: 'shot.zip', mimeType: 'application/zip', buffer: Buffer.from('PK\x03\x04dummy') });
   await page.waitForSelector('.ei-band', { timeout: 15000 });
+  await expandAllGroups(page); // show every round-2 row in the screenshot, not just the ones open by default
 
   if (assertNoScroll) {
     const pageOverflow = await page.locator('.ei-page').evaluate((el) => el.scrollWidth <= el.clientWidth);
@@ -458,6 +706,8 @@ function reportConsoleErrors(label, errors) {
     const c = await runCorrectionsAndCommitFlow(browser);
     const c2 = await runBadReconcileFlow(browser);
     const c3 = await runAlreadyImportedFlow(browser);
+    const e = await runNoneReasonAndReviewFlow(browser);
+    const f = await runImportDocsFlow(browser);
     const shot1280 = await runScreenshotFlow(browser, 1280, 900, SCREENSHOT_1280, true);
     const shot1440 = await runScreenshotFlow(browser, 1440, 900, SCREENSHOT_1440, false);
 
@@ -468,6 +718,8 @@ function reportConsoleErrors(label, errors) {
     unknownTotal += reportConsoleErrors('c-corrections', c.consoleErrors).length;
     unknownTotal += reportConsoleErrors('c2-bad-reconcile', c2.consoleErrors).length;
     unknownTotal += reportConsoleErrors('c3-409', c3.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('e-none-reason', e.consoleErrors).length;
+    unknownTotal += reportConsoleErrors('f-import-docs', f.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1280', shot1280.consoleErrors).length;
     unknownTotal += reportConsoleErrors('shot-1440', shot1440.consoleErrors).length;
 
