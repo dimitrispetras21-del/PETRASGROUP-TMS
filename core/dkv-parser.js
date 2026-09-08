@@ -647,8 +647,14 @@
         const parsed = parseInvoiceLike(lines, docType, country);
         docEntry.currency = parsed.currency;
         docEntry.lines_count = parsed.lines.length;
+        // seq = position of the line inside its document. It is part of the
+        // import_key because DKV's `ref` is NOT unique: two refuels minutes apart
+        // share one ref, and reverse-charge pages number every line 0000001.
+        // Same file → same order → same key (critic 8/9: 19 collisions without it).
+        let seq = 0;
         for (const ln of parsed.lines) {
           ln.doc_no = docNo;
+          ln.seq = seq++;
           result.lines.push(ln);
           if (ln.product_code && !PRODUCT_CATEGORY[ln.product_code] && !seenProductCodes.has(ln.product_code)) {
             seenProductCodes.add(ln.product_code);

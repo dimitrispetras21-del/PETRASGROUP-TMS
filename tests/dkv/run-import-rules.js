@@ -46,22 +46,22 @@ async function main() {
   // ── buildImportKey (spec §6 gate #2) ────────────────────────────────
   assertEqual(
     buildImportKey({ doc_no: 'D1', ref: 'R1', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }),
-    'D1|R1|XX1234|2026-08-13|0009',
+    'D1||R1|XX1234|2026-08-13|0009',
     'buildImportKey: full line'
   );
   assertEqual(
     buildImportKey({ doc_no: 'D1', ref: null, plate: 'XX1234', service_date: '2026-08-13', product_code: null }),
-    'D1||XX1234|2026-08-13|',
+    'D1|||XX1234|2026-08-13|',
     'buildImportKey: missing pieces become blank, not skipped (positional stability)'
   );
-  assertEqual(buildImportKey({}), '||||', 'buildImportKey: fully empty line still has 4 separators');
+  assertEqual(buildImportKey({}), '|||||', 'buildImportKey: fully empty line still has 5 separators (seq slot included)');
 
   // ── findDuplicateImportKeys ──────────────────────────────────────────
   assertDeepEqual(findDuplicateImportKeys([{ import_key: 'a' }, { import_key: 'b' }]), [], 'findDuplicateImportKeys: no dupes → []');
   assertDeepEqual(findDuplicateImportKeys([{ import_key: 'a' }, { import_key: 'a' }, { import_key: 'b' }]), ['a'], 'findDuplicateImportKeys: one dupe found');
   assertDeepEqual(
     findDuplicateImportKeys([{ doc_no: 'D', ref: 'R', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }, { doc_no: 'D', ref: 'R', plate: 'XX1234', service_date: '2026-08-13', product_code: '0009' }]),
-    ['D|R|XX1234|2026-08-13|0009'],
+    ['D||R|XX1234|2026-08-13|0009'],
     'findDuplicateImportKeys: falls back to buildImportKey when import_key not set on the line'
   );
 

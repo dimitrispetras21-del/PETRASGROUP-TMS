@@ -10,8 +10,48 @@
 // the key stays positionally stable — two lines that differ only in a field
 // both hold blank would otherwise collide.
 export function buildImportKey(line) {
-  const parts = [line.doc_no, line.ref, line.plate, line.service_date, line.product_code];
+  // `seq` (line position inside its document, set by the parser) is what makes
+  // the key unique: on the real August 2026 ZIP the tuple without it collided
+  // 19 times (same ref for two refuels, ref=0000001 on every reverse-charge line).
+  const parts = [line.doc_no, line.seq, line.ref, line.plate, line.service_date, line.product_code];
   return parts.map((p) => (p === null || p === undefined ? '' : String(p))).join('|');
+}
+
+// ─── parser/preview line → ct_cost_lines row (critic 8/9, blocker 1) ────────
+// The parser speaks the document's language (service_date, net/vat in the
+// document currency, net_eur/vat_eur, plate, country, quantity in LTR). The
+// table speaks EUR and its own column names. This is the ONE place that
+// translates; the commit handler never picks parser fields into the row
+// directly, so a foreign-currency line can never land as if it were euros.
+const LITRE_UNITS = new Set(['LTR', 'L', 'LT', 'LITER', 'LITRE']);
+export function toCostLineRow(ln) {
+  const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
+  const netEur = ln.net_eur != null ? ln.net_eur : (ln.currency == null || ln.currency === 'EUR' ? ln.net : null);
+  const vatEur = ln.vat_eur != null ? ln.vat_eur : (ln.currency == null || ln.currency === 'EUR' ? ln.vat : null);
+  const liters = ln.liters != null ? ln.liters
+    : (ln.unit && LITRE_UNITS.has(String(ln.unit).toUpperCase()) ? ln.quantity : null);
+  const noteParts = ['DKV', ln.doc_no, ln.product, ln.country].filter(Boolean);
+  const row = {
+    rt_id: ln.rt_id != null ? ln.rt_id : null,
+    truck_id: ln.truck_id != null ? ln.truck_id : null,
+    category: ln.category,
+    toll_country: ln.toll_country || ln.country || null,
+    net: num(netEur),
+    vat: num(vatEur) == null ? 0 : num(vatEur),
+    line_date: ln.line_date || ln.service_date || ln.period_to || null,
+    plate_raw: ln.plate_raw || ln.vehicle_raw || ln.plate || null,
+    km_reading: ln.km_reading != null ? Math.round(Number(ln.km_reading)) : null,
+    liters: num(liters),
+    station: ln.station || null,
+    note: ln.note || noteParts.join(' · ')
+  };
+  // A line that reaches the table without a euro amount or a date would be the
+  // «green toast, wrong data» failure — refuse it by name instead.
+  const missing = [];
+  if (row.net == null || !Number.isFinite(row.net)) missing.push('net_eur');
+  if (!row.line_date) missing.push('line_date');
+  if (!row.category) missing.push('category');
+  return { row, missing };
 }
 
 // A pre-DB check so a duplicate inside the SAME submitted batch gets a named

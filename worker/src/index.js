@@ -3,7 +3,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
-import { buildImportKey, findDuplicateImportKeys, applyRules, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError } from "./import-rules.mjs";
+import { buildImportKey, findDuplicateImportKeys, applyRules, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
 // bundler) wraps a CommonJS file's module.exports as the default export of
@@ -3171,6 +3171,10 @@ async function handleCosts(request, url, origin, env) {
         return jsonError("source:'DKV' + files[] required", 400, origin, env);
       }
       if (!body.zip_sha256) return jsonError("zip_sha256 required", 400, origin, env);
+      // The hash becomes a storage object path and a filter value — only a
+      // 64-hex string may pass (critic 8/9, finding 4: path traversal otherwise).
+      if (!/^[0-9a-f]{64}$/i.test(body.zip_sha256)) return jsonError("zip_sha256 must be 64 hex chars", 400, origin, env);
+      body.zip_sha256 = body.zip_sha256.toLowerCase();
 
       // migration 024 is one transaction (begin/commit) — the ct_import_rules
       // TABLE and the ct_cost_docs.zip_sha256/lines_*/parser_version COLUMNS
@@ -3203,7 +3207,8 @@ async function handleCosts(request, url, origin, env) {
       const parsed = DkvParser.parseDkv(body.files);
 
       // (c) normalize with the three memories (spec §4).
-      const trucksRaw = await dbSelect(env, "trucks", { select: "id,license_plate", limit: 300 });
+      // Soft-deleted trucks must not win a plate match (critic 8/9, finding 8).
+      const trucksRaw = (await dbSelectRaw(env, "trucks", new URLSearchParams({ select: "id,license_plate", deleted_at: "is.null", limit: "300" }))).rows;
       const trucks = trucksRaw.map((t) => ({ id: t.id, plate: DkvParser.normalizePlate(t.license_plate) }));
       const plateAliases = (await dbSelectRaw(env, "ct_plate_aliases", new URLSearchParams({ select: "alias,truck_id" }))).rows;
       const rules = rules_unavailable ? [] : (await dbSelectRaw(env, "ct_import_rules", new URLSearchParams({ select: "kind,key,value", source: "in.(DKV,ANY)" }))).rows;
@@ -3229,7 +3234,13 @@ async function handleCosts(request, url, origin, env) {
       // into a check-constrained column (VERMION_FRESH|EUROFRESH|null).
       const summaryDocEntry = parsed.docs.find((d) => d.doc_type === "summary");
       const allDates = lines.flatMap((l) => [l.service_date, l.period_from, l.period_to]).filter(Boolean).sort();
-      const totalGross = sumGrossEur(lines);
+      // The doc total is the E-SUMMARY's total, not Σ of what we parsed: that is
+      // what makes the commit gate (below) a real reconciliation. When the
+      // summary is missing or disagrees, total_gross stays NULL and the commit
+      // refuses by name (critic 8/9, finding 3).
+      const totalGross = reconcileResult.ok
+        ? Math.round(reconcileResult.per_doc.reduce((s, d) => s + (d.summary_total || 0), 0) * 100) / 100
+        : null;
       let fileUrlPath = null;
       if (body.zip_base64) {
         let bytes;
@@ -3239,7 +3250,9 @@ async function handleCosts(request, url, origin, env) {
         const path = `${body.zip_sha256}.zip`;
         const up = await fetch(`${env.SUPABASE_URL}/storage/v1/object/cost-docs/${path}`, {
           method: "POST",
-          headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/zip" },
+          // x-upsert: a re-parse of the same ZIP (same hash, same bytes) must
+          // not fail with «already exists» — same object, same content.
+          headers: { apikey: env.SUPABASE_SERVICE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, "Content-Type": "application/zip", "x-upsert": "true" },
           body: bytes
         });
         if (up.ok) {
@@ -3303,10 +3316,15 @@ async function handleCosts(request, url, origin, env) {
 
       // The server never trusts the client's reconcile_ok flag alone — it
       // recomputes Σ gross of the SENT lines against the doc's stored total.
+      // total_gross is written at parse ONLY when Σ parsed == E-SUMMARY (spec §6.1).
+      // NULL here means the gate never passed — the client's flag cannot override it.
       const sentTotal = sumGrossEur(body.lines);
       const storedTotal = typeof doc.total_gross === "number" ? doc.total_gross : parseFloat(doc.total_gross);
-      if (Number.isFinite(storedTotal) && Math.abs(sentTotal - storedTotal) > 0.01) {
-        return jsonError(`reconcile mismatch: sent lines Σ${sentTotal} ≠ doc total ${storedTotal}`, 409, origin, env);
+      if (!Number.isFinite(storedTotal)) {
+        return jsonError("reconcile gate not passed at parse (no E-SUMMARY match) — re-upload the ZIP", 409, origin, env);
+      }
+      if (Math.abs(sentTotal - storedTotal) > 0.01) {
+        return jsonError(`reconcile mismatch: sent lines Σ${sentTotal} ≠ E-SUMMARY total ${storedTotal}`, 409, origin, env);
       }
 
       // migration 024 columns present? Probe once, cheaply — if ct_cost_lines
@@ -3324,7 +3342,10 @@ async function handleCosts(request, url, origin, env) {
       for (let i = 0; i < body.lines.length; i++) {
         const ln = body.lines[i];
         if (!CT_CATEGORIES.includes(ln.category)) return jsonError(`line ${i + 1}: unknown category`, 400, origin, env);
-        const row = ctPick(ln, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "km_reading", "liters", "station", "note"]);
+        // One translation from the parser's shape (EUR equivalents, service_date,
+        // plate, country, LTR quantity) to the table's columns — never a raw pick.
+        const { row, missing } = toCostLineRow(ln);
+        if (missing.length) return jsonError(`line ${i + 1}: missing ${missing.join(", ")}`, 400, origin, env);
         row.doc_id = body.doc_id;
         row.alloc_status = row.rt_id ? "allocated" : "unallocated";
         row.created_by = caller.sub;
@@ -3344,6 +3365,24 @@ async function handleCosts(request, url, origin, env) {
           const dupCheck = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", import_key: `in.(${keys.join(",")})` }));
           if (dupCheck.rows.length) {
             return jsonOk({ error: "duplicate import keys (already imported)", duplicate_keys: dupCheck.rows.map((r) => r.import_key) }, origin, env, 409);
+          }
+        }
+      }
+
+      // A round trip chosen for a line must belong to the line's truck: the FK
+      // only catches a non-existent RT, not one of another vehicle (finding 8).
+      const rtIds = [...new Set(rows.map((r) => r.rt_id).filter((v) => v != null))];
+      if (rtIds.length) {
+        const rtRows = (await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "id,truck_id,status", id: `in.(${rtIds.join(",")})` }))).rows;
+        const byId = new Map(rtRows.map((r) => [r.id, r]));
+        for (let i = 0; i < rows.length; i++) {
+          const r = rows[i];
+          if (r.rt_id == null) continue;
+          const rt = byId.get(r.rt_id);
+          if (!rt) return jsonError(`line ${i + 1}: round trip ${r.rt_id} does not exist`, 409, origin, env);
+          if (rt.status === "cancelled") return jsonError(`line ${i + 1}: round trip ${r.rt_id} is cancelled`, 409, origin, env);
+          if (r.truck_id != null && rt.truck_id != null && rt.truck_id !== r.truck_id) {
+            return jsonError(`line ${i + 1}: round trip ${r.rt_id} belongs to another truck`, 409, origin, env);
           }
         }
       }
@@ -3427,6 +3466,9 @@ async function handleCosts(request, url, origin, env) {
       params.set("select", "id,source,invoice_no,period_from,period_to,total_gross,status,lines_total,lines_sure,lines_corrected,lines_unallocated,parser_version,file_url,created_at,created_by");
       params.set("order", "created_at.desc");
       params.set("limit", "200");
+      // ?id= narrows to one document so ?signed=1 can sign it — without this the
+      // signed URL only ever worked while the table held a single row (finding 5).
+      if (q.get("id") && /^\d+$/.test(q.get("id"))) params.set("id", `eq.${q.get("id")}`);
       let rows;
       try {
         ({ rows } = await dbSelectRaw(env, "ct_cost_docs", params));
