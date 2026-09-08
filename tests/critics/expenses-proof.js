@@ -31,6 +31,12 @@ const SCREENSHOT = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TM
 // had to share ~1280-230=1050px.
 const SCREENSHOT_1280 = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad/expenses-accountant-1280.png';
 const SCREENSHOT_1440 = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad/expenses-accountant-1440.png';
+// Round 2 (8/9) — the three screenshots the coordinator asked for by these
+// exact names, kept separate from the round-1 files above so neither set
+// silently overwrites evidence from the other round.
+const SCREENSHOT_V2_1280 = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad/expenses-v2-1280.png';
+const SCREENSHOT_V2_1440 = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad/expenses-v2-1440.png';
+const SCREENSHOT_PNL_V2_1440 = '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-keen-hamilton-ab77a6/caa94f70-bf92-45c5-98d4-ff74de01e316/scratchpad/pnl-v2-1440.png';
 
 // ── Fixtures, shaped like the real Worker responses (worker/src/index.js
 // resource==="rt"/"lookups"/"lines" GET handlers) ──────────────────────────
@@ -121,6 +127,124 @@ function installCostsMocks(page, seed) {
     return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
   });
 
+  return captured;
+}
+
+// ── Round 2 (8/9) fixtures — δύο εβδομάδες πλανισμού (ξεχωριστό σύνολο από τα
+// παραπάνω, ώστε τα 43 προϋπάρχοντα .first() ταιριάσματα να ΜΗΝ αλλάξουν
+// σειρά/πλήθος — surgical, spec: «all previous assertions must stay green»).
+// Σάββατο→Παρασκευή (weekly_intl.js/costs.js ctWeekOf): 2026-08-31 (Δευ)
+// ανήκει στην εβδομάδα 2026-08-29→09-04, το 2026-09-06 (Κυρ) στην
+// 2026-09-05→09-11 — δύο διαφορετικές, επαληθευμένες με `date +%A`.
+const LOOKUPS_FIXTURE_2W = {
+  trucks: [{ id: 11, legacy_id: null, license_plate: 'ΘΕ-2001', active: true }, { id: 12, legacy_id: null, license_plate: 'ΘΕ-2002', active: true }],
+  trailers: [],
+  drivers: [{ id: 11, legacy_id: null, full_name: 'Νίκος Οδηγός', active: true }],
+  partners: [],
+};
+const RT_FIXTURE_2W = [
+  { id: 601, code: 'RT-601', scope: 'INTL', trip_type: 'OWNED', truck_id: 11, trailer_id: null, driver_id: 11, partner_id: null,
+    date_start: '2026-08-31', date_end: '2026-09-01', status: 'closed', route_text: 'Καβάλα → Σόφια', route_legs: null, ct_rt_legs: [] },
+  { id: 602, code: 'RT-602', scope: 'INTL', trip_type: 'OWNED', truck_id: 12, trailer_id: null, driver_id: 11, partner_id: null,
+    date_start: '2026-09-06', date_end: '2026-09-07', status: 'in_progress', route_text: 'Βέροια → Βουδαπέστη', route_legs: null, ct_rt_legs: [] },
+];
+const LINES_FIXTURE_2W = [
+  { id: 9101, rt_id: 601, category: 'fuel', toll_country: null, net: 100, vat: 24, line_date: '2026-08-31',
+    plate_raw: null, truck_id: null, km_reading: null, liters: null, station: null, alloc_status: 'allocated',
+    note: 'Α', created_by: 'demo_accountant', created_at: '2026-08-31T09:00:00Z' },
+  { id: 9102, rt_id: 601, category: 'tolls', toll_country: null, net: 20, vat: 0, line_date: '2026-09-01',
+    plate_raw: null, truck_id: null, km_reading: null, liters: null, station: null, alloc_status: 'allocated',
+    note: 'Β', created_by: 'demo_accountant', created_at: '2026-09-01T09:00:00Z' },
+  { id: 9103, rt_id: 602, category: 'tolls', toll_country: null, net: 30, vat: 0, line_date: '2026-09-06',
+    plate_raw: null, truck_id: null, km_reading: null, liters: null, station: null, alloc_status: 'allocated',
+    note: 'Γ', created_by: 'demo_accountant', created_at: '2026-09-06T09:00:00Z' },
+];
+// Trip 601: κόστη 100+20=120 net, 24+0=24 vat → gross 144. Trip 602: 30/0/30.
+// PNL numbers are hand-derived from the LINES above so the per-week totals
+// the proof asserts are the same numbers, not a second guess of them.
+const PNL_FIXTURE_2W = [
+  { id: 601, code: 'RT-601', scope: 'INTL', trip_type: 'OWNED', truck_id: 11, driver_id: 11, partner_id: null,
+    date_start: '2026-08-31', date_end: '2026-09-01', status: 'closed', total_km: 500,
+    revenue: 1000, cost_gross: 144, cost_net: 120, cost_vat: 24,
+    profit_worst: 856, margin_worst_pct: 85.6, profit_ex_vat: 880, margin_ex_vat_pct: 88.0,
+    dl_trip_value: 0, dl_expenses: 0, driver_pay_missing: false, driver_pay_pending: false },
+  { id: 602, code: 'RT-602', scope: 'INTL', trip_type: 'OWNED', truck_id: 12, driver_id: 11, partner_id: null,
+    date_start: '2026-09-06', date_end: '2026-09-07', status: 'in_progress', total_km: 300,
+    revenue: 500, cost_gross: 30, cost_net: 30, cost_vat: 0,
+    profit_worst: 470, margin_worst_pct: 94.0, profit_ex_vat: 470, margin_ex_vat_pct: 94.0,
+    dl_trip_value: 0, dl_expenses: 0, driver_pay_missing: false, driver_pay_pending: false },
+];
+
+// Γενική εκδοχή του installCostsMocks: δέχεται fixtures ως παραμέτρους αντί
+// να τα έχει hardcoded, ώστε το ίδιο route-handling (GET φίλτρα, POST/PATCH/
+// DELETE capture) να ζει σε ΕΝΑ σημείο (αρχή 3) και για τη ροή εβδομάδας ΚΑΙ
+// για τη ροή owner/TRIP PnL. /costs/pnl και /costs/pallet-gate προστίθενται
+// εδώ γιατί μόνο η ροή owner τα χρειάζεται (ctReload του modules/costs.js).
+function installGenericCostsMocks(page, { rt, lookups, pnl, lines }) {
+  const store = { lines: (lines || []).map(l => ({ ...l })), nextId: 20000 };
+  const captured = { posts: [], patches: [], deletes: [], pnlGets: 0 };
+
+  page.route('**/costs/rt', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: rt }) }));
+  page.route('**/costs/lookups', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(lookups) }));
+  page.route('**/costs/pallet-gate', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
+  // ctEnrich() (modules/costs.js) pulls ALL of ORDERS then queries
+  // /pallets/gate?order_recs=<every id> — a URL long enough to fail
+  // differently than the abort HAR replay gives everything else ("Failed to
+  // fetch" / "API retry exhausted", not "net::ERR_FAILED"), which the proof's
+  // console-error contract does not expect. Mocked empty here: ctEnrich
+  // degrades gracefully either way (own try/catch), this just keeps the
+  // console clean and matches the rest of the run's known baseline.
+  page.route('**/tblgHlNmLBH3JTdIM**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
+  page.route('**/pallets/gate**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
+  // preloadReferenceData() (core/api.js, called from ctEnrich) fetches TRUCKS
+  // with a field set the recorded HAR does not have a matching entry for —
+  // a genuine "TypeError: Failed to fetch" (not the usual HAR-abort
+  // ERR_FAILED) after every retry, surfacing as BOTH an "API retry exhausted"
+  // console.error and an unhandledrejection. Mocked here for the same reason
+  // as ORDERS/pallets-gate above: keep the console at the run's known
+  // baseline (found via page.on('requestfailed') while diagnosing round 2).
+  page.route('**/tblEAPExIAjiA3asD**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: [] }) }));
+  page.route('**/costs/pnl', route => {
+    captured.pnlGets++;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: pnl || [] }) });
+  });
+  page.route('**/costs/lines**', async route => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const method = req.method();
+    if (method === 'GET') {
+      const rtId = url.searchParams.get('rt_id');
+      const allocStatus = url.searchParams.get('alloc_status');
+      let rows = store.lines;
+      if (rtId) rows = rows.filter(l => String(l.rt_id) === rtId);
+      else if (allocStatus === 'unallocated') rows = rows.filter(l => !l.rt_id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ records: rows }) });
+    }
+    if (method === 'POST') {
+      const body = req.postDataJSON();
+      captured.posts.push(body);
+      const rec = Object.assign({ id: store.nextId++, created_by: 'demo_accountant',
+        alloc_status: body.rt_id ? 'allocated' : 'unallocated', created_at: new Date().toISOString() }, body);
+      store.lines.push(rec);
+      return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ record: rec }) });
+    }
+    if (method === 'PATCH') {
+      const id = Number(url.pathname.split('/').pop());
+      const body = req.postDataJSON();
+      captured.patches.push({ id, body });
+      const row = store.lines.find(l => l.id === id);
+      if (row) Object.assign(row, body);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ record: row }) });
+    }
+    if (method === 'DELETE') {
+      const id = Number(url.pathname.split('/').pop());
+      const body = req.postDataJSON();
+      captured.deletes.push({ id, url: req.url(), body });
+      store.lines = store.lines.filter(l => l.id !== id);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ deleted: true }) });
+    }
+    return route.fulfill({ status: 404, contentType: 'application/json', body: '{}' });
+  });
   return captured;
 }
 
@@ -361,6 +485,113 @@ async function runScreenshotFlow(browser, width, height, screenshotPath, assertN
   return { consoleErrors };
 }
 
+// ── Round 2 (8/9): week grouping on the accountant's own screen — never
+// revenue/margin/RT- codes there (spec §1, locked). ─────────────────────────
+async function runExpensesWeekGroupingFlow(browser) {
+  console.log('\n== round 2: expenses week grouping (accountant) ==');
+  const context = await browser.newContext({ baseURL: BASE_URL });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+
+  await preparePage(page, 'accountant');
+  installGenericCostsMocks(page, { rt: RT_FIXTURE_2W, lookups: LOOKUPS_FIXTURE_2W, pnl: [], lines: LINES_FIXTURE_2W });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page', { timeout: 15000 });
+
+  const headers = page.locator('.ex-wkhead');
+  assert(await headers.count() === 2, 'expenses: two week headers rendered for the two-week fixture');
+  const h0 = await headers.nth(0).innerText();
+  const h1 = await headers.nth(1).innerText();
+  assert(/Εβδ\./.test(h0) && /Εβδ\./.test(h1), 'expenses: both headers carry the «Εβδ.» label');
+  // Νεότερη πρώτη: RT-602 (2026-09-06, εβδομάδα 2026-09-05) πάνω από RT-601
+  // (2026-08-31, εβδομάδα 2026-08-29).
+  assert(/Σεπ/.test(h0), 'expenses: newest week (Σεπ) header renders first');
+  assert(h0.includes('30,00 €'), 'expenses: newest week header total is the sum of its own fixture lines (30,00 €)');
+  assert(h1.includes('120,00 €'), 'expenses: older week header total is the sum of its own fixture lines (100+20 = 120,00 €)');
+
+  const pageText = (await page.locator('.ex-page').innerText()).toLowerCase();
+  for (const bad of ['κέρδος', 'περιθώριο', 'έσοδα']) {
+    assert(!pageText.includes(bad), 'expenses (accountant): page text does not contain «' + bad + '»');
+  }
+  assert(!/RT-\d/i.test(pageText), 'expenses (accountant): page text has no RT- code');
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ── Round 2 (8/9): TRIP PnL (owner) — week grouping, per-week totals,
+// collapse toggle, and the shared exOpenEntryModal() door. ─────────────────
+async function runPnlFlow(browser) {
+  console.log('\n== round 2: TRIP PnL week grouping + shared modal (owner) ==');
+  const context = await browser.newContext({ baseURL: BASE_URL, viewport: { width: 1440, height: 900 } });
+  const page = await context.newPage();
+  const consoleErrors = [];
+  page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+
+  await preparePage(page, 'owner');
+  const captured = installGenericCostsMocks(page, { rt: RT_FIXTURE_2W, lookups: LOOKUPS_FIXTURE_2W, pnl: PNL_FIXTURE_2W, lines: LINES_FIXTURE_2W });
+  await gotoPage(page, 'costs', BASE_URL);
+  await page.waitForSelector('.ct-wkhead', { timeout: 15000 });
+
+  const headers = page.locator('.ct-wkhead');
+  assert(await headers.count() === 2, 'TRIP PnL: two week headers rendered for the two-week fixture');
+  const h0 = await headers.nth(0).innerText();
+  const h1 = await headers.nth(1).innerText();
+  assert(/Εβδ\./.test(h0) && /Εβδ\./.test(h1), 'TRIP PnL: both headers carry the «Εβδ.» label');
+  assert(/Σεπ/.test(h0), 'TRIP PnL: newest week header (RT-602, Σεπ) renders first');
+  assert(h0.includes('€500') && h0.includes('€30') && h0.includes('€470') && h0.includes('94.0%'),
+    'TRIP PnL: newest week totals match the RT-602 fixture (rev €500, cost €30, net €470, margin 94.0%)');
+  assert(h1.includes('€1.000') && h1.includes('€144') && h1.includes('€856') && h1.includes('85.6%'),
+    'TRIP PnL: older week totals match the RT-601 fixture (rev €1.000, cost €144, net €856, margin 85.6%)');
+
+  // Collapse toggle: both groups start open (only two weeks — «current +
+  // previous» default). Collapse the older one (index 1) and prove its card
+  // disappears — that is what «hides rows» means, not just a style change.
+  assert(await page.locator('.ct-card').count() === 2, 'TRIP PnL: both trip cards visible before any toggle');
+  await headers.nth(1).click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('.ct-card').count() === 1, 'TRIP PnL: collapsing a week header hides its trip card');
+
+  // Shared modal door: open the still-visible RT-602 card → panel → the
+  // single «Καταχώρηση κόστους» button → exOpenEntryModal().
+  await page.locator('.ct-card', { hasText: 'ΘΕ-2002' }).first().click();
+  await page.waitForSelector('.ct-panel.open', { timeout: 10000 });
+  await page.locator('.ct-panel button', { hasText: 'Καταχώρηση κόστους' }).click();
+  await page.waitForSelector('.ex-modal-box', { timeout: 10000 });
+
+  await page.selectOption('#exMdCategory', 'fuel');
+  await page.waitForSelector('#exMdFuelFields', { state: 'visible' });
+  await page.fill('#exMdNet', '44.00');
+  await page.fill('#exMdVat', '10.56');
+  await page.fill('#exMdNote', 'Modal test');
+  await page.fill('#exMdLiters', '30');
+  await page.fill('#exMdKm', '123456');
+  await page.fill('#exMdStation', 'Shell');
+  const pnlGetsBefore = captured.pnlGets;
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'POST' && r.url().includes('/costs/lines'), { timeout: 10000 }),
+    page.locator('.ex-modal-box button', { hasText: 'Αποθήκευση' }).click(),
+  ]);
+  await page.waitForTimeout(200);
+
+  assert(captured.posts.length === 1, 'TRIP PnL modal: one POST captured');
+  const body = captured.posts[0];
+  for (const k of ['rt_id', 'category', 'net', 'vat', 'line_date', 'note', 'liters', 'km_reading', 'station']) {
+    assert(Object.prototype.hasOwnProperty.call(body, k), 'TRIP PnL modal POST body has "' + k + '" — same shape as the inline entry (spec §4)');
+  }
+  assert(body.category === 'fuel', 'TRIP PnL modal POST body category === "fuel"');
+  assert(body.rt_id === 602, 'TRIP PnL modal POST body rt_id === 602 (the opened trip)');
+  assert(captured.pnlGets > pnlGetsBefore, 'onSaved triggered ctReload() — a new GET /costs/pnl was observed');
+  assert(await page.locator('.ex-modal-box').count() === 0, 'TRIP PnL modal closes itself after save');
+
+  await page.screenshot({ path: SCREENSHOT_PNL_V2_1440, fullPage: true });
+  console.log('  screenshot: ' + SCREENSHOT_PNL_V2_1440);
+
+  await context.close();
+  return { consoleErrors };
+}
+
 (async () => {
   const browser = await chromium.launch();
   try {
@@ -370,15 +601,24 @@ async function runScreenshotFlow(browser, width, height, screenshotPath, assertN
     const cap = await runCapFlow(browser);
     const shot1280 = await runScreenshotFlow(browser, 1280, 800, SCREENSHOT_1280, true);
     const shot1440 = await runScreenshotFlow(browser, 1440, 900, SCREENSHOT_1440, false);
+    // Round 2 (8/9): week grouping (both screens), the shared modal door, and
+    // the three screenshots the coordinator asked for by name.
+    const weekGrp = await runExpensesWeekGroupingFlow(browser);
+    const pnl = await runPnlFlow(browser);
+    const shotV2_1280 = await runScreenshotFlow(browser, 1280, 800, SCREENSHOT_V2_1280, true);
+    const shotV2_1440 = await runScreenshotFlow(browser, 1440, 900, SCREENSHOT_V2_1440, false);
 
     const allConsoleErrors = [
       ...acct.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors,
       ...cap.consoleErrors, ...shot1280.consoleErrors, ...shot1440.consoleErrors,
+      ...weekGrp.consoleErrors, ...pnl.consoleErrors, ...shotV2_1280.consoleErrors, ...shotV2_1440.consoleErrors,
     ];
     console.log('\n== console errors ==');
     console.log('accountant:', acct.consoleErrors.length, 'management:', mgmt.consoleErrors.length,
       'dispatcher:', disp.consoleErrors.length, 'cap:', cap.consoleErrors.length,
-      '1280:', shot1280.consoleErrors.length, '1440:', shot1440.consoleErrors.length);
+      '1280:', shot1280.consoleErrors.length, '1440:', shot1440.consoleErrors.length,
+      'weekGrp:', weekGrp.consoleErrors.length, 'pnl:', pnl.consoleErrors.length,
+      'v2-1280:', shotV2_1280.consoleErrors.length, 'v2-1440:', shotV2_1440.consoleErrors.length);
     if (allConsoleErrors.length) allConsoleErrors.forEach(e => console.log('  ! ' + e));
 
     console.log('\n== captured request bodies (accountant) ==');

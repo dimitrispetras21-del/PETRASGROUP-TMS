@@ -18,7 +18,13 @@ const _ct = { pnl: [], rts: {}, lookups: null, veh: 'ALL', scope: 'ALL', group: 
   palletGate: {}, palletGateFailed: false,
   // Εμπλουτισμός διαδρομής (v3 κάρτες): pg order_id → ORDERS record + rec → pg,
   // με τη γέφυρα /pallets/gate — ίδιο μοτίβο με το _plvEnrich του Pallet Ledger.
-  orderByPg: null, pgByRec: {}, ordersAll: null, enrichFail: false };
+  orderByPg: null, pgByRec: {}, ordersAll: null, enrichFail: false,
+  // Ομαδοποίηση κατά εβδομάδα πλανισμού (round 2, 8/9): weekOpen[key] ρητά
+  // ορισμένο μόνο αφού ο χρήστης κλικάρει μια κεφαλίδα — βλ. ctWeekIsOpen για
+  // το default (τρέχουσα + προηγούμενη ανοιχτές). weekOrderIdx ξαναγράφεται σε
+  // κάθε render από ctGroupedTripsHtml ώστε το toggle να ξέρει τη θέση της
+  // εβδομάδας στη ΤΡΕΧΟΥΣΑ λίστα (μετά τα φίλτρα οχήματος/scope).
+  weekOpen: {}, weekOrderIdx: {} };
 
 async function ctFetch(path, opts = {}) {
   const jwt = localStorage.getItem('tms_jwt');
@@ -63,6 +69,36 @@ function ctOrderLabel(r) {
   return ctEsc([who, day].filter(Boolean).join(' · ') || 'χωρίς κωδικό');
 }
 
+
+// Πλανιστική εβδομάδα Σάββατο→Παρασκευή — η ΙΔΙΑ σύμβαση με το
+// modules/weekly_intl.js (_wiWeekStart/_wiCurrentWeek, owner 10/8): ο αριθμός
+// εβδομάδας είναι το παλιό WEEKNUM Κυριακής-αρχής υπολογισμένο πάνω στην
+// Κυριακή αμέσως μετά το Σάββατο-αρχή — έτσι το ίδιο ημερολογιακό Σάββατο
+// παίρνει τον ΙΔΙΟ αριθμό εβδομάδας στο Weekly International. Αναπαράγεται
+// εδώ αντί να καλεί το _wiWeekNumOf/_wiWeekStart απευθείας: εκείνα είναι
+// ιδιωτικά helpers (πρόθεμα _wi) του modules/weekly_intl.js, όχι δημόσιο API —
+// ένα module κόστους δεν πρέπει να εξαρτάται από την εσωτερική υλοποίηση ενός
+// άσχετου module. Ζει εδώ (όχι στο modules/expenses.js) γιατί το costs.js
+// φορτώνει ΠΡΩΤΟ (app.html) και τα δύο module χρειάζονται την ίδια εβδομάδα
+// (αρχή 3: δύο πηγές αλήθειας σημαίνει καμία) — modules/expenses.js την
+// ξαναχρησιμοποιεί, ακριβώς όπως ήδη κάνει με το CT_CATEGORY_LABELS.
+const CT_MONTHS = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
+function ctWeekOf(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(String(dateStr).slice(0, 10) + 'T12:00:00'); // noon: no DST-edge day shift
+  if (isNaN(d.getTime())) return null;
+  const dow = d.getDay(); // 0=Κυρ..6=Σαβ
+  const diffToSat = (dow + 1) % 7; // Σαβ:6→0, Κυρ:0→1, Δευ:1→2 … Παρ:5→6
+  const start = new Date(d); start.setDate(d.getDate() - diffToSat);
+  const end = new Date(start); end.setDate(start.getDate() + 6);
+  const sunAfterStart = new Date(start); sunAfterStart.setDate(start.getDate() + 1);
+  const y = sunAfterStart.getFullYear(), jan1 = new Date(y, 0, 1);
+  const week = Math.ceil(((sunAfterStart - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  const iso = dt => dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+  const sD = start.getDate(), sM = CT_MONTHS[start.getMonth()], eD = end.getDate(), eM = CT_MONTHS[end.getMonth()];
+  const range = sM === eM ? `${sD}–${eD} ${sM}` : `${sD} ${sM} – ${eD} ${eM}`;
+  return { start: iso(start), end: iso(end), week, label: `Εβδ. ${week} · ${range}` };
+}
 
 function ctTruckName(id) { const t = (_ct.lookups?.trucks || []).find(x => x.id === id); return t ? t.license_plate : (id ? '#' + id : '—'); }
 function ctDriverName(id) { const d = (_ct.lookups?.drivers || []).find(x => x.id === id); return d ? d.full_name : ''; }
@@ -408,7 +444,7 @@ function ctRenderList() {
     // Αποτυχία εμπλουτισμού = ορατή σημείωση, όχι σιωπηλά γυμνές κάρτες.
     const enrichNote = _ct.enrichFail
       ? `<div class="ct-note ct-nwarn">${icon('warning', 13)} Τα στοιχεία διαδρομής (πελάτες/προορισμοί) δεν φόρτωσαν — οι κάρτες δείχνουν μόνο ποσά. Δοκίμασε «Ανανέωση».</div>` : '';
-    el.innerHTML = notice + enrichNote + sorted.map(ctCardHtml).join('') +
+    el.innerHTML = notice + enrichNote + ctGroupedTripsHtml(sorted) +
       `<div style="font-size:12px;color:var(--text-mid);margin-top:8px">κλικ σε κάρτα για το πλήρες ανάπτυγμα · οι ζημιές σε παρένθεση</div>`;
     return;
   }
@@ -473,7 +509,7 @@ function ctCardNums(t, ci) {
     // Η πληρότητα είναι ΑΓΝΩΣΤΗ — ούτε margin ούτε ψευδές «χωρίς κόστη».
     note = `<span class="ct-eqnote">οι γραμμές κόστους δεν φόρτωσαν — πληρότητα άγνωστη</span>`;
   } else if (!ci.complete) {
-    right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenCostModal(${t.id})">+ Καταχώρηση κοστών</button>`;
+    right = `<button class="ct-btn ct-accbtn" onclick="event.stopPropagation();ctOpenEntry(${t.id})">+ Καταχώρηση κοστών</button>`;
   } else {
     const p = Number(t.profit_worst);
     costs = `<b class="nv ct-mono">${ctEur(t.cost_gross)}</b>`;
@@ -558,6 +594,62 @@ function ctCardHtml(t) {
 }
 
 
+// ── Ομαδοποίηση κατά εβδομάδα (round 2, 8/9, owner 7/9 night decision) ────
+// Sticky κεφαλίδα ανά εβδομάδα πλανισμού (ctWeekOf), νεότερη πρώτη, με σύνολα
+// από ΤΑ ΙΔΙΑ πεδία που ήδη δείχνει η κάρτα (t.revenue/t.cost_gross) — όχι μια
+// δεύτερη πηγή υπολογισμού περιθωρίου (αρχή 3). Ένα δρομολόγιο χωρίς
+// date_start δεν πρέπει να συμβαίνει (η βάση το θέλει NOT NULL) αλλά δεν
+// κρασάρει τη σελίδα αν συμβεί — μπαίνει σε ΜΙΑ ορατή ομάδα «Χωρίς ημερομηνία».
+function ctWeekTotals(trips) {
+  const rev = trips.reduce((a, t) => a + Number(t.revenue || 0), 0);
+  const cost = trips.reduce((a, t) => a + Number(t.cost_gross || 0), 0);
+  const net = rev - cost;
+  return { rev, cost, net, margin: rev ? (net / rev * 100) : null };
+}
+// Default: η τρέχουσα + η προηγούμενη εβδομάδα (idx 0,1 στη νεότερη-πρώτη
+// σειρά) ανοιχτές, οι παλαιότερες κλειστές — ΕΚΤΟΣ αν ο χρήστης το άλλαξε
+// ρητά (weekOpen κρατά μόνο τις ρητές επιλογές, όχι το default).
+function ctWeekIsOpen(key, idx) {
+  return Object.prototype.hasOwnProperty.call(_ct.weekOpen, key) ? _ct.weekOpen[key] : idx < 2;
+}
+function ctToggleWeek(key) {
+  const idx = _ct.weekOrderIdx[key] || 0;
+  _ct.weekOpen[key] = !ctWeekIsOpen(key, idx);
+  ctRenderList();
+}
+function ctGroupedTripsHtml(sorted) {
+  const groups = {}, order = [];
+  sorted.forEach(t => {
+    const w = ctWeekOf(t.date_start);
+    const key = w ? w.start : 'χωρίς-ημερομηνία';
+    if (!groups[key]) { groups[key] = { info: w, trips: [] }; order.push(key); }
+    groups[key].trips.push(t);
+  });
+  order.sort((a, b) => b.localeCompare(a)); // Σάββατο ISO ως string — νεότερη πρώτη
+  _ct.weekOrderIdx = {};
+  return order.map((key, idx) => {
+    _ct.weekOrderIdx[key] = idx;
+    const g = groups[key];
+    const open = ctWeekIsOpen(key, idx);
+    const tot = ctWeekTotals(g.trips);
+    const label = g.info ? g.info.label : 'Χωρίς ημερομηνία';
+    return `<div class="ct-wk">
+      <div class="ct-wkhead" onclick="ctToggleWeek('${key}')">
+        <span class="ct-wktoggle">${open ? '▾' : '▸'}</span>
+        <span class="ct-wklabel">${ctEsc(label)}</span>
+        <span class="ct-wkn">${g.trips.length} ${g.trips.length === 1 ? 'δρομολόγιο' : 'δρομολόγια'}</span>
+        <span class="ct-wksum">
+          <span class="ct-wksumi"><span class="l">Έσοδα</span><b class="ct-mono">${ctEur(tot.rev)}</b></span>
+          <span class="ct-wksumi"><span class="l">Κόστη</span><b class="ct-mono">${ctEur(tot.cost)}</b></span>
+          <span class="ct-wksumi"><span class="l">Καθαρό</span><b class="ct-mono${tot.net < 0 ? ' neg' : tot.net > 0 ? ' pos' : ''}">${ctEurP(tot.net)}</b></span>
+          <span class="ct-wksumi"><span class="l">Περιθώριο</span><b class="ct-mono">${tot.margin != null ? tot.margin.toFixed(1) + '%' : '—'}</b></span>
+        </span>
+      </div>
+      ${open ? `<div class="ct-wkbody">${g.trips.map(ctCardHtml).join('')}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
 // ── Μετρητής συμφωνίας (εγκεκριμένος 24/8): «αν ο feeder σταματήσει, ποιος
 // θα το πει;» — η ίδια η σελίδα, στην επόμενη φόρτωση. Συγκρίνει εκτελεσμένες
 // διεθνείς παραγγελίες με ανάθεση ↔ σκέλη RT και ονομάζει όσες λείπουν.
@@ -640,9 +732,8 @@ async function ctOpenPanel(id) {
       <span class="ct-cvat ct-mono">${t.dl_expenses != null ? 'Έξοδα Μ ' + ctEur(t.dl_expenses) : '—'}</span></div>`;
   }
   if (linesFetchFailed) costRows = `<div class="ct-note ct-nwarn">${icon('warning', 13)} Οι γραμμές κόστους δεν φόρτωσαν — η ανάλυση ανά κατηγορία δεν είναι διαθέσιμη. Τα σύνολα από κάτω έρχονται από τη βάση.</div>`;
-  else if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-mid)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από τη φόρμα πιο πάνω.</div>';
+  else if (!costRows) costRows = '<div style="font-size:12px;color:var(--text-mid)">Καμία γραμμή κόστους ακόμα — πρόσθεσε την πρώτη από το κουμπί πιο πάνω.</div>';
   if (t.trip_type === 'PARTNER') costRows += `<div class="ct-lrow"><span style="font-style:italic;color:var(--text-mid)">Καύσιμα/διόδια/οδηγός δεν καταγράφονται εδώ — είναι κόστη του συνεργάτη, όχι ελλιπή δικά μας. Το δικό μας κόστος είναι το κόμιστρο.</span><span></span></div>`;
-  const catOpts = Object.entries(CT_CATEGORY_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
   // The pallet-sheet warning lives in the body as a standard attention block,
   // not inside the dark header: --warn has no readable contrast on
   // --surface-dark and the token set has no «warn on dark» colour.
@@ -666,15 +757,8 @@ async function ctOpenPanel(id) {
       <div class="ct-m ct-mprimary"><div class="l">Καθαρό — με ΦΠΑ (χειρότερη περίπτωση)</div><div class="v ct-mono">${ctEurP(t.profit_worst)}</div><div class="s">${worstNeg ? 'ζημιά · ' : ''}περιθώριο ${t.margin_worst_pct != null ? Number(t.margin_worst_pct).toFixed(1) + '%' : '—'}</div></div>
       <div class="ct-m"><div class="l">Καθαρό — χωρίς ΦΠΑ</div><div class="v ct-mono"${Number(t.profit_ex_vat) < 0 ? ' style="color:var(--danger)"' : ''}>${ctEurP(t.profit_ex_vat)}</div><div class="s">περιθώριο ${t.margin_ex_vat_pct != null ? Number(t.margin_ex_vat_pct).toFixed(1) + '%' : '—'} · ΦΠΑ ${ctEur(t.cost_vat)}</div></div>
     </div>${ctWhyLine(t, lines)}</div>`}
-    <div class="ct-psec"><h3>+ Καταχώρηση κόστους (καθαρό + ΦΠΑ χωριστά)</h3>
-      <div class="ct-qform">
-        <select id="ctQcat">${catOpts}</select>
-        <input type="number" id="ctQnet" placeholder="Καθαρό €" step="0.01">
-        <input type="number" id="ctQvat" placeholder="ΦΠΑ €" step="0.01">
-        <input type="date" id="ctQdate" value="${t.date_start}">
-        <input type="text" id="ctQnote" placeholder="Σημείωση / παραστατικό">
-        <button class="ct-btn ct-primary" onclick="ctQuickAdd(${t.id})">Αποθήκευση</button>
-      </div>
+    <div class="ct-psec">
+      <button class="ct-btn ct-primary" onclick="ctOpenEntry(${t.id})">Καταχώρηση κόστους</button>
       <div style="font-size:11px;color:var(--text-mid);margin-top:8px">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div></div>
     <div class="ct-psec"><h3>Έσοδα (αυτόματα από τα σκέλη)</h3>
       ${(rt.ct_rt_legs || []).map(l => l.nat_load_id
@@ -690,62 +774,23 @@ async function ctOpenPanel(id) {
       <span class="ct-mono">${ctEur(l.net)}${Number(l.vat) ? ' <span style="color:var(--text-mid)">+' + ctEur(l.vat) + ' ΦΠΑ</span>' : ''}</span></div>`).join('')}</div>` : ''}`;
 }
 
-// Κοινός POST — τον μοιράζονται η φόρμα του ανάπτυγματος και το modal της
-// γραμμής, ώστε το σχήμα του αιτήματος να ζει σε ΕΝΑ σημείο (αρχή 3).
-async function ctPostCostLine(rtId, line) {
-  return ctFetch('/costs/lines', { method: 'POST', body: { rt_id: rtId, ...line } });
-}
-
-async function ctQuickAdd(rtId) {
-  const net = parseFloat(document.getElementById('ctQnet').value);
-  const vat = parseFloat(document.getElementById('ctQvat').value) || 0;
-  if (isNaN(net)) { alert('Βάλε καθαρό ποσό'); return; }
-  try {
-    await ctPostCostLine(rtId, { category: document.getElementById('ctQcat').value,
-      net, vat, line_date: document.getElementById('ctQdate').value || null,
-      note: document.getElementById('ctQnote').value || null });
-    await ctReload(); ctOpenPanel(rtId);
-  } catch (e) { alert('Σφάλμα: ' + e.message); }
-}
-
-// Καταχώρηση κόστους από τη ΓΡΑΜΜΗ (owner review 24/8: «ο πιλότος είναι
-// αδύνατος» χωρίς αυτήν) — ίδια πεδία με τη φόρμα του ανάπτυγματος, χωρίς να
-// χρειάζεται να ανοίξει το πάνελ. Και τα ολοκληρωμένα RT δέχονται γραμμές
-// (closed ≠ complete, κλειδωμένο 24/8): τα τιμολόγια έρχονται εβδομάδες μετά.
-function ctOpenCostModal(id) {
-  const t = _ct.pnl.find(x => x.id === id); if (!t) return;
-  const catOpts = Object.entries(CT_CATEGORY_LABELS).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
-  document.getElementById('ctOverlay').classList.add('open');
-  const m = document.getElementById('ctModal');
-  m.classList.add('open');
-  m.innerHTML = `
-    <div class="ct-mhead">Καταχώρηση κόστους — ${ctEsc(t.code)} <button class="ct-close" onclick="ctCloseAll()">&times;</button></div>
-    <div class="ct-mbody">
-      <div class="ct-fgrid">
-        <label>Κατηγορία<select id="ctMcat">${catOpts}</select></label>
-        <label>Ημερομηνία<input type="date" id="ctMdate" value="${ctEsc(t.date_start)}"></label>
-        <label>Καθαρό €<input type="number" id="ctMnet" step="0.01" placeholder="π.χ. 320"></label>
-        <label>ΦΠΑ € (χωριστά)<input type="number" id="ctMvat" step="0.01" placeholder="0 για reverse charge"></label>
-        <label style="grid-column:1/-1">Σημείωση / παραστατικό<input type="text" id="ctMnote"></label>
-      </div>
-      <div class="ct-note">${t.status === 'closed' || t.status === 'complete' ? 'Το δρομολόγιο έχει ολοκληρωθεί — δέχεται κανονικά κόστη: τα τιμολόγια έρχονται και εβδομάδες μετά.' : 'ΦΠΑ 24% = καθαρό × 0,24 · 0 για reverse charge εξωτερικού.'}</div>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
-        <button class="ct-btn" onclick="ctCloseAll()">Άκυρο</button>
-        <button class="ct-btn ct-primary" onclick="ctModalSaveCost(${t.id})">Αποθήκευση</button>
-      </div>
-    </div>`;
-  document.getElementById('ctMnet').focus();
-}
-async function ctModalSaveCost(rtId) {
-  const net = parseFloat(document.getElementById('ctMnet').value);
-  const vat = parseFloat(document.getElementById('ctMvat').value) || 0;
-  if (isNaN(net)) { alert('Βάλε καθαρό ποσό'); return; }
-  try {
-    await ctPostCostLine(rtId, { category: document.getElementById('ctMcat').value,
-      net, vat, line_date: document.getElementById('ctMdate').value || null,
-      note: document.getElementById('ctMnote').value || null });
-    ctCloseAll(); await ctReload();
-  } catch (e) { alert('Σφάλμα: ' + e.message); }
+// Καταχώρηση κόστους — ΜΙΑ φόρμα, δύο πόρτες (round 2, owner 7/9 night): πριν
+// υπήρχαν ΤΡΙΑ σημεία με το ίδιο σχήμα εδώ (ctPostCostLine/ctQuickAdd του
+// ανάπτυγματος + ctOpenCostModal/ctModalSaveCost της κάρτας) — αρχή 3, δύο
+// πηγές αλήθειας σημαίνει καμία, και εδώ ήταν τρεις. Το modules/expenses.js
+// (φορτώνει ΜΕΤΑ, app.html) εκθέτει τώρα exOpenEntryModal() με τους ίδιους
+// κανόνες πεδίων/σφαλμάτων με τη γρήγορη καταχώρηση της οθόνης «Έξοδα
+// Δρομολογίων» — το κουμπί εδώ απλώς την ανοίγει. Φυλάγεται με typeof-check
+// γιατί η κλήση γίνεται σε click, όχι σε φόρτωση σελίδας: αν κάποιος
+// αναδιατάξει τα <script> του app.html το σφάλμα πρέπει να ακούγεται, όχι να
+// σκάει σιωπηλά ένα «exOpenEntryModal is not a function» στην κονσόλα.
+function ctOpenEntry(rtId) {
+  if (typeof exOpenEntryModal !== 'function') {
+    alert('Η φόρμα καταχώρησης δεν φόρτωσε (modules/expenses.js) — δοκίμασε ανανέωση σελίδας.');
+    return;
+  }
+  const t = _ct.pnl.find(x => x.id === rtId);
+  exOpenEntryModal({ rtId, rt: t, onSaved: () => { ctReload(); if (_ct.openRt === rtId) ctOpenPanel(rtId); } });
 }
 
 async function ctCloseRt(id) {
@@ -975,8 +1020,20 @@ function ctStyles() { return `<style>
 .ct-totrow{display:flex;justify-content:space-between;font-weight:700;font-size:13px;padding-top:8px;border-top:1px dashed var(--border)}
 .ct-totrow.ct-mini{font-weight:500;color:var(--text-mid);border-top:none;padding-top:2px}
 .ct-lrow{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px dashed var(--border)}
-.ct-qform{display:grid;grid-template-columns:1.2fr .8fr .7fr 1fr 1.4fr auto;gap:8px}
-.ct-qform input,.ct-qform select{font-family:inherit;font-size:12px;padding:8px;border:1px solid var(--border);border-radius:6px;min-width:0}
+/* WeekGroup (round 2, 8/9): ίδια γλώσσα με το StakeBanner (κεφαλαία ετικέτα +
+   Syne bold στα νούμερα δεν μπαίνει εδώ — DESIGN.md Γ: Syne μόνο σε τίτλους,
+   ποτέ σε νούμερα), sticky ώστε η κεφαλίδα να μένει ορατή ενώ κυλά η λίστα. */
+.ct-wk{margin-bottom:4px}
+.ct-wkhead{position:sticky;top:0;z-index:var(--z-sticky,2);display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--surface-sunken);border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-bottom:8px;cursor:pointer}
+.ct-wktoggle{color:var(--text-mid);font-size:11px;width:10px;text-align:center;flex:none}
+.ct-wklabel{font-weight:700;font-size:13px;color:var(--text)}
+.ct-wkn{font-size:12px;color:var(--text-mid)}
+.ct-wksum{display:flex;gap:16px;flex-wrap:wrap;margin-left:auto}
+.ct-wksumi{display:inline-flex;align-items:baseline;gap:4px;font-size:12px}
+.ct-wksumi .l{color:var(--text-mid)}
+.ct-wksumi b{font-weight:700;color:var(--text)}
+.ct-wksumi b.neg{color:var(--danger)}.ct-wksumi b.pos{color:var(--ok)}
+.ct-wkbody{padding-left:2px}
 .ct-modal{position:fixed;top:50%;left:50%;width:600px;max-width:94vw;max-height:90vh;overflow-y:auto;background:var(--surface-card);border-radius:6px;box-shadow:var(--shadow-md);z-index:calc(var(--z-overlay,9000) + 2);transform:translate(-50%,-46%) scale(.97);opacity:0;pointer-events:none;transition:all .15s}
 .ct-modal.open{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
 .ct-mhead{background:var(--surface-dark);color:var(--text-on-dark);padding:12px 24px;font-family:'Syne',sans-serif;font-weight:700;font-size:18px}
@@ -988,5 +1045,5 @@ function ctStyles() { return `<style>
 .ct-note.ct-nwarn{color:var(--warn);background:var(--warn-bg);border:1px solid var(--warn-border);margin:0 0 8px}
 .ct-srow{display:grid;grid-template-columns:1fr 128px auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13px}
 .ct-srow input{font-family:inherit;font-size:13px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;text-align:right}
-@media(max-width:768px){.ct-qform{grid-template-columns:1fr 1fr}.ct-fgrid{grid-template-columns:1fr}.ct-duo{grid-template-columns:1fr}.ct-leg{flex-wrap:wrap}.ct-leg .lamt{width:auto}.ct-eq{gap:12px;padding:12px}}
+@media(max-width:768px){.ct-fgrid{grid-template-columns:1fr}.ct-duo{grid-template-columns:1fr}.ct-leg{flex-wrap:wrap}.ct-leg .lamt{width:auto}.ct-eq{gap:12px;padding:12px}.ct-wksum{gap:10px}}
 </style>`; }
