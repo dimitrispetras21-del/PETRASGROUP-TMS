@@ -145,7 +145,19 @@
     const dd = parseInt(m[1], 10);
     const mm = parseInt(m[2], 10);
     const yyyy = parseInt(m[3], 10);
-    if (dd <= 15) {
+    // The statement line carries the BILLING date of the half-month, which is
+    // the day after the period (T4E docs in the real ZIP: line dated 16.08 =
+    // period 01–15/08, line dated 31.08 = period 16–31/08). So a billing day
+    // ≤ 16 closes the first half, a day 1–2 closes the previous month's second
+    // half, anything later closes the second half. (8/9: the old «dd ≤ 15»
+    // rule put every 16.08 line into 16–31 and no passage day ever fitted.)
+    if (dd <= 2) {
+      const pm = mm === 1 ? 12 : mm - 1;
+      const py = mm === 1 ? yyyy - 1 : yyyy;
+      const pLast = new Date(py, pm, 0).getDate();
+      return { from: `${py}-${pad2(pm)}-16`, to: `${py}-${pad2(pm)}-${pad2(pLast)}` };
+    }
+    if (dd <= 16) {
       return { from: `${yyyy}-${pad2(mm)}-01`, to: `${yyyy}-${pad2(mm)}-15` };
     }
     const lastDay = new Date(yyyy, mm, 0).getDate();
@@ -469,7 +481,12 @@
   //      half-month statements these countries use) — no per-day "Total"
   //      line, so grouping by (plate, day) happens here from each row's
   //      own entry date.
-  const PASSAGES_HEADER_RE = /^PAN\s+(\S+)\s+OBU-ID\s+(?:\S+\s+)?KFZ-KZ\s+(.+?)(?:\s+Ref\.\s+(\S+))?(?:\s+Datum:\s+(\d{2}\.\d{2}\.\d{4}))?(?:\s+DKV BOX EUROPE)?$/;
+  // The plate is captured as a plate-shaped token (2–3 letters, 3–4 digits,
+  // optional 2 letters, optional inner space), never as «everything up to the
+  // end»: entry/exit style lists (CZ/DE/PL/SI/SK) append «Emission class …» /
+  // «CO2 class …» after the plate, and a lazy `.+?` swallowed it (8/9: plate
+  // lengths of 17–38 chars → no passages group ever matched a statement line).
+  const PASSAGES_HEADER_RE = /^PAN\s+(\S+)\s+OBU-ID\s+(?:\S+\s+)?KFZ-KZ\s+([A-ZΑ-Ω]{1,3}\s?\d{3,4}\s?[A-ZΑ-Ω]{0,2})(?=\s|$)(?:\s+Ref\.\s+(\S+))?(?:\s+Datum:\s+(\d{2}\.\d{2}\.\d{4}))?(?:\s.*)?$/;
   const PASSAGE_ROW_RE = /^(\d{2}:\d{2})\s+(\S+)\s+(.+?)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([A-Z]{3})$/;
   const PASSAGE_TOTAL_RE = /^»\s*(?:Total|Celkem|Общо|Skupaj|Celkovo|Ukupno|Összesen)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([\d.,-]+)\s+([A-Z]{3})$/i;
   const ENTRY_EXIT_ROW_RE = /^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+(.*)$/;
