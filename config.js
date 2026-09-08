@@ -353,4 +353,4 @@ const PERMS = {
 // GROUP_TILES (owner 8/9/2026, spec docs/design/2026-09-08-groupage-tiles.md):
 // segmented single-pill groupage on Weekly International. Off = today's board
 // renders byte-for-byte unchanged. Flip to true only after live verification.
-const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: false };
+const FEATURES = { ORDER_SPLIT: true, GROUP_TILES: true };
