@@ -449,6 +449,10 @@ var PERMISSIONS = {
     // in one pass — as the lock itself says.
     // Owner said yes explicitly, 3/9/2026, after being told this cost.
     orders: ["GET", "PATCH"],
+    // Same reason, same width (Alexia go-live audit 7/9/2026): the invoicing
+    // screen PATCHes NAT_ORDERS for national invoices too. Without this row
+    // the role falls back to "*": GET and every national invoice is a 403.
+    national_orders: ["GET", "PATCH"],
     pallet_ledger_suppliers: ["GET", "POST", "PATCH"]
   },
   dispatcher: {
@@ -2730,11 +2734,18 @@ var COSTS_PERMS = {
   // ledger (owner 5/9): owner, accountant, management write; import owner only.
   // dispatcher/warehouse: nothing — driver pay is not theirs to see.
   owner: { settings: ["GET", "PATCH"], rt: ["GET", "POST", "PATCH", "DELETE"], lines: ["GET", "POST", "PATCH", "DELETE"], pnl: ["GET"], "pallet-gate": ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
-  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  // lines PATCH/DELETE (owner 7/9/2026, spec docs/superpowers/specs/2026-09-07-trip-expenses-design.md):
+  // the accountant screen «Έξοδα Δρομολογίων» lets her fix her own typo and
+  // route a parked («Χωρίς δρομολόγιο») receipt to the right trip — both go
+  // through the same PATCH/DELETE pair the owner-only screen already used,
+  // so the mandatory-reason audit trail below applies unchanged.
+  accountant: { settings: ["GET"], rt: ["GET", "POST"], lines: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   // rt DELETE = one LEG leaves an open round trip (unmatch, «ακύρωση προώθησης»);
   // the round trip itself is never deleted (owner 6/9/2026). Accountant/management: no.
   dispatcher: { rt: ["GET", "POST", "PATCH", "DELETE"], lookups: ["GET"] },
-  management: { lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
+  // rt/lines GET (owner 7/9/2026, same spec): management reads the expenses
+  // screen but never writes it — no POST/PATCH/DELETE, matching «ανάγνωση».
+  management: { rt: ["GET"], lines: ["GET"], lookups: ["GET"], ledger: ["GET", "POST", "PATCH"] },
   warehouse: {}
 };
 function ctCan(role, resource, method) {
@@ -3186,7 +3197,11 @@ var PL_PERMS = {
   owner:      { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   dispatcher: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   warehouse:  { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
-  accountant: { movements: ["GET", "POST", "PATCH"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
+  // accountant DELETE (7/9/2026, Alexia go-live audit): she owns the pallet
+  // ledger and the panel shows «Διαγραφή εκκρεμούς» on every pending movement;
+  // without DELETE that button is a 403. Safe to grant: the handler below
+  // refuses anything but pending (409), confirmed movements are only reversed.
+  accountant: { movements: ["GET", "POST", "PATCH", "DELETE"], confirm: ["POST"], reverse: ["POST"], sheets: ["GET", "POST"], balances: ["GET"], lookups: ["GET"] },
   // MARKED CHANGE (owner 24/8/2026) — the ONLY deviation from the parked
   // source: management also reads the movements ledger (read-only).
   // Parked had balances+gate only.
