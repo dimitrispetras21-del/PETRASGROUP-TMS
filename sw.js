@@ -7,7 +7,7 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1788875986';
+const SW_VERSION = '1788876993';
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
@@ -87,7 +87,16 @@ self.addEventListener('activate', e => {
 });
 
 // ── FETCH ───────────────────────────────────────────────
+// 8/9/2026: the backend host must never be cached by this SW. Rule 3 below
+// stored EVERY «other» OK response and served it when the network failed, so a
+// flaky moment could paint orders from a previous visit. Planning data is
+// network-only: if the network is down the app must say so, not show old truth.
+const BACKEND_HOSTS = ['petras-tms-backend-staging.petrasgroup.workers.dev', 'petras-tms-backend.petrasgroup.workers.dev'];
 self.addEventListener('fetch', e => {
+  try {
+    const u = new URL(e.request.url);
+    if (BACKEND_HOSTS.includes(u.hostname)) { e.respondWith(fetch(e.request, { cache: 'no-store' })); return; }
+  } catch (_) {}
   const url = new URL(e.request.url);
 
   // ── 1. Airtable API: network-first, cache GET responses ──

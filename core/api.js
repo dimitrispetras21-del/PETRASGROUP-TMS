@@ -232,7 +232,11 @@ function _atErrMsg(err, fallback) {
 function _fetchWithTimeout(url, opts = {}, ms = 30000) {
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(to));
+  // 8/9/2026: the Worker's JSON carried no Cache-Control and this fetch used the
+  // browser default, so a reload could paint a GET from minutes ago (a reordered
+  // groupage «επέστρεφε στο προηγούμενο»). Planning data is never worth a stale
+  // hit: ask the network every time, and let the SW/Worker refuse to cache too.
+  return fetch(url, { cache: 'no-store', ...opts, signal: ctrl.signal }).finally(() => clearTimeout(to));
 }
 
 async function _atRetry(fn, retries = 3) {

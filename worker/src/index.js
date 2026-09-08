@@ -30,14 +30,14 @@ __name(corsHeaders, "corsHeaders");
 function jsonOk(data, origin, env, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders(origin, env), "Content-Type": "application/json" }
+    headers: { ...corsHeaders(origin, env), "Content-Type": "application/json", "Cache-Control": "no-store" }
   });
 }
 __name(jsonOk, "jsonOk");
 function jsonError(message, status, origin, env) {
   return new Response(JSON.stringify({ error: message }), {
     status,
-    headers: { ...corsHeaders(origin, env), "Content-Type": "application/json" }
+    headers: { ...corsHeaders(origin, env), "Content-Type": "application/json", "Cache-Control": "no-store" }
   });
 }
 __name(jsonError, "jsonError");
