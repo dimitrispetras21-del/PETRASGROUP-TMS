@@ -1,0 +1,21 @@
+E-Passagenliste /
+E-List of passages
+Example Country
+Kundendaten
+EXAMPLE FRESH S.A. Kundennummer /
+Customer number: 9999999
+Ku.-USt-Id/Nat.St.Nr. /
+Cust. VAT Id/Nat.Tax.No.: EX000000000
+Bezug zur Rechnung / 99/000000001/999
+Reference to the invoice: 99/999999999/001
+Rechnungsdatum /
+Invoice date: 30.09.2026
+Seite / Page: 1 / 1
+Zeit Autob Strecke Kat. Info Externe Netto- MwSt. Brutto- Währung
+Kosten betrag betrag
+Time Motorway Route Cat. Infor- External Net VAT Gross currency
+mation Costs amount amount
+PAN 00000000000000000001 OBU-ID KFZ-KZ XX1234 Ref. 0000000000000001 Datum: 01.09.2026 DKV BOX EUROPE
+00:00 A1 Example Entry-Example Exit 05 6 1 5,0000 10,00 2,00 12,00 EUR
+00:05 A1 Example Exit-Example Border 05 6 1 3,0000 6,00 1,20 7,20 EUR
+» Total 8,0000 16,00 3,20 19,20 EUR

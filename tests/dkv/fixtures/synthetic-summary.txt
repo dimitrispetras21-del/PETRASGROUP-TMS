@@ -1,0 +1,27 @@
+99-0000000000-9999999-
+EXAMPLE DKV EURO SERVICE GmbH + Co.KG
+Example Allee 3, D-00000 Example City
+Internet: http://www.example-dkv.invalid
+EXAMPLE FRESH S.A.
+EXAMPLE VILLAGE
+000 00 EXAMPLE VILLAGE
+Customer number: 9999999
+Cust. VAT Id/Nat.Tax.No.: EX000000000
+Document number: 99/000000001/000
+Document date: 30.09.2026
+Page: 1 / 1
+Your contact person
+Example Contact Person
+Example Street 1
+00000 Example City
+TEL 0000000000 FAX 0000000000
+E-mail example@example.invalid
+E-SUMMARY
+Not valid as a VAT receipt and therefore not usable for VAT refund purposes
+Service country Invoice number Currency Total in Total in
+country form type service country service country currency payment currency
+including VAT
+Example Country Invoice 99/000000001/999 EUR 173,00 173,00 EUR
+» 173,00 EUR
+» Total 173,00 EUR
+DKV VAT ID no.: EX000000000

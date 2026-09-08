@@ -1,0 +1,40 @@
+E-RECHNUNG /
+E-INVOICE
+For services and deliveries in
+Example Country
+Kundendaten
+EXAMPLE FRESH S.A. Kundennummer /
+Customer number: 9999999
+Ku.-USt-Id/Nat.St.Nr. /
+Cust. VAT Id/Nat.Tax.No.: EX000000000
+Belegnummer DKV /
+Ticket number DKV: 99/999999999/001
+Rechnungsnummer /
+Invoice number: 99/000000001/999
+Rechnungsdatum /
+USt (%): 20,00 Invoice date: 30.09.2026
+Währung: EUR
+Seite / Page: 1 / 1
+Lieferdatum Servicestation Transaktions- Uhrzeit Produkt Einheit Menge Preis/Einheit Bezugswert Bezugswert Service- Gesamtwert USt. Gesamtwert
+Name Ort Nummer nummer brutto netto brutto netto fee netto brutto
+netto
+01.09.2026 EXAMPLE EURO SERVICE 0000001 Toll system fee 0949 ST 1 6,00 5,00 6,00 5,00 0,00 5,00 1,00 6,00
+» TOTAL: 1 6,00 5,00 0,00 5,00 1,00 6,00
+VEHICLE: XX1234 CARD NO.: 00000000.0000000001
+01.09.2026 EXAMPLE STATION AB 1000001 10000000000000000001 Toll A - EXAMPLE BOX EUR 0902 ST 1 12,00 10,00 12,00 10,00 0,00 10,00 2,00 12,00
+» TOTAL: 1 12,00 10,00 0,00 10,00 2,00 12,00
+VEHICLE: XX5678 CARD NO.: 00000000.0000000002
+02.09.2026 EXAMPLE FUEL STATION 2000002 03:15 DIESEL 0009 LTR 100,000 1,5000 150,00 150,00
+» TOTAL: 100,000 150,00 150,00
+03.09.2026 EXAMPLE MISC STATION 3000003 30000000000000000003 Misc Fee Example ZZZZ PC 1 5,00
+» TOTAL: 1 5,00
+Gesamtsummenaufstellung nach Leistungsarten mit 20,00 % USt.
+Toll A - EXAMPLE BOX 0902 ST 1 12,00 10,00 0,00 10,00 2,00 12,00
+Toll system fee 0949 ST 1 6,00 5,00 0,00 5,00 1,00 6,00
+» 170,00 3,00 173,00
+Umsatzsteuerstatistik:
+20,00 % 15,00 3,00 18,00
+» 170,00 3,00 173,00
+DKV USt. IdNr.: EX00000000
+EXAMPLE DKV EURO SERVICE GmbH + Co.KG, Example Allee 3, D-00000 Example City
+V1 example legal footer text, not a real company
