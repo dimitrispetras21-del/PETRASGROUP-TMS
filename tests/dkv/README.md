@@ -90,9 +90,9 @@ node tests/dkv/run-synthetic.js
 No `NODE_PATH` needed (`dkv-parser.js` itself has zero dependencies). This
 is the test that actually lives in version control: `fixtures/synthetic-
 invoice.txt`, `fixtures/synthetic-passages.txt`, `fixtures/synthetic-
-summary.txt` are hand-written text shaped exactly like real pdf.js output,
+passages-entryexit.txt`, `fixtures/synthetic-summary.txt` are hand-written text shaped exactly like real pdf.js output,
 for a fake company ("EXAMPLE FRESH S.A."), fake plates (`XX1234`,
-`XX5678`), and fake amounts. It asserts (75 assertions):
+`XX5678`, `XX9012`), and fake amounts. It asserts (88 assertions):
 
 - Number parsing (`parseNum`): 2/3/4-decimal European numbers, thousands
   grouping, HUF-style whole numbers with no decimal comma, negative
@@ -112,6 +112,13 @@ for a fake company ("EXAMPLE FRESH S.A."), fake plates (`XX1234`,
   the expected fields; Σ gross reconciles against the fixture's E-SUMMARY
   row; the passages group's `Ref.` is a suffix of the toll line's
   transaction number (the join rule from spec §1).
+- An entry/exit-style passages doc (the BG/CZ/DE/HR/HU/PL/SI/SK layout,
+  `synthetic-passages-entryexit.txt`): PAN headers followed by an
+  «Emission class …» / «CO2 class …» tail, one with an inner-space plate,
+  produce (plate × entry-date) groups whose plate is the short normalized
+  token — regression for 8/9/2026, when the plate capture ran to
+  end-of-line (17–38 chars on the real CZ/DE/PL/SI/SK files) and no group
+  could ever match a half-month statement line.
 
 ## What extract.js is for
 
