@@ -193,6 +193,8 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .stop.load .num{background:#0B1929}
 .stop .type{font-size:8px;font-weight:800;letter-spacing:1.2px;color:#fff;background:#0B1929;border-radius:3px;padding:2px 7px;text-transform:uppercase}
 .stop.unload .type{background:#0284C7}
+/* Group-cover per-card order tag (finding #6) — muted, next to the type badge */
+.stop .stoptag{font-size:8px;font-weight:700;letter-spacing:.3px;color:#475569;background:#EEF2F6;border-radius:3px;padding:2px 7px;margin-left:6px}
 .stop .name{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:#0B1929;margin:5px 0 1px}
 .stop .addr{font-size:10px;color:#475569;line-height:1.55}
 .stop .addr a{color:#0284C7;text-decoration:none;font-weight:700}
@@ -338,6 +340,9 @@ var LBL=null;
 var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order',
   chk:'',office:'Dispo',emrg:'Emergency 24h',issued:'Issued',
   load:'LOADING',unload:'DELIVERY',dtLoad:'Date & Time of loading',dtDel:'Date & Time of delivery',
+  // Date-only variants (finding #4): the DB columns are dates, not timestamps —
+  // "& Time" must not print for a value that carries no time-of-day.
+  dtLoadDateOnly:'Date of loading',dtDelDateOnly:'Date of delivery',
   hours:'Opening Hours',days:'Delivery Days',goods:'Goods',pal:'Pallets',palU:'pallets',
   pe:'Pallet Exchange',gw:'Gross Weight',temp:'Temperature',refr:'Refrigerator',
   yes:'YES',no:'NO',from:'From',to:'To',loadSec:'Loading Place',delSec:'Delivery Place',
@@ -345,6 +350,7 @@ var LBL_EN={coords:'Coords',cancel:'Supersedes any previous sheet for this order
 var LBL_GR={coords:'Συντ/νες',cancel:'Ακυρώνει κάθε προηγούμενη εντολή για το ίδιο order',
   chk:'ΠΡΙΝ ΤΗΝ ΑΝΑΧΩΡΗΣΗ',office:'Γραφείο κίνησης',emrg:'Έκτακτα 24h',issued:'Έκδοση',
   load:'ΦΟΡΤΩΣΗ',unload:'ΠΑΡΑΔΟΣΗ',dtLoad:'Ημ/νία & ώρα φόρτωσης',dtDel:'Ημ/νία & ώρα παράδοσης',
+  dtLoadDateOnly:'Ημ/νία φόρτωσης',dtDelDateOnly:'Ημ/νία παράδοσης',
   hours:'Ωράριο',days:'Ημέρες παράδοσης',goods:'Εμπόρευμα',pal:'Παλέτες',palU:'παλέτες',
   pe:'Ανταλλαγή παλετών',gw:'Μικτό βάρος',temp:'Θερμοκρασία',refr:'Ψυγείο',
   yes:'ΝΑΙ',no:'ΟΧΙ',from:'Από',to:'Προς',loadSec:'ΦΟΡΤΩΣΗ',delSec:'ΠΑΡΑΔΟΣΗ',
@@ -358,8 +364,23 @@ function stopQR(lat,lng){
   return '<img class="stop-qr" alt="" onerror="this.style.display=\'none\'" src="https://api.qrserver.com/v1/create-qr-code/?size=148x148&margin=0&data='+encodeURIComponent(u)+'">';
 }
 var _stopSeq=0; // συνεχής αρίθμηση σημείων ανά έγγραφο (①②③…)
+// Shared filter+sort used by buildLoadHTML/buildDelHTML/buildCrossdockHTML,
+// routeStrip and waBuild — was duplicated inline in each (audit finding #6).
+function stopsOfType(stops,type){
+  return(stops||[]).filter(function(r){return r.fields['Stop Type']===type;})
+    .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0);});
+}
+// A DB date column with no time-of-day component (no 'T', per fmtDT above)
+// must not be labelled "& ώρα/Time" — audit finding #4.
+function hasTime(s){
+  if(!s)return false;
+  var t=String(s).split('T')[1]; if(!t)return false;
+  t=t.slice(0,5); return t!=='00:00'&&t!=='12:00';
+}
 // dtLabel: 'loading' | 'delivery' | 'crossdock'
-function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr){
+// tag (optional, group cover only — finding #6): small order-of-origin label
+// printed next to the type badge, e.g. "ΠΑΡΑΓΓΕΛΙΑ A · 269 · Lidl Ecser".
+function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,refr,tag){
   var L=LBL||LBL_EN;
   var typeCls='', typeLbl='';
   if(dtLabel==='loading'){typeCls='load'; typeLbl=L.load;}
@@ -372,13 +393,16 @@ function buildCard(num,loc,dtLabel,dt,pals,palType,showDetails,goods,pe,gw,temp,
   h+='<div class="num">'+seq+'</div>';
   h+=stopQR(loc.lat,loc.lng);
   h+='<span class="type">'+typeLbl+'</span>';
+  if(tag)h+='<span class="stoptag">'+tag+'</span>';
   h+='<div class="name">'+loc.name+'</div>';
   var addrBits=[];
   if(loc.address)addrBits.push(loc.address);
   if(mapsUrl)addrBits.push(L.coords+': '+loc.lat+', '+loc.lng+' · <a href="'+mapsUrl+'" target="_blank">📍 '+mapsUrl.replace('https://','')+'</a>');
   if(addrBits.length)h+='<div class="addr">'+addrBits.join('<br>')+'</div>';
   h+='<div class="grid">';
-  h+='<div class="f"><b>'+(dtLabel==='delivery'?L.dtDel:L.dtLoad)+'</b><span class="big">'+fmtDT(dt)+'</span></div>';
+  var withTime=hasTime(dt);
+  var dtLbl=dtLabel==='delivery'?(withTime?L.dtDel:L.dtDelDateOnly):(withTime?L.dtLoad:L.dtLoadDateOnly);
+  h+='<div class="f"><b>'+dtLbl+'</b><span class="big">'+fmtDT(dt)+'</span></div>';
   if(loc.hours)h+='<div class="f"><b>'+L.hours+'</b><span>'+loc.hours+'</span></div>';
   if(loc.days)h+='<div class="f"><b>'+L.days+'</b><span>'+loc.days+'</span></div>';
   h+='<div class="f"><b>'+L.pal+'</b><span>'+(pals||'—')+' × '+(palType||'EUR')+'</span></div>';
@@ -410,8 +434,7 @@ function routeStrip(f,isExport,veroiaSwitch,VEROIA){
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
   // First loading / last unloading stop of the order, by Stop Number.
   function stopAt(type,last){
-    var st=orderStops.filter(function(r){return r.fields['Stop Type']===type})
-      .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+    var st=stopsOfType(orderStops,type);
     return st.length?st[last?st.length-1:0]:null;
   }
   // Fallback στα ORDER_STOPS όταν τα Summaries λείπουν (stops-based orders)
@@ -453,8 +476,7 @@ function buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       fv(f['Total Pallets']),fv(f['Pallet Type']),true,fv(f['Goods']),
       f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],f['Temperature °C'],f['Refrigerator Mode']);
   }
-  var loadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Loading'})
-    .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+  var loadStops=stopsOfType(orderStops,'Loading');
   if(loadStops.length){
     var html='';
     for(var si=0;si<loadStops.length;si++){
@@ -485,8 +507,7 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
   }
   // Try ORDER_STOPS first
-  var unloadStops=orderStops.filter(function(r){return r.fields['Stop Type']==='Unloading'})
-    .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)});
+  var unloadStops=stopsOfType(orderStops,'Unloading');
   if(unloadStops.length){
     var html='';
     for(var si=0;si<unloadStops.length;si++){
@@ -494,14 +515,42 @@ function buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG){
       var loc=resolveLoc(sf['Location']);
       if(!loc)continue;
       var stopDt=sf['DateTime']||dt;
+      // Finding #3: this used to pass showDetails=false and blank strings, so
+      // a stop's own Goods/Temperature (present in ORDER STOPS) never printed
+      // on the delivery card even when the loading card showed the same data
+      // for its stop. Mirror buildLoadHTML's per-stop pattern exactly —
+      // details (incl. goods/temp) only on the first card, order-level PE/GW
+      // fallback like the loading side.
       html+=buildCard(si+1,loc,'delivery',stopDt,sf['Pallets']||'',
-        fv(f['Pallet Type']),false,'','','','','');
+        fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
+        f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
+        sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
     }
     if(html)return html;
   }
   var flU=flatLoc(f,'Unloading',true);
   return buildCard(1,flU||{name:'—',address:'',lat:'',lng:''},'delivery',dt,
     fv(f['Unloading Pallets 1'])||fv(f['Total Pallets']),fv(f['Pallet Type']),false,'','','','','');
+}
+
+// Finding #2: a 'Cross-dock' stop (Veroia Switch, real ORDER STOPS row) was
+// silently dropped — buildLoadHTML only reads 'Loading', buildDelHTML only
+// 'Unloading'. Render it as its own card (buildCard already supports
+// dtLabel==='crossdock'), same per-stop pattern as the loading/delivery cards.
+function buildCrossdockHTML(f){
+  var cdStops=stopsOfType(orderStops,'Cross-dock');
+  if(!cdStops.length)return'';
+  var html='';
+  for(var si=0;si<cdStops.length;si++){
+    var sf=cdStops[si].fields;
+    var loc=resolveLoc(sf['Location']);
+    if(!loc)continue;
+    html+=buildCard(si+1,loc,'crossdock',sf['DateTime']||'',sf['Pallets']||'',
+      fv(f['Pallet Type']),si===0,sf['Goods']||fv(f['Goods']),
+      f['Pallet Exchange']?'YES':'NO',f['Gross Weight kg'],
+      sf['Temperature']!=null?sf['Temperature']:f['Temperature °C'],f['Refrigerator Mode']);
+  }
+  return html;
 }
 
 function badges(f){
@@ -547,19 +596,33 @@ async function loadAll(){
     allPartners=partners;allTrucks=trucks;allTrailers=trailers;
     allDrivers=drivers;allLocations=locs;
     window.__locsFailed=!(locs&&locs.length);
-    // Wave 3 (Π1): one document per order, sequentially — single or group.
-    var htmlArr=[]; _waArr=[];
+    // Wave 3 (Π1) + finding #6 (2026-09-08): fetch every order + its stops
+    // FIRST (items[]), so a group print can build ONE cover document ahead of
+    // the per-order documents — the old loop built+pushed each order's own
+    // document as it fetched it, leaving no point to assemble a cross-order
+    // summary before the per-order set.
+    var items=[];
     for(var oi=0;oi<orderIdList.length;oi++){
       var orderR=await atGet(T_ORDERS,orderIdList[oi]);
-      orderStops=[];
+      var stops=[];
       var stopIds=orderR.fields['ORDER STOPS']||[];
       if(stopIds.length){
         try{
           var stopFilter='OR('+stopIds.map(function(id){return'RECORD_ID()="'+id+'"'}).join(',')+')';
-          orderStops=await atFetch(T_STOPS,'&filterByFormula='+encodeURIComponent(stopFilter));
+          stops=await atFetch(T_STOPS,'&filterByFormula='+encodeURIComponent(stopFilter));
         }catch(e){console.warn('print: ORDER_STOPS fetch failed',e);}
       }
-      htmlArr.push(generatePDF(orderR, oi>0));
+      items.push({orderRec:orderR, stops:stops});
+    }
+    var htmlArr=[]; _waArr=[];
+    var isGroup=items.length>1;
+    if(isGroup) htmlArr.push(buildCoverDoc(items));
+    for(var ii=0;ii<items.length;ii++){
+      orderStops=items[ii].stops; // generatePDF/buildLoadHTML/etc. read this module global
+      // A group's per-order docs are all bare (no toolbar) — the cover carries
+      // the ONE Print/WhatsApp toolbar for the whole packet. Single order: same
+      // as before (toolbar on its one and only document).
+      htmlArr.push(generatePDF(items[ii].orderRec, isGroup));
     }
     renderDocs(htmlArr);
   }catch(err){
@@ -573,8 +636,7 @@ function waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLin
   var L=LBL, EMO=['1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣'];
   function t(x){x=String(x||'').split(',')[0].trim();return x;}
   function fromStops(type){
-    return orderStops.filter(function(r){return r.fields['Stop Type']===type})
-      .sort(function(a,b){return(a.fields['Stop Number']||0)-(b.fields['Stop Number']||0)})
+    return stopsOfType(orderStops,type)
       .map(function(r){var lc=resolveLoc(r.fields['Location'])||{};
         return {name:lc.name||'—',addr:lc.address||'',lat:lc.lat,lng:lc.lng,dt:r.fields['DateTime']||''};});
   }
@@ -621,14 +683,24 @@ function copyWA(btn){
     setTimeout(function(){btn.textContent=t0;},2200);
   });
 }
+// Shared by generatePDF and buildCoverDoc (finding #6) — the group cover must
+// pick the same driver/partner sheet the per-order docs would use.
+function computeIsPartner(f){
+  return sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
+}
 function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N of a group
   var f=orderRec.fields;
   var isExport=leg==='export';
   var legLabel=isExport?'Export':'Import';
   var wk=f['Week Number']||f['Week Number']||'—';
   var rate=eur(f['Partner Rate']);
-  var orderNo=f['Order Number']||String(orderRec.id||orderId||'').slice(-6).toUpperCase(); // group-safe (Wave 3 fix)
-  var isPartner=sheetParam==='partner'?true:sheetParam==='driver'?false:!!(f['Is Partner Trip']||(f['Partner']||[]).length);
+  // Audit finding #1 (2026-09-08): 'Order Number' is never provided by the
+  // Worker (legacy Airtable label — see CLAUDE.md name traps). The real
+  // sequential id is 'Order No' (worker/src/index.js computed field,
+  // orders_with_derived.order_no). Reference is the next best human id;
+  // the record-id fallback stays last-resort only.
+  var orderNo=f['Order No']||f['Reference']||String(orderRec.id||orderId||'').slice(-6).toUpperCase();
+  var isPartner=computeIsPartner(f);
   LBL=isPartner?LBL_EN:LBL_GR; // Συνεργάτης=EN, Οδηγός=GR (redesign 9/8)
   _stopSeq=0; // v2.1: συνεχής αρίθμηση σημείων ①② ανά έγγραφο
   var legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
@@ -653,6 +725,11 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
   if(isPartner){ VEROIA=VADDR||'Loading Point'; VADDR=''; }
 
   var loadHTML=buildLoadHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
+  // Finding #2: a real 'Cross-dock' ORDER STOPS row (distinct from the
+  // simulated Veroia-Switch leg above) goes between loading and unloading,
+  // in the timeline order the driver actually visits them, with continuous
+  // numbering — buildCard increments _stopSeq as each function is called.
+  var cdHTML=buildCrossdockHTML(f);
   var delHTML=buildDelHTML(f,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG);
   var badgeHTML=badges(f);
   var rawNotes=f['Notes']||'';
@@ -748,7 +825,7 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
       '<div class="terms"><div class="k">Payment</div>30 days after CMR<br><small>Original CMR + delivery note required</small></div>'+
     '</div>'+
     chipsHTML+
-    '<div class="tl">'+loadHTML+delHTML+'</div>'+
+    '<div class="tl">'+loadHTML+cdHTML+delHTML+'</div>'+
     notesHTML+
     contactHTML+
     '<div class="sigs2">'+
@@ -763,15 +840,27 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     var truckW=tf['Tare Weight kg']!=null?parseFloat(tf['Tare Weight kg']):null;
     var trailerW=trf['Tare Weight kg']!=null?parseFloat(trf['Tare Weight kg']):null;
     // Owner (9/8): μικτό = απόβαρο φορτηγού + απόβαρο τρέιλερ + μικτό φορτίου
-    var cargoW=parseFloat(f['Gross Weight kg']||0);
+    var haveGross=f['Gross Weight kg']!=null&&f['Gross Weight kg']!==''&&!isNaN(parseFloat(f['Gross Weight kg']));
+    var cargoW=haveGross?parseFloat(f['Gross Weight kg']):0;
     // Σύνολο ΜΟΝΟ όταν ξέρουμε και τα τρία. 15/36 φορτηγά δεν έχουν απόβαρο
     // καταχωρημένο· εκεί τυπώνεται το φορτίο με ρητή ένδειξη τι λείπει, ώστε
     // κανείς να μη διαβάσει μερικό άθροισμα ως μικτό βάρος.
     var tareKnown=(truckW!=null&&!isNaN(truckW))&&(trailerW!=null&&!isNaN(trailerW));
-    var totalW=tareKnown?truckW+trailerW+cargoW:null;
+    var tareSum=tareKnown?truckW+trailerW:null;
+    var totalW=(tareKnown&&haveGross)?tareSum+cargoW:null;
     var missTare=[];
     if(truckW==null||isNaN(truckW)) missTare.push('φορτηγού');
     if(trailerW==null||isNaN(trailerW)) missTare.push('ρυμούλκας');
+    // Finding #5: with no Gross Weight, the old code summed the two tare
+    // figures alone and printed that AS "Μικτό βάρος" (gross) — a number that
+    // looks like gross but is only the empty vehicle's weight. Never print
+    // ΜΙΚΤΟ ΒΑΡΟΣ without an actual gross figure; show the tare, labelled
+    // ΑΠΟΒΑΡΟ, instead.
+    var weightLbl='Μικτό βάρος', weightVal;
+    if(totalW>0){ weightVal=totalW.toLocaleString('de-DE')+' <small>KG</small>'; }
+    else if(!haveGross&&tareKnown){ weightLbl='Απόβαρο'; weightVal=tareSum.toLocaleString('de-DE')+' <small>KG</small>'; }
+    else if(cargoW>0){ weightVal=cargoW.toLocaleString('de-DE')+' <small>KG φορτίο</small><br><small style="color:#b91c1c">χωρίς απόβαρο '+missTare.join(' και ')+'</small>'; }
+    else { weightVal='—'; }
     html=pbarHTML+
     '<div class="doc-header">'+
       '<div class="brand-wrap" style="text-align:left">'+
@@ -791,12 +880,12 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
       '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
       '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
       '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
-      '<div class="c"><div class="k">Μικτό βάρος</div><div class="v">'+(totalW>0?totalW.toLocaleString('de-DE')+' <small>KG</small>':(cargoW>0?cargoW.toLocaleString('de-DE')+' <small>KG φορτίο</small><br><small style="color:#b91c1c">χωρίς απόβαρο '+missTare.join(' και ')+'</small>':'—'))+'</div></div>'+
+      '<div class="c"><div class="k">'+weightLbl+'</div><div class="v">'+weightVal+'</div></div>'+
     '</div>'+
     routeStrip(f,isExport,veroiaSwitch,VEROIA)+
     chipsHTML+
     metaHTML+
-    '<div class="tl">'+loadHTML+delHTML+'</div>'+
+    '<div class="tl">'+loadHTML+cdHTML+delHTML+'</div>'+
     notesHTML+
     chkHTML+
     contactHTML+
@@ -815,6 +904,142 @@ function generatePDF(orderRec, bare){ // bare (Wave 3): no toolbar — docs 2..N
     _waArr.push(waBuild(f,isPartner,isExport,veroiaSwitch,VEROIA,VADDR,VLAT,VLNG,vehLine,orderNo,wk,refNo));
   }catch(e){console.warn('waBuild:',e);}
   return html; // Wave 3: assembly + print moved to renderDocs (single & group)
+}
+
+// Finding #6 (2026-09-08): a group print handed the driver N loose per-order
+// documents with no combined view — the pickup/drop-off SEQUENCE across the
+// whole load only became visible after reading every page. This builds ONE
+// lead sheet FIRST, reusing the same blocks/functions as the per-order sheet
+// (buildCard, the .vb/.route2/.cargo/.meta/.chk/.sigs2 markup), followed
+// unchanged by the per-order documents (loadAll). items: [{orderRec, stops}].
+function buildCoverDoc(items){
+  var f0=items[0].orderRec.fields;
+  var isPartner=computeIsPartner(f0);
+  LBL=isPartner?LBL_EN:LBL_GR;
+  _stopSeq=0; // continuous numbering across the WHOLE cover timeline
+  var isExport=leg==='export';
+  var legLabel=isExport?'Export':'Import', legLabelGr=isExport?'Εξαγωγή':'Εισαγωγή';
+  var wk=f0['Week Number']||'—';
+
+  function ordNoOf(rec){
+    var f=rec.fields;
+    return f['Order No']||f['Reference']||String(rec.id||'').slice(-6).toUpperCase();
+  }
+
+  // Route: first loading of the FIRST order → last unloading of the LAST
+  // order, in the given orderIds order — the group is one continuous run.
+  var firstLoads=stopsOfType(items[0].stops,'Loading');
+  var lastUnloads=stopsOfType(items[items.length-1].stops,'Unloading');
+  var fromStop=firstLoads[0], toStop=lastUnloads[lastUnloads.length-1];
+  var fromLoc=fromStop?resolveLoc(fromStop.fields['Location']):null;
+  var toLoc=toStop?resolveLoc(toStop.fields['Location']):null;
+  var routeHTML='<div class="route2">'+
+    '<div class="side"><div class="k">'+LBL.from+'</div><div class="n">'+(fromLoc?fromLoc.name:'—')+'</div><div class="d">'+fmtDT(fromStop?fromStop.fields['DateTime']:'')+'</div></div>'+
+    '<div class="mid">→</div>'+
+    '<div class="side to"><div class="k">'+LBL.to+'</div><div class="n">'+(toLoc?toLoc.name:'—')+'</div><div class="d">'+fmtDT(toStop?toStop.fields['DateTime']:'')+'</div></div>'+
+  '</div>';
+
+  // 4 cargo chips, totalled/merged across every order in the group.
+  var totalPallets=0, anyPE=false, temps=[], goodsList=[];
+  items.forEach(function(it){
+    var f=it.orderRec.fields;
+    var p=parseFloat(fv(f['Total Pallets'])); if(!isNaN(p)) totalPallets+=p;
+    if(f['Pallet Exchange']) anyPE=true;
+    if(f['Temperature °C']!==''&&f['Temperature °C']!=null&&temps.indexOf(String(f['Temperature °C']))<0) temps.push(String(f['Temperature °C']));
+    if(fv(f['Goods'])&&goodsList.indexOf(fv(f['Goods']))<0) goodsList.push(fv(f['Goods']));
+  });
+  var chipsHTML='<div class="cargo">'+
+    '<div class="chip"><div class="k">'+LBL.pal+'</div><div class="v">'+(totalPallets||'—')+' <small>× '+(fv(f0['Pallet Type'])||'EUR')+'</small></div></div>'+
+    '<div class="chip '+(anyPE?'pe-yes':'pe-no')+'"><div class="k">'+LBL.pe+'</div><div class="v">'+(anyPE?LBL.yes:LBL.no)+'</div></div>'+
+    '<div class="chip temp"><div class="k">'+LBL.temp+'</div><div class="v">'+(temps.length?temps.join(' / ')+'°C':'—')+'</div></div>'+
+    '<div class="chip"><div class="k">'+LBL.goods+'</div><div class="v" style="font-size:11.5px">'+(goodsList.length?goodsList.join(' · '):'—')+'</div></div>'+
+  '</div>';
+
+  // Vehicle bar: the group shares one truck/trailer/driver once assigned
+  // (a merged Weekly International row) — read from the first order.
+  var driver=allDrivers.find(function(r){return f0['Driver']&&r.id===f0['Driver'][0];})||{};
+  var truck=allTrucks.find(function(r){return f0['Truck']&&r.id===f0['Truck'][0];})||{};
+  var trailer=allTrailers.find(function(r){return f0['Trailer']&&r.id===f0['Trailer'][0];})||{};
+  var df=driver.fields||{}, tf=truck.fields||{}, trf=trailer.fields||{};
+  var vbHTML=isPartner?'':'<div class="vb">'+
+    '<div class="c"><div class="k">Οδηγός</div><div class="v">'+(df['Full Name']||'—')+'</div></div>'+
+    '<div class="c"><div class="k">Φορτηγό</div><div class="v">'+(tf['License Plate']||'—')+'</div></div>'+
+    '<div class="c"><div class="k">Τρέιλερ</div><div class="v">'+(trf['License Plate']||'—')+'</div></div>'+
+  '</div>';
+
+  // Meta grid: every order number/reference in the group + delivery sequence.
+  var orderNos=items.map(function(it){return ordNoOf(it.orderRec);});
+  var seqNames=items.map(function(it,i){
+    var uns=stopsOfType(it.stops,'Unloading'), last=uns[uns.length-1];
+    var loc=last?resolveLoc(last.fields['Location']):null;
+    return String.fromCharCode(65+i)+'. '+(loc?loc.name:'—');
+  });
+  var _m=isPartner
+    ?{wk:'Week',cat:'Category',ord:'Order Nos',seq:'Delivery Sequence'}
+    :{wk:'Εβδομάδα',cat:'Κατηγορία',ord:'Αρ. Εντολών',seq:'ΣΕΙΡΑ ΠΑΡΑΔΟΣΗΣ'};
+  var metaHTML='<div class="meta">'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.wk+'</span><span class="meta-val">W'+wk+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.cat+'</span><span class="meta-val">'+(isPartner?legLabel:legLabelGr)+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.ord+'</span><span class="meta-val">'+orderNos.join(' · ')+'</span></div>'+
+    '<div class="meta-item"><span class="meta-lbl">'+_m.seq+'</span><span class="meta-val">'+seqNames.join(' → ')+'</span></div>'+
+  '</div>';
+
+  // Timeline: loadings of EVERY order first (in the given id order), then
+  // unloadings of every order (same order) — continuous numbering (buildCard
+  // increments the shared _stopSeq), each card tagged with its own order.
+  var tlHTML='';
+  function cardsOf(type,dtLabel){
+    items.forEach(function(it,i){
+      var f=it.orderRec.fields;
+      var uns=stopsOfType(it.stops,'Unloading'), lastUn=uns[uns.length-1];
+      var lastName=lastUn?(resolveLoc(lastUn.fields['Location'])||{}).name:'—';
+      var tag='ΠΑΡΑΓΓΕΛΙΑ '+String.fromCharCode(65+i)+' · '+ordNoOf(it.orderRec)+' · '+lastName;
+      stopsOfType(it.stops,type).forEach(function(s){
+        var loc=resolveLoc(s.fields['Location']); if(!loc)return;
+        tlHTML+=buildCard(0,loc,dtLabel,s.fields['DateTime']||'',s.fields['Pallets']||'',
+          fv(f['Pallet Type']),false,'','','','','',tag);
+      });
+    });
+  }
+  cardsOf('Loading','loading');
+  cardsOf('Unloading','delivery');
+
+  var chkHTML=isPartner?'':'<div class="chk"><b>'+LBL.chk+'</b>'+
+    '<span>☐ Θερμογράφος σε λειτουργία</span><span>☐ Τρέιλερ καθαρό / προψυγμένο</span>'+
+    '<span>☐ Παλέτες μετρημένες</span><span>☐ CMR υπογεγραμμένο</span></div>';
+  var contactBits=[];
+  if(OFFICE_PHONE)contactBits.push('<span><b>'+LBL.office+':</b> '+OFFICE_PHONE+'</span>');
+  if(EMERGENCY_PHONE)contactBits.push('<span><b>'+LBL.emrg+':</b> '+EMERGENCY_PHONE+'</span>');
+  if(OFFICE_EMAIL)contactBits.push('<span><b>Email:</b> '+OFFICE_EMAIL+'</span>');
+  if(INVOICE_EMAIL)contactBits.push('<span><b>Invoicing:</b> '+INVOICE_EMAIL+'</span>');
+  var contactHTML=contactBits.length?'<div class="contact2">'+contactBits.join('')+'</div>':'';
+  var sigsHTML='<div class="sigs2">'+
+    '<div class="s"><div class="who">VERMION FRESH SA / PETRAS GROUP</div><div class="role">Dispatcher</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+    '<div class="s"><div class="who">'+(df['Full Name']||'—')+'</div><div class="role">Οδηγός · Παραλαβή εντολής</div><div class="line">Υπογραφή &amp; Ημερομηνία</div></div>'+
+  '</div>';
+
+  var titleStr=(isPartner?'Partner Assignment Order — Group':'Εντολή Οδηγού · Ομάδα')+' — '+legLabel+' — W'+wk;
+  window._shTitle=titleStr;
+  var pbarHTML='<div class="pbar"><div class="pbar-left">'+
+    '<span class="pbar-logo">PETRAS<span> GROUP</span></span>'+
+    '<div class="pbar-div"></div>'+
+    '<span class="pbar-title">'+titleStr+'</span>'+
+    '</div><div><button class="pbar-btn wa" onclick="copyWA(this)">📋 WhatsApp</button><button class="pbar-btn" onclick="window.print()">Print / PDF</button></div></div>'+
+    '<div class="pbar-spacer"></div>';
+  var hdHTML='<div class="doc-header">'+
+    '<div class="brand-wrap" style="text-align:left">'+
+      '<div class="brand">PETRAS<span> GROUP</span></div>'+
+      '<div class="brand-sub">International Road Transport Services</div>'+
+      '<div class="co-info" style="text-align:left"><b>VERMION FRESH SA</b><br>Kopanos, Naousa — Imathia<br>vermionfresh@petrasgroup.com</div>'+
+    '</div>'+
+    '<div class="doctag">'+
+      '<div class="k">'+(isPartner?'Group Order':'Εντολή Οδηγού · Ομάδα')+'</div>'+
+      '<div class="t">W'+wk+' · '+(isPartner?legLabel:legLabelGr)+'</div>'+
+      '<div class="s">'+LBL.issued+' '+new Date().toLocaleDateString('el-GR')+' '+new Date().toLocaleTimeString('el-GR',{hour:'2-digit',minute:'2-digit'})+' · '+DISPATCHER+'</div>'+
+    '</div>'+
+  '</div>';
+
+  return pbarHTML+hdHTML+vbHTML+routeHTML+chipsHTML+metaHTML+'<div class="tl">'+tlHTML+'</div>'+chkHTML+contactHTML+sigsHTML;
 }
 
 // Wave 3 (Π1): assemble one or many documents. Group mode: page-break between
