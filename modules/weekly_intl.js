@@ -2846,6 +2846,7 @@ async function _wiRemoveImport(rowId){
     // per member, same fix as the assignment-clear above.
     if(typeof rtOnImportUnmatched === 'function'){
       for(const memberId of giGroup.members){
+        if(keptExecuting.includes(memberId)) continue; // executing member keeps its round-trip leg too
         rtOnImportUnmatched(row.orderIds[0], memberId).catch(e => console.warn('[wi unmatch] rt sync:', e && e.message));
       }
     }
