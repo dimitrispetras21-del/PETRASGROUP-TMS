@@ -761,9 +761,13 @@ function _wiBuildRows(){
     });
     Object.values(byGid).forEach(list=>{
       if(list.length<2) return;
-      list.sort((a,b)=>String(impById[a.orderId]?.fields['Loading DateTime']||'').localeCompare(String(impById[b.orderId]?.fields['Loading DateTime']||'')));
-      const [lead,...rest]=list;
-      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); });
+      const ordered=_wiGiSortRecs(list.map(r=>impById[r.orderId]||{id:r.orderId,fields:{}})).map(rec=>list.find(r=>r.orderId===rec.id));
+      const [lead,...rest]=ordered;
+      // The export may point at ANY member (the lead of an earlier render, or
+      // a member the stop order has since moved) — the group is matched if
+      // any member is, otherwise the board shows it free while the export
+      // still carries it.
+      rest.forEach(r=>{ r.orderIds.forEach(id=>{ if(!lead.orderIds.includes(id)) lead.orderIds.push(id); }); if(!lead.matchedTo&&r.matchedTo) lead.matchedTo=r.matchedTo; });
       WINTL.rows=WINTL.rows.filter(r=>!rest.includes(r));
     });
   }
@@ -2571,6 +2575,22 @@ async function _wiDropOnPanel(e,rowId){
 // database, never WINTL's cache — the cache is exactly what was stale in the
 // 17-second case. A failed read counts as planning (old behaviour) and is
 // logged, so a transient error never silently blocks an unmatch.
+// GI- member order (dispatcher 9/9, 307/308): the board and every group
+// lookup used to sort members by Loading DateTime ALONE, so two members
+// loading the same day came back in fetch order — a different "lead" on every
+// render. The export's Matched Import ID names one member; when the lead
+// flipped to the other one the group rendered as a standalone row with its own
+// vehicle while the export still showed it matched («έμεινε μόνο του με
+// ανάθεση»). Order is the Group ID suffix (stop order, written by the segment
+// drag), then Loading DateTime, then id — never fetch order.
+function _wiGiSortRecs(recs){
+  const gid=String((recs.find(r=>r?.fields?.['Group ID'])||{}).fields?.['Group ID']||'');
+  const seq=(gid.split('|')[1]||'').split(',').filter(Boolean);
+  const pos=id=>{const k=seq.indexOf(id);return k<0?99:k;};
+  return [...recs].sort((a,b)=>pos(a.id)-pos(b.id)
+    ||String(a.fields?.['Loading DateTime']||'').localeCompare(String(b.fields?.['Loading DateTime']||''))
+    ||String(a.id).localeCompare(String(b.id)));
+}
 const WI_EXECUTING=['In Transit','Delivered'];
 async function _wiExecutingLive(oid){
   try{ const r=await atGetOne(TABLES.ORDERS,oid); return WI_EXECUTING.includes(String(r?.fields?.['Status']||'')); }
@@ -2593,8 +2613,8 @@ async function _wiGiGroup(impId, knownRec){
   try{
     const sibs = await atGetAll(TABLES.ORDERS, { filterByFormula: `{Group ID}='${gid}'` }, true) || [];
     if(!sibs.length) return { lead: impId, members: [impId] };
-    sibs.sort((a,b)=>String(a.fields['Loading DateTime']||'').localeCompare(String(b.fields['Loading DateTime']||'')));
-    return { lead: sibs[0].id, members: sibs.map(s=>s.id) };
+    const sorted=_wiGiSortRecs(sibs);
+    return { lead: sorted[0].id, members: sorted.map(s=>s.id) };
   }catch(e){
     if (typeof logError === 'function') logError(e, '_wiGiGroup: sibling lookup failed (single-member fallback)');
     return { lead: impId, members: [impId] };
