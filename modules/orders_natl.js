@@ -1523,7 +1523,16 @@ async function submitNatlOrder(recId) {
       if (!fields['National Groupage']) {
         // Non-groupage → create/update NL record
         const fullRec = await atGetOne(TABLES.NAT_ORDERS, savedNatlId);
-        if (fullRec.fields) await _syncNationalLoad(savedNatlId, fullRec.fields, false);
+        if (fullRec.fields) {
+          const nlId = await _syncNationalLoad(savedNatlId, fullRec.fields, false);
+          // 9/9 (owner): a load created from an empty ΑΝΟΔΟΣ cell on Weekly
+          // National is bound to that ΚΑΘΟΔΟΣ row — same handshake as
+          // weekly_intl's _wiConsumePendingMatch, and only on CREATE.
+          if (!recId && nlId && typeof window._wnConsumePendingMatch === 'function') {
+            try { await window._wnConsumePendingMatch(nlId, fullRec.fields); }
+            catch(e) { if (typeof logError === 'function') logError(e, '_wnConsumePendingMatch'); }
+          }
+        }
       } else {
         // Groupage ON → remove NL (CL save will create its own NL)
         await _syncNationalLoad(savedNatlId, {}, true);
@@ -1878,6 +1887,7 @@ async function _syncNationalLoad(noId, noFields, isDelete) {
       catch(e) { console.warn('NL ORDER_STOPS write error:', e); }
     }
   }
+  return _nlRecId; // 9/9: the Weekly National «new ΑΝΟΔΟΣ from a row» needs the load's id to bind it
 
   } finally {
     _syncingNLs.delete(noId);
@@ -2501,6 +2511,7 @@ function _natlPrint() {
 
 window.renderOrdersNatl = renderOrdersNatl;
 window.openNatlCreate = openNatlCreate;
+window.openNatlCreateWith = f => _openNatlModal(null, f || {}); // 9/9: Weekly National «νέα άνοδος» prefill
 window.openNatlEdit = openNatlEdit;
 window.selectNatlOrder = selectNatlOrder;
 window.toggleNatlInvoiced = toggleNatlInvoiced;

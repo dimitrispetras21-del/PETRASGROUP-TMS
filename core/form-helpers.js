@@ -182,12 +182,23 @@ function fhHideDrop(dropId) {
 /**
  * Show location dropdown filtered by query
  */
+// 9/9 (owner: «πληκτρολογούσα και δεν εμφανίζονταν τοποθεσίες»): locations are
+// stored in Latin/ELOT 743 spelling (9/8 decision), so a dispatcher typing
+// «Βέροια» matched nothing. Compare both sides transliterated and accent-free.
+const _FH_EL = { 'α':'a','β':'v','γ':'g','δ':'d','ε':'e','ζ':'z','η':'i','θ':'th','ι':'i','κ':'k','λ':'l','μ':'m','ν':'n','ξ':'x','ο':'o','π':'p','ρ':'r','σ':'s','ς':'s','τ':'t','υ':'y','φ':'f','χ':'ch','ψ':'ps','ω':'o' };
+function _fhNorm(s) {
+  let t = String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  t = t.replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/(^|\s)μπ/g, '$1b').replace(/(^|\s)ντ/g, '$1d').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk');
+  return t.replace(/[α-ω]/g, c => _FH_EL[c] || c);
+}
 function fhLocDrop(id, q) {
-  const pool = q.trim()
-    ? _fhLocationsArr.filter(o => o.label.toLowerCase().includes(q.toLowerCase())).slice(0, 25)
+  const nq = _fhNorm(q.trim());
+  const pool = nq
+    ? _fhLocationsArr.filter(o => (o._n || (o._n = _fhNorm(o.label))).includes(nq)).slice(0, 25)
     : _fhLocationsArr.slice(0, 25);
   fhShowDrop('ls_' + id + '_d', id, pool);
 }
+if (typeof window !== 'undefined') window._fhNorm = _fhNorm;
 
 /**
  * Show client dropdown with async search

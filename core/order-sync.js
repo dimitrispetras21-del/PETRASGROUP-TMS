@@ -56,7 +56,14 @@ const _orderSync = (function() {
     // 2. Veroia Switch chain (intl only)
     if (source === 'intl' && !skipVS) {
       await run('VS chain', async () => {
-        if (typeof _syncVeroiaSwitch !== 'function') return;
+        if (typeof _syncVeroiaSwitch !== 'function') {
+          // 9/9: this silent return hid a dead VS chain for weeks (orders_intl.js
+          // kept the function inside its IIFE). Never again quiet.
+          const err = new Error('VS chain unavailable: _syncVeroiaSwitch is not exposed');
+          if (typeof logError === 'function') logError(err, 'order-sync.VS chain');
+          if (typeof toast === 'function') toast('Ο συγχρονισμός Veroia Switch δεν έτρεξε — ενημέρωσε το Weekly National χειροκίνητα', 'warn');
+          return;
+        }
         const rec = await atGetOne(TABLES.ORDERS, orderId).catch(e => {
           console.warn('[order-sync] VS chain fetch failed:', e && e.message);
           return null;
@@ -79,6 +86,8 @@ const _orderSync = (function() {
         if (typeof _rampAutoSync === 'function') {
           // Fire-and-forget — RAMP sync fetches its own data by date
           _rampAutoSync().catch(e => console.warn('[order-sync] RAMP bg sync:', e));
+        } else if (typeof logError === 'function') {
+          logError(new Error('RAMP chain unavailable: _rampAutoSync is not exposed'), 'order-sync.RAMP sync');
         }
       });
     }

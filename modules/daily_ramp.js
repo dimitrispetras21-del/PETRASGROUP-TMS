@@ -948,4 +948,7 @@ window._rampPostpone = _rampPostpone;
 window._rampSaveNew = _rampSaveNew;
 window._rampSvF = _rampSvF;
 window._rampSvTime = _rampSvTime;
+// 9/9: order-sync.js calls `_rampAutoSync` by global name — inside the IIFE it
+// was invisible and the RAMP step of every downstream sync silently skipped.
+window._rampAutoSync = _rampAutoSync;
 })();

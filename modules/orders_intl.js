@@ -3380,6 +3380,14 @@ window._clientDrop = fhClientDrop;
 window._hideDrop = fhHideDrop;
 window._showDrop = fhShowDrop;
 window._pickLinked = fhPickLinked;
+// 9/9 (owner: «άλλαξα ημερομηνία σε Veroia Switch, το Weekly National δεν
+// ενημερώθηκε»): core/order-sync.js runs the VS chain through the GLOBAL
+// `_syncVeroiaSwitch`, but this function lived only inside this IIFE — so the
+// chain's `typeof !== 'function'` guard returned silently on EVERY date change
+// from the Weekly board / Daily Ops (proof: Worker log 12:53, PATCH orders/318
+// followed by no NAT_LOADS request at all). Only the order form, which calls
+// it directly, ever synced.
+window._syncVeroiaSwitch = _syncVeroiaSwitch;
 // _oiPage is mutated from onclick (++/--) so expose as getter/setter
 Object.defineProperty(window, '_oiPage', {
   get: function() { return _oiPage; },

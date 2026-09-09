@@ -273,6 +273,9 @@ function _wnBuildRows() {
    να μην ανανεωθεί, όπως θα γινόταν και χωρίς αυτόν. */
 function _wnNewOrder() {
   openNatlCreate();
+  _wnRerenderOnClose();
+}
+function _wnRerenderOnClose() {
   const ov = document.getElementById('modalOverlay');
   if (!ov) return;
   const visible = () => ov.style.display !== 'none' && !ov.hidden;
@@ -1250,7 +1253,7 @@ function _wnRowHTML(row, i) {
   //   Excel. Δεν καλεί σε drag· δείχνει —, γιατί δεν λείπει τίποτα.
   //   «δεν ταιριάχτηκε ακόμη» — όλα τα υπόλοιπα. Καλεί σε drag.
   const isOneWay = !sn && row.saved && isPartner;
-  const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay);
+  const snCell = sn ? _wnSnInlineCell(sn, row.id) : _wnDragCell(isOneWay, row.id);
 
   // Φέτα 4 (Δ9): πολυστάσιο φορτίο → συμπτυγμένο σήμα «▸ N σημεία · x/33».
   // Το γέμισμα από το Total Pallets της γραμμής (κανονικό <30 · πορτοκαλί ≥30
@@ -1483,13 +1486,44 @@ function _wnSnInlineCell(snRec, rowId) {
 }
 
 /* ── Κενό σκέλος ανόδου — δύο διαφορετικά νοήματα (Φέτα 2, contract #8) ── */
-function _wnDragCell(isOneWay) {
+function _wnDragCell(isOneWay, rowId) {
   return isOneWay
     ? `<div class="wn4-dark" title="Μονή διαδρομή — δεν υπάρχει σκέλος ανόδου (το Χ του Excel)"><span class="nolg">—</span>&nbsp;μονή διαδρομή</div>`
     // Δ6 (3/9): η οδηγία ζει ΜΙΑ φορά — στο υπόμνημα και στο hover του κελιού.
     // Τυπωμένη σε κάθε γραμμή ήταν θόρυβος: μια οδηγία που επαναλαμβάνεται σε
     // κάθε άδειο κελί παύει να διαβάζεται. Το «—» είναι ό,τι βάζει και το intl.
-    : `<div class="wn4-drop" title="Σύρε μια άνοδο εδώ για ταίριασμα σε round trip — ή άφησέ το κενό: μετρά στις «χωρίς ταίριασμα»">—</div>`;
+    // 9/9 (owner): κλικ = νέα άνοδος δεμένη με αυτή την κάθοδο, όπως το κενό
+    // κουτί εισαγωγής του Weekly International (_wiNewImport).
+    : `<div class="wn4-drop" style="cursor:pointer" title="Σύρε μια άνοδο εδώ για ταίριασμα σε round trip — ή κλικ για νέα άνοδο δεμένη με αυτή την κάθοδο" onclick="event.stopPropagation();_wnNewSn(${rowId})">—</div>`;
+}
+
+// Κενό κελί ανόδου → νέα εθνική παραγγελία ΑΝΟΔΟΣ, ήδη δεμένη με την κάθοδο που
+// την άνοιξε (owner 9/9). Δεν γράφεται τίποτα εδώ: κρατάμε ΠΟΙΑ κάθοδος περιμένει
+// και το ταίριασμα (Matched Load και στις δύο, όπως _wnSaveMatch) εκτελείται μόνο
+// αν η φόρμα όντως δημιουργήσει φορτίο — orders_natl καλεί _wnConsumePendingMatch.
+function _wnNewSn(rowId) {
+  const row = WNATL.rows.find(r => r.id === rowId);
+  if (!row || row.type !== 'northsouth') return;
+  if (row.matchedId) { toast('Η κάθοδος έχει ήδη ταιριασμένη άνοδο', 'warn'); return; }
+  if (typeof openNatlCreateWith !== 'function') { toast('Η φόρμα παραγγελίας δεν είναι διαθέσιμη', 'warn'); return; }
+  window._wnPendingMatch = { rowId, nsId: row.orderIds[0], at: Date.now() };
+  openNatlCreateWith({ 'Direction': 'South→North' });
+  _wnRerenderOnClose();
+}
+async function _wnConsumePendingMatch(newNlId, fields) {
+  const p = window._wnPendingMatch; window._wnPendingMatch = null;
+  if (!p || !newNlId) return;
+  if ((fields || {})['Direction'] !== 'South→North') return;
+  if (typeof currentPage !== 'undefined' && currentPage !== 'weekly_natl') return;
+  if (Date.now() - p.at > 30 * 60 * 1000) return;
+  // Both sides, like _wnSaveMatch — written BEFORE the form closes so the
+  // board's re-render already sees the pair.
+  const r1 = await atSafePatch(TABLES.NAT_LOADS, p.nsId, { 'Matched Load': newNlId });
+  if (r1?.error) throw new Error(r1.error.message || r1.error.type);
+  const r2 = await atSafePatch(TABLES.NAT_LOADS, newNlId, { 'Matched Load': p.nsId });
+  if (r2?.error) throw new Error(r2.error.message || r2.error.type);
+  invalidateCache(TABLES.NAT_LOADS);
+  toast('Η άνοδος δέθηκε με την κάθοδο ✓');
 }
 
 /* ── S→N standalone row ──────────────────────────────────────────── */
@@ -2370,6 +2404,8 @@ window._wnToggleDetails = _wnToggleDetails;
 window._wnToggleStops = _wnToggleStops;
 window._wnSetAppt = _wnSetAppt;
 window._wnNewOrder = _wnNewOrder;
+window._wnNewSn = _wnNewSn;
+window._wnConsumePendingMatch = _wnConsumePendingMatch;
 // Φέτα 5 — τοπικές κινήσεις (inline onclick, module σε IIFE)
 window._wnAddLocal  = _wnAddLocal;
 window._wnSaveLocal = _wnSaveLocal;
