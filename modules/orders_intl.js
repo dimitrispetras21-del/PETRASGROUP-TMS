@@ -1429,15 +1429,23 @@ async function _syncVeroiaSwitch(orderId, fields) {
   // Calculate National leg dates
   // Export (ΑΝΟΔΟΣ): natLoad = intlLoad, natDel = intlLoad + 1
   // Import (ΚΑΘΟΔΟΣ): natLoad = intlDel - 1, natDel = intlDel
+  // 9/9 (owner: «Λάβδας / ΑΒ-Αντζουλάτος-Foodlink, ημερομηνίες λάθος»): the
+  // Cross-Dock day is ONE column, `cross_dock_date` (locked decision 23/8;
+  // label «Cross-dock Date», and «VS CD Date» once the Worker maps it as a
+  // synonym). The +1/−1 estimate is the FALLBACK, not the rule — using it here
+  // while the board showed the real column produced two different Cross-Dock
+  // days for the same load. A cross-dock that no longer fits the order's dates
+  // (e.g. delivery moved before it) is stale and the estimate wins.
   let natLoadDt = null, natDelDt = null;
+  const _cd = _vsToLocalDate(fields['Cross-dock Date'] || fields['VS CD Date'] || '');
   if (direction === 'Export') {
     const localLoad = _vsToLocalDate(fields['Loading DateTime']);
     natLoadDt = localLoad;
-    natDelDt  = _vsAddDays(localLoad, 1);
+    natDelDt  = (_cd && _cd > localLoad) ? _cd : _vsAddDays(localLoad, 1);
   } else {
     const localDel = _vsToLocalDate(fields['Delivery DateTime']);
     natDelDt  = localDel;
-    natLoadDt = _vsAddDays(localDel, -1);
+    natLoadDt = (_cd && _cd < localDel) ? _cd : _vsAddDays(localDel, -1);
   }
 
   // Resolve client name for the Name field
@@ -1521,14 +1529,25 @@ async function _syncVeroiaSwitch(orderId, fields) {
       _nlStops.push({ stopNumber: i+1, stopType: 'Loading', locationId: locId,
         pallets: pals, dateTime: _loadDtISO, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
     });
+    // 9/9: a multi-drop import keeps each drop's own day on the national leg
+    // (ΑΒ 14/9, Αντζουλάτος 15/9…) — but only while the stops agree with the
+    // order (first drop = the order's delivery day). After a board/Daily Ops
+    // date change the stops can lag the order (migration 028 makes them follow);
+    // until then every drop takes the order's day rather than a stale one.
+    const _unl = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')
+      .sort((a,b) => (a.fields[F.STOP_NUMBER]||0) - (b.fields[F.STOP_NUMBER]||0));
+    const _stopsAgree = direction === 'Import' && _unl.length
+      && _vsToLocalDate(_unl[0].fields[F.STOP_DATETIME] || '') === natDelDt;
     delivLocs.forEach((locId, i) => {
-      let pals = _totalPal;
+      let pals = _totalPal, dt = _delDtISO;
       if (direction === 'Import' && _vsStops.length) {
-        const unloadStop = _vsStops.filter(s => s.fields[F.STOP_TYPE] === 'Unloading')[i];
+        const unloadStop = _unl[i];
         if (unloadStop) pals = unloadStop.fields[F.STOP_PALLETS] || 0;
+        if (_stopsAgree && unloadStop && unloadStop.fields[F.STOP_DATETIME])
+          dt = _vsToLocalDate(unloadStop.fields[F.STOP_DATETIME]) + 'T12:00:00.000Z';
       }
       _nlStops.push({ stopNumber: i+1, stopType: 'Unloading', locationId: locId,
-        pallets: pals, dateTime: _delDtISO, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
+        pallets: pals, dateTime: dt, clientId: _clientId, goods: _goods, temp: _temp, ref: _ref });
     });
     if (_nlStops.length) {
       try { await stopsSave(nlId, _nlStops, F.STOP_PARENT_NL); }

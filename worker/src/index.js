@@ -1226,7 +1226,12 @@ var TABLES = {
       // Wave 3 (owner-approved, 8/8): groupage persistence — Weekly Intl
       "Group ID": "group_id",
       "Rotation ID": "rotation_id",
-      "VS CD Date": "vs_cd_date"
+      // 9/9/2026 (locked decision 23/8, CLAUDE.md «Cross-dock: ΜΙΑ στήλη»): the
+      // Weekly/Daily Ops label is a SYNONYM of cross_dock_date. Until now it
+      // pointed at vs_cd_date (empty on every row), so the boards estimated
+      // Delivery−1 while the form and the national load used the real column —
+      // two Cross-Dock days for one load (owner 9/9: «ημερομηνίες λάθος»).
+      "VS CD Date": "cross_dock_date"
       // DERIVED (formula) fields are intentionally absent: Order Number, Net
       // Price, Total Pallets, Week Number, Loading/Delivery Summary, Created By.
     },
