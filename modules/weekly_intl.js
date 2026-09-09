@@ -4696,15 +4696,62 @@ function _wiSegCtx(e,rowId,orderId,isImportSide){
   requestAnimationFrame(()=>{ const f=ctx.querySelector('.wi-ctx-i:not([disabled])'); if(f) f.focus(); });
   setTimeout(()=>document.addEventListener('click',_wiCtxClose,{once:true}),10);
 }
-// Item 3/«Τι γράφεται» (owner 8/9): remove ONE order from its group. Unlike
-// Διάλυση/_wiDissolveClearMember, the order's OWN assignment is left alone
-// (spec: «η ανάθεση παραμένει») — only its Group ID membership ends. The RT
-// leg leaves FIRST, same order as _wiRotUnlink: a failed DELETE (403/409)
-// must never leave the field cleared while the order still counts as a leg
-// of that round trip (live-orphan lesson documented there).
+// Item 2 (owner 9/9), "no residue": after a member leaves, the SURVIVORS'
+// Group ID suffix must list only who is actually still there — same write
+// _wiSaveSegOrder already uses for a drag-reorder (base prefix + '|' +
+// ordered ids, PATCH each member, read back), but silent (no reorder toast,
+// no repaint) since it always runs INSIDE a bigger operation that reports
+// its own outcome. Returns whether every PATCH verified.
+async function _wiRewriteGroupSuffix(recs,isImp){
+  if(recs.length<2) return true;
+  const base=String(recs.find(e=>e.fields['Group ID'])?.fields['Group ID']||'').split('|')[0]
+    ||((isImp?'GI-':'GRP-')+String(recs[0].id).slice(-8));
+  const gid=base+'|'+recs.map(r=>r.id).join(',');
+  let ok=true;
+  for(const e of recs){
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,e.id,{'Group ID':gid});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      if(String(res.fields?.['Group ID']||'')!==gid) throw new Error('Δεν επιβεβαιώθηκε στην ανάγνωση');
+      e.fields['Group ID']=gid;
+    }catch(err){ ok=false; console.warn('[wi group residue] suffix rewrite:',err.message); }
+  }
+  return ok;
+}
+// Item 2 (owner 9/9): `row.orderIds` here is already the POST-removal list
+// (caller filters it first). A single survivor is not a group (spec) — its
+// Group ID clears outright rather than keeping a one-name suffix; its
+// Matched Import ID is left untouched (a matched GI lone survivor stays
+// matched — only its OWN row identity, not the match, is a groupage concern).
+async function _wiSyncGroupResidue(row){
+  const isImp=row.type==='import';
+  const cache=isImp?WINTL.data.imports:WINTL.data.exports;
+  if(row.orderIds.length===1){
+    const oid=row.orderIds[0];
+    try{
+      const res=await atSafePatch(TABLES.ORDERS,oid,{'Group ID':''});
+      if(res?.error) throw new Error(res.error.message||res.error.type);
+      if(String(res.fields?.['Group ID']||'')) throw new Error('Δεν καθαρίστηκε στην ανάγνωση');
+      const rec=cache.find(r=>r.id===oid); if(rec) rec.fields['Group ID']='';
+      return true;
+    }catch(err){ console.warn('[wi group residue] lone survivor clear:',err.message); return false; }
+  }
+  if(row.orderIds.length<2) return true;
+  const fallbackField=isImp?'Loading DateTime':'Delivery DateTime';
+  const recs=_wiGrpOrder(row.orderIds.map(id=>cache.find(r=>r.id===id)).filter(Boolean),fallbackField);
+  return await _wiRewriteGroupSuffix(recs,isImp);
+}
+// Item 1 (owner 9/9): remove ONE order from its group AND its assignment —
+// before this fix only Group ID was cleared and the order kept the group's
+// Truck/Trailer/Driver/Partner in Postgres while the screen painted it «προς
+// ανάθεση» (client-only state), the same live-orphan shape
+// _wiDissolveClearMember/_wiRemoveImport already fixed for the other two ways
+// an order stops sharing a truck. The RT leg leaves FIRST, same order as
+// _wiRotUnlink: a failed DELETE (403/409) must never leave the fields cleared
+// while the order still counts as a leg of that round trip.
 async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   const row=WINTL.rows.find(r=>r.id===rowId); if(!row||!row.orderIds||row.orderIds.length<2) return;
-  const ok=await confirmAction('Αφαίρεση αυτής της παραγγελίας από το groupage; Η ανάθεση παραμένει.',
+  const ok=await confirmAction('Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.',
     {title:'Ακύρωση groupage', confirmLabel:'Αφαίρεση'});
   if(!ok) return;
   try{
@@ -4721,21 +4768,55 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
         }
       }
     }
-    const res=await atSafePatch(TABLES.ORDERS,orderId,{'Group ID':''});
+    const res=await atSafePatch(TABLES.ORDERS,orderId,{
+      'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],
+      'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
+    });
     if(res?.error) throw new Error(res.error.message||res.error.type);
-    if(String(res.fields?.['Group ID']||'')) throw new Error('Το Group ID δεν αδειάστηκε στην ανάγνωση');
+    if(String(res.fields?.['Group ID']||'')||getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
+      throw new Error('Η αφαίρεση δεν επιβεβαιώθηκε στην ανάγνωση');
   }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
   const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
-  const rec=cache.find(r=>r.id===orderId); if(rec) rec.fields['Group ID']='';
+  const rec=cache.find(r=>r.id===orderId);
+  if(rec) Object.assign(rec.fields,{'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
   row.orderIds=row.orderIds.filter(id=>id!==orderId);
+  // Item 2 (owner 9/9): the departing order may have BEEN row.orderId — the
+  // "lead" every matched export's pointer (row.importId/Matched Import ID)
+  // and every renderer that resolves an import row by orderId trusts. Leaving
+  // it stale would collide with the fresh standalone row pushed for the same
+  // id below (two rows, one orderId) and, for a matched GI group, would make
+  // the export's pointer name an id no live row claims. Promote the new
+  // first-by-order survivor before anything downstream reads row.orderId.
+  const wasLead=row.orderId===orderId;
+  const expRow=(isImportSide&&wasLead)?WINTL.rows.find(r=>r.type==='export'&&r.importId===orderId):null;
+  if(wasLead){
+    const fallbackField=isImportSide?'Loading DateTime':'Delivery DateTime';
+    const remaining=_wiGrpOrder(row.orderIds.map(id=>cache.find(r=>r.id===id)).filter(Boolean),fallbackField);
+    row.orderId=remaining[0]?.id||row.orderIds[0];
+  }
+  if(expRow){
+    // The matched export's own DB pointer must follow the new lead — every
+    // member of the export's group carries the same 'Matched Import ID'
+    // (see _wiSaveImportMatch), so every one of them is rewritten.
+    const newLead=row.orderId;
+    try{
+      for(const eOid of expRow.orderIds){
+        const r2=await atSafePatch(TABLES.ORDERS,eOid,{'Matched Import ID':newLead});
+        if(r2?.error) throw new Error(r2.error.message||r2.error.type);
+      }
+      expRow.importId=newLead;
+    }catch(e){ reportError('Ο νέος επικεφαλής της ομάδας εισαγωγών δεν ενημερώθηκε στην ταιριασμένη εξαγωγή — έλεγξε χειροκίνητα',e); }
+  }
+  const residueOk=await _wiSyncGroupResidue(row);
+  if(!residueOk) reportError('Η παραγγελία αφαιρέθηκε αλλά η σειρά της ομάδας ΔΕΝ ενημερώθηκε πλήρως στη βάση — έλεγξε χειροκίνητα',null);
   WINTL.rows.push({
     id:++WINTL._seq, type:row.type, orderId, orderIds:[orderId], importId:null,
-    truckId:row.truckId, trailerId:row.trailerId, driverId:row.driverId, partnerId:row.partnerId,
-    truckLabel:row.truckLabel, trailerLabel:row.trailerLabel, driverLabel:row.driverLabel, partnerLabel:row.partnerLabel,
-    partnerPlates:row.partnerPlates, partnerRate:row.partnerRate, partnerRateImp:'',
-    saved:row.saved,
+    truckId:'', trailerId:'', driverId:'', partnerId:'',
+    truckLabel:'', trailerLabel:'', driverLabel:'', partnerLabel:'',
+    partnerPlates:'', partnerRate:'', partnerRateImp:'',
+    saved:false,
   });
-  toast('Αφαιρέθηκε από το groupage ✓');
+  toast('Αφαιρέθηκε από το groupage — χωρίς ανάθεση ✓');
   _wiPaint();
 }
 
