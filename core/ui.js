@@ -95,12 +95,14 @@ function confirmAction(message, opts = {}) {
   } = opts;
   return new Promise(resolve => {
     let settled = false;
+    let onKey = null;
     const overlay = document.getElementById('modalOverlay');
 
     const finish = (val) => {
       if (settled) return;
       settled = true;
       mo.disconnect();
+      if (onKey) document.removeEventListener('keydown', onKey, true);
       closeModal();
       resolve(val);
     };
@@ -119,8 +121,17 @@ function confirmAction(message, opts = {}) {
 
     openModal(title, bodyHTML, footerHTML);
     mo.observe(overlay, { attributes: true, attributeFilter: ['class'] });
-    document.getElementById('_cfaOk').onclick = () => finish(true);
+    const okBtn = document.getElementById('_cfaOk');
+    okBtn.onclick = () => finish(true);
     document.getElementById('_cfaCancel').onclick = () => finish(false);
+    // 9/9 (dispatcher: «πάτησα Παραδόθηκε δύο φορές, έμεινε εκκρεμής», proven
+    // live as dispatcher with writes stubbed: Enter → dialog gone, zero calls):
+    // the clicked row button kept focus, so Enter re-fired it, the second
+    // openModal dismissed the first dialog, and nothing was ever confirmed.
+    // Enter answers OK (captured before page handlers); Escape stays cancel.
+    onKey = e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); } };
+    document.addEventListener('keydown', onKey, true);
+    okBtn.focus();
   });
 }
 if (typeof window !== 'undefined') window.confirmAction = confirmAction;
