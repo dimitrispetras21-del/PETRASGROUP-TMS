@@ -14,7 +14,7 @@
 > **Τι επέστρεψε από την παραγωγή** (χανόταν σε κάθε deploy από το repo):
 > - `order_stops: [...,"DELETE"]` για dispatcher — χωρίς αυτό οι dispatchers δεν
 >   σβήνουν στάσεις (403· είχε συμβεί 13/8 05:50-07:51)
-> - `"VS CD Date": "vs_cd_date"` στα ORDERS
+> - `"VS CD Date": "cross_dock_date"` στα ORDERS
 > - 4 πεδία WORKSHOPS: `Country`, `Aliases`, `"VAT Number"→tax_id`,
 >   `"Legal Name"→legal_name` — χωρίς αυτά σπάει η αναζήτηση με παλιά γραφή
 >
@@ -53,7 +53,7 @@ build — δεν ισχύει πλέον.
 
 **Συνέπεια για τον φρουρό συμφιλίωσης (Μέτωπο Θ): έλεγχος ΠΕΡΙΕΧΟΜΕΝΟΥ, όχι
 ισότητας byte.** Υπάρχουν μέσα στο bundle τα τρία στοιχεία της παραγωγής —
-`order_stops` με DELETE, `"VS CD Date": "vs_cd_date"`, τα 4 πεδία WORKSHOPS —
+`order_stops` με DELETE, `"VS CD Date": "cross_dock_date"`, τα 4 πεδία WORKSHOPS —
 ναι ή όχι. Ένα σκέτο `diff` repo↔παραγωγή θα βγάζει ψευδή συναγερμό split-brain
 σε κάθε deploy. Αν σε τρεις μήνες δεις «διαφορά», έλεγξε πρώτα αν είναι μόνο τα
 `__name2`/`__defProp2` στρώματα.
