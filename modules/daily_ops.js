@@ -718,6 +718,7 @@ function _opsSubRows(rec, stype, asDiv){
 // αγγίζεται καθόλου· όταν δηλωθεί το τελευταίο, τρέχει η κανονική ροή
 // με το aggregate (καμία Delayed ⇒ On Time).
 async function _opsMarkStopUI(orderId, stopId, perf){
+  _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const stop=((OPS._stopsByOrder||{})[orderId]||[]).find(s=>s.id===stopId);
   if(!stop) return;
   try{ await _opsMarkStop(stop, perf); }
@@ -737,6 +738,7 @@ async function _opsMarkStopUI(orderId, stopId, perf){
   _opsDraw();
 }
 async function _opsStat(id,st){
+  _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   if(st==='In Transit'){
     const loads=_opsStopsOf(id,'Loading');
     if(loads.length>1 && loads.some(x=>!x.fields['Performance'])){ _opsToggleStops(id); return; }
@@ -767,6 +769,7 @@ async function _opsStatFinal(id,st){try{
   catch(e) { console.warn('PA status sync:', e.message); }
   toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
+  _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const dels=_opsStopsOf(id,'Unloading');
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
@@ -791,7 +794,18 @@ async function _opsDelFinal(id,perf){const d=localToday();
    (owner 2/9). Το ρητό checkbox αντικαθιστά την τυφλή μετακίνηση της
    παράδοσης που έκανε ο παλιός κώδικας. */
 function _opsCloseFloat(){ document.querySelectorAll('.do-pop').forEach(e=>e.remove()); document.removeEventListener('keydown',_opsPopKey); }
-function _opsPopKey(e){ if(e.key==='Escape') _opsCloseFloat(); if(e.key==='Enter'&&document.querySelector('.do-pop')){ e.preventDefault(); _opsChangeDayGo(); } }
+// 9/9 (dispatcher: «πάτησα Παραδόθηκε δύο φορές, έμεινε εκκρεμής»): this Enter
+// handler was page-wide, so an Enter meant for the «Παραδόθηκε;» confirm dialog
+// ran «Αλλαγή ημέρας → Αύριο» on the popover's order instead — two real orders
+// were postponed a day and never marked delivered (audit 9/9 09:22, 10:01).
+// Enter now counts only when it is typed INSIDE the popover; Escape still closes.
+function _opsPopKey(e){
+  if(e.key==='Escape'){ _opsCloseFloat(); return; }
+  if(e.key!=='Enter') return;
+  const pop=document.querySelector('.do-pop'); if(!pop) return;
+  if(!pop.contains(e.target)) return;
+  e.preventDefault(); _opsChangeDayGo();
+}
 // Το rect του κουμπιού διαβάζεται ΠΡΙΝ κλείσει το προηγούμενο popover: αν
 // κλείσει πρώτο, το στοιχείο αποσπάται από το DOM, το rect του γίνεται 0/0
 // και το popover βγαίνει στο -360px (μετρήθηκε στο rig 3/9).
