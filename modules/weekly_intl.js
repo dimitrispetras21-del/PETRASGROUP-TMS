@@ -2278,7 +2278,24 @@ function _wiRowHTML(row,i){
     // the delivery column where the classic card's own «×» lived.
     // draggable=true (item 2, owner 8/9): GI segments reorder from inside a
     // matched export row exactly like the standalone GI- row does.
-    const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,true);
+    //
+    // Item 3 (owner 9/9): a small grip drags the WHOLE matched group onto a
+    // DIFFERENT export — a separate draggable element from the segment tiles
+    // above (those reorder via _wiSegDragStart, item 5, and must keep working
+    // independently) and from the standalone-row drag it mimics
+    // (_wiImpDragStart/_wiDropOnRow/_wiSaveImportMatch — same functions; the
+    // `true` 3rd arg lifts the "already matched" guard that exists for every
+    // OTHER caller, since a matched import never renders its own row —
+    // _wiBuildRows/_wiImpRowHTML's `showImps` filter — so nothing else could
+    // legitimately hit that branch anyway). Passed through the SAME
+    // totalsHTML slot _wiSegPillWrap already exposes (see gDel's
+    // totals+unmBtn just below) rather than a new sibling of gLoad/gDel —
+    // that slot is the one place already proven not to overflow this cell.
+    const grip=`<span draggable="true" title="Σύρε ολόκληρη την ομάδα σε άλλη εξαγωγή"
+      style="cursor:grab;padding:0 4px;font-weight:800;letter-spacing:1px;color:var(--text-mid);user-select:none"
+      onclick="event.stopPropagation()"
+      ondragstart="event.stopPropagation();_wiImpDragStart(event,'${impGroupRow.orderId}',true)">⋮⋮</span>`;
+    const gLoad=_wiSegPillWrap(impGroupRow.id,impMembers,'load',true,true,grip);
     const unmBtn=`<button class="wk3-unm" title="Αφαίρεση ταιριάσματος (όλη η ομάδα)" onclick="event.stopPropagation();_wiRemoveImport(${row.id})">×</button>`;
     const gDel=_wiSegPillWrap(impGroupRow.id,impMembers,'del',true,true,_wiSegTotalsHTML(impMembers)+unmBtn);
     impInner=`${gLoad}<span class="wi2-arrow">→</span>${gDel}`;
@@ -2434,12 +2451,19 @@ function _wiRepaintRow(rowId){
 /* ── DRAG & DROP ───────────────────────────────────────────────────── */
 window._wiDragging=null;
 
-// Drag from import ROWS (new — replaces shelf drag)
-function _wiImpDragStart(e,impId){
+// Drag from import ROWS (new — replaces shelf drag). Item 3 (owner 9/9): the
+// optional `allowMatched` lets the whole-group grip inside a MATCHED export
+// row's import pill (_wiRowHTML's gLoad) start this same drag on an
+// already-matched lead. The guard below still applies to every other caller
+// — a standalone import row never renders once matched (_wiBuildRows/
+// _wiImpRowHTML's `showImps` filter drops it), so nothing else could
+// legitimately hit the matched branch — but the grip's entire purpose is
+// moving an already-matched group to a different export.
+function _wiImpDragStart(e,impId,allowMatched){
   if(_wiBlockReadOnly()){ e.preventDefault(); return; }
   // Block drag if import is already matched to an export
   const imp=WINTL.rows.find(r=>r.type==='import'&&r.orderId===impId);
-  if(imp&&imp.matchedTo){
+  if(imp&&imp.matchedTo&&!allowMatched){
     e.preventDefault();
     toast('Αφαίρεσε πρώτα το ταίριασμα της εισαγωγής','warn');
     return;
@@ -2627,6 +2651,18 @@ async function _wiSaveImportMatch(rowId,impId){
     if (typeof logError === 'function') logError(e, '_wiSaveImportMatch: export lock check (proceeding)');
     else console.warn('Export lock check failed, proceeding:', e.message);
   }
+
+  // Item 3 (owner 9/9): the whole-group grip lets a GI group already matched
+  // to a DIFFERENT export be dragged straight onto this one. Without an
+  // explicit unmatch there, that OLD export's own 'Matched Import ID' would
+  // keep pointing at a group that now carries someone else's vehicle — the
+  // in-memory-only "Clear previous match" below never wrote that to Postgres.
+  // Reuses _wiRemoveImport exactly as the × button does (DB clear + GI-group
+  // assignment cleanup + RT leg detach) before this function's own writes
+  // begin. Not reachable from the ordinary drag — an already-matched import
+  // never renders its own row to drag FROM — only from the new grip.
+  const oldExpRow=WINTL.rows.find(r=>r.type==='export'&&r.id!==rowId&&r.importId===matchImpId);
+  if(oldExpRow) await _wiRemoveImport(oldExpRow.id);
 
   // Optimistic UI update
   const oldImp=row.importId;
