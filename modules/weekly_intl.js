@@ -2562,6 +2562,27 @@ async function _wiDropOnPanel(e,rowId){
 // non-GI order, or a lookup failure, degrades to a single-member group of
 // itself — a failure here must never silently widen OR silently narrow who
 // gets written.
+// Execution beats planning (dispatcher 9/9, order 308): 17 s after Daily Ops
+// stamped both loading stops and set In Transit, an unmatch on this board
+// pushed the GI- group's members back to Pending with no vehicle — the loaded
+// order reappeared as «εκκρεμής φόρτωση» with both legs ticked. The board
+// writes the PLAN (vehicle + Pending/Assigned); In Transit / Delivered is a
+// fact from the field and no row change may rewrite it. Always asks the
+// database, never WINTL's cache — the cache is exactly what was stale in the
+// 17-second case. A failed read counts as planning (old behaviour) and is
+// logged, so a transient error never silently blocks an unmatch.
+const WI_EXECUTING=['In Transit','Delivered'];
+async function _wiExecutingLive(oid){
+  try{ const r=await atGetOne(TABLES.ORDERS,oid); return WI_EXECUTING.includes(String(r?.fields?.['Status']||'')); }
+  catch(e){ if(typeof logError==='function') logError(e,'_wiExecutingLive: status read failed — treated as planning'); return false; }
+}
+// Assignment saves keep the vehicle change (a corrected truck) but never the
+// Status regression to Assigned for an executing order.
+async function _wiPlanPatch(oid,fields){
+  if(!('Status' in fields)) return fields;
+  if(!(await _wiExecutingLive(oid))) return fields;
+  const {Status,...rest}=fields; return rest;
+}
 async function _wiGiGroup(impId, knownRec){
   let gid='';
   try{
@@ -2800,9 +2821,10 @@ async function _wiRemoveImport(rowId){
     // single-id clear) since this is a best-effort inherit-cleanup, not the
     // authoritative match write above.
     const giGroup = await _wiGiGroup(impId);
-    const clearErrors=[];
+    const clearErrors=[], keptExecuting=[];
     for(const memberId of giGroup.members){
       try{
+        if(await _wiExecutingLive(memberId)){ keptExecuting.push(memberId); continue; }
         const rc=await atSafePatch(TABLES.ORDERS,memberId,{
           'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
           'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
@@ -2811,6 +2833,7 @@ async function _wiRemoveImport(rowId){
       }catch(err){ clearErrors.push(memberId+': '+(err&&err.message||err)); }
     }
     if(clearErrors.length) reportError('Το ταίριασμα αφαιρέθηκε αλλά η ανάθεση ΔΕΝ καθαρίστηκε σε όλα τα μέλη του groupage εισαγωγών — έλεγξε χειροκίνητα: '+clearErrors.join(' · '),clearErrors);
+    if(keptExecuting.length) toast(keptExecuting.length+(keptExecuting.length===1?' παραγγελία είναι ήδη σε μεταφορά/παραδόθηκε — κρατά':' παραγγελίες είναι ήδη σε μεταφορά/παραδόθηκαν — κρατούν')+' όχημα και κατάσταση','warn');
     // Invalidate cache so next load is fresh
     if(typeof atClearCache==='function') atClearCache(TABLES.ORDERS);
     toast('Το ταίριασμα αφαιρέθηκε ✓');
@@ -3193,7 +3216,7 @@ async function _wiSaveFromPopover(rowId){
   const errors=[];
   for(const orderId of row.orderIds){
     try{
-      const res=await atSafePatch(TABLES.ORDERS,orderId,expFields);
+      const res=await atSafePatch(TABLES.ORDERS,orderId,await _wiPlanPatch(orderId,expFields));
       if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       if (typeof plOnIntlPartnerAssigned === 'function') plOnIntlPartnerAssigned(orderId);
@@ -3201,7 +3224,7 @@ async function _wiSaveFromPopover(rowId){
   }
   if(row.importId && !row.orderIds.includes(row.importId)){
     try{
-      const res=await atSafePatch(TABLES.ORDERS,row.importId,impFields);
+      const res=await atSafePatch(TABLES.ORDERS,row.importId,await _wiPlanPatch(row.importId,impFields));
       if(res?.conflict){ toast('Η εγγραφή άλλαξε από άλλον χρήστη — ανανέωση…','warn'); await renderWeeklyIntl(); return; }
       if(res?.error) throw new Error(res.error.message||res.error.type||JSON.stringify(res.error));
       // Το σκέλος εισαγωγής είναι ΑΚΡΙΒΩΣ η περίπτωση PARTNER_DROPOFF (ο partner
@@ -3256,7 +3279,7 @@ async function _wiSaveFromPopover(rowId){
         for(const sib of siblings){
           if(written.includes(sib.id)) continue; // already written above
           try{
-            const res=await atSafePatch(TABLES.ORDERS,sib.id,groupFields);
+            const res=await atSafePatch(TABLES.ORDERS,sib.id,await _wiPlanPatch(sib.id,groupFields));
             if(res?.error) throw new Error(res.error.message||res.error.type);
             const fresh=await atGetOne(TABLES.ORDERS,sib.id);
             const wrote=isPartner?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
@@ -4568,6 +4591,7 @@ async function _wiMerge(rowId,otherId){
 // ανανέωση η σελίδα χαλάει», 00 §2) brought it straight back. Same shape as
 // _wiRotUnlink: the round trip itself is never deleted (financial history).
 async function _wiDissolveClearMember(oid){
+  if(await _wiExecutingLive(oid)) return 'kept'; // execution beats planning — see _wiExecutingLive
   const res=await atSafePatch(TABLES.ORDERS,oid,{'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Status':'Pending'});
   if(res?.error) throw new Error(res.error.message||res.error.type);
   if(getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
@@ -4609,12 +4633,13 @@ async function _wiSplit(rowId){
   // Keep the FIRST member as it is (design doc: the first member keeps the
   // group's own assignment/round trip) — only the members split OUT get their
   // own assignment/RT cleared in the database.
-  const errors=[];
+  const errors=[], kept=[];
   for(const oid of rest){
-    try{ await _wiDissolveClearMember(oid); }
+    try{ if((await _wiDissolveClearMember(oid))==='kept') kept.push(oid); }
     catch(e){ errors.push(oid+': '+e.message); }
   }
   if(errors.length) reportError('Η ομάδα διαλύθηκε αλλά κάποιο μέλος ΔΕΝ αδειάστηκε από ανάθεση/ρότα — έλεγξε χειροκίνητα: '+errors.join(' · '),errors);
+  if(kept.length) toast(kept.length+(kept.length===1?' μέλος είναι ήδη σε μεταφορά/παραδόθηκε — κρατά':' μέλη είναι ήδη σε μεταφορά/παραδόθηκαν — κρατούν')+' όχημα, κατάσταση και γύρο','warn');
 }
 
 /* ── GROUP TILES — μενού τμήματος, ακύρωση μέλους, σύρσιμο σειράς ─────────
@@ -4790,8 +4815,12 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
   const ok=await confirmAction('Αφαίρεση αυτής της παραγγελίας από το groupage; Η παραγγελία φεύγει ΧΩΡΙΣ ανάθεση.',
     {title:'Ακύρωση groupage', confirmLabel:'Αφαίρεση'});
   if(!ok) return;
+  // Execution beats planning (see _wiExecutingLive): a member already In
+  // Transit/Delivered leaves the group on paper only — it keeps the truck
+  // that loaded it, its status and its round-trip leg.
+  const executing=await _wiExecutingLive(orderId);
   try{
-    if(typeof rtFindForOrder==='function'){
+    if(!executing && typeof rtFindForOrder==='function'){
       const {pg,rt}=await rtFindForOrder(orderId).catch(()=>({pg:null,rt:null}));
       if(rt&&pg!=null){
         const del=await _wiRtLegDelete(rt.id,pg).catch(err=>({ok:false,status:0,error:err&&err.message}));
@@ -4804,17 +4833,19 @@ async function _wiCancelGroupMember(rowId,orderId,isImportSide){
         }
       }
     }
-    const res=await atSafePatch(TABLES.ORDERS,orderId,{
+    const leavePatch=executing?{'Group ID':''}:{
       'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],
       'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending',
-    });
+    };
+    const res=await atSafePatch(TABLES.ORDERS,orderId,leavePatch);
     if(res?.error) throw new Error(res.error.message||res.error.type);
-    if(String(res.fields?.['Group ID']||'')||getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))
+    if(String(res.fields?.['Group ID']||'')||(!executing&&(getLinkedId(res.fields?.['Truck'])||getLinkedId(res.fields?.['Partner']))))
       throw new Error('Η αφαίρεση δεν επιβεβαιώθηκε στην ανάγνωση');
   }catch(e){ reportError('Η αφαίρεση από το groupage απέτυχε',e); return; }
   const cache=isImportSide?WINTL.data.imports:WINTL.data.exports;
   const rec=cache.find(r=>r.id===orderId);
-  if(rec) Object.assign(rec.fields,{'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
+  if(rec) Object.assign(rec.fields,executing?{'Group ID':''}:{'Group ID':'','Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'','Status':'Pending'});
+  if(executing) toast('Η παραγγελία είναι ήδη σε μεταφορά/παραδόθηκε — βγήκε από το groupage αλλά κρατά όχημα, κατάσταση και γύρο','warn');
   row.orderIds=row.orderIds.filter(id=>id!==orderId);
   // Item 2 (owner 9/9): the departing order may have BEEN row.orderId — the
   // "lead" every matched export's pointer (row.importId/Matched Import ID)
