@@ -62,3 +62,29 @@ captured PATCH (Group ID επίθημα σε όλα τα μέλη), κλικ→�
 | R — σειρά στον γύρο | `worker/migrations/024_rt_leg_seq.sql`, `worker/src/index.js`, `worker/src/rt-rules.mjs`, `core/rt-feed.js` | στήλη `ct_rt_legs.seq`· POST /costs/rt δέχεται/γράφει seq· ο τροφοδότης δίνει seq από το επίθημα Group ID (αλλιώς ημερομηνία φόρτωσης)· η όψη διαδρομής (012) ταξινομεί κατά seq | `node --test rt-rules` + νέες δοκιμές, migration κείμενο για τον owner, Worker deploy από owner |
 
 Συγχώνευση: P → R → T (cherry-pick, ο classifier μπλοκάρει merge)· bump `?v=` + SW· ζωντανός έλεγχος στο Weekly και στην εκτύπωση πριν ανοίξει ο διακόπτης· καταγραφή στο fix-round + DECISION_LOG.
+
+## Τα αμετάβλητα του Weekly (owner 9/9: «πώς ελέγχουμε αυτές τις περιπτώσεις»)
+
+Κανόνας-ομπρέλα: **η ανάθεση ανήκει στη γραμμή, όχι στην παραγγελία.** Ό,τι μπαίνει στη
+γραμμή παίρνει το φορτηγό της· ό,τι φεύγει (ξεταίριασμα, ακύρωση groupage, διάλυση,
+αποσύνδεση ρότας) μένει ΠΡΟΣ ΑΝΑΘΕΣΗ. Εξαίρεση (owner 9/9): στην ακύρωση groupage ενός
+μέλους η ομάδα με το πρώτο μέλος κρατά τη γραμμή· μόνο το μέλος που φεύγει χάνει.
+
+| # | Αμετάβλητο | Πού επιβάλλεται | Μέτρηση (0 = εντάξει) |
+|---|---|---|---|
+| I1 | Όλες οι παραγγελίες μιας ομάδας: ίδιο φορτηγό/οδηγός/ρυμούλκα/συνεργάτης/κατάσταση | οθόνη (διάδοση σε μέλη) → μελλοντικά trigger γύρου | `select split_part(group_id,'|',1) g, count(distinct (truck_id,driver_id,trailer_id,partner_id,status)) n from orders where deleted_at is null and group_id<>'' group by 1 having count(distinct (truck_id,driver_id,trailer_id,partner_id,status))>1` |
+| I2 | Παραγγελία που έφυγε από γραμμή: χωρίς όχημα, Pending | οθόνη (ακύρωση μέλους, ξεταίριασμα, διάλυση) | δεν μετριέται στη βάση χωρίς έννοια «γραμμής» → σουίτα rig |
+| I3 | Εξαγωγή ↔ ομάδα εισαγωγών: ταίριασμα ως σύνολο | οθόνη (`_wiSaveImportMatch`/`_wiRemoveImport`) | `select e.id from orders e join orders i on i.legacy_id=e.matched_import_id join orders s on split_part(s.group_id,'|',1)=split_part(i.group_id,'|',1) and s.id<>i.id where e.deleted_at is null and i.group_id like 'GI-%' and s.deleted_at is null and (s.truck_id is distinct from e.truck_id or s.driver_id is distinct from e.driver_id)` |
+| I4 | Ένας γύρος ανά γραμμή· ακυρωμένος = ανύπαρκτος | rt-feed + rt-rules (deploy 8/9) | `select order_id from ct_rt_legs l join ct_round_trips r on r.id=l.rt_id where r.status not in ('closed','complete','cancelled') group by order_id having count(distinct rt_id)>1` |
+| I5 | Επίθημα Group ID = ακριβώς τα ζωντανά μέλη, καμία ομάδα του ενός | οθόνη (ξαναγράφεται σε κάθε αποχώρηση) | `select group_id from orders where deleted_at is null and group_id<>'' group by group_id having count(*)=1` και έλεγχος ότι κάθε id του επιθήματος υπάρχει ζωντανό με το ίδιο group |
+| I6 | Σπασμένη: γονέας χωρίς όχημα, κατάσταση από τα σκέλη | trigger 018/020 | προϋπάρχουσα απόδειξη 018 |
+| I7 | Σβησμένη παραγγελία δεν δεσμεύει τίποτα | trigger 023 | οι 4 μετρήσεις του 023 |
+| I8 | Ρότα: παιδί στον γύρο του γονέα | rt-feed | `select c.id from orders c join orders p on p.legacy_id=c.rotation_id left join ct_rt_legs lc on lc.order_id=c.id left join ct_rt_legs lp on lp.order_id=p.id where c.deleted_at is null and c.status in ('In Transit','Delivered') and lc.rt_id is distinct from lp.rt_id` |
+| I9 | Μεταφορά εβδομάδας δεν αγγίζει ημερομηνίες | οθόνη (γράφει μόνο plan_week_start) | `plan_week_start` πάντα Σάββατο (CHECK 016) |
+| I10 | Καμία ακύρωση/αλλαγή δεν αφήνει υπολείμματα (I2+I5+I7+σκέλη γύρου) | σύνθεση των παραπάνω | ίδιο SQL· το audit_log μένει (μνήμη, όχι υπόλειμμα) |
+
+Επόμενα: (1) `sync_drift()` του 014 να περιλάβει I1/I3/I4/I5/I7/I8 και το Weekly να δείχνει
+τον αριθμό στο υποσέλιδο· (2) μία σουίτα μεταβάσεων στο rig (ταίριασμα, ξεταίριασμα,
+ομαδοποίηση, ακύρωση μέλους, διάλυση, ανάθεση, σύρσιμο, ρότα, σπάσιμο, ένωση, διαγραφή)
+που ελέγχει τα αμετάβλητα μετά από κάθε κίνηση, πριν από κάθε push· (3) ο γύρος ως
+αντικείμενο σχεδιασμού, ώστε τα I1/I2 να γίνουν trigger.
