@@ -402,7 +402,7 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4 .wk3-range{font-size:12px}
 .wn4-cross{font-size:11px;color:var(--accent-text);margin-left:auto;cursor:help}
 .wn4-cross+.wk3-range{margin-left:0}
-.wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1.3fr) 280px minmax(0,0.7fr);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px}
+.wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px}
 .wn4-cols .c{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:1.8px;color:var(--text-mid);padding:8px 12px;white-space:nowrap;display:flex;align-items:center;gap:8px}
 /* 13/9 (owner: «δεν είναι ευθυγραμμισμένα»): the ΑΝΑΘΕΣΗ and ΑΝΟΔΟΣ headers sit over the centre of their columns, where the pill and the «—» sit. */
 .wn4-cols .c:nth-child(3),.wn4-cols .c:nth-child(4){justify-content:center}
@@ -426,7 +426,7 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-dh .k .bad{color:var(--unassigned);font-weight:500} .wn4-dh .k .hot{color:var(--danger);font-weight:500}
 .wn4-none{font-size:11px;color:var(--text-dim);padding:4px}
 /* 13/9 (owner: alignment + room for multi-stop pills): ONE column ratio for every row and the header — ΚΑΘΟΔΟΣ carries the multi-drop pills, ΑΝΟΔΟΣ is mostly empty or a single card; 1.3/0.7 keeps every row aligned and gives the pill ~165px per segment at 1800px. */
-.wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1.3fr) 280px minmax(0,0.7fr);min-height:var(--wn4-row);align-items:center;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:4px}
+.wn4 .wk3-row{display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);min-height:var(--wn4-row);align-items:center;background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-top:4px}
 /* Δ5: ΙΔΙΟ hover με το intl (weekly_intl.js:239). Η γραμμή αυτού του πίνακα
    είναι ~1600px· χωρίς φωτισμό το μάτι δεν έχει τι να ακολουθήσει από τον
    πελάτη μέχρι την ανάθεση. Ο παλιός κανόνας έγραφε --bg-card, δηλαδή
