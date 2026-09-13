@@ -222,6 +222,44 @@ async function _wnLoadAll() {
   // Build location map — use already-fetched locs instead of extra API calls
   WNATL.data._locMap = {};
   locs.forEach(r => { WNATL.data._locMap[r.id] = r.fields.Name||r.fields.City||''; });
+
+  // Πολυστάσιες παραδόσεις ΚΑΘΟΔΟΥ (owner 13/9, Figma
+  // w4-weekly-natl-board-v3-multistop 566:1011): οι στάσεις (ORDER_STOPS)
+  // κουβαλούν παλέτες/κατάσταση ΑΝΑ ΣΗΜΕΙΟ — τα Delivery Location 1..N του
+  // φορτίου δεν το κάνουν. Batch σε ΜΙΑ κλήση (όχι μία ανά φορτίο):
+  // OR(FIND) πάνω στο 'Parent Nat Load' — το ORDER_STOPS ΕΧΕΙ links block
+  // για αυτό το πεδίο στον deployed Worker (worker/src/index.js,
+  // tblaeY5QOHAS1gyE8.links["Parent Nat Load"]), και η preResolveLinkTerms
+  // εκεί λύνει ΚΑΘΕ FIND(...) της OR() ανεξάρτητα (matchAll, όχι μία φορά) —
+  // ΔΕΝ είναι το γενικό πρόβλημα ARRAYJOIN που αποφεύγει το
+  // core/stops-helpers.js (εκείνο αφορά πεδία/πίνακες ΧΩΡΙΣ links block,
+  // π.χ. GROUPAGE LINES). Αποτυχία ΔΕΝ ρίχνει την εβδομάδα — κάθε φορτίο
+  // γυρίζει στην παλιά εμφάνιση (κουμπί «▸ N σημεία») και ακούγεται
+  // (logError), ποτέ σιωπηλά.
+  const multiIds = [...WNATL.data.northsouth, ...WNATL.data.southnorth]
+    .filter(r => _wnLocParts(r.fields, 'Delivery').n > 1)
+    .map(r => r.id);
+  if (multiIds.length) {
+    try {
+      const filter = `AND({${F.STOP_TYPE}}='Unloading',OR(${multiIds.map(id => `FIND("${id}",ARRAYJOIN({${F.STOP_PARENT_NL}},","))>0`).join(',')}))`;
+      const stops = await atGetAll(TABLES.ORDER_STOPS, { filterByFormula: filter, fields: [
+        F.STOP_NUMBER, F.STOP_TYPE, F.STOP_LOCATION, F.STOP_PALLETS, F.STOP_DATETIME,
+        F.STOP_CLIENT, F.STOP_PARENT_NL, 'Completed At', 'Performance',
+      ] }, false);
+      const byLoad = {};
+      (stops || []).forEach(s => {
+        const lid = getLinkedId(s.fields?.[F.STOP_PARENT_NL]);
+        if (!lid) return;
+        (byLoad[lid] = byLoad[lid] || []).push(s);
+      });
+      Object.keys(byLoad).forEach(lid => byLoad[lid].sort((a, b) => (a.fields[F.STOP_NUMBER] || 0) - (b.fields[F.STOP_NUMBER] || 0)));
+      [...WNATL.data.northsouth, ...WNATL.data.southnorth].forEach(r => {
+        if (byLoad[r.id]?.length > 1) r._stopsD = byLoad[r.id];
+      });
+    } catch (e) {
+      logError(e, 'weekly_natl: multi-stop batch fetch');
+    }
+  }
 }
 
 /* ── BUILD ROWS ──────────────────────────────────────────────────── */
@@ -476,6 +514,20 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-foot .t.bad b{color:var(--unassigned)} .wn4-foot .t.hot b{color:var(--danger)}
 .wn4-foot .t[onclick]{cursor:pointer}
 .wn4-foot .m{font-size:11px;color:var(--text-mid)} .wn4-foot .m.hot{color:var(--danger);font-weight:600}
+/* Πολυστάσιες παραδόσεις ΚΑΘΟΔΟΥ (owner 13/9): reuse των global .wk3-seg*
+   κλάσεων (assets/style.css) για το σχήμα/χρώμα του τμήματος — μόνο η
+   ΕΣΩΤΕΡΙΚΗ μορφοποίηση (ημερομηνία/όνομα/τόπος/σύνολα) είναι δικές μας
+   κλάσεις, γιατί οι αντίστοιχες .wi2-* του intl ζουν στο <style> ΤΟΥ
+   weekly_intl.js και δεν θα υπήρχαν στη σελίδα χωρίς προηγούμενη επίσκεψη
+   εκεί στο ίδιο session (βλ. σχόλιο στη function _wnSegHTML).*/
+.wn4 .wk3-segwrap{flex:1 1 0;min-width:0}
+.wn4 .wk3-segwrap>.wk3-flags{flex:0 0 auto}
+.wn4-segdate{display:inline-block;font:700 9px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:6px;padding:0 5px;line-height:15px;font-variant-numeric:tabular-nums}
+.wn4-segpal{font-size:9px;font-weight:700;color:var(--text)}
+.wn4-segn{font-size:10px;line-height:13px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere;margin-top:2px}
+.wn4-segp{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wn4-segtot{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
+.wn4 .wk3-num .xn{font-size:10px;font-weight:700;color:var(--text-dim)}
 @media print{.wn4-strip,.wn4-acts,.wk3-sub{display:none}}
 </style>`; }
 
@@ -1245,6 +1297,197 @@ function _wnLocParts(f, kind) {
   return { name, sub: escapeHtml(cities.join(' / ')), n: names.length };
 }
 
+/* ── ΠΟΛΥΣΤΑΣΙΕΣ ΠΑΡΑΔΟΣΕΙΣ ΚΑΘΟΔΟΥ — segmented pill (owner 13/9/2026,
+   Figma w4-weekly-natl-board-v3-multistop 566:1011) ─────────────────────
+   Reuse-first (design spec): οι κλάσεις .wk3-seg/.wk3-segpill/.wk3-segwrap/
+   .wk3-segtotals/.wk3-segtip/.wk3-tiled ζουν στο assets/style.css (global,
+   ίδιες με το Weekly International) — ΔΕΝ αντιγράφονται εδώ. Η ΛΟΓΙΚΗ όμως
+   είναι δική μας: το intl σερβίρει ένα τμήμα ανά ΠΑΡΑΓΓΕΛΙΑ (Group ID) —
+   εδώ κάθε τμήμα είναι μία ΣΤΑΣΗ (ORDER_STOPS) του ΙΔΙΟΥ φορτίου, τελείως
+   διαφορετική πηγή αλήθειας, γι' αυτό δικές μας _wnSeg* αντί για κλήση των
+   _wiSeg* του weekly_intl.js. Καμία νέα επιχειρησιακή λογική: το χρώμα του
+   τμήματος είναι τα ΥΠΑΡΧΟΝΤΑ σήματα (Completed At / ημερομηνία / Status
+   φορτίου μέσω _wnIsDelivered), όχι κάτι νέο. Οι εσωτερικές κλάσεις
+   (ημερομηνία/όνομα/τόπος) είναι δικές μας (.wn4-seg*), όχι τα .wi2-* του
+   intl — εκείνα ζουν στο <style> ΜΕΣΑ στο weekly_intl.js και δεν θα
+   υπήρχαν στη σελίδα αν κανείς δεν έχει ανοίξει ποτέ το Weekly
+   International στο ίδιο session. */
+
+// Χρώμα τμήματος: πράσινο αν η στάση έχει καταγεγραμμένη ολοκλήρωση,
+// κόκκινο αν η μέρα της πέρασε ΚΑΙ το φορτίο δεν έχει παραδοθεί ακόμη
+// (_wnIsDelivered υπολογίζει ήδη το «παραδόθηκε» για ολόκληρο το φορτίο —
+// ίδιος κανόνας 10/8), αλλιώς λευκό/ουδέτερο (καμία κλάση).
+function _wnSegState(s, row) {
+  const f = s?.fields || {};
+  if (f['Completed At']) return 'ok';
+  const dt = f[F.STOP_DATETIME];
+  if (dt) {
+    const t = new Date(dt).getTime();
+    if (!isNaN(t) && t < Date.now() && !_wnIsDelivered(row)) return 'late';
+  }
+  return '';
+}
+function _wnSegPlace(s) {
+  const raw = s?.fields?.[F.STOP_LOCATION];
+  const lid = Array.isArray(raw) ? (raw[0]?.id || raw[0]) : (raw?.id || raw);
+  const full = (lid && (WNATL.data._locMap?.[lid] || _wnLocName(lid))) || '';
+  const name = full.split(',')[0].trim();
+  const city = full.split(',').slice(1).join(',').trim();
+  return { name: name || '—', city };
+}
+function _wnSegDateHTML(s) {
+  const iso = s?.fields?.[F.STOP_DATETIME] || '';
+  return `<span class="wn4-segdate" title="Ημ. παράδοσης στάσης">${iso ? _wnFmt(iso) : '—'}</span>`;
+}
+// Hover card («hover lifts the segment and shows a card»): πελάτης/τόπος/
+// παλέτες/μέρα — ίδιο περιεχόμενο με το intl _wiSegTipHTML, στάση αντί για
+// παραγγελία. CSS-only εμφάνιση (.wk3-seg:hover .wk3-segtip), reused.
+function _wnSegTipHTML(s) {
+  const f = s?.fields || {};
+  const clientId = getLinkedId(f[F.STOP_CLIENT]);
+  const clients = clientId && typeof getRefClients === 'function' ? getRefClients() : [];
+  const client = clientId ? (clients.find(c => c.id === clientId)?.fields?.['Company Name']
+    || clients.find(c => c.id === clientId)?.fields?.['Name'] || '') : '';
+  const pl = _wnSegPlace(s);
+  const pal = f[F.STOP_PALLETS];
+  const iso = f[F.STOP_DATETIME] || '';
+  return `<div class="wk3-segtip"><b>${escapeHtml(client || pl.name)}</b>
+    <span>${escapeHtml([pl.name, pl.city].filter(Boolean).join(', '))}</span>
+    <span>${iso ? _wnFmt(iso) : '—'}</span>
+    <span>${pal != null ? pal + ' p' : '—'}</span></div>`;
+}
+// Ένα τμήμα = μία στάση παράδοσης. Κλικ ανοίγει την επεξεργασία ΤΟΥ ΦΟΡΤΙΟΥ
+// (openNatlEdit, orders_natl.js:1202) — η γραμμή δεν είχε ΚΑΝΕΝΑ «κλικ ανοίγει
+// φόρμα» πριν αυτή την αλλαγή (μόνο δεξί κλικ/popover ανάθεσης), οπότε αυτό
+// ΕΙΝΑΙ το πλησιέστερο «ό,τι κάνει ήδη η σειρά για το φορτίο». Δεξί κλικ = το
+// ΥΠΑΡΧΟΝ μενού της γραμμής (_wnCtx) — όχι νέο μενού ανά τμήμα (design: «the
+// row's existing context menu», σε αντίθεση με το intl's _wiSegCtx). Σύρσιμο
+// μόνο όταν draggable.
+function _wnSegHTML(s, idx, total, row, loadId, draggable) {
+  const pos = idx === 0 ? 'first' : (idx === total - 1 ? 'last' : 'mid');
+  const cls = _wnSegState(s, row);
+  const pl = _wnSegPlace(s);
+  const pal = s?.fields?.[F.STOP_PALLETS];
+  const drag = draggable ? `draggable="true"
+    ondragstart="event.stopPropagation();_wnSegDragStart(event,${row.id},'${s.id}')"
+    ondragover="event.preventDefault();event.stopPropagation();_wnSegDragOver(event,${row.id},'${s.id}')"
+    ondragleave="event.stopPropagation();this.classList.remove('dragover')"
+    ondrop="event.stopPropagation();_wnSegDrop(event,${row.id},'${s.id}')"
+    ondragend="event.stopPropagation();_wnSegDragEnd(event)"` : '';
+  return `<div class="wk3-seg${cls ? ' ' + cls : ''}" data-pos="${pos}" data-stop-id="${s.id}" ${drag}
+    onclick="event.stopPropagation();openNatlEdit('${loadId}')"
+    oncontextmenu="event.stopPropagation();_wnCtx(event,${row.id})">
+    <div class="wk3-segtop">${_wnSegDateHTML(s)}${pal != null ? `<span class="wn4-segpal">${pal}p</span>` : ''}</div>
+    <div class="wn4-segn"><span class="wk3-stopn" title="Σημείο ${idx + 1}">${idx + 1}</span>${escapeHtml(pl.name)}</div>
+    ${pl.city ? `<div class="wn4-segp">${escapeHtml(pl.city)}</div>` : ''}
+    ${_wnSegTipHTML(s)}
+  </div>`;
+}
+// Σύνολα δεξιά (design: «25/33 p · N σημεία», ΠΟΤΕ μέσα σε όνομα) + ό,τι
+// σήματα έδειχνε πριν η ενιαία κάρτα (καλύπτεται τοπικά/χρειάζεται
+// τοπικό/PE/GRP/cross-week/exec) — δεν χάνονται όταν η κάρτα γίνεται πλακέτα,
+// απλώς μετακομίζουν δίπλα στα σύνολα αντί για μέσα στην (πλέον ανύπαρκτη)
+// ενιαία κάρτα.
+function _wnSegTotalsHTML(stops, extraChipsHTML) {
+  const known = stops.filter(s => s.fields?.[F.STOP_PALLETS] != null);
+  const sum = known.reduce((a, s) => a + (+s.fields[F.STOP_PALLETS]), 0);
+  const palTxt = known.length ? `${sum}/33 p` : '— p';
+  return `<div class="wk3-segtotals"><span class="wn4-segtot">${palTxt} · ${stops.length} σημεία</span>${extraChipsHTML ? `<span class="wk3-flags">${extraChipsHTML}</span>` : ''}</div>`;
+}
+function _wnSegPillWrap(row, loadId, stops, extraChipsHTML) {
+  const segs = stops.map((s, i) => _wnSegHTML(s, i, stops.length, row, loadId, true)).join('');
+  return `<div class="wk3-segwrap"><div class="wk3-segpill" data-row-id="${row.id}" data-load-id="${loadId}">${segs}</div>${_wnSegTotalsHTML(stops, extraChipsHTML)}</div>`;
+}
+
+// ── Σύρσιμο σειράς στάσεων («drag a segment left/right = reorder») ──────
+// Reuse-first στη ΜΟΡΦΗ (ίδιο drag/drop lifecycle με το intl _wiSegDrag*),
+// όχι στη γραφή: εκεί γράφεται ένα «Group ID» σε παραγγελίες· εδώ δεν
+// υπάρχει τέτοιο πεδίο — γράφουμε το Stop Number ΚΑΘΕ στάσης ΚΑΙ τα Delivery
+// Location 1..N του ΦΟΡΤΙΟΥ (ίδια σειρά), ώστε εκτυπώσεις/ράμπα που διαβάζουν
+// το φορτίο και όχι τις στάσεις να συμφωνούν (spec: REORDER WRITE).
+window._wnSegDrag = null; // {rowId, stopId}
+function _wnSegDragStart(e, rowId, stopId) {
+  if (_wnBlockReadOnly()) { e.preventDefault(); return; }
+  window._wnSegDrag = { rowId, stopId };
+  e.dataTransfer.effectAllowed = 'move';
+  e.currentTarget.classList.add('dragging');
+}
+function _wnSegDragOver(e, rowId, stopId) {
+  const d = window._wnSegDrag;
+  if (!d || d.rowId !== rowId || d.stopId === stopId) return;
+  e.currentTarget.classList.add('dragover');
+}
+function _wnSegDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.wk3-seg.dragover').forEach(el => el.classList.remove('dragover'));
+  window._wnSegDrag = null;
+}
+async function _wnSegDrop(e, rowId, stopId) {
+  e.preventDefault();
+  const d = window._wnSegDrag;
+  document.querySelectorAll('.wk3-seg.dragover').forEach(el => el.classList.remove('dragover'));
+  window._wnSegDrag = null;
+  if (!d || d.rowId !== rowId || d.stopId === stopId) return;
+  const row = WNATL.rows.find(r => r.id === rowId); if (!row) return;
+  const primary = [...WNATL.data.northsouth, ...WNATL.data.southnorth].find(r => r.id === row.orderId);
+  const stops = primary?._stopsD;
+  if (!Array.isArray(stops) || stops.length < 2) return;
+  const ids = stops.map(s => s.id);
+  const from = ids.indexOf(d.stopId), to = ids.indexOf(stopId);
+  if (from < 0 || to < 0) return;
+  const reordered = stops.slice();
+  reordered.splice(to, 0, reordered.splice(from, 1)[0]);
+  await _wnSaveSegOrder(row, primary, reordered);
+}
+// PATCH το Stop Number ΚΑΘΕ στάσης + τα Delivery Location 1..N του φορτίου
+// (ίδια σειρά) + ανάγνωση πίσω (CLAUDE.md §2: η απόδειξη είναι ο πίνακας) ΠΡΙΝ
+// πει «αποθηκεύτηκε». Αποτυχία ΟΠΟΥΔΗΠΟΤΕ (στάση, φορτίο, ή η ανάγνωση δεν
+// επιβεβαιώνει) → πλήρες ξαναφόρτωμα από τον server ώστε η οθόνη να μην
+// ισχυρίζεται σειρά που δεν επιβεβαιώθηκε.
+async function _wnSaveSegOrder(row, load, orderedStops) {
+  let failed = false;
+  for (let i = 0; i < orderedStops.length; i++) {
+    const s = orderedStops[i];
+    try {
+      const res = await atSafePatch(TABLES.ORDER_STOPS, s.id, { [F.STOP_NUMBER]: i + 1 });
+      if (res?.error) throw new Error(res.error.message || res.error.type);
+      s.fields[F.STOP_NUMBER] = i + 1;
+    } catch (err) { failed = true; logError(err, 'weekly_natl: seg reorder stop ' + s.id); }
+  }
+  const locFields = {};
+  orderedStops.forEach((s, i) => {
+    const raw = s.fields?.[F.STOP_LOCATION];
+    const lid = Array.isArray(raw) ? (raw[0]?.id || raw[0]) : (raw?.id || raw);
+    if (lid) locFields[`Delivery Location ${i + 1}`] = [lid];
+  });
+  if (!failed) {
+    try {
+      const res = await atSafePatch(TABLES.NAT_LOADS, load.id, locFields);
+      if (res?.error) throw new Error(res.error.message || res.error.type);
+    } catch (err) { failed = true; logError(err, 'weekly_natl: seg reorder load locations'); }
+  }
+  if (!failed) {
+    try {
+      const rec = await atGetOne(TABLES.NAT_LOADS, load.id);
+      const ok = Object.keys(locFields).every(k => {
+        const got = rec.fields?.[k];
+        const gotId = Array.isArray(got) ? (got[0]?.id || got[0]) : (got?.id || got);
+        return gotId === locFields[k][0];
+      });
+      if (!ok) throw new Error('Δεν επιβεβαιώθηκε στην ανάγνωση');
+      Object.assign(load.fields, rec.fields);
+    } catch (err) { failed = true; logError(err, 'weekly_natl: seg reorder read-back'); }
+  }
+  if (failed) {
+    toast('Η σειρά δεν αποθηκεύτηκε πλήρως — δοκίμασε ξανά', 'warn');
+    await renderWeeklyNatl();
+    return;
+  }
+  load._stopsD = orderedStops;
+  toast('✓ σειρά αποθηκεύτηκε');
+  _wnPaint();
+}
+
 /* ── N→S ROW ─────────────────────────────────────────────────────── */
 function _wnRowHTML(row, i) {
   const { data } = WNATL;
@@ -1278,7 +1521,12 @@ function _wnRowHTML(row, i) {
   // · κόκκινο >33). Η ανάλυση ανά πελάτη φορτώνεται ΜΟΝΟ όταν πατηθεί.
   const nDel = toP.n;
   const fillCls = pals > 33 ? ' over' : (pals >= 30 ? ' full' : '');
-  const grpChip = nDel > 1
+  // Πολυστάσιες παραδόσεις (owner 13/9): αν το batch fetch του _wnLoadAll
+  // έφερε ΟΝΤΩΣ 2+ στάσεις γι' αυτό το φορτίο, η κάρτα παράδοσης γίνεται
+  // segmented pill (design). Αλλιώς — μία στάση, ή το fetch απέτυχε/δεν
+  // ταίριαξε το πλήθος — ΙΔΙΑ παλιά εμφάνιση (κάρτα + κουμπί), αμετάβλητη.
+  const segStops = (primary?._stopsD && primary._stopsD.length > 1) ? primary._stopsD : null;
+  const grpChip = (nDel > 1 && !segStops)
     ? `<button class="wn4-chip grp${fillCls}" id="wn-grpb-${row.id}" data-n="${nDel}" data-p="${pals||0}"
         title="${nDel} σημεία παράδοσης — κλικ για ανάλυση ανά πελάτη"
         onclick="event.stopPropagation();_wnToggleStops(${row.id},'${primary?.id||''}')">▸ ${nDel} σημεία${pals?` · ${pals}/33`:''}</button>`
@@ -1292,14 +1540,16 @@ function _wnRowHTML(row, i) {
     name: fromP.name || (isGroup ? escapeHtml(f['Name'] || '') : '') || '—', sub: fromP.sub,
     appt: f['Loading Appointment'], ok: loaded, okTitle: 'Φορτώθηκε (Status: '+escapeHtml(st)+')',
   });
-  const toCard = _wnCard({
-    date: delDt, dateTitle: 'Ημ. παράδοσης',
-    name: toP.name || escapeHtml(clientLabel) || (isGroup ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : '—'),
-    sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
-    appt: f['Delivery Appointment'], ok: delivered, okTitle: 'Παραδόθηκε (Status: Delivered)',
-    chips: _wnCoveredChip(row) + needChip + grpChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
-    pals,
-  });
+  const toCard = segStops
+    ? _wnSegPillWrap(row, primary.id, segStops, _wnCoveredChip(row) + needChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`)
+    : _wnCard({
+        date: delDt, dateTitle: 'Ημ. παράδοσης',
+        name: toP.name || escapeHtml(clientLabel) || (isGroup ? 'ΒΕΡΜΙΟΝ ΦΡΕΣ / CROSS-DOCK' : '—'),
+        sub: toP.sub || (toP.name && clientLabel ? escapeHtml(clientLabel) : ''),
+        appt: f['Delivery Appointment'], ok: delivered, okTitle: 'Παραδόθηκε (Status: Delivered)',
+        chips: _wnCoveredChip(row) + needChip + grpChip + `<span class="wk3-flags">${_wnBadges(f)}${_wnCrossChip(f)}${_wnExecChip(f,row.saved)}</span>`,
+        pals,
+      });
 
   // ΟΛΟΙ οι handlers αυτούσιοι από τη v3: dragstart, δεξί κλικ (_wnCtx),
   // popover ανάθεσης, print, και το drop target της ανόδου.
@@ -1307,7 +1557,7 @@ function _wnRowHTML(row, i) {
   <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
-    <div class="wk3-num">${i+1}${_wnSyncSlot('wn-sync-'+row.id)}</div>
+    <div class="wk3-num">${i+1}${nDel>1?`<span class="xn" title="${nDel} σημεία παράδοσης">×${nDel}</span>`:''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
     <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
       <button class="wk3-prt" title="Εκτύπωση εντολής καθόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
@@ -1322,7 +1572,7 @@ function _wnRowHTML(row, i) {
       ${snCell}
     </div>
   </div>
-  ${nDel > 1 ? `<div class="wn3-stops" id="wn-stops-${row.id}" style="display:none"></div>` : ''}`;
+  ${(nDel > 1 && !segStops) ? `<div class="wn3-stops" id="wn-stops-${row.id}" style="display:none"></div>` : ''}`;
 }
 
 /* ── Φέτα 4 (Δ9): ανάλυση groupage, lazy ──────────────────────────── */
@@ -2471,6 +2721,11 @@ window._wnQuick = _wnQuick;
 window._wnClearFilter = _wnClearFilter;
 window._wnCoverLocal = _wnCoverLocal;
 window._wnSaveCover = _wnSaveCover;
+window._wnSegDragStart = _wnSegDragStart;
+window._wnSegDragOver = _wnSegDragOver;
+window._wnSegDragEnd = _wnSegDragEnd;
+window._wnSegDrop = _wnSegDrop;
+window._wnSaveSegOrder = _wnSaveSegOrder;
 
 
 // ── WN-3: print the week (warehouse works on paper) ─────────
