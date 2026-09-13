@@ -377,11 +377,6 @@ function navigate(page) {
       today: 'Δεν υπάρχει συγκεντρωτική εικόνα κόστους. Η σελίδα δεν εμφανίζεται στο μενού — φτάνεις εδώ από παλιό σύνδεσμο.',
       eta: 'Εξαρτάται από τα Κόστη Δρομολογίων, που με τη σειρά τους περιμένουν τον πίνακα TRIP_COSTS.',
     }); break;
-    case 'fuel':           c.innerHTML = showComingSoon('Καύσιμα', {
-      icon: 'droplet',
-      today: 'Οι αποδείξεις DADI και DKV εισάγονται από την αυτόνομη εφαρμογή Fuel Import.',
-      eta: 'Η ενσωμάτωση στο TMS δεν έχει προγραμματιστεί. Η σελίδα δεν εμφανίζεται στο μενού.',
-    });         break;
     case 'costs':          renderTripPnl();                                   break;
     case 'pl':             c.innerHTML = showComingSoon('Κερδοφορία', {
       icon: 'trending_up',

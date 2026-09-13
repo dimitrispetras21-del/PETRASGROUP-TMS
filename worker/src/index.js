@@ -3,6 +3,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
+import { validateLineBody } from "./costs-line-rules.mjs";
 import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
@@ -1727,39 +1728,13 @@ var TABLES = {
       "Nat Load": { column: "national_load_id", table: "national_loads" }
     }
   },
-  // ── Fuel receipts (Wave 2): fuel spend, written ONLY by the sister repo's
-  // fuel_import.html (DADI/DKV import). Schema built in 0015. COST TABLE: RBAC
-  // (rbac.js) denies dispatcher + warehouse; only owner/management/accountant.
-  // 14 storable fields, all directly storable (no formula/rollup). Emoji-laden
-  // singleSelect values (Assignment Status/Fuel Type/Country) pass through as
-  // text, never translated or stripped (#9). ──
-  tblxRFsMeVhlLrBjF: {
-    name: "FUEL",
-    pg: "fuel",
-    fields: {
-      "Receipt ID": "receipt_id",
-      Date: "receipt_date",
-      // renamed: `date` is a PG type name (0015)
-      "Odometer KM": "odometer_km",
-      Liters: "liters",
-      "Total Cost": "total_cost",
-      // cost field, gates the dispatcher-deny RBAC
-      Station: "station",
-      Country: "country",
-      // singleSelect 2-letter code
-      "Invoice Number": "invoice_number",
-      Notes: "notes",
-      "Assignment Status": "assignment_status",
-      // ✅/⚠️/❌ emoji verbatim
-      "Fuel Type": "fuel_type"
-      // 🏠/⛽/❄️ emoji verbatim
-      // Link fields ('Truck','Trailer','Trip') are NOT mapped: they are FK bigint
-      // columns, not label-valued fields. Truck/Trailer FKs resolve today (0007);
-      // Trip is a deferred FK (TRIPS = Wave 4). Excluded like every other facade
-      // table so a write can't set them yet and a read doesn't surface an
-      // unresolved FK as a bad Airtable link (§4.3).
-    }
-  }
+  // Fuel receipts facade (tblxRFsMeVhlLrBjF → pg "fuel") removed 13/9/2026:
+  // migration 030 dropped the `fuel` table (fuel-collection-program spec
+  // §2.Α, owner decision §0.2) — the block had 0 live rows and pointed at a
+  // relation that no longer exists, so leaving it would 404/500 on first use
+  // instead of failing loud at review time (CLAUDE.md «ο νεκρός κώδικας λέει
+  // ψέματα»). Fuel lines now live in ct_cost_lines (category fuel/reefer_fuel,
+  // handleCosts POST/PATCH /costs/lines) — see ct_v_fuel for the read shape.
 };
 function tableConfig(tableId) {
   return TABLES[tableId] || null;
@@ -2982,6 +2957,37 @@ async function handleCosts(request, url, origin, env) {
           r.route_text = rr ? rr.route_text : null;
           r.route_legs = rr ? rr.route_legs : null;
         }
+        // ledger_entry (owner 13/9, fuel-collection-program spec §2.Β task):
+        // «Έξοδα Μ = έξοδα Μισθοδοσίας, ένα σημείο» — the weekly/vehicle
+        // expenses sheet reads the trip's dl_entries.expenses instead of
+        // keeping its own copy. One extra query for the whole page (in.(...)
+        // over all RT ids), not per RT — same pattern as the route lookup
+        // above. dl_rt_live (migration 011) already keeps at most one live
+        // entry per rt_id, but that's a DB invariant elsewhere, not a promise
+        // this route should lean on blindly (CLAUDE.md «δύο πηγές αλήθειας
+        // σημαίνει καμία») — several rows for one rt_id is handled, not assumed
+        // impossible: the lowest id wins and `ambiguous:true` is added.
+        try {
+          const { rows: entryRows } = await dbSelectRaw(env, "dl_entries", new URLSearchParams({
+            select: "id,rt_id,expenses",
+            rt_id: `in.(${ids.join(",")})`,
+            entry_type: "eq.trip",
+            deleted_at: "is.null",
+            order: "id.asc"
+          }));
+          const byRt = /* @__PURE__ */ new Map();
+          for (const e of entryRows) {
+            const existing = byRt.get(e.rt_id);
+            if (!existing) byRt.set(e.rt_id, { id: e.id, expenses: e.expenses });
+            else if (!existing.ambiguous) existing.ambiguous = true;
+          }
+          for (const r of rows) r.ledger_entry = byRt.get(r.id) || null;
+        } catch (e) {
+          // Secondary defect stays in its corner — the RT list itself must
+          // keep working even if the ledger lookup breaks.
+          console.error("COSTS rt ledger_entry lookup failed", e.message);
+          for (const r of rows) r.ledger_entry = null;
+        }
       }
       return jsonOk({ records: rows }, origin, env);
     }
@@ -3006,9 +3012,26 @@ async function handleCosts(request, url, origin, env) {
       if (!CT_CATEGORIES.includes(body.category)) {
         return jsonError("Unknown category", 400, origin, env);
       }
-      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "km_reading", "liters", "station", "note"]);
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source"]);
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
+      }
+      // isImport: false — this endpoint never accepts doc_id (that column is
+      // only ever set by the DKV importer's /costs/import/commit path below),
+      // so every line POSTed here is manual by definition (fuel-collection-
+      // program spec §2.Β).
+      const lineCheck = validateLineBody(row, { isImport: false });
+      if (!lineCheck.ok) return jsonError(lineCheck.error, lineCheck.status, origin, env);
+      if (lineCheck.toll_country !== void 0) row.toll_country = lineCheck.toll_country;
+      if (row.trailer_id !== void 0) {
+        const tr = await dbSelectRaw(env, "trailers", new URLSearchParams({ select: "id", id: `eq.${row.trailer_id}`, deleted_at: "is.null" }));
+        if (!tr.rows.length) return jsonError("trailer_id: unknown trailer", 400, origin, env);
+      } else if (row.category === "reefer_fuel" && row.rt_id) {
+        // Reefer diesel is credited to the trailer the trip pulled (owner
+        // 13/9, spec §2.Α) — default it from the round trip when the caller
+        // didn't send one explicitly; the accountant can still override it.
+        const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${row.rt_id}` }));
+        if (rt.rows.length && rt.rows[0].trailer_id) row.trailer_id = rt.rows[0].trailer_id;
       }
       row.alloc_status = row.rt_id ? "allocated" : "unallocated";
       row.created_by = caller.sub;
@@ -3040,12 +3063,39 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "lines" && method === "PATCH" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
-      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "km_reading", "liters", "station", "note"]);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
-      if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const before = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
       if (!before.rows.length) return jsonError("Not found", 404, origin, env);
+      // Validate the EFFECTIVE line (existing row + this patch merged) — a
+      // PATCH that only touches net/vat must not let an already-broken
+      // category/fuel_source/toll_country combination slide through
+      // untouched. doc_id on the existing row marks a DKV-imported line —
+      // isImport:true there skips the toll_country requirement (that path's
+      // rules live in import-rules.mjs, not touched here).
+      const effectiveLine = {
+        category: "category" in patch ? patch.category : before.rows[0].category,
+        fuel_source: "fuel_source" in patch ? patch.fuel_source : before.rows[0].fuel_source,
+        toll_country: "toll_country" in patch ? patch.toll_country : before.rows[0].toll_country
+      };
+      const lineCheck = validateLineBody(effectiveLine, { isImport: !!before.rows[0].doc_id });
+      if (!lineCheck.ok) return jsonError(lineCheck.error, lineCheck.status, origin, env);
+      if ("toll_country" in patch && lineCheck.toll_country !== void 0) patch.toll_country = lineCheck.toll_country;
+      if ("trailer_id" in patch) {
+        const tr = await dbSelectRaw(env, "trailers", new URLSearchParams({ select: "id", id: `eq.${patch.trailer_id}`, deleted_at: "is.null" }));
+        if (!tr.rows.length) return jsonError("trailer_id: unknown trailer", 400, origin, env);
+      } else if (effectiveLine.category === "reefer_fuel" && !before.rows[0].trailer_id) {
+        // Same default as POST, applied to the effective (patched) rt_id —
+        // covers the common edit flow of attaching an rt_id to a reefer_fuel
+        // line that was created unallocated.
+        const effRtId = "rt_id" in patch ? patch.rt_id : before.rows[0].rt_id;
+        if (effRtId) {
+          const rt = await dbSelectRaw(env, "ct_round_trips", new URLSearchParams({ select: "trailer_id", id: `eq.${effRtId}` }));
+          if (rt.rows.length && rt.rows[0].trailer_id) patch.trailer_id = rt.rows[0].trailer_id;
+        }
+      }
+      if ("rt_id" in patch) patch.alloc_status = patch.rt_id ? "allocated" : "unallocated";
       const updated = await ctDbPatch(env, "ct_cost_lines", `id=eq.${encodeURIComponent(recId)}`, patch);
       await audit(env, { actor: caller.sub, role: caller.role, action: "update", table: "ct_cost_lines", recordId: String(recId), before: before.rows[0], after: { ...updated, reason: String(body.reason).trim() } });
       return jsonOk({ record: updated }, origin, env);
