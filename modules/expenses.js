@@ -630,14 +630,21 @@ function exGridHtml() {
     <div class="ex-gridwrap"><div class="ex-grid">${th}${rows}${tab === 'week' ? exNoneRowHtml() : ''}${tt}</div></div>${tollsLine}${foot}</div>`;
 }
 
+// One computation of «per country» subtotals for tolls lines — used by the
+// vehicle view's quiet line AND the tolls panel head (Figma 547:1583 state δ),
+// so the two can never disagree (αρχή 3). ISO-2 code, descending by amount.
+function exCountryParts(lines) {
+  const byCountry = {};
+  lines.forEach(l => { const c = l.toll_country || '—'; byCountry[c] = (byCountry[c] || 0) + exLineAmt(l); });
+  return Object.entries(byCountry).sort((a, b) => b[1] - a[1]).map(([c, amt]) => c + ' ' + exNum(amt));
+}
+
 // «Διόδια ανά χώρα» quiet line under the totals row (spec §2.Γ point 1) —
 // only meaningful once a truck is scoped, so vehicle tab only.
 function exVehTollsByCountryHtml() {
   const tollsGroup = EX_GROUPS.find(g => g.key === 'tolls');
   const all = _ex.veh.rts.flatMap(r => exGroupLines(exRtLines(r.id), tollsGroup));
-  const byCountry = {};
-  all.forEach(l => { const c = l.toll_country || '—'; byCountry[c] = (byCountry[c] || 0) + exLineAmt(l); });
-  const parts = Object.entries(byCountry).sort((a, b) => b[1] - a[1]).map(([c, amt]) => c + ' ' + exNum(amt));
+  const parts = exCountryParts(all);
   if (!parts.length) return '';
   return `<div class="ex-foot" style="border-top:0;padding-top:0"><p>Διόδια ανά χώρα: ${escapeHtml(parts.join(' · '))}</p></div>`;
 }
@@ -778,7 +785,7 @@ function exPanelHtml(rt) {
   const rowsHtml = lines.length ? lines.map(l => exLineRowHtml(l, { unallocated: isNone })).join('') : '';
   const thHtml = lines.length ? `<div class="ex-th ex-line-grid"><div>Ημ/νία</div><div>Κατηγορία · Σημείωση</div><div>${exExtraColLabel(group.key)}</div><div class="r">Ποσό</div><div>Ποιος</div><div></div></div>` : '';
   return `<div class="ex-gp" data-panel="${isNone ? 'none' : rt.id}">
-    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}</div><button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div>
+    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}${group.key === 'tolls' && lines.length ? ` <span class="mid">· ${escapeHtml(exCountryParts(lines).join(' · '))}</span>` : ''}</div><button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div>
     ${thHtml}${rowsHtml}${exQeRowHtml(group)}
   </div>`;
 }
