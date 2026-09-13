@@ -197,7 +197,7 @@ function exStyles() {
      viewport. */
   .ex-gridwrap{overflow-x:auto}
   /* 4 fixed head tracks + 9 amount groups (spec §2 point 2) + Σύνολο + Κατάσταση. */
-  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:22px 62px minmax(96px,1fr) 70px repeat(9,60px) 68px 72px;gap:4px;align-items:center;padding:0 10px}
+  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:22px 62px minmax(90px,1fr) 80px repeat(9,60px) 68px 72px;gap:4px;align-items:center;padding:0 10px}
   /* «Καράβια/Τρένα» is the one header that wraps to two lines at this width
      — allowed (line-height 1.1 keeps it inside the fixed 32px row), never
      truncated or renamed. */
@@ -267,7 +267,7 @@ function exStyles() {
   .ex-idoc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0;font-size:12px}
   @media (max-width:1320px){
     .ex-page{padding:16px 16px 32px}
-    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:18px 54px minmax(84px,1fr) 62px repeat(9,54px) 60px 64px;gap:3px;padding:0 8px}
+    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:18px 54px minmax(80px,1fr) 70px repeat(9,54px) 60px 64px;gap:3px;padding:0 8px}
     .ex-legs{padding-left:88px}
     .ex-gr{padding-top:5px;padding-bottom:5px}
     .ex-cell .a{font-size:10.5px}
