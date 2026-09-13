@@ -285,21 +285,35 @@ function joinRefToPassages(line, passagesList) {
 }
 
 // ─── round-trip matching (spec §4 "Σκορ ταιριάσματος") ──────────────────────
+// ±1 day tolerance on the RT's own window (spec Δ1, 13/9): DKV bills the
+// departure day before an RT's date_start (and, symmetrically, a day after
+// date_end) — measured 13/9: 10 of 98 unallocated lines were 1-2 days before
+// an RT start. Same one-day billing cut already tolerated when splitting
+// half-month toll lines against passages (shiftDay above) — a 2+ day gap is
+// still a genuine miss, not widened past.
 function dateOverlaps(line, rt) {
   const start = rt.date_start;
   const end = rt.date_end || rt.date_start;
   if (!start) return false;
-  if (line.service_date) return line.service_date >= start && line.service_date <= end;
-  if (line.period_from && line.period_to) return line.period_from <= end && line.period_to >= start;
+  const tolStart = shiftDay(start, -1);
+  const tolEnd = shiftDay(end, 1);
+  if (line.service_date) return line.service_date >= tolStart && line.service_date <= tolEnd;
+  if (line.period_from && line.period_to) return line.period_from <= tolEnd && line.period_to >= tolStart;
   return false;
 }
 
+// Kept widened by the same ±1 day tolerance as dateOverlaps above — this
+// picks the best of several overlapping candidates, so a candidate that only
+// qualifies via the tolerance must count its days the same way, or the
+// "most days wins" heuristic would silently ignore the extra day it was
+// matched on.
 function overlapDays(line, rt) {
-  const start = rt.date_start;
-  const end = rt.date_end || rt.date_start;
+  if (!rt.date_start) return 0;
+  const start = shiftDay(rt.date_start, -1);
+  const end = shiftDay(rt.date_end || rt.date_start, 1);
   const from = line.period_from || line.service_date;
   const to = line.period_to || line.service_date;
-  if (!from || !to || !start) return 0;
+  if (!from || !to) return 0;
   const lo = from > start ? from : start;
   const hi = to < end ? to : end;
   if (lo > hi) return 0;
@@ -353,6 +367,154 @@ export function matchRoundTrip(line, rts, rules) {
     alternatives: candidates.filter((c) => c.id !== chosen.id).map((c) => c.id),
     none_reason: null,
   };
+}
+
+// ─── proportional allocation of DKV account fees (spec Δ2, §Δ 13/9) ────────
+// A DKV account/box fee (category 'dkv') is never itself a trip cost —
+// matchRoundTrip above always returns none/general_fee for one, no matter
+// what plate or date it carries — but it IS a real cost of running trucks
+// during the statement period, so instead of sitting "προς ανάθεση" forever
+// it is spread across the round trips that actually had DKV charges in that
+// period, weighted by what each RT already owes there (owner decision 13/9,
+// spec §0.5: "αναλογικά με τις χρεώσεις DKV κάθε δρομολογίου στην περίοδο").
+// A fee naming a plate only ever lands on that vehicle's own RTs.
+
+// The window used to find candidate RTs for a fee line: the line's own
+// period_from/period_to when it has one (rare for a fee — only if it were
+// ever half-month structured), else its own service_date (every parsed line
+// gets one — dkv-parser.js's makeLine), else the statement's own period
+// (passed in by the caller, spec §5's ct_cost_docs.period_from/period_to) —
+// a fee line genuinely covers the whole billing period, not one day, so this
+// is the normal path for a real DKV account fee (it never has its own
+// service_date/period tied to a single trip). No date anywhere → nothing to
+// compute a window from, so the line is left exactly as it arrived (spec:
+// "αν δεν υπάρχει, μένει ως έχει" — never guessed past).
+function feeLinePeriod(line, statementPeriod) {
+  if (line.period_from && line.period_to) return { from: line.period_from, to: line.period_to };
+  if (line.service_date) return { from: line.service_date, to: line.service_date };
+  if (statementPeriod && statementPeriod.period_from && statementPeriod.period_to) {
+    return { from: statementPeriod.period_from, to: statementPeriod.period_to };
+  }
+  return null;
+}
+
+// Same ±1 day tolerance as dateOverlaps (Δ1) — a fee is billed on the same
+// DKV departure-day cut as any other line.
+function rtOverlapsPeriod(rt, period) {
+  if (!rt.date_start) return false;
+  const start = shiftDay(rt.date_start, -1);
+  const end = shiftDay(rt.date_end || rt.date_start, 1);
+  return period.from <= end && period.to >= start;
+}
+
+// Splits `total` (a single amount field on the parent, e.g. net or vat)
+// across `weights` in proportion, 2dp, with the LAST share absorbing
+// whatever rounding left behind so Σ shares === total exactly (same rule
+// splitByPassages uses for its per-day EUR split). `total` not being a
+// number (field absent on the parent) yields an array of nulls — a field the
+// parent never carried is never invented on the children.
+function splitAmount(total, weights, totalWeight) {
+  if (typeof total !== 'number') return weights.map(() => null);
+  const n = weights.length;
+  const shares = [];
+  let running = 0;
+  weights.forEach((w, idx) => {
+    if (idx < n - 1) {
+      const share = round2(total * (w / totalWeight));
+      shares.push(share);
+      running = round2(running + share);
+    } else {
+      shares.push(round2(total - running));
+    }
+  });
+  return shares;
+}
+
+// Amount fields mirrored onto children when the parent carries them — the
+// same set toCostLineRow/splitByPassages deal in (native + EUR, net/vat/gross).
+const FEE_AMOUNT_FIELDS = ['net', 'vat', 'gross', 'net_eur', 'vat_eur', 'gross_eur'];
+
+// lines: the post-matchRoundTrip array (rt_id/match/import_key already set —
+// a fee line needs OTHER lines' rt_id to weight against, so this must run
+// after matchRoundTrip, not before it).
+// rts: [{id, truck_id, status, date_start, date_end}] — same shape matchRoundTrip takes.
+// statementPeriod: optional {period_from, period_to} — the whole import's
+// own period, used as the last fallback when a fee has no date of its own.
+export function allocateFees(lines, rts, statementPeriod) {
+  const out = [];
+  let fees_allocated = 0;
+  let fee_children = 0;
+  let fees_no_rt = 0;
+
+  for (const line of lines || []) {
+    const isFee = line.category === 'dkv' && (line.match === 'none' || line.rt_id == null);
+    if (!isFee) {
+      out.push(line);
+      continue;
+    }
+
+    const period = feeLinePeriod(line, statementPeriod);
+    if (!period) {
+      // No date anywhere on the line and no statement period passed in —
+      // nothing to compute a window from. Left completely untouched: this is
+      // not the same as "no RT found" (fee_no_rt), no attempt was made.
+      out.push(line);
+      continue;
+    }
+
+    let candidateRts = (rts || []).filter((rt) => rt.status !== 'cancelled' && rtOverlapsPeriod(rt, period));
+    // A fee naming a vehicle only ever spreads across that vehicle's own RTs.
+    if (line.truck_id != null) candidateRts = candidateRts.filter((rt) => rt.truck_id === line.truck_id);
+    // Eligible only if the RT already has at least one allocated line from
+    // this same import to weight against — an RT with a date-window overlap
+    // but nothing charged to it yet has nothing to share the fee proportionally to.
+    const weighted = candidateRts
+      .filter((rt) => (lines || []).some((l) => l.rt_id === rt.id))
+      .map((rt) => ({
+        rt,
+        // Weight = the RT's own DKV charges this import (fuel/tolls/adblue/ferry —
+        // every category except 'dkv' itself, which is the fee being spread).
+        weight: (lines || [])
+          .filter((l) => l.rt_id === rt.id && l.category !== 'dkv')
+          .reduce((s, l) => s + (typeof l.net === 'number' ? l.net : 0), 0),
+      }));
+    const totalWeight = weighted.reduce((s, c) => s + c.weight, 0);
+
+    if (!weighted.length || totalWeight <= 0) {
+      // A fee is never "προς ανάθεση" like a normal unmatched line (spec §Γ)
+      // — it gets its own reason so the screen can exclude it from that count.
+      out.push({ ...line, none_reason: 'fee_no_rt' });
+      fees_no_rt++;
+      continue;
+    }
+
+    fees_allocated++;
+    const weightsArr = weighted.map((c) => c.weight);
+    const splitByField = {};
+    for (const field of FEE_AMOUNT_FIELDS) splitByField[field] = splitAmount(line[field], weightsArr, totalWeight);
+
+    weighted.forEach((c, idx) => {
+      const child = {
+        ...line,
+        rt_id: c.rt.id,
+        match: 'sure',
+        alloc_status: 'allocated',
+        none_reason: null,
+        general: false,
+        alternatives: [],
+        sub: idx + 1,
+        note: `επιμερισμός · ${line.note || ''}`,
+      };
+      for (const field of FEE_AMOUNT_FIELDS) {
+        const share = splitByField[field][idx];
+        if (share !== null) child[field] = share;
+      }
+      out.push(child);
+      fee_children++;
+    });
+  }
+
+  return { lines: out, stats: { fees_allocated, fee_children, fees_no_rt }, errors: [] };
 }
 
 // ─── reconciliation (spec §6 gate #1) ───────────────────────────────────────

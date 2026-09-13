@@ -40,7 +40,7 @@ async function main() {
   const mod = await import('../../worker/src/import-rules.mjs');
   const {
     buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip,
-    reconcile, sumGrossEur, isMissingRelationError,
+    reconcile, sumGrossEur, isMissingRelationError, allocateFees,
   } = mod;
   const DkvParser = require('../../core/dkv-parser.js');
 
@@ -183,6 +183,32 @@ async function main() {
   const rHalfSure = matchRoundTrip({ plate: 'XX1234', truck_id: 101, period_from: '2026-08-01', period_to: '2026-08-15' }, rtsHalfSingle, []);
   assertEqual(rHalfSure.match, 'sure', 'matchRoundTrip: half-month line inside one RT window → sure');
 
+  // ── Δ1: dateOverlaps ±1 day tolerance (spec Δ 13/9 — DKV bills the
+  // departure day before an RT's own date_start; measured 13/9: 10/98
+  // unallocated lines are 1-2 days before an RT start) ─────────────────
+  const rtsD1 = [{ id: 50, truck_id: 101, status: 'planned', date_start: '2026-08-10', date_end: '2026-08-15' }];
+  const rOneDayBefore = matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-08-09' }, rtsD1, []);
+  assertEqual(rOneDayBefore.match, 'sure', 'Δ1: a line dated exactly one day before date_start now matches sure (departure-day billing cut)');
+  assertEqual(rOneDayBefore.rt_id, 50, 'Δ1: one-day-before line resolves to the RT it precedes');
+
+  const rOneDayAfter = matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-08-16' }, rtsD1, []);
+  assertEqual(rOneDayAfter.match, 'sure', 'Δ1: a line dated one day after date_end also matches sure (symmetrical tolerance)');
+
+  const rTwoDaysBefore = matchRoundTrip({ plate: 'XX1234', truck_id: 101, service_date: '2026-08-08' }, rtsD1, []);
+  assertEqual(rTwoDaysBefore.match, 'none', 'Δ1: a line dated two days before date_start is still outside the ±1 day tolerance → none');
+  assertEqual(rTwoDaysBefore.none_reason, 'no_rt_on_date', 'Δ1: two-days-before line still reads as no_rt_on_date, not silently matched');
+
+  // overlapDays must stay consistent with the same tolerance, since it picks
+  // the best candidate when several RTs overlap a half-month line.
+  const rtsD1Two = [
+    { id: 51, truck_id: 101, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-09' },
+    { id: 52, truck_id: 101, status: 'planned', date_start: '2026-08-20', date_end: '2026-08-25' },
+  ];
+  const halfD1 = { plate: 'XX1234', truck_id: 101, period_from: '2026-08-10', period_to: '2026-08-19' };
+  const rD1Half = matchRoundTrip(halfD1, rtsD1Two, []);
+  assertEqual(rD1Half.match, 'suggest', 'Δ1: overlapDays tolerance lets a half-month line reach both neighbouring RTs (10th touches RT1 via -1d, 19th touches RT2 via +1d)');
+  assertDeepEqual([rD1Half.rt_id, ...rD1Half.alternatives].sort(), [51, 52], 'Δ1: both RT51 and RT52 are candidates once the same ±1 day tolerance widens overlapDays');
+
   // ── reconcile (spec §6 gate #1) ──────────────────────────────────────
   const rec1 = reconcile(
     [{ doc_no: 'D1', gross: 100 }, { doc_no: 'D1', gross: 50 }],
@@ -313,6 +339,132 @@ async function main() {
   const joinedNoRef = splitByPassages([noRefLine], passageForRef);
   assertEqual(joinedNoRef.lines[0].service_date, '2026-08-05', 'ref join: no ref on the line → service_date left as parsed');
   assertEqual(joinedNoRef.lines[0].service_date_source, 'invoice', 'ref join: no ref on the line → service_date_source invoice');
+
+  // ── Δ2: allocateFees (spec Δ 13/9 — DKV account fees spread proportionally
+  // over the RTs of the statement period, weighted by what each RT already
+  // owes in this import). Fixtures simulate the state AFTER matchRoundTrip
+  // has run (rt_id already set on the fuel/tolls lines, dkv line carries the
+  // real none_reason matchRoundTrip always gives a category='dkv' line).
+  // Fake plates/amounts only, no real fleet data.
+  const feeRtsAB = [
+    { id: 10, truck_id: 201, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+    { id: 11, truck_id: 202, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+  ];
+  const feeLineAB = {
+    doc_no: 'FEE1', seq: 9, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee',
+    service_date: '2026-08-03', net: 100, vat: 20, note: 'DKV · FEE1',
+  };
+  const allocAB = allocateFees(
+    [{ category: 'fuel', rt_id: 10, net: 300 }, { category: 'fuel', rt_id: 11, net: 100 }, feeLineAB],
+    feeRtsAB
+  );
+  const feeChildrenAB = allocAB.lines.filter((l) => l.category === 'dkv');
+  assertEqual(feeChildrenAB.length, 2, 'allocateFees: fee over two RTs weighted 300/100 → 2 children, one per RT');
+  assertEqual(allocAB.stats.fees_allocated, 1, 'allocateFees: stats count the fee line as allocated once');
+  assertEqual(allocAB.stats.fee_children, 2, 'allocateFees: stats count 2 created children');
+  assertEqual(allocAB.stats.fees_no_rt, 0, 'allocateFees: an allocated fee is not also counted as fees_no_rt');
+  const child300 = feeChildrenAB.find((l) => l.rt_id === 10);
+  const child100 = feeChildrenAB.find((l) => l.rt_id === 11);
+  assertEqual(child300.net, 75, 'allocateFees: RT weighted 300/400 of the fee gets 75% of net 100 → 75.00');
+  assertEqual(child100.net, 25, 'allocateFees: the other RT (weight 100/400) gets the remaining 25.00 exactly (last child absorbs rounding)');
+  assertEqual(child300.vat, 15, 'allocateFees: vat is split with the same ratio as net (75%)');
+  assertEqual(child100.vat, 5, 'allocateFees: vat remainder (25%) goes to the last child');
+  assertEqual(child300.match, 'sure', 'allocateFees: every child is match=sure (it now has a real rt_id)');
+  assertEqual(child300.alloc_status, 'allocated', 'allocateFees: every child is alloc_status=allocated');
+  assertEqual(child300.none_reason, null, 'allocateFees: a child clears the parent none_reason (general_fee) — it is allocated now');
+  assert(child300.note.startsWith('επιμερισμός · '), 'allocateFees: child note is prefixed επιμερισμός ·');
+  assert(child300.note.includes('DKV · FEE1'), 'allocateFees: child note still carries the original note');
+  assertEqual(
+    buildImportKey(child300) === buildImportKey(child100), false,
+    'allocateFees: the two children of the same fee get distinct import_key values (distinct sub)'
+  );
+
+  // Rounding case from the spec: fee 10.00 over three equal weights (1,1,1) → 3.33/3.33/3.34.
+  const feeRts3 = [
+    { id: 20, truck_id: 301, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+    { id: 21, truck_id: 302, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+    { id: 22, truck_id: 303, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+  ];
+  const feeLine3 = {
+    doc_no: 'FEE2', seq: 1, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee',
+    service_date: '2026-08-03', net: 10,
+  };
+  const allocRound = allocateFees(
+    [{ category: 'fuel', rt_id: 20, net: 1 }, { category: 'fuel', rt_id: 21, net: 1 }, { category: 'fuel', rt_id: 22, net: 1 }, feeLine3],
+    feeRts3
+  );
+  const roundChildren = allocRound.lines.filter((l) => l.category === 'dkv').map((l) => l.net).sort();
+  assertDeepEqual(roundChildren, [3.33, 3.33, 3.34], 'allocateFees: equal-weight rounding case → 3.33/3.33/3.34 (last child absorbs the remainder)');
+  const roundSum = Math.round(roundChildren.reduce((s, n) => s + n, 0) * 100) / 100;
+  assertEqual(roundSum, 10, 'allocateFees: Σ children net == parent net exactly (10.00), not 9.99/10.01 from float drift');
+
+  // (b) fee WITH a truck_id → only that truck's RT.
+  const feeRtsB = [
+    { id: 30, truck_id: 401, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+    { id: 31, truck_id: 402, status: 'planned', date_start: '2026-08-01', date_end: '2026-08-05' },
+  ];
+  const feeLineB = {
+    doc_no: 'FEE3', seq: 1, ref: null, plate: 'XX9999', truck_id: 401, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee',
+    service_date: '2026-08-03', net: 20,
+  };
+  const allocB = allocateFees(
+    [{ category: 'fuel', rt_id: 30, net: 50 }, { category: 'fuel', rt_id: 31, net: 50 }, feeLineB],
+    feeRtsB
+  );
+  const feeChildrenB = allocB.lines.filter((l) => l.category === 'dkv');
+  assertEqual(feeChildrenB.length, 1, 'allocateFees: a fee with truck_id only ever produces a child for that truck\'s RT(s)');
+  assertEqual(feeChildrenB[0].rt_id, 30, 'allocateFees: truck-scoped fee resolves to truck 401\'s RT (30), never RT 31 (truck 402)');
+  assertEqual(feeChildrenB[0].net, 20, 'allocateFees: single-candidate truck-scoped fee gets the entire net (100% share)');
+
+  // (c) no candidate RT at all → stays a fee with none_reason fee_no_rt, not counted as pending.
+  const feeLineC = {
+    doc_no: 'FEE4', seq: 1, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee',
+    service_date: '2026-01-01', net: 5,
+  };
+  const allocC = allocateFees([feeLineC], []);
+  assertEqual(allocC.lines.length, 1, 'allocateFees: no candidate RT → the fee line itself is kept (not dropped)');
+  assertEqual(allocC.lines[0].none_reason, 'fee_no_rt', 'allocateFees: no candidate RT → none_reason becomes fee_no_rt (never «προς ανάθεση»)');
+  assertEqual(allocC.lines[0].rt_id, null, 'allocateFees: no candidate RT → rt_id stays null');
+  assertEqual(allocC.stats.fees_no_rt, 1, 'allocateFees: stats.fees_no_rt counts this fee');
+  assertEqual(allocC.stats.fees_allocated, 0, 'allocateFees: a fee_no_rt fee is not also counted as allocated');
+
+  // A fee with no service_date/period of its own and no statement period passed
+  // in either → nothing to compute a window from, left completely untouched
+  // (not even fee_no_rt — no attempt was made, spec: "if none available, leave untouched").
+  const feeLineNoDate = {
+    doc_no: 'FEE5', seq: 1, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee', net: 5,
+  };
+  const allocNoDate = allocateFees([feeLineNoDate], feeRtsAB);
+  assertEqual(allocNoDate.lines[0].none_reason, 'general_fee', 'allocateFees: no date at all and no statement period arg → left untouched, none_reason unchanged');
+  assertEqual(allocNoDate.stats.fees_no_rt, 0, 'allocateFees: an untouched fee (no date info) is not counted as fees_no_rt either');
+
+  // Statement-period fallback (3rd arg): a fee with no service_date/period of
+  // its own still allocates when the statement's own period is passed in.
+  const feeLineStmt = {
+    doc_no: 'FEE6', seq: 1, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee', net: 40,
+  };
+  const allocStmt = allocateFees(
+    [{ category: 'fuel', rt_id: 10, net: 10 }, feeLineStmt],
+    feeRtsAB,
+    { period_from: '2026-08-01', period_to: '2026-08-05' }
+  );
+  assertEqual(allocStmt.stats.fees_allocated, 1, 'allocateFees: statement-period 3rd arg lets a date-less fee still allocate');
+
+  // (d) import keys of children are unique — already checked above for feeChildrenAB;
+  // also verify the full set of import_key values across this whole test batch has no collisions.
+  const allChildren = [...feeChildrenAB, ...allocRound.lines.filter((l) => l.category === 'dkv'), ...feeChildrenB];
+  const allKeys = allChildren.map((l) => buildImportKey(l));
+  assertEqual(new Set(allKeys).size, allKeys.length, 'allocateFees: import_key is unique across every child produced (no two collide)');
+
+  // errors shape: always an array (spec return shape), empty in every case above.
+  assertDeepEqual(allocAB.errors, [], 'allocateFees: errors is an empty array in the normal case');
+  assertDeepEqual(allocC.errors, [], 'allocateFees: errors stays empty even for a fee_no_rt line (that is not an error)');
 
   // ── isMissingRelationError (migration 024 not executed yet) ─────────
   assert(isMissingRelationError('dbSelectRaw ct_import_rules 404: {"code":"42P01","message":"relation \\"public.ct_import_rules\\" does not exist"}'), 'isMissingRelationError: 42P01 (missing table) recognized');

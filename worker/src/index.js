@@ -3,7 +3,7 @@
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
-import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
+import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
 // core/dkv-parser.js is a plain CJS/UMD file (module.exports = api — see its
 // header), also loaded by app.html in the browser. esbuild (wrangler's
 // bundler) wraps a CommonJS file's module.exports as the default export of
@@ -3277,7 +3277,22 @@ async function handleCosts(request, url, origin, env) {
         const rtParams = new URLSearchParams({ select: "id,truck_id,status,date_start,date_end", truck_id: `in.(${truckIds.join(",")})`, status: "neq.cancelled" });
         rts = (await dbSelectRaw(env, "ct_round_trips", rtParams)).rows;
       }
-      const lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
+      let lines = normalized.map((l) => ({ ...l, ...matchRoundTrip(l, rts, rules), import_key: buildImportKey(l) }));
+
+      // (d2) spread DKV account fees across the RTs of the statement period
+      // (spec Δ2, §Δ 13/9). Must run after matchRoundTrip above: the weight
+      // per RT is computed from OTHER lines' rt_id in this same batch, which
+      // don't exist until matchRoundTrip has assigned them. The statement's
+      // own period (min/max date across every parsed line) is the fallback a
+      // fee line uses when it has no date of its own — computed here, once,
+      // ahead of the doc-level allDates calc below (which children would
+      // reproduce identically anyway, since a child keeps the parent's dates).
+      const feeStatementDates = lines.flatMap((l) => [l.service_date, l.period_from, l.period_to]).filter(Boolean).sort();
+      const feeAlloc = allocateFees(lines, rts, {
+        period_from: feeStatementDates[0] || null,
+        period_to: feeStatementDates[feeStatementDates.length - 1] || null
+      });
+      lines = feeAlloc.lines;
 
       // (e) reconcile (spec §6 gate #1) — passages are excluded automatically:
       // they never enter parsed.lines, only parsed.passages.
@@ -3351,6 +3366,10 @@ async function handleCosts(request, url, origin, env) {
         unparsed: parsed.errors.unparsed,
         rules_unavailable,
         split: { lines_split: split.stats.lines_split, lines_created: split.stats.lines_created, errors: split.errors.split },
+        // Δ2 (spec §Δ 13/9): how many DKV fee lines got spread across RTs vs
+        // left with no candidate — the screen uses fees_no_rt to explain why
+        // those lines are excluded from "προς ανάθεση" (none_reason fee_no_rt).
+        fee_alloc: { fees_allocated: feeAlloc.stats.fees_allocated, fee_children: feeAlloc.stats.fee_children, fees_no_rt: feeAlloc.stats.fees_no_rt },
         metrics: {
           lines_total: lines.length,
           lines_sure: lines.filter((l) => l.match === "sure").length,
