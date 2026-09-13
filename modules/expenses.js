@@ -435,7 +435,7 @@ function exImportDocRowHtml(d) {
   const period = d.period_from && d.period_to ? (exDate(d.period_from) + '–' + exDate(d.period_to)) : '—';
   const statusTxt = d.status === 'draft' ? 'πρόχειρο' : (d.status || '—');
   const when = d.created_at ? exDate(d.created_at) : '';
-  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by || '—') + (when ? ' ' + when : '');
+  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
   return `<div class="ex-idoc-row"><span class="s">${escapeHtml(label)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
@@ -491,7 +491,8 @@ function exStats() {
     trips: rts.length, complete: done.length - gaps.length, gaps: gaps.length, open: rts.length - done.length,
     lines: all.length + noneAll.length,
     total: exAmt(all) + expM + exAmt(noneAll),
-    noneWeek: noneNonDkv.length, noneOther: _ex.tab === 'week' ? (_ex.unalloc.length - noneAll.length) : 0,
+    // «εκτός εβδομάδας» excludes DKV fee lines too — same rule as the in-week count.
+    noneWeek: noneNonDkv.length, noneOther: _ex.tab === 'week' ? (_ex.unalloc.filter(l => l.category !== 'dkv').length - noneNonDkv.length) : 0,
     noneDkvWeek: noneDkv.length, noneDkvAmt: exAmt(noneDkv)
   };
 }
