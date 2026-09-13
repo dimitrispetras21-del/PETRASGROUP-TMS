@@ -73,13 +73,20 @@ const EX_VEH_RANGES = [4, 8, 12];
 // backend shape, never one view's state leaking into the other's render).
 // exActiveRts()/exActiveLinesByRt() below are the ONE place that decides
 // which of the two the shared grid/panel code reads.
+// expanded: rt ids whose full leg block is shown (spec §2 point 3, usability
+// revision 13/9 — rows collapse to one line by default). showEmptyCols: the
+// «Κενές στήλες … εμφάνιση» override. filterChip: which summary-bar chip
+// (complete/gaps/open/none) currently narrows the visible rows — null means
+// none active. All three live on _ex (not reset by exRenderPage) so they
+// survive a re-render the same way _ex.q already does.
 const _ex = {
   lookups: null, canWrite: false, tab: null,
   week: null, rts: [], stripRts: [], linesByRt: {}, unalloc: [],
   veh: { truckId: null, range: 8, from: null, to: null, rts: [], linesByRt: {}, loading: false, err: null },
   loading: false, err: null, q: '',
   open: null, editId: null, qe: null, expmAmount: '',
-  importDocs: [], importDocsLoading: false, importDocsErr: null
+  importDocs: [], importDocsLoading: false, importDocsErr: null,
+  expanded: new Set(), showEmptyCols: false, filterChip: null
 };
 
 // Local calendar dates, never toISOString(): that is UTC, and between 00:00
@@ -155,39 +162,63 @@ function exShowError(e) {
 
 function exStyles() {
   return `<style>
-  .ex-page{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface-page);min-height:100%;padding:20px 32px 40px;display:flex;flex-direction:column;gap:16px}
-  .ex-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-  .ex-title{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;line-height:1.2}
-  .ex-sub{font-size:12.5px;color:var(--text-mid);margin-top:5px;max-width:640px}
+  /* Compressed header (usability revision 13/9, Figma 577:1011 note 1): page
+     padding/gaps tightened so the first trip row lands within the fold at
+     1440×778 — measured ≤220px from viewport top (proof). */
+  .ex-page{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface-page);min-height:100%;padding:4px 32px 40px;display:flex;flex-direction:column;gap:4px}
+  /* nowrap on the whole row (note 1): a long «Κενές στήλες …» list must
+     truncate (see .ex-emptycols) rather than push the title/tab onto a
+     second line — that wrap was measured costing ~32px of fold budget on a
+     week with many empty categories (fixed 13/9, proof caught it at 270px). */
+  .ex-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:nowrap}
+  /* Title + segmented tab sit on ONE line (note 1) — the tab is no longer a
+     separate flex child of .ex-page, it lives right after the title. */
+  .ex-head-l{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
+  .ex-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;line-height:1.2;white-space:nowrap;flex:none}
+  /* Now a THIRD item in .ex-head-l next to the title/tab (note 1) — was its
+     own row below them, costing a full fold gap + line height. */
+  .ex-sub{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .ex-head-r{display:flex;align-items:center;gap:14px;flex:none;min-width:0}
+  /* «Κενές στήλες …» quiet line (note 4) — sits beside «Εισαγωγή DKV» in the
+     header row, matching Figma rather than a second line above the ledger.
+     Truncates with an ellipsis (full list in the title attr) instead of
+     wrapping the row taller — a week with many empty categories at once is a
+     realistic edge case, not a hypothetical one. */
+  .ex-emptycols{font-size:11px;color:var(--text-dim);white-space:nowrap;display:flex;align-items:center;gap:4px}
+  .ex-emptycols-txt{overflow:hidden;text-overflow:ellipsis;max-width:280px}
   .ex-actions-top{display:flex;gap:8px;flex:none}
   .ex-btn{height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--border-mid,var(--border));background:var(--surface-card);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text)}
   .ex-btn.primary{background:var(--navy);border-color:var(--navy);color:var(--text-on-dark)}
   .ex-card{background:var(--surface-card);border:1px solid var(--border);border-radius:4px}
-  /* Segmented tab (spec §0.8): sits between the subtitle and the week
-     strip/vehicle controls — the ONLY place the two views are chosen. */
-  .ex-seg{display:inline-flex;border:1px solid var(--border);border-radius:4px;overflow:hidden;width:fit-content}
-  .ex-seg button{height:30px;padding:0 18px;border:0;background:var(--surface-card);font:inherit;font-size:12.5px;color:var(--text-mid);cursor:pointer}
+  /* Segmented tab (spec §0.8): now on the title line — the ONLY place the
+     two views are chosen. */
+  .ex-seg{display:inline-flex;flex:none;border:1px solid var(--border);border-radius:4px;overflow:hidden;width:fit-content}
+  .ex-seg button{height:28px;padding:0 16px;border:0;background:var(--surface-card);font:inherit;font-size:12px;color:var(--text-mid);cursor:pointer}
   .ex-seg button+button{border-left:1px solid var(--border)}
   .ex-seg button.active{background:var(--navy);color:var(--text-on-dark);font-weight:600}
-  .ex-vehctl{display:flex;align-items:flex-end;gap:16px;padding:12px 16px;flex-wrap:wrap}
-  /* Week strip: the selected week is the ONLY other navy element on the page. */
-  .ex-wkstrip{display:flex;align-items:stretch;gap:6px;padding:8px}
-  .ex-wkarrow{width:34px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
-  .ex-wk{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;padding:6px 12px;border-radius:4px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--text)}
+  .ex-vehctl{display:flex;align-items:flex-end;gap:16px;padding:10px 16px;flex-wrap:wrap}
+  /* Week strip: 44px tall, one-line chips (note 1) — the selected week is
+     the ONLY other navy element on the page. */
+  .ex-wkstrip{display:flex;align-items:stretch;gap:6px;padding:6px}
+  .ex-wkarrow{width:28px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
+  .ex-wk{flex:1;min-width:0;height:28px;display:flex;align-items:center;padding:0 12px;border-radius:4px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--text)}
   .ex-wk:hover{background:var(--surface-sunken)}
   .ex-wk.sel{background:var(--navy);color:var(--text-on-dark)}
-  .ex-wk .a{font-size:12px;font-weight:600}
-  .ex-wk .b{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ex-wk.sel .b{color:var(--silver,var(--text-on-dark))}
+  .ex-wk .a{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ex-wk.future .a{color:var(--text-dim)}
-  .ex-wk .c{color:var(--warn)} .ex-wk.sel .c{color:var(--text-on-dark)}
-  .ex-sum{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 20px;flex-wrap:wrap}
-  .ex-sum-kv{display:flex;gap:24px;flex-wrap:wrap}
+  /* Summary bar → filter chips (note 2): «Δρομολόγια»/«Σύνολο εξόδων» stay
+     plain text; Πλήρη/Με ελλείψεις/Σε εξέλιξη/Χωρίς δρομολόγιο become toggle
+     chips (exSetFilterChip) that narrow the visible rows. The search input
+     moves in here too (note 1) — the separate search row above the grid is
+     gone. */
+  .ex-sum{display:flex;align-items:center;gap:16px;padding:5px 20px;flex-wrap:wrap}
+  .ex-sum-kv{display:flex;gap:20px;flex-wrap:wrap}
   .ex-sum-kv span{font-size:12px;color:var(--text-mid)} .ex-sum-kv b{font-size:13px;color:var(--text);margin-left:8px;font-variant-numeric:tabular-nums}
-  .ex-sum-kv b.warn{color:var(--warn)} .ex-sum-kv b.ok{color:var(--ok)}
-  .ex-sum-pend{font-size:11.5px;font-weight:500;color:var(--warn)}
-  .ex-sum-pend.ok{color:var(--ok)}
-  .ex-search{height:30px;box-sizing:border-box;border:1px solid var(--border);border-radius:4px;padding:0 10px;font:inherit;font-size:12px;width:240px}
+  .ex-sum-chips{display:flex;gap:8px;flex-wrap:wrap;flex:1}
+  .ex-chip{height:26px;padding:0 10px;border-radius:14px;border:1px solid var(--border-mid,var(--border));background:var(--surface-card);font:inherit;font-size:11.5px;color:var(--text-mid);cursor:pointer}
+  .ex-chip b{color:inherit;font-variant-numeric:tabular-nums;margin-left:4px}
+  .ex-chip.active{border-color:var(--navy);color:var(--navy)}
+  .ex-search{height:26px;box-sizing:border-box;border:1px solid var(--border);border-radius:4px;padding:0 10px;font:inherit;font-size:12px;width:220px;flex:none}
   /* Fits inside the card WITHOUT scrolling at both 1280 and 1440 (owner
      review 13/9: the first pass forced min-width:1280px, which is wider than
      the ~1150px a 1440-wide window leaves once the 228px sidebar and page
@@ -196,38 +227,71 @@ function exStyles() {
      grid's own track widths below are sized to need it at neither proof
      viewport. */
   .ex-gridwrap{overflow-x:auto}
-  /* 4 fixed head tracks + 9 amount groups (spec §2 point 2) + Σύνολο + Κατάσταση. */
-  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:22px 62px minmax(90px,1fr) 80px repeat(9,60px) 68px 72px;gap:4px;align-items:center;padding:0 10px}
-  /* «Καράβια/Τρένα» is the one header that wraps to two lines at this width
-     — allowed (line-height 1.1 keeps it inside the fixed 32px row), never
-     truncated or renamed. */
-  .ex-gh{height:32px;line-height:1.1;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-mid);overflow-wrap:break-word}
-  .ex-gr{min-height:40px;padding-top:6px;padding-bottom:6px}
-  .ex-trip{border-bottom:1px solid var(--border)}
+  /* Column count is now dynamic (note 4 — zero-line groups hide, Α/Α is gone
+     for good — note 10): exGridTemplate() computes grid-template-columns per
+     render and sets it as an inline style on .ex-gh/.ex-gr/.ex-gt, so the
+     class rule below only carries what every render shares (display/gap/
+     padding), never a fixed track count. */
+  .ex-gh,.ex-gr,.ex-gt{display:grid;gap:4px;align-items:center;padding:0 10px}
+  /* Sticky header/totals (note 7): #content is the app's own scrolling
+     element (assets/style.css .content{overflow-y:auto}, not the document),
+     so position:sticky here pins against ITS scrollport — already right
+     below the fixed 52px topbar, no extra top offset needed. */
+  .ex-gh{position:sticky;top:0;z-index:3;height:32px;line-height:1.1;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-mid);overflow-wrap:break-word;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+  /* Collapsed by default (note 3, ≤48px measured): chevron + one-line route
+     summary replace the old always-open .ex-legs block below the row. */
+  .ex-gr{min-height:40px;padding-top:4px;padding-bottom:4px}
+  .ex-chevron{cursor:pointer;color:var(--text-dim);font-size:13px;text-align:center;user-select:none}
+  .ex-trip{border-bottom:1px solid var(--border);border-left:3px solid transparent}
   .ex-trip:hover{background:var(--surface-sunken)}
   .ex-trip.open,.ex-gr.open{background:var(--surface-sunken)}
-  .ex-legs{padding:0 10px 9px 100px;font-size:12px}
+  /* «λείπει» (note 6, owner 13/9: red text read as an error state stronger
+     than intended) — an amber left bar on the whole trip row is enough; the
+     cell itself gets a pale dashed «—» (see .ex-cell.missing .a below),
+     never the word. */
+  .ex-trip.missing{border-left-color:var(--warn)}
+  .ex-legs{padding:0 10px 9px 236px;font-size:12px}
   .ex-legs .rt-n{font-size:11.5px} .ex-legs .rt-c,.ex-legs .rt-d{font-size:11px}
   .ex-legs .ex-route{font-size:12px}
   .ex-gr.none-row{border-top:1px solid var(--border-mid,var(--border));border-bottom:1px solid var(--border)}
-  .ex-gt{height:40px;background:var(--surface-sunken);border-top:2px solid var(--navy);font-weight:600}
+  .ex-gt{position:sticky;bottom:0;z-index:3;height:40px;background:var(--surface-sunken);border-top:2px solid var(--navy);font-weight:600;box-shadow:0 -2px 4px rgba(0,0,0,.06)}
   .ex-gt .grand{font-family:'Syne',sans-serif;font-size:13.5px}
   .r{text-align:right} .dim{color:var(--text-dim)} .mid{color:var(--text-mid)}
   .n{font-variant-numeric:tabular-nums}
   .ex-plate{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.02em;white-space:nowrap}
   .ex-gr>div{min-width:0} .ex-clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid)}
+  /* Partner name (note 8): deliberately NOT .ex-clip — wraps instead of
+     truncating, so a long partner company name is never cut off. */
+  .ex-vcell{white-space:normal;overflow-wrap:break-word;line-height:1.25}
+  .ex-vcell .k{font-size:9px;color:var(--text-dim);display:block}
+  .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
   .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid)} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   .ex-cell{display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding:2px 4px;border-radius:3px;border:1.5px solid transparent;min-height:26px;justify-content:center}
   .ex-cell.can{cursor:pointer} .ex-cell.can:hover{background:var(--surface-card);border-color:var(--border)}
   .ex-cell.open{border-color:var(--navy);background:var(--surface-card)}
-  .ex-cell .a{font-variant-numeric:tabular-nums;font-size:11.5px}
-  .ex-cell .b{font-size:9.5px;color:var(--text-dim);white-space:nowrap}
-  .ex-cell.missing .a{color:var(--warn);font-weight:500;font-size:11px}
+  /* 13px tabular, DM Sans 500 (note 5) — the amount is the one figure in
+     each cell that must read at a glance; the old 11.5px matched the rest of
+     the row's small text, which made a full column of numbers hard to scan. */
+  .ex-cell .a{font-variant-numeric:tabular-nums;font-size:13px;font-weight:500}
+  .ex-cell .b{font-size:9.5px;color:var(--text-dim);white-space:nowrap;display:flex;align-items:center;gap:3px;justify-content:flex-end}
+  /* Pale dashed placeholder (note 6) — no red, no «λείπει» text; the word
+     stays only in the status column (exRtState), as the footer legend says:
+     «—» = ολοκληρωμένο δρομολόγιο χωρίς γραμμή στην κατηγορία. */
+  .ex-cell.missing .a{color:var(--text-dim);font-weight:400;border:1px dashed var(--border-mid,var(--border));border-radius:3px;padding:0 6px}
   .ex-cell.empty{min-height:26px}
+  /* Supplier logo tags (point 11, owner 13/9): replaces the plain-text «DKV»
+     sub-label with the real DKV/Dadi logo — the alt/title text keeps the
+     name for hover and screen readers. Sized to the taller DKV mark (857×637
+     → ~16×12) so the shorter Dadi logo (173×67 → ~31×12) sits on the same
+     baseline. */
+  .ex-src{height:12px;width:auto;vertical-align:middle;border-radius:2px}
   .ex-gp{border-bottom:1px solid var(--border-mid,var(--border));border-left:3px solid var(--navy);background:var(--surface-sunken)}
   .ex-gp-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px 4px;font-size:12px}
   .ex-gp-head .k{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);margin-right:10px}
+  /* «Επόμενο δρομολόγιο ↓» beside «Κλείσιμο» (note 9) — one right-aligned
+     group so both links move together regardless of the head's own width. */
+  .ex-gp-actions{display:flex;align-items:center;gap:14px;flex:none}
+  .ex-link.dim{color:var(--text-dim);cursor:default}
   .ex-th{height:30px;padding:0 16px;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--text-mid);text-transform:uppercase;border-bottom:1px solid var(--border)}
   .ex-row{min-height:36px;padding:4px 16px;border-bottom:1px solid var(--border);background:var(--surface-card)}
   .ex-th.ex-line-grid,.ex-row.ex-line-grid{display:grid;grid-template-columns:78px minmax(130px,1fr) 62px 84px 76px minmax(96px,1fr);gap:8px;align-items:center}
@@ -265,11 +329,14 @@ function exStyles() {
   .ex-idocs{padding:8px 16px 10px}
   .ex-idochead{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-mid);margin-bottom:4px}
   .ex-idoc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0;font-size:12px}
+  /* grid-template-columns is no longer set here — exGridTemplate() computes
+     ONE fixed-width template regardless of viewport (the route column's own
+     minmax(…,1fr) already absorbs the extra space at 1440 without needing a
+     second, wider column set); only padding/gap/font-size still vary. */
   @media (max-width:1320px){
-    .ex-page{padding:16px 16px 32px}
-    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:18px 54px minmax(80px,1fr) 70px repeat(9,54px) 60px 64px;gap:3px;padding:0 8px}
-    .ex-legs{padding-left:88px}
-    .ex-gr{padding-top:5px;padding-bottom:5px}
+    .ex-page{padding:10px 16px 32px}
+    .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
+    .ex-gr{padding-top:3px;padding-bottom:3px}
     .ex-cell .a{font-size:10.5px}
   }
   </style>`;
@@ -310,7 +377,12 @@ async function renderExpenses() {
 
 function exSwitchTab(tab) {
   if (_ex.tab === tab) return;
-  _ex.tab = tab; _ex.open = null; _ex.editId = null; _ex.q = '';
+  // filterChip resets too (owner review 13/9): the vehicle tab has no
+  // «Χωρίς δρομολόγιο» chip, and carrying a stale filter across tabs would
+  // silently hide rows in the new view for a reason nothing on screen
+  // explains (αρχή 1). showEmptyCols/expanded are left alone — they read as
+  // per-session viewing preferences, not per-tab filter state.
+  _ex.tab = tab; _ex.open = null; _ex.editId = null; _ex.q = ''; _ex.filterChip = null;
   if (tab === 'vehicle') {
     if (_ex.veh.truckId) exLoadVehicle(); else exVehLoadLookupsThenDefault();
   } else {
@@ -356,7 +428,7 @@ async function exLoadLines() {
 function exWeekShift(n) { exGoWeek(exShiftIso(_ex.week.start, 7 * n)); }
 function exGoWeek(startIso) {
   _ex.week = ctWeekOf(startIso);
-  _ex.open = null; _ex.editId = null;
+  _ex.open = null; _ex.editId = null; _ex.filterChip = null;
   exLoad();
 }
 
@@ -435,8 +507,10 @@ function exImportDocRowHtml(d) {
   const period = d.period_from && d.period_to ? (exDate(d.period_from) + '–' + exDate(d.period_to)) : '—';
   const statusTxt = d.status === 'draft' ? 'πρόχειρο' : (d.status || '—');
   const when = d.created_at ? exDate(d.created_at) : '';
-  const label = 'DKV · ' + (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
-  return `<div class="ex-idoc-row"><span class="s">${escapeHtml(label)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
+  // Leading «DKV ·» becomes the logo (point 11c) — the rest of the label is
+  // plain text, escaped as before; the logo itself carries alt="DKV".
+  const rest = (d.invoice_no || d.zip_name || '—') + ' · ' + period + (d.lines_total != null ? ' · ' + d.lines_total + ' γραμμές' : '') + ' · ' + statusTxt + ' · ' + (d.created_by ? exUserDisplay(d.created_by) : '—') + (when ? ' ' + when : '');
+  return `<div class="ex-idoc-row"><span class="s">${exSourceTag('DKV')} · ${escapeHtml(rest)}</span><button class="ex-link" onclick='exOpenImportZip(${JSON.stringify(String(d.id))})'>ZIP</button></div>`;
 }
 
 async function exOpenImportZip(id) {
@@ -505,6 +579,71 @@ function exFilteredTrips() {
   return rts.filter(r => (exTruckName(r.truck_id) + ' ' + exPersonName(r) + ' ' + String(r.route_text || '') + ' ' + legText(r)).toLowerCase().includes(q));
 }
 
+// ── Summary-bar filter chips (usability revision 13/9, Figma note 2) ──────
+// One at a time: clicking the active chip again clears it (exSetFilterChip),
+// exactly like the search box's own «no filter» state. The chip COUNTS
+// (exStats, above) are always computed on every active-tab trip — clicking a
+// chip must never change what the chips themselves report, only which rows
+// show under them (αρχή 3: one count, read from one place, whether or not a
+// filter narrows the view under it).
+function exSetFilterChip(key) { _ex.filterChip = (_ex.filterChip === key) ? null : key; exRenderPage(); }
+function exChipFilteredTrips(trips) {
+  const k = _ex.filterChip;
+  if (k === 'complete') return trips.filter(r => exIsDone(r) && !exMissingGroups(r).length);
+  if (k === 'gaps') return trips.filter(r => exMissingGroups(r).length);
+  if (k === 'open') return trips.filter(r => !exIsDone(r));
+  return trips;
+}
+// The ONE list the grid, the totals row AND «Επόμενο δρομολόγιο» (exGoNextTrip,
+// spec §2 note 9) all read — so «next» can never land on a row the chip
+// filter or the search box has hidden (αρχή 3).
+function exDisplayedTrips() {
+  const trips = exFilteredTrips();
+  // «Χωρίς δρομολόγιο» chip (week tab only — spec §2 note 2 «shows only the
+  // none-row»): every trip row disappears, the none-row stays.
+  if (_ex.tab === 'week' && _ex.filterChip === 'none') return [];
+  return _ex.filterChip ? exChipFilteredTrips(trips) : trips;
+}
+
+// ── Hide empty columns (note 4) ────────────────────────────────────────────
+// «Zero lines» is checked against every active-tab trip, NEVER the search or
+// chip-filtered subset — a column hiding or reappearing as someone types in
+// the search box would be far more surprising than a quiet line staying put.
+function exZeroCols() {
+  const rts = exActiveRts();
+  return EX_COL_ORDER.filter(k => {
+    if (k === 'expm') return !rts.some(r => r.ledger_entry && r.ledger_entry.expenses != null && Number(r.ledger_entry.expenses) !== 0);
+    const g = EX_GROUPS.find(x => x.key === k);
+    return !rts.some(r => exGroupLines(exRtLines(r.id), g).length > 0);
+  });
+}
+function exVisibleCols() {
+  if (_ex.showEmptyCols) return EX_COL_ORDER.slice();
+  const zero = exZeroCols();
+  return EX_COL_ORDER.filter(k => !zero.includes(k));
+}
+function exToggleEmptyCols() { _ex.showEmptyCols = !_ex.showEmptyCols; exRenderPage(); }
+function exHiddenColsLineHtml() {
+  const zero = exZeroCols();
+  if (!zero.length) return '';
+  const label = 'Κενές στήλες: ' + zero.map(exColLabel).join(', ');
+  const linkTxt = _ex.showEmptyCols ? 'απόκρυψη' : 'εμφάνιση';
+  // The list itself truncates (.ex-emptycols-txt, full text in the title
+  // attribute) so a long list can never push the header row onto a second
+  // line — but the toggle button sits OUTSIDE that truncating span, so it
+  // stays clickable no matter how many categories are hidden.
+  return `<span class="ex-emptycols"><span class="ex-emptycols-txt" title="${escapeHtml(label)}">${escapeHtml(label)}</span> · <button type="button" class="ex-link" onclick="exToggleEmptyCols()">${linkTxt}</button></span>`;
+}
+
+// Grid template columns (note 4 «no fixed 15-column template»): chevron +
+// 4 fixed head tracks + one amount track per VISIBLE group + Σύνολο +
+// Κατάσταση. A single fixed-width set works at both proof viewports (1280
+// and 1440) — the Διαδρομή column's own minmax(…,1fr) absorbs whatever extra
+// width 1440 leaves, so the amount columns never need a second, wider set.
+function exGridTemplate(nVisibleCols) {
+  return '22px 62px 70px 68px minmax(90px,1fr) ' + new Array(nVisibleCols).fill('58px').join(' ') + ' 68px 72px';
+}
+
 function exColLabel(k) { if (k === 'expm') return 'Έξοδα Μ'; const g = EX_GROUPS.find(x => x.key === k); return g ? g.label : k; }
 function exColTotal(k, trips) {
   if (k === 'expm') return trips.reduce((a, r) => a + Number((r.ledger_entry && r.ledger_entry.expenses) || 0), 0);
@@ -515,6 +654,42 @@ function exExtraColLabel(groupKey) {
   if (groupKey === 'tolls') return 'Χώρα';
   if (groupKey === 'fuel' || groupKey === 'adblue') return 'Λίτρα';
   return '';
+}
+
+// Collapsed row route summary (note 3): city names only, in leg order, one
+// line — the full leg block (rtLegBlockHtml, with stop names/countries/
+// dates) still renders below the row, but only once expanded. Falls back to
+// route_text for a trip with no parsed legs, and to the previous city when a
+// leg's start repeats the last leg's end (never «Βέροια → Βέροια → Wien»).
+function exRouteSummary(r) {
+  const legs = Array.isArray(r.route_legs) ? r.route_legs : [];
+  if (!legs.length) return r.route_text || '';
+  const cities = [];
+  const push = c => { if (c && cities[cities.length - 1] !== c) cities.push(c); };
+  legs.forEach(l => { push(l.from && (l.from.city || l.from.name)); push(l.to && (l.to.city || l.to.name)); });
+  return cities.length ? cities.join(' → ') : (r.route_text || '');
+}
+
+// Expand/collapse (note 3) — a Set on _ex so it survives exRenderPage; NOT
+// cleared by exSwitchTab/exGoWeek (a viewing preference, not filter state —
+// see exSwitchTab's own comment on why filterChip resets but this doesn't).
+function exToggleExpand(rtId) {
+  if (_ex.expanded.has(rtId)) _ex.expanded.delete(rtId); else _ex.expanded.add(rtId);
+  exRenderPage();
+}
+
+// Supplier logo tag (point 11, owner 13/9 — replaces the plain-text source
+// label so DKV/Dadi read as their own mark, not a generic word). Only the
+// two categories with an actual logo asset get an <img>; the other sources
+// (BG πρατήριο/Ιδιόκτητο/Τρίτος) keep plain text — no placeholder logo was
+// asked for, and inventing one would be the «configurability nobody
+// requested» CLAUDE.md warns against.
+const EX_SOURCE_LOGOS = { DKV: 'assets/logos/dkv.png', DADI: 'assets/logos/dadi.jpg' };
+function exSourceTag(source) {
+  const src = EX_SOURCE_LOGOS[source];
+  if (src) return `<img class="ex-src" src="${src}" alt="${escapeHtml(source)}" title="${escapeHtml(source)}">`;
+  const found = EX_FUEL_SOURCES.find(s => s.v === source);
+  return escapeHtml(found ? found.l : (source || ''));
 }
 
 // ═══════════════════ RENDER ═══════════════════
@@ -539,9 +714,15 @@ function exRenderPage() {
     titleHtml = 'Έξοδα δρομολογίων — Εβδομάδα ' + w.week;
     subHtml = `Περίοδος ${exDateFull(w.start)} – ${exDateFull(w.end)} · Κλικ σε κελί για καταχώριση`;
   }
+  // Title + segmented tab + subtitle all on ONE line (note 1, Figma
+  // 577:1011), «Κενές στήλες …» + «Εισαγωγή DKV» on the other side of the
+  // SAME row — the subtitle used to be its own row below the title, which
+  // alone cost a fold gap + row (measured ~21px, proof caught the 220px
+  // budget failing without this).
+  const emptyColsHtml = (!_ex.loading && !_ex.veh.loading) ? exHiddenColsLineHtml() : '';
   const head = `<div class="ex-head">
-      <div><div class="ex-title">${titleHtml}</div><div class="ex-sub">${subHtml}</div></div>
-      <div class="ex-actions-top">${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
+      <div class="ex-head-l"><div class="ex-title">${titleHtml}</div>${segHtml}<div class="ex-sub">${subHtml}</div></div>
+      <div class="ex-head-r">${emptyColsHtml}${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
     </div>`;
   const navHtml = tab === 'week' ? exWeekStripHtml() : exVehControlsHtml();
   let body;
@@ -555,7 +736,7 @@ function exRenderPage() {
       : exSummaryHtml() + exGridHtml();
   }
   const importHtml = (tab === 'week' && !_ex.loading && !_ex.err) ? exImportDocsSectionHtml() : '';
-  c.innerHTML = exStyles() + `<div class="ex-page">${head}${segHtml}${navHtml}${body}${importHtml}</div>`;
+  c.innerHTML = exStyles() + `<div class="ex-page">${head}${navHtml}${body}${importHtml}</div>`;
 }
 
 function exVehControlsHtml() {
@@ -570,64 +751,89 @@ function exVehControlsHtml() {
   </div>`;
 }
 
+// One-line chips (note 1, Figma 577:1011): «Εβδ. N · date range · X δρομ.»,
+// always — the selected chip ALSO appends «· Y ελλείψεις» when the current
+// week has any (never replaces the trip count, unlike the pre-13/9 version,
+// which showed EITHER the count OR the gap word).
 function exWeekStripHtml() {
   const chips = [];
   const today = ctWeekOf(exTodayIso());
+  const selStats = (!_ex.loading && !_ex.err) ? exStats() : null;
   for (let i = -EX_STRIP_BACK; i <= EX_STRIP_FWD; i++) {
     const wk = ctWeekOf(exShiftIso(_ex.week.start, 7 * i));
     const sel = wk.start === _ex.week.start;
     const future = today && wk.start > today.start;
     const count = _ex.stripRts.filter(r => { const x = ctWeekOf(r.date_start); return x && x.start === wk.start; }).length;
-    let hint;
-    if (sel && !_ex.loading && !_ex.err) { const s = exStats(); hint = s.gaps ? `<span class="c">${s.gaps} ελλείψεις</span>` : (s.trips ? 'πλήρης' : '—'); }
-    else hint = count ? count + ' δρομ.' : '—';
-    chips.push(`<button type="button" class="ex-wk${sel ? ' sel' : ''}${future ? ' future' : ''}" onclick="exGoWeek('${wk.start}')">
-      <span class="a">Εβδ. ${wk.week}</span><span class="b">${exShortRange(wk.start, wk.end)} · ${hint}</span></button>`);
+    const gapsSuffix = (sel && selStats && selStats.gaps) ? ` · ${selStats.gaps} ελλείψεις` : '';
+    const label = `Εβδ. ${wk.week} · ${exShortRange(wk.start, wk.end)} · ${count} δρομ.${gapsSuffix}`;
+    chips.push(`<button type="button" class="ex-wk${sel ? ' sel' : ''}${future ? ' future' : ''}" onclick="exGoWeek('${wk.start}')" title="${escapeHtml(label)}"><span class="a">${escapeHtml(label)}</span></button>`);
   }
   return `<div class="ex-card ex-wkstrip"><button type="button" class="ex-wkarrow" onclick="exWeekShift(-1)" title="Προηγούμενη εβδομάδα">‹</button>${chips.join('')}<button type="button" class="ex-wkarrow" onclick="exWeekShift(1)" title="Επόμενη εβδομάδα">›</button></div>`;
 }
 
+// Summary bar → filter chips (note 2): «Δρομολόγια»/«Σύνολο εξόδων» stay
+// plain text (always the FULL, unfiltered tab totals — αρχή 3, so the number
+// here never disagrees with the grand-total cell in the footer); the four
+// status counts become toggle chips (exSetFilterChip) that narrow the grid
+// below. The search box moves in here too (note 1) — replaces the separate
+// search row that used to sit above the grid.
 function exSummaryHtml() {
   const s = exStats();
-  const pend = [];
-  if (s.gaps) pend.push(s.gaps + (s.gaps === 1 ? ' δρομολόγιο με ελλείψεις' : ' δρομολόγια με ελλείψεις'));
-  if (_ex.tab === 'week') {
-    if (s.noneWeek) pend.push(s.noneWeek + ' γραμμές χωρίς δρομολόγιο');
-    if (s.noneOther) pend.push(s.noneOther + ' χωρίς δρομολόγιο εκτός εβδομάδας');
-  }
+  const chip = (key, label, count) => {
+    const active = _ex.filterChip === key;
+    return `<button type="button" class="ex-chip${active ? ' active' : ''}" onclick="exSetFilterChip('${key}')">${escapeHtml(label)}<b>${count}</b></button>`;
+  };
+  const searchPh = _ex.tab === 'vehicle' ? 'Οδηγός, πελάτης, ημερομηνία' : 'Πινακίδα, οδηγός, πελάτης';
   return `<div class="ex-card ex-sum">
     <div class="ex-sum-kv">
       <span>Δρομολόγια <b>${s.trips}</b></span>
-      <span>Πλήρη <b class="${s.complete ? 'ok' : ''}">${s.complete}</b></span>
-      <span>Με ελλείψεις <b class="${s.gaps ? 'warn' : ''}">${s.gaps}</b></span>
-      <span>Σε εξέλιξη <b>${s.open}</b></span>
-      <span>Γραμμές <b>${s.lines}</b></span>
       <span>Σύνολο εξόδων <b>${exEur(s.total)}</b></span>
     </div>
-    <div class="ex-sum-pend${pend.length ? '' : ' ok'}">${pend.length ? 'Εκκρεμότητες: ' + escapeHtml(pend.join(' · ')) : 'Καμία εκκρεμότητα'}</div>
+    <div class="ex-sum-chips">
+      ${chip('complete', 'Πλήρη ', s.complete)}
+      ${chip('gaps', 'Με ελλείψεις ', s.gaps)}
+      ${chip('open', 'Σε εξέλιξη ', s.open)}
+      ${_ex.tab === 'week' ? chip('none', 'Χωρίς δρομολόγιο ', s.noneWeek) : ''}
+    </div>
+    <input class="ex-search" placeholder="${searchPh}" value="${escapeHtml(_ex.q)}" oninput="exSearchInput(this)">
   </div>`;
 }
 
 function exGridHtml() {
   const tab = _ex.tab;
-  const trips = exFilteredTrips();
-  const th = `<div class="ex-gh"><div class="r">Α/Α</div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div>${EX_COL_ORDER.map(k => `<div class="r">${exColLabel(k)} €</div>`).join('')}<div class="r">Σύνολο €</div><div>Κατάσταση</div></div>`;
+  // exDisplayedTrips() (search + chip filter) is the ONE list rendered here
+  // — exGoNextTrip (note 9) walks the exact same list, so «next» can never
+  // land on a row this view is hiding.
+  const trips = exDisplayedTrips();
+  const visCols = exVisibleCols();
+  const tmpl = exGridTemplate(visCols.length);
+  // Α/Α is gone for good (note 10); chevron + Διαδρομή are new fixed tracks
+  // (note 3) — the header text itself carries no «€» any more (note 4, the
+  // footer legend below says the amounts are in €).
+  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColLabel(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
   const emptyMsg = exActiveRts().length
     ? 'Κανένα δρομολόγιο για αυτή την αναζήτηση.'
     : (tab === 'vehicle' ? 'Κανένα δρομολόγιο σε αυτό το εύρος.' : 'Κανένα δρομολόγιο σε αυτή την εβδομάδα.');
-  const rows = trips.length ? trips.map((r, i) => exTripRowHtml(r, i + 1)).join('')
-    : `<div class="ex-gr"><div></div><div class="mid" style="grid-column:2/-1">${emptyMsg}</div></div>`;
-  const totals = EX_COL_ORDER.map(k => exColTotal(k, trips));
+  const rows = trips.length ? trips.map(r => exTripRowHtml(r, visCols, tmpl)).join('')
+    : `<div class="ex-gr" style="grid-template-columns:${tmpl}"><div></div><div class="mid" style="grid-column:2/-1">${emptyMsg}</div></div>`;
+  // Category column totals follow the filtered/visible trips (like the rows
+  // above them), but the grand «Σύνολο» cell stays the FULL, unfiltered tab
+  // total from exStats() — unchanged from before this revision, and the same
+  // number as «Σύνολο εξόδων» in the summary bar (αρχή 3): it already folded
+  // in Έξοδα Μ and the none-row's unallocated lines, neither of which the
+  // per-category columns count, so it was never meant to equal their sum.
+  const totals = visCols.map(k => exColTotal(k, trips));
   const stats = exStats();
   const label = tab === 'vehicle'
     ? `Σύνολο ${escapeHtml(exVehTruckPlate())} (${trips.length} δρομολόγια, ${stats.lines} γραμμές)`
     : `Σύνολο εβδομάδας ${_ex.week.week} (${_ex.rts.length} δρομολόγια, ${stats.lines} γραμμές)`;
-  const tt = `<div class="ex-gt"><div class="r" style="grid-column:1/5">${label}</div>${totals.map(t => `<div class="r n">${exNum(t)}</div>`).join('')}<div class="r n grand">${exNum(stats.total)}</div><div></div></div>`;
+  // Grid-column span for the label covers the 5 fixed tracks (chevron…
+  // Διαδρομή) — one more than before Α/Α became chevron+Διαδρομή together.
+  const tt = `<div class="ex-gt" style="grid-template-columns:${tmpl}"><div class="r" style="grid-column:1/6">${label}</div>${totals.map(t => `<div class="r n">${exNum(t)}</div>`).join('')}<div class="r n grand">${exNum(stats.total)}</div><div></div></div>`;
   const tollsLine = tab === 'vehicle' ? exVehTollsByCountryHtml() : '';
-  const foot = `<div class="ex-foot"><p>Ποσά όπως στο παραστατικό. Κενό κελί = καμία γραμμή. «Λείπει» μόνο σε ολοκληρωμένο δρομολόγιο χωρίς γραμμή στην κατηγορία.</p><span>Enter = αποθήκευση · Esc = κλείσιμο κελιού</span></div>`;
-  const searchPh = tab === 'vehicle' ? 'Οδηγός, πελάτης, ημερομηνία' : 'Πινακίδα, οδηγός, πελάτης';
-  return `<div class="ex-card"><div style="display:flex;justify-content:flex-end;padding:8px 16px 0"><input class="ex-search" placeholder="${searchPh}" value="${escapeHtml(_ex.q)}" oninput="exSearchInput(this)"></div>
-    <div class="ex-gridwrap"><div class="ex-grid">${th}${rows}${tab === 'week' ? exNoneRowHtml() : ''}${tt}</div></div>${tollsLine}${foot}</div>`;
+  const foot = `<div class="ex-foot"><p>Ποσά σε €, όπως στο παραστατικό. Κενό κελί = καμία γραμμή · «—» = ολοκληρωμένο δρομολόγιο χωρίς γραμμή στην κατηγορία.</p><span>Enter = αποθήκευση · Esc = κλείσιμο κελιού</span></div>`;
+  return `<div class="ex-card">
+    <div class="ex-gridwrap"><div class="ex-grid">${th}${rows}${tab === 'week' && (!_ex.filterChip || _ex.filterChip === 'none') ? exNoneRowHtml(visCols, tmpl) : ''}${tt}</div></div>${tollsLine}${foot}</div>`;
 }
 
 // One computation of «per country» subtotals for tolls lines — used by the
@@ -662,9 +868,19 @@ function exCellHtml(rtKey, group, lines, missing) {
   const cls = ['ex-cell', _ex.canWrite ? 'can' : '', isOpen ? 'open' : '', missing ? 'missing' : '', !lines.length && !missing ? 'empty' : ''].filter(Boolean).join(' ');
   const keyArg = typeof rtKey === 'number' ? rtKey : "'" + rtKey + "'";
   const onclick = _ex.canWrite ? ` onclick="exToggleCell(${keyArg},'${group.key}')"` : '';
-  const dkv = lines.length && lines.every(l => l.doc_id) ? ' · DKV' : '';
-  const a = missing ? 'λείπει' : (lines.length ? exNum(exAmt(lines)) : '');
-  const b = lines.length ? `${lines.length} γρ.${dkv}` : '';
+  // Sub-label (note 5): the DKV logo tag appears whenever EVERY line has a
+  // doc_id (point 11 — the logo, not the word «DKV»); the «n γρ.» count only
+  // when there is more than one line (a single line needs no count).
+  const allDkv = lines.length > 0 && lines.every(l => l.doc_id);
+  const bParts = [];
+  if (lines.length > 1) bParts.push(lines.length + ' γρ.');
+  if (allDkv) bParts.push(exSourceTag('DKV'));
+  const b = bParts.join(' ');
+  // «—» pale dashed placeholder (note 6) replaces the old «λείπει» text —
+  // the word itself still lives in the status column (exRtState). Styled via
+  // the .ex-cell.missing .a descendant selector, so the span needs no class
+  // of its own beyond the usual «a».
+  const a = missing ? '—' : (lines.length ? exNum(exAmt(lines)) : '');
   return `<div class="${cls}" data-rt="${rtKey}" data-group="${group.key}"${onclick}><span class="a">${a}</span>${b ? `<span class="b">${b}</span>` : ''}</div>`;
 }
 
@@ -682,31 +898,46 @@ function exExpMCellHtml(rtKey, r) {
   return `<div class="${cls}" data-rt="${rtKey}" data-group="expm"${onclick}><span class="a">${a}</span></div>`;
 }
 
-function exTripRowHtml(r, idx) {
+// Collapsed by default (note 3): chevron + one-line Διαδρομή summary replace
+// the Α/Α column and the always-open leg block. Clicking the chevron OR the
+// route text toggles _ex.expanded — clicking anywhere else in the row (an
+// amount cell) still only opens/closes that cell's own entry panel.
+function exTripRowHtml(r, visCols, tmpl) {
   const lines = exRtLines(r.id);
   const missing = exMissingGroups(r);
   const st = exRtState(r);
   const isOpen = _ex.open && _ex.open.rtId === r.id;
+  const isExpanded = _ex.expanded.has(r.id);
   const partner = exIsPartnerTrip(r);
-  const cells = EX_COL_ORDER.map(k => {
+  const cells = visCols.map(k => {
     if (k === 'expm') return exExpMCellHtml(r.id, r);
     const g = EX_GROUPS.find(x => x.key === k);
     return exCellHtml(r.id, g, exGroupLines(lines, g), missing.includes(k));
   }).join('');
   const hasLegs = Array.isArray(r.route_legs) && r.route_legs.length > 0;
   const legsHtml = hasLegs ? rtLegBlockHtml(r.route_legs) : (r.route_text ? `<span class="ex-route">${escapeHtml(r.route_text)}</span>` : '');
+  const routeSummary = exRouteSummary(r);
   const expM = Number((r.ledger_entry && r.ledger_entry.expenses) || 0);
   const rowTotal = exAmt(lines) + expM;
   const hasAny = lines.length > 0 || expM !== 0;
-  return `<div class="ex-trip${isOpen ? ' open' : ''}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}">
-      <div class="r dim">${idx}</div>
-      <div class="ex-clip ${partner ? 'mid' : 'ex-plate'}">${escapeHtml(partner ? 'Συνεργάτης' : exTruckName(r.truck_id))}</div>
-      <div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>
+  // Vehicle column (note 8): a partner trip shows «Συνεργάτης» over the
+  // partner name, no truncation (.ex-vcell wraps instead of clipping); the
+  // Οδηγός column reads «—» for a partner trip since there is no driver.
+  const vehicleCell = partner
+    ? `<div class="ex-vcell"><span class="k">Συνεργάτης</span>${escapeHtml(exPersonName(r))}</div>`
+    : `<div class="ex-clip ex-plate">${escapeHtml(exTruckName(r.truck_id))}</div>`;
+  const driverCell = partner ? '<div class="dim">—</div>' : `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
+  const missingCls = missing.length ? ' missing' : '';
+  return `<div class="ex-trip${isOpen ? ' open' : ''}${missingCls}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}" style="grid-template-columns:${tmpl}">
+      <span class="ex-chevron" onclick="exToggleExpand(${r.id})" title="${isExpanded ? 'Σύμπτυξη' : 'Ανάπτυξη'}">${isExpanded ? '⌄' : '›'}</span>
+      ${vehicleCell}
+      ${driverCell}
       <div class="mid n">${exShortRange(r.date_start, r.date_end || r.date_start)}</div>
+      <div class="ex-route" onclick="exToggleExpand(${r.id})" title="${escapeHtml(routeSummary)}">${escapeHtml(routeSummary)}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}">${st.word}</div>
-    </div>${legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exOpenPanelHtml(r) : ''}</div>`;
+    </div>${isExpanded && legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exOpenPanelHtml(r) : ''}</div>`;
 }
 
 // «Χωρίς δρομολόγιο»: unallocated lines dated inside the week (week tab
@@ -716,12 +947,12 @@ function exTripRowHtml(r, idx) {
 // never had a person to assign them and never will from this row (spec §2
 // point 8), so the cell stays non-interactive rather than offering an
 // action that always fails.
-function exNoneRowHtml() {
+function exNoneRowHtml(visCols, tmpl) {
   const allLines = exUnallocInWeek();
   const lines = allLines.filter(l => l.category !== 'dkv');
   const dkvLines = allLines.filter(l => l.category === 'dkv');
   const isOpen = _ex.open && _ex.open.rtId === 'none';
-  const cells = EX_COL_ORDER.map(k => {
+  const cells = visCols.map(k => {
     if (k === 'expm') return '<div></div>';
     if (k === 'dkv') return '<div class="dim" style="font-size:10.5px">βλ. κάτω</div>';
     const g = EX_GROUPS.find(x => x.key === k);
@@ -730,9 +961,14 @@ function exNoneRowHtml() {
   const dkvNote = dkvLines.length
     ? `<div class="ex-idoc-row" style="padding:4px 16px 8px"><span class="s dim">Τέλη DKV χωρίς δρομολόγιο: ${dkvLines.length} ${dkvLines.length === 1 ? 'γραμμή' : 'γραμμές'}, ${exEur(exAmt(dkvLines))}</span></div>`
     : '';
-  return `<div class="ex-gr none-row${isOpen ? ' open' : ''}" data-rt="none">
+  // Same 5 leading tracks as a trip row (chevron/Όχημα/Οδηγός/Ημερομηνίες/
+  // Διαδρομή) — this row has no chevron or route to show, so those two cells
+  // stay blank; the status word and the pending count fill Όχημα/Οδηγός as
+  // before Α/Α became chevron+Διαδρομή.
+  return `<div class="ex-gr none-row${isOpen ? ' open' : ''}" data-rt="none" style="grid-template-columns:${tmpl}">
       <div></div><div class="dim">—</div><div class="ex-st${lines.length ? ' att' : ''}">Χωρίς δρομολόγιο</div>
       <div class="${lines.length ? 'mid' : 'dim'}" style="font-size:12px">${lines.length ? lines.length + ' προς ανάθεση' : 'καμία γραμμή'}</div>
+      <div></div>
       ${cells}
       <div class="r n" style="font-weight:600">${lines.length ? exNum(exAmt(lines)) : ''}</div>
       <div class="ex-st${lines.length ? ' att' : ''}">${lines.length ? 'Ανάθεση' : ''}</div>
@@ -785,9 +1021,47 @@ function exPanelHtml(rt) {
   const rowsHtml = lines.length ? lines.map(l => exLineRowHtml(l, { unallocated: isNone })).join('') : '';
   const thHtml = lines.length ? `<div class="ex-th ex-line-grid"><div>Ημ/νία</div><div>Κατηγορία · Σημείωση</div><div>${exExtraColLabel(group.key)}</div><div class="r">Ποσό</div><div>Ποιος</div><div></div></div>` : '';
   return `<div class="ex-gp" data-panel="${isNone ? 'none' : rt.id}">
-    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}${group.key === 'tolls' && lines.length ? ` <span class="mid">· ${escapeHtml(exCountryParts(lines).join(' · '))}</span>` : ''}</div><button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div>
+    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}${group.key === 'tolls' && lines.length ? ` <span class="mid">· ${escapeHtml(exCountryParts(lines).join(' · '))}</span>` : ''}</div><div class="ex-gp-actions">${exNextTripHtml()}<button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div></div>
     ${thHtml}${rowsHtml}${exQeRowHtml(group)}
   </div>`;
+}
+
+// «Επόμενο δρομολόγιο ↓» (note 9): moves the open cell — SAME group — to the
+// next row in exDisplayedTrips(), the identical list the grid itself just
+// rendered, so «next» can never point at a row the search/chip filter has
+// hidden. The none-row is never a target (exDisplayedTrips never contains
+// it) and it never becomes the STARTING point either (guarded below) — spec
+// §2 note 9 «skipping the none-row».
+function exNextTripHtml() {
+  if (!_ex.open || _ex.open.rtId === 'none') return '';
+  const ids = exDisplayedTrips().map(r => r.id);
+  const idx = ids.indexOf(_ex.open.rtId);
+  const hasNext = idx !== -1 && idx < ids.length - 1;
+  return hasNext
+    ? '<button type="button" class="ex-link" onclick="exGoNextTrip()">Επόμενο δρομολόγιο ↓</button>'
+    : '<span class="ex-link dim">Επόμενο δρομολόγιο ↓</span>';
+}
+function exGoNextTrip() {
+  if (!_ex.open || _ex.open.rtId === 'none') return;
+  const group = _ex.open.group;
+  const ids = exDisplayedTrips().map(r => r.id);
+  const idx = ids.indexOf(_ex.open.rtId);
+  if (idx === -1 || idx >= ids.length - 1) return; // last row — the link itself reads dimmed, this is just the guard
+  const nextId = ids[idx + 1];
+  const rt = exActiveRts().find(r => r.id === nextId);
+  _ex.open = { rtId: nextId, group };
+  _ex.editId = null;
+  if (group === 'expm') {
+    const entry = rt && rt.ledger_entry;
+    _ex.expmAmount = entry && entry.expenses != null ? String(entry.expenses) : '';
+  } else {
+    const g = EX_GROUPS.find(x => x.key === group);
+    _ex.qe = { category: g.cats[0], date: (rt && rt.date_start) || exTodayIso(), fuelSource: 'DKV', trailerOverride: false, trailerId: null };
+    delete _exCountryNs.exQeCountry;
+  }
+  exRenderPage();
+  const el = document.getElementById(group === 'expm' ? 'exExpMAmt' : 'exQeAmt');
+  if (el) el.focus();
 }
 
 // «Έξοδα Μ» panel (spec §2 point 6): ONE field, writes the payroll ledger
@@ -798,14 +1072,14 @@ function exExpMPanelHtml(rt) {
   if (!rt) return '';
   const entry = rt.ledger_entry;
   const title = (exIsPartnerTrip(rt) ? 'Συνεργάτης' : exTruckName(rt.truck_id)) + ' · ' + exPersonName(rt) + ' · ' + exDateRange(rt.date_start, rt.date_end);
-  const head = `<div class="ex-gp-head"><div><span class="k">Καταχώριση</span>Έξοδα Μ · ${escapeHtml(title)}</div><button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div>`;
+  const head = `<div class="ex-gp-head"><div><span class="k">Καταχώριση</span>Έξοδα Μ · ${escapeHtml(title)}</div><div class="ex-gp-actions">${exNextTripHtml()}<button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div></div>`;
   if (!entry) {
     return `<div class="ex-gp" data-panel="${rt.id}">${head}<div class="ex-row" style="padding:10px 16px;color:var(--text-mid)">Το δρομολόγιο δεν έχει εγγραφή Μισθοδοσίας.</div></div>`;
   }
   return `<div class="ex-gp" data-panel="${rt.id}">${head}
     <div class="ex-row qe">
       <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="exExpMAmt" value="${escapeHtml(_ex.expmAmount || '')}" onkeydown="exExpMKeydown(event)"></div>
-      <span class="ex-qe-hint">Enter = αποθήκευση</span>
+      <span class="ex-qe-hint">Enter = αποθήκευση · Esc = κλείσιμο</span>
     </div>
   </div>`;
 }
@@ -972,7 +1246,7 @@ function exQeRowHtml(group) {
     ${isTolls ? exCountryFieldHtml('exQeCountry', 170) : ''}
     <div class="ex-field ex-qe-amt"><label class="ex-flabel">Ποσό €</label><input class="ex-ei" type="number" step="0.01" id="exQeAmt" placeholder="0,00" onkeydown="exQeKeydown(event)"></div>
     <div class="ex-field ex-qe-note"><label class="ex-flabel">Παραστατικό / σημείωση</label><input class="ex-ei" type="text" id="exQeNote" placeholder="αρ. απόδειξης" onkeydown="exQeKeydown(event)"></div>
-    <span class="ex-qe-hint">Enter = αποθήκευση · <button class="ex-link" type="button" onclick="exOpenEntryModalFromRow()">σε παράθυρο</button></span>
+    <span class="ex-qe-hint">Enter = αποθήκευση · Tab = επόμενο πεδίο · Esc = κλείσιμο · <button class="ex-link" type="button" onclick="exOpenEntryModalFromRow()">σε παράθυρο</button></span>
     <div class="ex-qe-break"></div>
     <span id="exQeReeferWrap">${isReefer ? exTrailerFieldHtml(rt, _ex.qe, 'qe') : ''}</span>
     ${isReefer ? '<div class="ex-qe-break"></div>' : ''}
@@ -1077,10 +1351,15 @@ function exLineRowHtml(line, opts) {
   const isTolls = line.category === 'tolls';
   const extraTxt = isTolls ? (line.toll_country || '') : (line.liters != null ? Number(line.liters).toLocaleString('el-GR', { maximumFractionDigits: 2 }) + ' L' : '');
   const extraCls = isTolls ? 'ex-plate' : 's dim';
+  // Source logo (point 11b) replaces the plain-text «DKV»/fuel_source word
+  // next to the category — fuel_source wins when set (DADI is a source too,
+  // not only DKV), falling back to the DKV logo for an imported line that
+  // somehow has no fuel_source. Pulled OUT of noteBits so the same source
+  // never prints twice (once as a logo, once as text).
+  const srcTag = line.doc_id ? exSourceTag(line.fuel_source || 'DKV') : (line.fuel_source ? exSourceTag(line.fuel_source) : '');
   const noteBits = [
     line.note,
-    line.category === 'reefer_fuel' && line.trailer_id ? 'Ρυμούλκα ' + (exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id)) : null,
-    line.fuel_source ? (EX_FUEL_SOURCES.find(s => s.v === line.fuel_source) || {}).l : null
+    line.category === 'reefer_fuel' && line.trailer_id ? 'Ρυμούλκα ' + (exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id)) : null
   ].filter(Boolean).join(' · ');
   const assignHtml = (opts && opts.unallocated && _ex.canWrite)
     ? `<select class="ex-ei ex-assign" onchange="exAssignLine(${line.id}, this.value)">
@@ -1093,7 +1372,7 @@ function exLineRowHtml(line, opts) {
     : '';
   return `<div class="ex-row ex-line-grid" data-line="${line.id}">
     <div class="s">${exDateFull(line.line_date)}</div>
-    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}${line.doc_id ? ' · DKV' : ''}</span>${noteBits ? `<br><span class="s dim">${escapeHtml(noteBits)}</span>` : ''}</div>
+    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}</span>${srcTag ? ' · ' + srcTag : ''}${noteBits ? `<br><span class="s dim">${escapeHtml(noteBits)}</span>` : ''}</div>
     <div class="${extraCls}">${escapeHtml(extraTxt)}</div>
     <div class="n r">${exEur(exLineAmt(line))}</div>
     <div class="s dim ex-user" title="${escapeHtml(line.created_by || '')}">${escapeHtml(exUserDisplay(line.created_by))}</div>

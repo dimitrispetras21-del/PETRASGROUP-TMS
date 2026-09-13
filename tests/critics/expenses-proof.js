@@ -170,7 +170,12 @@ async function waitLedger(page, action) {
   await page.waitForTimeout(150);
 }
 
-const EXPECTED_HEADER_RE = /Α\/Α[\s\S]*ΟΧΗΜΑ[\s\S]*ΟΔΗΓΟΣ[\s\S]*ΗΜΕΡΟΜΗΝΙΕΣ[\s\S]*ΚΑΥΣΙΜΑ\s*€[\s\S]*ΔΙΟΔΙΑ\s*€[\s\S]*ADBLUE\s*€[\s\S]*ΤΕΛΗ DKV\s*€[\s\S]*SPEDITION\s*€[\s\S]*ΕΞΟΔΑ Μ\s*€[\s\S]*ΠΡΟΣΤΙΜΑ\s*€[\s\S]*ΚΑΡΑΒΙΑ\/ΤΡΕΝΑ\s*€[\s\S]*ΛΟΙΠΑ\s*€[\s\S]*ΣΥΝΟΛΟ\s*€[\s\S]*ΚΑΤΑΣΤΑΣΗ/i;
+// Usability revision 13/9 (Figma 577:1011): Α/Α is gone, header text carries
+// no «€», and a group with zero lines across the fixture (adblue/dkv/
+// spedition/fines/ferry/other — only fuel/tolls/expm have data below) hides
+// from the header entirely, reappearing in the «Κενές στήλες … εμφάνιση»
+// line instead — see the dedicated empty-columns assertion further down.
+const EXPECTED_HEADER_RE = /ΟΧΗΜΑ[\s\S]*ΟΔΗΓΟΣ[\s\S]*ΗΜΕΡΟΜΗΝΙΕΣ[\s\S]*ΔΙΑΔΡΟΜΗ[\s\S]*ΚΑΥΣΙΜΑ[\s\S]*ΔΙΟΔΙΑ[\s\S]*ΕΞΟΔΑ Μ[\s\S]*ΣΥΝΟΛΟ[\s\S]*ΚΑΤΑΣΤΑΣΗ/i;
 
 async function runAccountantFlow(browser) {
   console.log('\n== accountant · εβδομαδιαίο φύλλο ==');
@@ -186,11 +191,82 @@ async function runAccountantFlow(browser) {
 
   // ── column headers exactly as spec §2 point 2 ──
   const headerText = (await page.locator('.ex-gh').innerText()).replace(/\s+/g, ' ');
-  assert(EXPECTED_HEADER_RE.test(headerText), 'grid header = Α/Α·Όχημα·Οδηγός·Ημερομηνίες·Καύσιμα·Διόδια·AdBlue·Τέλη DKV·Spedition·Έξοδα Μ·Πρόστιμα·Καράβια/Τρένα·Λοιπά·Σύνολο·Κατάσταση: ' + headerText);
+  assert(EXPECTED_HEADER_RE.test(headerText), 'grid header (no Α/Α, no zero-line columns) = Όχημα·Οδηγός·Ημερομηνίες·Διαδρομή·Καύσιμα·Διόδια·Έξοδα Μ·Σύνολο·Κατάσταση: ' + headerText);
+  assert(!/Α\/Α/.test(headerText), 'the Α/Α header column is gone (point 10): ' + headerText);
+  assert(!/€/.test(headerText), 'no header text contains «€» (point 4): ' + headerText);
 
   // ── no ΦΠΑ anywhere on the week sheet ──
   const gridText = await page.locator('.ex-page').innerText();
   assert(!/Φ\.?Π\.?Α/i.test(gridText), 'no ΦΠΑ text anywhere on the week sheet: ' + (gridText.match(/.{0,20}Φ\.?Π\.?Α.{0,20}/i) || [''])[0]);
+
+  // ── usability revision 13/9 — sticky header (point 7) ──
+  assert(await page.locator('.ex-gh').evaluate(el => getComputedStyle(el).position) === 'sticky', 'grid header has position:sticky (point 7)');
+
+  // ── collapsed row height ≤48 (point 3) ──
+  const rowH = await page.locator('.ex-gr[data-rt="701"]').evaluate(el => el.getBoundingClientRect().height);
+  assert(rowH <= 48, 'collapsed trip row height ≤48px: ' + rowH.toFixed(1));
+
+  // ── chevron expands/collapses the full leg block (point 3) ──
+  assert(await page.locator('.ex-trip[data-trip="701"] .ex-legs').count() === 0, 'legs block hidden while collapsed');
+  await page.locator('.ex-trip[data-trip="701"] .ex-chevron').click();
+  await page.waitForSelector('.ex-trip[data-trip="701"] .ex-legs', { timeout: 3000 });
+  assert(/Βέροια/.test(await page.locator('.ex-trip[data-trip="701"] .ex-legs').innerText()), 'chevron click expands — leg/route block visible');
+  await page.locator('.ex-trip[data-trip="701"] .ex-chevron').click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-trip[data-trip="701"] .ex-legs').count() === 0, 'chevron click again collapses it back');
+
+  // ── empty-column hiding + «εμφάνιση» toggle (point 4) — the fixture has no
+  // adblue/dkv/spedition/fines/ferry/other lines, so all six start hidden ──
+  assert(await page.locator('.ex-gh', { hasText: 'Spedition' }).count() === 0, 'Spedition column (zero lines) starts hidden');
+  const emptyLine = await page.locator('.ex-emptycols').innerText();
+  assert(/Spedition/.test(emptyLine) && /εμφάνιση/.test(emptyLine), '«Κενές στήλες …» names Spedition and offers «εμφάνιση»: ' + emptyLine);
+  await page.locator('.ex-emptycols .ex-link').click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-gh', { hasText: 'Spedition' }).count() === 1, '«εμφάνιση» reveals the Spedition column');
+  assert(/απόκρυψη/.test(await page.locator('.ex-emptycols').innerText()), 'the link now reads «απόκρυψη»');
+  await page.locator('.ex-emptycols .ex-link').click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-gh', { hasText: 'Spedition' }).count() === 0, '«απόκρυψη» hides it again');
+
+  // ── filter chip «Με ελλείψεις» narrows the rows (point 2) — RT 702 is
+  // closed with no lines at all, so it is the one trip with gaps ──
+  assert(await page.locator('.ex-trip').count() === 3, 'all 3 trips visible with no chip active');
+  assert(await page.locator('.ex-trip.missing').count() === 1 && await page.locator('.ex-trip[data-trip="702"]').evaluate(el => el.classList.contains('missing')), 'RT 702 (closed, no lines) carries the amber .missing class');
+  assert(!/λείπει/.test(await page.locator('.ex-page').innerText()), 'no cell contains the text «λείπει» anywhere (point 6 — the placeholder is «—», not the word)');
+  await page.locator('.ex-chip', { hasText: 'Με ελλείψεις' }).click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-trip').count() === 1 && await page.locator('.ex-trip[data-trip="702"]').count() === 1, '«Με ελλείψεις» chip leaves only RT 702 visible');
+  assert(await page.locator('.ex-chip', { hasText: 'Με ελλείψεις' }).evaluate(el => el.classList.contains('active')), 'the active chip carries the .active (navy outline) class');
+  await page.locator('.ex-chip', { hasText: 'Με ελλείψεις' }).click(); // clear it — click-again clears, per exSetFilterChip
+  await page.waitForTimeout(100);
+  assert(await page.locator('.ex-trip').count() === 3, 'clicking the active chip again clears the filter');
+
+  // ── DKV logo tag, not the word «DKV» (point 11) — line 9102 (tolls,
+  // doc_id:5) is the only line in the 701/tolls cell, and it is DKV-sourced ──
+  const tollsCell701 = cell(page, 701, 'tolls');
+  assert(await tollsCell701.locator('img.ex-src[alt="DKV"]').count() === 1, 'the 701/tolls amount cell shows the DKV logo (img.ex-src[alt="DKV"])');
+  assert(!/DKV/.test(await tollsCell701.locator('.b').innerText()), 'the cell sub-label carries no literal «DKV» text, only the logo');
+  const logoResp = await page.request.get(BASE_URL + 'assets/logos/dkv.png');
+  assert(logoResp.status() === 200, 'assets/logos/dkv.png is served (HTTP ' + logoResp.status() + ')');
+
+  // ── partner trip: «Συνεργάτης» over the full partner name, no truncation
+  // (point 8) — RT 703 is a partner trip (Meta-Cargo ΕΠΕ) ──
+  const vehCell703 = await page.locator('.ex-gr[data-rt="703"] .ex-vcell').innerText();
+  assert(/Συνεργάτης/.test(vehCell703) && /Meta-Cargo/.test(vehCell703), 'RT 703 vehicle column shows «Συνεργάτης» and the full partner name: ' + vehCell703.replace(/\s+/g, ' '));
+  // Direct-child divs in order: Όχημα(0), Οδηγός(1), Ημερομηνίες(2), Διαδρομή(3), … — the
+  // chevron is a <span>, not a <div>, so it does not shift this index.
+  assert(await page.locator('.ex-gr[data-rt="703"] > div').nth(1).innerText() === '—', 'RT 703 driver column reads «—» for a partner trip');
+
+  // ── «Επόμενο δρομολόγιο ↓» moves the open panel to the next trip (point 9) ──
+  await cell(page, 701, 'fuel').click();
+  await page.waitForSelector('.ex-gp[data-panel="701"]', { timeout: 5000 });
+  await page.locator('.ex-gp[data-panel="701"] .ex-gp-actions button', { hasText: 'Επόμενο δρομολόγιο' }).click();
+  await page.waitForSelector('.ex-gp[data-panel="702"]', { timeout: 5000 });
+  assert(await page.locator('.ex-cell[data-rt="702"][data-group="fuel"].open').count() === 1, '«Επόμενο δρομολόγιο» moved the open cell from RT 701 to RT 702, same group (fuel)');
+  await page.locator('.ex-gp[data-panel="702"] .ex-gp-actions button', { hasText: 'Επόμενο δρομολόγιο' }).click();
+  await page.waitForSelector('.ex-gp[data-panel="703"]', { timeout: 5000 });
+  assert(await page.locator('.ex-gp[data-panel="703"] .ex-gp-actions .ex-link.dim', { hasText: 'Επόμενο δρομολόγιο' }).count() === 1, 'on the LAST trip (703) the link reads dimmed — no more rows to go to');
+  await page.locator('.ex-link', { hasText: 'Κλείσιμο' }).click();
 
   // ── created_by resolves through the USERS roster (spec point 7) ──
   await cell(page, 701, 'tolls').click();
@@ -301,7 +377,7 @@ async function runVehicleTab(browser) {
   assert(/Όχημα ΘΕ-2001/.test(await page.locator('.ex-title').innerText()), 'title names the selected truck (defaults to the first one)');
   assert(/Τελευταίες 8 εβδομάδες/.test(await page.locator('.ex-sub').innerText()), 'subtitle names the default 8-week range');
   const headerText = (await page.locator('.ex-gh').innerText()).replace(/\s+/g, ' ');
-  assert(EXPECTED_HEADER_RE.test(headerText), 'vehicle tab has the SAME 15-column header as the week tab');
+  assert(EXPECTED_HEADER_RE.test(headerText), 'vehicle tab has the SAME dynamic header as the week tab (no Α/Α, zero-line columns hidden)');
   assert(/Σύνολο ΘΕ-2001 \(1 δρομολόγια, 2 γραμμές\)/.test((await page.locator('.ex-gt').innerText()).replace(/\s+/g, ' ')), 'totals row names the vehicle, trip count and line count');
   const gridText = await page.locator('.ex-page').innerText();
   assert(!/Φ\.?Π\.?Α/i.test(gridText), 'no ΦΠΑ text anywhere on the vehicle sheet');
@@ -360,6 +436,23 @@ async function runScreenshot1280(browser) {
   return { consoleErrors };
 }
 
+// «Αν σπάσει στις 06:00 Δευτέρα, ποιος το μαθαίνει;» — the whole point of the
+// compressed header (note 1) is a measured budget, not a vibe: at 1440×778
+// (a real laptop viewport, not the padded 1440×900 the other checks use) the
+// FIRST trip row must land within 220px of the top of the viewport.
+async function runFoldCheck(browser) {
+  console.log('\n== compressed header — first row ≤220px at 1440×778 ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant', { width: 1440, height: 778 });
+  installCostsMocks(page, { rt: RT_FIXTURE, lookups: LOOKUPS_FIXTURE, lines: LINES_FIXTURE });
+  await gotoPage(page, 'expenses', BASE_URL);
+  await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+  await openWeek(page, WEEK_START);
+  const top = await page.locator('.ex-gr[data-rt="701"]').evaluate(el => el.getBoundingClientRect().top);
+  assert(top <= 220, 'first trip row top ≤220px at 1440×778: ' + top.toFixed(1));
+  await context.close();
+  return { consoleErrors };
+}
+
 async function runManagementFlow(browser) {
   console.log('\n== management (read-only) ==');
   const { context, page, consoleErrors } = await newPage(browser, 'management');
@@ -395,11 +488,12 @@ async function runDispatcherFlow(browser) {
     const acct = await runAccountantFlow(browser);
     const veh = await runVehicleTab(browser);
     const shot = await runScreenshot1280(browser);
+    const fold = await runFoldCheck(browser);
     const mgmt = await runManagementFlow(browser);
     const disp = await runDispatcherFlow(browser);
-    const all = [...acct.consoleErrors, ...veh.consoleErrors, ...shot.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
+    const all = [...acct.consoleErrors, ...veh.consoleErrors, ...shot.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
     console.log('\n== console errors ==');
-    console.log('accountant:', acct.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, '1280/1440:', shot.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+    console.log('accountant:', acct.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, '1280/1440:', shot.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: acct.captured.posts, patches: acct.captured.patches, ledgerPatches: acct.captured.ledgerPatches }, null, 2));

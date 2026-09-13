@@ -7,7 +7,11 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-const SW_VERSION = '1789321668';
+<<<<<<< HEAD
+const SW_VERSION = '1789325794';
+=======
+const SW_VERSION = '1789325794';
+>>>>>>> 7cfb324 (expenses.js: αναθεώρηση ευχρηστίας εγκεκριμένη από owner 13/9 (Figma 577:1011/587:1033) — συμπυκνωμένη κεφαλίδα, φίλτρα summary bar, σύμπτυξη γραμμών, κενές στήλες, λογότυπα προμηθευτών)
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
