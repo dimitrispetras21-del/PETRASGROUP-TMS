@@ -113,6 +113,24 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Display name for a login username (e.g. `created_by` on any record) — the
+ * person's first name from the USERS roster (config.js), first token of
+ * `name`, so 'alexia' reads as 'Alexia' wherever a record names who wrote it
+ * (spec 2026-09-13-fuel-collection-program.md §2 point 7). Falls back to the
+ * raw username with its first letter capitalised when it is not on the
+ * roster (a deleted/legacy account, or a demo login) — never hides the value.
+ * @param {string|null|undefined} username
+ * @returns {string}
+ */
+function userDisplayName(username) {
+  if (!username) return '';
+  const entry = typeof USERS !== 'undefined' && Array.isArray(USERS) ? USERS.find(u => u.username === username) : null;
+  if (entry && entry.name) return entry.name.split(' ')[0];
+  return username.charAt(0).toUpperCase() + username.slice(1);
+}
+if (typeof window !== 'undefined') window.userDisplayName = userDisplayName;
+
 // Round-trip leg block (owner decision 5/9/2026): a round trip is a stack of
 // leg rows, never one wrapped single line. Shared by the driver ledger
 // (modules/payroll.js — dlEntryRowHtml trip rows) and the driver/truck/

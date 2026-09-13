@@ -7,7 +7,10 @@
 // ledger (Μισθοδοσία Οδηγών) and read back here. Offering them in this
 // dropdown again would recreate the second source of truth the ledger removed.
 const CT_CATEGORY_LABELS = {
-  fuel: 'Καύσιμα', reefer_fuel: 'Καύσιμα ψυγείου', tolls: 'Διόδια', dkv: 'DKV κάρτα',
+  // fuel/reefer_fuel labels updated 13/9 (owner, fuel-collection-program spec
+  // §2.Β point 4: «Καύσιμα φορτηγού» / «Καύσιμα θαλάμου») — one label pair,
+  // read by modules/expenses.js and this file's own TRIP PnL modal alike.
+  fuel: 'Καύσιμα φορτηγού', reefer_fuel: 'Καύσιμα θαλάμου', tolls: 'Διόδια', dkv: 'DKV κάρτα',
   adblue: 'AdBlue', spedition: 'Spedition',
   accommodation: 'Διαμονή', ferry_train: 'Ferry/Τρένα', fines: 'Πρόστιμα',
   partner_rate: 'Κόμιστρο συνεργάτη', fixed_alloc: 'Πάγια (Tier-2)', other: 'Λοιπά'
