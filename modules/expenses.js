@@ -38,6 +38,14 @@ const EX_FUEL_SOURCES = [
   { v: 'DKV', l: 'DKV' }, { v: 'DADI', l: 'DADI' }, { v: 'BG_STATION', l: 'BG πρατήριο' },
   { v: 'OWN_STATION', l: 'Ιδιόκτητο' }, { v: 'THIRD_PARTY', l: 'Τρίτος' }
 ];
+// How a line was PAID (migration 032, owner 13/9 «σε όλα πρόσθεσε το πηγή,
+// για να επιλέγει αν είναι μετρητά ή Revolut ή τράπεζα») — orthogonal to the
+// fuel Πηγή/Προμηθευτής above (who SOLD the fuel). Every category gets this
+// select now, not only the fuel ones. Matches worker/src/costs-line-rules.mjs
+// CT_PAY_SOURCES exactly (one vocabulary, αρχή 3).
+const EX_PAY_SOURCES = [
+  { v: 'DKV', l: 'DKV' }, { v: 'CASH', l: 'Μετρητά' }, { v: 'REVOLUT', l: 'Revolut' }
+];
 // Grid columns = the owner's own sheet categories (spec §0.8α, locked after
 // Figma 13/9) — «Ναύλος» is gone as a column; DKV fees get their own column
 // instead of hiding inside «Λοιπά». cats[0] is what the entry row preselects.
@@ -78,11 +86,13 @@ const EX_VEH_RANGES = [4, 8, 12];
 // exActiveRts()/exActiveLinesByRt() below are the ONE place that decides
 // which of the two the shared grid/panel code reads.
 // expanded: rt ids whose full leg block is shown (spec §2 point 3, usability
-// revision 13/9 — rows collapse to one line by default). showEmptyCols: the
-// «Κενές στήλες … εμφάνιση» override. filterChip: which summary-bar chip
-// (complete/gaps/open/none) currently narrows the visible rows — null means
-// none active. All three live on _ex (not reset by exRenderPage) so they
-// survive a re-render the same way _ex.q already does.
+// revision 13/9 — rows collapse to one line by default). filterChip: which
+// summary-bar chip (complete/gaps/open/none) currently narrows the visible
+// rows — null means none active. Both live on _ex (not reset by exRenderPage)
+// so they survive a re-render the same way _ex.q already does.
+// (owner correction 13/9 #3: the «Κενές στήλες … εμφάνιση» toggle and its
+// showEmptyCols flag are GONE — all nine amount columns are always visible
+// now, see exGridHtml.)
 const _ex = {
   lookups: null, canWrite: false, tab: null,
   week: null, rts: [], stripRts: [], linesByRt: {}, unalloc: [],
@@ -90,7 +100,7 @@ const _ex = {
   loading: false, err: null, q: '',
   open: null, editId: null, qe: null, expmAmount: '',
   importDocs: [], importDocsLoading: false, importDocsErr: null,
-  expanded: new Set(), showEmptyCols: false, filterChip: null
+  expanded: new Set(), filterChip: null
 };
 
 // Local calendar dates, never toISOString(): that is UTC, and between 00:00
@@ -111,6 +121,10 @@ function exNum(n) {
   if (n === null || n === undefined || n === '') return '—';
   return Number(n).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
+// Whole/one-decimal liters, no forced trailing zeros (owner correction
+// 13/9 #4 «412 L», not «412,00 L») — el-GR thousands dot matches the
+// «Σ 2.340 L» the owner wrote in the totals-row example.
+function exLiters(n) { return Number(n).toLocaleString('el-GR', { maximumFractionDigits: 1 }) + ' L'; }
 // Every displayed amount is net+vat combined (spec §0.6 «ΦΠΑ φεύγει τελείως
 // από την οθόνη»): a manually-entered line always has vat=0 (or null) so
 // this is a no-op there, and a DKV-imported line's real split still shows as
@@ -146,7 +160,14 @@ function exTruckName(id) { const t = (_ex.lookups && _ex.lookups.trucks || []).f
 function exDriverName(id) { const d = (_ex.lookups && _ex.lookups.drivers || []).find(x => x.id === id); return d ? d.full_name : ''; }
 function exPartnerName(id) { const p = (_ex.lookups && _ex.lookups.partners || []).find(x => x.id === id); return p ? p.company_name : ''; }
 function exPersonName(r) { return r.driver_id ? exDriverName(r.driver_id) : (r.partner_id ? exPartnerName(r.partner_id) : '—'); }
-function exIsPartnerTrip(r) { return !!r.partner_id && !r.truck_id; }
+// A partner-only trip (no owned truck) is filtered OUT at load time now
+// (owner 13/9 #1 «αυτή η σελίδα είναι έξοδα δρομολογίου — δεν υπάρχει χώρος
+// για συνεργάτες, οι συνεργάτες είναι στο PnL») — this predicate is used ONLY
+// to exclude such rows in exLoad/exLoadVehicle below, never again to render
+// them differently. TRIP PnL (modules/costs.js) is the screen that still
+// shows partner economics; its own use of the shared entry modal is
+// untouched.
+function exIsPartnerTrip(r) { return r.trip_type === 'PARTNER' || (!!r.partner_id && !r.truck_id); }
 function exResolveTrailerName(id) { const t = (_ex.lookups && _ex.lookups.trailers || []).find(x => x.id === id); return t ? t.license_plate : null; }
 // USERS roster first name (spec point 7) — created_by is the login username
 // (e.g. 'alexia'); the screen should read the person's name. core/utils.js
@@ -170,10 +191,7 @@ function exStyles() {
      padding/gaps tightened so the first trip row lands within the fold at
      1440×778 — measured ≤220px from viewport top (proof). */
   .ex-page{font-family:'DM Sans',sans-serif;font-size:13px;color:var(--text);background:var(--surface-page);min-height:100%;padding:4px 32px 40px;display:flex;flex-direction:column;gap:4px}
-  /* nowrap on the whole row (note 1): a long «Κενές στήλες …» list must
-     truncate (see .ex-emptycols) rather than push the title/tab onto a
-     second line — that wrap was measured costing ~32px of fold budget on a
-     week with many empty categories (fixed 13/9, proof caught it at 270px). */
+  /* nowrap on the whole row (note 1). */
   .ex-head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:nowrap}
   /* Title + segmented tab sit on ONE line (note 1) — the tab is no longer a
      separate flex child of .ex-page, it lives right after the title. */
@@ -185,14 +203,6 @@ function exStyles() {
      expected to actually fire for the truck/range text it carries. */
   .ex-sub{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ex-head-r{display:flex;align-items:center;gap:14px;flex:none;min-width:0}
-  /* «Κενές στήλες …» quiet line (note 4) — sits beside «Εισαγωγή DKV» in the
-     header row, matching Figma rather than a second line above the ledger.
-     Owner review 13/9 #2: nothing in the title row may be ellipsized, so the
-     text itself is capped to 3 names + «+n» (exHiddenColsLineHtml) rather
-     than relying on CSS truncation — this rule is just nowrap now, no
-     max-width/ellipsis needed since the content is already bounded. */
-  .ex-emptycols{font-size:11px;color:var(--text-dim);white-space:nowrap;display:flex;align-items:center;gap:4px}
-  .ex-emptycols-txt{white-space:nowrap}
   .ex-actions-top{display:flex;gap:8px;flex:none}
   .ex-btn{height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--border-mid,var(--border));background:var(--surface-card);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text)}
   .ex-btn.primary{background:var(--navy);border-color:var(--navy);color:var(--text-on-dark)}
@@ -239,23 +249,20 @@ function exStyles() {
      grid's own track widths below are sized to need it at neither proof
      viewport. */
   .ex-gridwrap{overflow-x:auto}
-  /* Column count is now dynamic (note 4 — zero-line groups hide, Α/Α is gone
-     for good — note 10): exGridTemplate() computes grid-template-columns per
-     render and sets it as an inline style on .ex-gh/.ex-gr/.ex-gt, so the
-     class rule below only carries what every render shares (display/gap/
-     padding), never a fixed track count. Track WIDTHS live in these three
-     custom properties instead (fixed head tracks / one amount track / tail),
-     each overridden below 1320px (owner review 13/9 #2: the first version's
-     single fixed-width set let Διαδρομή's own 1fr swallow the fixed tracks
-     when few amount columns were visible — ΗΜΕΡΟΜΗΝΙΕΣ wrapped to two
-     lines). A custom property can hold several space-separated tracks, so
+  /* Fixed template again (owner correction 13/9 #3 «έχει αφαιρέσει
+     κατηγορίες εξόδων» — all nine amount columns are ALWAYS visible, the
+     dynamic zero-line hiding this used to describe is gone): chevron ·
+     Όχημα/Ρυμούλκα · Οδηγός · Ημερομηνίες · Διαδρομή · 9×amount · Σύνολο ·
+     Κατάσταση. exGridTemplate() still builds the grid-template-columns
+     string (repeat(9, var(--ex-amtcol))) and sets it as an inline style on
+     .ex-gh/.ex-gr/.ex-gt, so the class rule below only carries what every
+     render shares — but the column COUNT itself no longer varies. Track
+     WIDTHS live in these three custom properties (fixed head tracks / one
+     amount track / tail), overridden below 1320px to the exact numbers from
+     the owner's correction (measured to fit both 1440 and 1280 without card
+     scroll). A custom property can hold several space-separated tracks, so
      var(--ex-fixed) expands to all 5 fixed tracks at once. */
-  /* Όχημα/Οδηγός widths are 80px/136px here, not the 96px/120px the review
-     named — same TOTAL (324px, so nothing else shifts), just reallocated: a
-     plate («ΘΕ-2001») needs nowhere near 96px, but «Vlachopoulos Christos» —
-     the exact name the review asked to test — needed 135px and 120 wasn't
-     enough (proof caught real ellipsis, not a hypothetical). */
-  .ex-page{--ex-fixed:28px 80px 136px 80px minmax(160px,1fr);--ex-amtcol:minmax(64px,84px);--ex-tail:84px 84px}
+  .ex-page{--ex-fixed:24px 84px 116px 72px minmax(120px,1fr);--ex-amtcol:56px;--ex-tail:70px 72px}
   .ex-gh,.ex-gr,.ex-gt{display:grid;gap:4px;align-items:center;padding:0 10px}
   /* Sticky header/totals (note 7): #content is the app's own scrolling
      element (assets/style.css .content{overflow-y:auto}, not the document),
@@ -281,21 +288,23 @@ function exStyles() {
   .ex-legs .rt-n{font-size:11.5px} .ex-legs .rt-c,.ex-legs .rt-d{font-size:11px}
   .ex-legs .ex-route{font-size:12px}
   .ex-gr.none-row{border-top:1px solid var(--border-mid,var(--border));border-bottom:1px solid var(--border)}
-  .ex-gt{position:sticky;bottom:0;z-index:3;height:40px;background:var(--surface-sunken);border-top:2px solid var(--navy);font-weight:600;box-shadow:0 -2px 4px rgba(0,0,0,.06)}
+  .ex-gt{position:sticky;bottom:0;z-index:3;min-height:40px;height:auto;padding-top:2px;padding-bottom:2px;background:var(--surface-sunken);border-top:2px solid var(--navy);font-weight:600;box-shadow:0 -2px 4px rgba(0,0,0,.06)}
   .ex-gt .grand{font-family:'Syne',sans-serif;font-size:13.5px}
+  /* Second line under the Καύσιμα total (point 4 «τα λίτρα … τα συνολικά
+     λίτρα») — the totals row grows from a fixed 40px to min-height:auto (just
+     above) only for this one cell's own content. */
+  .ex-gt .ex-litersub{display:block;font-size:9.5px;font-weight:400;color:var(--text-dim)}
   .r{text-align:right} .dim{color:var(--text-dim)} .mid{color:var(--text-mid)}
   .n{font-variant-numeric:tabular-nums}
   .ex-plate{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;letter-spacing:.02em;white-space:nowrap}
   .ex-gr>div{min-width:0} .ex-clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  /* Partner name (note 8): deliberately NOT .ex-clip — wraps instead of
-     truncating, so a long partner company name is never cut off. */
-  /* Owner review 13/9 #2: unbounded wrap could grow a partner row past any
-     budget on a long company name — now exactly 2 lines (label + name),
-     the name itself ellipsized with its full text in the title attribute,
-     never a 3rd line. Collapsed row stays ≤52px (was ≤48 for a plain row). */
-  .ex-vcell{line-height:1.3}
-  .ex-vcell .k{font-size:9px;color:var(--text-dim);display:block}
-  .ex-vcell .nm{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  /* Vehicle cell = truck plate over trailer plate (owner correction 13/9 #2
+     «θα ήθελα να φαίνεται και το τρέιλερ») — two lines, mono, the trailer
+     line dimmer and smaller so the truck plate still reads first. Replaces
+     the old two-line partner cell (.ex-vcell), gone along with partner rows
+     (correction #1). Stays inside the same ≤46px collapsed row budget. */
+  .ex-vehcell{line-height:1.25;display:flex;flex-direction:column;gap:1px}
+  .ex-plate.trailer{color:var(--text-dim);font-size:10px}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
   .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   .ex-cell{display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding:2px 4px;border-radius:3px;border:1.5px solid transparent;min-height:26px;justify-content:center}
@@ -317,6 +326,12 @@ function exStyles() {
      → ~16×12) so the shorter Dadi logo (173×67 → ~31×12) sits on the same
      baseline. */
   .ex-src{height:12px;width:auto;vertical-align:middle;border-radius:2px}
+  /* Country flags (owner correction 13/9 #6 «σε κάθε χώρα θέλω να προσθέσεις
+     τη σημαία της») — fixed 16×12 next to the ISO-2 code everywhere a
+     country appears (exFlag). onerror hides the <img> itself (see exFlag),
+     so an offline/blocked flag degrades to the code alone, never a broken
+     icon box. */
+  .ex-flag{width:16px;height:12px;vertical-align:middle;margin-right:3px;border-radius:1px}
   .ex-gp{border-bottom:1px solid var(--border-mid,var(--border));border-left:3px solid var(--navy);background:var(--surface-sunken)}
   .ex-gp-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 16px 4px;font-size:12px}
   .ex-gp-head .k{font-size:9.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-mid);margin-right:10px}
@@ -365,12 +380,19 @@ function exStyles() {
      render time (never a literal fixed template here) — but the track WIDTHS
      it reads via var(--ex-fixed/--ex-amtcol/--ex-tail) DO need a narrower
      set below 1320px, or the same fixed columns that fit 1440 start
-     squeezing the amount tracks at 1280 (owner review 13/9 #2). */
+     squeezing the amount tracks at 1280 (owner correction 13/9 #3 — exact
+     numbers given by the owner for both breakpoints). */
   @media (max-width:1320px){
-    .ex-page{padding:10px 16px 32px;--ex-fixed:24px 84px 104px 72px minmax(120px,1fr);--ex-amtcol:58px;--ex-tail:72px 76px}
+    .ex-page{padding:10px 16px 32px;--ex-fixed:22px 76px 100px 66px minmax(96px,1fr);--ex-amtcol:50px;--ex-tail:62px 66px}
     .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
     .ex-gr{padding-top:3px;padding-bottom:3px}
     .ex-cell .a{font-size:10.5px}
+    /* «ΗΜΕΡΟΜΗΝΙΕΣ» at the full 9px header font measures ~71px — 5px over its
+       own 66px track (correction 13/9 #3's exact narrow-breakpoint numbers).
+       Shrinking the header font slightly at this ONE breakpoint (never at
+       ≥1320, where it already fits at 72px) keeps the owner's column widths
+       untouched while still meeting «no header text wraps». */
+    .ex-gh{font-size:8.2px}
   }
   </style>`;
 }
@@ -413,8 +435,8 @@ function exSwitchTab(tab) {
   // filterChip resets too (owner review 13/9): the vehicle tab has no
   // «Χωρίς δρομολόγιο» chip, and carrying a stale filter across tabs would
   // silently hide rows in the new view for a reason nothing on screen
-  // explains (αρχή 1). showEmptyCols/expanded are left alone — they read as
-  // per-session viewing preferences, not per-tab filter state.
+  // explains (αρχή 1). expanded is left alone — it reads as a per-session
+  // viewing preference, not per-tab filter state.
   _ex.tab = tab; _ex.open = null; _ex.editId = null; _ex.q = ''; _ex.filterChip = null;
   if (tab === 'vehicle') {
     if (_ex.veh.truckId) exLoadVehicle(); else exVehLoadLookupsThenDefault();
@@ -438,7 +460,10 @@ async function exLoad() {
       _ex.lookups ? Promise.resolve(_ex.lookups) : ctFetch('/costs/lookups')
     ]);
     _ex.lookups = lookupsRes || {};
-    _ex.stripRts = (rtRes.records || []).filter(r => r.status !== 'cancelled');
+    // Partner trips never reach this screen (owner correction 13/9 #1) —
+    // filtered out here, BEFORE the week strip counts itself off stripRts, so
+    // the exclusion is never something a chip/total has to remember to redo.
+    _ex.stripRts = (rtRes.records || []).filter(r => r.status !== 'cancelled' && !exIsPartnerTrip(r));
     _ex.rts = _ex.stripRts.filter(r => { const w = ctWeekOf(r.date_start); return w && w.start === _ex.week.start; })
       .sort((a, b) => String(a.date_start).localeCompare(String(b.date_start)) || a.id - b.id);
     await exLoadLines();
@@ -500,8 +525,12 @@ async function exLoadVehicle() {
     const fromIso = fromWk.start;
     _ex.veh.from = fromIso; _ex.veh.to = toIso;
     const rtRes = await ctFetch('/costs/rt?from=' + fromIso + '&to=' + toIso);
+    // truck_id===_ex.veh.truckId already excludes every partner trip (a
+    // partner trip's truck_id is always null — see exIsPartnerTrip), but the
+    // check is spelled out too (owner correction 13/9 #1: «exclude … from
+    // BOTH tabs entirely») rather than left as an accident of the truck filter.
     _ex.veh.rts = (rtRes.records || [])
-      .filter(r => r.status !== 'cancelled' && r.truck_id === _ex.veh.truckId)
+      .filter(r => r.status !== 'cancelled' && !exIsPartnerTrip(r) && r.truck_id === _ex.veh.truckId)
       .sort((a, b) => String(a.date_start).localeCompare(String(b.date_start)) || a.id - b.id);
     await exLoadVehicleLines();
   } catch (e) {
@@ -558,17 +587,26 @@ async function exOpenImportZip(id) {
 // ═══════════════════ ΥΠΟΛΟΓΙΣΜΟΙ ═══════════════════
 
 function exGroupOf(cat) { return EX_GROUPS.find(g => g.cats.includes(cat)) || EX_GROUPS[EX_GROUPS.length - 1]; }
+
+// Πηγή πληρωμής default (owner correction 13/9 #5 «required, default: the
+// last value used in this session») — two independent buckets, not one
+// shared default, so picking Revolut for a one-off Spedition invoice never
+// nudges the fuel-pump entries away from their own DKV default. Seeded per
+// the owner's own words: DKV for fuel/tolls, CASH for everything else.
+const _exPaySourceLast = { fuelTolls: 'DKV', other: 'CASH' };
+function exPaySourceBucket(cat) { const g = exGroupOf(cat); return (g.key === 'fuel' || g.key === 'tolls') ? 'fuelTolls' : 'other'; }
+function exPaySourceDefault(cat) { return _exPaySourceLast[exPaySourceBucket(cat)]; }
+function exPaySourceRemember(cat, val) { if (val) _exPaySourceLast[exPaySourceBucket(cat)] = val; }
 function exGroupLines(lines, group) { return lines.filter(l => group.cats.includes(l.category)); }
 function exIsDone(r) { return r.status === 'closed' || r.status === 'complete'; }
 function exUnallocInWeek() { return _ex.unalloc.filter(l => l.line_date && l.line_date >= _ex.week.start && l.line_date <= _ex.week.end); }
 
-// «λείπει» is claimed only for a CLOSED own-fleet trip missing fuel or
-// tolls — a partner trip never claims anything is missing any more (spec §2
-// point 2: «partner trips expect nothing now (no partner column) — keep
-// «Πλήρες» for partner trips»). An open trip simply has not happened yet.
+// «λείπει» is claimed only for a CLOSED trip missing fuel or tolls — every
+// trip reaching this function is own-fleet now (partner trips are filtered
+// out in exLoad/exLoadVehicle, correction 13/9 #1), so there is no partner
+// branch to special-case any more. An open trip simply has not happened yet.
 function exMissingGroups(r) {
   if (!exIsDone(r)) return [];
-  if (exIsPartnerTrip(r)) return [];
   const lines = exRtLines(r.id);
   return EX_EXPECT_OWN.filter(k => !exGroupLines(lines, EX_GROUPS.find(g => g.key === k)).length);
 }
@@ -594,10 +632,17 @@ function exStats() {
   // about work nobody can do from this screen.
   const noneNonDkv = noneAll.filter(l => l.category !== 'dkv');
   const noneDkv = noneAll.filter(l => l.category === 'dkv');
+  // Total liters (owner correction 13/9 #4 «τα λίτρα πρέπει να είναι εμφανή
+  // … τα συνολικά λίτρα») — same scope as `total` above (all + noneAll), so
+  // the summary bar's «Λίτρα» figure never disagrees with what the fuel
+  // column itself sums (αρχή 3).
+  const fuelGroup = EX_GROUPS.find(g => g.key === 'fuel');
+  const totalLiters = exGroupLines(all.concat(noneAll), fuelGroup).reduce((a, l) => a + Number(l.liters || 0), 0);
   return {
     trips: rts.length, complete: done.length - gaps.length, gaps: gaps.length, open: rts.length - done.length,
     lines: all.length + noneAll.length,
     total: exAmt(all) + expM + exAmt(noneAll),
+    totalLiters,
     // «εκτός εβδομάδας» excludes DKV fee lines too — same rule as the in-week count.
     noneWeek: noneNonDkv.length, noneOther: _ex.tab === 'week' ? (_ex.unalloc.filter(l => l.category !== 'dkv').length - noneNonDkv.length) : 0,
     noneDkvWeek: noneDkv.length, noneDkvAmt: exAmt(noneDkv)
@@ -638,45 +683,14 @@ function exDisplayedTrips() {
   return _ex.filterChip ? exChipFilteredTrips(trips) : trips;
 }
 
-// ── Hide empty columns (note 4) ────────────────────────────────────────────
-// «Zero lines» is checked against every active-tab trip, NEVER the search or
-// chip-filtered subset — a column hiding or reappearing as someone types in
-// the search box would be far more surprising than a quiet line staying put.
-function exZeroCols() {
-  const rts = exActiveRts();
-  return EX_COL_ORDER.filter(k => {
-    if (k === 'expm') return !rts.some(r => r.ledger_entry && r.ledger_entry.expenses != null && Number(r.ledger_entry.expenses) !== 0);
-    const g = EX_GROUPS.find(x => x.key === k);
-    return !rts.some(r => exGroupLines(exRtLines(r.id), g).length > 0);
-  });
-}
-function exVisibleCols() {
-  if (_ex.showEmptyCols) return EX_COL_ORDER.slice();
-  const zero = exZeroCols();
-  return EX_COL_ORDER.filter(k => !zero.includes(k));
-}
-function exToggleEmptyCols() { _ex.showEmptyCols = !_ex.showEmptyCols; exRenderPage(); }
-function exHiddenColsLineHtml() {
-  const zero = exZeroCols();
-  if (!zero.length) return '';
-  // Owner review 13/9 #2: nothing in the title row may be ellipsized (a
-  // visual cut mid-word reads as broken, not «quiet»). Instead of CSS
-  // truncation, the LIST ITSELF is capped at 3 names + «+n» — full names
-  // stay in the title attribute for anyone who wants the complete list.
-  const names = zero.map(exColLabel);
-  const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ' +' + (names.length - 3) : '');
-  const full = 'Κενές στήλες: ' + names.join(', ');
-  const linkTxt = _ex.showEmptyCols ? 'απόκρυψη' : 'εμφάνιση';
-  return `<span class="ex-emptycols" title="${escapeHtml(full)}"><span class="ex-emptycols-txt">Κενές στήλες: ${escapeHtml(shown)}</span> · <button type="button" class="ex-link" onclick="exToggleEmptyCols()">${linkTxt}</button></span>`;
-}
-
-// Grid template columns (note 4 «no fixed 15-column template»): chevron +
-// 4 fixed head tracks + one amount track per VISIBLE group + Σύνολο +
-// Κατάσταση. The actual pixel widths live in the --ex-fixed/--ex-amtcol/
-// --ex-tail custom properties (exStyles, overridden below 1320px) — this
-// function only decides the TRACK COUNT (how many times --ex-amtcol
-// repeats), never a width, so the owner-review fix (widths differ by
-// breakpoint) lives in ONE place (CSS), not duplicated here per viewport.
+// Grid template columns: chevron + 5 fixed head tracks + one amount track
+// PER COLUMN + Σύνολο + Κατάσταση. Owner correction 13/9 #3 «έχει αφαιρέσει
+// κατηγορίες εξόδων» removed the «Κενές στήλες … εμφάνιση» hiding that used
+// to live here (exZeroCols/exVisibleCols/exToggleEmptyCols/
+// exHiddenColsLineHtml, and _ex.showEmptyCols) — exGridHtml now always passes
+// EX_COL_ORDER.length (9). The actual pixel widths live in the
+// --ex-fixed/--ex-amtcol/--ex-tail custom properties (exStyles, overridden
+// below 1320px).
 function exGridTemplate(nVisibleCols) {
   return 'var(--ex-fixed) repeat(' + nVisibleCols + ', var(--ex-amtcol)) var(--ex-tail)';
 }
@@ -735,6 +749,48 @@ function exSourceTag(source) {
   return escapeHtml(found ? found.l : (source || ''));
 }
 
+// Payment-method tag (owner correction 13/9 #5 «σε όλα πρόσθεσε το πηγή …
+// στο Revolut βάλε και το logo») — a SECOND, separate tag from exSourceTag
+// above: that one is the fuel SUPPLIER (who sold it), this one is HOW it was
+// paid (DKV account / driver cash / the Revolut business account). Reuses
+// `.ex-src` sizing per the correction's own instruction. `lower` renders
+// «μετρητά» lowercase for the amount-cell sub-label; the lines list keeps the
+// capitalised «Μετρητά».
+const EX_PAY_LOGOS = { DKV: 'assets/logos/dkv.png', REVOLUT: 'assets/logos/revolut.png' };
+function exPayTag(source, lower) {
+  const src = EX_PAY_LOGOS[source];
+  if (src) { const label = source === 'DKV' ? 'DKV' : 'Revolut'; return `<img class="ex-src" src="${src}" alt="${label}" title="${label}">`; }
+  if (source === 'CASH') return `<span class="dim">${lower ? 'μετρητά' : 'Μετρητά'}</span>`;
+  return '';
+}
+// A line's effective pay_source — falls back to DKV for an imported line
+// (doc_id set) that predates migration 032 (spec: «πριν εκτελεστεί … treat
+// doc_id lines as DKV, fallback so the sheet never looks broken»). Returns
+// null (no tag) for an old manual line with neither field — never guesses
+// CASH/REVOLUT for money nobody recorded a source for.
+function exLinePaySource(line) { return line.pay_source || (line.doc_id ? 'DKV' : null); }
+// Amount-cell tag (spec §5): DKV when EVERY line in the cell is DKV, Revolut
+// when every line is REVOLUT, «μετρητά» when every line is CASH, nothing when
+// the cell mixes sources — a single logo must never misrepresent a mixed cell.
+function exCellPayTag(lines) {
+  if (!lines.length) return '';
+  const sources = lines.map(exLinePaySource);
+  if (sources.every(s => s === 'DKV')) return exPayTag('DKV', true);
+  if (sources.every(s => s === 'REVOLUT')) return exPayTag('REVOLUT', true);
+  if (sources.every(s => s === 'CASH')) return exPayTag('CASH', true);
+  return '';
+}
+
+// Country flag (owner correction 13/9 #6 «σε κάθε χώρα θέλω να προσθέσεις τη
+// σημαία της») — one helper for every place a country code appears. onerror
+// hides the broken <img> itself so a blocked/offline flagcdn.com degrades to
+// the bare code, never a broken-image box.
+function exFlag(cc) {
+  if (!cc) return '';
+  const up = String(cc).toUpperCase();
+  return `<img class="ex-flag" src="https://flagcdn.com/w20/${up.toLowerCase()}.png" width="16" height="12" alt="${escapeHtml(up)}" loading="lazy" onerror="this.style.display='none'">`;
+}
+
 // ═══════════════════ RENDER ═══════════════════
 
 function exRenderPage() {
@@ -766,19 +822,16 @@ function exRenderPage() {
     // there for the truck/range it names).
     subHtml = '';
   }
-  // Title + segmented tab on one line (note 1, Figma 577:1011), «Κενές
-  // στήλες …» + «Εισαγωγή DKV» on the other side of the SAME row. The week
-  // tab's own subtitle is gone (see above) so its title row never carries a
-  // 3rd item — the vehicle tab's subtitle is real content with no chip
-  // elsewhere to read it from, so it keeps a full-width row of its own
-  // rather than squeezing inline (owner review 13/9 #2: inline here measured
-  // ellipsizing at 1440 — «Τελευταίες 8 εβδομάδες · 25/07/2026 – 18/09/2026»
-  // needed 271px against 140 available once Κενές στήλες also claimed
-  // space on the same line).
-  const emptyColsHtml = (!_ex.loading && !_ex.veh.loading) ? exHiddenColsLineHtml() : '';
+  // Title + segmented tab on one line (note 1, Figma 577:1011), «Εισαγωγή
+  // DKV» on the other side of the SAME row. The week tab's own subtitle is
+  // gone (see above) so its title row never carries a 3rd item — the vehicle
+  // tab's subtitle is real content with no chip elsewhere to read it from, so
+  // it keeps a full-width row of its own rather than squeezing inline.
+  // (Owner correction 13/9 #3 removed the «Κενές στήλες …» quiet line that
+  // used to sit here — every column is always visible now, nothing to name.)
   const head = `<div class="ex-head">
       <div class="ex-head-l"><div class="ex-title">${titleHtml}</div>${segHtml}</div>
-      <div class="ex-head-r">${emptyColsHtml}${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
+      <div class="ex-head-r">${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
     </div>${subHtml ? `<div class="ex-sub">${subHtml}</div>` : ''}`;
   const navHtml = tab === 'week' ? exWeekStripHtml() : exVehControlsHtml();
   let body;
@@ -852,6 +905,7 @@ function exSummaryHtml() {
     <div class="ex-sum-kv">
       <span>Δρομολόγια <b>${s.trips}</b></span>
       <span>Σύνολο εξόδων <b>${exEur(s.total)}</b></span>
+      <span>Λίτρα <b>${s.totalLiters > 0 ? Number(s.totalLiters).toLocaleString('el-GR', { maximumFractionDigits: 1 }) : '—'}</b></span>
     </div>
     <div class="ex-sum-chips">
       ${chip('complete', 'Πλήρη ', s.complete)}
@@ -869,12 +923,16 @@ function exGridHtml() {
   // — exGoNextTrip (note 9) walks the exact same list, so «next» can never
   // land on a row this view is hiding.
   const trips = exDisplayedTrips();
-  const visCols = exVisibleCols();
+  // Owner correction 13/9 #3 «έχει αφαιρέσει κατηγορίες εξόδων»: ALL nine
+  // amount columns are always visible — no more zero-line hiding.
+  const visCols = EX_COL_ORDER.slice();
   const tmpl = exGridTemplate(visCols.length);
   // Α/Α is gone for good (note 10); chevron + Διαδρομή are new fixed tracks
   // (note 3) — the header text itself carries no «€» any more (note 4, the
-  // footer legend below says the amounts are in €).
-  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColHeaderHtml(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
+  // footer legend below says the amounts are in €). «Όχημα/Ρυμούλκα» (owner
+  // correction #2) is the second header cell to carry a hard <br>, same
+  // technique as Καράβια/Τρένα below.
+  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα<br>Ρυμούλκα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColHeaderHtml(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
   const emptyMsg = exActiveRts().length
     ? 'Κανένα δρομολόγιο για αυτή την αναζήτηση.'
     : (tab === 'vehicle' ? 'Κανένα δρομολόγιο σε αυτό το εύρος.' : 'Κανένα δρομολόγιο σε αυτή την εβδομάδα.');
@@ -893,7 +951,16 @@ function exGridHtml() {
     : `Σύνολο εβδομάδας ${_ex.week.week} (${_ex.rts.length} δρομολόγια, ${stats.lines} γραμμές)`;
   // Grid-column span for the label covers the 5 fixed tracks (chevron…
   // Διαδρομή) — one more than before Α/Α became chevron+Διαδρομή together.
-  const tt = `<div class="ex-gt" style="grid-template-columns:${tmpl}"><div class="r" style="grid-column:1/6">${label}</div>${totals.map(t => `<div class="r n">${exNum(t)}</div>`).join('')}<div class="r n grand">${exNum(stats.total)}</div><div></div></div>`;
+  // Second line under the Καύσιμα total (owner correction 13/9 #4 «τα
+  // συνολικά λίτρα») — same visible/filtered `trips` scope as the total
+  // above it, so the two numbers describe the same set of rows.
+  const fuelGroupTt = EX_GROUPS.find(g => g.key === 'fuel');
+  const fuelLitersTt = exGroupLines(trips.flatMap(r => exRtLines(r.id)), fuelGroupTt).reduce((a, l) => a + Number(l.liters || 0), 0);
+  const totalsHtml = visCols.map((k, i) => {
+    const cell = `<div class="r n">${exNum(totals[i])}${k === 'fuel' && fuelLitersTt > 0 ? `<span class="ex-litersub">Σ ${exLiters(fuelLitersTt)}</span>` : ''}</div>`;
+    return cell;
+  }).join('');
+  const tt = `<div class="ex-gt" style="grid-template-columns:${tmpl}"><div class="r" style="grid-column:1/6">${label}</div>${totalsHtml}<div class="r n grand">${exNum(stats.total)}</div><div></div></div>`;
   const tollsLine = tab === 'vehicle' ? exVehTollsByCountryHtml() : '';
   const foot = `<div class="ex-foot"><p>Ποσά σε €, όπως στο παραστατικό. Κενό κελί = καμία γραμμή · «—» = ολοκληρωμένο δρομολόγιο χωρίς γραμμή στην κατηγορία.</p><span>Enter = αποθήκευση · Esc = κλείσιμο κελιού</span></div>`;
   return `<div class="ex-card">
@@ -903,10 +970,14 @@ function exGridHtml() {
 // One computation of «per country» subtotals for tolls lines — used by the
 // vehicle view's quiet line AND the tolls panel head (Figma 547:1583 state δ),
 // so the two can never disagree (αρχή 3). ISO-2 code, descending by amount.
+// Each part carries its own flag now (owner correction 13/9 #6) — the code
+// and amount are already escaped/formatted per entry, so the joined HTML is
+// safe to insert without a second, outer escapeHtml at the call sites below.
 function exCountryParts(lines) {
   const byCountry = {};
   lines.forEach(l => { const c = l.toll_country || '—'; byCountry[c] = (byCountry[c] || 0) + exLineAmt(l); });
-  return Object.entries(byCountry).sort((a, b) => b[1] - a[1]).map(([c, amt]) => c + ' ' + exNum(amt));
+  return Object.entries(byCountry).sort((a, b) => b[1] - a[1])
+    .map(([c, amt]) => (c !== '—' ? exFlag(c) : '') + escapeHtml(c) + ' ' + exNum(amt));
 }
 
 // «Διόδια ανά χώρα» quiet line under the totals row (spec §2.Γ point 1) —
@@ -916,7 +987,7 @@ function exVehTollsByCountryHtml() {
   const all = _ex.veh.rts.flatMap(r => exGroupLines(exRtLines(r.id), tollsGroup));
   const parts = exCountryParts(all);
   if (!parts.length) return '';
-  return `<div class="ex-foot" style="border-top:0;padding-top:0"><p>Διόδια ανά χώρα: ${escapeHtml(parts.join(' · '))}</p></div>`;
+  return `<div class="ex-foot" style="border-top:0;padding-top:0"><p>Διόδια ανά χώρα: ${parts.join(' · ')}</p></div>`;
 }
 
 function exSearchInput(el) {
@@ -932,13 +1003,23 @@ function exCellHtml(rtKey, group, lines, missing) {
   const cls = ['ex-cell', _ex.canWrite ? 'can' : '', isOpen ? 'open' : '', missing ? 'missing' : '', !lines.length && !missing ? 'empty' : ''].filter(Boolean).join(' ');
   const keyArg = typeof rtKey === 'number' ? rtKey : "'" + rtKey + "'";
   const onclick = _ex.canWrite ? ` onclick="exToggleCell(${keyArg},'${group.key}')"` : '';
-  // Sub-label (note 5): the DKV logo tag appears whenever EVERY line has a
-  // doc_id (point 11 — the logo, not the word «DKV»); the «n γρ.» count only
-  // when there is more than one line (a single line needs no count).
-  const allDkv = lines.length > 0 && lines.every(l => l.doc_id);
+  // Sub-label: the Καύσιμα cell shows its TOTAL liters instead of a line
+  // count (owner correction 13/9 #4 «τα λίτρα πρέπει να είναι εμφανή … από
+  // την πρώτη προβολή» — replaces the old «n γρ.» for this one group, falling
+  // back to the count when no liters were recorded on any line). Every group
+  // shows the pay-source tag (owner correction #5 — DKV/Revolut logo or grey
+  // «μετρητά», point 11's old doc_id-only DKV logo is gone, replaced by this
+  // pay_source-driven one).
   const bParts = [];
-  if (lines.length > 1) bParts.push(lines.length + ' γρ.');
-  if (allDkv) bParts.push(exSourceTag('DKV'));
+  if (group.key === 'fuel') {
+    const totalL = lines.reduce((a, l) => a + Number(l.liters || 0), 0);
+    if (totalL > 0) bParts.push(exLiters(totalL));
+    else if (lines.length > 1) bParts.push(lines.length + ' γρ.');
+  } else if (lines.length > 1) {
+    bParts.push(lines.length + ' γρ.');
+  }
+  const payTag = exCellPayTag(lines);
+  if (payTag) bParts.push(payTag);
   const b = bParts.join(' ');
   // «—» pale dashed placeholder (note 6) replaces the old «λείπει» text —
   // the word itself still lives in the status column (exRtState). Styled via
@@ -972,7 +1053,6 @@ function exTripRowHtml(r, visCols, tmpl) {
   const st = exRtState(r);
   const isOpen = _ex.open && _ex.open.rtId === r.id;
   const isExpanded = _ex.expanded.has(r.id);
-  const partner = exIsPartnerTrip(r);
   const cells = visCols.map(k => {
     if (k === 'expm') return exExpMCellHtml(r.id, r);
     const g = EX_GROUPS.find(x => x.key === k);
@@ -984,20 +1064,12 @@ function exTripRowHtml(r, visCols, tmpl) {
   const expM = Number((r.ledger_entry && r.ledger_entry.expenses) || 0);
   const rowTotal = exAmt(lines) + expM;
   const hasAny = lines.length > 0 || expM !== 0;
-  // Vehicle column (note 8, revised owner review 13/9 #2): a partner trip
-  // shows «Συνεργάτης» over the partner name — exactly 2 lines, the name
-  // ellipsized (its full text lives in the title attribute) so the row never
-  // grows past the ≤52px budget on a long company name. The Οδηγός column
-  // reads «—» for a partner trip since there is no driver.
-  const partnerName = exPersonName(r);
-  // Live 13/9: at 80px the Όχημα track ellipsized every partner name
-  // («VIK MAR DO…») while the Οδηγός track next to it held only «—» — so a
-  // partner row spans BOTH tracks with one cell (Όχημα + Οδηγός = 216px) and
-  // emits no driver cell at all. The grid template is unchanged.
-  const vehicleCell = partner
-    ? `<div class="ex-vcell" style="grid-column:span 2"><span class="k">Συνεργάτης</span><span class="nm" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</span></div>`
-    : `<div class="ex-clip ex-plate">${escapeHtml(exTruckName(r.truck_id))}</div>`;
-  const driverCell = partner ? '' : `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
+  // Vehicle column (owner correction 13/9 #2 «θα ήθελα να φαίνεται και το
+  // τρέιλερ») — truck plate over trailer plate, «—» when the RT has no
+  // trailer_id. No partner branch any more (correction #1 — every trip
+  // reaching this row is own-fleet, filtered in exLoad/exLoadVehicle).
+  const vehicleCell = `<div class="ex-vehcell"><div class="ex-plate ex-clip">${escapeHtml(exTruckName(r.truck_id))}</div><div class="ex-plate trailer ex-clip">${escapeHtml(exResolveTrailerName(r.trailer_id) || '—')}</div></div>`;
+  const driverCell = `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
   const missingCls = missing.length ? ' missing' : '';
   return `<div class="ex-trip${isOpen ? ' open' : ''}${missingCls}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}" style="grid-template-columns:${tmpl}">
       <span class="ex-chevron" onclick="exToggleExpand(${r.id})" title="${isExpanded ? 'Σύμπτυξη' : 'Ανάπτυξη'}">${isExpanded ? '⌄' : '›'}</span>
@@ -1063,7 +1135,7 @@ function exToggleCell(rtKey, groupKey) {
   }
   const group = EX_GROUPS.find(g => g.key === groupKey);
   const rt = rtKey === 'none' ? null : exActiveRts().find(r => r.id === rtKey);
-  _ex.qe = { category: group.cats[0], date: (rt && rt.date_start) || exTodayIso(), fuelSource: 'DKV', trailerOverride: false, trailerId: null };
+  _ex.qe = { category: group.cats[0], date: (rt && rt.date_start) || exTodayIso(), fuelSource: 'DKV', paySource: exPaySourceDefault(group.cats[0]), trailerOverride: false, trailerId: null };
   delete _exCountryNs.exQeCountry;
   exRenderPage();
   const netEl = document.getElementById('exQeAmt');
@@ -1088,11 +1160,16 @@ function exPanelHtml(rt) {
   // returns [] for group.key==='dkv' plus isNone anyway since exUnallocInWeek
   // would need filtering, but the cell is unreachable so this is defensive.
   const lines = isNone ? exGroupLines(exUnallocInWeek(), group) : exGroupLines(exRtLines(rt.id), group);
-  const title = isNone ? 'Χωρίς δρομολόγιο' : (exIsPartnerTrip(rt) ? 'Συνεργάτης' : exTruckName(rt.truck_id)) + ' · ' + exPersonName(rt) + ' · ' + exDateRange(rt.date_start, rt.date_end);
+  // No partner branch (correction #1) — every rt reaching this panel is
+  // own-fleet, filtered at load time.
+  const title = isNone ? 'Χωρίς δρομολόγιο' : exTruckName(rt.truck_id) + ' · ' + exPersonName(rt) + ' · ' + exDateRange(rt.date_start, rt.date_end);
   const rowsHtml = lines.length ? lines.map(l => exLineRowHtml(l, { unallocated: isNone })).join('') : '';
   const thHtml = lines.length ? `<div class="ex-th ex-line-grid"><div>Ημ/νία</div><div>Κατηγορία · Σημείωση</div><div>${exExtraColLabel(group.key)}</div><div class="r">Ποσό</div><div>Ποιος</div><div></div></div>` : '';
+  // exCountryParts already returns per-part-escaped HTML (with a flag —
+  // correction #6), so it is joined raw here, not wrapped in a second
+  // escapeHtml that would mangle the <img> tags.
   return `<div class="ex-gp" data-panel="${isNone ? 'none' : rt.id}">
-    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}${group.key === 'tolls' && lines.length ? ` <span class="mid">· ${escapeHtml(exCountryParts(lines).join(' · '))}</span>` : ''}</div><div class="ex-gp-actions">${exNextTripHtml()}<button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div></div>
+    <div class="ex-gp-head"><div><span class="k">Καταχώριση</span>${escapeHtml(group.label)} · ${escapeHtml(title)}${lines.length ? ` · <span class="mid">${lines.length} γραμμές, ${exEur(exAmt(lines))}</span>` : ''}${group.key === 'tolls' && lines.length ? ` <span class="mid">· ${exCountryParts(lines).join(' · ')}</span>` : ''}</div><div class="ex-gp-actions">${exNextTripHtml()}<button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div></div>
     ${thHtml}${rowsHtml}${exQeRowHtml(group)}
   </div>`;
 }
@@ -1127,7 +1204,7 @@ function exGoNextTrip() {
     _ex.expmAmount = entry && entry.expenses != null ? String(entry.expenses) : '';
   } else {
     const g = EX_GROUPS.find(x => x.key === group);
-    _ex.qe = { category: g.cats[0], date: (rt && rt.date_start) || exTodayIso(), fuelSource: 'DKV', trailerOverride: false, trailerId: null };
+    _ex.qe = { category: g.cats[0], date: (rt && rt.date_start) || exTodayIso(), fuelSource: 'DKV', paySource: exPaySourceDefault(g.cats[0]), trailerOverride: false, trailerId: null };
     delete _exCountryNs.exQeCountry;
   }
   exRenderPage();
@@ -1142,7 +1219,9 @@ function exGoNextTrip() {
 function exExpMPanelHtml(rt) {
   if (!rt) return '';
   const entry = rt.ledger_entry;
-  const title = (exIsPartnerTrip(rt) ? 'Συνεργάτης' : exTruckName(rt.truck_id)) + ' · ' + exPersonName(rt) + ' · ' + exDateRange(rt.date_start, rt.date_end);
+  // No partner branch (correction #1) — every rt reaching this panel is
+  // own-fleet, filtered at load time.
+  const title = exTruckName(rt.truck_id) + ' · ' + exPersonName(rt) + ' · ' + exDateRange(rt.date_start, rt.date_end);
   const head = `<div class="ex-gp-head"><div><span class="k">Καταχώριση</span>Έξοδα Μ · ${escapeHtml(title)}</div><div class="ex-gp-actions">${exNextTripHtml()}<button class="ex-link" onclick="exCloseCell()">Κλείσιμο</button></div></div>`;
   if (!entry) {
     return `<div class="ex-gp" data-panel="${rt.id}">${head}<div class="ex-row" style="padding:10px 16px;color:var(--text-mid)">Το δρομολόγιο δεν έχει εγγραφή Μισθοδοσίας.</div></div>`;
@@ -1208,19 +1287,27 @@ function _exCountryMatches(q) {
   const pool = nq ? ordered.filter(c => _exCountryNorm(countryName(c)).includes(nq) || c.toLowerCase() === nq) : ordered;
   return pool.slice(0, 8).map(c => ({ code: c, name: countryName(c) }));
 }
+// Owner correction 13/9 #6 — every country option carries its flag now.
 function exCountryDropHtml(ns) {
   const st = _exCountryNs[ns];
   if (!st || !st.open) return '';
   if (!st.matches.length) return '<div class="ex-cdrop-opt dim">καμία χώρα</div>';
-  return st.matches.map((m, i) => `<div class="ex-cdrop-opt${i === st.hi ? ' hi' : ''}" onmousedown="event.preventDefault();exCountryPick('${ns}',${i})">${escapeHtml(m.name)} (${m.code})</div>`).join('');
+  return st.matches.map((m, i) => `<div class="ex-cdrop-opt${i === st.hi ? ' hi' : ''}" onmousedown="event.preventDefault();exCountryPick('${ns}',${i})">${exFlag(m.code)}${escapeHtml(m.name)} (${m.code})</div>`).join('');
 }
 function exCountryFieldHtml(ns, width) {
   const st = _exCountryNs[ns];
   const val = st && st.code ? (countryName(st.code) + ' (' + st.code + ')') : ((st && st.query) || '');
+  // Flag icon beside the selected value (correction #6) — a plain text
+  // <input> cannot hold an <img> itself, so the flag sits in its own span
+  // next to it; exCountryPick updates both on a pick.
+  const flagHtml = st && st.code ? exFlag(st.code) : '';
   return `<div class="ex-field ex-country" style="width:${width || 170}px">
     <label class="ex-flabel">Χώρα</label>
-    <input class="ex-ei" type="text" autocomplete="off" id="${ns}Input" placeholder="αναζήτηση…" value="${escapeHtml(val)}"
-      oninput="exCountryInput('${ns}', this)" onkeydown="exCountryKeydown('${ns}', event)" onfocus="exCountryInput('${ns}', this)">
+    <div style="display:flex;align-items:center;gap:4px">
+      <span id="${ns}FlagIcon">${flagHtml}</span>
+      <input class="ex-ei" style="flex:1;min-width:0" type="text" autocomplete="off" id="${ns}Input" placeholder="αναζήτηση…" value="${escapeHtml(val)}"
+        oninput="exCountryInput('${ns}', this)" onkeydown="exCountryKeydown('${ns}', event)" onfocus="exCountryInput('${ns}', this)">
+    </div>
     <div class="ex-cdrop" id="${ns}Drop"${st && st.open ? '' : ' hidden'}>${exCountryDropHtml(ns)}</div>
   </div>`;
 }
@@ -1249,6 +1336,8 @@ function exCountryPick(ns, i) {
   st.open = false; st.code = m.code;
   const input = document.getElementById(ns + 'Input');
   if (input) input.value = m.name + ' (' + m.code + ')';
+  const flagIcon = document.getElementById(ns + 'FlagIcon');
+  if (flagIcon) flagIcon.innerHTML = exFlag(m.code);
   _exCountryRenderDrop(ns);
 }
 
@@ -1290,9 +1379,17 @@ function exTrailerOverrideClick(ns) {
   }
 }
 
+// Relabelled «Προμηθευτής» (owner correction 13/9 #5) now that «Πηγή» means
+// the pay_source select below — this one is still fuel_source (who SOLD it).
 function exFuelSourceSelectHtml(id, value) {
   const opts = EX_FUEL_SOURCES.map(o => `<option value="${o.v}"${value === o.v ? ' selected' : ''}>${escapeHtml(o.l)}</option>`).join('');
-  return `<div class="ex-field" style="width:130px"><label class="ex-flabel">Πηγή</label><select class="ex-ei" id="${id}">${opts}</select></div>`;
+  return `<div class="ex-field" style="width:130px"><label class="ex-flabel">Προμηθευτής</label><select class="ex-ei" id="${id}">${opts}</select></div>`;
+}
+// «Πηγή πληρωμής» (owner correction #5) — every entry/edit row and the modal
+// get this, right after Κατηγορία, regardless of category/group.
+function exPaySourceSelectHtml(id, value) {
+  const opts = EX_PAY_SOURCES.map(o => `<option value="${o.v}"${value === o.v ? ' selected' : ''}>${escapeHtml(o.l)}</option>`).join('');
+  return `<div class="ex-field" style="width:140px"><label class="ex-flabel">Πηγή πληρωμής</label><select class="ex-ei" id="${id}">${opts}</select></div>`;
 }
 
 // ═══════════════════ ΓΡΗΓΟΡΗ ΚΑΤΑΧΩΡΗΣΗ ═══════════════════
@@ -1312,6 +1409,7 @@ function exQeRowHtml(group) {
   const rt = rtId != null ? exActiveRts().find(r => r.id === rtId) : null;
   return `<div class="ex-row qe">
     <div class="ex-field ex-qe-cat"><label class="ex-flabel">Κατηγορία</label><select class="ex-ei" id="exQeCategory" onchange="exQeCategoryChange(this)">${opts}</select></div>
+    ${exPaySourceSelectHtml('exQePaySource', _ex.qe.paySource || exPaySourceDefault(cat))}
     ${fuelSourceOn ? exFuelSourceSelectHtml('exQeFuelSource', _ex.qe.fuelSource) : ''}
     <div class="ex-field ex-qe-date"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="exQeDate" value="${_ex.qe.date || ''}" onchange="exQeDateChange(this)"></div>
     ${isTolls ? exCountryFieldHtml('exQeCountry', 170) : ''}
@@ -1356,7 +1454,10 @@ function exQeKeydown(ev) {
 function exBuildLineBody(rtId, v) {
   if (!v.date) { showErrorToast('Χρειάζεται ημερομηνία.', 'error'); return null; }
   if (v.amount === '' || v.amount == null || isNaN(Number(v.amount))) { showErrorToast('Χρειάζεται ποσό.', 'error'); return null; }
-  const body = { category: v.category, line_date: v.date, net: Number(v.amount) };
+  // Πηγή πληρωμής (owner correction 13/9 #5) — required, exactly like
+  // fuel_source/toll_country's own required checks below.
+  if (!v.paySource) { showErrorToast('Χρειάζεται πηγή πληρωμής.', 'error'); return null; }
+  const body = { category: v.category, line_date: v.date, net: Number(v.amount), pay_source: v.paySource };
   if (rtId != null) body.rt_id = Number(rtId);
   const note = (v.note || '').trim();
   if (note) body.note = note;
@@ -1394,16 +1495,18 @@ async function exQeSubmit() {
   const rtId = exOpenRtId();
   const rt = rtId != null ? exActiveRts().find(r => r.id === rtId) : null;
   const category = g('exQeCategory').value;
+  const paySource = g('exQePaySource') ? g('exQePaySource').value : '';
   const body = exBuildLineBody(rtId, {
     category, date: g('exQeDate').value, amount: g('exQeAmt').value, note: g('exQeNote').value,
     liters: g('exQeLiters') ? g('exQeLiters').value : '', km: g('exQeKm') ? g('exQeKm').value : '', station: g('exQeStation') ? g('exQeStation').value : '',
-    fuelSource: g('exQeFuelSource') ? g('exQeFuelSource').value : '',
+    fuelSource: g('exQeFuelSource') ? g('exQeFuelSource').value : '', paySource,
     trailerId: _ex.qe.trailerId, trailerOverride: _ex.qe.trailerOverride, rtHasTrailer: !!(rt && rt.trailer_id),
     tollCountry: (_exCountryNs.exQeCountry || {}).code
   });
   if (!body) return;
   try {
     await ctFetch('/costs/lines', { method: 'POST', body });
+    exPaySourceRemember(category, paySource);
     await exAfterMutation();
     // Category + date stay (spec: πολλές αποδείξεις στη σειρά) — only the
     // amount field is cleared, done implicitly by exRenderPage rebuilding
@@ -1420,7 +1523,11 @@ function exLineRowHtml(line, opts) {
   const mine = typeof user !== 'undefined' && user && line.created_by === user.username;
   const canEditThis = _ex.canWrite && (mine || ROLE === 'owner');
   const isTolls = line.category === 'tolls';
-  const extraTxt = isTolls ? (line.toll_country || '') : (line.liters != null ? Number(line.liters).toLocaleString('el-GR', { maximumFractionDigits: 2 }) + ' L' : '');
+  // Χώρα gets its flag now (owner correction 13/9 #6) — built as HTML, not
+  // escaped text, so extraTxt is only used for the non-tolls (liters) case.
+  const extraHtml = isTolls
+    ? (line.toll_country ? exFlag(line.toll_country) + escapeHtml(line.toll_country) : '')
+    : (line.liters != null ? escapeHtml(Number(line.liters).toLocaleString('el-GR', { maximumFractionDigits: 2 }) + ' L') : '');
   const extraCls = isTolls ? 'ex-plate' : 's dim';
   // Source logo (point 11b) replaces the plain-text «DKV»/fuel_source word
   // next to the category — fuel_source wins when set (DADI is a source too,
@@ -1428,14 +1535,20 @@ function exLineRowHtml(line, opts) {
   // somehow has no fuel_source. Pulled OUT of noteBits so the same source
   // never prints twice (once as a logo, once as text).
   const srcTag = line.doc_id ? exSourceTag(line.fuel_source || 'DKV') : (line.fuel_source ? exSourceTag(line.fuel_source) : '');
+  // Payment tag (owner correction #5) — separate from the supplier srcTag
+  // above: this shows HOW the line was paid (DKV/Revolut logo, or grey
+  // «Μετρητά»), every category, not only fuel.
+  const payTag = exPayTag(exLinePaySource(line));
   const noteBits = [
     line.note,
     line.category === 'reefer_fuel' && line.trailer_id ? 'Ρυμούλκα ' + (exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id)) : null
   ].filter(Boolean).join(' · ');
+  // No partner branch in the option label (correction #1) — every _ex.rts
+  // entry is own-fleet, filtered at load time.
   const assignHtml = (opts && opts.unallocated && _ex.canWrite)
     ? `<select class="ex-ei ex-assign" onchange="exAssignLine(${line.id}, this.value)">
         <option value="">Ανάθεση σε δρομολόγιο…</option>
-        ${_ex.rts.map(r => `<option value="${r.id}">${escapeHtml(exIsPartnerTrip(r) ? exPersonName(r) : exTruckName(r.truck_id))} · ${exDateRange(r.date_start, r.date_end)}</option>`).join('')}
+        ${_ex.rts.map(r => `<option value="${r.id}">${escapeHtml(exTruckName(r.truck_id))} · ${exDateRange(r.date_start, r.date_end)}</option>`).join('')}
       </select>`
     : '';
   const actionsHtml = canEditThis
@@ -1443,8 +1556,8 @@ function exLineRowHtml(line, opts) {
     : '';
   return `<div class="ex-row ex-line-grid" data-line="${line.id}">
     <div class="s">${exDateFull(line.line_date)}</div>
-    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}</span>${srcTag ? ' · ' + srcTag : ''}${noteBits ? `<br><span class="s dim">${escapeHtml(noteBits)}</span>` : ''}</div>
-    <div class="${extraCls}">${escapeHtml(extraTxt)}</div>
+    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}</span>${srcTag ? ' · ' + srcTag : ''}${payTag ? ' · ' + payTag : ''}${noteBits ? `<br><span class="s dim">${escapeHtml(noteBits)}</span>` : ''}</div>
+    <div class="${extraCls}">${extraHtml}</div>
     <div class="n r">${exEur(exLineAmt(line))}</div>
     <div class="s dim ex-user" title="${escapeHtml(line.created_by || '')}">${escapeHtml(exUserDisplay(line.created_by))}</div>
     <div class="ex-actions">${assignHtml}${actionsHtml}</div>
@@ -1464,6 +1577,7 @@ function exEditLineRowHtml(line) {
   const trailerOptsHtml = '<option value="">Ρυμούλκα…</option>' + trailers.map(t => `<option value="${t.id}"${line.trailer_id === t.id ? ' selected' : ''}>${escapeHtml(t.license_plate)}</option>`).join('');
   return `<div class="ex-row edit qe" data-line="${line.id}">
     <select class="ex-ei ex-qe-cat" id="${p('exEdCategory')}" onchange="exEdCategoryChange(${line.id}, this)">${opts}</select>
+    ${exPaySourceSelectHtml(p('exEdPaySource'), exLinePaySource(line) || exPaySourceDefault(line.category))}
     <input class="ex-ei ex-qe-date" type="date" id="${p('exEdDate')}" value="${line.line_date || ''}">
     <input class="ex-ei ex-qe-amt" type="number" step="0.01" id="${p('exEdAmt')}" value="${line.net != null || line.vat != null ? exLineAmt(line) : ''}">
     <div class="ex-qe-break"></div>
@@ -1518,13 +1632,17 @@ async function exSaveEdit(id) {
     tollCountry = (_exCountryNs['exEdCountry_' + id] || {}).code;
     if (!tollCountry) { showErrorToast('Χρειάζεται χώρα διοδίων.', 'error'); return; }
   }
+  // Πηγή πληρωμής (owner correction 13/9 #5) — required on a correction too.
+  const paySourceEl = g('exEdPaySource');
+  const paySource = paySourceEl ? paySourceEl.value : '';
+  if (!paySource) { showErrorToast('Χρειάζεται πηγή πληρωμής.', 'error'); return; }
   const reason = window.prompt('Αιτιολογία διόρθωσης (υποχρεωτική):');
   if (!reason || !reason.trim()) return;
   // Spec §2 point 3: one field going forward — a correction always writes
   // net = the typed amount and zeroes vat, even for a line whose vat used to
   // be split (a DKV-imported line's own numbers are untouched unless a human
   // deliberately edits them here).
-  const body = { category, line_date, reason: reason.trim(), net: Number(amtStr), vat: 0 };
+  const body = { category, line_date, reason: reason.trim(), net: Number(amtStr), vat: 0, pay_source: paySource };
   const note = g('exEdNote').value.trim();
   if (note) body.note = note;
   if (EX_FUEL_CATEGORIES.includes(category)) {
@@ -1542,6 +1660,7 @@ async function exSaveEdit(id) {
   if (category === 'tolls') body.toll_country = tollCountry;
   try {
     await ctFetch('/costs/lines/' + id, { method: 'PATCH', body });
+    exPaySourceRemember(category, paySource);
     _ex.editId = null;
     await exAfterMutation();
   } catch (e) { exShowError(e); }
@@ -1640,12 +1759,13 @@ function exModalTitle(rt, rtId) {
  */
 function exOpenEntryModal({ rtId, rt, onSaved, category, categories }) {
   exEnsureModalStyles();
+  const initialCategory = category || (categories && categories[0]) || EX_CATEGORIES[0];
   _exModalState = {
     rtId: rtId == null ? null : Number(rtId), rt: rt || null, onSaved,
     categories: categories || null,
-    category: category || (categories && categories[0]) || EX_CATEGORIES[0],
+    category: initialCategory,
     date: (rt && rt.date_start) || exTodayIso(),
-    fuelSource: 'DKV', trailerOverride: false, trailerId: null
+    fuelSource: 'DKV', paySource: exPaySourceDefault(initialCategory), trailerOverride: false, trailerId: null
   };
   delete _exCountryNs.exMdCountry;
   let host = document.getElementById('exModalHost');
@@ -1669,6 +1789,7 @@ function exModalHtml() {
       <div class="ex-modal-body">
         <div class="ex-modal-grid">
           <div class="ex-field"><label class="ex-flabel">Κατηγορία</label><select class="ex-ei" id="exMdCategory" onchange="exModalCategoryChange(this)">${opts}</select></div>
+          ${exPaySourceSelectHtml('exMdPaySource', s.paySource || exPaySourceDefault(s.category))}
           <span id="exMdFuelSourceWrap">${fuelSourceOn ? exFuelSourceSelectHtml('exMdFuelSource', s.fuelSource) : ''}</span>
           <div class="ex-field"><label class="ex-flabel">Ημερομηνία</label><input class="ex-ei" type="date" id="exMdDate" value="${s.date || ''}"></div>
           <span id="exMdCountryWrap">${isTolls ? exCountryFieldHtml('exMdCountry', 170) : ''}</span>
@@ -1707,16 +1828,19 @@ function exModalKeydown(ev) { if (ev.key === 'Enter') { ev.preventDefault(); exM
 async function exModalSubmit() {
   const s = _exModalState; if (!s) return;
   const g = id => document.getElementById(id);
+  const category = g('exMdCategory').value;
+  const paySource = g('exMdPaySource') ? g('exMdPaySource').value : '';
   const body = exBuildLineBody(s.rtId, {
-    category: g('exMdCategory').value, date: g('exMdDate').value, amount: g('exMdAmt').value, note: g('exMdNote').value,
+    category, date: g('exMdDate').value, amount: g('exMdAmt').value, note: g('exMdNote').value,
     liters: g('exMdLiters') ? g('exMdLiters').value : '', km: g('exMdKm') ? g('exMdKm').value : '', station: g('exMdStation') ? g('exMdStation').value : '',
-    fuelSource: g('exMdFuelSource') ? g('exMdFuelSource').value : '',
+    fuelSource: g('exMdFuelSource') ? g('exMdFuelSource').value : '', paySource,
     trailerId: s.trailerId, trailerOverride: s.trailerOverride, rtHasTrailer: !!(s.rt && s.rt.trailer_id),
     tollCountry: (_exCountryNs.exMdCountry || {}).code
   });
   if (!body) return;
   try {
     await ctFetch('/costs/lines', { method: 'POST', body });
+    exPaySourceRemember(category, paySource);
     const onSaved = s.onSaved;
     exCloseModal();
     if (onSaved) onSaved();
