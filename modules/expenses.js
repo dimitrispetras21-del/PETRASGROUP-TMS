@@ -61,8 +61,12 @@ const EX_GROUPS = [
 const EX_COL_ORDER = ['fuel', 'tolls', 'adblue', 'dkv', 'spedition', 'expm', 'fines', 'ferry', 'other'];
 const EX_EXPECT_OWN = ['fuel', 'tolls'];
 const EX_MONTHS = ['Ιαν', 'Φεβ', 'Μαρ', 'Απρ', 'Μαι', 'Ιουν', 'Ιουλ', 'Αυγ', 'Σεπ', 'Οκτ', 'Νοε', 'Δεκ'];
-// Week strip: 4 weeks back, 2 forward around the selected one (Figma, week tab only).
-const EX_STRIP_BACK = 4, EX_STRIP_FWD = 2;
+// Week strip: 2 weeks back, 2 forward around the selected one — 5 chips
+// total (owner review 13/9 #2: 7 chips truncated their text at 1280; 5 is
+// simplest and measured to fit at both proof viewports). Also the fetch
+// window for exStripBounds() below, so the strip's own chip counts always
+// come from data actually fetched — never a wider range than is shown.
+const EX_STRIP_BACK = 2, EX_STRIP_FWD = 2;
 // Vehicle tab range choices (spec §2.Γ «προεπιλογή 8 εβδομάδες»).
 const EX_VEH_RANGES = [4, 8, 12];
 
@@ -175,17 +179,20 @@ function exStyles() {
      separate flex child of .ex-page, it lives right after the title. */
   .ex-head-l{display:flex;align-items:center;gap:14px;flex:1;min-width:0}
   .ex-title{font-family:'Syne',sans-serif;font-size:17px;font-weight:700;line-height:1.2;white-space:nowrap;flex:none}
-  /* Now a THIRD item in .ex-head-l next to the title/tab (note 1) — was its
-     own row below them, costing a full fold gap + line height. */
-  .ex-sub{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  /* Vehicle tab only now (owner review 13/9 #2 — see exRenderPage) — the
+     week tab's subHtml is always '' so this row never renders there. Full
+     page width is available here, so ellipsis is just a safety net, never
+     expected to actually fire for the truck/range text it carries. */
+  .ex-sub{font-size:11px;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ex-head-r{display:flex;align-items:center;gap:14px;flex:none;min-width:0}
   /* «Κενές στήλες …» quiet line (note 4) — sits beside «Εισαγωγή DKV» in the
      header row, matching Figma rather than a second line above the ledger.
-     Truncates with an ellipsis (full list in the title attr) instead of
-     wrapping the row taller — a week with many empty categories at once is a
-     realistic edge case, not a hypothetical one. */
+     Owner review 13/9 #2: nothing in the title row may be ellipsized, so the
+     text itself is capped to 3 names + «+n» (exHiddenColsLineHtml) rather
+     than relying on CSS truncation — this rule is just nowrap now, no
+     max-width/ellipsis needed since the content is already bounded. */
   .ex-emptycols{font-size:11px;color:var(--text-dim);white-space:nowrap;display:flex;align-items:center;gap:4px}
-  .ex-emptycols-txt{overflow:hidden;text-overflow:ellipsis;max-width:280px}
+  .ex-emptycols-txt{white-space:nowrap}
   .ex-actions-top{display:flex;gap:8px;flex:none}
   .ex-btn{height:32px;padding:0 14px;border-radius:4px;border:1px solid var(--border-mid,var(--border));background:var(--surface-card);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;color:var(--text)}
   .ex-btn.primary{background:var(--navy);border-color:var(--navy);color:var(--text-on-dark)}
@@ -199,12 +206,17 @@ function exStyles() {
   .ex-vehctl{display:flex;align-items:flex-end;gap:16px;padding:10px 16px;flex-wrap:wrap}
   /* Week strip: 44px tall, one-line chips (note 1) — the selected week is
      the ONLY other navy element on the page. */
-  .ex-wkstrip{display:flex;align-items:stretch;gap:6px;padding:6px}
-  .ex-wkarrow{width:28px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
-  .ex-wk{flex:1;min-width:0;height:28px;display:flex;align-items:center;padding:0 12px;border-radius:4px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--text)}
+  .ex-wkstrip{display:flex;align-items:stretch;gap:4px;padding:4px}
+  .ex-wkarrow{width:24px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
+  .ex-wk{flex:1;min-width:0;height:28px;display:flex;align-items:center;gap:5px;padding:0 4px;border-radius:4px;border:0;background:none;text-align:left;font:inherit;cursor:pointer;color:var(--text)}
   .ex-wk:hover{background:var(--surface-sunken)}
   .ex-wk.sel{background:var(--navy);color:var(--text-on-dark)}
   .ex-wk .a{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* Amber gap count (owner review 13/9 #2) — flex:none so it is NEVER the
+     part that shrinks/truncates if a chip is tight; .a is the safety-net
+     ellipsis, but 5 chips (not 7) with the shorter «δρομ.»-free label should
+     never need it at either proof viewport. Stays amber even selected. */
+  .ex-wk .c{font-size:10.5px;font-weight:600;color:var(--warn);white-space:nowrap;flex:none}
   .ex-wk.future .a{color:var(--text-dim)}
   /* Summary bar → filter chips (note 2): «Δρομολόγια»/«Σύνολο εξόδων» stay
      plain text; Πλήρη/Με ελλείψεις/Σε εξέλιξη/Χωρίς δρομολόγιο become toggle
@@ -231,13 +243,28 @@ function exStyles() {
      for good — note 10): exGridTemplate() computes grid-template-columns per
      render and sets it as an inline style on .ex-gh/.ex-gr/.ex-gt, so the
      class rule below only carries what every render shares (display/gap/
-     padding), never a fixed track count. */
+     padding), never a fixed track count. Track WIDTHS live in these three
+     custom properties instead (fixed head tracks / one amount track / tail),
+     each overridden below 1320px (owner review 13/9 #2: the first version's
+     single fixed-width set let Διαδρομή's own 1fr swallow the fixed tracks
+     when few amount columns were visible — ΗΜΕΡΟΜΗΝΙΕΣ wrapped to two
+     lines). A custom property can hold several space-separated tracks, so
+     var(--ex-fixed) expands to all 5 fixed tracks at once. */
+  /* Όχημα/Οδηγός widths are 80px/136px here, not the 96px/120px the review
+     named — same TOTAL (324px, so nothing else shifts), just reallocated: a
+     plate («ΘΕ-2001») needs nowhere near 96px, but «Vlachopoulos Christos» —
+     the exact name the review asked to test — needed 135px and 120 wasn't
+     enough (proof caught real ellipsis, not a hypothetical). */
+  .ex-page{--ex-fixed:28px 80px 136px 80px minmax(160px,1fr);--ex-amtcol:minmax(64px,84px);--ex-tail:84px 84px}
   .ex-gh,.ex-gr,.ex-gt{display:grid;gap:4px;align-items:center;padding:0 10px}
   /* Sticky header/totals (note 7): #content is the app's own scrolling
      element (assets/style.css .content{overflow-y:auto}, not the document),
      so position:sticky here pins against ITS scrollport — already right
-     below the fixed 52px topbar, no extra top offset needed. */
-  .ex-gh{position:sticky;top:0;z-index:3;height:32px;line-height:1.1;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-mid);overflow-wrap:break-word;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+     below the fixed 52px topbar, no extra top offset needed. Header cells
+     never wrap (owner review 13/9 #2) — Καράβια/Τρένα is the one label that
+     spans two lines, via an explicit <br> in its own markup, never CSS wrap. */
+  .ex-gh{position:sticky;top:0;z-index:3;height:32px;line-height:1.1;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-mid)}
+  .ex-gh>div,.ex-gh>span{white-space:nowrap;overflow:hidden}
   /* Collapsed by default (note 3, ≤48px measured): chevron + one-line route
      summary replace the old always-open .ex-legs block below the row. */
   .ex-gr{min-height:40px;padding-top:4px;padding-bottom:4px}
@@ -262,10 +289,15 @@ function exStyles() {
   .ex-gr>div{min-width:0} .ex-clip{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   /* Partner name (note 8): deliberately NOT .ex-clip — wraps instead of
      truncating, so a long partner company name is never cut off. */
-  .ex-vcell{white-space:normal;overflow-wrap:break-word;line-height:1.25}
+  /* Owner review 13/9 #2: unbounded wrap could grow a partner row past any
+     budget on a long company name — now exactly 2 lines (label + name),
+     the name itself ellipsized with its full text in the title attribute,
+     never a 3rd line. Collapsed row stays ≤52px (was ≤48 for a plain row). */
+  .ex-vcell{line-height:1.3}
   .ex-vcell .k{font-size:9px;color:var(--text-dim);display:block}
+  .ex-vcell .nm{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
   .ex-route{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-mid);cursor:pointer}
-  .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid)} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
+  .ex-st{font-size:11.5px;font-weight:500;color:var(--text-mid);white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .ex-st.att{color:var(--warn)} .ex-st.ok{color:var(--ok)}
   .ex-cell{display:flex;flex-direction:column;align-items:flex-end;gap:1px;padding:2px 4px;border-radius:3px;border:1.5px solid transparent;min-height:26px;justify-content:center}
   .ex-cell.can{cursor:pointer} .ex-cell.can:hover{background:var(--surface-card);border-color:var(--border)}
   .ex-cell.open{border-color:var(--navy);background:var(--surface-card)}
@@ -329,12 +361,13 @@ function exStyles() {
   .ex-idocs{padding:8px 16px 10px}
   .ex-idochead{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-mid);margin-bottom:4px}
   .ex-idoc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0;font-size:12px}
-  /* grid-template-columns is no longer set here — exGridTemplate() computes
-     ONE fixed-width template regardless of viewport (the route column's own
-     minmax(…,1fr) already absorbs the extra space at 1440 without needing a
-     second, wider column set); only padding/gap/font-size still vary. */
+  /* grid-template-columns itself is still computed by exGridTemplate() at
+     render time (never a literal fixed template here) — but the track WIDTHS
+     it reads via var(--ex-fixed/--ex-amtcol/--ex-tail) DO need a narrower
+     set below 1320px, or the same fixed columns that fit 1440 start
+     squeezing the amount tracks at 1280 (owner review 13/9 #2). */
   @media (max-width:1320px){
-    .ex-page{padding:10px 16px 32px}
+    .ex-page{padding:10px 16px 32px;--ex-fixed:24px 84px 104px 72px minmax(120px,1fr);--ex-amtcol:58px;--ex-tail:72px 76px}
     .ex-gh,.ex-gr,.ex-gt{gap:3px;padding:0 8px}
     .ex-gr{padding-top:3px;padding-bottom:3px}
     .ex-cell .a{font-size:10.5px}
@@ -626,25 +659,35 @@ function exToggleEmptyCols() { _ex.showEmptyCols = !_ex.showEmptyCols; exRenderP
 function exHiddenColsLineHtml() {
   const zero = exZeroCols();
   if (!zero.length) return '';
-  const label = 'Κενές στήλες: ' + zero.map(exColLabel).join(', ');
+  // Owner review 13/9 #2: nothing in the title row may be ellipsized (a
+  // visual cut mid-word reads as broken, not «quiet»). Instead of CSS
+  // truncation, the LIST ITSELF is capped at 3 names + «+n» — full names
+  // stay in the title attribute for anyone who wants the complete list.
+  const names = zero.map(exColLabel);
+  const shown = names.slice(0, 3).join(', ') + (names.length > 3 ? ' +' + (names.length - 3) : '');
+  const full = 'Κενές στήλες: ' + names.join(', ');
   const linkTxt = _ex.showEmptyCols ? 'απόκρυψη' : 'εμφάνιση';
-  // The list itself truncates (.ex-emptycols-txt, full text in the title
-  // attribute) so a long list can never push the header row onto a second
-  // line — but the toggle button sits OUTSIDE that truncating span, so it
-  // stays clickable no matter how many categories are hidden.
-  return `<span class="ex-emptycols"><span class="ex-emptycols-txt" title="${escapeHtml(label)}">${escapeHtml(label)}</span> · <button type="button" class="ex-link" onclick="exToggleEmptyCols()">${linkTxt}</button></span>`;
+  return `<span class="ex-emptycols" title="${escapeHtml(full)}"><span class="ex-emptycols-txt">Κενές στήλες: ${escapeHtml(shown)}</span> · <button type="button" class="ex-link" onclick="exToggleEmptyCols()">${linkTxt}</button></span>`;
 }
 
 // Grid template columns (note 4 «no fixed 15-column template»): chevron +
 // 4 fixed head tracks + one amount track per VISIBLE group + Σύνολο +
-// Κατάσταση. A single fixed-width set works at both proof viewports (1280
-// and 1440) — the Διαδρομή column's own minmax(…,1fr) absorbs whatever extra
-// width 1440 leaves, so the amount columns never need a second, wider set.
+// Κατάσταση. The actual pixel widths live in the --ex-fixed/--ex-amtcol/
+// --ex-tail custom properties (exStyles, overridden below 1320px) — this
+// function only decides the TRACK COUNT (how many times --ex-amtcol
+// repeats), never a width, so the owner-review fix (widths differ by
+// breakpoint) lives in ONE place (CSS), not duplicated here per viewport.
 function exGridTemplate(nVisibleCols) {
-  return '22px 62px 70px 68px minmax(90px,1fr) ' + new Array(nVisibleCols).fill('58px').join(' ') + ' 68px 72px';
+  return 'var(--ex-fixed) repeat(' + nVisibleCols + ', var(--ex-amtcol)) var(--ex-tail)';
 }
 
 function exColLabel(k) { if (k === 'expm') return 'Έξοδα Μ'; const g = EX_GROUPS.find(x => x.key === k); return g ? g.label : k; }
+// Header cells never CSS-wrap (owner review 13/9 #2 — .ex-gh>div is
+// white-space:nowrap). «Καράβια/Τρένα» is the one label long enough to need
+// two lines at the amount-column width, so it alone gets an explicit <br> —
+// a hard break always works regardless of white-space, unlike relying on
+// wrapping to happen to land in the right place.
+function exColHeaderHtml(k) { return k === 'ferry' ? 'Καράβια<br>Τρένα' : escapeHtml(exColLabel(k)); }
 function exColTotal(k, trips) {
   if (k === 'expm') return trips.reduce((a, r) => a + Number((r.ledger_entry && r.ledger_entry.expenses) || 0), 0);
   const g = EX_GROUPS.find(x => x.key === k);
@@ -705,25 +748,38 @@ function exRenderPage() {
   if (tab === 'vehicle') {
     const plate = exVehTruckPlate();
     titleHtml = 'Έξοδα δρομολογίων' + (plate ? ' — Όχημα ' + escapeHtml(plate) : '');
+    // Owner review 13/9 #2: dropped the same redundant «Κλικ σε κελί» hint
+    // the week tab lost — at 1440 with the emptycols line also on this row
+    // the full string measured wider than the available space and actually
+    // ellipsized (proof now checks the vehicle tab's title row too).
     const rangeLbl = 'Τελευταίες ' + _ex.veh.range + ' εβδομάδες';
     subHtml = (_ex.veh.from && _ex.veh.to)
-      ? `${rangeLbl} · ${exDateFull(_ex.veh.from)} – ${exDateFull(_ex.veh.to)} · Κλικ σε κελί για καταχώριση`
+      ? `${rangeLbl} · ${exDateFull(_ex.veh.from)} – ${exDateFull(_ex.veh.to)}`
       : 'Επίλεξε όχημα';
   } else {
     const w = _ex.week;
     titleHtml = 'Έξοδα δρομολογίων — Εβδομάδα ' + w.week;
-    subHtml = `Περίοδος ${exDateFull(w.start)} – ${exDateFull(w.end)} · Κλικ σε κελί για καταχώριση`;
+    // Owner review 13/9 #2: this «Περίοδος … · Κλικ σε κελί» line is gone —
+    // the selected week chip right below already names the same dates
+    // (exWeekStripHtml), so it was a duplicate that only ate fold budget.
+    // The vehicle tab keeps its own subtitle (no equivalent chip exists
+    // there for the truck/range it names).
+    subHtml = '';
   }
-  // Title + segmented tab + subtitle all on ONE line (note 1, Figma
-  // 577:1011), «Κενές στήλες …» + «Εισαγωγή DKV» on the other side of the
-  // SAME row — the subtitle used to be its own row below the title, which
-  // alone cost a fold gap + row (measured ~21px, proof caught the 220px
-  // budget failing without this).
+  // Title + segmented tab on one line (note 1, Figma 577:1011), «Κενές
+  // στήλες …» + «Εισαγωγή DKV» on the other side of the SAME row. The week
+  // tab's own subtitle is gone (see above) so its title row never carries a
+  // 3rd item — the vehicle tab's subtitle is real content with no chip
+  // elsewhere to read it from, so it keeps a full-width row of its own
+  // rather than squeezing inline (owner review 13/9 #2: inline here measured
+  // ellipsizing at 1440 — «Τελευταίες 8 εβδομάδες · 25/07/2026 – 18/09/2026»
+  // needed 271px against 140 available once Κενές στήλες also claimed
+  // space on the same line).
   const emptyColsHtml = (!_ex.loading && !_ex.veh.loading) ? exHiddenColsLineHtml() : '';
   const head = `<div class="ex-head">
-      <div class="ex-head-l"><div class="ex-title">${titleHtml}</div>${segHtml}<div class="ex-sub">${subHtml}</div></div>
+      <div class="ex-head-l"><div class="ex-title">${titleHtml}</div>${segHtml}</div>
       <div class="ex-head-r">${emptyColsHtml}${_ex.canWrite ? '<button class="ex-btn" onclick="eiOpenImport()">Εισαγωγή DKV</button>' : ''}</div>
-    </div>`;
+    </div>${subHtml ? `<div class="ex-sub">${subHtml}</div>` : ''}`;
   const navHtml = tab === 'week' ? exWeekStripHtml() : exVehControlsHtml();
   let body;
   if (tab === 'vehicle') {
@@ -751,10 +807,13 @@ function exVehControlsHtml() {
   </div>`;
 }
 
-// One-line chips (note 1, Figma 577:1011): «Εβδ. N · date range · X δρομ.»,
-// always — the selected chip ALSO appends «· Y ελλείψεις» when the current
-// week has any (never replaces the trip count, unlike the pre-13/9 version,
-// which showed EITHER the count OR the gap word).
+// One-line chips (note 1, Figma 577:1011, revised owner review 13/9 #2):
+// «Εβδ. N · date range · X» — the word «δρομ.» is gone (it was the extra
+// word that pushed chips into ellipsis at 1280); the number alone is enough
+// once every chip in the row means the same thing. The selected chip ALSO
+// appends «· Y ελλείψεις» in amber when the current week has any (never
+// replaces the trip count). Only 5 chips (EX_STRIP_BACK/FWD = 2/2) — 7
+// measured truncating at 1280.
 function exWeekStripHtml() {
   const chips = [];
   const today = ctWeekOf(exTodayIso());
@@ -764,9 +823,14 @@ function exWeekStripHtml() {
     const sel = wk.start === _ex.week.start;
     const future = today && wk.start > today.start;
     const count = _ex.stripRts.filter(r => { const x = ctWeekOf(r.date_start); return x && x.start === wk.start; }).length;
-    const gapsSuffix = (sel && selStats && selStats.gaps) ? ` · ${selStats.gaps} ελλείψεις` : '';
-    const label = `Εβδ. ${wk.week} · ${exShortRange(wk.start, wk.end)} · ${count} δρομ.${gapsSuffix}`;
-    chips.push(`<button type="button" class="ex-wk${sel ? ' sel' : ''}${future ? ' future' : ''}" onclick="exGoWeek('${wk.start}')" title="${escapeHtml(label)}"><span class="a">${escapeHtml(label)}</span></button>`);
+    const gaps = (sel && selStats) ? selStats.gaps : 0;
+    const mainLabel = `Εβδ. ${wk.week} · ${exShortRange(wk.start, wk.end)} · ${count}`;
+    const fullLabel = mainLabel + (gaps ? ` · ${gaps} ελλείψεις` : '');
+    // The separator is the flex gap on .ex-wk (owner review 13/9 #2), not a
+    // literal « · » text node — every extra pixel matters for the selected
+    // chip's longer text to fit at 1280 without ellipsis.
+    const gapsHtml = gaps ? `<span class="c">${gaps} ελλείψεις</span>` : '';
+    chips.push(`<button type="button" class="ex-wk${sel ? ' sel' : ''}${future ? ' future' : ''}" onclick="exGoWeek('${wk.start}')" title="${escapeHtml(fullLabel)}"><span class="a">${escapeHtml(mainLabel)}</span>${gapsHtml}</button>`);
   }
   return `<div class="ex-card ex-wkstrip"><button type="button" class="ex-wkarrow" onclick="exWeekShift(-1)" title="Προηγούμενη εβδομάδα">‹</button>${chips.join('')}<button type="button" class="ex-wkarrow" onclick="exWeekShift(1)" title="Επόμενη εβδομάδα">›</button></div>`;
 }
@@ -810,7 +874,7 @@ function exGridHtml() {
   // Α/Α is gone for good (note 10); chevron + Διαδρομή are new fixed tracks
   // (note 3) — the header text itself carries no «€» any more (note 4, the
   // footer legend below says the amounts are in €).
-  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColLabel(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
+  const th = `<div class="ex-gh" style="grid-template-columns:${tmpl}"><div></div><div>Όχημα</div><div>Οδηγός</div><div>Ημερομηνίες</div><div>Διαδρομή</div>${visCols.map(k => `<div class="r">${exColHeaderHtml(k)}</div>`).join('')}<div class="r">Σύνολο</div><div>Κατάσταση</div></div>`;
   const emptyMsg = exActiveRts().length
     ? 'Κανένα δρομολόγιο για αυτή την αναζήτηση.'
     : (tab === 'vehicle' ? 'Κανένα δρομολόγιο σε αυτό το εύρος.' : 'Κανένα δρομολόγιο σε αυτή την εβδομάδα.');
@@ -920,11 +984,14 @@ function exTripRowHtml(r, visCols, tmpl) {
   const expM = Number((r.ledger_entry && r.ledger_entry.expenses) || 0);
   const rowTotal = exAmt(lines) + expM;
   const hasAny = lines.length > 0 || expM !== 0;
-  // Vehicle column (note 8): a partner trip shows «Συνεργάτης» over the
-  // partner name, no truncation (.ex-vcell wraps instead of clipping); the
-  // Οδηγός column reads «—» for a partner trip since there is no driver.
+  // Vehicle column (note 8, revised owner review 13/9 #2): a partner trip
+  // shows «Συνεργάτης» over the partner name — exactly 2 lines, the name
+  // ellipsized (its full text lives in the title attribute) so the row never
+  // grows past the ≤52px budget on a long company name. The Οδηγός column
+  // reads «—» for a partner trip since there is no driver.
+  const partnerName = exPersonName(r);
   const vehicleCell = partner
-    ? `<div class="ex-vcell"><span class="k">Συνεργάτης</span>${escapeHtml(exPersonName(r))}</div>`
+    ? `<div class="ex-vcell"><span class="k">Συνεργάτης</span><span class="nm" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</span></div>`
     : `<div class="ex-clip ex-plate">${escapeHtml(exTruckName(r.truck_id))}</div>`;
   const driverCell = partner ? '<div class="dim">—</div>' : `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
   const missingCls = missing.length ? ' missing' : '';
@@ -961,14 +1028,14 @@ function exNoneRowHtml(visCols, tmpl) {
   const dkvNote = dkvLines.length
     ? `<div class="ex-idoc-row" style="padding:4px 16px 8px"><span class="s dim">Τέλη DKV χωρίς δρομολόγιο: ${dkvLines.length} ${dkvLines.length === 1 ? 'γραμμή' : 'γραμμές'}, ${exEur(exAmt(dkvLines))}</span></div>`
     : '';
-  // Same 5 leading tracks as a trip row (chevron/Όχημα/Οδηγός/Ημερομηνίες/
-  // Διαδρομή) — this row has no chevron or route to show, so those two cells
-  // stay blank; the status word and the pending count fill Όχημα/Οδηγός as
-  // before Α/Α became chevron+Διαδρομή.
+  // Owner review 13/9 #2: the status word and the pending count used to
+  // squeeze into separate Οδηγός/Ημερομηνίες tracks (104px/72px at best) and
+  // wrapped. One combined text now SPANS Οδηγός+Ημερομηνίες+Διαδρομή
+  // (tracks 3–5) instead — plenty of room to stay on one line at any width.
+  const label = lines.length ? `Χωρίς δρομολόγιο · ${lines.length} προς ανάθεση` : 'Χωρίς δρομολόγιο · καμία γραμμή';
   return `<div class="ex-gr none-row${isOpen ? ' open' : ''}" data-rt="none" style="grid-template-columns:${tmpl}">
-      <div></div><div class="dim">—</div><div class="ex-st${lines.length ? ' att' : ''}">Χωρίς δρομολόγιο</div>
-      <div class="${lines.length ? 'mid' : 'dim'}" style="font-size:12px">${lines.length ? lines.length + ' προς ανάθεση' : 'καμία γραμμή'}</div>
-      <div></div>
+      <div></div><div class="dim">—</div>
+      <div class="ex-st${lines.length ? ' att' : ''}" style="grid-column:3/6">${escapeHtml(label)}</div>
       ${cells}
       <div class="r n" style="font-weight:600">${lines.length ? exNum(exAmt(lines)) : ''}</div>
       <div class="ex-st${lines.length ? ' att' : ''}">${lines.length ? 'Ανάθεση' : ''}</div>

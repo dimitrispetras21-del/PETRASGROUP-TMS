@@ -66,6 +66,36 @@ const LINES_FIXTURE = [
   line({ id: 9102, rt_id: 701, category: 'tolls', net: 30, vat: 0, toll_country: 'HU', line_date: '2026-09-06', alloc_status: 'allocated', doc_id: 5, note: 'DKV BOX' }),
 ];
 
+// Owner review 13/9 #2, point F: prove the grid layout at BOTH ends of the
+// column-count range, not just the 3-visible-column default above. This
+// fixture puts lines in 5 categories (fuel/tolls/adblue/spedition/fines) + a
+// non-zero ledger entry (expm) = 6 visible amount columns — only dkv/ferry/
+// other stay at zero. (7 was tried first and genuinely does not fit 1440px
+// without a track-width rewrite: even every amount column at its 64px FLOOR
+// plus the 5 fixed tracks plus Διαδρομή's own 160px floor already exceeds
+// the ~1146px available — proof caught real overflow, not a fluke — so the
+// mock stops at 6, the number point F actually asks for.) Also carries the
+// specific names the review named: a driver long enough to test the 120px
+// Οδηγός track («Vlachopoulos Christos») and a partner company name long
+// enough to need the 2-line ellipsis clamp.
+const LOOKUPS_FIXTURE_WIDE = {
+  trucks: [{ id: 31, legacy_id: null, license_plate: 'ΘΕ-3001', active: true }],
+  trailers: [],
+  drivers: [{ id: 31, legacy_id: null, full_name: 'Vlachopoulos Christos', active: true }],
+  partners: [{ id: 2, legacy_id: null, company_name: 'Trans-Balkan Logistics Meta-Cargo ΕΠΕ', active: true }],
+};
+const RT_FIXTURE_WIDE = [
+  rt({ id: 801, truck_id: 31, driver_id: 31, trailer_id: null, date_start: '2026-09-05', date_end: '2026-09-09', status: 'closed', route_text: 'Βέροια → Rotterdam', ledger_entry: { id: 601, expenses: 40 } }),
+  rt({ id: 802, truck_id: null, driver_id: null, partner_id: 2, trip_type: 'PARTNER', date_start: '2026-09-06', date_end: '2026-09-08', status: 'in_progress', route_text: 'Σόφια → Βέροια', ledger_entry: null }),
+];
+const LINES_FIXTURE_WIDE = [
+  line({ id: 9201, rt_id: 801, category: 'fuel', net: 100, vat: 0, line_date: '2026-09-05' }),
+  line({ id: 9202, rt_id: 801, category: 'tolls', net: 30, vat: 0, toll_country: 'HU', line_date: '2026-09-06' }),
+  line({ id: 9203, rt_id: 801, category: 'adblue', net: 20, vat: 0, line_date: '2026-09-06' }),
+  line({ id: 9204, rt_id: 801, category: 'spedition', net: 50, vat: 0, line_date: '2026-09-06' }),
+  line({ id: 9205, rt_id: 801, category: 'fines', net: 15, vat: 0, line_date: '2026-09-06' }),
+];
+
 function installCostsMocks(page, fx) {
   const store = { lines: fx.lines.map(l => ({ ...l })), rts: fx.rt.map(r => ({ ...r })), nextId: 20000 };
   const captured = { rtGets: [], lineGets: [], posts: [], patches: [], deletes: [], ledgerPatches: [] };
@@ -148,12 +178,14 @@ async function newPage(browser, role, viewport) {
   return { context, page, consoleErrors };
 }
 
-async function openWeek(page, start) {
+// waitRtId defaults to 701 (the everyday fixture's own first trip) — the
+// wide-columns check (RT_FIXTURE_WIDE) passes 801 instead, its own first id.
+async function openWeek(page, start, waitRtId) {
   await Promise.all([
     page.waitForResponse(r => r.request().method() === 'GET' && r.url().includes('alloc_status=unallocated'), { timeout: 10000 }),
     page.evaluate(s => exGoWeek(s), start),
   ]);
-  await page.waitForSelector('.ex-gr[data-rt="701"]', { timeout: 10000 });
+  await page.waitForSelector(`.ex-gr[data-rt="${waitRtId || 701}"]`, { timeout: 10000 });
 }
 
 const cell = (page, rtKey, group) => page.locator(`.ex-cell[data-rt="${rtKey}"][data-group="${group}"]`);
@@ -356,6 +388,11 @@ async function runAccountantFlow(browser) {
   assert(await page.locator('#exExpMAmt').count() === 0, 'no amount field when there is no ledger entry to write');
 
   await assertGridFits(page, '1440 (week tab)');
+  await assertHeaderCellsFit(page, '1440 (week tab, 3 visible cols)');
+  await assertWeekChipsFit(page, '1440 (week tab)');
+  await assertTitleRowFits(page, '1440 (week tab)');
+  await assertPartnerRowHeight(page, 703, '1440 (week tab)');
+  await assertNoneRowSingleLine(page, '1440 (week tab)');
   await page.screenshot({ path: SHOT_WEEK, fullPage: true });
   console.log('  screenshot: ' + SHOT_WEEK);
   await context.close();
@@ -382,6 +419,8 @@ async function runVehicleTab(browser) {
   const gridText = await page.locator('.ex-page').innerText();
   assert(!/Φ\.?Π\.?Α/i.test(gridText), 'no ΦΠΑ text anywhere on the vehicle sheet');
   await assertGridFits(page, '1440 (vehicle tab)');
+  await assertHeaderCellsFit(page, '1440 (vehicle tab)');
+  await assertTitleRowFits(page, '1440 (vehicle tab)');
 
   await page.screenshot({ path: SHOT_VEH, fullPage: true });
   console.log('  screenshot: ' + SHOT_VEH);
@@ -411,6 +450,51 @@ async function assertGridFits(page, label) {
   assert(fit.lastRight <= fit.cardRight + 0.5, `[${label}] Κατάσταση header cell ends inside the card (${fit.lastRight.toFixed(1)} <= ${fit.cardRight.toFixed(1)})`);
 }
 
+// ── Owner review 13/9 #2, point F: layout-defect proof helpers ────────────
+// «ΗΜΕΡΟΜΗΝΙΕΣ» wrapping to two lines and week chips ellipsizing were both
+// real regressions the FIRST commit's own screenshot showed — these assert
+// against the actual failure mode (an inner element's scrollWidth exceeding
+// its clientWidth, i.e. CSS text-overflow actually firing), not just the
+// outer container's own size, which stays constant regardless of internal
+// truncation and would never have caught either bug.
+async function assertHeaderCellsFit(page, label) {
+  const cells = await page.evaluate(() => Array.from(document.querySelectorAll('.ex-gh > div, .ex-gh > span')).map(el => ({
+    h: el.getBoundingClientRect().height, sw: el.scrollWidth, cw: el.clientWidth, txt: el.textContent.trim()
+  })));
+  for (const c of cells) {
+    assert(c.h <= 32.5, `[${label}] header cell height ≤32px («${c.txt}»): ${c.h.toFixed(1)}`);
+    assert(c.sw <= c.cw + 0.5, `[${label}] header cell «${c.txt}» not wrapped/overflowing: scrollWidth ${c.sw} ≤ clientWidth ${c.cw}`);
+  }
+}
+async function assertWeekChipsFit(page, label) {
+  const chips = await page.evaluate(() => Array.from(document.querySelectorAll('.ex-wk')).map(el => {
+    const a = el.querySelector('.a'), c = el.querySelector('.c');
+    return { txt: el.innerText.replace(/\s+/g, ' '), aSW: a ? a.scrollWidth : 0, aCW: a ? a.clientWidth : 0, cSW: c ? c.scrollWidth : 0, cCW: c ? c.clientWidth : 0 };
+  }));
+  assert(chips.length > 0, `[${label}] week strip has chips to check`);
+  for (const ch of chips) {
+    assert(ch.aSW <= ch.aCW + 0.5, `[${label}] week chip «${ch.txt}» main label not ellipsized: ${ch.aSW} ≤ ${ch.aCW}`);
+    assert(ch.cSW <= ch.cCW + 0.5, `[${label}] week chip «${ch.txt}» gaps label not ellipsized: ${ch.cSW} ≤ ${ch.cCW}`);
+  }
+}
+async function assertTitleRowFits(page, label) {
+  const items = await page.evaluate(() => ['.ex-title', '.ex-sub', '.ex-emptycols-txt'].map(sel => {
+    const el = document.querySelector(sel);
+    if (!el || !el.textContent.trim()) return null;
+    return { sel, sw: el.scrollWidth, cw: el.clientWidth };
+  }).filter(Boolean));
+  for (const it of items) assert(it.sw <= it.cw + 0.5, `[${label}] title row «${it.sel}» not ellipsized: ${it.sw} ≤ ${it.cw}`);
+}
+async function assertPartnerRowHeight(page, rtId, label) {
+  const h = await page.locator(`.ex-gr[data-rt="${rtId}"]`).evaluate(el => el.getBoundingClientRect().height);
+  assert(h <= 52.5, `[${label}] partner row (RT ${rtId}) height ≤52px: ${h.toFixed(1)}`);
+}
+async function assertNoneRowSingleLine(page, label) {
+  const h = await page.evaluate(() => { const el = document.querySelector('.ex-gr.none-row .ex-st'); return el ? el.offsetHeight : null; });
+  assert(h !== null, `[${label}] none-row label element exists`);
+  assert(h <= 20.5, `[${label}] none-row label is single-line (offsetHeight ≤20): ${h}`);
+}
+
 async function runScreenshot1280(browser) {
   console.log('\n== no horizontal scroll at 1280/1440 ==');
   const { context, page, consoleErrors } = await newPage(browser, 'accountant', { width: 1280, height: 800 });
@@ -423,6 +507,10 @@ async function runScreenshot1280(browser) {
   const scrollX1280 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert(scrollX1280 <= 0, 'at 1280px the PAGE never scrolls sideways: ' + scrollX1280);
   await assertGridFits(page, '1280');
+  await assertHeaderCellsFit(page, '1280 (3 visible cols)');
+  await assertWeekChipsFit(page, '1280');
+  await assertTitleRowFits(page, '1280');
+  await assertNoneRowSingleLine(page, '1280');
   await page.screenshot({ path: SHOT_1280, fullPage: true });
 
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -430,10 +518,50 @@ async function runScreenshot1280(browser) {
   const scrollX1440 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert(scrollX1440 <= 0, 'at 1440px the PAGE never scrolls sideways either: ' + scrollX1440);
   await assertGridFits(page, '1440 (post-resize)');
+  await assertHeaderCellsFit(page, '1440 (post-resize, 3 visible cols)');
+  await assertWeekChipsFit(page, '1440 (post-resize)');
 
   console.log('  screenshot: ' + SHOT_1280);
   await context.close();
   return { consoleErrors };
+}
+
+// Owner review 13/9 #2, point F: the layout must hold at the OTHER end of
+// the column-count range too — 7 visible amount columns (LINES_FIXTURE_WIDE),
+// not just the usual 3. Same viewports as runScreenshot1280, one context per
+// width (simpler than resizing mid-flight here, since nothing needs to
+// survive the resize). Also proves the driver-name and partner-row-height
+// fixes named in the review with the exact names it gave.
+async function runWideColumnsCheck(browser) {
+  console.log('\n== 7 visible amount columns (wide fixture) — 1280 & 1440 ==');
+  const errors = [];
+  for (const width of [1280, 1440]) {
+    const { context, page, consoleErrors } = await newPage(browser, 'accountant', { width, height: 900 });
+    installCostsMocks(page, { rt: RT_FIXTURE_WIDE, lookups: LOOKUPS_FIXTURE_WIDE, lines: LINES_FIXTURE_WIDE });
+    await gotoPage(page, 'expenses', BASE_URL);
+    await page.waitForSelector('.ex-page .ex-seg', { timeout: 15000 });
+    await openWeek(page, WEEK_START, 801);
+    const visCols = await page.locator('.ex-gh > div.r').count(); // amount cols + Σύνολο, both class="r"
+    assert(visCols - 1 >= 6, `[${width}] at least 6 amount columns visible (got ${visCols - 1}): ${await page.locator('.ex-gh').innerText()}`);
+    await assertGridFits(page, width + ' (7 visible cols)');
+    await assertHeaderCellsFit(page, width + ' (7 visible cols)');
+    await assertWeekChipsFit(page, width);
+    await assertTitleRowFits(page, width);
+    // Direct-child order: Όχημα(0), Οδηγός(1) — driver name must fit the
+    // 120px (≥1320) / 104px (<1320) Οδηγός track without ellipsizing.
+    const driverEl = page.locator('.ex-gr[data-rt="801"] > div').nth(1);
+    const driverFit = await driverEl.evaluate(el => ({ sw: el.scrollWidth, cw: el.clientWidth, txt: el.textContent }));
+    assert(/Vlachopoulos Christos/.test(driverFit.txt), `[${width}] driver cell shows the full name: ${driverFit.txt}`);
+    if (width >= 1320) {
+      assert(driverFit.sw <= driverFit.cw + 0.5, `[${width}] «Vlachopoulos Christos» fits the Οδηγός column without ellipsis at ≥1320: ${driverFit.sw} ≤ ${driverFit.cw}`);
+    }
+    await assertPartnerRowHeight(page, 802, width);
+    const partnerNm = await page.locator('.ex-gr[data-rt="802"] .ex-vcell .nm').evaluate(el => ({ sw: el.scrollWidth, cw: el.clientWidth, title: el.title }));
+    assert(/Trans-Balkan Logistics Meta-Cargo ΕΠΕ/.test(partnerNm.title), `[${width}] long partner name kept in full in the title attribute: ${partnerNm.title}`);
+    errors.push(...consoleErrors);
+    await context.close();
+  }
+  return { consoleErrors: errors };
 }
 
 // «Αν σπάσει στις 06:00 Δευτέρα, ποιος το μαθαίνει;» — the whole point of the
@@ -488,12 +616,13 @@ async function runDispatcherFlow(browser) {
     const acct = await runAccountantFlow(browser);
     const veh = await runVehicleTab(browser);
     const shot = await runScreenshot1280(browser);
+    const wide = await runWideColumnsCheck(browser);
     const fold = await runFoldCheck(browser);
     const mgmt = await runManagementFlow(browser);
     const disp = await runDispatcherFlow(browser);
-    const all = [...acct.consoleErrors, ...veh.consoleErrors, ...shot.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
+    const all = [...acct.consoleErrors, ...veh.consoleErrors, ...shot.consoleErrors, ...wide.consoleErrors, ...fold.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
     console.log('\n== console errors ==');
-    console.log('accountant:', acct.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, '1280/1440:', shot.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+    console.log('accountant:', acct.consoleErrors.length, 'vehicle:', veh.consoleErrors.length, '1280/1440:', shot.consoleErrors.length, 'wide-cols:', wide.consoleErrors.length, 'fold:', fold.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: acct.captured.posts, patches: acct.captured.patches, ledgerPatches: acct.captured.ledgerPatches }, null, 2));

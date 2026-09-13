@@ -7,11 +7,10 @@
 //   - Offline banner via postMessage to all clients
 // ═══════════════════════════════════════════════════════════
 
-<<<<<<< HEAD
 const SW_VERSION = '1789325794';
 =======
-const SW_VERSION = '1789325794';
->>>>>>> 7cfb324 (expenses.js: αναθεώρηση ευχρηστίας εγκεκριμένη από owner 13/9 (Figma 577:1011/587:1033) — συμπυκνωμένη κεφαλίδα, φίλτρα summary bar, σύμπτυξη γραμμών, κενές στήλες, λογότυπα προμηθευτών)
+const SW_VERSION = '1789325686';
+>>>>>>> 1e68346 (expenses.js: διόρθωση ελαττωμάτων layout από review 13/9 #2 (στο screenshot του 22b45f4) — grid tracks, εβδομαδιαία chips, τίτλος, none-row, Συνεργάτης)
 
 // Το vendor/leaflet/* ΔΕΝ μπαίνει στο APP_SHELL επίτηδες: το pre-cache στο
 // install θα κατέβαζε 228 KB σε κάθε χρήστη, ακυρώνοντας το lazy loading της
