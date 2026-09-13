@@ -1606,7 +1606,7 @@ async function _deleteGrpForIntl(orderId) {
   // Fetch all GL lines — filter in JS by Linked International Order
   // (ARRAYJOIN on linked fields returns display names not IDs, so JS filter required)
   const allGLs = await atGetAll(TABLES.GL_LINES, {
-    fields: ['Status', 'Linked International Order']
+    fields: ['Status', 'Linked International Order', 'Linked Consolidated Load']
   }, false);
   const gls = allGLs.filter(r => {
     const links = r.fields['Linked International Order'] || [];
@@ -1615,9 +1615,11 @@ async function _deleteGrpForIntl(orderId) {
   for (const gl of gls) {
     if (gl.fields.Status !== 'Assigned') {
       try {
-        const cls = await atGetAll(TABLES.CONS_LOADS, {
-          filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-        }, false);
+        // The CL is the line's own FK (audit 13/9): filtering CONS_LOADS by a
+        // «Groupage Lines» reverse field the Worker does not model was a 422
+        // swallowed into [] — no CL/NL was ever cleaned up here.
+        const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
+        const cls = _clId ? [{ id: _clId }] : [];
         for (const cl of cls) {
           try {
             const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */},false);
@@ -1973,7 +1975,7 @@ async function submitIntlOrder(recId) {
       try {
         // Find GL lines linked to this intl order via Linked International Order (JS filter)
         const allGLs = await atGetAll(TABLES.GL_LINES, {
-          fields: ['Status', 'Linked International Order']
+          fields: ['Status', 'Linked International Order', 'Linked Consolidated Load']
         }, false);
         const assignedGLs = allGLs.filter(r => {
           const links = r.fields['Linked International Order'] || [];
@@ -1993,10 +1995,9 @@ async function submitIntlOrder(recId) {
             toast('Αυτόματη επαναφορά ενοποιημένων φορτίων…', 'info');
             for (const gl of assignedGLs) {
               try {
-                const cls = await atGetAll(TABLES.CONS_LOADS, {
-                  filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-                  fields: ['Name']
-                }, false);
+                // Same 13/9 fix as _deleteGrpForIntl: the CL comes from the line's FK.
+                const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
+                const cls = _clId ? [{ id: _clId }] : [];
                 for (const cl of cls) {
                   try {
                     const nls = await atGetAll(TABLES.NAT_LOADS, {
@@ -3035,6 +3036,23 @@ async function deleteIntlOrder(recId) {
     toast('Διαγραφή παραγγελίας...', 'info');
     let _delFail = 0;
 
+    // 0. The ORDER itself goes FIRST (13/9 dispatcher audit, same as
+    // deleteNatlOrder): a dispatcher may delete only split legs, so the old
+    // order-last flow removed every child (loads, stops, ramp, PA) and then got
+    // 403 on the order — a live «zombie» with nothing under it. A refused delete
+    // now stops here, before anything is touched, and says why. The child
+    // lookups below still resolve the legacy id (resolveLegacyToIds does not
+    // filter deleted rows), so the cascade is unchanged.
+    try {
+      if (typeof atSoftDelete === 'function') await atSoftDelete(TABLES.ORDERS, recId);
+      else await atDelete(TABLES.ORDERS, recId);
+    } catch(e) {
+      const m = String(e && e.message || e);
+      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής παραγγελίας — χρησιμοποίησε «Ακύρωση» ή ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      if (typeof logError === 'function') logError(e, 'deleteIntlOrder (order first) ' + recId);
+      return;
+    }
+
     // 1. Delete NAT_LOADS (Direct VS) linked to this ORDER
     try {
       // No fields[] constraint — atDelete only needs IDs which Airtable always returns.
@@ -3121,13 +3139,7 @@ async function deleteIntlOrder(recId) {
       if (pas.length) _tmsLog(`Deleted ${pas.length} PARTNER_ASSIGN for ORDER ${recId}`);
     } catch(e) { _delFail++; console.warn('PA cleanup:', e); }
 
-    // 6. Delete the ORDER itself (soft-delete to trash if available, else hard)
-    if (typeof atSoftDelete === 'function') {
-      await atSoftDelete(TABLES.ORDERS, recId);
-    } else {
-      await atDelete(TABLES.ORDERS, recId);
-    }
-
+    // 6. (the ORDER itself was soft-deleted in step 0)
     invalidateCache(TABLES.ORDERS);
     invalidateCache(TABLES.NAT_LOADS);
     invalidateCache(TABLES.GL_LINES);

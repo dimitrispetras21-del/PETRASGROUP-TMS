@@ -198,7 +198,20 @@ function fhLocDrop(id, q) {
     : _fhLocationsArr.slice(0, 25);
   fhShowDrop('ls_' + id + '_d', id, pool);
 }
-if (typeof window !== 'undefined') window._fhNorm = _fhNorm;
+// Case-keeping ELOT transliteration for STORED names (locations are Latin-only,
+// owner 9/8) — _fhNorm lowercases, which is right for search and wrong for a name.
+function _fhTranslit(s) {
+  const one = w => {
+    if (!/[Ͱ-Ͽ]/.test(w)) return w;
+    const t = w.normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const allUp = t === t.toUpperCase();
+    const l = t.toLowerCase().replace(/ου/g, 'ou').replace(/αυ/g, 'av').replace(/ευ/g, 'ev').replace(/^μπ/, 'b').replace(/^ντ/, 'd').replace(/γγ/g, 'ng').replace(/γκ/g, 'gk').replace(/[α-ω]/g, c => _FH_EL[c] || c);
+    if (allUp) return l.toUpperCase();
+    return /^[Α-Ω]/.test(t) ? l.charAt(0).toUpperCase() + l.slice(1) : l;
+  };
+  return String(s || '').split(/(\s+)/).map(w => /^\s+$/.test(w) ? w : one(w)).join('');
+}
+if (typeof window !== 'undefined') { window._fhNorm = _fhNorm; window._fhTranslit = _fhTranslit; }
 
 /**
  * Show client dropdown with async search

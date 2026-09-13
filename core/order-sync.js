@@ -122,20 +122,18 @@ const _orderSync = (function() {
     const parentField = source === 'intl' ? 'Linked International Order' : 'Linked National Order';
     const gls = await atGetAll(TABLES.GL_LINES, {
       filterByFormula: `FIND("${orderId}",ARRAYJOIN({${parentField}},","))>0`,
-      fields: ['Pallets','Goods','Temperature C','Reference','Status','Groupage ID']
+      fields: ['Pallets','Goods','Temperature C','Reference','Status','Groupage ID','Linked Consolidated Load']
     }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
     if (!gls.length) return;
 
-    // Find distinct CL parents for these GLs
+    // Find distinct CL parents for these GLs — from the line's own FK (13/9):
+    // filtering CONS_LOADS by a «Groupage Lines» reverse field the Worker does
+    // not model was a 422 swallowed into [], so this cascade never reached a CL.
     const clIds = new Set();
     for (const gl of gls) {
       if (gl.fields['Status'] === 'Assigned') {
-        // Find CL that contains this GL
-        const cls = await atGetAll(TABLES.CONS_LOADS, {
-          filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-          fields: ['Name','Groupage Lines']
-        }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
-        cls.forEach(c => clIds.add(c.id));
+        const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
+        if (_clId) clIds.add(_clId);
       }
     }
 

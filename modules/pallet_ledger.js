@@ -19,8 +19,10 @@ const PLV = { movements: [], lookups: null, balances: { clients: null, partners:
 // Write gate (13/9, Thodoris go-live audit): the pallet ledger had no role check;
 // management sees it (orders:view) but PL_PERMS keeps it read-only for that
 // role by owner decision 24/8 — every write button answered «Forbidden».
+// Dispatchers (costs:none, orders:full) keep writing: the Worker grants them the
+// ledger and they correct feed movements (owner 23/8: roles edit widely for now).
 function _plvBlockReadOnly(){
-  if(typeof can!=='function' || can('costs')==='full') return false;
+  if(typeof can!=='function' || can('costs')==='full' || can('orders')==='full') return false;
   toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
   return true;
 }

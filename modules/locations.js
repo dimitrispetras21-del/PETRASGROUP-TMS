@@ -466,8 +466,15 @@ function _locFormHTML(f) {
 }
 
 async function _locSave() {
-  const name = document.getElementById('locF_name')?.value.trim();
+  let name = document.getElementById('locF_name')?.value.trim();
   if (!name) { toast('Το όνομα είναι υποχρεωτικό', 'danger'); return; }
+  // Latin-only names (owner 9/8): 9 of the 29 locations created in the last 14
+  // days were typed in Greek and are invisible to the transliterated search.
+  // Transliterate (ELOT, case kept) instead of refusing — the dispatcher keeps working.
+  if (/[Ͱ-Ͽ]/.test(name) && typeof _fhTranslit === 'function') {
+    name = _fhTranslit(name);
+    toast('Το όνομα γράφτηκε με λατινικούς χαρακτήρες: ' + name, 'info');
+  }
   const fields = { Name: name };
   const country = document.getElementById('locF_country')?.value.trim();
   const city    = document.getElementById('locF_city')?.value.trim();

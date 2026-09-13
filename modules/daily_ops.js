@@ -787,7 +787,7 @@ async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   OPS.overdueLoads=OPS.overdueLoads.filter(r=>r.id!==id);
   // Mirror Status on any linked PARTNER ASSIGNMENT
   try { await paSyncStatus({ parentType:'order', parentId:id, status:st }); }
-  catch(e) { console.warn('PA status sync:', e.message); }
+  catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
   toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
   if(_opsBlockReadOnly()) return;
@@ -808,7 +808,7 @@ async function _opsDelFinal(id,perf){ if(_opsBlockReadOnly()) return; const d=lo
   if (typeof plOnDelivered === 'function') plOnDelivered(id);
   const r=OPS.intl.find(x=>x.id===id);if(r){r.fields['Status']='Delivered';r.fields['Delivery Performance']=perf;if('Postponed To' in _p)r.fields['Postponed To']=null;}
   try { await paSyncStatus({ parentType:'order', parentId:id, status:'Delivered' }); }
-  catch(e) { console.warn('PA status sync:', e.message); }
+  catch(e) { if(typeof logError==='function') logError(e,'daily-ops: PA status sync '+id); toast('Η κατάσταση γράφτηκε, αλλά η ανάθεση συνεργάτη ΔΕΝ ενημερώθηκε','warn'); }
   toast(perf==='On Time'?'Παραδόθηκε ✓':'Καθυστέρησε — καταχωρήθηκε',perf==='Delayed'?'danger':'success');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 
 /* ── «Αλλαγή ημέρας» popover ───────────────────────────────────────────
@@ -915,11 +915,15 @@ async function _opsChangeDayGo(){
   try{await atSafePatch(TABLES.ORDERS,p.id,patch);
   invalidateCache(TABLES.ORDERS);
   // Central sync — dates changed, propagate to NAT_LOADS, GL, RAMP
+  // Awaited (audit 13/9): fire-and-forget let «Μετατέθηκε ✓» show while a stage
+  // of the chain (load/ramp/GL) failed with only console.warn as witness.
+  let syncNote='';
   if (typeof syncOrderDownstream === 'function') {
-    syncOrderDownstream(p.id, { source: 'intl', changedFields: Object.keys(patch), skipPA: true })
-      .catch(e => console.warn('[ops change-day sync]', e));
+    try{ const sr=await syncOrderDownstream(p.id, { source: 'intl', changedFields: Object.keys(patch), skipPA: true });
+      if(sr&&!sr.ok) syncNote=' — ΔΕΝ ενημερώθηκαν: '+(sr.failed||[]).join(', '); }
+    catch(e){ if(typeof logError==='function') logError(e,'ops change-day sync '+p.id); syncNote=' — η αλυσίδα (φορτίο/ράμπα) ΔΕΝ ενημερώθηκε'; }
   }
-  toast('Μετατέθηκε → '+_DMYFull(p.choice));OPS._pop=null;renderDailyOps();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}
+  toast('Μετατέθηκε → '+_DMYFull(p.choice)+syncNote, syncNote?'warn':'success');OPS._pop=null;renderDailyOps();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}
 }
 
 function _opsPrint() {

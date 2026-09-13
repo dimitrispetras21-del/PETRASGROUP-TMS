@@ -142,8 +142,11 @@ async function _rampAutoSync() {
     const oid = getLinkId(r.fields['Order'])||'';
     const nid = getLinkId(r.fields['National Order'])||getLinkId(r.fields['National Load'])||'';
     existingKeys.add(`${oid||nid||r.id}_${r.fields['Type']}_${r.fields['Ramp Category']||''}`);
-    // Client-based key
-    existingClientKeys.add(`${r.fields['Supplier/Client']||''}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`);
+    // Client-based key — only for rows typed by hand (no stop marker, no order/
+    // load link). Built from every row it made a second genuine same-day stop of
+    // the same client with the same pallet count vanish from the board (audit 13/9).
+    if (!stopM && !clM && !oid && !nid)
+      existingClientKeys.add(`${r.fields['Supplier/Client']||''}_${r.fields['Type']}_${parseInt(r.fields['Pallets'])||0}`);
   }
 
   // ── Query ORDER_STOPS for today (INTL + NAT_LOADS parents only, not NAT_ORDERS) ──
@@ -721,7 +724,11 @@ async function _rampDone(id,isIn){
             try { await paSyncStatus({ parentType:'order', parentId:orderId, status:'In Transit' }); }
             catch(e) { console.warn('PA sync (ramp):', e.message); }
           }
-        } catch(e) { console.warn('Ramp→Order sync failed:', e.message); }
+        } catch(e) {
+          // Heard, not console.warn (audit 13/9): the ramp row is Done but the order stayed on its old status.
+          toast('Η ράμπα ολοκληρώθηκε αλλά η παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
+          if (typeof logError === 'function') logError(e, 'ramp done Order sync ' + orderId);
+        }
       }
       if (shouldAdvance && natOrderId) {
         try {
@@ -736,7 +743,10 @@ async function _rampDone(id,isIn){
                 .catch(e => console.warn('[ramp→nat sync]', e));
             }
           }
-        } catch(e) { console.warn('Ramp→NatOrder sync failed:', e.message); }
+        } catch(e) {
+          toast('Η ράμπα ολοκληρώθηκε αλλά η εθνική παραγγελία ΔΕΝ πέρασε σε μεταφορά', 'danger');
+          if (typeof logError === 'function') logError(e, 'ramp done NatOrder sync ' + natOrderId);
+        }
       }
 
       // NAT_LOADS-parented ramp row (National Load link, spec

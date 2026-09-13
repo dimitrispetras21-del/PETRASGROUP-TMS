@@ -2772,7 +2772,10 @@ async function _wiSaveImportMatch(rowId,impId){
     const giErrors=[];
     for(const memberId of giGroup.members){
       try{
-        const ri=await atSafePatch(TABLES.ORDERS,memberId,inh);
+        // Through _wiPlanPatch (13/9 audit): a sibling already In Transit keeps
+        // its Status — this raw patch regressed it to Assigned (design 8/9:
+        // execution beats planning); the vehicle correction still lands.
+        const ri=await atSafePatch(TABLES.ORDERS,memberId,await _wiPlanPatch(memberId,inh));
         if(ri?.error) throw new Error(ri.error.message||ri.error.type);
         const fresh=await atGetOne(TABLES.ORDERS,memberId);
         const wrote=row.partnerId?getLinkedId(fresh?.fields?.['Partner'])===row.partnerId
@@ -3407,9 +3410,13 @@ async function _wiClear(rowId){
   if(!(await confirmAction('Καθαρισμός ανάθεσης;', { confirmLabel: 'Καθαρισμός' }))) return;
   const allOrderIds=[...row.orderIds];
   if(row.importId && !allOrderIds.includes(row.importId)) allOrderIds.push(row.importId);
-  const errors=[];
+  const errors=[]; const kept=[];
   for(const orderId of allOrderIds){
     try{
+      // Execution beats planning (design 8/9): this was the one board write
+      // with no executing check — «Καθαρισμός» on a row whose order is already
+      // In Transit stripped the truck/driver of a vehicle on the road (audit 13/9).
+      if(await _wiExecutingLive(orderId)){ kept.push(orderId); continue; }
       const res=await atSafePatch(TABLES.ORDERS,orderId,{
         'Truck':[],'Trailer':[],'Driver':[],'Partner':[],
         'Is Partner Trip':false,'Partner Truck Plates':'',
@@ -3422,12 +3429,13 @@ async function _wiClear(rowId){
   }
   if(errors.length){ _wiSync('wi-sync-'+rowId,'err','Ο καθαρισμός ΔΕΝ γράφτηκε στη βάση'); toast('Ο καθαρισμός απέτυχε: '+errors[0].slice(0,50),'warn');return;}
 
-  // Remove PA records for cleared orders
-  try{ await _wiDeletePartnerAssignments(allOrderIds); }
+  // Remove PA records for cleared orders (not for the executing ones kept above)
+  try{ await _wiDeletePartnerAssignments(allOrderIds.filter(id=>!kept.includes(id))); }
   catch(e){ console.warn('PA delete error:',e.message); }
 
   _wiSync('wi-sync-'+rowId,'ok','Η ανάθεση καθαρίστηκε');
-  toast('Η ανάθεση καθαρίστηκε ✓');
+  if(kept.length) toast(kept.length+' σε εκτέλεση — η ανάθεσή τους κρατήθηκε','warn');
+  else toast('Η ανάθεση καθαρίστηκε ✓');
   WINTL.ui.openRow=null;
   await renderWeeklyIntl();
 }
