@@ -527,7 +527,7 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4 .wk3-segwrap>.wk3-flags{flex:0 0 auto}
 .wn4-segdate{display:inline-block;font:700 9px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:6px;padding:0 5px;line-height:15px;font-variant-numeric:tabular-nums}
 .wn4-segpal{font-size:9px;font-weight:700;color:var(--text)}
-.wn4-segn{font-size:10px;line-height:13px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere;margin-top:2px}
+.wn4-segn{font-size:10px;line-height:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
 /* 13/9 live check: a ΚΑΘΟΔΟΣ row that carries the segmented pill takes width from
    the (usually empty) ΑΝΟΔΟΣ column and gives the delivery half of its leg the
    room the segments need — the intl board does the same with .wk3-tiled. The
