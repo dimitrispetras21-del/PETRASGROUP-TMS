@@ -1801,8 +1801,11 @@ async function _wnSaveMatch(rowId, snId) {
     _wnSync('wn-sync-'+rowId,'ok','Αποθηκεύτηκε');
     toast('Σύνδεση αποθηκεύτηκε ✓');
   } catch(err) {
-    _wnSync('wn-sync-'+rowId,'err','Η σύνδεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση');
+    _wnSync('wn-sync-'+rowId,'err','Η σύνδεση ΔΕΝ γράφτηκε στη βάση');
     toast('Σφάλμα σύνδεσης: '+err.message, 'warn');
+    // 13/9: the merge was painted before the writes; on a half-written pair
+    // the ΑΝΟΔΟΣ row had vanished from the board until a manual refresh.
+    await renderWeeklyNatl();
   }
 }
 
@@ -2238,6 +2241,24 @@ function _wnCtxSn(e, rowId, snId) {
   setTimeout(() => document.addEventListener('click', _wnCtxClose, { once:true }), 10);
 }
 
+// 13/9 (Sotiris go-live audit): the assign popover writes Status=Assigned on
+// the source NATIONAL ORDER, but neither unassign ever reverted it — the board
+// said «ΠΡΟΣ ΑΝΑΘΕΣΗ» while Εθνικές Παραγγελίες kept «ΑΝΑΤΕΘΕΙΜΕΝΗ» forever.
+async function _wnRevertNoStatus(nlId) {
+  const nlRec = WNATL.data.southnorth.concat(WNATL.data.northsouth).find(r => r.id === nlId);
+  const noId = getLinkedId(nlRec?.fields?.['Source National Order']);
+  if (!noId) return;
+  try {
+    await atSafePatch(TABLES.NAT_ORDERS, noId, { 'Status': 'Pending' });
+    if (typeof syncOrderDownstream === 'function') {
+      syncOrderDownstream(noId, { source: 'natl', changedFields: ['Status'], skipVS: true, skipGRP: true, skipRamp: true, skipPL: true })
+        .catch(e => console.warn('[wn unassign sync]', e));
+    }
+  } catch(e) {
+    toast('Η ανάθεση αφαιρέθηκε αλλά η εθνική παραγγελία ΔΕΝ ενημερώθηκε', 'danger');
+    if (typeof logError === 'function') logError(e, '_wnRevertNoStatus ' + noId);
+  }
+}
 async function _wnUnassignSn(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
@@ -2259,6 +2280,7 @@ async function _wnUnassignSn(rowId, snId) {
   // Delete PA record for this NAT_LOAD
   try { await paDelete({ parentType:'nat_load', parentId:snId }); }
   catch(e) { console.warn('PA delete:', e.message); }
+  await _wnRevertNoStatus(snId);
 
   row.saved = false;
   row.truckId = ''; row.truckLabel = '';
@@ -2301,6 +2323,8 @@ async function _wnUnassign(rowId) {
   }
 
   if (errors.length) { toast('Σφάλμα: ' + errors[0].slice(0, 60), 'warn'); return; }
+  for (const orderId of row.orderIds) await _wnRevertNoStatus(orderId);
+  if (row.matchedId) await _wnRevertNoStatus(row.matchedId);
 
   // Reset row state
   row.saved = false;

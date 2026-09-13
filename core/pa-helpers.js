@@ -58,7 +58,7 @@ async function paDelete({ parentType, parentId }) {
   const existing = await _paFindExisting(parentType, parentId);
   for (const r of existing) {
     try { await atDelete(TABLES.PARTNER_ASSIGN, r.id); }
-    catch (e) { console.warn('paDelete failed:', r.id, e.message); }
+    catch (e) { console.warn('paDelete failed:', r.id, e.message); if (typeof logError === 'function') logError(e, 'paDelete ' + r.id); }
   }
   return existing.length;
 }
@@ -76,7 +76,7 @@ async function paSyncStatus({ parentType, parentId, status }) {
     const cur = r.fields[F.PA_STATUS] || '';
     if (cur === status) continue;
     try { await atPatch(TABLES.PARTNER_ASSIGN, r.id, { [F.PA_STATUS]: status }); }
-    catch (e) { console.warn('paSyncStatus failed:', r.id, e.message); }
+    catch (e) { console.warn('paSyncStatus failed:', r.id, e.message); if (typeof logError === 'function') logError(e, 'paSyncStatus ' + r.id); }
   }
   return existing.length;
 }

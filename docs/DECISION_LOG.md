@@ -1236,3 +1236,11 @@ rig 70/70 (`tests/critics/expenses-proof.js`), το `/costs/rt` καλείται
   332, 303, 313, 318, 320) — μόνο 7 από αυτές είναι μονήρεις και θα κλείσουν· οι υπόλοιπες 6 μένουν.
 - **Ποιος:** owner 13/9 (ανάθεση) · Claude Fable 5.1 (ανάγνωση `rt-feed.js`/`013_rt_sync.sql`/
   `rt-rules.mjs`, σχεδίαση 031, DECISION_LOG). Draft — δεν εκτελέστηκε, δεν έγινε deploy.
+
+## 2026-09-13 — Το εθνικό σκέλος ενός Veroia Switch ακολουθεί την παραγγελία (030, προς εκτέλεση)
+- **Επιλογή:** trigger στη βάση: Direct φορτίο VS → Delivered όταν η διεθνής Import γίνει Delivered ή η Export
+  In Transit/Delivered· Cancelled ακολουθεί· ποτέ πίσω. Διαγραμμένο φορτίο απελευθερώνει το ζεύγος του.
+- **Εναλλακτικές:** προαγωγή από τη ράμπα (μόνο In Transit, μόνο με link — 0/35 στην πράξη)· κουμπί στο Weekly.
+- **Απόδειξη:** 0/35 φορτία In Transit/Delivered ενώ 28 παραγγελίες Delivered (SELECT 13/9)· grep: κανένα
+  `NAT_LOADS … Delivered` στον κώδικα.
+- **Ποιος:** owner 13/9 («αρκετά θέματα εθνικών»).

@@ -542,8 +542,7 @@ function _rRow(rec,num,tOpts) {
   const f=rec.fields,id=rec.id;
   const status=f['Status']||'';
   const isDone=status==='Done';
-  const rawTime=f['Time']||'';
-  const time=rawTime.includes('T')?rawTime.split('T')[1]?.substring(0,5)||'':rawTime;
+  const time=_rampTimeHHMM(f['Time']);
   const client=_rStripMarkers(f['Supplier/Client']||'—')||'—';
   const goods=escapeHtml(_rStripMarkers((f['Goods']||'').substring(0,35)));
   const temp=escapeHtml(f['Temperature']||f['Temperature °C']||'');
@@ -623,7 +622,7 @@ function _rTlRow(rec) {
 
   const tlLoc = escapeHtml(isIn ? (f['Loading Points']||'') : (f['Delivery Points']||''));
   return`<tr class="${isDone?'done':''}">
-    <td>${f['Time']?.includes('T')?f['Time'].split('T')[1]?.substring(0,5):(f['Time']||'—')}</td><td>${typeBadge}</td>
+    <td>${_rampTimeHHMM(f['Time'])||'—'}</td><td>${typeBadge}</td>
     <td class="trn">${_rResolveClientStr(f['Supplier/Client']||'—')}</td>
     <td class="trn">${tlLoc||'—'}</td>
     <td class="trn">${escapeHtml((f['Goods']||'').substring(0,35))}</td>
@@ -656,16 +655,27 @@ async function _rampSvF(id,fld,v){
     reportError('Save failed');
   }
 }
+// 13/9 (Sotiris go-live audit): `ramp.event_time` is a timestamptz, but this
+// screen wrote a bare «HH:MM» — Postgres refused it and NO ramp row has ever
+// carried a time (0/61). The value is now the plan day + the chosen hour in
+// the browser's local zone (Athens), stored as UTC ISO; readers convert back.
+function _rampTimeHHMM(raw){
+  if(!raw) return '';
+  if(String(raw).includes('T')){ const d=new Date(raw); return isNaN(d)?'':String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+  return String(raw).slice(0,5);
+}
 async function _rampSvTime(id,v){
   if(_rampBlockReadOnly()) return;
-  // Save time as plain "HH:MM" string — NOT ISO datetime.
   // Mark edit cooldown so auto-refresh doesn't overwrite our optimistic update
-  // before Airtable's indexed-read reflects the change.
+  // before the indexed read reflects the change.
   _rampMarkEdit();
   try {
-    await atSafePatch(TABLES.RAMP,id,{'Time': v || null});
+    const r0=RAMP.records.find(x=>x.id===id);
+    const day=toLocalDate(r0?.fields['Plan Date']||'')||localToday();
+    const iso=v?new Date(day+'T'+v+':00').toISOString():null;
+    await atSafePatch(TABLES.RAMP,id,{'Time': iso});
     const r=RAMP.records.find(x=>x.id===id);
-    if(r)r.fields['Time']=v||'';
+    if(r)r.fields['Time']=iso||'';
     // Re-sort and re-draw
     RAMP.records.sort((a,b)=>(a.fields['Time']||'ZZ').localeCompare(b.fields['Time']||'ZZ'));
     _rampDraw();

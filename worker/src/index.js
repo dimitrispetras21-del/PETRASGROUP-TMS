@@ -1719,7 +1719,12 @@ var TABLES = {
     },
     links: {
       Partner: { column: "partner_id", table: "partners" },
-      Order: { column: "order_id", table: "orders" }
+      Order: { column: "order_id", table: "orders" },
+      // 13/9 (Sotiris go-live audit): the column existed, the link did not —
+      // every national partner assignment (Weekly National popover, pa-helpers
+      // «Nat Load») was written WITHOUT its load (silent drop, trap #1) and
+      // every lookup by it returned 422 (deleteNatlOrder 9/9 12:26).
+      "Nat Load": { column: "national_load_id", table: "national_loads" }
     }
   },
   // ── Fuel receipts (Wave 2): fuel spend, written ONLY by the sister repo's

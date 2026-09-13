@@ -1620,7 +1620,7 @@ async function _deleteGrpForIntl(orderId) {
         }, false);
         for (const cl of cls) {
           try {
-            const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`{Source Record}="${cl.id}"`},false);
+            const nls = await atGetAll(TABLES.NAT_LOADS, {filterByFormula:`FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */},false);
             for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
           } catch(e) { logError(e, '_deleteGrpForIntl: delete NL'); }
           await atDelete(TABLES.CONS_LOADS, cl.id);
@@ -2000,7 +2000,7 @@ async function submitIntlOrder(recId) {
                 for (const cl of cls) {
                   try {
                     const nls = await atGetAll(TABLES.NAT_LOADS, {
-                      filterByFormula: `{Source Record}="${cl.id}"`,
+                      filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
                     }, false);
                     for (const nl of nls) await atDelete(TABLES.NAT_LOADS, nl.id);
                   } catch(e) { console.warn('auto-restore NL delete:', e); }
@@ -3060,16 +3060,28 @@ async function deleteIntlOrder(recId) {
             filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
           }, false);
           for (const cl of cls) {
+            // 13/9: a groupage truck (CL + its national load) is shared by N
+            // orders — it survives while any line NOT belonging to this order
+            // is still Assigned on it (same guard as deleteNatlOrder).
+            let others = [];
+            try {
+              const mine = new Set(gls.map(x => x.id));
+              others = (await atGetAll(TABLES.GL_LINES, {
+                filterByFormula: `AND(FIND("${cl.id}",ARRAYJOIN({Linked Consolidated Load},","))>0,{Status}="Assigned")`,
+                fields: ['Status']
+              }, false)).filter(x => !mine.has(x.id));
+            } catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
+            if (others.length) continue;
             try {
               const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
-                filterByFormula: `{Source Record}="${cl.id}"`,
+                filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
               }, false);
               for (const nl of nlsFromCL) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
             } catch(e) { _delFail++; console.warn('NL-CL cleanup:', e); }
             try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; console.warn('CL delete:', e); }
           }
         } catch(e) { _delFail++; console.warn('CL cleanup:', e); }
-        try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('GL delete:', e); }
+        try { await atSafePatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); } catch(e) { _delFail++; console.warn('GL unassign:', e); } // never-delete rule (13/9): the DB refuses DELETE anyway
       }
       if (gls.length) _tmsLog(`Deleted ${gls.length} GL + linked CL/NL for ORDER ${recId}`);
     } catch(e) { _delFail++; console.warn('GL cleanup error:', e); }
@@ -3192,7 +3204,7 @@ async function cleanupOrphanGL() {
         for (const cl of cls) {
           try {
             const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
-              filterByFormula: `{Source Record}="${cl.id}"`,
+              filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
             }, false);
             for (const nl of nlsFromCL) {
               try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; }
@@ -3202,7 +3214,7 @@ async function cleanupOrphanGL() {
         }
       } catch(e) { _delFail++; }
       // Delete the GL itself
-      try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; console.warn('orphan GL delete:', e); }
+      try { await atSafePatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); } catch(e) { _delFail++; console.warn('orphan GL unassign:', e); }
     } catch(e) { _delFail++; }
   }
 
@@ -3303,11 +3315,11 @@ async function cleanupOrphans() {
         filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
       }, false);
       for (const cl of cls) {
-        const clNLs = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: `{Source Record}="${cl.id}"` }, false);
+        const clNLs = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */ }, false);
         for (const nl of clNLs) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
         try { await atDelete(TABLES.CONS_LOADS, cl.id); } catch(e) { _delFail++; }
       }
-      try { await atDelete(TABLES.GL_LINES, gl.id); } catch(e) { _delFail++; }
+      try { await atSafePatch(TABLES.GL_LINES, gl.id, { Status: 'Unassigned' }); } catch(e) { _delFail++; }
     } catch(e) { _delFail++; }
   }
 

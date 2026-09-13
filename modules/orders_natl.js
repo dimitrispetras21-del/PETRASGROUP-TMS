@@ -862,6 +862,31 @@ async function _natlWriteGroupageChain(common, groups) {
   const nl = await atCreate(TABLES.NAT_LOADS, nlFields);
   created.nl = nl.id;
 
+  // 13/9 (Sotiris go-live audit, load 93 with 0 stops): every other path that
+  // creates a national load also writes its ORDER STOPS (`_syncNationalLoad`,
+  // orders_intl `_syncVeroiaSwitch`) — the groupage chain never did, so the
+  // Weekly tiles, the print sheet, Daily Ops stop stamps and the pallet gate
+  // all saw an empty load. One Loading stop at the pickup, one Unloading per
+  // client stop, each with its own pallets/day/client — the same objects the
+  // per-order stops above were built from.
+  const nlStops = [{ stopNumber: 1, stopType: 'Loading', locationId: common.fromLocId,
+                     pallets: totalPallets, dateTime: common.loadDate || null, goods: common.goods || null,
+                     temp: (common.temp != null && common.temp !== '') ? parseFloat(common.temp) : null }];
+  let n = 0;
+  for (const o of created.orders) {
+    for (const s of o.group.stops) {
+      n += 1;
+      nlStops.push({ stopNumber: n, stopType: 'Unloading', locationId: s.locId, pallets: s.pallets || 0,
+                     dateTime: s.date || common.delDate || null, clientId: o.group.clientId,
+                     goods: common.goods || null, notes: s.note || null });
+    }
+  }
+  try { await stopsSave(nl.id, nlStops, F.STOP_PARENT_NL); }
+  catch(e) {
+    if (typeof reportError === 'function') reportError('Το φορτίο γράφτηκε αλλά ΧΩΡΙΣ στάσεις — άνοιξέ το και αποθήκευσέ το ξανά', e, 'warn');
+    if (typeof logError === 'function') logError(e, 'groupage: NL ORDER_STOPS');
+  }
+
   return created;
 }
 
@@ -1495,7 +1520,7 @@ async function submitNatlOrder(recId) {
               // Delete NL records from this CL
               try {
                 const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
-                  filterByFormula: `{Source Record}="${cl.id}"`,
+                  filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
                   fields: ['Name']
                 }, false);
                 for (const nl of nlsFromCL) await atDelete(TABLES.NAT_LOADS, nl.id);
@@ -1927,6 +1952,21 @@ async function deleteNatlOrder(recId) {
     toast('Deleting order...', 'info');
     let _delFail = 0;
 
+    // 13/9 (Sotiris go-live audit): the order itself is soft-deleted FIRST.
+    // Until now it came last, after every child (loads, stops, ramp rows,
+    // partner assignments) had already been deleted — and for a dispatcher,
+    // who has no DELETE on national_orders, that last call was refused, so the
+    // order stayed «live» with all its children gone and the toast said the
+    // delete had failed. Now a refused delete stops here, before anything is
+    // touched, and says why.
+    try {
+      await atSoftDelete(TABLES.NAT_ORDERS, recId);
+    } catch(e) {
+      const m = String(e && e.message || e);
+      toast(/403|forbidden|δικαίωμα/i.test(m) ? 'Χωρίς δικαίωμα διαγραφής εθνικής παραγγελίας — χρησιμοποίησε «Ακύρωση» ή ζήτα από τον owner' : 'Η διαγραφή απέτυχε — δεν άλλαξε τίποτα', 'danger');
+      return;
+    }
+
     // 1. Delete NAT_LOADS (Direct) linked to this NO
     try {
       const nls = await atGetAll(TABLES.NAT_LOADS, {
@@ -1953,10 +1993,23 @@ async function deleteNatlOrder(recId) {
             fields: ['Name']
           }, false);
           for (const cl of cls) {
+            // 13/9 (Sotiris go-live audit): a groupage truck is ONE consolidated
+            // load for N customers. Deleting one customer's order used to delete
+            // the truck (CL + its national load) everyone else was still on.
+            // The truck survives while any OTHER order's line is still Assigned
+            // on it; only this order's lines are released below.
+            let others = [];
+            try {
+              others = (await atGetAll(TABLES.GL_LINES, {
+                filterByFormula: `AND(FIND("${cl.id}",ARRAYJOIN({Linked Consolidated Load},","))>0,{Status}="Assigned")`,
+                fields: ['Linked National Order']
+              }, false)).filter(x => getLinkedId(x.fields['Linked National Order']) !== recId);
+            } catch(e) { _delFail++; console.warn('CL share check:', e); continue; }
+            if (others.length) { _tmsLog(`CL ${cl.id} kept — ${others.length} other line(s) still assigned`); continue; }
             // Delete NL records from this CL
             try {
               const nlsFromCL = await atGetAll(TABLES.NAT_LOADS, {
-                filterByFormula: `{Source Record}="${cl.id}"`,
+                filterByFormula: `FIND("${cl.id}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
                 fields: ['Name']
               }, false);
               for (const nl of nlsFromCL) { try { await atDelete(TABLES.NAT_LOADS, nl.id); } catch(e) { _delFail++; } }
@@ -2004,8 +2057,7 @@ async function deleteNatlOrder(recId) {
       if (pas.length) _tmsLog(`Deleted ${pas.length} PARTNER_ASSIGN for NO ${recId}`);
     } catch(e) { _delFail++; console.warn('PA cleanup:', e); }
 
-    // 5. Delete the NAT_ORDER itself (soft delete — saved to trash)
-    await atSoftDelete(TABLES.NAT_ORDERS, recId);
+    // 5. (the order itself was soft-deleted first — see the top of this function)
 
     // Invalidate caches
     invalidateCache(TABLES.NAT_ORDERS);

@@ -75,7 +75,10 @@ const NAV = [
   ]},
   { section: 'Ανάλυση', perm: 'ceo_dashboard', items: [
     { id: 'ceo_dashboard', label: 'Πίνακας Διοίκησης', icon: 'award' },
-    { id: 'performance',   label: 'Η Απόδοσή μου',     icon: 'trending_up' },
+    // perm:'performance' (13/9): the section gate is ceo_dashboard (none for
+    // dispatcher) — without its own key the page config.js grants as
+    // performance:'view' was unreachable for the role it is meant for.
+    { id: 'performance',   label: 'Η Απόδοσή μου',     icon: 'trending_up', perm: 'performance' },
   ]},
   { section: 'Διαχείριση', perm: 'settings', items: [
     { id: 'settings',      label: 'Ρυθμίσεις',           icon: 'settings' },
@@ -126,7 +129,11 @@ function renderNav() {
   }
 
   NAV.forEach((group, gi) => {
-    if (can(group.perm) === 'none') return;
+    // 13/9: a section whose own perm is 'none' still shows an item that
+    // carries its OWN perm the role does have (Ανάλυση is ceo_dashboard:none
+    // for dispatcher, but «Η Απόδοσή μου» is performance:view) — the empty-
+    // section check below hides the header when nothing survives.
+    if (can(group.perm) === 'none' && !group.items.some(i => i.perm && can(i.perm) !== 'none')) return;
     // Build items first so a section that ends up with zero visible items
     // after per-item gating (role or perm) skips its header too — e.g. if a
     // future section held only an owner-only item, a dispatcher must not see
@@ -138,6 +145,8 @@ function renderNav() {
       // Per-item perm gate (e.g. Μισθοδοσία Οδηγών: perm 'costs', not the
       // section's 'drivers' — see the item's own comment above in NAV).
       if (item.perm && can(item.perm) === 'none') continue;
+      // An item without its own perm inherits the section's (13/9).
+      if (!item.perm && can(group.perm) === 'none') continue;
       itemsHtml += '<div class="nav-item" tabindex="0" data-tooltip="' + item.label
             + '" onclick="navigate(\'' + item.id + '\')"'
             + ' onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();navigate(\'' + item.id + '\')}"'

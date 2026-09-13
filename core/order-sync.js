@@ -123,7 +123,7 @@ const _orderSync = (function() {
     const gls = await atGetAll(TABLES.GL_LINES, {
       filterByFormula: `FIND("${orderId}",ARRAYJOIN({${parentField}},","))>0`,
       fields: ['Pallets','Goods','Temperature C','Reference','Status','Groupage ID']
-    }, false).catch(() => []);
+    }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
     if (!gls.length) return;
 
     // Find distinct CL parents for these GLs
@@ -134,7 +134,7 @@ const _orderSync = (function() {
         const cls = await atGetAll(TABLES.CONS_LOADS, {
           filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
           fields: ['Name','Groupage Lines']
-        }, false).catch(() => []);
+        }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
         cls.forEach(c => clIds.add(c.id));
       }
     }
@@ -152,7 +152,7 @@ const _orderSync = (function() {
         const clGls = await atGetAll(TABLES.GL_LINES, {
           filterByFormula: `OR(${clGlIds.map(id=>`RECORD_ID()="${id}"`).join(',')})`,
           fields: ['Pallets','Temperature C','Goods']
-        }, false).catch(() => []);
+        }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
         const totalPallets = clGls.reduce((s, r) => s + (r.fields['Pallets']||0), 0);
         const temps = [...new Set(clGls.map(r => r.fields['Temperature C']).filter(v => v!=null))];
         const goods = [...new Set(clGls.map(r => r.fields['Goods']).filter(Boolean))].join(' / ');
@@ -167,9 +167,9 @@ const _orderSync = (function() {
 
         // Find NL that was built from this CL and update it
         const nls = await atGetAll(TABLES.NAT_LOADS, {
-          filterByFormula: `{Source Record}="${clId}"`,
+          filterByFormula: `FIND("${clId}",ARRAYJOIN({Source Consolidated Load},","))>0` /* 13/9: groupage loads link via the CL FK, never Source Record */,
           fields: ['Total Pallets','Temperature C']
-        }, false).catch(() => []);
+        }, false).catch(e => { if (typeof logError === 'function') logError(e, 'order-sync: GL/CL/NL read (was silent until 13/9)'); return []; });
         for (const nl of nls) {
           try {
             await atPatch(TABLES.NAT_LOADS, nl.id, {
