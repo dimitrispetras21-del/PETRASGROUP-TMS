@@ -466,6 +466,56 @@ async function main() {
   assertDeepEqual(allocAB.errors, [], 'allocateFees: errors is an empty array in the normal case');
   assertDeepEqual(allocC.errors, [], 'allocateFees: errors stays empty even for a fee_no_rt line (that is not an error)');
 
+  // ── review regression 1: import_key must be RECOMPUTED per child, not
+  // inherited from the parent ──────────────────────────────────────────
+  // index.js's real call order (spec §Δ wiring) sets import_key on EVERY
+  // line — via `import_key: buildImportKey(l)` inside the matchRoundTrip map
+  // — BEFORE allocateFees ever runs. A child built as `{...line}` without
+  // recomputing import_key would silently keep the PARENT's key on every
+  // child → the commit path (index.js ~3436: `ln.import_key || buildImportKey(ln)`
+  // only recomputes when the field is MISSING) would submit N rows with the
+  // same import_key → 409 duplicate-key gate or a real unique-index violation.
+  const feeLineKeyed = { ...feeLineAB };
+  feeLineKeyed.import_key = buildImportKey(feeLineKeyed); // mirrors index.js's own pre-allocateFees step
+  const parentKeyBeforeSplit = feeLineKeyed.import_key;
+  const allocKeyed = allocateFees(
+    [{ category: 'fuel', rt_id: 10, net: 300 }, { category: 'fuel', rt_id: 11, net: 100 }, feeLineKeyed],
+    feeRtsAB
+  );
+  const keyedChildren = allocKeyed.lines.filter((l) => l.category === 'dkv');
+  assertEqual(keyedChildren.length, 2, 'allocateFees regression: still 2 children when the parent already carries an import_key (real call order)');
+  assert(keyedChildren.every((c) => c.import_key !== parentKeyBeforeSplit), 'allocateFees regression: no child keeps the PARENT\'s original import_key (would collide at commit)');
+  assertEqual(keyedChildren[0].import_key === keyedChildren[1].import_key, false, 'allocateFees regression: the two children have distinct import_key values from each other too');
+  assertEqual(keyedChildren[0].import_key, buildImportKey(keyedChildren[0]), 'allocateFees regression: child.import_key equals buildImportKey(child) — recomputed with its own sub as the 7th field');
+  assertEqual(keyedChildren[1].import_key, buildImportKey(keyedChildren[1]), 'allocateFees regression: same for the second child');
+
+  // ── review regression 2: a fee's window is the STATEMENT period, not its
+  // own single service_date ──────────────────────────────────────────────
+  // Owner rule (spec §0.5, 13/9): «επιμερίζονται στα δρομολόγια της
+  // περιόδου» — the WHOLE statement period, not just the one calendar day
+  // the fee happens to be dated (dkv-parser gives every line a service_date,
+  // including a general fee — spec §1's makeLine). A fee dated 31/08 with a
+  // statement period 01–31/08 must reach an RT in early August too, not only
+  // RTs within ±1 day of the 31st.
+  const feeRtsPeriod = [
+    { id: 60, truck_id: 601, status: 'planned', date_start: '2026-08-03', date_end: '2026-08-04' }, // far from 31/08
+    { id: 61, truck_id: 602, status: 'planned', date_start: '2026-08-30', date_end: '2026-09-01' }, // near 31/08
+  ];
+  const feeLinePeriodCase = {
+    doc_no: 'FEE7', seq: 1, ref: null, plate: null, truck_id: null, category: 'dkv',
+    match: 'none', rt_id: null, general: true, none_reason: 'general_fee',
+    service_date: '2026-08-31', net: 90,
+  };
+  const allocPeriod = allocateFees(
+    [{ category: 'fuel', rt_id: 60, net: 100 }, { category: 'fuel', rt_id: 61, net: 50 }, feeLinePeriodCase],
+    feeRtsPeriod,
+    { period_from: '2026-08-01', period_to: '2026-08-31' }
+  );
+  const periodChildren = allocPeriod.lines.filter((l) => l.category === 'dkv');
+  assertEqual(periodChildren.length, 2, 'allocateFees regression: the statement period (01-31/08) takes priority over the fee\'s own 31/08 service_date — both RTs of the period qualify');
+  assert(periodChildren.some((l) => l.rt_id === 60), 'allocateFees regression: the early-August RT (60, far from the 31st) is a candidate once the statement period is used instead of the single service_date');
+  assert(periodChildren.some((l) => l.rt_id === 61), 'allocateFees regression: the late-August RT (61) is still a candidate too');
+
   // ── isMissingRelationError (migration 024 not executed yet) ─────────
   assert(isMissingRelationError('dbSelectRaw ct_import_rules 404: {"code":"42P01","message":"relation \\"public.ct_import_rules\\" does not exist"}'), 'isMissingRelationError: 42P01 (missing table) recognized');
   assert(isMissingRelationError('ctDbPatch ct_cost_docs 400: {"code":"42703","message":"column \\"parser_version\\" does not exist"}'), 'isMissingRelationError: 42703 (missing column) recognized');

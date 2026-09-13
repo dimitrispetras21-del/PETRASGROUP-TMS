@@ -381,20 +381,24 @@ export function matchRoundTrip(line, rts, rules) {
 
 // The window used to find candidate RTs for a fee line: the line's own
 // period_from/period_to when it has one (rare for a fee — only if it were
-// ever half-month structured), else its own service_date (every parsed line
-// gets one — dkv-parser.js's makeLine), else the statement's own period
-// (passed in by the caller, spec §5's ct_cost_docs.period_from/period_to) —
-// a fee line genuinely covers the whole billing period, not one day, so this
-// is the normal path for a real DKV account fee (it never has its own
-// service_date/period tied to a single trip). No date anywhere → nothing to
-// compute a window from, so the line is left exactly as it arrived (spec:
-// "αν δεν υπάρχει, μένει ως έχει" — never guessed past).
+// ever half-month structured), ELSE the statement's own period (passed in by
+// the caller, spec §5's ct_cost_docs.period_from/period_to) — a fee line
+// genuinely covers the whole billing period, not the one calendar day it
+// happens to be dated (owner rule, spec §0.5: "επιμερίζονται στα δρομολόγια
+// της περιόδου"). dkv-parser gives every line a service_date, including a
+// general fee (§1 makeLine) — using that as the window would only ever reach
+// RTs within ±1 day of that one day, missing the rest of the period entirely
+// (review finding, round 2: a fee dated 31/08 must still reach an RT from
+// early in a 01-31/08 statement). service_date is only the LAST resort, for
+// when no statement period was passed in at all. No date anywhere → nothing
+// to compute a window from, line left exactly as it arrived (spec: "αν δεν
+// υπάρχει, μένει ως έχει" — never guessed past).
 function feeLinePeriod(line, statementPeriod) {
   if (line.period_from && line.period_to) return { from: line.period_from, to: line.period_to };
-  if (line.service_date) return { from: line.service_date, to: line.service_date };
   if (statementPeriod && statementPeriod.period_from && statementPeriod.period_to) {
     return { from: statementPeriod.period_from, to: statementPeriod.period_to };
   }
+  if (line.service_date) return { from: line.service_date, to: line.service_date };
   return null;
 }
 
@@ -505,6 +509,15 @@ export function allocateFees(lines, rts, statementPeriod) {
         sub: idx + 1,
         note: `επιμερισμός · ${line.note || ''}`,
       };
+      // The Worker sets import_key on every line BEFORE this function runs
+      // (matchRoundTrip step, index.js) — the `{...line}` spread above would
+      // otherwise leave every child carrying the PARENT's key unchanged,
+      // since sub alone doesn't retroactively change an already-computed
+      // string. Recompute now that sub is set (buildImportKey's 7th field) so
+      // each child gets its own key — the commit path only recomputes when
+      // import_key is MISSING (index.js: `ln.import_key || buildImportKey(ln)`),
+      // so a stale, duplicate key here would hit the 409 dedupe gate.
+      child.import_key = buildImportKey(child);
       for (const field of FEE_AMOUNT_FIELDS) {
         const share = splitByField[field][idx];
         if (share !== null) child[field] = share;
