@@ -188,16 +188,25 @@ function exStyles() {
   .ex-sum-pend{font-size:11.5px;font-weight:500;color:var(--warn)}
   .ex-sum-pend.ok{color:var(--ok)}
   .ex-search{height:30px;box-sizing:border-box;border:1px solid var(--border);border-radius:4px;padding:0 10px;font:inherit;font-size:12px;width:240px}
+  /* Fits inside the card WITHOUT scrolling at both 1280 and 1440 (owner
+     review 13/9: the first pass forced min-width:1280px, which is wider than
+     the ~1150px a 1440-wide window leaves once the 228px sidebar and page
+     padding are subtracted — the card scrolled even though nothing needed
+     to). overflow-x stays as a safety net for narrower windows only; the
+     grid's own track widths below are sized to need it at neither proof
+     viewport. */
   .ex-gridwrap{overflow-x:auto}
-  .ex-grid{min-width:1280px}
   /* 4 fixed head tracks + 9 amount groups (spec §2 point 2) + Σύνολο + Κατάσταση. */
-  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:24px 68px minmax(120px,1fr) 92px repeat(9,68px) 82px 78px;gap:5px;align-items:center;padding:0 14px}
-  .ex-gh{height:32px;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--text-mid)}
+  .ex-gh,.ex-gr,.ex-gt{display:grid;grid-template-columns:22px 62px minmax(96px,1fr) 70px repeat(9,60px) 68px 72px;gap:4px;align-items:center;padding:0 10px}
+  /* «Καράβια/Τρένα» is the one header that wraps to two lines at this width
+     — allowed (line-height 1.1 keeps it inside the fixed 32px row), never
+     truncated or renamed. */
+  .ex-gh{height:32px;line-height:1.1;background:var(--surface-sunken);border-bottom:2px solid var(--border-mid,var(--border));font-size:9px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--text-mid);overflow-wrap:break-word}
   .ex-gr{min-height:40px;padding-top:6px;padding-bottom:6px}
   .ex-trip{border-bottom:1px solid var(--border)}
   .ex-trip:hover{background:var(--surface-sunken)}
   .ex-trip.open,.ex-gr.open{background:var(--surface-sunken)}
-  .ex-legs{padding:0 14px 9px 116px;font-size:12px}
+  .ex-legs{padding:0 10px 9px 100px;font-size:12px}
   .ex-legs .rt-n{font-size:11.5px} .ex-legs .rt-c,.ex-legs .rt-d{font-size:11px}
   .ex-legs .ex-route{font-size:12px}
   .ex-gr.none-row{border-top:1px solid var(--border-mid,var(--border));border-bottom:1px solid var(--border)}
@@ -258,9 +267,8 @@ function exStyles() {
   .ex-idoc-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:3px 0;font-size:12px}
   @media (max-width:1320px){
     .ex-page{padding:16px 16px 32px}
-    .ex-grid{min-width:0}
-    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:20px 58px minmax(100px,1fr) 78px repeat(9,54px) 74px 68px;gap:4px;padding:0 8px}
-    .ex-legs{padding-left:96px}
+    .ex-gh,.ex-gr,.ex-gt{grid-template-columns:18px 54px minmax(84px,1fr) 62px repeat(9,54px) 60px 64px;gap:3px;padding:0 8px}
+    .ex-legs{padding-left:88px}
     .ex-gr{padding-top:5px;padding-bottom:5px}
     .ex-cell .a{font-size:10.5px}
   }

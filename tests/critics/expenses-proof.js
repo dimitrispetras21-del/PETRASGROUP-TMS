@@ -279,6 +279,7 @@ async function runAccountantFlow(browser) {
   assert(/δεν έχει εγγραφή Μισθοδοσίας/.test(await page.locator('.ex-gp[data-panel="703"]').innerText()), '703 has no ledger_entry → panel explains instead of offering a field');
   assert(await page.locator('#exExpMAmt').count() === 0, 'no amount field when there is no ledger entry to write');
 
+  await assertGridFits(page, '1440 (week tab)');
   await page.screenshot({ path: SHOT_WEEK, fullPage: true });
   console.log('  screenshot: ' + SHOT_WEEK);
   await context.close();
@@ -304,9 +305,34 @@ async function runVehicleTab(browser) {
   assert(/Σύνολο ΘΕ-2001 \(1 δρομολόγια, 2 γραμμές\)/.test((await page.locator('.ex-gt').innerText()).replace(/\s+/g, ' ')), 'totals row names the vehicle, trip count and line count');
   const gridText = await page.locator('.ex-page').innerText();
   assert(!/Φ\.?Π\.?Α/i.test(gridText), 'no ΦΠΑ text anywhere on the vehicle sheet');
+  await assertGridFits(page, '1440 (vehicle tab)');
 
+  await page.screenshot({ path: SHOT_VEH, fullPage: true });
+  console.log('  screenshot: ' + SHOT_VEH);
   await context.close();
   return { consoleErrors };
+}
+
+// Owner review 13/9 on commit 1693369: the ledger overflowed its card at
+// 1440 (min-width:1280px on .ex-grid forced a scroll the ~1150px content
+// column never needed) — Σύνολο/Κατάσταση were cut off. Two checks close
+// that: the grid must never be wider than its scroll container, and the
+// LAST header cell (Κατάσταση) must end inside the card, not past its edge
+// — scrollWidth<=clientWidth alone would still pass if the card silently
+// clipped the last column instead of wrapping it.
+async function assertGridFits(page, label) {
+  const fit = await page.evaluate(() => {
+    const grid = document.querySelector('.ex-grid');
+    const wrap = document.querySelector('.ex-gridwrap');
+    const headCells = document.querySelectorAll('.ex-gh > div');
+    const last = headCells[headCells.length - 1];
+    return {
+      scrollWidth: grid.scrollWidth, clientWidth: wrap.clientWidth,
+      lastRight: last.getBoundingClientRect().right, cardRight: wrap.getBoundingClientRect().right
+    };
+  });
+  assert(fit.scrollWidth <= fit.clientWidth, `[${label}] .ex-grid.scrollWidth (${fit.scrollWidth}) <= .ex-gridwrap.clientWidth (${fit.clientWidth}) — the card never scrolls`);
+  assert(fit.lastRight <= fit.cardRight + 0.5, `[${label}] Κατάσταση header cell ends inside the card (${fit.lastRight.toFixed(1)} <= ${fit.cardRight.toFixed(1)})`);
 }
 
 async function runScreenshot1280(browser) {
@@ -319,13 +345,15 @@ async function runScreenshot1280(browser) {
   await cell(page, 701, 'fuel').click();
   await page.waitForSelector('.ex-gp[data-panel="701"]', { timeout: 5000 });
   const scrollX1280 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-  assert(scrollX1280 <= 0, 'at 1280px the PAGE never scrolls sideways (the sheet card scrolls inside itself if it must): ' + scrollX1280);
+  assert(scrollX1280 <= 0, 'at 1280px the PAGE never scrolls sideways: ' + scrollX1280);
+  await assertGridFits(page, '1280');
   await page.screenshot({ path: SHOT_1280, fullPage: true });
 
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(150);
   const scrollX1440 = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert(scrollX1440 <= 0, 'at 1440px the PAGE never scrolls sideways either: ' + scrollX1440);
+  await assertGridFits(page, '1440 (post-resize)');
 
   console.log('  screenshot: ' + SHOT_1280);
   await context.close();
