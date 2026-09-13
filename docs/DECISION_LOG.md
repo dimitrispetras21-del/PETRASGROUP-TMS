@@ -1215,3 +1215,24 @@ rig 70/70 (`tests/critics/expenses-proof.js`), το `/costs/rt` καλείται
 `docs/superpowers/specs/2026-09-13-fuel-collection-program.md`. **Ποιος:** owner (αποφάσεις), Claude Fable 5.1
 (έλεγχος, spec, migration draft), 2 read-only agents (ρίζα RT, κατάσταση κλάδου).
 
+
+## 2026-09-13 — RT creation στη βάση: DRAFT trigger 031, μόνο για μονήρεις παραγγελίες
+
+- **Επιλογή (draft, ΟΧΙ εκτελεσμένη):** `worker/migrations/031_rt_create_trigger.sql` — trigger στο
+  `orders` (AFTER INSERT/UPDATE των status/truck_id/partner_id/driver_id/trailer_id/loading_datetime/
+  delivery_datetime) που φτιάχνει round trip + σκέλος μόνο για παραγγελία ΧΩΡΙΣ `group_id`/
+  `matched_import_id`/`rotation_id` (δηλ. όχι μέλος ομάδας/ζεύγους/ρότας) όταν είναι In Transit/Delivered,
+  ανατεθειμένη, και δεν έχει ήδη σκέλος. Ασφαλές έναντι αγώνα (race): αν χάσει τη μοναδικότητα στο
+  `ct_leg_order`, διαγράφει το ίδιο το RT που μόλις έφτιαξε (καμία ορφανή εγγραφή).
+- **Εναλλακτικές:** αναπαραγωγή του πλήρους κανόνα ομαδοποίησης του `core/rt-feed.js`
+  (`rtLegsForOrder`, γράφημα Group ID/Matched Import ID/Rotation ID) μέσα στη βάση — απορρίφθηκε: θα
+  ήταν δεύτερη υλοποίηση της ΙΔΙΑΣ λογικής (αρχή 3, «δύο πηγές αλήθειας»/drift) και σε λάθος
+  ομαδοποίηση θα παρήγε ΔΥΟ round trips που αργότερα συγκρούονται (409 `conflict` στο
+  `worker/src/rt-rules.mjs` `planRtUpsert`) όταν το πρόγραμμα περιήγησης προσπαθήσει να τα ενώσει — ο
+  owner θέλει «καμία διπλογραφή» πάνω από την πληρότητα.
+- **Απόδειξη:** 33 εκτελεσμένες/ανατεθειμένες παραγγελίες χωρίς σκέλος σήμερα (SELECT 13/9) — 27
+  μονήρεις (τις καλύπτει το 031), 6 με `group_id`/`matched_import_id` (μένουν εκτός, τεκμηριωμένα). Το
+  backfill μέσα στο 031 στοχεύει τις 13 αρχικά διαγνωσμένες (214, 239, 282, 284, 287, 301, 302, 306,
+  332, 303, 313, 318, 320) — μόνο 7 από αυτές είναι μονήρεις και θα κλείσουν· οι υπόλοιπες 6 μένουν.
+- **Ποιος:** owner 13/9 (ανάθεση) · Claude Fable 5.1 (ανάγνωση `rt-feed.js`/`013_rt_sync.sql`/
+  `rt-rules.mjs`, σχεδίαση 031, DECISION_LOG). Draft — δεν εκτελέστηκε, δεν έγινε deploy.

@@ -666,9 +666,11 @@ function ctRecon() {
     const f = r.fields;
     // Κλειδωμένο (owner 24/8): ιστορικό ΧΩΡΙΣ backfill — ο μετρητής κοιτά
     // μόνο ό,τι φορτώθηκε από την ενεργοποίηση του feeder και μετά.
+    // Owner audit 13/9: the Direction!=='Import' exclusion hid most of the
+    // problem — 7 of 11 orphan orders found by a read-only diagnosis were
+    // Imports, invisible in this counter. Imports are counted now too.
     return (f['Loading DateTime'] || '') >= '2026-08-24' &&
       (f['Status'] === 'Delivered' || f['Status'] === 'In Transit') &&
-      f['Direction'] !== 'Import' &&
       (getLinkedId(f['Truck']) || (f['Is Partner Trip'] && getLinkedId(f['Partner'])));
   });
   const legIds = new Set();
