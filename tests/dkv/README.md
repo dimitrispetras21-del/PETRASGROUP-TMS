@@ -1,5 +1,12 @@
 # DKV import — Φ1 (parser + tests)
 
+`run-import-rules.js` also covers spec `2026-09-13-fuel-collection-program.md`
+§Δ (13/9): `dateOverlaps`/`overlapDays` ±1 day billing-cut tolerance (Δ1, one
+day before/after still matches, two days does not), and `allocateFees` (Δ2)
+— proportional DKV fee-line split across RTs by weighted DKV net, truck_id
+scoping, the `fee_no_rt`/untouched/statement-period-fallback cases, and
+unique `import_key`s across split children.
+
 Spec: `docs/superpowers/specs/2026-09-08-dkv-import-design.md`.
 
 The parser (`core/dkv-parser.js`) is a plain script — no imports, no DOM,
