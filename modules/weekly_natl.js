@@ -542,6 +542,7 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4 .wk3-row:not(.sn) .wk3-num + .wk3-leg > .wn4-card:first-child .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segwrap{gap:10px}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segtotals{flex:0 0 auto;width:auto;white-space:nowrap;padding-left:2px}
+.wn4 .wn4-segflags:empty{display:none}
 .wn4 .wk3-segpill .wk3-seg{min-width:0}
 .wn4-segp{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn4-segtot{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
@@ -1407,10 +1408,10 @@ function _wnSegHTML(s, idx, total, row, loadId, draggable) {
 // απλώς μετακομίζουν δίπλα στα σύνολα αντί για μέσα στην (πλέον ανύπαρκτη)
 // ενιαία κάρτα.
 function _wnSegTotalsHTML(stops, extraChipsHTML) {
-  const known = stops.filter(s => s.fields?.[F.STOP_PALLETS] != null);
-  const sum = known.reduce((a, s) => a + (+s.fields[F.STOP_PALLETS]), 0);
-  const palTxt = known.length ? `${sum}/33 p` : '— p';
-  return `<div class="wk3-segtotals"><span class="wn4-segtot">${palTxt} · ${stops.length} σημεία</span>${extraChipsHTML ? `<span class="wk3-flags">${extraChipsHTML}</span>` : ''}</div>`;
+  // Owner 13/9: no «25/33 p · 3 σημεία» on the groupage row — every segment
+  // already shows its own pallets and the count is the segments themselves;
+  // the pill takes the width instead. Only the state flags survive, compact.
+  return extraChipsHTML ? `<div class="wk3-segtotals wn4-segflags"><span class="wk3-flags">${extraChipsHTML}</span></div>` : '';
 }
 function _wnSegPillWrap(row, loadId, stops, extraChipsHTML) {
   const segs = stops.map((s, i) => _wnSegHTML(s, i, stops.length, row, loadId, true)).join('');
