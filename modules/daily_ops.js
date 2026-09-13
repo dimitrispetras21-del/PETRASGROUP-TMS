@@ -659,6 +659,9 @@ function _opsStopsOf(orderId, type){
     .sort((a,b)=>(a.fields[F.STOP_NUMBER]||0)-(b.fields[F.STOP_NUMBER]||0));
 }
 function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{}').name||'unknown'; }catch(_){ return 'unknown'; } }
+// The one word the dispatcher needs: «δικαίωμα» for a 403 (the facade's
+// message never says it), otherwise the short HTTP/text reason.
+function _opsErrWord(e){ const m=String(e&&e.message||e||''); return /403|forbidden|permission/i.test(m)?'χωρίς δικαίωμα':m.slice(0,40)||'σφάλμα'; }
 async function _opsMarkStop(stop, perf){
   const patch={'Completed At': new Date().toISOString(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
@@ -742,8 +745,14 @@ async function _opsStat(id,st){
   if(st==='In Transit'){
     const loads=_opsStopsOf(id,'Loading');
     if(loads.length>1 && loads.some(x=>!x.fields['Performance'])){ _opsToggleStops(id); return; }
-    // Μία φόρτωση: το κλικ σφραγίζει και τη στάση — ροή αμετάβλητη.
-    if(loads.length===1) _opsMarkStop(loads[0], null).catch(e=>{ if(typeof logError==='function') logError(e,'daily-ops: single load stamp'); });
+    // Μία φόρτωση: το κλικ σφραγίζει και τη στάση. Αν η σφραγίδα δεν γραφτεί,
+    // ΔΕΝ γράφεται ούτε η παραγγελία (Cursor audit 11/9: ο accountant έπαιρνε
+    // 403 στη στάση και η παραγγελία γινόταν In Transit/Delivered χωρίς τικ —
+    // μισή εγγραφή που καμία οθόνη δεν εξηγεί· αρχή 1).
+    if(loads.length===1){
+      try{ await _opsMarkStop(loads[0], null); }
+      catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single load stamp'); toast('Η σφραγίδα φόρτωσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; }
+    }
   }
   return _opsStatFinal(id,st);
 }
@@ -773,7 +782,8 @@ async function _opsDel(id,perf){
   const dels=_opsStopsOf(id,'Unloading');
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
-  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); } }
+  // Same rule as _opsStat: no stamp, no Delivered (audit 11/9: 282/302/308).
+  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
   return _opsDelFinal(id,perf);
 }
 async function _opsDelFinal(id,perf){const d=localToday();
@@ -928,7 +938,7 @@ function _opsPrint() {
 async function _opsOvAct(id,perf='Delayed'){
   const dels=_opsStopsOf(id,'Unloading');
   if(dels.length>1){ if(!OPS._expanded?.has(id)) _opsToggleStops(id); return; }
-  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); } }
+  if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
   return _opsOvActFinal(id,perf);
 }
 async function _opsOvActFinal(id,perf='Delayed'){const d=localToday();

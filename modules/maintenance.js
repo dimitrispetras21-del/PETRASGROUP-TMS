@@ -250,7 +250,10 @@ async function _maintLoad(forceHistory = false) {
       // for this page is now stale; it needs a re-record before the critics
       // trust this screen again.
       atGetAll(TABLES.TRAILERS, { fields: ['License Plate','Brand','Model','Year','Trailer Type','Active','Country',
-        'KTEO Expiry','Insurance Expiry','FRC Expiry','Next Maintenance Date'] }, true),
+        // 'Next Maintenance Date' removed 13/9 (Cursor audit): trucks-only column
+        // (017), the TRAILERS map has no such label — every request logged it as
+        // unknown and silently dropped it.
+        'KTEO Expiry','Insurance Expiry','FRC Expiry'] }, true),
       atGetAll(TABLES.WORKSHOPS, { fields: ['Name','City','Specialty','Active'] }, true),
     ]);
     MAINT.trucks = trucks;

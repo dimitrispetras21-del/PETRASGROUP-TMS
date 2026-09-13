@@ -460,6 +460,13 @@ var PERMISSIONS = {
     // screen PATCHes NAT_ORDERS for national invoices too. Without this row
     // the role falls back to "*": GET and every national invoice is a 403.
     national_orders: ["GET", "PATCH"],
+    // Daily Ops stamps (Cursor audit 11/9): the accountant DOES declare
+    // deliveries (11/9 08:59–09:00: orders 282/308/302 → Delivered, written),
+    // but the stop stamp behind the same click (_opsMarkStop → PATCH
+    // ORDER_STOPS Completed At/By/Performance) fell to "*": GET → 403, three
+    // times. Half a delivery was recorded: the order said Delivered while its
+    // stop never got its tick. Same lock, same width as `orders` above.
+    order_stops: ["GET", "PATCH"],
     pallet_ledger_suppliers: ["GET", "POST", "PATCH"]
   },
   dispatcher: {
