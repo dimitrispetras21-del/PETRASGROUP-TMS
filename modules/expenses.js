@@ -785,10 +785,12 @@ function exCellPayTag(lines) {
 // σημαία της») — one helper for every place a country code appears. onerror
 // hides the broken <img> itself so a blocked/offline flagcdn.com degrades to
 // the bare code, never a broken-image box.
+// No loading="lazy": the panel is injected via innerHTML and Chrome left every
+// lazy flag unfetched (live 13/9: 19 <img>, 0 complete); 16×12 PNGs are cheap.
 function exFlag(cc) {
   if (!cc) return '';
   const up = String(cc).toUpperCase();
-  return `<img class="ex-flag" src="https://flagcdn.com/w20/${up.toLowerCase()}.png" width="16" height="12" alt="${escapeHtml(up)}" loading="lazy" onerror="this.style.display='none'">`;
+  return `<img class="ex-flag" src="https://flagcdn.com/w20/${up.toLowerCase()}.png" width="16" height="12" alt="${escapeHtml(up)}" onerror="this.style.display='none'">`;
 }
 
 // ═══════════════════ RENDER ═══════════════════
@@ -1534,11 +1536,19 @@ function exLineRowHtml(line, opts) {
   // not only DKV), falling back to the DKV logo for an imported line that
   // somehow has no fuel_source. Pulled OUT of noteBits so the same source
   // never prints twice (once as a logo, once as text).
-  const srcTag = line.doc_id ? exSourceTag(line.fuel_source || 'DKV') : (line.fuel_source ? exSourceTag(line.fuel_source) : '');
+  // Supplier tag only where a supplier is a real distinction (fuel/adblue):
+  // on a tolls or fee line «DKV» as supplier and «DKV» as payment are the
+  // same fact, and the two logos side by side read as an error (seen live
+  // 13/9: «Διόδια · [DKV] · [DKV]»). Same rule inside fuel: when supplier
+  // and payment coincide, the payment tag alone carries it.
+  const isFuelCat = EX_FUEL_CATEGORIES.includes(line.category);
+  const supplier = isFuelCat ? (line.fuel_source || (line.doc_id ? 'DKV' : null)) : null;
+  const paySrc = exLinePaySource(line);
+  const srcTag = supplier && supplier !== paySrc ? exSourceTag(supplier) : '';
   // Payment tag (owner correction #5) — separate from the supplier srcTag
   // above: this shows HOW the line was paid (DKV/Revolut logo, or grey
   // «Μετρητά»), every category, not only fuel.
-  const payTag = exPayTag(exLinePaySource(line));
+  const payTag = exPayTag(paySrc);
   const noteBits = [
     line.note,
     line.category === 'reefer_fuel' && line.trailer_id ? 'Ρυμούλκα ' + (exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id)) : null
