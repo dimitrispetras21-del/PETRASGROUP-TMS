@@ -990,10 +990,14 @@ function exTripRowHtml(r, visCols, tmpl) {
   // grows past the ≤52px budget on a long company name. The Οδηγός column
   // reads «—» for a partner trip since there is no driver.
   const partnerName = exPersonName(r);
+  // Live 13/9: at 80px the Όχημα track ellipsized every partner name
+  // («VIK MAR DO…») while the Οδηγός track next to it held only «—» — so a
+  // partner row spans BOTH tracks with one cell (Όχημα + Οδηγός = 216px) and
+  // emits no driver cell at all. The grid template is unchanged.
   const vehicleCell = partner
-    ? `<div class="ex-vcell"><span class="k">Συνεργάτης</span><span class="nm" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</span></div>`
+    ? `<div class="ex-vcell" style="grid-column:span 2"><span class="k">Συνεργάτης</span><span class="nm" title="${escapeHtml(partnerName)}">${escapeHtml(partnerName)}</span></div>`
     : `<div class="ex-clip ex-plate">${escapeHtml(exTruckName(r.truck_id))}</div>`;
-  const driverCell = partner ? '<div class="dim">—</div>' : `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
+  const driverCell = partner ? '' : `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
   const missingCls = missing.length ? ' missing' : '';
   return `<div class="ex-trip${isOpen ? ' open' : ''}${missingCls}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}" style="grid-template-columns:${tmpl}">
       <span class="ex-chevron" onclick="exToggleExpand(${r.id})" title="${isExpanded ? 'Σύμπτυξη' : 'Ανάπτυξη'}">${isExpanded ? '⌄' : '›'}</span>

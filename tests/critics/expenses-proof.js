@@ -285,9 +285,14 @@ async function runAccountantFlow(browser) {
   // (point 8) — RT 703 is a partner trip (Meta-Cargo ΕΠΕ) ──
   const vehCell703 = await page.locator('.ex-gr[data-rt="703"] .ex-vcell').innerText();
   assert(/Συνεργάτης/.test(vehCell703) && /Meta-Cargo/.test(vehCell703), 'RT 703 vehicle column shows «Συνεργάτης» and the full partner name: ' + vehCell703.replace(/\s+/g, ' '));
-  // Direct-child divs in order: Όχημα(0), Οδηγός(1), Ημερομηνίες(2), Διαδρομή(3), … — the
-  // chevron is a <span>, not a <div>, so it does not shift this index.
-  assert(await page.locator('.ex-gr[data-rt="703"] > div').nth(1).innerText() === '—', 'RT 703 driver column reads «—» for a partner trip');
+  // Live 13/9: the partner cell spans Όχημα+Οδηγός (grid-column: span 2) and
+  // there is NO separate driver cell — the name gets 216px instead of 80px, so
+  // «VIK MAR DOOL» / «Hart Logistics…» no longer ellipsize. Assert the span and
+  // that the next div is the dates cell, and that the name is not clipped.
+  assert(/span 2/.test(await page.locator('.ex-gr[data-rt="703"] .ex-vcell').getAttribute('style') || ''), 'RT 703 partner cell spans Όχημα+Οδηγός');
+  assert(/\d{2}–\d{2}\/\d{2}/.test(await page.locator('.ex-gr[data-rt="703"] > div').nth(1).innerText()), 'RT 703: the cell after the partner cell is the dates cell (no driver cell)');
+  const nm703 = page.locator('.ex-gr[data-rt="703"] .ex-vcell .nm');
+  assert(await nm703.evaluate(el => el.scrollWidth <= el.clientWidth), 'RT 703 partner name is not clipped');
 
   // ── «Επόμενο δρομολόγιο ↓» moves the open panel to the next trip (point 9) ──
   await cell(page, 701, 'fuel').click();
