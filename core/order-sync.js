@@ -163,7 +163,7 @@ const _orderSync = (function() {
             ...(temps.length === 1 ? { 'Temperature C': temps[0] } : {}),
             ...(goods ? { 'Goods': goods } : {}),
           });
-        } catch(e) { /* some fields may not exist on CL */ }
+        } catch(e) { if (typeof logError === 'function') logError(e, 'order-sync: CL totals (silent until 13/9 — a 403 for view roles hid here)'); }
 
         // Find NL that was built from this CL and update it
         const nls = await atGetAll(TABLES.NAT_LOADS, {
@@ -176,7 +176,7 @@ const _orderSync = (function() {
               'Total Pallets': totalPallets,
               ...(temps.length === 1 ? { 'Temperature C': temps[0] } : {}),
             });
-          } catch(_) {}
+          } catch(e) { if (typeof logError === 'function') logError(e, 'order-sync: NL totals from CL'); }
         }
       } catch(e) { console.warn('[order-sync] CL/NL cascade:', e); }
     }

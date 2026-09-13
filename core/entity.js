@@ -669,6 +669,11 @@ const ENTITY_CONFIG = {
     formFields: [
       { section: 'Στοιχεία', fields: [
         { f: 'Name',           label: 'Επωνυμία', req: true },
+        // 13/9 (Thodoris go-live): the Worker map and the columns carried
+        // VAT Number/Legal Name since 6/8, but no form section ever offered
+        // them — 0/70 written. Same two fields the clients/partners forms have.
+        { f: 'Legal Name',     label: 'Νομική επωνυμία' },
+        { f: 'VAT Number',     label: 'ΑΦΜ' },
         // Ίδιες ακριβώς τιμές με όσες έγραψε το import — αλλιώς κάθε επεξεργασία
         // συνεργείου θα δημιουργούσε νέα, παράλληλη ειδικότητα και το φίλτρο θα
         // γέμιζε διπλές κατηγορίες (αγγλικές από τη φόρμα, ελληνικές από τα δεδομένα).

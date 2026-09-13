@@ -79,9 +79,11 @@ const NAV = [
   ]},
   { section: 'Διαχείριση', perm: 'settings', items: [
     { id: 'settings',      label: 'Ρυθμίσεις',           icon: 'settings' },
-    { id: 'metrics_audit', label: 'Έλεγχος Μετρήσεων',   icon: 'bar_chart' },
+    // role:'owner' (13/9): navigate() already refuses non-owners for both of
+    // these; without the flag the item showed for management and dead-ended.
+    { id: 'metrics_audit', label: 'Έλεγχος Μετρήσεων',   icon: 'bar_chart', role: 'owner' },
     { id: 'trash',         label: 'Κάδος',               icon: 'trash' },
-    { id: 'error_log',     label: 'Καταγραφή Σφαλμάτων', icon: 'alert_triangle' },
+    { id: 'error_log',     label: 'Καταγραφή Σφαλμάτων', icon: 'alert_triangle', role: 'owner' },
     // Distinct from Metrics Audit (data-consistency checks) and Error Log (JS
     // errors): this is who-changed-what, read from the server-side trail.
     { id: 'audit_trail',   label: 'Ιστορικό Ενεργειών',  icon: 'clock' },

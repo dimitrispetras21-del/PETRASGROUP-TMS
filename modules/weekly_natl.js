@@ -45,6 +45,18 @@ const WNATL = {
 
 // ONE filter state (WNATL.filterStatus) drives the select, the quick-filter
 // chips and the rows — two widgets, one truth (principle 3).
+// Read-only gate for planning:view roles (management/accountant/warehouse), the
+// same contract weekly_intl.js keeps with _wiBlockReadOnly (13/9, Thodoris
+// go-live audit): this board offered every write control to a management
+// login while the Worker refuses national_loads/national_orders/local_moves for
+// that role — a click meant a bare «Forbidden». Every function below that
+// writes starts with this line.
+function _wnBlockReadOnly(){
+  if(typeof can!=='function' || can('planning')==='full') return false;
+  toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
+
 function _wnApplyFilter() {
   const q = (WNATL.filter||'').toLowerCase();
   const fs = WNATL.filterStatus||'';
@@ -272,6 +284,7 @@ function _wnBuildRows() {
    τρόπους απόκρυψης (style ή class) — αν δεν πυροδοτηθεί, το χειρότερο είναι
    να μην ανανεωθεί, όπως θα γινόταν και χωρίς αυτόν. */
 function _wnNewOrder() {
+  if(_wnBlockReadOnly()) return;
   openNatlCreate();
   _wnRerenderOnClose();
 }
@@ -995,6 +1008,7 @@ function _wnLocalsHTML() {
 // τότε ο οδηγός είναι ΠΡΟΑΙΡΕΤΙΚΟΣ (SPEC §3.5): χωρίς οδηγό η ανάγκη
 // καταγράφεται ως «χρειάζεται τοπικό» και μένει ορατή μέχρι να καλυφθεί.
 function _wnAddLocal(dateISO, parentNlId, driverId) {
+  if(_wnBlockReadOnly()) return;
   const opt = (arr, sel) => arr.map(o => `<option value="${o.id}" ${o.id===sel?'selected':''}>${escapeHtml(o.label)}</option>`).join('');
   const locs = (WNATL.data.locations||[]).map(r => ({ id:r.id, label:r.fields?.Name || r.fields?.City || r.id }));
   const parentNote = parentNlId
@@ -1025,6 +1039,7 @@ function _wnAddLocal(dateISO, parentNlId, driverId) {
 }
 
 async function _wnSaveLocal(parentNlId) {
+  if(_wnBlockReadOnly()) return;
   const v = id => document.getElementById(id)?.value?.trim() || '';
   const date = v('lm_date'), driver = v('lm_driver'), from = v('lm_from'), to = v('lm_to');
   if (!date || !from || !to || (!driver && !parentNlId)) {
@@ -1067,6 +1082,7 @@ async function _wnSaveLocal(parentNlId) {
 // Κάλυψη δηλωμένης ανάγκης: δίνει οδηγό (και προαιρετικά όχημα) σε υπάρχουσα
 // κίνηση χωρίς οδηγό. PATCH στα ίδια ονόματα πεδίων με τη δημιουργία.
 function _wnCoverLocal(moveId) {
+  if(_wnBlockReadOnly()) return;
   const m = (WNATL.data.locals||[]).find(x => x.id === moveId);
   if (!m) return;
   const opt = arr => arr.map(o => `<option value="${o.id}">${escapeHtml(o.label)}</option>`).join('');
@@ -1083,6 +1099,7 @@ function _wnCoverLocal(moveId) {
 }
 
 async function _wnSaveCover(moveId) {
+  if(_wnBlockReadOnly()) return;
   const v = id => document.getElementById(id)?.value?.trim() || '';
   const driver = v('lc_driver');
   if (!driver) { toast('Επίλεξε οδηγό', 'warn'); return; }
@@ -1106,6 +1123,7 @@ async function _wnSaveCover(moveId) {
 }
 
 async function _wnDelLocal(id) {
+  if(_wnBlockReadOnly()) return;
   if (!(await confirmAction('Διαγραφή αυτής της τοπικής κίνησης;', { title:'Διαγραφή', confirmLabel:'Διαγραφή' }))) return;
   try {
     await atDelete(TABLES.LOCAL_MOVES, id);
@@ -1502,6 +1520,7 @@ function _wnDragCell(isOneWay, rowId) {
 // και το ταίριασμα (Matched Load και στις δύο, όπως _wnSaveMatch) εκτελείται μόνο
 // αν η φόρμα όντως δημιουργήσει φορτίο — orders_natl καλεί _wnConsumePendingMatch.
 function _wnNewSn(rowId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id === rowId);
   if (!row || row.type !== 'northsouth') return;
   if (row.matchedId) { toast('Η κάθοδος έχει ήδη ταιριασμένη άνοδο', 'warn'); return; }
@@ -1511,6 +1530,7 @@ function _wnNewSn(rowId) {
   _wnRerenderOnClose();
 }
 async function _wnConsumePendingMatch(newNlId, fields) {
+  if(_wnBlockReadOnly()) return;
   const p = window._wnPendingMatch; window._wnPendingMatch = null;
   if (!p || !newNlId) return;
   if ((fields || {})['Direction'] !== 'South→North') return;
@@ -1744,6 +1764,7 @@ function _wnNavWeek(d) {
 window._wnDragging = null;
 
 function _wnDragStart(e, snId) {
+  if(_wnBlockReadOnly()){ e.preventDefault(); return; }
   // Block drag if S→N is already matched to a N→S row
   const snRow = WNATL.rows.find(r => r.type==='southnorth' && r.orderId===snId);
   if (!snRow) {
@@ -1765,6 +1786,7 @@ function _wnDropOnRow(e, rowId) {
 }
 
 async function _wnSaveMatch(rowId, snId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
@@ -1785,6 +1807,7 @@ async function _wnSaveMatch(rowId, snId) {
 }
 
 async function _wnUnmatch(rowId, snId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const snOrd = WNATL.data.southnorth.find(r => r.id===snId);
   row.matchedId = null;
@@ -1806,6 +1829,7 @@ async function _wnUnmatch(rowId, snId) {
 
 /* ── POPOVER ─────────────────────────────────────────────────────── */
 function _wnOpenPopover(e, rowId) {
+  if(_wnBlockReadOnly()) return;
   e.stopPropagation();
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   const { trucks, trailers, drivers, partners } = WNATL.data;
@@ -1936,6 +1960,7 @@ async function _wnFillLaneHist(rowId, row){
 }
 
 function _wnOpenSnPopover(e, snId, rowId) {
+  if(_wnBlockReadOnly()) return;
   // Find the standalone S→N row object
   const row = WNATL.rows.find(r => r.type==='southnorth' && r.orderId===snId);
   if (row) {
@@ -1967,6 +1992,7 @@ function _wnClosePopover() {
 
 /* ── SAVE ────────────────────────────────────────────────────────── */
 async function _wnSaveFromPopover(rowId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
 
   const syncDrop = (px, fId, lId) => {
@@ -2077,6 +2103,7 @@ async function _wnSaveFromPopover(rowId) {
 
 /* ── CLEAR ───────────────────────────────────────────────────────── */
 async function _wnClear(rowId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   for (const orderId of row.orderIds) {
     try {
@@ -2150,6 +2177,7 @@ function _wnCtx(e, rowId) {
 
 /* ── Δ5: ορισμός ώρας ραντεβού ανά σκέλος ─────────────────────────── */
 async function _wnSetAppt(rowId, leg) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id === rowId);
   if (!row) return;
   const rec = [...(WNATL.data.northsouth||[]), ...(WNATL.data.southnorth||[])]
@@ -2211,6 +2239,7 @@ function _wnCtxSn(e, rowId, snId) {
 }
 
 async function _wnUnassignSn(rowId, snId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
   if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
@@ -2244,6 +2273,7 @@ async function _wnUnassignSn(rowId, snId) {
 }
 
 async function _wnUnassign(rowId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row) return;
   if (!(await confirmAction('Αφαίρεση ανάθεσης;', { confirmLabel: 'Αφαίρεση' }))) return;
@@ -2286,6 +2316,7 @@ async function _wnUnassign(rowId) {
 }
 
 async function _wnSplit(rowId) {
+  if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
   if (!row || row.orderIds.length <= 1) return;
   const [first, ...rest] = row.orderIds;

@@ -1654,7 +1654,7 @@ const MREQ = { data: [], _loaded: false, _expiryLoadFailed: false };
 let _mreqTab = 'active';   // 'active' | 'sos' | 'urgent' | 'done' | 'all'
 let _mreqSearch = '';
 
-const MREQ_FIELDS = ['Vehicle Plate','Vehicle Type','Description','Priority','Status','Date Reported','Workshop','Notes'];
+const MREQ_FIELDS = ['Vehicle Plate','Vehicle Type','Description','Priority','Status','Date Reported','Workshop','Notes','Estimated Cost'];
 const MREQ_PRIORITIES = ['SOS','Άμεσα','Κανονικό'];
 const MREQ_STATUSES = ['Pending','In Progress','Done'];
 
@@ -1902,17 +1902,11 @@ function _mreqOpenForm(editId) {
               ).join('')}
               <option value="__other"${f['Workshop']&&!MAINT.workshops.find(w=>w.fields['Name']===f['Workshop'])?' selected':''}>Άλλο</option>
             </select>`)}
-          ${field('Εκτ. Κόστος €', `<input class="form-input" type="number" id="mreq-cost" step="0.01" value="" placeholder="—" disabled>`,
-            // The column estimated_cost exists; the Worker map does not carry it, so
-            // a typed value would be dropped with a 200 OK (CLAUDE.md, facade trap #1).
-            // Disabled + written reason + omitted from the payload, like contact_person
-            // in wave 1 — never an input whose value quietly vanishes.
-            '<div class="ef-hint">Δεν αποθηκεύεται ακόμη — εκκρεμεί ο χάρτης του Worker</div>')}
+          ${field('Εκτ. Κόστος €', `<input class="form-input" type="number" id="mreq-cost" step="0.01" min="0" value="${f['Estimated Cost']!=null?escapeHtml(String(f['Estimated Cost'])):''}" placeholder="—">`)}
         </div>
         ${field('Σημειώσεις', `<textarea class="form-textarea" id="mreq-notes" rows="2">${escapeHtml(f['Notes']||'')}</textarea>`)}
       </div>
       <div class="mf-foot">
-        <span class="mf-warn">Το Εκτ. Κόστος δεν αποθηκεύεται ακόμη — η στήλη υπάρχει, λείπει ο χάρτης του Worker</span>
         ${editId?`<button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="_mreqDelete('${editId}')">Διαγραφή</button>`:''}
         <button type="button" class="btn btn-ghost btn-sm" onclick="_mntCloseModal()">Άκυρο</button>
         <button type="button" class="btn btn-primary btn-sm" onclick="_mreqSave('${editId||''}')">Αποθήκευση</button>
@@ -1943,8 +1937,12 @@ async function _mreqSave(editId) {
     'Date Reported': document.getElementById('mreq-date').value || null,
     'Workshop': wsVal === '__other' ? null : (wsVal || null),
     'Notes': document.getElementById('mreq-notes').value.trim() || null,
+    // Unlocked 13/9 (Thodoris go-live audit): the lock said «λείπει ο χάρτης
+    // του Worker», but `"Estimated Cost": "estimated_cost"` has been in the
+    // deployed map since 3/9 (bundle checked 13/9) and the column exists.
+    // A typed value now reaches the row; an empty box writes null.
+    'Estimated Cost': (() => { const v = document.getElementById('mreq-cost').value; return v === '' ? null : parseFloat(v); })(),
   };
-  // 'Estimated Cost' is deliberately NOT sent — see the form field comment.
 
   try {
     if (editId) {

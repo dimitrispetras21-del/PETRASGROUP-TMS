@@ -31,6 +31,15 @@ const OPS_FIELDS = [
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
+// Read-only gate for planning:view roles (13/9, Thodoris go-live audit): Daily
+// Ops showed «Φορτώθηκε/Παραδόθηκε/Αλλαγή ημέρας» to management while the
+// Worker refuses its order_stops stamps (403) — the button is for dispatchers.
+function _opsBlockReadOnly(){
+  if(typeof can!=='function' || can('planning')==='full') return false;
+  toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
+
 async function renderDailyOps() {
   document.getElementById('content').innerHTML = showLoading('Φόρτωση…');
   try { await _opsLoad(); _opsDraw(); }
@@ -646,7 +655,7 @@ function _opsAsgCell(f, truck, driver, partner) {
 }
 
 /* ── ACTIONS ──────────────────────────────────────────────────── */
-async function _opsSvF(id,fld,v){try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
+async function _opsSvF(id,fld,v){ if(_opsBlockReadOnly()) return; try{await atSafePatch(TABLES.ORDERS,id,{[fld]:v||null});const r=OPS.intl.find(x=>x.id===id);if(r)r.fields[fld]=v;}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 // ── Επίδοση ΑΝΑ ΣΤΑΣΗ (owner 26/8, v2: αναπτυσσόμενες υπο-γραμμές) ──────
 // Τα σημεία ΔΕΝ παραδίδονται μαζί — το ένα σήμερα, το άλλο αύριο. Άρα:
 // καμία υποχρέωση ταυτόχρονης απόφασης (το παράθυρο-picker αφαιρέθηκε,
@@ -663,6 +672,7 @@ function _opsUser(){ try{ return JSON.parse(localStorage.getItem('tms_user')||'{
 // message never says it), otherwise the short HTTP/text reason.
 function _opsErrWord(e){ const m=String(e&&e.message||e||''); return /403|forbidden|permission/i.test(m)?'χωρίς δικαίωμα':m.slice(0,40)||'σφάλμα'; }
 async function _opsMarkStop(stop, perf){
+  if(_opsBlockReadOnly()) return;
   const patch={'Completed At': new Date().toISOString(), 'Completed By': _opsUser()};
   if(perf) patch['Performance']=perf;
   await atSafePatch(TABLES.ORDER_STOPS, stop.id, patch);
@@ -721,6 +731,7 @@ function _opsSubRows(rec, stype, asDiv){
 // αγγίζεται καθόλου· όταν δηλωθεί το τελευταίο, τρέχει η κανονική ροή
 // με το aggregate (καμία Delayed ⇒ On Time).
 async function _opsMarkStopUI(orderId, stopId, perf){
+  if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const stop=((OPS._stopsByOrder||{})[orderId]||[]).find(s=>s.id===stopId);
   if(!stop) return;
@@ -741,6 +752,7 @@ async function _opsMarkStopUI(orderId, stopId, perf){
   _opsDraw();
 }
 async function _opsStat(id,st){
+  if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   if(st==='In Transit'){
     const loads=_opsStopsOf(id,'Loading');
@@ -758,7 +770,7 @@ async function _opsStat(id,st){
 }
 // Βρες την εγγραφή σε όποια λίστα ζει (ημέρα ή εκκρεμείς φορτώσεις).
 function _opsFind(id){ return OPS.intl.find(x=>x.id===id)||OPS.overdueLoads.find(x=>x.id===id)||OPS.overdue.find(x=>x.id===id); }
-async function _opsStatFinal(id,st){try{
+async function _opsStatFinal(id,st){ if(_opsBlockReadOnly()) return; try{
   const r0=_opsFind(id);
   const patch={'Status':st};
   // VS: το «Σε μεταφορά» σφραγίζει την πραγματική ημέρα αναχώρησης από CD
@@ -778,6 +790,7 @@ async function _opsStatFinal(id,st){try{
   catch(e) { console.warn('PA status sync:', e.message); }
   toast((st==='In Transit'?'Φορτώθηκε':st)+' ✓');_opsDraw();}catch(e){toast('Η αποθήκευση απέτυχε — δεν γράφτηκε τίποτα. Ξαναδοκίμασε.','danger');}}
 async function _opsDel(id,perf){
+  if(_opsBlockReadOnly()) return;
   _opsCloseFloat(); // 9/9: a live «Αλλαγή ημέρας» popover must never outlive the click that starts another action
   const dels=_opsStopsOf(id,'Unloading');
   // Multi: το κουμπί της σύνοψης ΔΕΝ δηλώνει — ανοίγει τα σημεία (owner 26/8).
@@ -786,7 +799,7 @@ async function _opsDel(id,perf){
   if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: single delivery stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
   return _opsDelFinal(id,perf);
 }
-async function _opsDelFinal(id,perf){const d=localToday();
+async function _opsDelFinal(id,perf){ if(_opsBlockReadOnly()) return; const d=localToday();
   // Ίδιος λόγος με το _opsStat: παραδομένη παραγγελία δεν είναι «αναβεβλημένη».
   const _r0=OPS.intl.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};
@@ -831,6 +844,7 @@ const _plus=(iso,days)=>toLocalDate(new Date(new Date(toLocalDate(iso)+'T12:00:0
 const _nextMonday=(iso)=>{ const d=new Date(toLocalDate(iso)+'T12:00:00'); const add=((8-d.getDay())%7)||7; return toLocalDate(new Date(d.getTime()+add*864e5)); };
 const _dowShort=iso=>['Κυρ','Δευ','Τρι','Τετ','Πεμ','Παρ','Σαβ'][new Date(iso+'T12:00:00').getDay()];
 function _opsChangeDay(ev, id, kind){
+  if(_opsBlockReadOnly()) return;
   ev.stopPropagation(); const rb=_opsRect(ev); _opsCloseFloat();
   const r=_opsFind(id); if(!r) return;
   const f=r.fields;
@@ -880,6 +894,7 @@ function _opsPopHint(){
   h.textContent=`${_dowShort(toLocalDate(del))} ${_DMY(del)} → ${_dowShort(nd)} ${_DMY(nd)} (ίδια απόσταση)`;
 }
 async function _opsChangeDayGo(){
+  if(_opsBlockReadOnly()) return;
   const p=OPS._pop; if(!p) return;
   if(!p.choice){ toast('Διάλεξε ημερομηνία','danger'); return; }
   const r=_opsFind(p.id); if(!r) return;
@@ -941,7 +956,7 @@ async function _opsOvAct(id,perf='Delayed'){
   if(dels.length===1){ try{ await _opsMarkStop(dels[0], perf); }catch(e){ if(typeof logError==='function') logError(e,'daily-ops: overdue stamp'); toast('Η σφραγίδα παράδοσης ΔΕΝ γράφτηκε ('+_opsErrWord(e)+') — η παραγγελία έμεινε ως έχει','danger'); return; } }
   return _opsOvActFinal(id,perf);
 }
-async function _opsOvActFinal(id,perf='Delayed'){const d=localToday();
+async function _opsOvActFinal(id,perf='Delayed'){ if(_opsBlockReadOnly()) return; const d=localToday();
   // Ίδιο καθάρισμα με το _opsDel — η καθυστερημένη κλείνει κι αυτή τον κύκλο.
   const _ov=OPS.overdue.find(x=>x.id===id);
   const _p={'Status':'Delivered','Delivery Performance':perf,'Actual Delivery Date':d};

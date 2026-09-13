@@ -30,6 +30,15 @@ const RAMP_FIELDS = [
 /* ── ENTRY ────────────────────────────────────────────────────── */
 let _rampAutoRefresh = null;
 
+// Read-only gate for planning:view roles (13/9, Thodoris go-live audit): the
+// ramp board had no role check at all — every drag, time edit and «Ολοκληρώθηκε»
+// was live for management while the Worker grants it ramp: GET only.
+function _rampBlockReadOnly(){
+  if(typeof can!=='function' || can('planning')==='full') return false;
+  toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
+
 async function renderDailyRamp() {
   document.getElementById('content').innerHTML = showLoading('Loading ramp board…');
   try { await _rampLoad(); _rampDraw(); }
@@ -79,8 +88,11 @@ async function _rampLoad() {
     RAMP.clients=getRefClients();
   }
 
-  // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS
-  await _rampAutoSync();
+  // Auto-sync: create RAMP records from ORDERS, NAT_ORDERS, CONS_LOADS.
+  // Only for a role that may write ramp (13/9): for management the sync
+  // fired ramp POSTs on every visit, each a 403, ending in a toast that sent
+  // the user to an Error Log he cannot open.
+  if(typeof can!=='function' || can('planning')==='full') await _rampAutoSync();
 
   // Single combined query: today's ramp + stock + postponed (split client-side)
   // Reduces 3 parallel API calls → 1 call
@@ -631,6 +643,7 @@ function _rampInEditCooldown() { return Date.now() < _rampEditCooldownUntil; }
 
 function _rampSD(d){RAMP.date=d;renderDailyRamp();}
 async function _rampSvF(id,fld,v){
+  if(_rampBlockReadOnly()) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{[fld]:v||null});
@@ -644,6 +657,7 @@ async function _rampSvF(id,fld,v){
   }
 }
 async function _rampSvTime(id,v){
+  if(_rampBlockReadOnly()) return;
   // Save time as plain "HH:MM" string — NOT ISO datetime.
   // Mark edit cooldown so auto-refresh doesn't overwrite our optimistic update
   // before Airtable's indexed-read reflects the change.
@@ -664,6 +678,7 @@ async function _rampSvTime(id,v){
 }
 
 async function _rampDone(id,isIn){
+  if(_rampBlockReadOnly()) return;
   const fields={'Status':'Done'};
   // isIn may arrive as boolean (direct call) or string 'true'/'false' (via onclick template literal).
   // Accept both so Stock Status is set reliably for inbound deliveries.
@@ -760,6 +775,7 @@ async function _rampDone(id,isIn){
 }
 
 async function _rampRestore(id){
+  if(_rampBlockReadOnly()) return;
   _rampMarkEdit();
   try {
     await atSafePatch(TABLES.RAMP,id,{'Plan Date':RAMP.date,'Postponed To':null});
@@ -773,6 +789,7 @@ async function _rampRestore(id){
   }
 }
 async function _rampPostpone(id){
+  if(_rampBlockReadOnly()) return;
   // Date arithmetic: anchor at noon to avoid DST off-by-one. 864e5 = 1 day in ms.
   // Guard: ensure RAMP.date is a valid YYYY-MM-DD string before computing tomorrow.
   if (!RAMP.date || !/^\d{4}-\d{2}-\d{2}$/.test(RAMP.date)) {
@@ -803,6 +820,7 @@ async function _rampPostpone(id){
 }
 
 function _rampAddNew(type){
+  if(_rampBlockReadOnly()) return;
   const trOpts=RAMP.trucks.map(t=>`<option value="${t.id}">${t.lb}</option>`).join('');
   const drOpts=RAMP.drivers.map(d=>`<option value="${d.id}">${d.lb}</option>`).join('');
   const catOpts=['Vermion Fresh','VS Simple','VS + Groupage','Other'].map(c=>`<option value="${c}">${c}</option>`).join('');
@@ -831,6 +849,7 @@ function _rampAddNew(type){
 }
 
 async function _rampSaveNew(type){
+  if(_rampBlockReadOnly()) return;
   const fields={'Plan Date':RAMP.date,'Type':type,'Status':'Planned'};
   const v=id=>document.getElementById(id)?.value?.trim();
   if(v('nr_time'))    fields['Time']=v('nr_time');

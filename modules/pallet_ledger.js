@@ -16,6 +16,15 @@ const PLV = { movements: [], lookups: null, balances: { clients: null, partners:
   // pg id για τις πλούσιες γραμμές, και σημαία αποτυχίας εμπλουτισμού.
   groupBy: 'client', open: {}, orderById: null, enrichFail: false };
 
+// Write gate (13/9, Thodoris go-live audit): the pallet ledger had no role check;
+// management sees it (orders:view) but PL_PERMS keeps it read-only for that
+// role by owner decision 24/8 — every write button answered «Forbidden».
+function _plvBlockReadOnly(){
+  if(typeof can!=='function' || can('costs')==='full') return false;
+  toast('Μόνο ανάγνωση για τον ρόλο σου','warn');
+  return true;
+}
+
 async function renderPalletLedger() {
   const c = document.getElementById('content');
   c.style.padding = ''; c.style.overflow = '';
@@ -430,7 +439,7 @@ function _plvDraw() {
       </div>
       ${PLV.enrichFail ? '<span style="color:var(--warn)" title="Η ανάγνωση των παραγγελιών απέτυχε — οι στήλες Reference/Μεταφορικό είναι προσωρινά κενές. Οι κινήσεις εμφανίζονται κανονικά.">⚠ στοιχεία παραγγελιών μη διαθέσιμα</span>' : ''}`;
   const actions = `<button class="plv-link" onclick="plvExportCSV()">Εξαγωγή CSV</button>
-      <button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>`;
+      ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}`;
   // Δύο διατάξεις κεφαλής (Figma): με κάρτες οφειλών (Εκκρεμείς/Χωρίς πλήρη
   // επιστροφή) τα tabs κάθονται κάτω από τις κάρτες· χωρίς κάρτες, δίπλα στον τίτλο.
   const head = hasCards
@@ -506,7 +515,7 @@ const _PLV_EMPTY = (cols) => `<tr><td colspan="${cols}" class="plv-empty" style=
         ${typeof icon === 'function' ? icon('package', 28) : ''}
         <div style="margin:8px 0 4px;font-weight:600;color:var(--text)">Καμία κίνηση εδώ</div>
         <div>Δοκίμασε άλλο tab ή καθάρισε αναζήτηση/ημερομηνίες.</div>
-        <button class="btn-new-order" style="margin-top:12px" onclick="plvNewMovement()">+ Νέα κίνηση</button>
+        ${(typeof can!=='function'||can('costs')==='full')?'<button class="btn-new-order" style="margin-top:12px" onclick="plvNewMovement()">+ Νέα κίνηση</button>':''}
       </td></tr>`;
 
 // Ίδια πλάτη σε ΟΛΑ τα τμήματα ώστε οι στήλες να ευθυγραμμίζονται μεταξύ ομάδων.
@@ -781,6 +790,7 @@ function plvFileDropped(files) {
 
 /* ── Modal επιβεβαίωσης εκκρεμούς ── */
 function plvOpenConfirm(id, inWiz) {
+  if(_plvBlockReadOnly()) return;
   const m = PLV.movements.find(x => x.id === id);
   if (!m) return;
   // Wizard ξεκαθαρίσματος (2.1): το άνοιγμα από τη λίστα χτίζει ουρά με την
@@ -863,6 +873,7 @@ function plvCloseModal() {
 }
 
 async function _plvUploadIfAny() {
+  if(_plvBlockReadOnly()) return;
   const fi = document.getElementById('plvFile');
   if (!fi || !fi.files || !fi.files[0]) return null;
   const file = fi.files[0];
@@ -876,6 +887,7 @@ async function _plvUploadIfAny() {
 }
 
 async function plvDoConfirm(id) {
+  if(_plvBlockReadOnly()) return;
   if (PLV.busy) return; PLV.busy = true;
   try {
     const taken = parseInt(document.getElementById('plvTaken').value, 10) || 0;
@@ -958,6 +970,7 @@ function plvOpenPanel(id) {
 }
 
 async function plvPanelDelete(id) {
+  if(_plvBlockReadOnly()) return;
   if (!confirm('Διαγραφή της εκκρεμούς κίνησης; Οι οριστικές δεν σβήνονται ποτέ.')) return;
   try {
     await plFetch('/pallets/movements/' + id, { method: 'DELETE' });
@@ -967,6 +980,7 @@ async function plvPanelDelete(id) {
 }
 
 async function plvPanelReverse(id) {
+  if(_plvBlockReadOnly()) return;
   const reason = ((document.getElementById('plvRevReason') || {}).value || '').trim();
   if (!reason) { showErrorToast('Γράψε αιτιολογία για τον αντιλογισμό', 'error'); return; }
   try {
@@ -978,6 +992,7 @@ async function plvPanelReverse(id) {
 
 /* ── Διόρθωση ανταλλαγής (σενάριο Lidl): reverse + σωστό replacement ── */
 function plvFixDelivery(id) {
+  if(_plvBlockReadOnly()) return;
   const m = PLV.movements.find(x => x.id === id);
   if (!m) return;
   document.getElementById('plvModal').innerHTML = `
@@ -1000,6 +1015,7 @@ function plvFixDelivery(id) {
 }
 
 async function plvDoFix(id) {
+  if(_plvBlockReadOnly()) return;
   if (PLV.busy) return; PLV.busy = true;
   try {
     const m = PLV.movements.find(x => x.id === id);
@@ -1030,8 +1046,7 @@ async function plvDoFix(id) {
 // αναζήτηση και έμενε με άδεια λίστα δίπλα σε γεμάτο πεδίο.
 const PLV_AC = { rows: {}, timers: {} };
 
-function plvAcSearch(field, type) {
-  clearTimeout(PLV_AC.timers[field]);
+function plvAcSearch(field, type) { clearTimeout(PLV_AC.timers[field]);
   const inp = document.getElementById('plvAcQ_' + field);
   const hid = document.getElementById(field);
   const box = document.getElementById('plvAcList_' + field);
@@ -1080,6 +1095,7 @@ function plvAcBlur(field) {
 
 /* ── Νέα χειροκίνητη κίνηση (Figma w2-pallet-movement-form) ── */
 function plvNewMovement() {
+  if(_plvBlockReadOnly()) return;
   PLV_AC.rows = {};
   const ac = (field, type, ph) => `<div style="position:relative">
           <input id="plvAcQ_${field}" type="text" autocomplete="off" placeholder="${ph}"
@@ -1126,6 +1142,7 @@ function plvNewMovement() {
 }
 
 async function plvDoCreate() {
+  if(_plvBlockReadOnly()) return;
   if (PLV.busy) return; PLV.busy = true;
   try {
     // Με typeahead το πεδίο μένει κενό αν ο χρήστης πληκτρολόγησε χωρίς να
@@ -1169,8 +1186,7 @@ async function plvDoCreate() {
   finally { PLV.busy = false; }
 }
 
-async function plvViewSheet(path) {
-  try {
+async function plvViewSheet(path) { try {
     const r = await plFetch('/pallets/sheets?path=' + encodeURIComponent(path));
     window.open(r.url, '_blank');
   } catch (e) { showErrorToast('Δεν άνοιξε το δελτίο: ' + _plvErrMsg(e), 'error'); }
