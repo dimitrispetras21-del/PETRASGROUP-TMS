@@ -39,6 +39,7 @@ export function toCostLineRow(ln) {
     rt_id: ln.rt_id != null ? ln.rt_id : null,
     truck_id: ln.truck_id != null ? ln.truck_id : null,
     category: ln.category,
+    pay_source: 'DKV', // the import IS the DKV statement (migration 032)
     toll_country: ln.toll_country || ln.country || null,
     net: num(netEur),
     vat: num(vatEur) == null ? 0 : num(vatEur),

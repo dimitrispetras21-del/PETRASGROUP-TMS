@@ -8,6 +8,9 @@
 // file exists to not repeat for the two new columns.
 export const CT_FUEL_SOURCE_CATEGORIES = ["fuel", "reefer_fuel", "adblue"];
 export const CT_FUEL_SOURCES = ["DKV", "DADI", "BG_STATION", "OWN_STATION", "THIRD_PARTY"];
+// How a line was PAID (migration 032, owner 13/9): DKV account, driver cash, or
+// the Revolut business account. Orthogonal to fuel_source (who sold the fuel).
+export const CT_PAY_SOURCES = ["DKV", "CASH", "REVOLUT"];
 
 // body: the EFFECTIVE line after merge — for POST, the new row; for PATCH,
 // the existing row with the patch applied on top (a PATCH that only touches
@@ -30,6 +33,10 @@ export function validateLineBody(body, { isImport } = {}) {
     if (!CT_FUEL_SOURCES.includes(fuelSource)) {
       return { ok: false, status: 400, error: "fuel_source must be one of " + CT_FUEL_SOURCES.join("|") };
     }
+  }
+  const paySource = body && body.pay_source;
+  if (paySource !== undefined && paySource !== null && !CT_PAY_SOURCES.includes(paySource)) {
+    return { ok: false, status: 400, error: "pay_source must be one of " + CT_PAY_SOURCES.join("|") };
   }
   let tollCountry;
   if (category === "tolls" && !isImport) {

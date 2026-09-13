@@ -3012,7 +3012,7 @@ async function handleCosts(request, url, origin, env) {
       if (!CT_CATEGORIES.includes(body.category)) {
         return jsonError("Unknown category", 400, origin, env);
       }
-      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source"]);
+      const row = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "plate_raw", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
       if (typeof row.net !== "number" && typeof row.vat !== "number") {
         return jsonError("net or vat amount required", 400, origin, env);
       }
@@ -3063,7 +3063,7 @@ async function handleCosts(request, url, origin, env) {
     if (resource === "lines" && method === "PATCH" && recId) {
       const body = await request.json().catch(() => null);
       if (!body || !String(body.reason || "").trim()) return jsonError("reason required", 400, origin, env);
-      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source"]);
+      const patch = ctPick(body, ["rt_id", "category", "toll_country", "net", "vat", "line_date", "truck_id", "trailer_id", "km_reading", "liters", "station", "note", "fuel_source", "pay_source"]);
       if (!Object.keys(patch).length) return jsonError("Nothing to update", 400, origin, env);
       if (patch.category && !CT_CATEGORIES.includes(patch.category)) return jsonError("Unknown category", 400, origin, env);
       const before = await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ id: `eq.${recId}`, select: "*" }));
@@ -3470,6 +3470,12 @@ async function handleCosts(request, url, origin, env) {
       // has no import_key column, insert lines without it (and skip doc metrics)
       // rather than fail the whole commit (spec §5 step 3, "migration_024_missing: true").
       let migration024Missing = false;
+      let migration032Missing = false;
+      try {
+        await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "pay_source", limit: "1" }));
+      } catch (e) {
+        if (isMissingRelationError(e.message)) migration032Missing = true; else throw e;
+      }
       try {
         await dbSelectRaw(env, "ct_cost_lines", new URLSearchParams({ select: "import_key", limit: "1" }));
       } catch (e) {
@@ -3489,6 +3495,10 @@ async function handleCosts(request, url, origin, env) {
         row.alloc_status = row.rt_id ? "allocated" : "unallocated";
         row.created_by = caller.sub;
         if (!migration024Missing) row.import_key = ln.import_key || buildImportKey(ln);
+        // pay_source (migration 032): same guard shape as import_key above — a
+        // commit must not 500 on a column that is not there yet; the line
+        // simply lands without the field until 032 runs.
+        if (migration032Missing) delete row.pay_source;
         rows.push(row);
       }
 
