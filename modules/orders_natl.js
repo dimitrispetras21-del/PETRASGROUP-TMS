@@ -59,6 +59,23 @@ async function renderOrdersNatl() {
       .filter(Boolean))];
     await _batchResolveClients(_allClientIds);
 
+    // 13/9 (owner: «εθνικές παραγγελίες που δεν βρίσκονται στο Weekly»): the
+    // Weekly National reads NATIONAL LOADS only. Orders 5–8 were saved while the
+    // load create 400'd (Source Record → intl FK, fixed 7/9) and stayed invisible
+    // with no sign anywhere. The list now asks which non-groupage orders have no
+    // live load and says so on the row, with the repair one click away
+    // (_natlSendToWeekly runs the same _syncNationalLoad the form runs).
+    NATL_ORDERS.noLoad = new Set();
+    try {
+      const cand = records.filter(r => !r.fields['National Groupage']);
+      if (cand.length) {
+        const ff = `OR(${cand.map(r => `FIND("${r.id}",ARRAYJOIN({Source National Order},","))>0`).join(',')})`;
+        const nls = await atGetAll(TABLES.NAT_LOADS, { filterByFormula: ff, fields: ['Source National Order'] }, false);
+        const have = new Set(nls.map(n => getLinkedId(n.fields['Source National Order'])).filter(Boolean));
+        cand.forEach(r => { if (!have.has(r.id)) NATL_ORDERS.noLoad.add(r.id); });
+      }
+    } catch(e) { if (typeof logError === 'function') logError(e, 'orders_natl: load presence check'); }
+
     _renderNatlLayout(c);
     _applyNatlFilters();
   } catch(e) {
@@ -126,6 +143,9 @@ const _ON_CSS = `
 .on-tag{display:inline-block;font:700 11px/1.2 'DM Sans',sans-serif;letter-spacing:.3px;padding:0 4px;border-radius:var(--radius)}
 .on-tag-vs{background:var(--surface-dark);color:var(--text-on-dark)}
 .on-tag-grp{background:var(--surface-sunken);color:var(--surface-dark)}
+.on-dot.late{background:var(--danger)}
+.on-fix{margin-left:6px;padding:1px 8px;border:1px solid var(--accent);border-radius:999px;background:#fff;color:var(--accent);font-size:11px;font-weight:600;cursor:pointer}
+.on-fix:hover{background:var(--accent);color:#fff}
 .on-dir{color:var(--text-mid);white-space:nowrap}
 .on-cell2{display:flex;flex-direction:column;min-width:0}
 /* Each half stays on ONE line. Not cosmetic: the cell used to be free to wrap
@@ -436,7 +456,10 @@ function _onRowHtml(r) {
   // «ΠΡΟΣ ΑΝΑΘΕΣΗ», not «Εκκρεμεί» (owner 4/9, DESIGN.md ΜΕΡΟΣ Ε): the empty
   // slot is a debt of the dispatcher, named as such. NATIONAL ORDERS only
   // knows whether a trip is linked — plate/driver live on the trip, not here.
-  const tripT  = hasTrip
+  const noLoad = !!(NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.has(r.id));
+  const tripT  = noLoad
+    ? `<span class="on-dot late"></span>ΕΚΤΟΣ WEEKLY <button class="on-fix" onclick="event.stopPropagation();_natlSendToWeekly('${r.id}')" title="Δημιουργεί το φορτίο που λείπει — μετά εμφανίζεται στο Εβδομαδιαίο Εθνικών">Στείλε →</button>`
+    : hasTrip
     ? '<span class="on-dot ok"></span>ΜΕ ΔΡΟΜΟΛΟΓΙΟ'
     : '<span class="on-dot unassigned"></span>ΠΡΟΣ ΑΝΑΘΕΣΗ';
   const vsB    = f['Type']==='Veroia Switch' ? '<span class="on-tag on-tag-vs">VS</span>' : '';
@@ -1313,6 +1336,23 @@ async function _openNatlModal(recId, f) {
 }
 
 // ─── Submit ─────────────────────────────────────
+// «Στείλε στο Weekly» (13/9): create the missing NATIONAL LOAD for an order
+// saved while the create failed. Same function the form calls on save.
+async function _natlSendToWeekly(recId) {
+  try {
+    const rec = await atGetOne(TABLES.NAT_ORDERS, recId);
+    if (!rec || !rec.fields) throw new Error('order not found');
+    const nlId = await _syncNationalLoad(recId, rec.fields, false);
+    if (!nlId) throw new Error('no load id returned');
+    NATL_ORDERS.noLoad && NATL_ORDERS.noLoad.delete(recId);
+    invalidateCache(TABLES.NAT_LOADS);
+    toast('Το φορτίο δημιουργήθηκε — είναι πλέον στο Εβδομαδιαίο Εθνικών ✓');
+    _applyNatlFilters();
+  } catch(e) {
+    if (typeof reportError === 'function') reportError('Το φορτίο ΔΕΝ δημιουργήθηκε', e); else toast('Το φορτίο ΔΕΝ δημιουργήθηκε: ' + (e && e.message), 'danger');
+  }
+}
+window._natlSendToWeekly = _natlSendToWeekly;
 async function submitNatlOrder(recId) {
   const btn = document.getElementById('natlBtnSubmit');
   if(btn) { btn.textContent='Αποθήκευση…'; btn.disabled=true; }
