@@ -404,6 +404,8 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-cross+.wk3-range{margin-left:0}
 .wn4-cols{position:sticky;top:0;z-index:30;display:grid;grid-template-columns:36px minmax(0,1fr) 280px minmax(0,1fr);background:var(--surface-card);border:1px solid var(--border);border-radius:6px;margin-bottom:8px}
 .wn4-cols .c{font-family:'Syne',sans-serif;font-size:12px;font-weight:800;letter-spacing:1.8px;color:var(--text-mid);padding:8px 12px;white-space:nowrap;display:flex;align-items:center;gap:8px}
+/* 13/9 (owner: «δεν είναι ευθυγραμμισμένα»): the ΑΝΑΘΕΣΗ and ΑΝΟΔΟΣ headers sit over the centre of their columns, where the pill and the «—» sit. */
+.wn4-cols .c:nth-child(3),.wn4-cols .c:nth-child(4){justify-content:center}
 .wn4-cols .c small{font-family:'DM Sans',sans-serif;font-size:11px;font-weight:600;letter-spacing:.6px;color:var(--text-dim);font-variant-numeric:tabular-nums}
 .wn4-cols .c.mid{justify-content:center}
 .wn4-cols .hint{margin-left:auto;color:var(--text-dim);cursor:help;font-size:11px;border:1px solid var(--border);border-radius:9999px;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;letter-spacing:0}
@@ -529,8 +531,11 @@ function _wnCss() { return `<style id="wn4-css">
    the (usually empty) ΑΝΟΔΟΣ column and gives the delivery half of its leg the
    room the segments need — the intl board does the same with .wk3-tiled. The
    totals live OUTSIDE the pill (Figma 566:1011: «ποτέ μέσα στο όνομα»). */
-.wn4 .wk3-row:has(.wk3-segpill){grid-template-columns:36px minmax(0,1.7fr) 280px minmax(0,0.6fr)}
-.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg{display:grid;grid-template-columns:minmax(180px,0.45fr) auto minmax(520px,1.55fr)}
+/* Owner 13/9 (live): the row grid stays IDENTICAL on every row — ΑΝΑΘΕΣΗ and
+   ΑΝΟΔΟΣ never move. Only the inside of the ΚΑΘΟΔΟΣ leg changes: the pickup
+   card shrinks to a fixed width and the pill takes everything else. */
+.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg{display:grid;grid-template-columns:150px auto minmax(0,1fr)}
+.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg > .wn4-card:first-child .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segwrap{gap:10px}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segtotals{flex:0 0 auto;width:auto;white-space:nowrap;padding-left:2px}
 .wn4 .wk3-segpill .wk3-seg{min-width:0}
