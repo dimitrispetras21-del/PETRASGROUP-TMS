@@ -1541,17 +1541,27 @@ function exLineRowHtml(line, opts) {
   // same fact, and the two logos side by side read as an error (seen live
   // 13/9: «Διόδια · [DKV] · [DKV]»). Same rule inside fuel: when supplier
   // and payment coincide, the payment tag alone carries it.
+  // Owner 13/9 («θέλω να βλέπω και την πηγή … όλες τις λεπτομέρειες σε αυτό
+  // το έξοδο»): when the cell is reopened, every recorded field of the line
+  // is on the line, each with its label — payment source with logo AND word,
+  // supplier for fuel/adblue, liters, km, station, trailer, country, note.
+  // A missing payment source prints «Πληρωμή —» rather than nothing, so an
+  // unrecorded field is visible (αρχή 1), not silently absent.
   const isFuelCat = EX_FUEL_CATEGORIES.includes(line.category);
-  const supplier = isFuelCat ? (line.fuel_source || (line.doc_id ? 'DKV' : null)) : null;
   const paySrc = exLinePaySource(line);
-  const srcTag = supplier && supplier !== paySrc ? exSourceTag(supplier) : '';
-  // Payment tag (owner correction #5) — separate from the supplier srcTag
-  // above: this shows HOW the line was paid (DKV/Revolut logo, or grey
-  // «Μετρητά»), every category, not only fuel.
-  const payTag = exPayTag(paySrc);
-  const noteBits = [
-    line.note,
-    line.category === 'reefer_fuel' && line.trailer_id ? 'Ρυμούλκα ' + (exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id)) : null
+  const payWord = paySrc === 'DKV' ? 'DKV' : paySrc === 'REVOLUT' ? 'Revolut' : paySrc === 'CASH' ? 'Μετρητά' : '—';
+  const payHtml = `<span class="s dim">Πληρωμή</span> ${paySrc && paySrc !== 'CASH' ? exPayTag(paySrc) + ' ' : ''}${escapeHtml(payWord)}`;
+  const supplier = isFuelCat ? (line.fuel_source || (line.doc_id ? 'DKV' : null)) : null;
+  const supplierLabel = { DKV: 'DKV', DADI: 'DADI', BG_STATION: 'BG πρατήριο', OWN_STATION: 'Ιδιόκτητο', THIRD_PARTY: 'Τρίτος' };
+  const supplierHtml = isFuelCat ? `<span class="s dim">Προμηθευτής</span> ${supplier && (supplier === 'DKV' || supplier === 'DADI') ? exSourceTag(supplier) + ' ' : ''}${escapeHtml(supplier ? (supplierLabel[supplier] || supplier) : '—')}` : '';
+  const kv = (label, value) => value ? `<span class="s dim">${label}</span> ${value}` : '';
+  const detailBits = [
+    isFuelCat && line.liters != null ? kv('Λίτρα', escapeHtml(Number(line.liters).toLocaleString('el-GR', { maximumFractionDigits: 2 }))) : '',
+    isFuelCat && line.km_reading != null ? kv('Χλμ', escapeHtml(Number(line.km_reading).toLocaleString('el-GR'))) : '',
+    isFuelCat && line.station ? kv('Πρατήριο', escapeHtml(line.station)) : '',
+    line.category === 'reefer_fuel' && line.trailer_id ? kv('Ρυμούλκα', escapeHtml(exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id))) : '',
+    line.category === 'tolls' && line.toll_country ? kv('Χώρα', exFlag(line.toll_country) + ' ' + escapeHtml(String(line.toll_country).toUpperCase())) : '',
+    line.note ? kv('Παραστατικό', escapeHtml(line.note)) : ''
   ].filter(Boolean).join(' · ');
   // No partner branch in the option label (correction #1) — every _ex.rts
   // entry is own-fleet, filtered at load time.
@@ -1566,7 +1576,7 @@ function exLineRowHtml(line, opts) {
     : '';
   return `<div class="ex-row ex-line-grid" data-line="${line.id}">
     <div class="s">${exDateFull(line.line_date)}</div>
-    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}</span>${srcTag ? ' · ' + srcTag : ''}${payTag ? ' · ' + payTag : ''}${noteBits ? `<br><span class="s dim">${escapeHtml(noteBits)}</span>` : ''}</div>
+    <div class="ex-cn"><span class="ex-cat${line.doc_id ? ' dkv' : ''}">${escapeHtml(CT_CATEGORY_LABELS[line.category] || line.category)}</span> · ${payHtml}${supplierHtml ? ' · ' + supplierHtml : ''}${detailBits ? `<br><span class="s">${detailBits}</span>` : ''}</div>
     <div class="${extraCls}">${extraHtml}</div>
     <div class="n r">${exEur(exLineAmt(line))}</div>
     <div class="s dim ex-user" title="${escapeHtml(line.created_by || '')}">${escapeHtml(exUserDisplay(line.created_by))}</div>
