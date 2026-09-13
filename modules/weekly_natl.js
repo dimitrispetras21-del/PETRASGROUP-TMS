@@ -525,6 +525,15 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4-segdate{display:inline-block;font:700 9px 'DM Sans',sans-serif;color:var(--accent-text);background:var(--accent-light);border-radius:6px;padding:0 5px;line-height:15px;font-variant-numeric:tabular-nums}
 .wn4-segpal{font-size:9px;font-weight:700;color:var(--text)}
 .wn4-segn{font-size:10px;line-height:13px;font-weight:600;color:var(--text);white-space:normal;overflow-wrap:anywhere;margin-top:2px}
+/* 13/9 live check: a ΚΑΘΟΔΟΣ row that carries the segmented pill takes width from
+   the (usually empty) ΑΝΟΔΟΣ column and gives the delivery half of its leg the
+   room the segments need — the intl board does the same with .wk3-tiled. The
+   totals live OUTSIDE the pill (Figma 566:1011: «ποτέ μέσα στο όνομα»). */
+.wn4 .wk3-row:has(.wk3-segpill){grid-template-columns:36px minmax(0,1.7fr) 280px minmax(0,0.6fr)}
+.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg{display:grid;grid-template-columns:minmax(180px,0.45fr) auto minmax(520px,1.55fr)}
+.wn4 .wk3-row:has(.wk3-segpill) .wk3-segwrap{gap:10px}
+.wn4 .wk3-row:has(.wk3-segpill) .wk3-segtotals{flex:0 0 auto;width:auto;white-space:nowrap;padding-left:2px}
+.wn4 .wk3-segpill .wk3-seg{min-width:0}
 .wn4-segp{font-size:9px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn4-segtot{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap}
 .wn4 .wk3-num .xn{font-size:10px;font-weight:700;color:var(--text-dim)}
