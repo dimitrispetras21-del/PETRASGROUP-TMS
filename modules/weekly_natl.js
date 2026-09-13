@@ -535,8 +535,11 @@ function _wnCss() { return `<style id="wn4-css">
 /* Owner 13/9 (live): the row grid stays IDENTICAL on every row — ΑΝΑΘΕΣΗ and
    ΑΝΟΔΟΣ never move. Only the inside of the ΚΑΘΟΔΟΣ leg changes: the pickup
    card shrinks to a fixed width and the pill takes everything else. */
-.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg{display:grid;grid-template-columns:176px auto minmax(0,1fr)}
-.wn4 .wk3-row:has(.wk3-segpill) .wk3-num + .wk3-leg > .wn4-card:first-child .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+/* …and the SAME split on every ΚΑΘΟΔΟΣ row (owner 13/9 «δεν είναι ευθυγραμμισμένα»): the
+   pickup card is always the cross-dock, a constant — a fixed 176px keeps the arrow
+   and the delivery card on one vertical line across single- and multi-stop rows. */
+.wn4 .wk3-row:not(.sn) .wk3-num + .wk3-leg{display:grid;grid-template-columns:176px auto minmax(0,1fr)}
+.wn4 .wk3-row:not(.sn) .wk3-num + .wk3-leg > .wn4-card:first-child .nm b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segwrap{gap:10px}
 .wn4 .wk3-row:has(.wk3-segpill) .wk3-segtotals{flex:0 0 auto;width:auto;white-space:nowrap;padding-left:2px}
 .wn4 .wk3-segpill .wk3-seg{min-width:0}
