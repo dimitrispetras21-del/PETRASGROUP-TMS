@@ -1,6 +1,7 @@
 -- 031 — Round-trip CREATION at the database level (owner 13/9/2026)
 --
--- STATUS: DRAFT — NOT EXECUTED. Written for review; the owner runs it by hand
+-- STATUS: DRAFT — NOT EXECUTED (first attempt 13/9 15:29 rolled back: audit action
+-- 'insert' violated audit_log_action_check; fixed to 'create'). The owner runs it by hand
 -- (Supabase SQL editor, after 15:00 — αρχή 7) if he approves the scope below.
 --
 -- WHY: RT/leg creation exists ONLY in the browser today (core/rt-feed.js,
@@ -232,7 +233,10 @@ begin
     return null;
   end if;
 
-  perform rt_sync_audit('insert', 'ct_round_trips', new_rt_id::text, null,
+  -- 'create', not 'insert': audit_log_action_check allows only
+  -- create/update/delete/cascade_delete. First run 13/9 15:29 failed on this
+  -- exact CHECK and rolled the whole migration back — nothing was applied.
+  perform rt_sync_audit('create', 'ct_round_trips', new_rt_id::text, null,
     jsonb_build_object('scope', 'INTL', 'trip_type', new_type, 'date_start', d_start, 'date_end', d_end,
                        'status', init_status, 'source_order', new.id, 'reason', 'standalone order had no round trip (031)'));
   return null;
