@@ -957,6 +957,19 @@ function _oiCardHtml(rec, opts) {
 async function openIntlReadOnlyCard(recId) {
   let rec = INTL_ORDERS.data.find(r => r.id === recId);
   if (!rec) { try { rec = await atGetOne(TABLES.ORDERS, recId); } catch (e) { return; } } // atGetOne toasts + logs (403/404 heard)
+  // The card's helpers assume the Διεθνείς Παραγγελίες page ran first: its
+  // <style>, the form-helpers client map, the locations map and the
+  // stops-by-order cache. On the Weekly page none of that exists — seen live
+  // 14/9: unstyled card, title = id slice («pVxYar»), «Φόρτωση —». Load them
+  // here; every failure degrades to what the card showed before, not silence.
+  _oiEnsureStyles();
+  const clientId = Array.isArray(rec.fields['Client']) ? rec.fields['Client'][0] : null;
+  try { await Promise.all([fhLoadLocations(), clientId ? fhBatchResolveClients([clientId]) : null]); }
+  catch (e) { console.warn('read-only card refs:', e.message); }
+  try {
+    window._intlStopsByOrder = window._intlStopsByOrder || {};
+    if (!window._intlStopsByOrder[recId]) window._intlStopsByOrder[recId] = await stopsLoad(recId, F.STOP_PARENT_ORDER);
+  } catch (e) { console.warn('read-only card stops:', e.message); }
   let panel = document.getElementById('intlDetail');
   if (!panel) { panel = document.createElement('div'); panel.id = 'intlDetail'; panel.className = 'entity-detail-panel oi-ro-float hidden'; document.body.appendChild(panel); }
   panel.innerHTML = _oiCardHtml(rec, { readOnly: true });
