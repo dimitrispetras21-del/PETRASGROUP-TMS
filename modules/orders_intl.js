@@ -831,9 +831,13 @@ function selectIntlOrder(recId) {
   panel.scrollTop = 0;
 }
 
-function _oiCardHtml(rec) {
+function _oiCardHtml(rec, opts) {
   const f = rec.fields, recId = rec.id;
-  const canEdit = can('orders') === 'full';
+  // readOnly (Weekly Εθνικών → VS load, owner 14/9): forced no-edit even for
+  // a role with full 'orders' access — only the Weekly Διεθνών edits a VS
+  // order, so the floating card here never offers actions.
+  const readOnly = !!(opts && opts.readOnly);
+  const canEdit = !readOnly && can('orders') === 'full';
   // Δ2 (list, 3/9) applied to the card too (5/9): 'Order Number' never reaches
   // the browser, so the title printed six characters of the row id («QD3VYG»)
   // as if they were an order number. The Reference is the number the team
@@ -911,6 +915,7 @@ function _oiCardHtml(rec) {
   return `
     <div class="oi-card-head">
       <div class="oi-card-title"><span>${orderNo ? orderNo + ' · ' : ''}${_clientName(f)}</span><button type="button" class="oi-close" title="Κλείσιμο (Esc)" onclick="_oiCloseCard()">×</button></div>
+      ${readOnly ? '<div class="oi-ro-note">Veroia Switch · μόνο ανάγνωση — επεξεργασία από το Weekly Διεθνών</div>' : ''}
       <div class="oi-card-sub">${escapeHtml(_OI_DIR_W[f['Direction']] || f['Direction'] || '—')} · W${escapeHtml(f['Week Number']||'—')} · ${escapeHtml(f['Brand']||'—')}</div>
       ${f['Reference'] ? `<div class="oi-card-sub">Ref (${escapeHtml(f['Reference'])})${orderNoNum ? ' · ' + orderNoNum : ''}</div>` : (orderNoNum ? `<div class="oi-card-sub">${orderNoNum}</div>` : '')}
       <div class="oi-chips">${chips}</div>
@@ -938,6 +943,18 @@ function _oiCardHtml(rec) {
     </div>
     ${f['Notes'] ? `<div class="oi-sect oi-sect-alt"><div class="oi-sect-t">Σημειώσεις</div><div class="oi-text">${escapeHtml(f['Notes'])}</div></div>` : ''}
     ${actions ? `<div class="oi-sect"><div class="oi-sect-t">Ενέργειες</div><div class="oi-links">${actions}</div></div>` : ''}`;
+}
+
+// Weekly Εθνικών → VS load: show the international order WITHOUT actions.
+// Only the Weekly Διεθνών edits a VS order (owner 14/9). The Weekly page has
+// no #intlDetail, so the card floats (fixed, right) — same markup, same CSS.
+async function openIntlReadOnlyCard(recId) {
+  let rec = INTL_ORDERS.data.find(r => r.id === recId);
+  if (!rec) { try { rec = await atGetOne(TABLES.ORDERS, recId); } catch (e) { return; } } // atGetOne toasts + logs (403/404 heard)
+  let panel = document.getElementById('intlDetail');
+  if (!panel) { panel = document.createElement('div'); panel.id = 'intlDetail'; panel.className = 'entity-detail-panel oi-ro-float hidden'; document.body.appendChild(panel); }
+  panel.innerHTML = _oiCardHtml(rec, { readOnly: true });
+  panel.classList.remove('hidden'); panel.scrollTop = 0;
 }
 
 // ─── Linked select widgets (delegates to core/form-helpers.js) ──
@@ -3406,6 +3423,7 @@ window.openIntlEditWith = (recId, fields) => _openModal(recId, fields||{});
 window.duplicateIntlOrder = duplicateIntlOrder;
 window.selectIntlOrder = selectIntlOrder;
 window._oiCloseCard = _oiCloseCard;
+window.openIntlReadOnlyCard = openIntlReadOnlyCard;
 window._oiBalanceUpdate = _oiBalanceUpdate;
 window.toggleIntlInvoiced = toggleIntlInvoiced;
 window._intlSortToggle = _intlSortToggle;
