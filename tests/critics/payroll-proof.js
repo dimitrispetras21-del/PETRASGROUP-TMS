@@ -58,6 +58,8 @@ const BASE_URL = process.env.PW_BASE_URL || 'http://127.0.0.1:8797/';
 const SHOT_DIR = process.env.PW_SHOT_DIR || '/private/tmp/claude-501/-Users-dimitrispetras-PETRASGROUP-TMS--claude-worktrees-sleepy-mendeleev/e4fdae99-8903-4cca-a916-8e5d7709734e/scratchpad';
 const SHOT_1440 = path.join(SHOT_DIR, 'payroll-v3-card-1440.png');
 const SHOT_1280 = path.join(SHOT_DIR, 'payroll-v3-card-1280.png');
+const SHOT_HOME_1440 = path.join(SHOT_DIR, 'payroll-v3-home-1440.png');
+const SHOT_HOME_1280 = path.join(SHOT_DIR, 'payroll-v3-home-1280.png');
 
 const DRIVER_ID = 11;
 const DRIVER_NAME = 'Παπαδόπουλος Γιώργος';
@@ -197,6 +199,153 @@ function installPayrollMocks(page) {
   return { store, captured };
 }
 
+// ── home fixture (Φάση 2, καρτέλες — Figma 614/616:1011) ──────────────────
+// 5 οδηγοί + 1 ανενεργός (contract's «αρχική με κάρτες» row + delegation
+// brief, verbatim). Ημερομηνίες παράγονται από new Date() ΚΑΘΕ φορά (το
+// σήμερα του rig δεν παγώνει — instructions) ώστε ο τρέχων/προηγούμενος
+// μήνας να είναι πάντα σωστοί, όποτε κι αν τρέξει αυτό το αρχείο.
+function pad2(n) { return String(n).padStart(2, '0'); }
+function ymKey(y, m) { return y + '-' + pad2(m); }
+function homeDates() {
+  const now = new Date();
+  const curY = now.getFullYear(), curM = now.getMonth() + 1; // 1-based
+  const prev = new Date(curY, curM - 2, 1); // JS month 0-based: curM-1 (0-based cur) - 1
+  return {
+    curY, curM, curKey: ymKey(curY, curM),
+    prevY: prev.getFullYear(), prevM: prev.getMonth() + 1, prevKey: ymKey(prev.getFullYear(), prev.getMonth() + 1),
+    todayISO: curY + '-' + pad2(curM) + '-' + pad2(now.getDate()),
+  };
+}
+
+// A(11) πληρωμένος 4 δρομολόγια/2 χωρίς αξία, B(12) 1 χωρίς αξία, Γ(13)
+// «μας χρωστά» (αρνητικό, καμία εκκρεμότητα), Δ(14) υπόλοιπο 0 ΜΕ εκκρεμότητα
+// (dlBal ήδη δείχνει «—» σε αυτή την περίπτωση — v2 κανόνας, αναχρησιμοποιείται),
+// Ε(15) χωρίς καμία κίνηση ποτέ (has_entries:false — μόνο στο «Όλοι»), ΣΤ(16)
+// ανενεργός ΜΕ κινήσεις (δεν μετρά στους «Ενεργοί», εμφανίζεται στο «Όλοι»).
+function homeBalances(d) {
+  return [
+    { driver_id: 11, full_name: 'Παπαδόπουλος Γιώργος', type: 'Internal', active: true, has_entries: true,
+      balance: 1726.27, pending_count: 2, trips_ytd: 40,
+      last_entry_date: d.curY + '-' + pad2(d.curM) + '-10', last_trip_date: d.curY + '-' + pad2(d.curM) + '-10',
+      last_payment_date: d.curY + '-' + pad2(d.curM) + '-12', last_payment_type: 'payment_cash' },
+    { driver_id: 12, full_name: 'Καραγιάννης Νίκος', type: 'Internal', active: true, has_entries: true,
+      balance: 954.10, pending_count: 1, trips_ytd: 30,
+      last_entry_date: d.curY + '-' + pad2(d.curM) + '-09', last_trip_date: d.curY + '-' + pad2(d.curM) + '-09',
+      last_payment_date: d.curY + '-' + pad2(d.curM) + '-09', last_payment_type: 'payment_bank' },
+    { driver_id: 13, full_name: 'Αντωνίου Στέλιος', type: 'External', active: true, has_entries: true,
+      balance: -150, pending_count: 0, trips_ytd: 12,
+      last_entry_date: d.curY + '-' + pad2(d.curM) + '-05', last_trip_date: d.curY + '-' + pad2(d.curM) + '-05',
+      last_payment_date: null, last_payment_type: null },
+    { driver_id: 14, full_name: 'Δημητρίου Βασίλης', type: 'Internal', active: true, has_entries: true,
+      balance: 0, pending_count: 1, trips_ytd: 8,
+      last_entry_date: d.curY + '-' + pad2(d.curM) + '-03', last_trip_date: d.curY + '-' + pad2(d.curM) + '-03',
+      last_payment_date: d.prevY + '-' + pad2(d.prevM) + '-20', last_payment_type: 'payment_cash' },
+    { driver_id: 15, full_name: 'Εμμανουήλ Παύλος', type: 'Internal', active: true, has_entries: false,
+      balance: 0, pending_count: 0, trips_ytd: 0,
+      last_entry_date: null, last_trip_date: null, last_payment_date: null, last_payment_type: null },
+    { driver_id: 16, full_name: 'Ζησιμόπουλος Θάνος', type: 'Internal', active: false, has_entries: true,
+      balance: 300, pending_count: 0, trips_ytd: 5,
+      last_entry_date: d.prevY + '-' + pad2(d.prevM) + '-01', last_trip_date: d.prevY + '-' + pad2(d.prevM) + '-01',
+      last_payment_date: null, last_payment_type: null },
+  ];
+}
+
+// month.drivers — τρέχων μήνας: 3 οδηγοί (11,12,13· ο 14 σκόπιμα εκτός, όπως
+// στην πραγματική απάντηση ένας οδηγός μπορεί να μη γράψει τίποτα τον μήνα).
+// Ο 11 έχει τα ίδια νούμερα με το «Οδηγός Α» του Figma 614 (3.650,00/2.750,00)
+// ώστε το screenshot να μπορεί να συγκριθεί οπτικά. Προηγούμενος μήνας: άλλα
+// νούμερα στον 11 (ώστε η αλλαγή λωρίδας να αποδεικνύεται) + 14 (απών από τον
+// τρέχοντα μήνα, παρών στον προηγούμενο).
+function homeMonthBlocks(d) {
+  const cur = {
+    from: d.curY + '-' + pad2(d.curM) + '-01', to: d.curY + '-' + pad2(d.curM) + '-28',
+    drivers: {
+      11: { trips: 4, pending: 1, value: 3650, expenses: 0, advance: 0, payments: 2750, adjustments: 0,
+        last_payment: { date: d.curY + '-' + pad2(d.curM) + '-12', type: 'payment_cash', amount: 400 } },
+      12: { trips: 3, pending: 0, value: 2400, expenses: 0, advance: 0, payments: 1100, adjustments: 0,
+        last_payment: { date: d.curY + '-' + pad2(d.curM) + '-09', type: 'payment_bank', amount: 800 } },
+      13: { trips: 1, pending: 0, value: 200, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
+    },
+  };
+  const prev = {
+    from: d.prevY + '-' + pad2(d.prevM) + '-01', to: d.prevY + '-' + pad2(d.prevM) + '-28',
+    drivers: {
+      11: { trips: 2, pending: 0, value: 1200, expenses: 0, advance: 0, payments: 0, adjustments: 0,
+        last_payment: { date: d.prevY + '-' + pad2(d.prevM) + '-05', type: 'payment_bank', amount: 600 } },
+      12: { trips: 1, pending: 0, value: 700, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
+      14: { trips: 1, pending: 1, value: 0, expenses: 0, advance: 0, payments: 400, adjustments: 0,
+        last_payment: { date: d.prevY + '-' + pad2(d.prevM) + '-20', type: 'payment_cash', amount: 400 } },
+    },
+  };
+  const out = {}; out[d.curKey] = cur; out[d.prevKey] = prev;
+  return out;
+}
+
+function baseHomeEntry(o) {
+  return Object.assign({ rt_id: null, rt_code: null, date_end: null, route_legs: null,
+    needs_review: false, review_note: '', deleted_reason: '', note: '', advance: null,
+    expenses: null, cancelled: false, pending: false, balance_delta: 0, running_balance: 0 }, o);
+}
+
+// Mocks για την ΑΡΧΙΚΗ (Φάση 2). Ίδιο route pattern με installPayrollMocks —
+// registered ΜΕΤΑ preparePage. `opts.omitMonth` προσομοιώνει τον Worker ΠΡΙΝ
+// το deploy του ledger-month.mjs (καμία δέσμη `month` στην απάντηση), για το
+// σενάριο «Δεν φορτώθηκαν τα ποσά μήνα».
+function installPayrollHomeMocks(page, opts) {
+  opts = opts || {};
+  const d = homeDates();
+  const balances = homeBalances(d);
+  const monthBlocks = homeMonthBlocks(d);
+  const store = { nextId: 500, entries: [
+    // Ελάχιστο ιστορικό ώστε το .dl-card-open στον 11 να ανοίγει την καρτέλα
+    // v3 (renderPayrollDriver) χωρίς σφάλμα — δεν ελέγχονται εδώ τα ποσά της.
+    baseHomeEntry({ id: 501, driver_id: 11, entry_type: 'trip', entry_date: d.curY + '-' + pad2(d.curM) + '-05',
+      trip_value: 500, route_text: 'Βέροια → Ιταλία', balance_delta: 500, running_balance: 500 }),
+  ] };
+  const captured = { homeGets: [], detailGets: [], posts: [] };
+  const json = (route, body, status) => route.fulfill({ status: status || 200, contentType: 'application/json', body: JSON.stringify(body) });
+
+  page.route('**/costs/ledger**', async route => {
+    const req = route.request();
+    const url = new URL(req.url());
+    const method = req.method();
+    const parts = url.pathname.split('/').filter(Boolean);
+    const li = parts.indexOf('ledger');
+    const idSeg = parts[li + 1];
+
+    if (!idSeg) {
+      if (method === 'GET') {
+        captured.homeGets.push(url.search);
+        const body = { records: balances, gap: 0, gapRts: [] };
+        const monthParam = url.searchParams.get('month');
+        if (!opts.omitMonth && monthParam && monthBlocks[monthParam]) body.month = monthBlocks[monthParam];
+        return json(route, body);
+      }
+      if (method === 'POST') {
+        const b = req.postDataJSON();
+        captured.posts.push(b);
+        const rec = baseHomeEntry(Object.assign({ id: store.nextId++ }, b));
+        // best-effort delta so a later .dl-card-open on the same driver
+        // doesn't choke on an undefined balance_delta/running_balance.
+        if (rec.entry_type === 'payment_bank' || rec.entry_type === 'payment_cash') rec.balance_delta = -Number(rec.amount || 0);
+        else if (rec.entry_type === 'adjustment') rec.balance_delta = Number(rec.amount || 0);
+        store.entries.push(rec);
+        return json(route, { record: rec }, 201);
+      }
+      return json(route, {}, 404);
+    }
+    if (method === 'GET') {
+      const driverId = Number(idSeg);
+      captured.detailGets.push(url.search);
+      const rows = store.entries.filter(e => e.driver_id === driverId);
+      return json(route, { records: rows, rts: [] });
+    }
+    return json(route, {}, 404);
+  });
+
+  return { store, captured, d, balances, monthBlocks };
+}
+
 async function newPage(browser, role, viewport) {
   const context = await browser.newContext({ baseURL: BASE_URL, viewport: viewport || { width: 1440, height: 900 } });
   const page = await context.newPage();
@@ -237,6 +386,282 @@ async function assertGridFits(page, label) {
   assert(fit.sw <= fit.cw + 0.5, '[' + label + '] .dl-ledger.scrollWidth (' + fit.sw + ') <= clientWidth (' + fit.cw + ') — no horizontal scroll inside the ledger');
   const page_ = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   assert(page_ <= 0, '[' + label + '] the PAGE itself never scrolls sideways: ' + page_);
+}
+
+async function assertHomeGridFits(page, label) {
+  const fit = await page.evaluate(() => {
+    const grid = document.querySelector('.dl-grid');
+    return grid ? { sw: grid.scrollWidth, cw: grid.clientWidth } : null;
+  });
+  assert(fit !== null, '[' + label + '] .dl-grid exists');
+  assert(fit.sw <= fit.cw + 0.5, '[' + label + '] .dl-grid.scrollWidth (' + fit.sw + ') <= clientWidth (' + fit.cw + ') — no horizontal scroll inside the grid');
+  const page_ = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert(page_ <= 0, '[' + label + '] the PAGE itself never scrolls sideways: ' + page_);
+}
+
+// The first `count` .dl-card elements (DOM order) must share one offsetTop —
+// i.e. they sit in the same grid row, proving the column count the contract
+// gives for that viewport (4 at 1400px+, 3 at 1280px).
+async function assertCardsShareRow(page, label, count) {
+  const tops = await page.evaluate(() => Array.from(document.querySelectorAll('.dl-card')).map(el => el.offsetTop));
+  assert(tops.length >= count, '[' + label + '] at least ' + count + ' .dl-card elements exist (got ' + tops.length + ')');
+  const firstRow = tops.slice(0, count);
+  assert(firstRow.every(t => t === firstRow[0]), '[' + label + '] the first ' + count + ' .dl-card elements share one offsetTop (one row): ' + JSON.stringify(firstRow));
+}
+
+// The 3px top border must be present on every card, and the pending driver's
+// (11) colour must be var(--warn) and differ from a non-pending driver's (13)
+// — compared via computed style, never a hard-coded hex.
+async function assertCardBorders(page) {
+  const r = await page.evaluate(() => {
+    const cards = Array.from(document.querySelectorAll('.dl-card'));
+    const widths = cards.map(el => getComputedStyle(el).borderTopWidth);
+    const c11 = document.querySelector('.dl-card[data-driver="11"]');
+    const c13 = document.querySelector('.dl-card[data-driver="13"]');
+    const probe = document.createElement('div');
+    probe.style.borderTopColor = 'var(--warn)';
+    document.body.appendChild(probe);
+    const warnColor = getComputedStyle(probe).borderTopColor;
+    probe.remove();
+    return {
+      widths, warnColor,
+      c11Color: c11 ? getComputedStyle(c11).borderTopColor : null,
+      c13Color: c13 ? getComputedStyle(c13).borderTopColor : null,
+    };
+  });
+  assert(r.widths.length > 0, 'at least one .dl-card exists to check border-top-width');
+  assert(r.widths.every(w => w === '3px'), 'every .dl-card has border-top-width 3px (got: ' + JSON.stringify(r.widths) + ')');
+  assert(r.c11Color !== null && r.c13Color !== null, 'cards 11 and 13 both exist to compare border colour');
+  assert(r.c11Color === r.warnColor, 'card 11 (pending) border-top-color computes to var(--warn) (' + r.c11Color + ' == ' + r.warnColor + ')');
+  assert(r.c11Color !== r.c13Color, 'card 11 (pending) border colour differs from card 13 (no pending): ' + r.c11Color + ' vs ' + r.c13Color);
+}
+
+// ═══════════════════════════════ ΑΡΧΙΚΗ ΜΕ ΚΑΡΤΕΣ (accountant) — Φάση 2 ═══════════════════════════════
+// TDD: written BEFORE modules/payroll.js grows a card grid (agent E, branch
+// payroll-v3-home, ΙΔΙΟ αρχείο με τη Φάση 1). Contract:
+// docs/superpowers/plans/2026-09-14-payroll-v3-contract.md § «Αρχική με
+// κάρτες — view home». Selectors/ids/texts below come ONLY from that section
+// plus the coordinator's delegation brief — nothing invented past them.
+async function runHomeFlow(browser) {
+  console.log('\n== accountant · αρχική με κάρτες (view home, Figma 614:1011) ==');
+  const consoleErrors = [];
+
+  // ── κύρια ροή ──
+  const { context, page, consoleErrors: mainErrors } = await newPage(browser, 'accountant');
+  const { captured, d } = installPayrollHomeMocks(page);
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-grid', { timeout: 15000 });
+  await page.waitForTimeout(150);
+
+  // ── πρώτο GET με ?month=, ψηφίδα μήνα προεπιλεγμένη = τρέχων ──
+  assert(captured.homeGets.length >= 1, 'at least one GET /costs/ledger was issued on load');
+  assert(captured.homeGets[0].includes('month=' + d.curKey), 'the FIRST GET /costs/ledger carries ?month=' + d.curKey + ' (got: ' + captured.homeGets[0] + ')');
+  assert(await page.locator('.dl-m.sel').count() === 1, 'exactly one .dl-m carries .sel');
+  assert(await page.locator('.dl-m.sel[data-month="' + d.curKey + '"]').count() === 1, '.dl-m.sel is the current month (' + d.curKey + ')');
+
+  // ── κεφαλίδα: κουμπιά ──
+  assert(await page.locator('#dlBtnBulk').count() === 1, '#dlBtnBulk «Μαζική πληρωμή» exists');
+  assert(await page.locator('#dlBtnTripHome').count() === 1, '#dlBtnTripHome «Δρομολόγιο» exists');
+  assert(await page.locator('#dlBtnPrintHome').count() === 1, '#dlBtnPrintHome «Εκτύπωση» exists');
+  assert(await page.locator('#dlBtnCsvHome').count() === 1, '#dlBtnCsvHome «CSV» exists');
+  assert(await page.locator('.dl-btn.primary').count() === 1, 'exactly one .dl-btn.primary on the page');
+  assert(await page.locator('#dlBtnBulk.primary').count() === 1, '#dlBtnBulk is the ONE navy button');
+
+  // ── πλέγμα: 4 ενεργοί-με-κινήσεις (11,12,13,14), σειρά κατά balance φθίνουσα ──
+  assert(await page.locator('.dl-card').count() === 4, 'default view shows 4 .dl-card (active + has_entries)');
+  let order = await page.$$eval('.dl-card', els => els.map(el => el.getAttribute('data-driver')));
+  assert(JSON.stringify(order) === JSON.stringify(['11', '12', '14', '13']),
+    'default sort is balance desc: 11 (1726.27) · 12 (954.10) · 14 (0) · 13 (−150) — got ' + JSON.stringify(order));
+
+  assert(await page.locator('.dl-card[data-driver="11"].pending').count() === 1, 'card 11 (pending_count 2) carries .pending');
+  assert(/2\s*χωρίς αξία/.test(await page.locator('.dl-card[data-driver="11"] .dl-badge').innerText()), 'card 11 .dl-badge reads «2 χωρίς αξία»');
+  assert(await page.locator('.dl-card[data-driver="13"].pending').count() === 0, 'card 13 (pending_count 0) does NOT carry .pending');
+  assert(await page.locator('.dl-card[data-driver="13"] .dl-badge').count() === 0, 'card 13 has no .dl-badge');
+  assert((await page.locator('.dl-card[data-driver="13"] .dl-balword').innerText()).trim() === 'μας χρωστά', 'card 13 (balance −150) .dl-balword reads «μας χρωστά»');
+  assert((await page.locator('.dl-card[data-driver="11"] .dl-balword').innerText()).trim() === 'του χρωστάμε', 'card 11 (balance 1726.27) .dl-balword reads «του χρωστάμε»');
+  assert((await page.locator('.dl-card[data-driver="14"] .dl-bal').innerText()).trim() === '—', 'card 14 (balance 0, pending_count 1) .dl-bal reads «—» (v2 rule reused: 0 with a pending trip is unknown, not zero)');
+
+  await assertCardBorders(page);
+
+  // ── mini-stats (μήνα) του 11, «Καμία πληρωμή τον μήνα» του 13 ──
+  const ms11 = (await page.locator('.dl-card[data-driver="11"] .dl-ms').innerText()).replace(/\s+/g, ' ');
+  assert(/\b4\b/.test(ms11), 'card 11 mini-stats show trips 4 (month block): ' + ms11);
+  assert(/3\.650,00/.test(ms11), 'card 11 mini-stats show value 3.650,00 (month block): ' + ms11);
+  assert(/2\.750,00/.test(ms11), 'card 11 mini-stats show payments 2.750,00 (month block): ' + ms11);
+  const lp11 = (await page.locator('.dl-card[data-driver="11"] .dl-lastpay').innerText()).replace(/\s+/g, ' ');
+  assert(lp11.includes('12/' + pad2(d.curM)), '.dl-lastpay (11) carries the day/month of the month\'s last payment: ' + lp11);
+  assert(/Μετρητά/.test(lp11) && /400,00/.test(lp11), '.dl-lastpay (11) carries type «Μετρητά» and amount 400,00: ' + lp11);
+  const lp13 = await page.locator('.dl-card[data-driver="13"] .dl-lastpay').innerText();
+  assert(/Καμία πληρωμή τον μήνα/.test(lp13), '.dl-lastpay (13, no last_payment this month) reads «Καμία πληρωμή τον μήνα»: ' + lp13);
+
+  // ── κανένα «€» σε κάρτα· ένα «€» στο footer· «4 οδηγοί»/«4 δρομολόγια χωρίς αξία»/οφειλή ──
+  const cardTexts = await page.locator('.dl-card').allInnerTexts();
+  assert(cardTexts.every(t => !/€/.test(t)), 'no «€» inside any .dl-card (checked ' + cardTexts.length + ' cards)');
+  const footTxt = (await page.locator('.dl-foot').innerText()).replace(/\s+/g, ' ');
+  const euroCount = (footTxt.match(/€/g) || []).length;
+  assert(euroCount === 1, '«€» appears exactly once in .dl-foot (got ' + euroCount + '): ' + footTxt);
+  assert(/4 οδηγοί/.test(footTxt), '.dl-foot carries «4 οδηγοί»: ' + footTxt);
+  assert(/4 δρομολόγια χωρίς αξία/.test(footTxt), '.dl-foot carries «4 δρομολόγια χωρίς αξία» (2+1+0+1): ' + footTxt);
+  assert(/2\.530,37/.test(footTxt), '.dl-foot carries the total οφειλή 2.530,37 (1726.27+954.10+0−150): ' + footTxt);
+
+  await assertHomeGridFits(page, '1440 (home)');
+  await page.screenshot({ path: SHOT_HOME_1440, fullPage: true });
+  console.log('  screenshot: ' + SHOT_HOME_1440);
+
+  // ── chip «Χωρίς αξία»: ΤΑΞΙΝΟΜΕΙ (δεν κρύβει) ──
+  await page.locator('.dl-chip[data-filter="pending"]').click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('.dl-card').count() === 4, 'the pending chip re-sorts, it does not hide cards (still 4)');
+  const firstIsPending = await page.locator('.dl-card').first().evaluate(el => el.classList.contains('pending'));
+  assert(firstIsPending, 'after the pending chip, the FIRST .dl-card carries .pending');
+  await page.locator('.dl-chip[data-filter="pending"]').click();
+  await page.waitForTimeout(150);
+  order = await page.$$eval('.dl-card', els => els.map(el => el.getAttribute('data-driver')));
+  assert(JSON.stringify(order) === JSON.stringify(['11', '12', '14', '13']), 'clicking the pending chip again returns to the balance-desc order: ' + JSON.stringify(order));
+
+  // ── #dlSort=name, #dlSearch ──
+  await page.selectOption('#dlSort', 'name');
+  await page.waitForTimeout(150);
+  const firstByName = await page.locator('.dl-card').first().getAttribute('data-driver');
+  assert(firstByName === '13', '#dlSort=name puts «Αντωνίου Στέλιος» (driver 13, alphabetically first) first — got driver ' + firstByName);
+  await page.selectOption('#dlSort', 'balance');
+  await page.waitForTimeout(150);
+
+  await page.fill('#dlSearch', 'Καραγιάννη');
+  await page.waitForTimeout(150);
+  assert(await page.locator('.dl-card').count() === 1, '#dlSearch «Καραγιάννη» narrows the grid to exactly one card');
+  assert(await page.locator('.dl-card[data-driver="12"]').count() === 1, '#dlSearch «Καραγιάννη» matches driver 12');
+  await page.fill('#dlSearch', '');
+  await page.waitForTimeout(150);
+
+  // ── chips «Όλοι»/«Ενεργοί»: ο 15 (χωρίς κινήσεις) και ο 16 (ανενεργός) μόνο στο «Όλοι» ──
+  await page.locator('.dl-chip[data-filter="all"]').click();
+  await page.waitForTimeout(150);
+  const allCount = await page.locator('.dl-card').count();
+  assert(allCount >= 5, '«Όλοι» shows 5+ cards (got ' + allCount + ')');
+  assert(await page.locator('.dl-card[data-driver="15"]').count() === 1, '«Όλοι» includes driver 15 (no entries yet)');
+  assert(await page.locator('.dl-card[data-driver="16"]').count() === 1, '«Όλοι» includes driver 16 (inactive, has entries)');
+  await page.locator('.dl-chip[data-filter="active"]').click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('.dl-card').count() === 4, '«Ενεργοί» returns to the 4 active+has_entries cards');
+  assert(await page.locator('.dl-card[data-driver="15"]').count() === 0, '«Ενεργοί» excludes driver 15');
+  assert(await page.locator('.dl-card[data-driver="16"]').count() === 0, '«Ενεργοί» excludes driver 16 (inactive)');
+
+  // ── λωρίδα μηνών: προηγούμενος → νέο GET + αλλαγή mini-stats· τρέχων ξανά → cache ──
+  const getsBeforePrev = captured.homeGets.length;
+  await page.locator('.dl-m[data-month="' + d.prevKey + '"]').click();
+  await page.waitForTimeout(200);
+  assert(captured.homeGets.length === getsBeforePrev + 1, 'clicking the previous month tile issues exactly one new GET');
+  assert(captured.homeGets[captured.homeGets.length - 1].includes('month=' + d.prevKey), 'the new GET carries ?month=' + d.prevKey);
+  const ms11Prev = (await page.locator('.dl-card[data-driver="11"] .dl-ms').innerText()).replace(/\s+/g, ' ');
+  assert(/1\.200,00/.test(ms11Prev), 'card 11 mini-stats show the PREVIOUS month\'s value 1.200,00: ' + ms11Prev);
+  assert(!/3\.650,00/.test(ms11Prev), 'card 11 mini-stats no longer show the current month\'s value: ' + ms11Prev);
+  const getsBeforeCur = captured.homeGets.length;
+  await page.locator('.dl-m[data-month="' + d.curKey + '"]').click();
+  await page.waitForTimeout(200);
+  assert(captured.homeGets.length === getsBeforeCur, 'clicking back to the current month tile issues NO new GET (cached)');
+
+  // ── πληρωμή στην κάρτα: κενό ποσό → κανένα POST· 250 + Μετρητά + Enter → POST + refetch ──
+  await page.locator('.dl-card[data-driver="11"] .dl-card-pay').click();
+  await page.waitForSelector('.dl-card[data-driver="11"] .dl-cardpay', { timeout: 5000 });
+  assert(await page.locator('.dl-cardpay').count() === 1, 'opening the pay panel on 11 shows exactly one .dl-cardpay on the page');
+  const postsBeforeInvalid = captured.posts.length;
+  await page.locator('.dl-card[data-driver="11"] .dl-cp-save').click();
+  await page.waitForTimeout(150);
+  assert(captured.posts.length === postsBeforeInvalid, 'an empty/0 amount sends no POST');
+  assert((await page.locator('.dl-card[data-driver="11"] .dl-err').innerText()).trim().length > 0, '.dl-err shows a message for an empty amount');
+
+  await page.fill('.dl-card[data-driver="11"] .dl-cp-amount', '250');
+  await page.locator('.dl-card[data-driver="11"] .dl-cp-seg').nth(1).click();
+  const getsBeforePay = captured.homeGets.length;
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'POST' && r.url().includes('/costs/ledger'), { timeout: 10000 }),
+    page.locator('.dl-card[data-driver="11"] .dl-cp-amount').press('Enter'),
+  ]);
+  await page.waitForTimeout(200);
+  const payPost = captured.posts[captured.posts.length - 1];
+  assert(payPost.driver_id === 11 && payPost.entry_type === 'payment_cash' && Number(payPost.amount) === 250 && payPost.entry_date === d.todayISO,
+    'POST /costs/ledger {driver_id:11, entry_type:payment_cash, entry_date:' + d.todayISO + ', amount:250}: ' + JSON.stringify(payPost));
+  assert(captured.homeGets.length === getsBeforePay + 1, 'the card payment triggers exactly one refetch GET /costs/ledger (not a local balance edit)');
+  assert(captured.homeGets[captured.homeGets.length - 1].includes('month='), 'the refetch GET carries ?month=');
+  await page.waitForTimeout(100);
+  assert(await page.locator('.dl-cardpay').count() === 0, 'the pay panel closes after a successful save');
+
+  // ── ένα .dl-cardpay τη φορά· Esc κλείνει ──
+  await page.locator('.dl-card[data-driver="11"] .dl-card-pay').click();
+  await page.waitForSelector('.dl-card[data-driver="11"] .dl-cardpay', { timeout: 5000 });
+  await page.locator('.dl-card[data-driver="12"] .dl-card-pay').click();
+  await page.waitForSelector('.dl-card[data-driver="12"] .dl-cardpay', { timeout: 5000 });
+  assert(await page.locator('.dl-cardpay').count() === 1, 'opening the pay panel on 12 while 11 was open leaves exactly one .dl-cardpay');
+  assert(await page.locator('.dl-card[data-driver="11"] .dl-cardpay').count() === 0, 'the panel on 11 closed when 12\'s opened');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  assert(await page.locator('.dl-cardpay').count() === 0, 'Esc closes the open .dl-cardpay panel');
+
+  // ── εκτύπωση/CSV αρχικής ──
+  await page.locator('#dlBtnPrintHome').click();
+  await page.waitForSelector('.dl-menu-print-drivers', { timeout: 5000 });
+  const [popup] = await Promise.all([
+    context.waitForEvent('page'),
+    page.locator('.dl-menu-print-drivers').click(),
+  ]);
+  await popup.waitForLoadState('domcontentloaded').catch(() => {});
+  assert(popup.url().includes('print_payroll.html') && popup.url().includes('doc=drivers'),
+    '#dlBtnPrintHome → .dl-menu-print-drivers opens print_payroll.html?doc=drivers: ' + popup.url());
+  await popup.close();
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: 10000 }),
+    page.locator('#dlBtnCsvHome').click(),
+  ]);
+  const csvText = fs.readFileSync(await download.path()).toString('utf8').replace(/^﻿/, '');
+  const csvHeader = csvText.split(/\r?\n/)[0];
+  assert(csvHeader === 'Οδηγός;Τύπος;Υπόλοιπο;Δρομολόγια έτους;Χωρίς αξία;Τελευταία κίνηση;Τελευταία πληρωμή', 'CSV header row: ' + csvHeader);
+
+  // ── .dl-card-open ανοίγει την καρτέλα v3, «← Μισθοδοσία» επιστρέφει ──
+  await page.locator('.dl-card[data-driver="11"] .dl-card-open').click();
+  await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+  assert(await page.locator('.dl-ledger').count() >= 1, '.dl-card-open (11) opens the v3 ledger tab (.dl-ledger)');
+  await page.locator('.dl-head a', { hasText: 'Μισθοδοσία' }).click();
+  await page.waitForSelector('.dl-grid', { timeout: 15000 });
+  assert(await page.locator('.dl-grid').count() === 1, '«← Μισθοδοσία» returns to the card grid (.dl-grid)');
+
+  consoleErrors.push(...mainErrors);
+  await context.close();
+
+  // ── 1440/1280: στήλες ανά σειρά, χωρίς οριζόντιο scroll ──
+  console.log('  -- 1280/1440 (home, fresh fixture) --');
+  for (const width of [1440, 1280]) {
+    const { context: vpCtx, page: vpPage, consoleErrors: vpErrors } = await newPage(browser, 'accountant', { width, height: 900 });
+    installPayrollHomeMocks(vpPage);
+    await gotoPage(vpPage, 'payroll', BASE_URL);
+    await vpPage.waitForSelector('.dl-grid', { timeout: 15000 });
+    await vpPage.waitForTimeout(150);
+    await assertCardsShareRow(vpPage, String(width), width === 1440 ? 4 : 3);
+    await assertHomeGridFits(vpPage, String(width) + ' (home)');
+    if (width === 1280) { await vpPage.screenshot({ path: SHOT_HOME_1280, fullPage: true }); console.log('  screenshot: ' + SHOT_HOME_1280); }
+    consoleErrors.push(...vpErrors);
+    await vpCtx.close();
+  }
+
+  // ── χωρίς `month` στην απάντηση: .dl-note ορατό, κάρτες με «—», badge/υπόλοιπο σωστά ──
+  console.log('  -- χωρίς month στην απάντηση (Worker πριν το ledger-month.mjs deploy) --');
+  const { context: noMonthCtx, page: noMonthPage, consoleErrors: noMonthErrors } = await newPage(browser, 'accountant');
+  installPayrollHomeMocks(noMonthPage, { omitMonth: true });
+  await gotoPage(noMonthPage, 'payroll', BASE_URL);
+  await noMonthPage.waitForSelector('.dl-grid', { timeout: 15000 });
+  await noMonthPage.waitForTimeout(150);
+  assert(await noMonthPage.locator('.dl-note').isVisible(), '.dl-note is visible when the `month` block is missing');
+  assert(/Δεν φορτώθηκαν τα ποσά μήνα/.test(await noMonthPage.locator('.dl-note').innerText()), '.dl-note reads «Δεν φορτώθηκαν τα ποσά μήνα»');
+  assert(await noMonthPage.locator('.dl-card').count() === 4, 'the 4 cards still render without the month block');
+  const ms11NoMonth = await noMonthPage.locator('.dl-card[data-driver="11"] .dl-ms').innerText();
+  assert(/—/.test(ms11NoMonth), 'card 11 mini-stats fall back to «—» without the month block: ' + ms11NoMonth.replace(/\s+/g, ' '));
+  assert(/2\s*χωρίς αξία/.test(await noMonthPage.locator('.dl-card[data-driver="11"] .dl-badge').innerText()), 'card 11 .dl-badge («2 χωρίς αξία», driver-level pending_count) is unaffected by the missing month block');
+  assert((await noMonthPage.locator('.dl-card[data-driver="11"] .dl-bal').innerText()).trim() === '1.726,27', 'card 11 .dl-bal (driver-level balance) is unaffected by the missing month block');
+  consoleErrors.push(...noMonthErrors);
+  await noMonthCtx.close();
+
+  return { consoleErrors };
 }
 
 // ═══════════════════════════════ ΚΑΡΤΕΛΑ (accountant) ═══════════════════════════════
@@ -587,14 +1012,15 @@ async function runDispatcherFlow(browser) {
 (async () => {
   const browser = await chromium.launch();
   try {
+    const home = await runHomeFlow(browser);
     const card = await runDriverCardFlow(browser);
     const vp = await runViewportChecks(browser);
     const print = await runPrintPageFlow(browser);
     const mgmt = await runManagementFlow(browser);
     const disp = await runDispatcherFlow(browser);
-    const all = [...card.consoleErrors, ...vp.consoleErrors, ...print.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
+    const all = [...home.consoleErrors, ...card.consoleErrors, ...vp.consoleErrors, ...print.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
     console.log('\n== console errors ==');
-    console.log('card:', card.consoleErrors.length, 'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+    console.log('home:', home.consoleErrors.length, 'card:', card.consoleErrors.length, 'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: card.captured.posts, patches: card.captured.patches }, null, 2));
