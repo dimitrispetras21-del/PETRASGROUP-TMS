@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="el">
+<head>
+<meta charset="UTF-8">
+<title>Petras Group — Μισθοδοσία, Εκτύπωση</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Ίδιο μοτίβο pbar/#doc/@media print με print.html (Weekly). Η διάταξη του
+   εγγράφου καρτέλας ακολουθεί το εγκεκριμένο Figma 601:1011 (ενημέρωση
+   συμβολαίου 14/9 — coordinator): μαύρο/γκρι, ΜΙΑ navy γραμμή στην κεφαλίδα,
+   € μόνο στο υπόλοιπο τέλους περιόδου. Συμβόλαιο:
+   docs/superpowers/plans/2026-09-14-payroll-v3-contract.md */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'DM Sans',sans-serif;font-size:11px;color:#111827;background:#fff;line-height:1.5}
+#loading{display:flex;align-items:center;justify-content:center;height:90vh;
+  font-size:13px;color:#6B7280;gap:10px;font-family:'DM Sans',sans-serif}
+.spin{width:18px;height:18px;border:2px solid #E5E7EB;border-top-color:#0B1929;
+  border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── PRINT BAR (screen only) ── */
+.pbar{position:fixed;top:0;left:0;right:0;z-index:99;
+  background:#0B1929;padding:10px 24px;
+  display:flex;align-items:center;justify-content:space-between;
+  border-bottom:2px solid #172C45}
+.pbar-left{display:flex;align-items:center;gap:14px}
+.pbar-logo{font-family:'Syne',sans-serif;font-size:15px;font-weight:800;
+  letter-spacing:0.5px;color:#fff}
+.pbar-logo span{color:#8B95A1}
+.pbar-div{width:1px;height:16px;background:rgba(255,255,255,0.15)}
+.pbar-title{font-size:11px;color:rgba(196,207,219,0.7);letter-spacing:0.3px}
+.pbar-btn{background:#6B7280;color:#fff;border:none;padding:7px 20px;
+  border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;
+  font-family:'DM Sans',sans-serif;letter-spacing:0.4px;transition:background .12s}
+.pbar-btn:hover{background:#4B5563}
+.pbar-spacer{height:46px}
+
+/* ── DOC WRAPPER ── */
+#doc{display:none;padding:36px 44px;max-width:900px;margin:0 auto}
+
+/* ── HEADER (Figma 601:1011: PETRAS GROUP + υπότιτλο αριστερά, «Εσωτερικό
+   έγγραφο» + αριθμός δεξιά, ΜΙΑ navy γραμμή κάτω) ── */
+.doc-header{display:flex;justify-content:space-between;align-items:flex-start;
+  padding-bottom:14px;margin-bottom:22px;border-bottom:1.5px solid #0B1929}
+.brand{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;color:#0B1929;letter-spacing:0.3px}
+.brand-sub{font-size:10px;color:#6B7280;margin-top:2px}
+.doc-tag{text-align:right}
+.doc-tag .k{font-size:8.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:#9CA3AF}
+.doc-tag .v{font-size:10.5px;font-weight:600;color:#111827;margin-top:2px}
+
+/* ── TITLE — χωρίς πλαίσιο, μεγάλο Syne (Figma) ── */
+.doc-title{font-family:'Syne',sans-serif;font-size:21px;font-weight:800;color:#0B1929;
+  margin:0 0 20px;text-transform:uppercase}
+
+/* ── META: 2 στήλες — ΟΔΗΓΟΣ/ΤΥΠΟΣ αριστερά, ΠΕΡΙΟΔΟΣ/ΥΠΟΛΟΙΠΟ ΕΝΑΡΞΗΣ δεξιά ── */
+.p-meta{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;row-gap:8px;margin-bottom:22px}
+.p-meta-item{display:flex;gap:12px;align-items:baseline}
+.p-meta-item .k{font-size:8.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:#9CA3AF;min-width:76px;flex-shrink:0}
+.p-meta-item .v{font-size:12px;font-weight:600;color:#111827}
+.p-meta-item.p-opening .v{font-weight:800}
+
+/* ── ΠΙΝΑΚΑΣ ΚΙΝΗΣΕΩΝ / ΟΦΕΙΛΩΝ ── */
+table.p-ledger{width:100%;border-collapse:collapse;font-size:10.5px}
+.p-ledger th{text-align:left;font-size:8px;font-weight:800;letter-spacing:0.8px;
+  text-transform:uppercase;color:#6B7280;border-bottom:2px solid #0B1929;padding:6px 6px}
+.p-ledger th.r,.p-ledger td.r{text-align:right}
+.p-ledger td{padding:6px 6px;border-bottom:1px solid #F3F4F6;
+  font-variant-numeric:tabular-nums;color:#111827}
+.p-ledger td.p-bal{font-weight:700}
+.p-ledger tr.p-openrow td{color:#9CA3AF}
+.p-ledger tr.p-canc td{text-decoration:line-through;color:#9CA3AF}
+.p-word,.p-note{font-weight:400;color:#9CA3AF;font-size:9.5px;text-decoration:none}
+.p-tot-row td{border-top:3px double #0B1929;border-bottom:none;font-weight:800;color:#0B1929;padding-top:9px}
+
+/* ── ΥΠΟΛΟΙΠΟ ΤΕΛΟΥΣ ΠΕΡΙΟΔΟΥ — η ΜΟΝΗ γραμμή με «€» ── */
+.p-closing{display:flex;justify-content:space-between;align-items:baseline;
+  margin:18px 0 8px;font-size:12px;font-weight:700;color:#0B1929;gap:16px}
+.p-closing .v{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;white-space:nowrap}
+
+/* ── ΥΠΟΣΗΜΕΙΩΣΗ ── */
+.p-foot{font-size:9px;color:#9CA3AF;margin:10px 0 30px;line-height:1.5}
+
+/* ── ΥΠΟΓΡΑΦΕΣ ── */
+.p-sign{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid #0B1929;
+  padding-top:12px;margin-top:26px}
+.p-sign-col{text-align:center;border-right:1px solid #E5E7EB}
+.p-sign-col:last-child{border-right:none}
+.p-sign-role{font-weight:700;font-size:11px;color:#0B1929;margin-bottom:4px}
+.p-sign-name{font-size:10px;color:#6B7280}
+
+/* ── ΥΠΟΣΕΛΙΔΟ ΕΚΤΥΠΩΣΗΣ ── */
+.p-printed{display:flex;justify-content:space-between;font-size:9px;color:#9CA3AF;margin-top:14px}
+
+#err{display:none;max-width:560px;margin:80px auto;text-align:center;
+  font-family:'DM Sans',sans-serif;font-size:13px;color:#7F1D1D;
+  background:#FEE2E2;border:1px solid #FCA5A5;border-radius:8px;padding:18px 22px}
+
+body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:12mm}
+@media print{
+  .pbar,.pbar-spacer{display:none}
+  #doc{padding:0;max-width:none}
+  table.p-ledger tr{page-break-inside:avoid}
+  .p-sign{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="pbar"><div class="pbar-left">
+  <span class="pbar-logo">PETRAS<span> GROUP</span></span>
+  <div class="pbar-div"></div>
+  <span class="pbar-title">Μισθοδοσία Οδηγών — Εκτύπωση</span>
+</div><div><button class="pbar-btn" onclick="window.print()">Εκτύπωση / PDF</button></div></div>
+<div class="pbar-spacer"></div>
+
+<div id="loading"><div class="spin"></div>Φόρτωση…</div>
+<div id="err"></div>
+<div id="doc"></div>
+
+<script>
+// core/utils.js προγραμματίζει φόντο-εργασίες (καθαρισμός error log, ανανέωση
+// ειδοποιήσεων) που υποθέτουν όλο το app.html περιβάλλον (global `user`,
+// TABLES, ctFetch…) — εδώ δεν υπάρχουν, και χωρίς αυτό το guard θα έσκαγαν
+// στην κονσόλα 2.5s/3s/κάθε 5' μετά τη φόρτωση. Διόρθωση ΜΟΝΟ σε δικό μας
+// αρχείο (core/utils.js είναι κοινόχρηστο, εκτός συμβολαίου του agent B):
+// ακυρώνουμε ΜΟΝΟ αυτά τα τρία γνωστά timers όσο φορτώνει το script, μετά
+// επαναφέρουμε τα κανονικά setTimeout/setInterval για τον υπόλοιπο κώδικα
+// (π.χ. το δικό μας window.print() παρακάτω).
+(function () {
+  var _ST = window.setTimeout, _SI = window.setInterval;
+  window.setTimeout = function (fn, ms) { return (ms === 2500 || ms === 3000) ? 0 : _ST.apply(window, arguments); };
+  window.setInterval = function (fn, ms) { return (ms === 300000) ? 0 : _SI.apply(window, arguments); };
+  window.__restoreTimers = function () { window.setTimeout = _ST; window.setInterval = _SI; };
+})();
+</script>
+<script src="core/utils.js"></script>
+<script src="config.js"></script>
+<script src="modules/payroll.js"></script>
+<script>window.__restoreTimers();</script>
+<script>
+'use strict';
+// PROXY_URL is already declared by config.js (loaded above) — redeclaring a
+// `const` of the same name in the same top-level script scope throws.
+
+const params = new URLSearchParams(window.location.search);
+const docType = params.get('doc') || 'card';
+const driverId = params.get('driver');
+const yearParam = params.get('year') || String(new Date().getFullYear());
+const monthParam = params.get('month') || '';
+const noprint = params.get('noprint') === '1';
+
+function fmtDMY(s) {
+  if (!s) return '—';
+  const p = String(s).split('T')[0].split('-');
+  return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : String(s);
+}
+function amt(n) { const s = dlNum(n); return s === null ? '—' : s; }
+function printedByName() {
+  try { return (JSON.parse(localStorage.getItem('tms_user') || '{}').name) || '—'; }
+  catch (e) { return '—'; }
+}
+// «Αρ. ΜΟ-<έτος>-<μήνας>-<αρχικά οδηγού>» (Figma 601:1011) — «ΕΤ» όταν η
+// περίοδος είναι όλο το έτος, χωρίς συγκεκριμένο μήνα (δεν είχε παράδειγμα
+// στο Figma, εύλογη επέκταση της ίδιας σύμβασης).
+function docNumber(driverRow, year, month) {
+  const initials = dlInitials(driverRow ? driverRow.full_name : '');
+  if (year === 'all') return 'ΜΟ-ΟΛΑ-' + initials;
+  return 'ΜΟ-' + year + '-' + (month || 'ΕΤ') + '-' + initials;
+}
+// ΠΕΡΙΟΔΟΣ ως εύρος ημερομηνιών (Figma: «01/09/2026 – 30/09/2026»), όχι πια
+// ως λέξη μήνα — ενημέρωση συμβολαίου 14/9. p.from/p.to έρχονται από το ίδιο
+// dlPeriod που μετράει το υπόλοιπο, άρα δεν μπορούν να διαφωνήσουν.
+function periodRangeText(p, year) {
+  if (year === 'all' || !p.from) return 'Όλη η περίοδος';
+  return fmtDMY(p.from) + ' – ' + fmtDMY(p.to);
+}
+function typeWordFull(type) {
+  const w = dlTypeWord(type);
+  return w === '—' ? '—' : w + ' οδηγός';
+}
+// Λεκτικό υπολοίπου τέλους — φρασεολογία εγγράφου (διαφορετική από τη λέξη
+// dlBalanceWord της οθόνης, ρητά δοσμένη στο Figma 601:1011).
+function pClosingWord(v) {
+  const n = Number(v || 0);
+  return n > 0 ? 'οφειλή προς τον οδηγό' : n < 0 ? 'οφειλή του οδηγού' : 'τακτοποιημένο';
+}
+
+// Φόρτωση μέσω του Worker, ίδιο μοτίβο με core/api.js/modules/costs.js
+// (ctFetch) — αυτόνομο εδώ γιατί η σελίδα δεν φορτώνει core/api.js.
+async function pFetch(path) {
+  const jwt = localStorage.getItem('tms_jwt');
+  let res;
+  try {
+    res = await fetch(PROXY_URL + path, { headers: jwt ? { Authorization: 'Bearer ' + jwt } : {} });
+  } catch (e) {
+    throw new Error('Δεν υπήρξε απάντηση από τον διακομιστή (δίκτυο ή διακομιστής εκτός).');
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error('HTTP ' + res.status + (data && data.error ? ' — ' + data.error : ''));
+  if (data === null) throw new Error('Μη αναγνώσιμη απάντηση διακομιστή (HTTP ' + res.status + ').');
+  return data;
+}
+
+// tagValue: κείμενο δεξιά στην κεφαλίδα («Αρ. ΜΟ-…») — άδειο για τη λίστα
+// οφειλών (δεν αφορά συγκεκριμένο οδηγό, άρα δεν έχει νόημα αριθμός εγγράφου).
+function docHeaderHtml(tagValue) {
+  return '<div class="doc-header">'
+    + '<div><div class="brand">PETRAS GROUP</div><div class="brand-sub">Λογιστήριο · Μισθοδοσία οδηγών</div></div>'
+    + '<div class="doc-tag"><div class="k">Εσωτερικό έγγραφο</div>' + (tagValue ? '<div class="v">' + tagValue + '</div>' : '') + '</div>'
+    + '</div>';
+}
+function metaItem(k, v, extraCls) {
+  return '<div class="p-meta-item' + (extraCls ? ' ' + extraCls : '') + '"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+}
+function printedLine() {
+  return '<div class="p-printed"><span>Εκτυπώθηκε ' + fmtDMY(new Date().toISOString()) + ' από ' + escapeHtml(printedByName()) + '</span>'
+    + '<span>Σελίδα 1 από 1</span></div>';
+}
+
+// Μία γραμμή κίνησης — ίδια σύμβαση στηλών με το dlEntryRowHtml της οθόνης
+// (modules/payroll.js): ΑΞΙΑ μόνο σε δρομολόγιο με τιμή, ΕΛΑΒΕ = advance στο
+// δρομολόγιο αλλιώς το amount της πληρωμής/προσαρμογής, ΕΞΟΔΑ μόνο δρομολόγιο
+// — μία σύμβαση στηλών, ίδια οθόνη/χαρτί (αρχή 3). ΣΗΜΕΙΩΣΗ: το εγκεκριμένο
+// Figma δείχνει δύο case παραδείγματα Προσαρμογής με το ποσό σε ΑΞΙΑ/ΕΞΟΔΑ
+// αντί για ΕΛΑΒΕ· η στήλη dl_entries.adjustment έχει ΜΟΝΟ `amount` (καμία
+// κατηγοριοποίηση αξίας/εξόδων στη βάση — worker/src/ledger-rules.mjs), άρα
+// αυτή η ειδική τοποθέτηση δεν μπορεί να προκύψει από πραγματικά δεδομένα
+// χωρίς να μαντεύουμε από το ελεύθερο κείμενο του λόγου (note) — κρατήθηκε η
+// υπάρχουσα, επαληθευμένη σύμβαση της οθόνης. Θέλει απόφαση owner αν
+// χρειάζεται πεδίο κατηγορίας στο dl_entries.
+function pKinisiBase(e) {
+  if (e.entry_type === 'trip') return 'Δρομολόγιο · ' + (e.route_text ? escapeHtml(e.route_text) : '—');
+  if (e.entry_type === 'payment_bank') return 'Πληρωμή · Κατάθεση τράπεζας';
+  if (e.entry_type === 'payment_cash') return 'Πληρωμή · Μετρητά';
+  return 'Προσαρμογή' + (e.note ? ' · ' + escapeHtml(e.note) : '');
+}
+function pRowHtml(e) {
+  const isTrip = e.entry_type === 'trip';
+  const dateTxt = dlDateRange(e.entry_date, e.date_end);
+  let kinisi = pKinisiBase(e);
+  if (e.cancelled) {
+    kinisi += ' <span class="p-word">(ακυρώθηκε' + (e.deleted_reason ? ' — ' + escapeHtml(e.deleted_reason) : '') + ')</span>';
+    return '<tr class="p-canc"><td>' + dateTxt + '</td><td>' + kinisi + '</td>'
+      + '<td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r p-bal">—</td></tr>';
+  }
+  if (isTrip && e.pending) kinisi += ' <span class="p-word">(χωρίς καταχωρισμένη αξία)</span>';
+  const valueCell = isTrip ? (e.pending ? '—' : amt(e.trip_value)) : '—';
+  const receivedCell = isTrip ? amt(e.advance) : amt(e.amount);
+  const expensesCell = isTrip ? amt(e.expenses) : '—';
+  const balanceCell = amt(e.running_balance);
+  return '<tr><td>' + dateTxt + '</td><td>' + kinisi + '</td>'
+    + '<td class="r">' + valueCell + '</td><td class="r">' + receivedCell + '</td>'
+    + '<td class="r">' + expensesCell + '</td><td class="r p-bal">' + balanceCell + '</td></tr>';
+}
+
+// ── ΚΑΡΤΕΛΑ ΟΔΗΓΟΥ (Figma 601:1011, ενημέρωση συμβολαίου 14/9) ──
+// Ίδιο dlPeriod με την οθόνη ΚΑΙ το CSV (modules/payroll_print.js) — ένα
+// μόνο σημείο υπολογίζει υπόλοιπο έναρξης/τέλους (αρχή 3 του CLAUDE.md):
+// screen, χαρτί και αρχείο ΔΕΝ μπορούν να διαφωνήσουν. 6 στήλες στο χαρτί
+// (χωρίς ΜΕΤΑΒΟΛΗ — αυτή μένει μόνο στην οθόνη/CSV, per Figma).
+function buildCardDoc(driverRow, entries, year, month) {
+  const p = dlPeriod(entries, year, month);
+  const liveRows = p.rows.filter(e => !e.cancelled);
+  const rowsHtml = p.rows.map(pRowHtml).join('');
+  const receivedTotal = p.totals.advance + p.totals.payments + p.totals.adjustments;
+  const openingDateTxt = p.from ? dlDateRange(p.from, null) : '—';
+  const closingDateTxt = p.to ? ' (' + fmtDMY(p.to) + ')' : '';
+  const closingAbs = Math.abs(Number(p.closing || 0)).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return docHeaderHtml('Αρ. ' + docNumber(driverRow, year, month))
+    + '<div class="doc-title">Κατάσταση λογαριασμού οδηγού</div>'
+    + '<div class="p-meta">'
+      + metaItem('Οδηγός', escapeHtml(driverRow ? driverRow.full_name : '—'))
+      + metaItem('Περίοδος', periodRangeText(p, year))
+      + metaItem('Τύπος', typeWordFull(driverRow ? driverRow.type : null))
+      + metaItem('Υπόλοιπο έναρξης', amt(p.opening) + ' €', 'p-opening')
+    + '</div>'
+    + '<table class="p-ledger"><thead><tr>'
+      + '<th>Ημ/νία</th><th>Κίνηση</th><th class="r">Αξία</th><th class="r">Έλαβε</th>'
+      + '<th class="r">Έξοδα</th><th class="r">Υπόλοιπο</th>'
+    + '</tr></thead><tbody>'
+      + '<tr class="p-openrow"><td>' + openingDateTxt + '</td><td>Υπόλοιπο έναρξης περιόδου</td>'
+        + '<td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r p-bal">' + amt(p.opening) + '</td></tr>'
+      + rowsHtml
+      + '<tr class="p-tot-row"><td colspan="2">Σύνολο περιόδου · ' + liveRows.length + ' κινήσεις</td>'
+        + '<td class="r">' + amt(p.totals.value) + '</td>'
+        + '<td class="r">' + amt(receivedTotal) + '</td>'
+        + '<td class="r">' + amt(p.totals.expenses) + '</td>'
+        + '<td class="r"></td></tr>'
+    + '</tbody></table>'
+    + '<div class="p-closing"><span>Υπόλοιπο τέλους περιόδου' + closingDateTxt + ' — ' + pClosingWord(p.closing) + '</span>'
+      + '<span class="v">' + closingAbs + ' €</span></div>'
+    + '<div class="p-foot">Ποσά σε €. Υπόλοιπο = υπόλοιπο έναρξης + αξία + έξοδα − πληρωμές. '
+      + '«—» = καμία τιμή στη στήλη· δρομολόγιο χωρίς καταχωρισμένη αξία δεν προσαυξάνει το υπόλοιπο μέχρι την καταχώρισή της.</div>'
+    + '<div class="p-sign">'
+      + '<div class="p-sign-col"><div class="p-sign-role">Ο οδηγός</div><div class="p-sign-name">' + escapeHtml(driverRow ? driverRow.full_name : '—') + '</div></div>'
+      + '<div class="p-sign-col"><div class="p-sign-role">Για την εταιρεία</div><div class="p-sign-name">PETRAS GROUP · Λογιστήριο</div></div>'
+    + '</div>'
+    + printedLine();
+}
+
+// ── ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ ΟΛΩΝ ΤΩΝ ΟΔΗΓΩΝ ──
+// Ίδιο φίλτρο/ταξινόμηση με dlCsvDrivers (modules/payroll_print.js): μόνο
+// has_entries, φθίνουσα κατά υπόλοιπο — χαρτί και CSV δείχνουν τους ίδιους
+// οδηγούς με την ίδια σειρά. Δεν αφορούσε η ενημέρωση Figma 14/9 (μόνο η
+// καρτέλα, 601:1011) — κρατά την προηγούμενη διάταξη πίνακα, με την ίδια
+// κοινή κεφαλίδα/τίτλο.
+function buildDriversDoc(balances) {
+  const rows = (balances || []).filter(d => d.has_entries)
+    .slice().sort((a, b) => Number(b.balance || 0) - Number(a.balance || 0));
+  const sum = rows.reduce((a, d) => a + Number(d.balance || 0), 0);
+  const rowsHtml = rows.map(d => {
+    const lastPay = d.last_payment_date
+      ? fmtDMY(d.last_payment_date) + (d.last_payment_type ? ' (' + dlTypeLabel(d.last_payment_type) + ')' : '')
+      : '—';
+    return '<tr><td>' + escapeHtml(d.full_name) + '</td><td>' + dlTypeWord(d.type) + '</td>'
+      + '<td>' + (d.last_trip_date ? fmtDMY(d.last_trip_date) : '—') + '</td>'
+      + '<td>' + lastPay + '</td>'
+      + '<td class="r">' + (d.pending_count || 0) + '</td>'
+      + '<td class="r">' + amt(d.balance) + '</td></tr>';
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:#9CA3AF;padding:14px">Κανένας οδηγός με κινήσεις</td></tr>';
+  return docHeaderHtml()
+    + '<div class="doc-title">Κατάσταση οφειλών οδηγών</div>'
+    + '<table class="p-ledger"><thead><tr>'
+      + '<th>Οδηγός</th><th>Τύπος</th><th>Τελευταίο δρομολόγιο</th><th>Τελευταία πληρωμή</th>'
+      + '<th class="r">Χωρίς αξία</th><th class="r">Υπόλοιπο</th>'
+    + '</tr></thead><tbody>' + rowsHtml + '</tbody>'
+    + '<tfoot><tr class="p-tot-row"><td colspan="5">Σύνολο (' + rows.length + ' οδηγοί)</td><td class="r">' + amt(sum) + '</td></tr></tfoot>'
+    + '</table>'
+    + '<div class="p-foot">Ποσά σε €</div>'
+    + printedLine();
+}
+
+function showErr(msg) {
+  document.getElementById('loading').style.display = 'none';
+  const el = document.getElementById('err');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function renderDoc(html) {
+  document.getElementById('loading').style.display = 'none';
+  const docEl = document.getElementById('doc');
+  docEl.innerHTML = html;
+  docEl.style.display = 'block';
+  // &noprint=1: προεπισκόπηση/έλεγχος (π.χ. rig) χωρίς διάλογο εκτύπωσης —
+  // ίδια σύμβαση με print.html.
+  if (!noprint) setTimeout(() => window.print(), 500);
+}
+
+async function main() {
+  // Cold-open guard (S-1 cutover, ίδιο με print.html): χωρίς JWT κάθε fetch
+  // θα γύριζε 401 σε κενή σελίδα — λέμε γιατί, όχι σιωπή.
+  if (!localStorage.getItem('tms_jwt')) {
+    showErr('Δεν υπάρχει ενεργή σύνδεση. Ανοίξτε την εφαρμογή TMS, συνδεθείτε, και ξαναπατήστε την εκτύπωση από εκεί.');
+    return;
+  }
+  try {
+    if (docType === 'drivers') {
+      const list = await pFetch('/costs/ledger');
+      renderDoc(buildDriversDoc(list.records || []));
+      return;
+    }
+    if (!driverId) { showErr('Λείπει ο κωδικός οδηγού (?driver=).'); return; }
+    const [list, ledger] = await Promise.all([
+      pFetch('/costs/ledger'),
+      pFetch('/costs/ledger/' + encodeURIComponent(driverId))
+    ]);
+    const driverRow = (list.records || []).find(r => String(r.driver_id) === String(driverId));
+    renderDoc(buildCardDoc(driverRow, ledger.records || [], yearParam, monthParam));
+  } catch (e) {
+    showErr('Σφάλμα φόρτωσης: ' + (e && e.message ? e.message : e));
+  }
+}
+
+main();
+</script>
+</body>
+</html>
