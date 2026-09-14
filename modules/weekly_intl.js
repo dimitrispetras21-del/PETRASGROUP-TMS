@@ -227,6 +227,9 @@ const _WI2_CSS=`
    έχουν ήδη χειροκίνητο διακόπτη — εδώ γίνεται αυτόματος. Πάνω από 1500
    επανέρχονται πλήρεις. Τα ◂ ▸ εξακολουθούν να δουλεύουν χειροκίνητα. */
 @media (max-width:1800px){.wk3.wi2{--fL:18px;--fR:18px}}
+/* 14/9: an explicit «open» (localStorage 1 → fl-on/fr-on) wins over the <1800px collapse — the media rule
+   above forced 18px on every laptop, so the ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ headers toggled the class and nothing moved. */
+.wk3.wi2.fl-on{--fL:200px}.wk3.wi2.fr-on{--fR:200px}
 /* Μαζεμένη στήλη = μαζεμένη κεφαλίδα. Το κείμενο «ΠΡΟΣ/ΑΠΟ ΒΕΡΟΙΑ» είναι
    γυμνός κόμβος δίπλα στο βελάκι, οπότε ξεχείλιζε από τα 18px. font-size:0
    στο κελί και κανονικό στο βελάκι: το κείμενο φεύγει, το ◂ ▸ μένει και η
@@ -931,7 +934,7 @@ function _wiPaint(){
   // και στο μηδέν, αλλιώς δεν ξε-επιλέγεται όταν αδειάσει η κατηγορία.
   const chip=(q,lbl,n)=>{ const on=(WINTL.quick||'')===q; return `<button class="wi2-chip${on?' on':''}" data-q="${q}"${(!n&&!on)?' disabled':''} onclick="_wi2Quick('${q}')">${lbl} (${n})</button>`; };
   document.getElementById('content').innerHTML=`
-    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}" style="display:block;width:100%">
+    <div class="wk3 wi2 ${_wiQuietOn()?'wi-quiet':''}${localStorage.getItem('tms_wk3_fl')==='0'?' fl-off':''}${localStorage.getItem('tms_wk3_fr')==='0'?' fr-off':''}${localStorage.getItem('tms_wk3_fl')==='1'?' fl-on':''}${localStorage.getItem('tms_wk3_fr')==='1'?' fr-on':''}" style="display:block;width:100%">
     <style>${_WI2_CSS}</style>
     <div class="wi2-mast">
       <div class="wi2-title">Πίνακας Σχεδιασμού Αποστολών <button class="wi2-legend-btn" onclick="_wi2Legend()" title="Υπόμνημα χρωμάτων και σημάτων">? υπόμνημα</button></div>
@@ -5225,7 +5228,7 @@ function _wk3FeedTog(side){
   const k='tms_wk3_'+side, off=localStorage.getItem(k)!=='0';
   localStorage.setItem(k, off?'0':'1');
   const el=document.querySelector('.wk3');
-  if(el) el.classList.toggle(side==='fl'?'fl-off':'fr-off', off);
+  if(el){ el.classList.toggle(side==='fl'?'fl-off':'fr-off', off); el.classList.toggle(side==='fl'?'fl-on':'fr-on', !off); }
 }
 window._wk3FeedTog = _wk3FeedTog;
 window._wiImpShift = _wiImpShift;
