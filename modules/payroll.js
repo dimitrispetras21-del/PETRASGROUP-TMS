@@ -328,7 +328,10 @@ function dlStyles() {
      1280, 5 from 1700 up. minmax(0,1fr) so a long name can never widen a track. */
   .dl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:16px 24px}
   @media (max-width:1320px){.dl-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  @media (min-width:1700px){.dl-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+  /* 5 columns only from 1900px: measured live 14/9 on the owner's 1800px
+     window, 5 columns left ~230px per card and 31/49 names wrapped (one broke
+     mid-word). 4 columns there give ~290px and one-line names. */
+  @media (min-width:1900px){.dl-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
   /* Owner correction 14/9 (μετά το Figma frame): η 3px άνω άκρη υπάρχει ΠΑΝΤΑ,
      όχι μόνο σε εκκρεμότητα — «να δείχνει σχεδιασμένη κι όταν είναι εντάξει».
      Γαλάζιο token: --accent-light είναι rgba wash (ακατάλληλο για περίγραμμα),
@@ -356,8 +359,9 @@ function dlStyles() {
   /* The balance sits in the SAME place on every card — top right, on the
      avatar's line (owner 14/9: «άλλες φορές το ποσό είναι πάνω, άλλες κάτω»
      — the earlier flex-wrap dropped it under 5/49 long names). The name wraps
-     inside its own column instead, up to two lines, never an ellipsis. */
-  .dl-card-id .m{white-space:normal;overflow-wrap:anywhere;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+     inside its own column instead, up to two lines, never an ellipsis —
+     breaking at spaces, inside a word only when a single word cannot fit. */
+  .dl-card-id .m{white-space:normal;overflow-wrap:break-word;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:none;margin-left:auto;min-width:96px}
   .dl-bal{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
   .dl-balword{font-size:11px;font-weight:500;color:var(--text-dim)}
