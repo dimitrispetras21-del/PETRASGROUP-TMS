@@ -321,7 +321,13 @@ function dlStyles() {
   .dl-filters select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;background:var(--surface-card);color:var(--text)}
   .dl-filters .dl-search{margin:0;width:200px}
   .dl-note{padding:6px 24px;font-size:12px;color:var(--warn)}
-  .dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px;padding:16px 24px}
+  /* Fixed column count, never auto-fill (coordinator review 14/9 on the owner's
+     wide Chrome: auto-fill gave 6 columns of ~190px and cut the names to
+     «Papatheoc…»). Figma 614:1011 is 4 columns of ~268px at 1440; 3 fit at
+     1280, 5 from 1700 up. minmax(0,1fr) so a long name can never widen a track. */
+  .dl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:16px 24px}
+  @media (max-width:1320px){.dl-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+  @media (min-width:1700px){.dl-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
   /* Owner correction 14/9 (μετά το Figma frame): η 3px άνω άκρη υπάρχει ΠΑΝΤΑ,
      όχι μόνο σε εκκρεμότητα — «να δείχνει σχεδιασμένη κι όταν είναι εντάξει».
      Γαλάζιο token: --accent-light είναι rgba wash (ακατάλληλο για περίγραμμα),
@@ -339,11 +345,16 @@ function dlStyles() {
   .dl-card .k{white-space:nowrap}
   .dl-card .dl-btn{white-space:nowrap;padding:0 10px}
   .dl-card.faded{opacity:.5}
-  .dl-card-top{display:flex;align-items:flex-start;gap:10px}
+  /* Name first, balance second: the header wraps, so a long name keeps its
+     whole line and the balance drops to a second row (right-aligned) instead
+     of squeezing the name into an ellipsis. ≤22 characters (DM Sans 600 14)
+     never truncate at the 268px card; the ellipsis stays only as a last
+     resort for names longer than the card itself. */
+  .dl-card-top{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 10px}
   .dl-card .dl-avatar{width:36px;height:36px;font-size:12px}
-  .dl-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .dl-card-id{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}
   .dl-card-id .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:none}
+  .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:0 0 auto;margin-left:auto;min-width:96px}
   .dl-bal{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
   .dl-balword{font-size:11px;font-weight:500;color:var(--text-dim)}
   .dl-balword.dl-owe{color:var(--ok)} .dl-balword.dl-owed{color:var(--warn)}

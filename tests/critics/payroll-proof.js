@@ -407,6 +407,12 @@ async function assertCardsShareRow(page, label, count) {
   assert(tops.length >= count, '[' + label + '] at least ' + count + ' .dl-card elements exist (got ' + tops.length + ')');
   const firstRow = tops.slice(0, count);
   assert(firstRow.every(t => t === firstRow[0]), '[' + label + '] the first ' + count + ' .dl-card elements share one offsetTop (one row): ' + JSON.stringify(firstRow));
+  // EXACTLY `count` per row (coordinator review 14/9: auto-fill gave 6 columns
+  // of ~190px on a wide window) — the next card, if any, starts a new row.
+  if (tops.length > count) assert(tops[count] > firstRow[0], '[' + label + '] card #' + (count + 1) + ' starts a NEW row (exactly ' + count + ' columns): ' + tops[count] + ' > ' + firstRow[0]);
+  // Names up to ~22 characters render whole — no ellipsis at this width.
+  const names = await page.evaluate(() => Array.from(document.querySelectorAll('.dl-card .dl-card-id .m')).map(el => ({ t: el.textContent, sw: el.scrollWidth, cw: el.clientWidth })));
+  for (const n of names.filter(n => n.t.length <= 22)) assert(n.sw <= n.cw + 0.5, '[' + label + '] driver name «' + n.t + '» (' + n.t.length + ' chars) is not truncated: scrollWidth ' + n.sw + ' ≤ clientWidth ' + n.cw);
 }
 
 // The 3px top border must be present on every card, and the pending driver's
