@@ -276,6 +276,40 @@ async function dbInsertMany(env, table, rows) {
   return Array.isArray(out) ? out : [out];
 }
 __name(dbInsert, "dbInsert");
+
+// One SELECT for N rows by legacy id (14/9): the batch handlers' «before»
+// read and computed re-read used to be one request per row.
+async function dbSelectManyByLegacy(env, table, legacyIds) {
+  const ids = [...new Set(legacyIds.filter((v) => v != null && v !== ""))];
+  if (!ids.length) return [];
+  const params = new URLSearchParams();
+  params.set("select", "*");
+  params.set("legacy_id", `in.(${ids.map((v) => `"${String(v).replace(/"/g, "")}"`).join(",")})`);
+  const { rows } = await dbSelectRaw(env, table, params);
+  return rows || [];
+}
+__name(dbSelectManyByLegacy, "dbSelectManyByLegacy");
+// N audit rows in ONE insert (14/9). Same shape as audit(); a failure is logged
+// and never blocks the user's request.
+async function auditMany(env, entries) {
+  if (!entries || !entries.length) return;
+  try {
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await dbInsertMany(env, "audit_log", entries.map((entry) => ({
+      actor: entry.actor,
+      role: entry.role,
+      action: entry.action,
+      table_name: entry.table,
+      record_id: entry.recordId || null,
+      before_data: entry.before ? JSON.stringify(entry.before) : null,
+      after_data: entry.after ? JSON.stringify(entry.after) : null,
+      created_at: now
+    })));
+  } catch (e) {
+    console.error("AUDIT BATCH WRITE FAILED", entries[0]?.action, entries[0]?.table, e.message);
+  }
+}
+__name(auditMany, "auditMany");
 async function dbUpdate(env, table, matchColumn, matchValue, patch) {
   const params = new URLSearchParams();
   params.set(matchColumn, `eq.${matchValue}`);
@@ -2406,32 +2440,136 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
   return jsonOk(record, origin, env, 201);
 }
 __name(handleFacadeCreate, "handleFacadeCreate");
+
+// Link resolution ONCE for a whole batch (14/9). Per entry, buildWriteRow spent
+// one SELECT per linked table (a stop has three: order, location, client);
+// with the per-row insert/audit/shape that followed, a 7-stop batch reached
+// Cloudflare's 50-subrequest ceiling on the 7th insert — measured 11:47 in the
+// Supabase edge log: 47 requests per attempt, all 201, then the Worker's own
+// fetch was refused and the client saw «Failed to create record».
+async function buildWriteRows(cfg, fieldsList, origin, env) {
+  const prepared = fieldsList.map((f) => {
+    let fields = f;
+    if (cfg.linkAliases && fields && typeof fields === "object") {
+      for (const [aliasLabel, linkLabel] of Object.entries(cfg.linkAliases)) {
+        const v = fields[aliasLabel];
+        if (typeof v === "string" && v && fields[linkLabel] === void 0) {
+          fields = { ...fields, [linkLabel]: [v] };
+        }
+      }
+    }
+    const row = fieldsToColumns(cfg, fields);
+    const dropped = [];
+    if (fields && typeof fields === "object") {
+      for (const label of Object.keys(fields)) {
+        if (cfg.fields[label] || (cfg.aliases || {})[label]) continue;
+        if (cfg.links && cfg.links[label]) continue;
+        if (cfg.linkAliases && cfg.linkAliases[label]) continue;
+        dropped.push(label);
+      }
+    }
+    return { fields, row, dropped };
+  });
+  const dropped = prepared.flatMap((p) => p.dropped);
+  if (cfg.links) {
+    const byTable = /* @__PURE__ */ new Map();
+    const present = prepared.map((p) => {
+      const list = [];
+      if (!p.fields || typeof p.fields !== "object") return list;
+      for (const [label, { column, table }] of Object.entries(cfg.links)) {
+        if (!(label in p.fields)) continue;
+        const val = p.fields[label];
+        const recid = Array.isArray(val) ? val[0] ?? null : val || null;
+        list.push({ label, column, table, recid });
+        if (recid) {
+          if (!byTable.has(table)) byTable.set(table, /* @__PURE__ */ new Set());
+          byTable.get(table).add(recid);
+        }
+      }
+      return list;
+    });
+    const resolved = /* @__PURE__ */ new Map();
+    try {
+      for (const [table, set] of byTable) {
+        resolved.set(table, await resolveLegacyToIds(env, dbSelectRaw, table, [...set]));
+      }
+    } catch (e) {
+      console.error(`write facade ${cfg.name} batch link-resolve`, e.message);
+      return { error: jsonError("Failed to process request", 500, origin, env), dropped };
+    }
+    const unknownLinks = [];
+    prepared.forEach((p, i) => {
+      for (const { label, column, table, recid } of present[i]) {
+        if (recid == null) { p.row[column] = null; continue; }
+        const id = resolved.get(table)?.get(recid);
+        if (id == null) unknownLinks.push({ label, recid });
+        else p.row[column] = id;
+      }
+    });
+    if (unknownLinks.length) {
+      console.warn(`[facade] ${cfg.name} unknown links: ${unknownLinks.map((u) => `${u.label}=${u.recid}`).join(", ")}`);
+      return { error: jsonError("Unknown linked record in request", 400, origin, env), dropped };
+    }
+  }
+  return { rows: prepared.map((p) => p.row), dropped };
+}
+__name(buildWriteRows, "buildWriteRows");
+// Shape N written rows with ONE computed re-read and ONE link pass (14/9).
+async function shapeManyWithLinks(rows, cfg, env) {
+  const colToLabel = columnToLabel(cfg);
+  const records = rows.map((r) => toAirtableRecord(r, colToLabel));
+  if (cfg.computed && rows.some((r) => r?.legacy_id)) {
+    try {
+      const params = new URLSearchParams();
+      params.set("select", ["legacy_id", ...Object.values(cfg.computed)].join(","));
+      params.set("legacy_id", `in.(${rows.filter((r) => r?.legacy_id).map((r) => `"${r.legacy_id}"`).join(",")})`);
+      const { rows: viewRows } = await dbSelectRaw(env, readRelation(cfg), params);
+      const byLegacy = /* @__PURE__ */ new Map((viewRows || []).map((v) => [v.legacy_id, v]));
+      rows.forEach((r, i) => {
+        const v = byLegacy.get(r?.legacy_id);
+        if (!v) return;
+        for (const [label, column] of Object.entries(cfg.computed)) {
+          if (v[column] !== null && v[column] !== void 0) records[i].fields[label] = v[column];
+        }
+      });
+    } catch (e) {
+      console.error(`write facade ${cfg.name} computed re-read (batch)`, e.message);
+    }
+  }
+  if (cfg.links) {
+    try {
+      const byRow = await resolveLinksOnRead(env, dbSelectRaw, rows, cfg.links);
+      rows.forEach((r, i) => { const extra = byRow.get(r); if (extra) Object.assign(records[i].fields, extra); });
+    } catch (e) {
+      console.error(`write facade ${cfg.name} response link-resolve (batch)`, e.message);
+    }
+  }
+  return records;
+}
+__name(shapeManyWithLinks, "shapeManyWithLinks");
 async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
   if (entries.length === 0) return jsonError("Empty records array", 400, origin, env);
   if (entries.length > 10) return jsonError("Batch too large (max 10 records)", 422, origin, env);
-  const rows = [];
-  for (const entry of entries) {
-    const { row, error, dropped } = await buildWriteRow(cfg, entry?.fields, origin, env);
-    logUnknownFields(env, ctx, {
-      table: cfg.pg,
-      kind: "write",
-      method: "POST",
-      role: caller.role,
-      actor: caller.sub,
-      path: null
-    }, dropped);
-    if (error) return error;
+  const { rows, error, dropped } = await buildWriteRows(cfg, entries.map((e) => e?.fields), origin, env);
+  logUnknownFields(env, ctx, {
+    table: cfg.pg,
+    kind: "write",
+    method: "POST",
+    role: caller.role,
+    actor: caller.sub,
+    path: null
+  }, dropped);
+  if (error) return error;
+  for (const row of rows) {
     if (Object.keys(row).length === 0) {
       return jsonError("No writable fields in request", 400, origin, env);
     }
     row.legacy_id = mintLegacyId();
-    rows.push(row);
   }
-  // 14/9: ONE insert for the whole batch (PostgREST array body = one statement,
-  // one transaction). Row by row, row k failing left rows 1..k-1 in the base
-  // while the caller got 500 and retried: order 335 got its 6 stops three
-  // times (dispatcher 14/9 11:47). The Postgres reason now travels in the 500
-  // body, so the next refusal says why instead of «Failed to create record».
+  // ONE insert = one transaction: every row lands or none does. The old
+  // row-by-row loop left rows 1..k-1 behind when row k failed, and the
+  // client's retries wrote them three times (order 335, 14/9 11:47). The
+  // Postgres reason travels in the 500 body instead of a generic message.
   let createdRows;
   try {
     createdRows = await dbInsertMany(env, cfg.pg, rows);
@@ -2439,18 +2577,15 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
     console.error(`POST batch facade ${cfg.name}`, e.message);
     return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
-  const records = [];
-  for (const created of createdRows) {
-    await audit(env, {
-      actor: caller.sub,
-      role: caller.role,
-      action: "create",
-      table: cfg.pg,
-      recordId: created?.legacy_id || null,
-      after: created
-    });
-    records.push(await shapeOneWithLinks(created, cfg, env));
-  }
+  await auditMany(env, createdRows.map((created) => ({
+    actor: caller.sub,
+    role: caller.role,
+    action: "create",
+    table: cfg.pg,
+    recordId: created?.legacy_id || null,
+    after: created
+  })));
+  const records = await shapeManyWithLinks(createdRows, cfg, env);
   return jsonOk({ records }, origin, env);
 }
 __name(facadeBatchCreate, "facadeBatchCreate");
@@ -2500,47 +2635,65 @@ async function handleFacadeBatchUpdate(request, tableId, origin, env, ctx) {
   }
   if (body.records.length === 0) return jsonError("Empty records array", 400, origin, env);
   if (body.records.length > 10) return jsonError("Batch too large (max 10 records)", 422, origin, env);
-  const patches = [];
   for (const entry of body.records) {
     if (!entry?.id) return jsonError("Each batch record needs an id", 400, origin, env);
-    const { row: patch, error, dropped } = await buildWriteRow(cfg, entry.fields, origin, env);
-    logUnknownFields(env, ctx, {
-      table: cfg.pg,
-      kind: "write",
-      method: "PATCH",
-      role: caller.role,
-      actor: caller.sub,
-      path: new URL(request.url).pathname
-    }, dropped);
-    if (error) return error;
+  }
+  // 14/9: batch-level link resolution, one «before» read, one audit insert and
+  // one shaping pass — per row this handler spent ~10 subrequests, so 5 stops
+  // already touched Cloudflare's 50-subrequest ceiling and the rows after it
+  // were left half-updated.
+  const { rows: patchRows, error, dropped } = await buildWriteRows(cfg, body.records.map((e) => e.fields), origin, env);
+  logUnknownFields(env, ctx, {
+    table: cfg.pg,
+    kind: "write",
+    method: "PATCH",
+    role: caller.role,
+    actor: caller.sub,
+    path: new URL(request.url).pathname
+  }, dropped);
+  if (error) return error;
+  const patches = body.records.map((e, i) => ({ recId: e.id, patch: patchRows[i] }));
+  for (const { patch } of patches) {
     if (Object.keys(patch).length === 0) {
       return jsonError("No writable fields in request", 400, origin, env);
     }
-    patches.push({ recId: entry.id, patch });
   }
-  const records = [];
+  // Το «πριν» για όλες τις γραμμές σε ΜΙΑ ανάγνωση — τεκμηρίωση, όχι προϋπόθεση.
+  let beforeBy = /* @__PURE__ */ new Map();
+  try {
+    const rowsBefore = await dbSelectManyByLegacy(env, cfg.pg, patches.map((p) => p.recId));
+    beforeBy = new Map(rowsBefore.map((r) => [r.legacy_id, r]));
+  } catch (e) {
+    console.error(`AUDIT before-read failed ${cfg.pg} (batch)`, e.message);
+  }
+  const updatedRows = [];
+  const auditEntries = [];
   for (const { recId, patch } of patches) {
-    // Διαβάζεται ΠΡΙΝ το dbUpdate — μετά δεν υπάρχει τρόπος να ανακτηθεί.
-    const before = await readRowBefore(env, cfg.pg, recId);
     let updated;
     try {
       updated = await dbUpdate(env, cfg.pg, "legacy_id", recId, patch);
     } catch (e) {
       console.error(`PATCH batch facade ${cfg.name}`, e.message);
-      return jsonError("Failed to update record", 500, origin, env);
+      await auditMany(env, auditEntries);
+      return jsonError("Failed to update record: " + String(e.message || "").slice(0, 220), 500, origin, env);
     }
-    if (!updated) return jsonError(`Record not found: ${recId}`, 404, origin, env);
-    await audit(env, {
+    if (!updated) {
+      await auditMany(env, auditEntries);
+      return jsonError(`Record not found: ${recId}`, 404, origin, env);
+    }
+    updatedRows.push(updated);
+    auditEntries.push({
       actor: caller.sub,
       role: caller.role,
       action: "update",
       table: cfg.pg,
       recordId: recId,
-      before,
+      before: beforeBy.get(recId) || null,
       after: updated
     });
-    records.push(await shapeOneWithLinks(updated, cfg, env));
   }
+  await auditMany(env, auditEntries);
+  const records = await shapeManyWithLinks(updatedRows, cfg, env);
   return jsonOk({ records }, origin, env);
 }
 __name(handleFacadeBatchUpdate, "handleFacadeBatchUpdate");
