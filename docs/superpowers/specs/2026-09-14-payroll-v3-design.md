@@ -57,10 +57,18 @@ migration 011. Ύφος: το formal των Εξόδων (`2026-09-13-fuel-colle
 - Υπάρχει: `GET /costs/ledger` (balances + gap), `GET /costs/ledger/:id?year=`,
   `POST /costs/ledger` (trip/payment_cash/payment_bank/adjustment), `PATCH`
   (διόρθωση με reason, ακύρωση `{cancel:true, reason}`), μαζική πληρωμή.
-- Λείπει (client-side αρχικά, Worker αργότερα αν βαρύνει): πληρωμές μήνα,
-  υπόλοιπο έναρξης περιόδου, τελευταίο δρομολόγιο ανά οδηγό στη λίστα (το
-  `dl_v_balance` έχει `last_trip_date`), πλήθος «χωρίς αξία» ανά οδηγό (έχει
-  `pending_count`).
+- Λείπει (client-side αρχικά, Worker αργότερα αν βαρύνει): υπόλοιπο έναρξης
+  περιόδου, τελευταίο δρομολόγιο ανά οδηγό στη λίστα (το `dl_v_balance` έχει
+  `last_trip_date`), πλήθος «χωρίς αξία» ανά οδηγό (έχει `pending_count`).
+- ΥΛΟΠΟΙΗΘΗΚΕ 14/9 (πηγή `worker/src/ledger-month.mjs` + route σε `index.js`,
+  **deploy εκκρεμεί**): `GET /costs/ledger?month=YYYY-MM` προσθέτει
+  `{ month: { from, to, drivers: { [driver_id]: { trips, pending, value,
+  expenses, advance, payments, adjustments, last_payment } } } }` στην
+  απάντηση — μία επιπλέον κλήση PostgREST σε `dl_v_entries`, όχι 49-68 ανά
+  οδηγό. Χωρίς `month` η απάντηση μένει ακριβώς όπως πριν.
+- Μελλοντικό: `last_payment_amount` στο `dl_v_balance` (χωρίς migration τώρα,
+  απόφαση 14/9) — προς το παρόν το `last_payment` βγαίνει μόνο από το
+  `?month=` άθροισμα, όχι από το `dl_v_balance` της λίστας.
 
 ## Διπλοεγγραφές Excel ↔ νέο σύστημα (έλεγχος 14/9, μόνο SELECT)
 

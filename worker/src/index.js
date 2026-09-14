@@ -2,6 +2,7 @@
 // run `npm install` in worker/ before deploying from a fresh clone.
 import puppeteer from "@cloudflare/puppeteer";
 import { validateNewEntry, validatePatch } from "./ledger-rules.mjs";
+import { monthRange, aggregateMonth } from "./ledger-month.mjs";
 import { validateRtBody, planRtUpsert, canRemoveLeg } from "./rt-rules.mjs";
 import { validateLineBody } from "./costs-line-rules.mjs";
 import { buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip, allocateFees, reconcile, sumGrossEur, isMissingRelationError, toCostLineRow } from "./import-rules.mjs";
@@ -3299,11 +3300,38 @@ async function handleCosts(request, url, origin, env) {
     // ---- LEDGER (Μισθοδοσία Οδηγών) — spec 2026-09-05 §4 ----
     // ---- GET /costs/ledger : one row per driver + reconciliation gap ----
     if (resource === "ledger" && method === "GET" && !recId) {
-      const [bal, gap] = await Promise.all([
+      const month = url.searchParams.get("month");
+      let monthRangeResult = null;
+      if (month) {
+        monthRangeResult = monthRange(month);
+        if (monthRangeResult.error) return jsonError(monthRangeResult.error, 400, origin, env);
+      }
+      // Αρχική με κάρτες (Figma 614/616:1011) needs each driver's trips/value/
+      // payments for the selected month. 49 active drivers with movements (measured
+      // 14/9) — one dl_v_entries call per driver from the browser would be 49-68
+      // requests per page load; one extra query here, aggregated server-side, is one.
+      const monthQuery = monthRangeResult
+        ? (() => {
+            const params = new URLSearchParams({
+              select: "id,driver_id,entry_type,entry_date,trip_value,advance,expenses,amount,pending,cancelled",
+              limit: "5000"
+            });
+            params.append("entry_date", `gte.${monthRangeResult.from}`);
+            params.append("entry_date", `lte.${monthRangeResult.to}`);
+            params.append("deleted_at", "is.null");
+            return dbSelectRaw(env, "dl_v_entries", params);
+          })()
+        : Promise.resolve(null);
+      const [bal, gap, monthRows] = await Promise.all([
         dbSelectRaw(env, "dl_v_balance", new URLSearchParams({ select: "*", order: "full_name.asc", limit: "300" })),
-        dbSelectRaw(env, "dl_v_rt_gap", new URLSearchParams({ select: "rt_id,code,driver_id,date_start", limit: "500" }))
+        dbSelectRaw(env, "dl_v_rt_gap", new URLSearchParams({ select: "rt_id,code,driver_id,date_start", limit: "500" })),
+        monthQuery
       ]);
-      return jsonOk({ records: bal.rows, gap: gap.rows.length, gapRts: gap.rows }, origin, env);
+      const result = { records: bal.rows, gap: gap.rows.length, gapRts: gap.rows };
+      if (monthRangeResult) {
+        result.month = { from: monthRangeResult.from, to: monthRangeResult.to, drivers: aggregateMonth(monthRows.rows) };
+      }
+      return jsonOk(result, origin, env);
     }
     // ---- GET /costs/ledger/:driverId?year= : the driver's ledger ----
     if (resource === "ledger" && method === "GET" && recId && recId !== "import") {
