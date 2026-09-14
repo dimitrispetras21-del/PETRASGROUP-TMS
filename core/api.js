@@ -626,6 +626,11 @@ async function atCreateBatch(tableId, recordsArr) {
   for (let i = 0; i < recordsArr.length; i += 10) {
     const batch = recordsArr.slice(i, i + 10);
     _auditLog('CREATE_BATCH', tableId, null, { count: batch.length });
+    // No retry (14/9): a batch POST is not idempotent. The Worker inserts row by
+    // row; when row k fails it answers 500 with rows 1..k-1 already in the base,
+    // and the 3 retries (1s+2s) wrote the same stops three times (order 335,
+    // 18 stops for 6 — dispatcher 14/9 11:47). The Worker fix makes the batch
+    // atomic; until it is deployed, one attempt only.
     const res = await _enqueue(() => _atRetry(() => _fetchWithTimeout(
       _apiUrl(`/v0/${AT_BASE}/${tableId}`),
       {
@@ -633,7 +638,7 @@ async function atCreateBatch(tableId, recordsArr) {
         headers: _apiHeaders('POST'),
         body: JSON.stringify({ records: batch, typecast: true })
       }
-    )));
+    ), 1));
     const data = await res.json();
     if (data.error) {
       const errMsg = _atErrMsg(data.error, 'Unknown Airtable error');

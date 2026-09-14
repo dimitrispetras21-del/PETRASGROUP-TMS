@@ -1051,6 +1051,7 @@ async function duplicateIntlOrder(recId) {
 }
 
 async function _openModal(recId, f, _clientLabelOverride, _scanPrefill) {
+  INTL_ORDERS._createdId = null; // a fresh modal never inherits a previous attempt's order
   // Bug 11/8: από το Weekly η φόρμα άνοιγε ΠΡΙΝ φορτωθούν οι τοποθεσίες
   // (το init της σελίδας Orders δεν έχει τρέξει) → η αναζήτηση έδειχνε κενά.
   try { await fhLoadLocations(); } catch(e) { console.warn('locations preload:', e.message); }
@@ -1800,6 +1801,11 @@ async function _syncGroupageLines(orderId, noId, orderFields, natFields) {
 async function submitIntlOrder(recId) {
   const btn = document.getElementById('btnSubmit');
   if (btn) { btn.textContent = 'Αποθήκευση…'; btn.disabled = true; }
+  // 14/9: the ORDER row is written before its stops. When the stops failed, the
+  // modal stayed open with recId=null and every retry created ANOTHER order
+  // (335/336/337/338 in 3 minutes, dispatcher 14/9). The id of the order this
+  // modal already created is remembered until the modal closes.
+  if (!recId && INTL_ORDERS._createdId) recId = INTL_ORDERS._createdId;
 
   try {
     // Οι στάσεις δεν φορτώθηκαν: αποθήκευση θα έγραφε κενά τα «Loading/Delivery
@@ -2067,6 +2073,7 @@ async function submitIntlOrder(recId) {
     if (result?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — κάνε Ανανέωση και ξαναδοκίμασε','warn'); return; }
 
     if (result?.error) throw new Error(result.error.message || JSON.stringify(result.error));
+    if (!recId && result?.id) INTL_ORDERS._createdId = result.id;
 
     invalidateCache(TABLES.ORDERS);
 
@@ -2144,6 +2151,7 @@ async function submitIntlOrder(recId) {
 
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
+    INTL_ORDERS._createdId = null;
     toast(recId ? 'Order updated ✓' : 'Order created ✓');
     // Weekly v3: το modal ανοίγει και από το Weekly International — το repaint
     // πρέπει να σεβαστεί τη σελίδα που είναι ανοιχτή, όχι να τη hijack-άρει.

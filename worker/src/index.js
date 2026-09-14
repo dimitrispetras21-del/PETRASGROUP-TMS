@@ -254,6 +254,27 @@ async function dbInsert(env, table, row) {
   const rows = await res.json();
   return Array.isArray(rows) ? rows[0] : rows;
 }
+// Atomic multi-row insert (14/9): one PostgREST request = one transaction —
+// either every row lands or none does.
+async function dbInsertMany(env, table, rows) {
+  const url = `${env.SUPABASE_URL}/rest/v1/${table}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      Authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      "Content-Type": "application/json",
+      Prefer: "return=representation"
+    },
+    body: JSON.stringify(rows)
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`dbInsert ${table} ${res.status}: ${detail.slice(0, 200)}`);
+  }
+  const out = await res.json();
+  return Array.isArray(out) ? out : [out];
+}
 __name(dbInsert, "dbInsert");
 async function dbUpdate(env, table, matchColumn, matchValue, patch) {
   const params = new URLSearchParams();
@@ -2371,7 +2392,7 @@ async function handleFacadeCreate(request, tableId, origin, env, ctx) {
     created = await dbInsert(env, cfg.pg, row);
   } catch (e) {
     console.error(`POST facade ${cfg.name}`, e.message);
-    return jsonError("Failed to create record", 500, origin, env);
+    return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
   }
   await audit(env, {
     actor: caller.sub,
@@ -2406,15 +2427,20 @@ async function facadeBatchCreate(entries, cfg, caller, origin, env, ctx) {
     row.legacy_id = mintLegacyId();
     rows.push(row);
   }
+  // 14/9: ONE insert for the whole batch (PostgREST array body = one statement,
+  // one transaction). Row by row, row k failing left rows 1..k-1 in the base
+  // while the caller got 500 and retried: order 335 got its 6 stops three
+  // times (dispatcher 14/9 11:47). The Postgres reason now travels in the 500
+  // body, so the next refusal says why instead of «Failed to create record».
+  let createdRows;
+  try {
+    createdRows = await dbInsertMany(env, cfg.pg, rows);
+  } catch (e) {
+    console.error(`POST batch facade ${cfg.name}`, e.message);
+    return jsonError("Failed to create record: " + String(e.message || "").slice(0, 220), 500, origin, env);
+  }
   const records = [];
-  for (const row of rows) {
-    let created;
-    try {
-      created = await dbInsert(env, cfg.pg, row);
-    } catch (e) {
-      console.error(`POST batch facade ${cfg.name}`, e.message);
-      return jsonError("Failed to create record", 500, origin, env);
-    }
+  for (const created of createdRows) {
     await audit(env, {
       actor: caller.sub,
       role: caller.role,
