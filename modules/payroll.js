@@ -328,8 +328,16 @@ function dlStyles() {
      και το γαλάζιο hex της πλαϊνής μπάρας δεν υπάρχει πουθενά ως global token
      (μόνο τοπικά, επαναλαμβανόμενο ως κυριολεκτικό hex σε άλλα modules) —
      άρα var(--accent) όπως προβλέπει η ίδια η ανάθεση όταν δεν βρεθεί token. */
-  .dl-card{position:relative;border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface-card)}
+  /* Top edge ALWAYS on (owner 14/9 «να δείχνει σχεδιασμένη κι όταν είναι εντάξει»):
+     the sidebar's light blue (--panel-accent) when nothing is pending,
+     amber when a trip still has no value. */
+  .dl-card{position:relative;border:1px solid var(--border);border-top:3px solid var(--panel-accent,var(--accent));border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface-card)}
   .dl-card.pending{border-top-color:var(--warn)}
+  /* 268px cards at 1440 (4 columns beside the sidebar): the stat labels and
+     the two action buttons must stay on one line — measured 14/9, «ΔΡΟΜ. ΜΗΝΑ»
+     and «Καρτέλα →» each wrapped onto two lines. */
+  .dl-card .k{white-space:nowrap}
+  .dl-card .dl-btn{white-space:nowrap;padding:0 10px}
   .dl-card.faded{opacity:.5}
   .dl-card-top{display:flex;align-items:flex-start;gap:10px}
   .dl-card .dl-avatar{width:36px;height:36px;font-size:12px}
