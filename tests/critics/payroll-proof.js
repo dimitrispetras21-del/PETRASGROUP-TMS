@@ -251,7 +251,11 @@ async function runDriverCardFlow(browser) {
   // Explicit period — the rig's «today» is NOT frozen (preparePage does not
   // fix the clock), so the screen must be told 2026-08 rather than relying on
   // whatever month the machine running this rig happens to be in.
-  await page.selectOption('#dlYear', '2026');
+  // Year is a row of chips, not a <select> (contract fix 14/9, Figma
+  // 600:1011 — the written contract's first draft guessed a #dlYear select).
+  await page.locator('.dl-ychip[data-year="2026"]').click();
+  await page.waitForTimeout(100);
+  assert(await page.locator('.dl-ychip[data-year="2026"].sel').count() === 1, '.dl-ychip[data-year="2026"] carries .sel once clicked');
   await page.selectOption('#dlMonth', '08');
   await page.waitForTimeout(150);
 
@@ -304,8 +308,11 @@ async function runDriverCardFlow(browser) {
   assert(/130,00/.test(row4Txt), 'row 4 ΥΠΟΛΟΙΠΟ shows 130,00: ' + row4Txt);
 
   // ── no «€» in any amount cell; exactly one in the footer ──
-  const cellTexts = await page.locator('.dl-row .n').allInnerTexts();
-  assert(cellTexts.every(t => !/€/.test(t)), 'no «€» inside any .dl-row .n cell (checked ' + cellTexts.length + ' cells)');
+  // Scoped to .dl-ledger — .dl-stats (the 5 year-total boxes) legitimately
+  // carries «€» (dlEur), the contract's «no €» rule is about the table's own
+  // cells only.
+  const cellTexts = await page.locator('.dl-ledger .dl-row .n').allInnerTexts();
+  assert(cellTexts.every(t => !/€/.test(t)), 'no «€» inside any .dl-ledger .dl-row .n cell (checked ' + cellTexts.length + ' cells)');
   const footTxt = await page.locator('.dl-foot').innerText();
   const euroCount = (footTxt.match(/€/g) || []).length;
   assert(euroCount === 1, '«€» appears exactly once in .dl-foot (got ' + euroCount + '): ' + footTxt.replace(/\s+/g, ' '));
@@ -488,7 +495,7 @@ async function runViewportChecks(browser) {
     await page.waitForSelector('.dl-page', { timeout: 15000 });
     await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
     await page.waitForSelector('.dl-ledger', { timeout: 15000 });
-    await page.selectOption('#dlYear', '2026');
+    await page.locator('.dl-ychip[data-year="2026"]').click();
     await page.selectOption('#dlMonth', '08');
     await page.waitForTimeout(150);
     await assertGridFits(page, String(width));
@@ -511,10 +518,22 @@ async function runPrintPageFlow(browser) {
   await page.goto('print_payroll.html?doc=card&driver=' + DRIVER_ID + '&year=2026&month=08&noprint=1');
   await page.waitForSelector('#doc', { timeout: 15000 });
   const cardText = (await page.locator('#doc').innerText()).replace(/\s+/g, ' ');
-  assert(/ΚΑΤΑΣΤΑΣΗ ΛΟΓΑΡΙΑΣΜΟΥ ΟΔΗΓΟΥ/.test(cardText), '.doc-title reads «ΚΑΤΑΣΤΑΣΗ ΛΟΓΑΡΙΑΣΜΟΥ ΟΔΗΓΟΥ»: ' + cardText.slice(0, 200));
-  assert(/Αύγουστος 2026/.test(cardText), 'period reads «Αύγουστος 2026»: ' + cardText.slice(0, 200));
+  // Contract fix 14/9: titles render mixed-case («Κατάσταση λογαριασμού
+  // οδηγού»), not the all-caps guess of the first written contract — the rig
+  // checks case-insensitively. Period in .p-meta is a date range
+  // («01/08/2026 – 31/08/2026»), not a Greek month name.
+  assert(/ΚΑΤΑΣΤΑΣΗ ΛΟΓΑΡΙΑΣΜΟΥ ΟΔΗΓΟΥ/i.test(cardText), '.doc-title reads «Κατάσταση λογαριασμού οδηγού» (case-insensitive): ' + cardText.slice(0, 200));
+  assert(/01\/08\/2026/.test(cardText) && /31\/08\/2026/.test(cardText), '.p-meta carries the period as a date range 01/08/2026–31/08/2026: ' + cardText.slice(0, 300));
   assert(/450,00/.test(await page.locator('.p-opening').innerText()), '.p-opening shows 450,00');
-  assert(/130,00/.test(await page.locator('.p-closing').innerText()), '.p-closing shows 130,00');
+  const pClosingTxt = await page.locator('.p-closing').innerText();
+  assert(/130,00/.test(pClosingTxt), '.p-closing shows 130,00: ' + pClosingTxt);
+  assert(/€/.test(pClosingTxt), '.p-closing carries «€» (contract fix 14/9 — unlike the screen'+"'"+'s .dl-closing, the A4 total DOES show the currency mark): ' + pClosingTxt);
+  // 6-column paper table (Figma 601:1011, contract fix 14/9): ΗΜ/ΝΙΑ·ΚΙΝΗΣΗ·
+  // ΑΞΙΑ·ΕΛΑΒΕ·ΕΞΟΔΑ·ΥΠΟΛΟΙΠΟ — ΜΕΤΑΒΟΛΗ is dropped on paper (screen-only column).
+  const pHeaderTxt = (await page.locator('table.p-ledger tr').first().innerText()).replace(/\s+/g, ' ');
+  const P_HEADER_RE = /ΗΜ\/ΝΙΑ[\s\S]*ΚΙΝΗΣΗ[\s\S]*ΑΞΙΑ[\s\S]*ΕΛΑΒΕ[\s\S]*ΕΞΟΔΑ[\s\S]*ΥΠΟΛΟΙΠΟ/i;
+  assert(P_HEADER_RE.test(pHeaderTxt), 'table.p-ledger header carries the 6 words ΗΜ/ΝΙΑ·ΚΙΝΗΣΗ·ΑΞΙΑ·ΕΛΑΒΕ·ΕΞΟΔΑ·ΥΠΟΛΟΙΠΟ: ' + pHeaderTxt);
+  assert(!/ΜΕΤΑΒΟΛΗ/i.test(pHeaderTxt), 'table.p-ledger header has NO ΜΕΤΑΒΟΛΗ column (paper drops it): ' + pHeaderTxt);
   const sigText = (await page.locator('.p-sign').innerText()).replace(/\s+/g, ' ');
   assert(/Ο οδηγός/.test(sigText) && /Για την εταιρεία/.test(sigText), '.p-sign carries «Ο οδηγός» and «Για την εταιρεία»: ' + sigText);
   assert(/Εκτυπώθηκε/.test(await page.locator('.p-printed').innerText()), '.p-printed carries «Εκτυπώθηκε»');
@@ -522,7 +541,7 @@ async function runPrintPageFlow(browser) {
   await page.goto('print_payroll.html?doc=drivers&noprint=1');
   await page.waitForSelector('#doc', { timeout: 15000 });
   const listText = (await page.locator('#doc').innerText()).replace(/\s+/g, ' ');
-  assert(/ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ ΟΔΗΓΩΝ/.test(listText), '.doc-title reads «ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ ΟΔΗΓΩΝ»: ' + listText.slice(0, 200));
+  assert(/ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ ΟΔΗΓΩΝ/i.test(listText), '.doc-title reads «Κατάσταση οφειλών οδηγών» (case-insensitive): ' + listText.slice(0, 200));
   assert(listText.includes(DRIVER_NAME), 'the drivers list names the driver (' + DRIVER_NAME + ')');
 
   await context.close();
