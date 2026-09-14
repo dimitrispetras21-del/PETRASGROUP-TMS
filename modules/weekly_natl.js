@@ -2596,26 +2596,31 @@ async function _wnUnassign(rowId) {
     'Status': 'Pending'
   };
 
-  const errors = [];
+  const errors = []; const kept = []; let written = 0;
   for (const orderId of row.orderIds) {
     try {
       const done = await _wnDoneLive(orderId);
-      if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); continue; }
+      if (done) { kept.push(orderId); continue; }
       const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
+      written++;
     } catch(err) { errors.push(err.message); }
   }
-  // Also unassign matched S→N if exists
+  // Also unassign matched S→N if exists (same guard: a delivered leg keeps its assignment)
   if (row.matchedId) {
     try {
-      await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields);
+      const done = await _wnDoneLive(row.matchedId);
+      if (done) kept.push(row.matchedId);
+      else { await atSafePatch(TABLES.NAT_LOADS, row.matchedId, fields); written++; }
     } catch(err) { errors.push(err.message); }
   }
 
+  if (kept.length) toast(kept.length + ' φορτίο σε παράδοση/ακύρωση — η ανάθεσή του κρατιέται', 'warn');
   if (errors.length) { toast('Σφάλμα: ' + errors[0].slice(0, 60), 'warn'); return; }
-  for (const orderId of row.orderIds) await _wnRevertNoStatus(orderId);
-  if (row.matchedId) await _wnRevertNoStatus(row.matchedId);
+  if (!written) return; // nothing changed in the base — no «Ανάθεση αφαιρέθηκε», no row reset
+  for (const orderId of row.orderIds) if (!kept.includes(orderId)) await _wnRevertNoStatus(orderId);
+  if (row.matchedId && !kept.includes(row.matchedId)) await _wnRevertNoStatus(row.matchedId);
 
   // Reset row state
   row.saved = false;
