@@ -206,6 +206,11 @@ function installPayrollMocks(page) {
 // μήνας να είναι πάντα σωστοί, όποτε κι αν τρέξει αυτό το αρχείο.
 function pad2(n) { return String(n).padStart(2, '0'); }
 function ymKey(y, m) { return y + '-' + pad2(m); }
+// Same literal list as DL_MONTHS in modules/payroll.js (#dlMonth options) —
+// kept here too so the rig's expected «month in words» text never drifts
+// from the module's own wording without both being touched.
+const DL_MONTHS_GR = ['Ιανουάριος', 'Φεβρουάριος', 'Μάρτιος', 'Απρίλιος', 'Μάιος', 'Ιούνιος',
+  'Ιούλιος', 'Αύγουστος', 'Σεπτέμβριος', 'Οκτώβριος', 'Νοέμβριος', 'Δεκέμβριος'];
 function homeDates() {
   const now = new Date();
   const curY = now.getFullYear(), curM = now.getMonth() + 1; // 1-based
@@ -220,8 +225,9 @@ function homeDates() {
 // A(11) πληρωμένος 4 δρομολόγια/2 χωρίς αξία, B(12) 1 χωρίς αξία, Γ(13)
 // «μας χρωστά» (αρνητικό, καμία εκκρεμότητα), Δ(14) υπόλοιπο 0 ΜΕ εκκρεμότητα
 // (dlBal ήδη δείχνει «—» σε αυτή την περίπτωση — v2 κανόνας, αναχρησιμοποιείται),
-// Ε(15) χωρίς καμία κίνηση ποτέ (has_entries:false — μόνο στο «Όλοι»), ΣΤ(16)
-// ανενεργός ΜΕ κινήσεις (δεν μετρά στους «Ενεργοί», εμφανίζεται στο «Όλοι»).
+// Ε(15) χωρίς καμία κίνηση ποτέ (has_entries:false — ΠΟΤΕ κάρτα, owner change
+// #3: δεν υπάρχει πλέον «Όλοι»), ΣΤ(16) ανενεργός ΜΕ κινήσεις και υπόλοιπο 412
+// (ΠΟΤΕ κάρτα — μόνο η γραμμή .dl-foot-inactive τον αναφέρει).
 function homeBalances(d) {
   return [
     { driver_id: 11, full_name: 'Παπαδόπουλος Γιώργος', type: 'Internal', active: true, has_entries: true,
@@ -244,18 +250,18 @@ function homeBalances(d) {
       balance: 0, pending_count: 0, trips_ytd: 0,
       last_entry_date: null, last_trip_date: null, last_payment_date: null, last_payment_type: null },
     { driver_id: 16, full_name: 'Ζησιμόπουλος Θάνος', type: 'Internal', active: false, has_entries: true,
-      balance: 300, pending_count: 0, trips_ytd: 5,
+      balance: 412, pending_count: 0, trips_ytd: 5,
       last_entry_date: d.prevY + '-' + pad2(d.prevM) + '-01', last_trip_date: d.prevY + '-' + pad2(d.prevM) + '-01',
       last_payment_date: null, last_payment_type: null },
   ];
 }
 
-// month.drivers — τρέχων μήνας: 3 οδηγοί (11,12,13· ο 14 σκόπιμα εκτός, όπως
-// στην πραγματική απάντηση ένας οδηγός μπορεί να μη γράψει τίποτα τον μήνα).
+// month.drivers — τρέχων μήνας μόνο (owner change #1, 14/9: καμία λωρίδα
+// μηνών πλέον, άρα κανένα σενάριο χρειάζεται δεδομένα άλλου μήνα). 3 οδηγοί
+// (11,12,13· ο 14 σκόπιμα εκτός, όπως στην πραγματική απάντηση ένας οδηγός
+// μπορεί να μη γράψει τίποτα τον μήνα — δοκιμάζεται στο KPI «trips» άθροισμα).
 // Ο 11 έχει τα ίδια νούμερα με το «Οδηγός Α» του Figma 614 (3.650,00/2.750,00)
-// ώστε το screenshot να μπορεί να συγκριθεί οπτικά. Προηγούμενος μήνας: άλλα
-// νούμερα στον 11 (ώστε η αλλαγή λωρίδας να αποδεικνύεται) + 14 (απών από τον
-// τρέχοντα μήνα, παρών στον προηγούμενο).
+// ώστε το screenshot να μπορεί να συγκριθεί οπτικά.
 function homeMonthBlocks(d) {
   const cur = {
     from: d.curY + '-' + pad2(d.curM) + '-01', to: d.curY + '-' + pad2(d.curM) + '-28',
@@ -267,17 +273,7 @@ function homeMonthBlocks(d) {
       13: { trips: 1, pending: 0, value: 200, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
     },
   };
-  const prev = {
-    from: d.prevY + '-' + pad2(d.prevM) + '-01', to: d.prevY + '-' + pad2(d.prevM) + '-28',
-    drivers: {
-      11: { trips: 2, pending: 0, value: 1200, expenses: 0, advance: 0, payments: 0, adjustments: 0,
-        last_payment: { date: d.prevY + '-' + pad2(d.prevM) + '-05', type: 'payment_bank', amount: 600 } },
-      12: { trips: 1, pending: 0, value: 700, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
-      14: { trips: 1, pending: 1, value: 0, expenses: 0, advance: 0, payments: 400, adjustments: 0,
-        last_payment: { date: d.prevY + '-' + pad2(d.prevM) + '-20', type: 'payment_cash', amount: 400 } },
-    },
-  };
-  const out = {}; out[d.curKey] = cur; out[d.prevKey] = prev;
+  const out = {}; out[d.curKey] = cur;
   return out;
 }
 
@@ -290,11 +286,17 @@ function baseHomeEntry(o) {
 // Mocks για την ΑΡΧΙΚΗ (Φάση 2). Ίδιο route pattern με installPayrollMocks —
 // registered ΜΕΤΑ preparePage. `opts.omitMonth` προσομοιώνει τον Worker ΠΡΙΝ
 // το deploy του ledger-month.mjs (καμία δέσμη `month` στην απάντηση), για το
-// σενάριο «Δεν φορτώθηκαν τα ποσά μήνα».
+// σενάριο «Δεν φορτώθηκαν τα ποσά μήνα». `opts.inactiveBalance` αντικαθιστά
+// το υπόλοιπο του μόνου ανενεργού (16, default 412) — 0 αναπαράγει το
+// σενάριο «κανένας ανενεργός με μη-μηδενικό υπόλοιπο» (.dl-foot-inactive ΑΠΟΥΣΑ).
 function installPayrollHomeMocks(page, opts) {
   opts = opts || {};
   const d = homeDates();
   const balances = homeBalances(d);
+  if (opts.inactiveBalance !== undefined) {
+    const inactive = balances.find(b => b.driver_id === 16);
+    if (inactive) inactive.balance = opts.inactiveBalance;
+  }
   const monthBlocks = homeMonthBlocks(d);
   const store = { nextId: 500, entries: [
     // Ελάχιστο ιστορικό ώστε το .dl-card-open στον 11 να ανοίγει την καρτέλα
@@ -459,11 +461,14 @@ async function runHomeFlow(browser) {
   await page.waitForSelector('.dl-grid', { timeout: 15000 });
   await page.waitForTimeout(150);
 
-  // ── πρώτο GET με ?month=, ψηφίδα μήνα προεπιλεγμένη = τρέχων ──
+  // ── πρώτο GET με ?month=· ΚΑΜΙΑ λωρίδα μηνών/chips στο DOM (owner: 3 αλλαγές 14/9) ──
   assert(captured.homeGets.length >= 1, 'at least one GET /costs/ledger was issued on load');
   assert(captured.homeGets[0].includes('month=' + d.curKey), 'the FIRST GET /costs/ledger carries ?month=' + d.curKey + ' (got: ' + captured.homeGets[0] + ')');
-  assert(await page.locator('.dl-m.sel').count() === 1, 'exactly one .dl-m carries .sel');
-  assert(await page.locator('.dl-m.sel[data-month="' + d.curKey + '"]').count() === 1, '.dl-m.sel is the current month (' + d.curKey + ')');
+  assert(await page.locator('.dl-mstrip').count() === 0, '.dl-mstrip does not exist (no month strip — owner change #1)');
+  assert(await page.locator('.dl-m').count() === 0, '.dl-m month tiles do not exist');
+  assert(await page.locator('.dl-marrow').count() === 0, '.dl-marrow arrows do not exist');
+  assert(await page.locator('.dl-chip').count() === 0, '.dl-chip does not exist anywhere (replaced by the KPI pending tile — owner change #2)');
+  assert(await page.locator('.dl-filters').count() === 0, '.dl-filters does not exist');
 
   // ── κεφαλίδα: κουμπιά ──
   assert(await page.locator('#dlBtnBulk').count() === 1, '#dlBtnBulk «Μαζική πληρωμή» exists');
@@ -472,6 +477,31 @@ async function runHomeFlow(browser) {
   assert(await page.locator('#dlBtnCsvHome').count() === 1, '#dlBtnCsvHome «CSV» exists');
   assert(await page.locator('.dl-btn.primary').count() === 1, 'exactly one .dl-btn.primary on the page');
   assert(await page.locator('#dlBtnBulk.primary').count() === 1, '#dlBtnBulk is the ONE navy button');
+
+  // ── KPI bar: 5 πλακίδια owed/trips/pending/payments/active (owner change #2) ──
+  assert(await page.locator('.dl-kpi').count() === 1, '.dl-kpi bar exists');
+  assert(await page.locator('.dl-kpi-tile').count() === 5, 'exactly 5 .dl-kpi-tile');
+  for (const kpi of ['owed', 'trips', 'pending', 'payments', 'active']) {
+    const tile = page.locator('.dl-kpi-tile[data-kpi="' + kpi + '"]');
+    assert(await tile.count() === 1, 'exactly one .dl-kpi-tile[data-kpi="' + kpi + '"]');
+    assert((await tile.locator('.k').innerText()).trim().length > 0, 'tile «' + kpi + '» has a non-empty .k label');
+    assert((await tile.locator('.v').innerText()).trim().length > 0, 'tile «' + kpi + '» has a non-empty .v value');
+  }
+  // Sums over the 4 active+has_entries drivers (11,12,13,14) — driver 14 is
+  // simply absent from month.drivers (contract: an entry not writing this
+  // month), so it contributes 0 to trips/payments, same as a real API gap.
+  const kpiOwed = (await page.locator('.dl-kpi-tile[data-kpi="owed"] .v').innerText()).trim();
+  assert(/2\.530,37/.test(kpiOwed) && /€/.test(kpiOwed), 'KPI owed = Σ balance ενεργών (2.530,37 €): ' + kpiOwed);
+  const kpiTrips = (await page.locator('.dl-kpi-tile[data-kpi="trips"] .v').innerText()).trim();
+  assert(kpiTrips === '8', 'KPI trips = Σ month.trips ενεργών (4+3+1+0=8): ' + kpiTrips);
+  const kpiPendingVal = (await page.locator('.dl-kpi-tile[data-kpi="pending"] .v').innerText()).trim();
+  assert(kpiPendingVal === '4', 'KPI pending = Σ pending_count (νούμερο μόνο, 2+1+0+1=4): ' + kpiPendingVal);
+  const kpiPayments = (await page.locator('.dl-kpi-tile[data-kpi="payments"] .v').innerText()).trim();
+  assert(/3\.850,00/.test(kpiPayments) && /€/.test(kpiPayments), 'KPI payments = Σ month.payments ενεργών (2750+1100+0+0=3.850,00 €): ' + kpiPayments);
+  const kpiActive = (await page.locator('.dl-kpi-tile[data-kpi="active"] .v').innerText()).trim();
+  assert(kpiActive === '4', 'KPI active = πλήθος καρτών (4): ' + kpiActive);
+  const kpiSub = await page.locator('.dl-kpi-sub').innerText();
+  assert(new RegExp(DL_MONTHS_GR[d.curM - 1] + '\\s+' + d.curY).test(kpiSub), '.dl-kpi-sub carries the current month in words (' + DL_MONTHS_GR[d.curM - 1] + ' ' + d.curY + '): ' + kpiSub);
 
   // ── πλέγμα: 4 ενεργοί-με-κινήσεις (11,12,13,14), σειρά κατά balance φθίνουσα ──
   assert(await page.locator('.dl-card').count() === 4, 'default view shows 4 .dl-card (active + has_entries)');
@@ -500,30 +530,41 @@ async function runHomeFlow(browser) {
   const lp13 = await page.locator('.dl-card[data-driver="13"] .dl-lastpay').innerText();
   assert(/Καμία πληρωμή τον μήνα/.test(lp13), '.dl-lastpay (13, no last_payment this month) reads «Καμία πληρωμή τον μήνα»: ' + lp13);
 
-  // ── κανένα «€» σε κάρτα· ένα «€» στο footer· «4 οδηγοί»/«4 δρομολόγια χωρίς αξία»/οφειλή ──
+  // ── κανένα «€» σε ΚΑΜΙΑ κάρτα (owner change: πλέον «€» εμφανίζεται ΚΑΙ στα
+  // KPI πλακίδια owed/payments, όχι μόνο στο footer — ο παλιός «ένα € στο
+  // footer» έλεγχος αντικαθίσταται από «€ πουθενά μέσα σε .dl-card») ──
   const cardTexts = await page.locator('.dl-card').allInnerTexts();
   assert(cardTexts.every(t => !/€/.test(t)), 'no «€» inside any .dl-card (checked ' + cardTexts.length + ' cards)');
   const footTxt = (await page.locator('.dl-foot').innerText()).replace(/\s+/g, ' ');
-  const euroCount = (footTxt.match(/€/g) || []).length;
-  assert(euroCount === 1, '«€» appears exactly once in .dl-foot (got ' + euroCount + '): ' + footTxt);
   assert(/4 οδηγοί/.test(footTxt), '.dl-foot carries «4 οδηγοί»: ' + footTxt);
   assert(/4 δρομολόγια χωρίς αξία/.test(footTxt), '.dl-foot carries «4 δρομολόγια χωρίς αξία» (2+1+0+1): ' + footTxt);
-  assert(/2\.530,37/.test(footTxt), '.dl-foot carries the total οφειλή 2.530,37 (1726.27+954.10+0−150): ' + footTxt);
+  assert(/2\.530,37/.test(footTxt) && /€/.test(footTxt), '.dl-foot carries the total οφειλή 2.530,37 € (1726.27+954.10+0−150): ' + footTxt);
+  const monthNameRe = new RegExp(DL_MONTHS_GR[d.curM - 1] + '\\s+' + d.curY, 'g');
+  assert((footTxt.match(monthNameRe) || []).length === 1, '.dl-foot carries the current month in words exactly once: ' + footTxt);
+
+  // ── .dl-foot-inactive: 1 ανενεργός (16, balance 412) — «1 ανενεργ»/«412,00»/«κατάσταση οφειλών» ──
+  const footInactiveTxt = (await page.locator('.dl-foot-inactive').innerText()).replace(/\s+/g, ' ');
+  assert(/1\s*ανενεργ/.test(footInactiveTxt), '.dl-foot-inactive carries «1 ανενεργ»: ' + footInactiveTxt);
+  assert(/412,00/.test(footInactiveTxt), '.dl-foot-inactive carries the inactive driver\'s balance 412,00: ' + footInactiveTxt);
+  assert(/κατάσταση οφειλών/i.test(footInactiveTxt), '.dl-foot-inactive carries «κατάσταση οφειλών»: ' + footInactiveTxt);
 
   await assertHomeGridFits(page, '1440 (home)');
   await page.screenshot({ path: SHOT_HOME_1440, fullPage: true });
   console.log('  screenshot: ' + SHOT_HOME_1440);
 
-  // ── chip «Χωρίς αξία»: ΤΑΞΙΝΟΜΕΙ (δεν κρύβει) ──
-  await page.locator('.dl-chip[data-filter="pending"]').click();
+  // ── KPI tile «pending»: toggle ΤΑΞΙΝΟΜΗΣΗΣ (δεν κρύβει) — αντικαθιστά το παλιό chip ──
+  const pendingTile = page.locator('.dl-kpi-tile[data-kpi="pending"]');
+  await pendingTile.click();
   await page.waitForTimeout(150);
-  assert(await page.locator('.dl-card').count() === 4, 'the pending chip re-sorts, it does not hide cards (still 4)');
+  assert(await pendingTile.evaluate(el => el.classList.contains('on')), '.dl-kpi-tile[data-kpi="pending"] carries .on after the first click');
+  assert(await page.locator('.dl-card').count() === 4, 'the pending KPI toggle re-sorts, it does not hide cards (still 4)');
   const firstIsPending = await page.locator('.dl-card').first().evaluate(el => el.classList.contains('pending'));
-  assert(firstIsPending, 'after the pending chip, the FIRST .dl-card carries .pending');
-  await page.locator('.dl-chip[data-filter="pending"]').click();
+  assert(firstIsPending, 'after the pending KPI toggle, the FIRST .dl-card carries .pending');
+  await pendingTile.click();
   await page.waitForTimeout(150);
+  assert(!(await pendingTile.evaluate(el => el.classList.contains('on'))), '.dl-kpi-tile[data-kpi="pending"] loses .on on the second click');
   order = await page.$$eval('.dl-card', els => els.map(el => el.getAttribute('data-driver')));
-  assert(JSON.stringify(order) === JSON.stringify(['11', '12', '14', '13']), 'clicking the pending chip again returns to the balance-desc order: ' + JSON.stringify(order));
+  assert(JSON.stringify(order) === JSON.stringify(['11', '12', '14', '13']), 'clicking the pending KPI tile again returns to the balance-desc order: ' + JSON.stringify(order));
 
   // ── #dlSort=name, #dlSearch ──
   await page.selectOption('#dlSort', 'name');
@@ -540,32 +581,11 @@ async function runHomeFlow(browser) {
   await page.fill('#dlSearch', '');
   await page.waitForTimeout(150);
 
-  // ── chips «Όλοι»/«Ενεργοί»: ο 15 (χωρίς κινήσεις) και ο 16 (ανενεργός) μόνο στο «Όλοι» ──
-  await page.locator('.dl-chip[data-filter="all"]').click();
-  await page.waitForTimeout(150);
-  const allCount = await page.locator('.dl-card').count();
-  assert(allCount >= 5, '«Όλοι» shows 5+ cards (got ' + allCount + ')');
-  assert(await page.locator('.dl-card[data-driver="15"]').count() === 1, '«Όλοι» includes driver 15 (no entries yet)');
-  assert(await page.locator('.dl-card[data-driver="16"]').count() === 1, '«Όλοι» includes driver 16 (inactive, has entries)');
-  await page.locator('.dl-chip[data-filter="active"]').click();
-  await page.waitForTimeout(150);
-  assert(await page.locator('.dl-card').count() === 4, '«Ενεργοί» returns to the 4 active+has_entries cards');
-  assert(await page.locator('.dl-card[data-driver="15"]').count() === 0, '«Ενεργοί» excludes driver 15');
-  assert(await page.locator('.dl-card[data-driver="16"]').count() === 0, '«Ενεργοί» excludes driver 16 (inactive)');
-
-  // ── λωρίδα μηνών: προηγούμενος → νέο GET + αλλαγή mini-stats· τρέχων ξανά → cache ──
-  const getsBeforePrev = captured.homeGets.length;
-  await page.locator('.dl-m[data-month="' + d.prevKey + '"]').click();
-  await page.waitForTimeout(200);
-  assert(captured.homeGets.length === getsBeforePrev + 1, 'clicking the previous month tile issues exactly one new GET');
-  assert(captured.homeGets[captured.homeGets.length - 1].includes('month=' + d.prevKey), 'the new GET carries ?month=' + d.prevKey);
-  const ms11Prev = (await page.locator('.dl-card[data-driver="11"] .dl-ms').innerText()).replace(/\s+/g, ' ');
-  assert(/1\.200,00/.test(ms11Prev), 'card 11 mini-stats show the PREVIOUS month\'s value 1.200,00: ' + ms11Prev);
-  assert(!/3\.650,00/.test(ms11Prev), 'card 11 mini-stats no longer show the current month\'s value: ' + ms11Prev);
-  const getsBeforeCur = captured.homeGets.length;
-  await page.locator('.dl-m[data-month="' + d.curKey + '"]').click();
-  await page.waitForTimeout(200);
-  assert(captured.homeGets.length === getsBeforeCur, 'clicking back to the current month tile issues NO new GET (cached)');
+  // ── ΚΑΜΙΑ «Όλοι» προβολή πλέον (owner change #3): ο 15 (χωρίς κινήσεις) και
+  // ο 16 (ανενεργός) ΠΟΤΕ δεν αποκτούν κάρτα — δεν υπάρχει πλέον κανένα chip
+  // που να τους αποκαλύπτει (ήδη επιβεβαιώθηκε παραπάνω η απουσία .dl-chip) ──
+  assert(await page.locator('.dl-card[data-driver="15"]').count() === 0, 'driver 15 (no entries) never gets a card');
+  assert(await page.locator('.dl-card[data-driver="16"]').count() === 0, 'driver 16 (inactive) never gets a card');
 
   // ── πληρωμή στην κάρτα: κενό ποσό → κανένα POST· 250 + Μετρητά + Enter → POST + refetch ──
   await page.locator('.dl-card[data-driver="11"] .dl-card-pay').click();
@@ -664,8 +684,26 @@ async function runHomeFlow(browser) {
   assert(/—/.test(ms11NoMonth), 'card 11 mini-stats fall back to «—» without the month block: ' + ms11NoMonth.replace(/\s+/g, ' '));
   assert(/2\s*χωρίς αξία/.test(await noMonthPage.locator('.dl-card[data-driver="11"] .dl-badge').innerText()), 'card 11 .dl-badge («2 χωρίς αξία», driver-level pending_count) is unaffected by the missing month block');
   assert((await noMonthPage.locator('.dl-card[data-driver="11"] .dl-bal').innerText()).trim() === '1.726,27', 'card 11 .dl-bal (driver-level balance) is unaffected by the missing month block');
+  // KPI: trips/payments depend on the `month` block (→ «—»); owed/pending/
+  // active come straight from the balances rows and stay computed.
+  assert((await noMonthPage.locator('.dl-kpi-tile[data-kpi="trips"] .v').innerText()).trim() === '—', 'KPI trips shows «—» without the month block');
+  assert((await noMonthPage.locator('.dl-kpi-tile[data-kpi="payments"] .v').innerText()).trim() === '—', 'KPI payments shows «—» without the month block');
+  assert(/2\.530,37/.test(await noMonthPage.locator('.dl-kpi-tile[data-kpi="owed"] .v').innerText()), 'KPI owed stays computed (driver-level) without the month block');
+  assert((await noMonthPage.locator('.dl-kpi-tile[data-kpi="pending"] .v').innerText()).trim() === '4', 'KPI pending stays computed (driver-level) without the month block');
+  assert((await noMonthPage.locator('.dl-kpi-tile[data-kpi="active"] .v').innerText()).trim() === '4', 'KPI active stays computed without the month block');
   consoleErrors.push(...noMonthErrors);
   await noMonthCtx.close();
+
+  // ── χωρίς ανενεργό με μη-μηδενικό υπόλοιπο: .dl-foot-inactive ΑΠΟΥΣΑ ──
+  console.log('  -- χωρίς ανενεργό με μη-μηδενικό υπόλοιπο (.dl-foot-inactive απούσα) --');
+  const { context: noInactiveCtx, page: noInactivePage, consoleErrors: noInactiveErrors } = await newPage(browser, 'accountant');
+  installPayrollHomeMocks(noInactivePage, { inactiveBalance: 0 });
+  await gotoPage(noInactivePage, 'payroll', BASE_URL);
+  await noInactivePage.waitForSelector('.dl-grid', { timeout: 15000 });
+  await noInactivePage.waitForTimeout(150);
+  assert(await noInactivePage.locator('.dl-foot-inactive').count() === 0, '.dl-foot-inactive is ABSENT when no inactive driver carries a non-zero balance');
+  consoleErrors.push(...noInactiveErrors);
+  await noInactiveCtx.close();
 
   return { consoleErrors };
 }
