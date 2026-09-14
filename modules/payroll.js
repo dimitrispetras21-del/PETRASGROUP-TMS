@@ -290,7 +290,10 @@ function dlEntryRowHtml(e, opts) {
   const hasLegs = isTrip && Array.isArray(e.route_legs) && e.route_legs.length > 0;
   const routeText = isTrip
     ? (hasLegs ? '' : e.route_text ? escapeHtml(e.route_text) : '—')
-    : (e.entry_type === 'payment_bank' ? 'Κατάθεση τράπεζας' : e.entry_type === 'payment_cash' ? 'Πληρωμή μετρητά' : 'Προσαρμογή');
+    : (e.entry_type === 'payment_bank' ? 'Κατάθεση τράπεζας' : e.entry_type === 'payment_cash' ? 'Πληρωμή μετρητά'
+      // Figma 600:1011: an adjustment reads «Προσαρμογή — <reason>» — the reason
+      // IS the entry (there is no route or bank to identify it by).
+      : 'Προσαρμογή' + (e.note ? ' — ' + escapeHtml(e.note) : ''));
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
   // v3 #9: a valueless trip carries a visible word on the card, not only the
@@ -330,10 +333,17 @@ function dlEntryRowHtml(e, opts) {
   // every other branch above already reads.
   const amt = n => compact ? dlEur(n) : dlNumP(n);
   const bal = n => compact ? dlMoney(n) : dlNumP(n);
+  // An adjustment keeps the column arithmetic honest (ΜΕΤΑΒΟΛΗ = ΑΞΙΑ + ΕΞΟΔΑ −
+  // ΕΛΑΒΕ, footer legend): a positive one (bonus) sits under ΑΞΙΑ, a negative
+  // one (deduction) under ΕΛΑΒΕ as a plain positive figure — never «(20,00)»
+  // in a column whose other rows are all money the driver received.
+  const isAdj = e.entry_type === 'adjustment';
+  const adjAmt = isAdj ? Number(e.amount || 0) : 0;
   const valueCell = isTrip
     ? (e.pending ? `<span class="n" style="color:var(--warn)">—</span>` : `<span class="n">${amt(e.trip_value)}</span>`)
-    : `<span class="n dim">—</span>`;
-  const advCell = isTrip ? `<span class="n${e.advance == null ? ' dim' : ''}">${amt(e.advance)}</span>` : `<span class="n">${amt(e.amount)}</span>`;
+    : (isAdj && adjAmt > 0 ? `<span class="n">${amt(adjAmt)}</span>` : `<span class="n dim">—</span>`);
+  const advCell = isTrip ? `<span class="n${e.advance == null ? ' dim' : ''}">${amt(e.advance)}</span>`
+    : (isAdj ? (adjAmt < 0 ? `<span class="n">${amt(-adjAmt)}</span>` : `<span class="n dim">—</span>`) : `<span class="n">${amt(e.amount)}</span>`);
   const expCell = isTrip ? `<span class="n${e.expenses == null ? ' dim' : ''}">${amt(e.expenses)}</span>` : `<span class="n dim">—</span>`;
   const balCell = (isTrip && e.pending)
     ? `<span class="n" style="color:var(--warn)">—</span>`
@@ -596,7 +606,13 @@ function dlRenderDriverCard() {
   // ΕΛΑΒΕ column mixes trip advances and payment/adjustment amounts (same
   // three entry types dlEntryRowHtml puts in that column) — its period total
   // has to add all three or it would silently disagree with the rows above it.
-  const receivedTotal = period.totals.advance + period.totals.payments + period.totals.adjustments;
+  // Adjustments split the same way the rows do (see dlEntryRowHtml): positive
+  // ones join ΑΞΙΑ, negative ones join ΕΛΑΒΕ — so the totals row adds up
+  // column by column exactly like the rows above it.
+  const adjPos = period.rows.filter(e => !e.cancelled && e.entry_type === 'adjustment' && Number(e.amount) > 0).reduce((a, e) => a + Number(e.amount), 0);
+  const adjNeg = period.rows.filter(e => !e.cancelled && e.entry_type === 'adjustment' && Number(e.amount) < 0).reduce((a, e) => a - Number(e.amount), 0);
+  const valueTotal = period.totals.value + adjPos;
+  const receivedTotal = period.totals.advance + period.totals.payments + adjNeg;
   const periodLabel = dlPeriodLabel(period);
   // Opening row's date (Figma 600:1011 note 4): the day the transferred
   // balance is AS OF, i.e. the first day of the period — blank for «Όλα».
@@ -649,7 +665,7 @@ function dlRenderDriverCard() {
       <div>${rows}</div>
       <div class="dl-row dl-totals">
         <div style="width:100px"></div><div style="flex:1"><span class="m">${escapeHtml(periodLabel)} · υπόλοιπο τέλους ${dlMoney(period.closing)}</span></div>
-        <div style="width:110px" class="r"><span class="n">${dlNumP(period.totals.value)}</span></div>
+        <div style="width:110px" class="r"><span class="n">${dlNumP(valueTotal)}</span></div>
         <div style="width:110px" class="r"><span class="n">${dlNumP(receivedTotal)}</span></div>
         <div style="width:110px" class="r"><span class="n">${dlNumP(period.totals.expenses)}</span></div>
         <div style="width:120px" class="r"><span class="n">${dlSignedNum(period.totals.delta)}</span></div>
