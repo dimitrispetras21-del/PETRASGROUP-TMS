@@ -350,11 +350,15 @@ function dlStyles() {
      of squeezing the name into an ellipsis. ≤22 characters (DM Sans 600 14)
      never truncate at the 268px card; the ellipsis stays only as a last
      resort for names longer than the card itself. */
-  .dl-card-top{display:flex;flex-wrap:wrap;align-items:flex-start;gap:6px 10px}
+  .dl-card-top{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:10px}
   .dl-card .dl-avatar{width:36px;height:36px;font-size:12px}
   .dl-card-id{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px}
-  .dl-card-id .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:0 0 auto;margin-left:auto;min-width:96px}
+  /* The balance sits in the SAME place on every card — top right, on the
+     avatar's line (owner 14/9: «άλλες φορές το ποσό είναι πάνω, άλλες κάτω»
+     — the earlier flex-wrap dropped it under 5/49 long names). The name wraps
+     inside its own column instead, up to two lines, never an ellipsis. */
+  .dl-card-id .m{white-space:normal;overflow-wrap:anywhere;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:none;margin-left:auto;min-width:96px}
   .dl-bal{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
   .dl-balword{font-size:11px;font-weight:500;color:var(--text-dim)}
   .dl-balword.dl-owe{color:var(--ok)} .dl-balword.dl-owed{color:var(--warn)}

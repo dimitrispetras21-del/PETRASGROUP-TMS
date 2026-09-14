@@ -415,6 +415,26 @@ async function assertCardsShareRow(page, label, count) {
   // Names up to ~22 characters render whole — no ellipsis at this width.
   const names = await page.evaluate(() => Array.from(document.querySelectorAll('.dl-card .dl-card-id .m')).map(el => ({ t: el.textContent, sw: el.scrollWidth, cw: el.clientWidth })));
   for (const n of names.filter(n => n.t.length <= 22)) assert(n.sw <= n.cw + 0.5, '[' + label + '] driver name «' + n.t + '» (' + n.t.length + ' chars) is not truncated: scrollWidth ' + n.sw + ' ≤ clientWidth ' + n.cw);
+  // Owner 14/9 «άλλες φορές το ποσό είναι πάνω, άλλες κάτω»: the balance must
+  // sit on the avatar's line in EVERY card — checked on the real names, and
+  // again after forcing one long two-word name into the first card (the
+  // fixture's own names all fit one line, so they alone would never fail).
+  const pos = await page.evaluate(() => {
+    const measure = () => Array.from(document.querySelectorAll('.dl-card')).map(c => {
+      const a = c.querySelector('.dl-avatar').getBoundingClientRect().top, b = c.querySelector('.dl-bal-wrap').getBoundingClientRect().top;
+      const m = c.querySelector('.dl-card-id .m');
+      return { name: m.textContent, diff: b - a, lines: Math.round(m.getBoundingClientRect().height / 16.8), sw: m.scrollWidth, cw: m.clientWidth };
+    });
+    const before = measure();
+    const first = document.querySelector('.dl-card .dl-card-id .m'); const orig = first.textContent;
+    first.textContent = 'Papatheocharidis Vasileios';
+    const forced = measure()[0];
+    first.textContent = orig;
+    return { before, forced };
+  });
+  for (const c of pos.before) assert(c.diff <= 4, '[' + label + '] balance of «' + c.name + '» sits on the avatar line (top diff ' + c.diff.toFixed(1) + 'px ≤ 4)');
+  assert(pos.forced.diff <= 4, '[' + label + '] with a long name («Papatheocharidis Vasileios») the balance STILL sits on the avatar line (diff ' + pos.forced.diff.toFixed(1) + 'px)');
+  assert(pos.forced.lines <= 2 && pos.forced.sw <= pos.forced.cw + 0.5, '[' + label + '] the long name wraps inside its column (≤2 lines, not clipped sideways): lines ' + pos.forced.lines + ', ' + pos.forced.sw + ' ≤ ' + pos.forced.cw);
 }
 
 // The 3px top border must be present on every card, and the pending driver's
