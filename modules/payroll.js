@@ -257,7 +257,14 @@ function dlStyles() {
   /* ── v3 driver card (#10 formal ledger style, exStyles-derived) — scoped to
      .dl-hero/.dl-ledger so the v2 home list and bulk-payment screen (still
      .dl-btn/.dl-row at their v2 sizes) are untouched. ── */
-  .dl-hero .dl-btn{height:32px}
+  /* Long driver names (two words of 12+ Greek letters are common) may wrap —
+     the balance figure and the five action buttons must not: measured on the
+     rig 14/9, «Παπαδόπουλος Γιώργος» pushed «330,00 €» and «Εκτύπωση καρτέλας»
+     onto two lines each. */
+  .dl-hero .dl-btn{height:32px;white-space:nowrap;flex:none}
+  .dl-hero .dl-title{font-size:24px;line-height:1.15}
+  .dl-hero-main{min-width:0}
+  .dl-hero-bal .v.big{white-space:nowrap}
   .dl-btn.primary{background:var(--navy);border-color:var(--navy);color:var(--text-on-dark)}
   .dl-btn.primary:hover{background:var(--navy-hover)}
   .dl-word{font-size:12px;color:var(--warn);font-weight:500;margin-left:6px}
