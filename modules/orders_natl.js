@@ -1199,9 +1199,14 @@ function _onWatchModalClose() {
   _onModalObs.observe(overlay, { attributes: true, attributeFilter: ['class'] });
 }
 function openNatlCreate() { _openNatlModal(null, {}); }
-function openNatlEdit(recId) {
-  const rec = NATL_ORDERS.data.find(r=>r.id===recId);
-  if(rec) _openNatlModal(recId, rec.fields);
+async function openNatlEdit(recId) {
+  let rec = NATL_ORDERS.data.find(r => r.id === recId);
+  if (!rec) {
+    // Opened from the Weekly: the orders list may never have loaded (Δ1 —
+    // the click used to be a silent no-op). atGetOne already toasts + logs.
+    try { rec = await atGetOne(TABLES.NAT_ORDERS, recId); } catch (e) { return; }
+  }
+  if (rec && rec.fields) _openNatlModal(recId, rec.fields);
 }
 
 async function _openNatlModal(recId, f) {
@@ -1622,7 +1627,11 @@ async function submitNatlOrder(recId) {
     document.getElementById('modal').style.maxWidth = '';
     closeModal();
     toast(recId ? 'Η παραγγελία ενημερώθηκε' : 'Η παραγγελία καταχωρήθηκε');
-    await renderOrdersNatl();
+    // B2: the modal now also opens from Weekly National (openNatlEdit, Δ1) —
+    // repaint respects whichever page is open, same pattern as orders_intl.js
+    // submitIntlOrder, instead of always hijacking the screen back to the list.
+    if (typeof currentPage!=='undefined' && currentPage==='weekly_natl' && typeof renderWeeklyNatl==='function') { renderWeeklyNatl(); }
+    else await renderOrdersNatl();
 
   } catch(e) {
     // 'v' is the validation sentinel thrown after a blocking validation message;
