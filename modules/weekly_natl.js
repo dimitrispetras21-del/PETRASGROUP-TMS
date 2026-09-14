@@ -2594,7 +2594,7 @@ function _wnCtxSn(e, rowId, snId) {
   if (row && row.src !== 'vs')
     items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</button>`);
-  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrint(${rowId},'southnorth')">Εκτύπωση</button>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrintSn('${snId}')">Εκτύπωση</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</button>`);
   ctx.innerHTML = items.join('');
