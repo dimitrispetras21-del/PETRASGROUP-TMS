@@ -21,7 +21,8 @@ State: `_dl.driver` (id), `_dl.year` ('YYYY'|'all'), `_dl.month` ('' | '01'..'12
 |---|---|
 | ρίζα | `.dl-page` · κεφαλίδα `.dl-head` με σύνδεσμο «← Μισθοδοσία» |
 | κουμπιά | `#dlBtnPayment` «Πληρωμή» (`.dl-btn.primary`, το ΜΟΝΟ navy) · `#dlBtnAdjust` «Προσαρμογή» · `#dlBtnTrip` «Δρομολόγιο» · `#dlBtnPrintCard` «Εκτύπωση καρτέλας» · `#dlBtnCsvCard` «CSV» |
-| περίοδος | `#dlYear` `<select>` (τρέχον, −1, −2, `all`=«Όλα τα έτη») · `#dlMonth` `<select>` (`''`=«Όλο το έτος», `'01'..'12'` ελληνικά ονόματα)· αλλαγή → `dlSetPeriod()` χωρίς νέο fetch |
+| στατιστικά έτους | `.dl-stats` — 5 κουτιά ΔΡΟΜΟΛΟΓΙΑ · ΑΞΙΑ · ΕΞΟΔΑ · ΠΛΗΡΩΜΕΣ · ΧΩΡΙΣ ΑΞΙΑ (dlPeriod(entries, year, ''))· εδώ επιτρέπεται «€» (δεν είναι κελί πίνακα) |
+| περίοδος | έτος = ψηφίδες `.dl-ychip[data-year="2026"|"2025"|"2024"|"all"]` (επιλεγμένη `.sel`, navy) · `#dlMonth` `<select>` (`''`=«Όλο το έτος», `'01'..'12'` ελληνικά ονόματα) + κουμπί «Όλο το έτος»· δεξιά «Περίοδος 01–14/09/2026 · 8 κινήσεις»· αλλαγή → re-render χωρίς νέο fetch (διόρθωση 14/9 από Figma 600:1011 — το αρχικό συμβόλαιο έλεγε select `#dlYear`) |
 | πίνακας | `.dl-ledger` · κεφαλίδα `.dl-th` (2px κάτω γραμμή) με κελιά ΗΜ/ΝΙΑ · ΚΙΝΗΣΗ · ΑΞΙΑ · ΕΛΑΒΕ · ΕΞΟΔΑ · ΜΕΤΑΒΟΛΗ · ΥΠΟΛΟΙΠΟ (και ένα κενό για το «···») |
 | έναρξη | `.dl-row.opening` — «Υπόλοιπο έναρξης περιόδου» + `.n` ποσό (dlNum, χωρίς €) στη στήλη ΥΠΟΛΟΙΠΟ |
 | γρήγορη καταχώριση | `.dl-row.qe` με `#dlQeDate` (date, σήμερα) `#dlQeRoute` `#dlQeValue` `#dlQeAdvance` `#dlQeExpenses` και κουμπί `#dlQeSave` «Καταχώριση»· Enter = ίδιο· POST trip όπως σήμερα |
@@ -49,8 +50,9 @@ Global functions (καλούνται από A και, αργότερα, από �
 - `print_payroll.html`: σχετικό URL (ίδιο origin — δουλεύει και τοπικά στο rig)· φορτώνει `core/utils.js`, `modules/payroll.js`
   (για `dlPeriod/dlNum/dlDateRange`) και `config.js` (USERS για `userDisplayName`)· JWT από `localStorage.tms_jwt`,
   `PROXY_URL` όπως το `print.html`· `&noprint=1` = χωρίς διάλογο εκτύπωσης· αλλιώς `window.print()` μετά το render.
-  DOM: `#doc` · `.doc-title` («ΚΑΤΑΣΤΑΣΗ ΛΟΓΑΡΙΑΣΜΟΥ ΟΔΗΓΟΥ» / «ΚΑΤΑΣΤΑΣΗ ΟΦΕΙΛΩΝ ΟΔΗΓΩΝ») · `.p-meta` (οδηγός, τύπος,
-  περίοδος ως λέξεις π.χ. «Αύγουστος 2026») · `.p-opening` · `table.p-ledger` · `.p-totals` · `.p-closing` (bold) ·
+  DOM: `#doc` · `.doc-title` («Κατάσταση λογαριασμού οδηγού» / «Κατάσταση οφειλών οδηγών» — το rig ελέγχει case-insensitive) ·
+  `.p-meta` (οδηγός, τύπος, περίοδος «01/09/2026 – 30/09/2026», υπόλοιπο έναρξης) · `.p-opening` · `table.p-ledger` (6 στήλες στο
+  χαρτί: ΗΜ/ΝΙΑ · ΚΙΝΗΣΗ · ΑΞΙΑ · ΕΛΑΒΕ · ΕΞΟΔΑ · ΥΠΟΛΟΙΠΟ — χωρίς ΜΕΤΑΒΟΛΗ, Figma 601:1011) · `.p-totals` · `.p-closing` (bold, με «€») ·
   `.p-sign` με «Ο οδηγός» και «Για την εταιρεία» · `.p-printed` «Εκτυπώθηκε DD/MM/YYYY από <όνομα από tms_user.name>».
   Χωρίς χρώμα εκτός της navy γραμμής τίτλου (όπως `print.html`). Σφάλμα φόρτωσης = ορατό μήνυμα στη σελίδα (`#err`), όχι κενό.
 
@@ -61,3 +63,18 @@ Global functions (καλούνται από A και, αργότερα, από �
 Fixture: 1 οδηγός (id 11) με τις 6 κινήσεις του `tests/payroll-format.test.js` (dlPeriod test) ώστε τα νούμερα
 (opening 450 · closing 130 · Αύγουστος 2026) να είναι ΤΑ ΙΔΙΑ σε unit test, οθόνη, A4 και CSV.
 Το σήμερα του rig: `preparePage` δεν παγώνει την ημερομηνία — ο rig ΘΕΤΕΙ περίοδο ρητά (`#dlYear`=2026, `#dlMonth`=08).
+
+## Αρχική με κάρτες — view `home` (Φάση 2, Figma 614:1011 «fin-formal · Μισθοδοσία E», σημειώσεις 616:1011, owner «αποδέχομαι» 14/9 μέσω συντονιστή)
+Το master-detail (596:1011) και το φύλλο (607:1011) απορρίφθηκαν από τον owner ως δύσχρηστα. Screenshot στο scratchpad της
+συνεδρίας (`figma-614-home-cards.png`). ΔΕΝ υλοποιείται πριν κλείσει η Φάση 1 (ίδιο αρχείο `modules/payroll.js`).
+
+| Στοιχείο | Selector / κείμενο |
+|---|---|
+| κεφαλίδα | `.dl-head` «Μισθοδοσία Οδηγών» · `#dlBtnBulk` «Μαζική πληρωμή» (`.primary`, το ΜΟΝΟ navy) · `#dlBtnTripHome` «Δρομολόγιο» · `#dlBtnPrintHome` «Εκτύπωση ▾» → `.dl-menu` με `.dl-menu-print-drivers` «Κατάσταση οφειλών οδηγών» (→ `dlPrintDrivers()`) · `#dlBtnCsvHome` «CSV» (→ `dlCsvDrivers(balances)`) |
+| λωρίδα μηνών | `.dl-mstrip` 44px, `.dl-marrow` ‹ ›, `.dl-m[data-month="YYYY-MM"]`, επιλεγμένος `.sel` (navy) με «Σεπτέμβριος 2026 · 17 ενεργοί · 34 χωρίς αξία», παρελθόντες «κλειστός», μελλοντικοί «—». State `_dl.homeMonth` = 'YYYY-MM' (προεπιλογή τρέχων). Αλλάζει ΜΟΝΟ τα ποσά μήνα στις κάρτες, όχι το υπόλοιπο |
+| φίλτρα | `.dl-filters`: κείμενο «Οφειλή σήμερα <b>» · `.dl-chip[data-filter="pending"]` «Χωρίς αξία n» (πορτοκαλί, ενεργό = ΤΑΞΙΝΟΜΕΙ πρώτους τους εκκρεμείς, δεν κρύβει) · κείμενο «Πληρωμές μήνα <b>» · `.dl-chip[data-filter="active"]` «Ενεργοί n» · `.dl-chip[data-filter="all"]` «Όλοι n» · `#dlSort` select (balance/name/pending) · `#dlSearch` |
+| πλέγμα | `.dl-grid` — 4 στήλες ≥1400px, 3 στα 1280 (κάρτα ~275×170, κενό 16) |
+| κάρτα | `.dl-card[data-driver="ID"]`, `.dl-card.pending` (3px πορτοκαλί άνω περίγραμμα) · `.dl-avatar` 36px · `.m` όνομα · `.s` τύπος (τίποτα αν null) · `.dl-bal` (Syne 22, dlNum χωρίς €) + `.dl-balword` «του χρωστάμε» / «μας χρωστά» (πορτοκαλί, αρνητικό) / «τακτοποιημένο» · `.dl-ms` 3 mini-stats ΔΡΟΜ. ΜΗΝΑ · ΑΞΙΑ · ΠΛΗΡΩΜΕΣ (dlNum) · `.dl-lastpay` «Τελ. πληρωμή 12/09 · Μετρητά 400,00» ή «Καμία πληρωμή τον μήνα · τελ. 28/08» · `.dl-badge` «n χωρίς αξία» (πορτοκαλί περίγραμμα) όταν pending_count>0 · `.dl-card-pay` «Πληρωμή» · `.dl-card-open` «Καρτέλα →» (→ `renderPayrollDriver(id)`) |
+| πληρωμή στην κάρτα | `.dl-cardpay` μέσα στην κάρτα (μία ανοιχτή τη φορά): `.dl-cp-date` (date, σήμερα) · `.dl-cp-seg` (Τράπεζα/Μετρητά, navy η επιλεγμένη) · `.dl-cp-amount` · `.dl-cp-save` «Καταχώριση» (navy) · `.dl-cp-cancel` «Άκυρο» · υπόδειξη «Enter = καταχώριση · Esc = κλείσιμο» · POST `/costs/ledger {driver_id, entry_type:'payment_bank'|'payment_cash', entry_date, amount}` → refetch (όχι τοπική αλλαγή) |
+| footer | `.dl-foot` sticky κάτω: «17 οδηγοί · 34 δρομολόγια χωρίς αξία · οφειλή 12.571,64 € του χρωστάμε» + «Ποσά σε €. Υπόλοιπο = συνολικό έως σήμερα · μήνας = κινήσεις με ημερομηνία μέσα στον μήνα» — η ΜΟΝΗ εμφάνιση «€» στην οθόνη (μαζί με «Οφειλή σήμερα»/«Πληρωμές μήνα» στα φίλτρα) |
+| δεδομένα | `GET /costs/ledger` (balances)· ποσά μήνα: **εκκρεμεί απόφαση** — 49 ενεργοί οδηγοί με κινήσεις (μέτρηση 14/9) = 49–68 κλήσεις ανά άνοιγμα αν γίνει ανά οδηγό· πρόταση `GET /costs/ledger?month=YYYY-MM` (Worker, μία κλήση PostgREST σε dl_v_entries + άθροιση) και `last_payment_amount` στο dl_v_balance (migration DRAFT). Αν το `month` λείπει από την απάντηση: ορατό «Δεν φορτώθηκαν τα ποσά μήνα», όχι σιωπή |
