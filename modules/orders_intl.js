@@ -971,7 +971,14 @@ async function openIntlReadOnlyCard(recId) {
     if (!window._intlStopsByOrder[recId]) window._intlStopsByOrder[recId] = await stopsLoad(recId, F.STOP_PARENT_ORDER);
   } catch (e) { console.warn('read-only card stops:', e.message); }
   let panel = document.getElementById('intlDetail');
-  if (!panel) { panel = document.createElement('div'); panel.id = 'intlDetail'; panel.className = 'entity-detail-panel oi-ro-float hidden'; document.body.appendChild(panel); }
+  if (!panel) {
+    panel = document.createElement('div'); panel.id = 'intlDetail'; panel.className = 'entity-detail-panel oi-ro-float hidden'; document.body.appendChild(panel);
+    // The router has no navigation hook: a floating card left open would ride
+    // over the next page and clash with the Διεθνείς Παραγγελίες panel of the
+    // same id (seen live 14/9). The first repaint of #content removes it.
+    const main = document.getElementById('content');
+    if (main) { const obs = new MutationObserver(() => { obs.disconnect(); panel.remove(); }); obs.observe(main, { childList: true }); }
+  }
   panel.innerHTML = _oiCardHtml(rec, { readOnly: true });
   panel.classList.remove('hidden'); panel.scrollTop = 0;
 }
