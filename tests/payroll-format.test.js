@@ -92,3 +92,12 @@ test('dlEntryAmounts: one column rule for screen, A4 and CSV — adjustment sign
   // ΜΕΤΑΒΟΛΗ = ΑΞΙΑ + ΕΞΟΔΑ − ΕΛΑΒΕ holds for the totals row too
   assert.strictEqual(c.value + c.expenses - c.received, 460);
 });
+
+test('dlPeriod.to is the real last day of the month (printed on the A4 statement)', () => {
+  const { dlPeriod } = require('../modules/payroll.js');
+  assert.strictEqual(dlPeriod([], '2026', '09').to, '2026-09-30');
+  assert.strictEqual(dlPeriod([], '2026', '02').to, '2026-02-28');
+  assert.strictEqual(dlPeriod([], '2024', '02').to, '2024-02-29');
+  assert.strictEqual(dlPeriod([], '2026', '').to, '2026-12-31');
+  assert.strictEqual(dlPeriod([], 'all', '').to, null);
+});

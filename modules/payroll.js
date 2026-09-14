@@ -135,7 +135,10 @@ function dlEntryAmounts(e) {
 function dlPeriod(entries, year, month) {
   const all = year === 'all';
   const from = all ? null : year + '-' + (month || '01') + '-01';
-  const to = all ? null : year + '-' + (month || '12') + '-31';
+  // Real last day of the period (Sep = 30, Feb = 28/29): `to` is printed on the
+  // A4 statement («Υπόλοιπο τέλους περιόδου (30/09/2026)»), not only compared —
+  // measured live 14/9: a fixed «-31» printed 31/09/2026.
+  const to = all ? null : (() => { const y = Number(year), m = Number(month || '12'); const d = new Date(Date.UTC(y, m, 0)).getUTCDate(); return year + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0'); })();
   const chrono = (entries || []).slice().sort((a, b) => a.entry_date === b.entry_date ? Number(a.id) - Number(b.id) : (a.entry_date < b.entry_date ? -1 : 1));
   const rows = chrono.filter(e => (!from || e.entry_date >= from) && (!to || e.entry_date <= to));
   const before = from ? chrono.filter(e => e.entry_date < from) : [];
