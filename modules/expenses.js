@@ -744,8 +744,17 @@ function exRouteSummary(r) {
 // Expand/collapse (note 3) — a Set on _ex so it survives exRenderPage; NOT
 // cleared by exSwitchTab/exGoWeek (a viewing preference, not filter state —
 // see exSwitchTab's own comment on why filterChip resets but this doesn't).
+// Owner 14/9: opening the trip summary (legs) also opens the expenses
+// overview of that trip — one click, both views. Collapsing closes both.
 function exToggleExpand(rtId) {
-  if (_ex.expanded.has(rtId)) _ex.expanded.delete(rtId); else _ex.expanded.add(rtId);
+  if (_ex.expanded.has(rtId)) {
+    _ex.expanded.delete(rtId);
+    if (_ex.overview === rtId) _ex.overview = null;
+  } else {
+    _ex.expanded.add(rtId);
+    _ex.overview = rtId;
+    _ex.open = null; _ex.editId = null; // one navy panel per row
+  }
   exRenderPage();
 }
 

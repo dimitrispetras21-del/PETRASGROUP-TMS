@@ -27,7 +27,11 @@ export function buildImportKey(line) {
 // table speaks EUR and its own column names. This is the ONE place that
 // translates; the commit handler never picks parser fields into the row
 // directly, so a foreign-currency line can never land as if it were euros.
-const LITRE_UNITS = new Set(['LTR', 'L', 'LT', 'LITER', 'LITRE']);
+// 'Л.'/'Л' = the Bulgarian statement's Cyrillic «л.» after toUpperCase (real
+// ZIP 31/08/2026: two DIESEL lines on the BG invoice landed without liters —
+// the parser had read quantity 400,12 / 350,01, this set just did not name
+// the unit). Owner 14/9: liters must always be present for fuel.
+const LITRE_UNITS = new Set(['LTR', 'L', 'LT', 'LITER', 'LITRE', 'Л.', 'Л']);
 export function toCostLineRow(ln) {
   const num = (v) => (v === null || v === undefined || v === '' ? null : Number(v));
   const netEur = ln.net_eur != null ? ln.net_eur : (ln.currency == null || ln.currency === 'EUR' ? ln.net : null);

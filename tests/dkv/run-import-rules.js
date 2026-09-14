@@ -40,9 +40,20 @@ async function main() {
   const mod = await import('../../worker/src/import-rules.mjs');
   const {
     buildImportKey, findDuplicateImportKeys, applyRules, splitByPassages, matchRoundTrip,
-    reconcile, sumGrossEur, isMissingRelationError, allocateFees,
+    reconcile, sumGrossEur, isMissingRelationError, allocateFees, toCostLineRow,
   } = mod;
   const DkvParser = require('../../core/dkv-parser.js');
+
+  // ── toCostLineRow: Cyrillic litre unit «л.» (BG invoice) → liters (owner 14/9) ──
+  {
+    const base = { doc_no: 'D9', net: 10, vat: 2, currency: 'EUR', service_date: '2026-08-22', plate: 'XX1234', country: 'BG' };
+    const bg = toCostLineRow({ ...base, seq: 1, category: 'fuel', product_code: '0009', product: 'ДИЗЕЛ', unit: 'л.', quantity: 12.5 });
+    assertEqual(bg.row.liters, 12.5, 'toCostLineRow: BG unit «л.» is a litre unit → liters = quantity');
+    const lt = toCostLineRow({ ...base, seq: 2, category: 'fuel', product_code: '0009', product: 'DIESEL', unit: 'LTR', quantity: 7 });
+    assertEqual(lt.row.liters, 7, 'toCostLineRow: LTR still maps to liters');
+    const pc = toCostLineRow({ ...base, seq: 3, category: 'tolls', product_code: '0902', product: 'Maut', unit: 'ST', quantity: 1 });
+    assertEqual(pc.row.liters, null, 'toCostLineRow: ST (pieces) never becomes liters');
+  }
 
   // ── buildImportKey (spec §6 gate #2) ────────────────────────────────
   // 7 parts (doc_no, seq, ref, plate, service_date, product_code, sub) → 6 separators.
