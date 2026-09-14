@@ -1548,14 +1548,14 @@ async function submitNatlOrder(recId) {
       try {
         const staleGL = await atGetAll(TABLES.GL_LINES, {
           filterByFormula: `FIND("${savedNatlId}",ARRAYJOIN({Linked National Order},","))>0`,
-          fields: ['Status']
+          fields: ['Status','Linked Consolidated Load']
         }, false);
         // Delete CONS_LOADS linked to these GL lines
         for (const gl of staleGL) {
           try {
-            const cls = await atGetAll(TABLES.CONS_LOADS, {
-              filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-            }, false);
+            // 14/9: same fix as deleteNatlOrder — CL from the line's FK, not a 422 filter.
+            const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
+            const cls = _clId ? [{ id: _clId }] : [];
             for (const cl of cls) {
               // Delete NL records from this CL
               try {
@@ -2010,7 +2010,7 @@ async function deleteNatlOrder(recId) {
     // 1. Delete NAT_LOADS (Direct) linked to this NO
     try {
       const nls = await atGetAll(TABLES.NAT_LOADS, {
-        filterByFormula: `{Source Record}="${recId}"`,
+        filterByFormula: `FIND("${recId}",ARRAYJOIN({Source National Order},","))>0` /* 14/9: national loads of a national order link via Source National Order — {Source Record} is the INTL alias, so this lookup never found anything and the load outlived its order */,
         fields: ['Name']
       }, false);
       for (const nl of nls) {
@@ -2023,15 +2023,16 @@ async function deleteNatlOrder(recId) {
     try {
       const gls = await atGetAll(TABLES.GL_LINES, {
         filterByFormula: `FIND("${recId}",ARRAYJOIN({Linked National Order},","))>0`,
-        fields: ['Status']
+        fields: ['Status','Linked Consolidated Load']
       }, false);
       for (const gl of gls) {
         // Delete CONS_LOADS linked to this GL
         try {
-          const cls = await atGetAll(TABLES.CONS_LOADS, {
-            filterByFormula: `FIND("${gl.id}",ARRAYJOIN({Groupage Lines},","))>0`,
-            fields: ['Name']
-          }, false);
+          // 14/9: the CL is the line's own FK — filtering CONS_LOADS by a «Groupage
+          // Lines» reverse field the Worker does not model was a 422 swallowed into
+          // _delFail, so a groupage truck was never released on delete.
+          const _clId = getLinkedId(gl.fields['Linked Consolidated Load']);
+          const cls = _clId ? [{ id: _clId }] : [];
           for (const cl of cls) {
             // 13/9 (Sotiris go-live audit): a groupage truck is ONE consolidated
             // load for N customers. Deleting one customer's order used to delete

@@ -1807,10 +1807,19 @@ async function _wnConsumePendingMatch(newNlId, fields) {
   if (Date.now() - p.at > 30 * 60 * 1000) return;
   // Both sides, like _wnSaveMatch — written BEFORE the form closes so the
   // board's re-render already sees the pair.
-  const r1 = await atSafePatch(TABLES.NAT_LOADS, p.nsId, { 'Matched Load': newNlId });
-  if (r1?.error) throw new Error(r1.error.message || r1.error.type);
-  const r2 = await atSafePatch(TABLES.NAT_LOADS, newNlId, { 'Matched Load': p.nsId });
-  if (r2?.error) throw new Error(r2.error.message || r2.error.type);
+  try {
+    const r1 = await atSafePatch(TABLES.NAT_LOADS, p.nsId, { 'Matched Load': newNlId });
+    if (r1?.error) throw new Error(r1.error.message || r1.error.type);
+    const r2 = await atSafePatch(TABLES.NAT_LOADS, newNlId, { 'Matched Load': p.nsId });
+    if (r2?.error) throw new Error(r2.error.message || r2.error.type);
+  } catch(e) {
+    // 14/9: heard here, not only in the form's generic logError — the order was
+    // saved, the round-trip link was not (possibly one side only).
+    if (typeof logError === 'function') logError(e, '_wnConsumePendingMatch ' + p.nsId + '→' + newNlId);
+    invalidateCache(TABLES.NAT_LOADS);
+    toast('Η άνοδος καταχωρήθηκε αλλά η σύνδεση με την κάθοδο ΔΕΝ γράφτηκε — δέσε την με σύρσιμο', 'danger');
+    return;
+  }
   invalidateCache(TABLES.NAT_LOADS);
   toast('Η άνοδος δέθηκε με την κάθοδο ✓');
 }
@@ -2094,8 +2103,11 @@ async function _wnUnmatch(rowId, snId) {
     _wnSync('wn-sync-'+rowId,'ok','Αφαιρέθηκε');
     toast('Σύνδεση αφαιρέθηκε');
   } catch(err) {
-    _wnSync('wn-sync-'+rowId,'err','Η αφαίρεση ΔΕΝ γράφτηκε στη βάση — κάνε Ανανέωση');
+    _wnSync('wn-sync-'+rowId,'err','Η αφαίρεση ΔΕΝ γράφτηκε στη βάση');
     toast('Σφάλμα: '+err.message, 'warn');
+    // 14/9: the rows were split optimistically above — re-read so the board
+    // shows the true (possibly one-sided) state, like _wnSaveMatch does.
+    await renderWeeklyNatl();
   }
 }
 
@@ -2528,6 +2540,12 @@ async function _wnRevertNoStatus(nlId) {
     if (typeof logError === 'function') logError(e, '_wnRevertNoStatus ' + noId);
   }
 }
+// Execution beats planning (14/9): a load the 030 trigger already set
+// Delivered/Cancelled keeps its assignment — the board never checked Status.
+async function _wnDoneLive(id) {
+  try { const r = await atGetOne(TABLES.NAT_LOADS, id); const st = String(r?.fields?.['Status'] || ''); return (st === 'Delivered' || st === 'Cancelled') ? st : ''; }
+  catch(e) { return ''; }
+}
 async function _wnUnassignSn(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId);
@@ -2542,6 +2560,8 @@ async function _wnUnassignSn(rowId, snId) {
   };
 
   try {
+    const done = await _wnDoneLive(snId);
+    if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); return; }
     const res = await atSafePatch(TABLES.NAT_LOADS, snId, fields);
     if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
   } catch(err) { toast('Σφάλμα: ' + err.message, 'warn'); return; }
@@ -2579,6 +2599,8 @@ async function _wnUnassign(rowId) {
   const errors = [];
   for (const orderId of row.orderIds) {
     try {
+      const done = await _wnDoneLive(orderId);
+      if (done) { toast('Το φορτίο είναι ' + done + ' — η ανάθεση κρατιέται', 'warn'); continue; }
       const res = await atSafePatch(TABLES.NAT_LOADS, orderId, fields);
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
       if (res?.error) throw new Error(res.error.message || res.error.type);
