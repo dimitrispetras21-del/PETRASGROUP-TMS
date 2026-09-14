@@ -99,6 +99,12 @@ const _ex = {
   veh: { truckId: null, range: 8, from: null, to: null, rts: [], linesByRt: {}, loading: false, err: null },
   loading: false, err: null, q: '',
   open: null, editId: null, qe: null, expmAmount: '',
+  // Trip-level «Επισκόπηση» overview (owner 14/9) — holds the rt id whose
+  // overview panel is showing, or null. Deliberately its own field, not a
+  // second use of `open` (which addresses one cell's group): only one of
+  // {overview, open} may be set at a time (exToggleCell/exToggleOverview each
+  // clear the other), so a row never shows two navy-bordered panels stacked.
+  overview: null,
   importDocs: [], importDocsLoading: false, importDocsErr: null,
   expanded: new Set(), filterChip: null
 };
@@ -339,6 +345,14 @@ function exStyles() {
      group so both links move together regardless of the head's own width. */
   .ex-gp-actions{display:flex;align-items:center;gap:14px;flex:none}
   .ex-link.dim{color:var(--text-dim);cursor:default}
+  /* Trip overview (Addition B, owner 14/9) — reuses .ex-gp's own navy-border
+     card, one quiet section per category with lines, formal-ledger style
+     (CLAUDE.md «πιο professional»): a grey section header, not another pill. */
+  .ex-ov-section{border-top:1px solid var(--border)}
+  .ex-ov-section:first-of-type{border-top:0}
+  .ex-ov-sechead{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 16px;font-size:11.5px;font-weight:600;color:var(--text-mid);background:var(--surface-card)}
+  .ex-ov-totals{padding:9px 16px 11px;border-top:1px solid var(--border-mid,var(--border));font-size:11.5px;color:var(--text-mid);display:flex;flex-direction:column;gap:4px}
+  .ex-ov-totals b{color:var(--text);font-variant-numeric:tabular-nums}
   .ex-th{height:30px;padding:0 16px;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--text-mid);text-transform:uppercase;border-bottom:1px solid var(--border)}
   .ex-row{min-height:36px;padding:4px 16px;border-bottom:1px solid var(--border);background:var(--surface-card)}
   .ex-th.ex-line-grid,.ex-row.ex-line-grid{display:grid;grid-template-columns:78px minmax(130px,1fr) 62px 84px 76px minmax(96px,1fr);gap:8px;align-items:center}
@@ -417,7 +431,7 @@ async function renderExpenses() {
   if (can('costs') === 'none') { c.innerHTML = showAccessDenied(); return; }
   _ex.canWrite = can('costs') === 'full';
   c.style.padding = '0';
-  _ex.open = null; _ex.editId = null; _ex.q = '';
+  _ex.open = null; _ex.editId = null; _ex.q = ''; _ex.overview = null;
   if (!_ex.tab) _ex.tab = 'week';
   if (!_ex.week) _ex.week = ctWeekOf(exTodayIso());
   c.innerHTML = exStyles() + '<div class="ex-page"><div style="color:var(--text-mid)">Φόρτωση εξόδων…</div></div>';
@@ -437,7 +451,7 @@ function exSwitchTab(tab) {
   // silently hide rows in the new view for a reason nothing on screen
   // explains (αρχή 1). expanded is left alone — it reads as a per-session
   // viewing preference, not per-tab filter state.
-  _ex.tab = tab; _ex.open = null; _ex.editId = null; _ex.q = ''; _ex.filterChip = null;
+  _ex.tab = tab; _ex.open = null; _ex.editId = null; _ex.q = ''; _ex.filterChip = null; _ex.overview = null;
   if (tab === 'vehicle') {
     if (_ex.veh.truckId) exLoadVehicle(); else exVehLoadLookupsThenDefault();
   } else {
@@ -486,7 +500,7 @@ async function exLoadLines() {
 function exWeekShift(n) { exGoWeek(exShiftIso(_ex.week.start, 7 * n)); }
 function exGoWeek(startIso) {
   _ex.week = ctWeekOf(startIso);
-  _ex.open = null; _ex.editId = null; _ex.filterChip = null;
+  _ex.open = null; _ex.editId = null; _ex.filterChip = null; _ex.overview = null;
   exLoad();
 }
 
@@ -501,7 +515,7 @@ async function exVehLoadLookupsThenDefault() {
 }
 function exVehSetTruck(v) {
   _ex.veh.truckId = v ? Number(v) : null;
-  _ex.open = null; _ex.editId = null;
+  _ex.open = null; _ex.editId = null; _ex.overview = null;
   if (_ex.veh.truckId) exLoadVehicle(); else exRenderPage();
 }
 function exVehSetRange(v) {
@@ -1054,6 +1068,7 @@ function exTripRowHtml(r, visCols, tmpl) {
   const missing = exMissingGroups(r);
   const st = exRtState(r);
   const isOpen = _ex.open && _ex.open.rtId === r.id;
+  const isOverview = _ex.overview === r.id;
   const isExpanded = _ex.expanded.has(r.id);
   const cells = visCols.map(k => {
     if (k === 'expm') return exExpMCellHtml(r.id, r);
@@ -1070,10 +1085,13 @@ function exTripRowHtml(r, visCols, tmpl) {
   // τρέιλερ») — truck plate over trailer plate, «—» when the RT has no
   // trailer_id. No partner branch any more (correction #1 — every trip
   // reaching this row is own-fleet, filtered in exLoad/exLoadVehicle).
-  const vehicleCell = `<div class="ex-vehcell"><div class="ex-plate ex-clip">${escapeHtml(exTruckName(r.truck_id))}</div><div class="ex-plate trailer ex-clip">${escapeHtml(exResolveTrailerName(r.trailer_id) || '—')}</div></div>`;
-  const driverCell = `<div class="ex-clip" title="${escapeHtml(exPersonName(r))}">${escapeHtml(exPersonName(r))}</div>`;
+  // Vehicle/driver cells double as the Addition B overview trigger (owner
+  // 14/9) — clicking either toggles exToggleOverview for this trip; the
+  // chevron/route click keeps its own separate purpose (expand legs).
+  const vehicleCell = `<div class="ex-vehcell" onclick="exToggleOverview(${r.id})" title="Επισκόπηση εξόδων" style="cursor:pointer"><div class="ex-plate ex-clip">${escapeHtml(exTruckName(r.truck_id))}</div><div class="ex-plate trailer ex-clip">${escapeHtml(exResolveTrailerName(r.trailer_id) || '—')}</div></div>`;
+  const driverCell = `<div class="ex-clip" onclick="exToggleOverview(${r.id})" title="${escapeHtml(exPersonName(r))} — Επισκόπηση εξόδων" style="cursor:pointer">${escapeHtml(exPersonName(r))}</div>`;
   const missingCls = missing.length ? ' missing' : '';
-  return `<div class="ex-trip${isOpen ? ' open' : ''}${missingCls}" data-trip="${r.id}"><div class="ex-gr${isOpen ? ' open' : ''}" data-rt="${r.id}" style="grid-template-columns:${tmpl}">
+  return `<div class="ex-trip${(isOpen || isOverview) ? ' open' : ''}${missingCls}" data-trip="${r.id}"><div class="ex-gr${(isOpen || isOverview) ? ' open' : ''}" data-rt="${r.id}" style="grid-template-columns:${tmpl}">
       <span class="ex-chevron" onclick="exToggleExpand(${r.id})" title="${isExpanded ? 'Σύμπτυξη' : 'Ανάπτυξη'}">${isExpanded ? '⌄' : '›'}</span>
       ${vehicleCell}
       ${driverCell}
@@ -1082,7 +1100,7 @@ function exTripRowHtml(r, visCols, tmpl) {
       ${cells}
       <div class="r n" style="font-weight:600">${hasAny ? exNum(rowTotal) : ''}</div>
       <div class="ex-st ${st.cls}">${st.word}</div>
-    </div>${isExpanded && legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exOpenPanelHtml(r) : ''}</div>`;
+    </div>${isExpanded && legsHtml ? `<div class="ex-legs">${legsHtml}</div>` : ''}${isOpen ? exOpenPanelHtml(r) : ''}${isOverview ? exOverviewPanelHtml(r) : ''}</div>`;
 }
 
 // «Χωρίς δρομολόγιο»: unallocated lines dated inside the week (week tab
@@ -1124,6 +1142,9 @@ function exNoneRowHtml(visCols, tmpl) {
 
 function exToggleCell(rtKey, groupKey) {
   if (!_ex.canWrite) return;
+  // Opening a cell panel closes any open trip overview (Addition B, owner
+  // 14/9) — only one navy-bordered panel per row at a time.
+  _ex.overview = null;
   if (_ex.open && _ex.open.rtId === rtKey && _ex.open.group === groupKey) { exCloseCell(); return; }
   _ex.open = { rtId: rtKey, group: groupKey };
   _ex.editId = null;
@@ -1144,6 +1165,79 @@ function exToggleCell(rtKey, groupKey) {
   if (netEl) netEl.focus();
 }
 function exCloseCell() { _ex.open = null; _ex.editId = null; exRenderPage(); }
+
+// ═══════════════════ ΕΠΙΣΚΟΠΗΣΗ ΔΡΟΜΟΛΟΓΙΟΥ (Addition B, owner 14/9) ══════
+// «κάνοντας κλικ στο συγκεκριμένο round trip, να φαίνεται ένα συνολικό
+// overview των εξόδων … ο τρόπος πληρωμής, τα λίτρα και οτιδήποτε άλλο αφορά
+// το παραστατικό» — clicking the vehicle or driver cell toggles a read-only,
+// formal-ledger panel under that row: every category with lines, in column
+// order, each reusing exLineRowHtml (so the SAME line detail — payment tag,
+// supplier, liters/km/station, trailer, country flag, note, who — never
+// needs a second rendering path, αρχή 3), then totals. No entry row here —
+// «Καταχώριση →» per section opens that group's own cell panel instead.
+function exToggleOverview(rtId) {
+  if (_ex.overview === rtId) { _ex.overview = null; exRenderPage(); return; }
+  _ex.overview = rtId;
+  // Only one navy-bordered panel per row (see exToggleCell's own comment).
+  _ex.open = null; _ex.editId = null;
+  exRenderPage();
+}
+// «Καταχώριση →» link inside a section: closes the overview and opens that
+// GROUP's own cell panel — exToggleCell already resets _ex.overview itself,
+// but doing it here too keeps this call obviously correct on its own.
+function exOverviewOpenGroup(rtId, key) {
+  _ex.overview = null;
+  exToggleCell(rtId, key);
+}
+
+// Payment-method subtotal line («Πληρωμή: DKV x · Revolut y · Μετρητά z»,
+// zero buckets omitted) — reuses exLinePaySource so an imported DKV line
+// with no pay_source of its own still counts as DKV here too, the same
+// fallback exCellPayTag/exLineRowHtml already apply (αρχή 3: one rule for
+// «what did this line get paid with», not a second one for this screen).
+function exOverviewPaySummary(lines) {
+  const sums = { DKV: 0, REVOLUT: 0, CASH: 0 };
+  lines.forEach(l => { const src = exLinePaySource(l); if (src && sums[src] !== undefined) sums[src] += exLineAmt(l); });
+  const labels = { DKV: 'DKV', REVOLUT: 'Revolut', CASH: 'Μετρητά' };
+  return Object.keys(sums).filter(k => sums[k] > 0).map(k => labels[k] + ' ' + exEur(sums[k])).join(' · ');
+}
+
+function exOverviewPanelHtml(r) {
+  const lines = exRtLines(r.id);
+  const title = 'Επισκόπηση εξόδων · ' + exTruckName(r.truck_id) + ' · ' + exPersonName(r) + ' · ' + exDateRange(r.date_start, r.date_end);
+  // Column order (Καύσιμα … Λοιπά, spec) minus «expm» — that slot is not a
+  // cost-line category (see EX_COL_ORDER's own comment) and gets its own
+  // one-line block below instead of a full section.
+  const sections = EX_COL_ORDER.filter(k => k !== 'expm').map(k => {
+    const g = EX_GROUPS.find(x => x.key === k);
+    const gl = exGroupLines(lines, g);
+    if (!gl.length) return '';
+    const thHtml = `<div class="ex-th ex-line-grid"><div>Ημ/νία</div><div>Κατηγορία · Σημείωση</div><div>${exExtraColLabel(g.key)}</div><div class="r">Ποσό</div><div>Ποιος</div><div></div></div>`;
+    const rowsHtml = gl.map(l => exLineRowHtml(l, {})).join('');
+    const linkHtml = _ex.canWrite ? `<button type="button" class="ex-link" onclick="exOverviewOpenGroup(${r.id},'${k}')">Καταχώριση →</button>` : '';
+    return `<div class="ex-ov-section">
+      <div class="ex-ov-sechead"><span>${escapeHtml(g.label)} · ${gl.length} ${gl.length === 1 ? 'γραμμή' : 'γραμμές'} · ${exEur(exAmt(gl))}</span>${linkHtml}</div>
+      ${thHtml}${rowsHtml}
+    </div>`;
+  }).filter(Boolean).join('');
+  const expM = Number((r.ledger_entry && r.ledger_entry.expenses) || 0);
+  const expMHtml = expM !== 0 ? `<div class="ex-ov-section"><div class="ex-ov-sechead"><span>Έξοδα Μ · ${exEur(expM)}</span></div></div>` : '';
+  const fuelGroup = EX_GROUPS.find(g => g.key === 'fuel');
+  const totalLiters = exGroupLines(lines, fuelGroup).reduce((a, l) => a + Number(l.liters || 0), 0);
+  const totalAmt = exAmt(lines) + expM;
+  const payStr = exOverviewPaySummary(lines);
+  const tollsGroup = EX_GROUPS.find(g => g.key === 'tolls');
+  const tollParts = exCountryParts(exGroupLines(lines, tollsGroup));
+  const totalsHtml = `<div class="ex-ov-totals">
+    <div>Σύνολο λίτρων ${totalLiters > 0 ? exLiters(totalLiters) : '0 L'} · Σύνολο <b>${exEur(totalAmt)}</b></div>
+    ${payStr ? `<div>Πληρωμή: ${payStr}</div>` : ''}
+    ${tollParts.length ? `<div>Διόδια ανά χώρα: ${tollParts.join(' · ')}</div>` : ''}
+  </div>`;
+  return `<div class="ex-gp" data-overview="${r.id}">
+    <div class="ex-gp-head"><div><span class="k">Επισκόπηση</span>${escapeHtml(title)}</div><div class="ex-gp-actions"><button class="ex-link" onclick="exToggleOverview(${r.id})">Κλείσιμο</button></div></div>
+    ${sections || '<div class="ex-row" style="padding:10px 16px;color:var(--text-mid)">Καμία γραμμή εξόδων.</div>'}${expMHtml}${totalsHtml}
+  </div>`;
+}
 
 // Dispatches to the right panel body for the open cell — the «Έξοδα Μ»
 // column reads/writes the payroll ledger, everything else reads/writes a
@@ -1425,6 +1519,7 @@ function exQeRowHtml(group) {
       <div class="ex-field" style="width:90px"><label class="ex-flabel">Λίτρα</label><input class="ex-ei" type="number" step="0.01" id="exQeLiters" onkeydown="exQeKeydown(event)"></div>
       <div class="ex-field" style="width:100px"><label class="ex-flabel">Χιλιόμετρα</label><input class="ex-ei" type="number" step="1" min="0" id="exQeKm" onkeydown="exQeKeydown(event)"></div>
       <div class="ex-field" style="width:120px"><label class="ex-flabel">Πρατήριο</label><input class="ex-ei" type="text" id="exQeStation" onkeydown="exQeKeydown(event)"></div>
+      ${fuelOn ? exCountryFieldHtml('exQeCountry', 140) : ''}
     </span>
   </div>`;
 }
@@ -1484,6 +1579,14 @@ function exBuildLineBody(rtId, v) {
   }
   if (v.category === 'tolls') {
     if (!v.tollCountry) { showErrorToast('Χρειάζεται χώρα διοδίων.', 'error'); return null; }
+    body.toll_country = v.tollCountry;
+  } else if (EX_FUEL_CATEGORIES.includes(v.category) && v.tollCountry) {
+    // Owner 14/9 «η χώρα θέλω να φαίνεται ακόμα και στα καύσιμα»: the SAME
+    // toll_country column, now also written from a fuel/reefer/adblue line —
+    // OPTIONAL here (only tolls enforces the required check above). The
+    // Worker validates it as ISO-2 only for category==='tolls'
+    // (worker/src/costs-line-rules.mjs) and otherwise just stores it as-is,
+    // so no Worker change was needed for this.
     body.toll_country = v.tollCountry;
   }
   return body;
@@ -1560,7 +1663,9 @@ function exLineRowHtml(line, opts) {
     isFuelCat && line.km_reading != null ? kv('Χλμ', escapeHtml(Number(line.km_reading).toLocaleString('el-GR'))) : '',
     isFuelCat && line.station ? kv('Πρατήριο', escapeHtml(line.station)) : '',
     line.category === 'reefer_fuel' && line.trailer_id ? kv('Ρυμούλκα', escapeHtml(exResolveTrailerName(line.trailer_id) || ('#' + line.trailer_id))) : '',
-    line.category === 'tolls' && line.toll_country ? kv('Χώρα', exFlag(line.toll_country) + ' ' + escapeHtml(String(line.toll_country).toUpperCase())) : '',
+    // Owner 14/9: the same «Χώρα» detail now shows on a fuel/reefer/adblue
+    // line too, whenever one was picked at entry (optional there).
+    (line.category === 'tolls' || isFuelCat) && line.toll_country ? kv('Χώρα', exFlag(line.toll_country) + ' ' + escapeHtml(String(line.toll_country).toUpperCase())) : '',
     line.note ? kv('Παραστατικό', escapeHtml(line.note)) : ''
   ].filter(Boolean).join(' · ');
   // No partner branch in the option label (correction #1) — every _ex.rts
@@ -1591,7 +1696,7 @@ function exEditLineRowHtml(line) {
   const isTolls = line.category === 'tolls';
   const isReefer = line.category === 'reefer_fuel';
   const cns = 'exEdCountry_' + line.id;
-  if (isTolls && !_exCountryNs[cns]) _exCountryNs[cns] = { code: line.toll_country || null, query: '', matches: [], open: false, hi: 0 };
+  if ((isTolls || fuelOn) && !_exCountryNs[cns]) _exCountryNs[cns] = { code: line.toll_country || null, query: '', matches: [], open: false, hi: 0 };
   const opts = EX_CATEGORIES.map(c => `<option value="${c}"${line.category === c ? ' selected' : ''}>${escapeHtml(CT_CATEGORY_LABELS[c] || c)}</option>`).join('');
   const trailers = (_ex.lookups && _ex.lookups.trailers) || [];
   const trailerOptsHtml = '<option value="">Ρυμούλκα…</option>' + trailers.map(t => `<option value="${t.id}"${line.trailer_id === t.id ? ' selected' : ''}>${escapeHtml(t.license_plate)}</option>`).join('');
@@ -1611,6 +1716,7 @@ function exEditLineRowHtml(line) {
       <input class="ex-ei" style="width:90px" type="number" step="0.01" id="${p('exEdLiters')}" value="${line.liters ?? ''}">
       <input class="ex-ei" style="width:100px" type="number" step="1" min="0" id="${p('exEdKm')}" value="${line.km_reading ?? ''}">
       <input class="ex-ei" style="width:120px" type="text" id="${p('exEdStation')}" value="${escapeHtml(line.station || '')}">
+      <span id="${p('exEdFuelCountryWrap')}">${fuelOn ? exCountryFieldHtml(cns, 140) : ''}</span>
     </span>
     <div class="ex-qe-break"></div>
     <button class="ex-btn" onclick="exSaveEdit(${line.id})">Αποθήκευση</button>
@@ -1630,6 +1736,18 @@ function exEdCategoryChange(id, el) {
     const cns = 'exEdCountry_' + id;
     if (!_exCountryNs[cns]) _exCountryNs[cns] = { code: line.toll_country || null, query: '', matches: [], open: false, hi: 0 };
     cWrap.innerHTML = el.value === 'tolls' ? exCountryFieldHtml(cns, 170) : '';
+  }
+  // Fuel country wrap (Addition A, owner 14/9) — same cns as the tolls wrap
+  // above but a DIFFERENT DOM slot (inside the fuel fields, after Πρατήριο):
+  // the two are mutually exclusive by category, so reusing one namespace for
+  // one line's country never lets a stale value leak from one slot to the
+  // other (delete happens implicitly — exCountryFieldHtml reads whatever
+  // _exCountryNs[cns] already holds, which line.toll_country seeded once).
+  const fcWrap = document.getElementById(p('exEdFuelCountryWrap'));
+  if (fcWrap) {
+    const fcns = 'exEdCountry_' + id;
+    if (!_exCountryNs[fcns]) _exCountryNs[fcns] = { code: line.toll_country || null, query: '', matches: [], open: false, hi: 0 };
+    fcWrap.innerHTML = EX_FUEL_CATEGORIES.includes(el.value) ? exCountryFieldHtml(fcns, 140) : '';
   }
   const tWrap = document.getElementById(p('exEdTrailerWrap'));
   if (tWrap) {
@@ -1651,6 +1769,10 @@ async function exSaveEdit(id) {
   if (category === 'tolls') {
     tollCountry = (_exCountryNs['exEdCountry_' + id] || {}).code;
     if (!tollCountry) { showErrorToast('Χρειάζεται χώρα διοδίων.', 'error'); return; }
+  } else if (EX_FUEL_CATEGORIES.includes(category)) {
+    // Addition A (owner 14/9) — optional on a fuel correction, same ns as
+    // the tolls field above (the two wraps never render at once).
+    tollCountry = (_exCountryNs['exEdCountry_' + id] || {}).code;
   }
   // Πηγή πληρωμής (owner correction 13/9 #5) — required on a correction too.
   const paySourceEl = g('exEdPaySource');
@@ -1678,6 +1800,7 @@ async function exSaveEdit(id) {
     const tr = g('exEdTrailerId'); if (tr && tr.value) body.trailer_id = Number(tr.value);
   }
   if (category === 'tolls') body.toll_country = tollCountry;
+  else if (EX_FUEL_CATEGORIES.includes(category) && tollCountry) body.toll_country = tollCountry;
   try {
     await ctFetch('/costs/lines/' + id, { method: 'PATCH', body });
     exPaySourceRemember(category, paySource);
@@ -1821,6 +1944,7 @@ function exModalHtml() {
           <div class="ex-field"><label class="ex-flabel">Λίτρα</label><input class="ex-ei" type="number" step="0.01" id="exMdLiters" onkeydown="exModalKeydown(event)"></div>
           <div class="ex-field"><label class="ex-flabel">Χιλιόμετρα</label><input class="ex-ei" type="number" step="1" min="0" id="exMdKm" onkeydown="exModalKeydown(event)"></div>
           <div class="ex-field"><label class="ex-flabel">Πρατήριο</label><input class="ex-ei" type="text" id="exMdStation" onkeydown="exModalKeydown(event)"></div>
+          <span id="exMdFuelCountryWrap">${fuelOn ? exCountryFieldHtml('exMdCountry', 140) : ''}</span>
         </div>
         <div class="ex-modal-foot">
           <button class="ex-btn" onclick="exCloseModal()">Άκυρο</button>
@@ -1842,6 +1966,11 @@ function exModalCategoryChange(el) {
   if (reefer) reefer.innerHTML = el.value === 'reefer_fuel' ? exTrailerFieldHtml(s.rt, s, 'md') : '';
   const country = document.getElementById('exMdCountryWrap');
   if (country) country.innerHTML = el.value === 'tolls' ? exCountryFieldHtml('exMdCountry', 170) : '';
+  // Addition A (owner 14/9) — same 'exMdCountry' ns as the tolls wrap above
+  // (mutually exclusive by category, delete above already clears it on
+  // every switch), rendered instead in the fuel-fields slot.
+  const fuelCountry = document.getElementById('exMdFuelCountryWrap');
+  if (fuelCountry) fuelCountry.innerHTML = EX_FUEL_CATEGORIES.includes(el.value) ? exCountryFieldHtml('exMdCountry', 140) : '';
 }
 function exModalKeydown(ev) { if (ev.key === 'Enter') { ev.preventDefault(); exModalSubmit(); } }
 

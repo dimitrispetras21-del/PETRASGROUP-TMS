@@ -449,12 +449,84 @@ async function runAccountantFlow(browser) {
   const lp2 = captured.ledgerPatches[captured.ledgerPatches.length - 1];
   assert(lp2.id === 501 && lp2.body.expenses === 55 && lp2.body.reason === 'proof: test reason', 'PATCH /costs/ledger/501 {expenses:55, reason} — reason required (entry already had 40)');
   assert(/55,00/.test(await cell(page, 701, 'expm').innerText()), 'Έξοδα Μ cell reflects the new value after refetch');
+  await page.locator('.ex-link', { hasText: 'Κλείσιμο' }).click();
 
   // RT 703 (partner, in progress) used to be tested here for its «no ledger
   // entry» Έξοδα Μ panel — it no longer renders at all (correction #1), so
   // there is no cell left to click; its exclusion is already proven above
   // (trip count, .ex-trip[data-trip="703"] absent, week-strip count, assign
   // select, «Επόμενο δρομολόγιο» walk).
+
+  // ── Addition A (owner 14/9, 2026-09-14: «Η χώρα θέλω να φαίνεται ακόμα και
+  // στα καύσιμα … όταν επιλέγουμε ένα πρατήριο τρίτων και επιλέγει τη χώρα
+  // που έβαλε, θέλω να φαίνεται και η σημαία»): the fuel entry row gets the
+  // SAME Χώρα combobox as tolls, right after Πρατήριο, OPTIONAL — typing «αυ»
+  // + Enter resolves to Αυστρία (AT), and the POST carries toll_country
+  // alongside fuel_source/pay_source (never required, unlike tolls). ──
+  await cell(page, 701, 'fuel').click();
+  await page.waitForSelector('.ex-gp[data-panel="701"]', { timeout: 5000 });
+  assert(await page.locator('#exQeFuelFields .ex-country').count() === 1, 'fuel entry row shows the Χώρα combobox inside the fuel fields (right after Πρατήριο)');
+  // .ex-flabel is CSS text-transform:uppercase (renders «ΧΩΡΑ», tonos
+  // dropped like real Greek caps) — textContent reads the literal authored
+  // DOM text instead, unaffected by that rendering transform.
+  const fuelCountryLabelTxt = await page.locator('#exQeFuelFields .ex-country .ex-flabel').evaluate(el => el.textContent);
+  assert(/Χώρα/.test(fuelCountryLabelTxt), 'the fuel country field is labelled «Χώρα»: ' + JSON.stringify(fuelCountryLabelTxt));
+  await page.selectOption('#exQeFuelSource', 'DKV');
+  await page.selectOption('#exQePaySource', 'DKV');
+  await page.fill('#exQeCountryInput', 'αυ');
+  await page.waitForSelector('#exQeCountryDrop .ex-cdrop-opt', { timeout: 5000 });
+  await page.locator('#exQeCountryInput').press('Enter');
+  assert(/Αυστρία \(AT\)/.test(await page.locator('#exQeCountryInput').inputValue()), 'fuel combobox resolved «αυ» → Αυστρία (AT), same search as tolls');
+  await page.fill('#exQeAmt', '61');
+  await waitLines(page, 'POST', () => page.locator('#exQeAmt').press('Enter'));
+  const fuelCountryPost = captured.posts[captured.posts.length - 1];
+  assert(fuelCountryPost.category === 'fuel' && fuelCountryPost.toll_country === 'AT' && fuelCountryPost.fuel_source === 'DKV' && fuelCountryPost.pay_source === 'DKV' && fuelCountryPost.net === 61,
+    'POST fuel line carries toll_country AT chosen via the combobox, alongside fuel_source/pay_source: ' + JSON.stringify(fuelCountryPost));
+  assert(await page.locator('.ex-gp[data-panel="701"] .ex-line-grid img.ex-flag[alt="AT"]').count() >= 1, 'the new fuel line renders img.ex-flag[alt="AT"] in its labelled details («Χώρα»)');
+  await page.locator('.ex-link', { hasText: 'Κλείσιμο' }).click();
+
+  // ── Addition B (owner 14/9: «κάνοντας κλικ στο συγκεκριμένο round trip, να
+  // φαίνεται ένα συνολικό overview των εξόδων … ο τρόπος πληρωμής, τα λίτρα
+  // και οτιδήποτε άλλο»): clicking the vehicle cell toggles a formal
+  // «Επισκόπηση» panel — every category with lines, a total-liters/total-€
+  // line, a per-payment-method breakdown and a per-country tolls line; only
+  // one of {overview, cell panel} open per trip; clicking again closes it. ──
+  await page.locator('.ex-gr[data-rt="701"] > div').nth(0).click(); // vehicle cell
+  await page.waitForSelector('.ex-gp[data-overview="701"]', { timeout: 5000 });
+  const ovText = (await page.locator('.ex-gp[data-overview="701"]').innerText()).replace(/\s+/g, ' ');
+  assert(/Επισκόπηση εξόδων/.test(ovText) && /ΘΕ-2001/.test(ovText), 'overview header reads «Επισκόπηση εξόδων» and names the truck plate: ' + ovText);
+  assert(/Καύσιμα/.test(ovText), 'overview shows the Καύσιμα section (RT 701 has fuel lines)');
+  assert(/Διόδια/.test(ovText), 'overview shows the Διόδια section (RT 701 has tolls lines)');
+  assert(!/Adblue|Spedition|Πρόστιμα/i.test(ovText), 'overview omits categories with no lines on this trip (Adblue/Spedition/Πρόστιμα)');
+  assert(/Σύνολο λίτρων/.test(ovText), 'overview shows a total-liters line');
+  assert(/Πληρωμή:/.test(ovText) && /DKV/.test(ovText), 'overview shows a per-payment-method breakdown naming DKV');
+  assert(/Διόδια ανά χώρα:/.test(ovText), 'overview shows a per-country tolls line');
+  assert(await page.locator('.ex-gp[data-overview="701"] img.ex-flag').count() >= 1, 'the per-country tolls line carries a flag');
+  assert(await page.locator('.ex-gp[data-overview="701"] .ex-line-grid').count() >= 2, 'overview reuses the same detailed line rows as the cell panel (ex-line-grid)');
+  assert(await page.locator('.ex-gp[data-overview="701"] .ex-link', { hasText: 'Καταχώριση →' }).count() >= 1, 'each section has a «Καταχώριση →» link back to its own cell panel');
+
+  // Opening a DIFFERENT trip's overview (via the driver cell this time)
+  // switches to it — only one open at a time.
+  await page.locator('.ex-gr[data-rt="702"] > div').nth(1).click(); // driver cell
+  await page.waitForSelector('.ex-gp[data-overview="702"]', { timeout: 5000 });
+  assert(await page.locator('.ex-gp[data-overview="701"]').count() === 0, 'opening RT 702’s overview closes RT 701’s');
+
+  // Clicking the SAME vehicle cell again closes it.
+  await page.locator('.ex-gr[data-rt="702"] > div').nth(0).click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('.ex-gp[data-overview="702"]').count() === 0, 'clicking the same vehicle cell again closes the overview');
+
+  // Opening a cell panel closes an open overview.
+  await page.locator('.ex-gr[data-rt="701"] > div').nth(0).click();
+  await page.waitForSelector('.ex-gp[data-overview="701"]', { timeout: 5000 });
+  await cell(page, 701, 'fuel').click();
+  await page.waitForSelector('.ex-gp[data-panel="701"]', { timeout: 5000 });
+  assert(await page.locator('.ex-gp[data-overview="701"]').count() === 0, 'opening a cell panel closes the open overview');
+  await page.locator('.ex-link', { hasText: 'Κλείσιμο' }).click();
+
+  // Leave RT 701's overview open for the week screenshot below.
+  await page.locator('.ex-gr[data-rt="701"] > div').nth(0).click();
+  await page.waitForSelector('.ex-gp[data-overview="701"]', { timeout: 5000 });
 
   await assertGridFits(page, '1440 (week tab)');
   await assertHeaderCellsFit(page, '1440 (week tab, 9 amount cols)');
@@ -486,6 +558,15 @@ async function runVehicleTab(browser) {
   assert(/Σύνολο ΘΕ-2001 \(1 δρομολόγια, 2 γραμμές\)/.test((await page.locator('.ex-gt').innerText()).replace(/\s+/g, ' ')), 'totals row names the vehicle, trip count and line count');
   const gridText = await page.locator('.ex-page').innerText();
   assert(!/Φ\.?Π\.?Α/i.test(gridText), 'no ΦΠΑ text anywhere on the vehicle sheet');
+
+  // Addition B works in the vehicle tab too (owner 14/9 asked for the
+  // overview generally, not only the week sheet).
+  await page.locator('.ex-gr[data-rt="701"] > div').nth(0).click();
+  await page.waitForSelector('.ex-gp[data-overview="701"]', { timeout: 5000 });
+  assert(/Επισκόπηση εξόδων/.test(await page.locator('.ex-gp[data-overview="701"]').innerText()), 'vehicle tab: clicking the vehicle cell opens the overview panel there too');
+  await page.locator('.ex-gr[data-rt="701"] > div').nth(0).click();
+  await page.waitForTimeout(100);
+
   await assertGridFits(page, '1440 (vehicle tab)');
   await assertHeaderCellsFit(page, '1440 (vehicle tab)');
   await assertTitleRowFits(page, '1440 (vehicle tab)');
