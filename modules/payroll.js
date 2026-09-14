@@ -83,6 +83,43 @@ function dlDateRange(start, end) {
   return start.slice(5, 7) === end.slice(5, 7) ? start.slice(8, 10) + '–' + dm(end) : dm(start) + '–' + dm(end);
 }
 
+// ── Περίοδος καρτέλας (v3 #8) — ΜΙΑ συνάρτηση για οθόνη, εκτύπωση A4 και CSV ──
+// The card, the A4 statement (print_payroll.html) and the CSV all slice the
+// same driver history through here, so the opening balance can never disagree
+// between screen and paper (αρχή 3). `entries` is the FULL history of one
+// driver (GET /costs/ledger/:id with no year — the year filter would hide the
+// movements that make up January's opening balance), in any order.
+//   year:  'YYYY' | 'all'      month: '' (whole year) | '01'..'12'
+// Returns chronological rows inside the period plus:
+//   opening  = running balance after the last movement BEFORE the period (0 if none)
+//   closing  = running balance after the last movement IN the period (= opening if none)
+//   totals   = live sums for the period (cancelled rows contribute nothing; a
+//              pending trip contributes to nothing but pendingCount)
+function dlPeriod(entries, year, month) {
+  const all = year === 'all';
+  const from = all ? null : year + '-' + (month || '01') + '-01';
+  const to = all ? null : year + '-' + (month || '12') + '-31';
+  const chrono = (entries || []).slice().sort((a, b) => a.entry_date === b.entry_date ? Number(a.id) - Number(b.id) : (a.entry_date < b.entry_date ? -1 : 1));
+  const rows = chrono.filter(e => (!from || e.entry_date >= from) && (!to || e.entry_date <= to));
+  const before = from ? chrono.filter(e => e.entry_date < from) : [];
+  const opening = before.length ? Number(before[before.length - 1].running_balance || 0) : 0;
+  const closing = rows.length ? Number(rows[rows.length - 1].running_balance || 0) : opening;
+  const live = rows.filter(e => !e.cancelled);
+  const sum = (list, f) => list.reduce((a, e) => a + Number(f(e) || 0), 0);
+  const trips = live.filter(e => e.entry_type === 'trip');
+  const totals = {
+    trips: trips.length,
+    pendingCount: trips.filter(e => e.pending).length,
+    value: sum(trips, e => e.trip_value),
+    advance: sum(trips, e => e.advance),
+    expenses: sum(trips, e => e.expenses),
+    payments: sum(live.filter(e => e.entry_type === 'payment_bank' || e.entry_type === 'payment_cash'), e => e.amount),
+    adjustments: sum(live.filter(e => e.entry_type === 'adjustment'), e => e.amount),
+    delta: sum(live, e => e.balance_delta)
+  };
+  return { from, to, rows, opening, closing, totals };
+}
+
 // _dl.view: which of the three v2 screens is on screen. _dl.selected: driver
 // highlighted in the home list (right panel preview, no route change).
 // _dl.driver/_dl.entries/_dl.rts/_dl.year: the open driver card (screen 2).
@@ -746,5 +783,5 @@ async function dlBulkSubmit() {
 
 // node:test reads these; the browser ignores the guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney };
+  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod };
 }
