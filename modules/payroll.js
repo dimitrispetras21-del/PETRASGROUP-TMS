@@ -173,13 +173,19 @@ function dlPeriod(entries, year, month) {
 // _dl.editId: id of the entry row currently inline-edited on screen 2.
 // _dl.menuOpenId: id of the entry whose «···» menu is open on screen 2.
 // _dl.bulk: state for screen 3, built fresh each time it opens.
-// _dl.homeMonth/monthCache/filter/sort/cardPayId/cardPayMethod/printMenuOpen
-// (Φάση 2, αρχική με κάρτες, Figma 614/616:1011) replace the v2 split-view's
-// selected/selLoading/selErr — nothing outside the home view ever read those
-// (grep confirmed 14/9). The card grid has no «selected row» concept, only a
-// per-driver payment box (cardPayId) that opens inline on its own card.
+// _dl.sort/cardPayId/cardPayMethod/printMenuOpen (Φάση 2, αρχική με κάρτες,
+// Figma 614/616:1011) replace the v2 split-view's selected/selLoading/selErr
+// — nothing outside the home view ever read those (grep confirmed 14/9). The
+// card grid has no «selected row» concept, only a per-driver payment box
+// (cardPayId) that opens inline on its own card.
+// `monthData` (Φάση 2, αρχική) is the current calendar month's aggregate
+// block from the Worker (or null) — NOT the same field as `month` below,
+// which is the driver card's own year/month PERIOD SELECTOR ('01'..'12',
+// unrelated screen, unchanged). There is no month navigation on the home
+// screen any more (owner review 14/9: dead weight, principle 8) — it is
+// always today's real month, so nothing here needs a per-month cache.
 const _dl = { view: 'home', balances: [], gap: 0, q: '',
-  homeMonth: null, monthCache: {}, filter: 'active', sort: 'balance', pendingFirst: false,
+  monthData: null, sort: 'balance', pendingFirst: false,
   cardPayId: null, cardPayMethod: 'payment_bank', printMenuOpen: false,
   driver: null, entries: [], rts: [], year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1).padStart(2, '0'),
   editId: null, menuOpenId: null, bulk: null };
@@ -199,16 +205,6 @@ function dlStyles() {
   .dl-btn{height:34px;padding:0 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:13px;font-weight:500;cursor:pointer;color:var(--text)}
   .dl-btn.pri{background:var(--accent);border-color:var(--accent);color:var(--text-on-dark)} .dl-btn.pri:hover{background:var(--accent-hover)}
   .dl-btn:disabled{opacity:.5;cursor:default}
-  /* Formal chip: outline-only, navy border+text when selected (exStyles
-     convention, feedback_formal_financial_style — navy is reserved for the
-     ONE primary button and the selection state, never a filled pill). The
-     «pending» filter chip keeps its own amber identity whether on or off
-     (spec: it re-sorts, it never hides, so it never looks like the others). */
-  .dl-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:9999px;border:1px solid var(--border);font-size:12px;color:var(--text-mid);cursor:pointer;background:none;font-family:inherit}
-  .dl-chip b{color:inherit;font-variant-numeric:tabular-nums;margin-left:1px}
-  .dl-chip.on{border-color:var(--navy);color:var(--navy);font-weight:600}
-  .dl-chip.pending{border-color:var(--warn);color:var(--warn)}
-  .dl-chip.pending.on{background:var(--warn);color:var(--text-on-dark)}
   .dl-search{height:34px;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:0 12px;font:inherit;font-size:12px;margin:12px 16px;width:calc(100% - 32px)}
   .dl-avatar{width:32px;height:32px;border-radius:9999px;background:var(--surface-sunken);color:var(--text-mid);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
   .dl-hero .dl-avatar{background:var(--surface-dark);color:var(--text-on-dark)}
@@ -303,24 +299,29 @@ function dlStyles() {
   .dl-menu-t{font-size:12.5px;color:var(--text)}
   .dl-menu-s{font-size:10.5px;color:var(--text-dim)}
   .dl-menu-cancel .dl-menu-t{color:var(--danger)}
-  /* ── αρχική με κάρτες (Φάση 2, Figma 614/616:1011) — μιμείται τη λωρίδα
-     εβδομάδας/chips/σύνοψη των Εξόδων (modules/expenses.js exWeekStripHtml/
-     exSummaryHtml): tokens μόνο, navy μόνο στο κύριο κουμπί (.dl-btn.primary)
-     και στην επιλεγμένη ψηφίδα (μήνας: γέμισμα όπως .ex-wk.sel· φίλτρο:
-     περίγραμμα όπως .ex-chip.active — η κάρτα δεν είναι επιλέξιμη γραμμή). ── */
-  .dl-mstrip{display:flex;align-items:stretch;gap:4px;padding:4px 24px;height:44px;border-bottom:1px solid var(--border)}
-  .dl-marrow{width:28px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
-  .dl-m{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0 4px;border-radius:4px;border:0;background:none;font:inherit;cursor:pointer;color:var(--text)}
-  .dl-m:hover{background:var(--surface-sunken)}
-  .dl-m.sel{background:var(--navy);color:var(--text-on-dark)}
-  .dl-m .mn{font-size:12px;font-weight:600}
-  .dl-m .ms{font-size:10px;color:inherit;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-  .dl-filters{display:flex;align-items:center;gap:10px;padding:10px 24px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
-  .dl-filters>span{font-size:12px;color:var(--text-mid)}
-  .dl-filters>span b{color:var(--text);font-size:13px;font-variant-numeric:tabular-nums;margin-left:4px}
-  .dl-filters select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;background:var(--surface-card);color:var(--text)}
-  .dl-filters .dl-search{margin:0;width:200px}
+  /* ── αρχική με κάρτες (Φάση 2, Figma 614/616:1011) — formal KPI μπάρα αντί
+     για τη λωρίδα μηνών/chips (owner review 14/9: καμία επιλογή μήνα πια, ο
+     μήνας είναι πάντα ο τρέχων): πλακίδια λευκά με λεπτό περίγραμμα, χωρίς
+     σκιά, tokens μόνο· navy μόνο στο κύριο κουμπί (.dl-btn.primary) και στο
+     ενεργό πλακίδιο ταξινόμησης (.dl-kpi-tile.on — περίγραμμα, όχι γέμισμα,
+     η κάρτα δεν είναι επιλέξιμη γραμμή). ── */
+  .dl-kpi{display:flex;gap:12px;padding:16px 24px 8px;flex-wrap:wrap}
+  .dl-kpi-tile{flex:1;min-width:150px;background:var(--surface-card);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:4px}
+  .dl-kpi-tile .v{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .dl-kpi-tile[data-kpi="pending"]{cursor:pointer}
+  .dl-kpi-tile[data-kpi="pending"] .v{color:var(--warn)}
+  .dl-kpi-tile.on{border-color:var(--navy)}
+  .dl-kpi-tile.on .k{color:var(--navy)}
+  .dl-kpi-foot{display:flex;align-items:center;gap:10px;padding:4px 24px 12px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .dl-kpi-sub{font-size:12px;color:var(--text-mid)}
+  .dl-kpi-foot select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;background:var(--surface-card);color:var(--text)}
+  .dl-kpi-foot .dl-search{margin:0;width:200px}
   .dl-note{padding:6px 24px;font-size:12px;color:var(--warn)}
+  /* Inactive drivers never become a card (owner review 14/9) but a real
+     balance must stay visible somewhere (αρχή 1) — one grey line inside the
+     sticky footer, not a silent drop. width:100% forces its own line inside
+     .dl-foot's flex-wrap without touching that shared rule (driver/bulk views). */
+  .dl-foot-inactive{width:100%;font-size:11px;color:var(--text-dim)}
   /* Fixed column count, never auto-fill (coordinator review 14/9 on the owner's
      wide Chrome: auto-fill gave 6 columns of ~190px and cut the names to
      «Papatheoc…»). Figma 614:1011 is 4 columns of ~268px at 1440; 3 fit at
@@ -344,7 +345,6 @@ function dlStyles() {
      and «Καρτέλα →» each wrapped onto two lines. */
   .dl-card .k{white-space:nowrap}
   .dl-card .dl-btn{white-space:nowrap;padding:0 10px}
-  .dl-card.faded{opacity:.5}
   /* Name first, balance second: the header wraps, so a long name keeps its
      whole line and the balance drops to a second row (right-aligned) instead
      of squeezing the name into an ellipsis. ≤22 characters (DM Sans 600 14)
@@ -480,12 +480,8 @@ async function renderPayroll() {
   const c = document.getElementById('content');
   if (can('costs') === 'none') { c.innerHTML = showAccessDenied(); return; }
   c.style.padding = '0';
-  _dl.view = 'home'; _dl.entries = []; _dl.q = ''; _dl.filter = 'active'; _dl.sort = 'balance'; _dl.pendingFirst = false;
+  _dl.view = 'home'; _dl.entries = []; _dl.q = ''; _dl.sort = 'balance'; _dl.pendingFirst = false;
   _dl.cardPayId = null; _dl.printMenuOpen = false;
-  // Fresh visit = fresh month cache: dlReloadBalances always refetches the
-  // balances in full below, so a stale month total surviving from an earlier
-  // visit would be the one number on the page that never got the memo.
-  _dl.homeMonth = dlCurrentMonth(); _dl.monthCache = {};
   c.innerHTML = dlStyles() + '<div class="dl-page"><div style="padding:32px;color:var(--text-mid)">Φόρτωση καρτελών…</div></div>';
   try {
     await dlReloadBalances();
@@ -498,57 +494,30 @@ async function renderPayroll() {
 
 // Balances list is stale the moment any ledger write lands: shared by every
 // write path so none of them can drift back to an old copy. Since Φάση 2
-// (αρχική με κάρτες) this ONE request also carries ?month=_dl.homeMonth and
-// caches the extra `month` block it comes back with (Worker ledger-month.mjs)
-// — a separate second GET just for the month would defeat the point of the
-// Worker aggregating it server-side in the same round trip (index.js
-// GET /costs/ledger). `_dl.homeMonth` is always set before this can run
-// (renderPayroll sets it first), including from the driver card/bulk screens,
-// which reached this module through the same home entry point.
+// (αρχική με κάρτες) this ONE request also carries ?month=<τρέχων μήνας> and
+// stashes the extra `month` block it comes back with (Worker ledger-month.mjs)
+// in _dl.monthData — a separate second GET would defeat the point of the
+// Worker aggregating it server-side in the same round trip. Owner review
+// 14/9: the home screen shows ONLY the real current calendar month, never a
+// picked one — so there is nothing to cache across calls, every reload just
+// asks again for whatever «now» is.
 async function dlReloadBalances() {
-  const r = await ctFetch('/costs/ledger?month=' + _dl.homeMonth);
+  const r = await ctFetch('/costs/ledger?month=' + dlCurrentMonth());
   _dl.balances = r.records || []; _dl.gap = r.gap || 0;
-  // `undefined` (κλειδί ποτέ γραμμένο) θα σήμαινε «δεν ρωτήθηκε ακόμη» για το
-  // dlSetHomeMonth cache· εδώ ΠΑΝΤΑ ρωτήθηκε, άρα null όταν ο Worker δεν έχει
-  // ακόμη το `month` (δεν έχει γίνει deploy) — αρχή 1: το κενό ορατό, ποτέ σιωπή.
-  _dl.monthCache[_dl.homeMonth] = r.month || null;
+  _dl.monthData = r.month || null; // null = ο Worker δεν το δίνει ακόμη (αρχή 1: ορατό, όχι σιωπή)
 }
 
-// Μήνες σε 'YYYY-MM' για τη λωρίδα και τα βελάκια της (Φάση 2) — απλή
-// αριθμητική ημερολογίου, καμία ζώνη ώρας: μετράει μόνο έτος/μήνας, ποτέ όριο ημέρας.
+// 'YYYY-MM' του πραγματικού σημερινού μήνα — για το ?month= του fetch ΚΑΙ
+// για τον υπότιτλο .dl-kpi-sub (με λέξεις, μέσω DL_MONTHS πιο κάτω στο αρχείο).
 function dlCurrentMonth() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
 }
-function dlShiftMonth(ym, delta) {
-  const [y, m] = ym.split('-').map(Number);
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
-  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
-}
-const DL_MONTHS_SHORT = ['Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιούν', 'Ιούλ', 'Αύγ', 'Σεπ', 'Οκτ', 'Νοέ', 'Δεκ'];
 
-// Ένα GET ανά μήνα, στη μνήμη για όλη τη συνεδρία (συμβόλαιο: «το πίσω-μπρος
-// να μην ξαναφορτώνει») — τα σύνολα ενός μήνα δεν αλλάζουν επειδή ο χρήστης
-// κοίταξε αλλού και ξαναγύρισε.
-async function dlSetHomeMonth(m) {
-  _dl.homeMonth = m;
-  dlRenderHome();
-  if (_dl.monthCache[m] === undefined) {
-    // A failed refetch must not retry forever on every click, nor crash the
-    // page silently — mark the month as «nothing came back» and show it
-    // through the .dl-note the same way a not-yet-deployed Worker does.
-    try { await dlReloadBalances(); } catch (e) { _dl.monthCache[m] = null; }
-    dlRenderHome();
-  }
-}
-
-function dlHomeMonthShift(delta) { dlSetHomeMonth(dlShiftMonth(_dl.homeMonth, delta)); }
-
-function dlSetFilter(f) { _dl.filter = f; dlRenderHome(); }
 function dlSetSort(s) { _dl.sort = s; dlRenderHome(); }
-// «Χωρίς αξία» δεν είναι scope (active/all) — είναι ένα ανεξάρτητο τσιμπίδι
+// «Χωρίς αξία» δεν είναι ένα φίλτρο εύρους — είναι ένα ανεξάρτητο πλακίδιο
 // ταξινόμησης που ανοιγοκλείνει (συμβόλαιο: «ενεργό = ΤΑΞΙΝΟΜΕΙ πρώτους τους
-// εκκρεμείς, δεν κρύβει»), άρα δικό του state, όχι μια τρίτη τιμή του _dl.filter.
+// εκκρεμείς, δεν κρύβει»), άρα δικό του boolean state, όχι μια τιμή του #dlSort.
 function dlTogglePendingFirst() { _dl.pendingFirst = !_dl.pendingFirst; dlRenderHome(); }
 function dlTogglePrintMenu() { _dl.printMenuOpen = !_dl.printMenuOpen; dlRenderHome(); }
 
@@ -556,22 +525,19 @@ function dlTogglePrintMenu() { _dl.printMenuOpen = !_dl.printMenuOpen; dlRenderH
 // dlRenderHome (το πλέγμα) ΚΑΙ dlHomeNewTrip (ο πρώτος ορατός οδηγός) περνούν
 // ΚΑΙ οι δύο από εδώ, ώστε το «Δρομολόγιο» να ανοίγει πάντα την ΠΡΩΤΗ κάρτα
 // που βλέπει ο χρήστης, όχι μια σειρά υπολογισμένη ξεχωριστά αλλού (αρχή 3).
-// «pending» δεν κρύβει τίποτα παραπάνω από «active» (συμβόλαιο) — μόνο η σειρά αλλάζει.
+// Owner review 14/9: μόνο ενεργοί ΜΕ κίνηση φαίνονται πια σαν κάρτες — οι
+// ανενεργοί με υπόλοιπο αναφέρονται αλλού (dlRenderHome, .dl-foot-inactive).
 function dlHomeGroups() {
   const q = _dl.q.trim().toLowerCase();
-  // «Όλοι» σημαίνει ΚΥΡΙΟΛΕΚΤΙΚΑ όλοι — ακόμη κι ένας ανενεργός οδηγός με
-  // παλιό υπόλοιπο (spec: «και όσοι χωρίς κίνηση, αχνοί» μιλάει για ΚΙΝΗΣΗ,
-  // όχι για το active) — μόνο «Ενεργοί»/«χωρίς αξία» περιορίζονται στο active!==false.
-  const base = _dl.filter === 'all' ? _dl.balances : _dl.balances.filter(b => b.active !== false);
+  const base = _dl.balances.filter(b => b.active !== false && b.has_entries);
   const searched = q ? base.filter(b => String(b.full_name).toLowerCase().includes(q)) : base;
-  const scoped = _dl.filter === 'all' ? searched : searched.filter(b => b.has_entries);
   const sortKey = _dl.pendingFirst ? 'pending' : _dl.sort;
   const cmp = {
     balance: (a, b) => Number(b.balance) - Number(a.balance),
     name: (a, b) => String(a.full_name).localeCompare(String(b.full_name), 'el'),
     pending: (a, b) => (Number(b.pending_count || 0) - Number(a.pending_count || 0)) || Number(b.balance) - Number(a.balance)
   }[sortKey] || ((a, b) => Number(b.balance) - Number(a.balance));
-  return scoped.slice().sort(cmp);
+  return searched.slice().sort(cmp);
 }
 
 // Re-render on each keystroke rebuilds the input, which resets the caret to
@@ -597,32 +563,29 @@ function dlSelectDriver(driverId) {
 
 function dlRenderHome() {
   const c = document.getElementById('content');
-  const act = _dl.balances.filter(b => b.active !== false);
-  const withEntries = act.filter(b => b.has_entries);
-  const sumBalance = act.reduce((a, b) => a + Number(b.balance || 0), 0);
-  const totalPending = act.reduce((a, b) => a + Number(b.pending_count || 0), 0);
-  const monthData = _dl.monthCache[_dl.homeMonth];
+  // «Ενεργοί οδηγοί» = ακριβώς οι οδηγοί που φαίνονται σαν κάρτες (active &&
+  // has_entries) — μία βάση, όχι δύο αριθμοί που θα μπορούσαν να διαφωνήσουν
+  // (αρχή 3). Ο ανενεργός-με-υπόλοιπο πάει στο footer, όχι εδώ.
+  const activeDrivers = _dl.balances.filter(b => b.active !== false && b.has_entries);
+  const sumBalance = activeDrivers.reduce((a, b) => a + Number(b.balance || 0), 0);
+  const totalPending = activeDrivers.reduce((a, b) => a + Number(b.pending_count || 0), 0);
+  const monthData = _dl.monthData;
   const monthAvailable = !!monthData;
-  const monthPayments = monthAvailable ? act.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).payments || 0), 0) : null;
-  const realMonth = dlCurrentMonth();
+  const monthTrips = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).trips || 0), 0) : null;
+  const monthPayments = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).payments || 0), 0) : null;
+  const cm = dlCurrentMonth();
+  const monthLabel = DL_MONTHS[Number(cm.slice(5, 7)) - 1] + ' ' + cm.slice(0, 4);
 
-  const monthChips = [];
-  for (let i = -2; i <= 2; i++) {
-    const ym = dlShiftMonth(_dl.homeMonth, i);
-    const sel = ym === _dl.homeMonth;
-    const mi = Number(ym.slice(5, 7)) - 1;
-    let sub;
-    if (sel) sub = DL_MONTHS[mi] + ' ' + ym.slice(0, 4) + ' · ' + withEntries.length + ' ενεργοί · ' + totalPending + ' χωρίς αξία';
-    else sub = ym < realMonth ? 'κλειστός' : ym > realMonth ? '—' : '';
-    monthChips.push(`<button type="button" class="dl-m${sel ? ' sel' : ''}" data-month="${ym}" onclick="dlSetHomeMonth('${ym}')" title="${escapeHtml(sub)}">
-      <span class="mn">${escapeHtml(DL_MONTHS_SHORT[mi])}</span><span class="ms">${escapeHtml(sub)}</span>
-    </button>`);
-  }
+  // Ανενεργοί που ακόμη χρωστούν/τους χρωστάμε: ΔΕΝ γίνονται κάρτα (owner
+  // review 14/9), αλλά ένα υπόλοιπο που υπάρχει δεν πρέπει να εξαφανίζεται
+  // σιωπηλά (αρχή 1) — μία γραμμή στο footer τους μετράει.
+  const inactiveWithBalance = _dl.balances.filter(b => b.active === false && Number(b.balance || 0) !== 0);
+  const inactiveSum = inactiveWithBalance.reduce((a, b) => a + Number(b.balance || 0), 0);
 
   const scope = dlHomeGroups();
   const gridHtml = scope.length
     ? scope.map(b => dlHomeCardHtml(b, monthAvailable, monthData)).join('')
-    : showEmpty({ title: 'Κανένας οδηγός', description: 'Άλλαξε αναζήτηση ή φίλτρο.' });
+    : showEmpty({ title: 'Κανένας οδηγός', description: 'Άλλαξε αναζήτηση.' });
 
   c.innerHTML = dlStyles() + `<div class="dl-page">
     <div class="dl-head"><span class="dl-title">Μισθοδοσία Οδηγών</span><span class="dl-sp"></span>
@@ -634,17 +597,15 @@ function dlRenderHome() {
       </span>
       <button id="dlBtnCsvHome" class="dl-btn" onclick="dlCsvDrivers(_dl.balances.filter(b => b.active !== false))">CSV</button>
     </div>
-    <div class="dl-mstrip">
-      <button type="button" class="dl-marrow" onclick="dlHomeMonthShift(-1)" title="Προηγούμενος μήνας">‹</button>
-      ${monthChips.join('')}
-      <button type="button" class="dl-marrow" onclick="dlHomeMonthShift(1)" title="Επόμενος μήνας">›</button>
+    <div class="dl-kpi">
+      <div class="dl-kpi-tile" data-kpi="owed"><div class="k">Οφειλή σήμερα</div><div class="v">${dlEur(sumBalance)}</div></div>
+      <div class="dl-kpi-tile" data-kpi="trips"><div class="k">Δρομολόγια μήνα</div><div class="v">${monthAvailable ? monthTrips : '—'}</div></div>
+      <div class="dl-kpi-tile${_dl.pendingFirst ? ' on' : ''}" data-kpi="pending" onclick="dlTogglePendingFirst()"><div class="k">Χωρίς αξία</div><div class="v">${totalPending}</div></div>
+      <div class="dl-kpi-tile" data-kpi="payments"><div class="k">Πληρωμές μήνα</div><div class="v">${monthAvailable ? dlEur(monthPayments) : '—'}</div></div>
+      <div class="dl-kpi-tile" data-kpi="active"><div class="k">Ενεργοί οδηγοί</div><div class="v">${activeDrivers.length}</div></div>
     </div>
-    <div class="dl-filters">
-      <span>Οφειλή σήμερα <b>${dlEur(sumBalance)}</b></span>
-      <button type="button" class="dl-chip pending${_dl.pendingFirst ? ' on' : ''}" data-filter="pending" onclick="dlTogglePendingFirst()">Χωρίς αξία <b>${totalPending}</b></button>
-      <span>Πληρωμές μήνα <b>${monthAvailable ? dlEur(monthPayments) : '—'}</b></span>
-      <button type="button" class="dl-chip${_dl.filter === 'active' ? ' on' : ''}" data-filter="active" onclick="dlSetFilter('active')">Ενεργοί <b>${withEntries.length}</b></button>
-      <button type="button" class="dl-chip${_dl.filter === 'all' ? ' on' : ''}" data-filter="all" onclick="dlSetFilter('all')">Όλοι <b>${_dl.balances.length}</b></button>
+    <div class="dl-kpi-foot">
+      <span class="dl-kpi-sub">${escapeHtml(monthLabel)}</span>
       <span class="dl-sp"></span>
       <select id="dlSort" onchange="dlSetSort(this.value)">
         <option value="balance"${_dl.sort === 'balance' ? ' selected' : ''}>Οφειλή φθίνουσα</option>
@@ -656,11 +617,12 @@ function dlRenderHome() {
     ${monthAvailable ? '' : `<div class="dl-note">Δεν φορτώθηκαν τα ποσά μήνα — ο διακομιστής δεν υποστηρίζει ακόμη τον μήνα</div>`}
     <div class="dl-grid">${gridHtml}</div>
     <div class="dl-foot">
-      <span><b>${withEntries.length}</b> οδηγοί</span><span>·</span>
+      <span><b>${activeDrivers.length}</b> οδηγοί</span><span>·</span>
       <span><b>${totalPending}</b> δρομολόγια χωρίς αξία</span><span>·</span>
       <span>οφειλή <b>${dlMoney(sumBalance)}</b> ${escapeHtml(dlBalanceWord(sumBalance).text)}</span>
       <span class="dl-sp"></span>
       <span>Ποσά σε ευρώ. Υπόλοιπο = συνολικό έως σήμερα · μήνας = κινήσεις με ημερομηνία μέσα στον μήνα</span>
+      ${inactiveWithBalance.length ? `<div class="dl-foot-inactive">+ ${inactiveWithBalance.length} ανενεργοί με υπόλοιπο ${dlMoney(inactiveSum)}, βλ. κατάσταση οφειλών</div>` : ''}
     </div>
   </div>`;
 }
@@ -703,7 +665,7 @@ function dlHomeCardHtml(b, monthAvailable, monthData) {
   const msTrips = monthAvailable ? String(monthly.trips) : '—';
   const msValue = monthAvailable ? dlNum(monthly.value) : '—';
   const msPayments = monthAvailable ? dlNum(monthly.payments) : '—';
-  return `<div class="dl-card${isPending ? ' pending' : ''}${b.has_entries ? '' : ' faded'}" data-driver="${b.driver_id}">
+  return `<div class="dl-card${isPending ? ' pending' : ''}" data-driver="${b.driver_id}">
     <div class="dl-card-top">
       <div class="dl-avatar">${escapeHtml(dlInitials(b.full_name))}</div>
       <div class="dl-card-id"><span class="m">${escapeHtml(b.full_name)}</span>${(b.type === 'External' || b.type === 'Internal') ? `<span class="s">${dlTypeWord(b.type)}</span>` : ''}</div>
