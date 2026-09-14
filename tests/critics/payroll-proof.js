@@ -329,12 +329,20 @@ async function runDriverCardFlow(browser) {
   await page.screenshot({ path: SHOT_1440, fullPage: true });
   console.log('  screenshot: ' + SHOT_1440);
 
-  // ── menu «···»: absent on the cancelled row, present+openable on a live one ──
+  // ── menu «···»: absent on the cancelled row, present+openable on a live one.
+  // «Διόρθωση» is trip-only per the contract («μόνο trip → inline edit») — id
+  // 3 (a trip) must show BOTH items, id 2 (a payment) must show ONLY Ακύρωση. ──
   assert(await page.locator('.dl-row.canc .dl-more').count() === 0, 'the cancelled row (id 5) has no .dl-more');
+  await page.locator('.dl-row[data-entry="3"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-edit').count() >= 1, '.dl-menu on a trip row (id 3) shows «Διόρθωση» (.dl-menu-edit)');
+  assert(await page.locator('.dl-menu-cancel').count() >= 1, '.dl-menu on a trip row (id 3) shows «Ακύρωση» (.dl-menu-cancel)');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(100);
   await page.locator('.dl-row[data-entry="2"] .dl-more').click();
   await page.waitForSelector('.dl-menu', { timeout: 5000 });
-  assert(await page.locator('.dl-menu-edit').count() >= 1, '.dl-menu shows «Διόρθωση» (.dl-menu-edit)');
-  assert(await page.locator('.dl-menu-cancel').count() >= 1, '.dl-menu shows «Ακύρωση» (.dl-menu-cancel)');
+  assert(await page.locator('.dl-menu-edit').count() === 0, '.dl-menu on a non-trip row (id 2, payment) has NO «Διόρθωση» — contract: edit is trip-only');
+  assert(await page.locator('.dl-menu-cancel').count() >= 1, '.dl-menu on a non-trip row (id 2) still shows «Ακύρωση»');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(100);
 
