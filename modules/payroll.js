@@ -328,10 +328,7 @@ function dlStyles() {
      1280, 5 from 1700 up. minmax(0,1fr) so a long name can never widen a track. */
   .dl-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding:16px 24px}
   @media (max-width:1320px){.dl-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-  /* 5 columns only from 1900px: measured live 14/9 on the owner's 1800px
-     window, 5 columns left ~230px per card and 31/49 names wrapped (one broke
-     mid-word). 4 columns there give ~290px and one-line names. */
-  @media (min-width:1900px){.dl-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
+  @media (min-width:1700px){.dl-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}
   /* Owner correction 14/9 (μετά το Figma frame): η 3px άνω άκρη υπάρχει ΠΑΝΤΑ,
      όχι μόνο σε εκκρεμότητα — «να δείχνει σχεδιασμένη κι όταν είναι εντάξει».
      Γαλάζιο token: --accent-light είναι rgba wash (ακατάλληλο για περίγραμμα),
