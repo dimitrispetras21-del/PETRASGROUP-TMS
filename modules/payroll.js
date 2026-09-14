@@ -352,7 +352,7 @@ function dlStyles() {
   .dl-lastpay{font-size:11px;color:var(--text-dim)}
   .dl-card-actions{display:flex;align-items:center;gap:8px}
   .dl-badge{font-size:11px;font-weight:500;color:var(--warn);border:1px solid var(--warn);border-radius:9999px;padding:2px 8px;white-space:nowrap}
-  .dl-card-pay,.dl-card-open{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:12px;color:var(--text);cursor:pointer}
+  .dl-card-pay,.dl-card-open{white-space:nowrap;height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:12px;color:var(--text);cursor:pointer}
   .dl-card-pay:hover,.dl-card-open:hover{background:var(--surface-sunken)}
   .dl-cardpay{margin-top:2px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
   .dl-cp-date,.dl-cp-amount{height:30px;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;width:100%}
