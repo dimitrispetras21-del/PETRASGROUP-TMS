@@ -173,7 +173,14 @@ function dlPeriod(entries, year, month) {
 // _dl.editId: id of the entry row currently inline-edited on screen 2.
 // _dl.menuOpenId: id of the entry whose «···» menu is open on screen 2.
 // _dl.bulk: state for screen 3, built fresh each time it opens.
-const _dl = { view: 'home', balances: [], gap: 0, q: '', selected: null, selLoading: false, selErr: null,
+// _dl.homeMonth/monthCache/filter/sort/cardPayId/cardPayMethod/printMenuOpen
+// (Φάση 2, αρχική με κάρτες, Figma 614/616:1011) replace the v2 split-view's
+// selected/selLoading/selErr — nothing outside the home view ever read those
+// (grep confirmed 14/9). The card grid has no «selected row» concept, only a
+// per-driver payment box (cardPayId) that opens inline on its own card.
+const _dl = { view: 'home', balances: [], gap: 0, q: '',
+  homeMonth: null, monthCache: {}, filter: 'active', sort: 'balance', pendingFirst: false,
+  cardPayId: null, cardPayMethod: 'payment_bank', printMenuOpen: false,
   driver: null, entries: [], rts: [], year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1).padStart(2, '0'),
   editId: null, menuOpenId: null, bulk: null };
 
@@ -192,28 +199,23 @@ function dlStyles() {
   .dl-btn{height:34px;padding:0 16px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:13px;font-weight:500;cursor:pointer;color:var(--text)}
   .dl-btn.pri{background:var(--accent);border-color:var(--accent);color:var(--text-on-dark)} .dl-btn.pri:hover{background:var(--accent-hover)}
   .dl-btn:disabled{opacity:.5;cursor:default}
+  /* Formal chip: outline-only, navy border+text when selected (exStyles
+     convention, feedback_formal_financial_style — navy is reserved for the
+     ONE primary button and the selection state, never a filled pill). The
+     «pending» filter chip keeps its own amber identity whether on or off
+     (spec: it re-sorts, it never hides, so it never looks like the others). */
   .dl-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:9999px;border:1px solid var(--border);font-size:12px;color:var(--text-mid);cursor:pointer;background:none;font-family:inherit}
-  .dl-chip.on{background:var(--surface-dark);color:var(--text-on-dark);border-color:var(--surface-dark)}
-  .dl-strip{display:flex;align-items:center;gap:8px;padding:0 24px;height:36px;background:var(--surface-sunken);font-size:12px;color:var(--text-mid);border-bottom:1px solid var(--border)}
-  .dl-strip b{color:var(--text)}
+  .dl-chip b{color:inherit;font-variant-numeric:tabular-nums;margin-left:1px}
+  .dl-chip.on{border-color:var(--navy);color:var(--navy);font-weight:600}
+  .dl-chip.pending{border-color:var(--warn);color:var(--warn)}
+  .dl-chip.pending.on{background:var(--warn);color:var(--text-on-dark)}
   .dl-search{height:34px;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:0 12px;font:inherit;font-size:12px;margin:12px 16px;width:calc(100% - 32px)}
-  .dl-split{display:flex;align-items:stretch}
-  .dl-list{width:460px;flex:none;border-right:1px solid var(--border);display:flex;flex-direction:column}
-  .dl-list-rows{overflow-y:auto}
-  .dl-right{flex:1;min-width:0;overflow-y:auto}
-  .dl-lrow{display:flex;align-items:center;gap:10px;height:48px;padding:0 16px;border-left:3px solid transparent;cursor:pointer}
-  .dl-lrow:hover{background:var(--surface-sunken)}
-  .dl-lrow.sel{border-left-color:var(--accent);background:var(--surface-sunken)}
-  .dl-lrow.faded{opacity:.5}
   .dl-avatar{width:32px;height:32px;border-radius:9999px;background:var(--surface-sunken);color:var(--text-mid);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:none}
-  .dl-hero .dl-avatar,.dl-mini-hero .dl-avatar{background:var(--surface-dark);color:var(--text-on-dark)}
+  .dl-hero .dl-avatar{background:var(--surface-dark);color:var(--text-on-dark)}
   .dl-hero{display:flex;align-items:center;gap:20px;padding:20px 24px;border-bottom:1px solid var(--border)}
   .dl-hero-main{display:flex;flex-direction:column;gap:2px}
   .dl-hero-bal{display:flex;flex-direction:column}
   .dl-hero-stat{display:flex;flex-direction:column;gap:2px;padding:0 16px;border-left:1px solid var(--border)}
-  .dl-mini-hero{display:flex;align-items:center;gap:16px;padding:20px 24px}
-  .dl-mini-boxes{display:flex;gap:24px;padding:0 24px 16px}
-  .dl-mini-boxes .box{display:flex;flex-direction:column;gap:2px}
   .k{font-size:11px;font-weight:500;color:var(--text-dim);text-transform:uppercase;letter-spacing:.03em}
   .v{font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
   .v.big{font-size:28px}
@@ -301,15 +303,66 @@ function dlStyles() {
   .dl-menu-t{font-size:12.5px;color:var(--text)}
   .dl-menu-s{font-size:10.5px;color:var(--text-dim)}
   .dl-menu-cancel .dl-menu-t{color:var(--danger)}
+  /* ── αρχική με κάρτες (Φάση 2, Figma 614/616:1011) — μιμείται τη λωρίδα
+     εβδομάδας/chips/σύνοψη των Εξόδων (modules/expenses.js exWeekStripHtml/
+     exSummaryHtml): tokens μόνο, navy μόνο στο κύριο κουμπί (.dl-btn.primary)
+     και στην επιλεγμένη ψηφίδα (μήνας: γέμισμα όπως .ex-wk.sel· φίλτρο:
+     περίγραμμα όπως .ex-chip.active — η κάρτα δεν είναι επιλέξιμη γραμμή). ── */
+  .dl-mstrip{display:flex;align-items:stretch;gap:4px;padding:4px 24px;height:44px;border-bottom:1px solid var(--border)}
+  .dl-marrow{width:28px;border:1px solid var(--border);border-radius:4px;background:none;font:inherit;color:var(--text-mid);cursor:pointer}
+  .dl-m{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:0 4px;border-radius:4px;border:0;background:none;font:inherit;cursor:pointer;color:var(--text)}
+  .dl-m:hover{background:var(--surface-sunken)}
+  .dl-m.sel{background:var(--navy);color:var(--text-on-dark)}
+  .dl-m .mn{font-size:12px;font-weight:600}
+  .dl-m .ms{font-size:10px;color:inherit;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+  .dl-filters{display:flex;align-items:center;gap:10px;padding:10px 24px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
+  .dl-filters>span{font-size:12px;color:var(--text-mid)}
+  .dl-filters>span b{color:var(--text);font-size:13px;font-variant-numeric:tabular-nums;margin-left:4px}
+  .dl-filters select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;background:var(--surface-card);color:var(--text)}
+  .dl-filters .dl-search{margin:0;width:200px}
+  .dl-note{padding:6px 24px;font-size:12px;color:var(--warn)}
+  .dl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px;padding:16px 24px}
+  /* Owner correction 14/9 (μετά το Figma frame): η 3px άνω άκρη υπάρχει ΠΑΝΤΑ,
+     όχι μόνο σε εκκρεμότητα — «να δείχνει σχεδιασμένη κι όταν είναι εντάξει».
+     Γαλάζιο token: --accent-light είναι rgba wash (ακατάλληλο για περίγραμμα),
+     και το γαλάζιο hex της πλαϊνής μπάρας δεν υπάρχει πουθενά ως global token
+     (μόνο τοπικά, επαναλαμβανόμενο ως κυριολεκτικό hex σε άλλα modules) —
+     άρα var(--accent) όπως προβλέπει η ίδια η ανάθεση όταν δεν βρεθεί token. */
+  .dl-card{position:relative;border:1px solid var(--border);border-top:3px solid var(--accent);border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--surface-card)}
+  .dl-card.pending{border-top-color:var(--warn)}
+  .dl-card.faded{opacity:.5}
+  .dl-card-top{display:flex;align-items:flex-start;gap:10px}
+  .dl-card .dl-avatar{width:36px;height:36px;font-size:12px}
+  .dl-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .dl-card-id .m{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dl-bal-wrap{display:flex;flex-direction:column;align-items:flex-end;text-align:right;flex:none}
+  .dl-bal{font-family:'Syne',sans-serif;font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .dl-balword{font-size:11px;font-weight:500;color:var(--text-dim)}
+  .dl-balword.dl-owe{color:var(--ok)} .dl-balword.dl-owed{color:var(--warn)}
+  .dl-card .dl-ms{display:flex;gap:14px}
+  .dl-card .dl-ms .box{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+  .dl-lastpay{font-size:11px;color:var(--text-dim)}
+  .dl-card-actions{display:flex;align-items:center;gap:8px}
+  .dl-badge{font-size:11px;font-weight:500;color:var(--warn);border:1px solid var(--warn);border-radius:9999px;padding:2px 8px;white-space:nowrap}
+  .dl-card-pay,.dl-card-open{height:28px;padding:0 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface-card);font:inherit;font-size:12px;color:var(--text);cursor:pointer}
+  .dl-card-pay:hover,.dl-card-open:hover{background:var(--surface-sunken)}
+  .dl-cardpay{margin-top:2px;padding-top:10px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+  .dl-cp-date,.dl-cp-amount{height:30px;box-sizing:border-box;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;width:100%}
+  .dl-cp-actions{display:flex;gap:8px}
+  .dl-cp-save{height:30px;padding:0 14px;border-radius:6px;border:1px solid var(--navy);background:var(--navy);color:var(--text-on-dark);font:inherit;font-size:12px;font-weight:500;cursor:pointer;flex:1}
+  .dl-cp-cancel{height:30px;padding:0 14px;border-radius:6px;border:1px solid var(--border);background:none;font:inherit;font-size:12px;color:var(--text-mid);cursor:pointer}
   </style>`;
 }
 
-// ── κοινός renderer γραμμής κίνησης — mini (αρχική) και πλήρης (καρτέλα) ──
-// opts.compact: home mini-table (6 στήλες, όχι ΥΠΟΛΟΙΠΟ, όχι μενού) — v2,
-// unchanged by v3. The full (!compact) path is the v3 card ledger.
-function dlEntryRowHtml(e, opts) {
-  const compact = !!(opts && opts.compact);
-  const wDate = compact ? 90 : 100, wMoney = compact ? 90 : 110, wTotal = compact ? 100 : 130;
+// ── κοινός renderer γραμμής κίνησης της καρτέλας (v3 ledger) ──
+// Μέχρι τη Φάση 2 δεχόταν ένα δεύτερο όρισμα για το μικρό, συνοπτικό μοτίβο
+// στηλών της παλιάς (v2) split-view αρχικής — έφυγε μαζί με εκείνη την
+// αρχική (Figma 614:1011, η νέα αρχική με κάρτες δεν καλεί πια αυτή τη
+// συνάρτηση καθόλου), οπότε αφαιρέθηκε ως νεκρός κώδικας (CLAUDE.md αρχή 8)
+// χωρίς να αλλάξει τίποτα στη συμπεριφορά που μένει — αυτή ήταν πάντα η
+// μοναδική πλήρης διαδρομή της καρτέλας.
+function dlEntryRowHtml(e) {
+  const wDate = 100, wMoney = 110, wTotal = 130;
   const isTrip = e.entry_type === 'trip';
   const dateTxt = dlDateRange(e.entry_date, e.date_end);
   // Leg block (owner 5/9): route detail moves BELOW the header row as one row
@@ -326,8 +379,8 @@ function dlEntryRowHtml(e, opts) {
   // RT link: icon only, no visible code (v2 rule #2) — the code sits in title.
   const rtIcon = (isTrip && e.rt_id) ? `<span class="dl-rt" title="${escapeHtml(e.rt_code || '')}">↗</span>` : '';
   // v3 #9: a valueless trip carries a visible word on the card, not only the
-  // amber bar and the ΑΞΙΑ dash — the v2 home mini-table keeps its old look.
-  const pendingWord = (!compact && isTrip && e.pending) ? ` <span class="dl-word">χωρίς αξία</span>` : '';
+  // amber bar and the ΑΞΙΑ dash.
+  const pendingWord = (isTrip && e.pending) ? ` <span class="dl-word">χωρίς αξία</span>` : '';
   const legsHtml = hasLegs ? `<div class="dl-entry-legs" style="margin-left:${wDate + 16}px">${rtLegBlockHtml(e.route_legs)}</div>` : '';
   const wrap = row => hasLegs ? `<div class="dl-entry">${row}${legsHtml}</div>` : row;
 
@@ -338,13 +391,13 @@ function dlEntryRowHtml(e, opts) {
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
-      ${compact ? '' : `<div style="width:120px" class="r"><span class="n">—</span></div>`}
+      <div style="width:120px" class="r"><span class="n">—</span></div>
       <div style="width:${wTotal}px" class="r"><span class="n">—</span></div>
-      ${compact ? '' : '<div style="width:32px"></div>'}
+      <div style="width:32px"></div>
     </div>`);
   }
 
-  if (!compact && _dl.editId === e.id) {
+  if (_dl.editId === e.id) {
     return wrap(`<div class="dl-row edit" data-entry="${e.id}">
       <div style="width:100px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
       <div style="flex:1"><span class="m">${routeText}</span></div>
@@ -357,11 +410,9 @@ function dlEntryRowHtml(e, opts) {
     </div>`);
   }
 
-  // v3 #10: the card's cells never carry «€» (dlNumP) — the home mini-table
-  // keeps dlEur/dlMoney (v2, with €), selected by the same `compact` flag
-  // every other branch above already reads.
-  const amt = n => compact ? dlEur(n) : dlNumP(n);
-  const bal = n => compact ? dlMoney(n) : dlNumP(n);
+  // v3 #10: the card's cells never carry «€» (dlNumP).
+  const amt = n => dlNumP(n);
+  const bal = n => dlNumP(n);
   const ea = dlEntryAmounts(e);
   const valueCell = (isTrip && e.pending)
     ? `<span class="n" style="color:var(--warn)">—</span>`
@@ -373,9 +424,9 @@ function dlEntryRowHtml(e, opts) {
     : `<span class="n ${Number(e.balance_delta) < 0 ? 'dl-owed' : 'dl-owe'}">${dlDelta(e)}</span>`;
   const totalCell = `<span class="n">${bal(e.running_balance)}</span>`;
   // v3 #7: the permanent «×» and whole-row click are gone — a «···» menu
-  // (Διόρθωση/Ακύρωση) replaces both. compact (home) never had either.
-  const moreCell = compact ? '' : dlMoreCellHtml(e, isTrip);
-  const pendingCls = (!compact && isTrip && e.pending) ? ' pending' : '';
+  // (Διόρθωση/Ακύρωση) replaces both.
+  const moreCell = dlMoreCellHtml(e, isTrip);
+  const pendingCls = (isTrip && e.pending) ? ' pending' : '';
 
   return wrap(`<div class="dl-row${pendingCls}${e.needs_review ? ' review' : ''}${e.entry_type !== 'trip' ? ' pay' : ''}" data-entry="${e.id}" title="${e.needs_review ? escapeHtml(e.review_note || '') : ''}">
     <div style="width:${wDate}px"><span style="font-size:12px;font-variant-numeric:tabular-nums">${dateTxt}</span></div>
@@ -383,7 +434,7 @@ function dlEntryRowHtml(e, opts) {
     <div style="width:${wMoney}px" class="r">${valueCell}</div>
     <div style="width:${wMoney}px" class="r">${advCell}</div>
     <div style="width:${wMoney}px" class="r">${expCell}</div>
-    ${compact ? '' : `<div style="width:120px" class="r">${balCell}</div>`}
+    <div style="width:120px" class="r">${balCell}</div>
     <div style="width:${wTotal}px" class="r">${totalCell}</div>
     ${moreCell}
   </div>`);
@@ -410,7 +461,12 @@ async function renderPayroll() {
   const c = document.getElementById('content');
   if (can('costs') === 'none') { c.innerHTML = showAccessDenied(); return; }
   c.style.padding = '0';
-  _dl.view = 'home'; _dl.selected = null; _dl.entries = []; _dl.q = '';
+  _dl.view = 'home'; _dl.entries = []; _dl.q = ''; _dl.filter = 'active'; _dl.sort = 'balance'; _dl.pendingFirst = false;
+  _dl.cardPayId = null; _dl.printMenuOpen = false;
+  // Fresh visit = fresh month cache: dlReloadBalances always refetches the
+  // balances in full below, so a stale month total surviving from an earlier
+  // visit would be the one number on the page that never got the memo.
+  _dl.homeMonth = dlCurrentMonth(); _dl.monthCache = {};
   c.innerHTML = dlStyles() + '<div class="dl-page"><div style="padding:32px;color:var(--text-mid)">Φόρτωση καρτελών…</div></div>';
   try {
     await dlReloadBalances();
@@ -418,25 +474,85 @@ async function renderPayroll() {
     c.innerHTML = dlStyles() + '<div class="dl-page">' + showError('Οι καρτέλες οδηγών δεν φορτώθηκαν: ' + e.message) + '</div>';
     return;
   }
-  const first = dlHomeGroups().withEntries[0];
-  if (first) await dlSelectDriver(first.driver_id); else dlRenderHome();
+  dlRenderHome();
 }
 
 // Balances list is stale the moment any ledger write lands: shared by every
-// write path so none of them can drift back to an old copy.
+// write path so none of them can drift back to an old copy. Since Φάση 2
+// (αρχική με κάρτες) this ONE request also carries ?month=_dl.homeMonth and
+// caches the extra `month` block it comes back with (Worker ledger-month.mjs)
+// — a separate second GET just for the month would defeat the point of the
+// Worker aggregating it server-side in the same round trip (index.js
+// GET /costs/ledger). `_dl.homeMonth` is always set before this can run
+// (renderPayroll sets it first), including from the driver card/bulk screens,
+// which reached this module through the same home entry point.
 async function dlReloadBalances() {
-  const r = await ctFetch('/costs/ledger');
+  const r = await ctFetch('/costs/ledger?month=' + _dl.homeMonth);
   _dl.balances = r.records || []; _dl.gap = r.gap || 0;
+  // `undefined` (κλειδί ποτέ γραμμένο) θα σήμαινε «δεν ρωτήθηκε ακόμη» για το
+  // dlSetHomeMonth cache· εδώ ΠΑΝΤΑ ρωτήθηκε, άρα null όταν ο Worker δεν έχει
+  // ακόμη το `month` (δεν έχει γίνει deploy) — αρχή 1: το κενό ορατό, ποτέ σιωπή.
+  _dl.monthCache[_dl.homeMonth] = r.month || null;
 }
 
+// Μήνες σε 'YYYY-MM' για τη λωρίδα και τα βελάκια της (Φάση 2) — απλή
+// αριθμητική ημερολογίου, καμία ζώνη ώρας: μετράει μόνο έτος/μήνας, ποτέ όριο ημέρας.
+function dlCurrentMonth() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+function dlShiftMonth(ym, delta) {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+const DL_MONTHS_SHORT = ['Ιαν', 'Φεβ', 'Μάρ', 'Απρ', 'Μάι', 'Ιούν', 'Ιούλ', 'Αύγ', 'Σεπ', 'Οκτ', 'Νοέ', 'Δεκ'];
+
+// Ένα GET ανά μήνα, στη μνήμη για όλη τη συνεδρία (συμβόλαιο: «το πίσω-μπρος
+// να μην ξαναφορτώνει») — τα σύνολα ενός μήνα δεν αλλάζουν επειδή ο χρήστης
+// κοίταξε αλλού και ξαναγύρισε.
+async function dlSetHomeMonth(m) {
+  _dl.homeMonth = m;
+  dlRenderHome();
+  if (_dl.monthCache[m] === undefined) {
+    // A failed refetch must not retry forever on every click, nor crash the
+    // page silently — mark the month as «nothing came back» and show it
+    // through the .dl-note the same way a not-yet-deployed Worker does.
+    try { await dlReloadBalances(); } catch (e) { _dl.monthCache[m] = null; }
+    dlRenderHome();
+  }
+}
+
+function dlHomeMonthShift(delta) { dlSetHomeMonth(dlShiftMonth(_dl.homeMonth, delta)); }
+
+function dlSetFilter(f) { _dl.filter = f; dlRenderHome(); }
+function dlSetSort(s) { _dl.sort = s; dlRenderHome(); }
+// «Χωρίς αξία» δεν είναι scope (active/all) — είναι ένα ανεξάρτητο τσιμπίδι
+// ταξινόμησης που ανοιγοκλείνει (συμβόλαιο: «ενεργό = ΤΑΞΙΝΟΜΕΙ πρώτους τους
+// εκκρεμείς, δεν κρύβει»), άρα δικό του state, όχι μια τρίτη τιμή του _dl.filter.
+function dlTogglePendingFirst() { _dl.pendingFirst = !_dl.pendingFirst; dlRenderHome(); }
+function dlTogglePrintMenu() { _dl.printMenuOpen = !_dl.printMenuOpen; dlRenderHome(); }
+
+// Ενιαία πηγή αλήθειας για ποιοι οδηγοί/με ποια σειρά φαίνονται στο πλέγμα —
+// dlRenderHome (το πλέγμα) ΚΑΙ dlHomeNewTrip (ο πρώτος ορατός οδηγός) περνούν
+// ΚΑΙ οι δύο από εδώ, ώστε το «Δρομολόγιο» να ανοίγει πάντα την ΠΡΩΤΗ κάρτα
+// που βλέπει ο χρήστης, όχι μια σειρά υπολογισμένη ξεχωριστά αλλού (αρχή 3).
+// «pending» δεν κρύβει τίποτα παραπάνω από «active» (συμβόλαιο) — μόνο η σειρά αλλάζει.
 function dlHomeGroups() {
   const q = _dl.q.trim().toLowerCase();
-  const act = _dl.balances.filter(b => b.active !== false); // NULL active reads as active (I3)
-  const filtered = q ? act.filter(b => String(b.full_name).toLowerCase().includes(q)) : act;
-  return {
-    withEntries: filtered.filter(b => b.has_entries).sort((a, b) => Number(b.balance) - Number(a.balance)),
-    rest: filtered.filter(b => !b.has_entries).sort((a, b) => String(a.full_name).localeCompare(String(b.full_name), 'el'))
-  };
+  // «Όλοι» σημαίνει ΚΥΡΙΟΛΕΚΤΙΚΑ όλοι — ακόμη κι ένας ανενεργός οδηγός με
+  // παλιό υπόλοιπο (spec: «και όσοι χωρίς κίνηση, αχνοί» μιλάει για ΚΙΝΗΣΗ,
+  // όχι για το active) — μόνο «Ενεργοί»/«χωρίς αξία» περιορίζονται στο active!==false.
+  const base = _dl.filter === 'all' ? _dl.balances : _dl.balances.filter(b => b.active !== false);
+  const searched = q ? base.filter(b => String(b.full_name).toLowerCase().includes(q)) : base;
+  const scoped = _dl.filter === 'all' ? searched : searched.filter(b => b.has_entries);
+  const sortKey = _dl.pendingFirst ? 'pending' : _dl.sort;
+  const cmp = {
+    balance: (a, b) => Number(b.balance) - Number(a.balance),
+    name: (a, b) => String(a.full_name).localeCompare(String(b.full_name), 'el'),
+    pending: (a, b) => (Number(b.pending_count || 0) - Number(a.pending_count || 0)) || Number(b.balance) - Number(a.balance)
+  }[sortKey] || ((a, b) => Number(b.balance) - Number(a.balance));
+  return scoped.slice().sort(cmp);
 }
 
 // Re-render on each keystroke rebuilds the input, which resets the caret to
@@ -445,92 +561,224 @@ function dlSearchInput(el) {
   const pos = el.selectionStart;
   _dl.q = el.value;
   dlRenderHome();
-  const s = document.querySelector('.dl-search');
+  const s = document.getElementById('dlSearch');
   if (s) { s.focus(); s.setSelectionRange(pos, pos); }
 }
 
-// Clicking a driver in the home list fills the right panel without a route
-// change (spec Οθόνη 1): fetch happens here, dlRenderHome draws both states.
-async function dlSelectDriver(driverId) {
-  _dl.selected = driverId;
-  _dl.selLoading = true; _dl.selErr = null;
-  dlRenderHome();
-  try {
-    const r = await ctFetch('/costs/ledger/' + driverId + '?year=' + new Date().getFullYear());
-    _dl.entries = r.records || []; _dl.rts = r.rts || [];
-  } catch (e) {
-    _dl.selErr = e.message; _dl.entries = [];
-  }
-  _dl.selLoading = false;
+// Ανοίγει/κλείνει την ενσωματωμένη φόρμα πληρωμής ΜΕΣΑ στην κάρτα του οδηγού
+// — ένα scalar state εγγυάται «μία τη φορά». Το v2 όνομα (dlSelectDriver)
+// έμεινε αμετάβλητο (συμβόλαιο)· ο ρόλος του άλλαξε από «δείξε προεπισκόπηση
+// σε πλαϊνό πάνελ» (split-view, Figma 596, απορρίφθηκε) σε «διάλεξε ποιον
+// πληρώνεις» — και τα δύο είναι «επίλεξε έναν οδηγό», απλώς η κάρτα αντικατέστησε τη γραμμή.
+function dlSelectDriver(driverId) {
+  _dl.cardPayId = (_dl.cardPayId === driverId) ? null : driverId;
+  _dl.cardPayMethod = 'payment_bank';
   dlRenderHome();
 }
 
 function dlRenderHome() {
   const c = document.getElementById('content');
   const act = _dl.balances.filter(b => b.active !== false);
-  const total = act.reduce((a, b) => a + Number(b.balance || 0), 0);
-  const trips = act.reduce((a, b) => a + Number(b.trips_ytd || 0), 0);
-  const pending = act.reduce((a, b) => a + Number(b.pending_count || 0), 0);
-  const month = new Date().toLocaleDateString('el-GR', { month: 'long', year: 'numeric' });
-  const groups = dlHomeGroups();
-  const row = (b, faded) => `<div class="dl-lrow${_dl.selected === b.driver_id ? ' sel' : ''}${faded ? ' faded' : ''}" onclick="dlSelectDriver(${b.driver_id})">
-      <div class="dl-avatar">${escapeHtml(dlInitials(b.full_name))}</div>
-      <span class="m" style="flex:1">${escapeHtml(b.full_name)}</span>
-      ${faded ? '' : `<span class="n${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span>`}
-    </div>`;
-  const listHtml = (groups.withEntries.length || groups.rest.length)
-    ? groups.withEntries.map(b => row(b, false)).join('') + groups.rest.map(b => row(b, true)).join('')
-    : showEmpty({ title: 'Κανένας οδηγός', description: 'Άλλαξε αναζήτηση.' });
+  const withEntries = act.filter(b => b.has_entries);
+  const sumBalance = act.reduce((a, b) => a + Number(b.balance || 0), 0);
+  const totalPending = act.reduce((a, b) => a + Number(b.pending_count || 0), 0);
+  const monthData = _dl.monthCache[_dl.homeMonth];
+  const monthAvailable = !!monthData;
+  const monthPayments = monthAvailable ? act.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).payments || 0), 0) : null;
+  const realMonth = dlCurrentMonth();
+
+  const monthChips = [];
+  for (let i = -2; i <= 2; i++) {
+    const ym = dlShiftMonth(_dl.homeMonth, i);
+    const sel = ym === _dl.homeMonth;
+    const mi = Number(ym.slice(5, 7)) - 1;
+    let sub;
+    if (sel) sub = DL_MONTHS[mi] + ' ' + ym.slice(0, 4) + ' · ' + withEntries.length + ' ενεργοί · ' + totalPending + ' χωρίς αξία';
+    else sub = ym < realMonth ? 'κλειστός' : ym > realMonth ? '—' : '';
+    monthChips.push(`<button type="button" class="dl-m${sel ? ' sel' : ''}" data-month="${ym}" onclick="dlSetHomeMonth('${ym}')" title="${escapeHtml(sub)}">
+      <span class="mn">${escapeHtml(DL_MONTHS_SHORT[mi])}</span><span class="ms">${escapeHtml(sub)}</span>
+    </button>`);
+  }
+
+  const scope = dlHomeGroups();
+  const gridHtml = scope.length
+    ? scope.map(b => dlHomeCardHtml(b, monthAvailable, monthData)).join('')
+    : showEmpty({ title: 'Κανένας οδηγός', description: 'Άλλαξε αναζήτηση ή φίλτρο.' });
+
   c.innerHTML = dlStyles() + `<div class="dl-page">
     <div class="dl-head"><span class="dl-title">Μισθοδοσία Οδηγών</span><span class="dl-sp"></span>
-      <button class="dl-btn" onclick="renderPayrollBulk()">Μαζική πληρωμή</button>
-      <button class="dl-btn pri" onclick="dlHomeNewTrip()">Δρομολόγιο</button></div>
-    <div class="dl-strip"><span><b>${dlEur(total)}</b> οφειλή σήμερα</span><span>·</span>
-      <span><b>${trips}</b> δρομολόγια φέτος</span><span>·</span>
-      <span><b>${pending}</b> χωρίς αξία</span>
-      <span class="dl-sp"></span><span>${escapeHtml(month)}</span></div>
-    <div class="dl-split">
-      <div class="dl-list">
-        <input class="dl-search" placeholder="Αναζήτηση…" value="${escapeHtml(_dl.q)}" oninput="dlSearchInput(this)">
-        <div class="dl-list-rows">${listHtml}</div>
-      </div>
-      <div class="dl-right">${dlHomeRightHtml()}</div>
+      <button id="dlBtnBulk" class="dl-btn primary" onclick="renderPayrollBulk()">Μαζική πληρωμή</button>
+      <button id="dlBtnTripHome" class="dl-btn" onclick="dlHomeNewTrip()">Δρομολόγιο</button>
+      <span style="position:relative" data-print-wrap>
+        <button id="dlBtnPrintHome" class="dl-btn" onclick="event.stopPropagation();dlTogglePrintMenu()">Εκτύπωση ▾</button>
+        ${_dl.printMenuOpen ? `<div class="dl-menu"><button type="button" class="dl-menu-print-drivers" onclick="_dl.printMenuOpen=false;dlPrintDrivers()">Κατάσταση οφειλών οδηγών</button></div>` : ''}
+      </span>
+      <button id="dlBtnCsvHome" class="dl-btn" onclick="dlCsvDrivers(_dl.balances.filter(b => b.active !== false))">CSV</button>
+    </div>
+    <div class="dl-mstrip">
+      <button type="button" class="dl-marrow" onclick="dlHomeMonthShift(-1)" title="Προηγούμενος μήνας">‹</button>
+      ${monthChips.join('')}
+      <button type="button" class="dl-marrow" onclick="dlHomeMonthShift(1)" title="Επόμενος μήνας">›</button>
+    </div>
+    <div class="dl-filters">
+      <span>Οφειλή σήμερα <b>${dlEur(sumBalance)}</b></span>
+      <button type="button" class="dl-chip pending${_dl.pendingFirst ? ' on' : ''}" data-filter="pending" onclick="dlTogglePendingFirst()">Χωρίς αξία <b>${totalPending}</b></button>
+      <span>Πληρωμές μήνα <b>${monthAvailable ? dlEur(monthPayments) : '—'}</b></span>
+      <button type="button" class="dl-chip${_dl.filter === 'active' ? ' on' : ''}" data-filter="active" onclick="dlSetFilter('active')">Ενεργοί <b>${withEntries.length}</b></button>
+      <button type="button" class="dl-chip${_dl.filter === 'all' ? ' on' : ''}" data-filter="all" onclick="dlSetFilter('all')">Όλοι <b>${_dl.balances.length}</b></button>
+      <span class="dl-sp"></span>
+      <select id="dlSort" onchange="dlSetSort(this.value)">
+        <option value="balance"${_dl.sort === 'balance' ? ' selected' : ''}>Οφειλή φθίνουσα</option>
+        <option value="name"${_dl.sort === 'name' ? ' selected' : ''}>Όνομα</option>
+        <option value="pending"${_dl.sort === 'pending' ? ' selected' : ''}>Χωρίς αξία</option>
+      </select>
+      <input id="dlSearch" class="dl-search" placeholder="Αναζήτηση οδηγού…" value="${escapeHtml(_dl.q)}" oninput="dlSearchInput(this)">
+    </div>
+    ${monthAvailable ? '' : `<div class="dl-note">Δεν φορτώθηκαν τα ποσά μήνα — ο διακομιστής δεν υποστηρίζει ακόμη τον μήνα</div>`}
+    <div class="dl-grid">${gridHtml}</div>
+    <div class="dl-foot">
+      <span><b>${withEntries.length}</b> οδηγοί</span><span>·</span>
+      <span><b>${totalPending}</b> δρομολόγια χωρίς αξία</span><span>·</span>
+      <span>οφειλή <b>${dlMoney(sumBalance)}</b> ${escapeHtml(dlBalanceWord(sumBalance).text)}</span>
+      <span class="dl-sp"></span>
+      <span>Ποσά σε ευρώ. Υπόλοιπο = συνολικό έως σήμερα · μήνας = κινήσεις με ημερομηνία μέσα στον μήνα</span>
     </div>
   </div>`;
 }
 
-function dlHomeRightHtml() {
-  if (!_dl.selected) return showEmpty({ title: 'Επίλεξε οδηγό', description: 'Κλικ σε έναν οδηγό από τη λίστα.' });
-  if (_dl.selLoading) return `<div style="padding:32px;color:var(--text-mid)">Φόρτωση…</div>`;
-  if (_dl.selErr) return showError('Η καρτέλα δεν φορτώθηκε: ' + _dl.selErr);
-  const b = _dl.balances.find(x => x.driver_id === _dl.selected) || { driver_id: _dl.selected, full_name: '#' + _dl.selected, balance: null, type: null, trips_ytd: 0, last_entry_date: null };
-  const live = _dl.entries.filter(e => !e.cancelled);
-  const trips = live.filter(e => e.entry_type === 'trip');
-  const value = trips.reduce((a, e) => a + Number(e.trip_value || 0), 0);
-  const cash = live.filter(e => e.entry_type === 'payment_cash').reduce((a, e) => a + Number(e.amount), 0);
-  const bank = live.filter(e => e.entry_type === 'payment_bank').reduce((a, e) => a + Number(e.amount), 0);
-  const last = b.last_entry_date ? dlDateRange(b.last_entry_date, null) : '—';
-  const rows = _dl.entries.slice(0, 7).map(e => dlEntryRowHtml(e, { compact: true })).join('');
-  return `
-    <div class="dl-mini-hero">
-      <div class="dl-avatar" style="width:56px;height:56px;font-size:18px">${escapeHtml(dlInitials(b.full_name))}</div>
-      <div style="flex:1"><span class="dl-title" style="font-size:18px">${escapeHtml(b.full_name)}</span><br>
-        <span class="s">${dlTypeWord(b.type)} · ${b.trips_ytd || 0} δρομολόγια φέτος</span></div>
-      <span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span>
+// Αριθμός/λέξη στο υπόλοιπο της κάρτας (Figma 616:1011 #5): ένα υπόλοιπο 0
+// μόνο επειδή κάθε δρομολόγιο είναι ακόμη χωρίς αξία είναι άγνωστο, όχι
+// τακτοποιημένο — ίδια διάκριση με το dlBal, απλώς με τη λέξη του
+// dlBalanceWord αντί για το μονό «—» του dlBal (dlNumP-στυλ: χωρίς «€»,
+// παρένθεση στο αρνητικό, όπως ο πίνακας της καρτέλας).
+function dlCardBalance(b) {
+  if (Number(b.balance) === 0 && b.pending_count > 0) return { num: '—', word: 'χωρίς αξία', cls: 'dl-owed' };
+  const w = dlBalanceWord(b.balance);
+  return { num: dlNumP(b.balance), word: w.text, cls: w.cls };
+}
+
+// Γραμμή «Τελ. πληρωμή» — τρεις καταστάσεις, όχι δύο: (1) πληρωμή ΜΕΣΑ στο
+// μήνα με γνωστό ποσό (month.drivers[id].last_payment), (2) καμία πληρωμή
+// αυτόν τον μήνα αλλά υπάρχει παλαιότερη (από το ισοζύγιο του οδηγού, χωρίς
+// ποσό εκεί), ή (3) καμία ποτέ. Όταν το endpoint μήνα δεν είναι ακόμη ζωντανό,
+// μόνο το ισοζύγιο είναι γνωστό — τέταρτος κλάδος, όχι μάντεμα ντυμένο σαν το
+// (2) (item 5 της ανάθεσης).
+function dlHomeLastPayLine(b, monthAvailable, monthly) {
+  if (monthAvailable) {
+    if (monthly && monthly.last_payment) {
+      return 'Τελ. πληρωμή ' + dlDateRange(monthly.last_payment.date, null) + ' · ' + dlTypeLabel(monthly.last_payment.type) + ' ' + dlNum(monthly.last_payment.amount);
+    }
+    // «Καμία πληρωμή τον μήνα» is the sentence regardless of whether an
+    // earlier payment exists at all — the «· τελ. DD/MM» suffix only adds a
+    // reference date when the driver's own balance record actually has one.
+    return b.last_payment_date ? ('Καμία πληρωμή τον μήνα · τελ. ' + dlDateRange(b.last_payment_date, null)) : 'Καμία πληρωμή τον μήνα';
+  }
+  return b.last_payment_date ? ('Τελ. πληρωμή ' + dlDateRange(b.last_payment_date, null) + ' · ' + dlTypeLabel(b.last_payment_type)) : 'Καμία πληρωμή';
+}
+
+function dlHomeCardHtml(b, monthAvailable, monthData) {
+  const pendingN = Number(b.pending_count || 0);
+  const isPending = pendingN > 0;
+  const bal = dlCardBalance(b);
+  const monthly = monthAvailable ? (monthData.drivers[b.driver_id] || { trips: 0, value: 0, payments: 0 }) : null;
+  const msTrips = monthAvailable ? String(monthly.trips) : '—';
+  const msValue = monthAvailable ? dlNum(monthly.value) : '—';
+  const msPayments = monthAvailable ? dlNum(monthly.payments) : '—';
+  return `<div class="dl-card${isPending ? ' pending' : ''}${b.has_entries ? '' : ' faded'}" data-driver="${b.driver_id}">
+    <div class="dl-card-top">
+      <div class="dl-avatar">${escapeHtml(dlInitials(b.full_name))}</div>
+      <div class="dl-card-id"><span class="m">${escapeHtml(b.full_name)}</span>${(b.type === 'External' || b.type === 'Internal') ? `<span class="s">${dlTypeWord(b.type)}</span>` : ''}</div>
+      <div class="dl-bal-wrap"><span class="dl-bal">${bal.num}</span><span class="dl-balword ${bal.cls}">${escapeHtml(bal.word)}</span></div>
     </div>
-    <div class="dl-mini-boxes">
-      <div class="box"><div class="k">Αξία έτους</div><div class="v">${(trips.length && trips.every(e => e.pending)) ? '—' : dlEur(value)}</div></div>
-      <div class="box"><div class="k">Πληρωμές έτους</div><div class="v">${dlEur(cash + bank)}</div></div>
-      <div class="box"><div class="k">Τελευταίο</div><div class="v" style="font-size:13px">${last}</div></div>
+    <div class="dl-ms">
+      <div class="box"><div class="k">Δρομ. μήνα</div><div class="v">${msTrips}</div></div>
+      <div class="box"><div class="k">Αξία</div><div class="v">${msValue}</div></div>
+      <div class="box"><div class="k">Πληρωμές</div><div class="v">${msPayments}</div></div>
     </div>
-    <div class="dl-th"><div style="width:90px">Ημ/νία</div><div style="flex:1">Δρομολόγιο</div><div style="width:90px" class="r">Αξία</div><div style="width:90px" class="r">Έλαβε</div><div style="width:90px" class="r">Έξοδα</div><div style="width:100px" class="r">Σύνολο</div></div>
-    <div>${rows || showEmpty({ title: 'Καμία κίνηση ακόμη', description: '' })}</div>
-    <div style="padding:16px 24px"><a class="link" href="#" onclick="renderPayrollDriver(${b.driver_id});return false">Άνοιγμα καρτέλας →</a></div>`;
+    <div class="dl-lastpay">${escapeHtml(dlHomeLastPayLine(b, monthAvailable, monthly))}</div>
+    <div class="dl-card-actions">
+      ${isPending ? `<span class="dl-badge">${pendingN} χωρίς αξία</span>` : ''}
+      <span class="dl-sp"></span>
+      <button type="button" class="dl-card-pay" onclick="dlSelectDriver(${b.driver_id})">Πληρωμή</button>
+      <button type="button" class="dl-card-open" onclick="renderPayrollDriver(${b.driver_id})">Καρτέλα →</button>
+    </div>
+    ${_dl.cardPayId === b.driver_id ? dlHomeRightHtml(b.driver_id) : ''}
+  </div>`;
+}
+
+// Ενσωματωμένη φόρμα πληρωμής ΜΕΣΑ στην κάρτα (item 5.«πληρωμή στην κάρτα»
+// της ανάθεσης) — αντικαθιστά το v2 πλαϊνό πάνελ προεπισκόπησης. Ίδιο όνομα
+// συνάρτησης (συμβόλαιο)· βλ. σχόλιο στο dlSelectDriver για τον νέο ρόλο.
+function dlHomeRightHtml(driverId) {
+  const today = new Date().toISOString().slice(0, 10);
+  return `<div class="dl-cardpay" onclick="event.stopPropagation()">
+    <input type="date" class="dl-cp-date" id="dlCpDate" value="${today}">
+    <div class="dl-seg">
+      <button type="button" class="dl-cp-seg${_dl.cardPayMethod === 'payment_bank' ? ' on' : ''}" onclick="dlCardPayMethod('payment_bank')">Τράπεζα</button>
+      <button type="button" class="dl-cp-seg${_dl.cardPayMethod === 'payment_cash' ? ' on' : ''}" onclick="dlCardPayMethod('payment_cash')">Μετρητά</button>
+    </div>
+    <input type="number" step="0.01" class="dl-cp-amount" id="dlCpAmount" placeholder="Ποσό (€)" onkeydown="dlCardPayKeydown(event, ${driverId})">
+    <div class="dl-cp-actions">
+      <button type="button" class="dl-cp-save" onclick="dlCardPaySave(${driverId})">Καταχώριση</button>
+      <button type="button" class="dl-cp-cancel" onclick="dlSelectDriver(${driverId})">Άκυρο</button>
+    </div>
+    <div class="s">Enter = καταχώριση · Esc = κλείσιμο</div>
+    <div class="dl-err" id="dlCpErr"></div>
+  </div>`;
+}
+
+// Ίδια τεχνική με το dlPayMethod της καρτέλας: εναλλαγή classList, όχι πλήρες
+// re-render — αλλιώς η ημερομηνία/το ποσό που μόλις πληκτρολόγησε ο χρήστης χάνονται.
+function dlCardPayMethod(m) {
+  _dl.cardPayMethod = m;
+  document.querySelectorAll('.dl-cp-seg').forEach(btn => btn.classList.toggle('on',
+    (m === 'payment_bank' && btn.textContent === 'Τράπεζα') || (m === 'payment_cash' && btn.textContent === 'Μετρητά')));
+}
+
+// Esc κλείνει από ΟΠΟΥΔΗΠΟΤΕ στη σελίδα μέσω του global listener πιο κάτω
+// (όχι μόνο εδώ) — αυτό εδώ χρειάζεται μόνο το Enter, γιατί το πεδίο ποσού
+// δεν είναι μέσα σε <form> (κανένα submit να αποτρέψει με άλλον τρόπο).
+function dlCardPayKeydown(ev, driverId) {
+  if (ev.key === 'Enter') { ev.preventDefault(); dlCardPaySave(driverId); }
+}
+
+async function dlCardPaySave(driverId) {
+  const date = document.getElementById('dlCpDate').value;
+  const amt = document.getElementById('dlCpAmount').value;
+  const err = document.getElementById('dlCpErr');
+  if (!(Number(amt) > 0)) { if (err) err.textContent = 'Το ποσό πρέπει να είναι θετικό.'; return; }
+  try {
+    await ctFetch('/costs/ledger', { method: 'POST', body: { driver_id: driverId, entry_type: _dl.cardPayMethod, entry_date: date || undefined, amount: Number(amt) } });
+    _dl.cardPayId = null;
+    await dlReloadBalances(); // unconditional refetch — always current month's totals too, not a local edit
+    dlRenderHome();
+  } catch (e) {
+    if (err) err.textContent = 'Δεν καταχωρήθηκε: ' + e.message;
+  }
+}
+
+// Κλείνει το μενού «Εκτύπωση ▾» της κεφαλίδας σε κλικ έξω — το μενού «···»
+// ανά γραμμή έχει δικό του listener πιο κάτω (dlCloseMenu)· αυτό εδώ αγγίζει
+// μόνο το _dl.printMenuOpen, άρα δεν μπορεί να έρθει σε σύγκρουση με εκείνο.
+// Το ίδιο keydown listener κλείνει και την πληρωμή-στην-κάρτα με Esc από
+// ΟΠΟΥΔΗΠΟΤΕ στη σελίδα (όχι μόνο ενώ πληκτρολογεί κανείς το ποσό — π.χ. Esc
+// αμέσως μετά το «Πληρωμή», πριν αγγίξει το πεδίο).
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', function (ev) {
+    if (!_dl.printMenuOpen) return;
+    if (ev.target.closest && ev.target.closest('[data-print-wrap]')) return;
+    _dl.printMenuOpen = false;
+    if (_dl.view === 'home') dlRenderHome();
+  });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && _dl.cardPayId !== null && _dl.view === 'home') { _dl.cardPayId = null; dlRenderHome(); }
+  });
 }
 
 async function dlHomeNewTrip() {
-  if (!_dl.selected) return;
-  await renderPayrollDriver(_dl.selected);
+  const first = dlHomeGroups()[0];
+  if (!first) return;
+  await renderPayrollDriver(first.driver_id);
   dlFocusQuickEntry();
 }
 
@@ -624,7 +872,7 @@ function dlRenderDriverCard() {
   const bw = dlBalanceWord(b.balance);
   const period = dlPeriod(_dl.entries, _dl.year, _dl.month);
   const rows = period.rows.length
-    ? period.rows.map(e => dlEntryRowHtml(e, {})).join('')
+    ? period.rows.map(e => dlEntryRowHtml(e)).join('')
     : showEmpty({ title: 'Καμία κίνηση στην περίοδο', description: '' });
   // ΕΛΑΒΕ column mixes trip advances and payment/adjustment amounts (same
   // three entry types dlEntryRowHtml puts in that column) — its period total
