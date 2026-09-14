@@ -71,12 +71,11 @@ function dlCsvKinisi(e) {
   if (e.entry_type === 'trip' && e.pending) base += ' (χωρίς καταχωρισμένη αξία)';
   return base;
 }
-// ΑΞΙΑ/ΕΛΑΒΕ/ΕΞΟΔΑ ακολουθούν ΑΚΡΙΒΩΣ τη στήλη-ανά-στήλη λογική της οθόνης
-// (dlEntryRowHtml valueCell/advCell/expCell): η πληρωμή/προσαρμογή γράφει το
-// ποσό της στο ΕΛΑΒΕ, όχι σε νέα στήλη — μία σύμβαση στηλών παντού (αρχή 3).
-function dlCsvValue(e) { return (e.entry_type === 'trip' && !e.pending) ? dlCsvAmt(e.trip_value) : '—'; }
-function dlCsvReceived(e) { return e.entry_type === 'trip' ? dlCsvAmt(e.advance) : dlCsvAmt(e.amount); }
-function dlCsvExpenses(e) { return e.entry_type === 'trip' ? dlCsvAmt(e.expenses) : '—'; }
+// ΑΞΙΑ/ΕΛΑΒΕ/ΕΞΟΔΑ: ο ΙΔΙΟΣ κανόνας στήλης με την οθόνη και το A4 —
+// dlEntryAmounts (modules/payroll.js), μία σύμβαση παντού (αρχή 3).
+function dlCsvValue(e) { return dlCsvAmt(dlEntryAmounts(e).value); }
+function dlCsvReceived(e) { return dlCsvAmt(dlEntryAmounts(e).received); }
+function dlCsvExpenses(e) { return dlCsvAmt(dlEntryAmounts(e).expenses); }
 
 // ── dlCsvCard: μία καρτέλα οδηγού, μία περίοδος ──
 // Ίδιο dlPeriod με την οθόνη ΚΑΙ το A4 (print_payroll.html) — καμία δεύτερη

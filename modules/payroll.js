@@ -104,6 +104,22 @@ function dlDateRange(start, end) {
   return start.slice(5, 7) === end.slice(5, 7) ? start.slice(8, 10) + '–' + dm(end) : dm(start) + '–' + dm(end);
 }
 
+// ── Ποια στήλη παίρνει το ποσό κάθε κίνησης — ΕΝΑΣ κανόνας για οθόνη, A4 και CSV ──
+// Trip: ΑΞΙΑ/ΕΛΑΒΕ(=advance)/ΕΞΟΔΑ as written (ΑΞΙΑ null while pending).
+// Payment: ΕΛΑΒΕ. Adjustment: dl_entries has only a signed `amount` and no
+// category (ledger-rules.mjs), so the sign decides the column — positive
+// (bonus) under ΑΞΙΑ, negative (deduction) under ΕΛΑΒΕ as a plain positive
+// figure. Either way ΜΕΤΑΒΟΛΗ = ΑΞΙΑ + ΕΞΟΔΑ − ΕΛΑΒΕ holds for every row and
+// therefore for the totals row too (Figma 600/601:1011 put its two sample
+// adjustments under ΑΞΙΑ/ΕΞΟΔΑ by hand — the data cannot tell those apart,
+// noted for the owner in DECISION_LOG 14/9). null = «—» in the cell.
+function dlEntryAmounts(e) {
+  if (e.entry_type === 'trip') return { value: e.pending ? null : e.trip_value, received: e.advance, expenses: e.expenses };
+  const a = Number(e.amount || 0);
+  if (e.entry_type === 'adjustment') return a > 0 ? { value: a, received: null, expenses: null } : { value: null, received: -a, expenses: null };
+  return { value: null, received: a, expenses: null };
+}
+
 // ── Περίοδος καρτέλας (v3 #8) — ΜΙΑ συνάρτηση για οθόνη, εκτύπωση A4 και CSV ──
 // The card, the A4 statement (print_payroll.html) and the CSV all slice the
 // same driver history through here, so the opening balance can never disagree
@@ -138,7 +154,10 @@ function dlPeriod(entries, year, month) {
     adjustments: sum(live.filter(e => e.entry_type === 'adjustment'), e => e.amount),
     delta: sum(live, e => e.balance_delta)
   };
-  return { from, to, rows, opening, closing, totals };
+  // Column sums of the live rows exactly as dlEntryAmounts places them — the
+  // totals row of the ledger (screen, A4, CSV) adds up column by column.
+  const columns = live.reduce((c, e) => { const a = dlEntryAmounts(e); return { value: c.value + Number(a.value || 0), received: c.received + Number(a.received || 0), expenses: c.expenses + Number(a.expenses || 0) }; }, { value: 0, received: 0, expenses: 0 });
+  return { from, to, rows, opening, closing, totals, columns };
 }
 
 // _dl.view: which of the three v2 screens is on screen. _dl.selected: driver
@@ -333,18 +352,12 @@ function dlEntryRowHtml(e, opts) {
   // every other branch above already reads.
   const amt = n => compact ? dlEur(n) : dlNumP(n);
   const bal = n => compact ? dlMoney(n) : dlNumP(n);
-  // An adjustment keeps the column arithmetic honest (ΜΕΤΑΒΟΛΗ = ΑΞΙΑ + ΕΞΟΔΑ −
-  // ΕΛΑΒΕ, footer legend): a positive one (bonus) sits under ΑΞΙΑ, a negative
-  // one (deduction) under ΕΛΑΒΕ as a plain positive figure — never «(20,00)»
-  // in a column whose other rows are all money the driver received.
-  const isAdj = e.entry_type === 'adjustment';
-  const adjAmt = isAdj ? Number(e.amount || 0) : 0;
-  const valueCell = isTrip
-    ? (e.pending ? `<span class="n" style="color:var(--warn)">—</span>` : `<span class="n">${amt(e.trip_value)}</span>`)
-    : (isAdj && adjAmt > 0 ? `<span class="n">${amt(adjAmt)}</span>` : `<span class="n dim">—</span>`);
-  const advCell = isTrip ? `<span class="n${e.advance == null ? ' dim' : ''}">${amt(e.advance)}</span>`
-    : (isAdj ? (adjAmt < 0 ? `<span class="n">${amt(-adjAmt)}</span>` : `<span class="n dim">—</span>`) : `<span class="n">${amt(e.amount)}</span>`);
-  const expCell = isTrip ? `<span class="n${e.expenses == null ? ' dim' : ''}">${amt(e.expenses)}</span>` : `<span class="n dim">—</span>`;
+  const ea = dlEntryAmounts(e);
+  const valueCell = (isTrip && e.pending)
+    ? `<span class="n" style="color:var(--warn)">—</span>`
+    : `<span class="n${ea.value == null ? ' dim' : ''}">${amt(ea.value)}</span>`;
+  const advCell = `<span class="n${ea.received == null ? ' dim' : ''}">${amt(ea.received)}</span>`;
+  const expCell = `<span class="n${ea.expenses == null ? ' dim' : ''}">${amt(ea.expenses)}</span>`;
   const balCell = (isTrip && e.pending)
     ? `<span class="n" style="color:var(--warn)">—</span>`
     : `<span class="n ${Number(e.balance_delta) < 0 ? 'dl-owed' : 'dl-owe'}">${dlDelta(e)}</span>`;
@@ -606,13 +619,8 @@ function dlRenderDriverCard() {
   // ΕΛΑΒΕ column mixes trip advances and payment/adjustment amounts (same
   // three entry types dlEntryRowHtml puts in that column) — its period total
   // has to add all three or it would silently disagree with the rows above it.
-  // Adjustments split the same way the rows do (see dlEntryRowHtml): positive
-  // ones join ΑΞΙΑ, negative ones join ΕΛΑΒΕ — so the totals row adds up
-  // column by column exactly like the rows above it.
-  const adjPos = period.rows.filter(e => !e.cancelled && e.entry_type === 'adjustment' && Number(e.amount) > 0).reduce((a, e) => a + Number(e.amount), 0);
-  const adjNeg = period.rows.filter(e => !e.cancelled && e.entry_type === 'adjustment' && Number(e.amount) < 0).reduce((a, e) => a - Number(e.amount), 0);
-  const valueTotal = period.totals.value + adjPos;
-  const receivedTotal = period.totals.advance + period.totals.payments + adjNeg;
+  const valueTotal = period.columns.value;
+  const receivedTotal = period.columns.received;
   const periodLabel = dlPeriodLabel(period);
   // Opening row's date (Figma 600:1011 note 4): the day the transferred
   // balance is AS OF, i.e. the first day of the period — blank for «Όλα».
@@ -667,7 +675,7 @@ function dlRenderDriverCard() {
         <div style="width:100px"></div><div style="flex:1"><span class="m">${escapeHtml(periodLabel)} · υπόλοιπο τέλους ${dlMoney(period.closing)}</span></div>
         <div style="width:110px" class="r"><span class="n">${dlNumP(valueTotal)}</span></div>
         <div style="width:110px" class="r"><span class="n">${dlNumP(receivedTotal)}</span></div>
-        <div style="width:110px" class="r"><span class="n">${dlNumP(period.totals.expenses)}</span></div>
+        <div style="width:110px" class="r"><span class="n">${dlNumP(period.columns.expenses)}</span></div>
         <div style="width:120px" class="r"><span class="n">${dlSignedNum(period.totals.delta)}</span></div>
         <div style="width:130px" class="r"><span class="n dl-closing">${dlNumP(period.closing)}</span></div><div style="width:32px"></div>
       </div>
@@ -1055,5 +1063,5 @@ async function dlBulkSubmit() {
 
 // node:test reads these; the browser ignores the guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod };
+  module.exports = { dlEur, dlBalanceWord, dlDelta, dlTypeLabel, dlDateRange, dlMoney, dlPeriod, dlEntryAmounts };
 }

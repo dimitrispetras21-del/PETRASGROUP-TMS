@@ -73,3 +73,22 @@ test('dlPeriod: opening = running balance before the period, closing = after the
   assert.strictEqual(empty.rows.length, 0);
   assert.strictEqual(dlPeriod(E, 'all', '').opening, 0);
 });
+
+test('dlEntryAmounts: one column rule for screen, A4 and CSV — adjustment sign picks the column', () => {
+  const { dlEntryAmounts, dlPeriod } = require('../modules/payroll.js');
+  assert.deepStrictEqual(dlEntryAmounts({ entry_type: 'trip', pending: false, trip_value: 500, advance: 100, expenses: 50 }), { value: 500, received: 100, expenses: 50 });
+  assert.deepStrictEqual(dlEntryAmounts({ entry_type: 'trip', pending: true, trip_value: null, advance: null, expenses: null }), { value: null, received: null, expenses: null });
+  assert.deepStrictEqual(dlEntryAmounts({ entry_type: 'payment_bank', amount: '300' }), { value: null, received: 300, expenses: null });
+  assert.deepStrictEqual(dlEntryAmounts({ entry_type: 'adjustment', amount: 450 }), { value: 450, received: null, expenses: null });
+  assert.deepStrictEqual(dlEntryAmounts({ entry_type: 'adjustment', amount: -20 }), { value: null, received: 20, expenses: null });
+  const E = [
+    { id: 1, entry_type: 'trip', entry_date: '2026-08-01', trip_value: 500, advance: 100, expenses: 50, balance_delta: 450, running_balance: 450, cancelled: false, pending: false },
+    { id: 2, entry_type: 'adjustment', entry_date: '2026-08-02', amount: -20, balance_delta: -20, running_balance: 430, cancelled: false, pending: false },
+    { id: 3, entry_type: 'adjustment', entry_date: '2026-08-03', amount: 30, balance_delta: 30, running_balance: 460, cancelled: false, pending: false },
+    { id: 4, entry_type: 'trip', entry_date: '2026-08-04', trip_value: 999, balance_delta: 999, running_balance: 460, cancelled: true, pending: false },
+  ];
+  const c = dlPeriod(E, '2026', '08').columns;
+  assert.deepStrictEqual(c, { value: 530, received: 120, expenses: 50 });
+  // ΜΕΤΑΒΟΛΗ = ΑΞΙΑ + ΕΞΟΔΑ − ΕΛΑΒΕ holds for the totals row too
+  assert.strictEqual(c.value + c.expenses - c.received, 460);
+});

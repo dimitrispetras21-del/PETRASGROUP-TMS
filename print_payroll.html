@@ -118,26 +118,9 @@ body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 <div id="err"></div>
 <div id="doc"></div>
 
-<script>
-// core/utils.js προγραμματίζει φόντο-εργασίες (καθαρισμός error log, ανανέωση
-// ειδοποιήσεων) που υποθέτουν όλο το app.html περιβάλλον (global `user`,
-// TABLES, ctFetch…) — εδώ δεν υπάρχουν, και χωρίς αυτό το guard θα έσκαγαν
-// στην κονσόλα 2.5s/3s/κάθε 5' μετά τη φόρτωση. Διόρθωση ΜΟΝΟ σε δικό μας
-// αρχείο (core/utils.js είναι κοινόχρηστο, εκτός συμβολαίου του agent B):
-// ακυρώνουμε ΜΟΝΟ αυτά τα τρία γνωστά timers όσο φορτώνει το script, μετά
-// επαναφέρουμε τα κανονικά setTimeout/setInterval για τον υπόλοιπο κώδικα
-// (π.χ. το δικό μας window.print() παρακάτω).
-(function () {
-  var _ST = window.setTimeout, _SI = window.setInterval;
-  window.setTimeout = function (fn, ms) { return (ms === 2500 || ms === 3000) ? 0 : _ST.apply(window, arguments); };
-  window.setInterval = function (fn, ms) { return (ms === 300000) ? 0 : _SI.apply(window, arguments); };
-  window.__restoreTimers = function () { window.setTimeout = _ST; window.setInterval = _SI; };
-})();
-</script>
 <script src="core/utils.js"></script>
 <script src="config.js"></script>
 <script src="modules/payroll.js"></script>
-<script>window.__restoreTimers();</script>
 <script>
 'use strict';
 // PROXY_URL is already declared by config.js (loaded above) — redeclaring a
@@ -218,17 +201,7 @@ function printedLine() {
     + '<span>Σελίδα 1 από 1</span></div>';
 }
 
-// Μία γραμμή κίνησης — ίδια σύμβαση στηλών με το dlEntryRowHtml της οθόνης
-// (modules/payroll.js): ΑΞΙΑ μόνο σε δρομολόγιο με τιμή, ΕΛΑΒΕ = advance στο
-// δρομολόγιο αλλιώς το amount της πληρωμής/προσαρμογής, ΕΞΟΔΑ μόνο δρομολόγιο
-// — μία σύμβαση στηλών, ίδια οθόνη/χαρτί (αρχή 3). ΣΗΜΕΙΩΣΗ: το εγκεκριμένο
-// Figma δείχνει δύο case παραδείγματα Προσαρμογής με το ποσό σε ΑΞΙΑ/ΕΞΟΔΑ
-// αντί για ΕΛΑΒΕ· η στήλη dl_entries.adjustment έχει ΜΟΝΟ `amount` (καμία
-// κατηγοριοποίηση αξίας/εξόδων στη βάση — worker/src/ledger-rules.mjs), άρα
-// αυτή η ειδική τοποθέτηση δεν μπορεί να προκύψει από πραγματικά δεδομένα
-// χωρίς να μαντεύουμε από το ελεύθερο κείμενο του λόγου (note) — κρατήθηκε η
-// υπάρχουσα, επαληθευμένη σύμβαση της οθόνης. Θέλει απόφαση owner αν
-// χρειάζεται πεδίο κατηγορίας στο dl_entries.
+// Μία γραμμή κίνησης — στήλες από dlEntryAmounts (ίδιος κανόνας με οθόνη/CSV).
 function pKinisiBase(e) {
   if (e.entry_type === 'trip') return 'Δρομολόγιο · ' + (e.route_text ? escapeHtml(e.route_text) : '—');
   if (e.entry_type === 'payment_bank') return 'Πληρωμή · Κατάθεση τράπεζας';
@@ -245,9 +218,9 @@ function pRowHtml(e) {
       + '<td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r p-bal">—</td></tr>';
   }
   if (isTrip && e.pending) kinisi += ' <span class="p-word">(χωρίς καταχωρισμένη αξία)</span>';
-  const valueCell = isTrip ? (e.pending ? '—' : amt(e.trip_value)) : '—';
-  const receivedCell = isTrip ? amt(e.advance) : amt(e.amount);
-  const expensesCell = isTrip ? amt(e.expenses) : '—';
+  // Same column rule as the screen ledger and the CSV: dlEntryAmounts (modules/payroll.js).
+  const ea = dlEntryAmounts(e);
+  const valueCell = amt(ea.value), receivedCell = amt(ea.received), expensesCell = amt(ea.expenses);
   const balanceCell = amt(e.running_balance);
   return '<tr><td>' + dateTxt + '</td><td>' + kinisi + '</td>'
     + '<td class="r">' + valueCell + '</td><td class="r">' + receivedCell + '</td>'
@@ -263,7 +236,6 @@ function buildCardDoc(driverRow, entries, year, month) {
   const p = dlPeriod(entries, year, month);
   const liveRows = p.rows.filter(e => !e.cancelled);
   const rowsHtml = p.rows.map(pRowHtml).join('');
-  const receivedTotal = p.totals.advance + p.totals.payments + p.totals.adjustments;
   const openingDateTxt = p.from ? dlDateRange(p.from, null) : '—';
   const closingDateTxt = p.to ? ' (' + fmtDMY(p.to) + ')' : '';
   const closingAbs = Math.abs(Number(p.closing || 0)).toLocaleString('el-GR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -283,9 +255,9 @@ function buildCardDoc(driverRow, entries, year, month) {
         + '<td class="r">—</td><td class="r">—</td><td class="r">—</td><td class="r p-bal">' + amt(p.opening) + '</td></tr>'
       + rowsHtml
       + '<tr class="p-tot-row"><td colspan="2">Σύνολο περιόδου · ' + liveRows.length + ' κινήσεις</td>'
-        + '<td class="r">' + amt(p.totals.value) + '</td>'
-        + '<td class="r">' + amt(receivedTotal) + '</td>'
-        + '<td class="r">' + amt(p.totals.expenses) + '</td>'
+        + '<td class="r">' + amt(p.columns.value) + '</td>'
+        + '<td class="r">' + amt(p.columns.received) + '</td>'
+        + '<td class="r">' + amt(p.columns.expenses) + '</td>'
         + '<td class="r"></td></tr>'
     + '</tbody></table>'
     + '<div class="p-closing"><span>Υπόλοιπο τέλους περιόδου' + closingDateTxt + ' — ' + pClosingWord(p.closing) + '</span>'

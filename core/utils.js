@@ -1556,10 +1556,14 @@ if (typeof window !== 'undefined') {
   window._notifToggleGroup = _notifToggleGroup;
 }
 
-// Auto-refresh notifications every 5 min
-setInterval(() => { _refreshNotifs(); }, 300000);
-// Initial load after 3 seconds
-setTimeout(() => { _refreshNotifs(); }, 3000);
+// Auto-refresh notifications every 5 min, first load after 3 seconds — only
+// inside app.html, where core/auth.js has defined `user` and the notification
+// UI exists. print_payroll.html loads this file for its helpers alone; without
+// the guard _refreshNotifs threw a ReferenceError there 3s after every open.
+if (typeof user !== 'undefined') {
+  setInterval(() => { _refreshNotifs(); }, 300000);
+  setTimeout(() => { _refreshNotifs(); }, 3000);
+}
 
 // ═══ TRASH VIEWER (Owner only) ═══
 
