@@ -621,7 +621,7 @@ function dlRenderHome() {
       <span><b>${totalPending}</b> δρομολόγια χωρίς αξία</span><span>·</span>
       <span>οφειλή <b>${dlMoney(sumBalance)}</b> ${escapeHtml(dlBalanceWord(sumBalance).text)}</span>
       <span class="dl-sp"></span>
-      <span>Ποσά σε ευρώ. Υπόλοιπο = συνολικό έως σήμερα · μήνας = κινήσεις με ημερομηνία μέσα στον μήνα</span>
+      <span>Ποσά σε ευρώ. Υπόλοιπο = συνολικό έως σήμερα · μήνας (${escapeHtml(monthLabel)}) = κινήσεις με ημερομηνία μέσα σε αυτόν</span>
       ${inactiveWithBalance.length ? `<div class="dl-foot-inactive">+ ${inactiveWithBalance.length} ανενεργοί με υπόλοιπο ${dlMoney(inactiveSum)}, βλ. κατάσταση οφειλών</div>` : ''}
     </div>
   </div>`;
