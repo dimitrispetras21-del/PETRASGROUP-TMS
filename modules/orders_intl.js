@@ -191,7 +191,13 @@ function _oiInvCell(r) {
 function _oiPeriodLabel() {
   return _intlPeriod === '60' ? 'τελευταίες 60 ημέρες' : _intlPeriod === '180' ? 'τελευταίοι 6 μήνες' : 'όλες οι ημερομηνίες';
 }
-function _oiCloseCard() { document.getElementById('intlDetail')?.classList.add('hidden'); }
+function _oiCloseCard() {
+  const p = document.getElementById('intlDetail'); if (!p) return;
+  // The floating read-only card (Weekly Εθνικών → VS load) is created on
+  // demand; removing it leaves the Weekly page with no hidden panel behind.
+  // The static panel of the Διεθνείς Παραγγελίες page only hides (as before).
+  if (p.classList.contains('oi-ro-float')) p.remove(); else p.classList.add('hidden');
+}
 
 // Module-scoped styles, tokens only (DESIGN.md #1) — same pattern as the
 // locations card. style.css is the integrator's file, not this unit's.
