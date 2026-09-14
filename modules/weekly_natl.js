@@ -165,7 +165,7 @@ async function _wnLoadAll() {
       // 'Source Record' dropped: write-only alias, always empty on read (47
       // silent drops 7/9) — the real links are 'Source National Order' (national
       // order source) and 'Source Order' (VS, from orders_intl) — spec national-load-source.
-      'Client','Total Pallets','Goods','Status','Source Type','Source National Order','Source Order','Matched Load',
+      'Client','Total Pallets','Goods','Status','Source Type','Source National Order','Source Order','Source Consolidated Load','Matched Load',
       'Is Partner Trip','Partner Truck Plates','Partner Rate',
       // Φ1 (Α3): ζητούσε 1..5 ενώ ο renderer κάνει loop 1..10 (_wnNlPickupSummary /
       // _wnNlDeliverySummary) και ο Worker σερβίρει 1..10. Φορτίο με 6+ σημεία
@@ -273,6 +273,15 @@ function _wnBuildRow(ord, type) {
   return {
     id: ++WNATL._seq, type,
     source: f['Source Type'] === 'Groupage' ? 'cl' : undefined,
+    // Click target for _wnOpenRow (spec 2026-09-14 weekly-natl-tools, owner
+    // 14/9): 'vs' loads are edited only from Weekly Διεθνών (read-only card
+    // here); 'grp'/'nat' open the national order form. A Direct load without
+    // a resolved Source Order still counts as 'vs' — the source type is the
+    // fact, the link is just how we find the order to show.
+    src: f['Source Type']==='Groupage' ? 'grp' : (f['Source Type']==='Direct' || getLinkedId(f['Source Order'])) ? 'vs' : 'nat',
+    noId: getLinkedId(f['Source National Order']) || '',
+    intlId: getLinkedId(f['Source Order']) || '',
+    clId: getLinkedId(f['Source Consolidated Load']) || '',
     orderId: ord.id, orderIds:[ord.id],
     matchedId: f['Matched Load']||null,
     groupageId: null,
@@ -289,7 +298,10 @@ function _wnBuildRow(ord, type) {
     client: f['Client'] || '',
     route: [_wnNlPickupSummary(f), _wnNlDeliverySummary(f)].join(' '),
     status: f['Status'] || '',
-    isGrp: f['Source Type'] === 'Groupage' || delN > 1,
+    // Δ2: a VS load with 2 deliveries is not Groupage — only Source Type
+    // 'Groupage' means groupage. `|| delN > 1` conflated «multi-stop» with
+    // «groupage», which broke the Groupage quick filter (spec Δ2).
+    isGrp: f['Source Type'] === 'Groupage',
     coveredBy: [], needsLocal: false,
   };
 }
@@ -436,6 +448,9 @@ function _wnCss() { return `<style id="wn4-css">
 .wn4 .wk3-row.sn{background:var(--surface-page)}
 .wn4 .wk3-num{border:none;font-size:11px;color:var(--text-dim);flex-direction:column;gap:0;padding:0 4px 0 8px}
 .wn4 .wk3-num.imp{color:var(--text);font-weight:700}
+.wn4 .wn4-src{display:block;margin-top:2px;width:30px;padding:1px 0;border-radius:3px;font-size:8px;font-weight:700;text-align:center;line-height:12px}
+.wn4 .wn4-src.vs{background:#E2E8F0;color:#475569}
+.wn4 .wn4-src.grp{background:#FEF3C7;color:#B45309}
 .wn4 .wk3-leg{padding:4px;overflow:visible;align-items:center;gap:4px;min-width:0}
 .wn4 .wk3-leg.void,.wn4 .wk3-leg.bgap{background:none;justify-content:stretch}
 .wn4-dark{flex:1;min-width:0;min-height:var(--wn4-card);border-radius:6px;background:var(--surface-dark);display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text-on-dark)}
@@ -1375,13 +1390,12 @@ function _wnSegTipHTML(s) {
     <span>${iso ? _wnFmt(iso) : '—'}</span>
     <span>${pal != null ? pal + ' p' : '—'}</span></div>`;
 }
-// Ένα τμήμα = μία στάση παράδοσης. Κλικ ανοίγει την επεξεργασία ΤΟΥ ΦΟΡΤΙΟΥ
-// (openNatlEdit, orders_natl.js:1202) — η γραμμή δεν είχε ΚΑΝΕΝΑ «κλικ ανοίγει
-// φόρμα» πριν αυτή την αλλαγή (μόνο δεξί κλικ/popover ανάθεσης), οπότε αυτό
-// ΕΙΝΑΙ το πλησιέστερο «ό,τι κάνει ήδη η σειρά για το φορτίο». Δεξί κλικ = το
-// ΥΠΑΡΧΟΝ μενού της γραμμής (_wnCtx) — όχι νέο μενού ανά τμήμα (design: «the
-// row's existing context menu», σε αντίθεση με το intl's _wiSegCtx). Σύρσιμο
-// μόνο όταν draggable.
+// Ένα τμήμα = μία στάση παράδοσης. Κλικ ανοίγει ό,τι ανοίγει και το υπόλοιπο
+// leg — _wnOpenRow (spec 14/9), ΠΟΤΕ openNatlEdit(loadId) απευθείας (Δ1: αυτό
+// περνούσε id ΦΟΡΤΙΟΥ σε φόρμα που περιμένει id ΠΑΡΑΓΓΕΛΙΑΣ — σιωπηλό no-op).
+// Δεξί κλικ = το ΥΠΑΡΧΟΝ μενού της γραμμής (_wnCtx) — όχι νέο μενού ανά τμήμα
+// (design: «the row's existing context menu», σε αντίθεση με το intl's
+// _wiSegCtx). Σύρσιμο μόνο όταν draggable.
 function _wnSegHTML(s, idx, total, row, loadId, draggable) {
   const pos = idx === 0 ? 'first' : (idx === total - 1 ? 'last' : 'mid');
   const cls = _wnSegState(s, row);
@@ -1394,7 +1408,7 @@ function _wnSegHTML(s, idx, total, row, loadId, draggable) {
     ondrop="event.stopPropagation();_wnSegDrop(event,${row.id},'${s.id}')"
     ondragend="event.stopPropagation();_wnSegDragEnd(event)"` : '';
   return `<div class="wk3-seg${cls ? ' ' + cls : ''}" data-pos="${pos}" data-stop-id="${s.id}" ${drag}
-    onclick="event.stopPropagation();openNatlEdit('${loadId}')"
+    onclick="event.stopPropagation();_wnOpenRow(${row.id},'${s._no||''}')"
     oncontextmenu="event.stopPropagation();_wnCtx(event,${row.id})">
     <div class="wk3-segtop">${_wnSegDateHTML(s)}${pal != null ? `<span class="wn4-segpal">${pal}p</span>` : ''}</div>
     <div class="wn4-segn"><span class="wk3-stopn" title="Σημείο ${idx + 1}">${idx + 1}</span>${escapeHtml(pl.name)}</div>
@@ -1507,6 +1521,37 @@ async function _wnSaveSegOrder(row, load, orderedStops) {
   _wnPaint();
 }
 
+// Click = open. What opens depends on the load's source (owner 14/9): a
+// genuine national or groupage order opens its NATIONAL ORDER form; a VS
+// load opens the INTERNATIONAL order read-only — only the Weekly Διεθνών may
+// edit it. Never pass the load id to openNatlEdit (that was Δ1: silent no-op).
+async function _wnOpenRow(rowId, noIdHint) {
+  const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  const rec = _wnOrd(row); if (!rec) return;
+  if (row.src === 'vs') {
+    if (!row.intlId) { toast('Φορτίο VS χωρίς σύνδεσμο διεθνούς παραγγελίας', 'danger'); return; }
+    if (typeof openIntlReadOnlyCard !== 'function') { toast('Η καρτέλα διεθνών δεν είναι φορτωμένη', 'danger'); return; }
+    return openIntlReadOnlyCard(row.intlId);
+  }
+  if (_wnBlockReadOnly()) return;                      // management: no edit form
+  let noId = noIdHint || row.noId;
+  if (!noId && row.src === 'grp') noId = await _wnGrpFirstOrder(row.clId);
+  if (!noId) { toast('Το φορτίο δεν συνδέεται με εθνική παραγγελία', 'danger'); return; }
+  if (typeof openNatlEdit !== 'function') { toast('Η φόρμα εθνικών δεν είναι φορτωμένη', 'danger'); return; }
+  openNatlEdit(noId);
+}
+// Groupage: the order behind a load is reached through GROUPAGE LINES (same
+// path as _wnToggleStops); first line = first order. Filtered in JS — formula
+// filters on linked records are unreliable (orders_intl.js:1178).
+async function _wnGrpFirstOrder(clId) {
+  if (!clId) return '';
+  try {
+    const gls = await atGetAll(TABLES.GL_LINES, { fields: ['Linked Consolidated Load','Linked National Order'] }, false);
+    const g = (gls||[]).find(g => getLinkedId(g.fields?.['Linked Consolidated Load']) === clId && getLinkedId(g.fields?.['Linked National Order']));
+    return g ? getLinkedId(g.fields['Linked National Order']) : '';
+  } catch(e) { if (typeof logError==='function') logError(e, '_wnGrpFirstOrder'); return ''; }
+}
+
 /* ── N→S ROW ─────────────────────────────────────────────────────── */
 function _wnRowHTML(row, i) {
   const { data } = WNATL;
@@ -1576,8 +1621,8 @@ function _wnRowHTML(row, i) {
   <div id="wn-row-${row.id}" data-row-id="${row.id}" class="wk3-row${row.needsLocal?' hot':''}"
     draggable="true"
     ondragstart="_wnDragStart(event,'${row.orderId||primary?.id||''}')">
-    <div class="wk3-num">${i+1}${nDel>1?`<span class="xn" title="${nDel} σημεία παράδοσης">×${nDel}</span>`:''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
-    <div class="wk3-leg" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
+    <div class="wk3-num">${i+1}${nDel>1?`<span class="xn" title="${nDel} σημεία παράδοσης">×${nDel}</span>`:''}${row.src==='vs'?'<span class="wn4-src vs" title="Φορτίο Veroia Switch — τα στοιχεία αλλάζουν από το Weekly Διεθνών">VS</span>':row.src==='grp'?'<span class="wn4-src grp" title="Groupage">GRP</span>':''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
+    <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})" oncontextmenu="_wnCtx(event,${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenPopover(event,${row.id})">
       <button class="wk3-prt" title="Εκτύπωση εντολής καθόδου" onclick="event.stopPropagation();_wnPrint(${row.id},'northsouth')">⎙</button>
       ${pill}
@@ -1628,10 +1673,14 @@ async function _wnToggleStops(rowId, nlId) {
     // αντί για το πολυμορφικό `Source Record` (spec national-load-source Γ2).
     const _srcNoId = getLinkedId(ff['Source National Order']);
     const _srcOrdId = getLinkedId(ff['Source Order']);
-    if (!dels.length && (_srcNoId || _srcOrdId)) {
-      const src = _srcNoId || _srcOrdId;
+    // Δ (spec Α, 14/9): real Groupage loads carry NEITHER Source National
+    // Order NOR Source Order (spec Πηγή φορτίου) — only Source Consolidated
+    // Load. The old condition below never entered for them, so the Groupage
+    // sub-branch two lines down was dead code for actual groupage.
+    const _srcClId = getLinkedId(ff['Source Consolidated Load']);
+    if (!dels.length && (_srcNoId || _srcOrdId || _srcClId)) {
       try {
-        if (ff['Source Type'] === 'Groupage') {
+        if (ff['Source Type'] === 'Groupage' && _srcClId) {
           // Στο groupage οι στάσεις ζουν στις εθνικές παραγγελίες του CL· ο
           // δρόμος προς αυτές είναι τα GROUPAGE LINES. Φιλτράρισμα στη JS,
           // όπως και αλλού στο repo: τα formula πάνω σε linked records είναι
@@ -1640,7 +1689,7 @@ async function _wnToggleStops(rowId, nlId) {
             { fields: ['Linked Consolidated Load', 'Linked National Order'] }, false);
           const _id = v => Array.isArray(v) ? (v[0]?.id || v[0]) : (v?.id || v);
           const noIds = [...new Set((gls||[])
-            .filter(g => _id(g.fields?.['Linked Consolidated Load']) === src)
+            .filter(g => _id(g.fields?.['Linked Consolidated Load']) === _srcClId)
             .map(g => _id(g.fields?.['Linked National Order']))
             .filter(Boolean))];
           const sets = await Promise.all(
@@ -1858,14 +1907,14 @@ function _wnSnRowHTML(row, snNo) {
     draggable="true"
     ondragstart="_wnDragStart(event,'${ord.id}')"
     oncontextmenu="_wnCtxSn(event,${row.id},'${ord.id}')">
-    <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
+    <div class="wk3-num imp" title="Άνοδος ${snNo||''}">A${snNo||''}${row.src==='vs'?'<span class="wn4-src vs" title="Φορτίο Veroia Switch — τα στοιχεία αλλάζουν από το Weekly Διεθνών">VS</span>':row.src==='grp'?'<span class="wn4-src grp" title="Groupage">GRP</span>':''}${_wnSyncSlot('wn-sync-'+row.id)}</div>
     <div class="wk3-leg void"><div class="wn4-dark" title="Δεν αναμένεται σκέλος καθόδου"></div></div>
     <div class="wk3-assign" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}" role="button" tabindex="0" onclick="event.stopPropagation();_wnOpenSnPopover(event,'${ord.id}',${row.id})">
       <button class="wk3-prt" title="Εκτύπωση εντολής" onclick="event.stopPropagation();_wnPrintSn('${ord.id}')">⎙</button>
       ${pill}
       <span></span>
     </div>
-    <div class="wk3-leg">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
+    <div class="wk3-leg" style="cursor:pointer" onclick="_wnOpenRow(${row.id})">${fromCard}<span class="wn4-arrow">→</span>${toCard}</div>
   </div>`;
 }
 
@@ -2066,6 +2115,12 @@ function _wnDropOnRow(e, rowId) {
 async function _wnSaveMatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  // A6: check both loads before the optimistic paint below — a matched pair
+  // where either side is already Delivered/Cancelled keeps its state.
+  const doneNs = await _wnDoneLive(row.orderIds[0]);
+  if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
+  const doneSn = await _wnDoneLive(snId);
+  if (doneSn) { showErrorToast(`Το φορτίο είναι ${doneSn} — δεν αλλάζει από το Weekly`); return; }
   row.matchedId = snId;
   WNATL.rows = WNATL.rows.filter(r => !(r.type==='southnorth' && r.orderId===snId));
   _wnPaint();
@@ -2090,6 +2145,12 @@ async function _wnSaveMatch(rowId, snId) {
 async function _wnUnmatch(rowId, snId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
+  // A6: same guard as _wnSaveMatch — unmatching a leg already
+  // Delivered/Cancelled would rewrite a status the board never owned.
+  const doneNs = await _wnDoneLive(row.orderIds[0]);
+  if (doneNs) { showErrorToast(`Το φορτίο είναι ${doneNs} — δεν αλλάζει από το Weekly`); return; }
+  const doneSn = await _wnDoneLive(snId);
+  if (doneSn) { showErrorToast(`Το φορτίο είναι ${doneSn} — δεν αλλάζει από το Weekly`); return; }
   const snOrd = WNATL.data.southnorth.find(r => r.id===snId);
   row.matchedId = null;
   if (snOrd) {
@@ -2279,6 +2340,14 @@ async function _wnSaveFromPopover(rowId) {
   if(_wnBlockReadOnly()) return;
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
 
+  // A6: execution beats planning (14/9, 030 trigger) — a load the trigger
+  // already moved to Delivered/Cancelled keeps its assignment; this popover
+  // never checked Status before writing over it.
+  for (const orderId of row.orderIds) {
+    const done = await _wnDoneLive(orderId);
+    if (done) { showErrorToast(`Το φορτίο είναι ${done} — δεν αλλάζει από το Weekly`); return; }
+  }
+
   const syncDrop = (px, fId, lId) => {
     const uid = `${px}_wn_${rowId}`;
     const val = document.getElementById(`wsd-v-${uid}`)?.value||'';
@@ -2391,6 +2460,11 @@ async function _wnClear(rowId) {
   const row = WNATL.rows.find(r => r.id===rowId); if (!row) return;
   for (const orderId of row.orderIds) {
     try {
+      // Execution beats planning (14/9, 030 trigger): a load already
+      // Delivered/Cancelled keeps its assignment — the board never checked
+      // Status before writing over it (A6, same guard as save/match/unmatch).
+      const done = await _wnDoneLive(orderId);
+      if (done) { showErrorToast(`Το φορτίο είναι ${done} — η ανάθεση δεν αλλάζει από το Weekly`); return; }
       const res = await atSafePatch(TABLES.NAT_LOADS, orderId,
         { 'Truck':[],'Trailer':[],'Driver':[],'Partner':[],'Is Partner Trip':false,'Partner Truck Plates':'' });
       if (res?.conflict) { toast('Η εγγραφή άλλαξε από άλλον χρήστη — γίνεται ανανέωση','warn'); await renderWeeklyNatl(); return; }
@@ -2402,6 +2476,10 @@ async function _wnClear(rowId) {
       await paDelete({ parentType:'nat_load', parentId:loadId });
     }
   } catch(e) { console.warn('NAT PA delete:', e.message); }
+
+  // Δ3: the clear popover never reverted the source NATIONAL ORDER's Status —
+  // same gap _wnUnassign already closed (13/9 Sotiris go-live audit).
+  for (const orderId of row.orderIds) await _wnRevertNoStatus(orderId);
 
   Object.assign(row, { truckId:'',trailerId:'',driverId:'',partnerId:'',
     truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
@@ -2416,13 +2494,16 @@ function _wnCtx(e, rowId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   const ctx = document.getElementById('wn-ctx');
   const items = [];
+  // Επεξεργασία λείπει σε VS: μόνο το Weekly Διεθνών επεξεργάζεται μια VS
+  // παραγγελία (owner 14/9) — εδώ η γραμμή ανοίγει μόνο-ανάγνωση από το κλικ.
+  if (row && row.src !== 'vs')
+    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-row-${rowId}')},${rowId})">Ανάθεση</button>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrint(${rowId},'northsouth')">Εκτύπωση</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassign(${rowId})">Αφαίρεση ανάθεσης</button>`);
   if (row?.matchedId)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnmatch(${rowId},'${row.matchedId}')">Αφαίρεση import</button>`);
-  if (row && row.orderIds.length > 1)
-    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnSplit(${rowId})">Διαχωρισμός (${row.orderIds.length} εντολές)</button>`);
 
   // Δ8 (δεύτερος δρόμος εισόδου): «σπάσιμο» σκέλους σε τοπικό οδηγό. Ανοίγει
   // τη φόρμα τοπικής κίνησης δεμένη με αυτό το φορτίο· χωρίς οδηγό η ανάγκη
@@ -2510,7 +2591,10 @@ function _wnCtxSn(e, rowId, snId) {
   const row = WNATL.rows.find(r => r.id===rowId);
   const ctx = document.getElementById('wn-ctx');
   const items = [];
+  if (row && row.src !== 'vs')
+    items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenRow(${rowId})">Επεξεργασία</button>`);
   items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnOpenSnPopover({stopPropagation:()=>{},currentTarget:document.getElementById('wn-sn-${snId}')},\'${snId}\',${rowId})">Ανάθεση</button>`);
+  items.push(`<button type="button" class="wi-ctx-item" onclick="_wnCtxClose();_wnPrint(${rowId},'southnorth')">Εκτύπωση</button>`);
   if (row?.saved)
     items.push(`<button type="button" class="wi-ctx-item wi-ctx-danger" onclick="_wnCtxClose();_wnUnassignSn(${rowId},'${snId}')">Αφαίρεση ανάθεσης</button>`);
   ctx.innerHTML = items.join('');
@@ -2635,48 +2719,6 @@ async function _wnUnassign(rowId) {
   _wnPaint();
 }
 
-async function _wnSplit(rowId) {
-  if(_wnBlockReadOnly()) return;
-  const row = WNATL.rows.find(r => r.id===rowId);
-  if (!row || row.orderIds.length <= 1) return;
-  const [first, ...rest] = row.orderIds;
-  row.orderIds = [first]; row.groupageId = null;
-  rest.forEach(id => {
-    WNATL.rows.push({
-      id:++WNATL._seq, type:'northsouth', orderId:id, orderIds:[id],
-      matchedId:null, groupageId:null,
-      truckId:'',trailerId:'',driverId:'',partnerId:'',
-      truckLabel:'',trailerLabel:'',driverLabel:'',partnerLabel:'',
-      partnerPlates:'',partnerRate:'',saved:false,
-    });
-  });
-  _wnPaint();
-  const allIds = [first, ...rest];
-  // Audit fix (N-1): await the back-patches and only confirm success once they
-  // resolve. Previously these were fired without await, so the user saw "split
-  // done" even when a Groupage ID clear silently failed, leaving a stale link
-  // on NAT_ORDERS. allSettled so one failure does not abort the other clears.
-  // Use safe patch + central sync; Groupage ID clear unlinks these orders from GRP chain.
-  const results = await Promise.allSettled(allIds.map(id =>
-    atSafePatch(TABLES.NAT_ORDERS, id, { 'Groupage ID':'' })
-      .then(() => {
-        if (typeof syncOrderDownstream === 'function') {
-          return syncOrderDownstream(id, { source: 'natl', changedFields: ['Groupage ID'], skipPA: true, skipRamp: true });
-        }
-      })
-  ));
-  const failed = results.filter(r => r.status === 'rejected');
-  if (failed.length) {
-    failed.forEach(r => {
-      console.warn('Groupage clear:', r.reason);
-      if (typeof logError === 'function') logError(r.reason, '_wnSplit groupage clear');
-    });
-    if (typeof showErrorToast === 'function') showErrorToast(`Διαχωρισμός: ${failed.length}/${allIds.length} ενημερώσεις απέτυχαν — ανανεώστε`, 'error');
-  } else {
-    toast('Διαχωρίστηκε');
-  }
-}
-
 /* ── PRINT ───────────────────────────────────────────────────────── */
 // CSV export for the current week — includes both directions
 function _wnExportCSV() {
@@ -2745,7 +2787,6 @@ window._wnUnassign = _wnUnassign;
 window._wnUnassignSn = _wnUnassignSn;
 window._wnDragStart = _wnDragStart;
 window._wnDropOnRow = _wnDropOnRow;
-window._wnSplit = _wnSplit;
 window._wnNavWeek = _wnNavWeek;
 window._wnApplyFilter = _wnApplyFilter;
 window._wnPulseRow = _wnPulseRow;
@@ -2753,6 +2794,7 @@ window._wnToggleDetails = _wnToggleDetails;
 // Φέτα 4: καλείται από inline onclick του σήματος groupage — χωρίς αυτό
 // το κλικ θα έριχνε ReferenceError (το module είναι σε IIFE).
 window._wnToggleStops = _wnToggleStops;
+window._wnOpenRow = _wnOpenRow;
 window._wnSetAppt = _wnSetAppt;
 window._wnNewOrder = _wnNewOrder;
 window._wnNewSn = _wnNewSn;
