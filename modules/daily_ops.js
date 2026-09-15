@@ -349,7 +349,10 @@ const _OPS_STYLE=`<style>
   .do-tag.own{background:var(--surface-dark)}
   .do-tag.prt{background:var(--ok)}
   .do-tag.none{background:var(--unassigned)}
-  .do-st{white-space:normal}
+  /* td.do-st, not .do-st: «.do-t td{nowrap}» outranks a bare class, so the
+     status never wrapped and «Εκκρεμεί · μετατέθηκε · 0/3 παραδόθηκαν» ran
+     over «Αλλαγή ημέρας» (seen live 16/9 view, 15/9). */
+  .do-t td.do-st{white-space:normal}
   .do-st-wait{color:var(--text);font-weight:700}
   .do-st-done{color:var(--ok);font-weight:600}
   .do-st-moved{color:var(--warn);font-weight:400;font-size:var(--text-xs)}
