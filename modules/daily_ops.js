@@ -803,7 +803,11 @@ function _opsSubRows(rec, stype, asDiv){
         <span style="color:var(--text-dim);width:40px">${pal}</span>
         ${right}
       </div>`;
-    return asDiv?`<div class="do-sub do-zsub">${inner}</div>`:`<tr class="do-sub"><td colspan="20">${inner}</td></tr>`;
+    // colspan = the 8 columns of the colgroup, not 20: with table-layout:fixed
+    // a colspan beyond the declared columns ADDS phantom columns and every
+    // real column collapses (seen 15/9 in the rig: open a multi-stop row and
+    // ΠΕΛΑΤΗΣ/ΦΟΡΤΩΣΗ/ΑΝΑΘΕΣΗ piled onto each other).
+    return asDiv?`<div class="do-sub do-zsub">${inner}</div>`:`<tr class="do-sub"><td colspan="8">${inner}</td></tr>`;
   }).join('');
 }
 // Δήλωση ΕΝΟΣ σημείου — ανεξάρτητη: αν έμειναν άλλα, η παραγγελία δεν
@@ -1023,6 +1027,12 @@ function _opsPrint() {
       /* On paper the tag has no colour — the word alone must carry it (DESIGN.md #2). */
       .do-tag{font-weight:700;margin-right:4px}
       .do-acts,.do-slots,button,input,select{display:none}
+      /* Paper has no actions: drop the ΕΝΕΡΓΕΙΕΣ column and the screen's
+         fixed col widths, so ΠΕΛΑΤΗΣ/ΦΟΡΤΩΣΗ get the page (15/9: they were
+         squeezed to one word per line by the 320px reserved for buttons). */
+      th:last-child{display:none} col{width:auto!important}
+      .do-sec-h span{margin-left:8px}
+      .do-pill{border:0;padding:0;background:none}
       @media print{body{padding:8px}table{page-break-inside:auto}}
     </style></head><body>
     <h1>Ημερήσιο Πλάνο</h1>
