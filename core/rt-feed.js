@@ -314,7 +314,12 @@ async function rtOnOrderSaved(orderId) {
     const seqByPg = {}; legPgs.forEach(pg => { seqByPg[pg] = seqByOrderId[pgRec[pg]]; });
     const rt = await _rtFind(legPgs);
     const gone = status === 'Cancelled';
-    const exec = (status === 'In Transit' || status === 'Delivered') && assigned;
+    // Threshold = the ASSIGNMENT, not the status (owner 14/9): dispatchers run
+    // two systems, statuses in the TMS lag and get corrected retroactively, so
+    // an RT keyed on «In Transit» came days late or never. Same rule as the
+    // database trigger (033); the «!exec» branch below now means exactly
+    // «lost the vehicle / cancelled», which is what its toast says.
+    const exec = assigned && !gone;
 
     if (_rtClosed(rt)) {
       // ΚΛΕΙΔΩΜΕΝΟΣ ΚΑΝΟΝΑΣ (owner 24/8): κλεισμένο = ιστορικό. Μόνο φωνή.

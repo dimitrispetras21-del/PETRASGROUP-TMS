@@ -6,16 +6,21 @@
 -- from 013/031 changes.
 --
 -- WHY (measured 14/9, orders loading from 1/8, own fleet, not deleted):
---   141 orders · 131 with a leg · 10 without. Of the 10:
+--   141 orders · 128 with a live leg · 13 without. Of the 13:
 --     6 grouped (GI-/GRP- group_id)     239 301 318 320 328 329
 --     2 export with matched import       284 287
 --     2 merely Assigned (not executed)   334 335
+--     3 whose only leg sits on a CANCELLED RT   304 305 310 — the browser
+--       cancelled the plan when the order was saved as Assigned (old rule:
+--       «not executed = lost the assignment»), Daily Ops then delivered it.
 --   Every one of the first 8 reached In Transit/Delivered through Daily Ops,
 --   whose plain PATCH never calls core/rt-feed.js, and 031 skipped them on
 --   purpose («group_id / matched_import_id / rotation_id → return null»).
 --   So the deliberate gap of 031 IS the defect the owner sees: in practice
 --   the related shapes are the rule, not the exception (60 of the 138 live
---   RTs carry more than one leg).
+--   RTs carry more than one leg). The last 2 are the second half of the
+--   defect: the threshold was the STATUS, and the status is the field that
+--   lags (see below).
 --
 -- WHAT 031 got wrong and this fixes: it feared that copying rt-feed.js's
 -- three-relation walk into plpgsql would be a second source of truth (αρχή 3)
@@ -37,13 +42,20 @@
 --   With this, the browser's later POST of the full leg set finds every leg
 --   on the same RT and takes its idempotent attach path — no 409.
 --
--- Threshold UNCHANGED: an RT is born when the order is executed
--- (In Transit/Delivered) and assigned — the rule of rt-feed.js:317 and of
--- DECISION_LOG 13/9. Creating at 'Assigned' would also open a payroll line
--- (dl_sync_from_rt) for a trip that has not happened; that is a separate
--- owner decision, recorded as open in DECISION_LOG 14/9. Orders 334/335 get
--- their RT the moment they leave, through this trigger, whatever screen
--- moves them.
+-- Threshold CHANGED (owner 14/9): the RT is born at ASSIGNMENT — a truck (or
+-- a partner on a partner trip) on a live, not-Cancelled order — no longer at
+-- In Transit/Delivered. Owner's reason, verbatim in spirit: «οι dispatchers
+-- δουλεύουν σε 2 συστήματα, τα status αλλάζουν αργά, και διορθώνουμε
+-- αναδρομικά». The status is the field that lags; the vehicle is the physical
+-- fact. So the trigger keys on the vehicle and treats ANY later change
+-- (status, dates, vehicle, links — retroactive or not) as an event: it fires
+-- on every update of those columns, and the 013 sync triggers keep the RT in
+-- step afterwards. rt-feed.js:317 is changed in the same commit to the same
+-- rule, otherwise its «lost the assignment» branch would cancel an RT the
+-- database had just created for an Assigned order on the next form save.
+-- Consequence, accepted: dl_sync_from_rt opens the payroll «trip» line at
+-- assignment (amounts NULL until entered); a cancelled/unassigned order
+-- cancels the RT and the line follows (011 rules), audibly if amounts exist.
 --
 -- Rejected alternatives:
 --   • fixing Daily Ops to call rt-feed.js — one more screen patched, the next
@@ -83,9 +95,6 @@ begin
   if new.deleted_at is not null or new.status = 'Cancelled' then
     return null;
   end if;
-  if new.status not in ('In Transit', 'Delivered') then
-    return null;
-  end if;
   if not (new.truck_id is not null
           or (coalesce(new.is_partner_trip, false) and new.partner_id is not null)) then
     return null;
@@ -98,8 +107,18 @@ begin
   if exists (select 1 from orders c where c.parent_order_id = new.id and c.deleted_at is null) then
     return null;
   end if;
-  if exists (select 1 from ct_rt_legs where order_id = new.id) then
+  -- A leg on a CANCELLED RT is a discarded plan (rt-rules.mjs staleLegIds
+  -- reclaims it the same way): free it and go on; a leg on a live RT ends here.
+  if exists (select 1 from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
+             where l.order_id = new.id and r.status <> 'cancelled') then
     return null;
+  end if;
+  delete from ct_rt_legs l using ct_round_trips r
+   where l.order_id = new.id and r.id = l.rt_id and r.status = 'cancelled';
+  get diagnostics leg_rows = row_count;
+  if leg_rows > 0 then
+    perform rt_sync_audit('delete', 'ct_rt_legs', new.id::text,
+      jsonb_build_object('order_id', new.id), jsonb_build_object('reason', 'stale leg on a cancelled round trip freed (033)'));
   end if;
 
   new_type := case when coalesce(new.is_partner_trip, false) then 'PARTNER' else 'OWNED' end;
@@ -210,7 +229,7 @@ create trigger rt_create_from_order
   on orders for each row
   execute function rt_create_from_order();
 
--- Backfill: every executed, assigned, live order without a leg — ordered by id
+-- Backfill: every assigned, live, not-Cancelled order without a live leg — ordered by id
 -- so the first member of a pair/group creates the RT and the rest attach to it
 -- (the cascade through rt_sync_legs → orders → this trigger also helps).
 -- A no-op SET still fires "UPDATE OF truck_id".
@@ -219,9 +238,10 @@ declare o record;
 begin
   for o in
     select id from orders
-    where deleted_at is null and status in ('In Transit', 'Delivered')
+    where deleted_at is null and status <> 'Cancelled'
       and (truck_id is not null or (coalesce(is_partner_trip, false) and partner_id is not null))
-      and not exists (select 1 from ct_rt_legs l where l.order_id = orders.id)
+      and not exists (select 1 from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
+                      where l.order_id = orders.id and r.status <> 'cancelled')
     order by id
   loop
     update orders set truck_id = truck_id where id = o.id;
@@ -232,21 +252,26 @@ commit;
 
 -- Proof (run after) — expected on 14/9 data:
 --
--- 1. Executed + assigned + live orders with NO leg. Expect 0 (was 8).
+-- 1. Assigned, live, not-Cancelled orders with NO live leg. Expect 0 (was 13).
 -- select count(*) as orphans from orders o
--- where o.deleted_at is null and o.status in ('In Transit','Delivered')
+-- where o.deleted_at is null and o.status <> 'Cancelled'
 --   and (o.truck_id is not null or (coalesce(o.is_partner_trip,false) and o.partner_id is not null))
 --   and not (coalesce(o.is_partner_trip,false) and o.parent_order_id is not null)
 --   and not exists (select 1 from orders c where c.parent_order_id = o.id and c.deleted_at is null)
---   and not exists (select 1 from ct_rt_legs l where l.order_id = o.id);
+--   and not exists (select 1 from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
+--                   where l.order_id = o.id and r.status <> 'cancelled');
 --
--- 2. Where the 8 went. Expect: 239→RT 105 · 284→135 · 287→136 · 301→21 ·
---    318+320 → one NEW RT (truck 13) · 328+329 → one NEW RT (truck 7).
+-- 2. Where the 13 went. Expect: 239→RT 105 · 284→135 · 287→136 · 301→21 ·
+--    335→138 (reopened: planned) · 318+320 → one NEW RT (truck 13) ·
+--    328+329 → one NEW RT (truck 7) · 334 → NEW RT (truck 8) ·
+--    304+305 → one NEW RT (truck 15) · 310 → NEW RT (truck 36).
 -- select l.order_id, r.id, r.code, r.status, r.truck_id, r.created_by
 -- from ct_rt_legs l join ct_round_trips r on r.id = l.rt_id
--- where l.order_id in (239,284,287,301,318,320,328,329) order by l.order_id;
+-- where r.status <> 'cancelled'
+--   and l.order_id in (239,284,287,301,304,305,310,318,320,328,329,334,335) order by l.order_id;
 --
--- 3. Audit trail of this run. Expect 4 attach + 2 create + 0 conflict.
+-- 3. Audit trail of this run. Expect 6 attach + 5 create + 1 reopen + 3 stale
+--    legs freed + 0 conflict.
 -- select case when after_data->>'reason' like 'conflict:%' then 'conflict'
 --             when after_data ? 'leg_order' then 'attach' else action end as what, count(*)
 -- from audit_log
@@ -256,6 +281,8 @@ commit;
 -- 4. Ledger follows: every OWNED live RT with a driver has a live ledger line. Expect 0.
 -- select count(*) from dl_v_rt_gap;
 --
--- 5. Still without RT, by design: Assigned-only orders (334, 335 on 14/9).
--- select id, status from orders where deleted_at is null and status = 'Assigned'
---   and truck_id is not null and not exists (select 1 from ct_rt_legs l where l.order_id = orders.id);
+-- 5. Payroll lines opened by the new RTs (334, 318+320, 328+329, 304+305, 310
+--    → one per RT with a driver): amounts NULL, source 'auto'. Expect 5.
+-- select count(*) from dl_entries e join ct_round_trips r on r.id = e.rt_id
+-- where e.deleted_at is null and r.created_by = 'trigger:rt_create'
+--   and e.created_at > now() - interval '10 minutes';
