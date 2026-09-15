@@ -1,8 +1,10 @@
 -- 031 — Round-trip CREATION at the database level (owner 13/9/2026)
 --
--- STATUS: DRAFT — NOT EXECUTED (first attempt 13/9 15:29 rolled back: audit action
--- 'insert' violated audit_log_action_check; fixed to 'create'). The owner runs it by hand
--- (Supabase SQL editor, after 15:00 — αρχή 7) if he approves the scope below.
+-- STATUS: EXECUTED 13/9/2026 (second run; the first, 15:29, rolled back: audit
+-- action 'insert' violated audit_log_action_check; fixed to 'create'). Result:
+-- 27 RTs, 0 standalone orphans (DECISION_LOG 13/9). SUPERSEDED by 033 on 14/9:
+-- the function below is replaced in place — the grouped / matched / rotation
+-- exclusions of this file turned out to be the defect the owner saw.
 --
 -- WHY: RT/leg creation exists ONLY in the browser today (core/rt-feed.js,
 -- rtOnOrderSaved), called from the order form (modules/orders_intl.js) and
