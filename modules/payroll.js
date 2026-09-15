@@ -38,9 +38,11 @@ function dlMoney(n) {
   return v < 0 ? '(' + s + ' €)' : s + ' €';
 }
 
-// Kept from v1 exactly as-is (owner instruction 5/9): existing tests assert
-// its literal return strings. v2 screens never call this function — its
-// wording is dead code by design, not a v2 UI violation. See v2-ui-report.md.
+// The ONE place that turns a balance sign into a word (home footer, card
+// balance word, A4 statement legend). tests/payroll-format.test.js asserts
+// the literal strings — change them there first. (An older comment here
+// called this «dead v1 code»: it was wrong since Φάση 2 uses it on every
+// card, and a stale comment is worse than none — brief 15/9, Ομάδα 4.)
 function dlBalanceWord(n) {
   // Distinguish unknown (null/undefined/'') from zero: unknown = 'χωρίς καρτέλα', zero = 'τακτοποιημένο'
   if (n === null || n === undefined || n === '') {
@@ -178,14 +180,18 @@ function dlPeriod(entries, year, month) {
 // — nothing outside the home view ever read those (grep confirmed 14/9). The
 // card grid has no «selected row» concept, only a per-driver payment box
 // (cardPayId) that opens inline on its own card.
-// `monthData` (Φάση 2, αρχική) is the current calendar month's aggregate
-// block from the Worker (or null) — NOT the same field as `month` below,
-// which is the driver card's own year/month PERIOD SELECTOR ('01'..'12',
-// unrelated screen, unchanged). There is no month navigation on the home
-// screen any more (owner review 14/9: dead weight, principle 8) — it is
-// always today's real month, so nothing here needs a per-month cache.
-const _dl = { view: 'home', balances: [], gap: 0, q: '',
-  monthData: null, sort: 'balance', pendingFirst: false,
+// `monthData` (Φάση 2, αρχική) is the aggregate block for `homeMonth` from
+// the Worker (or null) — NOT the same field as `month` below, which is the
+// driver card's own year/month PERIOD SELECTOR ('01'..'12', unrelated
+// screen, unchanged). `homeMonth` ('YYYY-MM') is the home screen's month
+// filter: owner 14/9 removed month navigation from the home screen, owner
+// 15/9 (via coordinator, brief Ομάδα 4 απόφαση β) explicitly re-approved a
+// month filter — DECISION_LOG 15/9. Every change refetches (the Worker
+// aggregates server-side), so nothing here needs a per-month cache.
+// `gapRts`: owned RTs with a driver and no live ledger line (dl_v_rt_gap),
+// shown on the home screen (brief 15/9: it was fetched and never rendered).
+const _dl = { view: 'home', balances: [], gap: 0, gapRts: [], q: '',
+  homeMonth: null, monthData: null, sort: 'balance', pendingFirst: false,
   cardPayId: null, cardPayMethod: 'payment_bank', printMenuOpen: false,
   driver: null, entries: [], rts: [], year: String(new Date().getFullYear()), month: String(new Date().getMonth() + 1).padStart(2, '0'),
   editId: null, menuOpenId: null, bulk: null };
@@ -310,8 +316,21 @@ function dlStyles() {
   .dl-kpi-tile .v{font-family:'Syne',sans-serif;font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
   .dl-kpi-tile[data-kpi="pending"]{cursor:pointer}
   .dl-kpi-tile[data-kpi="pending"] .v{color:var(--warn)}
+  /* The only clickable tile says so (brief 15/9: «KPI Χωρίς αξία αλλάζει
+     μόνο ταξινόμηση» with no affordance): a hint line + hover border. */
+  .dl-kpi-tile[data-kpi="pending"]:hover{border-color:var(--navy)}
+  .dl-kpi-hint{font-size:11px;color:var(--accent)}
   .dl-kpi-tile.on{border-color:var(--navy)}
   .dl-kpi-tile.on .k{color:var(--navy)}
+  .dl-mbtn{width:28px;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--surface-card);font:inherit;font-size:16px;line-height:1;color:var(--text-mid);cursor:pointer}
+  .dl-mbtn:hover{background:var(--surface-sunken);color:var(--text)}
+  /* Reconciliation lists (dl_v_rt_gap on the home screen, the driver's own
+     RTs without a line on the card): amber left rule like a pending row —
+     same meaning, «this trip pays nobody yet». */
+  .dl-gap,.dl-rts{margin:12px 24px 0;border:1px solid var(--border);border-left:3px solid var(--warn);border-radius:6px;background:var(--surface-card)}
+  .dl-gap-title,.dl-rts-title{padding:8px 14px;font-size:12px;font-weight:600;color:var(--warn);border-bottom:1px solid var(--border)}
+  .dl-gap-row,.dl-rts-row{display:flex;align-items:center;gap:14px;padding:6px 14px;border-bottom:1px solid var(--border)}
+  .dl-gap-row:last-child,.dl-rts-row:last-child{border-bottom:0}
   .dl-kpi-foot{display:flex;align-items:center;gap:10px;padding:4px 24px 12px;flex-wrap:wrap;border-bottom:1px solid var(--border)}
   .dl-kpi-sub{font-size:12px;color:var(--text-mid)}
   .dl-kpi-foot select{height:32px;border:1px solid var(--border);border-radius:6px;padding:0 10px;font:inherit;font-size:12px;background:var(--surface-card);color:var(--text)}
@@ -417,7 +436,7 @@ function dlEntryRowHtml(e) {
       <div style="width:${wMoney}px" class="r"><span class="n">—</span></div>
       <div style="width:120px" class="r"><span class="n">—</span></div>
       <div style="width:${wTotal}px" class="r"><span class="n">—</span></div>
-      <div style="width:32px"></div>
+      ${dlMoreCellHtml(e, isTrip)}
     </div>`);
   }
 
@@ -471,6 +490,19 @@ function dlEntryRowHtml(e) {
 function dlMoreCellHtml(e, isTrip) {
   const open = _dl.menuOpenId === e.id;
   const item = (cls, title, sub, fn) => `<button type="button" class="${cls}" onclick="event.stopPropagation();${fn}(${e.id})"><span class="dl-menu-t">${title}</span><span class="dl-menu-s">${sub}</span></button>`;
+  // Cancelled row: the only act left is undoing the cancellation, and the
+  // Worker allows it to owner + management only (owner decision 15/9 via
+  // coordinator: a wrong click by Θοδωρής must not stay locked; accountant
+  // keeps no undo). Same role list as the Worker's restore branch — a menu
+  // item that ends in a 403 would be a lie on screen (αρχή 1).
+  if (e.cancelled) {
+    if (!dlCanRestore()) return '<div style="width:32px"></div>';
+    const menu = open ? `<div class="dl-menu">${item('dl-menu-restore', 'Επαναφορά', 'Η κίνηση ξαναμετρά στο υπόλοιπο', 'dlMenuRestore')}</div>` : '';
+    return `<div style="width:32px;position:relative" class="r">
+    <button type="button" class="dl-more" title="Επιλογές" onclick="event.stopPropagation();dlToggleMenu(${e.id})">···</button>
+    ${menu}
+  </div>`;
+  }
   const editItem = isTrip ? item('dl-menu-edit', 'Διόρθωση', 'Αλλαγή αξίας, εξόδων ή ποσού', 'dlMenuEdit') : '';
   const menu = open ? `<div class="dl-menu">${editItem}${item('dl-menu-cancel', 'Ακύρωση', 'Παραμένει στο ιστορικό ως ακυρωμένη', 'dlMenuCancel')}</div>` : '';
   return `<div style="width:32px;position:relative" class="r">
@@ -487,6 +519,7 @@ async function renderPayroll() {
   c.style.padding = '0';
   _dl.view = 'home'; _dl.entries = []; _dl.q = ''; _dl.sort = 'balance'; _dl.pendingFirst = false;
   _dl.cardPayId = null; _dl.printMenuOpen = false;
+  _dl.homeMonth = dlCurrentMonth(); // the filter always starts from today's month (contract v3β)
   c.innerHTML = dlStyles() + '<div class="dl-page"><div style="padding:32px;color:var(--text-mid)">Φόρτωση καρτελών…</div></div>';
   try {
     await dlReloadBalances();
@@ -499,24 +532,40 @@ async function renderPayroll() {
 
 // Balances list is stale the moment any ledger write lands: shared by every
 // write path so none of them can drift back to an old copy. Since Φάση 2
-// (αρχική με κάρτες) this ONE request also carries ?month=<τρέχων μήνας> and
-// stashes the extra `month` block it comes back with (Worker ledger-month.mjs)
-// in _dl.monthData — a separate second GET would defeat the point of the
-// Worker aggregating it server-side in the same round trip. Owner review
-// 14/9: the home screen shows ONLY the real current calendar month, never a
-// picked one — so there is nothing to cache across calls, every reload just
-// asks again for whatever «now» is.
+// (αρχική με κάρτες) this ONE request also carries ?month=<_dl.homeMonth>
+// and stashes the extra `month` block it comes back with (Worker
+// ledger-month.mjs) in _dl.monthData — a separate second GET would defeat
+// the point of the Worker aggregating it server-side in the same round trip.
+// The month is the home filter's (owner 15/9, decision β) — the driver card
+// and bulk screens call this too, with whatever month the home screen last
+// showed, which is harmless: they never read monthData.
 async function dlReloadBalances() {
-  const r = await ctFetch('/costs/ledger?month=' + dlCurrentMonth());
-  _dl.balances = r.records || []; _dl.gap = r.gap || 0;
+  const r = await ctFetch('/costs/ledger?month=' + (_dl.homeMonth || dlCurrentMonth()));
+  _dl.balances = r.records || []; _dl.gap = r.gap || 0; _dl.gapRts = r.gapRts || [];
   _dl.monthData = r.month || null; // null = ο Worker δεν το δίνει ακόμη (αρχή 1: ορατό, όχι σιωπή)
 }
 
-// 'YYYY-MM' του πραγματικού σημερινού μήνα — για το ?month= του fetch ΚΑΙ
-// για τον υπότιτλο .dl-kpi-sub (με λέξεις, μέσω DL_MONTHS πιο κάτω στο αρχείο).
+// 'YYYY-MM' του πραγματικού σημερινού μήνα — αφετηρία του φίλτρου μήνα της
+// αρχικής και το «Σήμερα» του.
 function dlCurrentMonth() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+// Month filter of the home screen (decision β, owner 15/9): ‹ › move one
+// month, «Σήμερα» returns to the real month. Each move is a fresh GET — the
+// Worker aggregates the month, the browser never sums 2 000 entries itself.
+function dlHomeMonthLabel(ym) { return DL_MONTHS[Number(ym.slice(5, 7)) - 1] + ' ' + ym.slice(0, 4); }
+async function dlHomeMonthShift(delta) {
+  const [y, m] = (_dl.homeMonth || dlCurrentMonth()).split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + delta, 1));
+  await dlHomeMonthSet(d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'));
+}
+async function dlHomeMonthSet(ym) {
+  _dl.homeMonth = ym; _dl.cardPayId = null;
+  try { await dlReloadBalances(); }
+  catch (e) { if (typeof toast === 'function') toast('Ο μήνας δεν φορτώθηκε: ' + e.message, 'error'); return; }
+  dlRenderHome();
 }
 
 function dlSetSort(s) { _dl.sort = s; dlRenderHome(); }
@@ -578,8 +627,9 @@ function dlRenderHome() {
   const monthAvailable = !!monthData;
   const monthTrips = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).trips || 0), 0) : null;
   const monthPayments = monthAvailable ? activeDrivers.reduce((a, b) => a + Number((monthData.drivers[b.driver_id] || {}).payments || 0), 0) : null;
-  const cm = dlCurrentMonth();
-  const monthLabel = DL_MONTHS[Number(cm.slice(5, 7)) - 1] + ' ' + cm.slice(0, 4);
+  const cm = _dl.homeMonth || dlCurrentMonth();
+  const monthLabel = dlHomeMonthLabel(cm);
+  const isToday = cm === dlCurrentMonth();
 
   // Ανενεργοί που ακόμη χρωστούν/τους χρωστάμε: ΔΕΝ γίνονται κάρτα (owner
   // review 14/9), αλλά ένα υπόλοιπο που υπάρχει δεν πρέπει να εξαφανίζεται
@@ -605,12 +655,15 @@ function dlRenderHome() {
     <div class="dl-kpi">
       <div class="dl-kpi-tile" data-kpi="owed"><div class="k">Οφειλή σήμερα</div><div class="v">${dlEur(sumBalance)}</div></div>
       <div class="dl-kpi-tile" data-kpi="trips"><div class="k">Δρομολόγια μήνα</div><div class="v">${monthAvailable ? monthTrips : '—'}</div></div>
-      <div class="dl-kpi-tile${_dl.pendingFirst ? ' on' : ''}" data-kpi="pending" onclick="dlTogglePendingFirst()"><div class="k">Χωρίς αξία</div><div class="v">${totalPending}</div></div>
+      <div class="dl-kpi-tile${_dl.pendingFirst ? ' on' : ''}" data-kpi="pending" onclick="dlTogglePendingFirst()"><div class="k">Χωρίς αξία</div><div class="v">${totalPending}</div><div class="dl-kpi-hint">${_dl.pendingFirst ? 'πρώτα στη λίστα ✓' : 'δείξε πρώτα ›'}</div></div>
       <div class="dl-kpi-tile" data-kpi="payments"><div class="k">Πληρωμές μήνα</div><div class="v">${monthAvailable ? dlEur(monthPayments) : '—'}</div></div>
       <div class="dl-kpi-tile" data-kpi="active"><div class="k">Ενεργοί οδηγοί</div><div class="v">${activeDrivers.length}</div></div>
     </div>
     <div class="dl-kpi-foot">
-      <span class="dl-kpi-sub">${escapeHtml(monthLabel)}</span>
+      <button type="button" class="dl-mbtn" id="dlHomePrev" title="Προηγούμενος μήνας" onclick="dlHomeMonthShift(-1)">‹</button>
+      <span class="dl-kpi-sub" id="dlHomeMonth">${escapeHtml(monthLabel)}</span>
+      <button type="button" class="dl-mbtn" id="dlHomeNext" title="Επόμενος μήνας" onclick="dlHomeMonthShift(1)">›</button>
+      ${isToday ? '' : `<button type="button" class="dl-btn" id="dlHomeToday" style="height:28px;padding:0 10px;font-size:12px" onclick="dlHomeMonthSet(dlCurrentMonth())">Σήμερα</button>`}
       <span class="dl-sp"></span>
       <select id="dlSort" onchange="dlSetSort(this.value)">
         <option value="balance"${_dl.sort === 'balance' ? ' selected' : ''}>Οφειλή φθίνουσα</option>
@@ -620,6 +673,7 @@ function dlRenderHome() {
       <input id="dlSearch" class="dl-search" placeholder="Αναζήτηση οδηγού…" value="${escapeHtml(_dl.q)}" oninput="dlSearchInput(this)">
     </div>
     ${monthAvailable ? '' : `<div class="dl-note">Δεν φορτώθηκαν τα ποσά μήνα — ο διακομιστής δεν υποστηρίζει ακόμη τον μήνα</div>`}
+    ${dlGapBlockHtml()}
     <div class="dl-grid">${gridHtml}</div>
     <div class="dl-foot">
       <span><b>${activeDrivers.length}</b> οδηγοί</span><span>·</span>
@@ -629,7 +683,83 @@ function dlRenderHome() {
       <span>Ποσά σε ευρώ. Υπόλοιπο = συνολικό έως σήμερα · μήνας (${escapeHtml(monthLabel)}) = κινήσεις με ημερομηνία μέσα σε αυτόν</span>
       ${inactiveWithBalance.length ? `<div class="dl-foot-inactive">+ ${inactiveWithBalance.length} ανενεργοί με υπόλοιπο ${dlMoney(inactiveSum)}, βλ. κατάσταση οφειλών</div>` : ''}
     </div>
+    ${dlModalShellHtml()}
   </div>`;
+}
+
+// dl_v_rt_gap on the home screen (brief 15/9, Ομάδα 4): owned round trips
+// with a driver and NO live ledger line. The Worker has always returned them
+// (gapRts) and the screen only ever showed the count in v1 — a trip that
+// exists but pays nobody must be visible where the work happens (αρχή 1).
+// Normally empty (trigger 011 opens the line at assignment); it fills only
+// when a line was cancelled by hand after the trip stayed live. «Σύνδεση»
+// opens the missing line for that RT (amounts NULL, like the trigger would).
+// No RT code on screen (design rule) — the code sits in title= only.
+function dlGapBlockHtml() {
+  const rts = _dl.gapRts || [];
+  if (!rts.length) return '';
+  const name = id => { const b = _dl.balances.find(x => x.driver_id === id); return b ? b.full_name : 'οδηγός #' + id; };
+  const rows = rts.map(r => `<div class="dl-gap-row" data-rt="${r.rt_id}" title="${escapeHtml(r.code || '')}">
+      <span class="m">${escapeHtml(name(r.driver_id))}</span>
+      <span class="s" style="font-variant-numeric:tabular-nums">${r.date_start ? dlDateRange(r.date_start, null) : '—'}</span>
+      <span class="dl-sp"></span>
+      <button type="button" class="dl-btn dl-gap-link" style="height:28px;padding:0 10px;font-size:12px" onclick="dlLinkRt(${r.driver_id}, ${r.rt_id}, '${escapeHtml(r.date_start || '')}', 'home')">Σύνδεση</button>
+    </div>`).join('');
+  return `<div class="dl-gap">
+    <div class="dl-gap-title">${rts.length} δρομολόγι${rts.length === 1 ? 'ο' : 'α'} χωρίς γραμμή μισθοδοσίας</div>
+    ${rows}
+  </div>`;
+}
+
+// One POST for both lists («Σύνδεση» on the home gap block and on the driver
+// card's own list): a trip line linked to the RT, dated at the RT's start,
+// amounts NULL — exactly what trigger 011 writes at assignment, so a hand
+// link and an automatic one are indistinguishable in the ledger (αρχή 3).
+async function dlLinkRt(driverId, rtId, dateStart, view) {
+  const entry_date = dateStart || new Date().toISOString().slice(0, 10);
+  try {
+    await ctFetch('/costs/ledger', { method: 'POST', body: { driver_id: driverId, entry_type: 'trip', entry_date, rt_id: rtId } });
+    await dlReloadBalances();
+    if (view === 'driver') { await dlReloadEntries(); dlRenderDriverCard(); }
+    else dlRenderHome();
+  } catch (e) { if (typeof toast === 'function') toast('Δεν συνδέθηκε: ' + e.message, 'error'); }
+}
+
+// #dlOverlay/#dlModal on every view (contract v3β) — the reason modal below
+// replaces window.prompt everywhere, so the shell cannot live only on the
+// driver card any more.
+function dlModalShellHtml() {
+  return `<div class="dl-overlay" id="dlOverlay" onclick="dlCloseModal()"></div><div class="dl-modal" id="dlModal"></div>`;
+}
+
+// ── modal αιτιολογίας/ποσού (αντί για window.prompt — brief 15/9) ──
+// One modal for Διόρθωση (reason), Ακύρωση (reason), Επαναφορά (reason) and
+// the bulk «Ίδιο ποσό σε όλους» (number). `onSubmit(value)` runs only with a
+// non-empty value; Enter = save, Esc/overlay = close and nothing happens.
+// window.prompt was rejected by the brief: it looks like a browser error
+// dialog to the user, cannot say WHY the reason is required, and Playwright
+// cannot prove what it showed.
+function dlOpenReason(o) {
+  const m = document.getElementById('dlModal'), ov = document.getElementById('dlOverlay');
+  if (!m || !ov) return;
+  ov.classList.add('open'); m.classList.add('open');
+  const isNum = o.type === 'number';
+  m.innerHTML = `<div style="display:flex;align-items:center;margin-bottom:6px"><span class="dl-title" id="dlReasonTitle" style="font-size:18px">${escapeHtml(o.title)}</span><span class="dl-sp"></span><button class="dl-btn" style="border:0" onclick="dlCloseModal()">✕</button></div>
+    ${o.sub ? `<div class="s" style="margin-bottom:14px">${escapeHtml(o.sub)}</div>` : ''}
+    <div class="dl-f" style="margin-bottom:16px"><label>${escapeHtml(o.label || 'Αιτιολογία')}</label><input ${isNum ? 'type="number" step="0.01" min="0"' : 'type="text" maxlength="200"'} id="dlReason" placeholder="${escapeHtml(o.placeholder || 'Υποχρεωτικό')}"></div>
+    <div style="display:flex;gap:12px;align-items:center"><span class="dl-sp"></span><button class="dl-btn" style="border:0;color:var(--accent)" onclick="dlCloseModal()">Άκυρο</button><button class="dl-btn primary" id="dlReasonSave">${escapeHtml(o.button || 'Καταχώριση')}</button></div>
+    <div class="dl-err" id="dlErr"></div>`;
+  const input = document.getElementById('dlReason');
+  const save = () => {
+    const raw = input.value.trim();
+    const ok = isNum ? Number(raw) > 0 : raw.length > 0;
+    if (!ok) { document.getElementById('dlErr').textContent = isNum ? 'Το ποσό πρέπει να είναι θετικό.' : 'Η αιτιολογία είναι υποχρεωτική — γράφεται στο ιστορικό.'; input.focus(); return; }
+    dlCloseModal();
+    o.onSubmit(isNum ? Number(raw) : raw);
+  };
+  document.getElementById('dlReasonSave').onclick = save;
+  input.onkeydown = ev => { if (ev.key === 'Enter') { ev.preventDefault(); save(); } };
+  input.focus();
 }
 
 // Αριθμός/λέξη στο υπόλοιπο της κάρτας (Figma 616:1011 #5): ένα υπόλοιπο 0
@@ -757,7 +887,12 @@ if (typeof document !== 'undefined') {
     if (_dl.view === 'home') dlRenderHome();
   });
   document.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Escape' && _dl.cardPayId !== null && _dl.view === 'home') { _dl.cardPayId = null; dlRenderHome(); }
+    if (ev.key !== 'Escape') return;
+    // Esc closes the reason/payment modal first (contract v3β: Esc = close,
+    // nothing sent) — on any view, since the shell exists on all three.
+    const m = document.getElementById('dlModal');
+    if (m && m.classList.contains('open')) { dlCloseModal(); return; }
+    if (_dl.cardPayId !== null && _dl.view === 'home') { _dl.cardPayId = null; dlRenderHome(); }
   });
 }
 
@@ -881,7 +1016,7 @@ function dlRenderDriverCard() {
     <div class="dl-hero">
       <div class="dl-avatar" style="width:56px;height:56px;font-size:18px">${escapeHtml(dlInitials(b.full_name))}</div>
       <div class="dl-hero-main"><span class="dl-title">${escapeHtml(b.full_name)}</span>
-        <span class="s">${dlTypeWord(b.type)}${firstEntry ? ' · από ' + dlDateRange(firstEntry, null) : ''}</span></div>
+        <span class="s">${(b.type === 'External' || b.type === 'Internal') ? dlTypeWord(b.type) : `<a class="link" id="dlTypeLink" href="#" onclick="dlOpenDriverForm(${_dl.driver});return false">Ορισμός τύπου →</a>`}${firstEntry ? ' · από ' + dlDateRange(firstEntry, null) : ''}</span></div>
       <div class="dl-hero-bal"><span class="v big${Number(b.balance) < 0 ? ' dl-neg' : ''}">${dlBal(b)}</span><span class="s">${escapeHtml(bw.text)}</span></div>
       <span class="dl-sp"></span>
       <button id="dlBtnPayment" class="dl-btn primary" onclick="dlOpenPayment(${_dl.driver})">Πληρωμή</button>
@@ -905,6 +1040,7 @@ function dlRenderDriverCard() {
       <span class="dl-sp"></span>
       <span class="dl-period-label">${escapeHtml(periodLabel)}</span>
     </div>
+    ${dlRtsBlockHtml()}
     <div class="dl-ledger">
       <div class="dl-th"><div style="width:100px">Ημ/νία</div><div style="flex:1">Κίνηση</div><div style="width:110px" class="r">Αξία</div><div style="width:110px" class="r">Έλαβε</div><div style="width:110px" class="r">Έξοδα</div><div style="width:120px" class="r">Μεταβολή</div><div style="width:130px" class="r">Υπόλοιπο</div><div style="width:32px"></div></div>
       ${dlQuickEntryRowHtml()}
@@ -925,7 +1061,26 @@ function dlRenderDriverCard() {
       </div>
     </div>
     <div class="dl-foot"><span>Ποσά σε €. ΜΕΤΑΒΟΛΗ = αξία + έξοδα − έλαβε · ΥΠΟΛΟΙΠΟ = τρέχον υπόλοιπο μετά την κίνηση · «—» = δρομολόγιο χωρίς καταχωρισμένη αξία</span><span class="dl-sp"></span><span>··· = Διόρθωση / Ακύρωση κίνησης</span></div>
-    <div class="dl-overlay" id="dlOverlay" onclick="dlCloseModal()"></div><div class="dl-modal" id="dlModal"></div>
+    ${dlModalShellHtml()}
+  </div>`;
+}
+
+// The driver's own RTs without a live ledger line (Worker: dl_v_rt_gap
+// filtered by driver, returned as `rts` with the card since 5/9 and never
+// rendered — brief 15/9). Same amber rule and the same «Σύνδεση» POST as
+// the home block (dlLinkRt); dates DD/MM, RT code only in title=.
+function dlRtsBlockHtml() {
+  const rts = _dl.rts || [];
+  if (!rts.length) return '';
+  const rows = rts.map(r => `<div class="dl-rts-row" data-rt="${r.rt_id}" title="${escapeHtml(r.code || '')}">
+      <span class="m">Δρομολόγιο</span>
+      <span class="s" style="font-variant-numeric:tabular-nums">${r.date_start ? dlDateRange(r.date_start, null) : '—'}</span>
+      <span class="dl-sp"></span>
+      <button type="button" class="dl-btn dl-rts-link" style="height:28px;padding:0 10px;font-size:12px" onclick="dlLinkRt(${_dl.driver}, ${r.rt_id}, '${escapeHtml(r.date_start || '')}', 'driver')">Σύνδεση</button>
+    </div>`).join('');
+  return `<div class="dl-rts">
+    <div class="dl-rts-title">${rts.length} δρομολόγι${rts.length === 1 ? 'ο' : 'α'} χωρίς γραμμή — δεν μετρ${rts.length === 1 ? 'ά' : 'ούν'} στο υπόλοιπο μέχρι τη σύνδεση</div>
+    ${rows}
   </div>`;
 }
 
@@ -969,7 +1124,7 @@ function dlQeClear() {
 async function dlQeSubmit() {
   const g = id => document.getElementById(id).value;
   const route = g('dlQeRoute').trim();
-  if (!route) { alert('Η διαδρομή είναι υποχρεωτική.'); document.getElementById('dlQeRoute').focus(); return; }
+  if (!route) { if (typeof toast === 'function') toast('Η διαδρομή είναι υποχρεωτική.', 'error'); document.getElementById('dlQeRoute').focus(); return; }
   const n = id => { const v = g(id); return v === '' ? undefined : Number(v); };
   const date = g('dlQeDate') || new Date().toISOString().slice(0, 10);
   const body = { driver_id: _dl.driver, entry_type: 'trip', entry_date: date, route, trip_value: n('dlQeValue'), advance: n('dlQeAdvance'), expenses: n('dlQeExpenses') };
@@ -980,7 +1135,7 @@ async function dlQeSubmit() {
     await dlReloadEntries();
     dlRenderDriverCard();
     dlFocusQuickEntry();
-  } catch (e) { alert('Δεν καταχωρήθηκε: ' + e.message); }
+  } catch (e) { if (typeof toast === 'function') toast('Δεν καταχωρήθηκε: ' + e.message, 'error'); }
 }
 
 // Click on a live trip row → its three amount cells become inputs in place.
@@ -1014,17 +1169,67 @@ async function dlSaveInlineEdit(id) {
   // Reason is required only when changing an already-written (non-null) value — the Worker enforces this.
   const changingWritten = Object.keys(body).some(k => e[k] != null);
   if (changingWritten) {
-    const reason = window.prompt('Αιτιολογία αλλαγής (υποχρεωτική):');
-    if (!reason) return;
-    body.reason = reason;
+    dlOpenReason({ title: 'Διόρθωση ποσού', sub: 'Το ποσό ήταν ήδη γραμμένο — η αλλαγή καταγράφεται στο ιστορικό με την αιτιολογία.',
+      onSubmit: reason => dlPatchEntry(id, { ...body, reason }, 'Δεν αποθηκεύτηκε') });
+    return;
   }
+  await dlPatchEntry(id, body, 'Δεν αποθηκεύτηκε');
+}
+
+// The one PATCH path of the card (fill/correct, cancel, restore): reload
+// both the balances and the entries after it, so the hero and the ledger
+// can never show two different truths (αρχή 3). Errors are a toast, never
+// alert() (brief 15/9).
+async function dlPatchEntry(id, body, failMsg) {
   try {
     await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body });
     _dl.editId = null;
     await dlReloadBalances();
     await dlReloadEntries();
     dlRenderDriverCard();
-  } catch (err) { alert('Δεν αποθηκεύτηκε: ' + err.message); }
+  } catch (err) { if (typeof toast === 'function') toast(failMsg + ': ' + err.message, 'error'); }
+}
+
+// Same list as the Worker's restore branch (index.js, PATCH /costs/ledger/:id
+// {restore}) — owner decision 15/9 via coordinator. accountant/dispatcher: no.
+function dlCanRestore() {
+  return typeof ROLE !== 'undefined' && (ROLE === 'owner' || ROLE === 'management');
+}
+
+// Restoring a cancelled movement — a wrong click of Θοδωρής must not stay
+// locked (brief 15/9). Reason mandatory (the Worker refuses without one);
+// the Worker appends «· επαναφορά: <reason>» to the note and audits it.
+function dlMenuRestore(id) {
+  _dl.menuOpenId = null;
+  dlRenderDriverCard(); // closes the «···» menu (rebuilds #dlModal empty — so open it AFTER)
+  dlOpenReason({ title: 'Επαναφορά κίνησης', sub: 'Η ακύρωση αναιρείται και η κίνηση ξαναμετρά στο υπόλοιπο. Η αιτιολογία γράφεται στο ιστορικό.', button: 'Επαναφορά',
+    onSubmit: reason => dlPatchEntry(id, { restore: true, reason }, 'Δεν επαναφέρθηκε') });
+}
+
+// The driver's type (Εσωτερικός/Εξωτερικός) lives on the DRIVERS entity, not
+// in the ledger — 57/59 drivers have none (brief 15/9). Instead of a dead
+// «—», the card links straight into that driver's edit form: the facade id
+// (recXXX) of a Postgres driver id comes from /costs/lookups (the same
+// mapping the entity card uses in the other direction), then the Drivers
+// page is opened and its edit modal called once its records have loaded.
+// entity.js is not touched (S2 owns it).
+async function dlOpenDriverForm(driverId) {
+  const fail = msg => { if (typeof toast === 'function') toast(msg, 'error'); };
+  let legacyId = null;
+  try {
+    const lk = await ctFetch('/costs/lookups');
+    legacyId = ((lk && lk.drivers) || []).find(x => Number(x.id) === Number(driverId))?.legacy_id || null;
+  } catch (e) { return fail('Η φόρμα οδηγού δεν άνοιξε: ' + e.message); }
+  if (!legacyId || typeof navigate !== 'function' || typeof openEntityEdit !== 'function') return fail('Ο οδηγός δεν βρέθηκε στη λίστα Οδηγών.');
+  navigate('drivers');
+  const t0 = Date.now();
+  const tick = () => {
+    const st = (typeof _entityState !== 'undefined') ? _entityState.drivers : null;
+    if (st && Array.isArray(st.records) && st.records.length) { openEntityEdit('drivers', legacyId); return; }
+    if (Date.now() - t0 > 8000) return fail('Η λίστα Οδηγών δεν φορτώθηκε — άνοιξε τον οδηγό από τη σελίδα Οδηγοί.');
+    setTimeout(tick, 150);
+  };
+  tick();
 }
 
 // ── «···» μενού γραμμής (v3 #7, αντί για μόνιμο «×» + κλικ σε ολόκληρη
@@ -1043,16 +1248,11 @@ function dlMenuEdit(id) { _dl.menuOpenId = null; dlEditRow(id); }
 
 // The movement is never deleted — cancellation with a reason is the only undo,
 // and stays visible (struck through) on the card.
-async function dlMenuCancel(id) {
+function dlMenuCancel(id) {
   _dl.menuOpenId = null;
-  const reason = window.prompt('Αιτιολογία ακύρωσης (υποχρεωτική):');
-  if (!reason) { dlRenderDriverCard(); return; }
-  try {
-    await ctFetch('/costs/ledger/' + id, { method: 'PATCH', body: { cancel: true, reason } });
-    await dlReloadBalances();
-    await dlReloadEntries();
-    dlRenderDriverCard();
-  } catch (err) { alert('Δεν ακυρώθηκε: ' + err.message); }
+  dlRenderDriverCard(); // closes the «···» menu (rebuilds #dlModal empty — so open it AFTER)
+  dlOpenReason({ title: 'Ακύρωση κίνησης', sub: 'Η κίνηση μένει ορατή στο ιστορικό ως ακυρωμένη και δεν μετρά στο υπόλοιπο.', button: 'Ακύρωση κίνησης',
+    onSubmit: reason => dlPatchEntry(id, { cancel: true, reason }, 'Δεν ακυρώθηκε') });
 }
 
 // Closes an open row menu on an outside click or Esc — guarded for node:test,
@@ -1198,6 +1398,7 @@ function dlRenderBulk() {
     <div class="dl-th"><div style="width:320px">Οδηγός</div><div style="width:130px" class="r">Οφειλή</div><div style="width:130px" class="r">Προηγ. μήνας</div><div style="width:150px" class="r">Ποσό</div><div style="width:150px" class="r">Νέα οφειλή</div><div style="width:40px"></div></div>
     <div>${rows || showEmpty({ title: 'Κανένας οδηγός με κίνηση', description: '' })}</div>
     <div id="dlBulkFoot">${dlBulkFootHtml()}</div>
+    ${dlModalShellHtml()}
   </div>`;
 }
 
@@ -1258,12 +1459,8 @@ function dlBulkDate(v) {
 }
 
 function dlBulkSameAmount() {
-  const v = window.prompt('Ποσό για όλους (€):');
-  if (v === null || v === '') return;
-  const n = Number(v);
-  if (!(n > 0)) return;
-  dlBulkDrivers().forEach(d => { _dl.bulk.amounts[d.driver_id] = String(n); });
-  dlRenderBulk();
+  dlOpenReason({ title: 'Ίδιο ποσό σε όλους', sub: 'Συμπληρώνει το ίδιο ποσό σε κάθε γραμμή — τίποτα δεν καταχωρείται πριν το «Καταχώριση».', label: 'Ποσό (€)', type: 'number', placeholder: '0,00', button: 'Συμπλήρωση',
+    onSubmit: n => { dlBulkDrivers().forEach(d => { _dl.bulk.amounts[d.driver_id] = String(n); }); dlRenderBulk(); } });
 }
 
 function dlBulkFullBalance() {

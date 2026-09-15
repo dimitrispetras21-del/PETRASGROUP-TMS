@@ -3300,6 +3300,22 @@ async function handleCosts(request, url, origin, env) {
     // ---- LEDGER (Μισθοδοσία Οδηγών) — spec 2026-09-05 §4 ----
     // ---- GET /costs/ledger : one row per driver + reconciliation gap ----
     if (resource === "ledger" && method === "GET" && !recId) {
+      // ?pending=1 — the «Χωρίς αξία» queue (brief 15/9, Ομάδα 4): every live
+      // trip line still without a value, across ALL drivers, so Θοδωρής fills
+      // values from one list instead of opening 49 cards. Same view the card
+      // reads (dl_v_entries.pending), same ledger GET permission; the driver
+      // name is joined in the browser from the balances it already holds.
+      if (url.searchParams.get("pending") === "1") {
+        const params = new URLSearchParams({
+          select: "id,driver_id,entry_date,date_end,rt_id,rt_code,route_text,route_legs,advance,expenses",
+          pending: "eq.true",
+          order: "entry_date.desc,id.desc",
+          limit: "2000"
+        });
+        params.append("deleted_at", "is.null");
+        const pend = await dbSelectRaw(env, "dl_v_entries", params);
+        return jsonOk({ records: pend.rows }, origin, env);
+      }
       const month = url.searchParams.get("month");
       let monthRangeResult = null;
       if (month) {
@@ -3377,8 +3393,14 @@ async function handleCosts(request, url, origin, env) {
       if (before.rows[0].deleted_at && !(body && body.restore)) return jsonError("entry is cancelled", 409, origin, env);
       let patch;
       if (body && body.restore) {
-        // undoing a cancellation is an owner act, with a reason, like everything that rewrites history
-        if (caller.role !== "owner") return jsonError("Forbidden", 403, origin, env);
+        // undoing a cancellation rewrites history, so it needs a reason and a
+        // narrow role list. Owner-only until 15/9/2026; owner decision 15/9
+        // (via coordinator, brief Ομάδα 4 απόφαση α): management too — Θοδωρής
+        // enters the payroll and a wrong-click cancellation must not stay
+        // locked until the owner logs in. accountant/dispatcher stay refused.
+        // The same list gates the «Επαναφορά» menu item in modules/payroll.js
+        // (dlCanRestore) — keep the two in step (αρχή 3).
+        if (!["owner", "management"].includes(caller.role)) return jsonError("Forbidden", 403, origin, env);
         // restoring a live row would write a false «επαναφορά» into the audit trail
         if (!before.rows[0].deleted_at) return jsonError("entry is not cancelled", 409, origin, env);
         if (!String(body.reason || "").trim()) return jsonError("reason required to restore", 400, origin, env);

@@ -30,23 +30,48 @@
 // see recompute() below — so POST/PATCH flows produce numbers that stay
 // internally consistent instead of a canned response.
 //
-// What this proves, mapped to the contract:
+// What this proves, mapped to the contract (2026-09-14 base + 2026-09-15
+// «v3β» addendum — docs/superpowers/plans/2026-09-15-payroll-v3b-contract.md):
 //   καρτέλα (screen)  — buttons, 7-word header order, opening/closing rows,
 //                        visible-row set, pending/cancelled rows, ΜΕΤΑΒΟΛΗ/
 //                        ΥΠΟΛΟΙΠΟ signs, no «€» in cells / exactly one in
 //                        the footer, no hex colours in the module source
+//   αιτιολογία modal  — NO window.prompt/alert anywhere (a dialog event FAILS
+//                        the run): Διόρθωση/Ακύρωση/Επαναφορά all go through
+//                        #dlModal/#dlReason/#dlReasonSave; empty reason blocks
+//                        the PATCH with a message in #dlErr, Esc closes with
+//                        no PATCH
 //   μενού «···»       — .dl-menu open/absent, Διόρθωση (no reason on an
 //                        empty value, reason once it is written), Ακύρωση
-//                        (prompt → PATCH {cancel:true,reason})
+//                        (modal → PATCH {cancel:true,reason})
+//   Επαναφορά (α)     — cancelled row: NO .dl-more for accountant, .dl-more +
+//                        ONLY .dl-menu-restore (no edit/cancel) for management
+//                        and owner → modal → PATCH {restore:true,reason}
+//   τύπος οδηγού      — #dlTypeLink «Ορισμός τύπου →» when type is null,
+//                        absent when a type (e.g. External) is set
 //   Προσαρμογή        — empty reason blocks the POST, a reason sends it
 //   Πληρωμή           — payment_cash POST
 //   Γρήγορη καταχώριση — trip POST
+//   RTs χωρίς γραμμή  — καρτέλα .dl-rts (rts.length>0) → .dl-rts-link POST
+//                        {driver_id,entry_type:trip,entry_date,rt_id} → the
+//                        mock drops the linked RT, .dl-rts disappears on
+//                        refetch; absent when rts is empty
+//   dl_v_rt_gap       — αρχική .dl-gap (gap>0) → .dl-gap-row per RT with the
+//                        driver's name → .dl-gap-link POST (same 4 fields) +
+//                        refetch; absent when gap===0
+//   φίλτρο μήνα       — #dlHomePrev/#dlHomeMonth/#dlHomeNext/#dlHomeToday:
+//                        each click issues a NEW GET ?month=, «Δρομολόγια
+//                        μήνα» switches block, #dlHomeToday only visible off
+//                        the current month and returns to it
+//   bulk «Ίδιο ποσό»  — #dlBtnBulk → .dl-bulk-ctrl → modal (#dlReason
+//                        type=number); empty/≤0 blocks with #dlErr, a valid
+//                        amount fills every .dl-row input.dl-ei with NO POST
 //   περίοδος          — μήνας 07 ⇒ opening 0,00/closing 450,00, ΧΩΡΙΣ νέο GET
 //   εκτύπωση/CSV      — popup URL, direct print_payroll.html render (card +
 //                        drivers list), CSV columns/BOM/row-count/no «€»
 //   1280/1440         — no horizontal scroll on the page or the ledger
-//   ρόλοι             — management opens+views, dispatcher sees neither the
-//                        nav item nor the page
+//   ρόλοι             — management opens+views+restores, owner restores,
+//                        dispatcher sees neither the nav item nor the page
 
 const path = require('path');
 const fs = require('fs');
@@ -114,7 +139,9 @@ function recompute(entries) {
   return chrono;
 }
 
-function balanceRow(chrono) {
+// `type` undefined ⇒ 'Internal' (the flows that don't care about #dlTypeLink
+// never pass it); runDriverTypeLinkFlow passes null/'External' explicitly.
+function balanceRow(chrono, type) {
   const rows = chrono.filter(e => e.driver_id === DRIVER_ID);
   const live = rows.filter(e => !e.cancelled);
   const trips = rows.filter(e => e.entry_type === 'trip' && !e.cancelled);
@@ -123,7 +150,7 @@ function balanceRow(chrono) {
   const lastTrip = trips.length ? trips[trips.length - 1] : null;
   const lastPayment = payments.length ? payments[payments.length - 1] : null;
   return {
-    driver_id: DRIVER_ID, full_name: DRIVER_NAME, type: 'Internal', active: true,
+    driver_id: DRIVER_ID, full_name: DRIVER_NAME, type: type !== undefined ? type : 'Internal', active: true,
     balance: live.length ? Number(live[live.length - 1].running_balance || 0) : 0,
     has_entries: rows.length > 0, trips_ytd: trips.length,
     pending_count: trips.filter(e => e.pending).length, review_count: 0,
@@ -139,8 +166,14 @@ function balanceRow(chrono) {
 // NOTE the id ambiguity the real API has (contract, verbatim): GET
 // /costs/ledger/:id addresses a DRIVER, PATCH /costs/ledger/:id addresses a
 // LEDGER ENTRY. Both are handled below on the same route.
-function installPayrollMocks(page) {
-  const store = { entries: freshEntries(), nextId: 100 };
+// `opts.rts` — v3β «RTs χωρίς γραμμή» fixture (array of {rt_id, code,
+// date_start}), returned as `rts` alongside the driver's ledger rows; POST
+// with a matching rt_id drops it from the live list (mirrors the real
+// Worker: once linked, the RT stops showing up as a gap). `opts.type` — v3β
+// «τύπος οδηγού» fixture, passed straight through to balanceRow.
+function installPayrollMocks(page, opts) {
+  opts = opts || {};
+  const store = { entries: freshEntries(), nextId: 100, rts: (opts.rts || []).slice() };
   const captured = { balanceGets: 0, ledgerGets: [], posts: [], patches: [] };
   const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
 
@@ -156,7 +189,7 @@ function installPayrollMocks(page) {
       if (method === 'GET') {
         captured.balanceGets++;
         const chrono = recompute(store.entries);
-        return json(route, { records: [balanceRow(chrono)], gap: 0, gapRts: [] });
+        return json(route, { records: [balanceRow(chrono, opts.type)], gap: 0, gapRts: [] });
       }
       if (method === 'POST') {
         const body = req.postDataJSON();
@@ -164,6 +197,9 @@ function installPayrollMocks(page) {
         const rec = baseEntry(Object.assign({ id: store.nextId++ }, body));
         store.entries.push(rec);
         recompute(store.entries);
+        // v3β «RTs χωρίς γραμμή»: linking an RT (POST carries rt_id) removes
+        // it from the gap list the next GET returns.
+        if (body.rt_id !== undefined && body.rt_id !== null) store.rts = store.rts.filter(r => r.rt_id !== body.rt_id);
         return json(route, { record: rec }, 201);
       }
       return json(route, {}, 404);
@@ -176,7 +212,7 @@ function installPayrollMocks(page) {
       captured.ledgerGets.push(url.search);
       const chrono = recompute(store.entries);
       const rows = chrono.filter(e => e.driver_id === driverId).slice().reverse(); // newest-first, per contract
-      return json(route, { records: rows, rts: [] });
+      return json(route, { records: rows, rts: store.rts });
     }
     if (method === 'PATCH') {
       // PATCH .../ledger/<entryId> — a single ledger row.
@@ -186,7 +222,12 @@ function installPayrollMocks(page) {
       const e = store.entries.find(x => x.id === entryId);
       if (!e) return json(route, {}, 404);
       if (body.cancel) { e.cancelled = true; e.deleted_reason = body.reason || ''; }
-      else {
+      else if (body.restore) {
+        // v3β «Επαναφορά ακύρωσης» — owner/management only PATCH; the mock
+        // doesn't enforce role (the rig proves the role gate via the DOM:
+        // accountant never gets .dl-menu-restore to click in the first place).
+        e.cancelled = false; e.deleted_reason = '';
+      } else {
         for (const k of ['trip_value', 'advance', 'expenses']) if (k in body) e[k] = body[k];
         if ('reason' in body) e.note = body.reason;
       }
@@ -262,6 +303,9 @@ function homeBalances(d) {
 // μπορεί να μη γράψει τίποτα τον μήνα — δοκιμάζεται στο KPI «trips» άθροισμα).
 // Ο 11 έχει τα ίδια νούμερα με το «Οδηγός Α» του Figma 614 (3.650,00/2.750,00)
 // ώστε το screenshot να μπορεί να συγκριθεί οπτικά.
+// v3β adds the prev-month key too (#dlHomePrev) — deliberately DIFFERENT
+// numbers from `cur` (trips 2+1+0=3 vs 4+3+1=8) so the «φίλτρο μήνα» flow can
+// prove the KPI/mini-stats actually SWITCH block, not just re-render the same one.
 function homeMonthBlocks(d) {
   const cur = {
     from: d.curY + '-' + pad2(d.curM) + '-01', to: d.curY + '-' + pad2(d.curM) + '-28',
@@ -273,7 +317,16 @@ function homeMonthBlocks(d) {
       13: { trips: 1, pending: 0, value: 200, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
     },
   };
-  const out = {}; out[d.curKey] = cur;
+  const prev = {
+    from: d.prevY + '-' + pad2(d.prevM) + '-01', to: d.prevY + '-' + pad2(d.prevM) + '-28',
+    drivers: {
+      11: { trips: 2, pending: 0, value: 1200, expenses: 0, advance: 0, payments: 900, adjustments: 0,
+        last_payment: { date: d.prevY + '-' + pad2(d.prevM) + '-15', type: 'payment_bank', amount: 900 } },
+      12: { trips: 1, pending: 0, value: 500, expenses: 0, advance: 0, payments: 500, adjustments: 0, last_payment: null },
+      13: { trips: 0, pending: 0, value: 0, expenses: 0, advance: 0, payments: 0, adjustments: 0, last_payment: null },
+    },
+  };
+  const out = {}; out[d.curKey] = cur; out[d.prevKey] = prev;
   return out;
 }
 
@@ -298,6 +351,9 @@ function installPayrollHomeMocks(page, opts) {
     if (inactive) inactive.balance = opts.inactiveBalance;
   }
   const monthBlocks = homeMonthBlocks(d);
+  // dl_v_rt_gap (v3β «λίστα RT χωρίς γραμμή μισθοδοσίας», .dl-gap) — default
+  // empty so the ordinary fixture proves the block's ABSENCE (gap 0).
+  const gapRts = opts.gapRts || [];
   const store = { nextId: 500, entries: [
     // Ελάχιστο ιστορικό ώστε το .dl-card-open στον 11 να ανοίγει την καρτέλα
     // v3 (renderPayrollDriver) χωρίς σφάλμα — δεν ελέγχονται εδώ τα ποσά της.
@@ -318,7 +374,11 @@ function installPayrollHomeMocks(page, opts) {
     if (!idSeg) {
       if (method === 'GET') {
         captured.homeGets.push(url.search);
-        const body = { records: balances, gap: 0, gapRts: [] };
+        // NEW Worker route (v3β, §Worker): GET /costs/ledger?pending=1 answers
+        // the future pending-queue UI, not this screen — must never be
+        // confused with the plain balances GET the home view actually reads.
+        if (url.searchParams.get('pending') === '1') return json(route, { records: [] });
+        const body = { records: balances, gap: gapRts.length, gapRts };
         const monthParam = url.searchParams.get('month');
         if (!opts.omitMonth && monthParam && monthBlocks[monthParam]) body.month = monthBlocks[monthParam];
         return json(route, body);
@@ -353,12 +413,30 @@ async function newPage(browser, role, viewport) {
   const page = await context.newPage();
   const consoleErrors = [];
   page.on('console', m => { if (m.type() === 'error') consoleErrors.push(m.text()); });
-  // The cancel/edit-with-reason flows use window.prompt (contract: «prompt
-  // αιτιολογίας»); this always accepts a fixed reason string, same pattern as
-  // expenses-proof.js.
-  page.on('dialog', async dialog => { if (dialog.type() === 'prompt') await dialog.accept('proof: test reason'); else await dialog.accept(); });
+  // v3β (15/9): window.prompt is GONE — Διόρθωση/Ακύρωση/Επαναφορά and the
+  // bulk «Ίδιο ποσό σε όλους» all route through #dlModal/#dlReason/
+  // #dlReasonSave instead (see answerReasonModal below). Any dialog appearing
+  // now means the code regressed to window.prompt/alert, which the v3β
+  // contract explicitly forbids — dismiss it (so the page does not hang
+  // waiting for a response the rig will never give) and fail loudly.
+  page.on('dialog', async dialog => {
+    const msg = 'UNEXPECTED ' + dialog.type() + ' dialog (v3β forbids prompt/alert): ' + dialog.message();
+    consoleErrors.push(msg);
+    await dialog.dismiss().catch(() => {});
+    throw new Error('ΑΠΟΤΥΧΙΑ: ' + msg);
+  });
   await preparePage(page, role);
   return { context, page, consoleErrors };
+}
+
+// Contract v3β: the reason modal replaces window.prompt everywhere (Διόρθωση
+// with a written value, Ακύρωση, Επαναφορά, bulk «Ίδιο ποσό σε όλους»).
+// Waits for the modal to actually be open before touching it — the action
+// that opens it (Enter on an edit field, a menu click) is async.
+async function answerReasonModal(page, text) {
+  await page.waitForSelector('#dlModal.open #dlReason', { timeout: 5000 });
+  await page.fill('#dlReason', text);
+  await page.locator('#dlReasonSave').click();
 }
 
 // The pending row's border colour must be var(--warn), whatever it resolves
@@ -481,14 +559,43 @@ async function runHomeFlow(browser) {
   await page.waitForSelector('.dl-grid', { timeout: 15000 });
   await page.waitForTimeout(150);
 
-  // ── πρώτο GET με ?month=· ΚΑΜΙΑ λωρίδα μηνών/chips στο DOM (owner: 3 αλλαγές 14/9) ──
+  // ── πρώτο GET με ?month= ──
   assert(captured.homeGets.length >= 1, 'at least one GET /costs/ledger was issued on load');
   assert(captured.homeGets[0].includes('month=' + d.curKey), 'the FIRST GET /costs/ledger carries ?month=' + d.curKey + ' (got: ' + captured.homeGets[0] + ')');
-  assert(await page.locator('.dl-mstrip').count() === 0, '.dl-mstrip does not exist (no month strip — owner change #1)');
-  assert(await page.locator('.dl-m').count() === 0, '.dl-m month tiles do not exist');
-  assert(await page.locator('.dl-marrow').count() === 0, '.dl-marrow arrows do not exist');
-  assert(await page.locator('.dl-chip').count() === 0, '.dl-chip does not exist anywhere (replaced by the KPI pending tile — owner change #2)');
-  assert(await page.locator('.dl-filters').count() === 0, '.dl-filters does not exist');
+
+  // ── φίλτρο μήνα (v3β, .dl-kpi-foot): #dlHomePrev/#dlHomeMonth/#dlHomeNext/
+  // #dlHomeToday — REPLACES the old «καμία λωρίδα μηνών/chips» assertion
+  // (that block was about .dl-mstrip/.dl-m/.dl-marrow/.dl-chip, which stay
+  // gone, but v3β adds this SMALL prev/next nav in their place). ──
+  assert(await page.locator('#dlHomePrev').count() === 1, '#dlHomePrev «‹» exists');
+  assert(await page.locator('#dlHomeMonth').count() === 1, '#dlHomeMonth exists');
+  assert(await page.locator('#dlHomeNext').count() === 1, '#dlHomeNext «›» exists');
+  const curMonthTxt = (await page.locator('#dlHomeMonth').innerText()).trim();
+  assert(new RegExp(DL_MONTHS_GR[d.curM - 1] + '\\s+' + d.curY).test(curMonthTxt), '#dlHomeMonth reads the current month in words (' + DL_MONTHS_GR[d.curM - 1] + ' ' + d.curY + '): ' + curMonthTxt);
+  assert(!(await page.locator('#dlHomeToday').isVisible().catch(() => false)), '#dlHomeToday is absent/hidden on the current month');
+
+  const getsBeforePrev = captured.homeGets.length;
+  await page.locator('#dlHomePrev').click();
+  await page.waitForTimeout(200);
+  assert(captured.homeGets.length === getsBeforePrev + 1, 'clicking #dlHomePrev sends exactly one NEW GET /costs/ledger');
+  assert(captured.homeGets[captured.homeGets.length - 1].includes('month=' + d.prevKey), 'the new GET carries ?month=' + d.prevKey + ': ' + captured.homeGets[captured.homeGets.length - 1]);
+  const prevMonthTxt = (await page.locator('#dlHomeMonth').innerText()).trim();
+  assert(new RegExp(DL_MONTHS_GR[d.prevM - 1] + '\\s+' + d.prevY).test(prevMonthTxt), '#dlHomeMonth switches to the previous month in words (' + DL_MONTHS_GR[d.prevM - 1] + ' ' + d.prevY + '): ' + prevMonthTxt);
+  assert(await page.locator('#dlHomeToday').isVisible(), '#dlHomeToday becomes visible once the shown month ≠ current');
+  const kpiTripsPrev = (await page.locator('.dl-kpi-tile[data-kpi="trips"] .v').innerText()).trim();
+  assert(kpiTripsPrev === '3', '«Δρομολόγια μήνα» reflects the PREVIOUS month block (2+1+0=3): ' + kpiTripsPrev);
+
+  const getsBeforeToday = captured.homeGets.length;
+  await page.locator('#dlHomeToday').click();
+  await page.waitForTimeout(200);
+  assert(captured.homeGets.length === getsBeforeToday + 1, 'clicking #dlHomeToday sends exactly one NEW GET /costs/ledger');
+  assert(captured.homeGets[captured.homeGets.length - 1].includes('month=' + d.curKey), '#dlHomeToday returns to ?month=' + d.curKey + ': ' + captured.homeGets[captured.homeGets.length - 1]);
+  assert(!(await page.locator('#dlHomeToday').isVisible().catch(() => false)), '#dlHomeToday hides again once back on the current month');
+  const kpiTripsBack = (await page.locator('.dl-kpi-tile[data-kpi="trips"] .v').innerText()).trim();
+  assert(kpiTripsBack === '8', '«Δρομολόγια μήνα» returns to the CURRENT month block (8) after #dlHomeToday: ' + kpiTripsBack);
+
+  // ── dl_v_rt_gap: block ΑΠΟΥΣΙΑΖΕΙ στο προεπιλεγμένο fixture (gap 0) ──
+  assert(await page.locator('.dl-gap').count() === 0, '.dl-gap is ABSENT when gap === 0 (default fixture)');
 
   // ── κεφαλίδα: κουμπιά ──
   assert(await page.locator('#dlBtnBulk').count() === 1, '#dlBtnBulk «Μαζική πληρωμή» exists');
@@ -574,15 +681,23 @@ async function runHomeFlow(browser) {
 
   // ── KPI tile «pending»: toggle ΤΑΞΙΝΟΜΗΣΗΣ (δεν κρύβει) — αντικαθιστά το παλιό chip ──
   const pendingTile = page.locator('.dl-kpi-tile[data-kpi="pending"]');
+  // v3β: ορατή affordance — .dl-kpi-hint, κείμενο διαφορετικό ανενεργό/ενεργό.
+  assert(await pendingTile.locator('.dl-kpi-hint').count() === 1, '.dl-kpi-tile[data-kpi="pending"] carries .dl-kpi-hint');
+  const hintOff = (await pendingTile.locator('.dl-kpi-hint').innerText()).trim();
+  assert(hintOff.length > 0, '.dl-kpi-hint (inactive) carries non-empty text: «' + hintOff + '»');
   await pendingTile.click();
   await page.waitForTimeout(150);
   assert(await pendingTile.evaluate(el => el.classList.contains('on')), '.dl-kpi-tile[data-kpi="pending"] carries .on after the first click');
+  const hintOn = (await pendingTile.locator('.dl-kpi-hint').innerText()).trim();
+  assert(hintOn.length > 0 && hintOn !== hintOff, '.dl-kpi-hint text differs active vs inactive: «' + hintOff + '» → «' + hintOn + '»');
   assert(await page.locator('.dl-card').count() === 4, 'the pending KPI toggle re-sorts, it does not hide cards (still 4)');
   const firstIsPending = await page.locator('.dl-card').first().evaluate(el => el.classList.contains('pending'));
   assert(firstIsPending, 'after the pending KPI toggle, the FIRST .dl-card carries .pending');
   await pendingTile.click();
   await page.waitForTimeout(150);
   assert(!(await pendingTile.evaluate(el => el.classList.contains('on'))), '.dl-kpi-tile[data-kpi="pending"] loses .on on the second click');
+  const hintOffAgain = (await pendingTile.locator('.dl-kpi-hint').innerText()).trim();
+  assert(hintOffAgain === hintOff, '.dl-kpi-hint text returns to the inactive wording after the second click: «' + hintOffAgain + '»');
   order = await page.$$eval('.dl-card', els => els.map(el => el.getAttribute('data-driver')));
   assert(JSON.stringify(order) === JSON.stringify(['11', '12', '14', '13']), 'clicking the pending KPI tile again returns to the balance-desc order: ' + JSON.stringify(order));
 
@@ -728,6 +843,95 @@ async function runHomeFlow(browser) {
   return { consoleErrors };
 }
 
+// ═══════════════════════════════ ΑΡΧΙΚΗ — dl_v_rt_gap (.dl-gap, v3β) ═══════════════════════════════
+async function runHomeGapFlow(browser) {
+  console.log('\n== accountant · αρχική · dl_v_rt_gap (.dl-gap) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const d = homeDates();
+  const gapRts = [
+    { rt_id: 9001, code: 'RT-9001', driver_id: 11, date_start: d.curY + '-' + pad2(d.curM) + '-06' },
+    { rt_id: 9002, code: 'RT-9002', driver_id: 12, date_start: d.curY + '-' + pad2(d.curM) + '-07' },
+  ];
+  const { captured } = installPayrollHomeMocks(page, { gapRts });
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-grid', { timeout: 15000 });
+  await page.waitForTimeout(150);
+
+  assert(await page.locator('.dl-gap').count() === 1, '.dl-gap is present when gap > 0');
+  const gapTitle = await page.locator('.dl-gap-title').innerText();
+  assert(/2/.test(gapTitle), '.dl-gap-title carries «2»: ' + gapTitle);
+  assert(await page.locator('.dl-gap-row[data-rt]').count() === 2, 'exactly two .dl-gap-row[data-rt]');
+  const row1 = page.locator('.dl-gap-row[data-rt="9001"]');
+  assert(await row1.count() === 1, '.dl-gap-row[data-rt="9001"] exists');
+  assert((await row1.innerText()).includes('Παπαδόπουλος Γιώργος'), 'the gap row for RT 9001 names driver 11 (Παπαδόπουλος Γιώργος)');
+  assert(await row1.locator('.dl-gap-link').count() === 1, '.dl-gap-row[data-rt="9001"] carries .dl-gap-link');
+  assert(/Σύνδεση/.test(await row1.locator('.dl-gap-link').innerText()), '.dl-gap-link reads «Σύνδεση»');
+  const row2 = page.locator('.dl-gap-row[data-rt="9002"]');
+  assert((await row2.innerText()).includes('Καραγιάννης Νίκος'), 'the gap row for RT 9002 names driver 12 (Καραγιάννης Νίκος)');
+
+  const getsBefore = captured.homeGets.length;
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'POST' && r.url().includes('/costs/ledger'), { timeout: 10000 }),
+    row1.locator('.dl-gap-link').click(),
+  ]);
+  await page.waitForTimeout(200);
+  const gapPost = captured.posts[captured.posts.length - 1];
+  assert(gapPost.driver_id === 11 && gapPost.entry_type === 'trip' && gapPost.entry_date === gapRts[0].date_start && Number(gapPost.rt_id) === gapRts[0].rt_id,
+    'POST /costs/ledger {driver_id:11, entry_type:trip, entry_date:' + gapRts[0].date_start + ', rt_id:' + gapRts[0].rt_id + '}: ' + JSON.stringify(gapPost));
+  assert(captured.homeGets.length === getsBefore + 1, '.dl-gap-link click triggers a refetch GET /costs/ledger');
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════════════════ ΜΑΖΙΚΗ ΠΛΗΡΩΜΗ — «Ίδιο ποσό σε όλους» (view bulk, v3β) ═══════════════════════════════
+async function runBulkFlow(browser) {
+  console.log('\n== accountant · μαζική πληρωμή · «Ίδιο ποσό σε όλους» ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const { captured } = installPayrollHomeMocks(page);
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-grid', { timeout: 15000 });
+  await page.waitForTimeout(150);
+
+  await page.locator('#dlBtnBulk').click();
+  await page.waitForSelector('.dl-bulk-ctrl', { timeout: 5000 });
+  const postsBefore = captured.posts.length;
+  const sameAmountBtn = page.locator('.dl-bulk-ctrl button', { hasText: 'Ίδιο ποσό σε όλους' });
+
+  // ── κενό ποσό → #dlErr, καμία αλλαγή, modal μένει ανοιχτό ──
+  await sameAmountBtn.click();
+  await page.waitForSelector('#dlModal.open #dlReason', { timeout: 5000 });
+  assert((await page.locator('#dlReason').getAttribute('type')) === 'number', '#dlReason carries type="number" for «Ίδιο ποσό σε όλους»');
+  await page.locator('#dlReasonSave').click();
+  await page.waitForTimeout(150);
+  assert((await page.locator('#dlErr').innerText()).trim().length > 0, 'empty amount on «Ίδιο ποσό σε όλους» shows a message in #dlErr');
+  assert(await page.locator('#dlModal.open').count() === 1, '#dlModal stays open after an empty-amount save attempt');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  assert(await page.locator('#dlModal.open').count() === 0, 'Esc closes the bulk-amount modal');
+  assert(captured.posts.length === postsBefore, 'Esc sent no POST');
+
+  // ── 120 → κάθε .dl-row input.dl-ei παίρνει 120, ΚΑΝΕΝΑ POST (μόνο γεμίζει τα πεδία) ──
+  await sameAmountBtn.click();
+  await page.waitForSelector('#dlModal.open #dlReason', { timeout: 5000 });
+  await page.fill('#dlReason', '120');
+  await page.locator('#dlReasonSave').click();
+  await page.waitForTimeout(150);
+  assert(await page.locator('#dlModal.open').count() === 0, '#dlModal closes after a valid amount is saved');
+  const eiInputs = await page.locator('.dl-row input.dl-ei').all();
+  assert(eiInputs.length > 0, 'at least one .dl-row input.dl-ei exists in the bulk list');
+  for (const el of eiInputs) {
+    const v = await el.inputValue();
+    assert(v === '120', 'a .dl-row input.dl-ei carries the bulk amount 120: got «' + v + '»');
+  }
+  assert(captured.posts.length === postsBefore, '«Ίδιο ποσό σε όλους» sent NO POST');
+  // Deliberately NOT clicking the final «Καταχώριση N πληρωμών» button — out
+  // of scope for this rig (0-writes contract), instructed explicitly.
+
+  await context.close();
+  return { consoleErrors };
+}
+
 // ═══════════════════════════════ ΚΑΡΤΕΛΑ (accountant) ═══════════════════════════════
 async function runDriverCardFlow(browser) {
   console.log('\n== accountant · καρτέλα οδηγού (id 11, Αύγουστος 2026) ==');
@@ -747,6 +951,9 @@ async function runDriverCardFlow(browser) {
   assert(await page.locator('.dl-ychip[data-year="2026"].sel').count() === 1, '.dl-ychip[data-year="2026"] carries .sel once clicked');
   await page.selectOption('#dlMonth', '08');
   await page.waitForTimeout(150);
+
+  // ── v3β «RTs χωρίς γραμμή»: ΑΠΟΥΣΙΑΖΕΙ όταν rts κενό (default fixture) ──
+  assert(await page.locator('.dl-rts').count() === 0, '.dl-rts is absent when rts is empty (default fixture)');
 
   // ── buttons ──
   assert(await page.locator('#dlBtnPayment').count() === 1, '#dlBtnPayment «Πληρωμή» exists');
@@ -854,32 +1061,54 @@ async function runDriverCardFlow(browser) {
   assert(fillPatch.id === 3 && Number(fillPatch.body.trip_value) === 222, 'PATCH /costs/ledger/3 {trip_value:222}: ' + JSON.stringify(fillPatch.body));
   assert(!('reason' in fillPatch.body), 'no reason required — id 3 trip_value was empty: ' + JSON.stringify(fillPatch.body));
 
-  // Now id 3 HAS a written value — changing it again must carry a reason.
+  // Now id 3 HAS a written value — changing it again must carry a reason,
+  // via the #dlModal (v3β — no more window.prompt).
   await page.locator('.dl-row[data-entry="3"] .dl-more').click();
   await page.waitForSelector('.dl-menu', { timeout: 5000 });
   await page.locator('.dl-menu-edit').click();
   await page.waitForSelector('#dlEiValue', { timeout: 5000 });
   await page.fill('#dlEiValue', '333');
+  await page.locator('#dlEiValue').press('Enter');
   await Promise.all([
     page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/'), { timeout: 10000 }),
-    page.locator('#dlEiValue').press('Enter'),
+    answerReasonModal(page, 'proof: test reason'),
   ]);
   await page.waitForTimeout(150);
   const editPatch = captured.patches[captured.patches.length - 1];
   assert(editPatch.id === 3 && Number(editPatch.body.trip_value) === 333 && editPatch.body.reason === 'proof: test reason',
-    'PATCH /costs/ledger/3 {trip_value:333, reason} — reason required (222 was already written): ' + JSON.stringify(editPatch.body));
+    'PATCH /costs/ledger/3 {trip_value:333, reason} via #dlModal — reason required (222 was already written): ' + JSON.stringify(editPatch.body));
 
-  // ── Ακύρωση on id 2 (a payment) — prompt reason → PATCH {cancel:true,reason} ──
+  // ── αιτιολογία modal: κενή αιτιολογία → ΚΑΝΕΝΑ PATCH + μήνυμα στο #dlErr·
+  // Esc κλείνει χωρίς PATCH (δοκιμή σε ζωντανή γραμμή id 4, ώστε το
+  // πραγματικό Ακύρωση παρακάτω σε id 2 να μείνει ανεπηρέαστο) ──
+  await page.locator('.dl-row[data-entry="4"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  await page.locator('.dl-menu-cancel').click();
+  await page.waitForSelector('#dlModal.open #dlReason', { timeout: 5000 });
+  const patchesBeforeEmptyCancel = captured.patches.length;
+  await page.locator('#dlReasonSave').click();
+  await page.waitForTimeout(150);
+  assert(captured.patches.length === patchesBeforeEmptyCancel, 'empty αιτιολογία on the cancel modal sends NO PATCH');
+  assert((await page.locator('#dlErr').innerText()).trim().length > 0, '#dlErr shows a message for an empty cancel reason');
+  assert(await page.locator('#dlModal.open').count() === 1, '#dlModal stays open after an empty-reason save attempt');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(150);
+  assert(await page.locator('#dlModal.open').count() === 0, 'Esc closes the cancel modal');
+  assert(captured.patches.length === patchesBeforeEmptyCancel, 'Esc sent no PATCH');
+  assert(await page.locator('.dl-row[data-entry="4"] .dl-more').count() === 1, 'row 4 is still live (Esc aborted the cancel, no PATCH landed)');
+
+  // ── Ακύρωση on id 2 (a payment) — #dlModal reason → PATCH {cancel:true,reason} ──
   await page.locator('.dl-row[data-entry="2"] .dl-more').click();
   await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  await page.locator('.dl-menu-cancel').click();
   await Promise.all([
     page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/2'), { timeout: 10000 }),
-    page.locator('.dl-menu-cancel').click(),
+    answerReasonModal(page, 'proof: test reason'),
   ]);
   await page.waitForTimeout(150);
   const cancelPatch = captured.patches.find(p => p.id === 2 && p.body.cancel);
   assert(!!cancelPatch, 'PATCH /costs/ledger/2 {cancel:true,...} was sent');
-  assert(cancelPatch.body.reason === 'proof: test reason', 'the cancel PATCH carries the prompted reason: ' + JSON.stringify(cancelPatch.body));
+  assert(cancelPatch.body.reason === 'proof: test reason', 'the cancel PATCH carries the modal reason: ' + JSON.stringify(cancelPatch.body));
   await page.waitForSelector('.dl-row.canc[data-entry="2"]', { timeout: 5000 });
   assert(await page.locator('.dl-row[data-entry="2"] .dl-more').count() === 0, 'row 2 loses its .dl-more once cancelled');
 
@@ -981,6 +1210,79 @@ async function runDriverCardFlow(browser) {
   return { consoleErrors, captured };
 }
 
+// ═══════════════════════════════ ΚΑΡΤΕΛΑ — RTs χωρίς γραμμή (.dl-rts, v3β) ═══════════════════════════════
+async function runDriverRtsFlow(browser) {
+  console.log('\n== accountant · καρτέλα · RTs χωρίς γραμμή (.dl-rts) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+  const rt = { rt_id: 9101, code: 'RT-9101', date_start: '2026-08-22' };
+  const { captured } = installPayrollMocks(page, { rts: [rt] });
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-page', { timeout: 15000 });
+  await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+  await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+
+  assert(await page.locator('.dl-rts').count() === 1, '.dl-rts is present when rts.length > 0');
+  const rtsTitle = await page.locator('.dl-rts-title').innerText();
+  assert(/1/.test(rtsTitle), '.dl-rts-title carries «1»: ' + rtsTitle);
+  assert(await page.locator('.dl-rts-row[data-rt]').count() === 1, 'exactly one .dl-rts-row[data-rt]');
+  const rtsRow = page.locator('.dl-rts-row[data-rt="9101"]');
+  assert(await rtsRow.count() === 1, '.dl-rts-row[data-rt="9101"] exists');
+  assert(await rtsRow.locator('.dl-rts-link').count() === 1, '.dl-rts-row carries .dl-rts-link');
+  assert(/Σύνδεση/.test(await rtsRow.locator('.dl-rts-link').innerText()), '.dl-rts-link reads «Σύνδεση»');
+
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'POST' && r.url().includes('/costs/ledger'), { timeout: 10000 }),
+    rtsRow.locator('.dl-rts-link').click(),
+  ]);
+  const rtsPost = captured.posts[captured.posts.length - 1];
+  assert(rtsPost.driver_id === DRIVER_ID && rtsPost.entry_type === 'trip' && rtsPost.entry_date === rt.date_start && Number(rtsPost.rt_id) === rt.rt_id,
+    'POST /costs/ledger {driver_id:11, entry_type:trip, entry_date:' + rt.date_start + ', rt_id:' + rt.rt_id + '}: ' + JSON.stringify(rtsPost));
+  // The mock drops a linked RT from `rts` — the refetch (records + rts) must
+  // make .dl-rts disappear.
+  await page.waitForResponse(r => r.request().method() === 'GET' && r.url().includes('/costs/ledger/' + DRIVER_ID), { timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(200);
+  assert(await page.locator('.dl-rts').count() === 0, '.dl-rts is ABSENT after the refetch (the mock dropped the linked RT)');
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// ═══════════════════════════════ ΚΑΡΤΕΛΑ — τύπος οδηγού (#dlTypeLink, v3β) ═══════════════════════════════
+async function runDriverTypeLinkFlow(browser) {
+  console.log('\n== accountant · καρτέλα · #dlTypeLink (τύπος οδηγού) ==');
+  const errors = [];
+
+  // ── type: null → #dlTypeLink «Ορισμός τύπου →» ──
+  {
+    const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+    installPayrollMocks(page, { type: null });
+    await gotoPage(page, 'payroll', BASE_URL);
+    await page.waitForSelector('.dl-page', { timeout: 15000 });
+    await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+    await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+    assert(await page.locator('#dlTypeLink').count() === 1, 'type null: #dlTypeLink exists in the hero');
+    assert(/Ορισμός τύπου/.test(await page.locator('#dlTypeLink').innerText()), '#dlTypeLink reads «Ορισμός τύπου →»');
+    // Deliberately NOT clicking it — it navigates away (dlOpenDriverForm).
+    errors.push(...consoleErrors);
+    await context.close();
+  }
+
+  // ── type: 'External' → #dlTypeLink absent ──
+  {
+    const { context, page, consoleErrors } = await newPage(browser, 'accountant');
+    installPayrollMocks(page, { type: 'External' });
+    await gotoPage(page, 'payroll', BASE_URL);
+    await page.waitForSelector('.dl-page', { timeout: 15000 });
+    await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+    await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+    assert(await page.locator('#dlTypeLink').count() === 0, 'type External: #dlTypeLink is absent');
+    errors.push(...consoleErrors);
+    await context.close();
+  }
+
+  return { consoleErrors: errors };
+}
+
 // ═══════════════════════════════ 1280/1440 (fresh fixture) ═══════════════════════════════
 async function runViewportChecks(browser) {
   console.log('\n== 1280/1440 · no horizontal scroll (fresh fixture) ==');
@@ -1047,9 +1349,9 @@ async function runPrintPageFlow(browser) {
 
 // ═══════════════════════════════ ρόλοι ═══════════════════════════════
 async function runManagementFlow(browser) {
-  console.log('\n== management (read access) ==');
+  console.log('\n== management (read access + Επαναφορά) ==');
   const { context, page, consoleErrors } = await newPage(browser, 'management');
-  installPayrollMocks(page);
+  const { captured } = installPayrollMocks(page);
   await gotoPage(page, 'payroll', BASE_URL);
   await page.waitForSelector('.dl-page', { timeout: 15000 });
   assert(await page.locator('#nav_payroll').count() === 1, 'management: #nav_payroll present');
@@ -1057,6 +1359,63 @@ async function runManagementFlow(browser) {
   await page.waitForSelector('.dl-ledger', { timeout: 15000 });
   assert(await page.locator('.dl-page').count() === 1, 'management: the driver card renders (.dl-page)');
   assert(await page.locator('.dl-row[data-entry]').count() > 0, 'management: ledger rows render');
+  await page.locator('.dl-ychip[data-year="2026"]').click();
+  await page.selectOption('#dlMonth', '08');
+  await page.waitForTimeout(150);
+
+  // ── v3β «Επαναφορά ακύρωσης» (α, owner 15/9): management sees .dl-more on
+  // the cancelled row (id 5, cancelled from the fixture's own start), with
+  // ONLY .dl-menu-restore — not the accountant's Διόρθωση/Ακύρωση. ──
+  assert(await page.locator('.dl-row.canc[data-entry="5"] .dl-more').count() === 1, 'management: the cancelled row (id 5) HAS .dl-more');
+  await page.locator('.dl-row.canc[data-entry="5"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-restore').count() === 1, 'management: .dl-menu on the cancelled row shows .dl-menu-restore «Επαναφορά»');
+  assert(await page.locator('.dl-menu-edit').count() === 0, 'management: the cancelled-row menu has NO .dl-menu-edit');
+  assert(await page.locator('.dl-menu-cancel').count() === 0, 'management: the cancelled-row menu has NO .dl-menu-cancel');
+  await page.locator('.dl-menu-restore').click();
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/5'), { timeout: 10000 }),
+    answerReasonModal(page, 'proof: test reason'),
+  ]);
+  await page.waitForTimeout(150);
+  const restorePatch = captured.patches.find(p => p.id === 5 && p.body.restore);
+  assert(!!restorePatch, 'PATCH /costs/ledger/5 {restore:true,...} was sent');
+  assert(restorePatch.body.reason === 'proof: test reason', 'the restore PATCH carries the modal reason: ' + JSON.stringify(restorePatch.body));
+  await page.waitForSelector('.dl-row[data-entry="5"]:not(.canc)', { timeout: 5000 });
+
+  await context.close();
+  return { consoleErrors };
+}
+
+// preparePage(page, 'owner') is supported — its default parameter IS 'owner'
+// (tests/critics/auth.js:117) and the roster's demo_owner fixture account
+// exists for every role, so a third-role check for the same «Επαναφορά» gate
+// is straightforward — no skip needed.
+async function runOwnerRestoreFlow(browser) {
+  console.log('\n== owner · Επαναφορά ακύρωσης (α) ==');
+  const { context, page, consoleErrors } = await newPage(browser, 'owner');
+  const { captured } = installPayrollMocks(page);
+  await gotoPage(page, 'payroll', BASE_URL);
+  await page.waitForSelector('.dl-page', { timeout: 15000 });
+  await page.evaluate(id => renderPayrollDriver(id), DRIVER_ID);
+  await page.waitForSelector('.dl-ledger', { timeout: 15000 });
+  await page.locator('.dl-ychip[data-year="2026"]').click();
+  await page.selectOption('#dlMonth', '08');
+  await page.waitForTimeout(150);
+
+  assert(await page.locator('.dl-row.canc[data-entry="5"] .dl-more').count() === 1, 'owner: the cancelled row (id 5) HAS .dl-more');
+  await page.locator('.dl-row.canc[data-entry="5"] .dl-more').click();
+  await page.waitForSelector('.dl-menu', { timeout: 5000 });
+  assert(await page.locator('.dl-menu-restore').count() === 1, 'owner: .dl-menu on the cancelled row shows .dl-menu-restore «Επαναφορά»');
+  await page.locator('.dl-menu-restore').click();
+  await Promise.all([
+    page.waitForResponse(r => r.request().method() === 'PATCH' && r.url().includes('/costs/ledger/5'), { timeout: 10000 }),
+    answerReasonModal(page, 'proof: test reason'),
+  ]);
+  await page.waitForTimeout(150);
+  const restorePatch = captured.patches.find(p => p.id === 5 && p.body.restore);
+  assert(!!restorePatch, 'owner: PATCH /costs/ledger/5 {restore:true,...} was sent');
+
   await context.close();
   return { consoleErrors };
 }
@@ -1077,14 +1436,27 @@ async function runDispatcherFlow(browser) {
   const browser = await chromium.launch();
   try {
     const home = await runHomeFlow(browser);
+    const homeGap = await runHomeGapFlow(browser);
+    const bulk = await runBulkFlow(browser);
     const card = await runDriverCardFlow(browser);
+    const rts = await runDriverRtsFlow(browser);
+    const typeLink = await runDriverTypeLinkFlow(browser);
     const vp = await runViewportChecks(browser);
     const print = await runPrintPageFlow(browser);
     const mgmt = await runManagementFlow(browser);
+    const ownerRestore = await runOwnerRestoreFlow(browser);
     const disp = await runDispatcherFlow(browser);
-    const all = [...home.consoleErrors, ...card.consoleErrors, ...vp.consoleErrors, ...print.consoleErrors, ...mgmt.consoleErrors, ...disp.consoleErrors];
+    const all = [
+      ...home.consoleErrors, ...homeGap.consoleErrors, ...bulk.consoleErrors,
+      ...card.consoleErrors, ...rts.consoleErrors, ...typeLink.consoleErrors,
+      ...vp.consoleErrors, ...print.consoleErrors,
+      ...mgmt.consoleErrors, ...ownerRestore.consoleErrors, ...disp.consoleErrors,
+    ];
     console.log('\n== console errors ==');
-    console.log('home:', home.consoleErrors.length, 'card:', card.consoleErrors.length, 'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length, 'management:', mgmt.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
+    console.log('home:', home.consoleErrors.length, 'homeGap:', homeGap.consoleErrors.length, 'bulk:', bulk.consoleErrors.length,
+      'card:', card.consoleErrors.length, 'rts:', rts.consoleErrors.length, 'typeLink:', typeLink.consoleErrors.length,
+      'viewport:', vp.consoleErrors.length, 'print:', print.consoleErrors.length,
+      'management:', mgmt.consoleErrors.length, 'ownerRestore:', ownerRestore.consoleErrors.length, 'dispatcher:', disp.consoleErrors.length);
     if (all.length) all.forEach(e => console.log('  ! ' + e));
     console.log('\n== captured request bodies (accountant) ==');
     console.log(JSON.stringify({ posts: card.captured.posts, patches: card.captured.patches }, null, 2));
