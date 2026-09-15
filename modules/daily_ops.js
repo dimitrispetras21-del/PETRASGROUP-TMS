@@ -28,6 +28,9 @@ const OPS_FIELDS = [
   'Veroia Switch','VS CD Date',
   'Docs Ready','Temp OK','Driver Notified','Advance Paid','Second Card',
   'Truck','Trailer','Driver','Is Partner Trip','Partner',
+  // 'Group ID' (Παντελής 15/9, Figma 647:1011): export loadings of the same
+  // groupage collapse into one row. Same truck is the fallback key.
+  'Group ID',
 ];
 
 /* ── ENTRY ────────────────────────────────────────────────────── */
@@ -366,6 +369,11 @@ const _OPS_STYLE=`<style>
      appear nowhere else on this screen (measured 4/9: 13 vs 12 before). */
   .do-pill{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:var(--radius-full);border:1px solid var(--warn);background:var(--surface-card);font-size:var(--text-xs);font-weight:600;cursor:pointer;color:var(--warn);white-space:nowrap}
   .do-pill.full{color:var(--text-mid);background:var(--surface-card);border-color:var(--border)}
+  /* Members of a collapsed export group (Figma 647:1011): indented client,
+     dashed top like the stop sub-rows, otherwise a normal row with its own
+     buttons. */
+  .do-t tr.do-gm td{border-top:1px dashed var(--border)}
+  .do-t tr.do-gm td:nth-child(2){padding-left:40px}
   .do-sub td{background:var(--surface-page);height:36px;border-top:1px dashed var(--border)}
   .do-sub .do-srow{display:flex;align-items:center;gap:12px;padding-left:32px;font-size:var(--text-sm)}
   .do-zsub{background:var(--surface-page);min-height:36px;display:flex;align-items:center;border-top:1px dashed var(--border);padding:0 12px}
@@ -533,8 +541,55 @@ function _opsSec(type,label,items,isToday,emptyTxt,start) {
   const head=`<div class="do-sec-h">${label}<span>${items.length?`${items.length} · ${done} ${done===1?'δηλωμένη':'δηλωμένες'}`:`— καμία ${when}`}</span></div>`;
   if(!items.length) return `<div class="do-sec">${head}<div class="do-empty">${emptyTxt} ${when}</div></div>`;
   return `<div class="do-sec">${head}
-    <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
+    <div style="overflow-x:auto"><table class="do-t">${colg}<thead><tr>${cols}</tr></thead><tbody>${isL&&isExp?_opsGroupedRows(items,start,type,isToday):items.map((r,i)=>_opsRow(r,start+i,type,isToday)).join('')}</tbody></table></div>
   </div>`;
+}
+
+/* ── ΙΔΙΑ ΕΞΑΓΩΓΗ = ΜΙΑ ΓΡΑΜΜΗ (Παντελής 15/9, Figma 647:1011, owner) ────
+   Export loadings that ride the same truck — same Group ID, else the same
+   Truck on the day — collapse into one summary row that opens into the
+   member rows, exactly like a multi-stop order opens into its stops: the
+   same OPS._expanded set, key 'g:<key>', the same _opsToggleStops. The
+   summary never declares (owner 26/8 for multi-stop): «Φορτώθηκε» on it just
+   opens the group; each member keeps its own buttons and its own number, so
+   «το 7» on the phone still means one order. A lone order is drawn as
+   before — nothing changes for the 1-order case. Members are drawn adjacent
+   so their numbers stay contiguous («2–4»). */
+function _opsGroupKey(f){
+  const gid=f['Group ID']?String(f['Group ID']).split('|')[0]:'';
+  if(gid) return 'G'+gid.replace(/[^A-Za-z0-9_-]/g,'');
+  const tk=getLinkedId(f['Truck']);
+  return tk?'T'+String(tk).replace(/[^A-Za-z0-9_-]/g,''):'';
+}
+function _opsGroupedRows(items,start,type,isToday){
+  const byKey={};
+  items.forEach(r=>{ const k=_opsGroupKey(r.fields); if(k) (byKey[k]=byKey[k]||[]).push(r); });
+  const emitted=new Set(); const parts=[]; let n=start;
+  for(const r of items){
+    if(emitted.has(r.id)) continue;
+    const k=_opsGroupKey(r.fields);
+    const g=k&&byKey[k].length>1?byKey[k]:null;
+    if(!g){ parts.push(_opsRow(r,n++,type,isToday)); continue; }
+    const open=!!(OPS._expanded&&OPS._expanded.has('g:'+k));
+    parts.push(_opsGroupRow(k,g,n,n+g.length-1,isToday,open));
+    g.forEach(m=>{ emitted.add(m.id); if(open) parts.push(_opsRow(m,n,type,isToday,'do-gm')); n++; });
+  }
+  return parts.join('');
+}
+function _opsGroupRow(key,g,from,to,isToday,open){
+  const id='g:'+key, f0=g[0].fields;
+  const clients=[...new Set(g.map(m=>_C(m.fields)).filter(Boolean))].map(s=>escapeHtml(String(s)).toUpperCase()).join(' · ');
+  const locs=[...new Set(g.map(m=>_L(_opsStopLoc(m.id,'Loading'))).filter(Boolean))].map(s=>escapeHtml(String(s))).join(' · ');
+  // Sum only what is a number; no numbers at all = «—», never 0 (DESIGN.md #3).
+  const nums=g.map(m=>m.fields['Total Pallets']).filter(v=>v!=null&&v!=='').map(Number).filter(v=>!isNaN(v));
+  const pal=nums.length?nums.reduce((a,b)=>a+b,0):'—';
+  const done=g.filter(m=>['In Transit','Delivered'].includes(m.fields['Status']||'')).length;
+  const all=done===g.length;
+  const st=all?`<span class="do-st-done">Φορτώθηκαν ✓</span>`
+    :`<span class="do-pill" onclick="event.stopPropagation();_opsToggleStops('${id}')" title="Κλικ: οι φορτώσεις μία-μία — δηλώνεις όποια έγινε, οι άλλες περιμένουν">${done}/${g.length} φορτώθηκαν ${open?'▾':'▸'}</span>`;
+  // ΠΡΟΚ. € and «Αλλαγή ημέρας» belong to one order each — not on the summary.
+  const act=isToday&&!all?`<div class="do-slots"><span class="do-slot"><button class="do-btn" onclick="event.stopPropagation();_opsToggleStops('${id}')">Φορτώθηκε</button></span></div>`:'';
+  return `<tr id="r_${id}" class="do-hover do-grp${open?' do-open':''}" style="cursor:pointer" onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"><td class="do-num">${from}–${to}</td><td class="do-wrap"><span class="do-main">${g.length} φορτώσεις</span><span class="do-sl">${clients}</span></td><td class="do-wrap"><span class="do-main">${locs||'—'}</span></td>${_opsAsgCell(f0,_TT(f0),_D(f0),_P(f0))}<td>${pal}</td><td>—</td><td class="do-st">${st}</td><td class="do-acts">${act}</td></tr>`;
 }
 
 /* ── ROW ──────────────────────────────────────────────────────── */
@@ -601,7 +656,7 @@ function _opsSlots(rec, ctx) {
   return `<div class="do-slots">${slots.map(s=>`<span class="do-slot">${s}</span>`).join('')}</div>`;
 }
 
-function _opsRow(rec,num,type,isToday) {
+function _opsRow(rec,num,type,isToday,cls) {
   const f=rec.fields, id=rec.id;
   const client=_C(f), sub=_CSub(f);
   const loadL=_L(_opsStopLoc(id,'Loading'));
@@ -649,7 +704,7 @@ function _opsRow(rec,num,type,isToday) {
   // υπο-γραμμές ακολουθούν το tr ώστε να ζουν στο ίδιο tbody. Η ανοιχτή
   // γραμμή κρατά το φόντο επιλογής (.do-open) όσο είναι ανοιχτή.
   const _trClick=_multi?` onclick="if(!event.target.closest('button,input,select,a'))_opsToggleStops('${id}')"`:'';
-  return `<tr id="r_${id}" class="do-hover${isDone?' do-done':''}${_expanded?' do-open':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
+  return `<tr id="r_${id}" class="do-hover${cls?' '+cls:''}${isDone?' do-done':''}${_expanded?' do-open':''}" style="${_multi?'cursor:pointer':''}"${_trClick}><td class="do-num">${num}</td>${cl}${mid}${stCell}${actCell}</tr>`+(_expanded?_opsSubRows(rec,_stype):'');
 }
 
 // Own fleet = a plate or a driver on a non-partner trip. A plate without a
