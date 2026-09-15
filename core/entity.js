@@ -353,7 +353,10 @@ const ENTITY_CONFIG = {
     formFields: [
       { section: 'Στοιχεία', fields: [
         { f: 'Full Name',   label: 'Ονοματεπώνυμο', req: true },
-        { f: 'Type',        label: 'Τύπος', type: 'select', options: [
+        // req (15/9): the select had no required flag and 79/81 rows are NULL
+        // (SELECT 15/9) — Μισθοδοσία shows «—» for every one of them. The type
+        // decides how the driver is paid, so a driver without it is not saved.
+        { f: 'Type',        label: 'Τύπος', type: 'select', req: true, options: [
           { val: 'Internal', label: 'Εσωτερικός' }, { val: 'External', label: 'Εξωτερικός' }] },
         { f: 'Phone',       label: 'Τηλέφωνο' },
         { f: 'Salary Base', label: 'Βασικός μισθός', type: 'number',
@@ -678,6 +681,10 @@ const ENTITY_CONFIG = {
         // συνεργείου θα δημιουργούσε νέα, παράλληλη ειδικότητα και το φίλτρο θα
         // γέμιζε διπλές κατηγορίες (αγγλικές από τη φόρμα, ελληνικές από τα δεδομένα).
         { f: 'Specialty',      label: 'Ειδικότητα', type: 'select', options: ['Σέρβις','Ελαστικά','Φρένα/ανάρτηση','Ψύξη','Κινητήρας','Ηλεκτρικά','Αμάξωμα','Πέταλο/κοτσαδούρα','Έλεγχοι'] },
+        // 15/9: searchable since 6/8 (searchFields above) but no form field ever
+        // wrote it — only the import could add an old spelling. text[] column,
+        // hence type 'list' (comma-separated on screen, array on the wire).
+        { f: 'Aliases',        label: 'Παλιές γραφές', type: 'list', hint: 'Χωρισμένες με κόμμα' },
       ]},
       { section: 'Επικοινωνία', fields: [
         { f: 'Contact Person', label: 'Υπεύθυνος επαφής' },
@@ -2060,11 +2067,17 @@ function _renderEntityCardV2(entityKey, rec, panel) {
     return `<div class="ecard-spec"><span class="ecard-spec-label">${sp.label}</span><span class="ecard-spec-val">${_ecEsc(v)}${sp.unit ? ` <span class="dim">${sp.unit}</span>` : ''}</span></div>`;
   }).join('');
 
-  // «όλα →» to TRIP PnL only for roles with full costs access — the page is
-  // not in anyone else's navigation, and a link into a screen you cannot use
-  // is noise, not access.
-  const rtLink = (typeof can === 'function' && can('costs') === 'full')
-    ? `<button type="button" class="ecard-link" onclick="navigate('costs')">όλα →</button>` : '';
+  // «όλα →»: the driver card goes to the driver's ledger in Μισθοδοσία (every
+  // round trip of the driver lives there), gated like the payroll page itself
+  // — costs !== 'none', so management (costs:'view') gets the link it can use.
+  // The old gate was === 'full' and hid it from management (audit 15/9).
+  // Vehicles still go to TRIP PnL, an owner-only page: 'full' stays there.
+  const costsPerm = typeof can === 'function' ? can('costs') : 'none';
+  const rtLink = entityKey === 'drivers'
+    ? (costsPerm !== 'none'
+        ? `<button type="button" class="ecard-link" onclick="_ecOpenDriverPayroll('${recId}')">όλα →</button>` : '')
+    : (costsPerm === 'full'
+        ? `<button type="button" class="ecard-link" onclick="navigate('costs')">όλα →</button>` : '');
 
   panel.innerHTML = `
     <div class="ecard-head">
@@ -2351,6 +2364,26 @@ async function _loadEntityCardRT(entityKey, rec) {
     const aggEl = document.getElementById(`ec_${recId}_agg`);
     if (aggEl) aggEl.innerHTML = msg;
     if (typeof logError === 'function') logError(e, 'entity card: round trips');
+  }
+}
+
+// Driver card «όλα →»: open the driver's own ledger card in Μισθοδοσία.
+// renderPayroll() (router) resets the ledger state to the home grid and paints
+// it after its own fetch, so calling renderPayrollDriver at once would race
+// it — whichever fetch landed last would own the screen. Wait for the home
+// grid, then open the card; on timeout the user is on the payroll home with
+// the driver in the list, never on a blank screen.
+async function _ecOpenDriverPayroll(recId) {
+  let pgId;
+  try {
+    const lk = await ctFetch('/costs/lookups');
+    pgId = (lk.drivers || []).find(x => x.legacy_id === recId)?.id;
+  } catch (e) { if (typeof logError === 'function') logError(e, 'entity card: payroll link'); }
+  navigate('payroll');
+  if (pgId === undefined || typeof renderPayrollDriver !== 'function') return;
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 200));
+    if (document.querySelector('.dl-card')) { await renderPayrollDriver(pgId); return; }
   }
 }
 
@@ -2760,6 +2793,10 @@ function buildEntityModal(entityKey, recId, fields) {
         // resolve stays selected as "… (άγνωστη γραφή)" instead of being
         // silently swapped for a guess (K3) — see core/countries.js.
         input = `<select class="form-input" id="ef_${field.f.replace(/\s/g,'_')}">${countryOptionsHtml(val)}</select>`;
+      } else if (field.type === 'list') {
+        // text[] column shown as one comma-separated line (see saveEntityRecord).
+        const shown = Array.isArray(val) ? val.join(', ') : val;
+        input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${_ecEsc(shown)}" placeholder="${field.label}">`;
       } else {
         input = `<input class="form-input" type="text" id="ef_${field.f.replace(/\s/g,'_')}" value="${val}" placeholder="${field.label}${field.req?' *':''}">`;
       }
@@ -2775,6 +2812,7 @@ function buildEntityModal(entityKey, recId, fields) {
       const errSlot = isV2 ? `${field.disabled && field.disabledReason
           ? `<div class="ef-hint">${field.disabledReason}</div>` : ''
         }<div class="ef-err" id="eferr_ef_${field.f.replace(/\s/g,'_')}"></div>${
+        field.hint ? `<div class="ef-hint">${field.hint}</div>` : ''}${
         field.type === 'textarea' && !field.req ? '<div class="ef-hint">Προαιρετικό</div>' : ''}` : '';
       bodyHTML += `<div class="form-field ${field.type==='textarea'?'span-2':''}">
         <label class="form-label">${field.label}${field.req?' *':''}</label>
@@ -2855,6 +2893,15 @@ async function saveEntityRecord(entityKey, recId) {
   // blocks the save — no alert() (mock truck-form: field errors block saving).
   if (cfg.v2 && !entityRevalidate(entityKey, true)) return;
 
+  // Edit: a field the user EMPTIED must reach the table as null. `if (!val)
+  // continue` skipped it, the PATCH carried the other fields, the Worker
+  // answered 200 and the toast said «ενημερώθηκε» while the old value stayed
+  // in the column — a silent drop on every entity (audit 15/9). Only fields
+  // that HAD a value are nulled, so audit_log shows real changes only.
+  // fieldsToColumns keeps null (`if (column) row[column] = value`) and
+  // PostgREST writes it — worker/src/index.js handleFacadeUpdate, read 15/9.
+  const orig = recId ? (((_entityState[entityKey] || {}).records || []).find(r => r.id === recId) || {}).fields || {} : {};
+  const hadValue = v => v != null && v !== '' && !(Array.isArray(v) && !v.length);
   const fields = {};
   for (const sec of cfg.formFields) {
     for (const field of sec.fields) {
@@ -2863,8 +2910,14 @@ async function saveEntityRecord(entityKey, recId) {
       const el = document.getElementById(id);
       if (!el) continue;
       let val = el.value.trim();
-      if (!val) continue;
+      if (!val) {
+        if (recId && hadValue(orig[field.f])) fields[field.f] = null;
+        continue;
+      }
       if (field.type === 'number') val = parseFloat(val);
+      // list: comma-separated on screen, text[] in the table (workshops.aliases)
+      // — a plain string there is a «malformed array literal» 500, not a save.
+      if (field.type === 'list') val = val.split(/[,;\n]/).map(x => x.trim()).filter(Boolean);
       fields[field.f] = val;
     }
   }

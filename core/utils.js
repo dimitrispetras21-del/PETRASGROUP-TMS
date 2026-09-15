@@ -1565,7 +1565,11 @@ if (typeof user !== 'undefined') {
   setTimeout(() => { _refreshNotifs(); }, 3000);
 }
 
-// ═══ TRASH VIEWER (Owner only) ═══
+// ═══ TRASH VIEWER ═══
+// Gate: can('settings') === 'full' (router.js, case 'trash') — that is owner
+// AND management (config.js PERMISSIONS: management settings:'full'), not
+// «owner only» as this heading said until 15/9. The store is localStorage of
+// THIS browser: a deletion made on another machine never shows here.
 
 // Reverse-lookup table name from ID
 function _tableNameFromId(tableId) {
