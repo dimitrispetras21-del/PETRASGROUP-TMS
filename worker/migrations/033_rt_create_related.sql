@@ -1,9 +1,13 @@
 -- 033 — Round-trip creation for RELATED orders: groups, matched pairs, rotations
 --        (owner 14/9/2026: «εξακολουθούν να μην υπάρχουν όλα τα RT — βρες την αιτία»)
 --
--- STATUS: DRAFT — NOT EXECUTED. The owner runs it by hand (Supabase SQL editor,
--- after 15:00 — αρχή 7). Replaces the function of 031 in place; nothing else
--- from 013/031 changes.
+-- STATUS: EXECUTED 15/9/2026 ~10:10 by the owner (Supabase SQL editor). Proof
+-- run right after: orphans 13 → 0 · 8 legs attached (239→RT-1105, 284→1135,
+-- 287→1136, 301→1021, 335→1138 reopened, 305/320/329 to their pair's new RT)
+-- · 5 RTs created (304+305, 310, 318+320, 328+329, 334) · 3 stale legs freed
+-- · 0 conflicts · dl_v_rt_gap 0 · 5 payroll lines opened · no duplicate legs,
+-- no zero-leg RT. Replaces the function of 031 in place; nothing else from
+-- 013/031 changes.
 --
 -- WHY (measured 14/9, orders loading from 1/8, own fleet, not deleted):
 --   141 orders · 128 with a live leg · 13 without. Of the 13:
